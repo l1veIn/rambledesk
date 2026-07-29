@@ -1,7 +1,5 @@
-use std::path::PathBuf;
-
 use rambledesk_core::HealthSnapshot;
-use rambledesk_mcp::{AccessToken, ServerConfig, ServerHandle, start_server};
+use rambledesk_mcp::{AccessToken, ServerConfig, ServerHandle, default_token_path, start_server};
 use tauri::{Manager, RunEvent};
 
 struct McpState {
@@ -28,13 +26,6 @@ fn configured_port() -> Result<u16, String> {
     }
 }
 
-fn token_path(app: &tauri::App) -> Result<PathBuf, String> {
-    app.path()
-        .app_local_data_dir()
-        .map(|root| root.join("auth").join("mcp.token"))
-        .map_err(|error| format!("failed to resolve app data directory: {error}"))
-}
-
 pub fn run() {
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -46,9 +37,14 @@ pub fn run() {
 
     let app = tauri::Builder::default()
         .setup(|app| {
-            let token = AccessToken::load_or_create(&token_path(app)?)?;
+            let token = AccessToken::load_or_create(&default_token_path()?)?;
+            let database_path = rambledesk_storage::default_database_path()?;
+            let store = tauri::async_runtime::block_on(
+                rambledesk_storage::SqliteFeedbackStore::connect(&database_path),
+            )?;
             let config = ServerConfig::new(token).with_port(configured_port()?);
-            let handle = tauri::async_runtime::block_on(start_server(config))?;
+            let handle =
+                tauri::async_runtime::block_on(start_server(config, store.into_application()))?;
             app.manage(McpState { handle });
             Ok(())
         })

@@ -24,10 +24,10 @@ Agent 通过本地 MCP 下发结构化请求；人类按清单真实使用、自
 
 ## 状态
 
-M0 技术与协议尖峰已完成：monorepo、Tauri/Svelte 薄壳、认证 loopback MCP、
-CLI、生成式前后端合同和 CI 基线均已落地。MCP Inspector 与 Claude Code
-实测通过；下一步可开始
-[M1 纯文本纵向闭环](docs/DEVELOPMENT.md#m1纯文本纵向闭环)。
+M0 技术与协议尖峰已完成。M1 已落地 SQLite 持久请求内核、
+`request_feedback/get_feedback/cancel_feedback` polling 工具、幂等/取消语义
+和重启恢复；MCP Inspector 与 Claude Code 实测通过。下一步继续
+[M1 的 Inbox、Draft 与纯文本提交闭环](docs/DEVELOPMENT.md#m1纯文本纵向闭环)。
 
 ## 本地验证
 

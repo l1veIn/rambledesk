@@ -33,7 +33,10 @@ impl AccessToken {
 
     pub fn load_or_create(path: &Path) -> Result<Self, TokenError> {
         match read_token(path) {
-            Ok(token) => return Ok(token),
+            Ok(token) => {
+                secure_token_path(path)?;
+                return Ok(token);
+            }
             Err(TokenError::Io(error)) if error.kind() == io::ErrorKind::NotFound => {}
             Err(error) => return Err(error),
         }
@@ -58,10 +61,26 @@ impl AccessToken {
                 file.sync_all()?;
                 Ok(token)
             }
-            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => read_token(path),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                let token = read_token(path)?;
+                secure_token_path(path)?;
+                Ok(token)
+            }
             Err(error) => Err(error.into()),
         }
     }
+}
+
+#[cfg(unix)]
+fn secure_token_path(path: &Path) -> Result<(), TokenError> {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn secure_token_path(_path: &Path) -> Result<(), TokenError> {
+    Ok(())
 }
 
 impl fmt::Debug for AccessToken {
@@ -129,5 +148,26 @@ mod tests {
             AccessToken::load_or_create(&path),
             Err(TokenError::InvalidFormat)
         ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn existing_token_permissions_are_repaired() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempfile::tempdir().expect("temp dir");
+        let path = directory.path().join("mcp.token");
+        fs::write(
+            &path,
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n",
+        )
+        .expect("write token fixture");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).expect("permissive fixture");
+
+        AccessToken::load_or_create(&path).expect("load token");
+        assert_eq!(
+            fs::metadata(path).expect("metadata").permissions().mode() & 0o777,
+            0o600
+        );
     }
 }

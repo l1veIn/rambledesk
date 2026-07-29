@@ -1,6 +1,6 @@
 # RambleDesk 开发基线与实施计划
 
-> 状态：M0 complete · Ready to start M1
+> 状态：M0 complete · M1 in progress
 > 日期：2026-07-29
 
 ## 1. 已冻结的开发方向
@@ -307,6 +307,11 @@ Tasks 保留为双方显式声明支持后的增强路径。
 
 目标：第一次真实完成“Agent 请求 → 人提交 → Agent 取回”。
 
+当前已完成第一条基础切片：完整初始 migration、canonical Project identity、
+持久 `request_feedback/get_feedback/cancel_feedback`、幂等冲突、重复取消、
+并发收敛、重启恢复，以及 CLI/桌面共享的数据目录。Inbox、Draft 和 Feedback
+Package 提交仍属于后续 M1 切片。
+
 交付：
 
 - SQLite migrations；
@@ -371,7 +376,7 @@ Tasks 保留为双方显式声明支持后的增强路径。
 - [x] 编写并执行 MCP Inspector smoke test；
 - [x] 验证 Claude Code，记录 Codex 本机安装阻塞；
 - [x] 锁定 SDK、toolchain、TypeScript DTO 生成和 polling 首发模式；
-- [ ] M1 再引入 SQLite、领域状态机和反馈业务工具。
+- [x] M1 第一切片引入 SQLite、持久请求状态机和 polling 业务工具。
 
 不要在 M0 中实现语音、截图、完整导航或视觉系统。
 
@@ -397,6 +402,6 @@ Tasks 保留为双方显式声明支持后的增强路径。
 
 ## 9. 当前判断
 
-M0 已通过自动化与真实客户端验收，项目具备开始 M1 的工程条件。M1 应从
-core 状态机、SQLite migration 和 polling 合同开始，不提前引入语音、截图或
-Tasks 专用业务分支。
+M0 已通过自动化与真实客户端验收。M1 的持久请求内核与 polling 合同已经落地；
+下一条切片应实现 Inbox、单请求 Draft 自动保存和纯文本 Feedback Package 提交，
+不提前引入语音、截图或 Tasks 专用业务分支。

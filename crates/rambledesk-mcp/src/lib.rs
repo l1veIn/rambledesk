@@ -17,11 +17,17 @@ use axum::{
     middleware::{self, Next},
     response::IntoResponse,
 };
-use rambledesk_core::HealthSnapshot;
+use rambledesk_core::{
+    ApplicationError, CancelFeedbackInput, FeedbackApplication, FeedbackRequestView,
+    FeedbackStatus, GetFeedbackInput, HealthSnapshot, RequestFeedbackInput,
+};
 use rmcp::{
     RoleServer, ServerHandler,
-    handler::server::{router::tool::ToolRouter, wrapper::Json},
-    model::{Implementation, ServerCapabilities, ServerInfo},
+    handler::server::{
+        router::tool::ToolRouter,
+        wrapper::{Json, Parameters},
+    },
+    model::{CallToolResult, ContentBlock, Implementation, ServerCapabilities, ServerInfo},
     service::RequestContext,
     tool, tool_handler, tool_router,
     transport::streamable_http_server::{
@@ -71,15 +77,17 @@ impl ServerConfig {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct RambleDeskMcp {
     tool_router: ToolRouter<Self>,
+    application: FeedbackApplication,
 }
 
 impl RambleDeskMcp {
-    fn new() -> Self {
+    fn new(application: FeedbackApplication) -> Self {
         Self {
             tool_router: Self::tool_router(),
+            application,
         }
     }
 }
@@ -109,10 +117,85 @@ impl RambleDeskMcp {
             .is_some_and(|capabilities| capabilities.supports_tasks());
 
         Json(McpHealthSnapshot {
-            health: HealthSnapshot::m0(),
+            health: HealthSnapshot::ready(),
             protocol_version,
             client_supports_tasks,
         })
+    }
+
+    #[tool(
+        name = "request_feedback",
+        description = "Persist a feedback request and return immediately with a polling handle. Reusing request_id with identical input is idempotent."
+    )]
+    async fn request_feedback(
+        &self,
+        Parameters(input): Parameters<RequestFeedbackInput>,
+    ) -> CallToolResult {
+        application_result(self.application.request_feedback(input).await)
+    }
+
+    #[tool(
+        name = "get_feedback",
+        description = "Read the current state of a persistent feedback request without changing it."
+    )]
+    async fn get_feedback(
+        &self,
+        Parameters(input): Parameters<GetFeedbackInput>,
+    ) -> CallToolResult {
+        application_result(self.application.get_feedback(input).await)
+    }
+
+    #[tool(
+        name = "cancel_feedback",
+        description = "Cancel a waiting or in-progress feedback request. Repeated cancellation preserves the first cancellation."
+    )]
+    async fn cancel_feedback(
+        &self,
+        Parameters(input): Parameters<CancelFeedbackInput>,
+    ) -> CallToolResult {
+        application_result(self.application.cancel_feedback(input).await)
+    }
+}
+
+fn application_result(result: Result<FeedbackRequestView, ApplicationError>) -> CallToolResult {
+    match result {
+        Ok(value) => {
+            let summary = match value.status {
+                FeedbackStatus::Waiting => format!(
+                    "Feedback request {} is waiting; poll get_feedback after {} ms.",
+                    value.request_id,
+                    value.poll_after_ms.unwrap_or_default()
+                ),
+                FeedbackStatus::InProgress => format!(
+                    "Feedback request {} is in progress; continue polling get_feedback.",
+                    value.request_id
+                ),
+                FeedbackStatus::Completed => {
+                    format!("Feedback request {} is completed.", value.request_id)
+                }
+                FeedbackStatus::Cancelled => {
+                    format!("Feedback request {} is cancelled.", value.request_id)
+                }
+            };
+            let mut result = CallToolResult::structured(
+                serde_json::to_value(value).expect("application result must serialize"),
+            );
+            result.content = vec![ContentBlock::text(summary)];
+            result
+        }
+        Err(error) => {
+            let mut result = CallToolResult::structured_error(serde_json::json!({
+                "code": error.code(),
+                "message": error.message(),
+                "retryable": error.retryable(),
+            }));
+            result.content = vec![ContentBlock::text(format!(
+                "RambleDesk {}: {}",
+                error.code(),
+                error.message()
+            ))];
+            result
+        }
     }
 }
 
@@ -122,7 +205,7 @@ impl ServerHandler for RambleDeskMcp {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new("rambledesk", env!("CARGO_PKG_VERSION")))
             .with_instructions(
-                "RambleDesk M0 exposes a read-only health probe. Feedback tools arrive in M1.",
+                "RambleDesk persists feedback requests before returning. Use request_feedback, then poll get_feedback until completed or cancelled.",
             )
     }
 }
@@ -201,7 +284,10 @@ pub enum ServerError {
     Join(#[from] tokio::task::JoinError),
 }
 
-pub async fn start_server(config: ServerConfig) -> Result<ServerHandle, ServerError> {
+pub async fn start_server(
+    config: ServerConfig,
+    application: FeedbackApplication,
+) -> Result<ServerHandle, ServerError> {
     let cancellation = CancellationToken::new();
     let transport_config = StreamableHttpServerConfig::default()
         .with_allowed_origins(config.allowed_origins)
@@ -210,7 +296,7 @@ pub async fn start_server(config: ServerConfig) -> Result<ServerHandle, ServerEr
 
     let service: StreamableHttpService<RambleDeskMcp, LocalSessionManager> =
         StreamableHttpService::new(
-            || Ok(RambleDeskMcp::new()),
+            move || Ok(RambleDeskMcp::new(application.clone())),
             Default::default(),
             transport_config,
         );

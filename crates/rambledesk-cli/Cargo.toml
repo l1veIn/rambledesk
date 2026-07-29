@@ -22,5 +22,6 @@ rmcp = { workspace = true, features = [
   "transport-streamable-http-client-reqwest",
 ] }
 serde_json.workspace = true
+tempfile.workspace = true
 tokio.workspace = true
 tracing-subscriber.workspace = true

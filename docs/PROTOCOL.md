@@ -1,6 +1,6 @@
 # RambleDesk MCP 与反馈协议
 
-> 状态：M0 validated baseline
+> 状态：M1 persistent request kernel implemented
 > 版本：v1 · 2026-07-29  
 > 规范词：MUST / SHOULD / MAY 分别表示必须、建议和可选。
 
@@ -21,11 +21,12 @@ M0 已用 Claude Code 和 MCP Inspector 实测，并锁定官方 `rmcp` 3.0.0；
 
 ### 1.1 执行模式
 
-首发使用 polling，能力升级优先级如下：
+v1 首发对所有客户端固定使用 polling：`request_feedback` 立即返回 `waiting`，
+Agent 使用 `get_feedback` 查询。即使客户端声明 MCP Tasks，也不能仅凭该声明
+自动改变 wire result；只有服务端在后续兼容切片中显式启用 Tasks、并对目标客户
+端完成 create/get/result/cancel 回归后，才可返回持久 task handle。
 
-1. 客户端支持 MCP Tasks：`request_feedback` 返回持久 task handle；Operator 提交后 task 完成；
-2. 客户端不支持 Tasks：`request_feedback` 立即返回 `waiting`，Agent 使用 `get_feedback` 查询；
-3. 长时间保持单个 HTTP/SSE 响应只可作为兼容优化，不能成为正确性的前提。
+长时间保持单个 HTTP/SSE 响应只可作为兼容优化，不能成为正确性的前提。
 
 无论采用哪种模式，Feedback Request 都必须在第一次工具调用返回前持久化。
 
@@ -36,7 +37,7 @@ M0 已用 Claude Code 和 MCP Inspector 实测，并锁定官方 `rmcp` 3.0.0；
 - `request_id`、`project_id` 使用 UUID；
 - 新 ID 默认使用 UUIDv7；
 - 时间使用 UTC RFC 3339；
-- ID 比较区分大小写，但服务端生成的小写 UUID 为规范形式；
+- UUID 输入解析后统一为带连字符的小写规范形式，存储与比较均使用规范值；
 - `agent`、`session_id` 用于关联和展示，不用于认证。
 
 ### 2.2 字符串限制
@@ -106,6 +107,10 @@ M0 已用 Claude Code 和 MCP Inspector 实测，并锁定官方 `rmcp` 3.0.0；
 - `root_path` 若提供，必须是 RambleDesk 所在机器上的绝对路径；
 - `context_refs` 只作为可见引用保存，MVP 不自动读取或执行；
 - `actions[].id` 在单个请求内必须唯一，格式为 `^[a-z0-9][a-z0-9_-]{0,63}$`。
+- Project identity 是服务端解析后的 `project_id`；仅提供路径时，先 canonicalize
+  `root_path` 再查找或创建 Project；
+- `project.name` 是展示元数据，不参与 Project identity 或请求幂等 hash；已有
+  Project 不会因后续请求携带不同 name 而产生冲突。
 
 ### 3.2 幂等性
 
@@ -117,7 +122,8 @@ M0 已用 Claude Code 和 MCP Inspector 实测，并锁定官方 `rmcp` 3.0.0；
 - 已完成：直接返回原始完成结果；
 - 已取消：返回取消结果，不隐式重新打开。
 
-不可变输入包括 `agent`、`session_id`、project identity、`what_happened` 和 `actions`。
+不可变输入包括 `agent`、`session_id`、project identity、`what_happened`、
+有序 `actions` 和有序 `context_refs`。
 
 不使用 `resume: true`。复用同一 `request_id` 本身就是恢复语义。
 
@@ -214,7 +220,7 @@ Tasks 模式下，最终 task result 必须使用相同完成结果结构。
 
 - `waiting`、`in_progress` 可转为 `cancelled`；
 - `completed` 返回 `REQUEST_ALREADY_COMPLETED`；
-- 对已取消请求重复调用成功返回原状态；
+- 对已取消请求重复调用成功返回原状态，保留第一次取消的时间和原因；
 - 草稿默认保留，直到用户显式删除；
 - MCP Tasks 的取消必须映射到同一领域操作。
 
@@ -328,10 +334,12 @@ Invocation Attempt 是诊断数据，不是 Feedback Request 的事实来源。
 {
   "code": "REQUEST_CONFLICT",
   "message": "request_id already exists with different immutable input",
-  "request_id": "019...",
   "retryable": false
 }
 ```
+
+能够可靠关联时，服务端 MAY 额外返回 `request_id`；调用方不得依赖错误结果一定
+含有该字段。
 
 首版必须覆盖：
 
