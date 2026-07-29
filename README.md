@@ -25,9 +25,9 @@ Agent 通过本地 MCP 下发结构化请求；人类按清单真实使用、自
 ## 状态
 
 M0 技术与协议尖峰已完成。M1 已落地 SQLite 持久请求内核、
-`request_feedback/get_feedback/cancel_feedback` polling 工具、幂等/取消语义
-和重启恢复；MCP Inspector 与 Claude Code 实测通过。下一步继续
-[M1 的 Inbox、Draft 与纯文本提交闭环](docs/DEVELOPMENT.md#m1纯文本纵向闭环)。
+`request_feedback/get_feedback/cancel_feedback` polling 工具、Inbox、Markdown
+Draft 自动保存和 crash-safe Feedback Package 提交；MCP Inspector、Claude Code
+与官方 Rust SDK 实测通过。下一步完成 M1 的系统通知与桌面端运行验收。
 
 ## 本地验证
 

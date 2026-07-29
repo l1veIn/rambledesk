@@ -1,6 +1,6 @@
 # RambleDesk MCP 与反馈协议
 
-> 状态：M1 persistent request kernel implemented
+> 状态：M1 pure-text feedback loop implemented
 > 版本：v1 · 2026-07-29  
 > 规范词：MUST / SHOULD / MAY 分别表示必须、建议和可选。
 
@@ -280,11 +280,15 @@ Invocation Attempt 是诊断数据，不是 Feedback Request 的事实来源。
 
 ## 9. 并发规则
 
-- 单个 Request 同时只能有一个可写 Draft lease；
-- UI 重复打开同一 Request 复用当前 lease；
-- 提交在数据库事务中检查 `revision`；
+- UI 使用 `feedback_requests.revision` 作为唯一 aggregate CAS token；
+- Draft 保存成功后，`drafts.revision` 记录对应的 aggregate revision；
+- 相同正文和旧 revision 的重放视为响应丢失后的幂等重试；
+- 提交在数据库事务中冻结 `source_revision`、时间和唯一 publication 路径；
 - 只有一个提交可以把 Request 从非终态推进到 `completed`；
-- Feedback Package 使用临时目录写入，`fsync` 成功后原子 rename；
+- Feedback Package 使用同一父目录下的持久化临时路径写入，文件与目录 `fsync`
+  成功后原子 rename；启动时自动对账未完成的 publication intent；
+- 单条 publication 对账失败必须记录稳定错误并保持请求可见，不能阻止其他请求、
+  Desktop 或 MCP 启动；
 - 完成后的 package 不可修改，修改反馈必须创建新 Request。
 
 ## 10. Feedback Package
@@ -302,6 +306,9 @@ Invocation Attempt 是诊断数据，不是 Feedback Request 的事实来源。
 
 项目根不可写或未提供时，使用应用数据目录，并在结果中返回实际路径。
 
+M1 的 durable rename + directory sync 已在 macOS/Unix 路径实现。非 Unix 平台
+在具备等价持久化 barrier 前不得提交事务 B 或返回 completed。
+
 `manifest.json`：
 
 ```json
@@ -312,19 +319,16 @@ Invocation Attempt 是诊断数据，不是 Feedback Request 的事实来源。
   "agent": "codex",
   "session_id": "...",
   "submitted_at": "2026-07-29T08:12:00Z",
+  "source_revision": 7,
+  "draft_revision": 7,
   "feedback_markdown": "feedback.md",
-  "attachments": [
-    {
-      "id": "019...",
-      "path": "attachments/001-onboarding.png",
-      "media_type": "image/png",
-      "sha256": "..."
-    }
-  ]
+  "feedback_sha256": "...",
+  "attachments": []
 }
 ```
 
-`feedback.md` 至少包含请求摘要、Operator 的反馈正文和相对路径附件引用。不得写入绝对附件路径。
+M1 的 `feedback.md` 包含请求摘要、有序 actions 和 Operator 的 Markdown 正文；
+`attachments` 固定为空数组。M2 引入附件后只能写相对路径，不得写入绝对附件路径。
 
 ## 11. 错误结构
 

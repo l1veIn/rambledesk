@@ -1,6 +1,7 @@
 //! Framework-independent RambleDesk domain and application contracts.
 
 mod feedback;
+mod workspace;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -11,6 +12,11 @@ pub use feedback::{
     FeedbackApplication, FeedbackRepository, FeedbackRequestView, FeedbackResultView,
     FeedbackStatus, GetFeedbackInput, IdGenerator, NewFeedbackRequest, ProjectInput,
     RepositoryError, RequestFeedbackInput, StoredFeedbackRequest, SystemClock, UuidV7Generator,
+};
+pub use workspace::{
+    DraftView, FeedbackPackagePublisher, FeedbackRequestSummary, FeedbackWorkspaceView,
+    PublishedFeedbackPackage, SaveDraftInput, StoredFeedbackWorkspace, SubmissionPlan,
+    SubmitFeedbackInput,
 };
 
 pub const SERVICE_NAME: &str = "rambledesk";

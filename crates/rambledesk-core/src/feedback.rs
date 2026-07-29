@@ -6,7 +6,13 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+use ts_rs::TS;
 use uuid::Uuid;
+
+use crate::workspace::{
+    DraftView, FeedbackPackagePublisher, FeedbackRequestSummary, PublishedFeedbackPackage,
+    StoredFeedbackWorkspace, SubmissionPlan,
+};
 
 const DEFAULT_POLL_AFTER_MS: u64 = 30_000;
 
@@ -17,13 +23,13 @@ pub struct ProjectInput {
     pub root_path: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 pub struct ActionInput {
     pub id: String,
     pub instruction: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 pub struct ContextRef {
     pub label: String,
     pub uri: String,
@@ -52,8 +58,9 @@ pub struct CancelFeedbackInput {
     pub reason: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 #[serde(rename_all = "snake_case")]
+#[ts(rename_all = "snake_case")]
 pub enum FeedbackStatus {
     Waiting,
     InProgress,
@@ -86,13 +93,14 @@ impl TryFrom<&str> for FeedbackStatus {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 #[serde(rename_all = "snake_case")]
+#[ts(rename_all = "snake_case")]
 pub enum ExecutionMode {
     Poll,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 pub struct FeedbackResultView {
     pub package_uri: String,
     pub directory_path: String,
@@ -100,7 +108,7 @@ pub struct FeedbackResultView {
     pub manifest_path: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 pub struct FeedbackRequestView {
     pub request_id: String,
     pub project_id: String,
@@ -109,6 +117,7 @@ pub struct FeedbackRequestView {
     pub created_at: String,
     pub updated_at: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional, type = "number")]
     pub poll_after_ms: Option<u64>,
     pub feedback: Option<FeedbackResultView>,
 }
@@ -149,6 +158,7 @@ pub struct StoredFeedbackRequest {
     pub status: FeedbackStatus,
     pub created_at: String,
     pub updated_at: String,
+    pub feedback: Option<FeedbackResultView>,
 }
 
 impl From<StoredFeedbackRequest> for FeedbackRequestView {
@@ -165,7 +175,7 @@ impl From<StoredFeedbackRequest> for FeedbackRequestView {
                 FeedbackStatus::Waiting | FeedbackStatus::InProgress
             )
             .then_some(DEFAULT_POLL_AFTER_MS),
-            feedback: None,
+            feedback: value.feedback,
         }
     }
 }
@@ -184,6 +194,14 @@ pub enum RepositoryError {
     RequestConflict,
     #[error("feedback request is already completed")]
     RequestAlreadyCompleted,
+    #[error("feedback request is terminal")]
+    RequestTerminal,
+    #[error("draft revision conflicts with the stored revision")]
+    DraftConflict,
+    #[error("feedback draft is empty")]
+    DraftEmpty,
+    #[error("feedback package publication failed")]
+    PackagePublish,
     #[error("stored feedback data is invalid")]
     CorruptData,
     #[error("storage operation failed")]
@@ -205,6 +223,35 @@ pub trait FeedbackRepository: Send + Sync {
         request_id: &str,
         reason: &str,
         now: &str,
+    ) -> Result<StoredFeedbackRequest, RepositoryError>;
+
+    async fn list_open_requests(&self) -> Result<Vec<FeedbackRequestSummary>, RepositoryError>;
+
+    async fn get_workspace(
+        &self,
+        request_id: &str,
+    ) -> Result<StoredFeedbackWorkspace, RepositoryError>;
+
+    async fn save_draft(
+        &self,
+        request_id: &str,
+        body_markdown: &str,
+        expected_revision: u64,
+        now: &str,
+    ) -> Result<DraftView, RepositoryError>;
+
+    async fn plan_submission(
+        &self,
+        request_id: &str,
+        expected_revision: u64,
+        publication_id: &str,
+        now: &str,
+    ) -> Result<SubmissionPlan, RepositoryError>;
+
+    async fn complete_submission(
+        &self,
+        plan: &SubmissionPlan,
+        published: &PublishedFeedbackPackage,
     ) -> Result<StoredFeedbackRequest, RepositoryError>;
 }
 
@@ -238,23 +285,34 @@ impl IdGenerator for UuidV7Generator {
 
 #[derive(Clone)]
 pub struct FeedbackApplication {
-    repository: Arc<dyn FeedbackRepository>,
-    clock: Arc<dyn Clock>,
-    ids: Arc<dyn IdGenerator>,
+    pub(crate) repository: Arc<dyn FeedbackRepository>,
+    pub(crate) publisher: Arc<dyn FeedbackPackagePublisher>,
+    pub(crate) clock: Arc<dyn Clock>,
+    pub(crate) ids: Arc<dyn IdGenerator>,
 }
 
 impl FeedbackApplication {
-    pub fn new(repository: Arc<dyn FeedbackRepository>) -> Self {
-        Self::with_runtime(repository, Arc::new(SystemClock), Arc::new(UuidV7Generator))
+    pub fn new(
+        repository: Arc<dyn FeedbackRepository>,
+        publisher: Arc<dyn FeedbackPackagePublisher>,
+    ) -> Self {
+        Self::with_runtime(
+            repository,
+            publisher,
+            Arc::new(SystemClock),
+            Arc::new(UuidV7Generator),
+        )
     }
 
     pub fn with_runtime(
         repository: Arc<dyn FeedbackRepository>,
+        publisher: Arc<dyn FeedbackPackagePublisher>,
         clock: Arc<dyn Clock>,
         ids: Arc<dyn IdGenerator>,
     ) -> Self {
         Self {
             repository,
+            publisher,
             clock,
             ids,
         }
@@ -318,7 +376,7 @@ impl FeedbackApplication {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Error, Serialize)]
 #[error("{message}")]
 pub struct ApplicationError {
     code: &'static str,
@@ -376,6 +434,26 @@ impl From<RepositoryError> for ApplicationError {
                 "REQUEST_ALREADY_COMPLETED",
                 "completed feedback cannot be cancelled",
                 false,
+            ),
+            RepositoryError::RequestTerminal => (
+                "REQUEST_TERMINAL",
+                "terminal feedback cannot be modified",
+                false,
+            ),
+            RepositoryError::DraftConflict => (
+                "DRAFT_CONFLICT",
+                "draft revision changed; reload before saving or submitting",
+                false,
+            ),
+            RepositoryError::DraftEmpty => (
+                "INVALID_ARGUMENT",
+                "feedback draft cannot be empty when submitting",
+                false,
+            ),
+            RepositoryError::PackagePublish => (
+                "PACKAGE_PUBLISH_FAILURE",
+                "feedback package could not be published",
+                true,
             ),
             RepositoryError::CorruptData | RepositoryError::Storage => {
                 ("STORAGE_FAILURE", "feedback storage operation failed", true)
@@ -458,13 +536,18 @@ fn validate_request_input(input: &RequestFeedbackInput) -> Result<(), Applicatio
     Ok(())
 }
 
-fn canonical_uuid(value: &str, field: &str) -> Result<String, ApplicationError> {
+pub(crate) fn canonical_uuid(value: &str, field: &str) -> Result<String, ApplicationError> {
     Uuid::parse_str(value)
         .map(|value| value.hyphenated().to_string())
         .map_err(|_| ApplicationError::invalid_argument(format!("{field} must be a UUID")))
 }
 
-fn validate_text(field: &str, value: &str, min: usize, max: usize) -> Result<(), ApplicationError> {
+pub(crate) fn validate_text(
+    field: &str,
+    value: &str,
+    min: usize,
+    max: usize,
+) -> Result<(), ApplicationError> {
     let length = value.chars().count();
     if !(min..=max).contains(&length) {
         return Err(ApplicationError::invalid_argument(format!(
@@ -535,6 +618,7 @@ mod tests {
             status: FeedbackStatus::Cancelled,
             created_at: "2026-07-29T00:00:00Z".to_owned(),
             updated_at: "2026-07-29T00:01:00Z".to_owned(),
+            feedback: None,
         }))
         .expect("feedback result");
         assert!(value.get("poll_after_ms").is_none());

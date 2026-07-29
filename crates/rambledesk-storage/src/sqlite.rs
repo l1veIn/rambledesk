@@ -2,9 +2,11 @@ use std::{path::Path, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use rambledesk_core::{
-    FeedbackRepository, FeedbackStatus, NewFeedbackRequest, ProjectInput, RepositoryError,
-    StoredFeedbackRequest,
+    ActionInput, ContextRef, DraftView, FeedbackRepository, FeedbackRequestSummary,
+    FeedbackResultView, FeedbackStatus, NewFeedbackRequest, ProjectInput, PublishedFeedbackPackage,
+    RepositoryError, StoredFeedbackRequest, StoredFeedbackWorkspace, SubmissionPlan,
 };
+use sha2::{Digest, Sha256};
 use sqlx::{
     Row, SqlitePool,
     migrate::Migrator,
@@ -26,6 +28,8 @@ pub enum StorageOpenError {
     Connect(#[source] sqlx::Error),
     #[error("failed to migrate the RambleDesk SQLite database")]
     Migrate(#[source] sqlx::migrate::MigrateError),
+    #[error("failed to inspect interrupted feedback publications")]
+    Recovery(RepositoryError),
     #[error("no local application data directory is available")]
     DataDirectoryUnavailable,
 }
@@ -33,6 +37,8 @@ pub enum StorageOpenError {
 #[derive(Clone)]
 pub struct SqliteFeedbackStore {
     pool: SqlitePool,
+    app_data_root: std::path::PathBuf,
+    pub(crate) publish_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl SqliteFeedbackStore {
@@ -63,15 +69,64 @@ impl SqliteFeedbackStore {
             .run(&pool)
             .await
             .map_err(StorageOpenError::Migrate)?;
-        Ok(Self { pool })
+        let app_data_root = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."))
+            .to_path_buf();
+        let store = Self {
+            pool,
+            app_data_root,
+            publish_lock: Arc::new(tokio::sync::Mutex::new(())),
+        };
+        store
+            .recover_pending_submissions()
+            .await
+            .map_err(StorageOpenError::Recovery)?;
+        Ok(store)
     }
 
     pub fn into_application(self) -> rambledesk_core::FeedbackApplication {
-        rambledesk_core::FeedbackApplication::new(Arc::new(self))
+        let store = Arc::new(self);
+        rambledesk_core::FeedbackApplication::new(store.clone(), store)
     }
 
     pub async fn close(&self) {
         self.pool.close().await;
+    }
+
+    async fn recover_pending_submissions(&self) -> Result<(), RepositoryError> {
+        let pending: Vec<(String, i64)> = sqlx::query_as(
+            "SELECT request_id, source_revision FROM submission_plans \
+             WHERE state = 'preparing' ORDER BY submitted_at, request_id",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(storage_error)?;
+        for (request_id, source_revision) in pending {
+            let recovery = async {
+                let plan = self
+                    .plan_submission(&request_id, source_revision as u64, "", "")
+                    .await?;
+                let published =
+                    rambledesk_core::FeedbackPackagePublisher::publish(self, &plan).await?;
+                self.complete_submission(&plan, &published).await
+            }
+            .await;
+            if let Err(error) = recovery {
+                sqlx::query(
+                    "UPDATE submission_plans SET last_error_code = ?2, \
+                         last_error_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') \
+                     WHERE request_id = ?1 AND state = 'preparing'",
+                )
+                .bind(&request_id)
+                .bind(repository_error_code(error))
+                .execute(&self.pool)
+                .await
+                .map_err(storage_error)?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -191,6 +246,7 @@ impl FeedbackRepository for SqliteFeedbackStore {
             status: FeedbackStatus::Waiting,
             created_at: request.created_at.clone(),
             updated_at: request.created_at,
+            feedback: None,
         };
         transaction.commit().await.map_err(storage_error)?;
         Ok(stored)
@@ -201,9 +257,11 @@ impl FeedbackRepository for SqliteFeedbackStore {
         request_id: &str,
     ) -> Result<StoredFeedbackRequest, RepositoryError> {
         let row = sqlx::query(
-            "SELECT r.id, s.project_id, r.status, r.created_at, r.updated_at, r.input_hash \
+            "SELECT r.id, s.project_id, r.status, r.created_at, r.updated_at, r.input_hash, \
+                    fr.package_uri, fr.directory_path, fr.markdown_path, fr.manifest_path \
              FROM feedback_requests r \
              JOIN agent_sessions s ON s.id = r.session_id \
+             LEFT JOIN feedback_results fr ON fr.request_id = r.id \
              WHERE r.id = ?1",
         )
         .bind(request_id)
@@ -233,6 +291,16 @@ impl FeedbackRepository for SqliteFeedbackStore {
             FeedbackStatus::Cancelled => return stored_request_from_row(&row),
             FeedbackStatus::Waiting | FeedbackStatus::InProgress => {}
         }
+        let planned: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM submission_plans WHERE request_id = ?1)",
+        )
+        .bind(request_id)
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(storage_error)?;
+        if planned {
+            return Err(RepositoryError::RequestTerminal);
+        }
 
         sqlx::query(
             "UPDATE feedback_requests \
@@ -252,6 +320,666 @@ impl FeedbackRepository for SqliteFeedbackStore {
         transaction.commit().await.map_err(storage_error)?;
         stored_request_from_row(&updated)
     }
+
+    async fn list_open_requests(&self) -> Result<Vec<FeedbackRequestSummary>, RepositoryError> {
+        let rows = sqlx::query(
+            "SELECT r.id, s.project_id, p.name AS project_name, s.agent, \
+                    s.external_session_id, r.what_happened, r.status, \
+                    r.revision, r.created_at, r.updated_at \
+             FROM feedback_requests r \
+             JOIN agent_sessions s ON s.id = r.session_id \
+             JOIN projects p ON p.id = s.project_id \
+             WHERE r.status IN ('waiting', 'in_progress') \
+             ORDER BY r.updated_at DESC, r.id DESC",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(storage_error)?;
+        rows.iter().map(summary_from_row).collect()
+    }
+
+    async fn get_workspace(
+        &self,
+        request_id: &str,
+    ) -> Result<StoredFeedbackWorkspace, RepositoryError> {
+        load_workspace_from_pool(&self.pool, request_id).await
+    }
+
+    async fn save_draft(
+        &self,
+        request_id: &str,
+        body_markdown: &str,
+        expected_revision: u64,
+        now: &str,
+    ) -> Result<DraftView, RepositoryError> {
+        let mut transaction = self
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(storage_error)?;
+        let request_row =
+            sqlx::query("SELECT status, revision FROM feedback_requests WHERE id = ?1")
+                .bind(request_id)
+                .fetch_optional(&mut *transaction)
+                .await
+                .map_err(storage_error)?
+                .ok_or(RepositoryError::RequestNotFound)?;
+        let status: String = request_row.try_get("status").map_err(storage_error)?;
+        if matches!(
+            FeedbackStatus::try_from(status.as_str())?,
+            FeedbackStatus::Completed | FeedbackStatus::Cancelled
+        ) {
+            return Err(RepositoryError::RequestTerminal);
+        }
+        let planned: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM submission_plans WHERE request_id = ?1)",
+        )
+        .bind(request_id)
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(storage_error)?;
+        if planned {
+            return Err(RepositoryError::DraftConflict);
+        }
+
+        let current_revision: i64 = request_row.try_get("revision").map_err(storage_error)?;
+        let stored_draft = sqlx::query(
+            "SELECT body_markdown, revision, updated_at FROM drafts WHERE request_id = ?1",
+        )
+        .bind(request_id)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(storage_error)?;
+        if current_revision != expected_revision as i64 {
+            if let Some(row) = stored_draft {
+                let stored_body: String = row.try_get("body_markdown").map_err(storage_error)?;
+                if stored_body == body_markdown {
+                    return Ok(DraftView {
+                        body_markdown: stored_body,
+                        saved_revision: row.try_get::<i64, _>("revision").map_err(storage_error)?
+                            as u64,
+                        updated_at: Some(row.try_get("updated_at").map_err(storage_error)?),
+                    });
+                }
+            }
+            return Err(RepositoryError::DraftConflict);
+        }
+        let next_revision = current_revision + 1;
+        let updated = sqlx::query(
+            "UPDATE feedback_requests SET \
+                 status = 'in_progress', started_at = COALESCE(started_at, ?3), \
+                 updated_at = ?3, revision = ?2 \
+             WHERE id = ?1 AND revision = ?4 AND status IN ('waiting', 'in_progress')",
+        )
+        .bind(request_id)
+        .bind(next_revision)
+        .bind(now)
+        .bind(current_revision)
+        .execute(&mut *transaction)
+        .await
+        .map_err(storage_error)?;
+        if updated.rows_affected() != 1 {
+            return Err(RepositoryError::DraftConflict);
+        }
+        sqlx::query(
+            "INSERT INTO drafts (request_id, body_markdown, revision, updated_at) \
+             VALUES (?1, ?2, ?3, ?4) \
+             ON CONFLICT(request_id) DO UPDATE SET \
+                 body_markdown = excluded.body_markdown, \
+                 revision = excluded.revision, \
+                 updated_at = excluded.updated_at",
+        )
+        .bind(request_id)
+        .bind(body_markdown)
+        .bind(next_revision)
+        .bind(now)
+        .execute(&mut *transaction)
+        .await
+        .map_err(storage_error)?;
+        transaction.commit().await.map_err(storage_error)?;
+        Ok(DraftView {
+            body_markdown: body_markdown.to_owned(),
+            saved_revision: next_revision as u64,
+            updated_at: Some(now.to_owned()),
+        })
+    }
+
+    async fn plan_submission(
+        &self,
+        request_id: &str,
+        expected_revision: u64,
+        publication_id: &str,
+        now: &str,
+    ) -> Result<SubmissionPlan, RepositoryError> {
+        let preflight = sqlx::query(
+            "SELECT r.status, p.root_path_canonical, \
+                    EXISTS(SELECT 1 FROM submission_plans sp WHERE sp.request_id = r.id) AS planned \
+             FROM feedback_requests r \
+             JOIN agent_sessions s ON s.id = r.session_id \
+             JOIN projects p ON p.id = s.project_id \
+             WHERE r.id = ?1",
+        )
+        .bind(request_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(storage_error)?
+        .ok_or(RepositoryError::RequestNotFound)?;
+        let preflight_status: String = preflight.try_get("status").map_err(storage_error)?;
+        if matches!(
+            FeedbackStatus::try_from(preflight_status.as_str())?,
+            FeedbackStatus::Completed | FeedbackStatus::Cancelled
+        ) {
+            return Err(RepositoryError::RequestTerminal);
+        }
+        let already_planned: bool = preflight.try_get("planned").map_err(storage_error)?;
+        let prepared_paths = if already_planned {
+            None
+        } else {
+            let project_root: String = preflight
+                .try_get("root_path_canonical")
+                .map_err(storage_error)?;
+            Some(
+                prepare_publication_paths(
+                    request_id,
+                    publication_id,
+                    now,
+                    Path::new(&project_root),
+                    &self.app_data_root,
+                )
+                .await?,
+            )
+        };
+
+        let mut transaction = self
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(storage_error)?;
+        let row = load_submission_row(&mut transaction, request_id)
+            .await?
+            .ok_or(RepositoryError::RequestNotFound)?;
+        let status: String = row.try_get("status").map_err(storage_error)?;
+        if matches!(
+            FeedbackStatus::try_from(status.as_str())?,
+            FeedbackStatus::Completed | FeedbackStatus::Cancelled
+        ) {
+            return Err(RepositoryError::RequestTerminal);
+        }
+        let body_markdown: String = row
+            .try_get::<Option<String>, _>("body_markdown")
+            .map_err(storage_error)?
+            .ok_or(RepositoryError::DraftEmpty)?;
+        if body_markdown.trim().is_empty() {
+            return Err(RepositoryError::DraftEmpty);
+        }
+        let aggregate_revision: i64 = row.try_get("request_revision").map_err(storage_error)?;
+        let saved_revision: i64 = row
+            .try_get::<Option<i64>, _>("draft_revision")
+            .map_err(storage_error)?
+            .ok_or(RepositoryError::DraftEmpty)?;
+        let body_sha256 = hex::encode(Sha256::digest(body_markdown.as_bytes()));
+        let actions = load_actions(&mut transaction, request_id).await?;
+
+        if let Some(source_revision) = row
+            .try_get::<Option<i64>, _>("source_revision")
+            .map_err(storage_error)?
+        {
+            if source_revision != expected_revision as i64 {
+                return Err(RepositoryError::DraftConflict);
+            }
+            let stored_hash: String = row.try_get("body_sha256").map_err(storage_error)?;
+            if stored_hash != body_sha256 {
+                return Err(RepositoryError::DraftConflict);
+            }
+            let plan = submission_plan_from_row(&row, actions, body_markdown)?;
+            transaction.commit().await.map_err(storage_error)?;
+            return Ok(plan);
+        }
+        if aggregate_revision != expected_revision as i64 || saved_revision != aggregate_revision {
+            return Err(RepositoryError::DraftConflict);
+        }
+
+        let prepared_paths = prepared_paths.ok_or(RepositoryError::CorruptData)?;
+
+        sqlx::query(
+            "INSERT INTO submission_plans \
+             (request_id, publication_id, source_revision, body_sha256, submitted_at, \
+              package_uri, directory_path, temp_directory_path, markdown_path, manifest_path) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        )
+        .bind(request_id)
+        .bind(publication_id)
+        .bind(aggregate_revision)
+        .bind(&body_sha256)
+        .bind(now)
+        .bind(&prepared_paths.package_uri)
+        .bind(&prepared_paths.directory_path)
+        .bind(&prepared_paths.temp_directory_path)
+        .bind(&prepared_paths.markdown_path)
+        .bind(&prepared_paths.manifest_path)
+        .execute(&mut *transaction)
+        .await
+        .map_err(storage_error)?;
+
+        let plan = SubmissionPlan {
+            request_id: request_id.to_owned(),
+            project_id: row.try_get("project_id").map_err(storage_error)?,
+            agent: row.try_get("agent").map_err(storage_error)?,
+            session_id: row.try_get("external_session_id").map_err(storage_error)?,
+            what_happened: row.try_get("what_happened").map_err(storage_error)?,
+            actions,
+            body_markdown,
+            source_revision: aggregate_revision as u64,
+            publication_id: publication_id.to_owned(),
+            body_sha256,
+            submitted_at: now.to_owned(),
+            package_uri: prepared_paths.package_uri,
+            directory_path: prepared_paths.directory_path,
+            temp_directory_path: prepared_paths.temp_directory_path,
+            markdown_path: prepared_paths.markdown_path,
+            manifest_path: prepared_paths.manifest_path,
+        };
+        transaction.commit().await.map_err(storage_error)?;
+        Ok(plan)
+    }
+
+    async fn complete_submission(
+        &self,
+        plan: &SubmissionPlan,
+        published: &PublishedFeedbackPackage,
+    ) -> Result<StoredFeedbackRequest, RepositoryError> {
+        let mut transaction = self
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(storage_error)?;
+        let status: String =
+            sqlx::query_scalar("SELECT status FROM feedback_requests WHERE id = ?1")
+                .bind(&plan.request_id)
+                .fetch_optional(&mut *transaction)
+                .await
+                .map_err(storage_error)?
+                .ok_or(RepositoryError::RequestNotFound)?;
+        if status == "completed" {
+            let stored = load_request_row(&mut transaction, &plan.request_id)
+                .await?
+                .ok_or(RepositoryError::CorruptData)
+                .and_then(|row| stored_request_from_row(&row))?;
+            transaction.commit().await.map_err(storage_error)?;
+            return Ok(stored);
+        }
+        if status == "cancelled" {
+            return Err(RepositoryError::RequestTerminal);
+        }
+        if published.result.package_uri != plan.package_uri
+            || published.result.directory_path != plan.directory_path
+            || published.result.markdown_path != plan.markdown_path
+            || published.result.manifest_path != plan.manifest_path
+        {
+            return Err(RepositoryError::PackagePublish);
+        }
+        let stored_plan: (String, i64, String) = sqlx::query_as(
+            "SELECT publication_id, source_revision, body_sha256 \
+             FROM submission_plans WHERE request_id = ?1",
+        )
+        .bind(&plan.request_id)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(storage_error)?
+        .ok_or(RepositoryError::CorruptData)?;
+        if stored_plan.0 != plan.publication_id
+            || stored_plan.1 != plan.source_revision as i64
+            || stored_plan.2 != plan.body_sha256
+        {
+            return Err(RepositoryError::DraftConflict);
+        }
+
+        sqlx::query(
+            "INSERT INTO feedback_results \
+             (request_id, package_uri, directory_path, markdown_path, manifest_path, \
+              manifest_sha256, published_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        )
+        .bind(&plan.request_id)
+        .bind(&published.result.package_uri)
+        .bind(&published.result.directory_path)
+        .bind(&published.result.markdown_path)
+        .bind(&published.result.manifest_path)
+        .bind(&published.manifest_sha256)
+        .bind(&published.published_at)
+        .execute(&mut *transaction)
+        .await
+        .map_err(storage_error)?;
+        sqlx::query(
+            "UPDATE submission_plans SET state = 'published', manifest_sha256 = ?2, \
+                 published_at = ?3, last_error_code = NULL, last_error_at = NULL \
+             WHERE request_id = ?1 AND state = 'preparing'",
+        )
+        .bind(&plan.request_id)
+        .bind(&published.manifest_sha256)
+        .bind(&published.published_at)
+        .execute(&mut *transaction)
+        .await
+        .map_err(storage_error)?;
+        let completed = sqlx::query(
+            "UPDATE feedback_requests SET \
+                 status = 'completed', completed_at = ?2, updated_at = ?2, revision = revision + 1 \
+             WHERE id = ?1 AND status = 'in_progress' AND revision = ?3",
+        )
+        .bind(&plan.request_id)
+        .bind(&published.published_at)
+        .bind(plan.source_revision as i64)
+        .execute(&mut *transaction)
+        .await
+        .map_err(storage_error)?;
+        if completed.rows_affected() != 1 {
+            return Err(RepositoryError::DraftConflict);
+        }
+        let stored = load_request_row(&mut transaction, &plan.request_id)
+            .await?
+            .ok_or(RepositoryError::CorruptData)
+            .and_then(|row| stored_request_from_row(&row))?;
+        transaction.commit().await.map_err(storage_error)?;
+        Ok(stored)
+    }
+}
+
+fn summary_from_row(row: &SqliteRow) -> Result<FeedbackRequestSummary, RepositoryError> {
+    let status: String = row.try_get("status").map_err(storage_error)?;
+    Ok(FeedbackRequestSummary {
+        request_id: row.try_get("id").map_err(storage_error)?,
+        project_id: row.try_get("project_id").map_err(storage_error)?,
+        project_name: row.try_get("project_name").map_err(storage_error)?,
+        agent: row.try_get("agent").map_err(storage_error)?,
+        session_id: row.try_get("external_session_id").map_err(storage_error)?,
+        what_happened: row.try_get("what_happened").map_err(storage_error)?,
+        status: FeedbackStatus::try_from(status.as_str())?,
+        revision: row.try_get::<i64, _>("revision").map_err(storage_error)? as u64,
+        created_at: row.try_get("created_at").map_err(storage_error)?,
+        updated_at: row.try_get("updated_at").map_err(storage_error)?,
+    })
+}
+
+async fn load_workspace_from_pool(
+    pool: &SqlitePool,
+    request_id: &str,
+) -> Result<StoredFeedbackWorkspace, RepositoryError> {
+    let row = sqlx::query(
+        "SELECT r.id, s.project_id, p.name AS project_name, s.agent, \
+                s.external_session_id, r.what_happened, r.status, \
+                r.revision, r.created_at, r.updated_at \
+         FROM feedback_requests r \
+         JOIN agent_sessions s ON s.id = r.session_id \
+         JOIN projects p ON p.id = s.project_id \
+         WHERE r.id = ?1",
+    )
+    .bind(request_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(storage_error)?
+    .ok_or(RepositoryError::RequestNotFound)?;
+    let action_rows = sqlx::query(
+        "SELECT action_id, instruction FROM request_actions \
+         WHERE request_id = ?1 ORDER BY position",
+    )
+    .bind(request_id)
+    .fetch_all(pool)
+    .await
+    .map_err(storage_error)?;
+    let actions = action_rows
+        .iter()
+        .map(|row| {
+            Ok(ActionInput {
+                id: row.try_get("action_id").map_err(storage_error)?,
+                instruction: row.try_get("instruction").map_err(storage_error)?,
+            })
+        })
+        .collect::<Result<Vec<_>, RepositoryError>>()?;
+    let context_rows = sqlx::query(
+        "SELECT label, uri FROM request_context_refs \
+         WHERE request_id = ?1 ORDER BY position",
+    )
+    .bind(request_id)
+    .fetch_all(pool)
+    .await
+    .map_err(storage_error)?;
+    let context_refs = context_rows
+        .iter()
+        .map(|row| {
+            Ok(ContextRef {
+                label: row.try_get("label").map_err(storage_error)?,
+                uri: row.try_get("uri").map_err(storage_error)?,
+            })
+        })
+        .collect::<Result<Vec<_>, RepositoryError>>()?;
+    let draft_row =
+        sqlx::query("SELECT body_markdown, revision, updated_at FROM drafts WHERE request_id = ?1")
+            .bind(request_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(storage_error)?;
+    let draft = match draft_row {
+        Some(row) => DraftView {
+            body_markdown: row.try_get("body_markdown").map_err(storage_error)?,
+            saved_revision: row.try_get::<i64, _>("revision").map_err(storage_error)? as u64,
+            updated_at: Some(row.try_get("updated_at").map_err(storage_error)?),
+        },
+        None => DraftView {
+            body_markdown: String::new(),
+            saved_revision: 0,
+            updated_at: None,
+        },
+    };
+    Ok(StoredFeedbackWorkspace {
+        request: summary_from_row(&row)?,
+        actions,
+        context_refs,
+        draft,
+    })
+}
+
+async fn load_submission_row(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    request_id: &str,
+) -> Result<Option<SqliteRow>, RepositoryError> {
+    sqlx::query(
+        "SELECT r.id, r.status, r.revision AS request_revision, r.what_happened, \
+                s.project_id, s.agent, \
+                s.external_session_id, p.root_path_canonical, \
+                d.body_markdown, d.revision AS draft_revision, \
+                sp.publication_id, sp.source_revision, sp.body_sha256, sp.submitted_at, \
+                sp.package_uri, sp.directory_path, sp.temp_directory_path, \
+                sp.markdown_path, sp.manifest_path \
+         FROM feedback_requests r \
+         JOIN agent_sessions s ON s.id = r.session_id \
+         JOIN projects p ON p.id = s.project_id \
+         LEFT JOIN drafts d ON d.request_id = r.id \
+         LEFT JOIN submission_plans sp ON sp.request_id = r.id \
+         WHERE r.id = ?1",
+    )
+    .bind(request_id)
+    .fetch_optional(&mut **transaction)
+    .await
+    .map_err(storage_error)
+}
+
+async fn load_actions(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    request_id: &str,
+) -> Result<Vec<ActionInput>, RepositoryError> {
+    let rows = sqlx::query(
+        "SELECT action_id, instruction FROM request_actions \
+         WHERE request_id = ?1 ORDER BY position",
+    )
+    .bind(request_id)
+    .fetch_all(&mut **transaction)
+    .await
+    .map_err(storage_error)?;
+    rows.iter()
+        .map(|row| {
+            Ok(ActionInput {
+                id: row.try_get("action_id").map_err(storage_error)?,
+                instruction: row.try_get("instruction").map_err(storage_error)?,
+            })
+        })
+        .collect()
+}
+
+fn submission_plan_from_row(
+    row: &SqliteRow,
+    actions: Vec<ActionInput>,
+    body_markdown: String,
+) -> Result<SubmissionPlan, RepositoryError> {
+    Ok(SubmissionPlan {
+        request_id: row.try_get("id").map_err(storage_error)?,
+        project_id: row.try_get("project_id").map_err(storage_error)?,
+        agent: row.try_get("agent").map_err(storage_error)?,
+        session_id: row.try_get("external_session_id").map_err(storage_error)?,
+        what_happened: row.try_get("what_happened").map_err(storage_error)?,
+        actions,
+        body_markdown,
+        source_revision: row
+            .try_get::<i64, _>("source_revision")
+            .map_err(storage_error)? as u64,
+        publication_id: row.try_get("publication_id").map_err(storage_error)?,
+        body_sha256: row.try_get("body_sha256").map_err(storage_error)?,
+        submitted_at: row.try_get("submitted_at").map_err(storage_error)?,
+        package_uri: row.try_get("package_uri").map_err(storage_error)?,
+        directory_path: row.try_get("directory_path").map_err(storage_error)?,
+        temp_directory_path: row.try_get("temp_directory_path").map_err(storage_error)?,
+        markdown_path: row.try_get("markdown_path").map_err(storage_error)?,
+        manifest_path: row.try_get("manifest_path").map_err(storage_error)?,
+    })
+}
+
+struct PreparedPublicationPaths {
+    package_uri: String,
+    directory_path: String,
+    temp_directory_path: String,
+    markdown_path: String,
+    manifest_path: String,
+}
+
+async fn prepare_publication_paths(
+    request_id: &str,
+    publication_id: &str,
+    now: &str,
+    project_root: &Path,
+    app_data_root: &Path,
+) -> Result<PreparedPublicationPaths, RepositoryError> {
+    let feedback_root = select_feedback_root(project_root, app_data_root, publication_id).await?;
+    let directory_name = format!("{}-{request_id}", compact_timestamp(now));
+    let directory_path = feedback_root.join(directory_name);
+    let temp_directory_path = feedback_root.join(format!(".{request_id}.tmp-{publication_id}"));
+    let markdown_path = directory_path.join("feedback.md");
+    let manifest_path = directory_path.join("manifest.json");
+    Ok(PreparedPublicationPaths {
+        package_uri: format!("rambledesk://feedback/{request_id}"),
+        directory_path: path_string(&directory_path)?,
+        temp_directory_path: path_string(&temp_directory_path)?,
+        markdown_path: path_string(&markdown_path)?,
+        manifest_path: path_string(&manifest_path)?,
+    })
+}
+
+async fn select_feedback_root(
+    project_root: &Path,
+    app_data_root: &Path,
+    publication_id: &str,
+) -> Result<std::path::PathBuf, RepositoryError> {
+    if let Ok(project_feedback) = prepare_project_feedback_root(project_root, publication_id).await
+    {
+        return Ok(project_feedback);
+    }
+    let fallback = app_data_root.join("feedback");
+    tokio::fs::create_dir_all(&fallback)
+        .await
+        .map_err(storage_error)?;
+    assert_not_symlink(&fallback).await?;
+    let canonical_fallback = tokio::fs::canonicalize(&fallback)
+        .await
+        .map_err(package_error)?;
+    verify_writable(&canonical_fallback, publication_id).await?;
+    Ok(canonical_fallback)
+}
+
+async fn prepare_project_feedback_root(
+    project_root: &Path,
+    publication_id: &str,
+) -> Result<std::path::PathBuf, RepositoryError> {
+    let canonical_root = tokio::fs::canonicalize(project_root)
+        .await
+        .map_err(package_error)?;
+    if canonical_root != project_root {
+        return Err(RepositoryError::PackagePublish);
+    }
+    assert_not_symlink(&canonical_root).await?;
+
+    let rambledesk_root = canonical_root.join(".rambledesk");
+    create_safe_directory(&rambledesk_root).await?;
+    let feedback_root = rambledesk_root.join("feedback");
+    create_safe_directory(&feedback_root).await?;
+
+    let canonical_feedback = tokio::fs::canonicalize(&feedback_root)
+        .await
+        .map_err(package_error)?;
+    if !canonical_feedback.starts_with(&canonical_root) {
+        return Err(RepositoryError::PackagePublish);
+    }
+    verify_writable(&canonical_feedback, publication_id).await?;
+    Ok(canonical_feedback)
+}
+
+async fn create_safe_directory(path: &Path) -> Result<(), RepositoryError> {
+    match tokio::fs::symlink_metadata(path).await {
+        Ok(metadata) => {
+            if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                return Err(RepositoryError::PackagePublish);
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            tokio::fs::create_dir(path).await.map_err(package_error)?;
+        }
+        Err(error) => return Err(package_error(error)),
+    }
+    Ok(())
+}
+
+async fn assert_not_symlink(path: &Path) -> Result<(), RepositoryError> {
+    let metadata = tokio::fs::symlink_metadata(path)
+        .await
+        .map_err(package_error)?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(RepositoryError::PackagePublish);
+    }
+    Ok(())
+}
+
+async fn verify_writable(directory: &Path, publication_id: &str) -> Result<(), RepositoryError> {
+    let probe = directory.join(format!(".write-probe-{publication_id}"));
+    let mut options = tokio::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    let file = options.open(&probe).await.map_err(package_error)?;
+    file.sync_all().await.map_err(package_error)?;
+    drop(file);
+    tokio::fs::remove_file(&probe).await.map_err(package_error)
+}
+
+fn compact_timestamp(timestamp: &str) -> String {
+    timestamp
+        .chars()
+        .filter(char::is_ascii_alphanumeric)
+        .collect()
+}
+
+fn path_string(path: &Path) -> Result<String, RepositoryError> {
+    path.to_str()
+        .map(ToOwned::to_owned)
+        .ok_or(RepositoryError::PackagePublish)
+}
+
+fn package_error<T>(_error: T) -> RepositoryError {
+    RepositoryError::PackagePublish
 }
 
 async fn resolve_project_in_transaction(
@@ -410,10 +1138,12 @@ async fn load_request_row(
 ) -> Result<Option<SqliteRow>, RepositoryError> {
     sqlx::query(
         "SELECT r.id, s.project_id, p.root_path, p.root_path_canonical, \
-                r.status, r.created_at, r.updated_at, r.input_hash \
+                r.status, r.created_at, r.updated_at, r.input_hash, \
+                fr.package_uri, fr.directory_path, fr.markdown_path, fr.manifest_path \
          FROM feedback_requests r \
          JOIN agent_sessions s ON s.id = r.session_id \
          JOIN projects p ON p.id = s.project_id \
+         LEFT JOIN feedback_results fr ON fr.request_id = r.id \
          WHERE r.id = ?1",
     )
     .bind(request_id)
@@ -423,12 +1153,36 @@ async fn load_request_row(
 }
 
 fn stored_request_from_row(row: &SqliteRow) -> Result<StoredFeedbackRequest, RepositoryError> {
+    let status = stored_status(row)?;
+    let package_uri: Option<String> = row.try_get("package_uri").map_err(storage_error)?;
+    let feedback = match package_uri {
+        Some(package_uri) => Some(FeedbackResultView {
+            package_uri,
+            directory_path: row
+                .try_get::<Option<String>, _>("directory_path")
+                .map_err(storage_error)?
+                .ok_or(RepositoryError::CorruptData)?,
+            markdown_path: row
+                .try_get::<Option<String>, _>("markdown_path")
+                .map_err(storage_error)?
+                .ok_or(RepositoryError::CorruptData)?,
+            manifest_path: row
+                .try_get::<Option<String>, _>("manifest_path")
+                .map_err(storage_error)?
+                .ok_or(RepositoryError::CorruptData)?,
+        }),
+        None => None,
+    };
+    if status == FeedbackStatus::Completed && feedback.is_none() {
+        return Err(RepositoryError::CorruptData);
+    }
     Ok(StoredFeedbackRequest {
         request_id: row.try_get("id").map_err(storage_error)?,
         project_id: row.try_get("project_id").map_err(storage_error)?,
-        status: stored_status(row)?,
+        status,
         created_at: row.try_get("created_at").map_err(storage_error)?,
         updated_at: row.try_get("updated_at").map_err(storage_error)?,
+        feedback,
     })
 }
 
@@ -439,6 +1193,23 @@ fn stored_status(row: &SqliteRow) -> Result<FeedbackStatus, RepositoryError> {
 
 fn storage_error<T>(_error: T) -> RepositoryError {
     RepositoryError::Storage
+}
+
+fn repository_error_code(error: RepositoryError) -> &'static str {
+    match error {
+        RepositoryError::PackagePublish => "PACKAGE_PUBLISH_FAILURE",
+        RepositoryError::DraftConflict => "DRAFT_CONFLICT",
+        RepositoryError::RequestNotFound => "REQUEST_NOT_FOUND",
+        RepositoryError::RequestTerminal | RepositoryError::RequestAlreadyCompleted => {
+            "REQUEST_TERMINAL"
+        }
+        RepositoryError::CorruptData | RepositoryError::Storage => "STORAGE_FAILURE",
+        RepositoryError::ProjectNotFound
+        | RepositoryError::ProjectPathUnavailable
+        | RepositoryError::ProjectConflict
+        | RepositoryError::RequestConflict
+        | RepositoryError::DraftEmpty => "RECOVERY_FAILURE",
+    }
 }
 
 #[cfg(unix)]
@@ -475,7 +1246,7 @@ mod tests {
     use super::*;
     use rambledesk_core::{
         ActionInput, CancelFeedbackInput, ContextRef, FeedbackStatus, GetFeedbackInput,
-        ProjectInput, RequestFeedbackInput,
+        ProjectInput, RequestFeedbackInput, SaveDraftInput, SubmitFeedbackInput,
     };
     use tempfile::TempDir;
     use uuid::Uuid;
@@ -705,6 +1476,524 @@ mod tests {
         store.close().await;
     }
 
+    #[tokio::test]
+    async fn draft_uses_aggregate_revision_and_idempotent_replay() {
+        let workspace = TestWorkspace::new().await;
+        let request_id = Uuid::now_v7().to_string();
+        let store = SqliteFeedbackStore::connect(&workspace.database)
+            .await
+            .expect("open store");
+        let application = store.clone().into_application();
+        application
+            .request_feedback(workspace.request(request_id.clone()))
+            .await
+            .expect("create request");
+
+        let first = application
+            .save_feedback_draft(SaveDraftInput {
+                request_id: request_id.clone(),
+                body_markdown: "The primary flow is clear.".to_owned(),
+                expected_revision: 0,
+            })
+            .await
+            .expect("save draft");
+        assert_eq!(first.saved_revision, 1);
+        let replay = application
+            .save_feedback_draft(SaveDraftInput {
+                request_id: request_id.clone(),
+                body_markdown: first.body_markdown.clone(),
+                expected_revision: 0,
+            })
+            .await
+            .expect("replay lost response");
+        assert_eq!(first, replay);
+
+        let conflict = application
+            .save_feedback_draft(SaveDraftInput {
+                request_id: request_id.clone(),
+                body_markdown: "A conflicting edit.".to_owned(),
+                expected_revision: 0,
+            })
+            .await
+            .expect_err("stale different body must conflict");
+        assert_eq!(conflict.code(), "DRAFT_CONFLICT");
+
+        let opened = application
+            .get_feedback_workspace(request_id.clone())
+            .await
+            .expect("open workspace");
+        assert_eq!(opened.request.revision, 1);
+        assert_eq!(opened.request.status, FeedbackStatus::InProgress);
+        assert_eq!(opened.draft, first);
+
+        store.close().await;
+        let reopened = SqliteFeedbackStore::connect(&workspace.database)
+            .await
+            .expect("reopen store");
+        let recovered = reopened
+            .clone()
+            .into_application()
+            .get_feedback_workspace(request_id)
+            .await
+            .expect("recover draft");
+        assert_eq!(recovered.draft.saved_revision, 1);
+        assert_eq!(recovered.draft.body_markdown, "The primary flow is clear.");
+        reopened.close().await;
+    }
+
+    #[tokio::test]
+    async fn concurrent_different_drafts_have_one_cas_winner() {
+        let workspace = TestWorkspace::new().await;
+        let request_id = Uuid::now_v7().to_string();
+        let store = SqliteFeedbackStore::connect(&workspace.database)
+            .await
+            .expect("open store");
+        let application = store.clone().into_application();
+        application
+            .request_feedback(workspace.request(request_id.clone()))
+            .await
+            .expect("create request");
+
+        let left = application.save_feedback_draft(SaveDraftInput {
+            request_id: request_id.clone(),
+            body_markdown: "left".to_owned(),
+            expected_revision: 0,
+        });
+        let right = application.save_feedback_draft(SaveDraftInput {
+            request_id: request_id.clone(),
+            body_markdown: "right".to_owned(),
+            expected_revision: 0,
+        });
+        let (left, right) = tokio::join!(left, right);
+        assert_ne!(left.is_ok(), right.is_ok());
+        let loser = left.err().or_else(|| right.err()).expect("one loser");
+        assert_eq!(loser.code(), "DRAFT_CONFLICT");
+        let saved = application
+            .get_feedback_workspace(request_id)
+            .await
+            .expect("winner persisted");
+        assert_eq!(saved.request.revision, 1);
+        assert!(matches!(
+            saved.draft.body_markdown.as_str(),
+            "left" | "right"
+        ));
+        store.close().await;
+    }
+
+    #[tokio::test]
+    async fn submit_is_idempotent_and_publishes_one_immutable_package() {
+        let workspace = TestWorkspace::new().await;
+        let request_id = Uuid::now_v7().to_string();
+        let store = SqliteFeedbackStore::connect(&workspace.database)
+            .await
+            .expect("open store");
+        let application = store.clone().into_application();
+        application
+            .request_feedback(workspace.request(request_id.clone()))
+            .await
+            .expect("create request");
+        let draft = application
+            .save_feedback_draft(SaveDraftInput {
+                request_id: request_id.clone(),
+                body_markdown: "Ship it after tightening the empty state.".to_owned(),
+                expected_revision: 0,
+            })
+            .await
+            .expect("save draft");
+
+        let submitted = application
+            .submit_feedback(SubmitFeedbackInput {
+                request_id: request_id.clone(),
+                expected_revision: draft.saved_revision,
+            })
+            .await
+            .expect("submit");
+        let replay = application
+            .submit_feedback(SubmitFeedbackInput {
+                request_id: request_id.clone(),
+                expected_revision: 0,
+            })
+            .await
+            .expect("completed submit replay");
+        assert_eq!(submitted, replay);
+        assert_eq!(submitted.status, FeedbackStatus::Completed);
+        let result = submitted.feedback.expect("published feedback");
+        assert!(Path::new(&result.markdown_path).is_file());
+        let manifest: serde_json::Value = serde_json::from_str(
+            &tokio::fs::read_to_string(&result.manifest_path)
+                .await
+                .expect("manifest"),
+        )
+        .expect("valid manifest");
+        assert_eq!(manifest["request_id"], request_id);
+        assert_eq!(manifest["source_revision"], 1);
+        assert_eq!(manifest["draft_revision"], 1);
+        assert_eq!(manifest["feedback_markdown"], "feedback.md");
+        assert!(manifest["feedback_sha256"].as_str().is_some());
+
+        let directory_count =
+            std::fs::read_dir(workspace.project.join(".rambledesk").join("feedback"))
+                .expect("feedback root")
+                .filter_map(Result::ok)
+                .filter(|entry| !entry.file_name().to_string_lossy().starts_with('.'))
+                .count();
+        assert_eq!(directory_count, 1);
+        store.close().await;
+    }
+
+    #[tokio::test]
+    async fn restart_reconciles_package_published_before_database_completion() {
+        let workspace = TestWorkspace::new().await;
+        let request_id = Uuid::now_v7().to_string();
+        let store = SqliteFeedbackStore::connect(&workspace.database)
+            .await
+            .expect("open store");
+        let application = store.clone().into_application();
+        application
+            .request_feedback(workspace.request(request_id.clone()))
+            .await
+            .expect("create request");
+        let draft = application
+            .save_feedback_draft(SaveDraftInput {
+                request_id: request_id.clone(),
+                body_markdown: "Recovery must converge on this package.".to_owned(),
+                expected_revision: 0,
+            })
+            .await
+            .expect("save draft");
+        let plan = store
+            .plan_submission(
+                &request_id,
+                draft.saved_revision,
+                &Uuid::now_v7().to_string(),
+                "2026-07-29T14:00:00Z",
+            )
+            .await
+            .expect("persist intent");
+        rambledesk_core::FeedbackPackagePublisher::publish(&store, &plan)
+            .await
+            .expect("publish before simulated crash");
+        store.close().await;
+
+        let reopened = SqliteFeedbackStore::connect(&workspace.database)
+            .await
+            .expect("startup reconciliation");
+        let completed = reopened
+            .clone()
+            .into_application()
+            .get_feedback(GetFeedbackInput { request_id })
+            .await
+            .expect("completed after recovery");
+        assert_eq!(completed.status, FeedbackStatus::Completed);
+        assert_eq!(
+            completed.feedback.expect("feedback result").directory_path,
+            plan.directory_path
+        );
+        reopened.close().await;
+    }
+
+    #[tokio::test]
+    async fn missing_project_root_uses_frozen_app_data_fallback() {
+        let workspace = TestWorkspace::new().await;
+        let request_id = Uuid::now_v7().to_string();
+        let store = SqliteFeedbackStore::connect(&workspace.database)
+            .await
+            .expect("open store");
+        let application = store.clone().into_application();
+        application
+            .request_feedback(workspace.request(request_id.clone()))
+            .await
+            .expect("create request");
+        let draft = application
+            .save_feedback_draft(SaveDraftInput {
+                request_id: request_id.clone(),
+                body_markdown: "The project directory disappeared.".to_owned(),
+                expected_revision: 0,
+            })
+            .await
+            .expect("save draft");
+        tokio::fs::remove_dir(&workspace.project)
+            .await
+            .expect("remove project");
+        let completed = application
+            .submit_feedback(SubmitFeedbackInput {
+                request_id,
+                expected_revision: draft.saved_revision,
+            })
+            .await
+            .expect("submit via fallback");
+        let directory = completed.feedback.expect("feedback result").directory_path;
+        let fallback_root =
+            tokio::fs::canonicalize(workspace.database.parent().unwrap().join("feedback"))
+                .await
+                .expect("canonical fallback");
+        assert!(Path::new(&directory).starts_with(fallback_root));
+        store.close().await;
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn symlinked_project_feedback_directory_uses_app_data_fallback() {
+        use std::os::unix::fs::symlink;
+
+        let workspace = TestWorkspace::new().await;
+        let outside = workspace._temp.path().join("outside");
+        tokio::fs::create_dir(&outside)
+            .await
+            .expect("outside directory");
+        tokio::fs::create_dir(workspace.project.join(".rambledesk"))
+            .await
+            .expect("metadata directory");
+        symlink(
+            &outside,
+            workspace.project.join(".rambledesk").join("feedback"),
+        )
+        .expect("feedback symlink");
+
+        let request_id = Uuid::now_v7().to_string();
+        let store = SqliteFeedbackStore::connect(&workspace.database)
+            .await
+            .expect("open store");
+        let application = store.clone().into_application();
+        application
+            .request_feedback(workspace.request(request_id.clone()))
+            .await
+            .expect("create request");
+        let draft = application
+            .save_feedback_draft(SaveDraftInput {
+                request_id: request_id.clone(),
+                body_markdown: "A symlink must never escape the project.".to_owned(),
+                expected_revision: 0,
+            })
+            .await
+            .expect("save draft");
+        let completed = application
+            .submit_feedback(SubmitFeedbackInput {
+                request_id,
+                expected_revision: draft.saved_revision,
+            })
+            .await
+            .expect("submit via fallback");
+        let directory = completed.feedback.expect("feedback").directory_path;
+        let fallback_root =
+            tokio::fs::canonicalize(workspace.database.parent().unwrap().join("feedback"))
+                .await
+                .expect("canonical fallback");
+        assert!(Path::new(&directory).starts_with(fallback_root));
+        assert_eq!(
+            std::fs::read_dir(&outside)
+                .expect("outside remains readable")
+                .count(),
+            0
+        );
+        store.close().await;
+    }
+
+    #[tokio::test]
+    async fn mismatched_existing_final_package_is_never_overwritten() {
+        let workspace = TestWorkspace::new().await;
+        let request_id = Uuid::now_v7().to_string();
+        let store = SqliteFeedbackStore::connect(&workspace.database)
+            .await
+            .expect("open store");
+        let application = store.clone().into_application();
+        application
+            .request_feedback(workspace.request(request_id.clone()))
+            .await
+            .expect("create request");
+        let draft = application
+            .save_feedback_draft(SaveDraftInput {
+                request_id: request_id.clone(),
+                body_markdown: "Do not overwrite an unexpected package.".to_owned(),
+                expected_revision: 0,
+            })
+            .await
+            .expect("save draft");
+        let plan = store
+            .plan_submission(
+                &request_id,
+                draft.saved_revision,
+                &Uuid::now_v7().to_string(),
+                "2026-07-29T15:00:00Z",
+            )
+            .await
+            .expect("plan");
+        tokio::fs::create_dir_all(&plan.directory_path)
+            .await
+            .expect("unexpected final directory");
+        tokio::fs::write(&plan.manifest_path, "owned by someone else\n")
+            .await
+            .expect("unexpected manifest");
+        tokio::fs::write(&plan.markdown_path, "do not replace\n")
+            .await
+            .expect("unexpected markdown");
+
+        let error = rambledesk_core::FeedbackPackagePublisher::publish(&store, &plan)
+            .await
+            .expect_err("mismatch must fail");
+        assert_eq!(error, RepositoryError::PackagePublish);
+        assert_eq!(
+            tokio::fs::read_to_string(&plan.manifest_path)
+                .await
+                .expect("manifest preserved"),
+            "owned by someone else\n"
+        );
+        assert_eq!(
+            tokio::fs::read_to_string(&plan.markdown_path)
+                .await
+                .expect("markdown preserved"),
+            "do not replace\n"
+        );
+        store.close().await;
+    }
+
+    #[tokio::test]
+    async fn mismatched_pending_package_does_not_block_startup() {
+        let workspace = TestWorkspace::new().await;
+        let request_id = Uuid::now_v7().to_string();
+        let store = SqliteFeedbackStore::connect(&workspace.database)
+            .await
+            .expect("open store");
+        let application = store.clone().into_application();
+        application
+            .request_feedback(workspace.request(request_id.clone()))
+            .await
+            .expect("create request");
+        let draft = application
+            .save_feedback_draft(SaveDraftInput {
+                request_id: request_id.clone(),
+                body_markdown: "Keep the workbench available for repair.".to_owned(),
+                expected_revision: 0,
+            })
+            .await
+            .expect("save draft");
+        let plan = store
+            .plan_submission(
+                &request_id,
+                draft.saved_revision,
+                &Uuid::now_v7().to_string(),
+                "2026-07-29T15:30:00Z",
+            )
+            .await
+            .expect("plan");
+        tokio::fs::create_dir_all(&plan.directory_path)
+            .await
+            .expect("unexpected final directory");
+        tokio::fs::write(&plan.manifest_path, "mismatch\n")
+            .await
+            .expect("unexpected manifest");
+        tokio::fs::write(&plan.markdown_path, "preserve\n")
+            .await
+            .expect("unexpected markdown");
+        store.close().await;
+
+        let reopened = SqliteFeedbackStore::connect(&workspace.database)
+            .await
+            .expect("one failed recovery must not block startup");
+        let error_code: String = sqlx::query_scalar(
+            "SELECT last_error_code FROM submission_plans WHERE request_id = ?1",
+        )
+        .bind(&request_id)
+        .fetch_one(&reopened.pool)
+        .await
+        .expect("diagnostic recovery error");
+        assert_eq!(error_code, "PACKAGE_PUBLISH_FAILURE");
+        let request = reopened
+            .clone()
+            .into_application()
+            .get_feedback(GetFeedbackInput { request_id })
+            .await
+            .expect("request remains visible");
+        assert_eq!(request.status, FeedbackStatus::InProgress);
+        reopened.close().await;
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn publisher_rejects_feedback_parent_replaced_by_symlink_after_plan() {
+        use std::os::unix::fs::symlink;
+
+        let workspace = TestWorkspace::new().await;
+        let outside = workspace._temp.path().join("outside-after-plan");
+        tokio::fs::create_dir(&outside)
+            .await
+            .expect("outside directory");
+        let request_id = Uuid::now_v7().to_string();
+        let store = SqliteFeedbackStore::connect(&workspace.database)
+            .await
+            .expect("open store");
+        let application = store.clone().into_application();
+        application
+            .request_feedback(workspace.request(request_id.clone()))
+            .await
+            .expect("create request");
+        let draft = application
+            .save_feedback_draft(SaveDraftInput {
+                request_id: request_id.clone(),
+                body_markdown: "Revalidate the frozen target before writing.".to_owned(),
+                expected_revision: 0,
+            })
+            .await
+            .expect("save draft");
+        let plan = store
+            .plan_submission(
+                &request_id,
+                draft.saved_revision,
+                &Uuid::now_v7().to_string(),
+                "2026-07-29T16:00:00Z",
+            )
+            .await
+            .expect("plan");
+        let feedback_root = Path::new(&plan.directory_path)
+            .parent()
+            .expect("feedback root");
+        tokio::fs::remove_dir(feedback_root)
+            .await
+            .expect("replace empty feedback root");
+        symlink(&outside, feedback_root).expect("replacement symlink");
+
+        let error = rambledesk_core::FeedbackPackagePublisher::publish(&store, &plan)
+            .await
+            .expect_err("publisher must reject swapped parent");
+        assert_eq!(error, RepositoryError::PackagePublish);
+        assert_eq!(
+            std::fs::read_dir(&outside)
+                .expect("outside remains readable")
+                .count(),
+            0
+        );
+        store.close().await;
+    }
+
+    #[tokio::test]
+    async fn completed_without_result_is_reported_as_corrupt() {
+        let workspace = TestWorkspace::new().await;
+        let request_id = Uuid::now_v7().to_string();
+        let store = SqliteFeedbackStore::connect(&workspace.database)
+            .await
+            .expect("open store");
+        let application = store.clone().into_application();
+        application
+            .request_feedback(workspace.request(request_id.clone()))
+            .await
+            .expect("create request");
+        sqlx::query(
+            "UPDATE feedback_requests SET status = 'completed', completed_at = ?2, \
+             updated_at = ?2 WHERE id = ?1",
+        )
+        .bind(&request_id)
+        .bind("2026-07-29T14:30:00Z")
+        .execute(&store.pool)
+        .await
+        .expect("corrupt completed fixture");
+        let error = application
+            .get_feedback(GetFeedbackInput { request_id })
+            .await
+            .expect_err("missing result must not look completed");
+        assert_eq!(error.code(), "STORAGE_FAILURE");
+        store.close().await;
+    }
+
     #[cfg(unix)]
     #[tokio::test]
     async fn existing_database_permissions_are_repaired() {
@@ -756,10 +2045,13 @@ mod tests {
             "invocation_attempts",
             "completion_notifications",
             "feedback_results",
+            "submission_plans",
             "outbox_events",
             "feedback_requests_completed_is_terminal",
             "feedback_requests_cancelled_is_terminal",
             "feedback_requests_status_updated",
+            "drafts_locked_after_submission_plan_update",
+            "drafts_locked_after_submission_plan_delete",
             "agent_sessions_project",
             "outbox_events_pending",
         ] {

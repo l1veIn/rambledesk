@@ -31,8 +31,8 @@
 - **桌面应用（Tauri）**：待命、收请求、ramble（语音 + 截图）、管理 session 与历史。
 - **本地 MCP（工作台宿主，Figma 模式）**：agent 连接后可调用正式工具；工作台关闭则 MCP 不可用。
 - **核心协议**：
-  - `request_feedback`：幂等创建体验请求；支持 MCP Tasks，兼容 polling。
-  - `get_feedback` / `list_feedback_requests`：断线恢复和无 Tasks 客户端查询。
+  - `request_feedback`：幂等创建体验请求；v1 固定立即返回 polling handle。
+  - `get_feedback` / `list_feedback_requests`：断线恢复和结果查询。
   - `cancel_feedback`：显式取消。
   - `notify_complete`：目标结束或阶段完成时通知人类。
 - **反馈产物**：每个请求对应一个不可变目录（`feedback.md` +
@@ -61,7 +61,7 @@
 | Ramble | 语音录入与转写、截图、编辑 MD、提交回传 |
 | Session | 列表与详情（按 project + `agent` + `session_id` 区分）；当前未结束请求 |
 | 存储 | 请求与状态落盘；Feedback Package；基础日志 |
-| 恢复 | Request 持久化 + `request_id` 幂等重连；Tasks 或 polling 取得结果 |
+| 恢复 | Request 持久化 + `request_id` 幂等重连；v1 polling 取得结果 |
 | 通知 | 系统通知 + 可选响铃；自定义 channel 预留 |
 | 分发 | 安装工作台 → 保持开启 → 配置 MCP → 正常使用 agent |
 
@@ -96,7 +96,7 @@
 2. 工作台通知用户，展示任务单；状态为 `waiting`  
 3. 用户按 `actions` 操作目标软件，边用边 ramble，按需截图  
 4. 草稿持续落盘；提交时原子生成 Feedback Package
-5. 支持 Tasks 的客户端取得最终 task result；其他客户端通过 `get_feedback` 查询
+5. v1 客户端通过 `get_feedback` 查询最终结果；Tasks 仅作为后续显式兼容增强
 6. Agent 获得 package URI/路径，在同一任务中继续迭代
 
 ### 6.3 结束通知
