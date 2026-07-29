@@ -45,6 +45,7 @@ body {
 }
 
 .brand,
+.topbar-actions,
 .runtime,
 .panel-heading,
 .workspace-heading,
@@ -57,6 +58,10 @@ body {
 }
 
 .brand {
+  gap: 12px;
+}
+
+.topbar-actions {
   gap: 12px;
 }
 
@@ -104,6 +109,27 @@ body {
 .runtime span.online {
   background: #3b9952;
   box-shadow: 0 0 0 4px rgb(59 153 82 / 12%);
+}
+
+.notification-button {
+  padding: 7px 10px;
+  border: 1px solid #d1d3ca;
+  border-radius: 999px;
+  color: #5d675c;
+  background: #fff;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.notification-button.enabled {
+  border-color: #bfd2bd;
+  color: #315d39;
+  background: #e6efe3;
+}
+
+.notification-button:disabled {
+  cursor: default;
+  opacity: 0.78;
 }
 
 .workbench {
