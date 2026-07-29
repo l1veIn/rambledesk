@@ -23,6 +23,7 @@ rambledesk-core.workspace = true
 rambledesk-mcp.workspace = true
 rambledesk-storage.workspace = true
 tauri.workspace = true
+tauri-plugin-notification = "2.3.3"
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true

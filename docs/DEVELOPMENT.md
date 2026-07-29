@@ -154,6 +154,20 @@ RambleDesk 借鉴 Kotone 已验证的 workspace 结构和 ports/adapters 依赖�
 不是 Kotone 的子项目，也不对其 crate 建立 sibling path dependency。具体迁移
 边界见 [KOTONE_REUSE.md](KOTONE_REUSE.md)。
 
+### 2.6 隔离桌面运行
+
+桌面端运行验收可用绝对路径覆盖本地状态，不触碰日常数据：
+
+```bash
+RAMBLEDESK_DATABASE_FILE=/absolute/test/rambledesk.sqlite3 \
+RAMBLEDESK_TOKEN_FILE=/absolute/test/mcp.token \
+RAMBLEDESK_MCP_PORT=0 \
+pnpm dev
+```
+
+通知权限只在用户点击工作台中的“启用通知”后请求；启动和自动测试不得主动弹出
+系统权限框。
+
 ## 3. 数据库基线
 
 首个 migration 至少包含：
@@ -310,8 +324,8 @@ Tasks 保留为双方显式声明支持后的增强路径。
 当前已完成前两条切片：完整初始 migration、canonical Project identity、
 持久 `request_feedback/get_feedback/cancel_feedback`、Inbox、单请求工作区、
 基于 aggregate revision 的 Draft 自动保存，以及带 publication intent 和启动
-对账的 crash-safe Feedback Package 提交。系统通知与桌面端人工运行验收仍属于
-后续 M1 切片。
+对账的 crash-safe Feedback Package 提交。系统通知插件、显式权限入口和隐私化
+新请求通知也已接入；macOS 权限和实际投递仍需解锁桌面后由用户人工验收。
 
 当前 crash-safe package 提交验收目标是已实测的 macOS/Unix 文件系统。非 Unix
 平台在实现并验证 durable directory barrier 前必须返回明确发布失败，不能先把
@@ -383,6 +397,7 @@ SQLite 标记为 completed；Windows/Linux 完整安装与掉电回归属于 M4 
 - [x] 锁定 SDK、toolchain、TypeScript DTO 生成和 polling 首发模式；
 - [x] M1 第一切片引入 SQLite、持久请求状态机和 polling 业务工具。
 - [x] M1 第二切片引入 Inbox、Draft CAS 和纯文本 Feedback Package 提交。
+- [x] M1 第三切片接入显式授权、内容脱敏的新请求系统通知。
 
 不要在 M0 中实现语音、截图、完整导航或视觉系统。
 
@@ -409,5 +424,5 @@ SQLite 标记为 completed；Windows/Linux 完整安装与掉电回归属于 M4 
 ## 9. 当前判断
 
 M0 已通过自动化与真实客户端验收。M1 的持久请求、Inbox、Draft 与纯文本提交
-纵向闭环已经落地；下一条切片应补系统通知和桌面端运行验收，不提前引入语音、
-截图或 Tasks 专用业务分支。
+纵向闭环和系统通知代码已经落地；解锁 macOS 后应人工确认权限请求与实际通知
+投递，再决定进入 M2，不提前引入语音、截图或 Tasks 专用业务分支。

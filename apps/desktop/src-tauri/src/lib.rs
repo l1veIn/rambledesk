@@ -3,6 +3,7 @@ use rambledesk_core::{
     FeedbackWorkspaceView, HealthSnapshot, SaveDraftInput, SubmitFeedbackInput,
 };
 use rambledesk_mcp::{AccessToken, ServerConfig, ServerHandle, default_token_path, start_server};
+use std::path::PathBuf;
 use tauri::{Manager, RunEvent};
 
 struct WorkbenchState {
@@ -65,6 +66,35 @@ fn configured_port() -> Result<u16, String> {
     }
 }
 
+fn configured_path(
+    variable: &str,
+    default: impl FnOnce() -> Result<PathBuf, String>,
+) -> Result<PathBuf, String> {
+    match std::env::var(variable) {
+        Ok(value) => {
+            let path = PathBuf::from(value);
+            if !path.is_absolute() {
+                return Err(format!("{variable} must be an absolute path"));
+            }
+            Ok(path)
+        }
+        Err(std::env::VarError::NotPresent) => default(),
+        Err(error) => Err(format!("failed to read {variable}: {error}")),
+    }
+}
+
+fn configured_database_path() -> Result<PathBuf, String> {
+    configured_path("RAMBLEDESK_DATABASE_FILE", || {
+        rambledesk_storage::default_database_path().map_err(|error| error.to_string())
+    })
+}
+
+fn configured_token_path() -> Result<PathBuf, String> {
+    configured_path("RAMBLEDESK_TOKEN_FILE", || {
+        default_token_path().map_err(|error| error.to_string())
+    })
+}
+
 pub fn run() {
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -75,9 +105,10 @@ pub fn run() {
         .init();
 
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
-            let token = AccessToken::load_or_create(&default_token_path()?)?;
-            let database_path = rambledesk_storage::default_database_path()?;
+            let token = AccessToken::load_or_create(&configured_token_path()?)?;
+            let database_path = configured_database_path()?;
             let store = tauri::async_runtime::block_on(
                 rambledesk_storage::SqliteFeedbackStore::connect(&database_path),
             )?;
@@ -119,6 +150,22 @@ mod tests {
         // The environment is intentionally not mutated because tests may run concurrently.
         if std::env::var_os("RAMBLEDESK_MCP_PORT").is_none() {
             assert_eq!(configured_port().expect("default port"), 37_642);
+        }
+    }
+
+    #[test]
+    fn configured_paths_default_when_overrides_are_absent() {
+        if std::env::var_os("RAMBLEDESK_DATABASE_FILE").is_none() {
+            assert_eq!(
+                configured_database_path().expect("default database"),
+                rambledesk_storage::default_database_path().expect("storage default")
+            );
+        }
+        if std::env::var_os("RAMBLEDESK_TOKEN_FILE").is_none() {
+            assert_eq!(
+                configured_token_path().expect("default token"),
+                default_token_path().expect("token default")
+            );
         }
     }
 }

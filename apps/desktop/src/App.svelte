@@ -1,5 +1,10 @@
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core'
+  import {
+    isPermissionGranted,
+    requestPermission,
+    sendNotification,
+  } from '@tauri-apps/plugin-notification'
   import { onMount } from 'svelte'
 
   import type {
@@ -12,6 +17,11 @@
   } from './lib/feedback'
   import { requestStatusLabel } from './lib/feedback'
   import type { HealthSnapshot } from './lib/generated/health'
+  import {
+    InboxNotificationTracker,
+    notificationLabel,
+    type NotificationState,
+  } from './lib/notifications'
 
   type SavePhase = 'idle' | 'unsaved' | 'saving' | 'saved' | 'error'
   type CommandError = { code: string; message: string; retryable: boolean }
@@ -30,9 +40,11 @@
   let loadingInbox = true
   let loadingWorkspace = false
   let submitting = false
+  let notificationState: NotificationState = 'checking'
   let saveTimer: ReturnType<typeof setTimeout> | undefined
   let inboxTimer: ReturnType<typeof setInterval> | undefined
   let activeSave: Promise<boolean> | null = null
+  const notificationTracker = new InboxNotificationTracker()
 
   $: dirty = workspace !== null && draftBody !== savedBody
   $: canSubmit =
@@ -44,6 +56,7 @@
 
   onMount(() => {
     void initialize()
+    void refreshNotificationPermission()
     inboxTimer = setInterval(() => void refreshInbox(), 5_000)
     return () => {
       if (saveTimer) clearTimeout(saveTimer)
@@ -62,7 +75,7 @@
       ])
       health = nextHealth
       endpoint = nextEndpoint
-      inbox = nextInbox
+      applyInboxSnapshot(nextInbox)
       if (nextInbox.length > 0) {
         await openRequest(nextInbox[0].request_id, false)
       }
@@ -75,9 +88,43 @@
 
   async function refreshInbox() {
     try {
-      inbox = await invoke<FeedbackRequestSummary[]>('list_feedback_inbox')
+      const nextInbox = await invoke<FeedbackRequestSummary[]>('list_feedback_inbox')
+      applyInboxSnapshot(nextInbox)
     } catch (cause) {
       pageError = messageFrom(cause)
+    }
+  }
+
+  function applyInboxSnapshot(nextInbox: FeedbackRequestSummary[]) {
+    const arrivals = notificationTracker.observe(nextInbox)
+    inbox = nextInbox
+    if (arrivals.length > 0 && notificationState === 'enabled') {
+      sendNotification({
+        title: 'RambleDesk',
+        body:
+          arrivals.length === 1
+            ? '新的体验反馈请求已到达。打开工作台查看。'
+            : `${arrivals.length} 个新的体验反馈请求已到达。打开工作台查看。`,
+      })
+    }
+  }
+
+  async function refreshNotificationPermission() {
+    try {
+      notificationState = (await isPermissionGranted()) ? 'enabled' : 'disabled'
+    } catch {
+      notificationState = 'unavailable'
+    }
+  }
+
+  async function enableNotifications() {
+    if (notificationState !== 'disabled') return
+    notificationState = 'checking'
+    try {
+      const permission = await requestPermission()
+      notificationState = permission === 'granted' ? 'enabled' : 'disabled'
+    } catch {
+      notificationState = 'unavailable'
     }
   }
 
@@ -231,9 +278,20 @@
         <small>体验反馈工作台</small>
       </div>
     </div>
-    <div class="runtime" title={endpoint}>
-      <span class:online={health?.status === 'ready'}></span>
-      {health?.status === 'ready' ? 'MCP 在线' : '正在连接'}
+    <div class="topbar-actions">
+      <button
+        class:enabled={notificationState === 'enabled'}
+        class="notification-button"
+        disabled={notificationState !== 'disabled'}
+        onclick={enableNotifications}
+        title="新请求通知不会包含项目或反馈内容"
+      >
+        {notificationLabel(notificationState)}
+      </button>
+      <div class="runtime" title={endpoint}>
+        <span class:online={health?.status === 'ready'}></span>
+        {health?.status === 'ready' ? 'MCP 在线' : '正在连接'}
+      </div>
     </div>
   </header>
 

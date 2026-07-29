@@ -3,5 +3,10 @@
   "identifier": "default",
   "description": "Default permissions for the RambleDesk main window",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": [
+    "core:default",
+    "notification:allow-is-permission-granted",
+    "notification:allow-request-permission",
+    "notification:allow-notify"
+  ]
 }
