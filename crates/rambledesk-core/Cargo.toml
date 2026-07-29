@@ -1,0 +1,16 @@
+[package]
+name = "rambledesk-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+description = "RambleDesk domain types, ports, and application invariants"
+
+[dependencies]
+schemars.workspace = true
+serde.workspace = true
+ts-rs.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

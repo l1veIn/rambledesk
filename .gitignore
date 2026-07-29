@@ -1,0 +1,14 @@
+.DS_Store
+.idea/
+.vscode/
+node_modules/
+target/
+dist/
+apps/*/node_modules/
+apps/*/dist/
+apps/*/src-tauri/gen/
+apps/*/src-tauri/icons/android/
+apps/*/src-tauri/icons/ios/
+*.log
+*.token
+.rambledesk/

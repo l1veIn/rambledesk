@@ -1,0 +1,26 @@
+[package]
+name = "rambledesk-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+description = "Headless RambleDesk MCP host and M0 diagnostic client"
+
+[[bin]]
+name = "rambledesk"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+rambledesk-core.workspace = true
+rambledesk-mcp.workspace = true
+rambledesk-storage.workspace = true
+rmcp = { workspace = true, features = [
+  "client",
+  "transport-streamable-http-client-reqwest",
+] }
+serde_json.workspace = true
+tokio.workspace = true
+tracing-subscriber.workspace = true

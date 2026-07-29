@@ -1,0 +1,28 @@
+[package]
+name = "rambledesk-desktop"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+description = "RambleDesk Tauri composition root"
+
+[lib]
+name = "rambledesk_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "rambledesk"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build.workspace = true
+
+[dependencies]
+rambledesk-core.workspace = true
+rambledesk-mcp.workspace = true
+rambledesk-storage.workspace = true
+tauri.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

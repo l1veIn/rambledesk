@@ -1,8 +1,8 @@
 # RambleDesk 产品文档（MVP）
 
 > 工作名：RambleDesk  
-> 协议/方法论词汇：User_0（零号用户）  
-> 版本：设计稿 v0.1 · 2026-07-29
+> 历史方法论词汇：User_0（零号用户）
+> 版本：开发基线 v1 · 2026-07-29
 
 ---
 
@@ -20,7 +20,7 @@
 1. **呼叫不正式**：agent 需要人类判断时，只能写在聊天里，无固定格式、无等待态、无明确行动清单。
 2. **反馈不结构化**：人类回复多为碎片文字，缺少「按清单操作 + 语音 ramble + 截图」的统一产物。
 3. **上下文易断**：反馈常靠事后贴文件或手动续跑，难以保证 agent 在同一 tool call / 同一会话中继续。
-4. **角色未产品化**：「当 User_0」仍是个人方法论，没有桌面级工具把待命、收请求、交反馈变成默认工作流。
+4. **体验者角色未产品化**：没有桌面级工具把待命、收请求、真实体验和交反馈变成默认工作流。
 
 ---
 
@@ -31,16 +31,23 @@
 - **桌面应用（Tauri）**：待命、收请求、ramble（语音 + 截图）、管理 session 与历史。
 - **本地 MCP（工作台宿主，Figma 模式）**：agent 连接后可调用正式工具；工作台关闭则 MCP 不可用。
 - **核心协议**：
-  - `request_feedback`（holding）：下发 `what_happened` + 可执行 `actions[]`，等待人类完成 ramble 后回传反馈文件夹路径。
+  - `request_feedback`：幂等创建体验请求；支持 MCP Tasks，兼容 polling。
+  - `get_feedback` / `list_feedback_requests`：断线恢复和无 Tasks 客户端查询。
+  - `cancel_feedback`：显式取消。
   - `notify_complete`：目标结束或阶段完成时通知人类。
-- **反馈产物**：每个请求对应一个文件夹（`feedback.md` + 引用图片），路径作为 tool 结果返回。
+- **反馈产物**：每个请求对应一个不可变目录（`feedback.md` +
+  `manifest.json` + 引用图片），URI 和路径作为 tool 结果返回。
 - **产品语义**：工作台开启 = 人类处于可被呼叫的待命状态；不是「人必须一直在工作台里操作」。
+- **连接语义**：请求状态先落盘，MCP 连接和工具调用只是交付方式；断线不删除或
+  改写请求。
 
 ### 3.1 与 User_0 的关系
 
 - **起源与主战场**：coding agent 时代，开发者成为零号用户。
-- **能力本身**：可扩展的「Agent 呼叫人类做体验反馈」协议 + ramble 工作台（不绑定只能写代码）。
-- 对外品牌留宽（RambleDesk）；协议与文档中保留 User_0 词汇。
+- **能力本身**：可扩展的「Agent 呼叫人类做体验反馈」协议 + ramble 工作台，
+  不绑定只能写代码。
+- **边界**：User_0 只保留为方法论与 dogfooding 语境，不进入产品名、领域对象、
+  MCP schema 或默认数据目录。现行约束见 [CONSTITUTION.md](CONSTITUTION.md)。
 
 ---
 
@@ -49,12 +56,12 @@
 | 模块 | 内容 |
 |------|------|
 | 平台 | 桌面：Windows / macOS / Linux（Tauri） |
-| MCP | 本地 HTTP MCP，由工作台进程提供；引导配置到 Codex、Claude Code |
-| 工具 | `request_feedback`、`notify_complete`（可选只读：未完成请求列表） |
+| MCP | 同机 Streamable HTTP MCP，由工作台进程提供；引导配置到 Codex、Claude Code |
+| 工具 | `request_feedback`、`get_feedback`、`list_feedback_requests`、`cancel_feedback`、`notify_complete` |
 | Ramble | 语音录入与转写、截图、编辑 MD、提交回传 |
-| Session | 列表与详情（按 `agent` + `session_id` 区分）；当前 holding 请求 |
-| 存储 | 请求与状态落盘；反馈文件夹；基础日志 |
-| 恢复 | `interrupted` 状态 + `resume` / `request_id` 重建 holding |
+| Session | 列表与详情（按 project + `agent` + `session_id` 区分）；当前未结束请求 |
+| 存储 | 请求与状态落盘；Feedback Package；基础日志 |
+| 恢复 | Request 持久化 + `request_id` 幂等重连；Tasks 或 polling 取得结果 |
 | 通知 | 系统通知 + 可选响铃；自定义 channel 预留 |
 | 分发 | 安装工作台 → 保持开启 → 配置 MCP → 正常使用 agent |
 
@@ -63,7 +70,7 @@
 ## 5. 非目标（MVP 不做）
 
 - 独立常驻 MCP 网关、agent 自动拉起工作台
-- 强制超时（默认无限等待；关工作台由 agent 自行处理）
+- 依赖无限 HTTP 连接才能正确工作
 - 多人类角色（User_1 / User_2）与权限体系
 - 移动端完整 App
 - 内置完整 agent runtime（不替代 Codex / Claude Code）
@@ -71,6 +78,7 @@
 - 云端同步、账号体系、多人协作
 - LLM 后处理流水线（可后续加）
 - 通用系统级听写（不做 Wispr 类竞品）
+- 远程 Agent 与桌面之间的文件同步
 
 ---
 
@@ -84,12 +92,12 @@
 
 ### 6.2 请求反馈（主路径）
 
-1. Agent 调用 `request_feedback`（含 `agent`、`session_id`、`what_happened`、`actions`，可选 `request_id`）  
+1. Agent 调用 `request_feedback`（含 `agent`、`session_id`、project、`what_happened`、`actions`，可选 `request_id`）
 2. 工作台通知用户，展示任务单；状态为 `waiting`  
 3. 用户按 `actions` 操作目标软件，边用边 ramble，按需截图  
-4. 生成反馈文件夹并提交  
-5. MCP 将文件夹路径作为 tool 结果返回  
-6. Agent 在同一上下文继续迭代  
+4. 草稿持续落盘；提交时原子生成 Feedback Package
+5. 支持 Tasks 的客户端取得最终 task result；其他客户端通过 `get_feedback` 查询
+6. Agent 获得 package URI/路径，在同一任务中继续迭代
 
 ### 6.3 结束通知
 
@@ -99,23 +107,21 @@
 
 ### 6.4 异常与恢复
 
-- 工作台未开或已关 → MCP 不可用 → agent 自行处理。  
-- 工作台或连接断开时，进行中的请求落盘为 `interrupted`（非删除）。  
-- **恢复 holding**：Agent（或在人提示下）再次调用 `request_feedback`，携带 `request_id` + `resume: true`（或等价标记）。  
-- 工作台将对应记录从 `interrupted` 拉回 `waiting`，打开已有草稿（若有），重新进入 holding。  
-- 已 `completed` 的请求不可 resume；需显式「重新打开」才另议。  
+- 工作台未开或已关 → MCP 不可用，Agent 可稍后用相同 `request_id` 重试。
+- MCP 断线或 Agent 超时只结束一次 Invocation Attempt；Feedback Request 状态不变。
+- 工作台重启从 SQLite 和 draft 目录恢复未结束请求。
+- 相同 `request_id` + 相同不可变输入重新调用会关联现有请求；输入不同返回 conflict。
+- 已 `completed` 的请求返回原结果；已 `cancelled` 的请求不隐式重新打开。
 
 状态机（简）：
 
 ```
-waiting → completed
-waiting → cancelled
-waiting → interrupted
-interrupted → waiting    (resume)
-interrupted → cancelled
+waiting → in_progress → completed
+   │            │
+   └────────────┴──────→ cancelled
 ```
 
-Holding **仅保证**在工作台与当前 agent tool call 均存活期间连续；跨重启靠落盘 + resume 新调用接续，不复活旧连接。
+Request 的正确性不依赖 holding。Tasks、polling 和重试必须读取同一持久化状态。
 
 ---
 
@@ -124,7 +130,7 @@ Holding **仅保证**在工作台与当前 agent tool call 均存活期间连续
 ```
 RambleDesk
 ├── 待命 / 首页
-│   ├── 当前状态（MCP 在线与否、holding 数量）
+│   ├── 当前状态（MCP 在线与否、待处理数量）
 │   └── 快捷入口（待处理请求）
 ├── 请求 / Session
 │   ├── Session 列表（agent、session_id、状态、时间）
@@ -153,20 +159,23 @@ RambleDesk
 **关键对象**
 
 - **Session**：`agent` + `session_id`，状态如 idle / waiting / completed / ended  
-- **Request**：一次反馈请求，含 `request_id`、actions、状态（waiting / interrupted / completed / cancelled）  
-- **Feedback Package**：文件夹（`feedback.md` + 图片），一次提交对应一份  
+- **Request**：一次反馈请求，含 `request_id`、actions、状态（waiting / in_progress / completed / cancelled）
+- **Invocation Attempt**：一次 MCP 调用尝试，用于诊断连接/取消，不决定 Request 状态
+- **Feedback Package**：不可变目录（`feedback.md` + `manifest.json` + attachments），一次提交对应一份
 
 ### 反馈落盘约定（默认）
 
 项目内优先：
 
 ```
-.user_0/feedback/<timestamp>-<short-id>/
+.rambledesk/feedback/<timestamp>-<request-id>/
   feedback.md
-  img-...
+  manifest.json
+  attachments/...
 ```
 
-可选全局：`~/.user_0/`（跨项目或非项目场景）。
+项目不可写或未提供时落到 RambleDesk 应用数据目录。MVP 仅保证同机、共享文件系统
+的 Agent 能访问返回路径。
 
 ---
 
@@ -174,7 +183,8 @@ RambleDesk
 
 - **请求侧固定、少发挥**：`what_happened` + 编号清晰的 `actions[]`，尽量可直接执行，减少人类思考。  
 - **回复侧自由**：人类用 ramble 表达，产物为 MD + 图。  
-- 多 agent：请求必须带 `agent`（如 `codex` / `claude_code`）与 `session_id`。  
+- 多 agent：请求必须带 `agent`（如 `codex` / `claude_code`）与 `session_id`；
+  二者只用于关联，不是认证信息。
 
 ---
 
@@ -182,7 +192,7 @@ RambleDesk
 
 - 完整闭环次数（请求 → 提交 → agent 继续）  
 - 从通知到提交的中位时长  
-- resume 成功率  
+- request_id 重试/恢复成功率
 - agent 侧因工作台关闭导致的失败率（可观测即可，MVP 不优化到零）  
 
 ---
@@ -191,6 +201,6 @@ RambleDesk
 
 | 类型 | 解决什么 | 缺什么 |
 |------|----------|--------|
-| 听写 / Ramble 笔记 | 说得快、脑暴成文 | 无 agent 任务单与 holding 回传 |
+| 听写 / Ramble 笔记 | 说得快、脑暴成文 | 无 agent 任务单与持久结果回传 |
 | HITL MCP | agent 能喊人 | 多为短文本/审批，非体验式图文 |
 | **RambleDesk** | agent 喊来的人，用真实使用 + ramble 交回正式产物 | — |
