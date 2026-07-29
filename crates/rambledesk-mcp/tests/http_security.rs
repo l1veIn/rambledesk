@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 
 use anyhow::Context;
-use rambledesk_core::{ActionInput, ProjectInput, RequestFeedbackInput};
+use rambledesk_core::{
+    ActionInput, ProjectInput, RequestFeedbackInput, SaveDraftInput, SubmitFeedbackInput,
+};
 use rambledesk_mcp::{AccessToken, ServerConfig, start_server};
 use rmcp::{
     ServiceExt,
@@ -27,7 +29,7 @@ async fn test_application()
 async fn rejects_missing_and_wrong_bearer_tokens() -> anyhow::Result<()> {
     let token = AccessToken::parse(TEST_TOKEN)?;
     let (application, _directory) = test_application().await?;
-    let server = start_server(ServerConfig::new(token).with_port(0), application).await?;
+    let server = start_server(ServerConfig::new(token).with_port(0), application.clone()).await?;
     let client = reqwest::Client::new();
 
     let missing = client.post(server.endpoint()).send().await?;
@@ -55,7 +57,7 @@ async fn rejects_missing_and_wrong_bearer_tokens() -> anyhow::Result<()> {
 async fn rejects_disallowed_origin_and_host() -> anyhow::Result<()> {
     let token = AccessToken::parse(TEST_TOKEN)?;
     let (application, _directory) = test_application().await?;
-    let server = start_server(ServerConfig::new(token).with_port(0), application).await?;
+    let server = start_server(ServerConfig::new(token).with_port(0), application.clone()).await?;
     let client = reqwest::Client::new();
 
     let bad_origin = client
@@ -84,7 +86,7 @@ async fn rejects_disallowed_origin_and_host() -> anyhow::Result<()> {
 async fn official_client_exercises_health_feedback_and_errors() -> anyhow::Result<()> {
     let token = AccessToken::parse(TEST_TOKEN)?;
     let (application, directory) = test_application().await?;
-    let server = start_server(ServerConfig::new(token).with_port(0), application).await?;
+    let server = start_server(ServerConfig::new(token).with_port(0), application.clone()).await?;
     assert!(server.address().ip().is_loopback());
 
     let config = StreamableHttpClientTransportConfig::with_uri(server.endpoint().to_owned())
@@ -186,6 +188,60 @@ async fn official_client_exercises_health_feedback_and_errors() -> anyhow::Resul
             .and_then(serde_json::Value::as_str),
         Some("waiting")
     );
+
+    let saved = application
+        .save_feedback_draft(SaveDraftInput {
+            request_id: request_id.clone(),
+            body_markdown: "The real MCP client observes the completed package.".to_owned(),
+            expected_revision: 0,
+        })
+        .await
+        .context("save operator draft")?;
+    let submitted = application
+        .submit_feedback(SubmitFeedbackInput {
+            request_id: request_id.clone(),
+            expected_revision: saved.saved_revision,
+        })
+        .await
+        .context("submit operator feedback")?;
+    assert!(submitted.feedback.is_some());
+
+    let completed_arguments = serde_json::json!({ "request_id": request_id })
+        .as_object()
+        .cloned()
+        .expect("completed get arguments");
+    let completed = client
+        .call_tool(CallToolRequestParams::new("get_feedback").with_arguments(completed_arguments))
+        .await
+        .context("call completed get_feedback")?;
+    let completed_content = completed
+        .structured_content
+        .as_ref()
+        .context("completed structured content")?;
+    assert_eq!(
+        completed_content
+            .get("status")
+            .and_then(serde_json::Value::as_str),
+        Some("completed")
+    );
+    let feedback = completed_content
+        .get("feedback")
+        .and_then(serde_json::Value::as_object)
+        .context("completed feedback paths")?;
+    for path in [
+        "package_uri",
+        "directory_path",
+        "markdown_path",
+        "manifest_path",
+    ] {
+        assert!(
+            feedback
+                .get(path)
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|value| !value.is_empty()),
+            "missing {path}"
+        );
+    }
 
     let invalid_arguments = serde_json::json!({ "request_id": "not-a-uuid" })
         .as_object()

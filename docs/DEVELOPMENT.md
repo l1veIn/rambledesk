@@ -307,10 +307,15 @@ Tasks 保留为双方显式声明支持后的增强路径。
 
 目标：第一次真实完成“Agent 请求 → 人提交 → Agent 取回”。
 
-当前已完成第一条基础切片：完整初始 migration、canonical Project identity、
-持久 `request_feedback/get_feedback/cancel_feedback`、幂等冲突、重复取消、
-并发收敛、重启恢复，以及 CLI/桌面共享的数据目录。Inbox、Draft 和 Feedback
-Package 提交仍属于后续 M1 切片。
+当前已完成前两条切片：完整初始 migration、canonical Project identity、
+持久 `request_feedback/get_feedback/cancel_feedback`、Inbox、单请求工作区、
+基于 aggregate revision 的 Draft 自动保存，以及带 publication intent 和启动
+对账的 crash-safe Feedback Package 提交。系统通知与桌面端人工运行验收仍属于
+后续 M1 切片。
+
+当前 crash-safe package 提交验收目标是已实测的 macOS/Unix 文件系统。非 Unix
+平台在实现并验证 durable directory barrier 前必须返回明确发布失败，不能先把
+SQLite 标记为 completed；Windows/Linux 完整安装与掉电回归属于 M4 发行门。
 
 交付：
 
@@ -377,6 +382,7 @@ Package 提交仍属于后续 M1 切片。
 - [x] 验证 Claude Code，记录 Codex 本机安装阻塞；
 - [x] 锁定 SDK、toolchain、TypeScript DTO 生成和 polling 首发模式；
 - [x] M1 第一切片引入 SQLite、持久请求状态机和 polling 业务工具。
+- [x] M1 第二切片引入 Inbox、Draft CAS 和纯文本 Feedback Package 提交。
 
 不要在 M0 中实现语音、截图、完整导航或视觉系统。
 
@@ -402,6 +408,6 @@ Package 提交仍属于后续 M1 切片。
 
 ## 9. 当前判断
 
-M0 已通过自动化与真实客户端验收。M1 的持久请求内核与 polling 合同已经落地；
-下一条切片应实现 Inbox、单请求 Draft 自动保存和纯文本 Feedback Package 提交，
-不提前引入语音、截图或 Tasks 专用业务分支。
+M0 已通过自动化与真实客户端验收。M1 的持久请求、Inbox、Draft 与纯文本提交
+纵向闭环已经落地；下一条切片应补系统通知和桌面端运行验收，不提前引入语音、
+截图或 Tasks 专用业务分支。

@@ -1,9 +1,13 @@
-use rambledesk_core::HealthSnapshot;
+use rambledesk_core::{
+    ApplicationError, DraftView, FeedbackApplication, FeedbackRequestSummary, FeedbackRequestView,
+    FeedbackWorkspaceView, HealthSnapshot, SaveDraftInput, SubmitFeedbackInput,
+};
 use rambledesk_mcp::{AccessToken, ServerConfig, ServerHandle, default_token_path, start_server};
 use tauri::{Manager, RunEvent};
 
-struct McpState {
+struct WorkbenchState {
     handle: ServerHandle,
+    application: FeedbackApplication,
 }
 
 #[tauri::command]
@@ -12,8 +16,43 @@ fn get_health() -> HealthSnapshot {
 }
 
 #[tauri::command]
-fn get_mcp_endpoint(state: tauri::State<'_, McpState>) -> String {
+fn get_mcp_endpoint(state: tauri::State<'_, WorkbenchState>) -> String {
     state.handle.endpoint().to_owned()
+}
+
+#[tauri::command]
+async fn list_feedback_inbox(
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<Vec<FeedbackRequestSummary>, ApplicationError> {
+    let application = state.application.clone();
+    application.list_open_feedback_requests().await
+}
+
+#[tauri::command]
+async fn get_feedback_workspace(
+    request_id: String,
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<FeedbackWorkspaceView, ApplicationError> {
+    let application = state.application.clone();
+    application.get_feedback_workspace(request_id).await
+}
+
+#[tauri::command]
+async fn save_feedback_draft(
+    input: SaveDraftInput,
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<DraftView, ApplicationError> {
+    let application = state.application.clone();
+    application.save_feedback_draft(input).await
+}
+
+#[tauri::command]
+async fn submit_feedback(
+    input: SubmitFeedbackInput,
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<FeedbackRequestView, ApplicationError> {
+    let application = state.application.clone();
+    application.submit_feedback(input).await
 }
 
 fn configured_port() -> Result<u16, String> {
@@ -42,19 +81,29 @@ pub fn run() {
             let store = tauri::async_runtime::block_on(
                 rambledesk_storage::SqliteFeedbackStore::connect(&database_path),
             )?;
+            let application = store.into_application();
             let config = ServerConfig::new(token).with_port(configured_port()?);
-            let handle =
-                tauri::async_runtime::block_on(start_server(config, store.into_application()))?;
-            app.manage(McpState { handle });
+            let handle = tauri::async_runtime::block_on(start_server(config, application.clone()))?;
+            app.manage(WorkbenchState {
+                handle,
+                application,
+            });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_health, get_mcp_endpoint])
+        .invoke_handler(tauri::generate_handler![
+            get_health,
+            get_mcp_endpoint,
+            list_feedback_inbox,
+            get_feedback_workspace,
+            save_feedback_draft,
+            submit_feedback,
+        ])
         .build(tauri::generate_context!())
         .expect("failed to build RambleDesk desktop app");
 
     app.run(|app_handle, event| {
         if matches!(event, RunEvent::Exit | RunEvent::ExitRequested { .. })
-            && let Some(state) = app_handle.try_state::<McpState>()
+            && let Some(state) = app_handle.try_state::<WorkbenchState>()
         {
             state.handle.cancel();
         }

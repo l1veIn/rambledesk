@@ -36,9 +36,10 @@ RambleDesk 工具的非交互调用完成验证。M0 health 验证观察到
 `clientSupportsTasks: false`；M1 黑盒验证创建、查询并取消同一 request，
 三个响应的 `request_id` 一致，因此不把 Tasks 作为正确性前提。
 
-官方 Rust SDK 的集成测试还覆盖稳定结构化错误；Inspector smoke 会校验实际
-snake_case wire 字段、四个工具列表、认证失败，以及两次 `SIGKILL` 前后的
-`waiting → cancelled` 恢复。
+官方 Rust SDK 的集成测试还覆盖稳定结构化错误，以及
+`waiting → operator submit → completed` 后四个 Feedback Package 路径；
+Inspector smoke 会校验实际 snake_case wire 字段、四个工具列表、认证失败，
+以及两次 `SIGKILL` 前后的 `waiting → cancelled` 恢复。
 Inspector 虽声明 Tasks 能力，当前服务仍按 v1 合同返回
 `execution_mode: "poll"`；客户端单方面声明能力不会启用尚未完成回归的增强路径。
 

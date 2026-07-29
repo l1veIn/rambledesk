@@ -1,5 +1,6 @@
 //! SQLite persistence and feedback package adapter boundary.
 
+mod package;
 mod sqlite;
 
 use rambledesk_core::HealthSnapshot;
