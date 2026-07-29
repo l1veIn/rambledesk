@@ -2,6 +2,11 @@
 
 > 来源：与 Grok 的多轮产品讨论（2026-07-29）  
 > 用途：保留决策上下文，便于后续 agent / 人类开发时对齐意图。
+>
+> **文档地位**：历史输入，不是现行产品或工程规范。若与
+> [CONSTITUTION.md](CONSTITUTION.md)、[PROTOCOL.md](PROTOCOL.md) 或
+> [ARCHITECTURE.md](ARCHITECTURE.md) 冲突，以后三者为准。User_0 是项目起源
+> 方法论，不是 RambleDesk 核心领域名称。
 
 ---
 
