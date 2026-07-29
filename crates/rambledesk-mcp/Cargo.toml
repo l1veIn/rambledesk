@@ -1,0 +1,33 @@
+[package]
+name = "rambledesk-mcp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+description = "Authenticated loopback MCP adapter for RambleDesk"
+
+[dependencies]
+axum.workspace = true
+dirs.workspace = true
+hex.workspace = true
+rand.workspace = true
+rambledesk-core.workspace = true
+rmcp.workspace = true
+schemars.workspace = true
+serde.workspace = true
+subtle.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+anyhow.workspace = true
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
+rmcp = { workspace = true, features = [
+  "client",
+  "transport-streamable-http-client-reqwest",
+] }
+serde_json.workspace = true
+tempfile.workspace = true

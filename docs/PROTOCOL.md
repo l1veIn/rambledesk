@@ -1,6 +1,6 @@
 # RambleDesk MCP 与反馈协议
 
-> 状态：Development baseline  
+> 状态：M0 validated baseline
 > 版本：v1 · 2026-07-29  
 > 规范词：MUST / SHOULD / MAY 分别表示必须、建议和可选。
 
@@ -15,11 +15,13 @@ RambleDesk 使用 MCP Streamable HTTP，由桌面进程在本机提供单一 `/m
 1. **应用协议**：本文定义的工具、字段、幂等性、状态和结果，是稳定合同；
 2. **MCP 执行适配**：根据客户端能力使用 Tasks 扩展或普通工具结果，不改变应用语义。
 
-首个工程里程碑必须用实际 Codex、Claude Code 和 MCP Inspector 核对协议版本与 Tasks 支持，再锁定 SDK 和 wire profile。实现不得自行手写一套 MCP JSON-RPC 栈。
+M0 已用 Claude Code 和 MCP Inspector 实测，并锁定官方 `rmcp` 3.0.0；
+本机 Codex CLI 因安装缺失原生二进制未能启动，详见
+[COMPATIBILITY.md](COMPATIBILITY.md)。实现不得自行手写一套 MCP JSON-RPC 栈。
 
 ### 1.1 执行模式
 
-优先级如下：
+首发使用 polling，能力升级优先级如下：
 
 1. 客户端支持 MCP Tasks：`request_feedback` 返回持久 task handle；Operator 提交后 task 完成；
 2. 客户端不支持 Tasks：`request_feedback` 立即返回 `waiting`，Agent 使用 `get_feedback` 查询；

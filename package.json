@@ -1,0 +1,21 @@
+{
+  "name": "rambledesk",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.12.4",
+  "scripts": {
+    "dev": "pnpm -C apps/desktop tauri dev",
+    "dev:web": "pnpm -C apps/desktop dev:web",
+    "build": "pnpm -C apps/desktop tauri build",
+    "build:web": "pnpm -C apps/desktop build:web",
+    "check": "pnpm -C apps/desktop check",
+    "test": "pnpm -C apps/desktop test",
+    "test:rust": "cargo test --workspace",
+    "contracts:generate": "cargo run -p rambledesk-core --example export_types",
+    "contracts:check": "pnpm contracts:generate && git diff --exit-code -- apps/desktop/src/lib/generated",
+    "mcp:self-test": "cargo run -p rambledesk-cli -- self-test",
+    "mcp:inspector-smoke": "scripts/mcp-inspector-smoke.sh",
+    "format:check": "cargo fmt --all --check",
+    "clippy": "cargo clippy --workspace --all-targets -- -D warnings"
+  }
+}

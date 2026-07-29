@@ -1,0 +1,11 @@
+[package]
+name = "rambledesk-storage"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+description = "RambleDesk persistence and feedback package adapter"
+
+[dependencies]
+rambledesk-core.workspace = true

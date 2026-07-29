@@ -1,6 +1,6 @@
 # RambleDesk 开发基线与实施计划
 
-> 状态：Ready to start M0  
+> 状态：M0 complete · Ready to start M1
 > 日期：2026-07-29
 
 ## 1. 已冻结的开发方向
@@ -11,7 +11,7 @@
 | 前端 | Svelte 5 + TypeScript + Vite |
 | 核心逻辑 | Rust；前端不直接操作数据库或发布反馈包 |
 | 异步运行时 | Tokio |
-| MCP | 官方 Rust SDK `rmcp`，Streamable HTTP；实际版本在 M0 验证后锁定 |
+| MCP | 官方 Rust SDK `rmcp` 3.0.0，Streamable HTTP |
 | 持久化 | SQLite，Rust 侧访问并执行显式 migrations |
 | 序列化/schema | Serde + Schemars |
 | 日志 | tracing；默认只记录元数据 |
@@ -148,26 +148,11 @@ Rust 是领域 DTO 的事实来源。M0 选择并锁定一种 TypeScript 生成�
 提交到 `apps/desktop/src/lib/generated/`，CI 检查无漂移。前端不得手写第二套
 Request status 枚举。
 
-## 2.5 与 Kotone 的关系
+### 2.5 与 Kotone 的关系
 
 RambleDesk 借鉴 Kotone 已验证的 workspace 结构和 ports/adapters 依赖方向，但
 不是 Kotone 的子项目，也不对其 crate 建立 sibling path dependency。具体迁移
 边界见 [KOTONE_REUSE.md](KOTONE_REUSE.md)。
-tests/
-├── fixtures/
-├── protocol/
-└── e2e/
-```
-
-依赖方向：
-
-```text
-UI → tauri_api → application → domain
-MCP adapter ───→ application → domain
-persistence / feedback / notifications 实现 application ports
-```
-
-`domain` 不依赖 Tauri、MCP、SQLite 或前端类型。
 
 ## 3. 数据库基线
 
@@ -290,7 +275,7 @@ persistence / feedback / notifications 实现 application ports
 
 ### M0：技术与协议尖峰
 
-目标：消除无法开工的兼容风险，不做产品 UI。
+状态：**2026-07-29 已验收**。目标是消除无法开工的兼容风险，不做产品 UI。
 
 交付：
 
@@ -306,6 +291,10 @@ persistence / feedback / notifications 实现 application ports
   - 普通工具调用超时/取消行为；
 - 锁定 `rmcp`、Tauri 和 Rust toolchain 版本；
 - 将兼容结果写入 `docs/COMPATIBILITY.md`。
+
+实测结果见 [COMPATIBILITY.md](COMPATIBILITY.md)。首发采用 polling：
+`request_feedback` 快速返回 durable request，Agent 使用 `get_feedback` 查询。
+Tasks 保留为双方显式声明支持后的增强路径。
 
 验收门：
 
@@ -372,19 +361,17 @@ persistence / feedback / notifications 实现 application ports
 - 协议兼容回归矩阵；
 - README 安装和 Agent 配置文档。
 
-## 6. M0 首批工作项
+## 6. M0 完成清单
 
-按顺序执行：
-
-1. 以 `apps/ + crates/` 初始化 Cargo/pnpm workspace；
-2. 初始化 `apps/desktop` 的 Tauri 2 + Svelte 5/TypeScript/Vite 薄壳；
-3. 建立 core/storage/mcp/cli 空边界和依赖方向检查；
-4. 接入官方 Rust MCP SDK，由 `rambledesk-cli` 和桌面壳共同装配 `/mcp`；
-5. 实现本地令牌生成、保存和请求验证；
-6. 编写 MCP Inspector smoke test；
-7. 验证目标 Agent，形成兼容矩阵；
-8. 锁定 SDK、toolchain、TypeScript DTO 生成和首发执行模式；
-9. 再开始 M1 数据库和领域模型。
+- [x] 以 `apps/ + crates/` 初始化 Cargo/pnpm workspace；
+- [x] 初始化 `apps/desktop` 的 Tauri 2 + Svelte 5/TypeScript/Vite 薄壳；
+- [x] 建立 core/storage/mcp/cli 边界和单向依赖；
+- [x] 接入官方 Rust MCP SDK，由 CLI 和桌面壳共同装配 `/mcp`；
+- [x] 实现 256-bit 本地令牌、权限受限文件、Host/Origin 校验；
+- [x] 编写并执行 MCP Inspector smoke test；
+- [x] 验证 Claude Code，记录 Codex 本机安装阻塞；
+- [x] 锁定 SDK、toolchain、TypeScript DTO 生成和 polling 首发模式；
+- [ ] M1 再引入 SQLite、领域状态机和反馈业务工具。
 
 不要在 M0 中实现语音、截图、完整导航或视觉系统。
 
@@ -410,4 +397,6 @@ persistence / feedback / notifications 实现 application ports
 
 ## 9. 当前判断
 
-项目已经具备开始 M0 的产品和工程基线。仍未锁定的 MCP SDK 细节属于 M0 要验证的技术事实，而不是需要继续抽象讨论的产品问题。
+M0 已通过自动化与真实客户端验收，项目具备开始 M1 的工程条件。M1 应从
+core 状态机、SQLite migration 和 polling 合同开始，不提前引入语音、截图或
+Tasks 专用业务分支。

@@ -1,0 +1,46 @@
+[workspace]
+resolver = "2"
+members = [
+  "apps/desktop/src-tauri",
+  "crates/rambledesk-cli",
+  "crates/rambledesk-core",
+  "crates/rambledesk-mcp",
+  "crates/rambledesk-storage",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+repository = "https://github.com/l1veIn/rambledesk"
+
+[workspace.dependencies]
+anyhow = "1"
+axum = "0.8.9"
+clap = { version = "4", features = ["derive"] }
+dirs = "6"
+hex = "0.4"
+rand = "0.10.2"
+rmcp = { version = "3.0.0", default-features = false, features = [
+  "macros",
+  "schemars",
+  "server",
+  "transport-streamable-http-server",
+] }
+schemars = "1.2.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+subtle = "2"
+tauri = "2.11.5"
+tauri-build = "2.6.3"
+tempfile = "3"
+thiserror = "2"
+tokio = { version = "1.53.1", features = ["full"] }
+tokio-util = "0.7"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+ts-rs = "12.0.1"
+
+rambledesk-core = { path = "crates/rambledesk-core" }
+rambledesk-mcp = { path = "crates/rambledesk-mcp" }
+rambledesk-storage = { path = "crates/rambledesk-storage" }
