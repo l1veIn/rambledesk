@@ -247,7 +247,7 @@ waiting → in_progress → completed
 应用数据：
 
 ```text
-<app-data>/rambledesk/
+<local-data>/RambleDesk/
 ├── rambledesk.sqlite3
 ├── auth/
 ├── drafts/<request-id>/
@@ -255,6 +255,9 @@ waiting → in_progress → completed
 ├── logs/
 └── recovery/
 ```
+
+CLI 与桌面 composition root 必须调用同一个默认路径解析函数；测试和并行实例可
+显式注入数据库与 token 路径，不能各自推导另一套数据根。
 
 项目内最终产物：
 

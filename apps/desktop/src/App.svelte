@@ -22,15 +22,15 @@
 </script>
 
 <svelte:head>
-  <title>RambleDesk · M0</title>
+  <title>RambleDesk · M1</title>
 </svelte:head>
 
 <main>
   <section class="hero">
-    <p class="eyebrow">RAMBLEDESK · M0 FOUNDATION</p>
+    <p class="eyebrow">RAMBLEDESK · M1 REQUEST KERNEL</p>
     <h1>Agent 呼叫你做真实体验反馈。</h1>
     <p class="lede">
-      当前版本只验证桌面壳、workspace 边界和本地 MCP。反馈工作流将在 M1 接入。
+      请求会先持久化，再由 Agent 轮询状态；断线或重启不会让反馈任务消失。
     </p>
   </section>
 
@@ -42,8 +42,8 @@
     </article>
     <article>
       <span>Storage</span>
-      <strong>{health?.storage === 'not_initialized' ? '等待 M1' : health?.storage ?? '—'}</strong>
-      <small>业务数据尚未启用</small>
+      <strong>{health?.storage === 'ready' ? 'SQLite 已就绪' : health?.storage ?? '—'}</strong>
+      <small>persistent request source of truth</small>
     </article>
     <article>
       <span>MCP endpoint</span>

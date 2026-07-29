@@ -9,7 +9,7 @@ describe('statusLabel', () => {
         serviceName: 'rambledesk',
         serviceVersion: '0.1.0',
         status: 'ready',
-        storage: 'not_initialized',
+        storage: 'ready',
       }),
     ).toBe('MCP 核心已就绪')
   })

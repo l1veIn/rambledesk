@@ -12,7 +12,7 @@ use rmcp::{
 };
 
 #[derive(Debug, Parser)]
-#[command(name = "rambledesk", version, about = "RambleDesk M0 diagnostics")]
+#[command(name = "rambledesk", version, about = "RambleDesk local MCP host")]
 struct Arguments {
     #[command(subcommand)]
     command: Command,
@@ -26,6 +26,8 @@ enum Command {
         port: u16,
         #[arg(long)]
         token_file: Option<PathBuf>,
+        #[arg(long)]
+        database_file: Option<PathBuf>,
         #[arg(long)]
         print_token: bool,
     },
@@ -57,14 +59,23 @@ async fn main() -> anyhow::Result<()> {
         Command::Serve {
             port,
             token_file,
+            database_file,
             print_token,
         } => {
             let token_file = token_file.unwrap_or(default_token_path()?);
+            let database_file =
+                database_file.unwrap_or(rambledesk_storage::default_database_path()?);
             let token = AccessToken::load_or_create(&token_file)?;
-            let server = start_server(ServerConfig::new(token.clone()).with_port(port)).await?;
+            let store = rambledesk_storage::SqliteFeedbackStore::connect(&database_file).await?;
+            let server = start_server(
+                ServerConfig::new(token.clone()).with_port(port),
+                store.clone().into_application(),
+            )
+            .await?;
             let mut status = serde_json::json!({
                 "endpoint": server.endpoint(),
                 "tokenFile": token_file,
+                "databaseFile": database_file,
                 "authorizationHeader": "Bearer <token>",
                 "protocolCandidates": ["2026-07-28", "2025-11-25"]
             });
@@ -74,6 +85,7 @@ async fn main() -> anyhow::Result<()> {
             println!("{}", serde_json::to_string_pretty(&status)?);
             tokio::signal::ctrl_c().await?;
             server.shutdown().await?;
+            store.close().await;
         }
         Command::Smoke {
             endpoint,
@@ -91,11 +103,21 @@ async fn main() -> anyhow::Result<()> {
             println!("{}", serde_json::to_string_pretty(&result)?);
         }
         Command::SelfTest => {
+            let directory = tempfile::tempdir()?;
+            let store = rambledesk_storage::SqliteFeedbackStore::connect(
+                &directory.path().join("rambledesk.sqlite3"),
+            )
+            .await?;
             let token = AccessToken::generate();
-            let server = start_server(ServerConfig::new(token.clone()).with_port(0)).await?;
+            let server = start_server(
+                ServerConfig::new(token.clone()).with_port(0),
+                store.clone().into_application(),
+            )
+            .await?;
             let result = smoke(server.endpoint(), &token).await?;
             println!("{}", serde_json::to_string_pretty(&result)?);
             server.shutdown().await?;
+            store.close().await;
         }
     }
 

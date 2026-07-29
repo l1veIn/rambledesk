@@ -1,19 +1,24 @@
-//! Storage adapter boundary. SQLite and package publishing arrive in M1.
+//! SQLite persistence and feedback package adapter boundary.
+
+mod sqlite;
 
 use rambledesk_core::HealthSnapshot;
 
+pub use sqlite::{SqliteFeedbackStore, StorageOpenError, default_database_path};
+
 pub fn health_snapshot() -> HealthSnapshot {
-    HealthSnapshot::m0()
+    HealthSnapshot::ready()
 }
 
 #[cfg(test)]
 mod tests {
-    use rambledesk_core::StorageStatus;
-
     use super::*;
 
     #[test]
-    fn m0_explicitly_reports_uninitialized_storage() {
-        assert_eq!(health_snapshot().storage, StorageStatus::NotInitialized);
+    fn reports_ready_when_the_storage_adapter_is_initialized() {
+        assert_eq!(
+            health_snapshot().storage,
+            rambledesk_core::StorageStatus::Ready
+        );
     }
 }
