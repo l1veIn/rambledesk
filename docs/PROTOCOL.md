@@ -306,8 +306,10 @@ Invocation Attempt 是诊断数据，不是 Feedback Request 的事实来源。
 
 项目根不可写或未提供时，使用应用数据目录，并在结果中返回实际路径。
 
-M1 的 durable rename + directory sync 已在 macOS/Unix 路径实现。非 Unix 平台
-在具备等价持久化 barrier 前不得提交事务 B 或返回 completed。
+M1 的 durable publication 由 storage 平台兼容层提供：macOS/Unix 使用目录
+`fsync` + 同目录 rename + 父目录 `fsync`；Windows 使用
+`MoveFileExW(MOVEFILE_WRITE_THROUGH)` 移动已逐文件 flush 的同卷暂存目录。
+只有平台 barrier 成功后才允许提交事务 B 或返回 completed。
 
 `manifest.json`：
 
@@ -323,12 +325,22 @@ M1 的 durable rename + directory sync 已在 macOS/Unix 路径实现。非 Unix
   "draft_revision": 7,
   "feedback_markdown": "feedback.md",
   "feedback_sha256": "...",
-  "attachments": []
+  "attachments": [
+    {
+      "id": "019...",
+      "file_name": "onboarding.png",
+      "media_type": "image/png",
+      "byte_size": 84231,
+      "sha256": "...",
+      "path": "attachments/001-onboarding.png"
+    }
+  ]
 }
 ```
 
-M1 的 `feedback.md` 包含请求摘要、有序 actions 和 Operator 的 Markdown 正文；
-`attachments` 固定为空数组。M2 引入附件后只能写相对路径，不得写入绝对附件路径。
+`feedback.md` 包含请求摘要、有序 actions、Operator 的 Markdown 正文和按用户顺序
+排列的附件相对链接。`attachments` 只能写包内相对路径，不得写入草稿或发布目录的
+绝对路径；发布前后必须核对字节数与 SHA-256。
 
 ## 11. 错误结构
 

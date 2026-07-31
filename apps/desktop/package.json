@@ -14,7 +14,13 @@
   },
   "dependencies": {
     "@tauri-apps/api": "2.11.1",
-    "@tauri-apps/plugin-notification": "2.3.3"
+    "@tauri-apps/plugin-notification": "2.3.3",
+    "@tauri-apps/plugin-opener": "^2.5.4",
+    "@tiptap/core": "^3.29.2",
+    "@tiptap/extension-image": "^3.29.2",
+    "@tiptap/markdown": "^3.29.2",
+    "@tiptap/pm": "^3.29.2",
+    "@tiptap/starter-kit": "^3.29.2"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "7.2.0",

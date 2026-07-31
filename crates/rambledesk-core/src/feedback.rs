@@ -10,8 +10,8 @@ use ts_rs::TS;
 use uuid::Uuid;
 
 use crate::workspace::{
-    DraftView, FeedbackPackagePublisher, FeedbackRequestSummary, PublishedFeedbackPackage,
-    StoredFeedbackWorkspace, SubmissionPlan,
+    DraftView, FeedbackPackagePublisher, FeedbackRequestQuery, FeedbackRequestSummary,
+    NewAttachment, PublishedFeedbackPackage, StoredFeedbackWorkspace, SubmissionPlan,
 };
 
 const DEFAULT_POLL_AFTER_MS: u64 = 30_000;
@@ -200,6 +200,10 @@ pub enum RepositoryError {
     DraftConflict,
     #[error("feedback draft is empty")]
     DraftEmpty,
+    #[error("attachment was not found")]
+    AttachmentNotFound,
+    #[error("attachment limit was reached")]
+    AttachmentLimit,
     #[error("feedback package publication failed")]
     PackagePublish,
     #[error("stored feedback data is invalid")]
@@ -227,6 +231,11 @@ pub trait FeedbackRepository: Send + Sync {
 
     async fn list_open_requests(&self) -> Result<Vec<FeedbackRequestSummary>, RepositoryError>;
 
+    async fn list_requests(
+        &self,
+        query: FeedbackRequestQuery,
+    ) -> Result<Vec<FeedbackRequestSummary>, RepositoryError>;
+
     async fn get_workspace(
         &self,
         request_id: &str,
@@ -239,6 +248,36 @@ pub trait FeedbackRepository: Send + Sync {
         expected_revision: u64,
         now: &str,
     ) -> Result<DraftView, RepositoryError>;
+
+    async fn add_attachment(
+        &self,
+        request_id: &str,
+        attachment: NewAttachment,
+        expected_revision: u64,
+        now: &str,
+    ) -> Result<StoredFeedbackWorkspace, RepositoryError>;
+
+    async fn remove_attachment(
+        &self,
+        request_id: &str,
+        attachment_id: &str,
+        expected_revision: u64,
+        now: &str,
+    ) -> Result<StoredFeedbackWorkspace, RepositoryError>;
+
+    async fn reorder_attachments(
+        &self,
+        request_id: &str,
+        attachment_ids: &[String],
+        expected_revision: u64,
+        now: &str,
+    ) -> Result<StoredFeedbackWorkspace, RepositoryError>;
+
+    async fn read_attachment(
+        &self,
+        request_id: &str,
+        attachment_id: &str,
+    ) -> Result<Vec<u8>, RepositoryError>;
 
     async fn plan_submission(
         &self,
@@ -448,6 +487,16 @@ impl From<RepositoryError> for ApplicationError {
             RepositoryError::DraftEmpty => (
                 "INVALID_ARGUMENT",
                 "feedback draft cannot be empty when submitting",
+                false,
+            ),
+            RepositoryError::AttachmentNotFound => (
+                "ATTACHMENT_NOT_FOUND",
+                "feedback attachment was not found",
+                false,
+            ),
+            RepositoryError::AttachmentLimit => (
+                "ATTACHMENT_LIMIT",
+                "a feedback request can contain at most 20 attachments",
                 false,
             ),
             RepositoryError::PackagePublish => (

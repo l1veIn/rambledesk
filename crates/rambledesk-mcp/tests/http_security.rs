@@ -101,7 +101,12 @@ async fn official_client_exercises_health_feedback_and_errors() -> anyhow::Resul
             .iter()
             .any(|tool| tool.name.as_ref() == "rambledesk_health")
     );
-    for expected in ["request_feedback", "get_feedback", "cancel_feedback"] {
+    for expected in [
+        "request_feedback",
+        "get_feedback",
+        "list_feedback_requests",
+        "cancel_feedback",
+    ] {
         assert!(
             tools
                 .tools
@@ -170,6 +175,27 @@ async fn official_client_exercises_health_feedback_and_errors() -> anyhow::Resul
             .and_then(|value| value.get("request_id"))
             .and_then(serde_json::Value::as_str),
         Some(request_id.as_str())
+    );
+
+    let list_arguments = serde_json::json!({ "limit": 1 })
+        .as_object()
+        .cloned()
+        .expect("list arguments");
+    let listed = client
+        .call_tool(
+            CallToolRequestParams::new("list_feedback_requests").with_arguments(list_arguments),
+        )
+        .await
+        .context("call list_feedback_requests")?;
+    assert_ne!(listed.is_error, Some(true));
+    assert_eq!(
+        listed
+            .structured_content
+            .as_ref()
+            .and_then(|value| value.get("requests"))
+            .and_then(serde_json::Value::as_array)
+            .map(Vec::len),
+        Some(1)
     );
 
     let get_arguments = serde_json::json!({ "request_id": request_id })

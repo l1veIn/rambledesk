@@ -2,6 +2,8 @@ import type { FeedbackStatus } from './generated/feedback'
 
 export type {
   ActionInput,
+  AddAttachmentInput,
+  AttachmentView,
   ContextRef,
   DraftView,
   ExecutionMode,
@@ -10,6 +12,10 @@ export type {
   FeedbackResultView,
   FeedbackStatus,
   FeedbackWorkspaceView,
+  ListFeedbackRequestsInput,
+  ListFeedbackRequestsOutput,
+  RemoveAttachmentInput,
+  ReorderAttachmentsInput,
   SaveDraftInput,
   SubmitFeedbackInput,
 } from './generated/feedback'

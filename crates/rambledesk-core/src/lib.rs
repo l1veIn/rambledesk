@@ -14,9 +14,11 @@ pub use feedback::{
     RepositoryError, RequestFeedbackInput, StoredFeedbackRequest, SystemClock, UuidV7Generator,
 };
 pub use workspace::{
-    DraftView, FeedbackPackagePublisher, FeedbackRequestSummary, FeedbackWorkspaceView,
-    PublishedFeedbackPackage, SaveDraftInput, StoredFeedbackWorkspace, SubmissionPlan,
-    SubmitFeedbackInput,
+    AddAttachmentInput, AttachmentView, DraftView, FeedbackPackagePublisher, FeedbackRequestQuery,
+    FeedbackRequestSummary, FeedbackWorkspaceView, ListFeedbackRequestsInput,
+    ListFeedbackRequestsOutput, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENT_COUNT, NewAttachment,
+    PublishedFeedbackPackage, RemoveAttachmentInput, ReorderAttachmentsInput, SaveDraftInput,
+    StoredFeedbackWorkspace, SubmissionAttachment, SubmissionPlan, SubmitFeedbackInput,
 };
 
 pub const SERVICE_NAME: &str = "rambledesk";

@@ -2,9 +2,9 @@
 
 > 状态：M0 transport accepted · M1 persistent request tools validated
 >
-> 实测日期：2026-07-29
+> 实测日期：2026-07-29（macOS 客户端矩阵）· 2026-07-31（Windows 自动化）
 >
-> 环境：macOS arm64，本机 loopback
+> 环境：macOS arm64 本机 loopback；Windows x64 storage/MCP 自动化
 
 ## 1. 结论
 
@@ -20,6 +20,8 @@ M0 验收成立：
 - 服务只绑定 IPv4 loopback；
 - M1 的 `request_feedback/get_feedback/cancel_feedback` 已按 durable request +
   polling 模式通过 Inspector、官方 Rust SDK 和 Claude Code；
+- Windows x64 已通过 Feedback Package write-through 发布、幂等提交、启动对账
+  和官方 Rust SDK MCP 黑盒测试；
 - Tasks 只在客户端显式声明支持后作为增强路径。
 
 ## 2. 客户端实测

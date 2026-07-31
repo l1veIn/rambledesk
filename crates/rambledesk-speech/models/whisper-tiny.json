@@ -1,0 +1,12 @@
+{
+  "id": "whisper-tiny-multilingual-q5-none",
+  "file_name": "ggml-tiny.bin",
+  "source": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin",
+  "upstream": "https://github.com/ggml-org/whisper.cpp",
+  "license": "MIT",
+  "bytes": 77691713,
+  "sha1": "bd577a113a864445d4c299885e0cb97d4ba92b5f",
+  "sha256": "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21",
+  "default_install_path": "<app-local-data>/models/ggml-tiny.bin",
+  "purpose": "M3 MVP local incremental transcription; not committed to Git"
+}

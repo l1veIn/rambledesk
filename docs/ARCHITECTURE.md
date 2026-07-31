@@ -193,8 +193,10 @@ UI command
 SubmitFeedback(request_id, expected_revision)
   → transaction A: acquire submit lease / verify state
   → render package into sibling temp directory
-  → flush + hash + fsync
-  → atomic rename to final directory
+  → flush + hash
+  → platform durability adapter:
+      Unix: staged directory fsync + atomic rename + parent fsync
+      Windows: MoveFileExW(MOVEFILE_WRITE_THROUGH)
   → transaction B:
       mark completed
       store immutable result paths + hashes

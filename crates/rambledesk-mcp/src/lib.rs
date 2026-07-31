@@ -19,7 +19,8 @@ use axum::{
 };
 use rambledesk_core::{
     ApplicationError, CancelFeedbackInput, FeedbackApplication, FeedbackRequestView,
-    FeedbackStatus, GetFeedbackInput, HealthSnapshot, RequestFeedbackInput,
+    FeedbackStatus, GetFeedbackInput, HealthSnapshot, ListFeedbackRequestsInput,
+    ListFeedbackRequestsOutput, RequestFeedbackInput,
 };
 use rmcp::{
     RoleServer, ServerHandler,
@@ -146,6 +147,17 @@ impl RambleDeskMcp {
     }
 
     #[tool(
+        name = "list_feedback_requests",
+        description = "List persistent feedback request summaries with optional project, agent, session, status, cursor, and limit filters. Defaults to open requests."
+    )]
+    async fn list_feedback_requests(
+        &self,
+        Parameters(input): Parameters<ListFeedbackRequestsInput>,
+    ) -> CallToolResult {
+        list_application_result(self.application.list_feedback_requests(input).await)
+    }
+
+    #[tool(
         name = "cancel_feedback",
         description = "Cancel a waiting or in-progress feedback request. Repeated cancellation preserves the first cancellation."
     )]
@@ -154,6 +166,30 @@ impl RambleDeskMcp {
         Parameters(input): Parameters<CancelFeedbackInput>,
     ) -> CallToolResult {
         application_result(self.application.cancel_feedback(input).await)
+    }
+}
+
+fn list_application_result(
+    result: Result<ListFeedbackRequestsOutput, ApplicationError>,
+) -> CallToolResult {
+    match result {
+        Ok(value) => {
+            let summary = format!(
+                "Listed {} feedback request summaries{}.",
+                value.requests.len(),
+                if value.next_cursor.is_some() {
+                    "; more results are available"
+                } else {
+                    ""
+                }
+            );
+            let mut result = CallToolResult::structured(
+                serde_json::to_value(value).expect("application result must serialize"),
+            );
+            result.content = vec![ContentBlock::text(summary)];
+            result
+        }
+        Err(error) => application_error_result(error),
     }
 }
 
@@ -183,20 +219,22 @@ fn application_result(result: Result<FeedbackRequestView, ApplicationError>) -> 
             result.content = vec![ContentBlock::text(summary)];
             result
         }
-        Err(error) => {
-            let mut result = CallToolResult::structured_error(serde_json::json!({
-                "code": error.code(),
-                "message": error.message(),
-                "retryable": error.retryable(),
-            }));
-            result.content = vec![ContentBlock::text(format!(
-                "RambleDesk {}: {}",
-                error.code(),
-                error.message()
-            ))];
-            result
-        }
+        Err(error) => application_error_result(error),
     }
+}
+
+fn application_error_result(error: ApplicationError) -> CallToolResult {
+    let mut result = CallToolResult::structured_error(serde_json::json!({
+        "code": error.code(),
+        "message": error.message(),
+        "retryable": error.retryable(),
+    }));
+    result.content = vec![ContentBlock::text(format!(
+        "RambleDesk {}: {}",
+        error.code(),
+        error.message()
+    ))];
+    result
 }
 
 #[tool_handler(router = self.tool_router)]
