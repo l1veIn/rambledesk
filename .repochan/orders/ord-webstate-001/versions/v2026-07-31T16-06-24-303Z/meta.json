@@ -1,0 +1,37 @@
+{
+  "versionId": "v2026-07-31T16-06-24-303Z",
+  "createdAt": "2026-07-31T16:06:24.317Z",
+  "tool": "repochan-image-gen",
+  "files": [
+    "generated-2026-07-31T16-02-33.png"
+  ],
+  "promptBrief": "Rambelle 3x3 清晰上半身状态表，洋红 matte，六边形舱门徽章",
+  "generationPrompt": "strict 3x3 chibi web-state sticker sheet with exactly nine isolated stickers of the same Rambelle character anchored by the updated foundation reference,\nall nine cells use a consistent chest-up chibi bust portrait crop, large readable face, clear shoulders and upper torso, bold readable silhouette, consistent camera angle, scale, line weight and lighting,\nuse the established pale silver-white, ice-blue, technology-teal and restrained amber palette; every visible shoulder insignia uses the current hexagonal vault-door emblem with a hollow hexagonal center and soft ice-blue edge light,\nperfectly flat uniform non-character matte background of pure #FF00FF, no gradient, texture, shadow, or off-color,\ngenerous empty margin on all four sides of every cell, no sticker may touch a cell edge or enter another cell,\nno words, letters, numbers, punctuation, labels, captions, speech bubbles, interface text, watermarks, borders, frames, or grid lines,\nno element crosses a cell boundary, square 1:1 canvas, evenly aligned rows and columns, production-ready chroma-key sheet, clean Digital Pop cel-shaded finish.\n\nFixed cell semantics, left-to-right and top-to-bottom:\nCELL 0 welcome — friendly small wave with one hand and a calm welcoming smile;\nCELL 1 searching — attentive scanning expression, one hand lightly shading the eyes;\nCELL 2 loading — patient focused expression with subtle abstract motion marks;\nCELL 3 empty — gently presenting one clearly empty palm with a neutral reassuring expression;\nCELL 4 error — apologetic concerned expression with one simple stop gesture;\nCELL 5 success — proud warm smile with small abstract ice-blue sparkles and a single holographic-seal gesture;\nCELL 6 not-found — puzzled searching expression while looking toward one simple closed archive folder shape;\nCELL 7 cta — encouraging presentation gesture toward adjacent content with one raised hand;\nCELL 8 cozy — calm content expression holding one plain warm mug close to the chest.\n\nRevision direction: retain the previous sheet's overall identity and 3x3 semantic layout, but replace its mixed full-body framing with consistently close chest-up portraits; update every obsolete circular or digit-based insignia to the current hollow hexagonal vault-door emblem; keep faces unobstructed and use only one primary hand action per cell.\n\nTechnical constraints:\nstrict 3-row × 3-column grid with exactly 9 stickers in the declared fixed semantic order;\nthe matte is identical in every pixel outside the stickers and absent from character, costume, props, outlines and effects;\nevery sticker has about 10% clear matte safe margin and must not touch or cross any cell edge;\nno sticker, prop, effect, shadow, or decoration spans multiple cells;\nno borders, frames, dividers, grid lines, cell boxes, scenery, or textured backgrounds;\ndo not reproduce layout-guide boxes, lines, crosshairs, or cell labels from any reference image;\nmasterpiece, best quality.",
+  "notes": "基于 v2026-07-31T10-41-31-607Z 审查反馈生成；保留 3x3 语义，统一胸像取景并更新全部徽章。",
+  "provenance": {
+    "tool": "repochan",
+    "action": "order.create_result"
+  },
+  "meta": {
+    "referenceImagesUsed": true,
+    "references": [
+      {
+        "orderId": "ord-webstate-001",
+        "versionId": "v2026-07-31T10-41-31-607Z",
+        "role": "revision-base"
+      },
+      {
+        "orderId": "ord-foundation-001",
+        "role": "character"
+      },
+      {
+        "role": "composition",
+        "kind": "layout-guide"
+      }
+    ],
+    "templateId": "official/web-state-grid-3x3",
+    "aspectRatio": "1:1",
+    "generationSize": "2048x2048",
+    "safetyConstraintsApplied": true
+  }
+}

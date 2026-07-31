@@ -1,0 +1,56 @@
+{
+  "orderId": "ord-app-icon-selfie-001",
+  "status": "delivered",
+  "requestType": "new_asset",
+  "assetType": "icon",
+  "templateId": "official/icon-single",
+  "references": [
+    {
+      "type": "order",
+      "orderId": "ord-foundation-001",
+      "role": "character"
+    }
+  ],
+  "brief": {
+    "intent": "为 RambleDesk 创建一枚单图应用图标：像 Rambelle 随手拍下的自拍大头贴照，亲近、克制、易识别；整体采用清爽的铅笔素描表达，适合作为 Windows、macOS 与 Linux 桌面应用图标源图。",
+    "mustInclude": [
+      "严格保持 foundation 中 Rambelle 的人物身份：白色长发、冰蓝眼睛、银白未来秘书制服与六边形舱门徽章",
+      "Rambelle 面向镜头的自拍式近景大头照，头部与肩部形成清晰、亲切且稳定的主轮廓",
+      "素白纯净背景，背景属于最终图标设计的一部分",
+      "细腻但简洁的铅笔素描线条，辅以极少量冷银灰与冰蓝淡彩",
+      "单一主体、方形画布、缩小到应用图标尺寸时仍能识别人物轮廓与白色长发"
+    ],
+    "avoid": [
+      "多人物或多版本拼图",
+      "文字、字母、数字、水印",
+      "复杂背景、场景叙事和过密细节",
+      "厚重写实油画、强烈霓虹或高饱和背景",
+      "圆形徽章式外框或额外装饰边框"
+    ],
+    "creativeFreedom": [
+      "自拍视角的轻微俯仰与头部倾斜",
+      "温和可靠的细微表情",
+      "素描线条疏密与冰蓝淡彩的用量"
+    ]
+  },
+  "deliverables": [
+    {
+      "name": "app_icon_selfie_source",
+      "format": "png",
+      "width": 512,
+      "height": 512
+    }
+  ],
+  "acceptanceCriteria": [
+    "单一 Rambelle 自拍大头照主体，人物身份与 foundation 明确一致",
+    "背景为干净素白，画面呈清晰的素描风格",
+    "在 32x32 预览下仍能识别白色长发、面部与肩部轮廓",
+    "没有文字、水印、多图网格或额外边框"
+  ],
+  "priority": "high",
+  "createdAt": "2026-07-31T15:06:27.090Z",
+  "updatedAt": "2026-07-31T15:29:00.338Z",
+  "candidateVersions": [],
+  "schemaVersion": "repochan.asset-order.v1",
+  "currentVersion": "v2026-07-31T15-29-00-326Z"
+}

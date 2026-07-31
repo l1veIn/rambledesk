@@ -1,0 +1,15 @@
+{
+  "versionId": "v2026-07-31T11-07-12-407Z",
+  "createdAt": "2026-07-31T11:07:12.419Z",
+  "tool": "repochan",
+  "files": [
+    "generated-2026-07-31T11-03-28.png"
+  ],
+  "promptBrief": "Icon sheet v2: hexagonal emblem in shoulder insignia and symbol row, rest unchanged",
+  "generationPrompt": "strict 3x3 app-icon exploration sheet for RambleDesk, exactly nine distinct square icons, keep the previous icon sheet layout and rows,\nONE coherent brand family from the character in the reference image, the hexagonal vault door emblem, the holographic seal, and the translucent data-slate motifs, and color palette silver-white #E3E9F0, near-white #F7F9FC, ice blue #6FA8DC, tech teal #57C6C0, amber #F2A03D,\narrange cells by a CHARACTER-PRESENCE SPECTRUM (strongest → weakest, top → bottom):\nROW 1 (top, strongest character presence) — three app icons whose main subject is the character: a face close-up portrait, a bust portrait, and a full-body silhouette-friendly crop, each reading as a premium app icon, pale cool background,\nROW 2 (middle, medium character presence) — three app icons based on a CHIBI big-head mascot treatment of the same character: cute simplified proportions, large head, bold silhouette, each a complete standalone icon with different chibi pose and framing,\nROW 3 (bottom, weakest character presence) — three pure symbol app icons: the hexagonal vault door emblem (honeycomb structure, hollow hexagonal center, ice-blue glow), the holographic seal, and the translucent data-slate, flat emblem style with ice-blue glow,\nREPLACE the emblem everywhere: no circular emblem with a number or dot inside; all emblems must be the hexagonal vault door emblem with a hollow hexagonal center,\nall nine icons share the same line weight, the same geometric vocabulary, the same cel-shaded pale digital pop finish,\nperfectly flat uniform matte background of pure #5A6A7A deep blue-gray in every cell, no gradient, texture, shadow, or off-color,\neach icon is centered in its cell with generous clear matte margin, no icon may touch a cell edge or enter another cell,\nno words, letters, numbers, punctuation, labels, watermarks, borders, frames, or grid lines,\nsquare 1:1 canvas, evenly aligned rows and columns, production-ready chroma-key sheet,\nno gore, no blood, no code symbols,\nmasterpiece, best quality",
+  "notes": "Review revision of v1. Review notes: replace circular emblem with hexagonal vault door emblem. img2img base: v1 icon sheet + foundation v2. Endpoint img-cn-65535.",
+  "provenance": {
+    "tool": "repochan",
+    "action": "order.create_result"
+  }
+}

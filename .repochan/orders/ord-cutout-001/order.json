@@ -1,0 +1,54 @@
+{
+  "orderId": "ord-cutout-001",
+  "status": "delivered",
+  "requestType": "new_asset",
+  "assetType": "character_cutout",
+  "templateId": "official/character-cutout",
+  "references": [
+    {
+      "type": "order",
+      "orderId": "ord-foundation-001",
+      "role": "character"
+    }
+  ],
+  "brief": {
+    "intent": "立绘：放松姿态的兰贝尔——重心移到一条腿上的自然站姿，肩膀放松，双手在背后松松交握，头微微侧倾，白色长发自然垂落。用于网页交互引导/区段装饰，体现「真实人物不设防的一面」。",
+    "mustInclude": [
+      "单个全身角色，居中带四周留白",
+      "放松站姿：重心偏移单腿、肩背放松、双手背后交握、头微侧",
+      "白长发、银白科技军装、冰蓝眼睛（身份识别点不变）",
+      "纯平 matte 背景（角色为画面唯一主体，无道具）",
+      "cel-shaded 干净风格"
+    ],
+    "avoid": [
+      "立正/军姿/敬礼",
+      "任何道具、家具、背景元素",
+      "身体或发梢被画布裁切",
+      "文字、水印"
+    ],
+    "creativeFreedom": [
+      "头部侧倾角度与表情（平静/微微放松）",
+      "发丝与衣褶的放松程度"
+    ]
+  },
+  "deliverables": [
+    {
+      "name": "character_cutout",
+      "format": "png",
+      "width": 1024,
+      "height": 1024
+    }
+  ],
+  "acceptanceCriteria": [
+    "放松站姿（重心偏移、手背后交握）",
+    "角色唯一主体、四周留白、无裁切",
+    "身份识别点一致（白长发/银白制服/冰蓝眼）",
+    "纯平 matte、无文字、无血腥"
+  ],
+  "priority": "normal",
+  "createdAt": "2026-07-31T10:08:55.626Z",
+  "updatedAt": "2026-07-31T10:16:03.499Z",
+  "candidateVersions": [],
+  "schemaVersion": "repochan.asset-order.v1",
+  "currentVersion": "v2026-07-31T10-16-03-488Z"
+}

@@ -5,6 +5,7 @@ import {
   collectNewRequests,
   InboxNotificationTracker,
   notificationLabel,
+  notificationStateForPermission,
 } from './notifications'
 
 function request(requestId: string): FeedbackRequestSummary {
@@ -47,7 +48,15 @@ describe('notification inbox tracking', () => {
 
   it('keeps permission labels understandable', () => {
     expect(notificationLabel('enabled')).toBe('通知已开启')
+    expect(notificationLabel('muted')).toBe('通知已暂停，点击重新开启')
+    expect(notificationLabel('muted', 'en')).toBe('Notifications paused — click to enable')
     expect(notificationLabel('disabled')).toBe('启用通知')
     expect(notificationLabel('unavailable')).toBe('通知不可用')
+  })
+
+  it('keeps an OS-granted notification permission reactivatable after muting', () => {
+    expect(notificationStateForPermission(true, true)).toBe('enabled')
+    expect(notificationStateForPermission(true, false)).toBe('muted')
+    expect(notificationStateForPermission(false, true)).toBe('disabled')
   })
 })

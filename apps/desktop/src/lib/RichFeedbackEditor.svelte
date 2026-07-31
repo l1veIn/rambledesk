@@ -6,6 +6,8 @@
   import { onMount } from 'svelte'
 
   import type { AttachmentView } from './feedback'
+  import { t } from './i18n'
+  import { locale } from './preferences'
   import {
     attachmentIdFromUrl,
     attachmentMarkdownUrl,
@@ -65,8 +67,8 @@
       editorProps: {
         attributes: {
           class: 'feedback-prose',
-          'aria-label': 'Markdown 富文本反馈正文',
-          'data-placeholder': '记录你看见了什么、哪里顺畅、哪里让你停顿。',
+          'aria-label': t($locale, 'Markdown 富文本反馈正文'),
+          'data-placeholder': t($locale, '记录你看见了什么、哪里顺畅、哪里让你停顿。'),
         },
       },
       onCreate: () => {
@@ -92,6 +94,11 @@
   })
 
   $: if (editor) editor.setEditable(!disabled)
+  $: if (editor) {
+    $locale
+    editor.view.dom.setAttribute('aria-label', t($locale, 'Markdown 富文本反馈正文'))
+    editor.view.dom.setAttribute('data-placeholder', t($locale, '记录你看见了什么、哪里顺畅、哪里让你停顿。'))
+  }
   $: if (editor && markdown !== editorMarkdown) applyMarkdown(markdown)
   $: if (editor) {
     previews
@@ -273,47 +280,47 @@
 </script>
 
 <div class="rich-editor">
-  <div class="format-toolbar" aria-label="正文格式">
+  <div class="format-toolbar" aria-label={t($locale, '正文格式')}>
     <button
       type="button"
-      aria-label="加粗"
+      aria-label={t($locale, '加粗')}
       disabled={disabled}
       onclick={() => editor?.chain().focus().toggleBold().run()}
     >B</button>
     <button
       type="button"
-      aria-label="斜体"
+      aria-label={t($locale, '斜体')}
       disabled={disabled}
       onclick={() => editor?.chain().focus().toggleItalic().run()}
     ><i>I</i></button>
     <button
       type="button"
-      aria-label="二级标题"
+      aria-label={t($locale, '二级标题')}
       disabled={disabled}
       onclick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}
     >H2</button>
     <button
       type="button"
-      aria-label="无序列表"
+      aria-label={t($locale, '无序列表')}
       disabled={disabled}
       onclick={() => editor?.chain().focus().toggleBulletList().run()}
-    >• 列表</button>
+    >• {t($locale, '列表')}</button>
     <button
       type="button"
-      aria-label="引用"
+      aria-label={t($locale, '引用')}
       disabled={disabled}
       onclick={() => editor?.chain().focus().toggleBlockquote().run()}
-    >“ 引用</button>
+    >“ {t($locale, '引用')}</button>
     <span></span>
     <button
       type="button"
-      aria-label="撤销"
+      aria-label={t($locale, '撤销')}
       disabled={disabled || !editor?.can().undo()}
       onclick={() => editor?.chain().focus().undo().run()}
     >↶</button>
     <button
       type="button"
-      aria-label="重做"
+      aria-label={t($locale, '重做')}
       disabled={disabled || !editor?.can().redo()}
       onclick={() => editor?.chain().focus().redo().run()}
     >↷</button>
@@ -323,19 +330,22 @@
 
 <style>
   .rich-editor {
+    width: 100%;
+    min-width: 0;
     overflow: hidden;
-    border: 1px solid #d9d4c8;
-    border-radius: 14px;
-    background: #fffefa;
+    border: 1px solid var(--line, #d4e0ec);
+    border-radius: 10px;
+    background: var(--editor-paper, #fff);
   }
 
   .format-toolbar {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 8px 10px;
-    border-bottom: 1px solid #e8e3d8;
-    background: #f7f4ed;
+    gap: 4px;
+    padding: 7px 9px;
+    border-bottom: 1px solid var(--line-soft, #e0e8f0);
+    background: var(--surface, #f7f9fc);
+    overflow-x: auto;
   }
 
   .format-toolbar span {
@@ -344,20 +354,21 @@
 
   .format-toolbar button {
     min-width: 32px;
-    height: 30px;
-    padding: 0 9px;
+    height: 28px;
+    padding: 0 8px;
     border: 1px solid transparent;
     border-radius: 7px;
-    color: #4c493f;
+    color: var(--ink-soft, #526a84);
     background: transparent;
     font: inherit;
-    font-size: 12px;
+    font-size: 10px;
     cursor: pointer;
   }
 
   .format-toolbar button:hover:not(:disabled) {
-    border-color: #d7d0c2;
-    background: #fffefa;
+    border-color: #bed4e9;
+    color: var(--blue-strong, #2775ca);
+    background: var(--blue-soft, #eaf3fc);
   }
 
   .format-toolbar button:disabled {
@@ -366,18 +377,19 @@
   }
 
   .editor-host :global(.feedback-prose) {
-    min-height: 280px;
-    padding: 22px;
-    color: #292821;
-    font-size: 15px;
-    line-height: 1.75;
+    min-height: clamp(360px, 52vh, 620px);
+    padding: clamp(20px, 2.5vw, 34px);
+    color: var(--ink, #263a50);
+    font-family: Georgia, "Noto Serif SC", "Songti SC", serif;
+    font-size: 14px;
+    line-height: 1.78;
     outline: none;
   }
 
   .editor-host :global(.feedback-prose:empty::before) {
     float: left;
     height: 0;
-    color: #a29d92;
+    color: var(--ink-faint, #9aa8b7);
     content: attr(data-placeholder);
     pointer-events: none;
   }
@@ -393,14 +405,19 @@
   .editor-host :global(.feedback-prose h2),
   .editor-host :global(.feedback-prose h3) {
     margin: 1.4em 0 0.55em;
+    color: var(--ink, #203550);
+    font-family: "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", sans-serif;
     line-height: 1.3;
   }
 
   .editor-host :global(.feedback-prose blockquote) {
     margin: 1em 0;
     padding-left: 14px;
-    border-left: 3px solid #d57045;
-    color: #625e54;
+    padding: 10px 14px;
+    border-left: 3px solid #6fa8dc;
+    border-radius: 0 8px 8px 0;
+    color: var(--ink-soft, #52677e);
+    background: var(--surface-tint, #f3f7fb);
   }
 
   .editor-host :global(.feedback-prose img) {
@@ -409,14 +426,14 @@
     max-width: min(100%, 900px);
     max-height: 620px;
     margin: 18px auto;
-    border: 1px solid #ddd7ca;
-    border-radius: 12px;
+    border: 1px solid #ccdae7;
+    border-radius: 10px;
     object-fit: contain;
-    background: #f2efe8;
-    box-shadow: 0 8px 28px rgb(46 39 26 / 10%);
+    background: var(--surface-tint, #eef3f7);
+    box-shadow: 0 10px 30px rgb(40 72 106 / 10%);
   }
 
   .editor-host :global(.feedback-prose.ProseMirror-focused) {
-    box-shadow: inset 0 0 0 1px rgb(193 91 50 / 18%);
+    box-shadow: inset 0 0 0 1px rgb(79 143 211 / 18%);
   }
 </style>

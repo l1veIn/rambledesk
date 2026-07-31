@@ -1,0 +1,15 @@
+{
+  "versionId": "v2026-07-31T10-31-32-542Z",
+  "createdAt": "2026-07-31T10:31:32.553Z",
+  "tool": "repochan",
+  "files": [
+    "generated-2026-07-31T10-28-30.png"
+  ],
+  "promptBrief": "Scene poster: watering the emergency potatoes at hydroponic rack, crouching, gloves off, gentle expression",
+  "generationPrompt": "atmospheric scene poster for RambleDesk featuring the character from the reference image,\nthe character is in this specific scene: the abandoned hydroponic rack in sector B, she crouches in front of the rack watering the emergency potatoes, her white gloves set aside on the floor beside her, a strand of long white hair falling loose from behind her ear, sleeves slightly rolled, a rare soft and gentle expression as she tends the only living thing in the vault,\nrendered in cel-shaded digital pop style using silver-white #E3E9F0, near-white #F7F9FC, ice blue #6FA8DC, tech teal #57C6C0, amber #F2A03D,\nthe composition has generous negative space and breathing room — not a dense busy illustration,\nthe character occupies roughly one-third to one-half of the canvas, leaving open areas suitable for text overlay,\natmospheric lighting and mood: cold vault white light softened by a single warm grow-light above the rack, the green of living plants as the only vivid color in the pale vault, quiet care and life in a dead world,\nthe background is a believable environment (pale metal hydroponic rack, green potato plants, drip tubes, soft reflections), but kept soft and non-distracting,\nsubtle circular vault door zero emblem woven into the environment as decorative details,\nlandscape 3:2 aspect ratio suitable for web hero or section backgrounds,\nno text, no title, no watermark rendered in the image,\ncrouching posture with watering action, not standing at attention,\nno gore, no blood, no terminal code symbols,\nmasterpiece, best quality",
+  "notes": "referenceImagesUsed: true (foundation character). Endpoint img-cn-65535. Safety: no gore, no code symbols.",
+  "provenance": {
+    "tool": "repochan",
+    "action": "order.create_result"
+  }
+}

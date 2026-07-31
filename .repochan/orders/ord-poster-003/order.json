@@ -1,0 +1,54 @@
+{
+  "orderId": "ord-poster-003",
+  "status": "delivered",
+  "requestType": "new_asset",
+  "assetType": "poster",
+  "templateId": "official/poster-scene",
+  "references": [
+    {
+      "type": "order",
+      "orderId": "ord-foundation-001",
+      "role": "character"
+    }
+  ],
+  "brief": {
+    "intent": "场景海报：闸门回望——她站在白色防爆入口闸门前，侧身回望镜头，一只手搭在门闸上，门缝透进一线末世后的天光。展示侧身/回头的角度与「门」的悬念：她在等长官的命令，也在等外面的答案。 templateReason: poster-scene：氛围场景海报、无文字、留白适合网页头部",
+    "mustInclude": [
+      "角色为画幅 1/3–1/2，构图留白充足",
+      "侧身回望角度：身体侧向闸门、头回望镜头，一只手扶在门闸上",
+      "白长发（回望时发丝有动感）、银白科技军装、冰蓝眼睛",
+      "入口闸门场景：白色金属防爆门、门缝天光、圆形舱门零号徽章",
+      "浅色科技感基调 + 一线天光",
+      "Cel-shaded + Digital Pop，无文字"
+    ],
+    "avoid": [
+      "正立军姿/抱着档案板姿势",
+      "代码符号、血腥",
+      "密集构图"
+    ],
+    "creativeFreedom": [
+      "回望的表情（平静注视/一丝询问）",
+      "天光的强度与色调"
+    ]
+  },
+  "deliverables": [
+    {
+      "name": "poster",
+      "format": "png",
+      "width": 1536,
+      "height": 1024
+    }
+  ],
+  "acceptanceCriteria": [
+    "侧身回望姿态 + 手扶门闸",
+    "画幅占比 1/3–1/2，留白充足",
+    "闸门场景 + 浅色基调 + 一线天光",
+    "无文字、无代码符号、无血腥"
+  ],
+  "priority": "normal",
+  "createdAt": "2026-07-31T10:08:55.626Z",
+  "updatedAt": "2026-07-31T10:25:15.085Z",
+  "candidateVersions": [],
+  "schemaVersion": "repochan.asset-order.v1",
+  "currentVersion": "v2026-07-31T10-25-15-073Z"
+}

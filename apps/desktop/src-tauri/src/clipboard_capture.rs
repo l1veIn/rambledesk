@@ -40,7 +40,7 @@ pub struct StartClipboardCaptureInput {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-enum ClipboardCaptureEvent {
+pub enum ClipboardCaptureEvent {
     Text {
         request_id: String,
         ramble_session_id: String,
@@ -60,6 +60,59 @@ enum ClipboardCaptureEvent {
         ramble_session_id: String,
         message: String,
     },
+}
+
+#[tauri::command]
+pub fn capture_clipboard_once(
+    input: StartClipboardCaptureInput,
+    state: tauri::State<'_, ClipboardCaptureState>,
+) -> Result<ClipboardCaptureEvent, String> {
+    let mut clipboard =
+        arboard::Clipboard::new().map_err(|error| format!("无法访问系统剪贴板：{error}"))?;
+    let captured_at_ms = unix_time_ms();
+
+    if let Ok(image) = clipboard.get_image() {
+        let contents = encode_clipboard_image(image)?;
+        if contents.len() > MAX_IMAGE_BYTES {
+            return Err("剪贴板图片超过 20 MiB，无法导入".to_owned());
+        }
+        let capture_id = uuid::Uuid::now_v7().to_string();
+        let file_name = format!("ramble-clipboard-{capture_id}.png");
+        state
+            .images
+            .lock()
+            .map_err(|_| "剪贴板图片状态锁已损坏".to_owned())?
+            .insert(
+                capture_id.clone(),
+                PendingImage {
+                    request_id: input.request_id.clone(),
+                    ramble_session_id: input.ramble_session_id.clone(),
+                    contents,
+                },
+            );
+        return Ok(ClipboardCaptureEvent::Image {
+            request_id: input.request_id,
+            ramble_session_id: input.ramble_session_id,
+            capture_id,
+            file_name,
+            captured_at_ms,
+        });
+    }
+
+    if let Ok(text) = clipboard.get_text() {
+        let (text, truncated) = truncate_text(text);
+        if !text.trim().is_empty() {
+            return Ok(ClipboardCaptureEvent::Text {
+                request_id: input.request_id,
+                ramble_session_id: input.ramble_session_id,
+                text,
+                captured_at_ms,
+                truncated,
+            });
+        }
+    }
+
+    Err("剪贴板中没有可导入的文字或图片".to_owned())
 }
 
 #[tauri::command]

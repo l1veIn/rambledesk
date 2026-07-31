@@ -1,0 +1,51 @@
+{
+  "orderId": "ord-readme-banner-001",
+  "status": "delivered",
+  "requestType": "new_asset",
+  "assetType": "readme_banner",
+  "templateId": "official/readme-banner-21x9",
+  "references": [
+    {
+      "type": "order",
+      "orderId": "ord-foundation-001",
+      "role": "character"
+    }
+  ],
+  "brief": {
+    "intent": "README 横幅：零号避难所氛围的宽幅场景，兰贝尔以首席秘书姿态出现（立正、档案板托在胸前），浅色科技感配色，左侧留出可放项目标题的空间，传达「Agent 呼叫你做真实体验反馈，你用 ramble 交回图文结果」的产品语义。",
+    "mustInclude": [
+      "兰贝尔核心剪影：白长发、银白科技军装、透明档案板（全息印章）",
+      "避难所场景：冷白金属内壁、成排休眠舱浅蓝光晕、圆形舱门零号徽章",
+      "浅色主调 + 冰蓝/科技青冷光",
+      "角色位于构图一侧（留白放标题），不要占满全幅",
+      "Cel-shaded + Digital Pop 艺风"
+    ],
+    "avoid": [
+      "复杂 UI 截图",
+      "代码雨/终端元素",
+      "血腥元素",
+      "文字内容本身（横幅不含文字，标题由 README 排版层叠加）"
+    ],
+    "creativeFreedom": []
+  },
+  "deliverables": [
+    {
+      "name": "readme_banner",
+      "format": "png",
+      "width": 1536,
+      "height": 1024
+    }
+  ],
+  "acceptanceCriteria": [
+    "宽幅 21:9 构图，角色在一侧、留出标题空间",
+    "避难所氛围场景（休眠舱/舱门徽章）",
+    "浅色科技感配色",
+    "无 UI 截图、无代码元素、无血腥"
+  ],
+  "priority": "normal",
+  "createdAt": "2026-07-31T09:26:58.221Z",
+  "updatedAt": "2026-07-31T09:42:03.137Z",
+  "candidateVersions": [],
+  "schemaVersion": "repochan.asset-order.v1",
+  "currentVersion": "v2026-07-31T09-42-03-126Z"
+}

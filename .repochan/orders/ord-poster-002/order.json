@@ -1,0 +1,55 @@
+{
+  "orderId": "ord-poster-002",
+  "status": "delivered",
+  "requestType": "new_asset",
+  "assetType": "poster",
+  "templateId": "official/poster-scene",
+  "references": [
+    {
+      "type": "order",
+      "orderId": "ord-foundation-001",
+      "role": "character"
+    }
+  ],
+  "brief": {
+    "intent": "场景海报：兰贝尔的放松时刻——加班后的档案室，她坐在桌沿，白手套摘下一只，双手捧着净水咖啡杯，肩背微微放松，垂眼安静地发呆。展示军人姿态之外的日常温度：琥珀台灯与冷白灯管交替的光，无人打扰的深夜安静。 templateReason: poster-scene：氛围场景海报、无文字、留白适合网页头部；放松日常场景不适合 glitch 数字失真美学",
+    "mustInclude": [
+      "角色为画幅 1/3–1/2，构图留白充足",
+      "放松姿态：坐在桌沿/倚靠档案柜，非立正、非敬礼，重心偏移的自然坐姿",
+      "白长发（可有一缕垂落）、银白科技军装制服、冰蓝眼睛",
+      "档案室环境：透明档案柜、全息投影、桌面档案板",
+      "浅色科技感基调 + 暖琥珀灯光点缀（待命氛围）",
+      "Cel-shaded + Digital Pop 艺风，无文字"
+    ],
+    "avoid": [
+      "立正/敬礼/抱着档案板的正式姿态",
+      "代码符号、终端元素",
+      "血腥元素",
+      "密集杂乱构图"
+    ],
+    "creativeFreedom": [
+      "坐姿细节与光线的表达",
+      "表情：垂眼安静或闭眼小憩"
+    ]
+  },
+  "deliverables": [
+    {
+      "name": "poster",
+      "format": "png",
+      "width": 1536,
+      "height": 1024
+    }
+  ],
+  "acceptanceCriteria": [
+    "角色为放松姿态（非立正/敬礼）",
+    "画幅占比 1/3–1/2，留白充足",
+    "档案室环境 + 浅色基调 + 琥珀暖光",
+    "无文字、无代码符号、无血腥"
+  ],
+  "priority": "normal",
+  "createdAt": "2026-07-31T10:08:55.625Z",
+  "updatedAt": "2026-07-31T10:12:08.377Z",
+  "candidateVersions": [],
+  "schemaVersion": "repochan.asset-order.v1",
+  "currentVersion": "v2026-07-31T10-12-08-367Z"
+}

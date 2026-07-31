@@ -1,0 +1,58 @@
+{
+  "orderId": "ord-chibi4x4-001",
+  "status": "delivered",
+  "requestType": "new_asset",
+  "assetType": "chibi_emojis",
+  "templateId": "official/chibi-grid-4x4",
+  "references": [
+    {
+      "type": "order",
+      "orderId": "ord-foundation-001",
+      "role": "character"
+    },
+    {
+      "type": "file",
+      "path": "references/guide-chibi4x4.png",
+      "role": "composition"
+    }
+  ],
+  "brief": {
+    "intent": "16 格扩展 chibi 表情包（4x4），覆盖 3x3 基础包之外的表情：开心笑、害羞、震惊、困惑、无语、委屈、轻微生气、认真工作、打哈欠、比心、OK 手势、疑问、举手报告、道歉、胜利、嘟嘴。用于聊天与社区场景。",
+    "mustInclude": [
+      "严格 4x4，16 个互不相同的表情/动作",
+      "同一 chibi 角色（白长发/银白制服/冰蓝眼），全格一致",
+      "表情在 emoji 尺寸可读",
+      "纯色 matte 平底，格内四周留白，不越格",
+      "浅色科技感配色"
+    ],
+    "avoid": [
+      "文字/字母/数字/标签",
+      "代码符号",
+      "血腥",
+      "网格线/边框"
+    ],
+    "creativeFreedom": [
+      "16 个表情的具体组合与动作细节"
+    ]
+  },
+  "deliverables": [
+    {
+      "name": "chibi_emoji_sheet",
+      "format": "png",
+      "width": 1024,
+      "height": 1024
+    }
+  ],
+  "acceptanceCriteria": [
+    "严格 4x4，16 个互不相同的表情",
+    "全格同一角色与一致性",
+    "无文字、无代码符号、无血腥",
+    "纯色 matte、留白、不越格"
+  ],
+  "priority": "normal",
+  "createdAt": "2026-07-31T10:33:47.498Z",
+  "updatedAt": "2026-07-31T10:43:11.147Z",
+  "candidateVersions": [],
+  "schemaVersion": "repochan.asset-order.v1",
+  "currentVersion": "v2026-07-31T10-43-11-134Z"
+}

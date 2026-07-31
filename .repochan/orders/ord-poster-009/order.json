@@ -1,0 +1,55 @@
+{
+  "orderId": "ord-poster-009",
+  "status": "delivered",
+  "requestType": "new_asset",
+  "assetType": "poster",
+  "templateId": "official/poster-memphis",
+  "references": [
+    {
+      "type": "order",
+      "orderId": "ord-foundation-001",
+      "role": "character"
+    }
+  ],
+  "brief": {
+    "intent": "孟菲斯海报：活泼的休息时刻——兰贝尔坐在地板上、档案板放在膝上、微微仰头（放松俏皮），周围是折线、拱门、圆点、方块几何分区；角色浅色配色做孟菲斯的撞色（冰蓝/科技青/琥珀在银白底上跳跃）。 templateReason: 用户要求五种艺术风格各一张：memphis",
+    "mustInclude": [
+      "坐地板膝上放档案板的休息姿态（微仰头）",
+      "不对称构图 + 孟菲斯几何分区（折线/拱门/圆点/方块）",
+      "六边形舱门徽章融入几何装饰",
+      "浅色底 + 冰蓝/科技青/琥珀撞色（保持浅色科技感基调）",
+      "选择性立体阴影、扁平形状",
+      "标题 RambleDesk + 副标题 Rambelle（装饰性字体）"
+    ],
+    "avoid": [
+      "立正/敬礼",
+      "代码符号",
+      "血腥",
+      "高饱和荧光撞色（保持浅色系）"
+    ],
+    "creativeFreedom": [
+      "几何分区布局",
+      "孟菲斯元素的组合"
+    ]
+  },
+  "deliverables": [
+    {
+      "name": "poster",
+      "format": "png",
+      "width": 1536,
+      "height": 1024
+    }
+  ],
+  "acceptanceCriteria": [
+    "坐地板休息姿态",
+    "孟菲斯几何美学",
+    "浅色底撞色",
+    "无代码符号、无血腥"
+  ],
+  "priority": "normal",
+  "createdAt": "2026-07-31T11:13:42.337Z",
+  "updatedAt": "2026-07-31T11:26:11.294Z",
+  "candidateVersions": [],
+  "schemaVersion": "repochan.asset-order.v1",
+  "currentVersion": "v2026-07-31T11-26-11-281Z"
+}

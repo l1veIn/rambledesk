@@ -2,6 +2,8 @@
   import { invoke } from '@tauri-apps/api/core'
   import { onMount } from 'svelte'
 
+  import { t } from './lib/i18n'
+  import { locale } from './lib/preferences'
   import {
     normalizeCaptureSelection,
     type CapturePoint,
@@ -122,8 +124,8 @@
   {/if}
 
   <div class="capture-help">
-    <strong>{completing ? '正在写入文档…' : '拖动鼠标框选截图区域'}</strong>
-    <span>Esc 或右键取消 · 完成后自动插入 RambleDesk 文档流</span>
+      <strong>{completing ? t($locale, '正在写入文档…') : t($locale, '拖动鼠标框选截图区域')}</strong>
+      <span>{t($locale, 'Esc 或右键取消 · 完成后自动插入 RambleDesk 文档流')}</span>
   </div>
 
   {#if selection}
@@ -139,9 +141,9 @@
 
   {#if errorMessage}
     <div class="capture-error">
-      <strong>截图工具遇到问题</strong>
+      <strong>{t($locale, '截图工具遇到问题')}</strong>
       <span>{errorMessage}</span>
-      <button onclick={cancel}>关闭</button>
+      <button onclick={cancel}>{t($locale, '关闭')}</button>
     </div>
   {/if}
 </main>

@@ -13,7 +13,9 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@lucide/svelte": "^1.28.0",
     "@tauri-apps/api": "2.11.1",
+    "@tauri-apps/plugin-dialog": "^2.7.2",
     "@tauri-apps/plugin-notification": "2.3.3",
     "@tauri-apps/plugin-opener": "^2.5.4",
     "@tiptap/core": "^3.29.2",

@@ -25,17 +25,22 @@ rambledesk-speech.workspace = true
 rambledesk-storage.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+toml_edit = "0.23"
 tauri.workspace = true
 tauri-plugin-notification = "2.3.3"
 tauri-plugin-global-shortcut = "2.3.2"
 tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 uuid.workspace = true
-
-[target.'cfg(target_os = "windows")'.dependencies]
 arboard = "3.6.1"
 image = { version = "0.25.8", default-features = false, features = ["png"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_DataExchange", "Win32_UI_WindowsAndMessaging"] }
 xcap = "0.9.7"
+
+[dev-dependencies]
+tempfile.workspace = true

@@ -1,0 +1,13 @@
+{
+  "orderId": "ord-webstate-001",
+  "versionId": "v2026-07-31T10-41-31-607Z",
+  "verdict": "revise",
+  "notes": "保留 3x3 固定语义与整体 Digital Pop chibi 风格，但将九格全部统一为清晰的大头/上半身取景（胸口以上为主，脸部在小尺寸清楚可读），统一机位、比例、线宽与光照。所有旧的圆形加数字零徽章必须替换为新版六边形舱门徽章（空心六边形中央、冰蓝冷光边缘），不得出现任何数字或字母。使用纯色、全图一致、与白发和银白制服明显分离的 matte 背景；每格保持约百分之十安全边距，人物和效果不越格。状态动作保持单手主动作，避免复杂道具遮挡脸部。",
+  "reviewerRole": "user",
+  "schemaVersion": "repochan.review.v1",
+  "generatedAt": "2026-07-31T16:01:42.465Z",
+  "provenance": {
+    "tool": "repochan",
+    "action": "review.create"
+  }
+}

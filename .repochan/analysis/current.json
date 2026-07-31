@@ -1,0 +1,952 @@
+{
+  "schemaVersion": "repochan.analysis.v1",
+  "generatedAt": "2026-07-31T08:24:35.124Z",
+  "context": {
+    "basic": {
+      "project_name": "rambledesk",
+      "root_path": "C:\\Users\\A\\Desktop\\rambledesk",
+      "total_files": 91,
+      "total_dirs": 29,
+      "total_lines": 14373,
+      "readme_exists": true,
+      "license_exists": false,
+      "has_git": true,
+      "first_commit_date": "2026-07-29 17:05:09 +0800"
+    },
+    "identity": {
+      "namingSeeds": {
+        "primary": [
+          "rambledesk"
+        ],
+        "secondary": [
+          "rambledesk",
+          "RambleDesk",
+          "一句话定位",
+          "文档",
+          "状态",
+          "本地验证",
+          "Ramble",
+          "Desk",
+          "Agent",
+          "MCP",
+          "ramble",
+          "Markdown",
+          "package",
+          "North",
+          "monorepo",
+          "schema",
+          "Kotone",
+          "macOS",
+          "SQLite",
+          "polling",
+          "Inbox"
+        ],
+        "rationale": [
+          "Repository/product names are the primary naming source for the mascot.",
+          "README headings and domain terms may provide secondary inspiration.",
+          "Documentation or commit-message language is localization metadata only; it must not imply a cultural name or visual era."
+        ]
+      }
+    },
+    "file_structure": {
+      "directories": [
+        "apps",
+        "apps/desktop",
+        "apps/desktop/src",
+        "apps/desktop/src-tauri",
+        "apps/desktop/src-tauri/capabilities",
+        "apps/desktop/src-tauri/gen",
+        "apps/desktop/src-tauri/icons",
+        "apps/desktop/src-tauri/src",
+        "apps/desktop/src/lib",
+        "apps/desktop/src/lib/generated",
+        "crates",
+        "crates/rambledesk-cli",
+        "crates/rambledesk-cli/src",
+        "crates/rambledesk-core",
+        "crates/rambledesk-core/examples",
+        "crates/rambledesk-core/src",
+        "crates/rambledesk-mcp",
+        "crates/rambledesk-mcp/examples",
+        "crates/rambledesk-mcp/src",
+        "crates/rambledesk-mcp/tests",
+        "crates/rambledesk-speech",
+        "crates/rambledesk-speech/models",
+        "crates/rambledesk-speech/src",
+        "crates/rambledesk-storage",
+        "crates/rambledesk-storage/migrations",
+        "crates/rambledesk-storage/src",
+        "docs",
+        "docs/adr",
+        "scripts"
+      ],
+      "files": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "README.md",
+        "THIRD_PARTY_NOTICES.md",
+        "apps/desktop/index.html",
+        "apps/desktop/package.json",
+        "apps/desktop/src-tauri/Cargo.toml",
+        "apps/desktop/src-tauri/build.rs",
+        "apps/desktop/src-tauri/capabilities/capture.json",
+        "apps/desktop/src-tauri/capabilities/default.json",
+        "apps/desktop/src-tauri/icons/128x128.png",
+        "apps/desktop/src-tauri/icons/128x128@2x.png",
+        "apps/desktop/src-tauri/icons/32x32.png",
+        "apps/desktop/src-tauri/icons/64x64.png",
+        "apps/desktop/src-tauri/icons/Square107x107Logo.png",
+        "apps/desktop/src-tauri/icons/Square142x142Logo.png",
+        "apps/desktop/src-tauri/icons/Square150x150Logo.png",
+        "apps/desktop/src-tauri/icons/Square284x284Logo.png",
+        "apps/desktop/src-tauri/icons/Square30x30Logo.png",
+        "apps/desktop/src-tauri/icons/Square310x310Logo.png",
+        "apps/desktop/src-tauri/icons/Square44x44Logo.png",
+        "apps/desktop/src-tauri/icons/Square71x71Logo.png",
+        "apps/desktop/src-tauri/icons/Square89x89Logo.png",
+        "apps/desktop/src-tauri/icons/StoreLogo.png",
+        "apps/desktop/src-tauri/icons/app-icon.svg",
+        "apps/desktop/src-tauri/icons/icon.icns",
+        "apps/desktop/src-tauri/icons/icon.ico",
+        "apps/desktop/src-tauri/icons/icon.png",
+        "apps/desktop/src-tauri/src/lib.rs",
+        "apps/desktop/src-tauri/src/main.rs",
+        "apps/desktop/src-tauri/src/screen_capture.rs",
+        "apps/desktop/src-tauri/tauri.conf.json",
+        "apps/desktop/src/App.svelte",
+        "apps/desktop/src/app.css",
+        "apps/desktop/src/lib/RichFeedbackEditor.svelte",
+        "apps/desktop/src/lib/attachmentMarkdown.test.ts",
+        "apps/desktop/src/lib/attachmentMarkdown.ts",
+        "apps/desktop/src/lib/feedback.test.ts",
+        "apps/desktop/src/lib/feedback.ts",
+        "apps/desktop/src/lib/generated/feedback.ts",
+        "apps/desktop/src/lib/generated/health.ts",
+        "apps/desktop/src/lib/nativePath.test.ts",
+        "apps/desktop/src/lib/nativePath.ts",
+        "apps/desktop/src/lib/notifications.test.ts",
+        "apps/desktop/src/lib/notifications.ts",
+        "apps/desktop/src/lib/speech.test.ts",
+        "apps/desktop/src/lib/speech.ts",
+        "apps/desktop/src/lib/status.test.ts",
+        "apps/desktop/src/lib/status.ts",
+        "apps/desktop/src/main.ts",
+        "apps/desktop/svelte.config.js",
+        "apps/desktop/tsconfig.json",
+        "apps/desktop/vite.config.ts",
+        "crates/rambledesk-cli/Cargo.toml",
+        "crates/rambledesk-cli/src/main.rs",
+        "crates/rambledesk-core/Cargo.toml",
+        "crates/rambledesk-core/examples/export_types.rs",
+        "crates/rambledesk-core/src/feedback.rs",
+        "crates/rambledesk-core/src/lib.rs",
+        "crates/rambledesk-core/src/workspace.rs",
+        "crates/rambledesk-mcp/Cargo.toml",
+        "crates/rambledesk-mcp/src/lib.rs",
+        "crates/rambledesk-mcp/src/token.rs",
+        "crates/rambledesk-mcp/tests/http_security.rs",
+        "crates/rambledesk-speech/Cargo.toml",
+        "crates/rambledesk-speech/models/sherpa-x-asr.json",
+        "crates/rambledesk-speech/models/whisper-tiny.json",
+        "crates/rambledesk-speech/src/lib.rs",
+        "crates/rambledesk-storage/Cargo.toml",
+        "crates/rambledesk-storage/migrations/0001_feedback_foundation.sql",
+        "crates/rambledesk-storage/migrations/0002_submission_plans.sql",
+        "crates/rambledesk-storage/migrations/0003_attachments.sql",
+        "crates/rambledesk-storage/src/lib.rs",
+        "crates/rambledesk-storage/src/package.rs",
+        "crates/rambledesk-storage/src/platform.rs",
+        "crates/rambledesk-storage/src/sqlite.rs",
+        "docs/ARCHITECTURE.md",
+        "docs/COMPATIBILITY.md",
+        "docs/CONSTITUTION.md",
+        "docs/DEVELOPMENT.md",
+        "docs/INTERVIEW.md",
+        "docs/KOTONE_REUSE.md",
+        "docs/PRODUCT.md",
+        "docs/PROTOCOL.md",
+        "docs/adr/001-apps-crates-monorepo.md",
+        "docs/adr/002-incremental-voice-ramble.md",
+        "package.json",
+        "pnpm-lock.yaml",
+        "pnpm-workspace.yaml",
+        "rust-toolchain.toml",
+        "scripts/mcp-inspector-smoke.sh"
+      ],
+      "top_level_dirs": [
+        "apps",
+        "crates",
+        "docs",
+        "scripts"
+      ],
+      "entry_points": [],
+      "config_files": [
+        "Cargo.toml",
+        "apps/desktop/package.json",
+        "apps/desktop/src-tauri/Cargo.toml",
+        "apps/desktop/tsconfig.json",
+        "apps/desktop/vite.config.ts",
+        "crates/rambledesk-cli/Cargo.toml",
+        "crates/rambledesk-core/Cargo.toml",
+        "crates/rambledesk-mcp/Cargo.toml",
+        "crates/rambledesk-speech/Cargo.toml",
+        "crates/rambledesk-storage/Cargo.toml",
+        "package.json"
+      ]
+    },
+    "inventory": {
+      "top_level_dirs": [
+        "apps",
+        "crates",
+        "docs",
+        "scripts"
+      ],
+      "docs": [
+        "README.md",
+        "crates/rambledesk-core/examples/export_types.rs",
+        "docs/ARCHITECTURE.md",
+        "docs/COMPATIBILITY.md",
+        "docs/CONSTITUTION.md",
+        "docs/DEVELOPMENT.md",
+        "docs/INTERVIEW.md",
+        "docs/KOTONE_REUSE.md",
+        "docs/PRODUCT.md",
+        "docs/PROTOCOL.md",
+        "docs/adr/001-apps-crates-monorepo.md",
+        "docs/adr/002-incremental-voice-ramble.md"
+      ],
+      "tests": [
+        "apps/desktop/src/lib/attachmentMarkdown.test.ts",
+        "apps/desktop/src/lib/feedback.test.ts",
+        "apps/desktop/src/lib/nativePath.test.ts",
+        "apps/desktop/src/lib/notifications.test.ts",
+        "apps/desktop/src/lib/speech.test.ts",
+        "apps/desktop/src/lib/status.test.ts",
+        "crates/rambledesk-mcp/tests/http_security.rs"
+      ],
+      "visual_assets": [
+        "apps/desktop/src-tauri/icons/128x128.png",
+        "apps/desktop/src-tauri/icons/128x128@2x.png",
+        "apps/desktop/src-tauri/icons/32x32.png",
+        "apps/desktop/src-tauri/icons/64x64.png",
+        "apps/desktop/src-tauri/icons/Square107x107Logo.png",
+        "apps/desktop/src-tauri/icons/Square142x142Logo.png",
+        "apps/desktop/src-tauri/icons/Square150x150Logo.png",
+        "apps/desktop/src-tauri/icons/Square284x284Logo.png",
+        "apps/desktop/src-tauri/icons/Square30x30Logo.png",
+        "apps/desktop/src-tauri/icons/Square310x310Logo.png",
+        "apps/desktop/src-tauri/icons/Square44x44Logo.png",
+        "apps/desktop/src-tauri/icons/Square71x71Logo.png",
+        "apps/desktop/src-tauri/icons/Square89x89Logo.png",
+        "apps/desktop/src-tauri/icons/StoreLogo.png",
+        "apps/desktop/src-tauri/icons/app-icon.svg",
+        "apps/desktop/src-tauri/icons/icon.ico",
+        "apps/desktop/src-tauri/icons/icon.png",
+        "apps/desktop/src/app.css"
+      ],
+      "counts": {
+        "docs": 12,
+        "tests": 7,
+        "visual_assets": 18
+      },
+      "has_examples": true,
+      "has_ci": false
+    },
+    "tech_stack": {
+      "project_type": "rust",
+      "languages": {
+        ".rs": 17,
+        ".ts": 16,
+        ".png": 15,
+        ".md": 12,
+        ".toml": 8,
+        ".json": 8,
+        ".sql": 3,
+        ".svelte": 2,
+        ".yaml": 2,
+        ".lock": 1,
+        ".html": 1,
+        ".svg": 1,
+        ".icns": 1,
+        ".ico": 1,
+        ".css": 1,
+        ".js": 1,
+        ".sh": 1
+      },
+      "frameworks": [
+        "Node.js",
+        "TypeScript",
+        "Vite",
+        "Svelte",
+        "Rust/Cargo"
+      ],
+      "build_system": "package.json",
+      "package_manager": "pnpm",
+      "manifests": {
+        "package_json": {
+          "name": "rambledesk",
+          "scripts": [
+            "build",
+            "build:web",
+            "check",
+            "clippy",
+            "contracts:check",
+            "contracts:generate",
+            "dev",
+            "dev:web",
+            "format:check",
+            "mcp:inspector-smoke",
+            "mcp:self-test",
+            "test",
+            "test:rust"
+          ],
+          "dependencies": [],
+          "devDependencies": []
+        }
+      }
+    },
+    "pre_analysis": {
+      "project_category": "web_app",
+      "summary": "rambledesk is a rust project using Node.js with 91 files.",
+      "language_focus": ".rs",
+      "core_paths": [],
+      "exclude_hints": [
+        ".git",
+        "__pycache__",
+        "node_modules",
+        ".venv",
+        "venv",
+        ".DS_Store",
+        "dist",
+        "build",
+        ".egg-info",
+        "target",
+        ".next",
+        ".nuxt",
+        "coverage"
+      ],
+      "needs_ui_assets": true,
+      "asset_recommendations": [
+        {
+          "category": "brand_assets",
+          "reason": "UI/frontend or visual source files detected",
+          "quantity": 3
+        }
+      ],
+      "analysis_focus": [
+        "code_style",
+        "architecture",
+        "product_philosophy",
+        "tech_choices",
+        "team_culture"
+      ],
+      "requested_sections": []
+    },
+    "git_profile": {
+      "has_git": true,
+      "branch": "main",
+      "dirty": true,
+      "dirty_file_count": 44,
+      "remotes": [
+        "origin\thttps://github.com/l1veIn/rambledesk (fetch)",
+        "origin\thttps://github.com/l1veIn/rambledesk (push)"
+      ],
+      "total_commits": 8,
+      "total_authors": 2,
+      "first_commit_date": "2026-07-29 17:05:09 +0800",
+      "last_commit_date": "2026-07-29 22:33:54 +0800",
+      "commits_per_week": 8,
+      "commits_per_author": 4,
+      "night_commit_ratio": 0.25,
+      "weekend_commit_ratio": 0,
+      "busiest_hour": 17,
+      "avg_files_per_commit": 16.8,
+      "avg_lines_per_commit": 2182.8,
+      "merge_commit_ratio": 0,
+      "top_changed_files": [
+        {
+          "file": "README.md",
+          "commits": 7,
+          "lines": 17461
+        },
+        {
+          "file": "docs/DEVELOPMENT.md",
+          "commits": 5,
+          "lines": 17039
+        },
+        {
+          "file": "docs/PROTOCOL.md",
+          "commits": 4,
+          "lines": 16303
+        },
+        {
+          "file": "Cargo.lock",
+          "commits": 4,
+          "lines": 15302
+        },
+        {
+          "file": "apps/desktop/src-tauri/src/lib.rs",
+          "commits": 4,
+          "lines": 15302
+        },
+        {
+          "file": "apps/desktop/src/App.svelte",
+          "commits": 4,
+          "lines": 15302
+        },
+        {
+          "file": "crates/rambledesk-core/src/lib.rs",
+          "commits": 3,
+          "lines": 14566
+        },
+        {
+          "file": "crates/rambledesk-mcp/tests/http_security.rs",
+          "commits": 3,
+          "lines": 14566
+        },
+        {
+          "file": "crates/rambledesk-storage/Cargo.toml",
+          "commits": 3,
+          "lines": 14566
+        },
+        {
+          "file": "crates/rambledesk-storage/src/lib.rs",
+          "commits": 3,
+          "lines": 14566
+        },
+        {
+          "file": "docs/COMPATIBILITY.md",
+          "commits": 3,
+          "lines": 14566
+        },
+        {
+          "file": "apps/desktop/src/app.css",
+          "commits": 3,
+          "lines": 12368
+        },
+        {
+          "file": "crates/rambledesk-cli/src/main.rs",
+          "commits": 3,
+          "lines": 11158
+        },
+        {
+          "file": "docs/PRODUCT.md",
+          "commits": 3,
+          "lines": 5566
+        },
+        {
+          "file": "docs/ARCHITECTURE.md",
+          "commits": 3,
+          "lines": 5091
+        }
+      ],
+      "commit_message_themes": {
+        "feat": 4,
+        "docs": 2,
+        "fix": 1,
+        "initial": 1
+      },
+      "recent_commits": [
+        {
+          "hash": "2b3cc78d",
+          "date": "2026-07-29 22:33:54 +0800",
+          "message_summary": "feat: add opt-in desktop notifications"
+        },
+        {
+          "hash": "e073b79c",
+          "date": "2026-07-29 22:12:12 +0800",
+          "message_summary": "feat: add text feedback workbench loop"
+        },
+        {
+          "hash": "b6d83750",
+          "date": "2026-07-29 21:26:05 +0800",
+          "message_summary": "feat: add persistent feedback request kernel"
+        },
+        {
+          "hash": "183e2507",
+          "date": "2026-07-29 20:33:54 +0800",
+          "message_summary": "fix: keep CLI status output machine-readable"
+        },
+        {
+          "hash": "e8199377",
+          "date": "2026-07-29 19:27:29 +0800",
+          "message_summary": "feat: complete M0 foundation"
+        },
+        {
+          "hash": "8502cbff",
+          "date": "2026-07-29 19:04:47 +0800",
+          "message_summary": "docs: establish RambleDesk development baseline"
+        },
+        {
+          "hash": "246ca065",
+          "date": "2026-07-29 17:06:44 +0800",
+          "message_summary": "docs: product spec, architecture outline, and design interview notes"
+        },
+        {
+          "hash": "e7c786f8",
+          "date": "2026-07-29 17:05:09 +0800",
+          "message_summary": "Initial commit"
+        }
+      ]
+    },
+    "docs_narrative": {
+      "readme_exists": true,
+      "path": "README.md",
+      "headings": [
+        "RambleDesk",
+        "一句话定位",
+        "文档",
+        "状态",
+        "本地验证",
+        "许可证"
+      ],
+      "opening_excerpt": "# RambleDesk 面向 Agent 的本地体验式反馈工作台。 Agent 通过本地 MCP 下发结构化请求；人类按清单真实使用、自由 ramble、配截图； 反馈以带图 Markdown package 回传，Agent 在原任务中继续迭代。 ## 一句话定位 > Agent 呼叫你做真实使用反馈，你用 ramble 交回图文结果。 ## 文档 | 文档 | 说明 | |------|------| | [产品宪章](docs/CONSTITUTION.md) | North Star、不可妥协原则、User_0 边界 | | [产品文档](docs/PRODUCT.md) | 背景、问题、方案、范围、非目标、主流程、信息架构、恢复机制 | | [架构基线](docs/ARCHITECTURE.md) | apps/crates monorepo、组件边界、运行时与一致性 | | [MCP 与反馈协议](docs/PROTOCOL.md) | 工具 schema、幂等性、状态、错误与安全 | | [开发计划](docs/DEVELOPMENT.md) | 技术栈、数据基线、里程碑和验收门 | | [MCP 兼容矩阵](docs/COMPATIBILITY.md) | M0 实测客户端、协议、认证与执行模式 | | [Kotone 复用审计](docs/KOTONE_REUSE.md) | 可迁移语音组件、必须修改项与许可证门禁 | | [设计访谈纪要](docs/INTERVIEW.md) | 历史决策上下文，不作为现行规范 | ## 状态 M0 技术与协议尖峰已完成。M1 已在 macOS 完成验收，并落地 SQLite 持久请求内核、 `request_feedback/get_feedback/cancel_feedback` polling 工具、Inbox"
+    },
+    "github_meta": {},
+    "color_palette": {
+      "source_files": [
+        "apps/desktop/src-tauri/icons/app-icon.svg",
+        "apps/desktop/src/app.css"
+      ],
+      "colors": [
+        "#7b8179",
+        "#ffffff",
+        "#315c3b",
+        "#d9d9cf",
+        "#d1d3ca",
+        "#648164",
+        "#fbfbf7",
+        "#f2f1eb",
+        "#f8fff5",
+        "#a2aaa1",
+        "#71806f",
+        "#e0e1da",
+        "#a43f34",
+        "#dbb2aa",
+        "#fff5f2",
+        "#727a70",
+        "#d5d7ce",
+        "#334155",
+        "#0f172a",
+        "#f8fafc",
+        "#182018",
+        "#254f33",
+        "#657064",
+        "#3b9952",
+        "#5d675c",
+        "#bfd2bd",
+        "#315d39",
+        "#e6efe3",
+        "#e6e7df",
+        "#6d756b",
+        "#b8cab6",
+        "#577056",
+        "#8a8e86",
+        "#435043",
+        "#526050",
+        "#858a82",
+        "#4f654f",
+        "#e2eadf",
+        "#586157",
+        "#d8d9d1",
+        "#cbd6c8",
+        "#486047",
+        "#343b33",
+        "#d7d8d0",
+        "#f8f8f4",
+        "#9fbc9d",
+        "#eff6ec",
+        "#aeb3aa",
+        "#bf4438",
+        "#dfe3dc",
+        "#81907f",
+        "#344334",
+        "#bb6c61",
+        "#8a342d",
+        "#fff8f6",
+        "#cbd3c7",
+        "#f7f8f3",
+        "#963d34",
+        "#898e86",
+        "#e1e3dc",
+        "#bad1b9",
+        "#edf6e9",
+        "#617160",
+        "#7c827a",
+        "#3f493e",
+        "#cdd2c9",
+        "#7b3029",
+        "#697167",
+        "#d8dad2",
+        "#344132",
+        "#f0f2eb"
+      ],
+      "color_counts": {
+        "#7b8179": 5,
+        "#ffffff": 5,
+        "#315c3b": 5,
+        "#d9d9cf": 3,
+        "#d1d3ca": 3,
+        "#648164": 3,
+        "#fbfbf7": 3,
+        "#f2f1eb": 2,
+        "#f8fff5": 2,
+        "#a2aaa1": 2,
+        "#71806f": 2,
+        "#e0e1da": 2,
+        "#a43f34": 2,
+        "#dbb2aa": 2,
+        "#fff5f2": 2,
+        "#727a70": 2,
+        "#d5d7ce": 2,
+        "#334155": 1,
+        "#0f172a": 1,
+        "#f8fafc": 1,
+        "#182018": 1,
+        "#254f33": 1,
+        "#657064": 1,
+        "#3b9952": 1,
+        "#5d675c": 1,
+        "#bfd2bd": 1,
+        "#315d39": 1,
+        "#e6efe3": 1,
+        "#e6e7df": 1,
+        "#6d756b": 1
+      },
+      "top_colors": [
+        {
+          "color": "#7b8179",
+          "count": 5,
+          "sources": [
+            "apps/desktop/src/app.css"
+          ]
+        },
+        {
+          "color": "#ffffff",
+          "count": 5,
+          "sources": [
+            "apps/desktop/src/app.css"
+          ]
+        },
+        {
+          "color": "#315c3b",
+          "count": 5,
+          "sources": [
+            "apps/desktop/src/app.css"
+          ]
+        },
+        {
+          "color": "#d9d9cf",
+          "count": 3,
+          "sources": [
+            "apps/desktop/src/app.css"
+          ]
+        },
+        {
+          "color": "#d1d3ca",
+          "count": 3,
+          "sources": [
+            "apps/desktop/src/app.css"
+          ]
+        },
+        {
+          "color": "#648164",
+          "count": 3,
+          "sources": [
+            "apps/desktop/src/app.css"
+          ]
+        },
+        {
+          "color": "#fbfbf7",
+          "count": 3,
+          "sources": [
+            "apps/desktop/src/app.css"
+          ]
+        },
+        {
+          "color": "#f2f1eb",
+          "count": 2,
+          "sources": [
+            "apps/desktop/src/app.css"
+          ]
+        },
+        {
+          "color": "#f8fff5",
+          "count": 2,
+          "sources": [
+            "apps/desktop/src/app.css"
+          ]
+        },
+        {
+          "color": "#a2aaa1",
+          "count": 2,
+          "sources": [
+            "apps/desktop/src/app.css"
+          ]
+        },
+        {
+          "color": "#71806f",
+          "count": 2,
+          "sources": [
+            "apps/desktop/src/app.css"
+          ]
+        },
+        {
+          "color": "#e0e1da",
+          "count": 2,
+          "sources": [
+            "apps/desktop/src/app.css"
+          ]
+        }
+      ],
+      "primary_candidates": [
+        "#7b8179",
+        "#315c3b",
+        "#d9d9cf"
+      ],
+      "secondary_candidates": [
+        "#315c3b"
+      ],
+      "accent_candidates": [
+        "#d1d3ca",
+        "#648164",
+        "#fbfbf7"
+      ],
+      "neutral_candidates": {
+        "light": [
+          "#ffffff"
+        ],
+        "dark": []
+      },
+      "total_extracted": 101,
+      "total_unique": 71,
+      "scanned_file_count": 18
+    },
+    "core_samples": {
+      "sampled_files": [
+        {
+          "path": "apps/desktop/src/App.svelte",
+          "language": "svelte",
+          "size": 34792,
+          "content_snippet": "<script lang=\"ts\">\r\n  import { invoke } from '@tauri-apps/api/core'\n  import { listen } from '@tauri-apps/api/event'\n  import { getCurrentWebview } from '@tauri-apps/api/webview'\n  import {\n    isPermissionGranted,\n    requestPermission,\n    sendNotification,\n  } from '@tauri-apps/plugin-notification'\n  import { revealItemInDir } from '@tauri-apps/plugin-opener'\n  import { onMount, tick } from 'svelte'\n\n  import RichFeedbackEditor from './lib/RichFeedbackEditor.svelte'\n  import type {\n    AddAttachmentInput,\n    AttachmentView,\n    DraftView,\n    FeedbackRequestSummary,\r\n    FeedbackRequestView,\n    FeedbackWorkspaceView,\n    ListFeedbackRequestsOutput,\n    RemoveAttachmentInput,\n    ReorderAttachmentsInput,\n    SaveDraftInput,\r\n    SubmitFeedbackInput,\r\n  } from './lib/feedback'\r\n  import { requestStatusLabel } from './lib/feedback'\r\n  import type { HealthSnapshot } from './lib/generated/health'\r\n  import {\r\n    InboxNotificationTracker,\r\n    notificationLabel,\r\n    type NotificationState,\r\n  } from './lib/notifications'\n  import { desktopPath } from './lib/nativePath'\n  import {\n    eventBelongsToVoiceSession,\n    stableTranscript,\n    type SpeechEvent,\n    type VoiceRambleSessionView,\n  } from './lib/speech'\n\n  type SavePhase = 'idle' | 'unsaved' | 'saving' | 'saved' | 'error'\n  type VoicePhase = 'idle' | 'starting' | 'listening' | 'processing' | 'stopping' | 'error'\n  type CommandError = { code: string; message: string; retryable: boolean }\r\n\r\n  let health: HealthSnapshot | null = null\r\n  let endpoint = '正在连接…'\r\n  let inbox: FeedbackRequestSummary[] = []\n  let history: FeedbackRequestSummary[] = []\n  let inboxMode: 'open' | 'history' = 'open'\n  let workspace: FeedbackWorkspaceView | null = null\r\n  let completedResult: FeedbackRequestView | null = null\r\n  let draftBody = ''\r\n  let savedBody = ''\r\n  let savedRevision = 0\r\n  let savePhase: SavePhase = 'idle'\r\n  let saveMessage = ''\r\n  let pageError = ''\r\n  let loadingInbox = true\n  let loadingHistory = false\n  let loadingWorkspace = false\r\n  let submitting = false\n  let attachmentBusy = false\n  let attachmentMessage = ''\n  let attachmentPreviews: Record<string, string> = {}\n  let dragActive = false\n  let attachmentInput: HTMLInputElement\n  let richEditor: RichFeedbackEditor\n  let notificationState: NotificationState = 'checking'\n  let settingsOpen = false\n  let mcpConfiguration = ''\n  let voicePhase: VoicePhase = 'idle'\n  let voiceRequestId = ''\n  let voiceSessionId = ''\n  let voiceDevice = ''\n  let voicePartial = ''\n  let voiceMessage = ''\n  let voiceLevel = 0\n  let voiceChunkIndex = 0\n  let copyState: 'idle' | 'copied' | 'error' = 'idle'\n  let saveTimer: ReturnType<typeof setTimeout> | undefined\r\n  let inboxTimer: ReturnType<typeof setInterval> | undefined\r\n  let activeSave: Promise<boolean> | null = null\r\n  const notificationTracker = new InboxNotificationTracker()\r\n\r\n  $: dirty = workspace !== null && draftBody !== savedBody\n  $: displayedRequests = inboxMode === 'open' ? inbox : history\n  $\n... (file 34792 chars, truncated to 3000)"
+        },
+        {
+          "path": "crates/rambledesk-speech/src/lib.rs",
+          "language": "rust",
+          "size": 21092,
+          "content_snippet": "use serde::{Deserialize, Serialize};\nuse std::{path::PathBuf, sync::Arc, time::Duration};\nuse thiserror::Error;\n\npub const SPEECH_SAMPLE_RATE: u32 = 16_000;\n\npub type SpeechEventSink = Arc<dyn Fn(SpeechEvent) + Send + Sync + 'static>;\n\n#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]\n#[serde(rename_all = \"snake_case\")]\npub enum SpeechProvider {\n    SherpaOnline,\n}\n\nimpl SpeechProvider {\n    pub const fn id(self) -> &'static str {\n        match self {\n            Self::SherpaOnline => \"sherpa_online\",\n        }\n    }\n}\n\n#[derive(Debug, Clone)]\npub struct SpeechSessionConfig {\n    pub request_id: String,\n    pub session_id: String,\n    pub model_path: PathBuf,\n}\n\n#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]\n#[serde(tag = \"type\", rename_all = \"snake_case\")]\npub enum SpeechEvent {\n    Started {\n        request_id: String,\n        session_id: String,\n        input_device: String,\n        provider: String,\n    },\n    Partial {\n        request_id: String,\n        session_id: String,\n        text: String,\n    },\n    Level {\n        request_id: String,\n        session_id: String,\n        rms: f32,\n    },\n    Processing {\n        request_id: String,\n        session_id: String,\n        chunk_index: u64,\n    },\n    Stable {\n        request_id: String,\n        session_id: String,\n        chunk_index: u64,\n        text: String,\n    },\n    Warning {\n        request_id: String,\n        session_id: String,\n        code: String,\n        message: String,\n    },\n    Stopped {\n        request_id: String,\n        session_id: String,\n    },\n    Error {\n        request_id: String,\n        session_id: String,\n        code: String,\n        message: String,\n    },\n}\n\n#[derive(Debug, Error)]\npub enum SpeechError {\n    #[error(\"无法加载语音模型：{0}\")]\n    ModelLoad(String),\n    #[error(\"Sherpa 模型目录不完整：{0}\")]\n    ModelIncomplete(String),\n    #[error(\"没有可用的麦克风输入设备\")]\n    NoInputDevice,\n    #[error(\"无法读取麦克风配置：{0}\")]\n    InputConfiguration(String),\n    #[error(\"暂不支持麦克风采样格式：{0}\")]\n    UnsupportedSampleFormat(String),\n    #[error(\"无法启动麦克风：{0}\")]\n    InputStream(String),\n    #[error(\"语音识别工作线程异常退出\")]\n    WorkerPanicked,\n    #[error(\"当前平台尚未实现本地语音识别\")]\n    UnsupportedPlatform,\n}\n\n#[derive(Clone)]\nstruct EventIdentity {\n    request_id: String,\n    session_id: String,\n}\n\nimpl From<&SpeechSessionConfig> for EventIdentity {\n    fn from(config: &SpeechSessionConfig) -> Self {\n        Self {\n            request_id: config.request_id.clone(),\n            session_id: config.session_id.clone(),\n        }\n    }\n}\n\npub fn resample_linear(input: &[f32], source_rate: u32, target_rate: u32) -> Vec<f32> {\n    if input.is_empty() || source_rate == 0 || target_rate == 0 {\n        return Vec::new();\n    }\n    if source_rate == target_rate {\n        return input.to_vec();\n    }\n\n    let output_len = ((input.len() as u64 * target_rate as u64) / source_rate as u64) as usize;\n    if output_len == 0 {\n        return Vec::new();\n    }\n    let ratio = source_rate as f64 / target_rate\n... (file 21092 chars, truncated to 3000)"
+        },
+        {
+          "path": "crates/rambledesk-core/src/feedback.rs",
+          "language": "rust",
+          "size": 20703,
+          "content_snippet": "use std::{collections::HashSet, path::Path, sync::Arc};\n\nuse async_trait::async_trait;\nuse schemars::JsonSchema;\nuse serde::{Deserialize, Serialize};\nuse sha2::{Digest, Sha256};\nuse thiserror::Error;\nuse time::{OffsetDateTime, format_description::well_known::Rfc3339};\nuse ts_rs::TS;\nuse uuid::Uuid;\n\nuse crate::workspace::{\n    DraftView, FeedbackPackagePublisher, FeedbackRequestQuery, FeedbackRequestSummary,\n    NewAttachment, PublishedFeedbackPackage, StoredFeedbackWorkspace, SubmissionPlan,\n};\n\nconst DEFAULT_POLL_AFTER_MS: u64 = 30_000;\n\n#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]\npub struct ProjectInput {\n    pub project_id: Option<String>,\n    pub name: String,\n    pub root_path: Option<String>,\n}\n\n#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]\npub struct ActionInput {\n    pub id: String,\n    pub instruction: String,\n}\n\n#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]\npub struct ContextRef {\n    pub label: String,\n    pub uri: String,\n}\n\n#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]\npub struct RequestFeedbackInput {\n    pub request_id: Option<String>,\n    pub agent: String,\n    pub session_id: String,\n    pub project: ProjectInput,\n    pub what_happened: String,\n    pub actions: Vec<ActionInput>,\n    #[serde(default)]\n    pub context_refs: Vec<ContextRef>,\n}\n\n#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]\npub struct GetFeedbackInput {\n    pub request_id: String,\n}\n\n#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]\npub struct CancelFeedbackInput {\n    pub request_id: String,\n    pub reason: String,\n}\n\n#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]\n#[serde(rename_all = \"snake_case\")]\n#[ts(rename_all = \"snake_case\")]\npub enum FeedbackStatus {\n    Waiting,\n    InProgress,\n    Completed,\n    Cancelled,\n}\n\nimpl FeedbackStatus {\n    pub fn as_str(self) -> &'static str {\n        match self {\n            Self::Waiting => \"waiting\",\n            Self::InProgress => \"in_progress\",\n            Self::Completed => \"completed\",\n            Self::Cancelled => \"cancelled\",\n        }\n    }\n}\n\nimpl TryFrom<&str> for FeedbackStatus {\n    type Error = RepositoryError;\n\n    fn try_from(value: &str) -> Result<Self, Self::Error> {\n        match value {\n            \"waiting\" => Ok(Self::Waiting),\n            \"in_progress\" => Ok(Self::InProgress),\n            \"completed\" => Ok(Self::Completed),\n            \"cancelled\" => Ok(Self::Cancelled),\n            _ => Err(RepositoryError::CorruptData),\n        }\n    }\n}\n\n#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]\n#[serde(rename_all = \"snake_case\")]\n#[ts(rename_all = \"snake_case\")]\npub enum ExecutionMode {\n    Poll,\n}\n\n#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]\npub struct FeedbackResultView {\n    pub package_uri: String,\n    pub directory_path:\n... (file 20703 chars, truncated to 3000)"
+        },
+        {
+          "path": "apps/desktop/src-tauri/src/lib.rs",
+          "language": "rust",
+          "size": 20327,
+          "content_snippet": "mod screen_capture;\n\nuse rambledesk_core::{\n    AddAttachmentInput, ApplicationError, DraftView, FeedbackApplication, FeedbackRequestSummary,\n    FeedbackRequestView, FeedbackStatus, FeedbackWorkspaceView, HealthSnapshot,\n    ListFeedbackRequestsInput, ListFeedbackRequestsOutput, MAX_ATTACHMENT_BYTES,\n    RemoveAttachmentInput, ReorderAttachmentsInput, SaveDraftInput, SubmitFeedbackInput,\n};\nuse rambledesk_mcp::{AccessToken, ServerConfig, ServerHandle, default_token_path, start_server};\nuse rambledesk_speech::{\n    SpeechEvent, SpeechEventSink, SpeechProvider, SpeechSession, SpeechSessionConfig,\n};\nuse serde::{Deserialize, Serialize};\nuse std::{\n    path::PathBuf,\n    sync::{\n        Arc,\n        atomic::{AtomicU32, Ordering},\n    },\n};\nuse tauri::{\n    Emitter, Manager, \n... (file 20327 chars, truncated to 3000)\n... (overall sample truncated)"
+        },
+        {
+          "path": "crates/rambledesk-core/src/workspace.rs",
+          "language": "rust",
+          "size": 17716,
+          "content_snippet": "use async_trait::async_trait;\nuse schemars::JsonSchema;\nuse serde::{Deserialize, Serialize};\nuse sha2::{Digest, Sha256};\nuse ts_rs::TS;\n\nuse crate::{\n    ActionInput, ApplicationError, ContextRef, Fee\n... (file 17716 chars, truncated to 3000)\n... (overall sample truncated)"
+        }
+      ],
+      "total_sampled_lines": 356,
+      "redactions_applied": 0,
+      "deterministic_limits": {
+        "max_files": 8,
+        "max_total_chars": 10000,
+        "per_file_chars": 3000
+      }
+    },
+    "deterministic_tooling": {
+      "note": "Generated by repochan action analysis.run; use this artifact instead of ad-hoc scripts for git stats, color extraction, file sampling, desensitization, and tech-stack detection.",
+      "capabilities": [
+        "file_walk",
+        "git_profile",
+        "color_extraction",
+        "tech_stack_detection",
+        "desensitized_core_sampling",
+        "docs_summary",
+        "inventory_counts"
+      ]
+    },
+    "abstract": {
+      "dimensions": [
+        {
+          "dimension": "code_style",
+          "summary": "Repository shows explicit formatting/linting conventions and machine-checkable style intent.",
+          "keywords": [
+            "linted",
+            ".rs",
+            ".ts",
+            ".png",
+            ".md",
+            ".toml"
+          ],
+          "score": 0.75
+        },
+        {
+          "dimension": "architecture",
+          "summary": "Project is organized as a web_app with 91 analyzed source/artifact files and 4 top-level directories.",
+          "keywords": [
+            "apps",
+            "crates",
+            "docs",
+            "scripts"
+          ],
+          "score": 0.65
+        },
+        {
+          "dimension": "product_philosophy",
+          "summary": "rambledesk is a rust project using Node.js with 91 files.",
+          "keywords": [
+            "web_app",
+            "rust"
+          ],
+          "score": 0.62
+        },
+        {
+          "dimension": "tech_choices",
+          "summary": "Detected stack: Node.js, TypeScript, Vite, Svelte, Rust/Cargo.",
+          "keywords": [
+            "Node.js",
+            "TypeScript",
+            "Vite",
+            "Svelte",
+            "Rust/Cargo"
+          ],
+          "score": 0.7
+        },
+        {
+          "dimension": "team_culture",
+          "summary": "Tests or specs indicate a verification-oriented engineering culture.",
+          "keywords": [
+            "testing",
+            "git history"
+          ],
+          "score": 0.72
+        }
+      ],
+      "overall_impression": "rambledesk presents as a web_app with rust foundations and 8 analyzed commits."
+    }
+  },
+  "persona": null,
+  "error": null,
+  "preAnalysis": {
+    "project_category": "desktop_app",
+    "summary": "面向 AI Agent 的本地体验式反馈工作台：Agent 通过本地 MCP 下发结构化反馈请求，人类按动作清单真实使用、自由 ramble（文字+语音+截图），以带图 Markdown package 回传，让 Agent 基于真实体验在同一任务中继续迭代。",
+    "language_focus": "中文（产品文档与 UI）",
+    "core_paths": [
+      "crates/rambledesk-core/src/feedback.rs",
+      "crates/rambledesk-core/src/workspace.rs",
+      "apps/desktop/src/App.svelte",
+      "apps/desktop/src-tauri/src/lib.rs",
+      "crates/rambledesk-mcp/src/lib.rs",
+      "crates/rambledesk-storage/src/sqlite.rs",
+      "crates/rambledesk-speech/src/lib.rs",
+      "docs/CONSTITUTION.md"
+    ],
+    "exclude_hints": [
+      ".git",
+      "target",
+      "node_modules",
+      "dist",
+      "build",
+      "apps/desktop/src-tauri/gen",
+      "apps/desktop/src-tauri/icons",
+      "Cargo.lock",
+      "pnpm-lock.yaml"
+    ],
+    "needs_ui_assets": true,
+    "asset_recommendations": [
+      {
+        "category": "mascot",
+        "reason": "桌面工作台的陪伴角色：Inbox 里等待人类回应的反馈请求、录音时的反馈状态，都需要有人格化的形象承载「人类体验」的温度",
+        "quantity": 1
+      },
+      {
+        "category": "app_icon",
+        "reason": "Tauri 应用目前使用占位 app-icon.svg，需要正式的品牌应用图标",
+        "quantity": 1
+      },
+      {
+        "category": "brand_assets",
+        "reason": "桌面应用需要仓库社交封面与官网 banner 等品牌素材",
+        "quantity": 2
+      }
+    ],
+    "analysis_focus": [
+      "code_style",
+      "architecture",
+      "product_philosophy",
+      "tech_choices",
+      "team_culture"
+    ]
+  },
+  "abstract": {
+    "dimensions": [
+      {
+        "dimension": "code_style",
+        "summary": "代码风格以「显式契约」为核心：Rust 侧大量使用带 serde rename_all 的强类型枚举（SpeechEvent、FeedbackStatus、ExecutionMode），所有跨边界类型同时派生 JsonSchema（MCP schema）与 TS（前端类型，由 export_types.rs 生成到 apps/desktop/src/lib/generated/），并配套 contracts:check / contracts:generate 脚本保证前后端契约不漂移。错误处理统一用 thiserror，且错误消息是面向人类的中文文案（如「无法加载语音模型：{0}」「没有可用的麦克风输入设备」），说明作者把运行时错误也当作产品文案维护。前端 Svelte 组件用 TS 严格标注，仓库配置了 format:check 与 clippy，测试文件与源码文件一一对应（attachmentMarkdown/speech/nativePath 等均有 .test.ts）。整体是少注释、类型自解释、错误信息有人情味的写法。",
+        "keywords": [
+          "契约驱动",
+          "强类型",
+          "中文错误文案",
+          "测试成对"
+        ],
+        "score": 0.84
+      },
+      {
+        "dimension": "architecture",
+        "summary": "apps/crates monorepo 分层非常清晰：rambledesk-core 是纯领域层（FeedbackRequest 状态机、Draft/SubmissionPlan、FeedbackPackagePublisher trait，不碰任何 Tauri 或 HTTP），storage 负责 SQLite 与迁移（0001 feedback 基础 → 0002 submission plans → 0003 attachments，渐进式演进），mcp 是独立的流式 HTTP MCP 宿主并带 AccessToken 与 Host/Origin 校验（http_security.rs 集成测试），speech 是隔离的本地语音 crate（sherpa-online，事件流设计 SpeechEventSink），desktop 是 Tauri 壳 + Svelte 前端。workspace.rs 用 trait 抽象存储细节，领域状态与连接状态解耦（宪章 3.3：业务状态独立于连接状态）。项目有 ADR 机制（001 monorepo 决策、002 增量语音 ramble）和 CONSTITUTION.md 作为最高约束层，8 个提交的小项目已具备 3 层文档治理。架构判断力明显超过同体量项目。",
+        "keywords": [
+          "分层解耦",
+          "ADR 治理",
+          "迁移演进",
+          "领域隔离"
+        ],
+        "score": 0.86
+      },
+      {
+        "dimension": "product_philosophy",
+        "summary": "产品哲学极为鲜明且自洽，CONSTITUTION.md 是全文最像「灵魂」的文件：North Star 是「把人类真实使用、观察、判断和表达接入 Agent 的持续迭代循环」，而非语音转文字或审批按钮。三条核心原则——「请求侧结构化，回复侧自由」（Agent 给清单，人类可以 ramble）、「业务状态独立于连接状态」（断线不删请求）、「产物优先于聊天」（Feedback Package 是不可变唯一事实来源）——直接塑造了协议与存储设计。MVP 边界写得像宣言：不做远程、不做多用户、不做云同步、不做通用听写，宁缺毋滥；决策优先级第一条是「不丢请求、草稿和已提交反馈」。这是一个把「人类体验者的尊严」和「数据不丢失」当作宗教般信条的产品。",
+        "keywords": [
+          "产物优先",
+          "Local-first",
+          "人类体验",
+          "克制边界"
+        ],
+        "score": 0.91
+      },
+      {
+        "dimension": "tech_choices",
+        "summary": "技术栈高度服务于 Local-first 哲学：Rust 做核心（性能与单二进制分发），Tauri 做桌面壳（比 Electron 轻），Svelte + TS + Vite 做前端（编译产物小、写法直白），SQLite 做持久化（三个迁移文件演进），MCP Streamable HTTP 做协议（同机 loopback + AccessToken + Host/Origin 校验，Figma 模式：工作台进程即 MCP 宿主）。最大胆的选择是本地语音：rambledesk-speech 直接内嵌 sherpa-online 与 whisper-tiny 模型清单，16kHz 采样、线性重采样、事件流式转写（Partial/Stable/Level），完全不依赖云端 ASR——这既符合宪章 3.5，也让「语音 ramble 不离开本机」成为卖点。类型契约靠 ts_rs/schemars 双生成，避免手写同步。整体是「先想清楚边界再选工具」的克制冷静路线。",
+        "keywords": [
+          "Tauri",
+          "本地语音",
+          "MCP 宿主",
+          "契约生成"
+        ],
+        "score": 0.87
+      },
+      {
+        "dimension": "team_culture",
+        "summary": "从提交节奏与文档密度看，这是一个「先立规矩再干活」的团队：91 个文件里 12 个是文档，且文档不是摆设——CONSTITUTION/PRODUCT/ARCHITECTURE/PROTOCOL/COMPATIBILITY/INTERVIEW 分工明确，还有 ADR 记录决策过程；提交信息用 conventional commits（feat/docs/fix），8 个提交平均每笔 16.8 个文件、2182 行，是里程碑式的整块提交而非细碎 PR，merge_commit_ratio 为 0，说明走 rebase/直推的线性历史洁癖。2 位作者、集中在一天内完成的爆发式开发（首日 17:05 到 22:33），带 0.25 的夜间提交比例，是典型的「单人/双人冲刺 + 文档同步」节奏。7 个测试文件覆盖核心状态机与安全边界，说明验证意识从第一天就在。产品文案、错误消息、文档全中文，工程习惯上又保持英文 commit，双语分界清晰。",
+        "keywords": [
+          "文档治理",
+          "里程碑式提交",
+          "测试先行",
+          "双语协作"
+        ],
+        "score": 0.79
+      }
+    ],
+    "overall_impression": "RambleDesk 是一座安静、克制、绿意盎然的本地书房：Agent 在门外递来任务单，人坐下来真实使用、随口 ramble、把带图文的 Markdown 包裹稳稳交回——它把「人类体验者」和「数据不丢失」当作家规，把语音、截图、Inbox 这些具体物件都布置得井井有条。"
+  },
+  "enrichedAt": "2026-07-31T08:25:30.574Z"
+}

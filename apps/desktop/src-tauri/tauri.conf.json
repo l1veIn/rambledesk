@@ -13,11 +13,14 @@
     "windows": [
       {
         "title": "RambleDesk",
-        "width": 1040,
-        "height": 760,
-        "minWidth": 720,
-        "minHeight": 560,
-        "resizable": true
+        "width": 1320,
+        "height": 840,
+        "minWidth": 960,
+        "minHeight": 640,
+        "resizable": true,
+        "decorations": false,
+        "shadow": true,
+        "center": true
       }
     ],
     "security": {

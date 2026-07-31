@@ -1,0 +1,54 @@
+{
+  "orderId": "ord-poster-008",
+  "status": "delivered",
+  "requestType": "new_asset",
+  "assetType": "poster",
+  "templateId": "official/poster-risograph-pop",
+  "references": [
+    {
+      "type": "order",
+      "orderId": "ord-foundation-001",
+      "role": "character"
+    }
+  ],
+  "brief": {
+    "intent": "Risograph 海报：温暖的日常——兰贝尔靠墙站着、双手翻阅透明档案板（重心自然倚墙、一腿微曲），粗网点半调与纸张颗粒质感，角色简化为大胆叠加的色块平面；六边形徽章作为重复流行符号。 templateReason: 用户要求五种艺术风格各一张：risograph-pop",
+    "mustInclude": [
+      "靠墙翻阅档案板的日常姿态（倚墙、一腿微曲）",
+      "risograph 美学：粗网点、套印错位、纸张颗粒、暖纸底",
+      "角色作为大胆叠加色块平面（保持白发/银白制服/冰蓝识别点）",
+      "六边形舱门徽章作为重复流行符号",
+      "角色浅色科技感配色为主",
+      "标题 RambleDesk + 副标题 Rambelle（友好大标题）"
+    ],
+    "avoid": [
+      "立正/敬礼",
+      "代码符号",
+      "血腥"
+    ],
+    "creativeFreedom": [
+      "色块叠加方式",
+      "纸底色调深浅"
+    ]
+  },
+  "deliverables": [
+    {
+      "name": "poster",
+      "format": "png",
+      "width": 1536,
+      "height": 1024
+    }
+  ],
+  "acceptanceCriteria": [
+    "倚墙翻阅的日常姿态",
+    "risograph 纸感美学",
+    "六边形徽章符号",
+    "无代码符号、无血腥"
+  ],
+  "priority": "normal",
+  "createdAt": "2026-07-31T11:13:42.337Z",
+  "updatedAt": "2026-07-31T11:23:03.668Z",
+  "candidateVersions": [],
+  "schemaVersion": "repochan.asset-order.v1",
+  "currentVersion": "v2026-07-31T11-23-03-655Z"
+}

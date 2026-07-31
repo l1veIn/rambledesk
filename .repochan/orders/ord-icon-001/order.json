@@ -1,0 +1,68 @@
+{
+  "orderId": "ord-icon-001",
+  "status": "delivered",
+  "requestType": "new_asset",
+  "assetType": "icon",
+  "templateId": "official/icon-grid-3x3",
+  "references": [
+    {
+      "type": "order",
+      "orderId": "ord-foundation-001",
+      "role": "character"
+    },
+    {
+      "type": "file",
+      "path": "references/guide-icon-3x3.png",
+      "role": "composition"
+    }
+  ],
+  "brief": {
+    "intent": "应用图标探索表（3x3 品牌家族，character-presence 谱系）：Row1 三个角色头像/胸像/半身图标（最强角色存在感，app 主图标候选）；Row2 三个 chibi 大头图标（不同姿势与裁切）；Row3 三个纯符号图标（舱门零号徽章/全息印章/档案板，弱角色存在感）。用于桌面应用图标候选。",
+    "mustInclude": [
+      "严格 3x3，九个独立方形图标，同一品牌家族",
+      "Row1：角色可识别头像/胸像/全身裁切（白长发/银白制服/冰蓝眼）",
+      "Row2：chibi 大头形态（不同姿势/裁切/徽章点缀）",
+      "Row3：符号化图标（舱门零号徽章、全息印章、档案板）",
+      "浅色科技感配色（银白/近白/冰蓝/科技青/琥珀）",
+      "图标质感（非贴纸感），cel-shaded 干净风格",
+      "纯色平底、图标四周留白、互不越格"
+    ],
+    "avoid": [
+      "文字/字母/数字",
+      "代码符号",
+      "血腥",
+      "网格线/边框（不复刻构图参考线）"
+    ],
+    "creativeFreedom": [
+      "Row2 的 chibi 姿势组合",
+      "Row3 符号的排版形式"
+    ]
+  },
+  "deliverables": [
+    {
+      "name": "icon_sheet",
+      "format": "png",
+      "width": 1024,
+      "height": 1024
+    }
+  ],
+  "acceptanceCriteria": [
+    "严格 3x3，九个独立图标，同一品牌家族",
+    "三行存在感谱系（角色→chibi→符号）清晰",
+    "图标质感、浅色科技感配色",
+    "无文字、无代码符号、无血腥"
+  ],
+  "priority": "normal",
+  "createdAt": "2026-07-31T10:33:47.497Z",
+  "updatedAt": "2026-07-31T11:07:12.419Z",
+  "candidateVersions": [],
+  "schemaVersion": "repochan.asset-order.v1",
+  "currentVersion": "v2026-07-31T11-07-12-407Z",
+  "revisions": [
+    {
+      "requestedAt": "2026-07-31T11:00:07.562Z",
+      "request": "零号避难所徽章重新设计：旧的圆形+数字0徽章像眼球，改为六边形舱门徽章（六边形外框、蜂巢/螺栓结构、空心六边形中央、冰蓝冷光边缘）。替换本资产中所有徽章出现处；其余内容与整体风格保持不变。",
+      "status": "draft"
+    }
+  ]
+}

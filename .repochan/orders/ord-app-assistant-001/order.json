@@ -1,0 +1,63 @@
+{
+  "orderId": "ord-app-assistant-001",
+  "requestType": "new_asset",
+  "assetType": "character_cutout",
+  "templateId": "official/character-cutout",
+  "status": "delivered",
+  "priority": "high",
+  "references": [
+    {
+      "type": "order",
+      "orderId": "ord-foundation-001",
+      "role": "character",
+      "versionId": "v2026-07-31T10-59-43-937Z"
+    }
+  ],
+  "brief": {
+    "intent": "A production transparent Rambelle assistant cutout for the RambleDesk desktop application''s right-side status rail and empty states.",
+    "audience": "RambleDesk desktop users working through long feedback sessions.",
+    "emotionalGoal": "Quiet readiness and reassuring precision; the chief military secretary has organized the record and is waiting without interrupting.",
+    "composition": "One fully in-frame three-quarter character, facing slightly toward the document area, calm soft-resolve expression, one hand lightly raised in a presenting gesture and the other resting near the waist. Generous margin and clean silhouette for cropping into a narrow assistant card.",
+    "mustInclude": [
+      "Latest Rambelle identity: long pure white hair, ice-blue eyes, pale futuristic chief military secretary uniform",
+      "New hollow-center hexagonal vault-door badge on the uniform",
+      "Clean cel-shaded digital-pop rendering",
+      "One single isolated character on pure #FF00FF matte",
+      "All hair, hands, and clothing fully visible"
+    ],
+    "avoid": [
+      "Old circular zero emblem or eye-like badge",
+      "Military salute, aggressive pose, oversized props",
+      "Text, letters, numbers, scenery, furniture, shadows",
+      "Retro Print, Glitch, dark cyberpunk",
+      "Cropping any body part or hair"
+    ],
+    "creativeFreedom": [
+      "Exact gentle presenting hand gesture",
+      "Subtle head angle and soft-resolve expression"
+    ]
+  },
+  "deliverables": [
+    {
+      "name": "rambelle_app_assistant",
+      "format": "png",
+      "width": 1024,
+      "height": 1024,
+      "aspectRatio": "1:1",
+      "transparentBackground": true
+    }
+  ],
+  "acceptanceCriteria": [
+    "Single clean consistent Rambelle character",
+    "New hexagonal emblem only",
+    "Transparent final PNG with clean edges",
+    "Reads clearly at 160-240px UI height",
+    "No text, scenery, old emblem, or cropped anatomy"
+  ],
+  "notes": "Approved downstream asset after Gate 1. Intended as an optional L2/L3 identity layer; never contains live UI or text.",
+  "createdAt": "2026-07-31T12:27:42.538Z",
+  "updatedAt": "2026-07-31T12:31:43.555Z",
+  "candidateVersions": [],
+  "schemaVersion": "repochan.asset-order.v1",
+  "currentVersion": "v2026-07-31T12-31-43-543Z"
+}

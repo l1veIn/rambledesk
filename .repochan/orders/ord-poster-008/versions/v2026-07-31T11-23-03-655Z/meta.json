@@ -1,0 +1,15 @@
+{
+  "versionId": "v2026-07-31T11-23-03-655Z",
+  "createdAt": "2026-07-31T11:23:03.668Z",
+  "tool": "repochan",
+  "files": [
+    "generated-2026-07-31T11-20-11.png"
+  ],
+  "promptBrief": "Risograph poster: leaning against wall flipping data-slate, halftone paper grain, hexagonal emblem pop symbols",
+  "generationPrompt": "risograph pop poster for RambleDesk, warm retro magazine layout with playful editorial energy,\nthe character from the reference image simplified into bold overlapping color planes: leaning against a wall casually, both hands flipping through the translucent data-slate, one leg slightly bent, weight on the wall, relaxed everyday posture, long white hair draping naturally,\ncoarse halftone dots, imperfect ink registration, paper grain, the hexagonal vault door emblem (hollow hexagonal center) and the holographic seal as repeating pop symbols,\nfriendly oversized title \"RambleDesk\", subtitle \"Rambelle\",\narchive room with transparent cabinets as the signature scene,\napproachable community atmosphere, clear graphic rhythm,\nkeep the character identity: white long hair, silver-white military secretary uniform, ice-blue eyes,\npale cool palette with warm paper base, no circle-with-dot emblem, no gore, no blood, no code symbols,\nmasterpiece, best quality",
+  "notes": "referenceImagesUsed: true (foundation v2). Endpoint img-cn-65535. Safety: no gore, no code symbols.",
+  "provenance": {
+    "tool": "repochan",
+    "action": "order.create_result"
+  }
+}

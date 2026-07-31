@@ -1,0 +1,28 @@
+{
+  "versionId": "v2026-07-31T15-29-00-326Z",
+  "createdAt": "2026-07-31T15:29:00.337Z",
+  "tool": "repochan-image-gen",
+  "files": [
+    "generated-2026-07-31T15-27-12.png"
+  ],
+  "promptBrief": "Rambelle ?????????????????",
+  "generationPrompt": "ONE single app icon / brand mark source image for RambleDesk,\nderived from Rambelle's most iconic visual element: the recognizable white long hair, ice-blue eyes, silver-white futuristic secretary uniform collar, and a small hexagonal cabin-door emblem,\na close selfie-style head-and-shoulders portrait of Rambelle facing the camera, with a calm reliable soft expression and a slight natural head tilt,\nbold simple emblem with a crisp silhouette, using clean white, cool silver-gray, and a restrained ice-blue wash,\n???????????????????????????????????????????,\nthe icon content fills the whole square canvas and may bleed off the edges ? cropping is decided later,\nthe background is part of the final design: a clean pure-white backdrop with only extremely subtle pencil texture,\nthe icon must be readable and recognizable at favicon size (16?16px),\nminimal layered geometry, premium desktop-product finish,\nno text, no letters, no numbers, no watermark, no border, no frame,\nrestrained pencil-sketch illustration consistent with the character reference,\nmasterpiece, best quality.\n\nTechnical constraints:\nexactly ONE single icon subject on the canvas ? no grid, no multiple variants;\nthe icon content fills the canvas and bleeds to or past the canvas edges; do NOT shrink the subject to fit with padding ? cropping is a postprocess decision;\ndo NOT design for any particular mask shape: no circular composition, no rounded-square composition, no badge/disc layout ? shape masking is a postprocess step, never baked into the source art;\nno ring, no disc, no border, no frame, no decorative outline around the icon;\nthe pure-white background is the designed final backdrop and ships with the icon;\nbold simple silhouette readable at 16?16px favicon size;\nNO text, letters, numbers, labels, or watermarks.",
+  "notes": "?? foundation ??????? 1024x1024 ?????????????????????????????????",
+  "provenance": {
+    "tool": "repochan",
+    "action": "order.create_result"
+  },
+  "meta": {
+    "referenceImagesUsed": true,
+    "references": [
+      {
+        "orderId": "ord-foundation-001",
+        "role": "character"
+      }
+    ],
+    "templateId": "official/icon-single",
+    "aspectRatio": "1:1",
+    "generationSize": "1024x1024",
+    "safetyConstraintsApplied": true
+  }
+}

@@ -1,4 +1,5 @@
 mod clipboard_capture;
+mod mcp_setup;
 mod screen_capture;
 
 use rambledesk_core::{
@@ -20,7 +21,7 @@ use std::{
     },
 };
 use tauri::{
-    Emitter, Manager, RunEvent,
+    Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder,
     image::Image,
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -28,6 +29,7 @@ use tauri::{
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 const TRAY_ID: &str = "rambledesk-main";
+const RAMBLE_CONSOLE_LABEL: &str = "ramble-console";
 const RAMBLE_TOGGLE_SHORTCUT: &str = "Ctrl+Shift+R";
 const BASE_TRAY_ICON: Image<'static> = tauri::include_image!("./icons/32x32.png");
 
@@ -64,6 +66,28 @@ fn get_mcp_endpoint(state: tauri::State<'_, WorkbenchState>) -> String {
 #[tauri::command]
 fn get_mcp_configuration(state: tauri::State<'_, WorkbenchState>) -> String {
     state.mcp_configuration.clone()
+}
+
+#[tauri::command]
+fn detect_mcp_clients(app: tauri::AppHandle) -> Result<Vec<mcp_setup::McpClientView>, String> {
+    let home = app
+        .path()
+        .home_dir()
+        .map_err(|error| format!("Could not resolve the user home directory: {error}"))?;
+    Ok(mcp_setup::detect_clients(&home))
+}
+
+#[tauri::command]
+fn install_mcp_clients(
+    client_ids: Vec<String>,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<Vec<mcp_setup::McpInstallResult>, String> {
+    let home = app
+        .path()
+        .home_dir()
+        .map_err(|error| format!("Could not resolve the user home directory: {error}"))?;
+    mcp_setup::install_clients(&home, &client_ids, &state.mcp_configuration)
 }
 
 #[tauri::command]
@@ -417,7 +441,32 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            let console = WebviewWindowBuilder::new(
+                app,
+                RAMBLE_CONSOLE_LABEL,
+                WebviewUrl::App("ramble-console".into()),
+            )
+            .title("RambleDesk · Ramble Console")
+            .inner_size(468.0, 164.0)
+            .min_inner_size(420.0, 148.0)
+            .resizable(false)
+            .decorations(false)
+            .shadow(true)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .visible_on_all_workspaces(true)
+            .center()
+            .visible(false)
+            .build()?;
+            let console_to_hide = console.clone();
+            console.on_window_event(move |event| {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = console_to_hide.hide();
+                }
+            });
             if let Err(error) =
                 app.global_shortcut()
                     .on_shortcut(RAMBLE_TOGGLE_SHORTCUT, |app, _, event| {
@@ -517,6 +566,8 @@ pub fn run() {
             get_health,
             get_mcp_endpoint,
             get_mcp_configuration,
+            detect_mcp_clients,
+            install_mcp_clients,
             set_pending_count,
             list_feedback_inbox,
             list_feedback_history,
@@ -530,6 +581,7 @@ pub fn run() {
             submit_feedback,
             start_voice_ramble,
             stop_voice_ramble,
+            clipboard_capture::capture_clipboard_once,
             clipboard_capture::start_clipboard_capture,
             clipboard_capture::stop_clipboard_capture,
             clipboard_capture::read_clipboard_capture_image,

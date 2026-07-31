@@ -1,0 +1,11 @@
+{
+  "verdict": "revise",
+  "notes": "用户反馈：圆形+数字 0 的舱门徽章视觉上像眼球，诡异。修订方向：零号避难所标识重新设计为「六边形舱门徽章」——六边形外框（蜂巢/螺栓结构）+ 空心六边形中央 + 冰蓝冷光边缘，无圆形、无中央实心点；同步更新人设 keyMotifs/accessories/outfit/rolePrompt/signaturePatterns/signatureScenes/designNotes 中的徽章描述，并重新生成所有直接含徽章的视觉资产（foundation、pattern、badges、icon、item-props、three-view）。",
+  "reviewerRole": "user",
+  "schemaVersion": "repochan.persona-review.v1",
+  "generatedAt": "2026-07-31T10:55:17.876Z",
+  "provenance": {
+    "tool": "repochan",
+    "action": "persona.review"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "versionId": "v2026-07-31T10-12-08-367Z",
+  "createdAt": "2026-07-31T10:12:08.377Z",
+  "tool": "repochan",
+  "files": [
+    "generated-2026-07-31T10-09-05.png"
+  ],
+  "promptBrief": "Scene poster: relaxed after-hours archive room, sitting on desk edge with coffee, gloves off, quiet mood",
+  "generationPrompt": "atmospheric scene poster for RambleDesk featuring the character from the reference image,\nthe character is in this specific scene: after-hours archive room, she sits relaxed on the edge of the desk with one leg crossed, one white glove removed and laid beside her, both hands wrapped around a warm mug of filtered coffee, shoulders gently relaxed, eyes lowered in quiet peace, a few strands of long white hair falling loose,\nrendered in cel-shaded digital pop style using silver-white #E3E9F0, near-white #F7F9FC, ice blue #6FA8DC, tech teal #57C6C0, amber #F2A03D,\nthe composition has generous negative space and breathing room — not a dense busy illustration,\nthe character occupies roughly one-third to one-half of the canvas, leaving open areas suitable for text overlay,\natmospheric lighting and mood that matches the scene's emotional tone: warm amber desk lamp glow mixing with cold white overhead lights, quiet late-night stillness,\nthe background is a believable environment (rows of transparent archive cabinets, a faint holographic projection on the desk, a data-slate on the table), but kept soft and non-distracting,\nsubtle circular vault door zero emblem woven into the environment as decorative details,\nlandscape 3:2 aspect ratio suitable for web hero or section backgrounds,\nno text, no title, no watermark rendered in the image,\nrelaxed casual posture, not standing at attention, not saluting, not holding the data-slate against chest,\nno gore, no blood, no terminal code symbols,\nmasterpiece, best quality",
+  "notes": "referenceImagesUsed: true (foundation character). Endpoint img-cn-65535. Safety: no gore, no code symbols.",
+  "provenance": {
+    "tool": "repochan",
+    "action": "order.create_result"
+  }
+}

@@ -1,6 +1,14 @@
 import type { FeedbackRequestSummary } from './feedback'
+import type { Locale } from './preferences'
 
-export type NotificationState = 'checking' | 'enabled' | 'disabled' | 'unavailable'
+export type NotificationState = 'checking' | 'enabled' | 'muted' | 'disabled' | 'unavailable'
+
+export function notificationStateForPermission(
+  granted: boolean,
+  preferred: boolean,
+): NotificationState {
+  return granted ? (preferred ? 'enabled' : 'muted') : 'disabled'
+}
 
 export function collectNewRequests(
   knownRequestIds: Set<string>,
@@ -25,12 +33,28 @@ export class InboxNotificationTracker {
   }
 }
 
-export function notificationLabel(state: NotificationState): string {
+export function notificationLabel(state: NotificationState, locale: Locale = 'zh-CN'): string {
+  if (locale === 'en') {
+    switch (state) {
+      case 'checking':
+        return 'Checking notifications…'
+      case 'enabled':
+        return 'Notifications enabled'
+      case 'muted':
+        return 'Notifications paused — click to enable'
+      case 'disabled':
+        return 'Enable notifications'
+      case 'unavailable':
+        return 'Notifications unavailable'
+    }
+  }
   switch (state) {
     case 'checking':
       return '检查通知…'
     case 'enabled':
       return '通知已开启'
+    case 'muted':
+      return '通知已暂停，点击重新开启'
     case 'disabled':
       return '启用通知'
     case 'unavailable':

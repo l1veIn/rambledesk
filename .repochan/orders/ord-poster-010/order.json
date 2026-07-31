@@ -1,0 +1,56 @@
+{
+  "orderId": "ord-poster-010",
+  "status": "delivered",
+  "requestType": "new_asset",
+  "assetType": "poster",
+  "templateId": "official/poster-scene",
+  "references": [
+    {
+      "type": "order",
+      "orderId": "ord-foundation-001",
+      "role": "character"
+    }
+  ],
+  "brief": {
+    "intent": "场景海报：远景纵深构图——休眠舱大厅的尽端，她背对镜头站在成排休眠舱之间的小径尽头（远景小人物、纵深强烈），微微回头露出侧脸；氛围：孤独的秩序、等待。构图：中央透视纵深。 templateReason: 用户要求五种艺术风格各一张：poster-scene（远景构图补充）",
+    "mustInclude": [
+      "远景小人物构图（角色约占画幅 1/4–1/3），中央透视纵深",
+      "姿态：站在小径尽头、微微回头露侧脸",
+      "成排玻璃休眠舱浅蓝光晕、地板倒影",
+      "六边形舱门徽章装饰元素",
+      "浅色科技感基调",
+      "无文字"
+    ],
+    "avoid": [
+      "近景大头",
+      "立正军姿",
+      "代码符号",
+      "血腥",
+      "密集构图"
+    ],
+    "creativeFreedom": [
+      "回头的程度",
+      "纵深的强弱与雾气感"
+    ]
+  },
+  "deliverables": [
+    {
+      "name": "poster",
+      "format": "png",
+      "width": 1536,
+      "height": 1024
+    }
+  ],
+  "acceptanceCriteria": [
+    "远景纵深构图、角色占画幅 1/4–1/3",
+    "回望侧脸姿态",
+    "休眠舱大厅环境",
+    "无文字、无代码符号、无血腥"
+  ],
+  "priority": "normal",
+  "createdAt": "2026-07-31T11:13:42.337Z",
+  "updatedAt": "2026-07-31T11:27:45.995Z",
+  "candidateVersions": [],
+  "schemaVersion": "repochan.asset-order.v1",
+  "currentVersion": "v2026-07-31T11-27-45-983Z"
+}

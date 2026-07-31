@@ -1,0 +1,13 @@
+{
+  "orderId": "ord-icon-001",
+  "versionId": "v2026-07-31T10-37-48-807Z",
+  "verdict": "revise",
+  "notes": "零号避难所徽章重新设计：旧的圆形+数字0徽章像眼球，改为六边形舱门徽章（六边形外框、蜂巢/螺栓结构、空心六边形中央、冰蓝冷光边缘）。替换本资产中所有徽章出现处；其余内容与整体风格保持不变。",
+  "reviewerRole": "user",
+  "schemaVersion": "repochan.review.v1",
+  "generatedAt": "2026-07-31T11:00:07.562Z",
+  "provenance": {
+    "tool": "repochan",
+    "action": "review.create"
+  }
+}

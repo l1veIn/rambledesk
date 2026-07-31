@@ -1,0 +1,24 @@
+{
+  "versionId": "v2026-07-31T11-38-11-635Z",
+  "createdAt": "2026-07-31T11:38:11.646Z",
+  "tool": "repochan image gen",
+  "files": [
+    "app-master-archive-command.png"
+  ],
+  "promptBrief": "Gate 1 direction A, Archive Command desktop UI master",
+  "generationPrompt": "REAL DESKTOP APP UI MASTER, Direction A ? Archive Command. Create a pixel-perfect 1536x1024 screenshot of RambleDesk as a cross-platform desktop productivity application. This is a fresh visual composition, not a poster, landing page, browser page, game HUD, or framed mockup.\n\nRambleDesk lets a user open an Agent test request, follow test steps, start a spoken Ramble, capture screenshots, explicitly bring in clipboard or file context, edit a rich Markdown document, and submit a Feedback Package.\n\nLAYOUT:\nA slim custom native application titlebar is part of the interface: new hollow hexagonal RambleDesk mark, current project, local connection state, settings, a generous draggable center, Windows/Linux minimize-maximize-close controls, and layout space adaptable to macOS traffic lights.\nBelow: a precise three-region workbench. Left is a 260px inbox with PENDING and HISTORY tabs and four compact request rows. Each row has project, short summary, Agent badge, status, and time. Center is dominant: current-request heading, compact collapsible task brief with three numbered test steps and context links, then a large Tiptap-like rich feedback editor. Show a restrained formatting toolbar, readable paragraphs, a quote block, and one inline screenshot block. Right is a narrow operational status rail with START RAMBLE, microphone readiness, audio level, autosave status, attachment chips, SUBMIT FEEDBACK, and a completed secondary action OPEN FEEDBACK PACKAGE.\nRambelle appears only as a small calm assistant bust emerging from the lower-right status rail, holding a translucent archive slate. Never overlap the document.\n\nART DIRECTION:\nHigh-density but calm desktop software. Rigorous 8px rhythm, clear alignment, thin one-pixel separators, 10?14px radii, polished CSS-like grids. Pale metal #E3E9F0, snow #F7F9FC, ice blue #6FA8DC, technical cyan #57C6C0, sparse amber #F2A03D, deep navy-gray text. Subtly weave the referenced hexagonal vault-door line pattern into backgrounds and separators.\nUse ONLY the new hollow-center hexagonal vault-door emblem shown in the references. Rambelle must match the character reference: long pure white hair, ice-blue eyes, pale futuristic chief military secretary uniform, clean cel-shaded digital-pop rendering.\nAll interface typography should be sharp and readable. Use concise labels: INBOX, HISTORY, TASK BRIEF, YOUR FEEDBACK, START RAMBLE, READY, SAVED, ATTACHMENTS, SUBMIT FEEDBACK, OPEN PACKAGE. The implemented app will localize them to Simplified Chinese.\nEvery UI control must look implementable in Svelte and CSS. Live controls and text are separate UI layers; illustration and pattern are supporting layers only.\n\nSTRICTLY AVOID: dark cyberpunk, neon overload, vehicle cockpit, web hero, marketing poster, huge character art, glossy 3D, retro print, glitch, the old circular zero or eye-like emblem, code symbols, fake browser chrome, decorative pseudo-text, watermark, design credit. Fill the canvas edge to edge with the application UI.",
+  "notes": "Generated against the current Rambelle foundation and hexagonal pattern references.",
+  "provenance": {
+    "tool": "repochan",
+    "action": "order.create_result"
+  },
+  "meta": {
+    "direction": "archive_command",
+    "portableReferences": [
+      "ord-foundation-001@v2026-07-31T10-59-43-937Z",
+      "ord-pattern-001@v2026-07-31T11-01-42-409Z"
+    ],
+    "providerEndpoint": "img-cn-65535",
+    "assetKind": "gate1_ui_master"
+  }
+}

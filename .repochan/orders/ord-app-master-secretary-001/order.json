@@ -1,0 +1,71 @@
+{
+  "orderId": "ord-app-master-secretary-001",
+  "requestType": "new_asset",
+  "assetType": "section_design",
+  "templateId": "official/section-design",
+  "status": "delivered",
+  "priority": "high",
+  "references": [
+    {
+      "type": "order",
+      "orderId": "ord-foundation-001",
+      "role": "character",
+      "versionId": "v2026-07-31T10-59-43-937Z"
+    },
+    {
+      "type": "order",
+      "orderId": "ord-pattern-001",
+      "role": "style",
+      "versionId": "v2026-07-31T11-01-42-409Z"
+    }
+  ],
+  "brief": {
+    "intent": "RambleDesk desktop app Gate 1 direction C, Secretary Desk: a quiet document-first desktop workspace where typography, thin rules, state labels, and restrained Rambelle companionship carry the brand. Optimize for long writing sessions and low cognitive load.",
+    "audience": "Developers, designers, and testers who operate software while continuously recording, later editing, and delivering high-quality feedback packages to an Agent.",
+    "emotionalGoal": "Rambelle has already organized the archive and is waiting for the Commander to continue; professional, gentle, clear, and always explicit about whether the record is safe.",
+    "composition": "1536 by 1024 landscape desktop app. Minimal custom titlebar; compact navigation and request index on the left; roughly 70 percent of the width is a paper-like translucent rich-text editor; task instructions collapse into a summary strip above; a quiet Rambelle assistant status card and primary action sit at lower right. Attachments appear primarily as inline document blocks, not as a media wall.",
+    "mustInclude": [
+      "Cross-platform custom titlebar with identity, queue navigation, project, sync/connection state, settings, and window controls",
+      "Clear pending/history navigation and current request index",
+      "Maximized rich feedback flow with inline images, quotes, code/clipboard blocks, and attachment placeholders",
+      "Low-distraction Start or Continue Ramble entry with recording and save state near the document",
+      "Fast access to task instructions, context, attachments, and submit",
+      "New hexagonal vault-door emblem, line grid, transparent archive slate, cold silver-white, ice blue, cyan, and sparse amber",
+      "Clear Simplified Chinese typography for sustained reading"
+    ],
+    "avoid": [
+      "Too many dashboard cards or decorative data visualizations",
+      "Landing-page hero typography or oversized character art",
+      "Old circular zero emblem or eye-like symbol",
+      "Retro Print, Glitch, or dark cyberpunk",
+      "Making detached attachments the main workspace"
+    ],
+    "creativeFreedom": [
+      "Collapsible task summary behavior",
+      "Rambelle assistant-card expression",
+      "Toolbar icon and divider treatment"
+    ]
+  },
+  "deliverables": [
+    {
+      "name": "app_master_secretary_desk",
+      "format": "png",
+      "width": 1536,
+      "height": 1024,
+      "aspectRatio": "3:2"
+    }
+  ],
+  "acceptanceCriteria": [
+    "Editor is the absolute visual center and comfortable for long use",
+    "All core functions remain accessible without added cognitive load",
+    "Brand identity comes from systematic detail rather than large illustration",
+    "Titlebar, navigation, editing, save, and submit hierarchy is clear",
+    "Matches latest Rambelle persona and hexagonal emblem specification"
+  ],
+  "notes": "RepoChan Web Designer Gate 1 visual direction C. Recommended baseline for MVP because it minimizes implementation and interaction complexity.",
+  "createdAt": "2026-07-31T11:32:36.236Z",
+  "updatedAt": "2026-07-31T11:45:39.323Z",
+  "candidateVersions": [],
+  "schemaVersion": "repochan.asset-order.v1",
+  "currentVersion": "v2026-07-31T11-45-39-311Z"
+}

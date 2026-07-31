@@ -1,0 +1,71 @@
+{
+  "orderId": "ord-app-master-archive-001",
+  "requestType": "new_asset",
+  "assetType": "section_design",
+  "templateId": "official/section-design",
+  "status": "delivered",
+  "priority": "high",
+  "references": [
+    {
+      "type": "order",
+      "orderId": "ord-foundation-001",
+      "role": "character",
+      "versionId": "v2026-07-31T10-59-43-937Z"
+    },
+    {
+      "type": "order",
+      "orderId": "ord-pattern-001",
+      "role": "style",
+      "versionId": "v2026-07-31T11-01-42-409Z"
+    }
+  ],
+  "brief": {
+    "intent": "RambleDesk desktop app Gate 1 direction A, Archive Command: design a complete cross-platform Windows, macOS, and Linux main window as a calm, precise, trustworthy Vault Zero archive command center. It must be an implementable desktop product UI, never a website poster.",
+    "audience": "Developers and creators who continuously narrate, capture screenshots, import context, edit, and submit structured feedback to an Agent while using other software.",
+    "emotionalGoal": "A quiet, precise, always-ready archive center maintained by the chief military secretary; information-dense without feeling oppressive.",
+    "composition": "1536 by 1024 landscape desktop app. A draggable custom app titlebar with cross-platform window controls; a roughly 260px request queue on the left; task instructions and a large Markdown rich-document flow in the center; a narrow status rail on the right for Ramble, attachments, save, and submission. Rambelle appears only as a low-distraction bust or assistant in an empty state or status rail.",
+    "mustInclude": [
+      "Custom desktop titlebar with RambleDesk identity, current project, connection state, settings, Windows/Linux controls, and safe space for macOS traffic lights",
+      "Left pending/history request queue showing project, Agent, state, and update time",
+      "Central task summary, test steps, context references, and directly editable rich-text feedback document",
+      "Prominent but restrained Start Ramble action plus live recording, screenshot, attachment, and save state feedback",
+      "Submit feedback and Open Feedback Package completed state",
+      "New hexagonal vault-door emblem, ice-blue line grid, transparent archive slate, and sparse amber warning accents",
+      "Clear Simplified Chinese interface labels"
+    ],
+    "avoid": [
+      "Browser frame, landing page, marketing poster composition",
+      "Old circular zero emblem or eye-like symbol",
+      "Dark cyberpunk, glitch, or retro print styling",
+      "Baking real controls, text, or headings into decorative illustration",
+      "Code symbols, dense neon, or heavy skeuomorphism"
+    ],
+    "creativeFreedom": [
+      "Request-card composition",
+      "Right status-rail grouping",
+      "Rambelle pose and scale in empty states"
+    ]
+  },
+  "deliverables": [
+    {
+      "name": "app_master_archive_command",
+      "format": "png",
+      "width": 1536,
+      "height": 1024,
+      "aspectRatio": "3:2"
+    }
+  ],
+  "acceptanceCriteria": [
+    "Reads instantly as a mature desktop productivity app, not a site or poster",
+    "Maps visibly to the complete existing RambleDesk workflow",
+    "Custom titlebar is cross-platform and has clear drag and control regions",
+    "Character and pattern support the workspace without blocking it",
+    "Uses only the new hexagonal vault emblem and no code symbols"
+  ],
+  "notes": "RepoChan Web Designer Gate 1 visual direction A. All L4 controls and text remain live in implementation; master image is only the visual reference.",
+  "createdAt": "2026-07-31T11:32:36.236Z",
+  "updatedAt": "2026-07-31T11:38:11.646Z",
+  "candidateVersions": [],
+  "schemaVersion": "repochan.asset-order.v1",
+  "currentVersion": "v2026-07-31T11-38-11-635Z"
+}
