@@ -92,7 +92,7 @@ request_args="$(
     session_id: "inspector-smoke",
     project: { name: "RambleDesk Inspector smoke", root_path: process.argv[1] },
     what_happened: "The persistent MCP request tools were exercised.",
-    actions: [{ id: "verify", instruction: "Verify the request survives polling." }],
+    actions: [{ id: "verify", instruction: "Verify the durable request survives restart." }],
     context_refs: [{ label: "protocol", uri: "file:///docs/PROTOCOL.md" }]
   }))' "$verify_dir" "$request_id"
 )"
@@ -106,7 +106,7 @@ pnpm dlx "@modelcontextprotocol/inspector@${inspector_version}" --cli "$endpoint
   >"$verify_dir/request-feedback.json"
 
 # A successful tool response must already be durable. Simulate a process crash
-# before polling, then reopen the same database and token.
+# before recovery, then reopen the same database and token.
 force_stop_server
 start_server
 
@@ -138,6 +138,15 @@ pnpm dlx "@modelcontextprotocol/inspector@${inspector_version}" --cli "$endpoint
   --format json \
   >"$verify_dir/get-after-cancel-restart.json"
 
+# Waiting on an already-terminal request must return immediately after restart.
+pnpm dlx "@modelcontextprotocol/inspector@${inspector_version}" --cli "$endpoint" \
+  --method tools/call \
+  --tool-name wait_for_feedback \
+  --tool-args-json "{\"request_id\":\"$request_id\"}" \
+  --header "Authorization: Bearer $token" \
+  --format json \
+  >"$verify_dir/wait-after-cancel-restart.json"
+
 node - \
   "$verify_dir/tools-list.json" \
   "$verify_dir/tool-call.json" \
@@ -145,6 +154,7 @@ node - \
   "$verify_dir/get-feedback.json" \
   "$verify_dir/cancel-feedback.json" \
   "$verify_dir/get-after-cancel-restart.json" \
+  "$verify_dir/wait-after-cancel-restart.json" \
   "$request_id" <<'NODE'
 const fs = require('fs')
 
@@ -154,17 +164,20 @@ const requested = JSON.parse(fs.readFileSync(process.argv[4], 'utf8'))
 const fetched = JSON.parse(fs.readFileSync(process.argv[5], 'utf8'))
 const cancelled = JSON.parse(fs.readFileSync(process.argv[6], 'utf8'))
 const recoveredCancelled = JSON.parse(fs.readFileSync(process.argv[7], 'utf8'))
-const expectedRequestId = process.argv[8]
+const waitedCancelled = JSON.parse(fs.readFileSync(process.argv[8], 'utf8'))
+const expectedRequestId = process.argv[9]
 const tools = listed.result?.tools ?? []
 const health = called.result?.structuredContent
 const createdRequest = requested.result?.structuredContent
 const fetchedRequest = fetched.result?.structuredContent
 const cancelledRequest = cancelled.result?.structuredContent
 const recoveredCancelledRequest = recoveredCancelled.result?.structuredContent
+const waitedCancelledRequest = waitedCancelled.result?.structuredContent
 
 for (const expected of [
   'rambledesk_health',
   'request_feedback',
+  'wait_for_feedback',
   'get_feedback',
   'cancel_feedback',
 ]) {
@@ -187,7 +200,11 @@ if (
   cancelledRequest?.request_id !== expectedRequestId ||
   cancelledRequest?.status !== 'cancelled' ||
   recoveredCancelledRequest?.request_id !== expectedRequestId ||
-  recoveredCancelledRequest?.status !== 'cancelled'
+  recoveredCancelledRequest?.status !== 'cancelled' ||
+  waitedCancelledRequest?.request_id !== expectedRequestId ||
+  waitedCancelledRequest?.status !== 'cancelled' ||
+  waitedCancelledRequest?.execution_mode !== 'wait' ||
+  waitedCancelledRequest?.feedback_package !== null
 ) {
   throw new Error(
     `Unexpected feedback lifecycle: ${JSON.stringify({
@@ -195,6 +212,7 @@ if (
       fetchedRequest,
       cancelledRequest,
       recoveredCancelledRequest,
+      waitedCancelledRequest,
     })}`,
   )
 }
@@ -202,7 +220,7 @@ if (
 process.stdout.write(
   `${JSON.stringify({
     inspector: 'passed',
-    feedbackLifecycle: 'waiting -> crash recovery -> cancelled -> crash recovery',
+    feedbackLifecycle: 'waiting -> crash recovery -> cancelled -> crash recovery -> blocking wait return',
     endpointPath: '/mcp',
     protocolVersion: health.protocolVersion,
     clientSupportsTasks: health.clientSupportsTasks,

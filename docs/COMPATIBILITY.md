@@ -1,15 +1,15 @@
 # RambleDesk MCP 兼容矩阵
 
-> 状态：M0 transport accepted · M1 persistent request tools validated
+> 状态：M0 transport accepted · M1 persistent request + blocking wait validated
 >
-> 实测日期：2026-07-29
+> 实测日期：2026-07-29（macOS 客户端矩阵）· 2026-07-31（Windows 自动化）
 >
-> 环境：macOS arm64，本机 loopback
+> 环境：macOS arm64 本机 loopback；Windows x64 storage/MCP 自动化
 
 ## 1. 结论
 
-RambleDesk 首发使用 MCP Streamable HTTP `2025-11-25` wire profile 和
-polling 业务模式。服务端由官方 Rust SDK `rmcp` 3.0.0 实现，同时具备
+RambleDesk 使用 MCP Streamable HTTP `2025-11-25` wire profile 和 durable
+blocking-wait 业务模式。服务端由官方 Rust SDK `rmcp` 3.0.0 实现，同时具备
 `2026-07-28` 协议支持，但不能假设目标 Agent 声明 Tasks 能力。
 
 M0 验收成立：
@@ -18,13 +18,15 @@ M0 验收成立：
 - Claude Code 2.1.207 可通过自定义 Authorization header 调用该工具；
 - 未认证、错误 token、未知 Origin 和未知 Host 均被拒绝；
 - 服务只绑定 IPv4 loopback；
-- M1 的 `request_feedback/get_feedback/cancel_feedback` 已按 durable request +
-  polling 模式通过 Inspector、官方 Rust SDK 和 Claude Code；
+- M1 原有 polling 工具已通过 Inspector、官方 Rust SDK 和 Claude Code；新增
+  `wait_for_feedback` 已通过官方 Rust SDK 黑盒测试，目标宿主长等待仍需补测；
+- Windows x64 已通过 Feedback Package write-through 发布、幂等提交、启动对账
+  和官方 Rust SDK MCP 黑盒测试；
 - Tasks 只在客户端显式声明支持后作为增强路径。
 
 ## 2. 客户端实测
 
-| 客户端 | Transport | 协商协议 | 自定义 header | Tasks 声明 | M1 polling 工具 | 结论 |
+| 客户端 | Transport | 协商协议 | 自定义 header | Tasks 声明 | M1 工具 | 结论 |
 |--------|-----------|----------|---------------|------------|----------------|------|
 | MCP Inspector 2.0.0 CLI | Streamable HTTP | `2025-11-25` | `--header` 通过 | `true` | create/get/cancel 通过 | 协议 smoke 与 CI 验证器 |
 | Claude Code 2.1.207 | HTTP MCP | `2025-11-25` | 配置 `headers.Authorization` 通过 | `false` | `waiting/waiting/cancelled` 通过 | 首发必须支持 polling |
@@ -36,12 +38,14 @@ RambleDesk 工具的非交互调用完成验证。M0 health 验证观察到
 `clientSupportsTasks: false`；M1 黑盒验证创建、查询并取消同一 request，
 三个响应的 `request_id` 一致，因此不把 Tasks 作为正确性前提。
 
-官方 Rust SDK 的集成测试还覆盖稳定结构化错误，以及
-`waiting → operator submit → completed` 后四个 Feedback Package 路径；
+官方 Rust SDK 的集成测试还覆盖稳定结构化错误，以及单次
+`wait_for_feedback` 在 `waiting → operator submit → completed` 后取得 manifest、
+Markdown 和附件路径；
 Inspector smoke 会校验实际 snake_case wire 字段、四个工具列表、认证失败，
 以及两次 `SIGKILL` 前后的 `waiting → cancelled` 恢复。
-Inspector 虽声明 Tasks 能力，当前服务仍按 v1 合同返回
-`execution_mode: "poll"`；客户端单方面声明能力不会启用尚未完成回归的增强路径。
+`request_feedback` 仍返回 `execution_mode: "poll"` 兼容 handle；
+`wait_for_feedback` 的终态结果返回 `execution_mode: "wait"`。客户端单方面声明
+Tasks 能力不会启用尚未完成回归的 Tasks 路径。
 
 本机 `/opt/homebrew/bin/codex` 在 `codex --version` 阶段即失败：
 其 npm wrapper 尝试启动的 arm64 vendor binary 不存在并返回 `ENOENT`。
@@ -54,7 +58,10 @@ Codex 后，应补跑同一 health matrix。
 - 官方 Rust 客户端在调用后执行连接取消/关闭，服务端可正常优雅退出。
 - M0 不包含长任务，因而不伪造客户端超时与业务取消结论。
 - M1 的 Feedback Request 生命周期独立于 HTTP 调用；断线或客户端超时不得取消
-  request。业务取消通过 `cancel_feedback`，查询通过 `get_feedback`。
+  request。默认等待通过 `wait_for_feedback`，超时后可安全重试；业务取消通过
+  `cancel_feedback`，查询恢复通过 `get_feedback`。
+- 官方 Rust SDK 已验证一次等待在提交后被唤醒；Claude Code、Codex 和 Inspector
+  的长时超时上限、取消传播仍需分别实测，不能由短时自动化结果代替。
 - Tasks 路径启用前，必须针对目标客户端补充 task create/get/result/cancel
   兼容回归。
 

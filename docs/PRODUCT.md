@@ -31,8 +31,9 @@
 - **桌面应用（Tauri）**：待命、收请求、ramble（语音 + 截图）、管理 session 与历史。
 - **本地 MCP（工作台宿主，Figma 模式）**：agent 连接后可调用正式工具；工作台关闭则 MCP 不可用。
 - **核心协议**：
-  - `request_feedback`：幂等创建体验请求；v1 固定立即返回 polling handle。
-  - `get_feedback` / `list_feedback_requests`：断线恢复和结果查询。
+  - `request_feedback`：幂等创建体验请求并立即返回 durable handle。
+  - `wait_for_feedback`：一次挂起等待终态并返回完整反馈包，避免 token 空轮询。
+  - `get_feedback` / `list_feedback_requests`：兼容、断线恢复和诊断查询。
   - `cancel_feedback`：显式取消。
   - `notify_complete`：目标结束或阶段完成时通知人类。
 - **反馈产物**：每个请求对应一个不可变目录（`feedback.md` +
@@ -57,11 +58,11 @@
 |------|------|
 | 平台 | 桌面：Windows / macOS / Linux（Tauri） |
 | MCP | 同机 Streamable HTTP MCP，由工作台进程提供；引导配置到 Codex、Claude Code |
-| 工具 | `request_feedback`、`get_feedback`、`list_feedback_requests`、`cancel_feedback`、`notify_complete` |
+| 工具 | `request_feedback`、`wait_for_feedback`、`get_feedback`、`list_feedback_requests`、`cancel_feedback`、`notify_complete` |
 | Ramble | 语音录入与转写、截图、编辑 MD、提交回传 |
 | Session | 列表与详情（按 project + `agent` + `session_id` 区分）；当前未结束请求 |
 | 存储 | 请求与状态落盘；Feedback Package；基础日志 |
-| 恢复 | Request 持久化 + `request_id` 幂等重连；v1 polling 取得结果 |
+| 恢复 | Request 持久化 + `request_id` 幂等重连；阻塞等待可安全重试，查询接口兜底 |
 | 通知 | 系统通知 + 可选响铃；自定义 channel 预留 |
 | 分发 | 安装工作台 → 保持开启 → 配置 MCP → 正常使用 agent |
 
@@ -96,7 +97,7 @@
 2. 工作台通知用户，展示任务单；状态为 `waiting`  
 3. 用户按 `actions` 操作目标软件，边用边 ramble，按需截图  
 4. 草稿持续落盘；提交时原子生成 Feedback Package
-5. v1 客户端通过 `get_feedback` 查询最终结果；Tasks 仅作为后续显式兼容增强
+5. Agent 单次调用 `wait_for_feedback`；提交或取消后一次性取得完整结果
 6. Agent 获得 package URI/路径，在同一任务中继续迭代
 
 ### 6.3 结束通知
@@ -121,7 +122,8 @@ waiting → in_progress → completed
    └────────────┴──────→ cancelled
 ```
 
-Request 的正确性不依赖 holding。Tasks、polling 和重试必须读取同一持久化状态。
+Request 的正确性不依赖单次 holding 连接。wait、Tasks、兼容查询和重试必须读取
+同一持久化状态；客户端不得用固定间隔空轮询作为默认等待路径。
 
 ---
 

@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use crate::SqliteFeedbackStore;
+use crate::{SqliteFeedbackStore, platform};
 use async_trait::async_trait;
 use rambledesk_core::{
     FeedbackPackagePublisher, FeedbackResultView, PublishedFeedbackPackage, RepositoryError,
@@ -40,7 +40,7 @@ async fn publish_package(
         .map_err(package_error)?
     {
         validate_existing_package(plan, &manifest).await?;
-        sync_directory(parent).await?;
+        platform::sync_published_parent(parent).await?;
         return Ok(published_result(plan, manifest_sha256));
     }
 
@@ -63,15 +63,14 @@ async fn publish_package(
         tokio::fs::create_dir(temporary.join("attachments"))
             .await
             .map_err(package_error)?;
+        stage_attachments(plan, &temporary).await?;
         write_synced(&temporary.join("feedback.md"), markdown.as_bytes()).await?;
         write_synced(&temporary.join("manifest.json"), manifest.as_bytes()).await?;
-        sync_directory(&temporary).await?;
+        platform::sync_staged_directory(&temporary).await?;
         validate_publication_parent(plan, parent).await?;
-        tokio::fs::rename(&temporary, &final_directory)
-            .await
-            .map_err(package_error)?;
+        platform::publish_directory(&temporary, &final_directory, parent).await?;
         validate_publication_parent(plan, parent).await?;
-        sync_directory(parent).await?;
+        platform::sync_published_parent(parent).await?;
         validate_publication_parent(plan, parent).await
     }
     .await;
@@ -86,7 +85,7 @@ async fn publish_package(
                 let _ = tokio::fs::remove_dir_all(&temporary).await;
             }
             validate_existing_package(plan, &manifest).await?;
-            sync_directory(parent).await?;
+            platform::sync_published_parent(parent).await?;
         } else {
             if tokio::fs::try_exists(&temporary).await.unwrap_or(false) {
                 let _ = tokio::fs::remove_dir_all(&temporary).await;
@@ -126,6 +125,13 @@ async fn validate_publication_parent(
 }
 
 fn render_markdown(plan: &SubmissionPlan) -> String {
+    let mut body_markdown = plan.body_markdown.clone();
+    for attachment in &plan.attachments {
+        body_markdown = body_markdown.replace(
+            &format!("attachment://{}", attachment.attachment_id),
+            &attachment.relative_path,
+        );
+    }
     let mut markdown = format!(
         "# RambleDesk Feedback\n\n## Request\n\n{}\n\n## Actions\n\n",
         plan.what_happened
@@ -134,9 +140,27 @@ fn render_markdown(plan: &SubmissionPlan) -> String {
         markdown.push_str(&format!("- **{}**: {}\n", action.id, action.instruction));
     }
     markdown.push_str("\n## Operator Feedback\n\n");
-    markdown.push_str(&plan.body_markdown);
+    markdown.push_str(&body_markdown);
     if !markdown.ends_with('\n') {
         markdown.push('\n');
+    }
+    let unreferenced = plan
+        .attachments
+        .iter()
+        .filter(|attachment| {
+            !plan
+                .body_markdown
+                .contains(&format!("attachment://{}", attachment.attachment_id))
+        })
+        .collect::<Vec<_>>();
+    if !unreferenced.is_empty() {
+        markdown.push_str("\n## Attachments\n\n");
+        for attachment in unreferenced {
+            markdown.push_str(&format!(
+                "![{}]({})\n\n",
+                attachment.file_name, attachment.relative_path
+            ));
+        }
     }
     markdown
 }
@@ -145,6 +169,20 @@ fn render_manifest(
     plan: &SubmissionPlan,
     feedback_sha256: &str,
 ) -> Result<String, RepositoryError> {
+    let attachments = plan
+        .attachments
+        .iter()
+        .map(|attachment| {
+            json!({
+                "id": attachment.attachment_id,
+                "file_name": attachment.file_name,
+                "media_type": attachment.media_type,
+                "byte_size": attachment.byte_size,
+                "sha256": attachment.sha256,
+                "path": attachment.relative_path,
+            })
+        })
+        .collect::<Vec<_>>();
     let value = json!({
         "schema_version": 1,
         "request_id": plan.request_id,
@@ -156,7 +194,7 @@ fn render_manifest(
         "draft_revision": plan.source_revision,
         "feedback_markdown": "feedback.md",
         "feedback_sha256": feedback_sha256,
-        "attachments": [],
+        "attachments": attachments,
     });
     let mut rendered = serde_json::to_string_pretty(&value).map_err(package_error)?;
     rendered.push('\n');
@@ -185,6 +223,44 @@ async fn validate_existing_package(
     if markdown != render_markdown(plan) {
         return Err(RepositoryError::PackagePublish);
     }
+    for attachment in &plan.attachments {
+        validate_attachment_relative_path(&attachment.relative_path)?;
+        let path = Path::new(&plan.directory_path).join(&attachment.relative_path);
+        let bytes = tokio::fs::read(path).await.map_err(package_error)?;
+        if bytes.len() as u64 != attachment.byte_size
+            || hex::encode(Sha256::digest(&bytes)) != attachment.sha256
+        {
+            return Err(RepositoryError::PackagePublish);
+        }
+    }
+    Ok(())
+}
+
+async fn stage_attachments(plan: &SubmissionPlan, temporary: &Path) -> Result<(), RepositoryError> {
+    for attachment in &plan.attachments {
+        validate_attachment_relative_path(&attachment.relative_path)?;
+        let bytes = tokio::fs::read(&attachment.draft_path)
+            .await
+            .map_err(package_error)?;
+        if bytes.len() as u64 != attachment.byte_size
+            || hex::encode(Sha256::digest(&bytes)) != attachment.sha256
+        {
+            return Err(RepositoryError::PackagePublish);
+        }
+        write_synced(&temporary.join(&attachment.relative_path), &bytes).await?;
+    }
+    Ok(())
+}
+
+fn validate_attachment_relative_path(relative_path: &str) -> Result<(), RepositoryError> {
+    let path = Path::new(relative_path);
+    let mut components = path.components();
+    if components.next().map(|part| part.as_os_str()) != Some("attachments".as_ref())
+        || components.next().is_none()
+        || components.next().is_some()
+    {
+        return Err(RepositoryError::PackagePublish);
+    }
     Ok(())
 }
 
@@ -193,21 +269,6 @@ async fn write_synced(path: &Path, bytes: &[u8]) -> Result<(), RepositoryError> 
     file.write_all(bytes).await.map_err(package_error)?;
     file.flush().await.map_err(package_error)?;
     file.sync_all().await.map_err(package_error)
-}
-
-#[cfg(unix)]
-async fn sync_directory(path: &Path) -> Result<(), RepositoryError> {
-    tokio::fs::File::open(path)
-        .await
-        .map_err(package_error)?
-        .sync_all()
-        .await
-        .map_err(package_error)
-}
-
-#[cfg(not(unix))]
-async fn sync_directory(_path: &Path) -> Result<(), RepositoryError> {
-    Err(RepositoryError::PackagePublish)
 }
 
 fn published_result(plan: &SubmissionPlan, manifest_sha256: String) -> PublishedFeedbackPackage {

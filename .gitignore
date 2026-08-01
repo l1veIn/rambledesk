@@ -12,3 +12,5 @@ apps/*/src-tauri/icons/ios/
 *.log
 *.token
 .rambledesk/
+.repochan/
+deliverables-2026-07-31/

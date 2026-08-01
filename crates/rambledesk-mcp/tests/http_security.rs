@@ -101,7 +101,13 @@ async fn official_client_exercises_health_feedback_and_errors() -> anyhow::Resul
             .iter()
             .any(|tool| tool.name.as_ref() == "rambledesk_health")
     );
-    for expected in ["request_feedback", "get_feedback", "cancel_feedback"] {
+    for expected in [
+        "request_feedback",
+        "wait_for_feedback",
+        "get_feedback",
+        "list_feedback_requests",
+        "cancel_feedback",
+    ] {
         assert!(
             tools
                 .tools
@@ -172,6 +178,27 @@ async fn official_client_exercises_health_feedback_and_errors() -> anyhow::Resul
         Some(request_id.as_str())
     );
 
+    let list_arguments = serde_json::json!({ "limit": 1 })
+        .as_object()
+        .cloned()
+        .expect("list arguments");
+    let listed = client
+        .call_tool(
+            CallToolRequestParams::new("list_feedback_requests").with_arguments(list_arguments),
+        )
+        .await
+        .context("call list_feedback_requests")?;
+    assert_ne!(listed.is_error, Some(true));
+    assert_eq!(
+        listed
+            .structured_content
+            .as_ref()
+            .and_then(|value| value.get("requests"))
+            .and_then(serde_json::Value::as_array)
+            .map(Vec::len),
+        Some(1)
+    );
+
     let get_arguments = serde_json::json!({ "request_id": request_id })
         .as_object()
         .cloned()
@@ -189,22 +216,64 @@ async fn official_client_exercises_health_feedback_and_errors() -> anyhow::Resul
         Some("waiting")
     );
 
-    let saved = application
-        .save_feedback_draft(SaveDraftInput {
-            request_id: request_id.clone(),
-            body_markdown: "The real MCP client observes the completed package.".to_owned(),
-            expected_revision: 0,
-        })
-        .await
-        .context("save operator draft")?;
-    let submitted = application
-        .submit_feedback(SubmitFeedbackInput {
-            request_id: request_id.clone(),
-            expected_revision: saved.saved_revision,
-        })
-        .await
-        .context("submit operator feedback")?;
+    let wait_arguments = serde_json::json!({ "request_id": request_id })
+        .as_object()
+        .cloned()
+        .expect("wait arguments");
+    let wait_call = client
+        .peer()
+        .call_tool(CallToolRequestParams::new("wait_for_feedback").with_arguments(wait_arguments));
+    let submit_application = application.clone();
+    let submit_request_id = request_id.clone();
+    let submit_call = async move {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let saved = submit_application
+            .save_feedback_draft(SaveDraftInput {
+                request_id: submit_request_id.clone(),
+                body_markdown: "The real MCP client observes the completed package.".to_owned(),
+                expected_revision: 0,
+            })
+            .await
+            .context("save operator draft")?;
+        submit_application
+            .submit_feedback(SubmitFeedbackInput {
+                request_id: submit_request_id,
+                expected_revision: saved.saved_revision,
+            })
+            .await
+            .context("submit operator feedback")
+    };
+    let (waited, submitted) = tokio::join!(wait_call, submit_call);
+    let waited = waited.context("wait for feedback")?;
+    let submitted = submitted?;
     assert!(submitted.feedback.is_some());
+    let waited_content = waited
+        .structured_content
+        .as_ref()
+        .context("waited structured content")?;
+    assert_eq!(
+        waited_content
+            .get("execution_mode")
+            .and_then(serde_json::Value::as_str),
+        Some("wait")
+    );
+    let waited_package = waited_content
+        .get("feedback_package")
+        .and_then(serde_json::Value::as_object)
+        .context("waited feedback package")?;
+    assert!(
+        waited_package
+            .get("markdown")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|markdown| markdown.contains("real MCP client"))
+    );
+    assert!(waited_package.get("manifest").is_some());
+    assert!(
+        waited_package
+            .get("attachment_paths")
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(Vec::is_empty)
+    );
 
     let completed_arguments = serde_json::json!({ "request_id": request_id })
         .as_object()

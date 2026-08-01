@@ -5,6 +5,7 @@ members = [
   "crates/rambledesk-cli",
   "crates/rambledesk-core",
   "crates/rambledesk-mcp",
+  "crates/rambledesk-speech",
   "crates/rambledesk-storage",
 ]
 
@@ -39,7 +40,7 @@ sqlx = { version = "0.8.6", default-features = false, features = [
   "sqlite",
 ] }
 subtle = "2"
-tauri = "2.11.5"
+tauri = { version = "2.11.5", features = ["tray-icon"] }
 tauri-build = "2.6.3"
 tempfile = "3"
 thiserror = "2"
@@ -50,7 +51,9 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 ts-rs = "12.0.1"
 uuid = { version = "1.24.0", features = ["v7"] }
+windows-sys = { version = "0.61.2", features = ["Win32_Storage_FileSystem"] }
 
 rambledesk-core = { path = "crates/rambledesk-core" }
 rambledesk-mcp = { path = "crates/rambledesk-mcp" }
+rambledesk-speech = { path = "crates/rambledesk-speech" }
 rambledesk-storage = { path = "crates/rambledesk-storage" }

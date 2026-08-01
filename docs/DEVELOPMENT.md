@@ -1,7 +1,7 @@
 # RambleDesk 开发基线与实施计划
 
-> 状态：M0 complete · M1 in progress
-> 日期：2026-07-29
+> 状态：M0 complete · M1 accepted on macOS · Windows compatibility verified
+> 日期：2026-07-31
 
 ## 1. 已冻结的开发方向
 
@@ -98,10 +98,11 @@ members = ["apps/desktop/src-tauri", "crates/*"]
 
 #### `rambledesk-speech`
 
-- M3 才进入默认构建；
-- cpal 音频采集、重采样、有背压的 PCM 通道；
-- STT engine trait 的实现、模型清单和下载器；
-- 允许以 Cargo feature 隔离 sherpa-onnx 等重依赖；
+- M3 Windows MVP 已进入桌面默认构建；
+- cpal 默认麦克风采集、单声道/16 kHz 重采样、有界 PCM 通道；
+- sherpa-onnx X-ASR 480ms 真流式 partial 与自然端点 stable；
+- 模型清单位于 `crates/rambledesk-speech/models/`；
+- provider registry、多模型 UI、自动下载器和设备选择延后；
 - 不能承担 Draft、Request 或提交语义。
 
 #### `rambledesk-cli`
@@ -306,9 +307,10 @@ pnpm dev
 - 锁定 `rmcp`、Tauri 和 Rust toolchain 版本；
 - 将兼容结果写入 `docs/COMPATIBILITY.md`。
 
-实测结果见 [COMPATIBILITY.md](COMPATIBILITY.md)。首发采用 polling：
-`request_feedback` 快速返回 durable request，Agent 使用 `get_feedback` 查询。
-Tasks 保留为双方显式声明支持后的增强路径。
+实测结果见 [COMPATIBILITY.md](COMPATIBILITY.md)。当前默认采用 durable wait：
+`request_feedback` 快速返回 durable request，Agent 单次调用 `wait_for_feedback`
+挂起到终态；`get_feedback` 只用于兼容、恢复和诊断。Tasks 保留为双方显式声明
+支持后的增强路径。
 
 验收门：
 
@@ -325,16 +327,19 @@ Tasks 保留为双方显式声明支持后的增强路径。
 持久 `request_feedback/get_feedback/cancel_feedback`、Inbox、单请求工作区、
 基于 aggregate revision 的 Draft 自动保存，以及带 publication intent 和启动
 对账的 crash-safe Feedback Package 提交。系统通知插件、显式权限入口和隐私化
-新请求通知也已接入；macOS 权限和实际投递仍需解锁桌面后由用户人工验收。
+新请求通知也已接入；macOS 权限、实际投递和完整纵向闭环已于 2026-07-30
+由用户人工验收。
 
-当前 crash-safe package 提交验收目标是已实测的 macOS/Unix 文件系统。非 Unix
-平台在实现并验证 durable directory barrier 前必须返回明确发布失败，不能先把
-SQLite 标记为 completed；Windows/Linux 完整安装与掉电回归属于 M4 发行门。
+Feedback Package 的持久化原语集中在 storage 平台兼容层：Unix 使用目录
+`fsync`、同目录原子 rename 和父目录 `fsync`；Windows 使用
+`MoveFileExW(MOVEFILE_WRITE_THROUGH)` 发布已逐文件 flush 的同卷暂存目录。
+Windows 的提交、幂等、启动对账和 MCP 黑盒测试已通过；Windows/Linux 完整安装
+和真实掉电回归仍属于 M4 发行门。
 
 交付：
 
 - SQLite migrations；
-- `request_feedback`、`get_feedback`、`cancel_feedback`；
+- `request_feedback`、`wait_for_feedback`、`get_feedback`、`cancel_feedback`；
 - Inbox 和单请求工作区；
 - 文本 Draft 自动保存；
 - 提交发布 `feedback.md + manifest.json`；
@@ -353,28 +358,60 @@ SQLite 标记为 completed；Windows/Linux 完整安装与掉电回归属于 M4 
 
 ### M2：截图、历史与可用性
 
-交付：
+自动化交付已于 2026-07-31 完成：
 
 - 粘贴、拖放和文件选择添加图片；
+- `Ctrl + Shift + 1` 全局快捷键唤起内置区域截图，鼠标所在显示器框选后自动插入正文；
 - 附件哈希、排序、删除和相对路径引用；
 - Session/历史页面；
 - `list_feedback_requests`；
 - 托盘和待处理角标；
 - 设置页复制 MCP 配置。
 
-系统级跨应用截图可在 M2 后半段加入；先确保导入已有截图可靠。
+内置截图在框选层显示前捕获目标画面，完成后沿用附件 revision、哈希和 Markdown
+`attachment://` 节点；不会依赖系统剪贴板，也不会把框选层截入图片。
+
+Windows 人工签收项：
+
+1. 保持目标软件前台，按 `Ctrl + Shift + 1`，跨应用框选并确认图片直接进入当前光标位置；
+2. 录音期间连续完成两次截图，确认语音 partial/stable 和截图互不阻塞；
+3. 在缩放显示器或副显示器上截图，确认选区边界与结果一致，Esc/右键可无残留取消；
+4. 从资源管理器拖入 PNG/JPEG/WebP/GIF，确认预览、排序和删除；
+5. 提交含附件的反馈，确认 Feedback Package 中相对路径、图片和哈希一致；
+6. 关闭主窗口后确认应用驻留托盘，徽标数量变化且左键可恢复窗口；
+7. 从连接设置复制 MCP 配置，并在一个真实 MCP 客户端建立连接；
+8. 在历史页打开 completed/cancelled 请求，确认内容只读且状态正确。
 
 ### M3：语音 Ramble
 
-交付前必须先写语音 ADR，明确：
+语音决策见 [`adr/002-incremental-voice-ramble.md`](adr/002-incremental-voice-ramble.md)。
+统一采集生命周期见 [`adr/003-unified-ramble-state.md`](adr/003-unified-ramble-state.md)。
+Windows MVP 默认使用本地 `cpal + sherpa-onnx X-ASR` 真流式识别。默认模型目录为：
 
-- 录音采集方案和跨平台权限；
-- 本地或云端转写 provider；
-- 原始音频保留策略；
-- 隐私提示；
-- 失败时不影响文字和截图提交。
+```text
+%LOCALAPPDATA%\io.rambledesk.desktop\models\sherpa-x-asr
+```
 
-首版语音必须是可选输入方式，而不是提交依赖。
+可用 `RAMBLEDESK_SHERPA_MODEL_DIR` 覆盖。下载来源、大小和摘要见模型清单；模型不提交
+到 Git。早期 Whisper 模型可以保留在开发机，但 Whisper native runtime 不进入当前
+Windows 二进制：上游 whisper.cpp `/MD` 与 Sherpa 预编译库 `/MT` 的 C runtime 不兼容，
+MVP 只维护 Sherpa 主路径。中文转写、并行截图/编辑和主 Ramble 流程已经完成
+Windows 人工签收。统一 Ramble 状态新增：
+
+- `开始/停止/继续 Ramble` 统一控制麦克风、截图快捷键和剪贴板捕获；
+- `Ctrl + Shift + R` 全局切换 Ramble，`Ctrl + Shift + 1` 仅在 Ramble 进行中截图；
+- 复制文字以可编辑引用块进入文档流，复制图片以内联附件追加；
+- 暂停不清空上下文，切换 Request、重新载入和提交会先完成收尾。
+
+当前仍需人工签收：
+
+- 跨应用复制中文、多行代码和图片的自动捕获；
+- 全局开始、暂停、继续后，旧剪贴板不被重复导入；
+- 停止时 0.5–4 秒尾段 flush 与最后一次剪贴板事件均无丢失；
+- 5/10/20 分钟压力和中英混合质量；
+- macOS 权限、设备切换和发行包模型分发。
+
+语音始终是可选输入方式；模型缺失、麦克风拒绝或 STT 失败不得影响文字和截图提交。
 
 ### M4：发行准备
 
@@ -423,6 +460,7 @@ SQLite 标记为 completed；Windows/Linux 完整安装与掉电回归属于 M4 
 
 ## 9. 当前判断
 
-M0 已通过自动化与真实客户端验收。M1 的持久请求、Inbox、Draft 与纯文本提交
-纵向闭环和系统通知代码已经落地；解锁 macOS 后应人工确认权限请求与实际通知
-投递，再决定进入 M2，不提前引入语音、截图或 Tasks 专用业务分支。
+M0/M1 已通过自动化与真实客户端验收，M2 富文本/图片 Feedback Package 已在 Windows
+完成签收。M3 Windows Sherpa 中文流式转写、并行图片编辑和主 Ramble 流程也已签收；
+当前实现门禁转为统一 Ramble 状态的跨应用剪贴板与全局暂停/继续体验。跨平台安装、
+macOS 权限和真实掉电回归保留在 M4。

@@ -1,7 +1,10 @@
 import type { FeedbackStatus } from './generated/feedback'
+import type { Locale } from './preferences'
 
 export type {
   ActionInput,
+  AddAttachmentInput,
+  AttachmentView,
   ContextRef,
   DraftView,
   ExecutionMode,
@@ -10,11 +13,27 @@ export type {
   FeedbackResultView,
   FeedbackStatus,
   FeedbackWorkspaceView,
+  ListFeedbackRequestsInput,
+  ListFeedbackRequestsOutput,
+  RemoveAttachmentInput,
+  ReorderAttachmentsInput,
   SaveDraftInput,
   SubmitFeedbackInput,
 } from './generated/feedback'
 
-export function requestStatusLabel(status: FeedbackStatus): string {
+export function requestStatusLabel(status: FeedbackStatus, locale: Locale = 'zh-CN'): string {
+  if (locale === 'en') {
+    switch (status) {
+      case 'waiting':
+        return 'Waiting'
+      case 'in_progress':
+        return 'In progress'
+      case 'completed':
+        return 'Submitted'
+      case 'cancelled':
+        return 'Cancelled'
+    }
+  }
   switch (status) {
     case 'waiting':
       return '等待开始'

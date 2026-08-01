@@ -1,7 +1,7 @@
 # RambleDesk MCP 与反馈协议
 
-> 状态：M1 pure-text feedback loop implemented
-> 版本：v1 · 2026-07-29  
+> 状态：M1 blocking wait feedback loop implemented
+> 版本：v1.1 · 2026-08-01
 > 规范词：MUST / SHOULD / MAY 分别表示必须、建议和可选。
 
 ## 1. 兼容策略
@@ -21,12 +21,13 @@ M0 已用 Claude Code 和 MCP Inspector 实测，并锁定官方 `rmcp` 3.0.0；
 
 ### 1.1 执行模式
 
-v1 首发对所有客户端固定使用 polling：`request_feedback` 立即返回 `waiting`，
-Agent 使用 `get_feedback` 查询。即使客户端声明 MCP Tasks，也不能仅凭该声明
-自动改变 wire result；只有服务端在后续兼容切片中显式启用 Tasks、并对目标客户
-端完成 create/get/result/cancel 回归后，才可返回持久 task handle。
+`request_feedback` 立即持久化并返回 `waiting`。正常客户端随后调用一次
+`wait_for_feedback`，由服务端挂起到 `completed` 或 `cancelled`，不得通过定时
+`get_feedback` 空轮询。`get_feedback` 只用于断线恢复、旧客户端兼容和诊断。
 
-长时间保持单个 HTTP/SSE 响应只可作为兼容优化，不能成为正确性的前提。
+客户端超时或连接中断不会改变 Feedback Request；调用方可用同一 `request_id`
+重新调用 `wait_for_feedback`。因此长时间 HTTP 响应用于节省空转 token，但不是
+请求正确性或持久性的前提。MCP Tasks 仍须在完成目标客户端回归后显式启用。
 
 无论采用哪种模式，Feedback Request 都必须在第一次工具调用返回前持久化。
 
@@ -163,9 +164,45 @@ Agent 使用 `get_feedback` 查询。即使客户端声明 MCP Tasks，也不能
 
 Tasks 模式下，最终 task result 必须使用相同完成结果结构。
 
-## 4. `get_feedback`
+## 4. `wait_for_feedback`
 
-用于不支持 Tasks 的客户端、断线恢复和诊断。
+正常客户端在 `request_feedback` 后调用一次并等待终态。
+
+输入：
+
+```json
+{
+  "request_id": "019..."
+}
+```
+
+完成输出在普通结果字段之外增加一次性反馈内容：
+
+```json
+{
+  "request_id": "019...",
+  "status": "completed",
+  "execution_mode": "wait",
+  "feedback": {
+    "directory_path": "/absolute/package/path",
+    "markdown_path": "/absolute/package/path/feedback.md",
+    "manifest_path": "/absolute/package/path/manifest.json"
+  },
+  "feedback_package": {
+    "manifest": { "schema_version": 1, "attachments": [] },
+    "markdown": "# RambleDesk Feedback\n...",
+    "attachment_paths": ["/absolute/package/path/attachments/example.png"]
+  }
+}
+```
+
+取消时返回 `status: "cancelled"`、`execution_mode: "wait"` 和
+`feedback_package: null`。多个并发等待者必须同时被提交或取消唤醒。调用被宿主
+取消只结束该次等待，不取消领域请求；业务取消仍使用 `cancel_feedback`。
+
+## 5. `get_feedback`
+
+用于旧客户端兼容、断线恢复和诊断，不应作为定时轮询循环使用。
 
 输入：
 
@@ -179,7 +216,7 @@ Tasks 模式下，最终 task result 必须使用相同完成结果结构。
 
 该工具不得改变请求状态。
 
-## 5. `list_feedback_requests`
+## 6. `list_feedback_requests`
 
 只读恢复工具。默认只列出未结束请求。
 
@@ -203,7 +240,7 @@ Tasks 模式下，最终 task result 必须使用相同完成结果结构。
 - cursor 对调用方不透明；
 - 结果按 `updated_at DESC, request_id DESC` 排序。
 
-## 6. `cancel_feedback`
+## 7. `cancel_feedback`
 
 显式取消一个尚未完成的请求。
 
@@ -224,7 +261,7 @@ Tasks 模式下，最终 task result 必须使用相同完成结果结构。
 - 草稿默认保留，直到用户显式删除；
 - MCP Tasks 的取消必须映射到同一领域操作。
 
-## 7. `notify_complete`
+## 8. `notify_complete`
 
 非 holding 工具，用于通知一个 Agent Session 已完成。
 
@@ -306,8 +343,10 @@ Invocation Attempt 是诊断数据，不是 Feedback Request 的事实来源。
 
 项目根不可写或未提供时，使用应用数据目录，并在结果中返回实际路径。
 
-M1 的 durable rename + directory sync 已在 macOS/Unix 路径实现。非 Unix 平台
-在具备等价持久化 barrier 前不得提交事务 B 或返回 completed。
+M1 的 durable publication 由 storage 平台兼容层提供：macOS/Unix 使用目录
+`fsync` + 同目录 rename + 父目录 `fsync`；Windows 使用
+`MoveFileExW(MOVEFILE_WRITE_THROUGH)` 移动已逐文件 flush 的同卷暂存目录。
+只有平台 barrier 成功后才允许提交事务 B 或返回 completed。
 
 `manifest.json`：
 
@@ -323,12 +362,22 @@ M1 的 durable rename + directory sync 已在 macOS/Unix 路径实现。非 Unix
   "draft_revision": 7,
   "feedback_markdown": "feedback.md",
   "feedback_sha256": "...",
-  "attachments": []
+  "attachments": [
+    {
+      "id": "019...",
+      "file_name": "onboarding.png",
+      "media_type": "image/png",
+      "byte_size": 84231,
+      "sha256": "...",
+      "path": "attachments/001-onboarding.png"
+    }
+  ]
 }
 ```
 
-M1 的 `feedback.md` 包含请求摘要、有序 actions 和 Operator 的 Markdown 正文；
-`attachments` 固定为空数组。M2 引入附件后只能写相对路径，不得写入绝对附件路径。
+`feedback.md` 包含请求摘要、有序 actions、Operator 的 Markdown 正文和按用户顺序
+排列的附件相对链接。`attachments` 只能写包内相对路径，不得写入草稿或发布目录的
+绝对路径；发布前后必须核对字节数与 SHA-256。
 
 ## 11. 错误结构
 

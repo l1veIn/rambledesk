@@ -1,9 +1,11 @@
 use std::{fs, path::PathBuf};
 
 use rambledesk_core::{
-    ActionInput, ContextRef, DraftView, ExecutionMode, FeedbackRequestSummary, FeedbackRequestView,
-    FeedbackResultView, FeedbackStatus, FeedbackWorkspaceView, HealthSnapshot, SaveDraftInput,
-    ServiceStatus, StorageStatus, SubmitFeedbackInput,
+    ActionInput, AddAttachmentInput, AttachmentView, ContextRef, DraftView, ExecutionMode,
+    FeedbackRequestSummary, FeedbackRequestView, FeedbackResultView, FeedbackStatus,
+    FeedbackWorkspaceView, HealthSnapshot, ListFeedbackRequestsInput, ListFeedbackRequestsOutput,
+    RemoveAttachmentInput, ReorderAttachmentsInput, SaveDraftInput, ServiceStatus, StorageStatus,
+    SubmitFeedbackInput,
 };
 use ts_rs::{Config, TS};
 
@@ -37,8 +39,14 @@ fn main() -> std::io::Result<()> {
         exported::<FeedbackResultView>(),
         exported::<FeedbackRequestView>(),
         exported::<FeedbackRequestSummary>(),
+        exported::<ListFeedbackRequestsInput>(),
+        exported::<ListFeedbackRequestsOutput>(),
         exported::<DraftView>(),
+        exported::<AttachmentView>(),
         exported::<FeedbackWorkspaceView>(),
+        exported::<AddAttachmentInput>(),
+        exported::<RemoveAttachmentInput>(),
+        exported::<ReorderAttachmentsInput>(),
         exported::<SaveDraftInput>(),
         exported::<SubmitFeedbackInput>(),
     ];

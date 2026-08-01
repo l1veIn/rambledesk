@@ -193,8 +193,10 @@ UI command
 SubmitFeedback(request_id, expected_revision)
   → transaction A: acquire submit lease / verify state
   → render package into sibling temp directory
-  → flush + hash + fsync
-  → atomic rename to final directory
+  → flush + hash
+  → platform durability adapter:
+      Unix: staged directory fsync + atomic rename + parent fsync
+      Windows: MoveFileExW(MOVEFILE_WRITE_THROUGH)
   → transaction B:
       mark completed
       store immutable result paths + hashes
@@ -207,10 +209,11 @@ SubmitFeedback(request_id, expected_revision)
 
 ### 6.4 Agent 取得结果
 
+- 默认客户端调用一次 `wait_for_feedback`，由 application terminal notifier 唤醒；
 - Tasks 客户端取得 task final result；
-- polling 客户端调用 `get_feedback`；
+- 兼容或恢复客户端按需调用 `get_feedback`，不得定时空轮询；
 - 相同 `request_id` 再次调用 `request_feedback` 可取得同一结果；
-- 三条路径读取相同 application query。
+- 所有路径读取相同 durable application query。
 
 ## 7. 状态与生命周期
 

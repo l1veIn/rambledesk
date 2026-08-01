@@ -1,0 +1,20 @@
+[package]
+name = "rambledesk-speech"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+description = "Bounded incremental speech-to-text compatibility layer for RambleDesk"
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
+cpal = "0.16.0"
+sherpa-onnx = "1.13.4"
+
+[dev-dependencies]
+serde_json.workspace = true

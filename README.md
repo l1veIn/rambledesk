@@ -24,11 +24,15 @@ Agent 通过本地 MCP 下发结构化请求；人类按清单真实使用、自
 
 ## 状态
 
-M0 技术与协议尖峰已完成。M1 已落地 SQLite 持久请求内核、
-`request_feedback/get_feedback/cancel_feedback` polling 工具、Inbox、Markdown
+M0 技术与协议尖峰已完成。M1 已在 macOS 完成验收，并落地 SQLite 持久请求内核、
+`request_feedback/wait_for_feedback/get_feedback/cancel_feedback` durable wait 工具、Inbox、Markdown
 Draft 自动保存和 crash-safe Feedback Package 提交；MCP Inspector、Claude Code
-与官方 Rust SDK 实测通过。新请求系统通知采用显式授权且不显示工作内容；下一步
-只剩 macOS 通知权限和实际投递的人工验收。
+与官方 Rust SDK 实测通过。新请求系统通知采用显式授权且不显示工作内容。
+Windows Feedback Package 发布使用独立平台兼容层和 write-through 目录移动，
+跨层提交、幂等与启动恢复测试已通过。M2 的图片粘贴/拖放/选择、全局快捷键内置区域
+截图、附件不可变发布、历史查询、`list_feedback_requests`、Windows 托盘待处理徽标
+和 MCP 配置复制已经完成 Windows 人工签收；M3 的 Sherpa 中文流式转写和主 Ramble
+流程也已签收。当前正在把语音、截图与剪贴板收敛为可暂停、继续的统一 Ramble 状态。
 
 ## 本地验证
 

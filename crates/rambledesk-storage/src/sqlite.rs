@@ -1,10 +1,11 @@
-use std::{path::Path, sync::Arc, time::Duration};
+use std::{collections::HashSet, path::Path, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use rambledesk_core::{
-    ActionInput, ContextRef, DraftView, FeedbackRepository, FeedbackRequestSummary,
-    FeedbackResultView, FeedbackStatus, NewFeedbackRequest, ProjectInput, PublishedFeedbackPackage,
-    RepositoryError, StoredFeedbackRequest, StoredFeedbackWorkspace, SubmissionPlan,
+    ActionInput, AttachmentView, ContextRef, DraftView, FeedbackRepository, FeedbackRequestQuery,
+    FeedbackRequestSummary, FeedbackResultView, FeedbackStatus, MAX_ATTACHMENT_COUNT,
+    NewAttachment, NewFeedbackRequest, ProjectInput, PublishedFeedbackPackage, RepositoryError,
+    StoredFeedbackRequest, StoredFeedbackWorkspace, SubmissionAttachment, SubmissionPlan,
 };
 use sha2::{Digest, Sha256};
 use sqlx::{
@@ -15,6 +16,7 @@ use sqlx::{
     },
 };
 use thiserror::Error;
+use tokio::io::AsyncWriteExt;
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
@@ -338,6 +340,45 @@ impl FeedbackRepository for SqliteFeedbackStore {
         rows.iter().map(summary_from_row).collect()
     }
 
+    async fn list_requests(
+        &self,
+        query: FeedbackRequestQuery,
+    ) -> Result<Vec<FeedbackRequestSummary>, RepositoryError> {
+        let rows = sqlx::query(
+            "SELECT r.id, s.project_id, p.name AS project_name, s.agent, \
+                    s.external_session_id, r.what_happened, r.status, \
+                    r.revision, r.created_at, r.updated_at \
+             FROM feedback_requests r \
+             JOIN agent_sessions s ON s.id = r.session_id \
+             JOIN projects p ON p.id = s.project_id \
+             WHERE (?1 IS NULL OR s.project_id = ?1) \
+               AND (?2 IS NULL OR s.agent = ?2) \
+               AND (?3 IS NULL OR s.external_session_id = ?3) \
+               AND ((?4 AND r.status = 'waiting') \
+                 OR (?5 AND r.status = 'in_progress') \
+                 OR (?6 AND r.status = 'completed') \
+                 OR (?7 AND r.status = 'cancelled')) \
+               AND (?8 IS NULL OR r.updated_at < ?8 \
+                 OR (r.updated_at = ?8 AND r.id < ?9)) \
+             ORDER BY r.updated_at DESC, r.id DESC \
+             LIMIT ?10",
+        )
+        .bind(query.project_id.as_deref())
+        .bind(query.agent.as_deref())
+        .bind(query.session_id.as_deref())
+        .bind(query.statuses.contains(&FeedbackStatus::Waiting))
+        .bind(query.statuses.contains(&FeedbackStatus::InProgress))
+        .bind(query.statuses.contains(&FeedbackStatus::Completed))
+        .bind(query.statuses.contains(&FeedbackStatus::Cancelled))
+        .bind(query.before_updated_at.as_deref())
+        .bind(query.before_request_id.as_deref())
+        .bind(query.limit as i64 + 1)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(storage_error)?;
+        rows.iter().map(summary_from_row).collect()
+    }
+
     async fn get_workspace(
         &self,
         request_id: &str,
@@ -444,6 +485,215 @@ impl FeedbackRepository for SqliteFeedbackStore {
         })
     }
 
+    async fn add_attachment(
+        &self,
+        request_id: &str,
+        attachment: NewAttachment,
+        expected_revision: u64,
+        now: &str,
+    ) -> Result<StoredFeedbackWorkspace, RepositoryError> {
+        let directory = self
+            .app_data_root
+            .join("drafts")
+            .join(request_id)
+            .join("attachments");
+        tokio::fs::create_dir_all(&directory)
+            .await
+            .map_err(storage_error)?;
+        let stored_name = format!(
+            "{}-{}",
+            attachment.attachment_id,
+            portable_file_name(&attachment.file_name)
+        );
+        let draft_path = directory.join(stored_name);
+        let write_result = async {
+            let mut file = tokio::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&draft_path)
+                .await
+                .map_err(storage_error)?;
+            file.write_all(&attachment.contents)
+                .await
+                .map_err(storage_error)?;
+            file.flush().await.map_err(storage_error)?;
+            file.sync_all().await.map_err(storage_error)
+        }
+        .await;
+        if let Err(error) = write_result {
+            let _ = tokio::fs::remove_file(&draft_path).await;
+            return Err(error);
+        }
+
+        let mutation = async {
+            let mut transaction = self
+                .pool
+                .begin_with("BEGIN IMMEDIATE")
+                .await
+                .map_err(storage_error)?;
+            let current_revision = ensure_attachment_mutable(
+                &mut transaction,
+                request_id,
+                expected_revision,
+            )
+            .await?;
+            let attachment_count: i64 =
+                sqlx::query_scalar("SELECT COUNT(*) FROM attachments WHERE request_id = ?1")
+                    .bind(request_id)
+                    .fetch_one(&mut *transaction)
+                    .await
+                    .map_err(storage_error)?;
+            if attachment_count >= MAX_ATTACHMENT_COUNT as i64 {
+                return Err(RepositoryError::AttachmentLimit);
+            }
+            let next_position: i64 = sqlx::query_scalar(
+                "SELECT COALESCE(MAX(position) + 1, 0) FROM attachments WHERE request_id = ?1",
+            )
+            .bind(request_id)
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(storage_error)?;
+            sqlx::query(
+                "INSERT INTO attachments \
+                 (id, request_id, draft_path, file_name, byte_size, media_type, sha256, position, created_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            )
+            .bind(&attachment.attachment_id)
+            .bind(request_id)
+            .bind(path_string(&draft_path)?)
+            .bind(&attachment.file_name)
+            .bind(attachment.contents.len() as i64)
+            .bind(&attachment.media_type)
+            .bind(&attachment.sha256)
+            .bind(next_position)
+            .bind(now)
+            .execute(&mut *transaction)
+            .await
+            .map_err(storage_error)?;
+            advance_attachment_revision(&mut transaction, request_id, current_revision, now)
+                .await?;
+            transaction.commit().await.map_err(storage_error)
+        }
+        .await;
+        if let Err(error) = mutation {
+            let _ = tokio::fs::remove_file(&draft_path).await;
+            return Err(error);
+        }
+        load_workspace_from_pool(&self.pool, request_id).await
+    }
+
+    async fn remove_attachment(
+        &self,
+        request_id: &str,
+        attachment_id: &str,
+        expected_revision: u64,
+        now: &str,
+    ) -> Result<StoredFeedbackWorkspace, RepositoryError> {
+        let mut transaction = self
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(storage_error)?;
+        let current_revision =
+            ensure_attachment_mutable(&mut transaction, request_id, expected_revision).await?;
+        let draft_path: String = sqlx::query_scalar(
+            "SELECT draft_path FROM attachments WHERE request_id = ?1 AND id = ?2",
+        )
+        .bind(request_id)
+        .bind(attachment_id)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(storage_error)?
+        .ok_or(RepositoryError::AttachmentNotFound)?;
+        sqlx::query("DELETE FROM attachments WHERE request_id = ?1 AND id = ?2")
+            .bind(request_id)
+            .bind(attachment_id)
+            .execute(&mut *transaction)
+            .await
+            .map_err(storage_error)?;
+        advance_attachment_revision(&mut transaction, request_id, current_revision, now).await?;
+        transaction.commit().await.map_err(storage_error)?;
+        let _ = tokio::fs::remove_file(draft_path).await;
+        load_workspace_from_pool(&self.pool, request_id).await
+    }
+
+    async fn reorder_attachments(
+        &self,
+        request_id: &str,
+        attachment_ids: &[String],
+        expected_revision: u64,
+        now: &str,
+    ) -> Result<StoredFeedbackWorkspace, RepositoryError> {
+        let unique = attachment_ids.iter().collect::<HashSet<_>>();
+        if unique.len() != attachment_ids.len() {
+            return Err(RepositoryError::AttachmentNotFound);
+        }
+        let mut transaction = self
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(storage_error)?;
+        let current_revision =
+            ensure_attachment_mutable(&mut transaction, request_id, expected_revision).await?;
+        let stored_ids: Vec<String> =
+            sqlx::query_scalar("SELECT id FROM attachments WHERE request_id = ?1")
+                .bind(request_id)
+                .fetch_all(&mut *transaction)
+                .await
+                .map_err(storage_error)?;
+        if stored_ids.len() != attachment_ids.len()
+            || !stored_ids.iter().all(|id| unique.contains(id))
+        {
+            return Err(RepositoryError::AttachmentNotFound);
+        }
+        let unchanged = sqlx::query_scalar::<_, String>(
+            "SELECT id FROM attachments WHERE request_id = ?1 ORDER BY position",
+        )
+        .bind(request_id)
+        .fetch_all(&mut *transaction)
+        .await
+        .map_err(storage_error)?
+            == attachment_ids;
+        if unchanged {
+            transaction.commit().await.map_err(storage_error)?;
+            return load_workspace_from_pool(&self.pool, request_id).await;
+        }
+        sqlx::query("UPDATE attachments SET position = position + 100000 WHERE request_id = ?1")
+            .bind(request_id)
+            .execute(&mut *transaction)
+            .await
+            .map_err(storage_error)?;
+        for (position, attachment_id) in attachment_ids.iter().enumerate() {
+            sqlx::query("UPDATE attachments SET position = ?3 WHERE request_id = ?1 AND id = ?2")
+                .bind(request_id)
+                .bind(attachment_id)
+                .bind(position as i64)
+                .execute(&mut *transaction)
+                .await
+                .map_err(storage_error)?;
+        }
+        advance_attachment_revision(&mut transaction, request_id, current_revision, now).await?;
+        transaction.commit().await.map_err(storage_error)?;
+        load_workspace_from_pool(&self.pool, request_id).await
+    }
+
+    async fn read_attachment(
+        &self,
+        request_id: &str,
+        attachment_id: &str,
+    ) -> Result<Vec<u8>, RepositoryError> {
+        let draft_path: String = sqlx::query_scalar(
+            "SELECT draft_path FROM attachments WHERE request_id = ?1 AND id = ?2",
+        )
+        .bind(request_id)
+        .bind(attachment_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(storage_error)?
+        .ok_or(RepositoryError::AttachmentNotFound)?;
+        tokio::fs::read(draft_path).await.map_err(storage_error)
+    }
+
     async fn plan_submission(
         &self,
         request_id: &str,
@@ -519,6 +769,7 @@ impl FeedbackRepository for SqliteFeedbackStore {
             .ok_or(RepositoryError::DraftEmpty)?;
         let body_sha256 = hex::encode(Sha256::digest(body_markdown.as_bytes()));
         let actions = load_actions(&mut transaction, request_id).await?;
+        let attachments = load_submission_attachments(&mut transaction, request_id).await?;
 
         if let Some(source_revision) = row
             .try_get::<Option<i64>, _>("source_revision")
@@ -531,7 +782,7 @@ impl FeedbackRepository for SqliteFeedbackStore {
             if stored_hash != body_sha256 {
                 return Err(RepositoryError::DraftConflict);
             }
-            let plan = submission_plan_from_row(&row, actions, body_markdown)?;
+            let plan = submission_plan_from_row(&row, actions, attachments, body_markdown)?;
             transaction.commit().await.map_err(storage_error)?;
             return Ok(plan);
         }
@@ -568,6 +819,7 @@ impl FeedbackRepository for SqliteFeedbackStore {
             session_id: row.try_get("external_session_id").map_err(storage_error)?,
             what_happened: row.try_get("what_happened").map_err(storage_error)?,
             actions,
+            attachments,
             body_markdown,
             source_revision: aggregate_revision as u64,
             publication_id: publication_id.to_owned(),
@@ -661,6 +913,23 @@ impl FeedbackRepository for SqliteFeedbackStore {
         .execute(&mut *transaction)
         .await
         .map_err(storage_error)?;
+        for attachment in &plan.attachments {
+            let published_path = Path::new(&plan.directory_path).join(&attachment.relative_path);
+            let updated = sqlx::query(
+                "UPDATE attachments SET published_path = ?3 \
+                 WHERE request_id = ?1 AND id = ?2 AND sha256 = ?4",
+            )
+            .bind(&plan.request_id)
+            .bind(&attachment.attachment_id)
+            .bind(path_string(&published_path)?)
+            .bind(&attachment.sha256)
+            .execute(&mut *transaction)
+            .await
+            .map_err(storage_error)?;
+            if updated.rows_affected() != 1 {
+                return Err(RepositoryError::CorruptData);
+            }
+        }
         let completed = sqlx::query(
             "UPDATE feedback_requests SET \
                  status = 'completed', completed_at = ?2, updated_at = ?2, revision = revision + 1 \
@@ -700,6 +969,74 @@ fn summary_from_row(row: &SqliteRow) -> Result<FeedbackRequestSummary, Repositor
     })
 }
 
+async fn ensure_attachment_mutable(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    request_id: &str,
+    expected_revision: u64,
+) -> Result<i64, RepositoryError> {
+    let row = sqlx::query(
+        "SELECT status, revision, \
+                EXISTS(SELECT 1 FROM submission_plans WHERE request_id = ?1) AS planned \
+         FROM feedback_requests WHERE id = ?1",
+    )
+    .bind(request_id)
+    .fetch_optional(&mut **transaction)
+    .await
+    .map_err(storage_error)?
+    .ok_or(RepositoryError::RequestNotFound)?;
+    let status: String = row.try_get("status").map_err(storage_error)?;
+    if matches!(
+        FeedbackStatus::try_from(status.as_str())?,
+        FeedbackStatus::Completed | FeedbackStatus::Cancelled
+    ) {
+        return Err(RepositoryError::RequestTerminal);
+    }
+    let planned: bool = row.try_get("planned").map_err(storage_error)?;
+    let current_revision: i64 = row.try_get("revision").map_err(storage_error)?;
+    if planned || current_revision != expected_revision as i64 {
+        return Err(RepositoryError::DraftConflict);
+    }
+    Ok(current_revision)
+}
+
+async fn advance_attachment_revision(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    request_id: &str,
+    current_revision: i64,
+    now: &str,
+) -> Result<(), RepositoryError> {
+    let next_revision = current_revision + 1;
+    let updated = sqlx::query(
+        "UPDATE feedback_requests SET \
+             status = 'in_progress', started_at = COALESCE(started_at, ?3), \
+             updated_at = ?3, revision = ?2 \
+         WHERE id = ?1 AND revision = ?4 AND status IN ('waiting', 'in_progress')",
+    )
+    .bind(request_id)
+    .bind(next_revision)
+    .bind(now)
+    .bind(current_revision)
+    .execute(&mut **transaction)
+    .await
+    .map_err(storage_error)?;
+    if updated.rows_affected() != 1 {
+        return Err(RepositoryError::DraftConflict);
+    }
+    sqlx::query(
+        "INSERT INTO drafts (request_id, body_markdown, revision, updated_at) \
+         VALUES (?1, '', ?2, ?3) \
+         ON CONFLICT(request_id) DO UPDATE SET \
+             revision = excluded.revision, updated_at = excluded.updated_at",
+    )
+    .bind(request_id)
+    .bind(next_revision)
+    .bind(now)
+    .execute(&mut **transaction)
+    .await
+    .map_err(storage_error)?;
+    Ok(())
+}
+
 async fn load_workspace_from_pool(
     pool: &SqlitePool,
     request_id: &str,
@@ -707,10 +1044,12 @@ async fn load_workspace_from_pool(
     let row = sqlx::query(
         "SELECT r.id, s.project_id, p.name AS project_name, s.agent, \
                 s.external_session_id, r.what_happened, r.status, \
-                r.revision, r.created_at, r.updated_at \
+                r.revision, r.created_at, r.updated_at, \
+                fr.package_uri, fr.directory_path, fr.markdown_path, fr.manifest_path \
          FROM feedback_requests r \
          JOIN agent_sessions s ON s.id = r.session_id \
          JOIN projects p ON p.id = s.project_id \
+         LEFT JOIN feedback_results fr ON fr.request_id = r.id \
          WHERE r.id = ?1",
     )
     .bind(request_id)
@@ -770,11 +1109,36 @@ async fn load_workspace_from_pool(
             updated_at: None,
         },
     };
+    let attachment_rows = sqlx::query(
+        "SELECT id, file_name, media_type, byte_size, sha256, position \
+         FROM attachments WHERE request_id = ?1 ORDER BY position, id",
+    )
+    .bind(request_id)
+    .fetch_all(pool)
+    .await
+    .map_err(storage_error)?;
+    let attachments = attachment_rows
+        .iter()
+        .map(attachment_view_from_row)
+        .collect::<Result<Vec<_>, _>>()?;
     Ok(StoredFeedbackWorkspace {
         request: summary_from_row(&row)?,
         actions,
         context_refs,
         draft,
+        attachments,
+        feedback: feedback_result_from_row(&row)?,
+    })
+}
+
+fn attachment_view_from_row(row: &SqliteRow) -> Result<AttachmentView, RepositoryError> {
+    Ok(AttachmentView {
+        attachment_id: row.try_get("id").map_err(storage_error)?,
+        file_name: row.try_get("file_name").map_err(storage_error)?,
+        media_type: row.try_get("media_type").map_err(storage_error)?,
+        byte_size: row.try_get::<i64, _>("byte_size").map_err(storage_error)? as u64,
+        sha256: row.try_get("sha256").map_err(storage_error)?,
+        position: row.try_get::<i64, _>("position").map_err(storage_error)? as u32,
     })
 }
 
@@ -825,9 +1189,43 @@ async fn load_actions(
         .collect()
 }
 
+async fn load_submission_attachments(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    request_id: &str,
+) -> Result<Vec<SubmissionAttachment>, RepositoryError> {
+    let rows = sqlx::query(
+        "SELECT id, draft_path, file_name, media_type, byte_size, sha256 \
+         FROM attachments WHERE request_id = ?1 ORDER BY position, id",
+    )
+    .bind(request_id)
+    .fetch_all(&mut **transaction)
+    .await
+    .map_err(storage_error)?;
+    rows.iter()
+        .enumerate()
+        .map(|(index, row)| {
+            let file_name: String = row.try_get("file_name").map_err(storage_error)?;
+            Ok(SubmissionAttachment {
+                attachment_id: row.try_get("id").map_err(storage_error)?,
+                relative_path: format!(
+                    "attachments/{:03}-{}",
+                    index + 1,
+                    portable_file_name(&file_name)
+                ),
+                file_name,
+                media_type: row.try_get("media_type").map_err(storage_error)?,
+                byte_size: row.try_get::<i64, _>("byte_size").map_err(storage_error)? as u64,
+                sha256: row.try_get("sha256").map_err(storage_error)?,
+                draft_path: row.try_get("draft_path").map_err(storage_error)?,
+            })
+        })
+        .collect()
+}
+
 fn submission_plan_from_row(
     row: &SqliteRow,
     actions: Vec<ActionInput>,
+    attachments: Vec<SubmissionAttachment>,
     body_markdown: String,
 ) -> Result<SubmissionPlan, RepositoryError> {
     Ok(SubmissionPlan {
@@ -837,6 +1235,7 @@ fn submission_plan_from_row(
         session_id: row.try_get("external_session_id").map_err(storage_error)?,
         what_happened: row.try_get("what_happened").map_err(storage_error)?,
         actions,
+        attachments,
         body_markdown,
         source_revision: row
             .try_get::<i64, _>("source_revision")
@@ -970,6 +1369,27 @@ fn compact_timestamp(timestamp: &str) -> String {
         .chars()
         .filter(char::is_ascii_alphanumeric)
         .collect()
+}
+
+fn portable_file_name(file_name: &str) -> String {
+    let mut value = file_name
+        .chars()
+        .map(|character| {
+            if character.is_control() || "<>:\"/\\|?*".contains(character) {
+                '_'
+            } else {
+                character
+            }
+        })
+        .collect::<String>();
+    while value.ends_with([' ', '.']) {
+        value.pop();
+    }
+    if value.is_empty() {
+        "attachment".to_owned()
+    } else {
+        value
+    }
 }
 
 fn path_string(path: &Path) -> Result<String, RepositoryError> {
@@ -1154,6 +1574,23 @@ async fn load_request_row(
 
 fn stored_request_from_row(row: &SqliteRow) -> Result<StoredFeedbackRequest, RepositoryError> {
     let status = stored_status(row)?;
+    let feedback = feedback_result_from_row(row)?;
+    if status == FeedbackStatus::Completed && feedback.is_none() {
+        return Err(RepositoryError::CorruptData);
+    }
+    Ok(StoredFeedbackRequest {
+        request_id: row.try_get("id").map_err(storage_error)?,
+        project_id: row.try_get("project_id").map_err(storage_error)?,
+        status,
+        created_at: row.try_get("created_at").map_err(storage_error)?,
+        updated_at: row.try_get("updated_at").map_err(storage_error)?,
+        feedback,
+    })
+}
+
+fn feedback_result_from_row(
+    row: &SqliteRow,
+) -> Result<Option<FeedbackResultView>, RepositoryError> {
     let package_uri: Option<String> = row.try_get("package_uri").map_err(storage_error)?;
     let feedback = match package_uri {
         Some(package_uri) => Some(FeedbackResultView {
@@ -1173,17 +1610,7 @@ fn stored_request_from_row(row: &SqliteRow) -> Result<StoredFeedbackRequest, Rep
         }),
         None => None,
     };
-    if status == FeedbackStatus::Completed && feedback.is_none() {
-        return Err(RepositoryError::CorruptData);
-    }
-    Ok(StoredFeedbackRequest {
-        request_id: row.try_get("id").map_err(storage_error)?,
-        project_id: row.try_get("project_id").map_err(storage_error)?,
-        status,
-        created_at: row.try_get("created_at").map_err(storage_error)?,
-        updated_at: row.try_get("updated_at").map_err(storage_error)?,
-        feedback,
-    })
+    Ok(feedback)
 }
 
 fn stored_status(row: &SqliteRow) -> Result<FeedbackStatus, RepositoryError> {
@@ -1204,6 +1631,9 @@ fn repository_error_code(error: RepositoryError) -> &'static str {
             "REQUEST_TERMINAL"
         }
         RepositoryError::CorruptData | RepositoryError::Storage => "STORAGE_FAILURE",
+        RepositoryError::AttachmentNotFound | RepositoryError::AttachmentLimit => {
+            "RECOVERY_FAILURE"
+        }
         RepositoryError::ProjectNotFound
         | RepositoryError::ProjectPathUnavailable
         | RepositoryError::ProjectConflict
@@ -1245,8 +1675,10 @@ async fn secure_path(_path: &Path, _mode: u32) -> Result<(), StorageOpenError> {
 mod tests {
     use super::*;
     use rambledesk_core::{
-        ActionInput, CancelFeedbackInput, ContextRef, FeedbackStatus, GetFeedbackInput,
-        ProjectInput, RequestFeedbackInput, SaveDraftInput, SubmitFeedbackInput,
+        ActionInput, AddAttachmentInput, CancelFeedbackInput, ContextRef, ExecutionMode,
+        FeedbackStatus, GetFeedbackInput, ListFeedbackRequestsInput, ProjectInput,
+        RemoveAttachmentInput, ReorderAttachmentsInput, RequestFeedbackInput, SaveDraftInput,
+        SubmitFeedbackInput,
     };
     use tempfile::TempDir;
     use uuid::Uuid;
@@ -1452,6 +1884,97 @@ mod tests {
                 .await;
         assert!(terminal_update.is_err(), "cancelled state must be terminal");
         store.close().await;
+    }
+
+    #[tokio::test]
+    async fn cancellation_wakes_all_feedback_waiters() {
+        let workspace = TestWorkspace::new().await;
+        let request_id = Uuid::now_v7().to_string();
+        let store = SqliteFeedbackStore::connect(&workspace.database)
+            .await
+            .expect("open store");
+        let application = store.clone().into_application();
+        application
+            .request_feedback(workspace.request(request_id.clone()))
+            .await
+            .expect("create request");
+
+        let left_application = application.clone();
+        let left_request_id = request_id.clone();
+        let left = tokio::spawn(async move {
+            left_application
+                .wait_for_feedback(GetFeedbackInput {
+                    request_id: left_request_id,
+                })
+                .await
+        });
+        let right_application = application.clone();
+        let right_request_id = request_id.clone();
+        let right = tokio::spawn(async move {
+            right_application
+                .wait_for_feedback(GetFeedbackInput {
+                    request_id: right_request_id,
+                })
+                .await
+        });
+        tokio::task::yield_now().await;
+        application
+            .cancel_feedback(CancelFeedbackInput {
+                request_id,
+                reason: "The request is no longer needed.".to_owned(),
+            })
+            .await
+            .expect("cancel request");
+
+        for waiter in [left, right] {
+            let result = tokio::time::timeout(std::time::Duration::from_secs(1), waiter)
+                .await
+                .expect("waiter timeout")
+                .expect("waiter task")
+                .expect("wait result");
+            assert_eq!(result.status, FeedbackStatus::Cancelled);
+            assert_eq!(result.execution_mode, ExecutionMode::Wait);
+        }
+        store.close().await;
+    }
+
+    #[tokio::test]
+    async fn wait_returns_terminal_state_immediately_after_restart() {
+        let workspace = TestWorkspace::new().await;
+        let request_id = Uuid::now_v7().to_string();
+        let store = SqliteFeedbackStore::connect(&workspace.database)
+            .await
+            .expect("open store");
+        let application = store.clone().into_application();
+        application
+            .request_feedback(workspace.request(request_id.clone()))
+            .await
+            .expect("create request");
+        application
+            .cancel_feedback(CancelFeedbackInput {
+                request_id: request_id.clone(),
+                reason: "Restart recovery fixture.".to_owned(),
+            })
+            .await
+            .expect("cancel request");
+        store.close().await;
+
+        let restarted = SqliteFeedbackStore::connect(&workspace.database)
+            .await
+            .expect("reopen store");
+        let result = tokio::time::timeout(
+            std::time::Duration::from_millis(250),
+            restarted
+                .clone()
+                .into_application()
+                .wait_for_feedback(GetFeedbackInput { request_id }),
+        )
+        .await
+        .expect("terminal wait must not block")
+        .expect("terminal result");
+        assert_eq!(result.status, FeedbackStatus::Cancelled);
+        assert_eq!(result.execution_mode, ExecutionMode::Wait);
+        restarted.close().await;
     }
 
     #[tokio::test]
@@ -1962,6 +2485,204 @@ mod tests {
                 .count(),
             0
         );
+        store.close().await;
+    }
+
+    #[tokio::test]
+    async fn attachments_share_revision_publish_in_order_and_survive_restart() {
+        let workspace = TestWorkspace::new().await;
+        let request_id = Uuid::now_v7().to_string();
+        let store = SqliteFeedbackStore::connect(&workspace.database)
+            .await
+            .expect("open store");
+        let application = store.clone().into_application();
+        let mut request = workspace.request(request_id.clone());
+        request.what_happened = "中文反馈请求：检查图片和正文是否完整".to_owned();
+        request.actions[0].instruction = "边截图边记录中文说明".to_owned();
+        application
+            .request_feedback(request)
+            .await
+            .expect("create request");
+
+        let first_bytes = b"\x89PNG\r\n\x1a\nfirst-image".to_vec();
+        let first = application
+            .add_feedback_attachment(AddAttachmentInput {
+                request_id: request_id.clone(),
+                file_name: "first.png".to_owned(),
+                contents: first_bytes.clone(),
+                expected_revision: 0,
+            })
+            .await
+            .expect("add first attachment");
+        assert_eq!(first.request.revision, 1);
+        assert_eq!(first.draft.saved_revision, 1);
+        assert_eq!(first.attachments.len(), 1);
+        let first_id = first.attachments[0].attachment_id.clone();
+        assert_eq!(
+            application
+                .read_feedback_attachment(request_id.clone(), first_id.clone())
+                .await
+                .expect("read attachment"),
+            first_bytes
+        );
+
+        let stale = application
+            .add_feedback_attachment(AddAttachmentInput {
+                request_id: request_id.clone(),
+                file_name: "stale.gif".to_owned(),
+                contents: b"GIF89astale".to_vec(),
+                expected_revision: 0,
+            })
+            .await
+            .expect_err("stale aggregate revision must conflict");
+        assert_eq!(stale.code(), "DRAFT_CONFLICT");
+
+        let second_bytes = b"\xff\xd8\xffsecond-image".to_vec();
+        let second = application
+            .add_feedback_attachment(AddAttachmentInput {
+                request_id: request_id.clone(),
+                file_name: "second.jpg".to_owned(),
+                contents: second_bytes.clone(),
+                expected_revision: 1,
+            })
+            .await
+            .expect("add second attachment");
+        let second_id = second.attachments[1].attachment_id.clone();
+        let reordered = application
+            .reorder_feedback_attachments(ReorderAttachmentsInput {
+                request_id: request_id.clone(),
+                attachment_ids: vec![second_id.clone(), first_id.clone()],
+                expected_revision: 2,
+            })
+            .await
+            .expect("reorder attachments");
+        assert_eq!(reordered.request.revision, 3);
+        assert_eq!(reordered.attachments[0].attachment_id, second_id);
+
+        let removed = application
+            .remove_feedback_attachment(RemoveAttachmentInput {
+                request_id: request_id.clone(),
+                attachment_id: first_id,
+                expected_revision: 3,
+            })
+            .await
+            .expect("remove attachment");
+        assert_eq!(removed.request.revision, 4);
+        assert_eq!(removed.attachments.len(), 1);
+        let draft = application
+            .save_feedback_draft(SaveDraftInput {
+                request_id: request_id.clone(),
+                body_markdown: format!(
+                    "图片前的中文说明。\n\n![中文截图](attachment://{second_id})\n\n图片后的中文结论。"
+                ),
+                expected_revision: 4,
+            })
+            .await
+            .expect("save feedback");
+        let submitted = application
+            .submit_feedback(SubmitFeedbackInput {
+                request_id: request_id.clone(),
+                expected_revision: draft.saved_revision,
+            })
+            .await
+            .expect("publish feedback");
+        let result = submitted.feedback.expect("feedback package");
+        let published_markdown = tokio::fs::read_to_string(&result.markdown_path)
+            .await
+            .expect("published Markdown");
+        assert!(published_markdown.contains("中文反馈请求：检查图片和正文是否完整"));
+        assert!(published_markdown.contains("边截图边记录中文说明"));
+        assert!(published_markdown.contains("图片前的中文说明。"));
+        assert!(published_markdown.contains("![中文截图](attachments/001-second.jpg)"));
+        assert!(published_markdown.contains("图片后的中文结论。"));
+        assert!(!published_markdown.contains("attachment://"));
+        assert!(!published_markdown.contains("## Attachments"));
+        let manifest: serde_json::Value = serde_json::from_str(
+            &tokio::fs::read_to_string(&result.manifest_path)
+                .await
+                .expect("manifest"),
+        )
+        .expect("valid manifest");
+        assert_eq!(manifest["attachments"][0]["file_name"], "second.jpg");
+        assert_eq!(
+            manifest["attachments"][0]["path"],
+            "attachments/001-second.jpg"
+        );
+        let published_attachment =
+            Path::new(&result.directory_path).join("attachments/001-second.jpg");
+        assert_eq!(
+            tokio::fs::read(published_attachment)
+                .await
+                .expect("published attachment"),
+            second_bytes
+        );
+        store.close().await;
+
+        let reopened = SqliteFeedbackStore::connect(&workspace.database)
+            .await
+            .expect("reopen store");
+        let recovered = reopened
+            .clone()
+            .into_application()
+            .get_feedback_workspace(request_id)
+            .await
+            .expect("recover workspace");
+        assert_eq!(recovered.attachments.len(), 1);
+        assert_eq!(recovered.attachments[0].file_name, "second.jpg");
+        assert_eq!(recovered.feedback.as_ref(), Some(&result));
+        reopened.close().await;
+    }
+
+    #[tokio::test]
+    async fn feedback_history_filters_and_paginates_without_duplicates() {
+        let workspace = TestWorkspace::new().await;
+        let store = SqliteFeedbackStore::connect(&workspace.database)
+            .await
+            .expect("open store");
+        let application = store.clone().into_application();
+        for _ in 0..3 {
+            application
+                .request_feedback(workspace.request(Uuid::now_v7().to_string()))
+                .await
+                .expect("create request");
+        }
+
+        let first = application
+            .list_feedback_requests(ListFeedbackRequestsInput {
+                agent: Some("test-agent".to_owned()),
+                limit: Some(2),
+                ..Default::default()
+            })
+            .await
+            .expect("first page");
+        assert_eq!(first.requests.len(), 2);
+        let cursor = first.next_cursor.expect("next cursor");
+        let second = application
+            .list_feedback_requests(ListFeedbackRequestsInput {
+                agent: Some("test-agent".to_owned()),
+                limit: Some(2),
+                cursor: Some(cursor),
+                ..Default::default()
+            })
+            .await
+            .expect("second page");
+        assert_eq!(second.requests.len(), 1);
+        assert!(second.next_cursor.is_none());
+        assert!(first.requests.iter().all(|left| {
+            second
+                .requests
+                .iter()
+                .all(|right| left.request_id != right.request_id)
+        }));
+
+        let invalid = application
+            .list_feedback_requests(ListFeedbackRequestsInput {
+                cursor: Some("not-a-cursor".to_owned()),
+                ..Default::default()
+            })
+            .await
+            .expect_err("invalid cursor");
+        assert_eq!(invalid.code(), "INVALID_ARGUMENT");
         store.close().await;
     }
 
