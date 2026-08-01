@@ -46,6 +46,8 @@ pub struct RequestFeedbackInput {
     pub agent: String,
     pub session_id: String,
     pub project: ProjectInput,
+    /// Short Ramble title shown in inboxes and workspace headings.
+    pub title: String,
     pub what_happened: String,
     pub actions: Vec<ActionInput>,
     #[serde(default)]
@@ -136,6 +138,7 @@ pub struct NewFeedbackRequest {
     pub session_record_id: String,
     pub agent: String,
     pub external_session_id: String,
+    pub title: String,
     pub what_happened: String,
     pub actions: Vec<ActionInput>,
     pub context_refs: Vec<ContextRef>,
@@ -148,6 +151,7 @@ impl NewFeedbackRequest {
             agent: &self.agent,
             session_id: &self.external_session_id,
             project_id,
+            title: &self.title,
             what_happened: &self.what_happened,
             actions: &self.actions,
             context_refs: &self.context_refs,
@@ -409,6 +413,7 @@ impl FeedbackApplication {
         mut input: RequestFeedbackInput,
     ) -> Result<FeedbackRequestView, ApplicationError> {
         validate_request_input(&input)?;
+        let title = input.title.trim().to_owned();
         if let Some(project_id) = input.project.project_id.as_deref() {
             input.project.project_id = Some(canonical_uuid(project_id, "project.project_id")?);
         }
@@ -426,6 +431,7 @@ impl FeedbackApplication {
                 session_record_id: self.ids.new_id(),
                 agent: input.agent,
                 external_session_id: input.session_id,
+                title,
                 what_happened: input.what_happened,
                 actions: input.actions,
                 context_refs: input.context_refs,
@@ -597,6 +603,7 @@ struct ImmutableRequest<'a> {
     agent: &'a str,
     session_id: &'a str,
     project_id: &'a str,
+    title: &'a str,
     what_happened: &'a str,
     actions: &'a [ActionInput],
     context_refs: &'a [ContextRef],
@@ -606,6 +613,12 @@ fn validate_request_input(input: &RequestFeedbackInput) -> Result<(), Applicatio
     validate_text("agent", &input.agent, 1, 64)?;
     validate_text("session_id", &input.session_id, 1, 256)?;
     validate_text("project.name", &input.project.name, 1, 120)?;
+    validate_text("title", &input.title, 1, 160)?;
+    if input.title.trim().is_empty() {
+        return Err(ApplicationError::invalid_argument(
+            "title must contain visible characters",
+        ));
+    }
     validate_text("what_happened", &input.what_happened, 1, 12_000)?;
 
     if let Some(request_id) = input.request_id.as_deref() {

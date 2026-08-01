@@ -15,6 +15,7 @@ function request(requestId: string): FeedbackRequestSummary {
     project_name: 'Private project',
     agent: 'agent',
     session_id: 'session',
+    title: 'Test Ramble',
     what_happened: 'Sensitive summary',
     status: 'waiting',
     revision: 0,

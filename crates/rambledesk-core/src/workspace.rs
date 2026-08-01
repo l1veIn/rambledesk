@@ -19,6 +19,7 @@ pub struct FeedbackRequestSummary {
     pub project_name: String,
     pub agent: String,
     pub session_id: String,
+    pub title: String,
     pub what_happened: String,
     pub status: FeedbackStatus,
     #[ts(type = "number")]
@@ -175,6 +176,7 @@ pub struct SubmissionPlan {
     pub project_id: String,
     pub agent: String,
     pub session_id: String,
+    pub title: String,
     pub what_happened: String,
     pub actions: Vec<ActionInput>,
     pub attachments: Vec<SubmissionAttachment>,

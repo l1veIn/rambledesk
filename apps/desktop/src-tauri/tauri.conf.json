@@ -10,6 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "title": "RambleDesk",
@@ -19,7 +20,10 @@
         "minHeight": 640,
         "resizable": true,
         "decorations": false,
-        "shadow": true,
+        "transparent": true,
+        "backgroundColor": "#00000000",
+        "acceptFirstMouse": true,
+        "shadow": false,
         "center": true
       }
     ],

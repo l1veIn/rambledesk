@@ -3,7 +3,8 @@ mod mcp_setup;
 mod screen_capture;
 
 use rambledesk_adapters::{
-    ResumePrompt, WakePayload, WakeReason, WakeResult, WakeupRouter,
+    AdapterPresentation, ResumePrompt, WakePayload, WakeReason, WakeResult, WakeupRouter,
+    known_adapter_presentations,
 };
 use rambledesk_core::{
     AddAttachmentInput, ApplicationError, DraftView, FeedbackApplication, FeedbackRequestSummary,
@@ -29,6 +30,7 @@ use tauri::{
     image::Image,
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    webview::Color,
 };
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
@@ -108,6 +110,11 @@ fn get_mcp_endpoint(state: tauri::State<'_, WorkbenchState>) -> String {
 #[tauri::command]
 fn get_mcp_configuration(state: tauri::State<'_, WorkbenchState>) -> String {
     state.mcp_configuration.clone()
+}
+
+#[tauri::command]
+fn list_adapter_presentations() -> Vec<AdapterPresentation> {
+    known_adapter_presentations()
 }
 
 #[tauri::command]
@@ -304,14 +311,16 @@ async fn deliver_wakeup_after_terminal(
     let Some(reason) = WakeReason::from_status(status) else {
         return;
     };
-    let (host_id, session_id) =
-        match application.get_feedback_workspace(request_id.to_owned()).await {
-            Ok(workspace) => (workspace.request.agent, workspace.request.session_id),
-            Err(error) => {
-                tracing::warn!(%request_id, %error, "wakeup: workspace lookup failed; using empty host");
-                (String::new(), String::new())
-            }
-        };
+    let (host_id, session_id) = match application
+        .get_feedback_workspace(request_id.to_owned())
+        .await
+    {
+        Ok(workspace) => (workspace.request.agent, workspace.request.session_id),
+        Err(error) => {
+            tracing::warn!(%request_id, %error, "wakeup: workspace lookup failed; using empty host");
+            (String::new(), String::new())
+        }
+    };
 
     let payload = WakePayload {
         request_id: request_id.to_owned(),
@@ -562,7 +571,10 @@ pub fn run() {
             .max_inner_size(RAMBLE_CONSOLE_WIDTH, RAMBLE_CONSOLE_HEIGHT)
             .resizable(false)
             .decorations(false)
-            .shadow(true)
+            .transparent(true)
+            .background_color(Color(0, 0, 0, 0))
+            .accept_first_mouse(true)
+            .shadow(false)
             .always_on_top(true)
             .skip_taskbar(true)
             .visible_on_all_workspaces(true)
@@ -671,12 +683,16 @@ pub fn run() {
             });
             app.manage(screen_capture::ScreenCaptureState::default());
             app.manage(clipboard_capture::ClipboardCaptureState::default());
+            if let Err(error) = screen_capture::prepare_screen_capture_overlay(app.handle()) {
+                tracing::warn!(%error, "failed to prewarm the screenshot editor");
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             get_health,
             get_mcp_endpoint,
             get_mcp_configuration,
+            list_adapter_presentations,
             detect_mcp_clients,
             install_mcp_clients,
             set_pending_count,
@@ -698,9 +714,17 @@ pub fn run() {
             clipboard_capture::read_clipboard_capture_image,
             clipboard_capture::discard_clipboard_capture_image,
             screen_capture::begin_screen_capture,
-            screen_capture::get_screen_capture_view,
-            screen_capture::read_screen_capture_preview,
+            screen_capture::get_active_capture_info,
+            screen_capture::read_capture_rgba_bytes,
+            screen_capture::show_screen_capture_overlay,
             screen_capture::complete_screen_capture,
+            screen_capture::pin_screen_capture,
+            screen_capture::read_pinned_screen_capture,
+            screen_capture::close_pinned_screen_capture,
+            screen_capture::begin_scrolling_capture,
+            screen_capture::get_scrolling_capture_info,
+            screen_capture::append_scrolling_capture_frame,
+            screen_capture::finish_scrolling_capture,
             screen_capture::read_completed_screen_capture,
             screen_capture::discard_screen_capture,
             screen_capture::cancel_screen_capture,

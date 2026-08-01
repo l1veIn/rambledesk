@@ -133,8 +133,8 @@ fn render_markdown(plan: &SubmissionPlan) -> String {
         );
     }
     let mut markdown = format!(
-        "# RambleDesk Feedback\n\n## Request\n\n{}\n\n## Actions\n\n",
-        plan.what_happened
+        "# {}\n\n## What Happened\n\n{}\n\n## What to Try\n\n",
+        plan.title, plan.what_happened
     );
     for action in &plan.actions {
         markdown.push_str(&format!("- **{}**: {}\n", action.id, action.instruction));
@@ -187,6 +187,7 @@ fn render_manifest(
         "schema_version": 1,
         "request_id": plan.request_id,
         "project_id": plan.project_id,
+        "title": plan.title,
         "agent": plan.agent,
         "session_id": plan.session_id,
         "submitted_at": plan.submitted_at,

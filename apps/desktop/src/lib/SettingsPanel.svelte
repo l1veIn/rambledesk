@@ -35,6 +35,7 @@
   type McpClientView = {
     id: string
     name: string
+    iconSvg: string
     installed: boolean
     configured: boolean
     configPath: string
@@ -244,7 +245,7 @@
                     <span class="client-check">
                       {#if selectedIds.has(client.id)}<Check size={14} strokeWidth={2.2} />{/if}
                     </span>
-                    <span class="client-icon"><TerminalSquare size={19} strokeWidth={1.7} /></span>
+                    <span class="client-icon" aria-hidden="true">{@html client.iconSvg}</span>
                     <span class="client-copy">
                       <strong>{client.name}</strong>
                       <small title={client.configPath}>{client.configPath}</small>
@@ -370,6 +371,8 @@
   .client-check { display: grid; width: 18px; height: 18px; place-items: center; border: 1px solid #9cafc2; border-radius: 5px; color: #fff; }
   .client-row.selected .client-check { border-color: #4387c8; background: #4387c8; }
   .client-icon { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 9px; color: #4b7eae; background: var(--surface-tint, #edf3f8); }
+  .client-icon :global(svg) { width: 21px; height: 21px; }
+  .client-icon :global(svg[role="img"]) { fill: currentColor; }
   .client-copy { min-width: 0; }
   .client-copy strong, .client-copy small { display: block; }
   .client-copy strong { margin-bottom: 3px; font-size: 12px; }

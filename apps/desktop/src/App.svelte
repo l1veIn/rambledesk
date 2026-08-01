@@ -8,7 +8,7 @@
     sendNotification,
   } from '@tauri-apps/plugin-notification'
   import { revealItemInDir } from '@tauri-apps/plugin-opener'
-  import { ArrowUpRight } from '@lucide/svelte'
+  import { ArrowUpRight, ChevronDown } from '@lucide/svelte'
   import { onMount, tick } from 'svelte'
 
   import rambelleArchived from './assets/rambelle-states/archived.png'
@@ -64,6 +64,11 @@
   import { t } from './lib/i18n'
   import { locale } from './lib/preferences'
 
+  type ScreenCaptureFinished = {
+    session_id: string | null
+    outcome: 'cancelled' | 'pinned'
+  }
+
   type SavePhase = 'idle' | 'unsaved' | 'saving' | 'saved' | 'error'
   type RamblePhase = 'idle' | 'starting' | 'active' | 'paused' | 'stopping' | 'error'
   type VoicePhase = 'idle' | 'starting' | 'listening' | 'processing' | 'stopping' | 'error'
@@ -78,6 +83,11 @@
     resume_prompt: string
     reason: 'completed' | 'cancelled'
   }
+  type AdapterPresentation = {
+    id: string
+    label: string
+    icon_svg: string
+  }
 
   const RESUME_PROMPT_EVENT = 'rambledesk://resume-prompt'
 
@@ -85,6 +95,7 @@
   let endpoint = tr('正在连接…')
   let inbox: FeedbackRequestSummary[] = []
   let history: FeedbackRequestSummary[] = []
+  let adapterPresentations: Record<string, AdapterPresentation> = {}
   let inboxMode: 'open' | 'history' = 'open'
   let workspace: FeedbackWorkspaceView | null = null
   let completedResult: FeedbackRequestView | null = null
@@ -173,7 +184,7 @@
             ? 'paused'
             : ramblePhase,
       projectName: workspace.request.project_name,
-      requestTitle: workspace.request.what_happened,
+      requestTitle: workspace.request.title,
       recording: rambleActive,
       busy: rambleBusy,
       captureBusy: attachmentBusy,
@@ -199,7 +210,7 @@
     let rambleShortcutUnlisten: (() => void) | undefined
     let captureShortcutUnlisten: (() => void) | undefined
     let captureReadyUnlisten: (() => void) | undefined
-    let captureCancelledUnlisten: (() => void) | undefined
+    let captureFinishedUnlisten: (() => void) | undefined
     let consoleCommandUnlisten: (() => void) | undefined
     let consoleReadyUnlisten: (() => void) | undefined
     let resumePromptUnlisten: (() => void) | undefined
@@ -259,12 +270,13 @@
       .catch((cause) => {
         attachmentMessage = tr('无法接收截图结果：{error}', { error: messageFrom(cause) })
       })
-    void listen('screen-capture-cancelled', () => {
+    void listen<ScreenCaptureFinished>('screen-capture-finished', (event) => {
       attachmentBusy = false
-      attachmentMessage = tr('截图已取消')
+      attachmentMessage =
+        event.payload.outcome === 'pinned' ? tr('截图已固定到屏幕') : tr('截图已取消')
     })
       .then((unlisten) => {
-        captureCancelledUnlisten = unlisten
+        captureFinishedUnlisten = unlisten
       })
       .catch(() => {
         // A failed cancellation listener does not affect capture or attachment storage.
@@ -304,7 +316,7 @@
       rambleShortcutUnlisten?.()
       captureShortcutUnlisten?.()
       captureReadyUnlisten?.()
-      captureCancelledUnlisten?.()
+      captureFinishedUnlisten?.()
       consoleCommandUnlisten?.()
       consoleReadyUnlisten?.()
       resumePromptUnlisten?.()
@@ -336,13 +348,17 @@
     pageError = ''
     loadingInbox = true
     try {
-      const [nextHealth, nextEndpoint, nextInbox] = await Promise.all([
+      const [nextHealth, nextEndpoint, nextInbox, presentations] = await Promise.all([
         invoke<HealthSnapshot>('get_health'),
         invoke<string>('get_mcp_endpoint'),
         invoke<FeedbackRequestSummary[]>('list_feedback_inbox'),
+        invoke<AdapterPresentation[]>('list_adapter_presentations'),
       ])
       health = nextHealth
       endpoint = nextEndpoint
+      adapterPresentations = Object.fromEntries(
+        presentations.map((presentation) => [presentation.id, presentation]),
+      )
       applyInboxSnapshot(nextInbox)
       if (nextInbox.length > 0) {
         await openRequest(nextInbox[0].request_id, false)
@@ -351,6 +367,17 @@
       pageError = messageFrom(cause)
     } finally {
       loadingInbox = false
+    }
+  }
+
+  function adapterPresentation(hostId: string): AdapterPresentation {
+    const normalized = hostId.trim().toLowerCase()
+    const presentation = adapterPresentations[normalized]
+    if (presentation) return presentation
+    return {
+      id: normalized || 'generic',
+      label: hostId.trim() || adapterPresentations.generic?.label || 'Coding Agent',
+      icon_svg: adapterPresentations.generic?.icon_svg || '',
     }
   }
 
@@ -651,7 +678,7 @@
     }
     if (!(await saveDraftNow())) return
     attachmentBusy = true
-    attachmentMessage = tr('截图工具已唤起：拖动框选，Esc 或右键取消')
+    attachmentMessage = tr('高级截图已唤起：可智能选窗、标注、滚动截图或固定到屏幕')
     try {
       await invoke('begin_screen_capture')
     } catch (cause) {
@@ -1189,7 +1216,7 @@
             ? 'paused'
             : ramblePhase,
       projectName: workspace.request.project_name,
-      requestTitle: workspace.request.what_happened,
+      requestTitle: workspace.request.title,
       recording: rambleActive,
       busy: rambleBusy,
       captureBusy: attachmentBusy,
@@ -1295,8 +1322,11 @@
                 <b>{request.project_name}</b>
                 <em>{requestStatusLabel(request.status, $locale)}</em>
               </span>
-              <strong>{request.what_happened}</strong>
-              <small>{request.agent} · {formatTime(request.updated_at)}</small>
+              {#if request.title.trim()}<strong>{request.title}</strong>{/if}
+              <small class="request-byline">
+                <span class="adapter-mark" aria-hidden="true">{@html adapterPresentation(request.agent).icon_svg}</span>
+                {adapterPresentation(request.agent).label} · {formatTime(request.updated_at)}
+              </small>
             </button>
           {/each}
         </nav>
@@ -1323,10 +1353,13 @@
             <div class="workspace-heading-copy">
               <div class="workspace-meta">
                 <span>{workspace.request.project_name}</span>
-                <span>{workspace.request.agent}</span>
+                <span class="adapter-chip">
+                  <i class="adapter-mark" aria-hidden="true">{@html adapterPresentation(workspace.request.agent).icon_svg}</i>
+                  {adapterPresentation(workspace.request.agent).label}
+                </span>
                 <span class="status-chip">{requestStatusLabel(workspace.request.status, $locale)}</span>
               </div>
-              <h2>{workspace.request.what_happened}</h2>
+              {#if workspace.request.title.trim()}<h2>{workspace.request.title}</h2>{/if}
               <p>Session · {workspace.request.session_id}</p>
             </div>
             <button class="secondary-button compact-button" onclick={reloadWorkspace}>{tr('重新载入')}</button>
@@ -1338,6 +1371,8 @@
                 <button
                   class="task-sheet-toggle"
                   aria-expanded={taskBriefOpen}
+                  aria-label={taskBriefOpen ? tr('收起') : tr('展开')}
+                  title={taskBriefOpen ? tr('收起') : tr('展开')}
                   onclick={() => (taskBriefOpen = !taskBriefOpen)}
                 >
                   <span>
@@ -1345,12 +1380,19 @@
                     <strong>{tr('任务简报')}</strong>
                     <em>{tr('{count} 个体验步骤', { count: workspace.actions.length })}</em>
                   </span>
-                  <b>{taskBriefOpen ? tr('收起') : tr('展开')}⌄</b>
+                  <b class:open={taskBriefOpen} class="task-sheet-toggle-icon">
+                    <ChevronDown size={20} strokeWidth={1.9} />
+                  </b>
                 </button>
 
                 {#if taskBriefOpen}
                   <div class="task-sheet-body">
-                    <section>
+                    <section class="brief-section brief-summary-section">
+                      <p class="eyebrow">WHAT HAPPENED</p>
+                      <p class="brief-summary">{workspace.request.what_happened}</p>
+                    </section>
+
+                    <section class="brief-section brief-actions-section">
                       <p class="eyebrow">WHAT TO TRY</p>
                       <ol class="actions">
                         {#each workspace.actions as action}
@@ -1361,18 +1403,6 @@
                         {/each}
                       </ol>
                     </section>
-
-                    {#if workspace.context_refs.length > 0}
-                      <section class="context">
-                        <p class="eyebrow">CONTEXT</p>
-                        {#each workspace.context_refs as reference}
-                          <div>
-                            <strong>{reference.label}</strong>
-                            <code>{reference.uri}</code>
-                          </div>
-                        {/each}
-                      </section>
-                    {/if}
                   </div>
                 {/if}
               </section>

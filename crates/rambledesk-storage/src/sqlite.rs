@@ -199,12 +199,13 @@ impl FeedbackRepository for SqliteFeedbackStore {
 
         let inserted = sqlx::query(
             "INSERT INTO feedback_requests \
-             (id, session_id, what_happened, status, input_hash, created_at, updated_at) \
-             VALUES (?1, ?2, ?3, 'waiting', ?4, ?5, ?5) \
+             (id, session_id, title, what_happened, status, input_hash, created_at, updated_at) \
+             VALUES (?1, ?2, ?3, ?4, 'waiting', ?5, ?6, ?6) \
              ON CONFLICT(id) DO NOTHING",
         )
         .bind(&request.request_id)
         .bind(session_id)
+        .bind(&request.title)
         .bind(&request.what_happened)
         .bind(&input_hash)
         .bind(&request.created_at)
@@ -326,7 +327,7 @@ impl FeedbackRepository for SqliteFeedbackStore {
     async fn list_open_requests(&self) -> Result<Vec<FeedbackRequestSummary>, RepositoryError> {
         let rows = sqlx::query(
             "SELECT r.id, s.project_id, p.name AS project_name, s.agent, \
-                    s.external_session_id, r.what_happened, r.status, \
+                    s.external_session_id, r.title, r.what_happened, r.status, \
                     r.revision, r.created_at, r.updated_at \
              FROM feedback_requests r \
              JOIN agent_sessions s ON s.id = r.session_id \
@@ -346,7 +347,7 @@ impl FeedbackRepository for SqliteFeedbackStore {
     ) -> Result<Vec<FeedbackRequestSummary>, RepositoryError> {
         let rows = sqlx::query(
             "SELECT r.id, s.project_id, p.name AS project_name, s.agent, \
-                    s.external_session_id, r.what_happened, r.status, \
+                    s.external_session_id, r.title, r.what_happened, r.status, \
                     r.revision, r.created_at, r.updated_at \
              FROM feedback_requests r \
              JOIN agent_sessions s ON s.id = r.session_id \
@@ -817,6 +818,7 @@ impl FeedbackRepository for SqliteFeedbackStore {
             project_id: row.try_get("project_id").map_err(storage_error)?,
             agent: row.try_get("agent").map_err(storage_error)?,
             session_id: row.try_get("external_session_id").map_err(storage_error)?,
+            title: row.try_get("title").map_err(storage_error)?,
             what_happened: row.try_get("what_happened").map_err(storage_error)?,
             actions,
             attachments,
@@ -961,6 +963,7 @@ fn summary_from_row(row: &SqliteRow) -> Result<FeedbackRequestSummary, Repositor
         project_name: row.try_get("project_name").map_err(storage_error)?,
         agent: row.try_get("agent").map_err(storage_error)?,
         session_id: row.try_get("external_session_id").map_err(storage_error)?,
+        title: row.try_get("title").map_err(storage_error)?,
         what_happened: row.try_get("what_happened").map_err(storage_error)?,
         status: FeedbackStatus::try_from(status.as_str())?,
         revision: row.try_get::<i64, _>("revision").map_err(storage_error)? as u64,
@@ -1043,7 +1046,7 @@ async fn load_workspace_from_pool(
 ) -> Result<StoredFeedbackWorkspace, RepositoryError> {
     let row = sqlx::query(
         "SELECT r.id, s.project_id, p.name AS project_name, s.agent, \
-                s.external_session_id, r.what_happened, r.status, \
+                s.external_session_id, r.title, r.what_happened, r.status, \
                 r.revision, r.created_at, r.updated_at, \
                 fr.package_uri, fr.directory_path, fr.markdown_path, fr.manifest_path \
          FROM feedback_requests r \
@@ -1147,7 +1150,7 @@ async fn load_submission_row(
     request_id: &str,
 ) -> Result<Option<SqliteRow>, RepositoryError> {
     sqlx::query(
-        "SELECT r.id, r.status, r.revision AS request_revision, r.what_happened, \
+        "SELECT r.id, r.status, r.revision AS request_revision, r.title, r.what_happened, \
                 s.project_id, s.agent, \
                 s.external_session_id, p.root_path_canonical, \
                 d.body_markdown, d.revision AS draft_revision, \
@@ -1233,6 +1236,7 @@ fn submission_plan_from_row(
         project_id: row.try_get("project_id").map_err(storage_error)?,
         agent: row.try_get("agent").map_err(storage_error)?,
         session_id: row.try_get("external_session_id").map_err(storage_error)?,
+        title: row.try_get("title").map_err(storage_error)?,
         what_happened: row.try_get("what_happened").map_err(storage_error)?,
         actions,
         attachments,
@@ -1713,6 +1717,7 @@ mod tests {
                     name: "Test project".to_owned(),
                     root_path: Some(self.project.to_string_lossy().into_owned()),
                 },
+                title: "Persistence review".to_owned(),
                 what_happened: "Implemented the persistence kernel.".to_owned(),
                 actions: vec![ActionInput {
                     id: "review".to_owned(),

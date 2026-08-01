@@ -1,6 +1,6 @@
 :root {
   color: #20334b;
-  background: #edf2f7;
+  background: transparent;
   font-family:
     "Segoe UI Variable", Inter, ui-sans-serif, system-ui, -apple-system,
     BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei UI", sans-serif;
@@ -29,7 +29,7 @@
 
 :root[data-theme="dark"] {
   color: #dce8f5;
-  background: #101823;
+  background: transparent;
   --ink: #dce8f5;
   --ink-soft: #9eb0c4;
   --ink-faint: #71849a;
@@ -96,6 +96,11 @@ body,
   height: 100%;
 }
 
+html,
+#app {
+  background: transparent;
+}
+
 body {
   margin: 0;
   min-width: 0;
@@ -110,7 +115,13 @@ body {
 body.capture-mode {
   min-width: 0;
   overflow: hidden;
-  background: #111;
+  background: #000;
+}
+
+body.app-mode {
+  min-height: 0;
+  padding: 1px;
+  background: transparent;
 }
 
 body.ramble-console-mode {
@@ -134,7 +145,6 @@ body.ramble-console-mode {
   border-radius: 18px;
   color: var(--ink);
   background: color-mix(in srgb, var(--glass) 94%, transparent);
-  box-shadow: 0 12px 34px rgb(21 48 77 / 20%);
   backdrop-filter: blur(20px) saturate(1.08);
   cursor: grab;
   user-select: none;
@@ -262,14 +272,17 @@ body.ramble-console-mode {
 
 .shell {
   width: 100%;
-  height: 100vh;
+  height: 100%;
   overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--line) 86%, transparent);
+  border-radius: 16px;
+  background: var(--surface);
 }
 
 .workbench {
   display: grid;
   grid-template-columns: 282px minmax(0, 1fr);
-  height: calc(100vh - 46px);
+  height: calc(100% - 46px);
   min-height: 0;
 }
 
@@ -471,6 +484,30 @@ h3 {
   font-size: 9px;
 }
 
+.request-byline,
+.adapter-chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.adapter-mark {
+  display: inline-grid;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  place-items: center;
+}
+
+.adapter-mark svg {
+  width: 100%;
+  height: 100%;
+}
+
+.adapter-mark svg[role="img"] {
+  fill: currentColor;
+}
+
 .empty-state {
   display: grid;
   gap: 7px;
@@ -608,6 +645,18 @@ h3 {
   background: var(--cyan-soft);
 }
 
+.workspace-meta span.adapter-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-block: 2px;
+}
+
+.workspace-meta .adapter-mark {
+  width: 14px;
+  height: 14px;
+}
+
 .secondary-button,
 .package-button {
   flex: 0 0 auto;
@@ -650,6 +699,8 @@ h3 {
 
 .task-sheet {
   overflow: hidden;
+  border-color: color-mix(in srgb, var(--blue) 22%, var(--line-soft));
+  box-shadow: 0 12px 32px rgb(42 70 101 / 7%);
 }
 
 .task-sheet-toggle {
@@ -657,8 +708,8 @@ h3 {
   width: 100%;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
-  padding: 11px 14px;
+  gap: 16px;
+  padding: 12px 14px 12px 13px;
   border: 0;
   color: var(--ink);
   background: transparent;
@@ -666,49 +717,98 @@ h3 {
 }
 
 .task-sheet-toggle:hover {
-  background: #f7faff;
+  background: color-mix(in srgb, var(--blue-soft) 48%, transparent);
 }
 
 .task-sheet-toggle > span {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 9px;
+  gap: 10px;
 }
 
 .task-sheet-toggle i {
   display: grid;
-  width: 26px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
   place-items: center;
-  border: 1px solid #c7dbef;
-  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--blue) 28%, var(--line-soft));
+  border-radius: 8px;
   color: var(--blue-strong);
-  background: var(--blue-soft);
-  font-size: 8px;
+  background: color-mix(in srgb, var(--blue-soft) 82%, var(--surface-raised));
+  font-size: 9px;
   font-style: normal;
   font-weight: 760;
 }
 
 .task-sheet-toggle strong {
-  font-size: 11px;
+  font-size: 12px;
+  letter-spacing: -0.01em;
 }
 
-.task-sheet-toggle em,
-.task-sheet-toggle b {
+.task-sheet-toggle em {
   color: var(--ink-faint);
   font-size: 9px;
   font-style: normal;
   font-weight: 520;
 }
 
+.task-sheet-toggle-icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--line-soft);
+  border-radius: 9px;
+  color: var(--ink-soft);
+  background: color-mix(in srgb, var(--surface-raised) 76%, transparent);
+  transition: color 140ms ease, background 140ms ease;
+}
+
+.task-sheet-toggle:hover .task-sheet-toggle-icon {
+  color: var(--blue-strong);
+  background: var(--blue-soft);
+}
+
+.task-sheet-toggle-icon svg {
+  transition: transform 160ms ease;
+}
+
+.task-sheet-toggle-icon.open svg {
+  transform: rotate(180deg);
+}
+
 .task-sheet-body {
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(180px, 0.8fr);
-  gap: 24px;
-  padding: 14px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  padding: 11px;
   border-top: 1px solid var(--line-soft);
-  background: #fbfcfe;
+  background: color-mix(in srgb, var(--surface-tint) 68%, var(--surface-raised));
+}
+
+.brief-section {
+  min-width: 0;
+  padding: 13px 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: var(--surface-raised);
+}
+
+.brief-summary-section {
+  border-color: color-mix(in srgb, var(--blue) 22%, var(--line-soft));
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--blue-soft) 72%, transparent), transparent 72%),
+    var(--surface-raised);
+}
+
+.brief-summary {
+  margin: 0;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 620;
+  line-height: 1.55;
 }
 
 .actions {
@@ -752,21 +852,6 @@ h3 {
   color: #3e5065;
   font-size: 11px;
   line-height: 1.48;
-}
-
-.context {
-  padding-left: 20px;
-  border-left: 1px solid var(--line-soft);
-}
-
-.context div {
-  display: grid;
-  gap: 3px;
-  margin-bottom: 9px;
-}
-
-.context strong {
-  font-size: 9px;
 }
 
 .editor-section {
@@ -1381,11 +1466,8 @@ h3 {
   font-size: 10px;
 }
 
-:root[data-theme="dark"] body {
-  background:
-    linear-gradient(30deg, transparent 46%, rgb(111 168 220 / 4%) 47%, rgb(111 168 220 / 4%) 53%, transparent 54%) 0 0 / 46px 80px,
-    linear-gradient(150deg, transparent 46%, rgb(111 168 220 / 4%) 47%, rgb(111 168 220 / 4%) 53%, transparent 54%) 0 0 / 46px 80px,
-    var(--app-background);
+:root[data-theme="dark"] body.app-mode {
+  background: transparent;
 }
 
 :root[data-theme="dark"] .workspace-panel {
@@ -1502,12 +1584,6 @@ h3 {
 
   .task-sheet-body {
     grid-template-columns: 1fr;
-  }
-
-  .context {
-    padding: 12px 0 0;
-    border-top: 1px solid var(--line-soft);
-    border-left: 0;
   }
 }
 

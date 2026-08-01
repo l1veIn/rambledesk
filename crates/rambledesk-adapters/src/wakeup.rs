@@ -9,6 +9,8 @@ use std::sync::Arc;
 
 use rambledesk_core::FeedbackStatus;
 
+use crate::{AdapterPresentation, adapter_presentation};
+
 /// Terminal reason that should attempt to resume the waiting agent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -68,10 +70,7 @@ impl WakePayload {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum WakeResult {
     /// A host-specific adapter delivered a continuation signal.
-    HostDelivered {
-        adapter_id: String,
-        host_id: String,
-    },
+    HostDelivered { adapter_id: String, host_id: String },
     /// No automatic wake: show a RambleDesk prompt so the human resumes the host.
     UserPrompt {
         adapter_id: String,
@@ -94,6 +93,10 @@ pub struct ResumePrompt {
 pub trait WakeupAdapter: Send + Sync {
     fn id(&self) -> &'static str;
 
+    fn presentation(&self) -> AdapterPresentation {
+        adapter_presentation(self.id())
+    }
+
     /// Whether this adapter owns `host_id` (case-insensitive).
     fn matches_host(&self, host_id: &str) -> bool;
 
@@ -106,17 +109,7 @@ pub struct GenericWakeupAdapter;
 
 impl GenericWakeupAdapter {
     pub fn host_label(host_id: Option<&str>) -> String {
-        match host_id.map(|value| value.to_ascii_lowercase()).as_deref() {
-            Some("claude") => "Claude Code".to_owned(),
-            Some("codex") => "Codex".to_owned(),
-            Some("cursor") => "Cursor".to_owned(),
-            Some("gemini") => "Gemini CLI".to_owned(),
-            Some("pi") => "Pi".to_owned(),
-            Some("opencode") => "OpenCode".to_owned(),
-            Some("inspector") => "MCP Inspector".to_owned(),
-            Some(other) => other.to_owned(),
-            None => "coding agent".to_owned(),
-        }
+        adapter_presentation(host_id.unwrap_or("generic")).label
     }
 
     pub fn build_prompt(payload: &WakePayload) -> ResumePrompt {

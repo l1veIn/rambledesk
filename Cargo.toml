@@ -41,7 +41,7 @@ sqlx = { version = "0.8.6", default-features = false, features = [
   "sqlite",
 ] }
 subtle = "2"
-tauri = { version = "2.11.5", features = ["tray-icon"] }
+tauri = { version = "2.11.5", features = ["macos-private-api", "tray-icon"] }
 tauri-build = "2.6.3"
 tempfile = "3"
 thiserror = "2"
@@ -59,3 +59,20 @@ rambledesk-core = { path = "crates/rambledesk-core" }
 rambledesk-mcp = { path = "crates/rambledesk-mcp" }
 rambledesk-speech = { path = "crates/rambledesk-speech" }
 rambledesk-storage = { path = "crates/rambledesk-storage" }
+
+# Keep the interactive capture path representative in debug builds. Snow Shot
+# applies optimized dev profiles to its screenshot crates for the same reason.
+[profile.dev.package.rambledesk-desktop]
+opt-level = 2
+
+[profile.dev.package.xcap]
+opt-level = 2
+
+[profile.dev.package.scap]
+opt-level = 2
+
+[profile.dev.package.screencapturekit]
+opt-level = 2
+
+[profile.dev.package.screencapturekit-sys]
+opt-level = 2

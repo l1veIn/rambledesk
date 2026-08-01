@@ -6,6 +6,8 @@ use std::{
 };
 use toml_edit::{DocumentMut, Item, Table, value};
 
+use rambledesk_adapters::{AdapterPresentation, adapter_presentation};
+
 const SERVER_ID: &str = "rambledesk";
 const HOST_ENV_KEY: &str = rambledesk_mcp::HOST_ENV_KEY;
 const HOST_HEADER: &str = "X-RambleDesk-Host";
@@ -14,7 +16,8 @@ const HOST_HEADER: &str = "X-RambleDesk-Host";
 #[serde(rename_all = "camelCase")]
 pub struct McpClientView {
     pub id: &'static str,
-    pub name: &'static str,
+    pub name: String,
+    pub icon_svg: String,
     pub installed: bool,
     pub configured: bool,
     pub config_path: String,
@@ -50,13 +53,12 @@ impl ClientKind {
         }
     }
 
-    fn name(self) -> &'static str {
-        match self {
-            Self::Claude => "Claude Code",
-            Self::Codex => "Codex",
-            Self::Cursor => "Cursor",
-            Self::Gemini => "Gemini CLI",
-        }
+    fn presentation(self) -> AdapterPresentation {
+        adapter_presentation(self.id())
+    }
+
+    fn name(self) -> String {
+        self.presentation().label
     }
 
     fn executable(self) -> &'static str {
@@ -104,13 +106,15 @@ pub fn detect_clients(home: &Path) -> Vec<McpClientView> {
         .into_iter()
         .map(|client| {
             let config_path = client.config_path(home);
+            let presentation = client.presentation();
             let configured = match client {
                 ClientKind::Codex => codex_is_configured(&config_path),
                 _ => json_is_configured(&config_path),
             };
             McpClientView {
                 id: client.id(),
-                name: client.name(),
+                name: presentation.label,
+                icon_svg: presentation.icon_svg,
                 installed: client.marker_path(home).exists()
                     || executable_on_path(client.executable()),
                 configured,

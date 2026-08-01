@@ -1,6 +1,6 @@
 <script lang="ts">
   import { getCurrentWindow } from '@tauri-apps/api/window'
-  import { Bell, BellOff, Minus, Settings2, X } from '@lucide/svelte'
+  import { Bell, BellOff, Cog, Minus, X } from '@lucide/svelte'
   import appIcon from '../assets/rambledesk-app-icon.png'
   import { t } from './i18n'
   import { locale } from './preferences'
@@ -93,7 +93,7 @@
       {#if notificationEnabled}<Bell size={16} strokeWidth={1.65} />{:else}<BellOff size={16} strokeWidth={1.65} />{/if}
     </button>
     <button class="titlebar-action" onclick={onSettings} title={t($locale, '设置')} aria-label={t($locale, '设置')}>
-      <Settings2 size={16} strokeWidth={1.65} />
+      <Cog size={17} strokeWidth={1.75} />
     </button>
   </div>
 
@@ -116,6 +116,7 @@
     align-items: stretch;
     height: 46px;
     border-bottom: 1px solid var(--line-soft, #d7e0eb);
+    border-radius: 15px 15px 0 0;
     background: var(--glass, rgb(247 249 252 / 94%));
     backdrop-filter: blur(18px);
     user-select: none;
@@ -193,7 +194,7 @@
   .titlebar-status {
     flex: 0 0 auto;
     gap: 8px;
-    padding-left: 10px;
+    padding: 0 12px 0 10px;
   }
 
   .connection-pill,

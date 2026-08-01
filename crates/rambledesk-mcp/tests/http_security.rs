@@ -128,6 +128,7 @@ async fn official_client_exercises_feedback_lifecycle_and_errors() -> anyhow::Re
             name: "RambleDesk MCP test".to_owned(),
             root_path: Some(directory.path().to_string_lossy().into_owned()),
         },
+        title: "MCP connection review".to_owned(),
         what_happened: "The MCP feedback tools were connected.".to_owned(),
         actions: vec![ActionInput {
             id: "verify".to_owned(),
@@ -313,6 +314,7 @@ async fn host_header_overrides_agent_on_request_feedback() -> anyhow::Result<()>
             name: "Host header test".to_owned(),
             root_path: Some(directory.path().to_string_lossy().into_owned()),
         },
+        title: "Host stamping review".to_owned(),
         what_happened: "Host identity from install config.".to_owned(),
         actions: vec![ActionInput {
             id: "verify".to_owned(),
