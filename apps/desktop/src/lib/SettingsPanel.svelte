@@ -108,7 +108,7 @@
         clientIds: [...selectedIds],
       })
       const changed = results.filter((result) => result.action !== 'unchanged').length
-      installMessage = tr('已为 {count} 个工具写入 RambleDesk MCP；重启这些工具后生效。', {
+      installMessage = tr('已为 {count} 个工具写入 RambleDesk 接入配置；重启这些工具后生效。', {
         count: changed,
       })
       await refreshClients()
@@ -156,7 +156,7 @@
         </button>
         <button class:active={activeSection === 'mcp'} onclick={() => (activeSection = 'mcp')}>
           <PlugZap size={17} strokeWidth={1.8} />
-          <span>MCP</span>
+          <span>{tr('宿主接入')}</span>
           {#if installedClients.length > 0}<em>{installedClients.length}</em>{/if}
           <ChevronRight size={15} />
         </button>
@@ -172,7 +172,7 @@
       <header class="settings-header">
         <div>
           <p class="eyebrow">{activeSection === 'general' ? tr('偏好设置') : tr('本地集成')}</p>
-          <h2>{activeSection === 'general' ? tr('通用') : tr('MCP 接入')}</h2>
+          <h2>{activeSection === 'general' ? tr('通用') : tr('宿主接入')}</h2>
         </div>
         <button class="settings-close" aria-label={tr('关闭设置')} onclick={onClose}><X size={18} /></button>
       </header>
@@ -223,7 +223,7 @@
               <span><TerminalSquare size={18} strokeWidth={1.8} /></span>
               <div>
                 <h3>{tr('Coding 工具')}</h3>
-                <p>{tr('自动检测本机工具，并将 RambleDesk 的本地 HTTP MCP 安全合并到对应配置。')}</p>
+                <p>{tr('MCP 负责创建和读取反馈；支持恢复会话的宿主会在提交后尝试自动继续。')}</p>
               </div>
               <button class="refresh-clients" disabled={loadingClients || installing} onclick={refreshClients}>
                 <RefreshCw size={15} class={loadingClients ? 'spinning' : ''} />{tr('重新检测')}
@@ -264,7 +264,7 @@
             <div class="install-bar">
               <div>
                 <strong>{tr('一键接入 RambleDesk')}</strong>
-                <span>{tr('只更新 rambledesk 条目，不覆盖其他配置。')}</span>
+                <span>{tr('只更新 rambledesk 条目；自动唤醒仍依赖宿主传入 session_id。')}</span>
               </div>
               <button class="install-button" disabled={selectedCount === 0 || installing} onclick={installSelected}>
                 {#if installing}<LoaderCircle class="spinning" size={16} />{:else}<PlugZap size={16} />{/if}

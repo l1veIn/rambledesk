@@ -22,6 +22,7 @@
   import type {
     AddAttachmentInput,
     AttachmentView,
+    CancelFeedbackInput,
     DraftView,
     FeedbackRequestSummary,
     FeedbackRequestView,
@@ -82,6 +83,7 @@
   let loadingHistory = false
   let loadingWorkspace = false
   let submitting = false
+  let cancelling = false
   let attachmentBusy = false
   let attachmentMessage = ''
   let attachmentPreviews: Record<string, string> = {}
@@ -122,7 +124,14 @@
     workspace.request.status !== 'completed' &&
     workspace.request.status !== 'cancelled' &&
     draftBody.trim().length > 0 &&
-    !submitting
+    !submitting &&
+    !cancelling
+  $: canCancel =
+    workspace !== null &&
+    workspace.request.status !== 'completed' &&
+    workspace.request.status !== 'cancelled' &&
+    !submitting &&
+    !cancelling
   $: voiceActive =
     voicePhase === 'starting' ||
     voicePhase === 'listening' ||
@@ -757,6 +766,39 @@
     }
   }
 
+  async function cancelFeedback() {
+    if (!workspace || !canCancel) return
+    if (!window.confirm(tr('确认取消这个反馈请求？'))) return
+    if (rambleCanExit) await exitRamble()
+
+    cancelling = true
+    pageError = ''
+    try {
+      const input: CancelFeedbackInput = {
+        request_id: workspace.request.request_id,
+        reason: 'Human cancelled from RambleDesk desktop',
+      }
+      const result = await invoke<FeedbackRequestView>('cancel_feedback_request', { input })
+      completedResult = result
+      workspace = {
+        ...workspace,
+        feedback: result.feedback,
+        request: {
+          ...workspace.request,
+          status: result.status,
+          updated_at: result.updated_at,
+        },
+      }
+      savePhase = 'saved'
+      await refreshInbox()
+      if (history.length > 0) await refreshHistory()
+    } catch (cause) {
+      pageError = messageFrom(cause)
+    } finally {
+      cancelling = false
+    }
+  }
+
   async function openFeedbackPackage() {
     if (!feedbackResult) return
     try {
@@ -893,6 +935,8 @@
       {attachmentBusy}
       {canSubmit}
       {submitting}
+      {canCancel}
+      {cancelling}
       {adapterPresentation}
       {formatTime}
       onReload={() => void reloadWorkspace()}
@@ -906,6 +950,7 @@
       onRemoveAttachment={(attachment) => void removeAttachment(attachment)}
       onOpenPackage={() => void openFeedbackPackage()}
       onSubmit={() => void submitFeedback()}
+      onCancel={() => void cancelFeedback()}
     />
 
     {#if resumePrompt}

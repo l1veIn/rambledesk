@@ -443,7 +443,8 @@
 }
 
 .primary-button,
-.package-button {
+.package-button,
+.cancel-button {
   cursor: pointer;
   font-weight: 700;
 }
@@ -473,6 +474,34 @@
 
 .package-button {
   padding: 9px 10px;
+}
+
+.delivery-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.cancel-button {
+  padding: 9px 10px;
+  border: 1px solid color-mix(in srgb, var(--danger) 34%, var(--line));
+  border-radius: 8px;
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 9%, var(--surface-raised));
+  font-size: 10px;
+}
+
+.cancel-button:disabled {
+  border-color: #d6dee6;
+  color: #9aa7b4;
+  background: #edf1f5;
+  cursor: not-allowed;
+}
+
+.delivery-note {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 9px;
+  line-height: 1.5;
 }
 
 .workspace-placeholder {

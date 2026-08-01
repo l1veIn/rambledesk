@@ -83,6 +83,7 @@ request_args="$(
     agent: "mcp-inspector",
     session_id: "inspector-smoke",
     project: { name: "RambleDesk Inspector smoke", root_path: process.argv[1] },
+    title: "Inspector smoke",
     what_happened: "The persistent MCP request tools were exercised.",
     actions: [{ id: "verify", instruction: "Verify the durable request survives restart." }],
     context_refs: [{ label: "protocol", uri: "file:///docs/PROTOCOL.md" }]

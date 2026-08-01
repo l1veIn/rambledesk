@@ -43,6 +43,8 @@
   export let attachmentBusy = false
   export let canSubmit = false
   export let submitting = false
+  export let canCancel = false
+  export let cancelling = false
   export let adapterPresentation: (hostId: string) => AdapterPresentation
   export let formatTime: (value: string | null | undefined) => string
   export let onReload: () => void = () => {}
@@ -56,6 +58,7 @@
   export let onRemoveAttachment: (attachment: AttachmentView) => void = () => {}
   export let onOpenPackage: () => void = () => {}
   export let onSubmit: () => void = () => {}
+  export let onCancel: () => void = () => {}
 
   let feedbackEditor: FeedbackEditorHandle | undefined
 
@@ -127,6 +130,8 @@
           {attachmentBusy}
           {canSubmit}
           {submitting}
+          {canCancel}
+          {cancelling}
           {onToggleRamble}
           {onExitRamble}
           {onStartScreenCapture}
@@ -136,6 +141,7 @@
           {onRemoveAttachment}
           {onOpenPackage}
           {onSubmit}
+          {onCancel}
         />
       </div>
     </div>

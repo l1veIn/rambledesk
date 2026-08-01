@@ -23,6 +23,8 @@
   export let attachmentBusy = false
   export let canSubmit = false
   export let submitting = false
+  export let canCancel = false
+  export let cancelling = false
   export let onToggleRamble: () => void = () => {}
   export let onExitRamble: () => void = () => {}
   export let onStartScreenCapture: () => void = () => {}
@@ -32,6 +34,7 @@
   export let onRemoveAttachment: (attachment: AttachmentView) => void = () => {}
   export let onOpenPackage: () => void = () => {}
   export let onSubmit: () => void = () => {}
+  export let onCancel: () => void = () => {}
 
   $: readOnly =
     workspace.request.status === 'completed' || workspace.request.status === 'cancelled'
@@ -80,9 +83,13 @@
 
   <DeliveryCard
     {feedbackResult}
+    cancelled={workspace.request.status === 'cancelled'}
     {canSubmit}
     {submitting}
+    {canCancel}
+    {cancelling}
     onOpenPackage={onOpenPackage}
     onSubmit={onSubmit}
+    onCancel={onCancel}
   />
 </aside>

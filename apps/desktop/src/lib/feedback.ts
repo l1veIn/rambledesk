@@ -5,6 +5,7 @@ export type {
   ActionInput,
   AddAttachmentInput,
   AttachmentView,
+  CancelFeedbackInput,
   ContextRef,
   DraftView,
   ExecutionMode,

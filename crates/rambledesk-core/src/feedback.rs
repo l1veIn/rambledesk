@@ -59,7 +59,7 @@ pub struct GetFeedbackInput {
     pub request_id: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 pub struct CancelFeedbackInput {
     pub request_id: String,
     pub reason: String,

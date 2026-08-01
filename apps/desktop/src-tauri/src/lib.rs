@@ -4,12 +4,12 @@ mod screen_capture;
 
 use rambledesk_adapters::{
     AdapterPresentation, ResumePrompt, WakePayload, WakeReason, WakeResult, WakeupRouter,
-    known_adapter_presentations,
+    known_adapter_presentations, known_host_wakeup_adapters,
 };
 use rambledesk_core::{
-    AddAttachmentInput, ApplicationError, DraftView, FeedbackApplication, FeedbackRequestSummary,
-    FeedbackRequestView, FeedbackStatus, FeedbackWorkspaceView, HealthSnapshot,
-    ListFeedbackRequestsInput, ListFeedbackRequestsOutput, MAX_ATTACHMENT_BYTES,
+    AddAttachmentInput, ApplicationError, CancelFeedbackInput, DraftView, FeedbackApplication,
+    FeedbackRequestSummary, FeedbackRequestView, FeedbackStatus, FeedbackWorkspaceView,
+    HealthSnapshot, ListFeedbackRequestsInput, ListFeedbackRequestsOutput, MAX_ATTACHMENT_BYTES,
     RemoveAttachmentInput, ReorderAttachmentsInput, SaveDraftInput, SubmitFeedbackInput,
 };
 use rambledesk_mcp::{AccessToken, ServerConfig, ServerHandle, default_token_path, start_server};
@@ -290,6 +290,25 @@ async fn submit_feedback(
 ) -> Result<FeedbackRequestView, ApplicationError> {
     let application = state.application.clone();
     let result = application.submit_feedback(input.clone()).await?;
+    deliver_wakeup_after_terminal(
+        &app,
+        &state.wakeup,
+        &application,
+        &input.request_id,
+        result.status,
+    )
+    .await;
+    Ok(result)
+}
+
+#[tauri::command]
+async fn cancel_feedback_request(
+    input: CancelFeedbackInput,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<FeedbackRequestView, ApplicationError> {
+    let application = state.application.clone();
+    let result = application.cancel_feedback(input.clone()).await?;
     deliver_wakeup_after_terminal(
         &app,
         &state.wakeup,
@@ -676,8 +695,7 @@ pub fn run() {
                 handle,
                 application,
                 mcp_configuration: configuration,
-                // Specific host adapters register here later; unmatched hosts use generic UI.
-                wakeup: WakeupRouter::default(),
+                wakeup: WakeupRouter::new(known_host_wakeup_adapters()),
                 pending_count: AtomicU32::new(0),
                 speech_session: tokio::sync::Mutex::new(None),
             });
@@ -706,6 +724,7 @@ pub fn run() {
             reorder_feedback_attachments,
             read_feedback_attachment,
             submit_feedback,
+            cancel_feedback_request,
             start_voice_ramble,
             stop_voice_ramble,
             clipboard_capture::capture_clipboard_once,

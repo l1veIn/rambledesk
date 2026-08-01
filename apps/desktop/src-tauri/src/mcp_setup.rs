@@ -39,10 +39,17 @@ enum ClientKind {
     Codex,
     Cursor,
     Gemini,
+    OpenCode,
 }
 
 impl ClientKind {
-    const ALL: [Self; 4] = [Self::Claude, Self::Codex, Self::Cursor, Self::Gemini];
+    const ALL: [Self; 5] = [
+        Self::Claude,
+        Self::Codex,
+        Self::Cursor,
+        Self::Gemini,
+        Self::OpenCode,
+    ];
 
     fn id(self) -> &'static str {
         match self {
@@ -50,6 +57,7 @@ impl ClientKind {
             Self::Codex => "codex",
             Self::Cursor => "cursor",
             Self::Gemini => "gemini",
+            Self::OpenCode => "opencode",
         }
     }
 
@@ -67,6 +75,7 @@ impl ClientKind {
             Self::Codex => "codex",
             Self::Cursor => "cursor",
             Self::Gemini => "gemini",
+            Self::OpenCode => "opencode",
         }
     }
 
@@ -80,6 +89,7 @@ impl ClientKind {
                 .join("config.toml"),
             Self::Cursor => home.join(".cursor").join("mcp.json"),
             Self::Gemini => home.join(".gemini").join("settings.json"),
+            Self::OpenCode => home.join(".config").join("opencode").join("opencode.json"),
         }
     }
 
@@ -93,6 +103,7 @@ impl ClientKind {
                 .to_path_buf(),
             Self::Cursor => home.join(".cursor"),
             Self::Gemini => home.join(".gemini"),
+            Self::OpenCode => home.join(".opencode"),
         }
     }
 
@@ -109,6 +120,7 @@ pub fn detect_clients(home: &Path) -> Vec<McpClientView> {
             let presentation = client.presentation();
             let configured = match client {
                 ClientKind::Codex => codex_is_configured(&config_path),
+                ClientKind::OpenCode => opencode_is_configured(&config_path),
                 _ => json_is_configured(&config_path),
             };
             McpClientView {
@@ -151,6 +163,7 @@ pub fn install_clients(
         let entry = entry_for_host(&base_entry, client.id())?;
         let action = match client {
             ClientKind::Codex => write_codex_config(&path, &entry)?,
+            ClientKind::OpenCode => write_opencode_config(&path, &entry)?,
             ClientKind::Gemini => {
                 let mut entry = entry;
                 if let Some(object) = entry.as_object_mut() {
@@ -223,6 +236,14 @@ fn codex_is_configured(path: &Path) -> bool {
         .is_some()
 }
 
+fn opencode_is_configured(path: &Path) -> bool {
+    fs::read_to_string(path)
+        .ok()
+        .and_then(|content| serde_json::from_str::<Value>(&content).ok())
+        .and_then(|value| value.get("mcp")?.get(SERVER_ID).cloned())
+        .is_some()
+}
+
 fn write_json_config(path: &Path, entry: Value) -> Result<&'static str, String> {
     let existed = path.exists();
     let mut root = if existed {
@@ -252,6 +273,55 @@ fn write_json_config(path: &Path, entry: Value) -> Result<&'static str, String> 
     servers.insert(SERVER_ID.to_owned(), entry);
     let content = serde_json::to_string_pretty(&root)
         .map_err(|error| format!("Could not serialize MCP configuration: {error}"))?
+        + "\n";
+    write_config(path, content.as_bytes())?;
+    Ok(if existed { "updated" } else { "created" })
+}
+
+fn write_opencode_config(path: &Path, entry: &Value) -> Result<&'static str, String> {
+    let url = entry
+        .get("url")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "RambleDesk MCP URL is missing".to_owned())?;
+    let headers = entry
+        .get("headers")
+        .and_then(Value::as_object)
+        .cloned()
+        .ok_or_else(|| "RambleDesk MCP headers are missing".to_owned())?;
+    let existed = path.exists();
+    let mut root = if existed {
+        let content = fs::read_to_string(path)
+            .map_err(|error| format!("Could not read {}: {error}", path.display()))?;
+        serde_json::from_str::<Value>(&content).map_err(|error| {
+            format!(
+                "Refusing to overwrite invalid JSON at {}: {error}",
+                path.display()
+            )
+        })?
+    } else {
+        Value::Object(Map::new())
+    };
+    let root_object = root
+        .as_object_mut()
+        .ok_or_else(|| format!("{} must contain a JSON object", path.display()))?;
+    let servers = root_object
+        .entry("mcp")
+        .or_insert_with(|| Value::Object(Map::new()))
+        .as_object_mut()
+        .ok_or_else(|| format!("mcp in {} must be a JSON object", path.display()))?;
+    let opencode_entry = json!({
+        "type": "remote",
+        "url": url,
+        "enabled": true,
+        "headers": headers,
+    });
+    let unchanged = servers.get(SERVER_ID) == Some(&opencode_entry);
+    if unchanged {
+        return Ok("unchanged");
+    }
+    servers.insert(SERVER_ID.to_owned(), opencode_entry);
+    let content = serde_json::to_string_pretty(&root)
+        .map_err(|error| format!("Could not serialize OpenCode MCP configuration: {error}"))?
         + "\n";
     write_config(path, content.as_bytes())?;
     Ok(if existed { "updated" } else { "created" })
@@ -430,6 +500,44 @@ mod tests {
         assert!(written.contains("RAMBLEDESK_HOST"));
         assert!(written.contains("X-RambleDesk-Host"));
         assert!(written.contains("codex"));
+    }
+
+    #[test]
+    fn opencode_install_preserves_sibling_servers_and_uses_remote_shape() {
+        let directory = tempfile::tempdir().expect("temp dir");
+        let path = directory.path().join("opencode.json");
+        fs::write(
+            &path,
+            r#"{"mcp":{"codegraph":{"type":"local","command":["codegraph","serve","--mcp"]}},"theme":"system"}"#,
+        )
+        .expect("seed config");
+        let entry = entry_for_host(
+            &extract_server_entry(&configuration()).expect("entry"),
+            "opencode",
+        )
+        .expect("host entry");
+        assert_eq!(
+            write_opencode_config(&path, &entry).expect("install"),
+            "updated"
+        );
+        assert_eq!(
+            write_opencode_config(&path, &entry).expect("repeat"),
+            "unchanged"
+        );
+        let written: Value =
+            serde_json::from_str(&fs::read_to_string(path).expect("read")).expect("valid json");
+        assert_eq!(written["theme"], "system");
+        assert_eq!(written["mcp"]["codegraph"]["type"], "local");
+        assert_eq!(written["mcp"][SERVER_ID]["type"], "remote");
+        assert_eq!(written["mcp"][SERVER_ID]["enabled"], true);
+        assert_eq!(
+            written["mcp"][SERVER_ID]["headers"]["Authorization"],
+            "Bearer test-token"
+        );
+        assert_eq!(
+            written["mcp"][SERVER_ID]["headers"][HOST_HEADER],
+            "opencode"
+        );
     }
 
     #[test]

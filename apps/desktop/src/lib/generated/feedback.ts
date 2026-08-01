@@ -17,3 +17,4 @@ export type RemoveAttachmentInput = { request_id: string, attachment_id: string,
 export type ReorderAttachmentsInput = { request_id: string, attachment_ids: Array<string>, expected_revision: number, };
 export type SaveDraftInput = { request_id: string, body_markdown: string, expected_revision: number, };
 export type SubmitFeedbackInput = { request_id: string, expected_revision: number, };
+export type CancelFeedbackInput = { request_id: string, reason: string, };

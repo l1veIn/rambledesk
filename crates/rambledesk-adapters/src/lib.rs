@@ -6,11 +6,13 @@
 //! domain/protocol changes.
 //!
 //! - Missing or unknown host id → [`GenericWakeupAdapter`] (UI prompt path)
-//! - Matched host id → future specific adapters (Claude, Codex, …)
+//! - Matched host id → host-specific adapters (Claude Code, Codex, Pi, OpenCode)
 
+mod hosts;
 mod presentation;
 mod wakeup;
 
+pub use hosts::known_host_wakeup_adapters;
 pub use presentation::{AdapterPresentation, adapter_presentation, known_adapter_presentations};
 pub use wakeup::{
     GenericWakeupAdapter, ResumePrompt, WakePayload, WakeReason, WakeResult, WakeupAdapter,

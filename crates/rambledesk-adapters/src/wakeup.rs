@@ -169,7 +169,7 @@ pub struct WakeupRouter {
 
 impl Default for WakeupRouter {
     fn default() -> Self {
-        Self::new(Vec::new())
+        Self::new(crate::known_host_wakeup_adapters())
     }
 }
 
