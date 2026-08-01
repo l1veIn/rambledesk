@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::{path::PathBuf, sync::Arc};
 use thiserror::Error;
 
 pub const SPEECH_SAMPLE_RATE: u32 = 16_000;
@@ -95,12 +95,14 @@ pub enum SpeechError {
     UnsupportedPlatform,
 }
 
+#[cfg(any(target_os = "windows", target_os = "macos"))]
 #[derive(Clone)]
 struct EventIdentity {
     request_id: String,
     session_id: String,
 }
 
+#[cfg(any(target_os = "windows", target_os = "macos"))]
 impl From<&SpeechSessionConfig> for EventIdentity {
     fn from(config: &SpeechSessionConfig) -> Self {
         Self {
@@ -141,6 +143,7 @@ pub fn rms(samples: &[f32]) -> f32 {
     (samples.iter().map(|sample| sample * sample).sum::<f32>() / samples.len() as f32).sqrt()
 }
 
+#[cfg(any(target_os = "windows", target_os = "macos", test))]
 fn downmix<T>(input: &[T], channels: usize, normalize: impl Fn(&T) -> f32) -> Vec<f32> {
     if channels == 0 {
         return Vec::new();
@@ -162,6 +165,7 @@ mod native {
             mpsc::{Receiver, RecvTimeoutError, SyncSender, sync_channel},
         },
         thread::{self, JoinHandle},
+        time::Duration,
     };
     const AUDIO_QUEUE_CAPACITY: usize = 512;
     const SHERPA_SAMPLE_RATE: i32 = 16_000;
