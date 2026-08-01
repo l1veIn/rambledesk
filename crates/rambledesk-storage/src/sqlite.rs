@@ -326,7 +326,8 @@ impl FeedbackRepository for SqliteFeedbackStore {
 
     async fn list_open_requests(&self) -> Result<Vec<FeedbackRequestSummary>, RepositoryError> {
         let rows = sqlx::query(
-            "SELECT r.id, s.project_id, p.name AS project_name, s.agent, \
+            "SELECT r.id, s.project_id, p.name AS project_name, \
+                    p.root_path_canonical AS project_root_path, s.agent, \
                     s.external_session_id, r.title, r.what_happened, r.status, \
                     r.revision, r.created_at, r.updated_at \
              FROM feedback_requests r \
@@ -346,7 +347,8 @@ impl FeedbackRepository for SqliteFeedbackStore {
         query: FeedbackRequestQuery,
     ) -> Result<Vec<FeedbackRequestSummary>, RepositoryError> {
         let rows = sqlx::query(
-            "SELECT r.id, s.project_id, p.name AS project_name, s.agent, \
+            "SELECT r.id, s.project_id, p.name AS project_name, \
+                    p.root_path_canonical AS project_root_path, s.agent, \
                     s.external_session_id, r.title, r.what_happened, r.status, \
                     r.revision, r.created_at, r.updated_at \
              FROM feedback_requests r \
@@ -961,6 +963,7 @@ fn summary_from_row(row: &SqliteRow) -> Result<FeedbackRequestSummary, Repositor
         request_id: row.try_get("id").map_err(storage_error)?,
         project_id: row.try_get("project_id").map_err(storage_error)?,
         project_name: row.try_get("project_name").map_err(storage_error)?,
+        project_root_path: row.try_get("project_root_path").map_err(storage_error)?,
         agent: row.try_get("agent").map_err(storage_error)?,
         session_id: row.try_get("external_session_id").map_err(storage_error)?,
         title: row.try_get("title").map_err(storage_error)?,
@@ -1045,7 +1048,8 @@ async fn load_workspace_from_pool(
     request_id: &str,
 ) -> Result<StoredFeedbackWorkspace, RepositoryError> {
     let row = sqlx::query(
-        "SELECT r.id, s.project_id, p.name AS project_name, s.agent, \
+        "SELECT r.id, s.project_id, p.name AS project_name, \
+                p.root_path_canonical AS project_root_path, s.agent, \
                 s.external_session_id, r.title, r.what_happened, r.status, \
                 r.revision, r.created_at, r.updated_at, \
                 fr.package_uri, fr.directory_path, fr.markdown_path, fr.manifest_path \

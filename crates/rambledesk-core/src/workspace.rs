@@ -17,6 +17,7 @@ pub struct FeedbackRequestSummary {
     pub request_id: String,
     pub project_id: String,
     pub project_name: String,
+    pub project_root_path: Option<String>,
     pub agent: String,
     pub session_id: String,
     pub title: String,

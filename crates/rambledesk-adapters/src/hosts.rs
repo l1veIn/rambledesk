@@ -53,6 +53,7 @@ impl HostKind {
     fn command_specs(self, payload: &WakePayload) -> Vec<CommandSpec> {
         let prompt = payload.resume_prompt();
         let session_id = payload.session_id.trim().to_owned();
+        let current_dir = project_current_dir(payload);
         match self {
             Self::ClaudeCode => binary_candidates("RAMBLEDESK_CLAUDE_BIN", ["claude"].as_slice())
                 .into_iter()
@@ -64,6 +65,7 @@ impl HostKind {
                         "--background".to_owned(),
                         prompt.clone(),
                     ],
+                    current_dir: current_dir.clone(),
                 })
                 .collect(),
             Self::Codex => binary_candidates(
@@ -84,18 +86,15 @@ impl HostKind {
                     prompt.clone(),
                     "--json".to_owned(),
                 ],
+                current_dir: current_dir.clone(),
             })
             .collect(),
             Self::Pi => binary_candidates("RAMBLEDESK_PI_BIN", ["pi"].as_slice())
                 .into_iter()
                 .map(|program| CommandSpec {
                     program,
-                    args: vec![
-                        "--session".to_owned(),
-                        session_id.clone(),
-                        "--print".to_owned(),
-                        prompt.clone(),
-                    ],
+                    args: pi_args(&session_id, &prompt),
+                    current_dir: current_dir.clone(),
                 })
                 .collect(),
             Self::OpenCode => {
@@ -113,8 +112,17 @@ impl HostKind {
                         args.push("--attach".to_owned());
                         args.push(server_url);
                     }
+                    if let Some(project_root) = payload.project_root_path.as_deref().and_then(clean)
+                    {
+                        args.push("--dir".to_owned());
+                        args.push(project_root.to_owned());
+                    }
                     args.extend(["--session".to_owned(), session_id.clone(), prompt.clone()]);
-                    specs.push(CommandSpec { program, args });
+                    specs.push(CommandSpec {
+                        program,
+                        args,
+                        current_dir: current_dir.clone(),
+                    });
                 }
                 specs
             }
@@ -126,6 +134,7 @@ impl HostKind {
 struct CommandSpec {
     program: PathBuf,
     args: Vec<String>,
+    current_dir: Option<PathBuf>,
 }
 
 trait CommandRunner: Send + Sync {
@@ -137,11 +146,16 @@ struct SystemCommandRunner;
 
 impl CommandRunner for SystemCommandRunner {
     fn run(&self, spec: &CommandSpec, acceptance_timeout: Duration) -> Result<(), String> {
-        let mut child = Command::new(&spec.program)
+        let mut command = Command::new(&spec.program);
+        command
             .args(&spec.args)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stderr(Stdio::null());
+        if let Some(current_dir) = &spec.current_dir {
+            command.current_dir(current_dir);
+        }
+        let mut child = command
             .spawn()
             .map_err(|error| format!("spawn {}: {error}", spec.program.display()))?;
 
@@ -258,6 +272,38 @@ fn dedupe_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
     unique
 }
 
+fn project_current_dir(payload: &WakePayload) -> Option<PathBuf> {
+    payload
+        .project_root_path
+        .as_deref()
+        .and_then(clean)
+        .map(PathBuf::from)
+}
+
+fn clean(value: &str) -> Option<&str> {
+    let value = value.trim();
+    (!value.is_empty()).then_some(value)
+}
+
+fn pi_args(session_id: &str, prompt: &str) -> Vec<String> {
+    let mut args = Vec::new();
+    if let Some(session_dir) = env::var("RAMBLEDESK_PI_SESSION_DIR")
+        .or_else(|_| env::var("PI_CODING_AGENT_SESSION_DIR"))
+        .ok()
+        .as_deref()
+        .and_then(clean)
+    {
+        args.extend(["--session-dir".to_owned(), session_dir.to_owned()]);
+    }
+    args.extend([
+        "--session".to_owned(),
+        session_id.to_owned(),
+        "--print".to_owned(),
+        prompt.to_owned(),
+    ]);
+    args
+}
+
 fn opencode_home_binary() -> Option<PathBuf> {
     env::var_os("HOME")
         .filter(|value| !value.is_empty())
@@ -325,6 +371,7 @@ mod tests {
             host_id: host_id.to_owned(),
             agent: host_id.to_owned(),
             session_id: session_id.to_owned(),
+            project_root_path: Some("/tmp/rambledesk-project".to_owned()),
             reason: crate::WakeReason::Completed,
         }
     }
@@ -355,6 +402,10 @@ mod tests {
         assert_eq!(calls[0].args[0], "--resume");
         assert_eq!(calls[0].args[1], "claude-session");
         assert!(calls[0].args.contains(&"--background".to_owned()));
+        assert_eq!(
+            calls[0].current_dir,
+            Some(PathBuf::from("/tmp/rambledesk-project"))
+        );
         assert!(calls[0].args.iter().any(|arg| arg.contains("get_feedback")));
     }
 
@@ -379,13 +430,16 @@ mod tests {
         assert!(matches!(result, WakeResult::HostDelivered { .. }));
         let calls = runner.calls();
         assert_eq!(
-            calls[0].args[0..3],
-            [
-                "--session".to_owned(),
-                "pi-session".to_owned(),
-                "--print".to_owned()
-            ]
+            calls[0].current_dir,
+            Some(PathBuf::from("/tmp/rambledesk-project"))
         );
+        assert!(
+            calls[0]
+                .args
+                .windows(2)
+                .any(|args| args == ["--session".to_owned(), "pi-session".to_owned()])
+        );
+        assert!(calls[0].args.contains(&"--print".to_owned()));
     }
 
     #[test]
@@ -393,6 +447,10 @@ mod tests {
         let specs = HostKind::OpenCode.command_specs(&payload("opencode", "ses_123"));
         assert!(specs.iter().any(|spec| {
             spec.args.first() == Some(&"run".to_owned())
+                && spec
+                    .args
+                    .windows(2)
+                    .any(|args| args == ["--dir".to_owned(), "/tmp/rambledesk-project".to_owned()])
                 && spec
                     .args
                     .windows(2)

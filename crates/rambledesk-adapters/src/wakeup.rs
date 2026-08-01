@@ -44,6 +44,8 @@ pub struct WakePayload {
     pub host_id: String,
     pub agent: String,
     pub session_id: String,
+    /// Canonical project root for host CLIs that scope sessions by cwd.
+    pub project_root_path: Option<String>,
     pub reason: WakeReason,
 }
 
@@ -255,6 +257,7 @@ mod tests {
             host_id: host.to_owned(),
             agent: host.to_owned(),
             session_id: "session".to_owned(),
+            project_root_path: None,
             reason: WakeReason::Completed,
         }
     }

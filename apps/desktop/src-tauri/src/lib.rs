@@ -330,14 +330,18 @@ async fn deliver_wakeup_after_terminal(
     let Some(reason) = WakeReason::from_status(status) else {
         return;
     };
-    let (host_id, session_id) = match application
+    let (host_id, session_id, project_root_path) = match application
         .get_feedback_workspace(request_id.to_owned())
         .await
     {
-        Ok(workspace) => (workspace.request.agent, workspace.request.session_id),
+        Ok(workspace) => (
+            workspace.request.agent,
+            workspace.request.session_id,
+            workspace.request.project_root_path,
+        ),
         Err(error) => {
             tracing::warn!(%request_id, %error, "wakeup: workspace lookup failed; using empty host");
-            (String::new(), String::new())
+            (String::new(), String::new(), None)
         }
     };
 
@@ -346,6 +350,7 @@ async fn deliver_wakeup_after_terminal(
         host_id: host_id.clone(),
         agent: host_id,
         session_id,
+        project_root_path,
         reason,
     };
     match router.wake(&payload) {

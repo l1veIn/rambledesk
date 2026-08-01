@@ -47,10 +47,32 @@ Inspector smoke 会校验实际 snake_case wire 字段、四个工具列表、�
 `wait_for_feedback` 的终态结果返回 `execution_mode: "wait"`。客户端单方面声明
 Tasks 能力不会启用尚未完成回归的 Tasks 路径。
 
-本机 `/opt/homebrew/bin/codex` 在 `codex --version` 阶段即失败：
+2026-07-29 本机 `/opt/homebrew/bin/codex` 在 `codex --version` 阶段即失败：
 其 npm wrapper 尝试启动的 arm64 vendor binary 不存在并返回 `ENOENT`。
 这是测试机的 Codex 安装问题，不是 RambleDesk transport 握手失败。修复或重装
-Codex 后，应补跑同一 health matrix。
+Codex 后，应补跑同一 health matrix。2026-08-02 的 adapter 实测使用
+`/Applications/ChatGPT.app/Contents/Resources/codex` 0.146.0-alpha.9.2，可正常创建和恢复
+thread；Codex MCP 完整矩阵仍未补跑。
+
+## 2.1 专有 wake adapter 实测（2026-08-02）
+
+本轮验证目标不是 MCP transport 本身，而是提交终态后能否把“继续”送回原宿主会话。
+可重复探针位于 `scripts/host-adapter-e2e.sh`；默认不进 CI，因为会调用本机真实宿主和模型。
+完整 Claude MCP 闭环使用 `RAMBLEDESK_E2E_MCP=1 scripts/host-adapter-e2e.sh claude-full`。
+
+| 宿主 | 本机版本 | session id 获取 | wake / resume 证据 | 当前结论 |
+|------|----------|-----------------|--------------------|----------|
+| Claude Code | 2.1.207 | `--session-id <uuid>` 可由调用方指定；`--print --output-format json` 返回同一 `session_id` | `--resume <uuid>` 复用同一会话；`--resume <uuid> --background <prompt>` 启动 background agent 并处理恢复消息；真实 MCP `request_feedback → completed package → resume → get_feedback` 通过 | B 级：可自动投递；若拿不到 session id，需要启动/注册流程注入 |
+| Codex CLI | 0.146.0-alpha.9.2 | `codex exec --json` 输出 `thread.started.thread_id` | `codex exec resume <thread_id> <prompt> --json` 跨 cwd 复用同一 thread | B 级：可自动投递；session id 需从 CLI 事件或宿主上下文登记 |
+| Pi | 0.83.0 | `--session-id <uuid>` 可指定；`--mode json` session event 返回同一 id | `pi --session <uuid> --print` 需要在原 project cwd；非默认 session-dir 还需要 `--session-dir` | B/C 边界：可自动投递，但 adapter 必须带 project cwd，定制 session-dir 需显式配置 |
+| OpenCode | 1.18.11 | `opencode run --format json` 输出 `sessionID`（`ses_...`） | `opencode run --dir <project> --session <sessionID>` 通过；不带 `--dir` 的跨 cwd 恢复卡住且无 JSON 事件 | B/C 边界：可自动投递，但必须带 project dir 或 attach 到正确 server |
+
+设计修正：
+
+- `request_feedback` 没有新增宿主专用参数；仍使用既有 `agent`、`session_id`、`project.root_path`。
+- `agent` 不能只依赖 `X-RambleDesk-Host` 自动覆盖；真实 Claude MCP 路径可完成调用，但不应假设所有客户端转发自定义 header。因此专用安装/提示仍要求宿主传入稳定 host id。
+- `project.root_path` 已进入 wake payload，供 Pi/OpenCode 这类按项目 cwd 解析 session 的宿主使用；wake payload 仍不携带 Package 正文。
+- Pi 的非默认 session-dir 通过 `RAMBLEDESK_PI_SESSION_DIR` 或 `PI_CODING_AGENT_SESSION_DIR` 传给 adapter。
 
 ## 3. 超时与取消
 

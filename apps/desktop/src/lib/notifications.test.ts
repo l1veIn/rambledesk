@@ -13,6 +13,7 @@ function request(requestId: string): FeedbackRequestSummary {
     request_id: requestId,
     project_id: 'project',
     project_name: 'Private project',
+    project_root_path: null,
     agent: 'agent',
     session_id: 'session',
     title: 'Test Ramble',
