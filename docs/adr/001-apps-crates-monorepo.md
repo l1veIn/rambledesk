@@ -25,11 +25,16 @@ Tauri canonical 目录、Cargo workspace 和 pnpm workspace 可以共存。
 ```text
 apps/desktop/src-tauri
 crates/rambledesk-core
+crates/rambledesk-adapters
 crates/rambledesk-storage
 crates/rambledesk-mcp
 crates/rambledesk-speech
 crates/rambledesk-cli
 ```
+
+`rambledesk-adapters` holds host continuation / wakeup (generic fallback and
+future per-host resume). It depends on core contracts only and may iterate on a
+different cadence than protocol/storage changes.
 
 根目录是 workspace，不是某一个应用的项目根。
 

@@ -69,6 +69,17 @@
   type VoicePhase = 'idle' | 'starting' | 'listening' | 'processing' | 'stopping' | 'error'
   type CommandError = { code: string; message: string; retryable: boolean }
   type SettingsSection = 'general' | 'mcp'
+  type ResumePrompt = {
+    request_id: string
+    host_id: string
+    host_label: string
+    title: string
+    body: string
+    resume_prompt: string
+    reason: 'completed' | 'cancelled'
+  }
+
+  const RESUME_PROMPT_EVENT = 'rambledesk://resume-prompt'
 
   let health: HealthSnapshot | null = null
   let endpoint = tr('正在连接…')
@@ -93,6 +104,8 @@
   let dragActive = false
   let attachmentInput: HTMLInputElement
   let richEditor: RichFeedbackEditor
+  let resumePrompt: ResumePrompt | null = null
+  let resumeCopyState: 'idle' | 'copied' | 'failed' = 'idle'
   let notificationState: NotificationState = 'checking'
   let settingsOpen = false
   let settingsSection: SettingsSection = 'general'
@@ -189,6 +202,25 @@
     let captureCancelledUnlisten: (() => void) | undefined
     let consoleCommandUnlisten: (() => void) | undefined
     let consoleReadyUnlisten: (() => void) | undefined
+    let resumePromptUnlisten: (() => void) | undefined
+    void listen<ResumePrompt>(RESUME_PROMPT_EVENT, (event) => {
+      resumePrompt = event.payload
+      resumeCopyState = 'idle'
+      if (notificationState === 'enabled') {
+        sendNotification({
+          title: event.payload.title,
+          body: tr('请回到 {host}，用恢复提示继续 Agent。', {
+            host: event.payload.host_label,
+          }),
+        })
+      }
+    })
+      .then((unlisten) => {
+        resumePromptUnlisten = unlisten
+      })
+      .catch(() => {
+        // Resume prompt still appears if submit path keeps the main window focused.
+      })
     void listen<SpeechEvent>('voice-ramble-event', (event) => {
       handleVoiceEvent(event.payload)
     })
@@ -275,11 +307,30 @@
       captureCancelledUnlisten?.()
       consoleCommandUnlisten?.()
       consoleReadyUnlisten?.()
+      resumePromptUnlisten?.()
       if (voiceCanStop) void invoke('stop_voice_ramble')
       window.removeEventListener('paste', handlePaste)
       releaseAttachmentPreviews()
     }
   })
+
+  async function copyResumePrompt() {
+    if (!resumePrompt) return
+    try {
+      await navigator.clipboard.writeText(resumePrompt.resume_prompt)
+      resumeCopyState = 'copied'
+      window.setTimeout(() => {
+        if (resumeCopyState === 'copied') resumeCopyState = 'idle'
+      }, 2_000)
+    } catch {
+      resumeCopyState = 'failed'
+    }
+  }
+
+  function dismissResumePrompt() {
+    resumePrompt = null
+    resumeCopyState = 'idle'
+  }
 
   async function initialize() {
     pageError = ''
@@ -1560,6 +1611,53 @@
         </div>
       {/if}
     </section>
+
+    {#if resumePrompt}
+      <div
+        class="resume-prompt-backdrop"
+        role="presentation"
+        onclick={(event) => {
+          if (event.target === event.currentTarget) dismissResumePrompt()
+        }}
+      >
+        <div
+          class="resume-prompt-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="resume-prompt-title"
+        >
+          <div class="resume-prompt-header">
+            <span class="resume-prompt-kicker">WAKE · GENERIC</span>
+            <h2 id="resume-prompt-title">{resumePrompt.title}</h2>
+            <p>{resumePrompt.body}</p>
+          </div>
+          <div class="resume-prompt-meta">
+            <span>{tr('宿主')}</span>
+            <strong>{resumePrompt.host_label}</strong>
+            <span>request_id</span>
+            <code>{resumePrompt.request_id}</code>
+          </div>
+          <label class="resume-prompt-label" for="resume-prompt-text">{tr('恢复提示（复制到宿主对话）')}</label>
+          <textarea
+            id="resume-prompt-text"
+            class="resume-prompt-text"
+            readonly
+            rows="4"
+            value={resumePrompt.resume_prompt}
+          ></textarea>
+          <div class="resume-prompt-actions">
+            <button class="primary-button" onclick={copyResumePrompt}>
+              {resumeCopyState === 'copied'
+                ? tr('已复制')
+                : resumeCopyState === 'failed'
+                  ? tr('复制失败，请手动选择')
+                  : tr('复制恢复提示')}
+            </button>
+            <button class="secondary-button" onclick={dismissResumePrompt}>{tr('知道了')}</button>
+          </div>
+        </div>
+      </div>
+    {/if}
   </div>
 </main>
 

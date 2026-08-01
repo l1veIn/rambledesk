@@ -1,58 +1,180 @@
 # RambleDesk
 
-面向 Agent 的本地体验式反馈工作台。
+[English](README.md) | [简体中文](README.zh-CN.md)
 
-Agent 通过本地 MCP 下发结构化请求；人类按清单真实使用、自由 ramble、配截图；
-反馈以带图 Markdown package 回传，Agent 在原任务中继续迭代。
+**A local, experiential feedback desk for coding agents.**
 
-## 一句话定位
+An agent sends a structured request. You use the product for real, talk through what
+you notice, capture the screen, and submit an image-rich feedback package. The agent
+receives that package in the same task and keeps working.
 
-> Agent 呼叫你做真实使用反馈，你用 ramble 交回图文结果。
+> The agent asks for real-world feedback. You ramble. RambleDesk turns it into a
+> durable artifact the agent can act on.
 
-## 文档
+## Why RambleDesk?
 
-| 文档 | 说明 |
-|------|------|
-| [产品宪章](docs/CONSTITUTION.md) | North Star、不可妥协原则、User_0 边界 |
-| [产品文档](docs/PRODUCT.md) | 背景、问题、方案、范围、非目标、主流程、信息架构、恢复机制 |
-| [架构基线](docs/ARCHITECTURE.md) | apps/crates monorepo、组件边界、运行时与一致性 |
-| [MCP 与反馈协议](docs/PROTOCOL.md) | 工具 schema、幂等性、状态、错误与安全 |
-| [开发计划](docs/DEVELOPMENT.md) | 技术栈、数据基线、里程碑和验收门 |
-| [MCP 兼容矩阵](docs/COMPATIBILITY.md) | M0 实测客户端、协议、认证与执行模式 |
-| [Kotone 复用审计](docs/KOTONE_REUSE.md) | 可迁移语音组件、必须修改项与许可证门禁 |
-| [设计访谈纪要](docs/INTERVIEW.md) | 历史决策上下文，不作为现行规范 |
+Agent workflows are good at implementation, but human feedback is still usually
+buried in chat: a short question, a vague reply, a screenshot pasted much later, or a
+manual request to resume the task.
 
-## 状态
+RambleDesk makes that handoff a first-class loop:
 
-M0 技术与协议尖峰已完成。M1 已在 macOS 完成验收，并落地 SQLite 持久请求内核、
-`request_feedback/wait_for_feedback/get_feedback/cancel_feedback` durable wait 工具、Inbox、Markdown
-Draft 自动保存和 crash-safe Feedback Package 提交；MCP Inspector、Claude Code
-与官方 Rust SDK 实测通过。新请求系统通知采用显式授权且不显示工作内容。
-Windows Feedback Package 发布使用独立平台兼容层和 write-through 目录移动，
-跨层提交、幂等与启动恢复测试已通过。M2 的图片粘贴/拖放/选择、全局快捷键内置区域
-截图、附件不可变发布、历史查询、`list_feedback_requests`、Windows 托盘待处理徽标
-和 MCP 配置复制已经完成 Windows 人工签收；M3 的 Sherpa 中文流式转写和主 Ramble
-流程也已签收。当前正在把语音、截图与剪贴板收敛为可暂停、继续的统一 Ramble 状态。
+1. The agent creates a feedback request with context and concrete actions.
+2. RambleDesk notifies the human and preserves the request locally.
+3. The human uses the target product while recording voice, screenshots, files, and
+   explicit clipboard imports in one Ramble.
+4. RambleDesk publishes an immutable Markdown feedback package with its attachments.
+5. When the session is resumed, `get_feedback` returns the complete package to the
+   agent without token-burning polling.
 
-## 本地验证
+Requests survive MCP disconnects and application restarts. The feedback lifecycle is
+durable; a single HTTP connection is only a delivery mechanism.
 
-要求 Rust 1.91.1、Node.js 22.23.0 和 pnpm 10.12.4。
+## Building RambleDesk with RambleDesk
+
+RambleDesk is now dogfooded as part of its own development process.
+
+For a meaningful UI or interaction change, the coding agent can implement the change,
+launch the app, and call `request_feedback`. The developer then tests the real desktop
+build, rambles while using it, adds captures where useful, and submits. The same agent
+task wakes with the resulting manifest, Markdown, and attachment paths and can continue
+the iteration immediately.
+
+This repository therefore serves both as the product implementation and as an ongoing
+test of the product's core promise: human judgment should strengthen an agent loop
+without breaking its context.
+
+## Current capabilities
+
+- Durable feedback inbox backed by SQLite, with waiting, in-progress, completed, and
+  cancelled request states.
+- Unified Ramble session with local streaming speech transcription, region capture,
+  file import, explicit clipboard import, and pause/resume/exit controls.
+- Compact, draggable, icon-only floating console positioned out of the way at the
+  right-center of the screen.
+- Tiptap rich-text feedback editor with images embedded in the document flow.
+- Immutable Feedback Packages containing `feedback.md`, `manifest.json`, and
+  attachments.
+- Authenticated loopback MCP server with automatic configuration support for local
+  agent tools.
+- Durable request create/get/cancel, full-package return on completed `get_feedback`,
+  and automatic MCP host registration with `RAMBLEDESK_HOST`.
+- Chinese and English UI, light and dark appearance modes, and optional system
+  notifications.
+
+RambleDesk is under active development. The native macOS workflow has been dogfooded
+end to end; Linux and Windows are continuously covered by CI, with platform-specific
+acceptance tracked separately.
+
+## MCP tools
+
+| Tool | Purpose |
+| --- | --- |
+| `request_feedback` | Create or reconnect to a durable feedback request; end the turn after. |
+| `get_feedback` | Read status; when completed, return the full feedback package. |
+| `cancel_feedback` | Explicitly cancel an unfinished request. |
+
+The normal path is `request_feedback`, then end the agent turn (do not poll). After the
+human submits and the session is resumed, call `get_feedback`. Auto-install writes
+`RAMBLEDESK_HOST` / `X-RambleDesk-Host` so each host identity is known.
+
+## Development quick start
+
+### Prerequisites
+
+- Rust 1.91.1 (pinned by `rust-toolchain.toml`)
+- Node.js 22.23.0
+- pnpm 10.12.4
+- The platform prerequisites required by Tauri 2
+
+Install dependencies and launch the native desktop app:
 
 ```bash
 pnpm install --frozen-lockfile
+pnpm dev
+```
+
+Open **Settings → MCP** in RambleDesk to detect supported local tools, install the
+configuration in one click, or copy the authenticated Streamable HTTP configuration.
+Restart the target agent tool after its configuration changes.
+
+For a browser-only UI development session:
+
+```bash
+pnpm dev:web
+```
+
+The browser build deliberately degrades native-only behavior and is not a substitute
+for desktop acceptance.
+
+### Local speech model
+
+Streaming transcription uses the manifest-pinned Sherpa X-ASR model described in
+[`crates/rambledesk-speech/models/sherpa-x-asr.json`](crates/rambledesk-speech/models/sherpa-x-asr.json).
+The model binary is intentionally kept out of Git. Place the verified model directory
+at the platform application-data location declared by the manifest, or point a local
+development run at it with an absolute path:
+
+```bash
+RAMBLEDESK_SHERPA_MODEL_DIR=/absolute/path/to/sherpa-x-asr pnpm dev
+```
+
+Text, capture, import, editing, and feedback submission remain usable without speech
+transcription.
+
+## Verification
+
+Run the same core gates used by CI:
+
+```bash
+cargo fmt --all --check
 cargo test --workspace --all-targets
+cargo clippy --workspace --all-targets -- -D warnings
 pnpm check
 pnpm test
-pnpm build
+pnpm build:web
+pnpm contracts:check
+pnpm mcp:self-test
 pnpm mcp:inspector-smoke
 ```
 
-无桌面壳的 MCP 自检：
+Build the native application with:
 
 ```bash
-pnpm mcp:self-test
+pnpm build
 ```
 
-## 许可证
+## Architecture
 
-待定。
+RambleDesk is a pnpm and Cargo monorepo with a thin Tauri/Svelte desktop shell around
+Rust domain services:
+
+```text
+apps/desktop                 Tauri 2 + Svelte 5 desktop application
+crates/rambledesk-core       Domain model, state machine, ports, and use cases
+crates/rambledesk-storage    SQLite, drafts, attachments, and package publication
+crates/rambledesk-mcp        Authenticated Streamable HTTP MCP adapter
+crates/rambledesk-speech     Native audio capture and local streaming transcription
+crates/rambledesk-cli        Headless development and protocol verification entrypoint
+```
+
+The core owns product semantics. Storage, MCP, speech, CLI, and Tauri are adapters; no
+adapter may become a second source of business state.
+
+## Documentation
+
+| Document | Contents |
+| --- | --- |
+| [Product constitution](docs/CONSTITUTION.md) | North star, non-negotiable principles, and the User_0 boundary. |
+| [Product specification](docs/PRODUCT.md) | Problem, scope, primary flow, information architecture, and recovery model. |
+| [Architecture](docs/ARCHITECTURE.md) | Monorepo boundaries, runtime composition, and consistency rules. |
+| [MCP and feedback protocol](docs/PROTOCOL.md) | Tool schemas, idempotency, lifecycle, errors, and security. |
+| [Development baseline](docs/DEVELOPMENT.md) | Stack decisions, data model, milestones, and acceptance gates. |
+| [Compatibility matrix](docs/COMPATIBILITY.md) | Tested MCP clients, protocol versions, authentication, and execution modes. |
+| [Dogfooding log](docs/DOGFOODING.md) | Real operator rounds, findings, fixes, and validation evidence. |
+| [Kotone reuse audit](docs/KOTONE_REUSE.md) | Reusable speech components, required changes, and license gates. |
+| [Design interview](docs/INTERVIEW.md) | Historical decision context; not a current specification. |
+
+## License
+
+To be decided.

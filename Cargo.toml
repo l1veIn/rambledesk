@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
   "apps/desktop/src-tauri",
+  "crates/rambledesk-adapters",
   "crates/rambledesk-cli",
   "crates/rambledesk-core",
   "crates/rambledesk-mcp",
@@ -53,6 +54,7 @@ ts-rs = "12.0.1"
 uuid = { version = "1.24.0", features = ["v7"] }
 windows-sys = { version = "0.61.2", features = ["Win32_Storage_FileSystem"] }
 
+rambledesk-adapters = { path = "crates/rambledesk-adapters" }
 rambledesk-core = { path = "crates/rambledesk-core" }
 rambledesk-mcp = { path = "crates/rambledesk-mcp" }
 rambledesk-speech = { path = "crates/rambledesk-speech" }

@@ -20,24 +20,17 @@ use axum::{
 };
 use rambledesk_core::{
     ApplicationError, CancelFeedbackInput, FeedbackApplication, FeedbackRequestView,
-    FeedbackStatus, GetFeedbackInput, HealthSnapshot, ListFeedbackRequestsInput,
-    ListFeedbackRequestsOutput, RequestFeedbackInput,
+    FeedbackStatus, GetFeedbackInput, HealthSnapshot, RequestFeedbackInput,
 };
 use rmcp::{
-    RoleServer, ServerHandler,
-    handler::server::{
-        router::tool::ToolRouter,
-        wrapper::{Json, Parameters},
-    },
+    ServerHandler,
+    handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{CallToolResult, ContentBlock, Implementation, ServerCapabilities, ServerInfo},
-    service::RequestContext,
     tool, tool_handler, tool_router,
     transport::streamable_http_server::{
         StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
     },
 };
-use schemars::JsonSchema;
-use serde::Serialize;
 use subtle::ConstantTimeEq;
 use thiserror::Error;
 use tokio::{net::TcpListener, task::JoinHandle};
@@ -48,11 +41,20 @@ pub use token::{AccessToken, TokenError, default_token_path};
 pub const DEFAULT_PORT: u16 = 37_642;
 pub const MCP_PATH: &str = "/mcp";
 
+/// Install-time / client-config host identity (env on the MCP client entry).
+pub const HOST_ENV_KEY: &str = "RAMBLEDESK_HOST";
+/// HTTP header mirror so the loopback server can see the installed host id.
+pub const HOST_HEADER: &str = "x-rambledesk-host";
+
 const DEFAULT_ALLOWED_ORIGINS: &[&str] = &[
     "tauri://localhost",
     "http://tauri.localhost",
     "http://localhost:1420",
 ];
+
+tokio::task_local! {
+    static REQUEST_HOST: Option<String>;
+}
 
 #[derive(Debug, Clone)]
 pub struct ServerConfig {
@@ -94,79 +96,41 @@ impl RambleDeskMcp {
     }
 }
 
-#[derive(Debug, Serialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-struct McpHealthSnapshot {
-    #[serde(flatten)]
-    health: HealthSnapshot,
-    protocol_version: String,
-    client_supports_tasks: bool,
+fn current_request_host() -> Option<String> {
+    REQUEST_HOST.try_with(|host| host.clone()).ok().flatten()
+}
+
+fn resolve_agent(mut input: RequestFeedbackInput) -> RequestFeedbackInput {
+    if let Some(host) = current_request_host() {
+        // Install-time host id is authoritative for this MCP client entry.
+        input.agent = host;
+    }
+    input
 }
 
 #[tool_router]
 impl RambleDeskMcp {
     #[tool(
-        name = "rambledesk_health",
-        description = "Read-only M0 health probe for the local RambleDesk workbench."
-    )]
-    fn health(&self, context: RequestContext<RoleServer>) -> Json<McpHealthSnapshot> {
-        let protocol_version = context
-            .protocol_version()
-            .map(|version| version.to_string())
-            .unwrap_or_else(|| "unknown".to_owned());
-        let client_supports_tasks = context
-            .client_capabilities()
-            .is_some_and(|capabilities| capabilities.supports_tasks());
-
-        Json(McpHealthSnapshot {
-            health: HealthSnapshot::ready(),
-            protocol_version,
-            client_supports_tasks,
-        })
-    }
-
-    #[tool(
         name = "request_feedback",
-        description = "Persist a feedback request and return immediately with a durable handle. Reusing request_id with identical input is idempotent; call wait_for_feedback once to await the terminal result."
+        description = "Persist a feedback request and return immediately with a durable handle (request_id). After creating, stop the current turn — do not poll. When the human submits feedback, call get_feedback with the same request_id to read the package. Reusing request_id with identical input is idempotent. If the MCP client was auto-registered, RAMBLEDESK_HOST / X-RambleDesk-Host identify the host."
     )]
     async fn request_feedback(
         &self,
         Parameters(input): Parameters<RequestFeedbackInput>,
     ) -> CallToolResult {
-        application_result(self.application.request_feedback(input).await)
+        let input = resolve_agent(input);
+        feedback_tool_result(self.application.request_feedback(input).await, false).await
     }
 
     #[tool(
         name = "get_feedback",
-        description = "Compatibility and recovery tool: read the current state of a persistent feedback request without changing it. Normal clients should use wait_for_feedback instead of polling."
+        description = "Read the current state of a durable feedback request without changing it. Use after resume or for diagnostics. When status is completed, the response includes the full feedback package (manifest, markdown, attachment paths). Do not poll while waiting — end the turn after request_feedback and resume when notified."
     )]
     async fn get_feedback(
         &self,
         Parameters(input): Parameters<GetFeedbackInput>,
     ) -> CallToolResult {
-        application_result(self.application.get_feedback(input).await)
-    }
-
-    #[tool(
-        name = "wait_for_feedback",
-        description = "Wait without polling until a persistent feedback request is completed or cancelled. A completed response includes the parsed manifest, full Markdown, and absolute attachment paths. The call is safe to retry after a client timeout or reconnect."
-    )]
-    async fn wait_for_feedback(
-        &self,
-        Parameters(input): Parameters<GetFeedbackInput>,
-    ) -> CallToolResult {
-        wait_application_result(self.application.wait_for_feedback(input).await).await
-    }
-
-    #[tool(
-        name = "list_feedback_requests",
-        description = "List persistent feedback request summaries with optional project, agent, session, status, cursor, and limit filters. Defaults to open requests."
-    )]
-    async fn list_feedback_requests(
-        &self,
-        Parameters(input): Parameters<ListFeedbackRequestsInput>,
-    ) -> CallToolResult {
-        list_application_result(self.application.list_feedback_requests(input).await)
+        feedback_tool_result(self.application.get_feedback(input).await, true).await
     }
 
     #[tool(
@@ -177,93 +141,65 @@ impl RambleDeskMcp {
         &self,
         Parameters(input): Parameters<CancelFeedbackInput>,
     ) -> CallToolResult {
-        application_result(self.application.cancel_feedback(input).await)
+        feedback_tool_result(self.application.cancel_feedback(input).await, false).await
     }
 }
 
-fn list_application_result(
-    result: Result<ListFeedbackRequestsOutput, ApplicationError>,
-) -> CallToolResult {
-    match result {
-        Ok(value) => {
-            let summary = format!(
-                "Listed {} feedback request summaries{}.",
-                value.requests.len(),
-                if value.next_cursor.is_some() {
-                    "; more results are available"
-                } else {
-                    ""
-                }
-            );
-            let mut result = CallToolResult::structured(
-                serde_json::to_value(value).expect("application result must serialize"),
-            );
-            result.content = vec![ContentBlock::text(summary)];
-            result
-        }
-        Err(error) => application_error_result(error),
-    }
-}
-
-fn application_result(result: Result<FeedbackRequestView, ApplicationError>) -> CallToolResult {
-    match result {
-        Ok(value) => {
-            let summary = match value.status {
-                FeedbackStatus::Waiting => format!(
-                    "Feedback request {} is waiting; call wait_for_feedback once to await the result.",
-                    value.request_id
-                ),
-                FeedbackStatus::InProgress => format!(
-                    "Feedback request {} is in progress; wait_for_feedback will return when it becomes terminal.",
-                    value.request_id
-                ),
-                FeedbackStatus::Completed => {
-                    format!("Feedback request {} is completed.", value.request_id)
-                }
-                FeedbackStatus::Cancelled => {
-                    format!("Feedback request {} is cancelled.", value.request_id)
-                }
-            };
-            let mut result = CallToolResult::structured(
-                serde_json::to_value(value).expect("application result must serialize"),
-            );
-            result.content = vec![ContentBlock::text(summary)];
-            result
-        }
-        Err(error) => application_error_result(error),
-    }
-}
-
-async fn wait_application_result(
+async fn feedback_tool_result(
     result: Result<FeedbackRequestView, ApplicationError>,
+    include_package_when_terminal: bool,
 ) -> CallToolResult {
     let value = match result {
         Ok(value) => value,
         Err(error) => return application_error_result(error),
     };
-    let package = match load_feedback_package(&value).await {
-        Ok(package) => package,
-        Err(message) => {
-            return structured_error_result("FEEDBACK_PACKAGE_READ_FAILURE", &message, true);
-        }
-    };
+
     let summary = match value.status {
-        FeedbackStatus::Completed => format!(
-            "Feedback request {} completed; the full feedback package is attached.",
+        FeedbackStatus::Waiting => format!(
+            "Feedback request {} is waiting for the human. End this turn; do not poll. When resumed, call get_feedback with this request_id.",
             value.request_id
         ),
-        FeedbackStatus::Cancelled => {
-            format!("Feedback request {} was cancelled.", value.request_id)
+        FeedbackStatus::InProgress => format!(
+            "Feedback request {} is in progress. End this turn; when resumed, call get_feedback with this request_id.",
+            value.request_id
+        ),
+        FeedbackStatus::Completed => {
+            format!("Feedback request {} is completed.", value.request_id)
         }
-        FeedbackStatus::Waiting | FeedbackStatus::InProgress => {
-            format!("Feedback request {} is not terminal.", value.request_id)
+        FeedbackStatus::Cancelled => {
+            format!("Feedback request {} is cancelled.", value.request_id)
         }
     };
+
     let mut structured = serde_json::to_value(&value).expect("application result must serialize");
-    structured
+    let object = structured
         .as_object_mut()
-        .expect("feedback request view must serialize as an object")
-        .insert("feedback_package".to_owned(), package);
+        .expect("feedback request view must serialize as an object");
+
+    object.insert(
+        "server".to_owned(),
+        serde_json::to_value(HealthSnapshot::ready()).expect("health must serialize"),
+    );
+    if let Some(host) = current_request_host() {
+        object.insert("host".to_owned(), serde_json::Value::String(host));
+    }
+
+    if include_package_when_terminal
+        && matches!(
+            value.status,
+            FeedbackStatus::Completed | FeedbackStatus::Cancelled
+        )
+    {
+        match load_feedback_package(&value).await {
+            Ok(package) => {
+                object.insert("feedback_package".to_owned(), package);
+            }
+            Err(message) => {
+                return structured_error_result("FEEDBACK_PACKAGE_READ_FAILURE", &message, true);
+            }
+        }
+    }
+
     let mut result = CallToolResult::structured(structured);
     result.content = vec![ContentBlock::text(summary)];
     result
@@ -319,6 +255,7 @@ fn structured_error_result(code: &str, message: &str, retryable: bool) -> CallTo
         "code": code,
         "message": message,
         "retryable": retryable,
+        "server": HealthSnapshot::ready(),
     }));
     result.content = vec![ContentBlock::text(format!(
         "RambleDesk {}: {}",
@@ -333,7 +270,10 @@ impl ServerHandler for RambleDeskMcp {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new("rambledesk", env!("CARGO_PKG_VERSION")))
             .with_instructions(
-                "RambleDesk persists feedback requests before returning. Use request_feedback, then call wait_for_feedback once. Keep get_feedback only for reconnect recovery and diagnostics; do not poll it while waiting.",
+                "RambleDesk tools: request_feedback, get_feedback, cancel_feedback. \
+Create a durable request with request_feedback, then end the current turn — do not poll and do not wait on a long tool call. \
+When the human finishes and the session is resumed, call get_feedback(request_id) to load the package. \
+Auto-registered clients set RAMBLEDESK_HOST (and X-RambleDesk-Host) so the host identity is known without guessing.",
             )
     }
 }
@@ -358,21 +298,32 @@ impl AuthState {
     }
 }
 
+fn extract_request_host(request: &Request<Body>) -> Option<String> {
+    request
+        .headers()
+        .get(HOST_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
 async fn require_bearer(
     axum::extract::State(state): axum::extract::State<AuthState>,
     request: Request<Body>,
     next: Next,
 ) -> Response<Body> {
-    if state.accepts(request.headers().get(AUTHORIZATION)) {
-        return next.run(request).await;
+    if !state.accepts(request.headers().get(AUTHORIZATION)) {
+        let mut response = (StatusCode::UNAUTHORIZED, "Unauthorized").into_response();
+        response.headers_mut().insert(
+            WWW_AUTHENTICATE,
+            HeaderValue::from_static("Bearer realm=\"RambleDesk\""),
+        );
+        return response;
     }
 
-    let mut response = (StatusCode::UNAUTHORIZED, "Unauthorized").into_response();
-    response.headers_mut().insert(
-        WWW_AUTHENTICATE,
-        HeaderValue::from_static("Bearer realm=\"RambleDesk\""),
-    );
-    response
+    let host = extract_request_host(&request);
+    REQUEST_HOST.scope(host, next.run(request)).await
 }
 
 pub struct ServerHandle {

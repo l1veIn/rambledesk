@@ -1,5 +1,5 @@
 use serde::Serialize;
-use serde_json::{Map, Value};
+use serde_json::{Map, Value, json};
 use std::{
     env, fs,
     path::{Path, PathBuf},
@@ -7,6 +7,8 @@ use std::{
 use toml_edit::{DocumentMut, Item, Table, value};
 
 const SERVER_ID: &str = "rambledesk";
+const HOST_ENV_KEY: &str = rambledesk_mcp::HOST_ENV_KEY;
+const HOST_HEADER: &str = "X-RambleDesk-Host";
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -142,10 +144,11 @@ pub fn install_clients(
             return Err(format!("{} was not detected on this device", client.name()));
         }
         let path = client.config_path(home);
+        let entry = entry_for_host(&base_entry, client.id())?;
         let action = match client {
-            ClientKind::Codex => write_codex_config(&path, &base_entry)?,
+            ClientKind::Codex => write_codex_config(&path, &entry)?,
             ClientKind::Gemini => {
-                let mut entry = base_entry.clone();
+                let mut entry = entry;
                 if let Some(object) = entry.as_object_mut() {
                     object.remove("type");
                     if let Some(url) = object.remove("url") {
@@ -154,9 +157,7 @@ pub fn install_clients(
                 }
                 write_json_config(&path, entry)?
             }
-            ClientKind::Claude | ClientKind::Cursor => {
-                write_json_config(&path, base_entry.clone())?
-            }
+            ClientKind::Claude | ClientKind::Cursor => write_json_config(&path, entry)?,
         };
         results.push(McpInstallResult {
             client_id: id.clone(),
@@ -176,6 +177,24 @@ fn extract_server_entry(configuration: &str) -> Result<Value, String> {
         .and_then(|servers| servers.get(SERVER_ID))
         .cloned()
         .ok_or_else(|| "RambleDesk MCP configuration is missing its server entry".to_owned())
+}
+
+/// Stamp install-time host identity onto a shared base MCP entry.
+fn entry_for_host(base_entry: &Value, host_id: &str) -> Result<Value, String> {
+    let mut entry = base_entry.clone();
+    let object = entry
+        .as_object_mut()
+        .ok_or_else(|| "RambleDesk MCP server entry must be a JSON object".to_owned())?;
+
+    let headers = object
+        .entry("headers")
+        .or_insert_with(|| Value::Object(Map::new()))
+        .as_object_mut()
+        .ok_or_else(|| "RambleDesk MCP headers must be a JSON object".to_owned())?;
+    headers.insert(HOST_HEADER.to_owned(), Value::String(host_id.to_owned()));
+
+    object.insert("env".to_owned(), json!({ HOST_ENV_KEY: host_id }));
+    Ok(entry)
 }
 
 fn json_is_configured(path: &Path) -> bool {
@@ -244,6 +263,16 @@ fn write_codex_config(path: &Path, entry: &Value) -> Result<&'static str, String
         .and_then(|headers| headers.get("Authorization"))
         .and_then(Value::as_str)
         .ok_or_else(|| "RambleDesk MCP authorization header is missing".to_owned())?;
+    let host_id = entry
+        .get("headers")
+        .and_then(|headers| headers.get(HOST_HEADER))
+        .and_then(Value::as_str)
+        .or_else(|| {
+            entry
+                .get("env")
+                .and_then(|env| env.get(HOST_ENV_KEY))
+                .and_then(Value::as_str)
+        });
     let existed = path.exists();
     let source = if existed {
         fs::read_to_string(path)
@@ -265,6 +294,12 @@ fn write_codex_config(path: &Path, entry: &Value) -> Result<&'static str, String
     server["url"] = value(url);
     let mut headers = Table::new();
     headers["Authorization"] = value(authorization);
+    if let Some(host_id) = host_id {
+        headers[HOST_HEADER] = value(host_id);
+        let mut env_table = Table::new();
+        env_table[HOST_ENV_KEY] = value(host_id);
+        server["env"] = Item::Table(env_table);
+    }
     server["http_headers"] = Item::Table(headers);
     let before = document.to_string();
     document["mcp_servers"][SERVER_ID] = Item::Table(server);
@@ -333,7 +368,11 @@ mod tests {
             r#"{"mcpServers":{"other":{"command":"other"}},"theme":"dark"}"#,
         )
         .expect("seed config");
-        let entry = extract_server_entry(&configuration()).expect("entry");
+        let entry = entry_for_host(
+            &extract_server_entry(&configuration()).expect("entry"),
+            "claude",
+        )
+        .expect("host entry");
         assert_eq!(
             write_json_config(&path, entry.clone()).expect("install"),
             "updated"
@@ -347,6 +386,14 @@ mod tests {
         assert_eq!(written["theme"], "dark");
         assert_eq!(written["mcpServers"]["other"]["command"], "other");
         assert_eq!(written["mcpServers"][SERVER_ID]["type"], "http");
+        assert_eq!(
+            written["mcpServers"][SERVER_ID]["headers"][HOST_HEADER],
+            "claude"
+        );
+        assert_eq!(
+            written["mcpServers"][SERVER_ID]["env"][HOST_ENV_KEY],
+            "claude"
+        );
     }
 
     #[test]
@@ -358,7 +405,11 @@ mod tests {
             "model = \"gpt-5\"\n\n[mcp_servers.other]\ncommand = \"other\"\n",
         )
         .expect("seed config");
-        let entry = extract_server_entry(&configuration()).expect("entry");
+        let entry = entry_for_host(
+            &extract_server_entry(&configuration()).expect("entry"),
+            "codex",
+        )
+        .expect("host entry");
         assert_eq!(
             write_codex_config(&path, &entry).expect("install"),
             "updated"
@@ -372,6 +423,9 @@ mod tests {
         assert!(written.contains("[mcp_servers.other]"));
         assert!(written.contains("[mcp_servers.rambledesk]"));
         assert!(written.contains("[mcp_servers.rambledesk.http_headers]"));
+        assert!(written.contains("RAMBLEDESK_HOST"));
+        assert!(written.contains("X-RambleDesk-Host"));
+        assert!(written.contains("codex"));
     }
 
     #[test]

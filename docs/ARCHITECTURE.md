@@ -44,6 +44,7 @@ rambledesk/
 │       └── src-tauri/            # Tauri 薄壳 / composition root
 ├── crates/
 │   ├── rambledesk-core/
+│   ├── rambledesk-adapters/
 │   ├── rambledesk-storage/
 │   ├── rambledesk-mcp/
 │   ├── rambledesk-speech/
@@ -75,9 +76,23 @@ rambledesk/
 - SQLx/SQLite；
 - HTTP server；
 - cpal/sherpa-onnx；
-- 操作系统全局目录。
+- 操作系统全局目录；
+- 宿主 continuation / wakeup 实现（见 `rambledesk-adapters`）。
 
-### 4.2 `rambledesk-storage`
+### 4.2 `rambledesk-adapters`
+
+包含：
+
+- `WakeupRouter` 与 `WakeupAdapter` 接口；
+- 通用回落 `GenericWakeupAdapter`（提交后提示人类回到宿主继续）；
+- 未来各宿主专用 resume / wake 实现。
+
+依赖方向：只依赖 `rambledesk-core` 的领域类型（如 `FeedbackStatus`），不得依赖
+Tauri、MCP 或 storage。桌面与 CLI 作为 composition root 组装 router。
+
+独立变更节奏：宿主 API 与实测矩阵可单独 bump，不拖动协议/core 发版。
+
+### 4.3 `rambledesk-storage`
 
 包含：
 
@@ -89,7 +104,7 @@ rambledesk/
 
 它只实现 core ports，不向上泄漏 SQL row、连接池或文件系统细节。
 
-### 4.3 `rambledesk-mcp`
+### 4.4 `rambledesk-mcp`
 
 包含：
 
@@ -102,7 +117,7 @@ rambledesk/
 
 它不直接写数据库。断线只结束 Invocation Attempt，不改变 Feedback Request。
 
-### 4.4 `rambledesk-speech`
+### 4.5 `rambledesk-speech`
 
 M3 引入：
 
@@ -115,7 +130,7 @@ M3 引入：
 speech 输出 Draft patch 或 transcript segments，由 application service 决定如何
 合并；speech 自身不能提交 Feedback Request。
 
-### 4.5 `rambledesk-cli`
+### 4.6 `rambledesk-cli`
 
 提供：
 
@@ -125,7 +140,7 @@ speech 输出 Draft patch 或 transcript segments，由 application service 决�
 - 导入 WAV 并运行 speech 回归；
 - CI smoke test。
 
-### 4.6 Desktop
+### 4.7 Desktop
 
 Tauri Rust 壳只负责：
 

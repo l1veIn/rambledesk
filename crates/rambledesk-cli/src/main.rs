@@ -1,11 +1,11 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::path::PathBuf;
 
 use anyhow::Context;
 use clap::{Parser, Subcommand};
 use rambledesk_mcp::{AccessToken, ServerConfig, default_token_path, start_server};
 use rmcp::{
     ServiceExt,
-    model::{CallToolRequestParams, ClientInfo},
+    model::ClientInfo,
     transport::{
         StreamableHttpClientTransport, streamable_http_client::StreamableHttpClientTransportConfig,
     },
@@ -31,7 +31,7 @@ enum Command {
         #[arg(long)]
         print_token: bool,
     },
-    /// Connect with the official Rust SDK and call rambledesk_health.
+    /// Connect with the official Rust SDK and list MCP tools.
     Smoke {
         #[arg(long)]
         endpoint: String,
@@ -144,20 +144,16 @@ async fn smoke(endpoint: &str, token: &AccessToken) -> anyhow::Result<serde_json
         .map(|tool| tool.name.to_string())
         .collect();
 
-    let health = client
-        .call_tool(
-            CallToolRequestParams::new("rambledesk_health")
-                .with_arguments(HashMap::new().into_iter().collect()),
-        )
-        .await
-        .context("call rambledesk_health")?;
-    let structured = health.structured_content.clone();
+    let expected = ["request_feedback", "get_feedback", "cancel_feedback"];
+    let ok = expected
+        .iter()
+        .all(|name| tool_names.iter().any(|tool| tool == name))
+        && tool_names.len() == expected.len();
     client.cancel().await?;
 
     Ok(serde_json::json!({
         "endpoint": endpoint,
         "tools": tool_names,
-        "health": structured,
-        "ok": health.is_error != Some(true)
+        "ok": ok
     }))
 }

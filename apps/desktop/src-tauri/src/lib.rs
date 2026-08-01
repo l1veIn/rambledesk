@@ -2,6 +2,9 @@ mod clipboard_capture;
 mod mcp_setup;
 mod screen_capture;
 
+use rambledesk_adapters::{
+    ResumePrompt, WakePayload, WakeReason, WakeResult, WakeupRouter,
+};
 use rambledesk_core::{
     AddAttachmentInput, ApplicationError, DraftView, FeedbackApplication, FeedbackRequestSummary,
     FeedbackRequestView, FeedbackStatus, FeedbackWorkspaceView, HealthSnapshot,
@@ -35,12 +38,14 @@ const RAMBLE_TOGGLE_SHORTCUT: &str = "Ctrl+Shift+R";
 const RAMBLE_CONSOLE_WIDTH: f64 = 66.0;
 const RAMBLE_CONSOLE_HEIGHT: f64 = 304.0;
 const RAMBLE_CONSOLE_EDGE_GAP: f64 = 10.0;
+const RESUME_PROMPT_EVENT: &str = "rambledesk://resume-prompt";
 const BASE_TRAY_ICON: Image<'static> = tauri::include_image!("./icons/32x32.png");
 
 struct WorkbenchState {
     handle: ServerHandle,
     application: FeedbackApplication,
     mcp_configuration: String,
+    wakeup: WakeupRouter,
     pending_count: AtomicU32,
     speech_session: tokio::sync::Mutex<Option<SpeechSession>>,
 }
@@ -273,10 +278,76 @@ async fn read_feedback_attachment(
 #[tauri::command]
 async fn submit_feedback(
     input: SubmitFeedbackInput,
+    app: tauri::AppHandle,
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<FeedbackRequestView, ApplicationError> {
     let application = state.application.clone();
-    application.submit_feedback(input).await
+    let result = application.submit_feedback(input.clone()).await?;
+    deliver_wakeup_after_terminal(
+        &app,
+        &state.wakeup,
+        &application,
+        &input.request_id,
+        result.status,
+    )
+    .await;
+    Ok(result)
+}
+
+async fn deliver_wakeup_after_terminal(
+    app: &tauri::AppHandle,
+    router: &WakeupRouter,
+    application: &FeedbackApplication,
+    request_id: &str,
+    status: FeedbackStatus,
+) {
+    let Some(reason) = WakeReason::from_status(status) else {
+        return;
+    };
+    let (host_id, session_id) =
+        match application.get_feedback_workspace(request_id.to_owned()).await {
+            Ok(workspace) => (workspace.request.agent, workspace.request.session_id),
+            Err(error) => {
+                tracing::warn!(%request_id, %error, "wakeup: workspace lookup failed; using empty host");
+                (String::new(), String::new())
+            }
+        };
+
+    let payload = WakePayload {
+        request_id: request_id.to_owned(),
+        host_id: host_id.clone(),
+        agent: host_id,
+        session_id,
+        reason,
+    };
+    match router.wake(&payload) {
+        WakeResult::HostDelivered {
+            adapter_id,
+            host_id,
+        } => {
+            tracing::info!(%request_id, %adapter_id, %host_id, "host wakeup delivered");
+        }
+        WakeResult::UserPrompt { adapter_id, prompt } => {
+            tracing::info!(
+                %request_id,
+                %adapter_id,
+                host = %prompt.host_id,
+                "generic wakeup prompt ready"
+            );
+            present_resume_prompt(app, &prompt);
+        }
+    }
+}
+
+fn present_resume_prompt(app: &tauri::AppHandle, prompt: &ResumePrompt) {
+    if let Some(main) = app.get_webview_window("main") {
+        let _ = main.show();
+        let _ = main.unminimize();
+        let _ = main.set_focus();
+    }
+    if let Err(error) = app.emit(RESUME_PROMPT_EVENT, prompt) {
+        tracing::warn!(%error, "failed to emit resume prompt event");
+    }
 }
 
 #[tauri::command]
@@ -593,6 +664,8 @@ pub fn run() {
                 handle,
                 application,
                 mcp_configuration: configuration,
+                // Specific host adapters register here later; unmatched hosts use generic UI.
+                wakeup: WakeupRouter::default(),
                 pending_count: AtomicU32::new(0),
                 speech_session: tokio::sync::Mutex::new(None),
             });

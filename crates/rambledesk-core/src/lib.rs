@@ -1,4 +1,7 @@
 //! Framework-independent RambleDesk domain and application contracts.
+//!
+//! Host continuation / wakeup lives in `rambledesk-adapters` so adapter cadence
+//! stays independent of core protocol changes.
 
 mod feedback;
 mod workspace;
