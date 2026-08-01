@@ -307,9 +307,10 @@ pnpm dev
 - 锁定 `rmcp`、Tauri 和 Rust toolchain 版本；
 - 将兼容结果写入 `docs/COMPATIBILITY.md`。
 
-实测结果见 [COMPATIBILITY.md](COMPATIBILITY.md)。首发采用 polling：
-`request_feedback` 快速返回 durable request，Agent 使用 `get_feedback` 查询。
-Tasks 保留为双方显式声明支持后的增强路径。
+实测结果见 [COMPATIBILITY.md](COMPATIBILITY.md)。当前默认采用 durable wait：
+`request_feedback` 快速返回 durable request，Agent 单次调用 `wait_for_feedback`
+挂起到终态；`get_feedback` 只用于兼容、恢复和诊断。Tasks 保留为双方显式声明
+支持后的增强路径。
 
 验收门：
 
@@ -338,7 +339,7 @@ Windows 的提交、幂等、启动对账和 MCP 黑盒测试已通过；Windows
 交付：
 
 - SQLite migrations；
-- `request_feedback`、`get_feedback`、`cancel_feedback`；
+- `request_feedback`、`wait_for_feedback`、`get_feedback`、`cancel_feedback`；
 - Inbox 和单请求工作区；
 - 文本 Draft 自动保存；
 - 提交发布 `feedback.md + manifest.json`；

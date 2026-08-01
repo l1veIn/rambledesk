@@ -4,6 +4,7 @@ mod token;
 
 use std::{
     net::{Ipv4Addr, SocketAddr},
+    path::{Component, Path, PathBuf},
     sync::Arc,
 };
 
@@ -126,7 +127,7 @@ impl RambleDeskMcp {
 
     #[tool(
         name = "request_feedback",
-        description = "Persist a feedback request and return immediately with a polling handle. Reusing request_id with identical input is idempotent."
+        description = "Persist a feedback request and return immediately with a durable handle. Reusing request_id with identical input is idempotent; call wait_for_feedback once to await the terminal result."
     )]
     async fn request_feedback(
         &self,
@@ -137,13 +138,24 @@ impl RambleDeskMcp {
 
     #[tool(
         name = "get_feedback",
-        description = "Read the current state of a persistent feedback request without changing it."
+        description = "Compatibility and recovery tool: read the current state of a persistent feedback request without changing it. Normal clients should use wait_for_feedback instead of polling."
     )]
     async fn get_feedback(
         &self,
         Parameters(input): Parameters<GetFeedbackInput>,
     ) -> CallToolResult {
         application_result(self.application.get_feedback(input).await)
+    }
+
+    #[tool(
+        name = "wait_for_feedback",
+        description = "Wait without polling until a persistent feedback request is completed or cancelled. A completed response includes the parsed manifest, full Markdown, and absolute attachment paths. The call is safe to retry after a client timeout or reconnect."
+    )]
+    async fn wait_for_feedback(
+        &self,
+        Parameters(input): Parameters<GetFeedbackInput>,
+    ) -> CallToolResult {
+        wait_application_result(self.application.wait_for_feedback(input).await).await
     }
 
     #[tool(
@@ -198,12 +210,11 @@ fn application_result(result: Result<FeedbackRequestView, ApplicationError>) -> 
         Ok(value) => {
             let summary = match value.status {
                 FeedbackStatus::Waiting => format!(
-                    "Feedback request {} is waiting; poll get_feedback after {} ms.",
-                    value.request_id,
-                    value.poll_after_ms.unwrap_or_default()
+                    "Feedback request {} is waiting; call wait_for_feedback once to await the result.",
+                    value.request_id
                 ),
                 FeedbackStatus::InProgress => format!(
-                    "Feedback request {} is in progress; continue polling get_feedback.",
+                    "Feedback request {} is in progress; wait_for_feedback will return when it becomes terminal.",
                     value.request_id
                 ),
                 FeedbackStatus::Completed => {
@@ -223,16 +234,95 @@ fn application_result(result: Result<FeedbackRequestView, ApplicationError>) -> 
     }
 }
 
+async fn wait_application_result(
+    result: Result<FeedbackRequestView, ApplicationError>,
+) -> CallToolResult {
+    let value = match result {
+        Ok(value) => value,
+        Err(error) => return application_error_result(error),
+    };
+    let package = match load_feedback_package(&value).await {
+        Ok(package) => package,
+        Err(message) => {
+            return structured_error_result("FEEDBACK_PACKAGE_READ_FAILURE", &message, true);
+        }
+    };
+    let summary = match value.status {
+        FeedbackStatus::Completed => format!(
+            "Feedback request {} completed; the full feedback package is attached.",
+            value.request_id
+        ),
+        FeedbackStatus::Cancelled => {
+            format!("Feedback request {} was cancelled.", value.request_id)
+        }
+        FeedbackStatus::Waiting | FeedbackStatus::InProgress => {
+            format!("Feedback request {} is not terminal.", value.request_id)
+        }
+    };
+    let mut structured = serde_json::to_value(&value).expect("application result must serialize");
+    structured
+        .as_object_mut()
+        .expect("feedback request view must serialize as an object")
+        .insert("feedback_package".to_owned(), package);
+    let mut result = CallToolResult::structured(structured);
+    result.content = vec![ContentBlock::text(summary)];
+    result
+}
+
+async fn load_feedback_package(value: &FeedbackRequestView) -> Result<serde_json::Value, String> {
+    let Some(feedback) = value.feedback.as_ref() else {
+        return Ok(serde_json::Value::Null);
+    };
+    let manifest_text = tokio::fs::read_to_string(&feedback.manifest_path)
+        .await
+        .map_err(|error| format!("could not read feedback manifest: {error}"))?;
+    let manifest: serde_json::Value = serde_json::from_str(&manifest_text)
+        .map_err(|error| format!("feedback manifest is invalid: {error}"))?;
+    let markdown = tokio::fs::read_to_string(&feedback.markdown_path)
+        .await
+        .map_err(|error| format!("could not read feedback markdown: {error}"))?;
+    let directory = Path::new(&feedback.directory_path);
+    let attachment_paths = manifest
+        .get("attachments")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|attachment| {
+            let relative = attachment
+                .get("path")
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| "feedback manifest attachment path is missing".to_owned())?;
+            let relative_path = PathBuf::from(relative);
+            let mut components = relative_path.components();
+            if components.next() != Some(Component::Normal("attachments".as_ref()))
+                || components.next().is_none()
+                || components.next().is_some()
+            {
+                return Err("feedback manifest attachment path is unsafe".to_owned());
+            }
+            Ok(directory.join(relative_path).to_string_lossy().into_owned())
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    Ok(serde_json::json!({
+        "manifest": manifest,
+        "markdown": markdown,
+        "attachment_paths": attachment_paths,
+    }))
+}
+
 fn application_error_result(error: ApplicationError) -> CallToolResult {
+    structured_error_result(error.code(), error.message(), error.retryable())
+}
+
+fn structured_error_result(code: &str, message: &str, retryable: bool) -> CallToolResult {
     let mut result = CallToolResult::structured_error(serde_json::json!({
-        "code": error.code(),
-        "message": error.message(),
-        "retryable": error.retryable(),
+        "code": code,
+        "message": message,
+        "retryable": retryable,
     }));
     result.content = vec![ContentBlock::text(format!(
         "RambleDesk {}: {}",
-        error.code(),
-        error.message()
+        code, message
     ))];
     result
 }
@@ -243,7 +333,7 @@ impl ServerHandler for RambleDeskMcp {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new("rambledesk", env!("CARGO_PKG_VERSION")))
             .with_instructions(
-                "RambleDesk persists feedback requests before returning. Use request_feedback, then poll get_feedback until completed or cancelled.",
+                "RambleDesk persists feedback requests before returning. Use request_feedback, then call wait_for_feedback once. Keep get_feedback only for reconnect recovery and diagnostics; do not poll it while waiting.",
             )
     }
 }

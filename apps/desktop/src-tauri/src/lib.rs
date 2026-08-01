@@ -21,7 +21,8 @@ use std::{
     },
 };
 use tauri::{
-    Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder,
+    Emitter, Manager, PhysicalPosition, PhysicalRect, PhysicalSize, RunEvent, WebviewUrl,
+    WebviewWindow, WebviewWindowBuilder,
     image::Image,
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -31,6 +32,9 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 const TRAY_ID: &str = "rambledesk-main";
 const RAMBLE_CONSOLE_LABEL: &str = "ramble-console";
 const RAMBLE_TOGGLE_SHORTCUT: &str = "Ctrl+Shift+R";
+const RAMBLE_CONSOLE_WIDTH: f64 = 66.0;
+const RAMBLE_CONSOLE_HEIGHT: f64 = 304.0;
+const RAMBLE_CONSOLE_EDGE_GAP: f64 = 10.0;
 const BASE_TRAY_ICON: Image<'static> = tauri::include_image!("./icons/32x32.png");
 
 struct WorkbenchState {
@@ -39,6 +43,39 @@ struct WorkbenchState {
     mcp_configuration: String,
     pending_count: AtomicU32,
     speech_session: tokio::sync::Mutex<Option<SpeechSession>>,
+}
+
+fn right_center_position(
+    work_area: PhysicalRect<i32, u32>,
+    window_size: PhysicalSize<u32>,
+    scale_factor: f64,
+) -> PhysicalPosition<i32> {
+    let gap = (RAMBLE_CONSOLE_EDGE_GAP * scale_factor).round() as i64;
+    let x = i64::from(work_area.position.x) + i64::from(work_area.size.width)
+        - i64::from(window_size.width)
+        - gap;
+    let y = i64::from(work_area.position.y)
+        + (i64::from(work_area.size.height) - i64::from(window_size.height)) / 2;
+    PhysicalPosition::new(
+        x.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32,
+        y.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32,
+    )
+}
+
+fn position_ramble_console(app: &tauri::AppHandle, console: &WebviewWindow) -> tauri::Result<()> {
+    let monitor = app
+        .get_webview_window("main")
+        .and_then(|window| window.current_monitor().ok().flatten())
+        .or(console.primary_monitor()?);
+    let Some(monitor) = monitor else {
+        return Ok(());
+    };
+    let position = right_center_position(
+        *monitor.work_area(),
+        console.outer_size()?,
+        monitor.scale_factor(),
+    );
+    console.set_position(position)
 }
 
 #[derive(Debug, Deserialize)]
@@ -449,17 +486,18 @@ pub fn run() {
                 WebviewUrl::App("ramble-console".into()),
             )
             .title("RambleDesk · Ramble Console")
-            .inner_size(468.0, 164.0)
-            .min_inner_size(420.0, 148.0)
+            .inner_size(RAMBLE_CONSOLE_WIDTH, RAMBLE_CONSOLE_HEIGHT)
+            .min_inner_size(RAMBLE_CONSOLE_WIDTH, RAMBLE_CONSOLE_HEIGHT)
+            .max_inner_size(RAMBLE_CONSOLE_WIDTH, RAMBLE_CONSOLE_HEIGHT)
             .resizable(false)
             .decorations(false)
             .shadow(true)
             .always_on_top(true)
             .skip_taskbar(true)
             .visible_on_all_workspaces(true)
-            .center()
             .visible(false)
             .build()?;
+            position_ramble_console(app.handle(), &console)?;
             let console_to_hide = console.clone();
             console.on_window_event(move |event| {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -641,6 +679,19 @@ mod tests {
         assert_eq!(idle.width(), pending.width());
         assert_eq!(idle.height(), pending.height());
         assert_ne!(idle.rgba(), pending.rgba());
+    }
+
+    #[test]
+    fn ramble_console_defaults_to_right_center_with_logical_ten_pixel_gap() {
+        let position = right_center_position(
+            PhysicalRect {
+                position: PhysicalPosition::new(-1_920, 40),
+                size: PhysicalSize::new(1_920, 1_040),
+            },
+            PhysicalSize::new(132, 608),
+            2.0,
+        );
+        assert_eq!(position, PhysicalPosition::new(-152, 256));
     }
 
     #[test]

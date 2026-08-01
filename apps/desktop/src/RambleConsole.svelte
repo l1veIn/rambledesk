@@ -3,6 +3,15 @@
   import { getCurrentWebview } from '@tauri-apps/api/webview'
   import { getCurrentWindow } from '@tauri-apps/api/window'
   import { open } from '@tauri-apps/plugin-dialog'
+  import {
+    ClipboardPaste,
+    FilePlus2,
+    GripVertical,
+    LogOut,
+    Mic,
+    Pause,
+    ScanLine,
+  } from '@lucide/svelte'
   import { onMount } from 'svelte'
 
   import { t } from './lib/i18n'
@@ -21,6 +30,7 @@
   let dragActive = false
   let localBusy = false
   let errorMessage = ''
+  const isTauri = '__TAURI_INTERNALS__' in window
 
   $: recording = state?.recording ?? false
   $: busy = localBusy || (state?.busy ?? true)
@@ -33,8 +43,11 @@
         : state.phase === 'error'
           ? state.message
           : t($locale, '准备就绪')
+  $: recordingLabel = recording ? t($locale, '暂停录音') : t($locale, '继续录音')
+  $: consoleMessage = errorMessage || state?.message || statusLabel
 
   onMount(() => {
+    if (!isTauri) return
     let stateUnlisten: (() => void) | undefined
     let dragUnlisten: (() => void) | undefined
     let showUnlisten: (() => void) | undefined
@@ -105,70 +118,91 @@
       localBusy = false
     }
   }
+
+  async function startDragging(event: PointerEvent) {
+    if (!isTauri || event.button !== 0) return
+    const target = event.target
+    if (target instanceof Element && target.closest('.console-tool')) return
+    try {
+      await getCurrentWindow().startDragging()
+    } catch (cause) {
+      errorMessage = cause instanceof Error ? cause.message : String(cause)
+    }
+  }
 </script>
 
-<main class:drop-active={dragActive} class="floating-console">
-  <header class="floating-heading" data-tauri-drag-region>
-    <div class="floating-brand" data-tauri-drag-region>
-      <svg viewBox="0 0 32 32" aria-hidden="true" data-tauri-drag-region>
-        <path d="M16 2.8 27 9.2v13.6L16 29.2 5 22.8V9.2Z" />
-        <path d="m16 7.7 6.8 4v8.6L16 24.3l-6.8-4v-8.6Z" />
-      </svg>
-      <div data-tauri-drag-region>
-        <strong data-tauri-drag-region>RAMBLE</strong>
-        <span data-tauri-drag-region>{state?.projectName ?? 'RambleDesk'}</span>
-      </div>
-    </div>
-    <div class:recording class="floating-status" data-tauri-drag-region>
-      <i></i>
-      <span data-tauri-drag-region>{statusLabel}</span>
-    </div>
-    <span class="drag-handle" title={t($locale, '拖动悬浮窗')} data-tauri-drag-region>⠿</span>
-  </header>
+<div
+  class:drop-active={dragActive}
+  class:recording
+  class="floating-console"
+  role="toolbar"
+  tabindex="0"
+  aria-label={t($locale, 'Ramble 操作台')}
+  title={consoleMessage}
+  onpointerdown={(event) => void startDragging(event)}
+>
+  <span
+    class="console-grip"
+    aria-hidden="true"
+    title={t($locale, '拖动悬浮窗')}
+  >
+    <GripVertical size={18} strokeWidth={1.8} />
+  </span>
 
-  <section class="floating-body">
-    <div class="recording-summary">
-      <div class="level-ring" style={`--level:${Math.max(0.08, state?.voiceLevel ?? 0)}`}>
-        <span>{recording ? 'Ⅱ' : '●'}</span>
-      </div>
-      <div>
-        <strong>{state?.requestTitle ?? statusLabel}</strong>
-        <span>
-          {#if state?.partialTranscript}
-            {t($locale, '正在听：{text}', { text: state.partialTranscript })}
-          {:else}
-            {errorMessage || state?.message || t($locale, '拖入文件即可写入当前文档')}
-          {/if}
-        </span>
-      </div>
-    </div>
+  <span class="console-divider" aria-hidden="true"></span>
 
-    <div class="floating-tools" aria-label="Ramble tools">
-      <button
-        class:active={recording}
-        disabled={busy}
-        onclick={() => send({ type: 'toggle-recording' })}
-        title="Ctrl + Shift + R"
-      >
-        <span>{recording ? 'Ⅱ' : '●'}</span>
-        {recording ? t($locale, '暂停录音') : t($locale, '继续录音')}
-      </button>
-      <button disabled={state?.captureBusy || !state} onclick={() => send({ type: 'capture-screen' })} title="Ctrl + Shift + 1">
-        <span>⌗</span>{t($locale, '截图')}
-      </button>
-      <button disabled={state?.captureBusy || !state} onclick={() => send({ type: 'import-clipboard' })}>
-        <span>▣</span>{t($locale, '剪贴板')}
-      </button>
-      <button disabled={state?.captureBusy || !state || localBusy} onclick={chooseFiles} title={t($locale, '选择文件')}>
-        <span>＋</span>{t($locale, '文件')}
-      </button>
-      <button class="exit-tool" onclick={() => send({ type: 'exit' })}>
-        <span>×</span>{t($locale, '退出 Ramble')}
-      </button>
-    </div>
-  </section>
+  <div class="floating-tools">
+    <button
+      class:active={recording}
+      class="console-tool"
+      disabled={busy}
+      onclick={() => send({ type: 'toggle-recording' })}
+      title={`${recordingLabel} · Ctrl + Shift + R`}
+      aria-label={recordingLabel}
+    >
+      {#if recording}<Pause size={20} strokeWidth={1.8} />{:else}<Mic size={20} strokeWidth={1.8} />{/if}
+      <span class="voice-level" style={`--level:${Math.max(0.06, state?.voiceLevel ?? 0)}`}></span>
+    </button>
+    <button
+      class="console-tool"
+      disabled={state?.captureBusy || !state}
+      onclick={() => send({ type: 'capture-screen' })}
+      title={`${t($locale, '截图')} · Ctrl + Shift + 1`}
+      aria-label={t($locale, '截图')}
+    >
+      <ScanLine size={20} strokeWidth={1.75} />
+    </button>
+    <button
+      class="console-tool"
+      disabled={state?.captureBusy || !state}
+      onclick={() => send({ type: 'import-clipboard' })}
+      title={t($locale, '剪贴板')}
+      aria-label={t($locale, '剪贴板')}
+    >
+      <ClipboardPaste size={20} strokeWidth={1.75} />
+    </button>
+    <button
+      class="console-tool"
+      disabled={state?.captureBusy || !state || localBusy}
+      onclick={chooseFiles}
+      title={t($locale, '选择文件')}
+      aria-label={t($locale, '选择文件')}
+    >
+      <FilePlus2 size={20} strokeWidth={1.75} />
+    </button>
+    <button
+      class="console-tool exit-tool"
+      onclick={() => send({ type: 'exit' })}
+      title={t($locale, '退出 Ramble')}
+      aria-label={t($locale, '退出 Ramble')}
+    >
+      <LogOut size={20} strokeWidth={1.75} />
+    </button>
+  </div>
 
   {#if dragActive}
-    <div class="drop-prompt"><span>＋</span>{t($locale, '拖入文件即可写入当前文档')}</div>
+    <div class="drop-prompt" title={t($locale, '拖入文件即可写入当前文档')}>
+      <FilePlus2 size={23} strokeWidth={1.8} />
+    </div>
   {/if}
-</main>
+</div>

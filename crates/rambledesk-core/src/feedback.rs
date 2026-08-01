@@ -1,4 +1,8 @@
-use std::{collections::HashSet, path::Path, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    path::Path,
+    sync::{Arc, Mutex},
+};
 
 use async_trait::async_trait;
 use schemars::JsonSchema;
@@ -6,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+use tokio::sync::watch;
 use ts_rs::TS;
 use uuid::Uuid;
 
@@ -98,6 +103,7 @@ impl TryFrom<&str> for FeedbackStatus {
 #[ts(rename_all = "snake_case")]
 pub enum ExecutionMode {
     Poll,
+    Wait,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
@@ -163,11 +169,17 @@ pub struct StoredFeedbackRequest {
 
 impl From<StoredFeedbackRequest> for FeedbackRequestView {
     fn from(value: StoredFeedbackRequest) -> Self {
+        Self::from_stored(value, ExecutionMode::Poll)
+    }
+}
+
+impl FeedbackRequestView {
+    fn from_stored(value: StoredFeedbackRequest, execution_mode: ExecutionMode) -> Self {
         Self {
             request_id: value.request_id,
             project_id: value.project_id,
             status: value.status,
-            execution_mode: ExecutionMode::Poll,
+            execution_mode,
             created_at: value.created_at,
             updated_at: value.updated_at,
             poll_after_ms: matches!(
@@ -176,6 +188,35 @@ impl From<StoredFeedbackRequest> for FeedbackRequestView {
             )
             .then_some(DEFAULT_POLL_AFTER_MS),
             feedback: value.feedback,
+        }
+    }
+}
+
+#[derive(Default)]
+struct FeedbackWaiters {
+    channels: Mutex<HashMap<String, watch::Sender<u64>>>,
+}
+
+impl FeedbackWaiters {
+    fn subscribe(&self, request_id: &str) -> watch::Receiver<u64> {
+        let mut channels = self
+            .channels
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        channels
+            .entry(request_id.to_owned())
+            .or_insert_with(|| watch::channel(0).0)
+            .subscribe()
+    }
+
+    fn notify_terminal(&self, request_id: &str) {
+        let sender = self
+            .channels
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(request_id);
+        if let Some(sender) = sender {
+            sender.send_modify(|generation| *generation += 1);
         }
     }
 }
@@ -328,9 +369,14 @@ pub struct FeedbackApplication {
     pub(crate) publisher: Arc<dyn FeedbackPackagePublisher>,
     pub(crate) clock: Arc<dyn Clock>,
     pub(crate) ids: Arc<dyn IdGenerator>,
+    waiters: Arc<FeedbackWaiters>,
 }
 
 impl FeedbackApplication {
+    pub(crate) fn notify_feedback_terminal(&self, request_id: &str) {
+        self.waiters.notify_terminal(request_id);
+    }
+
     pub fn new(
         repository: Arc<dyn FeedbackRepository>,
         publisher: Arc<dyn FeedbackPackagePublisher>,
@@ -354,6 +400,7 @@ impl FeedbackApplication {
             publisher,
             clock,
             ids,
+            waiters: Arc::new(FeedbackWaiters::default()),
         }
     }
 
@@ -401,17 +448,46 @@ impl FeedbackApplication {
             .map_err(ApplicationError::from)
     }
 
+    pub async fn wait_for_feedback(
+        &self,
+        input: GetFeedbackInput,
+    ) -> Result<FeedbackRequestView, ApplicationError> {
+        let request_id = canonical_uuid(&input.request_id, "request_id")?;
+        let mut changes = self.waiters.subscribe(&request_id);
+        loop {
+            let stored = self
+                .repository
+                .get_request(&request_id)
+                .await
+                .map_err(ApplicationError::from)?;
+            if matches!(
+                stored.status,
+                FeedbackStatus::Completed | FeedbackStatus::Cancelled
+            ) {
+                return Ok(FeedbackRequestView::from_stored(
+                    stored,
+                    ExecutionMode::Wait,
+                ));
+            }
+            if changes.changed().await.is_err() {
+                changes = self.waiters.subscribe(&request_id);
+            }
+        }
+    }
+
     pub async fn cancel_feedback(
         &self,
         input: CancelFeedbackInput,
     ) -> Result<FeedbackRequestView, ApplicationError> {
         let request_id = canonical_uuid(&input.request_id, "request_id")?;
         validate_text("reason", &input.reason, 1, 4_000)?;
-        self.repository
+        let stored = self
+            .repository
             .cancel_request(&request_id, &input.reason, &self.clock.now_rfc3339())
             .await
-            .map(Into::into)
-            .map_err(ApplicationError::from)
+            .map_err(ApplicationError::from)?;
+        self.notify_feedback_terminal(&request_id);
+        Ok(stored.into())
     }
 }
 

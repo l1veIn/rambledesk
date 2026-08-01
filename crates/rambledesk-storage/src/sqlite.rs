@@ -1675,9 +1675,10 @@ async fn secure_path(_path: &Path, _mode: u32) -> Result<(), StorageOpenError> {
 mod tests {
     use super::*;
     use rambledesk_core::{
-        ActionInput, AddAttachmentInput, CancelFeedbackInput, ContextRef, FeedbackStatus,
-        GetFeedbackInput, ListFeedbackRequestsInput, ProjectInput, RemoveAttachmentInput,
-        ReorderAttachmentsInput, RequestFeedbackInput, SaveDraftInput, SubmitFeedbackInput,
+        ActionInput, AddAttachmentInput, CancelFeedbackInput, ContextRef, ExecutionMode,
+        FeedbackStatus, GetFeedbackInput, ListFeedbackRequestsInput, ProjectInput,
+        RemoveAttachmentInput, ReorderAttachmentsInput, RequestFeedbackInput, SaveDraftInput,
+        SubmitFeedbackInput,
     };
     use tempfile::TempDir;
     use uuid::Uuid;
@@ -1883,6 +1884,97 @@ mod tests {
                 .await;
         assert!(terminal_update.is_err(), "cancelled state must be terminal");
         store.close().await;
+    }
+
+    #[tokio::test]
+    async fn cancellation_wakes_all_feedback_waiters() {
+        let workspace = TestWorkspace::new().await;
+        let request_id = Uuid::now_v7().to_string();
+        let store = SqliteFeedbackStore::connect(&workspace.database)
+            .await
+            .expect("open store");
+        let application = store.clone().into_application();
+        application
+            .request_feedback(workspace.request(request_id.clone()))
+            .await
+            .expect("create request");
+
+        let left_application = application.clone();
+        let left_request_id = request_id.clone();
+        let left = tokio::spawn(async move {
+            left_application
+                .wait_for_feedback(GetFeedbackInput {
+                    request_id: left_request_id,
+                })
+                .await
+        });
+        let right_application = application.clone();
+        let right_request_id = request_id.clone();
+        let right = tokio::spawn(async move {
+            right_application
+                .wait_for_feedback(GetFeedbackInput {
+                    request_id: right_request_id,
+                })
+                .await
+        });
+        tokio::task::yield_now().await;
+        application
+            .cancel_feedback(CancelFeedbackInput {
+                request_id,
+                reason: "The request is no longer needed.".to_owned(),
+            })
+            .await
+            .expect("cancel request");
+
+        for waiter in [left, right] {
+            let result = tokio::time::timeout(std::time::Duration::from_secs(1), waiter)
+                .await
+                .expect("waiter timeout")
+                .expect("waiter task")
+                .expect("wait result");
+            assert_eq!(result.status, FeedbackStatus::Cancelled);
+            assert_eq!(result.execution_mode, ExecutionMode::Wait);
+        }
+        store.close().await;
+    }
+
+    #[tokio::test]
+    async fn wait_returns_terminal_state_immediately_after_restart() {
+        let workspace = TestWorkspace::new().await;
+        let request_id = Uuid::now_v7().to_string();
+        let store = SqliteFeedbackStore::connect(&workspace.database)
+            .await
+            .expect("open store");
+        let application = store.clone().into_application();
+        application
+            .request_feedback(workspace.request(request_id.clone()))
+            .await
+            .expect("create request");
+        application
+            .cancel_feedback(CancelFeedbackInput {
+                request_id: request_id.clone(),
+                reason: "Restart recovery fixture.".to_owned(),
+            })
+            .await
+            .expect("cancel request");
+        store.close().await;
+
+        let restarted = SqliteFeedbackStore::connect(&workspace.database)
+            .await
+            .expect("reopen store");
+        let result = tokio::time::timeout(
+            std::time::Duration::from_millis(250),
+            restarted
+                .clone()
+                .into_application()
+                .wait_for_feedback(GetFeedbackInput { request_id }),
+        )
+        .await
+        .expect("terminal wait must not block")
+        .expect("terminal result");
+        assert_eq!(result.status, FeedbackStatus::Cancelled);
+        assert_eq!(result.execution_mode, ExecutionMode::Wait);
+        restarted.close().await;
     }
 
     #[tokio::test]

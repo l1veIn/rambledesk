@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder, ipc::Response};
+use tauri::{AppHandle, Emitter, Manager, ipc::Response};
+#[cfg(target_os = "windows")]
+use tauri::{WebviewUrl, WebviewWindowBuilder};
 
 pub const SCREEN_CAPTURE_SHORTCUT: &str = "Ctrl+Shift+1";
 const OVERLAY_LABEL: &str = "capture-overlay";
@@ -18,6 +20,7 @@ pub struct ScreenCaptureView {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 struct ScreenCaptureReady {
     session_id: String,
     file_name: String,
@@ -29,6 +32,7 @@ struct ScreenCaptureCancelled {
 }
 
 #[derive(Debug, Deserialize)]
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 pub struct CompleteScreenCaptureInput {
     session_id: String,
     x: u32,
@@ -37,6 +41,7 @@ pub struct CompleteScreenCaptureInput {
     height: u32,
 }
 
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 enum CaptureSession {
     Selecting {
         session_id: String,
@@ -84,7 +89,7 @@ pub async fn begin_screen_capture(
     #[cfg(not(target_os = "windows"))]
     {
         let _ = (app, state);
-        return Err("内置区域截图目前只在 Windows 开发环境启用".to_owned());
+        Err("内置区域截图目前只在 Windows 开发环境启用".to_owned())
     }
 
     #[cfg(target_os = "windows")]
@@ -184,7 +189,7 @@ pub fn read_screen_capture_preview(
     #[cfg(not(target_os = "windows"))]
     {
         let _ = (session_id, state);
-        return Err("当前平台不支持区域截图".to_owned());
+        Err("当前平台不支持区域截图".to_owned())
     }
 
     #[cfg(target_os = "windows")]
@@ -213,7 +218,7 @@ pub async fn complete_screen_capture(
     #[cfg(not(target_os = "windows"))]
     {
         let _ = (input, app, state);
-        return Err("当前平台不支持区域截图".to_owned());
+        Err("当前平台不支持区域截图".to_owned())
     }
 
     #[cfg(target_os = "windows")]

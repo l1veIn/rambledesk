@@ -321,7 +321,7 @@ mod native {
                 .is_ok_and(|text| text.lines().take(32).any(|line| line.contains('\t')))
     }
 
-    pub struct SpeechSession {
+    struct NativeSpeechSession {
         identity: EventIdentity,
         running: Arc<AtomicBool>,
         stream: Option<cpal::Stream>,
@@ -329,11 +329,8 @@ mod native {
         sink: SpeechEventSink,
     }
 
-    impl SpeechSession {
-        pub fn start(
-            config: SpeechSessionConfig,
-            sink: SpeechEventSink,
-        ) -> Result<Self, SpeechError> {
+    impl NativeSpeechSession {
+        fn start(config: SpeechSessionConfig, sink: SpeechEventSink) -> Result<Self, SpeechError> {
             let provider = SpeechProvider::SherpaOnline;
             let sherpa = SherpaOnline::create(&config.model_path)?;
 
@@ -447,7 +444,7 @@ mod native {
             })
         }
 
-        pub fn stop(mut self) -> Result<(), SpeechError> {
+        fn stop(mut self) -> Result<(), SpeechError> {
             self.running.store(false, Ordering::Release);
             self.stream.take();
             if let Some(worker) = self.worker.take() {
@@ -461,10 +458,85 @@ mod native {
         }
     }
 
-    impl Drop for SpeechSession {
+    impl Drop for NativeSpeechSession {
         fn drop(&mut self) {
             self.running.store(false, Ordering::Release);
             self.stream.take();
+        }
+    }
+
+    /// Sendable control handle for a native audio session.
+    ///
+    /// CoreAudio streams are thread-affine on macOS, so the native stream stays
+    /// on a dedicated owner thread. Tauri state stores only this control handle.
+    pub struct SpeechSession {
+        stop_tx: Option<SyncSender<()>>,
+        owner: Option<JoinHandle<Result<(), SpeechError>>>,
+    }
+
+    impl SpeechSession {
+        pub fn start(
+            config: SpeechSessionConfig,
+            sink: SpeechEventSink,
+        ) -> Result<Self, SpeechError> {
+            let (startup_tx, startup_rx) = sync_channel(1);
+            let (stop_tx, stop_rx) = sync_channel(1);
+            let owner = thread::Builder::new()
+                .name("rambledesk-speech-session".to_owned())
+                .spawn(move || match NativeSpeechSession::start(config, sink) {
+                    Ok(session) => {
+                        if startup_tx.send(Ok(())).is_err() {
+                            return session.stop();
+                        }
+                        let _ = stop_rx.recv();
+                        session.stop()
+                    }
+                    Err(error) => {
+                        let _ = startup_tx.send(Err(error));
+                        Ok(())
+                    }
+                })
+                .map_err(|error| SpeechError::InputStream(error.to_string()))?;
+
+            match startup_rx.recv() {
+                Ok(Ok(())) => Ok(Self {
+                    stop_tx: Some(stop_tx),
+                    owner: Some(owner),
+                }),
+                Ok(Err(error)) => {
+                    let _ = owner.join();
+                    Err(error)
+                }
+                Err(_) => {
+                    let _ = owner.join();
+                    Err(SpeechError::WorkerPanicked)
+                }
+            }
+        }
+
+        pub fn stop(mut self) -> Result<(), SpeechError> {
+            self.signal_stop();
+            self.join_owner()
+        }
+
+        fn signal_stop(&mut self) {
+            if let Some(stop_tx) = self.stop_tx.take() {
+                let _ = stop_tx.send(());
+            }
+        }
+
+        fn join_owner(&mut self) -> Result<(), SpeechError> {
+            match self.owner.take() {
+                Some(owner) => owner.join().map_err(|_| SpeechError::WorkerPanicked)?,
+                None => Ok(()),
+            }
+        }
+    }
+
+    impl Drop for SpeechSession {
+        fn drop(&mut self) {
+            self.signal_stop();
+            let _ = self.join_owner();
         }
     }
 

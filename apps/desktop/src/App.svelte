@@ -96,6 +96,7 @@
   let notificationState: NotificationState = 'checking'
   let settingsOpen = false
   let settingsSection: SettingsSection = 'general'
+  const isTauri = '__TAURI_INTERNALS__' in window
   let taskBriefOpen = true
   let mcpConfiguration = ''
   let voicePhase: VoicePhase = 'idle'
@@ -171,6 +172,12 @@
   }
 
   onMount(() => {
+    if (!isTauri) {
+      loadingInbox = false
+      notificationState = 'unavailable'
+      window.addEventListener('paste', handlePaste)
+      return () => window.removeEventListener('paste', handlePaste)
+    }
     void initialize()
     void refreshNotificationPermission()
     inboxTimer = setInterval(() => void refreshInbox(), 5_000)
@@ -450,10 +457,12 @@
 
   async function openSettings(section: SettingsSection) {
     settingsSection = section
+    settingsOpen = true
     pageError = ''
+    await tick()
+    if (!isTauri) return
     try {
       mcpConfiguration = await invoke<string>('get_mcp_configuration')
-      settingsOpen = true
     } catch (cause) {
       pageError = messageFrom(cause)
     }
@@ -596,7 +605,9 @@
       await invoke('begin_screen_capture')
     } catch (cause) {
       attachmentBusy = false
-      attachmentMessage = messageFrom(cause)
+      const message = messageFrom(cause)
+      attachmentMessage =
+        message === '内置区域截图目前只在 Windows 开发环境启用' ? tr(message) : message
     }
   }
 

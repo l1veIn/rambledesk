@@ -55,11 +55,18 @@
   let installMessage = ''
   let installError = ''
   let copyState: 'idle' | 'copied' | 'error' = 'idle'
+  const isTauri = '__TAURI_INTERNALS__' in window
 
   $: installedClients = clients.filter((client) => client.installed)
   $: selectedCount = selectedIds.size
 
-  onMount(() => void refreshClients())
+  onMount(() => {
+    if (!isTauri) {
+      loadingClients = false
+      return
+    }
+    void refreshClients()
+  })
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)

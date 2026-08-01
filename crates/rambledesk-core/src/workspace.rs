@@ -408,6 +408,7 @@ impl FeedbackApplication {
             .await
             .map_err(ApplicationError::from)?;
         if existing.status == FeedbackStatus::Completed {
+            self.notify_feedback_terminal(&request_id);
             return Ok(existing.into());
         }
         let now = self.clock.now_rfc3339();
@@ -429,6 +430,7 @@ impl FeedbackApplication {
                     .await
                     .map_err(ApplicationError::from)?;
                 if raced.status == FeedbackStatus::Completed {
+                    self.notify_feedback_terminal(&request_id);
                     return Ok(raced.into());
                 }
                 return Err(ApplicationError::from(RepositoryError::RequestTerminal));
@@ -445,6 +447,7 @@ impl FeedbackApplication {
             .complete_submission(&plan, &published)
             .await
             .map_err(ApplicationError::from)?;
+        self.notify_feedback_terminal(&request_id);
         Ok(stored.into())
     }
 }

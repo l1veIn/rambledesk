@@ -32,7 +32,10 @@
   async function startDragging(event: PointerEvent) {
     if (!isTauri || event.button !== 0) return
     const target = event.target
-    if (target instanceof Element && target.closest('button')) return
+    if (target instanceof Element) {
+      const button = target.closest('button')
+      if (button && !button.matches('.titlebar-brand, .titlebar-drag')) return
+    }
     try {
       await getCurrentWindow().startDragging()
     } catch (cause) {
@@ -45,7 +48,6 @@
 <header
   class:mac-titlebar={isMac}
   class="app-titlebar"
-  onpointerdown={(event) => void startDragging(event)}
 >
   {#if isMac}
     <div class="window-controls mac-controls" aria-label={t($locale, '窗口控制')}>
@@ -54,14 +56,24 @@
     </div>
   {/if}
 
-  <div class="titlebar-brand">
+  <button
+    class="titlebar-brand"
+    aria-label={t($locale, '拖动窗口')}
+    title={t($locale, '拖动窗口')}
+    onpointerdown={(event) => void startDragging(event)}
+  >
     <img class="app-mark" src={appIcon} alt="" draggable="false" />
     <strong>RambleDesk</strong>
     <span class="titlebar-divider"></span>
     <span class="project-name">{projectName}</span>
-  </div>
+  </button>
 
-  <div class="titlebar-drag"></div>
+  <button
+    class="titlebar-drag"
+    aria-label={t($locale, '拖动窗口')}
+    title={t($locale, '拖动窗口')}
+    onpointerdown={(event) => void startDragging(event)}
+  ></button>
 
   <div class="titlebar-status">
     <span class:online={connected} class="connection-pill">
@@ -126,6 +138,10 @@
     gap: 10px;
     padding: 0 14px;
     color: var(--ink, #193250);
+    border: 0;
+    background: transparent;
+    text-align: left;
+    cursor: grab;
   }
 
   .titlebar-brand strong {
@@ -163,7 +179,16 @@
   .titlebar-drag {
     min-width: 24px;
     flex: 1;
+    border: 0;
+    background: transparent;
+    cursor: grab;
   }
+
+  .titlebar-brand:active,
+  .titlebar-drag:active { cursor: grabbing; }
+
+  .titlebar-brand:focus-visible,
+  .titlebar-drag:focus-visible { outline: 2px solid var(--blue); outline-offset: -3px; }
 
   .titlebar-status {
     flex: 0 0 auto;
