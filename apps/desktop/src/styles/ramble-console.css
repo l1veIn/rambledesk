@@ -1,0 +1,138 @@
+.floating-console {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  flex-direction: column;
+  gap: 6px;
+  overflow: hidden;
+  padding: 7px 6px;
+  border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+  border-radius: 18px;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--glass) 94%, transparent);
+  backdrop-filter: blur(20px) saturate(1.08);
+  cursor: grab;
+  user-select: none;
+}
+
+.floating-console:active {
+  cursor: grabbing;
+}
+
+.console-grip {
+  display: grid;
+  width: 42px;
+  height: 26px;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  color: var(--ink-faint);
+  background: transparent;
+  cursor: grab;
+}
+
+.console-grip:hover {
+  color: var(--blue-strong);
+  background: var(--blue-soft);
+}
+
+.console-divider {
+  width: 34px;
+  height: 1px;
+  flex: 0 0 auto;
+  background: var(--line-soft);
+}
+
+.floating-tools {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 5px;
+}
+
+.floating-tools button {
+  position: relative;
+  display: grid;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+  border-radius: 12px;
+  color: var(--ink-soft);
+  background: color-mix(in srgb, var(--surface-raised) 88%, transparent);
+  box-shadow: 0 3px 10px rgb(38 70 101 / 5%);
+  cursor: pointer;
+  transition: border-color 140ms ease, color 140ms ease, background 140ms ease, transform 140ms ease;
+}
+
+.floating-tools button:hover:not(:disabled),
+.floating-tools button.active {
+  border-color: color-mix(in srgb, var(--blue) 52%, var(--line));
+  color: var(--blue-strong);
+  background: var(--blue-soft);
+  transform: translateY(-1px);
+}
+
+.floating-tools button:focus-visible,
+.console-grip:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--blue) 70%, transparent);
+  outline-offset: 2px;
+}
+
+.floating-tools button:disabled {
+  cursor: default;
+  opacity: 0.38;
+  transform: none;
+}
+
+.floating-tools button.exit-tool:hover {
+  border-color: color-mix(in srgb, var(--danger) 34%, var(--line));
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+.voice-level {
+  --level: 0.06;
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  width: 5px;
+  height: calc(4px + var(--level) * 12px);
+  max-height: 16px;
+  border-radius: 99px;
+  background: var(--cyan);
+  opacity: 0.78;
+  transition: height 90ms linear;
+}
+
+.floating-console.recording .floating-tools button.active {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface-raised));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .floating-tools button,
+  .voice-level {
+    transition: none;
+  }
+}
+
+.drop-prompt {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border: 2px solid color-mix(in srgb, var(--blue) 58%, transparent);
+  border-radius: 18px;
+  color: var(--blue-strong);
+  background: color-mix(in srgb, var(--surface-raised) 92%, transparent);
+  backdrop-filter: blur(12px);
+}

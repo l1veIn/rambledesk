@@ -1,0 +1,211 @@
+  .capture-editor {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    color: #f7fbff;
+    background: #000;
+    cursor: crosshair;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: none;
+  }
+  .capture-editor * { -webkit-user-select: none; user-select: none; }
+  .capture-editor.has-selection { cursor: crosshair; }
+  .capture-image, .annotation-layer, .image-mask {
+    position: absolute;
+    display: block;
+  }
+  .capture-image { pointer-events: none; }
+  .annotation-layer { pointer-events: none; }
+  .image-mask { background: rgb(4 8 12 / 46%); pointer-events: none; }
+  .smart-target, .selection-frame, .annotation-selection { position: absolute; pointer-events: none; }
+  .smart-target {
+    z-index: 4;
+    border: 2px solid #61d79c;
+    background: rgb(86 216 151 / 7%);
+    box-shadow: 0 0 0 1px rgb(0 0 0 / 28%);
+  }
+  .smart-target span, .selection-size {
+    position: absolute;
+    top: -27px;
+    left: 0;
+    max-width: 260px;
+    overflow: hidden;
+    padding: 4px 8px;
+    border-radius: 6px;
+    color: white;
+    background: rgb(16 25 32 / 88%);
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .selection-frame {
+    z-index: 5;
+    border: 2px solid #61d79c;
+    box-shadow: 0 0 0 9999px rgb(4 8 12 / 46%);
+  }
+  .selection-size { top: auto; bottom: -27px; }
+  .resize-handle, .annotation-handle {
+    position: absolute;
+    width: 11px;
+    height: 11px;
+    padding: 0;
+    border: 2px solid #10261d;
+    border-radius: 50%;
+    background: #72e5ab;
+    pointer-events: auto;
+  }
+  .nw { top: -6px; left: -6px; cursor: nwse-resize; }
+  .ne { top: -6px; right: -6px; cursor: nesw-resize; }
+  .se { right: -6px; bottom: -6px; cursor: nwse-resize; }
+  .sw { bottom: -6px; left: -6px; cursor: nesw-resize; }
+  .annotation-selection {
+    z-index: 6;
+    border: 1px dashed #72c8ff;
+    background: rgb(74 164 231 / 5%);
+  }
+  .annotation-handle { width: 9px; height: 9px; border-color: #153348; background: #72c8ff; }
+  .text-editor {
+    position: absolute;
+    z-index: 12;
+    width: min(320px, 35vw);
+    min-width: 100px;
+    min-height: 38px;
+    padding: 5px 7px;
+    border: 1px dashed currentColor;
+    outline: none;
+    background: rgb(10 14 19 / 48%);
+    font-weight: 600;
+    line-height: 1.25;
+    resize: both;
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  .capture-help, .capture-status {
+    position: fixed;
+    top: 22px;
+    left: 50%;
+    z-index: 20;
+    display: grid;
+    gap: 3px;
+    justify-items: center;
+    padding: 10px 17px;
+    border: 1px solid rgb(255 255 255 / 18%);
+    border-radius: 11px;
+    background: rgb(16 23 31 / 84%);
+    box-shadow: 0 12px 36px rgb(0 0 0 / 26%);
+    backdrop-filter: blur(12px);
+    transform: translateX(-50%);
+  }
+  .capture-help strong, .capture-status strong { font-size: 12px; }
+  .capture-help span { color: rgb(255 255 255 / 64%); font-size: 9px; }
+  .capture-toolbar {
+    position: fixed;
+    z-index: 30;
+    display: flex;
+    max-width: calc(100vw - 28px);
+    align-items: center;
+    gap: 3px;
+    padding: 5px;
+    overflow: visible;
+    border: 1px solid rgb(255 255 255 / 15%);
+    border-radius: 11px;
+    background: rgb(18 25 34 / 94%);
+    box-shadow: 0 16px 50px rgb(0 0 0 / 38%);
+    backdrop-filter: blur(15px);
+  }
+  .tool-group, .palette, .stroke-picker { display: flex; flex: 0 0 auto; gap: 3px; align-items: center; }
+  .capture-toolbar button {
+    display: grid;
+    width: 30px;
+    height: 30px;
+    flex: 0 0 auto;
+    place-items: center;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    color: rgb(239 247 255 / 76%);
+    background: transparent;
+    cursor: pointer;
+  }
+  .capture-toolbar button:hover:not(:disabled) { color: white; background: rgb(255 255 255 / 9%); }
+  .capture-toolbar button.active { border-color: rgb(93 199 255 / 36%); color: #8bd5ff; background: rgb(62 159 220 / 18%); }
+  .capture-toolbar button:disabled { cursor: default; opacity: 0.3; }
+  .capture-toolbar .toolbar-drag { width: 24px; color: rgb(239 247 255 / 42%); cursor: grab; touch-action: none; }
+  .capture-toolbar .toolbar-drag:active { cursor: grabbing; }
+  .divider { width: 1px; height: 22px; flex: 0 0 auto; margin: 0 2px; background: rgb(255 255 255 / 12%); }
+  .popup-control { position: relative; display: flex; flex: 0 0 auto; }
+  .toolbar-popover {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 8px);
+    z-index: 45;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px;
+    border: 1px solid rgb(255 255 255 / 15%);
+    border-radius: 10px;
+    background: rgb(18 25 34 / 97%);
+    box-shadow: 0 12px 36px rgb(0 0 0 / 42%);
+    backdrop-filter: blur(15px);
+  }
+  .capture-toolbar.popover-down .toolbar-popover { top: calc(100% + 8px); bottom: auto; }
+  .style-popover { right: -34px; }
+  .more-popover {
+    right: -6px;
+    display: grid;
+    grid-template-columns: repeat(3, 30px);
+    gap: 3px;
+  }
+  .capture-toolbar .style-trigger i {
+    display: block;
+    width: 17px;
+    height: 4px;
+    border: 1px solid rgb(255 255 255 / 45%);
+    border-radius: 6px;
+    background: var(--swatch);
+  }
+  .popover-divider { width: 1px; height: 24px; flex: 0 0 auto; background: rgb(255 255 255 / 12%); }
+  .palette { gap: 5px; }
+  .capture-toolbar .color-button {
+    width: 20px;
+    height: 20px;
+    border: 2px solid rgb(255 255 255 / 22%);
+    border-radius: 50%;
+    background: var(--swatch);
+  }
+  .capture-toolbar .color-button.active { border-color: white; box-shadow: 0 0 0 2px rgb(68 171 239 / 70%); }
+  .stroke-picker button { width: 25px; height: 30px; }
+  .stroke-picker i { display: block; width: 15px; border-radius: 9px; background: currentColor; }
+  .actions .confirm { color: #edfff5; background: rgb(49 166 101 / 54%); }
+  .actions .cancel { color: #ffafb5; }
+  .capture-error {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    z-index: 60;
+    display: flex;
+    width: min(430px, calc(100vw - 42px));
+    flex-direction: column;
+    gap: 9px;
+    padding: 18px;
+    border-radius: 13px;
+    color: #531f24;
+    background: #fff;
+    box-shadow: 0 22px 70px rgb(0 0 0 / 46%);
+    transform: translate(-50%, -50%);
+  }
+  .capture-error strong { font-size: 13px; }
+  .capture-error span { font-size: 10px; line-height: 1.5; }
+  .capture-error button { align-self: flex-end; padding: 6px 13px; border: 0; border-radius: 7px; color: white; background: #294e39; cursor: pointer; }
+  .completing-mask {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    display: grid;
+    place-items: center;
+    background: rgb(7 10 14 / 28%);
+    cursor: wait;
+  }
+  .completing-mask span { padding: 10px 16px; border-radius: 9px; background: rgb(18 25 34 / 88%); font-size: 11px; }

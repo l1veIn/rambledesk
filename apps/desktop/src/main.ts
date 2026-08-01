@@ -7,6 +7,12 @@ import ScrollCaptureController from './ScrollCaptureController.svelte'
 import ScreenshotOverlay from './ScreenshotOverlay.svelte'
 import { initializePreferences } from './lib/preferences'
 import './app.css'
+import './styles/ramble-console.css'
+import './styles/workbench-shell.css'
+import './styles/workbench-document.css'
+import './styles/workbench-rail.css'
+import './styles/resume-prompt.css'
+import './styles/screenshot-overlay.css'
 
 initializePreferences()
 
