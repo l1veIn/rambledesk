@@ -16,6 +16,19 @@ finish”; approval terminates the tool batch without another model turn.
 Request ids are persisted in Pi session entries before the network request so
 a restarted Pi session can reconnect instead of creating a duplicate.
 
+In interactive TUI/RPC sessions, the package health-checks RambleDesk at task
+start and enables a strict feedback cycle when it is available:
+
+1. pre-open one ordinary collaboration request while Pi works;
+2. wait for that request when the agent settles;
+3. inject submitted feedback and continue;
+4. require a finish-enabled request containing the exact final summary;
+5. end only after approval or cancellation.
+
+The settled watchdog is bounded to avoid an infinite model-reminder loop if a
+model repeatedly refuses to call the final approval tool. Print and JSON modes
+remain fail-open for scripts and CI.
+
 Install from a source checkout:
 
 ```sh

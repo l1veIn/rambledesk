@@ -284,6 +284,71 @@ test("registers Pi tools and request tool waits for terminal package", async () 
   }
 });
 
+test("strict interactive flow pre-opens collaboration and gates settlement", async () => {
+  const handlers = new Map();
+  const messages = [];
+  const entries = [];
+  const requests = [];
+  const server = http.createServer((request, response) => {
+    let body = "";
+    request.on("data", (chunk) => { body += chunk; });
+    request.on("end", () => {
+      response.setHeader("content-type", "application/json");
+      if (request.url === "/api/health") {
+        response.end(JSON.stringify({ ready: true }));
+      } else if (request.url === "/api/feedback/request") {
+        const parsed = JSON.parse(body); requests.push(parsed);
+        response.end(JSON.stringify({ request_id: parsed.request_id, status: "waiting" }));
+      } else if (request.url === "/api/feedback/recover") {
+        response.end(JSON.stringify({
+          request_id: requests[0].request_id,
+          status: "completed",
+          resolution: "feedback_submitted",
+          feedback_package: { markdown: "Please adjust it.", attachment_paths: [] },
+        }));
+      } else {
+        response.statusCode = 404; response.end("{}");
+      }
+    });
+  });
+  const previousApiUrl = process.env.RAMBLEDESK_LOCAL_API_URL;
+  const previousToken = process.env.RAMBLEDESK_LOCAL_SERVER_TOKEN;
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    process.env.RAMBLEDESK_LOCAL_API_URL = `http://127.0.0.1:${server.address().port}/api`;
+    process.env.RAMBLEDESK_LOCAL_SERVER_TOKEN = "test-token";
+    registerRambleDeskPiTools({
+      registerTool() {},
+      on(name, handler) { handlers.set(name, handler); },
+      appendEntry(customType, data) { entries.push({ type: "custom", customType, data }); },
+      sendMessage(message, options) { messages.push({ message, options }); },
+    });
+    const ctx = {
+      mode: "tui", hasUI: true, cwd: "/tmp/project",
+      sessionManager: { getSessionId: () => "pi-session", getEntries: () => [] },
+      ui: { setStatus() {} },
+    };
+    await handlers.get("session_start")({}, ctx);
+    handlers.get("input")({ source: "interactive" });
+    await handlers.get("before_agent_start")({ prompt: "Implement strict flow", systemPrompt: "base" }, ctx);
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].allow_finish, false);
+    assert.equal(requests[0].host_session_id, "pi-session");
+    await handlers.get("agent_settled")({}, ctx);
+    assert.match(messages[0].message.content, /Please adjust it/);
+    assert.equal(messages[0].options.triggerTurn, true);
+    assert.ok(entries.some((entry) => entry.data.phase === "feedback_submitted"));
+    await handlers.get("agent_settled")({}, ctx);
+    assert.match(messages[1].message.content, /exact final summary/);
+  } finally {
+    if (previousApiUrl === undefined) delete process.env.RAMBLEDESK_LOCAL_API_URL;
+    else process.env.RAMBLEDESK_LOCAL_API_URL = previousApiUrl;
+    if (previousToken === undefined) delete process.env.RAMBLEDESK_LOCAL_SERVER_TOKEN;
+    else process.env.RAMBLEDESK_LOCAL_SERVER_TOKEN = previousToken;
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test("restores only non-terminal persisted Ramble request state", () => {
   const entry = (phase) => ({ type: "custom", customType: "rambledesk-request-state", data: { requestId: "request-1", phase } });
   assert.equal(restorePendingRequestId([entry("waiting")]), "request-1");
