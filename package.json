@@ -13,7 +13,7 @@
     "test:pi": "pnpm -C packages/pi-rambledesk test",
     "test:rust": "cargo test --workspace",
     "contracts:generate": "cargo run -p rambledesk-core --example export_types",
-    "contracts:check": "pnpm contracts:generate && git diff --exit-code -- apps/desktop/src/lib/generated",
+    "contracts:check": "scripts/contracts-check.sh",
     "mcp:self-test": "cargo run -p rambledesk-cli -- self-test",
     "mcp:inspector-smoke": "scripts/mcp-inspector-smoke.sh",
     "format:check": "cargo fmt --all --check",

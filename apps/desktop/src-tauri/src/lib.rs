@@ -1,19 +1,22 @@
 mod clipboard_capture;
-mod mcp_setup;
+mod generic_mcp_install;
 mod pi_install;
 mod screen_capture;
 
-use rambledesk_adapters::{
-    AdapterPresentation, ResumePrompt, WakePayload, WakeReason, WakeResult, WakeupRouter,
-    known_adapter_presentations, known_host_wakeup_adapters,
-};
 use rambledesk_core::{
     AddAttachmentInput, ApplicationError, CancelFeedbackInput, DraftView, FeedbackApplication,
     FeedbackRequestSummary, FeedbackRequestView, FeedbackStatus, FeedbackWorkspaceView,
-    HealthSnapshot, ListFeedbackRequestsInput, ListFeedbackRequestsOutput, MAX_ATTACHMENT_BYTES,
-    RemoveAttachmentInput, ReorderAttachmentsInput, SaveDraftInput, SubmitFeedbackInput,
+    HostSessionSummary, ListFeedbackRequestsInput, ListFeedbackRequestsOutput,
+    MAX_ATTACHMENT_BYTES, RemoveAttachmentInput, ReorderAttachmentsInput, SaveDraftInput,
+    SubmitFeedbackInput,
 };
-use rambledesk_mcp::{AccessToken, ServerConfig, ServerHandle, default_token_path, start_server};
+use rambledesk_hosts::{
+    ContinuationPayload, ContinuationReason, ContinuationResult, ContinuationRouter, HostProfile,
+    ResumePrompt, known_continuation_strategies, known_host_profiles,
+};
+use rambledesk_local_server::{
+    AccessToken, DEFAULT_PORT, ServerConfig, ServerHandle, default_token_path, start_server,
+};
 use rambledesk_speech::{
     SpeechEvent, SpeechEventSink, SpeechProvider, SpeechSession, SpeechSessionConfig,
 };
@@ -42,13 +45,14 @@ const RAMBLE_CONSOLE_WIDTH: f64 = 66.0;
 const RAMBLE_CONSOLE_HEIGHT: f64 = 304.0;
 const RAMBLE_CONSOLE_EDGE_GAP: f64 = 10.0;
 const RESUME_PROMPT_EVENT: &str = "rambledesk://resume-prompt";
+const OPEN_ADAPTERS_EVENT: &str = "rambledesk://open-adapters";
 const BASE_TRAY_ICON: Image<'static> = tauri::include_image!("./icons/32x32.png");
 
 struct WorkbenchState {
-    handle: ServerHandle,
+    local_server: ServerHandle,
     application: FeedbackApplication,
-    mcp_configuration: String,
-    wakeup: WakeupRouter,
+    generic_mcp_configuration: String,
+    continuation: ContinuationRouter,
     pending_count: AtomicU32,
     speech_session: tokio::sync::Mutex<Option<SpeechSession>>,
 }
@@ -93,56 +97,48 @@ struct StartVoiceRambleInput {
 
 #[derive(Debug, Serialize)]
 struct VoiceRambleSessionView {
-    session_id: String,
+    voice_session_id: String,
     provider: String,
     model_path: String,
 }
 
 #[tauri::command]
-fn get_health() -> HealthSnapshot {
-    rambledesk_storage::health_snapshot()
+fn get_generic_mcp_configuration(state: tauri::State<'_, WorkbenchState>) -> String {
+    state.generic_mcp_configuration.clone()
 }
 
 #[tauri::command]
-fn get_mcp_endpoint(state: tauri::State<'_, WorkbenchState>) -> String {
-    state.handle.endpoint().to_owned()
+fn list_host_profiles() -> Vec<HostProfile> {
+    known_host_profiles()
 }
 
 #[tauri::command]
-fn get_mcp_configuration(state: tauri::State<'_, WorkbenchState>) -> String {
-    state.mcp_configuration.clone()
-}
-
-#[tauri::command]
-fn list_adapter_presentations() -> Vec<AdapterPresentation> {
-    known_adapter_presentations()
-}
-
-#[tauri::command]
-fn detect_mcp_clients(app: tauri::AppHandle) -> Result<Vec<mcp_setup::McpClientView>, String> {
+fn detect_generic_mcp_hosts(
+    app: tauri::AppHandle,
+) -> Result<Vec<generic_mcp_install::McpHostView>, String> {
     let home = app
         .path()
         .home_dir()
         .map_err(|error| format!("Could not resolve the user home directory: {error}"))?;
-    Ok(mcp_setup::detect_clients(&home))
+    Ok(generic_mcp_install::detect_hosts(&home))
 }
 
 #[tauri::command]
-fn install_mcp_clients(
-    client_ids: Vec<String>,
+fn install_generic_mcp_hosts(
+    host_ids: Vec<String>,
     app: tauri::AppHandle,
     state: tauri::State<'_, WorkbenchState>,
-) -> Result<Vec<mcp_setup::McpInstallResult>, String> {
+) -> Result<Vec<generic_mcp_install::McpInstallResult>, String> {
     let home = app
         .path()
         .home_dir()
         .map_err(|error| format!("Could not resolve the user home directory: {error}"))?;
-    mcp_setup::install_clients(&home, &client_ids, &state.mcp_configuration)
+    generic_mcp_install::install_hosts(&home, &host_ids, &state.generic_mcp_configuration)
 }
 
 #[tauri::command]
-async fn install_pi_package(project_root: Option<String>) -> Result<String, String> {
-    let package_dir = pi_install::resolve_package_dir(project_root.as_deref()).ok_or_else(|| {
+async fn install_pi_package(checkout_root: Option<String>) -> Result<String, String> {
+    let package_dir = pi_install::resolve_package_dir(checkout_root.as_deref()).ok_or_else(|| {
         "Could not locate packages/pi-rambledesk in this checkout. Run `pi install ./packages/pi-rambledesk` manually.".to_owned()
     })?;
     let pi_bin = pi_install::resolve_pi_binary().ok_or_else(|| {
@@ -184,22 +180,18 @@ async fn list_feedback_inbox(
 }
 
 #[tauri::command]
-async fn list_feedback_history(
+async fn list_host_sessions(
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<Vec<HostSessionSummary>, ApplicationError> {
+    state.application.list_host_sessions().await
+}
+
+#[tauri::command]
+async fn list_feedback_requests(
+    input: ListFeedbackRequestsInput,
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<ListFeedbackRequestsOutput, ApplicationError> {
-    let application = state.application.clone();
-    application
-        .list_feedback_requests(ListFeedbackRequestsInput {
-            status: Some(vec![
-                FeedbackStatus::Waiting,
-                FeedbackStatus::InProgress,
-                FeedbackStatus::Completed,
-                FeedbackStatus::Cancelled,
-            ]),
-            limit: Some(100),
-            ..Default::default()
-        })
-        .await
+    state.application.list_feedback_requests(input).await
 }
 
 #[tauri::command]
@@ -304,9 +296,9 @@ async fn submit_feedback(
 ) -> Result<FeedbackRequestView, ApplicationError> {
     let application = state.application.clone();
     let result = application.submit_feedback(input.clone()).await?;
-    deliver_wakeup_after_terminal(
+    deliver_continuation_after_terminal(
         &app,
-        &state.wakeup,
+        &state.continuation,
         &application,
         &input.request_id,
         result.status,
@@ -323,9 +315,9 @@ async fn cancel_feedback_request(
 ) -> Result<FeedbackRequestView, ApplicationError> {
     let application = state.application.clone();
     let result = application.cancel_feedback(input.clone()).await?;
-    deliver_wakeup_after_terminal(
+    deliver_continuation_after_terminal(
         &app,
-        &state.wakeup,
+        &state.continuation,
         &application,
         &input.request_id,
         result.status,
@@ -334,52 +326,57 @@ async fn cancel_feedback_request(
     Ok(result)
 }
 
-async fn deliver_wakeup_after_terminal(
+async fn deliver_continuation_after_terminal(
     app: &tauri::AppHandle,
-    router: &WakeupRouter,
+    router: &ContinuationRouter,
     application: &FeedbackApplication,
     request_id: &str,
     status: FeedbackStatus,
 ) {
-    let Some(reason) = WakeReason::from_status(status) else {
+    let Some(reason) = ContinuationReason::from_status(status) else {
         return;
     };
-    let (host_id, session_id, project_root_path) = match application
+    let (host_id, host_session_id, source_hint) = match application
         .get_feedback_workspace(request_id.to_owned())
         .await
     {
         Ok(workspace) => (
-            workspace.request.agent,
-            workspace.request.session_id,
-            workspace.request.project_root_path,
+            workspace.request.host_id,
+            workspace.request.host_session_id,
+            workspace.request.source_hint,
         ),
         Err(error) => {
-            tracing::warn!(%request_id, %error, "wakeup: workspace lookup failed; using empty host");
+            tracing::warn!(%request_id, %error, "continuation: workspace lookup failed; using empty host");
             (String::new(), String::new(), None)
         }
     };
 
-    let payload = WakePayload {
+    let payload = ContinuationPayload {
         request_id: request_id.to_owned(),
         host_id: host_id.clone(),
-        agent: host_id,
-        session_id,
-        project_root_path,
+        host_session_id,
+        source_hint,
         reason,
     };
-    match router.wake(&payload) {
-        WakeResult::HostDelivered {
+    match router.continue_after_terminal(&payload) {
+        ContinuationResult::NotRequired {
             adapter_id,
             host_id,
         } => {
-            tracing::info!(%request_id, %adapter_id, %host_id, "host wakeup delivered");
+            tracing::info!(%request_id, %adapter_id, %host_id, "host continuation not required");
         }
-        WakeResult::UserPrompt { adapter_id, prompt } => {
+        ContinuationResult::HostDelivered {
+            adapter_id,
+            host_id,
+        } => {
+            tracing::info!(%request_id, %adapter_id, %host_id, "host continuation delivered");
+        }
+        ContinuationResult::UserPrompt { adapter_id, prompt } => {
             tracing::info!(
                 %request_id,
                 %adapter_id,
                 host = %prompt.host_id,
-                "generic wakeup prompt ready"
+                "manual continuation prompt ready"
             );
             present_resume_prompt(app, &prompt);
         }
@@ -421,12 +418,12 @@ async fn start_voice_ramble(
         return Err("已有语音 Ramble 正在进行，请先停止当前录音".to_owned());
     }
 
-    let session_id = uuid::Uuid::now_v7().to_string();
+    let voice_session_id = uuid::Uuid::now_v7().to_string();
     let provider = SpeechProvider::SherpaOnline;
     let model_path = configured_speech_model_path(&app)?;
     let config = SpeechSessionConfig {
         request_id: input.request_id,
-        session_id: session_id.clone(),
+        voice_session_id: voice_session_id.clone(),
         model_path: model_path.clone(),
     };
     let event_app = app.clone();
@@ -442,7 +439,7 @@ async fn start_voice_ramble(
     *active = Some(session);
 
     Ok(VoiceRambleSessionView {
-        session_id,
+        voice_session_id,
         provider: provider.id().to_owned(),
         model_path: model_path.to_string_lossy().into_owned(),
     })
@@ -461,12 +458,14 @@ async fn stop_voice_ramble(state: tauri::State<'_, WorkbenchState>) -> Result<()
 }
 
 fn configured_port() -> Result<u16, String> {
-    match std::env::var("RAMBLEDESK_MCP_PORT") {
-        Ok(value) => value
-            .parse()
-            .map_err(|_| "RAMBLEDESK_MCP_PORT must be an unsigned 16-bit integer".to_owned()),
-        Err(std::env::VarError::NotPresent) => Ok(rambledesk_mcp::DEFAULT_PORT),
-        Err(error) => Err(format!("failed to read RAMBLEDESK_MCP_PORT: {error}")),
+    match std::env::var("RAMBLEDESK_LOCAL_SERVER_PORT") {
+        Ok(value) => value.parse().map_err(|_| {
+            "RAMBLEDESK_LOCAL_SERVER_PORT must be an unsigned 16-bit integer".to_owned()
+        }),
+        Err(std::env::VarError::NotPresent) => Ok(DEFAULT_PORT),
+        Err(error) => Err(format!(
+            "failed to read RAMBLEDESK_LOCAL_SERVER_PORT: {error}"
+        )),
     }
 }
 
@@ -494,7 +493,7 @@ fn configured_database_path() -> Result<PathBuf, String> {
 }
 
 fn configured_token_path() -> Result<PathBuf, String> {
-    configured_path("RAMBLEDESK_TOKEN_FILE", || {
+    configured_path("RAMBLEDESK_LOCAL_SERVER_TOKEN_FILE", || {
         default_token_path().map_err(|error| error.to_string())
     })
 }
@@ -508,7 +507,7 @@ fn configured_speech_model_path(app: &tauri::AppHandle) -> Result<PathBuf, Strin
     })
 }
 
-fn mcp_configuration(endpoint: &str, token: &AccessToken) -> String {
+fn generic_mcp_configuration(endpoint: &str, token: &AccessToken) -> String {
     serde_json::to_string_pretty(&serde_json::json!({
         "mcpServers": {
             "rambledesk": {
@@ -674,10 +673,12 @@ pub fn run() {
             let application = store.into_application();
             let config = ServerConfig::new(token.clone()).with_port(configured_port()?);
             let handle = tauri::async_runtime::block_on(start_server(config, application.clone()))?;
-            let configuration = mcp_configuration(handle.endpoint(), &token);
+            let configuration = generic_mcp_configuration(handle.endpoint(), &token);
             let open_item = MenuItem::with_id(app, "open", "打开 RambleDesk", true, None::<&str>)?;
+            let adapters_item =
+                MenuItem::with_id(app, "adapters", "适配器设置", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&open_item, &quit_item])?;
+            let menu = Menu::with_items(app, &[&open_item, &adapters_item, &quit_item])?;
             TrayIconBuilder::with_id(TRAY_ID)
                 .icon(pending_tray_icon(0))
                 .tooltip("RambleDesk · 没有待处理反馈")
@@ -685,6 +686,12 @@ pub fn run() {
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "open" => show_main_window(app),
+                    "adapters" => {
+                        show_main_window(app);
+                        if let Err(error) = app.emit(OPEN_ADAPTERS_EVENT, ()) {
+                            tracing::warn!(%error, "failed to emit open adapters event");
+                        }
+                    }
                     "quit" => app.exit(0),
                     _ => {}
                 })
@@ -711,10 +718,10 @@ pub fn run() {
                 });
             }
             app.manage(WorkbenchState {
-                handle,
+                local_server: handle,
                 application,
-                mcp_configuration: configuration,
-                wakeup: WakeupRouter::new(known_host_wakeup_adapters()),
+                generic_mcp_configuration: configuration,
+                continuation: ContinuationRouter::new(known_continuation_strategies()),
                 pending_count: AtomicU32::new(0),
                 speech_session: tokio::sync::Mutex::new(None),
             });
@@ -726,16 +733,15 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            get_health,
-            get_mcp_endpoint,
-            get_mcp_configuration,
-            list_adapter_presentations,
-            detect_mcp_clients,
-            install_mcp_clients,
+            get_generic_mcp_configuration,
+            list_host_profiles,
+            detect_generic_mcp_hosts,
+            install_generic_mcp_hosts,
             install_pi_package,
             set_pending_count,
             list_feedback_inbox,
-            list_feedback_history,
+            list_host_sessions,
+            list_feedback_requests,
             get_feedback_workspace,
             save_feedback_draft,
             add_feedback_attachment,
@@ -775,7 +781,7 @@ pub fn run() {
         if matches!(event, RunEvent::Exit | RunEvent::ExitRequested { .. })
             && let Some(state) = app_handle.try_state::<WorkbenchState>()
         {
-            state.handle.cancel();
+            state.local_server.cancel();
         }
     });
 }
@@ -787,7 +793,7 @@ mod tests {
     #[test]
     fn default_port_is_stable_when_env_is_absent() {
         // The environment is intentionally not mutated because tests may run concurrently.
-        if std::env::var_os("RAMBLEDESK_MCP_PORT").is_none() {
+        if std::env::var_os("RAMBLEDESK_LOCAL_SERVER_PORT").is_none() {
             assert_eq!(configured_port().expect("default port"), 37_642);
         }
     }
@@ -800,7 +806,7 @@ mod tests {
                 rambledesk_storage::default_database_path().expect("storage default")
             );
         }
-        if std::env::var_os("RAMBLEDESK_TOKEN_FILE").is_none() {
+        if std::env::var_os("RAMBLEDESK_LOCAL_SERVER_TOKEN_FILE").is_none() {
             assert_eq!(
                 configured_token_path().expect("default token"),
                 default_token_path().expect("token default")
@@ -831,11 +837,11 @@ mod tests {
     }
 
     #[test]
-    fn copied_mcp_configuration_contains_http_endpoint_and_bearer_token() {
+    fn copied_generic_mcp_configuration_contains_http_endpoint_and_bearer_token() {
         let token =
             AccessToken::parse("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
                 .expect("token");
-        let configuration = mcp_configuration("http://127.0.0.1:37642/mcp", &token);
+        let configuration = generic_mcp_configuration("http://127.0.0.1:37642/mcp", &token);
         let value: serde_json::Value =
             serde_json::from_str(&configuration).expect("configuration JSON");
         assert_eq!(

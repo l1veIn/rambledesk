@@ -1,173 +1,175 @@
-# 前端 shadcn-svelte 全面迁移方案（计划文档）
+# RambleDesk shadcn 工作台重构
 
-> 状态：**已决策，未实施**。本迭代只落盘迁移方案；实施从后续迭代开始。
-> 决策来源：2026-08-02 dogfood 反馈（操作者提议引入 shadcn，经确认走全面迁移路线）。
-> 相关：`docs/DEVELOPMENT.md`、`apps/desktop/src/app.css`、`apps/desktop/src/styles/*`。
+> 状态：实施中。
+> 术语源：[TERMINOLOGY.md](TERMINOLOGY.md)。
 
----
+这不是样式替换。目标是把 desktop 前端重构为稳定的人类反馈工作台，并用
+shadcn-svelte 统一基础组件、主题 token、交互状态和目录边界。
 
-## 1. 目标
+## 信息架构
 
-把 RambleDesk 桌面前端从「手写 CSS + CSS 变量设计系统」全面迁移到
-**shadcn-svelte + Tailwind CSS**，用 shadcn 组件与主题 token 统一全部 UI。
+### Inbox
 
-- 迁移后不允许新旧两套样式长期共存：**一次迁移、一次收口**。
-- 行为回归门槛：以 `docs/DOGFOODING.md` 的既有验收清单为准，逐组件过一遍。
-- 迁移期间以迭代为界，每次迭代结束必须跑完 `README.md` 的 Verification 全部门禁。
+- 默认入口；
+- 使用“宿主/会话 + 请求”的双栏导航；
+- 第一栏按 Host Profile 分组并展开宿主会话，用于筛选；
+- 第二栏显示当前宿主或会话范围内的全部 requests；
+- 显示标题、时间和 request 状态；
+- 选择请求进入 Request Workspace；
+- 终态请求留在同一 requests 列表中，不按终态拆分分页；
+- 不展示全局 transport 指示器。
 
----
+### Request Workspace
 
-## 2. 现状盘点
+- 请求说明和操作清单；
+- Ramble 输入、富文本编辑、截图、录音和附件；
+- 草稿保存与冲突恢复；
+- 提交、取消和完成后的只读反馈包；
+- 当前 request 的 host/source 信息只作为上下文，不成为导航对象。
 
-### 2.1 设计 token（`apps/desktop/src/app.css`）
+### Resume Prompt
 
-`:root` 与 `:root[data-theme="dark"]` 两套，共 21 个变量：
+- 仅在需要 continuation 的终态请求上出现；
+- 显示目标 Host Profile 和可复制提示；
+- 提供复制和关闭动作；
+- Pi 原生等待流程不显示该入口。
 
-| 变量 | 亮色示例 | 用途 |
-| --- | --- | --- |
-| `--ink` / `--ink-soft` / `--ink-faint` | `#20334b` / `#60738a` / `#8b9aaa` | 文本三级 |
-| `--surface` / `--surface-raised` / `--surface-tint` | `#f7f9fc` / `#ffffff` / `#f0f5fa` | 面板三级 |
-| `--line` / `--line-soft` | `#c8d5e3` / `#dbe4ee` | 描边两级 |
-| `--blue` / `--blue-strong` / `--blue-soft` | `#4f8fd3` / `#2775ca` / `#e8f2fd` | 主色三级 |
-| `--cyan` / `--cyan-soft` | `#32aaa4` / `#e7f7f5` | 成功/链接辅助 |
-| `--amber` / `--danger` | `#e99725` / `#c94a52` | 警示/错误 |
-| `--shadow` | `0 16px 48px rgb(42 70 101 / 8%)` | 弹层阴影 |
-| `--app-background` | `#edf2f7` | 窗口底 |
-| `--glass` | `rgb(247 249 252 / 92%)` | 毛玻璃 |
-| `--hover` / `--editor-paper` | `#f5faff` / `#fff` | 悬停/编辑器纸面 |
+### Settings / Adapters
 
-主题切换：`<html data-theme="dark">`，由 `preferences.ts` 的 `themePreference` 驱动。
+- General：语言、主题；
+- Adapters：Generic MCP Adapter、Pi Native Adapter 和未来适配器；
+- 每个适配器独立显示安装状态、配置动作、说明和错误；
+- 适配器页面不承担全局 transport 监控。
 
-### 2.2 组件清单（23 个 .svelte + 7 个 CSS 文件，约 1900 行样式）
+### Tray
 
-| 组件 | 现状 | 迁移目标组件 |
-| --- | --- | --- |
-| `App.svelte` | 窗口壳、布局、路由态 | 壳 + `Dialog`/`Sheet` 编排 |
-| `lib/AppTitlebar.svelte` | 自绘标题栏、窗口按钮、控制台开关 | 保留自绘或迁 `Titlebar` 方案 |
-| `lib/SettingsPanel.svelte` | 自绘设置弹窗（含适配器区） | `Dialog` + `Tabs` + `Select` |
-| `lib/RichFeedbackEditor.svelte` | Tiptap 富文本编辑器 | 编辑器保留 Tiptap，外壳组件化 |
-| `lib/workbench/*`（11 个） | 收件箱/工作台/命令轨/交付卡片等 | `Card`/`Button`/`Tabs`/`Badge` 等 |
-| `RambleConsole.svelte` | 图标控制台 | `Toolbar` + 自定义浮层 |
-| `ScreenshotOverlay.svelte` / `PinnedCapture.svelte` / `ScrollCaptureController.svelte` / `lib/screen-capture/CaptureToolbar.svelte` | 截图覆盖层 | 覆盖层自绘为主，工具按钮组件化 |
-| `styles/*.css`（7 个） | 手写样式 | 全部删除，token 并入 Tailwind 主题 |
+- 打开 Inbox；
+- 显示未处理数量；
+- 快速进入当前 Request Workspace；
+- 打开 Settings / Adapters；
+- 退出应用。
 
-### 2.3 现有关键交互约束（迁移必须保持）
+## 目标目录
 
-- 窗口 `decorations:false + transparent`，`.shell` 16px 圆角，遮罩需与窗口圆角对齐。
-- 设置弹窗：背景点击关闭、ESC 关闭、`aria-modal`。
-- 恢复提示弹窗 `ResumePromptDialog`：`rambledesk://resume-prompt` 事件驱动。
-- 截图覆盖层：跨 Webview 全屏、指针框选、区域高亮。
-- 中英文 i18n：文案一律走 `i18n.ts` 的 `t()`，组件内不得硬编码。
-- 亮/暗两套主题 + 跟随系统。
-
----
-
-## 3. 目标架构
-
-```
+```text
 apps/desktop/src/
-  components.json            # shadcn-svelte 配置
-  app.css                    # 删除；token 迁入 Tailwind @theme
-  lib/components/ui/*        # shadcn 组件（bits-ui + tw-animate-css）
-  lib/components/**/*.svelte # 业务组件
-  lib/utils.ts               # cn()（tailwind-merge + clsx）
+├── app.css
+├── components.json
+├── lib/
+│   ├── components/
+│   │   ├── ui/                  # shadcn-svelte primitives
+│   │   └── navigation/          # Host/Session + Request 双栏导航
+│   ├── workbench/               # Request Workspace、Resume、Ramble
+│   ├── screen-capture/          # 截图编辑器专用组件和样式
+│   ├── generated/
+│   ├── SettingsPanel.svelte
+│   ├── AppTitlebar.svelte
+│   └── utils.ts
+├── App.svelte
+├── ScreenshotOverlay.svelte
+└── ScrollCaptureController.svelte
 ```
 
-### 3.1 依赖
+规则：
 
-| 包 | 用途 |
-| --- | --- |
-| `tailwindcss` + `@tailwindcss/vite` | Tailwind v4（CSS-first 配置，无 tailwind.config 亦可） |
-| `tailwindcss-animate` / `tw-animate-css` | 动效 |
-| `bits-ui` | shadcn-svelte 底层（Dialog/Tabs/Select…） |
-| `lucide-svelte` | 图标（已在使用，保留） |
-| `clsx` + `tailwind-merge` | `cn()` |
-| `melt-ui` | bits-ui 依赖，间接引入 |
+- `components/ui` 只放 shadcn primitives 和薄封装；
+- `App.svelte` 装配查询、command、事件订阅和页面级 view model；
+- 业务组件只接收明确 props/events，不直接散落 Tauri invoke；
+- 原生截图覆盖层保留专用结构，不强行卡片化；
+- Rust DTO 继续从 `generated/` 导入。
 
-### 3.2 Token 映射表（迁移时的对照基准）
+## 组件基线
 
-| 现 CSS 变量 | shadcn 语义变量（hsl） | 备注 |
-| --- | --- | --- |
-| `--ink` | `--foreground` | 主文本 |
-| `--ink-soft` | `--muted-foreground` | 次级文本 |
-| `--ink-faint` | `--muted-foreground`（降透明度） | 或 `--muted-foreground/70` |
-| `--surface` | `--background` | 页面底 |
-| `--surface-raised` | `--card` / `--popover` | 卡片/浮层 |
-| `--surface-tint` | `--muted` / `--secondary` | 次级面板 |
-| `--line` | `--border` | 描边 |
-| `--line-soft` | `--border`（透明度 ~60%） | 次级描边 |
-| `--blue` | `--primary`（中色调） | 主色 |
-| `--blue-strong` | `--primary`（hover 态） | 主色按压 |
-| `--blue-soft` | `--primary-soft`（自定） | 主色底 |
-| `--cyan` | `--success`（自定） | 成功/激活 |
-| `--cyan-soft` | `--success-soft`（自定） | 成功底 |
-| `--amber` | `--warning`（自定） | 警示 |
-| `--danger` | `--destructive` | 错误 |
-| `--shadow` | 保留为 shadow token | 弹层阴影 |
-| `--app-background` | `--background` 微差 | 窗口底 |
-| `--glass` | `--glass`（自定） | 毛玻璃 |
-| `--hover` | `--accent` | 悬停底 |
-| `--editor-paper` | `--card` | 编辑器纸面 |
+使用：
 
-> 注意：shadcn 用 `oklch`/`hsl` 色值，映射时**以肉眼一致为准**，不要机械抄 HEX。
-> 迁移后运行 `pnpm check` + 亮暗两套主题的视觉 dogfood 各一轮。
+- `Button`：明确命令，图标优先；
+- `Badge`：离散状态；
+- `Tabs`：Settings 顶层视图；
+- `Dialog`：Settings 与 Resume Prompt；
+- `Tooltip`：图标按钮；
+- `Select`：语言、主题和适配器选项；
+- `Switch`：通知等二元设置；
+- `Separator`、`ScrollArea`、`Skeleton`、`Alert`；
+- `DropdownMenu`：tray 投影之外的紧凑命令集。
 
----
+避免：
 
-## 4. 迁移步骤（建议顺序，每步一个迭代）
+- 页面区块全部做成浮动卡片；
+- card 内再嵌套 card；
+- 用圆角文字块代替熟悉图标；
+- 装饰性大标题、营销 hero 或渐变背景；
+- 在 UI 中解释快捷键或产品功能；
+- 让 transport 状态占据全局导航。
 
-1. **基础设施**：装 Tailwind v4 + shadcn-svelte init；建立 `components.json`、`lib/utils.ts`；
-   把 `app.css` 的 token 换算为 shadcn CSS 变量（含 dark 主题）；删掉旧 `app.css` 变量。
-   → 门禁：`pnpm build:web`、`pnpm check`、亮暗切换无跳变。
-2. **通用原子组件替换**：`Button` / `Badge` / `Card` / `Tabs` / `Select` / `Switch` / `Dialog` /
-   `Tooltip` / `Skeleton` / `Separator`。逐文件替换 `styles/*.css` 中的对应类。
-3. **SettingsPanel → shadcn `Dialog` + `Tabs` + `Select` + 自定义 Adapter 卡片**：
-   保持 ESC/背板点击/焦点管理；适配器区保留现有 `<details>` 交互语义（或换 `Collapsible`）。
-4. **Workbench 系列**：InboxPanel / WorkspacePanel / TaskBriefPanel / FeedbackEditorPanel /
-   AttachmentsCard / CaptureToolsCard / DeliveryCard / RambelleStatusCard / RamblePanel /
-   CommandRail / WorkspaceHeader。
-5. **浮层与控制台**：RambleConsole、ResumePromptDialog、截图覆盖层（自绘为主，仅工具条组件化）。
-6. **收口**：删除 `styles/` 全部文件；`grep` 全局确认无 `var(--...)` 残留；
-   跑全量 Verification + 一轮完整 dogfood（含中英文、亮暗、1320/1180/980 视口）。
+## 视觉基线
 
-### 4.1 每步验收清单（通用）
+- 工作台采用安静、紧凑、可扫描的桌面工具密度；
+- 圆角不超过 8px，窗口本身的原生圆角除外；
+- 主色、成功、警告、危险使用独立语义 token；
+- 亮色、暗色、跟随系统使用同一 token 集；
+- 不用 viewport width 缩放字体；
+- 固定工具条、按钮、计数器和捕获工具设置稳定尺寸；
+- 980、1180、1320 px 均不得横向溢出或文字遮挡；
+- 中文与英文必须使用同一布局约束。
 
-- [ ] `pnpm check` / `pnpm test` / `pnpm build:web` 通过。
-- [ ] 该组件亮色、暗色、跟随系统三态视觉一致。
-- [ ] 中文、英文文案完整（i18n 键无硬编码）。
-- [ ] 交互行为与迁移前一致（焦点、键盘、点击区域）。
-- [ ] 无横向溢出（1320/1180/980 三档）。
+## 交互合同
 
----
+- Settings 和 Resume Prompt 支持 Escape、背景关闭和焦点回收；
+- 图标按钮都有可访问名称和 tooltip；
+- Inbox 键盘选择后可进入 Request Workspace；
+- Request 切换前先完成 Ramble 收尾并保存草稿；
+- terminal request 只读；
+- 原生事件只触发重新查询，不直接覆盖事实状态；
+- 浏览器预览中的 native hooks 必须安全降级。
 
-## 5. 风险与约束
+## 实施顺序
 
-1. **窗口圆角/透明**：Tauri 窗口 `transparent:true`，body 背景透明；
-   任何覆盖层都要显式处理圆角对齐，迁移 Dialog 时不得回归（参见本轮
-   `settings-backdrop` 底部圆角 16px 的修复）。
-2. **Tiptap 编辑器**：`RichFeedbackEditor` 是 Tiptap 实例，组件化外壳可换，核心编辑能力不动。
-3. **截图覆盖层**：全屏跨 Webview、指针事件、区域捕获，是桌面特有路径；浏览器 `dev:web`
-   下需按现状降级（native hooks 已守卫），迁移不得引入浏览器端未守卫的依赖。
-4. **双样式并存期**：步骤 1-5 期间新旧样式并存，可能出现视觉杂音——**每个迁移迭代收尾必须
-   清理该组件对应的旧 CSS 文件段落**，不允许"先留着"。
-5. **主题 token 语义**：`--cyan` 同时承担"成功"与"激活/录音中"两种语义，映射时拆成
-   `--success` 与 `--active` 两个 token，避免一处改全部变。
-6. **i18n 键**：迁移中如改文案，zh/en 两个表必须同步；新增 UI 文案一律先加键。
-7. **性能**：Tailwind v4 JIT 与 vite 集成正常；注意 `build:web` 产物体积可接受（当前无体积门禁，记录基线即可）。
+1. 接入 Tailwind v4、shadcn-svelte、`components.json` 和 `cn()`；
+2. 建立语义 token 与 Button/Dialog/Tabs/Tooltip 等 primitives；
+3. 拆分 App shell、Inbox 和 Request Workspace；
+4. 重构 Settings 为 General / Adapters；
+5. 重构 Resume Prompt 与 continuation 展示；
+6. 统一截图、浮动控制台和附件工具条；
+7. 删除旧样式目录、旧组件路径和无引用 CSS；
+8. 运行完整自动化、响应式截图和原生人工验收。
 
----
+迁移过程中每个业务区域完成后即删除对应旧 CSS，不保留长期双轨样式。
 
-## 6. 明确不做（Out of scope）
+## 自动化门禁
 
-- 本轮（2026-08-02）**不实施迁移**，只落盘本方案。
-- 不引入 shadcn 的 React 生态组件；仅用 shadcn-svelte（bits-ui 底层）。
-- 不重做产品信息架构；迁移纯 UI 层。
-- 不迁移 `crates/*` 与 MCP/协议层。
+```bash
+pnpm check
+pnpm test
+pnpm build:web
+pnpm contracts:check
+```
 
----
+浏览器视觉检查：
 
-## 7. 决策记录
+- 980、1180、1320 px；
+- 亮色与暗色；
+- 中文与英文；
+- Inbox 空态、列表态、选中态；
+- Request Workspace waiting/in_progress/completed/cancelled；
+- Settings General/Adapters；
+- Resume Prompt；
+- 无横向溢出、重叠、空白画布或错误 native hook。
 
-- 2026-08-02：操作者在 dogfood 反馈中提出「模态框重做，是否引入 shadcn」；
-  经结构化确认：**全面迁移，但本轮仅写迁移文档**；设置弹窗本轮只保留圆角修复、不做大改版。
-- 备选方案（未选）：保持原生 CSS 按需打磨；仅新组件用 shadcn 与旧样式共存。
+原生人工检查：
+
+- macOS/Windows 自绘 titlebar 与窗口拖动；
+- tray 入口与未处理计数；
+- Settings 和 Resume Prompt 焦点；
+- 截图覆盖层、DPI、权限和 Escape；
+- Ramble 录音与截图并行；
+- completed package 打开与复制 continuation。
+
+## 收口标准
+
+- `styles/` 旧目录删除；
+- 全局 transport 指示器及其文案删除；
+- Settings 不再围绕某一种 transport 组织；
+- App shell 不持有 request 事实状态副本；
+- shadcn primitives 有稳定目录与统一变体；
+- 所有自动化门禁通过；
+- 剩余原生视觉点明确交给人工验收。

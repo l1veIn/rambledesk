@@ -3,7 +3,7 @@
   import {
     Check,
     CheckCircle2,
-    ChevronRight,
+    ChevronDown,
     Clipboard,
     Download,
     Languages,
@@ -11,30 +11,35 @@
     MonitorCog,
     PlugZap,
     RefreshCw,
-    Settings2,
     ShieldCheck,
     TerminalSquare,
-    X,
   } from '@lucide/svelte'
   import { onMount } from 'svelte'
 
-  import { t } from './i18n'
+  import * as Alert from '$lib/components/ui/alert'
+  import { Badge } from '$lib/components/ui/badge'
+  import { Button } from '$lib/components/ui/button'
+  import * as Collapsible from '$lib/components/ui/collapsible'
+  import * as Dialog from '$lib/components/ui/dialog'
+  import { ScrollArea } from '$lib/components/ui/scroll-area'
+  import * as Select from '$lib/components/ui/select'
+  import * as Tabs from '$lib/components/ui/tabs'
+  import { t } from '$lib/i18n'
   import {
     locale,
     setLocale,
     setThemePreference,
     themePreference,
     type ThemePreference,
-  } from './preferences'
+  } from '$lib/preferences'
 
   type Section = 'general' | 'adapters'
 
   export let mcpConfiguration = ''
   export let initialSection: Section = 'general'
-  export let projectRootPath: string | null = null
   export let onClose: () => void = () => {}
 
-  type McpClientView = {
+  type McpHostView = {
     id: string
     name: string
     iconSvg: string
@@ -43,17 +48,20 @@
     configPath: string
     restartRequired: boolean
   }
+
   type McpInstallResult = {
-    clientId: string
+    hostId: string
     action: 'created' | 'updated' | 'unchanged'
     configPath: string
     restartRequired: boolean
   }
 
+  let dialogOpen = true
+  let closeDelivered = false
   let activeSection: Section = initialSection
-  let clients: McpClientView[] = []
+  let hosts: McpHostView[] = []
   let selectedIds = new Set<string>()
-  let loadingClients = true
+  let loadingHosts = true
   let installing = false
   let installMessage = ''
   let installError = ''
@@ -61,46 +69,48 @@
   let piInstallMessage = ''
   let piInstallError = ''
   let copyState: 'idle' | 'copied' | 'error' = 'idle'
+  let genericAdapterOpen = true
+  let configurationOpen = false
   const isTauri = '__TAURI_INTERNALS__' in window
 
-  $: installedClients = clients.filter((client) => client.installed)
+  $: installedHosts = hosts.filter((host) => host.installed)
   $: selectedCount = selectedIds.size
+  $: if (!dialogOpen && !closeDelivered) {
+    closeDelivered = true
+    onClose()
+  }
 
   onMount(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    if (isTauri) void refreshClients()
-    return () => window.removeEventListener('keydown', onKey)
+    if (isTauri) void refreshHosts()
+    else loadingHosts = false
   })
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
   }
 
-  async function refreshClients() {
-    loadingClients = true
+  async function refreshHosts() {
+    loadingHosts = true
     installError = ''
     try {
-      clients = await invoke<McpClientView[]>('detect_mcp_clients')
+      hosts = await invoke<McpHostView[]>('detect_generic_mcp_hosts')
       selectedIds = new Set(
-        clients
-          .filter((client) => client.installed && !client.configured)
-          .map((client) => client.id),
+        hosts
+          .filter((host) => host.installed && !host.configured)
+          .map((host) => host.id),
       )
     } catch (cause) {
       installError = messageFrom(cause)
     } finally {
-      loadingClients = false
+      loadingHosts = false
     }
   }
 
-  function toggleClient(client: McpClientView) {
-    if (!client.installed || installing) return
+  function toggleHost(host: McpHostView) {
+    if (!host.installed || installing) return
     const next = new Set(selectedIds)
-    if (next.has(client.id)) next.delete(client.id)
-    else next.add(client.id)
+    if (next.has(host.id)) next.delete(host.id)
+    else next.add(host.id)
     selectedIds = next
   }
 
@@ -110,14 +120,14 @@
     installError = ''
     installMessage = ''
     try {
-      const results = await invoke<McpInstallResult[]>('install_mcp_clients', {
-        clientIds: [...selectedIds],
+      const results = await invoke<McpInstallResult[]>('install_generic_mcp_hosts', {
+        hostIds: [...selectedIds],
       })
       const changed = results.filter((result) => result.action !== 'unchanged').length
       installMessage = tr('已为 {count} 个工具写入通用 MCP 适配器配置；重启这些工具后生效。', {
         count: changed,
       })
-      await refreshClients()
+      await refreshHosts()
     } catch (cause) {
       installError = messageFrom(cause)
     } finally {
@@ -141,7 +151,7 @@
     piInstallMessage = ''
     try {
       const output = await invoke<string>('install_pi_package', {
-        projectRoot: projectRootPath,
+        checkoutRoot: null,
       })
       piInstallMessage =
         tr('已安装 Pi 原生适配器，重启 Pi 会话后生效。') +
@@ -162,338 +172,352 @@
   }
 </script>
 
-<div class="settings-backdrop" role="presentation" onclick={(event) => event.target === event.currentTarget && onClose()}>
-  <div class="settings-shell" role="dialog" aria-modal="true" aria-labelledby="settings-title">
-    <aside class="settings-sidebar">
-      <div class="settings-brand">
-        <span class="settings-mark"><Settings2 size={18} strokeWidth={1.8} /></span>
-        <div>
-          <p>RAMBLEDESK</p>
-          <strong id="settings-title">{tr('设置')}</strong>
-        </div>
-      </div>
+<Dialog.Root bind:open={dialogOpen}>
+  <Dialog.Content
+    class="h-[min(680px,calc(100vh-5rem))] w-[min(940px,calc(100vw-3rem))] max-w-none gap-0 overflow-hidden p-0 sm:max-w-none"
+    aria-describedby="settings-description"
+  >
+    <Dialog.Header class="sr-only">
+      <Dialog.Title>{tr('设置')}</Dialog.Title>
+      <Dialog.Description id="settings-description">
+        {tr('管理界面偏好和宿主适配器。')}
+      </Dialog.Description>
+    </Dialog.Header>
 
-      <nav aria-label={tr('设置分类')}>
-        <button class:active={activeSection === 'general'} onclick={() => (activeSection = 'general')}>
-          <MonitorCog size={17} strokeWidth={1.8} />
-          <span>{tr('通用')}</span>
-          <span class="nav-end"><ChevronRight size={15} /></span>
-        </button>
-        <button class:active={activeSection === 'adapters'} onclick={() => (activeSection = 'adapters')}>
-          <PlugZap size={17} strokeWidth={1.8} />
-          <span>{tr('适配器')}</span>
-          <span class="nav-end">
-            {#if installedClients.length > 0}<em>{installedClients.length}</em>{/if}
-            <ChevronRight size={15} />
+    <Tabs.Root
+      bind:value={activeSection}
+      orientation="vertical"
+      class="grid h-full min-h-0 grid-cols-[184px_minmax(0,1fr)] gap-0"
+    >
+      <aside class="flex min-h-0 flex-col border-r bg-muted/35 p-3">
+        <div class="flex h-12 items-center gap-2 px-2">
+          <span class="grid size-7 place-items-center rounded-md bg-primary text-xs font-bold text-primary-foreground">
+            R
           </span>
-        </button>
-      </nav>
-
-      <div class="settings-safety">
-        <ShieldCheck size={16} strokeWidth={1.8} />
-        <span>{tr('适配器配置只写入当前用户目录，并保留其他服务。')}</span>
-      </div>
-    </aside>
-
-    <div class="settings-content">
-      <header class="settings-header">
-        <div>
-          <p class="eyebrow">{activeSection === 'general' ? tr('偏好设置') : tr('宿主适配')}</p>
-          <h2>{activeSection === 'general' ? tr('通用') : tr('适配器')}</h2>
+          <div class="min-w-0">
+            <strong class="block text-xs font-semibold">RambleDesk</strong>
+            <span class="block text-[10px] text-muted-foreground">{tr('设置')}</span>
+          </div>
         </div>
-        <button class="settings-close" aria-label={tr('关闭设置')} onclick={onClose}><X size={18} /></button>
-      </header>
 
-      <div class="settings-scroll">
-        {#if activeSection === 'general'}
-          <section class="settings-section">
-            <div class="section-heading">
-              <span><Languages size={18} strokeWidth={1.8} /></span>
-              <div><h3>{tr('语言')}</h3><p>{tr('选择 RambleDesk 的界面语言。')}</p></div>
-            </div>
-            <div class="choice-grid two-columns">
-              <button class:active={$locale === 'zh-CN'} onclick={() => setLocale('zh-CN')}>
-                <strong>简体中文</strong><small>Chinese (Simplified)</small>
-                {#if $locale === 'zh-CN'}<CheckCircle2 size={17} />{/if}
-              </button>
-              <button class:active={$locale === 'en'} onclick={() => setLocale('en')}>
-                <strong>English</strong><small>English</small>
-                {#if $locale === 'en'}<CheckCircle2 size={17} />{/if}
-              </button>
-            </div>
-          </section>
+        <Tabs.List
+          variant="line"
+          class="mt-3 flex w-full flex-col items-stretch gap-1 bg-transparent p-0"
+        >
+          <Tabs.Trigger value="general" class="h-9 w-full justify-start px-2.5">
+            <MonitorCog data-icon="inline-start" />
+            {tr('通用')}
+          </Tabs.Trigger>
+          <Tabs.Trigger value="adapters" class="h-9 w-full justify-start px-2.5">
+            <PlugZap data-icon="inline-start" />
+            <span class="flex-1 text-left">{tr('适配器')}</span>
+            {#if installedHosts.length > 0}
+              <Badge variant="secondary" class="h-5 px-1.5 text-[9px]">
+                {installedHosts.length}
+              </Badge>
+            {/if}
+          </Tabs.Trigger>
+        </Tabs.List>
 
-          <section class="settings-section">
-            <div class="section-heading">
-              <span><MonitorCog size={18} strokeWidth={1.8} /></span>
-              <div><h3>{tr('外观')}</h3><p>{tr('选择界面明暗模式，也可以跟随操作系统。')}</p></div>
-            </div>
-            <div class="choice-grid three-columns">
-              {#each [
-                { id: 'system', label: tr('跟随系统'), detail: tr('自动适配') },
-                { id: 'light', label: tr('浅色'), detail: tr('明亮清晰') },
-                { id: 'dark', label: tr('深色'), detail: tr('低光舒适') },
-              ] as choice}
-                <button
-                  class:active={$themePreference === choice.id}
-                  onclick={() => setThemePreference(choice.id as ThemePreference)}
-                >
-                  <strong>{choice.label}</strong><small>{choice.detail}</small>
-                  {#if $themePreference === choice.id}<CheckCircle2 size={17} />{/if}
-                </button>
-              {/each}
-            </div>
-          </section>
-        {:else}
-          <section class="settings-section adapter-intro">
-            <div class="section-heading">
-              <span><TerminalSquare size={18} strokeWidth={1.8} /></span>
-              <div>
-                <h3>{tr('通用 MCP 适配器')}</h3>
-                <p>{tr('通过 MCP 提供 request_feedback、get_feedback 和 cancel_feedback；提交后由用户手动回到宿主继续。')}</p>
-              </div>
-              <button class="refresh-clients" disabled={loadingClients || installing} onclick={refreshClients}>
-                <RefreshCw size={15} class={loadingClients ? 'spinning' : ''} />{tr('重新检测')}
-              </button>
-            </div>
+        <div class="mt-auto flex gap-2 border-t pt-3 text-[10px] leading-4 text-muted-foreground">
+          <ShieldCheck class="mt-0.5 size-3.5 shrink-0" />
+          <span>{tr('适配器配置只写入当前用户目录，并保留其他适配器。')}</span>
+        </div>
+      </aside>
 
-            <details class="adapter-details">
-              <summary>
-                <ChevronRight size={15} />
-                <span>{tr('检测到的 Coding 工具')}</span>
-                <em>{installedClients.length}/{clients.length}</em>
-              </summary>
+      <div class="flex min-h-0 min-w-0 flex-col">
+        <header class="flex h-16 shrink-0 items-center border-b px-6">
+          <div>
+            <p class="m-0 text-[10px] font-medium uppercase text-muted-foreground">
+              {activeSection === 'general' ? tr('偏好设置') : tr('宿主适配')}
+            </p>
+            <h2 class="m-0 mt-0.5 text-base font-semibold">
+              {activeSection === 'general' ? tr('通用') : tr('适配器')}
+            </h2>
+          </div>
+        </header>
 
-              {#if loadingClients}
-                <div class="settings-loading"><LoaderCircle class="spinning" size={20} />{tr('正在检测 Coding 工具…')}</div>
-              {:else}
-                <div class="client-list">
-                  {#each clients as client}
-                    <button
-                      class="client-row"
-                      class:selected={selectedIds.has(client.id)}
-                      class:unavailable={!client.installed}
-                      disabled={!client.installed || installing}
-                      onclick={() => toggleClient(client)}
-                    >
-                      <span class="client-check">
-                        {#if selectedIds.has(client.id)}<Check size={14} strokeWidth={2.2} />{/if}
-                      </span>
-                      <span class="client-icon" aria-hidden="true">{@html client.iconSvg}</span>
-                      <span class="client-copy">
-                        <strong>{client.name}</strong>
-                        <small title={client.configPath}>{client.configPath}</small>
-                      </span>
-                      <span class:configured={client.configured} class="client-status">
-                        {client.configured ? tr('已配置') : client.installed ? tr('已检测') : tr('未检测到')}
-                      </span>
-                    </button>
-                  {/each}
-                </div>
-              {/if}
-
-              {#if installMessage}<p class="settings-success"><CheckCircle2 size={16} />{installMessage}</p>{/if}
-              {#if installError}<p class="settings-error">{installError}</p>{/if}
-
-              <div class="install-bar">
+        <ScrollArea class="min-h-0 flex-1">
+          <Tabs.Content value="general" class="m-0 space-y-8 p-6 outline-none">
+            <section class="grid grid-cols-[minmax(0,1fr)_240px] items-center gap-8 border-b pb-8">
+              <div class="flex gap-3">
+                <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+                  <Languages class="size-4" />
+                </span>
                 <div>
-                  <strong>{tr('配置通用 MCP adapter')}</strong>
-                  <span>{tr('只更新 rambledesk MCP 条目；这不是自动唤醒能力。')}</span>
+                  <h3 class="m-0 text-sm font-medium">{tr('语言')}</h3>
+                  <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
+                    {tr('选择 RambleDesk 的界面语言。')}
+                  </p>
                 </div>
-                <button class="install-button" disabled={selectedCount === 0 || installing} onclick={installSelected}>
-                  {#if installing}<LoaderCircle class="spinning" size={16} />{:else}<PlugZap size={16} />{/if}
-                  {selectedCount > 0 ? tr('配置所选（{count}）', { count: selectedCount }) : tr('选择工具')}
-                </button>
               </div>
-            </details>
-          </section>
+              <Select.Root
+                type="single"
+                value={$locale}
+                onValueChange={(value: string) => setLocale(value as 'zh-CN' | 'en')}
+              >
+                <Select.Trigger class="w-full">
+                  {$locale === 'zh-CN' ? '简体中文' : 'English'}
+                </Select.Trigger>
+                <Select.Content>
+                  <Select.Item value="zh-CN" label="简体中文" />
+                  <Select.Item value="en" label="English" />
+                </Select.Content>
+              </Select.Root>
+            </section>
 
-          <section class="settings-section native-adapter">
-            <div class="section-heading">
-              <span><PlugZap size={18} strokeWidth={1.8} /></span>
-              <div>
-                <h3>{tr('Pi 原生适配器')}</h3>
-                <p>{tr('Pi package 直接调用本地 JSON API，并在 Pi 工具调用内等待终态；不需要提交后的 wake。')}</p>
+            <section class="grid grid-cols-[minmax(0,1fr)_240px] items-center gap-8">
+              <div class="flex gap-3">
+                <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+                  <MonitorCog class="size-4" />
+                </span>
+                <div>
+                  <h3 class="m-0 text-sm font-medium">{tr('外观')}</h3>
+                  <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
+                    {tr('选择界面明暗模式，也可以跟随操作系统。')}
+                  </p>
+                </div>
               </div>
-            </div>
-            <div class="adapter-command">
-              <div class="adapter-command-head">
-                <strong>{tr('源码安装')}</strong>
-                <button class="install-button" disabled={installingPi} onclick={installPiPackage}>
-                  {#if installingPi}<LoaderCircle class="spinning" size={16} />{:else}<Download size={16} />{/if}
-                  {installingPi ? tr('正在安装 Pi 原生适配器…') : tr('一键安装 Pi 原生适配器')}
-                </button>
-              </div>
-              <code>pi install ./packages/pi-rambledesk</code>
-            </div>
-            {#if piInstallMessage}<p class="settings-success"><CheckCircle2 size={16} />{piInstallMessage}</p>{/if}
-            {#if piInstallError}<p class="settings-error">{piInstallError}</p>{/if}
-          </section>
+              <Select.Root
+                type="single"
+                value={$themePreference}
+                onValueChange={(value: string) => setThemePreference(value as ThemePreference)}
+              >
+                <Select.Trigger class="w-full">
+                  {$themePreference === 'system'
+                    ? tr('跟随系统')
+                    : $themePreference === 'light'
+                      ? tr('浅色')
+                      : tr('深色')}
+                </Select.Trigger>
+                <Select.Content>
+                  <Select.Item value="system" label={tr('跟随系统')} />
+                  <Select.Item value="light" label={tr('浅色')} />
+                  <Select.Item value="dark" label={tr('深色')} />
+                </Select.Content>
+              </Select.Root>
+            </section>
+          </Tabs.Content>
 
-          <details class="manual-config">
-            <summary>{tr('通用 MCP 配置与故障排查')}<ChevronRight size={15} /></summary>
-            <p>{tr('配置中包含仅限本机使用的访问令牌，请勿发送给他人。')}</p>
-            <pre>{mcpConfiguration}</pre>
-            <button onclick={copyConfiguration}>
-              {#if copyState === 'copied'}<Check size={15} />{tr('已复制')}{:else}<Clipboard size={15} />{tr('复制通用 MCP 配置')}{/if}
-            </button>
-            {#if copyState === 'error'}<small class="settings-error">{tr('无法访问剪贴板，请手动复制')}</small>{/if}
-          </details>
-        {/if}
+          <Tabs.Content value="adapters" class="m-0 space-y-8 p-6 outline-none">
+            <section class="border-b pb-8">
+              <div class="flex items-start gap-3">
+                <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+                  <PlugZap class="size-4" />
+                </span>
+                <div class="min-w-0 flex-1">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <h3 class="m-0 text-sm font-medium">{tr('Pi 原生适配器')}</h3>
+                    <Badge variant="secondary">{tr('原生等待')}</Badge>
+                  </div>
+                  <p class="m-0 mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">
+                    {tr('Pi package 通过本地 JSON API 请求、查询、等待和取消；等待发生在 Pi 工具调用内。')}
+                  </p>
+                </div>
+                <Button disabled={installingPi || !isTauri} onclick={installPiPackage}>
+                  {#if installingPi}
+                    <LoaderCircle class="animate-spin" data-icon="inline-start" />
+                    {tr('正在安装…')}
+                  {:else}
+                    <Download data-icon="inline-start" />
+                    {tr('安装')}
+                  {/if}
+                </Button>
+              </div>
+              {#if piInstallMessage}
+                <Alert.Root class="mt-4 border-success/30 bg-success/5 text-success">
+                  <CheckCircle2 />
+                  <Alert.Title>{tr('安装完成')}</Alert.Title>
+                  <Alert.Description class="whitespace-pre-wrap">{piInstallMessage}</Alert.Description>
+                </Alert.Root>
+              {/if}
+              {#if piInstallError}
+                <Alert.Root variant="destructive" class="mt-4">
+                  <Alert.Title>{tr('安装失败')}</Alert.Title>
+                  <Alert.Description>{piInstallError}</Alert.Description>
+                </Alert.Root>
+              {/if}
+            </section>
+
+            <section>
+              <Collapsible.Root bind:open={genericAdapterOpen}>
+                <div class="flex items-start gap-3">
+                  <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+                    <TerminalSquare class="size-4" />
+                  </span>
+                  <div class="min-w-0 flex-1">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <h3 class="m-0 text-sm font-medium">{tr('通用 MCP 适配器')}</h3>
+                      <Badge variant="outline">{tr('手动继续')}</Badge>
+                    </div>
+                    <p class="m-0 mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">
+                      {tr('为支持 MCP 的宿主提供反馈工具；提交或取消后由 Resume Prompt 引导用户继续宿主会话。')}
+                    </p>
+                  </div>
+                  <div class="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      disabled={loadingHosts || installing || !isTauri}
+                      aria-label={tr('重新检测')}
+                      title={tr('重新检测')}
+                      onclick={refreshHosts}
+                    >
+                      <RefreshCw class={loadingHosts ? 'animate-spin' : ''} />
+                    </Button>
+                    <Collapsible.Trigger>
+                      {#snippet child({ props })}
+                        <Button
+                          {...props}
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={genericAdapterOpen ? tr('收起') : tr('展开')}
+                        >
+                          <ChevronDown
+                            class={[
+                              'transition-transform',
+                              genericAdapterOpen ? 'rotate-180' : '',
+                            ]}
+                          />
+                        </Button>
+                      {/snippet}
+                    </Collapsible.Trigger>
+                  </div>
+                </div>
+
+                <Collapsible.Content class="pt-4">
+                  {#if loadingHosts}
+                    <div class="flex h-24 items-center justify-center gap-2 text-xs text-muted-foreground">
+                      <LoaderCircle class="size-4 animate-spin" />
+                      {tr('正在检测 Coding 工具…')}
+                    </div>
+                  {:else if hosts.length === 0}
+                    <p class="m-0 border-y py-5 text-center text-xs text-muted-foreground">
+                      {isTauri ? tr('没有检测到支持的宿主') : tr('请在桌面应用中管理适配器')}
+                    </p>
+                  {:else}
+                    <div class="divide-y border-y">
+                      {#each hosts as host (host.id)}
+                        <label
+                          class={[
+                            'flex min-h-12 items-center gap-3 px-2 py-2 text-xs transition-colors',
+                            host.installed
+                              ? 'cursor-pointer hover:bg-muted/60'
+                              : 'cursor-not-allowed opacity-50',
+                          ]}
+                        >
+                          <input
+                            type="checkbox"
+                            class="size-3.5 accent-primary"
+                            checked={selectedIds.has(host.id)}
+                            disabled={!host.installed || installing}
+                            onchange={() => toggleHost(host)}
+                          />
+                          <span class="grid size-5 shrink-0 place-items-center [&_svg]:size-4">
+                            {@html host.iconSvg}
+                          </span>
+                          <span class="min-w-0 flex-1">
+                            <strong class="block truncate font-medium">{host.name}</strong>
+                            <span class="block truncate text-[10px] text-muted-foreground" title={host.configPath}>
+                              {host.configPath}
+                            </span>
+                          </span>
+                          <Badge variant={host.configured ? 'secondary' : 'outline'}>
+                            {host.configured
+                              ? tr('已配置')
+                              : host.installed
+                                ? tr('已检测')
+                                : tr('未检测到')}
+                          </Badge>
+                        </label>
+                      {/each}
+                    </div>
+                  {/if}
+
+                  <div class="mt-3 flex items-center justify-between gap-4">
+                    <p class="m-0 text-[10px] leading-4 text-muted-foreground">
+                      {tr('只更新 RambleDesk 的 MCP 条目；不会覆盖宿主中的其他配置。')}
+                    </p>
+                    <Button
+                      disabled={selectedCount === 0 || installing || !isTauri}
+                      onclick={installSelected}
+                    >
+                      {#if installing}
+                        <LoaderCircle class="animate-spin" data-icon="inline-start" />
+                      {:else}
+                        <PlugZap data-icon="inline-start" />
+                      {/if}
+                      {selectedCount > 0
+                        ? tr('配置所选（{count}）', { count: selectedCount })
+                        : tr('选择宿主')}
+                    </Button>
+                  </div>
+
+                  {#if installMessage}
+                    <Alert.Root class="mt-4 border-success/30 bg-success/5 text-success">
+                      <CheckCircle2 />
+                      <Alert.Title>{tr('配置完成')}</Alert.Title>
+                      <Alert.Description>{installMessage}</Alert.Description>
+                    </Alert.Root>
+                  {/if}
+                  {#if installError}
+                    <Alert.Root variant="destructive" class="mt-4">
+                      <Alert.Title>{tr('配置失败')}</Alert.Title>
+                      <Alert.Description>{installError}</Alert.Description>
+                    </Alert.Root>
+                  {/if}
+                </Collapsible.Content>
+              </Collapsible.Root>
+            </section>
+
+            <Collapsible.Root bind:open={configurationOpen} class="border-t pt-5">
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <strong class="block text-xs font-medium">{tr('通用 MCP 配置')}</strong>
+                  <span class="block text-[10px] text-muted-foreground">
+                    {tr('仅用于手动配置和故障排查。')}
+                  </span>
+                </div>
+                <Collapsible.Trigger>
+                  {#snippet child({ props })}
+                    <Button {...props} variant="ghost" size="sm">
+                      {configurationOpen ? tr('收起') : tr('查看')}
+                      <ChevronDown
+                        data-icon="inline-end"
+                        class={['transition-transform', configurationOpen ? 'rotate-180' : '']}
+                      />
+                    </Button>
+                  {/snippet}
+                </Collapsible.Trigger>
+              </div>
+              <Collapsible.Content class="pt-3">
+                <Alert.Root>
+                  <ShieldCheck />
+                  <Alert.Title>{tr('本机凭证')}</Alert.Title>
+                  <Alert.Description>
+                    {tr('配置中包含仅限本机使用的访问令牌，请勿发送给他人。')}
+                  </Alert.Description>
+                </Alert.Root>
+                <pre class="mt-3 max-h-44 overflow-auto rounded-md border bg-muted/45 p-3 text-[10px] leading-4">{mcpConfiguration}</pre>
+                <div class="mt-2 flex items-center justify-end gap-2">
+                  {#if copyState === 'error'}
+                    <span class="text-[10px] text-destructive">{tr('无法访问剪贴板，请手动复制')}</span>
+                  {/if}
+                  <Button variant="outline" size="sm" onclick={copyConfiguration}>
+                    {#if copyState === 'copied'}
+                      <Check data-icon="inline-start" />
+                      {tr('已复制')}
+                    {:else}
+                      <Clipboard data-icon="inline-start" />
+                      {tr('复制配置')}
+                    {/if}
+                  </Button>
+                </div>
+              </Collapsible.Content>
+            </Collapsible.Root>
+          </Tabs.Content>
+        </ScrollArea>
       </div>
-    </div>
-  </div>
-</div>
-
-<style>
-  .settings-backdrop {
-    position: fixed;
-    inset: 46px 0 0;
-    z-index: 60;
-    display: grid;
-    place-items: center;
-    padding: 28px;
-    background: rgb(9 18 31 / 48%);
-    backdrop-filter: blur(10px);
-    border-radius: 0 0 16px 16px;
-  }
-
-  .settings-shell {
-    display: grid;
-    grid-template-columns: 220px minmax(0, 1fr);
-    width: min(920px, calc(100vw - 64px));
-    height: min(660px, calc(100vh - 110px));
-    overflow: hidden;
-    border: 1px solid var(--line, #cbd8e6);
-    border-radius: 18px;
-    color: var(--ink, #18304b);
-    background: var(--surface, #f8fbff);
-    box-shadow: 0 28px 80px rgb(9 22 39 / 28%);
-  }
-
-  .settings-sidebar {
-    display: flex;
-    min-width: 0;
-    flex-direction: column;
-    padding: 22px 14px 16px;
-    border-right: 1px solid var(--line-soft, #dbe4ee);
-    background: var(--surface-tint, #eef4fa);
-  }
-
-  .settings-brand { display: flex; align-items: center; gap: 11px; padding: 0 8px 24px; }
-  .settings-mark { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 10px; color: #3e82c7; background: var(--blue-soft, #e8f2fd); }
-  .settings-brand p, .eyebrow { margin: 0 0 3px; color: #4d88c8; font-size: 9px; font-weight: 750; letter-spacing: .16em; }
-  .settings-brand strong { font-size: 16px; }
-  nav { display: grid; gap: 5px; }
-  nav button { display: grid; grid-template-columns: 22px 1fr auto; align-items: center; gap: 8px; width: 100%; padding: 10px 11px; border: 0; border-radius: 10px; color: var(--ink-soft, #66788c); background: transparent; text-align: left; cursor: pointer; }
-  nav button:hover, nav button.active { color: #3376bb; background: var(--blue-soft, #e7f1fc); }
-  nav button span { font-size: 12px; font-weight: 650; }
-  nav .nav-end { display: flex; align-items: center; gap: 7px; margin-left: 4px; }
-  nav button em { min-width: 20px; padding: 2px 5px; border-radius: 999px; background: var(--surface, #fff); font-size: 9px; font-style: normal; text-align: center; }
-  .settings-safety { display: flex; align-items: flex-start; gap: 8px; margin-top: auto; padding: 12px 10px; color: var(--ink-muted, #7d8b9b); font-size: 10px; line-height: 1.5; }
-  .settings-safety :global(svg) { flex: 0 0 auto; color: #2aa59f; }
-
-  .settings-content { display: grid; min-width: 0; min-height: 0; grid-template-rows: auto 1fr; }
-  .settings-header { display: flex; align-items: center; justify-content: space-between; padding: 24px 28px 18px; border-bottom: 1px solid var(--line-soft, #dbe4ee); }
-  .settings-header h2 { margin: 0; font-size: 22px; letter-spacing: -.025em; }
-  .settings-close { display: grid; width: 34px; height: 34px; place-items: center; border: 0; border-radius: 9px; color: var(--ink-soft, #6d7e90); background: transparent; cursor: pointer; }
-  .settings-close:hover { color: var(--ink, #18304b); background: var(--surface-tint, #edf3f8); }
-  .settings-scroll { min-height: 0; overflow-y: auto; padding: 26px 30px 34px 28px; scrollbar-width: thin; scrollbar-color: rgb(94 132 171 / 45%) transparent; }
-  .settings-scroll::-webkit-scrollbar { width: 8px; }
-  .settings-scroll::-webkit-scrollbar-track { background: transparent; }
-  .settings-scroll::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 99px; background: rgb(94 132 171 / 42%); background-clip: padding-box; }
-
-  .settings-section { padding: 20px; border: 1px solid var(--line-soft, #dbe4ee); border-radius: 14px; background: var(--surface-raised, #fff); box-shadow: 0 8px 24px rgb(41 71 105 / 5%); }
-  .settings-section + .settings-section { margin-top: 18px; }
-  .section-heading { display: flex; align-items: center; gap: 11px; margin-bottom: 18px; }
-  .section-heading > span { display: grid; width: 34px; height: 34px; flex: 0 0 auto; place-items: center; border-radius: 10px; color: #3f83c6; background: var(--blue-soft, #eaf3fc); }
-  .section-heading h3 { margin: 0 0 3px; font-size: 14px; }
-  .section-heading p { margin: 0; color: var(--ink-muted, #8090a2); font-size: 10px; line-height: 1.45; }
-  .choice-grid { display: grid; gap: 10px; }
-  .two-columns { grid-template-columns: repeat(2, 1fr); }
-  .three-columns { grid-template-columns: repeat(3, 1fr); }
-  .choice-grid button { position: relative; display: grid; gap: 4px; padding: 14px; border: 1px solid var(--line-soft, #dbe4ee); border-radius: 11px; color: var(--ink, #18304b); background: var(--surface, #f8fbff); text-align: left; cursor: pointer; }
-  .choice-grid button:hover { border-color: #8eb7de; }
-  .choice-grid button.active { border-color: #4a8bca; background: var(--blue-soft, #e9f3fd); box-shadow: inset 0 0 0 1px rgb(74 139 202 / 20%); }
-  .choice-grid strong { font-size: 12px; }
-  .choice-grid small { color: var(--ink-muted, #8090a2); font-size: 9px; }
-  .choice-grid :global(svg) { position: absolute; top: 12px; right: 12px; color: #2e8d88; }
-
-  .adapter-intro { padding-bottom: 16px; }
-  .adapter-intro .section-heading > div,
-  .native-adapter .section-heading > div { min-width: 0; flex: 1; }
-  .refresh-clients { display: flex; align-items: center; gap: 6px; border: 0; color: #3479bc; background: transparent; font-size: 10px; font-weight: 650; cursor: pointer; }
-  .settings-loading { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 180px; color: var(--ink-muted, #8090a2); font-size: 11px; }
-  .client-list { display: grid; gap: 8px; }
-  .client-row { display: grid; grid-template-columns: 20px 36px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; padding: 11px 12px; border: 1px solid var(--line-soft, #dbe4ee); border-radius: 11px; color: var(--ink, #18304b); background: var(--surface, #f8fbff); text-align: left; cursor: pointer; }
-  .client-row:hover:not(:disabled), .client-row.selected { border-color: #75a8d8; background: var(--blue-soft, #eaf3fc); }
-  .client-row.unavailable { cursor: default; opacity: .46; }
-  .client-check { display: grid; width: 18px; height: 18px; place-items: center; border: 1px solid #9cafc2; border-radius: 5px; color: #fff; }
-  .client-row.selected .client-check { border-color: #4387c8; background: #4387c8; }
-  .client-icon { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 9px; color: #4b7eae; background: var(--surface-tint, #edf3f8); }
-  .client-icon :global(svg) { width: 21px; height: 21px; }
-  .client-icon :global(svg[role="img"]) { fill: currentColor; }
-  .client-copy { min-width: 0; }
-  .client-copy strong, .client-copy small { display: block; }
-  .client-copy strong { margin-bottom: 3px; font-size: 12px; }
-  .client-copy small { overflow: hidden; color: var(--ink-muted, #8090a2); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
-  .client-status { padding: 4px 7px; border-radius: 999px; color: var(--ink-muted, #78899b); background: var(--surface-tint, #edf3f8); font-size: 9px; font-weight: 650; }
-  .client-status.configured { color: #168a83; background: var(--cyan-soft, #e4f6f3); }
-  .install-bar { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line-soft, #dbe4ee); }
-  .install-bar strong, .install-bar span { display: block; }
-  .install-bar strong { margin-bottom: 3px; font-size: 11px; }
-  .install-bar span { color: var(--ink-muted, #8090a2); font-size: 9px; }
-  .install-button { display: flex; align-items: center; gap: 7px; padding: 10px 14px; border: 0; border-radius: 9px; color: #fff; background: linear-gradient(135deg, #438bca, #29aaa2); font-size: 10px; font-weight: 700; cursor: pointer; }
-  .install-button:disabled { cursor: default; filter: grayscale(.45); opacity: .5; }
-  .settings-success, .settings-error { margin: 12px 0 0; font-size: 10px; line-height: 1.5; }
-  .settings-success { display: flex; align-items: center; gap: 7px; color: #19857f; }
-  .settings-error { color: #c3565c; }
-
-  .native-adapter { margin-top: 18px; }
-  .adapter-command {
-    display: grid;
-    gap: 7px;
-    padding: 13px 14px;
-    border: 1px solid var(--line-soft, #dbe4ee);
-    border-radius: 10px;
-    background: var(--surface, #f8fbff);
-  }
-  .adapter-command-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-  .adapter-command strong { font-size: 11px; }
-  .adapter-command code {
-    overflow-wrap: anywhere;
-    color: var(--code-ink, #c9daf0);
-    background: var(--code-bg, #132236);
-    border-radius: 8px;
-    padding: 10px;
-    font: 10px/1.5 "Cascadia Code", monospace;
-  }
-
-  .adapter-details { margin-top: 2px; }
-  .adapter-details summary { display: flex; align-items: center; gap: 7px; width: 100%; padding: 9px 10px; border: 1px solid var(--line-soft, #dbe4ee); border-radius: 9px; color: var(--ink, #18304b); background: var(--surface-tint, #edf3f8); font-size: 10px; font-weight: 700; cursor: pointer; list-style: none; user-select: none; }
-  .adapter-details summary::-webkit-details-marker { display: none; }
-  .adapter-details summary :global(svg) { flex: 0 0 auto; color: #4b7eae; transition: transform .12s ease; }
-  .adapter-details[open] summary :global(svg) { transform: rotate(90deg); }
-  .adapter-details summary em { margin-left: auto; padding: 2px 7px; border-radius: 999px; color: var(--ink-muted, #78899b); background: var(--surface-raised, #fff); font-size: 9px; font-style: normal; font-weight: 650; }
-  .adapter-details > .client-list,
-  .adapter-details > .settings-loading { margin-top: 10px; }
-
-  .manual-config { margin-top: 18px; padding: 0 18px; border: 1px solid var(--line-soft, #dbe4ee); border-radius: 12px; background: var(--surface-raised, #fff); }
-  .manual-config summary { display: flex; align-items: center; gap: 8px; padding: 15px 0; font-size: 11px; font-weight: 650; cursor: pointer; list-style: none; }
-  .manual-config[open] summary :global(svg) { transform: rotate(90deg); }
-  .manual-config p { color: var(--ink-muted, #8090a2); font-size: 9px; }
-  .manual-config pre { max-height: 170px; overflow: auto; padding: 14px; border-radius: 9px; color: var(--code-ink, #c9daf0); background: var(--code-bg, #132236); font: 9px/1.55 "Cascadia Code", monospace; white-space: pre-wrap; word-break: break-all; }
-  .manual-config > button { display: flex; align-items: center; gap: 6px; margin: 0 0 16px auto; border: 0; color: #3479bc; background: transparent; font-size: 10px; font-weight: 650; cursor: pointer; }
-  :global(.spinning) { animation: spin 1s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  @media (max-width: 760px) {
-    .settings-backdrop { padding: 12px; }
-    .settings-shell { grid-template-columns: 74px minmax(0, 1fr); width: calc(100vw - 24px); }
-    .settings-brand > div, nav button span, nav button em, .settings-safety span { display: none; }
-    .settings-brand { justify-content: center; padding-inline: 0; }
-    nav button { display: grid; grid-template-columns: 1fr; place-items: center; }
-    .settings-scroll { padding: 20px; }
-    .three-columns { grid-template-columns: 1fr; }
-  }
-</style>
+    </Tabs.Root>
+  </Dialog.Content>
+</Dialog.Root>

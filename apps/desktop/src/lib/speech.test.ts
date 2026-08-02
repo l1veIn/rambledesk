@@ -10,7 +10,7 @@ describe('voice ramble events', () => {
   const stable: SpeechEvent = {
     type: 'stable',
     request_id: 'request-a',
-    session_id: 'session-a',
+    voice_session_id: 'session-a',
     chunk_index: 0,
     text: '  中文片段  ',
   }
@@ -31,7 +31,7 @@ describe('voice ramble events', () => {
       stableTranscript({
         type: 'processing',
         request_id: 'request-a',
-        session_id: 'session-a',
+        voice_session_id: 'session-a',
         chunk_index: 0,
       }),
     ).toBeNull()

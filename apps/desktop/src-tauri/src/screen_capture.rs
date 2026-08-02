@@ -34,19 +34,19 @@ pub struct ScreenCaptureState {
 
 #[derive(Debug, Clone, Serialize)]
 struct ScreenCaptureReady {
-    session_id: String,
+    capture_session_id: String,
     file_name: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
 struct ScreenCaptureFinished {
-    session_id: Option<String>,
+    capture_session_id: Option<String>,
     outcome: &'static str,
 }
 
 #[derive(Debug, Clone, Serialize)]
 struct ScreenCaptureSessionReady {
-    session_id: String,
+    capture_session_id: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -70,7 +70,7 @@ pub(super) struct CaptureRectangle {
 
 #[derive(Debug, Serialize)]
 pub(super) struct ActiveCaptureInfo {
-    session_id: String,
+    capture_session_id: String,
     image_width: u32,
     image_height: u32,
     targets: Vec<CaptureTarget>,
@@ -79,7 +79,7 @@ pub(super) struct ActiveCaptureInfo {
 
 #[derive(Debug, Deserialize)]
 pub(super) struct CompleteCaptureInput {
-    session_id: String,
+    capture_session_id: String,
     png_base64: String,
     #[serde(default)]
     copy_to_clipboard: bool,
@@ -87,13 +87,13 @@ pub(super) struct CompleteCaptureInput {
 
 #[derive(Debug, Deserialize)]
 pub(super) struct BeginScrollingInput {
-    session_id: String,
+    capture_session_id: String,
     selection: CaptureRectangle,
 }
 
 #[derive(Debug, Serialize)]
 pub(super) struct ScrollCaptureInfo {
-    session_id: String,
+    capture_session_id: String,
     frame_count: usize,
     width: u32,
     height: u32,
@@ -135,11 +135,11 @@ struct MonitorRegion {
 
 enum CaptureSession {
     Capturing {
-        session_id: String,
+        capture_session_id: String,
         restore_console: bool,
     },
     Editing {
-        session_id: String,
+        capture_session_id: String,
         image: RgbaImage,
         monitor: MonitorWindow,
         targets: Vec<CaptureTarget>,
@@ -147,7 +147,7 @@ enum CaptureSession {
         suggested_selection: Option<CaptureRectangle>,
     },
     Scrolling {
-        session_id: String,
+        capture_session_id: String,
         monitor: MonitorWindow,
         selection: CaptureRectangle,
         composite: RgbaImage,
@@ -156,18 +156,26 @@ enum CaptureSession {
         restore_console: bool,
     },
     Ready {
-        session_id: String,
+        capture_session_id: String,
         png: Vec<u8>,
     },
 }
 
 impl CaptureSession {
-    fn session_id(&self) -> &str {
+    fn capture_session_id(&self) -> &str {
         match self {
-            Self::Capturing { session_id, .. }
-            | Self::Editing { session_id, .. }
-            | Self::Scrolling { session_id, .. }
-            | Self::Ready { session_id, .. } => session_id,
+            Self::Capturing {
+                capture_session_id, ..
+            }
+            | Self::Editing {
+                capture_session_id, ..
+            }
+            | Self::Scrolling {
+                capture_session_id, ..
+            }
+            | Self::Ready {
+                capture_session_id, ..
+            } => capture_session_id,
         }
     }
 
@@ -956,7 +964,7 @@ pub async fn begin_screen_capture(
 ) -> Result<(), String> {
     ensure_screen_capture_permission()?;
     let should_restore_console = console_was_visible(&app);
-    let session_id = uuid::Uuid::now_v7().to_string();
+    let capture_session_id = uuid::Uuid::now_v7().to_string();
     {
         let mut session = state
             .session
@@ -966,7 +974,7 @@ pub async fn begin_screen_capture(
             return Err("已有截图正在进行，按 Esc 可取消".to_owned());
         }
         *session = Some(CaptureSession::Capturing {
-            session_id: session_id.clone(),
+            capture_session_id: capture_session_id.clone(),
             restore_console: should_restore_console,
         });
     }
@@ -993,13 +1001,13 @@ pub async fn begin_screen_capture(
                 .map_err(|_| "截图状态锁已损坏".to_owned())?;
             match session.as_ref() {
                 Some(CaptureSession::Capturing {
-                    session_id: active_id,
+                    capture_session_id: active_id,
                     ..
-                }) if active_id == &session_id => {}
+                }) if active_id == &capture_session_id => {}
                 _ => return Err("截图会话已变化，请重新截图".to_owned()),
             }
             *session = Some(CaptureSession::Editing {
-                session_id: session_id.clone(),
+                capture_session_id: capture_session_id.clone(),
                 image,
                 monitor: descriptor.clone(),
                 targets,
@@ -1011,7 +1019,7 @@ pub async fn begin_screen_capture(
             OVERLAY_LABEL,
             "screen-capture-session-ready",
             ScreenCaptureSessionReady {
-                session_id: session_id.clone(),
+                capture_session_id: capture_session_id.clone(),
             },
         )
         .map_err(|error| format!("无法唤醒截图编辑窗口：{error}"))
@@ -1022,7 +1030,7 @@ pub async fn begin_screen_capture(
         if let Ok(mut session) = state.session.lock()
             && session
                 .as_ref()
-                .is_some_and(|active| active.session_id() == session_id)
+                .is_some_and(|active| active.capture_session_id() == capture_session_id)
         {
             *session = None;
         }
@@ -1042,13 +1050,13 @@ pub fn get_active_capture_info(
         .map_err(|_| "截图状态锁已损坏".to_owned())?;
     match session.as_ref() {
         Some(CaptureSession::Editing {
-            session_id,
+            capture_session_id,
             image,
             targets,
             suggested_selection,
             ..
         }) => Ok(ActiveCaptureInfo {
-            session_id: session_id.clone(),
+            capture_session_id: capture_session_id.clone(),
             image_width: image.width(),
             image_height: image.height(),
             targets: targets.clone(),
@@ -1063,7 +1071,7 @@ pub fn get_active_capture_info(
 
 #[tauri::command]
 pub fn read_capture_rgba_bytes(
-    session_id: String,
+    capture_session_id: String,
     state: tauri::State<'_, ScreenCaptureState>,
 ) -> Result<Response, String> {
     let session = state
@@ -1072,10 +1080,10 @@ pub fn read_capture_rgba_bytes(
         .map_err(|_| "截图状态锁已损坏".to_owned())?;
     match session.as_ref() {
         Some(CaptureSession::Editing {
-            session_id: active_id,
+            capture_session_id: active_id,
             image,
             ..
-        }) if active_id == &session_id => Ok(Response::new(image.as_raw().clone())),
+        }) if active_id == &capture_session_id => Ok(Response::new(image.as_raw().clone())),
         Some(_) => Err("截图会话已变化，请重新截图".to_owned()),
         None => Err("没有活动的截图会话".to_owned()),
     }
@@ -1100,12 +1108,12 @@ pub async fn complete_screen_capture(
         let Some(active) = session.as_ref() else {
             return Err("没有活动的截图会话".to_owned());
         };
-        if active.session_id() != input.session_id {
+        if active.capture_session_id() != input.capture_session_id {
             return Err("截图会话已变化，请重新截图".to_owned());
         }
         let restore = active.restore_console();
         *session = Some(CaptureSession::Ready {
-            session_id: input.session_id.clone(),
+            capture_session_id: input.capture_session_id.clone(),
             png,
         });
         restore
@@ -1119,8 +1127,8 @@ pub async fn complete_screen_capture(
         "main",
         "screen-capture-ready",
         ScreenCaptureReady {
-            session_id: input.session_id.clone(),
-            file_name: format!("ramble-screenshot-{}.png", input.session_id),
+            capture_session_id: input.capture_session_id.clone(),
+            file_name: format!("ramble-screenshot-{}.png", input.capture_session_id),
         },
     )
     .map_err(|error| format!("无法通知文档插入截图：{error}"))
@@ -1139,7 +1147,7 @@ pub async fn pin_screen_capture(
             .lock()
             .map_err(|_| "截图状态锁已损坏".to_owned())?;
         let Some(CaptureSession::Editing {
-            session_id,
+            capture_session_id,
             monitor,
             restore_console,
             ..
@@ -1147,7 +1155,7 @@ pub async fn pin_screen_capture(
         else {
             return Err("没有可固定的截图".to_owned());
         };
-        if session_id != &input.session_id {
+        if capture_session_id != &input.capture_session_id {
             return Err("截图会话已变化，请重新截图".to_owned());
         }
         (*restore_console, monitor.clone())
@@ -1176,7 +1184,7 @@ pub async fn pin_screen_capture(
             .map_err(|_| "截图状态锁已损坏".to_owned())?;
         if session
             .as_ref()
-            .is_some_and(|active| active.session_id() == input.session_id)
+            .is_some_and(|active| active.capture_session_id() == input.capture_session_id)
         {
             session.take();
             true
@@ -1201,7 +1209,7 @@ pub async fn pin_screen_capture(
         "main",
         "screen-capture-finished",
         ScreenCaptureFinished {
-            session_id: Some(input.session_id),
+            capture_session_id: Some(input.capture_session_id),
             outcome: "pinned",
         },
     );
@@ -1335,7 +1343,7 @@ pub async fn begin_scrolling_capture(
             .take()
             .ok_or_else(|| "没有活动的截图会话".to_owned())?;
         let CaptureSession::Editing {
-            session_id,
+            capture_session_id,
             image,
             monitor,
             targets,
@@ -1346,9 +1354,9 @@ pub async fn begin_scrolling_capture(
             *session = Some(active);
             return Err("当前截图不能进入滚动采集".to_owned());
         };
-        if session_id != input.session_id {
+        if capture_session_id != input.capture_session_id {
             *session = Some(CaptureSession::Editing {
-                session_id,
+                capture_session_id,
                 image,
                 monitor,
                 targets,
@@ -1361,7 +1369,7 @@ pub async fn begin_scrolling_capture(
             Ok(selection) => selection,
             Err(error) => {
                 *session = Some(CaptureSession::Editing {
-                    session_id,
+                    capture_session_id,
                     image,
                     monitor,
                     targets,
@@ -1376,7 +1384,7 @@ pub async fn begin_scrolling_capture(
                 Ok(result) => result,
                 Err(error) => {
                     *session = Some(CaptureSession::Editing {
-                        session_id,
+                        capture_session_id,
                         image,
                         monitor,
                         targets,
@@ -1397,7 +1405,7 @@ pub async fn begin_scrolling_capture(
         let mut scroll_monitor = monitor.clone();
         scroll_monitor.monitor_id = scroll_monitor_id;
         *session = Some(CaptureSession::Scrolling {
-            session_id: input.session_id.clone(),
+            capture_session_id: input.capture_session_id.clone(),
             monitor: scroll_monitor,
             selection: local_selection,
             composite: first_frame.clone(),
@@ -1419,7 +1427,7 @@ pub async fn begin_scrolling_capture(
         return Err(error);
     }
     Ok(ScrollCaptureInfo {
-        session_id: input.session_id,
+        capture_session_id: input.capture_session_id,
         frame_count: 1,
         width: first_frame.width(),
         height: first_frame.height(),
@@ -1485,12 +1493,12 @@ pub fn get_scrolling_capture_info(
         .map_err(|_| "截图状态锁已损坏".to_owned())?;
     match session.as_ref() {
         Some(CaptureSession::Scrolling {
-            session_id,
+            capture_session_id,
             frame_count,
             composite,
             ..
         }) => Ok(ScrollCaptureInfo {
-            session_id: session_id.clone(),
+            capture_session_id: capture_session_id.clone(),
             frame_count: *frame_count,
             width: composite.width(),
             height: composite.height(),
@@ -1503,7 +1511,7 @@ pub fn get_scrolling_capture_info(
 
 #[tauri::command]
 pub async fn append_scrolling_capture_frame(
-    session_id: String,
+    capture_session_id: String,
     app: AppHandle,
     state: tauri::State<'_, ScreenCaptureState>,
 ) -> Result<ScrollCaptureInfo, String> {
@@ -1514,11 +1522,11 @@ pub async fn append_scrolling_capture_frame(
             .map_err(|_| "截图状态锁已损坏".to_owned())?;
         match session.as_ref() {
             Some(CaptureSession::Scrolling {
-                session_id: active_id,
+                capture_session_id: active_id,
                 monitor,
                 selection,
                 ..
-            }) if active_id == &session_id => (monitor.monitor_id, *selection),
+            }) if active_id == &capture_session_id => (monitor.monitor_id, *selection),
             Some(_) => return Err("滚动截图会话已变化".to_owned()),
             None => return Err("没有活动的滚动截图".to_owned()),
         }
@@ -1547,7 +1555,7 @@ pub async fn append_scrolling_capture_frame(
         .lock()
         .map_err(|_| "截图状态锁已损坏".to_owned())?;
     let Some(CaptureSession::Scrolling {
-        session_id: active_id,
+        capture_session_id: active_id,
         composite,
         last_frame,
         frame_count,
@@ -1556,7 +1564,7 @@ pub async fn append_scrolling_capture_frame(
     else {
         return Err("没有活动的滚动截图".to_owned());
     };
-    if active_id != &session_id {
+    if active_id != &capture_session_id {
         return Err("滚动截图会话已变化".to_owned());
     }
     let stitch = stitch_vertical(composite, last_frame, &frame)?;
@@ -1566,7 +1574,7 @@ pub async fn append_scrolling_capture_frame(
         *frame_count += 1;
     }
     Ok(ScrollCaptureInfo {
-        session_id,
+        capture_session_id,
         frame_count: *frame_count,
         width: composite.width(),
         height: composite.height(),
@@ -1577,7 +1585,7 @@ pub async fn append_scrolling_capture_frame(
 
 #[tauri::command]
 pub async fn finish_scrolling_capture(
-    session_id: String,
+    capture_session_id: String,
     app: AppHandle,
     state: tauri::State<'_, ScreenCaptureState>,
 ) -> Result<(), String> {
@@ -1588,9 +1596,9 @@ pub async fn finish_scrolling_capture(
             .map_err(|_| "截图状态锁已损坏".to_owned())?;
         match session.as_ref() {
             Some(CaptureSession::Scrolling {
-                session_id: active_id,
+                capture_session_id: active_id,
                 ..
-            }) if active_id == &session_id => {}
+            }) if active_id == &capture_session_id => {}
             Some(_) => return Err("滚动截图会话已变化".to_owned()),
             None => return Err("没有活动的滚动截图".to_owned()),
         }
@@ -1614,7 +1622,7 @@ pub async fn finish_scrolling_capture(
         monitor.capture_width = composite.width();
         monitor.capture_height = composite.height();
         *session = Some(CaptureSession::Editing {
-            session_id: session_id.clone(),
+            capture_session_id: capture_session_id.clone(),
             image: composite,
             monitor: monitor.clone(),
             targets: Vec::new(),
@@ -1630,7 +1638,7 @@ pub async fn finish_scrolling_capture(
     app.emit_to(
         OVERLAY_LABEL,
         "screen-capture-session-ready",
-        ScreenCaptureSessionReady { session_id },
+        ScreenCaptureSessionReady { capture_session_id },
     )
     .map_err(|error| format!("无法重新打开截图编辑窗口：{error}"))
 }
@@ -1765,7 +1773,7 @@ fn validated_selection(
 
 #[tauri::command]
 pub fn read_completed_screen_capture(
-    session_id: String,
+    capture_session_id: String,
     state: tauri::State<'_, ScreenCaptureState>,
 ) -> Result<Response, String> {
     let session = state
@@ -1774,9 +1782,9 @@ pub fn read_completed_screen_capture(
         .map_err(|_| "截图状态锁已损坏".to_owned())?;
     match session.as_ref() {
         Some(CaptureSession::Ready {
-            session_id: active_id,
+            capture_session_id: active_id,
             png,
-        }) if active_id == &session_id => Ok(Response::new(png.clone())),
+        }) if active_id == &capture_session_id => Ok(Response::new(png.clone())),
         Some(_) => Err("截图会话已变化，请重新截图".to_owned()),
         None => Err("没有已完成的截图".to_owned()),
     }
@@ -1784,7 +1792,7 @@ pub fn read_completed_screen_capture(
 
 #[tauri::command]
 pub fn discard_screen_capture(
-    session_id: String,
+    capture_session_id: String,
     state: tauri::State<'_, ScreenCaptureState>,
 ) -> Result<(), String> {
     let mut session = state
@@ -1793,7 +1801,7 @@ pub fn discard_screen_capture(
         .map_err(|_| "截图状态锁已损坏".to_owned())?;
     if session
         .as_ref()
-        .is_some_and(|active| active.session_id() == session_id)
+        .is_some_and(|active| active.capture_session_id() == capture_session_id)
     {
         *session = None;
     }
@@ -1805,14 +1813,14 @@ pub async fn cancel_screen_capture(
     app: AppHandle,
     state: tauri::State<'_, ScreenCaptureState>,
 ) -> Result<(), String> {
-    let (session_id, restore) = state
+    let (capture_session_id, restore) = state
         .session
         .lock()
         .map_err(|_| "截图状态锁已损坏".to_owned())?
         .take()
         .map(|session| {
             (
-                Some(session.session_id().to_owned()),
+                Some(session.capture_session_id().to_owned()),
                 session.restore_console(),
             )
         })
@@ -1828,7 +1836,7 @@ pub async fn cancel_screen_capture(
         "main",
         "screen-capture-finished",
         ScreenCaptureFinished {
-            session_id,
+            capture_session_id,
             outcome: "cancelled",
         },
     )

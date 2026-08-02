@@ -1,8 +1,12 @@
 <script lang="ts">
-  import type { FeedbackResultView } from '../feedback'
-  import { t } from '../i18n'
-  import { desktopPath } from '../nativePath'
-  import { locale } from '../preferences'
+  import { Ban, CheckCircle2, FolderOpen, Send } from '@lucide/svelte'
+
+  import { Badge } from '$lib/components/ui/badge'
+  import { Button } from '$lib/components/ui/button'
+  import type { FeedbackResultView } from '$lib/feedback'
+  import { t } from '$lib/i18n'
+  import { desktopPath } from '$lib/nativePath'
+  import { locale } from '$lib/preferences'
 
   export let feedbackResult: FeedbackResultView | null = null
   export let cancelled = false
@@ -17,37 +21,48 @@
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
   }
-
-  $: ready = feedbackResult !== null || cancelled || canSubmit
 </script>
 
-<section class="delivery-card">
-  <div class="delivery-status">
-    <span class:ready></span>
-    <div>
-      <strong>{feedbackResult ? tr('反馈包已归档') : cancelled ? tr('反馈已取消') : 'Feedback Package'}</strong>
-      <small>
-        {feedbackResult
-          ? tr('Agent 已可读取不可变结果')
-          : cancelled
-            ? tr('Agent 已可读取取消状态')
-            : tr('正文保存后即可提交')}
-      </small>
-    </div>
-  </div>
+<section class="p-4">
+  <header class="mb-3 flex items-center gap-2">
+    <strong class="text-xs font-medium">Feedback Package</strong>
+    {#if feedbackResult}
+      <Badge class="ml-auto bg-success text-white">
+        <CheckCircle2 class="size-3" />
+        {tr('已发布')}
+      </Badge>
+    {:else if cancelled}
+      <Badge variant="destructive" class="ml-auto">{tr('已取消')}</Badge>
+    {/if}
+  </header>
+
   {#if feedbackResult}
-    <code>{desktopPath(feedbackResult.directory_path)}</code>
-    <button class="package-button" onclick={onOpenPackage}>{tr('打开 Feedback Package')}</button>
+    <p class="m-0 truncate font-mono text-[9px] text-muted-foreground" title={desktopPath(feedbackResult.directory_path)}>
+      {desktopPath(feedbackResult.directory_path)}
+    </p>
+    <Button class="mt-3 w-full" variant="outline" onclick={onOpenPackage}>
+      <FolderOpen data-icon="inline-start" />
+      {tr('打开反馈包')}
+    </Button>
   {:else if cancelled}
-    <p class="delivery-note">{tr('请求已取消，Agent 恢复后会读取取消状态。')}</p>
+    <p class="m-0 text-[10px] leading-4 text-muted-foreground">
+      {tr('宿主可以读取取消状态并继续会话。')}
+    </p>
   {:else}
-    <div class="delivery-actions">
-      <button class="primary-button wide-button" disabled={!canSubmit} onclick={onSubmit}>
+    <div class="grid gap-2">
+      <Button class="w-full" disabled={!canSubmit} onclick={onSubmit}>
+        <Send data-icon="inline-start" />
         {submitting ? tr('正在发布…') : tr('提交反馈')}
-      </button>
-      <button class="cancel-button wide-button" disabled={!canCancel} onclick={onCancel}>
+      </Button>
+      <Button
+        class="w-full"
+        variant="destructive"
+        disabled={!canCancel}
+        onclick={onCancel}
+      >
+        <Ban data-icon="inline-start" />
         {cancelling ? tr('正在取消…') : tr('取消请求')}
-      </button>
+      </Button>
     </div>
   {/if}
 </section>

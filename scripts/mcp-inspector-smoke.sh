@@ -42,13 +42,13 @@ start_server() {
       return
     fi
     if ! kill -0 "$server_pid" 2>/dev/null; then
-      echo "RambleDesk MCP server exited before becoming ready" >&2
+      echo "RambleDesk local server exited before becoming ready" >&2
       sed -n '1,120p' "$verify_dir/server.log" >&2
       exit 1
     fi
     sleep 0.1
   done
-  echo "Timed out waiting for RambleDesk MCP server" >&2
+  echo "Timed out waiting for RambleDesk local server" >&2
   exit 1
 }
 
@@ -66,7 +66,7 @@ unauthorized_status="$(
     --request POST "$endpoint"
 )"
 if [[ "$unauthorized_status" != "401" ]]; then
-  echo "Expected unauthenticated MCP request to return 401, got $unauthorized_status" >&2
+  echo "Expected unauthenticated local server request to return 401, got $unauthorized_status" >&2
   exit 1
 fi
 
@@ -80,11 +80,11 @@ request_id="0195f7e2-5c31-7b5a-8ab7-3c84ea4fc827"
 request_args="$(
   node -e 'process.stdout.write(JSON.stringify({
     request_id: process.argv[2],
-    agent: "mcp-inspector",
-    session_id: "inspector-smoke",
-    project: { name: "RambleDesk Inspector smoke", root_path: process.argv[1] },
+    host_id: "mcp-inspector",
+    host_session_id: "inspector-smoke",
+    source_hint: "RambleDesk Inspector smoke",
     title: "Inspector smoke",
-    what_happened: "The persistent MCP request tools were exercised.",
+    what_happened: "The persistent Generic MCP Adapter request tools were exercised.",
     actions: [{ id: "verify", instruction: "Verify the durable request survives restart." }],
     context_refs: [{ label: "protocol", uri: "file:///docs/PROTOCOL.md" }]
   }))' "$verify_dir" "$request_id"
@@ -168,10 +168,8 @@ if (tools.length !== 3) {
 if (
   createdRequest?.status !== 'waiting' ||
   createdRequest?.request_id !== expectedRequestId ||
-  createdRequest?.server?.status !== 'ready' ||
   fetchedRequest?.request_id !== expectedRequestId ||
   fetchedRequest?.status !== 'waiting' ||
-  fetchedRequest?.server?.status !== 'ready' ||
   cancelledRequest?.request_id !== expectedRequestId ||
   cancelledRequest?.status !== 'cancelled' ||
   recoveredCancelledRequest?.request_id !== expectedRequestId ||

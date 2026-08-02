@@ -1,14 +1,18 @@
 <script lang="ts">
+  import { AlertTriangle, Inbox } from '@lucide/svelte'
+
+  import * as Alert from '$lib/components/ui/alert'
+  import { Skeleton } from '$lib/components/ui/skeleton'
   import type {
     AttachmentView,
     FeedbackResultView,
     FeedbackWorkspaceView,
-  } from '../feedback'
-  import { t } from '../i18n'
-  import { locale } from '../preferences'
+  } from '$lib/feedback'
+  import { t } from '$lib/i18n'
+  import { locale } from '$lib/preferences'
   import type {
-    AdapterPresentation,
     FeedbackEditorHandle,
+    HostProfile,
     RamblePhase,
     SavePhase,
   } from './types'
@@ -45,7 +49,7 @@
   export let submitting = false
   export let canCancel = false
   export let cancelling = false
-  export let adapterPresentation: (hostId: string) => AdapterPresentation
+  export let resolveHostProfile: (hostId: string) => HostProfile
   export let formatTime: (value: string | null | undefined) => string
   export let onReload: () => void = () => {}
   export let onDraftChange: (markdown: string) => void = () => {}
@@ -87,76 +91,121 @@
   }
 </script>
 
-<section class="workspace-panel">
+<section class="workspace-panel relative flex min-h-0 min-w-0 flex-1 flex-col bg-background">
   {#if loadingWorkspace}
-    <div class="workspace-placeholder">{tr('正在打开反馈工作区…')}</div>
-  {:else if workspace}
-    <div class="workspace-stage">
-      <WorkspaceHeader {workspace} {adapterPresentation} onReload={onReload} />
-
-      <div class="workspace-columns">
-        <div class="document-column">
-          <TaskBriefPanel bind:open={taskBriefOpen} {workspace} />
-
-          <FeedbackEditorPanel
-            bind:this={feedbackEditor}
-            {workspace}
-            {draftBody}
-            {savedRevision}
-            {savePhase}
-            {attachmentPreviews}
-            {dragActive}
-            {attachmentMessage}
-            {saveMessage}
-            {formatTime}
-            onChange={onDraftChange}
-          />
-        </div>
-
-        <CommandRail
-          {workspace}
-          {feedbackResult}
-          {rambelleStatusPortrait}
-          {rambleEngaged}
-          {rambleActive}
-          {ramblePhase}
-          {rambleBusy}
-          {rambleStartedOnce}
-          {voiceDevice}
-          {voiceChunkIndex}
-          {voicePartial}
-          {voiceLevel}
-          {rambleMessage}
-          {attachmentBusy}
-          {canSubmit}
-          {submitting}
-          {canCancel}
-          {cancelling}
-          {onToggleRamble}
-          {onExitRamble}
-          {onStartScreenCapture}
-          {onImportClipboard}
-          {onFileSelection}
-          {onInsertAttachment}
-          {onRemoveAttachment}
-          {onOpenPackage}
-          {onSubmit}
-          {onCancel}
-        />
+    <div class="grid h-full min-h-0 grid-rows-[64px_1fr]">
+      <div class="flex items-center gap-3 border-b px-5">
+        <Skeleton class="h-4 w-52" />
+        <Skeleton class="ml-auto size-7" />
+      </div>
+      <div class="grid gap-4 p-5">
+        <Skeleton class="h-12 w-full" />
+        <Skeleton class="h-full min-h-80 w-full" />
       </div>
     </div>
+  {:else if workspace}
+    <WorkspaceHeader {workspace} {resolveHostProfile} onReload={onReload} />
+
+    <div class="workspace-columns min-h-0 flex-1 overflow-auto">
+      <div class="document-column flex min-h-0 min-w-0 flex-col @container">
+        <TaskBriefPanel bind:open={taskBriefOpen} {workspace} />
+
+        <FeedbackEditorPanel
+          bind:this={feedbackEditor}
+          {workspace}
+          {draftBody}
+          {savedRevision}
+          {savePhase}
+          {attachmentPreviews}
+          {dragActive}
+          {attachmentMessage}
+          {saveMessage}
+          {formatTime}
+          onChange={onDraftChange}
+        />
+      </div>
+
+      <CommandRail
+        {workspace}
+        {feedbackResult}
+        {rambelleStatusPortrait}
+        {rambleEngaged}
+        {rambleActive}
+        {ramblePhase}
+        {rambleBusy}
+        {rambleStartedOnce}
+        {voiceDevice}
+        {voiceChunkIndex}
+        {voicePartial}
+        {voiceLevel}
+        {rambleMessage}
+        {attachmentBusy}
+        {canSubmit}
+        {submitting}
+        {canCancel}
+        {cancelling}
+        {onToggleRamble}
+        {onExitRamble}
+        {onStartScreenCapture}
+        {onImportClipboard}
+        {onFileSelection}
+        {onInsertAttachment}
+        {onRemoveAttachment}
+        {onOpenPackage}
+        {onSubmit}
+        {onCancel}
+      />
+    </div>
   {:else}
-    <div class="workspace-placeholder">
-      <span class="placeholder-mark">↙</span>
-      <strong>{tr('选择一个请求开始体验')}</strong>
-      <p>{tr('任务清单和你的 Markdown 草稿都会持久保存在本机。')}</p>
+    <div class="grid h-full place-items-center p-8 text-center">
+      <div class="max-w-xs">
+        {#if rambelleStatusPortrait}
+          <img
+            src={rambelleStatusPortrait}
+            alt=""
+            class="mx-auto mb-4 size-20 object-contain opacity-90"
+          />
+        {:else}
+          <span class="mx-auto mb-4 grid size-12 place-items-center rounded-md bg-muted text-muted-foreground">
+            <Inbox class="size-5" />
+          </span>
+        {/if}
+        <strong class="block text-sm font-medium">{tr('选择一个请求')}</strong>
+        <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
+          {tr('从左侧选择宿主、会话和请求，打开反馈工作区。')}
+        </p>
+      </div>
     </div>
   {/if}
 
   {#if pageError}
-    <div class="error-banner" role="alert">
-      <strong>{tr('工作台暂时无法完成操作')}</strong>
-      <span>{pageError}</span>
-    </div>
+    <Alert.Root variant="destructive" class="absolute inset-x-4 bottom-4 z-20 shadow-lg">
+      <AlertTriangle />
+      <Alert.Title>{tr('工作台暂时无法完成操作')}</Alert.Title>
+      <Alert.Description>{pageError}</Alert.Description>
+    </Alert.Root>
   {/if}
 </section>
+
+<style>
+  .workspace-columns {
+    display: grid;
+    grid-template-columns: minmax(360px, 1fr) 288px;
+  }
+
+  @media (max-width: 1180px) {
+    .workspace-columns {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .document-column {
+      min-height: 680px;
+    }
+
+    :global(.command-rail) {
+      min-height: 620px;
+      border-top: 1px solid var(--border);
+      border-left: 0;
+    }
+  }
+</style>

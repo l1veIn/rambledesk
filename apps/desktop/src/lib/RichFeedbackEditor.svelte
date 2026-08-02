@@ -3,8 +3,18 @@
   import Image from '@tiptap/extension-image'
   import { Markdown } from '@tiptap/markdown'
   import StarterKit from '@tiptap/starter-kit'
+  import {
+    Bold,
+    Heading2,
+    Italic,
+    List,
+    Quote,
+    Redo2,
+    Undo2,
+  } from '@lucide/svelte'
   import { onMount } from 'svelte'
 
+  import { Button } from '$lib/components/ui/button'
   import type { AttachmentView } from './feedback'
   import { t } from './i18n'
   import { locale } from './preferences'
@@ -279,108 +289,89 @@
   }
 </script>
 
-<div class="rich-editor">
-  <div class="format-toolbar" aria-label={t($locale, '正文格式')}>
-    <button
-      type="button"
+<div class="overflow-hidden rounded-md border bg-background">
+  <div class="flex h-10 items-center gap-1 overflow-x-auto border-b bg-muted/30 px-2" aria-label={t($locale, '正文格式')}>
+    <Button
+      variant="ghost"
+      size="icon-sm"
       aria-label={t($locale, '加粗')}
+      title={t($locale, '加粗')}
       disabled={disabled}
       onclick={() => editor?.chain().focus().toggleBold().run()}
-    >B</button>
-    <button
-      type="button"
+    >
+      <Bold />
+    </Button>
+    <Button
+      variant="ghost"
+      size="icon-sm"
       aria-label={t($locale, '斜体')}
+      title={t($locale, '斜体')}
       disabled={disabled}
       onclick={() => editor?.chain().focus().toggleItalic().run()}
-    ><i>I</i></button>
-    <button
-      type="button"
+    >
+      <Italic />
+    </Button>
+    <Button
+      variant="ghost"
+      size="icon-sm"
       aria-label={t($locale, '二级标题')}
+      title={t($locale, '二级标题')}
       disabled={disabled}
       onclick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}
-    >H2</button>
-    <button
-      type="button"
+    >
+      <Heading2 />
+    </Button>
+    <Button
+      variant="ghost"
+      size="icon-sm"
       aria-label={t($locale, '无序列表')}
+      title={t($locale, '无序列表')}
       disabled={disabled}
       onclick={() => editor?.chain().focus().toggleBulletList().run()}
-    >• {t($locale, '列表')}</button>
-    <button
-      type="button"
+    >
+      <List />
+    </Button>
+    <Button
+      variant="ghost"
+      size="icon-sm"
       aria-label={t($locale, '引用')}
+      title={t($locale, '引用')}
       disabled={disabled}
       onclick={() => editor?.chain().focus().toggleBlockquote().run()}
-    >“ {t($locale, '引用')}</button>
-    <span></span>
-    <button
-      type="button"
+    >
+      <Quote />
+    </Button>
+    <span class="flex-1"></span>
+    <Button
+      variant="ghost"
+      size="icon-sm"
       aria-label={t($locale, '撤销')}
+      title={t($locale, '撤销')}
       disabled={disabled || !editor?.can().undo()}
       onclick={() => editor?.chain().focus().undo().run()}
-    >↶</button>
-    <button
-      type="button"
+    >
+      <Undo2 />
+    </Button>
+    <Button
+      variant="ghost"
+      size="icon-sm"
       aria-label={t($locale, '重做')}
+      title={t($locale, '重做')}
       disabled={disabled || !editor?.can().redo()}
       onclick={() => editor?.chain().focus().redo().run()}
-    >↷</button>
+    >
+      <Redo2 />
+    </Button>
   </div>
   <div class="editor-host" bind:this={editorHost}></div>
 </div>
 
 <style>
-  .rich-editor {
-    width: 100%;
-    min-width: 0;
-    overflow: hidden;
-    border: 1px solid var(--line, #d4e0ec);
-    border-radius: 10px;
-    background: var(--editor-paper, #fff);
-  }
-
-  .format-toolbar {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 7px 9px;
-    border-bottom: 1px solid var(--line-soft, #e0e8f0);
-    background: var(--surface, #f7f9fc);
-    overflow-x: auto;
-  }
-
-  .format-toolbar span {
-    flex: 1;
-  }
-
-  .format-toolbar button {
-    min-width: 32px;
-    height: 28px;
-    padding: 0 8px;
-    border: 1px solid transparent;
-    border-radius: 7px;
-    color: var(--ink-soft, #526a84);
-    background: transparent;
-    font: inherit;
-    font-size: 10px;
-    cursor: pointer;
-  }
-
-  .format-toolbar button:hover:not(:disabled) {
-    border-color: #bed4e9;
-    color: var(--blue-strong, #2775ca);
-    background: var(--blue-soft, #eaf3fc);
-  }
-
-  .format-toolbar button:disabled {
-    cursor: default;
-    opacity: 0.38;
-  }
-
   .editor-host :global(.feedback-prose) {
     min-height: clamp(360px, 52vh, 620px);
     padding: clamp(20px, 2.5vw, 34px);
-    color: var(--ink, #263a50);
-    font-family: Georgia, "Noto Serif SC", "Songti SC", serif;
+    color: var(--foreground);
+    font-family: ui-serif, Georgia, "Noto Serif SC", "Songti SC", serif;
     font-size: 14px;
     line-height: 1.78;
     outline: none;
@@ -389,7 +380,7 @@
   .editor-host :global(.feedback-prose:empty::before) {
     float: left;
     height: 0;
-    color: var(--ink-faint, #9aa8b7);
+    color: var(--muted-foreground);
     content: attr(data-placeholder);
     pointer-events: none;
   }
@@ -405,19 +396,17 @@
   .editor-host :global(.feedback-prose h2),
   .editor-host :global(.feedback-prose h3) {
     margin: 1.4em 0 0.55em;
-    color: var(--ink, #203550);
-    font-family: "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+    color: var(--foreground);
+    font-family: ui-sans-serif, system-ui, sans-serif;
     line-height: 1.3;
   }
 
   .editor-host :global(.feedback-prose blockquote) {
     margin: 1em 0;
-    padding-left: 14px;
     padding: 10px 14px;
-    border-left: 3px solid #6fa8dc;
-    border-radius: 0 8px 8px 0;
-    color: var(--ink-soft, #52677e);
-    background: var(--surface-tint, #f3f7fb);
+    border-left: 3px solid var(--primary);
+    color: var(--muted-foreground);
+    background: color-mix(in oklab, var(--muted) 65%, transparent);
   }
 
   .editor-host :global(.feedback-prose img) {
@@ -426,14 +415,13 @@
     max-width: min(100%, 900px);
     max-height: 620px;
     margin: 18px auto;
-    border: 1px solid #ccdae7;
-    border-radius: 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
     object-fit: contain;
-    background: var(--surface-tint, #eef3f7);
-    box-shadow: 0 10px 30px rgb(40 72 106 / 10%);
+    background: var(--muted);
   }
 
   .editor-host :global(.feedback-prose.ProseMirror-focused) {
-    box-shadow: inset 0 0 0 1px rgb(79 143 211 / 18%);
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--ring) 30%, transparent);
   }
 </style>

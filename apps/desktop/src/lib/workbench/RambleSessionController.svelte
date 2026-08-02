@@ -153,7 +153,7 @@
       const event = await invoke<ClipboardCaptureEvent>('capture_clipboard_once', {
         input: {
           request_id: workspace.request.request_id,
-          ramble_session_id: rambleContextId,
+          ramble_context_id: rambleContextId,
         },
       })
       handleClipboardCaptureEvent(event)
@@ -263,7 +263,7 @@
           request_id: workspace.request.request_id,
         },
       })
-      voiceSessionId = session.session_id
+      voiceSessionId = session.voice_session_id
       if (voicePhase === 'starting') {
         voicePhase = 'listening'
         voiceMessage = t($locale, 'Sherpa 真流式识别 · 自然停顿后写入正文')
@@ -357,7 +357,7 @@
       const png = await invoke<ArrayBuffer>('read_clipboard_capture_image', {
         captureId: event.capture_id,
         requestId,
-        rambleSessionId: event.ramble_session_id,
+        rambleContextId: event.ramble_context_id,
       })
       const input: AddAttachmentInput = {
         request_id: requestId,
@@ -407,7 +407,7 @@
       return
     }
     voiceRequestId = event.request_id
-    voiceSessionId = event.session_id
+    voiceSessionId = event.voice_session_id
     switch (event.type) {
       case 'started':
         voicePhase = 'listening'
@@ -492,7 +492,7 @@
           : ramblePhase === 'idle'
             ? 'paused'
             : ramblePhase,
-      projectName: workspace.request.project_name,
+      sourceLabel: workspace.request.source_hint ?? workspace.request.host_session_id,
       requestTitle: workspace.request.title,
       recording: rambleActive,
       busy: rambleBusy,

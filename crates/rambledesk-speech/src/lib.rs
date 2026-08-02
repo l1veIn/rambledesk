@@ -23,7 +23,7 @@ impl SpeechProvider {
 #[derive(Debug, Clone)]
 pub struct SpeechSessionConfig {
     pub request_id: String,
-    pub session_id: String,
+    pub voice_session_id: String,
     pub model_path: PathBuf,
 }
 
@@ -32,44 +32,44 @@ pub struct SpeechSessionConfig {
 pub enum SpeechEvent {
     Started {
         request_id: String,
-        session_id: String,
+        voice_session_id: String,
         input_device: String,
         provider: String,
     },
     Partial {
         request_id: String,
-        session_id: String,
+        voice_session_id: String,
         text: String,
     },
     Level {
         request_id: String,
-        session_id: String,
+        voice_session_id: String,
         rms: f32,
     },
     Processing {
         request_id: String,
-        session_id: String,
+        voice_session_id: String,
         chunk_index: u64,
     },
     Stable {
         request_id: String,
-        session_id: String,
+        voice_session_id: String,
         chunk_index: u64,
         text: String,
     },
     Warning {
         request_id: String,
-        session_id: String,
+        voice_session_id: String,
         code: String,
         message: String,
     },
     Stopped {
         request_id: String,
-        session_id: String,
+        voice_session_id: String,
     },
     Error {
         request_id: String,
-        session_id: String,
+        voice_session_id: String,
         code: String,
         message: String,
     },
@@ -99,7 +99,7 @@ pub enum SpeechError {
 #[derive(Clone)]
 struct EventIdentity {
     request_id: String,
-    session_id: String,
+    voice_session_id: String,
 }
 
 #[cfg(any(target_os = "windows", target_os = "macos"))]
@@ -107,7 +107,7 @@ impl From<&SpeechSessionConfig> for EventIdentity {
     fn from(config: &SpeechSessionConfig) -> Self {
         Self {
             request_id: config.request_id.clone(),
-            session_id: config.session_id.clone(),
+            voice_session_id: config.voice_session_id.clone(),
         }
     }
 }
@@ -253,7 +253,7 @@ mod native {
                     self.last_text.clear();
                     sink(SpeechEvent::Partial {
                         request_id: identity.request_id.clone(),
-                        session_id: identity.session_id.clone(),
+                        voice_session_id: identity.voice_session_id.clone(),
                         text: String::new(),
                     });
                 }
@@ -266,7 +266,7 @@ mod native {
                 self.last_text = text.clone();
                 sink(SpeechEvent::Partial {
                     request_id: identity.request_id.clone(),
-                    session_id: identity.session_id.clone(),
+                    voice_session_id: identity.voice_session_id.clone(),
                     text,
                 });
             }
@@ -279,7 +279,7 @@ mod native {
             }
             sink(SpeechEvent::Stable {
                 request_id: identity.request_id.clone(),
-                session_id: identity.session_id.clone(),
+                voice_session_id: identity.voice_session_id.clone(),
                 chunk_index: self.segment_index,
                 text,
             });
@@ -302,7 +302,7 @@ mod native {
             self.commit_current(identity, sink);
             sink(SpeechEvent::Partial {
                 request_id: identity.request_id.clone(),
-                session_id: identity.session_id.clone(),
+                voice_session_id: identity.voice_session_id.clone(),
                 text: String::new(),
             });
         }
@@ -434,7 +434,7 @@ mod native {
 
             sink(SpeechEvent::Started {
                 request_id: identity.request_id.clone(),
-                session_id: identity.session_id.clone(),
+                voice_session_id: identity.voice_session_id.clone(),
                 input_device: device_name,
                 provider: provider.id().to_owned(),
             });
@@ -456,7 +456,7 @@ mod native {
             }
             (self.sink)(SpeechEvent::Stopped {
                 request_id: self.identity.request_id.clone(),
-                session_id: self.identity.session_id.clone(),
+                voice_session_id: self.identity.voice_session_id.clone(),
             });
             Ok(())
         }
@@ -572,7 +572,7 @@ mod native {
                 move |error| {
                     error_sink(SpeechEvent::Error {
                         request_id: error_identity.request_id.clone(),
-                        session_id: error_identity.session_id.clone(),
+                        voice_session_id: error_identity.voice_session_id.clone(),
                         code: "microphone_stream".to_owned(),
                         message: format!("麦克风输入中断：{error}"),
                     });
@@ -596,7 +596,7 @@ mod native {
                 Ok(samples) => {
                     sink(SpeechEvent::Level {
                         request_id: identity.request_id.clone(),
-                        session_id: identity.session_id.clone(),
+                        voice_session_id: identity.voice_session_id.clone(),
                         rms: rms(&samples).clamp(0.0, 1.0),
                     });
                     let audio = resample_linear(&samples, source_rate, SPEECH_SAMPLE_RATE);
@@ -620,7 +620,7 @@ mod native {
         if dropped > 0 {
             sink(SpeechEvent::Warning {
                 request_id: identity.request_id.clone(),
-                session_id: identity.session_id.clone(),
+                voice_session_id: identity.voice_session_id.clone(),
                 code: "audio_backpressure".to_owned(),
                 message: format!("识别速度暂时跟不上，已跳过 {dropped} 个音频缓冲区"),
             });
@@ -677,7 +677,7 @@ mod tests {
     fn event_contract_serializes_with_stable_discriminator() {
         let event = SpeechEvent::Stable {
             request_id: "request".to_owned(),
-            session_id: "session".to_owned(),
+            voice_session_id: "session".to_owned(),
             chunk_index: 2,
             text: "你好".to_owned(),
         };

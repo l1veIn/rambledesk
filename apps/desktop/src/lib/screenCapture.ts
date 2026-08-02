@@ -1,10 +1,10 @@
 export type ScreenCaptureReady = {
-  session_id: string
+  capture_session_id: string
   file_name: string
 }
 
 export type ScreenCaptureView = {
-  session_id: string
+  capture_session_id: string
   image_width: number
   image_height: number
   targets: CaptureTarget[]

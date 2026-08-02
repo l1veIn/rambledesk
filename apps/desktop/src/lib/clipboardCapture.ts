@@ -2,7 +2,7 @@ export type ClipboardCaptureEvent =
   | {
       type: 'text'
       request_id: string
-      ramble_session_id: string
+      ramble_context_id: string
       text: string
       captured_at_ms: number
       truncated: boolean
@@ -10,7 +10,7 @@ export type ClipboardCaptureEvent =
   | {
       type: 'image'
       request_id: string
-      ramble_session_id: string
+      ramble_context_id: string
       capture_id: string
       file_name: string
       captured_at_ms: number
@@ -18,18 +18,18 @@ export type ClipboardCaptureEvent =
   | {
       type: 'warning'
       request_id: string
-      ramble_session_id: string
+      ramble_context_id: string
       message: string
     }
 
 export function eventBelongsToRamble(
   event: ClipboardCaptureEvent,
   requestId: string,
-  rambleSessionId: string,
+  rambleContextId: string,
 ): boolean {
   return (
     event.request_id === requestId &&
-    event.ramble_session_id === rambleSessionId
+    event.ramble_context_id === rambleContextId
   )
 }
 

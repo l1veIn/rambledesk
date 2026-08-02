@@ -9,7 +9,7 @@ import {
 const event: ClipboardCaptureEvent = {
   type: 'text',
   request_id: 'request-a',
-  ramble_session_id: 'ramble-a',
+  ramble_context_id: 'ramble-a',
   text: 'copied context',
   captured_at_ms: 0,
   truncated: false,

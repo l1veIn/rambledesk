@@ -1,8 +1,12 @@
 <script lang="ts">
-  import RichFeedbackEditor from '../RichFeedbackEditor.svelte'
-  import type { AttachmentView, FeedbackWorkspaceView } from '../feedback'
-  import { t } from '../i18n'
-  import { locale } from '../preferences'
+  import { AlertCircle, Check, CloudCog, LoaderCircle } from '@lucide/svelte'
+
+  import * as Alert from '$lib/components/ui/alert'
+  import { Badge } from '$lib/components/ui/badge'
+  import RichFeedbackEditor from '$lib/RichFeedbackEditor.svelte'
+  import type { AttachmentView, FeedbackWorkspaceView } from '$lib/feedback'
+  import { t } from '$lib/i18n'
+  import { locale } from '$lib/preferences'
   import type { SavePhase } from './types'
 
   export let workspace: FeedbackWorkspaceView
@@ -23,6 +27,13 @@
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
+  }
+
+  function saveLabel() {
+    if (savePhase === 'saving') return tr('正在保存…')
+    if (savePhase === 'unsaved') return tr('等待自动保存')
+    if (savePhase === 'error') return tr('保存失败')
+    return `${tr('已保存')} · r${savedRevision}`
   }
 
   export function insertAttachments(attachments: AttachmentView[]) {
@@ -46,25 +57,36 @@
   }
 </script>
 
-<section class:drag-active={dragActive} class="editor-section">
-  <div class="editor-heading">
-    <div>
-      <p class="eyebrow">YOUR FEEDBACK</p>
-      <h3>{tr('边体验，边记下来')}</h3>
+<section
+  class={[
+    'flex min-h-0 flex-1 flex-col p-5 transition-colors',
+    dragActive ? 'bg-primary/5 ring-2 ring-inset ring-primary/30' : '',
+  ]}
+>
+  <header class="mb-3 flex items-center gap-3">
+    <div class="min-w-0 flex-1">
+      <h2 class="m-0 text-xs font-medium">{tr('反馈正文')}</h2>
+      <p class="m-0 mt-0.5 text-[10px] text-muted-foreground">
+        {readOnly ? tr('此请求已结束，正文只读。') : tr('记录观察、问题和建议。')}
+      </p>
     </div>
-    <div class:failed={savePhase === 'error'} class="save-state" aria-live="polite">
-      <span class="save-dot"></span>
+    <Badge
+      variant={savePhase === 'error' ? 'destructive' : 'secondary'}
+      class="h-6 gap-1 px-2 text-[9px]"
+      aria-live="polite"
+    >
       {#if savePhase === 'saving'}
-        {tr('正在保存…')}
-      {:else if savePhase === 'unsaved'}
-        {tr('等待自动保存')}
+        <LoaderCircle class="size-3 animate-spin" />
       {:else if savePhase === 'error'}
-        {tr('保存失败')}
+        <AlertCircle class="size-3" />
+      {:else if savePhase === 'unsaved'}
+        <CloudCog class="size-3" />
       {:else}
-        {tr('已保存')} · revision {savedRevision}
+        <Check class="size-3" />
       {/if}
-    </div>
-  </div>
+      {saveLabel()}
+    </Badge>
+  </header>
 
   <RichFeedbackEditor
     bind:this={richEditor}
@@ -75,16 +97,26 @@
   />
 
   {#if attachmentMessage}
-    <p class="inline-error">{attachmentMessage}</p>
+    <Alert.Root variant="destructive" class="mt-3">
+      <AlertCircle />
+      <Alert.Title>{tr('附件操作失败')}</Alert.Title>
+      <Alert.Description>{attachmentMessage}</Alert.Description>
+    </Alert.Root>
   {/if}
 
   {#if saveMessage}
-    <p class="inline-error">{saveMessage}。{tr('请重新载入后再试，当前文字仍保留在编辑器中。')}</p>
+    <Alert.Root variant="destructive" class="mt-3">
+      <AlertCircle />
+      <Alert.Title>{tr('保存失败')}</Alert.Title>
+      <Alert.Description>
+        {saveMessage}。{tr('请重新载入后再试，当前文字仍保留在编辑器中。')}
+      </Alert.Description>
+    </Alert.Root>
   {/if}
 
-  <footer class="editor-footer">
+  <footer class="mt-2 flex items-center gap-3 text-[9px] text-muted-foreground">
     <span>{tr('{count} 字符', { count: draftBody.length.toLocaleString($locale) })}</span>
-    <span>{tr('Markdown 文档流')}</span>
-    <span>{formatTime(workspace.draft.updated_at)}</span>
+    <span>Markdown</span>
+    <span class="ml-auto">{formatTime(workspace.draft.updated_at)}</span>
   </footer>
 </section>

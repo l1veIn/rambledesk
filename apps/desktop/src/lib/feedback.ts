@@ -14,6 +14,7 @@ export type {
   FeedbackResultView,
   FeedbackStatus,
   FeedbackWorkspaceView,
+  HostSessionSummary,
   ListFeedbackRequestsInput,
   ListFeedbackRequestsOutput,
   RemoveAttachmentInput,

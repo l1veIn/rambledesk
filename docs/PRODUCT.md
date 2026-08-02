@@ -1,218 +1,176 @@
-# RambleDesk 产品文档（MVP）
+# RambleDesk 产品文档
 
-> 工作名：RambleDesk  
-> 历史方法论词汇：User_0（零号用户）
-> 版本：开发基线 v1 · 2026-07-29
+> 状态：v2 当前基线。
+> 术语源：[TERMINOLOGY.md](TERMINOLOGY.md)。本文若与术语表冲突，以术语表为准。
 
----
+## 一句话
 
-## 1. 背景
+RambleDesk 是本地人类反馈工作台：宿主智能体通过适配器请求人类真实使用和反馈，人类在桌面工作台中 ramble、截图、批注并提交，宿主智能体读取不可变反馈包后继续。
 
-- Coding agent（Codex、Claude Code 等）能力持续增强，开发者角色从「写代码」转向「定目标、设约束、当第一个真实用户（User_0）」。
-- 现有协作仍以聊天上下文为主：agent 提问淹没在对话里，人类反馈缺少正式通道与结构化产物。
-- 开发者已有成熟习惯：长时间语音 ramble、边用边说、配截图；缺的是把这套习惯接进 agent 循环的工作台与协议。
-- 开源侧已有听写工具、HITL MCP、语音笔记，但缺少「agent 下发任务单 → 人类体验式反馈 → 同一会话回传」的闭环产品。
+## 产品判断
 
----
+- 编码智能体能写更多代码，但仍需要人类做真实判断、体验和取舍。
+- 人类反馈不应被淹没在聊天上下文里；它需要请求、待办、草稿、附件、提交和不可变结果。
+- RambleDesk 不内置智能体运行时，不内置 shell multiplexer，不持有源码 checkout 模型。
+- 宿主通过适配器接入：Generic MCP 是通用路径，Pi package 是首个原生路径。
+- 反馈正确性不依赖某次 tool call 或连接存活；请求与反馈包必须先落盘。
 
-## 2. 问题
+## 非目标
 
-1. **呼叫不正式**：agent 需要人类判断时，只能写在聊天里，无固定格式、无等待态、无明确行动清单。
-2. **反馈不结构化**：人类回复多为碎片文字，缺少「按清单操作 + 语音 ramble + 截图」的统一产物。
-3. **上下文易断**：反馈常靠事后贴文件或手动续跑，难以保证 agent 在同一 tool call / 同一会话中继续。
-4. **体验者角色未产品化**：没有桌面级工具把待命、收请求、真实体验和交反馈变成默认工作流。
+MVP 不做：
 
----
+- 内置完整智能体运行时；
+- 管理源码 checkout 或 workspace；
+- 要求源码 checkout 路径；
+- 云同步、账号体系、多人协作；
+- 移动端完整 App；
+- 独立常驻 MCP 网关；
+- 用 CLI resume 探针伪装宿主原生适配器；
+- 通用系统级听写工具；
+- LLM 后处理流水线。
 
-## 3. 方案
+## 核心对象
 
-**RambleDesk**：面向 agent 的体验式反馈工作台。
+| 对象 | 含义 |
+| --- | --- |
+| 反馈请求 | 宿主智能体发给人类的一次体验/检查任务，用 `request_id` 标识。 |
+| 反馈包 | 人类提交后生成的不可变证据，包含 markdown、manifest 和附件。 |
+| 宿主 | 宿主智能体运行环境，例如 Pi、Claude Code、Codex、OpenCode。 |
+| 宿主会话 | 宿主中的原对话、任务或运行上下文；同一会话可产生多次请求。 |
+| 适配器 | 宿主接入 RambleDesk 的完整流程。 |
+| 工作台 | 人类处理反馈请求的桌面 UI。 |
+| Ramble | 工作台中的自由反馈采集模式，包含语音、文字和截图。 |
 
-- **桌面应用（Tauri）**：待命、收请求、ramble（语音 + 截图）、管理 session 与历史。
-- **适配器**：通用 MCP adapter 覆盖普通 coding agent；Pi 原生 package 走本地
-  JSON API 并在 Pi 工具调用内等待人类反馈。
-- **核心协议**：
-  - `request_feedback`：幂等创建体验请求并立即返回 durable handle。
-  - `get_feedback`：兼容、断线恢复和诊断查询。
-  - `cancel_feedback`：显式取消。
-  - Pi package 专用 `/api/feedback/wait`：在 Pi tool call 内等待终态并返回完整
-    Feedback Package。
-- **反馈产物**：每个请求对应一个不可变目录（`feedback.md` +
-  `manifest.json` + 引用图片），URI 和路径作为 tool 结果返回。
-- **产品语义**：工作台开启 = 人类处于可被呼叫的待命状态；不是「人必须一直在工作台里操作」。
-- **连接语义**：请求状态先落盘，MCP 连接和工具调用只是交付方式；断线不删除或
-  改写请求。
-
-### 3.1 与 User_0 的关系
-
-- **起源与主战场**：coding agent 时代，开发者成为零号用户。
-- **能力本身**：可扩展的「Agent 呼叫人类做体验反馈」协议 + ramble 工作台，
-  不绑定只能写代码。
-- **边界**：User_0 只保留为方法论与 dogfooding 语境，不进入产品名、领域对象、
-  MCP schema 或默认数据目录。现行约束见 [CONSTITUTION.md](CONSTITUTION.md)。
-
----
-
-## 4. 范围（MVP）
+## MVP 范围
 
 | 模块 | 内容 |
-|------|------|
-| 平台 | 桌面：Windows / macOS / Linux（Tauri） |
-| 通用 MCP adapter | 同机 Streamable HTTP MCP，由工作台进程提供；引导配置到 Codex、Claude Code、OpenCode 等 |
-| Pi 原生 adapter | `packages/pi-rambledesk` Pi package，通过本地 JSON API 创建并等待反馈 |
-| 通用 MCP 工具 | `request_feedback`、`get_feedback`、`cancel_feedback` |
-| 本地 JSON API | `/api/feedback/request`、`/api/feedback/get`、`/api/feedback/wait`、`/api/feedback/cancel` |
-| Ramble | 语音录入与转写、截图、编辑 MD、提交回传 |
-| Session | 列表与详情（按 project + `agent` + `session_id` 区分）；当前未结束请求 |
-| 存储 | 请求与状态落盘；Feedback Package；基础日志 |
-| 恢复 | Request 持久化 + `request_id` 幂等重连；通用 MCP 手动恢复，Pi package 原地等待 |
-| 通知 | 系统通知 + 可选响铃；自定义 channel 预留 |
-| 分发 | 安装工作台 → 保持开启 → 配置 adapter → 正常使用 agent |
+| --- | --- |
+| 桌面工作台 | Inbox、Request Workspace、Resume Prompt、Settings / Adapters、Tray。 |
+| 通用 MCP 适配器 | MCP `request_feedback`、`get_feedback`、`cancel_feedback`；终态后手动 continuation。 |
+| Pi 原生适配器 | `packages/pi-rambledesk`；通过本地 JSON API request/get/wait/cancel；Pi tool call 内等待。 |
+| 本地服务 | loopback listener、auth、Host/Origin guard、`/api`、`/mcp` route mounting。 |
+| 存储 | 反馈请求、草稿、附件 metadata、宿主会话关联、不可变反馈包。 |
+| continuation | 通用 MCP 手动继续；Pi 无提交后继续；未来原生 continuation 预留。 |
+| 通知 | 系统通知和工作台提示，均为 best-effort side effect。 |
+| 设置 | 适配器安装结果与配置说明，作用域限于各适配器。 |
 
----
+## 主流程
 
-## 5. 非目标（MVP 不做）
+### 安装与待命
 
-- 独立常驻 MCP 网关、agent 自动拉起工作台
-- 依赖无限 HTTP 连接才能正确工作
-- 多人类角色（User_1 / User_2）与权限体系
-- 移动端完整 App
-- 内置完整 agent runtime（不替代 Codex / Claude Code）
-- 强制 Skill 注入（靠 tool description；Skill 可选后续）
-- 云端同步、账号体系、多人协作
-- LLM 后处理流水线（可后续加）
-- 通用系统级听写（不做 Wispr 类竞品）
-- 远程 Agent 与桌面之间的文件同步
+1. 安装并打开 RambleDesk。
+2. 在设置中配置通用 MCP 适配器，或安装 Pi 原生适配器。
+3. 工作台保持开启，可以托盘待命。
 
----
+### 通用 MCP 适配器
 
-## 6. 主流程
+1. 宿主智能体调用 `request_feedback`，携带 `host_id`、`host_session_id`、`what_happened`、`actions` 和可选 context hint。
+2. RambleDesk 持久化反馈请求并通知人类。
+3. 宿主智能体结束当前 turn。
+4. 人类在工作台中使用、检查、截图、ramble，并提交或取消。
+5. RambleDesk 发布反馈包。
+6. RambleDesk 显示手动 continuation 提示。
+7. 人类回到宿主。
+8. 宿主智能体调用 `get_feedback(request_id)` 读取反馈包并继续。
 
-### 6.1 安装与待命
+通用 MCP 适配器不承诺自动恢复原宿主上下文。
 
-1. 安装并打开 RambleDesk  
-2. 在设置中配置通用 MCP adapter，或在 Pi 中安装 RambleDesk package
-3. 工作台保持开启（可托盘），进入待命  
+### Pi 原生适配器
 
-### 6.2 请求反馈（通用 MCP adapter）
+1. Pi 调用 `request_ramble_feedback`。
+2. Pi package 调用 `/api/feedback/request` 创建请求。
+3. Pi package 在同一 tool call 中调用 `/api/feedback/wait`。
+4. 人类在工作台中提交或取消。
+5. wait 返回终态反馈包。
+6. Pi 在原 tool call 流程中继续。
 
-1. Agent 调用 `request_feedback`（含 `agent`、`session_id`、project、`what_happened`、`actions`，可选 `request_id`）
-2. 工作台通知用户，展示任务单；状态为 `waiting`  
-3. 用户按 `actions` 操作目标软件，边用边 ramble，按需截图  
-4. 草稿持续落盘；提交时原子生成 Feedback Package
-5. RambleDesk 显示通用恢复提示；用户回到宿主继续
-6. Agent 调用 `get_feedback`，获得 package URI/路径并继续迭代
+Pi 原生适配器不需要提交后的 continuation。
 
-### 6.3 请求反馈（Pi 原生 adapter）
+### 异常与恢复
 
-1. Pi 调用 `request_ramble_feedback`
-2. Pi package 通过 `/api/feedback/request` 创建请求，并在同一个 tool call 中调用
-   `/api/feedback/wait`
-3. 用户在 RambleDesk 中提交或取消
-4. Pi tool call 返回终态 package；模型立即继续原任务
+- 工作台未开启：适配器连接失败，宿主智能体可稍后复用同一 `request_id`。
+- 连接中断：只结束 transport attempt，不取消反馈请求。
+- 重复请求：相同 `request_id` + 相同不可变输入返回同一请求。
+- 输入冲突：相同 `request_id` + 不同不可变输入返回 conflict。
+- 已完成：返回原反馈包。
+- 已取消：返回取消状态，不隐式重新打开。
 
-### 6.4 结束通知
+## 桌面信息架构
 
-1. Agent 调用 `notify_complete`（`summary` 等）  
-2. 工作台通知并标记 session 结束  
-3. 用户可查看历史，无需强制再回复  
-
-### 6.5 异常与恢复
-
-- 工作台未开或已关 → MCP 不可用，Agent 可稍后用相同 `request_id` 重试。
-- MCP 断线或 Agent 超时只结束一次 Invocation Attempt；Feedback Request 状态不变。
-- 工作台重启从 SQLite 和 draft 目录恢复未结束请求。
-- 相同 `request_id` + 相同不可变输入重新调用会关联现有请求；输入不同返回 conflict。
-- 已 `completed` 的请求返回原结果；已 `cancelled` 的请求不隐式重新打开。
-
-状态机（简）：
-
-```
-waiting → in_progress → completed
-   │            │
-   └────────────┴──────→ cancelled
-```
-
-Request 的正确性不依赖单次 holding 连接。通用 MCP 恢复、Pi wait、兼容查询和
-重试必须读取同一持久化状态；客户端不得用固定间隔空轮询作为默认等待路径。
-
----
-
-## 7. 信息架构（桌面 UI）
-
-```
+```text
 RambleDesk
-├── 待命 / 首页
-│   ├── 当前状态（待处理数量）
-│   └── 快捷入口（待处理请求）
-├── 请求 / Session
-│   ├── Session 列表（agent、session_id、状态、时间）
-│   └── Session 详情
-│       ├── 当前/历史 request（what_happened、actions）
-│       └── 已提交反馈入口
-├── Ramble（单次请求工作区）
-│   ├── 任务单（actions 清单，只读）
-│   ├── 语音录制 / 转写
-│   ├── 截图管理
-│   ├── feedback.md 预览与轻编辑
+├── Inbox
+│   ├── 宿主 / 会话筛选栏
+│   └── 当前范围内的 requests 列表
+├── Request Workspace
+│   ├── 任务说明
+│   ├── actions 清单
+│   ├── ramble 录音/转写
+│   ├── 截图和附件
+│   ├── feedback.md 草稿
 │   └── 提交 / 取消
-├── 历史
-│   └── 按时间/项目浏览反馈文件夹
-├── 设置
-│   ├── 适配器（通用 MCP、Pi package）
-│   ├── 通知（响铃、系统通知、自定义 channel 预留）
-│   ├── 反馈存储路径约定
-│   └── 语音/转写相关选项
-└── 托盘
+├── Resume Prompt
+│   └── 通用 MCP 手动继续提示
+├── Settings / Adapters
+│   ├── 通用 MCP 适配器
+│   ├── Pi 原生适配器
+│   ├── 通知
+│   ├── 外观和语言
+│   └── 语音/转写
+└── Tray
     ├── 待处理角标
-    └── 打开主窗口 / 退出
+    └── 打开工作台 / 适配器设置 / 退出
 ```
 
-**关键对象**
+UI 只在通用适配器设置内展示 MCP 配置。终态请求与待处理请求按更新时间出现在同一
+requests 列表中，不按终态拆分独立分页。
 
-- **Session**：`agent` + `session_id`，状态如 idle / waiting / completed / ended  
-- **Request**：一次反馈请求，含 `request_id`、actions、状态（waiting / in_progress / completed / cancelled）
-- **Invocation Attempt**：一次 MCP 调用尝试，用于诊断连接/取消，不决定 Request 状态
-- **Feedback Package**：不可变目录（`feedback.md` + `manifest.json` + attachments），一次提交对应一份
+## 请求字段原则
 
-### 反馈落盘约定（默认）
+必需：
 
-项目内优先：
+- `host_id`
+- `host_session_id`
+- `what_happened`
+- `actions`
 
-```
-.rambledesk/feedback/<timestamp>-<request-id>/
+可选：
+
+- `request_id`
+- `title`
+- `context_refs`
+- `source_hint`
+
+原则：
+
+- 请求侧清晰、少发挥：`what_happened` + 可执行 `actions[]`。
+- 回复侧自由：人类可以 ramble、截图、批注，最终产物是 markdown + attachments。
+- `host_id` 与 `host_session_id` 只用于关联和 strategy 选择，不用于认证。
+- RambleDesk 不要求源码 checkout 路径。
+
+## 反馈包
+
+默认写入 RambleDesk 应用数据目录：
+
+```text
+<local-data>/RambleDesk/feedback/<timestamp>-<request-id>/
   feedback.md
   manifest.json
-  attachments/...
+  attachments/
 ```
 
-项目不可写或未提供时落到 RambleDesk 应用数据目录。MVP 仅保证同机、共享文件系统
-的 Agent 能访问返回路径。
+规则：
 
----
+- 每次 completed 提交对应一份不可变反馈包。
+- 宿主智能体继续前必须读取反馈包。
+- 返回路径只保证同机、共享文件系统可见。
+- 适配器提供的路径只能作为 context hint 或未来导出目标，不是协议前提。
 
-## 8. 请求字段原则
+## 成功指标
 
-- **请求侧固定、少发挥**：`what_happened` + 编号清晰的 `actions[]`，尽量可直接执行，减少人类思考。  
-- **回复侧自由**：人类用 ramble 表达，产物为 MD + 图。  
-- 多 agent：请求必须带 `agent`（如 `codex` / `claude_code`）与 `session_id`；
-  二者只用于关联，不是认证信息。
-
----
-
-## 9. 成功指标（草案）
-
-- 完整闭环次数（请求 → 提交 → agent 继续）  
-- 从通知到提交的中位时长  
-- request_id 重试/恢复成功率
-- agent 侧因工作台关闭导致的失败率（可观测即可，MVP 不优化到零）  
-
----
-
-## 10. 竞品差异（摘要）
-
-| 类型 | 解决什么 | 缺什么 |
-|------|----------|--------|
-| 听写 / Ramble 笔记 | 说得快、脑暴成文 | 无 agent 任务单与持久结果回传 |
-| HITL MCP | agent 能喊人 | 多为短文本/审批，非体验式图文 |
-| **RambleDesk** | agent 喊来的人，用真实使用 + ramble 交回正式产物 | — |
+- 完整闭环次数：request → human feedback → package → 宿主智能体继续。
+- 从通知到提交的中位时长。
+- `request_id` 重试/恢复成功率。
+- Pi 原生适配器 wait 成功率。
+- 通用 MCP 手动 continuation 成功率。
+- 因工作台未开启导致的失败率。

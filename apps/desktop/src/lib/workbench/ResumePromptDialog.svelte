@@ -1,6 +1,11 @@
 <script lang="ts">
-  import { t } from '../i18n'
-  import { locale } from '../preferences'
+  import { Check, Clipboard, ClipboardX } from '@lucide/svelte'
+
+  import { Badge } from '$lib/components/ui/badge'
+  import { Button } from '$lib/components/ui/button'
+  import * as Dialog from '$lib/components/ui/dialog'
+  import { t } from '$lib/i18n'
+  import { locale } from '$lib/preferences'
   import type { ResumePrompt } from './types'
 
   export let prompt: ResumePrompt
@@ -8,52 +13,68 @@
   export let onCopy: () => void = () => {}
   export let onDismiss: () => void = () => {}
 
+  const displayedPrompt = { ...prompt }
+  let dialogOpen = true
+  let closeDelivered = false
+
+  $: if (!dialogOpen && !closeDelivered) {
+    closeDelivered = true
+    onDismiss()
+  }
+
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
   }
+
+  function requestDismiss() {
+    dialogOpen = false
+  }
 </script>
 
-<div
-  class="resume-prompt-backdrop"
-  role="presentation"
-  onclick={(event) => {
-    if (event.target === event.currentTarget) onDismiss()
-  }}
->
-  <div
-    class="resume-prompt-dialog"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="resume-prompt-title"
-  >
-    <div class="resume-prompt-header">
-      <span class="resume-prompt-kicker">WAKE · GENERIC</span>
-      <h2 id="resume-prompt-title">{prompt.title}</h2>
-      <p>{prompt.body}</p>
-    </div>
-    <div class="resume-prompt-meta">
-      <span>{tr('宿主')}</span>
-      <strong>{prompt.host_label}</strong>
-      <span>request_id</span>
-      <code>{prompt.request_id}</code>
-    </div>
-    <label class="resume-prompt-label" for="resume-prompt-text">{tr('恢复提示（复制到宿主对话）')}</label>
-    <textarea
-      id="resume-prompt-text"
-      class="resume-prompt-text"
-      readonly
-      rows="4"
-      value={prompt.resume_prompt}
-    ></textarea>
-    <div class="resume-prompt-actions">
-      <button class="primary-button" onclick={onCopy}>
-        {copyState === 'copied'
-          ? tr('已复制')
-          : copyState === 'failed'
-            ? tr('复制失败，请手动选择')
-            : tr('复制恢复提示')}
-      </button>
-      <button class="secondary-button" onclick={onDismiss}>{tr('知道了')}</button>
-    </div>
-  </div>
-</div>
+<Dialog.Root bind:open={dialogOpen}>
+  <Dialog.Content class="max-w-lg gap-5 sm:max-w-lg">
+    <Dialog.Header>
+      <div class="mb-1 flex items-center gap-2">
+        <Badge variant="outline">Continuation</Badge>
+        <Badge variant="secondary">{tr('手动继续')}</Badge>
+      </div>
+      <Dialog.Title>{displayedPrompt.title}</Dialog.Title>
+      <Dialog.Description class="leading-5">{displayedPrompt.body}</Dialog.Description>
+    </Dialog.Header>
+
+    <dl class="grid grid-cols-[88px_minmax(0,1fr)] gap-x-3 gap-y-2 border-y py-3 text-xs">
+      <dt class="text-muted-foreground">{tr('宿主')}</dt>
+      <dd class="m-0 font-medium">{displayedPrompt.host_label}</dd>
+      <dt class="text-muted-foreground">request_id</dt>
+      <dd class="m-0 truncate font-mono text-[10px]" title={displayedPrompt.request_id}>
+        {displayedPrompt.request_id}
+      </dd>
+    </dl>
+
+    <label class="grid gap-2 text-xs font-medium" for="resume-prompt-text">
+      {tr('恢复提示（复制到宿主对话）')}
+      <textarea
+        id="resume-prompt-text"
+        class="min-h-24 w-full resize-none rounded-md border bg-muted/45 p-3 font-mono text-[11px] font-normal leading-5 outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+        readonly
+        value={displayedPrompt.resume_prompt}
+      ></textarea>
+    </label>
+
+    <Dialog.Footer>
+      <Button variant="outline" onclick={requestDismiss}>{tr('关闭')}</Button>
+      <Button onclick={onCopy}>
+        {#if copyState === 'copied'}
+          <Check data-icon="inline-start" />
+          {tr('已复制')}
+        {:else if copyState === 'failed'}
+          <ClipboardX data-icon="inline-start" />
+          {tr('复制失败')}
+        {:else}
+          <Clipboard data-icon="inline-start" />
+          {tr('复制恢复提示')}
+        {/if}
+      </Button>
+    </Dialog.Footer>
+  </Dialog.Content>
+</Dialog.Root>

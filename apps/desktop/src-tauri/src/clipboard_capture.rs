@@ -28,14 +28,14 @@ struct ClipboardMonitor {
 
 struct PendingImage {
     request_id: String,
-    ramble_session_id: String,
+    ramble_context_id: String,
     contents: Vec<u8>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct StartClipboardCaptureInput {
     request_id: String,
-    ramble_session_id: String,
+    ramble_context_id: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -43,21 +43,21 @@ pub struct StartClipboardCaptureInput {
 pub enum ClipboardCaptureEvent {
     Text {
         request_id: String,
-        ramble_session_id: String,
+        ramble_context_id: String,
         text: String,
         captured_at_ms: u64,
         truncated: bool,
     },
     Image {
         request_id: String,
-        ramble_session_id: String,
+        ramble_context_id: String,
         capture_id: String,
         file_name: String,
         captured_at_ms: u64,
     },
     Warning {
         request_id: String,
-        ramble_session_id: String,
+        ramble_context_id: String,
         message: String,
     },
 }
@@ -86,13 +86,13 @@ pub fn capture_clipboard_once(
                 capture_id.clone(),
                 PendingImage {
                     request_id: input.request_id.clone(),
-                    ramble_session_id: input.ramble_session_id.clone(),
+                    ramble_context_id: input.ramble_context_id.clone(),
                     contents,
                 },
             );
         return Ok(ClipboardCaptureEvent::Image {
             request_id: input.request_id,
-            ramble_session_id: input.ramble_session_id,
+            ramble_context_id: input.ramble_context_id,
             capture_id,
             file_name,
             captured_at_ms,
@@ -104,7 +104,7 @@ pub fn capture_clipboard_once(
         if !text.trim().is_empty() {
             return Ok(ClipboardCaptureEvent::Text {
                 request_id: input.request_id,
-                ramble_session_id: input.ramble_session_id,
+                ramble_context_id: input.ramble_context_id,
                 text,
                 captured_at_ms,
                 truncated,
@@ -135,7 +135,7 @@ pub async fn start_clipboard_capture(
     let worker_running = Arc::clone(&running);
     let images = Arc::clone(&state.images);
     let request_id = input.request_id;
-    let ramble_session_id = input.ramble_session_id;
+    let ramble_context_id = input.ramble_context_id;
     let worker = thread::Builder::new()
         .name("rambledesk-clipboard".to_owned())
         .spawn(move || {
@@ -143,7 +143,7 @@ pub async fn start_clipboard_capture(
                 app,
                 clipboard,
                 request_id,
-                ramble_session_id,
+                ramble_context_id,
                 worker_running,
                 images,
             );
@@ -177,7 +177,7 @@ pub async fn stop_clipboard_capture(
 pub fn read_clipboard_capture_image(
     capture_id: String,
     request_id: String,
-    ramble_session_id: String,
+    ramble_context_id: String,
     state: tauri::State<'_, ClipboardCaptureState>,
 ) -> Result<Response, String> {
     let images = state
@@ -187,7 +187,7 @@ pub fn read_clipboard_capture_image(
     let image = images
         .get(&capture_id)
         .ok_or_else(|| "剪贴板图片已过期或不存在".to_owned())?;
-    if image.request_id != request_id || image.ramble_session_id != ramble_session_id {
+    if image.request_id != request_id || image.ramble_context_id != ramble_context_id {
         return Err("剪贴板图片不属于当前 Ramble".to_owned());
     }
     Ok(Response::new(image.contents.clone()))
@@ -210,7 +210,7 @@ fn monitor_clipboard(
     app: AppHandle,
     mut clipboard: arboard::Clipboard,
     request_id: String,
-    ramble_session_id: String,
+    ramble_context_id: String,
     running: Arc<AtomicBool>,
     images: Arc<Mutex<HashMap<String, PendingImage>>>,
 ) {
@@ -233,7 +233,7 @@ fn monitor_clipboard(
                             capture_id.clone(),
                             PendingImage {
                                 request_id: request_id.clone(),
-                                ramble_session_id: ramble_session_id.clone(),
+                                ramble_context_id: ramble_context_id.clone(),
                                 contents,
                             },
                         );
@@ -241,7 +241,7 @@ fn monitor_clipboard(
                             &app,
                             ClipboardCaptureEvent::Image {
                                 request_id: request_id.clone(),
-                                ramble_session_id: ramble_session_id.clone(),
+                                ramble_context_id: ramble_context_id.clone(),
                                 capture_id,
                                 file_name,
                                 captured_at_ms: unix_time_ms(),
@@ -252,13 +252,13 @@ fn monitor_clipboard(
                 Ok(_) => emit_warning(
                     &app,
                     &request_id,
-                    &ramble_session_id,
+                    &ramble_context_id,
                     "剪贴板图片超过 20 MiB，已忽略",
                 ),
                 Err(error) => emit_warning(
                     &app,
                     &request_id,
-                    &ramble_session_id,
+                    &ramble_context_id,
                     &format!("剪贴板图片编码失败：{error}"),
                 ),
             }
@@ -272,7 +272,7 @@ fn monitor_clipboard(
                     &app,
                     ClipboardCaptureEvent::Text {
                         request_id: request_id.clone(),
-                        ramble_session_id: ramble_session_id.clone(),
+                        ramble_context_id: ramble_context_id.clone(),
                         text,
                         captured_at_ms: unix_time_ms(),
                         truncated,
@@ -302,12 +302,12 @@ fn truncate_text(text: String) -> (String, bool) {
     (truncated, was_truncated)
 }
 
-fn emit_warning(app: &AppHandle, request_id: &str, ramble_session_id: &str, message: &str) {
+fn emit_warning(app: &AppHandle, request_id: &str, ramble_context_id: &str, message: &str) {
     emit_event(
         app,
         ClipboardCaptureEvent::Warning {
             request_id: request_id.to_owned(),
-            ramble_session_id: ramble_session_id.to_owned(),
+            ramble_context_id: ramble_context_id.to_owned(),
             message: message.to_owned(),
         },
     );

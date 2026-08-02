@@ -12,14 +12,45 @@ use crate::{
 pub const MAX_ATTACHMENT_BYTES: usize = 20 * 1024 * 1024;
 pub const MAX_ATTACHMENT_COUNT: usize = 20;
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct FeedbackPackageAttachment {
+    pub id: String,
+    pub file_name: String,
+    pub media_type: String,
+    pub byte_size: u64,
+    pub sha256: String,
+    pub path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct FeedbackPackageManifest {
+    pub schema_version: u32,
+    pub request_id: String,
+    pub title: String,
+    pub host_id: String,
+    pub host_session_id: String,
+    pub source_hint: Option<String>,
+    pub submitted_at: String,
+    pub source_revision: u64,
+    pub draft_revision: u64,
+    pub feedback_markdown: String,
+    pub feedback_sha256: String,
+    pub attachments: Vec<FeedbackPackageAttachment>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct FeedbackPackageContent {
+    pub manifest: FeedbackPackageManifest,
+    pub markdown: String,
+    pub attachment_paths: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 pub struct FeedbackRequestSummary {
     pub request_id: String,
-    pub project_id: String,
-    pub project_name: String,
-    pub project_root_path: Option<String>,
-    pub agent: String,
-    pub session_id: String,
+    pub host_id: String,
+    pub host_session_id: String,
+    pub source_hint: Option<String>,
     pub title: String,
     pub what_happened: String,
     pub status: FeedbackStatus,
@@ -29,11 +60,21 @@ pub struct FeedbackRequestSummary {
     pub updated_at: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
+pub struct HostSessionSummary {
+    pub host_id: String,
+    pub host_session_id: String,
+    #[ts(type = "number")]
+    pub request_count: u64,
+    #[ts(type = "number")]
+    pub pending_count: u64,
+    pub updated_at: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS, Default)]
 pub struct ListFeedbackRequestsInput {
-    pub project_id: Option<String>,
-    pub agent: Option<String>,
-    pub session_id: Option<String>,
+    pub host_id: Option<String>,
+    pub host_session_id: Option<String>,
     pub status: Option<Vec<FeedbackStatus>>,
     #[ts(type = "number | null")]
     pub limit: Option<u32>,
@@ -48,9 +89,8 @@ pub struct ListFeedbackRequestsOutput {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FeedbackRequestQuery {
-    pub project_id: Option<String>,
-    pub agent: Option<String>,
-    pub session_id: Option<String>,
+    pub host_id: Option<String>,
+    pub host_session_id: Option<String>,
     pub statuses: Vec<FeedbackStatus>,
     pub limit: u32,
     pub before_updated_at: Option<String>,
@@ -174,9 +214,9 @@ pub struct SubmissionAttachment {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SubmissionPlan {
     pub request_id: String,
-    pub project_id: String,
-    pub agent: String,
-    pub session_id: String,
+    pub host_id: String,
+    pub host_session_id: String,
+    pub source_hint: Option<String>,
     pub title: String,
     pub what_happened: String,
     pub actions: Vec<ActionInput>,
@@ -208,7 +248,37 @@ pub trait FeedbackPackagePublisher: Send + Sync {
     ) -> Result<PublishedFeedbackPackage, RepositoryError>;
 }
 
+#[async_trait]
+pub trait FeedbackPackageReader: Send + Sync {
+    async fn read(
+        &self,
+        request_id: &str,
+        result: &FeedbackResultView,
+    ) -> Result<FeedbackPackageContent, RepositoryError>;
+}
+
 impl FeedbackApplication {
+    pub async fn read_feedback_package(
+        &self,
+        request: &crate::FeedbackRequestView,
+    ) -> Result<Option<FeedbackPackageContent>, ApplicationError> {
+        let Some(result) = request.feedback.as_ref() else {
+            return Ok(None);
+        };
+        self.package_reader
+            .read(&request.request_id, result)
+            .await
+            .map(Some)
+            .map_err(ApplicationError::from)
+    }
+
+    pub async fn list_host_sessions(&self) -> Result<Vec<HostSessionSummary>, ApplicationError> {
+        self.repository
+            .list_host_sessions()
+            .await
+            .map_err(ApplicationError::from)
+    }
+
     pub async fn list_open_feedback_requests(
         &self,
     ) -> Result<Vec<FeedbackRequestSummary>, ApplicationError> {
@@ -222,16 +292,11 @@ impl FeedbackApplication {
         &self,
         input: ListFeedbackRequestsInput,
     ) -> Result<ListFeedbackRequestsOutput, ApplicationError> {
-        let project_id = input
-            .project_id
-            .as_deref()
-            .map(|value| crate::feedback::canonical_uuid(value, "project_id"))
-            .transpose()?;
-        if let Some(agent) = input.agent.as_deref() {
-            crate::feedback::validate_text("agent", agent, 1, 200)?;
+        if let Some(host_id) = input.host_id.as_deref() {
+            crate::feedback::validate_text("host_id", host_id, 1, 200)?;
         }
-        if let Some(session_id) = input.session_id.as_deref() {
-            crate::feedback::validate_text("session_id", session_id, 1, 200)?;
+        if let Some(host_session_id) = input.host_session_id.as_deref() {
+            crate::feedback::validate_text("host_session_id", host_session_id, 1, 200)?;
         }
         let statuses = input
             .status
@@ -255,9 +320,8 @@ impl FeedbackApplication {
         let mut requests = self
             .repository
             .list_requests(FeedbackRequestQuery {
-                project_id,
-                agent: input.agent,
-                session_id: input.session_id,
+                host_id: input.host_id,
+                host_session_id: input.host_session_id,
                 statuses,
                 limit,
                 before_updated_at: cursor.as_ref().map(|value| value.updated_at.clone()),

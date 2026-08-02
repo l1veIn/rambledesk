@@ -2,7 +2,9 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 use clap::{Parser, Subcommand};
-use rambledesk_mcp::{AccessToken, ServerConfig, default_token_path, start_server};
+use rambledesk_local_server::{
+    AccessToken, DEFAULT_PORT, ServerConfig, default_token_path, start_server,
+};
 use rmcp::{
     ServiceExt,
     model::ClientInfo,
@@ -12,7 +14,7 @@ use rmcp::{
 };
 
 #[derive(Debug, Parser)]
-#[command(name = "rambledesk", version, about = "RambleDesk local MCP host")]
+#[command(name = "rambledesk", version, about = "RambleDesk local server")]
 struct Arguments {
     #[command(subcommand)]
     command: Command,
@@ -20,9 +22,9 @@ struct Arguments {
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Run the authenticated loopback MCP server without Tauri.
+    /// Run the authenticated loopback local server without Tauri.
     Serve {
-        #[arg(long, default_value_t = rambledesk_mcp::DEFAULT_PORT)]
+        #[arg(long, default_value_t = DEFAULT_PORT)]
         port: u16,
         #[arg(long)]
         token_file: Option<PathBuf>,
@@ -31,7 +33,7 @@ enum Command {
         #[arg(long)]
         print_token: bool,
     },
-    /// Connect with the official Rust SDK and list MCP tools.
+    /// Connect with the official Rust SDK and list Generic MCP Adapter tools.
     Smoke {
         #[arg(long)]
         endpoint: String,

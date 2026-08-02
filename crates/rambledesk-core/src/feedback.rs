@@ -1,6 +1,5 @@
 use std::{
     collections::{HashMap, HashSet},
-    path::Path,
     sync::{Arc, Mutex},
 };
 
@@ -16,17 +15,11 @@ use uuid::Uuid;
 
 use crate::workspace::{
     DraftView, FeedbackPackagePublisher, FeedbackRequestQuery, FeedbackRequestSummary,
-    NewAttachment, PublishedFeedbackPackage, StoredFeedbackWorkspace, SubmissionPlan,
+    HostSessionSummary, NewAttachment, PublishedFeedbackPackage, StoredFeedbackWorkspace,
+    SubmissionPlan,
 };
 
 const DEFAULT_POLL_AFTER_MS: u64 = 30_000;
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub struct ProjectInput {
-    pub project_id: Option<String>,
-    pub name: String,
-    pub root_path: Option<String>,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 pub struct ActionInput {
@@ -43,15 +36,16 @@ pub struct ContextRef {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct RequestFeedbackInput {
     pub request_id: Option<String>,
-    pub agent: String,
-    pub session_id: String,
-    pub project: ProjectInput,
+    pub host_id: String,
+    pub host_session_id: String,
     /// Short Ramble title shown in inboxes and workspace headings.
-    pub title: String,
+    pub title: Option<String>,
     pub what_happened: String,
     pub actions: Vec<ActionInput>,
     #[serde(default)]
     pub context_refs: Vec<ContextRef>,
+    #[serde(default)]
+    pub source_hint: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -119,7 +113,8 @@ pub struct FeedbackResultView {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 pub struct FeedbackRequestView {
     pub request_id: String,
-    pub project_id: String,
+    pub host_id: String,
+    pub host_session_id: String,
     pub status: FeedbackStatus,
     pub execution_mode: ExecutionMode,
     pub created_at: String,
@@ -133,28 +128,27 @@ pub struct FeedbackRequestView {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewFeedbackRequest {
     pub request_id: String,
-    pub project: ProjectInput,
-    pub candidate_project_id: String,
-    pub session_record_id: String,
-    pub agent: String,
-    pub external_session_id: String,
+    pub host_session_record_id: String,
+    pub host_id: String,
+    pub host_session_id: String,
     pub title: String,
     pub what_happened: String,
     pub actions: Vec<ActionInput>,
     pub context_refs: Vec<ContextRef>,
+    pub source_hint: Option<String>,
     pub created_at: String,
 }
 
 impl NewFeedbackRequest {
-    pub fn immutable_input_hash(&self, project_id: &str) -> String {
+    pub fn immutable_input_hash(&self) -> String {
         let bytes = serde_json::to_vec(&ImmutableRequest {
-            agent: &self.agent,
-            session_id: &self.external_session_id,
-            project_id,
+            host_id: &self.host_id,
+            host_session_id: &self.host_session_id,
             title: &self.title,
             what_happened: &self.what_happened,
             actions: &self.actions,
             context_refs: &self.context_refs,
+            source_hint: self.source_hint.as_deref(),
         })
         .expect("validated feedback input must serialize");
         hex::encode(Sha256::digest(bytes))
@@ -164,7 +158,8 @@ impl NewFeedbackRequest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoredFeedbackRequest {
     pub request_id: String,
-    pub project_id: String,
+    pub host_id: String,
+    pub host_session_id: String,
     pub status: FeedbackStatus,
     pub created_at: String,
     pub updated_at: String,
@@ -181,7 +176,8 @@ impl FeedbackRequestView {
     fn from_stored(value: StoredFeedbackRequest, execution_mode: ExecutionMode) -> Self {
         Self {
             request_id: value.request_id,
-            project_id: value.project_id,
+            host_id: value.host_id,
+            host_session_id: value.host_session_id,
             status: value.status,
             execution_mode,
             created_at: value.created_at,
@@ -227,12 +223,6 @@ impl FeedbackWaiters {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum RepositoryError {
-    #[error("project was not found")]
-    ProjectNotFound,
-    #[error("project path is unavailable")]
-    ProjectPathUnavailable,
-    #[error("project identity conflicts with the canonical path")]
-    ProjectConflict,
     #[error("feedback request was not found")]
     RequestNotFound,
     #[error("feedback request conflicts with an existing request")]
@@ -251,6 +241,8 @@ pub enum RepositoryError {
     AttachmentLimit,
     #[error("feedback package publication failed")]
     PackagePublish,
+    #[error("feedback package could not be read")]
+    PackageRead,
     #[error("stored feedback data is invalid")]
     CorruptData,
     #[error("storage operation failed")]
@@ -280,6 +272,8 @@ pub trait FeedbackRepository: Send + Sync {
         &self,
         query: FeedbackRequestQuery,
     ) -> Result<Vec<FeedbackRequestSummary>, RepositoryError>;
+
+    async fn list_host_sessions(&self) -> Result<Vec<HostSessionSummary>, RepositoryError>;
 
     async fn get_workspace(
         &self,
@@ -371,6 +365,7 @@ impl IdGenerator for UuidV7Generator {
 pub struct FeedbackApplication {
     pub(crate) repository: Arc<dyn FeedbackRepository>,
     pub(crate) publisher: Arc<dyn FeedbackPackagePublisher>,
+    pub(crate) package_reader: Arc<dyn crate::FeedbackPackageReader>,
     pub(crate) clock: Arc<dyn Clock>,
     pub(crate) ids: Arc<dyn IdGenerator>,
     waiters: Arc<FeedbackWaiters>,
@@ -384,10 +379,12 @@ impl FeedbackApplication {
     pub fn new(
         repository: Arc<dyn FeedbackRepository>,
         publisher: Arc<dyn FeedbackPackagePublisher>,
+        package_reader: Arc<dyn crate::FeedbackPackageReader>,
     ) -> Self {
         Self::with_runtime(
             repository,
             publisher,
+            package_reader,
             Arc::new(SystemClock),
             Arc::new(UuidV7Generator),
         )
@@ -396,12 +393,14 @@ impl FeedbackApplication {
     pub fn with_runtime(
         repository: Arc<dyn FeedbackRepository>,
         publisher: Arc<dyn FeedbackPackagePublisher>,
+        package_reader: Arc<dyn crate::FeedbackPackageReader>,
         clock: Arc<dyn Clock>,
         ids: Arc<dyn IdGenerator>,
     ) -> Self {
         Self {
             repository,
             publisher,
+            package_reader,
             clock,
             ids,
             waiters: Arc::new(FeedbackWaiters::default()),
@@ -410,13 +409,16 @@ impl FeedbackApplication {
 
     pub async fn request_feedback(
         &self,
-        mut input: RequestFeedbackInput,
+        input: RequestFeedbackInput,
     ) -> Result<FeedbackRequestView, ApplicationError> {
         validate_request_input(&input)?;
-        let title = input.title.trim().to_owned();
-        if let Some(project_id) = input.project.project_id.as_deref() {
-            input.project.project_id = Some(canonical_uuid(project_id, "project.project_id")?);
-        }
+        let title = input
+            .title
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(|| "Untitled feedback request".to_owned());
         let request_id = match input.request_id.as_deref() {
             Some(request_id) => canonical_uuid(request_id, "request_id")?,
             None => self.ids.new_id(),
@@ -426,15 +428,14 @@ impl FeedbackApplication {
             .repository
             .create_or_get_request(NewFeedbackRequest {
                 request_id,
-                project: input.project,
-                candidate_project_id: self.ids.new_id(),
-                session_record_id: self.ids.new_id(),
-                agent: input.agent,
-                external_session_id: input.session_id,
+                host_session_record_id: self.ids.new_id(),
+                host_id: input.host_id,
+                host_session_id: input.host_session_id,
                 title,
                 what_happened: input.what_happened,
                 actions: input.actions,
                 context_refs: input.context_refs,
+                source_hint: input.source_hint,
                 created_at: now,
             })
             .await
@@ -454,7 +455,7 @@ impl FeedbackApplication {
             .map_err(ApplicationError::from)
     }
 
-    pub async fn wait_for_feedback(
+    pub async fn wait_feedback(
         &self,
         input: GetFeedbackInput,
     ) -> Result<FeedbackRequestView, ApplicationError> {
@@ -530,19 +531,6 @@ impl ApplicationError {
 impl From<RepositoryError> for ApplicationError {
     fn from(value: RepositoryError) -> Self {
         let (code, message, retryable) = match value {
-            RepositoryError::ProjectNotFound => {
-                ("PROJECT_NOT_FOUND", "project was not found", false)
-            }
-            RepositoryError::ProjectPathUnavailable => (
-                "PROJECT_PATH_UNAVAILABLE",
-                "project root path is unavailable",
-                false,
-            ),
-            RepositoryError::ProjectConflict => (
-                "INVALID_ARGUMENT",
-                "project_id does not match the canonical project path",
-                false,
-            ),
             RepositoryError::RequestNotFound => {
                 ("REQUEST_NOT_FOUND", "feedback request was not found", false)
             }
@@ -586,6 +574,11 @@ impl From<RepositoryError> for ApplicationError {
                 "feedback package could not be published",
                 true,
             ),
+            RepositoryError::PackageRead => (
+                "FEEDBACK_PACKAGE_READ_FAILURE",
+                "feedback package could not be read or verified",
+                true,
+            ),
             RepositoryError::CorruptData | RepositoryError::Storage => {
                 ("STORAGE_FAILURE", "feedback storage operation failed", true)
             }
@@ -600,45 +593,33 @@ impl From<RepositoryError> for ApplicationError {
 
 #[derive(Serialize)]
 struct ImmutableRequest<'a> {
-    agent: &'a str,
-    session_id: &'a str,
-    project_id: &'a str,
+    host_id: &'a str,
+    host_session_id: &'a str,
     title: &'a str,
     what_happened: &'a str,
     actions: &'a [ActionInput],
     context_refs: &'a [ContextRef],
+    source_hint: Option<&'a str>,
 }
 
 fn validate_request_input(input: &RequestFeedbackInput) -> Result<(), ApplicationError> {
-    validate_text("agent", &input.agent, 1, 64)?;
-    validate_text("session_id", &input.session_id, 1, 256)?;
-    validate_text("project.name", &input.project.name, 1, 120)?;
-    validate_text("title", &input.title, 1, 160)?;
-    if input.title.trim().is_empty() {
-        return Err(ApplicationError::invalid_argument(
-            "title must contain visible characters",
-        ));
+    validate_text("host_id", &input.host_id, 1, 64)?;
+    validate_text("host_session_id", &input.host_session_id, 1, 256)?;
+    if let Some(title) = input.title.as_deref() {
+        validate_text("title", title, 1, 160)?;
+        if title.trim().is_empty() {
+            return Err(ApplicationError::invalid_argument(
+                "title must contain visible characters",
+            ));
+        }
     }
     validate_text("what_happened", &input.what_happened, 1, 12_000)?;
 
     if let Some(request_id) = input.request_id.as_deref() {
         canonical_uuid(request_id, "request_id")?;
     }
-    if let Some(project_id) = input.project.project_id.as_deref() {
-        canonical_uuid(project_id, "project.project_id")?;
-    }
-    if input.project.project_id.is_none() && input.project.root_path.is_none() {
-        return Err(ApplicationError::invalid_argument(
-            "project requires project_id or root_path",
-        ));
-    }
-    if let Some(root_path) = input.project.root_path.as_deref() {
-        validate_text("project.root_path", root_path, 1, 4_096)?;
-        if !Path::new(root_path).is_absolute() {
-            return Err(ApplicationError::invalid_argument(
-                "project.root_path must be absolute",
-            ));
-        }
+    if let Some(source_hint) = input.source_hint.as_deref() {
+        validate_text("source_hint", source_hint, 1, 4_096)?;
     }
 
     if !(1..=20).contains(&input.actions.len()) {
@@ -725,7 +706,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn validates_action_ids_and_absolute_project_paths() {
+    fn validates_action_id_format() {
         assert!(valid_action_id("open-onboarding_1"));
         assert!(!valid_action_id("Open"));
         assert!(!valid_action_id("-leading"));
@@ -752,7 +733,8 @@ mod tests {
     fn terminal_results_omit_poll_interval() {
         let value = serde_json::to_value(FeedbackRequestView::from(StoredFeedbackRequest {
             request_id: "request".to_owned(),
-            project_id: "project".to_owned(),
+            host_id: "generic".to_owned(),
+            host_session_id: "session".to_owned(),
             status: FeedbackStatus::Cancelled,
             created_at: "2026-07-29T00:00:00Z".to_owned(),
             updated_at: "2026-07-29T00:01:00Z".to_owned(),

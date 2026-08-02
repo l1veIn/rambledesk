@@ -1,2 +1,0 @@
-ALTER TABLE attachments ADD COLUMN file_name TEXT NOT NULL DEFAULT '';
-ALTER TABLE attachments ADD COLUMN byte_size INTEGER NOT NULL DEFAULT 0 CHECK (byte_size >= 0);

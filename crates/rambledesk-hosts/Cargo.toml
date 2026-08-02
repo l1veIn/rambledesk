@@ -1,0 +1,16 @@
+[package]
+name = "rambledesk-hosts"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+description = "Host profiles and continuation strategies for RambleDesk"
+
+[dependencies]
+rambledesk-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

@@ -14,7 +14,7 @@ export type RambleConsolePhase =
 
 export type RambleConsoleState = {
   phase: RambleConsolePhase
-  projectName: string
+  sourceLabel: string
   requestTitle: string
   recording: boolean
   busy: boolean

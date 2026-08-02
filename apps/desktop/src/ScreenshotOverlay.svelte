@@ -80,8 +80,8 @@
   let currentColor = colors[0]!
   let currentStrokeWidth = 4
   let gesture: Gesture | null = null
-  let historyPast: CaptureAnnotation[][] = []
-  let historyFuture: CaptureAnnotation[][] = []
+  let undoStack: CaptureAnnotation[][] = []
+  let redoStack: CaptureAnnotation[][] = []
   let textDraft: TextDraft | null = null
   let loading = true
   let completing = false
@@ -130,8 +130,8 @@
     resize()
     let disposed = false
     let unlisten: UnlistenFn | undefined
-    void listen<{ session_id: string }>('screen-capture-session-ready', (event) => {
-      void initialize(event.payload.session_id)
+    void listen<{ capture_session_id: string }>('screen-capture-session-ready', (event) => {
+      void initialize(event.payload.capture_session_id)
     }).then((dispose) => {
       if (disposed) dispose()
       else unlisten = dispose
@@ -151,7 +151,7 @@
   async function resumeActiveCapture() {
     try {
       const active = await invoke<ScreenCaptureView>('get_active_capture_info')
-      await initialize(active.session_id, active)
+      await initialize(active.capture_session_id, active)
     } catch {
       // The prewarmed editor normally has no active session until capture starts.
     }
@@ -168,8 +168,8 @@
     activeTool = 'select'
     selectedAnnotationId = null
     gesture = null
-    historyPast = []
-    historyFuture = []
+    undoStack = []
+    redoStack = []
     textDraft = null
     loading = true
     completing = false
@@ -181,15 +181,15 @@
     overflowPanelOpen = false
   }
 
-  async function initialize(sessionId: string, active?: ScreenCaptureView) {
-    if (initializingSessionId === sessionId) return
-    initializingSessionId = sessionId
+  async function initialize(captureSessionId: string, active?: ScreenCaptureView) {
+    if (initializingSessionId === captureSessionId) return
+    initializingSessionId = captureSessionId
     resetEditor()
     try {
       capture = active ?? (await invoke<ScreenCaptureView>('get_active_capture_info'))
-      if (capture.session_id !== sessionId) throw new Error('截图会话已变化，请重新截图')
+      if (capture.capture_session_id !== captureSessionId) throw new Error('截图会话已变化，请重新截图')
       const rgba = await invoke<ArrayBuffer>('read_capture_rgba_bytes', {
-        sessionId: capture.session_id,
+        captureSessionId: capture.capture_session_id,
       })
       const expectedBytes = capture.image_width * capture.image_height * 4
       if (rgba.byteLength !== expectedBytes) {
@@ -432,8 +432,8 @@
       completedGesture.annotationsSnapshot &&
       JSON.stringify(completedGesture.annotationsSnapshot) !== JSON.stringify(annotations)
     ) {
-      historyPast = [...historyPast, completedGesture.annotationsSnapshot]
-      historyFuture = []
+      undoStack = [...undoStack, completedGesture.annotationsSnapshot]
+      redoStack = []
     }
   }
 
@@ -512,25 +512,25 @@
   }
 
   function commitAnnotations(next: CaptureAnnotation[]) {
-    historyPast = [...historyPast, cloneAnnotations(annotations)]
-    historyFuture = []
+    undoStack = [...undoStack, cloneAnnotations(annotations)]
+    redoStack = []
     annotations = next
   }
 
   function undo() {
-    const previous = historyPast.at(-1)
+    const previous = undoStack.at(-1)
     if (!previous) return
-    historyPast = historyPast.slice(0, -1)
-    historyFuture = [cloneAnnotations(annotations), ...historyFuture]
+    undoStack = undoStack.slice(0, -1)
+    redoStack = [cloneAnnotations(annotations), ...redoStack]
     annotations = previous
     selectedAnnotationId = null
   }
 
   function redo() {
-    const next = historyFuture[0]
+    const next = redoStack[0]
     if (!next) return
-    historyFuture = historyFuture.slice(1)
-    historyPast = [...historyPast, cloneAnnotations(annotations)]
+    redoStack = redoStack.slice(1)
+    undoStack = [...undoStack, cloneAnnotations(annotations)]
     annotations = next
     selectedAnnotationId = null
   }
@@ -587,7 +587,7 @@
       const pngBase64 = exportAnnotatedCapture(sourceImage, selection, annotations)
       await invoke('complete_screen_capture', {
         input: {
-          session_id: capture.session_id,
+          capture_session_id: capture.capture_session_id,
           png_base64: pngBase64,
           copy_to_clipboard: copyToClipboard,
         },
@@ -607,7 +607,7 @@
       const pngBase64 = exportAnnotatedCapture(sourceImage, selection, annotations)
       await invoke('pin_screen_capture', {
         input: {
-          session_id: capture.session_id,
+          capture_session_id: capture.capture_session_id,
           png_base64: pngBase64,
           copy_to_clipboard: false,
         },
@@ -629,7 +629,7 @@
     try {
       await invoke('begin_scrolling_capture', {
         input: {
-          session_id: capture.session_id,
+          capture_session_id: capture.capture_session_id,
           selection: roundedRectangle(selection),
         },
       })
@@ -952,8 +952,8 @@
       {currentStrokeWidth}
       {colors}
       {strokeWidths}
-      canUndo={historyPast.length > 0}
-      canRedo={historyFuture.length > 0}
+      canUndo={undoStack.length > 0}
+      canRedo={redoStack.length > 0}
       canDelete={selectedAnnotationId !== null}
       onBeginDrag={beginToolbarDrag}
       onSetTool={setTool}

@@ -25,12 +25,10 @@ JSON API:
 
 - default API URL: `http://127.0.0.1:37642/api`
 - override API URL: `RAMBLEDESK_LOCAL_API_URL`
-- override MCP-style endpoint: `RAMBLEDESK_MCP_ENDPOINT` (`/mcp` is rewritten to
-  `/api`)
-- override port: `RAMBLEDESK_MCP_PORT`
-- token: `RAMBLEDESK_ACCESS_TOKEN`, `RAMBLEDESK_MCP_TOKEN`, or the RambleDesk
-  token file (`RAMBLEDESK_TOKEN_FILE` can override the path)
+- override port: `RAMBLEDESK_LOCAL_SERVER_PORT`
+- token: `RAMBLEDESK_LOCAL_SERVER_TOKEN`, or the RambleDesk local-server token
+  file (`RAMBLEDESK_LOCAL_SERVER_TOKEN_FILE` can override the path)
 
 The tool waits by holding the Pi tool execution, not by asking RambleDesk to
-wake Pi later. Once it returns `completed`, read
+continue Pi later. Once it returns `completed`, read
 `details.feedback_package.markdown` and `details.feedback_package.attachment_paths`.

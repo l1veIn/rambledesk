@@ -3,7 +3,8 @@ use std::path::{Path, PathBuf};
 use crate::{SqliteFeedbackStore, platform};
 use async_trait::async_trait;
 use rambledesk_core::{
-    FeedbackPackagePublisher, FeedbackResultView, PublishedFeedbackPackage, RepositoryError,
+    FeedbackPackageContent, FeedbackPackageManifest, FeedbackPackagePublisher,
+    FeedbackPackageReader, FeedbackResultView, PublishedFeedbackPackage, RepositoryError,
     SubmissionPlan,
 };
 use serde_json::json;
@@ -19,6 +20,74 @@ impl FeedbackPackagePublisher for SqliteFeedbackStore {
         let _guard = self.publish_lock.lock().await;
         publish_package(plan).await
     }
+}
+
+#[async_trait]
+impl FeedbackPackageReader for SqliteFeedbackStore {
+    async fn read(
+        &self,
+        request_id: &str,
+        result: &FeedbackResultView,
+    ) -> Result<FeedbackPackageContent, RepositoryError> {
+        read_package(request_id, result).await
+    }
+}
+
+async fn read_package(
+    request_id: &str,
+    result: &FeedbackResultView,
+) -> Result<FeedbackPackageContent, RepositoryError> {
+    let directory = Path::new(&result.directory_path);
+    let markdown_path = Path::new(&result.markdown_path);
+    let manifest_path = Path::new(&result.manifest_path);
+    if markdown_path.parent() != Some(directory)
+        || markdown_path.file_name().and_then(|value| value.to_str()) != Some("feedback.md")
+        || manifest_path.parent() != Some(directory)
+        || manifest_path.file_name().and_then(|value| value.to_str()) != Some("manifest.json")
+    {
+        return Err(RepositoryError::PackageRead);
+    }
+
+    let manifest_text = tokio::fs::read_to_string(manifest_path)
+        .await
+        .map_err(|_| RepositoryError::PackageRead)?;
+    let manifest: FeedbackPackageManifest =
+        serde_json::from_str(&manifest_text).map_err(|_| RepositoryError::PackageRead)?;
+    if manifest.schema_version != 1
+        || manifest.request_id != request_id
+        || manifest.feedback_markdown != "feedback.md"
+    {
+        return Err(RepositoryError::PackageRead);
+    }
+
+    let markdown = tokio::fs::read_to_string(markdown_path)
+        .await
+        .map_err(|_| RepositoryError::PackageRead)?;
+    if hex::encode(Sha256::digest(markdown.as_bytes())) != manifest.feedback_sha256 {
+        return Err(RepositoryError::PackageRead);
+    }
+
+    let mut attachment_paths = Vec::with_capacity(manifest.attachments.len());
+    for attachment in &manifest.attachments {
+        validate_attachment_relative_path(&attachment.path)
+            .map_err(|_| RepositoryError::PackageRead)?;
+        let path = directory.join(&attachment.path);
+        let bytes = tokio::fs::read(&path)
+            .await
+            .map_err(|_| RepositoryError::PackageRead)?;
+        if bytes.len() as u64 != attachment.byte_size
+            || hex::encode(Sha256::digest(&bytes)) != attachment.sha256
+        {
+            return Err(RepositoryError::PackageRead);
+        }
+        attachment_paths.push(path.to_string_lossy().into_owned());
+    }
+
+    Ok(FeedbackPackageContent {
+        manifest,
+        markdown,
+        attachment_paths,
+    })
 }
 
 async fn publish_package(
@@ -186,10 +255,10 @@ fn render_manifest(
     let value = json!({
         "schema_version": 1,
         "request_id": plan.request_id,
-        "project_id": plan.project_id,
         "title": plan.title,
-        "agent": plan.agent,
-        "session_id": plan.session_id,
+        "host_id": plan.host_id,
+        "host_session_id": plan.host_session_id,
+        "source_hint": plan.source_hint,
         "submitted_at": plan.submitted_at,
         "source_revision": plan.source_revision,
         "draft_revision": plan.source_revision,

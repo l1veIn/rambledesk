@@ -1,28 +1,20 @@
 PRAGMA foreign_keys = ON;
 
-CREATE TABLE projects (
+CREATE TABLE host_sessions (
     id TEXT PRIMARY KEY NOT NULL,
-    name TEXT NOT NULL,
-    root_path TEXT NOT NULL,
-    root_path_canonical TEXT NOT NULL UNIQUE,
+    host_id TEXT NOT NULL,
+    host_session_id TEXT NOT NULL,
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-);
-
-CREATE TABLE agent_sessions (
-    id TEXT PRIMARY KEY NOT NULL,
-    project_id TEXT NOT NULL REFERENCES projects(id),
-    agent TEXT NOT NULL,
-    external_session_id TEXT NOT NULL,
-    ended_at TEXT,
-    created_at TEXT NOT NULL,
-    UNIQUE(project_id, agent, external_session_id)
+    updated_at TEXT NOT NULL,
+    UNIQUE(host_id, host_session_id)
 );
 
 CREATE TABLE feedback_requests (
     id TEXT PRIMARY KEY NOT NULL,
-    session_id TEXT NOT NULL REFERENCES agent_sessions(id),
+    host_session_record_id TEXT NOT NULL REFERENCES host_sessions(id),
+    title TEXT NOT NULL,
     what_happened TEXT NOT NULL,
+    source_hint TEXT,
     status TEXT NOT NULL CHECK (status IN ('waiting', 'in_progress', 'completed', 'cancelled')),
     revision INTEGER NOT NULL DEFAULT 0 CHECK (revision >= 0),
     input_hash TEXT NOT NULL,
@@ -79,31 +71,13 @@ CREATE TABLE attachments (
     request_id TEXT NOT NULL REFERENCES feedback_requests(id) ON DELETE CASCADE,
     draft_path TEXT NOT NULL,
     published_path TEXT,
+    file_name TEXT NOT NULL,
+    byte_size INTEGER NOT NULL CHECK (byte_size >= 0),
     media_type TEXT NOT NULL,
     sha256 TEXT NOT NULL,
     position INTEGER NOT NULL CHECK (position >= 0),
     created_at TEXT NOT NULL,
     UNIQUE (request_id, position)
-);
-
-CREATE TABLE invocation_attempts (
-    id TEXT PRIMARY KEY NOT NULL,
-    request_id TEXT REFERENCES feedback_requests(id),
-    transport_request_id TEXT,
-    execution_mode TEXT NOT NULL CHECK (execution_mode IN ('poll', 'task')),
-    status TEXT NOT NULL CHECK (status IN ('open', 'responded', 'disconnected', 'cancelled', 'failed')),
-    opened_at TEXT NOT NULL,
-    closed_at TEXT,
-    error_code TEXT
-);
-
-CREATE TABLE completion_notifications (
-    id TEXT PRIMARY KEY NOT NULL,
-    session_id TEXT NOT NULL REFERENCES agent_sessions(id),
-    summary TEXT NOT NULL,
-    input_hash TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    UNIQUE (session_id, input_hash)
 );
 
 CREATE TABLE feedback_results (
@@ -116,21 +90,9 @@ CREATE TABLE feedback_results (
     published_at TEXT NOT NULL
 );
 
-CREATE TABLE outbox_events (
-    id TEXT PRIMARY KEY NOT NULL,
-    event_type TEXT NOT NULL,
-    aggregate_id TEXT NOT NULL,
-    payload_json TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    delivered_at TEXT,
-    attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
-    last_error_code TEXT
-);
-
 CREATE INDEX feedback_requests_status_updated
     ON feedback_requests(status, updated_at DESC, id DESC);
-CREATE INDEX agent_sessions_project
-    ON agent_sessions(project_id, created_at DESC);
-CREATE INDEX outbox_events_pending
-    ON outbox_events(delivered_at, created_at)
-    WHERE delivered_at IS NULL;
+CREATE INDEX feedback_requests_host_session_updated
+    ON feedback_requests(host_session_record_id, updated_at DESC);
+CREATE INDEX host_sessions_host
+    ON host_sessions(host_id, created_at DESC);

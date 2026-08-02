@@ -6,8 +6,8 @@
 
 - Scope: desktop title bar, settings entry points, floating Ramble console, Tauri icons, MCP feedback lifecycle, macOS compilation.
 - Findings: the console used a wide text layout and had no reliable drag surface; it was centered instead of kept out of the user's way; feedback completion required repeated polling; the macOS audio stream owner was not `Send`; web preview mounted native Tauri listeners unconditionally.
-- Fixes: replaced the console with a narrow vertical icon toolbar and explicit drag surface; positioned it at right-center with a 10 px logical inset; added `wait_for_feedback`; moved the native audio owner onto a dedicated thread; guarded native-only browser hooks; regenerated Tauri icon sizes from the current app icon.
-- Evidence: `pnpm check`, `pnpm test`, `pnpm build:web`, `cargo fmt --all --check`, `cargo test --workspace`, and strict workspace clippy passed. MCP self-test and the Inspector smoke test list and invoke `wait_for_feedback`.
+- Fixes: replaced the console with a narrow vertical icon toolbar and explicit drag surface; positioned it at right-center with a 10 px logical inset; added `wait_feedback`; moved the native audio owner onto a dedicated thread; guarded native-only browser hooks; regenerated Tauri icon sizes from the current app icon.
+- Evidence: `pnpm check`, `pnpm test`, `pnpm build:web`, `cargo fmt --all --check`, `cargo test --workspace`, and strict workspace clippy passed. MCP self-test and the Inspector smoke test list and invoke `wait_feedback`.
 
 ### Round 2: browser visual and interaction regression
 
@@ -25,14 +25,14 @@
 
 ### Goal
 
-- Exercise the current debug application bundle as a real operator and complete a feedback package while an MCP client is blocked in `wait_for_feedback`.
+- Exercise the current debug application bundle as a real operator and complete a feedback package while an MCP client is blocked in `wait_feedback`.
 
 ### Tester path
 
 1. Opened General and MCP settings from their dedicated entry points, switched languages and all appearance modes, and toggled notifications off and back on.
 2. Created durable local requests through the authenticated MCP endpoint and opened their full editor workspaces.
 3. Started Ramble, inspected and dragged the vertical console, paused and resumed speech capture, invoked capture, and exited back to the main window.
-4. Saved and submitted a rich-text feedback document while the Inspector client waited in `wait_for_feedback`.
+4. Saved and submitted a rich-text feedback document while the Inspector client waited in `wait_feedback`.
 
 ### Findings
 
@@ -55,7 +55,7 @@
 
 ### Next focus
 
-- Run the final automated regression, remove ignored design/history payloads from the final tree, and Squash merge the iteration.
+- Run the final automated regression, remove ignored obsolete design payloads from the final tree, and Squash merge the iteration.
 
 ## 2026-08-02 — adapter polish, Pi one-click install, and UI fixes
 
@@ -66,20 +66,20 @@
 ### Fixes shipped
 
 - Generic MCP adapter section is now a `<details>` collapsed by default; detection, selection, and install live inside the expanded body.
-- New `install_pi_package` Tauri command resolves `packages/pi-rambledesk` from the project root or by walking up from the working/executable directory, locates the `pi` CLI (`RAMBLEDESK_PI_BIN` override), and runs `pi install` with a success/error surface in the UI.
+- New `install_pi_package` Tauri command resolves `packages/pi-rambledesk` from the source checkout or by walking up from the working/executable directory, locates the `pi` CLI (`RAMBLEDESK_PI_BIN` override), and runs `pi install` with a success/error surface in the UI.
 - Settings backdrop now matches the window's 16 px bottom corner radius (the blur box previously showed square corners beyond the rounded window).
 - Settings sidebar nav now keeps the chevron flush right with the count badge grouped beside it instead of squeezing the arrow.
 - Removed the useless "Source package available" badge from the Pi native adapter card.
 - Settings dialog now closes on Escape.
-- Pi package (`packages/pi-rambledesk`) generates a stable per-call request id and retries transient connection failures with backoff, so the observed "request created but response lost" flake no longer produces duplicate requests; the server-side wait remains unbounded (verified: `wait_for_feedback` has no timeout).
-- `docs/UI_SHADCN_MIGRATION.md` written: full shadcn-svelte migration plan with token mapping, component inventory, step ordering, and acceptance gates. Migration is deferred to future iterations by operator decision.
+- Pi package (`packages/pi-rambledesk`) generates a stable per-call request id and retries transient connection failures with backoff, so the observed "request created but response lost" flake no longer produces duplicate requests; the server-side wait remains unbounded (verified: `wait_feedback` has no timeout).
+- `docs/UI_SHADCN_MIGRATION.md` written as the first migration baseline; the next refactor supersedes its deferred, style-only scope with a full workbench information-architecture rebuild.
 
 ### Validation
 
 - `cargo fmt --all --check`, strict workspace clippy, `cargo test --workspace --all-targets`, `pnpm check`, `pnpm test`, `pnpm build:web`, `pnpm contracts:check`, `pnpm mcp:self-test`, `pnpm mcp:inspector-smoke`, and `pnpm test:pi` all pass.
-- New unit tests cover package-dir resolution (project root, upward walk, missing) and Pi retry idempotency.
+- New unit tests cover package-dir resolution (checkout root, upward walk, missing) and Pi retry idempotency.
 
 ### Next focus
 
 - Operator will verify the waiting behavior of `request_ramble_feedback` (long wait without failure) and visually accept the modal corner fix, nav alignment, and badge removal.
-- Begin the shadcn-svelte migration per `docs/UI_SHADCN_MIGRATION.md`.
+- Execute the shadcn-svelte workbench rebuild per `docs/UI_SHADCN_MIGRATION.md`.

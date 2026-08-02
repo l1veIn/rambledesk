@@ -4304,23 +4304,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
-name = "rambledesk-adapters"
-version = "0.1.0"
-dependencies = [
- "rambledesk-core",
- "serde",
- "serde_json",
- "tempfile",
-]
-
-[[package]]
 name = "rambledesk-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
  "rambledesk-core",
- "rambledesk-mcp",
+ "rambledesk-local-server",
  "rambledesk-storage",
  "rmcp",
  "serde_json",
@@ -4357,9 +4347,9 @@ dependencies = [
  "objc2",
  "objc2-core-foundation",
  "objc2-core-graphics",
- "rambledesk-adapters",
  "rambledesk-core",
- "rambledesk-mcp",
+ "rambledesk-hosts",
+ "rambledesk-local-server",
  "rambledesk-speech",
  "rambledesk-storage",
  "rayon",
@@ -4383,7 +4373,17 @@ dependencies = [
 ]
 
 [[package]]
-name = "rambledesk-mcp"
+name = "rambledesk-hosts"
+version = "0.1.0"
+dependencies = [
+ "rambledesk-core",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "rambledesk-local-server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -4391,12 +4391,11 @@ dependencies = [
  "dirs",
  "hex",
  "rambledesk-core",
+ "rambledesk-mcp",
  "rambledesk-storage",
  "rand 0.10.2",
  "reqwest",
  "rmcp",
- "schemars 1.2.2",
- "serde",
  "serde_json",
  "subtle",
  "tempfile",
@@ -4405,6 +4404,16 @@ dependencies = [
  "tokio-util",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "rambledesk-mcp"
+version = "0.1.0"
+dependencies = [
+ "rambledesk-core",
+ "rmcp",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

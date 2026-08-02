@@ -1,0 +1,32 @@
+[package]
+name = "rambledesk-local-server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[dependencies]
+axum.workspace = true
+dirs.workspace = true
+hex.workspace = true
+rand.workspace = true
+rambledesk-core.workspace = true
+rambledesk-mcp.workspace = true
+rmcp.workspace = true
+serde_json.workspace = true
+subtle.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+anyhow.workspace = true
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
+rmcp = { workspace = true, features = [
+  "client",
+  "transport-streamable-http-client-reqwest",
+] }
+rambledesk-storage.workspace = true
+tempfile.workspace = true
+uuid.workspace = true

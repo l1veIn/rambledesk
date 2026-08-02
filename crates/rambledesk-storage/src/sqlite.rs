@@ -3,9 +3,10 @@ use std::{collections::HashSet, path::Path, sync::Arc, time::Duration};
 use async_trait::async_trait;
 use rambledesk_core::{
     ActionInput, AttachmentView, ContextRef, DraftView, FeedbackRepository, FeedbackRequestQuery,
-    FeedbackRequestSummary, FeedbackResultView, FeedbackStatus, MAX_ATTACHMENT_COUNT,
-    NewAttachment, NewFeedbackRequest, ProjectInput, PublishedFeedbackPackage, RepositoryError,
-    StoredFeedbackRequest, StoredFeedbackWorkspace, SubmissionAttachment, SubmissionPlan,
+    FeedbackRequestSummary, FeedbackResultView, FeedbackStatus, HostSessionSummary,
+    MAX_ATTACHMENT_COUNT, NewAttachment, NewFeedbackRequest, PublishedFeedbackPackage,
+    RepositoryError, StoredFeedbackRequest, StoredFeedbackWorkspace, SubmissionAttachment,
+    SubmissionPlan,
 };
 use sha2::{Digest, Sha256};
 use sqlx::{
@@ -90,7 +91,7 @@ impl SqliteFeedbackStore {
 
     pub fn into_application(self) -> rambledesk_core::FeedbackApplication {
         let store = Arc::new(self);
-        rambledesk_core::FeedbackApplication::new(store.clone(), store)
+        rambledesk_core::FeedbackApplication::new(store.clone(), store.clone(), store)
     }
 
     pub async fn close(&self) {
@@ -150,11 +151,7 @@ impl FeedbackRepository for SqliteFeedbackStore {
             .await
             .map_err(storage_error)?;
         if let Some(existing) = load_request_row(&mut transaction, &request.request_id).await? {
-            if !project_input_matches_existing(&request.project, &existing).await? {
-                return Err(RepositoryError::RequestConflict);
-            }
-            let project_id: String = existing.try_get("project_id").map_err(storage_error)?;
-            let input_hash = request.immutable_input_hash(&project_id);
+            let input_hash = request.immutable_input_hash();
             let stored_hash: String = existing.try_get("input_hash").map_err(storage_error)?;
             return if stored_hash == input_hash {
                 stored_request_from_row(&existing)
@@ -163,50 +160,42 @@ impl FeedbackRepository for SqliteFeedbackStore {
             };
         }
 
-        let project_id = resolve_project_in_transaction(
-            &mut transaction,
-            &request.project,
-            &request.candidate_project_id,
-            &request.created_at,
-        )
-        .await?;
-        let input_hash = request.immutable_input_hash(&project_id);
+        let input_hash = request.immutable_input_hash();
 
         sqlx::query(
-            "INSERT INTO agent_sessions \
-             (id, project_id, agent, external_session_id, created_at) \
-             VALUES (?1, ?2, ?3, ?4, ?5) \
-             ON CONFLICT(project_id, agent, external_session_id) DO NOTHING",
+            "INSERT INTO host_sessions \
+             (id, host_id, host_session_id, created_at, updated_at) \
+             VALUES (?1, ?2, ?3, ?4, ?4) \
+             ON CONFLICT(host_id, host_session_id) DO UPDATE SET updated_at = excluded.updated_at",
         )
-        .bind(&request.session_record_id)
-        .bind(&project_id)
-        .bind(&request.agent)
-        .bind(&request.external_session_id)
+        .bind(&request.host_session_record_id)
+        .bind(&request.host_id)
+        .bind(&request.host_session_id)
         .bind(&request.created_at)
         .execute(&mut *transaction)
         .await
         .map_err(storage_error)?;
-        let session_id: String = sqlx::query_scalar(
-            "SELECT id FROM agent_sessions \
-             WHERE project_id = ?1 AND agent = ?2 AND external_session_id = ?3",
+        let host_session_record_id: String = sqlx::query_scalar(
+            "SELECT id FROM host_sessions \
+             WHERE host_id = ?1 AND host_session_id = ?2",
         )
-        .bind(&project_id)
-        .bind(&request.agent)
-        .bind(&request.external_session_id)
+        .bind(&request.host_id)
+        .bind(&request.host_session_id)
         .fetch_one(&mut *transaction)
         .await
         .map_err(storage_error)?;
 
         let inserted = sqlx::query(
             "INSERT INTO feedback_requests \
-             (id, session_id, title, what_happened, status, input_hash, created_at, updated_at) \
-             VALUES (?1, ?2, ?3, ?4, 'waiting', ?5, ?6, ?6) \
+             (id, host_session_record_id, title, what_happened, source_hint, status, input_hash, created_at, updated_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, 'waiting', ?6, ?7, ?7) \
              ON CONFLICT(id) DO NOTHING",
         )
         .bind(&request.request_id)
-        .bind(session_id)
+        .bind(host_session_record_id)
         .bind(&request.title)
         .bind(&request.what_happened)
+        .bind(request.source_hint.as_deref())
         .bind(&input_hash)
         .bind(&request.created_at)
         .execute(&mut *transaction)
@@ -245,7 +234,8 @@ impl FeedbackRepository for SqliteFeedbackStore {
 
         let stored = StoredFeedbackRequest {
             request_id: request.request_id,
-            project_id,
+            host_id: request.host_id,
+            host_session_id: request.host_session_id,
             status: FeedbackStatus::Waiting,
             created_at: request.created_at.clone(),
             updated_at: request.created_at,
@@ -260,10 +250,10 @@ impl FeedbackRepository for SqliteFeedbackStore {
         request_id: &str,
     ) -> Result<StoredFeedbackRequest, RepositoryError> {
         let row = sqlx::query(
-            "SELECT r.id, s.project_id, r.status, r.created_at, r.updated_at, r.input_hash, \
+            "SELECT r.id, hs.host_id, hs.host_session_id, r.status, r.created_at, r.updated_at, r.input_hash, \
                     fr.package_uri, fr.directory_path, fr.markdown_path, fr.manifest_path \
              FROM feedback_requests r \
-             JOIN agent_sessions s ON s.id = r.session_id \
+             JOIN host_sessions hs ON hs.id = r.host_session_record_id \
              LEFT JOIN feedback_results fr ON fr.request_id = r.id \
              WHERE r.id = ?1",
         )
@@ -326,13 +316,11 @@ impl FeedbackRepository for SqliteFeedbackStore {
 
     async fn list_open_requests(&self) -> Result<Vec<FeedbackRequestSummary>, RepositoryError> {
         let rows = sqlx::query(
-            "SELECT r.id, s.project_id, p.name AS project_name, \
-                    p.root_path_canonical AS project_root_path, s.agent, \
-                    s.external_session_id, r.title, r.what_happened, r.status, \
+            "SELECT r.id, hs.host_id, hs.host_session_id, r.source_hint, \
+                    r.title, r.what_happened, r.status, \
                     r.revision, r.created_at, r.updated_at \
              FROM feedback_requests r \
-             JOIN agent_sessions s ON s.id = r.session_id \
-             JOIN projects p ON p.id = s.project_id \
+             JOIN host_sessions hs ON hs.id = r.host_session_record_id \
              WHERE r.status IN ('waiting', 'in_progress') \
              ORDER BY r.updated_at DESC, r.id DESC",
         )
@@ -347,28 +335,24 @@ impl FeedbackRepository for SqliteFeedbackStore {
         query: FeedbackRequestQuery,
     ) -> Result<Vec<FeedbackRequestSummary>, RepositoryError> {
         let rows = sqlx::query(
-            "SELECT r.id, s.project_id, p.name AS project_name, \
-                    p.root_path_canonical AS project_root_path, s.agent, \
-                    s.external_session_id, r.title, r.what_happened, r.status, \
+            "SELECT r.id, hs.host_id, hs.host_session_id, r.source_hint, \
+                    r.title, r.what_happened, r.status, \
                     r.revision, r.created_at, r.updated_at \
              FROM feedback_requests r \
-             JOIN agent_sessions s ON s.id = r.session_id \
-             JOIN projects p ON p.id = s.project_id \
-             WHERE (?1 IS NULL OR s.project_id = ?1) \
-               AND (?2 IS NULL OR s.agent = ?2) \
-               AND (?3 IS NULL OR s.external_session_id = ?3) \
-               AND ((?4 AND r.status = 'waiting') \
-                 OR (?5 AND r.status = 'in_progress') \
-                 OR (?6 AND r.status = 'completed') \
-                 OR (?7 AND r.status = 'cancelled')) \
-               AND (?8 IS NULL OR r.updated_at < ?8 \
-                 OR (r.updated_at = ?8 AND r.id < ?9)) \
+             JOIN host_sessions hs ON hs.id = r.host_session_record_id \
+             WHERE (?1 IS NULL OR hs.host_id = ?1) \
+               AND (?2 IS NULL OR hs.host_session_id = ?2) \
+               AND ((?3 AND r.status = 'waiting') \
+                 OR (?4 AND r.status = 'in_progress') \
+                 OR (?5 AND r.status = 'completed') \
+                 OR (?6 AND r.status = 'cancelled')) \
+               AND (?7 IS NULL OR r.updated_at < ?7 \
+                 OR (r.updated_at = ?7 AND r.id < ?8)) \
              ORDER BY r.updated_at DESC, r.id DESC \
-             LIMIT ?10",
+             LIMIT ?9",
         )
-        .bind(query.project_id.as_deref())
-        .bind(query.agent.as_deref())
-        .bind(query.session_id.as_deref())
+        .bind(query.host_id.as_deref())
+        .bind(query.host_session_id.as_deref())
         .bind(query.statuses.contains(&FeedbackStatus::Waiting))
         .bind(query.statuses.contains(&FeedbackStatus::InProgress))
         .bind(query.statuses.contains(&FeedbackStatus::Completed))
@@ -380,6 +364,23 @@ impl FeedbackRepository for SqliteFeedbackStore {
         .await
         .map_err(storage_error)?;
         rows.iter().map(summary_from_row).collect()
+    }
+
+    async fn list_host_sessions(&self) -> Result<Vec<HostSessionSummary>, RepositoryError> {
+        let rows = sqlx::query(
+            "SELECT hs.host_id, hs.host_session_id, \
+                    COUNT(r.id) AS request_count, \
+                    SUM(CASE WHEN r.status IN ('waiting', 'in_progress') THEN 1 ELSE 0 END) AS pending_count, \
+                    MAX(r.updated_at) AS updated_at \
+             FROM host_sessions hs \
+             JOIN feedback_requests r ON r.host_session_record_id = hs.id \
+             GROUP BY hs.id, hs.host_id, hs.host_session_id \
+             ORDER BY updated_at DESC, hs.host_id, hs.host_session_id",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(storage_error)?;
+        rows.iter().map(host_session_summary_from_row).collect()
     }
 
     async fn get_workspace(
@@ -705,11 +706,9 @@ impl FeedbackRepository for SqliteFeedbackStore {
         now: &str,
     ) -> Result<SubmissionPlan, RepositoryError> {
         let preflight = sqlx::query(
-            "SELECT r.status, p.root_path_canonical, \
+            "SELECT r.status, \
                     EXISTS(SELECT 1 FROM submission_plans sp WHERE sp.request_id = r.id) AS planned \
              FROM feedback_requests r \
-             JOIN agent_sessions s ON s.id = r.session_id \
-             JOIN projects p ON p.id = s.project_id \
              WHERE r.id = ?1",
         )
         .bind(request_id)
@@ -728,18 +727,9 @@ impl FeedbackRepository for SqliteFeedbackStore {
         let prepared_paths = if already_planned {
             None
         } else {
-            let project_root: String = preflight
-                .try_get("root_path_canonical")
-                .map_err(storage_error)?;
             Some(
-                prepare_publication_paths(
-                    request_id,
-                    publication_id,
-                    now,
-                    Path::new(&project_root),
-                    &self.app_data_root,
-                )
-                .await?,
+                prepare_publication_paths(request_id, publication_id, now, &self.app_data_root)
+                    .await?,
             )
         };
 
@@ -817,9 +807,9 @@ impl FeedbackRepository for SqliteFeedbackStore {
 
         let plan = SubmissionPlan {
             request_id: request_id.to_owned(),
-            project_id: row.try_get("project_id").map_err(storage_error)?,
-            agent: row.try_get("agent").map_err(storage_error)?,
-            session_id: row.try_get("external_session_id").map_err(storage_error)?,
+            host_id: row.try_get("host_id").map_err(storage_error)?,
+            host_session_id: row.try_get("host_session_id").map_err(storage_error)?,
+            source_hint: row.try_get("source_hint").map_err(storage_error)?,
             title: row.try_get("title").map_err(storage_error)?,
             what_happened: row.try_get("what_happened").map_err(storage_error)?,
             actions,
@@ -961,11 +951,9 @@ fn summary_from_row(row: &SqliteRow) -> Result<FeedbackRequestSummary, Repositor
     let status: String = row.try_get("status").map_err(storage_error)?;
     Ok(FeedbackRequestSummary {
         request_id: row.try_get("id").map_err(storage_error)?,
-        project_id: row.try_get("project_id").map_err(storage_error)?,
-        project_name: row.try_get("project_name").map_err(storage_error)?,
-        project_root_path: row.try_get("project_root_path").map_err(storage_error)?,
-        agent: row.try_get("agent").map_err(storage_error)?,
-        session_id: row.try_get("external_session_id").map_err(storage_error)?,
+        host_id: row.try_get("host_id").map_err(storage_error)?,
+        host_session_id: row.try_get("host_session_id").map_err(storage_error)?,
+        source_hint: row.try_get("source_hint").map_err(storage_error)?,
         title: row.try_get("title").map_err(storage_error)?,
         what_happened: row.try_get("what_happened").map_err(storage_error)?,
         status: FeedbackStatus::try_from(status.as_str())?,
@@ -1048,14 +1036,12 @@ async fn load_workspace_from_pool(
     request_id: &str,
 ) -> Result<StoredFeedbackWorkspace, RepositoryError> {
     let row = sqlx::query(
-        "SELECT r.id, s.project_id, p.name AS project_name, \
-                p.root_path_canonical AS project_root_path, s.agent, \
-                s.external_session_id, r.title, r.what_happened, r.status, \
+        "SELECT r.id, hs.host_id, hs.host_session_id, r.source_hint, \
+                r.title, r.what_happened, r.status, \
                 r.revision, r.created_at, r.updated_at, \
                 fr.package_uri, fr.directory_path, fr.markdown_path, fr.manifest_path \
          FROM feedback_requests r \
-         JOIN agent_sessions s ON s.id = r.session_id \
-         JOIN projects p ON p.id = s.project_id \
+         JOIN host_sessions hs ON hs.id = r.host_session_record_id \
          LEFT JOIN feedback_results fr ON fr.request_id = r.id \
          WHERE r.id = ?1",
     )
@@ -1155,15 +1141,13 @@ async fn load_submission_row(
 ) -> Result<Option<SqliteRow>, RepositoryError> {
     sqlx::query(
         "SELECT r.id, r.status, r.revision AS request_revision, r.title, r.what_happened, \
-                s.project_id, s.agent, \
-                s.external_session_id, p.root_path_canonical, \
+                r.source_hint, hs.host_id, hs.host_session_id, \
                 d.body_markdown, d.revision AS draft_revision, \
                 sp.publication_id, sp.source_revision, sp.body_sha256, sp.submitted_at, \
                 sp.package_uri, sp.directory_path, sp.temp_directory_path, \
                 sp.markdown_path, sp.manifest_path \
          FROM feedback_requests r \
-         JOIN agent_sessions s ON s.id = r.session_id \
-         JOIN projects p ON p.id = s.project_id \
+         JOIN host_sessions hs ON hs.id = r.host_session_record_id \
          LEFT JOIN drafts d ON d.request_id = r.id \
          LEFT JOIN submission_plans sp ON sp.request_id = r.id \
          WHERE r.id = ?1",
@@ -1237,9 +1221,9 @@ fn submission_plan_from_row(
 ) -> Result<SubmissionPlan, RepositoryError> {
     Ok(SubmissionPlan {
         request_id: row.try_get("id").map_err(storage_error)?,
-        project_id: row.try_get("project_id").map_err(storage_error)?,
-        agent: row.try_get("agent").map_err(storage_error)?,
-        session_id: row.try_get("external_session_id").map_err(storage_error)?,
+        host_id: row.try_get("host_id").map_err(storage_error)?,
+        host_session_id: row.try_get("host_session_id").map_err(storage_error)?,
+        source_hint: row.try_get("source_hint").map_err(storage_error)?,
         title: row.try_get("title").map_err(storage_error)?,
         what_happened: row.try_get("what_happened").map_err(storage_error)?,
         actions,
@@ -1271,10 +1255,9 @@ async fn prepare_publication_paths(
     request_id: &str,
     publication_id: &str,
     now: &str,
-    project_root: &Path,
     app_data_root: &Path,
 ) -> Result<PreparedPublicationPaths, RepositoryError> {
-    let feedback_root = select_feedback_root(project_root, app_data_root, publication_id).await?;
+    let feedback_root = prepare_app_feedback_root(app_data_root, publication_id).await?;
     let directory_name = format!("{}-{request_id}", compact_timestamp(now));
     let directory_path = feedback_root.join(directory_name);
     let temp_directory_path = feedback_root.join(format!(".{request_id}.tmp-{publication_id}"));
@@ -1289,15 +1272,10 @@ async fn prepare_publication_paths(
     })
 }
 
-async fn select_feedback_root(
-    project_root: &Path,
+async fn prepare_app_feedback_root(
     app_data_root: &Path,
     publication_id: &str,
 ) -> Result<std::path::PathBuf, RepositoryError> {
-    if let Ok(project_feedback) = prepare_project_feedback_root(project_root, publication_id).await
-    {
-        return Ok(project_feedback);
-    }
     let fallback = app_data_root.join("feedback");
     tokio::fs::create_dir_all(&fallback)
         .await
@@ -1308,48 +1286,6 @@ async fn select_feedback_root(
         .map_err(package_error)?;
     verify_writable(&canonical_fallback, publication_id).await?;
     Ok(canonical_fallback)
-}
-
-async fn prepare_project_feedback_root(
-    project_root: &Path,
-    publication_id: &str,
-) -> Result<std::path::PathBuf, RepositoryError> {
-    let canonical_root = tokio::fs::canonicalize(project_root)
-        .await
-        .map_err(package_error)?;
-    if canonical_root != project_root {
-        return Err(RepositoryError::PackagePublish);
-    }
-    assert_not_symlink(&canonical_root).await?;
-
-    let rambledesk_root = canonical_root.join(".rambledesk");
-    create_safe_directory(&rambledesk_root).await?;
-    let feedback_root = rambledesk_root.join("feedback");
-    create_safe_directory(&feedback_root).await?;
-
-    let canonical_feedback = tokio::fs::canonicalize(&feedback_root)
-        .await
-        .map_err(package_error)?;
-    if !canonical_feedback.starts_with(&canonical_root) {
-        return Err(RepositoryError::PackagePublish);
-    }
-    verify_writable(&canonical_feedback, publication_id).await?;
-    Ok(canonical_feedback)
-}
-
-async fn create_safe_directory(path: &Path) -> Result<(), RepositoryError> {
-    match tokio::fs::symlink_metadata(path).await {
-        Ok(metadata) => {
-            if metadata.file_type().is_symlink() || !metadata.is_dir() {
-                return Err(RepositoryError::PackagePublish);
-            }
-        }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            tokio::fs::create_dir(path).await.map_err(package_error)?;
-        }
-        Err(error) => return Err(package_error(error)),
-    }
-    Ok(())
 }
 
 async fn assert_not_symlink(path: &Path) -> Result<(), RepositoryError> {
@@ -1410,167 +1346,16 @@ fn package_error<T>(_error: T) -> RepositoryError {
     RepositoryError::PackagePublish
 }
 
-async fn resolve_project_in_transaction(
-    transaction: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
-    input: &ProjectInput,
-    candidate_project_id: &str,
-    now: &str,
-) -> Result<String, RepositoryError> {
-    let canonical = match input.root_path.as_deref() {
-        Some(root_path) => Some(canonical_project_path(root_path).await?),
-        None => None,
-    };
-
-    if let Some(project_id) = input.project_id.as_deref() {
-        let existing = sqlx::query("SELECT id, root_path_canonical FROM projects WHERE id = ?1")
-            .bind(project_id)
-            .fetch_optional(&mut **transaction)
-            .await
-            .map_err(storage_error)?;
-        if let Some(row) = existing {
-            if let Some(canonical) = canonical.as_deref() {
-                let stored: String = row.try_get("root_path_canonical").map_err(storage_error)?;
-                if stored != canonical {
-                    return Err(RepositoryError::ProjectConflict);
-                }
-            }
-            return Ok(project_id.to_owned());
-        }
-
-        let Some(canonical) = canonical.as_deref() else {
-            return Err(RepositoryError::ProjectNotFound);
-        };
-        if canonical_project_id(transaction, canonical)
-            .await?
-            .is_some()
-        {
-            return Err(RepositoryError::ProjectConflict);
-        }
-        let root_path = input
-            .root_path
-            .as_deref()
-            .ok_or(RepositoryError::ProjectPathUnavailable)?;
-        insert_project(
-            transaction,
-            project_id,
-            &input.name,
-            root_path,
-            canonical,
-            now,
-        )
-        .await?;
-        return Ok(project_id.to_owned());
-    }
-
-    let canonical = canonical
-        .as_deref()
-        .ok_or(RepositoryError::ProjectPathUnavailable)?;
-    if let Some(project_id) = canonical_project_id(transaction, canonical).await? {
-        return Ok(project_id);
-    }
-    let root_path = input
-        .root_path
-        .as_deref()
-        .ok_or(RepositoryError::ProjectPathUnavailable)?;
-    insert_project(
-        transaction,
-        candidate_project_id,
-        &input.name,
-        root_path,
-        canonical,
-        now,
-    )
-    .await?;
-    Ok(candidate_project_id.to_owned())
-}
-
-async fn project_input_matches_existing(
-    input: &ProjectInput,
-    row: &SqliteRow,
-) -> Result<bool, RepositoryError> {
-    let stored_project_id: String = row.try_get("project_id").map_err(storage_error)?;
-    if input
-        .project_id
-        .as_deref()
-        .is_some_and(|project_id| project_id != stored_project_id)
-    {
-        return Ok(false);
-    }
-
-    let Some(root_path) = input.root_path.as_deref() else {
-        return Ok(true);
-    };
-    let stored_root_path: String = row.try_get("root_path").map_err(storage_error)?;
-    let stored_canonical: String = row.try_get("root_path_canonical").map_err(storage_error)?;
-    match canonical_project_path(root_path).await {
-        Ok(canonical) => Ok(canonical == stored_canonical),
-        Err(RepositoryError::ProjectPathUnavailable) => Ok(root_path == stored_root_path),
-        Err(error) => Err(error),
-    }
-}
-
-async fn canonical_project_path(root_path: &str) -> Result<String, RepositoryError> {
-    let canonical = tokio::fs::canonicalize(root_path)
-        .await
-        .map_err(|_| RepositoryError::ProjectPathUnavailable)?;
-    let metadata = tokio::fs::metadata(&canonical)
-        .await
-        .map_err(|_| RepositoryError::ProjectPathUnavailable)?;
-    if !metadata.is_dir() {
-        return Err(RepositoryError::ProjectPathUnavailable);
-    }
-    canonical
-        .to_str()
-        .map(ToOwned::to_owned)
-        .ok_or(RepositoryError::ProjectPathUnavailable)
-}
-
-async fn canonical_project_id(
-    transaction: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
-    canonical: &str,
-) -> Result<Option<String>, RepositoryError> {
-    sqlx::query_scalar("SELECT id FROM projects WHERE root_path_canonical = ?1")
-        .bind(canonical)
-        .fetch_optional(&mut **transaction)
-        .await
-        .map_err(storage_error)
-}
-
-async fn insert_project(
-    transaction: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
-    project_id: &str,
-    name: &str,
-    root_path: &str,
-    canonical: &str,
-    now: &str,
-) -> Result<(), RepositoryError> {
-    sqlx::query(
-        "INSERT INTO projects \
-         (id, name, root_path, root_path_canonical, created_at, updated_at) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
-    )
-    .bind(project_id)
-    .bind(name)
-    .bind(root_path)
-    .bind(canonical)
-    .bind(now)
-    .execute(&mut **transaction)
-    .await
-    .map_err(storage_error)?;
-    Ok(())
-}
-
 async fn load_request_row(
     transaction: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     request_id: &str,
 ) -> Result<Option<SqliteRow>, RepositoryError> {
     sqlx::query(
-        "SELECT r.id, s.project_id, p.root_path, p.root_path_canonical, \
+        "SELECT r.id, hs.host_id, hs.host_session_id, \
                 r.status, r.created_at, r.updated_at, r.input_hash, \
                 fr.package_uri, fr.directory_path, fr.markdown_path, fr.manifest_path \
          FROM feedback_requests r \
-         JOIN agent_sessions s ON s.id = r.session_id \
-         JOIN projects p ON p.id = s.project_id \
+         JOIN host_sessions hs ON hs.id = r.host_session_record_id \
          LEFT JOIN feedback_results fr ON fr.request_id = r.id \
          WHERE r.id = ?1",
     )
@@ -1588,11 +1373,28 @@ fn stored_request_from_row(row: &SqliteRow) -> Result<StoredFeedbackRequest, Rep
     }
     Ok(StoredFeedbackRequest {
         request_id: row.try_get("id").map_err(storage_error)?,
-        project_id: row.try_get("project_id").map_err(storage_error)?,
+        host_id: row.try_get("host_id").map_err(storage_error)?,
+        host_session_id: row.try_get("host_session_id").map_err(storage_error)?,
         status,
         created_at: row.try_get("created_at").map_err(storage_error)?,
         updated_at: row.try_get("updated_at").map_err(storage_error)?,
         feedback,
+    })
+}
+
+fn host_session_summary_from_row(row: &SqliteRow) -> Result<HostSessionSummary, RepositoryError> {
+    let request_count = row
+        .try_get::<i64, _>("request_count")
+        .map_err(storage_error)?;
+    let pending_count = row
+        .try_get::<i64, _>("pending_count")
+        .map_err(storage_error)?;
+    Ok(HostSessionSummary {
+        host_id: row.try_get("host_id").map_err(storage_error)?,
+        host_session_id: row.try_get("host_session_id").map_err(storage_error)?,
+        request_count: u64::try_from(request_count).map_err(|_| RepositoryError::CorruptData)?,
+        pending_count: u64::try_from(pending_count).map_err(|_| RepositoryError::CorruptData)?,
+        updated_at: row.try_get("updated_at").map_err(storage_error)?,
     })
 }
 
@@ -1633,6 +1435,7 @@ fn storage_error<T>(_error: T) -> RepositoryError {
 fn repository_error_code(error: RepositoryError) -> &'static str {
     match error {
         RepositoryError::PackagePublish => "PACKAGE_PUBLISH_FAILURE",
+        RepositoryError::PackageRead => "FEEDBACK_PACKAGE_READ_FAILURE",
         RepositoryError::DraftConflict => "DRAFT_CONFLICT",
         RepositoryError::RequestNotFound => "REQUEST_NOT_FOUND",
         RepositoryError::RequestTerminal | RepositoryError::RequestAlreadyCompleted => {
@@ -1642,11 +1445,7 @@ fn repository_error_code(error: RepositoryError) -> &'static str {
         RepositoryError::AttachmentNotFound | RepositoryError::AttachmentLimit => {
             "RECOVERY_FAILURE"
         }
-        RepositoryError::ProjectNotFound
-        | RepositoryError::ProjectPathUnavailable
-        | RepositoryError::ProjectConflict
-        | RepositoryError::RequestConflict
-        | RepositoryError::DraftEmpty => "RECOVERY_FAILURE",
+        RepositoryError::RequestConflict | RepositoryError::DraftEmpty => "RECOVERY_FAILURE",
     }
 }
 
@@ -1684,9 +1483,8 @@ mod tests {
     use super::*;
     use rambledesk_core::{
         ActionInput, AddAttachmentInput, CancelFeedbackInput, ContextRef, ExecutionMode,
-        FeedbackStatus, GetFeedbackInput, ListFeedbackRequestsInput, ProjectInput,
-        RemoveAttachmentInput, ReorderAttachmentsInput, RequestFeedbackInput, SaveDraftInput,
-        SubmitFeedbackInput,
+        FeedbackStatus, GetFeedbackInput, ListFeedbackRequestsInput, RemoveAttachmentInput,
+        ReorderAttachmentsInput, RequestFeedbackInput, SaveDraftInput, SubmitFeedbackInput,
     };
     use tempfile::TempDir;
     use uuid::Uuid;
@@ -1694,19 +1492,13 @@ mod tests {
     struct TestWorkspace {
         _temp: TempDir,
         database: std::path::PathBuf,
-        project: std::path::PathBuf,
     }
 
     impl TestWorkspace {
         async fn new() -> Self {
             let temp = tempfile::tempdir().expect("temporary directory");
-            let project = temp.path().join("project");
-            tokio::fs::create_dir(&project)
-                .await
-                .expect("project directory");
             Self {
                 database: temp.path().join("state").join("rambledesk.sqlite3"),
-                project,
                 _temp: temp,
             }
         }
@@ -1714,14 +1506,9 @@ mod tests {
         fn request(&self, request_id: String) -> RequestFeedbackInput {
             RequestFeedbackInput {
                 request_id: Some(request_id),
-                agent: "test-agent".to_owned(),
-                session_id: "test-session".to_owned(),
-                project: ProjectInput {
-                    project_id: None,
-                    name: "Test project".to_owned(),
-                    root_path: Some(self.project.to_string_lossy().into_owned()),
-                },
-                title: "Persistence review".to_owned(),
+                host_id: "test-host".to_owned(),
+                host_session_id: "test-session".to_owned(),
+                title: Some("Persistence review".to_owned()),
                 what_happened: "Implemented the persistence kernel.".to_owned(),
                 actions: vec![ActionInput {
                     id: "review".to_owned(),
@@ -1731,6 +1518,7 @@ mod tests {
                     label: "diff".to_owned(),
                     uri: "file:///tmp/change.diff".to_owned(),
                 }],
+                source_hint: Some("storage test fixture".to_owned()),
             }
         }
     }
@@ -1756,15 +1544,6 @@ mod tests {
         assert_eq!(created, retried);
         assert_eq!(created.status, FeedbackStatus::Waiting);
 
-        tokio::fs::remove_dir(&workspace.project)
-            .await
-            .expect("remove project after request creation");
-        let recovered_without_path = application
-            .request_feedback(input.clone())
-            .await
-            .expect("retry request after project path disappears");
-        assert_eq!(created, recovered_without_path);
-
         let mut conflicting = input;
         conflicting.context_refs[0].uri = "file:///tmp/other.diff".to_owned();
         let conflict = application
@@ -1788,67 +1567,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn conflicting_retry_does_not_leave_an_orphan_project() {
-        let workspace = TestWorkspace::new().await;
-        let other_project = workspace._temp.path().join("other-project");
-        tokio::fs::create_dir(&other_project)
-            .await
-            .expect("other project directory");
-        let request_id = Uuid::now_v7().to_string();
-        let store = SqliteFeedbackStore::connect(&workspace.database)
-            .await
-            .expect("open store");
-        let application = store.clone().into_application();
-        application
-            .request_feedback(workspace.request(request_id.clone()))
-            .await
-            .expect("create request");
-
-        let mut conflicting = workspace.request(request_id);
-        conflicting.project.root_path = Some(other_project.to_string_lossy().into_owned());
-        let conflict = application
-            .request_feedback(conflicting)
-            .await
-            .expect_err("different project must conflict");
-        assert_eq!(conflict.code(), "REQUEST_CONFLICT");
-
-        let project_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM projects")
-            .fetch_one(&store.pool)
-            .await
-            .expect("project count");
-        assert_eq!(project_count, 1);
-        store.close().await;
-    }
-
-    #[tokio::test]
-    async fn explicit_project_ids_are_stored_and_compared_canonically() {
-        let workspace = TestWorkspace::new().await;
-        let request_id = Uuid::now_v7().to_string();
-        let canonical_project_id = Uuid::now_v7().to_string();
-        let mut input = workspace.request(request_id);
-        input.project.project_id = Some(canonical_project_id.to_uppercase());
-        let store = SqliteFeedbackStore::connect(&workspace.database)
-            .await
-            .expect("open store");
-        let application = store.clone().into_application();
-
-        let created = application
-            .request_feedback(input.clone())
-            .await
-            .expect("create request");
-        assert_eq!(created.project_id, canonical_project_id);
-
-        input.project.project_id = Some(created.project_id.clone());
-        input.project.root_path = None;
-        let retried = application
-            .request_feedback(input)
-            .await
-            .expect("retry with canonical project id");
-        assert_eq!(created, retried);
-        store.close().await;
-    }
-
-    #[tokio::test]
     async fn repeated_cancel_preserves_the_first_reason_and_terminal_state() {
         let workspace = TestWorkspace::new().await;
         let request_id = Uuid::now_v7().to_string();
@@ -1864,7 +1582,7 @@ mod tests {
         let first = application
             .cancel_feedback(CancelFeedbackInput {
                 request_id: request_id.clone(),
-                reason: "The agent no longer needs feedback.".to_owned(),
+                reason: "The host no longer needs feedback.".to_owned(),
             })
             .await
             .expect("cancel request");
@@ -1884,7 +1602,7 @@ mod tests {
                 .fetch_one(&store.pool)
                 .await
                 .expect("stored cancel reason");
-        assert_eq!(reason, "The agent no longer needs feedback.");
+        assert_eq!(reason, "The host no longer needs feedback.");
 
         let terminal_update =
             sqlx::query("UPDATE feedback_requests SET status = 'waiting' WHERE id = ?1")
@@ -1896,7 +1614,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cancellation_wakes_all_feedback_waiters() {
+    async fn cancellation_releases_all_feedback_waiters() {
         let workspace = TestWorkspace::new().await;
         let request_id = Uuid::now_v7().to_string();
         let store = SqliteFeedbackStore::connect(&workspace.database)
@@ -1912,7 +1630,7 @@ mod tests {
         let left_request_id = request_id.clone();
         let left = tokio::spawn(async move {
             left_application
-                .wait_for_feedback(GetFeedbackInput {
+                .wait_feedback(GetFeedbackInput {
                     request_id: left_request_id,
                 })
                 .await
@@ -1921,7 +1639,7 @@ mod tests {
         let right_request_id = request_id.clone();
         let right = tokio::spawn(async move {
             right_application
-                .wait_for_feedback(GetFeedbackInput {
+                .wait_feedback(GetFeedbackInput {
                     request_id: right_request_id,
                 })
                 .await
@@ -1976,7 +1694,7 @@ mod tests {
             restarted
                 .clone()
                 .into_application()
-                .wait_for_feedback(GetFeedbackInput { request_id }),
+                .wait_feedback(GetFeedbackInput { request_id }),
         )
         .await
         .expect("terminal wait must not block")
@@ -2164,7 +1882,7 @@ mod tests {
         assert!(manifest["feedback_sha256"].as_str().is_some());
 
         let directory_count =
-            std::fs::read_dir(workspace.project.join(".rambledesk").join("feedback"))
+            std::fs::read_dir(workspace.database.parent().unwrap().join("feedback"))
                 .expect("feedback root")
                 .filter_map(Result::ok)
                 .filter(|entry| !entry.file_name().to_string_lossy().starts_with('.'))
@@ -2225,7 +1943,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn missing_project_root_uses_frozen_app_data_fallback() {
+    async fn publishes_feedback_package_under_app_data() {
         let workspace = TestWorkspace::new().await;
         let request_id = Uuid::now_v7().to_string();
         let store = SqliteFeedbackStore::connect(&workspace.database)
@@ -2239,85 +1957,24 @@ mod tests {
         let draft = application
             .save_feedback_draft(SaveDraftInput {
                 request_id: request_id.clone(),
-                body_markdown: "The project directory disappeared.".to_owned(),
+                body_markdown: "Feedback packages are stored under app data.".to_owned(),
                 expected_revision: 0,
             })
             .await
             .expect("save draft");
-        tokio::fs::remove_dir(&workspace.project)
-            .await
-            .expect("remove project");
         let completed = application
             .submit_feedback(SubmitFeedbackInput {
                 request_id,
                 expected_revision: draft.saved_revision,
             })
             .await
-            .expect("submit via fallback");
+            .expect("submit");
         let directory = completed.feedback.expect("feedback result").directory_path;
-        let fallback_root =
+        let app_feedback_root =
             tokio::fs::canonicalize(workspace.database.parent().unwrap().join("feedback"))
                 .await
-                .expect("canonical fallback");
-        assert!(Path::new(&directory).starts_with(fallback_root));
-        store.close().await;
-    }
-
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn symlinked_project_feedback_directory_uses_app_data_fallback() {
-        use std::os::unix::fs::symlink;
-
-        let workspace = TestWorkspace::new().await;
-        let outside = workspace._temp.path().join("outside");
-        tokio::fs::create_dir(&outside)
-            .await
-            .expect("outside directory");
-        tokio::fs::create_dir(workspace.project.join(".rambledesk"))
-            .await
-            .expect("metadata directory");
-        symlink(
-            &outside,
-            workspace.project.join(".rambledesk").join("feedback"),
-        )
-        .expect("feedback symlink");
-
-        let request_id = Uuid::now_v7().to_string();
-        let store = SqliteFeedbackStore::connect(&workspace.database)
-            .await
-            .expect("open store");
-        let application = store.clone().into_application();
-        application
-            .request_feedback(workspace.request(request_id.clone()))
-            .await
-            .expect("create request");
-        let draft = application
-            .save_feedback_draft(SaveDraftInput {
-                request_id: request_id.clone(),
-                body_markdown: "A symlink must never escape the project.".to_owned(),
-                expected_revision: 0,
-            })
-            .await
-            .expect("save draft");
-        let completed = application
-            .submit_feedback(SubmitFeedbackInput {
-                request_id,
-                expected_revision: draft.saved_revision,
-            })
-            .await
-            .expect("submit via fallback");
-        let directory = completed.feedback.expect("feedback").directory_path;
-        let fallback_root =
-            tokio::fs::canonicalize(workspace.database.parent().unwrap().join("feedback"))
-                .await
-                .expect("canonical fallback");
-        assert!(Path::new(&directory).starts_with(fallback_root));
-        assert_eq!(
-            std::fs::read_dir(&outside)
-                .expect("outside remains readable")
-                .count(),
-            0
-        );
+                .expect("canonical app data feedback root");
+        assert!(Path::new(&directory).starts_with(app_feedback_root));
         store.close().await;
     }
 
@@ -2643,7 +2300,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn feedback_history_filters_and_paginates_without_duplicates() {
+    async fn request_list_filters_and_paginates_without_duplicates() {
         let workspace = TestWorkspace::new().await;
         let store = SqliteFeedbackStore::connect(&workspace.database)
             .await
@@ -2658,7 +2315,7 @@ mod tests {
 
         let first = application
             .list_feedback_requests(ListFeedbackRequestsInput {
-                agent: Some("test-agent".to_owned()),
+                host_id: Some("test-host".to_owned()),
                 limit: Some(2),
                 ..Default::default()
             })
@@ -2668,7 +2325,7 @@ mod tests {
         let cursor = first.next_cursor.expect("next cursor");
         let second = application
             .list_feedback_requests(ListFeedbackRequestsInput {
-                agent: Some("test-agent".to_owned()),
+                host_id: Some("test-host".to_owned()),
                 limit: Some(2),
                 cursor: Some(cursor),
                 ..Default::default()
@@ -2692,6 +2349,62 @@ mod tests {
             .await
             .expect_err("invalid cursor");
         assert_eq!(invalid.code(), "INVALID_ARGUMENT");
+        store.close().await;
+    }
+
+    #[tokio::test]
+    async fn host_session_navigation_reports_request_and_pending_counts() {
+        let workspace = TestWorkspace::new().await;
+        let store = SqliteFeedbackStore::connect(&workspace.database)
+            .await
+            .expect("open store");
+        let application = store.clone().into_application();
+
+        application
+            .request_feedback(workspace.request(Uuid::now_v7().to_string()))
+            .await
+            .expect("first request");
+
+        let second_id = Uuid::now_v7().to_string();
+        let mut second = workspace.request(second_id.clone());
+        second.host_session_id = "second-session".to_owned();
+        application
+            .request_feedback(second)
+            .await
+            .expect("second request");
+        application
+            .cancel_feedback(CancelFeedbackInput {
+                request_id: second_id,
+                reason: "Navigation fixture completed.".to_owned(),
+            })
+            .await
+            .expect("cancel second request");
+
+        let mut third = workspace.request(Uuid::now_v7().to_string());
+        third.host_id = "other-host".to_owned();
+        third.host_session_id = "other-session".to_owned();
+        application
+            .request_feedback(third)
+            .await
+            .expect("third request");
+
+        let sessions = application
+            .list_host_sessions()
+            .await
+            .expect("list host sessions");
+        assert_eq!(sessions.len(), 3);
+        let first = sessions
+            .iter()
+            .find(|session| session.host_session_id == "test-session")
+            .expect("first session");
+        assert_eq!(first.request_count, 1);
+        assert_eq!(first.pending_count, 1);
+        let second = sessions
+            .iter()
+            .find(|session| session.host_session_id == "second-session")
+            .expect("second session");
+        assert_eq!(second.request_count, 1);
+        assert_eq!(second.pending_count, 0);
         store.close().await;
     }
 
@@ -2765,25 +2478,21 @@ mod tests {
         .await
         .expect("schema objects");
         for expected in [
-            "projects",
-            "agent_sessions",
+            "host_sessions",
             "feedback_requests",
             "request_actions",
             "request_context_refs",
             "drafts",
             "attachments",
-            "invocation_attempts",
-            "completion_notifications",
             "feedback_results",
             "submission_plans",
-            "outbox_events",
             "feedback_requests_completed_is_terminal",
             "feedback_requests_cancelled_is_terminal",
             "feedback_requests_status_updated",
+            "feedback_requests_host_session_updated",
             "drafts_locked_after_submission_plan_update",
             "drafts_locked_after_submission_plan_delete",
-            "agent_sessions_project",
-            "outbox_events_pending",
+            "host_sessions_host",
         ] {
             assert!(
                 names.iter().any(|name| name == expected),

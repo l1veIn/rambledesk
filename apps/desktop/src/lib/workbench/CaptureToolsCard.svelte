@@ -1,6 +1,9 @@
 <script lang="ts">
-  import { t } from '../i18n'
-  import { locale } from '../preferences'
+  import { Camera, ClipboardPaste, Paperclip } from '@lucide/svelte'
+
+  import { Button } from '$lib/components/ui/button'
+  import { t } from '$lib/i18n'
+  import { locale } from '$lib/preferences'
 
   export let attachmentCount = 0
   export let attachmentBusy = false
@@ -17,47 +20,52 @@
   }
 </script>
 
-<section class="tool-card">
-  <div class="rail-heading">
-    <div>
-      <p class="eyebrow">CAPTURE</p>
-      <strong>{tr('添加上下文')}</strong>
-    </div>
-    <span>{attachmentCount}</span>
-  </div>
-  <div class="tool-grid">
-    <button
+<section class="border-b p-4">
+  <header class="mb-2 flex items-center gap-2">
+    <Paperclip class="size-4 text-muted-foreground" />
+    <strong class="text-xs font-medium">{tr('添加上下文')}</strong>
+    <span class="ml-auto text-[10px] tabular-nums text-muted-foreground">{attachmentCount}</span>
+  </header>
+  <div class="grid grid-cols-3 gap-1.5">
+    <Button
+      variant="outline"
+      class="h-14 flex-col gap-1 px-1 text-[10px]"
       disabled={!rambleEngaged || attachmentBusy || readOnly}
       onclick={onScreenCapture}
-      title="Ctrl + Shift + 1"
+      title={tr('截图')}
     >
-      <span class="tool-icon">⌗</span>
-      <strong>{tr('截图')}</strong>
-      <small>{tr('区域捕获')}</small>
-    </button>
-    <button
+      <Camera class="size-4" />
+      {tr('截图')}
+    </Button>
+    <Button
+      variant="outline"
+      class="h-14 flex-col gap-1 px-1 text-[10px]"
       disabled={!rambleEngaged || attachmentBusy || readOnly}
       onclick={onImportClipboard}
+      title={tr('剪贴板')}
     >
-      <span class="tool-icon">▣</span>
-      <strong>{tr('剪贴板')}</strong>
-      <small>{tr('显式导入')}</small>
-    </button>
-    <button
+      <ClipboardPaste class="size-4" />
+      {tr('剪贴板')}
+    </Button>
+    <Button
+      variant="outline"
+      class="h-14 flex-col gap-1 px-1 text-[10px]"
       disabled={attachmentBusy || readOnly}
       onclick={() => attachmentInput.click()}
+      title={tr('选择文件')}
     >
-      <span class="tool-icon">＋</span>
-      <strong>{tr('文件')}</strong>
-      <small>{tr('选择或拖入')}</small>
-    </button>
+      <Paperclip class="size-4" />
+      {tr('文件')}
+    </Button>
   </div>
   <input
     bind:this={attachmentInput}
-    class="visually-hidden"
+    class="sr-only"
     type="file"
     multiple
     onchange={onFileSelection}
   />
-  <p class="tool-hint">{tr('不会监听剪贴板；只有点击导入时才读取一次当前内容。')}</p>
+  <p class="m-0 mt-2 text-[9px] leading-4 text-muted-foreground">
+    {tr('剪贴板只在点击导入时读取一次。')}
+  </p>
 </section>

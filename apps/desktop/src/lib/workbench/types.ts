@@ -15,10 +15,12 @@ export type ResumePrompt = {
   reason: 'completed' | 'cancelled'
 }
 
-export type AdapterPresentation = {
+export type HostProfile = {
   id: string
   label: string
   icon_svg: string
+  default_adapter: 'generic_mcp' | 'pi_native'
+  continuation_mode: 'not_required' | 'manual' | 'native'
 }
 
 export type FeedbackEditorHandle = {

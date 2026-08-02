@@ -11,11 +11,9 @@ import {
 function request(requestId: string): FeedbackRequestSummary {
   return {
     request_id: requestId,
-    project_id: 'project',
-    project_name: 'Private project',
-    project_root_path: null,
-    agent: 'agent',
-    session_id: 'session',
+    host_id: 'test-host',
+    host_session_id: 'session',
+    source_hint: 'Private source',
     title: 'Test Ramble',
     what_happened: 'Sensitive summary',
     status: 'waiting',

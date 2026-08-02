@@ -5,7 +5,7 @@
   import { onMount } from 'svelte'
 
   type ScrollCaptureInfo = {
-    session_id: string
+    capture_session_id: string
     frame_count: number
     width: number
     height: number
@@ -53,7 +53,7 @@
     statusMessage = '正在匹配滚动位置…'
     try {
       info = await invoke<ScrollCaptureInfo>('append_scrolling_capture_frame', {
-        sessionId: info.session_id,
+        captureSessionId: info.capture_session_id,
       })
       statusMessage = info.matched
         ? info.added_height > 0
@@ -74,7 +74,7 @@
     errorMessage = ''
     statusMessage = '正在生成长图并返回标注编辑器…'
     try {
-      await invoke('finish_scrolling_capture', { sessionId: info.session_id })
+      await invoke('finish_scrolling_capture', { captureSessionId: info.capture_session_id })
     } catch (cause) {
       errorMessage = messageFrom(cause)
       busy = false

@@ -40,7 +40,10 @@
     workspace.request.status === 'completed' || workspace.request.status === 'cancelled'
 </script>
 
-<aside class="command-rail" aria-label="Ramble 操作台">
+<aside
+  class="command-rail min-h-0 min-w-0 overflow-y-auto border-l bg-muted/15"
+  aria-label="Ramble 操作台"
+>
   <RamblePanel
     {rambleEngaged}
     {rambleActive}

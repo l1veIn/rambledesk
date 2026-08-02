@@ -1,247 +1,243 @@
 # RambleDesk 架构基线
 
-> 状态：Development baseline
-> 版本：v1 · 2026-07-29
-> 详细工具合同见 [PROTOCOL.md](PROTOCOL.md)，工程计划见
-> [DEVELOPMENT.md](DEVELOPMENT.md)。
+> 状态：v2 当前基线。
+> 术语源：[TERMINOLOGY.md](TERMINOLOGY.md)。本文若与术语表冲突，以术语表为准。
 
-## 1. 架构目标
+本文描述 RambleDesk 当前应遵循的结构边界。
 
-架构首先保证：
-
-1. 请求、草稿和完成结果不依赖某条 MCP 连接存活；
-2. 同一业务逻辑可由 Tauri UI、MCP server 和 CLI 调用；
-3. 桌面框架、传输协议、SQLite 和语音引擎可以分别替换；
-4. M0–M2 不为尚未验证的语音重依赖买单；
-5. 同机 local-first 安全边界清晰。
-
-## 2. 运行时拓扑
+## 运行时拓扑
 
 ```text
-┌──────────────────┐        Streamable HTTP        ┌──────────────────────────┐
-│ Codex / Claude   │ ────────────────────────────→ │ RambleDesk desktop       │
-│ / MCP Inspector  │        127.0.0.1:<port>/mcp   │                          │
-└──────────────────┘                               │  Generic MCP adapter     │
-                                                   │                          │
-┌──────────────────┐        Local JSON API         │                          │
-│ Pi package       │ ────────────────────────────→ │  Pi-native adapter API   │
-│                  │        127.0.0.1:<port>/api   │                          │
-└──────────────────┘                               │                          │
-                                                   │       │                  │
-┌──────────────────┐        Tauri commands/events  │  Application services   │
-│ Svelte UI        │ ←───────────────────────────→ │       │                  │
-└──────────────────┘                               │  Domain + ports          │
-                                                   │    │       │       │     │
-                                                   │ SQLite  files  notify    │
-                                                   └──────────────────────────┘
+┌────────────────────┐     MCP transport      ┌──────────────────────────────┐
+│ Generic MCP hosts  │ ─────────────────────→ │ RambleDesk local server      │
+│ Claude/Codex/...   │     /mcp               │                              │
+└────────────────────┘                         │  auth / listener / guards    │
+                                               │  route mounting              │
+┌────────────────────┐     Local JSON API      │                              │
+│ Pi package         │ ─────────────────────→ │  /api/feedback/*             │
+│ packages/pi-*      │     /api               │                              │
+└────────────────────┘                         └──────────────┬───────────────┘
+                                                              │
+┌────────────────────┐     Tauri commands/events              │
+│ Workbench UI       │ ←──────────────────────────────────────┘
+└────────────────────┘
+                                                              │
+                                                              ▼
+                                      ┌──────────────────────────────┐
+                                      │ rambledesk-core              │
+                                      │ application contracts         │
+                                      └──────────────┬───────────────┘
+                                                     │
+                                                     ▼
+                                      ┌──────────────────────────────┐
+                                      │ rambledesk-storage           │
+                                      │ SQLite + feedback packages   │
+                                      └──────────────────────────────┘
 ```
 
-开发和自动化环境可用 `rambledesk-cli` 替代桌面壳装配同一个 loopback server、
-application services 和 storage。CLI 不是第二套业务实现。
+`apps/desktop` 是装配根：它装配 storage、core application、本地服务、host profiles、desktop-only capabilities。CLI 和测试可以复用同一套 crate，但不能成为第二套业务实现。
 
-## 3. Monorepo 结构
+## Package 边界
 
 ```text
 rambledesk/
 ├── apps/
-│   └── desktop/
-│       ├── src/                  # Svelte 5 UI
-│       └── src-tauri/            # Tauri 薄壳 / composition root
+│   └── desktop/                  # Workbench UI + Tauri composition root
 ├── crates/
-│   ├── rambledesk-core/
-│   ├── rambledesk-adapters/
-│   ├── rambledesk-storage/
-│   ├── rambledesk-mcp/
+│   ├── rambledesk-core/          # application contract
+│   ├── rambledesk-storage/       # SQLite + feedback package publication
+│   ├── rambledesk-local-server/  # loopback HTTP server + JSON API
+│   ├── rambledesk-mcp/           # Generic MCP Adapter thin layer
+│   ├── rambledesk-hosts/         # Host Profile catalog + continuation strategy
 │   ├── rambledesk-speech/
 │   └── rambledesk-cli/
-├── docs/
-├── scripts/
-└── tests/
+├── packages/
+│   └── pi-rambledesk/            # Pi Native Adapter
+└── docs/
 ```
 
-选择原因、依赖方向和拆分判据见
-[ADR 001](adr/001-apps-crates-monorepo.md)。
+### `rambledesk-core`
 
-## 4. 组件职责
+持有：
 
-### 4.1 `rambledesk-core`
+- 反馈请求 use cases：request/get/wait/cancel/list；
+- 反馈草稿、附件和提交 use cases；
+- 反馈包输出合同；
+- 稳定 DTO、错误码、状态机；
+- Repository、PackagePublisher、Clock、IdGenerator 等 ports。
 
-包含：
+不得持有：
 
-- Project、AgentSession、FeedbackRequest、Draft、Attachment、FeedbackResult；
-- Request 与 Session 状态机；
-- create/get/list/cancel/submit/notify use cases；
-- Repository、Transaction、PackagePublisher、Notifier、Clock、IdGenerator ports；
-- 稳定错误码和领域事件。
+- HTTP、JSON、MCP、Pi package、Tauri command；
+- 本地服务 listener、token path、Host/Origin guard；
+- 宿主安装逻辑、host profile、continuation strategy；
+- 源码 checkout 模型或路径依赖。
 
-禁止依赖：
+### `rambledesk-storage`
 
-- Tauri；
-- MCP SDK；
-- SQLx/SQLite；
-- HTTP server；
-- cpal/sherpa-onnx；
-- 操作系统全局目录；
-- 宿主 continuation / wakeup 实现（见 `rambledesk-adapters`）。
-
-### 4.2 `rambledesk-adapters`
-
-包含：
-
-- `WakeupRouter` 与 `WakeupAdapter` 接口；
-- 通用回落 `GenericWakeupAdapter`（提交后提示人类回到宿主继续）。
-
-依赖方向：只依赖 `rambledesk-core` 的领域类型（如 `FeedbackStatus`），不得依赖
-Tauri、MCP 或 storage。桌面与 CLI 作为 composition root 组装 router。
-
-专用宿主若可以在自身工具调用内等待（Pi package），应拥有自己的 request/get/wait
-路径，不注册提交后的 wake adapter。不能可靠恢复原上下文的宿主不得伪装成专用
-adapter，必须走通用 MCP 回落。
-
-### 4.3 `rambledesk-storage`
-
-包含：
+持有：
 
 - SQLite schema 与 migrations；
-- repository/transaction 实现；
-- Draft 与附件暂存；
-- Feedback Package publisher；
-- 应用数据目录和项目内 `.rambledesk` 路径策略。
+- core repository ports 的实现；
+- request、draft、attachment metadata 持久化；
+- 跨请求宿主会话关联；
+- 不可变反馈包发布和恢复对账。
 
-它只实现 core ports，不向上泄漏 SQL row、连接池或文件系统细节。
+不得持有：
 
-### 4.4 `rambledesk-mcp`
+- 宿主协议；
+- 适配器安装；
+- 源码 checkout runtime 语义；
+- UI 或 transport 细节。
 
-包含：
+### `rambledesk-local-server`
 
-- 通用 MCP adapter 的 tool schema；
-- 专用宿主 package 使用的本地 JSON API；
-- Streamable HTTP transport；
-- bearer token、Host 和 Origin 校验；
-- Tasks 与短调用执行适配；
-- MCP error 与领域错误映射；
-- invocation attempt 诊断。
+持有：
 
-它不直接写数据库。断线只结束 Invocation Attempt，不改变 Feedback Request。
+- loopback HTTP listener；
+- bearer token 生成、读取、默认路径；
+- Host/Origin guard；
+- `/api/feedback/request|get|wait|cancel`；
+- `/mcp` route mounting；
+- server handle、endpoint、port configuration。
 
-### 4.5 `rambledesk-speech`
+不得持有：
 
-M3 引入：
+- 领域规则；
+- MCP tool schema；
+- Pi package 代码；
+- desktop UI 状态。
 
-- 音频设备枚举和 cpal 采集；
-- PCM 标准化、RMS 和长录音分段；
-- STT engine registry；
-- 本地模型管理；
-- 转写事件和失败恢复。
+### `rambledesk-mcp`
 
-speech 输出 Draft patch 或 transcript segments，由 application service 决定如何
-合并；speech 自身不能提交 Feedback Request。
+持有通用 MCP 适配器薄层：
 
-### 4.6 `rambledesk-cli`
+- MCP tool schema；
+- MCP tool handler；
+- MCP instructions；
+- structured result / structured error formatting；
+- MCP request 到 `rambledesk-core` application call 的映射。
 
-提供：
+不得持有：
 
-- headless MCP host；
-- schema/数据库/Feedback Package 诊断；
-- 创建 fixture request；
-- 导入 WAV 并运行 speech 回归；
-- CI smoke test。
+- HTTP listener；
+- token path；
+- local JSON API routes；
+- host-specific continuation 实现。
 
-### 4.7 Desktop
+### `rambledesk-hosts`
 
-Tauri Rust 壳只负责：
+持有：
 
-- 进程与窗口生命周期；
-- tray、系统通知、文件选择和权限提示；
-- 装配具体 ports；
+- Host Profile catalog；
+- host label/icon；
+- 默认适配器选择；
+- continuation 模式声明；
+- 手动 continuation 提示 payload；
+- 未来原生 continuation strategy 接口。
+
+不得持有：
+
+- MCP implementation；
+- Pi package implementation；
+- 完整适配器实现；
+- storage 或 desktop UI 状态。
+
+### `packages/pi-rambledesk`
+
+持有 Pi 原生适配器：
+
+- Pi tools：`request_ramble_feedback`、`get_ramble_feedback`；
+- request/get/wait/cancel 到本地 JSON API 的调用；
+- Pi tool call 内等待终态；
+- Pi package 安装说明和测试。
+
+不得持有：
+
+- MCP client 行为；
+- desktop UI 状态；
+- RambleDesk storage 逻辑。
+
+### Desktop
+
+Tauri 壳负责：
+
+- 进程、窗口、tray、系统通知、文件选择、权限提示；
+- 装配 storage、core、本地服务、hosts；
 - 暴露 Tauri commands；
-- 把领域事件桥接为前端事件。
+- 桥接领域结果为前端事件。
 
-Svelte UI 负责投影和用户输入，不持有唯一事实状态。
+Svelte UI 负责：
 
-## 5. 事实来源
+- 工作台投影；
+- 人类反馈输入；
+- 草稿、截图、录音、附件交互；
+- 设置中的适配器安装 UX。
+
+UI 不持有唯一事实状态。Tauri events 和系统通知都是提示，不是事实来源。
+
+## 事实来源
 
 | 数据 | 唯一事实来源 |
-|------|--------------|
-| Request/Session 状态 | SQLite |
-| Draft 正文 | SQLite |
-| Draft 附件 bytes | 应用 draft 目录，SQLite 存 metadata |
-| 完成反馈 | 不可变 Feedback Package |
+| --- | --- |
+| 反馈请求状态 | SQLite |
+| 草稿正文 | SQLite |
+| 草稿附件 bytes | 应用 draft 目录，SQLite 存 metadata |
+| 反馈包 | 不可变 package directory + manifest |
+| 宿主身份 | adapter-provided `host_id`，服务端可按安装入口覆盖 |
+| 宿主会话关联 | adapter-provided `host_session_id` |
+| 上下文提示 | request `context_refs` / `source_hint` |
 | UI 当前页面/展开项 | 前端内存 |
-| MCP/API 调用 | transport 内存 + invocation attempt 日志 |
 | 系统通知 | best-effort side effect |
-| partial transcript | speech session 内存；定期 checkpoint 到 Draft |
+| 局部转写 | speech session 内存；定期 checkpoint 到 Draft |
 
-Tauri events、MCP progress 和系统通知都只是提示，不是事实来源。
+## 核心流程
 
-## 6. 核心流程
-
-### 6.1 创建请求
+### 通用 MCP 适配器
 
 ```text
 MCP request_feedback
-  → validate/authenticate
-  → core CreateFeedbackRequest
-  → transaction:
-      resolve/create Project
-      resolve/create AgentSession
-      idempotency check by request_id + input_hash
-      insert Request + Actions
-      append domain event
-  → commit
-  → notify UI / system
-  → return task handle or waiting result
+  → rambledesk-mcp 映射工具输入
+  → rambledesk-core request_feedback
+  → rambledesk-storage 持久化请求
+  → 本地服务返回 waiting 结果
+  → 宿主智能体结束当前 turn
+  → 人类在工作台提交/取消
+  → 手动 continuation 提示
+  → 宿主智能体调用 get_feedback(request_id)
 ```
 
-只有事务提交成功后才能通知 UI 或向 Agent 返回已创建。
+通用 MCP 适配器不提供自动恢复原宿主上下文的产品保证。
 
-### 6.2 编辑草稿
+### Pi 原生适配器
 
 ```text
-UI command
-  → Load Request + revision
-  → validate non-terminal state
-  → persist Draft revision
-  → emit RequestChanged
-  → UI re-query
+Pi request_ramble_feedback
+  → /api/feedback/request
+  → Workbench receives persisted request
+  → /api/feedback/wait blocks inside Pi tool call
+  → Human completes/cancels in Workbench
+  → wait returns terminal Feedback Package
+  → Pi continues original task
 ```
 
-附件先写到 request 专属 staging 目录，再写 metadata。删除 attachment 必须同时
-处理文件和记录；失败时保留可诊断的 orphan 标记，不假装成功。
+Pi 不需要提交后的 continuation。
 
-### 6.3 提交
+### 人类提交
 
 ```text
 SubmitFeedback(request_id, expected_revision)
-  → transaction A: acquire submit lease / verify state
-  → render package into sibling temp directory
+  → verify non-terminal state
+  → render package into temp directory
   → flush + hash
-  → platform durability adapter:
-      Unix: staged directory fsync + atomic rename + parent fsync
-      Windows: MoveFileExW(MOVEFILE_WRITE_THROUGH)
-  → transaction B:
-      mark completed
-      store immutable result paths + hashes
-      release task/poll waiters
-  → notify Agent-facing execution adapter
+  → atomic publish
+  → mark request completed
+  → notify waiters / prepare continuation prompt
 ```
 
-若 package 已发布但 transaction B 失败，启动恢复任务根据 manifest/request_id
-完成数据库对账；不得创建第二份 package。
+如果 package 已发布但数据库更新失败，启动恢复任务根据 manifest/request_id 对账；不得创建第二份 package。
 
-### 6.4 Agent 取得结果
-
-- 通用 MCP adapter：`request_feedback` 返回后结束 turn；人类提交后显示恢复提示；
-  agent 被用户手动继续后调用 `get_feedback`；
-- Pi 原生 adapter：Pi package 调用 `/api/feedback/request` 后在同一工具调用中
-  `/api/feedback/wait`，终态时直接返回 package；
-- 兼容或恢复客户端按需调用 `get_feedback`，不得定时空轮询；
-- 相同 `request_id` 再次调用 `request_feedback` 可取得同一结果；
-- 所有路径读取相同 durable application query。
-
-## 7. 状态与生命周期
-
-Feedback Request：
+## 状态模型
 
 ```text
 waiting → in_progress → completed
@@ -249,27 +245,9 @@ waiting → in_progress → completed
    └───────────┴──────→ cancelled
 ```
 
-`completed`、`cancelled` 为终态。
+`completed` 和 `cancelled` 是终态。只有终态触发 continuation。
 
-工作台关闭时：
-
-- 停止接受新 MCP 调用；
-- 完成正在提交的短事务或回滚；
-- 未结束 Request 保持原业务状态；
-- Draft 已按 revision 持久化；
-- 开放 Invocation Attempt 记为 disconnected。
-
-工作台启动时：
-
-1. 打开数据库；
-2. 执行 migrations；
-3. 对账 package temp/final 目录；
-4. 恢复未结束 Request；
-5. 启动 MCP；
-6. 启动 UI/tray；
-7. 对 waiting 请求补发本地通知（受去重策略限制）。
-
-## 8. 数据与文件布局
+## 数据布局
 
 应用数据：
 
@@ -278,141 +256,19 @@ waiting → in_progress → completed
 ├── rambledesk.sqlite3
 ├── auth/
 ├── drafts/<request-id>/
-├── models/                       # M3
+├── feedback/<timestamp>-<request-id>/
+├── models/
 ├── logs/
 └── recovery/
 ```
 
-CLI 与桌面 composition root 必须调用同一个默认路径解析函数；测试和并行实例可
-显式注入数据库与 token 路径，不能各自推导另一套数据根。
+反馈包默认写入应用数据目录。适配器若提供安全可写的路径 hint，未来可以作为导出或镜像目标，但核心协议不得要求源码 checkout 路径。
 
-项目内最终产物：
+## 安全边界
 
-```text
-<project-root>/.rambledesk/
-└── feedback/<timestamp>-<request-id>/
-    ├── feedback.md
-    ├── manifest.json
-    └── attachments/
-```
-
-若项目路径不存在、不可写或不在同一文件系统，使用 app-data 下的 final package
-目录，并把实际路径返回 Agent。
-
-路径必须 canonicalize。写入项目目录前必须确认最终目标仍位于选定
-`.rambledesk/feedback` 根下。
-
-## 9. 并发与一致性
-
-- SQLite 使用 WAL；
-- 所有写操作通过 application transaction；
-- Request 使用递增 `revision` 做乐观并发；
-- 同一 request 只有一个 submit lease；
-- tool idempotency 使用 canonical input hash；
-- package final path 由 request_id 唯一确定；
-- 系统通知和 UI events 在事务提交后发送；
-- 失败的 side effect 进入可重试 outbox，不回滚已经完成的领域事实。
-
-M1 可以使用数据库 outbox 表；不使用只存在内存中的“稍后再通知”队列。
-
-## 10. 安全边界
-
-MVP 假设 Agent 与 RambleDesk 在同一台可信电脑，但仍防止浏览器和其他本地进程
-无意调用：
-
-- 只监听 loopback；
-- 随机 bearer token；
-- Host/Origin 验证；
-- 限制请求体大小和字段长度；
-- root path canonicalization；
-- attachment MIME sniff + 文件大小/数量限制；
-- 日志不记录 token、完整反馈正文或图片；
-- UI 对即将分享的反馈提供最终预览；
-- MCP 的 `agent/session_id` 仅作标签。
-
-## 11. 可观测性
-
-结构化事件至少包含：
-
-- `event_name`
-- `timestamp`
-- `request_id`（如适用）
-- `invocation_attempt_id`（如适用）
-- `duration_ms`
-- `outcome`
-- `error_code`
-
-默认不包含：
-
-- transcript 或 feedback 正文；
-- action 原文；
-- attachment 内容/完整文件名；
-- bearer token；
-- 任意环境变量。
-
-## 12. 测试边界
-
-### Core
-
-- 状态机属性测试；
-- 幂等性与并发提交；
-- session 结束规则；
-- 错误码。
-
-### Storage
-
-- migration；
-- SQLite transaction；
-- package 原子发布；
-- crash recovery fixture；
-- path traversal/symlink。
-
-### MCP
-
-- schema golden；
-- Tasks/polling 等价；
-- auth/Host/Origin；
-- cancellation/disconnection；
-- MCP Inspector smoke。
-
-### Desktop
-
-- command/event 映射；
-- tray/notification；
-- Playwright 关键路径。
-
-### Speech
-
-- WAV fixture；
-- bounded channel/backpressure；
-- 10 分钟录音资源上限；
-- 模型缺失、设备拔出和取消。
-
-## 13. 架构门禁
-
-CI 至少运行：
-
-```text
-cargo fmt --check
-cargo clippy --workspace --all-targets
-cargo test --workspace
-pnpm check
-pnpm test
-pnpm build:web
-protocol schema drift check
-```
-
-带 sherpa-onnx 等重 feature 的测试单独运行，不拖慢默认 core 循环。
-
-## 14. 已知待验证项
-
-这些是 M0 技术验证，不是开放产品问题：
-
-- 目标 Codex/Claude Code 的 MCP 协议版本；
-- Tasks 扩展支持；
-- 自定义 bearer header 配置；
-- 普通工具调用的超时和取消行为；
-- 官方 Rust SDK 对当前规范的覆盖；
-- Rust → TypeScript DTO 生成工具。
-
-验证结果写入 `docs/COMPATIBILITY.md` 并锁定依赖版本。
+- 本地服务只监听 loopback。
+- 所有 `/api` 和 `/mcp` 请求必须通过 bearer token。
+- Host header 必须是 loopback host。
+- Origin 只允许受信任 desktop/webview origin 或空 origin 的本地工具调用。
+- `host_id`、`host_session_id` 不是认证凭据。
+- 返回路径只保证同机、共享文件系统可见。

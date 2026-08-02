@@ -4,7 +4,7 @@ import path from "node:path";
 import { Type } from "typebox";
 
 const DEFAULT_PORT = 37642;
-const HOST_HEADER = "X-RambleDesk-Host";
+const HOST_HEADER = "x-rambledesk-host";
 const REQUEST_MAX_ATTEMPTS = 3;
 const REQUEST_RETRY_DELAY_MS = 300;
 
@@ -12,14 +12,6 @@ const ContextRefSchema = Type.Object({
   label: Type.String({ description: "Short label for the referenced context." }),
   uri: Type.String({ description: "Local file URI, web URL, or other stable reference." }),
 });
-
-const ProjectSchema = Type.Optional(
-  Type.Object({
-    project_id: Type.Optional(Type.String({ description: "Existing RambleDesk project UUID." })),
-    name: Type.Optional(Type.String({ description: "Project display name." })),
-    root_path: Type.Optional(Type.String({ description: "Absolute local project root path." })),
-  }),
-);
 
 const ActionSchema = Type.Object({
   id: Type.String({
@@ -32,10 +24,11 @@ export const RequestRambleFeedbackSchema = Type.Object({
   request_id: Type.Optional(
     Type.String({ description: "Optional UUID. Reuse the same id for idempotent retries." }),
   ),
-  session_id: Type.Optional(
-    Type.String({ description: "Optional Pi session id. If omitted, the package uses the current cwd." }),
+  host_session_id: Type.Optional(
+    Type.String({
+      description: "Optional Pi host session id. If omitted, the package derives one from Pi context.",
+    }),
   ),
-  project: ProjectSchema,
   title: Type.String({ description: "Short title shown in the RambleDesk inbox." }),
   what_happened: Type.String({ description: "What changed or what needs feedback." }),
   actions: Type.Array(ActionSchema, {
@@ -43,6 +36,9 @@ export const RequestRambleFeedbackSchema = Type.Object({
     description: "Ordered checklist for the human tester.",
   }),
   context_refs: Type.Optional(Type.Array(ContextRefSchema)),
+  source_hint: Type.Optional(
+    Type.String({ description: "Optional display hint such as cwd or task title." }),
+  ),
   wait: Type.Optional(
     Type.Boolean({
       default: true,
@@ -121,27 +117,22 @@ Do not call this tool repeatedly for the same request unless you reuse the same 
 
 export function normalizeRequestParams(params, ctx = {}) {
   const cwd = typeof ctx.cwd === "string" && ctx.cwd.length > 0 ? ctx.cwd : process.cwd();
-  const project = params.project ?? {};
   return {
     request_id: params.request_id,
-    agent: "pi",
-    session_id: firstNonEmpty(
-      params.session_id,
+    host_id: "pi",
+    host_session_id: firstNonEmpty(
+      params.host_session_id,
       ctx.sessionId,
-      ctx.session_id,
+      ctx.host_session_id,
       ctx.session?.sessionId,
-      ctx.session?.session_id,
+      ctx.session?.host_session_id,
       `pi:${cwd}`,
     ),
-    project: {
-      project_id: project.project_id,
-      name: firstNonEmpty(project.name, path.basename(cwd), "Pi Project"),
-      root_path: firstNonEmpty(project.root_path, cwd),
-    },
     title: params.title,
     what_happened: params.what_happened,
     actions: params.actions,
     context_refs: params.context_refs ?? [],
+    source_hint: firstNonEmpty(params.source_hint, cwd),
   };
 }
 
@@ -208,33 +199,30 @@ export function feedbackToolResult(result) {
 }
 
 export function resolveApiBaseUrl(env = process.env) {
-  const explicit = firstNonEmpty(env.RAMBLEDESK_LOCAL_API_URL, env.RAMBLEDESK_API_URL);
+  const explicit = firstNonEmpty(env.RAMBLEDESK_LOCAL_API_URL);
   if (explicit) return stripTrailingSlash(explicit);
 
-  const mcpEndpoint = firstNonEmpty(env.RAMBLEDESK_MCP_ENDPOINT, env.RAMBLEDESK_MCP_URL);
-  if (mcpEndpoint) return stripTrailingSlash(mcpEndpoint).replace(/\/mcp$/, "/api");
-
-  const port = firstNonEmpty(env.RAMBLEDESK_MCP_PORT, `${DEFAULT_PORT}`);
+  const port = firstNonEmpty(env.RAMBLEDESK_LOCAL_SERVER_PORT, `${DEFAULT_PORT}`);
   return `http://127.0.0.1:${port}/api`;
 }
 
 export async function resolveAccessToken(env = process.env) {
-  const explicit = firstNonEmpty(env.RAMBLEDESK_ACCESS_TOKEN, env.RAMBLEDESK_MCP_TOKEN);
+  const explicit = firstNonEmpty(env.RAMBLEDESK_LOCAL_SERVER_TOKEN);
   if (explicit) return explicit;
-  const tokenPath = firstNonEmpty(env.RAMBLEDESK_TOKEN_FILE, defaultTokenPath(env));
+  const tokenPath = firstNonEmpty(env.RAMBLEDESK_LOCAL_SERVER_TOKEN_FILE, defaultTokenPath(env));
   return (await readFile(tokenPath, "utf8")).trim();
 }
 
 export function defaultTokenPath(env = process.env, platform = process.platform) {
   if (platform === "darwin") {
-    return path.join(os.homedir(), "Library", "Application Support", "RambleDesk", "auth", "mcp.token");
+    return path.join(os.homedir(), "Library", "Application Support", "RambleDesk", "auth", "local-server.token");
   }
   if (platform === "win32") {
     const root = firstNonEmpty(env.LOCALAPPDATA, path.join(os.homedir(), "AppData", "Local"));
-    return path.join(root, "RambleDesk", "auth", "mcp.token");
+    return path.join(root, "RambleDesk", "auth", "local-server.token");
   }
   const root = firstNonEmpty(env.XDG_DATA_HOME, path.join(os.homedir(), ".local", "share"));
-  return path.join(root, "RambleDesk", "auth", "mcp.token");
+  return path.join(root, "RambleDesk", "auth", "local-server.token");
 }
 
 function firstNonEmpty(...values) {

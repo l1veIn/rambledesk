@@ -1,97 +1,41 @@
-//! MCP transport adapter for RambleDesk.
+//! Generic MCP adapter tool surface for RambleDesk.
 
-mod token;
+use std::future::Future;
 
-use std::{
-    net::{Ipv4Addr, SocketAddr},
-    path::{Component, Path, PathBuf},
-    sync::Arc,
-};
-
-use axum::{
-    Json, Router,
-    body::Body,
-    extract::State,
-    http::{
-        HeaderValue, Request, Response, StatusCode,
-        header::{AUTHORIZATION, HOST, ORIGIN, WWW_AUTHENTICATE},
-    },
-    middleware::{self, Next},
-    response::IntoResponse,
-    routing::post,
-};
 use rambledesk_core::{
     ApplicationError, CancelFeedbackInput, FeedbackApplication, FeedbackRequestView,
-    FeedbackStatus, GetFeedbackInput, HealthSnapshot, RequestFeedbackInput,
+    FeedbackStatus, GetFeedbackInput, RequestFeedbackInput,
 };
 use rmcp::{
     ServerHandler,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{CallToolResult, ContentBlock, Implementation, ServerCapabilities, ServerInfo},
     tool, tool_handler, tool_router,
-    transport::streamable_http_server::{
-        StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
-    },
 };
-use subtle::ConstantTimeEq;
-use thiserror::Error;
-use tokio::{net::TcpListener, task::JoinHandle};
-use tokio_util::sync::CancellationToken;
-
-pub use token::{AccessToken, TokenError, default_token_path};
-
-pub const DEFAULT_PORT: u16 = 37_642;
-pub const MCP_PATH: &str = "/mcp";
-pub const API_PATH: &str = "/api";
-
-/// Install-time / client-config host identity (env on the MCP client entry).
-pub const HOST_ENV_KEY: &str = "RAMBLEDESK_HOST";
-/// HTTP header mirror so the loopback server can see the installed host id.
-pub const HOST_HEADER: &str = "x-rambledesk-host";
-
-const DEFAULT_ALLOWED_ORIGINS: &[&str] = &[
-    "tauri://localhost",
-    "http://tauri.localhost",
-    "http://localhost:1420",
-];
 
 tokio::task_local! {
     static REQUEST_HOST: Option<String>;
 }
 
-#[derive(Debug, Clone)]
-pub struct ServerConfig {
-    pub port: u16,
-    pub access_token: AccessToken,
-    pub allowed_origins: Vec<String>,
+pub async fn with_request_host<F>(host: Option<String>, future: F) -> F::Output
+where
+    F: Future,
+{
+    REQUEST_HOST.scope(host, future).await
 }
 
-impl ServerConfig {
-    pub fn new(access_token: AccessToken) -> Self {
-        Self {
-            port: DEFAULT_PORT,
-            access_token,
-            allowed_origins: DEFAULT_ALLOWED_ORIGINS
-                .iter()
-                .map(ToString::to_string)
-                .collect(),
-        }
-    }
-
-    pub fn with_port(mut self, port: u16) -> Self {
-        self.port = port;
-        self
-    }
+pub fn current_request_host() -> Option<String> {
+    REQUEST_HOST.try_with(|host| host.clone()).ok().flatten()
 }
 
 #[derive(Clone)]
-struct RambleDeskMcp {
+pub struct RambleDeskMcp {
     tool_router: ToolRouter<Self>,
     application: FeedbackApplication,
 }
 
 impl RambleDeskMcp {
-    fn new(application: FeedbackApplication) -> Self {
+    pub fn new(application: FeedbackApplication) -> Self {
         Self {
             tool_router: Self::tool_router(),
             application,
@@ -99,14 +43,9 @@ impl RambleDeskMcp {
     }
 }
 
-fn current_request_host() -> Option<String> {
-    REQUEST_HOST.try_with(|host| host.clone()).ok().flatten()
-}
-
-fn resolve_agent(mut input: RequestFeedbackInput) -> RequestFeedbackInput {
+fn apply_request_host(mut input: RequestFeedbackInput) -> RequestFeedbackInput {
     if let Some(host) = current_request_host() {
-        // Install-time host id is authoritative for this MCP client entry.
-        input.agent = host;
+        input.host_id = host;
     }
     input
 }
@@ -115,25 +54,35 @@ fn resolve_agent(mut input: RequestFeedbackInput) -> RequestFeedbackInput {
 impl RambleDeskMcp {
     #[tool(
         name = "request_feedback",
-        description = "Persist a feedback request and return immediately with a durable handle (request_id). After creating, stop the current turn — do not poll. When the human submits feedback, call get_feedback with the same request_id to read the package. Reusing request_id with identical input is idempotent. If the MCP client was auto-registered, RAMBLEDESK_HOST / X-RambleDesk-Host identify the host."
+        description = "Persist a feedback request and return immediately with a durable handle (request_id). After creating, stop the current turn; do not poll. When the human submits feedback, call get_feedback with the same request_id to read the package. Reusing request_id with identical input is idempotent. Auto-registered clients set RAMBLEDESK_HOST / X-RambleDesk-Host so host_id is known without guessing."
     )]
     async fn request_feedback(
         &self,
         Parameters(input): Parameters<RequestFeedbackInput>,
     ) -> CallToolResult {
-        let input = resolve_agent(input);
-        feedback_tool_result(self.application.request_feedback(input).await, false).await
+        let input = apply_request_host(input);
+        feedback_tool_result(
+            &self.application,
+            self.application.request_feedback(input).await,
+            false,
+        )
+        .await
     }
 
     #[tool(
         name = "get_feedback",
-        description = "Read the current state of a durable feedback request without changing it. Use after resume or for diagnostics. When status is completed, the response includes the full feedback package (manifest, markdown, attachment paths). Do not poll while waiting — end the turn after request_feedback and resume when notified."
+        description = "Read the current state of a durable feedback request without changing it. Use after manual continuation or for diagnostics. When status is completed, the response includes the full feedback package (manifest, markdown, attachment paths). Do not poll while waiting; end the turn after request_feedback and resume when notified."
     )]
     async fn get_feedback(
         &self,
         Parameters(input): Parameters<GetFeedbackInput>,
     ) -> CallToolResult {
-        feedback_tool_result(self.application.get_feedback(input).await, true).await
+        feedback_tool_result(
+            &self.application,
+            self.application.get_feedback(input).await,
+            true,
+        )
+        .await
     }
 
     #[tool(
@@ -144,11 +93,17 @@ impl RambleDeskMcp {
         &self,
         Parameters(input): Parameters<CancelFeedbackInput>,
     ) -> CallToolResult {
-        feedback_tool_result(self.application.cancel_feedback(input).await, false).await
+        feedback_tool_result(
+            &self.application,
+            self.application.cancel_feedback(input).await,
+            false,
+        )
+        .await
     }
 }
 
 async fn feedback_tool_result(
+    application: &FeedbackApplication,
     result: Result<FeedbackRequestView, ApplicationError>,
     include_package_when_terminal: bool,
 ) -> CallToolResult {
@@ -179,10 +134,6 @@ async fn feedback_tool_result(
         .as_object_mut()
         .expect("feedback request view must serialize as an object");
 
-    object.insert(
-        "server".to_owned(),
-        serde_json::to_value(HealthSnapshot::ready()).expect("health must serialize"),
-    );
     if let Some(host) = current_request_host() {
         object.insert("host".to_owned(), serde_json::Value::String(host));
     }
@@ -193,12 +144,15 @@ async fn feedback_tool_result(
             FeedbackStatus::Completed | FeedbackStatus::Cancelled
         )
     {
-        match load_feedback_package(&value).await {
+        match application.read_feedback_package(&value).await {
             Ok(package) => {
-                object.insert("feedback_package".to_owned(), package);
+                object.insert(
+                    "feedback_package".to_owned(),
+                    serde_json::to_value(package).expect("feedback package must serialize"),
+                );
             }
-            Err(message) => {
-                return structured_error_result("FEEDBACK_PACKAGE_READ_FAILURE", &message, true);
+            Err(error) => {
+                return application_error_result(error);
             }
         }
     }
@@ -206,47 +160,6 @@ async fn feedback_tool_result(
     let mut result = CallToolResult::structured(structured);
     result.content = vec![ContentBlock::text(summary)];
     result
-}
-
-async fn load_feedback_package(value: &FeedbackRequestView) -> Result<serde_json::Value, String> {
-    let Some(feedback) = value.feedback.as_ref() else {
-        return Ok(serde_json::Value::Null);
-    };
-    let manifest_text = tokio::fs::read_to_string(&feedback.manifest_path)
-        .await
-        .map_err(|error| format!("could not read feedback manifest: {error}"))?;
-    let manifest: serde_json::Value = serde_json::from_str(&manifest_text)
-        .map_err(|error| format!("feedback manifest is invalid: {error}"))?;
-    let markdown = tokio::fs::read_to_string(&feedback.markdown_path)
-        .await
-        .map_err(|error| format!("could not read feedback markdown: {error}"))?;
-    let directory = Path::new(&feedback.directory_path);
-    let attachment_paths = manifest
-        .get("attachments")
-        .and_then(serde_json::Value::as_array)
-        .into_iter()
-        .flatten()
-        .map(|attachment| {
-            let relative = attachment
-                .get("path")
-                .and_then(serde_json::Value::as_str)
-                .ok_or_else(|| "feedback manifest attachment path is missing".to_owned())?;
-            let relative_path = PathBuf::from(relative);
-            let mut components = relative_path.components();
-            if components.next() != Some(Component::Normal("attachments".as_ref()))
-                || components.next().is_none()
-                || components.next().is_some()
-            {
-                return Err("feedback manifest attachment path is unsafe".to_owned());
-            }
-            Ok(directory.join(relative_path).to_string_lossy().into_owned())
-        })
-        .collect::<Result<Vec<_>, String>>()?;
-    Ok(serde_json::json!({
-        "manifest": manifest,
-        "markdown": markdown,
-        "attachment_paths": attachment_paths,
-    }))
 }
 
 fn application_error_result(error: ApplicationError) -> CallToolResult {
@@ -258,7 +171,6 @@ fn structured_error_result(code: &str, message: &str, retryable: bool) -> CallTo
         "code": code,
         "message": message,
         "retryable": retryable,
-        "server": HealthSnapshot::ready(),
     }));
     result.content = vec![ContentBlock::text(format!(
         "RambleDesk {}: {}",
@@ -274,300 +186,9 @@ impl ServerHandler for RambleDeskMcp {
             .with_server_info(Implementation::new("rambledesk", env!("CARGO_PKG_VERSION")))
             .with_instructions(
                 "RambleDesk tools: request_feedback, get_feedback, cancel_feedback. \
-Create a durable request with request_feedback, then end the current turn — do not poll and do not wait on a long tool call. \
-When the human finishes and the session is resumed, call get_feedback(request_id) to load the package. \
-Auto-registered clients set RAMBLEDESK_HOST (and X-RambleDesk-Host) so the host identity is known without guessing.",
+Create a durable request with request_feedback, then end the current turn; do not poll and do not wait on a long tool call. \
+When the human finishes and the host session is manually continued, call get_feedback(request_id) to load the package. \
+Auto-registered clients set RAMBLEDESK_HOST (and X-RambleDesk-Host) so host identity is known without guessing.",
             )
     }
-}
-
-#[derive(Clone)]
-struct ApiState {
-    application: FeedbackApplication,
-}
-
-async fn api_request_feedback(
-    State(state): State<ApiState>,
-    Json(input): Json<RequestFeedbackInput>,
-) -> Response<Body> {
-    api_feedback_result(
-        state
-            .application
-            .request_feedback(resolve_agent(input))
-            .await,
-        false,
-    )
-    .await
-}
-
-async fn api_get_feedback(
-    State(state): State<ApiState>,
-    Json(input): Json<GetFeedbackInput>,
-) -> Response<Body> {
-    api_feedback_result(state.application.get_feedback(input).await, true).await
-}
-
-async fn api_wait_for_feedback(
-    State(state): State<ApiState>,
-    Json(input): Json<GetFeedbackInput>,
-) -> Response<Body> {
-    api_feedback_result(state.application.wait_for_feedback(input).await, true).await
-}
-
-async fn api_cancel_feedback(
-    State(state): State<ApiState>,
-    Json(input): Json<CancelFeedbackInput>,
-) -> Response<Body> {
-    api_feedback_result(state.application.cancel_feedback(input).await, false).await
-}
-
-async fn api_feedback_result(
-    result: Result<FeedbackRequestView, ApplicationError>,
-    include_package_when_terminal: bool,
-) -> Response<Body> {
-    let value = match result {
-        Ok(value) => value,
-        Err(error) => return api_error_response(application_error_status(error.code()), error),
-    };
-
-    let mut structured = serde_json::to_value(&value).expect("application result must serialize");
-    let object = structured
-        .as_object_mut()
-        .expect("feedback request view must serialize as an object");
-    object.insert(
-        "server".to_owned(),
-        serde_json::to_value(HealthSnapshot::ready()).expect("health must serialize"),
-    );
-    if let Some(host) = current_request_host() {
-        object.insert("host".to_owned(), serde_json::Value::String(host));
-    }
-
-    if include_package_when_terminal
-        && matches!(
-            value.status,
-            FeedbackStatus::Completed | FeedbackStatus::Cancelled
-        )
-    {
-        match load_feedback_package(&value).await {
-            Ok(package) => {
-                object.insert("feedback_package".to_owned(), package);
-            }
-            Err(message) => {
-                return api_error_payload(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "FEEDBACK_PACKAGE_READ_FAILURE",
-                    &message,
-                    true,
-                );
-            }
-        }
-    }
-
-    Json(structured).into_response()
-}
-
-fn application_error_status(code: &str) -> StatusCode {
-    match code {
-        "INVALID_ARGUMENT" | "PROJECT_PATH_UNAVAILABLE" => StatusCode::BAD_REQUEST,
-        "PROJECT_NOT_FOUND" | "REQUEST_NOT_FOUND" | "ATTACHMENT_NOT_FOUND" => StatusCode::NOT_FOUND,
-        "REQUEST_CONFLICT"
-        | "REQUEST_ALREADY_COMPLETED"
-        | "REQUEST_TERMINAL"
-        | "DRAFT_CONFLICT"
-        | "ATTACHMENT_LIMIT" => StatusCode::CONFLICT,
-        _ => StatusCode::INTERNAL_SERVER_ERROR,
-    }
-}
-
-fn api_error_response(status: StatusCode, error: ApplicationError) -> Response<Body> {
-    api_error_payload(status, error.code(), error.message(), error.retryable())
-}
-
-fn api_error_payload(
-    status: StatusCode,
-    code: &str,
-    message: &str,
-    retryable: bool,
-) -> Response<Body> {
-    (
-        status,
-        Json(serde_json::json!({
-            "code": code,
-            "message": message,
-            "retryable": retryable,
-            "server": HealthSnapshot::ready(),
-        })),
-    )
-        .into_response()
-}
-
-#[derive(Clone)]
-struct AuthState {
-    expected: Arc<[u8]>,
-    allowed_origins: Arc<[String]>,
-}
-
-impl AuthState {
-    fn new(token: &AccessToken, allowed_origins: Vec<String>) -> Self {
-        Self {
-            expected: Arc::from(format!("Bearer {}", token.secret()).into_bytes()),
-            allowed_origins: Arc::from(allowed_origins),
-        }
-    }
-
-    fn accepts(&self, value: Option<&HeaderValue>) -> bool {
-        let Some(actual) = value.and_then(|value| value.to_str().ok()) else {
-            return false;
-        };
-        bool::from(self.expected.as_ref().ct_eq(actual.as_bytes()))
-    }
-
-    fn accepts_origin(&self, value: Option<&HeaderValue>) -> bool {
-        let Some(origin) = value.and_then(|value| value.to_str().ok()) else {
-            return true;
-        };
-        self.allowed_origins.iter().any(|allowed| allowed == origin)
-    }
-}
-
-fn extract_request_host(request: &Request<Body>) -> Option<String> {
-    request
-        .headers()
-        .get(HOST_HEADER)
-        .and_then(|value| value.to_str().ok())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToOwned::to_owned)
-}
-
-async fn require_bearer(
-    axum::extract::State(state): axum::extract::State<AuthState>,
-    request: Request<Body>,
-    next: Next,
-) -> Response<Body> {
-    if !host_is_loopback(request.headers().get(HOST)) {
-        return (StatusCode::FORBIDDEN, "Forbidden").into_response();
-    }
-    if !state.accepts_origin(request.headers().get(ORIGIN)) {
-        return (StatusCode::FORBIDDEN, "Forbidden").into_response();
-    }
-    if !state.accepts(request.headers().get(AUTHORIZATION)) {
-        let mut response = (StatusCode::UNAUTHORIZED, "Unauthorized").into_response();
-        response.headers_mut().insert(
-            WWW_AUTHENTICATE,
-            HeaderValue::from_static("Bearer realm=\"RambleDesk\""),
-        );
-        return response;
-    }
-
-    let host = extract_request_host(&request);
-    REQUEST_HOST.scope(host, next.run(request)).await
-}
-
-fn host_is_loopback(value: Option<&HeaderValue>) -> bool {
-    let Some(host) = value
-        .and_then(|value| value.to_str().ok())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    else {
-        return false;
-    };
-    let host = host
-        .rsplit_once(':')
-        .map(|(host, _port)| host)
-        .unwrap_or(host);
-    matches!(host, "127.0.0.1" | "localhost")
-}
-
-pub struct ServerHandle {
-    address: SocketAddr,
-    endpoint: String,
-    cancellation: CancellationToken,
-    task: JoinHandle<Result<(), std::io::Error>>,
-}
-
-impl ServerHandle {
-    pub fn address(&self) -> SocketAddr {
-        self.address
-    }
-
-    pub fn endpoint(&self) -> &str {
-        &self.endpoint
-    }
-
-    pub fn cancel(&self) {
-        self.cancellation.cancel();
-    }
-
-    pub async fn shutdown(self) -> Result<(), ServerError> {
-        self.cancellation.cancel();
-        self.task.await??;
-        Ok(())
-    }
-}
-
-#[derive(Debug, Error)]
-pub enum ServerError {
-    #[error("failed to bind RambleDesk MCP loopback listener: {0}")]
-    Bind(#[source] std::io::Error),
-    #[error("RambleDesk MCP server failed: {0}")]
-    Io(#[from] std::io::Error),
-    #[error("RambleDesk MCP server task failed: {0}")]
-    Join(#[from] tokio::task::JoinError),
-}
-
-pub async fn start_server(
-    config: ServerConfig,
-    application: FeedbackApplication,
-) -> Result<ServerHandle, ServerError> {
-    let cancellation = CancellationToken::new();
-    let allowed_origins = config.allowed_origins.clone();
-    let transport_config = StreamableHttpServerConfig::default()
-        .with_allowed_origins(config.allowed_origins)
-        .with_max_request_body_bytes(256 * 1024)
-        .with_cancellation_token(cancellation.child_token());
-
-    let mcp_application = application.clone();
-    let service: StreamableHttpService<RambleDeskMcp, LocalSessionManager> =
-        StreamableHttpService::new(
-            move || Ok(RambleDeskMcp::new(mcp_application.clone())),
-            Default::default(),
-            transport_config,
-        );
-
-    let auth = AuthState::new(&config.access_token, allowed_origins);
-    let api = Router::new()
-        .route("/feedback/request", post(api_request_feedback))
-        .route("/feedback/get", post(api_get_feedback))
-        .route("/feedback/wait", post(api_wait_for_feedback))
-        .route("/feedback/cancel", post(api_cancel_feedback))
-        .with_state(ApiState {
-            application: application.clone(),
-        });
-    let router = Router::new()
-        .nest_service(MCP_PATH, service)
-        .nest(API_PATH, api)
-        .layer(middleware::from_fn_with_state(auth, require_bearer));
-
-    let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, config.port))
-        .await
-        .map_err(ServerError::Bind)?;
-    let address = listener.local_addr().map_err(ServerError::Bind)?;
-    let endpoint = format!("http://{address}{MCP_PATH}");
-
-    let task_cancellation = cancellation.clone();
-    let task = tokio::spawn(async move {
-        axum::serve(listener, router)
-            .with_graceful_shutdown(async move { task_cancellation.cancelled_owned().await })
-            .await
-    });
-
-    tracing::info!(%address, "RambleDesk MCP listening on loopback");
-
-    Ok(ServerHandle {
-        address,
-        endpoint,
-        cancellation,
-        task,
-    })
 }

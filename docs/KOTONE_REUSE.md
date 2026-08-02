@@ -8,7 +8,7 @@
 
 Kotone 已经验证了四个对 RambleDesk 有直接价值的选择：
 
-1. 根目录作为 Cargo + pnpm workspace，而不是单个 Tauri 项目；
+1. 根目录作为 Cargo + pnpm workspace，而不是单个 Tauri 应用目录；
 2. 领域 core 不依赖 Tauri，平台和重型 STT 依赖位于适配 crate；
 3. Tauri 只是 composition root 和 IPC/窗口壳；
 4. CLI 作为第二个真实消费者，支持无人值守集成测试。
@@ -149,14 +149,14 @@ CER 和首字延迟不能证明长录音、标点、分段和内存行为合格�
 - `inject`、`FocusBackend`、Windows SendInput；
 - 全局热键与游戏 profile；
 - overlay、提权、游戏进程探测；
-- Kotone 历史和 eval 的产品语义；
+- Kotone 归档和 eval 的产品语义；
 - Kotone Svelte 页面和品牌资源；
 - `~/.kotone` 配置或数据格式。
 
 ## 5. 许可证与来源门禁
 
 两个仓库由同一所有者控制，所有者已明确允许推进复用。审计时 Kotone 尚未提交
-项目级 `LICENSE`，所有者计划补充；其 `THIRD_PARTY_NOTICES.md` 也明确说明
+代码库级 `LICENSE`，所有者计划补充；其 `THIRD_PARTY_NOTICES.md` 也明确说明
 第三方 notices 不授予 Kotone 本身许可证。
 
 因此：
@@ -165,7 +165,7 @@ CER 和首字延迟不能证明长录音、标点、分段和内存行为合格�
 - 正式复制 Kotone 源文件的提交应在 Kotone LICENSE 落地后进行；
 - RambleDesk 对迁移文件记录来源 commit/path，避免后续无法追溯；
 - 两个仓库公开发布前必须使用兼容许可证，或明确记录例外授权；
-- 第三方模型许可证单独处理，不能由项目代码许可证覆盖。
+- 第三方模型许可证单独处理，不能由代码库许可证覆盖。
 
 M3 的语音迁移 PR 必须包含 `THIRD_PARTY_NOTICES.md` 和模型 manifest，不允许把
 Kotone 的模型条目无审计复制过来。

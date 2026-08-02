@@ -1,2 +1,0 @@
-ALTER TABLE feedback_requests
-ADD COLUMN title TEXT NOT NULL DEFAULT '';

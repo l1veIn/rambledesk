@@ -2,21 +2,22 @@
 
 - 状态：Accepted
 - 日期：2026-07-29
-- 参考：Kotone 的 workspace 拆分与实际运行结果
+- 修订：2026-08-02
 
 ## 上下文
 
-RambleDesk 同时包含桌面 UI、本地 MCP server、持久化、反馈包发布、未来语音
-引擎和自动化测试入口。把这些全部放进 Tauri 的 `src-tauri` 会让：
+RambleDesk 同时包含桌面工作台、本地服务、持久化、适配器、反馈包发布、语音能力
+和 headless 验证入口。把这些能力全部放进 Tauri crate 会把 application contract、
+transport、SQLite 和窗口生命周期耦合在一起。
 
-- 领域模型依赖桌面框架；
-- MCP 无法脱离 GUI 做兼容测试；
-- SQLite、MCP SDK、cpal 和 STT 原生库互相拖慢编译；
-- 无法用 CLI 对恢复、协议和 WAV fixture 做无人值守测试；
-- 将来增加第二个 app 时再次搬迁。
+仓库需要满足：
 
-Kotone 已经从单 `src-tauri` crate 迁移到 `apps/desktop + crates/*`，验证了
-Tauri canonical 目录、Cargo workspace 和 pnpm workspace 可以共存。
+- core 可以脱离 GUI 和 transport 测试；
+- 本地服务可以由 desktop 与 CLI 装配；
+- Generic MCP Adapter 只是 transport adapter；
+- Pi Native Adapter 可以独立发布和测试；
+- SQLite 与反馈包发布不依赖 UI；
+- desktop 保持 composition root，而不是业务事实来源。
 
 ## 决策
 
@@ -25,59 +26,70 @@ Tauri canonical 目录、Cargo workspace 和 pnpm workspace 可以共存。
 ```text
 apps/desktop/src-tauri
 crates/rambledesk-core
-crates/rambledesk-adapters
 crates/rambledesk-storage
+crates/rambledesk-local-server
 crates/rambledesk-mcp
+crates/rambledesk-hosts
 crates/rambledesk-speech
 crates/rambledesk-cli
+packages/pi-rambledesk
 ```
 
-`rambledesk-adapters` holds host continuation / wakeup (generic fallback and
-future per-host resume). It depends on core contracts only and may iterate on a
-different cadence than protocol/storage changes.
+职责：
 
-根目录是 workspace，不是某一个应用的项目根。
+- `rambledesk-core`：application contract、状态机、DTO 和 ports；
+- `rambledesk-storage`：SQLite、draft/attachment metadata、宿主会话关联、反馈包发布；
+- `rambledesk-local-server`：loopback listener、auth、guards、JSON API 和 route mounting；
+- `rambledesk-mcp`：Generic MCP Adapter tool schema、handler、instructions 和结果映射；
+- `rambledesk-hosts`：Host Profiles 与 continuation strategy contract；
+- `pi-rambledesk`：Pi Native Adapter；
+- desktop 与 CLI：composition roots。
 
-依赖必须指向 core；Tauri 壳与 CLI 是 composition roots。业务状态不得存放在
-MCP adapter、Tauri command handler 或前端 store 中。
+根目录是 workspace。RambleDesk 不建立源码 checkout 的产品对象，也不要求调用方
+提供源码目录。
 
-## Crate 拆分判据
+## 依赖规则
 
-只有满足独立消费者、重依赖隔离或独立变更节奏之一才拆 crate。
-
-speech 在 M3 前可以只有占位 manifest 或暂不加入实现，但名称和依赖位置现在固定，
-避免语音重新进入桌面壳。
+- adapter、storage 和 local server 依赖 core contract；
+- local server 可以装配 MCP adapter；
+- MCP adapter 不依赖 local server；
+- desktop 可以装配所有桌面所需 crate；
+- UI 不直接访问 SQLite；
+- transport 与 Tauri commands 不实现领域规则；
+- package 间不得用 DTO alias 维持旧字段兼容。
 
 ## 被否决方案
 
 ### 单一 Tauri crate
 
-初始文件少，但把产品边界和框架边界合并；MCP Inspector、headless server 和
-协议集成测试都必须拉起 GUI。
+会让协议、持久化和自动化测试必须拉起 GUI，也会把业务生命周期绑定到窗口生命周期。
 
-### 所有能力各拆一个 crate
+### 把本地 listener 放在通用 MCP 适配器
 
-会产生过多 DTO crate/provider crate 和依赖噪音。首版 storage 同时承担 SQLite、
-draft 与 package publisher；有独立复用或编译压力后再拆。
+会把 listener、auth 和 JSON API 误归为 MCP 能力，阻止其他原生适配器复用本地服务。
 
-### 直接依赖 `../kotone/crates/*`
+### 在 core 中持有宿主与桌面逻辑
 
-本机 sibling path 不可发布、不可复现，并把两个产品的版本和领域模型耦合。允许
-审计后迁移代码，不允许建立这种依赖。
+会让 application contract 依赖安装方式、Host Profile、continuation 和窗口事件。
+
+### 过度拆分 DTO crate
+
+会增加 manifest、版本和依赖噪音。只有具备独立消费者、重依赖隔离或独立发布节奏
+时才拆 package。
 
 ## 后果
 
 正向：
 
-- core 可快速编译和跨平台测试；
-- MCP 可由 CLI 与桌面共同托管；
-- 语音重依赖不污染 M0–M2；
-- Tauri 保持薄壳；
-- 根命令统一，只有一个 Cargo.lock 和 pnpm lock。
+- application contract、transport、持久化和 UI 边界明确；
+- Generic MCP Adapter 与 Pi Native Adapter 可独立演进；
+- 本地安全策略只有一处实现；
+- desktop 可保持薄装配层；
+- headless 测试无需启动窗口。
 
 代价：
 
-- 初始 manifest 较多；
-- 需要显式 composition root；
-- DTO 需生成到 TypeScript，CI 要检查漂移；
-- 集成测试要放在能看到具体适配实现的 crate 或顶层 tests 中。
+- composition root 需要显式装配更多 crate；
+- DTO 生成和合同漂移需要 CI 门禁；
+- 跨 package 集成测试需要放在能看到具体实现的 crate 中；
+- 目录和依赖规则需要持续通过架构与术语审计。

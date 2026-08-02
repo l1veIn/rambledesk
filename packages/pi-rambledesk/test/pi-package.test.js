@@ -12,7 +12,7 @@ import {
 
 test("normalizes Pi request params without model-supplied host identity", () => {
   const input = {
-    session_id: "session-1",
+    host_session_id: "session-1",
     title: "Review",
     what_happened: "A workflow changed.",
     actions: [{ id: "check", instruction: "Check the workflow." }],
@@ -20,30 +20,22 @@ test("normalizes Pi request params without model-supplied host identity", () => 
 
   assert.deepEqual(normalizeRequestParams(input, { cwd: "/tmp/rambledesk" }), {
     request_id: undefined,
-    agent: "pi",
-    session_id: "session-1",
-    project: {
-      project_id: undefined,
-      name: "rambledesk",
-      root_path: "/tmp/rambledesk",
-    },
+    host_id: "pi",
+    host_session_id: "session-1",
     title: "Review",
     what_happened: "A workflow changed.",
     actions: [{ id: "check", instruction: "Check the workflow." }],
     context_refs: [],
+    source_hint: "/tmp/rambledesk",
   });
 });
 
-test("resolves local API endpoint from explicit API, MCP endpoint, or port", () => {
+test("resolves local API endpoint from explicit API or local server port", () => {
   assert.equal(
     resolveApiBaseUrl({ RAMBLEDESK_LOCAL_API_URL: "http://127.0.0.1:1/api/" }),
     "http://127.0.0.1:1/api",
   );
-  assert.equal(
-    resolveApiBaseUrl({ RAMBLEDESK_MCP_ENDPOINT: "http://127.0.0.1:2/mcp" }),
-    "http://127.0.0.1:2/api",
-  );
-  assert.equal(resolveApiBaseUrl({ RAMBLEDESK_MCP_PORT: "3" }), "http://127.0.0.1:3/api");
+  assert.equal(resolveApiBaseUrl({ RAMBLEDESK_LOCAL_SERVER_PORT: "3" }), "http://127.0.0.1:3/api");
 });
 
 test("posts feedback requests with bearer token and Pi host header", async () => {
@@ -75,7 +67,7 @@ test("posts feedback requests with bearer token and Pi host header", async () =>
       undefined,
       {
         RAMBLEDESK_LOCAL_API_URL: `http://127.0.0.1:${port}/api`,
-        RAMBLEDESK_ACCESS_TOKEN: "test-token",
+        RAMBLEDESK_LOCAL_SERVER_TOKEN: "test-token",
       },
     );
 
@@ -123,7 +115,7 @@ test("retries a transient connection failure with the same request id", async ()
       undefined,
       {
         RAMBLEDESK_LOCAL_API_URL: `http://127.0.0.1:${port}/api`,
-        RAMBLEDESK_ACCESS_TOKEN: "test-token",
+        RAMBLEDESK_LOCAL_SERVER_TOKEN: "test-token",
       },
     );
 
@@ -185,12 +177,12 @@ test("registers Pi tools and request tool waits for terminal package", async () 
   });
 
   const previousApiUrl = process.env.RAMBLEDESK_LOCAL_API_URL;
-  const previousToken = process.env.RAMBLEDESK_ACCESS_TOKEN;
+  const previousToken = process.env.RAMBLEDESK_LOCAL_SERVER_TOKEN;
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   try {
     const { port } = server.address();
     process.env.RAMBLEDESK_LOCAL_API_URL = `http://127.0.0.1:${port}/api`;
-    process.env.RAMBLEDESK_ACCESS_TOKEN = "test-token";
+    process.env.RAMBLEDESK_LOCAL_SERVER_TOKEN = "test-token";
     const updates = [];
     const requestTool = tools.find((tool) => tool.name === "request_ramble_feedback");
     const result = await requestTool.execute(
@@ -202,13 +194,13 @@ test("registers Pi tools and request tool waits for terminal package", async () 
       },
       undefined,
       (update) => updates.push(update),
-      { cwd: "/tmp/pi-project", sessionId: "pi-session" },
+      { cwd: "/tmp/pi-worktree", sessionId: "pi-session" },
     );
 
     assert.equal(calls.length, 2);
     assert.equal(calls[0].url, "/api/feedback/request");
-    assert.equal(calls[0].body.agent, "pi");
-    assert.equal(calls[0].body.session_id, "pi-session");
+    assert.equal(calls[0].body.host_id, "pi");
+    assert.equal(calls[0].body.host_session_id, "pi-session");
     assert.equal(calls[1].url, "/api/feedback/wait");
     assert.deepEqual(calls[1].body, { request_id: "019" });
     assert.match(updates[0].content[0].text, /waiting/);
@@ -221,9 +213,9 @@ test("registers Pi tools and request tool waits for terminal package", async () 
       process.env.RAMBLEDESK_LOCAL_API_URL = previousApiUrl;
     }
     if (previousToken === undefined) {
-      delete process.env.RAMBLEDESK_ACCESS_TOKEN;
+      delete process.env.RAMBLEDESK_LOCAL_SERVER_TOKEN;
     } else {
-      process.env.RAMBLEDESK_ACCESS_TOKEN = previousToken;
+      process.env.RAMBLEDESK_LOCAL_SERVER_TOKEN = previousToken;
     }
     await new Promise((resolve) => server.close(resolve));
   }

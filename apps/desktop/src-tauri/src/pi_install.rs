@@ -2,7 +2,7 @@
 //!
 //! The Pi adapter is a Pi package (`packages/pi-rambledesk`) that talks to the
 //! authenticated loopback JSON API directly and waits inside the Pi tool call,
-//! so no post-submit wakeup adapter is needed. Installing it is a plain
+//! so no post-submit continuation strategy is needed. Installing it is a plain
 //! `pi install <package dir>` invocation against the local checkout.
 
 use std::path::{Path, PathBuf};
@@ -11,12 +11,11 @@ use std::process::Command;
 /// Locate the Pi package directory in the source checkout.
 ///
 /// Candidates are tried in order:
-/// 1. `<project_root>/packages/pi-rambledesk` (project root known from the
-///    open workspace), then
+/// 1. `<checkout_root>/packages/pi-rambledesk`, then
 /// 2. a directory walk upward from the current working directory and the
 ///    current executable, looking for a sibling `packages/pi-rambledesk`.
-pub fn resolve_package_dir(project_root: Option<&str>) -> Option<PathBuf> {
-    if let Some(root) = project_root
+pub fn resolve_package_dir(checkout_root: Option<&str>) -> Option<PathBuf> {
+    if let Some(root) = checkout_root
         && !root.is_empty()
         && PathBuf::from(root)
             .join("packages")
@@ -116,7 +115,7 @@ mod tests {
     }
 
     #[test]
-    fn package_dir_resolves_from_project_root() {
+    fn package_dir_resolves_from_checkout_root() {
         let root = fake_repo("pi-install-root");
         let expected = root.join("packages").join("pi-rambledesk");
         assert_eq!(

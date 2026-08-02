@@ -16,7 +16,8 @@
   import rambelleRecording from './assets/rambelle-states/recording.png'
   import AppTitlebar from './lib/AppTitlebar.svelte'
   import SettingsPanel from './lib/SettingsPanel.svelte'
-  import InboxPanel from './lib/workbench/InboxPanel.svelte'
+  import HostSessionRail from './lib/components/navigation/HostSessionRail.svelte'
+  import RequestListPane from './lib/components/navigation/RequestListPane.svelte'
   import ResumePromptDialog from './lib/workbench/ResumePromptDialog.svelte'
   import WorkspacePanel from './lib/workbench/WorkspacePanel.svelte'
   import type {
@@ -27,6 +28,8 @@
     FeedbackRequestSummary,
     FeedbackRequestView,
     FeedbackWorkspaceView,
+    HostSessionSummary,
+    ListFeedbackRequestsInput,
     ListFeedbackRequestsOutput,
     RemoveAttachmentInput,
     ReorderAttachmentsInput,
@@ -40,9 +43,10 @@
     type NotificationState,
   } from './lib/notifications'
   import { desktopPath } from './lib/nativePath'
+  import { previewFixtures, previewWorkspaceFor } from './lib/previewFixtures'
   import type {
-    AdapterPresentation,
     FeedbackEditorHandle,
+    HostProfile,
     RamblePhase,
     RambleSessionControllerHandle,
     ResumePrompt,
@@ -56,18 +60,24 @@
   import { locale } from './lib/preferences'
 
   type ScreenCaptureFinished = {
-    session_id: string | null
+    capture_session_id: string | null
     outcome: 'cancelled' | 'pinned'
   }
 
   type CommandError = { code: string; message: string; retryable: boolean }
 
   const RESUME_PROMPT_EVENT = 'rambledesk://resume-prompt'
+  const OPEN_ADAPTERS_EVENT = 'rambledesk://open-adapters'
 
-  let inbox: FeedbackRequestSummary[] = []
-  let history: FeedbackRequestSummary[] = []
-  let adapterPresentations: Record<string, AdapterPresentation> = {}
-  let inboxMode: 'open' | 'history' = 'open'
+  const ALL_REQUEST_STATUSES = ['waiting', 'in_progress', 'completed', 'cancelled'] as const
+
+  let pendingRequests: FeedbackRequestSummary[] = []
+  let requests: FeedbackRequestSummary[] = []
+  let hostSessions: HostSessionSummary[] = []
+  let hostProfiles: Record<string, HostProfile> = {}
+  let selectedHostId: string | null = null
+  let selectedHostSessionId: string | null = null
+  let nextRequestCursor: string | null = null
   let workspace: FeedbackWorkspaceView | null = null
   let completedResult: FeedbackRequestView | null = null
   let draftBody = ''
@@ -76,8 +86,9 @@
   let savePhase: SavePhase = 'idle'
   let saveMessage = ''
   let pageError = ''
-  let loadingInbox = true
-  let loadingHistory = false
+  let loadingNavigation = true
+  let loadingRequests = true
+  let loadingMoreRequests = false
   let loadingWorkspace = false
   let submitting = false
   let cancelling = false
@@ -93,8 +104,12 @@
   let settingsOpen = false
   let settingsSection: SettingsSection = 'general'
   const isTauri = '__TAURI_INTERNALS__' in window
+  const previewMode =
+    import.meta.env.DEV &&
+    !isTauri &&
+    new URLSearchParams(window.location.search).get('preview') === 'fixtures'
   let taskBriefOpen = true
-  let mcpConfiguration = ''
+  let genericMcpConfiguration = ''
   let voicePhase: VoicePhase = 'idle'
   let voiceDevice = ''
   let voicePartial = ''
@@ -114,7 +129,11 @@
   }
 
   $: dirty = workspace !== null && draftBody !== savedBody
-  $: displayedRequests = inboxMode === 'open' ? inbox : history
+  $: requestScopeLabel = selectedHostId
+    ? selectedHostSessionId
+      ? `${resolveHostProfile(selectedHostId).label} / ${selectedHostSessionId}`
+      : resolveHostProfile(selectedHostId).label
+    : tr('全部宿主')
   $: feedbackResult = completedResult?.feedback ?? workspace?.feedback ?? null
   $: canSubmit =
     workspace !== null &&
@@ -151,25 +170,52 @@
 
   onMount(() => {
     if (!isTauri) {
-      loadingInbox = false
+      if (previewMode) {
+        requests = previewFixtures.requests
+        pendingRequests = previewFixtures.requests.filter(
+          (request) => request.status === 'waiting' || request.status === 'in_progress',
+        )
+        hostSessions = previewFixtures.hostSessions
+        hostProfiles = Object.fromEntries(
+          previewFixtures.hostProfiles.map((profile) => [profile.id, profile]),
+        )
+        workspace = previewFixtures.workspace
+        draftBody = previewFixtures.workspace.draft.body_markdown
+        savedBody = draftBody
+        savedRevision = previewFixtures.workspace.draft.saved_revision
+        savePhase = 'saved'
+        if (new URLSearchParams(window.location.search).get('dialog') === 'resume') {
+          resumePrompt = previewFixtures.resumePrompt
+        }
+      }
+      loadingNavigation = false
+      loadingRequests = false
       notificationState = 'unavailable'
       window.addEventListener('paste', handlePaste)
       return () => window.removeEventListener('paste', handlePaste)
     }
     void initialize()
     void refreshNotificationPermission()
-    inboxTimer = setInterval(() => void refreshInbox(), 5_000)
+    inboxTimer = setInterval(() => void refreshNavigation(true), 5_000)
     let dragUnlisten: (() => void) | undefined
     let captureReadyUnlisten: (() => void) | undefined
     let captureFinishedUnlisten: (() => void) | undefined
     let resumePromptUnlisten: (() => void) | undefined
+    let openAdaptersUnlisten: (() => void) | undefined
+    void listen(OPEN_ADAPTERS_EVENT, () => openSettings('adapters'))
+      .then((unlisten) => {
+        openAdaptersUnlisten = unlisten
+      })
+      .catch(() => {
+        // The tray entry is unavailable in browser preview.
+      })
     void listen<ResumePrompt>(RESUME_PROMPT_EVENT, (event) => {
       resumePrompt = event.payload
       resumeCopyState = 'idle'
       if (notificationState === 'enabled') {
         sendNotification({
           title: event.payload.title,
-          body: tr('请回到 {host}，用恢复提示继续 Agent。', {
+          body: tr('请回到 {host}，用恢复提示继续宿主会话。', {
             host: event.payload.host_label,
           }),
         })
@@ -225,6 +271,7 @@
       captureReadyUnlisten?.()
       captureFinishedUnlisten?.()
       resumePromptUnlisten?.()
+      openAdaptersUnlisten?.()
       window.removeEventListener('paste', handlePaste)
       releaseAttachmentPreviews()
     }
@@ -250,49 +297,59 @@
 
   async function initialize() {
     pageError = ''
-    loadingInbox = true
+    loadingNavigation = true
+    loadingRequests = true
     try {
-      const [nextInbox, presentations] = await Promise.all([
+      const [nextInbox, nextHostSessions, profiles] = await Promise.all([
         invoke<FeedbackRequestSummary[]>('list_feedback_inbox'),
-        invoke<AdapterPresentation[]>('list_adapter_presentations'),
+        invoke<HostSessionSummary[]>('list_host_sessions'),
+        invoke<HostProfile[]>('list_host_profiles'),
       ])
-      adapterPresentations = Object.fromEntries(
-        presentations.map((presentation) => [presentation.id, presentation]),
-      )
+      hostProfiles = Object.fromEntries(profiles.map((profile) => [profile.id, profile]))
       applyInboxSnapshot(nextInbox)
-      if (nextInbox.length > 0) {
-        await openRequest(nextInbox[0].request_id, false)
-      }
+      hostSessions = nextHostSessions
+      await refreshRequests(true)
     } catch (cause) {
       pageError = messageFrom(cause)
     } finally {
-      loadingInbox = false
+      loadingNavigation = false
+      loadingRequests = false
     }
   }
 
-  function adapterPresentation(hostId: string): AdapterPresentation {
+  function resolveHostProfile(hostId: string): HostProfile {
     const normalized = hostId.trim().toLowerCase()
-    const presentation = adapterPresentations[normalized]
-    if (presentation) return presentation
+    const profile = hostProfiles[normalized]
+    if (profile) return profile
     return {
       id: normalized || 'generic',
-      label: hostId.trim() || adapterPresentations.generic?.label || 'Coding Agent',
-      icon_svg: adapterPresentations.generic?.icon_svg || '',
+      label: hostId.trim() || hostProfiles.generic?.label || 'Generic Host',
+      icon_svg: hostProfiles.generic?.icon_svg || '',
+      default_adapter: 'generic_mcp',
+      continuation_mode: 'manual',
     }
   }
 
-  async function refreshInbox() {
+  async function refreshNavigation(refreshRequestList = false) {
+    loadingNavigation = true
     try {
-      const nextInbox = await invoke<FeedbackRequestSummary[]>('list_feedback_inbox')
+      const [nextInbox, nextHostSessions] = await Promise.all([
+        invoke<FeedbackRequestSummary[]>('list_feedback_inbox'),
+        invoke<HostSessionSummary[]>('list_host_sessions'),
+      ])
       applyInboxSnapshot(nextInbox)
+      hostSessions = nextHostSessions
+      if (refreshRequestList) await refreshRequests(false)
     } catch (cause) {
       pageError = messageFrom(cause)
+    } finally {
+      loadingNavigation = false
     }
   }
 
   function applyInboxSnapshot(nextInbox: FeedbackRequestSummary[]) {
     const arrivals = notificationTracker.observe(nextInbox)
-    inbox = nextInbox
+    pendingRequests = nextInbox
     void invoke('set_pending_count', { count: nextInbox.length }).catch(() => {
       // Tray updates are a convenience; the inbox remains authoritative.
     })
@@ -307,6 +364,81 @@
               }),
       })
     }
+  }
+
+  function requestListInput(cursor: string | null = null): ListFeedbackRequestsInput {
+    return {
+      host_id: selectedHostId,
+      host_session_id: selectedHostSessionId,
+      status: [...ALL_REQUEST_STATUSES],
+      limit: 100,
+      cursor,
+    }
+  }
+
+  async function refreshRequests(openFirst = false) {
+    loadingRequests = true
+    try {
+      const result: ListFeedbackRequestsOutput = previewMode
+        ? {
+            requests: previewFixtures.requests.filter(
+              (request) =>
+                (!selectedHostId || request.host_id === selectedHostId) &&
+                (!selectedHostSessionId ||
+                  request.host_session_id === selectedHostSessionId),
+            ),
+            next_cursor: null,
+          }
+        : await invoke<ListFeedbackRequestsOutput>('list_feedback_requests', {
+            input: requestListInput(),
+          })
+      requests = result.requests
+      nextRequestCursor = result.next_cursor
+      const currentRequestId = workspace?.request.request_id
+      const currentVisible =
+        currentRequestId !== undefined &&
+        result.requests.some((request) => request.request_id === currentRequestId)
+      if ((openFirst || (currentRequestId && !currentVisible)) && result.requests[0]) {
+        await openRequest(result.requests[0].request_id, currentRequestId !== undefined)
+      } else if ((openFirst || (currentRequestId && !currentVisible)) && result.requests.length === 0) {
+        if (rambleCanExit) await exitRamble()
+        if (!dirty || (await saveDraftNow())) {
+          workspace = null
+          completedResult = null
+          releaseAttachmentPreviews()
+        }
+      }
+    } catch (cause) {
+      pageError = messageFrom(cause)
+    } finally {
+      loadingRequests = false
+    }
+  }
+
+  async function loadMoreRequests() {
+    if (!nextRequestCursor || loadingMoreRequests) return
+    loadingMoreRequests = true
+    try {
+      const result = await invoke<ListFeedbackRequestsOutput>('list_feedback_requests', {
+        input: requestListInput(nextRequestCursor),
+      })
+      const known = new Set(requests.map((request) => request.request_id))
+      requests = [...requests, ...result.requests.filter((request) => !known.has(request.request_id))]
+      nextRequestCursor = result.next_cursor
+    } catch (cause) {
+      pageError = messageFrom(cause)
+    } finally {
+      loadingMoreRequests = false
+    }
+  }
+
+  async function selectNavigationScope(hostId: string | null, hostSessionId: string | null) {
+    if (selectedHostId === hostId && selectedHostSessionId === hostSessionId) return
+    if (rambleCanExit) await exitRamble()
+    if (dirty && !(await saveDraftNow())) return
+    selectedHostId = hostId
+    selectedHostSessionId = hostSessionId
+    await refreshRequests(true)
   }
 
   async function refreshNotificationPermission() {
@@ -349,9 +481,12 @@
     pageError = ''
     completedResult = null
     try {
-      const next = await invoke<FeedbackWorkspaceView>('get_feedback_workspace', {
-        requestId,
-      })
+      const next = previewMode
+        ? previewWorkspaceFor(requestId)
+        : await invoke<FeedbackWorkspaceView>('get_feedback_workspace', {
+            requestId,
+          })
+      if (!next) throw new Error(tr('找不到这个反馈请求。'))
       workspace = next
       draftBody = next.draft.body_markdown
       savedBody = next.draft.body_markdown
@@ -401,7 +536,13 @@
           body_markdown: bodyToSave,
           expected_revision: revisionToSave,
         }
-        const saved = await invoke<DraftView>('save_feedback_draft', { input })
+        const saved: DraftView = previewMode
+          ? {
+              body_markdown: bodyToSave,
+              saved_revision: revisionToSave + 1,
+              updated_at: new Date().toISOString(),
+            }
+          : await invoke<DraftView>('save_feedback_draft', { input })
         if (workspace?.request.request_id === requestId) {
           savedBody = bodyToSave
           savedRevision = saved.saved_revision
@@ -440,7 +581,7 @@
     await tick()
     if (!isTauri) return
     try {
-      mcpConfiguration = await invoke<string>('get_mcp_configuration')
+      genericMcpConfiguration = await invoke<string>('get_generic_mcp_configuration')
     } catch (cause) {
       pageError = messageFrom(cause)
     }
@@ -452,33 +593,6 @@
       return
     }
     await openSettings('general')
-  }
-
-  async function refreshHistory() {
-    loadingHistory = true
-    try {
-      const result = await invoke<ListFeedbackRequestsOutput>('list_feedback_history')
-      history = result.requests
-    } catch (cause) {
-      pageError = messageFrom(cause)
-    } finally {
-      loadingHistory = false
-    }
-  }
-
-  function showOpenRequests() {
-    inboxMode = 'open'
-    void refreshInbox()
-  }
-
-  function showHistory() {
-    inboxMode = 'history'
-    void refreshHistory()
-  }
-
-  function refreshCurrentList() {
-    if (inboxMode === 'history') void refreshHistory()
-    else void refreshInbox()
   }
 
   function handlePaste(event: ClipboardEvent) {
@@ -591,7 +705,7 @@
 
   async function importScreenCapture(capture: ScreenCaptureReady) {
     if (!workspace) {
-      await invoke('discard_screen_capture', { sessionId: capture.session_id }).catch(() => {})
+      await invoke('discard_screen_capture', { captureSessionId: capture.capture_session_id }).catch(() => {})
       attachmentBusy = false
       return
     }
@@ -602,7 +716,7 @@
       }
       const existingIds = new Set(workspace.attachments.map((item) => item.attachment_id))
       const png = await invoke<ArrayBuffer>('read_completed_screen_capture', {
-        sessionId: capture.session_id,
+        captureSessionId: capture.capture_session_id,
       })
       const input: AddAttachmentInput = {
         request_id: requestId,
@@ -629,7 +743,7 @@
         await refreshAttachmentPreviews(workspace)
       }
     } finally {
-      await invoke('discard_screen_capture', { sessionId: capture.session_id }).catch(() => {})
+      await invoke('discard_screen_capture', { captureSessionId: capture.capture_session_id }).catch(() => {})
       attachmentBusy = false
     }
   }
@@ -750,8 +864,7 @@
         },
       }
       savePhase = 'saved'
-      await refreshInbox()
-      if (history.length > 0) await refreshHistory()
+      await refreshNavigation(true)
     } catch (cause) {
       pageError = messageFrom(cause)
     } finally {
@@ -783,8 +896,7 @@
         },
       }
       savePhase = 'saved'
-      await refreshInbox()
-      if (history.length > 0) await refreshHistory()
+      await refreshNavigation(true)
     } catch (cause) {
       pageError = messageFrom(cause)
     } finally {
@@ -846,7 +958,7 @@
 </svelte:head>
 
 {#key $locale}
-<main class="shell">
+<main class="h-full w-full overflow-hidden rounded-[16px] border bg-background text-foreground shadow-sm">
   <RambleSessionController
     bind:this={rambleController}
     {isTauri}
@@ -872,8 +984,8 @@
   />
 
   <AppTitlebar
-    projectName={workspace?.request.project_name ?? 'Vault Zero Archive'}
-    pendingCount={inbox.length}
+    sourceLabel={workspace?.request.source_hint ?? workspace?.request.title ?? 'Workbench'}
+    pendingCount={pendingRequests.length}
     notificationText={notificationLabel(notificationState, $locale)}
     notificationEnabled={notificationState === 'enabled'}
     notificationDisabled={notificationState === 'checking' || notificationState === 'unavailable'}
@@ -882,18 +994,29 @@
     onWindowError={(message) => (pageError = tr('窗口操作失败：{error}', { error: message }))}
   />
 
-  <div class="workbench">
-    <InboxPanel
-      {inboxMode}
-      {loadingInbox}
-      {loadingHistory}
-      requests={displayedRequests}
+  <div class="flex h-[calc(100%-46px)] min-h-0">
+    <HostSessionRail
+      sessions={hostSessions}
+      activeHostId={selectedHostId}
+      activeHostSessionId={selectedHostSessionId}
+      loading={loadingNavigation}
+      {resolveHostProfile}
+      onSelect={(hostId, hostSessionId) => void selectNavigationScope(hostId, hostSessionId)}
+      onRefresh={() => void refreshNavigation(true)}
+      onSettings={() => void openSettings('adapters')}
+    />
+
+    <RequestListPane
+      {requests}
       activeRequestId={workspace?.request.request_id ?? null}
-      {adapterPresentation}
+      scopeLabel={requestScopeLabel}
+      loading={loadingRequests}
+      loadingMore={loadingMoreRequests}
+      hasMore={nextRequestCursor !== null}
+      {resolveHostProfile}
       {formatTime}
-      onRefresh={refreshCurrentList}
-      onShowOpen={showOpenRequests}
-      onShowHistory={showHistory}
+      onRefresh={() => void refreshRequests(false)}
+      onLoadMore={() => void loadMoreRequests()}
       onOpenRequest={(requestId) => void openRequest(requestId)}
     />
 
@@ -927,7 +1050,7 @@
       {submitting}
       {canCancel}
       {cancelling}
-      {adapterPresentation}
+      {resolveHostProfile}
       {formatTime}
       onReload={() => void reloadWorkspace()}
       onDraftChange={updateDraft}
@@ -956,9 +1079,8 @@
 
 {#if settingsOpen}
   <SettingsPanel
-    {mcpConfiguration}
+    mcpConfiguration={genericMcpConfiguration}
     initialSection={settingsSection}
-    projectRootPath={workspace?.request.project_root_path ?? null}
     onClose={() => (settingsOpen = false)}
   />
 {/if}
