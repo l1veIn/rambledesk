@@ -39,7 +39,7 @@ function initialNotificationSound(): NotificationSound {
 function initialNotificationVolume() {
   const raw = localStorage.getItem(NOTIFICATION_VOLUME_KEY)
   const saved = raw === null ? Number.NaN : Number(raw)
-  return Number.isFinite(saved) && saved >= 0 && saved <= 100 ? saved : 80
+  return Number.isFinite(saved) && saved >= 0 && saved <= 100 ? saved : 100
 }
 
 export const locale = writable<Locale>(initialLocale())

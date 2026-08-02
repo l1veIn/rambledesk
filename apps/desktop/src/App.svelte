@@ -272,11 +272,9 @@
         attachmentMessageTone = 'error'
         attachmentMessage = tr('无法接收截图结果：{error}', { error: messageFrom(cause) })
       })
-    void listen<ScreenCaptureFinished>('screen-capture-finished', (event) => {
+    void listen<ScreenCaptureFinished>('screen-capture-finished', () => {
       attachmentBusy = false
-      attachmentMessageTone = 'info'
-      attachmentMessage =
-        event.payload.outcome === 'pinned' ? tr('截图已固定到屏幕') : tr('截图已取消')
+      attachmentMessage = ''
     })
       .then((unlisten) => {
         captureFinishedUnlisten = unlisten
@@ -752,8 +750,7 @@
     await rambleMarkdownQueue.catch(() => {})
     screenCaptureRequestId = requestId
     attachmentBusy = true
-    attachmentMessageTone = 'info'
-    attachmentMessage = tr('高级截图已唤起：可智能选窗、标注、滚动截图或固定到屏幕')
+    attachmentMessage = ''
     try {
       await invoke('begin_screen_capture')
     } catch (cause) {
