@@ -8,6 +8,7 @@
     eventBelongsToRamble,
     type ClipboardCaptureEvent,
   } from '../clipboardCapture'
+  import { attachmentMarkdownUrl } from '../attachmentMarkdown'
   import type { AddAttachmentInput, FeedbackWorkspaceView } from '../feedback'
   import { t } from '../i18n'
   import { locale } from '../preferences'
@@ -33,7 +34,6 @@
   export let editor: FeedbackEditorHandle | undefined
   export let attachmentBusy = false
   export let attachmentMessage = ''
-  export let savedRevision = 0
   export let voicePhase: VoicePhase = 'idle'
   export let voiceDevice = ''
   export let voicePartial = ''
@@ -41,6 +41,8 @@
   export let voiceChunkIndex = 0
   export let ramblePhase: RamblePhase = 'idle'
   export let rambleStartedOnce = false
+  export let rambleRequestId = ''
+  export let rambleRequestTitle = ''
   export let rambleMessage = ''
   export let onPageError: (message: string) => void = () => {}
   export let onSaveDraftNow: () => Promise<boolean> = async () => true
@@ -48,10 +50,12 @@
   export let onRefreshAttachmentPreviews: (next: FeedbackWorkspaceView) => Promise<void> = async () => {}
   export let onStartScreenCapture: () => Promise<void> = async () => {}
   export let onImportAttachmentPaths: (paths: string[]) => Promise<void> = async () => {}
+  export let onAppendRambleMarkdown: (requestId: string, markdown: string) => Promise<void> = async () => {}
 
   let voiceRequestId = ''
   let voiceSessionId = ''
   let rambleContextId = ''
+  let rambleSourceLabel = ''
   let clipboardCaptureCount = 0
   let clipboardImageQueue: Promise<void> = Promise.resolve()
 
@@ -147,12 +151,12 @@
   }
 
   export async function importClipboardNow() {
-    if (!workspace || !rambleEngaged || !rambleContextId || attachmentBusy) return
+    if (!rambleRequestId || !rambleEngaged || !rambleContextId || attachmentBusy) return
     attachmentMessage = ''
     try {
       const event = await invoke<ClipboardCaptureEvent>('capture_clipboard_once', {
         input: {
-          request_id: workspace.request.request_id,
+          request_id: rambleRequestId,
           ramble_context_id: rambleContextId,
         },
       })
@@ -175,6 +179,9 @@
   export function resetRambleUi() {
     ramblePhase = 'idle'
     rambleStartedOnce = false
+    rambleRequestId = ''
+    rambleRequestTitle = ''
+    rambleSourceLabel = ''
     rambleContextId = ''
     rambleMessage = ''
     clipboardCaptureCount = 0
@@ -191,6 +198,9 @@
       return
     }
     rambleStartedOnce = true
+    rambleRequestId = workspace.request.request_id
+    rambleRequestTitle = workspace.request.title
+    rambleSourceLabel = workspace.request.source_hint ?? workspace.request.host_session_id
     rambleContextId = crypto.randomUUID()
     clipboardCaptureCount = 0
     ramblePhase = 'starting'
@@ -202,8 +212,7 @@
   }
 
   async function resumeRamble() {
-    if (!workspace || rambleBusy || rambleActive || !rambleContextId) return
-    const requestId = workspace.request.request_id
+    if (!rambleRequestId || rambleBusy || rambleActive || !rambleContextId) return
     ramblePhase = 'starting'
     rambleMessage = t($locale, '正在启动麦克风与实时转写…')
     const voiceStarted = await startVoiceRamble()
@@ -213,12 +222,6 @@
       return
     }
 
-    if (workspace?.request.request_id !== requestId) {
-      await invoke('stop_voice_ramble').catch(() => {})
-      resetVoiceUi()
-      await exitRamble()
-      return
-    }
     ramblePhase = 'active'
     rambleMessage = t($locale, 'Ramble 进行中 · 剪贴板仅在点击导入时读取')
   }
@@ -242,16 +245,9 @@
   }
 
   async function startVoiceRamble(): Promise<boolean> {
-    if (
-      !workspace ||
-      voiceActive ||
-      workspace.request.status === 'completed' ||
-      workspace.request.status === 'cancelled'
-    ) {
-      return false
-    }
+    if (!rambleRequestId || voiceActive) return false
     voicePhase = 'starting'
-    voiceRequestId = workspace.request.request_id
+    voiceRequestId = rambleRequestId
     voiceSessionId = ''
     voiceDevice = ''
     voicePartial = ''
@@ -260,7 +256,7 @@
     try {
       const session = await invoke<VoiceRambleSessionView>('start_voice_ramble', {
         input: {
-          request_id: workspace.request.request_id,
+          request_id: rambleRequestId,
         },
       })
       voiceSessionId = session.voice_session_id
@@ -303,10 +299,10 @@
   function handleClipboardCaptureEvent(event: ClipboardCaptureEvent) {
     if (
       !rambleEngaged ||
-      !workspace ||
+      !rambleRequestId ||
       !eventBelongsToRamble(
         event,
-        workspace.request.request_id,
+        rambleRequestId,
         rambleContextId,
       )
     ) {
@@ -323,14 +319,17 @@
       return
     }
     if (event.type === 'text') {
-      const inserted = editor?.appendClipboardCapture(
-        event.text,
-        clipboardCaptureLabel(event.captured_at_ms, event.truncated, $locale),
-      )
-      if (inserted) {
-        clipboardCaptureCount += 1
-        rambleMessage = t($locale, 'Ramble 进行中 · 已捕获 {count} 项剪贴板上下文', { count: clipboardCaptureCount })
+      const label = clipboardCaptureLabel(event.captured_at_ms, event.truncated, $locale)
+      if (workspace?.request.request_id === rambleRequestId) {
+        editor?.appendClipboardCapture(event.text, label)
+      } else {
+        const quoted = event.text.split(/\r?\n/).map((line) => `> ${line}`).join('\n')
+        void onAppendRambleMarkdown(rambleRequestId, `> **${label}**\n>\n${quoted}`).catch(
+          (cause) => onPageError(t($locale, 'Ramble 内容写入失败：{error}', { error: messageFrom(cause) })),
+        )
       }
+      clipboardCaptureCount += 1
+      rambleMessage = t($locale, 'Ramble 进行中 · 已捕获 {count} 项剪贴板上下文', { count: clipboardCaptureCount })
       return
     }
 
@@ -350,8 +349,14 @@
         await new Promise((resolve) => setTimeout(resolve, 50))
       }
       if (attachmentBusy) throw new Error(t($locale, '附件通道正忙，请稍后重新复制图片'))
-      if (!workspace || workspace.request.request_id !== requestId) return
-      if (!(await onSaveDraftNow())) throw new Error(t($locale, '当前草稿无法保存'))
+      const visibleTarget = workspace?.request.request_id === requestId
+      if (visibleTarget && !(await onSaveDraftNow())) {
+        throw new Error(t($locale, '当前草稿无法保存'))
+      }
+      const target = visibleTarget
+        ? workspace
+        : await invoke<FeedbackWorkspaceView>('get_feedback_workspace', { requestId })
+      if (!target) return
 
       attachmentBusy = true
       const png = await invoke<ArrayBuffer>('read_clipboard_capture_image', {
@@ -363,28 +368,30 @@
         request_id: requestId,
         file_name: event.file_name,
         contents: Array.from(new Uint8Array(png)),
-        expected_revision: savedRevision,
+        expected_revision: target.draft.saved_revision,
       }
       const next = await invoke<FeedbackWorkspaceView>('add_feedback_attachment', { input })
-      if (workspace?.request.request_id !== requestId) return
       const attachment = next.attachments.find(
-        (item) => !workspace?.attachments.some(
+        (item) => !target.attachments.some(
           (existing) => existing.attachment_id === item.attachment_id,
         ),
       )
-      onApplyWorkspaceMutation(next)
-      await onRefreshAttachmentPreviews(next)
-      await tick()
-      if (
-        !attachment ||
-        !editor?.appendCapturedAttachment(
-          attachment,
-          clipboardCaptureLabel(event.captured_at_ms, false, $locale),
+      if (!attachment) throw new Error(t($locale, '图片附件已保存，但未能写入文档流'))
+      const label = clipboardCaptureLabel(event.captured_at_ms, false, $locale)
+      if (visibleTarget && workspace?.request.request_id === requestId) {
+        onApplyWorkspaceMutation(next)
+        await onRefreshAttachmentPreviews(next)
+        await tick()
+        if (!editor?.appendCapturedAttachment(attachment, label)) {
+          throw new Error(t($locale, '图片附件已保存，但未能写入文档流'))
+        }
+        await onSaveDraftNow()
+      } else {
+        await onAppendRambleMarkdown(
+          requestId,
+          `> **${label}**\n\n![${attachment.file_name}](${attachmentMarkdownUrl(attachment.attachment_id)})`,
         )
-      ) {
-        throw new Error(t($locale, '图片附件已保存，但未能写入文档流'))
       }
-      await onSaveDraftNow()
       clipboardCaptureCount += 1
       rambleMessage = t($locale, 'Ramble 进行中 · 已捕获 {count} 项剪贴板上下文', { count: clipboardCaptureCount })
     } finally {
@@ -396,7 +403,7 @@
   }
 
   function handleVoiceEvent(event: SpeechEvent) {
-    const currentRequestId = workspace?.request.request_id ?? voiceRequestId
+    const currentRequestId = voiceRequestId
     if (
       !eventBelongsToVoiceSession(
         event,
@@ -429,7 +436,14 @@
         break
       case 'stable': {
         const transcript = stableTranscript(event)
-        if (transcript) editor?.appendTranscript(transcript)
+        if (transcript) {
+          if (workspace?.request.request_id === voiceRequestId) editor?.appendTranscript(transcript)
+          else {
+            void onAppendRambleMarkdown(voiceRequestId, transcript).catch(
+              (cause) => onPageError(t($locale, 'Ramble 内容写入失败：{error}', { error: messageFrom(cause) })),
+            )
+          }
+        }
         voicePartial = ''
         voiceChunkIndex = event.chunk_index + 1
         if (voicePhase !== 'stopping') voicePhase = 'listening'
@@ -484,7 +498,7 @@
   }
 
   function broadcastRambleConsoleState() {
-    if (!rambleEngaged || !workspace) return
+    if (!rambleEngaged || !rambleRequestId) return
     const state: RambleConsoleState = {
       phase:
         ramblePhase === 'active'
@@ -492,8 +506,8 @@
           : ramblePhase === 'idle'
             ? 'paused'
             : ramblePhase,
-      sourceLabel: workspace.request.source_hint ?? workspace.request.host_session_id,
-      requestTitle: workspace.request.title,
+      sourceLabel: rambleSourceLabel,
+      requestTitle: rambleRequestTitle,
       recording: rambleActive,
       busy: rambleBusy,
       captureBusy: attachmentBusy,

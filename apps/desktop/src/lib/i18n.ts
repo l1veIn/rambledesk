@@ -150,6 +150,7 @@ const english: Record<string, string> = {
   '撤销': 'Undo',
   '重做': 'Redo',
   'Ramble 操作台': 'Ramble console',
+  'Ramble 内容写入失败：{error}': 'Failed to write Ramble content: {error}',
   '全局快捷键 Ctrl + Shift + R': 'Global shortcut Ctrl + Shift + R',
   '文档附件': 'Document attachments',
   '插入正文 {name}': 'Insert into document: {name}',

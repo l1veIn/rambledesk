@@ -10,6 +10,9 @@
 
   export let sourceLabel = 'Workbench'
   export let pendingCount = 0
+  export let rambleEngaged = false
+  export let rambleActive = false
+  export let rambleRequestTitle = ''
   export let notificationText = '通知'
   export let notificationEnabled = false
   export let notificationDisabled = false
@@ -92,6 +95,28 @@
   ></button>
 
   <div class="flex shrink-0 items-center gap-1.5 px-2">
+    {#if rambleEngaged}
+      <Badge
+        variant="secondary"
+        class={[
+          'h-6 max-w-64 gap-1.5 px-2 text-[9px] max-[1080px]:max-w-40',
+          rambleActive
+            ? 'bg-destructive/10 text-destructive'
+            : 'bg-warning/10 text-warning-foreground dark:text-warning',
+        ]}
+        title={rambleRequestTitle}
+      >
+        <span
+          class={[
+            'size-1.5 shrink-0 rounded-full',
+            rambleActive ? 'animate-pulse bg-destructive' : 'bg-warning',
+          ]}
+        ></span>
+        <span class="truncate">
+          {rambleActive ? t($locale, '正在记录') : t($locale, 'Ramble 已暂停')} · {rambleRequestTitle}
+        </span>
+      </Badge>
+    {/if}
     {#if pendingCount > 0}
       <Badge
         variant="secondary"

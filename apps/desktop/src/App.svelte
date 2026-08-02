@@ -124,7 +124,11 @@
   let voiceChunkIndex = 0
   let ramblePhase: RamblePhase = 'idle'
   let rambleStartedOnce = false
+  let rambleRequestId = ''
+  let rambleRequestTitle = ''
   let rambleMessage = ''
+  let rambleMarkdownQueue: Promise<void> = Promise.resolve()
+  let screenCaptureRequestId = ''
   let saveTimer: ReturnType<typeof setTimeout> | undefined
   let inboxTimer: ReturnType<typeof setInterval> | undefined
   let activeSave: Promise<boolean> | null = null
@@ -467,8 +471,8 @@
 
   async function openRequest(requestId: string, saveCurrent = true) {
     if (workspace?.request.request_id === requestId) return
-    if (rambleCanExit) await exitRamble()
     if (saveCurrent && !(await saveDraftNow())) return
+    if (requestId === rambleRequestId) await rambleMarkdownQueue.catch(() => {})
 
     loadingWorkspace = true
     pageError = ''
@@ -487,8 +491,6 @@
       savePhase = next.draft.updated_at ? 'saved' : 'idle'
       saveMessage = ''
       attachmentMessage = ''
-      resetVoiceUi()
-      resetRambleUi()
       await refreshAttachmentPreviews(next)
     } catch (cause) {
       pageError = messageFrom(cause)
@@ -556,6 +558,40 @@
       return saveDraftNow()
     }
     return succeeded
+  }
+
+  async function appendRambleMarkdown(requestId: string, markdown: string): Promise<void> {
+    const block = markdown.trim()
+    if (!requestId || !block) return
+
+    const operation = rambleMarkdownQueue.then(async () => {
+      if (workspace?.request.request_id === requestId) {
+        const nextBody = appendMarkdownBlock(draftBody, block)
+        updateDraft(nextBody)
+        if (!(await saveDraftNow())) throw new Error(saveMessage || tr('当前草稿无法保存'))
+        return
+      }
+
+      const target = previewMode
+        ? previewWorkspaceFor(requestId)
+        : await invoke<FeedbackWorkspaceView>('get_feedback_workspace', { requestId })
+      if (!target) throw new Error(tr('找不到这个反馈请求。'))
+      const input: SaveDraftInput = {
+        request_id: requestId,
+        body_markdown: appendMarkdownBlock(target.draft.body_markdown, block),
+        expected_revision: target.draft.saved_revision,
+      }
+      if (!previewMode) await invoke<DraftView>('save_feedback_draft', { input })
+    })
+    rambleMarkdownQueue = operation.catch((cause) => {
+      pageError = tr('Ramble 内容写入失败：{error}', { error: messageFrom(cause) })
+    })
+    await operation
+  }
+
+  function appendMarkdownBlock(body: string, block: string) {
+    const current = body.trimEnd()
+    return current ? `${current}\n\n${block}` : block
   }
 
   async function reloadWorkspace() {
@@ -645,53 +681,63 @@
   }
 
   async function importAttachmentPaths(paths: string[]) {
-    if (!workspace || paths.length === 0 || attachmentBusy) return
-    if (!(await saveDraftNow())) return
+    const requestId = rambleRequestId || workspace?.request.request_id || ''
+    if (!requestId || paths.length === 0 || attachmentBusy) return
+    const visibleTarget = workspace?.request.request_id === requestId
+    if (visibleTarget && !(await saveDraftNow())) return
+    await rambleMarkdownQueue.catch(() => {})
     attachmentBusy = true
     attachmentMessage = ''
     try {
-      let next = workspace
+      let next = visibleTarget
+        ? workspace
+        : await invoke<FeedbackWorkspaceView>('get_feedback_workspace', { requestId })
+      if (!next) throw new Error(tr('找不到这个反馈请求。'))
       const existingIds = new Set(next.attachments.map((item) => item.attachment_id))
       for (const path of paths) {
         next = await invoke<FeedbackWorkspaceView>('import_feedback_attachment_path', {
-          requestId: next.request.request_id,
+          requestId,
           path,
           expectedRevision: next.draft.saved_revision,
         })
-        applyWorkspaceMutation(next)
+        if (visibleTarget) applyWorkspaceMutation(next)
       }
-      await refreshAttachmentPreviews(next)
-      await tick()
-      workspacePanel?.insertAttachments(
-        next.attachments.filter((item) => !existingIds.has(item.attachment_id)),
-      )
-      await saveDraftNow()
+      const added = next.attachments.filter((item) => !existingIds.has(item.attachment_id))
+      if (visibleTarget && workspace?.request.request_id === requestId) {
+        await refreshAttachmentPreviews(next)
+        await tick()
+        workspacePanel?.insertAttachments(added)
+        await saveDraftNow()
+      } else {
+        await appendRambleMarkdown(
+          requestId,
+          added
+            .map((attachment) => `![${attachment.file_name}](attachment://${attachment.attachment_id})`)
+            .join('\n\n'),
+        )
+      }
     } catch (cause) {
       attachmentMessageTone = 'error'
       attachmentMessage = messageFrom(cause)
-      if (workspace) await refreshAttachmentPreviews(workspace)
+      if (workspace?.request.request_id === requestId) await refreshAttachmentPreviews(workspace)
     } finally {
       attachmentBusy = false
     }
   }
 
   async function startScreenCapture() {
-    if (
-      !workspace ||
-      !rambleEngaged ||
-      attachmentBusy ||
-      workspace.request.status === 'completed' ||
-      workspace.request.status === 'cancelled'
-    ) {
-      return
-    }
-    if (!(await saveDraftNow())) return
+    const requestId = rambleRequestId || workspace?.request.request_id || ''
+    if (!requestId || !rambleEngaged || attachmentBusy) return
+    if (workspace?.request.request_id === requestId && !(await saveDraftNow())) return
+    await rambleMarkdownQueue.catch(() => {})
+    screenCaptureRequestId = requestId
     attachmentBusy = true
     attachmentMessageTone = 'info'
     attachmentMessage = tr('高级截图已唤起：可智能选窗、标注、滚动截图或固定到屏幕')
     try {
       await invoke('begin_screen_capture')
     } catch (cause) {
+      screenCaptureRequestId = ''
       attachmentBusy = false
       attachmentMessageTone = 'error'
       const message = messageFrom(cause)
@@ -701,17 +747,23 @@
   }
 
   async function importScreenCapture(capture: ScreenCaptureReady) {
-    if (!workspace) {
+    const requestId = screenCaptureRequestId || rambleRequestId || workspace?.request.request_id || ''
+    if (!requestId) {
       await invoke('discard_screen_capture', { captureSessionId: capture.capture_session_id }).catch(() => {})
       attachmentBusy = false
       return
     }
-    const requestId = workspace.request.request_id
     try {
-      if (!(await saveDraftNow())) {
+      const visibleTarget = workspace?.request.request_id === requestId
+      if (visibleTarget && !(await saveDraftNow())) {
         throw new Error(tr('当前草稿无法保存，截图尚未写入'))
       }
-      const existingIds = new Set(workspace.attachments.map((item) => item.attachment_id))
+      await rambleMarkdownQueue.catch(() => {})
+      const target = visibleTarget
+        ? workspace
+        : await invoke<FeedbackWorkspaceView>('get_feedback_workspace', { requestId })
+      if (!target) throw new Error(tr('找不到这个反馈请求。'))
+      const existingIds = new Set(target.attachments.map((item) => item.attachment_id))
       const png = await invoke<ArrayBuffer>('read_completed_screen_capture', {
         captureSessionId: capture.capture_session_id,
       })
@@ -719,20 +771,26 @@
         request_id: requestId,
         file_name: capture.file_name,
         contents: Array.from(new Uint8Array(png)),
-        expected_revision: savedRevision,
+        expected_revision: target.draft.saved_revision,
       }
       const next = await invoke<FeedbackWorkspaceView>('add_feedback_attachment', { input })
-      if (workspace?.request.request_id !== requestId) return
-      applyWorkspaceMutation(next)
-      await refreshAttachmentPreviews(next)
-      await tick()
-      const inserted = workspacePanel?.insertAttachments(
-        next.attachments.filter((item) => !existingIds.has(item.attachment_id)),
-      )
-      if (!inserted) {
-        throw new Error(tr('截图附件已保存，但编辑器未能在当前光标位置插入图片'))
+      const added = next.attachments.filter((item) => !existingIds.has(item.attachment_id))
+      if (visibleTarget && workspace?.request.request_id === requestId) {
+        applyWorkspaceMutation(next)
+        await refreshAttachmentPreviews(next)
+        await tick()
+        if (!workspacePanel?.insertAttachments(added)) {
+          throw new Error(tr('截图附件已保存，但编辑器未能在当前光标位置插入图片'))
+        }
+        await saveDraftNow()
+      } else {
+        const attachment = added[0]
+        if (!attachment) throw new Error(tr('截图附件已保存，但编辑器未能在当前光标位置插入图片'))
+        await appendRambleMarkdown(
+          requestId,
+          `![${attachment.file_name}](attachment://${attachment.attachment_id})`,
+        )
       }
-      await saveDraftNow()
       attachmentMessageTone = 'success'
       attachmentMessage = tr('截图已自动插入当前文档位置')
     } catch (cause) {
@@ -742,6 +800,7 @@
         await refreshAttachmentPreviews(workspace)
       }
     } finally {
+      screenCaptureRequestId = ''
       await invoke('discard_screen_capture', { captureSessionId: capture.capture_session_id }).catch(() => {})
       attachmentBusy = false
     }
@@ -967,7 +1026,6 @@
     editor={workspacePanel}
     bind:attachmentBusy
     bind:attachmentMessage
-    {savedRevision}
     bind:voicePhase
     bind:voiceDevice
     bind:voicePartial
@@ -975,6 +1033,8 @@
     bind:voiceChunkIndex
     bind:ramblePhase
     bind:rambleStartedOnce
+    bind:rambleRequestId
+    bind:rambleRequestTitle
     bind:rambleMessage
     onPageError={(message) => (pageError = message)}
     onSaveDraftNow={saveDraftNow}
@@ -982,11 +1042,15 @@
     onRefreshAttachmentPreviews={refreshAttachmentPreviews}
     onStartScreenCapture={startScreenCapture}
     onImportAttachmentPaths={importAttachmentPaths}
+    onAppendRambleMarkdown={appendRambleMarkdown}
   />
 
   <AppTitlebar
     sourceLabel={workspace?.request.source_hint ?? workspace?.request.title ?? 'Workbench'}
     pendingCount={pendingRequests.length}
+    {rambleEngaged}
+    {rambleActive}
+    {rambleRequestTitle}
     notificationText={$notificationSoundEnabled
       ? tr('通知设置 · 声音已开启')
       : notificationLabel(notificationState, $locale)}
