@@ -233,6 +233,14 @@ impl SqliteFeedbackStore {
     ) -> Result<Vec<HostSessionSummary>, RepositoryError> {
         let rows = sqlx::query(
             "SELECT hs.host_id, hs.host_session_id, \
+                    (SELECT first_request.title \
+                     FROM feedback_requests first_request \
+                     WHERE first_request.host_session_record_id = hs.id \
+                     ORDER BY first_request.created_at, first_request.id LIMIT 1) AS title, \
+                    (SELECT first_request.source_hint \
+                     FROM feedback_requests first_request \
+                     WHERE first_request.host_session_record_id = hs.id \
+                     ORDER BY first_request.created_at, first_request.id LIMIT 1) AS source_hint, \
                     COUNT(r.id) AS request_count, \
                     SUM(CASE WHEN r.status IN ('waiting', 'in_progress') THEN 1 ELSE 0 END) AS pending_count, \
                     MAX(r.updated_at) AS updated_at \

@@ -21,7 +21,7 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 const TRAY_ID: &str = "rambledesk-main";
 const RAMBLE_CONSOLE_LABEL: &str = "ramble-console";
 const RAMBLE_TOGGLE_SHORTCUT: &str = "Ctrl+Shift+R";
-const RAMBLE_CONSOLE_WIDTH: f64 = 66.0;
+const RAMBLE_CONSOLE_WIDTH: f64 = 58.0;
 const RAMBLE_CONSOLE_HEIGHT: f64 = 304.0;
 const RAMBLE_CONSOLE_EDGE_GAP: f64 = 10.0;
 const RESUME_PROMPT_EVENT: &str = "rambledesk://resume-prompt";

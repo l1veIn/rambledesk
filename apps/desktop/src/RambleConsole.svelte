@@ -7,6 +7,7 @@
     ClipboardPaste,
     FilePlus2,
     GripVertical,
+    LoaderCircle,
     LogOut,
     Mic,
     Pause,
@@ -170,7 +171,11 @@
       title={`${t($locale, '截图')} · Ctrl + Shift + 1`}
       aria-label={t($locale, '截图')}
     >
-      <ScanLine size={20} strokeWidth={1.75} />
+      {#if state?.captureBusy}
+        <LoaderCircle class="animate-spin" size={20} strokeWidth={1.75} />
+      {:else}
+        <ScanLine size={20} strokeWidth={1.75} />
+      {/if}
     </button>
     <button
       class="console-tool"

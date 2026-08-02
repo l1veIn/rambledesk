@@ -4,7 +4,6 @@
   import { getCurrentWebview } from '@tauri-apps/api/webview'
   import {
     isPermissionGranted,
-    requestPermission,
     sendNotification,
   } from '@tauri-apps/plugin-notification'
   import { revealItemInDir } from '@tauri-apps/plugin-opener'
@@ -40,6 +39,7 @@
     InboxNotificationTracker,
     notificationLabel,
     notificationStateForPermission,
+    playNotificationSound,
     type NotificationState,
   } from './lib/notifications'
   import { desktopPath } from './lib/nativePath'
@@ -57,7 +57,13 @@
   import RambleSessionController from './lib/workbench/RambleSessionController.svelte'
   import type { ScreenCaptureReady } from './lib/screenCapture'
   import { t } from './lib/i18n'
-  import { locale } from './lib/preferences'
+  import {
+    locale,
+    notificationPopupEnabled,
+    notificationSound,
+    notificationSoundEnabled,
+    setNotificationPopupEnabled,
+  } from './lib/preferences'
 
   type ScreenCaptureFinished = {
     capture_session_id: string | null
@@ -94,6 +100,7 @@
   let cancelling = false
   let attachmentBusy = false
   let attachmentMessage = ''
+  let attachmentMessageTone: 'info' | 'success' | 'error' = 'info'
   let attachmentPreviews: Record<string, string> = {}
   let dragActive = false
   let workspacePanel: FeedbackEditorHandle
@@ -122,16 +129,21 @@
   let inboxTimer: ReturnType<typeof setInterval> | undefined
   let activeSave: Promise<boolean> | null = null
   const notificationTracker = new InboxNotificationTracker()
-  const NOTIFICATION_PREFERENCE_KEY = 'rambledesk.notifications.enabled'
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
   }
 
   $: dirty = workspace !== null && draftBody !== savedBody
+  $: selectedHostSession = selectedHostSessionId
+    ? hostSessions.find(
+        (session) =>
+          session.host_id === selectedHostId && session.host_session_id === selectedHostSessionId,
+      )
+    : undefined
   $: requestScopeLabel = selectedHostId
     ? selectedHostSessionId
-      ? `${resolveHostProfile(selectedHostId).label} / ${selectedHostSessionId}`
+      ? selectedHostSession?.source_hint ?? selectedHostSession?.title ?? resolveHostProfile(selectedHostId).label
       : resolveHostProfile(selectedHostId).label
     : tr('全部宿主')
   $: feedbackResult = completedResult?.feedback ?? workspace?.feedback ?? null
@@ -212,7 +224,7 @@
     void listen<ResumePrompt>(RESUME_PROMPT_EVENT, (event) => {
       resumePrompt = event.payload
       resumeCopyState = 'idle'
-      if (notificationState === 'enabled') {
+      if ($notificationPopupEnabled && notificationState === 'enabled') {
         sendNotification({
           title: event.payload.title,
           body: tr('请回到 {host}，用恢复提示继续宿主会话。', {
@@ -220,6 +232,7 @@
           }),
         })
       }
+      if ($notificationSoundEnabled) void playNotificationSound($notificationSound)
     })
       .then((unlisten) => {
         resumePromptUnlisten = unlisten
@@ -234,10 +247,12 @@
         captureReadyUnlisten = unlisten
       })
       .catch((cause) => {
+        attachmentMessageTone = 'error'
         attachmentMessage = tr('无法接收截图结果：{error}', { error: messageFrom(cause) })
       })
     void listen<ScreenCaptureFinished>('screen-capture-finished', (event) => {
       attachmentBusy = false
+      attachmentMessageTone = 'info'
       attachmentMessage =
         event.payload.outcome === 'pinned' ? tr('截图已固定到屏幕') : tr('截图已取消')
     })
@@ -261,6 +276,7 @@
         dragUnlisten = unlisten
       })
       .catch(() => {
+        attachmentMessageTone = 'error'
         attachmentMessage = tr('当前窗口无法监听文件拖放，请使用文件选择或粘贴。')
       })
     window.addEventListener('paste', handlePaste)
@@ -353,16 +369,19 @@
     void invoke('set_pending_count', { count: nextInbox.length }).catch(() => {
       // Tray updates are a convenience; the inbox remains authoritative.
     })
-    if (arrivals.length > 0 && notificationState === 'enabled') {
-      sendNotification({
-        title: 'RambleDesk',
-        body:
-          arrivals.length === 1
-            ? tr('新的体验反馈请求已到达。打开工作台查看。')
-            : tr('{count} 个新的体验反馈请求已到达。打开工作台查看。', {
-                count: arrivals.length,
-              }),
-      })
+    if (arrivals.length > 0) {
+      if ($notificationPopupEnabled && notificationState === 'enabled') {
+        sendNotification({
+          title: 'RambleDesk',
+          body:
+            arrivals.length === 1
+              ? tr('新的体验反馈请求已到达。打开工作台查看。')
+              : tr('{count} 个新的体验反馈请求已到达。打开工作台查看。', {
+                  count: arrivals.length,
+                }),
+        })
+      }
+      if ($notificationSoundEnabled) void playNotificationSound($notificationSound)
     }
   }
 
@@ -395,13 +414,9 @@
       requests = result.requests
       nextRequestCursor = result.next_cursor
       const currentRequestId = workspace?.request.request_id
-      const currentVisible =
-        currentRequestId !== undefined &&
-        result.requests.some((request) => request.request_id === currentRequestId)
-      if ((openFirst || (currentRequestId && !currentVisible)) && result.requests[0]) {
+      if (openFirst && result.requests[0]) {
         await openRequest(result.requests[0].request_id, currentRequestId !== undefined)
-      } else if ((openFirst || (currentRequestId && !currentVisible)) && result.requests.length === 0) {
-        if (rambleCanExit) await exitRamble()
+      } else if (openFirst && result.requests.length === 0) {
         if (!dirty || (await saveDraftNow())) {
           workspace = null
           completedResult = null
@@ -434,39 +449,17 @@
 
   async function selectNavigationScope(hostId: string | null, hostSessionId: string | null) {
     if (selectedHostId === hostId && selectedHostSessionId === hostSessionId) return
-    if (rambleCanExit) await exitRamble()
     if (dirty && !(await saveDraftNow())) return
     selectedHostId = hostId
     selectedHostSessionId = hostSessionId
-    await refreshRequests(true)
+    await refreshRequests(false)
   }
 
   async function refreshNotificationPermission() {
     try {
       const granted = await isPermissionGranted()
-      const preferred = localStorage.getItem(NOTIFICATION_PREFERENCE_KEY) !== 'false'
-      notificationState = notificationStateForPermission(granted, preferred)
-    } catch {
-      notificationState = 'unavailable'
-    }
-  }
-
-  async function toggleNotifications() {
-    if (notificationState === 'checking' || notificationState === 'unavailable') return
-    if (notificationState === 'enabled') {
-      localStorage.setItem(NOTIFICATION_PREFERENCE_KEY, 'false')
-      notificationState = 'muted'
-      return
-    }
-    notificationState = 'checking'
-    try {
-      const permission = (await isPermissionGranted()) ? 'granted' : await requestPermission()
-      if (permission === 'granted') {
-        localStorage.setItem(NOTIFICATION_PREFERENCE_KEY, 'true')
-        notificationState = 'enabled'
-      } else {
-        notificationState = 'disabled'
-      }
+      if (!granted && $notificationPopupEnabled) setNotificationPopupEnabled(false)
+      notificationState = notificationStateForPermission(granted, $notificationPopupEnabled)
     } catch {
       notificationState = 'unavailable'
     }
@@ -643,6 +636,7 @@
       }
       await saveDraftNow()
     } catch (cause) {
+      attachmentMessageTone = 'error'
       attachmentMessage = messageFrom(cause)
       if (workspace) await refreshAttachmentPreviews(workspace)
     } finally {
@@ -673,6 +667,7 @@
       )
       await saveDraftNow()
     } catch (cause) {
+      attachmentMessageTone = 'error'
       attachmentMessage = messageFrom(cause)
       if (workspace) await refreshAttachmentPreviews(workspace)
     } finally {
@@ -692,11 +687,13 @@
     }
     if (!(await saveDraftNow())) return
     attachmentBusy = true
+    attachmentMessageTone = 'info'
     attachmentMessage = tr('高级截图已唤起：可智能选窗、标注、滚动截图或固定到屏幕')
     try {
       await invoke('begin_screen_capture')
     } catch (cause) {
       attachmentBusy = false
+      attachmentMessageTone = 'error'
       const message = messageFrom(cause)
       attachmentMessage =
         message === '内置区域截图目前只在 Windows 开发环境启用' ? tr(message) : message
@@ -736,8 +733,10 @@
         throw new Error(tr('截图附件已保存，但编辑器未能在当前光标位置插入图片'))
       }
       await saveDraftNow()
+      attachmentMessageTone = 'success'
       attachmentMessage = tr('截图已自动插入当前文档位置')
     } catch (cause) {
+      attachmentMessageTone = 'error'
       attachmentMessage = tr('截图写入失败：{error}', { error: messageFrom(cause) })
       if (workspace?.request.request_id === requestId) {
         await refreshAttachmentPreviews(workspace)
@@ -764,6 +763,7 @@
       applyWorkspaceMutation(next)
       await refreshAttachmentPreviews(next)
     } catch (cause) {
+      attachmentMessageTone = 'error'
       attachmentMessage = messageFrom(cause)
     } finally {
       attachmentBusy = false
@@ -793,6 +793,7 @@
       applyWorkspaceMutation(next)
       await refreshAttachmentPreviews(next)
     } catch (cause) {
+      attachmentMessageTone = 'error'
       attachmentMessage = messageFrom(cause)
     } finally {
       attachmentBusy = false
@@ -986,11 +987,13 @@
   <AppTitlebar
     sourceLabel={workspace?.request.source_hint ?? workspace?.request.title ?? 'Workbench'}
     pendingCount={pendingRequests.length}
-    notificationText={notificationLabel(notificationState, $locale)}
-    notificationEnabled={notificationState === 'enabled'}
-    notificationDisabled={notificationState === 'checking' || notificationState === 'unavailable'}
+    notificationText={$notificationSoundEnabled
+      ? tr('通知设置 · 声音已开启')
+      : notificationLabel(notificationState, $locale)}
+    notificationEnabled={notificationState === 'enabled' || $notificationSoundEnabled}
+    notificationDisabled={false}
     onSettings={toggleSettings}
-    onNotifications={toggleNotifications}
+    onNotifications={() => void openSettings('notifications')}
     onWindowError={(message) => (pageError = tr('窗口操作失败：{error}', { error: message }))}
   />
 
@@ -1033,6 +1036,7 @@
       {attachmentPreviews}
       {dragActive}
       {attachmentMessage}
+      {attachmentMessageTone}
       {saveMessage}
       {rambelleStatusPortrait}
       {rambleEngaged}
@@ -1081,7 +1085,10 @@
   <SettingsPanel
     mcpConfiguration={genericMcpConfiguration}
     initialSection={settingsSection}
-    onClose={() => (settingsOpen = false)}
+    onClose={() => {
+      settingsOpen = false
+      void refreshNotificationPermission()
+    }}
   />
 {/if}
 {/key}

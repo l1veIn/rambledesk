@@ -121,17 +121,19 @@ Do not call this tool repeatedly for the same request unless you reuse the same 
   });
 }
 
-export function normalizeRequestParams(params, ctx = {}) {
+export function normalizeRequestParams(params, ctx = {}, env = process.env) {
   const cwd = typeof ctx.cwd === "string" && ctx.cwd.length > 0 ? ctx.cwd : process.cwd();
   return {
     request_id: params.request_id,
     host_id: "pi",
     host_session_id: firstNonEmpty(
+      readPiSessionId(ctx),
       params.host_session_id,
       ctx.sessionId,
       ctx.host_session_id,
       ctx.session?.sessionId,
       ctx.session?.host_session_id,
+      env.PI_SESSION_ID,
       `pi:${cwd}`,
     ),
     title: params.title,
@@ -261,6 +263,16 @@ export function defaultTokenPath(env = process.env, platform = process.platform)
   }
   const root = firstNonEmpty(env.XDG_DATA_HOME, path.join(os.homedir(), ".local", "share"));
   return path.join(root, "RambleDesk", "auth", "local-server.token");
+}
+
+function readPiSessionId(ctx) {
+  const getSessionId = ctx.sessionManager?.getSessionId;
+  if (typeof getSessionId !== "function") return undefined;
+  try {
+    return getSessionId.call(ctx.sessionManager);
+  } catch {
+    return undefined;
+  }
 }
 
 function firstNonEmpty(...values) {

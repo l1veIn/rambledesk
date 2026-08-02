@@ -60,6 +60,8 @@ const hostSessions: HostSessionSummary[] = [
   {
     host_id: 'codex',
     host_session_id: 'desktop-refactor-2026-08-02',
+    title: 'Review host and session navigation',
+    source_hint: 'C:/workspace/rambledesk',
     request_count: 2,
     pending_count: 2,
     updated_at: '2026-08-02T08:12:00Z',
@@ -67,6 +69,8 @@ const hostSessions: HostSessionSummary[] = [
   {
     host_id: 'pi',
     host_session_id: 'pi-native-wait',
+    title: 'Verify native wait flow',
+    source_hint: 'C:/workspace/pi-rambledesk',
     request_count: 1,
     pending_count: 0,
     updated_at: '2026-08-02T06:05:00Z',
@@ -74,6 +78,8 @@ const hostSessions: HostSessionSummary[] = [
   {
     host_id: 'claude',
     host_session_id: 'terminology-audit',
+    title: 'Check terminology residuals',
+    source_hint: 'C:/workspace/protocol',
     request_count: 1,
     pending_count: 0,
     updated_at: '2026-08-02T04:35:00Z',

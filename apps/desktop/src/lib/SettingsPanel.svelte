@@ -1,6 +1,8 @@
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core'
+  import { isPermissionGranted, requestPermission } from '@tauri-apps/plugin-notification'
   import {
+    BellRing,
     Check,
     CheckCircle2,
     ChevronDown,
@@ -9,10 +11,12 @@
     Languages,
     LoaderCircle,
     MonitorCog,
+    Play,
     PlugZap,
     RefreshCw,
     ShieldCheck,
     TerminalSquare,
+    Volume2,
   } from '@lucide/svelte'
   import { onMount } from 'svelte'
 
@@ -25,15 +29,23 @@
   import * as Select from '$lib/components/ui/select'
   import * as Tabs from '$lib/components/ui/tabs'
   import { t } from '$lib/i18n'
+  import { playNotificationSound } from '$lib/notifications'
   import {
     locale,
+    notificationPopupEnabled,
+    notificationSound,
+    notificationSoundEnabled,
     setLocale,
+    setNotificationPopupEnabled,
+    setNotificationSound,
+    setNotificationSoundEnabled,
     setThemePreference,
     themePreference,
+    type NotificationSound,
     type ThemePreference,
   } from '$lib/preferences'
 
-  type Section = 'general' | 'adapters'
+  type Section = 'general' | 'notifications' | 'adapters'
 
   export let mcpConfiguration = ''
   export let initialSection: Section = 'general'
@@ -71,6 +83,7 @@
   let copyState: 'idle' | 'copied' | 'error' = 'idle'
   let genericAdapterOpen = true
   let configurationOpen = false
+  let notificationPermissionError = ''
   const isTauri = '__TAURI_INTERNALS__' in window
 
   $: installedHosts = hosts.filter((host) => host.installed)
@@ -163,6 +176,36 @@
     }
   }
 
+  async function togglePopupNotifications(enabled: boolean) {
+    notificationPermissionError = ''
+    if (!enabled) {
+      setNotificationPopupEnabled(false)
+      return
+    }
+    if (!isTauri) {
+      notificationPermissionError = tr('系统弹窗通知只在桌面应用中可用。')
+      return
+    }
+    try {
+      const permission = (await isPermissionGranted()) ? 'granted' : await requestPermission()
+      if (permission === 'granted') {
+        setNotificationPopupEnabled(true)
+      } else {
+        setNotificationPopupEnabled(false)
+        notificationPermissionError = tr('操作系统没有授予弹窗通知权限。')
+      }
+    } catch (cause) {
+      setNotificationPopupEnabled(false)
+      notificationPermissionError = messageFrom(cause)
+    }
+  }
+
+  function soundLabel(sound: NotificationSound) {
+    if (sound === 'soft') return tr('柔和提示')
+    if (sound === 'alert') return tr('醒目提示')
+    return tr('清脆双音')
+  }
+
   function messageFrom(cause: unknown) {
     if (cause instanceof Error) return cause.message
     if (cause && typeof cause === 'object' && 'message' in cause) {
@@ -208,6 +251,10 @@
             <MonitorCog data-icon="inline-start" />
             {tr('通用')}
           </Tabs.Trigger>
+          <Tabs.Trigger value="notifications" class="h-9 w-full justify-start px-2.5">
+            <BellRing data-icon="inline-start" />
+            {tr('通知')}
+          </Tabs.Trigger>
           <Tabs.Trigger value="adapters" class="h-9 w-full justify-start px-2.5">
             <PlugZap data-icon="inline-start" />
             <span class="flex-1 text-left">{tr('适配器')}</span>
@@ -229,10 +276,18 @@
         <header class="flex h-16 shrink-0 items-center border-b px-6">
           <div>
             <p class="m-0 text-[10px] font-medium uppercase text-muted-foreground">
-              {activeSection === 'general' ? tr('偏好设置') : tr('宿主适配')}
+              {activeSection === 'general'
+                ? tr('偏好设置')
+                : activeSection === 'notifications'
+                  ? tr('提醒方式')
+                  : tr('宿主适配')}
             </p>
             <h2 class="m-0 mt-0.5 text-base font-semibold">
-              {activeSection === 'general' ? tr('通用') : tr('适配器')}
+              {activeSection === 'general'
+                ? tr('通用')
+                : activeSection === 'notifications'
+                  ? tr('通知')
+                  : tr('适配器')}
             </h2>
           </div>
         </header>
@@ -296,6 +351,115 @@
                   <Select.Item value="dark" label={tr('深色')} />
                 </Select.Content>
               </Select.Root>
+            </section>
+          </Tabs.Content>
+
+          <Tabs.Content value="notifications" class="m-0 space-y-8 p-6 outline-none">
+            <section class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-8 border-b pb-8">
+              <div class="flex gap-3">
+                <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+                  <BellRing class="size-4" />
+                </span>
+                <div>
+                  <h3 class="m-0 text-sm font-medium">{tr('系统弹窗')}</h3>
+                  <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
+                    {tr('新请求到达时使用 Windows、macOS 或 Linux 的系统消息通知。')}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={$notificationPopupEnabled}
+                aria-label={tr('系统弹窗')}
+                class={[
+                  'relative h-[22px] w-10 rounded-full border border-transparent transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+                  $notificationPopupEnabled ? 'bg-primary' : 'bg-input',
+                ]}
+                onclick={() => void togglePopupNotifications(!$notificationPopupEnabled)}
+              >
+                <span
+                  class={[
+                    'absolute left-0.5 top-0.5 size-4 rounded-full bg-background shadow-sm transition-transform',
+                    $notificationPopupEnabled ? 'translate-x-5' : 'translate-x-0',
+                  ]}
+                ></span>
+              </button>
+              {#if notificationPermissionError}
+                <p class="col-span-2 m-0 text-xs text-destructive">{notificationPermissionError}</p>
+              {/if}
+            </section>
+
+            <section class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-8 border-b pb-8">
+              <div class="flex gap-3">
+                <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+                  <Volume2 class="size-4" />
+                </span>
+                <div>
+                  <h3 class="m-0 text-sm font-medium">{tr('声音提醒')}</h3>
+                  <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
+                    {tr('声音与系统弹窗相互独立；即使弹窗权限关闭也可以响铃。')}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={$notificationSoundEnabled}
+                aria-label={tr('声音提醒')}
+                class={[
+                  'relative h-[22px] w-10 rounded-full border border-transparent transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+                  $notificationSoundEnabled ? 'bg-primary' : 'bg-input',
+                ]}
+                onclick={() => setNotificationSoundEnabled(!$notificationSoundEnabled)}
+              >
+                <span
+                  class={[
+                    'absolute left-0.5 top-0.5 size-4 rounded-full bg-background shadow-sm transition-transform',
+                    $notificationSoundEnabled ? 'translate-x-5' : 'translate-x-0',
+                  ]}
+                ></span>
+              </button>
+            </section>
+
+            <section class="grid grid-cols-[minmax(0,1fr)_240px] items-center gap-8">
+              <div class="flex gap-3">
+                <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+                  <Volume2 class="size-4" />
+                </span>
+                <div>
+                  <h3 class="m-0 text-sm font-medium">{tr('提示音')}</h3>
+                  <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
+                    {tr('选择新请求到达时播放的声音，并可立即试听。')}
+                  </p>
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                <Select.Root
+                  type="single"
+                  value={$notificationSound}
+                  onValueChange={(value: string) => setNotificationSound(value as NotificationSound)}
+                >
+                  <Select.Trigger class="min-w-0 flex-1">
+                    {soundLabel($notificationSound)}
+                  </Select.Trigger>
+                  <Select.Content>
+                    <Select.Item value="chime" label={tr('清脆双音')} />
+                    <Select.Item value="soft" label={tr('柔和提示')} />
+                    <Select.Item value="alert" label={tr('醒目提示')} />
+                  </Select.Content>
+                </Select.Root>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  disabled={!$notificationSoundEnabled}
+                  aria-label={tr('试听提示音')}
+                  title={tr('试听提示音')}
+                  onclick={() => void playNotificationSound($notificationSound)}
+                >
+                  <Play />
+                </Button>
+              </div>
             </section>
           </Tabs.Content>
 

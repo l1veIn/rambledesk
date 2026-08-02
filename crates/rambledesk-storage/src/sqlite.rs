@@ -415,6 +415,8 @@ fn host_session_summary_from_row(row: &SqliteRow) -> Result<HostSessionSummary, 
     Ok(HostSessionSummary {
         host_id: row.try_get("host_id").map_err(storage_error)?,
         host_session_id: row.try_get("host_session_id").map_err(storage_error)?,
+        title: row.try_get("title").map_err(storage_error)?,
+        source_hint: row.try_get("source_hint").map_err(storage_error)?,
         request_count: u64::try_from(request_count).map_err(|_| RepositoryError::CorruptData)?,
         pending_count: u64::try_from(pending_count).map_err(|_| RepositoryError::CorruptData)?,
         updated_at: row.try_get("updated_at").map_err(storage_error)?,

@@ -289,8 +289,8 @@
   }
 </script>
 
-<div class="overflow-hidden rounded-md border bg-background">
-  <div class="flex h-10 items-center gap-1 overflow-x-auto border-b bg-muted/30 px-2" aria-label={t($locale, '正文格式')}>
+<div class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border bg-background">
+  <div class="flex h-10 shrink-0 items-center gap-1 overflow-x-auto border-b bg-muted/30 px-2" aria-label={t($locale, '正文格式')}>
     <Button
       variant="ghost"
       size="icon-sm"
@@ -363,12 +363,12 @@
       <Redo2 />
     </Button>
   </div>
-  <div class="editor-host" bind:this={editorHost}></div>
+  <div class="editor-host min-h-0 flex-1 overflow-y-auto overscroll-contain" bind:this={editorHost}></div>
 </div>
 
 <style>
   .editor-host :global(.feedback-prose) {
-    min-height: clamp(360px, 52vh, 620px);
+    min-height: 100%;
     padding: clamp(20px, 2.5vw, 34px);
     color: var(--foreground);
     font-family: ui-serif, Georgia, "Noto Serif SC", "Songti SC", serif;

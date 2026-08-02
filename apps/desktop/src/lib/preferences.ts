@@ -2,9 +2,13 @@ import { get, writable } from 'svelte/store'
 
 export type Locale = 'zh-CN' | 'en'
 export type ThemePreference = 'system' | 'light' | 'dark'
+export type NotificationSound = 'chime' | 'soft' | 'alert'
 
 const LOCALE_KEY = 'rambledesk.locale'
 const THEME_KEY = 'rambledesk.theme'
+const NOTIFICATION_POPUP_KEY = 'rambledesk.notifications.popup'
+const NOTIFICATION_SOUND_ENABLED_KEY = 'rambledesk.notifications.sound-enabled'
+const NOTIFICATION_SOUND_KEY = 'rambledesk.notifications.sound'
 
 function initialLocale(): Locale {
   const saved = localStorage.getItem(LOCALE_KEY)
@@ -19,8 +23,25 @@ function initialTheme(): ThemePreference {
     : 'system'
 }
 
+function initialBoolean(key: string, fallback: boolean) {
+  const saved = localStorage.getItem(key)
+  if (saved === 'true') return true
+  if (saved === 'false') return false
+  return fallback
+}
+
+function initialNotificationSound(): NotificationSound {
+  const saved = localStorage.getItem(NOTIFICATION_SOUND_KEY)
+  return saved === 'chime' || saved === 'soft' || saved === 'alert' ? saved : 'chime'
+}
+
 export const locale = writable<Locale>(initialLocale())
 export const themePreference = writable<ThemePreference>(initialTheme())
+export const notificationPopupEnabled = writable(initialBoolean(NOTIFICATION_POPUP_KEY, true))
+export const notificationSoundEnabled = writable(
+  initialBoolean(NOTIFICATION_SOUND_ENABLED_KEY, true),
+)
+export const notificationSound = writable<NotificationSound>(initialNotificationSound())
 
 let initialized = false
 let mediaQuery: MediaQueryList | null = null
@@ -41,6 +62,18 @@ export function setThemePreference(next: ThemePreference) {
   themePreference.set(next)
 }
 
+export function setNotificationPopupEnabled(enabled: boolean) {
+  notificationPopupEnabled.set(enabled)
+}
+
+export function setNotificationSoundEnabled(enabled: boolean) {
+  notificationSoundEnabled.set(enabled)
+}
+
+export function setNotificationSound(sound: NotificationSound) {
+  notificationSound.set(sound)
+}
+
 export function initializePreferences() {
   if (initialized) return
   initialized = true
@@ -52,6 +85,15 @@ export function initializePreferences() {
   themePreference.subscribe((next) => {
     localStorage.setItem(THEME_KEY, next)
     applyTheme(next)
+  })
+  notificationPopupEnabled.subscribe((next) => {
+    localStorage.setItem(NOTIFICATION_POPUP_KEY, String(next))
+  })
+  notificationSoundEnabled.subscribe((next) => {
+    localStorage.setItem(NOTIFICATION_SOUND_ENABLED_KEY, String(next))
+  })
+  notificationSound.subscribe((next) => {
+    localStorage.setItem(NOTIFICATION_SOUND_KEY, next)
   })
 
   mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
@@ -67,6 +109,18 @@ export function initializePreferences() {
       (event.newValue === 'system' || event.newValue === 'light' || event.newValue === 'dark')
     ) {
       themePreference.set(event.newValue)
+    }
+    if (event.key === NOTIFICATION_POPUP_KEY && event.newValue !== null) {
+      notificationPopupEnabled.set(event.newValue === 'true')
+    }
+    if (event.key === NOTIFICATION_SOUND_ENABLED_KEY && event.newValue !== null) {
+      notificationSoundEnabled.set(event.newValue === 'true')
+    }
+    if (
+      event.key === NOTIFICATION_SOUND_KEY &&
+      (event.newValue === 'chime' || event.newValue === 'soft' || event.newValue === 'alert')
+    ) {
+      notificationSound.set(event.newValue)
     }
   })
 }

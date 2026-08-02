@@ -60,6 +60,8 @@ pub struct FeedbackRequestSummary {
 pub struct HostSessionSummary {
     pub host_id: String,
     pub host_session_id: String,
+    pub title: String,
+    pub source_hint: Option<String>,
     #[ts(type = "number")]
     pub request_count: u64,
     #[ts(type = "number")]

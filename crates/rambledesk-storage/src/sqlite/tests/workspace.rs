@@ -205,10 +205,21 @@ async fn host_session_navigation_reports_request_and_pending_counts() {
         .expect("open store");
     let application = store.clone().into_application();
 
+    let mut first_request = workspace.request(Uuid::now_v7().to_string());
+    first_request.title = Some("Session kickoff".to_owned());
+    first_request.source_hint = Some("C:/workspace/rambledesk".to_owned());
     application
-        .request_feedback(workspace.request(Uuid::now_v7().to_string()))
+        .request_feedback(first_request)
         .await
         .expect("first request");
+
+    let mut follow_up = workspace.request(Uuid::now_v7().to_string());
+    follow_up.title = Some("Later review".to_owned());
+    follow_up.source_hint = Some("a later hint".to_owned());
+    application
+        .request_feedback(follow_up)
+        .await
+        .expect("follow-up request");
 
     let second_id = Uuid::now_v7().to_string();
     let mut second = workspace.request(second_id.clone());
@@ -242,8 +253,13 @@ async fn host_session_navigation_reports_request_and_pending_counts() {
         .iter()
         .find(|session| session.host_session_id == "test-session")
         .expect("first session");
-    assert_eq!(first.request_count, 1);
-    assert_eq!(first.pending_count, 1);
+    assert_eq!(first.title, "Session kickoff");
+    assert_eq!(
+        first.source_hint.as_deref(),
+        Some("C:/workspace/rambledesk")
+    );
+    assert_eq!(first.request_count, 2);
+    assert_eq!(first.pending_count, 2);
     let second = sessions
         .iter()
         .find(|session| session.host_session_id == "second-session")

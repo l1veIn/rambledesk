@@ -179,10 +179,10 @@
                         ? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground'
                         : 'text-muted-foreground hover:bg-sidebar-accent/55 hover:text-sidebar-foreground',
                     ]}
-                    title={session.host_session_id}
+                    title={session.title}
                     onclick={() => onSelect(group.hostId, session.host_session_id)}
                   >
-                    <span class="min-w-0 flex-1 truncate">{session.host_session_id}</span>
+                    <span class="min-w-0 flex-1 truncate">{session.title}</span>
                     {#if session.pending_count > 0}
                       <span class="size-1.5 shrink-0 rounded-full bg-primary"></span>
                     {/if}

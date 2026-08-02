@@ -18,7 +18,7 @@ test("normalizes Pi request params without model-supplied host identity", () => 
     actions: [{ id: "check", instruction: "Check the workflow." }],
   };
 
-  assert.deepEqual(normalizeRequestParams(input, { cwd: "/tmp/rambledesk" }), {
+  assert.deepEqual(normalizeRequestParams(input, { cwd: "/tmp/rambledesk" }, {}), {
     request_id: undefined,
     host_id: "pi",
     host_session_id: "session-1",
@@ -28,6 +28,33 @@ test("normalizes Pi request params without model-supplied host identity", () => 
     context_refs: [],
     source_hint: "/tmp/rambledesk",
   });
+});
+
+test("uses Pi's session manager id instead of grouping requests by cwd", () => {
+  const input = {
+    host_session_id: "model-supplied-session",
+    title: "Review",
+    what_happened: "A workflow changed.",
+    actions: [{ id: "check", instruction: "Check the workflow." }],
+  };
+
+  const normalized = normalizeRequestParams(input, {
+    cwd: "/tmp/shared-project",
+    sessionManager: { getSessionId: () => "pi-session-uuid" },
+  }, {});
+
+  assert.equal(normalized.host_session_id, "pi-session-uuid");
+  assert.notEqual(normalized.host_session_id, "pi:/tmp/shared-project");
+});
+
+test("uses PI_SESSION_ID when an older Pi context has no session manager", () => {
+  const normalized = normalizeRequestParams({
+    title: "Review",
+    what_happened: "A workflow changed.",
+    actions: [{ id: "check", instruction: "Check the workflow." }],
+  }, { cwd: "/tmp/shared-project" }, { PI_SESSION_ID: "pi-session-env" });
+
+  assert.equal(normalized.host_session_id, "pi-session-env");
 });
 
 test("resolves local API endpoint from explicit API or local server port", () => {
@@ -200,7 +227,11 @@ test("registers Pi tools and request tool waits for terminal package", async () 
       },
       undefined,
       (update) => updates.push(update),
-      { cwd: "/tmp/pi-worktree", sessionId: "pi-session" },
+      {
+        cwd: "/tmp/pi-worktree",
+        sessionId: "legacy-pi-session",
+        sessionManager: { getSessionId: () => "pi-session" },
+      },
     );
 
     assert.equal(calls.length, 2);

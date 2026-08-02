@@ -32,6 +32,7 @@
   export let attachmentPreviews: Record<string, string> = {}
   export let dragActive = false
   export let attachmentMessage = ''
+  export let attachmentMessageTone: 'info' | 'success' | 'error' = 'info'
   export let saveMessage = ''
   export let rambelleStatusPortrait = ''
   export let rambleEngaged = false
@@ -119,6 +120,7 @@
           {attachmentPreviews}
           {dragActive}
           {attachmentMessage}
+          {attachmentMessageTone}
           {saveMessage}
           {formatTime}
           onChange={onDraftChange}

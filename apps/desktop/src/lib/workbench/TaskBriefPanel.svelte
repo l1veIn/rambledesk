@@ -20,10 +20,16 @@
   <div class="flex min-h-12 items-center gap-3 px-5 py-2">
     <ListChecks class="size-4 shrink-0 text-muted-foreground" />
     <div class="min-w-0 flex-1">
-      <strong class="block text-xs font-medium">{tr('任务简报')}</strong>
-      <span class="block truncate text-[10px] text-muted-foreground">
-        {workspace.request.what_happened}
-      </span>
+      {#if open}
+        <strong class="block text-xs font-medium">
+          {tr('发生了什么')} · {tr('需要体验')}
+        </strong>
+      {:else}
+        <strong class="block text-xs font-medium">{tr('任务简报')}</strong>
+        <span class="block truncate text-[10px] text-muted-foreground">
+          {workspace.request.what_happened}
+        </span>
+      {/if}
     </div>
     <Badge variant="secondary" class="h-5 px-1.5 text-[9px]">
       {tr('{count} 个步骤', { count: workspace.actions.length })}

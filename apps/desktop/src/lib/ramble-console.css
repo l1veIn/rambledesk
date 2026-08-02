@@ -1,13 +1,14 @@
 .floating-console {
   position: relative;
   display: flex;
-  width: 100%;
+  width: min(58px, 100%);
   height: 100%;
+  margin-left: auto;
   align-items: center;
   flex-direction: column;
   gap: 6px;
   overflow: hidden;
-  padding: 7px 6px;
+  padding: 7px 4px;
   border: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
   border-radius: 18px;
   color: var(--foreground);
@@ -59,7 +60,7 @@
 .floating-tools button {
   position: relative;
   display: grid;
-  width: 44px;
+  width: 46px;
   height: 44px;
   flex: 0 0 auto;
   place-items: center;
