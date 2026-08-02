@@ -5,8 +5,16 @@ Pi-native RambleDesk package. It registers:
 - `request_ramble_feedback`: creates a RambleDesk feedback request through the
   local JSON API and waits inside the same Pi tool call until the human submits
   or cancels.
+- `resume_ramble_feedback`: reconnects to an interrupted request using the
+  persisted request id or the current Pi session identity.
 - `get_ramble_feedback`: reads a request by `request_id` for recovery or
   diagnostics.
+
+When the agent has prepared its exact final summary it can send
+`allow_finish: true` with `final_summary`. RambleDesk then offers “Approve and
+finish”; approval terminates the tool batch without another model turn.
+Request ids are persisted in Pi session entries before the network request so
+a restarted Pi session can reconnect instead of creating a duplicate.
 
 Install from a source checkout:
 

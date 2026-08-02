@@ -3,11 +3,13 @@ import http from "node:http";
 import { test } from "node:test";
 
 import {
+  checkHealth,
   feedbackToolResult,
   normalizeRequestParams,
   postFeedback,
   registerRambleDeskPiTools,
   resolveApiBaseUrl,
+  restorePendingRequestId,
 } from "../index.js";
 
 test("normalizes Pi request params without model-supplied host identity", () => {
@@ -27,6 +29,8 @@ test("normalizes Pi request params without model-supplied host identity", () => 
     actions: [{ id: "check", instruction: "Check the workflow." }],
     context_refs: [],
     source_hint: "/tmp/rambledesk",
+    allow_finish: false,
+    final_summary: undefined,
   });
 });
 
@@ -63,6 +67,25 @@ test("resolves local API endpoint from explicit API or local server port", () =>
     "http://127.0.0.1:1/api",
   );
   assert.equal(resolveApiBaseUrl({ RAMBLEDESK_LOCAL_SERVER_PORT: "3" }), "http://127.0.0.1:3/api");
+});
+
+test("health check uses the authenticated local API", async () => {
+  const server = http.createServer((request, response) => {
+    assert.equal(request.method, "GET");
+    assert.equal(request.url, "/api/health");
+    assert.equal(request.headers.authorization, "Bearer test-token");
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ ready: true }));
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    assert.equal(await checkHealth({
+      RAMBLEDESK_LOCAL_API_URL: `http://127.0.0.1:${server.address().port}/api`,
+      RAMBLEDESK_LOCAL_SERVER_TOKEN: "test-token",
+    }), true);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
 });
 
 test("posts feedback requests with bearer token and Pi host header", async () => {
@@ -181,6 +204,7 @@ test("registers Pi tools and request tool waits for terminal package", async () 
 
   assert.deepEqual(tools.map((tool) => tool.name), [
     "request_ramble_feedback",
+    "resume_ramble_feedback",
     "get_ramble_feedback",
   ]);
 
@@ -256,6 +280,53 @@ test("registers Pi tools and request tool waits for terminal package", async () 
     } else {
       process.env.RAMBLEDESK_LOCAL_SERVER_TOKEN = previousToken;
     }
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("restores only non-terminal persisted Ramble request state", () => {
+  const entry = (phase) => ({ type: "custom", customType: "rambledesk-request-state", data: { requestId: "request-1", phase } });
+  assert.equal(restorePendingRequestId([entry("waiting")]), "request-1");
+  assert.equal(restorePendingRequestId([entry("waiting"), entry("approved")]), undefined);
+  assert.equal(restorePendingRequestId([entry("feedback_submitted")]), undefined);
+});
+
+test("approved final summary terminates without another model turn", async () => {
+  const tools = [];
+  registerRambleDeskPiTools({ registerTool: (tool) => tools.push(tool) });
+  const server = http.createServer((request, response) => {
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({
+      request_id: "019", status: "completed", resolution: "approved",
+      allow_finish: true, final_summary: "All requested work is complete.",
+    }));
+  });
+  const previousApiUrl = process.env.RAMBLEDESK_LOCAL_API_URL;
+  const previousToken = process.env.RAMBLEDESK_LOCAL_SERVER_TOKEN;
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    process.env.RAMBLEDESK_LOCAL_API_URL = `http://127.0.0.1:${server.address().port}/api`;
+    process.env.RAMBLEDESK_LOCAL_SERVER_TOKEN = "test-token";
+    const result = await tools.find((tool) => tool.name === "request_ramble_feedback").execute(
+      "call-final",
+      {
+        title: "Final approval",
+        what_happened: "The task is complete.",
+        actions: [{ id: "approve", instruction: "Review the final summary." }],
+        allow_finish: true,
+        final_summary: "All requested work is complete.",
+      },
+      undefined,
+      undefined,
+      { cwd: "/tmp/project", sessionManager: { getSessionId: () => "pi-session" }, ui: {} },
+    );
+    assert.equal(result.terminate, true);
+    assert.match(result.content[0].text, /approved/);
+  } finally {
+    if (previousApiUrl === undefined) delete process.env.RAMBLEDESK_LOCAL_API_URL;
+    else process.env.RAMBLEDESK_LOCAL_API_URL = previousApiUrl;
+    if (previousToken === undefined) delete process.env.RAMBLEDESK_LOCAL_SERVER_TOKEN;
+    else process.env.RAMBLEDESK_LOCAL_SERVER_TOKEN = previousToken;
     await new Promise((resolve) => server.close(resolve));
   }
 });

@@ -45,13 +45,71 @@ export const RequestRambleFeedbackSchema = Type.Object({
       description: "Keep true for Pi's native flow: wait until RambleDesk returns completed/cancelled.",
     }),
   ),
+  allow_finish: Type.Optional(
+    Type.Boolean({
+      default: false,
+      description: "Set true only when final_summary is the agent's proposed final answer and the user may approve ending the Ramble flow.",
+    }),
+  ),
+  final_summary: Type.Optional(
+    Type.String({ description: "The exact final summary proposed for user approval. Requires allow_finish=true." }),
+  ),
 });
 
 export const GetRambleFeedbackSchema = Type.Object({
   request_id: Type.String({ description: "RambleDesk request_id returned by request_ramble_feedback." }),
 });
 
+export const ResumeRambleFeedbackSchema = Type.Object({
+  request_id: Type.Optional(Type.String({ description: "Interrupted request id. Omit to recover the latest request for this exact Pi session." })),
+});
+
 export function registerRambleDeskPiTools(pi) {
+  let pendingRequestId;
+  let serverReady;
+  let gateRequired = false;
+  let gateReminders = 0;
+
+  pi.on?.("session_start", async (_event, ctx) => {
+    pendingRequestId = restorePendingRequestId(ctx.sessionManager?.getEntries?.() ?? []);
+    serverReady = await checkHealth().catch(() => false);
+    if (pendingRequestId && ctx.hasUI) {
+      ctx.ui.setStatus("rambledesk", "RambleDesk · 可恢复中断请求");
+    } else if (serverReady && ctx.hasUI) {
+      ctx.ui.setStatus("rambledesk", "RambleDesk · 严格反馈已启用");
+    }
+  });
+
+  pi.on?.("input", (event) => {
+    if (event.source === "extension") return;
+    gateRequired = true;
+    gateReminders = 0;
+  });
+
+  pi.on?.("before_agent_start", async (event, ctx) => {
+    if (serverReady === undefined) serverReady = await checkHealth().catch(() => false);
+    if (!serverReady || !["tui", "rpc"].includes(ctx.mode)) return;
+    const recovery = pendingRequestId
+      ? ` Request ${pendingRequestId} was interrupted; if the user asks to continue or recover, call resume_ramble_feedback instead of creating a duplicate.`
+      : "";
+    return {
+      systemPrompt: `${event.systemPrompt}\n\nRambleDesk strict feedback gate is active.${recovery} At the beginning of a user task, open a collaboration request before substantial work when clarification is useful. Before voluntarily ending, you must call request_ramble_feedback. Set allow_finish=true and include the exact final_summary only when proposing the completed task for final approval. Feedback submission means continue working; only approval or cancellation permits the flow to end.`,
+    };
+  });
+
+  pi.on?.("agent_settled", (_event, ctx) => {
+    if (!serverReady || !gateRequired || pendingRequestId || !["tui", "rpc"].includes(ctx.mode)) return;
+    if (gateReminders >= 2) {
+      ctx.ui?.setStatus?.("rambledesk", "RambleDesk · Agent 未执行反馈守门");
+      return;
+    }
+    gateReminders += 1;
+    pi.sendMessage?.({
+      customType: "rambledesk-gate",
+      content: "RambleDesk strict gate blocked this ending. Prepare the exact final summary and call request_ramble_feedback with allow_finish=true, or create a normal feedback request if more input is needed.",
+      display: true,
+    }, { deliverAs: "followUp", triggerTurn: true });
+  });
   pi.registerTool({
     name: "request_ramble_feedback",
     label: "Request RambleDesk Feedback",
@@ -65,6 +123,7 @@ Do not call this tool repeatedly for the same request unless you reuse the same 
       "Provide a short title, a concrete what_happened summary, and one or more action instructions.",
       "Leave wait as true unless you are intentionally only creating a request for later recovery.",
       "After the tool returns completed, inspect the feedback markdown and any attachment paths included in the tool content before continuing.",
+      "Set allow_finish=true only after preparing final_summary. If the human approves it, end without another model turn.",
     ],
     parameters: RequestRambleFeedbackSchema,
     executionMode: "sequential",
@@ -75,6 +134,8 @@ Do not call this tool repeatedly for the same request unless you reuse the same 
       // transient "fetch failed" on this machine), a retry with the same id
       // reconnects to that request instead of creating a duplicate.
       if (!normalized.request_id) normalized.request_id = crypto.randomUUID();
+      pendingRequestId = normalized.request_id;
+      appendRequestState(pi, normalized.request_id, "waiting", normalized.host_session_id);
       const created = await postFeedback("request", normalized, signal);
       const terminal = created.status === "completed" || created.status === "cancelled";
       onUpdate?.({
@@ -99,7 +160,51 @@ Do not call this tool repeatedly for the same request unless you reuse the same 
         // the package before returning it to the model.
         result = await postFeedback("get", { request_id: created.request_id }, signal);
       }
-      return feedbackToolResult(result);
+      if (isTerminal(result)) {
+        appendRequestState(pi, created.request_id, result.resolution ?? result.status, normalized.host_session_id);
+        pendingRequestId = undefined;
+        gateRequired = result.resolution === "feedback_submitted";
+        gateReminders = 0;
+        ctx.ui?.setStatus?.("rambledesk", undefined);
+      }
+      const output = feedbackToolResult(result);
+      if (result.resolution === "approved") output.terminate = true;
+      return output;
+    },
+  });
+
+  pi.registerTool({
+    name: "resume_ramble_feedback",
+    label: "Resume RambleDesk Feedback",
+    description: "Reconnect to an interrupted RambleDesk request for this exact Pi session and wait for its terminal result. Use when the user says continue, resume, or that RambleDesk disconnected.",
+    promptSnippet: "Resume the interrupted RambleDesk request instead of creating a duplicate.",
+    promptGuidelines: [
+      "Use resume_ramble_feedback when the user asks to continue or recover an interrupted RambleDesk flow.",
+      "Do not create a new request when resume_ramble_feedback can recover the existing request.",
+    ],
+    parameters: ResumeRambleFeedbackSchema,
+    executionMode: "sequential",
+    async execute(_toolCallId, params, signal, onUpdate, ctx) {
+      const hostSessionId = readPiSessionId(ctx) ?? process.env.PI_SESSION_ID;
+      if (!hostSessionId) throw new Error("Cannot recover RambleDesk feedback without a Pi session id.");
+      let recovered = await postFeedback("recover", {
+        request_id: params.request_id ?? pendingRequestId,
+        host_session_id: hostSessionId,
+      }, signal);
+      pendingRequestId = recovered.request_id;
+      appendRequestState(pi, recovered.request_id, recovered.status, hostSessionId);
+      if (!isTerminal(recovered)) {
+        onUpdate?.({ content: [{ type: "text", text: `Recovered RambleDesk request ${recovered.request_id}; waiting for the human.` }], details: recovered });
+        recovered = await postFeedback("wait", { request_id: recovered.request_id }, signal);
+      }
+      appendRequestState(pi, recovered.request_id, recovered.resolution ?? recovered.status, hostSessionId);
+      pendingRequestId = undefined;
+      gateRequired = recovered.resolution === "feedback_submitted";
+      gateReminders = 0;
+      ctx.ui?.setStatus?.("rambledesk", undefined);
+      const output = feedbackToolResult(recovered);
+      if (recovered.resolution === "approved") output.terminate = true;
+      return output;
     },
   });
 
@@ -115,8 +220,17 @@ Do not call this tool repeatedly for the same request unless you reuse the same 
     ],
     parameters: GetRambleFeedbackSchema,
     executionMode: "sequential",
-    async execute(_toolCallId, params, signal) {
-      return feedbackToolResult(await postFeedback("get", params, signal));
+    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+      const result = await postFeedback("get", params, signal);
+      if (isTerminal(result)) {
+        appendRequestState(pi, result.request_id, result.resolution ?? result.status, readPiSessionId(ctx));
+        pendingRequestId = undefined;
+        gateRequired = result.resolution === "feedback_submitted";
+        gateReminders = 0;
+      }
+      const output = feedbackToolResult(result);
+      if (result.resolution === "approved") output.terminate = true;
+      return output;
     },
   });
 }
@@ -141,7 +255,22 @@ export function normalizeRequestParams(params, ctx = {}, env = process.env) {
     actions: params.actions,
     context_refs: params.context_refs ?? [],
     source_hint: firstNonEmpty(params.source_hint, cwd),
+    allow_finish: params.allow_finish ?? false,
+    final_summary: params.final_summary,
   };
+}
+
+export async function checkHealth(env = process.env, signal) {
+  const baseUrl = resolveApiBaseUrl(env);
+  const token = await resolveAccessToken(env);
+  const response = await fetch(`${baseUrl}/health`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}`, [HOST_HEADER]: "pi" },
+    signal: signal ?? AbortSignal.timeout(500),
+  });
+  if (!response.ok) return false;
+  const body = await response.json();
+  return body?.ready === true;
 }
 
 export async function postFeedback(action, payload, signal, env = process.env) {
@@ -195,7 +324,9 @@ function sleep(ms) {
 export function feedbackToolResult(result) {
   const status = result?.status;
   const requestId = result?.request_id;
-  const text = status === "completed"
+  const text = result?.resolution === "approved"
+    ? `RambleDesk final summary ${requestId} was approved by the human. End the Ramble flow now without another model response or feedback request.`
+    : status === "completed"
     ? completedFeedbackText(result, requestId)
     : status === "cancelled"
       ? `RambleDesk feedback request ${requestId} was cancelled. Treat this as terminal and continue or stop accordingly.`
@@ -224,6 +355,29 @@ function completedFeedbackText(result, requestId) {
     ? `Attachment paths:\n${attachmentPaths.map((value) => `- ${value}`).join("\n")}`
     : "Attachment paths: none.");
   return sections.join("\n\n");
+}
+
+function isTerminal(result) {
+  return result?.status === "completed" || result?.status === "cancelled";
+}
+
+function appendRequestState(pi, requestId, phase, hostSessionId) {
+  pi.appendEntry?.("rambledesk-request-state", {
+    requestId,
+    hostSessionId,
+    phase,
+    timestamp: Date.now(),
+  });
+}
+
+export function restorePendingRequestId(entries) {
+  const states = entries
+    .filter((entry) => entry?.type === "custom" && entry.customType === "rambledesk-request-state")
+    .map((entry) => entry.data)
+    .filter((data) => typeof data?.requestId === "string");
+  const latest = states.at(-1);
+  if (!latest || ["completed", "cancelled", "approved", "feedback_submitted"].includes(latest.phase)) return undefined;
+  return latest.requestId;
 }
 
 function normalizeDisplayPath(value) {
