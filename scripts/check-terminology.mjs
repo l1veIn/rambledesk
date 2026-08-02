@@ -5,6 +5,10 @@ const root = process.cwd();
 const includedExtensions = new Set([".md", ".json", ".mjs", ".rs", ".svelte", ".toml", ".ts"]);
 const ignoredDirectories = new Set([".git", ".repochan", "dist", "node_modules", "target"]);
 
+function repositoryPath(path) {
+  return relative(root, path).split("\\").join("/");
+}
+
 function sourceFiles(directory) {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     if (ignoredDirectories.has(entry.name)) return [];
@@ -27,7 +31,7 @@ const legacyTerms = [
 
 const violations = [];
 for (const path of sourceFiles(root)) {
-  const displayPath = relative(root, path);
+  const displayPath = repositoryPath(path);
   if (displayPath === "docs/TERMINOLOGY.md" || displayPath === "scripts/check-terminology.mjs") continue;
   const lines = readFileSync(path, "utf8").split(/\r?\n/);
   lines.forEach((line, index) => {
@@ -40,7 +44,7 @@ for (const path of sourceFiles(root)) {
 const coreFiles = sourceFiles(join(root, "crates/rambledesk-core"));
 const forbiddenCoreTerms = [/\baxum\b/, /\brmcp\b/, /\bserde_json\b/, /\btauri\b/, /rambledesk_(?:hosts|local_server|mcp|storage)/];
 for (const path of coreFiles) {
-  const displayPath = relative(root, path);
+  const displayPath = repositoryPath(path);
   const lines = readFileSync(path, "utf8").split(/\r?\n/);
   lines.forEach((line, index) => {
     for (const pattern of forbiddenCoreTerms) {
@@ -64,7 +68,7 @@ const dependencyContracts = new Map([
 ]);
 for (const [manifest, expected] of dependencyContracts) {
   const contents = readFileSync(join(root, manifest), "utf8");
-  const dependencies = contents.split("[dependencies]\n", 2)[1]?.split(/\n\[/, 1)[0] ?? "";
+  const dependencies = contents.split(/\[dependencies\]\r?\n/, 2)[1]?.split(/\r?\n\[/, 1)[0] ?? "";
   const actual = [...dependencies.matchAll(/^(rambledesk-[a-z-]+)\.workspace\s*=\s*true$/gm)]
     .map((match) => match[1])
     .sort();
