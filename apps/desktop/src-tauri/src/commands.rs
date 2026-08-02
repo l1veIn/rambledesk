@@ -17,13 +17,14 @@ use rambledesk_hosts::{
 use rambledesk_speech::{
     SpeechEvent, SpeechEventSink, SpeechProvider, SpeechSession, SpeechSessionConfig,
     list_input_devices,
+    model::{SpeechModelInfo, delete_model, download_model, model_info},
 };
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager};
 
 use super::{
     RESUME_PROMPT_EVENT, TRAY_ID, WorkbenchState, configured_speech_model_path,
-    generic_mcp_install, pending_tray_icon, pi_install, save_library_path,
+    generic_mcp_install, migrate_library, pending_tray_icon, pi_install, save_library_path,
 };
 
 #[derive(Debug, Deserialize)]
@@ -39,6 +40,19 @@ pub(super) struct VoiceRambleSessionView {
     model_path: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub(super) struct StorageMigrationProgress {
+    copied: u64,
+    total: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(super) struct SpeechModelProgress {
+    model_id: &'static str,
+    downloaded: u64,
+    total: u64,
+}
+
 #[derive(Debug, Serialize)]
 pub(super) struct DataStorageView {
     active_path: String,
@@ -47,10 +61,16 @@ pub(super) struct DataStorageView {
 }
 
 #[tauri::command]
+fn display_path(path: &std::path::Path) -> String {
+    let value = path.to_string_lossy();
+    value.strip_prefix(r"\\?\").unwrap_or(&value).to_owned()
+}
+
+#[tauri::command]
 pub(super) fn get_data_storage_settings(
     state: tauri::State<'_, WorkbenchState>,
 ) -> DataStorageView {
-    let active_path = state.library_root.to_string_lossy().into_owned();
+    let active_path = display_path(&state.library_root);
     DataStorageView {
         selected_path: active_path.clone(),
         active_path,
@@ -59,14 +79,42 @@ pub(super) fn get_data_storage_settings(
 }
 
 #[tauri::command]
-pub(super) fn set_data_storage_path(
+pub(super) async fn set_data_storage_path(
     path: PathBuf,
+    app: tauri::AppHandle,
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<DataStorageView, String> {
+    if !path.is_absolute() {
+        return Err("数据存储位置必须是绝对路径".to_owned());
+    }
+    if !state
+        .application
+        .list_open_feedback_requests()
+        .await
+        .map_err(|error| error.to_string())?
+        .is_empty()
+    {
+        return Err(
+            "仍有未提交的反馈请求。请先提交或取消所有进行中的反馈，再迁移数据。".to_owned(),
+        );
+    }
+    let source = state.library_root.clone();
+    let destination = path.clone();
+    let event_app = app.clone();
+    tokio::task::spawn_blocking(move || {
+        migrate_library(&source, &destination, &|copied, total| {
+            let _ = event_app.emit(
+                "storage-migration-progress",
+                StorageMigrationProgress { copied, total },
+            );
+        })
+    })
+    .await
+    .map_err(|error| format!("数据迁移任务异常退出：{error}"))??;
     let selected = save_library_path(&path)?;
     Ok(DataStorageView {
-        active_path: state.library_root.to_string_lossy().into_owned(),
-        selected_path: selected.to_string_lossy().into_owned(),
+        active_path: display_path(&state.library_root),
+        selected_path: display_path(&selected),
         restart_required: selected != state.library_root,
     })
 }
@@ -361,6 +409,49 @@ pub(super) fn present_resume_prompt(app: &tauri::AppHandle, prompt: &ResumePromp
     if let Err(error) = app.emit(RESUME_PROMPT_EVENT, prompt) {
         tracing::warn!(%error, "failed to emit resume prompt event");
     }
+}
+
+#[tauri::command]
+pub(super) fn get_speech_model(state: tauri::State<'_, WorkbenchState>) -> SpeechModelInfo {
+    model_info(&state.library_root)
+}
+
+#[tauri::command]
+pub(super) async fn download_speech_model(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<SpeechModelInfo, String> {
+    let root = state.library_root.clone();
+    let event_app = app.clone();
+    tokio::task::spawn_blocking(move || {
+        download_model(&root, &|downloaded, total| {
+            let _ = event_app.emit(
+                "speech-model-progress",
+                SpeechModelProgress {
+                    model_id: rambledesk_speech::model::MODEL_ID,
+                    downloaded,
+                    total,
+                },
+            );
+        })
+    })
+    .await
+    .map_err(|error| format!("模型下载任务异常退出：{error}"))??;
+    Ok(model_info(&state.library_root))
+}
+
+#[tauri::command]
+pub(super) async fn delete_speech_model(
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<SpeechModelInfo, String> {
+    if state.speech_session.lock().await.is_some() {
+        return Err("请先停止语音录入，再删除模型".to_owned());
+    }
+    let root = state.library_root.clone();
+    tokio::task::spawn_blocking(move || delete_model(&root))
+        .await
+        .map_err(|error| format!("模型删除任务异常退出：{error}"))??;
+    Ok(model_info(&state.library_root))
 }
 
 #[tauri::command]

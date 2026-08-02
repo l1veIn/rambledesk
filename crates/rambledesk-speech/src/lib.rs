@@ -155,6 +155,7 @@ fn downmix<T>(input: &[T], channels: usize, normalize: impl Fn(&T) -> f32) -> Ve
         .collect()
 }
 
+pub mod model;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 mod native;
 

@@ -19,6 +19,7 @@
   export let voiceChunkIndex = 0
   export let voicePartial = ''
   export let voiceLevel = 0
+  export let voiceModelMissing = false
   export let rambleMessage = ''
   export let attachmentBusy = false
   export let canSubmit = false
@@ -27,6 +28,7 @@
   export let cancelling = false
   export let onToggleRamble: () => void = () => {}
   export let onExitRamble: () => void = () => {}
+  export let onOpenVoiceSettings: () => void = () => {}
   export let onStartScreenCapture: () => void = () => {}
   export let onImportClipboard: () => void = () => {}
   export let onFileSelection: (event: Event) => void = () => {}
@@ -44,31 +46,35 @@
   class="command-rail min-h-0 min-w-0 overflow-y-auto border-l bg-muted/15"
   aria-label="Ramble 操作台"
 >
-  <RamblePanel
-    {rambleEngaged}
-    {rambleActive}
-    {ramblePhase}
-    {rambleBusy}
-    {rambleStartedOnce}
-    {readOnly}
-    {voiceDevice}
-    {voiceChunkIndex}
-    {voicePartial}
-    {voiceLevel}
-    message={rambleMessage}
-    onToggle={onToggleRamble}
-    onExit={onExitRamble}
-  />
+  {#if !readOnly}
+    <RamblePanel
+      {rambleEngaged}
+      {rambleActive}
+      {ramblePhase}
+      {rambleBusy}
+      {rambleStartedOnce}
+      {readOnly}
+      {voiceDevice}
+      {voiceChunkIndex}
+      {voicePartial}
+      {voiceLevel}
+      modelMissing={voiceModelMissing}
+      message={rambleMessage}
+      onToggle={onToggleRamble}
+      onExit={onExitRamble}
+      onOpenVoiceSettings={onOpenVoiceSettings}
+    />
 
-  <CaptureToolsCard
-    attachmentCount={workspace.attachments.length}
-    {attachmentBusy}
-    {rambleEngaged}
-    {readOnly}
-    onScreenCapture={onStartScreenCapture}
-    onImportClipboard={onImportClipboard}
-    {onFileSelection}
-  />
+    <CaptureToolsCard
+      attachmentCount={workspace.attachments.length}
+      {attachmentBusy}
+      {rambleEngaged}
+      {readOnly}
+      onScreenCapture={onStartScreenCapture}
+      onImportClipboard={onImportClipboard}
+      {onFileSelection}
+    />
+  {/if}
 
   <AttachmentsCard
     attachments={workspace.attachments}

@@ -1,5 +1,6 @@
 use std::{
     fs,
+    io::{Read, Write},
     path::{Path, PathBuf},
 };
 
@@ -81,6 +82,108 @@ pub(super) fn configured_library_path() -> Result<PathBuf, String> {
     })
 }
 
+pub(super) fn migrate_library(
+    source: &Path,
+    destination: &Path,
+    progress: &dyn Fn(u64, u64),
+) -> Result<u64, String> {
+    if source == destination {
+        return Ok(0);
+    }
+    if destination.starts_with(source) || source.starts_with(destination) {
+        return Err("新旧数据存储位置不能互相包含".to_owned());
+    }
+    let total = directory_bytes(source)?;
+    fs::create_dir_all(destination)
+        .map_err(|error| format!("无法创建迁移目标 {}：{error}", destination.display()))?;
+    let mut copied = 0;
+    copy_directory(source, source, destination, total, &mut copied, progress)?;
+    progress(total, total);
+    Ok(total)
+}
+
+fn directory_bytes(path: &Path) -> Result<u64, String> {
+    if !path.exists() {
+        return Ok(0);
+    }
+    let mut total = 0;
+    for entry in
+        fs::read_dir(path).map_err(|error| format!("无法扫描 {}：{error}", path.display()))?
+    {
+        let entry = entry.map_err(|error| error.to_string())?;
+        let metadata = entry.metadata().map_err(|error| error.to_string())?;
+        if metadata.is_dir() {
+            total += directory_bytes(&entry.path())?;
+        } else {
+            total += metadata.len();
+        }
+    }
+    Ok(total)
+}
+
+fn copy_directory(
+    source_root: &Path,
+    current: &Path,
+    destination: &Path,
+    total: u64,
+    copied: &mut u64,
+    progress: &dyn Fn(u64, u64),
+) -> Result<(), String> {
+    if !current.exists() {
+        return Ok(());
+    }
+    for entry in
+        fs::read_dir(current).map_err(|error| format!("无法读取 {}：{error}", current.display()))?
+    {
+        let entry = entry.map_err(|error| error.to_string())?;
+        let relative = entry
+            .path()
+            .strip_prefix(source_root)
+            .map_err(|error| error.to_string())?
+            .to_path_buf();
+        let target = destination.join(relative);
+        let metadata = entry.metadata().map_err(|error| error.to_string())?;
+        if metadata.is_dir() {
+            fs::create_dir_all(&target)
+                .map_err(|error| format!("无法创建 {}：{error}", target.display()))?;
+            copy_directory(
+                source_root,
+                &entry.path(),
+                destination,
+                total,
+                copied,
+                progress,
+            )?;
+        } else {
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+            }
+            let temporary = target.with_extension("rambledesk-migrate-part");
+            let mut input = fs::File::open(entry.path()).map_err(|error| error.to_string())?;
+            let mut output = fs::File::create(&temporary).map_err(|error| error.to_string())?;
+            let mut buffer = vec![0u8; 256 * 1024];
+            loop {
+                let count = input.read(&mut buffer).map_err(|error| error.to_string())?;
+                if count == 0 {
+                    break;
+                }
+                output
+                    .write_all(&buffer[..count])
+                    .map_err(|error| error.to_string())?;
+                *copied += count as u64;
+                progress(*copied, total);
+            }
+            output.flush().map_err(|error| error.to_string())?;
+            if target.exists() {
+                fs::remove_file(&target).map_err(|error| error.to_string())?;
+            }
+            fs::rename(&temporary, &target)
+                .map_err(|error| format!("迁移文件 {} 失败：{error}", target.display()))?;
+        }
+    }
+    Ok(())
+}
+
 pub(super) fn save_library_path(path: &Path) -> Result<PathBuf, String> {
     if !path.is_absolute() {
         return Err("数据存储位置必须是绝对路径".to_owned());
@@ -130,4 +233,45 @@ pub(super) fn generic_mcp_configuration(endpoint: &str, token: &AccessToken) -> 
         }
     }))
     .expect("static MCP configuration must serialize")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn library_migration_copies_nested_files_and_reports_progress() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("source");
+        let destination = temp.path().join("destination");
+        fs::create_dir_all(source.join("models/speech")).unwrap();
+        fs::write(source.join("draft.txt"), b"draft").unwrap();
+        fs::write(source.join("models/speech/model.bin"), b"model").unwrap();
+        let events = std::sync::Mutex::new(Vec::new());
+
+        let total = migrate_library(&source, &destination, &|copied, total| {
+            events.lock().unwrap().push((copied, total));
+        })
+        .unwrap();
+
+        assert_eq!(total, 10);
+        assert_eq!(fs::read(destination.join("draft.txt")).unwrap(), b"draft");
+        assert_eq!(
+            fs::read(destination.join("models/speech/model.bin")).unwrap(),
+            b"model"
+        );
+        assert_eq!(events.lock().unwrap().last(), Some(&(10, 10)));
+        assert!(
+            source.join("draft.txt").exists(),
+            "source remains as a restart-safe backup"
+        );
+    }
+
+    #[test]
+    fn library_migration_rejects_nested_destinations() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("library");
+        fs::create_dir_all(&source).unwrap();
+        assert!(migrate_library(&source, &source.join("nested"), &|_, _| {}).is_err());
+    }
 }

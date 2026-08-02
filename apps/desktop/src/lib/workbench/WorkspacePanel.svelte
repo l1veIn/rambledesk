@@ -42,6 +42,7 @@
   export let voiceChunkIndex = 0
   export let voicePartial = ''
   export let voiceLevel = 0
+  export let voiceModelMissing = false
   export let rambleMessage = ''
   export let attachmentBusy = false
   export let canSubmit = false
@@ -54,6 +55,7 @@
   export let onDraftChange: (markdown: string) => void = () => {}
   export let onToggleRamble: () => void = () => {}
   export let onExitRamble: () => void = () => {}
+  export let onOpenVoiceSettings: () => void = () => {}
   export let onStartScreenCapture: () => void = () => {}
   export let onImportClipboard: () => void = () => {}
   export let onFileSelection: (event: Event) => void = () => {}
@@ -136,6 +138,7 @@
         {voiceChunkIndex}
         {voicePartial}
         {voiceLevel}
+        {voiceModelMissing}
         {rambleMessage}
         {attachmentBusy}
         {canSubmit}
@@ -144,6 +147,7 @@
         {cancelling}
         {onToggleRamble}
         {onExitRamble}
+        {onOpenVoiceSettings}
         {onStartScreenCapture}
         {onImportClipboard}
         {onFileSelection}

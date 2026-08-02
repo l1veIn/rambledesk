@@ -614,6 +614,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bzip2"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f3a53fac24f34a81bc9954b5d6cfce0c21e18ec6959f44f56e8e90e4bb7c346c"
+dependencies = [
+ "libbz2-rs-sys",
+]
+
+[[package]]
 name = "bzip2-sys"
 version = "0.1.13+1.0.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2930,6 +2939,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "libbz2-rs-sys"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "34b357333733e8260735ba5894eb928c02ecc69c78715f01a8019e7fa7f2db4c"
+
+[[package]]
 name = "libc"
 version = "0.2.189"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4420,10 +4435,15 @@ dependencies = [
 name = "rambledesk-speech"
 version = "0.1.0"
 dependencies = [
+ "bzip2 0.6.1",
  "cpal",
+ "reqwest",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "sherpa-onnx",
+ "tar",
+ "tempfile",
  "thiserror 2.0.19",
  "tracing",
 ]
@@ -4643,6 +4663,7 @@ checksum = "219c5811de6525e5416c7d5d53bb656d3afdbc6c5af816e0802bcfa42dbdc1c3"
 dependencies = [
  "base64 0.22.1",
  "bytes",
+ "futures-channel",
  "futures-core",
  "futures-util",
  "http",
@@ -5354,7 +5375,7 @@ version = "1.13.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ffc951af03dc0653c0622158ca8a585a6f2bc43b7b06048cf0e5b5020005c227"
 dependencies = [
- "bzip2",
+ "bzip2 0.4.4",
  "tar",
  "ureq",
 ]

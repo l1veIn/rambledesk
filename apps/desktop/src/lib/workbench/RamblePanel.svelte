@@ -18,8 +18,10 @@
   export let voicePartial = ''
   export let voiceLevel = 0
   export let message = ''
+  export let modelMissing = false
   export let onToggle: () => void = () => {}
   export let onExit: () => void = () => {}
+  export let onOpenVoiceSettings: () => void = () => {}
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
@@ -86,6 +88,11 @@
       {/if}
     </div>
     <p class="m-0 mt-1">{message || tr('录音会在本机转写并写入正文。')}</p>
+    {#if modelMissing}
+      <Button variant="outline" size="sm" class="mt-2 w-full" onclick={onOpenVoiceSettings}>
+        {tr('前往下载语音模型')}
+      </Button>
+    {/if}
     {#if voicePartial}
       <p class="m-0 mt-1 truncate text-foreground">
         {tr('正在听：{text}', { text: voicePartial })}

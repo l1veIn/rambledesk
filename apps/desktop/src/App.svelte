@@ -125,6 +125,7 @@
   let voicePartial = ''
   let voiceLevel = 0
   let voiceChunkIndex = 0
+  let voiceModelMissing = false
   let ramblePhase: RamblePhase = 'idle'
   let rambleStartedOnce = false
   let rambleRequestId = ''
@@ -1049,6 +1050,7 @@
     bind:voicePartial
     bind:voiceLevel
     bind:voiceChunkIndex
+    bind:voiceModelMissing
     bind:ramblePhase
     bind:rambleStartedOnce
     bind:rambleRequestId
@@ -1132,6 +1134,7 @@
       voiceChunkIndex={rambleBelongsToWorkspace ? voiceChunkIndex : 0}
       voicePartial={rambleBelongsToWorkspace ? voicePartial : ''}
       voiceLevel={rambleBelongsToWorkspace ? voiceLevel : 0}
+      voiceModelMissing={rambleBelongsToWorkspace ? voiceModelMissing : false}
       rambleMessage={rambleBelongsToWorkspace ? rambleMessage : ''}
       attachmentBusy={rambleBelongsToWorkspace ? attachmentBusy : false}
       {canSubmit}
@@ -1144,6 +1147,7 @@
       onDraftChange={updateDraft}
       onToggleRamble={() => void toggleRamble()}
       onExitRamble={() => void exitRamble()}
+      onOpenVoiceSettings={() => void openSettings('voice')}
       onStartScreenCapture={() => void startScreenCapture()}
       onImportClipboard={() => void importClipboardNow()}
       onFileSelection={handleFileSelection}

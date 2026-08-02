@@ -1,5 +1,6 @@
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core'
+  import { listen, type UnlistenFn } from '@tauri-apps/api/event'
   import { open } from '@tauri-apps/plugin-dialog'
   import { isPermissionGranted, requestPermission } from '@tauri-apps/plugin-notification'
   import {
@@ -19,6 +20,7 @@
     RefreshCw,
     ShieldCheck,
     TerminalSquare,
+    Trash2,
     Volume2,
   } from '@lucide/svelte'
   import { onMount } from 'svelte'
@@ -29,6 +31,7 @@
   import * as Collapsible from '$lib/components/ui/collapsible'
   import * as Dialog from '$lib/components/ui/dialog'
   import { ScrollArea } from '$lib/components/ui/scroll-area'
+  import { toast } from '$lib/components/ui/sonner'
   import * as Select from '$lib/components/ui/select'
   import * as Tabs from '$lib/components/ui/tabs'
   import { t } from '$lib/i18n'
@@ -62,6 +65,26 @@
     active_path: string
     selected_path: string
     restart_required: boolean
+  }
+
+  type SpeechModelInfo = {
+    id: string
+    display_name: string
+    size_bytes: number
+    installed: boolean
+    path: string
+    missing_files: string[]
+  }
+
+  type StorageMigrationProgress = {
+    copied: number
+    total: number
+  }
+
+  type SpeechModelProgress = {
+    model_id: string
+    downloaded: number
+    total: number
   }
 
   type McpHostView = {
@@ -100,8 +123,16 @@
   let dataStorage: DataStorageView | null = null
   let storageMessage = ''
   let storageError = ''
+  let storageMigration: StorageMigrationProgress | null = null
+  let storageMigrating = false
   let speechInputDevices: string[] = []
   let speechDeviceError = ''
+  let speechModel: SpeechModelInfo | null = null
+  let modelProgress: SpeechModelProgress | null = null
+  let modelBusy = false
+  let modelError = ''
+  let unlistenModelProgress: UnlistenFn | null = null
+  let unlistenStorageProgress: UnlistenFn | null = null
   const isTauri = '__TAURI_INTERNALS__' in window
 
   $: installedHosts = hosts.filter((host) => host.installed)
@@ -116,11 +147,59 @@
       void refreshHosts()
       void refreshDataStorage()
       void refreshSpeechDevices()
+      void refreshSpeechModel()
+      void listen<SpeechModelProgress>('speech-model-progress', ({ payload }) => {
+        modelProgress = payload
+      }).then((unlisten) => (unlistenModelProgress = unlisten))
+      void listen<StorageMigrationProgress>('storage-migration-progress', ({ payload }) => {
+        storageMigration = payload
+      }).then((unlisten) => (unlistenStorageProgress = unlisten))
     } else loadingHosts = false
+    return () => {
+      unlistenModelProgress?.()
+      unlistenStorageProgress?.()
+    }
   })
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
+  }
+
+  async function refreshSpeechModel() {
+    modelError = ''
+    try {
+      speechModel = await invoke<SpeechModelInfo>('get_speech_model')
+    } catch (cause) {
+      modelError = messageFrom(cause)
+    }
+  }
+
+  async function downloadSpeechModel() {
+    if (modelBusy) return
+    modelBusy = true
+    modelError = ''
+    modelProgress = { model_id: speechModel?.id ?? '', downloaded: 0, total: speechModel?.size_bytes ?? 0 }
+    try {
+      speechModel = await invoke<SpeechModelInfo>('download_speech_model')
+    } catch (cause) {
+      modelError = messageFrom(cause)
+    } finally {
+      modelBusy = false
+    }
+  }
+
+  async function deleteSpeechModel() {
+    if (modelBusy || !confirm(tr('确定删除本地语音模型吗？'))) return
+    modelBusy = true
+    modelError = ''
+    try {
+      speechModel = await invoke<SpeechModelInfo>('delete_speech_model')
+      modelProgress = null
+    } catch (cause) {
+      modelError = messageFrom(cause)
+    } finally {
+      modelBusy = false
+    }
   }
 
   async function refreshSpeechDevices() {
@@ -146,12 +225,18 @@
     try {
       const selected = await open({ directory: true, multiple: false })
       if (!selected || Array.isArray(selected)) return
+      storageMigrating = true
+      storageMigration = { copied: 0, total: 0 }
       dataStorage = await invoke<DataStorageView>('set_data_storage_path', { path: selected })
       storageMessage = dataStorage.restart_required
-        ? tr('新的数据存储位置将在重启 RambleDesk 后生效；旧数据不会自动移动。')
+        ? tr('数据已迁移；新的数据存储位置将在重启 RambleDesk 后生效。')
         : tr('当前已使用这个数据存储位置。')
+      toast.success(tr('存储设置已更新'), { description: storageMessage })
     } catch (cause) {
       storageError = messageFrom(cause)
+      toast.error(tr('存储设置失败'), { description: storageError })
+    } finally {
+      storageMigrating = false
     }
   }
 
@@ -427,7 +512,7 @@
                     </p>
                   </div>
                 </div>
-                <Button variant="outline" disabled={!isTauri} onclick={() => void chooseDataStorage()}>
+                <Button variant="outline" disabled={!isTauri || storageMigrating} onclick={() => void chooseDataStorage()}>
                   <FolderCog data-icon="inline-start" />
                   {tr('更改位置…')}
                 </Button>
@@ -435,18 +520,6 @@
               <div class="ml-11 rounded-md border bg-muted/20 px-3 py-2 font-mono text-[10px] text-muted-foreground">
                 {dataStorage?.selected_path ?? tr('正在读取数据存储位置…')}
               </div>
-              {#if storageMessage}
-                <Alert.Root class="ml-11 border-info/30 bg-info/5 text-info">
-                  <Alert.Title>{tr('存储设置已更新')}</Alert.Title>
-                  <Alert.Description>{storageMessage}</Alert.Description>
-                </Alert.Root>
-              {/if}
-              {#if storageError}
-                <Alert.Root variant="destructive" class="ml-11">
-                  <Alert.Title>{tr('存储设置失败')}</Alert.Title>
-                  <Alert.Description>{storageError}</Alert.Description>
-                </Alert.Root>
-              {/if}
             </section>
           </Tabs.Content>
 
@@ -626,12 +699,46 @@
               <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
                 <Download class="size-4" />
               </span>
-              <div>
-                <h3 class="m-0 text-sm font-medium">{tr('语音模型')}</h3>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2">
+                  <h3 class="m-0 text-sm font-medium">{tr('语音模型')}</h3>
+                  {#if speechModel}
+                    <Badge variant={speechModel.installed ? 'secondary' : 'outline'}>
+                      {speechModel.installed ? tr('已安装') : tr('未安装')}
+                    </Badge>
+                  {/if}
+                </div>
                 <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
-                  {tr('模型将安装到“数据存储位置”的 models/speech 目录；下载与校验管理将在下一步接入。')}
+                  {speechModel?.display_name ?? 'X-ASR'} · {speechModel ? `${Math.round(speechModel.size_bytes / 1024 / 1024)} MB` : '162 MB'}
                 </p>
+                {#if speechModel}
+                  <p class="m-0 mt-1 truncate text-[10px] text-muted-foreground" title={speechModel.path}>{speechModel.path}</p>
+                {/if}
+                {#if modelBusy && modelProgress}
+                  <div class="mt-3">
+                    <div class="mb-1 flex justify-between text-[10px] text-muted-foreground">
+                      <span>{tr('正在下载并校验…')}</span>
+                      <span>{Math.min(100, Math.round(modelProgress.downloaded / Math.max(1, modelProgress.total) * 100))}%</span>
+                    </div>
+                    <div class="h-1.5 overflow-hidden rounded-full bg-muted">
+                      <div class="h-full bg-primary transition-[width]" style={`width: ${Math.min(100, modelProgress.downloaded / Math.max(1, modelProgress.total) * 100)}%`}></div>
+                    </div>
+                  </div>
+                {/if}
+                {#if modelError}
+                  <p class="m-0 mt-2 text-xs text-destructive">{modelError}</p>
+                {/if}
               </div>
+              {#if speechModel?.installed}
+                <Button variant="outline" size="sm" disabled={modelBusy} onclick={deleteSpeechModel}>
+                  <Trash2 data-icon="inline-start" />{tr('删除')}
+                </Button>
+              {:else}
+                <Button size="sm" disabled={modelBusy || !speechModel} onclick={downloadSpeechModel}>
+                  {#if modelBusy}<LoaderCircle class="animate-spin" data-icon="inline-start" />{:else}<Download data-icon="inline-start" />{/if}
+                  {modelBusy ? tr('下载中…') : modelError ? tr('重试下载') : tr('下载模型')}
+                </Button>
+              {/if}
             </section>
           </Tabs.Content>
 
@@ -857,3 +964,23 @@
     </Tabs.Root>
   </Dialog.Content>
 </Dialog.Root>
+
+{#if storageMigrating}
+  <div class="fixed inset-0 z-[100] grid place-items-center bg-black/45 p-6 backdrop-blur-sm">
+    <div class="w-full max-w-md rounded-xl border bg-background p-5 shadow-2xl">
+      <div class="flex items-center gap-3">
+        <LoaderCircle class="size-5 animate-spin text-primary" />
+        <div>
+          <h3 class="m-0 text-sm font-medium">{tr('正在迁移数据')}</h3>
+          <p class="m-0 mt-1 text-xs text-muted-foreground">{tr('请勿退出 RambleDesk。迁移完成后需要重启。')}</p>
+        </div>
+      </div>
+      <div class="mt-5 h-2 overflow-hidden rounded-full bg-muted">
+        <div class="h-full bg-primary transition-[width]" style={`width: ${storageMigration && storageMigration.total > 0 ? Math.min(100, storageMigration.copied / storageMigration.total * 100) : 2}%`}></div>
+      </div>
+      <p class="m-0 mt-2 text-right text-[10px] text-muted-foreground">
+        {storageMigration && storageMigration.total > 0 ? `${Math.round(storageMigration.copied / storageMigration.total * 100)}%` : tr('正在扫描旧数据…')}
+      </p>
+    </div>
+  </div>
+{/if}

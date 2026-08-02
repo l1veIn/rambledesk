@@ -39,6 +39,7 @@
   export let voicePartial = ''
   export let voiceLevel = 0
   export let voiceChunkIndex = 0
+  export let voiceModelMissing = false
   export let ramblePhase: RamblePhase = 'idle'
   export let rambleStartedOnce = false
   export let rambleRequestId = ''
@@ -174,6 +175,7 @@
     voicePartial = ''
     voiceLevel = 0
     voiceChunkIndex = 0
+    voiceModelMissing = false
   }
 
   export function resetRambleUi() {
@@ -253,7 +255,15 @@
     voicePartial = ''
     voiceMessage = t($locale, '正在加载本地模型并连接麦克风…')
     voiceLevel = 0
+    voiceModelMissing = false
     try {
+      const model = await invoke<{ installed: boolean }>('get_speech_model')
+      if (!model.installed) {
+        voiceModelMissing = true
+        voicePhase = 'error'
+        voiceMessage = t($locale, '尚未安装语音模型，请前往语音设置下载。')
+        return false
+      }
       const session = await invoke<VoiceRambleSessionView>('start_voice_ramble', {
         input: {
           request_id: rambleRequestId,
