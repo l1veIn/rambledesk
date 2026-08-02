@@ -127,15 +127,21 @@ test("retries a transient connection failure with the same request id", async ()
   }
 });
 
-test("formats terminal feedback result text for Pi", () => {
+test("puts terminal feedback markdown and attachment paths in model-visible content", () => {
   const result = feedbackToolResult({
     request_id: "019",
     status: "completed",
-    feedback_package: { markdown: "done", attachment_paths: [] },
+    feedback_package: {
+      markdown: "human feedback",
+      attachment_paths: ["\\\\?\\C:\\tmp\\screenshot.png"],
+    },
   });
 
   assert.match(result.content[0].text, /completed/);
-  assert.equal(result.details.feedback_package.markdown, "done");
+  assert.match(result.content[0].text, /human feedback/);
+  assert.match(result.content[0].text, /C:\\tmp\\screenshot\.png/);
+  assert.doesNotMatch(result.content[0].text, /\\\\\?\\/);
+  assert.equal(result.details.feedback_package.markdown, "human feedback");
 });
 
 test("registers Pi tools and request tool waits for terminal package", async () => {
@@ -205,7 +211,76 @@ test("registers Pi tools and request tool waits for terminal package", async () 
     assert.deepEqual(calls[1].body, { request_id: "019" });
     assert.match(updates[0].content[0].text, /waiting/);
     assert.match(result.content[0].text, /completed/);
+    assert.match(result.content[0].text, /human feedback/);
+    assert.match(result.content[0].text, /\/tmp\/screenshot\.png/);
     assert.equal(result.details.feedback_package.markdown, "human feedback");
+  } finally {
+    if (previousApiUrl === undefined) {
+      delete process.env.RAMBLEDESK_LOCAL_API_URL;
+    } else {
+      process.env.RAMBLEDESK_LOCAL_API_URL = previousApiUrl;
+    }
+    if (previousToken === undefined) {
+      delete process.env.RAMBLEDESK_LOCAL_SERVER_TOKEN;
+    } else {
+      process.env.RAMBLEDESK_LOCAL_SERVER_TOKEN = previousToken;
+    }
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("recovers the package when an idempotent request is already completed", async () => {
+  const tools = [];
+  registerRambleDeskPiTools({
+    registerTool(tool) {
+      tools.push(tool);
+    },
+  });
+  const calls = [];
+  const server = http.createServer((request, response) => {
+    let body = "";
+    request.setEncoding("utf8");
+    request.on("data", (chunk) => {
+      body += chunk;
+    });
+    request.on("end", () => {
+      calls.push(request.url);
+      response.setHeader("content-type", "application/json");
+      if (request.url === "/api/feedback/request") {
+        response.end(JSON.stringify({ request_id: "019", status: "completed" }));
+        return;
+      }
+      response.end(JSON.stringify({
+        request_id: "019",
+        status: "completed",
+        feedback_package: { markdown: "recovered feedback", attachment_paths: [] },
+      }));
+    });
+  });
+
+  const previousApiUrl = process.env.RAMBLEDESK_LOCAL_API_URL;
+  const previousToken = process.env.RAMBLEDESK_LOCAL_SERVER_TOKEN;
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const { port } = server.address();
+    process.env.RAMBLEDESK_LOCAL_API_URL = `http://127.0.0.1:${port}/api`;
+    process.env.RAMBLEDESK_LOCAL_SERVER_TOKEN = "test-token";
+    const requestTool = tools.find((tool) => tool.name === "request_ramble_feedback");
+    const result = await requestTool.execute(
+      "call-1",
+      {
+        request_id: "019",
+        title: "Review",
+        what_happened: "A workflow changed.",
+        actions: [{ id: "check", instruction: "Check the workflow." }],
+      },
+      undefined,
+      undefined,
+      { cwd: "/tmp/pi-worktree", sessionId: "pi-session" },
+    );
+
+    assert.deepEqual(calls, ["/api/feedback/request", "/api/feedback/get"]);
+    assert.match(result.content[0].text, /recovered feedback/);
   } finally {
     if (previousApiUrl === undefined) {
       delete process.env.RAMBLEDESK_LOCAL_API_URL;

@@ -1,0 +1,395 @@
+use std::{
+    path::PathBuf,
+    sync::{Arc, atomic::Ordering},
+};
+
+use rambledesk_core::{
+    AddAttachmentInput, ApplicationError, CancelFeedbackInput, DraftView, FeedbackApplication,
+    FeedbackRequestSummary, FeedbackRequestView, FeedbackStatus, FeedbackWorkspaceView,
+    HostSessionSummary, ListFeedbackRequestsInput, ListFeedbackRequestsOutput,
+    MAX_ATTACHMENT_BYTES, RemoveAttachmentInput, ReorderAttachmentsInput, SaveDraftInput,
+    SubmitFeedbackInput,
+};
+use rambledesk_hosts::{
+    ContinuationPayload, ContinuationReason, ContinuationResult, ContinuationRouter, HostProfile,
+    ResumePrompt, known_host_profiles,
+};
+use rambledesk_speech::{
+    SpeechEvent, SpeechEventSink, SpeechProvider, SpeechSession, SpeechSessionConfig,
+};
+use serde::{Deserialize, Serialize};
+use tauri::{Emitter, Manager};
+
+use super::{
+    RESUME_PROMPT_EVENT, TRAY_ID, WorkbenchState, configured_speech_model_path,
+    generic_mcp_install, pending_tray_icon, pi_install,
+};
+
+#[derive(Debug, Deserialize)]
+pub(super) struct StartVoiceRambleInput {
+    request_id: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(super) struct VoiceRambleSessionView {
+    voice_session_id: String,
+    provider: String,
+    model_path: String,
+}
+
+#[tauri::command]
+pub(super) fn get_generic_mcp_configuration(state: tauri::State<'_, WorkbenchState>) -> String {
+    state.generic_mcp_configuration.clone()
+}
+
+#[tauri::command]
+pub(super) fn list_host_profiles() -> Vec<HostProfile> {
+    known_host_profiles()
+}
+
+#[tauri::command]
+pub(super) fn detect_generic_mcp_hosts(
+    app: tauri::AppHandle,
+) -> Result<Vec<generic_mcp_install::McpHostView>, String> {
+    let home = app
+        .path()
+        .home_dir()
+        .map_err(|error| format!("Could not resolve the user home directory: {error}"))?;
+    Ok(generic_mcp_install::detect_hosts(&home))
+}
+
+#[tauri::command]
+pub(super) fn install_generic_mcp_hosts(
+    host_ids: Vec<String>,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<Vec<generic_mcp_install::McpInstallResult>, String> {
+    let home = app
+        .path()
+        .home_dir()
+        .map_err(|error| format!("Could not resolve the user home directory: {error}"))?;
+    generic_mcp_install::install_hosts(&home, &host_ids, &state.generic_mcp_configuration)
+}
+
+#[tauri::command]
+pub(super) async fn install_pi_package(checkout_root: Option<String>) -> Result<String, String> {
+    let package_dir = pi_install::resolve_package_dir(checkout_root.as_deref()).ok_or_else(|| {
+        "Could not locate packages/pi-rambledesk in this checkout. Run `pi install ./packages/pi-rambledesk` manually.".to_owned()
+    })?;
+    let pi_bin = pi_install::resolve_pi_binary().ok_or_else(|| {
+        "The `pi` CLI was not found on PATH. Install Pi or set RAMBLEDESK_PI_BIN, then run `pi install ./packages/pi-rambledesk` manually.".to_owned()
+    })?;
+    tauri::async_runtime::spawn_blocking(move || pi_install::run_install(&pi_bin, &package_dir))
+        .await
+        .map_err(|error| format!("Installer task failed: {error}"))?
+}
+
+#[tauri::command]
+pub(super) fn set_pending_count(
+    count: u32,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<(), String> {
+    if state.pending_count.swap(count, Ordering::Relaxed) == count {
+        return Ok(());
+    }
+    let tray = app
+        .tray_by_id(TRAY_ID)
+        .ok_or_else(|| "RambleDesk tray icon is unavailable".to_owned())?;
+    tray.set_tooltip(Some(if count == 0 {
+        "RambleDesk · 没有待处理反馈".to_owned()
+    } else {
+        format!("RambleDesk · {count} 个待处理反馈")
+    }))
+    .map_err(|error| error.to_string())?;
+    tray.set_icon(Some(pending_tray_icon(count)))
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub(super) async fn list_feedback_inbox(
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<Vec<FeedbackRequestSummary>, ApplicationError> {
+    let application = state.application.clone();
+    application.list_open_feedback_requests().await
+}
+
+#[tauri::command]
+pub(super) async fn list_host_sessions(
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<Vec<HostSessionSummary>, ApplicationError> {
+    state.application.list_host_sessions().await
+}
+
+#[tauri::command]
+pub(super) async fn list_feedback_requests(
+    input: ListFeedbackRequestsInput,
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<ListFeedbackRequestsOutput, ApplicationError> {
+    state.application.list_feedback_requests(input).await
+}
+
+#[tauri::command]
+pub(super) async fn get_feedback_workspace(
+    request_id: String,
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<FeedbackWorkspaceView, ApplicationError> {
+    let application = state.application.clone();
+    application.get_feedback_workspace(request_id).await
+}
+
+#[tauri::command]
+pub(super) async fn save_feedback_draft(
+    input: SaveDraftInput,
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<DraftView, ApplicationError> {
+    let application = state.application.clone();
+    application.save_feedback_draft(input).await
+}
+
+#[tauri::command]
+pub(super) async fn add_feedback_attachment(
+    input: AddAttachmentInput,
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<FeedbackWorkspaceView, ApplicationError> {
+    let application = state.application.clone();
+    application.add_feedback_attachment(input).await
+}
+
+#[tauri::command]
+pub(super) async fn import_feedback_attachment_path(
+    request_id: String,
+    path: PathBuf,
+    expected_revision: u64,
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<FeedbackWorkspaceView, ApplicationError> {
+    let file_name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| {
+            ApplicationError::invalid_argument("attachment path has no UTF-8 file name")
+        })?
+        .to_owned();
+    let metadata = tokio::fs::metadata(&path)
+        .await
+        .map_err(|_| ApplicationError::invalid_argument("attachment path could not be read"))?;
+    if metadata.len() > MAX_ATTACHMENT_BYTES as u64 {
+        return Err(ApplicationError::invalid_argument(format!(
+            "attachment exceeds the {} MiB limit",
+            MAX_ATTACHMENT_BYTES / 1024 / 1024
+        )));
+    }
+    let contents = tokio::fs::read(path)
+        .await
+        .map_err(|_| ApplicationError::invalid_argument("attachment path could not be read"))?;
+    let application = state.application.clone();
+    application
+        .add_feedback_attachment(AddAttachmentInput {
+            request_id,
+            file_name,
+            contents,
+            expected_revision,
+        })
+        .await
+}
+
+#[tauri::command]
+pub(super) async fn remove_feedback_attachment(
+    input: RemoveAttachmentInput,
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<FeedbackWorkspaceView, ApplicationError> {
+    let application = state.application.clone();
+    application.remove_feedback_attachment(input).await
+}
+
+#[tauri::command]
+pub(super) async fn reorder_feedback_attachments(
+    input: ReorderAttachmentsInput,
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<FeedbackWorkspaceView, ApplicationError> {
+    let application = state.application.clone();
+    application.reorder_feedback_attachments(input).await
+}
+
+#[tauri::command]
+pub(super) async fn read_feedback_attachment(
+    request_id: String,
+    attachment_id: String,
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<Vec<u8>, ApplicationError> {
+    let application = state.application.clone();
+    application
+        .read_feedback_attachment(request_id, attachment_id)
+        .await
+}
+
+#[tauri::command]
+pub(super) async fn submit_feedback(
+    input: SubmitFeedbackInput,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<FeedbackRequestView, ApplicationError> {
+    let application = state.application.clone();
+    let result = application.submit_feedback(input.clone()).await?;
+    deliver_continuation_after_terminal(
+        &app,
+        &state.continuation,
+        &application,
+        &input.request_id,
+        result.status,
+    )
+    .await;
+    Ok(result)
+}
+
+#[tauri::command]
+pub(super) async fn cancel_feedback_request(
+    input: CancelFeedbackInput,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<FeedbackRequestView, ApplicationError> {
+    let application = state.application.clone();
+    let result = application.cancel_feedback(input.clone()).await?;
+    deliver_continuation_after_terminal(
+        &app,
+        &state.continuation,
+        &application,
+        &input.request_id,
+        result.status,
+    )
+    .await;
+    Ok(result)
+}
+
+pub(super) async fn deliver_continuation_after_terminal(
+    app: &tauri::AppHandle,
+    router: &ContinuationRouter,
+    application: &FeedbackApplication,
+    request_id: &str,
+    status: FeedbackStatus,
+) {
+    let Some(reason) = ContinuationReason::from_status(status) else {
+        return;
+    };
+    let (host_id, host_session_id, source_hint) = match application
+        .get_feedback_workspace(request_id.to_owned())
+        .await
+    {
+        Ok(workspace) => (
+            workspace.request.host_id,
+            workspace.request.host_session_id,
+            workspace.request.source_hint,
+        ),
+        Err(error) => {
+            tracing::warn!(%request_id, %error, "continuation: workspace lookup failed; using empty host");
+            (String::new(), String::new(), None)
+        }
+    };
+
+    let payload = ContinuationPayload {
+        request_id: request_id.to_owned(),
+        host_id: host_id.clone(),
+        host_session_id,
+        source_hint,
+        reason,
+    };
+    match router.continue_after_terminal(&payload) {
+        ContinuationResult::NotRequired {
+            adapter_id,
+            host_id,
+        } => {
+            tracing::info!(%request_id, %adapter_id, %host_id, "host continuation not required");
+        }
+        ContinuationResult::HostDelivered {
+            adapter_id,
+            host_id,
+        } => {
+            tracing::info!(%request_id, %adapter_id, %host_id, "host continuation delivered");
+        }
+        ContinuationResult::UserPrompt { adapter_id, prompt } => {
+            tracing::info!(
+                %request_id,
+                %adapter_id,
+                host = %prompt.host_id,
+                "manual continuation prompt ready"
+            );
+            present_resume_prompt(app, &prompt);
+        }
+    }
+}
+
+pub(super) fn present_resume_prompt(app: &tauri::AppHandle, prompt: &ResumePrompt) {
+    if let Some(main) = app.get_webview_window("main") {
+        let _ = main.show();
+        let _ = main.unminimize();
+        let _ = main.set_focus();
+    }
+    if let Err(error) = app.emit(RESUME_PROMPT_EVENT, prompt) {
+        tracing::warn!(%error, "failed to emit resume prompt event");
+    }
+}
+
+#[tauri::command]
+pub(super) async fn start_voice_ramble(
+    input: StartVoiceRambleInput,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<VoiceRambleSessionView, String> {
+    let workspace = state
+        .application
+        .clone()
+        .get_feedback_workspace(input.request_id.clone())
+        .await
+        .map_err(|error| error.to_string())?;
+    if matches!(
+        workspace.request.status,
+        FeedbackStatus::Completed | FeedbackStatus::Cancelled
+    ) {
+        return Err("已结束的反馈请求不能继续录入语音".to_owned());
+    }
+
+    let mut active = state.speech_session.lock().await;
+    if active.is_some() {
+        return Err("已有语音 Ramble 正在进行，请先停止当前录音".to_owned());
+    }
+
+    let voice_session_id = uuid::Uuid::now_v7().to_string();
+    let provider = SpeechProvider::SherpaOnline;
+    let model_path = configured_speech_model_path(&app)?;
+    let config = SpeechSessionConfig {
+        request_id: input.request_id,
+        voice_session_id: voice_session_id.clone(),
+        model_path: model_path.clone(),
+    };
+    let event_app = app.clone();
+    let sink: SpeechEventSink = Arc::new(move |event: SpeechEvent| {
+        if let Err(error) = event_app.emit("voice-ramble-event", event) {
+            tracing::warn!(%error, "failed to emit voice ramble event");
+        }
+    });
+    let session = tokio::task::spawn_blocking(move || SpeechSession::start(config, sink))
+        .await
+        .map_err(|error| format!("语音识别启动任务异常退出：{error}"))?
+        .map_err(|error| error.to_string())?;
+    *active = Some(session);
+
+    Ok(VoiceRambleSessionView {
+        voice_session_id,
+        provider: provider.id().to_owned(),
+        model_path: model_path.to_string_lossy().into_owned(),
+    })
+}
+
+#[tauri::command]
+pub(super) async fn stop_voice_ramble(
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<(), String> {
+    let session = state.speech_session.lock().await.take();
+    let Some(session) = session else {
+        return Ok(());
+    };
+    tokio::task::spawn_blocking(move || session.stop())
+        .await
+        .map_err(|error| format!("语音识别停止任务异常退出：{error}"))?
+        .map_err(|error| error.to_string())
+}

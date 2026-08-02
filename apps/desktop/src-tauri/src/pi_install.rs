@@ -8,6 +8,8 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::platform::process::find_executable;
+
 /// Locate the Pi package directory in the source checkout.
 ///
 /// Candidates are tried in order:
@@ -65,11 +67,7 @@ pub fn resolve_pi_binary() -> Option<PathBuf> {
             return Some(path);
         }
     }
-    std::env::var_os("PATH").and_then(|paths| {
-        std::env::split_paths(&paths)
-            .map(|dir| dir.join("pi"))
-            .find(|candidate| candidate.is_file())
-    })
+    find_executable("pi")
 }
 
 /// Run `pi install <package_dir>` and return the tail of its output.
@@ -144,6 +142,28 @@ mod tests {
             std::env::temp_dir().join(format!("rambledesk-pi-install-none-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
         assert_eq!(find_package_dir_from(&root), None);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn run_install_executes_windows_cmd_shim() {
+        let root =
+            std::env::temp_dir().join(format!("rambledesk pi command {}", std::process::id()));
+        let package_dir = root.join("package with spaces");
+        std::fs::create_dir_all(&package_dir).unwrap();
+        let pi_bin = root.join("pi.cmd");
+        std::fs::write(
+            &pi_bin,
+            "@echo off\r\nif not \"%~1\"==\"install\" exit /b 41\r\necho adapter installed\r\n",
+        )
+        .unwrap();
+
+        assert_eq!(
+            run_install(&pi_bin, &package_dir).unwrap(),
+            "adapter installed"
+        );
+
         let _ = std::fs::remove_dir_all(&root);
     }
 }

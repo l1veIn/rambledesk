@@ -33,6 +33,7 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: cargo fmt --all --check
+      - run: pnpm check:rust-size
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
       - run: pnpm check
@@ -62,6 +63,36 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: cargo fmt --all --check
+      - run: pnpm check:rust-size
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace --all-targets
+      - run: pnpm check
+      - run: pnpm test
+      - run: pnpm build:web
+      - run: pnpm contracts:check
+
+  verify-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.91.1
+          components: clippy,rustfmt
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.0
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: cargo fmt --all --check
+      - run: pnpm check:rust-size
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace --all-targets
       - run: pnpm check

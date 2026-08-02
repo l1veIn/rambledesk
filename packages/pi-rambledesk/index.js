@@ -56,7 +56,7 @@ export function registerRambleDeskPiTools(pi) {
     name: "request_ramble_feedback",
     label: "Request RambleDesk Feedback",
     description: `Create a RambleDesk feedback request for the human and wait for the result in this Pi tool call.
-Use this instead of MCP when running in Pi. After the tool returns completed, continue the original task using details.feedback_package.markdown and attachment_paths.
+Use this instead of MCP when running in Pi. After the tool returns completed, continue the original task using the feedback markdown and attachment paths included in the tool content.
 Do not call this tool repeatedly for the same request unless you reuse the same request_id.`,
     promptSnippet:
       "Use request_ramble_feedback when you need the human to test or inspect something in RambleDesk; Pi waits inside the tool call until the feedback package is ready.",
@@ -64,7 +64,7 @@ Do not call this tool repeatedly for the same request unless you reuse the same 
       "Prefer request_ramble_feedback over MCP feedback tools in Pi.",
       "Provide a short title, a concrete what_happened summary, and one or more action instructions.",
       "Leave wait as true unless you are intentionally only creating a request for later recovery.",
-      "After the tool returns completed, inspect details.feedback_package.markdown and any attachment_paths before continuing.",
+      "After the tool returns completed, inspect the feedback markdown and any attachment paths included in the tool content before continuing.",
     ],
     parameters: RequestRambleFeedbackSchema,
     executionMode: "sequential",
@@ -90,9 +90,15 @@ Do not call this tool repeatedly for the same request unless you reuse the same 
       });
 
       const shouldWait = params.wait !== false;
-      const result = shouldWait && !terminal
-        ? await postFeedback("wait", { request_id: created.request_id }, signal)
-        : created;
+      let result = created;
+      if (shouldWait && !terminal) {
+        result = await postFeedback("wait", { request_id: created.request_id }, signal);
+      } else if (shouldWait && created.status === "completed") {
+        // The request endpoint intentionally returns only the request view. An
+        // idempotent retry may find an already-completed request, so recover
+        // the package before returning it to the model.
+        result = await postFeedback("get", { request_id: created.request_id }, signal);
+      }
       return feedbackToolResult(result);
     },
   });
@@ -188,7 +194,7 @@ export function feedbackToolResult(result) {
   const status = result?.status;
   const requestId = result?.request_id;
   const text = status === "completed"
-    ? `RambleDesk feedback request ${requestId} is completed. Continue with details.feedback_package.markdown and attachment_paths.`
+    ? completedFeedbackText(result, requestId)
     : status === "cancelled"
       ? `RambleDesk feedback request ${requestId} was cancelled. Treat this as terminal and continue or stop accordingly.`
       : `RambleDesk feedback request ${requestId} is ${status}. Do not poll; wait for a resume signal or call get_ramble_feedback later.`;
@@ -196,6 +202,38 @@ export function feedbackToolResult(result) {
     content: [{ type: "text", text }],
     details: result,
   };
+}
+
+function completedFeedbackText(result, requestId) {
+  const feedbackPackage = result?.feedback_package;
+  const markdown = typeof feedbackPackage?.markdown === "string"
+    ? feedbackPackage.markdown
+    : "";
+  const attachmentPaths = Array.isArray(feedbackPackage?.attachment_paths)
+    ? feedbackPackage.attachment_paths
+      .filter((value) => typeof value === "string" && value.length > 0)
+      .map(normalizeDisplayPath)
+    : [];
+  const sections = [`RambleDesk feedback request ${requestId} is completed.`];
+  sections.push(markdown.length > 0
+    ? `Feedback markdown:\n\n--- BEGIN RAMBLEDESK FEEDBACK ---\n${markdown}\n--- END RAMBLEDESK FEEDBACK ---`
+    : "The completed response did not include feedback_package.markdown. Call get_ramble_feedback once to recover it.");
+  sections.push(attachmentPaths.length > 0
+    ? `Attachment paths:\n${attachmentPaths.map((value) => `- ${value}`).join("\n")}`
+    : "Attachment paths: none.");
+  return sections.join("\n\n");
+}
+
+function normalizeDisplayPath(value) {
+  const verbatimUncPrefix = "\\\\?\\UNC\\";
+  const verbatimPrefix = "\\\\?\\";
+  if (value.startsWith(verbatimUncPrefix)) {
+    return `\\\\${value.slice(verbatimUncPrefix.length)}`;
+  }
+  if (value.startsWith(verbatimPrefix)) {
+    return value.slice(verbatimPrefix.length);
+  }
+  return value;
 }
 
 export function resolveApiBaseUrl(env = process.env) {

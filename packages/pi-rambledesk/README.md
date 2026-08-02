@@ -30,5 +30,7 @@ JSON API:
   file (`RAMBLEDESK_LOCAL_SERVER_TOKEN_FILE` can override the path)
 
 The tool waits by holding the Pi tool execution, not by asking RambleDesk to
-continue Pi later. Once it returns `completed`, read
-`details.feedback_package.markdown` and `details.feedback_package.attachment_paths`.
+continue Pi later. Once it returns `completed`, the feedback markdown and
+attachment paths are included directly in the model-visible tool `content`.
+The full structured API response is also retained in `details` for logs and UI
+rendering, but Pi does not add `details` to the model context.
