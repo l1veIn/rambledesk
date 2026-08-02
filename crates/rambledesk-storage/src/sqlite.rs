@@ -44,12 +44,23 @@ pub enum StorageOpenError {
 #[derive(Clone)]
 pub struct SqliteFeedbackStore {
     pool: SqlitePool,
-    app_data_root: std::path::PathBuf,
+    library_root: std::path::PathBuf,
     pub(crate) publish_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl SqliteFeedbackStore {
     pub async fn connect(path: &Path) -> Result<Self, StorageOpenError> {
+        let library_root = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        Self::connect_with_library(path, library_root).await
+    }
+
+    pub async fn connect_with_library(
+        path: &Path,
+        library_root: &Path,
+    ) -> Result<Self, StorageOpenError> {
         if let Some(parent) = path.parent() {
             let parent_existed = tokio::fs::try_exists(parent)
                 .await
@@ -76,14 +87,16 @@ impl SqliteFeedbackStore {
             .run(&pool)
             .await
             .map_err(StorageOpenError::Migrate)?;
-        let app_data_root = path
-            .parent()
-            .filter(|parent| !parent.as_os_str().is_empty())
-            .unwrap_or_else(|| Path::new("."))
-            .to_path_buf();
+        let library_existed = tokio::fs::try_exists(library_root)
+            .await
+            .map_err(StorageOpenError::CreateDirectory)?;
+        tokio::fs::create_dir_all(library_root)
+            .await
+            .map_err(StorageOpenError::CreateDirectory)?;
+        secure_new_path(library_root, library_existed, 0o700).await?;
         let store = Self {
             pool,
-            app_data_root,
+            library_root: library_root.to_path_buf(),
             publish_lock: Arc::new(tokio::sync::Mutex::new(())),
         };
         store
@@ -137,10 +150,18 @@ impl SqliteFeedbackStore {
     }
 }
 
-pub fn default_database_path() -> Result<std::path::PathBuf, StorageOpenError> {
+pub fn default_app_data_root() -> Result<std::path::PathBuf, StorageOpenError> {
     dirs::data_local_dir()
-        .map(|root| root.join("RambleDesk").join("feedback.sqlite3"))
+        .map(|root| root.join("RambleDesk"))
         .ok_or(StorageOpenError::DataDirectoryUnavailable)
+}
+
+pub fn default_database_path() -> Result<std::path::PathBuf, StorageOpenError> {
+    default_app_data_root().map(|root| root.join("state").join("feedback.sqlite3"))
+}
+
+pub fn default_library_path() -> Result<std::path::PathBuf, StorageOpenError> {
+    default_app_data_root().map(|root| root.join("library"))
 }
 
 #[async_trait]
@@ -278,9 +299,9 @@ async fn prepare_publication_paths(
     request_id: &str,
     publication_id: &str,
     now: &str,
-    app_data_root: &Path,
+    library_root: &Path,
 ) -> Result<PreparedPublicationPaths, RepositoryError> {
-    let feedback_root = prepare_app_feedback_root(app_data_root, publication_id).await?;
+    let feedback_root = prepare_app_feedback_root(library_root, publication_id).await?;
     let directory_name = format!("{}-{request_id}", compact_timestamp(now));
     let directory_path = feedback_root.join(directory_name);
     let temp_directory_path = feedback_root.join(format!(".{request_id}.tmp-{publication_id}"));
@@ -296,10 +317,10 @@ async fn prepare_publication_paths(
 }
 
 async fn prepare_app_feedback_root(
-    app_data_root: &Path,
+    library_root: &Path,
     publication_id: &str,
 ) -> Result<std::path::PathBuf, RepositoryError> {
-    let fallback = app_data_root.join("feedback");
+    let fallback = library_root.join("feedback");
     tokio::fs::create_dir_all(&fallback)
         .await
         .map_err(storage_error)?;

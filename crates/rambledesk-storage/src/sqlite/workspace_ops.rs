@@ -115,7 +115,7 @@ impl SqliteFeedbackStore {
         now: &str,
     ) -> Result<StoredFeedbackWorkspace, RepositoryError> {
         let directory = self
-            .app_data_root
+            .library_root
             .join("drafts")
             .join(request_id)
             .join("attachments");
@@ -305,7 +305,7 @@ impl SqliteFeedbackStore {
         attachment_id: &str,
     ) -> Result<Vec<u8>, RepositoryError> {
         let draft_path: String = sqlx::query_scalar(
-            "SELECT draft_path FROM attachments WHERE request_id = ?1 AND id = ?2",
+            "SELECT COALESCE(published_path, draft_path) FROM attachments WHERE request_id = ?1 AND id = ?2",
         )
         .bind(request_id)
         .bind(attachment_id)

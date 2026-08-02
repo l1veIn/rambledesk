@@ -112,10 +112,11 @@ async fn restart_reconciles_package_published_before_database_completion() {
 }
 
 #[tokio::test]
-async fn publishes_feedback_package_under_app_data() {
+async fn publishes_feedback_package_under_explicit_library_root() {
     let workspace = TestWorkspace::new().await;
     let request_id = Uuid::now_v7().to_string();
-    let store = SqliteFeedbackStore::connect(&workspace.database)
+    let library_root = workspace.database.with_file_name("library");
+    let store = SqliteFeedbackStore::connect_with_library(&workspace.database, &library_root)
         .await
         .expect("open store");
     let application = store.clone().into_application();
@@ -139,11 +140,10 @@ async fn publishes_feedback_package_under_app_data() {
         .await
         .expect("submit");
     let directory = completed.feedback.expect("feedback result").directory_path;
-    let app_feedback_root =
-        tokio::fs::canonicalize(workspace.database.parent().unwrap().join("feedback"))
-            .await
-            .expect("canonical app data feedback root");
-    assert!(Path::new(&directory).starts_with(app_feedback_root));
+    let feedback_root = tokio::fs::canonicalize(library_root.join("feedback"))
+        .await
+        .expect("canonical library feedback root");
+    assert!(Path::new(&directory).starts_with(feedback_root));
     store.close().await;
 }
 

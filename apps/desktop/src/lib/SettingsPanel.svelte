@@ -1,5 +1,6 @@
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core'
+  import { open } from '@tauri-apps/plugin-dialog'
   import { isPermissionGranted, requestPermission } from '@tauri-apps/plugin-notification'
   import {
     BellRing,
@@ -8,6 +9,7 @@
     ChevronDown,
     Clipboard,
     Download,
+    FolderCog,
     Languages,
     LoaderCircle,
     MonitorCog,
@@ -53,6 +55,12 @@
   export let initialSection: Section = 'general'
   export let onClose: () => void = () => {}
 
+  type DataStorageView = {
+    active_path: string
+    selected_path: string
+    restart_required: boolean
+  }
+
   type McpHostView = {
     id: string
     name: string
@@ -86,6 +94,9 @@
   let genericAdapterOpen = true
   let configurationOpen = false
   let notificationPermissionError = ''
+  let dataStorage: DataStorageView | null = null
+  let storageMessage = ''
+  let storageError = ''
   const isTauri = '__TAURI_INTERNALS__' in window
 
   $: installedHosts = hosts.filter((host) => host.installed)
@@ -96,12 +107,37 @@
   }
 
   onMount(() => {
-    if (isTauri) void refreshHosts()
-    else loadingHosts = false
+    if (isTauri) {
+      void refreshHosts()
+      void refreshDataStorage()
+    } else loadingHosts = false
   })
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
+  }
+
+  async function refreshDataStorage() {
+    try {
+      dataStorage = await invoke<DataStorageView>('get_data_storage_settings')
+    } catch (cause) {
+      storageError = messageFrom(cause)
+    }
+  }
+
+  async function chooseDataStorage() {
+    storageError = ''
+    storageMessage = ''
+    try {
+      const selected = await open({ directory: true, multiple: false })
+      if (!selected || Array.isArray(selected)) return
+      dataStorage = await invoke<DataStorageView>('set_data_storage_path', { path: selected })
+      storageMessage = dataStorage.restart_required
+        ? tr('新的数据存储位置将在重启 RambleDesk 后生效；旧数据不会自动移动。')
+        : tr('当前已使用这个数据存储位置。')
+    } catch (cause) {
+      storageError = messageFrom(cause)
+    }
   }
 
   async function refreshHosts() {
@@ -323,7 +359,7 @@
               </Select.Root>
             </section>
 
-            <section class="grid grid-cols-[minmax(0,1fr)_240px] items-center gap-8">
+            <section class="grid grid-cols-[minmax(0,1fr)_240px] items-center gap-8 border-b pb-8">
               <div class="flex gap-3">
                 <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
                   <MonitorCog class="size-4" />
@@ -353,6 +389,41 @@
                   <Select.Item value="dark" label={tr('深色')} />
                 </Select.Content>
               </Select.Root>
+            </section>
+
+            <section class="grid gap-4">
+              <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-8">
+                <div class="flex gap-3">
+                  <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+                    <FolderCog class="size-4" />
+                  </span>
+                  <div>
+                    <h3 class="m-0 text-sm font-medium">{tr('数据存储位置')}</h3>
+                    <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
+                      {tr('反馈附件、已发布反馈包和语音模型存放在这里；数据库与凭证仍保留在系统目录。')}
+                    </p>
+                  </div>
+                </div>
+                <Button variant="outline" disabled={!isTauri} onclick={() => void chooseDataStorage()}>
+                  <FolderCog data-icon="inline-start" />
+                  {tr('更改位置…')}
+                </Button>
+              </div>
+              <div class="ml-11 rounded-md border bg-muted/20 px-3 py-2 font-mono text-[10px] text-muted-foreground">
+                {dataStorage?.selected_path ?? tr('正在读取数据存储位置…')}
+              </div>
+              {#if storageMessage}
+                <Alert.Root class="ml-11 border-info/30 bg-info/5 text-info">
+                  <Alert.Title>{tr('存储设置已更新')}</Alert.Title>
+                  <Alert.Description>{storageMessage}</Alert.Description>
+                </Alert.Root>
+              {/if}
+              {#if storageError}
+                <Alert.Root variant="destructive" class="ml-11">
+                  <Alert.Title>{tr('存储设置失败')}</Alert.Title>
+                  <Alert.Description>{storageError}</Alert.Description>
+                </Alert.Root>
+              {/if}
             </section>
           </Tabs.Content>
 

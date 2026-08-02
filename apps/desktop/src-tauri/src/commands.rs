@@ -22,7 +22,7 @@ use tauri::{Emitter, Manager};
 
 use super::{
     RESUME_PROMPT_EVENT, TRAY_ID, WorkbenchState, configured_speech_model_path,
-    generic_mcp_install, pending_tray_icon, pi_install,
+    generic_mcp_install, pending_tray_icon, pi_install, save_library_path,
 };
 
 #[derive(Debug, Deserialize)]
@@ -35,6 +35,38 @@ pub(super) struct VoiceRambleSessionView {
     voice_session_id: String,
     provider: String,
     model_path: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(super) struct DataStorageView {
+    active_path: String,
+    selected_path: String,
+    restart_required: bool,
+}
+
+#[tauri::command]
+pub(super) fn get_data_storage_settings(
+    state: tauri::State<'_, WorkbenchState>,
+) -> DataStorageView {
+    let active_path = state.library_root.to_string_lossy().into_owned();
+    DataStorageView {
+        selected_path: active_path.clone(),
+        active_path,
+        restart_required: false,
+    }
+}
+
+#[tauri::command]
+pub(super) fn set_data_storage_path(
+    path: PathBuf,
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<DataStorageView, String> {
+    let selected = save_library_path(&path)?;
+    Ok(DataStorageView {
+        active_path: state.library_root.to_string_lossy().into_owned(),
+        selected_path: selected.to_string_lossy().into_owned(),
+        restart_required: selected != state.library_root,
+    })
 }
 
 #[tauri::command]
@@ -355,7 +387,7 @@ pub(super) async fn start_voice_ramble(
 
     let voice_session_id = uuid::Uuid::now_v7().to_string();
     let provider = SpeechProvider::SherpaOnline;
-    let model_path = configured_speech_model_path(&app)?;
+    let model_path = configured_speech_model_path(&state.library_root)?;
     let config = SpeechSessionConfig {
         request_id: input.request_id,
         voice_session_id: voice_session_id.clone(),

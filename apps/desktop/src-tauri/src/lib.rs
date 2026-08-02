@@ -8,7 +8,7 @@ use rambledesk_core::FeedbackApplication;
 use rambledesk_hosts::{ContinuationRouter, known_continuation_strategies};
 use rambledesk_local_server::{AccessToken, ServerConfig, ServerHandle, start_server};
 use rambledesk_speech::SpeechSession;
-use std::sync::atomic::AtomicU32;
+use std::{path::PathBuf, sync::atomic::AtomicU32};
 use tauri::{
     Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder,
     image::Image,
@@ -34,6 +34,7 @@ struct WorkbenchState {
     generic_mcp_configuration: String,
     continuation: ContinuationRouter,
     pending_count: AtomicU32,
+    library_root: PathBuf,
     speech_session: tokio::sync::Mutex<Option<SpeechSession>>,
 }
 
@@ -138,8 +139,12 @@ pub fn run() {
             }
             let token = AccessToken::load_or_create(&configured_token_path()?)?;
             let database_path = configured_database_path()?;
+            let library_root = configured_library_path()?;
             let store = tauri::async_runtime::block_on(
-                rambledesk_storage::SqliteFeedbackStore::connect(&database_path),
+                rambledesk_storage::SqliteFeedbackStore::connect_with_library(
+                    &database_path,
+                    &library_root,
+                ),
             )?;
             let application = store.into_application();
             let config = ServerConfig::new(token.clone()).with_port(configured_port()?);
@@ -194,6 +199,7 @@ pub fn run() {
                 generic_mcp_configuration: configuration,
                 continuation: ContinuationRouter::new(known_continuation_strategies()),
                 pending_count: AtomicU32::new(0),
+                library_root,
                 speech_session: tokio::sync::Mutex::new(None),
             });
             app.manage(screen_capture::ScreenCaptureState::default());
@@ -205,6 +211,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_generic_mcp_configuration,
+            get_data_storage_settings,
+            set_data_storage_path,
             list_host_profiles,
             detect_generic_mcp_hosts,
             install_generic_mcp_hosts,
