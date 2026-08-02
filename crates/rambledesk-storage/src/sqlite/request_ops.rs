@@ -47,8 +47,8 @@ impl SqliteFeedbackStore {
 
         let inserted = sqlx::query(
             "INSERT INTO feedback_requests \
-             (id, host_session_record_id, title, what_happened, source_hint, status, input_hash, created_at, updated_at) \
-             VALUES (?1, ?2, ?3, ?4, ?5, 'waiting', ?6, ?7, ?7) \
+             (id, host_session_record_id, title, what_happened, source_hint, status, input_hash, allow_finish, final_summary, created_at, updated_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, 'waiting', ?6, ?7, ?8, ?9, ?9) \
              ON CONFLICT(id) DO NOTHING",
         )
         .bind(&request.request_id)
@@ -57,6 +57,8 @@ impl SqliteFeedbackStore {
         .bind(&request.what_happened)
         .bind(request.source_hint.as_deref())
         .bind(&input_hash)
+        .bind(request.allow_finish)
+        .bind(request.final_summary.as_deref())
         .bind(&request.created_at)
         .execute(&mut *transaction)
         .await
@@ -100,6 +102,9 @@ impl SqliteFeedbackStore {
             created_at: request.created_at.clone(),
             updated_at: request.created_at,
             feedback: None,
+            resolution: None,
+            allow_finish: request.allow_finish,
+            final_summary: request.final_summary,
         };
         transaction.commit().await.map_err(storage_error)?;
         Ok(stored)
@@ -110,8 +115,8 @@ impl SqliteFeedbackStore {
         request_id: &str,
     ) -> Result<StoredFeedbackRequest, RepositoryError> {
         let row = sqlx::query(
-            "SELECT r.id, hs.host_id, hs.host_session_id, r.status, r.created_at, r.updated_at, r.input_hash, \
-                    fr.package_uri, fr.directory_path, fr.markdown_path, fr.manifest_path \
+            "SELECT r.id, hs.host_id, hs.host_session_id, r.status, r.resolution, r.allow_finish, r.final_summary, \
+                    r.created_at, r.updated_at, r.input_hash, fr.package_uri, fr.directory_path, fr.markdown_path, fr.manifest_path \
              FROM feedback_requests r \
              JOIN host_sessions hs ON hs.id = r.host_session_record_id \
              LEFT JOIN feedback_results fr ON fr.request_id = r.id \
@@ -157,7 +162,7 @@ impl SqliteFeedbackStore {
 
         sqlx::query(
             "UPDATE feedback_requests \
-             SET status = 'cancelled', cancelled_at = ?2, cancel_reason = ?3, \
+             SET status = 'cancelled', resolution = 'cancelled', cancelled_at = ?2, cancel_reason = ?3, \
                  updated_at = ?2, revision = revision + 1 \
              WHERE id = ?1 AND status IN ('waiting', 'in_progress')",
         )
@@ -174,12 +179,41 @@ impl SqliteFeedbackStore {
         stored_request_from_row(&updated)
     }
 
+    pub(super) async fn approve_request_impl(
+        &self,
+        request_id: &str,
+        now: &str,
+    ) -> Result<StoredFeedbackRequest, RepositoryError> {
+        let updated = sqlx::query(
+            "UPDATE feedback_requests SET status = 'completed', resolution = 'approved', \
+             completed_at = ?2, updated_at = ?2, revision = revision + 1 \
+             WHERE id = ?1 AND status IN ('waiting', 'in_progress') \
+               AND allow_finish = 1 AND final_summary IS NOT NULL",
+        )
+        .bind(request_id)
+        .bind(now)
+        .execute(&self.pool)
+        .await
+        .map_err(storage_error)?;
+        if updated.rows_affected() != 1 {
+            let existing = self.get_request_impl(request_id).await?;
+            return if existing.status == FeedbackStatus::Completed
+                && existing.resolution == Some(FeedbackResolution::Approved)
+            {
+                Ok(existing)
+            } else {
+                Err(RepositoryError::RequestTerminal)
+            };
+        }
+        self.get_request_impl(request_id).await
+    }
+
     pub(super) async fn list_open_requests_impl(
         &self,
     ) -> Result<Vec<FeedbackRequestSummary>, RepositoryError> {
         let rows = sqlx::query(
             "SELECT r.id, hs.host_id, hs.host_session_id, r.source_hint, \
-                    r.title, r.what_happened, r.status, \
+                    r.title, r.what_happened, r.status, r.resolution, r.allow_finish, r.final_summary, \
                     r.revision, r.created_at, r.updated_at \
              FROM feedback_requests r \
              JOIN host_sessions hs ON hs.id = r.host_session_record_id \
@@ -198,7 +232,7 @@ impl SqliteFeedbackStore {
     ) -> Result<Vec<FeedbackRequestSummary>, RepositoryError> {
         let rows = sqlx::query(
             "SELECT r.id, hs.host_id, hs.host_session_id, r.source_hint, \
-                    r.title, r.what_happened, r.status, \
+                    r.title, r.what_happened, r.status, r.resolution, r.allow_finish, r.final_summary, \
                     r.revision, r.created_at, r.updated_at \
              FROM feedback_requests r \
              JOIN host_sessions hs ON hs.id = r.host_session_record_id \

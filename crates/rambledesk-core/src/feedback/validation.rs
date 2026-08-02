@@ -16,6 +16,20 @@ pub(super) fn validate_request_input(input: &RequestFeedbackInput) -> Result<(),
         }
     }
     validate_text("what_happened", &input.what_happened, 1, 12_000)?;
+    match (input.allow_finish, input.final_summary.as_deref()) {
+        (true, Some(summary)) => validate_text("final_summary", summary, 1, 12_000)?,
+        (true, None) => {
+            return Err(ApplicationError::invalid_argument(
+                "final_summary is required when allow_finish is true",
+            ));
+        }
+        (false, Some(_)) => {
+            return Err(ApplicationError::invalid_argument(
+                "final_summary requires allow_finish to be true",
+            ));
+        }
+        (false, None) => {}
+    }
 
     if let Some(request_id) = input.request_id.as_deref() {
         canonical_uuid(request_id, "request_id")?;

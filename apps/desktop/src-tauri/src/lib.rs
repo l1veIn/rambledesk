@@ -229,6 +229,7 @@ pub fn run() {
             reorder_feedback_attachments,
             read_feedback_attachment,
             submit_feedback,
+            approve_feedback_request,
             cancel_feedback_request,
             get_speech_model,
             download_speech_model,

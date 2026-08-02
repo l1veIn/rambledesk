@@ -26,6 +26,7 @@
   export let submitting = false
   export let canCancel = false
   export let cancelling = false
+  export let approving = false
   export let onToggleRamble: () => void = () => {}
   export let onExitRamble: () => void = () => {}
   export let onOpenVoiceSettings: () => void = () => {}
@@ -37,6 +38,7 @@
   export let onOpenPackage: () => void = () => {}
   export let onSubmit: () => void = () => {}
   export let onCancel: () => void = () => {}
+  export let onApprove: () => void = () => {}
 
   $: readOnly =
     workspace.request.status === 'completed' || workspace.request.status === 'cancelled'
@@ -93,12 +95,17 @@
   <DeliveryCard
     {feedbackResult}
     cancelled={workspace.request.status === 'cancelled'}
+    approved={workspace.request.resolution === 'approved'}
     {canSubmit}
     {submitting}
     {canCancel}
     {cancelling}
+    allowFinish={workspace.request.allow_finish}
+    finalSummary={workspace.request.final_summary ?? ''}
+    {approving}
     onOpenPackage={onOpenPackage}
     onSubmit={onSubmit}
     onCancel={onCancel}
+    onApprove={onApprove}
   />
 </aside>

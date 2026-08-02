@@ -35,6 +35,9 @@ fn terminal_results_omit_poll_interval() {
         created_at: "2026-07-29T00:00:00Z".to_owned(),
         updated_at: "2026-07-29T00:01:00Z".to_owned(),
         feedback: None,
+        resolution: Some(FeedbackResolution::Cancelled),
+        allow_finish: false,
+        final_summary: None,
     }))
     .expect("feedback result");
     assert!(value.get("poll_after_ms").is_none());

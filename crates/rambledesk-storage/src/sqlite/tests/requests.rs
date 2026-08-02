@@ -1,6 +1,46 @@
 use super::*;
 
 #[tokio::test]
+async fn final_summary_can_be_approved_without_publishing_feedback() {
+    let workspace = TestWorkspace::new().await;
+    let request_id = Uuid::now_v7().to_string();
+    let store = SqliteFeedbackStore::connect(&workspace.database)
+        .await
+        .expect("open store");
+    let application = store.clone().into_application();
+    let mut input = workspace.request(request_id.clone());
+    input.allow_finish = true;
+    input.final_summary = Some("Implemented the feature and all tests pass.".to_owned());
+
+    let created = application
+        .request_feedback(input)
+        .await
+        .expect("create final proposal");
+    assert!(created.allow_finish);
+    assert_eq!(
+        created.final_summary.as_deref(),
+        Some("Implemented the feature and all tests pass.")
+    );
+
+    let approved = application
+        .approve_feedback(ApproveFeedbackInput {
+            request_id: request_id.clone(),
+        })
+        .await
+        .expect("approve final summary");
+    assert_eq!(approved.status, FeedbackStatus::Completed);
+    assert_eq!(approved.resolution, Some(FeedbackResolution::Approved));
+    assert!(approved.feedback.is_none());
+
+    let replay = application
+        .approve_feedback(ApproveFeedbackInput { request_id })
+        .await
+        .expect("approval is idempotent");
+    assert_eq!(replay.resolution, Some(FeedbackResolution::Approved));
+    store.close().await;
+}
+
+#[tokio::test]
 async fn request_is_idempotent_conflict_safe_and_survives_restart() {
     let workspace = TestWorkspace::new().await;
     let request_id = Uuid::now_v7().to_string();

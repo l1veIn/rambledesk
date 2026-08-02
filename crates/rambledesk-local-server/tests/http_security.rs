@@ -148,6 +148,8 @@ async fn official_client_exercises_feedback_lifecycle_and_errors() -> anyhow::Re
         }],
         context_refs: Vec::new(),
         source_hint: Some("local server HTTP test".to_owned()),
+        allow_finish: false,
+        final_summary: None,
     };
     let arguments = serde_json::to_value(request)?
         .as_object()
@@ -302,6 +304,8 @@ async fn local_api_supports_pi_request_and_blocking_wait() -> anyhow::Result<()>
         }],
         context_refs: Vec::new(),
         source_hint: Some("Pi API test".to_owned()),
+        allow_finish: false,
+        final_summary: None,
     };
     let created = client
         .post(format!("{api}/request"))
@@ -394,6 +398,8 @@ async fn host_header_stamps_host_id_on_request_feedback() -> anyhow::Result<()> 
         }],
         context_refs: Vec::new(),
         source_hint: Some("Host header test".to_owned()),
+        allow_finish: false,
+        final_summary: None,
     };
     let arguments = serde_json::to_value(request)?
         .as_object()

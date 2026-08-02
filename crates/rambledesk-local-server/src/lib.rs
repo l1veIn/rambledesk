@@ -17,15 +17,17 @@ use axum::{
     },
     middleware::{self, Next},
     response::IntoResponse,
-    routing::post,
+    routing::{get, post},
 };
 use rambledesk_core::{
-    ApplicationError, CancelFeedbackInput, FeedbackApplication, FeedbackRequestView,
-    FeedbackStatus, GetFeedbackInput, RequestFeedbackInput,
+    ApplicationError, ApproveFeedbackInput, CancelFeedbackInput, FeedbackApplication,
+    FeedbackRequestView, FeedbackStatus, GetFeedbackInput, ListFeedbackRequestsInput,
+    RequestFeedbackInput,
 };
 use rmcp::transport::streamable_http_server::{
     StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
 };
+use serde::Deserialize;
 use subtle::ConstantTimeEq;
 use thiserror::Error;
 use tokio::{net::TcpListener, task::JoinHandle};
@@ -91,6 +93,20 @@ fn apply_request_host(
     input
 }
 
+#[derive(Debug, Deserialize)]
+struct RecoverFeedbackInput {
+    request_id: Option<String>,
+    host_session_id: String,
+}
+
+async fn api_health() -> Json<serde_json::Value> {
+    Json(serde_json::json!({
+        "ready": true,
+        "version": env!("CARGO_PKG_VERSION"),
+        "capabilities": ["final_approval", "request_recovery"]
+    }))
+}
+
 async fn api_request_feedback(
     State(state): State<ApiState>,
     Extension(request_host): Extension<RequestHost>,
@@ -123,6 +139,73 @@ async fn api_wait_feedback(
     api_feedback_result(&application, application.wait_feedback(input).await, true).await
 }
 
+async fn api_recover_feedback(
+    State(state): State<ApiState>,
+    Extension(request_host): Extension<RequestHost>,
+    Json(input): Json<RecoverFeedbackInput>,
+) -> Response<Body> {
+    let application = state.application.clone();
+    if let Some(request_id) = input.request_id {
+        return api_feedback_result(
+            &application,
+            application
+                .get_feedback(GetFeedbackInput { request_id })
+                .await,
+            true,
+        )
+        .await;
+    }
+    let result = application
+        .list_feedback_requests(ListFeedbackRequestsInput {
+            host_id: request_host.0,
+            host_session_id: Some(input.host_session_id),
+            status: Some(vec![
+                FeedbackStatus::Waiting,
+                FeedbackStatus::InProgress,
+                FeedbackStatus::Completed,
+                FeedbackStatus::Cancelled,
+            ]),
+            limit: Some(1),
+            cursor: None,
+        })
+        .await;
+    let request_id = match result {
+        Ok(result) => match result.requests.first() {
+            Some(request) => request.request_id.clone(),
+            None => {
+                return api_error_payload(
+                    StatusCode::NOT_FOUND,
+                    "REQUEST_NOT_FOUND",
+                    "no Ramble request was found for this Pi session",
+                    false,
+                );
+            }
+        },
+        Err(error) => return api_error_response(application_error_status(error.code()), error),
+    };
+    api_feedback_result(
+        &application,
+        application
+            .get_feedback(GetFeedbackInput { request_id })
+            .await,
+        true,
+    )
+    .await
+}
+
+async fn api_approve_feedback(
+    State(state): State<ApiState>,
+    Json(input): Json<ApproveFeedbackInput>,
+) -> Response<Body> {
+    let application = state.application.clone();
+    api_feedback_result(
+        &application,
+        application.approve_feedback(input).await,
+        false,
+    )
+    .await
+}
+
 async fn api_cancel_feedback(
     State(state): State<ApiState>,
     Json(input): Json<CancelFeedbackInput>,
@@ -151,10 +234,7 @@ async fn api_feedback_result(
         .as_object_mut()
         .expect("feedback request view must serialize as an object");
     if include_package_when_terminal
-        && matches!(
-            value.status,
-            FeedbackStatus::Completed | FeedbackStatus::Cancelled
-        )
+        && (value.feedback.is_some() || value.status == FeedbackStatus::Cancelled)
     {
         match application.read_feedback_package(&value).await {
             Ok(package) => {
@@ -343,9 +423,12 @@ pub async fn start_server(
 
     let auth = AuthState::new(&config.access_token, allowed_origins);
     let api = Router::new()
+        .route("/health", get(api_health))
         .route("/feedback/request", post(api_request_feedback))
         .route("/feedback/get", post(api_get_feedback))
         .route("/feedback/wait", post(api_wait_feedback))
+        .route("/feedback/recover", post(api_recover_feedback))
+        .route("/feedback/approve", post(api_approve_feedback))
         .route("/feedback/cancel", post(api_cancel_feedback))
         .with_state(ApiState {
             application: application.clone(),

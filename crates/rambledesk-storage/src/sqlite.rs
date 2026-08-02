@@ -3,10 +3,10 @@ use std::{collections::HashSet, path::Path, sync::Arc, time::Duration};
 use async_trait::async_trait;
 use rambledesk_core::{
     ActionInput, AttachmentView, ContextRef, DraftView, FeedbackRepository, FeedbackRequestQuery,
-    FeedbackRequestSummary, FeedbackResultView, FeedbackStatus, HostSessionSummary,
-    MAX_ATTACHMENT_COUNT, NewAttachment, NewFeedbackRequest, PublishedFeedbackPackage,
-    RepositoryError, StoredFeedbackRequest, StoredFeedbackWorkspace, SubmissionAttachment,
-    SubmissionPlan,
+    FeedbackRequestSummary, FeedbackResolution, FeedbackResultView, FeedbackStatus,
+    HostSessionSummary, MAX_ATTACHMENT_COUNT, NewAttachment, NewFeedbackRequest,
+    PublishedFeedbackPackage, RepositoryError, StoredFeedbackRequest, StoredFeedbackWorkspace,
+    SubmissionAttachment, SubmissionPlan,
 };
 use sha2::{Digest, Sha256};
 use sqlx::{
@@ -187,6 +187,14 @@ impl FeedbackRepository for SqliteFeedbackStore {
         now: &str,
     ) -> Result<StoredFeedbackRequest, RepositoryError> {
         self.cancel_request_impl(request_id, reason, now).await
+    }
+
+    async fn approve_request(
+        &self,
+        request_id: &str,
+        now: &str,
+    ) -> Result<StoredFeedbackRequest, RepositoryError> {
+        self.approve_request_impl(request_id, now).await
     }
 
     async fn list_open_requests(&self) -> Result<Vec<FeedbackRequestSummary>, RepositoryError> {
@@ -396,7 +404,8 @@ async fn load_request_row(
 ) -> Result<Option<SqliteRow>, RepositoryError> {
     sqlx::query(
         "SELECT r.id, hs.host_id, hs.host_session_id, \
-                r.status, r.created_at, r.updated_at, r.input_hash, \
+                r.status, r.resolution, r.allow_finish, r.final_summary, \
+                r.created_at, r.updated_at, r.input_hash, \
                 fr.package_uri, fr.directory_path, fr.markdown_path, fr.manifest_path \
          FROM feedback_requests r \
          JOIN host_sessions hs ON hs.id = r.host_session_record_id \
@@ -412,7 +421,15 @@ async fn load_request_row(
 fn stored_request_from_row(row: &SqliteRow) -> Result<StoredFeedbackRequest, RepositoryError> {
     let status = stored_status(row)?;
     let feedback = feedback_result_from_row(row)?;
-    if status == FeedbackStatus::Completed && feedback.is_none() {
+    let resolution = row
+        .try_get::<Option<String>, _>("resolution")
+        .map_err(storage_error)?
+        .map(|value| FeedbackResolution::try_from(value.as_str()))
+        .transpose()?;
+    if status == FeedbackStatus::Completed
+        && resolution != Some(FeedbackResolution::Approved)
+        && feedback.is_none()
+    {
         return Err(RepositoryError::CorruptData);
     }
     Ok(StoredFeedbackRequest {
@@ -423,6 +440,9 @@ fn stored_request_from_row(row: &SqliteRow) -> Result<StoredFeedbackRequest, Rep
         created_at: row.try_get("created_at").map_err(storage_error)?,
         updated_at: row.try_get("updated_at").map_err(storage_error)?,
         feedback,
+        resolution,
+        allow_finish: row.try_get("allow_finish").map_err(storage_error)?,
+        final_summary: row.try_get("final_summary").map_err(storage_error)?,
     })
 }
 

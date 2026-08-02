@@ -22,6 +22,7 @@
   import WorkspacePanel from './lib/workbench/WorkspacePanel.svelte'
   import type {
     AddAttachmentInput,
+    ApproveFeedbackInput,
     AttachmentView,
     CancelFeedbackInput,
     DraftView,
@@ -100,6 +101,7 @@
   let loadingWorkspace = false
   let submitting = false
   let cancelling = false
+  let approving = false
   let attachmentBusy = false
   let attachmentMessage = ''
   let attachmentMessageTone: 'info' | 'success' | 'error' = 'info'
@@ -950,6 +952,33 @@
     }
   }
 
+  async function approveFeedback() {
+    if (!workspace || !workspace.request.allow_finish || approving) return
+    if (!window.confirm(tr('同意这个最终总结并结束 Pi 的 Ramble 流程？'))) return
+    if (rambleCanExit) await exitRamble()
+    approving = true
+    pageError = ''
+    try {
+      const input: ApproveFeedbackInput = { request_id: workspace.request.request_id }
+      const result = await invoke<FeedbackRequestView>('approve_feedback_request', { input })
+      completedResult = result
+      workspace = {
+        ...workspace,
+        request: {
+          ...workspace.request,
+          status: result.status,
+          resolution: result.resolution,
+          updated_at: result.updated_at,
+        },
+      }
+      await refreshNavigation(true)
+    } catch (cause) {
+      pageError = messageFrom(cause)
+    } finally {
+      approving = false
+    }
+  }
+
   async function cancelFeedback() {
     if (!workspace || !canCancel) return
     if (!window.confirm(tr('确认取消这个反馈请求？'))) return
@@ -1141,6 +1170,7 @@
       {submitting}
       {canCancel}
       {cancelling}
+      {approving}
       {resolveHostProfile}
       {formatTime}
       onReload={() => void reloadWorkspace()}
@@ -1156,6 +1186,7 @@
       onOpenPackage={() => void openFeedbackPackage()}
       onSubmit={() => void submitFeedback()}
       onCancel={() => void cancelFeedback()}
+      onApprove={() => void approveFeedback()}
     />
 
     {#if resumePrompt}

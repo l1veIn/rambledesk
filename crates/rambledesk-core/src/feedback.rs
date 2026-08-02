@@ -97,6 +97,12 @@ pub trait FeedbackRepository: Send + Sync {
         now: &str,
     ) -> Result<StoredFeedbackRequest, RepositoryError>;
 
+    async fn approve_request(
+        &self,
+        request_id: &str,
+        now: &str,
+    ) -> Result<StoredFeedbackRequest, RepositoryError>;
+
     async fn list_open_requests(&self) -> Result<Vec<FeedbackRequestSummary>, RepositoryError>;
 
     async fn list_requests(
@@ -267,6 +273,8 @@ impl FeedbackApplication {
                 actions: input.actions,
                 context_refs: input.context_refs,
                 source_hint: input.source_hint,
+                allow_finish: input.allow_finish,
+                final_summary: input.final_summary,
                 created_at: now,
             })
             .await
@@ -311,6 +319,20 @@ impl FeedbackApplication {
                 changes = self.waiters.subscribe(&request_id);
             }
         }
+    }
+
+    pub async fn approve_feedback(
+        &self,
+        input: ApproveFeedbackInput,
+    ) -> Result<FeedbackRequestView, ApplicationError> {
+        let request_id = canonical_uuid(&input.request_id, "request_id")?;
+        let stored = self
+            .repository
+            .approve_request(&request_id, &self.clock.now_rfc3339())
+            .await
+            .map_err(ApplicationError::from)?;
+        self.notify_feedback_terminal(&request_id);
+        Ok(stored.into())
     }
 
     pub async fn cancel_feedback(

@@ -32,6 +32,10 @@ pub struct RequestFeedbackInput {
     pub context_refs: Vec<ContextRef>,
     #[serde(default)]
     pub source_hint: Option<String>,
+    #[serde(default)]
+    pub allow_finish: bool,
+    #[serde(default)]
+    pub final_summary: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -43,6 +47,43 @@ pub struct GetFeedbackInput {
 pub struct CancelFeedbackInput {
     pub request_id: String,
     pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
+pub struct ApproveFeedbackInput {
+    pub request_id: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(rename_all = "snake_case")]
+pub enum FeedbackResolution {
+    FeedbackSubmitted,
+    Approved,
+    Cancelled,
+}
+
+impl FeedbackResolution {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::FeedbackSubmitted => "feedback_submitted",
+            Self::Approved => "approved",
+            Self::Cancelled => "cancelled",
+        }
+    }
+}
+
+impl TryFrom<&str> for FeedbackResolution {
+    type Error = RepositoryError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "feedback_submitted" => Ok(Self::FeedbackSubmitted),
+            "approved" => Ok(Self::Approved),
+            "cancelled" => Ok(Self::Cancelled),
+            _ => Err(RepositoryError::CorruptData),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
@@ -109,6 +150,9 @@ pub struct FeedbackRequestView {
     #[ts(optional, type = "number")]
     pub poll_after_ms: Option<u64>,
     pub feedback: Option<FeedbackResultView>,
+    pub resolution: Option<FeedbackResolution>,
+    pub allow_finish: bool,
+    pub final_summary: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -122,20 +166,38 @@ pub struct NewFeedbackRequest {
     pub actions: Vec<ActionInput>,
     pub context_refs: Vec<ContextRef>,
     pub source_hint: Option<String>,
+    pub allow_finish: bool,
+    pub final_summary: Option<String>,
     pub created_at: String,
 }
 
 impl NewFeedbackRequest {
     pub fn immutable_input_hash(&self) -> String {
-        let bytes = serde_json::to_vec(&ImmutableRequest {
-            host_id: &self.host_id,
-            host_session_id: &self.host_session_id,
-            title: &self.title,
-            what_happened: &self.what_happened,
-            actions: &self.actions,
-            context_refs: &self.context_refs,
-            source_hint: self.source_hint.as_deref(),
-        })
+        let bytes = if self.allow_finish || self.final_summary.is_some() {
+            serde_json::to_vec(&ImmutableRequest {
+                host_id: &self.host_id,
+                host_session_id: &self.host_session_id,
+                title: &self.title,
+                what_happened: &self.what_happened,
+                actions: &self.actions,
+                context_refs: &self.context_refs,
+                source_hint: self.source_hint.as_deref(),
+                allow_finish: self.allow_finish,
+                final_summary: self.final_summary.as_deref(),
+            })
+        } else {
+            // Preserve the v1 hash exactly so in-flight requests created before
+            // final approval support can still be retried idempotently.
+            serde_json::to_vec(&LegacyImmutableRequest {
+                host_id: &self.host_id,
+                host_session_id: &self.host_session_id,
+                title: &self.title,
+                what_happened: &self.what_happened,
+                actions: &self.actions,
+                context_refs: &self.context_refs,
+                source_hint: self.source_hint.as_deref(),
+            })
+        }
         .expect("validated feedback input must serialize");
         hex::encode(Sha256::digest(bytes))
     }
@@ -150,6 +212,9 @@ pub struct StoredFeedbackRequest {
     pub created_at: String,
     pub updated_at: String,
     pub feedback: Option<FeedbackResultView>,
+    pub resolution: Option<FeedbackResolution>,
+    pub allow_finish: bool,
+    pub final_summary: Option<String>,
 }
 
 impl From<StoredFeedbackRequest> for FeedbackRequestView {
@@ -174,8 +239,22 @@ impl FeedbackRequestView {
             )
             .then_some(DEFAULT_POLL_AFTER_MS),
             feedback: value.feedback,
+            resolution: value.resolution,
+            allow_finish: value.allow_finish,
+            final_summary: value.final_summary,
         }
     }
+}
+
+#[derive(Serialize)]
+struct LegacyImmutableRequest<'a> {
+    host_id: &'a str,
+    host_session_id: &'a str,
+    title: &'a str,
+    what_happened: &'a str,
+    actions: &'a [ActionInput],
+    context_refs: &'a [ContextRef],
+    source_hint: Option<&'a str>,
 }
 
 #[derive(Serialize)]
@@ -187,4 +266,6 @@ struct ImmutableRequest<'a> {
     actions: &'a [ActionInput],
     context_refs: &'a [ContextRef],
     source_hint: Option<&'a str>,
+    allow_finish: bool,
+    final_summary: Option<&'a str>,
 }

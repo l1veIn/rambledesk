@@ -3,7 +3,10 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::{ActionInput, ContextRef, FeedbackResultView, FeedbackStatus, RepositoryError};
+use crate::{
+    ActionInput, ContextRef, FeedbackResolution, FeedbackResultView, FeedbackStatus,
+    RepositoryError,
+};
 
 pub const MAX_ATTACHMENT_BYTES: usize = 20 * 1024 * 1024;
 pub const MAX_ATTACHMENT_COUNT: usize = 20;
@@ -50,6 +53,9 @@ pub struct FeedbackRequestSummary {
     pub title: String,
     pub what_happened: String,
     pub status: FeedbackStatus,
+    pub resolution: Option<FeedbackResolution>,
+    pub allow_finish: bool,
+    pub final_summary: Option<String>,
     #[ts(type = "number")]
     pub revision: u64,
     pub created_at: String,

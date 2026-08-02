@@ -4,11 +4,11 @@ use std::{
 };
 
 use rambledesk_core::{
-    AddAttachmentInput, ApplicationError, CancelFeedbackInput, DraftView, FeedbackApplication,
-    FeedbackRequestSummary, FeedbackRequestView, FeedbackStatus, FeedbackWorkspaceView,
-    HostSessionSummary, ListFeedbackRequestsInput, ListFeedbackRequestsOutput,
-    MAX_ATTACHMENT_BYTES, RemoveAttachmentInput, ReorderAttachmentsInput, SaveDraftInput,
-    SubmitFeedbackInput,
+    AddAttachmentInput, ApplicationError, ApproveFeedbackInput, CancelFeedbackInput, DraftView,
+    FeedbackApplication, FeedbackRequestSummary, FeedbackRequestView, FeedbackStatus,
+    FeedbackWorkspaceView, HostSessionSummary, ListFeedbackRequestsInput,
+    ListFeedbackRequestsOutput, MAX_ATTACHMENT_BYTES, RemoveAttachmentInput,
+    ReorderAttachmentsInput, SaveDraftInput, SubmitFeedbackInput,
 };
 use rambledesk_hosts::{
     ContinuationPayload, ContinuationReason, ContinuationResult, ContinuationRouter, HostProfile,
@@ -313,6 +313,25 @@ pub(super) async fn submit_feedback(
 ) -> Result<FeedbackRequestView, ApplicationError> {
     let application = state.application.clone();
     let result = application.submit_feedback(input.clone()).await?;
+    deliver_continuation_after_terminal(
+        &app,
+        &state.continuation,
+        &application,
+        &input.request_id,
+        result.status,
+    )
+    .await;
+    Ok(result)
+}
+
+#[tauri::command]
+pub(super) async fn approve_feedback_request(
+    input: ApproveFeedbackInput,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<FeedbackRequestView, ApplicationError> {
+    let application = state.application.clone();
+    let result = application.approve_feedback(input.clone()).await?;
     deliver_continuation_after_terminal(
         &app,
         &state.continuation,

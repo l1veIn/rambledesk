@@ -10,6 +10,13 @@ pub(super) fn summary_from_row(row: &SqliteRow) -> Result<FeedbackRequestSummary
         title: row.try_get("title").map_err(storage_error)?,
         what_happened: row.try_get("what_happened").map_err(storage_error)?,
         status: FeedbackStatus::try_from(status.as_str())?,
+        resolution: row
+            .try_get::<Option<String>, _>("resolution")
+            .map_err(storage_error)?
+            .map(|value| FeedbackResolution::try_from(value.as_str()))
+            .transpose()?,
+        allow_finish: row.try_get("allow_finish").map_err(storage_error)?,
+        final_summary: row.try_get("final_summary").map_err(storage_error)?,
         revision: row.try_get::<i64, _>("revision").map_err(storage_error)? as u64,
         created_at: row.try_get("created_at").map_err(storage_error)?,
         updated_at: row.try_get("updated_at").map_err(storage_error)?,
@@ -90,7 +97,7 @@ pub(super) async fn load_workspace_from_pool(
 ) -> Result<StoredFeedbackWorkspace, RepositoryError> {
     let row = sqlx::query(
         "SELECT r.id, hs.host_id, hs.host_session_id, r.source_hint, \
-                r.title, r.what_happened, r.status, \
+                r.title, r.what_happened, r.status, r.resolution, r.allow_finish, r.final_summary, \
                 r.revision, r.created_at, r.updated_at, \
                 fr.package_uri, fr.directory_path, fr.markdown_path, fr.manifest_path \
          FROM feedback_requests r \

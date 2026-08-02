@@ -229,7 +229,7 @@ impl SqliteFeedbackStore {
         }
         let completed = sqlx::query(
             "UPDATE feedback_requests SET \
-                 status = 'completed', completed_at = ?2, updated_at = ?2, revision = revision + 1 \
+                 status = 'completed', resolution = 'feedback_submitted', completed_at = ?2, updated_at = ?2, revision = revision + 1 \
              WHERE id = ?1 AND status = 'in_progress' AND revision = ?3",
         )
         .bind(&plan.request_id)

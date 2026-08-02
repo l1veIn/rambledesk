@@ -49,6 +49,7 @@
   export let submitting = false
   export let canCancel = false
   export let cancelling = false
+  export let approving = false
   export let resolveHostProfile: (hostId: string) => HostProfile
   export let formatTime: (value: string | null | undefined) => string
   export let onReload: () => void = () => {}
@@ -64,6 +65,7 @@
   export let onOpenPackage: () => void = () => {}
   export let onSubmit: () => void = () => {}
   export let onCancel: () => void = () => {}
+  export let onApprove: () => void = () => {}
 
   let feedbackEditor: FeedbackEditorHandle | undefined
 
@@ -145,6 +147,7 @@
         {submitting}
         {canCancel}
         {cancelling}
+        {approving}
         {onToggleRamble}
         {onExitRamble}
         {onOpenVoiceSettings}
@@ -156,6 +159,7 @@
         {onOpenPackage}
         {onSubmit}
         {onCancel}
+        {onApprove}
       />
     </div>
   {:else}
