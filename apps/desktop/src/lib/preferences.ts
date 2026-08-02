@@ -9,6 +9,7 @@ const THEME_KEY = 'rambledesk.theme'
 const NOTIFICATION_POPUP_KEY = 'rambledesk.notifications.popup'
 const NOTIFICATION_SOUND_ENABLED_KEY = 'rambledesk.notifications.sound-enabled'
 const NOTIFICATION_SOUND_KEY = 'rambledesk.notifications.sound'
+const NOTIFICATION_VOLUME_KEY = 'rambledesk.notifications.volume'
 
 function initialLocale(): Locale {
   const saved = localStorage.getItem(LOCALE_KEY)
@@ -35,6 +36,12 @@ function initialNotificationSound(): NotificationSound {
   return saved === 'chime' || saved === 'soft' || saved === 'alert' ? saved : 'chime'
 }
 
+function initialNotificationVolume() {
+  const raw = localStorage.getItem(NOTIFICATION_VOLUME_KEY)
+  const saved = raw === null ? Number.NaN : Number(raw)
+  return Number.isFinite(saved) && saved >= 0 && saved <= 100 ? saved : 80
+}
+
 export const locale = writable<Locale>(initialLocale())
 export const themePreference = writable<ThemePreference>(initialTheme())
 export const notificationPopupEnabled = writable(initialBoolean(NOTIFICATION_POPUP_KEY, true))
@@ -42,6 +49,7 @@ export const notificationSoundEnabled = writable(
   initialBoolean(NOTIFICATION_SOUND_ENABLED_KEY, true),
 )
 export const notificationSound = writable<NotificationSound>(initialNotificationSound())
+export const notificationVolume = writable(initialNotificationVolume())
 
 let initialized = false
 let mediaQuery: MediaQueryList | null = null
@@ -74,6 +82,10 @@ export function setNotificationSound(sound: NotificationSound) {
   notificationSound.set(sound)
 }
 
+export function setNotificationVolume(volume: number) {
+  notificationVolume.set(Math.min(100, Math.max(0, Math.round(volume))))
+}
+
 export function initializePreferences() {
   if (initialized) return
   initialized = true
@@ -94,6 +106,9 @@ export function initializePreferences() {
   })
   notificationSound.subscribe((next) => {
     localStorage.setItem(NOTIFICATION_SOUND_KEY, next)
+  })
+  notificationVolume.subscribe((next) => {
+    localStorage.setItem(NOTIFICATION_VOLUME_KEY, String(next))
   })
 
   mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
@@ -121,6 +136,9 @@ export function initializePreferences() {
       (event.newValue === 'chime' || event.newValue === 'soft' || event.newValue === 'alert')
     ) {
       notificationSound.set(event.newValue)
+    }
+    if (event.key === NOTIFICATION_VOLUME_KEY && event.newValue !== null) {
+      setNotificationVolume(Number(event.newValue))
     }
   })
 }

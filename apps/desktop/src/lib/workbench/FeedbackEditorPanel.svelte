@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { AlertCircle, Check, CheckCircle2, CloudCog, Info, LoaderCircle } from '@lucide/svelte'
+  import { AlertCircle, Check, CloudCog, LoaderCircle } from '@lucide/svelte'
 
   import * as Alert from '$lib/components/ui/alert'
   import { Badge } from '$lib/components/ui/badge'
@@ -15,8 +15,6 @@
   export let savePhase: SavePhase = 'idle'
   export let attachmentPreviews: Record<string, string> = {}
   export let dragActive = false
-  export let attachmentMessage = ''
-  export let attachmentMessageTone: 'info' | 'success' | 'error' = 'info'
   export let saveMessage = ''
   export let formatTime: (value: string | null | undefined) => string
   export let onChange: (markdown: string) => void = () => {}
@@ -96,36 +94,6 @@
     disabled={readOnly}
     onChange={onChange}
   />
-
-  {#if attachmentMessage}
-    <Alert.Root
-      variant={attachmentMessageTone === 'error' ? 'destructive' : 'default'}
-      class={[
-        'mt-3',
-        attachmentMessageTone === 'success'
-          ? 'border-success/30 bg-success/5 text-success'
-          : attachmentMessageTone === 'info'
-            ? 'border-info/30 bg-info/5 text-info'
-            : '',
-      ]}
-    >
-      {#if attachmentMessageTone === 'success'}
-        <CheckCircle2 />
-      {:else if attachmentMessageTone === 'info'}
-        <Info />
-      {:else}
-        <AlertCircle />
-      {/if}
-      <Alert.Title>
-        {attachmentMessageTone === 'success'
-          ? tr('附件操作完成')
-          : attachmentMessageTone === 'info'
-            ? tr('附件操作状态')
-            : tr('附件操作失败')}
-      </Alert.Title>
-      <Alert.Description>{attachmentMessage}</Alert.Description>
-    </Alert.Root>
-  {/if}
 
   {#if saveMessage}
     <Alert.Root variant="destructive" class="mt-3">

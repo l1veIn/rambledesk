@@ -293,6 +293,8 @@ const english: Record<string, string> = {
   '柔和提示': 'Soft chime',
   '醒目提示': 'Attention alert',
   '试听提示音': 'Preview alert sound',
+  '音量': 'Volume',
+  '调整提示音音量。': 'Adjust alert sound volume.',
   'Pi package 通过本地 JSON API 请求、查询、等待和取消；等待发生在 Pi 工具调用内。': 'The Pi package uses the local JSON API to request, get, wait, and cancel; waiting stays inside the Pi tool call.',
 }
 

@@ -35,10 +35,12 @@
     notificationPopupEnabled,
     notificationSound,
     notificationSoundEnabled,
+    notificationVolume,
     setLocale,
     setNotificationPopupEnabled,
     setNotificationSound,
     setNotificationSoundEnabled,
+    setNotificationVolume,
     setThemePreference,
     themePreference,
     type NotificationSound,
@@ -390,76 +392,101 @@
               {/if}
             </section>
 
-            <section class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-8 border-b pb-8">
-              <div class="flex gap-3">
-                <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
-                  <Volume2 class="size-4" />
-                </span>
-                <div>
-                  <h3 class="m-0 text-sm font-medium">{tr('声音提醒')}</h3>
-                  <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
-                    {tr('声音与系统弹窗相互独立；即使弹窗权限关闭也可以响铃。')}
-                  </p>
+            <section class="border-b pb-8">
+              <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-8">
+                <div class="flex gap-3">
+                  <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+                    <Volume2 class="size-4" />
+                  </span>
+                  <div>
+                    <h3 class="m-0 text-sm font-medium">{tr('声音提醒')}</h3>
+                    <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
+                      {tr('声音与系统弹窗相互独立；即使弹窗权限关闭也可以响铃。')}
+                    </p>
+                  </div>
                 </div>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={$notificationSoundEnabled}
-                aria-label={tr('声音提醒')}
-                class={[
-                  'relative h-[22px] w-10 rounded-full border border-transparent transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
-                  $notificationSoundEnabled ? 'bg-primary' : 'bg-input',
-                ]}
-                onclick={() => setNotificationSoundEnabled(!$notificationSoundEnabled)}
-              >
-                <span
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={$notificationSoundEnabled}
+                  aria-label={tr('声音提醒')}
                   class={[
-                    'absolute left-0.5 top-0.5 size-4 rounded-full bg-background shadow-sm transition-transform',
-                    $notificationSoundEnabled ? 'translate-x-5' : 'translate-x-0',
+                    'relative h-[22px] w-10 rounded-full border border-transparent transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+                    $notificationSoundEnabled ? 'bg-primary' : 'bg-input',
                   ]}
-                ></span>
-              </button>
-            </section>
+                  onclick={() => setNotificationSoundEnabled(!$notificationSoundEnabled)}
+                >
+                  <span
+                    class={[
+                      'absolute left-0.5 top-0.5 size-4 rounded-full bg-background shadow-sm transition-transform',
+                      $notificationSoundEnabled ? 'translate-x-5' : 'translate-x-0',
+                    ]}
+                  ></span>
+                </button>
+              </div>
 
-            <section class="grid grid-cols-[minmax(0,1fr)_240px] items-center gap-8">
-              <div class="flex gap-3">
-                <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
-                  <Volume2 class="size-4" />
-                </span>
-                <div>
-                  <h3 class="m-0 text-sm font-medium">{tr('提示音')}</h3>
-                  <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
-                    {tr('选择新请求到达时播放的声音，并可立即试听。')}
-                  </p>
+              {#if $notificationSoundEnabled}
+                <div class="ml-11 mt-5 grid gap-5 rounded-md border bg-muted/20 p-4">
+                  <div class="grid grid-cols-[minmax(0,1fr)_240px] items-center gap-6">
+                    <div>
+                      <strong class="block text-xs font-medium">{tr('提示音')}</strong>
+                      <span class="mt-0.5 block text-[10px] text-muted-foreground">
+                        {tr('选择新请求到达时播放的声音，并可立即试听。')}
+                      </span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <Select.Root
+                        type="single"
+                        value={$notificationSound}
+                        onValueChange={(value: string) => setNotificationSound(value as NotificationSound)}
+                      >
+                        <Select.Trigger class="min-w-0 flex-1">
+                          {soundLabel($notificationSound)}
+                        </Select.Trigger>
+                        <Select.Content>
+                          <Select.Item value="chime" label={tr('清脆双音')} />
+                          <Select.Item value="soft" label={tr('柔和提示')} />
+                          <Select.Item value="alert" label={tr('醒目提示')} />
+                        </Select.Content>
+                      </Select.Root>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        aria-label={tr('试听提示音')}
+                        title={tr('试听提示音')}
+                        onclick={() => void playNotificationSound($notificationSound, $notificationVolume)}
+                      >
+                        <Play />
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div class="grid grid-cols-[minmax(0,1fr)_240px] items-center gap-6">
+                    <div>
+                      <strong class="block text-xs font-medium">{tr('音量')}</strong>
+                      <span class="mt-0.5 block text-[10px] text-muted-foreground">
+                        {tr('调整提示音音量。')}
+                      </span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        step="5"
+                        value={$notificationVolume}
+                        class="min-w-0 flex-1 accent-primary"
+                        aria-label={tr('音量')}
+                        oninput={(event) =>
+                          setNotificationVolume(Number((event.currentTarget as HTMLInputElement).value))}
+                      />
+                      <span class="w-9 text-right text-[10px] tabular-nums text-muted-foreground">
+                        {$notificationVolume}%
+                      </span>
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div class="flex items-center gap-2">
-                <Select.Root
-                  type="single"
-                  value={$notificationSound}
-                  onValueChange={(value: string) => setNotificationSound(value as NotificationSound)}
-                >
-                  <Select.Trigger class="min-w-0 flex-1">
-                    {soundLabel($notificationSound)}
-                  </Select.Trigger>
-                  <Select.Content>
-                    <Select.Item value="chime" label={tr('清脆双音')} />
-                    <Select.Item value="soft" label={tr('柔和提示')} />
-                    <Select.Item value="alert" label={tr('醒目提示')} />
-                  </Select.Content>
-                </Select.Root>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  disabled={!$notificationSoundEnabled}
-                  aria-label={tr('试听提示音')}
-                  title={tr('试听提示音')}
-                  onclick={() => void playNotificationSound($notificationSound)}
-                >
-                  <Play />
-                </Button>
-              </div>
+              {/if}
             </section>
           </Tabs.Content>
 

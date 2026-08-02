@@ -17,6 +17,7 @@
   import SettingsPanel from './lib/SettingsPanel.svelte'
   import HostSessionRail from './lib/components/navigation/HostSessionRail.svelte'
   import RequestListPane from './lib/components/navigation/RequestListPane.svelte'
+  import { Sonner, toast } from './lib/components/ui/sonner'
   import ResumePromptDialog from './lib/workbench/ResumePromptDialog.svelte'
   import WorkspacePanel from './lib/workbench/WorkspacePanel.svelte'
   import type {
@@ -62,6 +63,7 @@
     notificationPopupEnabled,
     notificationSound,
     notificationSoundEnabled,
+    notificationVolume,
     setNotificationPopupEnabled,
   } from './lib/preferences'
 
@@ -101,6 +103,7 @@
   let attachmentBusy = false
   let attachmentMessage = ''
   let attachmentMessageTone: 'info' | 'success' | 'error' = 'info'
+  let deliveredAttachmentMessage = ''
   let attachmentPreviews: Record<string, string> = {}
   let dragActive = false
   let workspacePanel: FeedbackEditorHandle
@@ -139,6 +142,17 @@
   }
 
   $: dirty = workspace !== null && draftBody !== savedBody
+  $: {
+    if (!attachmentMessage) {
+      deliveredAttachmentMessage = ''
+    } else if (attachmentMessage !== deliveredAttachmentMessage) {
+      deliveredAttachmentMessage = attachmentMessage
+      const options = { description: attachmentMessage }
+      if (attachmentMessageTone === 'success') toast.success(tr('附件操作完成'), options)
+      else if (attachmentMessageTone === 'info') toast.info(tr('附件操作状态'), options)
+      else toast.error(tr('附件操作失败'), options)
+    }
+  }
   $: selectedHostSession = selectedHostSessionId
     ? hostSessions.find(
         (session) =>
@@ -173,6 +187,8 @@
     voiceActive || voicePhase === 'error'
   $: rambleActive = ramblePhase === 'active'
   $: rambleEngaged = ramblePhase !== 'idle'
+  $: rambleBelongsToWorkspace =
+    !rambleEngaged || workspace?.request.request_id === rambleRequestId
   $: rambelleStatusPortrait = feedbackResult
     ? rambelleArchived
     : rambleActive
@@ -236,7 +252,9 @@
           }),
         })
       }
-      if ($notificationSoundEnabled) void playNotificationSound($notificationSound)
+      if ($notificationSoundEnabled) {
+        void playNotificationSound($notificationSound, $notificationVolume)
+      }
     })
       .then((unlisten) => {
         resumePromptUnlisten = unlisten
@@ -385,7 +403,9 @@
                 }),
         })
       }
-      if ($notificationSoundEnabled) void playNotificationSound($notificationSound)
+      if ($notificationSoundEnabled) {
+        void playNotificationSound($notificationSound, $notificationVolume)
+      }
     }
   }
 
@@ -1019,6 +1039,7 @@
 
 {#key $locale}
 <main class="h-full w-full overflow-hidden rounded-[16px] border bg-background text-foreground shadow-sm">
+  <Sonner />
   <RambleSessionController
     bind:this={rambleController}
     {isTauri}
@@ -1099,21 +1120,23 @@
       {savePhase}
       {attachmentPreviews}
       {dragActive}
-      {attachmentMessage}
-      {attachmentMessageTone}
       {saveMessage}
-      {rambelleStatusPortrait}
-      {rambleEngaged}
-      {rambleActive}
-      {ramblePhase}
-      {rambleBusy}
-      {rambleStartedOnce}
-      {voiceDevice}
-      {voiceChunkIndex}
-      {voicePartial}
-      {voiceLevel}
-      {rambleMessage}
-      {attachmentBusy}
+      rambelleStatusPortrait={rambleBelongsToWorkspace
+        ? rambelleStatusPortrait
+        : feedbackResult
+          ? rambelleArchived
+          : rambelleIdle}
+      rambleEngaged={rambleBelongsToWorkspace ? rambleEngaged : false}
+      rambleActive={rambleBelongsToWorkspace ? rambleActive : false}
+      ramblePhase={rambleBelongsToWorkspace ? ramblePhase : 'idle'}
+      rambleBusy={rambleBelongsToWorkspace ? rambleBusy : true}
+      rambleStartedOnce={rambleBelongsToWorkspace ? rambleStartedOnce : false}
+      voiceDevice={rambleBelongsToWorkspace ? voiceDevice : ''}
+      voiceChunkIndex={rambleBelongsToWorkspace ? voiceChunkIndex : 0}
+      voicePartial={rambleBelongsToWorkspace ? voicePartial : ''}
+      voiceLevel={rambleBelongsToWorkspace ? voiceLevel : 0}
+      rambleMessage={rambleBelongsToWorkspace ? rambleMessage : ''}
+      attachmentBusy={rambleBelongsToWorkspace ? attachmentBusy : false}
       {canSubmit}
       {submitting}
       {canCancel}

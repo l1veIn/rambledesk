@@ -31,7 +31,10 @@ const notificationSounds: Record<
   },
 }
 
-export async function playNotificationSound(sound: NotificationSound = 'chime'): Promise<void> {
+export async function playNotificationSound(
+  sound: NotificationSound = 'chime',
+  volume = 80,
+): Promise<void> {
   if (typeof window === 'undefined') return
   const audioWindow = window as typeof window & {
     webkitAudioContext?: AudioContextConstructor
@@ -47,8 +50,10 @@ export async function playNotificationSound(sound: NotificationSound = 'chime'):
     const preset = notificationSounds[sound]
     const now = notificationAudioContext.currentTime
     const gain = notificationAudioContext.createGain()
+    const normalizedVolume = Math.min(100, Math.max(0, volume)) / 100
+    const outputVolume = Math.max(0.0001, preset.volume * 2.75 * normalizedVolume)
     gain.gain.setValueAtTime(0.0001, now)
-    gain.gain.exponentialRampToValueAtTime(preset.volume, now + 0.015)
+    gain.gain.exponentialRampToValueAtTime(outputVolume, now + 0.015)
     gain.gain.exponentialRampToValueAtTime(0.0001, now + preset.duration)
     gain.connect(notificationAudioContext.destination)
 
