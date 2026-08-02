@@ -65,17 +65,23 @@ impl ContinuationPayload {
     }
 }
 
-/// What an adapter decided to do.
+/// What a continuation strategy decided to do.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ContinuationResult {
-    /// The host adapter is already waiting for the terminal result.
-    NotRequired { adapter_id: String, host_id: String },
+    /// The host flow is already waiting for the terminal result.
+    NotRequired {
+        strategy_id: String,
+        host_id: String,
+    },
     /// A host-specific strategy delivered a continuation signal.
-    HostDelivered { adapter_id: String, host_id: String },
+    HostDelivered {
+        strategy_id: String,
+        host_id: String,
+    },
     /// No automatic continuation: show a prompt so the human resumes the host.
     UserPrompt {
-        adapter_id: String,
+        strategy_id: String,
         prompt: ResumePrompt,
     },
 }
@@ -99,13 +105,13 @@ pub trait ContinuationStrategy: Send + Sync {
         host_profile(self.id())
     }
 
-    /// Whether this adapter owns `host_id` (case-insensitive).
+    /// Whether this strategy handles `host_id` (case-insensitive).
     fn matches_host(&self, host_id: &str) -> bool;
 
     fn continue_after_terminal(&self, payload: &ContinuationPayload) -> ContinuationResult;
 }
 
-/// Fallback when host is missing or no specific adapter matches.
+/// Fallback when host is missing or no specific strategy matches.
 #[derive(Debug, Default)]
 pub struct ManualContinuationStrategy;
 
@@ -156,13 +162,13 @@ impl ContinuationStrategy for ManualContinuationStrategy {
 
     fn continue_after_terminal(&self, payload: &ContinuationPayload) -> ContinuationResult {
         ContinuationResult::UserPrompt {
-            adapter_id: self.id().to_owned(),
+            strategy_id: self.id().to_owned(),
             prompt: Self::build_prompt(payload),
         }
     }
 }
 
-/// Native adapters that are already blocked in their own request flow.
+/// Native host flows that are already blocked in their own request call.
 #[derive(Debug, Default)]
 pub struct NativeWaitContinuationStrategy;
 
@@ -177,13 +183,13 @@ impl ContinuationStrategy for NativeWaitContinuationStrategy {
 
     fn continue_after_terminal(&self, payload: &ContinuationPayload) -> ContinuationResult {
         ContinuationResult::NotRequired {
-            adapter_id: self.id().to_owned(),
+            strategy_id: self.id().to_owned(),
             host_id: payload.host_id.clone(),
         }
     }
 }
 
-/// Resolves a host id to a specific adapter, otherwise the generic fallback.
+/// Resolves a host id to a specific continuation strategy or the generic fallback.
 #[derive(Clone)]
 pub struct ContinuationRouter {
     strategies: Arc<Vec<Arc<dyn ContinuationStrategy>>>,
@@ -254,9 +260,9 @@ impl ContinuationRouter {
 mod tests {
     use super::*;
 
-    struct StubAdapter;
+    struct StubStrategy;
 
-    impl ContinuationStrategy for StubAdapter {
+    impl ContinuationStrategy for StubStrategy {
         fn id(&self) -> &'static str {
             "stub-claude"
         }
@@ -267,7 +273,7 @@ mod tests {
 
         fn continue_after_terminal(&self, payload: &ContinuationPayload) -> ContinuationResult {
             ContinuationResult::HostDelivered {
-                adapter_id: self.id().to_owned(),
+                strategy_id: self.id().to_owned(),
                 host_id: payload.host_id.clone(),
             }
         }
@@ -285,12 +291,15 @@ mod tests {
 
     #[test]
     fn missing_or_unknown_host_uses_generic_prompt() {
-        let router = ContinuationRouter::new(vec![Arc::new(StubAdapter)]);
+        let router = ContinuationRouter::new(vec![Arc::new(StubStrategy)]);
         for host in ["", "  ", "unknown", "codex"] {
             let result = router.continue_after_terminal(&payload(host));
             match result {
-                ContinuationResult::UserPrompt { adapter_id, prompt } => {
-                    assert_eq!(adapter_id, "generic");
+                ContinuationResult::UserPrompt {
+                    strategy_id,
+                    prompt,
+                } => {
+                    assert_eq!(strategy_id, "generic");
                     assert!(prompt.resume_prompt.contains(&payload(host).request_id));
                     assert!(prompt.resume_prompt.contains("get_feedback"));
                 }
@@ -300,13 +309,13 @@ mod tests {
     }
 
     #[test]
-    fn matching_host_uses_specific_adapter() {
-        let router = ContinuationRouter::new(vec![Arc::new(StubAdapter)]);
+    fn matching_host_uses_specific_strategy() {
+        let router = ContinuationRouter::new(vec![Arc::new(StubStrategy)]);
         let result = router.continue_after_terminal(&payload("claude"));
         assert_eq!(
             result,
             ContinuationResult::HostDelivered {
-                adapter_id: "stub-claude".to_owned(),
+                strategy_id: "stub-claude".to_owned(),
                 host_id: "claude".to_owned(),
             }
         );
@@ -326,7 +335,7 @@ mod tests {
         assert_eq!(
             router.continue_after_terminal(&payload("pi")),
             ContinuationResult::NotRequired {
-                adapter_id: "pi".to_owned(),
+                strategy_id: "pi".to_owned(),
                 host_id: "pi".to_owned(),
             }
         );

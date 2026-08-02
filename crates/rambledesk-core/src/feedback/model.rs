@@ -1,6 +1,5 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use ts_rs::TS;
 
 use super::RepositoryError;
@@ -182,38 +181,6 @@ pub struct NewFeedbackRequest {
     pub created_at: String,
 }
 
-impl NewFeedbackRequest {
-    pub fn immutable_input_hash(&self) -> String {
-        let bytes = if self.allow_finish || self.final_summary.is_some() {
-            serde_json::to_vec(&ImmutableRequest {
-                host_id: &self.host_id,
-                host_session_id: &self.host_session_id,
-                title: &self.title,
-                what_happened: &self.what_happened,
-                actions: &self.actions,
-                context_refs: &self.context_refs,
-                source_hint: self.source_hint.as_deref(),
-                allow_finish: self.allow_finish,
-                final_summary: self.final_summary.as_deref(),
-            })
-        } else {
-            // Preserve the v1 hash exactly so in-flight requests created before
-            // final approval support can still be retried idempotently.
-            serde_json::to_vec(&LegacyImmutableRequest {
-                host_id: &self.host_id,
-                host_session_id: &self.host_session_id,
-                title: &self.title,
-                what_happened: &self.what_happened,
-                actions: &self.actions,
-                context_refs: &self.context_refs,
-                source_hint: self.source_hint.as_deref(),
-            })
-        }
-        .expect("validated feedback input must serialize");
-        hex::encode(Sha256::digest(bytes))
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoredFeedbackRequest {
     pub request_id: String,
@@ -255,28 +222,4 @@ impl FeedbackRequestView {
             final_summary: value.final_summary,
         }
     }
-}
-
-#[derive(Serialize)]
-struct LegacyImmutableRequest<'a> {
-    host_id: &'a str,
-    host_session_id: &'a str,
-    title: &'a str,
-    what_happened: &'a str,
-    actions: &'a [ActionInput],
-    context_refs: &'a [ContextRef],
-    source_hint: Option<&'a str>,
-}
-
-#[derive(Serialize)]
-struct ImmutableRequest<'a> {
-    host_id: &'a str,
-    host_session_id: &'a str,
-    title: &'a str,
-    what_happened: &'a str,
-    actions: &'a [ActionInput],
-    context_refs: &'a [ContextRef],
-    source_hint: Option<&'a str>,
-    allow_finish: bool,
-    final_summary: Option<&'a str>,
 }

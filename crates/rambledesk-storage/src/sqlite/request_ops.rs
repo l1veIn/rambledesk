@@ -1,4 +1,58 @@
 use super::*;
+use serde::Serialize;
+
+#[derive(Serialize)]
+struct LegacyImmutableRequest<'a> {
+    host_id: &'a str,
+    host_session_id: &'a str,
+    title: &'a str,
+    what_happened: &'a str,
+    actions: &'a [ActionInput],
+    context_refs: &'a [ContextRef],
+    source_hint: Option<&'a str>,
+}
+
+#[derive(Serialize)]
+struct ImmutableRequest<'a> {
+    host_id: &'a str,
+    host_session_id: &'a str,
+    title: &'a str,
+    what_happened: &'a str,
+    actions: &'a [ActionInput],
+    context_refs: &'a [ContextRef],
+    source_hint: Option<&'a str>,
+    allow_finish: bool,
+    final_summary: Option<&'a str>,
+}
+
+fn immutable_input_hash(request: &NewFeedbackRequest) -> Result<String, RepositoryError> {
+    let bytes = if request.allow_finish || request.final_summary.is_some() {
+        serde_json::to_vec(&ImmutableRequest {
+            host_id: &request.host_id,
+            host_session_id: &request.host_session_id,
+            title: &request.title,
+            what_happened: &request.what_happened,
+            actions: &request.actions,
+            context_refs: &request.context_refs,
+            source_hint: request.source_hint.as_deref(),
+            allow_finish: request.allow_finish,
+            final_summary: request.final_summary.as_deref(),
+        })
+    } else {
+        // Preserve the original persisted hash for pre-final-approval requests.
+        serde_json::to_vec(&LegacyImmutableRequest {
+            host_id: &request.host_id,
+            host_session_id: &request.host_session_id,
+            title: &request.title,
+            what_happened: &request.what_happened,
+            actions: &request.actions,
+            context_refs: &request.context_refs,
+            source_hint: request.source_hint.as_deref(),
+        })
+    }
+    .map_err(|_| RepositoryError::Storage)?;
+    Ok(hex::encode(Sha256::digest(bytes)))
+}
 
 impl SqliteFeedbackStore {
     pub(super) async fn create_or_get_request_impl(
@@ -11,7 +65,7 @@ impl SqliteFeedbackStore {
             .await
             .map_err(storage_error)?;
         if let Some(existing) = load_request_row(&mut transaction, &request.request_id).await? {
-            let input_hash = request.immutable_input_hash();
+            let input_hash = immutable_input_hash(&request)?;
             let stored_hash: String = existing.try_get("input_hash").map_err(storage_error)?;
             return if stored_hash == input_hash {
                 stored_request_from_row(&existing)
@@ -20,7 +74,7 @@ impl SqliteFeedbackStore {
             };
         }
 
-        let input_hash = request.immutable_input_hash();
+        let input_hash = immutable_input_hash(&request)?;
 
         sqlx::query(
             "INSERT INTO host_sessions \
@@ -287,5 +341,49 @@ impl SqliteFeedbackStore {
         .await
         .map_err(storage_error)?;
         rows.iter().map(host_session_summary_from_row).collect()
+    }
+}
+
+#[cfg(test)]
+mod hash_tests {
+    use super::*;
+
+    fn request(allow_finish: bool, final_summary: Option<&str>) -> NewFeedbackRequest {
+        NewFeedbackRequest {
+            request_id: "request-id".to_owned(),
+            host_session_record_id: "host-session-record-id".to_owned(),
+            host_id: "generic".to_owned(),
+            host_session_id: "session-1".to_owned(),
+            title: "Review".to_owned(),
+            what_happened: "Changed settings".to_owned(),
+            actions: vec![ActionInput {
+                id: "inspect".to_owned(),
+                instruction: "Inspect settings".to_owned(),
+            }],
+            context_refs: vec![ContextRef {
+                label: "diff".to_owned(),
+                uri: "file:///tmp/change.diff".to_owned(),
+            }],
+            source_hint: None,
+            allow_finish,
+            final_summary: final_summary.map(str::to_owned),
+            created_at: "2026-08-03T00:00:00Z".to_owned(),
+        }
+    }
+
+    #[test]
+    fn immutable_hash_preserves_legacy_json_bytes() {
+        assert_eq!(
+            immutable_input_hash(&request(false, None)).expect("hash"),
+            "53a9ef638f879a3d1790b8ef0d5ddf547405d569f5f29e6f33b32b93fe4f5b74"
+        );
+    }
+
+    #[test]
+    fn immutable_hash_covers_final_approval_fields() {
+        assert_eq!(
+            immutable_input_hash(&request(true, Some("Done"))).expect("hash"),
+            "3abb4165d83f342b7a0f1f0f7218261c987a6abb19c4bf3b2f2c27b1c4ee212b"
+        );
     }
 }

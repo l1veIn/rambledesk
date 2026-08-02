@@ -1,4 +1,4 @@
-//! SQLite persistence and feedback package adapter boundary.
+//! SQLite persistence and Feedback Package publication boundary.
 
 mod package;
 mod platform;

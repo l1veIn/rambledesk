@@ -14,7 +14,7 @@ transport、SQLite 和窗口生命周期耦合在一起。
 
 - core 可以脱离 GUI 和 transport 测试；
 - 本地服务可以由 desktop 与 CLI 装配；
-- Generic MCP Adapter 只是 transport adapter；
+- 通用 MCP 适配器使用 MCP 作为 transport；
 - Pi Native Adapter 可以独立发布和测试；
 - SQLite 与反馈包发布不依赖 UI；
 - desktop 保持 composition root，而不是业务事实来源。

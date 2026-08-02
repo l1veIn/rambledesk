@@ -32,6 +32,7 @@
   import * as Dialog from '$lib/components/ui/dialog'
   import { ScrollArea } from '$lib/components/ui/scroll-area'
   import { toast } from '$lib/components/ui/sonner'
+  import rambellePermission from '../assets/rambelle-states/state-permission.png'
   import * as Select from '$lib/components/ui/select'
   import * as Tabs from '$lib/components/ui/tabs'
   import { t } from '$lib/i18n'
@@ -555,7 +556,10 @@
                 ></span>
               </button>
               {#if notificationPermissionError}
-                <p class="col-span-2 m-0 text-xs text-destructive">{notificationPermissionError}</p>
+                <div class="col-span-2 flex items-center gap-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2">
+                  <img src={rambellePermission} alt="" class="size-14 shrink-0 object-contain" aria-hidden="true" />
+                  <p class="m-0 text-xs text-destructive">{notificationPermissionError}</p>
+                </div>
               {/if}
             </section>
 

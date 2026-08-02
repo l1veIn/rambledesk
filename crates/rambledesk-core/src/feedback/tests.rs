@@ -27,7 +27,7 @@ fn canonicalizes_uuid_inputs() {
 
 #[test]
 fn terminal_results_omit_poll_interval() {
-    let value = serde_json::to_value(FeedbackRequestView::from(StoredFeedbackRequest {
+    let value = FeedbackRequestView::from(StoredFeedbackRequest {
         request_id: "request".to_owned(),
         host_id: "generic".to_owned(),
         host_session_id: "session".to_owned(),
@@ -38,7 +38,6 @@ fn terminal_results_omit_poll_interval() {
         resolution: Some(FeedbackResolution::Cancelled),
         allow_finish: false,
         final_summary: None,
-    }))
-    .expect("feedback result");
-    assert!(value.get("poll_after_ms").is_none());
+    });
+    assert!(value.poll_after_ms.is_none());
 }

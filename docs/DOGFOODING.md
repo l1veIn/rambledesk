@@ -83,3 +83,26 @@
 
 - Operator will verify the waiting behavior of `request_ramble_feedback` (long wait without failure) and visually accept the modal corner fix, nav alignment, and badge removal.
 - Execute the shadcn-svelte workbench rebuild per `docs/UI_SHADCN_MIGRATION.md`.
+
+## 2026-08-03 — macOS 0.0.1 release acceptance
+
+### Scope
+
+- Exercise the universal macOS release bundle, the installed Pi package, the authenticated Local Server, and the complete capture-to-document path on macOS 26.3.1.
+- Red-team the implementation against `docs/TERMINOLOGY.md`, including crate dependency directions and protocol/storage ownership.
+
+### Native and Pi evidence
+
+- A real Pi 0.83.0 RPC run created a Feedback Request through `request_ramble_feedback`, waited while the operator submitted feedback in RambleDesk, then created and received final approval in the same `host_session_id`. Pi observed `resolution: "approved"`, `status: "completed"`, and `terminate: true` before settling without another model turn.
+- The authenticated generic MCP surface exposed exactly `request_feedback`, `get_feedback`, and `cancel_feedback`; the Pi-only continuation behavior remained outside generic MCP.
+- The unsigned universal DMG was mounted and launched from its release bundle. Its executable contains both `arm64` and `x86_64`, its bundle version is `0.0.1`, and `hdiutil verify` accepted the image.
+- macOS Screen & System Audio Recording permission was granted to the mounted release application, followed by the required quit-and-reopen cycle.
+- The capture overlay opened from the Ramble console, accepted a free-form region, created an arrow annotation, selected and resized that annotation, finalized a 447 KiB PNG, and inserted it at the current document position. The editor preview visibly contained the resized arrow and the attachment count increased from zero to one.
+- A second capture was cancelled with Escape; the console was restored and the attachment count remained one.
+- DPI handling was exercised on a 3840×2160 display using a 1920×1080 logical mode. The selected logical region mapped to the expected captured-pixel dimensions, with no offset or clipping. The transparent custom chrome retained rounded window corners.
+- The automation interface intentionally cannot invoke operating-system global shortcuts. `Ctrl + Shift + 1` registration, event routing, and visible shortcut affordance were therefore covered by startup/static validation; the button entry exercised the identical capture command and complete downstream path.
+
+### Regression gates
+
+- Frozen dependency installation, release-version consistency, terminology and dependency-boundary checks, generated-contract freshness, Rust formatting, the 500-line Rust module limit, strict workspace clippy, all Rust targets, Svelte diagnostics, frontend tests, the production web build, Pi tests, and the MCP Inspector smoke test passed.
+- `cargo check --workspace --target x86_64-apple-darwin` passed in addition to the native Apple Silicon build, and the universal DMG completed with `CI=true` and `--no-sign`.

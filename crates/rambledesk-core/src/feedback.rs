@@ -1,13 +1,9 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde::Serialize;
 use thiserror::Error;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
-use tokio::sync::watch;
 use uuid::Uuid;
 
 use crate::workspace::{
@@ -18,39 +14,12 @@ use crate::workspace::{
 
 mod model;
 mod validation;
+mod waiters;
 
 pub use model::*;
 use validation::validate_request_input;
 pub(crate) use validation::{canonical_uuid, validate_text};
-
-#[derive(Default)]
-struct FeedbackWaiters {
-    channels: Mutex<HashMap<String, watch::Sender<u64>>>,
-}
-
-impl FeedbackWaiters {
-    fn subscribe(&self, request_id: &str) -> watch::Receiver<u64> {
-        let mut channels = self
-            .channels
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        channels
-            .entry(request_id.to_owned())
-            .or_insert_with(|| watch::channel(0).0)
-            .subscribe()
-    }
-
-    fn notify_terminal(&self, request_id: &str) {
-        let sender = self
-            .channels
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .remove(request_id);
-        if let Some(sender) = sender {
-            sender.send_modify(|generation| *generation += 1);
-        }
-    }
-}
+use waiters::FeedbackWaiters;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum RepositoryError {

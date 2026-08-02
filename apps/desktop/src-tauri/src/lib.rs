@@ -46,6 +46,8 @@ mod commands;
 
 use commands::*;
 
+mod continuation;
+
 mod config;
 
 use config::*;

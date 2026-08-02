@@ -4320,7 +4320,7 @@ checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
 name = "rambledesk-cli"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -4336,13 +4336,12 @@ dependencies = [
 
 [[package]]
 name = "rambledesk-core"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "async-trait",
  "hex",
  "schemars 1.2.2",
  "serde",
- "serde_json",
  "sha2 0.11.0",
  "thiserror 2.0.19",
  "time",
@@ -4353,7 +4352,7 @@ dependencies = [
 
 [[package]]
 name = "rambledesk-desktop"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "arboard",
  "base64 0.22.1",
@@ -4389,7 +4388,7 @@ dependencies = [
 
 [[package]]
 name = "rambledesk-hosts"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "rambledesk-core",
  "serde",
@@ -4399,7 +4398,7 @@ dependencies = [
 
 [[package]]
 name = "rambledesk-local-server"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "axum",
@@ -4424,7 +4423,7 @@ dependencies = [
 
 [[package]]
 name = "rambledesk-mcp"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "rambledesk-core",
  "rmcp",
@@ -4434,7 +4433,7 @@ dependencies = [
 
 [[package]]
 name = "rambledesk-speech"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "bzip2 0.6.1",
  "cpal",
@@ -4451,12 +4450,13 @@ dependencies = [
 
 [[package]]
 name = "rambledesk-storage"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "async-trait",
  "dirs",
  "hex",
  "rambledesk-core",
+ "serde",
  "serde_json",
  "sha2 0.11.0",
  "sqlx",

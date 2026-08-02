@@ -4,7 +4,7 @@ use crate::{ContinuationStrategy, NativeWaitContinuationStrategy};
 
 /// Host-specific continuation strategies that can safely resume an existing host turn.
 ///
-/// RambleDesk currently exposes no generic CLI-resume adapters here: Claude
+/// RambleDesk currently exposes no generic CLI-resume strategies here: Claude
 /// Code, Codex, and OpenCode can be poked from a separate process, but that is
 /// not the same product guarantee as resuming the original host context. Those
 /// hosts intentionally fall back to the generic MCP adapter prompt.

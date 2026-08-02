@@ -5,13 +5,14 @@ edition.workspace = true
 rust-version.workspace = true
 repository.workspace = true
 publish = false
-description = "RambleDesk persistence and feedback package adapter"
+description = "RambleDesk persistence and Feedback Package publication"
 
 [dependencies]
 async-trait.workspace = true
 dirs.workspace = true
 hex.workspace = true
 rambledesk-core.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 sqlx.workspace = true

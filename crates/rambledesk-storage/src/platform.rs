@@ -1,6 +1,6 @@
 //! Platform filesystem durability primitives used by Feedback Package publication.
 //!
-//! The storage adapter owns publication semantics. This module is the only place
+//! The storage package owns publication semantics. This module is the only place
 //! that translates those semantics into operating-system-specific filesystem
 //! barriers.
 

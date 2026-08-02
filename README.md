@@ -104,7 +104,7 @@ crates/rambledesk-cli          Headless development and protocol verification en
 packages/pi-rambledesk         Pi native adapter package
 ```
 
-`core` owns the application contract. Storage, local server, MCP, hosts, speech, CLI, and Tauri are adapters or composition layers; none of them may become a second source of business state.
+`core` owns the application contract. Storage, local server, host profiles, speech, CLI, and Tauri are infrastructure or composition layers; the Generic MCP and Pi packages participate in complete host-facing adapters. None of these layers may become a second source of business state.
 
 ## Documentation
 

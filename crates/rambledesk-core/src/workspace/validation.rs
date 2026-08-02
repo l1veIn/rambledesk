@@ -1,8 +1,6 @@
-use serde::{Deserialize, Serialize};
-
 use super::{ApplicationError, FeedbackRequestSummary};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
 pub(super) struct ListCursor {
     pub(super) updated_at: String,
     pub(super) request_id: String,
@@ -11,25 +9,26 @@ pub(super) struct ListCursor {
 pub(super) fn encode_list_cursor(
     summary: &FeedbackRequestSummary,
 ) -> Result<String, ApplicationError> {
-    serde_json::to_vec(&ListCursor {
-        updated_at: summary.updated_at.clone(),
-        request_id: summary.request_id.clone(),
-    })
-    .map(hex::encode)
-    .map_err(|_| ApplicationError::invalid_argument("cursor could not be encoded"))
+    Ok(hex::encode(format!(
+        "{}\0{}",
+        summary.updated_at, summary.request_id
+    )))
 }
 
 pub(super) fn decode_list_cursor(value: &str) -> Result<ListCursor, ApplicationError> {
     let bytes =
         hex::decode(value).map_err(|_| ApplicationError::invalid_argument("cursor is invalid"))?;
-    let cursor: ListCursor = serde_json::from_slice(&bytes)
+    let decoded = String::from_utf8(bytes)
         .map_err(|_| ApplicationError::invalid_argument("cursor is invalid"))?;
-    let request_id = crate::feedback::canonical_uuid(&cursor.request_id, "cursor")?;
-    if cursor.updated_at.is_empty() {
+    let (updated_at, request_id) = decoded
+        .split_once('\0')
+        .ok_or_else(|| ApplicationError::invalid_argument("cursor is invalid"))?;
+    if updated_at.is_empty() || request_id.contains('\0') {
         return Err(ApplicationError::invalid_argument("cursor is invalid"));
     }
+    let request_id = crate::feedback::canonical_uuid(request_id, "cursor")?;
     Ok(ListCursor {
-        updated_at: cursor.updated_at,
+        updated_at: updated_at.to_owned(),
         request_id,
     })
 }
