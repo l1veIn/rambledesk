@@ -21,3 +21,4 @@ export type SaveDraftInput = { request_id: string, body_markdown: string, expect
 export type SubmitFeedbackInput = { request_id: string, expected_revision: number, };
 export type CancelFeedbackInput = { request_id: string, reason: string, };
 export type ApproveFeedbackInput = { request_id: string, };
+export type RecoverFeedbackInput = { request_id?: string, host_id?: string, host_session_id: string, };

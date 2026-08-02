@@ -294,6 +294,56 @@ impl FeedbackApplication {
             .map_err(ApplicationError::from)
     }
 
+    pub async fn recover_feedback(
+        &self,
+        input: RecoverFeedbackInput,
+    ) -> Result<FeedbackRequestView, ApplicationError> {
+        validate_text("host_session_id", &input.host_session_id, 1, 200)?;
+        let host_id = input.host_id.as_deref().ok_or_else(|| {
+            ApplicationError::invalid_argument(
+                "host_id is required unless supplied by the authenticated adapter",
+            )
+        })?;
+        validate_text("host_id", host_id, 1, 200)?;
+
+        if let Some(request_id) = input.request_id.as_deref() {
+            let request = self
+                .get_feedback(GetFeedbackInput {
+                    request_id: request_id.to_owned(),
+                })
+                .await?;
+            if request.host_session_id != input.host_session_id || request.host_id != host_id {
+                return Err(ApplicationError::request_not_found());
+            }
+            return Ok(request);
+        }
+
+        let candidates = self
+            .list_feedback_requests(crate::ListFeedbackRequestsInput {
+                host_id: input.host_id,
+                host_session_id: Some(input.host_session_id),
+                status: Some(vec![
+                    FeedbackStatus::Waiting,
+                    FeedbackStatus::InProgress,
+                    FeedbackStatus::Completed,
+                    FeedbackStatus::Cancelled,
+                ]),
+                limit: Some(2),
+                cursor: None,
+            })
+            .await?;
+        match candidates.requests.as_slice() {
+            [] => Err(ApplicationError::request_not_found()),
+            [request] => {
+                self.get_feedback(GetFeedbackInput {
+                    request_id: request.request_id.clone(),
+                })
+                .await
+            }
+            _ => Err(ApplicationError::recovery_ambiguous()),
+        }
+    }
+
     pub async fn wait_feedback(
         &self,
         input: GetFeedbackInput,
@@ -364,6 +414,23 @@ impl ApplicationError {
         Self {
             code: "INVALID_ARGUMENT",
             message: message.into(),
+            retryable: false,
+        }
+    }
+
+    fn request_not_found() -> Self {
+        Self {
+            code: "REQUEST_NOT_FOUND",
+            message: "feedback request was not found for this host session".to_owned(),
+            retryable: false,
+        }
+    }
+
+    fn recovery_ambiguous() -> Self {
+        Self {
+            code: "RECOVERY_AMBIGUOUS",
+            message: "multiple feedback requests match this host session; provide request_id"
+                .to_owned(),
             retryable: false,
         }
     }

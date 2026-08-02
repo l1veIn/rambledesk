@@ -21,13 +21,12 @@ use axum::{
 };
 use rambledesk_core::{
     ApplicationError, ApproveFeedbackInput, CancelFeedbackInput, FeedbackApplication,
-    FeedbackRequestView, FeedbackStatus, GetFeedbackInput, ListFeedbackRequestsInput,
+    FeedbackRequestView, FeedbackStatus, GetFeedbackInput, RecoverFeedbackInput,
     RequestFeedbackInput,
 };
 use rmcp::transport::streamable_http_server::{
     StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
 };
-use serde::Deserialize;
 use subtle::ConstantTimeEq;
 use thiserror::Error;
 use tokio::{net::TcpListener, task::JoinHandle};
@@ -93,12 +92,6 @@ fn apply_request_host(
     input
 }
 
-#[derive(Debug, Deserialize)]
-struct RecoverFeedbackInput {
-    request_id: Option<String>,
-    host_session_id: String,
-}
-
 async fn api_health() -> Json<serde_json::Value> {
     Json(serde_json::json!({
         "ready": true,
@@ -145,49 +138,13 @@ async fn api_recover_feedback(
     Json(input): Json<RecoverFeedbackInput>,
 ) -> Response<Body> {
     let application = state.application.clone();
-    if let Some(request_id) = input.request_id {
-        return api_feedback_result(
-            &application,
-            application
-                .get_feedback(GetFeedbackInput { request_id })
-                .await,
-            true,
-        )
-        .await;
+    let mut input = input;
+    if request_host.0.is_some() {
+        input.host_id = request_host.0;
     }
-    let result = application
-        .list_feedback_requests(ListFeedbackRequestsInput {
-            host_id: request_host.0,
-            host_session_id: Some(input.host_session_id),
-            status: Some(vec![
-                FeedbackStatus::Waiting,
-                FeedbackStatus::InProgress,
-                FeedbackStatus::Completed,
-                FeedbackStatus::Cancelled,
-            ]),
-            limit: Some(1),
-            cursor: None,
-        })
-        .await;
-    let request_id = match result {
-        Ok(result) => match result.requests.first() {
-            Some(request) => request.request_id.clone(),
-            None => {
-                return api_error_payload(
-                    StatusCode::NOT_FOUND,
-                    "REQUEST_NOT_FOUND",
-                    "no Ramble request was found for this Pi session",
-                    false,
-                );
-            }
-        },
-        Err(error) => return api_error_response(application_error_status(error.code()), error),
-    };
     api_feedback_result(
         &application,
-        application
-            .get_feedback(GetFeedbackInput { request_id })
-            .await,
+        application.recover_feedback(input).await,
         true,
     )
     .await
@@ -257,6 +214,7 @@ fn application_error_status(code: &str) -> StatusCode {
         "INVALID_ARGUMENT" => StatusCode::BAD_REQUEST,
         "REQUEST_NOT_FOUND" | "ATTACHMENT_NOT_FOUND" => StatusCode::NOT_FOUND,
         "REQUEST_CONFLICT"
+        | "RECOVERY_AMBIGUOUS"
         | "REQUEST_ALREADY_COMPLETED"
         | "REQUEST_TERMINAL"
         | "DRAFT_CONFLICT"

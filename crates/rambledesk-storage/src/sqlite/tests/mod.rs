@@ -2,8 +2,8 @@ use super::*;
 use rambledesk_core::{
     ActionInput, AddAttachmentInput, ApproveFeedbackInput, CancelFeedbackInput, ContextRef,
     ExecutionMode, FeedbackResolution, FeedbackStatus, GetFeedbackInput, ListFeedbackRequestsInput,
-    RemoveAttachmentInput, ReorderAttachmentsInput, RequestFeedbackInput, SaveDraftInput,
-    SubmitFeedbackInput,
+    RecoverFeedbackInput, RemoveAttachmentInput, ReorderAttachmentsInput, RequestFeedbackInput,
+    SaveDraftInput, SubmitFeedbackInput,
 };
 use tempfile::TempDir;
 use uuid::Uuid;

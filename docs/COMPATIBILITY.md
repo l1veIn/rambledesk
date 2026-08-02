@@ -75,8 +75,9 @@ Pi 的正常流程在同一个 tool call 内等待，因此无需提交后的 Re
 - 相同 `request_id` 和相同不可变输入重新请求会返回现有状态；
 - 相同 `request_id` 和不同不可变输入返回 `REQUEST_CONFLICT`；
 - 取消必须显式调用 `cancel_feedback`；
-- Generic MCP Adapter 通过 `get_feedback` 恢复；
-- Pi Native Adapter 可以用相同 `request_id` 重新进入 `wait`；
+- Generic MCP Adapter 不维持长连接状态，断线后直接通过 `get_feedback(request_id)` 读取服务端事实；
+- Pi Native Adapter 通过服务端 recovery contract 恢复原生等待，并可用相同 `request_id` 重新进入 `wait`；
+- Pi 未提供 `request_id` 且同一 host session 存在多个候选时返回 `RECOVERY_AMBIGUOUS`，服务端不会猜测；
 - SQLite 与不可变反馈包是恢复事实来源。
 
 ## 仍需人工验收

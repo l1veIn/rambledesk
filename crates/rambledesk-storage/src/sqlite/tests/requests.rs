@@ -1,6 +1,58 @@
 use super::*;
 
 #[tokio::test]
+async fn recovery_is_host_scoped_and_rejects_ambiguous_session_matches() {
+    let workspace = TestWorkspace::new().await;
+    let first_id = Uuid::now_v7().to_string();
+    let store = SqliteFeedbackStore::connect(&workspace.database)
+        .await
+        .expect("open store");
+    let application = store.clone().into_application();
+    let first = workspace.request(first_id.clone());
+    let host_id = first.host_id.clone();
+    let host_session_id = first.host_session_id.clone();
+    application
+        .request_feedback(first)
+        .await
+        .expect("create first request");
+
+    let recovered = application
+        .recover_feedback(RecoverFeedbackInput {
+            request_id: Some(first_id.clone()),
+            host_id: Some(host_id.clone()),
+            host_session_id: host_session_id.clone(),
+        })
+        .await
+        .expect("recover exact request");
+    assert_eq!(recovered.request_id, first_id);
+
+    let wrong_session = application
+        .recover_feedback(RecoverFeedbackInput {
+            request_id: Some(first_id),
+            host_id: Some(host_id.clone()),
+            host_session_id: "another-session".to_owned(),
+        })
+        .await
+        .expect_err("cross-session recovery must be hidden");
+    assert_eq!(wrong_session.code(), "REQUEST_NOT_FOUND");
+
+    application
+        .request_feedback(workspace.request(Uuid::now_v7().to_string()))
+        .await
+        .expect("create second request in session");
+    let ambiguous = application
+        .recover_feedback(RecoverFeedbackInput {
+            request_id: None,
+            host_id: Some(host_id),
+            host_session_id,
+        })
+        .await
+        .expect_err("session-only recovery must not guess between requests");
+    assert_eq!(ambiguous.code(), "RECOVERY_AMBIGUOUS");
+    store.close().await;
+}
+
+#[tokio::test]
 async fn final_summary_can_be_approved_without_publishing_feedback() {
     let workspace = TestWorkspace::new().await;
     let request_id = Uuid::now_v7().to_string();

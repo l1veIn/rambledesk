@@ -44,6 +44,17 @@ pub struct GetFeedbackInput {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
+pub struct RecoverFeedbackInput {
+    #[serde(default)]
+    #[ts(optional)]
+    pub request_id: Option<String>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub host_id: Option<String>,
+    pub host_session_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 pub struct CancelFeedbackInput {
     pub request_id: String,
     pub reason: String,

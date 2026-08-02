@@ -1,5 +1,7 @@
 use anyhow::Context;
-use rambledesk_core::{ActionInput, RequestFeedbackInput, SaveDraftInput, SubmitFeedbackInput};
+use rambledesk_core::{
+    ActionInput, ApproveFeedbackInput, RequestFeedbackInput, SaveDraftInput, SubmitFeedbackInput,
+};
 use rambledesk_local_server::{AccessToken, HOST_HEADER, ServerConfig, start_server};
 use rmcp::{
     ServiceExt,
@@ -133,6 +135,8 @@ async fn official_client_exercises_feedback_lifecycle_and_errors() -> anyhow::Re
         .and_then(serde_json::Value::as_object)
         .expect("request_feedback properties");
     assert!(properties.contains_key("request_id"));
+    assert!(properties.contains_key("allow_finish"));
+    assert!(properties.contains_key("final_summary"));
     assert!(!properties.contains_key("requestId"));
 
     let request_id = uuid::Uuid::now_v7().to_string();
@@ -191,7 +195,6 @@ async fn official_client_exercises_feedback_lifecycle_and_errors() -> anyhow::Re
             .and_then(serde_json::Value::as_str),
         Some("waiting")
     );
-
     let saved = application
         .save_feedback_draft(SaveDraftInput {
             request_id: request_id.clone(),
@@ -255,6 +258,56 @@ async fn official_client_exercises_feedback_lifecycle_and_errors() -> anyhow::Re
             .is_some_and(|markdown| markdown.contains("real MCP client"))
     );
     assert!(package.get("manifest").is_some());
+
+    let final_request_id = uuid::Uuid::now_v7().to_string();
+    let final_arguments = serde_json::to_value(RequestFeedbackInput {
+        request_id: Some(final_request_id.clone()),
+        host_id: "official-rust-sdk".to_owned(),
+        host_session_id: "final-approval-session".to_owned(),
+        title: Some("Approve final summary".to_owned()),
+        what_happened: "The agent prepared its exact final summary.".to_owned(),
+        actions: vec![ActionInput {
+            id: "approve".to_owned(),
+            instruction: "Approve the exact final summary.".to_owned(),
+        }],
+        context_refs: Vec::new(),
+        source_hint: None,
+        allow_finish: true,
+        final_summary: Some("Everything requested is complete.".to_owned()),
+    })?
+    .as_object()
+    .cloned()
+    .expect("final request arguments");
+    let final_created = client
+        .call_tool(CallToolRequestParams::new("request_feedback").with_arguments(final_arguments))
+        .await
+        .context("create final approval through MCP")?;
+    assert_ne!(final_created.is_error, Some(true));
+    application
+        .approve_feedback(ApproveFeedbackInput {
+            request_id: final_request_id.clone(),
+        })
+        .await
+        .context("approve final summary as operator")?;
+    let final_get_arguments = serde_json::json!({ "request_id": final_request_id })
+        .as_object()
+        .cloned()
+        .expect("final get arguments");
+    let approved = client
+        .call_tool(CallToolRequestParams::new("get_feedback").with_arguments(final_get_arguments))
+        .await
+        .context("get approved final summary through MCP")?;
+    let approved_content = approved
+        .structured_content
+        .as_ref()
+        .context("approved structured content")?;
+    assert_eq!(
+        approved_content
+            .get("resolution")
+            .and_then(serde_json::Value::as_str),
+        Some("approved")
+    );
+    assert!(approved_content.get("feedback_package").is_none());
 
     let invalid_arguments = serde_json::json!({ "request_id": "not-a-uuid" })
         .as_object()

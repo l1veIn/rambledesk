@@ -10,8 +10,8 @@ pub use feedback::{
     ActionInput, ApplicationError, ApproveFeedbackInput, CancelFeedbackInput, Clock, ContextRef,
     ExecutionMode, FeedbackApplication, FeedbackRepository, FeedbackRequestView,
     FeedbackResolution, FeedbackResultView, FeedbackStatus, GetFeedbackInput, IdGenerator,
-    NewFeedbackRequest, RepositoryError, RequestFeedbackInput, StoredFeedbackRequest, SystemClock,
-    UuidV7Generator,
+    NewFeedbackRequest, RecoverFeedbackInput, RepositoryError, RequestFeedbackInput,
+    StoredFeedbackRequest, SystemClock, UuidV7Generator,
 };
 pub use workspace::{
     AddAttachmentInput, AttachmentView, DraftView, FeedbackPackageAttachment,

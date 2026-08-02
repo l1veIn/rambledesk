@@ -145,12 +145,13 @@ async fn feedback_tool_result(
         )
     {
         match application.read_feedback_package(&value).await {
-            Ok(package) => {
+            Ok(Some(package)) => {
                 object.insert(
                     "feedback_package".to_owned(),
                     serde_json::to_value(package).expect("feedback package must serialize"),
                 );
             }
+            Ok(None) => {}
             Err(error) => {
                 return application_error_result(error);
             }
@@ -187,7 +188,7 @@ impl ServerHandler for RambleDeskMcp {
             .with_instructions(
                 "RambleDesk tools: request_feedback, get_feedback, cancel_feedback. \
 Create a durable request with request_feedback, then end the current turn; do not poll and do not wait on a long tool call. \
-When the human finishes and the host session is manually continued, call get_feedback(request_id) to load the package. \
+When the human finishes or after a disconnect, call get_feedback(request_id) to load the current server state and package. \
 Auto-registered clients set RAMBLEDESK_HOST (and X-RambleDesk-Host) so host identity is known without guessing.",
             )
     }

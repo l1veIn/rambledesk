@@ -192,6 +192,31 @@ MCP tool input 与 `FeedbackRequestInput` 等价。通用 MCP 适配器 MAY 根�
 - 通用 MCP 适配器使用它进行手动 continuation 和断线恢复。
 - 客户端 MUST NOT 用固定间隔空轮询作为默认等待路径。
 
+## `recover_feedback`
+
+从服务端恢复一个持久化请求，不创建替代请求。该 operation 用于 Pi 等维持原生
+等待状态的 adapter，不属于 Generic MCP 工具面；MCP 持有 `request_id` 后直接调用
+`get_feedback` 即可。
+
+输入：
+
+```json
+{
+  "request_id": "019...",
+  "host_id": "pi",
+  "host_session_id": "pi-session-019..."
+}
+```
+
+规则：
+
+- 客户端 SHOULD 提供原始 `request_id`。
+- Server MUST 校验请求属于给定的 `(host_id, host_session_id)`。
+- 适配器 MAY 用可信的 `X-RambleDesk-Host` 覆盖输入 `host_id`。
+- 缺少 `request_id` 时，只有恰好一个候选请求才可恢复。
+- 多个候选 MUST 返回 `RECOVERY_AMBIGUOUS`，不得擅自选择最新请求。
+- 恢复只读取已有生命周期状态，不得创建新请求。
+
 ## `wait_feedback`
 
 等待请求进入终态。该 operation 属于 application contract 和本地 JSON API，不属于通用 MCP 工具面。
@@ -290,6 +315,15 @@ Input:
 }
 ```
 
+### `POST /api/feedback/recover`
+
+输入和业务规则与 `recover_feedback` 相同；终态输出 MAY 包含反馈包。
+
+### `POST /api/feedback/approve`
+
+由 RambleDesk 人类操作界面调用。Agent adapter 不得通过 MCP 或 Pi tool 自行批准
+最终总结。
+
 ### `POST /api/feedback/cancel`
 
 输入和业务规则与 `cancel_feedback` 相同。
@@ -309,7 +343,8 @@ Input:
 3. 人类在 RambleDesk 中提交或取消。
 4. RambleDesk 显示手动 continuation 提示。
 5. 人类返回宿主。
-6. 宿主智能体调用 `get_feedback(request_id)`。
+6. 宿主智能体调用 `get_feedback(request_id)`；发生 MCP transport 断线后仍调用
+   同一个 `get_feedback(request_id)`，不需要单独的恢复工具。
 
 ## Pi 原生适配器
 
