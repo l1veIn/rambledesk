@@ -33,7 +33,6 @@
     SaveDraftInput,
     SubmitFeedbackInput,
   } from './lib/feedback'
-  import type { HealthSnapshot } from './lib/generated/health'
   import {
     InboxNotificationTracker,
     notificationLabel,
@@ -65,8 +64,6 @@
 
   const RESUME_PROMPT_EVENT = 'rambledesk://resume-prompt'
 
-  let health: HealthSnapshot | null = null
-  let endpoint = tr('正在连接…')
   let inbox: FeedbackRequestSummary[] = []
   let history: FeedbackRequestSummary[] = []
   let adapterPresentations: Record<string, AdapterPresentation> = {}
@@ -255,14 +252,10 @@
     pageError = ''
     loadingInbox = true
     try {
-      const [nextHealth, nextEndpoint, nextInbox, presentations] = await Promise.all([
-        invoke<HealthSnapshot>('get_health'),
-        invoke<string>('get_mcp_endpoint'),
+      const [nextInbox, presentations] = await Promise.all([
         invoke<FeedbackRequestSummary[]>('list_feedback_inbox'),
         invoke<AdapterPresentation[]>('list_adapter_presentations'),
       ])
-      health = nextHealth
-      endpoint = nextEndpoint
       adapterPresentations = Object.fromEntries(
         presentations.map((presentation) => [presentation.id, presentation]),
       )
@@ -880,7 +873,6 @@
 
   <AppTitlebar
     projectName={workspace?.request.project_name ?? 'Vault Zero Archive'}
-    connected={health?.status === 'ready'}
     pendingCount={inbox.length}
     notificationText={notificationLabel(notificationState, $locale)}
     notificationEnabled={notificationState === 'enabled'}
@@ -897,14 +889,12 @@
       {loadingHistory}
       requests={displayedRequests}
       activeRequestId={workspace?.request.request_id ?? null}
-      {endpoint}
       {adapterPresentation}
       {formatTime}
       onRefresh={refreshCurrentList}
       onShowOpen={showOpenRequests}
       onShowHistory={showHistory}
       onOpenRequest={(requestId) => void openRequest(requestId)}
-      onOpenSettings={() => void openSettings('mcp')}
     />
 
     <WorkspacePanel
@@ -965,6 +955,11 @@
 </main>
 
 {#if settingsOpen}
-  <SettingsPanel {mcpConfiguration} initialSection={settingsSection} onClose={() => (settingsOpen = false)} />
+  <SettingsPanel
+    {mcpConfiguration}
+    initialSection={settingsSection}
+    projectRootPath={workspace?.request.project_root_path ?? null}
+    onClose={() => (settingsOpen = false)}
+  />
 {/if}
 {/key}

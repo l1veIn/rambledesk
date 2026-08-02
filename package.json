@@ -10,6 +10,7 @@
     "build:web": "pnpm -C apps/desktop build:web",
     "check": "pnpm -C apps/desktop check",
     "test": "pnpm -C apps/desktop test",
+    "test:pi": "pnpm -C packages/pi-rambledesk test",
     "test:rust": "cargo test --workspace",
     "contracts:generate": "cargo run -p rambledesk-core --example export_types",
     "contracts:check": "pnpm contracts:generate && git diff --exit-code -- apps/desktop/src/lib/generated",

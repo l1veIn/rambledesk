@@ -27,10 +27,11 @@ RambleDesk 将接入拆成数据面与控制面：
 ```text
 数据面（跨宿主一致）
 
-Agent / Skill
+Agent / adapter
      │
      ├── CLI ───────────────┐
-     ├── MCP（可选）────────┤
+     ├── MCP（通用 adapter）┤
+     ├── Pi package ────────┤
      └── Local HTTP API ────┤
                             ▼
                     RambleDesk Local Server
@@ -46,12 +47,8 @@ Feedback terminal event
           ▼
      WakeupAdapter
           │
-          ├── Codex resume / thread wake
-          ├── Claude Code continuation mechanism
-          ├── Pi triggerTurn
-          ├── OpenCode prompt_async
-          ├── Gemini resume mechanism
-          └── notification / manual resume fallback
+          ├── Generic prompt / manual resume fallback
+          └── future verified host wake mechanisms
 ```
 
 数据面回答“事实是什么”；控制面回答“哪个 Agent 任务现在应该继续”。两者不得合并成一条长期阻塞调用。
@@ -83,18 +80,29 @@ rambledesk integration register --host <host> --continuation <opaque-id>
 
 CLI 通过 loopback API 调用 Local Server，不直接读写 SQLite。这样 CLI 是一个稳定协议客户端，而不是第二套业务实现。
 
-### 3.3 MCP：可选的结构化 Agent 入口
+### 3.3 MCP：通用 adapter
 
-MCP 仍然有价值：工具可发现、schema 明确、对支持良好的客户端接入自然。但它只负责短调用：
+MCP 仍然有价值：工具可发现、schema 明确、对支持良好的客户端接入自然。但在当前架构中
+它是通用 adapter，不是全局基础设施，也不承诺自动唤醒原宿主：
 
 - `request_feedback`：创建并返回 durable handle；
 - `get_feedback`：恢复或诊断时读取当前状态；
 - `cancel_feedback`：取消；
-- `wait_for_feedback`：仅作为兼容性或测试能力，不再作为默认长期等待路径。
 
-MCP 不承担“让宿主进程长期休眠并在未来开启新 turn”的职责。该能力属于宿主或宿主适配器。
+人类提交后，通用 adapter 显示恢复提示，让用户回到宿主继续。MCP 不承担“让宿主
+进程长期休眠并在未来开启新 turn”的职责。
 
-### 3.4 Skill：工作流合同
+### 3.4 Pi package：首个原生 adapter
+
+Pi 的优雅路径不通过提交后的 wake。Pi package 注册 `request_ramble_feedback` 与
+`get_ramble_feedback`：
+
+1. 工具在 Pi 进程内调用 `/api/feedback/request`；
+2. 默认继续调用 `/api/feedback/wait`；
+3. 人类在 RambleDesk 提交或取消后，Local Server 唤醒 wait；
+4. 同一个 Pi tool call 返回 terminal package，模型立即继续。
+
+### 3.5 Skill：工作流合同
 
 Skill 告诉 Agent 如何使用上述能力：
 
@@ -106,9 +114,11 @@ Skill 告诉 Agent 如何使用上述能力：
 
 Skill 本身不是 daemon，不能保持计时器、网络连接或后台进程。它也不能凭空赋予宿主“持久唤醒”能力。
 
-### 3.5 WakeupAdapter：唯一的宿主差异层
+### 3.6 WakeupAdapter：提交后的回落层
 
-WakeupAdapter 封装各 Agent 工具的恢复机制。每个适配器只需要实现小接口：
+WakeupAdapter 只处理“请求已终态但宿主没有原生等待点”的情况。当前产品只注册
+`GenericWakeupAdapter`，即弹出恢复提示。未来只有当某个宿主被证明确实可以从外部
+恢复原上下文时，才新增专用 wake adapter。每个适配器只需要实现小接口：
 
 ```text
 register(request_id, continuation_identity, credentials?)
@@ -117,7 +127,8 @@ revoke(request_id)
 health()
 ```
 
-它传递的最小载荷是 `request_id`，不复制反馈正文和附件。恢复后的 Agent 必须回到数据面读取 canonical package。
+它传递的最小载荷是 `request_id`，不复制反馈正文和附件。恢复后的 Agent 必须回到
+数据面读取 canonical package。Pi package 不经过这一层。
 
 ## 4. 为什么是 Local Server + CLI + Skill
 
@@ -139,20 +150,20 @@ MCP 是优秀的数据面适配器，但普通 tool call 的 timeout、连接与
 
 - **Local Server** 作为事实与事件源；
 - **CLI** 作为最低公分母和安装/诊断入口；
-- **MCP** 作为支持客户端的可选原生入口；
+- **MCP** 作为通用 adapter；
+- **Pi package** 作为首个原生 adapter；
 - **Skill** 作为统一工作流；
-- **WakeupAdapter** 作为唯一宿主相关层。
+- **WakeupAdapter** 作为提交后的通用回落层。
 
 这不是为每个 coding agent 重写 RambleDesk，而是在稳定内核外提供很薄的 continuation adapter。
 
 ## 5. 生命周期
 
 ```text
-Agent active
+Generic MCP adapter
   │
   ├─ request feedback
   │    ├─ persist Request
-  │    ├─ register continuation identity
   │    └─ return request_id
   │
   ├─ end current turn / host suspend
@@ -172,10 +183,25 @@ Human edits and submits
      WakeupAdapter.wake
           │
           ▼
-Agent resumed
+Human resumes agent
   ├─ get feedback(request_id)
   ├─ verify package
   └─ continue original task
+```
+
+Pi package path:
+
+```text
+Pi tool call
+  ├─ /api/feedback/request
+  ├─ /api/feedback/wait
+  │       no model inference while waiting
+  ▼
+Human edits and submits
+  ▼
+same Pi tool call returns terminal package
+  ▼
+Pi model continues original task
 ```
 
 顺序要求：Package 发布和终态事务成功后才能唤醒；唤醒可以重复，结果读取必须幂等。若唤醒失败，请求仍然保持 completed，用户或 Agent 可手动恢复。
@@ -186,12 +212,14 @@ Agent resumed
 
 | 等级 | 宿主能力 | 行为 |
 |---|---|---|
-| A | 可持久注册 continuation，并可从外部触发新 turn | 完整自动挂起/唤醒 |
+| A | 宿主可在自身工具调用内等待，或可持久注册 continuation 并从外部恢复原上下文 | 完整自动挂起/继续 |
 | B | 可发异步消息，但是否开启新 turn 由宿主决定 | 尽力自动恢复，并保留 completed inbox |
 | C | 只能执行 CLI/MCP，不能外部唤醒 | 创建后结束；通知人类手动恢复 |
 | D | 连本地命令/API 都不可用 | 仅提供人工复制的 request/package 流程 |
 
-首轮调研时应分别验证 Codex、Claude Code、Pi、OpenCode 和 Gemini 的真实等级，包括进程重启、机器休眠、八小时空闲、重复事件和凭据过期，而不是只验证一次短等待。
+当前产品把 Claude Code、Codex、OpenCode 等均按 C 级处理：通用 MCP + 人工恢复提示。
+Pi 进入 A 级候选，验收重点是 package 的长等待、取消、桌面重启和 token 配置，而不是
+CLI resume。
 
 ## 7. 不变量与禁止项
 
@@ -200,20 +228,19 @@ Agent resumed
 - WakeupAdapter 不携带 canonical feedback payload。
 - CLI 不直接访问数据库。
 - Skill 不启动无限轮询，也不要求模型“继续耐心等待”。
-- `wait_for_feedback` 不得被文档描述成八小时等待的默认保证。
+- MCP 不得被文档描述成八小时等待或自动唤醒的默认保证。
 - 任何 timeout 只结束一次 invocation attempt，不取消 Feedback Request。
 - 自动唤醒失败不得丢失 completed 结果；Inbox 和手动 resume 永远可恢复。
 - 宿主凭据必须局部保存、最小授权，并可单独撤销。
 
 ## 8. 建议实施顺序
 
-1. 固化 CLI JSON 合同，并确保它只调用 Local Server。
-2. 增加 terminal event/outbox，保证进程重启后仍可重试投递。
-3. 定义 WakeupAdapter 接口、continuation registration 和 delivery attempt 诊断。
-4. 先实现一个明确支持持久唤醒的宿主适配器，并加入重启/长等待测试。
+1. 固化 `/api/feedback/*` JSON 合同，并确保它只调用 Local Server。
+2. 发布 Pi package，并加入长等待/取消/重启恢复测试。
+3. 保留通用 MCP adapter：`request_feedback` / `get_feedback` / `cancel_feedback`。
+4. 增加 terminal event/outbox，保证通用恢复提示和未来投递可重试。
 5. 对其他宿主逐一实测，按 A–D 分级；无法自动唤醒时明确降级。
-6. 将 MCP `wait_for_feedback` 调整为兼容/测试路径，更新产品文档的默认流程。
-7. 发布统一 Skill：优先选择宿主原生 adapter，其次使用 CLI，MCP 仅作为可用的数据面入口。
+6. 发布统一 Skill/提示：优先选择宿主原生 adapter，其次使用通用 MCP。
 
 ## 9. 待调研问题
 

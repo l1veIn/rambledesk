@@ -11,7 +11,7 @@ describe('statusLabel', () => {
         status: 'ready',
         storage: 'ready',
       }),
-    ).toBe('MCP 核心已就绪')
+    ).toBe('桌面核心已就绪')
   })
 
   it('describes the loading state', () => {

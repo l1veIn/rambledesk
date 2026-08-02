@@ -1,5 +1,6 @@
 mod clipboard_capture;
 mod mcp_setup;
+mod pi_install;
 mod screen_capture;
 
 use rambledesk_adapters::{
@@ -137,6 +138,19 @@ fn install_mcp_clients(
         .home_dir()
         .map_err(|error| format!("Could not resolve the user home directory: {error}"))?;
     mcp_setup::install_clients(&home, &client_ids, &state.mcp_configuration)
+}
+
+#[tauri::command]
+async fn install_pi_package(project_root: Option<String>) -> Result<String, String> {
+    let package_dir = pi_install::resolve_package_dir(project_root.as_deref()).ok_or_else(|| {
+        "Could not locate packages/pi-rambledesk in this checkout. Run `pi install ./packages/pi-rambledesk` manually.".to_owned()
+    })?;
+    let pi_bin = pi_install::resolve_pi_binary().ok_or_else(|| {
+        "The `pi` CLI was not found on PATH. Install Pi or set RAMBLEDESK_PI_BIN, then run `pi install ./packages/pi-rambledesk` manually.".to_owned()
+    })?;
+    tauri::async_runtime::spawn_blocking(move || pi_install::run_install(&pi_bin, &package_dir))
+        .await
+        .map_err(|error| format!("Installer task failed: {error}"))?
 }
 
 #[tauri::command]
@@ -718,6 +732,7 @@ pub fn run() {
             list_adapter_presentations,
             detect_mcp_clients,
             install_mcp_clients,
+            install_pi_package,
             set_pending_count,
             list_feedback_inbox,
             list_feedback_history,

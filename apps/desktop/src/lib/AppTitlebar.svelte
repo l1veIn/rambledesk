@@ -6,7 +6,6 @@
   import { locale } from './preferences'
 
   export let projectName = 'Vault Zero'
-  export let connected = false
   export let pendingCount = 0
   export let notificationText = '通知'
   export let notificationEnabled = false
@@ -76,9 +75,6 @@
   ></button>
 
   <div class="titlebar-status">
-    <span class:online={connected} class="connection-pill">
-      <i></i>{connected ? t($locale, '本地已连接') : t($locale, '正在连接')}
-    </span>
     {#if pendingCount > 0}
       <span class="pending-pill">{pendingCount} {t($locale, '待处理')}</span>
     {/if}
@@ -197,7 +193,6 @@
     padding: 0 12px 0 10px;
   }
 
-  .connection-pill,
   .pending-pill {
     display: flex;
     align-items: center;
@@ -209,23 +204,6 @@
     font-size: 9px;
     font-weight: 650;
     letter-spacing: 0.025em;
-  }
-
-  .connection-pill i {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: #96a4b4;
-  }
-
-  .connection-pill.online {
-    color: #168a83;
-    background: var(--cyan-soft, #e9f7f5);
-  }
-
-  .connection-pill.online i {
-    background: #2ab2a9;
-    box-shadow: 0 0 0 3px rgb(87 198 192 / 13%);
   }
 
   .pending-pill {
@@ -311,8 +289,7 @@
 
   @media (max-width: 900px) {
     .project-name,
-    .pending-pill,
-    .connection-pill {
+    .pending-pill {
       display: none;
     }
   }

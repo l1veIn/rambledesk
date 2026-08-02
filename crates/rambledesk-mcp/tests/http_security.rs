@@ -76,6 +76,25 @@ async fn rejects_disallowed_origin_and_host() -> anyhow::Result<()> {
         .await?;
     assert_eq!(bad_host.status(), reqwest::StatusCode::FORBIDDEN);
 
+    let api = format!("http://{}/api/feedback/get", server.address());
+    let bad_api_origin = client
+        .post(&api)
+        .bearer_auth(TEST_TOKEN)
+        .header(reqwest::header::ORIGIN, "https://evil.example")
+        .json(&serde_json::json!({ "request_id": uuid::Uuid::now_v7().to_string() }))
+        .send()
+        .await?;
+    assert_eq!(bad_api_origin.status(), reqwest::StatusCode::FORBIDDEN);
+
+    let bad_api_host = client
+        .post(api)
+        .bearer_auth(TEST_TOKEN)
+        .header(reqwest::header::HOST, "evil.example")
+        .json(&serde_json::json!({ "request_id": uuid::Uuid::now_v7().to_string() }))
+        .send()
+        .await?;
+    assert_eq!(bad_api_host.status(), reqwest::StatusCode::FORBIDDEN);
+
     server.shutdown().await?;
     Ok(())
 }
@@ -282,6 +301,92 @@ async fn official_client_exercises_feedback_lifecycle_and_errors() -> anyhow::Re
     );
 
     client.cancel().await?;
+    server.shutdown().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn local_api_supports_pi_request_and_blocking_wait() -> anyhow::Result<()> {
+    let token = AccessToken::parse(TEST_TOKEN)?;
+    let (application, directory) = test_application().await?;
+    let server = start_server(ServerConfig::new(token).with_port(0), application.clone()).await?;
+    let client = reqwest::Client::new();
+    let api = format!("http://{}/api/feedback", server.address());
+    let request_id = uuid::Uuid::now_v7().to_string();
+
+    let request = RequestFeedbackInput {
+        request_id: Some(request_id.clone()),
+        agent: "model-filled-host".to_owned(),
+        session_id: "pi-tool-call".to_owned(),
+        project: ProjectInput {
+            project_id: None,
+            name: "RambleDesk Pi API test".to_owned(),
+            root_path: Some(directory.path().to_string_lossy().into_owned()),
+        },
+        title: "Pi package wait".to_owned(),
+        what_happened: "The Pi package direct API path was exercised.".to_owned(),
+        actions: vec![ActionInput {
+            id: "verify".to_owned(),
+            instruction: "Submit feedback and resume the same Pi tool call.".to_owned(),
+        }],
+        context_refs: Vec::new(),
+    };
+    let created = client
+        .post(format!("{api}/request"))
+        .bearer_auth(TEST_TOKEN)
+        .header(HOST_HEADER, "pi")
+        .json(&request)
+        .send()
+        .await?
+        .error_for_status()?
+        .json::<serde_json::Value>()
+        .await?;
+    assert_eq!(created["request_id"], request_id);
+    assert_eq!(created["status"], "waiting");
+    assert_eq!(created["host"], "pi");
+
+    let wait_client = client.clone();
+    let wait_api = api.clone();
+    let wait_request_id = request_id.clone();
+    let waiter = tokio::spawn(async move {
+        wait_client
+            .post(format!("{wait_api}/wait"))
+            .bearer_auth(TEST_TOKEN)
+            .json(&serde_json::json!({ "request_id": wait_request_id }))
+            .send()
+            .await?
+            .error_for_status()?
+            .json::<serde_json::Value>()
+            .await
+    });
+
+    let saved = application
+        .save_feedback_draft(SaveDraftInput {
+            request_id: request_id.clone(),
+            body_markdown: "Pi waited inside the tool call and received this package.".to_owned(),
+            expected_revision: 0,
+        })
+        .await
+        .context("save operator draft")?;
+    application
+        .submit_feedback(SubmitFeedbackInput {
+            request_id: request_id.clone(),
+            expected_revision: saved.saved_revision,
+        })
+        .await
+        .context("submit operator feedback")?;
+
+    let completed = waiter.await??;
+    assert_eq!(completed["request_id"], request_id);
+    assert_eq!(completed["status"], "completed");
+    assert_eq!(completed["execution_mode"], "wait");
+    assert!(
+        completed
+            .pointer("/feedback_package/markdown")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|markdown| markdown.contains("Pi waited inside the tool call"))
+    );
+
     server.shutdown().await?;
     Ok(())
 }

@@ -307,17 +307,17 @@ pnpm dev
 - 锁定 `rmcp`、Tauri 和 Rust toolchain 版本；
 - 将兼容结果写入 `docs/COMPATIBILITY.md`。
 
-实测结果见 [COMPATIBILITY.md](COMPATIBILITY.md)。当前默认采用 durable wait：
-`request_feedback` 快速返回 durable request，Agent 单次调用 `wait_for_feedback`
-挂起到终态；`get_feedback` 只用于兼容、恢复和诊断。Tasks 保留为双方显式声明
-支持后的增强路径。
+实测结果见 [COMPATIBILITY.md](COMPATIBILITY.md)。当前默认采用 adapter 分层：
+通用 MCP adapter 的 `request_feedback` 快速返回 durable request，提交后由用户手动
+回宿主继续并调用 `get_feedback`；Pi 原生 package 通过本地 JSON API 在 Pi tool call
+内等待终态。Tasks 保留为双方显式声明支持后的增强路径。
 
 验收门：
 
 - 至少 MCP Inspector 和一个目标 Agent 能稳定调用；
 - 不依赖公网服务；
 - 未授权请求被拒绝；
-- 已选定 Tasks 或 polling 的首发路径。
+- 已选定通用 MCP adapter 和 Pi 原生 adapter 的首发路径。
 
 ### M1：纯文本纵向闭环
 
@@ -339,7 +339,8 @@ Windows 的提交、幂等、启动对账和 MCP 黑盒测试已通过；Windows
 交付：
 
 - SQLite migrations；
-- `request_feedback`、`wait_for_feedback`、`get_feedback`、`cancel_feedback`；
+- 通用 MCP adapter：`request_feedback`、`get_feedback`、`cancel_feedback`；
+- Pi local API：`/api/feedback/request|get|wait|cancel`；
 - Inbox 和单请求工作区；
 - 文本 Draft 自动保存；
 - 提交发布 `feedback.md + manifest.json`；
@@ -366,7 +367,7 @@ Windows 的提交、幂等、启动对账和 MCP 黑盒测试已通过；Windows
 - Session/历史页面；
 - `list_feedback_requests`；
 - 托盘和待处理角标；
-- 设置页复制 MCP 配置。
+- 设置页管理适配器，包含通用 MCP 配置。
 
 内置截图在框选层显示前捕获目标画面，完成后沿用附件 revision、哈希和 Markdown
 `attachment://` 节点；不会依赖系统剪贴板，也不会把框选层截入图片。
@@ -379,7 +380,7 @@ Windows 人工签收项：
 4. 从资源管理器拖入 PNG/JPEG/WebP/GIF，确认预览、排序和删除；
 5. 提交含附件的反馈，确认 Feedback Package 中相对路径、图片和哈希一致；
 6. 关闭主窗口后确认应用驻留托盘，徽标数量变化且左键可恢复窗口；
-7. 从连接设置复制 MCP 配置，并在一个真实 MCP 客户端建立连接；
+7. 从适配器设置复制通用 MCP 配置，并在一个真实 MCP 客户端建立连接；
 8. 在历史页打开 completed/cancelled 请求，确认内容只读且状态正确。
 
 ### M3：语音 Ramble

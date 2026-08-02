@@ -21,7 +21,12 @@
 ┌──────────────────┐        Streamable HTTP        ┌──────────────────────────┐
 │ Codex / Claude   │ ────────────────────────────→ │ RambleDesk desktop       │
 │ / MCP Inspector  │        127.0.0.1:<port>/mcp   │                          │
-└──────────────────┘                               │  MCP adapter             │
+└──────────────────┘                               │  Generic MCP adapter     │
+                                                   │                          │
+┌──────────────────┐        Local JSON API         │                          │
+│ Pi package       │ ────────────────────────────→ │  Pi-native adapter API   │
+│                  │        127.0.0.1:<port>/api   │                          │
+└──────────────────┘                               │                          │
                                                    │       │                  │
 ┌──────────────────┐        Tauri commands/events  │  Application services   │
 │ Svelte UI        │ ←───────────────────────────→ │       │                  │
@@ -31,7 +36,7 @@
                                                    └──────────────────────────┘
 ```
 
-开发和自动化环境可用 `rambledesk-cli` 替代桌面壳装配同一个 MCP adapter、
+开发和自动化环境可用 `rambledesk-cli` 替代桌面壳装配同一个 loopback server、
 application services 和 storage。CLI 不是第二套业务实现。
 
 ## 3. Monorepo 结构
@@ -84,13 +89,14 @@ rambledesk/
 包含：
 
 - `WakeupRouter` 与 `WakeupAdapter` 接口；
-- 通用回落 `GenericWakeupAdapter`（提交后提示人类回到宿主继续）；
-- 未来各宿主专用 resume / wake 实现。
+- 通用回落 `GenericWakeupAdapter`（提交后提示人类回到宿主继续）。
 
 依赖方向：只依赖 `rambledesk-core` 的领域类型（如 `FeedbackStatus`），不得依赖
 Tauri、MCP 或 storage。桌面与 CLI 作为 composition root 组装 router。
 
-独立变更节奏：宿主 API 与实测矩阵可单独 bump，不拖动协议/core 发版。
+专用宿主若可以在自身工具调用内等待（Pi package），应拥有自己的 request/get/wait
+路径，不注册提交后的 wake adapter。不能可靠恢复原上下文的宿主不得伪装成专用
+adapter，必须走通用 MCP 回落。
 
 ### 4.3 `rambledesk-storage`
 
@@ -108,10 +114,11 @@ Tauri、MCP 或 storage。桌面与 CLI 作为 composition root 组装 router。
 
 包含：
 
-- MCP tool schema；
+- 通用 MCP adapter 的 tool schema；
+- 专用宿主 package 使用的本地 JSON API；
 - Streamable HTTP transport；
 - bearer token、Host 和 Origin 校验；
-- Tasks 与 polling 执行适配；
+- Tasks 与短调用执行适配；
 - MCP error 与领域错误映射；
 - invocation attempt 诊断。
 
@@ -161,7 +168,7 @@ Svelte UI 负责投影和用户输入，不持有唯一事实状态。
 | Draft 附件 bytes | 应用 draft 目录，SQLite 存 metadata |
 | 完成反馈 | 不可变 Feedback Package |
 | UI 当前页面/展开项 | 前端内存 |
-| MCP 连接 | transport 内存 + invocation attempt 日志 |
+| MCP/API 调用 | transport 内存 + invocation attempt 日志 |
 | 系统通知 | best-effort side effect |
 | partial transcript | speech session 内存；定期 checkpoint 到 Draft |
 
@@ -224,8 +231,10 @@ SubmitFeedback(request_id, expected_revision)
 
 ### 6.4 Agent 取得结果
 
-- 默认客户端调用一次 `wait_for_feedback`，由 application terminal notifier 唤醒；
-- Tasks 客户端取得 task final result；
+- 通用 MCP adapter：`request_feedback` 返回后结束 turn；人类提交后显示恢复提示；
+  agent 被用户手动继续后调用 `get_feedback`；
+- Pi 原生 adapter：Pi package 调用 `/api/feedback/request` 后在同一工具调用中
+  `/api/feedback/wait`，终态时直接返回 package；
 - 兼容或恢复客户端按需调用 `get_feedback`，不得定时空轮询；
 - 相同 `request_id` 再次调用 `request_feedback` 可取得同一结果；
 - 所有路径读取相同 durable application query。

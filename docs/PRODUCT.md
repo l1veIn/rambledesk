@@ -29,13 +29,14 @@
 **RambleDesk**：面向 agent 的体验式反馈工作台。
 
 - **桌面应用（Tauri）**：待命、收请求、ramble（语音 + 截图）、管理 session 与历史。
-- **本地 MCP（工作台宿主，Figma 模式）**：agent 连接后可调用正式工具；工作台关闭则 MCP 不可用。
+- **适配器**：通用 MCP adapter 覆盖普通 coding agent；Pi 原生 package 走本地
+  JSON API 并在 Pi 工具调用内等待人类反馈。
 - **核心协议**：
   - `request_feedback`：幂等创建体验请求并立即返回 durable handle。
-  - `wait_for_feedback`：一次挂起等待终态并返回完整反馈包，避免 token 空轮询。
-  - `get_feedback` / `list_feedback_requests`：兼容、断线恢复和诊断查询。
+  - `get_feedback`：兼容、断线恢复和诊断查询。
   - `cancel_feedback`：显式取消。
-  - `notify_complete`：目标结束或阶段完成时通知人类。
+  - Pi package 专用 `/api/feedback/wait`：在 Pi tool call 内等待终态并返回完整
+    Feedback Package。
 - **反馈产物**：每个请求对应一个不可变目录（`feedback.md` +
   `manifest.json` + 引用图片），URI 和路径作为 tool 结果返回。
 - **产品语义**：工作台开启 = 人类处于可被呼叫的待命状态；不是「人必须一直在工作台里操作」。
@@ -57,14 +58,16 @@
 | 模块 | 内容 |
 |------|------|
 | 平台 | 桌面：Windows / macOS / Linux（Tauri） |
-| MCP | 同机 Streamable HTTP MCP，由工作台进程提供；引导配置到 Codex、Claude Code |
-| 工具 | `request_feedback`、`wait_for_feedback`、`get_feedback`、`list_feedback_requests`、`cancel_feedback`、`notify_complete` |
+| 通用 MCP adapter | 同机 Streamable HTTP MCP，由工作台进程提供；引导配置到 Codex、Claude Code、OpenCode 等 |
+| Pi 原生 adapter | `packages/pi-rambledesk` Pi package，通过本地 JSON API 创建并等待反馈 |
+| 通用 MCP 工具 | `request_feedback`、`get_feedback`、`cancel_feedback` |
+| 本地 JSON API | `/api/feedback/request`、`/api/feedback/get`、`/api/feedback/wait`、`/api/feedback/cancel` |
 | Ramble | 语音录入与转写、截图、编辑 MD、提交回传 |
 | Session | 列表与详情（按 project + `agent` + `session_id` 区分）；当前未结束请求 |
 | 存储 | 请求与状态落盘；Feedback Package；基础日志 |
-| 恢复 | Request 持久化 + `request_id` 幂等重连；阻塞等待可安全重试，查询接口兜底 |
+| 恢复 | Request 持久化 + `request_id` 幂等重连；通用 MCP 手动恢复，Pi package 原地等待 |
 | 通知 | 系统通知 + 可选响铃；自定义 channel 预留 |
-| 分发 | 安装工作台 → 保持开启 → 配置 MCP → 正常使用 agent |
+| 分发 | 安装工作台 → 保持开启 → 配置 adapter → 正常使用 agent |
 
 ---
 
@@ -88,25 +91,33 @@
 ### 6.1 安装与待命
 
 1. 安装并打开 RambleDesk  
-2. 配置/复制 MCP 到 Codex 或 Claude Code  
+2. 在设置中配置通用 MCP adapter，或在 Pi 中安装 RambleDesk package
 3. 工作台保持开启（可托盘），进入待命  
 
-### 6.2 请求反馈（主路径）
+### 6.2 请求反馈（通用 MCP adapter）
 
 1. Agent 调用 `request_feedback`（含 `agent`、`session_id`、project、`what_happened`、`actions`，可选 `request_id`）
 2. 工作台通知用户，展示任务单；状态为 `waiting`  
 3. 用户按 `actions` 操作目标软件，边用边 ramble，按需截图  
 4. 草稿持续落盘；提交时原子生成 Feedback Package
-5. Agent 单次调用 `wait_for_feedback`；提交或取消后一次性取得完整结果
-6. Agent 获得 package URI/路径，在同一任务中继续迭代
+5. RambleDesk 显示通用恢复提示；用户回到宿主继续
+6. Agent 调用 `get_feedback`，获得 package URI/路径并继续迭代
 
-### 6.3 结束通知
+### 6.3 请求反馈（Pi 原生 adapter）
+
+1. Pi 调用 `request_ramble_feedback`
+2. Pi package 通过 `/api/feedback/request` 创建请求，并在同一个 tool call 中调用
+   `/api/feedback/wait`
+3. 用户在 RambleDesk 中提交或取消
+4. Pi tool call 返回终态 package；模型立即继续原任务
+
+### 6.4 结束通知
 
 1. Agent 调用 `notify_complete`（`summary` 等）  
 2. 工作台通知并标记 session 结束  
 3. 用户可查看历史，无需强制再回复  
 
-### 6.4 异常与恢复
+### 6.5 异常与恢复
 
 - 工作台未开或已关 → MCP 不可用，Agent 可稍后用相同 `request_id` 重试。
 - MCP 断线或 Agent 超时只结束一次 Invocation Attempt；Feedback Request 状态不变。
@@ -122,8 +133,8 @@ waiting → in_progress → completed
    └────────────┴──────→ cancelled
 ```
 
-Request 的正确性不依赖单次 holding 连接。wait、Tasks、兼容查询和重试必须读取
-同一持久化状态；客户端不得用固定间隔空轮询作为默认等待路径。
+Request 的正确性不依赖单次 holding 连接。通用 MCP 恢复、Pi wait、兼容查询和
+重试必须读取同一持久化状态；客户端不得用固定间隔空轮询作为默认等待路径。
 
 ---
 
@@ -132,7 +143,7 @@ Request 的正确性不依赖单次 holding 连接。wait、Tasks、兼容查询
 ```
 RambleDesk
 ├── 待命 / 首页
-│   ├── 当前状态（MCP 在线与否、待处理数量）
+│   ├── 当前状态（待处理数量）
 │   └── 快捷入口（待处理请求）
 ├── 请求 / Session
 │   ├── Session 列表（agent、session_id、状态、时间）
@@ -148,12 +159,11 @@ RambleDesk
 ├── 历史
 │   └── 按时间/项目浏览反馈文件夹
 ├── 设置
-│   ├── MCP 地址与配置引导
+│   ├── 适配器（通用 MCP、Pi package）
 │   ├── 通知（响铃、系统通知、自定义 channel 预留）
 │   ├── 反馈存储路径约定
 │   └── 语音/转写相关选项
 └── 托盘
-    ├── 在线状态
     ├── 待处理角标
     └── 打开主窗口 / 退出
 ```

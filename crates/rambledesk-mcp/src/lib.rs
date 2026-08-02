@@ -9,14 +9,16 @@ use std::{
 };
 
 use axum::{
-    Router,
+    Json, Router,
     body::Body,
+    extract::State,
     http::{
         HeaderValue, Request, Response, StatusCode,
-        header::{AUTHORIZATION, WWW_AUTHENTICATE},
+        header::{AUTHORIZATION, HOST, ORIGIN, WWW_AUTHENTICATE},
     },
     middleware::{self, Next},
     response::IntoResponse,
+    routing::post,
 };
 use rambledesk_core::{
     ApplicationError, CancelFeedbackInput, FeedbackApplication, FeedbackRequestView,
@@ -40,6 +42,7 @@ pub use token::{AccessToken, TokenError, default_token_path};
 
 pub const DEFAULT_PORT: u16 = 37_642;
 pub const MCP_PATH: &str = "/mcp";
+pub const API_PATH: &str = "/api";
 
 /// Install-time / client-config host identity (env on the MCP client entry).
 pub const HOST_ENV_KEY: &str = "RAMBLEDESK_HOST";
@@ -279,14 +282,136 @@ Auto-registered clients set RAMBLEDESK_HOST (and X-RambleDesk-Host) so the host 
 }
 
 #[derive(Clone)]
+struct ApiState {
+    application: FeedbackApplication,
+}
+
+async fn api_request_feedback(
+    State(state): State<ApiState>,
+    Json(input): Json<RequestFeedbackInput>,
+) -> Response<Body> {
+    api_feedback_result(
+        state
+            .application
+            .request_feedback(resolve_agent(input))
+            .await,
+        false,
+    )
+    .await
+}
+
+async fn api_get_feedback(
+    State(state): State<ApiState>,
+    Json(input): Json<GetFeedbackInput>,
+) -> Response<Body> {
+    api_feedback_result(state.application.get_feedback(input).await, true).await
+}
+
+async fn api_wait_for_feedback(
+    State(state): State<ApiState>,
+    Json(input): Json<GetFeedbackInput>,
+) -> Response<Body> {
+    api_feedback_result(state.application.wait_for_feedback(input).await, true).await
+}
+
+async fn api_cancel_feedback(
+    State(state): State<ApiState>,
+    Json(input): Json<CancelFeedbackInput>,
+) -> Response<Body> {
+    api_feedback_result(state.application.cancel_feedback(input).await, false).await
+}
+
+async fn api_feedback_result(
+    result: Result<FeedbackRequestView, ApplicationError>,
+    include_package_when_terminal: bool,
+) -> Response<Body> {
+    let value = match result {
+        Ok(value) => value,
+        Err(error) => return api_error_response(application_error_status(error.code()), error),
+    };
+
+    let mut structured = serde_json::to_value(&value).expect("application result must serialize");
+    let object = structured
+        .as_object_mut()
+        .expect("feedback request view must serialize as an object");
+    object.insert(
+        "server".to_owned(),
+        serde_json::to_value(HealthSnapshot::ready()).expect("health must serialize"),
+    );
+    if let Some(host) = current_request_host() {
+        object.insert("host".to_owned(), serde_json::Value::String(host));
+    }
+
+    if include_package_when_terminal
+        && matches!(
+            value.status,
+            FeedbackStatus::Completed | FeedbackStatus::Cancelled
+        )
+    {
+        match load_feedback_package(&value).await {
+            Ok(package) => {
+                object.insert("feedback_package".to_owned(), package);
+            }
+            Err(message) => {
+                return api_error_payload(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "FEEDBACK_PACKAGE_READ_FAILURE",
+                    &message,
+                    true,
+                );
+            }
+        }
+    }
+
+    Json(structured).into_response()
+}
+
+fn application_error_status(code: &str) -> StatusCode {
+    match code {
+        "INVALID_ARGUMENT" | "PROJECT_PATH_UNAVAILABLE" => StatusCode::BAD_REQUEST,
+        "PROJECT_NOT_FOUND" | "REQUEST_NOT_FOUND" | "ATTACHMENT_NOT_FOUND" => StatusCode::NOT_FOUND,
+        "REQUEST_CONFLICT"
+        | "REQUEST_ALREADY_COMPLETED"
+        | "REQUEST_TERMINAL"
+        | "DRAFT_CONFLICT"
+        | "ATTACHMENT_LIMIT" => StatusCode::CONFLICT,
+        _ => StatusCode::INTERNAL_SERVER_ERROR,
+    }
+}
+
+fn api_error_response(status: StatusCode, error: ApplicationError) -> Response<Body> {
+    api_error_payload(status, error.code(), error.message(), error.retryable())
+}
+
+fn api_error_payload(
+    status: StatusCode,
+    code: &str,
+    message: &str,
+    retryable: bool,
+) -> Response<Body> {
+    (
+        status,
+        Json(serde_json::json!({
+            "code": code,
+            "message": message,
+            "retryable": retryable,
+            "server": HealthSnapshot::ready(),
+        })),
+    )
+        .into_response()
+}
+
+#[derive(Clone)]
 struct AuthState {
     expected: Arc<[u8]>,
+    allowed_origins: Arc<[String]>,
 }
 
 impl AuthState {
-    fn new(token: &AccessToken) -> Self {
+    fn new(token: &AccessToken, allowed_origins: Vec<String>) -> Self {
         Self {
             expected: Arc::from(format!("Bearer {}", token.secret()).into_bytes()),
+            allowed_origins: Arc::from(allowed_origins),
         }
     }
 
@@ -295,6 +420,13 @@ impl AuthState {
             return false;
         };
         bool::from(self.expected.as_ref().ct_eq(actual.as_bytes()))
+    }
+
+    fn accepts_origin(&self, value: Option<&HeaderValue>) -> bool {
+        let Some(origin) = value.and_then(|value| value.to_str().ok()) else {
+            return true;
+        };
+        self.allowed_origins.iter().any(|allowed| allowed == origin)
     }
 }
 
@@ -313,6 +445,12 @@ async fn require_bearer(
     request: Request<Body>,
     next: Next,
 ) -> Response<Body> {
+    if !host_is_loopback(request.headers().get(HOST)) {
+        return (StatusCode::FORBIDDEN, "Forbidden").into_response();
+    }
+    if !state.accepts_origin(request.headers().get(ORIGIN)) {
+        return (StatusCode::FORBIDDEN, "Forbidden").into_response();
+    }
     if !state.accepts(request.headers().get(AUTHORIZATION)) {
         let mut response = (StatusCode::UNAUTHORIZED, "Unauthorized").into_response();
         response.headers_mut().insert(
@@ -324,6 +462,21 @@ async fn require_bearer(
 
     let host = extract_request_host(&request);
     REQUEST_HOST.scope(host, next.run(request)).await
+}
+
+fn host_is_loopback(value: Option<&HeaderValue>) -> bool {
+    let Some(host) = value
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return false;
+    };
+    let host = host
+        .rsplit_once(':')
+        .map(|(host, _port)| host)
+        .unwrap_or(host);
+    matches!(host, "127.0.0.1" | "localhost")
 }
 
 pub struct ServerHandle {
@@ -368,21 +521,32 @@ pub async fn start_server(
     application: FeedbackApplication,
 ) -> Result<ServerHandle, ServerError> {
     let cancellation = CancellationToken::new();
+    let allowed_origins = config.allowed_origins.clone();
     let transport_config = StreamableHttpServerConfig::default()
         .with_allowed_origins(config.allowed_origins)
         .with_max_request_body_bytes(256 * 1024)
         .with_cancellation_token(cancellation.child_token());
 
+    let mcp_application = application.clone();
     let service: StreamableHttpService<RambleDeskMcp, LocalSessionManager> =
         StreamableHttpService::new(
-            move || Ok(RambleDeskMcp::new(application.clone())),
+            move || Ok(RambleDeskMcp::new(mcp_application.clone())),
             Default::default(),
             transport_config,
         );
 
-    let auth = AuthState::new(&config.access_token);
+    let auth = AuthState::new(&config.access_token, allowed_origins);
+    let api = Router::new()
+        .route("/feedback/request", post(api_request_feedback))
+        .route("/feedback/get", post(api_get_feedback))
+        .route("/feedback/wait", post(api_wait_for_feedback))
+        .route("/feedback/cancel", post(api_cancel_feedback))
+        .with_state(ApiState {
+            application: application.clone(),
+        });
     let router = Router::new()
         .nest_service(MCP_PATH, service)
+        .nest(API_PATH, api)
         .layer(middleware::from_fn_with_state(auth, require_bearer));
 
     let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, config.port))

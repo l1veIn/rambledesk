@@ -1,12 +1,16 @@
-# RambleDesk MCP 与反馈协议
+# RambleDesk 适配器与反馈协议
 
-> 状态：M1 blocking wait feedback loop implemented
-> 版本：v1.1 · 2026-08-01
+> 状态：Generic MCP adapter + Pi local API baseline
+> 版本：v1.2 · 2026-08-02
 > 规范词：MUST / SHOULD / MAY 分别表示必须、建议和可选。
 
 ## 1. 兼容策略
 
-RambleDesk 使用 MCP Streamable HTTP，由桌面进程在本机提供单一 `/mcp` 端点。
+RambleDesk 桌面进程在本机提供两个同源 loopback 入口：
+
+- `/mcp`：通用 MCP adapter，面向没有专用宿主包的 coding agent；
+- `/api`：本地 JSON API，面向专用宿主包（首个目标是 Pi）。
+
 规范设计面向 MCP `2026-07-28`，但首发 wire profile 必须根据目标客户端实测，
 允许兼容 `2025-11-25`。
 
@@ -21,13 +25,23 @@ M0 已用 Claude Code 和 MCP Inspector 实测，并锁定官方 `rmcp` 3.0.0；
 
 ### 1.1 执行模式
 
-`request_feedback` 立即持久化并返回 `waiting`。正常客户端随后调用一次
-`wait_for_feedback`，由服务端挂起到 `completed` 或 `cancelled`，不得通过定时
-`get_feedback` 空轮询。`get_feedback` 只用于断线恢复、旧客户端兼容和诊断。
+通用 MCP adapter 只提供短调用：
+
+- `request_feedback`：立即持久化并返回 `waiting`；
+- `get_feedback`：恢复或诊断时读取当前状态；
+- `cancel_feedback`：取消未完成请求。
+
+使用通用 MCP adapter 的宿主在 `request_feedback` 后应结束当前 turn。人类提交或
+取消后，RambleDesk 显示通用恢复提示，由用户回到宿主后触发继续；恢复后的 agent
+再调用 `get_feedback` 读取结果。通用 MCP adapter 不提供“自动唤醒原会话”的保证。
 
 客户端超时或连接中断不会改变 Feedback Request；调用方可用同一 `request_id`
-重新调用 `wait_for_feedback`。因此长时间 HTTP 响应用于节省空转 token，但不是
-请求正确性或持久性的前提。MCP Tasks 仍须在完成目标客户端回归后显式启用。
+重新调用 `request_feedback` 或 `get_feedback`。MCP Tasks 仍须在完成目标客户端
+回归后显式启用。
+
+Pi 原生适配器不走 MCP。Pi package 通过 `/api/feedback/request` 创建请求，然后在
+同一个 Pi 工具调用中调用 `/api/feedback/wait` 挂起到 `completed` 或 `cancelled`。
+这条路径没有提交后的 wake 阶段：Pi 工具调用本身就是等待点。
 
 无论采用哪种模式，Feedback Request 都必须在第一次工具调用返回前持久化。
 
@@ -164,9 +178,32 @@ M0 已用 Claude Code 和 MCP Inspector 实测，并锁定官方 `rmcp` 3.0.0；
 
 Tasks 模式下，最终 task result 必须使用相同完成结果结构。
 
-## 4. `wait_for_feedback`
+## 4. 本地 JSON API
 
-正常客户端在 `request_feedback` 后调用一次并等待终态。
+所有 `/api` 端点使用与 `/mcp` 相同的 bearer token、loopback Host 校验和 Origin
+策略。请求体和响应体均为 JSON。
+
+### 4.1 `POST /api/feedback/request`
+
+输入与 `request_feedback` 相同。响应与 `request_feedback` 的普通结果相同。
+当调用方设置 `X-RambleDesk-Host: pi` 时，服务端将 `agent` 归一为 `pi`。
+
+### 4.2 `POST /api/feedback/get`
+
+输入：
+
+```json
+{
+  "request_id": "019..."
+}
+```
+
+输出与 `get_feedback` 相同；终态时附带 `feedback_package`。
+
+### 4.3 `POST /api/feedback/wait`
+
+专用宿主包使用的阻塞等待端点。当前 Pi package 默认在创建请求后调用一次并等待
+终态。
 
 输入：
 
@@ -198,11 +235,15 @@ Tasks 模式下，最终 task result 必须使用相同完成结果结构。
 
 取消时返回 `status: "cancelled"`、`execution_mode: "wait"` 和
 `feedback_package: null`。多个并发等待者必须同时被提交或取消唤醒。调用被宿主
-取消只结束该次等待，不取消领域请求；业务取消仍使用 `cancel_feedback`。
+取消只结束该次等待，不取消领域请求。
+
+### 4.4 `POST /api/feedback/cancel`
+
+输入与 `cancel_feedback` 相同。业务取消语义与 MCP `cancel_feedback` 一致。
 
 ## 5. `get_feedback`
 
-用于旧客户端兼容、断线恢复和诊断，不应作为定时轮询循环使用。
+MCP 工具，用于通用 adapter 的手动恢复、断线恢复和诊断，不应作为定时轮询循环使用。
 
 输入：
 
@@ -218,7 +259,8 @@ Tasks 模式下，最终 task result 必须使用相同完成结果结构。
 
 ## 6. `list_feedback_requests`
 
-只读恢复工具。默认只列出未结束请求。
+内部应用查询和桌面 UI 使用的只读恢复能力。默认只列出未结束请求；当前不暴露为
+通用 MCP tool。
 
 输入：
 
@@ -263,7 +305,7 @@ Tasks 模式下，最终 task result 必须使用相同完成结果结构。
 
 ## 8. `notify_complete`
 
-非 holding 工具，用于通知一个 Agent Session 已完成。
+后续预留能力，用于通知一个 Agent Session 已完成；当前不暴露为通用 MCP tool。
 
 输入：
 
@@ -418,7 +460,7 @@ M1 的 durable publication 由 storage 平台兼容层提供：macOS/Unix 使用
 - 存在 `Origin` 时必须验证 allowlist，拒绝未知 Origin；
 - MCP 端点要求安装时生成的至少 256-bit 随机 bearer token；
 - token 存在操作系统安全存储或权限受限文件中，不写入日志；
-- UI 显示当前端口、认证状态和复制配置入口；
+- UI 在适配器设置中显示通用 MCP 配置入口；MCP 不作为全局连接状态展示；
 - `root_path` 必须 canonicalize，并阻止通过 symlink/`..` 越界写入；
 - 日志默认记录元数据，不记录完整 ramble、截图内容或 token。
 

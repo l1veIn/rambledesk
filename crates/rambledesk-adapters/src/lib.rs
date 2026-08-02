@@ -6,7 +6,9 @@
 //! domain/protocol changes.
 //!
 //! - Missing or unknown host id → [`GenericWakeupAdapter`] (UI prompt path)
-//! - Matched host id → host-specific adapters (Claude Code, Codex, Pi, OpenCode)
+//! - Native host integrations should own their full request/get/wait path when
+//!   the host can suspend inside that tool call (for example the Pi package).
+//!   They do not need a post-submit wakeup adapter.
 
 mod hosts;
 mod presentation;

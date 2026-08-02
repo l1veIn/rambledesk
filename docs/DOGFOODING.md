@@ -56,3 +56,30 @@
 ### Next focus
 
 - Run the final automated regression, remove ignored design/history payloads from the final tree, and Squash merge the iteration.
+
+## 2026-08-02 — adapter polish, Pi one-click install, and UI fixes
+
+### Goal
+
+- Verify the previous round's two feedback fixes (generic MCP collapsed by default, Pi one-click install) and collect the next set of operator findings.
+
+### Fixes shipped
+
+- Generic MCP adapter section is now a `<details>` collapsed by default; detection, selection, and install live inside the expanded body.
+- New `install_pi_package` Tauri command resolves `packages/pi-rambledesk` from the project root or by walking up from the working/executable directory, locates the `pi` CLI (`RAMBLEDESK_PI_BIN` override), and runs `pi install` with a success/error surface in the UI.
+- Settings backdrop now matches the window's 16 px bottom corner radius (the blur box previously showed square corners beyond the rounded window).
+- Settings sidebar nav now keeps the chevron flush right with the count badge grouped beside it instead of squeezing the arrow.
+- Removed the useless "Source package available" badge from the Pi native adapter card.
+- Settings dialog now closes on Escape.
+- Pi package (`packages/pi-rambledesk`) generates a stable per-call request id and retries transient connection failures with backoff, so the observed "request created but response lost" flake no longer produces duplicate requests; the server-side wait remains unbounded (verified: `wait_for_feedback` has no timeout).
+- `docs/UI_SHADCN_MIGRATION.md` written: full shadcn-svelte migration plan with token mapping, component inventory, step ordering, and acceptance gates. Migration is deferred to future iterations by operator decision.
+
+### Validation
+
+- `cargo fmt --all --check`, strict workspace clippy, `cargo test --workspace --all-targets`, `pnpm check`, `pnpm test`, `pnpm build:web`, `pnpm contracts:check`, `pnpm mcp:self-test`, `pnpm mcp:inspector-smoke`, and `pnpm test:pi` all pass.
+- New unit tests cover package-dir resolution (project root, upward walk, missing) and Pi retry idempotency.
+
+### Next focus
+
+- Operator will verify the waiting behavior of `request_ramble_feedback` (long wait without failure) and visually accept the modal corner fix, nav alignment, and badge removal.
+- Begin the shadcn-svelte migration per `docs/UI_SHADCN_MIGRATION.md`.

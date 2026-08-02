@@ -598,7 +598,6 @@
 :root[data-theme="dark"] .inbox-tabs button.active,
 :root[data-theme="dark"] .request-card.active,
 :root[data-theme="dark"] .request-card:hover,
-:root[data-theme="dark"] .connection-card,
 :root[data-theme="dark"] .task-sheet,
 :root[data-theme="dark"] .editor-section,
 :root[data-theme="dark"] .tool-card,

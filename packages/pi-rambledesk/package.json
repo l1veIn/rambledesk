@@ -1,0 +1,32 @@
+{
+  "name": "@rambledesk/pi",
+  "version": "0.1.0",
+  "description": "Pi package for native RambleDesk request/get/wait feedback flow.",
+  "type": "module",
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "rambledesk"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.js"
+    ]
+  },
+  "dependencies": {
+    "typebox": "^1.3.9"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  }
+}

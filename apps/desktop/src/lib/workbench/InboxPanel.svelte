@@ -1,6 +1,4 @@
 <script lang="ts">
-  import { ArrowUpRight } from '@lucide/svelte'
-
   import type { FeedbackRequestSummary } from '../feedback'
   import { requestStatusLabel } from '../feedback'
   import { t } from '../i18n'
@@ -12,14 +10,12 @@
   export let loadingHistory = false
   export let requests: FeedbackRequestSummary[] = []
   export let activeRequestId: string | null = null
-  export let endpoint = ''
   export let adapterPresentation: (hostId: string) => AdapterPresentation
   export let formatTime: (value: string | null | undefined) => string
   export let onRefresh: () => void = () => {}
   export let onShowOpen: () => void = () => {}
   export let onShowHistory: () => void = () => {}
   export let onOpenRequest: (requestId: string) => void = () => {}
-  export let onOpenSettings: () => void = () => {}
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
@@ -73,14 +69,4 @@
     </nav>
   {/if}
 
-  <button
-    type="button"
-    class="connection-card"
-    aria-label={tr('打开 MCP 设置')}
-    onclick={onOpenSettings}
-  >
-    <span>Local MCP</span>
-    <code>{endpoint}</code>
-    <ArrowUpRight size={15} strokeWidth={1.7} />
-  </button>
 </aside>
