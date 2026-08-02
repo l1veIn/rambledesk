@@ -146,7 +146,7 @@ pnpm dev
 隔离本地状态：
 
 ```bash
-RAMBLEDESK_DATABASE_FILE=/absolute/test/rambledesk.sqlite3 \
+RAMBLEDESK_DATABASE_FILE=/absolute/test/feedback.sqlite3 \
 RAMBLEDESK_LOCAL_SERVER_TOKEN_FILE=/absolute/test/local-server.token \
 RAMBLEDESK_LOCAL_SERVER_PORT=0 \
 pnpm dev

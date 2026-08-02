@@ -253,7 +253,7 @@ waiting → in_progress → completed
 
 ```text
 <local-data>/RambleDesk/
-├── rambledesk.sqlite3
+├── feedback.sqlite3
 ├── auth/
 ├── drafts/<request-id>/
 ├── feedback/<timestamp>-<request-id>/

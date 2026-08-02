@@ -135,7 +135,7 @@ impl SqliteFeedbackStore {
 
 pub fn default_database_path() -> Result<std::path::PathBuf, StorageOpenError> {
     dirs::data_local_dir()
-        .map(|root| root.join("RambleDesk").join("rambledesk.sqlite3"))
+        .map(|root| root.join("RambleDesk").join("feedback.sqlite3"))
         .ok_or(StorageOpenError::DataDirectoryUnavailable)
 }
 
