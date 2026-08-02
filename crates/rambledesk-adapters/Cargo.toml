@@ -10,6 +10,7 @@ description = "Host continuation adapters for RambleDesk (generic fallback + per
 [dependencies]
 rambledesk-core.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 
 [dev-dependencies]
-serde_json.workspace = true
+tempfile.workspace = true

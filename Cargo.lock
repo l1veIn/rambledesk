@@ -4310,6 +4310,7 @@ dependencies = [
  "rambledesk-core",
  "serde",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]

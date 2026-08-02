@@ -62,7 +62,7 @@ thread；Codex MCP 完整矩阵仍未补跑。
 
 | 宿主 | 本机版本 | session id 获取 | wake / resume 证据 | 当前结论 |
 |------|----------|-----------------|--------------------|----------|
-| Claude Code | 2.1.207 | `--session-id <uuid>` 可由调用方指定；`--print --output-format json` 返回同一 `session_id` | `--resume <uuid>` 复用同一会话；`--resume <uuid> --background <prompt>` 启动 background agent 并处理恢复消息；真实 MCP `request_feedback → completed package → resume → get_feedback` 通过 | B 级：可自动投递；若拿不到 session id，需要启动/注册流程注入 |
+| Claude Code | 2.1.207 | `--session-id <uuid>` 可由调用方指定；真实会话也可从 `~/.claude/projects/.../*.jsonl` 中按 `request_id` 反查 | `claude --resume <uuid> -p --output-format json <prompt>` 可恢复同一会话并拉取 completed package；`--background` 会创建独立 background agent，不会把输出写回原 TTY | B 级：可自动投递；原终端不会自动刷新，需重新打开/查看 transcript 才能看到恢复结果 |
 | Codex CLI | 0.146.0-alpha.9.2 | `codex exec --json` 输出 `thread.started.thread_id` | `codex exec resume <thread_id> <prompt> --json` 跨 cwd 复用同一 thread | B 级：可自动投递；session id 需从 CLI 事件或宿主上下文登记 |
 | Pi | 0.83.0 | `--session-id <uuid>` 可指定；`--mode json` session event 返回同一 id | `pi --session <uuid> --print` 需要在原 project cwd；非默认 session-dir 还需要 `--session-dir` | B/C 边界：可自动投递，但 adapter 必须带 project cwd，定制 session-dir 需显式配置 |
 | OpenCode | 1.18.11 | `opencode run --format json` 输出 `sessionID`（`ses_...`） | `opencode run --dir <project> --session <sessionID>` 通过；不带 `--dir` 的跨 cwd 恢复卡住且无 JSON 事件 | B/C 边界：可自动投递，但必须带 project dir 或 attach 到正确 server |
@@ -70,6 +70,14 @@ thread；Codex MCP 完整矩阵仍未补跑。
 设计修正：
 
 - `request_feedback` 没有新增宿主专用参数；仍使用既有 `agent`、`session_id`、`project.root_path`。
+- Claude Code 不能信任模型主动填入的 `session_id`：真实 dogfood 中模型传入了
+  `test-session-001`，导致 adapter resume 到无效目标。Claude adapter 现在会按
+  `request_id` 扫描对应项目 transcript，反查真实 `sessionId`；只有找不到时才退回
+  MCP payload 中的 `session_id`。
+- Claude Code 的自动恢复使用 print mode，而不是 background mode。若原 transcript
+  显示该会话已处于 `bypassPermissions`，adapter 会沿用
+  `--permission-mode bypassPermissions`；否则只允许
+  `mcp__rambledesk__get_feedback` 并使用 `--permission-mode dontAsk`，避免后台卡权限确认。
 - `agent` 不能只依赖 `X-RambleDesk-Host` 自动覆盖；真实 Claude MCP 路径可完成调用，但不应假设所有客户端转发自定义 header。因此专用安装/提示仍要求宿主传入稳定 host id。
 - `project.root_path` 已进入 wake payload，供 Pi/OpenCode 这类按项目 cwd 解析 session 的宿主使用；wake payload 仍不携带 Package 正文。
 - Pi 的非默认 session-dir 通过 `RAMBLEDESK_PI_SESSION_DIR` 或 `PI_CODING_AGENT_SESSION_DIR` 传给 adapter。

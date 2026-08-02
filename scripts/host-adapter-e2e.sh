@@ -4,10 +4,44 @@ set -euo pipefail
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 CODEX_BIN=${RAMBLEDESK_CODEX_BIN:-/Applications/ChatGPT.app/Contents/Resources/codex}
 OPENCODE_BIN=${RAMBLEDESK_OPENCODE_BIN:-$HOME/.opencode/bin/opencode}
-CLAUDE_MODEL_ARGS=()
-if [[ -n "${RAMBLEDESK_CLAUDE_MODEL:-}" ]]; then
-  CLAUDE_MODEL_ARGS=(--model "$RAMBLEDESK_CLAUDE_MODEL")
-fi
+
+run_claude_cli() {
+  if [[ -n "${RAMBLEDESK_CLAUDE_MODEL:-}" ]]; then
+    claude --model "$RAMBLEDESK_CLAUDE_MODEL" "$@"
+  else
+    claude "$@"
+  fi
+}
+
+start_rambledesk_server() {
+  local dir=$1
+  cargo run -q -p rambledesk-cli -- serve \
+    --port 0 \
+    --token-file "$dir/token" \
+    --database-file "$dir/rambledesk.sqlite3" \
+    --print-token > "$dir/server.json" 2> "$dir/server.log" &
+  echo "$!"
+}
+
+wait_for_server_json() {
+  local dir=$1
+  local pid=$2
+  local endpoint token
+  for _ in $(seq 1 120); do
+    endpoint=$(jq -r '.endpoint // empty' "$dir/server.json" 2>/dev/null || true)
+    token=$(jq -r '.accessToken // empty' "$dir/server.json" 2>/dev/null || true)
+    if [[ -n "$endpoint" && -n "$token" ]]; then
+      return 0
+    fi
+    if ! kill -0 "$pid" 2>/dev/null; then
+      break
+    fi
+    sleep 0.25
+  done
+  echo "RambleDesk test server did not publish endpoint/token" >&2
+  sed -n '1,120p' "$dir/server.log" >&2 || true
+  exit 1
+}
 
 need() {
   command -v "$1" >/dev/null || {
@@ -40,10 +74,10 @@ run_claude() {
   sid=$(lower_uuid)
   (
     cd "$dir"
-    claude "${CLAUDE_MODEL_ARGS[@]}" --session-id "$sid" -p --output-format json \
+    run_claude_cli --session-id "$sid" -p --output-format json \
       "RambleDesk adapter E2E probe. Do not use tools. Reply exactly: RD_E2E_CLAUDE_READY" \
       > first.json
-    claude "${CLAUDE_MODEL_ARGS[@]}" --resume "$sid" -p --output-format json \
+    run_claude_cli --resume "$sid" -p --output-format json \
       "RambleDesk adapter E2E resume probe. Do not use tools. Reply exactly: RD_E2E_CLAUDE_RESUMED" \
       > second.json
   )
@@ -53,7 +87,7 @@ run_claude() {
 
   run_id=$(
     cd "$dir"
-    claude "${CLAUDE_MODEL_ARGS[@]}" --resume "$sid" --background \
+    run_claude_cli --resume "$sid" --background \
       "RambleDesk adapter background wake probe. Do not edit files. Reply exactly: RD_E2E_CLAUDE_BACKGROUND" |
       awk '/backgrounded ·/ {print $3}'
   )
@@ -148,17 +182,9 @@ run_claude_mcp_request() {
   need sqlite3
   local dir server_pid endpoint token sid rid project_root
   dir=$(mktemp -d /tmp/rambledesk-claude-mcp-e2e.XXXXXX)
-  target/debug/rambledesk serve \
-    --port 0 \
-    --token-file "$dir/token" \
-    --database-file "$dir/rambledesk.sqlite3" \
-    --print-token > "$dir/server.json" 2> "$dir/server.log" &
-  server_pid=$!
+  server_pid=$(start_rambledesk_server "$dir")
   trap 'kill -INT "$server_pid" 2>/dev/null || true' RETURN
-  for _ in $(seq 1 80); do
-    [[ -s "$dir/server.json" ]] && break
-    sleep 0.25
-  done
+  wait_for_server_json "$dir" "$server_pid"
   endpoint=$(jq -r '.endpoint' "$dir/server.json")
   token=$(jq -r '.accessToken' "$dir/server.json")
   sid=$(lower_uuid)
@@ -170,7 +196,7 @@ run_claude_mcp_request() {
     > "$dir/claude-mcp.json"
   (
     cd "$project_root"
-    claude "${CLAUDE_MODEL_ARGS[@]}" --session-id "$sid" -p --output-format json \
+    run_claude_cli --session-id "$sid" -p --output-format json \
       --mcp-config "$dir/claude-mcp.json" --strict-mcp-config \
       --allowedTools mcp__rambledesk__request_feedback \
       --permission-mode dontAsk \
@@ -192,17 +218,9 @@ run_claude_full_loop() {
   need sqlite3
   local dir server_pid endpoint token sid rid project_root pkg sha now
   dir=$(mktemp -d /tmp/rambledesk-claude-full-e2e.XXXXXX)
-  target/debug/rambledesk serve \
-    --port 0 \
-    --token-file "$dir/token" \
-    --database-file "$dir/rambledesk.sqlite3" \
-    --print-token > "$dir/server.json" 2> "$dir/server.log" &
-  server_pid=$!
+  server_pid=$(start_rambledesk_server "$dir")
   trap 'kill -INT "$server_pid" 2>/dev/null || true' RETURN
-  for _ in $(seq 1 80); do
-    [[ -s "$dir/server.json" ]] && break
-    sleep 0.25
-  done
+  wait_for_server_json "$dir" "$server_pid"
   endpoint=$(jq -r '.endpoint' "$dir/server.json")
   token=$(jq -r '.accessToken' "$dir/server.json")
   sid=$(lower_uuid)
@@ -214,7 +232,7 @@ run_claude_full_loop() {
     > "$dir/claude-mcp.json"
   (
     cd "$project_root"
-    claude "${CLAUDE_MODEL_ARGS[@]}" --session-id "$sid" -p --output-format json \
+    run_claude_cli --session-id "$sid" -p --output-format json \
       --mcp-config "$dir/claude-mcp.json" --strict-mcp-config \
       --allowedTools mcp__rambledesk__request_feedback \
       --permission-mode dontAsk \
@@ -231,7 +249,7 @@ run_claude_full_loop() {
     "INSERT INTO feedback_results (request_id, package_uri, directory_path, markdown_path, manifest_path, manifest_sha256, published_at) VALUES ('$rid', 'file://$pkg', '$pkg', '$pkg/feedback.md', '$pkg/manifest.json', '$sha', '$now'); UPDATE feedback_requests SET status = 'completed', revision = revision + 1, updated_at = '$now', completed_at = '$now' WHERE id = '$rid';"
   (
     cd "$project_root"
-    claude "${CLAUDE_MODEL_ARGS[@]}" --resume "$sid" -p --output-format json \
+    run_claude_cli --resume "$sid" -p --output-format json \
       --mcp-config "$dir/claude-mcp.json" --strict-mcp-config \
       --allowedTools mcp__rambledesk__get_feedback \
       --permission-mode dontAsk \

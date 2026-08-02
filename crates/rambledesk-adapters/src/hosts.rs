@@ -1,6 +1,7 @@
 use std::{
-    env,
-    path::PathBuf,
+    env, fs,
+    io::{BufRead, BufReader},
+    path::{Path, PathBuf},
     process::{Command, Stdio},
     sync::Arc,
     thread,
@@ -55,19 +56,10 @@ impl HostKind {
         let session_id = payload.session_id.trim().to_owned();
         let current_dir = project_current_dir(payload);
         match self {
-            Self::ClaudeCode => binary_candidates("RAMBLEDESK_CLAUDE_BIN", ["claude"].as_slice())
-                .into_iter()
-                .map(|program| CommandSpec {
-                    program,
-                    args: vec![
-                        "--resume".to_owned(),
-                        session_id.clone(),
-                        "--background".to_owned(),
-                        prompt.clone(),
-                    ],
-                    current_dir: current_dir.clone(),
-                })
-                .collect(),
+            Self::ClaudeCode => {
+                let home = env::var_os("HOME").filter(|value| !value.is_empty());
+                claude_command_specs(payload, home.as_ref().map(Path::new))
+            }
             Self::Codex => binary_candidates(
                 "RAMBLEDESK_CODEX_BIN",
                 [
@@ -285,6 +277,254 @@ fn clean(value: &str) -> Option<&str> {
     (!value.is_empty()).then_some(value)
 }
 
+fn claude_command_specs(payload: &WakePayload, home: Option<&Path>) -> Vec<CommandSpec> {
+    let prompt = payload.resume_prompt();
+    let resume_context = claude_resume_context(payload, home);
+    let current_dir = project_current_dir(payload);
+    binary_candidates("RAMBLEDESK_CLAUDE_BIN", ["claude"].as_slice())
+        .into_iter()
+        .map(|program| {
+            let mut args = vec![
+                "--resume".to_owned(),
+                resume_context.session_id.clone(),
+                "-p".to_owned(),
+                "--output-format".to_owned(),
+                "json".to_owned(),
+            ];
+            match resume_context.permission_mode {
+                ClaudePermissionMode::BypassPermissions => {
+                    args.extend([
+                        "--permission-mode".to_owned(),
+                        "bypassPermissions".to_owned(),
+                    ]);
+                }
+                ClaudePermissionMode::Default => {
+                    args.extend([
+                        "--allowedTools".to_owned(),
+                        "mcp__rambledesk__get_feedback".to_owned(),
+                        "--permission-mode".to_owned(),
+                        "dontAsk".to_owned(),
+                    ]);
+                }
+            }
+            args.push(prompt.clone());
+            CommandSpec {
+                program,
+                args,
+                current_dir: current_dir.clone(),
+            }
+        })
+        .collect()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ClaudeResumeContext {
+    session_id: String,
+    permission_mode: ClaudePermissionMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ClaudePermissionMode {
+    BypassPermissions,
+    Default,
+}
+
+impl ClaudePermissionMode {
+    fn from_str(value: &str) -> Self {
+        match value {
+            "bypassPermissions" => Self::BypassPermissions,
+            _ => Self::Default,
+        }
+    }
+}
+
+fn claude_resume_context(payload: &WakePayload, home: Option<&Path>) -> ClaudeResumeContext {
+    home.and_then(|home| infer_claude_resume_context_from_home(home, payload))
+        .unwrap_or_else(|| ClaudeResumeContext {
+            session_id: payload.session_id.trim().to_owned(),
+            permission_mode: ClaudePermissionMode::Default,
+        })
+}
+
+fn infer_claude_resume_context_from_home(
+    home: &Path,
+    payload: &WakePayload,
+) -> Option<ClaudeResumeContext> {
+    let projects_dir = home.join(".claude").join("projects");
+    let request_id = clean(&payload.request_id)?;
+    let mut candidate_dirs = Vec::new();
+    if let Some(project_root) = payload
+        .project_root_path
+        .as_deref()
+        .and_then(clean)
+        .map(PathBuf::from)
+    {
+        candidate_dirs.push(projects_dir.join(claude_project_dir_name(&project_root)));
+        if let Ok(canonical) = fs::canonicalize(&project_root) {
+            candidate_dirs.push(projects_dir.join(claude_project_dir_name(&canonical)));
+        }
+    }
+    candidate_dirs = dedupe_paths(candidate_dirs);
+
+    for directory in &candidate_dirs {
+        if let Some(context) = find_claude_resume_context_in_project_dir(directory, request_id) {
+            return Some(context);
+        }
+    }
+
+    for directory in fs::read_dir(projects_dir).ok()?.flatten() {
+        let path = directory.path();
+        if candidate_dirs.iter().any(|candidate| candidate == &path) {
+            continue;
+        }
+        if let Some(context) = find_claude_resume_context_in_project_dir(&path, request_id) {
+            return Some(context);
+        }
+    }
+    None
+}
+
+fn claude_project_dir_name(path: &Path) -> String {
+    path.to_string_lossy()
+        .chars()
+        .map(|character| match character {
+            '/' | '\\' => '-',
+            character
+                if character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-') =>
+            {
+                character
+            }
+            _ => '-',
+        })
+        .collect()
+}
+
+fn find_claude_resume_context_in_project_dir(
+    directory: &Path,
+    request_id: &str,
+) -> Option<ClaudeResumeContext> {
+    if !directory.is_dir() {
+        return None;
+    }
+    let mut files = fs::read_dir(directory)
+        .ok()?
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|extension| extension == "jsonl")
+        })
+        .collect::<Vec<_>>();
+    files.sort_by_key(|path| {
+        fs::metadata(path)
+            .and_then(|metadata| metadata.modified())
+            .ok()
+    });
+    files.reverse();
+
+    for path in files {
+        let Ok(file) = fs::File::open(path) else {
+            continue;
+        };
+        let mut match_in_file = None;
+        let mut permission_mode = ClaudePermissionMode::Default;
+        for line in BufReader::new(file).lines().map_while(Result::ok) {
+            let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) else {
+                continue;
+            };
+            if let Some(mode) = value
+                .get("permissionMode")
+                .and_then(serde_json::Value::as_str)
+            {
+                permission_mode = ClaudePermissionMode::from_str(mode);
+            }
+            if !line.contains(request_id) {
+                continue;
+            }
+            if !claude_json_references_feedback_request(&value, request_id) {
+                continue;
+            }
+            if let Some(session_id) = claude_session_id_from_json(&value) {
+                match_in_file = Some(ClaudeResumeContext {
+                    session_id,
+                    permission_mode,
+                });
+            }
+        }
+        if match_in_file.is_some() {
+            return match_in_file;
+        }
+    }
+    None
+}
+
+fn claude_json_references_feedback_request(value: &serde_json::Value, request_id: &str) -> bool {
+    if value
+        .pointer("/mcpMeta/structuredContent/request_id")
+        .and_then(serde_json::Value::as_str)
+        == Some(request_id)
+    {
+        return true;
+    }
+    if value
+        .get("attributionMcpTool")
+        .and_then(serde_json::Value::as_str)
+        == Some("request_feedback")
+        && json_value_contains(value, request_id)
+    {
+        return true;
+    }
+    if let Some(result) = value
+        .get("toolUseResult")
+        .and_then(serde_json::Value::as_str)
+        && serde_json::from_str::<serde_json::Value>(result)
+            .ok()
+            .and_then(|parsed| {
+                parsed
+                    .get("request_id")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_owned)
+            })
+            .as_deref()
+            == Some(request_id)
+    {
+        return true;
+    }
+
+    value
+        .pointer("/message/content")
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|blocks| {
+            blocks.iter().any(|block| {
+                block.get("name").and_then(serde_json::Value::as_str)
+                    == Some("mcp__rambledesk__request_feedback")
+                    && json_value_contains(block.get("input").unwrap_or(block), request_id)
+            })
+        })
+}
+
+fn claude_session_id_from_json(value: &serde_json::Value) -> Option<String> {
+    value
+        .get("sessionId")
+        .or_else(|| value.get("session_id"))
+        .and_then(serde_json::Value::as_str)
+        .and_then(clean)
+        .map(ToOwned::to_owned)
+}
+
+fn json_value_contains(value: &serde_json::Value, needle: &str) -> bool {
+    match value {
+        serde_json::Value::String(value) => value.contains(needle),
+        serde_json::Value::Array(values) => values
+            .iter()
+            .any(|value| json_value_contains(value, needle)),
+        serde_json::Value::Object(values) => values
+            .values()
+            .any(|value| json_value_contains(value, needle)),
+        _ => false,
+    }
+}
+
 fn pi_args(session_id: &str, prompt: &str) -> Vec<String> {
     let mut args = Vec::new();
     if let Some(session_dir) = env::var("RAMBLEDESK_PI_SESSION_DIR")
@@ -401,12 +641,76 @@ mod tests {
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].args[0], "--resume");
         assert_eq!(calls[0].args[1], "claude-session");
-        assert!(calls[0].args.contains(&"--background".to_owned()));
+        assert!(calls[0].args.contains(&"-p".to_owned()));
+        assert!(
+            calls[0]
+                .args
+                .windows(2)
+                .any(|args| { args == ["--output-format".to_owned(), "json".to_owned(),] })
+        );
+        assert!(calls[0].args.windows(2).any(|args| {
+            args == [
+                "--allowedTools".to_owned(),
+                "mcp__rambledesk__get_feedback".to_owned(),
+            ]
+        }));
+        assert!(
+            calls[0]
+                .args
+                .windows(2)
+                .any(|args| { args == ["--permission-mode".to_owned(), "dontAsk".to_owned(),] })
+        );
+        assert!(!calls[0].args.contains(&"--background".to_owned()));
         assert_eq!(
             calls[0].current_dir,
             Some(PathBuf::from("/tmp/rambledesk-project"))
         );
         assert!(calls[0].args.iter().any(|arg| arg.contains("get_feedback")));
+    }
+
+    #[test]
+    fn claude_adapter_infers_real_session_from_transcript() {
+        let home = tempfile::tempdir().expect("home");
+        let project_dir = home
+            .path()
+            .join(".claude")
+            .join("projects")
+            .join("-tmp-rambledesk-project");
+        std::fs::create_dir_all(&project_dir).expect("project dir");
+        std::fs::write(
+            project_dir.join("real-session.jsonl"),
+            r#"{"type":"user","sessionId":"e5ca15ac-8023-487c-a7fb-6448afb1109a","permissionMode":"bypassPermissions","message":{"content":"start"}}"#
+                .to_owned()
+                + "\n"
+                + r#"{"type":"assistant","sessionId":"e5ca15ac-8023-487c-a7fb-6448afb1109a","message":{"content":[{"type":"tool_use","name":"mcp__rambledesk__request_feedback","input":{"session_id":"test-session-001"}}]}}"#
+                + "\n"
+                + r#"{"type":"user","sessionId":"e5ca15ac-8023-487c-a7fb-6448afb1109a","toolUseResult":"{\"request_id\":\"0195f7e2-5c31-7b5a-8ab7-3c84ea4fc827\"}"}"#,
+        )
+        .expect("transcript");
+
+        let specs = claude_command_specs(
+            &payload("claude-code", "test-session-001"),
+            Some(home.path()),
+        );
+
+        assert!(specs.iter().any(|spec| {
+            spec.args.windows(2).any(|args| {
+                args == [
+                    "--resume".to_owned(),
+                    "e5ca15ac-8023-487c-a7fb-6448afb1109a".to_owned(),
+                ]
+            })
+        }));
+        assert!(specs.iter().any(|spec| {
+            spec.args.windows(2).any(|args| {
+                args == [
+                    "--permission-mode".to_owned(),
+                    "bypassPermissions".to_owned(),
+                ]
+            }) && !spec
+                .args
+                .contains(&"mcp__rambledesk__get_feedback".to_owned())
+        }));
     }
 
     #[test]
