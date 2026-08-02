@@ -16,6 +16,7 @@ use rambledesk_hosts::{
 };
 use rambledesk_speech::{
     SpeechEvent, SpeechEventSink, SpeechProvider, SpeechSession, SpeechSessionConfig,
+    list_input_devices,
 };
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager};
@@ -28,6 +29,7 @@ use super::{
 #[derive(Debug, Deserialize)]
 pub(super) struct StartVoiceRambleInput {
     request_id: String,
+    input_device: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -362,6 +364,14 @@ pub(super) fn present_resume_prompt(app: &tauri::AppHandle, prompt: &ResumePromp
 }
 
 #[tauri::command]
+pub(super) async fn list_speech_input_devices() -> Result<Vec<String>, String> {
+    tokio::task::spawn_blocking(list_input_devices)
+        .await
+        .map_err(|error| format!("麦克风枚举任务异常退出：{error}"))?
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub(super) async fn start_voice_ramble(
     input: StartVoiceRambleInput,
     app: tauri::AppHandle,
@@ -392,6 +402,7 @@ pub(super) async fn start_voice_ramble(
         request_id: input.request_id,
         voice_session_id: voice_session_id.clone(),
         model_path: model_path.clone(),
+        input_device: input.input_device,
     };
     let event_app = app.clone();
     let sink: SpeechEventSink = Arc::new(move |event: SpeechEvent| {

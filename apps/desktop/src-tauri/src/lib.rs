@@ -230,6 +230,7 @@ pub fn run() {
             read_feedback_attachment,
             submit_feedback,
             cancel_feedback_request,
+            list_speech_input_devices,
             start_voice_ramble,
             stop_voice_ramble,
             clipboard_capture::capture_clipboard_once,

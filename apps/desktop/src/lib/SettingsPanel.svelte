@@ -12,6 +12,7 @@
     FolderCog,
     Languages,
     LoaderCircle,
+    Mic,
     MonitorCog,
     Play,
     PlugZap,
@@ -43,13 +44,15 @@
     setNotificationSound,
     setNotificationSoundEnabled,
     setNotificationVolume,
+    setSpeechInputDevice,
     setThemePreference,
+    speechInputDevice,
     themePreference,
     type NotificationSound,
     type ThemePreference,
   } from '$lib/preferences'
 
-  type Section = 'general' | 'notifications' | 'adapters'
+  type Section = 'general' | 'notifications' | 'voice' | 'adapters'
 
   export let mcpConfiguration = ''
   export let initialSection: Section = 'general'
@@ -97,6 +100,8 @@
   let dataStorage: DataStorageView | null = null
   let storageMessage = ''
   let storageError = ''
+  let speechInputDevices: string[] = []
+  let speechDeviceError = ''
   const isTauri = '__TAURI_INTERNALS__' in window
 
   $: installedHosts = hosts.filter((host) => host.installed)
@@ -110,11 +115,21 @@
     if (isTauri) {
       void refreshHosts()
       void refreshDataStorage()
+      void refreshSpeechDevices()
     } else loadingHosts = false
   })
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
+  }
+
+  async function refreshSpeechDevices() {
+    speechDeviceError = ''
+    try {
+      speechInputDevices = await invoke<string[]>('list_speech_input_devices')
+    } catch (cause) {
+      speechDeviceError = messageFrom(cause)
+    }
   }
 
   async function refreshDataStorage() {
@@ -293,6 +308,10 @@
             <BellRing data-icon="inline-start" />
             {tr('通知')}
           </Tabs.Trigger>
+          <Tabs.Trigger value="voice" class="h-9 w-full justify-start px-2.5">
+            <Mic data-icon="inline-start" />
+            {tr('语音')}
+          </Tabs.Trigger>
           <Tabs.Trigger value="adapters" class="h-9 w-full justify-start px-2.5">
             <PlugZap data-icon="inline-start" />
             <span class="flex-1 text-left">{tr('适配器')}</span>
@@ -318,14 +337,18 @@
                 ? tr('偏好设置')
                 : activeSection === 'notifications'
                   ? tr('提醒方式')
-                  : tr('宿主适配')}
+                  : activeSection === 'voice'
+                    ? tr('语音输入')
+                    : tr('宿主适配')}
             </p>
             <h2 class="m-0 mt-0.5 text-base font-semibold">
               {activeSection === 'general'
                 ? tr('通用')
                 : activeSection === 'notifications'
                   ? tr('通知')
-                  : tr('适配器')}
+                  : activeSection === 'voice'
+                    ? tr('语音')
+                    : tr('适配器')}
             </h2>
           </div>
         </header>
@@ -558,6 +581,57 @@
                   </div>
                 </div>
               {/if}
+            </section>
+          </Tabs.Content>
+
+          <Tabs.Content value="voice" class="m-0 space-y-8 p-6 outline-none">
+            <section class="grid grid-cols-[minmax(0,1fr)_280px] items-center gap-8 border-b pb-8">
+              <div class="flex gap-3">
+                <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+                  <Mic class="size-4" />
+                </span>
+                <div>
+                  <h3 class="m-0 text-sm font-medium">{tr('麦克风')}</h3>
+                  <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
+                    {tr('选择 Ramble 录音使用的输入设备。')}
+                  </p>
+                </div>
+              </div>
+              <div class="flex gap-2">
+                <Select.Root
+                  type="single"
+                  value={$speechInputDevice || '__default__'}
+                  onValueChange={(value: string) => setSpeechInputDevice(value === '__default__' ? '' : value)}
+                >
+                  <Select.Trigger class="min-w-0 flex-1">
+                    {$speechInputDevice || tr('系统默认麦克风')}
+                  </Select.Trigger>
+                  <Select.Content>
+                    <Select.Item value="__default__" label={tr('系统默认麦克风')} />
+                    {#each speechInputDevices as device (device)}
+                      <Select.Item value={device} label={device} />
+                    {/each}
+                  </Select.Content>
+                </Select.Root>
+                <Button variant="outline" size="icon" onclick={() => void refreshSpeechDevices()}>
+                  <RefreshCw />
+                </Button>
+              </div>
+              {#if speechDeviceError}
+                <p class="col-span-2 m-0 text-xs text-destructive">{speechDeviceError}</p>
+              {/if}
+            </section>
+
+            <section class="flex items-start gap-3">
+              <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+                <Download class="size-4" />
+              </span>
+              <div>
+                <h3 class="m-0 text-sm font-medium">{tr('语音模型')}</h3>
+                <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
+                  {tr('模型将安装到“数据存储位置”的 models/speech 目录；下载与校验管理将在下一步接入。')}
+                </p>
+              </div>
             </section>
           </Tabs.Content>
 

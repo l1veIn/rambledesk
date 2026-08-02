@@ -10,6 +10,7 @@ const NOTIFICATION_POPUP_KEY = 'rambledesk.notifications.popup'
 const NOTIFICATION_SOUND_ENABLED_KEY = 'rambledesk.notifications.sound-enabled'
 const NOTIFICATION_SOUND_KEY = 'rambledesk.notifications.sound'
 const NOTIFICATION_VOLUME_KEY = 'rambledesk.notifications.volume'
+const SPEECH_INPUT_DEVICE_KEY = 'rambledesk.speech.input-device'
 
 function initialLocale(): Locale {
   const saved = localStorage.getItem(LOCALE_KEY)
@@ -50,6 +51,7 @@ export const notificationSoundEnabled = writable(
 )
 export const notificationSound = writable<NotificationSound>(initialNotificationSound())
 export const notificationVolume = writable(initialNotificationVolume())
+export const speechInputDevice = writable(localStorage.getItem(SPEECH_INPUT_DEVICE_KEY) ?? '')
 
 let initialized = false
 let mediaQuery: MediaQueryList | null = null
@@ -82,6 +84,10 @@ export function setNotificationSound(sound: NotificationSound) {
   notificationSound.set(sound)
 }
 
+export function setSpeechInputDevice(device: string) {
+  speechInputDevice.set(device)
+}
+
 export function setNotificationVolume(volume: number) {
   notificationVolume.set(Math.min(100, Math.max(0, Math.round(volume))))
 }
@@ -109,6 +115,9 @@ export function initializePreferences() {
   })
   notificationVolume.subscribe((next) => {
     localStorage.setItem(NOTIFICATION_VOLUME_KEY, String(next))
+  })
+  speechInputDevice.subscribe((next) => {
+    localStorage.setItem(SPEECH_INPUT_DEVICE_KEY, next)
   })
 
   mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')

@@ -25,6 +25,7 @@ pub struct SpeechSessionConfig {
     pub request_id: String,
     pub voice_session_id: String,
     pub model_path: PathBuf,
+    pub input_device: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -158,10 +159,15 @@ fn downmix<T>(input: &[T], channels: usize, normalize: impl Fn(&T) -> f32) -> Ve
 mod native;
 
 #[cfg(any(target_os = "windows", target_os = "macos"))]
-pub use native::SpeechSession;
+pub use native::{SpeechSession, list_input_devices};
 
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
 pub struct SpeechSession;
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+pub fn list_input_devices() -> Result<Vec<String>, SpeechError> {
+    Ok(Vec::new())
+}
 
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
 impl SpeechSession {

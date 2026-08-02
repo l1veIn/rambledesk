@@ -11,7 +11,7 @@
   import { attachmentMarkdownUrl } from '../attachmentMarkdown'
   import type { AddAttachmentInput, FeedbackWorkspaceView } from '../feedback'
   import { t } from '../i18n'
-  import { locale } from '../preferences'
+  import { locale, speechInputDevice } from '../preferences'
   import {
     RAMBLE_CONSOLE_COMMAND_EVENT,
     RAMBLE_CONSOLE_HIDE_EVENT,
@@ -257,6 +257,7 @@
       const session = await invoke<VoiceRambleSessionView>('start_voice_ramble', {
         input: {
           request_id: rambleRequestId,
+          input_device: $speechInputDevice || null,
         },
       })
       voiceSessionId = session.voice_session_id

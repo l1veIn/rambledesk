@@ -15,6 +15,19 @@ const SHERPA_FRAME_SAMPLES: usize = 800;
 const SHERPA_TAIL_PADDING_SAMPLES: usize = 12_800;
 const SHERPA_FINALIZE_ROUNDS: u32 = 256;
 
+pub fn list_input_devices() -> Result<Vec<String>, SpeechError> {
+    let host = cpal::default_host();
+    let devices = host
+        .input_devices()
+        .map_err(|error| SpeechError::InputConfiguration(error.to_string()))?;
+    let mut names = devices
+        .filter_map(|device| device.name().ok())
+        .collect::<Vec<_>>();
+    names.sort();
+    names.dedup();
+    Ok(names)
+}
+
 struct SherpaOnline {
     recognizer: OnlineRecognizer,
     stream: OnlineStream,
@@ -181,9 +194,17 @@ impl NativeSpeechSession {
         let sherpa = SherpaOnline::create(&config.model_path)?;
 
         let host = cpal::default_host();
-        let device = host
-            .default_input_device()
-            .ok_or(SpeechError::NoInputDevice)?;
+        let device = if let Some(selected) = config.input_device.as_deref() {
+            host.input_devices()
+                .map_err(|error| SpeechError::InputConfiguration(error.to_string()))?
+                .find(|device| device.name().is_ok_and(|name| name == selected))
+                .ok_or_else(|| {
+                    SpeechError::InputConfiguration(format!("找不到麦克风：{selected}"))
+                })?
+        } else {
+            host.default_input_device()
+                .ok_or(SpeechError::NoInputDevice)?
+        };
         let device_name = device
             .name()
             .unwrap_or_else(|_| "系统默认麦克风".to_owned());
