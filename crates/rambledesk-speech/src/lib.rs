@@ -196,6 +196,11 @@ pub fn list_input_devices() -> Result<Vec<String>, SpeechError> {
 }
 
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+pub fn ensure_vad_model(_library_root: &std::path::Path) -> Result<PathBuf, SpeechError> {
+    Err(SpeechError::UnsupportedPlatform)
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
 impl SpeechSession {
     pub fn start(
         _config: SpeechSessionConfig,
