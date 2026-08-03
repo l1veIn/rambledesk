@@ -16,6 +16,7 @@
     LoaderCircle,
     Mic,
     MonitorCog,
+    Info,
     Play,
     PlugZap,
     RefreshCw,
@@ -34,6 +35,7 @@
   import * as Dialog from '$lib/components/ui/dialog'
   import { ScrollArea } from '$lib/components/ui/scroll-area'
   import { toast } from '$lib/components/ui/sonner'
+  import AboutSettings from '$lib/AboutSettings.svelte'
   import rambellePermission from '../assets/rambelle-states/state-permission.png'
   import * as Select from '$lib/components/ui/select'
   import * as Tabs from '$lib/components/ui/tabs'
@@ -84,12 +86,13 @@
     type ThemePreference,
   } from '$lib/preferences'
 
-  type Section = 'general' | 'notifications' | 'voice' | 'adapters'
+  type Section = 'general' | 'notifications' | 'voice' | 'adapters' | 'about'
 
   export let mcpConfiguration = ''
   export let initialSection: Section = 'general'
   export let onClose: () => void = () => {}
   export let onRestartOnboarding: () => void = () => {}
+  export let updateInstallBlocked = false
 
   type DataStorageView = {
     active_path: string
@@ -458,6 +461,10 @@
               </Badge>
             {/if}
           </Tabs.Trigger>
+          <Tabs.Trigger value="about" class="h-9 w-full justify-start px-2.5">
+            <Info data-icon="inline-start" />
+            {tr('关于')}
+          </Tabs.Trigger>
         </Tabs.List>
 
         <div class="mt-auto flex gap-2 border-t pt-3 text-[10px] leading-4 text-muted-foreground">
@@ -476,7 +483,9 @@
                   ? tr('提醒方式')
                   : activeSection === 'voice'
                     ? tr('语音输入')
-                    : tr('宿主适配')}
+                    : activeSection === 'adapters'
+                      ? tr('宿主适配')
+                      : tr('项目信息')}
             </p>
             <h2 class="m-0 mt-0.5 text-base font-semibold">
               {activeSection === 'general'
@@ -485,7 +494,9 @@
                   ? tr('通知')
                   : activeSection === 'voice'
                     ? tr('语音')
-                    : tr('适配器')}
+                    : activeSection === 'adapters'
+                      ? tr('适配器')
+                      : tr('关于')}
             </h2>
           </div>
         </header>
@@ -1277,6 +1288,10 @@
                 </div>
               </Collapsible.Content>
             </Collapsible.Root>
+          </Tabs.Content>
+
+          <Tabs.Content value="about" class="m-0 p-6 outline-none">
+            <AboutSettings installBlocked={updateInstallBlocked} />
           </Tabs.Content>
         </ScrollArea>
       </div>

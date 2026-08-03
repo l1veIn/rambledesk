@@ -13,13 +13,34 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libpipewire-0.3-dev libgbm-dev patchelf
       - uses: pnpm/action-setup@v4
         with:
           version: 10.12.4
       - uses: actions/setup-node@v4
         with:
           node-version: 22.23.0
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.91.1
+          components: clippy,rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - run: pnpm install --frozen-lockfile
       - run: pnpm release:check
+      - run: cargo fmt --all --check
+      - run: pnpm check:rust-size
+      - run: pnpm check:terminology
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: pnpm check
+      - run: pnpm test
+      - run: pnpm test:pi
+      - run: cargo test --workspace --locked
+      - run: pnpm build:web
+      - run: pnpm contracts:check
+      - run: pnpm mcp:inspector-smoke
       - name: Create the draft release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -30,28 +51,19 @@ jobs:
               --verify-tag \
               --draft \
               --title "RambleDesk $GITHUB_REF_NAME" \
-              --notes "Windows and macOS preview installers. These artifacts are unsigned." \
+              --notes "Windows release candidate. Updater artifacts are signed; Windows Authenticode signing is not yet enabled." \
               --generate-notes
 
   build:
     needs: validate
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: macos-latest
-            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
-            args: --target universal-apple-darwin --bundles dmg --no-sign
-          - platform: windows-latest
-            rust-targets: x86_64-pc-windows-msvc
-            args: --target x86_64-pc-windows-msvc --bundles nsis,msi --no-sign
-    runs-on: ${{ matrix.platform }}
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.91.1
-          targets: ${{ matrix.rust-targets }}
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
       - uses: pnpm/action-setup@v4
         with:
           version: 10.12.4
@@ -63,25 +75,63 @@ jobs:
       - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: apps/desktop
           tauriScript: pnpm tauri
           tagName: ${{ github.ref_name }}
           releaseName: RambleDesk v__VERSION__
-          releaseBody: Windows and macOS preview installers. These artifacts are unsigned.
+          releaseBody: Windows release candidate. Updater artifacts are signed; Windows Authenticode signing is not yet enabled.
           releaseDraft: true
           prerelease: false
           generateReleaseNotes: true
           uploadUpdaterJson: false
           retryAttempts: 2
-          args: ${{ matrix.args }}
+          args: --target x86_64-pc-windows-msvc --bundles nsis,msi
 
-  publish:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Publish the complete release
+      - name: Generate and upload stable updater manifest
+        shell: pwsh
         env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: gh release edit "$GITHUB_REF_NAME" --draft=false --latest
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $installer = Get-ChildItem $env:GITHUB_WORKSPACE -Recurse -File -Filter "*-setup.exe" |
+            Where-Object { $_.FullName -match "\\bundle\\nsis\\" } |
+            Select-Object -First 1
+          if (-not $installer) {
+            throw "No NSIS installer was produced."
+          }
+          $signature = "$($installer.FullName).sig"
+          if (-not (Test-Path -LiteralPath $signature)) {
+            throw "No updater signature was produced for $($installer.Name)."
+          }
+          node scripts/make-updater-json.mjs `
+            --exe $installer.FullName `
+            --sig $signature `
+            --tag "${{ github.ref_name }}"
+          gh release upload "${{ github.ref_name }}" `
+            (Join-Path $installer.DirectoryName "latest.json") `
+            --clobber
+
+      - name: Generate and upload SHA-256 checksums
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $installers = Get-ChildItem $env:GITHUB_WORKSPACE -Recurse -File |
+            Where-Object {
+              $_.FullName -match "\\bundle\\(nsis|msi)\\" -and
+              $_.Extension -in ".exe", ".msi"
+            }
+          if (-not $installers) {
+            throw "No Windows installers were produced."
+          }
+          $checksumPath = Join-Path $env:GITHUB_WORKSPACE "SHA256SUMS.txt"
+          $installers |
+            Sort-Object Name |
+            ForEach-Object {
+              $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+              "$hash *$($_.Name)"
+            } |
+            Set-Content -LiteralPath $checksumPath -Encoding ascii
+          gh release upload "${{ github.ref_name }}" $checksumPath --clobber

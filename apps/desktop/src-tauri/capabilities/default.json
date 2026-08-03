@@ -22,6 +22,12 @@
       ]
     },
     "opener:allow-reveal-item-in-dir",
-    "dialog:allow-open"
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "https://github.com/l1veIn/rambledesk" }]
+    },
+    "dialog:allow-open",
+    "process:default",
+    "updater:default"
   ]
 }

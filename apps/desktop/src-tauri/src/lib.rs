@@ -1,5 +1,6 @@
 mod clipboard_capture;
 mod generic_mcp_install;
+mod logging;
 mod pi_install;
 mod platform;
 mod screen_capture;
@@ -38,6 +39,11 @@ struct WorkbenchState {
     speech_session: tokio::sync::Mutex<Option<SpeechSession>>,
 }
 
+#[tauri::command]
+fn log_frontend_error(context: String, message: String) {
+    logging::frontend_error(&context, &message);
+}
+
 mod window;
 
 use window::{position_ramble_console, show_main_window};
@@ -57,20 +63,19 @@ mod tray;
 use tray::pending_tray_icon;
 
 pub fn run() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "rambledesk=info".into()),
-        )
-        .with_target(false)
-        .init();
+    logging::init();
 
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            show_main_window(app);
+        }))
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let console = WebviewWindowBuilder::new(
                 app,
@@ -263,9 +268,17 @@ pub fn run() {
             screen_capture::lifecycle::read_completed_screen_capture,
             screen_capture::lifecycle::discard_screen_capture,
             screen_capture::lifecycle::cancel_screen_capture,
+            log_frontend_error,
         ])
-        .build(tauri::generate_context!())
-        .expect("failed to build RambleDesk desktop app");
+        .build(tauri::generate_context!());
+
+    let app = match app {
+        Ok(app) => app,
+        Err(error) => {
+            logging::show_fatal_startup_error(&error.to_string());
+            return;
+        }
+    };
 
     app.run(|app_handle, event| {
         if matches!(event, RunEvent::Exit | RunEvent::ExitRequested { .. })

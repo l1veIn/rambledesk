@@ -18,6 +18,7 @@ use sqlx::{
 };
 use thiserror::Error;
 
+mod backup;
 mod publication_paths;
 mod request_ops;
 mod submission_ops;
@@ -44,6 +45,10 @@ pub enum StorageOpenError {
     Connect(#[source] sqlx::Error),
     #[error("failed to migrate the RambleDesk SQLite database")]
     Migrate(#[source] sqlx::migrate::MigrateError),
+    #[error("failed to create a pre-migration RambleDesk database backup")]
+    BackupDatabase(#[source] sqlx::Error),
+    #[error("failed to manage RambleDesk database backups")]
+    ManageBackup(#[source] std::io::Error),
     #[error("failed to inspect interrupted feedback publications")]
     Recovery(RepositoryError),
     #[error("no local application data directory is available")]
@@ -70,6 +75,9 @@ impl SqliteFeedbackStore {
         path: &Path,
         library_root: &Path,
     ) -> Result<Self, StorageOpenError> {
+        let database_existed = tokio::fs::try_exists(path)
+            .await
+            .map_err(StorageOpenError::ManageBackup)?;
         if let Some(parent) = path.parent() {
             let parent_existed = tokio::fs::try_exists(parent)
                 .await
@@ -92,6 +100,7 @@ impl SqliteFeedbackStore {
             .await
             .map_err(StorageOpenError::Connect)?;
         secure_path(path, 0o600).await?;
+        backup::before_migration(path, &pool, database_existed).await?;
         MIGRATOR
             .run(&pool)
             .await

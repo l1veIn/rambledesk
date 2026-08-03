@@ -45,6 +45,28 @@ impl TestWorkspace {
     }
 }
 
+#[tokio::test]
+async fn reconnect_creates_a_versioned_pre_migration_backup() {
+    let workspace = TestWorkspace::new().await;
+    let store = SqliteFeedbackStore::connect(&workspace.database)
+        .await
+        .expect("initial database");
+    store.close().await;
+
+    let store = SqliteFeedbackStore::connect(&workspace.database)
+        .await
+        .expect("reopened database");
+    store.close().await;
+
+    let parent = workspace.database.parent().expect("database parent");
+    let backup = parent.join(format!(
+        "rambledesk.pre-migration-v{}.sqlite3",
+        env!("CARGO_PKG_VERSION")
+    ));
+    assert!(backup.is_file(), "expected backup at {}", backup.display());
+    assert!(backup.metadata().expect("backup metadata").len() > 0);
+}
+
 mod publication;
 mod requests;
 mod workspace;

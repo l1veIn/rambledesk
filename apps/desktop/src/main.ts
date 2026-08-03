@@ -10,6 +10,25 @@ import './app.css'
 import './lib/ramble-console.css'
 import './lib/screen-capture/screenshot-overlay.css'
 
+function reportFrontendError(context: string, message: string) {
+  if (!('__TAURI_INTERNALS__' in window)) return
+  void import('@tauri-apps/api/core')
+    .then(({ invoke }) => invoke('log_frontend_error', { context, message }))
+    .catch(() => undefined)
+}
+
+window.addEventListener('error', (event) => {
+  reportFrontendError('window', event.message || 'unknown window error')
+})
+
+window.addEventListener('unhandledrejection', (event) => {
+  const reason = event.reason
+  reportFrontendError(
+    'unhandledrejection',
+    reason instanceof Error ? `${reason.name}: ${reason.message}` : String(reason),
+  )
+})
+
 initializePreferences()
 
 const captureMode = window.location.hash === '#capture'

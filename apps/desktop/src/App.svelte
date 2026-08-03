@@ -37,6 +37,7 @@
     type NotificationState,
   } from './lib/notifications'
   import { desktopPath } from './lib/nativePath'
+  import { checkForUpdates } from './lib/updater'
   import { previewFixtures, previewWorkspaceFor } from './lib/previewFixtures'
   import {
     restorePublishedAttachmentUrls,
@@ -300,6 +301,15 @@
   $: rambleBusy = ramblePhase === 'starting' || ramblePhase === 'stopping'
   $: rambleCanStop = rambleActive || voiceCanStop
   $: rambleCanExit = rambleEngaged || voiceCanStop
+  $: updateInstallBlocked =
+    dirty ||
+    rambleEngaged ||
+    attachmentBusy ||
+    submitting ||
+    cancelling ||
+    approving ||
+    currentRequestCooking ||
+    workspace?.request.status === 'in_progress'
   $: workspaceMinimumWidth =
     workbenchLayoutWidth > 1180 ? WIDE_WORKSPACE_MIN_WIDTH : NARROW_WORKSPACE_MIN_WIDTH
   $: requestWorkspacePaneWidth = Math.max(0, requestWorkspaceWidth - PANE_RESIZER_SIZE)
@@ -366,6 +376,7 @@
     }
     if ($onboardingCompleted) startWorkbench()
     else onboardingOpen = true
+    const updateCheckTimer = window.setTimeout(() => void checkForUpdates(), 4_000)
     void refreshNotificationPermission()
     let resumePromptUnlisten: (() => void) | undefined
     let openAdaptersUnlisten: (() => void) | undefined
@@ -402,6 +413,7 @@
       if (inboxTimer) clearInterval(inboxTimer)
       resumePromptUnlisten?.()
       openAdaptersUnlisten?.()
+      clearTimeout(updateCheckTimer)
       cleanupLayoutObserver()
       cleanupAttachments()
     }
@@ -1087,6 +1099,7 @@
   <SettingsPanel
     mcpConfiguration={genericMcpConfiguration}
     initialSection={settingsSection}
+    {updateInstallBlocked}
     onRestartOnboarding={restartOnboarding}
     onClose={() => {
       settingsOpen = false
