@@ -82,7 +82,7 @@ jobs:
           tauriScript: pnpm tauri
           tagName: ${{ github.ref_name }}
           releaseName: RambleDesk v__VERSION__
-          releaseBody: Windows release candidate. Updater artifacts are signed; Windows Authenticode signing is not yet enabled.
+          releaseBody: ${{ contains(github.ref_name, '-') && 'Windows release candidate. Updater artifacts are signed; Windows Authenticode signing is not yet enabled.' || 'Windows release. Updater artifacts are signed; Windows Authenticode signing is not yet enabled.' }}
           releaseDraft: true
           prerelease: false
           generateReleaseNotes: true
