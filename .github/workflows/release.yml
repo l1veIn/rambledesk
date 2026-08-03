@@ -46,12 +46,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
+          release_notes="Windows release. Updater artifacts are signed; Windows Authenticode signing is not yet enabled."
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            release_notes="Windows release candidate. Updater artifacts are signed; Windows Authenticode signing is not yet enabled."
+          fi
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || \
             gh release create "$GITHUB_REF_NAME" \
               --verify-tag \
               --draft \
               --title "RambleDesk $GITHUB_REF_NAME" \
-              --notes "Windows release candidate. Updater artifacts are signed; Windows Authenticode signing is not yet enabled." \
+              --notes "$release_notes" \
               --generate-notes
 
   build:
