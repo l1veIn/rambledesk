@@ -36,6 +36,8 @@ const COOKING_API_KEY_KEY = 'rambledesk.cooking.api-key'
 const COOKING_BASE_URL_KEY = 'rambledesk.cooking.base-url'
 const COOKING_MODEL_KEY = 'rambledesk.cooking.model'
 const COOKING_REASONING_EFFORT_KEY = 'rambledesk.cooking.reasoning-effort'
+const ONBOARDING_COMPLETED_KEY = 'rambledesk.onboarding.completed'
+const ONBOARDING_STEP_KEY = 'rambledesk.onboarding.step'
 
 function initialLocale(): Locale {
   const saved = localStorage.getItem(LOCALE_KEY)
@@ -55,6 +57,14 @@ function initialBoolean(key: string, fallback: boolean) {
   if (saved === 'true') return true
   if (saved === 'false') return false
   return fallback
+}
+
+function initialOnboardingCompleted() {
+  const saved = localStorage.getItem(ONBOARDING_COMPLETED_KEY)
+  if (saved === 'true') return true
+  if (saved === 'false') return false
+  // Existing installations already have preference state. Do not interrupt them on upgrade.
+  return localStorage.getItem(LOCALE_KEY) !== null
 }
 
 function initialNotificationSound(): NotificationSound {
@@ -120,6 +130,7 @@ export const speechVadThreshold = writable(
 export const speechVadSilenceMs = writable(
   initialNumber(SPEECH_VAD_SILENCE_MS_KEY, 700, 200, 5000),
 )
+export const onboardingCompleted = writable(initialOnboardingCompleted())
 export const cookingEnabled = writable(initialBoolean(COOKING_ENABLED_KEY, false))
 export const cookingProvider = writable<CookingProvider>(initialCookingProvider())
 export const cookingApiKey = writable(localStorage.getItem(COOKING_API_KEY_KEY) ?? '')
@@ -179,6 +190,29 @@ export function setSpeechVadThreshold(threshold: number) {
 
 export function setSpeechVadSilenceMs(milliseconds: number) {
   speechVadSilenceMs.set(Math.min(5000, Math.max(200, Math.round(milliseconds))))
+}
+
+export function setOnboardingCompleted(completed: boolean) {
+  onboardingCompleted.set(completed)
+}
+
+export function onboardingStep() {
+  const value = Number(localStorage.getItem(ONBOARDING_STEP_KEY))
+  return Number.isInteger(value) && value >= 0 ? value : 0
+}
+
+export function setOnboardingStep(step: number) {
+  localStorage.setItem(ONBOARDING_STEP_KEY, String(Math.max(0, Math.floor(step))))
+}
+
+export function resetOnboarding() {
+  localStorage.removeItem(ONBOARDING_STEP_KEY)
+  setOnboardingCompleted(false)
+}
+
+export function finishOnboarding() {
+  localStorage.removeItem(ONBOARDING_STEP_KEY)
+  setOnboardingCompleted(true)
 }
 
 export function setCookingEnabled(enabled: boolean) {
@@ -245,6 +279,9 @@ export function initializePreferences() {
   speechVadSilenceMs.subscribe((next) => {
     localStorage.setItem(SPEECH_VAD_SILENCE_MS_KEY, String(next))
   })
+  onboardingCompleted.subscribe((next) => {
+    localStorage.setItem(ONBOARDING_COMPLETED_KEY, String(next))
+  })
   cookingEnabled.subscribe((next) => {
     localStorage.setItem(COOKING_ENABLED_KEY, String(next))
   })
@@ -301,6 +338,9 @@ export function initializePreferences() {
     }
     if (event.key === SPEECH_VAD_SILENCE_MS_KEY && event.newValue !== null) {
       setSpeechVadSilenceMs(Number(event.newValue))
+    }
+    if (event.key === ONBOARDING_COMPLETED_KEY && event.newValue !== null) {
+      onboardingCompleted.set(event.newValue === 'true')
     }
     if (event.key === COOKING_ENABLED_KEY && event.newValue !== null) {
       cookingEnabled.set(event.newValue === 'true')

@@ -214,6 +214,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_generic_mcp_configuration,
+            restart_application,
             get_data_storage_settings,
             set_data_storage_path,
             list_host_profiles,

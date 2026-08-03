@@ -67,6 +67,11 @@ fn display_path(path: &std::path::Path) -> String {
 }
 
 #[tauri::command]
+pub(super) fn restart_application(app: tauri::AppHandle) {
+    app.restart();
+}
+
+#[tauri::command]
 pub(super) fn get_data_storage_settings(
     state: tauri::State<'_, WorkbenchState>,
 ) -> DataStorageView {

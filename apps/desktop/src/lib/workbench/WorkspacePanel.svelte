@@ -68,6 +68,9 @@
 
   let feedbackEditor: FeedbackEditorHandle | undefined
 
+  $: interactionLocked = submitting || cancelling || approving
+  $: cooking = submitting && submitStage === 'cooking'
+
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
   }
@@ -106,7 +109,7 @@
       </div>
     </div>
   {:else if workspace}
-    <WorkspaceHeader {workspace} {resolveHostProfile} onReload={onReload} />
+    <WorkspaceHeader {workspace} {resolveHostProfile} disabled={interactionLocked} onReload={onReload} />
 
     <div class="workspace-columns min-h-0 flex-1 overflow-auto">
       <div class="document-column flex min-h-0 min-w-0 flex-col @container">
@@ -121,7 +124,8 @@
           {attachmentPreviews}
           {dragActive}
           {formatTime}
-          cooking={submitStage === 'cooking'}
+          {cooking}
+          locked={interactionLocked}
           cookedMarkdown={publishedFeedback?.markdown ?? ''}
           uncookedMarkdown={publishedFeedback?.uncooked_markdown ?? draftBody}
           onChange={onDraftChange}

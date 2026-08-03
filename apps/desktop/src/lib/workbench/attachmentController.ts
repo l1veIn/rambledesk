@@ -28,6 +28,7 @@ type AttachmentControllerContext = {
   getEditor: () => FeedbackEditorHandle | undefined
   getRambleRequestId: () => string
   getRambleEngaged: () => boolean
+  getInteractionLocked: () => boolean
   getSavedRevision: () => number
   getBusy: () => boolean
   getPreviews: () => Record<string, string>
@@ -106,7 +107,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
   }
 
   function handlePaste(event: ClipboardEvent) {
-    if (!context.getWorkspace() || context.getBusy() || !event.clipboardData) return
+    if (context.getInteractionLocked() || !context.getWorkspace() || context.getBusy() || !event.clipboardData) return
     const images = Array.from(event.clipboardData.files).filter((file) =>
       file.type.startsWith('image/'),
     )
@@ -124,7 +125,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
 
   async function importFiles(files: File[]) {
     const workspace = context.getWorkspace()
-    if (!workspace || files.length === 0 || context.getBusy()) return
+    if (context.getInteractionLocked() || !workspace || files.length === 0 || context.getBusy()) return
     if (!(await context.saveDraftNow())) return
     context.setBusy(true)
     context.setMessage('')
@@ -165,7 +166,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
   async function importAttachmentPaths(paths: string[]) {
     const workspace = context.getWorkspace()
     const requestId = context.getRambleRequestId() || workspace?.request.request_id || ''
-    if (!requestId || paths.length === 0 || context.getBusy()) return
+    if (context.getInteractionLocked() || !requestId || paths.length === 0 || context.getBusy()) return
     const visibleTarget = workspace?.request.request_id === requestId
     if (visibleTarget && !(await context.saveDraftNow())) return
     await context.waitForRambleMarkdown()
@@ -214,7 +215,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
   async function startScreenCapture() {
     const workspace = context.getWorkspace()
     const requestId = context.getRambleRequestId() || workspace?.request.request_id || ''
-    if (!requestId || !context.getRambleEngaged() || context.getBusy()) return
+    if (context.getInteractionLocked() || !requestId || !context.getRambleEngaged() || context.getBusy()) return
     if (workspace?.request.request_id === requestId && !(await context.saveDraftNow())) return
     await context.waitForRambleMarkdown()
     screenCaptureRequestId = requestId
@@ -236,6 +237,11 @@ export function createAttachmentController(context: AttachmentControllerContext)
   }
 
   async function importScreenCapture(capture: ScreenCaptureReady) {
+    if (context.getInteractionLocked()) {
+      await discardScreenCapture(capture.capture_session_id)
+      context.setBusy(false)
+      return
+    }
     const workspace = context.getWorkspace()
     const requestId =
       screenCaptureRequestId || context.getRambleRequestId() || workspace?.request.request_id || ''
@@ -301,7 +307,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
 
   async function removeAttachment(attachment: AttachmentView) {
     const workspace = context.getWorkspace()
-    if (!workspace || context.getBusy()) return
+    if (context.getInteractionLocked() || !workspace || context.getBusy()) return
     context.getEditor()?.removeAttachmentReference(attachment.attachment_id)
     if (!(await context.saveDraftNow())) return
     context.setBusy(true)
@@ -323,12 +329,13 @@ export function createAttachmentController(context: AttachmentControllerContext)
   }
 
   function insertExistingAttachment(attachment: AttachmentView) {
+    if (context.getInteractionLocked()) return
     context.getEditor()?.insertAttachments([attachment])
   }
 
   async function moveAttachment(index: number, offset: number) {
     const workspace = context.getWorkspace()
-    if (!workspace || context.getBusy()) return
+    if (context.getInteractionLocked() || !workspace || context.getBusy()) return
     const target = index + offset
     if (target < 0 || target >= workspace.attachments.length) return
     if (!(await context.saveDraftNow())) return

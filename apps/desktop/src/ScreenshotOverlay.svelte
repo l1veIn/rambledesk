@@ -187,13 +187,20 @@
     resetEditor()
     try {
       capture = active ?? (await invoke<ScreenCaptureView>('get_active_capture_info'))
-      if (capture.capture_session_id !== captureSessionId) throw new Error('截图会话已变化，请重新截图')
+      if (capture.capture_session_id !== captureSessionId) {
+        throw new Error(t($locale, '截图会话已变化，请重新截图'))
+      }
       const rgba = await invoke<ArrayBuffer>('read_capture_rgba_bytes', {
         captureSessionId: capture.capture_session_id,
       })
       const expectedBytes = capture.image_width * capture.image_height * 4
       if (rgba.byteLength !== expectedBytes) {
-        throw new Error(`截图像素数据不完整：应为 ${expectedBytes} 字节，实际为 ${rgba.byteLength} 字节`)
+        throw new Error(
+          t($locale, '截图像素数据不完整：应为 {expected} 字节，实际为 {actual} 字节', {
+            expected: expectedBytes,
+            actual: rgba.byteLength,
+          }),
+        )
       }
       const imageData = new ImageData(
         new Uint8ClampedArray(rgba),
@@ -221,7 +228,7 @@
   function drawSourceImage(imageData: ImageData) {
     if (!sourceCanvas) return
     const context = sourceCanvas.getContext('2d')
-    if (!context) throw new Error('无法创建截图显示画布')
+    if (!context) throw new Error(t($locale, '无法创建截图显示画布'))
     context.putImageData(imageData, 0, 0)
     sourceImage = sourceCanvas
   }
@@ -584,7 +591,12 @@
     completing = true
     errorMessage = ''
     try {
-      const pngBase64 = exportAnnotatedCapture(sourceImage, selection, annotations)
+      const pngBase64 = exportAnnotatedCapture(
+        sourceImage,
+        selection,
+        annotations,
+        t($locale, '无法创建截图导出画布'),
+      )
       await invoke('complete_screen_capture', {
         input: {
           capture_session_id: capture.capture_session_id,
@@ -604,7 +616,12 @@
     completing = true
     errorMessage = ''
     try {
-      const pngBase64 = exportAnnotatedCapture(sourceImage, selection, annotations)
+      const pngBase64 = exportAnnotatedCapture(
+        sourceImage,
+        selection,
+        annotations,
+        t($locale, '无法创建截图导出画布'),
+      )
       await invoke('pin_screen_capture', {
         input: {
           capture_session_id: capture.capture_session_id,
@@ -621,7 +638,7 @@
   async function beginScrolling() {
     if (!capture || !selection || completing) return
     if (annotations.length > 0) {
-      errorMessage = '请先开始滚动截图，再对拼接后的长图添加标注'
+      errorMessage = t($locale, '请先开始滚动截图，再对拼接后的长图添加标注')
       return
     }
     completing = true
@@ -896,7 +913,7 @@
         <button
           data-capture-ui
           class={`resize-handle ${handle}`}
-          aria-label={`调整选区 ${handle}`}
+          aria-label={t($locale, '调整选区 {handle}', { handle })}
           onpointerdown={(event) => beginSelectionResize(event, handle as ResizeHandle)}
         ></button>
       {/each}
@@ -909,7 +926,7 @@
         <button
           data-capture-ui
           class={`annotation-handle ${handle}`}
-          aria-label={`调整标注 ${handle}`}
+          aria-label={t($locale, '调整标注 {handle}', { handle })}
           onpointerdown={(event) => beginAnnotationResize(event, handle as ResizeHandle)}
         ></button>
       {/each}
@@ -922,7 +939,7 @@
       bind:value={textDraft.value}
       data-capture-ui
       class="text-editor"
-      placeholder="输入文字…"
+      placeholder={t($locale, '输入文字…')}
       style={textDraftStyle()}
       onblur={commitText}
     ></textarea>
@@ -930,12 +947,12 @@
 
   {#if loading}
     <div class="capture-status" data-capture-ui>
-      <strong>正在读取屏幕画面…</strong>
+      <strong>{t($locale, '正在读取屏幕画面…')}</strong>
     </div>
   {:else if !selection && !errorMessage}
     <div class="capture-help" data-capture-ui>
-      <strong>悬停选择窗口，或拖动自由框选</strong>
-      <span>点击窗口自动取边界 · 双击使用全屏 · Esc / 右键取消</span>
+      <strong>{t($locale, '悬停选择窗口，或拖动自由框选')}</strong>
+      <span>{t($locale, '点击窗口自动取边界 · 双击使用全屏 · Esc / 右键取消')}</span>
     </div>
   {/if}
 
@@ -978,6 +995,6 @@
   {/if}
 
   {#if completing}
-    <div class="completing-mask" data-capture-ui><span>正在处理截图…</span></div>
+    <div class="completing-mask" data-capture-ui><span>{t($locale, '正在处理截图…')}</span></div>
   {/if}
 </main>

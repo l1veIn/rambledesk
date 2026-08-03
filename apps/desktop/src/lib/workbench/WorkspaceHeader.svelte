@@ -11,6 +11,7 @@
 
   export let workspace: FeedbackWorkspaceView
   export let resolveHostProfile: (hostId: string) => HostProfile
+  export let disabled = false
   export let onReload: () => void = () => {}
 
   function tr(source: string, values: Record<string, string | number> = {}) {
@@ -60,6 +61,7 @@
     size="icon-sm"
     aria-label={tr('重新载入')}
     title={tr('重新载入')}
+    {disabled}
     onclick={onReload}
   >
     <RefreshCw />

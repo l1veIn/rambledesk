@@ -37,6 +37,7 @@
 
   export let isTauri = false
   export let workspace: FeedbackWorkspaceView | null = null
+  export let interactionLocked = false
   export let editor: FeedbackEditorHandle | undefined
   export let attachmentBusy = false
   export let attachmentMessage = ''
@@ -99,7 +100,7 @@
         voiceMessage = t($locale, '无法监听语音识别事件：{error}', { error: messageFrom(cause) })
       })
     void listen<string>('screen-capture-shortcut', () => {
-      if (rambleEngaged) void onStartScreenCapture()
+      if (rambleEngaged && !interactionLocked) void onStartScreenCapture()
     })
       .then((unlisten) => {
         captureShortcutUnlisten = unlisten
@@ -139,7 +140,7 @@
   })
 
   export async function toggleRamble() {
-    if (rambleBusy) return
+    if (interactionLocked || rambleBusy) return
     if (rambleActive || voiceCanStop) await stopRamble()
     else if (rambleEngaged) await resumeRamble()
     else await startRamble()
@@ -158,7 +159,7 @@
   }
 
   export async function importClipboardNow() {
-    if (!rambleRequestId || !rambleEngaged || !rambleContextId || attachmentBusy) return
+    if (interactionLocked || !rambleRequestId || !rambleEngaged || !rambleContextId || attachmentBusy) return
     attachmentMessage = ''
     try {
       const event = await invoke<ClipboardCaptureEvent>('capture_clipboard_once', {
@@ -197,6 +198,7 @@
 
   async function startRamble() {
     if (
+      interactionLocked ||
       !workspace ||
       rambleBusy ||
       rambleEngaged ||
@@ -220,7 +222,7 @@
   }
 
   async function resumeRamble() {
-    if (!rambleRequestId || rambleBusy || rambleActive || !rambleContextId) return
+    if (interactionLocked || !rambleRequestId || rambleBusy || rambleActive || !rambleContextId) return
     ramblePhase = 'starting'
     rambleMessage = t($locale, '正在启动麦克风与实时转写…')
     const voiceStarted = await startVoiceRamble()
@@ -323,6 +325,7 @@
 
   function handleClipboardCaptureEvent(event: ClipboardCaptureEvent) {
     if (
+      interactionLocked ||
       !rambleEngaged ||
       !rambleRequestId ||
       !eventBelongsToRamble(
@@ -461,7 +464,7 @@
         break
       case 'stable': {
         const transcript = stableTranscript(event)
-        if (transcript) {
+        if (transcript && !interactionLocked) {
           if (workspace?.request.request_id === voiceRequestId) editor?.appendTranscript(transcript)
           else {
             void onAppendRambleMarkdown(voiceRequestId, transcript).catch(
@@ -508,13 +511,13 @@
         await toggleRamble()
         break
       case 'capture-screen':
-        await onStartScreenCapture()
+        if (!interactionLocked) await onStartScreenCapture()
         break
       case 'import-clipboard':
         await importClipboardNow()
         break
       case 'import-files':
-        await onImportAttachmentPaths(command.paths)
+        if (!interactionLocked) await onImportAttachmentPaths(command.paths)
         break
       case 'exit':
         await exitRamble()

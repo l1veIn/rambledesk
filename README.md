@@ -29,6 +29,7 @@ Requests survive transport disconnects and application restarts. The feedback li
 - Thin Generic MCP Adapter with `request_feedback`, `get_feedback`, and `cancel_feedback`.
 - Pi native package at `packages/pi-rambledesk`, using the local JSON API and blocking inside the Pi tool call.
 - Adapter settings for Generic MCP hosts and Pi package installation.
+- First-run setup for language, data location, local speech, adapters, notifications, and optional Cooking; it can be rerun from **Settings → General**.
 - Chinese and English UI, light and dark appearance modes, tray entry points, and optional system notifications.
 
 ## Development Quick Start
@@ -48,6 +49,10 @@ pnpm dev
 ```
 
 Open **Settings → Adapters** in RambleDesk to detect supported local tools, install Generic MCP configuration, install the Pi package, or copy the authenticated Streamable HTTP configuration.
+
+## First-run setup
+
+A fresh install opens a short setup flow before the workbench. Choose the data location first: feedback attachments, published packages, and speech models are written there. Choosing a different location saves it and restarts RambleDesk before later setup steps download a model or create feedback. The flow then offers a local speech model, a recommended Pi native adapter (automatic continuation in the same tool call), optional Generic MCP hosts (manual continuation), notification permissions, and optional Feedback Cooking. Run it again anytime from **Settings → General → Run getting started again**.
 
 For browser-only UI development:
 

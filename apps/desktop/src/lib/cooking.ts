@@ -3,7 +3,8 @@ import { generateText } from 'ai'
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http'
 
 import type { ActionInput } from './feedback'
-import type { CookingProvider, CookingReasoningEffort } from './preferences'
+import { t } from './i18n'
+import type { CookingProvider, CookingReasoningEffort, Locale } from './preferences'
 
 export type CookingConfig = {
   provider: CookingProvider
@@ -11,6 +12,7 @@ export type CookingConfig = {
   baseUrl: string
   model: string
   reasoningEffort: CookingReasoningEffort
+  locale: Locale
 }
 
 export type CookFeedbackInput = {
@@ -26,8 +28,8 @@ export async function cookFeedback(
 ): Promise<{ markdown: string; model: string }> {
   const apiKey = config.apiKey.trim()
   const modelId = config.model.trim()
-  if (!apiKey) throw new Error('Cooking 已开启，但尚未配置 API Key。')
-  if (!modelId) throw new Error('Cooking 已开启，但尚未配置模型名称。')
+  if (!apiKey) throw new Error(t(config.locale, 'Cooking 已开启，但尚未配置 API Key。'))
+  if (!modelId) throw new Error(t(config.locale, 'Cooking 已开启，但尚未配置模型名称。'))
 
   const provider = createOpenAI({
     apiKey,
@@ -54,7 +56,9 @@ export async function cookFeedback(
       .join('\n')}\n\n# Uncooked Operator Feedback\n\n${input.uncookedMarkdown}`,
   })
   const markdown = result.text.trim()
-  if (!markdown) throw new Error('Cooking 模型返回了空内容，请检查模型配置后重试。')
+  if (!markdown) {
+    throw new Error(t(config.locale, 'Cooking 模型返回了空内容，请检查模型配置后重试。'))
+  }
   return {
     markdown,
     model: `${config.provider}/${modelId}`,

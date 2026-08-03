@@ -13,7 +13,7 @@
   export let rambleEngaged = false
   export let rambleActive = false
   export let rambleRequestTitle = ''
-  export let notificationText = '通知'
+  export let notificationText = ''
   export let notificationEnabled = false
   export let notificationDisabled = false
   export let onSettings: () => void = () => {}
@@ -131,8 +131,8 @@
       class={notificationEnabled ? 'text-info' : ''}
       disabled={notificationDisabled}
       onclick={onNotifications}
-      title={notificationText}
-      aria-label={notificationText}
+      title={notificationText || t($locale, '通知')}
+      aria-label={notificationText || t($locale, '通知')}
     >
       {#if notificationEnabled}<Bell />{:else}<BellOff />{/if}
     </Button>

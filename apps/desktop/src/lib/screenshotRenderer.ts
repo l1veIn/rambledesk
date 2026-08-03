@@ -116,12 +116,13 @@ export function exportAnnotatedCapture(
   sourceImage: CanvasImageSource,
   selection: CaptureRectangle,
   annotations: CaptureAnnotation[],
+  canvasError = 'Could not create capture export canvas',
 ): string {
   const output = document.createElement('canvas')
   output.width = Math.max(1, Math.round(selection.width))
   output.height = Math.max(1, Math.round(selection.height))
   const context = output.getContext('2d')
-  if (!context) throw new Error('无法创建截图导出画布')
+  if (!context) throw new Error(canvasError)
 
   context.drawImage(
     sourceImage,

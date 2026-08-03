@@ -19,6 +19,7 @@
     Play,
     PlugZap,
     RefreshCw,
+    Rocket,
     ShieldCheck,
     TerminalSquare,
     Trash2,
@@ -37,6 +38,11 @@
   import * as Select from '$lib/components/ui/select'
   import * as Tabs from '$lib/components/ui/tabs'
   import { t } from '$lib/i18n'
+  import {
+    speechModelDescription,
+    speechModelDisplayName,
+    speechModelLanguages,
+  } from '$lib/speechModelLabels'
   import { playNotificationSound } from '$lib/notifications'
   import {
     cookingApiKey,
@@ -83,6 +89,7 @@
   export let mcpConfiguration = ''
   export let initialSection: Section = 'general'
   export let onClose: () => void = () => {}
+  export let onRestartOnboarding: () => void = () => {}
 
   type DataStorageView = {
     active_path: string
@@ -544,6 +551,24 @@
               </Select.Root>
             </section>
 
+            <section class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-8 border-b pb-8">
+              <div class="flex gap-3">
+                <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+                  <Rocket class="size-4" />
+                </span>
+                <div>
+                  <h3 class="m-0 text-sm font-medium">{tr('新手引导')}</h3>
+                  <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
+                    {tr('重新查看数据位置、语音、适配器、通知和 Cooking 的初始设置。')}
+                  </p>
+                </div>
+              </div>
+              <Button variant="outline" onclick={onRestartOnboarding}>
+                <Rocket data-icon="inline-start" />
+                {tr('再次启用新手引导')}
+              </Button>
+            </section>
+
             <section class="border-b pb-8">
               <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-8">
                 <div class="flex gap-3">
@@ -895,13 +920,19 @@
                   onValueChange={(value: string) => setSpeechModelId(value as SpeechModelId)}
                 >
                   <Select.Trigger class="w-full">
-                    {selectedSpeechModel?.display_name ?? tr('正在读取模型…')}
+                    {selectedSpeechModel
+                      ? speechModelDisplayName(
+                          $locale,
+                          selectedSpeechModel.id,
+                          selectedSpeechModel.display_name,
+                        )
+                      : tr('正在读取模型…')}
                   </Select.Trigger>
                   <Select.Content>
                     {#each speechModels as model (model.id)}
                       <Select.Item
                         value={model.id}
-                        label={`${model.display_name}${model.installed ? ` · ${tr('已安装')}` : ''}`}
+                        label={`${speechModelDisplayName($locale, model.id, model.display_name)}${model.installed ? ` · ${tr('已安装')}` : ''}`}
                       />
                     {/each}
                   </Select.Content>
@@ -917,11 +948,15 @@
                           {selectedSpeechModel.streaming ? tr('流式实时') : tr('VAD 分段 · 非流式')}
                         </Badge>
                         <span class="text-[10px] text-muted-foreground">
-                          {Math.round(selectedSpeechModel.size_bytes / 1024 / 1024)} MB · {selectedSpeechModel.languages.join(' / ')}
+                          {Math.round(selectedSpeechModel.size_bytes / 1024 / 1024)} MB · {speechModelLanguages($locale, selectedSpeechModel.id, selectedSpeechModel.languages).join(' / ')}
                         </span>
                       </div>
                       <p class="m-0 mt-2 text-xs leading-5 text-muted-foreground">
-                        {selectedSpeechModel.description}
+                        {speechModelDescription(
+                          $locale,
+                          selectedSpeechModel.id,
+                          selectedSpeechModel.description,
+                        )}
                       </p>
                       <p class="m-0 mt-1 truncate text-[10px] text-muted-foreground" title={selectedSpeechModel.path}>
                         {selectedSpeechModel.path}

@@ -4,6 +4,9 @@
   import { Check, Camera, GripHorizontal, X } from '@lucide/svelte'
   import { onMount } from 'svelte'
 
+  import { t } from './lib/i18n'
+  import { locale } from './lib/preferences'
+
   type ScrollCaptureInfo = {
     capture_session_id: string
     frame_count: number
@@ -16,7 +19,11 @@
   let info: ScrollCaptureInfo | null = null
   let busy = false
   let errorMessage = ''
-  let statusMessage = '滚动目标内容，RambleDesk 会自动连续采集'
+  let statusMessage = t($locale, '滚动目标内容，RambleDesk 会自动连续采集')
+
+  function tr(source: string, values: Record<string, string | number> = {}) {
+    return t($locale, source, values)
+  }
 
   onMount(() => {
     const keydown = (event: KeyboardEvent) => {
@@ -50,19 +57,19 @@
     if (!info || busy) return
     busy = true
     errorMessage = ''
-    statusMessage = '正在匹配滚动位置…'
+    statusMessage = tr('正在匹配滚动位置…')
     try {
       info = await invoke<ScrollCaptureInfo>('append_scrolling_capture_frame', {
         captureSessionId: info.capture_session_id,
       })
       statusMessage = info.matched
         ? info.added_height > 0
-          ? `已拼接 ${info.added_height} px 新内容`
-          : '画面没有变化，请继续滚动'
-        : '没有找到可靠重叠区域，请少滚动一些再试'
+          ? tr('已拼接 {height} px 新内容', { height: info.added_height })
+          : tr('画面没有变化，请继续滚动')
+        : tr('没有找到可靠重叠区域，请少滚动一些再试')
     } catch (cause) {
       errorMessage = messageFrom(cause)
-      statusMessage = '这一帧没有写入长图'
+      statusMessage = tr('这一帧没有写入长图')
     } finally {
       busy = false
     }
@@ -72,7 +79,7 @@
     if (!info || busy) return
     busy = true
     errorMessage = ''
-    statusMessage = '正在生成长图并返回标注编辑器…'
+    statusMessage = tr('正在生成长图并返回标注编辑器…')
     try {
       await invoke('finish_scrolling_capture', { captureSessionId: info.capture_session_id })
     } catch (cause) {
@@ -107,22 +114,22 @@
 <main class="scroll-controller" onpointerdown={(event) => void startDragging(event)}>
   <GripHorizontal class="grip" size={18} strokeWidth={1.8} />
   <section>
-    <strong>滚动截图</strong>
+    <strong>{tr('滚动截图')}</strong>
     <span>{statusMessage}</span>
     {#if info}
-      <small>{info.frame_count} 帧 · {info.width} × {info.height}</small>
+      <small>{info.frame_count} {tr('帧')} · {info.width} × {info.height}</small>
     {/if}
     {#if errorMessage}<em>{errorMessage}</em>{/if}
   </section>
   <div class="actions">
-    <button disabled={!info || busy} onclick={captureFrame} title="立即采集一帧 · Space">
+    <button disabled={!info || busy} onclick={captureFrame} title={tr('立即采集一帧 · Space')}>
       <Camera size={17} />
-      <span>立即采集</span>
+      <span>{tr('立即采集')}</span>
     </button>
-    <button class="finish" disabled={!info || busy} onclick={finish} title="完成 · Enter">
+    <button class="finish" disabled={!info || busy} onclick={finish} title={tr('完成 · Enter')}>
       <Check size={18} />
     </button>
-    <button class="cancel" disabled={busy} onclick={cancel} title="取消 · Esc">
+    <button class="cancel" disabled={busy} onclick={cancel} title={tr('取消 · Esc')}>
       <X size={18} />
     </button>
   </div>

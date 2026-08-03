@@ -13,6 +13,7 @@
   import rambelleOrganizing from './assets/rambelle-states/organizing.png'
   import rambelleRecording from './assets/rambelle-states/recording.png'
   import AppTitlebar from './lib/AppTitlebar.svelte'
+  import OnboardingWizard from './lib/OnboardingWizard.svelte'
   import SettingsPanel from './lib/SettingsPanel.svelte'
   import HostSessionRail from './lib/components/navigation/HostSessionRail.svelte'
   import RequestListPane from './lib/components/navigation/RequestListPane.svelte'
@@ -36,6 +37,10 @@
   } from './lib/notifications'
   import { desktopPath } from './lib/nativePath'
   import { previewFixtures, previewWorkspaceFor } from './lib/previewFixtures'
+  import {
+    restorePublishedAttachmentUrls,
+    type PublishedAttachmentPath,
+  } from './lib/publishedFeedback'
   import {
     createAttachmentController,
     type AttachmentMessageTone,
@@ -63,6 +68,8 @@
     locale,
     notificationPopupEnabled,
     notificationSound,
+    onboardingCompleted,
+    resetOnboarding,
     notificationSoundEnabled,
     notificationVolume,
     setNotificationPopupEnabled,
@@ -72,6 +79,9 @@
   type PublishedFeedbackView = {
     markdown: string
     uncooked_markdown?: string
+  }
+  type PublishedFeedbackPackage = PublishedFeedbackView & {
+    manifest?: { attachments?: PublishedAttachmentPath[] }
   }
 
   const RESUME_PROMPT_EVENT = 'rambledesk://resume-prompt'
@@ -105,6 +115,8 @@
   let notificationState: NotificationState = 'checking'
   let settingsOpen = false
   let settingsSection: SettingsSection = 'general'
+  let onboardingOpen = false
+  let workbenchInitialized = false
   const isTauri = '__TAURI_INTERNALS__' in window
   const previewMode =
     import.meta.env.DEV &&
@@ -140,6 +152,7 @@
     getEditor: () => workspacePanel,
     getRambleRequestId: () => rambleRequestId,
     getRambleEngaged: () => rambleEngaged,
+    getInteractionLocked: () => interactionLocked,
     getSavedRevision: () => savedRevision,
     getBusy: () => attachmentBusy,
     getPreviews: () => attachmentPreviews,
@@ -229,6 +242,7 @@
     workspace.request.status !== 'cancelled' &&
     !submitting &&
     !cancelling
+  $: interactionLocked = submitting || cancelling || approving
   $: voiceActive =
     voicePhase === 'starting' ||
     voicePhase === 'listening' ||
@@ -253,9 +267,9 @@
 
   onMount(() => {
     const cleanupAttachments = attachmentController.mount()
-    void navigation.initialize()
 
     if (!isTauri) {
+      startWorkbench()
       if (previewMode) {
         workspace = previewFixtures.workspace
         draftBody = previewFixtures.workspace.draft.body_markdown
@@ -269,8 +283,9 @@
       notificationState = 'unavailable'
       return cleanupAttachments
     }
+    if ($onboardingCompleted) startWorkbench()
+    else onboardingOpen = true
     void refreshNotificationPermission()
-    inboxTimer = setInterval(() => void navigation.refreshNavigation(true), 5_000)
     let resumePromptUnlisten: (() => void) | undefined
     let openAdaptersUnlisten: (() => void) | undefined
     void listen(OPEN_ADAPTERS_EVENT, () => openSettings('adapters'))
@@ -310,6 +325,24 @@
     }
   })
 
+  function startWorkbench() {
+    if (workbenchInitialized) return
+    workbenchInitialized = true
+    void navigation.initialize()
+    if (isTauri) inboxTimer = setInterval(() => void navigation.refreshNavigation(true), 5_000)
+  }
+
+  function closeOnboarding() {
+    onboardingOpen = false
+    startWorkbench()
+  }
+
+  function restartOnboarding() {
+    resetOnboarding()
+    settingsOpen = false
+    onboardingOpen = true
+  }
+
   async function copyResumePrompt() {
     if (!resumePrompt) return
     try {
@@ -346,7 +379,7 @@
   }
 
   async function openRequest(requestId: string, saveCurrent = true) {
-    if (workspace?.request.request_id === requestId) return
+    if (interactionLocked || workspace?.request.request_id === requestId) return
     if (saveCurrent && !(await saveDraftNow())) return
     if (requestId === rambleRequestId) await rambleMarkdownQueue.catch(() => {})
 
@@ -376,7 +409,7 @@
               uncooked_markdown: next.draft.body_markdown,
             }
           : normalizePublishedFeedback(
-              await invoke<PublishedFeedbackView | null>('read_published_feedback', {
+              await invoke<PublishedFeedbackPackage | null>('read_published_feedback', {
                 requestId: next.request.request_id,
               }),
             )
@@ -390,6 +423,7 @@
 
   function updateDraft(value: string) {
     if (
+      interactionLocked ||
       !workspace ||
       workspace.request.status === 'completed' ||
       workspace.request.status === 'cancelled'
@@ -460,6 +494,7 @@
   }
 
   async function appendRambleMarkdown(requestId: string, markdown: string): Promise<void> {
+    if (interactionLocked) return
     const block = markdown.trim()
     if (!requestId || !block) return
 
@@ -494,13 +529,20 @@
   }
 
   function normalizePublishedFeedback(
-    published: PublishedFeedbackView | null,
+    published: PublishedFeedbackPackage | null,
   ): PublishedFeedbackView | null {
     if (!published) return null
+    const attachments = published.manifest?.attachments ?? []
     return {
-      markdown: operatorFeedbackBody(published.markdown),
+      markdown: restorePublishedAttachmentUrls(
+        operatorFeedbackBody(published.markdown),
+        attachments,
+      ),
       uncooked_markdown: published.uncooked_markdown
-        ? operatorFeedbackBody(published.uncooked_markdown)
+        ? restorePublishedAttachmentUrls(
+            operatorFeedbackBody(published.uncooked_markdown),
+            attachments,
+          )
         : undefined,
     }
   }
@@ -514,6 +556,7 @@
   }
 
   async function reloadWorkspace() {
+    if (interactionLocked) return
     const requestId = workspace?.request.request_id
     if (!requestId) return
     if (rambleCanExit) await exitRamble()
@@ -585,6 +628,7 @@
             baseUrl: $cookingBaseUrl,
             model: $cookingModel,
             reasoningEffort: $cookingReasoningEffort,
+            locale: $locale,
           },
         )
         cookedMarkdown = cooked.markdown
@@ -618,7 +662,7 @@
             uncooked_markdown: draftBody,
           }
         : normalizePublishedFeedback(
-            await invoke<PublishedFeedbackView | null>('read_published_feedback', {
+            await invoke<PublishedFeedbackPackage | null>('read_published_feedback', {
               requestId: result.request_id,
             }),
           )
@@ -758,6 +802,7 @@
     bind:rambleRequestId
     bind:rambleRequestTitle
     bind:rambleMessage
+    {interactionLocked}
     onPageError={(message) => (pageError = message)}
     onSaveDraftNow={saveDraftNow}
     onApplyWorkspaceMutation={applyWorkspaceMutation}
@@ -874,10 +919,13 @@
   </div>
 </main>
 
+<OnboardingWizard bind:openWizard={onboardingOpen} onClose={closeOnboarding} />
+
 {#if settingsOpen}
   <SettingsPanel
     mcpConfiguration={genericMcpConfiguration}
     initialSection={settingsSection}
+    onRestartOnboarding={restartOnboarding}
     onClose={() => {
       settingsOpen = false
       void refreshNotificationPermission()

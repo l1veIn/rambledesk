@@ -4,6 +4,9 @@
   import { X } from '@lucide/svelte'
   import { onMount } from 'svelte'
 
+  import { t } from './lib/i18n'
+  import { locale } from './lib/preferences'
+
   const pinId = new URLSearchParams(window.location.hash.slice(1).replace('capture-pin=', 'pin_id=')).get('pin_id') ?? ''
   let imageUrl = ''
   let errorMessage = ''
@@ -55,11 +58,11 @@
   }}
 >
   {#if imageUrl}
-    <img src={imageUrl} alt="固定截图" draggable="false" />
+    <img src={imageUrl} alt={t($locale, '固定截图')} draggable="false" />
   {:else if errorMessage}
     <span>{errorMessage}</span>
   {/if}
-  <button onclick={closePin} title="关闭固定截图 · Esc" aria-label="关闭固定截图">
+  <button onclick={closePin} title={t($locale, '关闭固定截图 · Esc')} aria-label={t($locale, '关闭固定截图')}>
     <X size={16} strokeWidth={2} />
   </button>
 </main>

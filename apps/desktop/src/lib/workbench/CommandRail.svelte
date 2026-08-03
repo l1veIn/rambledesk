@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { t } from '$lib/i18n'
+  import { locale } from '$lib/preferences'
   import type { AttachmentView, FeedbackResultView, FeedbackWorkspaceView } from '../feedback'
   import type { RamblePhase, SubmitStage } from './types'
   import AttachmentsCard from './AttachmentsCard.svelte'
@@ -43,13 +45,14 @@
 
   $: readOnly =
     workspace.request.status === 'completed' || workspace.request.status === 'cancelled'
+  $: interactionLocked = submitting || cancelling || approving
 </script>
 
 <aside
   class="command-rail min-h-0 min-w-0 overflow-y-auto border-l bg-muted/15"
-  aria-label="Ramble 操作台"
+  aria-label={t($locale, 'Ramble 操作台')}
 >
-  {#if !readOnly}
+  {#if !readOnly && !interactionLocked}
     <RamblePanel
       {rambleEngaged}
       {rambleActive}
@@ -82,7 +85,7 @@
   <AttachmentsCard
     attachments={workspace.attachments}
     {attachmentBusy}
-    {readOnly}
+    readOnly={readOnly || interactionLocked}
     onInsert={onInsertAttachment}
     onRemove={onRemoveAttachment}
   />

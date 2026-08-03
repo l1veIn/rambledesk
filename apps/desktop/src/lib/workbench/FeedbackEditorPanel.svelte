@@ -25,6 +25,7 @@
   export let attachmentPreviews: Record<string, string> = {}
   export let dragActive = false
   export let cooking = false
+  export let locked = false
   export let cookedMarkdown = ''
   export let uncookedMarkdown = ''
   export let formatTime: (value: string | null | undefined) => string
@@ -35,6 +36,7 @@
 
   $: readOnly =
     workspace.request.status === 'completed' || workspace.request.status === 'cancelled'
+  $: editingDisabled = readOnly || locked
   $: hasPublishedFeedback = readOnly && cookedMarkdown.trim().length > 0
   $: hasCookingDifference =
     hasPublishedFeedback && cookedMarkdown.trim() !== uncookedMarkdown.trim()
@@ -163,9 +165,9 @@
         bind:this={richEditor}
         markdown={displayedMarkdown}
         previews={attachmentPreviews}
-        disabled={readOnly}
+        disabled={editingDisabled}
         onChange={(markdown) => {
-          if (!readOnly) onChange(markdown)
+          if (!editingDisabled) onChange(markdown)
         }}
       />
     {/if}

@@ -29,6 +29,7 @@ RambleDesk 把这次交接变成正式闭环：
 - 通用 MCP 适配器薄层，工具为 `request_feedback`、`get_feedback`、`cancel_feedback`。
 - Pi 原生 package 位于 `packages/pi-rambledesk`，使用本地 JSON API，并在 Pi tool call 内等待终态。
 - 适配器设置：Generic MCP 宿主配置、Pi package 安装。
+- 首次使用引导：语言、数据位置、本地语音、适配器、通知和可选 Cooking；可从 **设置 → 通用** 再次启用。
 - 中文/英文界面、light/dark 外观、托盘入口以及可选系统通知。
 
 ## 本地开发快速开始
@@ -48,6 +49,10 @@ pnpm dev
 ```
 
 在 RambleDesk 中打开 **设置 → 适配器**，可以检测支持的本机工具、一键写入 Generic MCP 配置、安装 Pi package，或复制带认证的 Streamable HTTP 配置。
+
+## 首次使用引导
+
+全新安装会在进入工作台前展示一段简短引导。数据位置是第一步：反馈附件、已发布包和语音模型都会写入该目录。选择其他位置后，RambleDesk 会先保存选择并重启，之后才下载模型或产生反馈。接下来可以下载本地语音模型、安装推荐的 Pi 原生适配器（同一 tool call 内自动继续）、按需配置 Generic MCP 宿主（手动继续）、开启通知以及配置可选 Feedback Cooking。随时可在 **设置 → 通用 → 再次启用新手引导** 重走。
 
 只进行浏览器 UI 开发时：
 
