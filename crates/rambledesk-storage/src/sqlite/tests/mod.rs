@@ -5,6 +5,7 @@ use rambledesk_core::{
     RecoverFeedbackInput, RemoveAttachmentInput, ReorderAttachmentsInput, RequestAttachmentInput,
     RequestFeedbackInput, SaveDraftInput, SubmitFeedbackInput,
 };
+use sha2::{Digest, Sha384};
 use tempfile::TempDir;
 use uuid::Uuid;
 
