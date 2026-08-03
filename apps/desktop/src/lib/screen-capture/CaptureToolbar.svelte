@@ -38,7 +38,9 @@
   export let canUndo = false
   export let canRedo = false
   export let canDelete = false
-  export let onBeginDrag: (event: MouseEvent) => void = () => {}
+  export let onBeginDrag: (event: PointerEvent) => void = () => {}
+  export let onMoveDrag: (event: PointerEvent) => void = () => {}
+  export let onEndDrag: (event: PointerEvent) => void = () => {}
   export let onSetTool: (tool: AnnotationTool) => void = () => {}
   export let onToggleStylePanel: () => void = () => {}
   export let onToggleOverflowPanel: () => void = () => {}
@@ -63,7 +65,11 @@
     class="toolbar-drag"
     aria-label={t($locale, '拖动工具栏')}
     title={t($locale, '拖动工具栏')}
-    onmousedown={onBeginDrag}
+    onpointerdown={onBeginDrag}
+    onpointermove={onMoveDrag}
+    onpointerup={onEndDrag}
+    onpointercancel={onEndDrag}
+    onlostpointercapture={onEndDrag}
   ><GripVertical size={17} /></button>
   <span class="divider"></span>
   <div class="tool-group">

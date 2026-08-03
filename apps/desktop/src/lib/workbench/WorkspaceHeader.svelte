@@ -11,6 +11,7 @@
 
   export let workspace: FeedbackWorkspaceView
   export let resolveHostProfile: (hostId: string) => HostProfile
+  export let cooking = false
   export let disabled = false
   export let onReload: () => void = () => {}
 
@@ -19,6 +20,7 @@
   }
 
   function statusClass() {
+    if (cooking) return 'border-primary/25 bg-primary/10 text-primary'
     switch (workspace.request.status) {
       case 'waiting':
         return 'border-warning/25 bg-warning/10 text-warning-foreground dark:text-warning'
@@ -48,7 +50,7 @@
         {workspace.request.host_session_id}
       </span>
       <Badge variant="outline" class={['h-5 px-1.5 text-[9px]', statusClass()]}>
-        {requestStatusLabel(workspace.request.status, $locale)}
+        {cooking ? tr('Cooking 中') : requestStatusLabel(workspace.request.status, $locale)}
       </Badge>
     </div>
     <h1 class="m-0 mt-1 truncate text-sm font-semibold">

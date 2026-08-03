@@ -16,7 +16,10 @@
   }
 </script>
 
-<Collapsible.Root bind:open class="flex max-h-[50%] shrink-0 flex-col overflow-hidden border-b">
+<Collapsible.Root
+  bind:open
+  class={`task-brief flex h-full min-h-0 flex-col overflow-hidden ${open ? '' : 'border-b'}`}
+>
   <div class="flex min-h-12 shrink-0 items-center gap-3 px-5 py-2">
     <ListChecks class="size-4 shrink-0 text-muted-foreground" />
     <div class="min-w-0 flex-1">
@@ -49,7 +52,7 @@
     </Collapsible.Trigger>
   </div>
 
-  <Collapsible.Content class="min-h-0 overflow-y-auto overscroll-contain">
+  <Collapsible.Content class="min-h-0 flex-1 overflow-y-auto overscroll-contain">
     <div class="grid gap-5 bg-muted/25 px-5 py-4 text-xs @min-[700px]:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
       <section>
         <h2 class="m-0 text-[10px] font-semibold uppercase text-muted-foreground">

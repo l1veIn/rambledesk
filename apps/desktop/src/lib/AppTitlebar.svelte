@@ -1,6 +1,6 @@
 <script lang="ts">
   import { getCurrentWindow } from '@tauri-apps/api/window'
-  import { Bell, BellOff, Cog, Minus, X } from '@lucide/svelte'
+  import { Bell, BellOff, Minus, X } from '@lucide/svelte'
 
   import appIcon from '../assets/rambledesk-app-icon.png'
   import { Badge } from '$lib/components/ui/badge'
@@ -16,7 +16,6 @@
   export let notificationText = ''
   export let notificationEnabled = false
   export let notificationDisabled = false
-  export let onSettings: () => void = () => {}
   export let onNotifications: () => void = () => {}
   export let onWindowError: (message: string) => void = () => {}
 
@@ -135,15 +134,6 @@
       aria-label={notificationText || t($locale, '通知')}
     >
       {#if notificationEnabled}<Bell />{:else}<BellOff />{/if}
-    </Button>
-    <Button
-      variant="ghost"
-      size="icon"
-      onclick={onSettings}
-      title={t($locale, '设置')}
-      aria-label={t($locale, '设置')}
-    >
-      <Cog />
     </Button>
   </div>
 

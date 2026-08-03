@@ -218,6 +218,43 @@ body.ramble-console-mode {
   isolation: isolate;
 }
 
+/* PaneForge supplies the resize behavior and ARIA semantics; these styles provide a full-length rail with a hover state. */
+.workbench-pane-resizer {
+  position: relative;
+  z-index: 10;
+  flex: 0 0 11px;
+  background: transparent;
+  outline: none;
+}
+
+.workbench-pane-resizer::before {
+  position: absolute;
+  border-radius: 999px;
+  background: var(--border);
+  content: "";
+  transition: background-color 150ms ease, box-shadow 150ms ease, width 150ms ease, height 150ms ease;
+}
+
+.workbench-pane-resizer--vertical::before {
+  top: 0;
+  bottom: 0;
+  left: 5px;
+  width: 1px;
+}
+
+.workbench-pane-resizer--horizontal::before {
+  top: 5px;
+  right: 0;
+  left: 0;
+  height: 1px;
+}
+
+.workbench-pane-resizer:is(:hover, :focus-visible, [data-active])::before {
+  background: var(--primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 16%, transparent);
+}
+
+
 .workspace-panel::before {
   position: absolute;
   z-index: -1;

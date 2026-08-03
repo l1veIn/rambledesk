@@ -81,7 +81,7 @@
 
 <section
   class={[
-    'flex min-h-0 flex-1 flex-col p-5 transition-colors',
+    'flex h-full min-h-0 flex-1 flex-col p-5 transition-colors',
     dragActive ? 'bg-primary/5 ring-2 ring-inset ring-primary/30' : '',
   ]}
 >
@@ -97,47 +97,40 @@
         <Button
           variant={publishedView === 'cooked' ? 'secondary' : 'ghost'}
           size="sm"
-          class="h-7 px-2 text-[10px]"
+          class={publishedView === 'cooked' ? 'h-7 px-2 text-[10px]' : 'size-7 p-0'}
+          aria-label="Cooked"
+          title="Cooked"
           onclick={() => (publishedView = 'cooked')}
         >
-          <Sparkles data-icon="inline-start" />Cooked
+          <Sparkles data-icon={publishedView === 'cooked' ? 'inline-start' : undefined} />
+          {#if publishedView === 'cooked'}Cooked{/if}
         </Button>
         <Button
           variant={publishedView === 'uncooked' ? 'secondary' : 'ghost'}
           size="sm"
-          class="h-7 px-2 text-[10px]"
+          class={publishedView === 'uncooked' ? 'h-7 px-2 text-[10px]' : 'size-7 p-0'}
+          aria-label="Uncooked"
+          title="Uncooked"
           onclick={() => (publishedView = 'uncooked')}
         >
-          <FileText data-icon="inline-start" />Uncooked
+          <FileText data-icon={publishedView === 'uncooked' ? 'inline-start' : undefined} />
+          {#if publishedView === 'uncooked'}Uncooked{/if}
         </Button>
         {#if hasCookingDifference}
           <Button
             variant={publishedView === 'compare' ? 'secondary' : 'ghost'}
             size="sm"
-            class="h-7 px-2 text-[10px]"
+            class={publishedView === 'compare' ? 'h-7 px-2 text-[10px]' : 'size-7 p-0'}
+            aria-label={tr('对比')}
+            title={tr('对比')}
             onclick={() => (publishedView = 'compare')}
           >
-            <Columns2 data-icon="inline-start" />{tr('对比')}
+            <Columns2 data-icon={publishedView === 'compare' ? 'inline-start' : undefined} />
+            {#if publishedView === 'compare'}{tr('对比')}{/if}
           </Button>
         {/if}
       </div>
     {/if}
-    <Badge
-      variant={savePhase === 'error' ? 'destructive' : 'secondary'}
-      class={["h-6 gap-1 px-2 text-[9px]", hasPublishedFeedback ? '' : 'ml-auto']}
-      aria-live="polite"
-    >
-      {#if savePhase === 'saving'}
-        <LoaderCircle class="size-3 animate-spin" />
-      {:else if savePhase === 'error'}
-        <AlertCircle class="size-3" />
-      {:else if savePhase === 'unsaved'}
-        <CloudCog class="size-3" />
-      {:else}
-        <Check class="size-3" />
-      {/if}
-      {saveLabel()}
-    </Badge>
   </header>
 
   <div class="relative flex min-h-0 flex-1">
@@ -195,6 +188,22 @@
   <footer class="mt-2 flex items-center gap-3 text-[9px] text-muted-foreground">
     <span>{tr('{count} 字符', { count: draftBody.length.toLocaleString($locale) })}</span>
     <span>Markdown</span>
-    <span class="ml-auto">{formatTime(workspace.draft.updated_at)}</span>
+    <Badge
+      variant={savePhase === 'error' ? 'destructive' : 'secondary'}
+      class="ml-auto h-6 gap-1 px-2 text-[9px]"
+      aria-live="polite"
+    >
+      {#if savePhase === 'saving'}
+        <LoaderCircle class="size-3 animate-spin" />
+      {:else if savePhase === 'error'}
+        <AlertCircle class="size-3" />
+      {:else if savePhase === 'unsaved'}
+        <CloudCog class="size-3" />
+      {:else}
+        <Check class="size-3" />
+      {/if}
+      {saveLabel()}
+    </Badge>
+    <span>{formatTime(workspace.draft.updated_at)}</span>
   </footer>
 </section>

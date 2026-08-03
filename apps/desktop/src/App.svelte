@@ -7,6 +7,7 @@
   } from '@tauri-apps/plugin-notification'
   import { revealItemInDir } from '@tauri-apps/plugin-opener'
   import { onMount, tick } from 'svelte'
+  import { Pane, PaneGroup, PaneResizer } from 'paneforge'
 
   import rambelleArchived from './assets/rambelle-states/archived.png'
   import rambelleIdle from './assets/rambelle-states/idle.png'
@@ -59,6 +60,12 @@
   import RambleSessionController from './lib/workbench/RambleSessionController.svelte'
   import { t } from './lib/i18n'
   import {
+    initialHostRailCollapsed,
+    saveHostRailCollapsed,
+    savePaneLayout,
+    savedPaneLayout,
+  } from './lib/uiPreferences'
+  import {
     cookingApiKey,
     cookingBaseUrl,
     cookingEnabled,
@@ -83,6 +90,15 @@
   type PublishedFeedbackPackage = PublishedFeedbackView & {
     manifest?: { attachments?: PublishedAttachmentPath[] }
   }
+  type CookingSubmission = {
+    request: FeedbackWorkspaceView['request']
+    actions: FeedbackWorkspaceView['actions']
+    body: string
+    savedRevision: number
+  }
+  type PaneGroupHandle = {
+    setLayout: (layout: number[]) => void
+  }
 
   const RESUME_PROMPT_EVENT = 'rambledesk://resume-prompt'
   const OPEN_ADAPTERS_EVENT = 'rambledesk://open-adapters'
@@ -98,6 +114,7 @@
   let loadingWorkspace = false
   let submitting = false
   let submitStage: SubmitStage = 'idle'
+  let cookingRequestIds = new Set<string>()
   let cancelling = false
   let approving = false
   let attachmentBusy = false
@@ -122,7 +139,22 @@
     import.meta.env.DEV &&
     !isTauri &&
     new URLSearchParams(window.location.search).get('preview') === 'fixtures'
+  const REQUEST_LIST_DEFAULT_WIDTH = 296
+  const REQUEST_LIST_MIN_WIDTH = 240
+  const WIDE_WORKSPACE_MIN_WIDTH = 648
+  const NARROW_WORKSPACE_MIN_WIDTH = 360
+  const PANE_RESIZER_SIZE = 11
+  const REQUEST_WORKSPACE_LAYOUT_KEY = 'request-workspace-layout'
+  const savedRequestWorkspaceLayout = savedPaneLayout(REQUEST_WORKSPACE_LAYOUT_KEY)
+
   let taskBriefOpen = true
+  let hostSessionRailCollapsed = initialHostRailCollapsed()
+  let workbenchLayout: HTMLDivElement
+  let requestWorkspaceGroup: HTMLDivElement | null = null
+  let requestWorkspacePaneGroup: PaneGroupHandle | undefined
+  let requestWorkspaceLayoutReady = false
+  let workbenchLayoutWidth = 0
+  let requestWorkspaceWidth = 0
   let genericMcpConfiguration = ''
   let voicePhase: VoicePhase = 'idle'
   let voiceDevice = ''
@@ -152,7 +184,7 @@
     getEditor: () => workspacePanel,
     getRambleRequestId: () => rambleRequestId,
     getRambleEngaged: () => rambleEngaged,
-    getInteractionLocked: () => interactionLocked,
+    getInteractionLocked: () => interactionLocked || currentRequestCooking,
     getSavedRevision: () => savedRevision,
     getBusy: () => attachmentBusy,
     getPreviews: () => attachmentPreviews,
@@ -229,17 +261,21 @@
       : resolveHostProfile($navigation.selectedHostId).label
     : tr('全部宿主')
   $: feedbackResult = completedResult?.feedback ?? workspace?.feedback ?? null
+  $: currentRequestCooking =
+    workspace !== null && cookingRequestIds.has(workspace.request.request_id)
   $: canSubmit =
     workspace !== null &&
     workspace.request.status !== 'completed' &&
     workspace.request.status !== 'cancelled' &&
     draftBody.trim().length > 0 &&
+    !currentRequestCooking &&
     !submitting &&
     !cancelling
   $: canCancel =
     workspace !== null &&
     workspace.request.status !== 'completed' &&
     workspace.request.status !== 'cancelled' &&
+    !currentRequestCooking &&
     !submitting &&
     !cancelling
   $: interactionLocked = submitting || cancelling || approving
@@ -264,9 +300,51 @@
   $: rambleBusy = ramblePhase === 'starting' || ramblePhase === 'stopping'
   $: rambleCanStop = rambleActive || voiceCanStop
   $: rambleCanExit = rambleEngaged || voiceCanStop
+  $: workspaceMinimumWidth =
+    workbenchLayoutWidth > 1180 ? WIDE_WORKSPACE_MIN_WIDTH : NARROW_WORKSPACE_MIN_WIDTH
+  $: requestWorkspacePaneWidth = Math.max(0, requestWorkspaceWidth - PANE_RESIZER_SIZE)
+  $: requestListMinimumSize = requestWorkspacePaneWidth
+    ? Math.min(100, (REQUEST_LIST_MIN_WIDTH / requestWorkspacePaneWidth) * 100)
+    : 0
+  $: desiredWorkspaceMinimumSize = requestWorkspacePaneWidth
+    ? Math.min(100, (workspaceMinimumWidth / requestWorkspacePaneWidth) * 100)
+    : 0
+  $: workspaceMinimumSize = Math.min(
+    desiredWorkspaceMinimumSize,
+    Math.max(0, 100 - requestListMinimumSize),
+  )
+  $: requestListMaximumSize = Math.max(requestListMinimumSize, 100 - workspaceMinimumSize)
+  $: saveHostRailCollapsed(hostSessionRailCollapsed)
+
+  function saveRequestWorkspaceLayout(layout: number[]) {
+    if (requestWorkspaceLayoutReady) savePaneLayout(REQUEST_WORKSPACE_LAYOUT_KEY, layout)
+  }
 
   onMount(() => {
     const cleanupAttachments = attachmentController.mount()
+    const syncLayoutDimensions = () => {
+      workbenchLayoutWidth = workbenchLayout?.clientWidth ?? 0
+      requestWorkspaceWidth = requestWorkspaceGroup?.clientWidth ?? 0
+    }
+    const layoutObserver = new ResizeObserver(syncLayoutDimensions)
+    if (workbenchLayout) layoutObserver.observe(workbenchLayout)
+    if (requestWorkspaceGroup) layoutObserver.observe(requestWorkspaceGroup)
+    syncLayoutDimensions()
+    void tick().then(() => {
+      if (!requestWorkspacePaneGroup || requestWorkspacePaneWidth <= 0) return
+      const defaultRequestListSize = Math.min(
+        requestListMaximumSize,
+        Math.max(
+          requestListMinimumSize,
+          (REQUEST_LIST_DEFAULT_WIDTH / requestWorkspacePaneWidth) * 100,
+        ),
+      )
+      requestWorkspaceLayoutReady = true
+      requestWorkspacePaneGroup.setLayout(
+        savedRequestWorkspaceLayout ?? [defaultRequestListSize, 100 - defaultRequestListSize],
+      )
+    })
+    const cleanupLayoutObserver = () => layoutObserver.disconnect()
 
     if (!isTauri) {
       startWorkbench()
@@ -281,7 +359,10 @@
         }
       }
       notificationState = 'unavailable'
-      return cleanupAttachments
+      return () => {
+        cleanupLayoutObserver()
+        cleanupAttachments()
+      }
     }
     if ($onboardingCompleted) startWorkbench()
     else onboardingOpen = true
@@ -321,6 +402,7 @@
       if (inboxTimer) clearInterval(inboxTimer)
       resumePromptUnlisten?.()
       openAdaptersUnlisten?.()
+      cleanupLayoutObserver()
       cleanupAttachments()
     }
   })
@@ -578,14 +660,6 @@
     }
   }
 
-  async function toggleSettings() {
-    if (settingsOpen) {
-      settingsOpen = false
-      return
-    }
-    await openSettings('general')
-  }
-
   function applyWorkspaceMutation(next: FeedbackWorkspaceView) {
     const localBody = draftBody
     workspace = next
@@ -602,71 +676,136 @@
     }
   }
 
-  async function submitFeedback() {
-    if (!workspace || !canSubmit) return
-    if (rambleCanExit) await exitRamble()
-    if (!(await saveDraftNow())) return
+  function setCookingRequest(requestId: string, cooking: boolean) {
+    const next = new Set(cookingRequestIds)
+    if (cooking) next.add(requestId)
+    else next.delete(requestId)
+    cookingRequestIds = next
+  }
 
-    submitting = true
-    submitStage = $cookingEnabled ? 'cooking' : 'publishing'
-    pageError = ''
+  function applyVisibleSubmissionResult(result: FeedbackRequestView) {
+    if (workspace?.request.request_id !== result.request_id) return false
+    completedResult = result
+    workspace = {
+      ...workspace,
+      feedback: result.feedback,
+      request: {
+        ...workspace.request,
+        status: result.status,
+        updated_at: result.updated_at,
+      },
+    }
+    savePhase = 'saved'
+    return true
+  }
+
+  async function loadVisiblePublishedFeedback(
+    requestId: string,
+    cookedMarkdown: string | undefined,
+    uncookedMarkdown: string,
+  ) {
+    if (workspace?.request.request_id !== requestId) return
     try {
-      let cookedMarkdown: string | undefined
-      let cookingModelUsed: string | undefined
-      if ($cookingEnabled) {
-        const { cookFeedback } = await import('./lib/cooking')
-        const cooked = await cookFeedback(
-          {
-            title: workspace.request.title,
-            whatHappened: workspace.request.what_happened,
-            actions: workspace.actions,
-            uncookedMarkdown: draftBody,
-          },
-          {
-            provider: $cookingProvider,
-            apiKey: $cookingApiKey,
-            baseUrl: $cookingBaseUrl,
-            model: $cookingModel,
-            reasoningEffort: $cookingReasoningEffort,
-            locale: $locale,
-          },
-        )
-        cookedMarkdown = cooked.markdown
-        cookingModelUsed = cooked.model
-        submitStage = 'publishing'
-      }
-      const input: SubmitFeedbackInput = {
-        request_id: workspace.request.request_id,
-        expected_revision: savedRevision,
-        cooked_markdown: cookedMarkdown,
-        cooking_model: cookingModelUsed,
-      }
-      const result = await invoke<FeedbackRequestView>('submit_feedback', { input })
-      completedResult = result
-      workspace = {
-        ...workspace,
-        feedback: result.feedback,
-        request: {
-          ...workspace.request,
-          status: result.status,
-          updated_at: result.updated_at,
-        },
-      }
-      savePhase = 'saved'
-      toast.success(tr('反馈已提交'), {
-        description: $cookingEnabled ? tr('Cooked 与 Uncooked 反馈已发布') : tr('反馈包已发布'),
-      })
-      publishedFeedback = previewMode
+      const next = previewMode
         ? {
-            markdown: cookedMarkdown ?? draftBody,
-            uncooked_markdown: draftBody,
+            markdown: cookedMarkdown ?? uncookedMarkdown,
+            uncooked_markdown: uncookedMarkdown,
           }
         : normalizePublishedFeedback(
             await invoke<PublishedFeedbackPackage | null>('read_published_feedback', {
-              requestId: result.request_id,
+              requestId,
             }),
           )
-      await navigation.refreshNavigation(true)
+      if (workspace?.request.request_id === requestId) publishedFeedback = next
+    } catch (cause) {
+      pageError = messageFrom(cause)
+    }
+  }
+
+  async function publishFeedback(
+    input: SubmitFeedbackInput,
+    cookedMarkdown: string | undefined,
+    uncookedMarkdown: string,
+  ) {
+    const result = await invoke<FeedbackRequestView>('submit_feedback', { input })
+    const visible = applyVisibleSubmissionResult(result)
+    toast.success(tr('反馈已提交'), {
+      description: cookedMarkdown ? tr('Cooked 与 Uncooked 反馈已发布') : tr('反馈包已发布'),
+    })
+    if (visible) {
+      await loadVisiblePublishedFeedback(result.request_id, cookedMarkdown, uncookedMarkdown)
+    }
+    await navigation.refreshNavigation(true)
+  }
+
+  async function runCookingSubmission(submission: CookingSubmission) {
+    try {
+      const { cookFeedback } = await import('./lib/cooking')
+      const cooked = await cookFeedback(
+        {
+          title: submission.request.title,
+          whatHappened: submission.request.what_happened,
+          actions: submission.actions,
+          uncookedMarkdown: submission.body,
+        },
+        {
+          provider: $cookingProvider,
+          apiKey: $cookingApiKey,
+          baseUrl: $cookingBaseUrl,
+          model: $cookingModel,
+          reasoningEffort: $cookingReasoningEffort,
+          locale: $locale,
+        },
+      )
+      await publishFeedback(
+        {
+          request_id: submission.request.request_id,
+          expected_revision: submission.savedRevision,
+          cooked_markdown: cooked.markdown,
+          cooking_model: cooked.model,
+        },
+        cooked.markdown,
+        submission.body,
+      )
+    } catch (cause) {
+      pageError = messageFrom(cause)
+    } finally {
+      setCookingRequest(submission.request.request_id, false)
+    }
+  }
+
+  async function submitFeedback() {
+    if (!workspace || !canSubmit) return
+    if (rambleCanExit) await exitRamble()
+    const requestId = workspace.request.request_id
+    if (!(await saveDraftNow())) return
+    if (!workspace || workspace.request.request_id !== requestId || !canSubmit) return
+
+    const submission: CookingSubmission = {
+      request: workspace.request,
+      actions: workspace.actions,
+      body: draftBody,
+      savedRevision,
+    }
+    pageError = ''
+
+    if ($cookingEnabled) {
+      setCookingRequest(requestId, true)
+      void runCookingSubmission(submission)
+      return
+    }
+
+    submitting = true
+    submitStage = 'publishing'
+    try {
+      await publishFeedback(
+        {
+          request_id: submission.request.request_id,
+          expected_revision: submission.savedRevision,
+        },
+        undefined,
+        submission.body,
+      )
     } catch (cause) {
       pageError = messageFrom(cause)
     } finally {
@@ -802,7 +941,7 @@
     bind:rambleRequestId
     bind:rambleRequestTitle
     bind:rambleMessage
-    {interactionLocked}
+    interactionLocked={interactionLocked || currentRequestCooking}
     onPageError={(message) => (pageError = message)}
     onSaveDraftNow={saveDraftNow}
     onApplyWorkspaceMutation={applyWorkspaceMutation}
@@ -823,13 +962,13 @@
       : notificationLabel(notificationState, $locale)}
     notificationEnabled={notificationState === 'enabled' || $notificationSoundEnabled}
     notificationDisabled={false}
-    onSettings={toggleSettings}
     onNotifications={() => void openSettings('notifications')}
     onWindowError={(message) => (pageError = tr('窗口操作失败：{error}', { error: message }))}
   />
 
-  <div class="flex h-[calc(100%-46px)] min-h-0">
+  <div bind:this={workbenchLayout} class="flex h-[calc(100%-46px)] min-h-0 min-w-0">
     <HostSessionRail
+      bind:collapsed={hostSessionRailCollapsed}
       sessions={$navigation.hostSessions}
       activeHostId={$navigation.selectedHostId}
       activeHostSessionId={$navigation.selectedHostSessionId}
@@ -837,76 +976,100 @@
       {resolveHostProfile}
       onSelect={(hostId, hostSessionId) =>
         void navigation.selectScope(hostId, hostSessionId)}
-      onRefresh={() => void navigation.refreshNavigation(true)}
-      onSettings={() => void openSettings('adapters')}
+      onSettings={() => void openSettings('general')}
     />
 
-    <RequestListPane
-      requests={$navigation.requests}
-      activeRequestId={workspace?.request.request_id ?? null}
-      scopeLabel={requestScopeLabel}
-      loading={$navigation.loadingRequests}
-      loadingMore={$navigation.loadingMoreRequests}
-      hasMore={$navigation.nextRequestCursor !== null}
-      {resolveHostProfile}
-      {formatTime}
-      onRefresh={() => void navigation.refreshRequests(false)}
-      onLoadMore={() => void navigation.loadMoreRequests()}
-      onOpenRequest={(requestId) => void openRequest(requestId)}
-    />
+    <PaneGroup
+      bind:this={requestWorkspacePaneGroup}
+      bind:ref={requestWorkspaceGroup}
+      direction="horizontal"
+      class="min-h-0 min-w-0 flex-1"
+      id="request-workspace-split"
+      onLayoutChange={saveRequestWorkspaceLayout}
+    >
+      <Pane
+        id="request-list-pane"
+        defaultSize={28}
+        minSize={requestListMinimumSize}
+        maxSize={requestListMaximumSize}
+      >
+        <RequestListPane
+          requests={$navigation.requests}
+          activeRequestId={workspace?.request.request_id ?? null}
+          cookingRequestIds={cookingRequestIds}
+          scopeLabel={requestScopeLabel}
+          loading={$navigation.loadingRequests}
+          loadingMore={$navigation.loadingMoreRequests}
+          hasMore={$navigation.nextRequestCursor !== null}
+          {resolveHostProfile}
+          {formatTime}
+          onRefresh={() => void navigation.refreshRequests(false)}
+          onLoadMore={() => void navigation.loadMoreRequests()}
+          onOpenRequest={(requestId) => void openRequest(requestId)}
+        />
+      </Pane>
 
-    <WorkspacePanel
-      bind:this={workspacePanel}
-      bind:taskBriefOpen
-      {loadingWorkspace}
-      {workspace}
-      {feedbackResult}
-      {draftBody}
-      {savedRevision}
-      {savePhase}
-      {attachmentPreviews}
-      {dragActive}
-      rambelleStatusPortrait={rambleBelongsToWorkspace
-        ? rambelleStatusPortrait
-        : feedbackResult
-          ? rambelleArchived
-          : rambelleIdle}
-      rambleEngaged={rambleBelongsToWorkspace ? rambleEngaged : false}
-      rambleActive={rambleBelongsToWorkspace ? rambleActive : false}
-      ramblePhase={rambleBelongsToWorkspace ? ramblePhase : 'idle'}
-      rambleBusy={rambleBelongsToWorkspace ? rambleBusy : true}
-      rambleStartedOnce={rambleBelongsToWorkspace ? rambleStartedOnce : false}
-      voiceDevice={rambleBelongsToWorkspace ? voiceDevice : ''}
-      voiceChunkIndex={rambleBelongsToWorkspace ? voiceChunkIndex : 0}
-      voicePartial={rambleBelongsToWorkspace ? voicePartial : ''}
-      voiceLevel={rambleBelongsToWorkspace ? voiceLevel : 0}
-      voiceModelMissing={rambleBelongsToWorkspace ? voiceModelMissing : false}
-      rambleMessage={rambleBelongsToWorkspace ? rambleMessage : ''}
-      attachmentBusy={rambleBelongsToWorkspace ? attachmentBusy : false}
-      {canSubmit}
-      {submitting}
-      {submitStage}
-      {publishedFeedback}
-      {canCancel}
-      {cancelling}
-      {approving}
-      {resolveHostProfile}
-      {formatTime}
-      onReload={() => void reloadWorkspace()}
-      onDraftChange={updateDraft}
-      onToggleRamble={() => void toggleRamble()}
-      onExitRamble={() => void exitRamble()}
-      onOpenVoiceSettings={() => void openSettings('voice')}
-      onStartScreenCapture={() => void attachmentController.startScreenCapture()}
-      onImportClipboard={() => void importClipboardNow()}
-      onFileSelection={attachmentController.handleFileSelection}
-      onInsertAttachment={attachmentController.insertExistingAttachment}
-      onRemoveAttachment={(attachment) => void attachmentController.removeAttachment(attachment)}
-      onOpenPackage={() => void openFeedbackPackage()}
-      onSubmit={() => void submitFeedback()}
-      onCancel={() => void cancelFeedback()}
-      onApprove={() => void approveFeedback()}
-    />
+      <PaneResizer
+        class="workbench-pane-resizer workbench-pane-resizer--vertical"
+        aria-label={tr('调整请求列表宽度')}
+      />
+
+      <Pane id="workspace-pane" minSize={workspaceMinimumSize}>
+        <WorkspacePanel
+          bind:this={workspacePanel}
+          bind:taskBriefOpen
+          {loadingWorkspace}
+          {workspace}
+          {feedbackResult}
+          {draftBody}
+          {savedRevision}
+          {savePhase}
+          {attachmentPreviews}
+          {dragActive}
+          rambelleStatusPortrait={rambleBelongsToWorkspace
+            ? rambelleStatusPortrait
+            : feedbackResult
+              ? rambelleArchived
+              : rambelleIdle}
+          rambleEngaged={rambleBelongsToWorkspace ? rambleEngaged : false}
+          rambleActive={rambleBelongsToWorkspace ? rambleActive : false}
+          ramblePhase={rambleBelongsToWorkspace ? ramblePhase : 'idle'}
+          rambleBusy={rambleBelongsToWorkspace ? rambleBusy : true}
+          rambleStartedOnce={rambleBelongsToWorkspace ? rambleStartedOnce : false}
+          voiceDevice={rambleBelongsToWorkspace ? voiceDevice : ''}
+          voiceChunkIndex={rambleBelongsToWorkspace ? voiceChunkIndex : 0}
+          voicePartial={rambleBelongsToWorkspace ? voicePartial : ''}
+          voiceLevel={rambleBelongsToWorkspace ? voiceLevel : 0}
+          voiceModelMissing={rambleBelongsToWorkspace ? voiceModelMissing : false}
+          rambleMessage={rambleBelongsToWorkspace ? rambleMessage : ''}
+          attachmentBusy={rambleBelongsToWorkspace ? attachmentBusy : false}
+          {canSubmit}
+          cooking={currentRequestCooking}
+          {submitting}
+          {submitStage}
+          {publishedFeedback}
+          {canCancel}
+          {cancelling}
+          {approving}
+          {resolveHostProfile}
+          {formatTime}
+          onReload={() => void reloadWorkspace()}
+          onDraftChange={updateDraft}
+          onToggleRamble={() => void toggleRamble()}
+          onExitRamble={() => void exitRamble()}
+          onOpenVoiceSettings={() => void openSettings('voice')}
+          onStartScreenCapture={() => void attachmentController.startScreenCapture()}
+          onImportClipboard={() => void importClipboardNow()}
+          onFileSelection={attachmentController.handleFileSelection}
+          onInsertAttachment={attachmentController.insertExistingAttachment}
+          onRemoveAttachment={(attachment) => void attachmentController.removeAttachment(attachment)}
+          onOpenPackage={() => void openFeedbackPackage()}
+          onSubmit={() => void submitFeedback()}
+          onCancel={() => void cancelFeedback()}
+          onApprove={() => void approveFeedback()}
+        />
+      </Pane>
+    </PaneGroup>
 
     {#if resumePrompt}
       <ResumePromptDialog

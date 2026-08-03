@@ -1,5 +1,7 @@
 import { get, writable } from 'svelte/store'
 
+import { savedUiTheme, saveUiTheme } from './uiPreferences'
+
 export type Locale = 'zh-CN' | 'en'
 export type ThemePreference = 'system' | 'light' | 'dark'
 export type NotificationSound = 'chime' | 'soft' | 'alert'
@@ -46,7 +48,7 @@ function initialLocale(): Locale {
 }
 
 function initialTheme(): ThemePreference {
-  const saved = localStorage.getItem(THEME_KEY)
+  const saved = savedUiTheme() ?? localStorage.getItem(THEME_KEY)
   return saved === 'light' || saved === 'dark' || saved === 'system'
     ? saved
     : 'system'
@@ -253,6 +255,7 @@ export function initializePreferences() {
   })
   themePreference.subscribe((next) => {
     localStorage.setItem(THEME_KEY, next)
+    saveUiTheme(next)
     applyTheme(next)
   })
   notificationPopupEnabled.subscribe((next) => {

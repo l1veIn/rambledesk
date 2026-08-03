@@ -18,7 +18,7 @@ use tauri::{
     WindowEvent, ipc::Response, window::Color,
 };
 
-pub const SCREEN_CAPTURE_SHORTCUT: &str = "Ctrl+Shift+1";
+pub const SCREEN_CAPTURE_SHORTCUT: &str = "Ctrl+1";
 const OVERLAY_LABEL: &str = "capture-overlay";
 const SCROLL_LABEL: &str = "capture-scroll";
 const RAMBLE_CONSOLE_LABEL: &str = "ramble-console";

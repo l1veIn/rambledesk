@@ -12,6 +12,7 @@
 
   export let requests: FeedbackRequestSummary[] = []
   export let activeRequestId: string | null = null
+  export let cookingRequestIds: ReadonlySet<string> = new Set()
   export let scopeLabel = ''
   export let loading = false
   export let loadingMore = false
@@ -26,8 +27,10 @@
     return t($locale, source, values)
   }
 
-  function statusClass(status: FeedbackRequestSummary['status']) {
+  function statusClass(status: FeedbackRequestSummary['status'] | 'cooking') {
     switch (status) {
+      case 'cooking':
+        return 'bg-primary/15 text-primary'
       case 'waiting':
         return 'bg-warning/15 text-warning-foreground dark:text-warning'
       case 'in_progress':
@@ -41,7 +44,7 @@
 </script>
 
 <aside
-  class="flex min-h-0 w-[296px] shrink-0 flex-col border-r bg-background"
+  class="flex h-full min-h-0 flex-col bg-background"
   aria-label={tr('请求列表')}
 >
   <div class="flex h-12 items-center justify-between gap-2 border-b px-3">
@@ -86,6 +89,7 @@
       <nav class="p-2" aria-label={tr('请求')}>
         {#each requests as request (request.request_id)}
           {@const profile = resolveHostProfile(request.host_id)}
+          {@const displayStatus = cookingRequestIds.has(request.request_id) ? 'cooking' : request.status}
           <button
             type="button"
             class={[
@@ -103,9 +107,11 @@
               <strong class="min-w-0 flex-1 truncate text-xs font-medium">{request.title}</strong>
               <Badge
                 variant="secondary"
-                class={['h-5 shrink-0 border-0 px-1.5 text-[9px]', statusClass(request.status)]}
+                class={['h-5 shrink-0 border-0 px-1.5 text-[9px]', statusClass(displayStatus)]}
               >
-                {requestStatusLabel(request.status, $locale)}
+                {displayStatus === 'cooking'
+                  ? tr('Cooking 中')
+                  : requestStatusLabel(displayStatus, $locale)}
               </Badge>
             </div>
             <p class="m-0 line-clamp-2 text-[11px] leading-4 text-muted-foreground">

@@ -51,6 +51,7 @@
   }
 
   type ToolbarDrag = {
+    pointerId: number
     startX: number
     startY: number
     originX: number
@@ -90,6 +91,7 @@
   let toolbarManualX: number | null = null
   let toolbarManualY: number | null = null
   let toolbarDrag: ToolbarDrag | null = null
+  let toolbarDragListening = false
   let stylePanelOpen = false
   let overflowPanelOpen = false
 
@@ -124,8 +126,6 @@
     }
     window.addEventListener('resize', resize)
     window.addEventListener('keydown', keydown)
-    window.addEventListener('mousemove', moveToolbarDrag)
-    window.addEventListener('mouseup', endToolbarDrag)
     document.addEventListener('selectstart', preventSelection)
     resize()
     let disposed = false
@@ -142,9 +142,8 @@
       unlisten?.()
       window.removeEventListener('resize', resize)
       window.removeEventListener('keydown', keydown)
-      window.removeEventListener('mousemove', moveToolbarDrag)
-      window.removeEventListener('mouseup', endToolbarDrag)
       document.removeEventListener('selectstart', preventSelection)
+      unbindToolbarDragListeners()
     }
   })
 
@@ -177,6 +176,7 @@
     toolbarManualX = null
     toolbarManualY = null
     toolbarDrag = null
+    unbindToolbarDragListeners()
     stylePanelOpen = false
     overflowPanelOpen = false
   }
@@ -798,35 +798,60 @@
     return position ? position.top < 96 : false
   }
 
-  function beginToolbarDrag(event: MouseEvent) {
-    if (event.button !== 0) return
+  function bindToolbarDragListeners() {
+    if (toolbarDragListening) return
+    toolbarDragListening = true
+    window.addEventListener('pointermove', moveToolbarDrag, true)
+    window.addEventListener('pointerup', endToolbarDrag, true)
+    window.addEventListener('pointercancel', endToolbarDrag, true)
+  }
+
+  function unbindToolbarDragListeners() {
+    if (!toolbarDragListening) return
+    toolbarDragListening = false
+    window.removeEventListener('pointermove', moveToolbarDrag, true)
+    window.removeEventListener('pointerup', endToolbarDrag, true)
+    window.removeEventListener('pointercancel', endToolbarDrag, true)
+  }
+
+  function beginToolbarDrag(event: PointerEvent) {
+    if (event.button !== 0 || !event.isPrimary) return
     event.preventDefault()
     event.stopPropagation()
     stylePanelOpen = false
     overflowPanelOpen = false
     const position = captureToolbarPosition()
     if (!position) return
+    const target = event.currentTarget as HTMLElement
+    try {
+      target.setPointerCapture(event.pointerId)
+    } catch {
+      // The capture-phase window listeners below keep drag working in webviews without pointer capture.
+    }
     toolbarDrag = {
+      pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
       originX: position.left,
       originY: position.top,
     }
+    bindToolbarDragListeners()
   }
 
-  function moveToolbarDrag(event: MouseEvent) {
-    if (!toolbarDrag) return
+  function moveToolbarDrag(event: PointerEvent) {
+    if (!toolbarDrag || event.pointerId !== toolbarDrag.pointerId) return
     event.preventDefault()
     event.stopPropagation()
     toolbarManualX = toolbarDrag.originX + event.clientX - toolbarDrag.startX
     toolbarManualY = toolbarDrag.originY + event.clientY - toolbarDrag.startY
   }
 
-  function endToolbarDrag(event: MouseEvent) {
-    if (!toolbarDrag) return
+  function endToolbarDrag(event: PointerEvent) {
+    if (!toolbarDrag || event.pointerId !== toolbarDrag.pointerId) return
     event.preventDefault()
     event.stopPropagation()
     toolbarDrag = null
+    unbindToolbarDragListeners()
   }
 
   function fitImage(imageWidth: number, imageHeight: number, width: number, height: number): DisplayRectangle {
@@ -973,6 +998,8 @@
       canRedo={redoStack.length > 0}
       canDelete={selectedAnnotationId !== null}
       onBeginDrag={beginToolbarDrag}
+      onMoveDrag={moveToolbarDrag}
+      onEndDrag={endToolbarDrag}
       onSetTool={setTool}
       onToggleStylePanel={toggleStylePanel}
       onToggleOverflowPanel={toggleOverflowPanel}

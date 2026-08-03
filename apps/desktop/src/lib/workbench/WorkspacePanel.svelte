@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { onMount, tick } from 'svelte'
   import { Inbox } from '@lucide/svelte'
+  import { Pane, PaneGroup, PaneResizer } from 'paneforge'
   import { Skeleton } from '$lib/components/ui/skeleton'
   import type {
     AttachmentView,
@@ -8,6 +10,7 @@
   } from '$lib/feedback'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
+  import { savePaneLayout, savedPaneLayout } from '$lib/uiPreferences'
   import type {
     FeedbackEditorHandle,
     HostProfile,
@@ -43,6 +46,7 @@
   export let rambleMessage = ''
   export let attachmentBusy = false
   export let canSubmit = false
+  export let cooking = false
   export let submitting = false
   export let submitStage: SubmitStage = 'idle'
   export let publishedFeedback: { markdown: string; uncooked_markdown?: string } | null = null
@@ -66,10 +70,40 @@
   export let onCancel: () => void = () => {}
   export let onApprove: () => void = () => {}
 
-  let feedbackEditor: FeedbackEditorHandle | undefined
+  const TASK_BRIEF_DEFAULT_SIZE = 30
+  const TASK_BRIEF_MIN_SIZE = 8
+  const TASK_BRIEF_MAX_SIZE = 40
+  const WORKSPACE_DOCUMENT_LAYOUT_KEY = 'workspace-document-layout'
+  const savedDocumentLayout = savedPaneLayout(WORKSPACE_DOCUMENT_LAYOUT_KEY)
 
-  $: interactionLocked = submitting || cancelling || approving
-  $: cooking = submitting && submitStage === 'cooking'
+  let feedbackEditor: FeedbackEditorHandle | undefined
+  let taskBriefPane:
+    | {
+        collapse: () => void
+        expand: () => void
+        isCollapsed: () => boolean
+      }
+    | undefined
+  let documentPaneGroup: { setLayout: (layout: number[]) => void } | undefined
+  let documentLayoutReady = false
+
+  $: if (taskBriefPane) {
+    if (taskBriefOpen && taskBriefPane.isCollapsed()) taskBriefPane.expand()
+    else if (!taskBriefOpen && !taskBriefPane.isCollapsed()) taskBriefPane.collapse()
+  }
+  $: interactionLocked = cooking || submitting || cancelling || approving
+
+  function saveDocumentLayout(layout: number[]) {
+    if (documentLayoutReady) savePaneLayout(WORKSPACE_DOCUMENT_LAYOUT_KEY, layout)
+  }
+
+  onMount(() => {
+    void tick().then(() => {
+      if (!documentPaneGroup) return
+      documentLayoutReady = true
+      if (savedDocumentLayout) documentPaneGroup.setLayout(savedDocumentLayout)
+    })
+  })
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
@@ -96,7 +130,7 @@
   }
 </script>
 
-<section class="workspace-panel relative flex min-h-0 min-w-0 flex-1 flex-col bg-background">
+<section class="workspace-panel relative flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background">
   {#if loadingWorkspace}
     <div class="grid h-full min-h-0 grid-rows-[64px_1fr]">
       <div class="flex items-center gap-3 border-b px-5">
@@ -109,27 +143,54 @@
       </div>
     </div>
   {:else if workspace}
-    <WorkspaceHeader {workspace} {resolveHostProfile} disabled={interactionLocked} onReload={onReload} />
+    <WorkspaceHeader {workspace} {resolveHostProfile} {cooking} disabled={interactionLocked} onReload={onReload} />
 
-    <div class="workspace-columns min-h-0 flex-1 overflow-auto">
-      <div class="document-column flex min-h-0 min-w-0 flex-col @container">
-        <TaskBriefPanel bind:open={taskBriefOpen} {workspace} />
+    <div class="workspace-columns min-h-0 flex-1">
+      <div class="document-column min-h-0 min-w-0 overflow-hidden @container">
+        <PaneGroup
+          bind:this={documentPaneGroup}
+          direction="vertical"
+          class="h-full"
+          id="workspace-document-split"
+          onLayoutChange={saveDocumentLayout}
+        >
+          <Pane
+            bind:this={taskBriefPane}
+            id="task-brief-pane"
+            collapsible={true}
+            collapsedSize={TASK_BRIEF_MIN_SIZE}
+            defaultSize={TASK_BRIEF_DEFAULT_SIZE}
+            minSize={TASK_BRIEF_MIN_SIZE}
+            maxSize={TASK_BRIEF_MAX_SIZE}
+            onCollapse={() => (taskBriefOpen = false)}
+            onExpand={() => (taskBriefOpen = true)}
+          >
+            <TaskBriefPanel bind:open={taskBriefOpen} {workspace} />
+          </Pane>
 
-        <FeedbackEditorPanel
-          bind:this={feedbackEditor}
-          {workspace}
-          {draftBody}
-          {savedRevision}
-          {savePhase}
-          {attachmentPreviews}
-          {dragActive}
-          {formatTime}
-          {cooking}
-          locked={interactionLocked}
-          cookedMarkdown={publishedFeedback?.markdown ?? ''}
-          uncookedMarkdown={publishedFeedback?.uncooked_markdown ?? draftBody}
-          onChange={onDraftChange}
-        />
+          <PaneResizer
+            class="workbench-pane-resizer workbench-pane-resizer--horizontal"
+            aria-label={tr('调整任务简报高度')}
+          />
+
+          <Pane id="feedback-editor-pane" minSize={100 - TASK_BRIEF_MAX_SIZE}>
+            <FeedbackEditorPanel
+              bind:this={feedbackEditor}
+              {workspace}
+              {draftBody}
+              {savedRevision}
+              {savePhase}
+              {attachmentPreviews}
+              {dragActive}
+              {formatTime}
+              {cooking}
+              locked={interactionLocked}
+              cookedMarkdown={publishedFeedback?.markdown ?? ''}
+              uncookedMarkdown={publishedFeedback?.uncooked_markdown ?? draftBody}
+              onChange={onDraftChange}
+            />
+          </Pane>
+        </PaneGroup>
       </div>
 
       <CommandRail
@@ -149,6 +210,7 @@
         {rambleMessage}
         {attachmentBusy}
         {canSubmit}
+        {cooking}
         {submitting}
         {submitStage}
         {canCancel}
@@ -196,14 +258,21 @@
   .workspace-columns {
     display: grid;
     grid-template-columns: minmax(360px, 1fr) 288px;
+    overflow: hidden;
+  }
+
+  .document-column {
+    height: 100%;
   }
 
   @media (max-width: 1180px) {
     .workspace-columns {
       grid-template-columns: minmax(0, 1fr);
+      overflow: auto;
     }
 
     .document-column {
+      height: 680px;
       min-height: 680px;
     }
 

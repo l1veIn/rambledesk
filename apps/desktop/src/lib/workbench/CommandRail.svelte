@@ -25,6 +25,7 @@
   export let rambleMessage = ''
   export let attachmentBusy = false
   export let canSubmit = false
+  export let cooking = false
   export let submitting = false
   export let submitStage: SubmitStage = 'idle'
   export let canCancel = false
@@ -45,7 +46,7 @@
 
   $: readOnly =
     workspace.request.status === 'completed' || workspace.request.status === 'cancelled'
-  $: interactionLocked = submitting || cancelling || approving
+  $: interactionLocked = cooking || submitting || cancelling || approving
 </script>
 
 <aside
@@ -101,6 +102,7 @@
     cancelled={workspace.request.status === 'cancelled'}
     approved={workspace.request.resolution === 'approved'}
     {canSubmit}
+    {cooking}
     {submitting}
     {submitStage}
     {canCancel}

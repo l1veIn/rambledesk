@@ -13,6 +13,7 @@
   export let cancelled = false
   export let approved = false
   export let canSubmit = false
+  export let cooking = false
   export let submitting = false
   export let submitStage: SubmitStage = 'idle'
   export let canCancel = false
@@ -25,8 +26,8 @@
   export let onCancel: () => void = () => {}
   export let onApprove: () => void = () => {}
 
-  $: published = feedbackResult !== null && !submitting
-  $: operationLocked = submitting || cancelling || approving
+  $: published = feedbackResult !== null && !submitting && !cooking
+  $: operationLocked = cooking || submitting || cancelling || approving
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
@@ -75,8 +76,8 @@
     <div class="grid gap-2">
       <Button class="w-full" disabled={operationLocked || !canSubmit} onclick={onSubmit}>
         <Send data-icon="inline-start" />
-        {submitting
-          ? submitStage === 'cooking'
+        {cooking || submitting
+          ? cooking || submitStage === 'cooking'
             ? tr('正在 Cooking…')
             : tr('正在发布…')
           : $cookingEnabled
