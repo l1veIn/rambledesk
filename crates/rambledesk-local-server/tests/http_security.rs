@@ -1,6 +1,7 @@
 use anyhow::Context;
 use rambledesk_core::{
-    ActionInput, ApproveFeedbackInput, RequestFeedbackInput, SaveDraftInput, SubmitFeedbackInput,
+    ActionInput, ApproveFeedbackInput, RequestAttachmentInput, RequestFeedbackInput,
+    SaveDraftInput, SubmitFeedbackInput,
 };
 use rambledesk_local_server::{AccessToken, HOST_HEADER, ServerConfig, start_server};
 use rmcp::{
@@ -140,9 +141,11 @@ async fn official_client_exercises_feedback_lifecycle_and_errors() -> anyhow::Re
     assert!(properties.contains_key("request_id"));
     assert!(properties.contains_key("allow_finish"));
     assert!(properties.contains_key("final_summary"));
+    assert!(properties.contains_key("attachments"));
     assert!(!properties.contains_key("requestId"));
 
     let request_id = uuid::Uuid::now_v7().to_string();
+    let review_markdown = format!("# Review artifact\n\n{}", "x".repeat(300 * 1024));
     let request = RequestFeedbackInput {
         request_id: Some(request_id.clone()),
         host_id: "official-rust-sdk".to_owned(),
@@ -154,6 +157,11 @@ async fn official_client_exercises_feedback_lifecycle_and_errors() -> anyhow::Re
             instruction: "Verify the persisted feedback request.".to_owned(),
         }],
         context_refs: Vec::new(),
+        attachments: vec![RequestAttachmentInput {
+            file_name: "review.md".to_owned(),
+            markdown: Some(review_markdown.clone()),
+            contents_base64: None,
+        }],
         source_hint: Some("local server HTTP test".to_owned()),
         allow_finish: false,
         final_summary: None,
@@ -182,6 +190,19 @@ async fn official_client_exercises_feedback_lifecycle_and_errors() -> anyhow::Re
             .and_then(serde_json::Value::as_str),
         Some(request_id.as_str())
     );
+    let opened = application
+        .get_feedback_workspace(request_id.clone())
+        .await
+        .context("open request attachment workspace")?;
+    assert_eq!(opened.request_attachments.len(), 1);
+    let attachment_bytes = application
+        .read_request_attachment(
+            request_id.clone(),
+            opened.request_attachments[0].attachment_id.clone(),
+        )
+        .await
+        .context("read request attachment")?;
+    assert_eq!(attachment_bytes, review_markdown.as_bytes());
     let get_arguments = serde_json::json!({ "request_id": request_id })
         .as_object()
         .cloned()
@@ -276,6 +297,7 @@ async fn official_client_exercises_feedback_lifecycle_and_errors() -> anyhow::Re
             instruction: "Approve the exact final summary.".to_owned(),
         }],
         context_refs: Vec::new(),
+        attachments: Vec::new(),
         source_hint: None,
         allow_finish: true,
         final_summary: Some("Everything requested is complete.".to_owned()),
@@ -361,6 +383,7 @@ async fn local_api_supports_pi_request_and_blocking_wait() -> anyhow::Result<()>
             instruction: "Submit feedback and resume the same Pi tool call.".to_owned(),
         }],
         context_refs: Vec::new(),
+        attachments: Vec::new(),
         source_hint: Some("Pi API test".to_owned()),
         allow_finish: false,
         final_summary: None,

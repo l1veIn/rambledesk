@@ -4427,6 +4427,7 @@ name = "rambledesk-core"
 version = "0.0.1"
 dependencies = [
  "async-trait",
+ "base64 0.22.1",
  "hex",
  "schemars 1.2.2",
  "serde",

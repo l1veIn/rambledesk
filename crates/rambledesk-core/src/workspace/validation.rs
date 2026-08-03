@@ -33,7 +33,7 @@ pub(super) fn decode_list_cursor(value: &str) -> Result<ListCursor, ApplicationE
     })
 }
 
-pub(super) fn validate_file_name(value: &str) -> Result<String, ApplicationError> {
+pub(crate) fn validate_file_name(value: &str) -> Result<String, ApplicationError> {
     let value = value.trim();
     if value.is_empty() || value.len() > 255 {
         return Err(ApplicationError::invalid_argument(
@@ -48,7 +48,7 @@ pub(super) fn validate_file_name(value: &str) -> Result<String, ApplicationError
     Ok(value.to_owned())
 }
 
-pub(super) fn detect_image_media_type(contents: &[u8]) -> Option<&'static str> {
+pub(crate) fn detect_image_media_type(contents: &[u8]) -> Option<&'static str> {
     if contents.starts_with(b"\x89PNG\r\n\x1a\n") {
         Some("image/png")
     } else if contents.starts_with(b"\xff\xd8\xff") {
@@ -65,7 +65,7 @@ pub(super) fn detect_image_media_type(contents: &[u8]) -> Option<&'static str> {
     }
 }
 
-pub(super) fn normalize_image_file_name(file_name: &str, media_type: &str) -> String {
+pub(crate) fn normalize_image_file_name(file_name: &str, media_type: &str) -> String {
     let allowed_extensions: &[&str] = match media_type {
         "image/png" => &["png"],
         "image/jpeg" => &["jpg", "jpeg", "jfif"],

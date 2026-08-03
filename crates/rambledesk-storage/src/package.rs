@@ -4,8 +4,8 @@ use crate::{SqliteFeedbackStore, platform};
 use async_trait::async_trait;
 use rambledesk_core::{
     FeedbackPackageContent, FeedbackPackageManifest, FeedbackPackagePublisher,
-    FeedbackPackageReader, FeedbackResultView, PublishedFeedbackPackage, RepositoryError,
-    SubmissionPlan,
+    FeedbackPackageReader, FeedbackResolution, FeedbackResultView, PublishedFeedbackPackage,
+    RepositoryError, SubmissionPlan,
 };
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -82,7 +82,7 @@ async fn read_package(
 
     let mut attachment_paths = Vec::with_capacity(manifest.attachments.len());
     for attachment in &manifest.attachments {
-        validate_attachment_relative_path(&attachment.path)
+        validate_attachment_relative_path(&attachment.path, "attachments")
             .map_err(|_| RepositoryError::PackageRead)?;
         let path = directory.join(&attachment.path);
         let bytes = tokio::fs::read(&path)
@@ -95,12 +95,28 @@ async fn read_package(
         }
         attachment_paths.push(path.to_string_lossy().into_owned());
     }
+    let mut request_attachment_paths = Vec::with_capacity(manifest.request_attachments.len());
+    for attachment in &manifest.request_attachments {
+        validate_attachment_relative_path(&attachment.path, "request-attachments")
+            .map_err(|_| RepositoryError::PackageRead)?;
+        let path = directory.join(&attachment.path);
+        let bytes = tokio::fs::read(&path)
+            .await
+            .map_err(|_| RepositoryError::PackageRead)?;
+        if bytes.len() as u64 != attachment.byte_size
+            || hex::encode(Sha256::digest(&bytes)) != attachment.sha256
+        {
+            return Err(RepositoryError::PackageRead);
+        }
+        request_attachment_paths.push(path.to_string_lossy().into_owned());
+    }
 
     Ok(FeedbackPackageContent {
         manifest,
         markdown,
         uncooked_markdown,
         attachment_paths,
+        request_attachment_paths,
     })
 }
 
@@ -148,7 +164,13 @@ async fn publish_package(
         tokio::fs::create_dir(temporary.join("attachments"))
             .await
             .map_err(package_error)?;
+        if !plan.request_attachments.is_empty() {
+            tokio::fs::create_dir(temporary.join("request-attachments"))
+                .await
+                .map_err(package_error)?;
+        }
         stage_attachments(plan, &temporary).await?;
+        stage_request_attachments(plan, &temporary).await?;
         write_synced(&temporary.join("feedback.md"), markdown.as_bytes()).await?;
         write_synced(&temporary.join("uncooked.md"), uncooked_markdown.as_bytes()).await?;
         write_synced(&temporary.join("manifest.json"), manifest.as_bytes()).await?;
@@ -251,7 +273,21 @@ fn render_manifest(
             })
         })
         .collect::<Vec<_>>();
-    let value = json!({
+    let request_attachments = plan
+        .request_attachments
+        .iter()
+        .map(|attachment| {
+            json!({
+                "id": attachment.attachment_id,
+                "file_name": attachment.file_name,
+                "media_type": attachment.media_type,
+                "byte_size": attachment.byte_size,
+                "sha256": attachment.sha256,
+                "path": attachment.relative_path,
+            })
+        })
+        .collect::<Vec<_>>();
+    let mut value = json!({
         "schema_version": 1,
         "request_id": plan.request_id,
         "title": plan.title,
@@ -268,6 +304,22 @@ fn render_manifest(
         "cooking_model": plan.cooking_model,
         "attachments": attachments,
     });
+    if plan.resolution == FeedbackResolution::Cancelled {
+        let object = value
+            .as_object_mut()
+            .ok_or(RepositoryError::PackagePublish)?;
+        object.insert("resolution".to_owned(), json!(plan.resolution));
+        object.insert("cancel_reason".to_owned(), json!(plan.cancel_reason));
+    }
+    if !request_attachments.is_empty() {
+        value
+            .as_object_mut()
+            .ok_or(RepositoryError::PackagePublish)?
+            .insert(
+                "request_attachments".to_owned(),
+                serde_json::Value::Array(request_attachments),
+            );
+    }
     let mut rendered = serde_json::to_string_pretty(&value).map_err(package_error)?;
     rendered.push('\n');
     Ok(rendered)
@@ -302,7 +354,17 @@ async fn validate_existing_package(
         return Err(RepositoryError::PackagePublish);
     }
     for attachment in &plan.attachments {
-        validate_attachment_relative_path(&attachment.relative_path)?;
+        validate_attachment_relative_path(&attachment.relative_path, "attachments")?;
+        let path = Path::new(&plan.directory_path).join(&attachment.relative_path);
+        let bytes = tokio::fs::read(path).await.map_err(package_error)?;
+        if bytes.len() as u64 != attachment.byte_size
+            || hex::encode(Sha256::digest(&bytes)) != attachment.sha256
+        {
+            return Err(RepositoryError::PackagePublish);
+        }
+    }
+    for attachment in &plan.request_attachments {
+        validate_attachment_relative_path(&attachment.relative_path, "request-attachments")?;
         let path = Path::new(&plan.directory_path).join(&attachment.relative_path);
         let bytes = tokio::fs::read(path).await.map_err(package_error)?;
         if bytes.len() as u64 != attachment.byte_size
@@ -316,7 +378,7 @@ async fn validate_existing_package(
 
 async fn stage_attachments(plan: &SubmissionPlan, temporary: &Path) -> Result<(), RepositoryError> {
     for attachment in &plan.attachments {
-        validate_attachment_relative_path(&attachment.relative_path)?;
+        validate_attachment_relative_path(&attachment.relative_path, "attachments")?;
         let bytes = tokio::fs::read(&attachment.draft_path)
             .await
             .map_err(package_error)?;
@@ -330,10 +392,32 @@ async fn stage_attachments(plan: &SubmissionPlan, temporary: &Path) -> Result<()
     Ok(())
 }
 
-fn validate_attachment_relative_path(relative_path: &str) -> Result<(), RepositoryError> {
+async fn stage_request_attachments(
+    plan: &SubmissionPlan,
+    temporary: &Path,
+) -> Result<(), RepositoryError> {
+    for attachment in &plan.request_attachments {
+        validate_attachment_relative_path(&attachment.relative_path, "request-attachments")?;
+        let bytes = tokio::fs::read(&attachment.draft_path)
+            .await
+            .map_err(package_error)?;
+        if bytes.len() as u64 != attachment.byte_size
+            || hex::encode(Sha256::digest(&bytes)) != attachment.sha256
+        {
+            return Err(RepositoryError::PackagePublish);
+        }
+        write_synced(&temporary.join(&attachment.relative_path), &bytes).await?;
+    }
+    Ok(())
+}
+
+fn validate_attachment_relative_path(
+    relative_path: &str,
+    directory: &str,
+) -> Result<(), RepositoryError> {
     let path = Path::new(relative_path);
     let mut components = path.components();
-    if components.next().map(|part| part.as_os_str()) != Some("attachments".as_ref())
+    if components.next().map(|part| part.as_os_str()) != Some(directory.as_ref())
         || components.next().is_none()
         || components.next().is_some()
     {

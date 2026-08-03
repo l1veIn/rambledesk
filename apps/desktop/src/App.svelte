@@ -844,7 +844,6 @@
 
   async function cancelFeedback() {
     if (!workspace || !canCancel) return
-    if (!window.confirm(tr('确认取消这个反馈请求？'))) return
     if (rambleCanExit) await exitRamble()
 
     cancelling = true

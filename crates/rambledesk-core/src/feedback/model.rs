@@ -18,6 +18,19 @@ pub struct ContextRef {
     pub uri: String,
 }
 
+/// An immutable review artifact supplied by the requesting agent.
+///
+/// Markdown files use `markdown`; images use `contents_base64`. Exactly one
+/// content field must be present. The media type is detected server-side.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct RequestAttachmentInput {
+    pub file_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub markdown: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contents_base64: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct RequestFeedbackInput {
     pub request_id: Option<String>,
@@ -29,6 +42,9 @@ pub struct RequestFeedbackInput {
     pub actions: Vec<ActionInput>,
     #[serde(default)]
     pub context_refs: Vec<ContextRef>,
+    /// Markdown documents and images the human should review with this request.
+    #[serde(default)]
+    pub attachments: Vec<RequestAttachmentInput>,
     #[serde(default)]
     pub source_hint: Option<String>,
     #[serde(default)]
@@ -175,10 +191,20 @@ pub struct NewFeedbackRequest {
     pub what_happened: String,
     pub actions: Vec<ActionInput>,
     pub context_refs: Vec<ContextRef>,
+    pub attachments: Vec<NewRequestAttachment>,
     pub source_hint: Option<String>,
     pub allow_finish: bool,
     pub final_summary: Option<String>,
     pub created_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewRequestAttachment {
+    pub attachment_id: String,
+    pub file_name: String,
+    pub media_type: String,
+    pub contents: Vec<u8>,
+    pub sha256: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

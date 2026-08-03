@@ -144,6 +144,24 @@ const workspace: FeedbackWorkspaceView = {
       uri: 'file:///Users/yangchen/Desktop/rambledesk/docs/TERMINOLOGY.md',
     },
   ],
+  request_attachments: [
+    {
+      attachment_id: '019fc1d9-51e7-7eb2-b196-e9266947fc51',
+      file_name: 'review-notes.md',
+      media_type: 'text/markdown',
+      byte_size: 1548,
+      sha256: 'preview-markdown',
+      position: 0,
+    },
+    {
+      attachment_id: '019fc1d9-51e7-7eb2-b196-e9266947fc52',
+      file_name: 'navigation-mockup.png',
+      media_type: 'image/png',
+      byte_size: 245760,
+      sha256: 'preview-image',
+      position: 1,
+    },
+  ],
   draft: {
     body_markdown:
       'The host and session hierarchy is easy to scan.\n\nThe request list keeps terminal work in the same chronological view.',

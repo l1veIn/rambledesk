@@ -1,11 +1,16 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use thiserror::Error;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use uuid::Uuid;
 
+use crate::workspace::validation::{
+    detect_image_media_type, normalize_image_file_name, validate_file_name,
+};
 use crate::workspace::{
     DraftView, FeedbackPackagePublisher, FeedbackRequestQuery, FeedbackRequestSummary,
     HostSessionSummary, NewAttachment, PublishedFeedbackPackage, StoredFeedbackWorkspace,
@@ -59,11 +64,18 @@ pub trait FeedbackRepository: Send + Sync {
     async fn get_request(&self, request_id: &str)
     -> Result<StoredFeedbackRequest, RepositoryError>;
 
-    async fn cancel_request(
+    async fn plan_cancellation(
         &self,
         request_id: &str,
         reason: &str,
+        publication_id: &str,
         now: &str,
+    ) -> Result<SubmissionPlan, RepositoryError>;
+
+    async fn complete_cancellation(
+        &self,
+        plan: &SubmissionPlan,
+        published: &PublishedFeedbackPackage,
     ) -> Result<StoredFeedbackRequest, RepositoryError>;
 
     async fn approve_request(
@@ -119,6 +131,12 @@ pub trait FeedbackRepository: Send + Sync {
     ) -> Result<StoredFeedbackWorkspace, RepositoryError>;
 
     async fn read_attachment(
+        &self,
+        request_id: &str,
+        attachment_id: &str,
+    ) -> Result<Vec<u8>, RepositoryError>;
+
+    async fn read_request_attachment(
         &self,
         request_id: &str,
         attachment_id: &str,
@@ -231,6 +249,73 @@ impl FeedbackApplication {
             Some(request_id) => canonical_uuid(request_id, "request_id")?,
             None => self.ids.new_id(),
         };
+        let mut attachments = Vec::with_capacity(input.attachments.len());
+        let mut total_attachment_bytes = 0usize;
+        for attachment in &input.attachments {
+            let mut file_name = validate_file_name(&attachment.file_name)?;
+            let (contents, media_type) = match (
+                attachment.markdown.as_deref(),
+                attachment.contents_base64.as_deref(),
+            ) {
+                (Some(markdown), None) => {
+                    let extension = file_name
+                        .rsplit_once('.')
+                        .map(|(_, extension)| extension.to_ascii_lowercase());
+                    if !matches!(extension.as_deref(), Some("md" | "markdown")) {
+                        return Err(ApplicationError::invalid_argument(
+                            "markdown attachments must use a .md or .markdown file name",
+                        ));
+                    }
+                    (markdown.as_bytes().to_vec(), "text/markdown".to_owned())
+                }
+                (None, Some(encoded)) => {
+                    let contents = BASE64_STANDARD.decode(encoded).map_err(|_| {
+                        ApplicationError::invalid_argument(
+                            "attachment contents_base64 must be valid standard base64",
+                        )
+                    })?;
+                    let media_type = detect_image_media_type(&contents).ok_or_else(|| {
+                        ApplicationError::invalid_argument(
+                            "base64 attachments must be PNG, JPEG, GIF, or WebP images",
+                        )
+                    })?;
+                    file_name = normalize_image_file_name(&file_name, media_type);
+                    (contents, media_type.to_owned())
+                }
+                _ => {
+                    return Err(ApplicationError::invalid_argument(
+                        "each attachment must provide exactly one of markdown or contents_base64",
+                    ));
+                }
+            };
+            if contents.is_empty() {
+                return Err(ApplicationError::invalid_argument(
+                    "attachment contents cannot be empty",
+                ));
+            }
+            if contents.len() > crate::MAX_ATTACHMENT_BYTES {
+                return Err(ApplicationError::invalid_argument(format!(
+                    "attachment exceeds the {} MiB limit",
+                    crate::MAX_ATTACHMENT_BYTES / 1024 / 1024
+                )));
+            }
+            total_attachment_bytes = total_attachment_bytes
+                .checked_add(contents.len())
+                .ok_or_else(|| ApplicationError::invalid_argument("attachments are too large"))?;
+            if total_attachment_bytes > crate::MAX_REQUEST_ATTACHMENT_TOTAL_BYTES {
+                return Err(ApplicationError::invalid_argument(format!(
+                    "attachments exceed the {} MiB total limit",
+                    crate::MAX_REQUEST_ATTACHMENT_TOTAL_BYTES / 1024 / 1024
+                )));
+            }
+            attachments.push(NewRequestAttachment {
+                attachment_id: self.ids.new_id(),
+                file_name,
+                media_type,
+                sha256: hex::encode(Sha256::digest(&contents)),
+                contents,
+            });
+        }
         let now = self.clock.now_rfc3339();
         let stored = self
             .repository
@@ -243,6 +328,7 @@ impl FeedbackApplication {
                 what_happened: input.what_happened,
                 actions: input.actions,
                 context_refs: input.context_refs,
+                attachments,
                 source_hint: input.source_hint,
                 allow_finish: input.allow_finish,
                 final_summary: input.final_summary,
@@ -362,9 +448,32 @@ impl FeedbackApplication {
     ) -> Result<FeedbackRequestView, ApplicationError> {
         let request_id = canonical_uuid(&input.request_id, "request_id")?;
         validate_text("reason", &input.reason, 1, 4_000)?;
+        let existing = self
+            .repository
+            .get_request(&request_id)
+            .await
+            .map_err(ApplicationError::from)?;
+        if existing.status == FeedbackStatus::Completed {
+            return Err(ApplicationError::from(RepositoryError::RequestTerminal));
+        }
+        if existing.status == FeedbackStatus::Cancelled && existing.feedback.is_some() {
+            self.notify_feedback_terminal(&request_id);
+            return Ok(existing.into());
+        }
+        let now = self.clock.now_rfc3339();
+        let plan = self
+            .repository
+            .plan_cancellation(&request_id, &input.reason, &self.ids.new_id(), &now)
+            .await
+            .map_err(ApplicationError::from)?;
+        let published = self
+            .publisher
+            .publish(&plan)
+            .await
+            .map_err(ApplicationError::from)?;
         let stored = self
             .repository
-            .cancel_request(&request_id, &input.reason, &self.clock.now_rfc3339())
+            .complete_cancellation(&plan, &published)
             .await
             .map_err(ApplicationError::from)?;
         self.notify_feedback_terminal(&request_id);

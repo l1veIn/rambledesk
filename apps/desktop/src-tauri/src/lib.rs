@@ -233,6 +233,7 @@ pub fn run() {
             remove_feedback_attachment,
             reorder_feedback_attachments,
             read_feedback_attachment,
+            read_request_attachment,
             submit_feedback,
             approve_feedback_request,
             cancel_feedback_request,

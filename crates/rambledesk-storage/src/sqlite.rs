@@ -5,8 +5,8 @@ use rambledesk_core::{
     ActionInput, AttachmentView, ContextRef, DraftView, FeedbackRepository, FeedbackRequestQuery,
     FeedbackRequestSummary, FeedbackResolution, FeedbackResultView, FeedbackStatus,
     HostSessionSummary, MAX_ATTACHMENT_COUNT, NewAttachment, NewFeedbackRequest,
-    PublishedFeedbackPackage, RepositoryError, StoredFeedbackRequest, StoredFeedbackWorkspace,
-    SubmissionAttachment, SubmissionPlan,
+    PublishedFeedbackPackage, RepositoryError, RequestAttachmentView, StoredFeedbackRequest,
+    StoredFeedbackWorkspace, SubmissionAttachment, SubmissionPlan, SubmissionRequestAttachment,
 };
 use sha2::{Digest, Sha256};
 use sqlx::{
@@ -24,6 +24,15 @@ mod submission_ops;
 mod workspace_ops;
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
+
+type PendingSubmissionRow = (
+    String,
+    i64,
+    Option<String>,
+    Option<String>,
+    String,
+    Option<String>,
+);
 
 #[derive(Debug, Error)]
 pub enum StorageOpenError {
@@ -100,7 +109,15 @@ impl SqliteFeedbackStore {
             publish_lock: Arc::new(tokio::sync::Mutex::new(())),
         };
         store
+            .externalize_legacy_request_attachments()
+            .await
+            .map_err(StorageOpenError::Recovery)?;
+        store
             .recover_pending_submissions()
+            .await
+            .map_err(StorageOpenError::Recovery)?;
+        store
+            .archive_legacy_cancellations()
             .await
             .map_err(StorageOpenError::Recovery)?;
         Ok(store)
@@ -116,18 +133,37 @@ impl SqliteFeedbackStore {
     }
 
     async fn recover_pending_submissions(&self) -> Result<(), RepositoryError> {
-        let pending: Vec<(String, i64, Option<String>, Option<String>)> = sqlx::query_as(
-            "SELECT request_id, source_revision, cooked_markdown, cooking_model \
+        let pending: Vec<PendingSubmissionRow> = sqlx::query_as(
+            "SELECT request_id, source_revision, cooked_markdown, cooking_model, \
+                    terminal_resolution, cancel_reason \
              FROM submission_plans WHERE state = 'preparing' \
              ORDER BY submitted_at, request_id",
         )
         .fetch_all(&self.pool)
         .await
         .map_err(storage_error)?;
-        for (request_id, source_revision, cooked_markdown, cooking_model) in pending {
+        for (
+            request_id,
+            source_revision,
+            cooked_markdown,
+            cooking_model,
+            resolution,
+            cancel_reason,
+        ) in pending
+        {
             let recovery = async {
-                let plan = self
-                    .plan_submission(
+                let plan = if resolution == FeedbackResolution::Cancelled.as_str() {
+                    self.plan_cancellation(
+                        &request_id,
+                        cancel_reason
+                            .as_deref()
+                            .ok_or(RepositoryError::CorruptData)?,
+                        "",
+                        "",
+                    )
+                    .await?
+                } else {
+                    self.plan_submission(
                         &request_id,
                         source_revision as u64,
                         cooked_markdown.as_deref(),
@@ -135,13 +171,64 @@ impl SqliteFeedbackStore {
                         "",
                         "",
                     )
-                    .await?;
+                    .await?
+                };
                 let published =
                     rambledesk_core::FeedbackPackagePublisher::publish(self, &plan).await?;
-                self.complete_submission(&plan, &published).await
+                if plan.resolution == FeedbackResolution::Cancelled {
+                    self.complete_cancellation(&plan, &published).await
+                } else {
+                    self.complete_submission(&plan, &published).await
+                }
             }
             .await;
             if let Err(error) = recovery {
+                sqlx::query(
+                    "UPDATE submission_plans SET last_error_code = ?2, \
+                         last_error_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') \
+                     WHERE request_id = ?1 AND state = 'preparing'",
+                )
+                .bind(&request_id)
+                .bind(repository_error_code(error))
+                .execute(&self.pool)
+                .await
+                .map_err(storage_error)?;
+            }
+        }
+        Ok(())
+    }
+
+    async fn archive_legacy_cancellations(&self) -> Result<(), RepositoryError> {
+        let rows: Vec<(String, String)> = sqlx::query_as(
+            "SELECT r.id, r.cancel_reason \
+             FROM feedback_requests r \
+             LEFT JOIN feedback_results fr ON fr.request_id = r.id \
+             LEFT JOIN submission_plans sp ON sp.request_id = r.id \
+             WHERE r.status = 'cancelled' AND fr.request_id IS NULL AND sp.request_id IS NULL \
+             ORDER BY r.cancelled_at, r.id",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(storage_error)?;
+        for (request_id, reason) in rows {
+            let now: String = sqlx::query_scalar(
+                "SELECT COALESCE(cancelled_at, updated_at) FROM feedback_requests WHERE id = ?1",
+            )
+            .bind(&request_id)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(storage_error)?;
+            let publication_id = format!("legacy-cancel-{request_id}");
+            let archive = async {
+                let plan = self
+                    .plan_cancellation(&request_id, &reason, &publication_id, &now)
+                    .await?;
+                let published =
+                    rambledesk_core::FeedbackPackagePublisher::publish(self, &plan).await?;
+                self.complete_cancellation(&plan, &published).await
+            }
+            .await;
+            if let Err(error) = archive {
                 sqlx::query(
                     "UPDATE submission_plans SET last_error_code = ?2, \
                          last_error_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') \
@@ -188,13 +275,23 @@ impl FeedbackRepository for SqliteFeedbackStore {
         self.get_request_impl(request_id).await
     }
 
-    async fn cancel_request(
+    async fn plan_cancellation(
         &self,
         request_id: &str,
         reason: &str,
+        publication_id: &str,
         now: &str,
+    ) -> Result<SubmissionPlan, RepositoryError> {
+        self.plan_cancellation_impl(request_id, reason, publication_id, now)
+            .await
+    }
+
+    async fn complete_cancellation(
+        &self,
+        plan: &SubmissionPlan,
+        published: &PublishedFeedbackPackage,
     ) -> Result<StoredFeedbackRequest, RepositoryError> {
-        self.cancel_request_impl(request_id, reason, now).await
+        self.complete_cancellation_impl(plan, published).await
     }
 
     async fn approve_request(
@@ -277,6 +374,15 @@ impl FeedbackRepository for SqliteFeedbackStore {
         attachment_id: &str,
     ) -> Result<Vec<u8>, RepositoryError> {
         self.read_attachment_impl(request_id, attachment_id).await
+    }
+
+    async fn read_request_attachment(
+        &self,
+        request_id: &str,
+        attachment_id: &str,
+    ) -> Result<Vec<u8>, RepositoryError> {
+        self.read_request_attachment_impl(request_id, attachment_id)
+            .await
     }
 
     async fn plan_submission(

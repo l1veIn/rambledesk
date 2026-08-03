@@ -5,8 +5,8 @@ use rambledesk_core::{
     ContextRef, DraftView, ExecutionMode, FeedbackRequestSummary, FeedbackRequestView,
     FeedbackResolution, FeedbackResultView, FeedbackStatus, FeedbackWorkspaceView,
     HostSessionSummary, ListFeedbackRequestsInput, ListFeedbackRequestsOutput,
-    RecoverFeedbackInput, RemoveAttachmentInput, ReorderAttachmentsInput, SaveDraftInput,
-    SubmitFeedbackInput,
+    RecoverFeedbackInput, RemoveAttachmentInput, ReorderAttachmentsInput, RequestAttachmentView,
+    SaveDraftInput, SubmitFeedbackInput,
 };
 use ts_rs::{Config, TS};
 
@@ -29,6 +29,7 @@ fn main() -> std::io::Result<()> {
         exported::<ListFeedbackRequestsOutput>(),
         exported::<DraftView>(),
         exported::<AttachmentView>(),
+        exported::<RequestAttachmentView>(),
         exported::<FeedbackWorkspaceView>(),
         exported::<AddAttachmentInput>(),
         exported::<RemoveAttachmentInput>(),

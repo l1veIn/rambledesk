@@ -30,6 +30,7 @@ async fn host_header_stamps_host_id_on_request_feedback() -> anyhow::Result<()> 
             instruction: "Verify host stamping.".to_owned(),
         }],
         context_refs: Vec::new(),
+        attachments: Vec::new(),
         source_hint: Some("Host header test".to_owned()),
         allow_finish: false,
         final_summary: None,

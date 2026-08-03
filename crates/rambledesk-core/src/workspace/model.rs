@@ -10,6 +10,7 @@ use crate::{
 
 pub const MAX_ATTACHMENT_BYTES: usize = 20 * 1024 * 1024;
 pub const MAX_ATTACHMENT_COUNT: usize = 20;
+pub const MAX_REQUEST_ATTACHMENT_TOTAL_BYTES: usize = 60 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct FeedbackPackageAttachment {
@@ -30,6 +31,13 @@ pub struct FeedbackPackageManifest {
     pub host_session_id: String,
     pub source_hint: Option<String>,
     pub submitted_at: String,
+    #[serde(
+        default = "default_feedback_submitted",
+        skip_serializing_if = "is_feedback_submitted"
+    )]
+    pub resolution: FeedbackResolution,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cancel_reason: Option<String>,
     pub source_revision: u64,
     pub draft_revision: u64,
     pub feedback_markdown: String,
@@ -41,6 +49,16 @@ pub struct FeedbackPackageManifest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cooking_model: Option<String>,
     pub attachments: Vec<FeedbackPackageAttachment>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub request_attachments: Vec<FeedbackPackageAttachment>,
+}
+
+fn default_feedback_submitted() -> FeedbackResolution {
+    FeedbackResolution::FeedbackSubmitted
+}
+
+fn is_feedback_submitted(resolution: &FeedbackResolution) -> bool {
+    *resolution == FeedbackResolution::FeedbackSubmitted
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -50,6 +68,8 @@ pub struct FeedbackPackageContent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub uncooked_markdown: Option<String>,
     pub attachment_paths: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub request_attachment_paths: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
@@ -122,9 +142,22 @@ pub struct FeedbackWorkspaceView {
     pub request: FeedbackRequestSummary,
     pub actions: Vec<ActionInput>,
     pub context_refs: Vec<ContextRef>,
+    pub request_attachments: Vec<RequestAttachmentView>,
     pub draft: DraftView,
     pub attachments: Vec<AttachmentView>,
     pub feedback: Option<FeedbackResultView>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
+pub struct RequestAttachmentView {
+    pub attachment_id: String,
+    pub file_name: String,
+    pub media_type: String,
+    #[ts(type = "number")]
+    pub byte_size: u64,
+    pub sha256: String,
+    #[ts(type = "number")]
+    pub position: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
@@ -191,6 +224,7 @@ pub struct StoredFeedbackWorkspace {
     pub request: FeedbackRequestSummary,
     pub actions: Vec<ActionInput>,
     pub context_refs: Vec<ContextRef>,
+    pub request_attachments: Vec<RequestAttachmentView>,
     pub draft: DraftView,
     pub attachments: Vec<AttachmentView>,
     pub feedback: Option<FeedbackResultView>,
@@ -202,6 +236,7 @@ impl From<StoredFeedbackWorkspace> for FeedbackWorkspaceView {
             request: value.request,
             actions: value.actions,
             context_refs: value.context_refs,
+            request_attachments: value.request_attachments,
             draft: value.draft,
             attachments: value.attachments,
             feedback: value.feedback,
@@ -230,6 +265,17 @@ pub struct SubmissionAttachment {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SubmissionRequestAttachment {
+    pub attachment_id: String,
+    pub file_name: String,
+    pub media_type: String,
+    pub byte_size: u64,
+    pub sha256: String,
+    pub draft_path: String,
+    pub relative_path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SubmissionPlan {
     pub request_id: String,
     pub host_id: String,
@@ -239,6 +285,9 @@ pub struct SubmissionPlan {
     pub what_happened: String,
     pub actions: Vec<ActionInput>,
     pub attachments: Vec<SubmissionAttachment>,
+    pub request_attachments: Vec<SubmissionRequestAttachment>,
+    pub resolution: FeedbackResolution,
+    pub cancel_reason: Option<String>,
     /// Canonical feedback returned to the host (`feedback.md`).
     pub body_markdown: String,
     /// Human-authored source preserved alongside canonical feedback (`uncooked.md`).

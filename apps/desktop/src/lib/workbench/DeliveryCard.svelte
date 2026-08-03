@@ -3,6 +3,7 @@
 
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
+  import * as Dialog from '$lib/components/ui/dialog'
   import type { FeedbackResultView } from '$lib/feedback'
   import { t } from '$lib/i18n'
   import { desktopPath } from '$lib/nativePath'
@@ -26,11 +27,18 @@
   export let onCancel: () => void = () => {}
   export let onApprove: () => void = () => {}
 
+  let cancelConfirmOpen = false
+
   $: published = feedbackResult !== null && !submitting && !cooking
   $: operationLocked = cooking || submitting || cancelling || approving
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
+  }
+
+  function confirmCancel() {
+    cancelConfirmOpen = false
+    onCancel()
   }
 </script>
 
@@ -94,7 +102,7 @@
         class="w-full"
         variant="destructive"
         disabled={operationLocked || !canCancel}
-        onclick={onCancel}
+        onclick={() => (cancelConfirmOpen = true)}
       >
         <Ban data-icon="inline-start" />
         {cancelling ? tr('正在取消…') : tr('取消请求')}
@@ -102,3 +110,23 @@
     </div>
   </section>
 {/if}
+
+<Dialog.Root bind:open={cancelConfirmOpen}>
+  <Dialog.Content class="max-w-md gap-5 sm:max-w-md" showCloseButton={false}>
+    <Dialog.Header>
+      <Dialog.Title>{tr('确认取消请求？')}</Dialog.Title>
+      <Dialog.Description class="mt-1 leading-5">
+        {tr('取消后 Agent 会收到终止状态，当前草稿将无法继续编辑。此操作无法撤销。')}
+      </Dialog.Description>
+    </Dialog.Header>
+    <Dialog.Footer class="gap-2 sm:justify-end">
+      <Button variant="outline" onclick={() => (cancelConfirmOpen = false)}>
+        {tr('返回')}
+      </Button>
+      <Button variant="destructive" onclick={confirmCancel}>
+        <Ban data-icon="inline-start" />
+        {tr('确认取消')}
+      </Button>
+    </Dialog.Footer>
+  </Dialog.Content>
+</Dialog.Root>

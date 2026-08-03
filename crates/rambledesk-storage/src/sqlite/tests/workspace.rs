@@ -351,6 +351,7 @@ async fn migration_installs_the_full_foundation_contract() {
         "feedback_requests",
         "request_actions",
         "request_context_refs",
+        "request_attachments",
         "drafts",
         "attachments",
         "feedback_results",
@@ -362,6 +363,7 @@ async fn migration_installs_the_full_foundation_contract() {
         "drafts_locked_after_submission_plan_update",
         "drafts_locked_after_submission_plan_delete",
         "host_sessions_host",
+        "request_attachments_request",
     ] {
         assert!(
             names.iter().any(|name| name == expected),

@@ -21,6 +21,7 @@ repository = "https://github.com/l1veIn/rambledesk"
 anyhow = "1"
 async-trait = "0.1.91"
 axum = "0.8.9"
+base64 = "0.22"
 clap = { version = "4", features = ["derive"] }
 dirs = "6"
 hex = "0.4"

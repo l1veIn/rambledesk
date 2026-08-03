@@ -21,6 +21,7 @@ export type {
   ListFeedbackRequestsOutput,
   RemoveAttachmentInput,
   ReorderAttachmentsInput,
+  RequestAttachmentView,
   SaveDraftInput,
   SubmitFeedbackInput,
 } from './generated/feedback'

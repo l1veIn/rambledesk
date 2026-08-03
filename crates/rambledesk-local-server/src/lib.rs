@@ -10,7 +10,7 @@ use std::{
 use axum::{
     Json, Router,
     body::Body,
-    extract::{Extension, State},
+    extract::{DefaultBodyLimit, Extension, State},
     http::{
         HeaderValue, Request, Response, StatusCode,
         header::{AUTHORIZATION, HOST, ORIGIN, WWW_AUTHENTICATE},
@@ -37,6 +37,7 @@ pub use token::{AccessToken, TokenError, default_token_path};
 pub const DEFAULT_PORT: u16 = 37_642;
 pub const MCP_PATH: &str = "/mcp";
 pub const API_PATH: &str = "/api";
+const MAX_ATTACHMENT_REQUEST_BODY_BYTES: usize = 96 * 1024 * 1024;
 
 /// Install-time / client-config host identity.
 pub const HOST_ENV_KEY: &str = "RAMBLEDESK_HOST";
@@ -96,7 +97,7 @@ async fn api_health() -> Json<serde_json::Value> {
     Json(serde_json::json!({
         "ready": true,
         "version": env!("CARGO_PKG_VERSION"),
-        "capabilities": ["final_approval", "request_recovery"]
+        "capabilities": ["final_approval", "request_recovery", "request_attachments"]
     }))
 }
 
@@ -368,7 +369,7 @@ pub async fn start_server(
     let allowed_origins = config.allowed_origins.clone();
     let transport_config = StreamableHttpServerConfig::default()
         .with_allowed_origins(config.allowed_origins)
-        .with_max_request_body_bytes(256 * 1024)
+        .with_max_request_body_bytes(MAX_ATTACHMENT_REQUEST_BODY_BYTES)
         .with_cancellation_token(cancellation.child_token());
 
     let mcp_application = application.clone();
@@ -382,7 +383,11 @@ pub async fn start_server(
     let auth = AuthState::new(&config.access_token, allowed_origins);
     let api = Router::new()
         .route("/health", get(api_health))
-        .route("/feedback/request", post(api_request_feedback))
+        .route(
+            "/feedback/request",
+            post(api_request_feedback)
+                .layer(DefaultBodyLimit::max(MAX_ATTACHMENT_REQUEST_BODY_BYTES)),
+        )
         .route("/feedback/get", post(api_get_feedback))
         .route("/feedback/wait", post(api_wait_feedback))
         .route("/feedback/recover", post(api_recover_feedback))

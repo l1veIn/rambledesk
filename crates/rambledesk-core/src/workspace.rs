@@ -215,6 +215,19 @@ impl FeedbackApplication {
             .map_err(ApplicationError::from)
     }
 
+    pub async fn read_request_attachment(
+        &self,
+        request_id: String,
+        attachment_id: String,
+    ) -> Result<Vec<u8>, ApplicationError> {
+        let request_id = crate::feedback::canonical_uuid(&request_id, "request_id")?;
+        let attachment_id = crate::feedback::canonical_uuid(&attachment_id, "attachment_id")?;
+        self.repository
+            .read_request_attachment(&request_id, &attachment_id)
+            .await
+            .map_err(ApplicationError::from)
+    }
+
     pub async fn submit_feedback(
         &self,
         input: SubmitFeedbackInput,
@@ -284,7 +297,7 @@ impl FeedbackApplication {
     }
 }
 
-mod validation;
+pub(crate) mod validation;
 
 use validation::{
     decode_list_cursor, detect_image_media_type, encode_list_cursor, normalize_image_file_name,

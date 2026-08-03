@@ -144,6 +144,18 @@ pub(super) async fn load_workspace_from_pool(
             })
         })
         .collect::<Result<Vec<_>, RepositoryError>>()?;
+    let request_attachment_rows = sqlx::query(
+        "SELECT id, file_name, media_type, byte_size, sha256, position \
+         FROM request_attachments WHERE request_id = ?1 ORDER BY position, id",
+    )
+    .bind(request_id)
+    .fetch_all(pool)
+    .await
+    .map_err(storage_error)?;
+    let request_attachments = request_attachment_rows
+        .iter()
+        .map(request_attachment_view_from_row)
+        .collect::<Result<Vec<_>, _>>()?;
     let draft_row =
         sqlx::query("SELECT body_markdown, revision, updated_at FROM drafts WHERE request_id = ?1")
             .bind(request_id)
@@ -178,9 +190,23 @@ pub(super) async fn load_workspace_from_pool(
         request: summary_from_row(&row)?,
         actions,
         context_refs,
+        request_attachments,
         draft,
         attachments,
         feedback: feedback_result_from_row(&row)?,
+    })
+}
+
+fn request_attachment_view_from_row(
+    row: &SqliteRow,
+) -> Result<RequestAttachmentView, RepositoryError> {
+    Ok(RequestAttachmentView {
+        attachment_id: row.try_get("id").map_err(storage_error)?,
+        file_name: row.try_get("file_name").map_err(storage_error)?,
+        media_type: row.try_get("media_type").map_err(storage_error)?,
+        byte_size: row.try_get::<i64, _>("byte_size").map_err(storage_error)? as u64,
+        sha256: row.try_get("sha256").map_err(storage_error)?,
+        position: row.try_get::<i64, _>("position").map_err(storage_error)? as u32,
     })
 }
 
@@ -201,10 +227,12 @@ pub(super) async fn load_submission_row(
 ) -> Result<Option<SqliteRow>, RepositoryError> {
     sqlx::query(
         "SELECT r.id, r.status, r.revision AS request_revision, r.title, r.what_happened, \
+                r.cancel_reason AS request_cancel_reason, \
                 r.source_hint, hs.host_id, hs.host_session_id, \
                 d.body_markdown, d.revision AS draft_revision, \
                 sp.publication_id, sp.source_revision, sp.body_sha256, sp.cooked_markdown, \
-                sp.cooking_model, sp.submitted_at, sp.package_uri, sp.directory_path, \
+                sp.cooking_model, sp.terminal_resolution, sp.cancel_reason AS plan_cancel_reason, \
+                sp.submitted_at, sp.package_uri, sp.directory_path, \
                 sp.temp_directory_path, sp.markdown_path, sp.manifest_path \
          FROM feedback_requests r \
          JOIN host_sessions hs ON hs.id = r.host_session_record_id \
@@ -273,12 +301,48 @@ pub(super) async fn load_submission_attachments(
         .collect()
 }
 
+pub(super) async fn load_submission_request_attachments(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    request_id: &str,
+) -> Result<Vec<SubmissionRequestAttachment>, RepositoryError> {
+    let rows = sqlx::query(
+        "SELECT id, file_name, media_type, byte_size, sha256, draft_path \
+         FROM request_attachments WHERE request_id = ?1 ORDER BY position, id",
+    )
+    .bind(request_id)
+    .fetch_all(&mut **transaction)
+    .await
+    .map_err(storage_error)?;
+    rows.iter()
+        .enumerate()
+        .map(|(index, row)| {
+            let file_name: String = row.try_get("file_name").map_err(storage_error)?;
+            Ok(SubmissionRequestAttachment {
+                attachment_id: row.try_get("id").map_err(storage_error)?,
+                relative_path: format!(
+                    "request-attachments/{:03}-{}",
+                    index + 1,
+                    portable_file_name(&file_name)
+                ),
+                file_name,
+                media_type: row.try_get("media_type").map_err(storage_error)?,
+                byte_size: row.try_get::<i64, _>("byte_size").map_err(storage_error)? as u64,
+                sha256: row.try_get("sha256").map_err(storage_error)?,
+                draft_path: row.try_get("draft_path").map_err(storage_error)?,
+            })
+        })
+        .collect()
+}
+
 pub(super) fn submission_plan_from_row(
     row: &SqliteRow,
     actions: Vec<ActionInput>,
     attachments: Vec<SubmissionAttachment>,
+    request_attachments: Vec<SubmissionRequestAttachment>,
     body_markdown: String,
 ) -> Result<SubmissionPlan, RepositoryError> {
+    let resolution_value: String = row.try_get("terminal_resolution").map_err(storage_error)?;
+    let resolution = FeedbackResolution::try_from(resolution_value.as_str())?;
     Ok(SubmissionPlan {
         request_id: row.try_get("id").map_err(storage_error)?,
         host_id: row.try_get("host_id").map_err(storage_error)?,
@@ -288,12 +352,15 @@ pub(super) fn submission_plan_from_row(
         what_happened: row.try_get("what_happened").map_err(storage_error)?,
         actions,
         attachments,
+        request_attachments,
         body_markdown: row
             .try_get::<Option<String>, _>("cooked_markdown")
             .map_err(storage_error)?
             .unwrap_or_else(|| body_markdown.clone()),
         uncooked_markdown: body_markdown,
         cooking_model: row.try_get("cooking_model").map_err(storage_error)?,
+        resolution,
+        cancel_reason: row.try_get("plan_cancel_reason").map_err(storage_error)?,
         source_revision: row
             .try_get::<i64, _>("source_revision")
             .map_err(storage_error)? as u64,

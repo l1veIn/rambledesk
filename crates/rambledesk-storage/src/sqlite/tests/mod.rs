@@ -2,8 +2,8 @@ use super::*;
 use rambledesk_core::{
     ActionInput, AddAttachmentInput, ApproveFeedbackInput, CancelFeedbackInput, ContextRef,
     ExecutionMode, FeedbackResolution, FeedbackStatus, GetFeedbackInput, ListFeedbackRequestsInput,
-    RecoverFeedbackInput, RemoveAttachmentInput, ReorderAttachmentsInput, RequestFeedbackInput,
-    SaveDraftInput, SubmitFeedbackInput,
+    RecoverFeedbackInput, RemoveAttachmentInput, ReorderAttachmentsInput, RequestAttachmentInput,
+    RequestFeedbackInput, SaveDraftInput, SubmitFeedbackInput,
 };
 use tempfile::TempDir;
 use uuid::Uuid;
@@ -37,6 +37,7 @@ impl TestWorkspace {
                 label: "diff".to_owned(),
                 uri: "file:///tmp/change.diff".to_owned(),
             }],
+            attachments: Vec::new(),
             source_hint: Some("storage test fixture".to_owned()),
             allow_finish: false,
             final_summary: None,

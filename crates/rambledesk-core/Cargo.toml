@@ -9,6 +9,7 @@ description = "RambleDesk domain types, ports, and application invariants"
 
 [dependencies]
 async-trait.workspace = true
+base64.workspace = true
 hex.workspace = true
 schemars.workspace = true
 serde.workspace = true

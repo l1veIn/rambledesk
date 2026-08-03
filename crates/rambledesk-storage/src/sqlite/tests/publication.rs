@@ -8,8 +8,14 @@ async fn submit_is_idempotent_and_publishes_one_immutable_package() {
         .await
         .expect("open store");
     let application = store.clone().into_application();
+    let mut request = workspace.request(request_id.clone());
+    request.attachments = vec![RequestAttachmentInput {
+        file_name: "agent-review.md".to_owned(),
+        markdown: Some("# Agent review\n\nKeep this with the package.".to_owned()),
+        contents_base64: None,
+    }];
     application
-        .request_feedback(workspace.request(request_id.clone()))
+        .request_feedback(request)
         .await
         .expect("create request");
     let draft = application
@@ -43,7 +49,7 @@ async fn submit_is_idempotent_and_publishes_one_immutable_package() {
         .expect("completed submit replay");
     assert_eq!(submitted, replay);
     assert_eq!(submitted.status, FeedbackStatus::Completed);
-    let result = submitted.feedback.expect("published feedback");
+    let result = submitted.feedback.clone().expect("published feedback");
     assert!(Path::new(&result.markdown_path).is_file());
     assert!(
         tokio::fs::read_to_string(&result.markdown_path)
@@ -73,6 +79,37 @@ async fn submit_is_idempotent_and_publishes_one_immutable_package() {
     assert_eq!(manifest["cooking_model"], "deepseek/deepseek-chat");
     assert!(manifest["feedback_sha256"].as_str().is_some());
     assert!(manifest["uncooked_sha256"].as_str().is_some());
+    assert_eq!(
+        manifest["request_attachments"].as_array().map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(
+        manifest["request_attachments"][0]["path"],
+        "request-attachments/001-agent-review.md"
+    );
+    let package = application
+        .read_feedback_package(&submitted)
+        .await
+        .expect("read package")
+        .expect("published package");
+    assert_eq!(package.request_attachment_paths.len(), 1);
+    assert_eq!(
+        tokio::fs::read_to_string(&package.request_attachment_paths[0])
+            .await
+            .expect("published request attachment"),
+        "# Agent review\n\nKeep this with the package."
+    );
+    let (blob_bytes, draft_path, published_path): (i64, String, String) = sqlx::query_as(
+        "SELECT length(contents), draft_path, published_path \
+         FROM request_attachments WHERE request_id = ?1",
+    )
+    .bind(&request_id)
+    .fetch_one(&store.pool)
+    .await
+    .expect("published request attachment paths");
+    assert_eq!(blob_bytes, 0);
+    assert!(!Path::new(&draft_path).exists());
+    assert!(Path::new(&published_path).is_file());
 
     let directory_count = std::fs::read_dir(workspace.database.parent().unwrap().join("feedback"))
         .expect("feedback root")

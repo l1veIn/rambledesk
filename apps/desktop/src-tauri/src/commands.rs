@@ -17,7 +17,7 @@ use rambledesk_speech::{
     model::{SpeechModelInfo, delete_model, download_model, list_models, model_dir, model_info},
 };
 use serde::{Deserialize, Serialize};
-use tauri::{Emitter, Manager};
+use tauri::{Emitter, Manager, ipc::Response};
 
 use super::{
     TRAY_ID, WorkbenchState, continuation::deliver_continuation_after_terminal,
@@ -331,6 +331,19 @@ pub(super) async fn read_feedback_attachment(
     application
         .read_feedback_attachment(request_id, attachment_id)
         .await
+}
+
+#[tauri::command]
+pub(super) async fn read_request_attachment(
+    request_id: String,
+    attachment_id: String,
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<Response, ApplicationError> {
+    let application = state.application.clone();
+    application
+        .read_request_attachment(request_id, attachment_id)
+        .await
+        .map(Response::new)
 }
 
 #[tauri::command]

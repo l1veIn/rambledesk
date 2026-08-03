@@ -68,6 +68,23 @@ pub(super) fn validate_request_input(input: &RequestFeedbackInput) -> Result<(),
         validate_text("context_ref.uri", &context_ref.uri, 1, 4_096)?;
     }
 
+    if input.attachments.len() > crate::MAX_ATTACHMENT_COUNT {
+        return Err(ApplicationError::invalid_argument(format!(
+            "attachments cannot contain more than {} items",
+            crate::MAX_ATTACHMENT_COUNT
+        )));
+    }
+    for attachment in &input.attachments {
+        match (&attachment.markdown, &attachment.contents_base64) {
+            (Some(_), None) | (None, Some(_)) => {}
+            _ => {
+                return Err(ApplicationError::invalid_argument(
+                    "each attachment must provide exactly one of markdown or contents_base64",
+                ));
+            }
+        }
+    }
+
     Ok(())
 }
 

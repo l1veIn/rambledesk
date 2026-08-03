@@ -1,6 +1,203 @@
 use super::*;
 
 #[tokio::test]
+async fn request_attachments_are_immutable_readable_and_idempotent() {
+    let workspace = TestWorkspace::new().await;
+    let request_id = Uuid::now_v7().to_string();
+    let store = SqliteFeedbackStore::connect(&workspace.database)
+        .await
+        .expect("open store");
+    let application = store.clone().into_application();
+    let mut input = workspace.request(request_id.clone());
+    input.attachments = vec![
+        RequestAttachmentInput {
+            file_name: "review.md".to_owned(),
+            markdown: Some("# Review\n\nPlease inspect this proposal.".to_owned()),
+            contents_base64: None,
+        },
+        RequestAttachmentInput {
+            file_name: "mockup".to_owned(),
+            markdown: None,
+            contents_base64: Some(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII="
+                    .to_owned(),
+            ),
+        },
+    ];
+
+    application
+        .request_feedback(input.clone())
+        .await
+        .expect("create request with attachments");
+    application
+        .request_feedback(input.clone())
+        .await
+        .expect("retry identical request");
+
+    let opened = application
+        .get_feedback_workspace(request_id.clone())
+        .await
+        .expect("open workspace");
+    assert_eq!(opened.request_attachments.len(), 2);
+    assert_eq!(opened.request_attachments[0].file_name, "review.md");
+    assert_eq!(opened.request_attachments[0].media_type, "text/markdown");
+    assert_eq!(opened.request_attachments[1].file_name, "mockup.png");
+    assert_eq!(opened.request_attachments[1].media_type, "image/png");
+
+    let markdown = application
+        .read_request_attachment(
+            request_id.clone(),
+            opened.request_attachments[0].attachment_id.clone(),
+        )
+        .await
+        .expect("read markdown attachment");
+    assert_eq!(
+        String::from_utf8(markdown).expect("markdown UTF-8"),
+        "# Review\n\nPlease inspect this proposal."
+    );
+    let image = application
+        .read_request_attachment(
+            request_id.clone(),
+            opened.request_attachments[1].attachment_id.clone(),
+        )
+        .await
+        .expect("read image attachment");
+    assert!(image.starts_with(b"\x89PNG\r\n\x1a\n"));
+
+    let stored_paths: Vec<(i64, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT length(contents), draft_path, published_path \
+         FROM request_attachments WHERE request_id = ?1 ORDER BY position",
+    )
+    .bind(&request_id)
+    .fetch_all(&store.pool)
+    .await
+    .expect("request attachment storage paths");
+    assert_eq!(stored_paths.len(), 2);
+    for (blob_bytes, draft_path, published_path) in stored_paths {
+        assert_eq!(blob_bytes, 0, "SQLite must not retain attachment bytes");
+        assert!(Path::new(&draft_path.expect("draft path")).is_file());
+        assert!(published_path.is_none());
+    }
+
+    input.attachments[0].markdown = Some("changed".to_owned());
+    let conflict = application
+        .request_feedback(input)
+        .await
+        .expect_err("changed request attachment must conflict");
+    assert_eq!(conflict.code(), "REQUEST_CONFLICT");
+    store.close().await;
+}
+
+#[tokio::test]
+async fn startup_externalizes_legacy_request_attachment_blobs() {
+    let workspace = TestWorkspace::new().await;
+    let request_id = Uuid::now_v7().to_string();
+    let store = SqliteFeedbackStore::connect(&workspace.database)
+        .await
+        .expect("open store");
+    let application = store.clone().into_application();
+    let mut request = workspace.request(request_id.clone());
+    request.attachments = vec![RequestAttachmentInput {
+        file_name: "legacy.md".to_owned(),
+        markdown: Some("# Legacy attachment".to_owned()),
+        contents_base64: None,
+    }];
+    application
+        .request_feedback(request)
+        .await
+        .expect("create request");
+    let (attachment_id, draft_path): (String, String) =
+        sqlx::query_as("SELECT id, draft_path FROM request_attachments WHERE request_id = ?1")
+            .bind(&request_id)
+            .fetch_one(&store.pool)
+            .await
+            .expect("stored attachment");
+    let bytes = tokio::fs::read(&draft_path).await.expect("draft bytes");
+    tokio::fs::remove_file(&draft_path)
+        .await
+        .expect("remove external file");
+    sqlx::query("UPDATE request_attachments SET contents = ?2, draft_path = NULL WHERE id = ?1")
+        .bind(&attachment_id)
+        .bind(&bytes)
+        .execute(&store.pool)
+        .await
+        .expect("simulate legacy blob");
+    store.close().await;
+
+    let reopened = SqliteFeedbackStore::connect(&workspace.database)
+        .await
+        .expect("reopen and externalize");
+    let (blob_bytes, external_path): (i64, String) = sqlx::query_as(
+        "SELECT length(contents), draft_path FROM request_attachments WHERE id = ?1",
+    )
+    .bind(&attachment_id)
+    .fetch_one(&reopened.pool)
+    .await
+    .expect("externalized attachment");
+    assert_eq!(blob_bytes, 0);
+    assert_eq!(
+        tokio::fs::read(external_path)
+            .await
+            .expect("external bytes"),
+        bytes
+    );
+    reopened.close().await;
+}
+
+#[tokio::test]
+async fn startup_archives_legacy_cancelled_requests() {
+    let workspace = TestWorkspace::new().await;
+    let request_id = Uuid::now_v7().to_string();
+    let store = SqliteFeedbackStore::connect(&workspace.database)
+        .await
+        .expect("open store");
+    let application = store.clone().into_application();
+    let mut request = workspace.request(request_id.clone());
+    request.attachments = vec![RequestAttachmentInput {
+        file_name: "cancelled.md".to_owned(),
+        markdown: Some("# Preserved request context".to_owned()),
+        contents_base64: None,
+    }];
+    application
+        .request_feedback(request)
+        .await
+        .expect("create request");
+    sqlx::query(
+        "UPDATE feedback_requests SET status = 'cancelled', resolution = 'cancelled', \
+             cancelled_at = ?2, cancel_reason = 'Legacy cancellation', updated_at = ?2, revision = 1 \
+         WHERE id = ?1",
+    )
+    .bind(&request_id)
+    .bind("2026-08-03T08:00:00Z")
+    .execute(&store.pool)
+    .await
+    .expect("simulate legacy cancellation");
+    store.close().await;
+
+    let reopened = SqliteFeedbackStore::connect(&workspace.database)
+        .await
+        .expect("reopen and archive cancellation");
+    let recovered = reopened
+        .clone()
+        .into_application()
+        .get_feedback(GetFeedbackInput {
+            request_id: request_id.clone(),
+        })
+        .await
+        .expect("read archived cancellation");
+    assert_eq!(recovered.status, FeedbackStatus::Cancelled);
+    assert!(recovered.feedback.is_some());
+    let published_path: String =
+        sqlx::query_scalar("SELECT published_path FROM request_attachments WHERE request_id = ?1")
+            .bind(&request_id)
+            .fetch_one(&reopened.pool)
+            .await
+            .expect("published legacy request attachment");
+    assert!(Path::new(&published_path).is_file());
+    reopened.close().await;
+}
+
+#[tokio::test]
 async fn recovery_is_host_scoped_and_rejects_ambiguous_session_matches() {
     let workspace = TestWorkspace::new().await;
     let first_id = Uuid::now_v7().to_string();
@@ -143,10 +340,24 @@ async fn repeated_cancel_preserves_the_first_reason_and_terminal_state() {
         .await
         .expect("open store");
     let application = store.clone().into_application();
+    let mut request = workspace.request(request_id.clone());
+    request.attachments = vec![RequestAttachmentInput {
+        file_name: "agent-note.md".to_owned(),
+        markdown: Some("# Agent note\n\nReview before cancelling.".to_owned()),
+        contents_base64: None,
+    }];
     application
-        .request_feedback(workspace.request(request_id.clone()))
+        .request_feedback(request)
         .await
         .expect("create request");
+    application
+        .save_feedback_draft(SaveDraftInput {
+            request_id: request_id.clone(),
+            body_markdown: "Partial human feedback.".to_owned(),
+            expected_revision: 0,
+        })
+        .await
+        .expect("save partial draft");
 
     let first = application
         .cancel_feedback(CancelFeedbackInput {
@@ -164,6 +375,32 @@ async fn repeated_cancel_preserves_the_first_reason_and_terminal_state() {
         .expect("repeat cancel");
     assert_eq!(first, repeated);
     assert_eq!(first.status, FeedbackStatus::Cancelled);
+    let result = first.feedback.as_ref().expect("cancel feedback package");
+    let package = application
+        .read_feedback_package(&first)
+        .await
+        .expect("read cancellation package")
+        .expect("published cancellation package");
+    assert_eq!(package.manifest.resolution, FeedbackResolution::Cancelled);
+    assert_eq!(
+        package.manifest.cancel_reason.as_deref(),
+        Some("The host no longer needs feedback.")
+    );
+    assert_eq!(
+        package.uncooked_markdown.as_deref(),
+        Some("Partial human feedback.\n")
+    );
+    assert_eq!(package.request_attachment_paths.len(), 1);
+    assert!(Path::new(&result.directory_path).is_dir());
+    assert!(
+        !workspace
+            .database
+            .parent()
+            .expect("database parent")
+            .join("drafts")
+            .join(&request_id)
+            .exists()
+    );
 
     let reason: String =
         sqlx::query_scalar("SELECT cancel_reason FROM feedback_requests WHERE id = ?1")

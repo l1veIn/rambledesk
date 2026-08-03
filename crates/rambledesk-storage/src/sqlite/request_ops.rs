@@ -1,5 +1,11 @@
 use super::*;
 use serde::Serialize;
+use tokio::io::AsyncWriteExt;
+
+struct StagedRequestAttachment {
+    attachment_id: String,
+    draft_path: std::path::PathBuf,
+}
 
 #[derive(Serialize)]
 struct LegacyImmutableRequest<'a> {
@@ -25,8 +31,52 @@ struct ImmutableRequest<'a> {
     final_summary: Option<&'a str>,
 }
 
+#[derive(Serialize)]
+struct ImmutableRequestAttachment<'a> {
+    file_name: &'a str,
+    media_type: &'a str,
+    byte_size: usize,
+    sha256: &'a str,
+}
+
+#[derive(Serialize)]
+struct ImmutableRequestWithAttachments<'a> {
+    host_id: &'a str,
+    host_session_id: &'a str,
+    title: &'a str,
+    what_happened: &'a str,
+    actions: &'a [ActionInput],
+    context_refs: &'a [ContextRef],
+    attachments: Vec<ImmutableRequestAttachment<'a>>,
+    source_hint: Option<&'a str>,
+    allow_finish: bool,
+    final_summary: Option<&'a str>,
+}
+
 fn immutable_input_hash(request: &NewFeedbackRequest) -> Result<String, RepositoryError> {
-    let bytes = if request.allow_finish || request.final_summary.is_some() {
+    let bytes = if !request.attachments.is_empty() {
+        serde_json::to_vec(&ImmutableRequestWithAttachments {
+            host_id: &request.host_id,
+            host_session_id: &request.host_session_id,
+            title: &request.title,
+            what_happened: &request.what_happened,
+            actions: &request.actions,
+            context_refs: &request.context_refs,
+            attachments: request
+                .attachments
+                .iter()
+                .map(|attachment| ImmutableRequestAttachment {
+                    file_name: &attachment.file_name,
+                    media_type: &attachment.media_type,
+                    byte_size: attachment.contents.len(),
+                    sha256: &attachment.sha256,
+                })
+                .collect(),
+            source_hint: request.source_hint.as_deref(),
+            allow_finish: request.allow_finish,
+            final_summary: request.final_summary.as_deref(),
+        })
+    } else if request.allow_finish || request.final_summary.is_some() {
         serde_json::to_vec(&ImmutableRequest {
             host_id: &request.host_id,
             host_session_id: &request.host_session_id,
@@ -55,6 +105,64 @@ fn immutable_input_hash(request: &NewFeedbackRequest) -> Result<String, Reposito
 }
 
 impl SqliteFeedbackStore {
+    async fn stage_request_attachments(
+        &self,
+        request: &NewFeedbackRequest,
+    ) -> Result<Vec<StagedRequestAttachment>, RepositoryError> {
+        if request.attachments.is_empty() {
+            return Ok(Vec::new());
+        }
+        let directory = self
+            .library_root
+            .join("drafts")
+            .join(&request.request_id)
+            .join("request-attachments");
+        tokio::fs::create_dir_all(&directory)
+            .await
+            .map_err(storage_error)?;
+        let mut staged: Vec<StagedRequestAttachment> =
+            Vec::with_capacity(request.attachments.len());
+        for attachment in &request.attachments {
+            let path = directory.join(format!(
+                "{}-{}",
+                attachment.attachment_id,
+                portable_file_name(&attachment.file_name)
+            ));
+            let result = async {
+                let mut file = tokio::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&path)
+                    .await
+                    .map_err(storage_error)?;
+                file.write_all(&attachment.contents)
+                    .await
+                    .map_err(storage_error)?;
+                file.flush().await.map_err(storage_error)?;
+                file.sync_all().await.map_err(storage_error)
+            }
+            .await;
+            if let Err(error) = result {
+                for item in &staged {
+                    let _ = tokio::fs::remove_file(&item.draft_path).await;
+                }
+                let _ = tokio::fs::remove_file(&path).await;
+                return Err(error);
+            }
+            staged.push(StagedRequestAttachment {
+                attachment_id: attachment.attachment_id.clone(),
+                draft_path: path,
+            });
+        }
+        Ok(staged)
+    }
+
+    async fn cleanup_staged_request_attachments(&self, staged: &[StagedRequestAttachment]) {
+        for attachment in staged {
+            let _ = tokio::fs::remove_file(&attachment.draft_path).await;
+        }
+    }
+
     pub(super) async fn create_or_get_request_impl(
         &self,
         request: NewFeedbackRequest,
@@ -147,6 +255,34 @@ impl SqliteFeedbackStore {
             .await
             .map_err(storage_error)?;
         }
+        let staged = self.stage_request_attachments(&request).await?;
+        for (position, attachment) in request.attachments.iter().enumerate() {
+            let staged_attachment = staged
+                .iter()
+                .find(|item| item.attachment_id == attachment.attachment_id)
+                .ok_or(RepositoryError::CorruptData)?;
+            let insert = sqlx::query(
+                "INSERT INTO request_attachments \
+                 (id, request_id, file_name, byte_size, media_type, sha256, position, contents, created_at, draft_path) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            )
+            .bind(&attachment.attachment_id)
+            .bind(&request.request_id)
+            .bind(&attachment.file_name)
+            .bind(attachment.contents.len() as i64)
+            .bind(&attachment.media_type)
+            .bind(&attachment.sha256)
+            .bind(position as i64)
+            .bind(Vec::<u8>::new())
+            .bind(&request.created_at)
+            .bind(path_string(&staged_attachment.draft_path)?)
+            .execute(&mut *transaction)
+            .await;
+            if let Err(error) = insert {
+                self.cleanup_staged_request_attachments(&staged).await;
+                return Err(storage_error(error));
+            }
+        }
 
         let stored = StoredFeedbackRequest {
             request_id: request.request_id,
@@ -160,8 +296,97 @@ impl SqliteFeedbackStore {
             allow_finish: request.allow_finish,
             final_summary: request.final_summary,
         };
-        transaction.commit().await.map_err(storage_error)?;
+        if let Err(error) = transaction.commit().await {
+            self.cleanup_staged_request_attachments(&staged).await;
+            return Err(storage_error(error));
+        }
         Ok(stored)
+    }
+
+    pub(super) async fn externalize_legacy_request_attachments(
+        &self,
+    ) -> Result<(), RepositoryError> {
+        let mut migrated = false;
+        loop {
+            let Some(row) = sqlx::query(
+                "SELECT id, request_id, file_name, byte_size, sha256, contents \
+                 FROM request_attachments \
+                 WHERE (draft_path IS NULL OR draft_path = '') AND length(contents) > 0 \
+                 ORDER BY request_id, position, id LIMIT 1",
+            )
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(storage_error)?
+            else {
+                break;
+            };
+            let attachment_id: String = row.try_get("id").map_err(storage_error)?;
+            let request_id: String = row.try_get("request_id").map_err(storage_error)?;
+            let file_name: String = row.try_get("file_name").map_err(storage_error)?;
+            let byte_size: i64 = row.try_get("byte_size").map_err(storage_error)?;
+            let sha256: String = row.try_get("sha256").map_err(storage_error)?;
+            let contents: Vec<u8> = row.try_get("contents").map_err(storage_error)?;
+            if contents.len() as i64 != byte_size
+                || hex::encode(Sha256::digest(&contents)) != sha256
+            {
+                return Err(RepositoryError::CorruptData);
+            }
+            let directory = self
+                .library_root
+                .join("drafts")
+                .join(&request_id)
+                .join("request-attachments");
+            tokio::fs::create_dir_all(&directory)
+                .await
+                .map_err(storage_error)?;
+            let path = directory.join(format!(
+                "{}-{}",
+                attachment_id,
+                portable_file_name(&file_name)
+            ));
+            if tokio::fs::try_exists(&path).await.map_err(storage_error)? {
+                let existing = tokio::fs::read(&path).await.map_err(storage_error)?;
+                if existing != contents {
+                    return Err(RepositoryError::CorruptData);
+                }
+            } else {
+                let mut file = tokio::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&path)
+                    .await
+                    .map_err(storage_error)?;
+                file.write_all(&contents).await.map_err(storage_error)?;
+                file.flush().await.map_err(storage_error)?;
+                file.sync_all().await.map_err(storage_error)?;
+            }
+            let updated = sqlx::query(
+                "UPDATE request_attachments SET draft_path = ?2, contents = x'' \
+                 WHERE id = ?1 AND (draft_path IS NULL OR draft_path = '') \
+                   AND sha256 = ?3",
+            )
+            .bind(&attachment_id)
+            .bind(path_string(&path)?)
+            .bind(&sha256)
+            .execute(&self.pool)
+            .await
+            .map_err(storage_error)?;
+            if updated.rows_affected() != 1 {
+                return Err(RepositoryError::CorruptData);
+            }
+            migrated = true;
+        }
+        if migrated {
+            sqlx::query("VACUUM")
+                .execute(&self.pool)
+                .await
+                .map_err(storage_error)?;
+            sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+                .execute(&self.pool)
+                .await
+                .map_err(storage_error)?;
+        }
+        Ok(())
     }
 
     pub(super) async fn get_request_impl(
@@ -182,55 +407,6 @@ impl SqliteFeedbackStore {
         .map_err(storage_error)?
         .ok_or(RepositoryError::RequestNotFound)?;
         stored_request_from_row(&row)
-    }
-
-    pub(super) async fn cancel_request_impl(
-        &self,
-        request_id: &str,
-        reason: &str,
-        now: &str,
-    ) -> Result<StoredFeedbackRequest, RepositoryError> {
-        let mut transaction = self
-            .pool
-            .begin_with("BEGIN IMMEDIATE")
-            .await
-            .map_err(storage_error)?;
-        let row = load_request_row(&mut transaction, request_id)
-            .await?
-            .ok_or(RepositoryError::RequestNotFound)?;
-        match stored_status(&row)? {
-            FeedbackStatus::Completed => return Err(RepositoryError::RequestAlreadyCompleted),
-            FeedbackStatus::Cancelled => return stored_request_from_row(&row),
-            FeedbackStatus::Waiting | FeedbackStatus::InProgress => {}
-        }
-        let planned: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM submission_plans WHERE request_id = ?1)",
-        )
-        .bind(request_id)
-        .fetch_one(&mut *transaction)
-        .await
-        .map_err(storage_error)?;
-        if planned {
-            return Err(RepositoryError::RequestTerminal);
-        }
-
-        sqlx::query(
-            "UPDATE feedback_requests \
-             SET status = 'cancelled', resolution = 'cancelled', cancelled_at = ?2, cancel_reason = ?3, \
-                 updated_at = ?2, revision = revision + 1 \
-             WHERE id = ?1 AND status IN ('waiting', 'in_progress')",
-        )
-        .bind(request_id)
-        .bind(now)
-        .bind(reason)
-        .execute(&mut *transaction)
-        .await
-        .map_err(storage_error)?;
-        let updated = load_request_row(&mut transaction, request_id)
-            .await?
-            .ok_or(RepositoryError::RequestNotFound)?;
-        transaction.commit().await.map_err(storage_error)?;
-        stored_request_from_row(&updated)
     }
 
     pub(super) async fn approve_request_impl(
@@ -364,6 +540,7 @@ mod hash_tests {
                 label: "diff".to_owned(),
                 uri: "file:///tmp/change.diff".to_owned(),
             }],
+            attachments: Vec::new(),
             source_hint: None,
             allow_finish,
             final_summary: final_summary.map(str::to_owned),

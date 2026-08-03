@@ -1,18 +1,27 @@
 <script lang="ts">
-  import { ChevronDown, ListChecks } from '@lucide/svelte'
+  import { ChevronDown, Eye, FileImage, FileText, ListChecks, Paperclip } from '@lucide/svelte'
 
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
   import * as Collapsible from '$lib/components/ui/collapsible'
-  import type { FeedbackWorkspaceView } from '$lib/feedback'
+  import type { FeedbackWorkspaceView, RequestAttachmentView } from '$lib/feedback'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
+  import RequestAttachmentPreview from './RequestAttachmentPreview.svelte'
 
   export let workspace: FeedbackWorkspaceView
   export let open = true
 
+  let previewOpen = false
+  let previewAttachment: RequestAttachmentView | null = null
+
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
+  }
+
+  function openPreview(attachment: RequestAttachmentView) {
+    previewAttachment = attachment
+    previewOpen = true
   }
 </script>
 
@@ -37,6 +46,12 @@
     <Badge variant="secondary" class="h-5 px-1.5 text-[9px]">
       {tr('{count} 个步骤', { count: workspace.actions.length })}
     </Badge>
+    {#if workspace.request_attachments.length > 0}
+      <Badge variant="outline" class="h-5 gap-1 px-1.5 text-[9px]">
+        <Paperclip class="size-2.5" />
+        {workspace.request_attachments.length}
+      </Badge>
+    {/if}
     <Collapsible.Trigger>
       {#snippet child({ props })}
         <Button
@@ -76,6 +91,45 @@
           {/each}
         </ol>
       </section>
+
+      {#if workspace.request_attachments.length > 0}
+        <section class="@min-[700px]:col-span-2">
+          <h2 class="m-0 flex items-center gap-1.5 text-[10px] font-semibold uppercase text-muted-foreground">
+            <Paperclip class="size-3" />
+            {tr('Agent 提供的评审附件')}
+          </h2>
+          <div class="mt-2 grid gap-2 @min-[700px]:grid-cols-2">
+            {#each workspace.request_attachments as attachment (attachment.attachment_id)}
+              <button
+                type="button"
+                class="group flex min-w-0 items-center gap-2 rounded-lg border bg-background px-3 py-2 text-left transition-colors hover:border-primary/40 hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label={tr('预览 {name}', { name: attachment.file_name })}
+                onclick={() => openPreview(attachment)}
+              >
+                {#if attachment.media_type.startsWith('image/')}
+                  <FileImage class="size-4 shrink-0 text-muted-foreground group-hover:text-primary" />
+                {:else}
+                  <FileText class="size-4 shrink-0 text-muted-foreground group-hover:text-primary" />
+                {/if}
+                <span class="min-w-0 flex-1">
+                  <strong class="block truncate text-[10px] font-medium">{attachment.file_name}</strong>
+                  <span class="block text-[9px] text-muted-foreground">
+                    {attachment.media_type === 'text/markdown' ? 'Markdown' : tr('图片')}
+                    · {(attachment.byte_size / 1024).toFixed(1)} KiB
+                  </span>
+                </span>
+                <Eye class="size-3.5 shrink-0 text-muted-foreground group-hover:text-primary" />
+              </button>
+            {/each}
+          </div>
+        </section>
+      {/if}
     </div>
   </Collapsible.Content>
 </Collapsible.Root>
+
+<RequestAttachmentPreview
+  bind:open={previewOpen}
+  requestId={workspace.request.request_id}
+  attachment={previewAttachment}
+/>
