@@ -87,8 +87,10 @@ jobs:
           prerelease: false
           generateReleaseNotes: true
           uploadUpdaterJson: false
-          retryAttempts: 2
-          args: --target x86_64-pc-windows-msvc --bundles nsis,msi
+          retryAttempts: 0
+          # WiX/MSI rejects SemVer prerelease identifiers such as `rc.1`.
+          # Release candidates exercise the NSIS updater path; stable tags ship both installers.
+          args: ${{ contains(github.ref_name, '-') && '--target x86_64-pc-windows-msvc --bundles nsis' || '--target x86_64-pc-windows-msvc --bundles nsis,msi' }}
 
       - name: Generate and upload stable updater manifest
         shell: pwsh

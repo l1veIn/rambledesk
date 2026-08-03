@@ -18,7 +18,8 @@ RambleDesk 的首个正式发行渠道为 Windows x86_64。macOS 代码与 CI �
 - `pnpm build:web`
 - `pnpm contracts:check`
 - `pnpm mcp:inspector-smoke`
-- `pnpm -C apps/desktop tauri build --target x86_64-pc-windows-msvc --bundles nsis,msi`
+- 稳定版：`pnpm -C apps/desktop tauri build --target x86_64-pc-windows-msvc --bundles nsis,msi`
+- RC：`pnpm -C apps/desktop tauri build --target x86_64-pc-windows-msvc --bundles nsis`（WiX/MSI 不接受 `rc.1` 这类 SemVer 预发布标识）
 
 不要把 `cargo build --release` 生成的裸二进制作为发行产物。它不会执行 Tauri 的
 `beforeBuildCommand`，因此不能代表嵌入生产前端后的应用。
