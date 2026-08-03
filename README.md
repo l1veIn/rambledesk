@@ -59,13 +59,13 @@ The browser build degrades native-only behavior and is not a substitute for desk
 
 ## Local Speech Model
 
-Streaming transcription uses the manifest-pinned Sherpa X-ASR model described in [`crates/rambledesk-speech/models/sherpa-x-asr.json`](crates/rambledesk-speech/models/sherpa-x-asr.json). The model binary is intentionally kept out of Git. Place the verified model directory at the platform application-data location declared by the manifest, or point a local development run at it with an absolute path:
-
-```bash
-RAMBLEDESK_SHERPA_MODEL_DIR=/absolute/path/to/sherpa-x-asr pnpm dev
-```
+RambleDesk supports X-ASR streaming transcription plus VAD-segmented SenseVoice and FunASR-Nano transcription. Open **Settings → Voice** to choose, download, switch, or remove a model and tune the Silero VAD threshold. Model manifests live under [`crates/rambledesk-speech/models`](crates/rambledesk-speech/models); downloaded model weights remain outside Git in the configured data storage location.
 
 Text, capture, import, editing, and feedback submission remain usable without speech transcription.
+
+## Feedback Cooking
+
+Optional Cooking is configured under **Settings → General**. RambleDesk uses the Vercel AI SDK with DeepSeek, OpenAI, or a user-supplied OpenAI-compatible endpoint to turn the uncooked Ramble draft into formal Markdown before submission. Every new feedback package preserves the human source as `uncooked.md`; `feedback.md` is the canonical result read by the host. API keys remain in local device settings and are never written to packages.
 
 ## Verification
 

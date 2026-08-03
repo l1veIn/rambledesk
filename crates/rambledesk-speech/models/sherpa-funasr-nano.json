@@ -1,0 +1,18 @@
+{
+  "id": "funasr-nano-int8-2025-12-30",
+  "provider": "sherpa-onnx-funasr-nano",
+  "directory": "sherpa-funasr-nano",
+  "streaming": false,
+  "segmentation": "silero-vad",
+  "files": [
+    { "name": "encoder_adaptor.int8.onnx", "bytes": 237792748, "sha256": "f36dea2e30fbc33b5db1d7a7265cc976c5e5586c77b042d5adb1ad27c72db422" },
+    { "name": "llm.int8.onnx", "bytes": 600356593, "sha256": "dfbf9aa3be41bccc257587f151e15c63fbe1b549f2b517f5ccd5bdce3bf4322a" },
+    { "name": "embedding.int8.onnx", "bytes": 155584380, "sha256": "95e61cd0c9c3b9543339a4cf973c95c116815e745ccc1e0285cbd81f76d18644" },
+    { "name": "Qwen3-0.6B/merges.txt", "bytes": 1671853 },
+    { "name": "Qwen3-0.6B/tokenizer.json", "bytes": 11422654, "sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4" },
+    { "name": "Qwen3-0.6B/vocab.json", "bytes": 2776833, "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910" }
+  ],
+  "download_base": "https://huggingface.co/csukuangfj/sherpa-onnx-funasr-nano-int8-2025-12-30/resolve/main/",
+  "license": "FunASR Model License",
+  "source_audit": "Adapted from Kotone's MIT-licensed FunASR-Nano adapter and model manifest."
+}

@@ -1,8 +1,17 @@
 <script lang="ts">
-  import { AlertCircle, Check, CloudCog, LoaderCircle } from '@lucide/svelte'
+  import {
+    AlertCircle,
+    Check,
+    ChefHat,
+    CloudCog,
+    Columns2,
+    FileText,
+    LoaderCircle,
+    Sparkles,
+  } from '@lucide/svelte'
 
-  import * as Alert from '$lib/components/ui/alert'
   import { Badge } from '$lib/components/ui/badge'
+  import { Button } from '$lib/components/ui/button'
   import RichFeedbackEditor from '$lib/RichFeedbackEditor.svelte'
   import type { AttachmentView, FeedbackWorkspaceView } from '$lib/feedback'
   import { t } from '$lib/i18n'
@@ -15,14 +24,26 @@
   export let savePhase: SavePhase = 'idle'
   export let attachmentPreviews: Record<string, string> = {}
   export let dragActive = false
-  export let saveMessage = ''
+  export let cooking = false
+  export let cookedMarkdown = ''
+  export let uncookedMarkdown = ''
   export let formatTime: (value: string | null | undefined) => string
   export let onChange: (markdown: string) => void = () => {}
 
   let richEditor: RichFeedbackEditor
+  let publishedView: 'cooked' | 'uncooked' | 'compare' = 'cooked'
 
   $: readOnly =
     workspace.request.status === 'completed' || workspace.request.status === 'cancelled'
+  $: hasPublishedFeedback = readOnly && cookedMarkdown.trim().length > 0
+  $: hasCookingDifference =
+    hasPublishedFeedback && cookedMarkdown.trim() !== uncookedMarkdown.trim()
+  $: displayedMarkdown =
+    hasPublishedFeedback && publishedView === 'cooked'
+      ? cookedMarkdown
+      : hasPublishedFeedback && publishedView === 'uncooked'
+        ? uncookedMarkdown
+        : draftBody
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
@@ -69,9 +90,39 @@
         {readOnly ? tr('此请求已结束，正文只读。') : tr('记录观察、问题和建议。')}
       </p>
     </div>
+    {#if hasPublishedFeedback}
+      <div class="ml-auto flex items-center gap-1 rounded-md border bg-muted/30 p-0.5">
+        <Button
+          variant={publishedView === 'cooked' ? 'secondary' : 'ghost'}
+          size="sm"
+          class="h-7 px-2 text-[10px]"
+          onclick={() => (publishedView = 'cooked')}
+        >
+          <Sparkles data-icon="inline-start" />Cooked
+        </Button>
+        <Button
+          variant={publishedView === 'uncooked' ? 'secondary' : 'ghost'}
+          size="sm"
+          class="h-7 px-2 text-[10px]"
+          onclick={() => (publishedView = 'uncooked')}
+        >
+          <FileText data-icon="inline-start" />Uncooked
+        </Button>
+        {#if hasCookingDifference}
+          <Button
+            variant={publishedView === 'compare' ? 'secondary' : 'ghost'}
+            size="sm"
+            class="h-7 px-2 text-[10px]"
+            onclick={() => (publishedView = 'compare')}
+          >
+            <Columns2 data-icon="inline-start" />{tr('对比')}
+          </Button>
+        {/if}
+      </div>
+    {/if}
     <Badge
       variant={savePhase === 'error' ? 'destructive' : 'secondary'}
-      class="h-6 gap-1 px-2 text-[9px]"
+      class={["h-6 gap-1 px-2 text-[9px]", hasPublishedFeedback ? '' : 'ml-auto']}
       aria-live="polite"
     >
       {#if savePhase === 'saving'}
@@ -87,23 +138,57 @@
     </Badge>
   </header>
 
-  <RichFeedbackEditor
-    bind:this={richEditor}
-    markdown={draftBody}
-    previews={attachmentPreviews}
-    disabled={readOnly}
-    onChange={onChange}
-  />
+  <div class="relative flex min-h-0 flex-1">
+    {#if hasPublishedFeedback && publishedView === 'compare' && hasCookingDifference}
+      <div class="grid min-h-0 flex-1 grid-cols-2 gap-3">
+        <section class="flex min-h-0 flex-col gap-2">
+          <strong class="text-[10px] font-medium text-muted-foreground">Uncooked</strong>
+          <RichFeedbackEditor
+            markdown={uncookedMarkdown}
+            previews={attachmentPreviews}
+            disabled={true}
+          />
+        </section>
+        <section class="flex min-h-0 flex-col gap-2">
+          <strong class="text-[10px] font-medium text-muted-foreground">Cooked</strong>
+          <RichFeedbackEditor
+            markdown={cookedMarkdown}
+            previews={attachmentPreviews}
+            disabled={true}
+          />
+        </section>
+      </div>
+    {:else}
+      <RichFeedbackEditor
+        bind:this={richEditor}
+        markdown={displayedMarkdown}
+        previews={attachmentPreviews}
+        disabled={readOnly}
+        onChange={(markdown) => {
+          if (!readOnly) onChange(markdown)
+        }}
+      />
+    {/if}
 
-  {#if saveMessage}
-    <Alert.Root variant="destructive" class="mt-3">
-      <AlertCircle />
-      <Alert.Title>{tr('保存失败')}</Alert.Title>
-      <Alert.Description>
-        {saveMessage}。{tr('请重新载入后再试，当前文字仍保留在编辑器中。')}
-      </Alert.Description>
-    </Alert.Root>
-  {/if}
+    {#if cooking}
+      <div
+        class="absolute inset-0 z-10 grid place-items-center rounded-md border bg-background/85 p-6 text-center backdrop-blur-sm"
+        aria-live="assertive"
+        aria-busy="true"
+      >
+        <div class="max-w-xs">
+          <span class="mx-auto grid size-12 place-items-center rounded-full bg-primary/10 text-primary">
+            <ChefHat class="size-6 animate-pulse" />
+          </span>
+          <strong class="mt-3 block text-sm font-medium">{tr('Cooking 中…')}</strong>
+          <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
+            {tr('正在整理原始反馈并保留 uncooked 原稿，请稍候。')}
+          </p>
+          <LoaderCircle class="mx-auto mt-3 size-4 animate-spin text-primary" />
+        </div>
+      </div>
+    {/if}
+  </div>
 
   <footer class="mt-2 flex items-center gap-3 text-[9px] text-muted-foreground">
     <span>{tr('{count} 字符', { count: draftBody.length.toLocaleString($locale) })}</span>

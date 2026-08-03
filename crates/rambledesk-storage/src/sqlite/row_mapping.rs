@@ -203,9 +203,9 @@ pub(super) async fn load_submission_row(
         "SELECT r.id, r.status, r.revision AS request_revision, r.title, r.what_happened, \
                 r.source_hint, hs.host_id, hs.host_session_id, \
                 d.body_markdown, d.revision AS draft_revision, \
-                sp.publication_id, sp.source_revision, sp.body_sha256, sp.submitted_at, \
-                sp.package_uri, sp.directory_path, sp.temp_directory_path, \
-                sp.markdown_path, sp.manifest_path \
+                sp.publication_id, sp.source_revision, sp.body_sha256, sp.cooked_markdown, \
+                sp.cooking_model, sp.submitted_at, sp.package_uri, sp.directory_path, \
+                sp.temp_directory_path, sp.markdown_path, sp.manifest_path \
          FROM feedback_requests r \
          JOIN host_sessions hs ON hs.id = r.host_session_record_id \
          LEFT JOIN drafts d ON d.request_id = r.id \
@@ -288,7 +288,12 @@ pub(super) fn submission_plan_from_row(
         what_happened: row.try_get("what_happened").map_err(storage_error)?,
         actions,
         attachments,
-        body_markdown,
+        body_markdown: row
+            .try_get::<Option<String>, _>("cooked_markdown")
+            .map_err(storage_error)?
+            .unwrap_or_else(|| body_markdown.clone()),
+        uncooked_markdown: body_markdown,
+        cooking_model: row.try_get("cooking_model").map_err(storage_error)?,
         source_revision: row
             .try_get::<i64, _>("source_revision")
             .map_err(storage_error)? as u64,

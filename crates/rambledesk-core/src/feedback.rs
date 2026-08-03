@@ -128,6 +128,8 @@ pub trait FeedbackRepository: Send + Sync {
         &self,
         request_id: &str,
         expected_revision: u64,
+        cooked_markdown: Option<&str>,
+        cooking_model: Option<&str>,
         publication_id: &str,
         now: &str,
     ) -> Result<SubmissionPlan, RepositoryError>;

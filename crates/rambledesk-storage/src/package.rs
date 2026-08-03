@@ -66,6 +66,19 @@ async fn read_package(
     if hex::encode(Sha256::digest(markdown.as_bytes())) != manifest.feedback_sha256 {
         return Err(RepositoryError::PackageRead);
     }
+    let uncooked_markdown = match (&manifest.uncooked_markdown, &manifest.uncooked_sha256) {
+        (Some(relative), Some(expected_hash)) if relative == "uncooked.md" => {
+            let source = tokio::fs::read_to_string(directory.join(relative))
+                .await
+                .map_err(|_| RepositoryError::PackageRead)?;
+            if hex::encode(Sha256::digest(source.as_bytes())) != *expected_hash {
+                return Err(RepositoryError::PackageRead);
+            }
+            Some(source)
+        }
+        (None, None) => None,
+        _ => return Err(RepositoryError::PackageRead),
+    };
 
     let mut attachment_paths = Vec::with_capacity(manifest.attachments.len());
     for attachment in &manifest.attachments {
@@ -86,6 +99,7 @@ async fn read_package(
     Ok(FeedbackPackageContent {
         manifest,
         markdown,
+        uncooked_markdown,
         attachment_paths,
     })
 }
@@ -100,8 +114,10 @@ async fn publish_package(
     validate_publication_parent(plan, parent).await?;
 
     let markdown = render_markdown(plan);
+    let uncooked_markdown = render_uncooked_markdown(plan);
     let feedback_sha256 = hex::encode(Sha256::digest(markdown.as_bytes()));
-    let manifest = render_manifest(plan, &feedback_sha256)?;
+    let uncooked_sha256 = hex::encode(Sha256::digest(uncooked_markdown.as_bytes()));
+    let manifest = render_manifest(plan, &feedback_sha256, &uncooked_sha256)?;
     let manifest_sha256 = hex::encode(Sha256::digest(manifest.as_bytes()));
 
     if tokio::fs::try_exists(&final_directory)
@@ -134,6 +150,7 @@ async fn publish_package(
             .map_err(package_error)?;
         stage_attachments(plan, &temporary).await?;
         write_synced(&temporary.join("feedback.md"), markdown.as_bytes()).await?;
+        write_synced(&temporary.join("uncooked.md"), uncooked_markdown.as_bytes()).await?;
         write_synced(&temporary.join("manifest.json"), manifest.as_bytes()).await?;
         platform::sync_staged_directory(&temporary).await?;
         validate_publication_parent(plan, parent).await?;
@@ -194,42 +211,23 @@ async fn validate_publication_parent(
 }
 
 fn render_markdown(plan: &SubmissionPlan) -> String {
-    let mut body_markdown = plan.body_markdown.clone();
+    let mut markdown = plan.body_markdown.clone();
     for attachment in &plan.attachments {
-        body_markdown = body_markdown.replace(
+        markdown = markdown.replace(
             &format!("attachment://{}", attachment.attachment_id),
             &attachment.relative_path,
         );
     }
-    let mut markdown = format!(
-        "# {}\n\n## What Happened\n\n{}\n\n## What to Try\n\n",
-        plan.title, plan.what_happened
-    );
-    for action in &plan.actions {
-        markdown.push_str(&format!("- **{}**: {}\n", action.id, action.instruction));
-    }
-    markdown.push_str("\n## Operator Feedback\n\n");
-    markdown.push_str(&body_markdown);
     if !markdown.ends_with('\n') {
         markdown.push('\n');
     }
-    let unreferenced = plan
-        .attachments
-        .iter()
-        .filter(|attachment| {
-            !plan
-                .body_markdown
-                .contains(&format!("attachment://{}", attachment.attachment_id))
-        })
-        .collect::<Vec<_>>();
-    if !unreferenced.is_empty() {
-        markdown.push_str("\n## Attachments\n\n");
-        for attachment in unreferenced {
-            markdown.push_str(&format!(
-                "![{}]({})\n\n",
-                attachment.file_name, attachment.relative_path
-            ));
-        }
+    markdown
+}
+
+fn render_uncooked_markdown(plan: &SubmissionPlan) -> String {
+    let mut markdown = plan.uncooked_markdown.clone();
+    if !markdown.ends_with('\n') {
+        markdown.push('\n');
     }
     markdown
 }
@@ -237,6 +235,7 @@ fn render_markdown(plan: &SubmissionPlan) -> String {
 fn render_manifest(
     plan: &SubmissionPlan,
     feedback_sha256: &str,
+    uncooked_sha256: &str,
 ) -> Result<String, RepositoryError> {
     let attachments = plan
         .attachments
@@ -264,6 +263,9 @@ fn render_manifest(
         "draft_revision": plan.source_revision,
         "feedback_markdown": "feedback.md",
         "feedback_sha256": feedback_sha256,
+        "uncooked_markdown": "uncooked.md",
+        "uncooked_sha256": uncooked_sha256,
+        "cooking_model": plan.cooking_model,
         "attachments": attachments,
     });
     let mut rendered = serde_json::to_string_pretty(&value).map_err(package_error)?;
@@ -291,6 +293,12 @@ async fn validate_existing_package(
         .await
         .map_err(package_error)?;
     if markdown != render_markdown(plan) {
+        return Err(RepositoryError::PackagePublish);
+    }
+    let uncooked = tokio::fs::read_to_string(Path::new(&plan.directory_path).join("uncooked.md"))
+        .await
+        .map_err(package_error)?;
+    if uncooked != render_uncooked_markdown(plan) {
         return Err(RepositoryError::PackagePublish);
     }
     for attachment in &plan.attachments {

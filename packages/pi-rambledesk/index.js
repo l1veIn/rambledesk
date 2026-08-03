@@ -7,6 +7,9 @@ const DEFAULT_PORT = 37642;
 const HOST_HEADER = "x-rambledesk-host";
 const REQUEST_MAX_ATTEMPTS = 3;
 const REQUEST_RETRY_DELAY_MS = 300;
+const HEALTH_CHECK_TIMEOUT_MS = 500;
+
+const RAMBLE_GUIDANCE = `RambleDesk feedback mode is enabled. Use request_ramble_feedback when human testing, visual inspection, screenshots, clarification, or a decision would materially improve the result. Every request must explain the concrete context and give the human specific actions. Do not create a generic request merely because a task started or the agent is about to finish.`;
 
 const ContextRefSchema = Type.Object({
   label: Type.String({ description: "Short label for the referenced context." }),
@@ -66,129 +69,53 @@ export const ResumeRambleFeedbackSchema = Type.Object({
 
 export function registerRambleDeskPiTools(pi) {
   let pendingRequestId;
-  let serverReady;
-  let gateRequired = false;
-  let gateReminders = 0;
-  let cyclePhase = "idle";
-  let settledHandling = false;
+  let rambleGuidanceEnabled = false;
+
+  async function enableRambleGuidance(ctx, notify = true) {
+    const available = await checkHealth(process.env, ctx.signal).catch(() => false);
+    rambleGuidanceEnabled = available;
+    if (notify && ctx.hasUI) {
+      ctx.ui.notify(
+        available
+          ? "RambleDesk available · Ramble guidance enabled (/ramble_off to disable)"
+          : "RambleDesk unavailable · Ramble guidance remains disabled",
+        available ? "info" : "warning",
+      );
+    }
+    return available;
+  }
+
+  pi.registerCommand?.("ramble", {
+    description: "Enable RambleDesk feedback guidance when the local app is available",
+    handler: async (_args, ctx) => {
+      await enableRambleGuidance(ctx);
+    },
+  });
+
+  pi.registerCommand?.("ramble_off", {
+    description: "Disable RambleDesk feedback guidance for this Pi session",
+    handler: async (_args, ctx) => {
+      rambleGuidanceEnabled = false;
+      if (ctx.hasUI) ctx.ui.notify("RambleDesk guidance disabled", "info");
+    },
+  });
 
   pi.on?.("session_start", async (_event, ctx) => {
-    pendingRequestId = restorePendingRequestId(ctx.sessionManager?.getEntries?.() ?? []);
-    gateRequired = Boolean(pendingRequestId);
-    cyclePhase = pendingRequestId ? "collaboration" : "idle";
-    serverReady = await checkHealth().catch(() => false);
-    if (pendingRequestId && ctx.hasUI) {
-      ctx.ui.setStatus("rambledesk", "RambleDesk · 可恢复中断请求");
-    } else if (serverReady && ctx.hasUI) {
-      ctx.ui.setStatus("rambledesk", "RambleDesk · 严格反馈已启用");
-    }
+    if (!["tui", "rpc"].includes(ctx.mode)) return;
+    await enableRambleGuidance(ctx);
   });
 
-  pi.on?.("input", (event) => {
-    if (event.source === "extension") return;
-    gateRequired = true;
-    gateReminders = 0;
-    if (!pendingRequestId) cyclePhase = "collaboration";
+  pi.on?.("before_agent_start", (event) => {
+    if (!rambleGuidanceEnabled) return;
+    return { systemPrompt: `${event.systemPrompt}\n\n${RAMBLE_GUIDANCE}` };
   });
 
-  pi.on?.("before_agent_start", async (event, ctx) => {
-    if (serverReady === undefined) serverReady = await checkHealth().catch(() => false);
-    if (!serverReady || !["tui", "rpc"].includes(ctx.mode)) return;
-    if (gateRequired && cyclePhase === "collaboration" && !pendingRequestId) {
-      try {
-        const requestId = crypto.randomUUID();
-        const hostSessionId = readPiSessionId(ctx);
-        const title = taskTitle(event.prompt);
-        const payload = {
-          request_id: requestId,
-          host_id: "pi",
-          host_session_id: hostSessionId,
-          title,
-          what_happened: `Pi is working on this user task:\n\n${event.prompt}`,
-          actions: [
-            { id: "add-context", instruction: "Add clarifications, screenshots, or constraints while Pi works." },
-            { id: "review-progress", instruction: "Submit feedback when you want Pi to incorporate it and continue." },
-          ],
-          context_refs: [],
-          source_hint: ctx.cwd,
-          allow_finish: false,
-        };
-        appendRequestState(pi, requestId, "creating", hostSessionId);
-        pendingRequestId = requestId;
-        await postFeedback("request", payload, ctx.signal);
-        appendRequestState(pi, requestId, "waiting", hostSessionId);
-        ctx.ui?.setStatus?.("rambledesk", "RambleDesk · 协作请求等待中");
-      } catch (error) {
-        if (pendingRequestId) appendRequestState(pi, pendingRequestId, "failed", readPiSessionId(ctx));
-        pendingRequestId = undefined;
-        serverReady = false;
-        ctx.ui?.setStatus?.("rambledesk", "RambleDesk · 服务不可用");
-      }
-    }
-    const recovery = pendingRequestId
-      ? ` Collaboration request ${pendingRequestId} is already open. Do not create a duplicate; continue the task and let the extension wait for this request when the agent settles. If it was interrupted and the user asks to recover, call resume_ramble_feedback.`
-      : "";
-    return {
-      systemPrompt: `${event.systemPrompt}\n\nRambleDesk strict feedback gate is active.${recovery} At the beginning of a user task, open a collaboration request before substantial work when clarification is useful. Before voluntarily ending, you must call request_ramble_feedback. Set allow_finish=true and include the exact final_summary only when proposing the completed task for final approval. Feedback submission means continue working; only approval or cancellation permits the flow to end.`,
-    };
-  });
-
-  pi.on?.("agent_settled", async (_event, ctx) => {
-    if (!serverReady || !gateRequired || settledHandling || !["tui", "rpc"].includes(ctx.mode)) return;
-    settledHandling = true;
-    try {
-      if (pendingRequestId) {
-        ctx.ui?.setStatus?.("rambledesk", "RambleDesk · 等待用户反馈");
-        let result = await postFeedback("recover", {
-          request_id: pendingRequestId,
-          host_session_id: readPiSessionId(ctx),
-        });
-        if (!isTerminal(result)) result = await postFeedback("wait", { request_id: pendingRequestId });
-        appendRequestState(pi, pendingRequestId, result.resolution ?? result.status, readPiSessionId(ctx));
-        pendingRequestId = undefined;
-        gateRequired = result.resolution === "feedback_submitted";
-        gateReminders = 0;
-        if (gateRequired) {
-          cyclePhase = "final";
-          const feedback = feedbackToolResult(result).content[0].text;
-          pi.sendMessage?.({ customType: "rambledesk-feedback", content: feedback, display: true }, { deliverAs: "followUp", triggerTurn: true });
-        } else {
-          cyclePhase = "idle";
-          ctx.ui?.setStatus?.("rambledesk", undefined);
-        }
-        return;
-      }
-      if (gateReminders >= 2) {
-        ctx.ui?.setStatus?.("rambledesk", "RambleDesk · Agent 未执行反馈守门");
-        return;
-      }
-      gateReminders += 1;
-      pi.sendMessage?.({
-        customType: "rambledesk-gate",
-        content: "RambleDesk strict gate blocked this ending. Prepare the exact final summary and call request_ramble_feedback with allow_finish=true. The final_summary must be the exact summary the human is being asked to approve.",
-        display: true,
-      }, { deliverAs: "followUp", triggerTurn: true });
-    } catch (error) {
-      ctx.ui?.setStatus?.("rambledesk", "RambleDesk · 连接中断，可输入“继续”恢复");
-    } finally {
-      settledHandling = false;
-    }
-  });
   pi.registerTool({
     name: "request_ramble_feedback",
     label: "Request RambleDesk Feedback",
     description: `Create a RambleDesk feedback request for the human and wait for the result in this Pi tool call.
 Use this instead of MCP when running in Pi. After the tool returns completed, continue the original task using the feedback markdown and attachment paths included in the tool content.
 Do not call this tool repeatedly for the same request unless you reuse the same request_id.`,
-    promptSnippet:
-      "Use request_ramble_feedback when you need the human to test or inspect something in RambleDesk; Pi waits inside the tool call until the feedback package is ready.",
-    promptGuidelines: [
-      "Prefer request_ramble_feedback over MCP feedback tools in Pi.",
-      "Provide a short title, a concrete what_happened summary, and one or more action instructions.",
-      "Leave wait as true unless you are intentionally only creating a request for later recovery.",
-      "After the tool returns completed, inspect the feedback markdown and any attachment paths included in the tool content before continuing.",
-      "Set allow_finish=true only after preparing final_summary. If the human approves it, end without another model turn.",
-    ],
     parameters: RequestRambleFeedbackSchema,
     executionMode: "sequential",
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
@@ -197,9 +124,10 @@ Do not call this tool repeatedly for the same request unless you reuse the same 
       // POST created the request but the response was lost (observed as a
       // transient "fetch failed" on this machine), a retry with the same id
       // reconnects to that request instead of creating a duplicate.
-      if (!normalized.request_id) normalized.request_id = crypto.randomUUID();
+      if (!normalized.request_id) {
+        normalized.request_id = pendingRequestId ?? crypto.randomUUID();
+      }
       pendingRequestId = normalized.request_id;
-      cyclePhase = normalized.allow_finish ? "final" : cyclePhase;
       appendRequestState(pi, normalized.request_id, "waiting", normalized.host_session_id);
       const created = await postFeedback("request", normalized, signal);
       const terminal = created.status === "completed" || created.status === "cancelled";
@@ -228,10 +156,6 @@ Do not call this tool repeatedly for the same request unless you reuse the same 
       if (isTerminal(result)) {
         appendRequestState(pi, created.request_id, result.resolution ?? result.status, normalized.host_session_id);
         pendingRequestId = undefined;
-        gateRequired = result.resolution === "feedback_submitted";
-        cyclePhase = gateRequired ? "final" : "idle";
-        gateReminders = 0;
-        ctx.ui?.setStatus?.("rambledesk", undefined);
       }
       const output = feedbackToolResult(result);
       if (result.resolution === "approved") output.terminate = true;
@@ -253,8 +177,11 @@ Do not call this tool repeatedly for the same request unless you reuse the same 
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
       const hostSessionId = readPiSessionId(ctx) ?? process.env.PI_SESSION_ID;
       if (!hostSessionId) throw new Error("Cannot recover RambleDesk feedback without a Pi session id.");
+      const restoredRequestId = restorePendingRequestId(
+        ctx.sessionManager?.getEntries?.() ?? [],
+      );
       let recovered = await postFeedback("recover", {
-        request_id: params.request_id ?? pendingRequestId,
+        request_id: params.request_id ?? pendingRequestId ?? restoredRequestId,
         host_session_id: hostSessionId,
       }, signal);
       pendingRequestId = recovered.request_id;
@@ -265,10 +192,6 @@ Do not call this tool repeatedly for the same request unless you reuse the same 
       }
       appendRequestState(pi, recovered.request_id, recovered.resolution ?? recovered.status, hostSessionId);
       pendingRequestId = undefined;
-      gateRequired = recovered.resolution === "feedback_submitted";
-      cyclePhase = gateRequired ? "final" : "idle";
-      gateReminders = 0;
-      ctx.ui?.setStatus?.("rambledesk", undefined);
       const output = feedbackToolResult(recovered);
       if (recovered.resolution === "approved") output.terminate = true;
       return output;
@@ -292,9 +215,6 @@ Do not call this tool repeatedly for the same request unless you reuse the same 
       if (isTerminal(result)) {
         appendRequestState(pi, result.request_id, result.resolution ?? result.status, readPiSessionId(ctx));
         pendingRequestId = undefined;
-        gateRequired = result.resolution === "feedback_submitted";
-        cyclePhase = gateRequired ? "final" : "idle";
-        gateReminders = 0;
       }
       const output = feedbackToolResult(result);
       if (result.resolution === "approved") output.terminate = true;
@@ -331,10 +251,12 @@ export function normalizeRequestParams(params, ctx = {}, env = process.env) {
 export async function checkHealth(env = process.env, signal) {
   const baseUrl = resolveApiBaseUrl(env);
   const token = await resolveAccessToken(env);
+  const timeoutSignal = AbortSignal.timeout(HEALTH_CHECK_TIMEOUT_MS);
+  const requestSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
   const response = await fetch(`${baseUrl}/health`, {
     method: "GET",
     headers: { Authorization: `Bearer ${token}`, [HOST_HEADER]: "pi" },
-    signal: signal ?? AbortSignal.timeout(500),
+    signal: requestSignal,
   });
   if (!response.ok) return false;
   const body = await response.json();
@@ -367,10 +289,11 @@ async function fetchWithRetry(action, baseUrl, token, payload, signal, env, atte
       return fetchWithRetry(action, baseUrl, token, payload, signal, env, attempt + 1);
     }
     const error = new Error(`RambleDesk unreachable: ${cause?.message ?? cause}`);
-    error.details = { action, attempt };
+    error.details = { action, attempt, request_id: payload?.request_id };
     if (action === "request") {
-      error.message +=
-        " The request may still have been created; check the RambleDesk inbox before retrying manually, or reuse the same request_id.";
+      error.message += payload?.request_id
+        ? ` The request may still have been created. Resume or retry with request_id ${payload.request_id}; do not create a replacement request.`
+        : " The request may still have been created; resume the pending RambleDesk request instead of creating a replacement.";
     }
     throw error;
   }
@@ -423,12 +346,6 @@ function completedFeedbackText(result, requestId) {
     ? `Attachment paths:\n${attachmentPaths.map((value) => `- ${value}`).join("\n")}`
     : "Attachment paths: none.");
   return sections.join("\n\n");
-}
-
-function taskTitle(prompt) {
-  const compact = String(prompt ?? "").replace(/\s+/g, " ").trim();
-  if (!compact) return "Pi task collaboration";
-  return compact.length > 72 ? `${compact.slice(0, 69)}…` : compact;
 }
 
 function isTerminal(result) {

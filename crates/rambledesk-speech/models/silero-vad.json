@@ -1,0 +1,9 @@
+{
+  "id": "silero-vad",
+  "file_name": "silero_vad.onnx",
+  "source": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx",
+  "bytes": 643854,
+  "sha256": "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6",
+  "distribution": "Bundled with RambleDesk and unpacked into the speech model directory on first use",
+  "purpose": "Bounded segmentation of non-streaming SenseVoice and FunASR-Nano sessions"
+}

@@ -11,7 +11,13 @@
   import { attachmentMarkdownUrl } from '../attachmentMarkdown'
   import type { AddAttachmentInput, FeedbackWorkspaceView } from '../feedback'
   import { t } from '../i18n'
-  import { locale, speechInputDevice } from '../preferences'
+  import {
+    locale,
+    speechInputDevice,
+    speechModelId,
+    speechVadSilenceMs,
+    speechVadThreshold,
+  } from '../preferences'
   import {
     RAMBLE_CONSOLE_COMMAND_EVENT,
     RAMBLE_CONSOLE_HIDE_EVENT,
@@ -257,23 +263,31 @@
     voiceLevel = 0
     voiceModelMissing = false
     try {
-      const model = await invoke<{ installed: boolean }>('get_speech_model')
-      if (!model.installed) {
+      const models = await invoke<Array<{ id: string; installed: boolean; streaming: boolean }>>(
+        'list_speech_models',
+      )
+      const model = models.find((candidate) => candidate.id === $speechModelId)
+      if (!model?.installed) {
         voiceModelMissing = true
         voicePhase = 'error'
-        voiceMessage = t($locale, '尚未安装语音模型，请前往语音设置下载。')
+        voiceMessage = t($locale, '所选语音模型尚未安装，请前往语音设置下载。')
         return false
       }
       const session = await invoke<VoiceRambleSessionView>('start_voice_ramble', {
         input: {
           request_id: rambleRequestId,
           input_device: $speechInputDevice || null,
+          model_id: $speechModelId,
+          vad_threshold: $speechVadThreshold,
+          vad_silence_ms: $speechVadSilenceMs,
         },
       })
       voiceSessionId = session.voice_session_id
       if (voicePhase === 'starting') {
         voicePhase = 'listening'
-        voiceMessage = t($locale, 'Sherpa 真流式识别 · 自然停顿后写入正文')
+        voiceMessage = model.streaming
+          ? t($locale, '流式识别 · 自然停顿后写入正文')
+          : t($locale, 'VAD 正在监听 · 说完一段后自动转录')
       }
     } catch (cause) {
       voicePhase = 'error'

@@ -48,11 +48,18 @@
     ResumePrompt,
     SavePhase,
     SettingsSection,
+    SubmitStage,
     VoicePhase,
   } from './lib/workbench/types'
   import RambleSessionController from './lib/workbench/RambleSessionController.svelte'
   import { t } from './lib/i18n'
   import {
+    cookingApiKey,
+    cookingBaseUrl,
+    cookingEnabled,
+    cookingModel,
+    cookingProvider,
+    cookingReasoningEffort,
     locale,
     notificationPopupEnabled,
     notificationSound,
@@ -62,11 +69,16 @@
   } from './lib/preferences'
 
   type CommandError = { code: string; message: string; retryable: boolean }
+  type PublishedFeedbackView = {
+    markdown: string
+    uncooked_markdown?: string
+  }
 
   const RESUME_PROMPT_EVENT = 'rambledesk://resume-prompt'
   const OPEN_ADAPTERS_EVENT = 'rambledesk://open-adapters'
   let workspace: FeedbackWorkspaceView | null = null
   let completedResult: FeedbackRequestView | null = null
+  let publishedFeedback: PublishedFeedbackView | null = null
   let draftBody = ''
   let savedBody = ''
   let savedRevision = 0
@@ -75,12 +87,15 @@
   let pageError = ''
   let loadingWorkspace = false
   let submitting = false
+  let submitStage: SubmitStage = 'idle'
   let cancelling = false
   let approving = false
   let attachmentBusy = false
   let attachmentMessage = ''
   let attachmentMessageTone: AttachmentMessageTone = 'info'
   let deliveredAttachmentMessage = ''
+  let deliveredPageError = ''
+  let deliveredSaveError = ''
   let attachmentPreviews: Record<string, string> = {}
   let dragActive = false
   let workspacePanel: FeedbackEditorHandle
@@ -156,7 +171,25 @@
   })
   const resolveHostProfile = navigation.resolveHostProfile
 
-  $: dirty = workspace !== null && draftBody !== savedBody
+  $: dirty =
+    workspace !== null &&
+    workspace.request.status !== 'completed' &&
+    workspace.request.status !== 'cancelled' &&
+    draftBody !== savedBody
+  $: {
+    if (!pageError) deliveredPageError = ''
+    else if (pageError !== deliveredPageError) {
+      deliveredPageError = pageError
+      toast.error(tr('操作失败'), { description: pageError })
+    }
+  }
+  $: {
+    if (!saveMessage) deliveredSaveError = ''
+    else if (saveMessage !== deliveredSaveError) {
+      deliveredSaveError = saveMessage
+      toast.error(tr('保存失败'), { description: saveMessage })
+    }
+  }
   $: {
     if (!attachmentMessage) {
       deliveredAttachmentMessage = ''
@@ -298,6 +331,7 @@
   function clearWorkspace() {
     workspace = null
     completedResult = null
+    publishedFeedback = null
     attachmentController.releasePreviews()
   }
 
@@ -319,6 +353,7 @@
     loadingWorkspace = true
     pageError = ''
     completedResult = null
+    publishedFeedback = null
     try {
       const next = previewMode
         ? previewWorkspaceFor(requestId)
@@ -334,6 +369,18 @@
       saveMessage = ''
       attachmentMessage = ''
       await attachmentController.refreshPreviews(next)
+      if (next.request.status === 'completed' && next.feedback) {
+        publishedFeedback = previewMode
+          ? {
+              markdown: next.draft.body_markdown,
+              uncooked_markdown: next.draft.body_markdown,
+            }
+          : normalizePublishedFeedback(
+              await invoke<PublishedFeedbackView | null>('read_published_feedback', {
+                requestId: next.request.request_id,
+              }),
+            )
+      }
     } catch (cause) {
       pageError = messageFrom(cause)
     } finally {
@@ -342,6 +389,11 @@
   }
 
   function updateDraft(value: string) {
+    if (
+      !workspace ||
+      workspace.request.status === 'completed' ||
+      workspace.request.status === 'cancelled'
+    ) return
     draftBody = value
     savePhase = draftBody === savedBody ? 'saved' : 'unsaved'
     saveMessage = ''
@@ -354,7 +406,12 @@
       clearTimeout(saveTimer)
       saveTimer = undefined
     }
-    if (!workspace || !dirty) return true
+    if (
+      !workspace ||
+      workspace.request.status === 'completed' ||
+      workspace.request.status === 'cancelled' ||
+      !dirty
+    ) return true
     if (activeSave) {
       await activeSave
       return dirty ? saveDraftNow() : savePhase !== 'error'
@@ -436,6 +493,26 @@
     return current ? `${current}\n\n${block}` : block
   }
 
+  function normalizePublishedFeedback(
+    published: PublishedFeedbackView | null,
+  ): PublishedFeedbackView | null {
+    if (!published) return null
+    return {
+      markdown: operatorFeedbackBody(published.markdown),
+      uncooked_markdown: published.uncooked_markdown
+        ? operatorFeedbackBody(published.uncooked_markdown)
+        : undefined,
+    }
+  }
+
+  function operatorFeedbackBody(markdown: string) {
+    const marker = '\n## Operator Feedback\n\n'
+    if (!markdown.startsWith('# ') || !markdown.includes(marker)) return markdown
+    const body = markdown.slice(markdown.indexOf(marker) + marker.length)
+    const attachments = body.indexOf('\n## Attachments\n\n')
+    return attachments >= 0 ? body.slice(0, attachments).trimEnd() : body
+  }
+
   async function reloadWorkspace() {
     const requestId = workspace?.request.request_id
     if (!requestId) return
@@ -488,11 +565,37 @@
     if (!(await saveDraftNow())) return
 
     submitting = true
+    submitStage = $cookingEnabled ? 'cooking' : 'publishing'
     pageError = ''
     try {
+      let cookedMarkdown: string | undefined
+      let cookingModelUsed: string | undefined
+      if ($cookingEnabled) {
+        const { cookFeedback } = await import('./lib/cooking')
+        const cooked = await cookFeedback(
+          {
+            title: workspace.request.title,
+            whatHappened: workspace.request.what_happened,
+            actions: workspace.actions,
+            uncookedMarkdown: draftBody,
+          },
+          {
+            provider: $cookingProvider,
+            apiKey: $cookingApiKey,
+            baseUrl: $cookingBaseUrl,
+            model: $cookingModel,
+            reasoningEffort: $cookingReasoningEffort,
+          },
+        )
+        cookedMarkdown = cooked.markdown
+        cookingModelUsed = cooked.model
+        submitStage = 'publishing'
+      }
       const input: SubmitFeedbackInput = {
         request_id: workspace.request.request_id,
         expected_revision: savedRevision,
+        cooked_markdown: cookedMarkdown,
+        cooking_model: cookingModelUsed,
       }
       const result = await invoke<FeedbackRequestView>('submit_feedback', { input })
       completedResult = result
@@ -506,11 +609,25 @@
         },
       }
       savePhase = 'saved'
+      toast.success(tr('反馈已提交'), {
+        description: $cookingEnabled ? tr('Cooked 与 Uncooked 反馈已发布') : tr('反馈包已发布'),
+      })
+      publishedFeedback = previewMode
+        ? {
+            markdown: cookedMarkdown ?? draftBody,
+            uncooked_markdown: draftBody,
+          }
+        : normalizePublishedFeedback(
+            await invoke<PublishedFeedbackView | null>('read_published_feedback', {
+              requestId: result.request_id,
+            }),
+          )
       await navigation.refreshNavigation(true)
     } catch (cause) {
       pageError = messageFrom(cause)
     } finally {
       submitting = false
+      submitStage = 'idle'
     }
   }
 
@@ -533,6 +650,7 @@
           updated_at: result.updated_at,
         },
       }
+      toast.success(tr('已同意并结束'))
       await navigation.refreshNavigation(true)
     } catch (cause) {
       pageError = messageFrom(cause)
@@ -565,6 +683,7 @@
         },
       }
       savePhase = 'saved'
+      toast.success(tr('请求已取消'))
       await navigation.refreshNavigation(true)
     } catch (cause) {
       pageError = messageFrom(cause)
@@ -697,13 +816,11 @@
       {loadingWorkspace}
       {workspace}
       {feedbackResult}
-      {pageError}
       {draftBody}
       {savedRevision}
       {savePhase}
       {attachmentPreviews}
       {dragActive}
-      {saveMessage}
       rambelleStatusPortrait={rambleBelongsToWorkspace
         ? rambelleStatusPortrait
         : feedbackResult
@@ -723,6 +840,8 @@
       attachmentBusy={rambleBelongsToWorkspace ? attachmentBusy : false}
       {canSubmit}
       {submitting}
+      {submitStage}
+      {publishedFeedback}
       {canCancel}
       {cancelling}
       {approving}

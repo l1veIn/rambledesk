@@ -6,13 +6,15 @@
   import type { FeedbackResultView } from '$lib/feedback'
   import { t } from '$lib/i18n'
   import { desktopPath } from '$lib/nativePath'
-  import { locale } from '$lib/preferences'
+  import { cookingEnabled, locale } from '$lib/preferences'
+  import type { SubmitStage } from './types'
 
   export let feedbackResult: FeedbackResultView | null = null
   export let cancelled = false
   export let approved = false
   export let canSubmit = false
   export let submitting = false
+  export let submitStage: SubmitStage = 'idle'
   export let canCancel = false
   export let cancelling = false
   export let allowFinish = false
@@ -69,7 +71,13 @@
     <div class="grid gap-2">
       <Button class="w-full" disabled={!canSubmit} onclick={onSubmit}>
         <Send data-icon="inline-start" />
-        {submitting ? tr('正在发布…') : tr('提交反馈')}
+        {submitting
+          ? submitStage === 'cooking'
+            ? tr('正在 Cooking…')
+            : tr('正在发布…')
+          : $cookingEnabled
+            ? tr('Cook 并提交')
+            : tr('提交反馈')}
       </Button>
       {#if allowFinish}
         <Button class="w-full" variant="secondary" disabled={approving || submitting || cancelling} onclick={onApprove}>

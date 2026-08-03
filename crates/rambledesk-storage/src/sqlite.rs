@@ -116,17 +116,25 @@ impl SqliteFeedbackStore {
     }
 
     async fn recover_pending_submissions(&self) -> Result<(), RepositoryError> {
-        let pending: Vec<(String, i64)> = sqlx::query_as(
-            "SELECT request_id, source_revision FROM submission_plans \
-             WHERE state = 'preparing' ORDER BY submitted_at, request_id",
+        let pending: Vec<(String, i64, Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT request_id, source_revision, cooked_markdown, cooking_model \
+             FROM submission_plans WHERE state = 'preparing' \
+             ORDER BY submitted_at, request_id",
         )
         .fetch_all(&self.pool)
         .await
         .map_err(storage_error)?;
-        for (request_id, source_revision) in pending {
+        for (request_id, source_revision, cooked_markdown, cooking_model) in pending {
             let recovery = async {
                 let plan = self
-                    .plan_submission(&request_id, source_revision as u64, "", "")
+                    .plan_submission(
+                        &request_id,
+                        source_revision as u64,
+                        cooked_markdown.as_deref(),
+                        cooking_model.as_deref(),
+                        "",
+                        "",
+                    )
                     .await?;
                 let published =
                     rambledesk_core::FeedbackPackagePublisher::publish(self, &plan).await?;
@@ -275,11 +283,20 @@ impl FeedbackRepository for SqliteFeedbackStore {
         &self,
         request_id: &str,
         expected_revision: u64,
+        cooked_markdown: Option<&str>,
+        cooking_model: Option<&str>,
         publication_id: &str,
         now: &str,
     ) -> Result<SubmissionPlan, RepositoryError> {
-        self.plan_submission_impl(request_id, expected_revision, publication_id, now)
-            .await
+        self.plan_submission_impl(
+            request_id,
+            expected_revision,
+            cooked_markdown,
+            cooking_model,
+            publication_id,
+            now,
+        )
+        .await
     }
 
     async fn complete_submission(

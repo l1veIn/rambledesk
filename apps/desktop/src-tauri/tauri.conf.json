@@ -33,6 +33,11 @@
   },
   "bundle": {
     "active": true,
+    "resources": {
+      "../../../packages/pi-rambledesk/index.js": "pi-rambledesk/index.js",
+      "../../../packages/pi-rambledesk/package.json": "pi-rambledesk/package.json",
+      "../../../packages/pi-rambledesk/README.md": "pi-rambledesk/README.md"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

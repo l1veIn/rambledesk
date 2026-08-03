@@ -1,7 +1,5 @@
 <script lang="ts">
-  import { AlertTriangle, Inbox } from '@lucide/svelte'
-
-  import * as Alert from '$lib/components/ui/alert'
+  import { Inbox } from '@lucide/svelte'
   import { Skeleton } from '$lib/components/ui/skeleton'
   import type {
     AttachmentView,
@@ -15,6 +13,7 @@
     HostProfile,
     RamblePhase,
     SavePhase,
+    SubmitStage,
   } from './types'
   import CommandRail from './CommandRail.svelte'
   import FeedbackEditorPanel from './FeedbackEditorPanel.svelte'
@@ -24,14 +23,12 @@
   export let loadingWorkspace = false
   export let workspace: FeedbackWorkspaceView | null = null
   export let feedbackResult: FeedbackResultView | null = null
-  export let pageError = ''
   export let taskBriefOpen = true
   export let draftBody = ''
   export let savedRevision = 0
   export let savePhase: SavePhase = 'idle'
   export let attachmentPreviews: Record<string, string> = {}
   export let dragActive = false
-  export let saveMessage = ''
   export let rambelleStatusPortrait = ''
   export let rambleEngaged = false
   export let rambleActive = false
@@ -47,6 +44,8 @@
   export let attachmentBusy = false
   export let canSubmit = false
   export let submitting = false
+  export let submitStage: SubmitStage = 'idle'
+  export let publishedFeedback: { markdown: string; uncooked_markdown?: string } | null = null
   export let canCancel = false
   export let cancelling = false
   export let approving = false
@@ -121,8 +120,10 @@
           {savePhase}
           {attachmentPreviews}
           {dragActive}
-          {saveMessage}
           {formatTime}
+          cooking={submitStage === 'cooking'}
+          cookedMarkdown={publishedFeedback?.markdown ?? ''}
+          uncookedMarkdown={publishedFeedback?.uncooked_markdown ?? draftBody}
           onChange={onDraftChange}
         />
       </div>
@@ -145,6 +146,7 @@
         {attachmentBusy}
         {canSubmit}
         {submitting}
+        {submitStage}
         {canCancel}
         {cancelling}
         {approving}
@@ -184,13 +186,6 @@
     </div>
   {/if}
 
-  {#if pageError}
-    <Alert.Root variant="destructive" class="absolute inset-x-4 bottom-4 z-20 shadow-lg">
-      <AlertTriangle />
-      <Alert.Title>{tr('工作台暂时无法完成操作')}</Alert.Title>
-      <Alert.Description>{pageError}</Alert.Description>
-    </Alert.Root>
-  {/if}
 </section>
 
 <style>

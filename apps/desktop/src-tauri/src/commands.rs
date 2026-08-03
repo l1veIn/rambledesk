@@ -5,30 +5,32 @@ use std::{
 
 use rambledesk_core::{
     AddAttachmentInput, ApplicationError, ApproveFeedbackInput, CancelFeedbackInput, DraftView,
-    FeedbackRequestSummary, FeedbackRequestView, FeedbackStatus, FeedbackWorkspaceView,
-    HostSessionSummary, ListFeedbackRequestsInput, ListFeedbackRequestsOutput,
-    MAX_ATTACHMENT_BYTES, RemoveAttachmentInput, ReorderAttachmentsInput, SaveDraftInput,
-    SubmitFeedbackInput,
+    FeedbackPackageContent, FeedbackRequestSummary, FeedbackRequestView, FeedbackStatus,
+    FeedbackWorkspaceView, GetFeedbackInput, HostSessionSummary, ListFeedbackRequestsInput,
+    ListFeedbackRequestsOutput, MAX_ATTACHMENT_BYTES, RemoveAttachmentInput,
+    ReorderAttachmentsInput, SaveDraftInput, SubmitFeedbackInput,
 };
 use rambledesk_hosts::{HostProfile, known_host_profiles};
 use rambledesk_speech::{
     SpeechEvent, SpeechEventSink, SpeechProvider, SpeechSession, SpeechSessionConfig,
-    list_input_devices,
-    model::{SpeechModelInfo, delete_model, download_model, model_info},
+    ensure_vad_model, list_input_devices,
+    model::{SpeechModelInfo, delete_model, download_model, list_models, model_dir, model_info},
 };
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager};
 
 use super::{
-    TRAY_ID, WorkbenchState, configured_speech_model_path,
-    continuation::deliver_continuation_after_terminal, generic_mcp_install, migrate_library,
-    pending_tray_icon, pi_install, save_library_path,
+    TRAY_ID, WorkbenchState, continuation::deliver_continuation_after_terminal,
+    generic_mcp_install, migrate_library, pending_tray_icon, pi_install, save_library_path,
 };
 
 #[derive(Debug, Deserialize)]
 pub(super) struct StartVoiceRambleInput {
     request_id: String,
     input_device: Option<String>,
+    model_id: String,
+    vad_threshold: f32,
+    vad_silence_ms: u32,
 }
 
 #[derive(Debug, Serialize)]
@@ -46,7 +48,7 @@ pub(super) struct StorageMigrationProgress {
 
 #[derive(Debug, Clone, Serialize)]
 pub(super) struct SpeechModelProgress {
-    model_id: &'static str,
+    model_id: String,
     downloaded: u64,
     total: u64,
 }
@@ -152,12 +154,23 @@ pub(super) fn install_generic_mcp_hosts(
 }
 
 #[tauri::command]
-pub(super) async fn install_pi_package(checkout_root: Option<String>) -> Result<String, String> {
-    let package_dir = pi_install::resolve_package_dir(checkout_root.as_deref()).ok_or_else(|| {
-        "Could not locate packages/pi-rambledesk in this checkout. Run `pi install ./packages/pi-rambledesk` manually.".to_owned()
-    })?;
+pub(super) async fn install_pi_package(
+    app: tauri::AppHandle,
+    checkout_root: Option<String>,
+) -> Result<String, String> {
+    let resource_dir = app
+        .path()
+        .resource_dir()
+        .map_err(|error| format!("Could not resolve bundled application resources: {error}"))?;
+    let package_dir =
+        pi_install::resolve_package_dir(checkout_root.as_deref(), Some(&resource_dir)).ok_or_else(
+            || {
+                "Could not locate the bundled pi-rambledesk package. Reinstall RambleDesk or run `pi install npm:@rambledesk/pi` manually."
+                    .to_owned()
+            },
+        )?;
     let pi_bin = pi_install::resolve_pi_binary().ok_or_else(|| {
-        "The `pi` CLI was not found on PATH. Install Pi or set RAMBLEDESK_PI_BIN, then run `pi install ./packages/pi-rambledesk` manually.".to_owned()
+        "The `pi` CLI was not found on PATH. Install Pi or set RAMBLEDESK_PI_BIN, then run `pi install npm:@rambledesk/pi` manually.".to_owned()
     })?;
     tauri::async_runtime::spawn_blocking(move || pi_install::run_install(&pi_bin, &package_dir))
         .await
@@ -216,6 +229,18 @@ pub(super) async fn get_feedback_workspace(
 ) -> Result<FeedbackWorkspaceView, ApplicationError> {
     let application = state.application.clone();
     application.get_feedback_workspace(request_id).await
+}
+
+#[tauri::command]
+pub(super) async fn read_published_feedback(
+    request_id: String,
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<Option<FeedbackPackageContent>, ApplicationError> {
+    let application = state.application.clone();
+    let request = application
+        .get_feedback(GetFeedbackInput { request_id })
+        .await?;
+    application.read_feedback_package(&request).await
 }
 
 #[tauri::command]
@@ -361,23 +386,26 @@ pub(super) async fn cancel_feedback_request(
 }
 
 #[tauri::command]
-pub(super) fn get_speech_model(state: tauri::State<'_, WorkbenchState>) -> SpeechModelInfo {
-    model_info(&state.library_root)
+pub(super) fn list_speech_models(state: tauri::State<'_, WorkbenchState>) -> Vec<SpeechModelInfo> {
+    list_models(&state.library_root)
 }
 
 #[tauri::command]
 pub(super) async fn download_speech_model(
+    model_id: String,
     app: tauri::AppHandle,
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<SpeechModelInfo, String> {
     let root = state.library_root.clone();
     let event_app = app.clone();
+    let progress_model_id = model_id.clone();
+    let download_model_id = model_id.clone();
     tokio::task::spawn_blocking(move || {
-        download_model(&root, &|downloaded, total| {
+        download_model(&root, &download_model_id, &|downloaded, total| {
             let _ = event_app.emit(
                 "speech-model-progress",
                 SpeechModelProgress {
-                    model_id: rambledesk_speech::model::MODEL_ID,
+                    model_id: progress_model_id.clone(),
                     downloaded,
                     total,
                 },
@@ -386,21 +414,23 @@ pub(super) async fn download_speech_model(
     })
     .await
     .map_err(|error| format!("模型下载任务异常退出：{error}"))??;
-    Ok(model_info(&state.library_root))
+    model_info(&state.library_root, &model_id)
 }
 
 #[tauri::command]
 pub(super) async fn delete_speech_model(
+    model_id: String,
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<SpeechModelInfo, String> {
     if state.speech_session.lock().await.is_some() {
         return Err("请先停止语音录入，再删除模型".to_owned());
     }
     let root = state.library_root.clone();
-    tokio::task::spawn_blocking(move || delete_model(&root))
+    let delete_model_id = model_id.clone();
+    tokio::task::spawn_blocking(move || delete_model(&root, &delete_model_id))
         .await
         .map_err(|error| format!("模型删除任务异常退出：{error}"))??;
-    Ok(model_info(&state.library_root))
+    model_info(&state.library_root, &model_id)
 }
 
 #[tauri::command]
@@ -435,13 +465,27 @@ pub(super) async fn start_voice_ramble(
         return Err("已有语音 Ramble 正在进行，请先停止当前录音".to_owned());
     }
 
+    let model = model_info(&state.library_root, &input.model_id)?;
+    if !model.installed {
+        return Err(format!(
+            "语音模型 {} 尚未安装，请先在语音设置中下载",
+            model.display_name
+        ));
+    }
     let voice_session_id = uuid::Uuid::now_v7().to_string();
-    let provider = SpeechProvider::SherpaOnline;
-    let model_path = configured_speech_model_path(&state.library_root)?;
+    let provider =
+        SpeechProvider::from_model_id(&input.model_id).map_err(|error| error.to_string())?;
+    let model_path = model_dir(&state.library_root, &input.model_id)?;
+    let vad_model_path =
+        ensure_vad_model(&state.library_root).map_err(|error| error.to_string())?;
     let config = SpeechSessionConfig {
         request_id: input.request_id,
         voice_session_id: voice_session_id.clone(),
+        provider,
         model_path: model_path.clone(),
+        vad_model_path,
+        vad_threshold: input.vad_threshold,
+        vad_silence_ms: input.vad_silence_ms,
         input_device: input.input_device,
     };
     let event_app = app.clone();

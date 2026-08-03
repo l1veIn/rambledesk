@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { AttachmentView, FeedbackResultView, FeedbackWorkspaceView } from '../feedback'
-  import type { RamblePhase } from './types'
+  import type { RamblePhase, SubmitStage } from './types'
   import AttachmentsCard from './AttachmentsCard.svelte'
   import CaptureToolsCard from './CaptureToolsCard.svelte'
   import DeliveryCard from './DeliveryCard.svelte'
@@ -24,6 +24,7 @@
   export let attachmentBusy = false
   export let canSubmit = false
   export let submitting = false
+  export let submitStage: SubmitStage = 'idle'
   export let canCancel = false
   export let cancelling = false
   export let approving = false
@@ -98,6 +99,7 @@
     approved={workspace.request.resolution === 'approved'}
     {canSubmit}
     {submitting}
+    {submitStage}
     {canCancel}
     {cancelling}
     allowFinish={workspace.request.allow_finish}

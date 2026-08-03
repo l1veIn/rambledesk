@@ -34,6 +34,12 @@ pub struct FeedbackPackageManifest {
     pub draft_revision: u64,
     pub feedback_markdown: String,
     pub feedback_sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uncooked_markdown: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uncooked_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cooking_model: Option<String>,
     pub attachments: Vec<FeedbackPackageAttachment>,
 }
 
@@ -41,6 +47,8 @@ pub struct FeedbackPackageManifest {
 pub struct FeedbackPackageContent {
     pub manifest: FeedbackPackageManifest,
     pub markdown: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uncooked_markdown: Option<String>,
     pub attachment_paths: Vec<String>,
 }
 
@@ -170,6 +178,12 @@ pub struct SubmitFeedbackInput {
     pub request_id: String,
     #[ts(type = "number")]
     pub expected_revision: u64,
+    #[serde(default)]
+    #[ts(optional)]
+    pub cooked_markdown: Option<String>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub cooking_model: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -225,7 +239,11 @@ pub struct SubmissionPlan {
     pub what_happened: String,
     pub actions: Vec<ActionInput>,
     pub attachments: Vec<SubmissionAttachment>,
+    /// Canonical feedback returned to the host (`feedback.md`).
     pub body_markdown: String,
+    /// Human-authored source preserved alongside canonical feedback (`uncooked.md`).
+    pub uncooked_markdown: String,
+    pub cooking_model: Option<String>,
     pub source_revision: u64,
     pub publication_id: String,
     pub body_sha256: String,

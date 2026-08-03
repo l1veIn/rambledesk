@@ -30,6 +30,7 @@ toml_edit = "0.23"
 tauri.workspace = true
 tauri-plugin-notification = "2.3.3"
 tauri-plugin-global-shortcut = "2.3.2"
+tauri-plugin-http = "2.5.9"
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 tokio.workspace = true
@@ -50,6 +51,7 @@ objc2-core-graphics = "0.3.2"
 scap = { git = "https://github.com/mg-chao/scap", branch = "20250712_custom" }
 
 [target.'cfg(target_os = "windows")'.dependencies]
+dunce = "1"
 windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_DataExchange", "Win32_UI_WindowsAndMessaging"] }
 [dev-dependencies]
 tempfile.workspace = true

@@ -210,6 +210,8 @@ async fn official_client_exercises_feedback_lifecycle_and_errors() -> anyhow::Re
         .submit_feedback(SubmitFeedbackInput {
             request_id: request_id.clone(),
             expected_revision: saved.saved_revision,
+            cooked_markdown: None,
+            cooking_model: None,
         })
         .await
         .context("submit operator feedback")?;
@@ -404,6 +406,8 @@ async fn local_api_supports_pi_request_and_blocking_wait() -> anyhow::Result<()>
         .submit_feedback(SubmitFeedbackInput {
             request_id: request_id.clone(),
             expected_revision: saved.saved_revision,
+            cooked_markdown: None,
+            cooking_model: None,
         })
         .await
         .context("submit operator feedback")?;

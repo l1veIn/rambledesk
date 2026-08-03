@@ -68,6 +68,7 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
@@ -224,6 +225,7 @@ pub fn run() {
             list_host_sessions,
             list_feedback_requests,
             get_feedback_workspace,
+            read_published_feedback,
             save_feedback_draft,
             add_feedback_attachment,
             import_feedback_attachment_path,
@@ -233,7 +235,7 @@ pub fn run() {
             submit_feedback,
             approve_feedback_request,
             cancel_feedback_request,
-            get_speech_model,
+            list_speech_models,
             download_speech_model,
             delete_speech_model,
             list_speech_input_devices,

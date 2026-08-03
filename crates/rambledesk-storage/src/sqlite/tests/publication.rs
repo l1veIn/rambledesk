@@ -25,6 +25,10 @@ async fn submit_is_idempotent_and_publishes_one_immutable_package() {
         .submit_feedback(SubmitFeedbackInput {
             request_id: request_id.clone(),
             expected_revision: draft.saved_revision,
+            cooked_markdown: Some(
+                "The empty state should be tightened before shipping.".to_owned(),
+            ),
+            cooking_model: Some("deepseek/deepseek-chat".to_owned()),
         })
         .await
         .expect("submit");
@@ -32,6 +36,8 @@ async fn submit_is_idempotent_and_publishes_one_immutable_package() {
         .submit_feedback(SubmitFeedbackInput {
             request_id: request_id.clone(),
             expected_revision: 0,
+            cooked_markdown: None,
+            cooking_model: None,
         })
         .await
         .expect("completed submit replay");
@@ -39,6 +45,20 @@ async fn submit_is_idempotent_and_publishes_one_immutable_package() {
     assert_eq!(submitted.status, FeedbackStatus::Completed);
     let result = submitted.feedback.expect("published feedback");
     assert!(Path::new(&result.markdown_path).is_file());
+    assert!(
+        tokio::fs::read_to_string(&result.markdown_path)
+            .await
+            .expect("cooked feedback")
+            .trim()
+            == "The empty state should be tightened before shipping."
+    );
+    assert!(
+        tokio::fs::read_to_string(Path::new(&result.directory_path).join("uncooked.md"))
+            .await
+            .expect("uncooked feedback")
+            .trim()
+            == "Ship it after tightening the empty state."
+    );
     let manifest: serde_json::Value = serde_json::from_str(
         &tokio::fs::read_to_string(&result.manifest_path)
             .await
@@ -49,7 +69,10 @@ async fn submit_is_idempotent_and_publishes_one_immutable_package() {
     assert_eq!(manifest["source_revision"], 1);
     assert_eq!(manifest["draft_revision"], 1);
     assert_eq!(manifest["feedback_markdown"], "feedback.md");
+    assert_eq!(manifest["uncooked_markdown"], "uncooked.md");
+    assert_eq!(manifest["cooking_model"], "deepseek/deepseek-chat");
     assert!(manifest["feedback_sha256"].as_str().is_some());
+    assert!(manifest["uncooked_sha256"].as_str().is_some());
 
     let directory_count = std::fs::read_dir(workspace.database.parent().unwrap().join("feedback"))
         .expect("feedback root")
@@ -84,6 +107,8 @@ async fn restart_reconciles_package_published_before_database_completion() {
         .plan_submission(
             &request_id,
             draft.saved_revision,
+            None,
+            None,
             &Uuid::now_v7().to_string(),
             "2026-07-29T14:00:00Z",
         )
@@ -136,6 +161,8 @@ async fn publishes_feedback_package_under_explicit_library_root() {
         .submit_feedback(SubmitFeedbackInput {
             request_id,
             expected_revision: draft.saved_revision,
+            cooked_markdown: None,
+            cooking_model: None,
         })
         .await
         .expect("submit");
@@ -171,6 +198,8 @@ async fn mismatched_existing_final_package_is_never_overwritten() {
         .plan_submission(
             &request_id,
             draft.saved_revision,
+            None,
+            None,
             &Uuid::now_v7().to_string(),
             "2026-07-29T15:00:00Z",
         )
@@ -229,6 +258,8 @@ async fn mismatched_pending_package_does_not_block_startup() {
         .plan_submission(
             &request_id,
             draft.saved_revision,
+            None,
+            None,
             &Uuid::now_v7().to_string(),
             "2026-07-29T15:30:00Z",
         )
@@ -296,6 +327,8 @@ async fn publisher_rejects_feedback_parent_replaced_by_symlink_after_plan() {
         .plan_submission(
             &request_id,
             draft.saved_revision,
+            None,
+            None,
             &Uuid::now_v7().to_string(),
             "2026-07-29T16:00:00Z",
         )

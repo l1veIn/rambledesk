@@ -27,7 +27,7 @@ MVP 不做：
 - 独立常驻 MCP 网关；
 - 用 CLI resume 探针伪装宿主原生适配器；
 - 通用系统级听写工具；
-- LLM 后处理流水线。
+- 多阶段智能体编排流水线（仅提供人类可选的单步 Feedback Cooking）。
 
 ## 核心对象
 
@@ -40,6 +40,7 @@ MVP 不做：
 | 适配器 | 宿主接入 RambleDesk 的完整流程。 |
 | 工作台 | 人类处理反馈请求的桌面 UI。 |
 | Ramble | 工作台中的自由反馈采集模式，包含语音、文字和截图。 |
+| Cooking | 提交前可选的大模型编辑步骤；把 Uncooked Feedback 整理为 Cooked Feedback，同时保留原稿。 |
 
 ## MVP 范围
 
@@ -52,7 +53,7 @@ MVP 不做：
 | 存储 | 反馈请求、草稿、附件 metadata、宿主会话关联、不可变反馈包。 |
 | continuation | 通用 MCP 手动继续；Pi 无提交后继续；未来原生 continuation 预留。 |
 | 通知 | 系统通知和工作台提示，均为 best-effort side effect。 |
-| 设置 | 适配器安装结果与配置说明，作用域限于各适配器。 |
+| 设置 | 通用偏好、Cooking 模型服务、语音模型，以及各适配器的安装结果与配置说明。 |
 
 ## 主流程
 
@@ -67,11 +68,12 @@ MVP 不做：
 1. 宿主智能体调用 `request_feedback`，携带 `host_id`、`host_session_id`、`what_happened`、`actions` 和可选 context hint。
 2. RambleDesk 持久化反馈请求并通知人类。
 3. 宿主智能体结束当前 turn。
-4. 人类在工作台中使用、检查、截图、ramble，并提交或取消。
-5. RambleDesk 发布反馈包。
-6. RambleDesk 显示手动 continuation 提示。
-7. 人类回到宿主。
-8. 宿主智能体调用 `get_feedback(request_id)` 读取反馈包并继续。
+4. 人类在工作台中使用、检查、截图、ramble，形成 Uncooked Feedback。
+5. 若启用 Cooking，工作台调用人类配置的模型服务生成 Cooked Feedback；失败时保留原稿且不发布。
+6. 人类提交，RambleDesk 发布同时包含 `feedback.md` 与 `uncooked.md` 的反馈包。
+7. RambleDesk 显示手动 continuation 提示。
+8. 人类回到宿主。
+9. 宿主智能体调用 `get_feedback(request_id)` 读取 `feedback.md` 并继续。
 
 通用 MCP 适配器不承诺自动恢复原宿主上下文。
 
@@ -107,8 +109,9 @@ RambleDesk
 │   ├── actions 清单
 │   ├── ramble 录音/转写
 │   ├── 截图和附件
-│   ├── feedback.md 草稿
-│   └── 提交 / 取消
+│   ├── Uncooked Feedback 草稿
+│   ├── 可选 Cooking
+│   └── Cook 并提交 / 直接提交 / 取消
 ├── Resume Prompt
 │   └── 通用 MCP 手动继续提示
 ├── Settings / Adapters
@@ -154,7 +157,8 @@ requests 列表中，不按终态拆分独立分页。
 
 ```text
 <local-data>/RambleDesk/feedback/<timestamp>-<request-id>/
-  feedback.md
+  feedback.md       # 宿主默认读取的正式结果
+  uncooked.md       # 人类原始反馈证据
   manifest.json
   attachments/
 ```
@@ -162,7 +166,9 @@ requests 列表中，不按终态拆分独立分页。
 规则：
 
 - 每次 completed 提交对应一份不可变反馈包。
-- 宿主智能体继续前必须读取反馈包。
+- `uncooked.md` 始终保留；未启用 Cooking 时允许与 `feedback.md` 内容相同。
+- manifest 记录 Cooking 模型标识与两份 Markdown 的 hash，但绝不记录 API Key。
+- 宿主智能体继续前必须读取反馈包中的 `feedback.md`。
 - 返回路径只保证同机、共享文件系统可见。
 - 适配器提供的路径只能作为 context hint 或未来导出目标，不是协议前提。
 

@@ -9,14 +9,33 @@ pub type SpeechEventSink = Arc<dyn Fn(SpeechEvent) + Send + Sync + 'static>;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SpeechProvider {
-    SherpaOnline,
+    XAsr,
+    SenseVoice,
+    FunAsrNano,
 }
 
 impl SpeechProvider {
     pub const fn id(self) -> &'static str {
         match self {
-            Self::SherpaOnline => "sherpa_online",
+            Self::XAsr => "sherpa-onnx-x-asr-zh-en",
+            Self::SenseVoice => "sherpa-onnx-sensevoice",
+            Self::FunAsrNano => "sherpa-onnx-funasr-nano",
         }
+    }
+
+    pub fn from_model_id(model_id: &str) -> Result<Self, SpeechError> {
+        match model_id {
+            model::X_ASR_MODEL_ID => Ok(Self::XAsr),
+            model::SENSEVOICE_MODEL_ID => Ok(Self::SenseVoice),
+            model::FUNASR_NANO_MODEL_ID => Ok(Self::FunAsrNano),
+            _ => Err(SpeechError::InvalidConfiguration(format!(
+                "未知语音模型：{model_id}"
+            ))),
+        }
+    }
+
+    pub const fn streaming(self) -> bool {
+        matches!(self, Self::XAsr)
     }
 }
 
@@ -24,7 +43,11 @@ impl SpeechProvider {
 pub struct SpeechSessionConfig {
     pub request_id: String,
     pub voice_session_id: String,
+    pub provider: SpeechProvider,
     pub model_path: PathBuf,
+    pub vad_model_path: PathBuf,
+    pub vad_threshold: f32,
+    pub vad_silence_ms: u32,
     pub input_device: Option<String>,
 }
 
@@ -78,6 +101,8 @@ pub enum SpeechEvent {
 
 #[derive(Debug, Error)]
 pub enum SpeechError {
+    #[error("语音设置无效：{0}")]
+    InvalidConfiguration(String),
     #[error("无法加载语音模型：{0}")]
     ModelLoad(String),
     #[error("Sherpa 模型目录不完整：{0}")]
@@ -160,7 +185,7 @@ pub mod model;
 mod native;
 
 #[cfg(any(target_os = "windows", target_os = "macos"))]
-pub use native::{SpeechSession, list_input_devices};
+pub use native::{SpeechSession, ensure_vad_model, list_input_devices};
 
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
 pub struct SpeechSession;

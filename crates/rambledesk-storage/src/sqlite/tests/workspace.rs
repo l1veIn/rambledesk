@@ -95,6 +95,8 @@ async fn attachments_share_revision_publish_in_order_and_survive_restart() {
         .submit_feedback(SubmitFeedbackInput {
             request_id: request_id.clone(),
             expected_revision: draft.saved_revision,
+            cooked_markdown: None,
+            cooking_model: None,
         })
         .await
         .expect("publish feedback");
@@ -102,13 +104,19 @@ async fn attachments_share_revision_publish_in_order_and_survive_restart() {
     let published_markdown = tokio::fs::read_to_string(&result.markdown_path)
         .await
         .expect("published Markdown");
-    assert!(published_markdown.contains("中文反馈请求：检查图片和正文是否完整"));
-    assert!(published_markdown.contains("边截图边记录中文说明"));
+    assert!(!published_markdown.contains("## What Happened"));
+    assert!(!published_markdown.contains("## What to Try"));
     assert!(published_markdown.contains("图片前的中文说明。"));
     assert!(published_markdown.contains("![中文截图](attachments/001-second.jpg)"));
     assert!(published_markdown.contains("图片后的中文结论。"));
     assert!(!published_markdown.contains("attachment://"));
     assert!(!published_markdown.contains("## Attachments"));
+    let uncooked_markdown =
+        tokio::fs::read_to_string(Path::new(&result.directory_path).join("uncooked.md"))
+            .await
+            .expect("uncooked Markdown");
+    assert!(uncooked_markdown.contains(&format!("attachment://{second_id}")));
+    assert!(!uncooked_markdown.contains("## Operator Feedback"));
     let manifest: serde_json::Value = serde_json::from_str(
         &tokio::fs::read_to_string(&result.manifest_path)
             .await

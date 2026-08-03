@@ -5,6 +5,8 @@ impl SqliteFeedbackStore {
         &self,
         request_id: &str,
         expected_revision: u64,
+        cooked_markdown: Option<&str>,
+        cooking_model: Option<&str>,
         publication_id: &str,
         now: &str,
     ) -> Result<SubmissionPlan, RepositoryError> {
@@ -75,7 +77,14 @@ impl SqliteFeedbackStore {
                 return Err(RepositoryError::DraftConflict);
             }
             let stored_hash: String = row.try_get("body_sha256").map_err(storage_error)?;
-            if stored_hash != body_sha256 {
+            let stored_cooked: Option<String> =
+                row.try_get("cooked_markdown").map_err(storage_error)?;
+            let stored_model: Option<String> =
+                row.try_get("cooking_model").map_err(storage_error)?;
+            if stored_hash != body_sha256
+                || stored_cooked.as_deref() != cooked_markdown
+                || stored_model.as_deref() != cooking_model
+            {
                 return Err(RepositoryError::DraftConflict);
             }
             let plan = submission_plan_from_row(&row, actions, attachments, body_markdown)?;
@@ -90,14 +99,17 @@ impl SqliteFeedbackStore {
 
         sqlx::query(
             "INSERT INTO submission_plans \
-             (request_id, publication_id, source_revision, body_sha256, submitted_at, \
-              package_uri, directory_path, temp_directory_path, markdown_path, manifest_path) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+             (request_id, publication_id, source_revision, body_sha256, cooked_markdown, \
+              cooking_model, submitted_at, package_uri, directory_path, temp_directory_path, \
+              markdown_path, manifest_path) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
         )
         .bind(request_id)
         .bind(publication_id)
         .bind(aggregate_revision)
         .bind(&body_sha256)
+        .bind(cooked_markdown)
+        .bind(cooking_model)
         .bind(now)
         .bind(&prepared_paths.package_uri)
         .bind(&prepared_paths.directory_path)
@@ -117,7 +129,9 @@ impl SqliteFeedbackStore {
             what_happened: row.try_get("what_happened").map_err(storage_error)?,
             actions,
             attachments,
-            body_markdown,
+            body_markdown: cooked_markdown.unwrap_or(&body_markdown).to_owned(),
+            uncooked_markdown: body_markdown,
+            cooking_model: cooking_model.map(ToOwned::to_owned),
             source_revision: aggregate_revision as u64,
             publication_id: publication_id.to_owned(),
             body_sha256,

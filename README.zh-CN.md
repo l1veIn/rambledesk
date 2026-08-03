@@ -59,13 +59,13 @@ pnpm dev:web
 
 ## 本地语音模型
 
-流式转写使用 manifest 固定的 Sherpa X-ASR 模型，定义见 [`crates/rambledesk-speech/models/sherpa-x-asr.json`](crates/rambledesk-speech/models/sherpa-x-asr.json)。模型二进制不会提交到 Git。请把校验后的模型目录放在 manifest 声明的平台应用数据目录，或在本地开发时通过绝对路径指定：
-
-```bash
-RAMBLEDESK_SHERPA_MODEL_DIR=/absolute/path/to/sherpa-x-asr pnpm dev
-```
+RambleDesk 支持 X-ASR 流式转写，以及由 VAD 自动分段的 SenseVoice、FunASR-Nano 非流式转写。打开 **设置 → 语音** 即可选择、下载、切换或删除模型，并调整 Silero VAD 声音阈值。模型清单位于 [`crates/rambledesk-speech/models`](crates/rambledesk-speech/models)，下载后的权重保存在所选数据存储位置，不会提交到 Git。
 
 没有语音模型时，文字输入、截图、文件与剪贴板导入、编辑和反馈提交仍可使用。
+
+## Feedback Cooking
+
+可选的 Cooking 位于 **设置 → 通用**。RambleDesk 通过 Vercel AI SDK 调用 DeepSeek、OpenAI 或用户填写的 OpenAI-compatible 服务，在提交前把 uncooked Ramble 原稿整理成正式 Markdown。新反馈包始终把人类原稿保存为 `uncooked.md`，宿主默认读取的正式结果为 `feedback.md`；API Key 只留在当前设备设置中，不会写入反馈包。
 
 ## 自动化验证
 

@@ -364,7 +364,8 @@ Pi 原生适配器不需要提交后的 continuation。
 
 ```text
 feedback/<timestamp>-<request-id>/
-├── feedback.md
+├── feedback.md       # canonical Cooked Feedback；未启用 Cooking 时等同原稿
+├── uncooked.md       # 人类直接产生的 Uncooked Feedback
 ├── manifest.json
 └── attachments/
 ```
@@ -372,6 +373,10 @@ feedback/<timestamp>-<request-id>/
 规则：
 
 - 反馈包发布 MUST 不可变。
+- `feedback.md` 是适配器和宿主默认读取的正式结果。
+- `uncooked.md` MUST 保留，不得被 Cooking 覆盖。
+- manifest MUST 记录两份 Markdown 的 SHA-256；启用 Cooking 时记录 provider/model 标识。
+- API Key、Authorization header 和模型服务响应 metadata MUST NOT 写入反馈包。
 - 反馈包路径 SHOULD 默认位于 RambleDesk 应用数据目录。
 - 适配器 MAY 提供路径提示，但协议正确性 MUST NOT 依赖源码 checkout 根路径。
 - manifest MUST 包含足够 metadata，用于校验附件 hash 并关联 `request_id`。

@@ -1,19 +1,29 @@
 use super::*;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use sherpa_onnx::{OnlineRecognizer, OnlineRecognizerConfig, OnlineStream};
+use sherpa_onnx::{
+    OfflineFunASRNanoModelConfig, OfflineRecognizer, OfflineRecognizerConfig,
+    OfflineSenseVoiceModelConfig, OnlineRecognizer, OnlineRecognizerConfig, OnlineStream,
+    VadModelConfig, VoiceActivityDetector,
+};
 use std::{
+    path::Path,
     sync::{
+        Arc,
         atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc::{Receiver, RecvTimeoutError, SyncSender, sync_channel},
     },
     thread::{self, JoinHandle},
     time::Duration,
 };
+
 const AUDIO_QUEUE_CAPACITY: usize = 512;
 const SHERPA_SAMPLE_RATE: i32 = 16_000;
 const SHERPA_FRAME_SAMPLES: usize = 800;
 const SHERPA_TAIL_PADDING_SAMPLES: usize = 12_800;
 const SHERPA_FINALIZE_ROUNDS: u32 = 256;
+const VAD_MODEL_BYTES: u64 = 643_854;
+const VAD_MODEL_FILE: &str = "silero_vad.onnx";
+const VAD_BUNDLED_BYTES: &[u8] = include_bytes!("../assets/silero_vad.onnx");
 
 pub fn list_input_devices() -> Result<Vec<String>, SpeechError> {
     let host = cpal::default_host();
@@ -28,6 +38,29 @@ pub fn list_input_devices() -> Result<Vec<String>, SpeechError> {
     Ok(names)
 }
 
+pub fn ensure_vad_model(library_root: &Path) -> Result<PathBuf, SpeechError> {
+    let directory = library_root
+        .join("models")
+        .join("speech")
+        .join("silero-vad");
+    let destination = directory.join(VAD_MODEL_FILE);
+    if std::fs::metadata(&destination).is_ok_and(|metadata| metadata.len() == VAD_MODEL_BYTES) {
+        return Ok(destination);
+    }
+    std::fs::create_dir_all(&directory)
+        .map_err(|error| SpeechError::ModelLoad(format!("无法创建 VAD 模型目录：{error}")))?;
+    let temporary = directory.join(format!("{VAD_MODEL_FILE}.tmp"));
+    std::fs::write(&temporary, VAD_BUNDLED_BYTES)
+        .map_err(|error| SpeechError::ModelLoad(format!("无法写入 VAD 模型：{error}")))?;
+    if destination.exists() {
+        std::fs::remove_file(&destination)
+            .map_err(|error| SpeechError::ModelLoad(format!("无法替换 VAD 模型：{error}")))?;
+    }
+    std::fs::rename(&temporary, &destination)
+        .map_err(|error| SpeechError::ModelLoad(format!("无法安装 VAD 模型：{error}")))?;
+    Ok(destination)
+}
+
 struct SherpaOnline {
     recognizer: OnlineRecognizer,
     stream: OnlineStream,
@@ -37,25 +70,16 @@ struct SherpaOnline {
 }
 
 impl SherpaOnline {
-    fn create(model_dir: &std::path::Path) -> Result<Self, SpeechError> {
-        let required = [
-            "encoder.int8.onnx",
-            "decoder.onnx",
-            "joiner.int8.onnx",
-            "tokens.txt",
-        ];
-        let missing = required
-            .iter()
-            .filter(|name| !model_dir.join(name).is_file())
-            .copied()
-            .collect::<Vec<_>>();
-        if !missing.is_empty() {
-            return Err(SpeechError::ModelIncomplete(format!(
-                "{} 缺少 {}",
-                model_dir.display(),
-                missing.join("、")
-            )));
-        }
+    fn create(model_dir: &Path) -> Result<Self, SpeechError> {
+        require_model_files(
+            model_dir,
+            &[
+                "encoder.int8.onnx",
+                "decoder.onnx",
+                "joiner.int8.onnx",
+                "tokens.txt",
+            ],
+        )?;
 
         let path = |name: &str| model_dir.join(name).to_string_lossy().into_owned();
         let mut config = OnlineRecognizerConfig::default();
@@ -106,11 +130,7 @@ impl SherpaOnline {
                 self.commit_current(identity, sink);
                 self.recognizer.reset(&self.stream);
                 self.last_text.clear();
-                sink(SpeechEvent::Partial {
-                    request_id: identity.request_id.clone(),
-                    voice_session_id: identity.voice_session_id.clone(),
-                    text: String::new(),
-                });
+                emit_partial(identity, sink, String::new());
             }
         }
     }
@@ -119,11 +139,7 @@ impl SherpaOnline {
         let text = self.current_text();
         if !text.is_empty() && text != self.last_text {
             self.last_text = text.clone();
-            sink(SpeechEvent::Partial {
-                request_id: identity.request_id.clone(),
-                voice_session_id: identity.voice_session_id.clone(),
-                text,
-            });
+            emit_partial(identity, sink, text);
         }
     }
 
@@ -132,12 +148,7 @@ impl SherpaOnline {
         if text.is_empty() {
             return;
         }
-        sink(SpeechEvent::Stable {
-            request_id: identity.request_id.clone(),
-            voice_session_id: identity.voice_session_id.clone(),
-            chunk_index: self.segment_index,
-            text,
-        });
+        emit_stable(identity, sink, self.segment_index, text);
         self.segment_index += 1;
     }
 
@@ -146,8 +157,8 @@ impl SherpaOnline {
             self.stream
                 .accept_waveform(SHERPA_SAMPLE_RATE, &self.pending);
         }
-        let silence = vec![0.0; SHERPA_TAIL_PADDING_SAMPLES];
-        self.stream.accept_waveform(SHERPA_SAMPLE_RATE, &silence);
+        self.stream
+            .accept_waveform(SHERPA_SAMPLE_RATE, &vec![0.0; SHERPA_TAIL_PADDING_SAMPLES]);
         self.stream.input_finished();
         let mut rounds = 0;
         while self.recognizer.is_ready(&self.stream) && rounds < SHERPA_FINALIZE_ROUNDS {
@@ -155,11 +166,7 @@ impl SherpaOnline {
             rounds += 1;
         }
         self.commit_current(identity, sink);
-        sink(SpeechEvent::Partial {
-            request_id: identity.request_id.clone(),
-            voice_session_id: identity.voice_session_id.clone(),
-            text: String::new(),
-        });
+        emit_partial(identity, sink, String::new());
     }
 
     fn current_text(&self) -> String {
@@ -170,7 +177,194 @@ impl SherpaOnline {
     }
 }
 
-fn is_valid_bpe_vocab(path: &std::path::Path) -> bool {
+struct SherpaOffline {
+    recognizer: OfflineRecognizer,
+    vad: VoiceActivityDetector,
+    segment_index: u64,
+}
+
+impl SherpaOffline {
+    fn create(config: &SpeechSessionConfig) -> Result<Self, SpeechError> {
+        if !(0.05..=0.95).contains(&config.vad_threshold) {
+            return Err(SpeechError::InvalidConfiguration(
+                "VAD 声音阈值必须在 0.05 到 0.95 之间".to_owned(),
+            ));
+        }
+        if !(200..=5_000).contains(&config.vad_silence_ms) {
+            return Err(SpeechError::InvalidConfiguration(
+                "VAD 静音分段时长必须在 200 到 5000 毫秒之间".to_owned(),
+            ));
+        }
+        if std::fs::metadata(&config.vad_model_path)
+            .map(|metadata| metadata.len())
+            .unwrap_or_default()
+            != VAD_MODEL_BYTES
+        {
+            return Err(SpeechError::ModelIncomplete(format!(
+                "VAD 模型缺失或损坏：{}",
+                config.vad_model_path.display()
+            )));
+        }
+
+        let recognizer = create_offline_recognizer(config.provider, &config.model_path)?;
+        let mut vad_config = VadModelConfig::default();
+        vad_config.silero_vad.model = Some(config.vad_model_path.to_string_lossy().into_owned());
+        vad_config.silero_vad.threshold = config.vad_threshold;
+        vad_config.silero_vad.min_silence_duration = config.vad_silence_ms as f32 / 1_000.0;
+        vad_config.silero_vad.min_speech_duration = 0.15;
+        vad_config.silero_vad.window_size = 512;
+        vad_config.silero_vad.max_speech_duration = 30.0;
+        vad_config.sample_rate = SHERPA_SAMPLE_RATE;
+        vad_config.num_threads = 1;
+        vad_config.provider = Some("cpu".to_owned());
+        let vad = VoiceActivityDetector::create(&vad_config, 120.0).ok_or_else(|| {
+            SpeechError::ModelLoad(format!(
+                "Silero VAD 创建失败：{}",
+                config.vad_model_path.display()
+            ))
+        })?;
+        Ok(Self {
+            recognizer,
+            vad,
+            segment_index: 0,
+        })
+    }
+
+    fn accept(&mut self, samples: &[f32], identity: &EventIdentity, sink: &SpeechEventSink) {
+        self.vad.accept_waveform(samples);
+        self.decode_ready_segments(identity, sink);
+    }
+
+    fn finish(mut self, identity: &EventIdentity, sink: &SpeechEventSink) {
+        self.vad.flush();
+        self.decode_ready_segments(identity, sink);
+        emit_partial(identity, sink, String::new());
+    }
+
+    fn decode_ready_segments(&mut self, identity: &EventIdentity, sink: &SpeechEventSink) {
+        while let Some(segment) = self.vad.front() {
+            let samples = segment.samples().to_vec();
+            drop(segment);
+            self.vad.pop();
+            if samples.is_empty() {
+                continue;
+            }
+            sink(SpeechEvent::Processing {
+                request_id: identity.request_id.clone(),
+                voice_session_id: identity.voice_session_id.clone(),
+                chunk_index: self.segment_index,
+            });
+            let stream = self.recognizer.create_stream();
+            stream.accept_waveform(SHERPA_SAMPLE_RATE, &samples);
+            self.recognizer.decode(&stream);
+            let text = stream
+                .get_result()
+                .map(|result| result.text.trim().to_owned())
+                .unwrap_or_default();
+            if !text.is_empty() {
+                emit_stable(identity, sink, self.segment_index, text);
+            }
+            self.segment_index += 1;
+        }
+    }
+}
+
+fn create_offline_recognizer(
+    provider: SpeechProvider,
+    model_dir: &Path,
+) -> Result<OfflineRecognizer, SpeechError> {
+    let path = |name: &str| model_dir.join(name).to_string_lossy().into_owned();
+    let mut config = OfflineRecognizerConfig::default();
+    config.model_config.num_threads = 2;
+    config.model_config.provider = Some("cpu".to_owned());
+    match provider {
+        SpeechProvider::SenseVoice => {
+            require_model_files(model_dir, &["model.int8.onnx", "tokens.txt"])?;
+            config.model_config.sense_voice = OfflineSenseVoiceModelConfig {
+                model: Some(path("model.int8.onnx")),
+                language: Some("auto".to_owned()),
+                use_itn: true,
+            };
+            config.model_config.tokens = Some(path("tokens.txt"));
+        }
+        SpeechProvider::FunAsrNano => {
+            require_model_files(
+                model_dir,
+                &[
+                    "encoder_adaptor.int8.onnx",
+                    "llm.int8.onnx",
+                    "embedding.int8.onnx",
+                    "Qwen3-0.6B/merges.txt",
+                    "Qwen3-0.6B/tokenizer.json",
+                    "Qwen3-0.6B/vocab.json",
+                ],
+            )?;
+            config.model_config.funasr_nano = OfflineFunASRNanoModelConfig {
+                encoder_adaptor: Some(path("encoder_adaptor.int8.onnx")),
+                llm: Some(path("llm.int8.onnx")),
+                embedding: Some(path("embedding.int8.onnx")),
+                tokenizer: Some(path("Qwen3-0.6B")),
+                system_prompt: Some("You are a helpful assistant.".to_owned()),
+                user_prompt: Some("语音转写：".to_owned()),
+                max_new_tokens: 512,
+                temperature: 1e-6,
+                top_p: 0.8,
+                seed: 42,
+                language: None,
+                itn: 1,
+                hotwords: None,
+            };
+        }
+        SpeechProvider::XAsr => {
+            return Err(SpeechError::InvalidConfiguration(
+                "X-ASR 应使用流式 recognizer".to_owned(),
+            ));
+        }
+    }
+    OfflineRecognizer::create(&config).ok_or_else(|| {
+        SpeechError::ModelLoad(format!(
+            "{} recognizer 创建失败：{}",
+            provider.id(),
+            model_dir.display()
+        ))
+    })
+}
+
+fn require_model_files(model_dir: &Path, required: &[&str]) -> Result<(), SpeechError> {
+    let missing = required
+        .iter()
+        .filter(|name| !model_dir.join(name).is_file())
+        .copied()
+        .collect::<Vec<_>>();
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(SpeechError::ModelIncomplete(format!(
+            "{} 缺少 {}",
+            model_dir.display(),
+            missing.join("、")
+        )))
+    }
+}
+
+fn emit_partial(identity: &EventIdentity, sink: &SpeechEventSink, text: String) {
+    sink(SpeechEvent::Partial {
+        request_id: identity.request_id.clone(),
+        voice_session_id: identity.voice_session_id.clone(),
+        text,
+    });
+}
+
+fn emit_stable(identity: &EventIdentity, sink: &SpeechEventSink, chunk_index: u64, text: String) {
+    sink(SpeechEvent::Stable {
+        request_id: identity.request_id.clone(),
+        voice_session_id: identity.voice_session_id.clone(),
+        chunk_index,
+        text,
+    });
+}
+
+fn is_valid_bpe_vocab(path: &Path) -> bool {
     let Ok(bytes) = std::fs::read(path) else {
         return false;
     };
@@ -178,6 +372,35 @@ fn is_valid_bpe_vocab(path: &std::path::Path) -> bool {
         && !bytes.contains(&0)
         && String::from_utf8(bytes)
             .is_ok_and(|text| text.lines().take(32).any(|line| line.contains('\t')))
+}
+
+enum RecognitionEngine {
+    Online(SherpaOnline),
+    Offline(SherpaOffline),
+}
+
+impl RecognitionEngine {
+    fn create(config: &SpeechSessionConfig) -> Result<Self, SpeechError> {
+        if config.provider.streaming() {
+            Ok(Self::Online(SherpaOnline::create(&config.model_path)?))
+        } else {
+            Ok(Self::Offline(SherpaOffline::create(config)?))
+        }
+    }
+
+    fn accept(&mut self, samples: &[f32], identity: &EventIdentity, sink: &SpeechEventSink) {
+        match self {
+            Self::Online(engine) => engine.accept(samples, identity, sink),
+            Self::Offline(engine) => engine.accept(samples, identity, sink),
+        }
+    }
+
+    fn finish(self, identity: &EventIdentity, sink: &SpeechEventSink) {
+        match self {
+            Self::Online(engine) => engine.finish(identity, sink),
+            Self::Offline(engine) => engine.finish(identity, sink),
+        }
+    }
 }
 
 struct NativeSpeechSession {
@@ -190,8 +413,8 @@ struct NativeSpeechSession {
 
 impl NativeSpeechSession {
     fn start(config: SpeechSessionConfig, sink: SpeechEventSink) -> Result<Self, SpeechError> {
-        let provider = SpeechProvider::SherpaOnline;
-        let sherpa = SherpaOnline::create(&config.model_path)?;
+        let provider = config.provider;
+        let engine = RecognitionEngine::create(&config)?;
 
         let host = cpal::default_host();
         let device = if let Some(selected) = config.input_device.as_deref() {
@@ -236,7 +459,7 @@ impl NativeSpeechSession {
             .name("rambledesk-speech".to_owned())
             .spawn(move || {
                 run_sherpa_worker(
-                    sherpa,
+                    engine,
                     audio_rx,
                     source_rate,
                     worker_identity,
@@ -291,9 +514,12 @@ impl NativeSpeechSession {
                 return Err(error);
             }
         };
-        stream
-            .play()
-            .map_err(|error| SpeechError::InputStream(error.to_string()))?;
+        if let Err(error) = stream.play() {
+            running.store(false, Ordering::Release);
+            drop(stream);
+            let _ = worker.join();
+            return Err(SpeechError::InputStream(error.to_string()));
+        }
 
         sink(SpeechEvent::Started {
             request_id: identity.request_id.clone(),
@@ -443,7 +669,7 @@ where
 }
 
 fn run_sherpa_worker(
-    mut sherpa: SherpaOnline,
+    mut engine: RecognitionEngine,
     audio_rx: Receiver<Vec<f32>>,
     source_rate: u32,
     identity: EventIdentity,
@@ -460,7 +686,7 @@ fn run_sherpa_worker(
                     rms: rms(&samples).clamp(0.0, 1.0),
                 });
                 let audio = resample_linear(&samples, source_rate, SPEECH_SAMPLE_RATE);
-                sherpa.accept(&audio, &identity, &sink);
+                engine.accept(&audio, &identity, &sink);
             }
             Err(RecvTimeoutError::Timeout) if !running.load(Ordering::Acquire) => break,
             Err(RecvTimeoutError::Disconnected) => break,
@@ -468,7 +694,7 @@ fn run_sherpa_worker(
         }
         emit_backpressure_warning(&identity, &sink, &dropped_buffers);
     }
-    sherpa.finish(&identity, &sink);
+    engine.finish(&identity, &sink);
 }
 
 fn emit_backpressure_warning(
@@ -484,5 +710,26 @@ fn emit_backpressure_warning(
             code: "audio_backpressure".to_owned(),
             message: format!("识别速度暂时跟不上，已跳过 {dropped} 个音频缓冲区"),
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bundled_vad_model_has_expected_size() {
+        assert_eq!(VAD_BUNDLED_BYTES.len() as u64, VAD_MODEL_BYTES);
+    }
+
+    #[test]
+    fn ensure_vad_model_is_idempotent() {
+        let temp = tempfile::tempdir().unwrap();
+        let first = ensure_vad_model(temp.path()).unwrap();
+        assert_eq!(std::fs::metadata(&first).unwrap().len(), VAD_MODEL_BYTES);
+        std::fs::write(&first, vec![0; VAD_MODEL_BYTES as usize]).unwrap();
+        let second = ensure_vad_model(temp.path()).unwrap();
+        assert_eq!(first, second);
+        assert_eq!(std::fs::read(&second).unwrap()[0], 0);
     }
 }

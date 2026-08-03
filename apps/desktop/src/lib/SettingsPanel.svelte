@@ -7,6 +7,7 @@
     BellRing,
     Check,
     CheckCircle2,
+    ChefHat,
     ChevronDown,
     Clipboard,
     Download,
@@ -38,21 +39,42 @@
   import { t } from '$lib/i18n'
   import { playNotificationSound } from '$lib/notifications'
   import {
+    cookingApiKey,
+    cookingBaseUrl,
+    cookingEnabled,
+    cookingModel,
+    cookingProvider,
+    cookingReasoningEffort,
     locale,
     notificationPopupEnabled,
     notificationSound,
     notificationSoundEnabled,
     notificationVolume,
+    setCookingApiKey,
+    setCookingBaseUrl,
+    setCookingEnabled,
+    setCookingModel,
+    setCookingProvider,
+    setCookingReasoningEffort,
     setLocale,
     setNotificationPopupEnabled,
     setNotificationSound,
     setNotificationSoundEnabled,
     setNotificationVolume,
     setSpeechInputDevice,
+    setSpeechModelId,
+    setSpeechVadSilenceMs,
+    setSpeechVadThreshold,
     setThemePreference,
     speechInputDevice,
+    speechModelId,
+    speechVadSilenceMs,
+    speechVadThreshold,
     themePreference,
+    type CookingProvider,
+    type CookingReasoningEffort,
     type NotificationSound,
+    type SpeechModelId,
     type ThemePreference,
   } from '$lib/preferences'
 
@@ -69,12 +91,17 @@
   }
 
   type SpeechModelInfo = {
-    id: string
+    id: SpeechModelId
+    engine_id: string
     display_name: string
+    description: string
     size_bytes: number
     installed: boolean
     path: string
     missing_files: string[]
+    streaming: boolean
+    languages: string[]
+    license: string
   }
 
   type StorageMigrationProgress = {
@@ -128,7 +155,7 @@
   let storageMigrating = false
   let speechInputDevices: string[] = []
   let speechDeviceError = ''
-  let speechModel: SpeechModelInfo | null = null
+  let speechModels: SpeechModelInfo[] = []
   let modelProgress: SpeechModelProgress | null = null
   let modelBusy = false
   let modelError = ''
@@ -138,6 +165,8 @@
 
   $: installedHosts = hosts.filter((host) => host.installed)
   $: selectedCount = selectedIds.size
+  $: selectedSpeechModel =
+    speechModels.find((model) => model.id === $speechModelId) ?? speechModels[0] ?? null
   $: if (!dialogOpen && !closeDelivered) {
     closeDelivered = true
     onClose()
@@ -148,7 +177,7 @@
       void refreshHosts()
       void refreshDataStorage()
       void refreshSpeechDevices()
-      void refreshSpeechModel()
+      void refreshSpeechModels()
       void listen<SpeechModelProgress>('speech-model-progress', ({ payload }) => {
         modelProgress = payload
       }).then((unlisten) => (unlistenModelProgress = unlisten))
@@ -166,22 +195,24 @@
     return t($locale, source, values)
   }
 
-  async function refreshSpeechModel() {
+  async function refreshSpeechModels() {
     modelError = ''
     try {
-      speechModel = await invoke<SpeechModelInfo>('get_speech_model')
+      speechModels = await invoke<SpeechModelInfo[]>('list_speech_models')
     } catch (cause) {
       modelError = messageFrom(cause)
     }
   }
 
   async function downloadSpeechModel() {
-    if (modelBusy) return
+    if (modelBusy || !selectedSpeechModel) return
+    const modelId = selectedSpeechModel.id
     modelBusy = true
     modelError = ''
-    modelProgress = { model_id: speechModel?.id ?? '', downloaded: 0, total: speechModel?.size_bytes ?? 0 }
+    modelProgress = { model_id: modelId, downloaded: 0, total: selectedSpeechModel.size_bytes }
     try {
-      speechModel = await invoke<SpeechModelInfo>('download_speech_model')
+      const updated = await invoke<SpeechModelInfo>('download_speech_model', { modelId })
+      speechModels = speechModels.map((model) => (model.id === updated.id ? updated : model))
     } catch (cause) {
       modelError = messageFrom(cause)
     } finally {
@@ -190,11 +221,13 @@
   }
 
   async function deleteSpeechModel() {
-    if (modelBusy || !confirm(tr('确定删除本地语音模型吗？'))) return
+    if (modelBusy || !selectedSpeechModel || !confirm(tr('确定删除本地语音模型吗？'))) return
+    const modelId = selectedSpeechModel.id
     modelBusy = true
     modelError = ''
     try {
-      speechModel = await invoke<SpeechModelInfo>('delete_speech_model')
+      const updated = await invoke<SpeechModelInfo>('delete_speech_model', { modelId })
+      speechModels = speechModels.map((model) => (model.id === updated.id ? updated : model))
       modelProgress = null
     } catch (cause) {
       modelError = messageFrom(cause)
@@ -343,6 +376,17 @@
     if (sound === 'soft') return tr('柔和提示')
     if (sound === 'alert') return tr('醒目提示')
     return tr('清脆双音')
+  }
+
+  function chooseCookingProvider(provider: CookingProvider) {
+    setCookingProvider(provider)
+    if (provider === 'deepseek') {
+      setCookingBaseUrl('https://api.deepseek.com/v1')
+      setCookingModel('deepseek-v4-flash')
+    } else if (provider === 'openai') {
+      setCookingBaseUrl('https://api.openai.com/v1')
+      setCookingModel('gpt-4.1-mini')
+    }
   }
 
   function messageFrom(cause: unknown) {
@@ -498,6 +542,132 @@
                   <Select.Item value="dark" label={tr('深色')} />
                 </Select.Content>
               </Select.Root>
+            </section>
+
+            <section class="border-b pb-8">
+              <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-8">
+                <div class="flex gap-3">
+                  <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+                    <ChefHat class="size-4" />
+                  </span>
+                  <div>
+                    <div class="flex items-center gap-2">
+                      <h3 class="m-0 text-sm font-medium">Cooking</h3>
+                      <Badge variant="outline">{tr('可选')}</Badge>
+                    </div>
+                    <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
+                      {tr('提交前用大模型把 Ramble 原稿整理成正式反馈；uncooked 原稿仍会保存在反馈包中。')}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={$cookingEnabled}
+                  aria-label="Cooking"
+                  class={[
+                    'relative h-[22px] w-10 rounded-full border border-transparent transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+                    $cookingEnabled ? 'bg-primary' : 'bg-input',
+                  ]}
+                  onclick={() => setCookingEnabled(!$cookingEnabled)}
+                >
+                  <span
+                    class={[
+                      'absolute left-0.5 top-0.5 size-4 rounded-full bg-background shadow-sm transition-transform',
+                      $cookingEnabled ? 'translate-x-5' : 'translate-x-0',
+                    ]}
+                  ></span>
+                </button>
+              </div>
+
+              {#if $cookingEnabled}
+                <div class="ml-11 mt-5 grid gap-4 rounded-md border bg-muted/20 p-4">
+                  <div class="grid grid-cols-[140px_minmax(0,1fr)] items-center gap-4">
+                    <label for="cooking-provider" class="text-xs font-medium">{tr('模型服务')}</label>
+                    <Select.Root
+                      type="single"
+                      value={$cookingProvider}
+                      onValueChange={(value: string) => chooseCookingProvider(value as CookingProvider)}
+                    >
+                      <Select.Trigger id="cooking-provider" class="w-full">
+                        {$cookingProvider === 'deepseek'
+                          ? 'DeepSeek'
+                          : $cookingProvider === 'openai'
+                            ? 'OpenAI'
+                            : tr('OpenAI 兼容服务')}
+                      </Select.Trigger>
+                      <Select.Content>
+                        <Select.Item value="deepseek" label="DeepSeek" />
+                        <Select.Item value="openai" label="OpenAI" />
+                        <Select.Item value="compatible" label={tr('OpenAI 兼容服务')} />
+                      </Select.Content>
+                    </Select.Root>
+                  </div>
+                  <div class="grid grid-cols-[140px_minmax(0,1fr)] items-center gap-4">
+                    <label for="cooking-base-url" class="text-xs font-medium">Base URL</label>
+                    <input
+                      id="cooking-base-url"
+                      type="url"
+                      value={$cookingBaseUrl}
+                      placeholder="https://api.example.com/v1"
+                      class="h-9 w-full rounded-md border bg-background px-3 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      oninput={(event) => setCookingBaseUrl((event.currentTarget as HTMLInputElement).value)}
+                    />
+                  </div>
+                  <div class="grid grid-cols-[140px_minmax(0,1fr)] items-center gap-4">
+                    <label for="cooking-model" class="text-xs font-medium">{tr('模型名称')}</label>
+                    <input
+                      id="cooking-model"
+                      type="text"
+                      value={$cookingModel}
+                      placeholder="deepseek-v4-flash"
+                      class="h-9 w-full rounded-md border bg-background px-3 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      oninput={(event) => setCookingModel((event.currentTarget as HTMLInputElement).value)}
+                    />
+                  </div>
+                  <div class="grid grid-cols-[140px_minmax(0,1fr)] items-center gap-4">
+                    <label for="cooking-reasoning" class="text-xs font-medium">{tr('思考强度')}</label>
+                    <Select.Root
+                      type="single"
+                      value={$cookingReasoningEffort}
+                      onValueChange={(value: string) =>
+                        setCookingReasoningEffort(value as CookingReasoningEffort)}
+                    >
+                      <Select.Trigger id="cooking-reasoning" class="w-full">
+                        {$cookingReasoningEffort === 'none'
+                          ? tr('不使用')
+                          : $cookingReasoningEffort === 'minimal'
+                            ? 'minimal'
+                            : $cookingReasoningEffort}
+                      </Select.Trigger>
+                      <Select.Content>
+                        <Select.Item value="none" label={tr('不使用')} />
+                        <Select.Item value="minimal" label="minimal" />
+                        <Select.Item value="low" label="low" />
+                        <Select.Item value="medium" label="medium" />
+                        <Select.Item value="high" label="high" />
+                        <Select.Item value="xhigh" label="xhigh" />
+                        <Select.Item value="max" label="max" />
+                      </Select.Content>
+                    </Select.Root>
+                  </div>
+                  <div class="grid grid-cols-[140px_minmax(0,1fr)] items-center gap-4">
+                    <label for="cooking-api-key" class="text-xs font-medium">API Key</label>
+                    <input
+                      id="cooking-api-key"
+                      type="password"
+                      value={$cookingApiKey}
+                      autocomplete="off"
+                      placeholder="sk-…"
+                      class="h-9 w-full rounded-md border bg-background px-3 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      oninput={(event) => setCookingApiKey((event.currentTarget as HTMLInputElement).value)}
+                    />
+                  </div>
+                  <p class="m-0 text-[10px] leading-4 text-muted-foreground">
+                    {tr('API Key 仅保存在当前设备的本地设置中，不会写入反馈包；Cooking 会把 uncooked 正文发送给所选模型服务。')}
+                  </p>
+                </div>
+              {/if}
             </section>
 
             <section class="grid gap-4">
@@ -699,50 +869,160 @@
               {/if}
             </section>
 
-            <section class="flex items-start gap-3">
-              <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
-                <Download class="size-4" />
-              </span>
-              <div class="min-w-0 flex-1">
-                <div class="flex items-center gap-2">
-                  <h3 class="m-0 text-sm font-medium">{tr('语音模型')}</h3>
-                  {#if speechModel}
-                    <Badge variant={speechModel.installed ? 'secondary' : 'outline'}>
-                      {speechModel.installed ? tr('已安装') : tr('未安装')}
-                    </Badge>
+            <section class="border-b pb-8">
+              <div class="grid grid-cols-[minmax(0,1fr)_280px] items-center gap-8">
+                <div class="flex gap-3">
+                  <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+                    <Download class="size-4" />
+                  </span>
+                  <div>
+                    <div class="flex items-center gap-2">
+                      <h3 class="m-0 text-sm font-medium">{tr('转录模型')}</h3>
+                      {#if selectedSpeechModel}
+                        <Badge variant={selectedSpeechModel.installed ? 'secondary' : 'outline'}>
+                          {selectedSpeechModel.installed ? tr('已安装') : tr('未安装')}
+                        </Badge>
+                      {/if}
+                    </div>
+                    <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
+                      {tr('选择用于 Ramble 语音输入的本地模型；每个模型可单独下载或删除。')}
+                    </p>
+                  </div>
+                </div>
+                <Select.Root
+                  type="single"
+                  value={$speechModelId}
+                  onValueChange={(value: string) => setSpeechModelId(value as SpeechModelId)}
+                >
+                  <Select.Trigger class="w-full">
+                    {selectedSpeechModel?.display_name ?? tr('正在读取模型…')}
+                  </Select.Trigger>
+                  <Select.Content>
+                    {#each speechModels as model (model.id)}
+                      <Select.Item
+                        value={model.id}
+                        label={`${model.display_name}${model.installed ? ` · ${tr('已安装')}` : ''}`}
+                      />
+                    {/each}
+                  </Select.Content>
+                </Select.Root>
+              </div>
+
+              {#if selectedSpeechModel}
+                <div class="ml-11 mt-4 rounded-md border bg-muted/20 p-4">
+                  <div class="flex items-start justify-between gap-4">
+                    <div class="min-w-0">
+                      <div class="flex flex-wrap items-center gap-1.5">
+                        <Badge variant="outline">
+                          {selectedSpeechModel.streaming ? tr('流式实时') : tr('VAD 分段 · 非流式')}
+                        </Badge>
+                        <span class="text-[10px] text-muted-foreground">
+                          {Math.round(selectedSpeechModel.size_bytes / 1024 / 1024)} MB · {selectedSpeechModel.languages.join(' / ')}
+                        </span>
+                      </div>
+                      <p class="m-0 mt-2 text-xs leading-5 text-muted-foreground">
+                        {selectedSpeechModel.description}
+                      </p>
+                      <p class="m-0 mt-1 truncate text-[10px] text-muted-foreground" title={selectedSpeechModel.path}>
+                        {selectedSpeechModel.path}
+                      </p>
+                      <p class="m-0 mt-1 text-[10px] text-muted-foreground">
+                        {tr('模型许可')}：{selectedSpeechModel.license}
+                      </p>
+                    </div>
+                    {#if selectedSpeechModel.installed}
+                      <Button variant="outline" size="sm" disabled={modelBusy} onclick={deleteSpeechModel}>
+                        <Trash2 data-icon="inline-start" />{tr('删除')}
+                      </Button>
+                    {:else}
+                      <Button size="sm" disabled={modelBusy} onclick={downloadSpeechModel}>
+                        {#if modelBusy}
+                          <LoaderCircle class="animate-spin" data-icon="inline-start" />
+                        {:else}
+                          <Download data-icon="inline-start" />
+                        {/if}
+                        {modelBusy ? tr('下载中…') : modelError ? tr('重试下载') : tr('下载模型')}
+                      </Button>
+                    {/if}
+                  </div>
+                  {#if modelBusy && modelProgress?.model_id === selectedSpeechModel.id}
+                    <div class="mt-3">
+                      <div class="mb-1 flex justify-between text-[10px] text-muted-foreground">
+                        <span>{tr('正在下载并校验…')}</span>
+                        <span>{Math.min(100, Math.round(modelProgress.downloaded / Math.max(1, modelProgress.total) * 100))}%</span>
+                      </div>
+                      <div class="h-1.5 overflow-hidden rounded-full bg-muted">
+                        <div class="h-full bg-primary transition-[width]" style={`width: ${Math.min(100, modelProgress.downloaded / Math.max(1, modelProgress.total) * 100)}%`}></div>
+                      </div>
+                    </div>
+                  {/if}
+                  {#if modelError}
+                    <p class="m-0 mt-2 text-xs text-destructive">{modelError}</p>
                   {/if}
                 </div>
+              {/if}
+            </section>
+
+            <section class="flex items-start gap-3">
+              <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+                <Volume2 class="size-4" />
+              </span>
+              <div class="min-w-0 flex-1">
+                <h3 class="m-0 text-sm font-medium">{tr('语音活动检测（VAD）')}</h3>
                 <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
-                  {speechModel?.display_name ?? 'X-ASR'} · {speechModel ? `${Math.round(speechModel.size_bytes / 1024 / 1024)} MB` : '162 MB'}
+                  {tr('SenseVoice 和 FunASR-Nano 使用内置 Silero VAD 自动切分长录音；X-ASR 仍按流式端点分段。')}
                 </p>
-                {#if speechModel}
-                  <p class="m-0 mt-1 truncate text-[10px] text-muted-foreground" title={speechModel.path}>{speechModel.path}</p>
-                {/if}
-                {#if modelBusy && modelProgress}
-                  <div class="mt-3">
-                    <div class="mb-1 flex justify-between text-[10px] text-muted-foreground">
-                      <span>{tr('正在下载并校验…')}</span>
-                      <span>{Math.min(100, Math.round(modelProgress.downloaded / Math.max(1, modelProgress.total) * 100))}%</span>
+                <div class="mt-4 grid gap-5 rounded-md border bg-muted/20 p-4">
+                  <div class="grid grid-cols-[minmax(0,1fr)_280px] items-center gap-6">
+                    <div>
+                      <strong class="block text-xs font-medium">{tr('声音阈值')}</strong>
+                      <span class="mt-0.5 block text-[10px] text-muted-foreground">
+                        {tr('环境嘈杂时调高；轻声讲话经常漏检时调低。')}
+                      </span>
                     </div>
-                    <div class="h-1.5 overflow-hidden rounded-full bg-muted">
-                      <div class="h-full bg-primary transition-[width]" style={`width: ${Math.min(100, modelProgress.downloaded / Math.max(1, modelProgress.total) * 100)}%`}></div>
+                    <div class="flex items-center gap-3">
+                      <input
+                        type="range"
+                        min="5"
+                        max="95"
+                        step="5"
+                        value={Math.round($speechVadThreshold * 100)}
+                        class="min-w-0 flex-1 accent-primary"
+                        aria-label={tr('VAD 声音阈值')}
+                        oninput={(event) =>
+                          setSpeechVadThreshold(Number((event.currentTarget as HTMLInputElement).value) / 100)}
+                      />
+                      <span class="w-10 text-right text-[10px] tabular-nums text-muted-foreground">
+                        {$speechVadThreshold.toFixed(2)}
+                      </span>
                     </div>
                   </div>
-                {/if}
-                {#if modelError}
-                  <p class="m-0 mt-2 text-xs text-destructive">{modelError}</p>
-                {/if}
+                  <div class="grid grid-cols-[minmax(0,1fr)_280px] items-center gap-6">
+                    <div>
+                      <strong class="block text-xs font-medium">{tr('静音分段')}</strong>
+                      <span class="mt-0.5 block text-[10px] text-muted-foreground">
+                        {tr('连续静音达到该时长后，将当前语音段送入非流式模型。')}
+                      </span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                      <input
+                        type="range"
+                        min="200"
+                        max="5000"
+                        step="100"
+                        value={$speechVadSilenceMs}
+                        class="min-w-0 flex-1 accent-primary"
+                        aria-label={tr('VAD 静音分段时长')}
+                        oninput={(event) =>
+                          setSpeechVadSilenceMs(Number((event.currentTarget as HTMLInputElement).value))}
+                      />
+                      <span class="w-12 text-right text-[10px] tabular-nums text-muted-foreground">
+                        {($speechVadSilenceMs / 1000).toFixed(1)} s
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </div>
-              {#if speechModel?.installed}
-                <Button variant="outline" size="sm" disabled={modelBusy} onclick={deleteSpeechModel}>
-                  <Trash2 data-icon="inline-start" />{tr('删除')}
-                </Button>
-              {:else}
-                <Button size="sm" disabled={modelBusy || !speechModel} onclick={downloadSpeechModel}>
-                  {#if modelBusy}<LoaderCircle class="animate-spin" data-icon="inline-start" />{:else}<Download data-icon="inline-start" />{/if}
-                  {modelBusy ? tr('下载中…') : modelError ? tr('重试下载') : tr('下载模型')}
-                </Button>
-              {/if}
             </section>
           </Tabs.Content>
 

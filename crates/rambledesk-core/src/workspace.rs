@@ -220,6 +220,18 @@ impl FeedbackApplication {
         input: SubmitFeedbackInput,
     ) -> Result<crate::FeedbackRequestView, ApplicationError> {
         let request_id = crate::feedback::canonical_uuid(&input.request_id, "request_id")?;
+        match (&input.cooked_markdown, &input.cooking_model) {
+            (Some(markdown), Some(model)) => {
+                crate::feedback::validate_text("cooked_markdown", markdown, 1, 100_000)?;
+                crate::feedback::validate_text("cooking_model", model, 1, 500)?;
+            }
+            (None, None) => {}
+            _ => {
+                return Err(ApplicationError::invalid_argument(
+                    "cooked_markdown and cooking_model must be provided together",
+                ));
+            }
+        }
         let existing = self
             .repository
             .get_request(&request_id)
@@ -235,6 +247,8 @@ impl FeedbackApplication {
             .plan_submission(
                 &request_id,
                 input.expected_revision,
+                input.cooked_markdown.as_deref(),
+                input.cooking_model.as_deref(),
                 &self.ids.new_id(),
                 &now,
             )

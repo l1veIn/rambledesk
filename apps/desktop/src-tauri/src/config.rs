@@ -211,15 +211,6 @@ pub(super) fn save_library_path(path: &Path) -> Result<PathBuf, String> {
     Ok(canonical)
 }
 
-pub(super) fn configured_speech_model_path(library_root: &Path) -> Result<PathBuf, String> {
-    configured_path("RAMBLEDESK_SHERPA_MODEL_DIR", || {
-        Ok(library_root
-            .join("models")
-            .join("speech")
-            .join("sherpa-x-asr"))
-    })
-}
-
 pub(super) fn generic_mcp_configuration(endpoint: &str, token: &AccessToken) -> String {
     serde_json::to_string_pretty(&serde_json::json!({
         "mcpServers": {
