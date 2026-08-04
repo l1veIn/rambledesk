@@ -18,44 +18,20 @@ use crate::workspace::{
 };
 
 mod model;
+mod path_resolver;
+mod repository_error;
 mod validation;
 mod waiters;
 
 pub use model::*;
+pub use path_resolver::AttachmentPathResolver;
+pub use repository_error::RepositoryError;
 use validation::validate_request_input;
 pub(crate) use validation::{canonical_uuid, validate_text};
 use waiters::FeedbackWaiters;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
-pub enum RepositoryError {
-    #[error("feedback request was not found")]
-    RequestNotFound,
-    #[error("feedback request conflicts with an existing request")]
-    RequestConflict,
-    #[error("feedback request is already completed")]
-    RequestAlreadyCompleted,
-    #[error("feedback request is terminal")]
-    RequestTerminal,
-    #[error("draft revision conflicts with the stored revision")]
-    DraftConflict,
-    #[error("feedback draft is empty")]
-    DraftEmpty,
-    #[error("attachment was not found")]
-    AttachmentNotFound,
-    #[error("attachment limit was reached")]
-    AttachmentLimit,
-    #[error("feedback package publication failed")]
-    PackagePublish,
-    #[error("feedback package could not be read")]
-    PackageRead,
-    #[error("stored feedback data is invalid")]
-    CorruptData,
-    #[error("storage operation failed")]
-    Storage,
-}
-
 #[async_trait]
-pub trait FeedbackRepository: Send + Sync {
+pub trait FeedbackRepository: AttachmentPathResolver + Send + Sync {
     async fn create_or_get_request(
         &self,
         request: NewFeedbackRequest,
@@ -141,18 +117,6 @@ pub trait FeedbackRepository: Send + Sync {
         request_id: &str,
         attachment_id: &str,
     ) -> Result<Vec<u8>, RepositoryError>;
-
-    async fn resolve_attachment_path(
-        &self,
-        request_id: &str,
-        attachment_id: &str,
-    ) -> Result<String, RepositoryError>;
-
-    async fn resolve_request_attachment_path(
-        &self,
-        request_id: &str,
-        attachment_id: &str,
-    ) -> Result<String, RepositoryError>;
 
     async fn plan_submission(
         &self,

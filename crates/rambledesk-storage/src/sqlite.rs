@@ -23,6 +23,7 @@ mod migration_compat;
 mod paths;
 mod publication_paths;
 mod request_ops;
+mod resolve_ops;
 mod submission_ops;
 mod workspace_ops;
 
@@ -386,24 +387,6 @@ impl FeedbackRepository for SqliteFeedbackStore {
         attachment_id: &str,
     ) -> Result<Vec<u8>, RepositoryError> {
         self.read_request_attachment_impl(request_id, attachment_id)
-            .await
-    }
-
-    async fn resolve_attachment_path(
-        &self,
-        request_id: &str,
-        attachment_id: &str,
-    ) -> Result<String, RepositoryError> {
-        self.resolve_attachment_path_impl(request_id, attachment_id)
-            .await
-    }
-
-    async fn resolve_request_attachment_path(
-        &self,
-        request_id: &str,
-        attachment_id: &str,
-    ) -> Result<String, RepositoryError> {
-        self.resolve_request_attachment_path_impl(request_id, attachment_id)
             .await
     }
 

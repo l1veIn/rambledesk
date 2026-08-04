@@ -1,6 +1,7 @@
 mod clipboard_capture;
 mod generic_mcp_install;
 mod logging;
+mod open_attachment;
 mod pi_install;
 mod platform;
 mod screen_capture;
@@ -239,7 +240,7 @@ pub fn run() {
             reorder_feedback_attachments,
             read_feedback_attachment,
             read_request_attachment,
-            open_feedback_attachment,
+            open_attachment::open_feedback_attachment,
             submit_feedback,
             approve_feedback_request,
             cancel_feedback_request,

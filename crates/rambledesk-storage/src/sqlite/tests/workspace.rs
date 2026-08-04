@@ -206,7 +206,10 @@ async fn non_image_attachments_detect_publish_and_round_trip() {
         })
         .await
         .expect("add unknown attachment");
-    assert_eq!(unknown.attachments[2].media_type, "application/octet-stream");
+    assert_eq!(
+        unknown.attachments[2].media_type,
+        "application/octet-stream"
+    );
 
     let draft = application
         .save_feedback_draft(SaveDraftInput {

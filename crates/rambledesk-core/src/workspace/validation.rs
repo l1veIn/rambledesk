@@ -135,16 +135,28 @@ mod tests {
             detect_media_type(b"\x89PNG\r\n\x1a\n\x00\x00\x00", "a.png"),
             "image/png"
         );
-        assert_eq!(detect_media_type(b"%PDF-1.4\n", "report.pdf"), "application/pdf");
+        assert_eq!(
+            detect_media_type(b"%PDF-1.4\n", "report.pdf"),
+            "application/pdf"
+        );
         // PDF magic wins even when the extension does not match.
-        assert_eq!(detect_media_type(b"%PDF-1.4\n", "renamed.txt"), "application/pdf");
+        assert_eq!(
+            detect_media_type(b"%PDF-1.4\n", "renamed.txt"),
+            "application/pdf"
+        );
         assert_eq!(detect_media_type(b"# Title", "notes.md"), "text/markdown");
         assert_eq!(detect_media_type(b"x,y\n1,2", "data.csv"), "text/csv");
         assert_eq!(
             detect_media_type(b"PK\x03\x04\x00\x00", "plan.docx"),
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         );
-        assert_eq!(detect_media_type(b"anything", "unknown.zzz"), "application/octet-stream");
-        assert_eq!(detect_media_type(b"anything", "no-extension"), "application/octet-stream");
+        assert_eq!(
+            detect_media_type(b"anything", "unknown.zzz"),
+            "application/octet-stream"
+        );
+        assert_eq!(
+            detect_media_type(b"anything", "no-extension"),
+            "application/octet-stream"
+        );
     }
 }
