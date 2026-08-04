@@ -23,6 +23,22 @@ const ActionSchema = Type.Object({
   instruction: Type.String({ description: "Concrete action the human should perform." }),
 });
 
+const RequestAttachmentSchema = Type.Object({
+  file_name: Type.String({
+    description: "Attachment file name. Use a .md or .markdown extension for Markdown documents.",
+  }),
+  markdown: Type.Optional(
+    Type.String({
+      description: "Markdown document contents (text/markdown). Requires a .md or .markdown file_name. Mutually exclusive with contents_base64.",
+    }),
+  ),
+  contents_base64: Type.Optional(
+    Type.String({
+      description: "Base64-encoded image contents. Must decode to a PNG, JPEG, GIF, or WebP image. Mutually exclusive with markdown.",
+    }),
+  ),
+});
+
 export const RequestRambleFeedbackSchema = Type.Object({
   request_id: Type.Optional(
     Type.String({ description: "Optional UUID. Reuse the same id for idempotent retries." }),
@@ -39,6 +55,11 @@ export const RequestRambleFeedbackSchema = Type.Object({
     description: "Ordered checklist for the human tester.",
   }),
   context_refs: Type.Optional(Type.Array(ContextRefSchema)),
+  attachments: Type.Optional(
+    Type.Array(RequestAttachmentSchema, {
+      description: "Markdown documents and images the human should review with this request.",
+    }),
+  ),
   source_hint: Type.Optional(
     Type.String({ description: "Optional display hint such as cwd or task title." }),
   ),
@@ -115,6 +136,7 @@ export function registerRambleDeskPiTools(pi) {
     label: "Request RambleDesk Feedback",
     description: `Create a RambleDesk feedback request for the human and wait for the result in this Pi tool call.
 Use this instead of MCP when running in Pi. After the tool returns completed, continue the original task using the feedback markdown and attachment paths included in the tool content.
+Optional attachments give the human review artifacts: attachments[].markdown with a .md/.markdown file_name for a Markdown document, or attachments[].contents_base64 for a PNG/JPEG/GIF/WebP image.
 Do not call this tool repeatedly for the same request unless you reuse the same request_id.`,
     parameters: RequestRambleFeedbackSchema,
     executionMode: "sequential",
@@ -242,6 +264,7 @@ export function normalizeRequestParams(params, ctx = {}, env = process.env) {
     what_happened: params.what_happened,
     actions: params.actions,
     context_refs: params.context_refs ?? [],
+    attachments: params.attachments ?? [],
     source_hint: firstNonEmpty(params.source_hint, cwd),
     allow_finish: params.allow_finish ?? false,
     final_summary: params.final_summary,

@@ -136,6 +136,7 @@ MCP tool input 与 `FeedbackRequestInput` 等价。通用 MCP 适配器 MAY 根�
 - `what_happened`
 - ordered `actions`
 - ordered `context_refs`
+- ordered `attachments`（`file_name`、`markdown` 或 `contents_base64`）
 - `source_hint`
 
 ### 结果
