@@ -139,10 +139,10 @@ impl FeedbackApplication {
                 MAX_ATTACHMENT_BYTES / 1024 / 1024
             )));
         }
-        let media_type = detect_image_media_type(&input.contents).ok_or_else(|| {
-            ApplicationError::invalid_argument("attachment must be a PNG, JPEG, GIF, or WebP image")
-        })?;
-        file_name = normalize_image_file_name(&file_name, media_type);
+        let media_type = detect_media_type(&input.contents, &file_name);
+        if media_type.starts_with("image/") {
+            file_name = normalize_image_file_name(&file_name, media_type);
+        }
         let sha256 = hex::encode(Sha256::digest(&input.contents));
         self.repository
             .add_attachment(
@@ -228,6 +228,32 @@ impl FeedbackApplication {
             .map_err(ApplicationError::from)
     }
 
+    pub async fn resolve_feedback_attachment_path(
+        &self,
+        request_id: String,
+        attachment_id: String,
+    ) -> Result<String, ApplicationError> {
+        let request_id = crate::feedback::canonical_uuid(&request_id, "request_id")?;
+        let attachment_id = crate::feedback::canonical_uuid(&attachment_id, "attachment_id")?;
+        self.repository
+            .resolve_attachment_path(&request_id, &attachment_id)
+            .await
+            .map_err(ApplicationError::from)
+    }
+
+    pub async fn resolve_request_attachment_path(
+        &self,
+        request_id: String,
+        attachment_id: String,
+    ) -> Result<String, ApplicationError> {
+        let request_id = crate::feedback::canonical_uuid(&request_id, "request_id")?;
+        let attachment_id = crate::feedback::canonical_uuid(&attachment_id, "attachment_id")?;
+        self.repository
+            .resolve_request_attachment_path(&request_id, &attachment_id)
+            .await
+            .map_err(ApplicationError::from)
+    }
+
     pub async fn submit_feedback(
         &self,
         input: SubmitFeedbackInput,
@@ -300,6 +326,6 @@ impl FeedbackApplication {
 pub(crate) mod validation;
 
 use validation::{
-    decode_list_cursor, detect_image_media_type, encode_list_cursor, normalize_image_file_name,
+    decode_list_cursor, detect_media_type, encode_list_cursor, normalize_image_file_name,
     validate_file_name,
 };

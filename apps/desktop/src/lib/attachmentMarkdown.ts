@@ -9,3 +9,19 @@ export function attachmentIdFromUrl(value: unknown): string | null {
   const attachmentId = value.slice(ATTACHMENT_SCHEME.length)
   return attachmentId.length > 0 ? attachmentId : null
 }
+
+export function isImageMediaType(mediaType: string): boolean {
+  return mediaType.startsWith('image/')
+}
+
+export function attachmentMarkdown(attachment: {
+  attachment_id: string
+  file_name: string
+  media_type: string
+}): string {
+  const url = attachmentMarkdownUrl(attachment.attachment_id)
+  const name = attachment.file_name.replace(/([\[\]])/g, '\\$1')
+  return isImageMediaType(attachment.media_type)
+    ? `![${name}](${url})`
+    : `[${name}](${url})`
+}

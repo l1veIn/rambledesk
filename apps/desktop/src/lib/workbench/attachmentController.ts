@@ -3,6 +3,7 @@ import { listen } from '@tauri-apps/api/event'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { tick } from 'svelte'
 
+import { attachmentMarkdown, isImageMediaType } from '../attachmentMarkdown'
 import type {
   AddAttachmentInput,
   AttachmentView,
@@ -138,7 +139,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
         }
         const input: AddAttachmentInput = {
           request_id: next.request.request_id,
-          file_name: file.name || `pasted-image-${Date.now()}.png`,
+          file_name: file.name || `attachment-${Date.now()}`,
           contents: Array.from(new Uint8Array(await file.arrayBuffer())),
           expected_revision: next.draft.saved_revision,
         }
@@ -151,7 +152,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
         .getEditor()
         ?.insertAttachments(next.attachments.filter((item) => !existingIds.has(item.attachment_id)))
       if (!inserted) {
-        throw new Error(context.tr('附件已保存，但编辑器未能在当前光标位置插入图片'))
+        throw new Error(context.tr('附件已保存，但编辑器未能在当前光标位置插入附件'))
       }
       await context.saveDraftNow()
     } catch (cause) {
@@ -195,12 +196,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
       } else {
         await context.appendRambleMarkdown(
           requestId,
-          added
-            .map(
-              (attachment) =>
-                `![${attachment.file_name}](attachment://${attachment.attachment_id})`,
-            )
-            .join('\n\n'),
+          added.map((attachment) => attachmentMarkdown(attachment)).join('\n\n'),
         )
       }
     } catch (cause) {
@@ -363,6 +359,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
     releasePreviews()
     const previews: Record<string, string> = {}
     for (const attachment of next.attachments) {
+      if (!isImageMediaType(attachment.media_type)) continue
       try {
         const bytes = await invoke<number[]>('read_feedback_attachment', {
           requestId: next.request.request_id,

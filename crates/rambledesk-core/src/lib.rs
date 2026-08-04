@@ -7,10 +7,10 @@ mod feedback;
 mod workspace;
 
 pub use feedback::{
-    ActionInput, ApplicationError, ApproveFeedbackInput, CancelFeedbackInput, Clock, ContextRef,
-    ExecutionMode, FeedbackApplication, FeedbackRepository, FeedbackRequestView,
-    FeedbackResolution, FeedbackResultView, FeedbackStatus, GetFeedbackInput, IdGenerator,
-    NewFeedbackRequest, NewRequestAttachment, RecoverFeedbackInput, RepositoryError,
+    ActionInput, ApplicationError, ApproveFeedbackInput, AttachmentPathResolver,
+    CancelFeedbackInput, Clock, ContextRef, ExecutionMode, FeedbackApplication, FeedbackRepository,
+    FeedbackRequestView, FeedbackResolution, FeedbackResultView, FeedbackStatus, GetFeedbackInput,
+    IdGenerator, NewFeedbackRequest, NewRequestAttachment, RecoverFeedbackInput, RepositoryError,
     RequestAttachmentInput, RequestFeedbackInput, StoredFeedbackRequest, SystemClock,
     UuidV7Generator,
 };

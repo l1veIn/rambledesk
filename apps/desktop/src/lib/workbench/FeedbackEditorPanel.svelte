@@ -30,6 +30,7 @@
   export let uncookedMarkdown = ''
   export let formatTime: (value: string | null | undefined) => string
   export let onChange: (markdown: string) => void = () => {}
+  export let onOpenAttachment: (attachmentId: string) => void = () => {}
 
   let richEditor: RichFeedbackEditor
   let publishedView: 'cooked' | 'uncooked' | 'compare' = 'cooked'
@@ -142,6 +143,7 @@
             markdown={uncookedMarkdown}
             previews={attachmentPreviews}
             disabled={true}
+            {onOpenAttachment}
           />
         </section>
         <section class="flex min-h-0 flex-col gap-2">
@@ -150,6 +152,7 @@
             markdown={cookedMarkdown}
             previews={attachmentPreviews}
             disabled={true}
+            {onOpenAttachment}
           />
         </section>
       </div>
@@ -159,6 +162,7 @@
         markdown={displayedMarkdown}
         previews={attachmentPreviews}
         disabled={editingDisabled}
+        {onOpenAttachment}
         onChange={(markdown) => {
           if (!editingDisabled) onChange(markdown)
         }}

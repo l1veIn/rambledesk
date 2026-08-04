@@ -39,6 +39,7 @@
   export let onFileSelection: (event: Event) => void = () => {}
   export let onInsertAttachment: (attachment: AttachmentView) => void = () => {}
   export let onRemoveAttachment: (attachment: AttachmentView) => void = () => {}
+  export let onPreviewAttachment: (attachment: AttachmentView) => void = () => {}
   export let onOpenPackage: () => void = () => {}
   export let onSubmit: () => void = () => {}
   export let onCancel: () => void = () => {}
@@ -89,6 +90,7 @@
     readOnly={readOnly || interactionLocked}
     onInsert={onInsertAttachment}
     onRemove={onRemoveAttachment}
+    onPreview={onPreviewAttachment}
   />
 
   <RambelleStatusCard

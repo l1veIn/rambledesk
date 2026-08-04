@@ -334,4 +334,40 @@ impl SqliteFeedbackStore {
         .ok_or(RepositoryError::AttachmentNotFound)?;
         tokio::fs::read(path).await.map_err(storage_error)
     }
+
+    pub(super) async fn resolve_attachment_path_impl(
+        &self,
+        request_id: &str,
+        attachment_id: &str,
+    ) -> Result<String, RepositoryError> {
+        let path = sqlx::query_scalar(
+            "SELECT COALESCE(published_path, draft_path) FROM attachments \
+             WHERE request_id = ?1 AND id = ?2",
+        )
+        .bind(request_id)
+        .bind(attachment_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(storage_error)?
+        .ok_or(RepositoryError::AttachmentNotFound)?;
+        Ok(path)
+    }
+
+    pub(super) async fn resolve_request_attachment_path_impl(
+        &self,
+        request_id: &str,
+        attachment_id: &str,
+    ) -> Result<String, RepositoryError> {
+        let path = sqlx::query_scalar(
+            "SELECT COALESCE(published_path, draft_path) FROM request_attachments \
+             WHERE request_id = ?1 AND id = ?2",
+        )
+        .bind(request_id)
+        .bind(attachment_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(storage_error)?
+        .ok_or(RepositoryError::AttachmentNotFound)?;
+        Ok(path)
+    }
 }

@@ -23,6 +23,7 @@ mod migration_compat;
 mod paths;
 mod publication_paths;
 mod request_ops;
+mod resolve_ops;
 mod submission_ops;
 mod workspace_ops;
 

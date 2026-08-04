@@ -28,10 +28,42 @@ test("normalizes Pi request params without model-supplied host identity", () => 
     what_happened: "A workflow changed.",
     actions: [{ id: "check", instruction: "Check the workflow." }],
     context_refs: [],
+    attachments: [],
     source_hint: "/tmp/rambledesk",
     allow_finish: false,
     final_summary: undefined,
   });
+});
+
+test("passes markdown and image attachments through normalization", () => {
+  const input = {
+    title: "Review",
+    what_happened: "A workflow changed.",
+    actions: [{ id: "check", instruction: "Check the workflow." }],
+    attachments: [
+      {
+        file_name: "brief.md",
+        markdown: "# Brief\n\nReview these notes.",
+      },
+      {
+        file_name: "screenshot.png",
+        contents_base64: "iVBORw0KGgoAAAANSUhEUg==",
+      },
+    ],
+  };
+
+  assert.deepEqual(normalizeRequestParams(input, { cwd: "/tmp/rambledesk" }, {}).attachments, [
+    { file_name: "brief.md", markdown: "# Brief\n\nReview these notes." },
+    { file_name: "screenshot.png", contents_base64: "iVBORw0KGgoAAAANSUhEUg==" },
+  ]);
+  assert.deepEqual(
+    normalizeRequestParams({
+      title: "Review",
+      what_happened: "A workflow changed.",
+      actions: [{ id: "check", instruction: "Check the workflow." }],
+    }, { cwd: "/tmp/rambledesk" }, {}).attachments,
+    [],
+  );
 });
 
 test("uses Pi's session manager id instead of grouping requests by cwd", () => {
