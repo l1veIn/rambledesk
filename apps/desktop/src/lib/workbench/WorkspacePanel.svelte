@@ -20,6 +20,7 @@
   } from './types'
   import CommandRail from './CommandRail.svelte'
   import FeedbackEditorPanel from './FeedbackEditorPanel.svelte'
+  import RequestAttachmentPreview from './RequestAttachmentPreview.svelte'
   import TaskBriefPanel from './TaskBriefPanel.svelte'
   import WorkspaceHeader from './WorkspaceHeader.svelte'
 
@@ -128,6 +129,21 @@
   export function removeAttachmentReference(attachmentId: string) {
     feedbackEditor?.removeAttachmentReference(attachmentId)
   }
+
+  let previewOpen = false
+  let previewAttachment: AttachmentView | null = null
+
+  function openAttachmentPreview(attachment: AttachmentView) {
+    previewAttachment = attachment
+    previewOpen = true
+  }
+
+  function openAttachmentPreviewById(attachmentId: string) {
+    const attachment = workspace?.attachments.find(
+      (item) => item.attachment_id === attachmentId,
+    )
+    if (attachment) openAttachmentPreview(attachment)
+  }
 </script>
 
 <section class="workspace-panel relative flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background">
@@ -188,6 +204,7 @@
               cookedMarkdown={publishedFeedback?.markdown ?? ''}
               uncookedMarkdown={publishedFeedback?.uncooked_markdown ?? draftBody}
               onChange={onDraftChange}
+              onOpenAttachment={openAttachmentPreviewById}
             />
           </Pane>
         </PaneGroup>
@@ -224,12 +241,20 @@
         {onFileSelection}
         {onInsertAttachment}
         {onRemoveAttachment}
+        onPreviewAttachment={openAttachmentPreview}
         {onOpenPackage}
         {onSubmit}
         {onCancel}
         {onApprove}
       />
     </div>
+
+    <RequestAttachmentPreview
+      bind:open={previewOpen}
+      requestId={workspace.request.request_id}
+      attachment={previewAttachment}
+      readKind="workspace"
+    />
   {:else}
     <div class="grid h-full place-items-center p-8 text-center">
       <div class="max-w-xs">

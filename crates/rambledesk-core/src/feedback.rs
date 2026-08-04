@@ -142,6 +142,18 @@ pub trait FeedbackRepository: Send + Sync {
         attachment_id: &str,
     ) -> Result<Vec<u8>, RepositoryError>;
 
+    async fn resolve_attachment_path(
+        &self,
+        request_id: &str,
+        attachment_id: &str,
+    ) -> Result<String, RepositoryError>;
+
+    async fn resolve_request_attachment_path(
+        &self,
+        request_id: &str,
+        attachment_id: &str,
+    ) -> Result<String, RepositoryError>;
+
     async fn plan_submission(
         &self,
         request_id: &str,

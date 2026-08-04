@@ -153,6 +153,95 @@ async fn attachments_share_revision_publish_in_order_and_survive_restart() {
 }
 
 #[tokio::test]
+async fn non_image_attachments_detect_publish_and_round_trip() {
+    let workspace = TestWorkspace::new().await;
+    let request_id = Uuid::now_v7().to_string();
+    let store = SqliteFeedbackStore::connect(&workspace.database)
+        .await
+        .expect("open store");
+    let application = store.clone().into_application();
+    application
+        .request_feedback(workspace.request(request_id.clone()))
+        .await
+        .expect("create request");
+
+    let pdf_bytes = b"%PDF-1.4\n1 0 obj\n%%EOF".to_vec();
+    let pdf = application
+        .add_feedback_attachment(AddAttachmentInput {
+            request_id: request_id.clone(),
+            file_name: "plan.pdf".to_owned(),
+            contents: pdf_bytes.clone(),
+            expected_revision: 0,
+        })
+        .await
+        .expect("add pdf attachment");
+    assert_eq!(pdf.attachments[0].media_type, "application/pdf");
+    assert_eq!(pdf.attachments[0].file_name, "plan.pdf");
+    let pdf_id = pdf.attachments[0].attachment_id.clone();
+    assert_eq!(
+        application
+            .read_feedback_attachment(request_id.clone(), pdf_id.clone())
+            .await
+            .expect("read pdf"),
+        pdf_bytes
+    );
+
+    let md = application
+        .add_feedback_attachment(AddAttachmentInput {
+            request_id: request_id.clone(),
+            file_name: "notes.md".to_owned(),
+            contents: b"# Notes".to_vec(),
+            expected_revision: 1,
+        })
+        .await
+        .expect("add markdown attachment");
+    assert_eq!(md.attachments[1].media_type, "text/markdown");
+
+    let unknown = application
+        .add_feedback_attachment(AddAttachmentInput {
+            request_id: request_id.clone(),
+            file_name: "archive.zzz".to_owned(),
+            contents: b"\x00\x01binary".to_vec(),
+            expected_revision: 2,
+        })
+        .await
+        .expect("add unknown attachment");
+    assert_eq!(unknown.attachments[2].media_type, "application/octet-stream");
+
+    let draft = application
+        .save_feedback_draft(SaveDraftInput {
+            request_id: request_id.clone(),
+            body_markdown: format!(
+                "方案见 [plan](attachment://{pdf_id})，笔记见 [notes](attachment://{pdf_id})"
+            ),
+            expected_revision: 3,
+        })
+        .await
+        .expect("save draft");
+    let submitted = application
+        .submit_feedback(SubmitFeedbackInput {
+            request_id: request_id.clone(),
+            expected_revision: draft.saved_revision,
+            cooked_markdown: None,
+            cooking_model: None,
+        })
+        .await
+        .expect("publish feedback");
+    let result = submitted.feedback.expect("feedback package");
+    let published = tokio::fs::read_to_string(&result.markdown_path)
+        .await
+        .expect("published Markdown");
+    assert!(published.contains("[plan](attachments/001-plan.pdf)"));
+    assert!(published.contains("[notes](attachments/001-plan.pdf)"));
+    let published_pdf = Path::new(&result.directory_path).join("attachments/001-plan.pdf");
+    assert_eq!(
+        tokio::fs::read(published_pdf).await.expect("published pdf"),
+        pdf_bytes
+    );
+    store.close().await;
+}
+
+#[tokio::test]
 async fn request_list_filters_and_paginates_without_duplicates() {
     let workspace = TestWorkspace::new().await;
     let store = SqliteFeedbackStore::connect(&workspace.database)

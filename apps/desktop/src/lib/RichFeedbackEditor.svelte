@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Editor } from '@tiptap/core'
+  import { Editor, Node } from '@tiptap/core'
   import Image from '@tiptap/extension-image'
   import { Markdown } from '@tiptap/markdown'
   import StarterKit from '@tiptap/starter-kit'
@@ -21,11 +21,13 @@
   import {
     attachmentIdFromUrl,
     attachmentMarkdownUrl,
+    isImageMediaType,
   } from './attachmentMarkdown'
 
   export let markdown = ''
   export let previews: Record<string, string> = {}
   export let disabled = false
+  export let onOpenAttachment: (attachmentId: string) => void = () => {}
   export let onChange: (markdown: string) => void = () => {}
 
   let editorHost: HTMLDivElement
@@ -33,6 +35,8 @@
   let applyingExternalChange = false
   let editorMarkdown = ''
   let insertionPosition = 0
+  let openAttachmentHandler = (_attachmentId: string) => {}
+  $: openAttachmentHandler = onOpenAttachment
 
   const AttachmentImage = Image.extend({
     addAttributes() {
@@ -61,6 +65,111 @@
     },
   })
 
+  // A clickable chip for a non-image attachment, serialized as a markdown
+  // link `[fileName](attachment://id)`. A custom marked tokenizer claims
+  // `attachment://` links before StarterKit's built-in Link mark so they
+  // parse back into this node instead of a link mark.
+  const AttachmentFile = Node.create({
+    name: 'attachmentFile',
+    group: 'inline',
+    inline: true,
+    atom: true,
+    selectable: true,
+
+    addAttributes() {
+      return {
+        attachmentId: {
+          default: null,
+          parseHTML: (element) => element.getAttribute('data-attachment-id'),
+          renderHTML: (attributes) =>
+            attributes.attachmentId
+              ? { 'data-attachment-id': attributes.attachmentId }
+              : {},
+        },
+        fileName: {
+          default: '',
+          parseHTML: (element) => element.getAttribute('data-file-name'),
+          renderHTML: (attributes) =>
+            attributes.fileName ? { 'data-file-name': attributes.fileName } : {},
+        },
+        mediaType: {
+          default: '',
+          parseHTML: (element) => element.getAttribute('data-media-type'),
+          renderHTML: (attributes) =>
+            attributes.mediaType ? { 'data-media-type': attributes.mediaType } : {},
+        },
+      }
+    },
+
+    markdownTokenName: 'attachmentFile',
+    markdownTokenizer: {
+      name: 'attachmentFile',
+      level: 'inline',
+      start: (src) => src.indexOf('['),
+      tokenize: (src) => {
+        const match = /^\[([^\]]*)\]\(attachment:\/\/([0-9a-fA-F-]+)\)/.exec(src)
+        if (!match) return undefined
+        return { type: 'attachmentFile', raw: match[0], text: match[1], attachmentId: match[2] }
+      },
+    },
+    parseMarkdown: (token, helpers) =>
+      helpers.createNode('attachmentFile', {
+        attachmentId: token.attachmentId,
+        fileName: token.text || token.attachmentId,
+        mediaType: '',
+      }),
+
+    renderHTML({ node }) {
+      const attachmentId = node.attrs.attachmentId ?? ''
+      const fileName = node.attrs.fileName || attachmentId || 'attachment'
+      const ext = (fileName.split('.').pop() || 'FILE').toUpperCase().slice(0, 4)
+      return [
+        'a',
+        {
+          href: attachmentMarkdownUrl(attachmentId),
+          'data-attachment-id': attachmentId,
+          'data-file-name': fileName,
+          'data-media-type': node.attrs.mediaType ?? '',
+          class: 'attachment-file-chip',
+          contenteditable: 'false',
+        },
+        ['span', { class: 'attachment-file-chip-ext' }, ext],
+        ['span', { class: 'attachment-file-chip-label' }, fileName],
+      ]
+    },
+
+    parseHTML() {
+      return [
+        {
+          tag: 'a[href^="attachment://"]',
+          getAttrs: (element) => {
+            const href = element.getAttribute('href') ?? ''
+            return {
+              attachmentId:
+                element.getAttribute('data-attachment-id') ??
+                attachmentIdFromUrl(href) ??
+                null,
+              fileName:
+                element.getAttribute('data-file-name') ??
+                element.textContent?.trim() ??
+                '',
+              mediaType: element.getAttribute('data-media-type') ?? '',
+            }
+          },
+        },
+      ]
+    },
+
+    renderMarkdown: (node) => {
+      const url = attachmentMarkdownUrl(node.attrs?.attachmentId ?? '')
+      const label = (node.attrs?.fileName || node.attrs?.attachmentId || '').replace(
+        /([\[\]])/g,
+        '\\$1',
+      )
+      return `[${label}](${url})`
+    },
+  })
+
   onMount(() => {
     editor = new Editor({
       element: editorHost,
@@ -69,6 +178,7 @@
           heading: { levels: [2, 3] },
         }),
         AttachmentImage,
+        AttachmentFile,
         Markdown,
       ],
       content: markdown,
@@ -79,6 +189,17 @@
           class: 'feedback-prose',
           'aria-label': t($locale, 'Markdown 富文本反馈正文'),
           'data-placeholder': t($locale, '记录你看见了什么、哪里顺畅、哪里让你停顿。'),
+        },
+        handleClick: (view, pos, event) => {
+          const target = event.target as HTMLElement | null
+          const chip = target?.closest?.('a.attachment-file-chip')
+          if (!chip) return false
+          const attachmentId = chip.getAttribute('data-attachment-id')
+          if (!attachmentId) return false
+          event.preventDefault()
+          event.stopPropagation()
+          openAttachmentHandler(attachmentId)
+          return true
         },
       },
       onCreate: () => {
@@ -159,26 +280,46 @@
     if (!editor || attachments.length === 0) return false
     const referencedIds = new Set<string>()
     editor.state.doc.descendants((node) => {
-      if (node.type.name !== 'image') return
+      if (node.type.name !== 'image' && node.type.name !== 'attachmentFile') return
       const attachmentId =
         node.attrs.attachmentId ?? attachmentIdFromUrl(node.attrs.src)
       if (attachmentId) referencedIds.add(attachmentId)
     })
     const content = attachments
       .filter((attachment) => !referencedIds.has(attachment.attachment_id))
-      .flatMap((attachment) => [
-        {
-          type: 'image',
-          attrs: {
-            src:
-              previews[attachment.attachment_id] ??
-              attachmentMarkdownUrl(attachment.attachment_id),
-            alt: attachment.file_name,
-            attachmentId: attachment.attachment_id,
+      .flatMap((attachment) => {
+        if (isImageMediaType(attachment.media_type)) {
+          return [
+            {
+              type: 'image',
+              attrs: {
+                src:
+                  previews[attachment.attachment_id] ??
+                  attachmentMarkdownUrl(attachment.attachment_id),
+                alt: attachment.file_name,
+                attachmentId: attachment.attachment_id,
+              },
+            },
+            { type: 'paragraph' },
+          ]
+        }
+        return [
+          {
+            type: 'paragraph',
+            content: [
+              {
+                type: 'attachmentFile',
+                attrs: {
+                  attachmentId: attachment.attachment_id,
+                  fileName: attachment.file_name,
+                  mediaType: attachment.media_type,
+                },
+              },
+            ],
           },
-        },
-        { type: 'paragraph' },
-      ])
+          { type: 'paragraph' },
+        ]
+      })
     if (content.length === 0) return false
     const position = Math.min(
       Math.max(insertionPosition, 0),
@@ -274,6 +415,11 @@
         node.type.name === 'image' &&
         (node.attrs.attachmentId ?? attachmentIdFromUrl(node.attrs.src)) ===
           attachmentId
+      ) {
+        ranges.push({ from: position, to: position + node.nodeSize })
+      } else if (
+        node.type.name === 'attachmentFile' &&
+        node.attrs.attachmentId === attachmentId
       ) {
         ranges.push({ from: position, to: position + node.nodeSize })
       }
@@ -423,5 +569,37 @@
 
   .editor-host :global(.feedback-prose.ProseMirror-focused) {
     box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--ring) 30%, transparent);
+  }
+
+  .editor-host :global(.feedback-prose a.attachment-file-chip) {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 2px;
+    padding: 2px 10px 2px 4px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--muted) 55%, transparent);
+    color: var(--foreground);
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    font-size: 12px;
+    line-height: 1.4;
+    text-decoration: none;
+    cursor: pointer;
+    vertical-align: middle;
+  }
+
+  .editor-host :global(.feedback-prose a.attachment-file-chip:hover) {
+    border-color: var(--primary);
+  }
+
+  .editor-host :global(.attachment-file-chip-ext) {
+    padding: 1px 5px;
+    border-radius: 999px;
+    background: var(--primary);
+    color: var(--primary-foreground);
+    font-size: 9px;
+    font-weight: 650;
+    letter-spacing: 0.03em;
   }
 </style>

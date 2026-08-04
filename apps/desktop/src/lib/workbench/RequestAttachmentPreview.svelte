@@ -1,20 +1,21 @@
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core'
-  import { AlertCircle, Expand, LoaderCircle } from '@lucide/svelte'
+  import { AlertCircle, Expand, ExternalLink, FileQuestion, LoaderCircle } from '@lucide/svelte'
   import { onDestroy, tick } from 'svelte'
   import Viewer from 'viewerjs'
   import 'viewerjs/dist/viewer.css'
 
   import { Button } from '$lib/components/ui/button'
   import * as Dialog from '$lib/components/ui/dialog'
-  import type { RequestAttachmentView } from '$lib/feedback'
+  import type { AttachmentView, RequestAttachmentView } from '$lib/feedback'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
   import MarkdownPreview from './MarkdownPreview.svelte'
 
   export let open = false
   export let requestId = ''
-  export let attachment: RequestAttachmentView | null = null
+  export let readKind: 'request' | 'workspace' = 'request'
+  export let attachment: (RequestAttachmentView & AttachmentView) | null = null
 
   let loading = false
   let error = ''
@@ -23,6 +24,9 @@
   let imageElement: HTMLImageElement
   let viewer: Viewer | null = null
   let viewerReady = false
+  let unsupported = false
+  let openMessage = ''
+  let openError = ''
   let loadedKey = ''
   let loadGeneration = 0
 
@@ -43,13 +47,23 @@
     loading = true
     error = ''
     markdown = ''
+    unsupported = false
+    openMessage = ''
+    openError = ''
     try {
-      const bytes = await invoke<ArrayBuffer>('read_request_attachment', {
-        requestId,
-        attachmentId: current.attachment_id,
-      })
+      const raw =
+        readKind === 'workspace'
+          ? await invoke<number[]>('read_feedback_attachment', {
+              requestId,
+              attachmentId: current.attachment_id,
+            })
+          : await invoke<ArrayBuffer>('read_request_attachment', {
+              requestId,
+              attachmentId: current.attachment_id,
+            })
       if (generation !== loadGeneration || !open) return
-      const buffer = new Uint8Array(bytes)
+      const buffer =
+        raw instanceof ArrayBuffer ? new Uint8Array(raw) : Uint8Array.from(raw)
       if (current.media_type === 'text/markdown') {
         markdown = new TextDecoder('utf-8', { fatal: true }).decode(buffer)
       } else if (current.media_type.startsWith('image/')) {
@@ -79,7 +93,7 @@
         })
         viewerReady = true
       } else {
-        throw new Error(tr('不支持预览这种附件格式。'))
+        unsupported = true
       }
     } catch (cause) {
       if (generation !== loadGeneration) return
@@ -104,7 +118,29 @@
     loading = false
     error = ''
     markdown = ''
+    unsupported = false
+    openMessage = ''
+    openError = ''
     releaseMedia()
+  }
+
+  async function openExternally() {
+    const current = attachment
+    if (!current || !requestId) return
+    openError = ''
+    openMessage = ''
+    try {
+      const path = await invoke<string>('open_feedback_attachment', {
+        input: {
+          requestId,
+          attachmentId: current.attachment_id,
+          kind: readKind,
+        },
+      })
+      openMessage = tr('已在系统默认应用中打开：{path}', { path })
+    } catch (cause) {
+      openError = messageFrom(cause)
+    }
   }
 
   function releaseMedia() {
@@ -185,6 +221,26 @@
             <Expand />
             {tr('缩放查看')}
           </Button>
+        </div>
+      {:else if unsupported}
+        <div class="grid h-full place-items-center text-center">
+          <div class="max-w-sm">
+            <FileQuestion class="mx-auto size-6 text-muted-foreground" />
+            <strong class="mt-3 block text-sm">{tr('此类型不支持预览')}</strong>
+            <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
+              {attachment?.file_name}
+            </p>
+            {#if openMessage}
+              <p class="m-0 mt-2 text-xs text-emerald-600">{openMessage}</p>
+            {/if}
+            {#if openError}
+              <p class="m-0 mt-2 break-all text-xs leading-5 text-muted-foreground">{openError}</p>
+            {/if}
+            <Button class="mt-4" onclick={() => void openExternally()}>
+              <ExternalLink class="size-4" />
+              {tr('用系统默认应用打开')}
+            </Button>
+          </div>
         </div>
       {/if}
     </div>
