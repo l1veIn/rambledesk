@@ -2,7 +2,9 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**面向 Coding 宿主的本地体验式反馈工作台。**
+![RambleDesk](docs/social/ramble-banner-text2-1400x700.webp)
+
+**把人类封装成 API，提供给 Coding Agent。** 收集你的胡言乱语，整理成提示词。
 
 宿主发出结构化请求；你真实使用目标产品，边用边说，按需截图，然后提交一份带图的反馈包。宿主读取反馈包后继续开发，而不是从零散聊天里拼上下文。
 
@@ -22,8 +24,18 @@ RambleDesk 把这次交接变成正式闭环：
 
 ## 当前能力
 
+**Ramble 内的工具** —— 你捕获的一切都会实时落入反馈包对应位置：
+
+- **截图**：框选区域后可标注（画笔、箭头、文字），图片自动插入光标处。
+- **剪贴板导入**：一键把复制的文字或图片带标签和时间戳写入文档。
+- **文件导入**：通过选择器或拖放附加图片或任意文件，每个文件不超过 20 MiB。
+- **图片粘贴**：直接粘贴剪贴板截图到文档。
+- **语音记录 + 本地转写**：使用产品的同时开口说话，语音在本机流式转写（X-ASR、SenseVoice 或 FunASR-Nano）并写入正文。
+- **附件管理**：在光标处插入、排序或移除附件，预览实时更新。
+
+Ramble 之外：
+
 - SQLite 持久 Inbox，支持 waiting、in-progress、completed、cancelled 状态。
-- Request Workspace：富文本编辑、截图、附件、剪贴板捕获、本地流式语音转写。
 - 不可变 Feedback Package：`feedback.md`、`manifest.json` 与附件。
 - 带认证的本地 loopback server，提供 `/api/feedback/request|get|wait|cancel` 与 `/mcp`。
 - 通用 MCP 适配器薄层，工具为 `request_feedback`、`get_feedback`、`cancel_feedback`。

@@ -2,7 +2,9 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**A local, experiential feedback desk for coding hosts.**
+![RambleDesk](docs/social/ramble-banner-en-1400x700.webp)
+
+**Humans, as an API, for coding agents.** Collect your rambling, shape it into prompts.
 
 A coding host sends a structured request. You use the target product for real, talk through what you notice, capture the screen, and submit an image-rich feedback package. The host reads that package and continues with durable evidence instead of scattered chat.
 
@@ -22,8 +24,18 @@ Requests survive transport disconnects and application restarts. The feedback li
 
 ## Current Capabilities
 
+**Tools inside a Ramble** — everything you capture lands in the feedback package, in place:
+
+- **Screen capture** — select a region and annotate it (draw, arrows, text); the image is inserted at your cursor.
+- **Clipboard import** — pull copied text or images into the document in one click, with a label and timestamp.
+- **File import** — attach images or any file via picker or drag-and-drop, up to 20 MiB each.
+- **Paste** — paste a screenshot straight into the document.
+- **Voice with on-device transcription** — talk while you use the product; speech is transcribed locally (X-ASR, SenseVoice, or FunASR-Nano) into the body.
+- **Attachment management** — insert at the cursor, reorder, or remove; previews update in place.
+
+Beyond the Ramble:
+
 - Durable Inbox backed by SQLite, with waiting, in-progress, completed, and cancelled states.
-- Request Workspace with rich-text editing, screenshots, attachments, clipboard capture, and local streaming speech transcription.
 - Immutable Feedback Packages containing `feedback.md`, `manifest.json`, and attachments.
 - Authenticated loopback local server with `/api/feedback/request|get|wait|cancel` and `/mcp`.
 - Thin Generic MCP Adapter with `request_feedback`, `get_feedback`, and `cancel_feedback`.
