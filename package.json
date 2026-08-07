@@ -1,7 +1,7 @@
 {
   "name": "rambledesk",
   "private": true,
-  "version": "0.0.2-rc.1",
+  "version": "0.0.2-rc.2",
   "packageManager": "pnpm@10.12.4",
   "scripts": {
     "dev": "pnpm -C apps/desktop tauri dev",
