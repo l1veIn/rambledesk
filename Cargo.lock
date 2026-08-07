@@ -4574,9 +4574,13 @@ name = "rambledesk-mcp"
 version = "0.0.2-rc.2"
 dependencies = [
  "rambledesk-core",
+ "rambledesk-hosts",
  "rmcp",
+ "serde",
  "serde_json",
+ "tempfile",
  "tokio",
+ "toml_edit 0.23.10+spec-1.0.0",
 ]
 
 [[package]]

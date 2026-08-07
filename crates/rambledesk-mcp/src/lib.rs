@@ -13,6 +13,10 @@ use rmcp::{
     tool, tool_handler, tool_router,
 };
 
+mod install;
+
+pub use install::{McpHostView, McpInstallResult, detect_hosts, install_hosts};
+
 tokio::task_local! {
     static REQUEST_HOST: Option<String>;
 }
