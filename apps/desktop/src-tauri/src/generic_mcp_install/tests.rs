@@ -66,11 +66,15 @@ fn codex_install_preserves_unrelated_toml_and_omits_stdio_env() {
     )
     .expect("host entry");
     assert_eq!(
-        write_codex_config(&path, &entry).expect("install"),
+        codex::HOST
+            .write_config(&path, entry.clone())
+            .expect("install"),
         "updated"
     );
     assert_eq!(
-        write_codex_config(&path, &entry).expect("repeat"),
+        codex::HOST
+            .write_config(&path, entry.clone())
+            .expect("repeat"),
         "unchanged"
     );
     let written = fs::read_to_string(path).expect("read");
@@ -99,7 +103,7 @@ fn codex_install_repairs_legacy_streamable_http_env() {
         ),
     )
     .expect("seed legacy config");
-    assert!(!codex_is_configured(&path));
+    assert!(!codex::HOST.is_configured(&path));
     let entry = entry_for_host(
         &extract_server_entry(&configuration()).expect("entry"),
         "codex",
@@ -107,7 +111,9 @@ fn codex_install_repairs_legacy_streamable_http_env() {
     .expect("host entry");
 
     assert_eq!(
-        write_codex_config(&path, &entry).expect("repair"),
+        codex::HOST
+            .write_config(&path, entry.clone())
+            .expect("repair"),
         "updated"
     );
     let written = fs::read_to_string(&path).expect("read");
@@ -115,7 +121,7 @@ fn codex_install_repairs_legacy_streamable_http_env() {
     assert!(written.contains("[mcp_servers.rambledesk.http_headers]"));
     assert!(!written.contains("[mcp_servers.rambledesk.env]"));
     assert!(!written.contains("RAMBLEDESK_HOST"));
-    assert!(codex_is_configured(&path));
+    assert!(codex::HOST.is_configured(&path));
 }
 
 #[test]
@@ -133,11 +139,15 @@ fn opencode_install_preserves_sibling_servers_and_uses_remote_shape() {
     )
     .expect("host entry");
     assert_eq!(
-        write_opencode_config(&path, &entry).expect("install"),
+        opencode::HOST
+            .write_config(&path, entry.clone())
+            .expect("install"),
         "updated"
     );
     assert_eq!(
-        write_opencode_config(&path, &entry).expect("repeat"),
+        opencode::HOST
+            .write_config(&path, entry.clone())
+            .expect("repeat"),
         "unchanged"
     );
     let written: Value =
@@ -182,11 +192,15 @@ fn reasonix_install_preserves_sibling_plugins_and_is_idempotent() {
     )
     .expect("host entry");
     assert_eq!(
-        write_reasonix_config(&path, &entry).expect("install"),
+        reasonix::HOST
+            .write_config(&path, entry.clone())
+            .expect("install"),
         "updated"
     );
     assert_eq!(
-        write_reasonix_config(&path, &entry).expect("repeat"),
+        reasonix::HOST
+            .write_config(&path, entry.clone())
+            .expect("repeat"),
         "unchanged"
     );
     let written = fs::read_to_string(&path).expect("read");
@@ -198,7 +212,7 @@ fn reasonix_install_preserves_sibling_plugins_and_is_idempotent() {
     assert!(written.contains("x-rambledesk-host"));
     assert!(written.contains("reasonix"));
     assert!(!written.contains("RAMBLEDESK_HOST"));
-    assert!(reasonix_is_configured(&path));
+    assert!(reasonix::HOST.is_configured(&path));
 }
 
 #[test]
@@ -211,10 +225,12 @@ fn reasonix_install_creates_config_and_replaces_existing_entry() {
     )
     .expect("host entry");
     assert_eq!(
-        write_reasonix_config(&path, &entry).expect("create"),
+        reasonix::HOST
+            .write_config(&path, entry.clone())
+            .expect("create"),
         "created"
     );
-    assert!(reasonix_is_configured(&path));
+    assert!(reasonix::HOST.is_configured(&path));
 
     fs::write(
         &path,
@@ -222,13 +238,15 @@ fn reasonix_install_creates_config_and_replaces_existing_entry() {
     )
     .expect("seed stale entry");
     assert_eq!(
-        write_reasonix_config(&path, &entry).expect("replace"),
+        reasonix::HOST
+            .write_config(&path, entry.clone())
+            .expect("replace"),
         "updated"
     );
     let written = fs::read_to_string(&path).expect("read");
     assert!(written.contains("type = \"http\""));
     assert!(!written.contains("stale"));
-    assert!(reasonix_is_configured(&path));
+    assert!(reasonix::HOST.is_configured(&path));
 }
 
 #[test]
@@ -241,7 +259,7 @@ fn reasonix_home_respects_override_and_windows_appdata() {
     unsafe {
         std::env::set_var("REASONIX_HOME", home.join("portable"));
     }
-    let overridden = reasonix_home(home);
+    let overridden = reasonix::reasonix_home(home);
     match previous_override {
         Some(value) => unsafe { std::env::set_var("REASONIX_HOME", value) },
         None => unsafe { std::env::remove_var("REASONIX_HOME") },
@@ -250,7 +268,7 @@ fn reasonix_home_respects_override_and_windows_appdata() {
     #[cfg(windows)]
     {
         unsafe { std::env::remove_var("APPDATA") };
-        let default_home = reasonix_home(home);
+        let default_home = reasonix::reasonix_home(home);
         match previous_appdata {
             Some(value) => unsafe { std::env::set_var("APPDATA", value) },
             None => unsafe { std::env::remove_var("APPDATA") },
@@ -262,6 +280,6 @@ fn reasonix_home_respects_override_and_windows_appdata() {
     }
     #[cfg(not(windows))]
     {
-        assert_eq!(reasonix_home(home), home.join(".reasonix"));
+        assert_eq!(reasonix::reasonix_home(home), home.join(".reasonix"));
     }
 }
