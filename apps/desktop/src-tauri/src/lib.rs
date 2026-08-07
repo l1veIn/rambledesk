@@ -1,5 +1,4 @@
 mod clipboard_capture;
-mod generic_mcp_install;
 mod logging;
 mod open_attachment;
 mod pi_install;
