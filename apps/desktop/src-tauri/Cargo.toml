@@ -22,6 +22,7 @@ tauri-build.workspace = true
 rambledesk-core.workspace = true
 rambledesk-hosts.workspace = true
 rambledesk-local-server.workspace = true
+rambledesk-mcp.workspace = true
 rambledesk-speech.workspace = true
 rambledesk-storage.workspace = true
 serde.workspace = true

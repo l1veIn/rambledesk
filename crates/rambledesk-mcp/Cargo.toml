@@ -9,6 +9,12 @@ description = "Generic MCP adapter tool surface for RambleDesk"
 
 [dependencies]
 rambledesk-core.workspace = true
+rambledesk-hosts.workspace = true
 rmcp.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
+toml_edit = "0.23"
+
+[dev-dependencies]
+tempfile.workspace = true

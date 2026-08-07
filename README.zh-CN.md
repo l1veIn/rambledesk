@@ -38,7 +38,7 @@ Ramble 之外：
 - SQLite 持久 Inbox，支持 waiting、in-progress、completed、cancelled 状态。
 - 不可变 Feedback Package：`feedback.md`、`manifest.json` 与附件。
 - 带认证的本地 loopback server，提供 `/api/feedback/request|get|wait|cancel` 与 `/mcp`。
-- 通用 MCP 适配器薄层，工具为 `request_feedback`、`get_feedback`、`cancel_feedback`。
+- 通用 MCP 适配器方案：工具为 `request_feedback`、`get_feedback`、`cancel_feedback`，并带消费宿主知识注册表的检测/安装引擎。
 - Pi 原生 package 位于 `packages/pi-rambledesk`，使用本地 JSON API，并在 Pi tool call 内等待终态。
 - 适配器设置：Generic MCP 宿主配置、Pi package 安装。
 - 首次使用引导：语言、数据位置、本地语音、适配器、通知和可选 Cooking；可从 **设置 → 通用** 再次启用。
@@ -114,14 +114,14 @@ apps/desktop                   Tauri 2 + Svelte 5 工作台与装配根
 crates/rambledesk-core         Application contract、状态机、ports、use cases
 crates/rambledesk-storage      SQLite、草稿、附件、反馈包发布
 crates/rambledesk-local-server Loopback listener、auth、JSON API、route mounting
-crates/rambledesk-mcp          通用 MCP 适配器薄层
-crates/rambledesk-hosts        Host profiles 与 continuation strategies
+crates/rambledesk-mcp          通用 MCP 适配器方案（工具面 + 宿主安装引擎）
+crates/rambledesk-hosts        宿主知识注册表、profiles 与 continuation strategies
 crates/rambledesk-speech       原生音频采集与本地流式转写
 crates/rambledesk-cli          无界面开发入口与协议验证工具
 packages/pi-rambledesk         Pi 原生适配器 package
 ```
 
-`core` 持有 application contract。Storage、local server、MCP、hosts、speech、CLI 和 Tauri 都是适配层或装配层，不能持有第二套业务状态。
+`core` 持有 application contract。Storage、local server、host knowledge、speech、CLI 和 Tauri 都是基础设施层或装配层；Generic MCP 与 Pi 是完整的宿主适配方案。任何一层都不能成为第二套业务状态。
 
 ## 文档
 

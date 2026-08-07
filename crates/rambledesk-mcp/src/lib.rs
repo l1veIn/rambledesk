@@ -1,4 +1,9 @@
-//! Generic MCP adapter tool surface for RambleDesk.
+//! Generic MCP Adapter scheme for RambleDesk.
+//!
+//! The complete adapter, mirroring `packages/pi-rambledesk`: the server tool
+//! surface plus a client-side detect/install engine. All per-host knowledge
+//! (executable names, config paths, `ConfigFormat`) lives in
+//! `rambledesk-hosts`; this crate only executes against it.
 
 use std::future::Future;
 
@@ -12,6 +17,10 @@ use rmcp::{
     model::{CallToolResult, ContentBlock, Implementation, ServerCapabilities, ServerInfo},
     tool, tool_handler, tool_router,
 };
+
+mod install;
+
+pub use install::{McpHostView, McpInstallResult, detect_hosts, install_hosts};
 
 tokio::task_local! {
     static REQUEST_HOST: Option<String>;

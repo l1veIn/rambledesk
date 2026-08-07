@@ -14,7 +14,7 @@ use std::{
 
 use rambledesk_hosts::{HostProfile, host_profile};
 
-use crate::platform::process::find_executable;
+use rambledesk_core::find_executable;
 
 mod claude;
 mod codex;

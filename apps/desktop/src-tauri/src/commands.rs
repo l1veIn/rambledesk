@@ -19,9 +19,11 @@ use rambledesk_speech::{
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager, ipc::Response};
 
+use rambledesk_mcp::{McpHostView, McpInstallResult, detect_hosts, install_hosts};
+
 use super::{
-    TRAY_ID, WorkbenchState, continuation::deliver_continuation_after_terminal,
-    generic_mcp_install, migrate_library, pending_tray_icon, pi_install, save_library_path,
+    TRAY_ID, WorkbenchState, continuation::deliver_continuation_after_terminal, migrate_library,
+    pending_tray_icon, pi_install, save_library_path,
 };
 
 #[derive(Debug, Deserialize)]
@@ -135,14 +137,12 @@ pub(super) fn list_host_profiles() -> Vec<HostProfile> {
 }
 
 #[tauri::command]
-pub(super) fn detect_generic_mcp_hosts(
-    app: tauri::AppHandle,
-) -> Result<Vec<generic_mcp_install::McpHostView>, String> {
+pub(super) fn detect_generic_mcp_hosts(app: tauri::AppHandle) -> Result<Vec<McpHostView>, String> {
     let home = app
         .path()
         .home_dir()
         .map_err(|error| format!("Could not resolve the user home directory: {error}"))?;
-    Ok(generic_mcp_install::detect_hosts(&home))
+    Ok(detect_hosts(&home))
 }
 
 #[tauri::command]
@@ -150,12 +150,12 @@ pub(super) fn install_generic_mcp_hosts(
     host_ids: Vec<String>,
     app: tauri::AppHandle,
     state: tauri::State<'_, WorkbenchState>,
-) -> Result<Vec<generic_mcp_install::McpInstallResult>, String> {
+) -> Result<Vec<McpInstallResult>, String> {
     let home = app
         .path()
         .home_dir()
         .map_err(|error| format!("Could not resolve the user home directory: {error}"))?;
-    generic_mcp_install::install_hosts(&home, &host_ids, &state.generic_mcp_configuration)
+    install_hosts(&home, &host_ids, &state.generic_mcp_configuration)
 }
 
 #[tauri::command]

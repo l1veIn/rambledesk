@@ -1,5 +1,7 @@
 use serde::Serialize;
 
+use crate::HOSTS;
+
 const CLAUDE_ICON: &str = include_str!("../assets/icons/claude.svg");
 const CODEX_ICON: &str = include_str!("../assets/icons/openai.svg");
 const CURSOR_ICON: &str = include_str!("../assets/icons/cursor.svg");
@@ -84,20 +86,10 @@ fn generic_profile<'a>(
 }
 
 pub fn known_host_profiles() -> Vec<HostProfile> {
-    [
-        "claude",
-        "codex",
-        "cursor",
-        "gemini",
-        "pi",
-        "opencode",
-        "reasonix",
-        "inspector",
-        "generic",
-    ]
-    .into_iter()
-    .map(host_profile)
-    .collect()
+    HOSTS
+        .iter()
+        .map(|knowledge| host_profile(knowledge.id))
+        .collect()
 }
 
 #[cfg(test)]

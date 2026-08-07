@@ -73,13 +73,14 @@ rambledesk/
 - 定义通用 MCP tools、instructions、handlers；
 - 将 MCP 输入映射为 core application calls；
 - 将 core 结果与错误映射为 MCP structured content；
+- 执行宿主检测与配置写入（per-host 知识来自 `rambledesk-hosts` 注册表）；
 - 不持有 listener、token、JSON API、SQLite，也不向全局界面投影 transport 可用性。
 
 ### `rambledesk-hosts`
 
-- 持有 Host Profile catalog、标签、图标和适配器提示；
+- 持有宿主知识注册表（executable/marker/配置路径/`ConfigFormat`）、Host Profile catalog、标签、图标和适配器提示；
 - 持有 continuation payload、strategy contract 和手动恢复提示；
-- 不实现 MCP、Pi、storage 或 desktop UI。
+- 不实现 MCP、Pi、storage、desktop UI，也不持有适配器安装/写入执行逻辑。
 
 ### `packages/pi-rambledesk`
 

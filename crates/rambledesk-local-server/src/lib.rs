@@ -34,15 +34,12 @@ use tokio_util::sync::CancellationToken;
 
 pub use token::{AccessToken, TokenError, default_token_path};
 
+pub use rambledesk_core::{HOST_ENV_KEY, HOST_HEADER};
+
 pub const DEFAULT_PORT: u16 = 37_642;
 pub const MCP_PATH: &str = "/mcp";
 pub const API_PATH: &str = "/api";
 const MAX_ATTACHMENT_REQUEST_BODY_BYTES: usize = 96 * 1024 * 1024;
-
-/// Install-time / client-config host identity.
-pub const HOST_ENV_KEY: &str = "RAMBLEDESK_HOST";
-/// HTTP header mirror so the loopback server can see the installed host id.
-pub const HOST_HEADER: &str = "x-rambledesk-host";
 
 const DEFAULT_ALLOWED_ORIGINS: &[&str] = &[
     "tauri://localhost",

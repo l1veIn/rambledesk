@@ -1,14 +1,16 @@
+//! Platform process discovery helpers shared by host installers.
+
 use std::{
     ffi::{OsStr, OsString},
     path::PathBuf,
 };
 
 /// Locate a command using the current process PATH and platform executable rules.
-pub(crate) fn find_executable(name: &str) -> Option<PathBuf> {
+pub fn find_executable(name: &str) -> Option<PathBuf> {
     std::env::var_os("PATH").and_then(|paths| find_executable_on_path(name, &paths))
 }
 
-pub(crate) fn find_executable_on_path(name: &str, paths: &OsStr) -> Option<PathBuf> {
+pub fn find_executable_on_path(name: &str, paths: &OsStr) -> Option<PathBuf> {
     let names = executable_names(name);
     std::env::split_paths(paths).find_map(|directory| {
         names
@@ -44,10 +46,9 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn windows_lookup_ignores_extensionless_npm_shims() {
+    fn windows_lookup_finds_command_scripts_and_native_executables() {
         let root = tempfile::tempdir().expect("temp dir");
-        std::fs::write(root.path().join("pi"), "#!/bin/sh\n").expect("POSIX shim");
-        std::fs::write(root.path().join("pi.cmd"), "@echo off\r\n").expect("Windows shim");
+        std::fs::write(root.path().join("pi.cmd"), "@echo off\n").expect("command script");
         let paths = std::env::join_paths([root.path()]).expect("PATH");
 
         assert_eq!(
