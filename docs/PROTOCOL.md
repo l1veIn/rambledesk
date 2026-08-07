@@ -347,6 +347,13 @@ Input:
 6. 宿主智能体调用 `get_feedback(request_id)`；发生 MCP transport 断线后仍调用
    同一个 `get_feedback(request_id)`，不需要单独的恢复工具。
 
+可选优化（宿主交互确认工具）：若宿主提供原生交互确认工具（如 `ask`、
+`ask_choice`），宿主智能体可以在步骤 2 用它替代"直接结束 turn"：在工具调用内
+阻塞等待人类完成反馈，人类返回宿主后点击确认，宿主智能体随即调用
+`get_feedback(request_id)`。该等待发生在宿主原生通道，不受 MCP call timeout
+约束，也不消耗模型 token；headless 宿主或不支持交互确认的宿主继续使用默认
+流程。手动 continuation 提示始终保留为兜底。
+
 ## Pi 原生适配器
 
 Pi package 流程：

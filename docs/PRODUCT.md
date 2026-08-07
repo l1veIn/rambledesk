@@ -35,7 +35,7 @@ MVP 不做：
 | --- | --- |
 | 反馈请求 | 宿主智能体发给人类的一次体验/检查任务，用 `request_id` 标识。 |
 | 反馈包 | 人类提交后生成的不可变证据，包含 markdown、manifest 和附件。 |
-| 宿主 | 宿主智能体运行环境，例如 Pi、Claude Code、Codex、OpenCode。 |
+| 宿主 | 宿主智能体运行环境，例如 Pi、Claude Code、Codex、OpenCode、Reasonix。 |
 | 宿主会话 | 宿主中的原对话、任务或运行上下文；同一会话可产生多次请求。 |
 | 适配器 | 宿主接入 RambleDesk 的完整流程。 |
 | 工作台 | 人类处理反馈请求的桌面 UI。 |

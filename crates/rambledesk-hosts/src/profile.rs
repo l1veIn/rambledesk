@@ -5,6 +5,7 @@ const CODEX_ICON: &str = include_str!("../assets/icons/openai.svg");
 const CURSOR_ICON: &str = include_str!("../assets/icons/cursor.svg");
 const GEMINI_ICON: &str = include_str!("../assets/icons/google-gemini.svg");
 const PI_ICON: &str = include_str!("../assets/icons/pi.svg");
+const REASONIX_ICON: &str = include_str!("../assets/icons/reasonix.svg");
 const OPENCODE_ICON: &str = include_str!("../assets/icons/opencode.svg");
 const INSPECTOR_ICON: &str = include_str!("../assets/icons/model-context-protocol.svg");
 const GENERIC_ICON: &str = include_str!("../assets/icons/generic-terminal.svg");
@@ -48,6 +49,7 @@ pub fn host_profile(host_id: &str) -> HostProfile {
             ContinuationMode::NotRequired,
         ),
         "opencode" => generic_profile("opencode", "OpenCode", OPENCODE_ICON),
+        "reasonix" => generic_profile("reasonix", "Reasonix", REASONIX_ICON),
         "inspector" => generic_profile("inspector", "MCP Inspector", INSPECTOR_ICON),
         "" | "unknown" | "generic" => generic_profile("generic", "Generic Host", GENERIC_ICON),
         other => generic_profile(other, other, GENERIC_ICON),
@@ -89,6 +91,7 @@ pub fn known_host_profiles() -> Vec<HostProfile> {
         "gemini",
         "pi",
         "opencode",
+        "reasonix",
         "inspector",
         "generic",
     ]
@@ -111,6 +114,15 @@ mod tests {
     #[test]
     fn generic_hosts_declare_manual_continuation() {
         let profile = host_profile("codex");
+        assert_eq!(profile.default_adapter, HostAdapter::GenericMcp);
+        assert_eq!(profile.continuation_mode, ContinuationMode::Manual);
+    }
+
+    #[test]
+    fn reasonix_profile_declares_generic_mcp_with_manual_continuation() {
+        let profile = host_profile("reasonix");
+        assert_eq!(profile.id, "reasonix");
+        assert_eq!(profile.label, "Reasonix");
         assert_eq!(profile.default_adapter, HostAdapter::GenericMcp);
         assert_eq!(profile.continuation_mode, ContinuationMode::Manual);
     }

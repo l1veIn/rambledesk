@@ -28,7 +28,9 @@ Host header 和 Origin guard。MCP 只属于通用适配器，不是全局基础
 - 终态 `get_feedback` 返回反馈包 metadata、Markdown 和附件路径。
 
 通用适配器不承诺自动恢复某个宿主的原上下文。提交后的标准路径是工作台生成
-Resume Prompt，由人类返回宿主后继续。
+Resume Prompt，由人类返回宿主后继续；支持原生交互确认工具（`ask`/`ask_choice`
+类）的宿主可让智能体在工具调用内等待人类完成，点选确认后直接 `get_feedback`
+继续，无需 Resume Prompt（见 PROTOCOL.md 的 Generic MCP Adapter 节）。
 
 ### Pi Native Adapter
 
@@ -49,6 +51,7 @@ Pi 的正常流程在同一个 tool call 内等待，因此无需提交后的 Re
 | MCP Inspector 2.x | Generic MCP Adapter | smoke 通过 | 用于协议和安全门禁 |
 | Codex CLI | Generic MCP Adapter | 待补完整矩阵 | 按通用适配器合同处理 |
 | OpenCode | Generic MCP Adapter | 待补完整矩阵 | 按通用适配器合同处理 |
+| Reasonix (Go, v1.8+) | Generic MCP Adapter | 自动检测+安装已实现 | 写入 `config.toml` 的 `[[plugins]]` HTTP 条目；持久会话下提交后"继续"即恢复 |
 
 版本号仅记录已测环境，不构成 RambleDesk 对第三方版本的长期保证。
 

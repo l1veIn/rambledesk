@@ -54,7 +54,7 @@ fn apply_request_host(mut input: RequestFeedbackInput) -> RequestFeedbackInput {
 impl RambleDeskMcp {
     #[tool(
         name = "request_feedback",
-        description = "Persist a feedback request and return immediately with a durable handle (request_id). Optional attachments let the agent provide review artifacts: use attachments[].markdown with a .md/.markdown file_name for Markdown, or attachments[].contents_base64 for a PNG/JPEG/GIF/WebP image. After creating, stop the current turn; do not poll. When the human submits feedback, call get_feedback with the same request_id to read the package. Reusing request_id with identical input is idempotent. Auto-registered clients set RAMBLEDESK_HOST / X-RambleDesk-Host so host_id is known without guessing."
+        description = "Persist a feedback request and return immediately with a durable handle (request_id). Optional attachments let the agent provide review artifacts: use attachments[].markdown with a .md/.markdown file_name for Markdown, or attachments[].contents_base64 for a PNG/JPEG/GIF/WebP image. After creating, if the host provides an interactive confirmation tool (ask / ask_choice / similar), you may use it to wait for the human to finish and then call get_feedback with the same request_id; otherwise stop the current turn and wait to be resumed. Do not poll. Reusing request_id with identical input is idempotent. Auto-registered clients set RAMBLEDESK_HOST / X-RambleDesk-Host so host_id is known without guessing."
     )]
     async fn request_feedback(
         &self,
@@ -187,8 +187,9 @@ impl ServerHandler for RambleDeskMcp {
             .with_server_info(Implementation::new("rambledesk", env!("CARGO_PKG_VERSION")))
             .with_instructions(
                 "RambleDesk tools: request_feedback, get_feedback, cancel_feedback. \
-Create a durable request with request_feedback, then end the current turn; do not poll and do not wait on a long tool call. \
-When the human finishes or after a disconnect, call get_feedback(request_id) to load the current server state and package. \
+Create a durable request with request_feedback; it returns immediately with a request_id. \
+If the host has an interactive confirmation tool (ask / ask_choice), use it after creating the request to wait for the human to finish, then call get_feedback(request_id); otherwise end the current turn — do not poll and do not wait on a long MCP tool call. \
+After the human submits feedback or after a disconnect, call get_feedback(request_id) to load the current server state and package. \
 Attach Markdown review documents with attachments[].markdown and images with attachments[].contents_base64 when useful. \
 Auto-registered clients set RAMBLEDESK_HOST (and X-RambleDesk-Host) so host identity is known without guessing.",
             )
