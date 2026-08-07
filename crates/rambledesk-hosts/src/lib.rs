@@ -12,6 +12,7 @@
 
 mod continuation;
 mod hosts;
+mod knowledge;
 mod profile;
 
 pub use continuation::{
@@ -19,4 +20,5 @@ pub use continuation::{
     ContinuationStrategy, ManualContinuationStrategy, NativeWaitContinuationStrategy, ResumePrompt,
 };
 pub use hosts::known_continuation_strategies;
+pub use knowledge::{ConfigFormat, HOSTS, HostKnowledge, generic_mcp_hosts};
 pub use profile::{ContinuationMode, HostAdapter, HostProfile, host_profile, known_host_profiles};
