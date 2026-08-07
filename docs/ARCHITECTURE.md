@@ -47,8 +47,8 @@ rambledesk/
 │   ├── rambledesk-core/          # application contract
 │   ├── rambledesk-storage/       # SQLite + feedback package publication
 │   ├── rambledesk-local-server/  # loopback HTTP server + JSON API
-│   ├── rambledesk-mcp/           # Generic MCP Adapter thin layer
-│   ├── rambledesk-hosts/         # Host Profile catalog + continuation strategy
+│   ├── rambledesk-mcp/           # Generic MCP Adapter (tool surface + installer engine)
+│   ├── rambledesk-hosts/         # Host knowledge registry + profiles + continuation strategy
 │   ├── rambledesk-speech/
 │   └── rambledesk-cli/
 ├── packages/
@@ -110,37 +110,35 @@ rambledesk/
 
 ### `rambledesk-mcp`
 
-持有通用 MCP 适配器薄层：
+持有 Generic MCP Adapter 完整方案（与 `packages/pi-rambledesk` 对等）：
 
-- MCP tool schema；
-- MCP tool handler；
-- MCP instructions；
-- structured result / structured error formatting；
-- MCP request 到 `rambledesk-core` application call 的映射。
+- MCP tool schema、tool handler、instructions、structured result / error 格式化；
+- MCP request 到 `rambledesk-core` application call 的映射；
+- 客户端检测/安装执行引擎：按 `rambledesk-hosts` 声明的 `ConfigFormat` 分发，把
+  RambleDesk 服务器条目写入各宿主的配置文件（JSON/TOML），含幂等与修复。
 
 不得持有：
 
-- HTTP listener；
-- token path；
-- local JSON API routes；
-- host-specific continuation 实现。
+- HTTP listener、token path、local JSON API routes；
+- host-specific continuation 实现；
+- per-host 知识（可执行文件名、配置路径、配置格式声明）——这些属于 `rambledesk-hosts`。
 
 ### `rambledesk-hosts`
 
 持有：
 
-- Host Profile catalog；
+- 宿主知识注册表（单一真相源）：每宿主的 executable、marker 目录、配置文件路径、
+  配置格式（`ConfigFormat`），以及默认适配器选择；
+- Host Profile catalog（从知识注册表派生）；
 - host label/icon；
-- 默认适配器选择；
 - continuation 模式声明；
 - 手动 continuation 提示 payload；
 - 未来原生 continuation strategy 接口。
 
 不得持有：
 
-- MCP implementation；
-- Pi package implementation；
-- 完整适配器实现；
+- MCP implementation、Pi package implementation；
+- 适配器安装/写入执行逻辑（检测执行与格式引擎属于 `rambledesk-mcp`）；
 - storage 或 desktop UI 状态。
 
 ### `packages/pi-rambledesk`

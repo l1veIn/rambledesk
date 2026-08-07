@@ -139,8 +139,8 @@ Pi 原生适配器不需要提交后的 continuation，因为 Pi 已经在工具
 | `crates/rambledesk-core` | 领域 DTO、application use cases、反馈请求/反馈包合同。 | HTTP、JSON、MCP、Pi、desktop commands、host install、local server。 |
 | `crates/rambledesk-storage` | SQLite 持久化、请求/草稿/附件 metadata、宿主会话关联、反馈包发布。 | 宿主协议、适配器安装、源码 checkout runtime 语义。 |
 | `crates/rambledesk-local-server` | loopback listener、auth token、Host/Origin guard、本地 JSON API、route mounting。 | 领域规则、MCP tool schema、Pi package 代码。 |
-| `crates/rambledesk-mcp` | 通用 MCP 适配器薄层：MCP schema、tool handler、instructions、结果/错误映射。 | listener、token path、JSON API、host-specific continuation。 |
-| `crates/rambledesk-hosts` | Host profile、展示元数据、默认适配器选择、continuation strategy。 | MCP implementation、Pi package、完整适配器实现。 |
+| `crates/rambledesk-mcp` | Generic MCP Adapter 完整方案：MCP schema、tool handler、instructions、结果/错误映射、客户端检测/安装执行引擎。 | listener、token path、JSON API、host-specific continuation、per-host 知识。 |
+| `crates/rambledesk-hosts` | 宿主知识注册表（executable/marker/配置路径/ConfigFormat）、Host profile、展示元数据、默认适配器选择、continuation strategy。 | MCP implementation、Pi package、适配器安装/写入执行逻辑。 |
 | `packages/pi-rambledesk` | Pi 原生适配器 package。 | MCP client 行为、desktop UI 状态、storage 逻辑。 |
 | `apps/desktop` | 工作台 UI、Tauri composition root、本地 command wiring、适配器安装 UX。 | 领域存储语义、host package 内部实现、唯一事实状态。 |
 
@@ -150,10 +150,10 @@ Pi 原生适配器不需要提交后的 continuation，因为 Pi 已经在工具
 | --- | --- |
 | `rambledesk-core` | 无 workspace 领域依赖。 |
 | `rambledesk-storage` | `rambledesk-core`。 |
-| `rambledesk-mcp` | `rambledesk-core`。 |
+| `rambledesk-mcp` | `rambledesk-core`、`rambledesk-hosts`。 |
 | `rambledesk-local-server` | `rambledesk-core`、`rambledesk-mcp`。 |
-| `rambledesk-hosts` | 可独立；continuation strategy 需要时可依赖 `rambledesk-core` 的通用状态类型。 |
-| `apps/desktop` | `rambledesk-core`、`rambledesk-storage`、`rambledesk-local-server`、`rambledesk-hosts`、desktop-only crates。 |
+| `rambledesk-hosts` | `rambledesk-core`；宿主知识注册表与续接策略共用其类型。 |
+| `apps/desktop` | `rambledesk-core`、`rambledesk-storage`、`rambledesk-local-server`、`rambledesk-hosts`、`rambledesk-mcp`、desktop-only crates。 |
 | `packages/pi-rambledesk` | 不参与 Cargo workspace；运行时调用本地服务 `/api`。 |
 
 ## Host Profile
