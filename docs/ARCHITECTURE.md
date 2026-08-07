@@ -35,7 +35,7 @@
                                       └──────────────────────────────┘
 ```
 
-`apps/desktop` 是装配根：它装配 storage、core application、本地服务、host profiles、desktop-only capabilities。CLI 和测试可以复用同一套 crate，但不能成为第二套业务实现。
+`apps/desktop` 是装配根：它装配 storage、core application、本地服务、host knowledge、desktop-only capabilities。CLI 和测试可以复用同一套 crate，但不能成为第二套业务实现。
 
 ## Package 边界
 

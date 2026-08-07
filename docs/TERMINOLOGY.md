@@ -79,8 +79,8 @@
 包含：
 
 - MCP tools：`request_feedback`、`get_feedback`、`cancel_feedback`。
-- 宿主 MCP client 配置写入。
-- 终态后的手动 continuation 提示。
+- 宿主检测与配置写入执行引擎（per-host 知识来自 `rambledesk-hosts` 注册表）。
+- 终态后的手动 continuation 提示；宿主提供原生交互确认工具（`ask`/`ask_choice` 类）时，可让智能体在工具调用内等待人类点选，点选后直接 `get_feedback` 继续。
 
 不包含：
 

@@ -38,7 +38,7 @@ Beyond the Ramble:
 - Durable Inbox backed by SQLite, with waiting, in-progress, completed, and cancelled states.
 - Immutable Feedback Packages containing `feedback.md`, `manifest.json`, and attachments.
 - Authenticated loopback local server with `/api/feedback/request|get|wait|cancel` and `/mcp`.
-- Thin Generic MCP Adapter with `request_feedback`, `get_feedback`, and `cancel_feedback`.
+- Generic MCP Adapter scheme with `request_feedback`, `get_feedback`, and `cancel_feedback`, plus a host detect/install engine that consumes the host knowledge registry.
 - Pi native package at `packages/pi-rambledesk`, using the local JSON API and blocking inside the Pi tool call.
 - Adapter settings for Generic MCP hosts and Pi package installation.
 - First-run setup for language, data location, local speech, adapters, notifications, and optional Cooking; it can be rerun from **Settings → General**.
@@ -114,14 +114,14 @@ apps/desktop                   Tauri 2 + Svelte 5 workbench and composition root
 crates/rambledesk-core         Application contract, state machine, ports, use cases
 crates/rambledesk-storage      SQLite, drafts, attachments, package publication
 crates/rambledesk-local-server Loopback listener, auth, JSON API, route mounting
-crates/rambledesk-mcp          Generic MCP Adapter thin layer
-crates/rambledesk-hosts        Host profiles and continuation strategies
+crates/rambledesk-mcp          Generic MCP Adapter scheme (tool surface + host installer)
+crates/rambledesk-hosts        Host knowledge registry, profiles, continuation strategies
 crates/rambledesk-speech       Native audio capture and local streaming transcription
 crates/rambledesk-cli          Headless development and protocol verification entrypoint
 packages/pi-rambledesk         Pi native adapter package
 ```
 
-`core` owns the application contract. Storage, local server, host profiles, speech, CLI, and Tauri are infrastructure or composition layers; the Generic MCP and Pi packages participate in complete host-facing adapters. None of these layers may become a second source of business state.
+`core` owns the application contract. Storage, local server, host knowledge, speech, CLI, and Tauri are infrastructure or composition layers; the Generic MCP and Pi packages participate in complete host-facing adapters. None of these layers may become a second source of business state.
 
 ## Documentation
 
