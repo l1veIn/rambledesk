@@ -3,7 +3,6 @@ mod generic_mcp_install;
 mod logging;
 mod open_attachment;
 mod pi_install;
-mod platform;
 mod screen_capture;
 
 use rambledesk_core::FeedbackApplication;

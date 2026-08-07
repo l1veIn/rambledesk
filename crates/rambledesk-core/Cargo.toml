@@ -19,3 +19,6 @@ time.workspace = true
 tokio.workspace = true
 ts-rs.workspace = true
 uuid.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

@@ -9,7 +9,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::platform::process::find_executable;
+use rambledesk_core::find_executable;
 
 /// Locate the Pi package directory.
 ///
