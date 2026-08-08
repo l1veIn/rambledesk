@@ -121,6 +121,20 @@ async fn feedback_tool_result(
         Err(error) => return application_error_result(error),
     };
 
+    let mut package = None;
+    if include_package_when_terminal
+        && matches!(
+            value.status,
+            FeedbackStatus::Completed | FeedbackStatus::Cancelled
+        )
+    {
+        package = match application.read_feedback_package(&value).await {
+            Ok(Some(package)) => Some(package),
+            Ok(None) => None,
+            Err(error) => return application_error_result(error),
+        };
+    }
+
     let summary = match value.status {
         FeedbackStatus::Waiting => format!(
             "Feedback request {} is waiting for the human. If this host has an interactive confirmation tool (ask / ask_choice), use it to wait for the human, then call get_feedback with this request_id; otherwise end this turn and resume when notified. Do not poll.",
@@ -131,7 +145,24 @@ async fn feedback_tool_result(
             value.request_id
         ),
         FeedbackStatus::Completed => {
-            format!("Feedback request {} is completed.", value.request_id)
+            let mut summary = format!("Feedback request {} is completed.", value.request_id);
+            if let Some(package) = package.as_ref() {
+                summary.push_str("\n\nThe human submitted this feedback package:\n\n");
+                summary.push_str(&package.markdown);
+                if !package.attachment_paths.is_empty() {
+                    summary.push_str("\n\nAttachments:\n");
+                    for path in &package.attachment_paths {
+                        summary.push_str(&format!("- {path}\n"));
+                    }
+                }
+                if !package.request_attachment_paths.is_empty() {
+                    summary.push_str("\nRequest attachments:\n");
+                    for path in &package.request_attachment_paths {
+                        summary.push_str(&format!("- {path}\n"));
+                    }
+                }
+            }
+            summary
         }
         FeedbackStatus::Cancelled => {
             format!("Feedback request {} is cancelled.", value.request_id)
@@ -147,24 +178,11 @@ async fn feedback_tool_result(
         object.insert("host".to_owned(), serde_json::Value::String(host));
     }
 
-    if include_package_when_terminal
-        && matches!(
-            value.status,
-            FeedbackStatus::Completed | FeedbackStatus::Cancelled
-        )
-    {
-        match application.read_feedback_package(&value).await {
-            Ok(Some(package)) => {
-                object.insert(
-                    "feedback_package".to_owned(),
-                    serde_json::to_value(package).expect("feedback package must serialize"),
-                );
-            }
-            Ok(None) => {}
-            Err(error) => {
-                return application_error_result(error);
-            }
-        }
+    if let Some(package) = package {
+        object.insert(
+            "feedback_package".to_owned(),
+            serde_json::to_value(package).expect("feedback package must serialize"),
+        );
     }
 
     let mut result = CallToolResult::structured(structured);

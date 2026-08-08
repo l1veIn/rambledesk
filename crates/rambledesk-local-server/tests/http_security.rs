@@ -284,6 +284,14 @@ async fn official_client_exercises_feedback_lifecycle_and_errors() -> anyhow::Re
             .is_some_and(|markdown| markdown.contains("real MCP client"))
     );
     assert!(package.get("manifest").is_some());
+    assert!(
+        serde_json::to_value(&completed.content)?[0]["text"]
+            .as_str()
+            .is_some_and(|text| {
+                text.contains("submitted this feedback package") && text.contains("real MCP client")
+            }),
+        "completed text must carry the feedback markdown for text-only clients"
+    );
 
     let final_request_id = uuid::Uuid::now_v7().to_string();
     let final_arguments = serde_json::to_value(RequestFeedbackInput {
