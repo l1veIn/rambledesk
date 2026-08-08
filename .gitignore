@@ -16,3 +16,5 @@ apps/*/src-tauri/icons/ios/
 deliverables-2026-07-31/
 .reasonix/
 apps/*/package-lock.json
+
+reasonix.toml

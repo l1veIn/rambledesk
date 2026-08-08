@@ -216,7 +216,7 @@ async fn recovery_is_host_scoped_and_rejects_ambiguous_session_matches() {
     let recovered = application
         .recover_feedback(RecoverFeedbackInput {
             request_id: Some(first_id.clone()),
-            host_id: Some(host_id.clone()),
+            host_id: host_id.clone(),
             host_session_id: host_session_id.clone(),
         })
         .await
@@ -226,7 +226,7 @@ async fn recovery_is_host_scoped_and_rejects_ambiguous_session_matches() {
     let wrong_session = application
         .recover_feedback(RecoverFeedbackInput {
             request_id: Some(first_id),
-            host_id: Some(host_id.clone()),
+            host_id: host_id.clone(),
             host_session_id: "another-session".to_owned(),
         })
         .await
@@ -240,7 +240,7 @@ async fn recovery_is_host_scoped_and_rejects_ambiguous_session_matches() {
     let ambiguous = application
         .recover_feedback(RecoverFeedbackInput {
             request_id: None,
-            host_id: Some(host_id),
+            host_id,
             host_session_id,
         })
         .await

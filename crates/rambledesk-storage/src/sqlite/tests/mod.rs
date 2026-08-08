@@ -26,7 +26,7 @@ impl TestWorkspace {
     fn request(&self, request_id: String) -> RequestFeedbackInput {
         RequestFeedbackInput {
             request_id: Some(request_id),
-            host_id: "test-host".to_owned(),
+            host_id: Some("test-host".to_owned()),
             host_session_id: "test-session".to_owned(),
             title: Some("Persistence review".to_owned()),
             what_happened: "Implemented the persistence kernel.".to_owned(),

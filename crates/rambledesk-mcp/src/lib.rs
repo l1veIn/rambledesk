@@ -54,7 +54,7 @@ impl RambleDeskMcp {
 
 fn apply_request_host(mut input: RequestFeedbackInput) -> RequestFeedbackInput {
     if let Some(host) = current_request_host() {
-        input.host_id = host;
+        input.host_id = Some(host);
     }
     input
 }
@@ -63,7 +63,7 @@ fn apply_request_host(mut input: RequestFeedbackInput) -> RequestFeedbackInput {
 impl RambleDeskMcp {
     #[tool(
         name = "request_feedback",
-        description = "Persist a feedback request and return immediately with a durable handle (request_id). Optional attachments let the agent provide review artifacts: use attachments[].markdown with a .md/.markdown file_name for Markdown, or attachments[].contents_base64 for a PNG/JPEG/GIF/WebP image. After creating, if the host provides an interactive confirmation tool (ask / ask_choice / similar), you may use it to wait for the human to finish and then call get_feedback with the same request_id; otherwise stop the current turn and wait to be resumed. Do not poll. Reusing request_id with identical input is idempotent. Auto-registered clients set RAMBLEDESK_HOST / X-RambleDesk-Host so host_id is known without guessing."
+        description = "Persist a feedback request and return immediately with a durable handle (request_id). Optional attachments let the agent provide review artifacts: use attachments[].markdown with a .md/.markdown file_name for Markdown, or attachments[].contents_base64 for a PNG/JPEG/GIF/WebP image. After creating, if this host has an interactive confirmation tool (ask / ask_choice / similar), use it to wait for the human to finish, then call get_feedback with the same request_id; only stop the current turn when no such tool exists. Do not poll. Reusing request_id with identical input is idempotent. host_id is optional: auto-registered clients (RAMBLEDESK_HOST / X-RambleDesk-Host) have it injected by the server, otherwise pass your host family id (e.g. reasonix, claude, codex, opencode) or generic. host_session_id is the current session identifier."
     )]
     async fn request_feedback(
         &self,
@@ -80,7 +80,7 @@ impl RambleDeskMcp {
 
     #[tool(
         name = "get_feedback",
-        description = "Read the current state of a durable feedback request without changing it. Use after manual continuation or for diagnostics. When status is completed, the response includes the full feedback package (manifest, markdown, attachment paths). Do not poll while waiting; end the turn after request_feedback and resume when notified."
+        description = "Read the current state of a durable feedback request without changing it. Use after manual continuation or for diagnostics. When status is completed, the response includes the full feedback package (manifest, markdown, attachment paths). Do not poll while waiting: after request_feedback, wait via this host's interactive confirmation tool (ask / ask_choice) if available, otherwise end the turn and resume when notified."
     )]
     async fn get_feedback(
         &self,
@@ -123,11 +123,11 @@ async fn feedback_tool_result(
 
     let summary = match value.status {
         FeedbackStatus::Waiting => format!(
-            "Feedback request {} is waiting for the human. End this turn; do not poll. When resumed, call get_feedback with this request_id.",
+            "Feedback request {} is waiting for the human. If this host has an interactive confirmation tool (ask / ask_choice), use it to wait for the human, then call get_feedback with this request_id; otherwise end this turn and resume when notified. Do not poll.",
             value.request_id
         ),
         FeedbackStatus::InProgress => format!(
-            "Feedback request {} is in progress. End this turn; when resumed, call get_feedback with this request_id.",
+            "Feedback request {} is in progress. If this host has an interactive confirmation tool (ask / ask_choice), use it to wait for the human, then call get_feedback with this request_id; otherwise end this turn and resume when notified.",
             value.request_id
         ),
         FeedbackStatus::Completed => {
@@ -197,10 +197,10 @@ impl ServerHandler for RambleDeskMcp {
             .with_instructions(
                 "RambleDesk tools: request_feedback, get_feedback, cancel_feedback. \
 Create a durable request with request_feedback; it returns immediately with a request_id. \
-If the host has an interactive confirmation tool (ask / ask_choice), use it after creating the request to wait for the human to finish, then call get_feedback(request_id); otherwise end the current turn — do not poll and do not wait on a long MCP tool call. \
+If this host has an interactive confirmation tool (ask / ask_choice), use it after creating the request to wait for the human to finish, then call get_feedback(request_id); only end the current turn when no such tool exists — do not poll and do not wait on a long MCP tool call. \
 After the human submits feedback or after a disconnect, call get_feedback(request_id) to load the current server state and package. \
 Attach Markdown review documents with attachments[].markdown and images with attachments[].contents_base64 when useful. \
-Auto-registered clients set RAMBLEDESK_HOST (and X-RambleDesk-Host) so host identity is known without guessing.",
+host_id is optional: auto-registered clients (RAMBLEDESK_HOST / X-RambleDesk-Host) have it injected by the server, otherwise pass your host family id (e.g. reasonix, claude, codex, opencode) or generic.",
             )
     }
 }

@@ -5,7 +5,8 @@ use uuid::Uuid;
 use super::{ApplicationError, RequestFeedbackInput};
 
 pub(super) fn validate_request_input(input: &RequestFeedbackInput) -> Result<(), ApplicationError> {
-    validate_text("host_id", &input.host_id, 1, 64)?;
+    let host_id = input.host_id.as_deref().unwrap_or("generic");
+    validate_text("host_id", host_id, 1, 64)?;
     validate_text("host_session_id", &input.host_session_id, 1, 256)?;
     if let Some(title) = input.title.as_deref() {
         validate_text("title", title, 1, 160)?;

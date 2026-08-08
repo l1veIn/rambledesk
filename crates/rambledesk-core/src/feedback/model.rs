@@ -34,7 +34,11 @@ pub struct RequestAttachmentInput {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct RequestFeedbackInput {
     pub request_id: Option<String>,
-    pub host_id: String,
+    /// Optional host family id (e.g. `pi`, `claude`, `codex`, `opencode`, `generic`).
+    /// Auto-registered adapters inject it via `RAMBLEDESK_HOST` / `X-RambleDesk-Host`;
+    /// when absent, the server defaults to `generic`.
+    #[serde(default)]
+    pub host_id: Option<String>,
     pub host_session_id: String,
     /// Short Ramble title shown in inboxes and workspace headings.
     pub title: Option<String>,

@@ -148,7 +148,7 @@ async fn official_client_exercises_feedback_lifecycle_and_errors() -> anyhow::Re
     let review_markdown = format!("# Review artifact\n\n{}", "x".repeat(300 * 1024));
     let request = RequestFeedbackInput {
         request_id: Some(request_id.clone()),
-        host_id: "official-rust-sdk".to_owned(),
+        host_id: Some("official-rust-sdk".to_owned()),
         host_session_id: "http-security-test".to_owned(),
         title: Some("MCP connection review".to_owned()),
         what_happened: "The MCP feedback tools were connected.".to_owned(),
@@ -182,7 +182,7 @@ async fn official_client_exercises_feedback_lifecycle_and_errors() -> anyhow::Re
     assert!(
         serde_json::to_value(&created.content)?[0]["text"]
             .as_str()
-            .is_some_and(|text| text.contains("is waiting") && text.contains("End this turn"))
+            .is_some_and(|text| text.contains("is waiting") && text.contains("use it to wait"))
     );
     assert_eq!(
         created_content
@@ -288,7 +288,7 @@ async fn official_client_exercises_feedback_lifecycle_and_errors() -> anyhow::Re
     let final_request_id = uuid::Uuid::now_v7().to_string();
     let final_arguments = serde_json::to_value(RequestFeedbackInput {
         request_id: Some(final_request_id.clone()),
-        host_id: "official-rust-sdk".to_owned(),
+        host_id: Some("official-rust-sdk".to_owned()),
         host_session_id: "final-approval-session".to_owned(),
         title: Some("Approve final summary".to_owned()),
         what_happened: "The agent prepared its exact final summary.".to_owned(),
@@ -374,7 +374,7 @@ async fn local_api_supports_pi_request_and_blocking_wait() -> anyhow::Result<()>
 
     let request = RequestFeedbackInput {
         request_id: Some(request_id.clone()),
-        host_id: "model-filled-host".to_owned(),
+        host_id: Some("model-filled-host".to_owned()),
         host_session_id: "pi-tool-call".to_owned(),
         title: Some("Pi package wait".to_owned()),
         what_happened: "The Pi package direct API path was exercised.".to_owned(),
@@ -444,6 +444,48 @@ async fn local_api_supports_pi_request_and_blocking_wait() -> anyhow::Result<()>
             .pointer("/feedback_package/markdown")
             .and_then(serde_json::Value::as_str)
             .is_some_and(|markdown| markdown.contains("Pi waited inside the tool call"))
+    );
+
+    server.shutdown().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn request_without_host_id_defaults_to_generic() -> anyhow::Result<()> {
+    let token = AccessToken::parse(TEST_TOKEN)?;
+    let (application, _directory) = test_application().await?;
+    let server = start_server(ServerConfig::new(token).with_port(0), application.clone()).await?;
+
+    let config = StreamableHttpClientTransportConfig::with_uri(server.endpoint().to_owned())
+        .auth_header(TEST_TOKEN);
+    let transport = StreamableHttpClientTransport::from_config(config);
+    let client = ClientInfo::default().serve(transport).await?;
+
+    let arguments = serde_json::json!({
+        "request_id": uuid::Uuid::now_v7().to_string(),
+        "host_session_id": "host-id-optional-test".to_owned(),
+        "what_happened": "No host_id was supplied; the server should default to generic.".to_owned(),
+        "actions": [
+            { "id": "ack", "instruction": "Acknowledge." }
+        ],
+    })
+    .as_object()
+    .cloned()
+    .expect("arguments object");
+    let created = client
+        .peer()
+        .call_tool(CallToolRequestParams::new("request_feedback").with_arguments(arguments))
+        .await?;
+    assert_ne!(created.is_error, Some(true));
+    let created_content = created
+        .structured_content
+        .as_ref()
+        .context("created structured content")?;
+    assert_eq!(
+        created_content
+            .get("host_id")
+            .and_then(serde_json::Value::as_str),
+        Some("generic")
     );
 
     server.shutdown().await?;

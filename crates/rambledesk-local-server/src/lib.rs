@@ -85,7 +85,7 @@ fn apply_request_host(
     request_host: Option<&str>,
 ) -> RequestFeedbackInput {
     if let Some(host) = request_host {
-        input.host_id = host.to_owned();
+        input.host_id = Some(host.to_owned());
     }
     input
 }

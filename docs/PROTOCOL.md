@@ -27,7 +27,7 @@ RambleDesk 提供两个本机 loopback 入口：
 | 字段 | 类型 | 必需 | 说明 |
 | --- | --- | --- | --- |
 | `request_id` | UUID string | 可选 | 幂等 key。省略时服务端生成。 |
-| `host_id` | string | 必需 | 宿主家族 id，例如 `pi`、`claude`、`codex`、`opencode`、`generic`。 |
+| `host_id` | string | 可选 | 宿主家族 id，例如 `pi`、`claude`、`codex`、`opencode`、`generic`。自动注册客户端（`RAMBLEDESK_HOST` / `X-RambleDesk-Host`）由服务端注入；未提供时服务端默认 `generic`。 |
 | `host_session_id` | string | 必需 | 宿主会话关联。同一宿主会话可发起多次 request。 |
 | `title` | string | 可选 | 请求在人类工作台中的短标题。 |
 | `what_happened` | string | 必需 | 宿主智能体对当前变化或需要检查事项的说明。 |
@@ -38,7 +38,7 @@ RambleDesk 提供两个本机 loopback 入口：
 规则：
 
 - `request_id` 是唯一持久反馈 lookup key。
-- `host_id` 用于 host profile 匹配、展示和 continuation strategy 选择。
+- `host_id` 用于 host profile 匹配、展示和 continuation strategy 选择；省略时默认 `generic`，或被可信适配器头覆盖。
 - `host_session_id` 只用于关联同一宿主会话的多次 request；它不是认证凭据，也不证明可自动继续。
 - RambleDesk MUST NOT 要求源码 checkout 路径。
 - 路径如果出现，只能出现在 `context_refs` 或 `source_hint` 中。

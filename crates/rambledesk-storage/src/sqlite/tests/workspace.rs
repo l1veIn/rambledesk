@@ -337,7 +337,7 @@ async fn host_session_navigation_reports_request_and_pending_counts() {
         .expect("cancel second request");
 
     let mut third = workspace.request(Uuid::now_v7().to_string());
-    third.host_id = "other-host".to_owned();
+    third.host_id = Some("other-host".to_owned());
     third.host_session_id = "other-session".to_owned();
     application
         .request_feedback(third)

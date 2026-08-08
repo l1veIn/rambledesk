@@ -214,6 +214,7 @@ impl FeedbackApplication {
         input: RequestFeedbackInput,
     ) -> Result<FeedbackRequestView, ApplicationError> {
         validate_request_input(&input)?;
+        let host_id = input.host_id.as_deref().unwrap_or("generic").to_owned();
         let title = input
             .title
             .as_deref()
@@ -298,7 +299,7 @@ impl FeedbackApplication {
             .create_or_get_request(NewFeedbackRequest {
                 request_id,
                 host_session_record_id: self.ids.new_id(),
-                host_id: input.host_id,
+                host_id,
                 host_session_id: input.host_session_id,
                 title,
                 what_happened: input.what_happened,

@@ -21,7 +21,7 @@ async fn host_header_stamps_host_id_on_request_feedback() -> anyhow::Result<()> 
     let request_id = uuid::Uuid::now_v7().to_string();
     let request = RequestFeedbackInput {
         request_id: Some(request_id.clone()),
-        host_id: "should-be-kept-without-header".to_owned(),
+        host_id: Some("should-be-kept-without-header".to_owned()),
         host_session_id: "host-header-test".to_owned(),
         title: Some("Host stamping review".to_owned()),
         what_happened: "Host identity from install config.".to_owned(),
