@@ -222,7 +222,10 @@ async fn official_client_exercises_feedback_lifecycle_and_errors() -> anyhow::Re
     let saved = application
         .save_feedback_draft(SaveDraftInput {
             request_id: request_id.clone(),
-            body_markdown: "The real MCP client observes the completed package.".to_owned(),
+            body_markdown: format!(
+                "The real MCP client observes the completed package.\n\n{}\nEND-OF-FEEDBACK-MARKER",
+                "middle-content-".repeat(200)
+            ),
             expected_revision: 0,
         })
         .await
@@ -284,13 +287,26 @@ async fn official_client_exercises_feedback_lifecycle_and_errors() -> anyhow::Re
             .is_some_and(|markdown| markdown.contains("real MCP client"))
     );
     assert!(package.get("manifest").is_some());
+    let completed_text_json = serde_json::to_value(&completed.content)?;
+    let completed_text = completed_text_json[0]["text"]
+        .as_str()
+        .expect("completed text");
     assert!(
-        serde_json::to_value(&completed.content)?[0]["text"]
-            .as_str()
-            .is_some_and(|text| {
-                text.contains("submitted this feedback package") && text.contains("real MCP client")
-            }),
-        "completed text must carry the feedback markdown for text-only clients"
+        completed_text.contains("Feedback markdown:"),
+        "completed text must name the feedback markdown path for text-only clients"
+    );
+    assert!(
+        completed_text.contains("real MCP client"),
+        "completed text must preview the feedback markdown"
+    );
+    assert!(
+        completed_text.contains("preview truncated"),
+        "long feedback must be truncated in text"
+    );
+    assert!(
+        !completed_text.contains("END-OF-FEEDBACK-MARKER")
+            && !completed_text.contains("MCP connection review"),
+        "text must not inline the full feedback or manifest-only fields"
     );
 
     let final_request_id = uuid::Uuid::now_v7().to_string();

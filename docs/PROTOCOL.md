@@ -70,6 +70,13 @@ RambleDesk 提供两个本机 loopback 入口：
 }
 ```
 
+规则：
+
+- `request_id`、`title`、`source_hint`、`context_refs`、`attachments`、`allow_finish`、`final_summary` 均可选。
+- `host_id` 可选：自动注册客户端（`RAMBLEDESK_HOST` / `X-RambleDesk-Host`）由服务端注入；未提供时服务端默认 `generic`。
+- `allow_finish`：**只有**当请求只需要人类做简单批准/拒绝、不需要反馈正文时才设 `true`（例如最终交付确认）；此时 `final_summary`（确切的结束语草稿）MUST 同时提供。需要人类审阅、提意见、逐段反馈的请求（校对、检查、提问等）MUST 省略 `allow_finish`，让人类提交详细反馈而非"直接完成"捷径。
+- 未设置 `allow_finish` 时若提供了 `final_summary`，返回 invalid argument（`final_summary` 依赖 `allow_finish`）。
+
 ### `ActionInput`
 
 ```json

@@ -63,7 +63,7 @@ fn apply_request_host(mut input: RequestFeedbackInput) -> RequestFeedbackInput {
 impl RambleDeskMcp {
     #[tool(
         name = "request_feedback",
-        description = "Persist a feedback request and return immediately with a durable handle (request_id). Optional attachments let the agent provide review artifacts: use attachments[].markdown with a .md/.markdown file_name for Markdown, or attachments[].contents_base64 for a PNG/JPEG/GIF/WebP image. After creating, if this host has an interactive confirmation tool (ask / ask_choice / similar), use it to wait for the human to finish, then call get_feedback with the same request_id; only stop the current turn when no such tool exists. Do not poll. Reusing request_id with identical input is idempotent. host_id is optional: auto-registered clients (RAMBLEDESK_HOST / X-RambleDesk-Host) have it injected by the server, otherwise pass your host family id (e.g. reasonix, claude, codex, opencode) or generic. host_session_id is the current session identifier."
+        description = "Persist a feedback request and return immediately with a durable handle (request_id). Optional attachments let the agent provide review artifacts: use attachments[].markdown with a .md/.markdown file_name for Markdown, or attachments[].contents_base64 for a PNG/JPEG/GIF/WebP image. After creating, if this host has an interactive confirmation tool (ask / ask_choice / similar), use it to wait for the human to finish, then call get_feedback with the same request_id; only stop the current turn when no such tool exists. Do not poll. Reusing request_id with identical input is idempotent. host_id is optional: auto-registered clients (RAMBLEDESK_HOST / X-RambleDesk-Host) have it injected by the server, otherwise pass your host family id (e.g. reasonix, claude, codex, opencode) or generic. host_session_id is the current session identifier. allow_finish: set true ONLY when the request needs a simple final approval or rejection from the human and no feedback body is expected; in that case final_summary (the exact closing statement) is required. For requests that gather feedback, review, or opinions (proofreading, checking work, answering questions), omit allow_finish so the human submits detailed feedback instead of a shortcut finish."
     )]
     async fn request_feedback(
         &self,
@@ -80,7 +80,7 @@ impl RambleDeskMcp {
 
     #[tool(
         name = "get_feedback",
-        description = "Read the current state of a durable feedback request without changing it. Use after manual continuation or for diagnostics. When status is completed, the response includes the full feedback package (manifest, markdown, attachment paths). Do not poll while waiting: after request_feedback, wait via this host's interactive confirmation tool (ask / ask_choice) if available, otherwise end the turn and resume when notified."
+        description = "Read the current state of a durable feedback request without changing it. Use after manual continuation or for diagnostics. When status is completed, the reply text names the feedback markdown path plus attachment paths and a short preview; read the markdown file for the full feedback (text-only clients see only the reply text). The complete package (manifest, markdown, attachment paths) is also in structured_content.feedback_package for clients that support it. Do not poll while waiting: after request_feedback, wait via this host's interactive confirmation tool (ask / ask_choice) if available, otherwise end the turn and resume when notified."
     )]
     async fn get_feedback(
         &self,
@@ -147,19 +147,46 @@ async fn feedback_tool_result(
         FeedbackStatus::Completed => {
             let mut summary = format!("Feedback request {} is completed.", value.request_id);
             if let Some(package) = package.as_ref() {
-                summary.push_str("\n\nThe human submitted this feedback package:\n\n");
-                summary.push_str(&package.markdown);
+                summary.push_str(
+                    "\n\nThe human submitted a feedback package. The full feedback is NOT inlined in this text (attachments can be binary); read the files below. The complete package is also available in structured_content.feedback_package for clients that support it.\n",
+                );
+                if let Some(feedback) = value.feedback.as_ref() {
+                    summary.push_str(&format!(
+                        "- Feedback markdown: {}\n",
+                        feedback.markdown_path
+                    ));
+                    summary.push_str(&format!(
+                        "- Package directory: {}\n",
+                        feedback.directory_path
+                    ));
+                    if package.manifest.uncooked_markdown.is_some() {
+                        summary.push_str(&format!(
+                            "- Uncooked markdown: {}\n",
+                            std::path::Path::new(&feedback.directory_path)
+                                .join("uncooked.md")
+                                .to_string_lossy()
+                        ));
+                    }
+                }
                 if !package.attachment_paths.is_empty() {
-                    summary.push_str("\n\nAttachments:\n");
+                    summary.push_str("\nAttachments (read with read_file):\n");
                     for path in &package.attachment_paths {
                         summary.push_str(&format!("- {path}\n"));
                     }
                 }
                 if !package.request_attachment_paths.is_empty() {
-                    summary.push_str("\nRequest attachments:\n");
+                    summary.push_str("\nRequest attachments (read with read_file):\n");
                     for path in &package.request_attachment_paths {
                         summary.push_str(&format!("- {path}\n"));
                     }
+                }
+                let preview: String = package.markdown.chars().take(800).collect();
+                summary.push_str("\nPreview of feedback markdown:\n");
+                summary.push_str(&preview);
+                if package.markdown.chars().count() > 800 {
+                    summary.push_str(
+                        "\n… (preview truncated — read the markdown file for the full feedback)\n",
+                    );
                 }
             }
             summary
