@@ -146,6 +146,61 @@ fn codex_install_repairs_legacy_streamable_http_env() {
 }
 
 #[test]
+fn grok_install_preserves_unrelated_toml_and_uses_headers() {
+    let directory = tempfile::tempdir().expect("temp dir");
+    let path = directory.path().join("config.toml");
+    fs::write(
+        &path,
+        "default_model = \"grok-4.5\"\n\n[mcp_servers.other]\ncommand = \"other\"\n",
+    )
+    .expect("seed config");
+    let entry = entry_for_host(
+        &extract_server_entry(&configuration()).expect("entry"),
+        "grok",
+    )
+    .expect("host entry");
+    assert_eq!(
+        write_grok_config(&path, &entry).expect("install"),
+        "updated"
+    );
+    assert_eq!(
+        write_grok_config(&path, &entry).expect("repeat"),
+        "unchanged"
+    );
+    let written = fs::read_to_string(path).expect("read");
+    assert!(written.contains("default_model = \"grok-4.5\""));
+    assert!(written.contains("[mcp_servers.other]"));
+    assert!(written.contains("[mcp_servers.rambledesk]"));
+    assert!(written.contains("[mcp_servers.rambledesk.headers]"));
+    assert!(!written.contains("[mcp_servers.rambledesk.http_headers]"));
+    assert!(written.contains("x-rambledesk-host"));
+    assert!(written.contains("grok"));
+    assert!(!written.contains("[mcp_servers.rambledesk.env]"));
+    assert!(!written.contains("RAMBLEDESK_HOST"));
+}
+
+#[test]
+fn grok_install_creates_config_and_is_detected() {
+    let directory = tempfile::tempdir().expect("temp dir");
+    let path = directory.path().join("config.toml");
+    let entry = entry_for_host(
+        &extract_server_entry(&configuration()).expect("entry"),
+        "grok",
+    )
+    .expect("host entry");
+    assert_eq!(write_grok_config(&path, &entry).expect("create"), "created");
+    let written = fs::read_to_string(&path).expect("read created config");
+    assert!(
+        written.contains("[mcp_servers.rambledesk]"),
+        "expected standard mcp_servers table, got:\n{written}"
+    );
+    assert!(
+        toml_mcp_servers_is_configured(&path, false),
+        "expected grok mcp_servers.rambledesk table, got:\n{written}"
+    );
+}
+
+#[test]
 fn opencode_install_preserves_sibling_servers_and_uses_remote_shape() {
     let directory = tempfile::tempdir().expect("temp dir");
     let path = directory.path().join("opencode.json");
@@ -272,7 +327,7 @@ fn detect_marks_installed_via_marker_directory() {
     assert_eq!(
         views.iter().map(|view| view.id).collect::<Vec<_>>(),
         [
-            "claude", "codex", "cursor", "gemini", "opencode", "reasonix"
+            "claude", "codex", "cursor", "gemini", "grok", "opencode", "reasonix"
         ]
     );
 }

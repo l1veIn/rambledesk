@@ -24,6 +24,8 @@ pub enum ConfigFormat {
     OpenCodeMcpJson,
     /// `[[plugins]]` TOML with `type = "http"` (Reasonix).
     ReasonixPluginsToml,
+    /// `[mcp_servers.<name>]` TOML with `url` + `headers` (Grok CLI).
+    GrokMcpToml,
 }
 
 /// Declarative knowledge about one host.
@@ -93,6 +95,18 @@ fn reasonix_config_path(home: &Path) -> PathBuf {
     reasonix_home(home).join("config.toml")
 }
 
+/// Grok home directory. `GROK_HOME` overrides the default `~/.grok`.
+fn grok_home(home: &Path) -> PathBuf {
+    env::var_os("GROK_HOME")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home.join(".grok"))
+}
+
+fn grok_config_path(home: &Path) -> PathBuf {
+    grok_home(home).join("config.toml")
+}
+
 /// Every known host, in UI display order. This is the single registration
 /// point: adding a host means adding one entry here.
 pub const HOSTS: &[HostKnowledge] = &[
@@ -123,6 +137,13 @@ pub const HOSTS: &[HostKnowledge] = &[
         config_format: Some(ConfigFormat::GeminiSettingsJson),
         config_path: Some(|home| home_path(home, ".gemini/settings.json")),
         marker_path: Some(|home| home_path(home, ".gemini")),
+    },
+    HostKnowledge {
+        id: "grok",
+        executable: Some("grok"),
+        config_format: Some(ConfigFormat::GrokMcpToml),
+        config_path: Some(grok_config_path),
+        marker_path: Some(grok_home),
     },
     HostKnowledge {
         id: "pi",
@@ -192,6 +213,7 @@ mod tests {
                 "cursor",
                 "gemini",
                 "generic",
+                "grok",
                 "inspector",
                 "opencode",
                 "pi",
@@ -201,12 +223,12 @@ mod tests {
     }
 
     #[test]
-    fn generic_mcp_hosts_are_exactly_the_installable_six() {
+    fn generic_mcp_hosts_are_exactly_the_installable_seven() {
         let ids: Vec<&str> = generic_mcp_hosts().map(|host| host.id).collect();
         assert_eq!(
             ids,
             [
-                "claude", "codex", "cursor", "gemini", "opencode", "reasonix"
+                "claude", "codex", "cursor", "gemini", "grok", "opencode", "reasonix"
             ]
         );
     }
@@ -257,5 +279,24 @@ mod tests {
         }
         assert_eq!(config, home.join("portable-codex").join("config.toml"));
         assert_eq!(marker, home.join("portable-codex"));
+    }
+
+    #[test]
+    fn grok_paths_follow_grok_home_override() {
+        let directory = tempfile::tempdir().expect("temp dir");
+        let home = directory.path();
+        let host = HOSTS.iter().find(|host| host.id == "grok").expect("host");
+        let previous = std::env::var_os("GROK_HOME");
+        unsafe {
+            std::env::set_var("GROK_HOME", home.join("portable-grok"));
+        }
+        let config = host.config_path(home).expect("config");
+        let marker = host.marker_path(home).expect("marker");
+        match previous {
+            Some(value) => unsafe { std::env::set_var("GROK_HOME", value) },
+            None => unsafe { std::env::remove_var("GROK_HOME") },
+        }
+        assert_eq!(config, home.join("portable-grok").join("config.toml"));
+        assert_eq!(marker, home.join("portable-grok"));
     }
 }

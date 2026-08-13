@@ -37,6 +37,7 @@
   import { toast } from '$lib/components/ui/sonner'
   import AboutSettings from '$lib/AboutSettings.svelte'
   import rambellePermission from '../assets/rambelle-states/state-permission.png'
+  import piLogoSvg from '../assets/pi-logo.svg?raw'
   import * as Select from '$lib/components/ui/select'
   import * as Tabs from '$lib/components/ui/tabs'
   import { t } from '$lib/i18n'
@@ -1075,8 +1076,8 @@
           <Tabs.Content value="adapters" class="m-0 space-y-8 p-6 outline-none">
             <section class="border-b pb-8">
               <div class="flex items-start gap-3">
-                <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
-                  <PlugZap class="size-4" />
+                <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground [&_svg]:size-4">
+                  {@html piLogoSvg}
                 </span>
                 <div class="min-w-0 flex-1">
                   <div class="flex flex-wrap items-center gap-2">

@@ -6,6 +6,7 @@ const CLAUDE_ICON: &str = include_str!("../assets/icons/claude.svg");
 const CODEX_ICON: &str = include_str!("../assets/icons/openai.svg");
 const CURSOR_ICON: &str = include_str!("../assets/icons/cursor.svg");
 const GEMINI_ICON: &str = include_str!("../assets/icons/google-gemini.svg");
+const GROK_ICON: &str = include_str!("../assets/icons/grok.svg");
 const PI_ICON: &str = include_str!("../assets/icons/pi.svg");
 const REASONIX_ICON: &str = include_str!("../assets/icons/reasonix.svg");
 const OPENCODE_ICON: &str = include_str!("../assets/icons/opencode.svg");
@@ -43,6 +44,7 @@ pub fn host_profile(host_id: &str) -> HostProfile {
         "codex" => generic_profile("codex", "Codex", CODEX_ICON),
         "cursor" => generic_profile("cursor", "Cursor", CURSOR_ICON),
         "gemini" => generic_profile("gemini", "Gemini CLI", GEMINI_ICON),
+        "grok" => generic_profile("grok", "Grok", GROK_ICON),
         "pi" => (
             "pi",
             "Pi",
@@ -117,5 +119,15 @@ mod tests {
         assert_eq!(profile.label, "Reasonix");
         assert_eq!(profile.default_adapter, HostAdapter::GenericMcp);
         assert_eq!(profile.continuation_mode, ContinuationMode::Manual);
+    }
+
+    #[test]
+    fn grok_profile_declares_generic_mcp_with_manual_continuation() {
+        let profile = host_profile("grok");
+        assert_eq!(profile.id, "grok");
+        assert_eq!(profile.label, "Grok");
+        assert_eq!(profile.default_adapter, HostAdapter::GenericMcp);
+        assert_eq!(profile.continuation_mode, ContinuationMode::Manual);
+        assert!(profile.icon_svg.contains("Grok"));
     }
 }

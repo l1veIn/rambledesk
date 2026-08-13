@@ -58,7 +58,7 @@
 | 字段 | 目标语义 | 规则 |
 | --- | --- | --- |
 | `request_id` | 唯一持久反馈请求 id。 | 创建幂等 key，也是读取反馈包的 lookup key。 |
-| `host_id` | 稳定宿主家族 id，例如 `pi`、`claude`、`codex`、`opencode`、`generic`。 | 用于展示、host profile 匹配和 continuation strategy 选择。 |
+| `host_id` | 稳定宿主家族 id，例如 `pi`、`claude`、`codex`、`opencode`、`grok`、`generic`。 | 用于展示、host profile 匹配和 continuation strategy 选择。 |
 | `host_session_id` | 宿主提供或适配器生成的会话关联 id。 | 用于把同一宿主会话的多次 request 收敛；不是认证凭据，也不证明可自动继续。 |
 | `context_refs` | 可选上下文引用列表。 | 承载文件、URL、diff、截图等可读线索。 |
 | `source_hint` | 可选来源提示。 | 可包含路径或标题；不得成为创建请求的硬前提。 |
@@ -178,7 +178,9 @@ Host Profile 描述：
 | `opencode` | 通用 MCP 适配器 | 手动 continuation |
 | `cursor` | 通用 MCP 适配器 | 手动 continuation |
 | `gemini` | 通用 MCP 适配器 | 手动 continuation |
+| `grok` | 通用 MCP 适配器 | 手动 continuation |
 | `inspector` | 通用 MCP 适配器 | 手动 continuation |
+| `reasonix` | 通用 MCP 适配器 | 手动 continuation |
 | `pi` | Pi 原生适配器 | 无提交后 continuation |
 
 ## 命名规则

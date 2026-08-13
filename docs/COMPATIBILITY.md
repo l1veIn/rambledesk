@@ -52,6 +52,7 @@ Pi 的正常流程在同一个 tool call 内等待，因此无需提交后的 Re
 | Codex CLI | Generic MCP Adapter | 待补完整矩阵 | 按通用适配器合同处理 |
 | OpenCode | Generic MCP Adapter | 待补完整矩阵 | 按通用适配器合同处理 |
 | Reasonix (Go, v1.8+) | Generic MCP Adapter | 自动检测+安装已实现 | 写入 `config.toml` 的 `[[plugins]]` HTTP 条目；持久会话下提交后"继续"即恢复 |
+| Grok CLI | Generic MCP Adapter | 自动检测+安装已实现 | 写入 `~/.grok/config.toml`（或 `GROK_HOME`）的 `[mcp_servers.rambledesk]` HTTP 条目；提交后使用 Resume Prompt，或用 `ask_user_question` 等待后再 `get_feedback` |
 
 版本号仅记录已测环境，不构成 RambleDesk 对第三方版本的长期保证。
 

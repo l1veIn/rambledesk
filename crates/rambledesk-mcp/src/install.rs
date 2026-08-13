@@ -143,7 +143,8 @@ fn is_configured(format: ConfigFormat, path: &Path) -> bool {
         ConfigFormat::McpServersJson | ConfigFormat::GeminiSettingsJson => {
             json_has_server(path, "mcpServers")
         }
-        ConfigFormat::CodexMcpToml => codex_is_configured(path),
+        ConfigFormat::CodexMcpToml => toml_mcp_servers_is_configured(path, true),
+        ConfigFormat::GrokMcpToml => toml_mcp_servers_is_configured(path, false),
         ConfigFormat::OpenCodeMcpJson => json_has_server(path, "mcp"),
         ConfigFormat::ReasonixPluginsToml => reasonix_is_configured(path),
     }
@@ -159,6 +160,7 @@ fn write_config_for(
         // Gemini CLI expects `httpUrl` instead of `url` and rejects `type`.
         ConfigFormat::GeminiSettingsJson => write_json_config(path, gemini_entry(entry)),
         ConfigFormat::CodexMcpToml => write_codex_config(path, &entry),
+        ConfigFormat::GrokMcpToml => write_grok_config(path, &entry),
         ConfigFormat::OpenCodeMcpJson => write_opencode_config(path, &entry),
         ConfigFormat::ReasonixPluginsToml => write_reasonix_config(path, &entry),
     }
@@ -182,7 +184,7 @@ fn json_has_server(path: &Path, section: &str) -> bool {
         .is_some()
 }
 
-fn codex_is_configured(path: &Path) -> bool {
+fn toml_mcp_servers_is_configured(path: &Path, reject_env: bool) -> bool {
     fs::read_to_string(path)
         .ok()
         .and_then(|content| content.parse::<DocumentMut>().ok())
@@ -191,10 +193,15 @@ fn codex_is_configured(path: &Path) -> bool {
                 .get("mcp_servers")?
                 .get(SERVER_ID)
                 .and_then(Item::as_table)
-                .filter(|server| !server.contains_key("env"))
+                .filter(|server| !reject_env || !server.contains_key("env"))
                 .map(|_| ())
         })
         .is_some()
+}
+
+#[cfg(test)]
+fn codex_is_configured(path: &Path) -> bool {
+    toml_mcp_servers_is_configured(path, true)
 }
 
 fn reasonix_is_configured(path: &Path) -> bool {
@@ -298,6 +305,18 @@ fn write_opencode_config(path: &Path, entry: &Value) -> Result<&'static str, Str
 }
 
 fn write_codex_config(path: &Path, entry: &Value) -> Result<&'static str, String> {
+    write_toml_mcp_servers_config(path, entry, "http_headers")
+}
+
+fn write_grok_config(path: &Path, entry: &Value) -> Result<&'static str, String> {
+    write_toml_mcp_servers_config(path, entry, "headers")
+}
+
+fn write_toml_mcp_servers_config(
+    path: &Path,
+    entry: &Value,
+    headers_key: &str,
+) -> Result<&'static str, String> {
     let url = entry
         .get("url")
         .and_then(Value::as_str)
@@ -328,6 +347,15 @@ fn write_codex_config(path: &Path, entry: &Value) -> Result<&'static str, String
             )
         })?
     };
+    if document
+        .get("mcp_servers")
+        .and_then(Item::as_table)
+        .is_none()
+    {
+        let mut table = Table::new();
+        table.set_implicit(true);
+        document["mcp_servers"] = Item::Table(table);
+    }
     let mut server = Table::new();
     server["url"] = value(url);
     let mut headers = Table::new();
@@ -335,7 +363,7 @@ fn write_codex_config(path: &Path, entry: &Value) -> Result<&'static str, String
     if let Some(host_id) = host_id {
         headers[HOST_HEADER] = value(host_id);
     }
-    server["http_headers"] = Item::Table(headers);
+    server[headers_key] = Item::Table(headers);
     let before = document.to_string();
     document["mcp_servers"][SERVER_ID] = Item::Table(server);
     let after = document.to_string();
