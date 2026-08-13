@@ -12,7 +12,7 @@ use std::{fs, path::Path};
 use toml_edit::{ArrayOfTables, DocumentMut, Item, Table, value};
 
 use rambledesk_core::{HOST_ENV_KEY, HOST_HEADER, find_executable};
-use rambledesk_hosts::{ConfigFormat, generic_mcp_hosts, host_profile};
+use rambledesk_hosts::{ConfigFormat, RAMBLE_SKILL_MD, generic_mcp_hosts, host_profile};
 
 const SERVER_ID: &str = "rambledesk";
 
@@ -100,6 +100,9 @@ pub fn install_hosts(
             .config_format
             .expect("generic MCP hosts declare a format");
         let action = write_config_for(format, &path, entry)?;
+        if let Some(skill_dir) = knowledge.skill_dir(home) {
+            write_ramble_skill(&skill_dir)?;
+        }
         results.push(McpInstallResult {
             host_id: id.clone(),
             action,
@@ -451,6 +454,28 @@ fn write_config(path: &Path, contents: &[u8]) -> Result<(), String> {
         .map_err(|error| format!("Could not create {}: {error}", parent.display()))?;
     fs::write(path, contents)
         .map_err(|error| format!("Could not write {}: {error}", path.display()))
+}
+
+/// Write the bundled `ramble` skill into `<skill_dir>/ramble/SKILL.md`.
+/// Idempotent: byte-equal content leaves the file untouched.
+fn write_ramble_skill(skill_dir: &Path) -> Result<&'static str, String> {
+    let target = skill_dir.join("ramble").join("SKILL.md");
+    let existed = target.exists();
+    if existed {
+        let current = fs::read_to_string(&target)
+            .map_err(|error| format!("Could not read {}: {error}", target.display()))?;
+        if current == RAMBLE_SKILL_MD {
+            return Ok("unchanged");
+        }
+    }
+    let parent = target
+        .parent()
+        .ok_or_else(|| format!("{} has no parent directory", target.display()))?;
+    fs::create_dir_all(parent)
+        .map_err(|error| format!("Could not create {}: {error}", parent.display()))?;
+    fs::write(&target, RAMBLE_SKILL_MD)
+        .map_err(|error| format!("Could not write {}: {error}", target.display()))?;
+    Ok(if existed { "updated" } else { "created" })
 }
 
 #[cfg(test)]

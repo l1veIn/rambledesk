@@ -23,3 +23,7 @@ pub use continuation::{
 pub use hosts::known_continuation_strategies;
 pub use knowledge::{ConfigFormat, HOSTS, HostKnowledge, generic_mcp_hosts};
 pub use profile::{ContinuationMode, HostAdapter, HostProfile, host_profile, known_host_profiles};
+
+/// Bundled `ramble` skill (Agent Skills format) injected into each installable
+/// host's skill directory by the Generic MCP Adapter installer.
+pub const RAMBLE_SKILL_MD: &str = include_str!("../assets/skills/ramble/SKILL.md");

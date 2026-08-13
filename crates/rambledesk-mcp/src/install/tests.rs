@@ -331,3 +331,22 @@ fn detect_marks_installed_via_marker_directory() {
         ]
     );
 }
+
+#[test]
+fn ramble_skill_is_written_idempotently() {
+    let directory = tempfile::tempdir().expect("temp dir");
+    let skill_dir = directory.path().join(".claude").join("skills");
+    assert_eq!(
+        write_ramble_skill(&skill_dir).expect("install"),
+        "created"
+    );
+    let target = skill_dir.join("ramble").join("SKILL.md");
+    assert_eq!(
+        fs::read_to_string(&target).expect("read"),
+        RAMBLE_SKILL_MD
+    );
+    assert_eq!(
+        write_ramble_skill(&skill_dir).expect("repeat"),
+        "unchanged"
+    );
+}

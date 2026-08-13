@@ -36,6 +36,11 @@ pub struct HostKnowledge {
     /// Configuration/install knowledge; `None` means the host is not
     /// installable through the Generic MCP Adapter scheme.
     pub config_format: Option<ConfigFormat>,
+    /// Home-relative directory where the `ramble` skill is installed
+    /// (`<skill_dir>/ramble/SKILL.md`), following the Agent Skills convention.
+    /// `None` means the host does not receive a skill via the Generic MCP
+    /// Adapter.
+    skill_dir: Option<&'static str>,
     config_path: Option<fn(&Path) -> PathBuf>,
     marker_path: Option<fn(&Path) -> PathBuf>,
 }
@@ -47,6 +52,12 @@ impl HostKnowledge {
 
     pub fn marker_path(&self, home: &Path) -> Option<PathBuf> {
         self.marker_path.map(|path| path(home))
+    }
+
+    /// Absolute path of the host's skill directory for the given home, or
+    /// `None` when the host does not receive a skill.
+    pub fn skill_dir(&self, home: &Path) -> Option<PathBuf> {
+        self.skill_dir.map(|relative| home.join(relative))
     }
 }
 
@@ -116,6 +127,7 @@ pub const HOSTS: &[HostKnowledge] = &[
         config_format: Some(ConfigFormat::McpServersJson),
         config_path: Some(|home| home_path(home, ".claude.json")),
         marker_path: Some(|home| home_path(home, ".claude")),
+        skill_dir: Some(".claude/skills"),
     },
     HostKnowledge {
         id: "codex",
@@ -123,6 +135,7 @@ pub const HOSTS: &[HostKnowledge] = &[
         config_format: Some(ConfigFormat::CodexMcpToml),
         config_path: Some(codex_config_path),
         marker_path: Some(codex_marker_path),
+        skill_dir: Some(".codex/skills"),
     },
     HostKnowledge {
         id: "cursor",
@@ -130,6 +143,7 @@ pub const HOSTS: &[HostKnowledge] = &[
         config_format: Some(ConfigFormat::McpServersJson),
         config_path: Some(|home| home_path(home, ".cursor/mcp.json")),
         marker_path: Some(|home| home_path(home, ".cursor")),
+        skill_dir: Some(".cursor/skills"),
     },
     HostKnowledge {
         id: "gemini",
@@ -137,6 +151,7 @@ pub const HOSTS: &[HostKnowledge] = &[
         config_format: Some(ConfigFormat::GeminiSettingsJson),
         config_path: Some(|home| home_path(home, ".gemini/settings.json")),
         marker_path: Some(|home| home_path(home, ".gemini")),
+        skill_dir: Some(".gemini/skills"),
     },
     HostKnowledge {
         id: "grok",
@@ -144,6 +159,7 @@ pub const HOSTS: &[HostKnowledge] = &[
         config_format: Some(ConfigFormat::GrokMcpToml),
         config_path: Some(grok_config_path),
         marker_path: Some(grok_home),
+        skill_dir: Some(".grok/skills"),
     },
     HostKnowledge {
         id: "pi",
@@ -151,6 +167,7 @@ pub const HOSTS: &[HostKnowledge] = &[
         config_format: None,
         config_path: None,
         marker_path: None,
+        skill_dir: None,
     },
     HostKnowledge {
         id: "opencode",
@@ -158,6 +175,7 @@ pub const HOSTS: &[HostKnowledge] = &[
         config_format: Some(ConfigFormat::OpenCodeMcpJson),
         config_path: Some(|home| home_path(home, ".config/opencode/opencode.json")),
         marker_path: Some(|home| home_path(home, ".opencode")),
+        skill_dir: Some(".config/opencode/skills"),
     },
     HostKnowledge {
         id: "reasonix",
@@ -165,6 +183,7 @@ pub const HOSTS: &[HostKnowledge] = &[
         config_format: Some(ConfigFormat::ReasonixPluginsToml),
         config_path: Some(reasonix_config_path),
         marker_path: Some(reasonix_home),
+        skill_dir: Some(".agents/skills"),
     },
     HostKnowledge {
         id: "inspector",
@@ -172,6 +191,7 @@ pub const HOSTS: &[HostKnowledge] = &[
         config_format: None,
         config_path: None,
         marker_path: None,
+        skill_dir: None,
     },
     HostKnowledge {
         id: "generic",
@@ -179,6 +199,7 @@ pub const HOSTS: &[HostKnowledge] = &[
         config_format: None,
         config_path: None,
         marker_path: None,
+        skill_dir: None,
     },
 ];
 

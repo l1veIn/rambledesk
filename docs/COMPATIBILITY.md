@@ -47,14 +47,44 @@ Pi 的正常流程在同一个 tool call 内等待，因此无需提交后的 Re
 | 宿主 | 适配器 | 状态 | 备注 |
 | --- | --- | --- | --- |
 | Pi 0.83.x | Pi Native Adapter | 自动化基线通过 | 真实长时等待与桌面重启需继续人工回归 |
-| Claude Code 2.1.x | Generic MCP Adapter | 工具调用通过 | 提交后使用 Resume Prompt |
+| Claude Code 2.1.x | Generic MCP Adapter | 工具调用通过 | 提交后使用 Resume Prompt；自动配置时向 `.claude/skills` 注入 `ramble` skill |
 | MCP Inspector 2.x | Generic MCP Adapter | smoke 通过 | 用于协议和安全门禁 |
 | Codex CLI | Generic MCP Adapter | 待补完整矩阵 | 按通用适配器合同处理 |
 | OpenCode | Generic MCP Adapter | 待补完整矩阵 | 按通用适配器合同处理 |
-| Reasonix (Go, v1.8+) | Generic MCP Adapter | 自动检测+安装已实现 | 写入 `config.toml` 的 `[[plugins]]` HTTP 条目；持久会话下提交后"继续"即恢复 |
+| Reasonix (Go, v1.8+) | Generic MCP Adapter | 自动检测+安装已实现 | 写入 `config.toml` 的 `[[plugins]]` HTTP 条目；持久会话下提交后"继续"即恢复；自动配置时向 `.agents/skills` 注入 `ramble` skill |
 | Grok CLI | Generic MCP Adapter | 自动检测+安装已实现 | 写入 `~/.grok/config.toml`（或 `GROK_HOME`）的 `[mcp_servers.rambledesk]` HTTP 条目；提交后使用 Resume Prompt，或用 `ask_user_question` 等待后再 `get_feedback` |
 
 版本号仅记录已测环境，不构成 RambleDesk 对第三方版本的长期保证。
+
+## 反馈闭环（skill 注入）
+
+目标场景：打开新会话 → 最小化宿主终端 → 之后所有需要用户参与的交互只出现在
+RambleDesk。
+
+通用 MCP 适配器在「自动配置 MCP」时，除写入 MCP server 配置外，还会把一个遵循
+Agent Skills 开放标准（[agentskills.io](https://agentskills.io)）的 `ramble` skill
+复制到各宿主的**全局 skill 目录**（`~/.claude/skills/ramble/SKILL.md` 等），由
+宿主启动时自动发现、按需加载。skill 内容纯教宿主走 RambleDesk 反馈循环
+（`request_feedback` → 等待 → `get_feedback` → 实现 → 必要时 `cancel_feedback`），
+不包含会话恢复逻辑。
+
+| 宿主 | skill 目录（home 相对） |
+| --- | --- |
+| Claude Code | `.claude/skills` |
+| Codex | `.codex/skills` |
+| Cursor | `.cursor/skills` |
+| Gemini CLI | `.gemini/skills` |
+| Grok CLI | `.grok/skills` |
+| OpenCode | `.config/opencode/skills` |
+| Reasonix | `.agents/skills` |
+
+### 恢复与 continuation
+
+- 断线/重启不改变已持久化 request 的生命周期；用相同 `request_id` 调
+  `get_feedback` 即可读到服务端事实。
+- 宿主恢复后「所有交互只走 RambleDesk」是否延续，取决于宿主是否保留会话上下文：
+  - Reasonix 持久会话：提交后"继续"即恢复原上下文。
+  - Claude Code 及其他靠 Resume Prompt 的宿主：恢复后需重新注入上下文。
 
 ## 安全基线
 
