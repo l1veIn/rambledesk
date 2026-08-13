@@ -7,6 +7,7 @@ const versions = new Map([
   ["package.json", rootVersion],
   ["apps/desktop/package.json", readJson("apps/desktop/package.json").version],
   ["packages/pi-rambledesk/package.json", readJson("packages/pi-rambledesk/package.json").version],
+  ["packages/dsh-rambledesk/package.json", readJson("packages/dsh-rambledesk/package.json").version],
   ["apps/desktop/src-tauri/tauri.conf.json", readJson("apps/desktop/src-tauri/tauri.conf.json").version],
 ]);
 

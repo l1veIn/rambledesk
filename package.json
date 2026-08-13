@@ -1,7 +1,7 @@
 {
   "name": "rambledesk",
   "private": true,
-  "version": "0.0.2-rc.6",
+  "version": "0.0.2-rc.7",
   "packageManager": "pnpm@10.12.4",
   "scripts": {
     "dev": "pnpm -C apps/desktop tauri dev",
@@ -11,6 +11,7 @@
     "check": "pnpm -C apps/desktop check",
     "test": "pnpm -C apps/desktop test",
     "test:pi": "pnpm -C packages/pi-rambledesk test",
+    "test:dsh": "pnpm -C packages/dsh-rambledesk test",
     "test:rust": "cargo test --workspace",
     "check:rust-size": "node scripts/check-rust-module-size.mjs",
     "check:terminology": "node scripts/check-terminology.mjs",
