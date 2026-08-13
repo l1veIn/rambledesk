@@ -40,7 +40,8 @@ Beyond the Ramble:
 - Authenticated loopback local server with `/api/feedback/request|get|wait|cancel` and `/mcp`.
 - Generic MCP Adapter scheme with `request_feedback`, `get_feedback`, and `cancel_feedback`, plus a host detect/install engine that consumes the host knowledge registry.
 - Pi native package at `packages/pi-rambledesk`, using the local JSON API and blocking inside the Pi tool call.
-- Adapter settings for Generic MCP hosts and Pi package installation.
+- DeepSeek Harness (dsh) native plugin at `packages/dsh-rambledesk`, using the local JSON API and blocking inside the dsh tool call.
+- Adapter settings for Generic MCP hosts, Pi package installation, and dsh plugin installation.
 - First-run setup for language, data location, local speech, adapters, notifications, and optional Cooking; it can be rerun from **Settings → General**.
 - Chinese and English UI, light and dark appearance modes, tray entry points, and optional system notifications.
 
@@ -60,7 +61,7 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-Open **Settings → Adapters** in RambleDesk to detect supported local tools, install Generic MCP configuration, install the Pi package, or copy the authenticated Streamable HTTP configuration.
+Open **Settings → Adapters** in RambleDesk to detect supported local tools, install Generic MCP configuration, install the Pi package, install the DeepSeek Harness plugin, or copy the authenticated Streamable HTTP configuration.
 
 ## First-run setup
 
@@ -119,9 +120,10 @@ crates/rambledesk-hosts        Host knowledge registry, profiles, continuation s
 crates/rambledesk-speech       Native audio capture and local streaming transcription
 crates/rambledesk-cli          Headless development and protocol verification entrypoint
 packages/pi-rambledesk         Pi native adapter package
+packages/dsh-rambledesk        DeepSeek Harness (dsh) native adapter plugin
 ```
 
-`core` owns the application contract. Storage, local server, host knowledge, speech, CLI, and Tauri are infrastructure or composition layers; the Generic MCP and Pi packages participate in complete host-facing adapters. None of these layers may become a second source of business state.
+`core` owns the application contract. Storage, local server, host knowledge, speech, CLI, and Tauri are infrastructure or composition layers; the Generic MCP, Pi, and dsh packages participate in complete host-facing adapters. None of these layers may become a second source of business state.
 
 ## Documentation
 

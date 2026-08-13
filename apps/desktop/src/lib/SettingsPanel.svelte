@@ -5,6 +5,7 @@
   import { isPermissionGranted, requestPermission } from '@tauri-apps/plugin-notification'
   import {
     BellRing,
+    Bot,
     Check,
     CheckCircle2,
     ChefHat,
@@ -143,6 +144,14 @@
     restartRequired: boolean
   }
 
+  type DshInstallResult = {
+    profileId: string
+    profileDir: string
+    patchPath: string
+    action: 'created' | 'updated' | 'unchanged'
+    restartRequired: boolean
+  }
+
   let dialogOpen = true
   let closeDelivered = false
   let activeSection: Section = initialSection
@@ -155,6 +164,9 @@
   let installingPi = false
   let piInstallMessage = ''
   let piInstallError = ''
+  let installingDsh = false
+  let dshInstallMessage = ''
+  let dshInstallError = ''
   let copyState: 'idle' | 'copied' | 'error' = 'idle'
   let genericAdapterOpen = true
   let configurationOpen = false
@@ -356,6 +368,31 @@
       piInstallError = messageFrom(cause)
     } finally {
       installingPi = false
+    }
+  }
+
+  async function installDshPackage() {
+    if (installingDsh) return
+    installingDsh = true
+    dshInstallError = ''
+    dshInstallMessage = ''
+    try {
+      const results = await invoke<DshInstallResult[]>('install_dsh_package', {
+        checkoutRoot: null,
+        profileId: null,
+      })
+      const changed = results.filter((result) => result.action !== 'unchanged').length
+      dshInstallMessage = tr(
+        '已安装 DeepSeek Harness 原生适配器（{count} 个 profile：{profiles}），重启 dsh 后生效。',
+        {
+          count: changed,
+          profiles: results.map((result) => result.profileId).join(', '),
+        },
+      )
+    } catch (cause) {
+      dshInstallError = messageFrom(cause)
+    } finally {
+      installingDsh = false
     }
   }
 
@@ -1109,6 +1146,45 @@
                 <Alert.Root variant="destructive" class="mt-4">
                   <Alert.Title>{tr('安装失败')}</Alert.Title>
                   <Alert.Description>{piInstallError}</Alert.Description>
+                </Alert.Root>
+              {/if}
+            </section>
+
+            <section class="border-b pb-8">
+              <div class="flex items-start gap-3">
+                <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground [&_svg]:size-4">
+                  <Bot class="size-4" />
+                </span>
+                <div class="min-w-0 flex-1">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <h3 class="m-0 text-sm font-medium">{tr('DeepSeek Harness 原生适配器')}</h3>
+                    <Badge variant="secondary">{tr('原生等待')}</Badge>
+                  </div>
+                  <p class="m-0 mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">
+                    {tr('Cordis 插件通过本地 JSON API 请求、查询、等待和取消；等待发生在 dsh 工具调用内，并向全局 skill 目录安装 ramble 引导。')}
+                  </p>
+                </div>
+                <Button disabled={installingDsh || !isTauri} onclick={installDshPackage}>
+                  {#if installingDsh}
+                    <LoaderCircle class="animate-spin" data-icon="inline-start" />
+                    {tr('正在安装…')}
+                  {:else}
+                    <Download data-icon="inline-start" />
+                    {tr('安装')}
+                  {/if}
+                </Button>
+              </div>
+              {#if dshInstallMessage}
+                <Alert.Root class="mt-4 border-success/30 bg-success/5 text-success">
+                  <CheckCircle2 />
+                  <Alert.Title>{tr('安装完成')}</Alert.Title>
+                  <Alert.Description class="whitespace-pre-wrap">{dshInstallMessage}</Alert.Description>
+                </Alert.Root>
+              {/if}
+              {#if dshInstallError}
+                <Alert.Root variant="destructive" class="mt-4">
+                  <Alert.Title>{tr('安装失败')}</Alert.Title>
+                  <Alert.Description>{dshInstallError}</Alert.Description>
                 </Alert.Root>
               {/if}
             </section>

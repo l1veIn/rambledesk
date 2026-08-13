@@ -1,4 +1,5 @@
 mod clipboard_capture;
+mod dsh_install;
 mod logging;
 mod open_attachment;
 mod pi_install;
@@ -225,6 +226,8 @@ pub fn run() {
             detect_generic_mcp_hosts,
             install_generic_mcp_hosts,
             install_pi_package,
+            detect_dsh_host,
+            install_dsh_package,
             set_pending_count,
             list_feedback_inbox,
             list_host_sessions,

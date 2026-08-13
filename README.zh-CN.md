@@ -40,7 +40,8 @@ Ramble 之外：
 - 带认证的本地 loopback server，提供 `/api/feedback/request|get|wait|cancel` 与 `/mcp`。
 - 通用 MCP 适配器方案：工具为 `request_feedback`、`get_feedback`、`cancel_feedback`，并带消费宿主知识注册表的检测/安装引擎。
 - Pi 原生 package 位于 `packages/pi-rambledesk`，使用本地 JSON API，并在 Pi tool call 内等待终态。
-- 适配器设置：Generic MCP 宿主配置、Pi package 安装。
+- DeepSeek Harness (dsh) 原生插件位于 `packages/dsh-rambledesk`，使用本地 JSON API，并在 dsh 工具调用内等待终态。
+- 适配器设置：Generic MCP 宿主配置、Pi package 安装、DSH 插件安装。
 - 首次使用引导：语言、数据位置、本地语音、适配器、通知和可选 Cooking；可从 **设置 → 通用** 再次启用。
 - 中文/英文界面、light/dark 外观、托盘入口以及可选系统通知。
 
@@ -60,7 +61,7 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-在 RambleDesk 中打开 **设置 → 适配器**，可以检测支持的本机工具、一键写入 Generic MCP 配置、安装 Pi package，或复制带认证的 Streamable HTTP 配置。
+在 RambleDesk 中打开 **设置 → 适配器**，可以检测支持的本机工具、一键写入 Generic MCP 配置、安装 Pi package、安装 DeepSeek Harness 插件，或复制带认证的 Streamable HTTP 配置。
 
 ## 首次使用引导
 
@@ -119,9 +120,10 @@ crates/rambledesk-hosts        宿主知识注册表、profiles 与 continuation
 crates/rambledesk-speech       原生音频采集与本地流式转写
 crates/rambledesk-cli          无界面开发入口与协议验证工具
 packages/pi-rambledesk         Pi 原生适配器 package
+packages/dsh-rambledesk        DeepSeek Harness (dsh) 原生适配器插件
 ```
 
-`core` 持有 application contract。Storage、local server、host knowledge、speech、CLI 和 Tauri 都是基础设施层或装配层；Generic MCP 与 Pi 是完整的宿主适配方案。任何一层都不能成为第二套业务状态。
+`core` 持有 application contract。Storage、local server、host knowledge、speech、CLI 和 Tauri 都是基础设施层或装配层；Generic MCP、Pi 与 dsh 插件是完整的宿主适配方案。任何一层都不能成为第二套业务状态。
 
 ## 文档
 

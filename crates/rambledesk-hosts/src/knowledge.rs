@@ -170,6 +170,14 @@ pub const HOSTS: &[HostKnowledge] = &[
         skill_dir: None,
     },
     HostKnowledge {
+        id: "dsh",
+        executable: Some("dsh"),
+        config_format: None,
+        config_path: None,
+        marker_path: Some(|home| home_path(home, ".dsh")),
+        skill_dir: Some(".agents/skills"),
+    },
+    HostKnowledge {
         id: "opencode",
         executable: Some("opencode"),
         config_format: Some(ConfigFormat::OpenCodeMcpJson),
@@ -232,6 +240,7 @@ mod tests {
                 "claude",
                 "codex",
                 "cursor",
+                "dsh",
                 "gemini",
                 "generic",
                 "grok",

@@ -8,6 +8,7 @@ const CURSOR_ICON: &str = include_str!("../assets/icons/cursor.svg");
 const GEMINI_ICON: &str = include_str!("../assets/icons/google-gemini.svg");
 const GROK_ICON: &str = include_str!("../assets/icons/grok.svg");
 const PI_ICON: &str = include_str!("../assets/icons/pi.svg");
+const DSH_ICON: &str = include_str!("../assets/icons/dsh.svg");
 const REASONIX_ICON: &str = include_str!("../assets/icons/reasonix.svg");
 const OPENCODE_ICON: &str = include_str!("../assets/icons/opencode.svg");
 const INSPECTOR_ICON: &str = include_str!("../assets/icons/model-context-protocol.svg");
@@ -49,6 +50,13 @@ pub fn host_profile(host_id: &str) -> HostProfile {
             "pi",
             "Pi",
             PI_ICON,
+            HostAdapter::PiNative,
+            ContinuationMode::NotRequired,
+        ),
+        "dsh" => (
+            "dsh",
+            "DeepSeek Harness",
+            DSH_ICON,
             HostAdapter::PiNative,
             ContinuationMode::NotRequired,
         ),
@@ -103,6 +111,16 @@ mod tests {
         let profile = host_profile("pi");
         assert_eq!(profile.default_adapter, HostAdapter::PiNative);
         assert_eq!(profile.continuation_mode, ContinuationMode::NotRequired);
+    }
+
+    #[test]
+    fn dsh_profile_declares_native_wait_without_continuation() {
+        let profile = host_profile("dsh");
+        assert_eq!(profile.id, "dsh");
+        assert_eq!(profile.label, "DeepSeek Harness");
+        assert_eq!(profile.default_adapter, HostAdapter::PiNative);
+        assert_eq!(profile.continuation_mode, ContinuationMode::NotRequired);
+        assert!(profile.icon_svg.contains("svg"));
     }
 
     #[test]

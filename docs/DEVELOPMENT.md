@@ -41,7 +41,8 @@ rambledesk/
 │   ├── rambledesk-speech/               # local speech capability
 │   └── rambledesk-cli/                  # headless composition root
 ├── packages/
-│   └── pi-rambledesk/                    # Pi Native Adapter
+│   ├── pi-rambledesk/                    # Pi Native Adapter
+│   └── dsh-rambledesk/                   # DeepSeek Harness (dsh) Native Adapter
 ├── docs/
 └── scripts/
 ```
@@ -88,6 +89,15 @@ rambledesk/
 - 调用 Local JSON API 的 request/get/wait/cancel；
 - 在同一个 Pi tool call 内等待终态；
 - 不依赖 MCP。
+
+### `packages/dsh-rambledesk`
+
+- 注册 dsh（DeepSeek Harness）原生反馈工具（request/resume/get/cancel）；
+- 调用 Local JSON API 的 request/wait/get/recover/cancel；
+- 在同一个 dsh 工具调用内等待终态（不声明 `timeoutMs`，只在执行信号中断时中止）；
+- 在插件旁持久化 request 状态与 `host_session_id`，支持跨重启恢复；
+- 附带 dsh 定制版 `ramble` skill（`skills/ramble/SKILL.md`），由桌面安装引擎复制到 `~/.agents/skills`；
+- 不依赖 MCP，零 npm 依赖。
 
 ### Desktop
 
@@ -232,6 +242,7 @@ pnpm test
 pnpm build:web
 pnpm contracts:check
 pnpm test:pi
+pnpm test:dsh
 pnpm mcp:self-test
 pnpm mcp:inspector-smoke
 ```
