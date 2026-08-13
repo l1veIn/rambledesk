@@ -20,6 +20,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
+use tauri::Manager;
 
 use rambledesk_core::find_executable;
 
@@ -75,7 +76,7 @@ pub struct DshHostView {
 
 /// Detect dsh on this device: whether the CLI is present and which profiles
 /// can host the RambleDesk plugin.
-pub fn detect_dsh_host(home: &Path) -> DshHostView {
+pub fn scan_dsh_host(home: &Path) -> DshHostView {
     let profiles = list_dsh_profiles(home);
     DshHostView {
         id: "dsh",
@@ -311,6 +312,69 @@ fn copy_if_changed(source: &Path, target: &Path) -> Result<bool, String> {
         .map_err(|error| format!("Could not write {}: {error}", target.display()))?;
     Ok(true)
 }
+
+// #region tauri commands
+
+/// Detection command for the Settings → Adapters dsh card.
+#[tauri::command]
+pub(super) fn detect_dsh_host(app: tauri::AppHandle) -> Result<DshHostView, String> {
+    let home = app
+        .path()
+        .home_dir()
+        .map_err(|error| format!("Could not resolve the user home directory: {error}"))?;
+    Ok(scan_dsh_host(&home))
+}
+
+/// Install the RambleDesk plugin into every (or one selected) dsh profile.
+#[tauri::command]
+pub(super) async fn install_dsh_package(
+    app: tauri::AppHandle,
+    checkout_root: Option<String>,
+    profile_id: Option<String>,
+) -> Result<Vec<DshInstallResult>, String> {
+    let resource_dir = app
+        .path()
+        .resource_dir()
+        .map_err(|error| format!("Could not resolve bundled application resources: {error}"))?;
+    let package_dir = resolve_package_dir(checkout_root.as_deref(), Some(&resource_dir))
+        .ok_or_else(|| {
+            "Could not locate the bundled dsh-rambledesk package. Reinstall RambleDesk or copy `packages/dsh-rambledesk` into the dsh profile plugins directory manually."
+                .to_owned()
+        })?;
+    let home = app
+        .path()
+        .home_dir()
+        .map_err(|error| format!("Could not resolve the user home directory: {error}"))?;
+    let profiles = list_dsh_profiles(&home);
+    if profiles.is_empty() {
+        return Err(
+            "No dsh profiles found. Install dsh first, then run this installer again.".to_owned(),
+        );
+    }
+    let targets: Vec<_> = match profile_id.as_deref() {
+        Some(id) => profiles
+            .into_iter()
+            .filter(|profile| profile.id == id)
+            .collect(),
+        None => profiles,
+    };
+    if targets.is_empty() {
+        return Err(format!(
+            "dsh profile {:?} was not found under the dsh profiles directory",
+            profile_id
+        ));
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        targets
+            .into_iter()
+            .map(|profile| install_dsh(&home, &profile, &package_dir))
+            .collect::<Result<Vec<_>, _>>()
+    })
+    .await
+    .map_err(|error| format!("Installer task failed: {error}"))?
+}
+
+// #endregion
 
 #[cfg(test)]
 #[path = "dsh_install/tests.rs"]
