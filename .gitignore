@@ -14,7 +14,9 @@ apps/*/src-tauri/icons/ios/
 .rambledesk/
 .repochan/
 deliverables-2026-07-31/
-.reasonix/
+.reasonix/*
+!.reasonix/commands/
+!.reasonix/commands/*
 apps/*/package-lock.json
 
 reasonix.toml

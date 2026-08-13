@@ -106,3 +106,31 @@
 
 - Frozen dependency installation, release-version consistency, terminology and dependency-boundary checks, generated-contract freshness, Rust formatting, the 500-line Rust module limit, strict workspace clippy, all Rust targets, Svelte diagnostics, frontend tests, the production web build, Pi tests, and the MCP Inspector smoke test passed.
 - `cargo check --workspace --target x86_64-apple-darwin` passed in addition to the native Apple Silicon build, and the universal DMG completed with `CI=true` and `--no-sign`.
+
+## 2026-08-13 — 以 ramble 形式开发：`/ramble` 斜杠命令
+
+### 背景
+
+- 开发流程想默认走 Ramble 循环：Reasonix 通过 RambleDesk 的 `request_feedback`
+  发出持久化请求，等待人类在实际使用中提交反馈包，再用 `get_feedback` 读取。
+- 实测发现只有人类明确说"用 MCP 工具发 Ramble"之后宿主才会走这条路，不会默认
+  采用。反馈建议：把 MCP 工具与一个斜杠命令/skill 绑定，`/ramble` 直接驱动。
+
+### 落地
+
+- 新增 `.reasonix/commands/ramble.md`，注册为 Reasonix 项目斜杠命令 `/ramble`；
+  `reasonix doctor capabilities --json` 确认 entry 为 winner、root 状态 ok。
+- 命令内容规定了完整循环：`request_feedback`（`host_id=reasonix`、不传
+  `request_id` 由服务器生成 UUID、详细反馈请求不设 `allow_finish`）→ 用交互
+  确认工具等待（不轮询）→ `get_feedback` 读取反馈包 → 逐条实现 → 需要再确认时
+  重复；人类明确放弃时用 `cancel_feedback`。
+- `.gitignore` 为 `.reasonix/commands/` 增加例外：静态命令模板随仓库版本化，
+  `.reasonix/` 下的运行时状态（desktop-topic json 等）仍被忽略。
+
+### 验证
+
+- `reasonix doctor capabilities --json`：`summary.commands = 1`，
+  `commands.entries = [{ name: "ramble", status: "winner" }]`。
+- 通过 RambleDesk MCP 实测一轮完整循环：创建请求
+  `019ff943-e35b-7311-a56b-9e4aa3a70484` → ask 等待 → `get_feedback` 读到
+  本反馈包（`feedback.md`），确认流程端到端可用。
