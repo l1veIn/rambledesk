@@ -202,11 +202,26 @@ test("puts terminal feedback markdown and attachment paths in model-visible cont
     },
   });
 
-  assert.match(result.content[0].text, /completed/);
-  assert.match(result.content[0].text, /human feedback/);
-  assert.match(result.content[0].text, /C:\\tmp\\screenshot\.png/);
-  assert.doesNotMatch(result.content[0].text, /\\\\\?\\/);
+  assert.match(result.text, /completed/);
+  assert.match(result.text, /human feedback/);
+  assert.match(result.text, /C:\\tmp\\screenshot\.png/);
+  assert.doesNotMatch(result.text, /\\\\\?\\/);
   assert.equal(result.details.feedback_package.markdown, "human feedback");
+});
+
+test("tool result matches the declared output value shape (text + details only)", () => {
+  // dsh validates every successful execute() return against output.schema,
+  // which declares { text, details } with additionalProperties: false. The
+  // MCP-style `content` array shape must never reach the registry.
+  const result = feedbackToolResult({
+    request_id: "019",
+    status: "completed",
+    feedback_package: { markdown: "m", attachment_paths: [] },
+  });
+
+  assert.deepEqual(Object.keys(result).sort(), ["details", "text"]);
+  assert.equal(typeof result.text, "string");
+  assert.equal(result.details.request_id, "019");
 });
 
 test("registers the four RambleDesk tools on ctx.tools", () => {
@@ -267,9 +282,9 @@ test("request tool waits inside the tool call and returns the terminal package",
       assert.match(calls[0].body.host_session_id, /^dsh-/);
       assert.equal(calls[1].url, "/api/feedback/wait");
       assert.deepEqual(calls[1].body, { request_id: "019" });
-      assert.match(result.content[0].text, /completed/);
-      assert.match(result.content[0].text, /human feedback/);
-      assert.match(result.content[0].text, /\/tmp\/screenshot\.png/);
+      assert.match(result.text, /completed/);
+      assert.match(result.text, /human feedback/);
+      assert.match(result.text, /\/tmp\/screenshot\.png/);
       assert.equal(result.details.feedback_package.markdown, "human feedback");
     } finally {
       await new Promise((resolve) => server.close(resolve));
@@ -312,7 +327,7 @@ test("recovers the package when an idempotent request is already completed", asy
     }, {});
 
     assert.deepEqual(calls, ["/api/feedback/request", "/api/feedback/get"]);
-    assert.match(result.content[0].text, /recovered feedback/);
+    assert.match(result.text, /recovered feedback/);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
@@ -350,7 +365,7 @@ test("resume reconnects to a persisted request and waits for its terminal result
     assert.equal(calls[0].body.request_id, "persisted-request");
     assert.match(calls[0].body.host_session_id, /^dsh-/);
     assert.equal(calls[1].url, "/api/feedback/wait");
-    assert.match(result.content[0].text, /Recovered lazily/);
+    assert.match(result.text, /Recovered lazily/);
   } finally {
     await new Promise((resolve) => server.close(resolve));
     await rm(stateDir, { recursive: true, force: true });
@@ -380,7 +395,7 @@ test("cancel posts an explicit cancellation", async () => {
       url: "/api/feedback/cancel",
       body: { request_id: "019", reason: "Obsolete." },
     });
-    assert.match(result.content[0].text, /cancelled/);
+    assert.match(result.text, /cancelled/);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
@@ -410,8 +425,8 @@ test("approved final summary instructs ending the flow without another turn", as
       final_summary: "All requested work is complete.",
     }, {});
 
-    assert.match(result.content[0].text, /approved/);
-    assert.match(result.content[0].text, /End the Ramble flow now/);
+    assert.match(result.text, /approved/);
+    assert.match(result.text, /End the Ramble flow now/);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

@@ -288,7 +288,7 @@ export function feedbackToolResult(result) {
         ? `RambleDesk feedback request ${requestId} was cancelled. Treat this as terminal and continue or stop accordingly.`
         : `RambleDesk feedback request ${requestId} is ${status}. Do not poll; wait for a resume signal or call get_ramble_feedback later.`;
   return {
-    content: [{ type: "text", text }],
+    text,
     details: result,
   };
 }
