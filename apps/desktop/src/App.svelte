@@ -806,6 +806,7 @@
       workspace.request.status === 'cancelled' ||
       currentRequestCooking
     ) return
+    if (rambleCanExit) await exitRamble()
     if (!(await saveDraftNow())) return
     if (!workspace || currentRequestCooking) return
 
@@ -837,6 +838,9 @@
       cookedPreview = { markdown: cooked.markdown, original, model: cooked.model }
       cookedPreviewOriginal = original
       draftBody = cooked.markdown
+      // Drive the editor instance directly in addition to the reactive prop
+      // chain, so the cooked text is visible even if a prop update is lost.
+      workspacePanel?.applyExternalMarkdown(cooked.markdown)
       savePhase = draftBody === savedBody ? 'saved' : 'unsaved'
       saveMessage = ''
       void saveDraftNow()
@@ -852,6 +856,7 @@
     if (!cookedPreview || !workspace || currentRequestCooking) return
     cookedPreview = null
     draftBody = cookedPreviewOriginal
+    workspacePanel?.applyExternalMarkdown(cookedPreviewOriginal)
     savePhase = draftBody === savedBody ? 'saved' : 'unsaved'
     saveMessage = ''
     void saveDraftNow()

@@ -119,6 +119,10 @@
     return feedbackEditor?.insertAttachments(attachments) ?? false
   }
 
+  export function applyExternalMarkdown(markdown: string): boolean {
+    return feedbackEditor?.applyExternalMarkdown(markdown) ?? false
+  }
+
   export function appendTranscript(text: string) {
     feedbackEditor?.appendTranscript(text)
   }

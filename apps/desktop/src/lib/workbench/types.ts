@@ -30,6 +30,7 @@ export type FeedbackEditorHandle = {
   appendClipboardCapture(text: string, label: string): boolean
   appendCapturedAttachment(attachment: AttachmentView, label: string): boolean
   removeAttachmentReference(attachmentId: string): void
+  applyExternalMarkdown(markdown: string): boolean
 }
 
 export type RambleSessionControllerHandle = {

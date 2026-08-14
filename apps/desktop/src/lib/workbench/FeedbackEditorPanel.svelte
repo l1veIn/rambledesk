@@ -69,6 +69,10 @@
     return richEditor?.insertAttachments(attachments) ?? false
   }
 
+  export function applyExternalMarkdown(markdown: string): boolean {
+    return richEditor?.applyExternalMarkdown(markdown) ?? false
+  }
+
   export function appendTranscript(text: string) {
     richEditor?.appendTranscript(text)
   }

@@ -239,14 +239,19 @@
   function applyMarkdown(nextMarkdown: string) {
     if (!editor) return
     applyingExternalChange = true
-    editor.commands.setContent(nextMarkdown, {
-      contentType: 'markdown',
-      emitUpdate: false,
-    })
-    editorMarkdown = nextMarkdown
-    insertionPosition = Math.min(insertionPosition, editor.state.doc.content.size)
-    hydrateAttachmentImages()
-    applyingExternalChange = false
+    try {
+      editor.commands.setContent(nextMarkdown, {
+        contentType: 'markdown',
+        emitUpdate: false,
+      })
+      editorMarkdown = nextMarkdown
+      insertionPosition = Math.min(insertionPosition, editor.state.doc.content.size)
+      hydrateAttachmentImages()
+    } catch (cause) {
+      console.error('[richEditor] applyMarkdown failed', cause)
+    } finally {
+      applyingExternalChange = false
+    }
   }
 
   function hydrateAttachmentImages() {
@@ -274,6 +279,13 @@
     editor.view.dispatch(transaction)
     editorMarkdown = editor.getMarkdown()
     applyingExternalChange = false
+  }
+
+  export function applyExternalMarkdown(nextMarkdown: string): boolean {
+    if (!editor) return false
+    if (nextMarkdown === editorMarkdown) return true
+    applyMarkdown(nextMarkdown)
+    return true
   }
 
   export function insertAttachments(attachments: AttachmentView[]) {
