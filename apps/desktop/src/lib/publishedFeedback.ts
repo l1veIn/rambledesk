@@ -1,8 +1,42 @@
 import { attachmentMarkdownUrl } from './attachmentMarkdown'
+import { operatorFeedbackBody } from './workbench/feedbackText'
+
+export type PublishedFeedbackView = {
+  markdown: string
+  uncooked_markdown?: string
+}
+
+export type PublishedFeedbackPackage = PublishedFeedbackView & {
+  manifest?: { attachments?: PublishedAttachmentPath[] }
+}
 
 export type PublishedAttachmentPath = {
   id: string
   path: string
+}
+
+/**
+ * Normalize a published feedback package into the workbench view: extract the
+ * Operator Feedback body and rewrite portable attachment paths to local
+ * `attachment://id` URLs. Display-only; never changes the package on disk.
+ */
+export function normalizePublishedFeedback(
+  published: PublishedFeedbackPackage | null,
+): PublishedFeedbackView | null {
+  if (!published) return null
+  const attachments = published.manifest?.attachments ?? []
+  return {
+    markdown: restorePublishedAttachmentUrls(
+      operatorFeedbackBody(published.markdown),
+      attachments,
+    ),
+    uncooked_markdown: published.uncooked_markdown
+      ? restorePublishedAttachmentUrls(
+          operatorFeedbackBody(published.uncooked_markdown),
+          attachments,
+        )
+      : undefined,
+  }
 }
 
 /**

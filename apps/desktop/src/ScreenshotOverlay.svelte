@@ -25,6 +25,21 @@
     type ScreenCaptureView,
   } from './lib/screenCapture'
   import { exportAnnotatedCapture, renderCaptureAnnotations } from './lib/screenshotRenderer'
+  import {
+    annotationHasSize,
+    captureTargetRectangle,
+    clampPointToSelection,
+    cssRectangle,
+    fitImage,
+    findCaptureTarget,
+    fullScreenSelection,
+    imageLayerStyle,
+    imagePoint,
+    sourceTolerance,
+    textDraftStyle as computeTextDraftStyle,
+    captureToolbarPosition as computeToolbarPosition,
+    toolbarPopoverOpensDownward as toolbarPopoverDown,
+  } from './lib/screen-capture/overlayGeometry'
 
   type DisplayRectangle = CaptureRectangle
   type GestureKind =
@@ -98,6 +113,7 @@
   $: displayRectangle = capture
     ? fitImage(capture.image_width, capture.image_height, viewportWidth, viewportHeight)
     : null
+  $: geometry = { capture, displayRectangle, viewportWidth, viewportHeight }
   $: selectedAnnotation = selectedAnnotationId
     ? annotations.find((annotation) => annotation.id === selectedAnnotationId) ?? null
     : null
@@ -233,18 +249,6 @@
     sourceImage = sourceCanvas
   }
 
-  function imagePoint(event: PointerEvent | MouseEvent): CapturePoint | null {
-    if (!capture || !displayRectangle) return null
-    const shellBounds = shell.getBoundingClientRect()
-    const x = event.clientX - shellBounds.left - displayRectangle.x
-    const y = event.clientY - shellBounds.top - displayRectangle.y
-    if (x < 0 || y < 0 || x > displayRectangle.width || y > displayRectangle.height) return null
-    return {
-      x: (x / displayRectangle.width) * capture.image_width,
-      y: (y / displayRectangle.height) * capture.image_height,
-    }
-  }
-
   function beginPointer(event: PointerEvent) {
     if (!capture || completing || event.button !== 0) return
     const target = event.target
@@ -253,7 +257,7 @@
     overflowPanelOpen = false
     event.preventDefault()
     window.getSelection()?.removeAllRanges()
-    const point = imagePoint(event)
+    const point = imagePoint(event, shell.getBoundingClientRect(), geometry)
     if (!point) return
     ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
     errorMessage = ''
@@ -264,7 +268,7 @@
     }
 
     if (activeTool === 'select') {
-      const tolerance = sourceTolerance(8)
+      const tolerance = sourceTolerance(8, geometry)
       const hit = [...annotations]
         .reverse()
         .find((annotation) => hitTestAnnotation(annotation, point, tolerance))
@@ -290,7 +294,7 @@
     }
 
     if (!pointInRectangle(point, selection)) return
-    const clamped = clampPointToSelection(point)
+    const clamped = clampPointToSelection(point, selection)
     if (activeTool === 'text') {
       event.preventDefault()
       textDraft = { point: clamped, value: '' }
@@ -324,19 +328,19 @@
   }
 
   function movePointer(event: PointerEvent) {
-    const point = imagePoint(event)
+    const point = imagePoint(event, shell.getBoundingClientRect(), geometry)
     if (!point || !capture) {
       if (!gesture && !selection) hoveredTarget = null
       return
     }
     if (!gesture) {
-      if (!selection) hoveredTarget = findCaptureTarget(point)
+      if (!selection) hoveredTarget = findCaptureTarget(point, capture?.targets ?? [])
       return
     }
 
     switch (gesture.kind) {
       case 'new-selection':
-        if (distance(gesture.start, point) > sourceTolerance(5)) {
+        if (distance(gesture.start, point) > sourceTolerance(5, geometry)) {
           hoveredTarget = null
           selection = clampCaptureRectangle(
             normalizeCaptureRectangle(gesture.start, point),
@@ -366,15 +370,15 @@
             point,
             capture.image_width,
             capture.image_height,
-            sourceTolerance(12),
+            sourceTolerance(12, geometry),
           )
         }
         break
       case 'draw': {
-        const clamped = clampPointToSelection(point)
+        const clamped = clampPointToSelection(point, selection)
         if (draftAnnotation?.type === 'pen') {
           const last = draftAnnotation.points.at(-1)
-          if (!last || distance(last, clamped) >= sourceTolerance(1.5)) {
+          if (!last || distance(last, clamped) >= sourceTolerance(1.5, geometry)) {
             draftAnnotation = { ...draftAnnotation, points: [...draftAnnotation.points, clamped] }
           }
         } else {
@@ -402,7 +406,7 @@
             point,
             capture.image_width,
             capture.image_height,
-            sourceTolerance(8),
+            sourceTolerance(8, geometry),
           )
           const resized = resizeAnnotation(gesture.originalAnnotation, originalBounds, nextBounds)
           annotations = gesture.annotationsSnapshot.map((annotation) =>
@@ -415,14 +419,14 @@
 
   function endPointer(event: PointerEvent) {
     if (!gesture || !capture) return
-    const point = imagePoint(event) ?? gesture.start
+    const point = imagePoint(event, shell.getBoundingClientRect(), geometry) ?? gesture.start
     const completedGesture = gesture
     gesture = null
 
     if (completedGesture.kind === 'new-selection') {
-      if (distance(completedGesture.start, point) <= sourceTolerance(5) && completedGesture.target) {
+      if (distance(completedGesture.start, point) <= sourceTolerance(5, geometry) && completedGesture.target) {
         selection = captureTargetRectangle(completedGesture.target)
-      } else if (selection && (selection.width < sourceTolerance(6) || selection.height < sourceTolerance(6))) {
+      } else if (selection && (selection.width < sourceTolerance(6, geometry) || selection.height < sourceTolerance(6, geometry))) {
         selection = null
       }
       hoveredTarget = null
@@ -431,7 +435,7 @@
     if (completedGesture.kind === 'draw') {
       const draft = draftAnnotation
       draftAnnotation = null
-      if (draft && annotationHasSize(draft)) commitAnnotations([...annotations, draft])
+      if (draft && annotationHasSize(draft, getAnnotationBounds(draft), sourceTolerance(3, geometry))) commitAnnotations([...annotations, draft])
       return
     }
     if (
@@ -448,7 +452,7 @@
     if (!selection || !capture || completing) return
     event.stopPropagation()
     ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
-    const point = imagePoint(event)
+    const point = imagePoint(event, shell.getBoundingClientRect(), geometry)
     if (!point) return
     gesture = {
       kind: 'resize-selection',
@@ -462,7 +466,7 @@
     if (!selectedAnnotation || !capture || completing) return
     event.stopPropagation()
     ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
-    const point = imagePoint(event)
+    const point = imagePoint(event, shell.getBoundingClientRect(), geometry)
     if (!point) return
     gesture = {
       kind: 'resize-annotation',
@@ -490,12 +494,6 @@
       }
     }
     return null
-  }
-
-  function annotationHasSize(annotation: CaptureAnnotation) {
-    if (annotation.type === 'pen') return annotation.points.length > 1
-    const bounds = getAnnotationBounds(annotation)
-    return Math.max(bounds.width, bounds.height) >= sourceTolerance(3)
   }
 
   function commitText() {
@@ -715,77 +713,25 @@
     }
   }
 
-  function findCaptureTarget(point: CapturePoint) {
-    return capture?.targets.find((target) => pointInRectangle(point, target)) ?? null
-  }
-
-  function captureTargetRectangle(target: CaptureTarget): CaptureRectangle {
-    return { x: target.x, y: target.y, width: target.width, height: target.height }
-  }
-
   function useFullScreenSelection() {
     if (!capture) return
-    selection = { x: 0, y: 0, width: capture.image_width, height: capture.image_height }
+    selection = fullScreenSelection(capture)
     hoveredTarget = null
   }
 
-  function clampPointToSelection(point: CapturePoint): CapturePoint {
-    if (!selection) return point
-    return {
-      x: Math.min(selection.x + selection.width, Math.max(selection.x, point.x)),
-      y: Math.min(selection.y + selection.height, Math.max(selection.y, point.y)),
-    }
-  }
-
-  function sourceTolerance(cssPixels: number) {
-    if (!capture || !displayRectangle) return cssPixels
-    return cssPixels * (capture.image_width / Math.max(1, displayRectangle.width))
-  }
-
-  function cssRectangle(rectangle: CaptureRectangle) {
-    if (!capture || !displayRectangle) return ''
-    const scaleX = displayRectangle.width / capture.image_width
-    const scaleY = displayRectangle.height / capture.image_height
-    return `left:${displayRectangle.x + rectangle.x * scaleX}px;top:${displayRectangle.y + rectangle.y * scaleY}px;width:${rectangle.width * scaleX}px;height:${rectangle.height * scaleY}px`
-  }
-
-  function imageLayerStyle() {
-    if (!displayRectangle) return ''
-    return `left:${displayRectangle.x}px;top:${displayRectangle.y}px;width:${displayRectangle.width}px;height:${displayRectangle.height}px`
-  }
-
   function textDraftStyle() {
-    if (!textDraft || !capture || !displayRectangle) return ''
-    const scaleX = displayRectangle.width / capture.image_width
-    const scaleY = displayRectangle.height / capture.image_height
-    return `left:${displayRectangle.x + textDraft.point.x * scaleX}px;top:${displayRectangle.y + textDraft.point.y * scaleY}px;color:${currentColor};font-size:${Math.max(14, currentStrokeWidth * 5 * scaleY)}px`
+    if (!textDraft) return ''
+    return computeTextDraftStyle(
+      { point: textDraft.point, color: currentColor, strokeWidth: currentStrokeWidth },
+      geometry,
+    )
   }
 
   function captureToolbarPosition() {
-    if (!selection || !capture || !displayRectangle) return null
-    const scaleX = displayRectangle.width / capture.image_width
-    const scaleY = displayRectangle.height / capture.image_height
-    const selectionLeft = displayRectangle.x + selection.x * scaleX
-    const selectionTop = displayRectangle.y + selection.y * scaleY
-    const selectionWidth = selection.width * scaleX
-    const selectionBottom = selectionTop + selection.height * scaleY
-    const measuredWidth = toolbarWidth || Math.min(560, viewportWidth - 28)
-    const measuredHeight = toolbarHeight || 50
-    const baseLeft = selectionLeft + selectionWidth - measuredWidth
-    const below = selectionBottom + 12
-    const baseTop =
-      below + measuredHeight <= viewportHeight - 14
-        ? below
-        : Math.max(14, selectionTop - measuredHeight - 12)
-    const left = Math.min(
-      Math.max(14, toolbarManualX ?? baseLeft),
-      Math.max(14, viewportWidth - measuredWidth - 14),
+    return computeToolbarPosition(
+      { selection, toolbarWidth, toolbarHeight, toolbarManualX, toolbarManualY },
+      geometry,
     )
-    const top = Math.min(
-      Math.max(14, toolbarManualY ?? baseTop),
-      Math.max(14, viewportHeight - measuredHeight - 14),
-    )
-    return { left, top }
   }
 
   function captureToolbarStyle() {
@@ -794,8 +740,7 @@
   }
 
   function toolbarPopoverOpensDownward() {
-    const position = captureToolbarPosition()
-    return position ? position.top < 96 : false
+    return toolbarPopoverDown(captureToolbarPosition())
   }
 
   function bindToolbarDragListeners() {
@@ -854,13 +799,6 @@
     unbindToolbarDragListeners()
   }
 
-  function fitImage(imageWidth: number, imageHeight: number, width: number, height: number): DisplayRectangle {
-    const scale = Math.min(width / imageWidth, height / imageHeight)
-    const fittedWidth = imageWidth * scale
-    const fittedHeight = imageHeight * scale
-    return { x: (width - fittedWidth) / 2, y: (height - fittedHeight) / 2, width: fittedWidth, height: fittedHeight }
-  }
-
   function roundedRectangle(rectangle: CaptureRectangle): CaptureRectangle {
     return {
       x: Math.max(0, Math.round(rectangle.x)),
@@ -910,29 +848,29 @@
       class="capture-image"
       width={capture?.image_width ?? 1}
       height={capture?.image_height ?? 1}
-      style={imageLayerStyle()}
+      style={imageLayerStyle(geometry)}
     ></canvas>
     <canvas
       bind:this={annotationCanvas}
       class="annotation-layer"
       width={capture?.image_width ?? 1}
       height={capture?.image_height ?? 1}
-      style={imageLayerStyle()}
+      style={imageLayerStyle(geometry)}
     ></canvas>
   {/if}
 
   {#if !selection && displayRectangle}
-    <div class="image-mask" style={imageLayerStyle()}></div>
+    <div class="image-mask" style={imageLayerStyle(geometry)}></div>
   {/if}
 
   {#if hoveredTarget && !selection}
-    <div class="smart-target" style={cssRectangle(hoveredTarget)}>
+    <div class="smart-target" style={cssRectangle(hoveredTarget, geometry)}>
       <span>{hoveredTarget.app_name || hoveredTarget.title}</span>
     </div>
   {/if}
 
   {#if selection}
-    <div class="selection-frame" style={cssRectangle(selection)}>
+    <div class="selection-frame" style={cssRectangle(selection, geometry)}>
       <span class="selection-size">{Math.round(selection.width)} × {Math.round(selection.height)}</span>
       {#each ['nw', 'ne', 'se', 'sw'] as handle}
         <button
@@ -946,7 +884,7 @@
   {/if}
 
   {#if selectedBounds && activeTool === 'select'}
-    <div class="annotation-selection" style={cssRectangle(selectedBounds)}>
+    <div class="annotation-selection" style={cssRectangle(selectedBounds, geometry)}>
       {#each ['nw', 'ne', 'se', 'sw'] as handle}
         <button
           data-capture-ui

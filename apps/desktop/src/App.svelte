@@ -41,8 +41,20 @@
   import { previewFixtures, previewWorkspaceFor } from './lib/previewFixtures'
   import {
     restorePublishedAttachmentUrls,
+    normalizePublishedFeedback,
     type PublishedAttachmentPath,
+    type PublishedFeedbackPackage,
+    type PublishedFeedbackView,
   } from './lib/publishedFeedback'
+  import {
+    appendMarkdownBlock,
+    formatTime,
+    messageFrom,
+    operatorFeedbackBody,
+  } from './lib/workbench/feedbackText'
+  import { createCookingController } from './lib/workbench/cookingController'
+  import { createDraftController } from './lib/workbench/draftController'
+  import { createPublisherController } from './lib/workbench/publisherController'
   import {
     createAttachmentController,
     type AttachmentMessageTone,
@@ -83,26 +95,14 @@
     setNotificationPopupEnabled,
   } from './lib/preferences'
 
-  type CommandError = { code: string; message: string; retryable: boolean }
-  type PublishedFeedbackView = {
-    markdown: string
-    uncooked_markdown?: string
-  }
-  type PublishedFeedbackPackage = PublishedFeedbackView & {
-    manifest?: { attachments?: PublishedAttachmentPath[] }
-  }
-  type CookingSubmission = {
-    request: FeedbackWorkspaceView['request']
-    actions: FeedbackWorkspaceView['actions']
-    body: string
-    savedRevision: number
-  }
   type PaneGroupHandle = {
     setLayout: (layout: number[]) => void
   }
 
   const RESUME_PROMPT_EVENT = 'rambledesk://resume-prompt'
   const OPEN_ADAPTERS_EVENT = 'rambledesk://open-adapters'
+  const formatTimeLocal = (value: string | null | undefined) =>
+    formatTime(value, $locale, tr('尚未保存'))
   let workspace: FeedbackWorkspaceView | null = null
   let completedResult: FeedbackRequestView | null = null
   let publishedFeedback: PublishedFeedbackView | null = null
@@ -173,13 +173,44 @@
   let rambleRequestTitle = ''
   let rambleMessage = ''
   let rambleMarkdownQueue: Promise<void> = Promise.resolve()
-  let saveTimer: ReturnType<typeof setTimeout> | undefined
   let inboxTimer: ReturnType<typeof setInterval> | undefined
-  let activeSave: Promise<boolean> | null = null
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
   }
+
+  const draftController = createDraftController({
+    messageFrom,
+    isPreviewMode: () => previewMode,
+    isInteractionLocked: () => interactionLocked,
+    isWorkspaceTerminal: () =>
+      workspace?.request.status === 'completed' || workspace?.request.status === 'cancelled',
+    getWorkspace: () => workspace,
+    getBody: () => draftBody,
+    setBody: (body) => {
+      draftBody = body
+    },
+    getSavedBody: () => savedBody,
+    setSavedBody: (body) => {
+      savedBody = body
+    },
+    getSavedRevision: () => savedRevision,
+    setSavedRevision: (revision) => {
+      savedRevision = revision
+    },
+    getPhase: () => savePhase,
+    setPhase: (phase) => {
+      savePhase = phase
+    },
+    setMessage: (message) => {
+      saveMessage = message
+    },
+    setWorkspaceDraft: (draft) => {
+      if (workspace) workspace = { ...workspace, draft }
+    },
+  })
+  const updateDraft = draftController.updateDraft
+  const saveDraftNow = draftController.saveDraftNow
 
   const attachmentController = createAttachmentController({
     isTauri,
@@ -418,7 +449,7 @@
         // Resume prompt still appears if submit path keeps the main window focused.
       })
     return () => {
-      if (saveTimer) clearTimeout(saveTimer)
+      draftController.cancelPendingSave()
       if (inboxTimer) clearInterval(inboxTimer)
       resumePromptUnlisten?.()
       openAdaptersUnlisten?.()
@@ -526,78 +557,6 @@
     }
   }
 
-  function updateDraft(value: string) {
-    if (
-      interactionLocked ||
-      !workspace ||
-      workspace.request.status === 'completed' ||
-      workspace.request.status === 'cancelled'
-    ) return
-    draftBody = value
-    savePhase = draftBody === savedBody ? 'saved' : 'unsaved'
-    saveMessage = ''
-    if (saveTimer) clearTimeout(saveTimer)
-    saveTimer = setTimeout(() => void saveDraftNow(), 700)
-  }
-
-  async function saveDraftNow(): Promise<boolean> {
-    if (saveTimer) {
-      clearTimeout(saveTimer)
-      saveTimer = undefined
-    }
-    if (
-      !workspace ||
-      workspace.request.status === 'completed' ||
-      workspace.request.status === 'cancelled' ||
-      !dirty
-    ) return true
-    if (activeSave) {
-      await activeSave
-      return dirty ? saveDraftNow() : savePhase !== 'error'
-    }
-
-    const requestId = workspace.request.request_id
-    const bodyToSave = draftBody
-    const revisionToSave = savedRevision
-    savePhase = 'saving'
-    saveMessage = ''
-
-    activeSave = (async () => {
-      try {
-        const input: SaveDraftInput = {
-          request_id: requestId,
-          body_markdown: bodyToSave,
-          expected_revision: revisionToSave,
-        }
-        const saved: DraftView = previewMode
-          ? {
-              body_markdown: bodyToSave,
-              saved_revision: revisionToSave + 1,
-              updated_at: new Date().toISOString(),
-            }
-          : await invoke<DraftView>('save_feedback_draft', { input })
-        if (workspace?.request.request_id === requestId) {
-          savedBody = bodyToSave
-          savedRevision = saved.saved_revision
-          workspace = { ...workspace, draft: saved }
-          savePhase = draftBody === bodyToSave ? 'saved' : 'unsaved'
-        }
-        return true
-      } catch (cause) {
-        savePhase = 'error'
-        saveMessage = messageFrom(cause)
-        return false
-      }
-    })()
-
-    const succeeded = await activeSave
-    activeSave = null
-    if (succeeded && workspace?.request.request_id === requestId && draftBody !== savedBody) {
-      return saveDraftNow()
-    }
-    return succeeded
-  }
-
   async function appendRambleMarkdown(requestId: string, markdown: string): Promise<void> {
     if (interactionLocked) return
     const block = markdown.trim()
@@ -626,38 +585,6 @@
       pageError = tr('Ramble 内容写入失败：{error}', { error: messageFrom(cause) })
     })
     await operation
-  }
-
-  function appendMarkdownBlock(body: string, block: string) {
-    const current = body.trimEnd()
-    return current ? `${current}\n\n${block}` : block
-  }
-
-  function normalizePublishedFeedback(
-    published: PublishedFeedbackPackage | null,
-  ): PublishedFeedbackView | null {
-    if (!published) return null
-    const attachments = published.manifest?.attachments ?? []
-    return {
-      markdown: restorePublishedAttachmentUrls(
-        operatorFeedbackBody(published.markdown),
-        attachments,
-      ),
-      uncooked_markdown: published.uncooked_markdown
-        ? restorePublishedAttachmentUrls(
-            operatorFeedbackBody(published.uncooked_markdown),
-            attachments,
-          )
-        : undefined,
-    }
-  }
-
-  function operatorFeedbackBody(markdown: string) {
-    const marker = '\n## Operator Feedback\n\n'
-    if (!markdown.startsWith('# ') || !markdown.includes(marker)) return markdown
-    const body = markdown.slice(markdown.indexOf(marker) + marker.length)
-    const attachments = body.indexOf('\n## Attachments\n\n')
-    return attachments >= 0 ? body.slice(0, attachments).trimEnd() : body
   }
 
   async function reloadWorkspace() {
@@ -694,8 +621,7 @@
     } else {
       draftBody = localBody
       savePhase = 'unsaved'
-      if (saveTimer) clearTimeout(saveTimer)
-      saveTimer = setTimeout(() => void saveDraftNow(), 700)
+      draftController.scheduleSave()
     }
   }
 
@@ -706,227 +632,103 @@
     cookingRequestIds = next
   }
 
-  function applyVisibleSubmissionResult(result: FeedbackRequestView) {
-    if (workspace?.request.request_id !== result.request_id) return false
-    completedResult = result
-    workspace = {
-      ...workspace,
-      feedback: result.feedback,
-      request: {
-        ...workspace.request,
-        status: result.status,
-        updated_at: result.updated_at,
-      },
-    }
-    savePhase = 'saved'
-    return true
-  }
-
-  async function loadVisiblePublishedFeedback(
-    requestId: string,
-    cookedMarkdown: string | undefined,
-    uncookedMarkdown: string,
-  ) {
-    if (workspace?.request.request_id !== requestId) return
-    try {
-      const next = previewMode
-        ? {
-            markdown: cookedMarkdown ?? uncookedMarkdown,
-            uncooked_markdown: uncookedMarkdown,
-          }
-        : normalizePublishedFeedback(
-            await invoke<PublishedFeedbackPackage | null>('read_published_feedback', {
-              requestId,
-            }),
-          )
-      if (workspace?.request.request_id === requestId) publishedFeedback = next
-    } catch (cause) {
-      pageError = messageFrom(cause)
-    }
-  }
-
-  async function publishFeedback(
-    input: SubmitFeedbackInput,
-    cookedMarkdown: string | undefined,
-    uncookedMarkdown: string,
-  ) {
-    const result = await invoke<FeedbackRequestView>('submit_feedback', { input })
-    const visible = applyVisibleSubmissionResult(result)
-    toast.success(tr('反馈已提交'), {
-      description: cookedMarkdown ? tr('Cooked 与 Uncooked 反馈已发布') : tr('反馈包已发布'),
-    })
-    if (visible) {
-      await loadVisiblePublishedFeedback(result.request_id, cookedMarkdown, uncookedMarkdown)
-    }
-    await navigation.refreshNavigation(true)
-  }
-
-  async function runCookingSubmission(submission: CookingSubmission) {
-    try {
-      const { cookFeedback } = await import('./lib/cooking')
-      const cooked = await cookFeedback(
-        {
-          title: submission.request.title,
-          whatHappened: submission.request.what_happened,
-          actions: submission.actions,
-          uncookedMarkdown: submission.body,
-        },
-        {
-          provider: $cookingProvider,
-          apiKey: $cookingApiKey,
-          baseUrl: $cookingBaseUrl,
-          model: $cookingModel,
-          reasoningEffort: $cookingReasoningEffort,
-          locale: $locale,
-        },
-      )
-      await publishFeedback(
-        {
-          request_id: submission.request.request_id,
-          expected_revision: submission.savedRevision,
-          cooked_markdown: cooked.markdown,
-          cooking_model: cooked.model,
-        },
-        cooked.markdown,
-        submission.body,
-      )
-    } catch (cause) {
-      pageError = messageFrom(cause)
-    } finally {
-      setCookingRequest(submission.request.request_id, false)
-    }
-  }
-
-  /** Cook the current draft into the editor without publishing (方案 E preview). */
-  async function cookPreviewOnly() {
-    if (
-      !workspace ||
-      !$cookingEnabled ||
-      workspace.request.status === 'completed' ||
-      workspace.request.status === 'cancelled' ||
-      currentRequestCooking
-    ) return
-    if (rambleCanExit) await exitRamble()
-    if (!(await saveDraftNow())) return
-    if (!workspace || currentRequestCooking) return
-
-    const requestId = workspace.request.request_id
-    const original = draftBody
-    if (!original.trim()) return
-
-    setCookingRequest(requestId, true)
-    pageError = ''
-    try {
-      const { cookFeedback } = await import('./lib/cooking')
-      const cooked = await cookFeedback(
-        {
-          title: workspace.request.title,
-          whatHappened: workspace.request.what_happened,
-          actions: workspace.actions,
-          uncookedMarkdown: original,
-        },
-        {
-          provider: $cookingProvider,
-          apiKey: $cookingApiKey,
-          baseUrl: $cookingBaseUrl,
-          model: $cookingModel,
-          reasoningEffort: $cookingReasoningEffort,
-          locale: $locale,
-        },
-      )
-      if (workspace?.request.request_id !== requestId) return
-      cookedPreview = { markdown: cooked.markdown, original, model: cooked.model }
+  const cookingController = createCookingController({
+    tr,
+    messageFrom,
+    getWorkspace: () => workspace,
+    getDraftBody: () => draftBody,
+    getSavedBody: () => savedBody,
+    getCookingConfig: () => ({
+      provider: $cookingProvider,
+      apiKey: $cookingApiKey,
+      baseUrl: $cookingBaseUrl,
+      model: $cookingModel,
+      reasoningEffort: $cookingReasoningEffort,
+      locale: $locale,
+    }),
+    isCookingEnabled: () => $cookingEnabled,
+    isCooking: () => currentRequestCooking,
+    exitRamble: async () => {
+      if (rambleCanExit) await exitRamble()
+    },
+    setDraftBody: (markdown) => {
+      draftBody = markdown
+    },
+    setSavePhase: (phase) => {
+      savePhase = phase
+    },
+    setSaveMessage: (message) => {
+      saveMessage = message
+    },
+    saveDraftNow,
+    applyEditorMarkdown: (markdown) => {
+      workspacePanel?.applyExternalMarkdown(markdown)
+    },
+    setPageError: (message) => {
+      pageError = message
+    },
+    setCooking: setCookingRequest,
+    publishCooked: (input, cookedMarkdown, uncookedMarkdown) =>
+      publisherController.publishFeedback(input, cookedMarkdown, uncookedMarkdown),
+    setPreview: (preview) => {
+      cookedPreview = preview
+    },
+    setPreviewOriginal: (original) => {
       cookedPreviewOriginal = original
-      draftBody = cooked.markdown
-      // Drive the editor instance directly in addition to the reactive prop
-      // chain, so the cooked text is visible even if a prop update is lost.
-      workspacePanel?.applyExternalMarkdown(cooked.markdown)
-      savePhase = draftBody === savedBody ? 'saved' : 'unsaved'
-      saveMessage = ''
-      void saveDraftNow()
-    } catch (cause) {
-      pageError = messageFrom(cause)
-    } finally {
-      setCookingRequest(requestId, false)
-    }
-  }
+    },
+    getPreviewOriginal: () => cookedPreviewOriginal,
+  })
+  const cookPreviewOnly = cookingController.cookPreviewOnly
+  const restoreOriginalAfterCook = cookingController.restoreOriginal
 
-  /** Discard the cooked preview and restore the pre-cook draft. */
-  function restoreOriginalAfterCook() {
-    if (!cookedPreview || !workspace || currentRequestCooking) return
-    cookedPreview = null
-    draftBody = cookedPreviewOriginal
-    workspacePanel?.applyExternalMarkdown(cookedPreviewOriginal)
-    savePhase = draftBody === savedBody ? 'saved' : 'unsaved'
-    saveMessage = ''
-    void saveDraftNow()
-  }
-
-  async function submitFeedback() {
-    if (!workspace || !canSubmit) return
-    if (rambleCanExit) await exitRamble()
-    const requestId = workspace.request.request_id
-    if (!(await saveDraftNow())) return
-    if (!workspace || workspace.request.request_id !== requestId || !canSubmit) return
-
-    const submission: CookingSubmission = {
-      request: workspace.request,
-      actions: workspace.actions,
-      body: draftBody,
-      savedRevision,
-    }
-    pageError = ''
-
-    // A generated, still-current cooked preview is published directly: no
-    // second model call, no extra wait.
-    if ($cookingEnabled && cookedPreviewActive && cookedPreview) {
-      submitting = true
-      submitStage = 'publishing'
-      try {
-        await publishFeedback(
-          {
-            request_id: submission.request.request_id,
-            expected_revision: submission.savedRevision,
-            cooked_markdown: cookedPreview.markdown,
-            cooking_model: cookedPreview.model,
-          },
-          cookedPreview.markdown,
-          cookedPreview.original,
-        )
-        cookedPreview = null
-      } catch (cause) {
-        pageError = messageFrom(cause)
-      } finally {
-        submitting = false
-        submitStage = 'idle'
-      }
-      return
-    }
-
-    if ($cookingEnabled) {
-      setCookingRequest(requestId, true)
-      void runCookingSubmission(submission)
-      return
-    }
-
-    submitting = true
-    submitStage = 'publishing'
-    try {
-      await publishFeedback(
-        {
-          request_id: submission.request.request_id,
-          expected_revision: submission.savedRevision,
-        },
-        undefined,
-        submission.body,
-      )
-    } catch (cause) {
-      pageError = messageFrom(cause)
-    } finally {
-      submitting = false
-      submitStage = 'idle'
-    }
-  }
+  const publisherController = createPublisherController({
+    tr,
+    messageFrom,
+    isPreviewMode: () => previewMode,
+    getWorkspace: () => workspace,
+    setWorkspace: (next) => {
+      workspace = next
+    },
+    setCompletedResult: (result) => {
+      completedResult = result
+    },
+    setPublishedFeedback: (feedback) => {
+      publishedFeedback = feedback
+    },
+    setSavePhase: (phase) => {
+      savePhase = phase
+    },
+    setPageError: (message) => {
+      pageError = message
+    },
+    getCanSubmit: () => canSubmit,
+    getRambleCanExit: () => rambleCanExit,
+    exitRamble,
+    saveDraftNow,
+    getDraftBody: () => draftBody,
+    getSavedRevision: () => savedRevision,
+    getCookingEnabled: () => $cookingEnabled,
+    getPreviewActive: () => cookedPreviewActive,
+    getPreview: () => cookedPreview,
+    setPreview: (preview) => {
+      cookedPreview = preview
+    },
+    setCooking: setCookingRequest,
+    cookAndPublish: cookingController.cookAndPublish,
+    setSubmitting: (value) => {
+      submitting = value
+    },
+    setSubmitStage: (stage) => {
+      submitStage = stage
+    },
+    refreshNavigation: (force) => navigation.refreshNavigation(force),
+    showSubmittedToast: (cooked) => {
+      toast.success(tr('反馈已提交'), {
+        description: cooked ? tr('Cooked 与 Uncooked 反馈已发布') : tr('反馈包已发布'),
+      })
+    },
+  })
+  const submitFeedback = publisherController.submitFeedback
 
   async function approveFeedback() {
     if (!workspace || !workspace.request.allow_finish || approving) return
@@ -1007,25 +809,6 @@
 
   async function importClipboardNow() {
     await rambleController?.importClipboardNow()
-  }
-
-  function formatTime(value: string | null | undefined): string {
-    if (!value) return tr('尚未保存')
-    const date = new Date(value)
-    return Number.isNaN(date.getTime()) ? value : date.toLocaleString($locale)
-  }
-
-  function messageFrom(cause: unknown): string {
-    if (cause instanceof Error) return cause.message
-    if (
-      cause &&
-      typeof cause === 'object' &&
-      'message' in cause &&
-      typeof (cause as CommandError).message === 'string'
-    ) {
-      return (cause as CommandError).message
-    }
-    return String(cause)
   }
 </script>
 
@@ -1115,7 +898,7 @@
           loadingMore={$navigation.loadingMoreRequests}
           hasMore={$navigation.nextRequestCursor !== null}
           {resolveHostProfile}
-          {formatTime}
+          formatTime={formatTimeLocal}
           onRefresh={() => void navigation.refreshRequests(false)}
           onLoadMore={() => void navigation.loadMoreRequests()}
           onOpenRequest={(requestId) => void openRequest(requestId)}
@@ -1170,7 +953,7 @@
           {cancelling}
           {approving}
           {resolveHostProfile}
-          {formatTime}
+          formatTime={formatTimeLocal}
           onReload={() => void reloadWorkspace()}
           onDraftChange={updateDraft}
           onToggleRamble={() => void toggleRamble()}
