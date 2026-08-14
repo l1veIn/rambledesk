@@ -28,7 +28,7 @@ const PATCH_ID: &str = "rambledesk";
 const PLUGIN_SUBDIR: &str = "plugins/rambledesk";
 const SKILL_SOURCE_RELATIVE: &str = "skills/ramble/SKILL.md";
 const SKILL_TARGET_RELATIVE: &str = ".agents/skills/ramble/SKILL.md";
-const PATCH_ENTRY: &str = "\n- insert:\n    - id: rambledesk\n      name: './plugins/rambledesk/index.js'\n      config:\n        hostId: dsh\n";
+const PATCH_ENTRY: &str = "- insert:\n    - id: rambledesk\n      name: './plugins/rambledesk/index.js'\n      config:\n        hostId: dsh\n";
 
 /// dsh home directory. `DSH_HOME` overrides the default `~/.dsh`.
 pub fn dsh_home(home: &Path) -> PathBuf {
@@ -259,6 +259,12 @@ fn copy_plugin_package(package_dir: &Path, target: &Path) -> Result<(), String> 
 
 /// Append the loader entry to `cordis.patch.yml` when absent. Returns the
 /// resulting action: "unchanged", "updated", or "created".
+///
+/// The patch file is ONE top-level YAML array of patch entries. An empty
+/// array (`[]`, possibly behind leading comments) must therefore be REPLACED
+/// by the insert block — appending after it would open a second top-level
+/// element and make the file unparseable. A non-empty list appends another
+/// `- insert:` element.
 fn append_patch_entry(patch_path: &Path) -> Result<&'static str, String> {
     let existed = patch_path.exists();
     let content = if existed {
@@ -270,13 +276,23 @@ fn append_patch_entry(patch_path: &Path) -> Result<&'static str, String> {
     if content.contains(&format!("id: {PATCH_ID}")) {
         return Ok("unchanged");
     }
-    if content.ends_with('\n') || content.is_empty() {
-        fs::write(patch_path, format!("{content}{PATCH_ENTRY}"))
-            .map_err(|error| format!("Could not write {}: {error}", patch_path.display()))?;
+    let trimmed_end = content.trim_end();
+    let updated = if trimmed_end.ends_with("[]") {
+        // The trailing empty array must be REPLACED by the insert block
+        // (keeping any leading comments); appending after it would open a
+        // second top-level element and make the file unparseable.
+        let head = trimmed_end
+            .strip_suffix("[]")
+            .expect("ends_with checked above");
+        format!("{head}{PATCH_ENTRY}")
+    } else if content.trim().is_empty() {
+        PATCH_ENTRY.to_owned()
     } else {
-        fs::write(patch_path, format!("{content}\n{PATCH_ENTRY}"))
-            .map_err(|error| format!("Could not write {}: {error}", patch_path.display()))?;
-    }
+        let separator = if content.ends_with('\n') { "" } else { "\n" };
+        format!("{content}{separator}{PATCH_ENTRY}")
+    };
+    fs::write(patch_path, updated)
+        .map_err(|error| format!("Could not write {}: {error}", patch_path.display()))?;
     Ok(if existed { "updated" } else { "created" })
 }
 

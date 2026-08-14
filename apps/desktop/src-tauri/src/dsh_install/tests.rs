@@ -3,6 +3,10 @@ use std::path::{Path, PathBuf};
 
 use super::*;
 
+/// Serializes the tests that mutate the process-wide `DSH_HOME` environment
+/// variable, so parallel tests never observe another test's override.
+static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 fn fake_repo(label: &str) -> PathBuf {
     let root = std::env::temp_dir().join(format!("rambledesk-{label}-{}", std::process::id()));
     let pkg = root.join("packages").join("dsh-rambledesk");
@@ -62,6 +66,7 @@ fn package_dir_missing_returns_none() {
 
 #[test]
 fn dsh_home_follows_dsh_home_override() {
+    let _guard = ENV_LOCK.lock().unwrap();
     let home = std::env::temp_dir().join("rambledesk-dsh-home");
     let previous = std::env::var_os("DSH_HOME");
     unsafe {
@@ -77,12 +82,25 @@ fn dsh_home_follows_dsh_home_override() {
 
 #[test]
 fn list_dsh_profiles_enumerates_only_patch_profiles() {
+    let _guard = ENV_LOCK.lock().unwrap();
     let root = fake_repo("dsh-profiles");
-    let _ = fake_profile(&root, "web", "[]\n");
+    let previous = std::env::var_os("DSH_HOME");
+    // Pin the override to the fixture so the enumeration never depends on the
+    // ambient environment (a developer machine commonly has DSH_HOME set).
+    unsafe {
+        std::env::set_var("DSH_HOME", root.join(".dsh"));
+    }
+    let profile_dir = root.join(".dsh").join("profiles").join("web");
+    fs::create_dir_all(&profile_dir).unwrap();
+    fs::write(profile_dir.join("cordis.patch.yml"), "[]\n").unwrap();
     // A directory without a patch file must not be reported as a profile.
-    fs::create_dir_all(root.join("profiles").join("bare")).unwrap();
+    fs::create_dir_all(root.join(".dsh").join("profiles").join("bare")).unwrap();
 
     let profiles = list_dsh_profiles(&root);
+    match previous {
+        Some(value) => unsafe { std::env::set_var("DSH_HOME", value) },
+        None => unsafe { std::env::remove_var("DSH_HOME") },
+    }
     assert_eq!(profiles.len(), 1);
     assert_eq!(profiles[0].id, "web");
     assert!(!profiles[0].configured);
@@ -100,6 +118,40 @@ fn append_patch_entry_creates_the_insert_block() {
     assert!(content.contains("id: rambledesk"));
     assert!(content.contains("./plugins/rambledesk/index.js"));
     assert!(content.contains("hostId: dsh"));
+    // The patch file is ONE top-level YAML array: the empty `[]` must be
+    // replaced by the insert block, never followed by a second element.
+    assert!(!content.contains("[]"));
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn append_patch_entry_replaces_an_empty_array_keeping_leading_comments() {
+    let root = fake_repo("dsh-patch-comments");
+    let profile = fake_profile(
+        &root,
+        "web",
+        "# Your patch layer for this dsh profile.\n[]\n",
+    );
+
+    append_patch_entry(Path::new(&profile.patch_path)).unwrap();
+    let content = fs::read_to_string(&profile.patch_path).unwrap();
+    assert!(content.starts_with("# Your patch layer for this dsh profile.\n"));
+    assert!(!content.contains("[]"));
+    assert!(content.contains("- insert:"));
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn append_patch_entry_appends_to_a_nonempty_entry_list() {
+    let root = fake_repo("dsh-patch-existing");
+    let profile = fake_profile(&root, "web", "- id: other\n  name: '@scope/other-plugin'\n");
+
+    let action = append_patch_entry(Path::new(&profile.patch_path)).unwrap();
+    assert_eq!(action, "updated");
+    let content = fs::read_to_string(&profile.patch_path).unwrap();
+    assert!(content.starts_with("- id: other"));
+    assert!(content.contains("- insert:"));
+    assert!(content.contains("id: rambledesk"));
     let _ = fs::remove_dir_all(&root);
 }
 
