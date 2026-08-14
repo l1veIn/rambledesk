@@ -179,5 +179,15 @@
 - 本地无签名密钥，验收用 NSIS 包以
   `--config {"bundle":{"createUpdaterArtifacts":false}}` 构建（仅省略
   updater 签名产物，安装器本体一致）；正式发布仍走 CI 签名流程。
-- 待人工验收：在干净 Windows 环境安装 rc.9，验证 Pi 安装无黑框、dsh
-  安装成功并可在重启 dsh 后使用。
+
+### 人工验收（rc.9，用户实测）
+
+- Pi 原生适配器：不再弹出黑色控制台窗口（`CREATE_NO_WINDOW` 生效）；
+  首次安装仍约十几秒。复测定位：二次安装同一路径（打包资源
+  `%LOCALAPPDATA%\RambleDesk\pi-rambledesk` 与 dev 源码路径）均只需约
+  0.8 秒——十几秒是全新安装时 pi 首次解析 peer 依赖（npm registry 网络
+  往返）的冷缓存耗时，pi CLI 无 offline/跳过选项，无法从 RambleDesk 侧
+  消除；界面提示"首次安装可能耗时十几秒"已覆盖该场景。
+- dsh 原生适配器：安装约 1 秒完成，不再报"找不到 dsh 包"；重启 dsh 后
+  `/ramble` 生效、插件可用。
+- 无其他新问题。
