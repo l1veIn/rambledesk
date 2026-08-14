@@ -31,10 +31,14 @@ durable request. Once it returns `completed`, the feedback markdown and
 attachment paths are included directly in the model-visible tool `content`.
 
 Request ids are persisted in `state.json` next to the plugin before the network
-request, together with a stable per-machine `host_session_id` (generated once as
-`dsh-<uuid>`), so a restarted dsh session can reconnect with
-`resume_ramble_feedback` instead of creating a duplicate. Request transport
-failures keep and report the generated `request_id`.
+request, together with the session's `host_session_id`, so a restarted dsh
+session can reconnect with `resume_ramble_feedback` instead of creating a
+duplicate. The `host_session_id` is derived from the calling dsh session
+(per-session `dsh-<session-id>`); when no session identity is available it
+falls back to a stable per-machine id (`dsh-<uuid>`). Pending request state in
+`state.json` is keyed by that session id, so concurrent sessions never see or
+resume each other's requests. Request transport failures keep and report the
+generated `request_id`.
 
 ## RambleDesk-only mode
 

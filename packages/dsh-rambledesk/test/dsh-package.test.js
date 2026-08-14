@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import http from "node:http";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -60,6 +60,45 @@ test("normalizes request params with the dsh host identity", async () => {
   assert.deepEqual(normalized.attachments, []);
   assert.equal(normalized.allow_finish, false);
   assert.equal(normalized.final_summary, undefined);
+});
+
+test("derives distinct host session ids from distinct dsh sessions", async () => {
+  const base = {
+    title: "Review",
+    what_happened: "A workflow changed.",
+    actions: [{ id: "check", instruction: "Check the workflow." }],
+  };
+
+  const first = await normalizeRequestParams(base, { hostId: "dsh", sessionId: "session-aaa" });
+  const second = await normalizeRequestParams(base, { hostId: "dsh", sessionId: "session-bbb" });
+  const explicit = await normalizeRequestParams(
+    { ...base, host_session_id: "explicit-session" },
+    { hostId: "dsh", sessionId: "session-aaa" },
+  );
+
+  assert.equal(first.host_session_id, "dsh-session-aaa");
+  assert.equal(second.host_session_id, "dsh-session-bbb");
+  assert.notEqual(first.host_session_id, second.host_session_id);
+  assert.equal(explicit.host_session_id, "explicit-session");
+});
+
+test("the calling dsh session id wins over the persisted machine-wide id", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "dsh-ramble-session-"));
+  try {
+    const stateFile = path.join(dir, "state.json");
+    // Pre-existing installation state: one machine-wide id persisted before
+    // the per-session fix.
+    await writeFile(stateFile, JSON.stringify({ hostSessionId: "dsh-legacy-machine" }), "utf8");
+    const normalized = await normalizeRequestParams({
+      title: "T", what_happened: "W", actions: [{ id: "a", instruction: "A" }],
+    }, { hostId: "dsh", stateFile, sessionId: "session-live" });
+
+    assert.equal(normalized.host_session_id, "dsh-session-live");
+    const persisted = JSON.parse(await readFile(stateFile, "utf8"));
+    assert.equal(persisted.hostSessionId, "dsh-legacy-machine");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 test("generates and persists a stable host session id across calls", async () => {
@@ -380,7 +419,57 @@ test("a completed request never leaks into the next request id", async () => {
     assert.match(requestedIds[1], /^[0-9a-f]{8}-[0-9a-f]{4}-/);
     assert.notEqual(requestedIds[1], requestedIds[0], "second request must mint a fresh id");
     const state = JSON.parse(await readFile(path.join(stateDir, "state.json"), "utf8"));
-    assert.equal(state.requestId, requestedIds[1]);
+    assert.equal(state.sessions[state.hostSessionId].requestId, requestedIds[1]);
+    assert.equal(state.sessions[state.hostSessionId].phase, "waiting");
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await rm(stateDir, { recursive: true, force: true });
+  }
+});
+
+test("concurrent dsh sessions keep distinct host session ids and pending state", async () => {
+  // Regression: the persisted host session id used to be one per machine, so
+  // two concurrent sessions shared it; the pending request state also lived in
+  // shared top-level fields. Both must be scoped per session.
+  const tools = fakeTools();
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), "dsh-ramble-concurrent-"));
+  const requestedIds = [];
+  const server = await startServer((request, response) => {
+    let body = "";
+    request.setEncoding("utf8");
+    request.on("data", (chunk) => { body += chunk; });
+    request.on("end", () => {
+      response.setHeader("content-type", "application/json");
+      const parsed = body ? JSON.parse(body) : {};
+      if (request.url === "/api/feedback/request") {
+        requestedIds.push(parsed.request_id);
+        response.end(JSON.stringify({ request_id: parsed.request_id, status: "waiting" }));
+        return;
+      }
+      response.end(JSON.stringify({ request_id: parsed.request_id, status: "waiting" }));
+    });
+  });
+  try {
+    const { port } = server.address();
+    registerRambleDshTools(tools, { env: envFor(port), hostId: "dsh", stateDir });
+    const requestTool = tools.list().find((tool) => tool.name === "request_ramble_feedback");
+    const baseArgs = {
+      title: "Review",
+      what_happened: "A workflow changed.",
+      actions: [{ id: "check", instruction: "Check the workflow." }],
+    };
+    const sessionExec = (id) => ({ signal: undefined, agent: { id, session: { header: { id } } } });
+
+    await requestTool.execute({ ...baseArgs, wait: false }, sessionExec("session-alpha"));
+    await requestTool.execute({ ...baseArgs, wait: false }, sessionExec("session-beta"));
+
+    assert.equal(requestedIds.length, 2);
+    assert.notEqual(requestedIds[1], requestedIds[0], "each session must mint its own id");
+    const state = JSON.parse(await readFile(path.join(stateDir, "state.json"), "utf8"));
+    assert.equal(state.sessions["dsh-session-alpha"].requestId, requestedIds[0]);
+    assert.equal(state.sessions["dsh-session-beta"].requestId, requestedIds[1]);
+    assert.equal(state.sessions["dsh-session-alpha"].phase, "waiting");
+    assert.equal(state.sessions["dsh-session-beta"].phase, "waiting");
   } finally {
     await new Promise((resolve) => server.close(resolve));
     await rm(stateDir, { recursive: true, force: true });
@@ -520,8 +609,9 @@ test("wait aborts on the execution signal without losing the persisted request",
     const state = JSON.parse(await readFile(path.join(stateDir, "state.json"), "utf8"));
     // The pending request id is persisted before the request is created, so an
     // aborted wait leaves the durable request recoverable.
-    assert.match(state.requestId, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
-    assert.equal(state.phase, "waiting");
+    const record = state.sessions[state.hostSessionId];
+    assert.match(record.requestId, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    assert.equal(record.phase, "waiting");
   } finally {
     await new Promise((resolve) => server.close(resolve));
     await rm(stateDir, { recursive: true, force: true });

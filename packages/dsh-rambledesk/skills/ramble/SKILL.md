@@ -23,7 +23,8 @@ experience through the RambleDesk feedback loop instead of asking in chat.
      simple approve/reject decision that needs no feedback body, and then also
      provide `final_summary`.
    - `request_id`: omit — the server generates it.
-   - `host_session_id`: omit — the plugin persists one per machine.
+   - `host_session_id`: omit — the plugin derives it from the current dsh
+     session, so concurrent sessions stay separate.
    - `wait`: keep `true` (the default). The tool call blocks until the human
      submits or cancels in RambleDesk, then returns the feedback package
      directly. Do not call `ask_user_question` while waiting.

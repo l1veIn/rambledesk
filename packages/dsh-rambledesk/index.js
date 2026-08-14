@@ -74,7 +74,7 @@ const requestParamsSchema = {
   type: "object",
   properties: {
     request_id: stringField("Optional UUID. Reuse the same id for idempotent retries."),
-    host_session_id: stringField("Optional dsh host session id. If omitted, the plugin derives and persists one for this machine."),
+    host_session_id: stringField("Optional dsh host session id. If omitted, the plugin derives it from the current dsh session: requests from the same session share one id, and concurrent sessions get distinct ids."),
     title: stringField("Short title shown in the RambleDesk inbox."),
     what_happened: stringField("What changed or what needs feedback."),
     actions: {
@@ -132,6 +132,18 @@ export async function writePersistedState(stateFile, state) {
     // Persistence is best-effort: an unwritable plugin directory must not
     // break feedback requests. The pending request id still lives in memory.
   }
+}
+
+function readSessionsMap(persisted) {
+  const sessions = persisted?.sessions;
+  return typeof sessions === "object" && sessions !== null && !Array.isArray(sessions)
+    ? sessions
+    : {};
+}
+
+function readSessionRecord(persisted, hostSessionId) {
+  const record = readSessionsMap(persisted)[hostSessionId];
+  return typeof record === "object" && record !== null ? record : {};
 }
 
 // #endregion
@@ -259,6 +271,15 @@ export async function normalizeRequestParams(params, options = {}) {
 
 async function resolveHostSessionId(params, options) {
   if (firstNonEmpty(params.host_session_id)) return params.host_session_id.trim();
+  // The dsh host identifies the calling agent's session on the tool execution
+  // context. Prefer it over any cached or persisted id so that two concurrent
+  // dsh sessions never share a host_session_id.
+  const sessionId = firstNonEmpty(options.sessionId);
+  if (sessionId) {
+    const derived = `dsh-${sessionId}`;
+    if (options.memory) options.memory.hostSessionId = derived;
+    return derived;
+  }
   if (options.memory?.hostSessionId) return options.memory.hostSessionId;
   const persisted = options.stateFile ? await readPersistedState(options.stateFile) : {};
   if (typeof persisted.hostSessionId === "string" && persisted.hostSessionId.length > 0) {
@@ -271,6 +292,14 @@ async function resolveHostSessionId(params, options) {
     await writePersistedState(options.stateFile, { ...persisted, hostSessionId: generated });
   }
   return generated;
+}
+
+/**
+ * The calling agent's session identity on the dsh tool execution context.
+ * Tools run by the model loop always carry it; programmatic dispatches may not.
+ */
+function deriveSessionId(exec) {
+  return firstNonEmpty(exec?.agent?.id, exec?.agent?.session?.header?.id);
 }
 
 // #endregion
@@ -328,40 +357,52 @@ function normalizeDisplayPath(value) {
 // #region tool registration
 
 export function registerRambleDshTools(tools, options = {}) {
-  const memory = { hostSessionId: undefined, pendingRequestId: undefined };
+  const memory = { hostSessionId: undefined, pendingBySession: new Map() };
   const stateFile = stateFilePath(options);
 
-  async function loadState() {
+  // The state file is shared by every session of the profile, and the plugin
+  // instance may serve more than one concurrent session, so pending request
+  // state is keyed by host session id in both memory and the state file. A
+  // session must never see or resume another session's pending request.
+  async function loadState(hostSessionId) {
     const persisted = await readPersistedState(stateFile);
     if (!memory.hostSessionId && typeof persisted.hostSessionId === "string") {
       memory.hostSessionId = persisted.hostSessionId;
     }
-    if (!memory.pendingRequestId && !TERMINAL_PHASES.includes(persisted.phase)) {
-      memory.pendingRequestId = persisted.requestId;
+    const record = readSessionRecord(persisted, hostSessionId);
+    if (
+      !memory.pendingBySession.has(hostSessionId) &&
+      typeof record.requestId === "string" &&
+      record.requestId.length > 0 &&
+      !TERMINAL_PHASES.includes(record.phase)
+    ) {
+      memory.pendingBySession.set(hostSessionId, record.requestId);
     }
-    return persisted;
+    return { persisted, record };
   }
 
   async function persistRequest(phase, requestId, hostSessionId) {
     // Read the file directly, never through loadState(): loadState's memory
-    // recovery would see memory.pendingRequestId === undefined (just cleared
-    // for a terminal phase) and the persisted phase still "waiting", then
-    // restore the just-finished request id as pending. The next
-    // request_ramble_feedback would reuse a completed request id and fail
-    // with REQUEST_CONFLICT until the process restarts.
+    // recovery would see the just-cleared pending entry and the still-
+    // "waiting" persisted phase, then restore the just-finished request id as
+    // pending. The next request_ramble_feedback would reuse a completed
+    // request id and fail with REQUEST_CONFLICT until the process restarts.
     const persisted = await readPersistedState(stateFile);
+    const sessions = readSessionsMap(persisted);
     await writePersistedState(stateFile, {
       ...persisted,
-      requestId,
       hostSessionId,
-      phase,
-      timestamp: Date.now(),
+      sessions: {
+        ...sessions,
+        [hostSessionId]: { requestId, phase, timestamp: Date.now() },
+      },
     });
   }
 
-  function clearPending(requestId, hostSessionId) {
-    if (memory.pendingRequestId === requestId) memory.pendingRequestId = undefined;
-    void persistRequest("completed", requestId, hostSessionId);
+  function clearPendingByRequestId(requestId) {
+    for (const [sessionId, pendingId] of memory.pendingBySession) {
+      if (pendingId === requestId) memory.pendingBySession.delete(sessionId);
+    }
   }
 
   const requestTool = {
@@ -379,11 +420,13 @@ Do not call this tool repeatedly for the same request unless you reuse the same 
         memory,
         stateFile,
         sourceHint: exec?.cwd,
+        sessionId: deriveSessionId(exec),
       });
       if (!normalized.request_id) {
-        normalized.request_id = memory.pendingRequestId ?? crypto.randomUUID();
+        normalized.request_id =
+          memory.pendingBySession.get(normalized.host_session_id) ?? crypto.randomUUID();
       }
-      memory.pendingRequestId = normalized.request_id;
+      memory.pendingBySession.set(normalized.host_session_id, normalized.request_id);
       await persistRequest("waiting", normalized.request_id, normalized.host_session_id);
       const created = await postFeedback("request", normalized, signal, options);
       const terminal = created.status === "completed" || created.status === "cancelled";
@@ -397,7 +440,7 @@ Do not call this tool repeatedly for the same request unless you reuse the same 
         result = await postFeedback("get", { request_id: created.request_id }, signal, options);
       }
       if (isTerminal(result)) {
-        memory.pendingRequestId = undefined;
+        memory.pendingBySession.delete(normalized.host_session_id);
         await persistRequest(result.resolution ?? result.status, result.request_id, normalized.host_session_id);
       }
       return feedbackToolResult(result);
@@ -416,9 +459,27 @@ Do not call this tool repeatedly for the same request unless you reuse the same 
     output: toolOutput(),
     async execute(args, exec) {
       const signal = exec?.signal;
-      const persisted = await loadState();
-      const hostSessionId = await resolveHostSessionId(args, { ...options, memory, stateFile });
-      const restored = firstNonEmpty(args.request_id, memory.pendingRequestId, persisted.requestId);
+      const hostSessionId = await resolveHostSessionId(args, {
+        ...options,
+        memory,
+        stateFile,
+        sessionId: deriveSessionId(exec),
+      });
+      const { persisted, record } = await loadState(hostSessionId);
+      // Legacy fallback: state written before per-session scoping kept the
+      // pending request id at the top level. It is only consulted when no
+      // per-session record exists, so concurrent sessions never cross.
+      const legacyRequestId =
+        Object.keys(readSessionsMap(persisted)).length === 0 &&
+        !TERMINAL_PHASES.includes(persisted.phase)
+          ? persisted.requestId
+          : undefined;
+      const restored = firstNonEmpty(
+        args.request_id,
+        memory.pendingBySession.get(hostSessionId),
+        record.requestId,
+        legacyRequestId,
+      );
       if (!restored) {
         throw new Error("Cannot recover RambleDesk feedback without a request id; pass request_id or run request_ramble_feedback first.");
       }
@@ -426,14 +487,14 @@ Do not call this tool repeatedly for the same request unless you reuse the same 
         request_id: restored,
         host_session_id: hostSessionId,
       }, signal, options);
-      memory.pendingRequestId = recovered.request_id;
+      memory.pendingBySession.set(hostSessionId, recovered.request_id);
       await persistRequest(recovered.status, recovered.request_id, hostSessionId);
       let result = recovered;
       if (!isTerminal(recovered)) {
         result = await postFeedback("wait", { request_id: recovered.request_id }, signal, options);
       }
       if (isTerminal(result)) {
-        memory.pendingRequestId = undefined;
+        memory.pendingBySession.delete(hostSessionId);
         await persistRequest(result.resolution ?? result.status, result.request_id, hostSessionId);
       }
       return feedbackToolResult(result);
@@ -455,7 +516,7 @@ Do not call this tool repeatedly for the same request unless you reuse the same 
       const signal = exec?.signal;
       const result = await postFeedback("get", { request_id: args.request_id }, signal, options);
       if (isTerminal(result)) {
-        memory.pendingRequestId = undefined;
+        clearPendingByRequestId(result.request_id);
       }
       return feedbackToolResult(result);
     },
@@ -477,7 +538,7 @@ Do not call this tool repeatedly for the same request unless you reuse the same 
       const signal = exec?.signal;
       const result = await postFeedback("cancel", { request_id: args.request_id, ...(args.reason ? { reason: args.reason } : {}) }, signal, options);
       if (isTerminal(result)) {
-        memory.pendingRequestId = undefined;
+        clearPendingByRequestId(result.request_id);
       }
       return feedbackToolResult(result);
     },
