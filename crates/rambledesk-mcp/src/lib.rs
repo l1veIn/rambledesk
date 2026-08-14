@@ -63,7 +63,7 @@ fn apply_request_host(mut input: RequestFeedbackInput) -> RequestFeedbackInput {
 impl RambleDeskMcp {
     #[tool(
         name = "request_feedback",
-        description = "Persist a feedback request and return immediately with a durable handle (request_id). Optional attachments let the agent provide review artifacts: use attachments[].markdown with a .md/.markdown file_name for Markdown, or attachments[].contents_base64 for a PNG/JPEG/GIF/WebP image. After creating, if this host has an interactive confirmation tool (ask / ask_choice / similar), use it to wait for the human to finish, then call get_feedback with the same request_id; only stop the current turn when no such tool exists. Do not poll. Reusing request_id with identical input is idempotent. host_id is optional: auto-registered clients (RAMBLEDESK_HOST / X-RambleDesk-Host) have it injected by the server, otherwise pass your host family id (e.g. reasonix, claude, codex, opencode, grok) or generic. host_session_id is the current session identifier. allow_finish: set true ONLY when the request needs a simple final approval or rejection from the human and no feedback body is expected; in that case final_summary (the exact closing statement) is required. For requests that gather feedback, review, or opinions (proofreading, checking work, answering questions), omit allow_finish so the human submits detailed feedback instead of a shortcut finish."
+        description = "Persist a feedback request and return immediately with a durable handle (request_id). Optional attachments let the agent provide review artifacts: use attachments[].markdown with a .md/.markdown file_name for Markdown, or attachments[].contents_base64 for a PNG/JPEG/GIF/WebP image. After creating, you MUST wait for the human to finish: call this host's interactive confirmation tool (ask_question on Claude-family hosts, ask on Gemini CLI, ask_user_question on dsh) immediately after request_feedback, tell the human in that call that they should complete the request in RambleDesk, and keep the turn blocked in the confirmation call. When the human answers, call get_feedback with the same request_id and continue. Never end the turn while a confirmation tool exists, and do not poll. Only if the host has NO interactive confirmation tool may you end the turn instead. Reusing request_id with identical input is idempotent. host_id is optional: auto-registered clients (RAMBLEDESK_HOST / X-RambleDesk-Host) have it injected by the server, otherwise pass your host family id (e.g. reasonix, claude, codex, opencode, grok) or generic. host_session_id is the current session identifier. allow_finish: set true ONLY when the request needs a simple final approval or rejection from the human and no feedback body is expected; in that case final_summary (the exact closing statement) is required. For requests that gather feedback, review, or opinions (proofreading, checking work, answering questions), omit allow_finish so the human submits detailed feedback instead of a shortcut finish."
     )]
     async fn request_feedback(
         &self,
@@ -80,7 +80,7 @@ impl RambleDeskMcp {
 
     #[tool(
         name = "get_feedback",
-        description = "Read the current state of a durable feedback request without changing it. Use after manual continuation or for diagnostics. When status is completed, the reply text names the feedback markdown path plus attachment paths and a short preview; read the markdown file for the full feedback (text-only clients see only the reply text). The complete package (manifest, markdown, attachment paths) is also in structured_content.feedback_package for clients that support it. Do not poll while waiting: after request_feedback, wait via this host's interactive confirmation tool (ask / ask_choice) if available, otherwise end the turn and resume when notified."
+        description = "Read the current state of a durable feedback request without changing it. Use after manual continuation or for diagnostics. When status is completed, the reply text names the feedback markdown path plus attachment paths and a short preview; read the markdown file for the full feedback (text-only clients see only the reply text). The complete package (manifest, markdown, attachment paths) is also in structured_content.feedback_package for clients that support it. Do not poll while waiting: after request_feedback you MUST block on this host's interactive confirmation tool (ask_question / ask / ask_user_question) until the human answers, then call get_feedback; only end the turn when no such tool exists."
     )]
     async fn get_feedback(
         &self,
@@ -137,11 +137,11 @@ async fn feedback_tool_result(
 
     let summary = match value.status {
         FeedbackStatus::Waiting => format!(
-            "Feedback request {} is waiting for the human. If this host has an interactive confirmation tool (ask / ask_choice), use it to wait for the human, then call get_feedback with this request_id; otherwise end this turn and resume when notified. Do not poll.",
+            "Feedback request {} is waiting for the human. You MUST wait now: call this host's interactive confirmation tool (ask_question / ask / ask_user_question) with a message that the human should complete the request in RambleDesk, and keep this turn blocked inside that confirmation call. When the human answers, call get_feedback with this request_id and continue. Only if the host has no such tool, end this turn and resume when notified. Do not poll.",
             value.request_id
         ),
         FeedbackStatus::InProgress => format!(
-            "Feedback request {} is in progress. If this host has an interactive confirmation tool (ask / ask_choice), use it to wait for the human, then call get_feedback with this request_id; otherwise end this turn and resume when notified.",
+            "Feedback request {} is in progress. You MUST wait now: call this host's interactive confirmation tool (ask_question / ask / ask_user_question) with a message that the human should complete the request in RambleDesk, and keep this turn blocked inside that confirmation call. When the human answers, call get_feedback with this request_id and continue. Only if the host has no such tool, end this turn and resume when notified.",
             value.request_id
         ),
         FeedbackStatus::Completed => {
@@ -242,7 +242,8 @@ impl ServerHandler for RambleDeskMcp {
             .with_instructions(
                 "RambleDesk tools: request_feedback, get_feedback, cancel_feedback. \
 Create a durable request with request_feedback; it returns immediately with a request_id. \
-If this host has an interactive confirmation tool (ask / ask_choice), use it after creating the request to wait for the human to finish, then call get_feedback(request_id); only end the current turn when no such tool exists — do not poll and do not wait on a long MCP tool call. \
+After creating the request, you MUST wait for the human to finish in RambleDesk by calling this host's interactive confirmation tool (ask_question / ask / ask_user_question): call it immediately after request_feedback, tell the human to complete the request in RambleDesk, and keep the turn blocked in that confirmation call until the human answers; then call get_feedback(request_id). \
+Only if the host has NO interactive confirmation tool may you end the turn instead — do not poll and do not wait on a long MCP tool call. \
 After the human submits feedback or after a disconnect, call get_feedback(request_id) to load the current server state and package. \
 Attach Markdown review documents with attachments[].markdown and images with attachments[].contents_base64 when useful. \
 host_id is optional: auto-registered clients (RAMBLEDESK_HOST / X-RambleDesk-Host) have it injected by the server, otherwise pass your host family id (e.g. reasonix, claude, codex, opencode, grok) or generic.",

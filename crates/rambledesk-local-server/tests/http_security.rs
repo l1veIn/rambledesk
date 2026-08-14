@@ -185,7 +185,11 @@ async fn official_client_exercises_feedback_lifecycle_and_errors() -> anyhow::Re
     assert!(
         serde_json::to_value(&created.content)?[0]["text"]
             .as_str()
-            .is_some_and(|text| text.contains("is waiting") && text.contains("use it to wait"))
+            .is_some_and(|text| {
+                text.contains("is waiting")
+                    && text.contains("interactive confirmation tool")
+                    && text.contains("ask_question")
+            })
     );
     assert_eq!(
         created_content
