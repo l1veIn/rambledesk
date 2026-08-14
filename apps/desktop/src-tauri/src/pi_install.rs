@@ -92,9 +92,17 @@ pub fn resolve_pi_binary() -> Option<PathBuf> {
 /// Run `pi install <package_dir>` and return the tail of its output.
 pub fn run_install(pi_bin: &Path, package_dir: &Path) -> Result<String, String> {
     let package_dir = path_for_pi(package_dir);
-    let output = Command::new(pi_bin)
-        .arg("install")
-        .arg(&package_dir)
+    let mut command = Command::new(pi_bin);
+    command.arg("install").arg(&package_dir);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // The packaged app is a GUI process without a console. Spawning the pi
+        // shim (a console `.cmd`/node process) would otherwise flash a black
+        // console window for the whole install; CREATE_NO_WINDOW suppresses it.
+        command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    let output = command
         .output()
         .map_err(|error| format!("Failed to run `pi install`: {error}"))?;
     let stdout = String::from_utf8_lossy(&output.stdout);

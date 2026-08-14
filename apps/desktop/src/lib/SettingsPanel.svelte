@@ -364,6 +364,9 @@
       piInstallMessage =
         tr('已安装 Pi 原生适配器，重启 Pi 会话后生效。') +
         (output.trim() ? `\n${output.trim()}` : '')
+      if (output.trim().length === 0) {
+        piInstallMessage += `\n${tr('首次安装可能耗时十几秒，请稍候。')}`
+      }
     } catch (cause) {
       piInstallError = messageFrom(cause)
     } finally {

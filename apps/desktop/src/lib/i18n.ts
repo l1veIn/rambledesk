@@ -397,6 +397,7 @@ const english: Record<string, string> = {
   '一键安装 Pi 原生适配器': 'Install Pi native adapter',
   '正在安装 Pi 原生适配器…': 'Installing Pi native adapter…',
   '已安装 Pi 原生适配器，重启 Pi 会话后生效。': 'Pi native adapter installed; restart your Pi session to apply.',
+  '首次安装可能耗时十几秒，请稍候。': 'The first install can take about ten seconds; please wait.',
   '检测到的 Coding 工具': 'Detected coding tools',
   '{count} 个步骤': '{count} steps',
   '安装': 'Install',

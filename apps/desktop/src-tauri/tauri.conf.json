@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "RambleDesk",
-  "version": "0.0.2-rc.8",
+  "version": "0.0.2-rc.9",
   "identifier": "io.rambledesk.desktop",
   "build": {
     "beforeDevCommand": "pnpm dev:web",
@@ -37,7 +37,11 @@
     "resources": {
       "../../../packages/pi-rambledesk/index.js": "pi-rambledesk/index.js",
       "../../../packages/pi-rambledesk/package.json": "pi-rambledesk/package.json",
-      "../../../packages/pi-rambledesk/README.md": "pi-rambledesk/README.md"
+      "../../../packages/pi-rambledesk/README.md": "pi-rambledesk/README.md",
+      "../../../packages/dsh-rambledesk/index.js": "dsh-rambledesk/index.js",
+      "../../../packages/dsh-rambledesk/package.json": "dsh-rambledesk/package.json",
+      "../../../packages/dsh-rambledesk/README.md": "dsh-rambledesk/README.md",
+      "../../../packages/dsh-rambledesk/skills/ramble/SKILL.md": "dsh-rambledesk/skills/ramble/SKILL.md"
     },
     "icon": [
       "icons/32x32.png",
