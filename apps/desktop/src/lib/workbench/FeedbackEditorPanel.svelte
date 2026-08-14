@@ -8,6 +8,7 @@
     FileText,
     LoaderCircle,
     Sparkles,
+    Undo2,
   } from '@lucide/svelte'
 
   import { Badge } from '$lib/components/ui/badge'
@@ -25,11 +26,16 @@
   export let attachmentPreviews: Record<string, string> = {}
   export let dragActive = false
   export let cooking = false
+  export let cookingEnabled = false
+  export let cookedPreviewActive = false
+  export let cookedPreviewModel = ''
   export let locked = false
   export let cookedMarkdown = ''
   export let uncookedMarkdown = ''
   export let formatTime: (value: string | null | undefined) => string
   export let onChange: (markdown: string) => void = () => {}
+  export let onCookPreview: () => void = () => {}
+  export let onRestoreOriginal: () => void = () => {}
   export let onOpenAttachment: (attachmentId: string) => void = () => {}
 
   let richEditor: RichFeedbackEditor
@@ -131,8 +137,39 @@
           </Button>
         {/if}
       </div>
+    {:else if cookingEnabled && !readOnly && !locked && !cooking}
+      <Button
+        variant="ghost"
+        size="sm"
+        class="ml-auto h-7 shrink-0 gap-1 px-2 text-[10px] text-muted-foreground hover:text-foreground"
+        onclick={onCookPreview}
+      >
+        <Sparkles class="size-3.5" />
+        {tr('先看 Cook 结果')}
+      </Button>
     {/if}
   </header>
+
+  {#if cookedPreviewActive}
+    <div
+      class="mb-2 flex items-center gap-2 rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-[10px] text-foreground"
+      aria-live="polite"
+    >
+      <Sparkles class="size-3.5 shrink-0 text-primary" />
+      <span class="min-w-0 flex-1 truncate">
+        {cookedPreviewModel ? tr('已用 Cooking 整理（{model}），提交将直接使用整理稿。', { model: cookedPreviewModel }) : tr('已用 Cooking 整理，提交将直接使用整理稿。')}
+      </span>
+      <Button
+        variant="outline"
+        size="sm"
+        class="h-6 shrink-0 gap-1 px-2 text-[10px]"
+        onclick={onRestoreOriginal}
+      >
+        <Undo2 class="size-3" />
+        {tr('恢复原文')}
+      </Button>
+    </div>
+  {/if}
 
   <div class="relative flex min-h-0 flex-1">
     {#if hasPublishedFeedback && publishedView === 'compare' && hasCookingDifference}

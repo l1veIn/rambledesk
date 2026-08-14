@@ -116,6 +116,10 @@
   let submitting = false
   let submitStage: SubmitStage = 'idle'
   let cookingRequestIds = new Set<string>()
+  /** Preview cooking result for the current workspace, if generated and current. */
+  let cookedPreview: { markdown: string; original: string; model: string } | null = null
+  /** Pre-cook draft snapshot for the restore action. */
+  let cookedPreviewOriginal = ''
   let cancelling = false
   let approving = false
   let attachmentBusy = false
@@ -264,6 +268,11 @@
   $: feedbackResult = completedResult?.feedback ?? workspace?.feedback ?? null
   $: currentRequestCooking =
     workspace !== null && cookingRequestIds.has(workspace.request.request_id)
+  $: cookedPreviewActive =
+    cookedPreview !== null && draftBody === cookedPreview.markdown
+  // Turning Cooking off discards any pending cooked preview: submitting then
+  // publishes the editor content as-is.
+  $: if (!$cookingEnabled) cookedPreview = null
   $: canSubmit =
     workspace !== null &&
     workspace.request.status !== 'completed' &&
@@ -489,6 +498,8 @@
           })
       if (!next) throw new Error(tr('找不到这个反馈请求。'))
       workspace = next
+      cookedPreview = null
+      cookedPreviewOriginal = ''
       draftBody = next.draft.body_markdown
       savedBody = next.draft.body_markdown
       savedRevision = next.draft.saved_revision
@@ -786,6 +797,66 @@
     }
   }
 
+  /** Cook the current draft into the editor without publishing (方案 E preview). */
+  async function cookPreviewOnly() {
+    if (
+      !workspace ||
+      !$cookingEnabled ||
+      workspace.request.status === 'completed' ||
+      workspace.request.status === 'cancelled' ||
+      currentRequestCooking
+    ) return
+    if (!(await saveDraftNow())) return
+    if (!workspace || currentRequestCooking) return
+
+    const requestId = workspace.request.request_id
+    const original = draftBody
+    if (!original.trim()) return
+
+    setCookingRequest(requestId, true)
+    pageError = ''
+    try {
+      const { cookFeedback } = await import('./lib/cooking')
+      const cooked = await cookFeedback(
+        {
+          title: workspace.request.title,
+          whatHappened: workspace.request.what_happened,
+          actions: workspace.actions,
+          uncookedMarkdown: original,
+        },
+        {
+          provider: $cookingProvider,
+          apiKey: $cookingApiKey,
+          baseUrl: $cookingBaseUrl,
+          model: $cookingModel,
+          reasoningEffort: $cookingReasoningEffort,
+          locale: $locale,
+        },
+      )
+      if (workspace?.request.request_id !== requestId) return
+      cookedPreview = { markdown: cooked.markdown, original, model: cooked.model }
+      cookedPreviewOriginal = original
+      draftBody = cooked.markdown
+      savePhase = draftBody === savedBody ? 'saved' : 'unsaved'
+      saveMessage = ''
+      void saveDraftNow()
+    } catch (cause) {
+      pageError = messageFrom(cause)
+    } finally {
+      setCookingRequest(requestId, false)
+    }
+  }
+
+  /** Discard the cooked preview and restore the pre-cook draft. */
+  function restoreOriginalAfterCook() {
+    if (!cookedPreview || !workspace || currentRequestCooking) return
+    cookedPreview = null
+    draftBody = cookedPreviewOriginal
+    savePhase = draftBody === savedBody ? 'saved' : 'unsaved'
+    saveMessage = ''
+    void saveDraftNow()
+  }
+
   async function submitFeedback() {
     if (!workspace || !canSubmit) return
     if (rambleCanExit) await exitRamble()
@@ -800,6 +871,32 @@
       savedRevision,
     }
     pageError = ''
+
+    // A generated, still-current cooked preview is published directly: no
+    // second model call, no extra wait.
+    if ($cookingEnabled && cookedPreviewActive && cookedPreview) {
+      submitting = true
+      submitStage = 'publishing'
+      try {
+        await publishFeedback(
+          {
+            request_id: submission.request.request_id,
+            expected_revision: submission.savedRevision,
+            cooked_markdown: cookedPreview.markdown,
+            cooking_model: cookedPreview.model,
+          },
+          cookedPreview.markdown,
+          cookedPreview.original,
+        )
+        cookedPreview = null
+      } catch (cause) {
+        pageError = messageFrom(cause)
+      } finally {
+        submitting = false
+        submitStage = 'idle'
+      }
+      return
+    }
 
     if ($cookingEnabled) {
       setCookingRequest(requestId, true)
@@ -1056,6 +1153,11 @@
           attachmentBusy={rambleBelongsToWorkspace ? attachmentBusy : false}
           {canSubmit}
           cooking={currentRequestCooking}
+          cookingEnabled={$cookingEnabled}
+          cookedPreviewActive={cookedPreviewActive}
+          cookedPreviewModel={cookedPreview?.model ?? ''}
+          onCookPreview={() => void cookPreviewOnly()}
+          onRestoreOriginal={restoreOriginalAfterCook}
           {submitting}
           {submitStage}
           {publishedFeedback}

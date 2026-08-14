@@ -48,6 +48,9 @@
   export let attachmentBusy = false
   export let canSubmit = false
   export let cooking = false
+  export let cookingEnabled = false
+  export let cookedPreviewActive = false
+  export let cookedPreviewModel = ''
   export let submitting = false
   export let submitStage: SubmitStage = 'idle'
   export let publishedFeedback: { markdown: string; uncooked_markdown?: string } | null = null
@@ -58,6 +61,8 @@
   export let formatTime: (value: string | null | undefined) => string
   export let onReload: () => void = () => {}
   export let onDraftChange: (markdown: string) => void = () => {}
+  export let onCookPreview: () => void = () => {}
+  export let onRestoreOriginal: () => void = () => {}
   export let onToggleRamble: () => void = () => {}
   export let onExitRamble: () => void = () => {}
   export let onOpenVoiceSettings: () => void = () => {}
@@ -200,10 +205,15 @@
               {dragActive}
               {formatTime}
               {cooking}
+              cookingEnabled={cookingEnabled && !publishedFeedback}
+              {cookedPreviewActive}
+              {cookedPreviewModel}
               locked={interactionLocked}
               cookedMarkdown={publishedFeedback?.markdown ?? ''}
               uncookedMarkdown={publishedFeedback?.uncooked_markdown ?? draftBody}
               onChange={onDraftChange}
+              onCookPreview={onCookPreview}
+              onRestoreOriginal={onRestoreOriginal}
               onOpenAttachment={openAttachmentPreviewById}
             />
           </Pane>
