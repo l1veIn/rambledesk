@@ -191,3 +191,59 @@
 - dsh 原生适配器：安装约 1 秒完成，不再报"找不到 dsh 包"；重启 dsh 后
   `/ramble` 生效、插件可用。
 - 无其他新问题。
+
+## 2026-08-14（第二轮）— Cook 预览、dev 稳定性、大文件拆分、适配器 Logo
+
+### dsh 插件
+
+- 实测发现 `REQUEST_CONFLICT`：终态持久化走 `loadState()`，其 memory
+  恢复逻辑在"刚清空的 pendingRequestId + 仍为 waiting 的持久化 phase"
+  下把已完成请求 id 又填回 pending，下一个 request 复用旧 id 被服务端
+  拒绝，直到进程重启。修复为直接读文件（无恢复副作用），新增回归测试
+  （连续两次 request 必须 mint 新 id）；安装副本同步，重启 dsh 后生效。
+- 该轮同时实测验证了 resume 路径：重启后 `resume_ramble_feedback`
+  成功接回已完成请求。
+
+### Cook 预览（方案 E）
+
+- 按用户确认的设计实现：主按钮区保持单个"Cook 并提交"（一键即走），
+  编辑器右上角新增低调"先看 Cook 结果"入口；整理稿写入编辑器（可改、
+  可恢复原文），提交时复用未过期的整理稿（不二次调用模型）；关闭
+  Cooking 丢弃整理稿缓存。预览前自动退出 Ramble（停麦克风，与提交一致）。
+- 用户验收四项全绿（预览驱动、提示条、提交复用、恢复原文）。
+
+### dev 稳定性（关键根因）
+
+- 用户报告改代码后 dev 崩溃：`EBUSY watch '<file>.<pid>.<uuid>.tmpdir/<file>.tmp'`。
+  根因是 dsh 文件后端的原子写入（临时文件+rename）被 vite 的 chokidar
+  watcher 监视，Windows 上触发 EBUSY 崩溃；vite 一崩，WebView2 停在
+  崩溃前的旧模块图，新代码（含修复）全部"不生效"，并出现图片
+  ERR_CONNECTION_REFUSED。修复：vite `watch.ignored` 忽略
+  `**/.*.tmpdir/**` 与 `**/*.tmp`（实测原子写不再崩溃）。
+- 另一环境问题：vite 8 在 Node 21+ 只监听 IPv6（::1），WebView2 解析
+  localhost 常走 127.0.0.1 → 资源请求被拒。vite 改为强制绑定 127.0.0.1。
+
+### 大文件拆分
+
+- `App.svelte` 1217 → 1000 行：抽出 feedbackText（纯函数）、
+  draftController（自动保存状态机）、cookingController（cook 流程）、
+  publisherController（提交/发布）、publishedFeedback 归一化与类型。
+- `ScreenshotOverlay.svelte` 1027 → 965 行：抽出 overlayGeometry（纯几何
+  与布局函数）。
+- 44 个前端测试全过（含新增 16 个纯函数单测）；无头浏览器回归 cook
+  预览通过；用户全面回归无异常。
+- 教训：大重构期间 HMR 会推送中间态代码导致用户页面崩溃
+  （saveDraftNow before initialization），应避免在用户活跃测试时做
+  跨文件重构，或提前提醒。
+
+### 适配器 Logo 与续接
+
+- dsh.svg 由通用终端图形换成 DeepSeek 鲸鱼标志（simple-icons DeepSeek，
+  currentColor）；设置 → 适配器卡片同步使用（此前是通用 Bot 图标）。
+- claude/cursor/gemini/openai/opencode/mcp 图标无 fill 属性（两种主题下
+  都是黑色），统一加 `fill="currentColor"` 随主题变色。
+- native-wait 续接策略只匹配 pi，dsh 终态后错误地落入 generic 手动续接
+  弹 Resume Prompt；策略现同时匹配 pi 与 dsh（id "native"）。
+- `present_resume_prompt` 不再 show/unminimize/set_focus 主窗口：
+  通知+铃声足够，避免打断全屏游戏。
+- 用户已验收鲸鱼 Logo；native 续接与不抢焦点待其在后续真实提交中确认。
