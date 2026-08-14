@@ -174,11 +174,13 @@ pub struct NativeWaitContinuationStrategy;
 
 impl ContinuationStrategy for NativeWaitContinuationStrategy {
     fn id(&self) -> &'static str {
-        "pi"
+        "native"
     }
 
     fn matches_host(&self, host_id: &str) -> bool {
-        host_id.eq_ignore_ascii_case("pi")
+        // Pi and DeepSeek Harness own `request` + `wait` inside their active
+        // tool call, so a terminal request needs no resume prompt at all.
+        host_id.eq_ignore_ascii_case("pi") || host_id.eq_ignore_ascii_case("dsh")
     }
 
     fn continue_after_terminal(&self, payload: &ContinuationPayload) -> ContinuationResult {
@@ -335,8 +337,15 @@ mod tests {
         assert_eq!(
             router.continue_after_terminal(&payload("pi")),
             ContinuationResult::NotRequired {
-                strategy_id: "pi".to_owned(),
+                strategy_id: "native".to_owned(),
                 host_id: "pi".to_owned(),
+            }
+        );
+        assert_eq!(
+            router.continue_after_terminal(&payload("dsh")),
+            ContinuationResult::NotRequired {
+                strategy_id: "native".to_owned(),
+                host_id: "dsh".to_owned(),
             }
         );
     }

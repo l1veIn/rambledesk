@@ -2,7 +2,7 @@ use rambledesk_core::{FeedbackApplication, FeedbackStatus};
 use rambledesk_hosts::{
     ContinuationPayload, ContinuationReason, ContinuationResult, ContinuationRouter, ResumePrompt,
 };
-use tauri::{Emitter, Manager};
+use tauri::Emitter;
 
 use super::RESUME_PROMPT_EVENT;
 
@@ -67,11 +67,10 @@ pub(super) async fn deliver_continuation_after_terminal(
 }
 
 fn present_resume_prompt(app: &tauri::AppHandle, prompt: &ResumePrompt) {
-    if let Some(main) = app.get_webview_window("main") {
-        let _ = main.show();
-        let _ = main.unminimize();
-        let _ = main.set_focus();
-    }
+    // Deliberately do NOT show/unminimize/focus the main window here: the
+    // operator may be in a fullscreen game or another foreground app, and the
+    // notification + sound (sent from the frontend listener) are enough of a
+    // heads-up. Forcing focus would yank them out of whatever they are doing.
     if let Err(error) = app.emit(RESUME_PROMPT_EVENT, prompt) {
         tracing::warn!(%error, "failed to emit resume prompt event");
     }

@@ -11,7 +11,13 @@ import {
 } from './overlayGeometry'
 
 const geometry: OverlayGeometry = {
-  capture: { image_width: 2000, image_height: 1000 },
+  capture: {
+    capture_session_id: 'test-session',
+    image_width: 2000,
+    image_height: 1000,
+    targets: [],
+    suggested_selection: null,
+  },
   displayRectangle: { x: 10, y: 20, width: 1000, height: 500 },
   viewportWidth: 1200,
   viewportHeight: 800,

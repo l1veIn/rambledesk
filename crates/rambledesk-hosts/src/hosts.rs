@@ -9,8 +9,9 @@ use crate::{ContinuationStrategy, NativeWaitContinuationStrategy};
 /// not the same product guarantee as resuming the original host context. Those
 /// hosts intentionally fall back to the generic MCP adapter prompt.
 ///
-/// Pi's native path is different: its package owns `request` + `wait` inside
-/// the active Pi tool call, so the router records that continuation is not required.
+/// Pi and DeepSeek Harness have a native path: their packages own `request` +
+/// `wait` inside the active tool call, so the router records that continuation
+/// is not required.
 pub fn known_continuation_strategies() -> Vec<Arc<dyn ContinuationStrategy>> {
     vec![Arc::new(NativeWaitContinuationStrategy)]
 }

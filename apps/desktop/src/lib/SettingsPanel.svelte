@@ -5,7 +5,6 @@
   import { isPermissionGranted, requestPermission } from '@tauri-apps/plugin-notification'
   import {
     BellRing,
-    Bot,
     Check,
     CheckCircle2,
     ChefHat,
@@ -39,6 +38,7 @@
   import AboutSettings from '$lib/AboutSettings.svelte'
   import rambellePermission from '../assets/rambelle-states/state-permission.png'
   import piLogoSvg from '../assets/pi-logo.svg?raw'
+  import dshLogoSvg from '../assets/dsh-logo.svg?raw'
   import * as Select from '$lib/components/ui/select'
   import * as Tabs from '$lib/components/ui/tabs'
   import { t } from '$lib/i18n'
@@ -1156,7 +1156,7 @@
             <section class="border-b pb-8">
               <div class="flex items-start gap-3">
                 <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground [&_svg]:size-4">
-                  <Bot class="size-4" />
+                  {@html dshLogoSvg}
                 </span>
                 <div class="min-w-0 flex-1">
                   <div class="flex flex-wrap items-center gap-2">
