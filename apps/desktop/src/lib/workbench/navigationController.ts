@@ -11,6 +11,7 @@ import type {
 import { InboxNotificationTracker, playNotificationSound, type NotificationState } from '../notifications'
 import { previewFixtures } from '../previewFixtures'
 import {
+  customNotificationSound,
   notificationPopupEnabled,
   notificationSound,
   notificationSoundEnabled,
@@ -145,7 +146,12 @@ export function createNavigationController(context: NavigationControllerContext)
       })
     }
     if (get(notificationSoundEnabled)) {
-      void playNotificationSound(get(notificationSound), get(notificationVolume))
+      const sound = get(notificationSound)
+      void playNotificationSound(
+        sound,
+        get(notificationVolume),
+        sound === 'custom' ? get(customNotificationSound) : null,
+      )
     }
   }
 

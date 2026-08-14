@@ -24,6 +24,7 @@
     ShieldCheck,
     TerminalSquare,
     Trash2,
+    Upload,
     Volume2,
   } from '@lucide/svelte'
   import { onMount } from 'svelte'
@@ -47,7 +48,12 @@
     speechModelDisplayName,
     speechModelLanguages,
   } from '$lib/speechModelLabels'
-  import { playNotificationSound } from '$lib/notifications'
+  import {
+    decodeCustomSoundBytes,
+    discardCustomSoundCache,
+    MAX_CUSTOM_SOUND_SECONDS,
+    playNotificationSound,
+  } from '$lib/notifications'
   import {
     cookingApiKey,
     cookingBaseUrl,
@@ -55,6 +61,7 @@
     cookingModel,
     cookingProvider,
     cookingReasoningEffort,
+    customNotificationSound,
     locale,
     notificationPopupEnabled,
     notificationSound,
@@ -66,6 +73,7 @@
     setCookingModel,
     setCookingProvider,
     setCookingReasoningEffort,
+    setCustomNotificationSound,
     setLocale,
     setNotificationPopupEnabled,
     setNotificationSound,
@@ -83,6 +91,7 @@
     themePreference,
     type CookingProvider,
     type CookingReasoningEffort,
+    type CustomNotificationSound,
     type NotificationSound,
     type SpeechModelId,
     type ThemePreference,
@@ -144,6 +153,12 @@
     restartRequired: boolean
   }
 
+  type NotificationSoundImportView = {
+    id: string
+    name: string
+    bytes: number[]
+  }
+
   type DshInstallResult = {
     profileId: string
     profileDir: string
@@ -171,6 +186,8 @@
   let genericAdapterOpen = true
   let configurationOpen = false
   let notificationPermissionError = ''
+  let customSoundBusy = false
+  let customSoundError = ''
   let dataStorage: DataStorageView | null = null
   let storageMessage = ''
   let storageError = ''
@@ -426,7 +443,62 @@
   function soundLabel(sound: NotificationSound) {
     if (sound === 'soft') return tr('柔和提示')
     if (sound === 'alert') return tr('醒目提示')
+    if (sound === 'custom') return tr('自定义音频')
     return tr('清脆双音')
+  }
+
+  async function chooseCustomSound() {
+    if (customSoundBusy || !isTauri) return
+    customSoundBusy = true
+    customSoundError = ''
+    try {
+      const selected = await open({
+        multiple: false,
+        directory: false,
+        filters: [
+          { name: tr('音频文件'), extensions: ['mp3', 'wav', 'ogg', 'm4a', 'aac'] },
+        ],
+      })
+      if (typeof selected !== 'string') return
+      const imported = await invoke<NotificationSoundImportView>('import_notification_sound', {
+        path: selected,
+      })
+      let duration = 0
+      try {
+        const decoded = await decodeCustomSoundBytes(imported.id, imported.bytes)
+        duration = decoded.duration
+      } catch {
+        await invoke('remove_notification_sound', { id: imported.id }).catch(() => {})
+        customSoundError = tr('音频无法解码，请换一个文件。')
+        return
+      }
+      if (duration > MAX_CUSTOM_SOUND_SECONDS) {
+        await invoke('remove_notification_sound', { id: imported.id }).catch(() => {})
+        customSoundError = tr('音频超过 10 秒上限，请裁剪后重试。')
+        return
+      }
+      // Cleanup of the previous sound happens only after validation succeeded.
+      await invoke('commit_notification_sound', { id: imported.id }).catch(() => {})
+      const next: CustomNotificationSound = { id: imported.id, name: imported.name }
+      setCustomNotificationSound(next)
+      setNotificationSound('custom')
+    } catch (cause) {
+      customSoundError = messageFrom(cause)
+    } finally {
+      customSoundBusy = false
+    }
+  }
+
+  async function removeCustomSound() {
+    const current = $customNotificationSound
+    if (!current) return
+    discardCustomSoundCache()
+    if (isTauri) {
+      await invoke('remove_notification_sound', { id: current.id }).catch(() => {})
+    }
+    setCustomNotificationSound(null)
+    setNotificationSound('chime')
+    customSoundError = ''
   }
 
   function chooseCookingProvider(provider: CookingProvider) {
@@ -865,6 +937,7 @@
                           <Select.Item value="chime" label={tr('清脆双音')} />
                           <Select.Item value="soft" label={tr('柔和提示')} />
                           <Select.Item value="alert" label={tr('醒目提示')} />
+                          <Select.Item value="custom" label={tr('自定义音频')} />
                         </Select.Content>
                       </Select.Root>
                       <Button
@@ -872,12 +945,68 @@
                         size="icon"
                         aria-label={tr('试听提示音')}
                         title={tr('试听提示音')}
-                        onclick={() => void playNotificationSound($notificationSound, $notificationVolume)}
+                        onclick={() =>
+                          void playNotificationSound(
+                            $notificationSound,
+                            $notificationVolume,
+                            $notificationSound === 'custom' ? $customNotificationSound : null,
+                          )}
                       >
                         <Play />
                       </Button>
                     </div>
                   </div>
+
+                  {#if $notificationSound === 'custom'}
+                    <div class="grid grid-cols-[minmax(0,1fr)_240px] items-center gap-6">
+                      <div>
+                        <strong class="block text-xs font-medium">{tr('自定义音频')}</strong>
+                        <span class="mt-0.5 block text-[10px] text-muted-foreground">
+                          {tr('选择音频文件作为提醒音（最长 10 秒，不超过 5 MiB）。')}
+                        </span>
+                      </div>
+                      <div class="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          class="min-w-0 flex-1"
+                          disabled={!isTauri || customSoundBusy}
+                          onclick={() => void chooseCustomSound()}
+                        >
+                          {#if customSoundBusy}
+                            <LoaderCircle class="animate-spin" data-icon="inline-start" />
+                          {:else}
+                            <Upload data-icon="inline-start" />
+                          {/if}
+                          {tr('选择音频…')}
+                        </Button>
+                        {#if $customNotificationSound}
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            aria-label={tr('移除自定义音频')}
+                            title={tr('移除自定义音频')}
+                            onclick={() => void removeCustomSound()}
+                          >
+                            <Trash2 />
+                          </Button>
+                        {/if}
+                      </div>
+                    </div>
+                    {#if $customNotificationSound}
+                      <p class="m-0 break-all text-[10px] text-muted-foreground">
+                        {tr('当前提示音：{name}', { name: $customNotificationSound.name })}
+                      </p>
+                    {/if}
+                    {#if customSoundError}
+                      <p class="m-0 text-xs text-destructive">{customSoundError}</p>
+                    {/if}
+                    {#if !isTauri}
+                      <p class="m-0 text-[10px] text-muted-foreground">
+                        {tr('自定义提示音仅在桌面应用中可用。')}
+                      </p>
+                    {/if}
+                  {/if}
 
                   <div class="grid grid-cols-[minmax(0,1fr)_240px] items-center gap-6">
                     <div>

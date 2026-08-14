@@ -1,6 +1,7 @@
 mod clipboard_capture;
 mod dsh_install;
 mod logging;
+mod notification_sounds;
 mod open_attachment;
 mod pi_install;
 mod screen_capture;
@@ -245,6 +246,10 @@ pub fn run() {
             submit_feedback,
             approve_feedback_request,
             cancel_feedback_request,
+            notification_sounds::import_notification_sound,
+            notification_sounds::commit_notification_sound,
+            notification_sounds::read_notification_sound,
+            notification_sounds::remove_notification_sound,
             list_speech_models,
             download_speech_model,
             delete_speech_model,

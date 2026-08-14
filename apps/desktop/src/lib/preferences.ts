@@ -4,7 +4,8 @@ import { savedUiTheme, saveUiTheme } from './uiPreferences'
 
 export type Locale = 'zh-CN' | 'en'
 export type ThemePreference = 'system' | 'light' | 'dark'
-export type NotificationSound = 'chime' | 'soft' | 'alert'
+export type CustomNotificationSound = { id: string; name: string }
+export type NotificationSound = 'chime' | 'soft' | 'alert' | 'custom'
 export type CookingProvider = 'deepseek' | 'openai' | 'compatible'
 export type CookingReasoningEffort =
   | 'none'
@@ -27,6 +28,7 @@ const THEME_KEY = 'rambledesk.theme'
 const NOTIFICATION_POPUP_KEY = 'rambledesk.notifications.popup'
 const NOTIFICATION_SOUND_ENABLED_KEY = 'rambledesk.notifications.sound-enabled'
 const NOTIFICATION_SOUND_KEY = 'rambledesk.notifications.sound'
+const NOTIFICATION_CUSTOM_SOUND_KEY = 'rambledesk.notifications.custom-sound'
 const NOTIFICATION_VOLUME_KEY = 'rambledesk.notifications.volume'
 const SPEECH_INPUT_DEVICE_KEY = 'rambledesk.speech.input-device'
 const SPEECH_MODEL_KEY = 'rambledesk.speech.model'
@@ -69,8 +71,35 @@ function initialOnboardingCompleted() {
   return localStorage.getItem(LOCALE_KEY) !== null
 }
 
+function parseCustomNotificationSound(raw: string | null): CustomNotificationSound | null {
+  if (raw === null) return null
+  try {
+    const parsed = JSON.parse(raw) as Partial<CustomNotificationSound> | null
+    if (
+      parsed !== null &&
+      typeof parsed === 'object' &&
+      typeof parsed.id === 'string' &&
+      parsed.id.length > 0 &&
+      typeof parsed.name === 'string' &&
+      parsed.name.length > 0
+    ) {
+      return { id: parsed.id, name: parsed.name }
+    }
+  } catch {
+    // Malformed value; treat as absent.
+  }
+  return null
+}
+
+function initialCustomNotificationSound(): CustomNotificationSound | null {
+  return parseCustomNotificationSound(localStorage.getItem(NOTIFICATION_CUSTOM_SOUND_KEY))
+}
+
 function initialNotificationSound(): NotificationSound {
   const saved = localStorage.getItem(NOTIFICATION_SOUND_KEY)
+  if (saved === 'custom') {
+    return initialCustomNotificationSound() !== null ? 'custom' : 'chime'
+  }
   return saved === 'chime' || saved === 'soft' || saved === 'alert' ? saved : 'chime'
 }
 
@@ -120,6 +149,9 @@ export const notificationSoundEnabled = writable(
   initialBoolean(NOTIFICATION_SOUND_ENABLED_KEY, true),
 )
 export const notificationSound = writable<NotificationSound>(initialNotificationSound())
+export const customNotificationSound = writable<CustomNotificationSound | null>(
+  initialCustomNotificationSound(),
+)
 export const notificationVolume = writable(initialNotificationVolume())
 export const speechInputDevice = writable(localStorage.getItem(SPEECH_INPUT_DEVICE_KEY) ?? '')
 const savedSpeechModel = localStorage.getItem(SPEECH_MODEL_KEY)
@@ -176,6 +208,10 @@ export function setNotificationSoundEnabled(enabled: boolean) {
 
 export function setNotificationSound(sound: NotificationSound) {
   notificationSound.set(sound)
+}
+
+export function setCustomNotificationSound(sound: CustomNotificationSound | null) {
+  customNotificationSound.set(sound)
 }
 
 export function setSpeechInputDevice(device: string) {
@@ -267,6 +303,10 @@ export function initializePreferences() {
   notificationSound.subscribe((next) => {
     localStorage.setItem(NOTIFICATION_SOUND_KEY, next)
   })
+  customNotificationSound.subscribe((next) => {
+    if (next === null) localStorage.removeItem(NOTIFICATION_CUSTOM_SOUND_KEY)
+    else localStorage.setItem(NOTIFICATION_CUSTOM_SOUND_KEY, JSON.stringify(next))
+  })
   notificationVolume.subscribe((next) => {
     localStorage.setItem(NOTIFICATION_VOLUME_KEY, String(next))
   })
@@ -324,11 +364,27 @@ export function initializePreferences() {
     if (event.key === NOTIFICATION_SOUND_ENABLED_KEY && event.newValue !== null) {
       notificationSoundEnabled.set(event.newValue === 'true')
     }
-    if (
-      event.key === NOTIFICATION_SOUND_KEY &&
-      (event.newValue === 'chime' || event.newValue === 'soft' || event.newValue === 'alert')
-    ) {
-      notificationSound.set(event.newValue)
+    if (event.key === NOTIFICATION_SOUND_KEY && event.newValue !== null) {
+      if (
+        event.newValue === 'chime' ||
+        event.newValue === 'soft' ||
+        event.newValue === 'alert'
+      ) {
+        notificationSound.set(event.newValue)
+      } else if (
+        event.newValue === 'custom' &&
+        get(customNotificationSound) !== null
+      ) {
+        notificationSound.set(event.newValue)
+      }
+    }
+    if (event.key === NOTIFICATION_CUSTOM_SOUND_KEY) {
+      const parsed = parseCustomNotificationSound(event.newValue)
+      customNotificationSound.set(parsed)
+      if (parsed === null && get(notificationSound) === 'custom') {
+        // The custom reference disappeared in another window; fall back to chime.
+        notificationSound.set('chime')
+      }
     }
     if (event.key === NOTIFICATION_VOLUME_KEY && event.newValue !== null) {
       setNotificationVolume(Number(event.newValue))

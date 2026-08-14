@@ -1,14 +1,21 @@
+import { invoke } from '@tauri-apps/api/core'
+
 import type { FeedbackRequestSummary } from './feedback'
-import type { Locale, NotificationSound } from './preferences'
+import type { CustomNotificationSound, Locale, NotificationSound } from './preferences'
 
 export type NotificationState = 'checking' | 'enabled' | 'muted' | 'disabled' | 'unavailable'
+
+export const MAX_CUSTOM_SOUND_SECONDS = 10
+export const MAX_CUSTOM_SOUND_BYTES = 5 * 1024 * 1024
 
 type AudioContextConstructor = new () => AudioContext
 
 let notificationAudioContext: AudioContext | null = null
+let customSoundCache: { id: string; buffer: AudioBuffer } | null = null
+let activeCustomSource: AudioBufferSourceNode | null = null
 
 const notificationSounds: Record<
-  NotificationSound,
+  Exclude<NotificationSound, 'custom'>,
   { frequencies: readonly [number, number][]; duration: number; volume: number; wave: OscillatorType }
 > = {
   chime: {
@@ -31,34 +38,91 @@ const notificationSounds: Record<
   },
 }
 
-export async function playNotificationSound(
-  sound: NotificationSound = 'chime',
-  volume = 80,
-): Promise<void> {
-  if (typeof window === 'undefined') return
+async function resolveAudioContext(): Promise<AudioContext | null> {
+  if (typeof window === 'undefined') return null
   const audioWindow = window as typeof window & {
     webkitAudioContext?: AudioContextConstructor
   }
   const AudioContextClass = window.AudioContext ?? audioWindow.webkitAudioContext
-  if (!AudioContextClass) return
-
+  if (!AudioContextClass) return null
   try {
     notificationAudioContext ??= new AudioContextClass()
     if (notificationAudioContext.state === 'suspended') {
       await notificationAudioContext.resume()
     }
-    const preset = notificationSounds[sound]
-    const now = notificationAudioContext.currentTime
-    const gain = notificationAudioContext.createGain()
+    return notificationAudioContext
+  } catch {
+    return null
+  }
+}
+
+async function decodeCustomSound(context: AudioContext, id: string): Promise<AudioBuffer | null> {
+  if (customSoundCache?.id === id) return customSoundCache.buffer
+  try {
+    const bytes = await invoke<number[]>('read_notification_sound', { id })
+    if (!Array.isArray(bytes) || bytes.length === 0) return null
+    const buffer = await context.decodeAudioData(new Uint8Array(bytes).buffer)
+    customSoundCache = { id, buffer }
+    return buffer
+  } catch {
+    customSoundCache = null
+    return null
+  }
+}
+
+async function playCustomNotificationSound(
+  context: AudioContext,
+  custom: CustomNotificationSound | null,
+  volume: number,
+): Promise<boolean> {
+  if (!custom) return false
+  try {
+    const buffer = await decodeCustomSound(context, custom.id)
+    if (!buffer) return false
+    const source = context.createBufferSource()
+    source.buffer = buffer
+    const normalizedVolume = Math.min(100, Math.max(0, volume)) / 100
+    const gain = context.createGain()
+    gain.gain.setValueAtTime(Math.min(1, normalizedVolume), context.currentTime)
+    gain.connect(context.destination)
+    source.connect(gain)
+    activeCustomSource?.stop()
+    activeCustomSource = source
+    source.onended = () => {
+      if (activeCustomSource === source) activeCustomSource = null
+    }
+    const playSeconds = Math.min(buffer.duration, MAX_CUSTOM_SOUND_SECONDS)
+    source.start(0, 0, playSeconds)
+    return true
+  } catch {
+    return false
+  }
+}
+
+type NotificationSoundPreset = {
+  frequencies: readonly [number, number][]
+  duration: number
+  volume: number
+  wave: OscillatorType
+}
+
+function playPresetSound(
+  context: AudioContext,
+  preset: NotificationSoundPreset,
+  volume: number,
+): void {
+  try {
+    const now = context.currentTime
+    const gain = context.createGain()
     const normalizedVolume = Math.min(100, Math.max(0, volume)) / 100
     const outputVolume = Math.max(0.0001, preset.volume * 2.75 * normalizedVolume)
     gain.gain.setValueAtTime(0.0001, now)
     gain.gain.exponentialRampToValueAtTime(outputVolume, now + 0.015)
     gain.gain.exponentialRampToValueAtTime(0.0001, now + preset.duration)
-    gain.connect(notificationAudioContext.destination)
+    gain.connect(context.destination)
 
     for (const [frequency, delay] of preset.frequencies) {
-      const oscillator = notificationAudioContext.createOscillator()
+      const oscillator = context.createOscillator()
       oscillator.type = preset.wave
       oscillator.frequency.setValueAtTime(frequency, now + delay)
       oscillator.connect(gain)
@@ -68,6 +132,46 @@ export async function playNotificationSound(
   } catch {
     // The OS notification remains useful when audio playback is unavailable.
   }
+}
+
+export async function playNotificationSound(
+  sound: NotificationSound = 'chime',
+  volume = 80,
+  custom: CustomNotificationSound | null = null,
+): Promise<void> {
+  const context = await resolveAudioContext()
+  if (!context) return
+
+  if (sound === 'custom') {
+    if (!(await playCustomNotificationSound(context, custom, volume))) {
+      // The custom file is missing or undecodable; keep the reminder audible.
+      playPresetSound(context, notificationSounds.chime, volume)
+    }
+    return
+  }
+  playPresetSound(context, notificationSounds[sound], volume)
+}
+
+/**
+ * Decode the bytes of an imported custom sound, cache the buffer for playback,
+ * and return its duration so the caller can enforce the length limit.
+ * Throws when the bytes cannot be decoded as audio.
+ */
+export async function decodeCustomSoundBytes(
+  id: string,
+  bytes: number[],
+): Promise<{ duration: number }> {
+  const context = await resolveAudioContext()
+  if (!context) throw new Error('audio-unavailable')
+  const buffer = await context.decodeAudioData(new Uint8Array(bytes).buffer)
+  customSoundCache = { id, buffer }
+  return { duration: buffer.duration }
+}
+
+export function discardCustomSoundCache(): void {
+  customSoundCache = null
+  activeCustomSource?.stop()
+  activeCustomSource = null
 }
 
 export function notificationStateForPermission(

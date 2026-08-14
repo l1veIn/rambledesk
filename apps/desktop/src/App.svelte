@@ -92,6 +92,7 @@
     resetOnboarding,
     notificationSoundEnabled,
     notificationVolume,
+    customNotificationSound,
     setNotificationPopupEnabled,
   } from './lib/preferences'
 
@@ -439,7 +440,11 @@
         })
       }
       if ($notificationSoundEnabled) {
-        void playNotificationSound($notificationSound, $notificationVolume)
+        void playNotificationSound(
+          $notificationSound,
+          $notificationVolume,
+          $notificationSound === 'custom' ? $customNotificationSound : null,
+        )
       }
     })
       .then((unlisten) => {
