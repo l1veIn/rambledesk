@@ -282,8 +282,7 @@ test("request tool waits inside the tool call and returns the terminal package",
       assert.match(calls[0].body.host_session_id, /^dsh-/);
       assert.equal(calls[1].url, "/api/feedback/wait");
       assert.deepEqual(calls[1].body, { request_id: "019" });
-      assert.match(result.text, /completed/);
-      assert.match(result.text, /human feedback/);
+      assert.match(result.text, /completed/);      assert.match(result.text, /human feedback/);
       assert.match(result.text, /\/tmp\/screenshot\.png/);
       assert.equal(result.details.feedback_package.markdown, "human feedback");
     } finally {
@@ -330,6 +329,61 @@ test("recovers the package when an idempotent request is already completed", asy
     assert.match(result.text, /recovered feedback/);
   } finally {
     await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("a completed request never leaks into the next request id", async () => {
+  // Regression: persisting the terminal phase used to run through loadState(),
+  // whose memory recovery saw the just-cleared pendingRequestId and the still
+  // "waiting" persisted phase, restored the finished request id, and the next
+  // request_ramble_feedback reused it — failing with REQUEST_CONFLICT until a
+  // process restart. Two consecutive requests must use distinct ids.
+  const tools = fakeTools();
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), "dsh-ramble-leak-"));
+  const requestedIds = [];
+  const server = await startServer((request, response) => {
+    let body = "";
+    request.setEncoding("utf8");
+    request.on("data", (chunk) => { body += chunk; });
+    request.on("end", () => {
+      response.setHeader("content-type", "application/json");
+      const parsed = body ? JSON.parse(body) : {};
+      if (request.url === "/api/feedback/request") {
+        requestedIds.push(parsed.request_id);
+        response.end(JSON.stringify({ request_id: parsed.request_id, status: "waiting" }));
+        return;
+      }
+      response.end(JSON.stringify({
+        request_id: parsed.request_id,
+        status: "completed",
+        feedback_package: { markdown: "done", attachment_paths: [] },
+      }));
+    });
+  });
+  try {
+    const { port } = server.address();
+    registerRambleDshTools(tools, { env: envFor(port), hostId: "dsh", stateDir });
+    const requestTool = tools.list().find((tool) => tool.name === "request_ramble_feedback");
+    const baseArgs = {
+      title: "Review",
+      what_happened: "A workflow changed.",
+      actions: [{ id: "check", instruction: "Check the workflow." }],
+    };
+
+    const first = await requestTool.execute(baseArgs, { signal: undefined });
+    assert.match(first.text, /completed/);
+    const second = await requestTool.execute({ ...baseArgs, wait: false }, { signal: undefined });
+    assert.match(second.text, /is waiting/);
+
+    assert.equal(requestedIds.length, 2);
+    assert.match(requestedIds[0], /^[0-9a-f]{8}-[0-9a-f]{4}-/);
+    assert.match(requestedIds[1], /^[0-9a-f]{8}-[0-9a-f]{4}-/);
+    assert.notEqual(requestedIds[1], requestedIds[0], "second request must mint a fresh id");
+    const state = JSON.parse(await readFile(path.join(stateDir, "state.json"), "utf8"));
+    assert.equal(state.requestId, requestedIds[1]);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await rm(stateDir, { recursive: true, force: true });
   }
 });
 

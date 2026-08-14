@@ -343,7 +343,13 @@ export function registerRambleDshTools(tools, options = {}) {
   }
 
   async function persistRequest(phase, requestId, hostSessionId) {
-    const persisted = await loadState();
+    // Read the file directly, never through loadState(): loadState's memory
+    // recovery would see memory.pendingRequestId === undefined (just cleared
+    // for a terminal phase) and the persisted phase still "waiting", then
+    // restore the just-finished request id as pending. The next
+    // request_ramble_feedback would reuse a completed request id and fail
+    // with REQUEST_CONFLICT until the process restarts.
+    const persisted = await readPersistedState(stateFile);
     await writePersistedState(stateFile, {
       ...persisted,
       requestId,
