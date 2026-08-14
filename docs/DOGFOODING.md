@@ -134,3 +134,50 @@
 - 通过 RambleDesk MCP 实测一轮完整循环：创建请求
   `019ff943-e35b-7311-a56b-9e4aa3a70484` → ask 等待 → `get_feedback` 读到
   本反馈包（`feedback.md`），确认流程端到端可用。
+
+## 2026-08-14 — dsh 适配器实测与打包环境安装修复
+
+### 发现（dsh 链路首轮真实使用）
+
+- `request_ramble_feedback` 首次调用即失败：
+  `tool "request_ramble_feedback" returned invalid output`。请求在服务端
+  已创建（`bcd66423-a255-41a8-9c7b-92aa43dd02a9`），但工具结果过不了 dsh
+  注册表的 output schema 校验。根因：`feedbackToolResult` 返回 MCP 风格的
+  `{ content, details }`，而 dsh 要求 execute() 返回值匹配声明的
+  `{ text, details }`（`additionalProperties: false`），再由 `render`
+  投影为模型可见内容。四个工具（request/resume/get/cancel）全部受影响。
+- host 插件无热重载：修完源码并同步安装副本后，必须重启 dsh 才生效。
+  重启后 `resume_ramble_feedback` 成功接回已完成的请求——resume 路径在
+  真实重启场景下得到验证。
+
+### 发现（打包后安装，用户实测反馈）
+
+- 打包成 exe 后，Pi 原生适配器安装会弹出一个黑色控制台窗口，且首次安装
+  约需十来秒；dsh 原生适配器直接报"找不到 package 下的 dsh 包"装不上。
+- 根因：`tauri.conf.json` 的 `bundle.resources` 只打包了
+  `pi-rambledesk`，没有打包 `dsh-rambledesk`（安装器代码早已支持打包资源
+  路径，但资源根本没进包）；Pi 安装从 GUI 进程 spawn 控制台 shim 时未加
+  `CREATE_NO_WINDOW`，Windows 会为它新建一个控制台窗口。
+
+### 修复
+
+- `packages/dsh-rambledesk/index.js`：`feedbackToolResult` 改为返回规范的
+  `{ text, details }` 值；新增回归测试锁定值形状（无 `content` 键）。
+- `apps/desktop/src-tauri/tauri.conf.json`：把 dsh 包的 `index.js`、
+  `package.json`、`README.md`、`skills/ramble/SKILL.md` 一并打进
+  `bundle.resources`。
+- `apps/desktop/src-tauri/src/pi_install.rs`：Windows 下 spawn `pi install`
+  时设置 `CREATE_NO_WINDOW`，不再闪现黑框。
+- Pi 安装完成提示补充"首次安装可能耗时十几秒"。
+- 版本提升到 `0.0.2-rc.9`。
+
+### 验证
+
+- `packages/dsh-rambledesk`：20 个测试全过（含新增 output 值形状回归测试）。
+- `rambledesk-desktop`：pi_install 7 个、dsh_install 11 个测试全过；
+  `cargo fmt --check`、版本一致性检查通过。
+- 本地无签名密钥，验收用 NSIS 包以
+  `--config {"bundle":{"createUpdaterArtifacts":false}}` 构建（仅省略
+  updater 签名产物，安装器本体一致）；正式发布仍走 CI 签名流程。
+- 待人工验收：在干净 Windows 环境安装 rc.9，验证 Pi 安装无黑框、dsh
+  安装成功并可在重启 dsh 后使用。

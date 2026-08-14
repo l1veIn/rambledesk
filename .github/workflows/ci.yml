@@ -39,6 +39,8 @@ jobs:
       - run: cargo test --workspace
       - run: pnpm check
       - run: pnpm test
+      - run: pnpm test:pi
+      - run: pnpm test:dsh
       - run: pnpm build:web
       - run: pnpm contracts:check
       - run: pnpm mcp:inspector-smoke

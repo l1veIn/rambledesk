@@ -37,6 +37,7 @@ jobs:
       - run: pnpm check
       - run: pnpm test
       - run: pnpm test:pi
+      - run: pnpm test:dsh
       - run: cargo test --workspace --locked
       - run: pnpm build:web
       - run: pnpm contracts:check
