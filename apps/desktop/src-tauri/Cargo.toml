@@ -49,8 +49,10 @@ rayon = "1.11"
 xcap = { git = "https://github.com/mg-chao/xcap", branch = "custom/master" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6"
 core-graphics-helmer-fork = "0.24.0"
 objc2 = "0.6"
+objc2-av-foundation = { version = "0.3.2", features = ["block2"] }
 objc2-core-foundation = "0.3.2"
 objc2-core-graphics = "0.3.2"
 scap = { git = "https://github.com/mg-chao/scap", branch = "20250712_custom" }

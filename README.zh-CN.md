@@ -138,6 +138,7 @@ packages/dsh-rambledesk        DeepSeek Harness (dsh) 原生适配器插件
 | [适配器验证](docs/COMPATIBILITY.md) | 已测试宿主路径、协议版本、认证与执行模式。 |
 | [Dogfooding 记录](docs/DOGFOODING.md) | 真实使用轮次、发现、修复与验证证据。 |
 | [Kotone 复用审计](docs/KOTONE_REUSE.md) | 可复用语音组件、必要修改与许可证门禁。 |
+| [macOS 分发](docs/MACOS_DISTRIBUTION.md) | 先发未公证 Apple Silicon DMG；Developer ID 以后再补。 |
 
 ## 许可证
 

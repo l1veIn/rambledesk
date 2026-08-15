@@ -138,6 +138,7 @@ packages/dsh-rambledesk        DeepSeek Harness (dsh) native adapter plugin
 | [Adapter verification](docs/COMPATIBILITY.md) | Tested host paths, protocol versions, authentication, and execution modes. |
 | [Dogfooding log](docs/DOGFOODING.md) | Real operator rounds, findings, fixes, and validation evidence. |
 | [Kotone reuse audit](docs/KOTONE_REUSE.md) | Reusable speech components, required changes, and license gates. |
+| [macOS distribution](docs/MACOS_DISTRIBUTION.md) | Unsigned Apple Silicon DMG first; Developer ID later. |
 
 ## License
 

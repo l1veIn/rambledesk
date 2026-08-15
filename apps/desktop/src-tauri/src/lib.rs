@@ -1,6 +1,7 @@
 mod clipboard_capture;
 mod dsh_install;
 mod logging;
+mod macos_permissions;
 mod notification_sounds;
 mod open_attachment;
 mod pi_install;
@@ -256,6 +257,9 @@ pub fn run() {
             list_speech_input_devices,
             start_voice_ramble,
             stop_voice_ramble,
+            macos_permissions::list_macos_permissions,
+            macos_permissions::request_macos_permission,
+            macos_permissions::open_macos_privacy_settings,
             clipboard_capture::capture_clipboard_once,
             clipboard_capture::start_clipboard_capture,
             clipboard_capture::stop_clipboard_capture,
