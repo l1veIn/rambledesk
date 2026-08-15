@@ -1,9 +1,7 @@
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core'
-  import { AlertCircle, Expand, ExternalLink, FileQuestion, LoaderCircle } from '@lucide/svelte'
+  import { AlertCircle, ExternalLink, FileQuestion, LoaderCircle, Minus, Plus, RotateCcw } from '@lucide/svelte'
   import { onDestroy, tick } from 'svelte'
-  import Viewer from 'viewerjs'
-  import 'viewerjs/dist/viewer.css'
 
   import { Button } from '$lib/components/ui/button'
   import * as Dialog from '$lib/components/ui/dialog'
@@ -22,8 +20,15 @@
   let markdown = ''
   let imageUrl = ''
   let imageElement: HTMLImageElement
-  let viewer: Viewer | null = null
-  let viewerReady = false
+  let imageContainer: HTMLDivElement
+  let scale = 1
+  let offsetX = 0
+  let offsetY = 0
+  let dragging = false
+  let dragStartX = 0
+  let dragStartY = 0
+  let dragOriginX = 0
+  let dragOriginY = 0
   let unsupported = false
   let openMessage = ''
   let openError = ''
@@ -72,26 +77,6 @@
         if (generation !== loadGeneration || !imageElement) return
         await imageElement.decode()
         if (generation !== loadGeneration || !open) return
-        viewer = new Viewer(imageElement, {
-          backdrop: true,
-          button: true,
-          navbar: false,
-          title: () => current.file_name,
-          toolbar: {
-            zoomIn: true,
-            zoomOut: true,
-            oneToOne: true,
-            reset: true,
-            prev: false,
-            play: false,
-            next: false,
-            rotateLeft: true,
-            rotateRight: true,
-            flipHorizontal: true,
-            flipVertical: true,
-          },
-        })
-        viewerReady = true
       } else {
         unsupported = true
       }
@@ -143,17 +128,73 @@
     }
   }
 
-  function releaseMedia() {
-    viewerReady = false
-    viewer?.destroy()
-    viewer = null
-    if (imageUrl) URL.revokeObjectURL(imageUrl)
-    imageUrl = ''
+  const MIN_SCALE = 1
+  const MAX_SCALE = 8
+
+  function clampScale(value: number) {
+    return Math.min(MAX_SCALE, Math.max(MIN_SCALE, value))
   }
 
-  function openImageViewer() {
-    if (!viewerReady) return
-    viewer?.show(true)
+  function resetZoom() {
+    scale = 1
+    offsetX = 0
+    offsetY = 0
+  }
+
+  function applyZoom(nextScale: number, anchorX: number, anchorY: number) {
+    const clamped = clampScale(nextScale)
+    if (clamped === scale) return
+    const ratio = clamped / scale
+    offsetX = anchorX - (anchorX - offsetX) * ratio
+    offsetY = anchorY - (anchorY - offsetY) * ratio
+    scale = clamped
+    if (scale <= MIN_SCALE) {
+      offsetX = 0
+      offsetY = 0
+    }
+  }
+
+  function onWheel(event: WheelEvent) {
+    event.preventDefault()
+    const rect = imageContainer.getBoundingClientRect()
+    const anchorX = event.clientX - (rect.left + rect.width / 2)
+    const anchorY = event.clientY - (rect.top + rect.height / 2)
+    const factor = event.deltaY < 0 ? 1.2 : 1 / 1.2
+    applyZoom(scale * factor, anchorX, anchorY)
+  }
+
+  function zoomIn() {
+    applyZoom(scale * 1.5, 0, 0)
+  }
+
+  function zoomOut() {
+    applyZoom(scale / 1.5, 0, 0)
+  }
+
+  function onPointerDown(event: PointerEvent) {
+    if (scale <= MIN_SCALE) return
+    dragging = true
+    dragStartX = event.clientX
+    dragStartY = event.clientY
+    dragOriginX = offsetX
+    dragOriginY = offsetY
+    imageElement?.setPointerCapture?.(event.pointerId)
+  }
+
+  function onPointerMove(event: PointerEvent) {
+    if (!dragging) return
+    offsetX = dragOriginX + (event.clientX - dragStartX)
+    offsetY = dragOriginY + (event.clientY - dragStartY)
+  }
+
+  function onPointerUp() {
+    dragging = false
+  }
+
+  function releaseMedia() {
+    if (imageUrl) URL.revokeObjectURL(imageUrl)
+    imageUrl = ''
+    resetZoom()
   }
 
   onDestroy(() => {
@@ -196,31 +237,58 @@
       {:else if attachment?.media_type === 'text/markdown'}
         <MarkdownPreview {markdown} />
       {:else if imageUrl}
-        <div class="relative grid h-full min-h-0 place-items-center overflow-hidden rounded-lg border bg-[repeating-conic-gradient(hsl(var(--muted))_0_25%,transparent_0_50%)_50%/16px_16px] p-4">
-          <button
-            type="button"
-            class="contents"
-            aria-label={tr('缩放查看')}
-            disabled={!viewerReady}
-            onclick={openImageViewer}
-          >
-            <img
-              bind:this={imageElement}
-              src={imageUrl}
-              alt={attachment?.file_name ?? tr('图片附件')}
-              class="max-h-full max-w-full cursor-zoom-in object-contain shadow-sm"
-            />
-          </button>
-          <Button
-            variant="secondary"
-            size="sm"
-            class="absolute bottom-3 right-3 shadow-sm"
-            disabled={!viewerReady}
-            onclick={openImageViewer}
-          >
-            <Expand />
-            {tr('缩放查看')}
-          </Button>
+        <div
+          bind:this={imageContainer}
+          class="relative grid h-full min-h-0 touch-none place-items-center overflow-hidden rounded-lg border bg-[repeating-conic-gradient(hsl(var(--muted))_0_25%,transparent_0_50%)_50%/16px_16px]"
+          onwheel={onWheel}
+        >
+          <img
+            bind:this={imageElement}
+            src={imageUrl}
+            alt={attachment?.file_name ?? tr('图片附件')}
+            draggable="false"
+            class={[
+              'max-h-full max-w-full select-none object-contain shadow-sm',
+              scale > 1 ? (dragging ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-zoom-in',
+            ]}
+            style={`transform: translate(${offsetX}px, ${offsetY}px) scale(${scale}); ${dragging ? '' : 'transition: transform 120ms ease-out;'}`}
+            onpointerdown={onPointerDown}
+            onpointermove={onPointerMove}
+            onpointerup={onPointerUp}
+            onpointercancel={onPointerUp}
+          />
+          <div class="absolute bottom-3 right-3 flex items-center gap-1 rounded-lg border bg-background/90 p-0.5 shadow-sm">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              disabled={scale <= MIN_SCALE}
+              aria-label={tr('缩小')}
+              title={tr('缩小')}
+              onclick={zoomOut}
+            >
+              <Minus />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              disabled={scale >= MAX_SCALE}
+              aria-label={tr('放大')}
+              title={tr('放大')}
+              onclick={zoomIn}
+            >
+              <Plus />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              disabled={scale <= MIN_SCALE}
+              aria-label={tr('重置缩放')}
+              title={tr('重置缩放')}
+              onclick={resetZoom}
+            >
+              <RotateCcw />
+            </Button>
+          </div>
         </div>
       {:else if unsupported}
         <div class="grid h-full place-items-center text-center">

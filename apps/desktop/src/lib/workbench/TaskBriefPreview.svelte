@@ -1,0 +1,238 @@
+<script lang="ts">
+  import { FileImage, FileText, Paperclip, Pause, Play } from '@lucide/svelte'
+
+  import { Badge } from '$lib/components/ui/badge'
+  import { Button } from '$lib/components/ui/button'
+  import * as Dialog from '$lib/components/ui/dialog'
+  import {
+    requestStatusLabel,
+    type FeedbackStatus,
+    type FeedbackWorkspaceView,
+    type RequestAttachmentView,
+  } from '$lib/feedback'
+  import { t } from '$lib/i18n'
+  import { locale } from '$lib/preferences'
+  import RequestAttachmentPreview from './RequestAttachmentPreview.svelte'
+  import type { HostProfile, RamblePhase } from './types'
+
+  export let open = false
+  export let workspace: FeedbackWorkspaceView | null = null
+  export let formatTime: (value: string | null | undefined) => string = () => ''
+  export let resolveHostProfile: (hostId: string) => HostProfile = (hostId) => ({
+    id: hostId,
+    label: hostId,
+    icon_svg: '',
+    default_adapter: 'generic_mcp',
+    continuation_mode: 'manual',
+  })
+  export let onToggleRamble: () => void = () => {}
+  export let ramblePhase: RamblePhase = 'idle'
+  export let rambleStartedOnce = false
+  export let rambleBusy = false
+  /** CSS transform-origin the dialog should shrink toward when closing. */
+  export let origin: string | null = null
+
+  let attachmentPreviewOpen = false
+  let attachmentPreview: RequestAttachmentView | null = null
+
+  $: rambleActive = ramblePhase === 'active'
+  $: readOnly =
+    workspace === null ||
+    workspace.request.status === 'completed' ||
+    workspace.request.status === 'cancelled'
+
+  function tr(source: string, values: Record<string, string | number> = {}) {
+    return t($locale, source, values)
+  }
+
+  function statusBadgeVariant(
+    status: FeedbackStatus,
+  ): 'default' | 'secondary' | 'destructive' | 'outline' | 'ghost' | 'link' {
+    switch (status) {
+      case 'in_progress':
+        return 'default'
+      case 'completed':
+        return 'outline'
+      case 'cancelled':
+        return 'destructive'
+      default:
+        return 'secondary'
+    }
+  }
+
+  function rambleLabel() {
+    if (ramblePhase === 'starting') return tr('正在启动…')
+    if (ramblePhase === 'stopping') return tr('正在暂停…')
+    if (rambleActive) return tr('暂停 Ramble')
+    if (rambleStartedOnce) return tr('继续 Ramble')
+    return tr('开始 Ramble')
+  }
+
+  function openAttachment(attachment: RequestAttachmentView) {
+    attachmentPreview = attachment
+    attachmentPreviewOpen = true
+  }
+</script>
+
+<Dialog.Root bind:open>
+  <Dialog.Content
+    class="task-brief-preview-content grid h-[calc(100vh-2rem)] w-[min(1200px,calc(100vw-2rem))] max-w-[min(1200px,calc(100vw-2rem))] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 duration-200 sm:max-w-[min(1200px,calc(100vw-2rem))]"
+    style={origin ? `transform-origin: ${origin}` : undefined}
+  >
+    <Dialog.Header class="border-b px-6 py-4 pr-14">
+      <Dialog.Title class="text-lg font-semibold leading-snug">
+        {workspace?.request.title ?? tr('任务简报')}
+      </Dialog.Title>
+      <Dialog.Description class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5">
+        {#if workspace}
+          <Badge variant={statusBadgeVariant(workspace.request.status)}>
+            {requestStatusLabel(workspace.request.status, $locale)}
+          </Badge>
+          <span>{resolveHostProfile(workspace.request.host_id).label}</span>
+          {#if workspace.request.source_hint}
+            <span class="text-muted-foreground">·</span>
+            <span class="max-w-[42ch] truncate">{workspace.request.source_hint}</span>
+          {/if}
+          <span class="text-muted-foreground">·</span>
+          <span>{tr('{count} 个步骤', { count: workspace.actions.length })}</span>
+          <span class="text-muted-foreground">·</span>
+          <span>{formatTime(workspace.request.created_at)}</span>
+        {/if}
+      </Dialog.Description>
+    </Dialog.Header>
+
+    <div class="min-h-0 overflow-y-auto overscroll-contain bg-muted/20">
+      {#if workspace}
+        <article class="mx-auto max-w-3xl px-8 py-8">
+          <section>
+            <h2 class="m-0 border-b border-border pb-2 text-base font-semibold">
+              {tr('发生了什么')}
+            </h2>
+            <p class="m-0 mt-4 whitespace-pre-wrap text-[15px] leading-7">
+              {workspace.request.what_happened}
+            </p>
+          </section>
+
+          <section class="mt-8">
+            <h2 class="m-0 border-b border-border pb-2 text-base font-semibold">
+              {tr('需要体验')}
+            </h2>
+            <ol class="m-0 mt-4 grid list-none gap-3 p-0">
+              {#each workspace.actions as action, index (action.id)}
+                <li class="grid grid-cols-[28px_minmax(0,1fr)] gap-3">
+                  <span
+                    class="grid size-7 place-items-center rounded-md bg-background text-xs font-semibold text-muted-foreground ring-1 ring-border"
+                  >
+                    {index + 1}
+                  </span>
+                  <span class="min-w-0 self-center text-[15px] leading-7">
+                    {action.instruction}
+                  </span>
+                </li>
+              {/each}
+            </ol>
+          </section>
+
+          {#if workspace.context_refs.length > 0}
+            <section class="mt-8">
+              <h2 class="m-0 border-b border-border pb-2 text-base font-semibold">
+                {tr('上下文引用')}
+              </h2>
+              <ul class="m-0 mt-4 grid list-none gap-3 p-0">
+                {#each workspace.context_refs as ref, index (`${ref.label}:${ref.uri}:${index}`)}
+                  <li class="flex items-start gap-3">
+                    <span
+                      class="grid size-7 shrink-0 place-items-center rounded-md bg-background text-xs font-semibold text-muted-foreground ring-1 ring-border"
+                    >
+                      {index + 1}
+                    </span>
+                    <div class="min-w-0">
+                      <strong class="block text-[15px] font-medium leading-6">{ref.label}</strong>
+                      <span class="block break-all text-sm leading-6 text-muted-foreground">
+                        {ref.uri}
+                      </span>
+                    </div>
+                  </li>
+                {/each}
+              </ul>
+            </section>
+          {/if}
+
+          {#if workspace.request_attachments.length > 0}
+            <section class="mt-8">
+              <h2
+                class="m-0 flex items-center gap-1.5 border-b border-border pb-2 text-base font-semibold"
+              >
+                <Paperclip class="size-4 text-muted-foreground" />
+                {tr('Agent 提供的评审附件')}
+              </h2>
+              <ul class="m-0 mt-4 grid list-none gap-2 p-0">
+                {#each workspace.request_attachments as attachment (attachment.attachment_id)}
+                  <li>
+                    <button
+                      type="button"
+                      class="flex w-full items-center gap-3 rounded-lg border bg-background px-3 py-2 text-left transition-colors hover:border-primary/40 hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      aria-label={tr('预览 {name}', { name: attachment.file_name })}
+                      onclick={() => openAttachment(attachment)}
+                    >
+                      {#if attachment.media_type.startsWith('image/')}
+                        <FileImage class="size-4 shrink-0 text-muted-foreground" />
+                      {:else}
+                        <FileText class="size-4 shrink-0 text-muted-foreground" />
+                      {/if}
+                      <span class="min-w-0 flex-1">
+                        <strong class="block truncate text-sm font-medium">
+                          {attachment.file_name}
+                        </strong>
+                        <span class="block text-xs text-muted-foreground">
+                          {attachment.media_type === 'text/markdown' ? 'Markdown' : tr('图片')}
+                          · {(attachment.byte_size / 1024).toFixed(1)} KiB
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                {/each}
+              </ul>
+            </section>
+          {/if}
+        </article>
+      {:else}
+        <div class="grid h-full place-items-center text-sm text-muted-foreground">
+          {tr('没有可预览的任务简报。')}
+        </div>
+      {/if}
+    </div>
+
+    {#if workspace && !readOnly}
+      <div class="flex shrink-0 items-center justify-end gap-2 border-t bg-background px-6 py-3">
+        <Button
+          variant={rambleActive ? 'secondary' : 'default'}
+          disabled={rambleBusy}
+          onclick={onToggleRamble}
+        >
+          {#if rambleActive}
+            <Pause data-icon="inline-start" />
+          {:else}
+            <Play data-icon="inline-start" />
+          {/if}
+          {rambleLabel()}
+        </Button>
+      </div>
+    {/if}
+  </Dialog.Content>
+</Dialog.Root>
+
+{#if workspace}
+  <RequestAttachmentPreview
+    bind:open={attachmentPreviewOpen}
+    requestId={workspace.request.request_id}
+    attachment={attachmentPreview}
+  />
+{/if}
+
+<style>
+  /* Collapse toward the preview button instead of the default subtle zoom-out. */
+  :global(.task-brief-preview-content[data-state='closed']) {
+    --tw-exit-scale: 0.08 !important;
+  }
+</style>

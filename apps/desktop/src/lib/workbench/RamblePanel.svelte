@@ -38,7 +38,7 @@
 
 <section class="border-b p-4">
   <header class="mb-3 flex items-center gap-2">
-    <Mic class="size-4 text-muted-foreground" />
+    <Mic class="size-5 text-muted-foreground" />
     <strong class="text-xs font-medium">Ramble</strong>
     <Badge
       variant={ramblePhase === 'error' ? 'destructive' : rambleActive ? 'default' : 'secondary'}

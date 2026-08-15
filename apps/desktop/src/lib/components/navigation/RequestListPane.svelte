@@ -17,11 +17,13 @@
   export let loading = false
   export let loadingMore = false
   export let hasMore = false
+  export let todayOnly = false
   export let resolveHostProfile: (hostId: string) => HostProfile
   export let formatTime: (value: string | null | undefined) => string
   export let onRefresh: () => void = () => {}
   export let onLoadMore: () => void = () => {}
   export let onOpenRequest: (requestId: string) => void = () => {}
+  export let onToggleToday: () => void = () => {}
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
@@ -47,11 +49,21 @@
   class="flex h-full min-h-0 flex-col bg-background"
   aria-label={tr('请求列表')}
 >
-  <div class="flex h-12 items-center justify-between gap-2 border-b px-3">
-    <div class="min-w-0">
+  <div class="flex h-12 items-center gap-1.5 border-b px-3">
+    <div class="min-w-0 flex-1">
       <strong class="block text-xs font-semibold">{tr('请求')}</strong>
       <span class="block truncate text-[10px] text-muted-foreground">{scopeLabel}</span>
     </div>
+    <Button
+      variant={todayOnly ? 'secondary' : 'ghost'}
+      size="sm"
+      class="h-7 shrink-0 px-2 text-[11px]"
+      aria-pressed={todayOnly}
+      title={tr('今日请求')}
+      onclick={onToggleToday}
+    >
+      {tr('今日请求')}
+    </Button>
     <Button
       variant="ghost"
       size="icon-sm"
@@ -80,7 +92,9 @@
         <div class="grid size-9 place-items-center rounded-md bg-muted text-muted-foreground">
           <Inbox class="size-4" />
         </div>
-        <strong class="text-xs">{tr('当前范围没有请求')}</strong>
+        <strong class="text-xs">
+          {todayOnly ? tr('今天还没有请求') : tr('当前范围没有请求')}
+        </strong>
         <span class="text-[11px] leading-5 text-muted-foreground">
           {tr('新的请求会按最近更新时间出现在这里。')}
         </span>
@@ -118,7 +132,7 @@
               {request.what_happened}
             </p>
             <div class="flex w-full items-center gap-1.5 text-[9px] text-muted-foreground">
-              <span class="grid size-3.5 shrink-0 place-items-center [&_svg]:size-3">
+              <span class="grid size-5 shrink-0 place-items-center [&_svg]:size-4">
                 {@html profile.icon_svg}
               </span>
               <span class="min-w-0 flex-1 truncate">

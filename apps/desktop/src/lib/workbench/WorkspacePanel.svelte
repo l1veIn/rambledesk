@@ -22,6 +22,7 @@
   import FeedbackEditorPanel from './FeedbackEditorPanel.svelte'
   import RequestAttachmentPreview from './RequestAttachmentPreview.svelte'
   import TaskBriefPanel from './TaskBriefPanel.svelte'
+  import TaskBriefPreview from './TaskBriefPreview.svelte'
   import WorkspaceHeader from './WorkspaceHeader.svelte'
 
   export let loadingWorkspace = false
@@ -92,12 +93,34 @@
     | undefined
   let documentPaneGroup: { setLayout: (layout: number[]) => void } | undefined
   let documentLayoutReady = false
+  let taskBriefPreviewOpen = false
+  let taskBriefPreviewOrigin: string | null = null
+  let autoPreviewedRequestId = ''
+  let briefPulseNonce = 0
+  let previewWasOpen = false
 
   $: if (taskBriefPane) {
     if (taskBriefOpen && taskBriefPane.isCollapsed()) taskBriefPane.expand()
     else if (!taskBriefOpen && !taskBriefPane.isCollapsed()) taskBriefPane.collapse()
   }
+  // Auto-open the full-screen brief when switching to a request that is still
+  // waiting for the human to begin.
+  $: if (
+    workspace &&
+    workspace.request.status === 'waiting' &&
+    workspace.request.request_id !== autoPreviewedRequestId
+  ) {
+    autoPreviewedRequestId = workspace.request.request_id
+    taskBriefPreviewOrigin = null
+    taskBriefPreviewOpen = true
+  }
   $: interactionLocked = cooking || submitting || cancelling || approving
+  // Nudge the preview button when the full-screen brief collapses back to it.
+  $: {
+    const nowOpen = taskBriefPreviewOpen
+    if (previewWasOpen && !nowOpen) briefPulseNonce += 1
+    previewWasOpen = nowOpen
+  }
 
   function saveDocumentLayout(layout: number[]) {
     if (documentLayoutReady) savePaneLayout(WORKSPACE_DOCUMENT_LAYOUT_KEY, layout)
@@ -190,7 +213,15 @@
             onCollapse={() => (taskBriefOpen = false)}
             onExpand={() => (taskBriefOpen = true)}
           >
-            <TaskBriefPanel bind:open={taskBriefOpen} {workspace} />
+            <TaskBriefPanel
+              bind:open={taskBriefOpen}
+              {workspace}
+              pulseNonce={briefPulseNonce}
+              onOpenPreview={(origin) => {
+                taskBriefPreviewOrigin = origin
+                taskBriefPreviewOpen = true
+              }}
+            />
           </Pane>
 
           <PaneResizer
@@ -268,6 +299,18 @@
       requestId={workspace.request.request_id}
       attachment={previewAttachment}
       readKind="workspace"
+    />
+
+    <TaskBriefPreview
+      bind:open={taskBriefPreviewOpen}
+      {workspace}
+      {formatTime}
+      {resolveHostProfile}
+      {onToggleRamble}
+      {ramblePhase}
+      {rambleStartedOnce}
+      {rambleBusy}
+      origin={taskBriefPreviewOrigin}
     />
   {:else}
     <div class="grid h-full place-items-center p-8 text-center">

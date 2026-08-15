@@ -137,7 +137,7 @@
         title={collapsed ? tr('全部请求') : undefined}
         onclick={() => onSelect(null, null)}
       >
-        <Inbox class="size-4 shrink-0" />
+        <Inbox class="size-5 shrink-0" />
         {#if !collapsed}
           <span class="min-w-0 flex-1 truncate">{tr('全部请求')}</span>
           {#if totalPending > 0}
@@ -182,7 +182,7 @@
                 title={session.title}
                 onclick={() => onSelect(group.hostId, session.host_session_id)}
               >
-                <MessageSquareText class="size-3.5" />
+                <MessageSquareText class="size-4" />
               </button>
             {/each}
           {:else}
@@ -211,7 +211,7 @@
                   ]}
                   onclick={() => onSelect(group.hostId, null)}
                 >
-                  <span class="grid size-5 shrink-0 place-items-center text-muted-foreground [&_svg]:size-4">
+                  <span class="grid size-6 shrink-0 place-items-center text-muted-foreground [&_svg]:size-5">
                     {@html profile.icon_svg}
                   </span>
                   <span class="min-w-0 flex-1 truncate">{profile.label}</span>

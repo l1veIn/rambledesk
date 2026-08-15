@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ChevronDown, Eye, FileImage, FileText, ListChecks, Paperclip } from '@lucide/svelte'
+  import { ChevronDown, Eye, FileImage, FileText, ListChecks, Maximize2, Paperclip } from '@lucide/svelte'
 
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
@@ -11,9 +11,12 @@
 
   export let workspace: FeedbackWorkspaceView
   export let open = true
+  export let pulseNonce = 0
+  export let onOpenPreview: (transformOrigin: string | null) => void = () => {}
 
   let previewOpen = false
   let previewAttachment: RequestAttachmentView | null = null
+  let previewButton: HTMLElement | null = null
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
@@ -23,6 +26,21 @@
     previewAttachment = attachment
     previewOpen = true
   }
+
+  function openFullscreenPreview() {
+    const rect = previewButton?.getBoundingClientRect()
+    if (!rect) {
+      onOpenPreview(null)
+      return
+    }
+    const bx = rect.left + rect.width / 2
+    const by = rect.top + rect.height / 2
+    // The dialog is centered in the viewport; express the collapse pivot as an
+    // offset from the dialog center so it lands back on this button.
+    const dx = Math.round(bx - window.innerWidth / 2)
+    const dy = Math.round(by - window.innerHeight / 2)
+    onOpenPreview(`calc(50% + ${dx}px) calc(50% + ${dy}px)`)
+  }
 </script>
 
 <Collapsible.Root
@@ -30,7 +48,7 @@
   class={`task-brief flex h-full min-h-0 flex-col overflow-hidden ${open ? '' : 'border-b'}`}
 >
   <div class="flex min-h-12 shrink-0 items-center gap-3 px-5 py-2">
-    <ListChecks class="size-4 shrink-0 text-muted-foreground" />
+    <ListChecks class="size-5 shrink-0 text-muted-foreground" />
     <div class="min-w-0 flex-1">
       {#if open}
         <strong class="block text-xs font-medium">
@@ -52,6 +70,18 @@
         {workspace.request_attachments.length}
       </Badge>
     {/if}
+    <Button
+      bind:ref={previewButton}
+      variant="ghost"
+      size="icon-sm"
+      aria-label={tr('全屏预览')}
+      title={tr('全屏预览')}
+      onclick={openFullscreenPreview}
+    >
+      {#key pulseNonce}
+        <Maximize2 class={pulseNonce > 0 ? 'brief-pulse-icon' : ''} />
+      {/key}
+    </Button>
     <Collapsible.Trigger>
       {#snippet child({ props })}
         <Button
@@ -133,3 +163,24 @@
   requestId={workspace.request.request_id}
   attachment={previewAttachment}
 />
+
+<style>
+  :global(.brief-pulse-icon) {
+    animation: brief-pulse 640ms ease-out;
+  }
+
+  @keyframes brief-pulse {
+    0% {
+      transform: scale(1);
+    }
+    30% {
+      transform: scale(1.45);
+    }
+    70% {
+      transform: scale(1.1);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+</style>

@@ -154,6 +154,8 @@
   const savedRequestWorkspaceLayout = savedPaneLayout(REQUEST_WORKSPACE_LAYOUT_KEY)
 
   let taskBriefOpen = true
+  let todayOnly = false
+  const sessionStartedAtMs = Date.now()
   let hostSessionRailCollapsed = initialHostRailCollapsed()
   let workbenchLayout: HTMLDivElement
   let requestWorkspaceGroup: HTMLDivElement | null = null
@@ -283,6 +285,11 @@
       else toast.error(tr('附件操作失败'), options)
     }
   }
+  $: visibleRequests = todayOnly
+    ? $navigation.requests.filter(
+        (request) => new Date(request.updated_at).getTime() >= sessionStartedAtMs,
+      )
+    : $navigation.requests
   $: selectedHostSession = $navigation.selectedHostSessionId
     ? $navigation.hostSessions.find(
         (session) =>
@@ -895,18 +902,20 @@
         maxSize={requestListMaximumSize}
       >
         <RequestListPane
-          requests={$navigation.requests}
+          requests={visibleRequests}
           activeRequestId={workspace?.request.request_id ?? null}
           cookingRequestIds={cookingRequestIds}
           scopeLabel={requestScopeLabel}
           loading={$navigation.loadingRequests}
           loadingMore={$navigation.loadingMoreRequests}
-          hasMore={$navigation.nextRequestCursor !== null}
+          hasMore={todayOnly ? false : $navigation.nextRequestCursor !== null}
+          {todayOnly}
           {resolveHostProfile}
           formatTime={formatTimeLocal}
           onRefresh={() => void navigation.refreshRequests(false)}
           onLoadMore={() => void navigation.loadMoreRequests()}
           onOpenRequest={(requestId) => void openRequest(requestId)}
+          onToggleToday={() => (todayOnly = !todayOnly)}
         />
       </Pane>
 
