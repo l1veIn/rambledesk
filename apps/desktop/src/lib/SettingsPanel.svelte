@@ -37,6 +37,7 @@
   import { ScrollArea } from '$lib/components/ui/scroll-area'
   import { toast } from '$lib/components/ui/sonner'
   import AboutSettings from '$lib/AboutSettings.svelte'
+  import MacPermissions from '$lib/MacPermissions.svelte'
   import rambellePermission from '../assets/rambelle-states/state-permission.png'
   import piLogoSvg from '../assets/pi-logo.svg?raw'
   import dshLogoSvg from '../assets/dsh-logo.svg?raw'
@@ -97,7 +98,7 @@
     type ThemePreference,
   } from '$lib/preferences'
 
-  type Section = 'general' | 'notifications' | 'voice' | 'adapters' | 'about'
+  type Section = 'general' | 'permissions' | 'notifications' | 'voice' | 'adapters' | 'about'
 
   export let mcpConfiguration = ''
   export let initialSection: Section = 'general'
@@ -201,6 +202,7 @@
   let modelError = ''
   let unlistenModelProgress: UnlistenFn | null = null
   let unlistenStorageProgress: UnlistenFn | null = null
+  let hasMacPermissions = false
   const isTauri = '__TAURI_INTERNALS__' in window
 
   $: installedHosts = hosts.filter((host) => host.installed)
@@ -218,6 +220,7 @@
       void refreshDataStorage()
       void refreshSpeechDevices()
       void refreshSpeechModels()
+      void refreshMacPermissionPresence()
       void listen<SpeechModelProgress>('speech-model-progress', ({ payload }) => {
         modelProgress = payload
       }).then((unlisten) => (unlistenModelProgress = unlisten))
@@ -233,6 +236,15 @@
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
+  }
+
+  async function refreshMacPermissionPresence() {
+    try {
+      const permissions = await invoke<{ id: string; status: string }[]>('list_macos_permissions')
+      hasMacPermissions = permissions.length > 0
+    } catch {
+      hasMacPermissions = false
+    }
   }
 
   async function refreshSpeechModels() {
@@ -557,6 +569,12 @@
             <MonitorCog data-icon="inline-start" />
             {tr('通用')}
           </Tabs.Trigger>
+          {#if hasMacPermissions}
+            <Tabs.Trigger value="permissions" class="h-9 w-full justify-start px-2.5">
+              <ShieldCheck data-icon="inline-start" />
+              {tr('权限')}
+            </Tabs.Trigger>
+          {/if}
           <Tabs.Trigger value="notifications" class="h-9 w-full justify-start px-2.5">
             <BellRing data-icon="inline-start" />
             {tr('通知')}
@@ -592,24 +610,28 @@
             <p class="m-0 text-[10px] font-medium uppercase text-muted-foreground">
               {activeSection === 'general'
                 ? tr('偏好设置')
-                : activeSection === 'notifications'
-                  ? tr('提醒方式')
-                  : activeSection === 'voice'
-                    ? tr('语音输入')
-                    : activeSection === 'adapters'
-                      ? tr('宿主适配')
-                      : tr('项目信息')}
+                : activeSection === 'permissions'
+                  ? tr('系统权限')
+                  : activeSection === 'notifications'
+                    ? tr('提醒方式')
+                    : activeSection === 'voice'
+                      ? tr('语音输入')
+                      : activeSection === 'adapters'
+                        ? tr('宿主适配')
+                        : tr('项目信息')}
             </p>
             <h2 class="m-0 mt-0.5 text-base font-semibold">
               {activeSection === 'general'
                 ? tr('通用')
-                : activeSection === 'notifications'
-                  ? tr('通知')
-                  : activeSection === 'voice'
-                    ? tr('语音')
-                    : activeSection === 'adapters'
-                      ? tr('适配器')
-                      : tr('关于')}
+                : activeSection === 'permissions'
+                  ? tr('权限')
+                  : activeSection === 'notifications'
+                    ? tr('通知')
+                    : activeSection === 'voice'
+                      ? tr('语音')
+                      : activeSection === 'adapters'
+                        ? tr('适配器')
+                        : tr('关于')}
             </h2>
           </div>
         </header>
@@ -843,6 +865,25 @@
             </section>
           </Tabs.Content>
 
+
+          <Tabs.Content value="permissions" class="m-0 space-y-8 p-6 outline-none">
+            <section class="border-b pb-8">
+              <div class="flex gap-3">
+                <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+                  <ShieldCheck class="size-4" />
+                </span>
+                <div>
+                  <h3 class="m-0 text-sm font-medium">{tr('macOS 权限')}</h3>
+                  <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
+                    {tr('截图和语音转录需要 macOS 权限。可以现在授权，也可以稍后在“设置 → 权限”中处理。')}
+                  </p>
+                </div>
+              </div>
+              <div class="ml-11 mt-5">
+                <MacPermissions />
+              </div>
+            </section>
+          </Tabs.Content>
           <Tabs.Content value="notifications" class="m-0 space-y-8 p-6 outline-none">
             <section class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-8 border-b pb-8">
               <div class="flex gap-3">

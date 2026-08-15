@@ -4498,10 +4498,12 @@ version = "0.0.2-rc.12"
 dependencies = [
  "arboard",
  "base64 0.22.1",
+ "block2",
  "core-graphics-helmer-fork",
  "dunce",
  "image",
  "objc2",
+ "objc2-av-foundation",
  "objc2-core-foundation",
  "objc2-core-graphics",
  "rambledesk-core",

@@ -16,11 +16,13 @@
     Mic,
     PlugZap,
     Rocket,
+    ShieldCheck,
     Sparkles,
     Volume2,
   } from '@lucide/svelte'
   import { onMount } from 'svelte'
 
+  import MacPermissions from '$lib/MacPermissions.svelte'
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
   import * as Dialog from '$lib/components/ui/dialog'
@@ -77,7 +79,10 @@
   type McpHost = { id: string; name: string; installed: boolean; configured: boolean }
   type McpInstallResult = { action: 'created' | 'updated' | 'unchanged' }
 
-  const steps = ['欢迎', '数据位置', '语音输入', '适配器', '通知', 'Cooking', '完成']
+  const baseSteps = ['欢迎', '数据位置', '语音输入', '适配器', '通知', 'Cooking', '完成']
+  const macSteps = ['欢迎', '数据位置', '语音输入', '权限', '适配器', '通知', 'Cooking', '完成']
+  let steps = baseSteps
+  let showMacPermissionStep = false
   const isTauri = '__TAURI_INTERNALS__' in window
   let step = 0
   let wasOpen = false
@@ -116,6 +121,7 @@
       void loadStorage()
       void loadModels()
       void loadHosts()
+      void loadMacPermissionStep()
       void listen<ModelProgress>('speech-model-progress', ({ payload }) => (modelProgress = payload)).then(
         (unlisten) => (unlistenModelProgress = unlisten),
       )
@@ -130,6 +136,19 @@
   function move(next: number) {
     step = Math.max(0, Math.min(steps.length - 1, next))
     setOnboardingStep(step)
+  }
+
+  async function loadMacPermissionStep() {
+    try {
+      const permissions = await invoke<{ id: string; status: string }[]>('list_macos_permissions')
+      showMacPermissionStep = permissions.length > 0
+      steps = showMacPermissionStep ? macSteps : baseSteps
+      step = Math.max(0, Math.min(steps.length - 1, step))
+    } catch {
+      showMacPermissionStep = false
+      steps = baseSteps
+      step = Math.max(0, Math.min(steps.length - 1, step))
+    }
   }
 
   function complete(showToast = true) {
@@ -316,7 +335,7 @@
     </Dialog.Header>
 
     <div class="min-h-0 flex-1 overflow-y-auto px-7 py-7">
-      {#if step === 0}
+      {#if steps[step] === '欢迎'}
         <div class="mx-auto flex max-w-lg flex-col items-center text-center">
           <span class="grid size-16 place-items-center rounded-2xl bg-primary/10 text-primary"><Rocket class="size-8" /></span>
           <h2 class="mb-0 mt-5 text-xl font-semibold">{tr('把体验中的想法，及时变成可用反馈。')}</h2>
@@ -334,14 +353,14 @@
             <div class="rounded-lg border bg-muted/20 p-3"><ChefHat class="mb-2 size-4 text-primary" />{tr('可选 AI Cooking')}</div>
           </div>
         </div>
-      {:else if step === 1}
+      {:else if steps[step] === '数据位置'}
         <section class="mx-auto max-w-xl">
           <div class="flex gap-3"><HardDrive class="mt-0.5 size-6 text-primary" /><div><h2 class="m-0 text-lg font-semibold">{tr('先决定数据放在哪里')}</h2><p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{tr('反馈附件、已发布反馈包和语音模型都会存放在此目录。先设置它，后续下载和反馈就直接写入正确位置。')}</p></div></div>
           <div class="mt-6 rounded-lg border bg-muted/20 p-4"><p class="m-0 text-[10px] font-medium uppercase text-muted-foreground">{tr('当前目录')}</p><p class="mb-0 mt-2 break-all font-mono text-xs">{storage?.selected_path ?? tr('正在读取数据存储位置…')}</p></div>
           <div class="mt-4 flex items-center justify-between gap-4"><p class="m-0 text-xs text-muted-foreground">{tr('数据库与本地凭证仍留在系统应用目录。')}</p><Button variant="outline" disabled={!isTauri || storageBusy} onclick={() => void chooseStorage()}>{#if storageBusy}<LoaderCircle class="animate-spin" data-icon="inline-start" />{:else}<FolderCog data-icon="inline-start" />{/if}{tr('选择其他位置…')}</Button></div>
           {#if storageRestartRequired}<div class="mt-5 rounded-lg border border-primary/30 bg-primary/5 p-4 text-xs leading-5 text-primary">{tr('数据目录已保存。现在重启 RambleDesk，后续步骤会直接使用新位置。')}</div>{/if}
         </section>
-      {:else if step === 2}
+      {:else if steps[step] === '语音输入'}
         <section class="mx-auto max-w-xl">
           <div class="flex gap-3"><Mic class="mt-0.5 size-6 text-primary" /><div><h2 class="m-0 text-lg font-semibold">{tr('用语音快速 Ramble')}</h2><p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{tr('推荐下载一个本地转录模型：音频仅在本机处理，不会上传。也可以跳过，稍后在设置中选择模型、麦克风和 VAD。')}</p></div></div>
           <div class="mt-6 rounded-lg border bg-muted/20 p-4">
@@ -353,7 +372,14 @@
             {#if modelBusy}<div class="mt-4 h-1.5 overflow-hidden rounded bg-muted"><div class="h-full bg-primary transition-[width]" style={`width: ${modelProgressPercent}%`}></div></div>{/if}
           </div>
         </section>
-      {:else if step === 3}
+        {:else if steps[step] === '权限'}
+          <section class="mx-auto max-w-xl">
+            <div class="flex gap-3"><ShieldCheck class="mt-0.5 size-6 text-primary" /><div><h2 class="m-0 text-lg font-semibold">{tr('授予 Mac 权限')}</h2><p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{tr('截图和语音转录需要 macOS 权限。可以现在授权，也可以稍后在“设置 → 权限”中处理。')}</p></div></div>
+            <div class="mt-6">
+              <MacPermissions />
+            </div>
+          </section>
+      {:else if steps[step] === '适配器'}
         <section class="mx-auto max-w-xl">
           <div class="flex gap-3">
             <PlugZap class="mt-0.5 size-6 text-primary" />
@@ -419,7 +445,7 @@
             </div>
           </details>
         </section>
-      {:else if step === 4}
+      {:else if steps[step] === '通知'}
         <section class="mx-auto max-w-xl">
           <div class="flex gap-3"><BellRing class="mt-0.5 size-6 text-primary" /><div><h2 class="m-0 text-lg font-semibold">{tr('需要通知提醒吗？')}</h2><p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{tr('当 Coding 工具请求反馈时，RambleDesk 可以显示系统弹窗并播放声音。')}</p></div></div>
           <div class="mt-6 space-y-3 rounded-lg border bg-muted/20 p-4">
@@ -434,7 +460,7 @@
             <p class="m-0 border-t pt-3 text-[10px] leading-4 text-muted-foreground">{tr('提示音、音量等高级通知选项可随时在“设置 → 通知”中调整。')}</p>
           </div>
         </section>
-      {:else if step === 5}
+      {:else if steps[step] === 'Cooking'}
         <section class="mx-auto max-w-xl">
           <div class="flex gap-3"><ChefHat class="mt-0.5 size-6 text-primary" /><div><h2 class="m-0 text-lg font-semibold">{tr('要启用 Feedback Cooking 吗？')}</h2><p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{tr('可选：提交前用你自己的模型服务把原始 Ramble 整理为正式反馈。原始 uncooked 正文始终保留。')}</p></div></div>
           <div class="mt-6 rounded-lg border bg-muted/20 p-4"><div class="flex items-center justify-between gap-4"><div><strong class="text-xs">Cooking</strong><p class="mb-0 mt-1 text-[10px] text-muted-foreground">{tr('需要 API Key，且正文会发送给你选择的服务。')}</p></div><button type="button" role="switch" aria-label="Cooking" aria-checked={$cookingEnabled} class={['relative h-[22px] w-10 rounded-full transition-colors', $cookingEnabled ? 'bg-primary' : 'bg-input']} onclick={() => setCookingEnabled(!$cookingEnabled)}><span class={['absolute left-0.5 top-0.5 size-4 rounded-full bg-background shadow transition-transform', $cookingEnabled ? 'translate-x-5' : '']}></span></button></div>
@@ -461,7 +487,7 @@
         {#if step > 0 && !storageRestartRequired}<Button variant="outline" size="sm" onclick={() => move(step - 1)}><ChevronLeft data-icon="inline-start" />{tr('上一步')}</Button>{/if}
         {#if storageRestartRequired}<Button disabled={storageBusy} onclick={() => void restartForStorage()}><Rocket data-icon="inline-start" />{tr('重启并继续')}</Button>
         {:else if step === steps.length - 1}<Button onclick={() => complete()}><Check data-icon="inline-start" />{tr('开始使用')}</Button>
-        {:else}<Button disabled={storageBusy || modelBusy} onclick={() => move(step + 1)}>{step === 2 && !selectedModel?.installed ? tr('跳过语音设置') : tr('继续')}<ChevronRight data-icon="inline-end" /></Button>{/if}
+        {:else}<Button disabled={storageBusy || modelBusy} onclick={() => move(step + 1)}>{steps[step] === '语音输入' && !selectedModel?.installed ? tr('跳过语音设置') : tr('继续')}<ChevronRight data-icon="inline-end" /></Button>{/if}
       </div>
     </footer>
   </Dialog.Content>
