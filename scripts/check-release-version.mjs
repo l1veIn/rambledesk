@@ -31,7 +31,7 @@ for (const packageName of [
   "rambledesk-storage",
 ]) {
   const packageBlock = cargoLock.match(
-    new RegExp(`\\[\\[package\\]\\]\\nname = "${packageName}"\\nversion = "([^"]+)"`),
+    new RegExp(`\\[\\[package\\]\\]\\r?\\nname = "${packageName}"\\r?\\nversion = "([^"]+)"`),
   );
   if (!packageBlock) throw new Error(`Could not read ${packageName} from Cargo.lock`);
   versions.set(`Cargo.lock ${packageName}`, packageBlock[1]);
