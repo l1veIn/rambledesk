@@ -1,10 +1,11 @@
 <script lang="ts">
   import { getVersion } from '@tauri-apps/api/app'
   import { openUrl } from '@tauri-apps/plugin-opener'
-  import { Download, ExternalLink, GitBranch, LoaderCircle, RefreshCw, RotateCw, ShieldCheck } from '@lucide/svelte'
+  import { Download, ExternalLink, GitBranch, LoaderCircle, RefreshCw, RotateCw, ShieldCheck, Sparkles } from '@lucide/svelte'
   import { onMount } from 'svelte'
 
   import rambelleSticker from '../assets/rambelle-states/idle.png'
+  import RambelleProfileDialog from './RambelleProfileDialog.svelte'
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
   import { t } from '$lib/i18n'
@@ -19,6 +20,7 @@
   export let installBlocked = false
 
   let version = '0.0.1'
+  let profileOpen = false
   const isTauri = '__TAURI_INTERNALS__' in window
   const projectUrl = 'https://github.com/l1veIn/rambledesk'
 
@@ -70,6 +72,29 @@
         alt={tr('Rambelle waving sticker')}
         class="mx-auto h-36 w-36 object-contain drop-shadow-[0_16px_30px_rgba(59,130,246,0.2)]"
       />
+    </div>
+  </section>
+
+  <section class="rounded-xl border p-5">
+    <div class="flex items-center justify-between gap-6">
+      <div class="flex min-w-0 items-center gap-3">
+        <img
+          src={rambelleSticker}
+          alt=""
+          draggable="false"
+          class="size-12 shrink-0 rounded-xl object-contain"
+        />
+        <div class="min-w-0">
+          <h3 class="m-0 text-sm font-medium">Rambelle</h3>
+          <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
+            {tr('View Rambelle’s story and character profile.')}
+          </p>
+        </div>
+      </div>
+      <Button variant="outline" class="shrink-0" onclick={() => (profileOpen = true)}>
+        <Sparkles data-icon="inline-start" />
+        {tr('View character profile')}
+      </Button>
     </div>
   </section>
 
@@ -167,3 +192,5 @@
     © 2026 RambleDesk · MIT · {tr('See THIRD_PARTY_NOTICES.md for third-party component notices')}
   </p>
 </div>
+
+<RambelleProfileDialog bind:open={profileOpen} />

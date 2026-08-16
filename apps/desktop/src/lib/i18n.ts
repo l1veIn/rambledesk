@@ -541,6 +541,8 @@ const chinese: Record<string, string> = {
   'Let agents pause at key moments and request structured human feedback that can be resumed and archived.': '让 Agent 在关键节点停下来，向人类请求可恢复、可归档的结构化反馈。',
   'Feedback drafts, attachments, and packages stay on your device. The agent only receives results you explicitly submit or cancel.': '反馈草稿、附件与反馈包保存在你的设备上；Agent 只会收到你明确提交或取消的结果。',
   'Rambelle waving sticker': 'Rambelle 挥手贴纸',
+  'View Rambelle’s story and character profile.': '查看 Rambelle 的角色设定与背景故事。',
+  'View character profile': '查看角色档案',
   'Software updates': '软件更新',
   'RambleDesk checks for updates quietly after launch, and you can check manually at any time.': 'RambleDesk 会在启动后静默检查更新，你也可以随时手动检查。',
   'Checking…': '正在检查…',
