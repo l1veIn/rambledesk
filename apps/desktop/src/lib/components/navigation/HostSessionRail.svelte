@@ -86,16 +86,11 @@
       ]}
     >
       {#if !collapsed}
-        <div class="flex min-w-0 items-center gap-2">
-          <div class="grid size-6 place-items-center rounded-md bg-primary text-[11px] font-bold text-primary-foreground">
-            R
-          </div>
-          <div class="min-w-0">
-            <strong class="block truncate text-xs font-semibold">{tr('Hosts')}</strong>
-            <span class="block text-[10px] text-muted-foreground">
-              {sessions.length} {tr('sessions')}
-            </span>
-          </div>
+        <div class="min-w-0">
+          <strong class="block truncate text-xs font-semibold">{tr('Hosts')}</strong>
+          <span class="block text-[10px] text-muted-foreground">
+            {sessions.length} {tr('sessions')}
+          </span>
         </div>
       {/if}
 

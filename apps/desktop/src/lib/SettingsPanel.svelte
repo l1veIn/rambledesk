@@ -40,7 +40,8 @@
   import { toast } from '$lib/components/ui/sonner'
   import AboutSettings from '$lib/AboutSettings.svelte'
   import MacPermissions from '$lib/MacPermissions.svelte'
-  import rambellePermission from '../assets/rambelle-states/state-permission.png'
+  import appIcon from '../assets/rambledesk-app-icon.webp'
+  import rambellePermission from '../assets/rambelle-states/state-permission.webp'
   import piLogoSvg from '../assets/pi-logo.svg?raw'
   import dshLogoSvg from '../assets/dsh-logo.svg?raw'
   import * as Select from '$lib/components/ui/select'
@@ -574,9 +575,12 @@
     >
       <aside class="flex min-h-0 flex-col border-r bg-muted/35 p-3">
         <div class="flex h-12 items-center gap-2 px-2">
-          <span class="grid size-7 place-items-center rounded-md bg-primary text-xs font-bold text-primary-foreground">
-            R
-          </span>
+          <img
+            src={appIcon}
+            alt=""
+            draggable="false"
+            class="size-7 shrink-0 rounded-md object-cover"
+          />
           <div class="min-w-0">
             <strong class="block text-xs font-semibold">RambleDesk</strong>
             <span class="block text-[10px] text-muted-foreground">{tr('Settings')}</span>

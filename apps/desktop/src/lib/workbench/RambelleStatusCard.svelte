@@ -11,9 +11,9 @@
   }
 </script>
 
-<section class="flex min-h-20 items-center gap-3 border-b bg-muted/25 px-4 py-3" aria-label={tr('Rambelle status')}>
+<section class="flex min-h-[136px] shrink-0 items-center gap-3 border-t bg-muted/25 px-4 py-3" aria-label={tr('Rambelle status')}>
   {#if portrait}
-    <img src={portrait} alt="Rambelle" class="size-12 shrink-0 object-contain" />
+    <img src={portrait} alt="Rambelle" class="size-[120px] shrink-0 object-contain" />
   {/if}
   <div class="min-w-0">
     <strong class="block text-[10px] font-medium">Rambelle</strong>

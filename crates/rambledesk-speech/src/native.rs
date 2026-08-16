@@ -90,7 +90,8 @@ impl SherpaOnline {
         config.model_config.num_threads = 2;
         config.model_config.provider = Some("cpu".to_owned());
         let bpe_vocab = model_dir.join("bpe.vocab");
-        if is_valid_bpe_vocab(&bpe_vocab) {
+        let has_bpe = is_valid_bpe_vocab(&bpe_vocab);
+        if has_bpe {
             config.model_config.modeling_unit = Some("bpe".to_owned());
             config.model_config.bpe_vocab = Some(bpe_vocab.to_string_lossy().into_owned());
         }
@@ -107,11 +108,12 @@ impl SherpaOnline {
                 model_dir.display()
             ))
         })?;
-        // The online transducer accepts per-stream contextual hotwords as a
-        // space-separated phrase list.
-        let stream = match join_hotwords(hotwords, ' ') {
-            Some(text) => recognizer.create_stream_with_hotwords(&text),
-            None => recognizer.create_stream(),
+        // Sherpa online transducers encode hotword *phrases* separated by '/'.
+        // Without a BPE vocab the default English product names ("Claude", …)
+        // are looked up raw in tokens.txt, fail, and spam the log every session.
+        let stream = match (has_bpe, join_hotwords(hotwords, '/')) {
+            (true, Some(text)) => recognizer.create_stream_with_hotwords(&text),
+            _ => recognizer.create_stream(),
         };
         Ok(Self {
             recognizer,
@@ -762,6 +764,18 @@ mod tests {
         assert_eq!(
             join_hotwords(&["Claude Code".to_owned(), "Codex".to_owned()], ' '),
             Some("Claude Code Codex".to_owned())
+        );
+        assert_eq!(
+            join_hotwords(
+                &[
+                    "Claude Code".to_owned(),
+                    "Codex".to_owned(),
+                    "Grok".to_owned(),
+                    "Gemini".to_owned()
+                ],
+                '/'
+            ),
+            Some("Claude Code/Codex/Grok/Gemini".to_owned())
         );
     }
 

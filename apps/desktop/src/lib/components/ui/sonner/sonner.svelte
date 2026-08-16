@@ -1,11 +1,11 @@
 <script lang="ts">
   import { Toaster } from 'svelte-sonner'
 
-  import rambelleWaiting from '../../../../assets/rambelle-states/state-waiting.png'
-  import rambelleError from '../../../../assets/rambelle-states/toast-error.png'
-  import rambelleInfo from '../../../../assets/rambelle-states/toast-info.png'
-  import rambelleSuccess from '../../../../assets/rambelle-states/toast-success.png'
-  import rambelleWarning from '../../../../assets/rambelle-states/toast-warning.png'
+  import rambelleWaiting from '../../../../assets/rambelle-states/state-waiting.webp'
+  import rambelleError from '../../../../assets/rambelle-states/toast-error.webp'
+  import rambelleInfo from '../../../../assets/rambelle-states/toast-info.webp'
+  import rambelleSuccess from '../../../../assets/rambelle-states/toast-success.webp'
+  import rambelleWarning from '../../../../assets/rambelle-states/toast-warning.webp'
   import { themePreference } from '$lib/preferences'
 </script>
 
@@ -40,14 +40,14 @@
   }
 
   :global([data-sonner-toast][data-styled='true'] [data-icon]) {
-    width: 52px;
-    height: 52px;
-    margin-inline: -5px 6px;
+    width: 100px;
+    height: 100px;
+    margin-inline: -5px 8px;
   }
 
   :global(.rambelle-toast-portrait) {
-    width: 58px;
-    height: 58px;
+    width: 100px;
+    height: 100px;
     object-fit: contain;
   }
 

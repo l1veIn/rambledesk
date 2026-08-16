@@ -2,7 +2,7 @@
   import { getCurrentWindow } from '@tauri-apps/api/window'
   import { Bell, BellOff, Minus, X } from '@lucide/svelte'
 
-  import appIcon from '../assets/rambledesk-app-icon.png'
+  import appIcon from '../assets/rambledesk-app-icon.webp'
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
   import { t } from '$lib/i18n'

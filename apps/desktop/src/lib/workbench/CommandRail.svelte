@@ -51,70 +51,72 @@
 </script>
 
 <aside
-  class="command-rail min-h-0 min-w-0 overflow-y-auto border-l bg-muted/15"
+  class="command-rail flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-l bg-muted/15"
   aria-label={t($locale, 'Ramble console')}
 >
-  {#if !readOnly && !interactionLocked}
-    <RamblePanel
-      {rambleEngaged}
-      {rambleActive}
-      {ramblePhase}
-      {rambleBusy}
-      {rambleStartedOnce}
-      {readOnly}
-      {voiceDevice}
-      {voiceChunkIndex}
-      {voicePartial}
-      {voiceLevel}
-      modelMissing={voiceModelMissing}
-      message={rambleMessage}
-      onToggle={onToggleRamble}
-      onExit={onExitRamble}
-      onOpenVoiceSettings={onOpenVoiceSettings}
-    />
+  <div class="min-h-0 flex-1 overflow-y-auto">
+    {#if !readOnly && !interactionLocked}
+      <RamblePanel
+        {rambleEngaged}
+        {rambleActive}
+        {ramblePhase}
+        {rambleBusy}
+        {rambleStartedOnce}
+        {readOnly}
+        {voiceDevice}
+        {voiceChunkIndex}
+        {voicePartial}
+        {voiceLevel}
+        modelMissing={voiceModelMissing}
+        message={rambleMessage}
+        onToggle={onToggleRamble}
+        onExit={onExitRamble}
+        onOpenVoiceSettings={onOpenVoiceSettings}
+      />
 
-    <CaptureToolsCard
-      attachmentCount={workspace.attachments.length}
+      <CaptureToolsCard
+        attachmentCount={workspace.attachments.length}
+        {attachmentBusy}
+        {rambleEngaged}
+        {readOnly}
+        onScreenCapture={onStartScreenCapture}
+        onImportClipboard={onImportClipboard}
+        {onFileSelection}
+      />
+    {/if}
+
+    <AttachmentsCard
+      attachments={workspace.attachments}
       {attachmentBusy}
-      {rambleEngaged}
-      {readOnly}
-      onScreenCapture={onStartScreenCapture}
-      onImportClipboard={onImportClipboard}
-      {onFileSelection}
+      readOnly={readOnly || interactionLocked}
+      onInsert={onInsertAttachment}
+      onRemove={onRemoveAttachment}
+      onPreview={onPreviewAttachment}
     />
-  {/if}
 
-  <AttachmentsCard
-    attachments={workspace.attachments}
-    {attachmentBusy}
-    readOnly={readOnly || interactionLocked}
-    onInsert={onInsertAttachment}
-    onRemove={onRemoveAttachment}
-    onPreview={onPreviewAttachment}
-  />
+    <DeliveryCard
+      {feedbackResult}
+      cancelled={workspace.request.status === 'cancelled'}
+      approved={workspace.request.resolution === 'approved'}
+      {canSubmit}
+      {cooking}
+      {submitting}
+      {submitStage}
+      {canCancel}
+      {cancelling}
+      allowFinish={workspace.request.allow_finish}
+      finalSummary={workspace.request.final_summary ?? ''}
+      {approving}
+      onOpenPackage={onOpenPackage}
+      onSubmit={onSubmit}
+      onCancel={onCancel}
+      onApprove={onApprove}
+    />
+  </div>
 
   <RambelleStatusCard
     portrait={rambelleStatusPortrait}
     feedbackDone={feedbackResult !== null}
     {rambleEngaged}
-  />
-
-  <DeliveryCard
-    {feedbackResult}
-    cancelled={workspace.request.status === 'cancelled'}
-    approved={workspace.request.resolution === 'approved'}
-    {canSubmit}
-    {cooking}
-    {submitting}
-    {submitStage}
-    {canCancel}
-    {cancelling}
-    allowFinish={workspace.request.allow_finish}
-    finalSummary={workspace.request.final_summary ?? ''}
-    {approving}
-    onOpenPackage={onOpenPackage}
-    onSubmit={onSubmit}
-    onCancel={onCancel}
-    onApprove={onApprove}
   />
 </aside>

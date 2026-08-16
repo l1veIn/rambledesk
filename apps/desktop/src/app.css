@@ -259,7 +259,7 @@ body.ramble-console-mode {
   position: absolute;
   z-index: -1;
   inset: 0;
-  background-image: url("./assets/rambelle-vault-pattern.png");
+  background-image: url("./assets/rambelle-vault-pattern.webp");
   background-position: center;
   background-size: 408px 408px;
   content: "";

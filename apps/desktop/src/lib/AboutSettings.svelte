@@ -4,7 +4,7 @@
   import { Download, ExternalLink, GitBranch, LoaderCircle, RefreshCw, RotateCw, ShieldCheck, Sparkles } from '@lucide/svelte'
   import { onMount } from 'svelte'
 
-  import rambelleSticker from '../assets/rambelle-states/idle.png'
+  import rambelleSticker from '../assets/rambelle-states/idle.webp'
   import RambelleProfileDialog from './RambelleProfileDialog.svelte'
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
