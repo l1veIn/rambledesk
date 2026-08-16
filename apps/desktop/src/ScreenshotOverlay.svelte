@@ -204,7 +204,7 @@
     try {
       capture = active ?? (await invoke<ScreenCaptureView>('get_active_capture_info'))
       if (capture.capture_session_id !== captureSessionId) {
-        throw new Error(t($locale, '截图会话已变化，请重新截图'))
+        throw new Error(t($locale, 'The capture session changed. Please capture again.'))
       }
       const rgba = await invoke<ArrayBuffer>('read_capture_rgba_bytes', {
         captureSessionId: capture.capture_session_id,
@@ -212,7 +212,7 @@
       const expectedBytes = capture.image_width * capture.image_height * 4
       if (rgba.byteLength !== expectedBytes) {
         throw new Error(
-          t($locale, '截图像素数据不完整：应为 {expected} 字节，实际为 {actual} 字节', {
+          t($locale, 'Capture pixel data is incomplete: expected {expected} bytes, received {actual} bytes.', {
             expected: expectedBytes,
             actual: rgba.byteLength,
           }),
@@ -244,7 +244,7 @@
   function drawSourceImage(imageData: ImageData) {
     if (!sourceCanvas) return
     const context = sourceCanvas.getContext('2d')
-    if (!context) throw new Error(t($locale, '无法创建截图显示画布'))
+    if (!context) throw new Error(t($locale, 'Could not create the capture display canvas'))
     context.putImageData(imageData, 0, 0)
     sourceImage = sourceCanvas
   }
@@ -593,7 +593,7 @@
         sourceImage,
         selection,
         annotations,
-        t($locale, '无法创建截图导出画布'),
+        t($locale, 'Could not create the capture export canvas'),
       )
       await invoke('complete_screen_capture', {
         input: {
@@ -618,7 +618,7 @@
         sourceImage,
         selection,
         annotations,
-        t($locale, '无法创建截图导出画布'),
+        t($locale, 'Could not create the capture export canvas'),
       )
       await invoke('pin_screen_capture', {
         input: {
@@ -636,7 +636,7 @@
   async function beginScrolling() {
     if (!capture || !selection || completing) return
     if (annotations.length > 0) {
-      errorMessage = t($locale, '请先开始滚动截图，再对拼接后的长图添加标注')
+      errorMessage = t($locale, 'Start scrolling capture before annotating the stitched image.')
       return
     }
     completing = true
@@ -876,7 +876,7 @@
         <button
           data-capture-ui
           class={`resize-handle ${handle}`}
-          aria-label={t($locale, '调整选区 {handle}', { handle })}
+          aria-label={t($locale, 'Resize selection: {handle}', { handle })}
           onpointerdown={(event) => beginSelectionResize(event, handle as ResizeHandle)}
         ></button>
       {/each}
@@ -889,7 +889,7 @@
         <button
           data-capture-ui
           class={`annotation-handle ${handle}`}
-          aria-label={t($locale, '调整标注 {handle}', { handle })}
+          aria-label={t($locale, 'Resize annotation: {handle}', { handle })}
           onpointerdown={(event) => beginAnnotationResize(event, handle as ResizeHandle)}
         ></button>
       {/each}
@@ -902,7 +902,7 @@
       bind:value={textDraft.value}
       data-capture-ui
       class="text-editor"
-      placeholder={t($locale, '输入文字…')}
+      placeholder={t($locale, 'Enter text…')}
       style={textDraftStyle()}
       onblur={commitText}
     ></textarea>
@@ -910,12 +910,12 @@
 
   {#if loading}
     <div class="capture-status" data-capture-ui>
-      <strong>{t($locale, '正在读取屏幕画面…')}</strong>
+      <strong>{t($locale, 'Reading screen…')}</strong>
     </div>
   {:else if !selection && !errorMessage}
     <div class="capture-help" data-capture-ui>
-      <strong>{t($locale, '悬停选择窗口，或拖动自由框选')}</strong>
-      <span>{t($locale, '点击窗口自动取边界 · 双击使用全屏 · Esc / 右键取消')}</span>
+      <strong>{t($locale, 'Hover to select a window, or drag to select freely')}</strong>
+      <span>{t($locale, 'Click a window to select its bounds · Double-click for full screen · Esc / right-click to cancel')}</span>
     </div>
   {/if}
 
@@ -953,13 +953,13 @@
 
   {#if errorMessage}
     <div class="capture-error" data-capture-ui>
-      <strong>{t($locale, '截图工具遇到问题')}</strong>
+      <strong>{t($locale, 'The capture tool encountered a problem')}</strong>
       <span>{errorMessage}</span>
-      <button onclick={() => (errorMessage = '')}>{t($locale, '关闭')}</button>
+      <button onclick={() => (errorMessage = '')}>{t($locale, 'Close')}</button>
     </div>
   {/if}
 
   {#if completing}
-    <div class="completing-mask" data-capture-ui><span>{t($locale, '正在处理截图…')}</span></div>
+    <div class="completing-mask" data-capture-ui><span>{t($locale, 'Processing capture…')}</span></div>
   {/if}
 </main>

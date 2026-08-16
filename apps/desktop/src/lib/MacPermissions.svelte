@@ -29,20 +29,20 @@
   }
 
   function title(id: string) {
-    return id === 'screen_capture' ? tr('屏幕与系统音频录制') : tr('麦克风')
+    return id === 'screen_capture' ? tr('Screen & System Audio Recording') : tr('Microphone')
   }
 
   function description(id: string) {
     return id === 'screen_capture'
-      ? tr('屏幕录制权限用于截图和滚动截图。')
-      : tr('麦克风权限用于语音 Ramble 的本地转录。')
+      ? tr('Screen Recording is used for screenshots and scrolling captures.')
+      : tr('The microphone is used for on-device transcription of voice Rambles.')
   }
 
   function statusBadge(status: MacPermissionStatus) {
-    if (status === 'granted') return { label: tr('已授权'), variant: 'secondary' as const }
-    if (status === 'denied') return { label: tr('已拒绝'), variant: 'destructive' as const }
-    if (status === 'unknown') return { label: tr('未知'), variant: 'outline' as const }
-    return { label: tr('未授权'), variant: 'outline' as const }
+    if (status === 'granted') return { label: tr('Granted'), variant: 'secondary' as const }
+    if (status === 'denied') return { label: tr('Denied'), variant: 'destructive' as const }
+    if (status === 'unknown') return { label: tr('Unknown'), variant: 'outline' as const }
+    return { label: tr('Not granted'), variant: 'outline' as const }
   }
 
   function updateStatus(id: string, status: MacPermissionStatus) {
@@ -56,7 +56,7 @@
     try {
       permissions = await invoke<MacPermission[]>('list_macos_permissions')
     } catch (cause) {
-      toast.error(tr('无法读取权限状态'), { description: messageFrom(cause) })
+      toast.error(tr('Could not read permission status'), { description: messageFrom(cause) })
     } finally {
       loading = false
     }
@@ -69,12 +69,12 @@
       const next = await invoke<MacPermission>('request_macos_permission', { permission: id })
       updateStatus(id, next.status)
       if (next.status === 'granted') {
-        toast.success(tr('权限已开启'))
+        toast.success(tr('Permission granted'))
       } else {
-        toast.error(tr('权限未开启，请打开系统设置手动允许。'))
+        toast.error(tr('Permission was not granted. Open System Settings and allow it manually.'))
       }
     } catch (cause) {
-      toast.error(tr('无法请求权限'), { description: messageFrom(cause) })
+      toast.error(tr('Could not request permission'), { description: messageFrom(cause) })
     } finally {
       busy = false
     }
@@ -83,9 +83,9 @@
   async function openSettings(id: string) {
     try {
       await invoke('open_macos_privacy_settings', { permission: id })
-      toast.info(tr('请在系统设置中允许 RambleDesk，然后回来刷新状态。'))
+      toast.info(tr('Allow RambleDesk in System Settings, then come back and refresh the status.'))
     } catch (cause) {
-      toast.error(tr('无法打开系统设置'), { description: messageFrom(cause) })
+      toast.error(tr('Could not open System Settings'), { description: messageFrom(cause) })
     }
   }
 
@@ -98,10 +98,10 @@
   {#if loading}
     <div class="flex items-center gap-2 py-6 text-xs text-muted-foreground">
       <LoaderCircle class="size-4 animate-spin" />
-      {tr('正在读取权限状态…')}
+      {tr('Reading permission status…')}
     </div>
   {:else if permissions.length === 0}
-    <p class="m-0 py-6 text-xs text-muted-foreground">{tr('当前平台无需额外权限。')}</p>
+    <p class="m-0 py-6 text-xs text-muted-foreground">{tr('No extra permissions are needed on this platform.')}</p>
   {:else}
     {#each permissions as permission (permission.id)}
       <div class="flex flex-wrap items-center justify-between gap-4 rounded-lg border bg-muted/20 px-4 py-3">
@@ -123,16 +123,16 @@
             {#if permission.status === 'not_determined'}
               <Button size="sm" disabled={busy} onclick={() => void request(permission.id)}>
                 {#if busy}<LoaderCircle class="animate-spin" data-icon="inline-start" />{/if}
-                {tr('去授权')}
+                {tr('Grant access')}
               </Button>
               <Button size="sm" variant="outline" onclick={() => void openSettings(permission.id)}>
                 <Settings2 data-icon="inline-start" />
-                {tr('打开系统设置')}
+                {tr('Open System Settings')}
               </Button>
             {:else}
               <Button size="sm" variant="outline" onclick={() => void openSettings(permission.id)}>
                 <Settings2 data-icon="inline-start" />
-                {tr('打开系统设置')}
+                {tr('Open System Settings')}
               </Button>
             {/if}
           {/if}
@@ -141,11 +141,11 @@
     {/each}
     <div class="flex items-center justify-between gap-3 rounded-md border bg-muted/20 px-3 py-2">
       <p class="m-0 text-[10px] leading-4 text-muted-foreground">
-        {tr('授权后如果仍无法使用，请重启 RambleDesk。')}
+        {tr('If a permission still does not work after being granted, restart RambleDesk.')}
       </p>
       <Button variant="ghost" size="sm" disabled={loading} onclick={() => void load()}>
         <RefreshCw data-icon="inline-start" />
-        {tr('刷新权限状态')}
+        {tr('Refresh permission status')}
       </Button>
     </div>
   {/if}

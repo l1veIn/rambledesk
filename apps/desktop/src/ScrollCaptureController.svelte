@@ -19,7 +19,7 @@
   let info: ScrollCaptureInfo | null = null
   let busy = false
   let errorMessage = ''
-  let statusMessage = t($locale, '滚动目标内容，RambleDesk 会自动连续采集')
+  let statusMessage = t($locale, 'Scroll the target content; RambleDesk captures continuously.')
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
@@ -57,19 +57,19 @@
     if (!info || busy) return
     busy = true
     errorMessage = ''
-    statusMessage = tr('正在匹配滚动位置…')
+    statusMessage = tr('Matching scroll position…')
     try {
       info = await invoke<ScrollCaptureInfo>('append_scrolling_capture_frame', {
         captureSessionId: info.capture_session_id,
       })
       statusMessage = info.matched
         ? info.added_height > 0
-          ? tr('已拼接 {height} px 新内容', { height: info.added_height })
-          : tr('画面没有变化，请继续滚动')
-        : tr('没有找到可靠重叠区域，请少滚动一些再试')
+          ? tr('Stitched {height} px of new content', { height: info.added_height })
+          : tr('The image did not change. Keep scrolling.')
+        : tr('No reliable overlap found. Try scrolling less.')
     } catch (cause) {
       errorMessage = messageFrom(cause)
-      statusMessage = tr('这一帧没有写入长图')
+      statusMessage = tr('This frame was not added to the long capture')
     } finally {
       busy = false
     }
@@ -79,7 +79,7 @@
     if (!info || busy) return
     busy = true
     errorMessage = ''
-    statusMessage = tr('正在生成长图并返回标注编辑器…')
+    statusMessage = tr('Generating the long capture and returning to the annotation editor…')
     try {
       await invoke('finish_scrolling_capture', { captureSessionId: info.capture_session_id })
     } catch (cause) {
@@ -114,22 +114,22 @@
 <main class="scroll-controller" onpointerdown={(event) => void startDragging(event)}>
   <GripHorizontal class="grip" size={18} strokeWidth={1.8} />
   <section>
-    <strong>{tr('滚动截图')}</strong>
+    <strong>{tr('Scrolling capture')}</strong>
     <span>{statusMessage}</span>
     {#if info}
-      <small>{info.frame_count} {tr('帧')} · {info.width} × {info.height}</small>
+      <small>{info.frame_count} {tr('frames')} · {info.width} × {info.height}</small>
     {/if}
     {#if errorMessage}<em>{errorMessage}</em>{/if}
   </section>
   <div class="actions">
-    <button disabled={!info || busy} onclick={captureFrame} title={tr('立即采集一帧 · Space')}>
+    <button disabled={!info || busy} onclick={captureFrame} title={tr('Capture a frame now · Space')}>
       <Camera size={17} />
-      <span>{tr('立即采集')}</span>
+      <span>{tr('Capture now')}</span>
     </button>
-    <button class="finish" disabled={!info || busy} onclick={finish} title={tr('完成 · Enter')}>
+    <button class="finish" disabled={!info || busy} onclick={finish} title={tr('Finish · Enter')}>
       <Check size={18} />
     </button>
-    <button class="cancel" disabled={busy} onclick={cancel} title={tr('取消 · Esc')}>
+    <button class="cancel" disabled={busy} onclick={cancel} title={tr('Cancel · Esc')}>
       <X size={18} />
     </button>
   </div>

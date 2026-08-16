@@ -50,19 +50,19 @@
         {workspace.request.host_session_id}
       </span>
       <Badge variant="outline" class={['h-5 px-1.5 text-[9px]', statusClass()]}>
-        {cooking ? tr('Cooking 中') : requestStatusLabel(workspace.request.status, $locale)}
+        {cooking ? tr('Cooking') : requestStatusLabel(workspace.request.status, $locale)}
       </Badge>
     </div>
     <h1 class="m-0 mt-1 truncate text-sm font-semibold">
-      {workspace.request.title || tr('未命名请求')}
+      {workspace.request.title || tr('Untitled request')}
     </h1>
   </div>
 
   <Button
     variant="ghost"
     size="icon-sm"
-    aria-label={tr('重新载入')}
-    title={tr('重新载入')}
+    aria-label={tr('Reload')}
+    title={tr('Reload')}
     {disabled}
     onclick={onReload}
   >

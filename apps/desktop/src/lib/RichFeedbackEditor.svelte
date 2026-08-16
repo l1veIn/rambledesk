@@ -187,8 +187,8 @@
       editorProps: {
         attributes: {
           class: 'feedback-prose',
-          'aria-label': t($locale, 'Markdown 富文本反馈正文'),
-          'data-placeholder': t($locale, '记录你看见了什么、哪里顺畅、哪里让你停顿。'),
+          'aria-label': t($locale, 'Markdown rich-text feedback body'),
+          'data-placeholder': t($locale, 'Record what you saw, what felt smooth, and where you paused.'),
         },
         handleClick: (view, pos, event) => {
           const target = event.target as HTMLElement | null
@@ -227,8 +227,8 @@
   $: if (editor) editor.setEditable(!disabled)
   $: if (editor) {
     $locale
-    editor.view.dom.setAttribute('aria-label', t($locale, 'Markdown 富文本反馈正文'))
-    editor.view.dom.setAttribute('data-placeholder', t($locale, '记录你看见了什么、哪里顺畅、哪里让你停顿。'))
+    editor.view.dom.setAttribute('aria-label', t($locale, 'Markdown rich-text feedback body'))
+    editor.view.dom.setAttribute('data-placeholder', t($locale, 'Record what you saw, what felt smooth, and where you paused.'))
   }
   $: if (editor && markdown !== editorMarkdown) applyMarkdown(markdown)
   $: if (editor) {
@@ -448,12 +448,12 @@
 </script>
 
 <div class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border bg-background">
-  <div class="flex h-10 shrink-0 items-center gap-1 overflow-x-auto border-b bg-muted/30 px-2" aria-label={t($locale, '正文格式')}>
+  <div class="flex h-10 shrink-0 items-center gap-1 overflow-x-auto border-b bg-muted/30 px-2" aria-label={t($locale, 'Document formatting')}>
     <Button
       variant="ghost"
       size="icon-sm"
-      aria-label={t($locale, '加粗')}
-      title={t($locale, '加粗')}
+      aria-label={t($locale, 'Bold')}
+      title={t($locale, 'Bold')}
       disabled={disabled}
       onclick={() => editor?.chain().focus().toggleBold().run()}
     >
@@ -462,8 +462,8 @@
     <Button
       variant="ghost"
       size="icon-sm"
-      aria-label={t($locale, '斜体')}
-      title={t($locale, '斜体')}
+      aria-label={t($locale, 'Italic')}
+      title={t($locale, 'Italic')}
       disabled={disabled}
       onclick={() => editor?.chain().focus().toggleItalic().run()}
     >
@@ -472,8 +472,8 @@
     <Button
       variant="ghost"
       size="icon-sm"
-      aria-label={t($locale, '二级标题')}
-      title={t($locale, '二级标题')}
+      aria-label={t($locale, 'Heading 2')}
+      title={t($locale, 'Heading 2')}
       disabled={disabled}
       onclick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}
     >
@@ -482,8 +482,8 @@
     <Button
       variant="ghost"
       size="icon-sm"
-      aria-label={t($locale, '无序列表')}
-      title={t($locale, '无序列表')}
+      aria-label={t($locale, 'Bullet list')}
+      title={t($locale, 'Bullet list')}
       disabled={disabled}
       onclick={() => editor?.chain().focus().toggleBulletList().run()}
     >
@@ -492,8 +492,8 @@
     <Button
       variant="ghost"
       size="icon-sm"
-      aria-label={t($locale, '引用')}
-      title={t($locale, '引用')}
+      aria-label={t($locale, 'Quote')}
+      title={t($locale, 'Quote')}
       disabled={disabled}
       onclick={() => editor?.chain().focus().toggleBlockquote().run()}
     >
@@ -503,8 +503,8 @@
     <Button
       variant="ghost"
       size="icon-sm"
-      aria-label={t($locale, '撤销')}
-      title={t($locale, '撤销')}
+      aria-label={t($locale, 'Undo')}
+      title={t($locale, 'Undo')}
       disabled={disabled || !editor?.can().undo()}
       onclick={() => editor?.chain().focus().undo().run()}
     >
@@ -513,8 +513,8 @@
     <Button
       variant="ghost"
       size="icon-sm"
-      aria-label={t($locale, '重做')}
-      title={t($locale, '重做')}
+      aria-label={t($locale, 'Redo')}
+      title={t($locale, 'Redo')}
       disabled={disabled || !editor?.can().redo()}
       onclick={() => editor?.chain().focus().redo().run()}
     >

@@ -45,10 +45,10 @@
 {#if published && feedbackResult}
   <section class="p-4">
     <header class="mb-3 flex items-center gap-2">
-      <strong class="text-xs font-medium">{tr('反馈包')}</strong>
+      <strong class="text-xs font-medium">{tr('Feedback Package')}</strong>
       <Badge class="ml-auto bg-success text-white">
         <CheckCircle2 class="size-3" />
-        {tr('已发布')}
+        {tr('Published')}
       </Badge>
     </header>
     <p class="m-0 truncate font-mono text-[9px] text-muted-foreground" title={desktopPath(feedbackResult.directory_path)}>
@@ -56,28 +56,28 @@
     </p>
     <Button class="mt-3 w-full" variant="outline" onclick={onOpenPackage}>
       <FolderOpen data-icon="inline-start" />
-      {tr('打开反馈包')}
+      {tr('Open feedback package')}
     </Button>
   </section>
 {:else if approved}
   <section class="p-4">
-    <Badge class="bg-success text-white"><CheckCircle2 class="size-3" />{tr('已同意结束')}</Badge>
+    <Badge class="bg-success text-white"><CheckCircle2 class="size-3" />{tr('Approved')}</Badge>
     <p class="m-0 mt-3 text-[10px] leading-4 text-muted-foreground">
-      {tr('用户已认可 Agent 的最终总结，Ramble 流程已经结束。')}
+      {tr('The user approved the Agent’s final summary. The Ramble flow has ended.')}
     </p>
   </section>
 {:else if cancelled}
   <section class="p-4">
-    <Badge variant="destructive">{tr('已取消')}</Badge>
+    <Badge variant="destructive">{tr('Cancelled')}</Badge>
     <p class="m-0 mt-3 text-[10px] leading-4 text-muted-foreground">
-      {tr('宿主可以读取取消状态并继续会话。')}
+      {tr('The host can read the cancellation state and continue the session.')}
     </p>
   </section>
 {:else}
   <section class="p-4">
     {#if allowFinish && finalSummary}
       <div class="mb-3 rounded-md border border-primary/25 bg-primary/5 p-3">
-        <strong class="block text-[10px] font-medium">{tr('Agent 最终总结')}</strong>
+        <strong class="block text-[10px] font-medium">{tr('Agent final summary')}</strong>
         <p class="m-0 mt-1 whitespace-pre-wrap text-[10px] leading-4 text-muted-foreground">{finalSummary}</p>
       </div>
     {/if}
@@ -86,16 +86,16 @@
         <Send data-icon="inline-start" />
         {cooking || submitting
           ? cooking || submitStage === 'cooking'
-            ? tr('正在 Cooking…')
-            : tr('正在发布…')
+            ? tr('Cooking…')
+            : tr('Publishing…')
           : $cookingEnabled
-            ? tr('Cook 并提交')
-            : tr('提交反馈')}
+            ? tr('Cook and submit')
+            : tr('Submit feedback')}
       </Button>
       {#if allowFinish}
         <Button class="w-full" variant="secondary" disabled={operationLocked} onclick={onApprove}>
           <ThumbsUp data-icon="inline-start" />
-          {approving ? tr('正在结束…') : tr('同意并结束')}
+          {approving ? tr('Finishing…') : tr('Approve and finish')}
         </Button>
       {/if}
       <Button
@@ -105,7 +105,7 @@
         onclick={() => (cancelConfirmOpen = true)}
       >
         <Ban data-icon="inline-start" />
-        {cancelling ? tr('正在取消…') : tr('取消请求')}
+        {cancelling ? tr('Cancelling…') : tr('Cancel request')}
       </Button>
     </div>
   </section>
@@ -114,18 +114,18 @@
 <Dialog.Root bind:open={cancelConfirmOpen}>
   <Dialog.Content class="max-w-md gap-5 sm:max-w-md" showCloseButton={false}>
     <Dialog.Header>
-      <Dialog.Title>{tr('确认取消请求？')}</Dialog.Title>
+      <Dialog.Title>{tr('Cancel this request?')}</Dialog.Title>
       <Dialog.Description class="mt-1 leading-5">
-        {tr('取消后 Agent 会收到终止状态，当前草稿将无法继续编辑。此操作无法撤销。')}
+        {tr('The agent will receive a terminal state, and this draft can no longer be edited. This action cannot be undone.')}
       </Dialog.Description>
     </Dialog.Header>
     <Dialog.Footer class="gap-2 sm:justify-end">
       <Button variant="outline" onclick={() => (cancelConfirmOpen = false)}>
-        {tr('返回')}
+        {tr('Go back')}
       </Button>
       <Button variant="destructive" onclick={confirmCancel}>
         <Ban data-icon="inline-start" />
-        {tr('确认取消')}
+        {tr('Confirm cancel')}
       </Button>
     </Dialog.Footer>
   </Dialog.Content>

@@ -52,7 +52,7 @@
 
 <aside
   class="command-rail min-h-0 min-w-0 overflow-y-auto border-l bg-muted/15"
-  aria-label={t($locale, 'Ramble 操作台')}
+  aria-label={t($locale, 'Ramble console')}
 >
   {#if !readOnly && !interactionLocked}
     <RamblePanel

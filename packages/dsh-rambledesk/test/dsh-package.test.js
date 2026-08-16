@@ -6,13 +6,14 @@ import path from "node:path";
 import { test } from "node:test";
 
 import {
+  apply,
+  defaultTokenPath,
   feedbackToolResult,
   normalizeRequestParams,
   postFeedback,
   registerRambleDshTools,
   registerRambleMode,
   resolveApiBaseUrl,
-  defaultTokenPath,
 } from "../index.js";
 
 function fakeTools() {
@@ -709,6 +710,35 @@ test("ramble command reports an unreachable RambleDesk as an error result", asyn
     const enabled = await commands.get("ramble").handler();
     assert.equal(enabled.kind, "error");
     assert.match(enabled.text, /not reachable/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("apply wires tools, ramble mode, and slash commands onto a dsh context", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "dsh-ramble-apply-"));
+  try {
+    const tools = fakeTools();
+    const contexts = [];
+    const commands = [];
+    const ctx = {
+      tools,
+      systemPrompt: { context(contribution) { contexts.push(contribution); } },
+      commands: { register(definition) { commands.push(definition); } },
+    };
+
+    await apply(ctx, { stateDir: dir });
+
+    assert.deepEqual(
+      tools.list().map((tool) => tool.name),
+      ["request_ramble_feedback", "resume_ramble_feedback", "get_ramble_feedback", "cancel_ramble_feedback"],
+    );
+    assert.equal(contexts.length, 1);
+    assert.equal(contexts[0].name, "rambledesk-mode");
+    assert.equal(contexts[0].text({}), ""); // off by default
+    assert.deepEqual(commands.map((command) => command.name), ["ramble", "ramble_off"]);
+    assert.equal(typeof commands[0].handler, "function");
+    assert.equal(typeof commands[1].handler, "function");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

@@ -55,15 +55,15 @@
   ]}
 >
   {#if isMac}
-    <div class="absolute left-[15px] flex h-full items-center gap-2" aria-label={t($locale, '窗口控制')}>
+    <div class="absolute left-[15px] flex h-full items-center gap-2" aria-label={t($locale, 'Window controls')}>
       <button
         class="traffic close size-3 rounded-full border border-black/10"
-        aria-label={t($locale, '关闭窗口')}
+        aria-label={t($locale, 'Close window')}
         onclick={() => runWindowAction('close')}
       ></button>
       <button
         class="traffic minimize size-3 rounded-full border border-black/10"
-        aria-label={t($locale, '最小化窗口')}
+        aria-label={t($locale, 'Minimize window')}
         onclick={() => runWindowAction('minimize')}
       ></button>
     </div>
@@ -71,8 +71,8 @@
 
   <button
     class="titlebar-brand flex min-w-0 cursor-grab items-center gap-2.5 border-0 bg-transparent px-3 text-left text-foreground active:cursor-grabbing focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-ring"
-    aria-label={t($locale, '拖动窗口')}
-    title={t($locale, '拖动窗口')}
+    aria-label={t($locale, 'Drag window')}
+    title={t($locale, 'Drag window')}
     onpointerdown={(event) => void startDragging(event)}
   >
     <img
@@ -88,8 +88,8 @@
 
   <button
     class="titlebar-drag min-w-6 flex-1 cursor-grab border-0 bg-transparent active:cursor-grabbing focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-ring"
-    aria-label={t($locale, '拖动窗口')}
-    title={t($locale, '拖动窗口')}
+    aria-label={t($locale, 'Drag window')}
+    title={t($locale, 'Drag window')}
     onpointerdown={(event) => void startDragging(event)}
   ></button>
 
@@ -112,7 +112,7 @@
           ]}
         ></span>
         <span class="truncate">
-          {rambleActive ? t($locale, '正在记录') : t($locale, 'Ramble 已暂停')} · {rambleRequestTitle}
+          {rambleActive ? t($locale, 'Recording') : t($locale, 'Ramble paused')} · {rambleRequestTitle}
         </span>
       </Badge>
     {/if}
@@ -121,7 +121,7 @@
         variant="secondary"
         class="h-6 bg-warning/10 px-2 text-[9px] text-warning-foreground max-[900px]:hidden dark:text-warning"
       >
-        {pendingCount} {t($locale, '待处理')}
+        {pendingCount} {t($locale, 'pending')}
       </Badge>
     {/if}
     <Button
@@ -130,25 +130,25 @@
       class={notificationEnabled ? 'text-info' : ''}
       disabled={notificationDisabled}
       onclick={onNotifications}
-      title={notificationText || t($locale, '通知')}
-      aria-label={notificationText || t($locale, '通知')}
+      title={notificationText || t($locale, 'Notifications')}
+      aria-label={notificationText || t($locale, 'Notifications')}
     >
       {#if notificationEnabled}<Bell />{:else}<BellOff />{/if}
     </Button>
   </div>
 
   {#if !isMac}
-    <div class="ml-1 flex items-stretch" aria-label={t($locale, '窗口控制')}>
+    <div class="ml-1 flex items-stretch" aria-label={t($locale, 'Window controls')}>
       <button
         class="grid w-11 place-items-center text-muted-foreground hover:bg-muted hover:text-foreground"
-        aria-label={t($locale, '最小化窗口')}
+        aria-label={t($locale, 'Minimize window')}
         onclick={() => runWindowAction('minimize')}
       >
         <Minus class="size-4" />
       </button>
       <button
         class="grid w-11 place-items-center text-muted-foreground hover:bg-destructive hover:text-white"
-        aria-label={t($locale, '关闭窗口')}
+        aria-label={t($locale, 'Close window')}
         onclick={() => runWindowAction('close')}
       >
         <X class="size-4" />

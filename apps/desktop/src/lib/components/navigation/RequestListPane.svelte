@@ -47,11 +47,11 @@
 
 <aside
   class="flex h-full min-h-0 flex-col bg-background"
-  aria-label={tr('请求列表')}
+  aria-label={tr('Request list')}
 >
   <div class="flex h-12 items-center gap-1.5 border-b px-3">
     <div class="min-w-0 flex-1">
-      <strong class="block text-xs font-semibold">{tr('请求')}</strong>
+      <strong class="block text-xs font-semibold">{tr('Requests')}</strong>
       <span class="block truncate text-[10px] text-muted-foreground">{scopeLabel}</span>
     </div>
     <Button
@@ -59,17 +59,17 @@
       size="sm"
       class="h-7 shrink-0 px-2 text-[11px]"
       aria-pressed={todayOnly}
-      title={tr('今日请求')}
+      title={tr('Today')}
       onclick={onToggleToday}
     >
-      {tr('今日请求')}
+      {tr('Today')}
     </Button>
     <Button
       variant="ghost"
       size="icon-sm"
       disabled={loading}
-      aria-label={tr('刷新反馈请求')}
-      title={tr('刷新反馈请求')}
+      aria-label={tr('Refresh feedback requests')}
+      title={tr('Refresh feedback requests')}
       onclick={onRefresh}
     >
       <RefreshCw class={loading ? 'animate-spin' : ''} />
@@ -93,14 +93,14 @@
           <Inbox class="size-4" />
         </div>
         <strong class="text-xs">
-          {todayOnly ? tr('今天还没有请求') : tr('当前范围没有请求')}
+          {todayOnly ? tr('No requests today') : tr('No requests in this scope')}
         </strong>
         <span class="text-[11px] leading-5 text-muted-foreground">
-          {tr('新的请求会按最近更新时间出现在这里。')}
+          {tr('New requests appear here by most recent update.')}
         </span>
       </div>
     {:else}
-      <nav class="p-2" aria-label={tr('请求')}>
+      <nav class="p-2" aria-label={tr('Requests')}>
         {#each requests as request (request.request_id)}
           {@const profile = resolveHostProfile(request.host_id)}
           {@const displayStatus = cookingRequestIds.has(request.request_id) ? 'cooking' : request.status}
@@ -124,7 +124,7 @@
                 class={['h-5 shrink-0 border-0 px-1.5 text-[9px]', statusClass(displayStatus)]}
               >
                 {displayStatus === 'cooking'
-                  ? tr('Cooking 中')
+                  ? tr('Cooking')
                   : requestStatusLabel(displayStatus, $locale)}
               </Badge>
             </div>
@@ -154,7 +154,7 @@
             onclick={onLoadMore}
           >
             <ChevronDown data-icon="inline-start" />
-            {loadingMore ? tr('正在载入…') : tr('载入更多')}
+            {loadingMore ? tr('Loading…') : tr('Load more')}
           </Button>
         </div>
       {/if}

@@ -28,11 +28,11 @@
   }
 
   function primaryLabel() {
-    if (ramblePhase === 'starting') return tr('正在启动…')
-    if (ramblePhase === 'stopping') return tr('正在暂停…')
-    if (rambleActive) return tr('暂停记录')
-    if (rambleStartedOnce) return tr('继续记录')
-    return tr('开始记录')
+    if (ramblePhase === 'starting') return tr('Starting…')
+    if (ramblePhase === 'stopping') return tr('Pausing…')
+    if (rambleActive) return tr('Pause recording')
+    if (rambleStartedOnce) return tr('Resume recording')
+    return tr('Start recording')
   }
 </script>
 
@@ -44,7 +44,7 @@
       variant={ramblePhase === 'error' ? 'destructive' : rambleActive ? 'default' : 'secondary'}
       class="ml-auto h-5 px-1.5 text-[9px]"
     >
-      {rambleActive ? tr('记录中') : rambleEngaged ? tr('已暂停') : tr('待命')}
+      {rambleActive ? tr('Recording') : rambleEngaged ? tr('Paused') : tr('Standby')}
     </Badge>
   </header>
 
@@ -54,7 +54,7 @@
       variant={rambleActive ? 'secondary' : 'default'}
       disabled={rambleBusy || readOnly}
       onclick={onToggle}
-      title={tr('全局快捷键 Ctrl + Shift + R')}
+      title={tr('Global shortcut Ctrl + Shift + R')}
     >
       {#if rambleActive}
         <Pause data-icon="inline-start" />
@@ -71,8 +71,8 @@
         size="icon"
         disabled={rambleBusy}
         onclick={onExit}
-        aria-label={tr('退出 Ramble 操作台')}
-        title={tr('退出 Ramble 操作台')}
+        aria-label={tr('Exit Ramble console')}
+        title={tr('Exit Ramble console')}
       >
         <X />
       </Button>
@@ -82,23 +82,23 @@
   <div class="mt-3 text-[10px] leading-4 text-muted-foreground">
     <div class="flex items-center gap-1.5">
       <span class={['size-1.5 rounded-full', rambleActive ? 'bg-destructive' : 'bg-muted-foreground/40']}></span>
-      <span class="min-w-0 flex-1 truncate">{voiceDevice || tr('默认麦克风')}</span>
+      <span class="min-w-0 flex-1 truncate">{voiceDevice || tr('Default microphone')}</span>
       {#if voiceChunkIndex > 0}
-        <span class="tabular-nums">{tr('{count} 段', { count: voiceChunkIndex })}</span>
+        <span class="tabular-nums">{tr('{count} segments', { count: voiceChunkIndex })}</span>
       {/if}
     </div>
-    <p class="m-0 mt-1">{message || tr('录音会在本机转写并写入正文。')}</p>
+    <p class="m-0 mt-1">{message || tr('Audio is transcribed locally into the document.')}</p>
     {#if modelMissing}
       <Button variant="outline" size="sm" class="mt-2 w-full" onclick={onOpenVoiceSettings}>
-        {tr('前往下载语音模型')}
+        {tr('Download speech model')}
       </Button>
     {/if}
     {#if voicePartial}
       <p class="m-0 mt-1 truncate text-foreground">
-        {tr('正在听：{text}', { text: voicePartial })}
+        {tr('Listening: {text}', { text: voicePartial })}
       </p>
     {/if}
-    <div class="mt-2 h-1 overflow-hidden rounded-full bg-muted" aria-label={tr('麦克风音量')}>
+    <div class="mt-2 h-1 overflow-hidden rounded-full bg-muted" aria-label={tr('Microphone level')}>
       <span
         class="block h-full bg-primary transition-[width]"
         style={`width: ${voiceLevel * 100}%`}

@@ -52,17 +52,17 @@
     <div class="min-w-0 flex-1">
       {#if open}
         <strong class="block text-xs font-medium">
-          {tr('发生了什么')} · {tr('需要体验')}
+          {tr('What happened')} · {tr('Actions to experience')}
         </strong>
       {:else}
-        <strong class="block text-xs font-medium">{tr('任务简报')}</strong>
+        <strong class="block text-xs font-medium">{tr('Task brief')}</strong>
         <span class="block truncate text-[10px] text-muted-foreground">
           {workspace.request.what_happened}
         </span>
       {/if}
     </div>
     <Badge variant="secondary" class="h-5 px-1.5 text-[9px]">
-      {tr('{count} 个步骤', { count: workspace.actions.length })}
+      {tr('{count} steps', { count: workspace.actions.length })}
     </Badge>
     {#if workspace.request_attachments.length > 0}
       <Badge variant="outline" class="h-5 gap-1 px-1.5 text-[9px]">
@@ -74,8 +74,8 @@
       bind:ref={previewButton}
       variant="ghost"
       size="icon-sm"
-      aria-label={tr('全屏预览')}
-      title={tr('全屏预览')}
+      aria-label={tr('Fullscreen preview')}
+      title={tr('Fullscreen preview')}
       onclick={openFullscreenPreview}
     >
       {#key pulseNonce}
@@ -88,8 +88,8 @@
           {...props}
           variant="ghost"
           size="icon-sm"
-          aria-label={open ? tr('收起') : tr('展开')}
-          title={open ? tr('收起') : tr('展开')}
+          aria-label={open ? tr('Collapse') : tr('Expand')}
+          title={open ? tr('Collapse') : tr('Expand')}
         >
           <ChevronDown class={['transition-transform', open ? 'rotate-180' : '']} />
         </Button>
@@ -101,14 +101,14 @@
     <div class="grid gap-5 bg-muted/25 px-5 py-4 text-xs @min-[700px]:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
       <section>
         <h2 class="m-0 text-[10px] font-semibold uppercase text-muted-foreground">
-          {tr('发生了什么')}
+          {tr('What happened')}
         </h2>
         <p class="m-0 mt-2 leading-5">{workspace.request.what_happened}</p>
       </section>
 
       <section>
         <h2 class="m-0 text-[10px] font-semibold uppercase text-muted-foreground">
-          {tr('需要体验')}
+          {tr('Actions to experience')}
         </h2>
         <ol class="m-0 mt-2 grid list-none gap-2 p-0">
           {#each workspace.actions as action, index (action.id)}
@@ -126,14 +126,14 @@
         <section class="@min-[700px]:col-span-2">
           <h2 class="m-0 flex items-center gap-1.5 text-[10px] font-semibold uppercase text-muted-foreground">
             <Paperclip class="size-3" />
-            {tr('Agent 提供的评审附件')}
+            {tr('Review attachments from the agent')}
           </h2>
           <div class="mt-2 grid gap-2 @min-[700px]:grid-cols-2">
             {#each workspace.request_attachments as attachment (attachment.attachment_id)}
               <button
                 type="button"
                 class="group flex min-w-0 items-center gap-2 rounded-lg border bg-background px-3 py-2 text-left transition-colors hover:border-primary/40 hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                aria-label={tr('预览 {name}', { name: attachment.file_name })}
+                aria-label={tr('Preview {name}', { name: attachment.file_name })}
                 onclick={() => openPreview(attachment)}
               >
                 {#if attachment.media_type.startsWith('image/')}
@@ -144,7 +144,7 @@
                 <span class="min-w-0 flex-1">
                   <strong class="block truncate text-[10px] font-medium">{attachment.file_name}</strong>
                   <span class="block text-[9px] text-muted-foreground">
-                    {attachment.media_type === 'text/markdown' ? 'Markdown' : tr('图片')}
+                    {attachment.media_type === 'text/markdown' ? 'Markdown' : tr('Image')}
                     · {(attachment.byte_size / 1024).toFixed(1)} KiB
                   </span>
                 </span>

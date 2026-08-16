@@ -136,6 +136,7 @@ const MODELS: &[ModelManifest] = &[
         languages: &["中文", "English"],
         license: "Apache-2.0",
         streaming: true,
+        hotwords_supported: true,
         files: X_ASR_FILES,
         archive: Some(X_ASR_ARCHIVE),
         mirrors: X_ASR_MIRRORS,
@@ -149,6 +150,7 @@ const MODELS: &[ModelManifest] = &[
         languages: &["中文", "English", "日本語", "한국어", "粤语"],
         license: "FunASR Model License 1.1",
         streaming: false,
+        hotwords_supported: false,
         files: SENSEVOICE_FILES,
         archive: None,
         mirrors: &[],
@@ -162,6 +164,7 @@ const MODELS: &[ModelManifest] = &[
         languages: &["中文", "English", "日本語"],
         license: "FunASR Model License",
         streaming: false,
+        hotwords_supported: true,
         files: FUNASR_NANO_FILES,
         archive: None,
         mirrors: &[],
@@ -217,6 +220,7 @@ struct ModelManifest {
     languages: &'static [&'static str],
     license: &'static str,
     streaming: bool,
+    hotwords_supported: bool,
     files: &'static [ModelFile],
     archive: Option<ArchiveSource>,
     mirrors: &'static [FileMirror],
@@ -233,6 +237,7 @@ pub struct SpeechModelInfo {
     pub path: String,
     pub missing_files: Vec<String>,
     pub streaming: bool,
+    pub hotwords_supported: bool,
     pub languages: &'static [&'static str],
     pub license: &'static str,
 }
@@ -296,9 +301,16 @@ fn model_info_from_manifest(library_root: &Path, model: &'static ModelManifest) 
         path: display_path(&dir),
         missing_files,
         streaming: model.streaming,
+        hotwords_supported: model.hotwords_supported,
         languages: model.languages,
         license: model.license,
     }
+}
+
+/// Whether a model's recognizer accepts contextual hotwords. SenseVoice does
+/// not; X-ASR (online transducer) and FunASR-Nano do.
+pub fn model_supports_hotwords(model_id: &str) -> Result<bool, String> {
+    Ok(manifest(model_id)?.hotwords_supported)
 }
 
 pub fn delete_model(library_root: &Path, model_id: &str) -> Result<(), String> {
@@ -614,6 +626,14 @@ fn display_path(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hotword_capability_matches_manifest() {
+        assert!(model_supports_hotwords(X_ASR_MODEL_ID).unwrap());
+        assert!(!model_supports_hotwords(SENSEVOICE_MODEL_ID).unwrap());
+        assert!(model_supports_hotwords(FUNASR_NANO_MODEL_ID).unwrap());
+        assert!(model_supports_hotwords("unknown-model").is_err());
+    }
 
     #[test]
     fn manifest_has_three_supported_models_with_unique_ids() {

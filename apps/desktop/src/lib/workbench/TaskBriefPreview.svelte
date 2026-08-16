@@ -61,11 +61,11 @@
   }
 
   function rambleLabel() {
-    if (ramblePhase === 'starting') return tr('正在启动…')
-    if (ramblePhase === 'stopping') return tr('正在暂停…')
-    if (rambleActive) return tr('暂停 Ramble')
-    if (rambleStartedOnce) return tr('继续 Ramble')
-    return tr('开始 Ramble')
+    if (ramblePhase === 'starting') return tr('Starting…')
+    if (ramblePhase === 'stopping') return tr('Pausing…')
+    if (rambleActive) return tr('Pause Ramble')
+    if (rambleStartedOnce) return tr('Resume Ramble')
+    return tr('Start Ramble')
   }
 
   function openAttachment(attachment: RequestAttachmentView) {
@@ -81,7 +81,7 @@
   >
     <Dialog.Header class="border-b px-6 py-4 pr-14">
       <Dialog.Title class="text-lg font-semibold leading-snug">
-        {workspace?.request.title ?? tr('任务简报')}
+        {workspace?.request.title ?? tr('Task brief')}
       </Dialog.Title>
       <Dialog.Description class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5">
         {#if workspace}
@@ -94,7 +94,7 @@
             <span class="max-w-[42ch] truncate">{workspace.request.source_hint}</span>
           {/if}
           <span class="text-muted-foreground">·</span>
-          <span>{tr('{count} 个步骤', { count: workspace.actions.length })}</span>
+          <span>{tr('{count} steps', { count: workspace.actions.length })}</span>
           <span class="text-muted-foreground">·</span>
           <span>{formatTime(workspace.request.created_at)}</span>
         {/if}
@@ -106,7 +106,7 @@
         <article class="mx-auto max-w-3xl px-8 py-8">
           <section>
             <h2 class="m-0 border-b border-border pb-2 text-base font-semibold">
-              {tr('发生了什么')}
+              {tr('What happened')}
             </h2>
             <p class="m-0 mt-4 whitespace-pre-wrap text-[15px] leading-7">
               {workspace.request.what_happened}
@@ -115,7 +115,7 @@
 
           <section class="mt-8">
             <h2 class="m-0 border-b border-border pb-2 text-base font-semibold">
-              {tr('需要体验')}
+              {tr('Actions to experience')}
             </h2>
             <ol class="m-0 mt-4 grid list-none gap-3 p-0">
               {#each workspace.actions as action, index (action.id)}
@@ -136,7 +136,7 @@
           {#if workspace.context_refs.length > 0}
             <section class="mt-8">
               <h2 class="m-0 border-b border-border pb-2 text-base font-semibold">
-                {tr('上下文引用')}
+                {tr('Context references')}
               </h2>
               <ul class="m-0 mt-4 grid list-none gap-3 p-0">
                 {#each workspace.context_refs as ref, index (`${ref.label}:${ref.uri}:${index}`)}
@@ -164,7 +164,7 @@
                 class="m-0 flex items-center gap-1.5 border-b border-border pb-2 text-base font-semibold"
               >
                 <Paperclip class="size-4 text-muted-foreground" />
-                {tr('Agent 提供的评审附件')}
+                {tr('Review attachments from the agent')}
               </h2>
               <ul class="m-0 mt-4 grid list-none gap-2 p-0">
                 {#each workspace.request_attachments as attachment (attachment.attachment_id)}
@@ -172,7 +172,7 @@
                     <button
                       type="button"
                       class="flex w-full items-center gap-3 rounded-lg border bg-background px-3 py-2 text-left transition-colors hover:border-primary/40 hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      aria-label={tr('预览 {name}', { name: attachment.file_name })}
+                      aria-label={tr('Preview {name}', { name: attachment.file_name })}
                       onclick={() => openAttachment(attachment)}
                     >
                       {#if attachment.media_type.startsWith('image/')}
@@ -185,7 +185,7 @@
                           {attachment.file_name}
                         </strong>
                         <span class="block text-xs text-muted-foreground">
-                          {attachment.media_type === 'text/markdown' ? 'Markdown' : tr('图片')}
+                          {attachment.media_type === 'text/markdown' ? 'Markdown' : tr('Image')}
                           · {(attachment.byte_size / 1024).toFixed(1)} KiB
                         </span>
                       </span>
@@ -198,7 +198,7 @@
         </article>
       {:else}
         <div class="grid h-full place-items-center text-sm text-muted-foreground">
-          {tr('没有可预览的任务简报。')}
+          {tr('There is no task brief to preview.')}
         </div>
       {/if}
     </div>

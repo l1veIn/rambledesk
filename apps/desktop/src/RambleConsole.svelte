@@ -36,15 +36,15 @@
   $: recording = state?.recording ?? false
   $: busy = localBusy || (state?.busy ?? true)
   $: statusLabel = !state
-    ? t($locale, '等待主窗口…')
+    ? t($locale, 'Waiting for the main window…')
     : state.phase === 'recording'
-      ? t($locale, '正在记录')
+      ? t($locale, 'Recording')
       : state.phase === 'paused'
-        ? t($locale, 'Ramble 已暂停')
+        ? t($locale, 'Ramble paused')
         : state.phase === 'error'
           ? state.message
-          : t($locale, '准备就绪')
-  $: recordingLabel = recording ? t($locale, '暂停录音') : t($locale, '继续录音')
+          : t($locale, 'Ready')
+  $: recordingLabel = recording ? t($locale, 'Pause recording') : t($locale, 'Resume recording')
   $: consoleMessage = errorMessage || state?.message || statusLabel
 
   onMount(() => {
@@ -138,14 +138,14 @@
   class="floating-console"
   role="toolbar"
   tabindex="0"
-  aria-label={t($locale, 'Ramble 操作台')}
+  aria-label={t($locale, 'Ramble console')}
   title={consoleMessage}
   onpointerdown={(event) => void startDragging(event)}
 >
   <span
     class="console-grip"
     aria-hidden="true"
-    title={t($locale, '拖动悬浮窗')}
+    title={t($locale, 'Drag floating console')}
   >
     <GripVertical size={18} strokeWidth={1.8} />
   </span>
@@ -168,8 +168,8 @@
       class="console-tool"
       disabled={state?.captureBusy || !state}
       onclick={() => send({ type: 'capture-screen' })}
-      title={`${t($locale, '截图')} · Ctrl + Shift + 1`}
-      aria-label={t($locale, '截图')}
+      title={`${t($locale, 'Capture')} · Ctrl + Shift + 1`}
+      aria-label={t($locale, 'Capture')}
     >
       {#if state?.captureBusy}
         <LoaderCircle class="animate-spin" size={20} strokeWidth={1.75} />
@@ -181,8 +181,8 @@
       class="console-tool"
       disabled={state?.captureBusy || !state}
       onclick={() => send({ type: 'import-clipboard' })}
-      title={t($locale, '剪贴板')}
-      aria-label={t($locale, '剪贴板')}
+      title={t($locale, 'Clipboard')}
+      aria-label={t($locale, 'Clipboard')}
     >
       <ClipboardPaste size={20} strokeWidth={1.75} />
     </button>
@@ -190,23 +190,23 @@
       class="console-tool"
       disabled={state?.captureBusy || !state || localBusy}
       onclick={chooseFiles}
-      title={t($locale, '选择文件')}
-      aria-label={t($locale, '选择文件')}
+      title={t($locale, 'Choose files')}
+      aria-label={t($locale, 'Choose files')}
     >
       <FilePlus2 size={20} strokeWidth={1.75} />
     </button>
     <button
       class="console-tool exit-tool"
       onclick={() => send({ type: 'exit' })}
-      title={t($locale, '退出 Ramble')}
-      aria-label={t($locale, '退出 Ramble')}
+      title={t($locale, 'Exit Ramble')}
+      aria-label={t($locale, 'Exit Ramble')}
     >
       <LogOut size={20} strokeWidth={1.75} />
     </button>
   </div>
 
   {#if dragActive}
-    <div class="drop-prompt" title={t($locale, '拖入文件即可写入当前文档')}>
+    <div class="drop-prompt" title={t($locale, 'Drop files here to add them to the current document')}>
       <FilePlus2 size={23} strokeWidth={1.8} />
     </div>
   {/if}

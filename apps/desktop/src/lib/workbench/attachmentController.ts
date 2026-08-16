@@ -62,7 +62,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
         })
         .catch((cause) => {
           context.setMessage(
-            context.tr('无法接收截图结果：{error}', { error: context.messageFrom(cause) }),
+            context.tr('Cannot receive the capture result: {error}', { error: context.messageFrom(cause) }),
             'error',
           )
         })
@@ -91,7 +91,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
         })
         .catch(() => {
           context.setMessage(
-            context.tr('当前窗口无法监听文件拖放，请使用文件选择或粘贴。'),
+            context.tr('File drop is unavailable in this window. Use the file picker or paste instead.'),
             'error',
           )
         })
@@ -135,7 +135,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
       const existingIds = new Set(next.attachments.map((item) => item.attachment_id))
       for (const file of files) {
         if (file.size > 20 * 1024 * 1024) {
-          throw new Error(context.tr('{name} 超过 20 MiB 限制', { name: file.name }))
+          throw new Error(context.tr('{name} exceeds the 20 MiB limit', { name: file.name }))
         }
         const input: AddAttachmentInput = {
           request_id: next.request.request_id,
@@ -152,7 +152,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
         .getEditor()
         ?.insertAttachments(next.attachments.filter((item) => !existingIds.has(item.attachment_id)))
       if (!inserted) {
-        throw new Error(context.tr('附件已保存，但编辑器未能在当前光标位置插入附件'))
+        throw new Error(context.tr('The attachment was saved, but the editor could not insert it at the current cursor.'))
       }
       await context.saveDraftNow()
     } catch (cause) {
@@ -177,7 +177,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
       let next = visibleTarget
         ? workspace
         : await invoke<FeedbackWorkspaceView>('get_feedback_workspace', { requestId })
-      if (!next) throw new Error(context.tr('找不到这个反馈请求。'))
+      if (!next) throw new Error(context.tr('This feedback request could not be found.'))
       const existingIds = new Set(next.attachments.map((item) => item.attachment_id))
       for (const path of paths) {
         next = await invoke<FeedbackWorkspaceView>('import_feedback_attachment_path', {
@@ -224,7 +224,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
       context.setBusy(false)
       const message = context.messageFrom(cause)
       context.setMessage(
-        message === '内置区域截图目前只在 Windows 开发环境启用'
+        message === 'Built-in region capture is currently available only in Windows development builds.'
           ? context.tr(message)
           : message,
         'error',
@@ -249,13 +249,13 @@ export function createAttachmentController(context: AttachmentControllerContext)
     try {
       const visibleTarget = workspace?.request.request_id === requestId
       if (visibleTarget && !(await context.saveDraftNow())) {
-        throw new Error(context.tr('当前草稿无法保存，截图尚未写入'))
+        throw new Error(context.tr('The current draft could not be saved, so the capture was not inserted.'))
       }
       await context.waitForRambleMarkdown()
       const target = visibleTarget
         ? workspace
         : await invoke<FeedbackWorkspaceView>('get_feedback_workspace', { requestId })
-      if (!target) throw new Error(context.tr('找不到这个反馈请求。'))
+      if (!target) throw new Error(context.tr('This feedback request could not be found.'))
       const existingIds = new Set(target.attachments.map((item) => item.attachment_id))
       const png = await invoke<ArrayBuffer>('read_completed_screen_capture', {
         captureSessionId: capture.capture_session_id,
@@ -273,23 +273,23 @@ export function createAttachmentController(context: AttachmentControllerContext)
         await refreshPreviews(next)
         await tick()
         if (!context.getEditor()?.insertAttachments(added)) {
-          throw new Error(context.tr('截图附件已保存，但编辑器未能在当前光标位置插入图片'))
+          throw new Error(context.tr('The captured attachment was saved, but the editor could not insert it at the current cursor.'))
         }
         await context.saveDraftNow()
       } else {
         const attachment = added[0]
         if (!attachment) {
-          throw new Error(context.tr('截图附件已保存，但编辑器未能在当前光标位置插入图片'))
+          throw new Error(context.tr('The captured attachment was saved, but the editor could not insert it at the current cursor.'))
         }
         await context.appendRambleMarkdown(
           requestId,
           `![${attachment.file_name}](attachment://${attachment.attachment_id})`,
         )
       }
-      context.setMessage(context.tr('截图已自动插入当前文档位置'), 'success')
+      context.setMessage(context.tr('Capture inserted at the current document position'), 'success')
     } catch (cause) {
       context.setMessage(
-        context.tr('截图写入失败：{error}', { error: context.messageFrom(cause) }),
+        context.tr('Could not insert capture: {error}', { error: context.messageFrom(cause) }),
         'error',
       )
       const current = context.getWorkspace()

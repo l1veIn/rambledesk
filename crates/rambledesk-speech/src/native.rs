@@ -70,7 +70,7 @@ struct SherpaOnline {
 }
 
 impl SherpaOnline {
-    fn create(model_dir: &Path) -> Result<Self, SpeechError> {
+    fn create(model_dir: &Path, hotwords: &[String]) -> Result<Self, SpeechError> {
         require_model_files(
             model_dir,
             &[
@@ -107,7 +107,12 @@ impl SherpaOnline {
                 model_dir.display()
             ))
         })?;
-        let stream = recognizer.create_stream();
+        // The online transducer accepts per-stream contextual hotwords as a
+        // space-separated phrase list.
+        let stream = match join_hotwords(hotwords, ' ') {
+            Some(text) => recognizer.create_stream_with_hotwords(&text),
+            None => recognizer.create_stream(),
+        };
         Ok(Self {
             recognizer,
             stream,
@@ -206,7 +211,8 @@ impl SherpaOffline {
             )));
         }
 
-        let recognizer = create_offline_recognizer(config.provider, &config.model_path)?;
+        let recognizer =
+            create_offline_recognizer(config.provider, &config.model_path, &config.hotwords)?;
         let mut vad_config = VadModelConfig::default();
         vad_config.silero_vad.model = Some(config.vad_model_path.to_string_lossy().into_owned());
         vad_config.silero_vad.threshold = config.vad_threshold;
@@ -269,9 +275,26 @@ impl SherpaOffline {
     }
 }
 
+/// Join a hotword list into the format a sherpa-onnx recognizer expects.
+/// Returns `None` when there is nothing to bias after trimming empty entries.
+fn join_hotwords(hotwords: &[String], separator: char) -> Option<String> {
+    let separator = separator.to_string();
+    let cleaned: Vec<&str> = hotwords
+        .iter()
+        .map(|word| word.trim())
+        .filter(|word| !word.is_empty())
+        .collect();
+    if cleaned.is_empty() {
+        None
+    } else {
+        Some(cleaned.join(&separator))
+    }
+}
+
 fn create_offline_recognizer(
     provider: SpeechProvider,
     model_dir: &Path,
+    hotwords: &[String],
 ) -> Result<OfflineRecognizer, SpeechError> {
     let path = |name: &str| model_dir.join(name).to_string_lossy().into_owned();
     let mut config = OfflineRecognizerConfig::default();
@@ -312,7 +335,8 @@ fn create_offline_recognizer(
                 seed: 42,
                 language: None,
                 itn: 1,
-                hotwords: None,
+                // FunASR-Nano (Qwen3 ASR) contextual hotwords are comma-separated.
+                hotwords: join_hotwords(hotwords, ','),
             };
         }
         SpeechProvider::XAsr => {
@@ -382,7 +406,10 @@ enum RecognitionEngine {
 impl RecognitionEngine {
     fn create(config: &SpeechSessionConfig) -> Result<Self, SpeechError> {
         if config.provider.streaming() {
-            Ok(Self::Online(SherpaOnline::create(&config.model_path)?))
+            Ok(Self::Online(SherpaOnline::create(
+                &config.model_path,
+                &config.hotwords,
+            )?))
         } else {
             Ok(Self::Offline(SherpaOffline::create(config)?))
         }
@@ -716,6 +743,27 @@ fn emit_backpressure_warning(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn join_hotwords_trims_and_skips_empty() {
+        assert_eq!(join_hotwords(&[], ' '), None);
+        assert_eq!(join_hotwords(&["  ".to_owned(), "".to_owned()], ' '), None);
+        assert_eq!(
+            join_hotwords(
+                &[
+                    "Claude Code".to_owned(),
+                    "Codex".to_owned(),
+                    " Grok ".to_owned()
+                ],
+                ','
+            ),
+            Some("Claude Code,Codex,Grok".to_owned())
+        );
+        assert_eq!(
+            join_hotwords(&["Claude Code".to_owned(), "Codex".to_owned()], ' '),
+            Some("Claude Code Codex".to_owned())
+        );
+    }
 
     #[test]
     fn bundled_vad_model_has_expected_size() {

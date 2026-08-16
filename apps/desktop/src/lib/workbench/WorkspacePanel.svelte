@@ -226,7 +226,7 @@
 
           <PaneResizer
             class="workbench-pane-resizer workbench-pane-resizer--horizontal"
-            aria-label={tr('调整任务简报高度')}
+            aria-label={tr('Resize task brief')}
           />
 
           <Pane id="feedback-editor-pane" minSize={100 - TASK_BRIEF_MAX_SIZE}>
@@ -326,9 +326,9 @@
             <Inbox class="size-5" />
           </span>
         {/if}
-        <strong class="block text-sm font-medium">{tr('选择一个请求')}</strong>
+        <strong class="block text-sm font-medium">{tr('Select a request')}</strong>
         <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
-          {tr('从左侧选择宿主、会话和请求，打开反馈工作区。')}
+          {tr('Choose a host, session, and request from the left to open its workspace.')}
         </p>
       </div>
     </div>

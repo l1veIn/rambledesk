@@ -28,8 +28,8 @@ export async function cookFeedback(
 ): Promise<{ markdown: string; model: string }> {
   const apiKey = config.apiKey.trim()
   const modelId = config.model.trim()
-  if (!apiKey) throw new Error(t(config.locale, 'Cooking 已开启，但尚未配置 API Key。'))
-  if (!modelId) throw new Error(t(config.locale, 'Cooking 已开启，但尚未配置模型名称。'))
+  if (!apiKey) throw new Error(t(config.locale, 'Cooking is enabled, but no API key has been configured.'))
+  if (!modelId) throw new Error(t(config.locale, 'Cooking is enabled, but no model name has been configured.'))
 
   const provider = createOpenAI({
     apiKey,
@@ -57,7 +57,7 @@ export async function cookFeedback(
   })
   const markdown = result.text.trim()
   if (!markdown) {
-    throw new Error(t(config.locale, 'Cooking 模型返回了空内容，请检查模型配置后重试。'))
+    throw new Error(t(config.locale, 'The Cooking model returned an empty response. Check the model configuration and try again.'))
   }
   return {
     markdown,

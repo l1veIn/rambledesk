@@ -79,8 +79,8 @@
   type McpHost = { id: string; name: string; installed: boolean; configured: boolean }
   type McpInstallResult = { action: 'created' | 'updated' | 'unchanged' }
 
-  const baseSteps = ['欢迎', '数据位置', '语音输入', '适配器', '通知', 'Cooking', '完成']
-  const macSteps = ['欢迎', '数据位置', '语音输入', '权限', '适配器', '通知', 'Cooking', '完成']
+  const baseSteps = ['Welcome', 'Storage', 'Voice input', 'Adapters', 'Notifications', 'Cooking', 'Finish']
+  const macSteps = ['Welcome', 'Storage', 'Voice input', 'Permissions', 'Adapters', 'Notifications', 'Cooking', 'Finish']
   let steps = baseSteps
   let showMacPermissionStep = false
   const isTauri = '__TAURI_INTERNALS__' in window
@@ -156,7 +156,7 @@
     finishOnboarding()
     openWizard = false
     onClose()
-    if (showToast) toast.success(tr('RambleDesk 已准备就绪'))
+    if (showToast) toast.success(tr('RambleDesk is ready'))
   }
 
   function messageFrom(cause: unknown) {
@@ -175,7 +175,7 @@
     try {
       storage = await invoke<StorageView>('get_data_storage_settings')
     } catch (cause) {
-      toast.error(tr('无法读取数据存储位置'), { description: messageFrom(cause) })
+      toast.error(tr('Could not read the data storage location'), { description: messageFrom(cause) })
     }
   }
 
@@ -187,9 +187,9 @@
     try {
       storage = await invoke<StorageView>('set_data_storage_path', { path })
       storageRestartRequired = storage.restart_required
-      toast.success(tr('数据存储位置已保存'))
+      toast.success(tr('Data storage location saved'))
     } catch (cause) {
-      toast.error(tr('无法更改数据存储位置'), { description: messageFrom(cause) })
+      toast.error(tr('Could not change the data storage location'), { description: messageFrom(cause) })
     } finally {
       storageBusy = false
     }
@@ -200,7 +200,7 @@
     try {
       await invoke('restart_application')
     } catch (cause) {
-      toast.error(tr('无法重启 RambleDesk'), { description: messageFrom(cause) })
+      toast.error(tr('Could not restart RambleDesk'), { description: messageFrom(cause) })
     }
   }
 
@@ -208,7 +208,7 @@
     try {
       models = await invoke<SpeechModel[]>('list_speech_models')
     } catch (cause) {
-      toast.error(tr('无法读取语音模型'), { description: messageFrom(cause) })
+      toast.error(tr('Could not read voice models'), { description: messageFrom(cause) })
     }
   }
 
@@ -219,9 +219,9 @@
     try {
       await invoke<SpeechModel>('download_speech_model', { modelId: selectedModel.id })
       await loadModels()
-      toast.success(tr('语音模型已安装'))
+      toast.success(tr('Voice model installed'))
     } catch (cause) {
-      toast.error(tr('语音模型下载失败'), { description: messageFrom(cause) })
+      toast.error(tr('Voice model download failed'), { description: messageFrom(cause) })
     } finally {
       modelBusy = false
     }
@@ -233,7 +233,7 @@
       hosts = await invoke<McpHost[]>('detect_generic_mcp_hosts')
       hostSelections = new Set(hosts.filter((host) => host.installed && !host.configured).map((host) => host.id))
     } catch (cause) {
-      toast.error(tr('无法检测适配器宿主'), { description: messageFrom(cause) })
+      toast.error(tr('Could not detect adapter hosts'), { description: messageFrom(cause) })
     } finally {
       hostsLoading = false
     }
@@ -252,10 +252,10 @@
     try {
       const results = await invoke<McpInstallResult[]>('install_generic_mcp_hosts', { hostIds: selectedHosts })
       const changed = results.filter((result) => result.action !== 'unchanged').length
-      toast.success(tr('适配器已配置'), { description: tr('请重启 {count} 个宿主后使用。', { count: changed }) })
+      toast.success(tr('Adapters configured'), { description: tr('Restart {count} host(s) before using them.', { count: changed }) })
       await loadHosts()
     } catch (cause) {
-      toast.error(tr('适配器安装失败'), { description: messageFrom(cause) })
+      toast.error(tr('Adapter installation failed'), { description: messageFrom(cause) })
     } finally {
       adapterBusy = false
     }
@@ -266,9 +266,9 @@
     piBusy = true
     try {
       await invoke<string>('install_pi_package', { checkoutRoot: null })
-      toast.success(tr('Pi 原生适配器已安装'))
+      toast.success(tr('Pi native adapter installed'))
     } catch (cause) {
-      toast.error(tr('Pi 适配器安装失败'), { description: messageFrom(cause) })
+      toast.error(tr('Pi adapter installation failed'), { description: messageFrom(cause) })
     } finally {
       piBusy = false
     }
@@ -279,12 +279,12 @@
     notificationBusy = true
     try {
       const permission = (await isPermissionGranted()) ? 'granted' : await requestPermission()
-      if (permission !== 'granted') throw new Error(tr('操作系统没有授予弹窗通知权限。'))
+      if (permission !== 'granted') throw new Error(tr('The operating system did not grant notification permission.'))
       setNotificationPopupEnabled(true)
-      toast.success(tr('系统通知已开启'))
+      toast.success(tr('System notifications enabled'))
     } catch (cause) {
       setNotificationPopupEnabled(false)
-      toast.error(tr('无法开启系统通知'), { description: messageFrom(cause) })
+      toast.error(tr('Could not enable system notifications'), { description: messageFrom(cause) })
     } finally {
       notificationBusy = false
     }
@@ -314,13 +314,13 @@
           <Sparkles class="size-5" />
         </span>
         <div>
-          <Dialog.Title>{tr('欢迎使用 RambleDesk')}</Dialog.Title>
+          <Dialog.Title>{tr('Welcome to RambleDesk')}</Dialog.Title>
           <Dialog.Description id="onboarding-description" class="mt-1 text-xs">
-            {tr('几步完成常用配置；所有选项之后都可在设置中调整。')}
+            {tr('Finish common setup in a few steps. Every option can be changed later in Settings.')}
           </Dialog.Description>
         </div>
       </div>
-      <div class="mt-5 flex gap-1.5" aria-label={tr('引导进度')}>
+      <div class="mt-5 flex gap-1.5" aria-label={tr('Setup progress')}>
         {#each steps as label, index}
           <span
             class={[
@@ -335,57 +335,57 @@
     </Dialog.Header>
 
     <div class="min-h-0 flex-1 overflow-y-auto px-7 py-7">
-      {#if steps[step] === '欢迎'}
+      {#if steps[step] === 'Welcome'}
         <div class="mx-auto flex max-w-lg flex-col items-center text-center">
           <span class="grid size-16 place-items-center rounded-2xl bg-primary/10 text-primary"><Rocket class="size-8" /></span>
-          <h2 class="mb-0 mt-5 text-xl font-semibold">{tr('把体验中的想法，及时变成可用反馈。')}</h2>
+          <h2 class="mb-0 mt-5 text-xl font-semibold">{tr('Turn thoughts from an experience into useful feedback while they are fresh.')}</h2>
           <p class="mb-0 mt-3 text-sm leading-6 text-muted-foreground">
-            {tr('RambleDesk 收集文字、语音和截图反馈，交给你的 Coding 工具；Cooking 还能把原始 Ramble 整理成正式反馈。')}
+            {tr('RambleDesk captures text, voice, and screenshot feedback for your coding tools. Cooking can turn a raw Ramble into formal feedback.')}
           </p>
           <div class="mt-5 flex items-center gap-2 text-xs">
-            <span class="text-muted-foreground">{tr('界面语言')}</span>
+            <span class="text-muted-foreground">{tr('Interface language')}</span>
             <Button size="sm" variant={$locale === 'zh-CN' ? 'default' : 'outline'} onclick={() => setLocale('zh-CN')}>简体中文</Button>
             <Button size="sm" variant={$locale === 'en' ? 'default' : 'outline'} onclick={() => setLocale('en')}>English</Button>
           </div>
           <div class="mt-5 grid w-full grid-cols-3 gap-3 text-left text-xs">
-            <div class="rounded-lg border bg-muted/20 p-3"><Mic class="mb-2 size-4 text-primary" />{tr('本地语音转录')}</div>
-            <div class="rounded-lg border bg-muted/20 p-3"><PlugZap class="mb-2 size-4 text-primary" />{tr('Coding 工具适配')}</div>
-            <div class="rounded-lg border bg-muted/20 p-3"><ChefHat class="mb-2 size-4 text-primary" />{tr('可选 AI Cooking')}</div>
+            <div class="rounded-lg border bg-muted/20 p-3"><Mic class="mb-2 size-4 text-primary" />{tr('Local voice transcription')}</div>
+            <div class="rounded-lg border bg-muted/20 p-3"><PlugZap class="mb-2 size-4 text-primary" />{tr('Coding-tool adapters')}</div>
+            <div class="rounded-lg border bg-muted/20 p-3"><ChefHat class="mb-2 size-4 text-primary" />{tr('Optional AI Cooking')}</div>
           </div>
         </div>
-      {:else if steps[step] === '数据位置'}
+      {:else if steps[step] === 'Storage'}
         <section class="mx-auto max-w-xl">
-          <div class="flex gap-3"><HardDrive class="mt-0.5 size-6 text-primary" /><div><h2 class="m-0 text-lg font-semibold">{tr('先决定数据放在哪里')}</h2><p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{tr('反馈附件、已发布反馈包和语音模型都会存放在此目录。先设置它，后续下载和反馈就直接写入正确位置。')}</p></div></div>
-          <div class="mt-6 rounded-lg border bg-muted/20 p-4"><p class="m-0 text-[10px] font-medium uppercase text-muted-foreground">{tr('当前目录')}</p><p class="mb-0 mt-2 break-all font-mono text-xs">{storage?.selected_path ?? tr('正在读取数据存储位置…')}</p></div>
-          <div class="mt-4 flex items-center justify-between gap-4"><p class="m-0 text-xs text-muted-foreground">{tr('数据库与本地凭证仍留在系统应用目录。')}</p><Button variant="outline" disabled={!isTauri || storageBusy} onclick={() => void chooseStorage()}>{#if storageBusy}<LoaderCircle class="animate-spin" data-icon="inline-start" />{:else}<FolderCog data-icon="inline-start" />{/if}{tr('选择其他位置…')}</Button></div>
-          {#if storageRestartRequired}<div class="mt-5 rounded-lg border border-primary/30 bg-primary/5 p-4 text-xs leading-5 text-primary">{tr('数据目录已保存。现在重启 RambleDesk，后续步骤会直接使用新位置。')}</div>{/if}
+          <div class="flex gap-3"><HardDrive class="mt-0.5 size-6 text-primary" /><div><h2 class="m-0 text-lg font-semibold">{tr('Choose where data lives first')}</h2><p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{tr('Feedback attachments, published packages, and voice models live in this folder. Set it first so later downloads and feedback go to the right place.')}</p></div></div>
+          <div class="mt-6 rounded-lg border bg-muted/20 p-4"><p class="m-0 text-[10px] font-medium uppercase text-muted-foreground">{tr('Current folder')}</p><p class="mb-0 mt-2 break-all font-mono text-xs">{storage?.selected_path ?? tr('Loading data storage location…')}</p></div>
+          <div class="mt-4 flex items-center justify-between gap-4"><p class="m-0 text-xs text-muted-foreground">{tr('The database and local credentials remain in the system app directory.')}</p><Button variant="outline" disabled={!isTauri || storageBusy} onclick={() => void chooseStorage()}>{#if storageBusy}<LoaderCircle class="animate-spin" data-icon="inline-start" />{:else}<FolderCog data-icon="inline-start" />{/if}{tr('Choose another location…')}</Button></div>
+          {#if storageRestartRequired}<div class="mt-5 rounded-lg border border-primary/30 bg-primary/5 p-4 text-xs leading-5 text-primary">{tr('The data location has been saved. Restart RambleDesk so the remaining setup uses it directly.')}</div>{/if}
         </section>
-      {:else if steps[step] === '语音输入'}
+      {:else if steps[step] === 'Voice input'}
         <section class="mx-auto max-w-xl">
-          <div class="flex gap-3"><Mic class="mt-0.5 size-6 text-primary" /><div><h2 class="m-0 text-lg font-semibold">{tr('用语音快速 Ramble')}</h2><p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{tr('推荐下载一个本地转录模型：音频仅在本机处理，不会上传。也可以跳过，稍后在设置中选择模型、麦克风和 VAD。')}</p></div></div>
+          <div class="flex gap-3"><Mic class="mt-0.5 size-6 text-primary" /><div><h2 class="m-0 text-lg font-semibold">{tr('Ramble quickly with voice')}</h2><p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{tr('We recommend downloading a local transcription model. Audio stays on this device and is never uploaded. You can skip this and choose models, microphones, and VAD later in Settings.')}</p></div></div>
           <div class="mt-6 rounded-lg border bg-muted/20 p-4">
-            <label for="onboarding-model" class="text-xs font-medium">{tr('转录模型')}</label>
+            <label for="onboarding-model" class="text-xs font-medium">{tr('Transcription model')}</label>
             <select id="onboarding-model" class="mt-2 h-9 w-full rounded-md border bg-background px-3 text-xs" value={$speechModelId} onchange={(event) => setSpeechModelId((event.currentTarget as HTMLSelectElement).value as SpeechModelId)}>
-              {#each models as model (model.id)}<option value={model.id}>{speechModelDisplayName($locale, model.id, model.display_name)}{model.installed ? ` · ${tr('已安装')}` : ''}</option>{/each}
+              {#each models as model (model.id)}<option value={model.id}>{speechModelDisplayName($locale, model.id, model.display_name)}{model.installed ? ` · ${tr('Installed')}` : ''}</option>{/each}
             </select>
-            {#if selectedModel}<div class="mt-4 flex items-start justify-between gap-4"><div><div class="flex gap-2"><Badge variant={selectedModel.installed ? 'secondary' : 'outline'}>{selectedModel.installed ? tr('已安装') : mb(selectedModel.size_bytes)}</Badge><Badge variant="outline">{selectedModel.streaming ? tr('流式实时') : tr('VAD 分段')}</Badge></div><p class="mb-0 mt-2 text-xs leading-5 text-muted-foreground">{speechModelDescription($locale, selectedModel.id, selectedModel.description)}</p></div>{#if !selectedModel.installed}<Button disabled={modelBusy} onclick={() => void downloadModel()}>{#if modelBusy}<LoaderCircle class="animate-spin" data-icon="inline-start" />{:else}<Download data-icon="inline-start" />{/if}{modelBusy ? `${modelProgressPercent}%` : tr('下载推荐模型')}</Button>{/if}</div>{/if}
+            {#if selectedModel}<div class="mt-4 flex items-start justify-between gap-4"><div><div class="flex gap-2"><Badge variant={selectedModel.installed ? 'secondary' : 'outline'}>{selectedModel.installed ? tr('Installed') : mb(selectedModel.size_bytes)}</Badge><Badge variant="outline">{selectedModel.streaming ? tr('Live streaming') : tr('VAD segmented')}</Badge></div><p class="mb-0 mt-2 text-xs leading-5 text-muted-foreground">{speechModelDescription($locale, selectedModel.id, selectedModel.description)}</p></div>{#if !selectedModel.installed}<Button disabled={modelBusy} onclick={() => void downloadModel()}>{#if modelBusy}<LoaderCircle class="animate-spin" data-icon="inline-start" />{:else}<Download data-icon="inline-start" />{/if}{modelBusy ? `${modelProgressPercent}%` : tr('Download recommended model')}</Button>{/if}</div>{/if}
             {#if modelBusy}<div class="mt-4 h-1.5 overflow-hidden rounded bg-muted"><div class="h-full bg-primary transition-[width]" style={`width: ${modelProgressPercent}%`}></div></div>{/if}
           </div>
         </section>
-        {:else if steps[step] === '权限'}
+        {:else if steps[step] === 'Permissions'}
           <section class="mx-auto max-w-xl">
-            <div class="flex gap-3"><ShieldCheck class="mt-0.5 size-6 text-primary" /><div><h2 class="m-0 text-lg font-semibold">{tr('授予 Mac 权限')}</h2><p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{tr('截图和语音转录需要 macOS 权限。可以现在授权，也可以稍后在“设置 → 权限”中处理。')}</p></div></div>
+            <div class="flex gap-3"><ShieldCheck class="mt-0.5 size-6 text-primary" /><div><h2 class="m-0 text-lg font-semibold">{tr('Grant Mac permissions')}</h2><p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{tr('Screen capture and voice transcription require macOS permissions. Grant them now or later in Settings → Permissions.')}</p></div></div>
             <div class="mt-6">
               <MacPermissions />
             </div>
           </section>
-      {:else if steps[step] === '适配器'}
+      {:else if steps[step] === 'Adapters'}
         <section class="mx-auto max-w-xl">
           <div class="flex gap-3">
             <PlugZap class="mt-0.5 size-6 text-primary" />
             <div>
-              <h2 class="m-0 text-lg font-semibold">{tr('连接你的 Coding 工具')}</h2>
-              <p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{tr('推荐 Pi 的原生自动继续；也可以按需配置通用 MCP 宿主。')}</p>
+              <h2 class="m-0 text-lg font-semibold">{tr('Connect your coding tools')}</h2>
+              <p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{tr('We recommend Pi’s native automatic continuation. You can also configure generic MCP hosts as needed.')}</p>
             </div>
           </div>
 
@@ -396,18 +396,18 @@
               </span>
               <div class="min-w-0 flex-1">
                 <div class="flex flex-wrap items-center gap-2">
-                  <h3 class="m-0 text-base font-semibold">{tr('Pi 原生自动继续')}</h3>
-                  <Badge variant="secondary">{tr('推荐')}</Badge>
+                  <h3 class="m-0 text-base font-semibold">{tr('Pi native automatic continuation')}</h3>
+                  <Badge variant="secondary">{tr('Recommended')}</Badge>
                 </div>
-                <p class="mb-0 mt-2 text-xs leading-5 text-muted-foreground">{tr('Pi 在同一个工具调用内等待反馈完成，再自动继续当前会话；无需复制或手动发送恢复提示。')}</p>
+                <p class="mb-0 mt-2 text-xs leading-5 text-muted-foreground">{tr('Pi waits for feedback in the same tool call, then automatically continues the current session. No copied or manually sent resume prompt is needed.')}</p>
                 <div class="mt-3 flex flex-wrap gap-2 text-[10px]">
-                  <span class="rounded-full border border-primary/20 bg-background px-2 py-1 text-primary" title={tr('反馈完成后 Pi 会在当前工具调用中自动继续。')}>{tr('原生自动继续')}</span>
-                  <span class="rounded-full border bg-background px-2 py-1 text-muted-foreground" title={tr('不需要回到 Coding 工具手动恢复对话。')}>{tr('无需手动继续')}</span>
+                  <span class="rounded-full border border-primary/20 bg-background px-2 py-1 text-primary" title={tr('Pi automatically continues in the current tool call after feedback is complete.')}>{tr('Native automatic continuation')}</span>
+                  <span class="rounded-full border bg-background px-2 py-1 text-muted-foreground" title={tr('You do not need to return to the coding tool and manually resume the conversation.')}>{tr('No manual continuation')}</span>
                 </div>
               </div>
               <Button size="sm" disabled={piBusy || !isTauri} onclick={() => void installPi()}>
                 {#if piBusy}<LoaderCircle class="animate-spin" data-icon="inline-start" />{:else}<Download data-icon="inline-start" />{/if}
-                {piBusy ? tr('正在安装…') : tr('安装 Pi 适配器')}
+                {piBusy ? tr('Installing…') : tr('Install Pi adapter')}
               </Button>
             </div>
           </div>
@@ -416,78 +416,78 @@
             <summary class="cursor-pointer list-none px-4 py-3 text-xs outline-none [&::-webkit-details-marker]:hidden">
               <span class="flex items-center gap-2">
                 <PlugZap class="size-4 text-muted-foreground" />
-                <span class="font-medium">{tr('通用 MCP 宿主')}</span>
-                <Badge variant="outline" title={tr('提交或取消后，需要手动回到宿主继续当前会话。')}>{tr('手动继续')}</Badge>
-                <span class="ml-auto text-[10px] text-muted-foreground">{tr('按需配置')}</span>
+                <span class="font-medium">{tr('Generic MCP hosts')}</span>
+                <Badge variant="outline" title={tr('After submitting or cancelling, return to the host and continue the session manually.')}>{tr('Manual continuation')}</Badge>
+                <span class="ml-auto text-[10px] text-muted-foreground">{tr('Configure as needed')}</span>
               </span>
             </summary>
             <div class="border-t p-4">
-              <p class="m-0 text-xs leading-5 text-muted-foreground">{tr('MCP 宿主在提交或取消后需要手动回到 Coding 工具，使用恢复提示继续会话。RambleDesk 只写入自己的 MCP 配置，不会覆盖其他服务器。')}</p>
+              <p class="m-0 text-xs leading-5 text-muted-foreground">{tr('After submitting or cancelling, MCP hosts require you to return to the coding tool and continue with its resume prompt. RambleDesk only writes its own MCP entry and never overwrites other servers.')}</p>
               {#if hostsLoading}
-                <p class="mb-0 mt-4 flex items-center gap-2 text-xs text-muted-foreground"><LoaderCircle class="size-4 animate-spin" />{tr('正在检测 Coding 工具…')}</p>
+                <p class="mb-0 mt-4 flex items-center gap-2 text-xs text-muted-foreground"><LoaderCircle class="size-4 animate-spin" />{tr('Detecting coding tools…')}</p>
               {:else if hosts.length === 0}
-                <p class="mb-0 mt-4 text-xs leading-5 text-muted-foreground">{tr('尚未检测到支持的工具。可跳过此步，之后在“设置 → 适配器”安装。')}</p>
+                <p class="mb-0 mt-4 text-xs leading-5 text-muted-foreground">{tr('No supported tools were detected. You can skip this step and install adapters later in Settings → Adapters.')}</p>
               {:else}
                 <div class="mt-4 space-y-1">
                   {#each hosts as host (host.id)}
                     <label class={['flex items-center gap-3 rounded-md px-2 py-2 text-xs', host.installed ? 'cursor-pointer hover:bg-muted' : 'cursor-not-allowed opacity-55']}>
                       <input type="checkbox" class="size-3.5 accent-primary" checked={hostSelections.has(host.id)} disabled={!host.installed || adapterBusy} onchange={() => toggleHost(host.id)} />
                       <span class="flex-1 font-medium">{host.name}</span>
-                      <Badge variant={host.configured ? 'secondary' : 'outline'}>{host.configured ? tr('已配置') : host.installed ? tr('已检测') : tr('未检测到')}</Badge>
+                      <Badge variant={host.configured ? 'secondary' : 'outline'}>{host.configured ? tr('Configured') : host.installed ? tr('Detected') : tr('Not detected')}</Badge>
                     </label>
                   {/each}
                 </div>
                 <Button class="mt-4" disabled={adapterBusy || selectedHosts.length === 0} onclick={() => void installSelectedHosts()}>
                   {#if adapterBusy}<LoaderCircle class="animate-spin" data-icon="inline-start" />{:else}<PlugZap data-icon="inline-start" />{/if}
-                  {tr('安装所选 MCP 适配器')}
+                  {tr('Install selected MCP adapters')}
                 </Button>
               {/if}
             </div>
           </details>
         </section>
-      {:else if steps[step] === '通知'}
+      {:else if steps[step] === 'Notifications'}
         <section class="mx-auto max-w-xl">
-          <div class="flex gap-3"><BellRing class="mt-0.5 size-6 text-primary" /><div><h2 class="m-0 text-lg font-semibold">{tr('需要通知提醒吗？')}</h2><p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{tr('当 Coding 工具请求反馈时，RambleDesk 可以显示系统弹窗并播放声音。')}</p></div></div>
+          <div class="flex gap-3"><BellRing class="mt-0.5 size-6 text-primary" /><div><h2 class="m-0 text-lg font-semibold">{tr('Would you like notifications?')}</h2><p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{tr('When a coding tool requests feedback, RambleDesk can show a system notification and play a sound.')}</p></div></div>
           <div class="mt-6 space-y-3 rounded-lg border bg-muted/20 p-4">
             <div class="flex items-center justify-between gap-4">
-              <div><strong class="text-xs">{tr('系统弹窗')}</strong><p class="mb-0 mt-1 text-[10px] text-muted-foreground">{tr('在系统通知中心显示新反馈请求。')}</p></div>
-              {#if $notificationPopupEnabled}<Badge variant="secondary">{tr('已开启')}</Badge>{:else}<Button size="sm" disabled={notificationBusy || !isTauri} onclick={() => void enableNotifications()}>{#if notificationBusy}<LoaderCircle class="animate-spin" data-icon="inline-start" />{/if}{tr('允许通知')}</Button>{/if}
+              <div><strong class="text-xs">{tr('System notifications')}</strong><p class="mb-0 mt-1 text-[10px] text-muted-foreground">{tr('Show new feedback requests in the system notification center.')}</p></div>
+              {#if $notificationPopupEnabled}<Badge variant="secondary">{tr('Enabled')}</Badge>{:else}<Button size="sm" disabled={notificationBusy || !isTauri} onclick={() => void enableNotifications()}>{#if notificationBusy}<LoaderCircle class="animate-spin" data-icon="inline-start" />{/if}{tr('Allow notifications')}</Button>{/if}
             </div>
             <div class="flex items-center justify-between gap-4 border-t pt-3">
-              <div><strong class="text-xs">{tr('声音提醒')}</strong><p class="mb-0 mt-1 text-[10px] text-muted-foreground">{tr('通知到达时播放提示音。')}</p></div>
-              <button type="button" role="switch" aria-label={tr('声音提醒')} aria-checked={$notificationSoundEnabled} class={['relative h-[22px] w-10 rounded-full transition-colors', $notificationSoundEnabled ? 'bg-primary' : 'bg-input']} onclick={() => setNotificationSoundEnabled(!$notificationSoundEnabled)}><span class={['absolute left-0.5 top-0.5 size-4 rounded-full bg-background shadow transition-transform', $notificationSoundEnabled ? 'translate-x-5' : '']}></span></button>
+              <div><strong class="text-xs">{tr('Sound alerts')}</strong><p class="mb-0 mt-1 text-[10px] text-muted-foreground">{tr('Play a sound when a notification arrives.')}</p></div>
+              <button type="button" role="switch" aria-label={tr('Sound alerts')} aria-checked={$notificationSoundEnabled} class={['relative h-[22px] w-10 rounded-full transition-colors', $notificationSoundEnabled ? 'bg-primary' : 'bg-input']} onclick={() => setNotificationSoundEnabled(!$notificationSoundEnabled)}><span class={['absolute left-0.5 top-0.5 size-4 rounded-full bg-background shadow transition-transform', $notificationSoundEnabled ? 'translate-x-5' : '']}></span></button>
             </div>
-            <p class="m-0 border-t pt-3 text-[10px] leading-4 text-muted-foreground">{tr('提示音、音量等高级通知选项可随时在“设置 → 通知”中调整。')}</p>
+            <p class="m-0 border-t pt-3 text-[10px] leading-4 text-muted-foreground">{tr('Sound, volume, and other advanced notification options can be adjusted anytime in Settings → Notifications.')}</p>
           </div>
         </section>
       {:else if steps[step] === 'Cooking'}
         <section class="mx-auto max-w-xl">
-          <div class="flex gap-3"><ChefHat class="mt-0.5 size-6 text-primary" /><div><h2 class="m-0 text-lg font-semibold">{tr('要启用 Feedback Cooking 吗？')}</h2><p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{tr('可选：提交前用你自己的模型服务把原始 Ramble 整理为正式反馈。原始 uncooked 正文始终保留。')}</p></div></div>
-          <div class="mt-6 rounded-lg border bg-muted/20 p-4"><div class="flex items-center justify-between gap-4"><div><strong class="text-xs">Cooking</strong><p class="mb-0 mt-1 text-[10px] text-muted-foreground">{tr('需要 API Key，且正文会发送给你选择的服务。')}</p></div><button type="button" role="switch" aria-label="Cooking" aria-checked={$cookingEnabled} class={['relative h-[22px] w-10 rounded-full transition-colors', $cookingEnabled ? 'bg-primary' : 'bg-input']} onclick={() => setCookingEnabled(!$cookingEnabled)}><span class={['absolute left-0.5 top-0.5 size-4 rounded-full bg-background shadow transition-transform', $cookingEnabled ? 'translate-x-5' : '']}></span></button></div>
-            {#if $cookingEnabled}<div class="mt-5 grid gap-3 border-t pt-4"><label class="text-xs font-medium">{tr('模型服务')}<select class="mt-1.5 h-9 w-full rounded-md border bg-background px-3 text-xs" value={$cookingProvider} onchange={(event) => chooseCookingProvider((event.currentTarget as HTMLSelectElement).value as CookingProvider)}><option value="deepseek">DeepSeek</option><option value="openai">OpenAI</option><option value="compatible">{tr('OpenAI 兼容服务')}</option></select></label><label class="text-xs font-medium">Base URL<input class="mt-1.5 h-9 w-full rounded-md border bg-background px-3 text-xs" type="url" value={$cookingBaseUrl} oninput={(event) => setCookingBaseUrl((event.currentTarget as HTMLInputElement).value)} /></label><div class="grid grid-cols-2 gap-3"><label class="text-xs font-medium">{tr('模型名称')}<input class="mt-1.5 h-9 w-full rounded-md border bg-background px-3 text-xs" value={$cookingModel} oninput={(event) => setCookingModel((event.currentTarget as HTMLInputElement).value)} /></label><label class="text-xs font-medium">{tr('思考强度')}<select class="mt-1.5 h-9 w-full rounded-md border bg-background px-3 text-xs" value={$cookingReasoningEffort} onchange={(event) => setCookingReasoningEffort((event.currentTarget as HTMLSelectElement).value as CookingReasoningEffort)}><option value="none">{tr('不使用')}</option><option value="minimal">minimal</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option><option value="xhigh">xhigh</option><option value="max">max</option></select></label></div><label class="text-xs font-medium">API Key<input class="mt-1.5 h-9 w-full rounded-md border bg-background px-3 text-xs" type="password" autocomplete="off" value={$cookingApiKey} placeholder="sk-…" oninput={(event) => setCookingApiKey((event.currentTarget as HTMLInputElement).value)} /></label></div>{/if}
+          <div class="flex gap-3"><ChefHat class="mt-0.5 size-6 text-primary" /><div><h2 class="m-0 text-lg font-semibold">{tr('Enable Feedback Cooking?')}</h2><p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{tr('Optional: use your own model service to turn a raw Ramble into formal feedback before submitting. The uncooked source is always preserved.')}</p></div></div>
+          <div class="mt-6 rounded-lg border bg-muted/20 p-4"><div class="flex items-center justify-between gap-4"><div><strong class="text-xs">Cooking</strong><p class="mb-0 mt-1 text-[10px] text-muted-foreground">{tr('An API key is required and the feedback body is sent to your selected service.')}</p></div><button type="button" role="switch" aria-label="Cooking" aria-checked={$cookingEnabled} class={['relative h-[22px] w-10 rounded-full transition-colors', $cookingEnabled ? 'bg-primary' : 'bg-input']} onclick={() => setCookingEnabled(!$cookingEnabled)}><span class={['absolute left-0.5 top-0.5 size-4 rounded-full bg-background shadow transition-transform', $cookingEnabled ? 'translate-x-5' : '']}></span></button></div>
+            {#if $cookingEnabled}<div class="mt-5 grid gap-3 border-t pt-4"><label class="text-xs font-medium">{tr('Model provider')}<select class="mt-1.5 h-9 w-full rounded-md border bg-background px-3 text-xs" value={$cookingProvider} onchange={(event) => chooseCookingProvider((event.currentTarget as HTMLSelectElement).value as CookingProvider)}><option value="deepseek">DeepSeek</option><option value="openai">OpenAI</option><option value="compatible">{tr('OpenAI-compatible service')}</option></select></label><label class="text-xs font-medium">Base URL<input class="mt-1.5 h-9 w-full rounded-md border bg-background px-3 text-xs" type="url" value={$cookingBaseUrl} oninput={(event) => setCookingBaseUrl((event.currentTarget as HTMLInputElement).value)} /></label><div class="grid grid-cols-2 gap-3"><label class="text-xs font-medium">{tr('Model name')}<input class="mt-1.5 h-9 w-full rounded-md border bg-background px-3 text-xs" value={$cookingModel} oninput={(event) => setCookingModel((event.currentTarget as HTMLInputElement).value)} /></label><label class="text-xs font-medium">{tr('Reasoning effort')}<select class="mt-1.5 h-9 w-full rounded-md border bg-background px-3 text-xs" value={$cookingReasoningEffort} onchange={(event) => setCookingReasoningEffort((event.currentTarget as HTMLSelectElement).value as CookingReasoningEffort)}><option value="none">{tr('None')}</option><option value="minimal">minimal</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option><option value="xhigh">xhigh</option><option value="max">max</option></select></label></div><label class="text-xs font-medium">API Key<input class="mt-1.5 h-9 w-full rounded-md border bg-background px-3 text-xs" type="password" autocomplete="off" value={$cookingApiKey} placeholder="sk-…" oninput={(event) => setCookingApiKey((event.currentTarget as HTMLInputElement).value)} /></label></div>{/if}
           </div>
         </section>
       {:else}
         <div class="mx-auto flex max-w-lg flex-col items-center pt-8 text-center">
           <span class="grid size-16 place-items-center rounded-2xl bg-success/10 text-success"><Check class="size-8" /></span>
-          <h2 class="mb-0 mt-5 text-xl font-semibold">{tr('准备完成')}</h2>
-          <p class="mb-0 mt-3 text-sm leading-6 text-muted-foreground">{tr('现在可以从 Coding 工具直接开始 Ramble 了。所有设置均可在右上角设置中更改。')}</p>
+          <h2 class="mb-0 mt-5 text-xl font-semibold">{tr('You are all set')}</h2>
+          <p class="mb-0 mt-3 text-sm leading-6 text-muted-foreground">{tr('You can now start a Ramble directly from a coding tool. Every setting can be changed from the top-right Settings button.')}</p>
           <div class="mt-6 w-full rounded-lg border bg-muted/20 p-4 text-left">
-            <p class="m-0 text-[10px] font-medium text-muted-foreground">{tr('把这句示例提示词粘贴到 Coding agent / Coding 工具中：')}</p>
-            <code class="mt-2 block rounded-md bg-background px-3 py-2 text-xs text-foreground">{tr('今天我们用 RambleDesk 开发')}</code>
+            <p class="m-0 text-[10px] font-medium text-muted-foreground">{tr('Paste this example prompt into your coding agent or coding tool:')}</p>
+            <code class="mt-2 block rounded-md bg-background px-3 py-2 text-xs text-foreground">{tr('Today we are developing with RambleDesk')}</code>
           </div>
-          <div class="mt-3 flex items-center gap-2 rounded-lg border bg-muted/20 px-4 py-3 text-xs text-muted-foreground"><Volume2 class="size-4 text-primary" />{tr('提示：语音模型下载完成后即可使用麦克风。')}</div>
+          <div class="mt-3 flex items-center gap-2 rounded-lg border bg-muted/20 px-4 py-3 text-xs text-muted-foreground"><Volume2 class="size-4 text-primary" />{tr('Tip: the microphone is ready once a voice model finishes downloading.')}</div>
         </div>
       {/if}
     </div>
 
     <footer class="flex shrink-0 items-center justify-between border-t bg-muted/15 px-7 py-4">
-      <Button variant="ghost" size="sm" onclick={() => complete(false)}>{tr('稍后设置')}</Button>
+      <Button variant="ghost" size="sm" onclick={() => complete(false)}>{tr('Set up later')}</Button>
       <div class="flex items-center gap-2">
-        {#if step > 0 && !storageRestartRequired}<Button variant="outline" size="sm" onclick={() => move(step - 1)}><ChevronLeft data-icon="inline-start" />{tr('上一步')}</Button>{/if}
-        {#if storageRestartRequired}<Button disabled={storageBusy} onclick={() => void restartForStorage()}><Rocket data-icon="inline-start" />{tr('重启并继续')}</Button>
-        {:else if step === steps.length - 1}<Button onclick={() => complete()}><Check data-icon="inline-start" />{tr('开始使用')}</Button>
-        {:else}<Button disabled={storageBusy || modelBusy} onclick={() => move(step + 1)}>{steps[step] === '语音输入' && !selectedModel?.installed ? tr('跳过语音设置') : tr('继续')}<ChevronRight data-icon="inline-end" /></Button>{/if}
+        {#if step > 0 && !storageRestartRequired}<Button variant="outline" size="sm" onclick={() => move(step - 1)}><ChevronLeft data-icon="inline-start" />{tr('Back')}</Button>{/if}
+        {#if storageRestartRequired}<Button disabled={storageBusy} onclick={() => void restartForStorage()}><Rocket data-icon="inline-start" />{tr('Restart and continue')}</Button>
+        {:else if step === steps.length - 1}<Button onclick={() => complete()}><Check data-icon="inline-start" />{tr('Start using RambleDesk')}</Button>
+        {:else}<Button disabled={storageBusy || modelBusy} onclick={() => move(step + 1)}>{steps[step] === 'Voice input' && !selectedModel?.installed ? tr('Skip voice setup') : tr('Continue')}<ChevronRight data-icon="inline-end" /></Button>{/if}
       </div>
     </footer>
   </Dialog.Content>

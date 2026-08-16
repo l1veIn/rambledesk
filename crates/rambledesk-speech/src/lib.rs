@@ -49,6 +49,7 @@ pub struct SpeechSessionConfig {
     pub vad_threshold: f32,
     pub vad_silence_ms: u32,
     pub input_device: Option<String>,
+    pub hotwords: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

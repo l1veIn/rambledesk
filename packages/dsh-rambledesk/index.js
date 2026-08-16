@@ -30,8 +30,9 @@ const TERMINAL_PHASES = ["completed", "cancelled", "approved", "feedback_submitt
 /// the next turn without a plugin reload.
 const RAMBLE_MODE_TEXT = `## RambleDesk-only mode
 You are in RambleDesk-only mode: your only communication channel with the human is RambleDesk (the desktop workbench). The human will not read this chat.
-- When you need the human to operate, review, verify, decide, or give feedback: call request_ramble_feedback (keep wait=true; the tool call blocks until the human submits) and then end the turn.
-- The human performs the actions, issues further instructions, and submits a feedback package in RambleDesk; when the tool returns completed, implement the package item by item.
+- On every new task, request, or instruction from the human, first call request_ramble_feedback (keep wait=true; the tool call blocks until the human submits) to confirm the goal, gather requirements, and collect feedback — do not start implementing or answer the task directly in chat. Then end the turn.
+- Load the "ramble" skill for the full request/wait/implement loop when it is available, and follow it.
+- When the tool returns completed, read the feedback markdown and attachment paths and implement the package item by item; when you need another confirmation or review, create a new request instead of asking in chat.
 - Do not ask questions, wait, or solicit input in this chat. Report progress here only briefly.
 - After an interrupt or restart, reconnect with resume_ramble_feedback instead of creating a duplicate request; when the human explicitly gives up, call cancel_ramble_feedback.
 - Never create a generic request merely because a task started or the agent is about to finish.`;
@@ -627,8 +628,8 @@ export async function registerRambleMode(services, options = {}) {
         return {
           kind: available ? "success" : "error",
           text: available
-            ? "RambleDesk-only mode enabled. The agent now communicates with you only through RambleDesk; the chat is progress-only."
-            : "RambleDesk-only mode enabled, but the RambleDesk app is not reachable. Start RambleDesk before the agent creates a feedback request.",
+            ? "RambleDesk-only mode enabled. Describe your next task or question now: the agent will open a RambleDesk feedback request instead of answering in chat."
+            : "RambleDesk-only mode enabled, but the RambleDesk app is not reachable. Start RambleDesk, then describe your task; the agent will open a feedback request once it is reachable.",
         };
       },
     });
@@ -677,7 +678,7 @@ export async function checkHealth(options = {}, env = process.env) {
 // #region cordis plugin
 
 const name = "rambledesk";
-const inject = ["tools"];
+const inject = ["tools", "commands", "systemPrompt"];
 
 async function apply(ctx, config = {}) {
   const options = {
@@ -689,8 +690,13 @@ async function apply(ctx, config = {}) {
   };
   registerRambleDshTools(ctx.tools, options);
   await registerRambleMode({
-    systemPrompt: ctx.get("systemPrompt"),
-    commands: ctx.get("commands"),
+    // Inject the services directly instead of reading them with `ctx.get()`.
+    // `ctx.get()` returns `undefined` (never throws) when a service is not
+    // active in this scope, which silently skipped the ramble-mode switch and
+    // the `/ramble` slash command. Declaring them in `inject` makes a missing
+    // service fail the plugin load loudly, matching other dsh plugins.
+    systemPrompt: ctx.systemPrompt,
+    commands: ctx.commands,
   }, {
     ...options,
     mode: config.mode,

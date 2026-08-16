@@ -5,7 +5,7 @@ import { savedUiTheme, saveUiTheme } from './uiPreferences'
 export type Locale = 'zh-CN' | 'en'
 export type ThemePreference = 'system' | 'light' | 'dark'
 export type CustomNotificationSound = { id: string; name: string }
-export type NotificationSound = 'chime' | 'soft' | 'alert' | 'custom'
+export type NotificationSound = 'chime' | 'soft' | 'alert' | 'hakimi' | 'custom'
 export type CookingProvider = 'deepseek' | 'openai' | 'compatible'
 export type CookingReasoningEffort =
   | 'none'
@@ -34,6 +34,7 @@ const SPEECH_INPUT_DEVICE_KEY = 'rambledesk.speech.input-device'
 const SPEECH_MODEL_KEY = 'rambledesk.speech.model'
 const SPEECH_VAD_THRESHOLD_KEY = 'rambledesk.speech.vad-threshold'
 const SPEECH_VAD_SILENCE_MS_KEY = 'rambledesk.speech.vad-silence-ms'
+const SPEECH_HOTWORDS_KEY = 'rambledesk.speech.hotwords'
 const COOKING_ENABLED_KEY = 'rambledesk.cooking.enabled'
 const COOKING_PROVIDER_KEY = 'rambledesk.cooking.provider'
 const COOKING_API_KEY_KEY = 'rambledesk.cooking.api-key'
@@ -100,7 +101,7 @@ function initialNotificationSound(): NotificationSound {
   if (saved === 'custom') {
     return initialCustomNotificationSound() !== null ? 'custom' : 'chime'
   }
-  return saved === 'chime' || saved === 'soft' || saved === 'alert' ? saved : 'chime'
+  return saved === 'chime' || saved === 'soft' || saved === 'alert' || saved === 'hakimi' ? saved : 'chime'
 }
 
 function initialNotificationVolume() {
@@ -121,6 +122,29 @@ function initialNumber(key: string, fallback: number, minimum: number, maximum: 
   const raw = localStorage.getItem(key)
   const saved = raw === null ? Number.NaN : Number(raw)
   return Number.isFinite(saved) && saved >= minimum && saved <= maximum ? saved : fallback
+}
+
+export const DEFAULT_SPEECH_HOTWORDS = ['Claude Code', 'Codex', 'Grok', 'Gemini']
+
+function parseSpeechHotwords(raw: string | null): string[] {
+  if (raw === null) return []
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (Array.isArray(parsed)) {
+      return parsed
+        .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+        .map((item) => item.trim())
+    }
+  } catch {
+    // Malformed value; treat as absent.
+  }
+  return []
+}
+
+function initialSpeechHotwords(): string[] {
+  const saved = localStorage.getItem(SPEECH_HOTWORDS_KEY)
+  // Distinguish "never configured" (use the defaults) from "explicitly emptied".
+  return saved === null ? DEFAULT_SPEECH_HOTWORDS : parseSpeechHotwords(saved)
 }
 
 function initialCookingProvider(): CookingProvider {
@@ -164,6 +188,7 @@ export const speechVadThreshold = writable(
 export const speechVadSilenceMs = writable(
   initialNumber(SPEECH_VAD_SILENCE_MS_KEY, 700, 200, 5000),
 )
+export const speechHotwords = writable<string[]>(initialSpeechHotwords())
 export const onboardingCompleted = writable(initialOnboardingCompleted())
 export const cookingEnabled = writable(initialBoolean(COOKING_ENABLED_KEY, false))
 export const cookingProvider = writable<CookingProvider>(initialCookingProvider())
@@ -228,6 +253,14 @@ export function setSpeechVadThreshold(threshold: number) {
 
 export function setSpeechVadSilenceMs(milliseconds: number) {
   speechVadSilenceMs.set(Math.min(5000, Math.max(200, Math.round(milliseconds))))
+}
+
+export function setSpeechHotwords(hotwords: string[]) {
+  speechHotwords.set(
+    hotwords
+      .map((word) => word.trim())
+      .filter((word) => word.length > 0),
+  )
 }
 
 export function setOnboardingCompleted(completed: boolean) {
@@ -322,6 +355,9 @@ export function initializePreferences() {
   speechVadSilenceMs.subscribe((next) => {
     localStorage.setItem(SPEECH_VAD_SILENCE_MS_KEY, String(next))
   })
+  speechHotwords.subscribe((next) => {
+    localStorage.setItem(SPEECH_HOTWORDS_KEY, JSON.stringify(next))
+  })
   onboardingCompleted.subscribe((next) => {
     localStorage.setItem(ONBOARDING_COMPLETED_KEY, String(next))
   })
@@ -368,7 +404,8 @@ export function initializePreferences() {
       if (
         event.newValue === 'chime' ||
         event.newValue === 'soft' ||
-        event.newValue === 'alert'
+        event.newValue === 'alert' ||
+        event.newValue === 'hakimi'
       ) {
         notificationSound.set(event.newValue)
       } else if (
@@ -397,6 +434,9 @@ export function initializePreferences() {
     }
     if (event.key === SPEECH_VAD_SILENCE_MS_KEY && event.newValue !== null) {
       setSpeechVadSilenceMs(Number(event.newValue))
+    }
+    if (event.key === SPEECH_HOTWORDS_KEY) {
+      speechHotwords.set(parseSpeechHotwords(event.newValue))
     }
     if (event.key === ONBOARDING_COMPLETED_KEY && event.newValue !== null) {
       onboardingCompleted.set(event.newValue === 'true')

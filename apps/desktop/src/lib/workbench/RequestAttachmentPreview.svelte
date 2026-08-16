@@ -94,7 +94,7 @@
     if (cause && typeof cause === 'object' && 'message' in cause) {
       return String((cause as { message: unknown }).message)
     }
-    return tr('读取附件时发生未知错误。')
+    return tr('An unknown error occurred while reading the attachment.')
   }
 
   function resetPreview() {
@@ -122,7 +122,7 @@
           kind: readKind,
         },
       })
-      openMessage = tr('已在系统默认应用中打开：{path}', { path })
+      openMessage = tr('Opened in the system default app: {path}', { path })
     } catch (cause) {
       openError = messageFrom(cause)
     }
@@ -208,12 +208,12 @@
     class="grid h-[min(820px,calc(100vh-3rem))] max-w-[min(1040px,calc(100vw-3rem))] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-[min(1040px,calc(100vw-3rem))]"
   >
     <Dialog.Header class="border-b px-6 py-4 pr-14">
-      <Dialog.Title class="truncate">{attachment?.file_name ?? tr('附件预览')}</Dialog.Title>
+      <Dialog.Title class="truncate">{attachment?.file_name ?? tr('Attachment preview')}</Dialog.Title>
       <Dialog.Description class="mt-1">
         {#if attachment}
           {attachment.media_type} · {(attachment.byte_size / 1024).toFixed(1)} KiB
         {:else}
-          {tr('Agent 提供的评审附件')}
+          {tr('Review attachments from the agent')}
         {/if}
       </Dialog.Description>
     </Dialog.Header>
@@ -223,14 +223,14 @@
         <div class="grid h-full place-items-center text-muted-foreground">
           <div class="flex items-center gap-2 text-xs">
             <LoaderCircle class="size-4 animate-spin" />
-            {tr('正在载入附件…')}
+            {tr('Loading attachment…')}
           </div>
         </div>
       {:else if error}
         <div class="grid h-full place-items-center text-center">
           <div class="max-w-sm">
             <AlertCircle class="mx-auto size-6 text-destructive" />
-            <strong class="mt-3 block text-sm">{tr('无法预览附件')}</strong>
+            <strong class="mt-3 block text-sm">{tr('Unable to preview attachment')}</strong>
             <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">{error}</p>
           </div>
         </div>
@@ -245,7 +245,7 @@
           <img
             bind:this={imageElement}
             src={imageUrl}
-            alt={attachment?.file_name ?? tr('图片附件')}
+            alt={attachment?.file_name ?? tr('Image attachment')}
             draggable="false"
             class={[
               'max-h-full max-w-full select-none object-contain shadow-sm',
@@ -262,8 +262,8 @@
               variant="ghost"
               size="icon-sm"
               disabled={scale <= MIN_SCALE}
-              aria-label={tr('缩小')}
-              title={tr('缩小')}
+              aria-label={tr('Zoom out')}
+              title={tr('Zoom out')}
               onclick={zoomOut}
             >
               <Minus />
@@ -272,8 +272,8 @@
               variant="ghost"
               size="icon-sm"
               disabled={scale >= MAX_SCALE}
-              aria-label={tr('放大')}
-              title={tr('放大')}
+              aria-label={tr('Zoom in')}
+              title={tr('Zoom in')}
               onclick={zoomIn}
             >
               <Plus />
@@ -282,8 +282,8 @@
               variant="ghost"
               size="icon-sm"
               disabled={scale <= MIN_SCALE}
-              aria-label={tr('重置缩放')}
-              title={tr('重置缩放')}
+              aria-label={tr('Reset zoom')}
+              title={tr('Reset zoom')}
               onclick={resetZoom}
             >
               <RotateCcw />
@@ -294,7 +294,7 @@
         <div class="grid h-full place-items-center text-center">
           <div class="max-w-sm">
             <FileQuestion class="mx-auto size-6 text-muted-foreground" />
-            <strong class="mt-3 block text-sm">{tr('此类型不支持预览')}</strong>
+            <strong class="mt-3 block text-sm">{tr('This file type cannot be previewed.')}</strong>
             <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
               {attachment?.file_name}
             </p>
@@ -306,7 +306,7 @@
             {/if}
             <Button class="mt-4" onclick={() => void openExternally()}>
               <ExternalLink class="size-4" />
-              {tr('用系统默认应用打开')}
+              {tr('Open with the system default app')}
             </Button>
           </div>
         </div>

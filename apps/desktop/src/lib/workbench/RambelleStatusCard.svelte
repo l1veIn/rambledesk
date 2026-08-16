@@ -11,7 +11,7 @@
   }
 </script>
 
-<section class="flex min-h-20 items-center gap-3 border-b bg-muted/25 px-4 py-3" aria-label={tr('Rambelle 状态')}>
+<section class="flex min-h-20 items-center gap-3 border-b bg-muted/25 px-4 py-3" aria-label={tr('Rambelle status')}>
   {#if portrait}
     <img src={portrait} alt="Rambelle" class="size-12 shrink-0 object-contain" />
   {/if}
@@ -19,10 +19,10 @@
     <strong class="block text-[10px] font-medium">Rambelle</strong>
     <p class="m-0 mt-1 text-[10px] leading-4 text-muted-foreground">
       {feedbackDone
-        ? tr('反馈包已经发布。')
+        ? tr('The feedback package has been published.')
         : rambleEngaged
-          ? tr('正在整理这次记录。')
-          : tr('准备好后可以开始记录。')}
+          ? tr('Organizing this recording.')
+          : tr('Start recording when you are ready.')}
     </p>
   </div>
 </section>

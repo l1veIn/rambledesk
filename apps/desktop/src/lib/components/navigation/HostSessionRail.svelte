@@ -77,7 +77,7 @@
       'flex min-h-0 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200',
       collapsed ? 'w-14' : 'w-[224px]',
     ]}
-    aria-label={tr('宿主与会话')}
+    aria-label={tr('Hosts and sessions')}
   >
     <div
       class={[
@@ -91,9 +91,9 @@
             R
           </div>
           <div class="min-w-0">
-            <strong class="block truncate text-xs font-semibold">{tr('宿主')}</strong>
+            <strong class="block truncate text-xs font-semibold">{tr('Hosts')}</strong>
             <span class="block text-[10px] text-muted-foreground">
-              {sessions.length} {tr('个会话')}
+              {sessions.length} {tr('sessions')}
             </span>
           </div>
         </div>
@@ -106,7 +106,7 @@
               {...props}
               variant="ghost"
               size="icon-sm"
-              aria-label={collapsed ? tr('展开侧栏') : tr('收起侧栏')}
+              aria-label={collapsed ? tr('Expand sidebar') : tr('Collapse sidebar')}
               onclick={toggleSidebar}
             >
               {#if collapsed}
@@ -118,7 +118,7 @@
           {/snippet}
         </Tooltip.Trigger>
         <Tooltip.Content side="right">
-          {collapsed ? tr('展开侧栏') : tr('收起侧栏')}
+          {collapsed ? tr('Expand sidebar') : tr('Collapse sidebar')}
         </Tooltip.Content>
       </Tooltip.Root>
     </div>
@@ -133,13 +133,13 @@
             ? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground'
             : 'hover:bg-sidebar-accent/65',
         ]}
-        aria-label={tr('全部请求')}
-        title={collapsed ? tr('全部请求') : undefined}
+        aria-label={tr('All requests')}
+        title={collapsed ? tr('All requests') : undefined}
         onclick={() => onSelect(null, null)}
       >
         <Inbox class="size-5 shrink-0" />
         {#if !collapsed}
-          <span class="min-w-0 flex-1 truncate">{tr('全部请求')}</span>
+          <span class="min-w-0 flex-1 truncate">{tr('All requests')}</span>
           {#if totalPending > 0}
             <Badge variant="default" class="h-5 min-w-5 px-1.5 text-[10px]">{totalPending}</Badge>
           {:else}
@@ -188,8 +188,8 @@
           {:else}
             <div
               class="grid h-16 place-items-center text-muted-foreground"
-              aria-label={loading ? tr('正在读取宿主会话…') : tr('还没有宿主会话')}
-              title={loading ? tr('正在读取宿主会话…') : tr('还没有宿主会话')}
+              aria-label={loading ? tr('Loading host sessions…') : tr('No host sessions yet')}
+              title={loading ? tr('Loading host sessions…') : tr('No host sessions yet')}
             >
               <Inbox class="size-4" />
             </div>
@@ -228,8 +228,8 @@
                 <Button
                   variant="ghost"
                   size="icon-xs"
-                  aria-label={collapsedHosts.has(group.hostId) ? tr('展开会话') : tr('收起会话')}
-                  title={collapsedHosts.has(group.hostId) ? tr('展开会话') : tr('收起会话')}
+                  aria-label={collapsedHosts.has(group.hostId) ? tr('Expand sessions') : tr('Collapse sessions')}
+                  title={collapsedHosts.has(group.hostId) ? tr('Expand sessions') : tr('Collapse sessions')}
                   onclick={() => toggleHost(group.hostId)}
                 >
                   {#if collapsedHosts.has(group.hostId)}
@@ -266,7 +266,7 @@
             </div>
           {:else}
             <div class="px-2 py-8 text-center text-[11px] leading-5 text-muted-foreground">
-              {loading ? tr('正在读取宿主会话…') : tr('还没有宿主会话')}
+              {loading ? tr('Loading host sessions…') : tr('No host sessions yet')}
             </div>
           {/each}
         </div>
@@ -277,12 +277,12 @@
       <Button
         variant="ghost"
         class={collapsed ? 'w-full justify-center px-0' : 'w-full justify-start'}
-        aria-label={tr('设置与适配器')}
-        title={collapsed ? tr('设置与适配器') : undefined}
+        aria-label={tr('Settings and adapters')}
+        title={collapsed ? tr('Settings and adapters') : undefined}
         onclick={onSettings}
       >
         <Settings data-icon="inline-start" />
-        {#if !collapsed}{tr('设置与适配器')}{/if}
+        {#if !collapsed}{tr('Settings and adapters')}{/if}
       </Button>
     </div>
   </aside>

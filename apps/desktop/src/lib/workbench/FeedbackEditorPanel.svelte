@@ -59,10 +59,10 @@
   }
 
   function saveLabel() {
-    if (savePhase === 'saving') return tr('正在保存…')
-    if (savePhase === 'unsaved') return tr('等待自动保存')
-    if (savePhase === 'error') return tr('保存失败')
-    return `${tr('已保存')} · r${savedRevision}`
+    if (savePhase === 'saving') return tr('Saving…')
+    if (savePhase === 'unsaved') return tr('Waiting to autosave')
+    if (savePhase === 'error') return tr('Save failed')
+    return `${tr('Saved')} · r${savedRevision}`
   }
 
   export function insertAttachments(attachments: AttachmentView[]) {
@@ -98,9 +98,9 @@
 >
   <header class="mb-3 flex items-center gap-3">
     <div class="min-w-0 flex-1">
-      <h2 class="m-0 text-xs font-medium">{tr('反馈正文')}</h2>
+      <h2 class="m-0 text-xs font-medium">{tr('Feedback document')}</h2>
       <p class="m-0 mt-0.5 text-[10px] text-muted-foreground">
-        {readOnly ? tr('此请求已结束，正文只读。') : tr('记录观察、问题和建议。')}
+        {readOnly ? tr('This request is closed. The document is read-only.') : tr('Record observations, problems, and suggestions.')}
       </p>
     </div>
     {#if hasPublishedFeedback}
@@ -132,12 +132,12 @@
             variant={publishedView === 'compare' ? 'secondary' : 'ghost'}
             size="sm"
             class={publishedView === 'compare' ? 'h-7 px-2 text-[10px]' : 'size-7 p-0'}
-            aria-label={tr('对比')}
-            title={tr('对比')}
+            aria-label={tr('Compare')}
+            title={tr('Compare')}
             onclick={() => (publishedView = 'compare')}
           >
             <Columns2 data-icon={publishedView === 'compare' ? 'inline-start' : undefined} />
-            {#if publishedView === 'compare'}{tr('对比')}{/if}
+            {#if publishedView === 'compare'}{tr('Compare')}{/if}
           </Button>
         {/if}
       </div>
@@ -149,7 +149,7 @@
         onclick={onCookPreview}
       >
         <Sparkles class="size-3.5" />
-        {tr('先看 Cook 结果')}
+        {tr('Preview cooking result')}
       </Button>
     {/if}
   </header>
@@ -161,7 +161,7 @@
     >
       <Sparkles class="size-3.5 shrink-0 text-primary" />
       <span class="min-w-0 flex-1 truncate">
-        {cookedPreviewModel ? tr('已用 Cooking 整理（{model}），提交将直接使用整理稿。', { model: cookedPreviewModel }) : tr('已用 Cooking 整理，提交将直接使用整理稿。')}
+        {cookedPreviewModel ? tr('Cooked with {model}; submitting will use this version.', { model: cookedPreviewModel }) : tr('Cooked; submitting will use this version.')}
       </span>
       <Button
         variant="outline"
@@ -170,7 +170,7 @@
         onclick={onRestoreOriginal}
       >
         <Undo2 class="size-3" />
-        {tr('恢复原文')}
+        {tr('Restore original')}
       </Button>
     </div>
   {/if}
@@ -220,9 +220,9 @@
           <span class="mx-auto grid size-12 place-items-center rounded-full bg-primary/10 text-primary">
             <ChefHat class="size-6 animate-pulse" />
           </span>
-          <strong class="mt-3 block text-sm font-medium">{tr('Cooking 中…')}</strong>
+          <strong class="mt-3 block text-sm font-medium">{tr('Cooking…')}</strong>
           <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
-            {tr('正在整理原始反馈并保留 uncooked 原稿，请稍候。')}
+            {tr('Organizing the raw feedback while preserving the uncooked source. Please wait.')}
           </p>
           <LoaderCircle class="mx-auto mt-3 size-4 animate-spin text-primary" />
         </div>
@@ -231,7 +231,7 @@
   </div>
 
   <footer class="mt-2 flex items-center gap-3 text-[9px] text-muted-foreground">
-    <span>{tr('{count} 字符', { count: draftBody.length.toLocaleString($locale) })}</span>
+    <span>{tr('{count} characters', { count: draftBody.length.toLocaleString($locale) })}</span>
     <span>Markdown</span>
     <Badge
       variant={savePhase === 'error' ? 'destructive' : 'secondary'}

@@ -139,8 +139,8 @@ export function createNavigationController(context: NavigationControllerContext)
         title: 'RambleDesk',
         body:
           arrivals.length === 1
-            ? context.tr('新的体验反馈请求已到达。打开工作台查看。')
-            : context.tr('{count} 个新的体验反馈请求已到达。打开工作台查看。', {
+            ? context.tr('A new feedback request arrived. Open the workbench to review it.')
+            : context.tr('{count} new feedback requests arrived. Open the workbench to review them.', {
                 count: arrivals.length,
               }),
       })

@@ -23,7 +23,7 @@
 <section class="border-b p-4">
   <header class="mb-2 flex items-center gap-2">
     <Paperclip class="size-4 text-muted-foreground" />
-    <strong class="text-xs font-medium">{tr('添加上下文')}</strong>
+    <strong class="text-xs font-medium">{tr('Add context')}</strong>
     <span class="ml-auto text-[10px] tabular-nums text-muted-foreground">{attachmentCount}</span>
   </header>
   <div class="grid grid-cols-3 gap-1.5">
@@ -32,30 +32,30 @@
       class="h-14 flex-col gap-1 px-1 text-[10px]"
       disabled={!rambleEngaged || attachmentBusy || readOnly}
       onclick={onScreenCapture}
-      title={tr('截图')}
+      title={tr('Capture')}
     >
       <Camera class="size-4" />
-      {tr('截图')}
+      {tr('Capture')}
     </Button>
     <Button
       variant="outline"
       class="h-14 flex-col gap-1 px-1 text-[10px]"
       disabled={!rambleEngaged || attachmentBusy || readOnly}
       onclick={onImportClipboard}
-      title={tr('剪贴板')}
+      title={tr('Clipboard')}
     >
       <ClipboardPaste class="size-4" />
-      {tr('剪贴板')}
+      {tr('Clipboard')}
     </Button>
     <Button
       variant="outline"
       class="h-14 flex-col gap-1 px-1 text-[10px]"
       disabled={attachmentBusy || readOnly}
       onclick={() => attachmentInput.click()}
-      title={tr('选择文件')}
+      title={tr('Choose files')}
     >
       <Paperclip class="size-4" />
-      {tr('文件')}
+      {tr('Files')}
     </Button>
   </div>
   <input
@@ -66,6 +66,6 @@
     onchange={onFileSelection}
   />
   <p class="m-0 mt-2 text-[9px] leading-4 text-muted-foreground">
-    {tr('剪贴板只在点击导入时读取一次。')}
+    {tr('The clipboard is read once only when you click import.')}
   </p>
 </section>

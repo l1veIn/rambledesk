@@ -33,7 +33,6 @@
   import {
     notificationLabel,
     notificationStateForPermission,
-    playNotificationSound,
     type NotificationState,
   } from './lib/notifications'
   import { desktopPath } from './lib/nativePath'
@@ -87,12 +86,9 @@
     cookingReasoningEffort,
     locale,
     notificationPopupEnabled,
-    notificationSound,
     onboardingCompleted,
     resetOnboarding,
     notificationSoundEnabled,
-    notificationVolume,
-    customNotificationSound,
     setNotificationPopupEnabled,
   } from './lib/preferences'
 
@@ -103,7 +99,7 @@
   const RESUME_PROMPT_EVENT = 'rambledesk://resume-prompt'
   const OPEN_ADAPTERS_EVENT = 'rambledesk://open-adapters'
   const formatTimeLocal = (value: string | null | undefined) =>
-    formatTime(value, $locale, tr('尚未保存'))
+    formatTime(value, $locale, tr('Not saved yet'))
   let workspace: FeedbackWorkspaceView | null = null
   let completedResult: FeedbackRequestView | null = null
   let publishedFeedback: PublishedFeedbackView | null = null
@@ -264,14 +260,14 @@
     if (!pageError) deliveredPageError = ''
     else if (pageError !== deliveredPageError) {
       deliveredPageError = pageError
-      toast.error(tr('操作失败'), { description: pageError })
+      toast.error(tr('Operation failed'), { description: pageError })
     }
   }
   $: {
     if (!saveMessage) deliveredSaveError = ''
     else if (saveMessage !== deliveredSaveError) {
       deliveredSaveError = saveMessage
-      toast.error(tr('保存失败'), { description: saveMessage })
+      toast.error(tr('Save failed'), { description: saveMessage })
     }
   }
   $: {
@@ -280,9 +276,9 @@
     } else if (attachmentMessage !== deliveredAttachmentMessage) {
       deliveredAttachmentMessage = attachmentMessage
       const options = { description: attachmentMessage }
-      if (attachmentMessageTone === 'success') toast.success(tr('附件操作完成'), options)
-      else if (attachmentMessageTone === 'info') toast.info(tr('附件操作状态'), options)
-      else toast.error(tr('附件操作失败'), options)
+      if (attachmentMessageTone === 'success') toast.success(tr('Attachment action completed'), options)
+      else if (attachmentMessageTone === 'info') toast.info(tr('Attachment status'), options)
+      else toast.error(tr('Attachment action failed'), options)
     }
   }
   $: visibleRequests = todayOnly
@@ -303,7 +299,7 @@
         selectedHostSession?.title ??
         resolveHostProfile($navigation.selectedHostId).label
       : resolveHostProfile($navigation.selectedHostId).label
-    : tr('全部宿主')
+    : tr('All hosts')
   $: feedbackResult = completedResult?.feedback ?? workspace?.feedback ?? null
   $: currentRequestCooking =
     workspace !== null && cookingRequestIds.has(workspace.request.request_id)
@@ -441,18 +437,14 @@
       if ($notificationPopupEnabled && notificationState === 'enabled') {
         sendNotification({
           title: event.payload.title,
-          body: tr('请回到 {host}，用恢复提示继续宿主会话。', {
+          body: tr('Return to {host} and use the resume prompt to continue the host session.', {
             host: event.payload.host_label,
           }),
         })
       }
-      if ($notificationSoundEnabled) {
-        void playNotificationSound(
-          $notificationSound,
-          $notificationVolume,
-          $notificationSound === 'custom' ? $customNotificationSound : null,
-        )
-      }
+      // The alert sound is reserved for a new request arriving, not for the
+      // resume prompt shown after a submission completes, so it is not played
+      // here.
     })
       .then((unlisten) => {
         resumePromptUnlisten = unlisten
@@ -539,7 +531,7 @@
         : await invoke<FeedbackWorkspaceView>('get_feedback_workspace', {
             requestId,
           })
-      if (!next) throw new Error(tr('找不到这个反馈请求。'))
+      if (!next) throw new Error(tr('This feedback request could not be found.'))
       workspace = next
       cookedPreview = null
       cookedPreviewOriginal = ''
@@ -578,14 +570,14 @@
       if (workspace?.request.request_id === requestId) {
         const nextBody = appendMarkdownBlock(draftBody, block)
         updateDraft(nextBody)
-        if (!(await saveDraftNow())) throw new Error(saveMessage || tr('当前草稿无法保存'))
+        if (!(await saveDraftNow())) throw new Error(saveMessage || tr('The current draft could not be saved.'))
         return
       }
 
       const target = previewMode
         ? previewWorkspaceFor(requestId)
         : await invoke<FeedbackWorkspaceView>('get_feedback_workspace', { requestId })
-      if (!target) throw new Error(tr('找不到这个反馈请求。'))
+      if (!target) throw new Error(tr('This feedback request could not be found.'))
       const input: SaveDraftInput = {
         request_id: requestId,
         body_markdown: appendMarkdownBlock(target.draft.body_markdown, block),
@@ -594,7 +586,7 @@
       if (!previewMode) await invoke<DraftView>('save_feedback_draft', { input })
     })
     rambleMarkdownQueue = operation.catch((cause) => {
-      pageError = tr('Ramble 内容写入失败：{error}', { error: messageFrom(cause) })
+      pageError = tr('Failed to write Ramble content: {error}', { error: messageFrom(cause) })
     })
     await operation
   }
@@ -735,8 +727,8 @@
     },
     refreshNavigation: (force) => navigation.refreshNavigation(force),
     showSubmittedToast: (cooked) => {
-      toast.success(tr('反馈已提交'), {
-        description: cooked ? tr('Cooked 与 Uncooked 反馈已发布') : tr('反馈包已发布'),
+      toast.success(tr('Feedback submitted'), {
+        description: cooked ? tr('Cooked and uncooked feedback published') : tr('Feedback package published'),
       })
     },
   })
@@ -744,7 +736,7 @@
 
   async function approveFeedback() {
     if (!workspace || !workspace.request.allow_finish || approving) return
-    if (!window.confirm(tr('同意这个最终总结并结束 Pi 的 Ramble 流程？'))) return
+    if (!window.confirm(tr('Approve this final summary and end Pi’s Ramble flow?'))) return
     if (rambleCanExit) await exitRamble()
     approving = true
     pageError = ''
@@ -761,7 +753,7 @@
           updated_at: result.updated_at,
         },
       }
-      toast.success(tr('已同意并结束'))
+      toast.success(tr('Approved and finished'))
       await navigation.refreshNavigation(true)
     } catch (cause) {
       pageError = messageFrom(cause)
@@ -793,7 +785,7 @@
         },
       }
       savePhase = 'saved'
-      toast.success(tr('请求已取消'))
+      toast.success(tr('Request cancelled'))
       await navigation.refreshNavigation(true)
     } catch (cause) {
       pageError = messageFrom(cause)
@@ -807,7 +799,7 @@
     try {
       await revealItemInDir(desktopPath(feedbackResult.markdown_path))
     } catch (cause) {
-      pageError = tr('无法打开 Feedback Package：{error}', { error: messageFrom(cause) })
+      pageError = tr('Could not open Feedback Package: {error}', { error: messageFrom(cause) })
     }
   }
 
@@ -866,12 +858,12 @@
     {rambleActive}
     {rambleRequestTitle}
     notificationText={$notificationSoundEnabled
-      ? tr('通知设置 · 声音已开启')
+      ? tr('Notification settings · sound on')
       : notificationLabel(notificationState, $locale)}
     notificationEnabled={notificationState === 'enabled' || $notificationSoundEnabled}
     notificationDisabled={false}
     onNotifications={() => void openSettings('notifications')}
-    onWindowError={(message) => (pageError = tr('窗口操作失败：{error}', { error: message }))}
+    onWindowError={(message) => (pageError = tr('Window action failed: {error}', { error: message }))}
   />
 
   <div bind:this={workbenchLayout} class="flex h-[calc(100%-46px)] min-h-0 min-w-0">
@@ -921,7 +913,7 @@
 
       <PaneResizer
         class="workbench-pane-resizer workbench-pane-resizer--vertical"
-        aria-label={tr('调整请求列表宽度')}
+        aria-label={tr('Resize request list')}
       />
 
       <Pane id="workspace-pane" minSize={workspaceMinimumSize}>

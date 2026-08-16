@@ -58,11 +58,11 @@
   }}
 >
   {#if imageUrl}
-    <img src={imageUrl} alt={t($locale, '固定截图')} draggable="false" />
+    <img src={imageUrl} alt={t($locale, 'Pinned capture')} draggable="false" />
   {:else if errorMessage}
     <span>{errorMessage}</span>
   {/if}
-  <button onclick={closePin} title={t($locale, '关闭固定截图 · Esc')} aria-label={t($locale, '关闭固定截图')}>
+  <button onclick={closePin} title={t($locale, 'Close pinned capture · Esc')} aria-label={t($locale, 'Close pinned capture')}>
     <X size={16} strokeWidth={2} />
   </button>
 </main>

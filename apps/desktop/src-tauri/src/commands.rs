@@ -33,6 +33,7 @@ pub(super) struct StartVoiceRambleInput {
     model_id: String,
     vad_threshold: f32,
     vad_silence_ms: u32,
+    hotwords: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -505,6 +506,7 @@ pub(super) async fn start_voice_ramble(
         vad_threshold: input.vad_threshold,
         vad_silence_ms: input.vad_silence_ms,
         input_device: input.input_device,
+        hotwords: input.hotwords,
     };
     let event_app = app.clone();
     let sink: SpeechEventSink = Arc::new(move |event: SpeechEvent| {

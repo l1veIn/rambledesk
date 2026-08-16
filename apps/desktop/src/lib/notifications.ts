@@ -1,5 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 
+import hakimiAudioUrl from '../assets/hakimi.mp3'
+
 import type { FeedbackRequestSummary } from './feedback'
 import type { CustomNotificationSound, Locale, NotificationSound } from './preferences'
 
@@ -13,9 +15,10 @@ type AudioContextConstructor = new () => AudioContext
 let notificationAudioContext: AudioContext | null = null
 let customSoundCache: { id: string; buffer: AudioBuffer } | null = null
 let activeCustomSource: AudioBufferSourceNode | null = null
+let builtinAudio: HTMLAudioElement | null = null
 
 const notificationSounds: Record<
-  Exclude<NotificationSound, 'custom'>,
+  Exclude<NotificationSound, 'custom' | 'hakimi'>,
   { frequencies: readonly [number, number][]; duration: number; volume: number; wave: OscillatorType }
 > = {
   chime: {
@@ -134,11 +137,31 @@ function playPresetSound(
   }
 }
 
+/** Play the bundled built-in audio clip (the trimmed 10-second test asset). */
+async function playBuiltinAudio(volume: number): Promise<void> {
+  try {
+    builtinAudio ??= new Audio(hakimiAudioUrl)
+    builtinAudio.volume = Math.min(1, Math.max(0, volume / 100))
+    builtinAudio.currentTime = 0
+    await builtinAudio.play()
+  } catch {
+    // Fall back to the synthesized chime when the bundled clip cannot play
+    // (for example, autoplay was blocked before any user gesture).
+    const context = await resolveAudioContext()
+    if (context) playPresetSound(context, notificationSounds.chime, volume)
+  }
+}
+
 export async function playNotificationSound(
   sound: NotificationSound = 'chime',
   volume = 80,
   custom: CustomNotificationSound | null = null,
 ): Promise<void> {
+  if (sound === 'hakimi') {
+    await playBuiltinAudio(volume)
+    return
+  }
+
   const context = await resolveAudioContext()
   if (!context) return
 
