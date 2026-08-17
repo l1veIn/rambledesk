@@ -35,6 +35,7 @@
     type NotificationState,
   } from './lib/notifications'
   import { desktopPath } from './lib/nativePath'
+  import { currentDesktopPlatform } from './lib/platform'
   import { checkForUpdates } from './lib/updater'
   import { previewFixtures, previewWorkspaceFor } from './lib/previewFixtures'
   import {
@@ -137,6 +138,7 @@
   let onboardingOpen = false
   let workbenchInitialized = false
   const isTauri = '__TAURI_INTERNALS__' in window
+  const isMac = currentDesktopPlatform() === 'macOS'
   const previewMode =
     import.meta.env.DEV &&
     !isTauri &&
@@ -222,6 +224,7 @@
     getInteractionLocked: () => interactionLocked || currentRequestCooking,
     getSavedRevision: () => savedRevision,
     getBusy: () => attachmentBusy,
+    getCaptureBusy: () => screenCaptureBusy,
     getPreviews: () => attachmentPreviews,
     setBusy: (busy) => (attachmentBusy = busy),
     setCaptureBusy: (busy) => (screenCaptureBusy = busy),
@@ -421,7 +424,9 @@
     }
     if ($onboardingCompleted) startWorkbench()
     else onboardingOpen = true
-    const updateCheckTimer = window.setTimeout(() => void checkForUpdates(), 4_000)
+    const updateCheckTimer = isMac
+      ? undefined
+      : window.setTimeout(() => void checkForUpdates(), 4_000)
     void refreshNotificationPermission()
     let resumePromptUnlisten: (() => void) | undefined
     let openAdaptersUnlisten: (() => void) | undefined
@@ -458,7 +463,7 @@
       if (inboxTimer) clearInterval(inboxTimer)
       resumePromptUnlisten?.()
       openAdaptersUnlisten?.()
-      clearTimeout(updateCheckTimer)
+      if (updateCheckTimer !== undefined) clearTimeout(updateCheckTimer)
       cleanupLayoutObserver()
       cleanupAttachments()
     }

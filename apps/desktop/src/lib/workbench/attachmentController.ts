@@ -32,6 +32,7 @@ type AttachmentControllerContext = {
   getInteractionLocked: () => boolean
   getSavedRevision: () => number
   getBusy: () => boolean
+  getCaptureBusy: () => boolean
   getPreviews: () => Record<string, string>
   setBusy: (busy: boolean) => void
   setCaptureBusy: (busy: boolean) => void
@@ -68,7 +69,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
           )
         })
       void listen<ScreenCaptureFinished>('screen-capture-finished', () => {
-        context.setBusy(false)
+        context.setCaptureBusy(false)
         context.setMessage('')
       })
         .then((unlisten) => {
@@ -212,7 +213,13 @@ export function createAttachmentController(context: AttachmentControllerContext)
   async function startScreenCapture() {
     const workspace = context.getWorkspace()
     const requestId = context.getRambleRequestId() || workspace?.request.request_id || ''
-    if (context.getInteractionLocked() || !requestId || !context.getRambleEngaged() || context.getBusy()) return
+    if (
+      context.getInteractionLocked() ||
+      !requestId ||
+      !context.getRambleEngaged() ||
+      context.getBusy() ||
+      context.getCaptureBusy()
+    ) return
     if (workspace?.request.request_id === requestId && !(await context.saveDraftNow())) return
     await context.waitForRambleMarkdown()
     screenCaptureRequestId = requestId
@@ -220,7 +227,6 @@ export function createAttachmentController(context: AttachmentControllerContext)
     context.setMessage('')
     try {
       await invoke('begin_screen_capture')
-      context.setCaptureBusy(false)
     } catch (cause) {
       screenCaptureRequestId = ''
       context.setCaptureBusy(false)

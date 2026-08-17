@@ -8,6 +8,7 @@
   import { Button } from '$lib/components/ui/button'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
+  import { currentDesktopPlatform } from '$lib/platform'
 
   export let sourceLabel = 'Workbench'
   export let pendingCount = 0
@@ -21,7 +22,7 @@
   export let onWindowError: (message: string) => void = () => {}
 
   const isTauri = '__TAURI_INTERNALS__' in window
-  const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)
+  const isMac = currentDesktopPlatform() === 'macOS'
   let maximized = false
 
   onMount(() => {

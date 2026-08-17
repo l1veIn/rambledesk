@@ -14,6 +14,7 @@
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
   import { diagnosticExportView } from './nativePath'
+  import { currentDesktopPlatform } from './platform'
   import {
     checkForUpdates,
     downloadAndInstallUpdate,
@@ -28,7 +29,8 @@
   let exporting: 'last_7_days' | 'all' | null = null
   let lastExportPath = ''
   const isTauri = '__TAURI_INTERNALS__' in window
-  const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)
+  const desktopPlatform = currentDesktopPlatform()
+  const isMac = desktopPlatform === 'macOS'
   const projectUrl = 'https://github.com/l1veIn/rambledesk'
   const releasesUrl = `${projectUrl}/releases`
 
@@ -114,7 +116,7 @@
         <div class="flex flex-wrap items-center gap-2">
           <h3 class="m-0 text-xl font-semibold tracking-tight">RambleDesk</h3>
           <Badge variant="secondary">v{version}</Badge>
-          <Badge variant="outline">{isMac ? 'macOS' : /Win/.test(navigator.platform || navigator.userAgent) ? 'Windows' : 'Linux'}</Badge>
+          <Badge variant="outline">{desktopPlatform}</Badge>
         </div>
         <p class="m-0 mt-3 max-w-xl text-sm leading-6 text-muted-foreground">
           {tr('Let agents pause at key moments and request structured human feedback that can be resumed and archived.')}

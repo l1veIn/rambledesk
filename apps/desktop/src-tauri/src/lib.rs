@@ -49,9 +49,7 @@ fn log_frontend_error(context: String, message: String) {
 
 mod window;
 
-use window::{
-    hide_ramble_console, position_ramble_console, show_main_window, show_ramble_console,
-};
+use window::{hide_ramble_console, position_ramble_console, show_main_window, show_ramble_console};
 
 mod commands;
 
@@ -304,6 +302,10 @@ pub fn run() {
     };
 
     app.run(|app_handle, event| {
+        #[cfg(target_os = "macos")]
+        if matches!(event, RunEvent::Reopen { .. }) {
+            show_main_window(app_handle);
+        }
         if matches!(event, RunEvent::Exit | RunEvent::ExitRequested { .. })
             && let Some(state) = app_handle.try_state::<WorkbenchState>()
         {

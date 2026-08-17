@@ -1,5 +1,6 @@
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core'
+  import { getCurrentWindow } from '@tauri-apps/api/window'
   import { CheckCircle2, LoaderCircle, RefreshCw, Rocket, Settings2, ShieldAlert } from '@lucide/svelte'
   import { onMount } from 'svelte'
 
@@ -19,6 +20,7 @@
   let busy = false
   let restarting = false
   let screenRestartRequired = false
+  let loadGeneration = 0
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
@@ -53,9 +55,12 @@
   }
 
   function syncRestartRequired(next: MacPermission[]) {
-    screenRestartRequired =
-      screenRestartRequired ||
-      next.some((permission) => permission.id === 'screen_capture' && permission.restart_required)
+    const screenCapture = next.find((permission) => permission.id === 'screen_capture')
+    if (screenCapture?.status === 'granted' && !screenCapture.restart_required) {
+      screenRestartRequired = false
+    } else if (screenCapture?.restart_required) {
+      screenRestartRequired = true
+    }
     permissions = next.map((permission) =>
       permission.id === 'screen_capture' && screenRestartRequired
         ? { ...permission, status: 'granted', restart_required: true }
@@ -64,19 +69,25 @@
     restartRequired = permissions.some((permission) => permission.restart_required)
   }
 
-  async function load() {
-    loading = true
+  async function load(showLoading = permissions.length === 0) {
+    if (busy || restarting) return
+    const generation = ++loadGeneration
+    if (showLoading) loading = true
     try {
-      syncRestartRequired(await invoke<MacPermission[]>('list_macos_permissions'))
+      const next = await invoke<MacPermission[]>('list_macos_permissions')
+      if (generation === loadGeneration) syncRestartRequired(next)
     } catch (cause) {
-      toast.error(tr('Could not read permission status'), { description: messageFrom(cause) })
+      if (showLoading && generation === loadGeneration) {
+        toast.error(tr('Could not read permission status'), { description: messageFrom(cause) })
+      }
     } finally {
-      loading = false
+      if (generation === loadGeneration) loading = false
     }
   }
 
   async function request(id: string) {
     if (busy) return
+    loadGeneration += 1
     busy = true
     try {
       const next = await invoke<MacPermission>('request_macos_permission', { permission: id })
@@ -120,7 +131,32 @@
   }
 
   onMount(() => {
-    void load()
+    let disposed = false
+    let unlistenFocus: (() => void) | undefined
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void load(false)
+    }
+
+    void load(true)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    void getCurrentWindow()
+      .onFocusChanged(({ payload: focused }) => {
+        if (focused) void load(false)
+      })
+      .then((unlisten) => {
+        if (disposed) unlisten()
+        else unlistenFocus = unlisten
+      })
+      .catch(() => {
+        // The visibility listener still refreshes status if window event setup is unavailable.
+      })
+
+    return () => {
+      disposed = true
+      unlistenFocus?.()
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+    }
   })
 </script>
 
@@ -185,7 +221,7 @@
           {tr('Allow the system prompt from Grant access. After that, restart RambleDesk before capturing.')}
         {/if}
       </p>
-      <Button variant="ghost" size="sm" disabled={loading} onclick={() => void load()}>
+      <Button variant="ghost" size="sm" disabled={loading} onclick={() => void load(true)}>
         <RefreshCw data-icon="inline-start" />
         {tr('Refresh permission status')}
       </Button>

@@ -1,6 +1,12 @@
 use serde::Serialize;
 
+#[cfg(target_os = "macos")]
+use std::sync::atomic::{AtomicBool, Ordering};
+
 pub const SCREEN_CAPTURE_RESTART_REQUIRED: &str = "SCREEN_CAPTURE_PERMISSION_RESTART_REQUIRED";
+
+#[cfg(target_os = "macos")]
+static SCREEN_CAPTURE_RESTART_PENDING: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
@@ -30,27 +36,45 @@ impl MacPermissionView {
 }
 
 #[cfg(target_os = "macos")]
-fn screen_capture_status() -> MacPermissionStatus {
-    if scap::has_permission() {
-        MacPermissionStatus::Granted
+fn screen_capture_view(has_permission: bool, restart_pending: bool) -> (MacPermissionStatus, bool) {
+    if has_permission {
+        (MacPermissionStatus::Granted, false)
+    } else if restart_pending {
+        (MacPermissionStatus::Granted, true)
     } else {
-        MacPermissionStatus::NotDetermined
+        (MacPermissionStatus::NotDetermined, false)
     }
 }
 
 #[cfg(target_os = "macos")]
-fn request_screen_capture_access() -> (MacPermissionStatus, bool) {
-    if scap::has_permission() {
-        return (MacPermissionStatus::Granted, false);
+fn current_screen_capture_access() -> (MacPermissionStatus, bool) {
+    let has_permission = scap::has_permission();
+    if has_permission {
+        SCREEN_CAPTURE_RESTART_PENDING.store(false, Ordering::Relaxed);
     }
+    screen_capture_view(
+        has_permission,
+        SCREEN_CAPTURE_RESTART_PENDING.load(Ordering::Relaxed),
+    )
+}
+
+#[cfg(target_os = "macos")]
+fn request_screen_capture_access() -> (MacPermissionStatus, bool) {
+    let current = current_screen_capture_access();
+    if current.0 == MacPermissionStatus::Granted {
+        return current;
+    }
+
     let granted = scap::request_permission();
-    if scap::has_permission() {
-        return (MacPermissionStatus::Granted, false);
+    let current = current_screen_capture_access();
+    if current.0 == MacPermissionStatus::Granted {
+        return current;
     }
     if granted {
+        SCREEN_CAPTURE_RESTART_PENDING.store(true, Ordering::Relaxed);
         (MacPermissionStatus::Granted, true)
     } else {
-        (screen_capture_status(), false)
+        current
     }
 }
 
@@ -128,8 +152,14 @@ fn request_microphone_access() -> MacPermissionStatus {
 pub fn list_macos_permissions() -> Vec<MacPermissionView> {
     #[cfg(target_os = "macos")]
     {
+        let (screen_capture_status, screen_capture_restart_required) =
+            current_screen_capture_access();
         vec![
-            MacPermissionView::new("screen_capture", screen_capture_status(), false),
+            MacPermissionView::new(
+                "screen_capture",
+                screen_capture_status,
+                screen_capture_restart_required,
+            ),
             MacPermissionView::new("microphone", microphone_status(), false),
         ]
     }
@@ -213,6 +243,23 @@ mod tests {
         assert_eq!(
             SCREEN_CAPTURE_RESTART_REQUIRED,
             "SCREEN_CAPTURE_PERMISSION_RESTART_REQUIRED"
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn pending_screen_capture_grant_stays_granted_until_restart() {
+        assert_eq!(
+            screen_capture_view(false, true),
+            (MacPermissionStatus::Granted, true)
+        );
+        assert_eq!(
+            screen_capture_view(true, true),
+            (MacPermissionStatus::Granted, false)
+        );
+        assert_eq!(
+            screen_capture_view(false, false),
+            (MacPermissionStatus::NotDetermined, false)
         );
     }
 

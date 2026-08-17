@@ -108,8 +108,8 @@ fn sanitize(value: &str, max_chars: usize) -> String {
 #[cfg(target_os = "windows")]
 fn show_native_error(message: &str) {
     use windows::{
+        Win32::UI::WindowsAndMessaging::{MB_ICONERROR, MB_OK, MessageBoxW},
         core::PCWSTR,
-        Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK},
     };
 
     let title = "RambleDesk 启动失败"
