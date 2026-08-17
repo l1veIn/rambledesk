@@ -81,6 +81,14 @@ pub async fn cancel_screen_capture(
         let _ = scroll.close();
     }
     restore_console(&app, restore);
+    crate::diagnostics::record_event(
+        "screen_capture_cancelled",
+        capture_session_id.as_deref(),
+        None,
+        Some("cancelled"),
+        None,
+        None,
+    );
     app.emit_to(
         "main",
         "screen-capture-finished",

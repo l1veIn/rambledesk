@@ -1,6 +1,6 @@
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core'
-  import { CheckCircle2, LoaderCircle, RefreshCw, Settings2, ShieldAlert } from '@lucide/svelte'
+  import { CheckCircle2, LoaderCircle, RefreshCw, Rocket, Settings2, ShieldAlert } from '@lucide/svelte'
   import { onMount } from 'svelte'
 
   import { Badge } from '$lib/components/ui/badge'
@@ -10,11 +10,15 @@
   import { locale } from '$lib/preferences'
 
   type MacPermissionStatus = 'granted' | 'denied' | 'not_determined' | 'unknown'
-  type MacPermission = { id: string; status: MacPermissionStatus }
+  type MacPermission = { id: string; status: MacPermissionStatus; restart_required: boolean }
+
+  export let restartRequired = false
 
   let permissions: MacPermission[] = []
   let loading = true
   let busy = false
+  let restarting = false
+  let screenRestartRequired = false
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
@@ -38,23 +42,32 @@
       : tr('The microphone is used for on-device transcription of voice Rambles.')
   }
 
-  function statusBadge(status: MacPermissionStatus) {
-    if (status === 'granted') return { label: tr('Granted'), variant: 'secondary' as const }
-    if (status === 'denied') return { label: tr('Denied'), variant: 'destructive' as const }
-    if (status === 'unknown') return { label: tr('Unknown'), variant: 'outline' as const }
+  function statusBadge(permission: MacPermission) {
+    if (permission.restart_required) {
+      return { label: tr('Granted — restart required'), variant: 'outline' as const }
+    }
+    if (permission.status === 'granted') return { label: tr('Granted'), variant: 'secondary' as const }
+    if (permission.status === 'denied') return { label: tr('Denied'), variant: 'destructive' as const }
+    if (permission.status === 'unknown') return { label: tr('Unknown'), variant: 'outline' as const }
     return { label: tr('Not granted'), variant: 'outline' as const }
   }
 
-  function updateStatus(id: string, status: MacPermissionStatus) {
-    permissions = permissions.map((permission) =>
-      permission.id === id ? { ...permission, status } : permission,
+  function syncRestartRequired(next: MacPermission[]) {
+    screenRestartRequired =
+      screenRestartRequired ||
+      next.some((permission) => permission.id === 'screen_capture' && permission.restart_required)
+    permissions = next.map((permission) =>
+      permission.id === 'screen_capture' && screenRestartRequired
+        ? { ...permission, status: 'granted', restart_required: true }
+        : permission,
     )
+    restartRequired = permissions.some((permission) => permission.restart_required)
   }
 
   async function load() {
     loading = true
     try {
-      permissions = await invoke<MacPermission[]>('list_macos_permissions')
+      syncRestartRequired(await invoke<MacPermission[]>('list_macos_permissions'))
     } catch (cause) {
       toast.error(tr('Could not read permission status'), { description: messageFrom(cause) })
     } finally {
@@ -67,11 +80,17 @@
     busy = true
     try {
       const next = await invoke<MacPermission>('request_macos_permission', { permission: id })
-      updateStatus(id, next.status)
-      if (next.status === 'granted') {
+      syncRestartRequired(permissions.map((permission) => (permission.id === id ? next : permission)))
+      if (next.restart_required) {
+        toast.success(tr('Permission granted. Restart RambleDesk to enable screen capture.'))
+      } else if (next.status === 'granted') {
         toast.success(tr('Permission granted'))
       } else {
-        toast.error(tr('Permission was not granted. Open System Settings and allow it manually.'))
+        toast.error(tr('Permission was not granted. Open System Settings and allow it manually.'), {
+          description: tr(
+            'If System Settings already shows RambleDesk as allowed, turn that switch off and on, then come back and grant access again.',
+          ),
+        })
       }
     } catch (cause) {
       toast.error(tr('Could not request permission'), { description: messageFrom(cause) })
@@ -86,6 +105,17 @@
       toast.info(tr('Allow RambleDesk in System Settings, then come back and refresh the status.'))
     } catch (cause) {
       toast.error(tr('Could not open System Settings'), { description: messageFrom(cause) })
+    }
+  }
+
+  async function restartApp() {
+    if (restarting) return
+    restarting = true
+    try {
+      await invoke('restart_application')
+    } catch (cause) {
+      restarting = false
+      toast.error(tr('Could not restart RambleDesk'), { description: messageFrom(cause) })
     }
   }
 
@@ -115,11 +145,17 @@
           </div>
         </div>
         <div class="flex items-center gap-2">
-          <Badge variant={statusBadge(permission.status).variant}>
-            {#if permission.status === 'granted'}<CheckCircle2 data-icon="inline-start" />{/if}
-            {statusBadge(permission.status).label}
+          <Badge variant={statusBadge(permission).variant}>
+            {#if permission.status === 'granted' && !permission.restart_required}<CheckCircle2 data-icon="inline-start" />{/if}
+            {statusBadge(permission).label}
           </Badge>
-          {#if permission.status !== 'granted'}
+          {#if permission.restart_required}
+            <Button size="sm" disabled={restarting} onclick={() => void restartApp()}>
+              {#if restarting}<LoaderCircle class="animate-spin" data-icon="inline-start" />{/if}
+              <Rocket data-icon="inline-start" />
+              {tr('Restart now')}
+            </Button>
+          {:else if permission.status !== 'granted'}
             {#if permission.status === 'not_determined'}
               <Button size="sm" disabled={busy} onclick={() => void request(permission.id)}>
                 {#if busy}<LoaderCircle class="animate-spin" data-icon="inline-start" />{/if}
@@ -141,7 +177,13 @@
     {/each}
     <div class="flex items-center justify-between gap-3 rounded-md border bg-muted/20 px-3 py-2">
       <p class="m-0 text-[10px] leading-4 text-muted-foreground">
-        {tr('If a permission still does not work after being granted, restart RambleDesk.')}
+        {#if screenRestartRequired}
+          {tr('Screen capture is allowed, but this process cannot use it until RambleDesk restarts.')}
+        {:else if permissions.every((permission) => permission.status === 'granted')}
+          {tr('These permissions are ready.')}
+        {:else}
+          {tr('Allow the system prompt from Grant access. After that, restart RambleDesk before capturing.')}
+        {/if}
       </p>
       <Button variant="ghost" size="sm" disabled={loading} onclick={() => void load()}>
         <RefreshCw data-icon="inline-start" />

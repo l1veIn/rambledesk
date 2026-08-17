@@ -27,13 +27,16 @@
     return t($locale, source, values)
   }
 
-  function primaryLabel() {
-    if (ramblePhase === 'starting') return tr('Starting…')
-    if (ramblePhase === 'stopping') return tr('Pausing…')
-    if (rambleActive) return tr('Pause recording')
-    if (rambleStartedOnce) return tr('Resume recording')
-    return tr('Start recording')
-  }
+  $: primaryLabel =
+    ramblePhase === 'starting'
+      ? tr('Starting…')
+      : ramblePhase === 'stopping'
+        ? tr('Pausing…')
+        : rambleActive
+          ? tr('Pause recording')
+          : rambleStartedOnce
+            ? tr('Resume recording')
+            : tr('Start recording')
 </script>
 
 <section class="border-b p-4">
@@ -63,7 +66,7 @@
       {:else}
         <CircleStop data-icon="inline-start" />
       {/if}
-      {primaryLabel()}
+      {primaryLabel}
     </Button>
     {#if rambleEngaged}
       <Button

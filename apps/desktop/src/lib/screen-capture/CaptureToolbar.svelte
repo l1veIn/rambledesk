@@ -27,6 +27,7 @@
   export let toolbarWidth = 0
   export let toolbarHeight = 0
   export let toolbarStyle = ''
+  export let host: HTMLDivElement | null = null
   export let popoverDown = false
   export let activeTool: AnnotationTool = 'select'
   export let stylePanelOpen = false
@@ -39,8 +40,6 @@
   export let canRedo = false
   export let canDelete = false
   export let onBeginDrag: (event: PointerEvent) => void = () => {}
-  export let onMoveDrag: (event: PointerEvent) => void = () => {}
-  export let onEndDrag: (event: PointerEvent) => void = () => {}
   export let onSetTool: (tool: AnnotationTool) => void = () => {}
   export let onToggleStylePanel: () => void = () => {}
   export let onToggleOverflowPanel: () => void = () => {}
@@ -54,22 +53,24 @@
 </script>
 
 <div
+  bind:this={host}
   bind:clientWidth={toolbarWidth}
   bind:clientHeight={toolbarHeight}
   class="capture-toolbar"
   class:popover-down={popoverDown}
+  role="toolbar"
+  tabindex="-1"
+  aria-label={t($locale, 'Capture tools')}
   data-capture-ui
   style={toolbarStyle}
+  onpointerdown={onBeginDrag}
 >
   <button
+    type="button"
     class="toolbar-drag"
     aria-label={t($locale, 'Drag toolbar')}
     title={t($locale, 'Drag toolbar')}
     onpointerdown={onBeginDrag}
-    onpointermove={onMoveDrag}
-    onpointerup={onEndDrag}
-    onpointercancel={onEndDrag}
-    onlostpointercapture={onEndDrag}
   ><GripVertical size={17} /></button>
   <span class="divider"></span>
   <div class="tool-group">

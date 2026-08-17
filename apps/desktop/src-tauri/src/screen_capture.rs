@@ -32,6 +32,30 @@ pub struct ScreenCaptureState {
     pinned: Mutex<HashMap<String, Vec<u8>>>,
 }
 
+impl ScreenCaptureState {
+    pub fn take_completed_png(&self, capture_session_id: &str) -> Result<Vec<u8>, String> {
+        let mut session = self
+            .session
+            .lock()
+            .map_err(|_| "截图状态锁已损坏".to_owned())?;
+        match session.take() {
+            Some(CaptureSession::Ready {
+                capture_session_id: active_id,
+                png,
+            }) if active_id == capture_session_id => Ok(png),
+            other => {
+                let message = if other.is_none() {
+                    "没有已完成的截图"
+                } else {
+                    "截图会话已变化，请重新截图"
+                };
+                *session = other;
+                Err(message.to_owned())
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 struct ScreenCaptureReady {
     capture_session_id: String,
@@ -80,7 +104,9 @@ pub(super) struct ActiveCaptureInfo {
 #[derive(Debug, Deserialize)]
 pub(super) struct CompleteCaptureInput {
     capture_session_id: String,
-    png_base64: String,
+    selection: CaptureRectangle,
+    #[serde(default)]
+    png_base64: Option<String>,
     #[serde(default)]
     copy_to_clipboard: bool,
 }
@@ -193,6 +219,45 @@ impl CaptureSession {
             Self::Ready { .. } => false,
         }
     }
+}
+
+fn crop_selection(image: &RgbaImage, selection: CaptureRectangle) -> Result<RgbaImage, String> {
+    let rectangle = lifecycle::validated_selection(selection, image.width(), image.height())?;
+    Ok(imageops::crop_imm(
+        image,
+        rectangle.x,
+        rectangle.y,
+        rectangle.width,
+        rectangle.height,
+    )
+    .to_image())
+}
+
+fn completed_capture_image(
+    session: &CaptureSession,
+    input: &CompleteCaptureInput,
+) -> Result<(Vec<u8>, RgbaImage), String> {
+    let CaptureSession::Editing {
+        capture_session_id,
+        image,
+        ..
+    } = session
+    else {
+        return Err("没有可完成的截图会话".to_owned());
+    };
+    if capture_session_id != &input.capture_session_id {
+        return Err("截图会话已变化，请重新截图".to_owned());
+    }
+    if let Some(encoded) = input
+        .png_base64
+        .as_deref()
+        .filter(|value| !value.is_empty())
+    {
+        return decode_canonical_png(encoded);
+    }
+    let cropped = crop_selection(image, input.selection)?;
+    let png = encode_png(&cropped)?;
+    Ok((png, cropped))
 }
 
 fn encode_png(image: &RgbaImage) -> Result<Vec<u8>, String> {

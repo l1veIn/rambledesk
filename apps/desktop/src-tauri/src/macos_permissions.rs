@@ -1,5 +1,7 @@
 use serde::Serialize;
 
+pub const SCREEN_CAPTURE_RESTART_REQUIRED: &str = "SCREEN_CAPTURE_PERMISSION_RESTART_REQUIRED";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 #[serde(rename_all = "snake_case")]
@@ -14,6 +16,17 @@ pub enum MacPermissionStatus {
 pub struct MacPermissionView {
     pub id: String,
     pub status: MacPermissionStatus,
+    pub restart_required: bool,
+}
+
+impl MacPermissionView {
+    fn new(id: &str, status: MacPermissionStatus, restart_required: bool) -> Self {
+        Self {
+            id: id.to_owned(),
+            status,
+            restart_required,
+        }
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -22,6 +35,43 @@ fn screen_capture_status() -> MacPermissionStatus {
         MacPermissionStatus::Granted
     } else {
         MacPermissionStatus::NotDetermined
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn request_screen_capture_access() -> (MacPermissionStatus, bool) {
+    if scap::has_permission() {
+        return (MacPermissionStatus::Granted, false);
+    }
+    let granted = scap::request_permission();
+    if scap::has_permission() {
+        return (MacPermissionStatus::Granted, false);
+    }
+    if granted {
+        (MacPermissionStatus::Granted, true)
+    } else {
+        (screen_capture_status(), false)
+    }
+}
+
+pub fn require_screen_capture_access() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let (status, restart_required) = request_screen_capture_access();
+        if restart_required {
+            return Err(SCREEN_CAPTURE_RESTART_REQUIRED.to_owned());
+        }
+        if status == MacPermissionStatus::Granted {
+            return Ok(());
+        }
+        Err(
+            "RambleDesk 需要“屏幕与系统音频录制”权限。请点“去授权”并允许系统弹窗，然后重启应用再截图。"
+                .to_owned(),
+        )
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(())
     }
 }
 
@@ -74,25 +124,13 @@ fn request_microphone_access() -> MacPermissionStatus {
     }
 }
 
-#[cfg(target_os = "macos")]
-fn request_screen_capture_access() -> MacPermissionStatus {
-    let _ = scap::request_permission();
-    screen_capture_status()
-}
-
 #[tauri::command]
 pub fn list_macos_permissions() -> Vec<MacPermissionView> {
     #[cfg(target_os = "macos")]
     {
         vec![
-            MacPermissionView {
-                id: "screen_capture".to_owned(),
-                status: screen_capture_status(),
-            },
-            MacPermissionView {
-                id: "microphone".to_owned(),
-                status: microphone_status(),
-            },
+            MacPermissionView::new("screen_capture", screen_capture_status(), false),
+            MacPermissionView::new("microphone", microphone_status(), false),
         ]
     }
     #[cfg(not(target_os = "macos"))]
@@ -104,12 +142,12 @@ pub fn list_macos_permissions() -> Vec<MacPermissionView> {
 #[tauri::command]
 pub async fn request_macos_permission(permission: String) -> Result<MacPermissionView, String> {
     let id = permission.clone();
-    let status = tauri::async_runtime::spawn_blocking(move || {
+    let (status, restart_required) = tauri::async_runtime::spawn_blocking(move || {
         #[cfg(target_os = "macos")]
         {
             match id.as_str() {
                 "screen_capture" => Ok(request_screen_capture_access()),
-                "microphone" => Ok(request_microphone_access()),
+                "microphone" => Ok((request_microphone_access(), false)),
                 other => Err(format!("未知的 macOS 权限：{other}")),
             }
         }
@@ -121,10 +159,23 @@ pub async fn request_macos_permission(permission: String) -> Result<MacPermissio
     })
     .await
     .map_err(|error| format!("权限请求任务异常退出：{error}"))??;
-    Ok(MacPermissionView {
-        id: permission,
+    crate::diagnostics::record_event(
+        "macos_permission_requested",
+        Some(&permission),
+        None,
+        Some(if status == MacPermissionStatus::Granted {
+            "granted"
+        } else {
+            "not_granted"
+        }),
+        None,
+        None,
+    );
+    Ok(MacPermissionView::new(
+        &permission,
         status,
-    })
+        restart_required,
+    ))
 }
 
 #[tauri::command]
@@ -153,10 +204,19 @@ pub fn open_macos_privacy_settings(permission: String) -> Result<(), String> {
     }
 }
 
-#[cfg(all(test, target_os = "macos"))]
+#[cfg(test)]
 mod tests {
     use super::*;
 
+    #[test]
+    fn restart_required_code_is_stable() {
+        assert_eq!(
+            SCREEN_CAPTURE_RESTART_REQUIRED,
+            "SCREEN_CAPTURE_PERMISSION_RESTART_REQUIRED"
+        );
+    }
+
+    #[cfg(target_os = "macos")]
     #[test]
     fn lists_expected_macos_permissions() {
         let permissions = list_macos_permissions();
@@ -165,5 +225,16 @@ mod tests {
             .map(|permission| permission.id.as_str())
             .collect();
         assert_eq!(ids, ["screen_capture", "microphone"]);
+        assert!(
+            permissions
+                .iter()
+                .all(|permission| !permission.restart_required)
+        );
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn require_screen_capture_is_a_no_op_off_macos() {
+        assert!(require_screen_capture_access().is_ok());
     }
 }

@@ -1,14 +1,7 @@
 import { mount } from 'svelte'
 
-import App from './App.svelte'
-import PinnedCapture from './PinnedCapture.svelte'
-import RambleConsole from './RambleConsole.svelte'
-import ScrollCaptureController from './ScrollCaptureController.svelte'
-import ScreenshotOverlay from './ScreenshotOverlay.svelte'
 import { initializePreferences } from './lib/preferences'
 import './app.css'
-import './lib/ramble-console.css'
-import './lib/screen-capture/screenshot-overlay.css'
 
 function reportFrontendError(context: string, message: string) {
   if (!('__TAURI_INTERNALS__' in window)) return
@@ -45,15 +38,25 @@ if (captureMode || scrollCaptureMode || pinnedCaptureMode) {
   document.body.classList.add('app-mode')
 }
 
-mount(
-  captureMode
-    ? ScreenshotOverlay
-    : scrollCaptureMode
-      ? ScrollCaptureController
-      : pinnedCaptureMode
-        ? PinnedCapture
-        : rambleConsoleMode
-          ? RambleConsole
-          : App,
-  { target: document.getElementById('app')! },
-)
+const target = document.getElementById('app')!
+
+if (captureMode) {
+  await import('./lib/screen-capture/screenshot-overlay.css')
+  const { default: ScreenshotOverlay } = await import('./ScreenshotOverlay.svelte')
+  mount(ScreenshotOverlay, { target })
+} else if (scrollCaptureMode) {
+  await import('./lib/screen-capture/screenshot-overlay.css')
+  const { default: ScrollCaptureController } = await import('./ScrollCaptureController.svelte')
+  mount(ScrollCaptureController, { target })
+} else if (pinnedCaptureMode) {
+  await import('./lib/screen-capture/screenshot-overlay.css')
+  const { default: PinnedCapture } = await import('./PinnedCapture.svelte')
+  mount(PinnedCapture, { target })
+} else if (rambleConsoleMode) {
+  await import('./lib/ramble-console.css')
+  const { default: RambleConsole } = await import('./RambleConsole.svelte')
+  mount(RambleConsole, { target })
+} else {
+  const { default: App } = await import('./App.svelte')
+  mount(App, { target })
+}

@@ -113,7 +113,10 @@
     background: rgb(18 25 34 / 94%);
     box-shadow: 0 16px 50px rgb(0 0 0 / 38%);
     backdrop-filter: blur(15px);
+    cursor: grab;
+    touch-action: none;
   }
+  .capture-toolbar:active { cursor: grabbing; }
   .tool-group, .palette, .stroke-picker { display: flex; flex: 0 0 auto; gap: 3px; align-items: center; }
   .capture-toolbar button {
     display: grid;
@@ -131,7 +134,7 @@
   .capture-toolbar button:hover:not(:disabled) { color: white; background: rgb(255 255 255 / 9%); }
   .capture-toolbar button.active { border-color: rgb(93 199 255 / 36%); color: #8bd5ff; background: rgb(62 159 220 / 18%); }
   .capture-toolbar button:disabled { cursor: default; opacity: 0.3; }
-  .capture-toolbar .toolbar-drag { width: 24px; color: rgb(239 247 255 / 42%); cursor: grab; touch-action: none; }
+  .capture-toolbar .toolbar-drag { width: 36px; color: rgb(239 247 255 / 70%); cursor: grab; touch-action: none; }
   .capture-toolbar .toolbar-drag:active { cursor: grabbing; }
   .divider { width: 1px; height: 22px; flex: 0 0 auto; margin: 0 2px; background: rgb(255 255 255 / 12%); }
   .popup-control { position: relative; display: flex; flex: 0 0 auto; }

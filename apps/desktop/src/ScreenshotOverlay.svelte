@@ -107,6 +107,8 @@
   let toolbarManualY: number | null = null
   let toolbarDrag: ToolbarDrag | null = null
   let toolbarDragListening = false
+  let toolbarHost: HTMLDivElement | null = null
+  let toolbarStyle = ''
   let stylePanelOpen = false
   let overflowPanelOpen = false
 
@@ -130,10 +132,7 @@
   }
 
   onMount(() => {
-    const resize = () => {
-      viewportWidth = shell?.clientWidth || window.innerWidth
-      viewportHeight = shell?.clientHeight || window.innerHeight
-    }
+    const resize = () => resizeViewport()
     const keydown = (event: KeyboardEvent) => void handleKeydown(event)
     const preventSelection = (event: Event) => {
       const target = event.target
@@ -192,6 +191,11 @@
     toolbarManualX = null
     toolbarManualY = null
     toolbarDrag = null
+    toolbarStyle = ''
+    if (toolbarHost) {
+      toolbarHost.style.left = ''
+      toolbarHost.style.top = ''
+    }
     unbindToolbarDragListeners()
     stylePanelOpen = false
     overflowPanelOpen = false
@@ -237,6 +241,8 @@
       await invoke('show_screen_capture_overlay').catch((cause) => {
         errorMessage ||= messageFrom(cause)
       })
+      resizeViewport()
+      if (selection) await scheduleToolbarLayout()
       initializingSessionId = null
     }
   }
@@ -250,7 +256,7 @@
   }
 
   function beginPointer(event: PointerEvent) {
-    if (!capture || completing || event.button !== 0) return
+    if (!capture || completing || event.button !== 0 || toolbarDrag) return
     const target = event.target
     if (target instanceof Element && target.closest('[data-capture-ui]')) return
     stylePanelOpen = false
@@ -328,6 +334,7 @@
   }
 
   function movePointer(event: PointerEvent) {
+    if (toolbarDrag) return
     const point = imagePoint(event, shell.getBoundingClientRect(), geometry)
     if (!point || !capture) {
       if (!gesture && !selection) hoveredTarget = null
@@ -418,7 +425,7 @@
   }
 
   function endPointer(event: PointerEvent) {
-    if (!gesture || !capture) return
+    if (toolbarDrag || !gesture || !capture) return
     const point = imagePoint(event, shell.getBoundingClientRect(), geometry) ?? gesture.start
     const completedGesture = gesture
     gesture = null
@@ -430,6 +437,7 @@
         selection = null
       }
       hoveredTarget = null
+      if (selection) void scheduleToolbarLayout()
       return
     }
     if (completedGesture.kind === 'draw') {
@@ -589,16 +597,19 @@
     completing = true
     errorMessage = ''
     try {
-      const pngBase64 = exportAnnotatedCapture(
-        sourceImage,
-        selection,
-        annotations,
-        t($locale, 'Could not create the capture export canvas'),
-      )
       await invoke('complete_screen_capture', {
         input: {
           capture_session_id: capture.capture_session_id,
-          png_base64: pngBase64,
+          selection: roundedRectangle(selection),
+          png_base64:
+            annotations.length > 0
+              ? exportAnnotatedCapture(
+                  sourceImage,
+                  selection,
+                  annotations,
+                  t($locale, 'Could not create the capture export canvas'),
+                )
+              : null,
           copy_to_clipboard: copyToClipboard,
         },
       })
@@ -614,16 +625,19 @@
     completing = true
     errorMessage = ''
     try {
-      const pngBase64 = exportAnnotatedCapture(
-        sourceImage,
-        selection,
-        annotations,
-        t($locale, 'Could not create the capture export canvas'),
-      )
       await invoke('pin_screen_capture', {
         input: {
           capture_session_id: capture.capture_session_id,
-          png_base64: pngBase64,
+          selection: roundedRectangle(selection),
+          png_base64:
+            annotations.length > 0
+              ? exportAnnotatedCapture(
+                  sourceImage,
+                  selection,
+                  annotations,
+                  t($locale, 'Could not create the capture export canvas'),
+                )
+              : null,
           copy_to_clipboard: false,
         },
       })
@@ -717,6 +731,7 @@
     if (!capture) return
     selection = fullScreenSelection(capture)
     hoveredTarget = null
+    void scheduleToolbarLayout()
   }
 
   function textDraftStyle() {
@@ -739,6 +754,37 @@
     return position ? `left:${position.left}px;top:${position.top}px` : ''
   }
 
+  $: toolbarStyle = captureToolbarStyle()
+  $: if (selection && viewportWidth > 64 && toolbarWidth > 0) {
+    toolbarManualX
+    toolbarManualY
+    geometry
+    applyToolbarPosition()
+  }
+
+  function resizeViewport() {
+    const width = Math.round(shell?.clientWidth || document.documentElement.clientWidth || window.innerWidth)
+    const height = Math.round(shell?.clientHeight || document.documentElement.clientHeight || window.innerHeight)
+    if (width > 0) viewportWidth = width
+    if (height > 0) viewportHeight = height
+  }
+
+  async function scheduleToolbarLayout() {
+    resizeViewport()
+    await tick()
+    applyToolbarPosition()
+  }
+
+  function applyToolbarPosition() {
+    const position = captureToolbarPosition()
+    if (!position) return
+    toolbarStyle = `left:${position.left}px;top:${position.top}px`
+    if (toolbarHost) {
+      toolbarHost.style.left = `${position.left}px`
+      toolbarHost.style.top = `${position.top}px`
+    }
+  }
+
   function toolbarPopoverOpensDownward() {
     return toolbarPopoverDown(captureToolbarPosition())
   }
@@ -749,6 +795,8 @@
     window.addEventListener('pointermove', moveToolbarDrag, true)
     window.addEventListener('pointerup', endToolbarDrag, true)
     window.addEventListener('pointercancel', endToolbarDrag, true)
+    window.addEventListener('mousemove', moveToolbarDragFromMouse, true)
+    window.addEventListener('mouseup', endToolbarDragFromMouse, true)
   }
 
   function unbindToolbarDragListeners() {
@@ -757,22 +805,27 @@
     window.removeEventListener('pointermove', moveToolbarDrag, true)
     window.removeEventListener('pointerup', endToolbarDrag, true)
     window.removeEventListener('pointercancel', endToolbarDrag, true)
+    window.removeEventListener('mousemove', moveToolbarDragFromMouse, true)
+    window.removeEventListener('mouseup', endToolbarDragFromMouse, true)
+  }
+
+  function isToolbarDragSource(event: PointerEvent) {
+    const target = event.target
+    if (!(target instanceof Element)) return false
+    if (target.closest('.toolbar-popover, textarea, input')) return false
+    const button = target.closest('button')
+    return !button || button.classList.contains('toolbar-drag')
   }
 
   function beginToolbarDrag(event: PointerEvent) {
     if (event.button !== 0 || !event.isPrimary) return
+    if (!isToolbarDragSource(event)) return
     event.preventDefault()
     event.stopPropagation()
     stylePanelOpen = false
     overflowPanelOpen = false
     const position = captureToolbarPosition()
     if (!position) return
-    const target = event.currentTarget as HTMLElement
-    try {
-      target.setPointerCapture(event.pointerId)
-    } catch {
-      // The capture-phase window listeners below keep drag working in webviews without pointer capture.
-    }
     toolbarDrag = {
       pointerId: event.pointerId,
       startX: event.clientX,
@@ -780,19 +833,47 @@
       originX: position.left,
       originY: position.top,
     }
+    applyToolbarPosition()
     bindToolbarDragListeners()
   }
 
   function moveToolbarDrag(event: PointerEvent) {
-    if (!toolbarDrag || event.pointerId !== toolbarDrag.pointerId) return
+    if (!toolbarDrag || (event.pointerId !== toolbarDrag.pointerId && event.pointerId !== 0)) return
+    if (event.buttons === 0) {
+      endToolbarDrag(event)
+      return
+    }
     event.preventDefault()
     event.stopPropagation()
     toolbarManualX = toolbarDrag.originX + event.clientX - toolbarDrag.startX
     toolbarManualY = toolbarDrag.originY + event.clientY - toolbarDrag.startY
+    applyToolbarPosition()
+  }
+
+  function moveToolbarDragFromMouse(event: MouseEvent) {
+    if (!toolbarDrag) return
+    if (event.buttons === 0) {
+      endToolbarDragFromMouse(event)
+      return
+    }
+    event.preventDefault()
+    event.stopPropagation()
+    toolbarManualX = toolbarDrag.originX + event.clientX - toolbarDrag.startX
+    toolbarManualY = toolbarDrag.originY + event.clientY - toolbarDrag.startY
+    applyToolbarPosition()
   }
 
   function endToolbarDrag(event: PointerEvent) {
-    if (!toolbarDrag || event.pointerId !== toolbarDrag.pointerId) return
+    if (!toolbarDrag) return
+    if (event.pointerId !== toolbarDrag.pointerId && event.pointerId !== 0) return
+    event.preventDefault()
+    event.stopPropagation()
+    toolbarDrag = null
+    unbindToolbarDragListeners()
+  }
+
+  function endToolbarDragFromMouse(event: MouseEvent) {
+    if (!toolbarDrag) return
     event.preventDefault()
     event.stopPropagation()
     toolbarDrag = null
@@ -921,9 +1002,10 @@
 
   {#if selection}
     <CaptureToolbar
+      bind:host={toolbarHost}
       bind:toolbarWidth
       bind:toolbarHeight
-      toolbarStyle={captureToolbarStyle()}
+      {toolbarStyle}
       popoverDown={toolbarPopoverOpensDownward()}
       {activeTool}
       {stylePanelOpen}
@@ -936,8 +1018,6 @@
       canRedo={redoStack.length > 0}
       canDelete={selectedAnnotationId !== null}
       onBeginDrag={beginToolbarDrag}
-      onMoveDrag={moveToolbarDrag}
-      onEndDrag={endToolbarDrag}
       onSetTool={setTool}
       onToggleStylePanel={toggleStylePanel}
       onToggleOverflowPanel={toggleOverflowPanel}

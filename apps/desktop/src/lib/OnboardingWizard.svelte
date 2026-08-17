@@ -90,6 +90,7 @@
   let storage: StorageView | null = null
   let storageBusy = false
   let storageRestartRequired = false
+  let permissionRestartRequired = false
   let models: SpeechModel[] = []
   let modelBusy = false
   let modelProgress: ModelProgress | null = null
@@ -197,6 +198,15 @@
 
   async function restartForStorage() {
     setOnboardingStep(2)
+    try {
+      await invoke('restart_application')
+    } catch (cause) {
+      toast.error(tr('Could not restart RambleDesk'), { description: messageFrom(cause) })
+    }
+  }
+
+  async function restartForPermissions() {
+    setOnboardingStep(step)
     try {
       await invoke('restart_application')
     } catch (cause) {
@@ -376,7 +386,7 @@
           <section class="mx-auto max-w-xl">
             <div class="flex gap-3"><ShieldCheck class="mt-0.5 size-6 text-primary" /><div><h2 class="m-0 text-lg font-semibold">{tr('Grant Mac permissions')}</h2><p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{tr('Screen capture and voice transcription require macOS permissions. Grant them now or later in Settings → Permissions.')}</p></div></div>
             <div class="mt-6">
-              <MacPermissions />
+              <MacPermissions bind:restartRequired={permissionRestartRequired} />
             </div>
           </section>
       {:else if steps[step] === 'Adapters'}
@@ -484,8 +494,9 @@
     <footer class="flex shrink-0 items-center justify-between border-t bg-muted/15 px-7 py-4">
       <Button variant="ghost" size="sm" onclick={() => complete(false)}>{tr('Set up later')}</Button>
       <div class="flex items-center gap-2">
-        {#if step > 0 && !storageRestartRequired}<Button variant="outline" size="sm" onclick={() => move(step - 1)}><ChevronLeft data-icon="inline-start" />{tr('Back')}</Button>{/if}
+        {#if step > 0 && !storageRestartRequired && !permissionRestartRequired}<Button variant="outline" size="sm" onclick={() => move(step - 1)}><ChevronLeft data-icon="inline-start" />{tr('Back')}</Button>{/if}
         {#if storageRestartRequired}<Button disabled={storageBusy} onclick={() => void restartForStorage()}><Rocket data-icon="inline-start" />{tr('Restart and continue')}</Button>
+        {:else if permissionRestartRequired}<Button onclick={() => void restartForPermissions()}><Rocket data-icon="inline-start" />{tr('Restart and continue')}</Button>
         {:else if step === steps.length - 1}<Button onclick={() => complete()}><Check data-icon="inline-start" />{tr('Start using RambleDesk')}</Button>
         {:else}<Button disabled={storageBusy || modelBusy} onclick={() => move(step + 1)}>{steps[step] === 'Voice input' && !selectedModel?.installed ? tr('Skip voice setup') : tr('Continue')}<ChevronRight data-icon="inline-end" /></Button>{/if}
       </div>

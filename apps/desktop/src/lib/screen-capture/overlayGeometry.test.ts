@@ -63,6 +63,35 @@ describe('captureToolbarPosition', () => {
     )
     expect(position).not.toBeNull()
     expect(position!.top).toBe(182) // selectionBottom (170) + 12
+    expect(position!.left).toBe(14) // centered, then clamped to the left margin
+  })
+
+  it('centers a measured toolbar under the selection', () => {
+    const position = captureToolbarPosition(
+      {
+        selection: { x: 100, y: 100, width: 400, height: 200 },
+        toolbarWidth: 200,
+        toolbarHeight: 44,
+        toolbarManualX: null,
+        toolbarManualY: null,
+      },
+      geometry,
+    )
+    expect(position).toEqual({ left: 60, top: 182 })
+  })
+
+  it('honors a manual drag position inside the viewport', () => {
+    const position = captureToolbarPosition(
+      {
+        selection: { x: 100, y: 100, width: 400, height: 200 },
+        toolbarWidth: 320,
+        toolbarHeight: 44,
+        toolbarManualX: 80,
+        toolbarManualY: 40,
+      },
+      geometry,
+    )
+    expect(position).toEqual({ left: 80, top: 40 })
   })
 
   it('flips above the selection when the bottom would overflow', () => {

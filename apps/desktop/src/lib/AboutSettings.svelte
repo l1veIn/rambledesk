@@ -1,15 +1,19 @@
 <script lang="ts">
+  import { invoke } from '@tauri-apps/api/core'
   import { getVersion } from '@tauri-apps/api/app'
+  import { save } from '@tauri-apps/plugin-dialog'
   import { openUrl } from '@tauri-apps/plugin-opener'
-  import { Download, ExternalLink, GitBranch, LoaderCircle, RefreshCw, RotateCw, ShieldCheck, Sparkles } from '@lucide/svelte'
+  import { Download, ExternalLink, FileArchive, FolderOpen, GitBranch, LoaderCircle, RefreshCw, RotateCw, ShieldCheck, Sparkles } from '@lucide/svelte'
   import { onMount } from 'svelte'
 
   import rambelleSticker from '../assets/rambelle-states/idle.webp'
   import RambelleProfileDialog from './RambelleProfileDialog.svelte'
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
+  import { toast } from '$lib/components/ui/sonner'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
+  import { diagnosticExportView } from './nativePath'
   import {
     checkForUpdates,
     downloadAndInstallUpdate,
@@ -21,8 +25,12 @@
 
   let version = '0.0.1'
   let profileOpen = false
+  let exporting: 'last_7_days' | 'all' | null = null
+  let lastExportPath = ''
   const isTauri = '__TAURI_INTERNALS__' in window
+  const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)
   const projectUrl = 'https://github.com/l1veIn/rambledesk'
+  const releasesUrl = `${projectUrl}/releases`
 
   onMount(async () => {
     if (isTauri) version = await getVersion().catch(() => version)
@@ -40,6 +48,59 @@
     window.open(projectUrl, '_blank', 'noopener,noreferrer')
   }
 
+  async function openReleases() {
+    if (isTauri) {
+      await openUrl(releasesUrl)
+      return
+    }
+    window.open(releasesUrl, '_blank', 'noopener,noreferrer')
+  }
+
+  async function exportDiagnostics(scope: 'last_7_days' | 'all') {
+    if (!isTauri || exporting) return
+    exporting = scope
+    try {
+      const stamp = new Date().toISOString().slice(0, 10)
+      const path = await save({
+        defaultPath: `RambleDesk-diagnostics-${scope === 'all' ? 'all' : '7d'}-${stamp}.zip`,
+        filters: [{ name: 'Zip', extensions: ['zip'] }],
+      })
+      if (!path) return
+      const exported = diagnosticExportView(await invoke('export_diagnostics', { scope, path }))
+      lastExportPath = exported.path
+      toast.success(tr('Diagnostic package exported'), {
+        duration: 12_000,
+        description: tr('{events} events · {requests} requests · {logs} log files', {
+          events: exported.events,
+          requests: exported.requests,
+          logs: exported.logs,
+        }),
+        action: {
+          label: tr('Show in folder'),
+          onClick: (event) => {
+            event.preventDefault()
+            void revealExportedPath(exported.path)
+          },
+        },
+      })
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause)
+      toast.error(tr('Could not export the diagnostic package'), { description: message })
+    } finally {
+      exporting = null
+    }
+  }
+
+  async function revealExportedPath(path: string) {
+    if (!path) return
+    try {
+      await invoke('reveal_path_in_folder', { path })
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause)
+      toast.error(tr('Could not show the file in the folder'), { description: message })
+    }
+  }
+
   $: progress =
     $updateState.total > 0
       ? Math.min(100, Math.round(($updateState.downloaded / $updateState.total) * 100))
@@ -53,7 +114,7 @@
         <div class="flex flex-wrap items-center gap-2">
           <h3 class="m-0 text-xl font-semibold tracking-tight">RambleDesk</h3>
           <Badge variant="secondary">v{version}</Badge>
-          <Badge variant="outline">Windows</Badge>
+          <Badge variant="outline">{isMac ? 'macOS' : /Win/.test(navigator.platform || navigator.userAgent) ? 'Windows' : 'Linux'}</Badge>
         </div>
         <p class="m-0 mt-3 max-w-xl text-sm leading-6 text-muted-foreground">
           {tr('Let agents pause at key moments and request structured human feedback that can be resumed and archived.')}
@@ -103,9 +164,19 @@
       <div>
         <h3 class="m-0 text-sm font-medium">{tr('Software updates')}</h3>
         <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
-          {tr('RambleDesk checks for updates quietly after launch, and you can check manually at any time.')}
+          {#if isMac}
+            {tr('macOS builds are unsigned. Download a new DMG from GitHub Releases when you want to update.')}
+          {:else}
+            {tr('RambleDesk checks for updates quietly after launch, and you can check manually at any time.')}
+          {/if}
         </p>
       </div>
+      {#if isMac}
+        <Button variant="outline" onclick={() => void openReleases()}>
+          <ExternalLink data-icon="inline-start" />
+          {tr('Open GitHub Releases')}
+        </Button>
+      {:else}
       <Button
         variant="outline"
         disabled={!isTauri || $updateState.status === 'checking' || $updateState.status === 'downloading'}
@@ -119,8 +190,10 @@
           {tr('Check for updates')}
         {/if}
       </Button>
+      {/if}
     </div>
 
+    {#if !isMac}
     <div class="mt-4 rounded-lg border bg-muted/25 p-4" aria-live="polite">
       {#if $updateState.status === 'idle'}
         <p class="m-0 text-xs text-muted-foreground">{tr('Updates have not been checked yet.')}</p>
@@ -181,9 +254,56 @@
       {/if}
     </div>
 
-    {#if installBlocked && ($updateState.status === 'available' || $updateState.status === 'ready')}
+    {/if}
+    {#if !isMac && installBlocked && ($updateState.status === 'available' || $updateState.status === 'ready')}
       <p class="m-0 mt-3 text-[10px] leading-4 text-warning-foreground dark:text-warning">
         {tr('Feedback is in progress or has unsaved content. Update restart is disabled to prevent data loss.')}
+      </p>
+    {/if}
+  </section>
+
+  <section class="rounded-xl border p-5">
+    <div>
+      <h3 class="m-0 text-sm font-medium">{tr('Diagnostic package')}</h3>
+      <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
+        {tr('Export logs, environment, adapter status, and usage metadata as a zip. Drafts, feedback text, attachments, and API keys are never included.')}
+      </p>
+    </div>
+    <div class="mt-4 flex flex-wrap gap-2">
+      <Button
+        variant="outline"
+        disabled={!isTauri || exporting !== null}
+        onclick={() => void exportDiagnostics('last_7_days')}
+      >
+        {#if exporting === 'last_7_days'}
+          <LoaderCircle class="animate-spin" data-icon="inline-start" />
+        {:else}
+          <FileArchive data-icon="inline-start" />
+        {/if}
+        {tr('Export last 7 days')}
+      </Button>
+      <Button
+        variant="outline"
+        disabled={!isTauri || exporting !== null}
+        onclick={() => void exportDiagnostics('all')}
+      >
+        {#if exporting === 'all'}
+          <LoaderCircle class="animate-spin" data-icon="inline-start" />
+        {:else}
+          <FileArchive data-icon="inline-start" />
+        {/if}
+        {tr('Export all diagnostics')}
+      </Button>
+      {#if lastExportPath}
+        <Button variant="ghost" onclick={() => void revealExportedPath(lastExportPath)}>
+          <FolderOpen data-icon="inline-start" />
+          {tr('Show in folder')}
+        </Button>
+      {/if}
+    </div>
+    {#if lastExportPath}
+      <p class="m-0 mt-3 truncate font-mono text-[10px] leading-4 text-muted-foreground" title={lastExportPath}>
+        {lastExportPath}
       </p>
     {/if}
   </section>

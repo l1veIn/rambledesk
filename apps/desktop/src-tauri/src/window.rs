@@ -45,3 +45,30 @@ pub(super) fn show_main_window(app: &tauri::AppHandle) {
         let _ = window.set_focus();
     }
 }
+
+#[tauri::command]
+pub(super) fn show_ramble_console(app: tauri::AppHandle) -> Result<(), String> {
+    let console = app
+        .get_webview_window(super::RAMBLE_CONSOLE_LABEL)
+        .ok_or_else(|| "Ramble console window is not available".to_owned())?;
+    if let Err(error) = position_ramble_console(&app, &console) {
+        tracing::warn!(%error, "failed to position the Ramble console");
+    }
+    console
+        .show()
+        .map_err(|error| format!("failed to show the Ramble console: {error}"))?;
+    let _ = console.set_focus();
+    tracing::info!("opened Ramble console");
+    Ok(())
+}
+
+#[tauri::command]
+pub(super) fn hide_ramble_console(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(console) = app.get_webview_window(super::RAMBLE_CONSOLE_LABEL) {
+        console
+            .hide()
+            .map_err(|error| format!("failed to hide the Ramble console: {error}"))?;
+        tracing::info!("hid Ramble console");
+    }
+    Ok(())
+}

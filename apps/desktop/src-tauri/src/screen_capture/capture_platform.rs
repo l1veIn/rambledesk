@@ -78,17 +78,7 @@ pub(super) fn capture_monitor(
 
 #[cfg(target_os = "macos")]
 pub(super) fn ensure_screen_capture_permission() -> Result<(), String> {
-    if scap::has_permission() {
-        return Ok(());
-    }
-    let _ = scap::request_permission();
-    if scap::has_permission() {
-        return Ok(());
-    }
-    Err(
-        "RambleDesk 需要“屏幕与系统音频录制”权限。请在系统设置 → 隐私与安全性中允许 RambleDesk，然后重新启动应用再截图。"
-            .to_owned(),
-    )
+    crate::macos_permissions::require_screen_capture_access()
 }
 
 #[cfg(target_os = "macos")]

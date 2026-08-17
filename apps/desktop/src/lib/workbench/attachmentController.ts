@@ -34,6 +34,7 @@ type AttachmentControllerContext = {
   getBusy: () => boolean
   getPreviews: () => Record<string, string>
   setBusy: (busy: boolean) => void
+  setCaptureBusy: (busy: boolean) => void
   setMessage: (message: string, tone?: AttachmentMessageTone) => void
   setPreviews: (previews: Record<string, string>) => void
   setDragActive: (active: boolean) => void
@@ -215,14 +216,27 @@ export function createAttachmentController(context: AttachmentControllerContext)
     if (workspace?.request.request_id === requestId && !(await context.saveDraftNow())) return
     await context.waitForRambleMarkdown()
     screenCaptureRequestId = requestId
-    context.setBusy(true)
+    context.setCaptureBusy(true)
     context.setMessage('')
     try {
       await invoke('begin_screen_capture')
+      context.setCaptureBusy(false)
     } catch (cause) {
       screenCaptureRequestId = ''
-      context.setBusy(false)
+      context.setCaptureBusy(false)
       const message = context.messageFrom(cause)
+      if (message.includes('SCREEN_CAPTURE_PERMISSION_RESTART_REQUIRED')) {
+        context.setMessage(
+          context.tr('Permission granted. Restart RambleDesk to enable screen capture.'),
+          'info',
+        )
+        try {
+          await invoke('restart_application')
+        } catch (restartCause) {
+          context.setMessage(context.messageFrom(restartCause), 'error')
+        }
+        return
+      }
       context.setMessage(
         message === 'Built-in region capture is currently available only in Windows development builds.'
           ? context.tr(message)
@@ -235,7 +249,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
   async function importScreenCapture(capture: ScreenCaptureReady) {
     if (context.getInteractionLocked()) {
       await discardScreenCapture(capture.capture_session_id)
-      context.setBusy(false)
+      context.setCaptureBusy(false)
       return
     }
     const workspace = context.getWorkspace()
@@ -243,9 +257,10 @@ export function createAttachmentController(context: AttachmentControllerContext)
       screenCaptureRequestId || context.getRambleRequestId() || workspace?.request.request_id || ''
     if (!requestId) {
       await discardScreenCapture(capture.capture_session_id)
-      context.setBusy(false)
+      context.setCaptureBusy(false)
       return
     }
+    context.setCaptureBusy(true)
     try {
       const visibleTarget = workspace?.request.request_id === requestId
       if (visibleTarget && !(await context.saveDraftNow())) {
@@ -257,16 +272,12 @@ export function createAttachmentController(context: AttachmentControllerContext)
         : await invoke<FeedbackWorkspaceView>('get_feedback_workspace', { requestId })
       if (!target) throw new Error(context.tr('This feedback request could not be found.'))
       const existingIds = new Set(target.attachments.map((item) => item.attachment_id))
-      const png = await invoke<ArrayBuffer>('read_completed_screen_capture', {
+      context.setMessage(context.tr('Inserting capture…'), 'info')
+      const next = await invoke<FeedbackWorkspaceView>('add_completed_screen_capture', {
+        requestId,
         captureSessionId: capture.capture_session_id,
+        expectedRevision: target.draft.saved_revision,
       })
-      const input: AddAttachmentInput = {
-        request_id: requestId,
-        file_name: capture.file_name,
-        contents: Array.from(new Uint8Array(png)),
-        expected_revision: target.draft.saved_revision,
-      }
-      const next = await invoke<FeedbackWorkspaceView>('add_feedback_attachment', { input })
       const added = next.attachments.filter((item) => !existingIds.has(item.attachment_id))
       if (visibleTarget && context.getWorkspace()?.request.request_id === requestId) {
         context.applyWorkspaceMutation(next)
@@ -297,7 +308,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
     } finally {
       screenCaptureRequestId = ''
       await discardScreenCapture(capture.capture_session_id)
-      context.setBusy(false)
+      context.setCaptureBusy(false)
     }
   }
 
@@ -356,18 +367,26 @@ export function createAttachmentController(context: AttachmentControllerContext)
   }
 
   async function refreshPreviews(next: FeedbackWorkspaceView) {
-    releasePreviews()
+    const current = context.getPreviews()
+    const keep = new Set(
+      next.attachments
+        .filter((attachment) => isImageMediaType(attachment.media_type))
+        .map((attachment) => attachment.attachment_id),
+    )
     const previews: Record<string, string> = {}
+    for (const [attachmentId, url] of Object.entries(current)) {
+      if (keep.has(attachmentId)) previews[attachmentId] = url
+      else URL.revokeObjectURL(url)
+    }
     for (const attachment of next.attachments) {
-      if (!isImageMediaType(attachment.media_type)) continue
+      if (!isImageMediaType(attachment.media_type) || previews[attachment.attachment_id]) continue
       try {
-        const bytes = await invoke<number[]>('read_feedback_attachment', {
+        const bytes = await invoke<ArrayBuffer>('read_feedback_attachment', {
           requestId: next.request.request_id,
           attachmentId: attachment.attachment_id,
         })
-        const buffer = Uint8Array.from(bytes).buffer
         previews[attachment.attachment_id] = URL.createObjectURL(
-          new Blob([buffer], { type: attachment.media_type }),
+          new Blob([bytes], { type: attachment.media_type }),
         )
       } catch {
         // A missing preview must not block editing or submission.

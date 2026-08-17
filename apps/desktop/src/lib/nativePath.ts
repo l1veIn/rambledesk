@@ -10,3 +10,25 @@ export function desktopPath(value: string): string {
   }
   return value
 }
+
+export type DiagnosticExportResult = {
+  report_id?: string
+  reportId?: string
+  path?: string
+  scope?: string
+  event_count?: number
+  eventCount?: number
+  request_count?: number
+  requestCount?: number
+  log_file_count?: number
+  logFileCount?: number
+}
+
+export function diagnosticExportView(result: DiagnosticExportResult) {
+  return {
+    path: desktopPath(result.path ?? ''),
+    events: result.event_count ?? result.eventCount ?? 0,
+    requests: result.request_count ?? result.requestCount ?? 0,
+    logs: result.log_file_count ?? result.logFileCount ?? 0,
+  }
+}

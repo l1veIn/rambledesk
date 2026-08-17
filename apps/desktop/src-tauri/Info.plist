@@ -4,5 +4,7 @@
 <dict>
   <key>NSMicrophoneUsageDescription</key>
   <string>RambleDesk uses the microphone for on-device voice transcription while you record a Ramble.</string>
+  <key>NSScreenCaptureUsageDescription</key>
+  <string>RambleDesk captures the screen so you can attach screenshots and scrolling captures to a Ramble.</string>
 </dict>
 </plist>

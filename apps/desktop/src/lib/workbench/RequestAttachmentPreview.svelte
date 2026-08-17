@@ -58,7 +58,7 @@
     try {
       const raw =
         readKind === 'workspace'
-          ? await invoke<number[]>('read_feedback_attachment', {
+          ? await invoke<ArrayBuffer>('read_feedback_attachment', {
               requestId,
               attachmentId: current.attachment_id,
             })

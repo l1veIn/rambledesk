@@ -5,7 +5,6 @@
     isPermissionGranted,
     sendNotification,
   } from '@tauri-apps/plugin-notification'
-  import { revealItemInDir } from '@tauri-apps/plugin-opener'
   import { onMount, tick } from 'svelte'
   import { Pane, PaneGroup, PaneResizer } from 'paneforge'
 
@@ -120,6 +119,7 @@
   let cancelling = false
   let approving = false
   let attachmentBusy = false
+  let screenCaptureBusy = false
   let attachmentMessage = ''
   let attachmentMessageTone: AttachmentMessageTone = 'info'
   let deliveredAttachmentMessage = ''
@@ -224,6 +224,7 @@
     getBusy: () => attachmentBusy,
     getPreviews: () => attachmentPreviews,
     setBusy: (busy) => (attachmentBusy = busy),
+    setCaptureBusy: (busy) => (screenCaptureBusy = busy),
     setMessage: (message, tone) => {
       if (tone) attachmentMessageTone = tone
       attachmentMessage = message
@@ -797,7 +798,9 @@
   async function openFeedbackPackage() {
     if (!feedbackResult) return
     try {
-      await revealItemInDir(desktopPath(feedbackResult.markdown_path))
+      await invoke('reveal_path_in_folder', {
+        path: desktopPath(feedbackResult.markdown_path),
+      })
     } catch (cause) {
       pageError = tr('Could not open Feedback Package: {error}', { error: messageFrom(cause) })
     }
@@ -829,6 +832,7 @@
     {workspace}
     editor={workspacePanel}
     bind:attachmentBusy
+    {screenCaptureBusy}
     bind:attachmentMessage
     bind:voicePhase
     bind:voiceDevice

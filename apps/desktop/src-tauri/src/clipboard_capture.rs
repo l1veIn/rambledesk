@@ -173,6 +173,28 @@ pub async fn stop_clipboard_capture(
         .map_err(|_| "剪贴板监听线程异常退出".to_owned())
 }
 
+impl ClipboardCaptureState {
+    pub fn take_image(
+        &self,
+        capture_id: &str,
+        request_id: &str,
+        ramble_context_id: &str,
+    ) -> Result<Vec<u8>, String> {
+        let mut images = self
+            .images
+            .lock()
+            .map_err(|_| "剪贴板图片状态锁已损坏".to_owned())?;
+        let image = images
+            .remove(capture_id)
+            .ok_or_else(|| "剪贴板图片已过期或不存在".to_owned())?;
+        if image.request_id != request_id || image.ramble_context_id != ramble_context_id {
+            images.insert(capture_id.to_owned(), image);
+            return Err("剪贴板图片不属于当前 Ramble".to_owned());
+        }
+        Ok(image.contents)
+    }
+}
+
 #[tauri::command]
 pub fn read_clipboard_capture_image(
     capture_id: String,
@@ -354,5 +376,23 @@ mod tests {
     fn text_under_limit_is_unchanged() {
         let source = "copied context".to_owned();
         assert_eq!(truncate_text(source.clone()), (source, false));
+    }
+
+    #[test]
+    fn take_image_returns_bytes_once() {
+        let state = ClipboardCaptureState::default();
+        state.images.lock().expect("lock").insert(
+            "cap-1".to_owned(),
+            PendingImage {
+                request_id: "req-1".to_owned(),
+                ramble_context_id: "ctx-1".to_owned(),
+                contents: vec![9, 8, 7],
+            },
+        );
+        assert_eq!(
+            state.take_image("cap-1", "req-1", "ctx-1").expect("png"),
+            [9, 8, 7]
+        );
+        assert!(state.take_image("cap-1", "req-1", "ctx-1").is_err());
     }
 }

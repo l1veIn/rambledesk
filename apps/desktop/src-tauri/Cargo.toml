@@ -27,8 +27,11 @@ rambledesk-speech.workspace = true
 rambledesk-storage.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sysinfo = "0.30"
+time.workspace = true
 toml_edit = "0.23"
 tauri.workspace = true
+zip = { version = "2", default-features = false, features = ["deflate"] }
 tauri-plugin-notification = "2.3.3"
 tauri-plugin-global-shortcut = "2.3.2"
 tauri-plugin-http = "2.5.9"

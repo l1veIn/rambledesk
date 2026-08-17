@@ -142,22 +142,22 @@ export function captureToolbarPosition(
   const selectionTop = geometry.displayRectangle.y + placement.selection.y * scaleY
   const selectionWidth = placement.selection.width * scaleX
   const selectionBottom = selectionTop + placement.selection.height * scaleY
-  const measuredWidth = placement.toolbarWidth || Math.min(560, geometry.viewportWidth - 28)
-  const measuredHeight = placement.toolbarHeight || 50
-  const baseLeft = selectionLeft + selectionWidth - measuredWidth
+  const viewportWidth = Math.max(1, geometry.viewportWidth)
+  const viewportHeight = Math.max(1, geometry.viewportHeight)
+  const measuredWidth = placement.toolbarWidth > 0
+    ? placement.toolbarWidth
+    : Math.min(420, Math.max(280, viewportWidth - 28))
+  const measuredHeight = placement.toolbarHeight > 0 ? placement.toolbarHeight : 50
+  const centeredLeft = selectionLeft + (selectionWidth - measuredWidth) / 2
   const below = selectionBottom + 12
   const baseTop =
-    below + measuredHeight <= geometry.viewportHeight - 14
+    below + measuredHeight <= viewportHeight - 14
       ? below
       : Math.max(14, selectionTop - measuredHeight - 12)
-  const left = Math.min(
-    Math.max(14, placement.toolbarManualX ?? baseLeft),
-    Math.max(14, geometry.viewportWidth - measuredWidth - 14),
-  )
-  const top = Math.min(
-    Math.max(14, placement.toolbarManualY ?? baseTop),
-    Math.max(14, geometry.viewportHeight - measuredHeight - 14),
-  )
+  const maxLeft = Math.max(14, viewportWidth - measuredWidth - 14)
+  const maxTop = Math.max(14, viewportHeight - measuredHeight - 14)
+  const left = Math.min(Math.max(14, placement.toolbarManualX ?? centeredLeft), maxLeft)
+  const top = Math.min(Math.max(14, placement.toolbarManualY ?? baseTop), maxTop)
   return { left, top }
 }
 

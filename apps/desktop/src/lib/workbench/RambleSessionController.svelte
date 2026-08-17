@@ -9,7 +9,7 @@
     type ClipboardCaptureEvent,
   } from '../clipboardCapture'
   import { attachmentMarkdownUrl } from '../attachmentMarkdown'
-  import type { AddAttachmentInput, FeedbackWorkspaceView } from '../feedback'
+  import type { FeedbackWorkspaceView } from '../feedback'
   import { t } from '../i18n'
   import {
     locale,
@@ -41,6 +41,7 @@
   export let interactionLocked = false
   export let editor: FeedbackEditorHandle | undefined
   export let attachmentBusy = false
+  export let screenCaptureBusy = false
   export let attachmentMessage = ''
   export let voicePhase: VoicePhase = 'idle'
   export let voiceDevice = ''
@@ -80,7 +81,17 @@
   $: rambleBusy = ramblePhase === 'starting' || ramblePhase === 'stopping'
   $: rambleCanStop = rambleActive || voiceCanStop
   $: rambleCanExit = rambleEngaged || voiceCanStop
-  $: if (rambleEngaged && workspace) broadcastRambleConsoleState()
+  $: if (rambleEngaged && workspace) {
+    attachmentBusy
+    screenCaptureBusy
+    ramblePhase
+    rambleBusy
+    rambleActive
+    rambleMessage
+    voiceLevel
+    voicePartial
+    broadcastRambleConsoleState()
+  }
 
   onMount(() => {
     if (!isTauri) return
@@ -125,6 +136,7 @@
       consoleCommandUnlisten = unlisten
     })
     void listen(RAMBLE_CONSOLE_READY_EVENT, () => {
+      if (rambleEngaged) void invoke('show_ramble_console').catch(() => {})
       broadcastRambleConsoleState()
     }).then((unlisten) => {
       consoleReadyUnlisten = unlisten
@@ -149,11 +161,18 @@
 
   export async function exitRamble() {
     if (!rambleCanExit && !rambleStartedOnce) return
+    if (rambleRequestId) {
+      void invoke('record_diagnostic_event', {
+        activity: 'ramble_stopped',
+        caseId: rambleRequestId,
+      }).catch(() => {})
+    }
     if (voiceCanStop) {
       ramblePhase = 'stopping'
       rambleMessage = t($locale, 'Ending Ramble…')
       await stopVoiceRamble()
     }
+    void invoke('hide_ramble_console').catch(() => {})
     void emitTo('ramble-console', RAMBLE_CONSOLE_HIDE_EVENT).catch(() => {})
     resetVoiceUi()
     resetRambleUi()
@@ -216,14 +235,27 @@
     clipboardCaptureCount = 0
     ramblePhase = 'starting'
     rambleMessage = t($locale, 'Opening the Ramble console…')
+    void invoke('record_diagnostic_event', {
+      activity: 'ramble_started',
+      caseId: rambleRequestId,
+    }).catch(() => {})
+    try {
+      await invoke('show_ramble_console')
+    } catch (cause) {
+      onPageError(t($locale, 'Could not open the Ramble console: {error}', { error: messageFrom(cause) }))
+    }
     void emitTo('ramble-console', RAMBLE_CONSOLE_SHOW_EVENT).catch((cause) => {
       onPageError(t($locale, 'Could not open the Ramble console: {error}', { error: messageFrom(cause) }))
     })
-    await resumeRamble()
+    await beginVoiceRamble()
   }
 
   async function resumeRamble() {
-    if (interactionLocked || !rambleRequestId || rambleBusy || rambleActive || !rambleContextId) return
+    if (interactionLocked || !rambleRequestId || rambleActive || voiceActive || !rambleContextId) return
+    await beginVoiceRamble()
+  }
+
+  async function beginVoiceRamble() {
     ramblePhase = 'starting'
     rambleMessage = t($locale, 'Starting the microphone and live transcription…')
     const voiceStarted = await startVoiceRamble()
@@ -389,18 +421,13 @@
       if (!target) return
 
       attachmentBusy = true
-      const png = await invoke<ArrayBuffer>('read_clipboard_capture_image', {
-        captureId: event.capture_id,
+      const next = await invoke<FeedbackWorkspaceView>('add_completed_clipboard_capture', {
         requestId,
+        captureId: event.capture_id,
         rambleContextId: event.ramble_context_id,
+        fileName: event.file_name,
+        expectedRevision: target.draft.saved_revision,
       })
-      const input: AddAttachmentInput = {
-        request_id: requestId,
-        file_name: event.file_name,
-        contents: Array.from(new Uint8Array(png)),
-        expected_revision: target.draft.saved_revision,
-      }
-      const next = await invoke<FeedbackWorkspaceView>('add_feedback_attachment', { input })
       const attachment = next.attachments.find(
         (item) => !target.attachments.some(
           (existing) => existing.attachment_id === item.attachment_id,
@@ -540,7 +567,7 @@
       requestTitle: rambleRequestTitle,
       recording: rambleActive,
       busy: rambleBusy,
-      captureBusy: attachmentBusy,
+      captureBusy: screenCaptureBusy,
       voiceLevel,
       partialTranscript: voicePartial,
       message: rambleMessage,

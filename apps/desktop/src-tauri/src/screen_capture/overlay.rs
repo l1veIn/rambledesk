@@ -66,7 +66,9 @@ pub fn show_screen_capture_overlay(app: AppHandle) -> Result<(), String> {
     overlay
         .show()
         .and_then(|_| overlay.set_focus())
-        .map_err(|error| format!("无法显示截图编辑窗口：{error}"))
+        .map_err(|error| format!("无法显示截图编辑窗口：{error}"))?;
+    tracing::info!("showed screen capture overlay");
+    Ok(())
 }
 
 #[tauri::command]
@@ -74,9 +76,12 @@ pub async fn begin_screen_capture(
     app: AppHandle,
     state: tauri::State<'_, ScreenCaptureState>,
 ) -> Result<(), String> {
+    let started = std::time::Instant::now();
+    tracing::info!("begin_screen_capture: requesting permission");
     ensure_screen_capture_permission()?;
     let should_restore_console = console_was_visible(&app);
     let capture_session_id = uuid::Uuid::now_v7().to_string();
+    tracing::info!(%capture_session_id, "begin_screen_capture: session created");
     {
         let mut session = state
             .session
@@ -105,6 +110,12 @@ pub async fn begin_screen_capture(
         let image = image?;
         descriptor.capture_width = image.width();
         descriptor.capture_height = image.height();
+        tracing::info!(
+            width = image.width(),
+            height = image.height(),
+            elapsed_ms = started.elapsed().as_millis() as u64,
+            "begin_screen_capture: pixels ready"
+        );
         let targets = collect_window_targets(&descriptor, &image, snapshots);
         {
             let mut session = state
@@ -207,34 +218,72 @@ pub async fn complete_screen_capture(
     app: AppHandle,
     state: tauri::State<'_, ScreenCaptureState>,
 ) -> Result<(), String> {
-    let (png, image) = decode_canonical_png(&input.png_base64)?;
+    let started = std::time::Instant::now();
+    let annotated = input
+        .png_base64
+        .as_deref()
+        .is_some_and(|value| !value.is_empty());
+    tracing::info!(
+        capture_session_id = %input.capture_session_id,
+        selection_w = input.selection.width,
+        selection_h = input.selection.height,
+        annotated,
+        "complete_screen_capture: start"
+    );
+    let (png, image, restore) = {
+        let session = state
+            .session
+            .lock()
+            .map_err(|_| "截图状态锁已损坏".to_owned())?;
+        let active = session.as_ref().ok_or("没有活动的截图会话")?;
+        let restore = active.restore_console();
+        let (png, image) = completed_capture_image(active, &input)?;
+        (png, image, restore)
+    };
+    let png_len = png.len();
     if input.copy_to_clipboard {
+        tracing::info!(
+            png_bytes = png_len,
+            "complete_screen_capture: copying clipboard"
+        );
         copy_image_to_clipboard(&image)?;
     }
-
-    let restore = {
+    {
         let mut session = state
             .session
             .lock()
             .map_err(|_| "截图状态锁已损坏".to_owned())?;
-        let Some(active) = session.as_ref() else {
-            return Err("没有活动的截图会话".to_owned());
-        };
-        if active.capture_session_id() != input.capture_session_id {
+        if session
+            .as_ref()
+            .is_none_or(|active| active.capture_session_id() != input.capture_session_id)
+        {
             return Err("截图会话已变化，请重新截图".to_owned());
         }
-        let restore = active.restore_console();
         *session = Some(CaptureSession::Ready {
             capture_session_id: input.capture_session_id.clone(),
             png,
         });
-        restore
-    };
+    }
 
     if let Some(overlay) = app.get_webview_window(OVERLAY_LABEL) {
         let _ = overlay.hide();
     }
     restore_console(&app, restore);
+    crate::diagnostics::record_event(
+        "screen_capture_completed",
+        Some(&input.capture_session_id),
+        None,
+        Some("ok"),
+        None,
+        None,
+    );
+    tracing::info!(
+        capture_session_id = %input.capture_session_id,
+        png_bytes = png_len,
+        elapsed_ms = started.elapsed().as_millis() as u64,
+        annotated,
+        "complete_screen_capture: overlay hidden, notifying main"
+    );
     app.emit_to(
         "main",
         "screen-capture-ready",

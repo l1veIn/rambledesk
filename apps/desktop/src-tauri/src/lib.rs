@@ -1,4 +1,5 @@
 mod clipboard_capture;
+mod diagnostics;
 mod dsh_install;
 mod logging;
 mod macos_permissions;
@@ -48,7 +49,9 @@ fn log_frontend_error(context: String, message: String) {
 
 mod window;
 
-use window::{position_ramble_console, show_main_window};
+use window::{
+    hide_ramble_console, position_ramble_console, show_main_window, show_ramble_console,
+};
 
 mod commands;
 
@@ -82,7 +85,7 @@ pub fn run() {
             let console = WebviewWindowBuilder::new(
                 app,
                 RAMBLE_CONSOLE_LABEL,
-                WebviewUrl::App("ramble-console".into()),
+                WebviewUrl::App("index.html#ramble-console".into()),
             )
             .title("RambleDesk · Ramble Console")
             .inner_size(RAMBLE_CONSOLE_WIDTH, RAMBLE_CONSOLE_HEIGHT)
@@ -217,9 +220,12 @@ pub fn run() {
             if let Err(error) = screen_capture::prepare_screen_capture_overlay(app.handle()) {
                 tracing::warn!(%error, "failed to prewarm the screenshot editor");
             }
+            diagnostics::record_event("app_started", None, None, Some("ok"), None, None);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            show_ramble_console,
+            hide_ramble_console,
             get_generic_mcp_configuration,
             restart_application,
             get_data_storage_settings,
@@ -238,12 +244,17 @@ pub fn run() {
             read_published_feedback,
             save_feedback_draft,
             add_feedback_attachment,
+            add_completed_screen_capture,
+            add_completed_clipboard_capture,
             import_feedback_attachment_path,
+            diagnostics::export_diagnostics,
+            diagnostics::record_diagnostic_event,
             remove_feedback_attachment,
             reorder_feedback_attachments,
             read_feedback_attachment,
             read_request_attachment,
             open_attachment::open_feedback_attachment,
+            open_attachment::reveal_path_in_folder,
             submit_feedback,
             approve_feedback_request,
             cancel_feedback_request,

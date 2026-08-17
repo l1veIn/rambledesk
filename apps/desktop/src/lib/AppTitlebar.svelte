@@ -1,6 +1,7 @@
 <script lang="ts">
   import { getCurrentWindow } from '@tauri-apps/api/window'
-  import { Bell, BellOff, Minus, X } from '@lucide/svelte'
+  import { Bell, BellOff, Copy, Minus, Square, X } from '@lucide/svelte'
+  import { onMount } from 'svelte'
 
   import appIcon from '../assets/rambledesk-app-icon.webp'
   import { Badge } from '$lib/components/ui/badge'
@@ -21,13 +22,33 @@
 
   const isTauri = '__TAURI_INTERNALS__' in window
   const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)
+  let maximized = false
 
-  async function runWindowAction(action: 'minimize' | 'close') {
+  onMount(() => {
+    if (!isTauri) return
+    const appWindow = getCurrentWindow()
+    void appWindow.isMaximized().then((value) => {
+      maximized = value
+    })
+    const unlisten = appWindow.onResized(() => {
+      void appWindow.isMaximized().then((value) => {
+        maximized = value
+      })
+    })
+    return () => {
+      void unlisten.then((dispose) => dispose())
+    }
+  })
+
+  async function runWindowAction(action: 'minimize' | 'maximize' | 'close') {
     if (!isTauri) return
     try {
       const appWindow = getCurrentWindow()
       if (action === 'minimize') await appWindow.minimize()
-      else await appWindow.close()
+      else if (action === 'maximize') {
+        await appWindow.toggleMaximize()
+        maximized = await appWindow.isMaximized()
+      } else await appWindow.close()
     } catch (cause) {
       onWindowError(cause instanceof Error ? cause.message : String(cause))
     }
@@ -65,6 +86,11 @@
         class="traffic minimize size-3 rounded-full border border-black/10"
         aria-label={t($locale, 'Minimize window')}
         onclick={() => runWindowAction('minimize')}
+      ></button>
+      <button
+        class="traffic maximize size-3 rounded-full border border-black/10"
+        aria-label={t($locale, 'Maximize or restore window')}
+        onclick={() => runWindowAction('maximize')}
       ></button>
     </div>
   {/if}
@@ -147,6 +173,13 @@
         <Minus class="size-4" />
       </button>
       <button
+        class="grid w-11 place-items-center text-muted-foreground hover:bg-muted hover:text-foreground"
+        aria-label={t($locale, 'Maximize or restore window')}
+        onclick={() => runWindowAction('maximize')}
+      >
+        {#if maximized}<Copy class="size-3.5" />{:else}<Square class="size-3.5" />{/if}
+      </button>
+      <button
         class="grid w-11 place-items-center text-muted-foreground hover:bg-destructive hover:text-white"
         aria-label={t($locale, 'Close window')}
         onclick={() => runWindowAction('close')}
@@ -164,5 +197,9 @@
 
   .traffic.minimize {
     background: #febc2e;
+  }
+
+  .traffic.maximize {
+    background: #28c840;
   }
 </style>

@@ -6,14 +6,12 @@ pub async fn pin_screen_capture(
     app: AppHandle,
     state: tauri::State<'_, ScreenCaptureState>,
 ) -> Result<PinnedCaptureInfo, String> {
-    let (png, image) = decode_canonical_png(&input.png_base64)?;
-    let (restore, monitor) = {
+    let (png, image, restore, monitor) = {
         let session = state
             .session
             .lock()
             .map_err(|_| "截图状态锁已损坏".to_owned())?;
         let Some(CaptureSession::Editing {
-            capture_session_id,
             monitor,
             restore_console,
             ..
@@ -21,10 +19,10 @@ pub async fn pin_screen_capture(
         else {
             return Err("没有可固定的截图".to_owned());
         };
-        if capture_session_id != &input.capture_session_id {
-            return Err("截图会话已变化，请重新截图".to_owned());
-        }
-        (*restore_console, monitor.clone())
+        let monitor = monitor.clone();
+        let restore = *restore_console;
+        let (png, image) = completed_capture_image(session.as_ref().expect("editing"), &input)?;
+        (png, image, restore, monitor)
     };
     if input.copy_to_clipboard {
         copy_image_to_clipboard(&image)?;
