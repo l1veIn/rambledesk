@@ -3,6 +3,7 @@ use serde::Serialize;
 #[cfg(target_os = "macos")]
 use std::sync::atomic::{AtomicBool, Ordering};
 
+#[cfg(target_os = "macos")]
 pub const SCREEN_CAPTURE_RESTART_REQUIRED: &str = "SCREEN_CAPTURE_PERMISSION_RESTART_REQUIRED";
 
 #[cfg(target_os = "macos")]
@@ -78,25 +79,19 @@ fn request_screen_capture_access() -> (MacPermissionStatus, bool) {
     }
 }
 
+#[cfg(target_os = "macos")]
 pub fn require_screen_capture_access() -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    {
-        let (status, restart_required) = request_screen_capture_access();
-        if restart_required {
-            return Err(SCREEN_CAPTURE_RESTART_REQUIRED.to_owned());
-        }
-        if status == MacPermissionStatus::Granted {
-            return Ok(());
-        }
-        Err(
-            "RambleDesk 需要“屏幕与系统音频录制”权限。请点“去授权”并允许系统弹窗，然后重启应用再截图。"
-                .to_owned(),
-        )
+    let (status, restart_required) = request_screen_capture_access();
+    if restart_required {
+        return Err(SCREEN_CAPTURE_RESTART_REQUIRED.to_owned());
     }
-    #[cfg(not(target_os = "macos"))]
-    {
-        Ok(())
+    if status == MacPermissionStatus::Granted {
+        return Ok(());
     }
+    Err(
+        "RambleDesk 需要“屏幕与系统音频录制”权限。请点“去授权”并允许系统弹窗，然后重启应用再截图。"
+            .to_owned(),
+    )
 }
 
 #[cfg(target_os = "macos")]
@@ -234,7 +229,7 @@ pub fn open_macos_privacy_settings(permission: String) -> Result<(), String> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "macos"))]
 mod tests {
     use super::*;
 
@@ -246,7 +241,6 @@ mod tests {
         );
     }
 
-    #[cfg(target_os = "macos")]
     #[test]
     fn pending_screen_capture_grant_stays_granted_until_restart() {
         assert_eq!(
@@ -263,7 +257,6 @@ mod tests {
         );
     }
 
-    #[cfg(target_os = "macos")]
     #[test]
     fn lists_expected_macos_permissions() {
         let permissions = list_macos_permissions();
@@ -277,11 +270,5 @@ mod tests {
                 .iter()
                 .all(|permission| !permission.restart_required)
         );
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    #[test]
-    fn require_screen_capture_is_a_no_op_off_macos() {
-        assert!(require_screen_capture_access().is_ok());
     }
 }
