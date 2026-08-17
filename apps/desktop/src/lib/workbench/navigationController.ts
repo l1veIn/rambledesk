@@ -46,6 +46,7 @@ type NavigationControllerContext = {
   openRequest: (requestId: string, saveCurrent?: boolean) => Promise<void>
   clearWorkspace: () => void
   onPageError: (message: string) => void
+  canSendOsBanners: () => boolean
 }
 
 const initialState: NavigationState = {
@@ -134,7 +135,11 @@ export function createNavigationController(context: NavigationControllerContext)
     })
     if (arrivals.length === 0) return
 
-    if (get(notificationPopupEnabled) && context.getNotificationState() === 'enabled') {
+    if (
+      get(notificationPopupEnabled) &&
+      context.canSendOsBanners() &&
+      context.getNotificationState() === 'enabled'
+    ) {
       sendNotification({
         title: 'RambleDesk',
         body:

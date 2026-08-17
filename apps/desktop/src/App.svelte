@@ -253,6 +253,7 @@
     openRequest,
     clearWorkspace,
     onPageError: (message) => (pageError = message),
+    canSendOsBanners: () => isMac,
   })
   const resolveHostProfile = navigation.resolveHostProfile
 
@@ -342,11 +343,13 @@
     !rambleEngaged || workspace?.request.request_id === rambleRequestId
   $: rambelleStatusPortrait = feedbackResult
     ? rambelleArchived
-    : rambleActive
-      ? rambelleRecording
-      : rambleEngaged
-        ? rambelleOrganizing
-        : rambelleIdle
+    : currentRequestCooking
+      ? rambelleOrganizing
+      : rambleActive
+        ? rambelleRecording
+        : rambleEngaged
+          ? rambelleOrganizing
+          : rambelleIdle
   $: rambleBusy = ramblePhase === 'starting' || ramblePhase === 'stopping'
   $: rambleCanStop = rambleActive || voiceCanStop
   $: rambleCanExit = rambleEngaged || voiceCanStop
@@ -441,7 +444,7 @@
     void listen<ResumePrompt>(RESUME_PROMPT_EVENT, (event) => {
       resumePrompt = event.payload
       resumeCopyState = 'idle'
-      if ($notificationPopupEnabled && notificationState === 'enabled') {
+      if (isMac && $notificationPopupEnabled && notificationState === 'enabled') {
         sendNotification({
           title: event.payload.title,
           body: tr('Return to {host} and use the resume prompt to continue the host session.', {
@@ -516,7 +519,7 @@
   async function refreshNotificationPermission() {
     try {
       const granted = await isPermissionGranted()
-      if (!granted && $notificationPopupEnabled) setNotificationPopupEnabled(false)
+      if (isMac && !granted && $notificationPopupEnabled) setNotificationPopupEnabled(false)
       notificationState = notificationStateForPermission(granted, $notificationPopupEnabled)
     } catch {
       notificationState = 'unavailable'

@@ -9,6 +9,7 @@
     ChefHat,
     ChevronLeft,
     ChevronRight,
+    Clipboard,
     Download,
     FolderCog,
     HardDrive,
@@ -28,11 +29,13 @@
   import * as Dialog from '$lib/components/ui/dialog'
   import { toast } from '$lib/components/ui/sonner'
   import { t } from '$lib/i18n'
+  import { currentDesktopPlatform } from '$lib/platform'
   import {
     speechModelDescription,
     speechModelDisplayName,
   } from '$lib/speechModelLabels'
   import piLogo from '../assets/pi-logo.svg'
+  import dshLogo from '../assets/dsh-logo.svg'
   import {
     cookingApiKey,
     cookingBaseUrl,
@@ -84,6 +87,7 @@
   let steps = baseSteps
   let showMacPermissionStep = false
   const isTauri = '__TAURI_INTERNALS__' in window
+  const isWindows = currentDesktopPlatform() === 'Windows'
   let step = 0
   let wasOpen = false
   let closing = false
@@ -99,6 +103,8 @@
   let hostSelections = new Set<string>()
   let adapterBusy = false
   let piBusy = false
+  let dshBusy = false
+  let promptCopyState: 'idle' | 'copied' | 'error' = 'idle'
   let notificationBusy = false
   let unlistenModelProgress: UnlistenFn | undefined
 
@@ -284,8 +290,35 @@
     }
   }
 
+  async function installDsh() {
+    if (dshBusy) return
+    dshBusy = true
+    try {
+      await invoke('install_dsh_package', { checkoutRoot: null, profileId: null })
+      toast.success(tr('DSH native adapter installed'))
+    } catch (cause) {
+      toast.error(tr('DSH adapter installation failed'), { description: messageFrom(cause) })
+    } finally {
+      dshBusy = false
+    }
+  }
+
+  $: starterPrompt = t($locale, '/ramble Let\'s start ramble')
+
+  async function copyStarterPrompt() {
+    try {
+      await navigator.clipboard.writeText(starterPrompt)
+      promptCopyState = 'copied'
+      window.setTimeout(() => {
+        if (promptCopyState === 'copied') promptCopyState = 'idle'
+      }, 2_000)
+    } catch {
+      promptCopyState = 'error'
+    }
+  }
+
   async function enableNotifications() {
-    if (!isTauri || notificationBusy) return
+    if (!isTauri || notificationBusy || isWindows) return
     notificationBusy = true
     try {
       const permission = (await isPermissionGranted()) ? 'granted' : await requestPermission()
@@ -395,29 +428,41 @@
             <PlugZap class="mt-0.5 size-6 text-primary" />
             <div>
               <h2 class="m-0 text-lg font-semibold">{tr('Connect your coding tools')}</h2>
-              <p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{tr('We recommend Pi’s native automatic continuation. You can also configure generic MCP hosts as needed.')}</p>
+              <p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{tr('We recommend the Pi and DeepSeek Harness native adapters. You can also configure generic MCP hosts as needed.')}</p>
             </div>
           </div>
 
-          <div class="mt-6 rounded-xl border-2 border-primary/30 bg-primary/5 p-5">
-            <div class="flex items-start gap-4">
-              <span class="grid size-14 shrink-0 place-items-center rounded-xl bg-primary shadow-sm">
-                <img src={piLogo} alt="Pi" class="size-9 brightness-0 invert" />
-              </span>
-              <div class="min-w-0 flex-1">
-                <div class="flex flex-wrap items-center gap-2">
-                  <h3 class="m-0 text-base font-semibold">{tr('Pi native automatic continuation')}</h3>
-                  <Badge variant="secondary">{tr('Recommended')}</Badge>
-                </div>
-                <p class="mb-0 mt-2 text-xs leading-5 text-muted-foreground">{tr('Pi waits for feedback in the same tool call, then automatically continues the current session. No copied or manually sent resume prompt is needed.')}</p>
-                <div class="mt-3 flex flex-wrap gap-2 text-[10px]">
-                  <span class="rounded-full border border-primary/20 bg-background px-2 py-1 text-primary" title={tr('Pi automatically continues in the current tool call after feedback is complete.')}>{tr('Native automatic continuation')}</span>
-                  <span class="rounded-full border bg-background px-2 py-1 text-muted-foreground" title={tr('You do not need to return to the coding tool and manually resume the conversation.')}>{tr('No manual continuation')}</span>
+          <div class="mt-6 grid grid-cols-2 gap-3">
+            <div class="rounded-xl border-2 border-primary/30 bg-primary/5 p-4">
+              <div class="flex items-center gap-2">
+                <span class="grid size-8 shrink-0 place-items-center rounded-lg bg-primary">
+                  <img src={piLogo} alt="Pi" class="size-5 brightness-0 invert" />
+                </span>
+                <div class="min-w-0">
+                  <h3 class="m-0 truncate text-sm font-semibold">{tr('Pi native adapter')}</h3>
+                  <Badge variant="secondary" class="mt-1">{tr('Recommended')}</Badge>
                 </div>
               </div>
-              <Button size="sm" disabled={piBusy || !isTauri} onclick={() => void installPi()}>
+              <p class="mb-0 mt-2 text-[11px] leading-4 text-muted-foreground">{tr('Pi waits for feedback in the same tool call, then automatically continues the current session. No copied or manually sent resume prompt is needed.')}</p>
+              <Button size="sm" class="mt-3 w-full" disabled={piBusy || !isTauri} onclick={() => void installPi()}>
                 {#if piBusy}<LoaderCircle class="animate-spin" data-icon="inline-start" />{:else}<Download data-icon="inline-start" />{/if}
                 {piBusy ? tr('Installing…') : tr('Install Pi adapter')}
+              </Button>
+            </div>
+            <div class="rounded-xl border bg-muted/20 p-4">
+              <div class="flex items-center gap-2">
+                <span class="grid size-8 shrink-0 place-items-center rounded-lg bg-muted">
+                  <img src={dshLogo} alt="DSH" class="size-5" />
+                </span>
+                <div class="min-w-0">
+                  <h3 class="m-0 truncate text-sm font-semibold">{tr('DSH native adapter')}</h3>
+                  <Badge variant="secondary" class="mt-1">{tr('Native wait')}</Badge>
+                </div>
+              </div>
+              <p class="mb-0 mt-2 text-[11px] leading-4 text-muted-foreground">{tr('DeepSeek Harness waits for feedback in the same tool call, then automatically continues.')}</p>
+              <Button size="sm" class="mt-3 w-full" disabled={dshBusy || !isTauri} onclick={() => void installDsh()}>
+                {#if dshBusy}<LoaderCircle class="animate-spin" data-icon="inline-start" />{:else}<Download data-icon="inline-start" />{/if}
+                {dshBusy ? tr('Installing…') : tr('Install DSH adapter')}
               </Button>
             </div>
           </div>
@@ -457,11 +502,11 @@
         </section>
       {:else if steps[step] === 'Notifications'}
         <section class="mx-auto max-w-xl">
-          <div class="flex gap-3"><BellRing class="mt-0.5 size-6 text-primary" /><div><h2 class="m-0 text-lg font-semibold">{tr('Would you like notifications?')}</h2><p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{tr('When a coding tool requests feedback, RambleDesk can show a system notification and play a sound.')}</p></div></div>
+          <div class="flex gap-3"><BellRing class="mt-0.5 size-6 text-primary" /><div><h2 class="m-0 text-lg font-semibold">{tr('Would you like notifications?')}</h2><p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{#if isWindows}{tr('Current unsigned Windows builds cannot show system banners. RambleDesk will not try to send them. Watch the inbox badge and use sound alerts instead.')}{:else}{tr('When a coding tool requests feedback, RambleDesk can show a system notification and play a sound.')}{/if}</p></div></div>
           <div class="mt-6 space-y-3 rounded-lg border bg-muted/20 p-4">
             <div class="flex items-center justify-between gap-4">
-              <div><strong class="text-xs">{tr('System notifications')}</strong><p class="mb-0 mt-1 text-[10px] text-muted-foreground">{tr('Show new feedback requests in the system notification center.')}</p></div>
-              {#if $notificationPopupEnabled}<Badge variant="secondary">{tr('Enabled')}</Badge>{:else}<Button size="sm" disabled={notificationBusy || !isTauri} onclick={() => void enableNotifications()}>{#if notificationBusy}<LoaderCircle class="animate-spin" data-icon="inline-start" />{/if}{tr('Allow notifications')}</Button>{/if}
+              <div><strong class="text-xs">{tr('System notifications')}</strong><p class="mb-0 mt-1 text-[10px] text-muted-foreground">{#if isWindows}{tr('System banners are not available on this Windows build.')}{:else}{tr('Show new feedback requests in the system notification center.')}{/if}</p></div>
+              {#if isWindows}<Badge variant="secondary">{tr('Unavailable')}</Badge>{:else if $notificationPopupEnabled}<Badge variant="secondary">{tr('Enabled')}</Badge>{:else}<Button size="sm" disabled={notificationBusy || !isTauri} onclick={() => void enableNotifications()}>{#if notificationBusy}<LoaderCircle class="animate-spin" data-icon="inline-start" />{/if}{tr('Allow notifications')}</Button>{/if}
             </div>
             <div class="flex items-center justify-between gap-4 border-t pt-3">
               <div><strong class="text-xs">{tr('Sound alerts')}</strong><p class="mb-0 mt-1 text-[10px] text-muted-foreground">{tr('Play a sound when a notification arrives.')}</p></div>
@@ -483,8 +528,14 @@
           <h2 class="mb-0 mt-5 text-xl font-semibold">{tr('You are all set')}</h2>
           <p class="mb-0 mt-3 text-sm leading-6 text-muted-foreground">{tr('You can now start a Ramble directly from a coding tool. Every setting can be changed from the top-right Settings button.')}</p>
           <div class="mt-6 w-full rounded-lg border bg-muted/20 p-4 text-left">
-            <p class="m-0 text-[10px] font-medium text-muted-foreground">{tr('Paste this example prompt into your coding agent or coding tool:')}</p>
-            <code class="mt-2 block rounded-md bg-background px-3 py-2 text-xs text-foreground">{tr('Today we are developing with RambleDesk')}</code>
+            <div class="flex items-center justify-between gap-2">
+              <p class="m-0 text-[10px] font-medium text-muted-foreground">{tr('Paste this example prompt into your coding agent or coding tool:')}</p>
+              <Button variant="outline" size="sm" class="h-7 px-2 text-[10px]" onclick={() => void copyStarterPrompt()}>
+                <Clipboard data-icon="inline-start" />
+                {promptCopyState === 'copied' ? tr('Copied') : promptCopyState === 'error' ? tr('Copy failed') : tr('Copy')}
+              </Button>
+            </div>
+            <code class="mt-2 block rounded-md bg-background px-3 py-2 text-left text-xs text-foreground">{starterPrompt}</code>
           </div>
           <div class="mt-3 flex items-center gap-2 rounded-lg border bg-muted/20 px-4 py-3 text-xs text-muted-foreground"><Volume2 class="size-4 text-primary" />{tr('Tip: the microphone is ready once a voice model finishes downloading.')}</div>
         </div>

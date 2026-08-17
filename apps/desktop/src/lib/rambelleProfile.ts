@@ -143,8 +143,8 @@ export const rambelleProfile: RambelleProfile = {
         },
       ],
       quote: {
-        en: 'Commander, you are awake. The cryo log shows you left deep sleep 2,417 days ahead of plan. Cause: pending.',
-        zh: '长官，您醒了。休眠日志显示您比计划提前 2,417 天脱离深眠，原因待查。',
+        en: 'Commander, you are awake. The cryo log shows you left deep sleep 4,015 days ahead of plan. Cause: pending.',
+        zh: '长官，您醒了。休眠日志显示您比计划提前 4,015 天脱离深眠，原因待查。',
       },
       quoteBy: { en: 'Duty log, first morning', zh: '值守日志 · 苏醒后第一个早晨' },
       figures: [
@@ -308,8 +308,8 @@ export const rambelleProfile: RambelleProfile = {
     },
     {
       text: {
-        en: 'Commander, you are awake. The cryo log shows you left deep sleep 2,417 days ahead of plan. Cause: pending.',
-        zh: '长官，您醒了。休眠日志显示您比计划提前 2,417 天脱离深眠，原因待查。',
+        en: 'Commander, you are awake. The cryo log shows you left deep sleep 4,015 days ahead of plan. Cause: pending.',
+        zh: '长官，您醒了。休眠日志显示您比计划提前 4,015 天脱离深眠，原因待查。',
       },
       by: { en: 'First morning on duty', zh: '苏醒后第一个早晨' },
     },

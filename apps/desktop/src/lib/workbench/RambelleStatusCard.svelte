@@ -4,6 +4,7 @@
 
   export let portrait = ''
   export let feedbackDone = false
+  export let cooking = false
   export let rambleEngaged = false
   export let rambleActive = false
 
@@ -13,11 +14,13 @@
 
   $: line = feedbackDone
     ? tr('Package sealed, commander. I will not touch it again.')
-    : rambleEngaged && rambleActive
-      ? tr('Commander, I am recording this now.')
-      : rambleEngaged
-        ? tr('Commander, I paused. Say the word and I will follow again.')
-        : tr('Commander, standing by. Start a Ramble when you want me.')
+    : cooking
+      ? tr('Commander, I am cooking this feedback now.')
+      : rambleEngaged && rambleActive
+        ? tr('Commander, I am recording this now.')
+        : rambleEngaged
+          ? tr('Commander, I paused. Say the word and I will follow again.')
+          : tr('Commander, standing by. Start a Ramble when you want me.')
 </script>
 
 <section

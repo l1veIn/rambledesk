@@ -125,6 +125,14 @@ const chinese: Record<string, string> = {
   'Tip: the microphone is ready once a voice model finishes downloading.': '提示：语音模型下载完成后即可使用麦克风。',
   'Interface language': '界面语言',
   'We recommend Pi’s native automatic continuation. You can also configure generic MCP hosts as needed.': '推荐 Pi 的原生自动继续；也可以按需配置通用 MCP 宿主。',
+  'We recommend the Pi and DeepSeek Harness native adapters. You can also configure generic MCP hosts as needed.':
+    '推荐安装 Pi 与 DeepSeek Harness 原生适配器；也可以按需配置通用 MCP 宿主。',
+  'DSH native adapter': 'DSH 原生适配器',
+  'Install DSH adapter': '安装 DSH 适配器',
+  'DSH native adapter installed': '已安装 DSH 原生适配器',
+  'DSH adapter installation failed': 'DSH 适配器安装失败',
+  'DeepSeek Harness waits for feedback in the same tool call, then automatically continues.':
+    'DeepSeek Harness 在同一个工具调用内等待反馈完成，再自动继续。',
   'Pi native automatic continuation': 'Pi 原生自动继续',
   'Recommended': '推荐',
   'Pi waits for feedback in the same tool call, then automatically continues the current session. No copied or manually sent resume prompt is needed.': 'Pi 在同一个工具调用内等待反馈完成，再自动继续当前会话；无需复制或手动发送恢复提示。',
@@ -140,6 +148,7 @@ const chinese: Record<string, string> = {
   'You can now start a Ramble directly from a coding tool. Every setting can be changed from the top-right Settings button.': '现在可以从 Coding 工具直接开始 Ramble 了。所有设置均可在右上角设置中更改。',
   'Paste this example prompt into your coding agent or coding tool:': '把这句示例提示词粘贴到 Coding agent / Coding 工具中：',
   'Today we are developing with RambleDesk': '今天我们用 RambleDesk 开发',
+  '/ramble Let\'s start ramble': '/ramble 开始这次 Ramble',
   'The capture session changed. Please capture again.': '截图会话已变化，请重新截图',
   'Capture pixel data is incomplete: expected {expected} bytes, received {actual} bytes.': '截图像素数据不完整：应为 {expected} 字节，实际为 {actual} 字节',
   'Could not create the capture display canvas': '无法创建截图显示画布',
@@ -286,6 +295,7 @@ const chinese: Record<string, string> = {
   'Copied to clipboard': '已复制到剪贴板',
   'Clipboard unavailable; copy the configuration manually': '无法访问剪贴板，请手动复制',
   'Configuration contains a local access token': '配置包含本机访问令牌',
+  'Copy': '复制',
   'Copied': '已复制',
   'Copy generic MCP configuration': '复制通用 MCP 配置',
   'Adapters': '适配器',
@@ -519,7 +529,12 @@ const chinese: Record<string, string> = {
   'Commander, standing by. Start a Ramble when you want me.': '指挥官，我在待命。准备好就开记。',
   'Commander, I am recording this now.': '指挥官，我现在正在记录。',
   'Commander, I paused. Say the word and I will follow again.': '指挥官，先停一下。你说继续我就跟上。',
+  'Commander, I am cooking this feedback now.': '指挥官，我正在整理这份反馈。',
   'Package sealed, commander. I will not touch it again.': '指挥官，这份反馈包已经封存，我不会再改。',
+  'Current unsigned Windows builds cannot show system banners. RambleDesk will not try to send them. Watch the inbox badge and use sound alerts instead.':
+    '当前未签名的 Windows 安装包发不出系统横幅，因此不会尝试发送。请看 Inbox 角标，并用声音提醒。',
+  'System banners are not available on this Windows build.': '这个 Windows 版本发不出系统横幅。',
+  'Unavailable': '不可用',
   'System notifications tell you when a new request arrives. Allow banners in System Settings if the prompt is dismissed.':
     '新请求到达时用系统通知提醒你。如果关掉了系统弹窗，请到系统设置里允许横幅。',
   'Notifications': '通知',

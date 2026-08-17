@@ -1,6 +1,9 @@
 import { get, writable } from 'svelte/store'
 
 import { savedUiTheme, saveUiTheme } from './uiPreferences'
+import { DEFAULT_SPEECH_HOTWORDS, mergeSpeechHotwords } from './speechHotwords'
+
+export { DEFAULT_SPEECH_HOTWORDS, mergeSpeechHotwords } from './speechHotwords'
 
 export type Locale = 'zh-CN' | 'en'
 export type ThemePreference = 'system' | 'light' | 'dark'
@@ -35,6 +38,8 @@ const SPEECH_MODEL_KEY = 'rambledesk.speech.model'
 const SPEECH_VAD_THRESHOLD_KEY = 'rambledesk.speech.vad-threshold'
 const SPEECH_VAD_SILENCE_MS_KEY = 'rambledesk.speech.vad-silence-ms'
 const SPEECH_HOTWORDS_KEY = 'rambledesk.speech.hotwords'
+const SPEECH_HOTWORDS_REVISION_KEY = 'rambledesk.speech.hotwords.revision'
+const SPEECH_HOTWORDS_REVISION = 2
 const COOKING_ENABLED_KEY = 'rambledesk.cooking.enabled'
 const COOKING_PROVIDER_KEY = 'rambledesk.cooking.provider'
 const COOKING_API_KEY_KEY = 'rambledesk.cooking.api-key'
@@ -125,8 +130,6 @@ function initialNumber(key: string, fallback: number, minimum: number, maximum: 
   return Number.isFinite(saved) && saved >= minimum && saved <= maximum ? saved : fallback
 }
 
-export const DEFAULT_SPEECH_HOTWORDS = ['Claude Code', 'Codex', 'Grok', 'Gemini']
-
 function parseSpeechHotwords(raw: string | null): string[] {
   if (raw === null) return []
   try {
@@ -144,8 +147,12 @@ function parseSpeechHotwords(raw: string | null): string[] {
 
 function initialSpeechHotwords(): string[] {
   const saved = localStorage.getItem(SPEECH_HOTWORDS_KEY)
+  const revision = Number(localStorage.getItem(SPEECH_HOTWORDS_REVISION_KEY) ?? '0')
   // Distinguish "never configured" (use the defaults) from "explicitly emptied".
-  return saved === null ? DEFAULT_SPEECH_HOTWORDS : parseSpeechHotwords(saved)
+  if (saved === null) return [...DEFAULT_SPEECH_HOTWORDS]
+  const current = parseSpeechHotwords(saved)
+  if (revision >= SPEECH_HOTWORDS_REVISION) return current
+  return mergeSpeechHotwords(current, DEFAULT_SPEECH_HOTWORDS)
 }
 
 function initialCookingProvider(): CookingProvider {
@@ -202,7 +209,7 @@ export const cookingModel = writable(
 )
 const savedCookingReasoningEffort = localStorage.getItem(COOKING_REASONING_EFFORT_KEY)
 export const cookingReasoningEffort = writable<CookingReasoningEffort>(
-  isCookingReasoningEffort(savedCookingReasoningEffort) ? savedCookingReasoningEffort : 'max',
+  isCookingReasoningEffort(savedCookingReasoningEffort) ? savedCookingReasoningEffort : 'medium',
 )
 export const cookingSystemPrompt = writable(localStorage.getItem(COOKING_SYSTEM_PROMPT_KEY) ?? '')
 
@@ -364,6 +371,9 @@ export function initializePreferences() {
   speechHotwords.subscribe((next) => {
     localStorage.setItem(SPEECH_HOTWORDS_KEY, JSON.stringify(next))
   })
+  if (Number(localStorage.getItem(SPEECH_HOTWORDS_REVISION_KEY) ?? '0') < SPEECH_HOTWORDS_REVISION) {
+    localStorage.setItem(SPEECH_HOTWORDS_REVISION_KEY, String(SPEECH_HOTWORDS_REVISION))
+  }
   onboardingCompleted.subscribe((next) => {
     localStorage.setItem(ONBOARDING_COMPLETED_KEY, String(next))
   })

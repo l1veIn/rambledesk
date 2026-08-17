@@ -14,7 +14,8 @@ Rules:
 3. Merge repeated points without softening problems, negative feedback, or explicit requests.
 4. Use clear headings, paragraphs, and lists. Output only the final Markdown. Do not explain the edit.
 5. Keep every Markdown image and attachment://<id> reference verbatim, including \`![...](attachment://...)\`. Do not change IDs, drop images, replace them with descriptions, or invent attachments.
-6. Do not restate the task brief. The body should focus on Operator Feedback.`
+6. Do not restate the task brief. The body should focus on Operator Feedback.
+7. Preserve the operator's language. If the uncooked feedback is in Chinese, write the cooked Markdown in Chinese. If it is in English, write it in English. Do not translate the body into another language.`
 
 export function resolveCookingSystemPrompt(custom: string | null | undefined): string {
   const trimmed = custom?.trim() ?? ''

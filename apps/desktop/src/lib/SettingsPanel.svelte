@@ -48,6 +48,7 @@
   import * as Tabs from '$lib/components/ui/tabs'
   import { DEFAULT_COOKING_SYSTEM_PROMPT } from '$lib/cooking'
   import { t } from '$lib/i18n'
+  import { currentDesktopPlatform } from '$lib/platform'
   import {
     speechModelDescription,
     speechModelDisplayName,
@@ -214,6 +215,8 @@
   let unlistenStorageProgress: UnlistenFn | null = null
   let hasMacPermissions = false
   const isTauri = '__TAURI_INTERNALS__' in window
+  const isMac = currentDesktopPlatform() === 'macOS'
+  const isWindows = currentDesktopPlatform() === 'Windows'
 
   $: installedHosts = hosts.filter((host) => host.installed)
   $: selectedCount = selectedIds.size
@@ -457,6 +460,13 @@
     notificationPermissionError = ''
     if (!enabled) {
       setNotificationPopupEnabled(false)
+      return
+    }
+    if (isWindows) {
+      setNotificationPopupEnabled(false)
+      notificationPermissionError = tr(
+        'Current unsigned Windows builds cannot show system banners. RambleDesk will not try to send them. Watch the inbox badge and use sound alerts instead.',
+      )
       return
     }
     if (!isTauri) {
@@ -951,7 +961,11 @@
                 <div>
                   <h3 class="m-0 text-sm font-medium">{tr('System notifications')}</h3>
                   <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
-                    {tr('On macOS, allow RambleDesk in System Settings → Notifications. Banners may stay hidden while this window is focused; check Notification Center if a request arrives while you are already here.')}
+                    {#if isWindows}
+                      {tr('Current unsigned Windows builds cannot show system banners. RambleDesk will not try to send them. Watch the inbox badge and use sound alerts instead.')}
+                    {:else}
+                      {tr('On macOS, allow RambleDesk in System Settings → Notifications. Banners may stay hidden while this window is focused; check Notification Center if a request arrives while you are already here.')}
+                    {/if}
                   </p>
                 </div>
               </div>
@@ -960,6 +974,7 @@
                 role="switch"
                 aria-checked={$notificationPopupEnabled}
                 aria-label={tr('System notifications')}
+                disabled={isWindows}
                 class={[
                   'relative h-[22px] w-10 rounded-full border border-transparent transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
                   $notificationPopupEnabled ? 'bg-primary' : 'bg-input',

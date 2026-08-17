@@ -115,6 +115,7 @@
     <RambelleStatusCard
       portrait={rambelleStatusPortrait}
       feedbackDone={feedbackResult !== null}
+      {cooking}
       {rambleEngaged}
       {rambleActive}
     />
