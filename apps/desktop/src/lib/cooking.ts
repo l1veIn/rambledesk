@@ -6,6 +6,21 @@ import type { ActionInput } from './feedback'
 import { t } from './i18n'
 import type { CookingProvider, CookingReasoningEffort, Locale } from './preferences'
 
+export const DEFAULT_COOKING_SYSTEM_PROMPT = `You are the RambleDesk feedback editor. Turn spoken or informal uncooked feedback into accurate, formal, actionable Markdown.
+
+Rules:
+1. Keep original facts, judgments, uncertainty, and first-person experience. Do not invent test results or technical details.
+2. Remove filler, repetition, self-corrections, and meaningless pauses. Fix obvious speech-to-text breaks.
+3. Merge repeated points without softening problems, negative feedback, or explicit requests.
+4. Use clear headings, paragraphs, and lists. Output only the final Markdown. Do not explain the edit.
+5. Keep every Markdown image and attachment://<id> reference verbatim, including \`![...](attachment://...)\`. Do not change IDs, drop images, replace them with descriptions, or invent attachments.
+6. Do not restate the task brief. The body should focus on Operator Feedback.`
+
+export function resolveCookingSystemPrompt(custom: string | null | undefined): string {
+  const trimmed = custom?.trim() ?? ''
+  return trimmed || DEFAULT_COOKING_SYSTEM_PROMPT
+}
+
 export type CookingConfig = {
   provider: CookingProvider
   apiKey: string
@@ -13,6 +28,7 @@ export type CookingConfig = {
   model: string
   reasoningEffort: CookingReasoningEffort
   locale: Locale
+  systemPrompt?: string
 }
 
 export type CookFeedbackInput = {
@@ -42,15 +58,7 @@ export async function cookFeedback(
     providerOptions: {
       openai: { reasoningEffort: config.reasoningEffort },
     },
-    system: `你是 RambleDesk 的反馈文档编辑器。你的任务是把人类口述或随手记录的 uncooked feedback 整理成准确、正式、可执行的 Markdown 反馈。
-
-必须遵守：
-1. 保留原始事实、判断、不确定性和第一人称体验，不得编造测试结果或技术细节。
-2. 删除口水词、重复、自我修正和无意义停顿，修复明显的语音转录断句。
-3. 合并前后重复内容，但不得淡化问题、负面反馈或用户明确要求。
-4. 使用清晰的小标题、段落和列表；只输出最终 Markdown，不要解释编辑过程。
-5. 原样保留所有 attachment://<id> 图片引用及其附近语义，不得修改 ID、丢弃图片或凭空新增附件。
-6. 不要复述任务简报；正文应聚焦 Operator Feedback。`,
+    system: resolveCookingSystemPrompt(config.systemPrompt),
     prompt: `# 请求标题\n${input.title}\n\n# 任务背景\n${input.whatHappened}\n\n# 验收动作\n${input.actions
       .map((action) => `- ${action.id}: ${action.instruction}`)
       .join('\n')}\n\n# Uncooked Operator Feedback\n\n${input.uncookedMarkdown}`,

@@ -214,6 +214,9 @@ pub fn open_macos_privacy_settings(permission: String) -> Result<(), String> {
             "microphone" => {
                 "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
             }
+            "notifications" => {
+                "x-apple.systempreferences:com.apple.Notifications-Settings.extension"
+            }
             other => return Err(format!("未知的 macOS 权限：{other}")),
         };
         std::process::Command::new("open")

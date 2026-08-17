@@ -36,7 +36,7 @@
     <Dialog.Header>
       <div class="mb-1 flex items-center gap-2">
         <Badge variant="outline">Continuation</Badge>
-        <Badge variant="secondary">{tr('Manual continuation')}</Badge>
+        <Badge variant="secondary">{tr('Click Continue first')}</Badge>
       </div>
       <Dialog.Title>{displayedPrompt.title}</Dialog.Title>
       <Dialog.Description class="leading-5">{displayedPrompt.body}</Dialog.Description>
@@ -52,7 +52,7 @@
     </dl>
 
     <label class="grid gap-2 text-xs font-medium" for="resume-prompt-text">
-      {tr('Resume prompt (copy to the host conversation)')}
+      {tr('Fallback resume prompt (only if the host did not wait)')}
       <textarea
         id="resume-prompt-text"
         class="min-h-24 w-full resize-none rounded-md border bg-muted/45 p-3 font-mono text-[11px] font-normal leading-5 outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"

@@ -210,6 +210,19 @@ export function createAttachmentController(context: AttachmentControllerContext)
     }
   }
 
+  async function leaveFullscreenIfNeeded() {
+    if (!context.isTauri) return
+    try {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window')
+      const appWindow = getCurrentWindow()
+      if (await appWindow.isFullscreen()) {
+        await appWindow.setFullscreen(false)
+      }
+    } catch {
+      // The native capture command also leaves fullscreen if this fails.
+    }
+  }
+
   async function startScreenCapture() {
     const workspace = context.getWorkspace()
     const requestId = context.getRambleRequestId() || workspace?.request.request_id || ''
@@ -226,6 +239,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
     context.setCaptureBusy(true)
     context.setMessage('')
     try {
+      await leaveFullscreenIfNeeded()
       await invoke('begin_screen_capture')
     } catch (cause) {
       screenCaptureRequestId = ''
@@ -278,7 +292,6 @@ export function createAttachmentController(context: AttachmentControllerContext)
         : await invoke<FeedbackWorkspaceView>('get_feedback_workspace', { requestId })
       if (!target) throw new Error(context.tr('This feedback request could not be found.'))
       const existingIds = new Set(target.attachments.map((item) => item.attachment_id))
-      context.setMessage(context.tr('Inserting capture…'), 'info')
       const next = await invoke<FeedbackWorkspaceView>('add_completed_screen_capture', {
         requestId,
         captureSessionId: capture.capture_session_id,

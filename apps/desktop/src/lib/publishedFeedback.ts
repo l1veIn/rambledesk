@@ -44,6 +44,16 @@ export function normalizePublishedFeedback(
  * uses its local `attachment://id` scheme so it can safely hydrate previews.
  * This is display-only and never changes the published package on disk.
  */
+/** True when a closed request actually has a cooked body distinct from the original. */
+export function hasCookedPublishedVariant(
+  cookedMarkdown: string,
+  uncookedMarkdown: string | undefined,
+): boolean {
+  const cooked = cookedMarkdown.trim()
+  const uncooked = uncookedMarkdown?.trim() ?? ''
+  return cooked.length > 0 && uncooked.length > 0 && cooked !== uncooked
+}
+
 export function restorePublishedAttachmentUrls(
   markdown: string,
   attachments: PublishedAttachmentPath[],

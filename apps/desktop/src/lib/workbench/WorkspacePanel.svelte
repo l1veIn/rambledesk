@@ -70,7 +70,6 @@
   export let onStartScreenCapture: () => void = () => {}
   export let onImportClipboard: () => void = () => {}
   export let onFileSelection: (event: Event) => void = () => {}
-  export let onInsertAttachment: (attachment: AttachmentView) => void = () => {}
   export let onRemoveAttachment: (attachment: AttachmentView) => void = () => {}
   export let onOpenPackage: () => void = () => {}
   export let onSubmit: () => void = () => {}
@@ -284,7 +283,6 @@
         {onStartScreenCapture}
         {onImportClipboard}
         {onFileSelection}
-        {onInsertAttachment}
         {onRemoveAttachment}
         onPreviewAttachment={openAttachmentPreview}
         {onOpenPackage}

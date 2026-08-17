@@ -28,18 +28,19 @@
   onMount(() => {
     if (!isTauri) return
     const appWindow = getCurrentWindow()
-    void appWindow.isMaximized().then((value) => {
-      maximized = value
-    })
+    void refreshMaximized()
     const unlisten = appWindow.onResized(() => {
-      void appWindow.isMaximized().then((value) => {
-        maximized = value
-      })
+      void refreshMaximized()
     })
     return () => {
       void unlisten.then((dispose) => dispose())
     }
   })
+
+  async function refreshMaximized() {
+    if (isMac) return
+    maximized = await getCurrentWindow().isMaximized()
+  }
 
   async function runWindowAction(action: 'minimize' | 'maximize' | 'close') {
     if (!isTauri) return
@@ -47,6 +48,7 @@
       const appWindow = getCurrentWindow()
       if (action === 'minimize') await appWindow.minimize()
       else if (action === 'maximize') {
+        if (isMac) return
         await appWindow.toggleMaximize()
         maximized = await appWindow.isMaximized()
       } else await appWindow.close()
@@ -73,7 +75,7 @@
 <header
   class={[
     'relative z-30 flex h-[46px] select-none items-stretch rounded-t-[15px] border-b bg-background/95 backdrop-blur-md',
-    isMac ? 'pl-[78px]' : '',
+    isMac ? 'pl-[58px]' : '',
   ]}
 >
   {#if isMac}
@@ -87,11 +89,6 @@
         class="traffic minimize size-3 rounded-full border border-black/10"
         aria-label={t($locale, 'Minimize window')}
         onclick={() => runWindowAction('minimize')}
-      ></button>
-      <button
-        class="traffic maximize size-3 rounded-full border border-black/10"
-        aria-label={t($locale, 'Maximize or restore window')}
-        onclick={() => runWindowAction('maximize')}
       ></button>
     </div>
   {/if}
@@ -198,9 +195,5 @@
 
   .traffic.minimize {
     background: #febc2e;
-  }
-
-  .traffic.maximize {
-    background: #28c840;
   }
 </style>

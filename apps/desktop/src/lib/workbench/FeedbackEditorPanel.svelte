@@ -4,7 +4,6 @@
     Check,
     ChefHat,
     CloudCog,
-    Columns2,
     FileText,
     LoaderCircle,
     Sparkles,
@@ -17,6 +16,7 @@
   import type { AttachmentView, FeedbackWorkspaceView } from '$lib/feedback'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
+  import { hasCookedPublishedVariant } from '$lib/publishedFeedback'
   import type { SavePhase } from './types'
 
   export let workspace: FeedbackWorkspaceView
@@ -39,18 +39,16 @@
   export let onOpenAttachment: (attachmentId: string) => void = () => {}
 
   let richEditor: RichFeedbackEditor
-  let publishedView: 'cooked' | 'uncooked' | 'compare' = 'cooked'
+  let publishedView: 'cooked' | 'uncooked' = 'cooked'
 
   $: readOnly =
     workspace.request.status === 'completed' || workspace.request.status === 'cancelled'
   $: editingDisabled = readOnly || locked
-  $: hasPublishedFeedback = readOnly && cookedMarkdown.trim().length > 0
-  $: hasCookingDifference =
-    hasPublishedFeedback && cookedMarkdown.trim() !== uncookedMarkdown.trim()
+  $: hasCookedVariant = readOnly && hasCookedPublishedVariant(cookedMarkdown, uncookedMarkdown)
   $: displayedMarkdown =
-    hasPublishedFeedback && publishedView === 'cooked'
+    hasCookedVariant && publishedView === 'cooked'
       ? cookedMarkdown
-      : hasPublishedFeedback && publishedView === 'uncooked'
+      : hasCookedVariant && publishedView === 'uncooked'
         ? uncookedMarkdown
         : draftBody
 
@@ -103,7 +101,7 @@
         {readOnly ? tr('This request is closed. The document is read-only.') : tr('Record observations, problems, and suggestions.')}
       </p>
     </div>
-    {#if hasPublishedFeedback}
+    {#if hasCookedVariant}
       <div class="ml-auto flex items-center gap-1 rounded-md border bg-muted/30 p-0.5">
         <Button
           variant={publishedView === 'cooked' ? 'secondary' : 'ghost'}
@@ -127,19 +125,6 @@
           <FileText data-icon={publishedView === 'uncooked' ? 'inline-start' : undefined} />
           {#if publishedView === 'uncooked'}Uncooked{/if}
         </Button>
-        {#if hasCookingDifference}
-          <Button
-            variant={publishedView === 'compare' ? 'secondary' : 'ghost'}
-            size="sm"
-            class={publishedView === 'compare' ? 'h-7 px-2 text-[10px]' : 'size-7 p-0'}
-            aria-label={tr('Compare')}
-            title={tr('Compare')}
-            onclick={() => (publishedView = 'compare')}
-          >
-            <Columns2 data-icon={publishedView === 'compare' ? 'inline-start' : undefined} />
-            {#if publishedView === 'compare'}{tr('Compare')}{/if}
-          </Button>
-        {/if}
       </div>
     {:else if cookingEnabled && !readOnly && !locked && !cooking}
       <Button
@@ -176,39 +161,16 @@
   {/if}
 
   <div class="relative flex min-h-0 flex-1">
-    {#if hasPublishedFeedback && publishedView === 'compare' && hasCookingDifference}
-      <div class="grid min-h-0 flex-1 grid-cols-2 gap-3">
-        <section class="flex min-h-0 flex-col gap-2">
-          <strong class="text-[10px] font-medium text-muted-foreground">Uncooked</strong>
-          <RichFeedbackEditor
-            markdown={uncookedMarkdown}
-            previews={attachmentPreviews}
-            disabled={true}
-            {onOpenAttachment}
-          />
-        </section>
-        <section class="flex min-h-0 flex-col gap-2">
-          <strong class="text-[10px] font-medium text-muted-foreground">Cooked</strong>
-          <RichFeedbackEditor
-            markdown={cookedMarkdown}
-            previews={attachmentPreviews}
-            disabled={true}
-            {onOpenAttachment}
-          />
-        </section>
-      </div>
-    {:else}
-      <RichFeedbackEditor
-        bind:this={richEditor}
-        markdown={displayedMarkdown}
-        previews={attachmentPreviews}
-        disabled={editingDisabled}
-        {onOpenAttachment}
-        onChange={(markdown) => {
-          if (!editingDisabled) onChange(markdown)
-        }}
-      />
-    {/if}
+    <RichFeedbackEditor
+      bind:this={richEditor}
+      markdown={displayedMarkdown}
+      previews={attachmentPreviews}
+      disabled={editingDisabled}
+      {onOpenAttachment}
+      onChange={(markdown) => {
+        if (!editingDisabled) onChange(markdown)
+      }}
+    />
 
     {#if cooking}
       <div

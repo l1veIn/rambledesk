@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use super::*;
 
 use super::capture_platform::{
@@ -58,6 +60,22 @@ pub(super) fn configure_capture_overlay(
         .map_err(|error| format!("无法准备截图编辑窗口：{error}"))
 }
 
+async fn leave_main_fullscreen(app: &AppHandle) {
+    let Some(main) = app.get_webview_window("main") else {
+        return;
+    };
+    let fullscreen = main.is_fullscreen().unwrap_or(false);
+    if !fullscreen {
+        return;
+    }
+    if let Err(error) = main.set_fullscreen(false) {
+        tracing::warn!(%error, "failed to leave fullscreen before screen capture");
+        return;
+    }
+    tracing::info!("left main-window fullscreen before screen capture");
+    tokio::time::sleep(Duration::from_millis(500)).await;
+}
+
 #[tauri::command]
 pub fn show_screen_capture_overlay(app: AppHandle) -> Result<(), String> {
     let overlay = app
@@ -79,6 +97,7 @@ pub async fn begin_screen_capture(
     let started = std::time::Instant::now();
     tracing::info!("begin_screen_capture: requesting permission");
     ensure_screen_capture_permission()?;
+    leave_main_fullscreen(&app).await;
     let should_restore_console = console_was_visible(&app);
     let capture_session_id = uuid::Uuid::now_v7().to_string();
     tracing::info!(%capture_session_id, "begin_screen_capture: session created");

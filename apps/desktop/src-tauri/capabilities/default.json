@@ -11,6 +11,7 @@
     "core:window:allow-maximize",
     "core:window:allow-unmaximize",
     "core:window:allow-toggle-maximize",
+    "core:window:allow-set-fullscreen",
     "core:window:allow-close",
     "core:window:allow-start-dragging",
     "notification:allow-is-permission-granted",

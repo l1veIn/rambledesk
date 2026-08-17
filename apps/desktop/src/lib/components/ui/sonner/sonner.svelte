@@ -40,14 +40,17 @@
   }
 
   :global([data-sonner-toast][data-styled='true'] [data-icon]) {
-    width: 100px;
-    height: 100px;
-    margin-inline: -5px 8px;
+    width: 100px !important;
+    height: 100px !important;
+    margin-inline: -8px 8px !important;
+    overflow: visible !important;
   }
 
   :global(.rambelle-toast-portrait) {
-    width: 100px;
-    height: 100px;
+    width: 100px !important;
+    height: 100px !important;
+    max-width: none !important;
+    max-height: none !important;
     object-fit: contain;
   }
 

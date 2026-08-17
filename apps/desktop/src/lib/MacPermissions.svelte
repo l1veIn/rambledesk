@@ -8,7 +8,8 @@
   import { Button } from '$lib/components/ui/button'
   import { toast } from '$lib/components/ui/sonner'
   import { t } from '$lib/i18n'
-  import { locale } from '$lib/preferences'
+  import { isPermissionGranted, requestPermission } from '@tauri-apps/plugin-notification'
+  import { locale, setNotificationPopupEnabled } from '$lib/preferences'
 
   type MacPermissionStatus = 'granted' | 'denied' | 'not_determined' | 'unknown'
   type MacPermission = { id: string; status: MacPermissionStatus; restart_required: boolean }
@@ -35,13 +36,30 @@
   }
 
   function title(id: string) {
-    return id === 'screen_capture' ? tr('Screen & System Audio Recording') : tr('Microphone')
+    if (id === 'screen_capture') return tr('Screen & System Audio Recording')
+    if (id === 'notifications') return tr('System notifications')
+    return tr('Microphone')
   }
 
   function description(id: string) {
-    return id === 'screen_capture'
-      ? tr('Screen Recording is used for screenshots and scrolling captures.')
-      : tr('The microphone is used for on-device transcription of voice Rambles.')
+    if (id === 'screen_capture') {
+      return tr('Screen Recording is used for screenshots and scrolling captures.')
+    }
+    if (id === 'notifications') {
+      return tr(
+        'System notifications tell you when a new request arrives. Allow banners in System Settings if the prompt is dismissed.',
+      )
+    }
+    return tr('The microphone is used for on-device transcription of voice Rambles.')
+  }
+
+  async function notificationPermission(): Promise<MacPermission> {
+    try {
+      const granted = await isPermissionGranted()
+      return { id: 'notifications', status: granted ? 'granted' : 'not_determined', restart_required: false }
+    } catch {
+      return { id: 'notifications', status: 'unknown', restart_required: false }
+    }
   }
 
   function statusBadge(permission: MacPermission) {
@@ -75,7 +93,8 @@
     if (showLoading) loading = true
     try {
       const next = await invoke<MacPermission[]>('list_macos_permissions')
-      if (generation === loadGeneration) syncRestartRequired(next)
+      const withNotifications = [...next, await notificationPermission()]
+      if (generation === loadGeneration) syncRestartRequired(withNotifications)
     } catch (cause) {
       if (showLoading && generation === loadGeneration) {
         toast.error(tr('Could not read permission status'), { description: messageFrom(cause) })
@@ -90,6 +109,26 @@
     loadGeneration += 1
     busy = true
     try {
+      if (id === 'notifications') {
+        const permission = (await isPermissionGranted()) ? 'granted' : await requestPermission()
+        const next: MacPermission = {
+          id: 'notifications',
+          status: permission === 'granted' ? 'granted' : 'denied',
+          restart_required: false,
+        }
+        syncRestartRequired(permissions.map((item) => (item.id === id ? next : item)))
+        if (next.status === 'granted') {
+          setNotificationPopupEnabled(true)
+          toast.success(tr('Permission granted'))
+        } else {
+          toast.error(tr('Permission was not granted. Open System Settings and allow it manually.'), {
+            description: tr(
+              'The operating system did not grant notification permission. Open System Settings → Notifications → RambleDesk and allow banners.',
+            ),
+          })
+        }
+        return
+      }
       const next = await invoke<MacPermission>('request_macos_permission', { permission: id })
       syncRestartRequired(permissions.map((permission) => (permission.id === id ? next : permission)))
       if (next.restart_required) {

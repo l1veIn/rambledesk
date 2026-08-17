@@ -84,6 +84,7 @@
     cookingModel,
     cookingProvider,
     cookingReasoningEffort,
+    cookingSystemPrompt,
     locale,
     notificationPopupEnabled,
     onboardingCompleted,
@@ -655,6 +656,7 @@
       model: $cookingModel,
       reasoningEffort: $cookingReasoningEffort,
       locale: $locale,
+      systemPrompt: $cookingSystemPrompt,
     }),
     isCookingEnabled: () => $cookingEnabled,
     isCooking: () => currentRequestCooking,
@@ -977,7 +979,6 @@
           onStartScreenCapture={() => void attachmentController.startScreenCapture()}
           onImportClipboard={() => void importClipboardNow()}
           onFileSelection={attachmentController.handleFileSelection}
-          onInsertAttachment={attachmentController.insertExistingAttachment}
           onRemoveAttachment={(attachment) => void attachmentController.removeAttachment(attachment)}
           onOpenPackage={() => void openFeedbackPackage()}
           onSubmit={() => void submitFeedback()}

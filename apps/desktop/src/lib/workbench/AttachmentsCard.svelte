@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Eye, File, FileImage, FileText, TextCursorInput, Trash2 } from '@lucide/svelte'
+  import { Eye, File, FileImage, FileText, Trash2 } from '@lucide/svelte'
 
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
@@ -10,7 +10,6 @@
   export let attachments: AttachmentView[] = []
   export let attachmentBusy = false
   export let readOnly = false
-  export let onInsert: (attachment: AttachmentView) => void = () => {}
   export let onRemove: (attachment: AttachmentView) => void = () => {}
   export let onPreview: (attachment: AttachmentView) => void = () => {}
 
@@ -31,8 +30,8 @@
   }
 </script>
 
-<section class="border-b p-4">
-  <header class="mb-2 flex items-center gap-2">
+<section class="flex min-h-0 flex-1 flex-col overflow-hidden border-b p-4">
+  <header class="mb-2 flex shrink-0 items-center gap-2">
     <FileText class="size-4 text-muted-foreground" />
     <strong class="text-xs font-medium">{tr('Attachments')}</strong>
     <Badge variant="secondary" class="ml-auto h-5 px-1.5 text-[9px]">
@@ -41,7 +40,7 @@
   </header>
 
   {#if attachments.length > 0}
-    <div class="divide-y" aria-label={tr('Document attachments')}>
+    <div class="min-h-0 flex-1 divide-y overflow-y-auto" aria-label={tr('Document attachments')}>
       {#each attachments as attachment (attachment.attachment_id)}
         {@const Icon = mediaIcon(attachment)}
         <div class="flex min-w-0 items-center gap-2 py-2">
@@ -60,16 +59,6 @@
             onclick={() => onPreview(attachment)}
           >
             <Eye />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            aria-label={tr('Insert into document: {name}', { name: attachment.file_name })}
-            title={tr('Insert')}
-            disabled={attachmentBusy || readOnly}
-            onclick={() => onInsert(attachment)}
-          >
-            <TextCursorInput />
           </Button>
           <Button
             variant="ghost"

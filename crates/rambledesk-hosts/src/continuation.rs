@@ -127,15 +127,15 @@ impl ManualContinuationStrategy {
         let resume_prompt = payload.resume_prompt();
         let (title, body) = match payload.reason {
             ContinuationReason::Completed => (
-                "反馈已提交 · 请回到宿主继续".to_owned(),
+                "反馈已提交 · 回到宿主点继续".to_owned(),
                 format!(
-                    "请切换到 {host_label} 的对话窗口，粘贴下面的恢复提示并发送（或直接说「继续」并调用 get_feedback）。无需手写 request_id。",
+                    "先回到 {host_label} 的对话，点等待中的「继续」或确认选项。现在的 skill 会用 ask / ask_user_question 卡住等你。只有宿主没有停下来等时，才需要粘贴下面的恢复提示。",
                 ),
             ),
             ContinuationReason::Cancelled => (
-                "反馈已取消 · 请回到宿主收尾".to_owned(),
+                "反馈已取消 · 回到宿主点继续".to_owned(),
                 format!(
-                    "请切换到 {host_label} 的对话窗口，粘贴下面的提示，在宿主中用 get_feedback 确认取消并继续或收尾。",
+                    "先回到 {host_label} 的对话，点等待中的确认以收尾。只有宿主没有停下来等时，才需要粘贴下面的提示并调用 get_feedback。",
                 ),
             ),
         };

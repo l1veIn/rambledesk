@@ -37,7 +37,6 @@
   export let onStartScreenCapture: () => void = () => {}
   export let onImportClipboard: () => void = () => {}
   export let onFileSelection: (event: Event) => void = () => {}
-  export let onInsertAttachment: (attachment: AttachmentView) => void = () => {}
   export let onRemoveAttachment: (attachment: AttachmentView) => void = () => {}
   export let onPreviewAttachment: (attachment: AttachmentView) => void = () => {}
   export let onOpenPackage: () => void = () => {}
@@ -54,8 +53,8 @@
   class="command-rail flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-l bg-muted/15"
   aria-label={t($locale, 'Ramble console')}
 >
-  <div class="min-h-0 flex-1 overflow-y-auto">
-    {#if !readOnly && !interactionLocked}
+  {#if !readOnly && !interactionLocked}
+    <div class="shrink-0">
       <RamblePanel
         {rambleEngaged}
         {rambleActive}
@@ -83,17 +82,18 @@
         onImportClipboard={onImportClipboard}
         {onFileSelection}
       />
-    {/if}
+    </div>
+  {/if}
 
-    <AttachmentsCard
-      attachments={workspace.attachments}
-      {attachmentBusy}
-      readOnly={readOnly || interactionLocked}
-      onInsert={onInsertAttachment}
-      onRemove={onRemoveAttachment}
-      onPreview={onPreviewAttachment}
-    />
+  <AttachmentsCard
+    attachments={workspace.attachments}
+    {attachmentBusy}
+    readOnly={readOnly || interactionLocked}
+    onRemove={onRemoveAttachment}
+    onPreview={onPreviewAttachment}
+  />
 
+  <div class="shrink-0">
     <DeliveryCard
       {feedbackResult}
       cancelled={workspace.request.status === 'cancelled'}
@@ -112,11 +112,11 @@
       onCancel={onCancel}
       onApprove={onApprove}
     />
+    <RambelleStatusCard
+      portrait={rambelleStatusPortrait}
+      feedbackDone={feedbackResult !== null}
+      {rambleEngaged}
+      {rambleActive}
+    />
   </div>
-
-  <RambelleStatusCard
-    portrait={rambelleStatusPortrait}
-    feedbackDone={feedbackResult !== null}
-    {rambleEngaged}
-  />
 </aside>

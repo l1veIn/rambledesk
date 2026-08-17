@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { restorePublishedAttachmentUrls } from './publishedFeedback'
+import { hasCookedPublishedVariant, restorePublishedAttachmentUrls } from './publishedFeedback'
 
 describe('restorePublishedAttachmentUrls', () => {
   it('maps package-relative Markdown destinations to local attachment URLs', () => {
@@ -19,6 +19,13 @@ describe('restorePublishedAttachmentUrls', () => {
       '[open attachment](attachment://attachment-id "capture")',
       'The text attachments/001-capture.png is left alone.',
     ].join('\n'))
+  })
+
+  it('hides cooked/uncooked switching when nothing was cooked', () => {
+    expect(hasCookedPublishedVariant('same body', 'same body')).toBe(false)
+    expect(hasCookedPublishedVariant('published', '')).toBe(false)
+    expect(hasCookedPublishedVariant('published', undefined)).toBe(false)
+    expect(hasCookedPublishedVariant('cooked notes', 'raw notes')).toBe(true)
   })
 
   it('preserves attachment URLs that are already local', () => {

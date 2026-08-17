@@ -46,6 +46,7 @@
   import dshLogoSvg from '../assets/dsh-logo.svg?raw'
   import * as Select from '$lib/components/ui/select'
   import * as Tabs from '$lib/components/ui/tabs'
+  import { DEFAULT_COOKING_SYSTEM_PROMPT } from '$lib/cooking'
   import { t } from '$lib/i18n'
   import {
     speechModelDescription,
@@ -65,6 +66,7 @@
     cookingModel,
     cookingProvider,
     cookingReasoningEffort,
+    cookingSystemPrompt,
     customNotificationSound,
     locale,
     notificationPopupEnabled,
@@ -77,6 +79,7 @@
     setCookingModel,
     setCookingProvider,
     setCookingReasoningEffort,
+    setCookingSystemPrompt,
     setCustomNotificationSound,
     setLocale,
     setNotificationPopupEnabled,
@@ -466,7 +469,9 @@
         setNotificationPopupEnabled(true)
       } else {
         setNotificationPopupEnabled(false)
-        notificationPermissionError = tr('The operating system did not grant notification permission.')
+        notificationPermissionError = tr(
+          'The operating system did not grant notification permission. Open System Settings → Notifications → RambleDesk and allow banners.',
+        )
       }
     } catch (cause) {
       setNotificationPopupEnabled(false)
@@ -568,6 +573,7 @@
       </Dialog.Description>
     </Dialog.Header>
 
+    {#key $locale}
     <Tabs.Root
       bind:value={activeSection}
       orientation="vertical"
@@ -860,6 +866,32 @@
                       oninput={(event) => setCookingApiKey((event.currentTarget as HTMLInputElement).value)}
                     />
                   </div>
+                  <div class="grid grid-cols-[140px_minmax(0,1fr)] items-start gap-4">
+                    <label for="cooking-system-prompt" class="pt-2 text-xs font-medium">{tr('Cooking prompt')}</label>
+                    <div class="grid gap-2">
+                      <textarea
+                        id="cooking-system-prompt"
+                        rows="8"
+                        value={$cookingSystemPrompt || DEFAULT_COOKING_SYSTEM_PROMPT}
+                        class="min-h-40 w-full resize-y rounded-md border bg-background px-3 py-2 font-mono text-[11px] leading-5 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        oninput={(event) =>
+                          setCookingSystemPrompt((event.currentTarget as HTMLTextAreaElement).value)}
+                      ></textarea>
+                      <div class="flex items-center justify-between gap-3">
+                        <p class="m-0 text-[10px] leading-4 text-muted-foreground">
+                          {tr('This prompt is sent with every cook, along with the request title, what happened, and the action list. Keep attachment:// image references if you edit it.')}
+                        </p>
+                        <Button
+                          variant="outline"
+                          size="xs"
+                          disabled={!$cookingSystemPrompt}
+                          onclick={() => setCookingSystemPrompt('')}
+                        >
+                          {tr('Reset to default')}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
                   <p class="m-0 text-[10px] leading-4 text-muted-foreground">
                     {tr('The API key is stored only in local settings on this device and is never written to feedback packages. Cooking sends the uncooked body to the selected model provider.')}
                   </p>
@@ -919,7 +951,7 @@
                 <div>
                   <h3 class="m-0 text-sm font-medium">{tr('System notifications')}</h3>
                   <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
-                    {tr('Use Windows, macOS, or Linux system notifications when a new request arrives.')}
+                    {tr('On macOS, allow RambleDesk in System Settings → Notifications. Banners may stay hidden while this window is focused; check Notification Center if a request arrives while you are already here.')}
                   </p>
                 </div>
               </div>
@@ -1623,6 +1655,7 @@
         </ScrollArea>
       </div>
     </Tabs.Root>
+    {/key}
   </Dialog.Content>
 </Dialog.Root>
 

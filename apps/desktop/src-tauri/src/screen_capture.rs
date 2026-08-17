@@ -10,8 +10,6 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 #[cfg(target_os = "macos")]
 use std::ffi::c_void;
-#[cfg(not(target_os = "macos"))]
-use std::time::Duration;
 use std::{borrow::Cow, collections::HashMap, sync::Mutex};
 use tauri::{
     AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder,

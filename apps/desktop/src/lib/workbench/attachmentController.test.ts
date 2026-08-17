@@ -95,4 +95,45 @@ describe('attachmentController screen capture state', () => {
     expect(setBusy).not.toHaveBeenCalled()
     cleanup()
   })
+
+  it('toasts only the capture result, not an in-progress insert', async () => {
+    const workspace = {
+      request: { request_id: 'request-1' },
+      attachments: [] as Array<{ attachment_id: string; file_name: string; media_type: string }>,
+      draft: { saved_revision: 1 },
+    }
+    const inserted = {
+      ...workspace,
+      attachments: [{ attachment_id: 'att-1', file_name: 'shot.png', media_type: 'image/png' }],
+    }
+    const { context } = controllerContext()
+    context.getWorkspace = () => workspace as never
+    context.getEditor = () => ({ insertAttachments: () => true }) as never
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn(() => 'blob:preview'),
+      revokeObjectURL: vi.fn(),
+    })
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === 'add_completed_screen_capture') return inserted
+      if (command === 'read_feedback_attachment') return new ArrayBuffer(0)
+      return undefined
+    })
+
+    const controller = createAttachmentController(context)
+    const cleanup = controller.mount()
+    await vi.waitFor(() => expect(mocks.listeners.has('screen-capture-ready')).toBe(true))
+
+    mocks.listeners.get('screen-capture-ready')?.({
+      payload: { capture_session_id: 'capture-1', file_name: 'shot.png' },
+    })
+
+    await vi.waitFor(() => {
+      expect(context.setMessage).toHaveBeenCalledWith(
+        'Capture inserted at the current document position',
+        'success',
+      )
+    })
+    expect(context.setMessage).not.toHaveBeenCalledWith('Inserting capture…', 'info')
+    cleanup()
+  })
 })

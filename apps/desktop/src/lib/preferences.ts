@@ -41,6 +41,7 @@ const COOKING_API_KEY_KEY = 'rambledesk.cooking.api-key'
 const COOKING_BASE_URL_KEY = 'rambledesk.cooking.base-url'
 const COOKING_MODEL_KEY = 'rambledesk.cooking.model'
 const COOKING_REASONING_EFFORT_KEY = 'rambledesk.cooking.reasoning-effort'
+const COOKING_SYSTEM_PROMPT_KEY = 'rambledesk.cooking.system-prompt'
 const ONBOARDING_COMPLETED_KEY = 'rambledesk.onboarding.completed'
 const ONBOARDING_STEP_KEY = 'rambledesk.onboarding.step'
 
@@ -203,6 +204,7 @@ const savedCookingReasoningEffort = localStorage.getItem(COOKING_REASONING_EFFOR
 export const cookingReasoningEffort = writable<CookingReasoningEffort>(
   isCookingReasoningEffort(savedCookingReasoningEffort) ? savedCookingReasoningEffort : 'max',
 )
+export const cookingSystemPrompt = writable(localStorage.getItem(COOKING_SYSTEM_PROMPT_KEY) ?? '')
 
 let initialized = false
 let mediaQuery: MediaQueryList | null = null
@@ -310,6 +312,10 @@ export function setCookingReasoningEffort(effort: CookingReasoningEffort) {
   cookingReasoningEffort.set(effort)
 }
 
+export function setCookingSystemPrompt(prompt: string) {
+  cookingSystemPrompt.set(prompt)
+}
+
 export function setNotificationVolume(volume: number) {
   notificationVolume.set(Math.min(100, Math.max(0, Math.round(volume))))
 }
@@ -378,6 +384,9 @@ export function initializePreferences() {
   })
   cookingReasoningEffort.subscribe((next) => {
     localStorage.setItem(COOKING_REASONING_EFFORT_KEY, next)
+  })
+  cookingSystemPrompt.subscribe((next) => {
+    localStorage.setItem(COOKING_SYSTEM_PROMPT_KEY, next)
   })
 
   mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
@@ -459,5 +468,6 @@ export function initializePreferences() {
     ) {
       cookingReasoningEffort.set(event.newValue)
     }
+    if (event.key === COOKING_SYSTEM_PROMPT_KEY) cookingSystemPrompt.set(event.newValue ?? '')
   })
 }
