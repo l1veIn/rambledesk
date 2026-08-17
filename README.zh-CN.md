@@ -45,6 +45,41 @@ Ramble 之外：
 - 首次使用引导：语言、数据位置、本地语音、适配器、通知和可选 Cooking；可从 **设置 → 通用** 再次启用。
 - 中文/英文界面、light/dark 外观、托盘入口以及可选系统通知。
 
+## 下载与安装
+
+只从官方 [GitHub Releases](https://github.com/l1veIn/rambledesk/releases) 页面下载安装包。在绕过任何系统安全提示之前，请确认文件确实来自本仓库，并把下载文件的 SHA-256 与同一 Release 中的 `SHA256SUMS.txt` 对比。
+
+### macOS（Apple Silicon）
+
+当前 macOS 构建使用 ad-hoc 签名，但**没有经过 Apple 公证**。因此，即使 DMG 文件本身完好，Gatekeeper 也可能阻止首次启动。
+
+1. 从同一个 Release 下载文件名包含 `aarch64.dmg` 的安装包和 `SHA256SUMS.txt`，然后在“终端”中校验：
+
+   ```bash
+   cd ~/Downloads
+   grep 'aarch64.dmg' SHA256SUMS.txt | shasum -a 256 -c -
+   ```
+
+   只有结果显示 `OK` 时才继续。
+
+2. 打开 DMG，把 **RambleDesk** 拖到安装窗口里的 **Applications（应用程序）** 文件夹，然后推出 RambleDesk 磁盘映像。
+3. 在 Finder 中打开**应用程序**，按住 Control 点击或右键点击 **RambleDesk**，选择**打开**；如果系统再次询问，继续选择**打开**。
+4. 如果仍被阻止，先尝试启动一次，再前往**系统设置 → 隐私与安全性**，在“安全性”区域点击**仍要打开**并完成身份验证。这个按钮通常会在启动被拦截后保留约一小时。可参阅 [Apple 官方说明](https://support.apple.com/guide/mac-help/mh40616/mac)。
+5. 如果提示“RambleDesk 已损坏，无法打开”，请先确认 SHA-256 与 Release 一致，再在“终端”中只移除下载文件的 quarantine 属性，然后重新打开：
+
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/RambleDesk.app
+   ```
+
+   通常不需要 `sudo`。如果系统提示应用“将损坏你的电脑”、检测到恶意软件，或者校验值不一致，请**不要**绕过警告。
+6. 首次引导中，按需允许**屏幕与系统音频录制**和**麦克风**权限。如果屏幕权限授权后提示需要重启，请重启 RambleDesk 再进行截图。
+
+卸载时先退出 RambleDesk，再把 `/Applications/RambleDesk.app` 移到废纸篓。反馈资料库和设置会被刻意保留，避免重装时丢失已有内容。
+
+### Windows
+
+从同一 Release 下载 `.exe` 安装器并运行。在接入 Windows Authenticode 签名前，SmartScreen 可能显示“Windows 已保护你的电脑”。确认下载来源和 SHA-256 后，选择**更多信息 → 仍要运行**。Windows 安装器及应用内更新与未公证的 macOS 分发链路彼此独立。
+
 ## 本地开发快速开始
 
 环境要求：

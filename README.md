@@ -45,6 +45,41 @@ Beyond the Ramble:
 - First-run setup for language, data location, local speech, adapters, notifications, and optional Cooking; it can be rerun from **Settings → General**.
 - Chinese and English UI, light and dark appearance modes, tray entry points, and optional system notifications.
 
+## Download and install
+
+Download release builds only from the official [GitHub Releases](https://github.com/l1veIn/rambledesk/releases) page. Before overriding an operating-system warning, confirm that the file came from this repository and compare its SHA-256 digest with `SHA256SUMS.txt` from the same release.
+
+### macOS (Apple Silicon)
+
+The current macOS build is ad-hoc signed but is **not notarized by Apple**. Gatekeeper may therefore block the first launch even when the downloaded DMG is intact.
+
+1. Download the `aarch64.dmg` file and `SHA256SUMS.txt` from the same release, then verify the DMG in Terminal:
+
+   ```bash
+   cd ~/Downloads
+   grep 'aarch64.dmg' SHA256SUMS.txt | shasum -a 256 -c -
+   ```
+
+   Continue only when the result says `OK`.
+
+2. Open the DMG, then drag **RambleDesk** onto the **Applications** folder shown in the installer window. Eject the RambleDesk disk image afterward.
+3. Open **Applications** in Finder, Control-click or right-click **RambleDesk**, choose **Open**, then confirm **Open** if macOS offers it.
+4. If macOS still blocks the app, try to open it once, then go to **System Settings → Privacy & Security**. In the Security section choose **Open Anyway** and authenticate. Apple normally keeps this button available for about an hour after the blocked launch. See [Apple's official instructions](https://support.apple.com/guide/mac-help/mh40616/mac).
+5. If macOS instead reports that RambleDesk “is damaged and can't be opened,” first make sure the SHA-256 digest matches the release. Then remove only the downloaded-file quarantine attribute and open the app again:
+
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/RambleDesk.app
+   ```
+
+   `sudo` is not normally required. Do **not** bypass a “will damage your computer” or malware warning, and do not continue when the checksum differs.
+6. During first-run setup, allow **Screen & System Audio Recording** and **Microphone** when you want capture and voice transcription. If RambleDesk says a restart is required after screen permission is granted, restart it before taking a capture.
+
+To uninstall the app, quit RambleDesk and move `/Applications/RambleDesk.app` to the Trash. This intentionally leaves your local feedback library and settings in place so reinstalling does not destroy your work.
+
+### Windows
+
+Download the `.exe` installer from the same release and run it. Until Windows Authenticode signing is added, SmartScreen may show **Windows protected your PC**. Only after checking the download and SHA-256 digest, choose **More info → Run anyway**. The installer and in-app updater are separate from the unsigned macOS delivery path.
+
 ## Development Quick Start
 
 Prerequisites:

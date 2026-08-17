@@ -4,7 +4,13 @@
     "createUpdaterArtifacts": false,
     "macOS": {
       "signingIdentity": "-",
-      "hardenedRuntime": false
+      "hardenedRuntime": false,
+      "dmg": {
+        "background": "dmg/background.png",
+        "windowSize": { "width": 720, "height": 460 },
+        "appPosition": { "x": 190, "y": 180 },
+        "applicationFolderPosition": { "x": 530, "y": 180 }
+      }
     }
   }
 }

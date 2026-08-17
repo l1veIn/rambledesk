@@ -47,9 +47,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          release_notes="Windows release. Updater artifacts are signed; Windows Authenticode signing is not yet enabled."
+          release_notes="Windows and Apple Silicon macOS release. Windows updater artifacts are signed; Windows Authenticode and Apple notarization are not yet enabled. See the README for platform-specific first-launch instructions."
           if [[ "$GITHUB_REF_NAME" == *-* ]]; then
-            release_notes="Windows release candidate. Updater artifacts are signed; Windows Authenticode signing is not yet enabled."
+            release_notes="Windows and Apple Silicon macOS release candidate. Windows updater artifacts are signed; Windows Authenticode and Apple notarization are not yet enabled. See the README for platform-specific first-launch instructions."
           fi
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || \
             gh release create "$GITHUB_REF_NAME" \
@@ -59,7 +59,7 @@ jobs:
               --notes "$release_notes" \
               --generate-notes
 
-  build:
+  build-windows:
     needs: validate
     runs-on: windows-latest
     steps:
@@ -87,7 +87,7 @@ jobs:
           tauriScript: pnpm tauri
           tagName: ${{ github.ref_name }}
           releaseName: RambleDesk v__VERSION__
-          releaseBody: ${{ contains(github.ref_name, '-') && 'Windows release candidate. Updater artifacts are signed; Windows Authenticode signing is not yet enabled.' || 'Windows release. Updater artifacts are signed; Windows Authenticode signing is not yet enabled.' }}
+          releaseBody: ${{ contains(github.ref_name, '-') && 'Windows and Apple Silicon macOS release candidate. Windows updater artifacts are signed; Windows Authenticode and Apple notarization are not yet enabled. See the README for first-launch instructions.' || 'Windows and Apple Silicon macOS release. Windows updater artifacts are signed; Windows Authenticode and Apple notarization are not yet enabled. See the README for first-launch instructions.' }}
           releaseDraft: true
           prerelease: false
           generateReleaseNotes: true
@@ -120,25 +120,59 @@ jobs:
             (Join-Path $installer.DirectoryName "latest.json") `
             --clobber
 
-      - name: Generate and upload SHA-256 checksums
-        shell: pwsh
+  build-macos:
+    needs: validate
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.91.1
+          targets: aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: tauri-apps/tauri-action@v1
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: apps/desktop
+          tauriScript: pnpm tauri
+          tagName: ${{ github.ref_name }}
+          releaseName: RambleDesk v__VERSION__
+          releaseBody: ${{ contains(github.ref_name, '-') && 'Windows and Apple Silicon macOS release candidate. Windows updater artifacts are signed; Windows Authenticode and Apple notarization are not yet enabled. See the README for first-launch instructions.' || 'Windows and Apple Silicon macOS release. Windows updater artifacts are signed; Windows Authenticode and Apple notarization are not yet enabled. See the README for first-launch instructions.' }}
+          releaseDraft: true
+          prerelease: false
+          generateReleaseNotes: true
+          uploadUpdaterJson: false
+          retryAttempts: 0
+          args: --target aarch64-apple-darwin --bundles dmg
+
+  checksums:
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate and upload cross-platform SHA-256 checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          $installers = Get-ChildItem $env:GITHUB_WORKSPACE -Recurse -File |
-            Where-Object {
-              $_.FullName -match "\\bundle\\(nsis|msi)\\" -and
-              $_.Extension -in ".exe", ".msi"
-            }
-          if (-not $installers) {
-            throw "No Windows installers were produced."
-          }
-          $checksumPath = Join-Path $env:GITHUB_WORKSPACE "SHA256SUMS.txt"
-          $installers |
-            Sort-Object Name |
-            ForEach-Object {
-              $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-              "$hash *$($_.Name)"
-            } |
-            Set-Content -LiteralPath $checksumPath -Encoding ascii
-          gh release upload "${{ github.ref_name }}" $checksumPath --clobber
+          mkdir -p artifacts
+          gh release download "$GITHUB_REF_NAME" \
+            --pattern '*.exe' \
+            --pattern '*.msi' \
+            --pattern '*.dmg' \
+            --dir artifacts
+          test -n "$(find artifacts -maxdepth 1 -type f -name '*.exe' -print -quit)"
+          test -n "$(find artifacts -maxdepth 1 -type f -name '*.dmg' -print -quit)"
+          find artifacts -maxdepth 1 -type f \
+            \( -name '*.exe' -o -name '*.msi' -o -name '*.dmg' \) \
+            -print0 | sort -z | xargs -0 sha256sum | \
+            sed 's#  artifacts/# *#' > SHA256SUMS.txt
+          gh release upload "$GITHUB_REF_NAME" SHA256SUMS.txt --clobber
