@@ -481,3 +481,89 @@ async fn local_api_supports_pi_request_and_blocking_wait() -> anyhow::Result<()>
     server.shutdown().await?;
     Ok(())
 }
+
+#[tokio::test]
+async fn sse_handshake_emits_endpoint_and_serves_mcp_tools() -> anyhow::Result<()> {
+    let token = AccessToken::parse(TEST_TOKEN)?;
+    let (application, _directory) = test_application().await?;
+    let server = start_server(ServerConfig::new(token).with_port(0), application.clone()).await?;
+    let client = reqwest::Client::new();
+
+    // 1. Initial SSE GET request without session ID (Antigravity handshake)
+    let response = client
+        .get(server.endpoint())
+        .bearer_auth(TEST_TOKEN)
+        .header(reqwest::header::ACCEPT, "text/event-stream")
+        .send()
+        .await?;
+
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default();
+    assert!(content_type.contains("text/event-stream"));
+
+    let mut stream = response.bytes_stream();
+    use futures::StreamExt;
+    let first_chunk = stream.next().await.context("first SSE chunk")??;
+    let text = String::from_utf8_lossy(&first_chunk);
+    assert!(text.contains("event: endpoint"));
+    assert!(text.contains("data: http://"));
+    assert!(text.contains("/mcp"));
+
+    // 2. Client uses the endpoint to initialize and call tools/list via POST
+    let init_response = client
+        .post(server.endpoint())
+        .bearer_auth(TEST_TOKEN)
+        .header(HOST_HEADER, "antigravity")
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {
+                    "name": "antigravity",
+                    "version": "1.0.0"
+                }
+            }
+        }))
+        .send()
+        .await?;
+    assert_eq!(init_response.status(), reqwest::StatusCode::OK);
+    let session_id = init_response
+        .headers()
+        .get("mcp-session-id")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned);
+
+    let mut tools_req = client
+        .post(server.endpoint())
+        .bearer_auth(TEST_TOKEN)
+        .header(HOST_HEADER, "antigravity");
+    if let Some(session_id) = session_id.as_ref() {
+        tools_req = tools_req.header("mcp-session-id", session_id);
+    }
+    let tools_response = tools_req
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/list",
+            "params": {}
+        }))
+        .send()
+        .await?;
+    assert_eq!(tools_response.status(), reqwest::StatusCode::OK);
+    let tools_body = tools_response.text().await?;
+    assert!(tools_body.contains("request_feedback"));
+    assert!(tools_body.contains("get_feedback"));
+    assert!(tools_body.contains("cancel_feedback"));
+
+    drop(stream);
+
+    server.shutdown().await?;
+    Ok(())
+}

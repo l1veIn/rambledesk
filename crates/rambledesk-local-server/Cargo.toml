@@ -8,6 +8,7 @@ repository.workspace = true
 [dependencies]
 axum.workspace = true
 dirs.workspace = true
+futures.workspace = true
 hex.workspace = true
 rand.workspace = true
 rambledesk-core.workspace = true
@@ -19,6 +20,7 @@ subtle.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
+tower-service.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]

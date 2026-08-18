@@ -16,9 +16,13 @@ use axum::{
         header::{AUTHORIZATION, HOST, ORIGIN, WWW_AUTHENTICATE},
     },
     middleware::{self, Next},
-    response::IntoResponse,
+    response::{
+        IntoResponse,
+        sse::{Event, KeepAlive, Sse},
+    },
     routing::{get, post},
 };
+use futures::StreamExt;
 use rambledesk_core::{
     ApplicationError, ApproveFeedbackInput, CancelFeedbackInput, FeedbackApplication,
     FeedbackRequestView, FeedbackStatus, GetFeedbackInput, RecoverFeedbackInput,
@@ -27,10 +31,12 @@ use rambledesk_core::{
 use rmcp::transport::streamable_http_server::{
     StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
 };
+use std::{convert::Infallible, time::Duration};
 use subtle::ConstantTimeEq;
 use thiserror::Error;
 use tokio::{net::TcpListener, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
+use tower_service::Service;
 
 pub use token::{AccessToken, TokenError, default_token_path};
 
@@ -358,6 +364,79 @@ pub enum ServerError {
     Join(#[from] tokio::task::JoinError),
 }
 
+async fn handle_mcp_request(
+    State(mut service): State<
+        StreamableHttpService<rambledesk_mcp::RambleDeskMcp, LocalSessionManager>,
+    >,
+    mut request: Request<Body>,
+) -> Response<Body> {
+    let is_sse_handshake = request.method() == axum::http::Method::GET
+        && request
+            .headers()
+            .get(axum::http::header::ACCEPT)
+            .and_then(|h| h.to_str().ok())
+            .is_some_and(|h| h.contains("text/event-stream"))
+        && !request.headers().contains_key("mcp-session-id");
+
+    if is_sse_handshake {
+        let host = request
+            .headers()
+            .get(HOST)
+            .and_then(|h| h.to_str().ok())
+            .unwrap_or("127.0.0.1:37642");
+        let endpoint_url = format!("http://{host}{MCP_PATH}");
+        let initial_event =
+            Ok::<_, Infallible>(Event::default().event("endpoint").data(endpoint_url));
+        let stream =
+            futures::stream::once(async move { initial_event }).chain(futures::stream::pending());
+        return Sse::new(stream)
+            .keep_alive(
+                KeepAlive::new()
+                    .interval(Duration::from_secs(15))
+                    .text("keepalive"),
+            )
+            .into_response();
+    }
+
+    if let Some(query) = request.uri().query()
+        && !request.headers().contains_key("mcp-session-id")
+    {
+        for pair in query.split('&') {
+            if let Some((k, v)) = pair.split_once('=')
+                && (k.eq_ignore_ascii_case("sessionid") || k.eq_ignore_ascii_case("session_id"))
+                && let Ok(val) = HeaderValue::from_str(v)
+            {
+                request.headers_mut().insert(
+                    axum::http::header::HeaderName::from_static("mcp-session-id"),
+                    val,
+                );
+                break;
+            }
+        }
+    }
+
+    if request.method() == axum::http::Method::POST {
+        let current_accept = request
+            .headers()
+            .get(axum::http::header::ACCEPT)
+            .and_then(|h| h.to_str().ok())
+            .unwrap_or_default();
+        if !current_accept.contains("application/json")
+            || !current_accept.contains("text/event-stream")
+        {
+            request.headers_mut().insert(
+                axum::http::header::ACCEPT,
+                HeaderValue::from_static("application/json, text/event-stream"),
+            );
+        }
+    }
+
+    match service.call(request).await {
+        Ok(response) => response.into_response(),
+        Err(infallible) => match infallible {},
+    }
+}
+
 pub async fn start_server(
     config: ServerConfig,
     application: FeedbackApplication,
@@ -393,8 +472,11 @@ pub async fn start_server(
         .with_state(ApiState {
             application: application.clone(),
         });
+    let mcp = Router::new()
+        .fallback(handle_mcp_request)
+        .with_state(service);
     let router = Router::new()
-        .nest_service(MCP_PATH, service)
+        .nest(MCP_PATH, mcp)
         .nest(API_PATH, api)
         .layer(middleware::from_fn_with_state(auth, require_bearer));
 
