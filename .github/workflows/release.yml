@@ -51,13 +51,15 @@ jobs:
           if [[ "$GITHUB_REF_NAME" == *-* ]]; then
             release_notes="Windows and Apple Silicon macOS release candidate. Windows updater artifacts are signed; Windows Authenticode and Apple notarization are not yet enabled. See the README for platform-specific first-launch instructions."
           fi
-          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || \
+          # `gh release view` uses GET /releases/tags/{tag}, which omits drafts.
+          if ! node scripts/gh-release-assets.mjs resolve --tag "$GITHUB_REF_NAME" >/dev/null; then
             gh release create "$GITHUB_REF_NAME" \
               --verify-tag \
               --draft \
               --title "RambleDesk $GITHUB_REF_NAME" \
               --notes "$release_notes" \
               --generate-notes
+          fi
 
   build-windows:
     needs: validate
@@ -101,6 +103,7 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           $installer = Get-ChildItem $env:GITHUB_WORKSPACE -Recurse -File -Filter "*-setup.exe" |
             Where-Object { $_.FullName -match "\\bundle\\nsis\\" } |
@@ -116,9 +119,8 @@ jobs:
             --exe $installer.FullName `
             --sig $signature `
             --tag "${{ github.ref_name }}"
-          gh release upload "${{ github.ref_name }}" `
-            (Join-Path $installer.DirectoryName "latest.json") `
-            --clobber
+          node scripts/gh-release-assets.mjs upload --tag "${{ github.ref_name }}" -- `
+            (Join-Path $installer.DirectoryName "latest.json")
 
   build-macos:
     needs: validate
@@ -162,17 +164,17 @@ jobs:
       - name: Generate and upload cross-platform SHA-256 checksums
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           mkdir -p artifacts
-          gh release download "$GITHUB_REF_NAME" \
+          node scripts/gh-release-assets.mjs download --tag "$GITHUB_REF_NAME" --dir artifacts \
             --pattern '*.exe' \
             --pattern '*.msi' \
-            --pattern '*.dmg' \
-            --dir artifacts
+            --pattern '*.dmg'
           test -n "$(find artifacts -maxdepth 1 -type f -name '*.exe' -print -quit)"
           test -n "$(find artifacts -maxdepth 1 -type f -name '*.dmg' -print -quit)"
           find artifacts -maxdepth 1 -type f \
             \( -name '*.exe' -o -name '*.msi' -o -name '*.dmg' \) \
             -print0 | sort -z | xargs -0 sha256sum | \
             sed 's#  artifacts/# *#' > SHA256SUMS.txt
-          gh release upload "$GITHUB_REF_NAME" SHA256SUMS.txt --clobber
+          node scripts/gh-release-assets.mjs upload --tag "$GITHUB_REF_NAME" -- SHA256SUMS.txt
