@@ -59,10 +59,10 @@
       size="sm"
       class="h-7 shrink-0 px-2 text-[11px]"
       aria-pressed={todayOnly}
-      title={tr('Today')}
+      title={tr('Last 24h')}
       onclick={onToggleToday}
     >
-      {tr('Today')}
+      {tr('Last 24h')}
     </Button>
     <Button
       variant="ghost"
@@ -93,7 +93,7 @@
           <Inbox class="size-4" />
         </div>
         <strong class="text-xs">
-          {todayOnly ? tr('No requests today') : tr('No requests in this scope')}
+          {todayOnly ? tr('No requests in the last 24 hours') : tr('No requests in this scope')}
         </strong>
         <span class="text-[11px] leading-5 text-muted-foreground">
           {tr('New requests appear here by most recent update.')}

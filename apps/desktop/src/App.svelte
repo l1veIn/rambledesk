@@ -38,6 +38,7 @@
   } from './lib/notifications'
   import { desktopPath } from './lib/nativePath'
   import { currentDesktopPlatform } from './lib/platform'
+  import { isWithinLast24Hours } from './lib/requestRecency'
   import { checkForUpdates } from './lib/updater'
   import { previewFixtures, previewWorkspaceFor } from './lib/previewFixtures'
   import {
@@ -157,7 +158,6 @@
 
   let taskBriefOpen = true
   let todayOnly = false
-  const sessionStartedAtMs = Date.now()
   let hostSessionRailCollapsed = initialHostRailCollapsed()
   let workbenchLayout: HTMLDivElement
   let requestWorkspaceGroup: HTMLDivElement | null = null
@@ -291,9 +291,7 @@
     }
   }
   $: visibleRequests = todayOnly
-    ? $navigation.requests.filter(
-        (request) => new Date(request.updated_at).getTime() >= sessionStartedAtMs,
-      )
+    ? $navigation.requests.filter((request) => isWithinLast24Hours(request.updated_at))
     : $navigation.requests
   $: selectedHostSession = $navigation.selectedHostSessionId
     ? $navigation.hostSessions.find(
