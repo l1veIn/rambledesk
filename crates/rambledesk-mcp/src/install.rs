@@ -184,6 +184,7 @@ fn gemini_entry(mut entry: Value) -> Value {
 fn antigravity_entry(mut entry: Value) -> Value {
     if let Some(object) = entry.as_object_mut() {
         object.remove("type");
+        object.remove("env");
         if let Some(url) = object.remove("url").or_else(|| object.remove("httpUrl")) {
             object.insert("serverUrl".to_owned(), url);
         }

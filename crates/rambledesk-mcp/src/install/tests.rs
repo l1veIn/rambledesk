@@ -102,6 +102,7 @@ fn antigravity_format_reshapes_url_to_server_url_and_omits_type() {
     assert!(server.get("url").is_none());
     assert!(server.get("httpUrl").is_none());
     assert!(server.get("type").is_none());
+    assert!(server.get("env").is_none());
     assert_eq!(server["headers"][HOST_HEADER], "antigravity");
 }
 
