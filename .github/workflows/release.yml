@@ -115,10 +115,13 @@ jobs:
           if (-not (Test-Path -LiteralPath $signature)) {
             throw "No updater signature was produced for $($installer.Name)."
           }
+          $notes = Join-Path $installer.DirectoryName "release-notes.txt"
+          node scripts/gh-release-assets.mjs notes --tag "${{ github.ref_name }}" --out $notes
           node scripts/make-updater-json.mjs `
             --exe $installer.FullName `
             --sig $signature `
-            --tag "${{ github.ref_name }}"
+            --tag "${{ github.ref_name }}" `
+            --notes-file $notes
           node scripts/gh-release-assets.mjs upload --tag "${{ github.ref_name }}" -- `
             (Join-Path $installer.DirectoryName "latest.json")
 

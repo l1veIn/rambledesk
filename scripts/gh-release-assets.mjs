@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { closeSync, mkdirSync, openSync, readFileSync } from 'node:fs'
+import { closeSync, mkdirSync, openSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 
 // GET /repos/{owner}/{repo}/releases/tags/{tag} omits drafts.
@@ -132,6 +132,20 @@ const uploadFile = async (releaseId, filePath) => {
 if (command === 'resolve') {
   const release = requireRelease()
   console.log(String(release.id))
+  process.exit(0)
+}
+
+if (command === 'notes') {
+  const release = requireRelease()
+  const result = runGh(['api', `repos/${repo}/releases/${release.id}`, '--jq', '.body // ""'])
+  const notes = result.stdout.replace(/\r\n/g, '\n').trim()
+  const output = option('--out')
+  if (output) {
+    writeFileSync(output, notes ? `${notes}\n` : '', 'utf8')
+    console.log(`Wrote notes for ${tag} to ${output}`)
+  } else {
+    process.stdout.write(notes ? `${notes}\n` : '')
+  }
   process.exit(0)
 }
 

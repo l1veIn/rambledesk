@@ -5,6 +5,7 @@
     isPermissionGranted,
     sendNotification,
   } from '@tauri-apps/plugin-notification'
+  import { openUrl } from '@tauri-apps/plugin-opener'
   import { onMount, tick } from 'svelte'
   import { Pane, PaneGroup, PaneResizer } from 'paneforge'
 
@@ -15,6 +16,7 @@
   import AppTitlebar from './lib/AppTitlebar.svelte'
   import OnboardingWizard from './lib/OnboardingWizard.svelte'
   import SettingsPanel from './lib/SettingsPanel.svelte'
+  import UpdateAvailableDialog from './lib/UpdateAvailableDialog.svelte'
   import HostSessionRail from './lib/components/navigation/HostSessionRail.svelte'
   import RequestListPane from './lib/components/navigation/RequestListPane.svelte'
   import { Sonner, toast } from './lib/components/ui/sonner'
@@ -137,6 +139,7 @@
   let settingsOpen = false
   let settingsSection: SettingsSection = 'general'
   let onboardingOpen = false
+  let launchUpdateCheckDue = false
   let workbenchInitialized = false
   const isTauri = '__TAURI_INTERNALS__' in window
   const isMac = currentDesktopPlatform() === 'macOS'
@@ -421,6 +424,9 @@
         }
       }
       notificationState = 'unavailable'
+      if (new URLSearchParams(window.location.search).get('dialog') === 'update') {
+        void checkForUpdates({ prompt: true, forcePrompt: true })
+      }
       return () => {
         cleanupLayoutObserver()
         cleanupAttachments()
@@ -428,9 +434,10 @@
     }
     if ($onboardingCompleted) startWorkbench()
     else onboardingOpen = true
-    const updateCheckTimer = isMac
-      ? undefined
-      : window.setTimeout(() => void checkForUpdates(), 4_000)
+    const updateCheckTimer = window.setTimeout(() => {
+      launchUpdateCheckDue = true
+      if (!onboardingOpen) void checkForUpdates({ prompt: true })
+    }, 4_000)
     void refreshNotificationPermission()
     let resumePromptUnlisten: (() => void) | undefined
     let openAdaptersUnlisten: (() => void) | undefined
@@ -483,6 +490,16 @@
   function closeOnboarding() {
     onboardingOpen = false
     startWorkbench()
+    if (launchUpdateCheckDue) void checkForUpdates({ prompt: true })
+  }
+
+  async function openGithubReleases() {
+    const releasesUrl = 'https://github.com/l1veIn/rambledesk/releases'
+    if (isTauri) {
+      await openUrl(releasesUrl)
+      return
+    }
+    window.open(releasesUrl, '_blank', 'noopener,noreferrer')
   }
 
   function restartOnboarding() {
@@ -1016,4 +1033,9 @@
     }}
   />
 {/if}
+
+<UpdateAvailableDialog
+  installBlocked={updateInstallBlocked}
+  onOpenReleases={() => void openGithubReleases()}
+/>
 {/key}

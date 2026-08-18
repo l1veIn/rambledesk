@@ -16,8 +16,10 @@
   import { diagnosticExportView } from './nativePath'
   import { currentDesktopPlatform } from './platform'
   import {
+    canInstallInAppUpdate,
     checkForUpdates,
     downloadAndInstallUpdate,
+    openUpdateDialog,
     restartAfterUpdate,
     updateState,
   } from '$lib/updater'
@@ -166,23 +168,16 @@
       <div>
         <h3 class="m-0 text-sm font-medium">{tr('Software updates')}</h3>
         <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
+          {tr('RambleDesk checks for updates after launch and shows what’s new when a version is available.')}
           {#if isMac}
-            {tr('macOS builds are unsigned. Download a new DMG from GitHub Releases when you want to update.')}
-          {:else}
-            {tr('RambleDesk checks for updates quietly after launch, and you can check manually at any time.')}
+            {' '}{tr('macOS builds are unsigned. Download a new DMG from GitHub Releases when you want to update.')}
           {/if}
         </p>
       </div>
-      {#if isMac}
-        <Button variant="outline" onclick={() => void openReleases()}>
-          <ExternalLink data-icon="inline-start" />
-          {tr('Open GitHub Releases')}
-        </Button>
-      {:else}
       <Button
         variant="outline"
         disabled={!isTauri || $updateState.status === 'checking' || $updateState.status === 'downloading'}
-        onclick={() => void checkForUpdates()}
+        onclick={() => void checkForUpdates({ prompt: true, forcePrompt: true })}
       >
         {#if $updateState.status === 'checking'}
           <LoaderCircle class="animate-spin" data-icon="inline-start" />
@@ -192,10 +187,8 @@
           {tr('Check for updates')}
         {/if}
       </Button>
-      {/if}
     </div>
 
-    {#if !isMac}
     <div class="mt-4 rounded-lg border bg-muted/25 p-4" aria-live="polite">
       {#if $updateState.status === 'idle'}
         <p class="m-0 text-xs text-muted-foreground">{tr('Updates have not been checked yet.')}</p>
@@ -211,17 +204,29 @@
           <div>
             <strong class="block text-xs">{tr('Version v{version} is available', { version: $updateState.version })}</strong>
             {#if $updateState.message}
-              <p class="m-0 mt-1 line-clamp-3 text-[10px] leading-4 text-muted-foreground">{$updateState.message}</p>
+              <p class="m-0 mt-1 line-clamp-4 text-[10px] leading-4 text-muted-foreground">{$updateState.message}</p>
             {/if}
           </div>
-          <Button
-            disabled={installBlocked}
-            title={installBlocked ? tr('Finish or cancel the current feedback before installing the update.') : ''}
-            onclick={() => void downloadAndInstallUpdate()}
-          >
-            <Download data-icon="inline-start" />
-            {tr('Download and install')}
-          </Button>
+          <div class="flex flex-wrap gap-2">
+            <Button variant="outline" onclick={() => openUpdateDialog()}>
+              {tr("What's new")}
+            </Button>
+            {#if canInstallInAppUpdate()}
+              <Button
+                disabled={installBlocked}
+                title={installBlocked ? tr('Finish or cancel the current feedback before installing the update.') : ''}
+                onclick={() => void downloadAndInstallUpdate()}
+              >
+                <Download data-icon="inline-start" />
+                {tr('Download and install')}
+              </Button>
+            {:else}
+              <Button onclick={() => void openReleases()}>
+                <ExternalLink data-icon="inline-start" />
+                {tr('Open GitHub Releases')}
+              </Button>
+            {/if}
+          </div>
         </div>
       {:else if $updateState.status === 'downloading'}
         <div>
@@ -256,8 +261,7 @@
       {/if}
     </div>
 
-    {/if}
-    {#if !isMac && installBlocked && ($updateState.status === 'available' || $updateState.status === 'ready')}
+    {#if canInstallInAppUpdate() && installBlocked && ($updateState.status === 'available' || $updateState.status === 'ready')}
       <p class="m-0 mt-3 text-[10px] leading-4 text-warning-foreground dark:text-warning">
         {tr('Feedback is in progress or has unsaved content. Update restart is disabled to prevent data loss.')}
       </p>

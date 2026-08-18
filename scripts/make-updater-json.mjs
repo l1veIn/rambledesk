@@ -10,7 +10,10 @@ const option = (name) => {
 const installer = option('--exe')
 const signaturePath = option('--sig')
 const tag = option('--tag')
-const notes = option('--notes') ?? '完整变更见 GitHub Release Notes。'
+const notesFile = option('--notes-file')
+const notesFromFile = notesFile ? (await readFile(notesFile, 'utf8')).replace(/\r\n/g, '\n').trim() : ''
+const notes =
+  notesFromFile || option('--notes') || 'See GitHub Release Notes for the full changelog.'
 const outputDirectory = option('--out-dir') ?? (installer ? dirname(installer) : undefined)
 
 if (!installer || !signaturePath || !tag || !outputDirectory) {
