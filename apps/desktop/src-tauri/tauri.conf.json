@@ -49,7 +49,24 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "publisher": "l1veIn",
+    "category": "DeveloperTool",
+    "shortDescription": "A workbench that takes rambling for coding agents.",
+    "longDescription": "RambleDesk turns messy speech, screenshots, and notes into a feedback package the agent can continue from.",
+    "copyright": "Copyright © 2026 l1veIn",
+    "windows": {
+      "nsis": {
+        "template": "installer/rambledesk-installer.nsi",
+        "installMode": "currentUser",
+        "languages": ["SimpChinese", "English"],
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
+        "headerImage": "installer/header.bmp",
+        "uninstallerHeaderImage": "installer/header.bmp",
+        "sidebarImage": "installer/sidebar.bmp"
+      }
+    }
   },
   "plugins": {
     "updater": {

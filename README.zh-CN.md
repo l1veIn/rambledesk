@@ -4,7 +4,7 @@
 
 ![RambleDesk](docs/social/ramble-banner-text2-1400x700.webp)
 
-不要 vibe coding。只需要 ramble。
+## 不要再 vibe coding 了，你只需要 Ramble。
 
 有时候我觉得写提示词很难。我只能输出胡言乱语。所以我写了个专门接收胡言乱语的工作台。
 
@@ -37,7 +37,7 @@ pnpm dev
 
 ## 致谢
 
-- [Snow Shot](https://github.com/mg-chao/snow-shot)，未公证 macOS DMG 的分发方式
+- [Snow Shot](https://github.com/mg-chao/snow-shot)，截图能力
 - [RepoChan](https://github.com/l1veIn/repochan-mono)，品牌与角色资产
 - [Kotone](https://github.com/l1veIn)，本地语音转写的实现基础
 

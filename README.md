@@ -4,7 +4,7 @@
 
 ![RambleDesk](docs/social/ramble-banner-en-1400x700.webp)
 
-Don't vibe code. Just ramble.
+## Stop vibe coding. Rambling is all you need.
 
 Sometimes writing prompts is hard. All I can put out is rambling. So I built a workbench that takes rambling.
 
@@ -37,7 +37,7 @@ pnpm dev
 
 ## Thanks
 
-- [Snow Shot](https://github.com/mg-chao/snow-shot), for the unsigned macOS DMG path
+- [Snow Shot](https://github.com/mg-chao/snow-shot), for the screenshot stack
 - [RepoChan](https://github.com/l1veIn/repochan-mono), for brand and character assets
 - [Kotone](https://github.com/l1veIn), for the local speech stack this workbench grew from
 

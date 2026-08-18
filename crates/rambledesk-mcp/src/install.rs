@@ -236,17 +236,24 @@ fn reasonix_is_configured(path: &Path) -> bool {
         })
 }
 
+fn parse_existing_json(path: &Path, content: &str) -> Result<Value, String> {
+    if content.trim().is_empty() {
+        return Ok(Value::Object(Map::new()));
+    }
+    serde_json::from_str::<Value>(content).map_err(|error| {
+        format!(
+            "Refusing to overwrite invalid JSON at {}: {error}",
+            path.display()
+        )
+    })
+}
+
 fn write_json_config(path: &Path, entry: Value) -> Result<&'static str, String> {
     let existed = path.exists();
     let mut root = if existed {
         let content = fs::read_to_string(path)
             .map_err(|error| format!("Could not read {}: {error}", path.display()))?;
-        serde_json::from_str::<Value>(&content).map_err(|error| {
-            format!(
-                "Refusing to overwrite invalid JSON at {}: {error}",
-                path.display()
-            )
-        })?
+        parse_existing_json(path, &content)?
     } else {
         Value::Object(Map::new())
     };
@@ -284,12 +291,7 @@ fn write_opencode_config(path: &Path, entry: &Value) -> Result<&'static str, Str
     let mut root = if existed {
         let content = fs::read_to_string(path)
             .map_err(|error| format!("Could not read {}: {error}", path.display()))?;
-        serde_json::from_str::<Value>(&content).map_err(|error| {
-            format!(
-                "Refusing to overwrite invalid JSON at {}: {error}",
-                path.display()
-            )
-        })?
+        parse_existing_json(path, &content)?
     } else {
         Value::Object(Map::new())
     };

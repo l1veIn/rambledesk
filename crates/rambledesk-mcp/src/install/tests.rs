@@ -330,6 +330,21 @@ fn reasonix_install_creates_config_and_replaces_existing_entry() {
 }
 
 #[test]
+fn empty_existing_json_is_initialized() {
+    let directory = tempfile::tempdir().expect("temp dir");
+    let path = directory.path().join("mcp_config.json");
+    fs::write(&path, "").expect("seed empty config");
+    let entry = extract_server_entry(&configuration()).expect("entry");
+    assert_eq!(
+        write_json_config(&path, entry).expect("empty file is writable"),
+        "updated"
+    );
+    let written: Value =
+        serde_json::from_str(&fs::read_to_string(&path).expect("read")).expect("valid json");
+    assert!(written["mcpServers"][SERVER_ID].is_object());
+}
+
+#[test]
 fn invalid_existing_config_is_never_overwritten() {
     let directory = tempfile::tempdir().expect("temp dir");
     let path = directory.path().join("mcp.json");
