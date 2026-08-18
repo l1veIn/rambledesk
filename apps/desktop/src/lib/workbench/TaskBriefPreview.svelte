@@ -12,6 +12,9 @@
   } from '$lib/feedback'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
+  import LinkifiedText from '$lib/LinkifiedText.svelte'
+  import { isSafeHttpUrl } from '$lib/linkify'
+  import { openExternalUrl } from '$lib/openExternalUrl'
   import RequestAttachmentPreview from './RequestAttachmentPreview.svelte'
   import type { HostProfile, RamblePhase } from './types'
 
@@ -112,7 +115,7 @@
               {tr('What happened')}
             </h2>
             <p class="m-0 mt-4 whitespace-pre-wrap text-[15px] leading-7">
-              {workspace.request.what_happened}
+              <LinkifiedText text={workspace.request.what_happened} />
             </p>
           </section>
 
@@ -129,7 +132,7 @@
                     {index + 1}
                   </span>
                   <span class="min-w-0 self-center text-[15px] leading-7">
-                    {action.instruction}
+                    <LinkifiedText text={action.instruction} />
                   </span>
                 </li>
               {/each}
@@ -151,9 +154,23 @@
                     </span>
                     <div class="min-w-0">
                       <strong class="block text-[15px] font-medium leading-6">{ref.label}</strong>
-                      <span class="block break-all text-sm leading-6 text-muted-foreground">
-                        {ref.uri}
-                      </span>
+                      {#if isSafeHttpUrl(ref.uri)}
+                        <a
+                          href={ref.uri}
+                          class="block break-all text-sm leading-6 text-primary underline underline-offset-2"
+                          rel="noreferrer"
+                          onclick={(event) => {
+                            event.preventDefault()
+                            void openExternalUrl(ref.uri)
+                          }}
+                        >
+                          {ref.uri}
+                        </a>
+                      {:else}
+                        <span class="block break-all text-sm leading-6 text-muted-foreground">
+                          {ref.uri}
+                        </span>
+                      {/if}
                     </div>
                   </li>
                 {/each}

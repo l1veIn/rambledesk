@@ -7,6 +7,9 @@
   import StarterKit from '@tiptap/starter-kit'
   import { onMount } from 'svelte'
 
+  import { isSafeHttpUrl } from '$lib/linkify'
+  import { openExternalUrl } from '$lib/openExternalUrl'
+
   export let markdown = ''
 
   let editorHost: HTMLDivElement
@@ -17,7 +20,14 @@
     editor = new Editor({
       element: editorHost,
       extensions: [
-        StarterKit,
+        StarterKit.configure({
+          link: {
+            openOnClick: false,
+            autolink: true,
+            defaultProtocol: 'https',
+            protocols: ['http', 'https'],
+          },
+        }),
         TableKit,
         TaskList,
         TaskItem.configure({ nested: true }),
@@ -30,6 +40,17 @@
         attributes: {
           class: 'feedback-prose attachment-markdown-prose',
           'aria-label': 'Markdown preview',
+        },
+        handleClick: (_view, _pos, event) => {
+          const target = event.target as HTMLElement | null
+          const anchor = target?.closest?.('a[href]')
+          if (!anchor) return false
+          const href = anchor.getAttribute('href') ?? ''
+          if (!isSafeHttpUrl(href)) return false
+          event.preventDefault()
+          event.stopPropagation()
+          void openExternalUrl(href)
+          return true
         },
       },
       onCreate: () => {

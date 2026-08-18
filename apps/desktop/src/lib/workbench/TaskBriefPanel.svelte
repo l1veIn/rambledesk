@@ -7,6 +7,7 @@
   import type { FeedbackWorkspaceView, RequestAttachmentView } from '$lib/feedback'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
+  import LinkifiedText from '$lib/LinkifiedText.svelte'
   import RequestAttachmentPreview from './RequestAttachmentPreview.svelte'
 
   export let workspace: FeedbackWorkspaceView
@@ -103,7 +104,7 @@
         <h2 class="m-0 text-[10px] font-semibold uppercase text-muted-foreground">
           {tr('What happened')}
         </h2>
-        <p class="m-0 mt-2 leading-5">{workspace.request.what_happened}</p>
+        <p class="m-0 mt-2 leading-5"><LinkifiedText text={workspace.request.what_happened} /></p>
       </section>
 
       <section>
@@ -116,7 +117,7 @@
               <span class="grid size-5 place-items-center rounded-md bg-background text-[9px] font-medium ring-1 ring-border">
                 {index + 1}
               </span>
-              <span>{action.instruction}</span>
+              <span><LinkifiedText text={action.instruction} /></span>
             </li>
           {/each}
         </ol>

@@ -29,8 +29,10 @@
     {
       "identifier": "opener:allow-open-url",
       "allow": [
-        { "url": "https://github.com/l1veIn/rambledesk" },
-        { "url": "https://github.com/l1veIn/rambledesk/releases" }
+        { "url": "https://**" },
+        { "url": "http://localhost:**" },
+        { "url": "http://127.0.0.1:**" },
+        { "url": "http://[::1]:**" }
       ]
     },
     "dialog:allow-open",
