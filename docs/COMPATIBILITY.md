@@ -75,6 +75,7 @@ Agent Skills 开放标准（[agentskills.io](https://agentskills.io)）的 `ramb
 | Codex | `.codex/skills` |
 | Cursor | `.cursor/skills` |
 | Gemini CLI | `.gemini/skills` |
+| Antigravity IDE | `.gemini/antigravity/skills` |
 | Grok CLI | `.grok/skills` |
 | OpenCode | `.config/opencode/skills` |
 | Reasonix | `.agents/skills` |

@@ -143,9 +143,9 @@ fn entry_for_host(base_entry: &Value, host_id: &str) -> Result<Value, String> {
 
 fn is_configured(format: ConfigFormat, path: &Path) -> bool {
     match format {
-        ConfigFormat::McpServersJson | ConfigFormat::GeminiSettingsJson => {
-            json_has_server(path, "mcpServers")
-        }
+        ConfigFormat::McpServersJson
+        | ConfigFormat::GeminiSettingsJson
+        | ConfigFormat::AntigravityMcpJson => json_has_server(path, "mcpServers"),
         ConfigFormat::CodexMcpToml => toml_mcp_servers_is_configured(path, true),
         ConfigFormat::GrokMcpToml => toml_mcp_servers_is_configured(path, false),
         ConfigFormat::OpenCodeMcpJson => json_has_server(path, "mcp"),
@@ -162,6 +162,8 @@ fn write_config_for(
         ConfigFormat::McpServersJson => write_json_config(path, entry),
         // Gemini CLI expects `httpUrl` instead of `url` and rejects `type`.
         ConfigFormat::GeminiSettingsJson => write_json_config(path, gemini_entry(entry)),
+        // Antigravity IDE expects `serverUrl` instead of `url` and rejects `type`.
+        ConfigFormat::AntigravityMcpJson => write_json_config(path, antigravity_entry(entry)),
         ConfigFormat::CodexMcpToml => write_codex_config(path, &entry),
         ConfigFormat::GrokMcpToml => write_grok_config(path, &entry),
         ConfigFormat::OpenCodeMcpJson => write_opencode_config(path, &entry),
@@ -174,6 +176,16 @@ fn gemini_entry(mut entry: Value) -> Value {
         object.remove("type");
         if let Some(url) = object.remove("url") {
             object.insert("httpUrl".to_owned(), url);
+        }
+    }
+    entry
+}
+
+fn antigravity_entry(mut entry: Value) -> Value {
+    if let Some(object) = entry.as_object_mut() {
+        object.remove("type");
+        if let Some(url) = object.remove("url").or_else(|| object.remove("httpUrl")) {
+            object.insert("serverUrl".to_owned(), url);
         }
     }
     entry

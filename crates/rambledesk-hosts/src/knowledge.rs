@@ -18,6 +18,8 @@ pub enum ConfigFormat {
     McpServersJson,
     /// `mcpServers` JSON but `httpUrl` instead of `url` and no `type` (Gemini CLI).
     GeminiSettingsJson,
+    /// `mcpServers` JSON but `serverUrl` instead of `url` and no `type` (Antigravity IDE).
+    AntigravityMcpJson,
     /// `[mcp_servers.<name>]` TOML with `http_headers` (Codex CLI).
     CodexMcpToml,
     /// `{ "mcp": { "<name>": remote entry } }` (OpenCode).
@@ -118,6 +120,46 @@ fn grok_config_path(home: &Path) -> PathBuf {
     grok_home(home).join("config.toml")
 }
 
+fn antigravity_unified_dir(home: &Path) -> PathBuf {
+    home.join(".gemini").join("config")
+}
+
+fn antigravity_legacy_dir(home: &Path) -> PathBuf {
+    home.join(".gemini").join("antigravity")
+}
+
+/// Prefer the post-migration unified MCP file when Antigravity has moved to
+/// `~/.gemini/config`; otherwise keep writing the legacy
+/// `~/.gemini/antigravity/mcp_config.json`. New installs default to unified.
+fn antigravity_config_path(home: &Path) -> PathBuf {
+    let unified_dir = antigravity_unified_dir(home);
+    let unified_file = unified_dir.join("mcp_config.json");
+    let legacy_dir = antigravity_legacy_dir(home);
+    let legacy_file = legacy_dir.join("mcp_config.json");
+    if unified_dir.join(".migrated").exists() || unified_file.exists() {
+        return unified_file;
+    }
+    if legacy_file.exists() || legacy_dir.exists() {
+        return legacy_file;
+    }
+    unified_file
+}
+
+fn antigravity_marker_path(home: &Path) -> PathBuf {
+    let unified = antigravity_unified_dir(home);
+    if unified.exists()
+        || unified.join("mcp_config.json").exists()
+        || unified.join(".migrated").exists()
+    {
+        return unified;
+    }
+    let legacy = antigravity_legacy_dir(home);
+    if legacy.exists() || legacy.join("mcp_config.json").exists() {
+        return legacy;
+    }
+    unified
+}
+
 /// Every known host, in UI display order. This is the single registration
 /// point: adding a host means adding one entry here.
 pub const HOSTS: &[HostKnowledge] = &[
@@ -152,6 +194,14 @@ pub const HOSTS: &[HostKnowledge] = &[
         config_path: Some(|home| home_path(home, ".gemini/settings.json")),
         marker_path: Some(|home| home_path(home, ".gemini")),
         skill_dir: Some(".gemini/skills"),
+    },
+    HostKnowledge {
+        id: "antigravity",
+        executable: Some("antigravity"),
+        config_format: Some(ConfigFormat::AntigravityMcpJson),
+        config_path: Some(antigravity_config_path),
+        marker_path: Some(antigravity_marker_path),
+        skill_dir: Some(".gemini/antigravity/skills"),
     },
     HostKnowledge {
         id: "grok",
@@ -237,6 +287,7 @@ mod tests {
         assert_eq!(
             ids,
             [
+                "antigravity",
                 "claude",
                 "codex",
                 "cursor",
@@ -253,13 +304,57 @@ mod tests {
     }
 
     #[test]
-    fn generic_mcp_hosts_are_exactly_the_installable_seven() {
+    fn generic_mcp_hosts_are_exactly_the_installable_hosts() {
         let ids: Vec<&str> = generic_mcp_hosts().map(|host| host.id).collect();
         assert_eq!(
             ids,
             [
-                "claude", "codex", "cursor", "gemini", "grok", "opencode", "reasonix"
+                "claude",
+                "codex",
+                "cursor",
+                "gemini",
+                "antigravity",
+                "grok",
+                "opencode",
+                "reasonix"
             ]
+        );
+    }
+
+    #[test]
+    fn antigravity_prefers_unified_config_and_falls_back_to_legacy() {
+        let directory = tempfile::tempdir().expect("temp dir");
+        let home = directory.path();
+        let host = HOSTS
+            .iter()
+            .find(|host| host.id == "antigravity")
+            .expect("host");
+        assert_eq!(
+            host.config_path(home).expect("default config"),
+            home.join(".gemini").join("config").join("mcp_config.json")
+        );
+
+        std::fs::create_dir_all(home.join(".gemini").join("antigravity")).expect("legacy dir");
+        assert_eq!(
+            host.config_path(home).expect("legacy config"),
+            home.join(".gemini")
+                .join("antigravity")
+                .join("mcp_config.json")
+        );
+        assert_eq!(
+            host.marker_path(home).expect("legacy marker"),
+            home.join(".gemini").join("antigravity")
+        );
+
+        std::fs::create_dir_all(home.join(".gemini").join("config")).expect("unified dir");
+        std::fs::write(home.join(".gemini").join("config").join(".migrated"), b"").expect("marker");
+        assert_eq!(
+            host.config_path(home).expect("unified config"),
+            home.join(".gemini").join("config").join("mcp_config.json")
+        );
+        assert_eq!(
+            host.marker_path(home).expect("unified marker"),
+            home.join(".gemini").join("config")
         );
     }
 

@@ -178,6 +178,7 @@ Host Profile 描述：
 | `opencode` | 通用 MCP 适配器 | 手动 continuation |
 | `cursor` | 通用 MCP 适配器 | 手动 continuation |
 | `gemini` | 通用 MCP 适配器 | 手动 continuation |
+| `antigravity` | 通用 MCP 适配器 | 手动 continuation |
 | `grok` | 通用 MCP 适配器 | 手动 continuation |
 | `inspector` | 通用 MCP 适配器 | 手动 continuation |
 | `reasonix` | 通用 MCP 适配器 | 手动 continuation |

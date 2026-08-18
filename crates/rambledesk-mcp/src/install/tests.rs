@@ -79,6 +79,33 @@ fn gemini_format_reshapes_url_and_omits_type() {
 }
 
 #[test]
+fn antigravity_format_reshapes_url_to_server_url_and_omits_type() {
+    let directory = tempfile::tempdir().expect("temp dir");
+    let path = directory.path().join("mcp_config.json");
+    let entry = entry_for_host(
+        &extract_server_entry(&configuration()).expect("entry"),
+        "antigravity",
+    )
+    .expect("host entry");
+    assert_eq!(
+        write_config_for(ConfigFormat::AntigravityMcpJson, &path, entry.clone()).expect("install"),
+        "created"
+    );
+    assert_eq!(
+        write_config_for(ConfigFormat::AntigravityMcpJson, &path, entry).expect("repeat"),
+        "unchanged"
+    );
+    let written: Value =
+        serde_json::from_str(&fs::read_to_string(path).expect("read")).expect("valid json");
+    let server = &written["mcpServers"][SERVER_ID];
+    assert_eq!(server["serverUrl"], "http://127.0.0.1:37642/mcp");
+    assert!(server.get("url").is_none());
+    assert!(server.get("httpUrl").is_none());
+    assert!(server.get("type").is_none());
+    assert_eq!(server["headers"][HOST_HEADER], "antigravity");
+}
+
+#[test]
 fn codex_install_preserves_unrelated_toml_and_omits_stdio_env() {
     let directory = tempfile::tempdir().expect("temp dir");
     let path = directory.path().join("config.toml");
@@ -318,7 +345,13 @@ fn detect_marks_installed_via_marker_directory() {
     let directory = tempfile::tempdir().expect("temp dir");
     let home = directory.path();
     fs::create_dir_all(home.join(".claude")).expect("marker");
+    fs::create_dir_all(home.join(".gemini").join("antigravity")).expect("antigravity");
     let views = detect_hosts(home);
+    let antigravity = views
+        .iter()
+        .find(|view| view.id == "antigravity")
+        .expect("antigravity");
+    assert!(antigravity.installed);
     let claude = views
         .iter()
         .find(|view| view.id == "claude")
@@ -327,7 +360,14 @@ fn detect_marks_installed_via_marker_directory() {
     assert_eq!(
         views.iter().map(|view| view.id).collect::<Vec<_>>(),
         [
-            "claude", "codex", "cursor", "gemini", "grok", "opencode", "reasonix"
+            "claude",
+            "codex",
+            "cursor",
+            "gemini",
+            "antigravity",
+            "grok",
+            "opencode",
+            "reasonix"
         ]
     );
 }
