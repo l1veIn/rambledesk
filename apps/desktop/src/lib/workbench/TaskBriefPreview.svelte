@@ -60,13 +60,16 @@
     }
   }
 
-  function rambleLabel() {
-    if (ramblePhase === 'starting') return tr('Starting…')
-    if (ramblePhase === 'stopping') return tr('Pausing…')
-    if (rambleActive) return tr('Pause Ramble')
-    if (rambleStartedOnce) return tr('Resume Ramble')
-    return tr('Start Ramble')
-  }
+  $: rambleLabel =
+    ramblePhase === 'starting'
+      ? tr('Starting…')
+      : ramblePhase === 'stopping'
+        ? tr('Pausing…')
+        : rambleActive
+          ? tr('Pause Ramble')
+          : rambleStartedOnce
+            ? tr('Resume Ramble')
+            : tr('Start Ramble')
 
   function openAttachment(attachment: RequestAttachmentView) {
     attachmentPreview = attachment
@@ -215,7 +218,7 @@
           {:else}
             <Play data-icon="inline-start" />
           {/if}
-          {rambleLabel()}
+          {rambleLabel}
         </Button>
       </div>
     {/if}

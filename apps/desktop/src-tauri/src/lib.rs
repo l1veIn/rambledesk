@@ -49,7 +49,10 @@ fn log_frontend_error(context: String, message: String) {
 
 mod window;
 
-use window::{hide_ramble_console, position_ramble_console, show_main_window, show_ramble_console};
+use window::{
+    attach_ramble_console_events, hide_ramble_console, position_ramble_console, show_main_window,
+    show_ramble_console,
+};
 
 mod commands;
 
@@ -101,13 +104,7 @@ pub fn run() {
             .visible(false)
             .build()?;
             position_ramble_console(app.handle(), &console)?;
-            let console_to_hide = console.clone();
-            console.on_window_event(move |event| {
-                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                    api.prevent_close();
-                    let _ = console_to_hide.hide();
-                }
-            });
+            attach_ramble_console_events(&console);
             if let Err(error) =
                 app.global_shortcut()
                     .on_shortcut(RAMBLE_TOGGLE_SHORTCUT, |app, _, event| {
