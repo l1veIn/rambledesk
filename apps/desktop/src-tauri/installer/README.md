@@ -9,10 +9,11 @@ build the installer through the normal Tauri CLI flow.
 
 ## Assets
 
-NSIS MUI2's welcome sidebar is 164×314 and the header is 150×57 at 96 DPI.
-Shipping those sizes 1:1 looks mosaicked on 150–200% displays, because Windows
-stretches the bitmap to the DPI-scaled control. The checked-in bitmaps are
-painted at 3× (492×942 and 450×171) so 200% and 300% stay sharp.
+NSIS MUI2's welcome sidebar is 164×314 and the header is 150×57. Shipping a
+larger BMP does not help: NSIS copies the image into that control first, then
+Windows stretches the copy. Oversized headers have also failed to load on the
+page after Welcome. The generator paints at 3× and Lanczos-resamples to those
+exact sizes so the checked-in files stay NSIS-compatible.
 
 To rebuild the Modern UI artwork and the DMG background from brand assets:
 

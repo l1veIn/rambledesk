@@ -59,7 +59,7 @@
       "nsis": {
         "template": "installer/rambledesk-installer.nsi",
         "installMode": "currentUser",
-        "languages": ["SimpChinese", "English"],
+        "languages": ["English"],
         "installerIcon": "icons/icon.ico",
         "uninstallerIcon": "icons/icon.ico",
         "headerImage": "installer/header.bmp",

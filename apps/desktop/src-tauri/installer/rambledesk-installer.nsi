@@ -363,10 +363,15 @@ Function PageLeaveReinstall
       ExecWait '$R1' $0
     ${Else}
       ReadRegStr $4 SHCTX "${MANUPRODUCTKEY}" ""
+      ${If} $4 == ""
+        StrCpy $4 $INSTDIR
+      ${EndIf}
       ReadRegStr $R1 SHCTX "${UNINSTKEY}" "UninstallString"
       ${IfThen} $UpdateMode = 1 ${|} StrCpy $R1 "$R1 /UPDATE" ${|} ; append /UPDATE
       ${IfThen} $PassiveMode = 1 ${|} StrCpy $R1 "$R1 /P" ${|} ; append /P
-      StrCpy $R1 "$R1 _?=$4" ; append uninstall directory
+      ${If} $4 != ""
+        StrCpy $R1 "$R1 _?=$4" ; append uninstall directory
+      ${EndIf}
       ExecWait '$R1' $0
     ${EndIf}
 
@@ -486,11 +491,6 @@ FunctionEnd
   !include "{{this}}"
 {{/each}}
 
-LangString rambleWelcomeTitle ${LANG_SIMPCHINESE} "你只需要 Ramble"
-LangString rambleWelcomeText ${LANG_SIMPCHINESE} "把 RambleDesk 安放到这台电脑。$\r$\n$\r$\n专门接收胡言乱语的工作台。"
-LangString rambleFinishTitle ${LANG_SIMPCHINESE} "可以开始了"
-LangString rambleFinishText ${LANG_SIMPCHINESE} "RambleDesk 已经装好。开启 ramble 模式，等它来敲门。"
-LangString rambleAppRunningBlock ${LANG_SIMPCHINESE} "检测到 RambleDesk 正在运行（可能是管理员身份运行的实例）。$\r$\n$\r$\n请先退出 RambleDesk，再重新运行安装程序。"
 LangString rambleWelcomeTitle ${LANG_ENGLISH} "Rambling is all you need"
 LangString rambleWelcomeText ${LANG_ENGLISH} "Bring RambleDesk to this PC.$\r$\n$\r$\nA workbench that takes rambling."
 LangString rambleFinishTitle ${LANG_ENGLISH} "Ready when you are"

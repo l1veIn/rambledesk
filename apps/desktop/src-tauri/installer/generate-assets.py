@@ -1,9 +1,12 @@
 """Rebuild NSIS Modern UI bitmaps and the DMG background from brand assets.
 
-MUI2's welcome sidebar is 164x314 and the header is 150x57 at 96 DPI. Kotone
-shipped those sizes 1:1; on a 150–200% display Windows stretches them and the
-art looks mosaicked. We paint at SCALE and let NSIS downscale, so 200% and
-300% stay sharp.
+MUI2 copies the welcome sidebar into a 164x314 control and the header into
+150x57. Larger sources are downsampled by NSIS first (nearest-neighbor), then
+Windows stretches that tiny bitmap on HiDPI — so shipping 3x BMPs looks worse,
+not better, and an oversized header can break the next installer page.
+
+Paint at SCALE, then Lanczos-resample to the official MUI sizes. Keep type off
+the bitmap; NSIS already draws the page copy with real fonts.
 
 Run from anywhere:
 
@@ -125,39 +128,32 @@ def fit_cutout(dest_size: tuple[int, int]) -> Image.Image:
 
 
 def save_bmp(image: Image.Image, path: Path) -> None:
+    # Classic 24-bit BITMAPINFOHEADER. NSIS MUI cannot load BMP v4/v5 reliably.
     image.convert("RGB").save(path, "BMP")
+
+
+def downsample(image: Image.Image, size: tuple[int, int]) -> Image.Image:
+    return image.resize(size, Image.Resampling.LANCZOS)
 
 
 def build_sidebar() -> None:
     width, height = SIDEBAR[0] * SCALE, SIDEBAR[1] * SCALE
     image = add_hex_grid(ice_gradient((width, height)))
-    draw = ImageDraw.Draw(image)
 
-    title = load_font(13 * SCALE)
-    label = load_font(7.2 * SCALE)
-    footer = load_font(6.6 * SCALE)
-    pad = 12 * SCALE
-    draw.text((pad, 10 * SCALE), "RambleDesk", font=title, fill=NAVY)
-    draw.text((pad, 28 * SCALE), "RAMBLING  //  READY", font=label, fill=PRIMARY)
-
-    dest = (int(14 * SCALE), int(48 * SCALE), int(136 * SCALE), int(248 * SCALE))
+    # Fill the panel with a head-and-torso crop. Small baked-in type is what
+    # looked mosaicked after NSIS/Windows stretched the bitmap.
+    dest = (int(6 * SCALE), int(18 * SCALE), int(158 * SCALE), int(306 * SCALE))
     cutout = fit_cutout((dest[2] - dest[0], dest[3] - dest[1]))
     glow = Image.new("RGBA", image.size, (0, 0, 0, 0))
     gdraw = ImageDraw.Draw(glow)
     gdraw.ellipse(
-        (dest[0] + 8 * SCALE, dest[1] + 40 * SCALE, dest[2] - 8 * SCALE, dest[3] + 8 * SCALE),
-        fill=(255, 255, 255, 140),
+        (dest[0] + 4 * SCALE, dest[1] + 36 * SCALE, dest[2] - 4 * SCALE, dest[3] + 4 * SCALE),
+        fill=(255, 255, 255, 150),
     )
-    glow = glow.filter(ImageFilter.GaussianBlur(10 * SCALE))
+    glow = glow.filter(ImageFilter.GaussianBlur(12 * SCALE))
     image = Image.alpha_composite(image.convert("RGBA"), glow)
     image.paste(cutout, (dest[0], dest[1]), cutout)
-
-    draw = ImageDraw.Draw(image)
-    bar_top = height - 22 * SCALE
-    draw.rectangle((0, bar_top, width, height), fill=(247, 249, 252, 220))
-    draw.text((pad, bar_top + 5 * SCALE), "HUMANS AS AN API", font=footer, fill=MUTED)
-
-    save_bmp(image.convert("RGB"), ROOT / "sidebar.bmp")
+    save_bmp(downsample(image.convert("RGB"), SIDEBAR), ROOT / "sidebar.bmp")
 
 
 def build_header() -> None:
@@ -167,9 +163,8 @@ def build_header() -> None:
     image = image.convert("RGBA")
     image.paste(icon, (4 * SCALE, 4 * SCALE), icon)
     draw = ImageDraw.Draw(image)
-    draw.text((58 * SCALE, 8 * SCALE), "RambleDesk", font=load_font(11 * SCALE), fill=NAVY)
-    draw.text((58 * SCALE, 32 * SCALE), "JUST RAMBLE", font=load_font(6.4 * SCALE), fill=PRIMARY)
-    save_bmp(image.convert("RGB"), ROOT / "header.bmp")
+    draw.text((58 * SCALE, 16 * SCALE), "RambleDesk", font=load_font(13 * SCALE), fill=NAVY)
+    save_bmp(downsample(image.convert("RGB"), HEADER), ROOT / "header.bmp")
 
 
 def build_dmg() -> None:
