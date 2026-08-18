@@ -1,0 +1,4 @@
+[build]
+# Limit concurrent build/link jobs to prevent MSVC link.exe peak memory explosion
+# during tests linking large C++ static libraries (sherpa-onnx/CPAL/SQLite/Tauri).
+jobs = 4

@@ -82,3 +82,13 @@ opt-level = 2
 
 [profile.dev.package.screencapturekit-sys]
 opt-level = 2
+
+# Reduce debuginfo overhead for tests to line-tables only (1). This preserves line
+# numbers in panic backtraces and test assertions while drastically reducing MSVC
+# link.exe peak RAM usage and PDB disk bloat on sherpa-onnx/SQLite/Tauri targets.
+[profile.test]
+debug = 1
+
+[profile.test.package.rambledesk-speech]
+debug = 1
+

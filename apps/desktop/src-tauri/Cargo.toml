@@ -9,7 +9,7 @@ description = "RambleDesk Tauri composition root"
 
 [lib]
 name = "rambledesk_desktop_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+crate-type = ["lib"]
 
 [[bin]]
 name = "rambledesk"
