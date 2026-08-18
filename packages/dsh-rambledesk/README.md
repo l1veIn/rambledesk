@@ -15,8 +15,10 @@ registers:
 `request_ramble_feedback` also accepts an optional `attachments` array so the
 agent can hand the human review artifacts that render in the RambleDesk
 workspace. Each attachment provides `file_name` plus exactly one content field:
-`markdown` (a Markdown document, requires a `.md`/`.markdown` file name) or
-`contents_base64` (a PNG/JPEG/GIF/WebP image).
+prefer `path` (an absolute local file) for images and Markdown already on disk;
+use `markdown` for a short inline Markdown document (`.md`/`.markdown` file
+name); use `contents_base64` only for a small PNG/JPEG/GIF/WebP image that is
+not on disk.
 
 When the agent has prepared its exact final summary it can send
 `allow_finish: true` with `final_summary`. RambleDesk then offers "Approve and

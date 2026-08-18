@@ -76,13 +76,21 @@ pub(super) fn validate_request_input(input: &RequestFeedbackInput) -> Result<(),
         )));
     }
     for attachment in &input.attachments {
-        match (&attachment.markdown, &attachment.contents_base64) {
-            (Some(_), None) | (None, Some(_)) => {}
-            _ => {
-                return Err(ApplicationError::invalid_argument(
-                    "each attachment must provide exactly one of markdown or contents_base64",
-                ));
-            }
+        let sources = [
+            attachment.markdown.is_some(),
+            attachment.contents_base64.is_some(),
+            attachment.path.is_some(),
+        ]
+        .into_iter()
+        .filter(|present| *present)
+        .count();
+        if sources != 1 {
+            return Err(ApplicationError::invalid_argument(
+                "each attachment must provide exactly one of markdown, contents_base64, or path",
+            ));
+        }
+        if let Some(path) = attachment.path.as_deref() {
+            validate_text("attachment.path", path, 1, 4_096)?;
         }
     }
 

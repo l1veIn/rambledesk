@@ -1,5 +1,36 @@
-use super::validation::valid_action_id;
+use super::validation::{valid_action_id, validate_request_input};
 use super::*;
+
+#[test]
+fn rejects_attachments_without_exactly_one_source() {
+    let mut input = RequestFeedbackInput {
+        request_id: None,
+        host_id: Some("generic".to_owned()),
+        host_session_id: "session".to_owned(),
+        title: Some("Review".to_owned()),
+        what_happened: "Need a screenshot review.".to_owned(),
+        actions: vec![ActionInput {
+            id: "look".to_owned(),
+            instruction: "Look at the screenshot.".to_owned(),
+        }],
+        context_refs: Vec::new(),
+        attachments: vec![RequestAttachmentInput {
+            file_name: "shot.png".to_owned(),
+            markdown: None,
+            contents_base64: None,
+            path: None,
+        }],
+        source_hint: None,
+        allow_finish: false,
+        final_summary: None,
+    };
+    assert!(validate_request_input(&input).is_err());
+    input.attachments[0].path = Some("/tmp/shot.png".to_owned());
+    input.attachments[0].contents_base64 = Some("aaaa".to_owned());
+    assert!(validate_request_input(&input).is_err());
+    input.attachments[0].contents_base64 = None;
+    assert!(validate_request_input(&input).is_ok());
+}
 
 #[test]
 fn validates_action_id_format() {

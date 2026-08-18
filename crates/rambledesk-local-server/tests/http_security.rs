@@ -164,6 +164,7 @@ async fn official_client_exercises_feedback_lifecycle_and_errors() -> anyhow::Re
             file_name: "review.md".to_owned(),
             markdown: Some(review_markdown.clone()),
             contents_base64: None,
+            path: None,
         }],
         source_hint: Some("local server HTTP test".to_owned()),
         allow_finish: false,

@@ -29,12 +29,17 @@ const RequestAttachmentSchema = Type.Object({
   }),
   markdown: Type.Optional(
     Type.String({
-      description: "Markdown document contents (text/markdown). Requires a .md or .markdown file_name. Mutually exclusive with contents_base64.",
+      description: "Short inline Markdown. Requires a .md or .markdown file_name. Mutually exclusive with contents_base64 and path.",
     }),
   ),
   contents_base64: Type.Optional(
     Type.String({
-      description: "Base64-encoded image contents. Must decode to a PNG, JPEG, GIF, or WebP image. Mutually exclusive with markdown.",
+      description: "Base64-encoded PNG/JPEG/GIF/WebP image. Prefer path when the file is already on disk. Mutually exclusive with markdown and path.",
+    }),
+  ),
+  path: Type.Optional(
+    Type.String({
+      description: "Absolute local filesystem path. Prefer this for images and Markdown already on disk. Mutually exclusive with markdown and contents_base64.",
     }),
   ),
 });
@@ -136,7 +141,7 @@ export function registerRambleDeskPiTools(pi) {
     label: "Request RambleDesk Feedback",
     description: `Create a RambleDesk feedback request for the human and wait for the result in this Pi tool call.
 Use this instead of MCP when running in Pi. After the tool returns completed, continue the original task using the feedback markdown and attachment paths included in the tool content.
-Optional attachments give the human review artifacts: attachments[].markdown with a .md/.markdown file_name for a Markdown document, or attachments[].contents_base64 for a PNG/JPEG/GIF/WebP image.
+Optional attachments: prefer attachments[].path (absolute local file) for images and Markdown already on disk. Use attachments[].markdown for short inline Markdown. Use attachments[].contents_base64 only for small images with no file. Do not read an image into the tool call.
 Do not call this tool repeatedly for the same request unless you reuse the same request_id.`,
     parameters: RequestRambleFeedbackSchema,
     executionMode: "sequential",

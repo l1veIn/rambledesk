@@ -1,28 +1,26 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use uuid::Uuid;
 
-use crate::workspace::validation::{
-    detect_image_media_type, normalize_image_file_name, validate_file_name,
-};
 use crate::workspace::{
     DraftView, FeedbackPackagePublisher, FeedbackRequestQuery, FeedbackRequestSummary,
     HostSessionSummary, NewAttachment, PublishedFeedbackPackage, StoredFeedbackWorkspace,
     SubmissionPlan,
 };
 
+mod attachment_source;
 mod model;
 mod path_resolver;
 mod repository_error;
 mod validation;
 mod waiters;
 
+use attachment_source::load_request_attachment;
 pub use model::*;
 pub use path_resolver::AttachmentPathResolver;
 pub use repository_error::RepositoryError;
@@ -229,42 +227,7 @@ impl FeedbackApplication {
         let mut attachments = Vec::with_capacity(input.attachments.len());
         let mut total_attachment_bytes = 0usize;
         for attachment in &input.attachments {
-            let mut file_name = validate_file_name(&attachment.file_name)?;
-            let (contents, media_type) = match (
-                attachment.markdown.as_deref(),
-                attachment.contents_base64.as_deref(),
-            ) {
-                (Some(markdown), None) => {
-                    let extension = file_name
-                        .rsplit_once('.')
-                        .map(|(_, extension)| extension.to_ascii_lowercase());
-                    if !matches!(extension.as_deref(), Some("md" | "markdown")) {
-                        return Err(ApplicationError::invalid_argument(
-                            "markdown attachments must use a .md or .markdown file name",
-                        ));
-                    }
-                    (markdown.as_bytes().to_vec(), "text/markdown".to_owned())
-                }
-                (None, Some(encoded)) => {
-                    let contents = BASE64_STANDARD.decode(encoded).map_err(|_| {
-                        ApplicationError::invalid_argument(
-                            "attachment contents_base64 must be valid standard base64",
-                        )
-                    })?;
-                    let media_type = detect_image_media_type(&contents).ok_or_else(|| {
-                        ApplicationError::invalid_argument(
-                            "base64 attachments must be PNG, JPEG, GIF, or WebP images",
-                        )
-                    })?;
-                    file_name = normalize_image_file_name(&file_name, media_type);
-                    (contents, media_type.to_owned())
-                }
-                _ => {
-                    return Err(ApplicationError::invalid_argument(
-                        "each attachment must provide exactly one of markdown or contents_base64",
-                    ));
-                }
-            };
+            let (file_name, contents, media_type) = load_request_attachment(attachment)?;
             if contents.is_empty() {
                 return Err(ApplicationError::invalid_argument(
                     "attachment contents cannot be empty",

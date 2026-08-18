@@ -20,15 +20,27 @@ pub struct ContextRef {
 
 /// An immutable review artifact supplied by the requesting agent.
 ///
-/// Markdown files use `markdown`; images use `contents_base64`. Exactly one
-/// content field must be present. The media type is detected server-side.
+/// Provide exactly one of `markdown`, `contents_base64`, or `path`.
+/// Prefer `path` for local files so the MCP/tool payload stays small.
+/// The media type is detected server-side.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct RequestAttachmentInput {
     pub file_name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(
+        description = "Markdown document contents. Requires a .md or .markdown file_name. Mutually exclusive with contents_base64 and path."
+    )]
     pub markdown: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(
+        description = "Base64-encoded PNG/JPEG/GIF/WebP image. Prefer path when the file is already on disk. Mutually exclusive with markdown and path."
+    )]
     pub contents_base64: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(
+        description = "Absolute local filesystem path. The server reads the file. Use this for images and Markdown already on disk. Mutually exclusive with markdown and contents_base64."
+    )]
+    pub path: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

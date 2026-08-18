@@ -63,6 +63,20 @@ test("normalizes request params with the dsh host identity", async () => {
   assert.equal(normalized.final_summary, undefined);
 });
 
+test("passes path attachments through normalization", async () => {
+  const normalized = await normalizeRequestParams(
+    {
+      title: "Review",
+      what_happened: "A screenshot changed.",
+      actions: [{ id: "check", instruction: "Check the screenshot." }],
+      attachments: [{ file_name: "disk.png", path: "C:/work/disk.png" }],
+    },
+    { hostId: "dsh", memory: { hostSessionId: "dsh-session-1" } },
+  );
+
+  assert.deepEqual(normalized.attachments, [{ file_name: "disk.png", path: "C:/work/disk.png" }]);
+});
+
 test("derives distinct host session ids from distinct dsh sessions", async () => {
   const base = {
     title: "Review",

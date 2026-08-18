@@ -14,6 +14,7 @@ async fn request_attachments_are_immutable_readable_and_idempotent() {
             file_name: "review.md".to_owned(),
             markdown: Some("# Review\n\nPlease inspect this proposal.".to_owned()),
             contents_base64: None,
+            path: None,
         },
         RequestAttachmentInput {
             file_name: "mockup".to_owned(),
@@ -22,6 +23,7 @@ async fn request_attachments_are_immutable_readable_and_idempotent() {
                 "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII="
                     .to_owned(),
             ),
+            path: None,
         },
     ];
 
@@ -89,6 +91,50 @@ async fn request_attachments_are_immutable_readable_and_idempotent() {
 }
 
 #[tokio::test]
+async fn request_attachments_can_be_loaded_from_a_local_path() {
+    let workspace = TestWorkspace::new().await;
+    let request_id = Uuid::now_v7().to_string();
+    let store = SqliteFeedbackStore::connect(&workspace.database)
+        .await
+        .expect("open store");
+    let application = store.clone().into_application();
+    let source = workspace
+        .database
+        .parent()
+        .expect("database directory")
+        .join("incoming-shot.png");
+    std::fs::write(&source, b"\x89PNG\r\n\x1a\npath-attachment").expect("write source png");
+
+    let mut input = workspace.request(request_id.clone());
+    input.attachments = vec![RequestAttachmentInput {
+        file_name: "shot.png".to_owned(),
+        markdown: None,
+        contents_base64: None,
+        path: Some(source.to_string_lossy().into_owned()),
+    }];
+    application
+        .request_feedback(input)
+        .await
+        .expect("create request from path");
+    let opened = application
+        .get_feedback_workspace(request_id.clone())
+        .await
+        .expect("open workspace");
+    assert_eq!(opened.request_attachments.len(), 1);
+    assert_eq!(opened.request_attachments[0].file_name, "shot.png");
+    assert_eq!(opened.request_attachments[0].media_type, "image/png");
+    let image = application
+        .read_request_attachment(
+            request_id,
+            opened.request_attachments[0].attachment_id.clone(),
+        )
+        .await
+        .expect("read path attachment");
+    assert!(image.starts_with(b"\x89PNG\r\n\x1a\n"));
+    store.close().await;
+}
+
+#[tokio::test]
 async fn startup_externalizes_legacy_request_attachment_blobs() {
     let workspace = TestWorkspace::new().await;
     let request_id = Uuid::now_v7().to_string();
@@ -101,6 +147,7 @@ async fn startup_externalizes_legacy_request_attachment_blobs() {
         file_name: "legacy.md".to_owned(),
         markdown: Some("# Legacy attachment".to_owned()),
         contents_base64: None,
+        path: None,
     }];
     application
         .request_feedback(request)
@@ -157,6 +204,7 @@ async fn startup_archives_legacy_cancelled_requests() {
         file_name: "cancelled.md".to_owned(),
         markdown: Some("# Preserved request context".to_owned()),
         contents_base64: None,
+        path: None,
     }];
     application
         .request_feedback(request)
@@ -345,6 +393,7 @@ async fn repeated_cancel_preserves_the_first_reason_and_terminal_state() {
         file_name: "agent-note.md".to_owned(),
         markdown: Some("# Agent note\n\nReview before cancelling.".to_owned()),
         contents_base64: None,
+        path: None,
     }];
     application
         .request_feedback(request)

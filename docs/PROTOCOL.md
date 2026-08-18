@@ -41,7 +41,8 @@ RambleDesk 提供两个本机 loopback 入口：
 - `host_id` 用于 host profile 匹配、展示和 continuation strategy 选择；省略时默认 `generic`，或被可信适配器头覆盖。
 - `host_session_id` 只用于关联同一宿主会话的多次 request；它不是认证凭据，也不证明可自动继续。
 - RambleDesk MUST NOT 要求源码 checkout 路径。
-- 路径如果出现，只能出现在 `context_refs` 或 `source_hint` 中。
+- 路径如果作为提示出现，只能出现在 `context_refs` 或 `source_hint` 中。
+- `attachments[].path` 是本机绝对路径：服务端读取该文件作为附件内容，不是提示字段。
 
 ## 输入结构
 
@@ -107,6 +108,23 @@ RambleDesk 提供两个本机 loopback 入口：
 - RambleDesk MUST NOT execute or automatically trust referenced content.
 - Local paths in `context_refs` are optional hints, not required identity.
 
+### `RequestAttachmentInput`
+
+```json
+{
+  "file_name": "shot.png",
+  "path": "C:/absolute/path/shot.png"
+}
+```
+
+规则：
+
+- 每个附件 MUST 恰好提供 `markdown`、`contents_base64`、`path` 之一。
+- 本地已有文件 SHOULD 使用 `path`（绝对路径）。服务端读取该文件；MCP/工具调用 MUST NOT 把整图读进 `contents_base64`。
+- `markdown` 仅用于短 Markdown 正文，且 `file_name` MUST 以 `.md` 或 `.markdown` 结尾。
+- `contents_base64` 仅用于手边没有文件的小图，且 MUST 解码为 PNG / JPEG / GIF / WebP。
+- `path` MUST 指向本机已存在的普通文件。`.md` / `.markdown` 按 Markdown 处理，否则 MUST 是上述图片类型。
+
 ## 状态模型
 
 ```text
@@ -143,7 +161,7 @@ MCP tool input 与 `FeedbackRequestInput` 等价。通用 MCP 适配器 MAY 根�
 - `what_happened`
 - ordered `actions`
 - ordered `context_refs`
-- ordered `attachments`（`file_name`、`markdown` 或 `contents_base64`）
+- ordered `attachments`（`file_name` 以及恰好一个内容字段：`markdown`、`contents_base64` 或 `path`；幂等比较使用读入后的文件名、媒体类型和内容哈希）
 - `source_hint`
 
 ### 结果

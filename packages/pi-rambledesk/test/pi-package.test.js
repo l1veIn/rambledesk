@@ -49,12 +49,17 @@ test("passes markdown and image attachments through normalization", () => {
         file_name: "screenshot.png",
         contents_base64: "iVBORw0KGgoAAAANSUhEUg==",
       },
+      {
+        file_name: "disk.png",
+        path: "/tmp/rambledesk/disk.png",
+      },
     ],
   };
 
   assert.deepEqual(normalizeRequestParams(input, { cwd: "/tmp/rambledesk" }, {}).attachments, [
     { file_name: "brief.md", markdown: "# Brief\n\nReview these notes." },
     { file_name: "screenshot.png", contents_base64: "iVBORw0KGgoAAAANSUhEUg==" },
+    { file_name: "disk.png", path: "/tmp/rambledesk/disk.png" },
   ]);
   assert.deepEqual(
     normalizeRequestParams({

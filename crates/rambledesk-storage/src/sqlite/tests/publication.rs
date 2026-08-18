@@ -13,6 +13,7 @@ async fn submit_is_idempotent_and_publishes_one_immutable_package() {
         file_name: "agent-review.md".to_owned(),
         markdown: Some("# Agent review\n\nKeep this with the package.".to_owned()),
         contents_base64: None,
+        path: None,
     }];
     application
         .request_feedback(request)

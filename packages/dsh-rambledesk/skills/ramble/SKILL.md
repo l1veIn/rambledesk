@@ -17,8 +17,10 @@ experience through the RambleDesk feedback loop instead of asking in chat.
    - `actions`: an explicit, executable checklist — one action per item.
    - `attachments` / `context_refs`: only when there is material for the human
      to review (a long document or a generated image). By default pass no
-     attachments — it is just an attachment mechanism; use it when the human
-     should see something.
+     attachments. When attaching a local file, pass `attachments[].path` as an
+     absolute filesystem path and `file_name` — do not Read the file into
+     `contents_base64`. Use `markdown` only for short inline Markdown. Use
+     `contents_base64` only for a small image that is not on disk.
    - `allow_finish`: omit by default. Set `true` only when the request is a
      simple approve/reject decision that needs no feedback body, and then also
      provide `final_summary`.
