@@ -540,6 +540,28 @@ async fn sse_handshake_emits_endpoint_and_serves_mcp_tools() -> anyhow::Result<(
         .and_then(|v| v.to_str().ok())
         .map(str::to_owned);
 
+    // 3. Go SDK client calls subscriptions/listen
+    let mut sub_req = client
+        .post(server.endpoint())
+        .bearer_auth(TEST_TOKEN)
+        .header(HOST_HEADER, "antigravity");
+    if let Some(session_id) = session_id.as_ref() {
+        sub_req = sub_req.header("mcp-session-id", session_id);
+    }
+    let sub_response = sub_req
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "subscriptions/listen",
+            "params": {}
+        }))
+        .send()
+        .await?;
+    assert_eq!(sub_response.status(), reqwest::StatusCode::OK);
+    let sub_body = sub_response.text().await?;
+    assert!(sub_body.contains("\"result\":{}") || sub_body.contains("\"result\": {}"));
+
+    // 4. Client retrieves tools/list
     let mut tools_req = client
         .post(server.endpoint())
         .bearer_auth(TEST_TOKEN)
@@ -550,7 +572,7 @@ async fn sse_handshake_emits_endpoint_and_serves_mcp_tools() -> anyhow::Result<(
     let tools_response = tools_req
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
-            "id": 2,
+            "id": 3,
             "method": "tools/list",
             "params": {}
         }))

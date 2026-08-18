@@ -389,9 +389,15 @@
         hostIds: [...selectedIds],
       })
       const changed = results.filter((result) => result.action !== 'unchanged').length
-      installMessage = tr('Generic MCP adapter config was written to {count} tools. Restart them to apply the change.', {
-        count: changed,
-      })
+      if (changed > 0) {
+        installMessage = tr('Generic MCP adapter config was written to {count} tools. Restart them to apply the change.', {
+          count: changed,
+        })
+      } else {
+        installMessage = tr('Generic MCP adapter config is already up to date for {count} tools.', {
+          count: results.length,
+        })
+      }
       await refreshHosts()
     } catch (cause) {
       installError = messageFrom(cause)

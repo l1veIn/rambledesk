@@ -401,6 +401,7 @@ const chinese: Record<string, string> = {
   'This configuration contains a local-only access token. Do not share it.': '配置中包含仅限本机使用的访问令牌，请勿发送给他人。',
   'RambleDesk integration config was written to {count} tools. Restart them to apply the change.': '已为 {count} 个工具写入 RambleDesk 接入配置；重启这些工具后生效。',
   'Generic MCP adapter config was written to {count} tools. Restart them to apply the change.': '已为 {count} 个工具写入通用 MCP 适配器配置；重启这些工具后生效。',
+  'Generic MCP adapter config is already up to date for {count} tools.': '已为 {count} 个工具确认最新通用 MCP 适配器配置。',
   'Pi native adapter': 'Pi 原生适配器',
   'The Pi package calls the local JSON API directly and waits inside the Pi tool call; no post-submit continuation is needed.': 'Pi package 直接调用本地 JSON API，并在 Pi 工具调用内等待终态；不需要提交后的继续机制。',
   'Source install': '源码安装',

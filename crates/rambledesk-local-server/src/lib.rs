@@ -416,7 +416,61 @@ async fn handle_mcp_request(
     }
 
     if request.method() == axum::http::Method::POST {
-        let current_accept = request
+        let (parts, body) = request.into_parts();
+        let bytes = match axum::body::to_bytes(body, MAX_ATTACHMENT_REQUEST_BODY_BYTES).await {
+            Ok(b) => b,
+            Err(_) => {
+                return (StatusCode::BAD_REQUEST, "Failed to read request body").into_response();
+            }
+        };
+
+        if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes)
+            && value.get("method").and_then(|m| m.as_str()) == Some("subscriptions/listen")
+        {
+            let id = value.get("id").cloned().unwrap_or(serde_json::Value::Null);
+            let response_body = serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": {}
+            });
+
+            let mut resp_builder = Response::builder().status(StatusCode::OK);
+            if let Some(session_id) = parts.headers.get("mcp-session-id") {
+                resp_builder = resp_builder.header("mcp-session-id", session_id);
+            }
+
+            let accept = parts
+                .headers
+                .get(axum::http::header::ACCEPT)
+                .and_then(|h| h.to_str().ok())
+                .unwrap_or_default();
+
+            if accept.contains("text/event-stream") {
+                let sse_data = format!(
+                    "data: {}\n\n",
+                    serde_json::to_string(&response_body).unwrap_or_default()
+                );
+                return resp_builder
+                    .header(axum::http::header::CONTENT_TYPE, "text/event-stream")
+                    .header(axum::http::header::CACHE_CONTROL, "no-cache")
+                    .body(Body::from(sse_data))
+                    .unwrap_or_else(|_| {
+                        (StatusCode::INTERNAL_SERVER_ERROR, "error").into_response()
+                    });
+            } else {
+                return resp_builder
+                    .header(axum::http::header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&response_body).unwrap_or_default(),
+                    ))
+                    .unwrap_or_else(|_| {
+                        (StatusCode::INTERNAL_SERVER_ERROR, "error").into_response()
+                    });
+            }
+        }
+
+        let mut req = Request::from_parts(parts, Body::from(bytes));
+        let current_accept = req
             .headers()
             .get(axum::http::header::ACCEPT)
             .and_then(|h| h.to_str().ok())
@@ -424,11 +478,12 @@ async fn handle_mcp_request(
         if !current_accept.contains("application/json")
             || !current_accept.contains("text/event-stream")
         {
-            request.headers_mut().insert(
+            req.headers_mut().insert(
                 axum::http::header::ACCEPT,
                 HeaderValue::from_static("application/json, text/event-stream"),
             );
         }
+        request = req;
     }
 
     match service.call(request).await {

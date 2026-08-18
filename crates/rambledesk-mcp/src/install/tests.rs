@@ -397,3 +397,18 @@ fn ramble_skill_is_written_idempotently() {
     assert_eq!(fs::read_to_string(&target).expect("read"), RAMBLE_SKILL_MD);
     assert_eq!(write_ramble_skill(&skill_dir).expect("repeat"), "unchanged");
 }
+
+#[test]
+fn antigravity_install_writes_all_skill_locations() {
+    let directory = tempfile::tempdir().expect("temp dir");
+    let home = directory.path();
+    let host_knowledge = rambledesk_hosts::generic_mcp_hosts()
+        .into_iter()
+        .find(|h| h.id == "antigravity")
+        .expect("antigravity host");
+    for dir in host_knowledge.skill_dirs(home) {
+        assert_eq!(write_ramble_skill(&dir).expect("install"), "created");
+        let target = dir.join("ramble").join("SKILL.md");
+        assert_eq!(fs::read_to_string(&target).expect("read"), RAMBLE_SKILL_MD);
+    }
+}

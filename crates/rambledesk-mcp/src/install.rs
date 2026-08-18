@@ -100,7 +100,7 @@ pub fn install_hosts(
             .config_format
             .expect("generic MCP hosts declare a format");
         let action = write_config_for(format, &path, entry)?;
-        if let Some(skill_dir) = knowledge.skill_dir(home) {
+        for skill_dir in knowledge.skill_dirs(home) {
             write_ramble_skill(&skill_dir)?;
         }
         results.push(McpInstallResult {

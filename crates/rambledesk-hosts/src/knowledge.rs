@@ -56,10 +56,26 @@ impl HostKnowledge {
         self.marker_path.map(|path| path(home))
     }
 
+    /// Absolute paths of the host's skill directories for the given home, or
+    /// empty when the host does not receive a skill.
+    pub fn skill_dirs(&self, home: &Path) -> Vec<PathBuf> {
+        if self.id == "antigravity" {
+            vec![
+                antigravity_unified_dir(home).join("skills"),
+                antigravity_legacy_dir(home).join("skills"),
+                home.join(".gemini").join("skills"),
+            ]
+        } else {
+            self.skill_dir
+                .map(|relative| vec![home.join(relative)])
+                .unwrap_or_default()
+        }
+    }
+
     /// Absolute path of the host's skill directory for the given home, or
     /// `None` when the host does not receive a skill.
     pub fn skill_dir(&self, home: &Path) -> Option<PathBuf> {
-        self.skill_dir.map(|relative| home.join(relative))
+        self.skill_dirs(home).into_iter().next()
     }
 }
 
