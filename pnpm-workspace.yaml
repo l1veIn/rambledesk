@@ -1,6 +1,7 @@
 packages:
   - "apps/*"
   - "packages/*"
+  - "web"
 
 onlyBuiltDependencies:
   - esbuild

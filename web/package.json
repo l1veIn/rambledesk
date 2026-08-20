@@ -1,0 +1,25 @@
+{
+  "name": "@rambledesk/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "prototype:hero-c": "astro dev --host 127.0.0.1 --port 4322",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check": "astro check"
+  },
+  "dependencies": {
+    "@astrojs/svelte": "^8.0.0",
+    "@lucide/svelte": "^1.28.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "astro": "^6.0.0",
+    "svelte": "^5.56.8",
+    "tailwindcss": "^4.3.3"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "typescript": "^6.0.3"
+  }
+}

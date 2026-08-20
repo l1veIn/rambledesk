@@ -1,0 +1,26 @@
+---
+import '../styles/global.css'
+
+interface Props {
+  title: string
+  description: string
+  lang: string
+}
+
+const { title, description, lang } = Astro.props
+---
+
+<!doctype html>
+<html lang={lang}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#f7f9fc" />
+    <title>{title}</title>
+    <link rel="icon" href="/assets/rambledesk-app-icon.webp" />
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>

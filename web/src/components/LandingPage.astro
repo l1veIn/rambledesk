@@ -1,0 +1,205 @@
+---
+import HeroStage from './HeroStage.svelte'
+import { assets, releaseUrl, repoUrl, type SiteContent } from '../content/site'
+
+interface Props {
+  content: SiteContent
+}
+
+const { content } = Astro.props
+const adapterLoop = content.adapters.concat(content.adapters)
+---
+
+<div class="site-shell">
+  <div class="global-field" aria-hidden="true">
+    <span class="global-grid"></span>
+    <span class="global-spine"></span>
+    <span class="global-scan"></span>
+  </div>
+
+  <header class="site-nav">
+    <a class="brand-lockup" href={content.path} aria-label="RambleDesk home">
+      <img src="/assets/rambledesk-app-icon.webp" alt="" />
+      <span>RambleDesk</span>
+    </a>
+    <nav aria-label="Main navigation">
+      <a href="#product">{content.nav.product}</a>
+      <a href="#loop">{content.nav.loop}</a>
+      <a href="#adapters">{content.nav.adapters}</a>
+      <a href={content.alternatePath}>{content.alternateLabel}</a>
+    </nav>
+    <a class="nav-download" href={releaseUrl}>{content.nav.download}</a>
+  </header>
+
+  <main>
+    <HeroStage hero={content.hero} assets={assets} releaseUrl={releaseUrl} />
+
+    <section id="product" class="contract-section">
+      <div class="section-label-row">
+        <span class="section-kicker">{content.proofKicker}</span>
+        <span class="section-code">{content.surface.sectionCode}</span>
+      </div>
+
+      <div class="contract-grid">
+        <div class="section-copy">
+          <h2>{content.proofTitle}</h2>
+          <p>{content.surfaceIntro}</p>
+        </div>
+
+        <div class="contract-console" aria-label={content.proofTitle}>
+          <div class="console-top">
+            <span>{content.surface.deckTitle}</span>
+            <div>
+              <i></i>
+              <i></i>
+              <i></i>
+            </div>
+          </div>
+
+          <div class="console-body">
+            <div class="signal-stack">
+              <div class="deck-status">
+                <b>{content.surface.deckStatus}</b>
+                <span></span>
+              </div>
+              <div class="deck-meta">
+                {content.surface.deckMeta.map((item) => (
+                  <span>{item}</span>
+                ))}
+              </div>
+
+              {content.proof.map((item, index) => (
+                <article class="proof-signal" style={`--delay: ${index * 100}ms`}>
+                  <span>{`0${index + 1}`}</span>
+                  <strong>{item.value}</strong>
+                  <p>{item.label}</p>
+                </article>
+              ))}
+            </div>
+
+            <div class="vault-preview">
+              <img src={assets.sceneCryo} alt="" loading="lazy" />
+              <div class="capture-stream" aria-hidden="true">
+                <strong>{content.surface.captureTitle}</strong>
+                <div class="capture-bars">
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                </div>
+                <div>
+                  {content.surface.captureItems.map((item) => (
+                    <span>{item}</span>
+                  ))}
+                </div>
+              </div>
+              <div class="vault-files" aria-hidden="true">
+                <strong>{content.surface.vaultTitle}</strong>
+                {content.surface.vaultFiles.map((file, index) => (
+                  <span style={`--delay: ${index * 90}ms`}>{file}</span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="loop" class="loop-section">
+      <div class="section-label-row centered">
+        <span class="section-kicker">{content.workflowKicker}</span>
+        <span class="section-code">{content.workflowCode}</span>
+      </div>
+      <div class="section-copy wide">
+        <h2>{content.workflowTitle}</h2>
+        <p>{content.workflowIntro}</p>
+      </div>
+      <div class="loop-stage" aria-label={content.workflowTitle}>
+        <div class="loop-rail" aria-hidden="true">
+          <span></span>
+        </div>
+        <div class="loop-glow" aria-hidden="true"></div>
+        {content.workflow.map((step, index) => (
+          <article class="loop-card" style={`--step: ${index + 1}; --delay: ${index * 120}ms`}>
+            <span class="loop-index">{`0${index + 1}`}</span>
+            <small>{step.label}</small>
+            <h3>{step.title}</h3>
+            <p>{step.body}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+
+    <section class="workbench-section">
+      <div class="workbench-grid">
+        <div class="feature-visual">
+          <img src={assets.sceneArchive} alt="" loading="lazy" />
+          <div class="sealed-package" aria-hidden="true">
+            {content.surface.vaultFiles.map((file) => (
+              <span>{file}</span>
+            ))}
+          </div>
+        </div>
+
+        <div class="feature-copy">
+          <span class="section-kicker">{content.featureKicker}</span>
+          <h2>{content.featureTitle}</h2>
+          <div class="feature-matrix">
+            {content.features.map((feature, index) => (
+              <article class="feature-row" style={`--delay: ${index * 70}ms`}>
+                <span>{`0${index + 1}`}</span>
+                <p>{feature}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="adapters" class="adapter-section">
+      <div class="section-label-row centered">
+        <span class="section-kicker">{content.adaptersKicker}</span>
+        <span class="section-code">{content.adaptersCode}</span>
+      </div>
+      <div class="section-copy wide">
+        <h2>{content.adaptersTitle}</h2>
+      </div>
+      <div class="adapter-panel" aria-label={content.adaptersTitle}>
+        <div class="adapter-map" aria-hidden="true">
+          <img src={assets.pattern} alt="" loading="lazy" />
+          {content.adapters.map((adapter, index) => (
+            <span class="adapter-node" style={`--i: ${index}`}>{adapter}</span>
+          ))}
+        </div>
+        <div class="adapter-marquee">
+          {adapterLoop.map((adapter) => (
+            <span>{adapter}</span>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <section class="final-cta">
+      <div class="cta-bg" style={`background-image: url(${assets.sceneGate})`}></div>
+      <img class="cta-rambelle" src={assets.assistant} alt="" loading="lazy" />
+      <div class="cta-content">
+        <span class="section-kicker">{content.surface.vaultTitle}</span>
+        <h2>{content.ctaTitle}</h2>
+        <p>{content.ctaBody}</p>
+        <a class="primary-action" href={releaseUrl}>
+          {content.ctaButton}
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M5 12h14M13 5l7 7-7 7"></path>
+          </svg>
+        </a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <span>RambleDesk</span>
+    <a href={repoUrl}>GitHub</a>
+    <a href={content.alternatePath}>{content.alternateLabel}</a>
+  </footer>
+</div>
