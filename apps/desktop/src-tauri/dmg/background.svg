@@ -1,56 +1,56 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="720" height="460" viewBox="0 0 720 460">
   <defs>
-    <linearGradient id="background" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#f7f9fc" />
-      <stop offset="1" stop-color="#c6ddf0" />
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fbf7ee" />
+      <stop offset="1" stop-color="#efe7d6" />
     </linearGradient>
     <linearGradient id="arrow" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#2775ca" />
-      <stop offset="1" stop-color="#57c6c0" />
+      <stop offset="0" stop-color="#8a6a3d" />
+      <stop offset="1" stop-color="#d08c42" />
     </linearGradient>
     <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="4" stdDeviation="7" flood-color="#2a4665" flood-opacity="0.12" />
+      <feDropShadow dx="0" dy="4" stdDeviation="7" flood-color="#4c3925" flood-opacity="0.14" />
     </filter>
   </defs>
 
   <rect width="720" height="460" fill="url(#background)" />
-  <circle cx="660" cy="-14" r="132" fill="#6fa8dc" opacity="0.18" />
-  <circle cx="42" cy="438" r="110" fill="#57c6c0" opacity="0.16" />
+  <circle cx="660" cy="-14" r="132" fill="#e7caa2" opacity="0.35" />
+  <circle cx="42" cy="438" r="110" fill="#d7e3c6" opacity="0.42" />
 
-  <text x="360" y="39" text-anchor="middle" fill="#20334b"
+  <text x="360" y="39" text-anchor="middle" fill="#2d241b"
     font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif"
     font-size="24" font-weight="700">Install RambleDesk · 安装 RambleDesk</text>
-  <text x="360" y="67" text-anchor="middle" fill="#60738a"
+  <text x="360" y="67" text-anchor="middle" fill="#6f604f"
     font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif"
     font-size="13">Drag RambleDesk into Applications / 将 RambleDesk 拖入“应用程序”</text>
 
   <g filter="url(#shadow)">
-    <rect x="292" y="132" width="136" height="68" rx="34" fill="#ffffff" opacity="0.96" />
+    <rect x="292" y="132" width="136" height="68" rx="34" fill="#fffdf8" opacity="0.96" />
   </g>
   <path d="M316 166 H391" fill="none" stroke="url(#arrow)" stroke-width="8" stroke-linecap="round" />
-  <path d="M382 149 L405 166 L382 183" fill="none" stroke="#57c6c0" stroke-width="8"
+  <path d="M382 149 L405 166 L382 183" fill="none" stroke="#d08c42" stroke-width="8"
     stroke-linecap="round" stroke-linejoin="round" />
-  <text x="360" y="224" text-anchor="middle" fill="#60738a"
+  <text x="360" y="224" text-anchor="middle" fill="#7b6a58"
     font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif"
     font-size="12" font-weight="600">DRAG TO INSTALL</text>
 
   <g filter="url(#shadow)">
-    <rect x="28" y="294" width="664" height="140" rx="18" fill="#ffffff" opacity="0.96" />
+    <rect x="28" y="294" width="664" height="140" rx="18" fill="#fffdfa" opacity="0.96" />
   </g>
-  <rect x="28" y="294" width="6" height="140" rx="3" fill="#2775ca" />
-  <text x="52" y="323" fill="#20334b"
+  <rect x="28" y="294" width="6" height="140" rx="3" fill="#d08c42" />
+  <text x="52" y="323" fill="#33291f"
     font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif"
     font-size="15" font-weight="700">First launch / 首次启动</text>
-  <text x="52" y="349" fill="#60738a"
+  <text x="52" y="349" fill="#5c4f42"
     font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif"
     font-size="12.5">1. In Applications, right-click RambleDesk → Open / 在“应用程序”中右键 → 打开</text>
-  <text x="52" y="374" fill="#60738a"
+  <text x="52" y="374" fill="#5c4f42"
     font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif"
     font-size="12.5">2. Still blocked? System Settings → Privacy &amp; Security → Open Anyway</text>
-  <text x="52" y="396" fill="#60738a"
+  <text x="52" y="396" fill="#5c4f42"
     font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif"
     font-size="12.5">仍被阻止：系统设置 → 隐私与安全性 → 仍要打开</text>
-  <text x="52" y="419" fill="#2775ca"
+  <text x="52" y="419" fill="#8a5b2e"
     font-family="ui-monospace, SFMono-Regular, Menlo, monospace"
     font-size="10.8">“App is damaged / 已损坏”? See README: xattr -dr com.apple.quarantine /Applications/RambleDesk.app</text>
 </svg>

@@ -49,7 +49,9 @@
           if (!isSafeHttpUrl(href)) return false
           event.preventDefault()
           event.stopPropagation()
-          void openExternalUrl(href)
+          void openExternalUrl(href).catch((cause) => {
+            console.warn('Could not open external URL', cause)
+          })
           return true
         },
       },

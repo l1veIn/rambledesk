@@ -76,7 +76,6 @@
       <CaptureToolsCard
         attachmentCount={workspace.attachments.length}
         {attachmentBusy}
-        {rambleEngaged}
         {readOnly}
         onScreenCapture={onStartScreenCapture}
         onImportClipboard={onImportClipboard}

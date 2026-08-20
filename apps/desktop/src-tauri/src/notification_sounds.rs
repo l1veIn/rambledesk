@@ -68,7 +68,7 @@ pub(super) async fn import_notification_sound(
     let contents = tokio::fs::read(&path)
         .await
         .map_err(|_| "无法读取所选音频文件".to_owned())?;
-    let sounds_dir = notification_sounds_dir(&state.library_root);
+    let sounds_dir = notification_sounds_dir(&state.library_root());
     let id = format!("{}.{}", uuid::Uuid::new_v4(), extension);
     let target = sounds_dir.join(&id);
     let write_contents = contents.clone();
@@ -98,7 +98,7 @@ pub(super) async fn commit_notification_sound(
     if !valid_notification_sound_id(&id) {
         return Err("无效的自定义提示音引用".to_owned());
     }
-    let root = state.library_root.clone();
+    let root = state.library_root();
     tokio::task::spawn_blocking(move || {
         let dir = notification_sounds_dir(&root);
         if let Ok(entries) = std::fs::read_dir(&dir) {
@@ -121,7 +121,7 @@ pub(super) async fn read_notification_sound(
     if !valid_notification_sound_id(&id) {
         return Err("无效的自定义提示音引用".to_owned());
     }
-    let root = state.library_root.clone();
+    let root = state.library_root();
     tokio::task::spawn_blocking(move || std::fs::read(notification_sounds_dir(&root).join(&id)))
         .await
         .map_err(|error| format!("音频读取任务异常退出：{error}"))?
@@ -136,7 +136,7 @@ pub(super) async fn remove_notification_sound(
     if !valid_notification_sound_id(&id) {
         return Ok(());
     }
-    let root = state.library_root.clone();
+    let root = state.library_root();
     tokio::task::spawn_blocking(move || {
         let path = notification_sounds_dir(&root).join(&id);
         if path.exists() {

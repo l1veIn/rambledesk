@@ -29,6 +29,8 @@ const MAX_REQUESTS: usize = 2_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
 pub enum DiagnosticScope {
+    #[serde(rename = "last_24_hours")]
+    LastTwentyFourHours,
     #[serde(rename = "last_7_days", alias = "last_seven_days")]
     LastSevenDays,
     #[serde(rename = "all")]
@@ -38,8 +40,17 @@ pub enum DiagnosticScope {
 impl DiagnosticScope {
     fn as_label(self) -> &'static str {
         match self {
+            Self::LastTwentyFourHours => "last_24_hours",
             Self::LastSevenDays => "last_7_days",
             Self::All => "all",
+        }
+    }
+
+    fn lookback(self) -> Option<Duration> {
+        match self {
+            Self::LastTwentyFourHours => Some(Duration::from_secs(24 * 3600)),
+            Self::LastSevenDays => Some(Duration::from_secs(7 * 24 * 3600)),
+            Self::All => None,
         }
     }
 }
@@ -142,7 +153,8 @@ pub async fn export_diagnostics(
     let report_id = format!("RD-{}", uuid::Uuid::now_v7());
     let generated_at = events::utc_now_rfc3339();
     let since = match scope {
-        DiagnosticScope::LastSevenDays => Some(seven_days_ago()),
+        DiagnosticScope::LastTwentyFourHours => Some(hours_ago(24)),
+        DiagnosticScope::LastSevenDays => Some(hours_ago(7 * 24)),
         DiagnosticScope::All => None,
     };
 
@@ -153,7 +165,7 @@ pub async fn export_diagnostics(
         architecture: std::env::consts::ARCH,
     };
     let runtime = runtime_snapshot(&state).await;
-    let models: Vec<ModelSnapshot> = list_models(&state.library_root)
+    let models: Vec<ModelSnapshot> = list_models(&state.library_root())
         .into_iter()
         .map(|model| ModelSnapshot {
             id: model.id.to_owned(),
@@ -177,7 +189,7 @@ pub async fn export_diagnostics(
         .collect();
     let requests = request_metadata(&state.application, since.as_deref()).await?;
     let events = events::list_since(&events::events_path(), since.as_deref());
-    let logs = collect_logs(since.as_deref())?;
+    let logs = collect_logs(since.as_deref(), scope.lookback())?;
     let summary = usage_summary(&requests);
     let manifest = Manifest {
         schema_version: PACKAGE_SCHEMA_VERSION,
@@ -263,10 +275,11 @@ async fn runtime_snapshot(state: &WorkbenchState) -> RuntimeSnapshot {
         .and_then(|preferences| preferences.data_storage_path)
         .is_some();
     let speech_session_active = state.speech_session.lock().await.is_some();
+    let library_root = state.library_root();
     RuntimeSnapshot {
         app_session_id: events::app_session_id().to_owned(),
         data_storage_customized: customized,
-        library_root: redact_home(&state.library_root.display().to_string()),
+        library_root: redact_home(&library_root.display().to_string()),
         local_server_loopback: true,
         speech_session_active,
         macos_permissions: list_macos_permissions()
@@ -349,7 +362,10 @@ fn increment(map: &mut serde_json::Map<String, serde_json::Value>, key: &str) {
     map.insert(key.to_owned(), serde_json::json!(count + 1));
 }
 
-fn collect_logs(since: Option<&str>) -> Result<Vec<(String, String)>, String> {
+fn collect_logs(
+    since: Option<&str>,
+    lookback: Option<Duration>,
+) -> Result<Vec<(String, String)>, String> {
     let directory = logging::directory()?;
     let Ok(entries) = std::fs::read_dir(&directory) else {
         return Ok(Vec::new());
@@ -369,7 +385,7 @@ fn collect_logs(since: Option<&str>) -> Result<Vec<(String, String)>, String> {
         .collect::<Vec<_>>();
     files.sort_by_key(|(modified, _, _)| *modified);
     let cutoff =
-        since.and_then(|_| SystemTime::now().checked_sub(Duration::from_secs(7 * 24 * 3600)));
+        since.and_then(|_| lookback.and_then(|duration| SystemTime::now().checked_sub(duration)));
     let mut logs = Vec::new();
     for (modified, name, path) in files {
         if cutoff.is_some_and(|bound| modified < bound) {
@@ -427,13 +443,13 @@ fn with_zip_extension(path: &Path) -> PathBuf {
     }
 }
 
-fn seven_days_ago() -> String {
-    (OffsetDateTimeNow::now_utc() - time::Duration::days(7))
+fn hours_ago(hours: i64) -> String {
+    (OffsetDateTimeNow::now_utc() - time::Duration::hours(hours))
         .format(&time::format_description::well_known::Rfc3339)
         .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_owned())
 }
 
-// Local alias so seven_days_ago stays readable.
+// Local alias so hours_ago stays readable.
 use time::OffsetDateTime as OffsetDateTimeNow;
 
 fn package_readme(report_id: &str, scope: &str) -> String {
@@ -470,6 +486,10 @@ mod tests {
     #[test]
     fn diagnostic_scope_accepts_frontend_and_legacy_labels() {
         assert_eq!(
+            serde_json::from_str::<DiagnosticScope>(r#""last_24_hours""#).expect("24h"),
+            DiagnosticScope::LastTwentyFourHours
+        );
+        assert_eq!(
             serde_json::from_str::<DiagnosticScope>(r#""last_7_days""#).expect("7d"),
             DiagnosticScope::LastSevenDays
         );
@@ -481,6 +501,19 @@ mod tests {
             serde_json::from_str::<DiagnosticScope>(r#""all""#).expect("all"),
             DiagnosticScope::All
         );
+    }
+
+    #[test]
+    fn diagnostic_scope_uses_matching_log_lookbacks() {
+        assert_eq!(
+            DiagnosticScope::LastTwentyFourHours.lookback(),
+            Some(Duration::from_secs(24 * 3600))
+        );
+        assert_eq!(
+            DiagnosticScope::LastSevenDays.lookback(),
+            Some(Duration::from_secs(7 * 24 * 3600))
+        );
+        assert_eq!(DiagnosticScope::All.lookback(), None);
     }
 
     #[test]

@@ -78,15 +78,67 @@ fn find_package_dir_from(anchor: &Path) -> Option<PathBuf> {
 /// Locate the `pi` CLI binary.
 ///
 /// `RAMBLEDESK_PI_BIN` overrides PATH lookup, mirroring how other adapter
-/// binaries are resolvable in this crate.
-pub fn resolve_pi_binary() -> Option<PathBuf> {
+/// binaries are resolvable in this crate. macOS GUI applications inherit a
+/// minimal launchd PATH instead of the user's shell PATH, so also inspect the
+/// common Homebrew, npm/pnpm and Node version-manager locations.
+pub fn resolve_pi_binary(home: Option<&Path>) -> Option<PathBuf> {
     if let Some(path) = std::env::var_os("RAMBLEDESK_PI_BIN") {
         let path = PathBuf::from(path);
         if path.is_file() {
             return Some(path);
         }
     }
-    find_executable("pi")
+    if let Some(path) = find_executable("pi") {
+        return Some(path);
+    }
+    fallback_pi_candidates(home)
+        .into_iter()
+        .find(|candidate| candidate.is_file())
+}
+
+fn fallback_pi_candidates(home: Option<&Path>) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    #[cfg(target_os = "macos")]
+    {
+        candidates.push(PathBuf::from("/opt/homebrew/bin/pi"));
+        candidates.push(PathBuf::from("/usr/local/bin/pi"));
+    }
+    let Some(home) = home else {
+        return candidates;
+    };
+    candidates.extend([
+        home.join(".local/bin/pi"),
+        home.join("Library/pnpm/pi"),
+        home.join(".npm-global/bin/pi"),
+        home.join(".bun/bin/pi"),
+        home.join(".volta/bin/pi"),
+        home.join(".asdf/shims/pi"),
+        home.join(".local/share/mise/shims/pi"),
+        home.join(".proto/shims/pi"),
+    ]);
+    append_version_manager_candidates(&mut candidates, &home.join(".nvm/versions/node"));
+    append_version_manager_candidates(
+        &mut candidates,
+        &home.join(".local/share/fnm/node-versions"),
+    );
+    candidates
+}
+
+fn append_version_manager_candidates(candidates: &mut Vec<PathBuf>, root: &Path) {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return;
+    };
+    let mut directories = entries
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.is_dir())
+        .collect::<Vec<_>>();
+    directories.sort_by(|left, right| right.cmp(left));
+    for directory in directories {
+        // nvm uses <version>/bin; fnm uses <version>/installation/bin.
+        candidates.push(directory.join("bin/pi"));
+        candidates.push(directory.join("installation/bin/pi"));
+    }
 }
 
 /// Run `pi install <package_dir>` and return the tail of its output.
@@ -217,6 +269,37 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         assert_eq!(find_package_dir_from(&root), None);
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn fallback_candidates_include_user_package_managers() {
+        let home = Path::new("/tmp/rambledesk-test-home");
+        let candidates = fallback_pi_candidates(Some(home));
+        assert!(candidates.contains(&home.join(".local/bin/pi")));
+        assert!(candidates.contains(&home.join("Library/pnpm/pi")));
+        assert!(candidates.contains(&home.join(".volta/bin/pi")));
+    }
+
+    #[test]
+    fn version_manager_candidates_include_nvm_and_fnm_layouts() {
+        let root = std::env::temp_dir().join(format!(
+            "rambledesk-pi-version-manager-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(root.join("v22.0.0")).unwrap();
+        let mut candidates = Vec::new();
+        append_version_manager_candidates(&mut candidates, &root);
+        assert!(candidates.contains(&root.join("v22.0.0/bin/pi")));
+        assert!(candidates.contains(&root.join("v22.0.0/installation/bin/pi")));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_fallback_candidates_include_homebrew() {
+        let candidates = fallback_pi_candidates(None);
+        assert!(candidates.contains(&PathBuf::from("/opt/homebrew/bin/pi")));
+        assert!(candidates.contains(&PathBuf::from("/usr/local/bin/pi")));
     }
 
     #[cfg(windows)]

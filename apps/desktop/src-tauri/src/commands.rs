@@ -76,10 +76,28 @@ pub(super) fn restart_application(app: tauri::AppHandle) {
 }
 
 #[tauri::command]
+pub(super) fn open_main_devtools(app: tauri::AppHandle) -> Result<(), String> {
+    #[cfg(debug_assertions)]
+    {
+        let window = app
+            .get_webview_window("main")
+            .ok_or_else(|| "主窗口不可用".to_owned())?;
+        window.open_devtools();
+        Ok(())
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        let _ = app;
+        Err("开发者工具仅在开发构建中可用".to_owned())
+    }
+}
+
+#[tauri::command]
 pub(super) fn get_data_storage_settings(
     state: tauri::State<'_, WorkbenchState>,
 ) -> DataStorageView {
-    let active_path = display_path(&state.library_root);
+    let active_root = state.library_root();
+    let active_path = display_path(&active_root);
     DataStorageView {
         selected_path: active_path.clone(),
         active_path,
@@ -107,10 +125,10 @@ pub(super) async fn set_data_storage_path(
             "仍有未提交的反馈请求。请先提交或取消所有进行中的反馈，再迁移数据。".to_owned(),
         );
     }
-    let source = state.library_root.clone();
+    let source = state.library_root();
     let destination = path.clone();
     let event_app = app.clone();
-    tokio::task::spawn_blocking(move || {
+    let migrated_bytes = tokio::task::spawn_blocking(move || {
         migrate_library(&source, &destination, &|copied, total| {
             let _ = event_app.emit(
                 "storage-migration-progress",
@@ -121,10 +139,19 @@ pub(super) async fn set_data_storage_path(
     .await
     .map_err(|error| format!("数据迁移任务异常退出：{error}"))??;
     let selected = save_library_path(&path)?;
+    if migrated_bytes == 0 {
+        state.activate_library_root(selected.clone());
+        return Ok(DataStorageView {
+            active_path: display_path(&selected),
+            selected_path: display_path(&selected),
+            restart_required: false,
+        });
+    }
+    let active_root = state.library_root();
     Ok(DataStorageView {
-        active_path: display_path(&state.library_root),
+        active_path: display_path(&active_root),
         selected_path: display_path(&selected),
-        restart_required: selected != state.library_root,
+        restart_required: selected != active_root,
     })
 }
 
@@ -176,8 +203,9 @@ pub(super) async fn install_pi_package(
                     .to_owned()
             },
         )?;
-    let pi_bin = pi_install::resolve_pi_binary().ok_or_else(|| {
-        "The `pi` CLI was not found on PATH. Install Pi or set RAMBLEDESK_PI_BIN, then run `pi install npm:@rambledesk/pi` manually.".to_owned()
+    let home = app.path().home_dir().ok();
+    let pi_bin = pi_install::resolve_pi_binary(home.as_deref()).ok_or_else(|| {
+        "The `pi` CLI was not found. RambleDesk checked PATH and common macOS package-manager locations. Install Pi, set RAMBLEDESK_PI_BIN, or run `pi install npm:@rambledesk/pi` manually.".to_owned()
     })?;
     tauri::async_runtime::spawn_blocking(move || pi_install::run_install(&pi_bin, &package_dir))
         .await
@@ -516,7 +544,7 @@ pub(super) async fn cancel_feedback_request(
 
 #[tauri::command]
 pub(super) fn list_speech_models(state: tauri::State<'_, WorkbenchState>) -> Vec<SpeechModelInfo> {
-    list_models(&state.library_root)
+    list_models(&state.library_root())
 }
 
 #[tauri::command]
@@ -525,7 +553,7 @@ pub(super) async fn download_speech_model(
     app: tauri::AppHandle,
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<SpeechModelInfo, String> {
-    let root = state.library_root.clone();
+    let root = state.library_root();
     let event_app = app.clone();
     let progress_model_id = model_id.clone();
     let download_model_id = model_id.clone();
@@ -543,7 +571,7 @@ pub(super) async fn download_speech_model(
     })
     .await
     .map_err(|error| format!("模型下载任务异常退出：{error}"))??;
-    model_info(&state.library_root, &model_id)
+    model_info(&state.library_root(), &model_id)
 }
 
 #[tauri::command]
@@ -554,12 +582,12 @@ pub(super) async fn delete_speech_model(
     if state.speech_session.lock().await.is_some() {
         return Err("请先停止语音录入，再删除模型".to_owned());
     }
-    let root = state.library_root.clone();
+    let root = state.library_root();
     let delete_model_id = model_id.clone();
     tokio::task::spawn_blocking(move || delete_model(&root, &delete_model_id))
         .await
         .map_err(|error| format!("模型删除任务异常退出：{error}"))??;
-    model_info(&state.library_root, &model_id)
+    model_info(&state.library_root(), &model_id)
 }
 
 #[tauri::command]
@@ -594,7 +622,8 @@ pub(super) async fn start_voice_ramble(
         return Err("已有语音 Ramble 正在进行，请先停止当前录音".to_owned());
     }
 
-    let model = model_info(&state.library_root, &input.model_id)?;
+    let library_root = state.library_root();
+    let model = model_info(&library_root, &input.model_id)?;
     if !model.installed {
         return Err(format!(
             "语音模型 {} 尚未安装，请先在语音设置中下载",
@@ -609,9 +638,8 @@ pub(super) async fn start_voice_ramble(
     let voice_session_id = uuid::Uuid::now_v7().to_string();
     let provider =
         SpeechProvider::from_model_id(&input.model_id).map_err(|error| error.to_string())?;
-    let model_path = model_dir(&state.library_root, &input.model_id)?;
-    let vad_model_path =
-        ensure_vad_model(&state.library_root).map_err(|error| error.to_string())?;
+    let model_path = model_dir(&library_root, &input.model_id)?;
+    let vad_model_path = ensure_vad_model(&library_root).map_err(|error| error.to_string())?;
     let config = SpeechSessionConfig {
         request_id: input.request_id,
         voice_session_id: voice_session_id.clone(),

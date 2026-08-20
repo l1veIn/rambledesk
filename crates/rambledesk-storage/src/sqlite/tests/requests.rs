@@ -135,6 +135,50 @@ async fn request_attachments_can_be_loaded_from_a_local_path() {
 }
 
 #[tokio::test]
+async fn runtime_library_root_update_redirects_new_request_attachments() {
+    let workspace = TestWorkspace::new().await;
+    let request_id = Uuid::now_v7().to_string();
+    let store = SqliteFeedbackStore::connect(&workspace.database)
+        .await
+        .expect("open store");
+    let application = store.clone().into_application();
+    let new_library_root = workspace
+        .database
+        .parent()
+        .expect("database parent")
+        .join("new-library");
+    store.set_library_root(new_library_root.clone());
+
+    let mut input = workspace.request(request_id.clone());
+    input.attachments = vec![RequestAttachmentInput {
+        file_name: "after-switch.md".to_owned(),
+        markdown: Some("# After switch".to_owned()),
+        contents_base64: None,
+        path: None,
+    }];
+    application
+        .request_feedback(input)
+        .await
+        .expect("create request after root switch");
+
+    let draft_path: String =
+        sqlx::query_scalar("SELECT draft_path FROM request_attachments WHERE request_id = ?1")
+            .bind(&request_id)
+            .fetch_one(&store.pool)
+            .await
+            .expect("stored request attachment path");
+    let draft_path = Path::new(&draft_path);
+    assert!(
+        draft_path.starts_with(&new_library_root),
+        "expected {} to live under {}",
+        draft_path.display(),
+        new_library_root.display()
+    );
+    assert!(draft_path.is_file());
+    store.close().await;
+}
+
+#[tokio::test]
 async fn startup_externalizes_legacy_request_attachment_blobs() {
     let workspace = TestWorkspace::new().await;
     let request_id = Uuid::now_v7().to_string();

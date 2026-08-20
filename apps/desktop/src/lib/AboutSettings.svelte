@@ -2,7 +2,6 @@
   import { invoke } from '@tauri-apps/api/core'
   import { getVersion } from '@tauri-apps/api/app'
   import { save } from '@tauri-apps/plugin-dialog'
-  import { openUrl } from '@tauri-apps/plugin-opener'
   import { Download, ExternalLink, FileArchive, FolderOpen, GitBranch, LoaderCircle, RefreshCw, RotateCw, ShieldCheck, Sparkles } from '@lucide/svelte'
   import { onMount } from 'svelte'
 
@@ -14,6 +13,7 @@
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
   import { diagnosticExportView } from './nativePath'
+  import { openExternalUrl } from './openExternalUrl'
   import { currentDesktopPlatform } from './platform'
   import {
     canInstallInAppUpdate,
@@ -28,7 +28,9 @@
 
   let version = '0.0.1'
   let profileOpen = false
-  let exporting: 'last_7_days' | 'all' | null = null
+  type DiagnosticScope = 'last_24_hours' | 'last_7_days' | 'all'
+
+  let exporting: DiagnosticScope | null = null
   let lastExportPath = ''
   const isTauri = '__TAURI_INTERNALS__' in window
   const desktopPlatform = currentDesktopPlatform()
@@ -44,29 +46,30 @@
     return t($locale, source, values)
   }
 
-  async function openProject() {
-    if (isTauri) {
-      await openUrl(projectUrl)
-      return
+  async function openSafeUrl(url: string) {
+    try {
+      await openExternalUrl(url)
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause)
+      toast.error(tr('Could not open link'), { description: message })
     }
-    window.open(projectUrl, '_blank', 'noopener,noreferrer')
+  }
+
+  async function openProject() {
+    await openSafeUrl(projectUrl)
   }
 
   async function openReleases() {
-    if (isTauri) {
-      await openUrl(releasesUrl)
-      return
-    }
-    window.open(releasesUrl, '_blank', 'noopener,noreferrer')
+    await openSafeUrl(releasesUrl)
   }
 
-  async function exportDiagnostics(scope: 'last_7_days' | 'all') {
+  async function exportDiagnostics(scope: DiagnosticScope) {
     if (!isTauri || exporting) return
     exporting = scope
     try {
       const stamp = new Date().toISOString().slice(0, 10)
       const path = await save({
-        defaultPath: `RambleDesk-diagnostics-${scope === 'all' ? 'all' : '7d'}-${stamp}.zip`,
+        defaultPath: `RambleDesk-diagnostics-${scope === 'all' ? 'all' : scope === 'last_24_hours' ? '24h' : '7d'}-${stamp}.zip`,
         filters: [{ name: 'Zip', extensions: ['zip'] }],
       })
       if (!path) return
@@ -276,6 +279,18 @@
       </p>
     </div>
     <div class="mt-4 flex flex-wrap gap-2">
+      <Button
+        variant="outline"
+        disabled={!isTauri || exporting !== null}
+        onclick={() => void exportDiagnostics('last_24_hours')}
+      >
+        {#if exporting === 'last_24_hours'}
+          <LoaderCircle class="animate-spin" data-icon="inline-start" />
+        {:else}
+          <FileArchive data-icon="inline-start" />
+        {/if}
+        {tr('Export last 24 hours')}
+      </Button>
       <Button
         variant="outline"
         disabled={!isTauri || exporting !== null}

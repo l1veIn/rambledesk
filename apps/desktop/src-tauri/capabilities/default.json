@@ -20,21 +20,13 @@
     {
       "identifier": "http:default",
       "allow": [
-        { "url": "https://**" },
-        { "url": "http://localhost:**" },
-        { "url": "http://127.0.0.1:**" }
+        { "url": "https://*" },
+        { "url": "https://*:*" },
+        { "url": "http://localhost:*" },
+        { "url": "http://127.0.0.1:*" }
       ]
     },
-    "opener:allow-reveal-item-in-dir",
-    {
-      "identifier": "opener:allow-open-url",
-      "allow": [
-        { "url": "https://**" },
-        { "url": "http://localhost:**" },
-        { "url": "http://127.0.0.1:**" },
-        { "url": "http://[::1]:**" }
-      ]
-    },
+    "opener:default",
     "dialog:allow-open",
     "dialog:allow-save",
     "process:default",

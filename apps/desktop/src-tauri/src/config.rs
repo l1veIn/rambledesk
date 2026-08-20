@@ -259,6 +259,24 @@ mod tests {
     }
 
     #[test]
+    fn empty_library_migration_reports_zero_bytes() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("source");
+        let destination = temp.path().join("destination");
+        fs::create_dir_all(&source).unwrap();
+        let events = std::sync::Mutex::new(Vec::new());
+
+        let total = migrate_library(&source, &destination, &|copied, total| {
+            events.lock().unwrap().push((copied, total));
+        })
+        .unwrap();
+
+        assert_eq!(total, 0);
+        assert!(destination.is_dir());
+        assert_eq!(events.lock().unwrap().as_slice(), &[(0, 0)]);
+    }
+
+    #[test]
     fn library_migration_rejects_nested_destinations() {
         let temp = tempfile::tempdir().unwrap();
         let source = temp.path().join("library");

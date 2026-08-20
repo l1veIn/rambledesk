@@ -12,7 +12,10 @@ use rambledesk_core::FeedbackApplication;
 use rambledesk_hosts::{ContinuationRouter, known_continuation_strategies};
 use rambledesk_local_server::{AccessToken, ServerConfig, ServerHandle, start_server};
 use rambledesk_speech::SpeechSession;
-use std::{path::PathBuf, sync::atomic::AtomicU32};
+use std::{
+    path::PathBuf,
+    sync::{RwLock, atomic::AtomicU32},
+};
 use tauri::{
     Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder,
     image::Image,
@@ -35,11 +38,29 @@ const BASE_TRAY_ICON: Image<'static> = tauri::include_image!("./icons/32x32.png"
 struct WorkbenchState {
     local_server: ServerHandle,
     application: FeedbackApplication,
+    store: rambledesk_storage::SqliteFeedbackStore,
     generic_mcp_configuration: String,
     continuation: ContinuationRouter,
     pending_count: AtomicU32,
-    library_root: PathBuf,
+    library_root: RwLock<PathBuf>,
     speech_session: tokio::sync::Mutex<Option<SpeechSession>>,
+}
+
+impl WorkbenchState {
+    fn library_root(&self) -> PathBuf {
+        self.library_root
+            .read()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone()
+    }
+
+    fn activate_library_root(&self, path: PathBuf) {
+        self.store.set_library_root(path.clone());
+        *self
+            .library_root
+            .write()
+            .unwrap_or_else(|error| error.into_inner()) = path;
+    }
 }
 
 #[tauri::command]
@@ -154,7 +175,7 @@ pub fn run() {
                     &library_root,
                 ),
             )?;
-            let application = store.into_application();
+            let application = store.clone().into_application();
             let config = ServerConfig::new(token.clone()).with_port(configured_port()?);
             let handle = tauri::async_runtime::block_on(start_server(config, application.clone()))?;
             let configuration = generic_mcp_configuration(handle.endpoint(), &token);
@@ -204,10 +225,11 @@ pub fn run() {
             app.manage(WorkbenchState {
                 local_server: handle,
                 application,
+                store,
                 generic_mcp_configuration: configuration,
                 continuation: ContinuationRouter::new(known_continuation_strategies()),
                 pending_count: AtomicU32::new(0),
-                library_root,
+                library_root: RwLock::new(library_root),
                 speech_session: tokio::sync::Mutex::new(None),
             });
             app.manage(screen_capture::ScreenCaptureState::default());
@@ -223,6 +245,7 @@ pub fn run() {
             hide_ramble_console,
             get_generic_mcp_configuration,
             restart_application,
+            open_main_devtools,
             get_data_storage_settings,
             set_data_storage_path,
             list_host_profiles,
@@ -317,6 +340,38 @@ mod tests {
     use crate::window::right_center_position;
     use rambledesk_local_server::default_token_path;
     use tauri::{PhysicalPosition, PhysicalRect, PhysicalSize};
+
+    #[test]
+    fn default_capability_url_scopes_do_not_use_invalid_recursive_globs() {
+        let capability: serde_json::Value =
+            serde_json::from_str(include_str!("../capabilities/default.json"))
+                .expect("default capability JSON");
+        let permissions = capability["permissions"]
+            .as_array()
+            .expect("default capability permissions");
+        let mut invalid_urls = Vec::new();
+        for permission in permissions {
+            let Some(allow) = permission
+                .get("allow")
+                .and_then(serde_json::Value::as_array)
+            else {
+                continue;
+            };
+            for scope in allow {
+                let Some(url) = scope.get("url").and_then(serde_json::Value::as_str) else {
+                    continue;
+                };
+                if url.contains("://**") || url.contains(":**") {
+                    invalid_urls.push(url.to_owned());
+                }
+            }
+        }
+
+        assert!(
+            invalid_urls.is_empty(),
+            "URL scopes use invalid recursive glob patterns: {invalid_urls:?}"
+        );
+    }
 
     #[test]
     fn default_port_is_stable_when_env_is_absent() {

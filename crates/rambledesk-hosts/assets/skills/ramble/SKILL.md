@@ -32,6 +32,12 @@ experience through the RambleDesk feedback loop instead of asking in chat.
      simple approve/reject decision that needs no feedback body, and then also
      provide `final_summary`.
    - `request_id`: omit — the server generates it.
+   - **Single active request**: before creating a request, make sure this host
+     session has no earlier request still waiting or in progress. Never call
+     `request_feedback` concurrently, in parallel tool calls, or from multiple
+     subagents for the same session. Finish and read (or explicitly cancel) the
+     active request before creating the next one. If several topics need human
+     input, queue them and send them sequentially.
 2. **Wait** — do not poll after creation. If the host has an interactive
    confirmation tool (ask / ask_choice), use it to wait for the human and offer
    exactly two options: "Completed the ramble" and "Cancel the ramble" — do not
@@ -46,6 +52,9 @@ experience through the RambleDesk feedback loop instead of asking in chat.
 ## Principles
 
 - Persist first: a created request is durable and survives disconnect/restart.
+- One active request per host session: serialize RambleDesk requests even when
+  the host can issue parallel MCP calls. A terminal or explicitly cancelled
+  request releases the session for the next request.
 - Never set `allow_finish` for requests that need detailed feedback (experience,
   checks, opinions); the human should submit a feedback body, not a shortcut.
 - One topic per request; split multiple topics into multiple requests.

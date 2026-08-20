@@ -33,7 +33,7 @@ impl SqliteFeedbackStore {
             None
         } else {
             Some(
-                prepare_publication_paths(request_id, publication_id, now, &self.library_root)
+                prepare_publication_paths(request_id, publication_id, now, &self.library_root())
                     .await?,
             )
         };
@@ -191,7 +191,7 @@ impl SqliteFeedbackStore {
             None
         } else {
             Some(
-                prepare_publication_paths(request_id, publication_id, now, &self.library_root)
+                prepare_publication_paths(request_id, publication_id, now, &self.library_root())
                     .await?,
             )
         };
@@ -554,8 +554,9 @@ impl SqliteFeedbackStore {
         for attachment in &plan.request_attachments {
             let _ = tokio::fs::remove_file(&attachment.draft_path).await;
         }
-        let _ = tokio::fs::remove_dir_all(self.library_root.join("drafts").join(&plan.request_id))
-            .await;
+        let _ =
+            tokio::fs::remove_dir_all(self.library_root().join("drafts").join(&plan.request_id))
+                .await;
         Ok(stored)
     }
 }

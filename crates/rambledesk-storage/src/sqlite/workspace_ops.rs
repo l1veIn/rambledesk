@@ -116,7 +116,7 @@ impl SqliteFeedbackStore {
         now: &str,
     ) -> Result<StoredFeedbackWorkspace, RepositoryError> {
         let directory = self
-            .library_root
+            .library_root()
             .join("drafts")
             .join(request_id)
             .join("attachments");

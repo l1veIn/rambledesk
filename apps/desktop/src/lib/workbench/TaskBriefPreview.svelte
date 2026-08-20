@@ -161,7 +161,9 @@
                           rel="noreferrer"
                           onclick={(event) => {
                             event.preventDefault()
-                            void openExternalUrl(ref.uri)
+                            void openExternalUrl(ref.uri).catch((cause) => {
+                              console.warn('Could not open external URL', cause)
+                            })
                           }}
                         >
                           {ref.uri}

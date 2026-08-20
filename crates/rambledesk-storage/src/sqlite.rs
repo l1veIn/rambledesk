@@ -1,4 +1,9 @@
-use std::{collections::HashSet, path::Path, sync::Arc, time::Duration};
+use std::{
+    collections::HashSet,
+    path::{Path, PathBuf},
+    sync::{Arc, RwLock},
+    time::Duration,
+};
 
 use async_trait::async_trait;
 use rambledesk_core::{
@@ -65,7 +70,7 @@ pub enum StorageOpenError {
 #[derive(Clone)]
 pub struct SqliteFeedbackStore {
     pool: SqlitePool,
-    library_root: std::path::PathBuf,
+    library_root: Arc<RwLock<PathBuf>>,
     pub(crate) publish_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
@@ -124,7 +129,7 @@ impl SqliteFeedbackStore {
         secure_new_path(library_root, library_existed, 0o700).await?;
         let store = Self {
             pool,
-            library_root: library_root.to_path_buf(),
+            library_root: Arc::new(RwLock::new(library_root.to_path_buf())),
             publish_lock: Arc::new(tokio::sync::Mutex::new(())),
         };
         store
@@ -145,6 +150,20 @@ impl SqliteFeedbackStore {
     pub fn into_application(self) -> rambledesk_core::FeedbackApplication {
         let store = Arc::new(self);
         rambledesk_core::FeedbackApplication::new(store.clone(), store.clone(), store)
+    }
+
+    pub fn library_root(&self) -> PathBuf {
+        self.library_root
+            .read()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone()
+    }
+
+    pub fn set_library_root(&self, library_root: PathBuf) {
+        *self
+            .library_root
+            .write()
+            .unwrap_or_else(|error| error.into_inner()) = library_root;
     }
 
     pub async fn close(&self) {

@@ -7,7 +7,6 @@
 
   export let attachmentCount = 0
   export let attachmentBusy = false
-  export let rambleEngaged = false
   export let readOnly = false
   export let onScreenCapture: () => void = () => {}
   export let onImportClipboard: () => void = () => {}
@@ -30,7 +29,7 @@
     <Button
       variant="outline"
       class="h-14 flex-col gap-1 px-1 text-[10px]"
-      disabled={!rambleEngaged || attachmentBusy || readOnly}
+      disabled={attachmentBusy || readOnly}
       onclick={onScreenCapture}
       title={tr('Capture')}
     >
@@ -40,7 +39,7 @@
     <Button
       variant="outline"
       class="h-14 flex-col gap-1 px-1 text-[10px]"
-      disabled={!rambleEngaged || attachmentBusy || readOnly}
+      disabled={attachmentBusy || readOnly}
       onclick={onImportClipboard}
       title={tr('Clipboard')}
     >

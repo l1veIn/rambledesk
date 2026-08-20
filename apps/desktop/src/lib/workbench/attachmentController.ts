@@ -28,7 +28,6 @@ type AttachmentControllerContext = {
   getWorkspace: () => FeedbackWorkspaceView | null
   getEditor: () => FeedbackEditorHandle | undefined
   getRambleRequestId: () => string
-  getRambleEngaged: () => boolean
   getInteractionLocked: () => boolean
   getSavedRevision: () => number
   getBusy: () => boolean
@@ -229,7 +228,6 @@ export function createAttachmentController(context: AttachmentControllerContext)
     if (
       context.getInteractionLocked() ||
       !requestId ||
-      !context.getRambleEngaged() ||
       context.getBusy() ||
       context.getCaptureBusy()
     ) return

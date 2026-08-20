@@ -32,7 +32,6 @@ function controllerContext() {
       getWorkspace: () => null,
       getEditor: () => undefined,
       getRambleRequestId: () => 'request-1',
-      getRambleEngaged: () => true,
       getInteractionLocked: () => false,
       getSavedRevision: () => 0,
       getBusy: () => false,
@@ -79,6 +78,23 @@ describe('attachmentController screen capture state', () => {
     expect(mocks.invoke).toHaveBeenCalledWith('begin_screen_capture')
     expect(setCaptureBusy).toHaveBeenCalledTimes(1)
     expect(setCaptureBusy).toHaveBeenLastCalledWith(true)
+  })
+
+  it('starts capture before Ramble when the workspace supplies the request id', async () => {
+    mocks.invoke.mockResolvedValue(undefined)
+    const { context } = controllerContext()
+    context.getRambleRequestId = () => ''
+    context.getWorkspace = () => ({
+      request: { request_id: 'workspace-request' },
+      attachments: [],
+      draft: { saved_revision: 1 },
+    }) as never
+    const controller = createAttachmentController(context)
+
+    await controller.startScreenCapture()
+
+    expect(mocks.invoke).toHaveBeenCalledWith('begin_screen_capture')
+    expect(context.saveDraftNow).toHaveBeenCalled()
   })
 
   it('clears capture busy without changing attachment busy on cancel or pin', async () => {

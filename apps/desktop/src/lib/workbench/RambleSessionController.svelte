@@ -100,6 +100,19 @@
     let captureShortcutUnlisten: (() => void) | undefined
     let consoleCommandUnlisten: (() => void) | undefined
     let consoleReadyUnlisten: (() => void) | undefined
+    const onWindowKeydown = (event: KeyboardEvent) => {
+      if (
+        event.key.toLowerCase() === 'r' &&
+        event.ctrlKey &&
+        event.shiftKey &&
+        !event.altKey &&
+        !event.metaKey
+      ) {
+        event.preventDefault()
+        void toggleRamble()
+      }
+    }
+    window.addEventListener('keydown', onWindowKeydown, { capture: true })
 
     void listen<SpeechEvent>('voice-ramble-event', (event) => {
       handleVoiceEvent(event.payload)
@@ -112,7 +125,7 @@
         voiceMessage = t($locale, 'Cannot listen for speech events: {error}', { error: messageFrom(cause) })
       })
     void listen<string>('screen-capture-shortcut', () => {
-      if (rambleEngaged && !interactionLocked) void onStartScreenCapture()
+      if (workspace && !interactionLocked) void onStartScreenCapture()
     })
       .then((unlisten) => {
         captureShortcutUnlisten = unlisten
@@ -148,6 +161,7 @@
       captureShortcutUnlisten?.()
       consoleCommandUnlisten?.()
       consoleReadyUnlisten?.()
+      window.removeEventListener('keydown', onWindowKeydown, { capture: true })
       if (voiceCanStop) void invoke('stop_voice_ramble')
     }
   })
@@ -179,16 +193,18 @@
   }
 
   export async function importClipboardNow() {
-    if (interactionLocked || !rambleRequestId || !rambleEngaged || !rambleContextId || attachmentBusy) return
+    const requestId = rambleRequestId || workspace?.request.request_id || ''
+    const contextId = rambleContextId || crypto.randomUUID()
+    if (interactionLocked || !requestId || attachmentBusy) return
     attachmentMessage = ''
     try {
       const event = await invoke<ClipboardCaptureEvent>('capture_clipboard_once', {
         input: {
-          request_id: rambleRequestId,
-          ramble_context_id: rambleContextId,
+          request_id: requestId,
+          ramble_context_id: contextId,
         },
       })
-      handleClipboardCaptureEvent(event)
+      handleClipboardCaptureEvent(event, requestId, contextId)
     } catch (cause) {
       attachmentMessage = t($locale, 'Could not import clipboard: {error}', { error: messageFrom(cause) })
     }
@@ -357,15 +373,18 @@
     return true
   }
 
-  function handleClipboardCaptureEvent(event: ClipboardCaptureEvent) {
+  function handleClipboardCaptureEvent(
+    event: ClipboardCaptureEvent,
+    currentRequestId: string,
+    contextId: string,
+  ) {
     if (
       interactionLocked ||
-      !rambleEngaged ||
-      !rambleRequestId ||
+      !currentRequestId ||
       !eventBelongsToRamble(
         event,
-        rambleRequestId,
-        rambleContextId,
+        currentRequestId,
+        contextId,
       )
     ) {
       if (event.type === 'image') {
@@ -382,11 +401,11 @@
     }
     if (event.type === 'text') {
       const label = clipboardCaptureLabel(event.captured_at_ms, event.truncated, $locale)
-      if (workspace?.request.request_id === rambleRequestId) {
+      if (workspace?.request.request_id === currentRequestId) {
         editor?.appendClipboardCapture(event.text, label)
       } else {
         const quoted = event.text.split(/\r?\n/).map((line) => `> ${line}`).join('\n')
-        void onAppendRambleMarkdown(rambleRequestId, `> **${label}**\n>\n${quoted}`).catch(
+        void onAppendRambleMarkdown(currentRequestId, `> **${label}**\n>\n${quoted}`).catch(
           (cause) => onPageError(t($locale, 'Failed to write Ramble content: {error}', { error: messageFrom(cause) })),
         )
       }

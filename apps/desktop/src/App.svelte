@@ -5,7 +5,6 @@
     isPermissionGranted,
     sendNotification,
   } from '@tauri-apps/plugin-notification'
-  import { openUrl } from '@tauri-apps/plugin-opener'
   import { onMount, tick } from 'svelte'
   import { Pane, PaneGroup, PaneResizer } from 'paneforge'
 
@@ -37,6 +36,7 @@
     type NotificationState,
   } from './lib/notifications'
   import { desktopPath } from './lib/nativePath'
+  import { openExternalUrl } from './lib/openExternalUrl'
   import { currentDesktopPlatform } from './lib/platform'
   import { isWithinLast24Hours } from './lib/requestRecency'
   import { checkForUpdates } from './lib/updater'
@@ -224,7 +224,6 @@
     getWorkspace: () => workspace,
     getEditor: () => workspacePanel,
     getRambleRequestId: () => rambleRequestId,
-    getRambleEngaged: () => rambleEngaged,
     getInteractionLocked: () => interactionLocked || currentRequestCooking,
     getSavedRevision: () => savedRevision,
     getBusy: () => attachmentBusy,
@@ -493,11 +492,11 @@
 
   async function openGithubReleases() {
     const releasesUrl = 'https://github.com/l1veIn/rambledesk/releases'
-    if (isTauri) {
-      await openUrl(releasesUrl)
-      return
+    try {
+      await openExternalUrl(releasesUrl)
+    } catch (cause) {
+      pageError = messageFrom(cause)
     }
-    window.open(releasesUrl, '_blank', 'noopener,noreferrer')
   }
 
   function restartOnboarding() {

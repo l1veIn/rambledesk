@@ -8,7 +8,9 @@
 
   function handleClick(event: MouseEvent, href: string) {
     event.preventDefault()
-    void openExternalUrl(href)
+    void openExternalUrl(href).catch((cause) => {
+      console.warn('Could not open external URL', cause)
+    })
   }
 </script>
 

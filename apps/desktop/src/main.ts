@@ -10,6 +10,35 @@ function reportFrontendError(context: string, message: string) {
     .catch(() => undefined)
 }
 
+function configureContextMenuAndDevtools() {
+  const isTauri = '__TAURI_INTERNALS__' in window
+  if (!import.meta.env.DEV) {
+    window.addEventListener(
+      'contextmenu',
+      (event) => {
+        event.preventDefault()
+      },
+      { capture: true },
+    )
+    return
+  }
+
+  if (!isTauri) return
+  window.addEventListener('keydown', (event) => {
+    const key = event.key.toLowerCase()
+    const inspectorShortcut =
+      event.key === 'F12' ||
+      (key === 'i' &&
+        ((event.ctrlKey && event.shiftKey && !event.metaKey) ||
+          (event.metaKey && event.altKey)))
+    if (!inspectorShortcut) return
+    event.preventDefault()
+    void import('@tauri-apps/api/core')
+      .then(({ invoke }) => invoke('open_main_devtools'))
+      .catch((cause) => console.warn('Could not open DevTools', cause))
+  })
+}
+
 window.addEventListener('error', (event) => {
   reportFrontendError('window', event.message || 'unknown window error')
 })
@@ -23,6 +52,7 @@ window.addEventListener('unhandledrejection', (event) => {
 })
 
 initializePreferences()
+configureContextMenuAndDevtools()
 
 const captureMode = window.location.hash === '#capture'
 const scrollCaptureMode = window.location.hash === '#capture-scroll'

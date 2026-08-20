@@ -22,6 +22,7 @@
   let restarting = false
   let screenRestartRequired = false
   let loadGeneration = 0
+  const isTauri = '__TAURI_INTERNALS__' in window
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
@@ -54,6 +55,7 @@
   }
 
   async function notificationPermission(): Promise<MacPermission> {
+    if (!isTauri) return { id: 'notifications', status: 'unknown', restart_required: false }
     try {
       const granted = await isPermissionGranted()
       return { id: 'notifications', status: granted ? 'granted' : 'not_determined', restart_required: false }
@@ -91,6 +93,12 @@
     if (busy || restarting) return
     const generation = ++loadGeneration
     if (showLoading) loading = true
+    if (!isTauri) {
+      permissions = []
+      loading = false
+      restartRequired = false
+      return
+    }
     try {
       const next = await invoke<MacPermission[]>('list_macos_permissions')
       const withNotifications = [...next, await notificationPermission()]
@@ -170,6 +178,11 @@
   }
 
   onMount(() => {
+    if (!isTauri) {
+      loading = false
+      return
+    }
+
     let disposed = false
     let unlistenFocus: (() => void) | undefined
 

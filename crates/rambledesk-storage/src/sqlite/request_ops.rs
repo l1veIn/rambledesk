@@ -113,7 +113,7 @@ impl SqliteFeedbackStore {
             return Ok(Vec::new());
         }
         let directory = self
-            .library_root
+            .library_root()
             .join("drafts")
             .join(&request.request_id)
             .join("request-attachments");
@@ -332,7 +332,7 @@ impl SqliteFeedbackStore {
                 return Err(RepositoryError::CorruptData);
             }
             let directory = self
-                .library_root
+                .library_root()
                 .join("drafts")
                 .join(&request_id)
                 .join("request-attachments");
