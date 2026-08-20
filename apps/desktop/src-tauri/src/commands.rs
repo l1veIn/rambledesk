@@ -4,11 +4,13 @@ use std::{
 };
 
 use rambledesk_core::{
-    AddAttachmentInput, ApplicationError, ApproveFeedbackInput, CancelFeedbackInput, DraftView,
-    FeedbackPackageContent, FeedbackRequestSummary, FeedbackRequestView, FeedbackStatus,
-    FeedbackWorkspaceView, GetFeedbackInput, HostSessionSummary, ListFeedbackRequestsInput,
-    ListFeedbackRequestsOutput, MAX_ATTACHMENT_BYTES, RemoveAttachmentInput,
-    ReorderAttachmentsInput, SaveDraftInput, SubmitFeedbackInput,
+    AddAttachmentInput, ApplicationError, ApproveFeedbackInput, CancelFeedbackInput,
+    DeleteFeedbackRequestInput, DraftView, FeedbackPackageContent, FeedbackRequestSummary,
+    FeedbackRequestView, FeedbackStatus, FeedbackWorkspaceView, GetFeedbackInput, HostSessionInput,
+    HostSessionSummary, ListFeedbackRequestsInput, ListFeedbackRequestsOutput,
+    ListHostSessionsInput, MAX_ATTACHMENT_BYTES, RemoveAttachmentInput, RenameHostSessionInput,
+    ReorderAttachmentsInput, SaveDraftInput, SetHostPinnedInput, SetHostSessionPinnedInput,
+    SubmitFeedbackInput,
 };
 use rambledesk_hosts::{HostProfile, known_host_profiles};
 use rambledesk_speech::{
@@ -247,6 +249,70 @@ pub(super) async fn list_host_sessions(
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<Vec<HostSessionSummary>, ApplicationError> {
     state.application.list_host_sessions().await
+}
+
+#[tauri::command]
+pub(super) async fn list_archived_host_sessions(
+    input: ListHostSessionsInput,
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<Vec<HostSessionSummary>, ApplicationError> {
+    state.application.list_archived_host_sessions(input).await
+}
+
+#[tauri::command]
+pub(super) async fn rename_host_session(
+    input: RenameHostSessionInput,
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<HostSessionSummary, ApplicationError> {
+    state.application.rename_host_session(input).await
+}
+
+#[tauri::command]
+pub(super) async fn set_host_session_pinned(
+    input: SetHostSessionPinnedInput,
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<HostSessionSummary, ApplicationError> {
+    state.application.set_host_session_pinned(input).await
+}
+
+#[tauri::command]
+pub(super) async fn archive_host_session(
+    input: HostSessionInput,
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<HostSessionSummary, ApplicationError> {
+    state.application.archive_host_session(input).await
+}
+
+#[tauri::command]
+pub(super) async fn unarchive_host_session(
+    input: HostSessionInput,
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<HostSessionSummary, ApplicationError> {
+    state.application.unarchive_host_session(input).await
+}
+
+#[tauri::command]
+pub(super) async fn delete_host_session(
+    input: HostSessionInput,
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<(), ApplicationError> {
+    state.application.delete_host_session(input).await
+}
+
+#[tauri::command]
+pub(super) async fn delete_feedback_request(
+    input: DeleteFeedbackRequestInput,
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<(), ApplicationError> {
+    state.application.delete_feedback_request(input).await
+}
+
+#[tauri::command]
+pub(super) async fn set_host_pinned(
+    input: SetHostPinnedInput,
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<Vec<HostSessionSummary>, ApplicationError> {
+    state.application.set_host_pinned(input).await
 }
 
 #[tauri::command]

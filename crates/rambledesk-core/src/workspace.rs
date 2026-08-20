@@ -25,9 +25,119 @@ impl FeedbackApplication {
 
     pub async fn list_host_sessions(&self) -> Result<Vec<HostSessionSummary>, ApplicationError> {
         self.repository
-            .list_host_sessions()
+            .list_host_sessions(HostSessionQuery {
+                archived: false,
+                search: None,
+            })
             .await
             .map_err(ApplicationError::from)
+    }
+
+    pub async fn list_archived_host_sessions(
+        &self,
+        input: ListHostSessionsInput,
+    ) -> Result<Vec<HostSessionSummary>, ApplicationError> {
+        let search = validate_optional_search(input.search)?;
+        self.repository
+            .list_host_sessions(HostSessionQuery {
+                archived: true,
+                search,
+            })
+            .await
+            .map_err(ApplicationError::from)
+    }
+
+    pub async fn rename_host_session(
+        &self,
+        input: RenameHostSessionInput,
+    ) -> Result<HostSessionSummary, ApplicationError> {
+        let (host_id, host_session_id) =
+            validate_host_session_identity(input.host_id, input.host_session_id)?;
+        let title = input.title.trim().to_owned();
+        crate::feedback::validate_text("title", &title, 1, 160)?;
+        self.repository
+            .rename_host_session(
+                &host_id,
+                &host_session_id,
+                &title,
+                &self.clock.now_rfc3339(),
+            )
+            .await
+            .map_err(ApplicationError::from)
+    }
+
+    pub async fn set_host_session_pinned(
+        &self,
+        input: SetHostSessionPinnedInput,
+    ) -> Result<HostSessionSummary, ApplicationError> {
+        let (host_id, host_session_id) =
+            validate_host_session_identity(input.host_id, input.host_session_id)?;
+        let pinned_at = input.pinned.then(|| self.clock.now_rfc3339());
+        self.repository
+            .set_host_session_pinned(&host_id, &host_session_id, pinned_at.as_deref())
+            .await
+            .map_err(ApplicationError::from)
+    }
+
+    pub async fn archive_host_session(
+        &self,
+        input: HostSessionInput,
+    ) -> Result<HostSessionSummary, ApplicationError> {
+        let (host_id, host_session_id) =
+            validate_host_session_identity(input.host_id, input.host_session_id)?;
+        self.repository
+            .archive_host_session(&host_id, &host_session_id, &self.clock.now_rfc3339())
+            .await
+            .map_err(ApplicationError::from)
+    }
+
+    pub async fn unarchive_host_session(
+        &self,
+        input: HostSessionInput,
+    ) -> Result<HostSessionSummary, ApplicationError> {
+        let (host_id, host_session_id) =
+            validate_host_session_identity(input.host_id, input.host_session_id)?;
+        self.repository
+            .unarchive_host_session(&host_id, &host_session_id, &self.clock.now_rfc3339())
+            .await
+            .map_err(ApplicationError::from)
+    }
+
+    pub async fn delete_host_session(
+        &self,
+        input: HostSessionInput,
+    ) -> Result<(), ApplicationError> {
+        let (host_id, host_session_id) =
+            validate_host_session_identity(input.host_id, input.host_session_id)?;
+        self.repository
+            .delete_host_session(&host_id, &host_session_id)
+            .await
+            .map_err(ApplicationError::from)
+    }
+
+    pub async fn delete_feedback_request(
+        &self,
+        input: DeleteFeedbackRequestInput,
+    ) -> Result<(), ApplicationError> {
+        let request_id = crate::feedback::canonical_uuid(&input.request_id, "request_id")?;
+        self.repository
+            .delete_feedback_request(&request_id)
+            .await
+            .map_err(ApplicationError::from)
+    }
+
+    pub async fn set_host_pinned(
+        &self,
+        input: SetHostPinnedInput,
+    ) -> Result<Vec<HostSessionSummary>, ApplicationError> {
+        let host_id = validate_host_id(input.host_id)?;
+        let pinned_at = input.pinned.then(|| self.clock.now_rfc3339());
+        let now = self.clock.now_rfc3339();
+        self.repository
+            .set_host_pinned(&host_id, pinned_at.as_deref(), &now)
+            .await
+            .map_err(ApplicationError::from)?;
+        self.list_host_sessions().await
     }
 
     pub async fn list_open_feedback_requests(
@@ -68,12 +178,15 @@ impl FeedbackApplication {
             .as_deref()
             .map(decode_list_cursor)
             .transpose()?;
+        let search = validate_optional_search(input.search)?;
         let mut requests = self
             .repository
             .list_requests(FeedbackRequestQuery {
                 host_id: input.host_id,
                 host_session_id: input.host_session_id,
                 statuses,
+                archived: input.archived.unwrap_or(false),
+                search,
                 limit,
                 before_updated_at: cursor.as_ref().map(|value| value.updated_at.clone()),
                 before_request_id: cursor.as_ref().map(|value| value.request_id.clone()),
@@ -321,6 +434,34 @@ impl FeedbackApplication {
         self.notify_feedback_terminal(&request_id);
         Ok(stored.into())
     }
+}
+
+fn validate_host_session_identity(
+    host_id: String,
+    host_session_id: String,
+) -> Result<(String, String), ApplicationError> {
+    let host_id = validate_host_id(host_id)?;
+    let host_session_id = host_session_id.trim().to_owned();
+    crate::feedback::validate_text("host_session_id", &host_session_id, 1, 200)?;
+    Ok((host_id, host_session_id))
+}
+
+fn validate_host_id(host_id: String) -> Result<String, ApplicationError> {
+    let host_id = host_id.trim().to_owned();
+    crate::feedback::validate_text("host_id", &host_id, 1, 200)?;
+    Ok(host_id)
+}
+
+fn validate_optional_search(search: Option<String>) -> Result<Option<String>, ApplicationError> {
+    let Some(search) = search else {
+        return Ok(None);
+    };
+    let search = search.trim().to_owned();
+    if search.is_empty() {
+        return Ok(None);
+    }
+    crate::feedback::validate_text("search", &search, 1, 200)?;
+    Ok(Some(search))
 }
 
 pub(crate) mod validation;

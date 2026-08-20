@@ -18,6 +18,14 @@ pub enum RepositoryError {
     AttachmentNotFound,
     #[error("attachment limit was reached")]
     AttachmentLimit,
+    #[error("host session was not found")]
+    HostSessionNotFound,
+    #[error("host session has open feedback requests")]
+    HostSessionHasOpenRequests,
+    #[error("deletion requires an archived host session")]
+    DeleteRequiresArchivedHostSession,
+    #[error("feedback request is not terminal")]
+    RequestNotTerminal,
     #[error("feedback package publication failed")]
     PackagePublish,
     #[error("feedback package could not be read")]

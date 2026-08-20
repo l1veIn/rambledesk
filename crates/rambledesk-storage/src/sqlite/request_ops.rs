@@ -188,7 +188,8 @@ impl SqliteFeedbackStore {
             "INSERT INTO host_sessions \
              (id, host_id, host_session_id, created_at, updated_at) \
              VALUES (?1, ?2, ?3, ?4, ?4) \
-             ON CONFLICT(host_id, host_session_id) DO UPDATE SET updated_at = excluded.updated_at",
+             ON CONFLICT(host_id, host_session_id) DO UPDATE SET \
+                 updated_at = excluded.updated_at, archived_at = NULL",
         )
         .bind(&request.host_session_record_id)
         .bind(&request.host_id)
@@ -448,6 +449,7 @@ impl SqliteFeedbackStore {
              FROM feedback_requests r \
              JOIN host_sessions hs ON hs.id = r.host_session_record_id \
              WHERE r.status IN ('waiting', 'in_progress') \
+               AND hs.archived_at IS NULL \
              ORDER BY r.updated_at DESC, r.id DESC",
         )
         .fetch_all(&self.pool)
@@ -474,8 +476,16 @@ impl SqliteFeedbackStore {
                  OR (?6 AND r.status = 'cancelled')) \
                AND (?7 IS NULL OR r.updated_at < ?7 \
                  OR (r.updated_at = ?7 AND r.id < ?8)) \
+               AND (?9 = (hs.archived_at IS NOT NULL)) \
+               AND (?10 IS NULL \
+                 OR r.title LIKE ?10 \
+                 OR r.what_happened LIKE ?10 \
+                 OR COALESCE(r.source_hint, '') LIKE ?10 \
+                 OR r.id LIKE ?10 \
+                 OR hs.host_id LIKE ?10 \
+                 OR hs.host_session_id LIKE ?10) \
              ORDER BY r.updated_at DESC, r.id DESC \
-             LIMIT ?9",
+             LIMIT ?11",
         )
         .bind(query.host_id.as_deref())
         .bind(query.host_session_id.as_deref())
@@ -485,6 +495,8 @@ impl SqliteFeedbackStore {
         .bind(query.statuses.contains(&FeedbackStatus::Cancelled))
         .bind(query.before_updated_at.as_deref())
         .bind(query.before_request_id.as_deref())
+        .bind(query.archived)
+        .bind(search_pattern(query.search.as_deref()))
         .bind(query.limit as i64 + 1)
         .fetch_all(&self.pool)
         .await
@@ -494,30 +506,52 @@ impl SqliteFeedbackStore {
 
     pub(super) async fn list_host_sessions_impl(
         &self,
+        query: HostSessionQuery,
     ) -> Result<Vec<HostSessionSummary>, RepositoryError> {
         let rows = sqlx::query(
             "SELECT hs.host_id, hs.host_session_id, \
-                    (SELECT first_request.title \
+                    COALESCE(NULLIF(hs.display_title, ''), (SELECT first_request.title \
                      FROM feedback_requests first_request \
                      WHERE first_request.host_session_record_id = hs.id \
-                     ORDER BY first_request.created_at, first_request.id LIMIT 1) AS title, \
+                     ORDER BY first_request.created_at, first_request.id LIMIT 1)) AS title, \
                     (SELECT first_request.source_hint \
                      FROM feedback_requests first_request \
                      WHERE first_request.host_session_record_id = hs.id \
                      ORDER BY first_request.created_at, first_request.id LIMIT 1) AS source_hint, \
                     COUNT(r.id) AS request_count, \
                     SUM(CASE WHEN r.status IN ('waiting', 'in_progress') THEN 1 ELSE 0 END) AS pending_count, \
-                    MAX(r.updated_at) AS updated_at \
+                    MAX(r.updated_at) AS updated_at, \
+                    hs.pinned_at, hs.archived_at, hp.pinned_at AS host_pinned_at \
              FROM host_sessions hs \
              JOIN feedback_requests r ON r.host_session_record_id = hs.id \
+             LEFT JOIN host_preferences hp ON hp.host_id = hs.host_id \
+             WHERE (?1 = (hs.archived_at IS NOT NULL)) \
+               AND (?2 IS NULL \
+                 OR COALESCE(NULLIF(hs.display_title, ''), '') LIKE ?2 \
+                 OR hs.host_id LIKE ?2 \
+                 OR hs.host_session_id LIKE ?2 \
+                 OR EXISTS( \
+                    SELECT 1 FROM feedback_requests matching_request \
+                    WHERE matching_request.host_session_record_id = hs.id \
+                      AND (matching_request.title LIKE ?2 \
+                        OR matching_request.what_happened LIKE ?2 \
+                        OR COALESCE(matching_request.source_hint, '') LIKE ?2) \
+                 )) \
              GROUP BY hs.id, hs.host_id, hs.host_session_id \
-             ORDER BY updated_at DESC, hs.host_id, hs.host_session_id",
+             ORDER BY hp.pinned_at IS NULL, hp.pinned_at DESC, hs.host_id, \
+                      hs.pinned_at IS NULL, hs.pinned_at DESC, updated_at DESC, hs.host_session_id",
         )
+        .bind(query.archived)
+        .bind(search_pattern(query.search.as_deref()))
         .fetch_all(&self.pool)
         .await
         .map_err(storage_error)?;
         rows.iter().map(host_session_summary_from_row).collect()
     }
+}
+
+pub(super) fn search_pattern(value: Option<&str>) -> Option<String> {
+    value.map(|value| format!("%{value}%"))
 }
 
 #[cfg(test)]

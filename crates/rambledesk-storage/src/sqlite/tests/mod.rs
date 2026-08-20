@@ -1,9 +1,11 @@
 use super::*;
 use rambledesk_core::{
     ActionInput, AddAttachmentInput, ApproveFeedbackInput, CancelFeedbackInput, ContextRef,
-    ExecutionMode, FeedbackResolution, FeedbackStatus, GetFeedbackInput, ListFeedbackRequestsInput,
-    RecoverFeedbackInput, RemoveAttachmentInput, ReorderAttachmentsInput, RequestAttachmentInput,
-    RequestFeedbackInput, SaveDraftInput, SubmitFeedbackInput,
+    DeleteFeedbackRequestInput, ExecutionMode, FeedbackResolution, FeedbackStatus,
+    GetFeedbackInput, HostSessionInput, ListFeedbackRequestsInput, ListHostSessionsInput,
+    RecoverFeedbackInput, RemoveAttachmentInput, RenameHostSessionInput, ReorderAttachmentsInput,
+    RequestAttachmentInput, RequestFeedbackInput, SaveDraftInput, SetHostPinnedInput,
+    SetHostSessionPinnedInput, SubmitFeedbackInput,
 };
 use sha2::{Digest, Sha384};
 use tempfile::TempDir;

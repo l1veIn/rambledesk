@@ -2,11 +2,12 @@ use std::{fs, path::PathBuf};
 
 use rambledesk_core::{
     ActionInput, AddAttachmentInput, ApproveFeedbackInput, AttachmentView, CancelFeedbackInput,
-    ContextRef, DraftView, ExecutionMode, FeedbackRequestSummary, FeedbackRequestView,
-    FeedbackResolution, FeedbackResultView, FeedbackStatus, FeedbackWorkspaceView,
-    HostSessionSummary, ListFeedbackRequestsInput, ListFeedbackRequestsOutput,
-    RecoverFeedbackInput, RemoveAttachmentInput, ReorderAttachmentsInput, RequestAttachmentView,
-    SaveDraftInput, SubmitFeedbackInput,
+    ContextRef, DeleteFeedbackRequestInput, DraftView, ExecutionMode, FeedbackRequestSummary,
+    FeedbackRequestView, FeedbackResolution, FeedbackResultView, FeedbackStatus,
+    FeedbackWorkspaceView, HostSessionInput, HostSessionSummary, ListFeedbackRequestsInput,
+    ListFeedbackRequestsOutput, ListHostSessionsInput, RecoverFeedbackInput, RemoveAttachmentInput,
+    RenameHostSessionInput, ReorderAttachmentsInput, RequestAttachmentView, SaveDraftInput,
+    SetHostPinnedInput, SetHostSessionPinnedInput, SubmitFeedbackInput,
 };
 use ts_rs::{Config, TS};
 
@@ -25,8 +26,14 @@ fn main() -> std::io::Result<()> {
         exported::<FeedbackRequestView>(),
         exported::<FeedbackRequestSummary>(),
         exported::<HostSessionSummary>(),
+        exported::<HostSessionInput>(),
+        exported::<RenameHostSessionInput>(),
+        exported::<SetHostSessionPinnedInput>(),
+        exported::<SetHostPinnedInput>(),
+        exported::<ListHostSessionsInput>(),
         exported::<ListFeedbackRequestsInput>(),
         exported::<ListFeedbackRequestsOutput>(),
+        exported::<DeleteFeedbackRequestInput>(),
         exported::<DraftView>(),
         exported::<AttachmentView>(),
         exported::<RequestAttachmentView>(),

@@ -70,6 +70,27 @@ export function createNavigationController(context: NavigationControllerContext)
     store.update((current) => ({ ...current, ...next }))
   }
 
+  function replaceHostSession(summary: HostSessionSummary) {
+    store.update((current) => {
+      const nextSessions = current.hostSessions.map((session) =>
+        session.host_id === summary.host_id &&
+        session.host_session_id === summary.host_session_id
+          ? summary
+          : session,
+      )
+      if (
+        !nextSessions.some(
+          (session) =>
+            session.host_id === summary.host_id &&
+            session.host_session_id === summary.host_session_id,
+        )
+      ) {
+        nextSessions.push(summary)
+      }
+      return { ...current, hostSessions: nextSessions }
+    })
+  }
+
   async function initialize() {
     context.onPageError('')
     patch({ loadingNavigation: true, loadingRequests: true })
@@ -166,6 +187,8 @@ export function createNavigationController(context: NavigationControllerContext)
       host_id: state.selectedHostId,
       host_session_id: state.selectedHostSessionId,
       status: [...ALL_REQUEST_STATUSES],
+      archived: null,
+      search: null,
       limit: 100,
       cursor,
     }
@@ -234,6 +257,115 @@ export function createNavigationController(context: NavigationControllerContext)
     await refreshRequests(false)
   }
 
+  async function renameHostSession(session: HostSessionSummary, title: string) {
+    const trimmed = title.trim()
+    if (!trimmed || trimmed === session.title) return
+    try {
+      if (context.previewMode || !context.isTauri) {
+        replaceHostSession({ ...session, title: trimmed })
+        return
+      }
+      const renamed = await invoke<HostSessionSummary>('rename_host_session', {
+        input: {
+          host_id: session.host_id,
+          host_session_id: session.host_session_id,
+          title: trimmed,
+        },
+      })
+      replaceHostSession(renamed)
+    } catch (cause) {
+      context.onPageError(context.messageFrom(cause))
+      throw cause
+    }
+  }
+
+  async function setHostSessionPinned(session: HostSessionSummary, pinned: boolean) {
+    try {
+      if (context.previewMode || !context.isTauri) {
+        replaceHostSession({
+          ...session,
+          pinned_at: pinned ? new Date().toISOString() : null,
+        })
+        return
+      }
+      const updated = await invoke<HostSessionSummary>('set_host_session_pinned', {
+        input: {
+          host_id: session.host_id,
+          host_session_id: session.host_session_id,
+          pinned,
+        },
+      })
+      replaceHostSession(updated)
+      await refreshNavigation(false)
+    } catch (cause) {
+      context.onPageError(context.messageFrom(cause))
+      throw cause
+    }
+  }
+
+  async function archiveHostSession(session: HostSessionSummary) {
+    if (session.pending_count > 0) {
+      context.onPageError(context.tr('Finish or cancel open requests before archiving this session.'))
+      return
+    }
+    if (context.isDirty() && !(await context.saveDraftNow())) return
+    try {
+      if (!(context.previewMode || !context.isTauri)) {
+        await invoke<HostSessionSummary>('archive_host_session', {
+          input: {
+            host_id: session.host_id,
+            host_session_id: session.host_session_id,
+          },
+        })
+      }
+      const current = get(store)
+      if (
+        current.selectedHostId === session.host_id &&
+        current.selectedHostSessionId === session.host_session_id
+      ) {
+        patch({ selectedHostId: session.host_id, selectedHostSessionId: null })
+        context.clearWorkspace()
+      }
+      if (context.previewMode || !context.isTauri) {
+        patch({
+          hostSessions: get(store).hostSessions.filter(
+            (candidate) =>
+              candidate.host_id !== session.host_id ||
+              candidate.host_session_id !== session.host_session_id,
+          ),
+        })
+        await refreshRequests(false)
+        return
+      }
+      await refreshNavigation(true)
+    } catch (cause) {
+      context.onPageError(context.messageFrom(cause))
+      throw cause
+    }
+  }
+
+  async function setHostPinned(hostId: string, pinned: boolean) {
+    try {
+      if (context.previewMode || !context.isTauri) {
+        const pinnedAt = pinned ? new Date().toISOString() : null
+        store.update((current) => ({
+          ...current,
+          hostSessions: current.hostSessions.map((session) =>
+            session.host_id === hostId ? { ...session, host_pinned_at: pinnedAt } : session,
+          ),
+        }))
+        return
+      }
+      const nextSessions = await invoke<HostSessionSummary[]>('set_host_pinned', {
+        input: { host_id: hostId, pinned },
+      })
+      patch({ hostSessions: nextSessions })
+    } catch (cause) {
+      context.onPageError(context.messageFrom(cause))
+      throw cause
+    }
+  }
+
   function resolveHostProfile(hostId: string): HostProfile {
     const normalized = hostId.trim().toLowerCase()
     const profiles = get(store).hostProfiles
@@ -255,6 +387,10 @@ export function createNavigationController(context: NavigationControllerContext)
     refreshRequests,
     loadMoreRequests,
     selectScope,
+    renameHostSession,
+    setHostSessionPinned,
+    archiveHostSession,
+    setHostPinned,
     resolveHostProfile,
   }
 }

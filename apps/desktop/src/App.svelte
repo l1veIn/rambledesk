@@ -16,6 +16,7 @@
   import OnboardingWizard from './lib/OnboardingWizard.svelte'
   import SettingsPanel from './lib/SettingsPanel.svelte'
   import UpdateAvailableDialog from './lib/UpdateAvailableDialog.svelte'
+  import ArchivedSessionsDialog from './lib/components/navigation/ArchivedSessionsDialog.svelte'
   import HostSessionRail from './lib/components/navigation/HostSessionRail.svelte'
   import RequestListPane from './lib/components/navigation/RequestListPane.svelte'
   import { Sonner, toast } from './lib/components/ui/sonner'
@@ -138,6 +139,7 @@
   let resumeCopyState: 'idle' | 'copied' | 'failed' = 'idle'
   let notificationState: NotificationState = 'checking'
   let settingsOpen = false
+  let archivedSessionsOpen = false
   let settingsSection: SettingsSection = 'general'
   let onboardingOpen = false
   let launchUpdateCheckDue = false
@@ -904,6 +906,11 @@
       {resolveHostProfile}
       onSelect={(hostId, hostSessionId) =>
         void navigation.selectScope(hostId, hostSessionId)}
+      onRenameSession={(session, title) => navigation.renameHostSession(session, title)}
+      onSetSessionPinned={(session, pinned) => navigation.setHostSessionPinned(session, pinned)}
+      onArchiveSession={(session) => navigation.archiveHostSession(session)}
+      onSetHostPinned={(hostId, pinned) => navigation.setHostPinned(hostId, pinned)}
+      onArchived={() => (archivedSessionsOpen = true)}
       onSettings={() => void openSettings('general')}
     />
 
@@ -1017,6 +1024,18 @@
 </main>
 
 <OnboardingWizard bind:openWizard={onboardingOpen} onClose={closeOnboarding} />
+
+<ArchivedSessionsDialog
+  bind:open={archivedSessionsOpen}
+  {isTauri}
+  {previewMode}
+  {resolveHostProfile}
+  formatTime={formatTimeLocal}
+  {messageFrom}
+  onError={(message) => (pageError = message)}
+  onChanged={() => navigation.refreshNavigation(true)}
+  onOpenRequest={(requestId) => openRequest(requestId)}
+/>
 
 {#if settingsOpen}
   <SettingsPanel

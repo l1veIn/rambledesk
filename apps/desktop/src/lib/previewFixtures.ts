@@ -77,6 +77,9 @@ const hostSessions: HostSessionSummary[] = [
     request_count: 2,
     pending_count: 2,
     updated_at: '2026-08-02T08:12:00Z',
+    pinned_at: '2026-08-02T08:20:00Z',
+    archived_at: null,
+    host_pinned_at: '2026-08-02T08:21:00Z',
   },
   {
     host_id: 'pi',
@@ -86,6 +89,9 @@ const hostSessions: HostSessionSummary[] = [
     request_count: 1,
     pending_count: 0,
     updated_at: '2026-08-02T06:05:00Z',
+    pinned_at: null,
+    archived_at: null,
+    host_pinned_at: null,
   },
   {
     host_id: 'claude',
@@ -95,6 +101,9 @@ const hostSessions: HostSessionSummary[] = [
     request_count: 1,
     pending_count: 0,
     updated_at: '2026-08-02T04:35:00Z',
+    pinned_at: null,
+    archived_at: null,
+    host_pinned_at: null,
   },
 ]
 

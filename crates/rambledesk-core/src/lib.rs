@@ -23,12 +23,14 @@ pub use feedback::{
     UuidV7Generator,
 };
 pub use workspace::{
-    AddAttachmentInput, AttachmentView, DraftView, FeedbackPackageAttachment,
-    FeedbackPackageContent, FeedbackPackageManifest, FeedbackPackagePublisher,
-    FeedbackPackageReader, FeedbackRequestQuery, FeedbackRequestSummary, FeedbackWorkspaceView,
-    HostSessionSummary, ListFeedbackRequestsInput, ListFeedbackRequestsOutput,
+    AddAttachmentInput, AttachmentView, DeleteFeedbackRequestInput, DraftView,
+    FeedbackPackageAttachment, FeedbackPackageContent, FeedbackPackageManifest,
+    FeedbackPackagePublisher, FeedbackPackageReader, FeedbackRequestQuery, FeedbackRequestSummary,
+    FeedbackWorkspaceView, HostSessionInput, HostSessionQuery, HostSessionSummary,
+    ListFeedbackRequestsInput, ListFeedbackRequestsOutput, ListHostSessionsInput,
     MAX_ATTACHMENT_BYTES, MAX_ATTACHMENT_COUNT, MAX_REQUEST_ATTACHMENT_TOTAL_BYTES, NewAttachment,
-    PublishedFeedbackPackage, RemoveAttachmentInput, ReorderAttachmentsInput,
-    RequestAttachmentView, SaveDraftInput, StoredFeedbackWorkspace, SubmissionAttachment,
-    SubmissionPlan, SubmissionRequestAttachment, SubmitFeedbackInput,
+    PublishedFeedbackPackage, RemoveAttachmentInput, RenameHostSessionInput,
+    ReorderAttachmentsInput, RequestAttachmentView, SaveDraftInput, SetHostPinnedInput,
+    SetHostSessionPinnedInput, StoredFeedbackWorkspace, SubmissionAttachment, SubmissionPlan,
+    SubmissionRequestAttachment, SubmitFeedbackInput,
 };

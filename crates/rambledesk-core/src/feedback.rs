@@ -9,8 +9,8 @@ use uuid::Uuid;
 
 use crate::workspace::{
     DraftView, FeedbackPackagePublisher, FeedbackRequestQuery, FeedbackRequestSummary,
-    HostSessionSummary, NewAttachment, PublishedFeedbackPackage, StoredFeedbackWorkspace,
-    SubmissionPlan,
+    HostSessionQuery, HostSessionSummary, NewAttachment, PublishedFeedbackPackage,
+    StoredFeedbackWorkspace, SubmissionPlan,
 };
 
 mod attachment_source;
@@ -65,7 +65,54 @@ pub trait FeedbackRepository: AttachmentPathResolver + Send + Sync {
         query: FeedbackRequestQuery,
     ) -> Result<Vec<FeedbackRequestSummary>, RepositoryError>;
 
-    async fn list_host_sessions(&self) -> Result<Vec<HostSessionSummary>, RepositoryError>;
+    async fn list_host_sessions(
+        &self,
+        query: HostSessionQuery,
+    ) -> Result<Vec<HostSessionSummary>, RepositoryError>;
+
+    async fn rename_host_session(
+        &self,
+        host_id: &str,
+        host_session_id: &str,
+        title: &str,
+        now: &str,
+    ) -> Result<HostSessionSummary, RepositoryError>;
+
+    async fn set_host_session_pinned(
+        &self,
+        host_id: &str,
+        host_session_id: &str,
+        pinned_at: Option<&str>,
+    ) -> Result<HostSessionSummary, RepositoryError>;
+
+    async fn archive_host_session(
+        &self,
+        host_id: &str,
+        host_session_id: &str,
+        now: &str,
+    ) -> Result<HostSessionSummary, RepositoryError>;
+
+    async fn unarchive_host_session(
+        &self,
+        host_id: &str,
+        host_session_id: &str,
+        now: &str,
+    ) -> Result<HostSessionSummary, RepositoryError>;
+
+    async fn set_host_pinned(
+        &self,
+        host_id: &str,
+        pinned_at: Option<&str>,
+        now: &str,
+    ) -> Result<(), RepositoryError>;
+
+    async fn delete_host_session(
+        &self,
+        host_id: &str,
+        host_session_id: &str,
+    ) -> Result<(), RepositoryError>;
+
+    async fn delete_feedback_request(&self, request_id: &str) -> Result<(), RepositoryError>;
 
     async fn get_workspace(
         &self,
@@ -325,6 +372,8 @@ impl FeedbackApplication {
                     FeedbackStatus::Completed,
                     FeedbackStatus::Cancelled,
                 ]),
+                archived: None,
+                search: None,
                 limit: Some(2),
                 cursor: None,
             })
@@ -507,6 +556,26 @@ impl From<RepositoryError> for ApplicationError {
             RepositoryError::AttachmentLimit => (
                 "ATTACHMENT_LIMIT",
                 "a feedback request can contain at most 20 attachments",
+                false,
+            ),
+            RepositoryError::HostSessionNotFound => (
+                "HOST_SESSION_NOT_FOUND",
+                "host session was not found",
+                false,
+            ),
+            RepositoryError::HostSessionHasOpenRequests => (
+                "HOST_SESSION_HAS_OPEN_REQUESTS",
+                "finish or cancel open feedback requests before archiving this session",
+                false,
+            ),
+            RepositoryError::DeleteRequiresArchivedHostSession => (
+                "DELETE_REQUIRES_ARCHIVED_HOST_SESSION",
+                "archive the host session before deleting requests",
+                false,
+            ),
+            RepositoryError::RequestNotTerminal => (
+                "REQUEST_NOT_TERMINAL",
+                "finish or cancel the feedback request before deleting it",
                 false,
             ),
             RepositoryError::PackagePublish => (

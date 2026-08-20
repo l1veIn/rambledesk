@@ -312,6 +312,8 @@ async fn request_metadata(
                     FeedbackStatus::Completed,
                     FeedbackStatus::Cancelled,
                 ]),
+                archived: None,
+                search: None,
                 limit: Some(100),
                 cursor,
             })

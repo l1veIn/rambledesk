@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use rambledesk_core::{
     ActionInput, AttachmentView, ContextRef, DraftView, FeedbackRepository, FeedbackRequestQuery,
     FeedbackRequestSummary, FeedbackResolution, FeedbackResultView, FeedbackStatus,
-    HostSessionSummary, MAX_ATTACHMENT_COUNT, NewAttachment, NewFeedbackRequest,
+    HostSessionQuery, HostSessionSummary, MAX_ATTACHMENT_COUNT, NewAttachment, NewFeedbackRequest,
     PublishedFeedbackPackage, RepositoryError, RequestAttachmentView, StoredFeedbackRequest,
     StoredFeedbackWorkspace, SubmissionAttachment, SubmissionPlan, SubmissionRequestAttachment,
 };
@@ -29,6 +29,7 @@ mod paths;
 mod publication_paths;
 mod request_ops;
 mod resolve_ops;
+mod session_ops;
 mod submission_ops;
 mod workspace_ops;
 
@@ -337,8 +338,74 @@ impl FeedbackRepository for SqliteFeedbackStore {
         self.list_requests_impl(query).await
     }
 
-    async fn list_host_sessions(&self) -> Result<Vec<HostSessionSummary>, RepositoryError> {
-        self.list_host_sessions_impl().await
+    async fn list_host_sessions(
+        &self,
+        query: HostSessionQuery,
+    ) -> Result<Vec<HostSessionSummary>, RepositoryError> {
+        self.list_host_sessions_impl(query).await
+    }
+
+    async fn rename_host_session(
+        &self,
+        host_id: &str,
+        host_session_id: &str,
+        title: &str,
+        now: &str,
+    ) -> Result<HostSessionSummary, RepositoryError> {
+        self.rename_host_session_impl(host_id, host_session_id, title, now)
+            .await
+    }
+
+    async fn set_host_session_pinned(
+        &self,
+        host_id: &str,
+        host_session_id: &str,
+        pinned_at: Option<&str>,
+    ) -> Result<HostSessionSummary, RepositoryError> {
+        self.set_host_session_pinned_impl(host_id, host_session_id, pinned_at)
+            .await
+    }
+
+    async fn archive_host_session(
+        &self,
+        host_id: &str,
+        host_session_id: &str,
+        now: &str,
+    ) -> Result<HostSessionSummary, RepositoryError> {
+        self.archive_host_session_impl(host_id, host_session_id, now)
+            .await
+    }
+
+    async fn unarchive_host_session(
+        &self,
+        host_id: &str,
+        host_session_id: &str,
+        now: &str,
+    ) -> Result<HostSessionSummary, RepositoryError> {
+        self.unarchive_host_session_impl(host_id, host_session_id, now)
+            .await
+    }
+
+    async fn set_host_pinned(
+        &self,
+        host_id: &str,
+        pinned_at: Option<&str>,
+        now: &str,
+    ) -> Result<(), RepositoryError> {
+        self.set_host_pinned_impl(host_id, pinned_at, now).await
+    }
+
+    async fn delete_host_session(
+        &self,
+        host_id: &str,
+        host_session_id: &str,
+    ) -> Result<(), RepositoryError> {
+        self.delete_host_session_impl(host_id, host_session_id)
+            .await
+    }
+
+    async fn delete_feedback_request(&self, request_id: &str) -> Result<(), RepositoryError> {
+        self.delete_feedback_request_impl(request_id).await
     }
 
     async fn get_workspace(
@@ -506,6 +573,9 @@ fn host_session_summary_from_row(row: &SqliteRow) -> Result<HostSessionSummary, 
         request_count: u64::try_from(request_count).map_err(|_| RepositoryError::CorruptData)?,
         pending_count: u64::try_from(pending_count).map_err(|_| RepositoryError::CorruptData)?,
         updated_at: row.try_get("updated_at").map_err(storage_error)?,
+        pinned_at: row.try_get("pinned_at").map_err(storage_error)?,
+        archived_at: row.try_get("archived_at").map_err(storage_error)?,
+        host_pinned_at: row.try_get("host_pinned_at").map_err(storage_error)?,
     })
 }
 
@@ -557,6 +627,11 @@ fn repository_error_code(error: RepositoryError) -> &'static str {
             "RECOVERY_FAILURE"
         }
         RepositoryError::RequestConflict | RepositoryError::DraftEmpty => "RECOVERY_FAILURE",
+        RepositoryError::HostSessionNotFound | RepositoryError::HostSessionHasOpenRequests => {
+            "RECOVERY_FAILURE"
+        }
+        RepositoryError::DeleteRequiresArchivedHostSession
+        | RepositoryError::RequestNotTerminal => "RECOVERY_FAILURE",
     }
 }
 

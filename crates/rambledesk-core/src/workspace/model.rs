@@ -101,6 +101,45 @@ pub struct HostSessionSummary {
     #[ts(type = "number")]
     pub pending_count: u64,
     pub updated_at: String,
+    pub pinned_at: Option<String>,
+    pub archived_at: Option<String>,
+    pub host_pinned_at: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
+pub struct HostSessionInput {
+    pub host_id: String,
+    pub host_session_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
+pub struct RenameHostSessionInput {
+    pub host_id: String,
+    pub host_session_id: String,
+    pub title: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
+pub struct SetHostSessionPinnedInput {
+    pub host_id: String,
+    pub host_session_id: String,
+    pub pinned: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
+pub struct SetHostPinnedInput {
+    pub host_id: String,
+    pub pinned: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS, Default)]
+pub struct ListHostSessionsInput {
+    pub search: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
+pub struct DeleteFeedbackRequestInput {
+    pub request_id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS, Default)]
@@ -108,6 +147,8 @@ pub struct ListFeedbackRequestsInput {
     pub host_id: Option<String>,
     pub host_session_id: Option<String>,
     pub status: Option<Vec<FeedbackStatus>>,
+    pub archived: Option<bool>,
+    pub search: Option<String>,
     #[ts(type = "number | null")]
     pub limit: Option<u32>,
     pub cursor: Option<String>,
@@ -124,9 +165,17 @@ pub struct FeedbackRequestQuery {
     pub host_id: Option<String>,
     pub host_session_id: Option<String>,
     pub statuses: Vec<FeedbackStatus>,
+    pub archived: bool,
+    pub search: Option<String>,
     pub limit: u32,
     pub before_updated_at: Option<String>,
     pub before_request_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostSessionQuery {
+    pub archived: bool,
+    pub search: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]

@@ -360,12 +360,329 @@ async fn host_session_navigation_reports_request_and_pending_counts() {
     );
     assert_eq!(first.request_count, 2);
     assert_eq!(first.pending_count, 2);
+    assert_eq!(first.pinned_at, None);
+    assert_eq!(first.archived_at, None);
+    assert_eq!(first.host_pinned_at, None);
     let second = sessions
         .iter()
         .find(|session| session.host_session_id == "second-session")
         .expect("second session");
     assert_eq!(second.request_count, 1);
     assert_eq!(second.pending_count, 0);
+    store.close().await;
+}
+
+#[tokio::test]
+async fn host_session_management_renames_session_and_orders_pins() {
+    let workspace = TestWorkspace::new().await;
+    let store = SqliteFeedbackStore::connect(&workspace.database)
+        .await
+        .expect("open store");
+    let application = store.clone().into_application();
+
+    let mut first = workspace.request(Uuid::now_v7().to_string());
+    first.title = Some("Original title".to_owned());
+    application
+        .request_feedback(first)
+        .await
+        .expect("first request");
+
+    let mut second = workspace.request(Uuid::now_v7().to_string());
+    second.host_session_id = "second-session".to_owned();
+    second.title = Some("Second session".to_owned());
+    application
+        .request_feedback(second)
+        .await
+        .expect("second request");
+
+    let mut other_host = workspace.request(Uuid::now_v7().to_string());
+    other_host.host_id = Some("other-host".to_owned());
+    other_host.host_session_id = "other-session".to_owned();
+    application
+        .request_feedback(other_host)
+        .await
+        .expect("other host request");
+
+    let renamed = application
+        .rename_host_session(RenameHostSessionInput {
+            host_id: "test-host".to_owned(),
+            host_session_id: "test-session".to_owned(),
+            title: "Renamed session".to_owned(),
+        })
+        .await
+        .expect("rename session");
+    assert_eq!(renamed.title, "Renamed session");
+
+    let pinned = application
+        .set_host_session_pinned(SetHostSessionPinnedInput {
+            host_id: "test-host".to_owned(),
+            host_session_id: "second-session".to_owned(),
+            pinned: true,
+        })
+        .await
+        .expect("pin session");
+    assert!(pinned.pinned_at.is_some());
+
+    application
+        .set_host_pinned(SetHostPinnedInput {
+            host_id: "other-host".to_owned(),
+            pinned: true,
+        })
+        .await
+        .expect("pin host");
+
+    let sessions = application
+        .list_host_sessions()
+        .await
+        .expect("list host sessions");
+    assert_eq!(
+        sessions
+            .iter()
+            .map(|session| (session.host_id.as_str(), session.host_session_id.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("other-host", "other-session"),
+            ("test-host", "second-session"),
+            ("test-host", "test-session"),
+        ]
+    );
+    let first = sessions
+        .iter()
+        .find(|session| session.host_session_id == "test-session")
+        .expect("renamed session listed");
+    assert_eq!(first.title, "Renamed session");
+    let other = sessions
+        .iter()
+        .find(|session| session.host_id == "other-host")
+        .expect("pinned host listed");
+    assert!(other.host_pinned_at.is_some());
+    store.close().await;
+}
+
+#[tokio::test]
+async fn archiving_a_session_requires_terminal_requests_and_filters_active_lists() {
+    let workspace = TestWorkspace::new().await;
+    let request_id = Uuid::now_v7().to_string();
+    let store = SqliteFeedbackStore::connect(&workspace.database)
+        .await
+        .expect("open store");
+    let application = store.clone().into_application();
+    application
+        .request_feedback(workspace.request(request_id.clone()))
+        .await
+        .expect("create request");
+
+    let archive_error = application
+        .archive_host_session(HostSessionInput {
+            host_id: "test-host".to_owned(),
+            host_session_id: "test-session".to_owned(),
+        })
+        .await
+        .expect_err("open session cannot be archived");
+    assert_eq!(archive_error.code(), "HOST_SESSION_HAS_OPEN_REQUESTS");
+
+    application
+        .cancel_feedback(CancelFeedbackInput {
+            request_id: request_id.clone(),
+            reason: "Archive this completed fixture.".to_owned(),
+        })
+        .await
+        .expect("cancel request");
+    let archived = application
+        .archive_host_session(HostSessionInput {
+            host_id: "test-host".to_owned(),
+            host_session_id: "test-session".to_owned(),
+        })
+        .await
+        .expect("archive terminal session");
+    assert!(archived.archived_at.is_some());
+    assert_eq!(
+        application
+            .list_host_sessions()
+            .await
+            .expect("active sessions"),
+        Vec::new()
+    );
+
+    let active_requests = application
+        .list_feedback_requests(ListFeedbackRequestsInput {
+            status: Some(vec![
+                FeedbackStatus::Waiting,
+                FeedbackStatus::InProgress,
+                FeedbackStatus::Completed,
+                FeedbackStatus::Cancelled,
+            ]),
+            ..Default::default()
+        })
+        .await
+        .expect("active requests");
+    assert!(active_requests.requests.is_empty());
+
+    let archived_requests = application
+        .list_feedback_requests(ListFeedbackRequestsInput {
+            status: Some(vec![
+                FeedbackStatus::Waiting,
+                FeedbackStatus::InProgress,
+                FeedbackStatus::Completed,
+                FeedbackStatus::Cancelled,
+            ]),
+            archived: Some(true),
+            ..Default::default()
+        })
+        .await
+        .expect("archived requests");
+    assert_eq!(archived_requests.requests.len(), 1);
+    assert_eq!(archived_requests.requests[0].request_id, request_id);
+    let archived_sessions = application
+        .list_archived_host_sessions(ListHostSessionsInput {
+            search: Some("Persistence".to_owned()),
+        })
+        .await
+        .expect("search archived sessions");
+    assert_eq!(archived_sessions.len(), 1);
+    assert_eq!(archived_sessions[0].host_session_id, "test-session");
+
+    application
+        .request_feedback(workspace.request(Uuid::now_v7().to_string()))
+        .await
+        .expect("new request unarchives session");
+    let sessions = application
+        .list_host_sessions()
+        .await
+        .expect("active sessions after new request");
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].host_session_id, "test-session");
+    assert_eq!(sessions[0].request_count, 2);
+    assert_eq!(sessions[0].pending_count, 1);
+    assert_eq!(sessions[0].archived_at, None);
+    store.close().await;
+}
+
+#[tokio::test]
+async fn delete_feedback_request_requires_archived_session_and_removes_files() {
+    let workspace = TestWorkspace::new().await;
+    let request_id = Uuid::now_v7().to_string();
+    let store = SqliteFeedbackStore::connect(&workspace.database)
+        .await
+        .expect("open store");
+    let application = store.clone().into_application();
+    application
+        .request_feedback(workspace.request(request_id.clone()))
+        .await
+        .expect("create request");
+
+    let open_delete = application
+        .delete_feedback_request(DeleteFeedbackRequestInput {
+            request_id: request_id.clone(),
+        })
+        .await
+        .expect_err("active request cannot be deleted");
+    assert_eq!(open_delete.code(), "DELETE_REQUIRES_ARCHIVED_HOST_SESSION");
+
+    let cancelled = application
+        .cancel_feedback(CancelFeedbackInput {
+            request_id: request_id.clone(),
+            reason: "Deleting archived fixture.".to_owned(),
+        })
+        .await
+        .expect("cancel request");
+    let package_dir = cancelled
+        .feedback
+        .as_ref()
+        .expect("cancellation package")
+        .directory_path
+        .clone();
+    assert!(Path::new(&package_dir).is_dir());
+    application
+        .archive_host_session(HostSessionInput {
+            host_id: "test-host".to_owned(),
+            host_session_id: "test-session".to_owned(),
+        })
+        .await
+        .expect("archive terminal session");
+
+    application
+        .delete_feedback_request(DeleteFeedbackRequestInput {
+            request_id: request_id.clone(),
+        })
+        .await
+        .expect("delete archived request");
+    let missing = application
+        .get_feedback(GetFeedbackInput { request_id })
+        .await
+        .expect_err("request row removed");
+    assert_eq!(missing.code(), "REQUEST_NOT_FOUND");
+    assert!(!Path::new(&package_dir).exists());
+    assert!(
+        application
+            .list_archived_host_sessions(ListHostSessionsInput::default())
+            .await
+            .expect("archived sessions")
+            .is_empty()
+    );
+    store.close().await;
+}
+
+#[tokio::test]
+async fn delete_host_session_removes_all_archived_requests() {
+    let workspace = TestWorkspace::new().await;
+    let first_id = Uuid::now_v7().to_string();
+    let second_id = Uuid::now_v7().to_string();
+    let store = SqliteFeedbackStore::connect(&workspace.database)
+        .await
+        .expect("open store");
+    let application = store.clone().into_application();
+    application
+        .request_feedback(workspace.request(first_id.clone()))
+        .await
+        .expect("first request");
+    application
+        .request_feedback(workspace.request(second_id.clone()))
+        .await
+        .expect("second request");
+    let first = application
+        .cancel_feedback(CancelFeedbackInput {
+            request_id: first_id.clone(),
+            reason: "Delete session fixture one.".to_owned(),
+        })
+        .await
+        .expect("cancel first");
+    let second = application
+        .cancel_feedback(CancelFeedbackInput {
+            request_id: second_id.clone(),
+            reason: "Delete session fixture two.".to_owned(),
+        })
+        .await
+        .expect("cancel second");
+    let package_dirs = [first, second]
+        .into_iter()
+        .map(|view| view.feedback.expect("package").directory_path)
+        .collect::<Vec<_>>();
+    application
+        .archive_host_session(HostSessionInput {
+            host_id: "test-host".to_owned(),
+            host_session_id: "test-session".to_owned(),
+        })
+        .await
+        .expect("archive session");
+
+    application
+        .delete_host_session(HostSessionInput {
+            host_id: "test-host".to_owned(),
+            host_session_id: "test-session".to_owned(),
+        })
+        .await
+        .expect("delete archived session");
+    for request_id in [first_id, second_id] {
+        let missing = application
+            .get_feedback(GetFeedbackInput { request_id })
+            .await
+            .expect_err("request row removed");
+        assert_eq!(missing.code(), "REQUEST_NOT_FOUND");
+    }
+    for package_dir in package_dirs {
+        assert!(!Path::new(&package_dir).exists());
+    }
     store.close().await;
 }
 
@@ -448,6 +765,7 @@ async fn migration_installs_the_full_foundation_contract() {
         "attachments",
         "feedback_results",
         "submission_plans",
+        "host_preferences",
         "feedback_requests_completed_is_terminal",
         "feedback_requests_cancelled_is_terminal",
         "feedback_requests_status_updated",
@@ -455,6 +773,8 @@ async fn migration_installs_the_full_foundation_contract() {
         "drafts_locked_after_submission_plan_update",
         "drafts_locked_after_submission_plan_delete",
         "host_sessions_host",
+        "host_sessions_archive_pin_updated",
+        "host_preferences_pin",
         "request_attachments_request",
     ] {
         assert!(
