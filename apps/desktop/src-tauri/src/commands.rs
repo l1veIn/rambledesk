@@ -209,9 +209,49 @@ pub(super) async fn install_pi_package(
     let pi_bin = pi_install::resolve_pi_binary(home.as_deref()).ok_or_else(|| {
         "The `pi` CLI was not found. RambleDesk checked PATH and common macOS package-manager locations. Install Pi, set RAMBLEDESK_PI_BIN, or run `pi install npm:@rambledesk/pi` manually.".to_owned()
     })?;
-    tauri::async_runtime::spawn_blocking(move || pi_install::run_install(&pi_bin, &package_dir))
-        .await
-        .map_err(|error| format!("Installer task failed: {error}"))?
+    tauri::async_runtime::spawn_blocking(move || {
+        pi_install::run_install(&pi_bin, &package_dir, home.as_deref())
+    })
+    .await
+    .map_err(|error| format!("Installer task failed: {error}"))?
+}
+
+#[tauri::command]
+pub(super) fn get_pi_package_status(
+    app: tauri::AppHandle,
+    checkout_root: Option<String>,
+) -> Result<pi_install::PiPackageStatus, String> {
+    let home = app
+        .path()
+        .home_dir()
+        .map_err(|error| format!("Could not resolve the user home directory: {error}"))?;
+    let resource_dir = app.path().resource_dir().ok();
+    let package_dir =
+        pi_install::resolve_package_dir(checkout_root.as_deref(), resource_dir.as_deref());
+    pi_install::package_status(&home, package_dir.as_deref())
+}
+
+#[tauri::command]
+pub(super) async fn uninstall_pi_package(
+    app: tauri::AppHandle,
+    checkout_root: Option<String>,
+) -> Result<String, String> {
+    let home = app
+        .path()
+        .home_dir()
+        .map_err(|error| format!("Could not resolve the user home directory: {error}"))?;
+    let resource_dir = app.path().resource_dir().ok();
+    let package_dir =
+        pi_install::resolve_package_dir(checkout_root.as_deref(), resource_dir.as_deref());
+    let pi_bin = pi_install::resolve_pi_binary(Some(&home)).ok_or_else(|| {
+        "The `pi` CLI was not found. RambleDesk checked PATH and common package-manager locations. Reinstall Pi before removing its RambleDesk adapter."
+            .to_owned()
+    })?;
+    tauri::async_runtime::spawn_blocking(move || {
+        pi_install::run_uninstall(&pi_bin, &home, package_dir.as_deref())
+    })
+    .await
+    .map_err(|error| format!("Uninstaller task failed: {error}"))?
 }
 
 #[tauri::command]

@@ -81,6 +81,12 @@
   type ModelProgress = { model_id: string; downloaded: number; total: number }
   type McpHost = { id: string; name: string; installed: boolean; configured: boolean }
   type McpInstallResult = { action: 'created' | 'updated' | 'unchanged' }
+  type PiPackageStatus = {
+    cliAvailable: boolean
+    installed: boolean
+    sourceCount: number
+    restartRequired: boolean
+  }
 
   const baseSteps = ['Welcome', 'Storage', 'Voice input', 'Adapters', 'Notifications', 'Cooking', 'Finish']
   const macSteps = ['Welcome', 'Storage', 'Voice input', 'Permissions', 'Adapters', 'Notifications', 'Cooking', 'Finish']
@@ -103,6 +109,8 @@
   let hostSelections = new Set<string>()
   let adapterBusy = false
   let piBusy = false
+  let piStatus: PiPackageStatus | null = null
+  let piStatusLoading = isTauri
   let dshBusy = false
   let promptCopyState: 'idle' | 'copied' | 'error' = 'idle'
   let notificationBusy = false
@@ -128,6 +136,7 @@
       void loadStorage()
       void loadModels()
       void loadHosts()
+      void loadPiStatus()
       void loadMacPermissionStep()
       void listen<ModelProgress>('speech-model-progress', ({ payload }) => (modelProgress = payload)).then(
         (unlisten) => (unlistenModelProgress = unlisten),
@@ -277,11 +286,23 @@
     }
   }
 
+  async function loadPiStatus() {
+    piStatusLoading = true
+    try {
+      piStatus = await invoke<PiPackageStatus>('get_pi_package_status', { checkoutRoot: null })
+    } catch {
+      piStatus = null
+    } finally {
+      piStatusLoading = false
+    }
+  }
+
   async function installPi() {
     if (piBusy) return
     piBusy = true
     try {
       await invoke<string>('install_pi_package', { checkoutRoot: null })
+      await loadPiStatus()
       toast.success(tr('Pi native adapter installed'))
     } catch (cause) {
       toast.error(tr('Pi adapter installation failed'), { description: messageFrom(cause) })
@@ -444,9 +465,27 @@
                 </div>
               </div>
               <p class="mb-0 mt-2 text-[11px] leading-4 text-muted-foreground">{tr('Pi waits for feedback in the same tool call, then automatically continues the current session. No copied or manually sent resume prompt is needed.')}</p>
-              <Button size="sm" class="mt-3 w-full" disabled={piBusy || !isTauri} onclick={() => void installPi()}>
-                {#if piBusy}<LoaderCircle class="animate-spin" data-icon="inline-start" />{:else}<Download data-icon="inline-start" />{/if}
-                {piBusy ? tr('Installing…') : tr('Install Pi adapter')}
+              <Button
+                size="sm"
+                class="mt-3 w-full"
+                disabled={piBusy || piStatusLoading || piStatus?.installed || !isTauri || piStatus?.cliAvailable === false}
+                onclick={() => void installPi()}
+              >
+                {#if piBusy}
+                  <LoaderCircle class="animate-spin" data-icon="inline-start" />
+                  {tr('Installing…')}
+                {:else if piStatusLoading}
+                  <LoaderCircle class="animate-spin" data-icon="inline-start" />
+                  {tr('Checking…')}
+                {:else if piStatus?.installed}
+                  <Check data-icon="inline-start" />
+                  {tr('Installed')}
+                {:else if piStatus && !piStatus.cliAvailable}
+                  {tr('Pi CLI not detected')}
+                {:else}
+                  <Download data-icon="inline-start" />
+                  {tr('Install Pi adapter')}
+                {/if}
               </Button>
             </div>
             <div class="rounded-xl border bg-muted/20 p-4">

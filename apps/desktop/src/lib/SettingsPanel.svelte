@@ -180,6 +180,13 @@
     restartRequired: boolean
   }
 
+  type PiPackageStatus = {
+    cliAvailable: boolean
+    installed: boolean
+    sourceCount: number
+    restartRequired: boolean
+  }
+
   let dialogOpen = true
   let closeDelivered = false
   let activeSection: Section = initialSection
@@ -189,7 +196,10 @@
   let installing = false
   let installMessage = ''
   let installError = ''
-  let installingPi = false
+  let piStatus: PiPackageStatus | null = null
+  let piStatusLoading = true
+  let piAction: 'install' | 'uninstall' | null = null
+  let piLastAction: 'status' | 'install' | 'uninstall' = 'status'
   let piInstallMessage = ''
   let piInstallError = ''
   let installingDsh = false
@@ -232,6 +242,7 @@
   onMount(() => {
     if (isTauri) {
       void refreshHosts()
+      void refreshPiStatus()
       void refreshDataStorage()
       void refreshSpeechDevices()
       void refreshSpeechModels()
@@ -242,7 +253,10 @@
       void listen<StorageMigrationProgress>('storage-migration-progress', ({ payload }) => {
         storageMigration = payload
       }).then((unlisten) => (unlistenStorageProgress = unlisten))
-    } else loadingHosts = false
+    } else {
+      loadingHosts = false
+      piStatusLoading = false
+    }
     return () => {
       unlistenModelProgress?.()
       unlistenStorageProgress?.()
@@ -417,9 +431,25 @@
     }
   }
 
+  async function refreshPiStatus(reportError = true) {
+    piStatusLoading = true
+    try {
+      piStatus = await invoke<PiPackageStatus>('get_pi_package_status', { checkoutRoot: null })
+    } catch (cause) {
+      piStatus = null
+      if (reportError) {
+        piLastAction = 'status'
+        piInstallError = messageFrom(cause)
+      }
+    } finally {
+      piStatusLoading = false
+    }
+  }
+
   async function installPiPackage() {
-    if (installingPi) return
-    installingPi = true
+    if (piAction) return
+    piAction = 'install'
+    piLastAction = 'install'
     piInstallError = ''
     piInstallMessage = ''
     try {
@@ -435,7 +465,27 @@
     } catch (cause) {
       piInstallError = messageFrom(cause)
     } finally {
-      installingPi = false
+      await refreshPiStatus(false)
+      piAction = null
+    }
+  }
+
+  async function uninstallPiPackage() {
+    if (piAction || !piStatus?.installed || !confirm(tr('Uninstall the Pi native adapter?'))) return
+    piAction = 'uninstall'
+    piLastAction = 'uninstall'
+    piInstallError = ''
+    piInstallMessage = ''
+    try {
+      const output = await invoke<string>('uninstall_pi_package', { checkoutRoot: null })
+      piInstallMessage =
+        tr('Pi native adapter uninstalled; restart your Pi session to apply.') +
+        (output.trim() ? `\n${output.trim()}` : '')
+    } catch (cause) {
+      piInstallError = messageFrom(cause)
+    } finally {
+      await refreshPiStatus(false)
+      piAction = null
     }
   }
 
@@ -1443,15 +1493,40 @@
                   <div class="flex flex-wrap items-center gap-2">
                     <h3 class="m-0 text-sm font-medium">{tr('Pi native adapter')}</h3>
                     <Badge variant="secondary">{tr('Native wait')}</Badge>
+                    {#if piStatusLoading}
+                      <Badge variant="outline">{tr('Checking…')}</Badge>
+                    {:else if piStatus?.installed}
+                      <Badge variant="secondary">{tr('Installed')}</Badge>
+                    {:else}
+                      <Badge variant="outline">{tr('Not installed')}</Badge>
+                    {/if}
+                    {#if piStatus && !piStatus.cliAvailable}
+                      <Badge variant="outline">{tr('Pi CLI not detected')}</Badge>
+                    {/if}
                   </div>
                   <p class="m-0 mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">
                     {tr('The Pi package uses the local JSON API to request, get, wait, and cancel; waiting stays inside the Pi tool call.')}
                   </p>
+                  {#if piStatus && piStatus.sourceCount > 1}
+                    <p class="m-0 mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">
+                      {tr('{count} RambleDesk Pi package registrations detected. Uninstall removes all of them.', { count: piStatus.sourceCount })}
+                    </p>
+                  {/if}
                 </div>
-                <Button disabled={installingPi || !isTauri} onclick={installPiPackage}>
-                  {#if installingPi}
+                <Button
+                  variant={piStatus?.installed ? 'outline' : 'default'}
+                  disabled={piAction !== null || piStatusLoading || !isTauri || piStatus?.cliAvailable === false}
+                  onclick={() => void (piStatus?.installed ? uninstallPiPackage() : installPiPackage())}
+                >
+                  {#if piAction === 'install'}
                     <LoaderCircle class="animate-spin" data-icon="inline-start" />
                     {tr('Installing…')}
+                  {:else if piAction === 'uninstall'}
+                    <LoaderCircle class="animate-spin" data-icon="inline-start" />
+                    {tr('Uninstalling…')}
+                  {:else if piStatus?.installed}
+                    <Trash2 data-icon="inline-start" />
+                    {tr('Uninstall')}
                   {:else}
                     <Download data-icon="inline-start" />
                     {tr('Install')}
@@ -1461,13 +1536,21 @@
               {#if piInstallMessage}
                 <Alert.Root class="mt-4 border-success/30 bg-success/5 text-success">
                   <CheckCircle2 />
-                  <Alert.Title>{tr('Installation complete')}</Alert.Title>
+                  <Alert.Title>
+                    {piLastAction === 'uninstall' ? tr('Uninstallation complete') : tr('Installation complete')}
+                  </Alert.Title>
                   <Alert.Description class="whitespace-pre-wrap">{piInstallMessage}</Alert.Description>
                 </Alert.Root>
               {/if}
               {#if piInstallError}
                 <Alert.Root variant="destructive" class="mt-4">
-                  <Alert.Title>{tr('Installation failed')}</Alert.Title>
+                  <Alert.Title>
+                    {piLastAction === 'uninstall'
+                      ? tr('Uninstallation failed')
+                      : piLastAction === 'status'
+                        ? tr('Status check failed')
+                        : tr('Installation failed')}
+                  </Alert.Title>
                   <Alert.Description>{piInstallError}</Alert.Description>
                 </Alert.Root>
               {/if}
