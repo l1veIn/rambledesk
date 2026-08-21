@@ -640,6 +640,11 @@
     }
   }
 
+  function openArchivedSessions() {
+    settingsOpen = false
+    archivedSessionsOpen = true
+  }
+
   function applyWorkspaceMutation(next: FeedbackWorkspaceView) {
     const localBody = draftBody
     workspace = next
@@ -902,15 +907,16 @@
       sessions={$navigation.hostSessions}
       activeHostId={$navigation.selectedHostId}
       activeHostSessionId={$navigation.selectedHostSessionId}
+      requestSearch={$navigation.requestSearch}
       loading={$navigation.loadingNavigation}
       {resolveHostProfile}
       onSelect={(hostId, hostSessionId) =>
         void navigation.selectScope(hostId, hostSessionId)}
+      onRequestSearch={(search) => void navigation.setRequestSearch(search)}
       onRenameSession={(session, title) => navigation.renameHostSession(session, title)}
       onSetSessionPinned={(session, pinned) => navigation.setHostSessionPinned(session, pinned)}
       onArchiveSession={(session) => navigation.archiveHostSession(session)}
       onSetHostPinned={(hostId, pinned) => navigation.setHostPinned(hostId, pinned)}
-      onArchived={() => (archivedSessionsOpen = true)}
       onSettings={() => void openSettings('general')}
     />
 
@@ -933,6 +939,7 @@
           activeRequestId={workspace?.request.request_id ?? null}
           cookingRequestIds={cookingRequestIds}
           scopeLabel={requestScopeLabel}
+          searchQuery={$navigation.requestSearch}
           loading={$navigation.loadingRequests}
           loadingMore={$navigation.loadingMoreRequests}
           hasMore={todayOnly ? false : $navigation.nextRequestCursor !== null}
@@ -1034,7 +1041,6 @@
   {messageFrom}
   onError={(message) => (pageError = message)}
   onChanged={() => navigation.refreshNavigation(true)}
-  onOpenRequest={(requestId) => openRequest(requestId)}
 />
 
 {#if settingsOpen}
@@ -1043,6 +1049,7 @@
     initialSection={settingsSection}
     {updateInstallBlocked}
     onRestartOnboarding={restartOnboarding}
+    onOpenArchived={openArchivedSessions}
     onClose={() => {
       settingsOpen = false
       void refreshNotificationPermission()

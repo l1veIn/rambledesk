@@ -4,6 +4,7 @@
   import { open } from '@tauri-apps/plugin-dialog'
   import { isPermissionGranted, requestPermission } from '@tauri-apps/plugin-notification'
   import {
+    ArchiveRestore,
     BellRing,
     Check,
     CheckCircle2,
@@ -113,6 +114,7 @@
   export let initialSection: Section = 'general'
   export let onClose: () => void = () => {}
   export let onRestartOnboarding: () => void = () => {}
+  export let onOpenArchived: () => void = () => {}
   export let updateInstallBlocked = false
 
   type DataStorageView = {
@@ -760,6 +762,24 @@
               <Button variant="outline" onclick={onRestartOnboarding}>
                 <Rocket data-icon="inline-start" />
                 {tr('Run getting started again')}
+              </Button>
+            </section>
+
+            <section class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-8 border-b pb-8">
+              <div class="flex gap-3">
+                <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+                  <ArchiveRestore class="size-4" />
+                </span>
+                <div>
+                  <h3 class="m-0 text-sm font-medium">{tr('Archived content')}</h3>
+                  <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
+                    {tr('View archived sessions and Ramble requests.')}
+                  </p>
+                </div>
+              </div>
+              <Button variant="outline" onclick={onOpenArchived}>
+                <ArchiveRestore data-icon="inline-start" />
+                {tr('View archived content')}
               </Button>
             </section>
 

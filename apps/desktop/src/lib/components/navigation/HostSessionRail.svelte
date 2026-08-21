@@ -2,7 +2,6 @@
   import { tick } from 'svelte'
   import {
     Archive,
-    ArchiveRestore,
     ChevronDown,
     ChevronRight,
     Inbox,
@@ -13,6 +12,7 @@
     Pencil,
     Pin,
     PinOff,
+    Search,
     Settings,
   } from '@lucide/svelte'
   import { Badge } from '$lib/components/ui/badge'
@@ -37,11 +37,12 @@
   export let sessions: HostSessionSummary[] = []
   export let activeHostId: string | null = null
   export let activeHostSessionId: string | null = null
+  export let requestSearch = ''
   export let loading = false
   export let collapsed = false
   export let resolveHostProfile: (hostId: string) => HostProfile
   export let onSelect: (hostId: string | null, hostSessionId: string | null) => void = () => {}
-  export let onArchived: () => void = () => {}
+  export let onRequestSearch: (search: string) => void = () => {}
   export let onSettings: () => void = () => {}
   export let onRenameSession: (
     session: HostSessionSummary,
@@ -60,6 +61,7 @@
   let editingTitle = ''
   let actionKey: string | null = null
   let titleInput: HTMLInputElement | null = null
+  let requestSearchTimer: ReturnType<typeof setTimeout> | null = null
 
   $: groups = Array.from(
     sessions.reduce((byHost, session) => {
@@ -102,6 +104,11 @@
 
   function toggleSidebar() {
     collapsed = !collapsed
+  }
+
+  function scheduleRequestSearch(value: string) {
+    if (requestSearchTimer) clearTimeout(requestSearchTimer)
+    requestSearchTimer = setTimeout(() => onRequestSearch(value), 180)
   }
 
   function sessionKey(session: HostSessionSummary) {
@@ -217,6 +224,19 @@
     </div>
 
     <div class="border-b border-sidebar-border p-2">
+      {#if !collapsed}
+        <label
+          class="mb-2 flex h-8 items-center gap-2 rounded-md border border-sidebar-border bg-background/80 px-2 text-[11px] text-muted-foreground focus-within:ring-2 focus-within:ring-ring/40"
+        >
+          <Search class="size-3.5 shrink-0" />
+          <input
+            value={requestSearch}
+            class="min-w-0 flex-1 bg-transparent text-sidebar-foreground outline-none placeholder:text-muted-foreground"
+            placeholder={tr('Search active requests…')}
+            oninput={(event) => scheduleRequestSearch(event.currentTarget.value)}
+          />
+        </label>
+      {/if}
       <button
         type="button"
         class={[
@@ -373,7 +393,7 @@
                 <div class="ml-3 border-l border-sidebar-border pl-2">
                   {#each group.sessions as session (session.host_session_id)}
                     {@const key = sessionKey(session)}
-                    <div class="group/session flex min-h-8 items-center gap-1">
+                    <div class="group/session flex min-h-8 items-center gap-1 pr-7">
                       {#if editingSessionKey === key}
                         <form
                           class="flex h-8 min-w-0 flex-1 items-center"
@@ -482,16 +502,6 @@
     </ScrollArea>
 
     <div class="space-y-1 border-t border-sidebar-border p-2">
-      <Button
-        variant="ghost"
-        class={collapsed ? 'w-full justify-center px-0' : 'w-full justify-start'}
-        aria-label={tr('Archived')}
-        title={collapsed ? tr('Archived') : undefined}
-        onclick={onArchived}
-      >
-        <ArchiveRestore data-icon="inline-start" />
-        {#if !collapsed}{tr('Archived')}{/if}
-      </Button>
       <Button
         variant="ghost"
         class={collapsed ? 'w-full justify-center px-0' : 'w-full justify-start'}

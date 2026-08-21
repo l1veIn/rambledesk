@@ -14,6 +14,7 @@
   export let activeRequestId: string | null = null
   export let cookingRequestIds: ReadonlySet<string> = new Set()
   export let scopeLabel = ''
+  export let searchQuery = ''
   export let loading = false
   export let loadingMore = false
   export let hasMore = false
@@ -93,7 +94,11 @@
           <Inbox class="size-4" />
         </div>
         <strong class="text-xs">
-          {todayOnly ? tr('No requests in the last 24 hours') : tr('No requests in this scope')}
+          {searchQuery.trim()
+            ? tr('No matching requests')
+            : todayOnly
+              ? tr('No requests in the last 24 hours')
+              : tr('No requests in this scope')}
         </strong>
         <span class="text-[11px] leading-5 text-muted-foreground">
           {tr('New requests appear here by most recent update.')}

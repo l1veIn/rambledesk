@@ -28,6 +28,7 @@ export type NavigationState = {
   hostProfiles: Record<string, HostProfile>
   selectedHostId: string | null
   selectedHostSessionId: string | null
+  requestSearch: string
   nextRequestCursor: string | null
   loadingNavigation: boolean
   loadingRequests: boolean
@@ -56,6 +57,7 @@ const initialState: NavigationState = {
   hostProfiles: {},
   selectedHostId: null,
   selectedHostSessionId: null,
+  requestSearch: '',
   nextRequestCursor: null,
   loadingNavigation: true,
   loadingRequests: true,
@@ -188,10 +190,23 @@ export function createNavigationController(context: NavigationControllerContext)
       host_session_id: state.selectedHostSessionId,
       status: [...ALL_REQUEST_STATUSES],
       archived: null,
-      search: null,
+      search: state.requestSearch.trim() || null,
       limit: 100,
       cursor,
     }
+  }
+
+  function requestMatchesSearch(request: FeedbackRequestSummary, search: string) {
+    const normalized = search.trim().toLowerCase()
+    if (!normalized) return true
+    return [
+      request.title,
+      request.what_happened,
+      request.source_hint,
+      request.request_id,
+      request.host_id,
+      request.host_session_id,
+    ].some((value) => (value ?? '').toLowerCase().includes(normalized))
   }
 
   async function refreshRequests(openFirst = false) {
@@ -204,7 +219,8 @@ export function createNavigationController(context: NavigationControllerContext)
               (request) =>
                 (!state.selectedHostId || request.host_id === state.selectedHostId) &&
                 (!state.selectedHostSessionId ||
-                  request.host_session_id === state.selectedHostSessionId),
+                  request.host_session_id === state.selectedHostSessionId) &&
+                requestMatchesSearch(request, state.requestSearch),
             ),
             next_cursor: null,
           }
@@ -254,6 +270,13 @@ export function createNavigationController(context: NavigationControllerContext)
     if (state.selectedHostId === hostId && state.selectedHostSessionId === hostSessionId) return
     if (context.isDirty() && !(await context.saveDraftNow())) return
     patch({ selectedHostId: hostId, selectedHostSessionId: hostSessionId })
+    await refreshRequests(false)
+  }
+
+  async function setRequestSearch(search: string) {
+    const current = get(store).requestSearch
+    if (current === search) return
+    patch({ requestSearch: search, nextRequestCursor: null })
     await refreshRequests(false)
   }
 
@@ -387,6 +410,7 @@ export function createNavigationController(context: NavigationControllerContext)
     refreshRequests,
     loadMoreRequests,
     selectScope,
+    setRequestSearch,
     renameHostSession,
     setHostSessionPinned,
     archiveHostSession,

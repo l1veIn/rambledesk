@@ -12,7 +12,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.3.0-rc.5"
+version = "0.3.0-rc.6"
 edition = "2024"
 rust-version = "1.88"
 repository = "https://github.com/l1veIn/rambledesk"
@@ -91,4 +91,3 @@ debug = 1
 
 [profile.test.package.rambledesk-speech]
 debug = 1
-
