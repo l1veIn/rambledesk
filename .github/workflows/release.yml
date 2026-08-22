@@ -181,3 +181,15 @@ jobs:
             -print0 | sort -z | xargs -0 sha256sum | \
             sed 's#  artifacts/# *#' > SHA256SUMS.txt
           node scripts/gh-release-assets.mjs upload --tag "$GITHUB_REF_NAME" -- SHA256SUMS.txt
+
+      - name: Apply changelog notes to the release body and updater manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          node scripts/release-notes.mjs --tag "$GITHUB_REF_NAME" > notes.txt
+          gh release edit "$GITHUB_REF_NAME" --notes-file notes.txt
+          mkdir -p manifest
+          node scripts/gh-release-assets.mjs download --tag "$GITHUB_REF_NAME" --dir manifest --pattern 'latest.json'
+          node scripts/patch-updater-notes.mjs --manifest manifest/latest.json --notes-file notes.txt
+          node scripts/gh-release-assets.mjs upload --tag "$GITHUB_REF_NAME" -- manifest/latest.json

@@ -218,6 +218,17 @@ pnpm dev
 非正常退出后，SQLite 与 draft 目录负责恢复。`waiting` 和 `in_progress`
 请求不能因为进程重启而隐式取消。Tauri events 只提示 UI 重新查询。
 
+## 发布与更新说明
+
+- 发布前在 `docs/CHANGELOG.md` **顶部**为本次版本新增条目（`## vX.Y.Z`），
+  纯文本、英文在前中文摘要在后（更新弹窗以 `<pre>` 渲染，不解析 Markdown）。
+- `release.yml` 的 checksums 阶段会自动把该条目写入 GitHub Release 正文和
+  `latest.json` 的 `notes`；没有条目的版本回退到通用说明（会打警告）。
+- 手动生成说明：`node scripts/release-notes.mjs --tag vX.Y.Z`。
+- 修正已发布 release 的说明：先改 CHANGELOG，再手动刷 release 正文和
+  `latest.json`（`scripts/release-notes.mjs` + `scripts/patch-updater-notes.mjs`），
+  避免两处不一致。
+
 ## 完成标准
 
 一个改动只有满足以下条件才算完成：
