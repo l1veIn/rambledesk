@@ -32,7 +32,6 @@ type PublisherControllerContext = {
   getDraftBody: () => string
   getSavedRevision: () => number
   getCookingEnabled: () => boolean
-  getPreviewActive: () => boolean
   getPreview: () => CookedPreview | null
   setPreview: (preview: CookedPreview | null) => void
   setCooking: (requestId: string, cooking: boolean) => void
@@ -56,6 +55,9 @@ export function createPublisherController(context: PublisherControllerContext) {
       request: {
         ...workspace.request,
         status: result.status,
+        resolution: result.resolution,
+        allow_finish: result.allow_finish,
+        final_summary: result.final_summary,
         updated_at: result.updated_at,
       },
     })
@@ -121,9 +123,10 @@ export function createPublisherController(context: PublisherControllerContext) {
     }
     context.setPageError('')
 
-    // A generated, still-current cooked preview is published directly: no
-    // second model call, no extra wait.
-    if (context.getCookingEnabled() && context.getPreviewActive() && context.getPreview()) {
+    // A generated cooked draft is published directly: no second model call, no
+    // extra wait. If the user edited the cooked text, submit the current editor
+    // body as the cooked variant while preserving the original uncooked source.
+    if (context.getCookingEnabled() && context.getPreview()) {
       const preview = context.getPreview()!
       context.setSubmitting(true)
       context.setSubmitStage('publishing')
@@ -132,10 +135,11 @@ export function createPublisherController(context: PublisherControllerContext) {
           {
             request_id: submission.request.request_id,
             expected_revision: submission.savedRevision,
-            cooked_markdown: preview.markdown,
+            cooked_markdown: submission.body,
             cooking_model: preview.model,
+            uncooked_markdown: preview.original,
           },
-          preview.markdown,
+          submission.body,
           preview.original,
         )
         context.setPreview(null)

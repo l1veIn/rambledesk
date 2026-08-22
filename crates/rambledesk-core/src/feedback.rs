@@ -28,6 +28,17 @@ use validation::validate_request_input;
 pub(crate) use validation::{canonical_uuid, validate_text};
 use waiters::FeedbackWaiters;
 
+#[derive(Clone, Copy, Debug)]
+pub struct SubmissionPlanInput<'a> {
+    pub request_id: &'a str,
+    pub expected_revision: u64,
+    pub cooked_markdown: Option<&'a str>,
+    pub cooking_model: Option<&'a str>,
+    pub uncooked_markdown: Option<&'a str>,
+    pub publication_id: &'a str,
+    pub now: &'a str,
+}
+
 #[async_trait]
 pub trait FeedbackRepository: AttachmentPathResolver + Send + Sync {
     async fn create_or_get_request(
@@ -165,12 +176,7 @@ pub trait FeedbackRepository: AttachmentPathResolver + Send + Sync {
 
     async fn plan_submission(
         &self,
-        request_id: &str,
-        expected_revision: u64,
-        cooked_markdown: Option<&str>,
-        cooking_model: Option<&str>,
-        publication_id: &str,
-        now: &str,
+        input: SubmissionPlanInput<'_>,
     ) -> Result<SubmissionPlan, RepositoryError>;
 
     async fn complete_submission(

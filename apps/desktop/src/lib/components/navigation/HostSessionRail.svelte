@@ -5,6 +5,7 @@
     ChevronDown,
     ChevronRight,
     Inbox,
+    LoaderCircle,
     MessageSquareText,
     MoreHorizontal,
     PanelLeftClose,
@@ -28,7 +29,6 @@
   type HostGroup = {
     hostId: string
     sessions: HostSessionSummary[]
-    requestCount: number
     pendingCount: number
     updatedAt: string
     hostPinnedAt: string | null
@@ -39,6 +39,7 @@
   export let activeHostSessionId: string | null = null
   export let requestSearch = ''
   export let loading = false
+  export let refreshing = false
   export let collapsed = false
   export let resolveHostProfile: (hostId: string) => HostProfile
   export let onSelect: (hostId: string | null, hostSessionId: string | null) => void = () => {}
@@ -68,13 +69,11 @@
       const group = byHost.get(session.host_id) ?? {
         hostId: session.host_id,
         sessions: [],
-        requestCount: 0,
         pendingCount: 0,
         updatedAt: session.updated_at,
         hostPinnedAt: session.host_pinned_at,
       }
       group.sessions.push(session)
-      group.requestCount += session.request_count
       group.pendingCount += session.pending_count
       if (session.updated_at > group.updatedAt) group.updatedAt = session.updated_at
       group.hostPinnedAt = group.hostPinnedAt ?? session.host_pinned_at
@@ -262,243 +261,256 @@
       </button>
     </div>
 
-    <ScrollArea class="min-h-0 flex-1">
-      {#if collapsed}
-        <div class="space-y-1 p-2">
-          {#each groups as group (group.hostId)}
-            {@const profile = resolveHostProfile(group.hostId)}
-            <button
-              type="button"
-              class={[
-                'grid h-9 w-full place-items-center rounded-md text-muted-foreground transition-colors [&_svg]:size-4',
-                activeHostId === group.hostId && activeHostSessionId === null
-                  ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                  : 'hover:bg-sidebar-accent/65 hover:text-sidebar-foreground',
-              ]}
-              aria-label={profile.label}
-              title={profile.label}
-              onclick={() => onSelect(group.hostId, null)}
-            >
-              {@html profile.icon_svg}
-            </button>
-
-            {#each group.sessions as session (session.host_session_id)}
-              <button
-                type="button"
-                class={[
-                  'grid h-8 w-full place-items-center rounded-md text-muted-foreground transition-colors',
-                  activeHostId === group.hostId && activeHostSessionId === session.host_session_id
-                    ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                    : 'hover:bg-sidebar-accent/55 hover:text-sidebar-foreground',
-                ]}
-                aria-label={session.title}
-                title={session.title}
-                onclick={() => onSelect(group.hostId, session.host_session_id)}
-              >
-                <MessageSquareText class="size-4" />
-              </button>
-            {/each}
-          {:else}
-            <div
-              class="grid h-16 place-items-center text-muted-foreground"
-              aria-label={loading ? tr('Loading host sessions…') : tr('No host sessions yet')}
-              title={loading ? tr('Loading host sessions…') : tr('No host sessions yet')}
-            >
-              <Inbox class="size-4" />
-            </div>
-          {/each}
-        </div>
-      {:else}
-        <div class="space-y-1 p-2">
-          {#each groups as group (group.hostId)}
-            {@const profile = resolveHostProfile(group.hostId)}
-            <div>
-              <div class="group flex items-center gap-1">
+    <ScrollArea class="min-h-0 flex-1" aria-busy={refreshing}>
+      <div class="relative min-h-full">
+        <div class={refreshing ? 'pointer-events-none select-none opacity-40' : undefined}>
+          {#if collapsed}
+            <div class="space-y-1 p-2">
+              {#each groups as group (group.hostId)}
+                {@const profile = resolveHostProfile(group.hostId)}
                 <button
                   type="button"
                   class={[
-                    'flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left text-xs transition-colors',
+                    'grid h-9 w-full place-items-center rounded-md text-muted-foreground transition-colors [&_svg]:size-4',
                     activeHostId === group.hostId && activeHostSessionId === null
-                      ? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground'
-                      : 'hover:bg-sidebar-accent/65',
+                      ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                      : 'hover:bg-sidebar-accent/65 hover:text-sidebar-foreground',
                   ]}
+                  aria-label={profile.label}
+                  title={profile.label}
                   onclick={() => onSelect(group.hostId, null)}
                 >
-                  <span class="grid size-6 shrink-0 place-items-center text-muted-foreground [&_svg]:size-5">
-                    {@html profile.icon_svg}
-                  </span>
-                  <span class="min-w-0 flex-1 truncate">{profile.label}</span>
-                  {#if group.hostPinnedAt}
-                    <Pin class="size-3 shrink-0 text-primary" />
-                  {/if}
-                  {#if group.pendingCount > 0}
-                    <Badge variant="secondary" class="h-5 min-w-5 px-1.5 text-[10px]">
-                      {group.pendingCount}
-                    </Badge>
-                  {:else}
-                    <span class="text-[10px] tabular-nums text-muted-foreground">
-                      {group.requestCount}
-                    </span>
-                  {/if}
+                  {@html profile.icon_svg}
                 </button>
-                <DropdownMenu.Root>
-                  <DropdownMenu.Trigger>
-                    {#snippet child({ props })}
-                      <Button
-                        {...props}
-                        variant="ghost"
-                        size="icon-xs"
-                        aria-label={tr('Host actions')}
-                        title={tr('Host actions')}
-                        class="opacity-70 group-hover:opacity-100 aria-expanded:opacity-100"
-                        disabled={actionKey !== null}
-                      >
-                        <MoreHorizontal />
-                      </Button>
-                    {/snippet}
-                  </DropdownMenu.Trigger>
-                  <DropdownMenu.Content align="end" class="w-40">
-                    <DropdownMenu.Item
-                      onclick={() =>
-                        void runAction(`host-pin:${group.hostId}`, () =>
-                          onSetHostPinned(group.hostId, !group.hostPinnedAt),
-                        )}
-                    >
-                      {#if group.hostPinnedAt}
-                        <PinOff class="size-4" />
-                        {tr('Unpin host')}
-                      {:else}
-                        <Pin class="size-4" />
-                        {tr('Pin host')}
-                      {/if}
-                    </DropdownMenu.Item>
-                  </DropdownMenu.Content>
-                </DropdownMenu.Root>
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  aria-label={collapsedHosts.has(group.hostId) ? tr('Expand sessions') : tr('Collapse sessions')}
-                  title={collapsedHosts.has(group.hostId) ? tr('Expand sessions') : tr('Collapse sessions')}
-                  onclick={() => toggleHost(group.hostId)}
+
+                {#each group.sessions as session (session.host_session_id)}
+                  <button
+                    type="button"
+                    class={[
+                      'grid h-8 w-full place-items-center rounded-md text-muted-foreground transition-colors',
+                      activeHostId === group.hostId && activeHostSessionId === session.host_session_id
+                        ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                        : 'hover:bg-sidebar-accent/55 hover:text-sidebar-foreground',
+                    ]}
+                    aria-label={session.title}
+                    title={session.title}
+                    onclick={() => onSelect(group.hostId, session.host_session_id)}
+                  >
+                    <MessageSquareText class="size-4" />
+                  </button>
+                {/each}
+              {:else}
+                <div
+                  class="grid h-16 place-items-center text-muted-foreground"
+                  aria-label={loading ? tr('Loading host sessions…') : tr('No host sessions yet')}
+                  title={loading ? tr('Loading host sessions…') : tr('No host sessions yet')}
                 >
-                  {#if collapsedHosts.has(group.hostId)}
-                    <ChevronRight />
-                  {:else}
-                    <ChevronDown />
-                  {/if}
-                </Button>
-              </div>
-
-              {#if !collapsedHosts.has(group.hostId)}
-                <div class="ml-3 border-l border-sidebar-border pl-2">
-                  {#each group.sessions as session (session.host_session_id)}
-                    {@const key = sessionKey(session)}
-                    <div class="group/session flex min-h-8 items-center gap-1 pr-7">
-                      {#if editingSessionKey === key}
-                        <form
-                          class="flex h-8 min-w-0 flex-1 items-center"
-                          onsubmit={(event) => {
-                            event.preventDefault()
-                            void commitRename(session)
-                          }}
-                        >
-                          <input
-                            bind:this={titleInput}
-                            bind:value={editingTitle}
-                            class="h-7 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-[11px] outline-none ring-ring/40 focus:ring-2"
-                            maxlength="160"
-                            disabled={actionKey === `rename:${key}`}
-                            onblur={() => void commitRename(session)}
-                            onkeydown={(event) => {
-                              if (event.key === 'Escape') {
-                                event.preventDefault()
-                                cancelRename()
-                              }
-                            }}
-                          />
-                        </form>
-                      {:else}
-                        <button
-                          type="button"
-                          class={[
-                            'flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-[11px] transition-colors',
-                            activeHostId === group.hostId && activeHostSessionId === session.host_session_id
-                              ? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground'
-                              : 'text-muted-foreground hover:bg-sidebar-accent/55 hover:text-sidebar-foreground',
-                          ]}
-                          title={session.title}
-                          onclick={() => onSelect(group.hostId, session.host_session_id)}
-                        >
-                          <span class="min-w-0 flex-1 truncate">{session.title}</span>
-                          {#if session.pinned_at}
-                            <Pin class="size-3 shrink-0 text-primary" />
-                          {/if}
-                          {#if session.pending_count > 0}
-                            <span class="size-1.5 shrink-0 rounded-full bg-primary"></span>
-                          {/if}
-                          <span class="shrink-0 text-[9px] tabular-nums">{session.request_count}</span>
-                        </button>
-
-                        <DropdownMenu.Root>
-                          <DropdownMenu.Trigger>
-                            {#snippet child({ props })}
-                              <Button
-                                {...props}
-                                variant="ghost"
-                                size="icon-xs"
-                                aria-label={tr('Session actions')}
-                                title={tr('Session actions')}
-                                class="opacity-60 group-hover/session:opacity-100 aria-expanded:opacity-100"
-                                disabled={actionKey !== null}
-                              >
-                                <MoreHorizontal />
-                              </Button>
-                            {/snippet}
-                          </DropdownMenu.Trigger>
-                          <DropdownMenu.Content align="end" class="w-44">
-                            <DropdownMenu.Item onclick={() => void startRename(session)}>
-                              <Pencil class="size-4" />
-                              {tr('Rename session')}
-                            </DropdownMenu.Item>
-                            <DropdownMenu.Item
-                              onclick={() =>
-                                void runAction(`session-pin:${key}`, () =>
-                                  onSetSessionPinned(session, !session.pinned_at),
-                                )}
-                            >
-                              {#if session.pinned_at}
-                                <PinOff class="size-4" />
-                                {tr('Unpin session')}
-                              {:else}
-                                <Pin class="size-4" />
-                                {tr('Pin session')}
-                              {/if}
-                            </DropdownMenu.Item>
-                            <DropdownMenu.Item
-                              disabled={session.pending_count > 0}
-                              onclick={() =>
-                                session.pending_count === 0
-                                  ? void runAction(`session-archive:${key}`, () => onArchiveSession(session))
-                                  : undefined}
-                            >
-                              <Archive class="size-4" />
-                              {tr('Archive session')}
-                            </DropdownMenu.Item>
-                          </DropdownMenu.Content>
-                        </DropdownMenu.Root>
-                      {/if}
-                    </div>
-                  {/each}
+                  <Inbox class="size-4" />
                 </div>
-              {/if}
+              {/each}
             </div>
           {:else}
-            <div class="px-2 py-8 text-center text-[11px] leading-5 text-muted-foreground">
-              {loading ? tr('Loading host sessions…') : tr('No host sessions yet')}
+            <div class="space-y-1 p-2">
+              {#each groups as group (group.hostId)}
+                {@const profile = resolveHostProfile(group.hostId)}
+                <div>
+                  <div class="group/host flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      aria-label={collapsedHosts.has(group.hostId) ? tr('Expand sessions') : tr('Collapse sessions')}
+                      title={collapsedHosts.has(group.hostId) ? tr('Expand sessions') : tr('Collapse sessions')}
+                      class="shrink-0 text-muted-foreground opacity-70 hover:opacity-100"
+                      onclick={() => toggleHost(group.hostId)}
+                    >
+                      {#if collapsedHosts.has(group.hostId)}
+                        <ChevronRight />
+                      {:else}
+                        <ChevronDown />
+                      {/if}
+                    </Button>
+                    <div
+                      class={[
+                        'flex h-9 min-w-0 flex-1 items-center rounded-md text-xs transition-colors',
+                        activeHostId === group.hostId && activeHostSessionId === null
+                          ? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground'
+                          : 'hover:bg-sidebar-accent/65',
+                      ]}
+                    >
+                      <button
+                        type="button"
+                        class="flex h-full min-w-0 flex-1 items-center gap-2 rounded-md bg-transparent px-2 text-left text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                        onclick={() => onSelect(group.hostId, null)}
+                      >
+                        <span class="grid size-6 shrink-0 place-items-center text-muted-foreground [&_svg]:size-5">
+                          {@html profile.icon_svg}
+                        </span>
+                        <span class="min-w-0 flex-1 truncate">{profile.label}</span>
+                        {#if group.hostPinnedAt}
+                          <Pin class="size-3 shrink-0 text-primary" />
+                        {/if}
+                        {#if group.pendingCount > 0}
+                          <Badge variant="secondary" class="h-5 min-w-5 px-1.5 text-[10px]">
+                            {group.pendingCount}
+                          </Badge>
+                        {/if}
+                      </button>
+                      <DropdownMenu.Root>
+                        <DropdownMenu.Trigger>
+                          {#snippet child({ props })}
+                            <Button
+                              {...props}
+                              variant="ghost"
+                              size="icon-xs"
+                              aria-label={tr('Host actions')}
+                              title={tr('Host actions')}
+                              class="mr-1 hidden hover:bg-transparent aria-expanded:bg-transparent group-hover/host:inline-flex group-focus-within/host:inline-flex aria-expanded:inline-flex dark:hover:bg-transparent"
+                              disabled={actionKey !== null}
+                            >
+                              <MoreHorizontal />
+                            </Button>
+                          {/snippet}
+                        </DropdownMenu.Trigger>
+                        <DropdownMenu.Content align="end" class="w-40">
+                          <DropdownMenu.Item
+                            onclick={() =>
+                              void runAction(`host-pin:${group.hostId}`, () =>
+                                onSetHostPinned(group.hostId, !group.hostPinnedAt),
+                              )}
+                          >
+                            {#if group.hostPinnedAt}
+                              <PinOff class="size-4" />
+                              {tr('Unpin host')}
+                            {:else}
+                              <Pin class="size-4" />
+                              {tr('Pin host')}
+                            {/if}
+                          </DropdownMenu.Item>
+                        </DropdownMenu.Content>
+                      </DropdownMenu.Root>
+                    </div>
+                  </div>
+
+                  {#if !collapsedHosts.has(group.hostId)}
+                    <div class="ml-3 border-l border-sidebar-border pl-2">
+                      {#each group.sessions as session (session.host_session_id)}
+                        {@const key = sessionKey(session)}
+                        <div class="group/session flex min-h-8 items-center gap-1">
+                          {#if editingSessionKey === key}
+                            <form
+                              class="flex h-8 min-w-0 flex-1 items-center"
+                              onsubmit={(event) => {
+                                event.preventDefault()
+                                void commitRename(session)
+                              }}
+                            >
+                              <input
+                                bind:this={titleInput}
+                                bind:value={editingTitle}
+                                class="h-7 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-[11px] outline-none ring-ring/40 focus:ring-2"
+                                maxlength="160"
+                                disabled={actionKey === `rename:${key}`}
+                                onblur={() => void commitRename(session)}
+                                onkeydown={(event) => {
+                                  if (event.key === 'Escape') {
+                                    event.preventDefault()
+                                    cancelRename()
+                                  }
+                                }}
+                              />
+                            </form>
+                          {:else}
+                            <div
+                              class={[
+                                'flex min-h-8 min-w-0 flex-1 items-center rounded-md text-[11px] transition-colors',
+                                activeHostId === group.hostId && activeHostSessionId === session.host_session_id
+                                  ? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground'
+                                  : 'text-muted-foreground hover:bg-sidebar-accent/55 hover:text-sidebar-foreground',
+                              ]}
+                            >
+                              <button
+                                type="button"
+                                class="flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded-md bg-transparent px-2 py-1.5 text-left text-[11px] outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                                title={session.title}
+                                onclick={() => onSelect(group.hostId, session.host_session_id)}
+                              >
+                                <span class="min-w-0 flex-1 truncate">{session.title}</span>
+                                {#if session.pinned_at}
+                                  <Pin class="size-3 shrink-0 text-primary" />
+                                {/if}
+                                {#if session.pending_count > 0}
+                                  <span class="size-1.5 shrink-0 rounded-full bg-primary"></span>
+                                {/if}
+                              </button>
+
+                              <DropdownMenu.Root>
+                                <DropdownMenu.Trigger>
+                                  {#snippet child({ props })}
+                                    <Button
+                                      {...props}
+                                      variant="ghost"
+                                      size="icon-xs"
+                                      aria-label={tr('Session actions')}
+                                      title={tr('Session actions')}
+                                      class="mr-1 hidden hover:bg-transparent aria-expanded:bg-transparent group-hover/session:inline-flex group-focus-within/session:inline-flex aria-expanded:inline-flex dark:hover:bg-transparent"
+                                      disabled={actionKey !== null}
+                                    >
+                                      <MoreHorizontal />
+                                    </Button>
+                                  {/snippet}
+                                </DropdownMenu.Trigger>
+                                <DropdownMenu.Content align="end" class="w-44">
+                                  <DropdownMenu.Item onclick={() => void startRename(session)}>
+                                    <Pencil class="size-4" />
+                                    {tr('Rename session')}
+                                  </DropdownMenu.Item>
+                                  <DropdownMenu.Item
+                                    onclick={() =>
+                                      void runAction(`session-pin:${key}`, () =>
+                                        onSetSessionPinned(session, !session.pinned_at),
+                                      )}
+                                  >
+                                    {#if session.pinned_at}
+                                      <PinOff class="size-4" />
+                                      {tr('Unpin session')}
+                                    {:else}
+                                      <Pin class="size-4" />
+                                      {tr('Pin session')}
+                                    {/if}
+                                  </DropdownMenu.Item>
+                                  <DropdownMenu.Item
+                                    disabled={session.pending_count > 0}
+                                    onclick={() =>
+                                      session.pending_count === 0
+                                        ? void runAction(`session-archive:${key}`, () => onArchiveSession(session))
+                                        : undefined}
+                                  >
+                                    <Archive class="size-4" />
+                                    {tr('Archive session')}
+                                  </DropdownMenu.Item>
+                                </DropdownMenu.Content>
+                              </DropdownMenu.Root>
+                            </div>
+                          {/if}
+                        </div>
+                      {/each}
+                    </div>
+                  {/if}
+                </div>
+              {:else}
+                <div class="px-2 py-8 text-center text-[11px] leading-5 text-muted-foreground">
+                  {loading ? tr('Loading host sessions…') : tr('No host sessions yet')}
+                </div>
+              {/each}
             </div>
-          {/each}
+          {/if}
         </div>
-      {/if}
+        {#if refreshing && sessions.length > 0}
+          <div class="absolute inset-0 z-20 grid place-items-center bg-sidebar/80 backdrop-blur-[1px]">
+            <LoaderCircle class="size-5 animate-spin text-primary" aria-hidden="true" />
+          </div>
+        {/if}
+      </div>
     </ScrollArea>
 
     <div class="space-y-1 border-t border-sidebar-border p-2">

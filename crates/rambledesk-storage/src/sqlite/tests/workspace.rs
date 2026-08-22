@@ -97,6 +97,7 @@ async fn attachments_share_revision_publish_in_order_and_survive_restart() {
             expected_revision: draft.saved_revision,
             cooked_markdown: None,
             cooking_model: None,
+            uncooked_markdown: None,
         })
         .await
         .expect("publish feedback");
@@ -227,6 +228,7 @@ async fn non_image_attachments_detect_publish_and_round_trip() {
             expected_revision: draft.saved_revision,
             cooked_markdown: None,
             cooking_model: None,
+            uncooked_markdown: None,
         })
         .await
         .expect("publish feedback");

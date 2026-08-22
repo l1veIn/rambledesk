@@ -1,13 +1,28 @@
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core'
-  import { AlertCircle, ExternalLink, FileQuestion, LoaderCircle, Minus, Plus, RotateCcw } from '@lucide/svelte'
+  import {
+    AlertCircle,
+    ExternalLink,
+    FileQuestion,
+    FolderOpen,
+    LoaderCircle,
+    Minus,
+    Plus,
+    RotateCcw,
+  } from '@lucide/svelte'
   import { onDestroy, tick } from 'svelte'
 
   import { Button } from '$lib/components/ui/button'
   import * as Dialog from '$lib/components/ui/dialog'
+  import { toast } from '$lib/components/ui/sonner'
   import type { AttachmentView, RequestAttachmentView } from '$lib/feedback'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
+  import {
+    clampImageZoom,
+    computeImagePreviewZoom,
+    imageDisplaySize,
+  } from './imagePreviewZoom'
   import MarkdownPreview from './MarkdownPreview.svelte'
 
   export let open = false
@@ -19,25 +34,46 @@
   let error = ''
   let markdown = ''
   let imageUrl = ''
-  let imageElement: HTMLImageElement
-  let imageContainer: HTMLDivElement
-  let scale = 1
-  let offsetX = 0
-  let offsetY = 0
-  let dragging = false
-  let dragStartX = 0
-  let dragStartY = 0
-  let dragOriginX = 0
-  let dragOriginY = 0
+  let imageViewport: HTMLDivElement
+  let imageViewportWidth = 0
+  let imageViewportHeight = 0
+  let imageNaturalWidth = 0
+  let imageNaturalHeight = 0
+  let zoom = 1
+  let zoomInitialized = false
   let unsupported = false
   let openMessage = ''
   let openError = ''
+  let revealBusy = false
   let loadedKey = ''
   let loadGeneration = 0
 
   $: requestedKey = open && attachment ? `${requestId}:${attachment.attachment_id}` : ''
   $: if (requestedKey && requestedKey !== loadedKey) void loadAttachment(requestedKey)
   $: if (!open && loadedKey) resetPreview()
+  $: zoomModel = computeImagePreviewZoom({
+    naturalWidth: imageNaturalWidth,
+    naturalHeight: imageNaturalHeight,
+    viewportWidth: imageViewportWidth,
+    viewportHeight: imageViewportHeight,
+  })
+  $: imageSize = imageDisplaySize(imageNaturalWidth, imageNaturalHeight, zoom)
+  $: if (
+    imageUrl &&
+    imageNaturalWidth > 0 &&
+    imageNaturalHeight > 0 &&
+    imageViewportWidth > 0 &&
+    imageViewportHeight > 0 &&
+    !zoomInitialized
+  ) {
+    zoom = zoomModel.initialZoom
+    zoomInitialized = true
+  }
+  $: if (zoomInitialized && zoom < zoomModel.minZoom) zoom = zoomModel.minZoom
+  $: if (zoomInitialized && zoom > zoomModel.maxZoom) zoom = zoomModel.maxZoom
+  $: canZoomOut = zoom > zoomModel.minZoom + 0.001
+  $: canZoomIn = zoom < zoomModel.maxZoom - 0.001
+  $: canResetZoom = Math.abs(zoom - zoomModel.initialZoom) > 0.001
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
@@ -72,11 +108,22 @@
       if (current.media_type === 'text/markdown') {
         markdown = new TextDecoder('utf-8', { fatal: true }).decode(buffer)
       } else if (current.media_type.startsWith('image/')) {
-        imageUrl = URL.createObjectURL(new Blob([buffer], { type: current.media_type }))
-        await tick()
-        if (generation !== loadGeneration || !imageElement) return
-        await imageElement.decode()
-        if (generation !== loadGeneration || !open) return
+        const nextImageUrl = URL.createObjectURL(new Blob([buffer], { type: current.media_type }))
+        let dimensions: { width: number; height: number }
+        try {
+          dimensions = await imageDimensions(nextImageUrl)
+        } catch (cause) {
+          URL.revokeObjectURL(nextImageUrl)
+          throw cause
+        }
+        if (generation !== loadGeneration || !open) {
+          URL.revokeObjectURL(nextImageUrl)
+          return
+        }
+        imageUrl = nextImageUrl
+        imageNaturalWidth = dimensions.width
+        imageNaturalHeight = dimensions.height
+        zoomInitialized = false
       } else {
         unsupported = true
       }
@@ -97,6 +144,16 @@
     return tr('An unknown error occurred while reading the attachment.')
   }
 
+  async function imageDimensions(source: string): Promise<{ width: number; height: number }> {
+    const probe = new Image()
+    probe.src = source
+    await probe.decode()
+    return {
+      width: probe.naturalWidth || probe.width || 1,
+      height: probe.naturalHeight || probe.height || 1,
+    }
+  }
+
   function resetPreview() {
     loadGeneration += 1
     loadedKey = ''
@@ -106,7 +163,33 @@
     unsupported = false
     openMessage = ''
     openError = ''
+    revealBusy = false
+    imageNaturalWidth = 0
+    imageNaturalHeight = 0
+    zoomInitialized = false
     releaseMedia()
+  }
+
+  async function revealAttachmentInFolder() {
+    const current = attachment
+    if (!current || !requestId || revealBusy) return
+    revealBusy = true
+    try {
+      const path = await invoke<string>('reveal_feedback_attachment', {
+        input: {
+          requestId,
+          attachmentId: current.attachment_id,
+          kind: readKind,
+        },
+      })
+      toast.success(tr('Attachment shown in folder'), { description: path })
+    } catch (cause) {
+      toast.error(tr('Could not show the file in the folder'), {
+        description: messageFrom(cause),
+      })
+    } finally {
+      revealBusy = false
+    }
   }
 
   async function openExternally() {
@@ -128,73 +211,58 @@
     }
   }
 
-  const MIN_SCALE = 1
-  const MAX_SCALE = 8
-
-  function clampScale(value: number) {
-    return Math.min(MAX_SCALE, Math.max(MIN_SCALE, value))
-  }
-
   function resetZoom() {
-    scale = 1
-    offsetX = 0
-    offsetY = 0
+    zoom = zoomModel.initialZoom
+    zoomInitialized = true
+    void tick().then(() => {
+      if (!imageViewport) return
+      imageViewport.scrollLeft = 0
+      imageViewport.scrollTop = 0
+    })
   }
 
-  function applyZoom(nextScale: number, anchorX: number, anchorY: number) {
-    const clamped = clampScale(nextScale)
-    if (clamped === scale) return
-    const ratio = clamped / scale
-    offsetX = anchorX - (anchorX - offsetX) * ratio
-    offsetY = anchorY - (anchorY - offsetY) * ratio
-    scale = clamped
-    if (scale <= MIN_SCALE) {
-      offsetX = 0
-      offsetY = 0
+  function applyZoom(nextZoom: number, anchorX?: number, anchorY?: number) {
+    const clamped = clampImageZoom(nextZoom, zoomModel)
+    if (Math.abs(clamped - zoom) <= 0.001) return
+    const viewport = imageViewport
+    const previousZoom = zoom
+    const hasAnchor = viewport && anchorX !== undefined && anchorY !== undefined
+    const contentX = hasAnchor ? viewport.scrollLeft + anchorX : 0
+    const contentY = hasAnchor ? viewport.scrollTop + anchorY : 0
+    const ratio = clamped / previousZoom
+    zoom = clamped
+    zoomInitialized = true
+    if (hasAnchor) {
+      void tick().then(() => {
+        viewport.scrollLeft = contentX * ratio - anchorX
+        viewport.scrollTop = contentY * ratio - anchorY
+      })
     }
   }
 
   function onWheel(event: WheelEvent) {
+    if (!event.ctrlKey && !event.metaKey) return
     event.preventDefault()
-    const rect = imageContainer.getBoundingClientRect()
-    const anchorX = event.clientX - (rect.left + rect.width / 2)
-    const anchorY = event.clientY - (rect.top + rect.height / 2)
+    const rect = imageViewport.getBoundingClientRect()
+    const anchorX = event.clientX - rect.left
+    const anchorY = event.clientY - rect.top
     const factor = event.deltaY < 0 ? 1.2 : 1 / 1.2
-    applyZoom(scale * factor, anchorX, anchorY)
+    applyZoom(zoom * factor, anchorX, anchorY)
   }
 
   function zoomIn() {
-    applyZoom(scale * 1.5, 0, 0)
+    applyZoom(zoom * 1.5, imageViewportWidth / 2, imageViewportHeight / 2)
   }
 
   function zoomOut() {
-    applyZoom(scale / 1.5, 0, 0)
-  }
-
-  function onPointerDown(event: PointerEvent) {
-    if (scale <= MIN_SCALE) return
-    dragging = true
-    dragStartX = event.clientX
-    dragStartY = event.clientY
-    dragOriginX = offsetX
-    dragOriginY = offsetY
-    imageElement?.setPointerCapture?.(event.pointerId)
-  }
-
-  function onPointerMove(event: PointerEvent) {
-    if (!dragging) return
-    offsetX = dragOriginX + (event.clientX - dragStartX)
-    offsetY = dragOriginY + (event.clientY - dragStartY)
-  }
-
-  function onPointerUp() {
-    dragging = false
+    applyZoom(zoom / 1.5, imageViewportWidth / 2, imageViewportHeight / 2)
   }
 
   function releaseMedia() {
     if (imageUrl) URL.revokeObjectURL(imageUrl)
     imageUrl = ''
-    resetZoom()
+    zoom = 1
+    zoomInitialized = false
   }
 
   onDestroy(() => {
@@ -208,17 +276,38 @@
     class="grid h-[min(820px,calc(100vh-3rem))] max-w-[min(1040px,calc(100vw-3rem))] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-[min(1040px,calc(100vw-3rem))]"
   >
     <Dialog.Header class="border-b px-6 py-4 pr-14">
-      <Dialog.Title class="truncate">{attachment?.file_name ?? tr('Attachment preview')}</Dialog.Title>
-      <Dialog.Description class="mt-1">
+      <div class="flex min-w-0 items-start gap-3">
+        <div class="min-w-0 flex-1">
+          <Dialog.Title class="truncate">{attachment?.file_name ?? tr('Attachment preview')}</Dialog.Title>
+          <Dialog.Description class="mt-1">
+            {#if attachment}
+              {attachment.media_type} · {(attachment.byte_size / 1024).toFixed(1)} KiB
+            {:else}
+              {tr('Review attachments from the agent')}
+            {/if}
+          </Dialog.Description>
+        </div>
         {#if attachment}
-          {attachment.media_type} · {(attachment.byte_size / 1024).toFixed(1)} KiB
-        {:else}
-          {tr('Review attachments from the agent')}
+          <Button
+            class="shrink-0"
+            variant="outline"
+            size="sm"
+            disabled={revealBusy}
+            onclick={() => void revealAttachmentInFolder()}
+          >
+            {#if revealBusy}
+              <LoaderCircle class="animate-spin" data-icon="inline-start" />
+              {tr('Showing in folder…')}
+            {:else}
+              <FolderOpen data-icon="inline-start" />
+              {tr('Show in folder')}
+            {/if}
+          </Button>
         {/if}
-      </Dialog.Description>
+      </div>
     </Dialog.Header>
 
-    <div class="min-h-0 bg-muted/20 p-4">
+    <div class="h-full min-h-0 overflow-hidden bg-muted/20 p-4">
       {#if loading}
         <div class="grid h-full place-items-center text-muted-foreground">
           <div class="flex items-center gap-2 text-xs">
@@ -237,41 +326,42 @@
       {:else if attachment?.media_type === 'text/markdown'}
         <MarkdownPreview {markdown} />
       {:else if imageUrl}
-        <div
-          bind:this={imageContainer}
-          class="relative grid h-full min-h-0 touch-none place-items-center overflow-hidden rounded-lg border bg-[repeating-conic-gradient(hsl(var(--muted))_0_25%,transparent_0_50%)_50%/16px_16px]"
-          onwheel={onWheel}
-        >
-          <img
-            bind:this={imageElement}
-            src={imageUrl}
-            alt={attachment?.file_name ?? tr('Image attachment')}
-            draggable="false"
-            class={[
-              'max-h-full max-w-full select-none object-contain shadow-sm',
-              scale > 1 ? (dragging ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-zoom-in',
-            ]}
-            style={`transform: translate(${offsetX}px, ${offsetY}px) scale(${scale}); ${dragging ? '' : 'transition: transform 120ms ease-out;'}`}
-            onpointerdown={onPointerDown}
-            onpointermove={onPointerMove}
-            onpointerup={onPointerUp}
-            onpointercancel={onPointerUp}
-          />
+        <div class="relative h-full min-h-0 overflow-hidden rounded-lg border bg-[repeating-conic-gradient(hsl(var(--muted))_0_25%,transparent_0_50%)_50%/16px_16px]">
+          <div
+            bind:this={imageViewport}
+            bind:clientWidth={imageViewportWidth}
+            bind:clientHeight={imageViewportHeight}
+            class="h-full min-h-0 overflow-auto overscroll-contain p-3"
+            onwheel={onWheel}
+          >
+            {#if imageSize}
+              <img
+                src={imageUrl}
+                alt={attachment?.file_name ?? tr('Image attachment')}
+                draggable="false"
+                class="mx-auto block max-w-none select-none object-contain shadow-sm"
+                style={`width: ${imageSize.width}px; height: ${imageSize.height}px;`}
+              />
+            {/if}
+          </div>
           <div class="absolute bottom-3 right-3 flex items-center gap-1 rounded-lg border bg-background/90 p-0.5 shadow-sm">
             <Button
               variant="ghost"
               size="icon-sm"
-              disabled={scale <= MIN_SCALE}
+              disabled={!canZoomOut}
               aria-label={tr('Zoom out')}
               title={tr('Zoom out')}
               onclick={zoomOut}
             >
               <Minus />
             </Button>
+            <span class="min-w-10 px-1 text-center font-mono text-[10px] text-muted-foreground">
+              {Math.round(zoom * 100)}%
+            </span>
             <Button
               variant="ghost"
               size="icon-sm"
-              disabled={scale >= MAX_SCALE}
+              disabled={!canZoomIn}
               aria-label={tr('Zoom in')}
               title={tr('Zoom in')}
               onclick={zoomIn}
@@ -281,7 +371,7 @@
             <Button
               variant="ghost"
               size="icon-sm"
-              disabled={scale <= MIN_SCALE}
+              disabled={!canResetZoom}
               aria-label={tr('Reset zoom')}
               title={tr('Reset zoom')}
               onclick={resetZoom}

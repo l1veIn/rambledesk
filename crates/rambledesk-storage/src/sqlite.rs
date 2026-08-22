@@ -11,7 +11,8 @@ use rambledesk_core::{
     FeedbackRequestSummary, FeedbackResolution, FeedbackResultView, FeedbackStatus,
     HostSessionQuery, HostSessionSummary, MAX_ATTACHMENT_COUNT, NewAttachment, NewFeedbackRequest,
     PublishedFeedbackPackage, RepositoryError, RequestAttachmentView, StoredFeedbackRequest,
-    StoredFeedbackWorkspace, SubmissionAttachment, SubmissionPlan, SubmissionRequestAttachment,
+    StoredFeedbackWorkspace, SubmissionAttachment, SubmissionPlan, SubmissionPlanInput,
+    SubmissionRequestAttachment,
 };
 use sha2::{Digest, Sha256};
 use sqlx::{
@@ -40,6 +41,7 @@ static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 type PendingSubmissionRow = (
     String,
     i64,
+    Option<String>,
     Option<String>,
     Option<String>,
     String,
@@ -173,7 +175,7 @@ impl SqliteFeedbackStore {
 
     async fn recover_pending_submissions(&self) -> Result<(), RepositoryError> {
         let pending: Vec<PendingSubmissionRow> = sqlx::query_as(
-            "SELECT request_id, source_revision, cooked_markdown, cooking_model, \
+            "SELECT request_id, source_revision, cooked_markdown, cooking_model, uncooked_markdown, \
                     terminal_resolution, cancel_reason \
              FROM submission_plans WHERE state = 'preparing' \
              ORDER BY submitted_at, request_id",
@@ -186,6 +188,7 @@ impl SqliteFeedbackStore {
             source_revision,
             cooked_markdown,
             cooking_model,
+            uncooked_markdown,
             resolution,
             cancel_reason,
         ) in pending
@@ -202,14 +205,15 @@ impl SqliteFeedbackStore {
                     )
                     .await?
                 } else {
-                    self.plan_submission(
-                        &request_id,
-                        source_revision as u64,
-                        cooked_markdown.as_deref(),
-                        cooking_model.as_deref(),
-                        "",
-                        "",
-                    )
+                    self.plan_submission(SubmissionPlanInput {
+                        request_id: &request_id,
+                        expected_revision: source_revision as u64,
+                        cooked_markdown: cooked_markdown.as_deref(),
+                        cooking_model: cooking_model.as_deref(),
+                        uncooked_markdown: uncooked_markdown.as_deref(),
+                        publication_id: "",
+                        now: "",
+                    })
                     .await?
                 };
                 let published =
@@ -478,22 +482,9 @@ impl FeedbackRepository for SqliteFeedbackStore {
 
     async fn plan_submission(
         &self,
-        request_id: &str,
-        expected_revision: u64,
-        cooked_markdown: Option<&str>,
-        cooking_model: Option<&str>,
-        publication_id: &str,
-        now: &str,
+        input: SubmissionPlanInput<'_>,
     ) -> Result<SubmissionPlan, RepositoryError> {
-        self.plan_submission_impl(
-            request_id,
-            expected_revision,
-            cooked_markdown,
-            cooking_model,
-            publication_id,
-            now,
-        )
-        .await
+        self.plan_submission_impl(input).await
     }
 
     async fn complete_submission(

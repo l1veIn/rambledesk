@@ -231,7 +231,8 @@ pub(super) async fn load_submission_row(
                 r.source_hint, hs.host_id, hs.host_session_id, \
                 d.body_markdown, d.revision AS draft_revision, \
                 sp.publication_id, sp.source_revision, sp.body_sha256, sp.cooked_markdown, \
-                sp.cooking_model, sp.terminal_resolution, sp.cancel_reason AS plan_cancel_reason, \
+                sp.cooking_model, sp.uncooked_markdown AS plan_uncooked_markdown, \
+                sp.terminal_resolution, sp.cancel_reason AS plan_cancel_reason, \
                 sp.submitted_at, sp.package_uri, sp.directory_path, \
                 sp.temp_directory_path, sp.markdown_path, sp.manifest_path \
          FROM feedback_requests r \
@@ -357,7 +358,10 @@ pub(super) fn submission_plan_from_row(
             .try_get::<Option<String>, _>("cooked_markdown")
             .map_err(storage_error)?
             .unwrap_or_else(|| body_markdown.clone()),
-        uncooked_markdown: body_markdown,
+        uncooked_markdown: row
+            .try_get::<Option<String>, _>("plan_uncooked_markdown")
+            .map_err(storage_error)?
+            .unwrap_or(body_markdown),
         cooking_model: row.try_get("cooking_model").map_err(storage_error)?,
         resolution,
         cancel_reason: row.try_get("plan_cancel_reason").map_err(storage_error)?,

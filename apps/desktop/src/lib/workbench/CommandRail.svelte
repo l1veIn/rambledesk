@@ -26,11 +26,14 @@
   export let attachmentBusy = false
   export let canSubmit = false
   export let cooking = false
+  export let cookingEnabled = false
+  export let cookedDraftReady = false
   export let submitting = false
   export let submitStage: SubmitStage = 'idle'
   export let canCancel = false
   export let cancelling = false
   export let approving = false
+  export let canOpenResumePrompt = false
   export let onToggleRamble: () => void = () => {}
   export let onExitRamble: () => void = () => {}
   export let onOpenVoiceSettings: () => void = () => {}
@@ -40,6 +43,8 @@
   export let onRemoveAttachment: (attachment: AttachmentView) => void = () => {}
   export let onPreviewAttachment: (attachment: AttachmentView) => void = () => {}
   export let onOpenPackage: () => void = () => {}
+  export let onOpenResumePrompt: () => void = () => {}
+  export let onCookPreview: () => void = () => {}
   export let onSubmit: () => void = () => {}
   export let onCancel: () => void = () => {}
   export let onApprove: () => void = () => {}
@@ -99,6 +104,8 @@
       approved={workspace.request.resolution === 'approved'}
       {canSubmit}
       {cooking}
+      {cookingEnabled}
+      {cookedDraftReady}
       {submitting}
       {submitStage}
       {canCancel}
@@ -106,7 +113,10 @@
       allowFinish={workspace.request.allow_finish}
       finalSummary={workspace.request.final_summary ?? ''}
       {approving}
+      {canOpenResumePrompt}
       onOpenPackage={onOpenPackage}
+      onOpenResumePrompt={onOpenResumePrompt}
+      onCookPreview={onCookPreview}
       onSubmit={onSubmit}
       onCancel={onCancel}
       onApprove={onApprove}

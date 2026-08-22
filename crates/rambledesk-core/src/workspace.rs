@@ -2,6 +2,7 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     ApplicationError, FeedbackApplication, FeedbackStatus, RepositoryError, StoredFeedbackRequest,
+    SubmissionPlanInput,
 };
 
 mod model;
@@ -372,12 +373,24 @@ impl FeedbackApplication {
         input: SubmitFeedbackInput,
     ) -> Result<crate::FeedbackRequestView, ApplicationError> {
         let request_id = crate::feedback::canonical_uuid(&input.request_id, "request_id")?;
-        match (&input.cooked_markdown, &input.cooking_model) {
-            (Some(markdown), Some(model)) => {
+        match (
+            &input.cooked_markdown,
+            &input.cooking_model,
+            &input.uncooked_markdown,
+        ) {
+            (Some(markdown), Some(model), uncooked_markdown) => {
                 crate::feedback::validate_text("cooked_markdown", markdown, 1, 100_000)?;
                 crate::feedback::validate_text("cooking_model", model, 1, 500)?;
+                if let Some(markdown) = uncooked_markdown {
+                    crate::feedback::validate_text("uncooked_markdown", markdown, 1, 100_000)?;
+                }
             }
-            (None, None) => {}
+            (None, None, None) => {}
+            (None, None, Some(_)) => {
+                return Err(ApplicationError::invalid_argument(
+                    "uncooked_markdown requires cooked_markdown and cooking_model",
+                ));
+            }
             _ => {
                 return Err(ApplicationError::invalid_argument(
                     "cooked_markdown and cooking_model must be provided together",
@@ -394,16 +407,18 @@ impl FeedbackApplication {
             return Ok(existing.into());
         }
         let now = self.clock.now_rfc3339();
+        let publication_id = self.ids.new_id();
         let plan_result = self
             .repository
-            .plan_submission(
-                &request_id,
-                input.expected_revision,
-                input.cooked_markdown.as_deref(),
-                input.cooking_model.as_deref(),
-                &self.ids.new_id(),
-                &now,
-            )
+            .plan_submission(SubmissionPlanInput {
+                request_id: &request_id,
+                expected_revision: input.expected_revision,
+                cooked_markdown: input.cooked_markdown.as_deref(),
+                cooking_model: input.cooking_model.as_deref(),
+                uncooked_markdown: input.uncooked_markdown.as_deref(),
+                publication_id: &publication_id,
+                now: &now,
+            })
             .await;
         let plan = match plan_result {
             Ok(plan) => plan,

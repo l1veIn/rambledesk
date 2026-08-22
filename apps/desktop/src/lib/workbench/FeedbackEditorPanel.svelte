@@ -27,7 +27,7 @@
   export let dragActive = false
   export let cooking = false
   export let cookingEnabled = false
-  export let cookedPreviewActive = false
+  export let cookedDraftReady = false
   export let cookedPreviewModel = ''
   export let locked = false
   export let cookedMarkdown = ''
@@ -126,7 +126,7 @@
           {#if publishedView === 'uncooked'}Uncooked{/if}
         </Button>
       </div>
-    {:else if cookingEnabled && !readOnly && !locked && !cooking}
+    {:else if cookingEnabled && !cookedDraftReady && !readOnly && !locked && !cooking}
       <Button
         variant="ghost"
         size="sm"
@@ -139,7 +139,7 @@
     {/if}
   </header>
 
-  {#if cookedPreviewActive}
+  {#if cookedDraftReady}
     <div
       class="mb-2 flex items-center gap-2 rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-[10px] text-foreground"
       aria-live="polite"

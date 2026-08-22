@@ -130,6 +130,7 @@ export function createCookingController(context: CookingControllerContext) {
           expected_revision: submission.savedRevision,
           cooked_markdown: cooked.markdown,
           cooking_model: cooked.model,
+          uncooked_markdown: submission.body,
         },
         cooked.markdown,
         submission.body,

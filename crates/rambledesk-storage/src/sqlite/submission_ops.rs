@@ -3,13 +3,18 @@ use super::*;
 impl SqliteFeedbackStore {
     pub(super) async fn plan_submission_impl(
         &self,
-        request_id: &str,
-        expected_revision: u64,
-        cooked_markdown: Option<&str>,
-        cooking_model: Option<&str>,
-        publication_id: &str,
-        now: &str,
+        input: SubmissionPlanInput<'_>,
     ) -> Result<SubmissionPlan, RepositoryError> {
+        let SubmissionPlanInput {
+            request_id,
+            expected_revision,
+            cooked_markdown,
+            cooking_model,
+            uncooked_markdown,
+            publication_id,
+            now,
+        } = input;
+        let uncooked_markdown_override = uncooked_markdown;
         let preflight = sqlx::query(
             "SELECT r.status, \
                     EXISTS(SELECT 1 FROM submission_plans sp WHERE sp.request_id = r.id) AS planned \
@@ -88,9 +93,13 @@ impl SqliteFeedbackStore {
                 row.try_get("cooked_markdown").map_err(storage_error)?;
             let stored_model: Option<String> =
                 row.try_get("cooking_model").map_err(storage_error)?;
+            let stored_uncooked: Option<String> = row
+                .try_get("plan_uncooked_markdown")
+                .map_err(storage_error)?;
             if stored_hash != body_sha256
                 || stored_cooked.as_deref() != cooked_markdown
                 || stored_model.as_deref() != cooking_model
+                || stored_uncooked.as_deref() != uncooked_markdown_override
             {
                 return Err(RepositoryError::DraftConflict);
             }
@@ -113,9 +122,9 @@ impl SqliteFeedbackStore {
         sqlx::query(
             "INSERT INTO submission_plans \
              (request_id, publication_id, source_revision, body_sha256, cooked_markdown, \
-              cooking_model, submitted_at, package_uri, directory_path, temp_directory_path, \
-              markdown_path, manifest_path) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+              cooking_model, uncooked_markdown, submitted_at, package_uri, directory_path, \
+              temp_directory_path, markdown_path, manifest_path) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         )
         .bind(request_id)
         .bind(publication_id)
@@ -123,6 +132,7 @@ impl SqliteFeedbackStore {
         .bind(&body_sha256)
         .bind(cooked_markdown)
         .bind(cooking_model)
+        .bind(uncooked_markdown_override)
         .bind(now)
         .bind(&prepared_paths.package_uri)
         .bind(&prepared_paths.directory_path)
@@ -146,7 +156,9 @@ impl SqliteFeedbackStore {
             resolution: FeedbackResolution::FeedbackSubmitted,
             cancel_reason: None,
             body_markdown: cooked_markdown.unwrap_or(&body_markdown).to_owned(),
-            uncooked_markdown: body_markdown,
+            uncooked_markdown: uncooked_markdown_override
+                .unwrap_or(&body_markdown)
+                .to_owned(),
             cooking_model: cooking_model.map(ToOwned::to_owned),
             source_revision: aggregate_revision as u64,
             publication_id: publication_id.to_owned(),

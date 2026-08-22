@@ -244,6 +244,7 @@ async fn official_client_exercises_feedback_lifecycle_and_errors() -> anyhow::Re
             expected_revision: saved.saved_revision,
             cooked_markdown: None,
             cooking_model: None,
+            uncooked_markdown: None,
         })
         .await
         .context("submit operator feedback")?;
@@ -463,6 +464,7 @@ async fn local_api_supports_pi_request_and_blocking_wait() -> anyhow::Result<()>
             expected_revision: saved.saved_revision,
             cooked_markdown: None,
             cooking_model: None,
+            uncooked_markdown: None,
         })
         .await
         .context("submit operator feedback")?;

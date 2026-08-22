@@ -50,7 +50,7 @@
   export let canSubmit = false
   export let cooking = false
   export let cookingEnabled = false
-  export let cookedPreviewActive = false
+  export let cookedDraftReady = false
   export let cookedPreviewModel = ''
   export let submitting = false
   export let submitStage: SubmitStage = 'idle'
@@ -58,6 +58,7 @@
   export let canCancel = false
   export let cancelling = false
   export let approving = false
+  export let canOpenResumePrompt = false
   export let resolveHostProfile: (hostId: string) => HostProfile
   export let formatTime: (value: string | null | undefined) => string
   export let onReload: () => void = () => {}
@@ -72,6 +73,7 @@
   export let onFileSelection: (event: Event) => void = () => {}
   export let onRemoveAttachment: (attachment: AttachmentView) => void = () => {}
   export let onOpenPackage: () => void = () => {}
+  export let onOpenResumePrompt: () => void = () => {}
   export let onSubmit: () => void = () => {}
   export let onCancel: () => void = () => {}
   export let onApprove: () => void = () => {}
@@ -240,7 +242,7 @@
               {formatTime}
               {cooking}
               cookingEnabled={cookingEnabled && !publishedFeedback}
-              {cookedPreviewActive}
+              {cookedDraftReady}
               {cookedPreviewModel}
               locked={interactionLocked}
               cookedMarkdown={publishedFeedback?.markdown ?? ''}
@@ -272,11 +274,14 @@
         {attachmentBusy}
         {canSubmit}
         {cooking}
+        {cookingEnabled}
+        {cookedDraftReady}
         {submitting}
         {submitStage}
         {canCancel}
         {cancelling}
         {approving}
+        {canOpenResumePrompt}
         {onToggleRamble}
         {onExitRamble}
         {onOpenVoiceSettings}
@@ -286,6 +291,8 @@
         {onRemoveAttachment}
         onPreviewAttachment={openAttachmentPreview}
         {onOpenPackage}
+        {onOpenResumePrompt}
+        {onCookPreview}
         {onSubmit}
         {onCancel}
         {onApprove}

@@ -36,6 +36,7 @@ async fn submit_is_idempotent_and_publishes_one_immutable_package() {
                 "The empty state should be tightened before shipping.".to_owned(),
             ),
             cooking_model: Some("deepseek/deepseek-chat".to_owned()),
+            uncooked_markdown: None,
         })
         .await
         .expect("submit");
@@ -45,6 +46,7 @@ async fn submit_is_idempotent_and_publishes_one_immutable_package() {
             expected_revision: 0,
             cooked_markdown: None,
             cooking_model: None,
+            uncooked_markdown: None,
         })
         .await
         .expect("completed submit replay");
@@ -122,6 +124,56 @@ async fn submit_is_idempotent_and_publishes_one_immutable_package() {
 }
 
 #[tokio::test]
+async fn cooked_submission_can_preserve_explicit_uncooked_source() {
+    let workspace = TestWorkspace::new().await;
+    let request_id = Uuid::now_v7().to_string();
+    let store = SqliteFeedbackStore::connect(&workspace.database)
+        .await
+        .expect("open store");
+    let application = store.clone().into_application();
+    application
+        .request_feedback(workspace.request(request_id.clone()))
+        .await
+        .expect("create request");
+    let draft = application
+        .save_feedback_draft(SaveDraftInput {
+            request_id: request_id.clone(),
+            body_markdown: "Cooked draft currently visible in the editor.".to_owned(),
+            expected_revision: 0,
+        })
+        .await
+        .expect("save cooked editor draft");
+
+    let submitted = application
+        .submit_feedback(SubmitFeedbackInput {
+            request_id: request_id.clone(),
+            expected_revision: draft.saved_revision,
+            cooked_markdown: Some("Edited cooked feedback ready for the agent.".to_owned()),
+            cooking_model: Some("deepseek/deepseek-chat".to_owned()),
+            uncooked_markdown: Some("Original uncooked operator ramble.".to_owned()),
+        })
+        .await
+        .expect("submit cooked draft with explicit source");
+
+    let result = submitted.feedback.expect("published feedback");
+    assert_eq!(
+        tokio::fs::read_to_string(&result.markdown_path)
+            .await
+            .expect("cooked feedback")
+            .trim(),
+        "Edited cooked feedback ready for the agent."
+    );
+    assert_eq!(
+        tokio::fs::read_to_string(Path::new(&result.directory_path).join("uncooked.md"))
+            .await
+            .expect("uncooked feedback")
+            .trim(),
+        "Original uncooked operator ramble."
+    );
+    store.close().await;
+}
+
+#[tokio::test]
 async fn restart_reconciles_package_published_before_database_completion() {
     let workspace = TestWorkspace::new().await;
     let request_id = Uuid::now_v7().to_string();
@@ -141,15 +193,17 @@ async fn restart_reconciles_package_published_before_database_completion() {
         })
         .await
         .expect("save draft");
+    let publication_id = Uuid::now_v7().to_string();
     let plan = store
-        .plan_submission(
-            &request_id,
-            draft.saved_revision,
-            None,
-            None,
-            &Uuid::now_v7().to_string(),
-            "2026-07-29T14:00:00Z",
-        )
+        .plan_submission(SubmissionPlanInput {
+            request_id: &request_id,
+            expected_revision: draft.saved_revision,
+            cooked_markdown: None,
+            cooking_model: None,
+            uncooked_markdown: None,
+            publication_id: &publication_id,
+            now: "2026-07-29T14:00:00Z",
+        })
         .await
         .expect("persist intent");
     rambledesk_core::FeedbackPackagePublisher::publish(&store, &plan)
@@ -201,6 +255,7 @@ async fn publishes_feedback_package_under_explicit_library_root() {
             expected_revision: draft.saved_revision,
             cooked_markdown: None,
             cooking_model: None,
+            uncooked_markdown: None,
         })
         .await
         .expect("submit");
@@ -232,15 +287,17 @@ async fn mismatched_existing_final_package_is_never_overwritten() {
         })
         .await
         .expect("save draft");
+    let publication_id = Uuid::now_v7().to_string();
     let plan = store
-        .plan_submission(
-            &request_id,
-            draft.saved_revision,
-            None,
-            None,
-            &Uuid::now_v7().to_string(),
-            "2026-07-29T15:00:00Z",
-        )
+        .plan_submission(SubmissionPlanInput {
+            request_id: &request_id,
+            expected_revision: draft.saved_revision,
+            cooked_markdown: None,
+            cooking_model: None,
+            uncooked_markdown: None,
+            publication_id: &publication_id,
+            now: "2026-07-29T15:00:00Z",
+        })
         .await
         .expect("plan");
     tokio::fs::create_dir_all(&plan.directory_path)
@@ -292,15 +349,17 @@ async fn mismatched_pending_package_does_not_block_startup() {
         })
         .await
         .expect("save draft");
+    let publication_id = Uuid::now_v7().to_string();
     let plan = store
-        .plan_submission(
-            &request_id,
-            draft.saved_revision,
-            None,
-            None,
-            &Uuid::now_v7().to_string(),
-            "2026-07-29T15:30:00Z",
-        )
+        .plan_submission(SubmissionPlanInput {
+            request_id: &request_id,
+            expected_revision: draft.saved_revision,
+            cooked_markdown: None,
+            cooking_model: None,
+            uncooked_markdown: None,
+            publication_id: &publication_id,
+            now: "2026-07-29T15:30:00Z",
+        })
         .await
         .expect("plan");
     tokio::fs::create_dir_all(&plan.directory_path)
@@ -361,15 +420,17 @@ async fn publisher_rejects_feedback_parent_replaced_by_symlink_after_plan() {
         })
         .await
         .expect("save draft");
+    let publication_id = Uuid::now_v7().to_string();
     let plan = store
-        .plan_submission(
-            &request_id,
-            draft.saved_revision,
-            None,
-            None,
-            &Uuid::now_v7().to_string(),
-            "2026-07-29T16:00:00Z",
-        )
+        .plan_submission(SubmissionPlanInput {
+            request_id: &request_id,
+            expected_revision: draft.saved_revision,
+            cooked_markdown: None,
+            cooking_model: None,
+            uncooked_markdown: None,
+            publication_id: &publication_id,
+            now: "2026-07-29T16:00:00Z",
+        })
         .await
         .expect("plan");
     let feedback_root = Path::new(&plan.directory_path)

@@ -1,12 +1,35 @@
 ---
 name: ramble
-description: Run a human-feedback loop through RambleDesk. Use when the user needs real human judgment, review, approval, or a hands-on check of the work — persist a request via request_ramble_feedback, wait for the human to ramble in the RambleDesk desktop workbench, then read the immutable feedback package returned by the tool and implement it. Do not scatter these requests across chat.
+description: Run a human-feedback loop through RambleDesk. Hard trigger: when the user invokes /ramble, $ramble, [$ramble], or says to use RambleDesk/ramble feedback, create a RambleDesk request before answering the substance unless they explicitly say not to send one. Also use when real human judgment, review, approval, or hands-on checking is needed.
 ---
 
 # ramble — run a human-feedback loop through RambleDesk
 
 Route anything that needs a real human's judgment, review, approval, or hands-on
 experience through the RambleDesk feedback loop instead of asking in chat.
+
+## Invocation contract
+
+- Explicit invocation is a command, not a hint. If the user invokes `/ramble`,
+  `$ramble`, `[$ramble]`, names this skill as the way to handle the task, or
+  asks for RambleDesk feedback, create the RambleDesk request first.
+- Do not answer with advice, a review, a design proposal, or implementation
+  before creating the request just because you can infer a reasonable answer
+  from screenshots, files, or local context.
+- For implicit use, invoke this skill when human testing, visual inspection,
+  screenshots, clarification, or a decision would materially improve the
+  result.
+- A meta request to inspect, edit, or debug this skill is not itself a request
+  to create a RambleDesk feedback item unless the user also explicitly asks to
+  run the feedback loop for that meta task.
+- If the expected RambleDesk tool name is unavailable, discover the available
+  RambleDesk equivalent and follow its schema. Do not silently degrade an
+  explicit invocation into ordinary chat.
+- Do not hard-code host confirmation tool names from examples. If a RambleDesk
+  request tool returns before the human finishes, search the available tools for
+  terms such as `ask`, `question`, `input`, `confirm`, and `confirmation`, then
+  use any discovered host tool whose schema can block until the human completes
+  or cancels the request.
 
 ## Workflow
 
@@ -29,7 +52,8 @@ experience through the RambleDesk feedback loop instead of asking in chat.
      session, so concurrent sessions stay separate.
    - `wait`: keep `true` (the default). The tool call blocks until the human
      submits or cancels in RambleDesk, then returns the feedback package
-     directly. Do not call `ask_user_question` while waiting.
+     directly. Do not call a separate host confirmation tool while this native
+     wait is active.
 2. **Read** — when the tool returns `completed`, read the feedback markdown
    from the tool content plus any attachment paths.
 3. **Implement** — apply the feedback item by item; when you need another
@@ -43,10 +67,10 @@ experience through the RambleDesk feedback loop instead of asking in chat.
 ## Principles
 
 - Persist first: a created request is durable and survives disconnect/restart.
-- Use `request_ramble_feedback` only when human testing, visual inspection,
-  screenshots, clarification, or a decision would materially improve the
-  result. Do not create a generic request merely because a task started or the
-  agent is about to finish.
+- An explicit invocation is not complete until one of these is true: the
+  request was created and the feedback package was read, the host requires a
+  manual continuation after request creation, the user cancelled, or no
+  RambleDesk request tool is available after discovery.
 - Never set `allow_finish` for requests that need detailed feedback (experience,
   checks, opinions); the human should submit a feedback body, not a shortcut.
 - One topic per request; split multiple topics into multiple requests.

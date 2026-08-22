@@ -58,6 +58,7 @@
   import { createCookingController } from './lib/workbench/cookingController'
   import { createDraftController } from './lib/workbench/draftController'
   import { createPublisherController } from './lib/workbench/publisherController'
+  import { buildResumePrompt, shouldShowResumePromptButton } from './lib/workbench/resumePrompt'
   import {
     createAttachmentController,
     type AttachmentMessageTone,
@@ -309,10 +310,13 @@
       : resolveHostProfile($navigation.selectedHostId).label
     : tr('All hosts')
   $: feedbackResult = completedResult?.feedback ?? workspace?.feedback ?? null
+  $: canOpenResumePrompt = shouldShowResumePromptButton(
+    feedbackResult,
+    completedResult?.resolution ?? workspace?.request.resolution,
+  )
   $: currentRequestCooking =
     workspace !== null && cookingRequestIds.has(workspace.request.request_id)
-  $: cookedPreviewActive =
-    cookedPreview !== null && draftBody === cookedPreview.markdown
+  $: cookedDraftReady = cookedPreview !== null
   // Turning Cooking off discards any pending cooked preview: submitting then
   // publishes the editor content as-is.
   $: if (!$cookingEnabled) cookedPreview = null
@@ -522,6 +526,12 @@
 
   function dismissResumePrompt() {
     resumePrompt = null
+    resumeCopyState = 'idle'
+  }
+
+  function openResumePrompt() {
+    if (!workspace || !canOpenResumePrompt) return
+    resumePrompt = buildResumePrompt(workspace, resolveHostProfile(workspace.request.host_id), tr)
     resumeCopyState = 'idle'
   }
 
@@ -744,7 +754,6 @@
     getDraftBody: () => draftBody,
     getSavedRevision: () => savedRevision,
     getCookingEnabled: () => $cookingEnabled,
-    getPreviewActive: () => cookedPreviewActive,
     getPreview: () => cookedPreview,
     setPreview: (preview) => {
       cookedPreview = preview
@@ -909,6 +918,7 @@
       activeHostSessionId={$navigation.selectedHostSessionId}
       requestSearch={$navigation.requestSearch}
       loading={$navigation.loadingNavigation}
+      refreshing={$navigation.refreshingPage}
       {resolveHostProfile}
       onSelect={(hostId, hostSessionId) =>
         void navigation.selectScope(hostId, hostSessionId)}
@@ -941,12 +951,13 @@
           scopeLabel={requestScopeLabel}
           searchQuery={$navigation.requestSearch}
           loading={$navigation.loadingRequests}
+          refreshing={$navigation.refreshingPage}
           loadingMore={$navigation.loadingMoreRequests}
           hasMore={todayOnly ? false : $navigation.nextRequestCursor !== null}
           {todayOnly}
           {resolveHostProfile}
           formatTime={formatTimeLocal}
-          onRefresh={() => void navigation.refreshRequests(false)}
+          onRefresh={() => void navigation.refreshPage()}
           onLoadMore={() => void navigation.loadMoreRequests()}
           onOpenRequest={(requestId) => void openRequest(requestId)}
           onToggleToday={() => (todayOnly = !todayOnly)}
@@ -990,7 +1001,7 @@
           {canSubmit}
           cooking={currentRequestCooking}
           cookingEnabled={$cookingEnabled}
-          cookedPreviewActive={cookedPreviewActive}
+          {cookedDraftReady}
           cookedPreviewModel={cookedPreview?.model ?? ''}
           onCookPreview={() => void cookPreviewOnly()}
           onRestoreOriginal={restoreOriginalAfterCook}
@@ -1000,6 +1011,7 @@
           {canCancel}
           {cancelling}
           {approving}
+          {canOpenResumePrompt}
           {resolveHostProfile}
           formatTime={formatTimeLocal}
           onReload={() => void reloadWorkspace()}
@@ -1012,6 +1024,7 @@
           onFileSelection={attachmentController.handleFileSelection}
           onRemoveAttachment={(attachment) => void attachmentController.removeAttachment(attachment)}
           onOpenPackage={() => void openFeedbackPackage()}
+          onOpenResumePrompt={openResumePrompt}
           onSubmit={() => void submitFeedback()}
           onCancel={() => void cancelFeedback()}
           onApprove={() => void approveFeedback()}

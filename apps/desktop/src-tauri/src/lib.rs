@@ -282,6 +282,7 @@ pub fn run() {
             read_feedback_attachment,
             read_request_attachment,
             open_attachment::open_feedback_attachment,
+            open_attachment::reveal_feedback_attachment,
             open_attachment::reveal_path_in_folder,
             submit_feedback,
             approve_feedback_request,

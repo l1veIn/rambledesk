@@ -20,6 +20,7 @@ import {
 import type { HostProfile } from './types'
 
 const ALL_REQUEST_STATUSES = ['waiting', 'in_progress', 'completed', 'cancelled'] as const
+const MANUAL_PAGE_REFRESH_MIN_MS = 300
 
 export type NavigationState = {
   pendingRequests: FeedbackRequestSummary[]
@@ -33,6 +34,7 @@ export type NavigationState = {
   loadingNavigation: boolean
   loadingRequests: boolean
   loadingMoreRequests: boolean
+  refreshingPage: boolean
 }
 
 type NavigationControllerContext = {
@@ -62,6 +64,7 @@ const initialState: NavigationState = {
   loadingNavigation: true,
   loadingRequests: true,
   loadingMoreRequests: false,
+  refreshingPage: false,
 }
 
 export function createNavigationController(context: NavigationControllerContext) {
@@ -136,10 +139,7 @@ export function createNavigationController(context: NavigationControllerContext)
   async function refreshNavigation(refreshRequestList = false) {
     patch({ loadingNavigation: true })
     try {
-      const [nextInbox, nextHostSessions] = await Promise.all([
-        invoke<FeedbackRequestSummary[]>('list_feedback_inbox'),
-        invoke<HostSessionSummary[]>('list_host_sessions'),
-      ])
+      const [nextInbox, nextHostSessions] = await Promise.all([loadInbox(), loadHostSessions()])
       applyInboxSnapshot(nextInbox)
       patch({ hostSessions: nextHostSessions })
       if (refreshRequestList) await refreshRequests(false)
@@ -147,6 +147,29 @@ export function createNavigationController(context: NavigationControllerContext)
       context.onPageError(context.messageFrom(cause))
     } finally {
       patch({ loadingNavigation: false })
+    }
+  }
+
+  async function refreshPage(minimumLoadingMs = MANUAL_PAGE_REFRESH_MIN_MS) {
+    const startedAt = now()
+    patch({ loadingNavigation: true, loadingRequests: true, refreshingPage: true })
+    try {
+      const [nextInbox, nextHostSessions, result] = await Promise.all([
+        loadInbox(),
+        loadHostSessions(),
+        loadRequestList(),
+      ])
+      applyInboxSnapshot(nextInbox)
+      patch({
+        hostSessions: nextHostSessions,
+        requests: result.requests,
+        nextRequestCursor: result.next_cursor,
+      })
+    } catch (cause) {
+      context.onPageError(context.messageFrom(cause))
+    } finally {
+      await waitForMinimumDuration(startedAt, minimumLoadingMs)
+      patch({ loadingNavigation: false, loadingRequests: false, refreshingPage: false })
     }
   }
 
@@ -209,24 +232,58 @@ export function createNavigationController(context: NavigationControllerContext)
     ].some((value) => (value ?? '').toLowerCase().includes(normalized))
   }
 
+  function loadInbox(): Promise<FeedbackRequestSummary[]> {
+    if (context.previewMode) {
+      return Promise.resolve(
+        previewFixtures.requests.filter(
+          (request) => request.status === 'waiting' || request.status === 'in_progress',
+        ),
+      )
+    }
+    return invoke<FeedbackRequestSummary[]>('list_feedback_inbox')
+  }
+
+  function loadHostSessions(): Promise<HostSessionSummary[]> {
+    if (context.previewMode) return Promise.resolve(previewFixtures.hostSessions)
+    return invoke<HostSessionSummary[]>('list_host_sessions')
+  }
+
+  function loadRequestList(cursor: string | null = null): Promise<ListFeedbackRequestsOutput> {
+    const state = get(store)
+    if (context.previewMode) {
+      return Promise.resolve({
+        requests:
+          cursor === null
+            ? previewFixtures.requests.filter(
+                (request) =>
+                  (!state.selectedHostId || request.host_id === state.selectedHostId) &&
+                  (!state.selectedHostSessionId ||
+                    request.host_session_id === state.selectedHostSessionId) &&
+                  requestMatchesSearch(request, state.requestSearch),
+              )
+            : [],
+        next_cursor: null,
+      })
+    }
+    return invoke<ListFeedbackRequestsOutput>('list_feedback_requests', {
+      input: requestListInput(cursor),
+    })
+  }
+
+  function now() {
+    return typeof performance === 'undefined' ? Date.now() : performance.now()
+  }
+
+  async function waitForMinimumDuration(startedAt: number, minimumMs: number) {
+    const remainingMs = minimumMs - (now() - startedAt)
+    if (remainingMs <= 0) return
+    await new Promise((resolve) => setTimeout(resolve, remainingMs))
+  }
+
   async function refreshRequests(openFirst = false) {
     patch({ loadingRequests: true })
     try {
-      const state = get(store)
-      const result: ListFeedbackRequestsOutput = context.previewMode
-        ? {
-            requests: previewFixtures.requests.filter(
-              (request) =>
-                (!state.selectedHostId || request.host_id === state.selectedHostId) &&
-                (!state.selectedHostSessionId ||
-                  request.host_session_id === state.selectedHostSessionId) &&
-                requestMatchesSearch(request, state.requestSearch),
-            ),
-            next_cursor: null,
-          }
-        : await invoke<ListFeedbackRequestsOutput>('list_feedback_requests', {
-            input: requestListInput(),
-          })
+      const result = await loadRequestList()
       patch({ requests: result.requests, nextRequestCursor: result.next_cursor })
       const currentRequestId = context.getWorkspaceRequestId()
       if (openFirst && result.requests[0]) {
@@ -246,9 +303,7 @@ export function createNavigationController(context: NavigationControllerContext)
     if (!state.nextRequestCursor || state.loadingMoreRequests) return
     patch({ loadingMoreRequests: true })
     try {
-      const result = await invoke<ListFeedbackRequestsOutput>('list_feedback_requests', {
-        input: requestListInput(state.nextRequestCursor),
-      })
+      const result = await loadRequestList(state.nextRequestCursor)
       const current = get(store)
       const known = new Set(current.requests.map((request) => request.request_id))
       patch({
@@ -407,6 +462,7 @@ export function createNavigationController(context: NavigationControllerContext)
     subscribe: store.subscribe,
     initialize,
     refreshNavigation,
+    refreshPage,
     refreshRequests,
     loadMoreRequests,
     selectScope,

@@ -6,6 +6,7 @@ use tauri_plugin_opener::OpenerExt;
 use crate::WorkbenchState;
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct OpenAttachmentInput {
     request_id: String,
     attachment_id: String,
@@ -15,14 +16,12 @@ pub(crate) struct OpenAttachmentInput {
     kind: Option<String>,
 }
 
-#[tauri::command]
-pub async fn open_feedback_attachment(
+async fn resolve_attachment_path(
     input: OpenAttachmentInput,
-    app: tauri::AppHandle,
-    state: tauri::State<'_, WorkbenchState>,
+    state: &WorkbenchState,
 ) -> Result<String, String> {
     let application = state.application.clone();
-    let path = match input.kind.as_deref() {
+    Ok(match input.kind.as_deref() {
         None | Some("workspace") => application
             .resolve_feedback_attachment_path(input.request_id.clone(), input.attachment_id.clone())
             .await
@@ -32,11 +31,35 @@ pub async fn open_feedback_attachment(
             .await
             .map_err(|error| error.to_string())?,
         Some(other) => return Err(format!("unknown attachment kind: {other}")),
-    };
+    })
+}
+
+#[tauri::command]
+pub async fn open_feedback_attachment(
+    input: OpenAttachmentInput,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<String, String> {
+    let path = resolve_attachment_path(input, state.inner()).await?;
     app.opener()
         .open_path(&path, None::<&str>)
         .map_err(|error| format!("无法用系统默认应用打开 {path}：{error}"))?;
     Ok(path)
+}
+
+#[tauri::command]
+pub async fn reveal_feedback_attachment(
+    input: OpenAttachmentInput,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<String, String> {
+    let resolved = resolve_attachment_path(input, state.inner()).await?;
+    let path = normalized_existing_path(&resolved)?;
+    if app.opener().reveal_item_in_dir(&path).is_err() {
+        reveal_with_system_command(&path)
+            .map_err(|error| format!("无法在文件夹中显示 {}：{error}", display_os_path(&path)))?;
+    }
+    Ok(display_os_path(&path))
 }
 
 pub(crate) fn display_os_path(path: &Path) -> String {
@@ -112,8 +135,23 @@ pub fn reveal_path_in_folder(path: String, app: tauri::AppHandle) -> Result<(), 
 
 #[cfg(test)]
 mod tests {
-    use super::display_os_path;
+    use super::{OpenAttachmentInput, display_os_path};
+    use serde_json::json;
     use std::path::Path;
+
+    #[test]
+    fn open_attachment_input_accepts_tauri_camel_case_payload() {
+        let input: OpenAttachmentInput = serde_json::from_value(json!({
+            "requestId": "request-1",
+            "attachmentId": "attachment-1",
+            "kind": "request",
+        }))
+        .expect("deserialize tauri payload");
+
+        assert_eq!(input.request_id, "request-1");
+        assert_eq!(input.attachment_id, "attachment-1");
+        assert_eq!(input.kind.as_deref(), Some("request"));
+    }
 
     #[test]
     fn display_path_keeps_posix_and_ordinary_windows_paths() {

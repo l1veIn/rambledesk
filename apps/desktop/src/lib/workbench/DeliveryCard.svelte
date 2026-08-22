@@ -1,5 +1,13 @@
 <script lang="ts">
-  import { Ban, CheckCircle2, FolderOpen, Send, ThumbsUp } from '@lucide/svelte'
+  import {
+    Ban,
+    ChefHat,
+    CheckCircle2,
+    FolderOpen,
+    MessageSquareReply,
+    Send,
+    ThumbsUp,
+  } from '@lucide/svelte'
 
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
@@ -7,7 +15,7 @@
   import type { FeedbackResultView } from '$lib/feedback'
   import { t } from '$lib/i18n'
   import { desktopPath } from '$lib/nativePath'
-  import { cookingEnabled, locale } from '$lib/preferences'
+  import { locale } from '$lib/preferences'
   import type { SubmitStage } from './types'
 
   export let feedbackResult: FeedbackResultView | null = null
@@ -15,6 +23,8 @@
   export let approved = false
   export let canSubmit = false
   export let cooking = false
+  export let cookingEnabled = false
+  export let cookedDraftReady = false
   export let submitting = false
   export let submitStage: SubmitStage = 'idle'
   export let canCancel = false
@@ -22,7 +32,10 @@
   export let allowFinish = false
   export let finalSummary = ''
   export let approving = false
+  export let canOpenResumePrompt = false
   export let onOpenPackage: () => void = () => {}
+  export let onOpenResumePrompt: () => void = () => {}
+  export let onCookPreview: () => void = () => {}
   export let onSubmit: () => void = () => {}
   export let onCancel: () => void = () => {}
   export let onApprove: () => void = () => {}
@@ -58,6 +71,12 @@
       <FolderOpen data-icon="inline-start" />
       {tr('Open feedback package')}
     </Button>
+    {#if canOpenResumePrompt}
+      <Button class="mt-2 w-full" onclick={onOpenResumePrompt}>
+        <MessageSquareReply data-icon="inline-start" />
+        {tr('Submission details')}
+      </Button>
+    {/if}
   </section>
 {:else if approved}
   <section class="p-4">
@@ -82,16 +101,42 @@
       </div>
     {/if}
     <div class="grid gap-2">
-      <Button class="w-full" disabled={operationLocked || !canSubmit} onclick={onSubmit}>
-        <Send data-icon="inline-start" />
-        {cooking || submitting
-          ? cooking || submitStage === 'cooking'
+      {#if cookingEnabled}
+        <Button
+          class="w-full"
+          variant={cookedDraftReady ? 'default' : 'secondary'}
+          disabled={operationLocked || !canSubmit}
+          onclick={cookedDraftReady ? onSubmit : onCookPreview}
+        >
+          {#if cookedDraftReady}
+            <Send data-icon="inline-start" />
+          {:else}
+            <ChefHat data-icon="inline-start" />
+          {/if}
+          {cooking
             ? tr('Cooking…')
-            : tr('Publishing…')
-          : $cookingEnabled
-            ? tr('Cook and submit')
-            : tr('Submit feedback')}
-      </Button>
+            : submitting || submitStage === 'publishing'
+              ? tr('Publishing…')
+              : cookedDraftReady
+                ? tr('Submit feedback')
+                : tr('Cook')}
+        </Button>
+        {#if !cookedDraftReady}
+          <Button class="w-full" disabled={operationLocked || !canSubmit} onclick={onSubmit}>
+            <Send data-icon="inline-start" />
+            {cooking || submitting
+              ? cooking || submitStage === 'cooking'
+                ? tr('Cooking…')
+                : tr('Publishing…')
+              : tr('Cook and submit')}
+          </Button>
+        {/if}
+      {:else}
+        <Button class="w-full" disabled={operationLocked || !canSubmit} onclick={onSubmit}>
+          <Send data-icon="inline-start" />
+          {submitting ? tr('Publishing…') : tr('Submit feedback')}
+        </Button>
+      {/if}
       {#if allowFinish}
         <Button class="w-full" variant="secondary" disabled={operationLocked} onclick={onApprove}>
           <ThumbsUp data-icon="inline-start" />
@@ -105,7 +150,7 @@
         onclick={() => (cancelConfirmOpen = true)}
       >
         <Ban data-icon="inline-start" />
-        {cancelling ? tr('Cancelling…') : tr('Cancel request')}
+        {cancelling ? tr('Cancelling…') : tr('Cancel feedback')}
       </Button>
     </div>
   </section>

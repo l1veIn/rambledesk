@@ -266,6 +266,9 @@ pub struct SubmitFeedbackInput {
     #[serde(default)]
     #[ts(optional)]
     pub cooking_model: Option<String>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub uncooked_markdown: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
