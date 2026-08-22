@@ -21,7 +21,23 @@ pub(crate) fn init() {
     };
 
     prune_old_logs(&log_dir);
-    let file_appender = tracing_appender::rolling::daily(&log_dir, LOG_FILE_PREFIX);
+    // `RollingFileAppender::new` panics internally when it cannot create or
+    // open the log file; at startup that panic would abort the entire process.
+    // Catch it so an unwritable data directory only loses file logging.
+    let appender =
+        std::panic::catch_unwind(|| tracing_appender::rolling::daily(&log_dir, LOG_FILE_PREFIX))
+            .ok();
+    let Some(file_appender) = appender else {
+        let _ = fs::write(
+            log_dir.join("rambledesk.log.init-error"),
+            "rolling file appender creation failed\n",
+        );
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .with_target(false)
+            .try_init();
+        return;
+    };
     let console_layer = tracing_subscriber::fmt::layer().with_target(false);
     let file_layer = tracing_subscriber::fmt::layer()
         .with_ansi(false)

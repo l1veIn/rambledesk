@@ -23,6 +23,7 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     webview::Color,
 };
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 const TRAY_ID: &str = "rambledesk-main";
@@ -104,140 +105,173 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
-            let console = WebviewWindowBuilder::new(
-                app,
-                RAMBLE_CONSOLE_LABEL,
-                WebviewUrl::App("index.html#ramble-console".into()),
-            )
-            .title("RambleDesk · Ramble Console")
-            .inner_size(RAMBLE_CONSOLE_WIDTH, RAMBLE_CONSOLE_HEIGHT)
-            .min_inner_size(RAMBLE_CONSOLE_WIDTH, RAMBLE_CONSOLE_HEIGHT)
-            .max_inner_size(RAMBLE_CONSOLE_WIDTH, RAMBLE_CONSOLE_HEIGHT)
-            .resizable(false)
-            .decorations(false)
-            .transparent(true)
-            .background_color(Color(0, 0, 0, 0))
-            .accept_first_mouse(true)
-            .shadow(false)
-            .always_on_top(true)
-            .skip_taskbar(true)
-            .visible_on_all_workspaces(true)
-            .visible(false)
-            .build()?;
-            position_ramble_console(app.handle(), &console)?;
-            attach_ramble_console_events(&console);
-            if let Err(error) =
-                app.global_shortcut()
-                    .on_shortcut(RAMBLE_TOGGLE_SHORTCUT, |app, _, event| {
+            let setup = (|| -> Result<(), Box<dyn std::error::Error>> {
+                let console = WebviewWindowBuilder::new(
+                    app,
+                    RAMBLE_CONSOLE_LABEL,
+                    WebviewUrl::App("index.html#ramble-console".into()),
+                )
+                .title("RambleDesk · Ramble Console")
+                .inner_size(RAMBLE_CONSOLE_WIDTH, RAMBLE_CONSOLE_HEIGHT)
+                .min_inner_size(RAMBLE_CONSOLE_WIDTH, RAMBLE_CONSOLE_HEIGHT)
+                .max_inner_size(RAMBLE_CONSOLE_WIDTH, RAMBLE_CONSOLE_HEIGHT)
+                .resizable(false)
+                .decorations(false)
+                .transparent(true)
+                .background_color(Color(0, 0, 0, 0))
+                .accept_first_mouse(true)
+                .shadow(false)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .visible_on_all_workspaces(true)
+                .visible(false)
+                .build()?;
+                position_ramble_console(app.handle(), &console)?;
+                attach_ramble_console_events(&console);
+                if let Err(error) =
+                    app.global_shortcut()
+                        .on_shortcut(RAMBLE_TOGGLE_SHORTCUT, |app, _, event| {
+                            if event.state == ShortcutState::Pressed
+                                && let Err(error) = app.emit_to(
+                                    "main",
+                                    "ramble-toggle-shortcut",
+                                    RAMBLE_TOGGLE_SHORTCUT,
+                                )
+                            {
+                                tracing::warn!(%error, "failed to emit Ramble toggle shortcut");
+                            }
+                        })
+                {
+                    tracing::warn!(
+                        %error,
+                        shortcut = RAMBLE_TOGGLE_SHORTCUT,
+                        "Ramble toggle global shortcut is unavailable"
+                    );
+                }
+                if let Err(error) = app.global_shortcut().on_shortcut(
+                    screen_capture::SCREEN_CAPTURE_SHORTCUT,
+                    |app, _, event| {
                         if event.state == ShortcutState::Pressed
                             && let Err(error) = app.emit_to(
                                 "main",
-                                "ramble-toggle-shortcut",
-                                RAMBLE_TOGGLE_SHORTCUT,
+                                "screen-capture-shortcut",
+                                screen_capture::SCREEN_CAPTURE_SHORTCUT,
                             )
                         {
-                            tracing::warn!(%error, "failed to emit Ramble toggle shortcut");
+                            tracing::warn!(%error, "failed to emit screen capture shortcut");
+                        }
+                    },
+                ) {
+                    tracing::warn!(
+                        %error,
+                        shortcut = screen_capture::SCREEN_CAPTURE_SHORTCUT,
+                        "screen capture global shortcut is unavailable"
+                    );
+                }
+                let token = AccessToken::load_or_create(&configured_token_path()?)?;
+                let database_path = configured_database_path()?;
+                let library_root = configured_library_path()?;
+                let store = tauri::async_runtime::block_on(
+                    rambledesk_storage::SqliteFeedbackStore::connect_with_library(
+                        &database_path,
+                        &library_root,
+                    ),
+                )?;
+                let application = store.clone().into_application();
+                let config = ServerConfig::new(token.clone()).with_port(configured_port()?);
+                let handle =
+                    tauri::async_runtime::block_on(start_server(config, application.clone()))?;
+                let configuration = generic_mcp_configuration(handle.endpoint(), &token);
+                let open_item =
+                    MenuItem::with_id(app, "open", "打开 RambleDesk", true, None::<&str>)?;
+                let adapters_item =
+                    MenuItem::with_id(app, "adapters", "适配器设置", true, None::<&str>)?;
+                let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+                let menu = Menu::with_items(app, &[&open_item, &adapters_item, &quit_item])?;
+                TrayIconBuilder::with_id(TRAY_ID)
+                    .icon(pending_tray_icon(0))
+                    .tooltip("RambleDesk · 没有待处理反馈")
+                    .menu(&menu)
+                    .show_menu_on_left_click(false)
+                    .on_menu_event(|app, event| match event.id.as_ref() {
+                        "open" => show_main_window(app),
+                        "adapters" => {
+                            show_main_window(app);
+                            if let Err(error) = app.emit(OPEN_ADAPTERS_EVENT, ()) {
+                                tracing::warn!(%error, "failed to emit open adapters event");
+                            }
+                        }
+                        "quit" => app.exit(0),
+                        _ => {}
+                    })
+                    .on_tray_icon_event(|tray, event| {
+                        if matches!(
+                            event,
+                            TrayIconEvent::Click {
+                                button: MouseButton::Left,
+                                button_state: MouseButtonState::Up,
+                                ..
+                            }
+                        ) {
+                            show_main_window(tray.app_handle());
                         }
                     })
-            {
-                tracing::warn!(
-                    %error,
-                    shortcut = RAMBLE_TOGGLE_SHORTCUT,
-                    "Ramble toggle global shortcut is unavailable"
-                );
-            }
-            if let Err(error) = app.global_shortcut().on_shortcut(
-                screen_capture::SCREEN_CAPTURE_SHORTCUT,
-                |app, _, event| {
-                    if event.state == ShortcutState::Pressed
-                        && let Err(error) = app.emit_to(
-                            "main",
-                            "screen-capture-shortcut",
-                            screen_capture::SCREEN_CAPTURE_SHORTCUT,
-                        )
-                    {
-                        tracing::warn!(%error, "failed to emit screen capture shortcut");
-                    }
-                },
-            ) {
-                tracing::warn!(
-                    %error,
-                    shortcut = screen_capture::SCREEN_CAPTURE_SHORTCUT,
-                    "screen capture global shortcut is unavailable"
-                );
-            }
-            let token = AccessToken::load_or_create(&configured_token_path()?)?;
-            let database_path = configured_database_path()?;
-            let library_root = configured_library_path()?;
-            let store = tauri::async_runtime::block_on(
-                rambledesk_storage::SqliteFeedbackStore::connect_with_library(
-                    &database_path,
-                    &library_root,
-                ),
-            )?;
-            let application = store.clone().into_application();
-            let config = ServerConfig::new(token.clone()).with_port(configured_port()?);
-            let handle = tauri::async_runtime::block_on(start_server(config, application.clone()))?;
-            let configuration = generic_mcp_configuration(handle.endpoint(), &token);
-            let open_item = MenuItem::with_id(app, "open", "打开 RambleDesk", true, None::<&str>)?;
-            let adapters_item =
-                MenuItem::with_id(app, "adapters", "适配器设置", true, None::<&str>)?;
-            let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&open_item, &adapters_item, &quit_item])?;
-            TrayIconBuilder::with_id(TRAY_ID)
-                .icon(pending_tray_icon(0))
-                .tooltip("RambleDesk · 没有待处理反馈")
-                .menu(&menu)
-                .show_menu_on_left_click(false)
-                .on_menu_event(|app, event| match event.id.as_ref() {
-                    "open" => show_main_window(app),
-                    "adapters" => {
-                        show_main_window(app);
-                        if let Err(error) = app.emit(OPEN_ADAPTERS_EVENT, ()) {
-                            tracing::warn!(%error, "failed to emit open adapters event");
+                    .build(app)?;
+                if let Some(window) = app.get_webview_window("main") {
+                    let window_to_hide = window.clone();
+                    window.on_window_event(move |event| {
+                        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                            api.prevent_close();
+                            let _ = window_to_hide.hide();
                         }
-                    }
-                    "quit" => app.exit(0),
-                    _ => {}
-                })
-                .on_tray_icon_event(|tray, event| {
-                    if matches!(
-                        event,
-                        TrayIconEvent::Click {
-                            button: MouseButton::Left,
-                            button_state: MouseButtonState::Up,
-                            ..
-                        }
-                    ) {
-                        show_main_window(tray.app_handle());
-                    }
-                })
-                .build(app)?;
-            if let Some(window) = app.get_webview_window("main") {
-                let window_to_hide = window.clone();
-                window.on_window_event(move |event| {
-                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                        api.prevent_close();
-                        let _ = window_to_hide.hide();
-                    }
+                    });
+                }
+                app.manage(WorkbenchState {
+                    local_server: handle,
+                    application,
+                    store,
+                    generic_mcp_configuration: configuration,
+                    continuation: ContinuationRouter::new(known_continuation_strategies()),
+                    pending_count: AtomicU32::new(0),
+                    library_root: RwLock::new(library_root),
+                    speech_session: tokio::sync::Mutex::new(None),
                 });
+                app.manage(screen_capture::ScreenCaptureState::default());
+                app.manage(clipboard_capture::ClipboardCaptureState::default());
+                if let Err(error) = screen_capture::prepare_screen_capture_overlay(app.handle()) {
+                    tracing::warn!(%error, "failed to prewarm the screenshot editor");
+                }
+                diagnostics::record_event("app_started", None, None, Some("ok"), None, None);
+                Ok(())
+            })();
+
+            // Tauri turns a setup-hook error into a panic from its event-loop
+            // callback, which on macOS aborts the process without any visible
+            // explanation. Handle failures here: log the reason, ask the user,
+            // and exit cleanly instead.
+            if let Err(error) = setup {
+                let message = error.to_string();
+                tracing::error!(%message, "RambleDesk setup failed");
+                let title = format!("{} · 启动失败", app.package_info().name);
+                let text = format!(
+                    "RambleDesk 无法启动。\n\n{message}\n\n诊断日志目录：\n{}",
+                    logging::directory_hint()
+                );
+                let handle = app.handle().clone();
+                let (dialog_done_tx, dialog_done_rx) = std::sync::mpsc::channel();
+                std::thread::spawn(move || {
+                    let _ = handle
+                        .dialog()
+                        .message(text)
+                        .title(title)
+                        .buttons(MessageDialogButtons::Ok)
+                        .blocking_show();
+                    let _ = dialog_done_tx.send(());
+                });
+                // Give the dialog a moment to be dismissed before exiting.
+                let _ = dialog_done_rx.recv_timeout(std::time::Duration::from_secs(30));
+                std::process::exit(1);
             }
-            app.manage(WorkbenchState {
-                local_server: handle,
-                application,
-                store,
-                generic_mcp_configuration: configuration,
-                continuation: ContinuationRouter::new(known_continuation_strategies()),
-                pending_count: AtomicU32::new(0),
-                library_root: RwLock::new(library_root),
-                speech_session: tokio::sync::Mutex::new(None),
-            });
-            app.manage(screen_capture::ScreenCaptureState::default());
-            app.manage(clipboard_capture::ClipboardCaptureState::default());
-            if let Err(error) = screen_capture::prepare_screen_capture_overlay(app.handle()) {
-                tracing::warn!(%error, "failed to prewarm the screenshot editor");
-            }
-            diagnostics::record_event("app_started", None, None, Some("ok"), None, None);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

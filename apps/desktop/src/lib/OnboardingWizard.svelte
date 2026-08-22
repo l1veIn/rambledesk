@@ -7,6 +7,7 @@
     BellRing,
     Check,
     ChefHat,
+    ChevronDown,
     ChevronLeft,
     ChevronRight,
     Clipboard,
@@ -34,8 +35,8 @@
     speechModelDescription,
     speechModelDisplayName,
   } from '$lib/speechModelLabels'
-  import piLogo from '../assets/pi-logo.svg'
-  import dshLogo from '../assets/dsh-logo.svg'
+  import piLogoSvg from '../assets/pi-logo.svg?raw'
+  import dshLogoSvg from '../assets/dsh-logo.svg?raw'
   import {
     cookingApiKey,
     cookingBaseUrl,
@@ -369,6 +370,8 @@
 <Dialog.Root bind:open={openWizard}>
   <Dialog.Content
     showCloseButton={false}
+    interactOutsideBehavior="ignore"
+    escapeKeydownBehavior="ignore"
     class="flex max-h-[calc(100vh-2rem)] w-[min(760px,calc(100vw-2rem))] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none"
     aria-describedby="onboarding-description"
   >
@@ -453,21 +456,21 @@
             </div>
           </div>
 
-          <div class="mt-6 grid grid-cols-2 gap-3">
-            <div class="rounded-xl border-2 border-primary/30 bg-primary/5 p-4">
-              <div class="flex items-center gap-2">
-                <span class="grid size-8 shrink-0 place-items-center rounded-lg bg-primary">
-                  <img src={piLogo} alt="Pi" class="size-5 brightness-0 invert" />
-                </span>
-                <div class="min-w-0">
-                  <h3 class="m-0 truncate text-sm font-semibold">{tr('Pi native adapter')}</h3>
-                  <Badge variant="secondary" class="mt-1">{tr('Recommended')}</Badge>
+          <div class="mt-6 space-y-3">
+            <div class="flex items-start gap-3 rounded-lg border bg-muted/20 p-3">
+              <span class="grid size-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground [&_svg]:size-5">
+                {@html piLogoSvg}
+              </span>
+              <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-center gap-2">
+                  <h3 class="m-0 text-sm font-semibold">{tr('Pi native adapter')}</h3>
+                  <Badge variant="secondary">{tr('Recommended')}</Badge>
                 </div>
+                <p class="mb-0 mt-1 text-xs leading-5 text-muted-foreground">{tr('Pi waits for feedback in the same tool call, then automatically continues the current session. No copied or manually sent resume prompt is needed.')}</p>
               </div>
-              <p class="mb-0 mt-2 text-[11px] leading-4 text-muted-foreground">{tr('Pi waits for feedback in the same tool call, then automatically continues the current session. No copied or manually sent resume prompt is needed.')}</p>
               <Button
                 size="sm"
-                class="mt-3 w-full"
+                class="shrink-0"
                 disabled={piBusy || piStatusLoading || piStatus?.installed || !isTauri || piStatus?.cliAvailable === false}
                 onclick={() => void installPi()}
               >
@@ -488,35 +491,39 @@
                 {/if}
               </Button>
             </div>
-            <div class="rounded-xl border bg-muted/20 p-4">
-              <div class="flex items-center gap-2">
-                <span class="grid size-8 shrink-0 place-items-center rounded-lg bg-muted">
-                  <img src={dshLogo} alt="DSH" class="size-5" />
-                </span>
-                <div class="min-w-0">
-                  <h3 class="m-0 truncate text-sm font-semibold">{tr('DSH native adapter')}</h3>
-                  <Badge variant="secondary" class="mt-1">{tr('Native wait')}</Badge>
+            <div class="flex items-start gap-3 rounded-lg border bg-muted/20 p-3">
+              <span class="grid size-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground [&_svg]:size-5">
+                {@html dshLogoSvg}
+              </span>
+              <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-center gap-2">
+                  <h3 class="m-0 text-sm font-semibold">{tr('DSH native adapter')}</h3>
+                  <Badge variant="secondary">{tr('Native wait')}</Badge>
                 </div>
+                <p class="mb-0 mt-1 text-xs leading-5 text-muted-foreground">{tr('DeepSeek Harness waits for feedback in the same tool call, then automatically continues.')}</p>
               </div>
-              <p class="mb-0 mt-2 text-[11px] leading-4 text-muted-foreground">{tr('DeepSeek Harness waits for feedback in the same tool call, then automatically continues.')}</p>
-              <Button size="sm" class="mt-3 w-full" disabled={dshBusy || !isTauri} onclick={() => void installDsh()}>
+              <Button size="sm" class="shrink-0" disabled={dshBusy || !isTauri} onclick={() => void installDsh()}>
                 {#if dshBusy}<LoaderCircle class="animate-spin" data-icon="inline-start" />{:else}<Download data-icon="inline-start" />{/if}
                 {dshBusy ? tr('Installing…') : tr('Install DSH adapter')}
               </Button>
             </div>
-          </div>
 
-          <details class="mt-4 rounded-lg border bg-muted/20">
-            <summary class="cursor-pointer list-none px-4 py-3 text-xs outline-none [&::-webkit-details-marker]:hidden">
-              <span class="flex items-center gap-2">
+          <details class="group rounded-lg border bg-muted/20">
+            <summary class="flex cursor-pointer list-none items-center gap-3 p-3 text-xs outline-none [&::-webkit-details-marker]:hidden">
+              <span class="grid size-8 shrink-0 place-items-center rounded-lg bg-muted">
                 <PlugZap class="size-4 text-muted-foreground" />
-                <span class="font-medium">{tr('Generic MCP hosts')}</span>
-                <Badge variant="outline" title={tr('After submitting or cancelling, return to the host and continue the session manually.')}>{tr('Manual continuation')}</Badge>
-                <span class="ml-auto text-[10px] text-muted-foreground">{tr('Configure as needed')}</span>
               </span>
+              <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="text-sm font-semibold">{tr('Generic MCP hosts')}</span>
+                  <Badge variant="outline" title={tr('After submitting or cancelling, return to the host and continue the session manually.')}>{tr('Manual continuation')}</Badge>
+                </div>
+                <p class="mb-0 mt-1 text-xs leading-5 text-muted-foreground">{tr('After submitting or cancelling, MCP hosts require you to return to the coding tool and continue with its resume prompt. RambleDesk only writes its own MCP entry and never overwrites other servers.')}</p>
+              </div>
+              <span class="ml-auto shrink-0 text-[10px] text-muted-foreground">{tr('Configure as needed')}</span>
+              <ChevronDown class="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
             </summary>
             <div class="border-t p-4">
-              <p class="m-0 text-xs leading-5 text-muted-foreground">{tr('After submitting or cancelling, MCP hosts require you to return to the coding tool and continue with its resume prompt. RambleDesk only writes its own MCP entry and never overwrites other servers.')}</p>
               {#if hostsLoading}
                 <p class="mb-0 mt-4 flex items-center gap-2 text-xs text-muted-foreground"><LoaderCircle class="size-4 animate-spin" />{tr('Detecting coding tools…')}</p>
               {:else if hosts.length === 0}
@@ -538,6 +545,7 @@
               {/if}
             </div>
           </details>
+          </div>
         </section>
       {:else if steps[step] === 'Notifications'}
         <section class="mx-auto max-w-xl">

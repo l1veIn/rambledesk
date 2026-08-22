@@ -71,6 +71,43 @@ async fn reconnect_creates_a_versioned_pre_migration_backup() {
 }
 
 #[tokio::test]
+async fn connect_rejects_a_database_created_by_a_newer_version() {
+    let workspace = TestWorkspace::new().await;
+    let store = SqliteFeedbackStore::connect(&workspace.database)
+        .await
+        .expect("initial database");
+    store.close().await;
+
+    // Simulate a database migrated by a newer app build by recording an
+    // applied migration version above the embedded migration set.
+    let url = format!("sqlite://{}", workspace.database.display());
+    let pool = sqlx::SqlitePool::connect(&url)
+        .await
+        .expect("open database");
+    sqlx::query(
+        "INSERT INTO _sqlx_migrations (version, description, installed_on, success, checksum, execution_time) \
+         VALUES (9999, 'future migration', datetime('now'), 1, X'00', 0)",
+    )
+    .execute(&pool)
+    .await
+    .expect("record future migration");
+    pool.close().await;
+
+    let outcome = SqliteFeedbackStore::connect(&workspace.database).await;
+    let error = match outcome {
+        Err(error) => error,
+        Ok(_) => panic!("a database from a newer version must be rejected"),
+    };
+    match error {
+        StorageOpenError::NewerDatabase { applied, supported } => {
+            assert_eq!(applied, 9999);
+            assert!(supported >= 1, "supported migrations are recorded");
+        }
+        other => panic!("expected NewerDatabase, got {other}"),
+    }
+}
+
+#[tokio::test]
 async fn reconnect_repairs_migration_checksums_changed_only_by_line_endings() {
     let workspace = TestWorkspace::new().await;
     let store = SqliteFeedbackStore::connect(&workspace.database)

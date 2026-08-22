@@ -53,7 +53,14 @@
 >
   <div class="flex h-12 items-center gap-1.5 border-b px-3">
     <div class="min-w-0 flex-1">
-      <strong class="block text-xs font-semibold">{tr('Requests')}</strong>
+      <strong class="flex items-center gap-1.5 text-xs font-semibold">
+        {tr('Requests')}
+        {#if requests.length > 0}
+          <Badge variant="secondary" class="h-4 rounded-full px-1.5 text-[9px] font-medium tabular-nums">
+            {requests.length}{hasMore ? '+' : ''}
+          </Badge>
+        {/if}
+      </strong>
       <span class="block truncate text-[10px] text-muted-foreground">{scopeLabel}</span>
     </div>
     <Button

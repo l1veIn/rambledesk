@@ -58,12 +58,18 @@ pub enum StorageOpenError {
     Connect(#[source] sqlx::Error),
     #[error("failed to migrate the RambleDesk SQLite database")]
     Migrate(#[source] sqlx::migrate::MigrateError),
+    #[error(
+        "the RambleDesk database uses schema version {applied}, but this app build supports only up to {supported}; the database was created by a newer RambleDesk version"
+    )]
+    NewerDatabase { applied: u64, supported: u64 },
     #[error("failed to create a pre-migration RambleDesk database backup")]
     BackupDatabase(#[source] sqlx::Error),
     #[error("failed to manage RambleDesk database backups")]
     ManageBackup(#[source] std::io::Error),
     #[error("failed to repair migration checksums after line-ending normalization")]
     RepairMigrationChecksums(#[source] sqlx::Error),
+    #[error("failed to inspect the RambleDesk database schema")]
+    InspectSchema(#[source] sqlx::Error),
     #[error("failed to inspect interrupted feedback publications")]
     Recovery(RepositoryError),
     #[error("no local application data directory is available")]
@@ -75,6 +81,29 @@ pub struct SqliteFeedbackStore {
     pool: SqlitePool,
     library_root: Arc<RwLock<PathBuf>>,
     pub(crate) publish_lock: Arc<tokio::sync::Mutex<()>>,
+}
+
+/// Highest migration version recorded as successfully applied in the database.
+///
+/// A database can belong to a newer app build than the one currently opening it
+/// (for example after the dev build migrated it while an older release app is
+/// launched). Detecting that case before `Migrator::run` gives an actionable
+/// error instead of sqlx's generic version mismatch.
+async fn applied_migration_version(pool: &SqlitePool) -> Result<u64, sqlx::Error> {
+    let table_exists = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = '_sqlx_migrations')",
+    )
+    .fetch_one(pool)
+    .await?;
+    if !table_exists {
+        return Ok(0);
+    }
+    let version = sqlx::query_scalar::<_, i64>(
+        "SELECT COALESCE(MAX(version), 0) FROM _sqlx_migrations WHERE success = TRUE",
+    )
+    .fetch_one(pool)
+    .await?;
+    Ok(version.max(0) as u64)
 }
 
 impl SqliteFeedbackStore {
@@ -119,6 +148,17 @@ impl SqliteFeedbackStore {
         migration_compat::repair_line_ending_checksums(&pool, &MIGRATOR)
             .await
             .map_err(StorageOpenError::RepairMigrationChecksums)?;
+        let applied = applied_migration_version(&pool)
+            .await
+            .map_err(StorageOpenError::InspectSchema)?;
+        let supported = MIGRATOR
+            .iter()
+            .map(|migration| migration.version.max(0) as u64)
+            .max()
+            .unwrap_or(0);
+        if applied > supported {
+            return Err(StorageOpenError::NewerDatabase { applied, supported });
+        }
         MIGRATOR
             .run(&pool)
             .await

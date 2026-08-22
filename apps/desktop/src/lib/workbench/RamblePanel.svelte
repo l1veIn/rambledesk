@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { CircleStop, Mic, Pause, Play, X } from '@lucide/svelte'
+  import { Mic, Pause, Play, X } from '@lucide/svelte'
 
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
@@ -61,10 +61,8 @@
     >
       {#if rambleActive}
         <Pause data-icon="inline-start" />
-      {:else if rambleStartedOnce}
-        <Play data-icon="inline-start" />
       {:else}
-        <CircleStop data-icon="inline-start" />
+        <Play data-icon="inline-start" />
       {/if}
       {primaryLabel}
     </Button>
