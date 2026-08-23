@@ -419,8 +419,8 @@ header.site-nav {
   inset: 0;
   z-index: -1;
   background:
-    linear-gradient(180deg, rgb(247 249 252 / 55%) 0%, rgb(238 245 251 / 24%) 44%, rgb(247 249 252 / 62%) 100%),
-    linear-gradient(90deg, rgb(247 249 252 / 30%), transparent 52%, rgb(238 245 251 / 26%));
+    linear-gradient(180deg, rgb(247 249 252 / 34%) 0%, rgb(238 245 251 / 8%) 46%, rgb(247 249 252 / 40%) 100%),
+    linear-gradient(90deg, rgb(247 249 252 / 20%), transparent 50%, rgb(238 245 251 / 16%));
 }
 
 .archive-inner {
