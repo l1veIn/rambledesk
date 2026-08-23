@@ -39,6 +39,20 @@ Cloudflare Dashboard → **My Profile → API Tokens → Create Token** →
 
 ### 5. 绑定域名 rambledesk.com
 
+> 项目 `rambledesk-web` 已创建；`rambledesk.com` / `www.rambledesk.com`
+> 自定义域已在 Pages 项目注册（状态 pending），只差两条 DNS 记录：
+> 在 Cloudflare Dashboard → Zones → rambledesk.com → DNS → Add record：
+>
+> | Type | Name | Target | Proxy |
+> |---|---|---|---|
+> | CNAME | `rambledesk.com` | `rambledesk-web.pages.dev` | ✅（默认） |
+> | CNAME | `www` | `rambledesk-web.pages.dev` | ✅（默认） |
+>
+> 添加后等待过期状态变为 Active（一般几分钟），访问 https://rambledesk.com 即可。
+> （备用：Dashboard → Workers & Pages → rambledesk-web → Custom domains。）
+
+（以下为一次性设置历史，仅供参考）
+
 - 确认 `rambledesk.com` 的 DNS 已托管到 Cloudflare（在 Cloudflare 添加站点后，把域名商处的 NS 改成 Cloudflare 提供的两个，等 NS 生效）。
 - Cloudflare Dashboard → **Workers & Pages → rambledesk-web → Custom domains → Add** → 输入 `rambledesk.com`（可用 `www.` 变体各加一个）。
 - 若域名商不是 Cloudflare，也可以直接在 Cloudflare 加 `CNAME` 记录指向 Pages 项目的 `*.pages.dev` 地址（Pages → 项目 → 自定义域 → CNAME setup 提示）。
