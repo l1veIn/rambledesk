@@ -400,8 +400,7 @@ export type LocaleKey = keyof typeof locales
 export type SiteContent = (typeof locales)[LocaleKey]
 
 export const assets = {
-  heroFallback: '/assets/hero-workbench-cinema.png',
-  assistant: '/assets/rambelle-motion-cutout.png',
+  heroFallback: '/assets/hero-workbench-cinema.webp',
   sceneArchive: '/assets/scene-archive.webp',
   sceneCryo: '/assets/scene-cryo.webp',
   sceneGate: '/assets/scene-gate.webp',
