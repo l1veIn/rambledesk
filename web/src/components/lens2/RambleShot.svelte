@@ -77,7 +77,7 @@
               {#if f.kind === 'text'}
                 <div class="doc-item doc-text">{f.text}</div>
               {:else if f.kind === 'shot'}
-                <div class="doc-item doc-shot">
+                <div class="doc-shot">
                   <img src="/assets/scene-cryo.webp" alt="" loading="lazy" />
                   <span class="snap-ring"></span>
                   <span class="snap-label"><ScanLine size={12} />{f.label}</span>
@@ -246,9 +246,10 @@
   }
 
   .editor-doc {
-    display: grid;
+    display: flex;
+    flex-direction: column;
     gap: 10px;
-    align-content: start;
+    height: 178px;
     min-height: 0;
     overflow-y: auto;
     scrollbar-width: none;
@@ -278,13 +279,16 @@
   .doc-shot {
     position: relative;
     width: min(300px, 88%);
+    height: 140px;
+    flex: none;
     overflow: hidden;
     border-radius: 10px 10px 10px 4px;
   }
 
   .doc-shot img {
+    display: block;
     width: 100%;
-    height: 140px;
+    height: 100%;
     object-fit: cover;
     filter: saturate(0.9) brightness(1.02);
   }
@@ -302,8 +306,8 @@
 
   .snap-label {
     position: absolute;
-    top: 8px;
-    right: 30px;
+    bottom: 8px;
+    right: 8px;
     display: inline-flex;
     gap: 5px;
     align-items: center;
@@ -318,8 +322,8 @@
 
   .snap-note {
     position: absolute;
+    top: 8px;
     right: 8px;
-    bottom: 8px;
     min-height: 23px;
     padding: 5px 8px;
     border-radius: 6px;
