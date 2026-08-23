@@ -15,13 +15,23 @@ on:
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - "package.json"
+  workflow_dispatch:
 
 permissions:
   contents: read
+  deployments: write
+
+concurrency:
+  group: deploy-web-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: www
+      url: https://rambledesk.com
     steps:
       - uses: actions/checkout@v4
 
