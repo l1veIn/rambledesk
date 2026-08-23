@@ -56,6 +56,17 @@ export const locales = {
         body: 'The original host reads the package and continues iteration with concrete human evidence.',
       },
     ],
+    posture: {
+      eyebrow: 'RDD · ramble-driven development',
+      headline: 'I stopped babysitting my coding agents.',
+      sub: 'Give the agent a goal, walk away — the moment it calls is the only moment you are needed.',
+      steps: [
+        { n: '01', title: 'Give the agent a goal.', body: 'A clear brief. It owns the execution.' },
+        { n: '02', title: 'Go do something else.', body: 'No screen-watching, no polling, no guilt.' },
+        { n: '03', title: 'Ramble when it calls.', body: 'Voice, shots, files — off the cuff, straight into the draft.' },
+        { n: '04', title: 'Repeat.', body: 'Every loop ends sealed on your machine.' },
+      ],
+    },
     lens2: {
       tagline: 'The loop, in one take',
       shots: [
@@ -169,10 +180,18 @@ export const locales = {
     adaptersCode: '04 / Adapter dock',
     adaptersTitle: 'Installed where coding agents already work.',
     adapters: ['Codex', 'Claude Code', 'Cursor', 'Gemini CLI', 'Grok', 'OpenCode', 'Reasonix', 'Pi', 'DeepSeek Harness'],
-    ctaTitle: 'Wake the workbench when the agent needs your eyes.',
-    ctaBody:
-      'Open RambleDesk, enable your host adapter, and let the next hard product judgment become a sealed feedback package.',
-    ctaButton: 'Get the release',
+    vision: {
+      kicker: 'The human attention router',
+      before: 'Agent → Human Feedback',
+      beforeLabel: 'Today',
+      after: 'Agents → Human Attention Router',
+      afterLabel: 'Next',
+      philosophy:
+        "RambleDesk isn't about chatting with AI more — it's about not having to. The agent finds you when it matters.",
+      slogan: 'Stop vibe coding. Start rambling.',
+      ctaLabel: 'Get RambleDesk',
+      meta: 'macOS · Homebrew · GitHub Releases',
+    },
   },
   zh: {
     lang: 'zh-CN',
@@ -228,6 +247,17 @@ export const locales = {
         body: '原宿主读取反馈包，用真实人类证据继续实现和修正。',
       },
     ],
+    posture: {
+      eyebrow: 'RDD · ramble-driven development',
+      headline: 'I stopped babysitting my coding agents.',
+      sub: '给 agent 一个目标，去做别的事——它叫你的那一次，才是真正需要你的时刻。',
+      steps: [
+        { n: '01', title: '给 agent 一个目标。', body: '需求写清楚，执行交给它。' },
+        { n: '02', title: '去做你自己的事。', body: '不用盯屏幕，不用刷进度，不用愧疚。' },
+        { n: '03', title: '它叫你再回来。', body: '语音、截图、文件，随口就来，直接进草稿。' },
+        { n: '04', title: '重复。', body: '每一次闭环，都封存留在你的机器上。' },
+      ],
+    },
     lens2: {
       tagline: '一次镜头，完整闭环',
       shots: [
@@ -341,10 +371,18 @@ export const locales = {
     adaptersCode: '04 / 适配器船坞',
     adaptersTitle: '安装在 coding agent 已经工作的地方。',
     adapters: ['Codex', 'Claude Code', 'Cursor', 'Gemini CLI', 'Grok', 'OpenCode', 'Reasonix', 'Pi', 'DeepSeek Harness'],
-    ctaTitle: '当 agent 需要你的眼睛时，唤醒工作台。',
-    ctaBody:
-      '打开 RambleDesk，启用宿主适配器，让下一次困难的产品判断变成一份封存的反馈包。',
-    ctaButton: '获取发布版',
+    vision: {
+      kicker: '人类注意力路由器',
+      before: 'Agent → Human Feedback',
+      beforeLabel: '今天',
+      after: 'Agents → Human Attention Router',
+      afterLabel: '下一步',
+      philosophy:
+        'RambleDesk 不是让你更方便地和 AI 说话，而是让你不必一直和 AI 说话——需要你的时候，agent 会主动来找你。',
+      slogan: 'Stop vibe coding. Start rambling.',
+      ctaLabel: '获取 RambleDesk',
+      meta: 'macOS · Homebrew · GitHub Releases',
+    },
   },
 } as const
 

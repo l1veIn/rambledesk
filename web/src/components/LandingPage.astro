@@ -2,6 +2,7 @@
 import HeroStage from './HeroStage.svelte'
 import HappyPathStage from './lens2/HappyPathStage.svelte'
 import ArchiveSection from './ArchiveSection.astro'
+import PostureSection from './PostureSection.astro'
 import { assets, releaseUrl, repoUrl, type SiteContent } from '../content/site'
 
 interface Props {
@@ -35,6 +36,8 @@ const { content } = Astro.props
   <main>
     <HeroStage hero={content.hero} assets={assets} releaseUrl={releaseUrl} />
 
+    <PostureSection content={content} />
+
     <HappyPathStage client:load content={content.lens2} />
 
     <ArchiveSection content={content} />
@@ -43,15 +46,26 @@ const { content } = Astro.props
       <div class="cta-bg" style={`background-image: url(${assets.sceneGate})`}></div>
       <img class="cta-rambelle" src={assets.assistant} alt="" loading="lazy" />
       <div class="cta-content">
-        <span class="section-kicker">{content.surface.vaultTitle}</span>
-        <h2>{content.ctaTitle}</h2>
-        <p>{content.ctaBody}</p>
+        <span class="section-kicker">{content.vision.kicker}</span>
+        <h2>{content.vision.slogan}</h2>
+        <div class="vision-evolution">
+          <div class="vision-row vision-before">
+            <span class="vision-label">{content.vision.beforeLabel}</span>
+            <strong>{content.vision.before}</strong>
+          </div>
+          <div class="vision-row vision-after">
+            <span class="vision-label">{content.vision.afterLabel}</span>
+            <strong>{content.vision.after}</strong>
+          </div>
+        </div>
+        <p class="vision-philosophy">{content.vision.philosophy}</p>
         <a class="primary-action" href={releaseUrl}>
-          {content.ctaButton}
+          {content.vision.ctaLabel}
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M5 12h14M13 5l7 7-7 7"></path>
           </svg>
         </a>
+        <small class="vision-meta">{content.vision.meta}</small>
       </div>
     </section>
   </main>

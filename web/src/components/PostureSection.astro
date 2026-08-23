@@ -1,0 +1,141 @@
+---
+import type { SiteContent } from '../content/site'
+
+interface Props {
+  content: SiteContent
+}
+
+const { content } = Astro.props
+---
+
+<section class="posture-section" aria-label={content.posture.eyebrow}>
+  <div class="posture-inner">
+    <div class="posture-copy">
+      <span class="section-kicker">{content.posture.eyebrow}</span>
+      <h2>{content.posture.headline}</h2>
+      <p>{content.posture.sub}</p>
+    </div>
+
+    <ol class="posture-steps">
+      {content.posture.steps.map((step) => (
+        <li class="posture-step">
+          <span class="posture-index">{step.n}</span>
+          <h3>{step.title}</h3>
+          <p>{step.body}</p>
+        </li>
+      ))}
+    </ol>
+  </div>
+</section>
+
+<style>
+  .posture-section {
+    position: relative;
+    overflow: hidden;
+    padding: 118px 6vw;
+    color: #eef5ff;
+    background:
+      radial-gradient(110% 80% at 82% 20%, rgb(39 117 202 / 22%), transparent 58%),
+      radial-gradient(80% 60% at 12% 88%, rgb(87 198 192 / 10%), transparent 62%),
+      linear-gradient(180deg, #081321 0%, #0c1a2e 100%);
+  }
+
+  .posture-inner {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(300px, 1fr) minmax(320px, 0.9fr);
+    gap: 60px;
+    align-items: start;
+    max-width: 1220px;
+    margin: 0 auto;
+  }
+
+  .posture-copy h2 {
+    margin: 0;
+    color: #f4f9ff;
+    font-size: clamp(2.4rem, 4.6vw, 3.8rem);
+    line-height: 1.02;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+
+  .posture-copy p {
+    margin: 22px 0 0;
+    color: rgb(214 232 249 / 74%);
+    font-size: 1.08rem;
+    line-height: 1.75;
+  }
+
+  .posture-steps {
+    display: grid;
+    gap: 0;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border-left: 1px solid rgb(111 168 220 / 22%);
+  }
+
+  .posture-step {
+    position: relative;
+    display: grid;
+    grid-template-columns: 44px 1fr;
+    gap: 14px;
+    padding: 16px 0 16px 22px;
+  }
+
+  .posture-step::before {
+    position: absolute;
+    top: 26px;
+    left: -5px;
+    width: 9px;
+    height: 9px;
+    border: 2px solid #57c6c0;
+    border-radius: 50%;
+    background: #0c1a2e;
+    box-shadow: 0 0 12px rgb(87 198 192 / 42%);
+    content: '';
+  }
+
+  .posture-index {
+    color: #f2c77e;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.8rem;
+    font-weight: 800;
+  }
+
+  .posture-step h3 {
+    margin: 0;
+    color: #f2f8ff;
+    font-size: 1.06rem;
+  }
+
+  .posture-step p {
+    grid-column: 2;
+    margin: 4px 0 0;
+    color: rgb(214 232 249 / 66%);
+    font-size: 0.9rem;
+    line-height: 1.6;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .posture-section {
+      padding: 88px 22px;
+    }
+
+    .posture-inner {
+      grid-template-columns: 1fr;
+      gap: 40px;
+    }
+  }
+
+  @media (max-width: 860px) {
+    .posture-section {
+      padding: 88px 22px;
+    }
+
+    .posture-inner {
+      grid-template-columns: 1fr;
+      gap: 40px;
+    }
+  }
+</style>

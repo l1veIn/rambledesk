@@ -766,6 +766,69 @@ header.site-nav {
   height: 18px;
 }
 
+
+/* vision evolution rows (act five) */
+.vision-evolution {
+  display: grid;
+  gap: 10px;
+  margin-top: 34px;
+  max-width: 560px;
+}
+
+.vision-row {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 14px 16px;
+  border: 1px solid rgb(255 255 255 / 16%);
+  border-radius: 10px;
+  color: rgb(230 242 255 / 88%);
+  background: rgb(255 255 255 / 7%);
+  backdrop-filter: blur(14px);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.95rem;
+}
+
+.vision-row strong {
+  font-weight: 800;
+}
+
+.vision-label {
+  min-width: 74px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  color: #cfe3f6;
+  background: rgb(39 117 202 / 26%);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.vision-after {
+  border-color: rgb(87 198 192 / 38%);
+  background: linear-gradient(135deg, rgb(87 198 192 / 16%), rgb(39 117 202 / 12%));
+}
+
+.vision-after .vision-label {
+  background: linear-gradient(135deg, #5fd0c9, #2f8fd6);
+  color: #071523;
+}
+
+.vision-philosophy {
+  max-width: 560px;
+  color: rgb(230 242 255 / 86%);
+  font-size: 1.02rem;
+  line-height: 1.7;
+}
+
+.vision-meta {
+  display: block;
+  margin-top: 14px;
+  color: rgb(184 212 238 / 58%);
+  font-size: 0.8rem;
+}
+
 .site-footer {
   display: flex;
   gap: 20px;
