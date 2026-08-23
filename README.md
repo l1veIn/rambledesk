@@ -4,9 +4,11 @@
 
 ![RambleDesk](docs/social/ramble-banner-en-1400x700.webp)
 
-[![RambleDesk demo: Drive Development with Ramble](docs/social/rambledesk-demo-poster.jpg)](docs/social/rambledesk-demo.mp4)
+<div align="center">
 
-[Watch the 28-second demo](docs/social/rambledesk-demo.mp4)
+https://github.com/user-attachments/assets/83f87fbc-70e1-4839-8138-b6ffc44357b2
+
+</div>
 
 ## Stop vibe coding. Rambling is all you need.
 

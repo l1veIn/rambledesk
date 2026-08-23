@@ -4,9 +4,11 @@
 
 ![RambleDesk](docs/social/ramble-banner-text2-1400x700.webp)
 
-[![RambleDesk 演示：Drive Development with Ramble](docs/social/rambledesk-demo-poster.jpg)](docs/social/rambledesk-demo.mp4)
+<div align="center">
 
-[观看 28 秒演示](docs/social/rambledesk-demo.mp4)
+https://github.com/user-attachments/assets/83f87fbc-70e1-4839-8138-b6ffc44357b2
+
+</div>
 
 ## 不要再 vibe coding 了，你只需要 Ramble。
 
