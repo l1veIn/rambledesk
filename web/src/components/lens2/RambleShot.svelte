@@ -43,16 +43,21 @@
     gsap.set('.seal-overlay', { opacity: 0 })
     gsap.set('.seal-overlay .srow', { opacity: 0, x: -14 })
     gsap.set('.seal-overlay .sdone', { scale: 2.2, opacity: 0 })
-    gsap.set('.doc-item', { opacity: 0, y: 16 })
+    gsap.set('.doc-item', { opacity: 0, y: 44 })
 
     tl = gsap.timeline({ paused: true })
     tl
       .to('.wb', { y: 0, opacity: 1, scale: 1, duration: 0.4, ease: 'power2.out' }, 0)
-      .to('.doc-item', { opacity: 1, y: 0, stagger: 0.18, duration: 0.3, ease: 'power2.out' }, 0.6)
-    // keep the oldest evidence scrolled out as new messages land
+      // one message every 200ms, each flowing in from below
+      .to(
+        '.doc-item',
+        { opacity: 1, y: 0, stagger: { each: 0.2, from: 'start' }, duration: 0.38, ease: 'power2.out' },
+        0.7,
+      )
+    // keep the oldest evidence scrolled out after each message lands
     const doc = root.querySelector<HTMLElement>('.editor-doc')
     const scrollDoc = () => doc?.scrollTo({ top: doc.scrollHeight, behavior: 'smooth' })
-    shot.feed.forEach((_, i) => tl.add(() => scrollDoc(), 0.62 + i * 0.18))
+    shot.feed.forEach((_, i) => tl.add(() => scrollDoc(), 0.72 + i * 0.2 + 0.28))
   })
 </script>
 
