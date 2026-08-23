@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { gsap } from 'gsap'
-  import { Mic, Paperclip, ScanLine, Camera, ClipboardList, FileText, Send } from '@lucide/svelte'
+  import { Mic, Paperclip, ScanLine, Camera, ClipboardList, FileText, Send, Check } from '@lucide/svelte'
   import type { SiteContent } from '../../content/site'
 
   export let content: SiteContent['lens2']
@@ -17,7 +17,7 @@
     sealing = false
     gsap.set('.seal-overlay', { opacity: 0 })
     gsap.set('.seal-overlay .srow', { opacity: 0, x: -14 })
-    gsap.set('.seal-overlay .sstamp', { scale: 2.2, opacity: 0 })
+    gsap.set('.seal-overlay .sdone', { scale: 2.2, opacity: 0 })
     tl?.play(0)
   }
 
@@ -29,7 +29,7 @@
       .to('.seal-overlay', { opacity: 1, duration: 0.15, ease: 'power2.out' }, 0)
       .to('.seal-overlay .srow', { opacity: 1, x: 0, stagger: 0.07, duration: 0.12, ease: 'power2.out' }, 0.1)
       .to(
-        '.seal-overlay .sstamp',
+        '.seal-overlay .sdone',
         { scale: 1, opacity: 1, duration: 0.22, ease: 'power4.out' },
         0.35,
       )
@@ -42,7 +42,7 @@
 
     gsap.set('.seal-overlay', { opacity: 0 })
     gsap.set('.seal-overlay .srow', { opacity: 0, x: -14 })
-    gsap.set('.seal-overlay .sstamp', { scale: 2.2, opacity: 0 })
+    gsap.set('.seal-overlay .sdone', { scale: 2.2, opacity: 0 })
     gsap.set('.doc-item', { opacity: 0, y: 16 })
 
     tl = gsap.timeline({ paused: true })
@@ -128,11 +128,9 @@
         {#each shot.sealFiles as f}
           <span class="srow">{f}</span>
         {/each}
-        <svg class="sstamp" viewBox="0 0 120 120">
-          <polygon points="60,8 105,34 105,86 60,112 15,86 15,34" />
-          <polygon points="60,20 95,40 95,80 60,100 25,80 25,40" />
-          <circle cx="60" cy="60" r="7" />
-        </svg>
+        <div class="sdone" aria-hidden="true">
+          <Check size={40} stroke-width={3} />
+        </div>
         <small class="shash">{shot.sealHash}</small>
       </div>
     </div>
@@ -153,8 +151,8 @@
     position: relative;
     display: grid;
     grid-template-rows: auto 1fr;
-    width: min(1120px, 94vw);
-    height: min(74svh, 660px);
+    width: min(1180px, 95vw);
+    height: min(76svh, 680px);
     overflow: hidden;
     border: 1px solid rgb(111 168 220 / 28%);
     border-radius: 12px;
@@ -187,7 +185,7 @@
 
   .wb-cols {
     display: grid;
-    grid-template-columns: minmax(360px, 1.25fr) minmax(280px, 0.75fr);
+    grid-template-columns: minmax(380px, 1.4fr) minmax(230px, 0.6fr);
     gap: 14px;
     min-height: 0;
     padding: 14px;
@@ -483,10 +481,10 @@
 
   .wb-send {
     display: inline-flex;
-    gap: 9px;
+    gap: 8px;
     align-items: center;
     justify-content: center;
-    min-height: 44px;
+    min-height: 36px;
     border: 0;
     border-radius: 9px;
     color: #071523;
@@ -577,16 +575,20 @@
     font-size: 0.86rem;
   }
 
-  .sstamp {
+  .sdone {
     position: absolute;
-    top: 34%;
-    right: 20%;
-    width: 96px;
-    height: 96px;
-    fill: rgb(87 198 192 / 10%);
-    stroke: #57c6c0;
-    stroke-width: 2.4;
-    filter: drop-shadow(0 0 16px rgb(87 198 192 / 60%));
+    top: 40%;
+    right: 12%;
+    display: grid;
+    place-items: center;
+    width: 62px;
+    height: 62px;
+    border-radius: 50%;
+    color: #071523;
+    background: linear-gradient(135deg, #5fd0c9, #2f8fd6);
+    box-shadow:
+      0 0 0 8px rgb(95 208 201 / 14%),
+      0 0 30px rgb(87 198 192 / 45%);
   }
 
   .shash {
