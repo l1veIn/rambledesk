@@ -730,18 +730,7 @@ header.site-nav {
   color: #bffaf6;
 }
 
-.cta-rambelle {
-  position: absolute;
-  right: 6vw;
-  bottom: -56px;
-  z-index: 0;
-  width: min(33vw, 430px);
-  max-height: 84%;
-  object-fit: contain;
-  opacity: 0.9;
-  pointer-events: none;
-  filter: drop-shadow(0 28px 56px rgb(4 13 24 / 34%));
-}
+
 
 .cta-content h2,
 .cta-content p {
@@ -935,11 +924,6 @@ header.site-nav {
     padding: 0 22px;
   }
 
-  .cta-rambelle {
-    right: -46px;
-    width: 260px;
-    opacity: 0.32;
-  }
 }
 
 @media (max-width: 640px) {

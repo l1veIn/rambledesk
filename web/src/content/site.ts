@@ -58,8 +58,8 @@ export const locales = {
     ],
     posture: {
       eyebrow: 'RDD · ramble-driven development',
-      headline: 'We invented RDD.',
-      sub: 'I stopped babysitting my coding agents. Give the agent a goal, walk away — the moment it calls is the only moment you are needed.',
+      headline: 'Ramble-driven development.',
+      sub: 'Stop babysitting your coding agent. Give it a goal — then go do something else.',
       steps: [
         { n: '01', title: 'Give the agent a goal.', body: 'A clear brief. It owns the execution.' },
         { n: '02', title: 'Go do something else.', body: 'No screen-watching, no polling, no guilt.' },
@@ -251,13 +251,13 @@ export const locales = {
     ],
     posture: {
       eyebrow: 'RDD · ramble-driven development',
-      headline: 'RDD，我们发明的。',
-      sub: '我不再盯梢我的 coding agent 了。给 agent 一个目标，去做别的事——它叫你的那一次，才是真正需要你的时刻。',
+      headline: 'Ramble 驱动的开发。',
+      sub: '别盯梢你的 coding agent 了。给它一个目标，然后去做你自己的事。',
       steps: [
-        { n: '01', title: '给 agent 一个目标。', body: '需求写清楚，执行交给它。' },
-        { n: '02', title: '去做你自己的事。', body: '不用盯屏幕，不用刷进度，不用愧疚。' },
-        { n: '03', title: '它叫你再回来。', body: '语音、截图、文件，随口就来，直接进草稿。' },
-        { n: '04', title: '重复。', body: '每一次闭环，都封存留在你的机器上。' },
+        { n: '01', title: '把目标交给 agent。', body: '需求讲清楚，执行是它的事。' },
+        { n: '02', title: '去做你自己的事。', body: '不用盯着屏幕，也不用刷进度。' },
+        { n: '03', title: '它叫你再回来。', body: '语音、截图、文件，想到什么说什么，都进同一份草稿。' },
+        { n: '04', title: '如此往复。', body: '每一轮循环，都被封存在你的机器上。' },
       ],
     },
     lens2: {
@@ -382,7 +382,7 @@ export const locales = {
       after: 'Agents → Human Attention Router',
       afterLabel: '下一步',
       philosophy:
-        'RambleDesk 不是让你更方便地和 AI 说话，而是让你不必一直和 AI 说话——需要你的时候，agent 会主动来找你。',
+        'RambleDesk 不是为了让你更方便地和 AI 聊天，而是让你根本不用一直和 AI 聊天——需要你时，agent 会主动来找你。',
       slogan: 'Stop vibe coding. Start rambling.',
       ctaLabel: '获取 RambleDesk',
       meta: 'macOS · Homebrew · GitHub Releases',
