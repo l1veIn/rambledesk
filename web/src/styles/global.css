@@ -202,6 +202,9 @@ header.site-nav {
 }
 
 .nav-download {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
   justify-self: end;
   color: #0f5884;
 }

@@ -187,7 +187,6 @@ export const locales = {
     vision: {
       kicker: 'The human attention router',
       headline: 'The next architecture for human–AI collaboration.',
-      slogan: 'Stop vibe coding. Start rambling.',
       before: 'Agent → Human Feedback',
       beforeLabel: 'Today',
       after: 'Agents → Human Attention Router',
@@ -384,7 +383,6 @@ export const locales = {
     vision: {
       kicker: '人类注意力路由器',
       headline: '人机协作的下一代架构。',
-      slogan: 'Stop vibe coding. Start rambling.',
       before: 'Agent → Human Feedback',
       beforeLabel: '今天',
       after: 'Agents → Human Attention Router',

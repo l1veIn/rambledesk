@@ -1,0 +1,47 @@
+name: Web Deploy
+
+# Auto-deploy the landing page to Cloudflare Pages whenever the web
+# bundle changes on main. Secrets:
+#   CLOUDFLARE_API_TOKEN   — Pages:Edit token (My Profile → API Tokens)
+#   CLOUDFLARE_ACCOUNT_ID  — your Cloudflare account id
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "web/**"
+      - ".github/workflows/web-deploy.yml"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "package.json"
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.0
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build web
+        run: pnpm --filter @rambledesk/web build
+
+      - name: Publish to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy web/dist --project-name rambledesk-web --branch main --commit-dirty=true
