@@ -59,11 +59,15 @@ export const locales = {
     posture: {
       eyebrow: 'RDD · ramble-driven development',
       headline: 'Ramble-driven development.',
-      sub: 'Stop babysitting your coding agent. Give it a goal — then go do something else.',
+      sub: 'Prompts are overrated. Ramble.',
       steps: [
         { n: '01', title: 'Give the agent a goal.', body: 'A clear brief. It owns the execution.' },
         { n: '02', title: 'Go do something else.', body: 'No screen-watching, no polling, no guilt.' },
-        { n: '03', title: 'Ramble when it calls.', body: 'Voice, shots, files — off the cuff, straight into the draft.' },
+        {
+          n: '03',
+          title: 'Ramble.',
+          body: 'The whole point. No prompt — voice, shots, files, whatever you feel, straight into the draft. It feels nothing like typing a prompt.',
+        },
         { n: '04', title: 'Repeat.', body: 'Every loop ends sealed on your machine.' },
       ],
     },
@@ -252,11 +256,15 @@ export const locales = {
     posture: {
       eyebrow: 'RDD · ramble-driven development',
       headline: 'Ramble 驱动的开发。',
-      sub: '别盯梢你的 coding agent 了。给它一个目标，然后去做你自己的事。',
+      sub: '提示词已经过时了。开始 ramble 吧。',
       steps: [
         { n: '01', title: '把目标交给 agent。', body: '需求讲清楚，执行是它的事。' },
         { n: '02', title: '去做你自己的事。', body: '不用盯着屏幕，也不用刷进度。' },
-        { n: '03', title: '它叫你再回来。', body: '语音、截图、文件，想到什么说什么，都进同一份草稿。' },
+        {
+          n: '03',
+          title: '开始 ramble。',
+          body: '精髓在这：没有提示词。语音、截图、文件，想到什么就说什么，直接进草稿——这跟打字写 prompt 完全是两回事。',
+        },
         { n: '04', title: '如此往复。', body: '每一轮循环，都被封存在你的机器上。' },
       ],
     },

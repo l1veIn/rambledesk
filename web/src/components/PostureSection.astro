@@ -117,6 +117,39 @@ const { content } = Astro.props
     line-height: 1.6;
   }
 
+  /* step 3 — the essence: highlight it */
+  .posture-step:nth-of-type(3) {
+    margin-left: -14px;
+    padding-left: 36px;
+    border-left: 1px solid transparent;
+  }
+
+  .posture-step:nth-of-type(3)::before {
+    background: #f2a03d;
+    background: rgb(242 160 61 / 90%);
+    border-color: #f2a03d;
+    box-shadow: 0 0 16px rgb(242 160 61 / 55%);
+  }
+
+  .posture-step:nth-of-type(3)::after {
+    position: absolute;
+    top: 14px;
+    left: -1px;
+    bottom: 14px;
+    width: 1px;
+    background: linear-gradient(180deg, transparent, rgb(242 160 61 / 70%), transparent);
+    content: '';
+  }
+
+  .posture-step:nth-of-type(3) h3 {
+    color: #f2c77e;
+    font-size: 1.3rem;
+  }
+
+  .posture-step:nth-of-type(3) p {
+    color: rgb(244 218 179 / 86%);
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .posture-section {
       padding: 88px 22px;
