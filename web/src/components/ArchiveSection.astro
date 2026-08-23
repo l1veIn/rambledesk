@@ -9,6 +9,16 @@ const { content } = Astro.props
 ---
 
 <section class="archive-section" id="adapters" aria-label={content.archive.kicker}>
+  <video
+    class="archive-video"
+    src="/assets/archive-vault.mp4"
+    autoplay
+    muted
+    loop
+    playsinline
+    aria-hidden="true"
+  ></video>
+  <div class="archive-veil" aria-hidden="true"></div>
   <div class="archive-inner">
     <div class="archive-copy">
       <span class="section-kicker">{content.archive.kicker}</span>

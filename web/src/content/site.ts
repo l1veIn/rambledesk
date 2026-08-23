@@ -155,8 +155,8 @@ export const locales = {
     ],
     archive: {
       kicker: 'The vault',
-      title: 'Every loop ends up on your machine.',
-      sub: 'Sealed packages stack into a local timeline — the raw evidence never leaves.',
+      title: 'Every ramble stays on your machine.',
+      sub: 'Every sealed package from each ramble lines up here — raw evidence never leaves.',
       packages: [
         { hash: 'sha256:7c1f4e…', title: 'Homepage lens-2 review', date: '2026-08-23', state: 'sealed' },
         { hash: 'sha256:9a2d70…', title: 'Ramble flow & workbench polish', date: '2026-08-21', state: 'sealed' },
@@ -327,8 +327,8 @@ export const locales = {
     ],
     archive: {
       kicker: '档案库',
-      title: '每一次循环，都留在你的机器上。',
-      sub: '封存包在这里排成本地时间线，原始证据不会外流。',
+      title: '每一次 ramble，都留在你的机器上。',
+      sub: '每一次 ramble 的封存包都排在这里，原始证据不会外流。',
       packages: [
         { hash: 'sha256:7c1f4e…', title: '主页镜头 2 验收', date: '2026-08-23', state: 'sealed' },
         { hash: 'sha256:9a2d70…', title: 'Ramble 流程与工作台打磨', date: '2026-08-21', state: 'sealed' },
