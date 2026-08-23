@@ -82,7 +82,7 @@
               {#if f.kind === 'text'}
                 <div class="doc-item doc-text">{f.text}</div>
               {:else if f.kind === 'shot'}
-                <div class="doc-shot">
+                <div class="doc-item doc-shot">
                   <img src="/assets/scene-cryo.webp" alt="" loading="lazy" />
                   <span class="snap-ring"></span>
                   <span class="snap-label"><ScanLine size={12} />{f.label}</span>
@@ -283,6 +283,7 @@
 
   .doc-shot {
     position: relative;
+    display: block;
     width: min(300px, 88%);
     height: 140px;
     flex: none;
