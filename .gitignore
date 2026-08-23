@@ -22,3 +22,6 @@ deliverables-2026-07-31/
 apps/*/package-lock.json
 
 reasonix.toml
+
+# local demo video scratch (user machine)
+videos/rambledesk-demo/
