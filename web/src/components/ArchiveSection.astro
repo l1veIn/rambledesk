@@ -17,7 +17,6 @@ const { content } = Astro.props
     playsinline
     aria-hidden="true"
   ></video>
-  <div class="archive-veil" aria-hidden="true"></div>
   <div class="archive-inner">
     <div class="archive-copy">
       <span class="section-kicker">{content.archive.kicker}</span>
@@ -64,19 +63,31 @@ const { content } = Astro.props
   const vid = document.querySelector<HTMLVideoElement>('.archive-video')
   if (vid && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     let start: number | null = null
-    const drive = (ts: number) => {
-      if (!document.hidden) {
-        if (start === null) start = ts
-        const dur = vid.duration
-        if (dur > 0) {
-          // constant-speed pingpong: 0 -> dur -> 0 -> dur ..., no easing
-          const half = dur * 1000
-          const p = ((ts - start) % (half * 2)) / half
-          vid.currentTime = p < 1 ? dur * p : dur * (2 - p)
-        }
+    let lastWrite = 0
+    const seek = (ts: number) => {
+      if (start === null) start = ts
+      if (ts - lastWrite < 40) return // throttle to ~25fps writes
+      const dur = vid.duration
+      if (dur > 0) {
+        lastWrite = ts
+        // constant-speed pingpong: 0 -> dur -> 0 -> dur ..., no easing
+        const half = dur * 1000
+        const p = ((ts - start) % (half * 2)) / half
+        vid.currentTime = p < 1 ? dur * p : dur * (2 - p)
       }
-      requestAnimationFrame(drive)
     }
-    requestAnimationFrame(drive)
+    if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
+      const step = () => {
+        seek(performance.now())
+        vid.requestVideoFrameCallback(step)
+      }
+      vid.requestVideoFrameCallback(step)
+    } else {
+      const step = (ts: number) => {
+        if (!document.hidden) seek(ts)
+        requestAnimationFrame(step)
+      }
+      requestAnimationFrame(step)
+    }
   }
 </script>

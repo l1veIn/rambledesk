@@ -407,20 +407,16 @@ header.site-nav {
 .archive-video {
   position: absolute;
   inset: 0;
-  z-index: -2;
+  z-index: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: center 30%;
+  object-position: 76% 32%;
 }
 
-.archive-veil {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background:
-    linear-gradient(180deg, rgb(247 249 252 / 34%) 0%, rgb(238 245 251 / 8%) 46%, rgb(247 249 252 / 40%) 100%),
-    linear-gradient(90deg, rgb(247 249 252 / 20%), transparent 50%, rgb(238 245 251 / 16%));
+.archive-inner {
+  position: relative;
+  z-index: 1;
 }
 
 .archive-inner {
