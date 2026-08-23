@@ -9,15 +9,9 @@ const { content } = Astro.props
 ---
 
 <section class="archive-section" id="adapters" aria-label={content.archive.kicker}>
-  <video
-    class="archive-video"
-    src="/assets/archive-vault.mp4"
-    autoplay
-    muted
-    playsinline
-    aria-hidden="true"
-  ></video>
   <div class="archive-inner">
+    <div class="archive-main">
+    <div class="archive-column">
     <div class="archive-copy">
       <span class="section-kicker">{content.archive.kicker}</span>
       <h2>{content.archive.title}</h2>
@@ -54,38 +48,20 @@ const { content } = Astro.props
         ))}
       </div>
     </div>
+    </div>
+
+    <div class="archive-media">
+      <video
+        src="/assets/archive-vault.mp4"
+        autoplay
+        muted
+        loop
+        playsinline
+        aria-hidden="true"
+      ></video>
+    </div>
+    </div>
   </div>
 </section>
 
-<script>
-  // Seamless ken-burns playback: play forward, ease at the end, then play
-  // backwards in the same motion — no loop jump.
-  const vid = document.querySelector<HTMLVideoElement>('.archive-video')
-  if (vid && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    // keep the decoder warm so seeks land on rendered frames
-    vid.play().catch(() => {})
-    let start: number | null = null
-    let lastWritten = 0
-    const drive = () => {
-      if (start === null) {
-        start = performance.now()
-        lastWritten = start
-      }
-      const dur = vid.duration
-      if (dur > 0) {
-        const now = performance.now()
-        // constant-speed pingpong: 0 -> dur -> 0 -> dur ..., no easing
-        const half = dur * 1000
-        const p = ((now - start) % (half * 2)) / half
-        const target = p < 1 ? dur * p : dur * (2 - p)
-        // only seek when we're actually off pace (frame-grained, no spam)
-        if (Math.abs(vid.currentTime - target) > 0.05) {
-          vid.currentTime = target
-          lastWritten = now
-        }
-      }
-      requestAnimationFrame(drive)
-    }
-    requestAnimationFrame(drive)
-  }
-</script>
+
