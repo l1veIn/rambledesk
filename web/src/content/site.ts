@@ -66,7 +66,7 @@ export const locales = {
         {
           n: '03',
           title: 'Ramble.',
-          body: 'The whole point. No prompt — voice, shots, files, whatever you feel, straight into the draft. It feels nothing like typing a prompt.',
+          body: 'When the agent calls you back, ramble: no prompt — voice, shots, files, whatever you feel, straight into the draft. Nothing like typing a prompt.',
         },
         { n: '04', title: 'Repeat.', body: 'Every loop ends sealed on your machine.' },
       ],
@@ -263,7 +263,7 @@ export const locales = {
         {
           n: '03',
           title: '开始 ramble。',
-          body: '精髓在这：没有提示词。语音、截图、文件，想到什么就说什么，直接进草稿——这跟打字写 prompt 完全是两回事。',
+          body: '等 agent 叫你回来，开始 ramble：没有提示词，语音、截图、文件，想到什么就说什么，直接进草稿——跟打字写 prompt 完全是两回事。',
         },
         { n: '04', title: '如此往复。', body: '每一轮循环，都被封存在你的机器上。' },
       ],
