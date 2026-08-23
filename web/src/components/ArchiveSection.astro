@@ -63,14 +63,16 @@ const { content } = Astro.props
   // backwards in the same motion — no loop jump.
   const vid = document.querySelector<HTMLVideoElement>('.archive-video')
   if (vid && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    const PERIOD = 16000
     let start: number | null = null
     const drive = (ts: number) => {
       if (!document.hidden) {
         if (start === null) start = ts
-        if (vid.duration > 0) {
-          const p = ((ts - start) % PERIOD) / PERIOD
-          vid.currentTime = vid.duration * (0.5 - 0.5 * Math.cos(p * Math.PI * 2))
+        const dur = vid.duration
+        if (dur > 0) {
+          // constant-speed pingpong: 0 -> dur -> 0 -> dur ..., no easing
+          const half = dur * 1000
+          const p = ((ts - start) % (half * 2)) / half
+          vid.currentTime = p < 1 ? dur * p : dur * (2 - p)
         }
       }
       requestAnimationFrame(drive)
