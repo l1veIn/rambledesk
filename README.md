@@ -24,7 +24,7 @@ Download from [GitHub Releases](https://github.com/l1veIn/rambledesk/releases).
 
 **Windows:** run `x64-setup.exe`. Until Authenticode is added, SmartScreen may block the first launch. Confirm the download, then **More info → Run anyway**.
 
-**macOS (Apple Silicon):** open the DMG and drag RambleDesk into Applications. The build is ad-hoc signed and not notarized. First launch: right-click → Open. If macOS says the app is damaged, confirm the file came from this repo, then:
+**macOS (Apple Silicon):** open the DMG and drag RambleDesk into Applications. The build is ad-hoc signed and not notarized. First launch: right-click → Open. If macOS blocks it as unsafe or from an unidentified developer, open **System Settings → Privacy & Security**, scroll to the **Security** section, find RambleDesk, click **Open Anyway**, then confirm **Open**. If macOS says the app is damaged, confirm the file came from this repo, then:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/RambleDesk.app

@@ -24,7 +24,7 @@ RambleDesk 就像太阳眼镜。你会知道什么时候该使用它。
 
 **Windows：** 运行 `x64-setup.exe`。未做 Authenticode 签名时，SmartScreen 可能拦一下，确认来源后选「更多信息 → 仍要运行」。
 
-**macOS（Apple Silicon）：** 打开 DMG，把 RambleDesk 拖进 Applications。当前是 ad-hoc 签名、未公证。第一次请右键 → 打开；如果提示「已损坏」，先确认下载来自本仓库，再执行：
+**macOS（Apple Silicon）：** 打开 DMG，把 RambleDesk 拖进 Applications。当前是 ad-hoc 签名、未公证。第一次请右键 → 打开；如果 macOS 提示不安全或无法验证开发者，打开 **系统设置 → 隐私与安全性**，滚到下方的「安全性」，找到 RambleDesk，点击「仍要打开」，再确认「打开」。如果提示「已损坏」，先确认下载来自本仓库，再执行：
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/RambleDesk.app
