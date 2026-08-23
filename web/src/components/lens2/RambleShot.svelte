@@ -144,15 +144,17 @@
     width: 100%;
     height: 100%;
     display: grid;
-    place-items: center;
+    align-items: center;
+    justify-items: end;
+    padding-right: clamp(20px, 5vw, 88px);
   }
 
   .wb {
     position: relative;
     display: grid;
     grid-template-rows: auto 1fr;
-    width: min(1180px, 95vw);
-    height: min(76svh, 680px);
+    width: min(1000px, 82vw);
+    height: min(64svh, 580px);
     overflow: hidden;
     border: 1px solid rgb(111 168 220 / 28%);
     border-radius: 12px;
