@@ -49,6 +49,10 @@
     tl
       .to('.wb', { y: 0, opacity: 1, scale: 1, duration: 0.4, ease: 'power2.out' }, 0)
       .to('.doc-item', { opacity: 1, y: 0, stagger: 0.18, duration: 0.3, ease: 'power2.out' }, 0.6)
+    // keep the oldest evidence scrolled out as new messages land
+    const doc = root.querySelector<HTMLElement>('.editor-doc')
+    const scrollDoc = () => doc?.scrollTo({ top: doc.scrollHeight, behavior: 'smooth' })
+    shot.feed.forEach((_, i) => tl.add(() => scrollDoc(), 0.62 + i * 0.18))
   })
 </script>
 
@@ -144,17 +148,15 @@
     width: 100%;
     height: 100%;
     display: grid;
-    align-items: center;
-    justify-items: end;
-    padding-right: clamp(20px, 5vw, 88px);
+    place-items: center;
   }
 
   .wb {
     position: relative;
     display: grid;
     grid-template-rows: auto 1fr;
-    width: min(1000px, 82vw);
-    height: min(64svh, 580px);
+    width: min(1000px, 84vw);
+    height: min(62svh, 560px);
     overflow: hidden;
     border: 1px solid rgb(111 168 220 / 28%);
     border-radius: 12px;
@@ -248,7 +250,12 @@
     gap: 10px;
     align-content: start;
     min-height: 0;
-    overflow: hidden;
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+
+  .editor-doc::-webkit-scrollbar {
+    display: none;
   }
 
   .doc-item {

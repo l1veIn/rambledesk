@@ -211,7 +211,7 @@
     bottom: clamp(26px, 8vh, 84px);
     left: clamp(22px, 6vw, 88px);
     z-index: 3;
-    max-width: min(430px, 82vw);
+    max-width: min(340px, 78vw);
     pointer-events: none;
   }
 
