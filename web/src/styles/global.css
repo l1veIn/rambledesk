@@ -768,6 +768,17 @@ header.site-nav {
 
 
 /* vision evolution rows (act five) */
+
+.vision-slogan {
+  margin-top: 16px;
+  color: #bffaf6;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 1.02rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-shadow: 0 0 24px rgb(87 198 192 / 36%);
+}
+
 .vision-evolution {
   display: grid;
   gap: 10px;

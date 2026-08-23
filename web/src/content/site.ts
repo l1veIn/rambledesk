@@ -58,8 +58,8 @@ export const locales = {
     ],
     posture: {
       eyebrow: 'RDD · ramble-driven development',
-      headline: 'I stopped babysitting my coding agents.',
-      sub: 'Give the agent a goal, walk away — the moment it calls is the only moment you are needed.',
+      headline: 'We invented RDD.',
+      sub: 'I stopped babysitting my coding agents. Give the agent a goal, walk away — the moment it calls is the only moment you are needed.',
       steps: [
         { n: '01', title: 'Give the agent a goal.', body: 'A clear brief. It owns the execution.' },
         { n: '02', title: 'Go do something else.', body: 'No screen-watching, no polling, no guilt.' },
@@ -182,6 +182,8 @@ export const locales = {
     adapters: ['Codex', 'Claude Code', 'Cursor', 'Gemini CLI', 'Grok', 'OpenCode', 'Reasonix', 'Pi', 'DeepSeek Harness'],
     vision: {
       kicker: 'The human attention router',
+      headline: 'The next architecture for human–AI collaboration.',
+      slogan: 'Stop vibe coding. Start rambling.',
       before: 'Agent → Human Feedback',
       beforeLabel: 'Today',
       after: 'Agents → Human Attention Router',
@@ -249,8 +251,8 @@ export const locales = {
     ],
     posture: {
       eyebrow: 'RDD · ramble-driven development',
-      headline: 'I stopped babysitting my coding agents.',
-      sub: '给 agent 一个目标，去做别的事——它叫你的那一次，才是真正需要你的时刻。',
+      headline: 'RDD，我们发明的。',
+      sub: '我不再盯梢我的 coding agent 了。给 agent 一个目标，去做别的事——它叫你的那一次，才是真正需要你的时刻。',
       steps: [
         { n: '01', title: '给 agent 一个目标。', body: '需求写清楚，执行交给它。' },
         { n: '02', title: '去做你自己的事。', body: '不用盯屏幕，不用刷进度，不用愧疚。' },
@@ -373,6 +375,8 @@ export const locales = {
     adapters: ['Codex', 'Claude Code', 'Cursor', 'Gemini CLI', 'Grok', 'OpenCode', 'Reasonix', 'Pi', 'DeepSeek Harness'],
     vision: {
       kicker: '人类注意力路由器',
+      headline: '人机协作的下一代架构。',
+      slogan: 'Stop vibe coding. Start rambling.',
       before: 'Agent → Human Feedback',
       beforeLabel: '今天',
       after: 'Agents → Human Attention Router',

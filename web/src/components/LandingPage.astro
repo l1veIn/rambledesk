@@ -47,7 +47,8 @@ const { content } = Astro.props
       <img class="cta-rambelle" src={assets.assistant} alt="" loading="lazy" />
       <div class="cta-content">
         <span class="section-kicker">{content.vision.kicker}</span>
-        <h2>{content.vision.slogan}</h2>
+        <h2>{content.vision.headline}</h2>
+        <div class="vision-slogan">{content.vision.slogan}</div>
         <div class="vision-evolution">
           <div class="vision-row vision-before">
             <span class="vision-label">{content.vision.beforeLabel}</span>
