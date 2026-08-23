@@ -1,0 +1,50 @@
+---
+import type { SiteContent } from '../content/site'
+
+interface Props {
+  content: SiteContent
+}
+
+const { content } = Astro.props
+---
+
+<section class="archive-section" id="adapters" aria-label={content.archive.kicker}>
+  <div class="archive-inner">
+    <div class="archive-copy">
+      <span class="section-kicker">{content.archive.kicker}</span>
+      <h2>{content.archive.title}</h2>
+      <p>{content.archive.sub}</p>
+    </div>
+
+    <div class="archive-timeline" aria-label={content.archive.title}>
+      <div class="archive-rail" aria-hidden="true">
+        <span></span>
+      </div>
+      {content.archive.packages.map((pkg, index) => (
+        <article class="archive-package" style={`--i: ${index}`}>
+          <span class="archive-node" aria-hidden="true"></span>
+          <div class="archive-card">
+            <span class="archive-hash">{pkg.hash}</span>
+            <strong>{pkg.title}</strong>
+            <div class="archive-meta">
+              <time>{pkg.date}</time>
+              <span class="archive-state">
+                <i></i>
+                {pkg.state}
+              </span>
+            </div>
+          </div>
+        </article>
+      ))}
+    </div>
+
+    <div class="archive-footer">
+      <p>{content.archive.adapterNote}</p>
+      <div class="archive-chips">
+        {content.adapters.map((adapter) => (
+          <span>{adapter}</span>
+        ))}
+      </div>
+    </div>
+  </div>
+</section>
