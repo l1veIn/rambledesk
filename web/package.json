@@ -5,7 +5,6 @@
   "type": "module",
   "scripts": {
     "dev": "astro dev",
-    "prototype:hero-c": "astro dev --host 127.0.0.1 --port 4322",
     "build": "astro build",
     "preview": "astro preview",
     "check": "astro check"
