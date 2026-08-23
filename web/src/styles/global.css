@@ -708,8 +708,8 @@ header.site-nav {
   z-index: -2;
   background-position: center;
   background-size: cover;
-  transform: scale(1.03);
-  animation: scene-breathe 13s ease-in-out infinite alternate;
+  transform: scaleX(-1) scale(1.03);
+  animation: scene-breathe-x 13s ease-in-out infinite alternate;
 }
 
 .final-cta::after {
@@ -863,6 +863,14 @@ header.site-nav {
   }
   to {
     transform: scale(1.07) translate3d(-1.2%, -0.8%, 0);
+  }
+}
+@keyframes scene-breathe-x {
+  from {
+    transform: scaleX(-1) scale(1.02) translate3d(0, 0, 0);
+  }
+  to {
+    transform: scaleX(-1) scale(1.07) translate3d(-1.2%, -0.8%, 0);
   }
 }
 
