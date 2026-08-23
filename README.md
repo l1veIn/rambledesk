@@ -4,6 +4,10 @@
 
 ![RambleDesk](docs/social/ramble-banner-en-1400x700.webp)
 
+[![RambleDesk demo: Drive Development with Ramble](docs/social/rambledesk-demo-poster.jpg)](docs/social/rambledesk-demo.mp4)
+
+[Watch the 28-second demo](docs/social/rambledesk-demo.mp4)
+
 ## Stop vibe coding. Rambling is all you need.
 
 Sometimes writing prompts is hard. All I can put out is rambling. So I built a workbench that takes rambling.

@@ -4,6 +4,10 @@
 
 ![RambleDesk](docs/social/ramble-banner-text2-1400x700.webp)
 
+[![RambleDesk 演示：Drive Development with Ramble](docs/social/rambledesk-demo-poster.jpg)](docs/social/rambledesk-demo.mp4)
+
+[观看 28 秒演示](docs/social/rambledesk-demo.mp4)
+
 ## 不要再 vibe coding 了，你只需要 Ramble。
 
 有时候我觉得写提示词很难。我只能输出胡言乱语。所以我写了个专门接收胡言乱语的工作台。
