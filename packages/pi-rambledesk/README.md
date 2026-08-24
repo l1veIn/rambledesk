@@ -26,13 +26,21 @@ a restarted Pi session can reconnect instead of creating a duplicate.
 
 In interactive TUI/RPC sessions, startup performs one bounded local health
 check and enables RambleDesk guidance when the app is available—the same effect
-as running `/ramble`. A transient notification explains that `/ramble_off`
-disables the guidance for the current session. `/ramble` can enable it again.
+as running `/ramble_on`. A transient notification explains that `/ramble_off`
+disables the guidance for the current session. `/ramble_on` can enable it again.
 The enabled mode adds a short system-prompt reminder to request human input only
 when testing, inspection, a screenshot, clarification, or a decision would be
 materially useful.
 
-The package never creates a request merely because a session or task started,
+`/ramble [task]` starts a task-scoped Ramble loop. The command forwards its
+argument as a real user turn that explicitly requires `request_ramble_feedback`
+before substantive work. With no argument, the first request asks in RambleDesk
+for the goal, relevant context and constraints, desired output, and completion
+criteria. The same task may create later serialized requests when it needs
+another clarification, review, or final confirmation; the loop does not carry
+into an unrelated future task unless persistent guidance is enabled.
+
+The package never creates a request merely because a session started,
 does not add a persistent status line, and does not gate agent settlement. Every
 request still comes from an explicit tool call with concrete context and human
 actions. Recovery, idempotent retries, and optional final-summary approval

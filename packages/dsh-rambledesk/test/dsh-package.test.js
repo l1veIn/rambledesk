@@ -646,7 +646,7 @@ test("ramble mode is off by default and contributes no prompt text", async () =>
     assert.equal(mode.getMode(), "off");
     assert.equal(contexts[0].name, "rambledesk-mode");
     assert.equal(contexts[0].text({}), "");
-    assert.deepEqual(commands.map((command) => command.name), ["ramble", "ramble_off"]);
+    assert.deepEqual(commands.map((command) => command.name), ["ramble_on", "ramble_off"]);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -676,7 +676,7 @@ test("config mode on injects the RambleDesk-only constraint per assembly", async
   }
 });
 
-test("ramble command toggles the mode and reports RambleDesk availability", async () => {
+test("ramble_on command toggles the mode and reports RambleDesk availability", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "dsh-ramble-toggle-"));
   const commands = new Map();
   const server = await startServer((_request, response) => {
@@ -690,7 +690,7 @@ test("ramble command toggles the mode and reports RambleDesk availability", asyn
       commands: { register(definition) { commands.set(definition.name, definition); } },
     }, { stateDir: dir, env: envFor(port) });
 
-    const enabled = await commands.get("ramble").handler();
+    const enabled = await commands.get("ramble_on").handler();
     assert.equal(enabled.kind, "success");
     assert.match(enabled.text, /enabled/);
     assert.equal(mode.getMode(), "on");
@@ -708,7 +708,7 @@ test("ramble command toggles the mode and reports RambleDesk availability", asyn
   }
 });
 
-test("ramble command reports an unreachable RambleDesk as an error result", async () => {
+test("ramble_on command reports an unreachable RambleDesk as an error result", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "dsh-ramble-down-"));
   const commands = new Map();
   const server = http.createServer();
@@ -721,7 +721,7 @@ test("ramble command reports an unreachable RambleDesk as an error result", asyn
       commands: { register(definition) { commands.set(definition.name, definition); } },
     }, { stateDir: dir, env: envFor(port) });
 
-    const enabled = await commands.get("ramble").handler();
+    const enabled = await commands.get("ramble_on").handler();
     assert.equal(enabled.kind, "error");
     assert.match(enabled.text, /not reachable/);
   } finally {
@@ -750,10 +750,18 @@ test("apply wires tools, ramble mode, and slash commands onto a dsh context", as
     assert.equal(contexts.length, 1);
     assert.equal(contexts[0].name, "rambledesk-mode");
     assert.equal(contexts[0].text({}), ""); // off by default
-    assert.deepEqual(commands.map((command) => command.name), ["ramble", "ramble_off"]);
+    assert.deepEqual(commands.map((command) => command.name), ["ramble_on", "ramble_off"]);
     assert.equal(typeof commands[0].handler, "function");
     assert.equal(typeof commands[1].handler, "function");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("the dsh ramble skill owns task-scoped /ramble and defines an empty-task kickoff", async () => {
+  const skill = await readFile(new URL("../skills/ramble/SKILL.md", import.meta.url), "utf8");
+  assert.match(skill, /`\/ramble \[task\]` starts a task-scoped Ramble loop/);
+  assert.match(skill, /If `\/ramble` has no meaningful task text/);
+  assert.match(skill, /goal, relevant context and constraints, desired output, and completion/);
+  assert.match(skill, /`\/ramble_on` and `\/ramble_off` control persistent/);
 });

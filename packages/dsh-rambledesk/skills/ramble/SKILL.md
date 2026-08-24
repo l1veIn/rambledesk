@@ -13,6 +13,15 @@ experience through the RambleDesk feedback loop instead of asking in chat.
 - Explicit invocation is a command, not a hint. If the user invokes `/ramble`,
   `$ramble`, `[$ramble]`, names this skill as the way to handle the task, or
   asks for RambleDesk feedback, create the RambleDesk request first.
+- `/ramble [task]` starts a task-scoped Ramble loop. The loop may create later
+  requests for clarification, review, or final confirmation while that same
+  task is still active, but it does not carry into an unrelated future task.
+- If `/ramble` has no meaningful task text (including a generic phrase such as
+  "start this Ramble"), create a kickoff request in RambleDesk asking the human
+  for the goal, relevant context and constraints, desired output, and completion
+  criteria. Do not ask for those details in the host chat.
+- `/ramble_on` and `/ramble_off` control persistent RambleDesk-only mode. They
+  are mode switches, not one-task skill invocations.
 - Do not answer with advice, a review, a design proposal, or implementation
   before creating the request just because you can infer a reasonable answer
   from screenshots, files, or local context.
@@ -57,7 +66,8 @@ experience through the RambleDesk feedback loop instead of asking in chat.
 2. **Read** — when the tool returns `completed`, read the feedback markdown
    from the tool content plus any attachment paths.
 3. **Implement** — apply the feedback item by item; when you need another
-   confirmation or review, go back to step 1.
+   clarification, confirmation, or review for this same task, go back to step
+   1. Once the task is complete, leave the task-scoped loop.
 4. **Recover** — if a wait was interrupted (cancelled turn or restart), call
    `resume_ramble_feedback` to reconnect to the durable request instead of
    creating a new one. `get_ramble_feedback(request_id)` reads state without
@@ -67,6 +77,9 @@ experience through the RambleDesk feedback loop instead of asking in chat.
 ## Principles
 
 - Persist first: a created request is durable and survives disconnect/restart.
+- Task-scoped, not request-scoped: an explicit invocation guarantees the first
+  request and may use more serialized requests while completing that task, but
+  it does not enable RambleDesk-only mode for future tasks.
 - An explicit invocation is not complete until one of these is true: the
   request was created and the feedback package was read, the host requires a
   manual continuation after request creation, the user cancelled, or no

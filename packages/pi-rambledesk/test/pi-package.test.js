@@ -3,6 +3,7 @@ import http from "node:http";
 import { test } from "node:test";
 
 import {
+  buildRambleKickoffMessage,
   checkHealth,
   feedbackToolResult,
   normalizeRequestParams,
@@ -361,7 +362,7 @@ test("registers explicit guidance commands and only the intended lifecycle hooks
     "resume_ramble_feedback",
     "get_ramble_feedback",
   ]);
-  assert.deepEqual(commands, ["ramble", "ramble_off"]);
+  assert.deepEqual(commands, ["ramble", "ramble_on", "ramble_off"]);
   assert.deepEqual(lifecycleEvents, ["session_start", "before_agent_start"]);
 });
 
@@ -406,7 +407,7 @@ test("interactive startup enables guidance and ramble_off disables it", async ()
     await commands.get("ramble_off").handler("", ctx);
     assert.equal(handlers.get("before_agent_start")({ systemPrompt: "base" }, ctx), undefined);
 
-    await commands.get("ramble").handler("", ctx);
+    await commands.get("ramble_on").handler("", ctx);
     assert.equal(healthChecks, 2);
     assert.match(
       handlers.get("before_agent_start")({ systemPrompt: "base" }, ctx).systemPrompt,
@@ -418,6 +419,91 @@ test("interactive startup enables guidance and ramble_off disables it", async ()
     if (previousToken === undefined) delete process.env.RAMBLEDESK_LOCAL_SERVER_TOKEN;
     else process.env.RAMBLEDESK_LOCAL_SERVER_TOKEN = previousToken;
     await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("ramble starts a task-scoped agent turn and uses follow-up delivery while busy", async () => {
+  const commands = new Map();
+  const sent = [];
+  let idle = true;
+  const server = http.createServer((_request, response) => {
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ ready: true }));
+  });
+  const previousApiUrl = process.env.RAMBLEDESK_LOCAL_API_URL;
+  const previousToken = process.env.RAMBLEDESK_LOCAL_SERVER_TOKEN;
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    process.env.RAMBLEDESK_LOCAL_API_URL = `http://127.0.0.1:${server.address().port}/api`;
+    process.env.RAMBLEDESK_LOCAL_SERVER_TOKEN = "test-token";
+    registerRambleDeskPiTools({
+      registerTool() {},
+      registerCommand(name, command) { commands.set(name, command); },
+      on() {},
+      sendUserMessage(message, options) { sent.push({ message, options }); },
+    });
+    const ctx = { mode: "tui", hasUI: false, isIdle: () => idle };
+
+    await commands.get("ramble").handler("  redesign the login page  ", ctx);
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].options, undefined);
+    assert.doesNotMatch(sent[0].message, /^\/ramble\b/);
+    assert.match(sent[0].message, /request_ramble_feedback/);
+    assert.match(sent[0].message, /redesign the login page/);
+    assert.match(sent[0].message, /unrelated future task/);
+
+    idle = false;
+    await commands.get("ramble").handler("review the busy session", ctx);
+    assert.deepEqual(sent[1].options, { deliverAs: "followUp" });
+  } finally {
+    if (previousApiUrl === undefined) delete process.env.RAMBLEDESK_LOCAL_API_URL;
+    else process.env.RAMBLEDESK_LOCAL_API_URL = previousApiUrl;
+    if (previousToken === undefined) delete process.env.RAMBLEDESK_LOCAL_SERVER_TOKEN;
+    else process.env.RAMBLEDESK_LOCAL_SERVER_TOKEN = previousToken;
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("ramble without a task starts a kickoff request in RambleDesk", () => {
+  const kickoff = buildRambleKickoffMessage("   ");
+  assert.match(kickoff, /without providing the task/);
+  assert.match(kickoff, /goal, relevant context and constraints, desired output, and completion criteria/);
+  assert.match(kickoff, /Do not ask for those details in this chat/);
+  assert.match(kickoff, /request_ramble_feedback/);
+});
+
+test("ramble does not start an agent turn while RambleDesk is unavailable", async () => {
+  const commands = new Map();
+  const server = http.createServer();
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+  await new Promise((resolve) => server.close(resolve));
+
+  const previousApiUrl = process.env.RAMBLEDESK_LOCAL_API_URL;
+  const previousToken = process.env.RAMBLEDESK_LOCAL_SERVER_TOKEN;
+  let sent = false;
+  try {
+    process.env.RAMBLEDESK_LOCAL_API_URL = `http://127.0.0.1:${port}/api`;
+    process.env.RAMBLEDESK_LOCAL_SERVER_TOKEN = "test-token";
+    registerRambleDeskPiTools({
+      registerTool() {},
+      registerCommand(name, command) { commands.set(name, command); },
+      on() {},
+      sendUserMessage() { sent = true; },
+    });
+
+    await commands.get("ramble").handler("review the unavailable state", {
+      mode: "tui",
+      hasUI: false,
+      isIdle: () => true,
+    });
+
+    assert.equal(sent, false);
+  } finally {
+    if (previousApiUrl === undefined) delete process.env.RAMBLEDESK_LOCAL_API_URL;
+    else process.env.RAMBLEDESK_LOCAL_API_URL = previousApiUrl;
+    if (previousToken === undefined) delete process.env.RAMBLEDESK_LOCAL_SERVER_TOKEN;
+    else process.env.RAMBLEDESK_LOCAL_SERVER_TOKEN = previousToken;
   }
 });
 

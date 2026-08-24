@@ -585,7 +585,7 @@ function isTerminal(result) {
  * `services` is a minimal object exposing the optional dsh services:
  * - `systemPrompt.context(contribution)` registers the dynamic prompt context
  *   (evaluated per assembly; empty text contributes nothing),
- * - `commands.register(definition)` registers `/ramble` and `/ramble_off`.
+ * - `commands.register(definition)` registers `/ramble_on` and `/ramble_off`.
  *
  * Returns `{ getMode, setMode }` for tests and command handlers.
  */
@@ -620,8 +620,8 @@ export async function registerRambleMode(services, options = {}) {
 
   if (services.commands) {
     services.commands.register({
-      name: "ramble",
-      description: "Enable RambleDesk-only mode for every dsh session: the agent communicates with the human only through RambleDesk feedback requests.",
+      name: "ramble_on",
+      description: "Enable persistent RambleDesk-only mode for every dsh session. Use the /ramble skill to start one task-scoped Ramble instead.",
       handler: async () => {
         current = "on";
         await persistMode(current);
@@ -629,8 +629,8 @@ export async function registerRambleMode(services, options = {}) {
         return {
           kind: available ? "success" : "error",
           text: available
-            ? "RambleDesk-only mode enabled. Describe your next task or question now: the agent will open a RambleDesk feedback request instead of answering in chat."
-            : "RambleDesk-only mode enabled, but the RambleDesk app is not reachable. Start RambleDesk, then describe your task; the agent will open a feedback request once it is reachable.",
+            ? "Persistent RambleDesk-only mode enabled. Describe your next task or use /ramble to start a task-scoped loop now."
+            : "Persistent RambleDesk-only mode enabled, but the RambleDesk app is not reachable. Start RambleDesk before sending the next task or using /ramble.",
         };
       },
     });
@@ -694,7 +694,7 @@ async function apply(ctx, config = {}) {
     // Inject the services directly instead of reading them with `ctx.get()`.
     // `ctx.get()` returns `undefined` (never throws) when a service is not
     // active in this scope, which silently skipped the ramble-mode switch and
-    // the `/ramble` slash command. Declaring them in `inject` makes a missing
+    // the `/ramble_on` slash command. Declaring them in `inject` makes a missing
     // service fail the plugin load loudly, matching other dsh plugins.
     systemPrompt: ctx.systemPrompt,
     commands: ctx.commands,

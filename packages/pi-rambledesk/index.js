@@ -11,6 +11,10 @@ const HEALTH_CHECK_TIMEOUT_MS = 500;
 
 const RAMBLE_GUIDANCE = `RambleDesk feedback mode is enabled. Use request_ramble_feedback when human testing, visual inspection, screenshots, clarification, or a decision would materially improve the result. Every request must explain the concrete context and give the human specific actions. Do not create a generic request merely because a task started or the agent is about to finish.`;
 
+const RAMBLE_KICKOFF_WITH_TASK = `The user explicitly started a task-scoped RambleDesk loop. Before doing any substantive work, call request_ramble_feedback and use RambleDesk to confirm the task, gather requirements, and collect feedback. After the human responds, continue this task using the returned feedback. Create later RambleDesk requests only when this same task needs another clarification, review, or final confirmation; do not carry the loop into an unrelated future task.`;
+
+const RAMBLE_KICKOFF_WITHOUT_TASK = `The user explicitly started a task-scoped RambleDesk loop without providing the task. Call request_ramble_feedback now and ask the human in RambleDesk to describe the goal, relevant context and constraints, desired output, and completion criteria. Do not ask for those details in this chat. After the human responds, treat that feedback as the current task and continue it. Create later RambleDesk requests only when this same task needs another clarification, review, or final confirmation.`;
+
 const ContextRefSchema = Type.Object({
   label: Type.String({ description: "Short label for the referenced context." }),
   uri: Type.String({ description: "Local file URI, web URL, or other stable reference." }),
@@ -112,7 +116,30 @@ export function registerRambleDeskPiTools(pi) {
   }
 
   pi.registerCommand?.("ramble", {
-    description: "Enable RambleDesk feedback guidance when the local app is available",
+    description: "Start a task-scoped RambleDesk loop, optionally with a task",
+    handler: async (args, ctx) => {
+      const available = await enableRambleGuidance(ctx);
+      if (!available) return;
+      if (typeof pi.sendUserMessage !== "function") {
+        if (ctx.hasUI) {
+          ctx.ui.notify(
+            "This Pi version cannot start a Ramble from /ramble; update Pi and try again",
+            "warning",
+          );
+        }
+        return;
+      }
+      const kickoff = buildRambleKickoffMessage(args);
+      if (ctx.isIdle?.() === false) {
+        pi.sendUserMessage(kickoff, { deliverAs: "followUp" });
+      } else {
+        pi.sendUserMessage(kickoff);
+      }
+    },
+  });
+
+  pi.registerCommand?.("ramble_on", {
+    description: "Enable persistent RambleDesk feedback guidance for this Pi session",
     handler: async (_args, ctx) => {
       await enableRambleGuidance(ctx);
     },
@@ -248,6 +275,12 @@ Do not call this tool repeatedly for the same request unless you reuse the same 
       return output;
     },
   });
+}
+
+export function buildRambleKickoffMessage(args) {
+  const task = typeof args === "string" ? args.trim() : "";
+  if (!task) return RAMBLE_KICKOFF_WITHOUT_TASK;
+  return `${RAMBLE_KICKOFF_WITH_TASK}\n\nUser task:\n${task}`;
 }
 
 export function normalizeRequestParams(params, ctx = {}, env = process.env) {

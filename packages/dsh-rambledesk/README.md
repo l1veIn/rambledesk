@@ -50,7 +50,7 @@ agent communicates with the human exclusively through RambleDesk feedback
 requests (open the workbench, minimize the chat, issue instructions and review
 through feedback packages) and never asks or waits in the chat.
 
-- Enter with the `/ramble` slash command (it also health-checks the local
+- Enter with the `/ramble_on` slash command (it also health-checks the local
   RambleDesk server and reports availability), leave with `/ramble_off`.
 - Or configure `mode: on` in the plugin config so new sessions start in ramble
   mode automatically.
@@ -61,6 +61,13 @@ through feedback packages) and never asks or waits in the chat.
 The mode is injected through `systemPrompt.context` with a provider evaluated
 per assembly, so flipping the mode changes the model's behaviour on the next
 turn without a plugin reload.
+
+The installed `ramble` skill owns `/ramble [task]`. It starts a task-scoped
+native feedback loop without enabling persistent mode. With no meaningful task
+text, the skill first asks in RambleDesk for the goal, context and constraints,
+desired output, and completion criteria. A task may use later serialized
+requests for clarification, review, or final confirmation; unrelated future
+tasks are unaffected unless `/ramble_on` is active.
 
 The plugin has no npm dependencies. It registers plain tool definitions on
 `ctx.tools` and talks to RambleDesk's authenticated loopback JSON API:
