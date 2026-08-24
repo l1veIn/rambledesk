@@ -62,6 +62,7 @@
     playNotificationSound,
   } from '$lib/notifications'
   import {
+    DEFAULT_SPEECH_MODEL_ID,
     cookingApiKey,
     cookingBaseUrl,
     cookingEnabled,
@@ -1304,7 +1305,7 @@
                     {#each speechModels as model (model.id)}
                       <Select.Item
                         value={model.id}
-                        label={`${speechModelDisplayName($locale, model.id, model.display_name)}${model.installed ? ` · ${tr('Installed')}` : ''}`}
+                        label={`${speechModelDisplayName($locale, model.id, model.display_name)}${model.id === DEFAULT_SPEECH_MODEL_ID ? ` · ${tr('Recommended')}` : ''}${model.installed ? ` · ${tr('Installed')}` : ''}`}
                       />
                     {/each}
                   </Select.Content>
@@ -1316,6 +1317,9 @@
                   <div class="flex items-start justify-between gap-4">
                     <div class="min-w-0">
                       <div class="flex flex-wrap items-center gap-1.5">
+                        {#if selectedSpeechModel.id === DEFAULT_SPEECH_MODEL_ID}
+                          <Badge variant="secondary">{tr('Recommended')}</Badge>
+                        {/if}
                         <Badge variant="outline">
                           {selectedSpeechModel.streaming ? tr('Live streaming') : tr('VAD segmented · Non-streaming')}
                         </Badge>

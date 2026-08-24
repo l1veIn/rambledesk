@@ -24,6 +24,8 @@ export type SpeechModelId =
   | 'funasr-nano-int8-2025-12-30'
 
 export const DEFAULT_SPEECH_MODEL_ID: SpeechModelId =
+  'sense-voice-zh-en-ja-ko-yue-2024-07-17'
+const LEGACY_DEFAULT_SPEECH_MODEL_ID: SpeechModelId =
   'x-asr-480ms-streaming-zh-en-punct-int8-2026-06-05'
 
 const LOCALE_KEY = 'rambledesk.locale'
@@ -35,6 +37,8 @@ const NOTIFICATION_CUSTOM_SOUND_KEY = 'rambledesk.notifications.custom-sound'
 const NOTIFICATION_VOLUME_KEY = 'rambledesk.notifications.volume'
 const SPEECH_INPUT_DEVICE_KEY = 'rambledesk.speech.input-device'
 const SPEECH_MODEL_KEY = 'rambledesk.speech.model'
+const SPEECH_MODEL_DEFAULT_REVISION_KEY = 'rambledesk.speech.model-default-revision'
+const SPEECH_MODEL_DEFAULT_REVISION = 1
 const SPEECH_VAD_THRESHOLD_KEY = 'rambledesk.speech.vad-threshold'
 const SPEECH_VAD_SILENCE_MS_KEY = 'rambledesk.speech.vad-silence-ms'
 const SPEECH_HOTWORDS_KEY = 'rambledesk.speech.hotwords'
@@ -124,6 +128,20 @@ function isSpeechModelId(value: string | null): value is SpeechModelId {
   )
 }
 
+function initialSpeechModel(): SpeechModelId {
+  const saved = localStorage.getItem(SPEECH_MODEL_KEY)
+  const defaultRevision = Number(localStorage.getItem(SPEECH_MODEL_DEFAULT_REVISION_KEY) ?? '0')
+  // rc.7 persisted X-ASR even when it was only the old default. Migrate that value once;
+  // after this revision is recorded, users can explicitly select X-ASR without being reset.
+  if (
+    saved === LEGACY_DEFAULT_SPEECH_MODEL_ID &&
+    defaultRevision < SPEECH_MODEL_DEFAULT_REVISION
+  ) {
+    return DEFAULT_SPEECH_MODEL_ID
+  }
+  return isSpeechModelId(saved) ? saved : DEFAULT_SPEECH_MODEL_ID
+}
+
 function initialNumber(key: string, fallback: number, minimum: number, maximum: number) {
   const raw = localStorage.getItem(key)
   const saved = raw === null ? Number.NaN : Number(raw)
@@ -186,10 +204,7 @@ export const customNotificationSound = writable<CustomNotificationSound | null>(
 )
 export const notificationVolume = writable(initialNotificationVolume())
 export const speechInputDevice = writable(localStorage.getItem(SPEECH_INPUT_DEVICE_KEY) ?? '')
-const savedSpeechModel = localStorage.getItem(SPEECH_MODEL_KEY)
-export const speechModelId = writable<SpeechModelId>(
-  isSpeechModelId(savedSpeechModel) ? savedSpeechModel : DEFAULT_SPEECH_MODEL_ID,
-)
+export const speechModelId = writable<SpeechModelId>(initialSpeechModel())
 export const speechVadThreshold = writable(
   initialNumber(SPEECH_VAD_THRESHOLD_KEY, 0.5, 0.05, 0.95),
 )
@@ -362,6 +377,15 @@ export function initializePreferences() {
   speechModelId.subscribe((next) => {
     localStorage.setItem(SPEECH_MODEL_KEY, next)
   })
+  if (
+    Number(localStorage.getItem(SPEECH_MODEL_DEFAULT_REVISION_KEY) ?? '0') <
+    SPEECH_MODEL_DEFAULT_REVISION
+  ) {
+    localStorage.setItem(
+      SPEECH_MODEL_DEFAULT_REVISION_KEY,
+      String(SPEECH_MODEL_DEFAULT_REVISION),
+    )
+  }
   speechVadThreshold.subscribe((next) => {
     localStorage.setItem(SPEECH_VAD_THRESHOLD_KEY, String(next))
   })

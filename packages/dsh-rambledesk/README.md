@@ -62,7 +62,8 @@ The mode is injected through `systemPrompt.context` with a provider evaluated
 per assembly, so flipping the mode changes the model's behaviour on the next
 turn without a plugin reload.
 
-The installed `ramble` skill owns `/ramble [task]`. It starts a task-scoped
+The desktop installer writes the shared canonical `ramble` skill into dsh's
+global skill directory. That skill owns `/ramble [task]` and starts a task-scoped
 native feedback loop without enabling persistent mode. With no meaningful task
 text, the skill first asks in RambleDesk for the goal, context and constraints,
 desired output, and completion criteria. A task may use later serialized

@@ -13,9 +13,6 @@ fn fake_repo(label: &str) -> PathBuf {
     fs::create_dir_all(&pkg).unwrap();
     fs::write(pkg.join("package.json"), "{}").unwrap();
     fs::write(pkg.join("index.js"), "export const apply = () => {};\n").unwrap();
-    let skill = pkg.join("skills").join("ramble");
-    fs::create_dir_all(&skill).unwrap();
-    fs::write(skill.join("SKILL.md"), "# ramble\n").unwrap();
     root
 }
 
@@ -182,12 +179,14 @@ fn install_dsh_copies_plugin_and_skill_idempotently() {
             .join("index.js")
             .is_file()
     );
-    assert!(
-        home.join(".agents")
-            .join("skills")
-            .join("ramble")
-            .join("SKILL.md")
-            .is_file()
+    let installed_skill = home
+        .join(".agents")
+        .join("skills")
+        .join("ramble")
+        .join("SKILL.md");
+    assert_eq!(
+        fs::read_to_string(installed_skill).unwrap(),
+        RAMBLE_SKILL_MD
     );
 
     // Second run leaves everything byte-identical.

@@ -7,9 +7,9 @@
 //! 1. copy the plugin package next to a dsh profile
 //!    (`<profile>/plugins/rambledesk`),
 //! 2. append the loader entry to the profile's `cordis.patch.yml` (idempotent),
-//! 3. install the dsh-customized `ramble` skill into the user's global skill
-//!    directory (`~/.agents/skills/ramble/SKILL.md`), which dsh's
-//!    skill-filesystem provider discovers.
+//! 3. install the shared `ramble` skill into the user's global skill directory
+//!    (`~/.agents/skills/ramble/SKILL.md`), which dsh's skill-filesystem
+//!    provider discovers.
 //!
 //! The patch file is a top-level YAML array; row order carries no load
 //! semantics, so appending a fresh `- insert:` block is always safe. dsh
@@ -23,10 +23,10 @@ use serde::Serialize;
 use tauri::Manager;
 
 use rambledesk_core::find_executable;
+use rambledesk_hosts::RAMBLE_SKILL_MD;
 
 const PATCH_ID: &str = "rambledesk";
 const PLUGIN_SUBDIR: &str = "plugins/rambledesk";
-const SKILL_SOURCE_RELATIVE: &str = "skills/ramble/SKILL.md";
 const SKILL_TARGET_RELATIVE: &str = ".agents/skills/ramble/SKILL.md";
 const PATCH_ENTRY: &str = "- insert:\n    - id: rambledesk\n      name: './plugins/rambledesk/index.js'\n      config:\n        hostId: dsh\n";
 
@@ -201,7 +201,7 @@ pub fn install_dsh(
     let patch_path = PathBuf::from(&profile.patch_path);
     let patch_action = append_patch_entry(&patch_path)?;
 
-    let skill_action = install_ramble_skill(package_dir, home)?;
+    let skill_action = install_ramble_skill(home)?;
 
     let action = if patch_action == "unchanged" && skill_action == "unchanged" {
         "unchanged"
@@ -235,13 +235,6 @@ fn copy_plugin_package(package_dir: &Path, target: &Path) -> Result<(), String> 
         let file_name = entry.file_name();
         let source = entry.path();
         if source.is_dir() {
-            if file_name == "skills" {
-                let source_skill = source.join("ramble").join("SKILL.md");
-                let target_skill = target.join("skills").join("ramble").join("SKILL.md");
-                if source_skill.is_file() {
-                    copied |= copy_if_changed(&source_skill, &target_skill)?;
-                }
-            }
             continue;
         }
         if !["index.js", "package.json", "README.md"]
@@ -296,18 +289,21 @@ fn append_patch_entry(patch_path: &Path) -> Result<&'static str, String> {
     Ok(if existed { "updated" } else { "created" })
 }
 
-/// Install the dsh-customized `ramble` skill into `~/.agents/skills`.
-fn install_ramble_skill(package_dir: &Path, home: &Path) -> Result<&'static str, String> {
-    let source = package_dir.join(SKILL_SOURCE_RELATIVE);
-    if !source.is_file() {
+/// Install the canonical `ramble` skill into `~/.agents/skills`.
+fn install_ramble_skill(home: &Path) -> Result<&'static str, String> {
+    let target = home.join(SKILL_TARGET_RELATIVE);
+    let existed = target.exists();
+    if fs::read_to_string(&target).is_ok_and(|current| current == RAMBLE_SKILL_MD) {
         return Ok("unchanged");
     }
-    let target = home.join(SKILL_TARGET_RELATIVE);
-    Ok(if copy_if_changed(&source, &target)? {
-        "updated"
-    } else {
-        "unchanged"
-    })
+    let parent = target
+        .parent()
+        .ok_or_else(|| format!("{} has no parent directory", target.display()))?;
+    fs::create_dir_all(parent)
+        .map_err(|error| format!("Could not create {}: {error}", parent.display()))?;
+    fs::write(&target, RAMBLE_SKILL_MD)
+        .map_err(|error| format!("Could not write {}: {error}", target.display()))?;
+    Ok(if existed { "updated" } else { "created" })
 }
 
 /// Write `source` to `target` when the byte content differs. Creates parent

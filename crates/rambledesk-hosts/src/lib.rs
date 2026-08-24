@@ -24,6 +24,21 @@ pub use hosts::known_continuation_strategies;
 pub use knowledge::{ConfigFormat, HOSTS, HostKnowledge, generic_mcp_hosts};
 pub use profile::{ContinuationMode, HostAdapter, HostProfile, host_profile, known_host_profiles};
 
-/// Bundled `ramble` skill (Agent Skills format) injected into each installable
-/// host's skill directory by the Generic MCP Adapter installer.
+/// Canonical bundled `ramble` skill (Agent Skills format) shared by Generic MCP
+/// hosts and native adapters that expose a skill filesystem, including dsh.
 pub const RAMBLE_SKILL_MD: &str = include_str!("../assets/skills/ramble/SKILL.md");
+
+#[cfg(test)]
+mod tests {
+    use super::RAMBLE_SKILL_MD;
+
+    #[test]
+    fn canonical_ramble_skill_covers_invocation_and_both_adapter_flows() {
+        assert!(RAMBLE_SKILL_MD.contains("Treat `/ramble [task]` as a task-scoped loop"));
+        assert!(RAMBLE_SKILL_MD.contains("no meaningful task"));
+        assert!(RAMBLE_SKILL_MD.contains("Let's work on something together"));
+        assert!(RAMBLE_SKILL_MD.contains("### Native adapter flow"));
+        assert!(RAMBLE_SKILL_MD.contains("### Generic MCP flow"));
+        assert!(RAMBLE_SKILL_MD.contains("`/ramble_on` and `/ramble_off`"));
+    }
+}

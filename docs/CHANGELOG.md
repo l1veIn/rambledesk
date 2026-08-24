@@ -16,6 +16,32 @@
 
 ---
 
+## v0.3.2
+
+What's new in RambleDesk 0.3.2
+
+Speech recognition
+- SenseVoice is now the recommended default model for reliable multilingual transcription. X-ASR remains available as the lower-priority streaming option.
+- Existing rc.7 users who only inherited the old X-ASR default are migrated once to SenseVoice; an explicit later X-ASR selection is preserved.
+- Settings and onboarding now show the same recommended model, ordering, descriptions, and download actions.
+
+Ramble workflow
+- /ramble [task] now consistently starts a task-scoped feedback loop across Pi, DeepSeek Harness, and Generic MCP hosts, while /ramble_on remains the explicit persistent-mode switch.
+- A bare /ramble or a generic starter uses the active conversation when possible, otherwise gathering the goal, context, constraints, desired output, priorities, and completion criteria inside RambleDesk.
+- Generic MCP and dsh now install one shared capability-aware skill, and onboarding uses natural English and Chinese starters so the agent begins in the user's language.
+
+Feedback reliability
+- Pi and DeepSeek Harness waits no longer disconnect because of Node/Undici's response-header timeout; interrupted flows keep the same durable request id for recovery.
+- Generic MCP calls are now stateless, so a long human Ramble or stale transport session cannot hide an already-completed feedback request.
+- Ramble guidance now explicitly distinguishes the durable request id from disposable MCP transport state and prevents duplicate replacement requests.
+
+中文摘要
+- 语音识别：SenseVoice 提升为推荐默认模型，X-ASR 保留为低优先级流式选项；rc.7 继承旧默认值的用户会一次性迁移到 SenseVoice，后续手动选择 X-ASR 不会被覆盖；设置与新手引导同步展示推荐状态和模型顺序。
+- Ramble 工作流：Pi、DSH 与通用 MCP 的 /ramble [任务] 统一为任务级反馈循环，/ramble_on 专门开启持续模式；裸 /ramble 或通用开场语会优先利用当前任务，否则在 RambleDesk 内收集完整任务简报；通用 MCP 与 dsh 共用同一份能力自适应 skill，新手引导使用自然的中英文启动语以保持 Agent 回复语言。
+- 反馈可靠性：Pi/DSH 的人工等待不再因 Node/Undici 响应头超时而断开；通用 MCP 改为无状态调用，长时间 Ramble 或陈旧 transport session 不再影响使用原 request_id 读取结果。
+
+Full changelog: https://github.com/l1veIn/rambledesk/compare/v0.3.1...v0.3.2
+
 ## v0.3.1
 
 What's new in RambleDesk 0.3.1

@@ -164,8 +164,8 @@
 - `packages/dsh-rambledesk/index.js`：`feedbackToolResult` 改为返回规范的
   `{ text, details }` 值；新增回归测试锁定值形状（无 `content` 键）。
 - `apps/desktop/src-tauri/tauri.conf.json`：把 dsh 包的 `index.js`、
-  `package.json`、`README.md`、`skills/ramble/SKILL.md` 一并打进
-  `bundle.resources`。
+  `package.json`、`README.md` 打进 `bundle.resources`；通用 `ramble` skill
+  由 `rambledesk-hosts::RAMBLE_SKILL_MD` 编译进桌面端并在安装时写入。
 - `apps/desktop/src-tauri/src/pi_install.rs`：Windows 下 spawn `pi install`
   时设置 `CREATE_NO_WINDOW`，不再闪现黑框。
 - Pi 安装完成提示补充"首次安装可能耗时十几秒"。

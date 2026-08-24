@@ -96,7 +96,7 @@ rambledesk/
 - 调用 Local JSON API 的 request/wait/get/recover/cancel；
 - 在同一个 dsh 工具调用内等待终态（不声明 `timeoutMs`，只在执行信号中断时中止）；
 - 在插件旁持久化 request 状态与 `host_session_id`，支持跨重启恢复；
-- 附带 dsh 定制版 `ramble` skill（`skills/ramble/SKILL.md`），由桌面安装引擎复制到 `~/.agents/skills`；
+- 由桌面安装引擎把 `rambledesk-hosts` 中的通用 `ramble` skill 写入 `~/.agents/skills`；该 skill 会自动选择 dsh 原生等待流程；
 - 不依赖 MCP，零 npm 依赖。
 
 ### Desktop

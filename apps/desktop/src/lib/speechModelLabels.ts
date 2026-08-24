@@ -9,12 +9,12 @@ type EnglishModelCopy = {
 const englishCopy: Partial<Record<SpeechModelId, EnglishModelCopy>> = {
   'x-asr-480ms-streaming-zh-en-punct-int8-2026-06-05': {
     displayName: 'X-ASR streaming Chinese/English punctuation',
-    description: 'Low-latency live transcription for continuous Rambles.',
+    description: 'Low-latency live transcription for continuous Rambles that need streaming feedback.',
     languages: { '中文': 'Chinese', English: 'English' },
   },
   'sense-voice-zh-en-ja-ko-yue-2024-07-17': {
     displayName: 'SenseVoice multilingual',
-    description: 'Whole-segment transcription after automatic VAD splitting, with multilingual accuracy.',
+    description: 'Recommended default with reliable multilingual transcription after automatic VAD splitting.',
     languages: {
       '中文': 'Chinese',
       English: 'English',

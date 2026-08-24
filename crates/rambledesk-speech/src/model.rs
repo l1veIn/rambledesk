@@ -15,7 +15,7 @@ use std::{
 pub const X_ASR_MODEL_ID: &str = "x-asr-480ms-streaming-zh-en-punct-int8-2026-06-05";
 pub const SENSEVOICE_MODEL_ID: &str = "sense-voice-zh-en-ja-ko-yue-2024-07-17";
 pub const FUNASR_NANO_MODEL_ID: &str = "funasr-nano-int8-2025-12-30";
-pub const DEFAULT_MODEL_ID: &str = X_ASR_MODEL_ID;
+pub const DEFAULT_MODEL_ID: &str = SENSEVOICE_MODEL_ID;
 
 const X_ASR_ENGINE_ID: &str = "sherpa-onnx-x-asr-zh-en";
 const SENSEVOICE_ENGINE_ID: &str = "sherpa-onnx-sensevoice";
@@ -128,24 +128,10 @@ const X_ASR_MIRRORS: &[FileMirror] = &[
 
 const MODELS: &[ModelManifest] = &[
     ModelManifest {
-        id: X_ASR_MODEL_ID,
-        engine_id: X_ASR_ENGINE_ID,
-        display_name: "X-ASR 流式中英标点",
-        description: "低延迟实时出字，适合持续 Ramble",
-        directory: "sherpa-x-asr",
-        languages: &["中文", "English"],
-        license: "Apache-2.0",
-        streaming: true,
-        hotwords_supported: true,
-        files: X_ASR_FILES,
-        archive: Some(X_ASR_ARCHIVE),
-        mirrors: X_ASR_MIRRORS,
-    },
-    ModelManifest {
         id: SENSEVOICE_MODEL_ID,
         engine_id: SENSEVOICE_ENGINE_ID,
         display_name: "SenseVoice 多语言",
-        description: "VAD 自动分段后整段识别，兼顾多语言准确率",
+        description: "推荐默认；VAD 自动分段后整段识别，兼顾多语言准确率与稳定性",
         directory: "sherpa-sensevoice",
         languages: &["中文", "English", "日本語", "한국어", "粤语"],
         license: "FunASR Model License 1.1",
@@ -154,6 +140,20 @@ const MODELS: &[ModelManifest] = &[
         files: SENSEVOICE_FILES,
         archive: None,
         mirrors: &[],
+    },
+    ModelManifest {
+        id: X_ASR_MODEL_ID,
+        engine_id: X_ASR_ENGINE_ID,
+        display_name: "X-ASR 流式中英标点",
+        description: "低延迟实时出字，适合需要流式反馈的持续 Ramble",
+        directory: "sherpa-x-asr",
+        languages: &["中文", "English"],
+        license: "Apache-2.0",
+        streaming: true,
+        hotwords_supported: true,
+        files: X_ASR_FILES,
+        archive: Some(X_ASR_ARCHIVE),
+        mirrors: X_ASR_MIRRORS,
     },
     ModelManifest {
         id: FUNASR_NANO_MODEL_ID,
@@ -638,6 +638,9 @@ mod tests {
     #[test]
     fn manifest_has_three_supported_models_with_unique_ids() {
         assert_eq!(MODELS.len(), 3);
+        assert_eq!(DEFAULT_MODEL_ID, SENSEVOICE_MODEL_ID);
+        assert_eq!(MODELS[0].id, DEFAULT_MODEL_ID);
+        assert_eq!(MODELS[1].id, X_ASR_MODEL_ID);
         let mut ids = MODELS.iter().map(|model| model.id).collect::<Vec<_>>();
         ids.sort_unstable();
         ids.dedup();

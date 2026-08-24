@@ -15,7 +15,17 @@ const RAMBLE_GUIDANCE = `RambleDesk feedback mode is enabled. Use request_ramble
 
 const RAMBLE_KICKOFF_WITH_TASK = `The user explicitly started a task-scoped RambleDesk loop. Before doing any substantive work, call request_ramble_feedback and use RambleDesk to confirm the task, gather requirements, and collect feedback. After the human responds, continue this task using the returned feedback. Create later RambleDesk requests only when this same task needs another clarification, review, or final confirmation; do not carry the loop into an unrelated future task.`;
 
-const RAMBLE_KICKOFF_WITHOUT_TASK = `The user explicitly started a task-scoped RambleDesk loop without providing the task. Call request_ramble_feedback now and ask the human in RambleDesk to describe the goal, relevant context and constraints, desired output, and completion criteria. Do not ask for those details in this chat. After the human responds, treat that feedback as the current task and continue it. Create later RambleDesk requests only when this same task needs another clarification, review, or final confirmation.`;
+const RAMBLE_KICKOFF_WITHOUT_TASK = `The user explicitly started a task-scoped RambleDesk loop without providing a meaningful task. Call request_ramble_feedback now. If the current conversation already contains one clear active task, summarize your understanding in the request and ask the human to confirm or correct it while supplying any missing context, constraints, desired output, priorities, and completion criteria. Otherwise ask the human in RambleDesk to provide that complete task brief. Do not ask for those details in this chat. After the human responds, treat that feedback as the current task and continue it. Create later RambleDesk requests only when this same task needs another clarification, review, or final confirmation.`;
+
+const RAMBLE_GENERIC_STARTERS = new Set([
+  "start this ramble",
+  "let's start ramble",
+  "let’s start ramble",
+  "let's work on something together",
+  "let’s work on something together",
+  "开始这次 ramble",
+  "一起做点儿什么吧",
+]);
 
 const ContextRefSchema = Type.Object({
   label: Type.String({ description: "Short label for the referenced context." }),
@@ -281,7 +291,8 @@ Do not call this tool repeatedly for the same request unless you reuse the same 
 
 export function buildRambleKickoffMessage(args) {
   const task = typeof args === "string" ? args.trim() : "";
-  if (!task) return RAMBLE_KICKOFF_WITHOUT_TASK;
+  const normalized = task.toLocaleLowerCase().replace(/[.!?。！？]+$/u, "").trim();
+  if (!task || RAMBLE_GENERIC_STARTERS.has(normalized)) return RAMBLE_KICKOFF_WITHOUT_TASK;
   return `${RAMBLE_KICKOFF_WITH_TASK}\n\nUser task:\n${task}`;
 }
 

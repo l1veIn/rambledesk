@@ -795,11 +795,3 @@ test("apply wires tools, ramble mode, and slash commands onto a dsh context", as
     await rm(dir, { recursive: true, force: true });
   }
 });
-
-test("the dsh ramble skill owns task-scoped /ramble and defines an empty-task kickoff", async () => {
-  const skill = await readFile(new URL("../skills/ramble/SKILL.md", import.meta.url), "utf8");
-  assert.match(skill, /`\/ramble \[task\]` starts a task-scoped Ramble loop/);
-  assert.match(skill, /If `\/ramble` has no meaningful task text/);
-  assert.match(skill, /goal, relevant context and constraints, desired output, and completion/);
-  assert.match(skill, /`\/ramble_on` and `\/ramble_off` control persistent/);
-});

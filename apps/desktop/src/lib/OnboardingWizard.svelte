@@ -38,6 +38,7 @@
   import piLogoSvg from '../assets/pi-logo.svg?raw'
   import dshLogoSvg from '../assets/dsh-logo.svg?raw'
   import {
+    DEFAULT_SPEECH_MODEL_ID,
     cookingApiKey,
     cookingBaseUrl,
     cookingEnabled,
@@ -325,7 +326,7 @@
     }
   }
 
-  $: starterPrompt = t($locale, '/ramble Let\'s start ramble')
+  $: starterPrompt = t($locale, '/ramble Let\'s work on something together')
 
   async function copyStarterPrompt() {
     try {
@@ -429,13 +430,13 @@
         </section>
       {:else if steps[step] === 'Voice input'}
         <section class="mx-auto max-w-xl">
-          <div class="flex gap-3"><Mic class="mt-0.5 size-6 text-primary" /><div><h2 class="m-0 text-lg font-semibold">{tr('Ramble quickly with voice')}</h2><p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{tr('We recommend downloading a local transcription model. Audio stays on this device and is never uploaded. You can skip this and choose models, microphones, and VAD later in Settings.')}</p></div></div>
+          <div class="flex gap-3"><Mic class="mt-0.5 size-6 text-primary" /><div><h2 class="m-0 text-lg font-semibold">{tr('Ramble quickly with voice')}</h2><p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{tr('SenseVoice is the recommended default for reliable multilingual transcription. Audio stays on this device and is never uploaded. You can skip this and choose another model, microphone, or VAD settings later.')}</p></div></div>
           <div class="mt-6 rounded-lg border bg-muted/20 p-4">
             <label for="onboarding-model" class="text-xs font-medium">{tr('Transcription model')}</label>
             <select id="onboarding-model" class="mt-2 h-9 w-full rounded-md border bg-background px-3 text-xs" value={$speechModelId} onchange={(event) => setSpeechModelId((event.currentTarget as HTMLSelectElement).value as SpeechModelId)}>
-              {#each models as model (model.id)}<option value={model.id}>{speechModelDisplayName($locale, model.id, model.display_name)}{model.installed ? ` · ${tr('Installed')}` : ''}</option>{/each}
+              {#each models as model (model.id)}<option value={model.id}>{speechModelDisplayName($locale, model.id, model.display_name)}{model.id === DEFAULT_SPEECH_MODEL_ID ? ` · ${tr('Recommended')}` : ''}{model.installed ? ` · ${tr('Installed')}` : ''}</option>{/each}
             </select>
-            {#if selectedModel}<div class="mt-4 flex items-start justify-between gap-4"><div><div class="flex gap-2"><Badge variant={selectedModel.installed ? 'secondary' : 'outline'}>{selectedModel.installed ? tr('Installed') : mb(selectedModel.size_bytes)}</Badge><Badge variant="outline">{selectedModel.streaming ? tr('Live streaming') : tr('VAD segmented')}</Badge></div><p class="mb-0 mt-2 text-xs leading-5 text-muted-foreground">{speechModelDescription($locale, selectedModel.id, selectedModel.description)}</p></div>{#if !selectedModel.installed}<Button disabled={modelBusy} onclick={() => void downloadModel()}>{#if modelBusy}<LoaderCircle class="animate-spin" data-icon="inline-start" />{:else}<Download data-icon="inline-start" />{/if}{modelBusy ? `${modelProgressPercent}%` : tr('Download recommended model')}</Button>{/if}</div>{/if}
+            {#if selectedModel}<div class="mt-4 flex items-start justify-between gap-4"><div><div class="flex flex-wrap gap-2">{#if selectedModel.id === DEFAULT_SPEECH_MODEL_ID}<Badge variant="secondary">{tr('Recommended')}</Badge>{/if}<Badge variant={selectedModel.installed ? 'secondary' : 'outline'}>{selectedModel.installed ? tr('Installed') : mb(selectedModel.size_bytes)}</Badge><Badge variant="outline">{selectedModel.streaming ? tr('Live streaming') : tr('VAD segmented')}</Badge></div><p class="mb-0 mt-2 text-xs leading-5 text-muted-foreground">{speechModelDescription($locale, selectedModel.id, selectedModel.description)}</p></div>{#if !selectedModel.installed}<Button disabled={modelBusy} onclick={() => void downloadModel()}>{#if modelBusy}<LoaderCircle class="animate-spin" data-icon="inline-start" />{:else}<Download data-icon="inline-start" />{/if}{modelBusy ? `${modelProgressPercent}%` : selectedModel.id === DEFAULT_SPEECH_MODEL_ID ? tr('Download recommended model') : tr('Download model')}</Button>{/if}</div>{/if}
             {#if modelBusy}<div class="mt-4 h-1.5 overflow-hidden rounded bg-muted"><div class="h-full bg-primary transition-[width]" style={`width: ${modelProgressPercent}%`}></div></div>{/if}
           </div>
         </section>

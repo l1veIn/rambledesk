@@ -15,7 +15,7 @@ describe('speech model labels', () => {
     )
     expect(
       speechModelDescription('en', senseVoice, 'VAD 自动分段后整段识别，兼顾多语言准确率'),
-    ).toContain('multilingual accuracy')
+    ).toContain('Recommended default')
     expect(speechModelLanguages('en', senseVoice, ['中文', 'English', '日本語'])).toEqual([
       'Chinese',
       'English',

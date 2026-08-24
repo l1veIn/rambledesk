@@ -506,12 +506,15 @@ test("ramble starts a task-scoped agent turn and uses follow-up delivery while b
   }
 });
 
-test("ramble without a task starts a kickoff request in RambleDesk", () => {
-  const kickoff = buildRambleKickoffMessage("   ");
-  assert.match(kickoff, /without providing the task/);
-  assert.match(kickoff, /goal, relevant context and constraints, desired output, and completion criteria/);
-  assert.match(kickoff, /Do not ask for those details in this chat/);
-  assert.match(kickoff, /request_ramble_feedback/);
+test("ramble without a meaningful task starts a kickoff request in RambleDesk", () => {
+  for (const input of ["   ", "Let's work on something together", "一起做点儿什么吧！"]) {
+    const kickoff = buildRambleKickoffMessage(input);
+    assert.match(kickoff, /without providing a meaningful task/);
+    assert.match(kickoff, /current conversation already contains one clear active task/);
+    assert.match(kickoff, /missing context, constraints, desired output, priorities, and completion criteria/);
+    assert.match(kickoff, /Do not ask for those details in this chat/);
+    assert.match(kickoff, /request_ramble_feedback/);
+  }
 });
 
 test("ramble does not start an agent turn while RambleDesk is unavailable", async () => {

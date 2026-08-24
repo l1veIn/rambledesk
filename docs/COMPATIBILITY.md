@@ -47,7 +47,7 @@ Pi 的正常流程在同一个 tool call 内等待，因此无需提交后的 Re
 | 宿主 | 适配器 | 状态 | 备注 |
 | --- | --- | --- | --- |
 | Pi 0.83.x | Pi Native Adapter | 自动化基线通过 | 真实长时等待与桌面重启需继续人工回归 |
-| DeepSeek Harness (dsh) | dsh Native Adapter | 自动检测+安装已实现 | `packages/dsh-rambledesk` Cordis 插件；request+wait 在 dsh 工具调用内等待；写入 `cordis.patch.yml` 的 loader insert 并注入 `~/.agents/skills/ramble` 定制 skill；重启 dsh 后生效 |
+| DeepSeek Harness (dsh) | dsh Native Adapter | 自动检测+安装已实现 | `packages/dsh-rambledesk` Cordis 插件；request+wait 在 dsh 工具调用内等待；写入 `cordis.patch.yml` 的 loader insert 并注入共享 `ramble` skill；重启 dsh 后生效 |
 | Claude Code 2.1.x | Generic MCP Adapter | 工具调用通过 | 提交后使用 Resume Prompt；自动配置时向 `.claude/skills` 注入 `ramble` skill |
 | MCP Inspector 2.x | Generic MCP Adapter | smoke 通过 | 用于协议和安全门禁 |
 | Codex CLI | Generic MCP Adapter | 待补完整矩阵 | 按通用适配器合同处理 |
@@ -63,11 +63,11 @@ Pi 的正常流程在同一个 tool call 内等待，因此无需提交后的 Re
 RambleDesk。
 
 通用 MCP 适配器在「自动配置 MCP」时，除写入 MCP server 配置外，还会把一个遵循
-Agent Skills 开放标准（[agentskills.io](https://agentskills.io)）的 `ramble` skill
+Agent Skills 开放标准（[agentskills.io](https://agentskills.io)）的共享 `ramble` skill
 复制到各宿主的**全局 skill 目录**（`~/.claude/skills/ramble/SKILL.md` 等），由
-宿主启动时自动发现、按需加载。skill 内容纯教宿主走 RambleDesk 反馈循环
-（`request_feedback` → 等待 → `get_feedback` → 实现 → 必要时 `cancel_feedback`），
-不包含会话恢复逻辑。
+宿主启动时自动发现、按需加载。dsh 原生安装也写入同一份 skill。skill 会按
+可用工具自动选择原生 request+wait+recover 流程，或 Generic MCP 的
+request+手动续接+get 流程；任务级 `/ramble` 与无任务 kickoff 语义保持一致。
 
 | 宿主 | skill 目录（home 相对） |
 | --- | --- |
