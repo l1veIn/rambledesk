@@ -12,6 +12,8 @@
 // token is read from the RambleDesk local server token file on every call.
 
 import { readFile, writeFile } from "node:fs/promises";
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -193,7 +195,8 @@ async function fetchWithRetry(action, baseUrl, token, payload, signal, options, 
   const requestSignal = combineSignals(signal, timeoutMs);
   let response;
   try {
-    response = await fetch(`${baseUrl}/feedback/${action}`, {
+    const url = `${baseUrl}/feedback/${action}`;
+    const init = {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -202,7 +205,14 @@ async function fetchWithRetry(action, baseUrl, token, payload, signal, options, 
       },
       body: JSON.stringify(payload),
       signal: requestSignal,
-    });
+    };
+    // Node's built-in fetch (Undici) aborts a request that has not received
+    // response headers after roughly five minutes. A human Ramble has no such
+    // deadline, so the blocking wait uses the native HTTP client with no
+    // transport timeout and remains governed only by the dsh execution signal.
+    response = action === "wait"
+      ? await fetchWithoutDeadline(url, init)
+      : await fetch(url, init);
   } catch (cause) {
     if (attempt < REQUEST_MAX_ATTEMPTS && !signal?.aborted) {
       await sleep(REQUEST_RETRY_DELAY_MS * attempt);
@@ -226,6 +236,67 @@ async function fetchWithRetry(action, baseUrl, token, payload, signal, options, 
     throw error;
   }
   return body;
+}
+
+function fetchWithoutDeadline(url, init) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url);
+    const request = parsed.protocol === "http:"
+      ? httpRequest
+      : parsed.protocol === "https:"
+        ? httpsRequest
+        : undefined;
+    if (!request) {
+      reject(new Error(`Unsupported RambleDesk URL protocol: ${parsed.protocol}`));
+      return;
+    }
+    if (init.signal?.aborted) {
+      reject(abortReason(init.signal));
+      return;
+    }
+
+    let settled = false;
+    let outbound;
+    const finish = (callback) => {
+      if (settled) return;
+      settled = true;
+      init.signal?.removeEventListener("abort", onAbort);
+      callback();
+    };
+    const fail = (error) => finish(() => reject(error));
+    const onAbort = () => outbound?.destroy(abortReason(init.signal));
+
+    outbound = request(parsed, {
+      method: init.method,
+      headers: init.headers,
+      timeout: 0,
+    }, (incoming) => {
+      const chunks = [];
+      incoming.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+      incoming.once("aborted", () => fail(new Error("RambleDesk response was aborted")));
+      incoming.once("error", fail);
+      incoming.once("end", () => finish(() => resolve({
+        ok: incoming.statusCode >= 200 && incoming.statusCode < 300,
+        status: incoming.statusCode ?? 0,
+        statusText: incoming.statusMessage ?? "",
+        text: async () => Buffer.concat(chunks).toString("utf8"),
+      })));
+    });
+    outbound.once("error", fail);
+    init.signal?.addEventListener("abort", onAbort, { once: true });
+    if (init.signal?.aborted) {
+      onAbort();
+      return;
+    }
+    outbound.end(init.body);
+  });
+}
+
+function abortReason(signal) {
+  if (signal?.reason instanceof Error) return signal.reason;
+  const error = new Error("The RambleDesk wait was aborted");
+  error.name = "AbortError";
+  return error;
 }
 
 function parseJsonBody(text, action, status) {

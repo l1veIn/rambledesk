@@ -485,7 +485,7 @@ async fn local_api_supports_pi_request_and_blocking_wait() -> anyhow::Result<()>
 }
 
 #[tokio::test]
-async fn sse_handshake_emits_endpoint_and_serves_mcp_tools() -> anyhow::Result<()> {
+async fn sse_handshake_emits_endpoint_and_serves_stateless_mcp_tools() -> anyhow::Result<()> {
     let token = AccessToken::parse(TEST_TOKEN)?;
     let (application, _directory) = test_application().await?;
     let server = start_server(ServerConfig::new(token).with_port(0), application.clone()).await?;
@@ -541,6 +541,10 @@ async fn sse_handshake_emits_endpoint_and_serves_mcp_tools() -> anyhow::Result<(
         .get("mcp-session-id")
         .and_then(|v| v.to_str().ok())
         .map(str::to_owned);
+    assert!(
+        session_id.is_none(),
+        "generic MCP must not bind durable feedback access to a transport session"
+    );
 
     // 3. Go SDK client calls subscriptions/listen
     let mut sub_req = client
@@ -585,6 +589,30 @@ async fn sse_handshake_emits_endpoint_and_serves_mcp_tools() -> anyhow::Result<(
     assert!(tools_body.contains("request_feedback"));
     assert!(tools_body.contains("get_feedback"));
     assert!(tools_body.contains("cancel_feedback"));
+
+    // A host that accidentally retains an old transport header must still be
+    // able to retrieve durable requests: stateless mode ignores the stale MCP
+    // session and dispatches the tool call normally.
+    let stale_session_response = client
+        .post(server.endpoint())
+        .bearer_auth(TEST_TOKEN)
+        .header(HOST_HEADER, "antigravity")
+        .header("mcp-session-id", "expired-transport-session")
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "tools/list",
+            "params": {}
+        }))
+        .send()
+        .await?;
+    assert_eq!(stale_session_response.status(), reqwest::StatusCode::OK);
+    assert!(
+        stale_session_response
+            .text()
+            .await?
+            .contains("get_feedback")
+    );
 
     drop(stream);
 

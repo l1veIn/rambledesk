@@ -499,6 +499,10 @@ pub async fn start_server(
     let cancellation = CancellationToken::new();
     let allowed_origins = config.allowed_origins.clone();
     let transport_config = StreamableHttpServerConfig::default()
+        // Feedback requests are durable application records keyed by
+        // request_id. Generic hosts can wait on a human for hours, so their
+        // next tool call must not depend on rmcp's five-minute legacy session.
+        .with_legacy_session_mode(false)
         .with_allowed_origins(config.allowed_origins)
         .with_max_request_body_bytes(MAX_ATTACHMENT_REQUEST_BODY_BYTES)
         .with_cancellation_token(cancellation.child_token());

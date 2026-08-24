@@ -40,7 +40,9 @@ experience through the RambleDesk feedback loop instead of asking in chat.
      real session id when available; otherwise generate one once per session
      and reuse it, e.g. `<host>-<YYYYMMDD-HHMMSS>-<random hex>`
      (`reasonix-20260813-050001-a1b2c3`). Keep it constant for the whole
-     session — do not mint a new one per request.
+     session — do not mint a new one per request. This is only an application
+     correlation id; it is not an MCP transport session and is not needed to
+     retrieve feedback.
    - `title`: a short title the human can read at a glance in their Inbox.
    - `what_happened`: background — what you are doing, why you need this
      feedback, and what lens the human should bring.
@@ -69,7 +71,10 @@ experience through the RambleDesk feedback loop instead of asking in chat.
    add more options. If there is no such tool available in the current mode, end
    the turn and resume when notified.
 3. **Read** — once the human submits, call `get_feedback(request_id)` and read
-   `feedback.md` plus any attachments.
+   `feedback.md` plus any attachments. `request_id` is the only durable lookup
+   key. After any MCP disconnect or reconnect, call `get_feedback` with that
+   same id; never create a replacement request because a transport reports
+   "Session not found".
 4. **Implement** — apply the feedback item by item; when you need another
    confirmation or review, go back to step 1.
 5. **Cancel** — if the human explicitly gives up, call `cancel_feedback`.
@@ -77,6 +82,8 @@ experience through the RambleDesk feedback loop instead of asking in chat.
 ## Principles
 
 - Persist first: a created request is durable and survives disconnect/restart.
+- MCP transport state is disposable. Losing it never means the durable feedback
+  request was lost; reconnect and read the original `request_id`.
 - An explicit invocation is not complete until one of these is true: the
   request was created and the feedback package was read, the host requires a
   manual continuation after request creation, the user cancelled, or no

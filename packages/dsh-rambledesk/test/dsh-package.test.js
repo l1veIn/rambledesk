@@ -190,6 +190,44 @@ test("posts feedback requests with bearer token and dsh host header", async () =
   }
 });
 
+test("blocking wait bypasses Undici's response-header deadline", async () => {
+  const server = await startServer((request, response) => {
+    request.resume();
+    request.on("end", () => {
+      setTimeout(() => {
+        response.setHeader("content-type", "application/json");
+        response.end(JSON.stringify({
+          request_id: "durable-wait-id",
+          status: "completed",
+          feedback_package: { markdown: "wait survived", attachment_paths: [] },
+        }));
+      }, 25);
+    });
+  });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    const error = new TypeError("fetch failed");
+    error.cause = { code: "UND_ERR_HEADERS_TIMEOUT" };
+    throw error;
+  };
+
+  try {
+    const { port } = server.address();
+    const result = await postFeedback(
+      "wait",
+      { request_id: "durable-wait-id" },
+      undefined,
+      { env: envFor(port), hostId: "dsh" },
+    );
+
+    assert.equal(result.request_id, "durable-wait-id");
+    assert.equal(result.status, "completed");
+  } finally {
+    globalThis.fetch = originalFetch;
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test("retries a transient connection failure with the same request id", async () => {
   let attempts = 0;
   const receivedIds = [];
