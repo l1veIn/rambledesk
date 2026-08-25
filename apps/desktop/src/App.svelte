@@ -861,7 +861,7 @@
     if (rambleCanExit) await exitRamble()
     // Approving makes the request terminal and the draft controller then refuses
     // saves, so anything still being transcribed has to land and persist first.
-    await awaitCaptureWrites()
+    if (!(await awaitCaptureWrites())) return
     approving = true
     pageError = ''
     try {
@@ -889,7 +889,7 @@
   async function cancelFeedback() {
     if (!workspace || !canCancel) return
     if (rambleCanExit) await exitRamble()
-    await awaitCaptureWrites()
+    if (!(await awaitCaptureWrites())) return
 
     cancelling = true
     pageError = ''
@@ -967,15 +967,47 @@
    * where the write was issued.
    */
   let captureSaves: Promise<void> = Promise.resolve()
+  /** Set when a capture save rejected or reported failure; read once, then cleared. */
+  let captureSaveFailed = false
 
   function trackCaptureSave(work: Promise<unknown>) {
-    captureSaves = Promise.allSettled([captureSaves, work]).then(() => undefined)
+    // saveDraftNow resolves false on failure rather than rejecting, and
+    // allSettled treats that as success — record both shapes explicitly so a
+    // terminal action cannot run on top of a capture that never persisted.
+    const watched = Promise.resolve(work).then(
+      (result) => {
+        if (result === false) captureSaveFailed = true
+      },
+      () => {
+        captureSaveFailed = true
+      },
+    )
+    captureSaves = Promise.allSettled([captureSaves, watched]).then(() => undefined)
   }
 
-  /** Wait for every capture to be cleaned up, written, and persisted. */
-  async function awaitCaptureWrites(): Promise<void> {
+  /**
+   * Wait for every capture to be cleaned up, written, and persisted. Returns
+   * false when one of those saves failed, in which case the caller must not
+   * make the request terminal.
+   */
+  async function awaitCaptureWrites(): Promise<boolean> {
     await rambleController?.awaitCaptureWork()
     await captureSaves
+    if (!captureSaveFailed) return true
+    captureSaveFailed = false
+    pageError = saveMessage || tr('The current draft could not be saved.')
+    return false
+  }
+
+  /**
+   * The cooked preview keeps a pre-cook snapshot that "Restore original"
+   * reinstates and submission publishes as uncooked.md. A capture landing after
+   * cooking has to reach that snapshot as well, or restoring deletes the new
+   * recording and the audit source omits it.
+   */
+  function mirrorIntoCookedOriginal(apply: (body: string) => string) {
+    if (cookedPreviewOriginal) cookedPreviewOriginal = apply(cookedPreviewOriginal)
+    if (cookedPreview) cookedPreview = { ...cookedPreview, original: apply(cookedPreview.original) }
   }
 
   /** Write one capture block, replacing it in place when it is already there. */
@@ -984,6 +1016,7 @@
       workspace?.request.request_id === requestId &&
       applyDraftBody(upsertCapture(draftBody, captureId, inner))
     ) {
+      mirrorIntoCookedOriginal((body) => upsertCapture(body, captureId, inner))
       return
     }
     trackCaptureSave(
@@ -992,10 +1025,11 @@
   }
 
   function applyCaptureReplacement(id: string, nextInner: string, previous: string, occurrence: number) {
-    const marked = replaceCapture(draftBody, id, nextInner)
-    const updated =
-      marked !== draftBody ? marked : replaceNthBlock(draftBody, previous, nextInner, occurrence)
-    applyDraftBody(updated)
+    const rewrite = (body: string) => {
+      const marked = replaceCapture(body, id, nextInner)
+      return marked !== body ? marked : replaceNthBlock(body, previous, nextInner, occurrence)
+    }
+    if (applyDraftBody(rewrite(draftBody))) mirrorIntoCookedOriginal(rewrite)
   }
 
   function handleRambleClipPending(requestId: string, clipId: string) {

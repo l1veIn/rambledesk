@@ -65,6 +65,47 @@ describe('publisherController', () => {
     mocks.invoke.mockReset()
   })
 
+  it('does not publish when a capture failed to persist', async () => {
+    // A capture that never reached the store would be dropped for good once the
+    // request goes terminal, so submission has to stop instead.
+    let workspace = workspaceView()
+    const setPageError = vi.fn()
+    const controller = createPublisherController({
+      tr: (source) => source,
+      messageFrom: (cause) => String(cause),
+      isPreviewMode: () => false,
+      getWorkspace: () => workspace,
+      setWorkspace: (next) => {
+        workspace = next
+      },
+      setCompletedResult: vi.fn(),
+      setPublishedFeedback: vi.fn(),
+      setSavePhase: vi.fn(),
+      setPageError,
+      getCanSubmit: () => true,
+      getRambleCanExit: () => false,
+      exitRamble: vi.fn(),
+      awaitCaptureWork: vi.fn().mockResolvedValue(false),
+      saveDraftNow: vi.fn(async () => true),
+      getDraftBody: () => 'Draft with a recording that never saved.',
+      getSavedRevision: () => 4,
+      getCookingEnabled: () => false,
+      getPreview: () => null,
+      setPreview: vi.fn(),
+      setCooking: vi.fn(),
+      cookAndPublish: vi.fn(),
+      setSubmitting: vi.fn(),
+      setSubmitStage: vi.fn(),
+      refreshNavigation: vi.fn(async () => undefined),
+      showSubmittedToast: vi.fn(),
+    })
+
+    await controller.submitFeedback()
+
+    expect(mocks.invoke).not.toHaveBeenCalledWith('submit_feedback', expect.anything())
+    expect(workspace.request.status).not.toBe('completed')
+  })
+
   it('submits an edited cooked draft without cooking again', async () => {
     let workspace = workspaceView()
     const setPreview = vi.fn()
@@ -94,7 +135,7 @@ describe('publisherController', () => {
       getCanSubmit: () => true,
       getRambleCanExit: () => false,
       exitRamble: vi.fn(),
-    awaitCaptureWork: vi.fn(),
+      awaitCaptureWork: vi.fn().mockResolvedValue(true),
       saveDraftNow: vi.fn(async () => true),
       getDraftBody: () => 'Edited cooked draft.',
       getSavedRevision: () => 4,
