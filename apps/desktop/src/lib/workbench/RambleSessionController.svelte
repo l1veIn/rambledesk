@@ -75,6 +75,18 @@
   export let rambleMessage = ''
   export let briefNotePhase: BriefNotePhase = 'idle'
   export let briefNoteBlockId: string | null = null
+  /**
+   * Blocks whose stopped note is still being cleaned up. Transcription must not
+   * block the microphone, so this is a set rather than a phase: one block can
+   * spin while the operator is already recording the next one.
+   */
+  export let briefNoteProcessingIds: string[] = []
+  /**
+   * Everything spoken into the current note so far, stable segments included.
+   * `voicePartial` alone is just the segment in flight, so the preview lost the
+   * earlier sentences every time the recogniser closed a segment.
+   */
+  export let voiceNoteTranscript = ''
   export let onPageError: (message: string) => void = () => {}
   export let onRambleClipPending: (requestId: string, clipId: string) => void = () => {}
   export let onRambleClipReady: (requestId: string, text: string, clipId?: string) => void = () => {}
@@ -100,8 +112,10 @@
   let voiceSink: 'ramble' | 'brief-note' = 'ramble'
   let sessionChunks: string[] = []
   let briefNoteQuote = ''
-  /** Cleanup + write of the note that was just stopped; awaited before exiting. */
-  let briefNoteWork: Promise<void> = Promise.resolve()
+  /** Every capture still being cleaned up and written; awaited before exiting. */
+  let captureWork: Promise<void> = Promise.resolve()
+  /** Held across the first await in stopBriefNote so the stop happens once. */
+  let stoppingBriefNote = false
   const transcriptPipeline = createTranscriptPipeline({
     cleanupEnabled: () => get(lightCleanupEnabled),
     cleanup: (text) =>
@@ -126,6 +140,8 @@
       t($locale, 'the model did not answer in time, so the raw transcript was kept'),
   })
 
+  $: voiceNoteTranscript =
+    voiceSink === 'brief-note' ? mergeLiveTranscript(sessionChunks, voicePartial) : ''
   $: voiceActive =
     voicePhase === 'starting' ||
     voicePhase === 'listening' ||
@@ -228,8 +244,7 @@
       interactionLocked ||
       rambleBusy ||
       briefNotePhase === 'recording' ||
-      briefNotePhase === 'starting' ||
-      briefNotePhase === 'processing'
+      briefNotePhase === 'starting'
     ) {
       return
     }
@@ -239,12 +254,7 @@
   }
 
   export async function toggleBriefNote(blockId: string) {
-    if (
-      interactionLocked ||
-      rambleBusy ||
-      briefNotePhase === 'starting' ||
-      briefNotePhase === 'processing'
-    ) {
+    if (interactionLocked || rambleBusy || briefNotePhase === 'starting') {
       return
     }
     if (briefNotePhase === 'recording') {
@@ -259,7 +269,9 @@
     if (briefNotePhase === 'recording' || briefNotePhase === 'starting') {
       await stopBriefNote()
     }
-    await briefNoteWork
+    // Speech still being transcribed belongs in the document, even though the
+    // operator has already walked away from the session.
+    await captureWork
     if (rambleRequestId && rambleEngaged) {
       void invoke('record_diagnostic_event', {
         activity: 'ramble_stopped',
@@ -369,7 +381,7 @@
   async function beginVoiceRamble() {
     if (sessionChunks.length > 0 && voiceSink === 'ramble') {
       const leftover = takeSessionTranscript()
-      void deliverTranscript('ramble', leftover)
+      trackCaptureWork(deliverTranscript('ramble', leftover))
     }
     voiceSink = 'ramble'
     sessionChunks = []
@@ -398,7 +410,7 @@
       if (!voiceStopped && !stopError) stopError = voiceMessage || t($locale, 'Microphone failed to stop')
     }
     const leftover = takeSessionTranscript()
-    void deliverTranscript('ramble', leftover, { clipId, requestId })
+    trackCaptureWork(deliverTranscript('ramble', leftover, { clipId, requestId }))
     if (stopError) {
       ramblePhase = 'error'
       rambleMessage = stopError
@@ -484,34 +496,49 @@
   }
 
   async function stopBriefNote() {
-    if (briefNotePhase !== 'recording' && briefNotePhase !== 'starting') return
-    const blockId = briefNoteBlockId
-    const quote = briefNoteQuote
-    const requestId = voiceRequestId || rambleRequestId
     // Claim the stop before the first await. The native `stopped` event lands
     // while we wait below and re-enters here, which used to deliver the same
     // speech a second time and duplicate the note.
-    briefNotePhase = 'processing'
-    if (voiceCanStop) await stopVoiceRamble()
-    // Merge only after the microphone stopped: the closing stable segment
-    // refines the partial it came from, so merging a pre-stop snapshot with
-    // the post-stop chunks appended the last sentence twice.
-    const note = takeSessionTranscript()
-    voiceSink = 'ramble'
-    if (!blockId || !requestId || !note) {
-      finishBriefNote()
-      return
+    if (stoppingBriefNote) return
+    if (briefNotePhase !== 'recording' && briefNotePhase !== 'starting') return
+    stoppingBriefNote = true
+    const blockId = briefNoteBlockId
+    const quote = briefNoteQuote
+    const requestId = voiceRequestId || rambleRequestId
+    try {
+      if (voiceCanStop) await stopVoiceRamble()
+      // Merge only after the microphone stopped: the closing stable segment
+      // refines the partial it came from, so merging a pre-stop snapshot with
+      // the post-stop chunks appended the last sentence twice.
+      const note = takeSessionTranscript()
+      voiceSink = 'ramble'
+      // Release the recording slot now. Cleanup runs behind the block's own
+      // spinner so the operator can immediately record somewhere else.
+      briefNotePhase = 'idle'
+      briefNoteBlockId = null
+      briefNoteQuote = ''
+      if (!blockId || !requestId || !note) return
+      trackCaptureWork(
+        (async () => {
+          briefNoteProcessingIds = [...briefNoteProcessingIds, blockId]
+          try {
+            await deliverTranscript('brief-note', note, { requestId, blockId, quote })
+          } finally {
+            briefNoteProcessingIds = briefNoteProcessingIds.filter((id) => id !== blockId)
+          }
+        })(),
+      )
+    } finally {
+      stoppingBriefNote = false
     }
-    briefNoteWork = deliverTranscript('brief-note', note, { requestId, blockId, quote }).finally(
-      finishBriefNote,
-    )
-    await briefNoteWork
   }
 
-  function finishBriefNote() {
-    briefNotePhase = 'idle'
-    briefNoteBlockId = null
-    briefNoteQuote = ''
+  /**
+   * Keep every in-flight cleanup+write in one chain so exiting Ramble waits for
+   * speech that is still being transcribed instead of dropping it.
+   */
+  function trackCaptureWork(work: Promise<unknown>) {
+    captureWork = Promise.allSettled([captureWork, work]).then(() => undefined)
   }
 
   async function finalizeSession(sink: 'ramble' | 'brief-note'): Promise<string> {
@@ -741,7 +768,7 @@
         if (
           transcript &&
           (briefNotePhase === 'recording' ||
-            briefNotePhase === 'processing' ||
+            stoppingBriefNote ||
             briefNotePhase === 'starting' ||
             ramblePhase === 'active' ||
             ramblePhase === 'stopping' ||

@@ -172,21 +172,30 @@ export function blockNoteCaptureId(blockId: string): string {
   return `note:${blockId}:0`
 }
 
+/**
+ * Place a capture tooltip against its icon. Both rects are viewport
+ * coordinates; pass the positioning host's rect as `origin` when the tooltip is
+ * parented inside a transformed container (a dialog) rather than the body, so
+ * the offsets are measured from that container instead of the viewport.
+ */
 export function tooltipFixedStyle(
   anchor: { left: number; top: number; width: number; height: number },
   placement: 'top' | 'bottom',
   align: 'left' | 'right',
+  origin: { left: number; top: number } = { left: 0, top: 0 },
 ): { top: number; left: number; transform: string } {
+  const left =
+    (align === 'right' ? anchor.left + anchor.width : anchor.left) - origin.left
   if (placement === 'bottom') {
     return {
-      top: anchor.top + anchor.height + 8,
-      left: align === 'right' ? anchor.left + anchor.width : anchor.left,
+      top: anchor.top + anchor.height + 8 - origin.top,
+      left,
       transform: align === 'right' ? 'translateX(-100%)' : 'none',
     }
   }
   return {
-    top: anchor.top - 8,
-    left: align === 'right' ? anchor.left + anchor.width : anchor.left,
+    top: anchor.top - 8 - origin.top,
+    left,
     transform: align === 'right' ? 'translate(-100%, -100%)' : 'translateY(-100%)',
   }
 }

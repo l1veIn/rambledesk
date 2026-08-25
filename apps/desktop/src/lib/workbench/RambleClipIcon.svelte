@@ -42,8 +42,20 @@
   $: hideLabel = kind === 'note' ? tr('Hide block note') : tr('Hide ramble clip')
   $: showLabel = kind === 'note' ? tr('Show recorded note') : tr('Show recorded speech')
 
+  /**
+   * The clip rack sits inside a horizontally scrolling strip, so the tooltip has
+   * to escape that clipping. It cannot escape all the way to `document.body`:
+   * the task-brief dialog traps focus inside its own content element and pulls
+   * focus straight back out of a body-parented textarea, which made the tooltip
+   * impossible to click into. Park it on the dialog content instead, and fall
+   * back to the body when there is no dialog around.
+   */
+  function positioningHost(): HTMLElement | null {
+    return root?.closest('[data-slot="dialog-content"]') ?? null
+  }
+
   function portal(node: HTMLElement) {
-    document.body.appendChild(node)
+    ;(positioningHost() ?? document.body).appendChild(node)
     return {
       destroy() {
         node.remove()
@@ -53,9 +65,15 @@
 
   function updatePopoverPosition() {
     if (!root) return
-    const anchor = root.getBoundingClientRect()
-    const placed = tooltipFixedStyle(anchor, placement, align)
-    popoverStyle = `top:${placed.top}px;left:${placed.left}px;transform:${placed.transform}`
+    const host = positioningHost()
+    const origin = host?.getBoundingClientRect()
+    const placed = tooltipFixedStyle(
+      root.getBoundingClientRect(),
+      placement,
+      align,
+      origin ? { left: origin.left, top: origin.top } : undefined,
+    )
+    popoverStyle = `position:${host ? 'absolute' : 'fixed'};top:${placed.top}px;left:${placed.left}px;transform:${placed.transform}`
   }
 
   function toggleOpen() {
@@ -164,7 +182,7 @@
     <div
       bind:this={popover}
       use:portal
-      class="fixed z-[200] w-[min(22rem,calc(100vw-4rem))] rounded-md border bg-popover p-3 text-xs leading-5 text-popover-foreground shadow-lg"
+      class="z-[200] w-[min(22rem,calc(100vw-4rem))] rounded-md border bg-popover p-3 text-xs leading-5 text-popover-foreground shadow-lg"
       style={popoverStyle}
       data-capture-tooltip
       role="dialog"

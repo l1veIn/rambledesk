@@ -18,6 +18,7 @@
   import { openExternalUrl } from '$lib/openExternalUrl'
   import {
     briefBlocks,
+    isCaptureTooltipEvent,
     type ClipFlyFrom,
     type RambleClip,
   } from './briefNotes'
@@ -44,7 +45,9 @@
   export let briefNotes: Record<string, string[]> = {}
   export let briefNotePhase: BriefNotePhase = 'idle'
   export let briefNoteBlockId: string | null = null
-  export let voicePartial = ''
+  export let briefNoteProcessingIds: string[] = []
+  /** Everything spoken into the note being recorded, stable segments included. */
+  export let noteTranscript = ''
   export let onToggleBriefNote: (blockId: string) => void = () => {}
   export let onSaveRambleClip: (clipId: string, text: string) => void = () => {}
   export let onSaveBriefNote: (blockId: string, index: number, text: string) => void = () => {}
@@ -95,7 +98,7 @@
             ? tr('Resume Ramble')
             : tr('Start Ramble')
   $: noteRecording = briefNotePhase === 'recording'
-  $: noteProcessing = briefNotePhase === 'processing' || briefNotePhase === 'starting'
+  $: noteStarting = briefNotePhase === 'starting'
   $: blocks = workspace
     ? briefBlocks({
         whatHappened: workspace.request.what_happened,
@@ -104,7 +107,7 @@
       })
     : []
   $: whatHappenedBlocks = blocks.filter((block) => block.kind === 'what_happened')
-  $: rambleButtonDisabled = rambleBusy || noteRecording || noteProcessing
+  $: rambleButtonDisabled = rambleBusy || noteRecording || noteStarting
   $: {
     const requestId = workspace?.request.request_id ?? null
     if (requestId !== hydratedRequestId) {
@@ -136,6 +139,12 @@
 
 <Dialog.Root bind:open>
   <Dialog.Content
+    onInteractOutside={(event) => {
+      if (isCaptureTooltipEvent(event.target)) event.preventDefault()
+    }}
+    onFocusOutside={(event) => {
+      if (isCaptureTooltipEvent(event.target)) event.preventDefault()
+    }}
     class="task-brief-preview-content grid h-[calc(100vh-2rem)] w-[min(1200px,calc(100vw-2rem))] max-w-[min(1200px,calc(100vw-2rem))] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 duration-200 sm:max-w-[min(1200px,calc(100vw-2rem))]"
     style={origin ? `transform-origin: ${origin}` : undefined}
   >
@@ -173,10 +182,11 @@
                 <BriefNoteBlock
                   notes={briefNotes[block.id] ?? []}
                   recording={noteRecording && briefNoteBlockId === block.id}
-                  processing={noteProcessing && briefNoteBlockId === block.id}
+                  processing={briefNoteProcessingIds.includes(block.id) ||
+                    (noteStarting && briefNoteBlockId === block.id)}
                   disabled={readOnly || rambleActive || rambleBusy}
                   {readOnly}
-                  partial={briefNoteBlockId === block.id ? voicePartial : ''}
+                  partial={briefNoteBlockId === block.id ? noteTranscript : ''}
                   onToggleRecord={() => onToggleBriefNote(block.id)}
                   onSaveNote={(index, text) => onSaveBriefNote(block.id, index, text)}
                 >
@@ -203,10 +213,11 @@
                   <BriefNoteBlock
                     notes={briefNotes[`action:${action.id}`] ?? []}
                     recording={noteRecording && briefNoteBlockId === `action:${action.id}`}
-                    processing={noteProcessing && briefNoteBlockId === `action:${action.id}`}
+                    processing={briefNoteProcessingIds.includes(`action:${action.id}`) ||
+                      (noteStarting && briefNoteBlockId === `action:${action.id}`)}
                     disabled={readOnly || rambleActive || rambleBusy}
                     {readOnly}
-                    partial={briefNoteBlockId === `action:${action.id}` ? voicePartial : ''}
+                    partial={briefNoteBlockId === `action:${action.id}` ? noteTranscript : ''}
                     onToggleRecord={() => onToggleBriefNote(`action:${action.id}`)}
                     onSaveNote={(index, text) => onSaveBriefNote(`action:${action.id}`, index, text)}
                   >
@@ -235,10 +246,11 @@
                     <BriefNoteBlock
                       notes={briefNotes[`context:${index}`] ?? []}
                       recording={noteRecording && briefNoteBlockId === `context:${index}`}
-                      processing={noteProcessing && briefNoteBlockId === `context:${index}`}
+                      processing={briefNoteProcessingIds.includes(`context:${index}`) ||
+                        (noteStarting && briefNoteBlockId === `context:${index}`)}
                       disabled={readOnly || rambleActive || rambleBusy}
                       {readOnly}
-                      partial={briefNoteBlockId === `context:${index}` ? voicePartial : ''}
+                      partial={briefNoteBlockId === `context:${index}` ? noteTranscript : ''}
                       onToggleRecord={() => onToggleBriefNote(`context:${index}`)}
                       onSaveNote={(index, text) => onSaveBriefNote(`context:${index}`, index, text)}
                     >

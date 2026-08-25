@@ -159,6 +159,8 @@
   let briefNotesByRequest: Record<string, Record<string, string[]>> = {}
   let briefNotePhase: BriefNotePhase = 'idle'
   let briefNoteBlockId: string | null = null
+  let briefNoteProcessingIds: string[] = []
+  let voiceNoteTranscript = ''
   let resumePrompt: ResumePrompt | null = null
   let resumeCopyState: 'idle' | 'copied' | 'failed' = 'idle'
   let notificationState: NotificationState = 'checking'
@@ -352,7 +354,7 @@
     !submitting &&
     !cancelling &&
     briefNotePhase !== 'starting' &&
-    briefNotePhase !== 'processing'
+    !captureInFlight
   $: canCancel =
     workspace !== null &&
     workspace.request.status !== 'completed' &&
@@ -361,7 +363,7 @@
     !submitting &&
     !cancelling &&
     briefNotePhase !== 'starting' &&
-    briefNotePhase !== 'processing'
+    !captureInFlight
   // Note recording deliberately stays out of this: the note write itself goes
   // through updateDraft, and a refused write is silently reverted when the
   // editor re-syncs from draftBody. Submit and cancel keep their own note
@@ -381,6 +383,8 @@
   $: currentRambleClips = workspace
     ? rambleClipsByRequest[workspace.request.request_id] ?? []
     : []
+  $: captureInFlight =
+    briefNoteProcessingIds.length > 0 || currentRambleClips.some((clip) => clip.processing)
   $: currentBriefNotes = workspace
     ? briefNotesByRequest[workspace.request.request_id] ?? {}
     : {}
@@ -925,6 +929,9 @@
     updateDraft(next)
     if (draftBody !== next) return false
     workspacePanel?.applyExternalMarkdown(next)
+    // Flush instead of riding the autosave debounce: a transcript that lands
+    // while the operator is already closing the window must survive.
+    void saveDraftNow()
     return true
   }
 
@@ -1083,6 +1090,8 @@
     bind:rambleMessage
     bind:briefNotePhase
     bind:briefNoteBlockId
+    bind:briefNoteProcessingIds
+    bind:voiceNoteTranscript
     interactionLocked={interactionLocked || currentRequestCooking}
     onPageError={(message) => (pageError = message)}
     onSaveDraftNow={saveDraftNow}
@@ -1196,6 +1205,8 @@
           briefNotes={currentBriefNotes}
           {briefNotePhase}
           {briefNoteBlockId}
+          {briefNoteProcessingIds}
+          noteTranscript={rambleBelongsToWorkspace ? voiceNoteTranscript : ''}
           onToggleBriefNote={(blockId) => void toggleBriefNote(blockId)}
           onSaveRambleClip={handleSaveRambleClip}
           onSaveBriefNote={handleSaveBriefNote}
@@ -1219,7 +1230,7 @@
           {canCancel}
           {cancelling}
           {approving}
-          noteBusy={briefNotePhase === 'starting' || briefNotePhase === 'processing'}
+          noteBusy={briefNotePhase === 'starting' || captureInFlight}
           {canOpenResumePrompt}
           {resolveHostProfile}
           formatTime={formatTimeLocal}

@@ -166,6 +166,18 @@ describe('mergeLiveTranscript at stop time', () => {
   })
 })
 
+describe('mergeLiveTranscript while recording', () => {
+  // The note preview reads this, not the raw partial: the recogniser closing a
+  // segment used to wipe every earlier sentence off the block.
+  it('keeps finished segments on screen while the next one is still being spoken', () => {
+    expect(mergeLiveTranscript(['第一段。'], '第二段还在说')).toBe('第一段。\n第二段还在说')
+  })
+
+  it('shows one copy in the gap right after a segment is finalised', () => {
+    expect(mergeLiveTranscript(['第一段。'], '第一段。')).toBe('第一段。')
+  })
+})
+
 describe('isCaptureTooltipEvent', () => {
   it('treats clicks inside a portaled tooltip as inside', () => {
     const inside = { closest: (selector: string) => (selector === '[data-capture-tooltip]' ? {} : null) }
@@ -185,6 +197,19 @@ describe('tooltipFixedStyle', () => {
         'left',
       ),
     ).toEqual({ top: 792, left: 40, transform: 'translateY(-100%)' })
+  })
+
+  it('measures from the positioning host when the tooltip is parented in a dialog', () => {
+    // A dialog content element is transformed, so an absolutely positioned
+    // tooltip inside it is offset from the dialog, not the viewport.
+    expect(
+      tooltipFixedStyle(
+        { left: 240, top: 700, width: 32, height: 32 },
+        'top',
+        'left',
+        { left: 200, top: 40 },
+      ),
+    ).toEqual({ top: 652, left: 40, transform: 'translateY(-100%)' })
   })
 
   it('places a block-note tooltip below the right edge of the icon', () => {

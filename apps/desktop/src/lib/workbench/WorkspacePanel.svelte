@@ -43,6 +43,8 @@
   export let rambleBusy = false
   export let rambleStartedOnce = false
   export let rambleClips: RambleClip[] = []
+  export let briefNoteProcessingIds: string[] = []
+  export let noteTranscript = ''
   export let briefNotes: Record<string, string[]> = {}
   export let briefNotePhase: BriefNotePhase = 'idle'
   export let briefNoteBlockId: string | null = null
@@ -330,7 +332,8 @@
       {briefNotes}
       {briefNotePhase}
       {briefNoteBlockId}
-      {voicePartial}
+      {briefNoteProcessingIds}
+      {noteTranscript}
       {onToggleBriefNote}
       {onSaveRambleClip}
       {onSaveBriefNote}
