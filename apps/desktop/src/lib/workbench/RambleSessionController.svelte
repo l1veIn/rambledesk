@@ -22,12 +22,14 @@
     lightCleanupEnabled,
     lightCleanupSystemPrompt,
     locale,
+    notificationVolume,
     speechHotwords,
     speechInputDevice,
     speechModelId,
     speechVadSilenceMs,
     speechVadThreshold,
   } from '../preferences'
+  import { playRecordArmSound } from '../notifications'
   import {
     RAMBLE_CONSOLE_COMMAND_EVENT,
     RAMBLE_CONSOLE_HIDE_EVENT,
@@ -47,7 +49,7 @@
   import {
     briefBlocks,
     findBriefBlock,
-    joinTranscriptChunks,
+    mergeLiveTranscript,
     rambleRequestIdAfterIdleNote,
   } from './briefNotes'
   import { createTranscriptPipeline } from './transcriptPipeline'
@@ -217,13 +219,7 @@
   })
 
   export async function toggleRamble() {
-    if (
-      interactionLocked ||
-      rambleBusy ||
-      briefNotePhase === 'starting' ||
-      briefNotePhase === 'recording' ||
-      briefNotePhase === 'processing'
-    ) {
+    if (interactionLocked || rambleBusy || briefNotePhase === 'recording' || briefNotePhase === 'starting') {
       return
     }
     if (rambleActive || (voiceCanStop && voiceSink === 'ramble')) await stopRamble()
@@ -232,12 +228,7 @@
   }
 
   export async function toggleBriefNote(blockId: string) {
-    if (
-      interactionLocked ||
-      rambleBusy ||
-      briefNotePhase === 'starting' ||
-      briefNotePhase === 'processing'
-    ) {
+    if (interactionLocked || rambleBusy || briefNotePhase === 'starting') {
       return
     }
     if (briefNotePhase === 'recording') {
@@ -360,7 +351,8 @@
 
   async function beginVoiceRamble() {
     if (sessionChunks.length > 0 && voiceSink === 'ramble') {
-      await finalizeSession('ramble')
+      const leftover = takeSessionTranscript()
+      void deliverTranscript('ramble', leftover)
     }
     voiceSink = 'ramble'
     sessionChunks = []
@@ -385,7 +377,8 @@
       const voiceStopped = await stopVoiceRamble()
       if (!voiceStopped && !stopError) stopError = voiceMessage || t($locale, 'Microphone failed to stop')
     }
-    const written = await finalizeSession('ramble')
+    const leftover = takeSessionTranscript()
+    void deliverTranscript('ramble', leftover)
     if (stopError) {
       ramblePhase = 'error'
       rambleMessage = stopError
@@ -405,7 +398,7 @@
       return
     }
     if (rambleActive) await stopRamble()
-    if (voiceCanStop) return
+    if (voiceCanStop) await stopVoiceRamble()
     const requestId = workspace.request.request_id
     rambleRequestId = rambleRequestIdAfterIdleNote(ramblePhase, rambleRequestId, requestId)
     const block = findBriefBlock(
@@ -434,43 +427,58 @@
     briefNotePhase = 'recording'
   }
 
+  function takeSessionTranscript(): string {
+    const text = mergeLiveTranscript(sessionChunks, voicePartial)
+    sessionChunks = []
+    return text
+  }
+
+  async function deliverTranscript(
+    sink: 'ramble' | 'brief-note',
+    raw: string,
+    meta?: { requestId: string; blockId: string; quote: string },
+  ) {
+    if (!raw) return
+    try {
+      const written = await transcriptPipeline.prepare(raw)
+      const text = written || raw
+      if (sink === 'ramble') {
+        const requestId = voiceRequestId || rambleRequestId
+        if (text && requestId) onRambleClipReady(requestId, text)
+        return
+      }
+      if (meta && text) onBriefNoteReady(meta.requestId, meta.blockId, meta.quote, text)
+    } catch (cause) {
+      onPageError(t($locale, 'Failed to write Ramble content: {error}', { error: messageFrom(cause) }))
+      if (sink === 'brief-note' && meta) onBriefNoteReady(meta.requestId, meta.blockId, meta.quote, raw)
+      else if (sink === 'ramble' && raw) {
+        const requestId = voiceRequestId || rambleRequestId
+        if (requestId) onRambleClipReady(requestId, raw)
+      }
+    }
+  }
+
   async function stopBriefNote() {
     if (briefNotePhase !== 'recording' && briefNotePhase !== 'starting') return
     const blockId = briefNoteBlockId
     const quote = briefNoteQuote
     const requestId = voiceRequestId || rambleRequestId
-    briefNotePhase = 'processing'
-    if (voiceCanStop) await stopVoiceRamble()
-    const note = await finalizeSession('brief-note')
-    briefNoteBlockId = null
-    briefNoteQuote = ''
     briefNotePhase = 'idle'
-    if (blockId && requestId && note) onBriefNoteReady(requestId, blockId, quote, note)
+    briefNoteBlockId = null
+    if (voiceCanStop) await stopVoiceRamble()
+    const note = takeSessionTranscript()
+    voiceSink = 'ramble'
+    if (blockId && requestId && note) {
+      void deliverTranscript('brief-note', note, { requestId, blockId, quote })
+    }
   }
 
   async function finalizeSession(sink: 'ramble' | 'brief-note'): Promise<string> {
-    const raw = joinTranscriptChunks(sessionChunks)
-    sessionChunks = []
+    const raw = takeSessionTranscript()
     voiceSink = 'ramble'
     if (!raw) return ''
-    const requestId = voiceRequestId || rambleRequestId
-    if (sink === 'ramble') {
-      rambleMessage = t($locale, 'Writing speech into the document…')
-      try {
-        const written = await transcriptPipeline.prepare(raw)
-        if (written && requestId) onRambleClipReady(requestId, written)
-        return written
-      } catch (cause) {
-        onPageError(t($locale, 'Failed to write Ramble content: {error}', { error: messageFrom(cause) }))
-        return ''
-      }
-    }
-    try {
-      return await transcriptPipeline.prepare(raw)
-    } catch (cause) {
-      onPageError(t($locale, 'Failed to write Ramble content: {error}', { error: messageFrom(cause) }))
-      return raw
-    }
+    await deliverTranscript(sink, raw)
+    return raw
   }
 
   async function startVoiceRamble(requestId = rambleRequestId): Promise<boolean> {
@@ -483,6 +491,7 @@
     voiceMessage = t($locale, 'Connecting the microphone…')
     voiceLevel = 0
     voiceModelMissing = false
+    void playRecordArmSound(get(notificationVolume))
     try {
       const session = await invoke<VoiceRambleSessionView>('start_voice_ramble', {
         input: {

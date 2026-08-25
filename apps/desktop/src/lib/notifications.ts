@@ -193,6 +193,30 @@ export async function playClipRackSound(volume = 80): Promise<void> {
   }
 }
 
+/** Short arming tick when recording starts. */
+export async function playRecordArmSound(volume = 80): Promise<void> {
+  const context = await resolveAudioContext()
+  if (!context) return
+  try {
+    const now = context.currentTime
+    const normalizedVolume = Math.min(100, Math.max(0, volume)) / 100
+    const osc = context.createOscillator()
+    osc.type = 'sine'
+    osc.frequency.setValueAtTime(1560, now)
+    osc.frequency.exponentialRampToValueAtTime(880, now + 0.07)
+    const gain = context.createGain()
+    gain.gain.setValueAtTime(0.0001, now)
+    gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, 0.42 * normalizedVolume), now + 0.008)
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.09)
+    osc.connect(gain)
+    gain.connect(context.destination)
+    osc.start(now)
+    osc.stop(now + 0.1)
+  } catch {
+    // Interaction audio is optional.
+  }
+}
+
 export async function playNotificationSound(
   sound: NotificationSound = 'chime',
   volume = 80,

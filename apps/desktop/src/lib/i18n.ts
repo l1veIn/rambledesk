@@ -70,6 +70,7 @@ const chinese: Record<string, string> = {
   'This prompt is sent with every transcript cleanup. Keep the original language and meaning if you edit it.': '每次整理转写时都会带上这段提示词。修改时请保持原语言和原意。',
   'Record a note': '录笔记',
   'Add a note': '添加备注',
+  'Edit note': '编辑备注',
   'Record more': '继续录音',
   'Recording this note': '正在录这段笔记',
   'Transcribing note…': '正在识别笔记…',

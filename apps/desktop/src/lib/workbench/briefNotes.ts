@@ -275,6 +275,18 @@ export function joinTranscriptChunks(chunks: string[]): string {
     .join('\n')
 }
 
+export function mergeLiveTranscript(chunks: string[], partial: string): string {
+  return joinTranscriptChunks([...chunks, partial])
+}
+
+export function isCaptureTooltipEvent(
+  target: { closest?: (selector: string) => unknown } | EventTarget | null,
+): boolean {
+  if (!target || typeof target !== 'object') return false
+  const withClosest = target as { closest?: (selector: string) => unknown }
+  return typeof withClosest.closest === 'function' && Boolean(withClosest.closest('[data-capture-tooltip]'))
+}
+
 export function appendRambleClip(clips: RambleClip[], text: string, id = `ramble:${clips.length}`): RambleClip[] {
   const cleaned = text.trim()
   if (!cleaned) return clips

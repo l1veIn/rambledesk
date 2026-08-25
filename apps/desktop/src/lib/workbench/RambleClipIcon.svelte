@@ -7,6 +7,7 @@
   import { locale } from '$lib/preferences'
   import {
     clipFlyTransform,
+    isCaptureTooltipEvent,
     nextSavedTranscript,
     tooltipFixedStyle,
     type ClipFlyFrom,
@@ -95,13 +96,15 @@
   onMount(() => {
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Node
-      if (root.contains(target) || popover?.contains(target)) return
+      if (root.contains(target) || isCaptureTooltipEvent(event.target) || popover?.contains(target)) {
+        return
+      }
       open = false
     }
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') open = false
     }
-    window.addEventListener('pointerdown', onPointerDown)
+    window.addEventListener('pointerdown', onPointerDown, true)
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('resize', updatePopoverPosition)
     window.addEventListener('scroll', updatePopoverPosition, true)
@@ -136,7 +139,7 @@
 
     return () => {
       if (openTimer !== undefined) window.clearTimeout(openTimer)
-      window.removeEventListener('pointerdown', onPointerDown)
+      window.removeEventListener('pointerdown', onPointerDown, true)
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('resize', updatePopoverPosition)
       window.removeEventListener('scroll', updatePopoverPosition, true)
@@ -169,6 +172,7 @@
       use:portal
       class="fixed z-[200] w-[min(22rem,calc(100vw-4rem))] rounded-md border bg-popover p-3 text-xs leading-5 text-popover-foreground shadow-lg"
       style={popoverStyle}
+      data-capture-tooltip
       role="dialog"
       tabindex="-1"
       aria-label={title}

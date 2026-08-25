@@ -22,6 +22,8 @@ import {
   nextSavedTranscript,
   blockNoteCaptureId,
   tooltipFixedStyle,
+  mergeLiveTranscript,
+  isCaptureTooltipEvent,
 } from './briefNotes'
 
 describe('briefBlocks', () => {
@@ -127,6 +129,24 @@ describe('blockNoteCaptureId', () => {
   it('uses a stable id so later speech replaces the same capture', () => {
     expect(blockNoteCaptureId('action:a1')).toBe('note:action:a1:0')
     expect(blockNoteCaptureId('what_happened:0')).toBe('note:what_happened:0:0')
+  })
+})
+
+describe('mergeLiveTranscript', () => {
+  it('keeps the in-flight partial so a stop before VAD still has text', () => {
+    expect(mergeLiveTranscript(['hello'], 'world')).toBe('hello\nworld')
+    expect(mergeLiveTranscript([], 'only partial')).toBe('only partial')
+    expect(mergeLiveTranscript(['hello'], '  ')).toBe('hello')
+  })
+})
+
+describe('isCaptureTooltipEvent', () => {
+  it('treats clicks inside a portaled tooltip as inside', () => {
+    const inside = { closest: (selector: string) => (selector === '[data-capture-tooltip]' ? {} : null) }
+    const outside = { closest: () => null }
+    expect(isCaptureTooltipEvent(inside)).toBe(true)
+    expect(isCaptureTooltipEvent(outside)).toBe(false)
+    expect(isCaptureTooltipEvent(null)).toBe(false)
   })
 })
 
