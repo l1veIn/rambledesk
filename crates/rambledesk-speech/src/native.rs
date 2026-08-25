@@ -1,3 +1,5 @@
+mod worker;
+
 use super::*;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use sherpa_onnx::{
@@ -10,16 +12,19 @@ use std::{
     sync::{
         Arc,
         atomic::{AtomicBool, AtomicU64, Ordering},
-        mpsc::{Receiver, RecvTimeoutError, SyncSender, sync_channel},
+        mpsc::{SyncSender, sync_channel},
     },
     thread::{self, JoinHandle},
-    time::Duration,
 };
+use worker::{WorkerContext, run_sherpa_worker_after_load};
 
 // Large enough to hold ~30–40s of typical input callbacks while the ASR
 // model loads. Recording starts before recognizer creation; dropping that
 // warmup audio would make the first utterance disappear.
 const AUDIO_QUEUE_CAPACITY: usize = 4096;
+// Enforced at compile time rather than in a test: both sides are constants, so
+// a runtime assertion is folded away to `assert!(true)` and proves nothing.
+const _: () = assert!(AUDIO_QUEUE_CAPACITY >= 4096);
 const SHERPA_SAMPLE_RATE: i32 = 16_000;
 const SHERPA_FRAME_SAMPLES: usize = 800;
 const SHERPA_TAIL_PADDING_SAMPLES: usize = 12_800;
@@ -495,11 +500,13 @@ impl NativeSpeechSession {
                 run_sherpa_worker_after_load(
                     config,
                     audio_rx,
-                    source_rate,
-                    worker_identity,
-                    worker_running,
-                    worker_sink,
-                    worker_dropped,
+                    WorkerContext {
+                        source_rate,
+                        identity: worker_identity,
+                        running: worker_running,
+                        sink: worker_sink,
+                        dropped_buffers: worker_dropped,
+                    },
                     abort_tx,
                 );
             })
@@ -706,90 +713,6 @@ where
         .map_err(|error| SpeechError::InputStream(error.to_string()))
 }
 
-fn run_sherpa_worker_after_load(
-    config: SpeechSessionConfig,
-    audio_rx: Receiver<Vec<f32>>,
-    source_rate: u32,
-    identity: EventIdentity,
-    running: Arc<AtomicBool>,
-    sink: SpeechEventSink,
-    dropped_buffers: Arc<AtomicU64>,
-    abort_tx: SyncSender<()>,
-) {
-    sink(SpeechEvent::Warning {
-        request_id: identity.request_id.clone(),
-        voice_session_id: identity.voice_session_id.clone(),
-        code: "recognizer_loading".to_owned(),
-        message: "正在加载语音识别模型…".to_owned(),
-    });
-    match RecognitionEngine::create(&config) {
-        Ok(engine) => run_sherpa_worker(
-            engine,
-            audio_rx,
-            source_rate,
-            identity,
-            running,
-            sink,
-            dropped_buffers,
-        ),
-        Err(error) => {
-            running.store(false, Ordering::Release);
-            sink(SpeechEvent::Error {
-                request_id: identity.request_id.clone(),
-                voice_session_id: identity.voice_session_id.clone(),
-                code: "model_load".to_owned(),
-                message: error.to_string(),
-            });
-            let _ = abort_tx.try_send(());
-        }
-    }
-}
-
-fn run_sherpa_worker(
-    mut engine: RecognitionEngine,
-    audio_rx: Receiver<Vec<f32>>,
-    source_rate: u32,
-    identity: EventIdentity,
-    running: Arc<AtomicBool>,
-    sink: SpeechEventSink,
-    dropped_buffers: Arc<AtomicU64>,
-) {
-    loop {
-        match audio_rx.recv_timeout(Duration::from_millis(80)) {
-            Ok(samples) => {
-                sink(SpeechEvent::Level {
-                    request_id: identity.request_id.clone(),
-                    voice_session_id: identity.voice_session_id.clone(),
-                    rms: rms(&samples).clamp(0.0, 1.0),
-                });
-                let audio = resample_linear(&samples, source_rate, SPEECH_SAMPLE_RATE);
-                engine.accept(&audio, &identity, &sink);
-            }
-            Err(RecvTimeoutError::Timeout) if !running.load(Ordering::Acquire) => break,
-            Err(RecvTimeoutError::Disconnected) => break,
-            Err(RecvTimeoutError::Timeout) => {}
-        }
-        emit_backpressure_warning(&identity, &sink, &dropped_buffers);
-    }
-    engine.finish(&identity, &sink);
-}
-
-fn emit_backpressure_warning(
-    identity: &EventIdentity,
-    sink: &SpeechEventSink,
-    dropped_buffers: &AtomicU64,
-) {
-    let dropped = dropped_buffers.swap(0, Ordering::Relaxed);
-    if dropped > 0 {
-        sink(SpeechEvent::Warning {
-            request_id: identity.request_id.clone(),
-            voice_session_id: identity.voice_session_id.clone(),
-            code: "audio_backpressure".to_owned(),
-            message: format!("识别速度暂时跟不上，已跳过 {dropped} 个音频缓冲区"),
-        });
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -825,11 +748,6 @@ mod tests {
             ),
             Some("Claude Code/Codex/Grok/Gemini".to_owned())
         );
-    }
-
-    #[test]
-    fn audio_queue_keeps_warmup_audio_while_the_recognizer_loads() {
-        assert!(AUDIO_QUEUE_CAPACITY >= 4096);
     }
 
     #[test]
