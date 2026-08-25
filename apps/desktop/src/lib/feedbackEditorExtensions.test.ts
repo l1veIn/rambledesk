@@ -33,6 +33,16 @@ const TABLE = [
   '| Table | readable |',
 ].join('\n')
 
+describe('capture markers', () => {
+  it('round-trips a zero-width capture marker link', () => {
+    const source = `[\u200b](rambledesk-capture://ramble:0)\n\nThe button is too small.\n\n[\u200b](rambledesk-capture://ramble:0/end)`
+    const manager = markdown()
+    const serialized = manager.serialize(manager.parse(source))
+    expect(serialized).toContain('rambledesk-capture://ramble:0')
+    expect(serialized).toContain('The button is too small.')
+  })
+})
+
 describe('feedback editor markdown tables', () => {
   it('parses a markdown table into table nodes instead of dropping it', () => {
     const doc = stableRoundTrip(TABLE)

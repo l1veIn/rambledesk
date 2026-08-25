@@ -72,9 +72,11 @@
     findBriefBlock,
     quotedNoteMarkdown,
     replaceBlockNote,
+    replaceCapture,
     replaceNthBlock,
     replaceRambleClip,
     sameCaptureOccurrence,
+    wrapCapture,
     type RambleClip,
   } from './lib/workbench/briefNotes'
   import type {
@@ -345,15 +347,24 @@
     draftBody.trim().length > 0 &&
     !currentRequestCooking &&
     !submitting &&
-    !cancelling
+    !cancelling &&
+    briefNotePhase !== 'starting' &&
+    briefNotePhase !== 'processing'
   $: canCancel =
     workspace !== null &&
     workspace.request.status !== 'completed' &&
     workspace.request.status !== 'cancelled' &&
     !currentRequestCooking &&
     !submitting &&
-    !cancelling
-  $: interactionLocked = submitting || cancelling || approving
+    !cancelling &&
+    briefNotePhase !== 'starting' &&
+    briefNotePhase !== 'processing'
+  $: interactionLocked =
+    submitting ||
+    cancelling ||
+    approving ||
+    briefNotePhase === 'starting' ||
+    briefNotePhase === 'processing'
   $: voiceActive =
     voicePhase === 'starting' ||
     voicePhase === 'listening' ||
@@ -882,18 +893,35 @@
     await rambleController?.toggleBriefNote(blockId)
   }
 
-  function handleRambleClipReady(requestId: string, text: string) {
-    rambleClipsByRequest = {
-      ...rambleClipsByRequest,
-      [requestId]: appendRambleClip(rambleClipsByRequest[requestId] ?? [], text),
+  function appendCapturedMarkdown(requestId: string, markdown: string) {
+    if (workspace?.request.request_id === requestId) {
+      const nextBody = appendMarkdownBlock(draftBody, markdown)
+      workspacePanel?.applyExternalMarkdown(nextBody)
+      updateDraft(nextBody)
+      return
     }
+    void appendRambleMarkdown(requestId, markdown)
   }
 
-  function applyCapturedEdit(previous: string, next: string, occurrence = 0) {
-    const updated = replaceNthBlock(draftBody, previous, next, occurrence)
+  function applyCaptureReplacement(id: string, nextInner: string, previous: string, occurrence: number) {
+    const marked = replaceCapture(draftBody, id, nextInner)
+    const updated =
+      marked !== draftBody ? marked : replaceNthBlock(draftBody, previous, nextInner, occurrence)
     if (updated === draftBody) return
     workspacePanel?.applyExternalMarkdown(updated)
     updateDraft(updated)
+  }
+
+  function handleRambleClipReady(requestId: string, text: string) {
+    const nextClips = appendRambleClip(rambleClipsByRequest[requestId] ?? [], text)
+    const clip = nextClips[nextClips.length - 1]
+    if (clip) {
+      appendCapturedMarkdown(requestId, wrapCapture(clip.id, capturedTranscriptMarkdown(text)))
+    }
+    rambleClipsByRequest = {
+      ...rambleClipsByRequest,
+      [requestId]: nextClips,
+    }
   }
 
   function handleSaveRambleClip(clipId: string, text: string) {
@@ -906,9 +934,10 @@
     const next = text.trim()
     if (!next || next === clip.text) return
     const markdown = clips.map((item) => capturedTranscriptMarkdown(item.text))
-    applyCapturedEdit(
-      capturedTranscriptMarkdown(clip.text),
+    applyCaptureReplacement(
+      clip.id,
       capturedTranscriptMarkdown(next),
+      capturedTranscriptMarkdown(clip.text),
       sameCaptureOccurrence(markdown, clipIndex),
     )
     rambleClipsByRequest = {
@@ -933,14 +962,17 @@
       }),
       blockId,
     )
-    if (block) {
-      const markdown = (notes[blockId] ?? []).map((item) => quotedNoteMarkdown(block.quote, item))
-      applyCapturedEdit(
-        quotedNoteMarkdown(block.quote, current),
-        quotedNoteMarkdown(block.quote, next),
-        sameCaptureOccurrence(markdown, index),
-      )
-    }
+    const inner = block ? quotedNoteMarkdown(block.quote, next) : next
+    const previous = block ? quotedNoteMarkdown(block.quote, current) : current
+    const markdown = (notes[blockId] ?? []).map((item) =>
+      block ? quotedNoteMarkdown(block.quote, item) : item,
+    )
+    applyCaptureReplacement(
+      `note:${blockId}:${index}`,
+      inner,
+      previous,
+      sameCaptureOccurrence(markdown, index),
+    )
     briefNotesByRequest = {
       ...briefNotesByRequest,
       [requestId]: replaceBlockNote(notes, blockId, index, next),
@@ -948,19 +980,10 @@
   }
 
   function handleBriefNoteReady(requestId: string, blockId: string, quote: string, note: string) {
-    const markdown = quote.trim() ? quotedNoteMarkdown(quote, note) : note.trim()
-    if (!markdown) return
-    if (workspace?.request.request_id === requestId) {
-      if (quote.trim()) {
-        if (!workspacePanel?.appendQuotedNote(quote, note)) {
-          void appendRambleMarkdown(requestId, markdown)
-        }
-      } else {
-        void appendRambleMarkdown(requestId, markdown)
-      }
-    } else {
-      void appendRambleMarkdown(requestId, markdown)
-    }
+    const inner = quote.trim() ? quotedNoteMarkdown(quote, note) : note.trim()
+    if (!inner) return
+    const existing = briefNotesByRequest[requestId]?.[blockId] ?? []
+    appendCapturedMarkdown(requestId, wrapCapture(`note:${blockId}:${existing.length}`, inner))
     briefNotesByRequest = {
       ...briefNotesByRequest,
       [requestId]: appendBlockNote(briefNotesByRequest[requestId] ?? {}, blockId, note),

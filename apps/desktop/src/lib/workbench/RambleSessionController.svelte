@@ -354,6 +354,9 @@
   }
 
   async function beginVoiceRamble() {
+    if (sessionChunks.length > 0 && voiceSink === 'ramble') {
+      await finalizeSession('ramble')
+    }
     ramblePhase = 'starting'
     rambleMessage = t($locale, 'Starting the microphone…')
     voiceSink = 'ramble'
@@ -450,7 +453,7 @@
     if (sink === 'ramble') {
       rambleMessage = t($locale, 'Writing speech into the document…')
       try {
-        const written = await transcriptPipeline.enqueue(raw)
+        const written = await transcriptPipeline.prepare(raw)
         if (written && requestId) onRambleClipReady(requestId, written)
         return written
       } catch (cause) {
@@ -706,6 +709,7 @@
         } else if (ramblePhase === 'active') {
           ramblePhase = 'error'
           rambleMessage = t($locale, 'The microphone stopped unexpectedly; Ramble is paused')
+          void finalizeSession('ramble')
         }
         break
       case 'error':
@@ -714,15 +718,12 @@
         voicePartial = ''
         voiceMessage = event.message
         if (briefNotePhase === 'recording' || briefNotePhase === 'starting') {
-          briefNotePhase = 'error'
-          briefNoteBlockId = null
-          voiceSink = 'ramble'
-          sessionChunks = []
           onPageError(t($locale, 'Microphone error; Ramble is paused: {error}', { error: event.message }))
-          briefNotePhase = 'idle'
+          void stopBriefNote()
         } else if (ramblePhase === 'active') {
           ramblePhase = 'error'
           rambleMessage = t($locale, 'Microphone error; Ramble is paused: {error}', { error: event.message })
+          void finalizeSession('ramble')
         }
         break
     }

@@ -21,6 +21,10 @@
   }
 }
 
+.feedback-prose a[href^='rambledesk-capture://'] {
+  display: none;
+}
+
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 :root {

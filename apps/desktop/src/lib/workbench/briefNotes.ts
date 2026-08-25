@@ -72,6 +72,37 @@ export function clipFlyTransform(
   }
 }
 
+const CAPTURE_ZWSP = '\u200b'
+
+export function wrapCapture(id: string, markdown: string): string {
+  const inner = markdown.trim()
+  return `[${CAPTURE_ZWSP}](rambledesk-capture://${id})\n\n${inner}\n\n[${CAPTURE_ZWSP}](rambledesk-capture://${id}/end)`
+}
+
+export function replaceCapture(body: string, id: string, nextMarkdown: string): string {
+  const startTok = `rambledesk-capture://${id}`
+  const endTok = `rambledesk-capture://${id}/end`
+  const startTokAt = body.indexOf(startTok)
+  const endTokAt = body.indexOf(endTok, startTokAt + startTok.length)
+  if (startTokAt < 0 || endTokAt < 0) return body
+  const startFrom = captureLineStart(body, startTokAt)
+  const endTo = captureLineEnd(body, endTokAt)
+  return `${body.slice(0, startFrom)}${wrapCapture(id, nextMarkdown)}${body.slice(endTo)}`
+}
+
+function captureLineStart(body: string, tokenIndex: number): number {
+  const lineStart = body.lastIndexOf('\n', tokenIndex - 1)
+  const from = lineStart < 0 ? 0 : lineStart + 1
+  const bracket = body.lastIndexOf('[', tokenIndex)
+  return bracket >= from ? bracket : from
+}
+
+function captureLineEnd(body: string, tokenIndex: number): number {
+  const close = body.indexOf(')', tokenIndex)
+  const after = close < 0 ? tokenIndex : close + 1
+  return body[after] === '\n' ? after + 1 : after
+}
+
 export function capturedTranscriptMarkdown(text: string): string {
   return text
     .trim()

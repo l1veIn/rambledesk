@@ -12,9 +12,11 @@ import {
   capturedTranscriptMarkdown,
   replaceBlockNote,
   replaceLastBlock,
+  replaceCapture,
   replaceNthBlock,
   replaceRambleClip,
   sameCaptureOccurrence,
+  wrapCapture,
 } from './briefNotes'
 
 describe('briefBlocks', () => {
@@ -119,6 +121,18 @@ describe('appendBlockNote', () => {
 describe('capturedTranscriptMarkdown', () => {
   it('turns spoken line breaks into markdown paragraphs', () => {
     expect(capturedTranscriptMarkdown('hello\nworld')).toBe('hello\n\nworld')
+  })
+})
+
+describe('wrapCapture', () => {
+  it('replaces one wrapped clip without touching a duplicate sibling', () => {
+    const first = wrapCapture('ramble:0', 'hello')
+    const second = wrapCapture('ramble:1', 'hello')
+    const body = `${first}\n\n${second}`
+    const updated = replaceCapture(body, 'ramble:0', 'first')
+    expect(updated).toContain(wrapCapture('ramble:0', 'first'))
+    expect(updated).toContain(wrapCapture('ramble:1', 'hello'))
+    expect(updated.indexOf('first')).toBeLessThan(updated.lastIndexOf('hello'))
   })
 })
 
