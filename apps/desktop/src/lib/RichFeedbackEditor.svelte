@@ -1,8 +1,5 @@
 <script lang="ts">
-  import { Editor, Node } from '@tiptap/core'
-  import Image from '@tiptap/extension-image'
-  import { Markdown } from '@tiptap/markdown'
-  import StarterKit from '@tiptap/starter-kit'
+  import { Editor } from '@tiptap/core'
   import {
     Bold,
     Heading2,
@@ -23,6 +20,7 @@
     attachmentMarkdownUrl,
     isImageMediaType,
   } from './attachmentMarkdown'
+  import { feedbackEditorExtensions } from './feedbackEditorExtensions'
 
   export let markdown = ''
   export let previews: Record<string, string> = {}
@@ -38,149 +36,10 @@
   let openAttachmentHandler = (_attachmentId: string) => {}
   $: openAttachmentHandler = onOpenAttachment
 
-  const AttachmentImage = Image.extend({
-    addAttributes() {
-      return {
-        ...this.parent?.(),
-        attachmentId: {
-          default: null,
-          parseHTML: (element) => element.getAttribute('data-attachment-id'),
-          renderHTML: (attributes) =>
-            attributes.attachmentId
-              ? { 'data-attachment-id': attributes.attachmentId }
-              : {},
-        },
-      }
-    },
-
-    renderMarkdown: (node) => {
-      const attachmentId =
-        node.attrs?.attachmentId ?? attachmentIdFromUrl(node.attrs?.src)
-      const src = attachmentId
-        ? attachmentMarkdownUrl(attachmentId)
-        : (node.attrs?.src ?? '')
-      const alt = node.attrs?.alt ?? ''
-      const title = node.attrs?.title ?? ''
-      return title ? `![${alt}](${src} "${title}")` : `![${alt}](${src})`
-    },
-  })
-
-  // A clickable chip for a non-image attachment, serialized as a markdown
-  // link `[fileName](attachment://id)`. A custom marked tokenizer claims
-  // `attachment://` links before StarterKit's built-in Link mark so they
-  // parse back into this node instead of a link mark.
-  const AttachmentFile = Node.create({
-    name: 'attachmentFile',
-    group: 'inline',
-    inline: true,
-    atom: true,
-    selectable: true,
-
-    addAttributes() {
-      return {
-        attachmentId: {
-          default: null,
-          parseHTML: (element) => element.getAttribute('data-attachment-id'),
-          renderHTML: (attributes) =>
-            attributes.attachmentId
-              ? { 'data-attachment-id': attributes.attachmentId }
-              : {},
-        },
-        fileName: {
-          default: '',
-          parseHTML: (element) => element.getAttribute('data-file-name'),
-          renderHTML: (attributes) =>
-            attributes.fileName ? { 'data-file-name': attributes.fileName } : {},
-        },
-        mediaType: {
-          default: '',
-          parseHTML: (element) => element.getAttribute('data-media-type'),
-          renderHTML: (attributes) =>
-            attributes.mediaType ? { 'data-media-type': attributes.mediaType } : {},
-        },
-      }
-    },
-
-    markdownTokenName: 'attachmentFile',
-    markdownTokenizer: {
-      name: 'attachmentFile',
-      level: 'inline',
-      start: (src) => src.indexOf('['),
-      tokenize: (src) => {
-        const match = /^\[([^\]]*)\]\(attachment:\/\/([0-9a-fA-F-]+)\)/.exec(src)
-        if (!match) return undefined
-        return { type: 'attachmentFile', raw: match[0], text: match[1], attachmentId: match[2] }
-      },
-    },
-    parseMarkdown: (token, helpers) =>
-      helpers.createNode('attachmentFile', {
-        attachmentId: token.attachmentId,
-        fileName: token.text || token.attachmentId,
-        mediaType: '',
-      }),
-
-    renderHTML({ node }) {
-      const attachmentId = node.attrs.attachmentId ?? ''
-      const fileName = node.attrs.fileName || attachmentId || 'attachment'
-      const ext = (fileName.split('.').pop() || 'FILE').toUpperCase().slice(0, 4)
-      return [
-        'a',
-        {
-          href: attachmentMarkdownUrl(attachmentId),
-          'data-attachment-id': attachmentId,
-          'data-file-name': fileName,
-          'data-media-type': node.attrs.mediaType ?? '',
-          class: 'attachment-file-chip',
-          contenteditable: 'false',
-        },
-        ['span', { class: 'attachment-file-chip-ext' }, ext],
-        ['span', { class: 'attachment-file-chip-label' }, fileName],
-      ]
-    },
-
-    parseHTML() {
-      return [
-        {
-          tag: 'a[href^="attachment://"]',
-          getAttrs: (element) => {
-            const href = element.getAttribute('href') ?? ''
-            return {
-              attachmentId:
-                element.getAttribute('data-attachment-id') ??
-                attachmentIdFromUrl(href) ??
-                null,
-              fileName:
-                element.getAttribute('data-file-name') ??
-                element.textContent?.trim() ??
-                '',
-              mediaType: element.getAttribute('data-media-type') ?? '',
-            }
-          },
-        },
-      ]
-    },
-
-    renderMarkdown: (node) => {
-      const url = attachmentMarkdownUrl(node.attrs?.attachmentId ?? '')
-      const label = (node.attrs?.fileName || node.attrs?.attachmentId || '').replace(
-        /([\[\]])/g,
-        '\\$1',
-      )
-      return `[${label}](${url})`
-    },
-  })
-
   onMount(() => {
     editor = new Editor({
       element: editorHost,
-      extensions: [
-        StarterKit.configure({
-          heading: { levels: [2, 3] },
-        }),
-        AttachmentImage,
-        AttachmentFile,
-        Markdown,
-      ],
+      extensions: feedbackEditorExtensions(),
       content: markdown,
       contentType: 'markdown',
       editable: !disabled,
@@ -577,6 +436,78 @@
     border-radius: var(--radius);
     object-fit: contain;
     background: var(--muted);
+  }
+
+  /* The table node view always wraps the table, whatever `renderWrapper` says. */
+  .editor-host :global(.feedback-prose .tableWrapper) {
+    margin: 1em 0;
+    overflow-x: auto;
+  }
+
+  .editor-host :global(.feedback-prose table) {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.95em;
+  }
+
+  .editor-host :global(.feedback-prose th),
+  .editor-host :global(.feedback-prose td) {
+    position: relative;
+    border: 1px solid var(--border);
+    padding: 0.5em 0.7em;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .editor-host :global(.feedback-prose th) {
+    background: var(--muted);
+    font-weight: 650;
+  }
+
+  .editor-host :global(.feedback-prose th > p),
+  .editor-host :global(.feedback-prose td > p) {
+    margin: 0;
+  }
+
+  /* prosemirror-tables marks a multi-cell selection with this class. */
+  .editor-host :global(.feedback-prose .selectedCell::after) {
+    position: absolute;
+    z-index: 2;
+    inset: 0;
+    background: color-mix(in oklab, var(--primary) 18%, transparent);
+    content: '';
+    pointer-events: none;
+  }
+
+  .editor-host :global(.feedback-prose ul[data-type='taskList']) {
+    margin: 0 0 0.9em;
+    padding: 0;
+    list-style: none;
+  }
+
+  /* Task items carry `data-checked`, not `data-type`; scope through the list. */
+  .editor-host :global(.feedback-prose ul[data-type='taskList'] > li) {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.55em;
+    margin: 0.28em 0;
+  }
+
+  .editor-host :global(.feedback-prose ul[data-type='taskList'] > li > label) {
+    margin-top: 0.34em;
+  }
+
+  .editor-host :global(.feedback-prose ul[data-type='taskList'] > li > div) {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .editor-host :global(.feedback-prose ul[data-type='taskList'] > li > div > p) {
+    margin: 0;
+  }
+
+  .editor-host :global(.feedback-prose ul[data-type='taskList'] ul[data-type='taskList']) {
+    margin: 0.3em 0 0;
   }
 
   .editor-host :global(.feedback-prose.ProseMirror-focused) {

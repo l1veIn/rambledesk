@@ -149,17 +149,18 @@
     list-style: none;
   }
 
-  :global(.attachment-markdown-prose li[data-type='taskItem']) {
+  /* Task items carry `data-checked`, not `data-type`; scope through the list. */
+  :global(.attachment-markdown-prose ul[data-type='taskList'] > li) {
     display: flex;
     align-items: flex-start;
     gap: 0.55em;
   }
 
-  :global(.attachment-markdown-prose li[data-type='taskItem'] > label) {
+  :global(.attachment-markdown-prose ul[data-type='taskList'] > li > label) {
     margin-top: 0.26em;
   }
 
-  :global(.attachment-markdown-prose li[data-type='taskItem'] > div) {
+  :global(.attachment-markdown-prose ul[data-type='taskList'] > li > div) {
     min-width: 0;
     flex: 1;
   }
