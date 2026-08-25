@@ -42,6 +42,7 @@
 | Ramble | 工作台内的自由反馈采集模式，尤其是语音、文字、截图驱动的反馈。 | 属于人类工作流，不属于适配器协议。 |
 | Uncooked Feedback | 人类通过 Ramble、文字、截图形成的原始反馈正文；允许保留口语、重复和自我修正。 | 是人类原始证据，Cooking 不得覆盖；提交后保存为反馈包中的 `uncooked.md`。 |
 | Cooking | 提交前可选的大模型编辑步骤，把 Uncooked Feedback 整理为正式 Markdown。 | 只做表达整理，不得编造事实、测试结果或删除负面判断；不开启时不调用模型服务。 |
+| Light cleanup | 可选的轻度转写整理：去掉语气词、修正断句，不改变意思。可独立于 Cooking 开启。 | 发生在语音写入正文时；不是 Cooking，不生成正式反馈结构。失败时保留原始转写。 |
 | Cooked Feedback | Cooking 生成并经人类选择提交的正式反馈正文。 | 保存为反馈包中的 `feedback.md`，是宿主默认读取的反馈结果；其来源必须可追溯到 `uncooked.md`。 |
 
 ## Cooking 规则
@@ -52,6 +53,7 @@
 - `feedback.md` 是宿主默认消费的正式结果，`uncooked.md` 是审计与恢复所需的原始人类证据。
 - Cooking 失败不得丢失或锁死 Uncooked Feedback，也不得提交半成品反馈包。
 - “Cooking”专指反馈编辑步骤，不指语音转录、反馈包发布或宿主智能体继续。
+- Light cleanup 默认关闭，可独立于 Cooking 开启，并共用同一套模型服务、模型和 API Key。
 
 ## 身份字段
 

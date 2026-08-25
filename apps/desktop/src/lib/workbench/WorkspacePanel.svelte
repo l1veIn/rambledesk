@@ -12,12 +12,14 @@
   import { locale } from '$lib/preferences'
   import { savePaneLayout, savedPaneLayout } from '$lib/uiPreferences'
   import type {
+    BriefNotePhase,
     FeedbackEditorHandle,
     HostProfile,
     RamblePhase,
     SavePhase,
     SubmitStage,
   } from './types'
+  import type { RambleClip } from './briefNotes'
   import CommandRail from './CommandRail.svelte'
   import FeedbackEditorPanel from './FeedbackEditorPanel.svelte'
   import RequestAttachmentPreview from './RequestAttachmentPreview.svelte'
@@ -40,6 +42,11 @@
   export let ramblePhase: RamblePhase = 'idle'
   export let rambleBusy = false
   export let rambleStartedOnce = false
+  export let rambleClips: RambleClip[] = []
+  export let briefNotes: Record<string, string[]> = {}
+  export let briefNotePhase: BriefNotePhase = 'idle'
+  export let briefNoteBlockId: string | null = null
+  export let onToggleBriefNote: (blockId: string) => void = () => {}
   export let voiceDevice = ''
   export let voiceChunkIndex = 0
   export let voicePartial = ''
@@ -149,6 +156,10 @@
 
   export function appendTranscript(text: string) {
     feedbackEditor?.appendTranscript(text)
+  }
+
+  export function appendQuotedNote(quote: string, note: string) {
+    return feedbackEditor?.appendQuotedNote(quote, note) ?? false
   }
 
   export function appendClipboardCapture(text: string, label: string) {
@@ -315,6 +326,12 @@
       {ramblePhase}
       {rambleStartedOnce}
       {rambleBusy}
+      {rambleClips}
+      {briefNotes}
+      {briefNotePhase}
+      {briefNoteBlockId}
+      {voicePartial}
+      {onToggleBriefNote}
       origin={taskBriefPreviewOrigin}
     />
   {:else}

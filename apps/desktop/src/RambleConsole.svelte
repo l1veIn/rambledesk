@@ -10,7 +10,6 @@
     LoaderCircle,
     LogOut,
     Mic,
-    Pause,
     ScanLine,
   } from '@lucide/svelte'
   import { onMount } from 'svelte'
@@ -44,7 +43,7 @@
         : state.phase === 'error'
           ? state.message
           : t($locale, 'Ready')
-  $: recordingLabel = recording ? t($locale, 'Pause recording') : t($locale, 'Resume recording')
+  $: recordingLabel = recording ? t($locale, 'Recording') : t($locale, 'Resume recording')
   $: consoleMessage = errorMessage || state?.message || statusLabel
 
   onMount(() => {
@@ -161,7 +160,10 @@
       title={`${recordingLabel} · Ctrl + Shift + R`}
       aria-label={recordingLabel}
     >
-      {#if recording}<Pause size={20} strokeWidth={1.8} />{:else}<Mic size={20} strokeWidth={1.8} />{/if}
+      {#if recording}
+        <span class="record-dot record-blink" aria-hidden="true"></span>
+        <Mic size={20} strokeWidth={1.8} />
+      {:else}<Mic size={20} strokeWidth={1.8} />{/if}
       <span class="voice-level" style={`--level:${Math.max(0.06, state?.voiceLevel ?? 0)}`}></span>
     </button>
     <button

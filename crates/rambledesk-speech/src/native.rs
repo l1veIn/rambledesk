@@ -16,7 +16,10 @@ use std::{
     time::Duration,
 };
 
-const AUDIO_QUEUE_CAPACITY: usize = 512;
+// Large enough to hold ~30–40s of typical input callbacks while the ASR
+// model loads. Recording starts before recognizer creation; dropping that
+// warmup audio would make the first utterance disappear.
+const AUDIO_QUEUE_CAPACITY: usize = 4096;
 const SHERPA_SAMPLE_RATE: i32 = 16_000;
 const SHERPA_FRAME_SAMPLES: usize = 800;
 const SHERPA_TAIL_PADDING_SAMPLES: usize = 12_800;
@@ -443,8 +446,6 @@ struct NativeSpeechSession {
 impl NativeSpeechSession {
     fn start(config: SpeechSessionConfig, sink: SpeechEventSink) -> Result<Self, SpeechError> {
         let provider = config.provider;
-        let engine = RecognitionEngine::create(&config)?;
-
         let host = cpal::default_host();
         let device = if let Some(selected) = config.input_device.as_deref() {
             host.input_devices()
@@ -487,8 +488,8 @@ impl NativeSpeechSession {
         let worker = thread::Builder::new()
             .name("rambledesk-speech".to_owned())
             .spawn(move || {
-                run_sherpa_worker(
-                    engine,
+                run_sherpa_worker_after_load(
+                    config,
                     audio_rx,
                     source_rate,
                     worker_identity,
@@ -697,6 +698,40 @@ where
         .map_err(|error| SpeechError::InputStream(error.to_string()))
 }
 
+fn run_sherpa_worker_after_load(
+    config: SpeechSessionConfig,
+    audio_rx: Receiver<Vec<f32>>,
+    source_rate: u32,
+    identity: EventIdentity,
+    running: Arc<AtomicBool>,
+    sink: SpeechEventSink,
+    dropped_buffers: Arc<AtomicU64>,
+) {
+    sink(SpeechEvent::Warning {
+        request_id: identity.request_id.clone(),
+        voice_session_id: identity.voice_session_id.clone(),
+        code: "recognizer_loading".to_owned(),
+        message: "正在加载语音识别模型…".to_owned(),
+    });
+    match RecognitionEngine::create(&config) {
+        Ok(engine) => run_sherpa_worker(
+            engine,
+            audio_rx,
+            source_rate,
+            identity,
+            running,
+            sink,
+            dropped_buffers,
+        ),
+        Err(error) => sink(SpeechEvent::Error {
+            request_id: identity.request_id.clone(),
+            voice_session_id: identity.voice_session_id.clone(),
+            code: "model_load".to_owned(),
+            message: error.to_string(),
+        }),
+    }
+}
+
 fn run_sherpa_worker(
     mut engine: RecognitionEngine,
     audio_rx: Receiver<Vec<f32>>,
@@ -777,6 +812,11 @@ mod tests {
             ),
             Some("Claude Code/Codex/Grok/Gemini".to_owned())
         );
+    }
+
+    #[test]
+    fn audio_queue_keeps_warmup_audio_while_the_recognizer_loads() {
+        assert!(AUDIO_QUEUE_CAPACITY >= 4096);
     }
 
     #[test]

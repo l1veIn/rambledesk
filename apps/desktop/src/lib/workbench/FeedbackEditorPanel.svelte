@@ -75,6 +75,10 @@
     richEditor?.appendTranscript(text)
   }
 
+  export function appendQuotedNote(quote: string, note: string) {
+    return richEditor?.appendQuotedNote(quote, note) ?? false
+  }
+
   export function appendClipboardCapture(text: string, label: string) {
     return richEditor?.appendClipboardCapture(text, label) ?? false
   }

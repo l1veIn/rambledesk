@@ -53,6 +53,13 @@ describe('speech model defaults', () => {
   })
 })
 
+describe('light cleanup defaults', () => {
+  it('defaults light cleanup to off so it can be enabled without cooking', async () => {
+    const { lightCleanupEnabled } = await loadPreferences()
+    expect(get(lightCleanupEnabled)).toBe(false)
+  })
+})
+
 describe('speech hotword defaults', () => {
   it('includes product terms used in rambles', () => {
     expect(DEFAULT_SPEECH_HOTWORDS).toEqual(

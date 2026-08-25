@@ -51,6 +51,8 @@ const COOKING_BASE_URL_KEY = 'rambledesk.cooking.base-url'
 const COOKING_MODEL_KEY = 'rambledesk.cooking.model'
 const COOKING_REASONING_EFFORT_KEY = 'rambledesk.cooking.reasoning-effort'
 const COOKING_SYSTEM_PROMPT_KEY = 'rambledesk.cooking.system-prompt'
+const LIGHT_CLEANUP_ENABLED_KEY = 'rambledesk.light-cleanup.enabled'
+const LIGHT_CLEANUP_SYSTEM_PROMPT_KEY = 'rambledesk.light-cleanup.system-prompt'
 const ONBOARDING_COMPLETED_KEY = 'rambledesk.onboarding.completed'
 const ONBOARDING_STEP_KEY = 'rambledesk.onboarding.step'
 
@@ -227,6 +229,10 @@ export const cookingReasoningEffort = writable<CookingReasoningEffort>(
   isCookingReasoningEffort(savedCookingReasoningEffort) ? savedCookingReasoningEffort : 'medium',
 )
 export const cookingSystemPrompt = writable(localStorage.getItem(COOKING_SYSTEM_PROMPT_KEY) ?? '')
+export const lightCleanupEnabled = writable(initialBoolean(LIGHT_CLEANUP_ENABLED_KEY, false))
+export const lightCleanupSystemPrompt = writable(
+  localStorage.getItem(LIGHT_CLEANUP_SYSTEM_PROMPT_KEY) ?? '',
+)
 
 let initialized = false
 let mediaQuery: MediaQueryList | null = null
@@ -338,6 +344,14 @@ export function setCookingSystemPrompt(prompt: string) {
   cookingSystemPrompt.set(prompt)
 }
 
+export function setLightCleanupEnabled(enabled: boolean) {
+  lightCleanupEnabled.set(enabled)
+}
+
+export function setLightCleanupSystemPrompt(prompt: string) {
+  lightCleanupSystemPrompt.set(prompt)
+}
+
 export function setNotificationVolume(volume: number) {
   notificationVolume.set(Math.min(100, Math.max(0, Math.round(volume))))
 }
@@ -422,6 +436,12 @@ export function initializePreferences() {
   cookingSystemPrompt.subscribe((next) => {
     localStorage.setItem(COOKING_SYSTEM_PROMPT_KEY, next)
   })
+  lightCleanupEnabled.subscribe((next) => {
+    localStorage.setItem(LIGHT_CLEANUP_ENABLED_KEY, String(next))
+  })
+  lightCleanupSystemPrompt.subscribe((next) => {
+    localStorage.setItem(LIGHT_CLEANUP_SYSTEM_PROMPT_KEY, next)
+  })
 
   mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
   mediaQuery.addEventListener('change', () => {
@@ -503,5 +523,11 @@ export function initializePreferences() {
       cookingReasoningEffort.set(event.newValue)
     }
     if (event.key === COOKING_SYSTEM_PROMPT_KEY) cookingSystemPrompt.set(event.newValue ?? '')
+    if (event.key === LIGHT_CLEANUP_ENABLED_KEY && event.newValue !== null) {
+      lightCleanupEnabled.set(event.newValue === 'true')
+    }
+    if (event.key === LIGHT_CLEANUP_SYSTEM_PROMPT_KEY) {
+      lightCleanupSystemPrompt.set(event.newValue ?? '')
+    }
   })
 }

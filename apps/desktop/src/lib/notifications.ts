@@ -152,6 +152,47 @@ async function playBuiltinAudio(volume: number): Promise<void> {
   }
 }
 
+/** Magazine-rack whoosh + click when a ramble clip lands in the strip. */
+export async function playClipRackSound(volume = 80): Promise<void> {
+  const context = await resolveAudioContext()
+  if (!context) return
+  try {
+    const now = context.currentTime
+    const normalizedVolume = Math.min(100, Math.max(0, volume)) / 100
+    const master = context.createGain()
+    master.gain.setValueAtTime(Math.max(0.0001, 0.18 * normalizedVolume), now)
+    master.connect(context.destination)
+
+    const whoosh = context.createOscillator()
+    whoosh.type = 'triangle'
+    whoosh.frequency.setValueAtTime(420, now)
+    whoosh.frequency.exponentialRampToValueAtTime(140, now + 0.28)
+    const whooshGain = context.createGain()
+    whooshGain.gain.setValueAtTime(0.0001, now)
+    whooshGain.gain.exponentialRampToValueAtTime(0.9, now + 0.04)
+    whooshGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.32)
+    whoosh.connect(whooshGain)
+    whooshGain.connect(master)
+    whoosh.start(now)
+    whoosh.stop(now + 0.34)
+
+    const click = context.createOscillator()
+    click.type = 'square'
+    click.frequency.setValueAtTime(1680, now + 0.3)
+    click.frequency.exponentialRampToValueAtTime(220, now + 0.42)
+    const clickGain = context.createGain()
+    clickGain.gain.setValueAtTime(0.0001, now + 0.3)
+    clickGain.gain.exponentialRampToValueAtTime(1, now + 0.312)
+    clickGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.46)
+    click.connect(clickGain)
+    clickGain.connect(master)
+    click.start(now + 0.3)
+    click.stop(now + 0.48)
+  } catch {
+    // Interaction audio is optional.
+  }
+}
+
 export async function playNotificationSound(
   sound: NotificationSound = 'chime',
   volume = 80,

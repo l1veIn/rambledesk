@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Mic, Pause, Play, X } from '@lucide/svelte'
+  import { LoaderCircle, Mic, X } from '@lucide/svelte'
 
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
@@ -33,7 +33,7 @@
       : ramblePhase === 'stopping'
         ? tr('Pausing…')
         : rambleActive
-          ? tr('Pause recording')
+          ? tr('Recording')
           : rambleStartedOnce
             ? tr('Resume recording')
             : tr('Start recording')
@@ -54,15 +54,21 @@
   <div class="flex gap-2">
     <Button
       class="flex-1"
-      variant={rambleActive ? 'secondary' : 'default'}
+      variant={rambleActive ? 'destructive' : 'default'}
       disabled={rambleBusy || readOnly}
       onclick={onToggle}
+      aria-pressed={rambleActive}
       title={tr('Global shortcut Ctrl + Shift + R')}
     >
-      {#if rambleActive}
-        <Pause data-icon="inline-start" />
+      {#if rambleBusy}
+        <LoaderCircle class="animate-spin" data-icon="inline-start" />
+      {:else if rambleActive}
+        <span
+          class="record-blink size-2.5 rounded-full bg-destructive"
+          data-icon="inline-start"
+        ></span>
       {:else}
-        <Play data-icon="inline-start" />
+        <Mic data-icon="inline-start" />
       {/if}
       {primaryLabel}
     </Button>
@@ -82,7 +88,12 @@
 
   <div class="mt-3 text-[10px] leading-4 text-muted-foreground">
     <div class="flex items-center gap-1.5">
-      <span class={['size-1.5 rounded-full', rambleActive ? 'bg-destructive' : 'bg-muted-foreground/40']}></span>
+      <span
+        class={[
+          'size-1.5 rounded-full',
+          rambleActive ? 'record-blink bg-destructive' : 'bg-muted-foreground/40',
+        ]}
+      ></span>
       <span class="min-w-0 flex-1 truncate">{voiceDevice || tr('Default microphone')}</span>
       {#if voiceChunkIndex > 0}
         <span class="tabular-nums">{tr('{count} segments', { count: voiceChunkIndex })}</span>

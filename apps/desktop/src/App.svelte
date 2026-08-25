@@ -64,7 +64,16 @@
     type AttachmentMessageTone,
   } from './lib/workbench/attachmentController'
   import { createNavigationController } from './lib/workbench/navigationController'
+  import {
+    appendBlockNote,
+    appendRambleClip,
+    briefBlocks,
+    findBriefBlock,
+    quotedNoteMarkdown,
+    type RambleClip,
+  } from './lib/workbench/briefNotes'
   import type {
+    BriefNotePhase,
     FeedbackEditorHandle,
     RamblePhase,
     RambleSessionControllerHandle,
@@ -136,6 +145,10 @@
   let dragActive = false
   let workspacePanel: FeedbackEditorHandle
   let rambleController: RambleSessionControllerHandle
+  let rambleClipsByRequest: Record<string, RambleClip[]> = {}
+  let briefNotesByRequest: Record<string, Record<string, string[]>> = {}
+  let briefNotePhase: BriefNotePhase = 'idle'
+  let briefNoteBlockId: string | null = null
   let resumePrompt: ResumePrompt | null = null
   let resumeCopyState: 'idle' | 'copied' | 'failed' = 'idle'
   let notificationState: NotificationState = 'checking'
@@ -347,6 +360,12 @@
   $: rambleEngaged = ramblePhase !== 'idle'
   $: rambleBelongsToWorkspace =
     !rambleEngaged || workspace?.request.request_id === rambleRequestId
+  $: currentRambleClips = workspace
+    ? rambleClipsByRequest[workspace.request.request_id] ?? []
+    : []
+  $: currentBriefNotes = workspace
+    ? briefNotesByRequest[workspace.request.request_id] ?? {}
+    : {}
   $: rambelleStatusPortrait = feedbackResult
     ? rambelleArchived
     : currentRequestCooking
@@ -854,6 +873,40 @@
     await rambleController?.toggleRamble()
   }
 
+  async function toggleBriefNote(blockId: string) {
+    await rambleController?.toggleBriefNote(blockId)
+  }
+
+  function handleRambleClipReady(requestId: string, text: string) {
+    rambleClipsByRequest = {
+      ...rambleClipsByRequest,
+      [requestId]: appendRambleClip(rambleClipsByRequest[requestId] ?? [], text),
+    }
+  }
+
+  function handleBriefNoteReady(requestId: string, blockId: string, note: string) {
+    const target = workspace?.request.request_id === requestId ? workspace : null
+    if (!target) return
+    const block = findBriefBlock(
+      briefBlocks({
+        whatHappened: target.request.what_happened,
+        actions: target.actions,
+        contextRefs: target.context_refs,
+      }),
+      blockId,
+    )
+    if (!block) return
+    const markdown = quotedNoteMarkdown(block.quote, note)
+    if (!markdown) return
+    if (!workspacePanel?.appendQuotedNote(block.quote, note)) {
+      void appendRambleMarkdown(requestId, markdown)
+    }
+    briefNotesByRequest = {
+      ...briefNotesByRequest,
+      [requestId]: appendBlockNote(briefNotesByRequest[requestId] ?? {}, blockId, note),
+    }
+  }
+
   async function importClipboardNow() {
     await rambleController?.importClipboardNow()
   }
@@ -885,6 +938,8 @@
     bind:rambleRequestId
     bind:rambleRequestTitle
     bind:rambleMessage
+    bind:briefNotePhase
+    bind:briefNoteBlockId
     interactionLocked={interactionLocked || currentRequestCooking}
     onPageError={(message) => (pageError = message)}
     onSaveDraftNow={saveDraftNow}
@@ -893,6 +948,8 @@
     onStartScreenCapture={attachmentController.startScreenCapture}
     onImportAttachmentPaths={attachmentController.importAttachmentPaths}
     onAppendRambleMarkdown={appendRambleMarkdown}
+    onRambleClipReady={handleRambleClipReady}
+    onBriefNoteReady={handleBriefNoteReady}
   />
 
   <AppTitlebar
@@ -991,6 +1048,11 @@
           ramblePhase={rambleBelongsToWorkspace ? ramblePhase : 'idle'}
           rambleBusy={rambleBelongsToWorkspace ? rambleBusy : true}
           rambleStartedOnce={rambleBelongsToWorkspace ? rambleStartedOnce : false}
+          rambleClips={currentRambleClips}
+          briefNotes={currentBriefNotes}
+          {briefNotePhase}
+          {briefNoteBlockId}
+          onToggleBriefNote={(blockId) => void toggleBriefNote(blockId)}
           voiceDevice={rambleBelongsToWorkspace ? voiceDevice : ''}
           voiceChunkIndex={rambleBelongsToWorkspace ? voiceChunkIndex : 0}
           voicePartial={rambleBelongsToWorkspace ? voicePartial : ''}
