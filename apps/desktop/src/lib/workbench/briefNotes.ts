@@ -280,11 +280,17 @@ export function mergeLiveTranscript(chunks: string[], partial: string): string {
 }
 
 export function isCaptureTooltipEvent(
-  target: { closest?: (selector: string) => unknown } | EventTarget | null,
+  target: EventTarget | { closest?: (selector: string) => unknown; parentElement?: unknown } | null,
 ): boolean {
-  if (!target || typeof target !== 'object') return false
-  const withClosest = target as { closest?: (selector: string) => unknown }
-  return typeof withClosest.closest === 'function' && Boolean(withClosest.closest('[data-capture-tooltip]'))
+  let current: { closest?: (selector: string) => unknown; parentElement?: unknown } | null =
+    target && typeof target === 'object'
+      ? (target as { closest?: (selector: string) => unknown; parentElement?: unknown })
+      : null
+  while (current) {
+    if (typeof current.closest === 'function' && current.closest('[data-capture-tooltip]')) return true
+    current = (current.parentElement as typeof current) ?? null
+  }
+  return false
 }
 
 export function appendRambleClip(clips: RambleClip[], text: string, id = `ramble:${clips.length}`): RambleClip[] {

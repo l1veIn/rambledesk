@@ -463,13 +463,18 @@
     const blockId = briefNoteBlockId
     const quote = briefNoteQuote
     const requestId = voiceRequestId || rambleRequestId
+    const snapshot = mergeLiveTranscript(sessionChunks, voicePartial)
+    if (voiceCanStop) await stopVoiceRamble()
+    const note = mergeLiveTranscript([snapshot, ...sessionChunks], voicePartial)
+    sessionChunks = []
     briefNotePhase = 'idle'
     briefNoteBlockId = null
-    if (voiceCanStop) await stopVoiceRamble()
-    const note = takeSessionTranscript()
     voiceSink = 'ramble'
     if (blockId && requestId && note) {
-      void deliverTranscript('brief-note', note, { requestId, blockId, quote })
+      onBriefNoteReady(requestId, blockId, quote, note)
+      void transcriptPipeline.prepare(note).catch((cause) => {
+        onPageError(t($locale, 'Failed to write Ramble content: {error}', { error: messageFrom(cause) }))
+      })
     }
   }
 

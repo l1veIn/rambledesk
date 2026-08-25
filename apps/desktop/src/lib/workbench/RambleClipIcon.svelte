@@ -32,6 +32,7 @@
   let root: HTMLDivElement
   let popover: HTMLDivElement | undefined
   let popoverStyle = ''
+  let ignoreOutsideUntil = 0
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
@@ -69,6 +70,7 @@
     draft = text
     updatePopoverPosition()
     open = true
+    ignoreOutsideUntil = Date.now() + 400
   }
 
   function save() {
@@ -95,6 +97,7 @@
 
   onMount(() => {
     const onPointerDown = (event: PointerEvent) => {
+      if (!open || Date.now() < ignoreOutsideUntil) return
       const target = event.target as Node
       if (root.contains(target) || isCaptureTooltipEvent(event.target) || popover?.contains(target)) {
         return
@@ -128,12 +131,14 @@
         openTimer = window.setTimeout(() => {
           draft = text
           open = true
+          ignoreOutsideUntil = Date.now() + 400
           void tick().then(updatePopoverPosition)
         }, 520)
       }
     } else if (autoOpen) {
       draft = text
       open = true
+      ignoreOutsideUntil = Date.now() + 400
       void tick().then(updatePopoverPosition)
     }
 

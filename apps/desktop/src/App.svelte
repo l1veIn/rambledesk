@@ -1008,13 +1008,24 @@
     const nextText = nextNotes[blockId]?.[0] ?? addition
     const inner = quote.trim() ? quotedNoteMarkdown(quote, nextText) : nextText
     const captureId = blockNoteCaptureId(blockId)
-    if (previousText) {
-      const previousInner = quote.trim() ? quotedNoteMarkdown(quote, previousText) : previousText
-      const before = draftBody
-      applyCaptureReplacement(captureId, inner, previousInner, 0)
-      if (draftBody === before) appendCapturedMarkdown(requestId, wrapCapture(captureId, inner))
+    const wrapped = wrapCapture(captureId, inner)
+    if (workspace?.request.request_id === requestId) {
+      if (previousText) {
+        workspacePanel?.appendTranscript(addition)
+        const marked = replaceCapture(draftBody, captureId, inner)
+        updateDraft(marked !== draftBody ? marked : appendMarkdownBlock(draftBody, addition))
+      } else {
+        const inserted = workspacePanel?.appendQuotedNote(quote.trim() || addition, addition)
+        if (!inserted) {
+          const nextBody = appendMarkdownBlock(draftBody, wrapped)
+          workspacePanel?.applyExternalMarkdown(nextBody)
+          updateDraft(nextBody)
+        } else {
+          updateDraft(appendMarkdownBlock(draftBody, wrapped))
+        }
+      }
     } else {
-      appendCapturedMarkdown(requestId, wrapCapture(captureId, inner))
+      void appendRambleMarkdown(requestId, wrapped)
     }
     briefNotesByRequest = {
       ...briefNotesByRequest,
