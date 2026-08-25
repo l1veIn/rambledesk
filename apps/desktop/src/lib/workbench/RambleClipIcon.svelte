@@ -167,7 +167,7 @@
     <div
       bind:this={popover}
       use:portal
-      class="fixed z-[80] w-[min(22rem,calc(100vw-4rem))] rounded-md border bg-popover p-3 text-xs leading-5 text-popover-foreground shadow-lg"
+      class="fixed z-[200] w-[min(22rem,calc(100vw-4rem))] rounded-md border bg-popover p-3 text-xs leading-5 text-popover-foreground shadow-lg"
       style={popoverStyle}
       role="dialog"
       tabindex="-1"
