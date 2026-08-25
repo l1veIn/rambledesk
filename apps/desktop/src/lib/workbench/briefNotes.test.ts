@@ -115,6 +115,12 @@ describe('appendRambleClip', () => {
   it('ignores blank clips', () => {
     expect(appendRambleClip([], '  ')).toEqual([])
   })
+
+  it('keeps a processing placeholder clip with empty text', () => {
+    expect(appendRambleClip([], '', 'ramble:pending', true)).toEqual([
+      { id: 'ramble:pending', text: '', processing: true },
+    ])
+  })
 })
 
 describe('appendBlockNote', () => {
@@ -137,6 +143,12 @@ describe('mergeLiveTranscript', () => {
     expect(mergeLiveTranscript(['hello'], 'world')).toBe('hello\nworld')
     expect(mergeLiveTranscript([], 'only partial')).toBe('only partial')
     expect(mergeLiveTranscript(['hello'], '  ')).toBe('hello')
+  })
+
+  it('does not duplicate a partial that is already in the stables', () => {
+    expect(mergeLiveTranscript(['hello world'], 'hello world')).toBe('hello world')
+    expect(mergeLiveTranscript(['hello'], 'hello world')).toBe('hello world')
+    expect(mergeLiveTranscript(['hello world'], 'world')).toBe('hello world')
   })
 })
 

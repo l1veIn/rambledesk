@@ -46,6 +46,7 @@ export function findBriefBlock(blocks: BriefBlock[], blockId: string): BriefBloc
 export type RambleClip = {
   id: string
   text: string
+  processing?: boolean
 }
 
 export type ClipFlyFrom = {
@@ -239,7 +240,9 @@ function replaceNthOccurrence(
 export function replaceRambleClip(clips: RambleClip[], clipId: string, text: string): RambleClip[] {
   const cleaned = text.trim()
   if (!cleaned) return clips
-  return clips.map((clip) => (clip.id === clipId ? { ...clip, text: cleaned } : clip))
+  return clips.map((clip) =>
+    clip.id === clipId ? { id: clip.id, text: cleaned } : clip,
+  )
 }
 
 export function replaceBlockNote(
@@ -276,7 +279,16 @@ export function joinTranscriptChunks(chunks: string[]): string {
 }
 
 export function mergeLiveTranscript(chunks: string[], partial: string): string {
-  return joinTranscriptChunks([...chunks, partial])
+  const extra = partial.trim()
+  const parts = chunks.map((chunk) => chunk.trim()).filter((chunk) => chunk.length > 0)
+  if (!extra) return joinTranscriptChunks(parts)
+  const last = parts[parts.length - 1]
+  if (!last) return extra
+  if (last === extra || last.includes(extra)) return joinTranscriptChunks(parts)
+  if (extra.includes(last) || extra.startsWith(last)) {
+    return joinTranscriptChunks([...parts.slice(0, -1), extra])
+  }
+  return joinTranscriptChunks([...parts, extra])
 }
 
 export function isCaptureTooltipEvent(
@@ -293,10 +305,15 @@ export function isCaptureTooltipEvent(
   return false
 }
 
-export function appendRambleClip(clips: RambleClip[], text: string, id = `ramble:${clips.length}`): RambleClip[] {
+export function appendRambleClip(
+  clips: RambleClip[],
+  text: string,
+  id = `ramble:${clips.length}`,
+  processing = false,
+): RambleClip[] {
   const cleaned = text.trim()
-  if (!cleaned) return clips
-  return [...clips, { id, text: cleaned }]
+  if (!processing && !cleaned) return clips
+  return [...clips, { id, text: cleaned, ...(processing ? { processing: true } : {}) }]
 }
 
 export function appendBlockNote(

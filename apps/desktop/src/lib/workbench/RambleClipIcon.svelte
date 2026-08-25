@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { FileText, Mic, StickyNote } from '@lucide/svelte'
+  import { FileText, LoaderCircle, Mic, StickyNote } from '@lucide/svelte'
   import { onMount, tick } from 'svelte'
 
   import { Button } from '$lib/components/ui/button'
@@ -162,9 +162,13 @@
     aria-pressed={open}
     aria-label={open ? hideLabel : title}
     title={title}
-    onclick={() => toggleOpen()}
+    onclick={() => {
+      if (!processing) toggleOpen()
+    }}
   >
-    {#if kind === 'note'}
+    {#if processing}
+      <LoaderCircle class="{compact ? 'size-3.5' : 'size-4'} animate-spin" />
+    {:else if kind === 'note'}
       <StickyNote class={compact ? 'size-3.5' : 'size-4'} />
     {:else}
       <FileText class={compact ? 'size-3.5' : 'size-4'} />

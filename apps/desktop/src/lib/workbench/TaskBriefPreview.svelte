@@ -324,12 +324,13 @@
               index={index + 1}
               text={clip.text}
               flyFrom={clip.id === flyingClipId ? flyFrom : null}
-              autoOpen={clip.id === flyingClipId}
+              autoOpen={clip.id === flyingClipId && !clip.processing}
+              processing={Boolean(clip.processing)}
               {readOnly}
               onSave={(text) => onSaveRambleClip(clip.id, text)}
             />
           {/each}
-          {#if ramblePhase === 'stopping'}
+          {#if ramblePhase === 'stopping' && !rambleClips.some((clip) => clip.processing)}
             <span class="grid size-8 place-items-center text-muted-foreground" aria-label={rambleLabel}>
               <LoaderCircle class="size-4 animate-spin" />
             </span>

@@ -49,6 +49,7 @@
   import {
     briefBlocks,
     findBriefBlock,
+    joinTranscriptChunks,
     mergeLiveTranscript,
     rambleRequestIdAfterIdleNote,
   } from './briefNotes'
@@ -76,7 +77,8 @@
   export let briefNotePhase: BriefNotePhase = 'idle'
   export let briefNoteBlockId: string | null = null
   export let onPageError: (message: string) => void = () => {}
-  export let onRambleClipReady: (requestId: string, text: string) => void = () => {}
+  export let onRambleClipPending: (requestId: string, clipId: string) => void = () => {}
+  export let onRambleClipReady: (requestId: string, text: string, clipId?: string) => void = () => {}
   export let onBriefNoteReady: (
     requestId: string,
     blockId: string,
@@ -370,6 +372,9 @@
 
   async function stopRamble() {
     if (!rambleCanStop || ramblePhase === 'stopping' || voiceSink !== 'ramble') return
+    const requestId = voiceRequestId || rambleRequestId
+    const clipId = `ramble:${crypto.randomUUID()}`
+    if (requestId) onRambleClipPending(requestId, clipId)
     ramblePhase = 'stopping'
     rambleMessage = t($locale, 'Finishing the final speech segment and pausing…')
     let stopError = ''
@@ -378,7 +383,7 @@
       if (!voiceStopped && !stopError) stopError = voiceMessage || t($locale, 'Microphone failed to stop')
     }
     const leftover = takeSessionTranscript()
-    void deliverTranscript('ramble', leftover)
+    void deliverTranscript('ramble', leftover, { clipId, requestId })
     if (stopError) {
       ramblePhase = 'error'
       rambleMessage = stopError
@@ -436,25 +441,30 @@
   async function deliverTranscript(
     sink: 'ramble' | 'brief-note',
     raw: string,
-    meta?: { requestId: string; blockId: string; quote: string },
+    meta?: { requestId?: string; blockId?: string; quote?: string; clipId?: string },
   ) {
-    if (!raw) return
-    try {
-      const written = await transcriptPipeline.prepare(raw)
-      const text = written || raw
-      if (sink === 'ramble') {
-        const requestId = voiceRequestId || rambleRequestId
-        if (text && requestId) onRambleClipReady(requestId, text)
+    const requestId = meta?.requestId || voiceRequestId || rambleRequestId
+    if (sink === 'ramble') {
+      if (!raw) {
+        if (requestId && meta?.clipId) onRambleClipReady(requestId, '', meta.clipId)
         return
       }
-      if (meta && text) onBriefNoteReady(meta.requestId, meta.blockId, meta.quote, text)
+      try {
+        const written = (await transcriptPipeline.prepare(raw)) || raw
+        if (requestId) onRambleClipReady(requestId, written, meta?.clipId)
+      } catch (cause) {
+        onPageError(t($locale, 'Failed to write Ramble content: {error}', { error: messageFrom(cause) }))
+        if (requestId) onRambleClipReady(requestId, raw, meta?.clipId)
+      }
+      return
+    }
+    if (!raw || !meta?.blockId || !requestId) return
+    try {
+      const written = (await transcriptPipeline.prepare(raw)) || raw
+      onBriefNoteReady(requestId, meta.blockId, meta.quote ?? '', written)
     } catch (cause) {
       onPageError(t($locale, 'Failed to write Ramble content: {error}', { error: messageFrom(cause) }))
-      if (sink === 'brief-note' && meta) onBriefNoteReady(meta.requestId, meta.blockId, meta.quote, raw)
-      else if (sink === 'ramble' && raw) {
-        const requestId = voiceRequestId || rambleRequestId
-        if (requestId) onRambleClipReady(requestId, raw)
-      }
+      onBriefNoteReady(requestId, meta.blockId, meta.quote ?? '', raw)
     }
   }
 
@@ -464,8 +474,9 @@
     const quote = briefNoteQuote
     const requestId = voiceRequestId || rambleRequestId
     const snapshot = mergeLiveTranscript(sessionChunks, voicePartial)
+    sessionChunks = []
     if (voiceCanStop) await stopVoiceRamble()
-    const note = mergeLiveTranscript([snapshot, ...sessionChunks], voicePartial)
+    const note = mergeLiveTranscript([snapshot], joinTranscriptChunks(sessionChunks))
     sessionChunks = []
     briefNotePhase = 'idle'
     briefNoteBlockId = null

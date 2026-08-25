@@ -928,15 +928,35 @@
     updateDraft(updated)
   }
 
-  function handleRambleClipReady(requestId: string, text: string) {
-    const nextClips = appendRambleClip(
-      rambleClipsByRequest[requestId] ?? [],
-      text,
-      `ramble:${crypto.randomUUID()}`,
-    )
+  function handleRambleClipPending(requestId: string, clipId: string) {
+    rambleClipsByRequest = {
+      ...rambleClipsByRequest,
+      [requestId]: appendRambleClip(rambleClipsByRequest[requestId] ?? [], '', clipId, true),
+    }
+  }
+
+  function handleRambleClipReady(requestId: string, text: string, clipId?: string) {
+    const clips = rambleClipsByRequest[requestId] ?? []
+    const cleaned = text.trim()
+    if (clipId) {
+      if (!cleaned) {
+        rambleClipsByRequest = {
+          ...rambleClipsByRequest,
+          [requestId]: clips.filter((clip) => clip.id !== clipId),
+        }
+        return
+      }
+      appendCapturedMarkdown(requestId, wrapCapture(clipId, capturedTranscriptMarkdown(cleaned)))
+      rambleClipsByRequest = {
+        ...rambleClipsByRequest,
+        [requestId]: replaceRambleClip(clips, clipId, cleaned),
+      }
+      return
+    }
+    const nextClips = appendRambleClip(clips, cleaned, `ramble:${crypto.randomUUID()}`)
     const clip = nextClips[nextClips.length - 1]
     if (clip) {
-      appendCapturedMarkdown(requestId, wrapCapture(clip.id, capturedTranscriptMarkdown(text)))
+      appendCapturedMarkdown(requestId, wrapCapture(clip.id, capturedTranscriptMarkdown(cleaned)))
     }
     rambleClipsByRequest = {
       ...rambleClipsByRequest,
@@ -1012,16 +1032,12 @@
     if (workspace?.request.request_id === requestId) {
       if (previousText) {
         workspacePanel?.appendTranscript(addition)
-        const marked = replaceCapture(draftBody, captureId, inner)
-        updateDraft(marked !== draftBody ? marked : appendMarkdownBlock(draftBody, addition))
       } else {
         const inserted = workspacePanel?.appendQuotedNote(quote.trim() || addition, addition)
         if (!inserted) {
           const nextBody = appendMarkdownBlock(draftBody, wrapped)
           workspacePanel?.applyExternalMarkdown(nextBody)
           updateDraft(nextBody)
-        } else {
-          updateDraft(appendMarkdownBlock(draftBody, wrapped))
         }
       }
     } else {
@@ -1075,6 +1091,7 @@
     onImportAttachmentPaths={attachmentController.importAttachmentPaths}
     onAppendRambleMarkdown={appendRambleMarkdown}
     onRambleClipReady={handleRambleClipReady}
+    onRambleClipPending={handleRambleClipPending}
     onBriefNoteReady={handleBriefNoteReady}
   />
 
