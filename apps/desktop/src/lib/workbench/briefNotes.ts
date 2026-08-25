@@ -82,13 +82,58 @@ export function capturedTranscriptMarkdown(text: string): string {
 }
 
 export function replaceLastBlock(body: string, previous: string, next: string): string {
+  return replaceNthBlock(body, previous, next, Number.MAX_SAFE_INTEGER)
+}
+
+export function sameCaptureOccurrence(texts: string[], index: number): number {
+  const target = (texts[index] ?? '').trim()
+  if (!target) return 0
+  let count = 0
+  for (let i = 0; i < index; i += 1) {
+    if ((texts[i] ?? '').trim() === target) count += 1
+  }
+  return count
+}
+
+export function replaceNthBlock(
+  body: string,
+  previous: string,
+  next: string,
+  occurrence: number,
+): string {
   const nextTrim = next.trim()
   if (!previous.trim() || previous.trim() === nextTrim) return body
   for (const candidate of markdownVariants(previous)) {
-    const index = body.lastIndexOf(candidate)
-    if (index >= 0) {
-      return `${body.slice(0, index)}${nextTrim}${body.slice(index + candidate.length)}`
+    const replaced = replaceNthOccurrence(body, candidate, nextTrim, occurrence)
+    if (replaced !== body) return replaced
+  }
+  return body
+}
+
+function replaceNthOccurrence(
+  body: string,
+  previous: string,
+  next: string,
+  occurrence: number,
+): string {
+  let from = 0
+  let found = -1
+  let seen = 0
+  while (seen <= occurrence) {
+    found = body.indexOf(previous, from)
+    if (found < 0) {
+      if (occurrence === Number.MAX_SAFE_INTEGER && seen > 0) {
+        const last = body.lastIndexOf(previous)
+        if (last < 0) return body
+        return `${body.slice(0, last)}${next}${body.slice(last + previous.length)}`
+      }
+      return body
     }
+    if (seen === occurrence) {
+      return `${body.slice(0, found)}${next}${body.slice(found + previous.length)}`
+    }
+    from = found + previous.length
+    seen += 1
   }
   return body
 }

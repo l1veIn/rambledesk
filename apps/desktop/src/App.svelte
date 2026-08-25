@@ -72,8 +72,9 @@
     findBriefBlock,
     quotedNoteMarkdown,
     replaceBlockNote,
-    replaceLastBlock,
+    replaceNthBlock,
     replaceRambleClip,
+    sameCaptureOccurrence,
     type RambleClip,
   } from './lib/workbench/briefNotes'
   import type {
@@ -888,8 +889,8 @@
     }
   }
 
-  function applyCapturedEdit(previous: string, next: string) {
-    const updated = replaceLastBlock(draftBody, previous, next)
+  function applyCapturedEdit(previous: string, next: string, occurrence = 0) {
+    const updated = replaceNthBlock(draftBody, previous, next, occurrence)
     if (updated === draftBody) return
     workspacePanel?.applyExternalMarkdown(updated)
     updateDraft(updated)
@@ -899,11 +900,17 @@
     if (!workspace) return
     const requestId = workspace.request.request_id
     const clips = rambleClipsByRequest[requestId] ?? []
-    const clip = clips.find((item) => item.id === clipId)
+    const clipIndex = clips.findIndex((item) => item.id === clipId)
+    const clip = clips[clipIndex]
     if (!clip) return
     const next = text.trim()
     if (!next || next === clip.text) return
-    applyCapturedEdit(capturedTranscriptMarkdown(clip.text), capturedTranscriptMarkdown(next))
+    const markdown = clips.map((item) => capturedTranscriptMarkdown(item.text))
+    applyCapturedEdit(
+      capturedTranscriptMarkdown(clip.text),
+      capturedTranscriptMarkdown(next),
+      sameCaptureOccurrence(markdown, clipIndex),
+    )
     rambleClipsByRequest = {
       ...rambleClipsByRequest,
       [requestId]: replaceRambleClip(clips, clipId, next),
@@ -927,7 +934,12 @@
       blockId,
     )
     if (block) {
-      applyCapturedEdit(quotedNoteMarkdown(block.quote, current), quotedNoteMarkdown(block.quote, next))
+      const markdown = (notes[blockId] ?? []).map((item) => quotedNoteMarkdown(block.quote, item))
+      applyCapturedEdit(
+        quotedNoteMarkdown(block.quote, current),
+        quotedNoteMarkdown(block.quote, next),
+        sameCaptureOccurrence(markdown, index),
+      )
     }
     briefNotesByRequest = {
       ...briefNotesByRequest,
