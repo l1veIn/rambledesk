@@ -94,6 +94,7 @@ describe('publisherController', () => {
       getCanSubmit: () => true,
       getRambleCanExit: () => false,
       exitRamble: vi.fn(),
+    awaitCaptureWork: vi.fn(),
       saveDraftNow: vi.fn(async () => true),
       getDraftBody: () => 'Edited cooked draft.',
       getSavedRevision: () => 4,

@@ -28,6 +28,7 @@ type PublisherControllerContext = {
   getCanSubmit: () => boolean
   getRambleCanExit: () => boolean
   exitRamble: () => Promise<void>
+  awaitCaptureWork: () => Promise<void>
   saveDraftNow: () => Promise<boolean>
   getDraftBody: () => string
   getSavedRevision: () => number
@@ -108,6 +109,9 @@ export function createPublisherController(context: PublisherControllerContext) {
     const workspace = context.getWorkspace()
     if (!workspace || !context.getCanSubmit()) return
     if (context.getRambleCanExit()) await context.exitRamble()
+    // Publishing is terminal for the draft, so speech still being transcribed
+    // has to land first — exitRamble only covers it while Ramble is engaged.
+    await context.awaitCaptureWork()
     const requestId = workspace.request.request_id
     if (!(await context.saveDraftNow())) return
     if (

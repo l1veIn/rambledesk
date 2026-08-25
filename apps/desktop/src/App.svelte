@@ -823,6 +823,9 @@
     getCanSubmit: () => canSubmit,
     getRambleCanExit: () => rambleCanExit,
     exitRamble,
+    awaitCaptureWork: async () => {
+      await rambleController?.awaitCaptureWork()
+    },
     saveDraftNow,
     getDraftBody: () => draftBody,
     getSavedRevision: () => savedRevision,
