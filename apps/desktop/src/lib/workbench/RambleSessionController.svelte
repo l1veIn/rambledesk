@@ -264,8 +264,15 @@
       return
     }
     if (briefNotePhase === 'recording') {
-      if (briefNoteBlockId === blockId) await stopBriefNote()
-      return
+      // Block ids like `what_happened:0` are shared across requests. A click in
+      // this workspace must never reach a note recording against a different
+      // one — finalize that note first, then start here.
+      if (briefNoteRequestId !== (workspace?.request.request_id ?? '')) {
+        await stopBriefNote()
+      } else {
+        if (briefNoteBlockId === blockId) await stopBriefNote()
+        return
+      }
     }
     await startBriefNote(blockId)
   }

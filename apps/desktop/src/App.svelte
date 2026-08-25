@@ -670,14 +670,19 @@
     markdown: string,
     capture?: { id: string; inner: string },
   ): Promise<void> {
-    if (interactionLocked) return
     const block = markdown.trim()
     if (!requestId || !block) return
     const merge = (body: string) =>
       capture ? upsertCapture(body, capture.id, capture.inner) : appendMarkdownBlock(body, block)
 
     const operation = rambleMarkdownQueue.then(async () => {
+      // The interaction lock belongs to the visible workspace's draft. A capture
+      // routed to a different request writes straight through save_feedback_draft
+      // and must not be dropped because this workspace happens to be busy.
       if (workspace?.request.request_id === requestId) {
+        if (interactionLocked) {
+          throw new Error(saveMessage || tr('The current draft could not be saved.'))
+        }
         updateDraft(merge(draftBody))
         if (!(await saveDraftNow())) throw new Error(saveMessage || tr('The current draft could not be saved.'))
         return
@@ -823,9 +828,7 @@
     getCanSubmit: () => canSubmit,
     getRambleCanExit: () => rambleCanExit,
     exitRamble,
-    awaitCaptureWork: async () => {
-      await rambleController?.awaitCaptureWork()
-    },
+    awaitCaptureWork: awaitCaptureWrites,
     saveDraftNow,
     getDraftBody: () => draftBody,
     getSavedRevision: () => savedRevision,
@@ -857,8 +860,8 @@
     if (!window.confirm(tr('Approve this final summary and end Pi’s Ramble flow?'))) return
     if (rambleCanExit) await exitRamble()
     // Approving makes the request terminal and the draft controller then refuses
-    // saves, so anything still being transcribed has to land first.
-    await rambleController?.awaitCaptureWork()
+    // saves, so anything still being transcribed has to land and persist first.
+    await awaitCaptureWrites()
     approving = true
     pageError = ''
     try {
@@ -886,7 +889,7 @@
   async function cancelFeedback() {
     if (!workspace || !canCancel) return
     if (rambleCanExit) await exitRamble()
-    await rambleController?.awaitCaptureWork()
+    await awaitCaptureWrites()
 
     cancelling = true
     pageError = ''
@@ -951,9 +954,28 @@
     if (draftBody !== next) return false
     workspacePanel?.applyExternalMarkdown(next)
     // Flush instead of riding the autosave debounce: a transcript that lands
-    // while the operator is already closing the window must survive.
-    void saveDraftNow()
+    // while the operator is already closing the window must survive. The save
+    // is tracked, not fired and forgotten — a terminal action has to wait for
+    // it or the request goes terminal with the write still in the air.
+    trackCaptureSave(saveDraftNow())
     return true
+  }
+
+  /**
+   * Saves triggered by a capture landing. Terminal actions await this after the
+   * controller's own cleanup chain, since that chain only reaches the point
+   * where the write was issued.
+   */
+  let captureSaves: Promise<void> = Promise.resolve()
+
+  function trackCaptureSave(work: Promise<unknown>) {
+    captureSaves = Promise.allSettled([captureSaves, work]).then(() => undefined)
+  }
+
+  /** Wait for every capture to be cleaned up, written, and persisted. */
+  async function awaitCaptureWrites(): Promise<void> {
+    await rambleController?.awaitCaptureWork()
+    await captureSaves
   }
 
   /** Write one capture block, replacing it in place when it is already there. */
@@ -964,7 +986,9 @@
     ) {
       return
     }
-    void appendRambleMarkdown(requestId, wrapCapture(captureId, inner), { id: captureId, inner })
+    trackCaptureSave(
+      appendRambleMarkdown(requestId, wrapCapture(captureId, inner), { id: captureId, inner }),
+    )
   }
 
   function applyCaptureReplacement(id: string, nextInner: string, previous: string, occurrence: number) {
