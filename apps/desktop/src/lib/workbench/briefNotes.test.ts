@@ -17,6 +17,8 @@ import {
   replaceRambleClip,
   sameCaptureOccurrence,
   wrapCapture,
+  parseCaptures,
+  extractNoteBody,
 } from './briefNotes'
 
 describe('briefBlocks', () => {
@@ -121,6 +123,25 @@ describe('appendBlockNote', () => {
 describe('capturedTranscriptMarkdown', () => {
   it('turns spoken line breaks into markdown paragraphs', () => {
     expect(capturedTranscriptMarkdown('hello\nworld')).toBe('hello\n\nworld')
+  })
+})
+
+describe('parseCaptures', () => {
+  it('rebuilds clips and notes from persisted capture markers', () => {
+    const body = [
+      wrapCapture('ramble:abc', 'first clip'),
+      wrapCapture('note:action:a1:0', quotedNoteMarkdown('Open login', 'too small')),
+    ].join('\n\n')
+    expect(parseCaptures(body)).toEqual({
+      clips: [{ id: 'ramble:abc', text: 'first clip' }],
+      notes: { 'action:a1': ['too small'] },
+    })
+  })
+
+  it('extracts the note body under a quote', () => {
+    expect(extractNoteBody(quotedNoteMarkdown('Button is small', 'needs contrast'))).toBe(
+      'needs contrast',
+    )
   })
 })
 

@@ -103,6 +103,44 @@ function captureLineEnd(body: string, tokenIndex: number): number {
   return body[after] === '\n' ? after + 1 : after
 }
 
+export function extractNoteBody(markdown: string): string {
+  const lines = markdown.split('\n')
+  let index = 0
+  while (index < lines.length && (lines[index].startsWith('>') || lines[index].trim() === '')) {
+    index += 1
+  }
+  return lines.slice(index).join('\n').trim() || markdown.trim()
+}
+
+export function parseCaptures(body: string): {
+  clips: RambleClip[]
+  notes: Record<string, string[]>
+} {
+  const clips: RambleClip[] = []
+  const notes: Record<string, string[]> = {}
+  const endRe = /rambledesk-capture:\/\/(.+?)\/end/g
+  let match: RegExpExecArray | null
+  while ((match = endRe.exec(body))) {
+    const id = match[1]
+    const startTokAt = body.lastIndexOf(`rambledesk-capture://${id})`, match.index)
+    if (startTokAt < 0) continue
+    const inner = body.slice(captureLineEnd(body, startTokAt), captureLineStart(body, match.index)).trim()
+    if (id.startsWith('ramble:')) {
+      clips.push({ id, text: inner })
+      continue
+    }
+    if (!id.startsWith('note:')) continue
+    const withoutPrefix = id.slice('note:'.length)
+    const lastColon = withoutPrefix.lastIndexOf(':')
+    if (lastColon <= 0) continue
+    const blockId = withoutPrefix.slice(0, lastColon)
+    const note = extractNoteBody(inner)
+    if (!note) continue
+    notes[blockId] = [...(notes[blockId] ?? []), note]
+  }
+  return { clips, notes }
+}
+
 export function capturedTranscriptMarkdown(text: string): string {
   return text
     .trim()
@@ -208,10 +246,10 @@ export function joinTranscriptChunks(chunks: string[]): string {
     .join('\n')
 }
 
-export function appendRambleClip(clips: RambleClip[], text: string): RambleClip[] {
+export function appendRambleClip(clips: RambleClip[], text: string, id = `ramble:${clips.length}`): RambleClip[] {
   const cleaned = text.trim()
   if (!cleaned) return clips
-  return [...clips, { id: `ramble:${clips.length}`, text: cleaned }]
+  return [...clips, { id, text: cleaned }]
 }
 
 export function appendBlockNote(

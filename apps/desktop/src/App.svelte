@@ -77,6 +77,7 @@
     replaceRambleClip,
     sameCaptureOccurrence,
     wrapCapture,
+    parseCaptures,
     type RambleClip,
   } from './lib/workbench/briefNotes'
   import type {
@@ -608,6 +609,15 @@
       cookedPreviewOriginal = ''
       draftBody = next.draft.body_markdown
       savedBody = next.draft.body_markdown
+      const parsedCaptures = parseCaptures(next.draft.body_markdown)
+      rambleClipsByRequest = {
+        ...rambleClipsByRequest,
+        [next.request.request_id]: parsedCaptures.clips,
+      }
+      briefNotesByRequest = {
+        ...briefNotesByRequest,
+        [next.request.request_id]: parsedCaptures.notes,
+      }
       savedRevision = next.draft.saved_revision
       savePhase = next.draft.updated_at ? 'saved' : 'idle'
       saveMessage = ''
@@ -913,7 +923,11 @@
   }
 
   function handleRambleClipReady(requestId: string, text: string) {
-    const nextClips = appendRambleClip(rambleClipsByRequest[requestId] ?? [], text)
+    const nextClips = appendRambleClip(
+      rambleClipsByRequest[requestId] ?? [],
+      text,
+      `ramble:${crypto.randomUUID()}`,
+    )
     const clip = nextClips[nextClips.length - 1]
     if (clip) {
       appendCapturedMarkdown(requestId, wrapCapture(clip.id, capturedTranscriptMarkdown(text)))

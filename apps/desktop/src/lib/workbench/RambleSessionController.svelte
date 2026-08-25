@@ -353,6 +353,11 @@
     await beginVoiceRamble()
   }
 
+  async function recoverInterruptedRamble() {
+    if (voiceCanStop) await stopVoiceRamble()
+    await finalizeSession('ramble')
+  }
+
   async function beginVoiceRamble() {
     if (sessionChunks.length > 0 && voiceSink === 'ramble') {
       await finalizeSession('ramble')
@@ -685,7 +690,18 @@
         break
       case 'stable': {
         const transcript = stableTranscript(event)
-        if (transcript && !interactionLocked) sessionChunks = [...sessionChunks, transcript]
+        if (
+          transcript &&
+          (briefNotePhase === 'recording' ||
+            briefNotePhase === 'processing' ||
+            briefNotePhase === 'starting' ||
+            ramblePhase === 'active' ||
+            ramblePhase === 'stopping' ||
+            ramblePhase === 'error' ||
+            !interactionLocked)
+        ) {
+          sessionChunks = [...sessionChunks, transcript]
+        }
         voicePartial = ''
         voiceChunkIndex = event.chunk_index + 1
         if (voicePhase !== 'stopping') voicePhase = 'listening'
@@ -709,7 +725,7 @@
         } else if (ramblePhase === 'active') {
           ramblePhase = 'error'
           rambleMessage = t($locale, 'The microphone stopped unexpectedly; Ramble is paused')
-          void finalizeSession('ramble')
+          void recoverInterruptedRamble()
         }
         break
       case 'error':
@@ -723,7 +739,7 @@
         } else if (ramblePhase === 'active') {
           ramblePhase = 'error'
           rambleMessage = t($locale, 'Microphone error; Ramble is paused: {error}', { error: event.message })
-          void finalizeSession('ramble')
+          void recoverInterruptedRamble()
         }
         break
     }
