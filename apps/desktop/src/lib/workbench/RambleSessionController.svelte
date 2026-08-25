@@ -555,9 +555,22 @@
     )
   }
 
-  /** Wait for every capture that is still being cleaned up and written. */
+  /**
+   * Wait for every capture to finish, stopping a note that is still recording.
+   * For terminal actions, which must not leave speech unwritten.
+   */
   export async function awaitCaptureWork(): Promise<void> {
     await stopBriefNote()
+    await captureWork
+  }
+
+  /**
+   * Wait only for captures already being finalized. Unlike awaitCaptureWork this
+   * never stops a live recording, so an operation that merely snapshots the
+   * draft does not silently end the operator's note.
+   */
+  export async function awaitPendingCaptures(): Promise<void> {
+    await briefNoteStop
     await captureWork
   }
 

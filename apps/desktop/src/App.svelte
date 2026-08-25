@@ -802,7 +802,17 @@
     },
     getPreviewOriginal: () => cookedPreviewOriginal,
   })
-  const cookPreviewOnly = cookingController.cookPreviewOnly
+  const cookPreviewOnlyNow = cookingController.cookPreviewOnly
+
+  /**
+   * Cooking snapshots the draft, so a capture that lands while the model call
+   * is pending would be overwritten by the stale cooked result. Every cooking
+   * entry point goes through here.
+   */
+  async function cookPreviewOnly() {
+    if (!(await awaitLandingCaptures())) return
+    await cookPreviewOnlyNow()
+  }
   const restoreOriginalAfterCook = cookingController.restoreOriginal
 
   const publisherController = createPublisherController({
@@ -992,9 +1002,25 @@
    */
   async function awaitCaptureWrites(): Promise<boolean> {
     await rambleController?.awaitCaptureWork()
+    return settleCaptureSaves()
+  }
+
+  /** As above, but never stops a note the operator is still recording. */
+  async function awaitLandingCaptures(): Promise<boolean> {
+    await rambleController?.awaitPendingCaptures()
+    return settleCaptureSaves()
+  }
+
+  async function settleCaptureSaves(): Promise<boolean> {
     await captureSaves
     if (!captureSaveFailed) return true
-    captureSaveFailed = false
+    // Retry rather than clearing the latch on being read: clearing it made the
+    // next click succeed with the capture still only in memory. Only a save
+    // that actually lands unlatches this.
+    if (await saveDraftNow()) {
+      captureSaveFailed = false
+      return true
+    }
     pageError = saveMessage || tr('The current draft could not be saved.')
     return false
   }
