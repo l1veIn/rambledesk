@@ -2,44 +2,80 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-![RambleDesk](docs/social/ramble-banner-text2-1400x700.webp)
+## 给 Agent 一个目标，想到哪说到哪
+
+现在的 coding harness，大多在给 Agent 配工具。RambleDesk 反过来，给「人」配工具。
+
+当 Agent 需要你的判断时，它会把问题送到桌面。你可以直接说话、截图、粘贴内容或拖入文件——不用组织成一段完美的 prompt，想到哪说到哪。RambleDesk 会自动整理成结构化反馈，再交还给 Agent，让它继续工作。
+
+### 它是怎么工作的？
+
+1. **Agent 发起请求**
+   遇到需要人来判断、解释或确认的问题时，Agent 会唤起 RambleDesk。
+
+2. **你自由表达**
+   用语音讲、截张图、粘贴代码，或者直接拖入文件。哪种方式最快，就用哪种。
+
+3. **Agent 继续工作**
+   RambleDesk 将这些内容整理成清晰的反馈，连同上下文一起返回给 Agent。
 
 <div align="center">
 
 <img src="https://github.com/l1veIn/rambledesk/releases/download/v0.3.2/rambledesk-demo-10s.gif" alt="RambleDesk 产品演示" width="960" />
 
+<p><em>Agent 请求补充信息；你通过语音和屏幕内容作出回应，RambleDesk 会将整理后的反馈发送回去。</em></p>
+
 </div>
 
-## 不要再 vibe coding 了，你只需要 Ramble。
+### 什么时候适合用？
 
-有时候我觉得写提示词很难。我只能输出胡言乱语。所以我写了个专门接收胡言乱语的工作台。
+- 你知道想要什么，但一时很难写成准确的 prompt
+- Agent 需要产品判断、视觉反馈或操作确认
+- 一张截图、一段口述或一个文件，比文字解释更直接
+- 你希望 Agent 获得反馈后继续工作，而不是停在那里等你整理上下文
 
-RambleDesk 已经能适配大部分常见 harness。开启 ramble 模式，然后给 AI 一个目标。它会在需要你的时候通过 RambleDesk 通知你。你可以用各种现成的 ramble 工具：语音转录、截图、粘贴代码、上传文件。完成 ramble 之后，AI 会自动继续。
+## 快速开始
 
-RambleDesk 就像太阳眼镜。你会知道什么时候该使用它。
+1. 从 [GitHub Releases](https://github.com/l1veIn/rambledesk/releases) 下载并安装 RambleDesk
+2. 打开 **设置 → 适配器**，安装你正在使用的 Agent 适配器
+3. 在对应的 coding harness 中启用 ramble mode，然后给 Agent 一个目标
+4. 当它需要你时，RambleDesk 会来敲门
 
-## 安装和使用
+目前支持 Claude Code、Cursor、Codex、Gemini CLI、Grok、OpenCode、Reasonix、Antigravity IDE，以及 Pi 和 DeepSeek Harness。
 
-从 [GitHub Releases](https://github.com/l1veIn/rambledesk/releases) 下载。
+<details>
+<summary><strong>Windows 和 macOS 安装说明</strong></summary>
 
-**Windows：** 运行 `x64-setup.exe`。未做 Authenticode 签名时，SmartScreen 可能拦一下，确认来源后选「更多信息 → 仍要运行」。
+### Windows
 
-**macOS（Apple Silicon）：** 打开 DMG，把 RambleDesk 拖进 Applications。当前是 ad-hoc 签名、未公证。第一次请右键 → 打开；如果 macOS 提示不安全或无法验证开发者，打开 **系统设置 → 隐私与安全性**，滚到下方的「安全性」，找到 RambleDesk，点击「仍要打开」，再确认「打开」。如果提示「已损坏」，先确认下载来自本仓库，再执行：
+运行 `x64-setup.exe`。未加入 Authenticode 签名时，SmartScreen 可能会拦截首次启动。确认安装包来自本仓库，然后选择 **更多信息 → 仍要运行**。
+
+### macOS（Apple Silicon）
+
+打开 DMG，将 RambleDesk 拖入“应用程序”。当前版本采用 ad-hoc 签名且尚未公证。首次启动时，请右键点击应用并选择“打开”。
+
+如果系统仍然阻止启动，请前往 **系统设置 → 隐私与安全性**，在“安全性”区域找到 RambleDesk，点击 **仍要打开**，然后确认“打开”。
+
+如果 macOS 提示应用已损坏，请先确认文件来自本仓库，然后运行：
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/RambleDesk.app
 ```
 
-打开软件，走完首次引导。在 **设置 → 适配器** 里装上你用的宿主：Claude Code、Cursor、Codex、Gemini CLI、Grok、OpenCode、Reasonix、Antigravity IDE，以及 Pi / DeepSeek Harness 原生适配器。
+</details>
 
-然后在宿主里开启 ramble 模式，给 AI 一个目标。它需要你的时候会来敲门。
-
-从源码跑：
+### 从源码运行
 
 ```bash
 pnpm install --frozen-lockfile
 pnpm dev
 ```
+
+## 不要再 vibe coding 了，你只需要 Ramble。
+
+有时候，难的不是解决问题，而是把脑子里的想法整理成 prompt。
+
+RambleDesk 不要求你先想清楚再开口。你只管表达，它负责整理。
 
 ## 致谢
 
@@ -50,3 +86,5 @@ pnpm dev
 ## 许可证
 
 [MIT](LICENSE)
+
+![RambleDesk](docs/social/ramble-banner-text2-1400x700.webp)

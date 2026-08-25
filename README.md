@@ -2,44 +2,80 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-![RambleDesk](docs/social/ramble-banner-en-1400x700.webp)
+## Give the agent a goal. Ramble your way through the rest.
+
+Most coding harnesses focus on giving tools to the agent. RambleDesk flips that around: it gives tools to the human.
+
+When an agent needs your judgment, it sends the question to your desktop. Speak, take a screenshot, paste context, or drop in a file—whatever gets the idea out fastest. RambleDesk turns it into structured feedback, sends it back, and lets the agent keep working.
+
+### How it works
+
+1. **The agent asks**
+   When a task needs human judgment, explanation, or confirmation, the agent opens a request in RambleDesk.
+
+2. **You respond naturally**
+   Talk it through, capture the screen, paste code, or attach a file. Use whichever medium makes the point best.
+
+3. **The agent continues**
+   RambleDesk organizes your input into clear feedback and returns it to the agent, with the context attached.
 
 <div align="center">
 
 <img src="https://github.com/l1veIn/rambledesk/releases/download/v0.3.2/rambledesk-demo-10s.gif" alt="RambleDesk product demo" width="960" />
 
+<p><em>The agent asks for clarification; you answer with your voice and on-screen context, and RambleDesk sends the organized feedback back.</em></p>
+
 </div>
 
-## Stop vibe coding. Rambling is all you need.
+### When it helps
 
-Sometimes writing prompts is hard. All I can put out is rambling. So I built a workbench that takes rambling.
+- You know what you want, but turning it into a precise prompt is slow
+- The agent needs product judgment, visual feedback, or confirmation
+- A screenshot, spoken explanation, or file is clearer than another paragraph
+- You want the agent to continue as soon as it gets your feedback
 
-RambleDesk already fits most common harnesses. Turn on ramble mode, give the AI a goal. When it needs you, RambleDesk will call. Use the tools that are already there: speech, screenshots, pasted code, files. After you finish the ramble, the AI continues.
+## Quick start
 
-RambleDesk is like sunglasses. You'll know when to put them on.
+1. Download RambleDesk from [GitHub Releases](https://github.com/l1veIn/rambledesk/releases)
+2. Open **Settings → Adapters** and install the adapter for your coding agent
+3. Enable ramble mode in the host, then give the agent a goal
+4. When it needs you, RambleDesk will knock
 
-## Install and use
+RambleDesk supports Claude Code, Cursor, Codex, Gemini CLI, Grok, OpenCode, Reasonix, Antigravity IDE, plus native adapters for Pi and DeepSeek Harness.
 
-Download from [GitHub Releases](https://github.com/l1veIn/rambledesk/releases).
+<details>
+<summary><strong>Windows and macOS installation notes</strong></summary>
 
-**Windows:** run `x64-setup.exe`. Until Authenticode is added, SmartScreen may block the first launch. Confirm the download, then **More info → Run anyway**.
+### Windows
 
-**macOS (Apple Silicon):** open the DMG and drag RambleDesk into Applications. The build is ad-hoc signed and not notarized. First launch: right-click → Open. If macOS blocks it as unsafe or from an unidentified developer, open **System Settings → Privacy & Security**, scroll to the **Security** section, find RambleDesk, click **Open Anyway**, then confirm **Open**. If macOS says the app is damaged, confirm the file came from this repo, then:
+Run `x64-setup.exe`. Until Authenticode is added, SmartScreen may block the first launch. Confirm the download came from this repository, then select **More info → Run anyway**.
+
+### macOS (Apple Silicon)
+
+Open the DMG and drag RambleDesk into Applications. The build is ad-hoc signed and not notarized. On first launch, right-click the app and select **Open**.
+
+If macOS still blocks it, open **System Settings → Privacy & Security**, scroll to **Security**, find RambleDesk, click **Open Anyway**, then confirm **Open**.
+
+If macOS says the app is damaged, first confirm the file came from this repository, then run:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/RambleDesk.app
 ```
 
-Open the app and finish first-run setup. In **Settings → Adapters**, install the host you use: Claude Code, Cursor, Codex, Gemini CLI, Grok, OpenCode, Reasonix, Antigravity IDE, plus native adapters for Pi and DeepSeek Harness.
+</details>
 
-Then enable ramble mode in the host and give the AI a goal. It will knock when it needs you.
-
-From source:
+### From source
 
 ```bash
 pnpm install --frozen-lockfile
 pnpm dev
 ```
+
+## Stop vibe coding. Rambling is all you need.
+
+Sometimes the hard part is not solving the problem. It is turning what is in your head into a prompt.
+
+RambleDesk does not ask you to organize the thought before you say it. You ramble; it makes the feedback useful.
 
 ## Thanks
 
@@ -50,3 +86,5 @@ pnpm dev
 ## License
 
 [MIT](LICENSE)
+
+![RambleDesk](docs/social/ramble-banner-en-1400x700.webp)
