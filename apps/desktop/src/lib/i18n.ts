@@ -67,6 +67,7 @@ const chinese: Record<string, string> = {
   'Light cleanup is enabled, but no API key has been configured.': '轻度整理已开启，但尚未配置 API Key。',
   'Light cleanup is enabled, but no model name has been configured.': '轻度整理已开启，但尚未配置模型名称。',
   'Light cleanup failed: {error}': '轻度整理失败：{error}',
+  'the model did not answer in time, so the raw transcript was kept': '模型超时未返回，已保留原始转写',
   'This prompt is sent with every transcript cleanup. Keep the original language and meaning if you edit it.': '每次整理转写时都会带上这段提示词。修改时请保持原语言和原意。',
   'Record a note': '录笔记',
   'Add a note': '添加备注',

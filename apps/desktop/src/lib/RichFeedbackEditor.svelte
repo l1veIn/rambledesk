@@ -217,30 +217,6 @@
     )
   }
 
-  export function appendQuotedNote(quote: string, note: string) {
-    const quoteLines = quote.trim().split(/\r?\n/)
-    const noteParts = note
-      .trim()
-      .split(/\n{2,}/)
-      .map((part) => part.trim())
-      .filter((part) => part.length > 0)
-    if (!editor || quoteLines.length === 0 || noteParts.length === 0 || disabled) return false
-    return editor.commands.insertContentAt(editor.state.doc.content.size, [
-      {
-        type: 'blockquote',
-        content: quoteLines.map((line) => ({
-          type: 'paragraph',
-          content: line ? [{ type: 'text', text: line }] : [],
-        })),
-      },
-      ...noteParts.map((part) => ({
-        type: 'paragraph',
-        content: [{ type: 'text', text: part }],
-      })),
-      { type: 'paragraph' },
-    ])
-  }
-
   export function appendClipboardCapture(text: string, label: string) {
     const captured = text.trim()
     if (!editor || !captured || disabled) return false

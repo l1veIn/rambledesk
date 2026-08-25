@@ -324,7 +324,6 @@
               index={index + 1}
               text={clip.text}
               flyFrom={clip.id === flyingClipId ? flyFrom : null}
-              autoOpen={clip.id === flyingClipId && !clip.processing}
               processing={Boolean(clip.processing)}
               {readOnly}
               onSave={(text) => onSaveRambleClip(clip.id, text)}

@@ -76,6 +76,7 @@
     replaceNthBlock,
     replaceRambleClip,
     sameCaptureOccurrence,
+    upsertCapture,
     wrapCapture,
     parseCaptures,
     blockNoteCaptureId,
@@ -361,12 +362,11 @@
     !cancelling &&
     briefNotePhase !== 'starting' &&
     briefNotePhase !== 'processing'
-  $: interactionLocked =
-    submitting ||
-    cancelling ||
-    approving ||
-    briefNotePhase === 'starting' ||
-    briefNotePhase === 'processing'
+  // Note recording deliberately stays out of this: the note write itself goes
+  // through updateDraft, and a refused write is silently reverted when the
+  // editor re-syncs from draftBody. Submit and cancel keep their own note
+  // guards.
+  $: interactionLocked = submitting || cancelling || approving
   $: voiceActive =
     voicePhase === 'starting' ||
     voicePhase === 'listening' ||
@@ -648,15 +648,20 @@
     }
   }
 
-  async function appendRambleMarkdown(requestId: string, markdown: string): Promise<void> {
+  async function appendRambleMarkdown(
+    requestId: string,
+    markdown: string,
+    capture?: { id: string; inner: string },
+  ): Promise<void> {
     if (interactionLocked) return
     const block = markdown.trim()
     if (!requestId || !block) return
+    const merge = (body: string) =>
+      capture ? upsertCapture(body, capture.id, capture.inner) : appendMarkdownBlock(body, block)
 
     const operation = rambleMarkdownQueue.then(async () => {
       if (workspace?.request.request_id === requestId) {
-        const nextBody = appendMarkdownBlock(draftBody, block)
-        updateDraft(nextBody)
+        updateDraft(merge(draftBody))
         if (!(await saveDraftNow())) throw new Error(saveMessage || tr('The current draft could not be saved.'))
         return
       }
@@ -667,7 +672,7 @@
       if (!target) throw new Error(tr('This feedback request could not be found.'))
       const input: SaveDraftInput = {
         request_id: requestId,
-        body_markdown: appendMarkdownBlock(target.draft.body_markdown, block),
+        body_markdown: merge(target.draft.body_markdown),
         expected_revision: target.draft.saved_revision,
       }
       if (!previewMode) await invoke<DraftView>('save_feedback_draft', { input })
@@ -909,23 +914,36 @@
     await rambleController?.toggleBriefNote(blockId)
   }
 
-  function appendCapturedMarkdown(requestId: string, markdown: string) {
-    if (workspace?.request.request_id === requestId) {
-      const nextBody = appendMarkdownBlock(draftBody, markdown)
-      workspacePanel?.applyExternalMarkdown(nextBody)
-      updateDraft(nextBody)
+  /**
+   * Move the draft to `next`. The draft is written first on purpose: the editor
+   * re-syncs from `draftBody`, so pushing markdown into the editor before a
+   * refused `updateDraft` would show the text and then silently revert it.
+   * Returns false when the draft refused the write.
+   */
+  function applyDraftBody(next: string): boolean {
+    if (next === draftBody) return true
+    updateDraft(next)
+    if (draftBody !== next) return false
+    workspacePanel?.applyExternalMarkdown(next)
+    return true
+  }
+
+  /** Write one capture block, replacing it in place when it is already there. */
+  function writeCaptureMarkdown(requestId: string, captureId: string, inner: string) {
+    if (
+      workspace?.request.request_id === requestId &&
+      applyDraftBody(upsertCapture(draftBody, captureId, inner))
+    ) {
       return
     }
-    void appendRambleMarkdown(requestId, markdown)
+    void appendRambleMarkdown(requestId, wrapCapture(captureId, inner), { id: captureId, inner })
   }
 
   function applyCaptureReplacement(id: string, nextInner: string, previous: string, occurrence: number) {
     const marked = replaceCapture(draftBody, id, nextInner)
     const updated =
       marked !== draftBody ? marked : replaceNthBlock(draftBody, previous, nextInner, occurrence)
-    if (updated === draftBody) return
-    workspacePanel?.applyExternalMarkdown(updated)
-    updateDraft(updated)
+    applyDraftBody(updated)
   }
 
   function handleRambleClipPending(requestId: string, clipId: string) {
@@ -946,7 +964,7 @@
         }
         return
       }
-      appendCapturedMarkdown(requestId, wrapCapture(clipId, capturedTranscriptMarkdown(cleaned)))
+      writeCaptureMarkdown(requestId, clipId, capturedTranscriptMarkdown(cleaned))
       rambleClipsByRequest = {
         ...rambleClipsByRequest,
         [requestId]: replaceRambleClip(clips, clipId, cleaned),
@@ -956,7 +974,7 @@
     const nextClips = appendRambleClip(clips, cleaned, `ramble:${crypto.randomUUID()}`)
     const clip = nextClips[nextClips.length - 1]
     if (clip) {
-      appendCapturedMarkdown(requestId, wrapCapture(clip.id, capturedTranscriptMarkdown(cleaned)))
+      writeCaptureMarkdown(requestId, clip.id, capturedTranscriptMarkdown(cleaned))
     }
     rambleClipsByRequest = {
       ...rambleClipsByRequest,
@@ -1022,27 +1040,10 @@
   function handleBriefNoteReady(requestId: string, blockId: string, quote: string, note: string) {
     const addition = note.trim()
     if (!addition) return
-    const existing = briefNotesByRequest[requestId]?.[blockId] ?? []
-    const previousText = existing[0] ?? ''
     const nextNotes = appendBlockNote(briefNotesByRequest[requestId] ?? {}, blockId, addition)
     const nextText = nextNotes[blockId]?.[0] ?? addition
     const inner = quote.trim() ? quotedNoteMarkdown(quote, nextText) : nextText
-    const captureId = blockNoteCaptureId(blockId)
-    const wrapped = wrapCapture(captureId, inner)
-    if (workspace?.request.request_id === requestId) {
-      if (previousText) {
-        workspacePanel?.appendTranscript(addition)
-      } else {
-        const inserted = workspacePanel?.appendQuotedNote(quote.trim() || addition, addition)
-        if (!inserted) {
-          const nextBody = appendMarkdownBlock(draftBody, wrapped)
-          workspacePanel?.applyExternalMarkdown(nextBody)
-          updateDraft(nextBody)
-        }
-      }
-    } else {
-      void appendRambleMarkdown(requestId, wrapped)
-    }
+    writeCaptureMarkdown(requestId, blockNoteCaptureId(blockId), inner)
     briefNotesByRequest = {
       ...briefNotesByRequest,
       [requestId]: nextNotes,

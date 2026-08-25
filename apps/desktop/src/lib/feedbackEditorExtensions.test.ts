@@ -3,6 +3,7 @@ import { MarkdownManager } from '@tiptap/markdown'
 import type { JSONContent } from '@tiptap/core'
 
 import { feedbackEditorExtensions } from './feedbackEditorExtensions'
+import { parseCaptures, replaceCapture } from './workbench/briefNotes'
 
 function markdown() {
   return new MarkdownManager({ extensions: feedbackEditorExtensions() })
@@ -40,6 +41,29 @@ describe('capture markers', () => {
     const serialized = manager.serialize(manager.parse(source))
     expect(serialized).toContain('rambledesk-capture://ramble:0')
     expect(serialized).toContain('The button is too small.')
+  })
+
+  // A block note is written as a quote plus the spoken note inside one capture.
+  // Editing the note later finds it by these markers, so both must survive the
+  // editor's markdown round trip with the quote and the note still separated.
+  it('keeps both markers around a quoted block note', () => {
+    const id = 'note:action:a1:0'
+    const source = [
+      `[\u200b](rambledesk-capture://${id})`,
+      '',
+      '> Open the login screen',
+      '',
+      'The button is too small.',
+      '',
+      `[\u200b](rambledesk-capture://${id}/end)`,
+    ].join('\n')
+    const manager = markdown()
+    const serialized = manager.serialize(manager.parse(source))
+
+    expect(parseCaptures(serialized).notes).toEqual({ 'action:a1': ['The button is too small.'] })
+    expect(replaceCapture(serialized, id, '> Open the login screen\n\nStill too small.')).toContain(
+      'Still too small.',
+    )
   })
 })
 

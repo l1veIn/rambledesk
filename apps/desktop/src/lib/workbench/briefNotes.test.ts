@@ -16,6 +16,8 @@ import {
   replaceNthBlock,
   replaceRambleClip,
   sameCaptureOccurrence,
+  upsertCapture,
+  hasCapture,
   wrapCapture,
   parseCaptures,
   extractNoteBody,
@@ -152,6 +154,18 @@ describe('mergeLiveTranscript', () => {
   })
 })
 
+describe('mergeLiveTranscript at stop time', () => {
+  it('drops the partial the closing stable segment refined', () => {
+    expect(mergeLiveTranscript(['第一段', '第二段', '第三段。'], '第三段。')).toBe(
+      '第一段\n第二段\n第三段。',
+    )
+  })
+
+  it('keeps the partial when the recogniser never finalised it', () => {
+    expect(mergeLiveTranscript(['第一段', '第二段'], '第三段')).toBe('第一段\n第二段\n第三段')
+  })
+})
+
 describe('isCaptureTooltipEvent', () => {
   it('treats clicks inside a portaled tooltip as inside', () => {
     const inside = { closest: (selector: string) => (selector === '[data-capture-tooltip]' ? {} : null) }
@@ -218,6 +232,36 @@ describe('wrapCapture', () => {
     expect(updated).toContain(wrapCapture('ramble:0', 'first'))
     expect(updated).toContain(wrapCapture('ramble:1', 'hello'))
     expect(updated.indexOf('first')).toBeLessThan(updated.lastIndexOf('hello'))
+  })
+})
+
+describe('upsertCapture', () => {
+  it('appends a wrapped block the first time a note is spoken', () => {
+    const body = upsertCapture('Existing notes.', 'note:action:a1:0', 'too small')
+    expect(body).toBe(`Existing notes.\n\n${wrapCapture('note:action:a1:0', 'too small')}`)
+    expect(hasCapture(body, 'note:action:a1:0')).toBe(true)
+  })
+
+  it('rewrites the same block in place when more speech is added', () => {
+    const first = upsertCapture('', 'note:action:a1:0', 'too small')
+    const second = upsertCapture(first, 'note:action:a1:0', 'too small\nand too pale')
+    expect(second).toBe(wrapCapture('note:action:a1:0', 'too small\nand too pale'))
+  })
+
+  it('does not append a second copy when the text is unchanged', () => {
+    const first = upsertCapture('', 'ramble:abc', 'hello')
+    expect(upsertCapture(first, 'ramble:abc', 'hello')).toBe(first)
+  })
+
+  it('leaves a sibling capture alone', () => {
+    const body = [wrapCapture('ramble:a', 'one'), wrapCapture('ramble:b', 'two')].join('\n\n')
+    const updated = upsertCapture(body, 'ramble:a', 'ONE')
+    expect(updated).toContain(wrapCapture('ramble:a', 'ONE'))
+    expect(updated).toContain(wrapCapture('ramble:b', 'two'))
+  })
+
+  it('reports a missing capture so an edit can fall back to a text match', () => {
+    expect(hasCapture('plain body', 'ramble:a')).toBe(false)
   })
 })
 

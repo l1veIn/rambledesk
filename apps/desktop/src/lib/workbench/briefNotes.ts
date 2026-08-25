@@ -1,3 +1,5 @@
+import { appendMarkdownBlock } from './feedbackText'
+
 export type BriefBlockKind = 'what_happened' | 'action' | 'context'
 
 export type BriefBlock = {
@@ -102,6 +104,24 @@ function captureLineEnd(body: string, tokenIndex: number): number {
   const close = body.indexOf(')', tokenIndex)
   const after = close < 0 ? tokenIndex : close + 1
   return body[after] === '\n' ? after + 1 : after
+}
+
+/**
+ * Write `inner` into the capture wrapper for `id`: replace the block in place
+ * when the markers are already in the document, otherwise append a new wrapped
+ * block. Every capture the workbench writes goes through here so a later edit
+ * can always find its markers again.
+ */
+export function upsertCapture(body: string, id: string, inner: string): string {
+  if (hasCapture(body, id)) return replaceCapture(body, id, inner)
+  return appendMarkdownBlock(body, wrapCapture(id, inner))
+}
+
+/** True when both capture markers for `id` are still present in the document. */
+export function hasCapture(body: string, id: string): boolean {
+  const startTokAt = body.indexOf(`rambledesk-capture://${id})`)
+  if (startTokAt < 0) return false
+  return body.indexOf(`rambledesk-capture://${id}/end`, startTokAt) >= 0
 }
 
 export function extractNoteBody(markdown: string): string {

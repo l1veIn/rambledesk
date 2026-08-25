@@ -161,10 +161,6 @@
     feedbackEditor?.appendTranscript(text)
   }
 
-  export function appendQuotedNote(quote: string, note: string) {
-    return feedbackEditor?.appendQuotedNote(quote, note) ?? false
-  }
-
   export function appendClipboardCapture(text: string, label: string) {
     return feedbackEditor?.appendClipboardCapture(text, label) ?? false
   }

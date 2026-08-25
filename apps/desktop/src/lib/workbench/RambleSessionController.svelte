@@ -49,7 +49,6 @@
   import {
     briefBlocks,
     findBriefBlock,
-    joinTranscriptChunks,
     mergeLiveTranscript,
     rambleRequestIdAfterIdleNote,
   } from './briefNotes'
@@ -101,6 +100,8 @@
   let voiceSink: 'ramble' | 'brief-note' = 'ramble'
   let sessionChunks: string[] = []
   let briefNoteQuote = ''
+  /** Cleanup + write of the note that was just stopped; awaited before exiting. */
+  let briefNoteWork: Promise<void> = Promise.resolve()
   const transcriptPipeline = createTranscriptPipeline({
     cleanupEnabled: () => get(lightCleanupEnabled),
     cleanup: (text) =>
@@ -121,6 +122,8 @@
     },
     onError: (message) =>
       onPageError(t($locale, 'Light cleanup failed: {error}', { error: message })),
+    onTimeout: () =>
+      t($locale, 'the model did not answer in time, so the raw transcript was kept'),
   })
 
   $: voiceActive =
@@ -221,7 +224,13 @@
   })
 
   export async function toggleRamble() {
-    if (interactionLocked || rambleBusy || briefNotePhase === 'recording' || briefNotePhase === 'starting') {
+    if (
+      interactionLocked ||
+      rambleBusy ||
+      briefNotePhase === 'recording' ||
+      briefNotePhase === 'starting' ||
+      briefNotePhase === 'processing'
+    ) {
       return
     }
     if (rambleActive || (voiceCanStop && voiceSink === 'ramble')) await stopRamble()
@@ -230,7 +239,12 @@
   }
 
   export async function toggleBriefNote(blockId: string) {
-    if (interactionLocked || rambleBusy || briefNotePhase === 'starting') {
+    if (
+      interactionLocked ||
+      rambleBusy ||
+      briefNotePhase === 'starting' ||
+      briefNotePhase === 'processing'
+    ) {
       return
     }
     if (briefNotePhase === 'recording') {
@@ -245,6 +259,7 @@
     if (briefNotePhase === 'recording' || briefNotePhase === 'starting') {
       await stopBriefNote()
     }
+    await briefNoteWork
     if (rambleRequestId && rambleEngaged) {
       void invoke('record_diagnostic_event', {
         activity: 'ramble_stopped',
@@ -473,27 +488,46 @@
     const blockId = briefNoteBlockId
     const quote = briefNoteQuote
     const requestId = voiceRequestId || rambleRequestId
-    const snapshot = mergeLiveTranscript(sessionChunks, voicePartial)
-    sessionChunks = []
+    // Claim the stop before the first await. The native `stopped` event lands
+    // while we wait below and re-enters here, which used to deliver the same
+    // speech a second time and duplicate the note.
+    briefNotePhase = 'processing'
     if (voiceCanStop) await stopVoiceRamble()
-    const note = mergeLiveTranscript([snapshot], joinTranscriptChunks(sessionChunks))
-    sessionChunks = []
+    // Merge only after the microphone stopped: the closing stable segment
+    // refines the partial it came from, so merging a pre-stop snapshot with
+    // the post-stop chunks appended the last sentence twice.
+    const note = takeSessionTranscript()
+    voiceSink = 'ramble'
+    if (!blockId || !requestId || !note) {
+      finishBriefNote()
+      return
+    }
+    briefNoteWork = deliverTranscript('brief-note', note, { requestId, blockId, quote }).finally(
+      finishBriefNote,
+    )
+    await briefNoteWork
+  }
+
+  function finishBriefNote() {
     briefNotePhase = 'idle'
     briefNoteBlockId = null
-    voiceSink = 'ramble'
-    if (blockId && requestId && note) {
-      onBriefNoteReady(requestId, blockId, quote, note)
-      void transcriptPipeline.prepare(note).catch((cause) => {
-        onPageError(t($locale, 'Failed to write Ramble content: {error}', { error: messageFrom(cause) }))
-      })
-    }
+    briefNoteQuote = ''
   }
 
   async function finalizeSession(sink: 'ramble' | 'brief-note'): Promise<string> {
     const raw = takeSessionTranscript()
     voiceSink = 'ramble'
     if (!raw) return ''
-    await deliverTranscript(sink, raw)
+    if (sink !== 'ramble') {
+      await deliverTranscript(sink, raw)
+      return raw
+    }
+    // Exiting mid-ramble racks a clip too, so the operator sees the same
+    // spinner-then-text handoff as a normal stop.
+    const requestId = voiceRequestId || rambleRequestId
+    const clipId = `ramble:${crypto.randomUUID()}`
+    if (requestId) onRambleClipPending(requestId, clipId)
+    await deliverTranscript(sink, raw, { clipId, requestId })
     return raw
   }
 

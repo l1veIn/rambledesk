@@ -28,7 +28,6 @@ export type HostProfile = {
 export type FeedbackEditorHandle = {
   insertAttachments(attachments: AttachmentView[]): boolean
   appendTranscript(text: string): void
-  appendQuotedNote(quote: string, note: string): boolean
   appendClipboardCapture(text: string, label: string): boolean
   appendCapturedAttachment(attachment: AttachmentView, label: string): boolean
   removeAttachmentReference(attachmentId: string): void

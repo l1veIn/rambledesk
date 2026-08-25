@@ -25,14 +25,12 @@
 
   $: note = notes[0] ?? ''
   $: if (recording && partial.trim()) heldPartial = partial.trim()
-  $: if (note) heldPartial = ''
-  $: display = note
-    ? recording && partial.trim()
-      ? `${note}\n${partial.trim()}`
-      : note
-    : recording
-      ? partial.trim()
-      : heldPartial
+  // Hold the last spoken words on screen from the moment recording stops until
+  // the cleaned note lands, so nothing blinks out of existence mid-transcription.
+  $: if (!recording && !processing) heldPartial = ''
+  $: pending = recording ? partial.trim() : heldPartial
+  $: display = [note, pending].filter((part) => part.length > 0).join('\n')
+  $: canEdit = !readOnly && !recording && !processing && note.length > 0
   $: dirty = nextSavedTranscript(draft, note) !== null
   $: sourceRecordLabel = recording
     ? tr('Recording this note')
@@ -41,8 +39,8 @@
       : tr('Record a note')
 
   function openEditor() {
-    if (readOnly || !display) return
-    draft = `${note || display}\n`
+    if (!canEdit) return
+    draft = `${note}\n`
     editing = true
   }
 
@@ -75,7 +73,7 @@
             ? 'rounded-full border-destructive/40'
             : 'text-muted-foreground opacity-0 group-hover/note:opacity-100 focus-visible:opacity-100',
         ]}
-        disabled={disabled && !recording && !processing}
+        disabled={processing || (disabled && !recording)}
         aria-label={sourceRecordLabel}
         title={sourceRecordLabel}
         aria-pressed={recording}
@@ -94,7 +92,7 @@
 
   {#if display || editing}
     <div class="group/preview relative mt-2 pr-8">
-      {#if !readOnly && !recording}
+      {#if canEdit}
         <Button
           variant="ghost"
           size="icon-xs"
@@ -115,20 +113,6 @@
           onkeydown={onDraftKeydown}
         ></textarea>
         <div class="mt-1.5 flex items-center justify-end gap-2">
-          <Button
-            variant="outline"
-            size="icon-xs"
-            class="rounded-full {recording ? 'border-destructive/40' : ''}"
-            aria-label={recording ? tr('Recording this note') : tr('Record more')}
-            title={recording ? tr('Recording this note') : tr('Record more')}
-            onclick={onToggleRecord}
-          >
-            <span
-              class="size-2.5 rounded-full {recording
-                ? 'record-blink bg-destructive'
-                : 'bg-muted-foreground/60'}"
-            ></span>
-          </Button>
           <Button size="xs" disabled={!dirty} onclick={save}>{tr('Save')}</Button>
         </div>
       {:else}

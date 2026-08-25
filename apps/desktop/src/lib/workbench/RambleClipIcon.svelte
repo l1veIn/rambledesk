@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { FileText, LoaderCircle, Mic, StickyNote } from '@lucide/svelte'
-  import { onMount, tick } from 'svelte'
+  import { FileText, LoaderCircle, StickyNote } from '@lucide/svelte'
+  import { onMount } from 'svelte'
 
   import { Button } from '$lib/components/ui/button'
   import { t } from '$lib/i18n'
@@ -19,13 +19,10 @@
   export let align: 'left' | 'right' = 'left'
   export let placement: 'top' | 'bottom' = 'top'
   export let compact = false
-  export let autoOpen = false
   export let flyFrom: ClipFlyFrom | null = null
   export let readOnly = false
-  export let recording = false
   export let processing = false
   export let onSave: (text: string) => void = () => {}
-  export let onToggleRecord: (() => void) | null = null
 
   let open = false
   let draft = text
@@ -112,8 +109,10 @@
     window.addEventListener('resize', updatePopoverPosition)
     window.addEventListener('scroll', updatePopoverPosition, true)
 
+    // The clip flies into the magazine and then just sits there spinning until
+    // the transcript lands. It never opens itself: an operator who is still
+    // talking should not have a tooltip thrown over the brief.
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    let openTimer: number | undefined
     if (flyFrom && !reduceMotion) {
       const to = root.getBoundingClientRect()
       const motion = clipFlyTransform(flyFrom, to)
@@ -127,23 +126,9 @@
         root.style.willChange = 'auto'
       }
       requestAnimationFrame(() => requestAnimationFrame(play))
-      if (autoOpen) {
-        openTimer = window.setTimeout(() => {
-          draft = text
-          open = true
-          ignoreOutsideUntil = Date.now() + 400
-          void tick().then(updatePopoverPosition)
-        }, 520)
-      }
-    } else if (autoOpen) {
-      draft = text
-      open = true
-      ignoreOutsideUntil = Date.now() + 400
-      void tick().then(updatePopoverPosition)
     }
 
     return () => {
-      if (openTimer !== undefined) window.clearTimeout(openTimer)
       window.removeEventListener('pointerdown', onPointerDown, true)
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('resize', updatePopoverPosition)
@@ -191,23 +176,6 @@
         <strong class="min-w-0 flex-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
           {title}
         </strong>
-        {#if onToggleRecord && !readOnly}
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            aria-label={recording ? tr('Recording this note') : processing ? tr('Transcribing note…') : tr('Record more')}
-            title={recording ? tr('Recording this note') : processing ? tr('Transcribing note…') : tr('Record more')}
-            onclick={onToggleRecord}
-          >
-            {#if processing}
-              <span class="size-3.5 animate-spin rounded-full border border-muted-foreground/40 border-t-foreground"></span>
-            {:else if recording}
-              <span class="record-blink size-2.5 rounded-full bg-destructive"></span>
-            {:else}
-              <Mic class="size-3.5" />
-            {/if}
-          </Button>
-        {/if}
       </div>
       <textarea
         class="mt-1 max-h-48 min-h-24 w-full resize-y rounded-md border bg-background px-2 py-1.5 text-xs leading-5 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"

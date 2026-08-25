@@ -3,6 +3,29 @@ import { describe, expect, it } from 'vitest'
 import { createTranscriptPipeline } from './transcriptPipeline'
 
 describe('createTranscriptPipeline', () => {
+  it('falls back to the raw transcript when cleanup stalls, and keeps the queue moving', async () => {
+    const errors: string[] = []
+    const written: string[] = []
+    const pipeline = createTranscriptPipeline({
+      cleanupEnabled: () => true,
+      cleanup: (text) =>
+        text === 'stalls' ? new Promise<string>(() => {}) : Promise.resolve(`cooked ${text}`),
+      write: async (text) => {
+        written.push(text)
+      },
+      onError: (message) => errors.push(message),
+      timeoutMs: 5,
+      onTimeout: () => 'cleanup timed out',
+    })
+
+    const first = pipeline.enqueue('stalls')
+    const second = pipeline.enqueue('follows')
+    expect(await first).toBe('stalls')
+    expect(await second).toBe('cooked follows')
+    expect(written).toEqual(['stalls', 'cooked follows'])
+    expect(errors).toEqual(['cleanup timed out'])
+  })
+
   it('writes the original text when cleanup is off', async () => {
     const written: string[] = []
     const pipeline = createTranscriptPipeline({
