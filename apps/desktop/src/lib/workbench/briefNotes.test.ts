@@ -8,6 +8,7 @@ import {
   findBriefBlock,
   joinTranscriptChunks,
   quotedNoteMarkdown,
+  rambleRequestIdAfterIdleNote,
 } from './briefNotes'
 
 describe('briefBlocks', () => {
@@ -52,6 +53,16 @@ describe('findBriefBlock', () => {
     })
     expect(findBriefBlock(blocks, 'action:step')?.quote).toBe('Click save')
     expect(findBriefBlock(blocks, 'missing')).toBeUndefined()
+  })
+})
+
+describe('rambleRequestIdAfterIdleNote', () => {
+  it('uses the current workspace when ramble is idle, even if a leftover id remains', () => {
+    expect(rambleRequestIdAfterIdleNote('idle', 'request-a', 'request-b')).toBe('request-b')
+  })
+
+  it('keeps the ramble session id while ramble is still engaged', () => {
+    expect(rambleRequestIdAfterIdleNote('paused', 'request-a', 'request-b')).toBe('request-a')
   })
 })
 

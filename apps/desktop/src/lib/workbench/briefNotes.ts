@@ -30,6 +30,15 @@ export function briefBlocks(source: BriefNoteSource): BriefBlock[] {
   return blocks
 }
 
+export function rambleRequestIdAfterIdleNote(
+  ramblePhase: string,
+  existingRequestId: string,
+  workspaceRequestId: string,
+): string {
+  if (ramblePhase === 'idle') return workspaceRequestId
+  return existingRequestId || workspaceRequestId
+}
+
 export function findBriefBlock(blocks: BriefBlock[], blockId: string): BriefBlock | undefined {
   return blocks.find((block) => block.id === blockId)
 }

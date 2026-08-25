@@ -444,7 +444,11 @@ struct NativeSpeechSession {
 }
 
 impl NativeSpeechSession {
-    fn start(config: SpeechSessionConfig, sink: SpeechEventSink) -> Result<Self, SpeechError> {
+    fn start(
+        config: SpeechSessionConfig,
+        sink: SpeechEventSink,
+        abort_tx: SyncSender<()>,
+    ) -> Result<Self, SpeechError> {
         let provider = config.provider;
         let host = cpal::default_host();
         let device = if let Some(selected) = config.input_device.as_deref() {
@@ -496,6 +500,7 @@ impl NativeSpeechSession {
                     worker_running,
                     worker_sink,
                     worker_dropped,
+                    abort_tx,
                 );
             })
             .map_err(|error| SpeechError::InputStream(error.to_string()))?;
@@ -601,21 +606,24 @@ impl SpeechSession {
     pub fn start(config: SpeechSessionConfig, sink: SpeechEventSink) -> Result<Self, SpeechError> {
         let (startup_tx, startup_rx) = sync_channel(1);
         let (stop_tx, stop_rx) = sync_channel(1);
+        let abort_tx = stop_tx.clone();
         let owner = thread::Builder::new()
             .name("rambledesk-speech-session".to_owned())
-            .spawn(move || match NativeSpeechSession::start(config, sink) {
-                Ok(session) => {
-                    if startup_tx.send(Ok(())).is_err() {
-                        return session.stop();
+            .spawn(
+                move || match NativeSpeechSession::start(config, sink, abort_tx) {
+                    Ok(session) => {
+                        if startup_tx.send(Ok(())).is_err() {
+                            return session.stop();
+                        }
+                        let _ = stop_rx.recv();
+                        session.stop()
                     }
-                    let _ = stop_rx.recv();
-                    session.stop()
-                }
-                Err(error) => {
-                    let _ = startup_tx.send(Err(error));
-                    Ok(())
-                }
-            })
+                    Err(error) => {
+                        let _ = startup_tx.send(Err(error));
+                        Ok(())
+                    }
+                },
+            )
             .map_err(|error| SpeechError::InputStream(error.to_string()))?;
 
         match startup_rx.recv() {
@@ -706,6 +714,7 @@ fn run_sherpa_worker_after_load(
     running: Arc<AtomicBool>,
     sink: SpeechEventSink,
     dropped_buffers: Arc<AtomicU64>,
+    abort_tx: SyncSender<()>,
 ) {
     sink(SpeechEvent::Warning {
         request_id: identity.request_id.clone(),
@@ -723,12 +732,16 @@ fn run_sherpa_worker_after_load(
             sink,
             dropped_buffers,
         ),
-        Err(error) => sink(SpeechEvent::Error {
-            request_id: identity.request_id.clone(),
-            voice_session_id: identity.voice_session_id.clone(),
-            code: "model_load".to_owned(),
-            message: error.to_string(),
-        }),
+        Err(error) => {
+            running.store(false, Ordering::Release);
+            sink(SpeechEvent::Error {
+                request_id: identity.request_id.clone(),
+                voice_session_id: identity.voice_session_id.clone(),
+                code: "model_load".to_owned(),
+                message: error.to_string(),
+            });
+            let _ = abort_tx.try_send(());
+        }
     }
 }
 

@@ -43,7 +43,7 @@
     type SpeechEvent,
     type VoiceRambleSessionView,
   } from '../speech'
-  import { joinTranscriptChunks } from './briefNotes'
+  import { joinTranscriptChunks, rambleRequestIdAfterIdleNote } from './briefNotes'
   import { createTranscriptPipeline } from './transcriptPipeline'
   import type { BriefNotePhase, FeedbackEditorHandle, RamblePhase, VoicePhase } from './types'
 
@@ -385,12 +385,13 @@
     }
     if (rambleActive) await stopRamble()
     if (voiceCanStop) return
-    rambleRequestId = rambleRequestId || workspace.request.request_id
+    const requestId = workspace.request.request_id
+    rambleRequestId = rambleRequestIdAfterIdleNote(ramblePhase, rambleRequestId, requestId)
     briefNotePhase = 'starting'
     briefNoteBlockId = blockId
     voiceSink = 'brief-note'
     sessionChunks = []
-    const voiceStarted = await startVoiceRamble()
+    const voiceStarted = await startVoiceRamble(requestId)
     if (!voiceStarted || !voiceSessionId) {
       briefNotePhase = 'error'
       briefNoteBlockId = null
@@ -439,10 +440,10 @@
     }
   }
 
-  async function startVoiceRamble(): Promise<boolean> {
-    if (!rambleRequestId || voiceActive) return false
+  async function startVoiceRamble(requestId = rambleRequestId): Promise<boolean> {
+    if (!requestId || voiceActive) return false
     voicePhase = 'starting'
-    voiceRequestId = rambleRequestId
+    voiceRequestId = requestId
     voiceSessionId = ''
     voiceDevice = ''
     voicePartial = ''
@@ -462,7 +463,7 @@
       }
       const session = await invoke<VoiceRambleSessionView>('start_voice_ramble', {
         input: {
-          request_id: rambleRequestId,
+          request_id: requestId,
           input_device: $speechInputDevice || null,
           model_id: $speechModelId,
           vad_threshold: $speechVadThreshold,
