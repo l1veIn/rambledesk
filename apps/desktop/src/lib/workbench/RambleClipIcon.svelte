@@ -1,14 +1,19 @@
 <script lang="ts">
-  import { FileText } from '@lucide/svelte'
+  import { FileText, StickyNote } from '@lucide/svelte'
   import { onMount } from 'svelte'
 
   import { Button } from '$lib/components/ui/button'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
-  import { clipFlyTransform, type ClipFlyFrom } from './briefNotes'
+  import { clipFlyTransform, nextSavedTranscript, type ClipFlyFrom } from './briefNotes'
 
   export let index = 1
   export let text = ''
+  export let kind: 'clip' | 'note' = 'clip'
+  export let align: 'left' | 'right' = 'left'
+  export let placement: 'top' | 'bottom' = 'top'
+  export let compact = false
+  export let autoOpen = false
   export let flyFrom: ClipFlyFrom | null = null
   export let readOnly = false
   export let onSave: (text: string) => void = () => {}
@@ -22,7 +27,11 @@
   }
 
   $: if (!open) draft = text
-  $: dirty = draft.trim() !== text.trim() && draft.trim().length > 0
+  $: dirty = nextSavedTranscript(draft, text) !== null
+  $: title =
+    kind === 'note' ? tr('Note {index}', { index }) : tr('Ramble clip {index}', { index })
+  $: hideLabel = kind === 'note' ? tr('Hide block note') : tr('Hide ramble clip')
+  $: showLabel = kind === 'note' ? tr('Show recorded note') : tr('Show recorded speech')
 
   function toggleOpen() {
     if (open) {
@@ -35,8 +44,8 @@
   }
 
   function save() {
-    const next = draft.trim()
-    if (!next || next === text.trim()) return
+    const next = nextSavedTranscript(draft, text)
+    if (!next) return
     onSave(next)
   }
 
@@ -45,6 +54,14 @@
       event.preventDefault()
       save()
     }
+  }
+
+  function focusWhenMounted(node: HTMLTextAreaElement) {
+    queueMicrotask(() => {
+      node.focus()
+      const end = node.value.length
+      node.setSelectionRange(end, end)
+    })
   }
 
   onMount(() => {
@@ -58,6 +75,7 @@
     window.addEventListener('keydown', onKeyDown)
 
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    let openTimer: number | undefined
     if (flyFrom && !reduceMotion) {
       const to = root.getBoundingClientRect()
       const motion = clipFlyTransform(flyFrom, to)
@@ -70,9 +88,19 @@
         root.style.opacity = '1'
       }
       requestAnimationFrame(() => requestAnimationFrame(play))
+      if (autoOpen) {
+        openTimer = window.setTimeout(() => {
+          draft = text
+          open = true
+        }, 520)
+      }
+    } else if (autoOpen) {
+      draft = text
+      open = true
     }
 
     return () => {
+      if (openTimer !== undefined) window.clearTimeout(openTimer)
       window.removeEventListener('pointerdown', onPointerDown)
       window.removeEventListener('keydown', onKeyDown)
     }
@@ -82,36 +110,43 @@
 <div bind:this={root} class="relative shrink-0 will-change-transform">
   <button
     type="button"
-    class="grid size-8 place-items-center rounded-md border bg-background text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+    class="grid {compact ? 'size-6' : 'size-8'} place-items-center rounded-md border bg-background text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
     aria-expanded={open}
-    aria-label={open ? tr('Hide ramble clip') : tr('Ramble clip {index}', { index })}
-    title={tr('Ramble clip {index}', { index })}
+    aria-label={open ? hideLabel : title}
+    title={title}
     onclick={() => toggleOpen()}
   >
-    <FileText class="size-4" />
-    <span class="sr-only">{tr('Show recorded speech')}</span>
+    {#if kind === 'note'}
+      <StickyNote class={compact ? 'size-3.5' : 'size-4'} />
+    {:else}
+      <FileText class={compact ? 'size-3.5' : 'size-4'} />
+    {/if}
+    <span class="sr-only">{showLabel}</span>
   </button>
   {#if open}
     <div
-      class="absolute bottom-full left-0 z-50 mb-2 w-[min(22rem,calc(100vw-4rem))] rounded-md border bg-popover p-3 text-xs leading-5 text-popover-foreground shadow-lg"
+      class="absolute z-50 w-[min(22rem,calc(100vw-4rem))] rounded-md border bg-popover p-3 text-xs leading-5 text-popover-foreground shadow-lg {placement === 'bottom'
+        ? 'top-full mt-2'
+        : 'bottom-full mb-2'} {align === 'right' ? 'right-0' : 'left-0'}"
       role="dialog"
       tabindex="-1"
-      aria-label={tr('Ramble clip {index}', { index })}
+      aria-label={title}
       onpointerdown={(event) => event.stopPropagation()}
     >
       <strong class="mb-1 block text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-        {tr('Ramble clip {index}', { index })}
+        {title}
       </strong>
       <textarea
         class="mt-1 max-h-48 min-h-24 w-full resize-y rounded-md border bg-background px-2 py-1.5 text-xs leading-5 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
         value={draft}
         readonly={readOnly}
-        aria-label={tr('Ramble clip {index}', { index })}
+        aria-label={title}
+        use:focusWhenMounted
         oninput={(event) => (draft = (event.currentTarget as HTMLTextAreaElement).value)}
         onkeydown={onDraftKeydown}
       ></textarea>
       {#if !readOnly}
-        <div class="mt-2 flex justify-end">
+        <div class="mt-2 flex justify-end gap-2">
           <Button size="xs" disabled={!dirty} onclick={save}>{tr('Save')}</Button>
         </div>
       {/if}

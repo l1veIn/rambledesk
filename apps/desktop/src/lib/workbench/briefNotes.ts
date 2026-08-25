@@ -141,6 +141,12 @@ export function parseCaptures(body: string): {
   return { clips, notes }
 }
 
+export function nextSavedTranscript(draft: string, saved: string): string | null {
+  const next = draft.trim()
+  if (!next || next === saved.trim()) return null
+  return next
+}
+
 export function capturedTranscriptMarkdown(text: string): string {
   return text
     .trim()

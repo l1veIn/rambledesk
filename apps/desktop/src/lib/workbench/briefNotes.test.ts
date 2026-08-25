@@ -19,6 +19,7 @@ import {
   wrapCapture,
   parseCaptures,
   extractNoteBody,
+  nextSavedTranscript,
 } from './briefNotes'
 
 describe('briefBlocks', () => {
@@ -210,6 +211,18 @@ describe('replaceBlockNote', () => {
       'still too small',
       'hidden',
     ])
+  })
+})
+
+describe('nextSavedTranscript', () => {
+  it('returns the trimmed draft when it differs from the saved text', () => {
+    expect(nextSavedTranscript('  hello world  ', 'hello')).toBe('hello world')
+  })
+
+  it('returns null when the draft is blank or unchanged', () => {
+    expect(nextSavedTranscript('   ', 'hello')).toBeNull()
+    expect(nextSavedTranscript('hello', 'hello')).toBeNull()
+    expect(nextSavedTranscript('  hello  ', 'hello')).toBeNull()
   })
 })
 

@@ -77,6 +77,8 @@ const chinese: Record<string, string> = {
   'Ramble clip {index}': 'Ramble 片段 {index}',
   'Hide ramble clip': '隐藏 Ramble 片段',
   'Show recorded speech': '查看已录内容',
+  'Hide block note': '隐藏备注',
+  'Show recorded note': '查看备注',
   'Writing speech into the document…': '正在把语音写入正文…',
   'Recording. Click to stop.': '正在录音，点击停止。',
   'Starting the microphone…': '正在打开麦克风…',

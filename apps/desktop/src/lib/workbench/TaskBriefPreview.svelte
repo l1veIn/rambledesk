@@ -57,6 +57,7 @@
   let flyingClipId: string | null = null
   let flyFrom: ClipFlyFrom | null = null
   let seenClipCount = 0
+  let hydratedRequestId: string | null = null
 
   $: rambleActive = ramblePhase === 'active'
   $: readOnly =
@@ -105,7 +106,13 @@
   $: whatHappenedBlocks = blocks.filter((block) => block.kind === 'what_happened')
   $: rambleButtonDisabled = rambleBusy || noteRecording || noteProcessing
   $: {
-    if (rambleClips.length > seenClipCount) {
+    const requestId = workspace?.request.request_id ?? null
+    if (requestId !== hydratedRequestId) {
+      hydratedRequestId = requestId
+      seenClipCount = rambleClips.length
+      flyingClipId = null
+      flyFrom = null
+    } else if (rambleClips.length > seenClipCount) {
       const newest = rambleClips[rambleClips.length - 1]
       const rect = recordButtonEl?.getBoundingClientRect()
       flyFrom = rect
@@ -317,6 +324,7 @@
               index={index + 1}
               text={clip.text}
               flyFrom={clip.id === flyingClipId ? flyFrom : null}
+              autoOpen={clip.id === flyingClipId}
               {readOnly}
               onSave={(text) => onSaveRambleClip(clip.id, text)}
             />
