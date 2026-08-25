@@ -40,10 +40,16 @@
   import {
     eventBelongsToVoiceSession,
     stableTranscript,
+    voiceStartStillLive,
     type SpeechEvent,
     type VoiceRambleSessionView,
   } from '../speech'
-  import { joinTranscriptChunks, rambleRequestIdAfterIdleNote } from './briefNotes'
+  import {
+    briefBlocks,
+    findBriefBlock,
+    joinTranscriptChunks,
+    rambleRequestIdAfterIdleNote,
+  } from './briefNotes'
   import { createTranscriptPipeline } from './transcriptPipeline'
   import type { BriefNotePhase, FeedbackEditorHandle, RamblePhase, VoicePhase } from './types'
 
@@ -69,7 +75,12 @@
   export let briefNoteBlockId: string | null = null
   export let onPageError: (message: string) => void = () => {}
   export let onRambleClipReady: (requestId: string, text: string) => void = () => {}
-  export let onBriefNoteReady: (requestId: string, blockId: string, note: string) => void = () => {}
+  export let onBriefNoteReady: (
+    requestId: string,
+    blockId: string,
+    quote: string,
+    note: string,
+  ) => void = () => {}
   export let onSaveDraftNow: () => Promise<boolean> = async () => true
   export let onApplyWorkspaceMutation: (next: FeedbackWorkspaceView) => void = () => {}
   export let onRefreshAttachmentPreviews: (next: FeedbackWorkspaceView) => Promise<void> = async () => {}
@@ -85,6 +96,7 @@
   let clipboardImageQueue: Promise<void> = Promise.resolve()
   let voiceSink: 'ramble' | 'brief-note' = 'ramble'
   let sessionChunks: string[] = []
+  let briefNoteQuote = ''
   const transcriptPipeline = createTranscriptPipeline({
     cleanupEnabled: () => get(lightCleanupEnabled),
     cleanup: (text) =>
@@ -287,6 +299,7 @@
     voiceModelMissing = false
     voiceSink = 'ramble'
     sessionChunks = []
+    briefNoteQuote = ''
   }
 
   export function resetRambleUi() {
@@ -300,6 +313,7 @@
     clipboardCaptureCount = 0
     briefNotePhase = 'idle'
     briefNoteBlockId = null
+    briefNoteQuote = ''
   }
 
   async function startRamble() {
@@ -387,6 +401,15 @@
     if (voiceCanStop) return
     const requestId = workspace.request.request_id
     rambleRequestId = rambleRequestIdAfterIdleNote(ramblePhase, rambleRequestId, requestId)
+    const block = findBriefBlock(
+      briefBlocks({
+        whatHappened: workspace.request.what_happened,
+        actions: workspace.actions,
+        contextRefs: workspace.context_refs,
+      }),
+      blockId,
+    )
+    briefNoteQuote = block?.quote ?? ''
     briefNotePhase = 'starting'
     briefNoteBlockId = blockId
     voiceSink = 'brief-note'
@@ -395,6 +418,7 @@
     if (!voiceStarted || !voiceSessionId) {
       briefNotePhase = 'error'
       briefNoteBlockId = null
+      briefNoteQuote = ''
       voiceSink = 'ramble'
       onPageError(voiceMessage || t($locale, 'Microphone failed to start'))
       briefNotePhase = 'idle'
@@ -406,13 +430,15 @@
   async function stopBriefNote() {
     if (briefNotePhase !== 'recording' && briefNotePhase !== 'starting') return
     const blockId = briefNoteBlockId
+    const quote = briefNoteQuote
     const requestId = voiceRequestId || rambleRequestId
     briefNotePhase = 'processing'
     if (voiceCanStop) await stopVoiceRamble()
     const note = await finalizeSession('brief-note')
     briefNoteBlockId = null
+    briefNoteQuote = ''
     briefNotePhase = 'idle'
-    if (blockId && requestId && note) onBriefNoteReady(requestId, blockId, note)
+    if (blockId && requestId && note) onBriefNoteReady(requestId, blockId, quote, note)
   }
 
   async function finalizeSession(sink: 'ramble' | 'brief-note'): Promise<string> {
@@ -471,6 +497,11 @@
           hotwords: $speechHotwords,
         },
       })
+      if (!voiceStartStillLive(voicePhase)) {
+        voiceSessionId = ''
+        await invoke('stop_voice_ramble').catch(() => {})
+        return false
+      }
       voiceSessionId = session.voice_session_id
       if (voicePhase === 'starting') {
         voicePhase = 'listening'

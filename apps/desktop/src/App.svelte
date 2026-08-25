@@ -935,21 +935,18 @@
     }
   }
 
-  function handleBriefNoteReady(requestId: string, blockId: string, note: string) {
-    const target = workspace?.request.request_id === requestId ? workspace : null
-    if (!target) return
-    const block = findBriefBlock(
-      briefBlocks({
-        whatHappened: target.request.what_happened,
-        actions: target.actions,
-        contextRefs: target.context_refs,
-      }),
-      blockId,
-    )
-    if (!block) return
-    const markdown = quotedNoteMarkdown(block.quote, note)
+  function handleBriefNoteReady(requestId: string, blockId: string, quote: string, note: string) {
+    const markdown = quote.trim() ? quotedNoteMarkdown(quote, note) : note.trim()
     if (!markdown) return
-    if (!workspacePanel?.appendQuotedNote(block.quote, note)) {
+    if (workspace?.request.request_id === requestId) {
+      if (quote.trim()) {
+        if (!workspacePanel?.appendQuotedNote(quote, note)) {
+          void appendRambleMarkdown(requestId, markdown)
+        }
+      } else {
+        void appendRambleMarkdown(requestId, markdown)
+      }
+    } else {
       void appendRambleMarkdown(requestId, markdown)
     }
     briefNotesByRequest = {
