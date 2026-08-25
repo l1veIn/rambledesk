@@ -67,6 +67,7 @@
   export let canCancel = false
   export let cancelling = false
   export let approving = false
+  export let noteBusy = false
   export let canOpenResumePrompt = false
   export let resolveHostProfile: (hostId: string) => HostProfile
   export let formatTime: (value: string | null | undefined) => string
@@ -294,6 +295,7 @@
         {canCancel}
         {cancelling}
         {approving}
+        {noteBusy}
         {canOpenResumePrompt}
         {onToggleRamble}
         {onExitRamble}

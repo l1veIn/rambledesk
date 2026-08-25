@@ -147,6 +147,29 @@ export function nextSavedTranscript(draft: string, saved: string): string | null
   return next
 }
 
+export function blockNoteCaptureId(blockId: string): string {
+  return `note:${blockId}:0`
+}
+
+export function tooltipFixedStyle(
+  anchor: { left: number; top: number; width: number; height: number },
+  placement: 'top' | 'bottom',
+  align: 'left' | 'right',
+): { top: number; left: number; transform: string } {
+  if (placement === 'bottom') {
+    return {
+      top: anchor.top + anchor.height + 8,
+      left: align === 'right' ? anchor.left + anchor.width : anchor.left,
+      transform: align === 'right' ? 'translateX(-100%)' : 'none',
+    }
+  }
+  return {
+    top: anchor.top - 8,
+    left: align === 'right' ? anchor.left + anchor.width : anchor.left,
+    transform: align === 'right' ? 'translate(-100%, -100%)' : 'translateY(-100%)',
+  }
+}
+
 export function capturedTranscriptMarkdown(text: string): string {
   return text
     .trim()
@@ -265,7 +288,9 @@ export function appendBlockNote(
 ): Record<string, string[]> {
   const cleaned = note.trim()
   if (!cleaned) return notes
-  return { ...notes, [blockId]: [...(notes[blockId] ?? []), cleaned] }
+  const current = notes[blockId] ?? []
+  if (current.length === 0) return { ...notes, [blockId]: [cleaned] }
+  return { ...notes, [blockId]: [`${current[0].trim()}\n${cleaned}`] }
 }
 
 export function quotedNoteMarkdown(quote: string, note: string): string {

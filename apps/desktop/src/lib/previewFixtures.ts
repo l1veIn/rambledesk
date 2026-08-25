@@ -4,6 +4,7 @@ import type {
   HostSessionSummary,
 } from './feedback'
 import type { HostProfile, ResumePrompt } from './workbench/types'
+import { quotedNoteMarkdown, wrapCapture } from './workbench/briefNotes'
 
 const requests: FeedbackRequestSummary[] = [
   {
@@ -172,8 +173,23 @@ const workspace: FeedbackWorkspaceView = {
     },
   ],
   draft: {
-    body_markdown:
-      'The host and session hierarchy is easy to scan.\n\nThe request list keeps terminal work in the same chronological view.',
+    body_markdown: [
+      wrapCapture(
+        'ramble:demo-1',
+        'Start Ramble 停录之后，底部左侧会多一个文稿图标。点开就能改这段转写。',
+      ),
+      wrapCapture(
+        'note:what_happened:0:0',
+        quotedNoteMarkdown(
+          'The Inbox now groups requests by host and host session.',
+          '分组标题有点挤，字号再大一点。',
+        ),
+      ),
+      wrapCapture(
+        'ramble:demo-2',
+        '第二次停录会再上一发弹夹。每段都可以单独打开、改完保存。',
+      ),
+    ].join('\n\n'),
     saved_revision: 3,
     updated_at: '2026-08-02T08:14:00Z',
   },

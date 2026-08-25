@@ -33,6 +33,7 @@
   export let canCancel = false
   export let cancelling = false
   export let approving = false
+  export let noteBusy = false
   export let canOpenResumePrompt = false
   export let onToggleRamble: () => void = () => {}
   export let onExitRamble: () => void = () => {}
@@ -113,6 +114,7 @@
       allowFinish={workspace.request.allow_finish}
       finalSummary={workspace.request.final_summary ?? ''}
       {approving}
+      {noteBusy}
       {canOpenResumePrompt}
       onOpenPackage={onOpenPackage}
       onOpenResumePrompt={onOpenResumePrompt}

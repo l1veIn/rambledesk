@@ -78,6 +78,7 @@
     sameCaptureOccurrence,
     wrapCapture,
     parseCaptures,
+    blockNoteCaptureId,
     type RambleClip,
   } from './lib/workbench/briefNotes'
   import type {
@@ -458,6 +459,7 @@
         savedBody = draftBody
         savedRevision = previewFixtures.workspace.draft.saved_revision
         savePhase = 'saved'
+        applyCapturesFromBody(workspace.request.request_id, draftBody)
         if (new URLSearchParams(window.location.search).get('dialog') === 'resume') {
           resumePrompt = previewFixtures.resumePrompt
         }
@@ -588,6 +590,18 @@
     }
   }
 
+  function applyCapturesFromBody(requestId: string, body: string) {
+    const parsedCaptures = parseCaptures(body)
+    rambleClipsByRequest = {
+      ...rambleClipsByRequest,
+      [requestId]: parsedCaptures.clips,
+    }
+    briefNotesByRequest = {
+      ...briefNotesByRequest,
+      [requestId]: parsedCaptures.notes,
+    }
+  }
+
   async function openRequest(requestId: string, saveCurrent = true) {
     if (interactionLocked || workspace?.request.request_id === requestId) return
     if (saveCurrent && !(await saveDraftNow())) return
@@ -609,15 +623,7 @@
       cookedPreviewOriginal = ''
       draftBody = next.draft.body_markdown
       savedBody = next.draft.body_markdown
-      const parsedCaptures = parseCaptures(next.draft.body_markdown)
-      rambleClipsByRequest = {
-        ...rambleClipsByRequest,
-        [next.request.request_id]: parsedCaptures.clips,
-      }
-      briefNotesByRequest = {
-        ...briefNotesByRequest,
-        [next.request.request_id]: parsedCaptures.notes,
-      }
+      applyCapturesFromBody(next.request.request_id, next.draft.body_markdown)
       savedRevision = next.draft.saved_revision
       savePhase = next.draft.updated_at ? 'saved' : 'idle'
       saveMessage = ''
@@ -821,7 +827,7 @@
   const submitFeedback = publisherController.submitFeedback
 
   async function approveFeedback() {
-    if (!workspace || !workspace.request.allow_finish || approving) return
+    if (!workspace || !workspace.request.allow_finish || approving || interactionLocked) return
     if (!window.confirm(tr('Approve this final summary and end Pi’s Ramble flow?'))) return
     if (rambleCanExit) await exitRamble()
     approving = true
@@ -982,7 +988,7 @@
       block ? quotedNoteMarkdown(block.quote, item) : item,
     )
     applyCaptureReplacement(
-      `note:${blockId}:${index}`,
+      blockNoteCaptureId(blockId),
       inner,
       previous,
       sameCaptureOccurrence(markdown, index),
@@ -994,13 +1000,25 @@
   }
 
   function handleBriefNoteReady(requestId: string, blockId: string, quote: string, note: string) {
-    const inner = quote.trim() ? quotedNoteMarkdown(quote, note) : note.trim()
-    if (!inner) return
+    const addition = note.trim()
+    if (!addition) return
     const existing = briefNotesByRequest[requestId]?.[blockId] ?? []
-    appendCapturedMarkdown(requestId, wrapCapture(`note:${blockId}:${existing.length}`, inner))
+    const previousText = existing[0] ?? ''
+    const nextNotes = appendBlockNote(briefNotesByRequest[requestId] ?? {}, blockId, addition)
+    const nextText = nextNotes[blockId]?.[0] ?? addition
+    const inner = quote.trim() ? quotedNoteMarkdown(quote, nextText) : nextText
+    const captureId = blockNoteCaptureId(blockId)
+    if (previousText) {
+      const previousInner = quote.trim() ? quotedNoteMarkdown(quote, previousText) : previousText
+      const before = draftBody
+      applyCaptureReplacement(captureId, inner, previousInner, 0)
+      if (draftBody === before) appendCapturedMarkdown(requestId, wrapCapture(captureId, inner))
+    } else {
+      appendCapturedMarkdown(requestId, wrapCapture(captureId, inner))
+    }
     briefNotesByRequest = {
       ...briefNotesByRequest,
-      [requestId]: appendBlockNote(briefNotesByRequest[requestId] ?? {}, blockId, note),
+      [requestId]: nextNotes,
     }
   }
 
@@ -1172,6 +1190,7 @@
           {canCancel}
           {cancelling}
           {approving}
+          noteBusy={briefNotePhase === 'starting' || briefNotePhase === 'processing'}
           {canOpenResumePrompt}
           {resolveHostProfile}
           formatTime={formatTimeLocal}

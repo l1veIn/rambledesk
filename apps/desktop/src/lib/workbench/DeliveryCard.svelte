@@ -32,6 +32,7 @@
   export let allowFinish = false
   export let finalSummary = ''
   export let approving = false
+  export let noteBusy = false
   export let canOpenResumePrompt = false
   export let onOpenPackage: () => void = () => {}
   export let onOpenResumePrompt: () => void = () => {}
@@ -43,7 +44,7 @@
   let cancelConfirmOpen = false
 
   $: published = feedbackResult !== null && !submitting && !cooking
-  $: operationLocked = cooking || submitting || cancelling || approving
+  $: operationLocked = cooking || submitting || cancelling || approving || noteBusy
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)

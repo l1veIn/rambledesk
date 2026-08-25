@@ -333,7 +333,7 @@
     rambleSourceLabel = workspace.request.source_hint ?? workspace.request.host_session_id
     rambleContextId = crypto.randomUUID()
     clipboardCaptureCount = 0
-    ramblePhase = 'starting'
+    ramblePhase = 'active'
     rambleMessage = t($locale, 'Starting the microphone…')
     void invoke('record_diagnostic_event', {
       activity: 'ramble_started',
@@ -362,10 +362,10 @@
     if (sessionChunks.length > 0 && voiceSink === 'ramble') {
       await finalizeSession('ramble')
     }
-    ramblePhase = 'starting'
-    rambleMessage = t($locale, 'Starting the microphone…')
     voiceSink = 'ramble'
     sessionChunks = []
+    ramblePhase = 'active'
+    rambleMessage = t($locale, 'Starting the microphone…')
     const voiceStarted = await startVoiceRamble()
     if (!voiceStarted || !voiceSessionId) {
       ramblePhase = 'error'
@@ -373,7 +373,6 @@
       return
     }
 
-    ramblePhase = 'active'
     rambleMessage = t($locale, 'Recording. Click to stop.')
   }
 
@@ -485,16 +484,6 @@
     voiceLevel = 0
     voiceModelMissing = false
     try {
-      const models = await invoke<Array<{ id: string; installed: boolean; streaming: boolean }>>(
-        'list_speech_models',
-      )
-      const model = models.find((candidate) => candidate.id === $speechModelId)
-      if (!model?.installed) {
-        voiceModelMissing = true
-        voicePhase = 'error'
-        voiceMessage = t($locale, 'The selected speech model is not installed. Open Voice settings to download it.')
-        return false
-      }
       const session = await invoke<VoiceRambleSessionView>('start_voice_ramble', {
         input: {
           request_id: requestId,
@@ -513,13 +502,13 @@
       voiceSessionId = session.voice_session_id
       if (voicePhase === 'starting') {
         voicePhase = 'listening'
-        voiceMessage = model.streaming
-          ? t($locale, 'Streaming recognition · Writes after a natural pause')
-          : t($locale, 'VAD is listening · Transcribes automatically after each spoken segment')
+        voiceMessage = t($locale, 'VAD is listening · Transcribes automatically after each spoken segment')
       }
     } catch (cause) {
+      const message = messageFrom(cause)
       voicePhase = 'error'
-      voiceMessage = messageFrom(cause)
+      voiceMessage = message
+      voiceModelMissing = /not installed|尚未安装/.test(message)
       return false
     }
     return true
@@ -702,7 +691,7 @@
         ) {
           sessionChunks = [...sessionChunks, transcript]
         }
-        voicePartial = ''
+        voicePartial = transcript || voicePartial
         voiceChunkIndex = event.chunk_index + 1
         if (voicePhase !== 'stopping') voicePhase = 'listening'
         voiceMessage = t($locale, 'Segment {count} captured', { count: event.chunk_index + 1 })
@@ -718,7 +707,6 @@
         voicePhase = 'idle'
         voiceSessionId = ''
         voiceLevel = 0
-        voicePartial = ''
         voiceMessage = t($locale, 'Recording stopped')
         if (briefNotePhase === 'recording') {
           void stopBriefNote()
@@ -731,7 +719,6 @@
       case 'error':
         voicePhase = 'error'
         voiceLevel = 0
-        voicePartial = ''
         voiceMessage = event.message
         if (briefNotePhase === 'recording' || briefNotePhase === 'starting') {
           onPageError(t($locale, 'Microphone error; Ramble is paused: {error}', { error: event.message }))

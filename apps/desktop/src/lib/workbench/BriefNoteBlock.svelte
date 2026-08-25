@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { LoaderCircle, StickyNote } from '@lucide/svelte'
+  import { FileText, LoaderCircle, Plus } from '@lucide/svelte'
 
   import { Button } from '$lib/components/ui/button'
   import { t } from '$lib/i18n'
@@ -15,26 +15,17 @@
   export let onToggleRecord: () => void = () => {}
   export let onSaveNote: (index: number, text: string) => void = () => {}
 
-  let seenNotes = notes.length
-  let latestNoteIndex = -1
-
-  $: if (notes.length > seenNotes) {
-    latestNoteIndex = notes.length - 1
-    seenNotes = notes.length
-  } else if (notes.length < seenNotes) {
-    seenNotes = notes.length
-    latestNoteIndex = -1
-  }
-
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
   }
 
+  $: note = notes[0] ?? ''
   $: recordLabel = processing
     ? tr('Transcribing note…')
     : recording
       ? tr('Recording this note')
-      : tr('Record a note')
+      : tr('Add a note')
+  $: showAdd = !note && (!disabled || recording || processing)
 </script>
 
 <div class="group/note flex min-w-0 items-start gap-1.5 rounded-md">
@@ -47,45 +38,47 @@
     {/if}
   </div>
 
-  {#if !disabled || recording || processing || notes.length > 0}
+  {#if showAdd || note}
     <div class="flex shrink-0 items-start gap-0.5">
-      {#each notes as note, index (index)}
+      {#if note}
         <RambleClipIcon
           kind="note"
           align="right"
           placement="bottom"
           compact
-          index={index + 1}
+          index={1}
           text={note}
-          autoOpen={index === latestNoteIndex}
           {readOnly}
-          onSave={(text) => onSaveNote(index, text)}
+          {recording}
+          {processing}
+          onSave={(text) => onSaveNote(0, text)}
+          onToggleRecord={readOnly ? null : onToggleRecord}
         />
-      {/each}
-      <Button
-        variant="ghost"
-        size="icon-xs"
-        class={[
-          'text-muted-foreground transition-opacity',
-          recording || processing || notes.length > 0
-            ? 'opacity-100'
-            : 'opacity-0 group-hover/note:opacity-100 focus-visible:opacity-100',
-        ]}
-        disabled={disabled && !recording && !processing}
-        aria-label={recordLabel}
-        title={recordLabel}
-        onclick={onToggleRecord}
-      >
-        {#if processing}
-          <LoaderCircle class="size-3.5 animate-spin" />
-        {:else if recording}
-          <span class="relative grid size-3.5 place-items-center">
-            <span class="record-blink size-2.5 rounded-full bg-destructive"></span>
-          </span>
-        {:else}
-          <StickyNote class="size-3.5" />
-        {/if}
-      </Button>
+      {:else}
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          class={[
+            'text-muted-foreground transition-opacity',
+            recording || processing
+              ? 'border-primary/50 bg-muted text-foreground opacity-100 shadow-inner'
+              : 'opacity-0 group-hover/note:opacity-100 focus-visible:opacity-100',
+          ]}
+          disabled={disabled && !recording && !processing}
+          aria-label={recordLabel}
+          title={recordLabel}
+          aria-pressed={recording}
+          onclick={onToggleRecord}
+        >
+          {#if processing}
+            <LoaderCircle class="size-3.5 animate-spin" />
+          {:else if recording}
+            <FileText class="size-3.5" />
+          {:else}
+            <Plus class="size-3.5" />
+          {/if}
+        </Button>
+      {/if}
     </div>
   {/if}
 </div>

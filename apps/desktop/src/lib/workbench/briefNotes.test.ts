@@ -20,6 +20,8 @@ import {
   parseCaptures,
   extractNoteBody,
   nextSavedTranscript,
+  blockNoteCaptureId,
+  tooltipFixedStyle,
 } from './briefNotes'
 
 describe('briefBlocks', () => {
@@ -114,10 +116,39 @@ describe('appendRambleClip', () => {
 })
 
 describe('appendBlockNote', () => {
-  it('keeps notes on the same block together', () => {
+  it('keeps a single note per block and appends later speech to it', () => {
     const once = appendBlockNote({}, 'action:a1', 'too small')
     const twice = appendBlockNote(once, 'action:a1', 'still hidden')
-    expect(twice['action:a1']).toEqual(['too small', 'still hidden'])
+    expect(twice['action:a1']).toEqual(['too small\nstill hidden'])
+  })
+})
+
+describe('blockNoteCaptureId', () => {
+  it('uses a stable id so later speech replaces the same capture', () => {
+    expect(blockNoteCaptureId('action:a1')).toBe('note:action:a1:0')
+    expect(blockNoteCaptureId('what_happened:0')).toBe('note:what_happened:0:0')
+  })
+})
+
+describe('tooltipFixedStyle', () => {
+  it('places a footer clip tooltip above the icon, outside overflow clipping', () => {
+    expect(
+      tooltipFixedStyle(
+        { left: 40, top: 800, width: 32, height: 32 },
+        'top',
+        'left',
+      ),
+    ).toEqual({ top: 792, left: 40, transform: 'translateY(-100%)' })
+  })
+
+  it('places a block-note tooltip below the right edge of the icon', () => {
+    expect(
+      tooltipFixedStyle(
+        { left: 900, top: 120, width: 24, height: 24 },
+        'bottom',
+        'right',
+      ),
+    ).toEqual({ top: 152, left: 924, transform: 'translateX(-100%)' })
   })
 })
 
@@ -205,11 +236,10 @@ describe('replaceRambleClip', () => {
 })
 
 describe('replaceBlockNote', () => {
-  it('updates one note on a block', () => {
-    const notes = appendBlockNote(appendBlockNote({}, 'action:a1', 'too small'), 'action:a1', 'hidden')
+  it('updates the single note on a block', () => {
+    const notes = appendBlockNote({}, 'action:a1', 'too small')
     expect(replaceBlockNote(notes, 'action:a1', 0, 'still too small')['action:a1']).toEqual([
       'still too small',
-      'hidden',
     ])
   })
 })
