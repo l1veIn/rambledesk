@@ -620,7 +620,7 @@
   }
 
   async function openRequest(requestId: string, saveCurrent = true) {
-    if (interactionLocked || workspace?.request.request_id === requestId) return
+    if (interactionLocked || terminalPending || workspace?.request.request_id === requestId) return
     if (saveCurrent && !(await saveDraftNow())) return
     if (requestId === rambleRequestId) await rambleMarkdownQueue.catch(() => {})
 
@@ -868,14 +868,23 @@
     if (!workspace || !workspace.request.allow_finish || approving || interactionLocked) return
     if (captureInFlight) return
     if (!window.confirm(tr('Approve this final summary and end Pi’s Ramble flow?'))) return
-    if (rambleCanExit) await exitRamble()
-    // Approving makes the request terminal and the draft controller then refuses
-    // saves, so anything still being transcribed has to land and persist first.
-    if (!(await awaitCaptureWrites())) return
+    // Pin the request the operator confirmed: the wait below is long enough to
+    // navigate away, and the action must not land on whatever is visible then.
+    const requestId = workspace.request.request_id
+    terminalPending = true
+    try {
+      if (rambleCanExit) await exitRamble()
+      // Approving makes the request terminal and the draft controller then
+      // refuses saves, so anything still being transcribed has to land first.
+      if (!(await awaitCaptureWrites())) return
+    } finally {
+      terminalPending = false
+    }
+    if (workspace?.request.request_id !== requestId) return
     approving = true
     pageError = ''
     try {
-      const input: ApproveFeedbackInput = { request_id: workspace.request.request_id }
+      const input: ApproveFeedbackInput = { request_id: requestId }
       const result = await invoke<FeedbackRequestView>('approve_feedback_request', { input })
       completedResult = result
       workspace = {
@@ -898,14 +907,21 @@
 
   async function cancelFeedback() {
     if (!workspace || !canCancel) return
-    if (rambleCanExit) await exitRamble()
-    if (!(await awaitCaptureWrites())) return
+    const requestId = workspace.request.request_id
+    terminalPending = true
+    try {
+      if (rambleCanExit) await exitRamble()
+      if (!(await awaitCaptureWrites())) return
+    } finally {
+      terminalPending = false
+    }
+    if (workspace?.request.request_id !== requestId) return
 
     cancelling = true
     pageError = ''
     try {
       const input: CancelFeedbackInput = {
-        request_id: workspace.request.request_id,
+        request_id: requestId,
         reason: 'Human cancelled from RambleDesk desktop',
       }
       const result = await invoke<FeedbackRequestView>('cancel_feedback_request', { input })
@@ -979,6 +995,12 @@
   let captureSaves: Promise<void> = Promise.resolve()
   /** Set when a capture save rejected or reported failure; read once, then cleared. */
   let captureSaveFailed = false
+  /**
+   * A terminal action has been confirmed and is draining captures. The
+   * interaction lock cannot be used for this: it also refuses the very draft
+   * writes the drain is waiting for. This only holds navigation still.
+   */
+  let terminalPending = false
 
   function trackCaptureSave(work: Promise<unknown>) {
     // saveDraftNow resolves false on failure rather than rejecting, and

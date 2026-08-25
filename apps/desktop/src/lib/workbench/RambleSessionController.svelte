@@ -117,6 +117,12 @@
   /** Every capture still being cleaned up and written; awaited before exiting. */
   let captureWork: Promise<void> = Promise.resolve()
   /**
+   * True while a terminal action is draining captures. New recordings are
+   * refused for the duration: one started mid-drain would not be in the chain
+   * the caller is waiting on.
+   */
+  let drainingCaptures = false
+  /**
    * The stop that is currently running. Callers get this promise back instead of
    * an instant return, so submitting or exiting mid-stop waits for the note
    * rather than resetting the session out from under it.
@@ -248,6 +254,7 @@
   export async function toggleRamble() {
     if (
       interactionLocked ||
+      drainingCaptures ||
       rambleBusy ||
       briefNotePhase === 'recording' ||
       briefNotePhase === 'starting'
@@ -260,7 +267,7 @@
   }
 
   export async function toggleBriefNote(blockId: string) {
-    if (interactionLocked || rambleBusy || briefNotePhase === 'starting') {
+    if (interactionLocked || drainingCaptures || rambleBusy || briefNotePhase === 'starting') {
       return
     }
     if (briefNotePhase === 'recording') {
@@ -560,8 +567,13 @@
    * For terminal actions, which must not leave speech unwritten.
    */
   export async function awaitCaptureWork(): Promise<void> {
-    await stopBriefNote()
-    await captureWork
+    drainingCaptures = true
+    try {
+      await stopBriefNote()
+      await drainCaptureWork()
+    } finally {
+      drainingCaptures = false
+    }
   }
 
   /**
@@ -570,8 +582,26 @@
    * draft does not silently end the operator's note.
    */
   export async function awaitPendingCaptures(): Promise<void> {
-    await briefNoteStop
-    await captureWork
+    drainingCaptures = true
+    try {
+      await briefNoteStop
+      await drainCaptureWork()
+    } finally {
+      drainingCaptures = false
+    }
+  }
+
+  /**
+   * trackCaptureWork replaces the chain rather than extending the awaited one,
+   * so a single await returns holding a stale promise if anything registered
+   * while we waited. Drain until the chain stops moving.
+   */
+  async function drainCaptureWork() {
+    let awaited: Promise<void> | null = null
+    while (awaited !== captureWork) {
+      awaited = captureWork
+      await awaited
+    }
   }
 
   /**
