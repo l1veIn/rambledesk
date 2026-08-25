@@ -80,7 +80,9 @@
    * block the microphone, so this is a set rather than a phase: one block can
    * spin while the operator is already recording the next one.
    */
-  export let briefNoteProcessingIds: string[] = []
+  export let briefNoteProcessing: Array<{ requestId: string; blockId: string }> = []
+  /** The request the note being recorded belongs to, so another request cannot show it. */
+  export let briefNoteRequestId = ''
   /**
    * Everything spoken into the current note so far, stable segments included.
    * `voicePartial` alone is just the segment in flight, so the preview lost the
@@ -114,8 +116,12 @@
   let briefNoteQuote = ''
   /** Every capture still being cleaned up and written; awaited before exiting. */
   let captureWork: Promise<void> = Promise.resolve()
-  /** Held across the first await in stopBriefNote so the stop happens once. */
-  let stoppingBriefNote = false
+  /**
+   * The stop that is currently running. Callers get this promise back instead of
+   * an instant return, so submitting or exiting mid-stop waits for the note
+   * rather than resetting the session out from under it.
+   */
+  let briefNoteStop: Promise<void> | null = null
   const transcriptPipeline = createTranscriptPipeline({
     cleanupEnabled: () => get(lightCleanupEnabled),
     cleanup: (text) =>
@@ -266,12 +272,10 @@
 
   export async function exitRamble() {
     if (!rambleCanExit && !rambleStartedOnce && briefNotePhase === 'idle') return
-    if (briefNotePhase === 'recording' || briefNotePhase === 'starting') {
-      await stopBriefNote()
-    }
     // Speech still being transcribed belongs in the document, even though the
-    // operator has already walked away from the session.
-    await captureWork
+    // operator has already walked away from the session. stopBriefNote() hands
+    // back an in-flight stop rather than returning empty-handed.
+    await awaitCaptureWork()
     if (rambleRequestId && rambleEngaged) {
       void invoke('record_diagnostic_event', {
         activity: 'ramble_stopped',
@@ -334,6 +338,7 @@
     briefNotePhase = 'idle'
     briefNoteBlockId = null
     briefNoteQuote = ''
+    briefNoteRequestId = ''
   }
 
   async function startRamble() {
@@ -444,6 +449,7 @@
     briefNoteQuote = block?.quote ?? ''
     briefNotePhase = 'starting'
     briefNoteBlockId = blockId
+    briefNoteRequestId = requestId
     voiceSink = 'brief-note'
     sessionChunks = []
     const voiceStarted = await startVoiceRamble(requestId)
@@ -451,6 +457,7 @@
       briefNotePhase = 'error'
       briefNoteBlockId = null
       briefNoteQuote = ''
+      briefNoteRequestId = ''
       voiceSink = 'ramble'
       onPageError(voiceMessage || t($locale, 'Microphone failed to start'))
       briefNotePhase = 'idle'
@@ -495,42 +502,56 @@
     }
   }
 
-  async function stopBriefNote() {
-    // Claim the stop before the first await. The native `stopped` event lands
-    // while we wait below and re-enters here, which used to deliver the same
-    // speech a second time and duplicate the note.
-    if (stoppingBriefNote) return
-    if (briefNotePhase !== 'recording' && briefNotePhase !== 'starting') return
-    stoppingBriefNote = true
+  /**
+   * Stop the note that is recording. A stop already in flight is handed back as
+   * the same promise: the native `stopped` event re-enters here while we wait on
+   * the microphone, and an exit or submit landing in that window must await the
+   * running stop instead of racing past it and resetting the session.
+   */
+  function stopBriefNote(): Promise<void> {
+    if (briefNoteStop) return briefNoteStop
+    if (briefNotePhase !== 'recording' && briefNotePhase !== 'starting') return Promise.resolve()
+    briefNoteStop = runBriefNoteStop().finally(() => {
+      briefNoteStop = null
+    })
+    return briefNoteStop
+  }
+
+  async function runBriefNoteStop() {
     const blockId = briefNoteBlockId
     const quote = briefNoteQuote
     const requestId = voiceRequestId || rambleRequestId
-    try {
-      if (voiceCanStop) await stopVoiceRamble()
-      // Merge only after the microphone stopped: the closing stable segment
-      // refines the partial it came from, so merging a pre-stop snapshot with
-      // the post-stop chunks appended the last sentence twice.
-      const note = takeSessionTranscript()
-      voiceSink = 'ramble'
-      // Release the recording slot now. Cleanup runs behind the block's own
-      // spinner so the operator can immediately record somewhere else.
-      briefNotePhase = 'idle'
-      briefNoteBlockId = null
-      briefNoteQuote = ''
-      if (!blockId || !requestId || !note) return
-      trackCaptureWork(
-        (async () => {
-          briefNoteProcessingIds = [...briefNoteProcessingIds, blockId]
-          try {
-            await deliverTranscript('brief-note', note, { requestId, blockId, quote })
-          } finally {
-            briefNoteProcessingIds = briefNoteProcessingIds.filter((id) => id !== blockId)
-          }
-        })(),
-      )
-    } finally {
-      stoppingBriefNote = false
-    }
+    if (voiceCanStop) await stopVoiceRamble()
+    // Merge only after the microphone stopped: the closing stable segment
+    // refines the partial it came from, so merging a pre-stop snapshot with
+    // the post-stop chunks appended the last sentence twice.
+    const note = takeSessionTranscript()
+    voiceSink = 'ramble'
+    // Release the recording slot now. Cleanup runs behind the block's own
+    // spinner so the operator can immediately record somewhere else.
+    briefNotePhase = 'idle'
+    briefNoteBlockId = null
+    briefNoteQuote = ''
+    briefNoteRequestId = ''
+    if (!blockId || !requestId || !note) return
+    trackCaptureWork(
+      (async () => {
+        briefNoteProcessing = [...briefNoteProcessing, { requestId, blockId }]
+        try {
+          await deliverTranscript('brief-note', note, { requestId, blockId, quote })
+        } finally {
+          briefNoteProcessing = briefNoteProcessing.filter(
+            (item) => item.requestId !== requestId || item.blockId !== blockId,
+          )
+        }
+      })(),
+    )
+  }
+
+  /** Wait for every capture that is still being cleaned up and written. */
+  export async function awaitCaptureWork(): Promise<void> {
+    await stopBriefNote()
+    await captureWork
   }
 
   /**
@@ -768,7 +789,7 @@
         if (
           transcript &&
           (briefNotePhase === 'recording' ||
-            stoppingBriefNote ||
+            briefNoteStop !== null ||
             briefNotePhase === 'starting' ||
             ramblePhase === 'active' ||
             ramblePhase === 'stopping' ||

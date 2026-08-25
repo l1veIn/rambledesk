@@ -62,9 +62,15 @@
   let seenClipCount = 0
   let hydratedRequestId: string | null = null
 
+  export let interactionLocked = false
+
   $: rambleActive = ramblePhase === 'active'
+  // Cooking, submitting, cancelling and approving all refuse draft writes, so a
+  // tooltip edit made during one is silently swallowed when the operation's own
+  // result lands. Present the captures as read-only instead of losing the edit.
   $: readOnly =
     workspace === null ||
+    interactionLocked ||
     workspace.request.status === 'completed' ||
     workspace.request.status === 'cancelled'
 

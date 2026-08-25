@@ -159,7 +159,8 @@
   let briefNotesByRequest: Record<string, Record<string, string[]>> = {}
   let briefNotePhase: BriefNotePhase = 'idle'
   let briefNoteBlockId: string | null = null
-  let briefNoteProcessingIds: string[] = []
+  let briefNoteProcessing: Array<{ requestId: string; blockId: string }> = []
+  let briefNoteRequestId = ''
   let voiceNoteTranscript = ''
   let resumePrompt: ResumePrompt | null = null
   let resumeCopyState: 'idle' | 'copied' | 'failed' = 'idle'
@@ -353,7 +354,7 @@
     !currentRequestCooking &&
     !submitting &&
     !cancelling &&
-    briefNotePhase !== 'starting' &&
+    currentNotePhase !== 'starting' &&
     !captureInFlight
   $: canCancel =
     workspace !== null &&
@@ -362,7 +363,7 @@
     !currentRequestCooking &&
     !submitting &&
     !cancelling &&
-    briefNotePhase !== 'starting' &&
+    currentNotePhase !== 'starting' &&
     !captureInFlight
   // Note recording deliberately stays out of this: the note write itself goes
   // through updateDraft, and a refused write is silently reverted when the
@@ -383,8 +384,20 @@
   $: currentRambleClips = workspace
     ? rambleClipsByRequest[workspace.request.request_id] ?? []
     : []
+  // A note recorded against another request must not surface on this one: block
+  // ids like `what_happened:0` are shared, so the live transcript and the
+  // recording control would attach themselves to an unrelated block.
+  $: briefNoteBelongsToWorkspace =
+    briefNoteRequestId !== '' && briefNoteRequestId === workspace?.request.request_id
+  $: currentNotePhase = briefNoteBelongsToWorkspace ? briefNotePhase : 'idle'
+  $: currentNoteBlockId = briefNoteBelongsToWorkspace ? briefNoteBlockId : null
+  $: currentNoteProcessingIds = workspace
+    ? briefNoteProcessing
+        .filter((item) => item.requestId === workspace?.request.request_id)
+        .map((item) => item.blockId)
+    : []
   $: captureInFlight =
-    briefNoteProcessingIds.length > 0 || currentRambleClips.some((clip) => clip.processing)
+    currentNoteProcessingIds.length > 0 || currentRambleClips.some((clip) => clip.processing)
   $: currentBriefNotes = workspace
     ? briefNotesByRequest[workspace.request.request_id] ?? {}
     : {}
@@ -837,8 +850,12 @@
 
   async function approveFeedback() {
     if (!workspace || !workspace.request.allow_finish || approving || interactionLocked) return
+    if (captureInFlight) return
     if (!window.confirm(tr('Approve this final summary and end Pi’s Ramble flow?'))) return
     if (rambleCanExit) await exitRamble()
+    // Approving makes the request terminal and the draft controller then refuses
+    // saves, so anything still being transcribed has to land first.
+    await rambleController?.awaitCaptureWork()
     approving = true
     pageError = ''
     try {
@@ -866,6 +883,7 @@
   async function cancelFeedback() {
     if (!workspace || !canCancel) return
     if (rambleCanExit) await exitRamble()
+    await rambleController?.awaitCaptureWork()
 
     cancelling = true
     pageError = ''
@@ -1090,7 +1108,8 @@
     bind:rambleMessage
     bind:briefNotePhase
     bind:briefNoteBlockId
-    bind:briefNoteProcessingIds
+    bind:briefNoteProcessing
+    bind:briefNoteRequestId
     bind:voiceNoteTranscript
     interactionLocked={interactionLocked || currentRequestCooking}
     onPageError={(message) => (pageError = message)}
@@ -1203,10 +1222,10 @@
           rambleStartedOnce={rambleBelongsToWorkspace ? rambleStartedOnce : false}
           rambleClips={currentRambleClips}
           briefNotes={currentBriefNotes}
-          {briefNotePhase}
-          {briefNoteBlockId}
-          {briefNoteProcessingIds}
-          noteTranscript={rambleBelongsToWorkspace ? voiceNoteTranscript : ''}
+          briefNotePhase={currentNotePhase}
+          briefNoteBlockId={currentNoteBlockId}
+          briefNoteProcessingIds={currentNoteProcessingIds}
+          noteTranscript={briefNoteBelongsToWorkspace ? voiceNoteTranscript : ''}
           onToggleBriefNote={(blockId) => void toggleBriefNote(blockId)}
           onSaveRambleClip={handleSaveRambleClip}
           onSaveBriefNote={handleSaveBriefNote}
@@ -1230,7 +1249,7 @@
           {canCancel}
           {cancelling}
           {approving}
-          noteBusy={briefNotePhase === 'starting' || captureInFlight}
+          noteBusy={currentNotePhase === 'starting' || captureInFlight}
           {canOpenResumePrompt}
           {resolveHostProfile}
           formatTime={formatTimeLocal}

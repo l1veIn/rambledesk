@@ -38,6 +38,7 @@ export type RambleSessionControllerHandle = {
   toggleRamble(): Promise<void>
   toggleBriefNote(blockId: string): Promise<void>
   exitRamble(): Promise<void>
+  awaitCaptureWork(): Promise<void>
   importClipboardNow(): Promise<void>
   resetVoiceUi(): void
   resetRambleUi(): void

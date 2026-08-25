@@ -334,6 +334,7 @@
       {briefNoteBlockId}
       {briefNoteProcessingIds}
       {noteTranscript}
+      {interactionLocked}
       {onToggleBriefNote}
       {onSaveRambleClip}
       {onSaveBriefNote}
