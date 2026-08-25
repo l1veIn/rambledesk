@@ -36,14 +36,9 @@ When an agent needs your judgment, it sends the question to your desktop. Speak,
 
 ## Quick start
 
-1. Download RambleDesk from [GitHub Releases](https://github.com/l1veIn/rambledesk/releases)
-2. Open **Settings → Adapters** and install the adapter for your coding agent
-3. Enable ramble mode in the host, then give the agent a goal
-4. When it needs you, RambleDesk will knock
+Download and install RambleDesk from [GitHub Releases](https://github.com/l1veIn/rambledesk/releases), then follow the instructions for your platform below.
 
-RambleDesk supports Claude Code, Cursor, Codex, Gemini CLI, Grok, OpenCode, Reasonix, Antigravity IDE, plus native adapters for Pi and DeepSeek Harness.
-
-<details>
+<details open>
 <summary><strong>Windows and macOS installation notes</strong></summary>
 
 ### Windows
@@ -64,7 +59,11 @@ xattr -dr com.apple.quarantine /Applications/RambleDesk.app
 
 </details>
 
-### From source
+## Supported coding agents
+
+RambleDesk supports Claude Code, Cursor, Codex, Gemini CLI, Grok, OpenCode, Reasonix, Antigravity IDE, plus native adapters for Pi and DeepSeek Harness.
+
+## From source
 
 ```bash
 pnpm install --frozen-lockfile

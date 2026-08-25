@@ -36,14 +36,9 @@
 
 ## 快速开始
 
-1. 从 [GitHub Releases](https://github.com/l1veIn/rambledesk/releases) 下载并安装 RambleDesk
-2. 打开 **设置 → 适配器**，安装你正在使用的 Agent 适配器
-3. 在对应的 coding harness 中启用 ramble mode，然后给 Agent 一个目标
-4. 当它需要你时，RambleDesk 会来敲门
+从 [GitHub Releases](https://github.com/l1veIn/rambledesk/releases) 下载并安装 RambleDesk，然后按照下方对应平台的说明完成安装。
 
-目前支持 Claude Code、Cursor、Codex、Gemini CLI、Grok、OpenCode、Reasonix、Antigravity IDE，以及 Pi 和 DeepSeek Harness。
-
-<details>
+<details open>
 <summary><strong>Windows 和 macOS 安装说明</strong></summary>
 
 ### Windows
@@ -64,7 +59,11 @@ xattr -dr com.apple.quarantine /Applications/RambleDesk.app
 
 </details>
 
-### 从源码运行
+## 支持的 Coding Agent
+
+目前支持 Claude Code、Cursor、Codex、Gemini CLI、Grok、OpenCode、Reasonix、Antigravity IDE，以及 Pi 和 DeepSeek Harness。
+
+## 从源码运行
 
 ```bash
 pnpm install --frozen-lockfile
