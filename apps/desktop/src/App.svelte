@@ -354,9 +354,9 @@
     !currentRequestCooking &&
     !submitting &&
     !cancelling &&
+    !approving &&
     currentNotePhase !== 'starting' &&
     !captureInFlight &&
-    !terminalPending &&
     !terminalPending
   $: canCancel =
     workspace !== null &&
@@ -365,8 +365,10 @@
     !currentRequestCooking &&
     !submitting &&
     !cancelling &&
+    !approving &&
     currentNotePhase !== 'starting' &&
-    !captureInFlight
+    !captureInFlight &&
+    !terminalPending
   // Note recording deliberately stays out of this: the note write itself goes
   // through updateDraft, and a refused write is silently reverted when the
   // editor re-syncs from draftBody. Submit and cancel keep their own note
@@ -873,14 +875,14 @@
     // Pin the request the operator confirmed: the wait below is long enough to
     // navigate away, and the action must not land on whatever is visible then.
     const requestId = workspace.request.request_id
-    terminalPending = true
+    terminalLocks += 1
     try {
       if (rambleCanExit) await exitRamble()
       // Approving makes the request terminal and the draft controller then
       // refuses saves, so anything still being transcribed has to land first.
       if (!(await awaitCaptureWrites())) return
     } finally {
-      terminalPending = false
+      terminalLocks = Math.max(0, terminalLocks - 1)
     }
     if (workspace?.request.request_id !== requestId || approving || cancelling) return
     approving = true
@@ -910,12 +912,12 @@
   async function cancelFeedback() {
     if (!workspace || !canCancel || terminalPending) return
     const requestId = workspace.request.request_id
-    terminalPending = true
+    terminalLocks += 1
     try {
       if (rambleCanExit) await exitRamble()
       if (!(await awaitCaptureWrites())) return
     } finally {
-      terminalPending = false
+      terminalLocks = Math.max(0, terminalLocks - 1)
     }
     if (workspace?.request.request_id !== requestId || cancelling || approving) return
 
@@ -998,11 +1000,14 @@
    */
   let failedCaptureWrites: Array<{ requestId: string; captureId: string; inner: string }> = []
   /**
-   * A terminal action has been confirmed and is draining captures. The
-   * interaction lock cannot be used for this: it also refuses the very draft
-   * writes the drain is waiting for. This only holds navigation still.
+   * Depth of terminal/snapshot drains in progress. Counted so the wait helpers
+   * can hold it themselves — leaving it to each call site is what let submission
+   * drain without it. It deliberately stays out of App's interactionLocked,
+   * which also refuses the very draft writes the drain is waiting for; instead
+   * it holds navigation, the delivery actions, and editing.
    */
-  let terminalPending = false
+  let terminalLocks = 0
+  $: terminalPending = terminalLocks > 0
 
   function trackCaptureSave(work: Promise<unknown>) {
     captureSaves = Promise.allSettled([captureSaves, work]).then(() => undefined)
@@ -1062,23 +1067,23 @@
    * recording start behind an already-snapshotted save chain.
    */
   async function awaitCaptureWrites(): Promise<boolean> {
-    rambleController?.lockCaptureEntry()
-    try {
-      await rambleController?.awaitCaptureWork()
-      return await settleCaptureSaves()
-    } finally {
-      rambleController?.unlockCaptureEntry()
-    }
+    return drainCaptures(() => rambleController?.awaitCaptureWork())
   }
 
   /** As above, but never stops a note the operator is still recording. */
   async function awaitLandingCaptures(): Promise<boolean> {
+    return drainCaptures(() => rambleController?.awaitPendingCaptures())
+  }
+
+  async function drainCaptures(wait: () => Promise<void> | undefined): Promise<boolean> {
+    terminalLocks += 1
     rambleController?.lockCaptureEntry()
     try {
-      await rambleController?.awaitPendingCaptures()
+      await wait()
       return await settleCaptureSaves()
     } finally {
       rambleController?.unlockCaptureEntry()
+      terminalLocks = Math.max(0, terminalLocks - 1)
     }
   }
 
@@ -1416,6 +1421,7 @@
           {cancelling}
           {approving}
           noteBusy={currentNotePhase === 'starting' || captureInFlight || terminalPending}
+          {terminalPending}
           {canOpenResumePrompt}
           {resolveHostProfile}
           formatTime={formatTimeLocal}

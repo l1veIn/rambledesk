@@ -45,6 +45,8 @@
   export let rambleClips: RambleClip[] = []
   export let briefNoteProcessingIds: string[] = []
   export let noteTranscript = ''
+  /** A confirmed terminal action is draining captures; editing would be lost. */
+  export let terminalPending = false
   export let briefNotes: Record<string, string[]> = {}
   export let briefNotePhase: BriefNotePhase = 'idle'
   export let briefNoteBlockId: string | null = null
@@ -127,7 +129,7 @@
     taskBriefPreviewOrigin = null
     taskBriefPreviewOpen = true
   }
-  $: interactionLocked = cooking || submitting || cancelling || approving
+  $: interactionLocked = cooking || submitting || cancelling || approving || terminalPending
   // Nudge the preview button when the full-screen brief collapses back to it.
   $: {
     const nowOpen = taskBriefPreviewOpen
