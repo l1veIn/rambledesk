@@ -1034,12 +1034,22 @@
   }
 
   function recordFailedCapture(write: { requestId: string; captureId: string; inner: string }) {
-    failedCaptureWrites = [
-      ...failedCaptureWrites.filter(
-        (item) => item.requestId !== write.requestId || item.captureId !== write.captureId,
-      ),
-      write,
-    ]
+    failedCaptureWrites = [...withoutCapture(write.requestId, write.captureId), write]
+  }
+
+  /**
+   * A later write to the same capture supersedes an earlier failure. Without
+   * this the stale text would be retried on the next drain and overwrite the
+   * newer content that did persist.
+   */
+  function clearFailedCapture(requestId: string, captureId: string) {
+    failedCaptureWrites = withoutCapture(requestId, captureId)
+  }
+
+  function withoutCapture(requestId: string, captureId: string) {
+    return failedCaptureWrites.filter(
+      (item) => item.requestId !== requestId || item.captureId !== captureId,
+    )
   }
 
   /**
@@ -1102,7 +1112,8 @@
   function writeCaptureMarkdown(requestId: string, captureId: string, inner: string) {
     trackCaptureSave(
       persistCapture(requestId, captureId, inner).then((saved) => {
-        if (!saved) recordFailedCapture({ requestId, captureId, inner })
+        if (saved) clearFailedCapture(requestId, captureId)
+        else recordFailedCapture({ requestId, captureId, inner })
       }),
     )
   }
@@ -1118,7 +1129,8 @@
     mirrorIntoCookedOriginal(rewrite)
     trackCaptureSave(
       saveDraftNow().then((saved) => {
-        if (!saved) recordFailedCapture({ requestId, captureId: id, inner: nextInner })
+        if (saved) clearFailedCapture(requestId, id)
+        else recordFailedCapture({ requestId, captureId: id, inner: nextInner })
       }),
     )
   }
