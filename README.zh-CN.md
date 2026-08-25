@@ -6,7 +6,7 @@
 
 <div align="center">
 
-https://github.com/user-attachments/assets/83f87fbc-70e1-4839-8138-b6ffc44357b2
+<img src="https://github.com/l1veIn/rambledesk/releases/download/v0.3.2/rambledesk-demo-10s.gif" alt="RambleDesk 产品演示" width="960" />
 
 </div>
 
