@@ -355,7 +355,9 @@
     !submitting &&
     !cancelling &&
     currentNotePhase !== 'starting' &&
-    !captureInFlight
+    !captureInFlight &&
+    !terminalPending &&
+    !terminalPending
   $: canCancel =
     workspace !== null &&
     workspace.request.status !== 'completed' &&
@@ -866,7 +868,7 @@
 
   async function approveFeedback() {
     if (!workspace || !workspace.request.allow_finish || approving || interactionLocked) return
-    if (captureInFlight) return
+    if (captureInFlight || terminalPending) return
     if (!window.confirm(tr('Approve this final summary and end Pi’s Ramble flow?'))) return
     // Pin the request the operator confirmed: the wait below is long enough to
     // navigate away, and the action must not land on whatever is visible then.
@@ -880,7 +882,7 @@
     } finally {
       terminalPending = false
     }
-    if (workspace?.request.request_id !== requestId) return
+    if (workspace?.request.request_id !== requestId || approving || cancelling) return
     approving = true
     pageError = ''
     try {
@@ -906,7 +908,7 @@
   }
 
   async function cancelFeedback() {
-    if (!workspace || !canCancel) return
+    if (!workspace || !canCancel || terminalPending) return
     const requestId = workspace.request.request_id
     terminalPending = true
     try {
@@ -915,7 +917,7 @@
     } finally {
       terminalPending = false
     }
-    if (workspace?.request.request_id !== requestId) return
+    if (workspace?.request.request_id !== requestId || cancelling || approving) return
 
     cancelling = true
     pageError = ''
@@ -1413,7 +1415,7 @@
           {canCancel}
           {cancelling}
           {approving}
-          noteBusy={currentNotePhase === 'starting' || captureInFlight}
+          noteBusy={currentNotePhase === 'starting' || captureInFlight || terminalPending}
           {canOpenResumePrompt}
           {resolveHostProfile}
           formatTime={formatTimeLocal}
