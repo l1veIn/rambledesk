@@ -12,9 +12,13 @@ use rambledesk_core::{
     FeedbackStatus, GetFeedbackInput, RequestFeedbackInput,
 };
 use rmcp::{
-    ServerHandler,
+    ErrorData, RoleServer, ServerHandler,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
-    model::{CallToolResult, ContentBlock, Implementation, ServerCapabilities, ServerInfo},
+    model::{
+        CacheScope, CallToolResult, ContentBlock, Implementation, ListToolsResult,
+        PaginatedRequestParams, ResultType, ServerCapabilities, ServerInfo,
+    },
+    service::RequestContext,
     tool, tool_handler, tool_router,
 };
 
@@ -236,6 +240,27 @@ fn structured_error_result(code: &str, message: &str, retryable: bool) -> CallTo
 
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for RambleDeskMcp {
+    /// Spec 2026-07-28 made the cache hints on `tools/list` mandatory, and a
+    /// strict client (Claude Code) rejects the whole listing when they are
+    /// missing — the adapter is connected but has no tools. The macro-generated
+    /// default leaves both `None`, which serde omits, so answer for ourselves:
+    /// the tool surface is tied to the authenticated caller's host identity and
+    /// is cheap to fetch, so it is private and never cached.
+    async fn list_tools(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListToolsResult, ErrorData> {
+        Ok(ListToolsResult {
+            result_type: Some(ResultType::COMPLETE),
+            tools: self.tool_router.list_all(),
+            meta: None,
+            next_cursor: None,
+            ttl_ms: Some(0),
+            cache_scope: Some(CacheScope::Private),
+        })
+    }
+
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new("rambledesk", env!("CARGO_PKG_VERSION")))
