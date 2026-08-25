@@ -46,6 +46,8 @@
   export let briefNoteBlockId: string | null = null
   export let voicePartial = ''
   export let onToggleBriefNote: (blockId: string) => void = () => {}
+  export let onSaveRambleClip: (clipId: string, text: string) => void = () => {}
+  export let onSaveBriefNote: (blockId: string, index: number, text: string) => void = () => {}
   /** CSS transform-origin the dialog should shrink toward when closing. */
   export let origin: string | null = null
 
@@ -166,8 +168,10 @@
                   recording={noteRecording && briefNoteBlockId === block.id}
                   processing={noteProcessing && briefNoteBlockId === block.id}
                   disabled={readOnly || rambleActive || rambleBusy}
+                  {readOnly}
                   partial={briefNoteBlockId === block.id ? voicePartial : ''}
                   onToggleRecord={() => onToggleBriefNote(block.id)}
+                  onSaveNote={(index, text) => onSaveBriefNote(block.id, index, text)}
                 >
                   <p class="m-0 whitespace-pre-wrap text-[15px] leading-7">
                     <LinkifiedText text={block.quote} />
@@ -194,8 +198,10 @@
                     recording={noteRecording && briefNoteBlockId === `action:${action.id}`}
                     processing={noteProcessing && briefNoteBlockId === `action:${action.id}`}
                     disabled={readOnly || rambleActive || rambleBusy}
+                    {readOnly}
                     partial={briefNoteBlockId === `action:${action.id}` ? voicePartial : ''}
                     onToggleRecord={() => onToggleBriefNote(`action:${action.id}`)}
+                    onSaveNote={(index, text) => onSaveBriefNote(`action:${action.id}`, index, text)}
                   >
                     <span class="min-w-0 self-center text-[15px] leading-7">
                       <LinkifiedText text={action.instruction} />
@@ -224,8 +230,10 @@
                       recording={noteRecording && briefNoteBlockId === `context:${index}`}
                       processing={noteProcessing && briefNoteBlockId === `context:${index}`}
                       disabled={readOnly || rambleActive || rambleBusy}
+                      {readOnly}
                       partial={briefNoteBlockId === `context:${index}` ? voicePartial : ''}
                       onToggleRecord={() => onToggleBriefNote(`context:${index}`)}
+                      onSaveNote={(index, text) => onSaveBriefNote(`context:${index}`, index, text)}
                     >
                       <div class="min-w-0">
                         <strong class="block text-[15px] font-medium leading-6">{ref.label}</strong>
@@ -309,6 +317,8 @@
               index={index + 1}
               text={clip.text}
               flyFrom={clip.id === flyingClipId ? flyFrom : null}
+              {readOnly}
+              onSave={(text) => onSaveRambleClip(clip.id, text)}
             />
           {/each}
           {#if ramblePhase === 'stopping'}

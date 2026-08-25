@@ -47,6 +47,8 @@
   export let briefNotePhase: BriefNotePhase = 'idle'
   export let briefNoteBlockId: string | null = null
   export let onToggleBriefNote: (blockId: string) => void = () => {}
+  export let onSaveRambleClip: (clipId: string, text: string) => void = () => {}
+  export let onSaveBriefNote: (blockId: string, index: number, text: string) => void = () => {}
   export let voiceDevice = ''
   export let voiceChunkIndex = 0
   export let voicePartial = ''
@@ -332,6 +334,8 @@
       {briefNoteBlockId}
       {voicePartial}
       {onToggleBriefNote}
+      {onSaveRambleClip}
+      {onSaveBriefNote}
       origin={taskBriefPreviewOrigin}
     />
   {:else}

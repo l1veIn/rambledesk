@@ -68,8 +68,12 @@
     appendBlockNote,
     appendRambleClip,
     briefBlocks,
+    capturedTranscriptMarkdown,
     findBriefBlock,
     quotedNoteMarkdown,
+    replaceBlockNote,
+    replaceLastBlock,
+    replaceRambleClip,
     type RambleClip,
   } from './lib/workbench/briefNotes'
   import type {
@@ -884,6 +888,53 @@
     }
   }
 
+  function applyCapturedEdit(previous: string, next: string) {
+    const updated = replaceLastBlock(draftBody, previous, next)
+    if (updated === draftBody) return
+    workspacePanel?.applyExternalMarkdown(updated)
+    updateDraft(updated)
+  }
+
+  function handleSaveRambleClip(clipId: string, text: string) {
+    if (!workspace) return
+    const requestId = workspace.request.request_id
+    const clips = rambleClipsByRequest[requestId] ?? []
+    const clip = clips.find((item) => item.id === clipId)
+    if (!clip) return
+    const next = text.trim()
+    if (!next || next === clip.text) return
+    applyCapturedEdit(capturedTranscriptMarkdown(clip.text), capturedTranscriptMarkdown(next))
+    rambleClipsByRequest = {
+      ...rambleClipsByRequest,
+      [requestId]: replaceRambleClip(clips, clipId, next),
+    }
+  }
+
+  function handleSaveBriefNote(blockId: string, index: number, text: string) {
+    if (!workspace) return
+    const requestId = workspace.request.request_id
+    const notes = briefNotesByRequest[requestId] ?? {}
+    const current = notes[blockId]?.[index]
+    if (current === undefined) return
+    const next = text.trim()
+    if (!next || next === current) return
+    const block = findBriefBlock(
+      briefBlocks({
+        whatHappened: workspace.request.what_happened,
+        actions: workspace.actions,
+        contextRefs: workspace.context_refs,
+      }),
+      blockId,
+    )
+    if (block) {
+      applyCapturedEdit(quotedNoteMarkdown(block.quote, current), quotedNoteMarkdown(block.quote, next))
+    }
+    briefNotesByRequest = {
+      ...briefNotesByRequest,
+      [requestId]: replaceBlockNote(notes, blockId, index, next),
+    }
+  }
+
   function handleBriefNoteReady(requestId: string, blockId: string, note: string) {
     const target = workspace?.request.request_id === requestId ? workspace : null
     if (!target) return
@@ -1053,6 +1104,8 @@
           {briefNotePhase}
           {briefNoteBlockId}
           onToggleBriefNote={(blockId) => void toggleBriefNote(blockId)}
+          onSaveRambleClip={handleSaveRambleClip}
+          onSaveBriefNote={handleSaveBriefNote}
           voiceDevice={rambleBelongsToWorkspace ? voiceDevice : ''}
           voiceChunkIndex={rambleBelongsToWorkspace ? voiceChunkIndex : 0}
           voicePartial={rambleBelongsToWorkspace ? voicePartial : ''}

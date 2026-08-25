@@ -9,6 +9,10 @@ import {
   joinTranscriptChunks,
   quotedNoteMarkdown,
   rambleRequestIdAfterIdleNote,
+  capturedTranscriptMarkdown,
+  replaceBlockNote,
+  replaceLastBlock,
+  replaceRambleClip,
 } from './briefNotes'
 
 describe('briefBlocks', () => {
@@ -107,6 +111,53 @@ describe('appendBlockNote', () => {
     const once = appendBlockNote({}, 'action:a1', 'too small')
     const twice = appendBlockNote(once, 'action:a1', 'still hidden')
     expect(twice['action:a1']).toEqual(['too small', 'still hidden'])
+  })
+})
+
+describe('capturedTranscriptMarkdown', () => {
+  it('turns spoken line breaks into markdown paragraphs', () => {
+    expect(capturedTranscriptMarkdown('hello\nworld')).toBe('hello\n\nworld')
+  })
+})
+
+describe('replaceLastBlock', () => {
+  it('replaces the latest matching transcript in the draft', () => {
+    expect(replaceLastBlock('keep\n\nhello\n\nhello', 'hello', 'fixed')).toBe('keep\n\nhello\n\nfixed')
+  })
+
+  it('finds a clip even when the editor serialized extra paragraph breaks', () => {
+    expect(replaceLastBlock('intro\n\nhello\n\nworld', 'hello\nworld', 'hello world')).toBe(
+      'intro\n\nhello world',
+    )
+  })
+
+  it('replaces a quoted note without touching earlier quotes', () => {
+    const first = quotedNoteMarkdown('Button is small', 'too small')
+    const second = quotedNoteMarkdown('Button is small', 'still small')
+    const body = `${first}\n\n${second}`
+    expect(replaceLastBlock(body, second, quotedNoteMarkdown('Button is small', 'needs contrast'))).toBe(
+      `${first}\n\n${quotedNoteMarkdown('Button is small', 'needs contrast')}`,
+    )
+  })
+})
+
+describe('replaceRambleClip', () => {
+  it('updates one clip by id', () => {
+    const clips = appendRambleClip(appendRambleClip([], 'first'), 'second')
+    expect(replaceRambleClip(clips, 'ramble:0', 'first fixed').map((clip) => clip.text)).toEqual([
+      'first fixed',
+      'second',
+    ])
+  })
+})
+
+describe('replaceBlockNote', () => {
+  it('updates one note on a block', () => {
+    const notes = appendBlockNote(appendBlockNote({}, 'action:a1', 'too small'), 'action:a1', 'hidden')
+    expect(replaceBlockNote(notes, 'action:a1', 0, 'still too small')['action:a1']).toEqual([
+      'still too small',
+      'hidden',
+    ])
   })
 })
 

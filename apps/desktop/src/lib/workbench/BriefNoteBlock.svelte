@@ -9,8 +9,12 @@
   export let recording = false
   export let processing = false
   export let disabled = false
+  export let readOnly = false
   export let partial = ''
   export let onToggleRecord: () => void = () => {}
+  export let onSaveNote: (index: number, text: string) => void = () => {}
+
+  let drafts: string[] = []
 
   let expanded = true
   let seenNotes = 0
@@ -18,6 +22,9 @@
   $: if (notes.length > seenNotes) {
     expanded = true
     seenNotes = notes.length
+  }
+  $: if (drafts.length !== notes.length || notes.some((note, index) => drafts[index] === undefined)) {
+    drafts = [...notes]
   }
 
   function tr(source: string, values: Record<string, string | number> = {}) {
@@ -29,6 +36,12 @@
     : recording
       ? tr('Recording this note')
       : tr('Record a note')
+
+  function saveNote(index: number) {
+    const next = (drafts[index] ?? '').trim()
+    if (!next || next === notes[index]) return
+    onSaveNote(index, next)
+  }
 </script>
 
 <div class="group/note relative min-w-0 rounded-md">
@@ -90,9 +103,38 @@
         </span>
       </button>
       {#if expanded}
-        <div class="mt-2 grid gap-2">
+        <div class="mt-2 grid gap-3">
           {#each notes as note, index (`${index}:${note}`)}
-            <p class="m-0 whitespace-pre-wrap">{note}</p>
+            <div class="grid gap-1.5">
+              <textarea
+                class="min-h-16 w-full resize-y rounded-md border bg-background px-2 py-1.5 text-[13px] leading-6 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                value={drafts[index] ?? note}
+                readonly={readOnly}
+                aria-label={tr('Note {index}', { index: index + 1 })}
+                oninput={(event) => {
+                  const next = [...drafts]
+                  next[index] = (event.currentTarget as HTMLTextAreaElement).value
+                  drafts = next
+                }}
+                onkeydown={(event) => {
+                  if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+                    event.preventDefault()
+                    saveNote(index)
+                  }
+                }}
+              ></textarea>
+              {#if !readOnly}
+                <div class="flex justify-end">
+                  <Button
+                    size="xs"
+                    disabled={(drafts[index] ?? note).trim() === note.trim() || !(drafts[index] ?? '').trim()}
+                    onclick={() => saveNote(index)}
+                  >
+                    {tr('Save')}
+                  </Button>
+                </div>
+              {/if}
+            </div>
           {/each}
         </div>
       {/if}

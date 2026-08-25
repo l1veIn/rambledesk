@@ -72,6 +72,59 @@ export function clipFlyTransform(
   }
 }
 
+export function capturedTranscriptMarkdown(text: string): string {
+  return text
+    .trim()
+    .split(/\n+/)
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0)
+    .join('\n\n')
+}
+
+export function replaceLastBlock(body: string, previous: string, next: string): string {
+  const nextTrim = next.trim()
+  if (!previous.trim() || previous.trim() === nextTrim) return body
+  for (const candidate of markdownVariants(previous)) {
+    const index = body.lastIndexOf(candidate)
+    if (index >= 0) {
+      return `${body.slice(0, index)}${nextTrim}${body.slice(index + candidate.length)}`
+    }
+  }
+  return body
+}
+
+export function replaceRambleClip(clips: RambleClip[], clipId: string, text: string): RambleClip[] {
+  const cleaned = text.trim()
+  if (!cleaned) return clips
+  return clips.map((clip) => (clip.id === clipId ? { ...clip, text: cleaned } : clip))
+}
+
+export function replaceBlockNote(
+  notes: Record<string, string[]>,
+  blockId: string,
+  index: number,
+  text: string,
+): Record<string, string[]> {
+  const current = notes[blockId] ?? []
+  if (index < 0 || index >= current.length) return notes
+  const cleaned = text.trim()
+  if (!cleaned) return notes
+  const next = [...current]
+  next[index] = cleaned
+  return { ...notes, [blockId]: next }
+}
+
+function markdownVariants(text: string): string[] {
+  const trimmed = text.trim()
+  const paragraphs = capturedTranscriptMarkdown(trimmed)
+  const lines = trimmed
+    .split(/\n+/)
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0)
+    .join('\n')
+  return [...new Set([trimmed, paragraphs, lines].filter((part) => part.length > 0))]
+}
+
 export function joinTranscriptChunks(chunks: string[]): string {
   return chunks
     .map((chunk) => chunk.trim())
