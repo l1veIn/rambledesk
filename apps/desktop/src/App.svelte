@@ -979,22 +979,22 @@
     updateDraft(next)
     if (draftBody !== next) return false
     workspacePanel?.applyExternalMarkdown(next)
-    // Flush instead of riding the autosave debounce: a transcript that lands
-    // while the operator is already closing the window must survive. The save
-    // is tracked, not fired and forgotten — a terminal action has to wait for
-    // it or the request goes terminal with the write still in the air.
-    trackCaptureSave(saveDraftNow())
     return true
   }
 
   /**
-   * Saves triggered by a capture landing. Terminal actions await this after the
-   * controller's own cleanup chain, since that chain only reaches the point
-   * where the write was issued.
+   * Persistence of captures. Terminal actions await this after the controller's
+   * cleanup chain, since that chain only reaches the point where a write was
+   * issued, not the point where it landed in the store.
    */
   let captureSaves: Promise<void> = Promise.resolve()
-  /** Set when a capture save rejected or reported failure; read once, then cleared. */
-  let captureSaveFailed = false
+  /**
+   * Capture writes that did not persist, kept with the request they belong to.
+   * A bare failure flag was not enough: retrying it saved whichever request
+   * happened to be visible, which trivially succeeds for a clean draft and
+   * cleared the flag while the real capture was still only in memory.
+   */
+  let failedCaptureWrites: Array<{ requestId: string; captureId: string; inner: string }> = []
   /**
    * A terminal action has been confirmed and is draining captures. The
    * interaction lock cannot be used for this: it also refuses the very draft
@@ -1003,46 +1003,86 @@
   let terminalPending = false
 
   function trackCaptureSave(work: Promise<unknown>) {
-    // saveDraftNow resolves false on failure rather than rejecting, and
-    // allSettled treats that as success — record both shapes explicitly so a
-    // terminal action cannot run on top of a capture that never persisted.
-    const watched = Promise.resolve(work).then(
-      (result) => {
-        if (result === false) captureSaveFailed = true
-      },
-      () => {
-        captureSaveFailed = true
-      },
-    )
-    captureSaves = Promise.allSettled([captureSaves, watched]).then(() => undefined)
+    captureSaves = Promise.allSettled([captureSaves, work]).then(() => undefined)
+  }
+
+  /**
+   * Write one capture into the request it belongs to and persist it. Routes by
+   * request id, so a capture that finished after the operator navigated away
+   * still lands in its own draft.
+   */
+  async function persistCapture(
+    requestId: string,
+    captureId: string,
+    inner: string,
+  ): Promise<boolean> {
+    if (workspace?.request.request_id === requestId) {
+      if (applyDraftBody(upsertCapture(draftBody, captureId, inner))) {
+        mirrorIntoCookedOriginal((body) => upsertCapture(body, captureId, inner))
+        return await saveDraftNow()
+      }
+    }
+    try {
+      await appendRambleMarkdown(requestId, wrapCapture(captureId, inner), {
+        id: captureId,
+        inner,
+      })
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  function recordFailedCapture(write: { requestId: string; captureId: string; inner: string }) {
+    failedCaptureWrites = [
+      ...failedCaptureWrites.filter(
+        (item) => item.requestId !== write.requestId || item.captureId !== write.captureId,
+      ),
+      write,
+    ]
   }
 
   /**
    * Wait for every capture to be cleaned up, written, and persisted. Returns
-   * false when one of those saves failed, in which case the caller must not
-   * make the request terminal.
+   * false when one of them is still unsaved, in which case the caller must not
+   * make the request terminal. Capture entry stays locked across the whole
+   * wait, persistence included — releasing it after cleanup let a fresh
+   * recording start behind an already-snapshotted save chain.
    */
   async function awaitCaptureWrites(): Promise<boolean> {
-    await rambleController?.awaitCaptureWork()
-    return settleCaptureSaves()
+    rambleController?.lockCaptureEntry()
+    try {
+      await rambleController?.awaitCaptureWork()
+      return await settleCaptureSaves()
+    } finally {
+      rambleController?.unlockCaptureEntry()
+    }
   }
 
   /** As above, but never stops a note the operator is still recording. */
   async function awaitLandingCaptures(): Promise<boolean> {
-    await rambleController?.awaitPendingCaptures()
-    return settleCaptureSaves()
+    rambleController?.lockCaptureEntry()
+    try {
+      await rambleController?.awaitPendingCaptures()
+      return await settleCaptureSaves()
+    } finally {
+      rambleController?.unlockCaptureEntry()
+    }
   }
 
   async function settleCaptureSaves(): Promise<boolean> {
     await captureSaves
-    if (!captureSaveFailed) return true
-    // Retry rather than clearing the latch on being read: clearing it made the
-    // next click succeed with the capture still only in memory. Only a save
-    // that actually lands unlatches this.
-    if (await saveDraftNow()) {
-      captureSaveFailed = false
-      return true
+    if (failedCaptureWrites.length === 0) return true
+    // Retry the writes that actually failed, against their own requests. Only
+    // the ones that land are cleared.
+    const pending = failedCaptureWrites
+    failedCaptureWrites = []
+    for (const write of pending) {
+      if (!(await persistCapture(write.requestId, write.captureId, write.inner))) {
+        recordFailedCapture(write)
+      }
     }
+    if (failedCaptureWrites.length === 0) return true
     pageError = saveMessage || tr('The current draft could not be saved.')
     return false
   }
@@ -1060,24 +1100,27 @@
 
   /** Write one capture block, replacing it in place when it is already there. */
   function writeCaptureMarkdown(requestId: string, captureId: string, inner: string) {
-    if (
-      workspace?.request.request_id === requestId &&
-      applyDraftBody(upsertCapture(draftBody, captureId, inner))
-    ) {
-      mirrorIntoCookedOriginal((body) => upsertCapture(body, captureId, inner))
-      return
-    }
     trackCaptureSave(
-      appendRambleMarkdown(requestId, wrapCapture(captureId, inner), { id: captureId, inner }),
+      persistCapture(requestId, captureId, inner).then((saved) => {
+        if (!saved) recordFailedCapture({ requestId, captureId, inner })
+      }),
     )
   }
 
   function applyCaptureReplacement(id: string, nextInner: string, previous: string, occurrence: number) {
+    const requestId = workspace?.request.request_id
+    if (!requestId) return
     const rewrite = (body: string) => {
       const marked = replaceCapture(body, id, nextInner)
       return marked !== body ? marked : replaceNthBlock(body, previous, nextInner, occurrence)
     }
-    if (applyDraftBody(rewrite(draftBody))) mirrorIntoCookedOriginal(rewrite)
+    if (!applyDraftBody(rewrite(draftBody))) return
+    mirrorIntoCookedOriginal(rewrite)
+    trackCaptureSave(
+      saveDraftNow().then((saved) => {
+        if (!saved) recordFailedCapture({ requestId, captureId: id, inner: nextInner })
+      }),
+    )
   }
 
   function handleRambleClipPending(requestId: string, clipId: string) {

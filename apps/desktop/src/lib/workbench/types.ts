@@ -40,6 +40,8 @@ export type RambleSessionControllerHandle = {
   exitRamble(): Promise<void>
   awaitCaptureWork(): Promise<void>
   awaitPendingCaptures(): Promise<void>
+  lockCaptureEntry(): void
+  unlockCaptureEntry(): void
   importClipboardNow(): Promise<void>
   resetVoiceUi(): void
   resetRambleUi(): void

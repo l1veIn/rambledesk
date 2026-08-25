@@ -121,7 +121,8 @@
    * refused for the duration: one started mid-drain would not be in the chain
    * the caller is waiting on.
    */
-  let drainingCaptures = false
+  let captureEntryLocks = 0
+  $: drainingCaptures = captureEntryLocks > 0
   /**
    * The stop that is currently running. Callers get this promise back instead of
    * an instant return, so submitting or exiting mid-stop waits for the note
@@ -567,12 +568,12 @@
    * For terminal actions, which must not leave speech unwritten.
    */
   export async function awaitCaptureWork(): Promise<void> {
-    drainingCaptures = true
+    lockCaptureEntry()
     try {
       await stopBriefNote()
       await drainCaptureWork()
     } finally {
-      drainingCaptures = false
+      unlockCaptureEntry()
     }
   }
 
@@ -582,13 +583,26 @@
    * draft does not silently end the operator's note.
    */
   export async function awaitPendingCaptures(): Promise<void> {
-    drainingCaptures = true
+    lockCaptureEntry()
     try {
       await briefNoteStop
       await drainCaptureWork()
     } finally {
-      drainingCaptures = false
+      unlockCaptureEntry()
     }
+  }
+
+  /**
+   * Refuse new recordings. Counted, so the caller can hold the lock across
+   * persistence too — cleanup finishing is not the same as the write landing,
+   * and a recording started in between would sit outside the drained chain.
+   */
+  export function lockCaptureEntry() {
+    captureEntryLocks += 1
+  }
+
+  export function unlockCaptureEntry() {
+    captureEntryLocks = Math.max(0, captureEntryLocks - 1)
   }
 
   /**
