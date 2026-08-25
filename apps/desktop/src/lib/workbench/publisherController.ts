@@ -30,6 +30,9 @@ type PublisherControllerContext = {
   exitRamble: () => Promise<void>
   /** Resolves false when a capture failed to persist; publishing must then stop. */
   awaitCaptureWork: () => Promise<boolean>
+  /** Counted lock that refuses new recordings, navigation and editing. */
+  lockTerminal: () => void
+  unlockTerminal: () => void
   saveDraftNow: () => Promise<boolean>
   getDraftBody: () => string
   getSavedRevision: () => number
@@ -106,7 +109,22 @@ export function createPublisherController(context: PublisherControllerContext) {
     await context.refreshNavigation(true)
   }
 
+  /**
+   * Hold the terminal lock for the whole submission, not just the capture
+   * drain. Releasing it when the drain returned left the save and the
+   * revalidation exposed: a recording started in that window is not in the
+   * chain that was drained, and publishing would strand its transcript.
+   */
   async function submitFeedback() {
+    context.lockTerminal()
+    try {
+      await runSubmitFeedback()
+    } finally {
+      context.unlockTerminal()
+    }
+  }
+
+  async function runSubmitFeedback() {
     const workspace = context.getWorkspace()
     if (!workspace || !context.getCanSubmit()) return
     if (context.getRambleCanExit()) await context.exitRamble()

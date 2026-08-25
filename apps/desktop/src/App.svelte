@@ -843,6 +843,12 @@
     getRambleCanExit: () => rambleCanExit,
     exitRamble,
     awaitCaptureWork: awaitCaptureWrites,
+    lockTerminal: () => {
+      terminalLocks += 1
+    },
+    unlockTerminal: () => {
+      terminalLocks = Math.max(0, terminalLocks - 1)
+    },
     saveDraftNow,
     getDraftBody: () => draftBody,
     getSavedRevision: () => savedRevision,
