@@ -65,6 +65,83 @@ describe('publisherController', () => {
     mocks.invoke.mockReset()
   })
 
+  it('checks whether it may start before taking the terminal lock', async () => {
+    // The lock this operation takes is itself part of what the app reports as
+    // "another terminal action is running". Consulting that after locking makes
+    // submission invalidate itself and silently publish nothing, so the check
+    // has to happen first — this asserts the order, not just the outcome.
+    let workspace = workspaceView()
+    const calls: string[] = []
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === 'submit_feedback') return completedRequest()
+      if (command === 'read_published_feedback') return null
+      return undefined
+    })
+    const base = {
+      tr: (source: string) => source,
+      messageFrom: (cause: unknown) => String(cause),
+      isPreviewMode: () => false,
+      setCompletedResult: vi.fn(),
+      setPublishedFeedback: vi.fn(),
+      setSavePhase: vi.fn(),
+      setPageError: vi.fn(),
+      getCanSubmit: () => true,
+      getRambleCanExit: () => false,
+      exitRamble: vi.fn(),
+      awaitCaptureWork: vi.fn().mockResolvedValue(true),
+      saveDraftNow: vi.fn(async () => true),
+      getDraftBody: () => 'Ramble body.',
+      getSavedRevision: () => 2,
+      getCookingEnabled: () => false,
+      getPreview: () => null,
+      setPreview: vi.fn(),
+      setCooking: vi.fn(),
+      cookAndPublish: vi.fn(),
+      setSubmitting: vi.fn(),
+      setSubmitStage: vi.fn(),
+      refreshNavigation: vi.fn(async () => undefined),
+      showSubmittedToast: vi.fn(),
+    }
+    const controller = createPublisherController({
+      ...base,
+      getWorkspace: () => workspace,
+      setWorkspace: (next) => {
+        workspace = next
+      },
+      canStartTerminal: () => {
+        calls.push('canStartTerminal')
+        return true
+      },
+      lockTerminal: () => calls.push('lockTerminal'),
+      unlockTerminal: () => calls.push('unlockTerminal'),
+    })
+
+    await controller.submitFeedback()
+
+    expect(calls.indexOf('canStartTerminal')).toBeLessThan(calls.indexOf('lockTerminal'))
+    expect(mocks.invoke).toHaveBeenCalledWith('submit_feedback', expect.anything())
+
+    // And it declines without locking when another terminal action holds it.
+    mocks.invoke.mockClear()
+    let blockedWorkspace = workspaceView()
+    const blockedCalls: string[] = []
+    const blocked = createPublisherController({
+      ...base,
+      getWorkspace: () => blockedWorkspace,
+      setWorkspace: (next) => {
+        blockedWorkspace = next
+      },
+      canStartTerminal: () => false,
+      lockTerminal: () => blockedCalls.push('lockTerminal'),
+      unlockTerminal: () => blockedCalls.push('unlockTerminal'),
+    })
+
+    await blocked.submitFeedback()
+
+    expect(blockedCalls).toEqual([])
+    expect(mocks.invoke).not.toHaveBeenCalledWith('submit_feedback', expect.anything())
+  })
+
   it('does not publish when a capture failed to persist', async () => {
     // A capture that never reached the store would be dropped for good once the
     // request goes terminal, so submission has to stop instead.
@@ -86,6 +163,7 @@ describe('publisherController', () => {
       getRambleCanExit: () => false,
       exitRamble: vi.fn(),
       awaitCaptureWork: vi.fn().mockResolvedValue(false),
+      canStartTerminal: () => true,
       lockTerminal: vi.fn(),
       unlockTerminal: vi.fn(),
       saveDraftNow: vi.fn(async () => true),
@@ -138,6 +216,7 @@ describe('publisherController', () => {
       getRambleCanExit: () => false,
       exitRamble: vi.fn(),
       awaitCaptureWork: vi.fn().mockResolvedValue(true),
+      canStartTerminal: () => true,
       lockTerminal: vi.fn(),
       unlockTerminal: vi.fn(),
       saveDraftNow: vi.fn(async () => true),

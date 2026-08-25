@@ -356,8 +356,7 @@
     !cancelling &&
     !approving &&
     currentNotePhase !== 'starting' &&
-    !captureInFlight &&
-    !terminalPending
+    !captureInFlight
   $: canCancel =
     workspace !== null &&
     workspace.request.status !== 'completed' &&
@@ -367,8 +366,7 @@
     !cancelling &&
     !approving &&
     currentNotePhase !== 'starting' &&
-    !captureInFlight &&
-    !terminalPending
+    !captureInFlight
   // Note recording deliberately stays out of this: the note write itself goes
   // through updateDraft, and a refused write is silently reverted when the
   // editor re-syncs from draftBody. Submit and cancel keep their own note
@@ -626,7 +624,11 @@
   async function openRequest(requestId: string, saveCurrent = true) {
     if (interactionLocked || terminalPending || workspace?.request.request_id === requestId) return
     if (saveCurrent && !(await saveDraftNow())) return
-    if (requestId === rambleRequestId) await rambleMarkdownQueue.catch(() => {})
+    // Always drain, not just when this is the ramble's own request: a capture
+    // for any request can be queued now that cleanup outlives the recording it
+    // came from, and loading over an unfinished write hydrates a stale body and
+    // leaves later edits on a dead revision.
+    await rambleMarkdownQueue.catch(() => {})
 
     loadingWorkspace = true
     pageError = ''
@@ -843,6 +845,7 @@
     getRambleCanExit: () => rambleCanExit,
     exitRamble,
     awaitCaptureWork: awaitCaptureWrites,
+    canStartTerminal: () => !terminalPending,
     lockTerminal: () => {
       terminalLocks += 1
     },

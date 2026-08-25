@@ -30,6 +30,8 @@ type PublisherControllerContext = {
   exitRamble: () => Promise<void>
   /** Resolves false when a capture failed to persist; publishing must then stop. */
   awaitCaptureWork: () => Promise<boolean>
+  /** False while another terminal operation is already draining. */
+  canStartTerminal: () => boolean
   /** Counted lock that refuses new recordings, navigation and editing. */
   lockTerminal: () => void
   unlockTerminal: () => void
@@ -116,6 +118,9 @@ export function createPublisherController(context: PublisherControllerContext) {
    * chain that was drained, and publishing would strand its transcript.
    */
   async function submitFeedback() {
+    // Checked before taking the lock, never after: once held, this operation's
+    // own lock is part of what canSubmit reports on.
+    if (!context.canStartTerminal()) return
     context.lockTerminal()
     try {
       await runSubmitFeedback()
