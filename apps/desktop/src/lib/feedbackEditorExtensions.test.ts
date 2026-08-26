@@ -3,7 +3,7 @@ import { MarkdownManager } from '@tiptap/markdown'
 import type { JSONContent } from '@tiptap/core'
 
 import { feedbackEditorExtensions } from './feedbackEditorExtensions'
-import { PENDING_SPEECH_NODE } from './pendingSpeech'
+import { CLEANED_SPEECH_NODE, PENDING_SPEECH_NODE } from './pendingSpeech'
 
 function markdown() {
   return new MarkdownManager({ extensions: feedbackEditorExtensions() })
@@ -126,6 +126,34 @@ describe('pending speech markdown', () => {
     })
     expect(serialized).toContain('啊那个按钮太小了')
     expect(serialized).not.toContain('pendingSpeech')
+    expect(serialized).not.toContain('data-speech-status')
+  })
+
+  it('serializes cleaned speech without the editor marker', () => {
+    const serialized = markdown().serialize({
+      type: 'doc',
+      content: [
+        {
+          type: PENDING_SPEECH_NODE,
+          attrs: { status: 'pending' },
+          content: [{ type: 'text', text: '啊那个按钮太小了' }],
+        },
+        {
+          type: CLEANED_SPEECH_NODE,
+          content: [{ type: 'text', text: '按钮太小了。' }],
+        },
+        {
+          type: 'paragraph',
+          content: [{ type: 'text', text: '我手打的一句' }],
+        },
+      ],
+    })
+    expect(serialized).toContain('啊那个按钮太小了')
+    expect(serialized).toContain('按钮太小了。')
+    expect(serialized).toContain('我手打的一句')
+    expect(serialized).not.toContain('✦')
+    expect(serialized).not.toContain('cleanedSpeech')
+    expect(serialized).not.toContain('已整理')
     expect(serialized).not.toContain('data-speech-status')
   })
 })

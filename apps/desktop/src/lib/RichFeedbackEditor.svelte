@@ -22,7 +22,7 @@
     isImageMediaType,
   } from './attachmentMarkdown'
   import { feedbackEditorExtensions } from './feedbackEditorExtensions'
-  import { PENDING_SPEECH_NODE } from './pendingSpeech'
+  import { CLEANED_SPEECH_NODE, PENDING_SPEECH_NODE } from './pendingSpeech'
 
   export let markdown = ''
   export let previews: Record<string, string> = {}
@@ -302,11 +302,12 @@
     for (let index = runs.length - 1; index >= 0; index -= 1) {
       const run = runs[index]
       const source = runs.length === 1 ? cleaned?.trim() || run.text : run.text
+      const markCleaned = Boolean(cleaned?.trim()) && runs.length === 1
+      const type = markCleaned
+        ? editor!.schema.nodes[CLEANED_SPEECH_NODE]
+        : editor!.schema.nodes.paragraph
       const nodes = source.split(/\n{2,}/).map((paragraph) =>
-        editor!.schema.nodes.paragraph.create(
-          null,
-          paragraph ? editor!.schema.text(paragraph) : undefined,
-        ),
+        type.create(null, paragraph ? editor!.schema.text(paragraph) : undefined),
       )
       transaction = transaction.replaceWith(run.from, run.to, Fragment.from(nodes))
     }
@@ -574,6 +575,18 @@
     color: var(--muted-foreground);
     content: '  ·  ' attr(data-speech-hint);
     font-size: 11px;
+  }
+
+  .editor-host :global(.feedback-prose p.speech-cleaned) {
+    padding-left: 1.15em;
+    text-indent: -1.15em;
+  }
+
+  .editor-host :global(.feedback-prose p.speech-cleaned::before) {
+    color: var(--primary);
+    content: '✦ ';
+    font-size: 0.85em;
+    pointer-events: none;
   }
 
   .editor-host :global(.feedback-prose h2),

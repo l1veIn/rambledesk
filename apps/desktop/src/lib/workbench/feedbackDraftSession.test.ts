@@ -232,6 +232,68 @@ describe('Light cleanup on a draft session', () => {
     await Promise.resolve()
     expect(session.markdown()).toBe('Hello\n\none\n\ntwo\n\nthree')
   })
+
+  it('hands the cleaned text to the editor so it can mark rewritten sentences', async () => {
+    const finishSpeechCleanup = vi.fn()
+    const editor = {
+      appendTranscript: vi.fn(),
+      applyExternalMarkdown: vi.fn(),
+      beginSpeechCleanup: vi.fn(() => '啊那个按钮太小了'),
+      finishSpeechCleanup,
+      isSpeechCleaning: vi.fn(() => true),
+      moveCursorAfterCleaningSpeech: vi.fn(),
+    } as unknown as FeedbackEditorHandle
+    const session = createFeedbackDraftSession({
+      requestId: 'request-a',
+      generation: 1,
+      initialMarkdown: '',
+      initialRevision: 1,
+      save: memorySave(),
+      cleanup: {
+        enabled: () => true,
+        clean: async () => '按钮太小了。',
+        silenceMs: 60_000,
+        timeoutMs: 5_000,
+      },
+    })
+    session.bindEditor(editor)
+    session.appendSpeech('啊那个按钮太小了')
+    session.appendSpeech('第二句')
+    session.appendSpeech('第三句')
+    await session.settle()
+    expect(finishSpeechCleanup).toHaveBeenCalledWith('按钮太小了。')
+  })
+
+  it('does not mark a sentence when cleanup leaves the wording unchanged', async () => {
+    const finishSpeechCleanup = vi.fn()
+    const editor = {
+      appendTranscript: vi.fn(),
+      applyExternalMarkdown: vi.fn(),
+      beginSpeechCleanup: vi.fn(() => '按钮太小了。'),
+      finishSpeechCleanup,
+      isSpeechCleaning: vi.fn(() => true),
+      moveCursorAfterCleaningSpeech: vi.fn(),
+    } as unknown as FeedbackEditorHandle
+    const session = createFeedbackDraftSession({
+      requestId: 'request-a',
+      generation: 1,
+      initialMarkdown: '',
+      initialRevision: 1,
+      save: memorySave(),
+      cleanup: {
+        enabled: () => true,
+        clean: async (text: string) => text,
+        silenceMs: 60_000,
+        timeoutMs: 5_000,
+      },
+    })
+    session.bindEditor(editor)
+    session.appendSpeech('按钮太小了。')
+    session.appendSpeech('第二句')
+    session.appendSpeech('第三句')
+    await session.settle()
+    expect(finishSpeechCleanup).toHaveBeenCalledWith(null)
+  })
 })
 
 describe('ActiveRambleCoordinator', () => {

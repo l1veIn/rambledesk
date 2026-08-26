@@ -7,7 +7,7 @@ import { Markdown } from '@tiptap/markdown'
 import StarterKit from '@tiptap/starter-kit'
 
 import { attachmentIdFromUrl, attachmentMarkdownUrl } from './attachmentMarkdown'
-import { PendingSpeech } from './pendingSpeech'
+import { CleanedSpeech, PendingSpeech } from './pendingSpeech'
 
 const AttachmentImage = Image.extend({
   addAttributes() {
@@ -162,6 +162,7 @@ export function feedbackEditorExtensions(): AnyExtension[] {
     AttachmentImage,
     AttachmentFile,
     PendingSpeech,
+    CleanedSpeech,
     Markdown,
   ]
 }

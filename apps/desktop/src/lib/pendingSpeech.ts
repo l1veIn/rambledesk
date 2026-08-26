@@ -3,6 +3,7 @@ import { Plugin } from '@tiptap/pm/state'
 import { ReplaceStep } from '@tiptap/pm/transform'
 
 export const PENDING_SPEECH_NODE = 'pendingSpeech'
+export const CLEANED_SPEECH_NODE = 'cleanedSpeech'
 
 function nodeText(node: { text?: string | null; content?: readonly unknown[] | null }): string {
   if (node.text) return node.text
@@ -31,7 +32,10 @@ export const PendingSpeech = Node.create({
   },
 
   parseHTML() {
-    return [{ tag: `p[data-speech-status]` }]
+    return [
+      { tag: 'p[data-speech-status="pending"]' },
+      { tag: 'p[data-speech-status="cleaning"]' },
+    ]
   },
 
   renderHTML({ node, HTMLAttributes }) {
@@ -39,8 +43,7 @@ export const PendingSpeech = Node.create({
       'p',
       mergeAttributes(HTMLAttributes, {
         'data-speech-status': node.attrs.status,
-        class:
-          node.attrs.status === 'cleaning' ? 'speech-cleaning' : 'speech-pending',
+        class: node.attrs.status === 'cleaning' ? 'speech-cleaning' : 'speech-pending',
         contenteditable: node.attrs.status === 'cleaning' ? 'false' : null,
         'data-speech-hint': node.attrs.status === 'cleaning' ? '整理中' : null,
       }),
@@ -72,4 +75,30 @@ export const PendingSpeech = Node.create({
       }),
     ]
   },
+})
+
+export const CleanedSpeech = Node.create({
+  name: CLEANED_SPEECH_NODE,
+  group: 'block',
+  content: 'inline*',
+  defining: true,
+
+  parseHTML() {
+    return [{ tag: 'p[data-speech-status="cleaned"]' }]
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return [
+      'p',
+      mergeAttributes(HTMLAttributes, {
+        'data-speech-status': 'cleaned',
+        class: 'speech-cleaned',
+        'data-speech-hint': '已整理',
+        title: '已整理',
+      }),
+      0,
+    ]
+  },
+
+  renderMarkdown: (node) => `${nodeText(node).trim()}\n\n`,
 })
