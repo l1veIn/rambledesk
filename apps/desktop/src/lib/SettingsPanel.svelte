@@ -48,6 +48,7 @@
   import * as Select from '$lib/components/ui/select'
   import * as Tabs from '$lib/components/ui/tabs'
   import { DEFAULT_COOKING_SYSTEM_PROMPT } from '$lib/cooking'
+  import { DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT } from '$lib/lightCleanup'
   import { t } from '$lib/i18n'
   import { currentDesktopPlatform } from '$lib/platform'
   import {
@@ -70,6 +71,8 @@
     cookingProvider,
     cookingReasoningEffort,
     cookingSystemPrompt,
+    lightCleanupEnabled,
+    lightCleanupSystemPrompt,
     customNotificationSound,
     locale,
     notificationPopupEnabled,
@@ -83,6 +86,8 @@
     setCookingProvider,
     setCookingReasoningEffort,
     setCookingSystemPrompt,
+    setLightCleanupEnabled,
+    setLightCleanupSystemPrompt,
     setCustomNotificationSound,
     setLocale,
     setNotificationPopupEnabled,
@@ -870,7 +875,42 @@
                 </button>
               </div>
 
-              {#if $cookingEnabled}
+              <div class="mt-6 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-8">
+                <div class="flex gap-3">
+                  <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+                    <Sparkles class="size-4" />
+                  </span>
+                  <div>
+                    <div class="flex items-center gap-2">
+                      <h3 class="m-0 text-sm font-medium">{tr('Light cleanup')}</h3>
+                      <Badge variant="outline">{tr('Optional')}</Badge>
+                    </div>
+                    <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
+                      {tr('Remove filler such as 啊 and 比如说, fix broken sentence breaks, and keep the original meaning. Independent of Cooking.')}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={$lightCleanupEnabled}
+                  aria-label={tr('Light cleanup')}
+                  class={[
+                    'relative h-[22px] w-10 rounded-full border border-transparent transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+                    $lightCleanupEnabled ? 'bg-primary' : 'bg-input',
+                  ]}
+                  onclick={() => setLightCleanupEnabled(!$lightCleanupEnabled)}
+                >
+                  <span
+                    class={[
+                      'absolute left-0.5 top-0.5 size-4 rounded-full bg-background shadow-sm transition-transform',
+                      $lightCleanupEnabled ? 'translate-x-5' : 'translate-x-0',
+                    ]}
+                  ></span>
+                </button>
+              </div>
+
+              {#if $cookingEnabled || $lightCleanupEnabled}
                 <div class="ml-11 mt-5 grid gap-4 rounded-md border bg-muted/20 p-4">
                   <div class="grid grid-cols-[140px_minmax(0,1fr)] items-center gap-4">
                     <label for="cooking-provider" class="text-xs font-medium">{tr('Model provider')}</label>
@@ -953,34 +993,64 @@
                       oninput={(event) => setCookingApiKey((event.currentTarget as HTMLInputElement).value)}
                     />
                   </div>
-                  <div class="grid grid-cols-[140px_minmax(0,1fr)] items-start gap-4">
-                    <label for="cooking-system-prompt" class="pt-2 text-xs font-medium">{tr('Cooking prompt')}</label>
-                    <div class="grid gap-2">
-                      <textarea
-                        id="cooking-system-prompt"
-                        rows="8"
-                        value={$cookingSystemPrompt || DEFAULT_COOKING_SYSTEM_PROMPT}
-                        class="min-h-40 w-full resize-y rounded-md border bg-background px-3 py-2 font-mono text-[11px] leading-5 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        oninput={(event) =>
-                          setCookingSystemPrompt((event.currentTarget as HTMLTextAreaElement).value)}
-                      ></textarea>
-                      <div class="flex items-center justify-between gap-3">
-                        <p class="m-0 text-[10px] leading-4 text-muted-foreground">
-                          {tr('This prompt is sent with every cook, along with the request title, what happened, and the action list. Keep attachment:// image references if you edit it.')}
-                        </p>
-                        <Button
-                          variant="outline"
-                          size="xs"
-                          disabled={!$cookingSystemPrompt}
-                          onclick={() => setCookingSystemPrompt('')}
-                        >
-                          {tr('Reset to default')}
-                        </Button>
+                  {#if $cookingEnabled}
+                    <div class="grid grid-cols-[140px_minmax(0,1fr)] items-start gap-4">
+                      <label for="cooking-system-prompt" class="pt-2 text-xs font-medium">{tr('Cooking prompt')}</label>
+                      <div class="grid gap-2">
+                        <textarea
+                          id="cooking-system-prompt"
+                          rows="8"
+                          value={$cookingSystemPrompt || DEFAULT_COOKING_SYSTEM_PROMPT}
+                          class="min-h-40 w-full resize-y rounded-md border bg-background px-3 py-2 font-mono text-[11px] leading-5 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          oninput={(event) =>
+                            setCookingSystemPrompt((event.currentTarget as HTMLTextAreaElement).value)}
+                        ></textarea>
+                        <div class="flex items-center justify-between gap-3">
+                          <p class="m-0 text-[10px] leading-4 text-muted-foreground">
+                            {tr('This prompt is sent with every cook, along with the request title, what happened, and the action list. Keep attachment:// image references if you edit it.')}
+                          </p>
+                          <Button
+                            variant="outline"
+                            size="xs"
+                            disabled={!$cookingSystemPrompt}
+                            onclick={() => setCookingSystemPrompt('')}
+                          >
+                            {tr('Reset to default')}
+                          </Button>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  {/if}
+                  {#if $lightCleanupEnabled}
+                    <div class="grid grid-cols-[140px_minmax(0,1fr)] items-start gap-4">
+                      <label for="light-cleanup-system-prompt" class="pt-2 text-xs font-medium">{tr('Light cleanup prompt')}</label>
+                      <div class="grid gap-2">
+                        <textarea
+                          id="light-cleanup-system-prompt"
+                          rows="8"
+                          value={$lightCleanupSystemPrompt || DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT}
+                          class="min-h-40 w-full resize-y rounded-md border bg-background px-3 py-2 font-mono text-[11px] leading-5 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          oninput={(event) =>
+                            setLightCleanupSystemPrompt((event.currentTarget as HTMLTextAreaElement).value)}
+                        ></textarea>
+                        <div class="flex items-center justify-between gap-3">
+                          <p class="m-0 text-[10px] leading-4 text-muted-foreground">
+                            {tr('This prompt is sent with every transcript cleanup. Keep the original language and meaning if you edit it.')}
+                          </p>
+                          <Button
+                            variant="outline"
+                            size="xs"
+                            disabled={!$lightCleanupSystemPrompt}
+                            onclick={() => setLightCleanupSystemPrompt('')}
+                          >
+                            {tr('Reset to default')}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  {/if}
                   <p class="m-0 text-[10px] leading-4 text-muted-foreground">
-                    {tr('The API key is stored only in local settings on this device and is never written to feedback packages. Cooking sends the uncooked body to the selected model provider.')}
+                    {tr('The API key is stored only in local settings on this device and is never written to feedback packages. Cooking and Light cleanup send text to the selected model provider.')}
                   </p>
                 </div>
               {/if}
