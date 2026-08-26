@@ -2,6 +2,7 @@
 
 - 状态：Accepted
 - 日期：2026-07-31
+- 修订：2026-08-26。有界音频队列允许为 recognizer 后台加载放大到 4096；见 ADR 004。
 - 参考：`docs/KOTONE_REUSE.md` 与本机 Kotone 语音实现审计
 
 ## 上下文
@@ -82,7 +83,8 @@ transducer lookahead 中的句尾 token。
 ### 5. 有界队列与长会话降级
 
 - capture callback 不做 STT、磁盘 I/O 或 UI 调用；
-- 音频帧进入 512 个 callback buffer 的有界队列；
+- 音频帧进入有界 callback buffer 队列。默认 512；为覆盖 recognizer 后台加载，允许将
+  队列加大到 4096，但仍不得随时长无界增长（见 ADR 004）；
 - provider 变慢且队列满时丢弃新的 buffer，并向 UI 发出 `Warning`；
 - MVP 不写临时音频文件，不允许 PCM 随录音时长无界增长；
 - 20 分钟压力测试中内存必须稳定，停止后所有 worker 可在有限时间内退出。

@@ -76,7 +76,7 @@ MVP 服务于同机宿主，默认只监听 loopback，数据默认保存在本�
 | Host Session | 宿主中的原对话、任务或运行上下文。 |
 | Feedback Request | 一次持久化体验请求。 |
 | Invocation Attempt | 一次 transport 调用尝试；可断开、取消或完成。 |
-| Draft | 尚未提交的文字和附件。 |
+| Draft / Feedback Draft | 尚未提交、可持续编辑的正文和附件。 |
 | Feedback Package | 已完成请求的不可变交付目录。 |
 | Continuation | 请求终态后让宿主继续的行为。 |
 
@@ -103,7 +103,7 @@ MVP 必须做到：
 - 内置智能体 runtime；
 - 自动修改用户代码；
 - 通用听写或全局语音输入；
-- 对反馈内容进行不可追溯的 LLM 重写；
+- 绕过可编辑 Feedback Draft 和人类提交确认，对反馈内容进行不可追溯的 LLM 重写；
 - 移动端 App；
 - 依赖无限 HTTP 连接才能正确工作。
 
