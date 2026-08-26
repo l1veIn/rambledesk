@@ -85,6 +85,18 @@ describe('FeedbackDraftSession', () => {
     session.applyUserEdit('Hello\n\nSpoken')
     expect(session.markdown()).toBe('Hello\n\nSpoken')
   })
+
+  it('inserts an Action quote as non-speech markdown', () => {
+    const session = createFeedbackDraftSession({
+      requestId: 'request-a',
+      generation: 1,
+      initialMarkdown: 'Hello',
+      initialRevision: 1,
+      save: memorySave(),
+    })
+    session.insertActionQuote(2, '点击保存，看是否出现 toast')
+    expect(session.markdown()).toBe('Hello\n\n> Action 2\n> 点击保存，看是否出现 toast')
+  })
 })
 
 describe('DraftSessionHost', () => {

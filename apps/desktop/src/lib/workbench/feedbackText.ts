@@ -11,6 +11,18 @@ export function appendMarkdownBlock(body: string, block: string): string {
   return current ? `${current}\n\n${block}` : block
 }
 
+/** Visible Action paste: a blockquote of the numbered instruction, never speech. */
+export function actionQuoteLines(index: number, instruction: string): string[] {
+  const trimmed = instruction.trim()
+  return trimmed ? [`Action ${index}`, ...trimmed.split(/\r?\n/)] : [`Action ${index}`]
+}
+
+export function actionQuoteMarkdown(index: number, instruction: string): string {
+  return actionQuoteLines(index, instruction)
+    .map((line) => `> ${line}`)
+    .join('\n')
+}
+
 /**
  * Extract the Operator Feedback section from a cooked feedback document.
  * Returns the input unchanged unless it is a cooked document that starts

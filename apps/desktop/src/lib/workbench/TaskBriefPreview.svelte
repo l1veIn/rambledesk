@@ -34,6 +34,8 @@
   export let rambleBusy = false
   /** CSS transform-origin the dialog should shrink toward when closing. */
   export let origin: string | null = null
+  export let insertDisabled = false
+  export let onInsertAction: (index: number, instruction: string) => void = () => {}
 
   let attachmentPreviewOpen = false
   let attachmentPreview: RequestAttachmentView | null = null
@@ -126,11 +128,16 @@
             <ol class="m-0 mt-4 grid list-none gap-3 p-0">
               {#each workspace.actions as action, index (action.id)}
                 <li class="grid grid-cols-[28px_minmax(0,1fr)] gap-3">
-                  <span
-                    class="grid size-7 place-items-center rounded-md bg-background text-xs font-semibold text-muted-foreground ring-1 ring-border"
+                  <button
+                    type="button"
+                    class="grid size-7 place-items-center rounded-md bg-background text-xs font-semibold text-muted-foreground ring-1 ring-border transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={insertDisabled || readOnly || !action.instruction.trim()}
+                    aria-label={tr('Insert Action {index}', { index: index + 1 })}
+                    title={tr('Insert Action {index} into the draft', { index: index + 1 })}
+                    onclick={() => onInsertAction(index + 1, action.instruction)}
                   >
                     {index + 1}
-                  </span>
+                  </button>
                   <span class="min-w-0 self-center text-[15px] leading-7">
                     <LinkifiedText text={action.instruction} />
                   </span>

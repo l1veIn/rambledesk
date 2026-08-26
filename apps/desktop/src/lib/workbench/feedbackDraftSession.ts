@@ -1,4 +1,4 @@
-import { appendMarkdownBlock } from './feedbackText'
+import { actionQuoteLines, actionQuoteMarkdown, appendMarkdownBlock } from './feedbackText'
 import {
   CLEANUP_CHAR_THRESHOLD,
   CLEANUP_SILENCE_MS,
@@ -39,6 +39,7 @@ export type FeedbackDraftSession = {
   acknowledgeSave(savedMarkdown: string, savedRevision: number): void
   appendSpeech(text: string): void
   insertMarkdownBlock(markdown: string): void
+  insertActionQuote(index: number, instruction: string): void
   prepareNonSpeechInsert(): void
   isCleaning(): boolean
   bindEditor(handle: FeedbackEditorHandle | null): void
@@ -325,6 +326,12 @@ export function createFeedbackDraftSession(input: {
     insertMarkdownBlock: (markdown: string) => {
       prepareNonSpeechInsert()
       writeBlock(markdown)
+    },
+    insertActionQuote: (index: number, instruction: string) => {
+      prepareNonSpeechInsert()
+      const lines = actionQuoteLines(index, instruction)
+      if (editorHandle?.insertQuotedBlock?.(lines)) return
+      writeBlock(actionQuoteMarkdown(index, instruction))
     },
     prepareNonSpeechInsert,
     isCleaning: () => cleaning,

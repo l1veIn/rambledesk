@@ -348,6 +348,8 @@ const chinese: Record<string, string> = {
   'Connecting the microphone…': '正在连接麦克风…',
   'Return to Ramble': '返回 Ramble',
   'Start here': '在这里开始',
+  'Insert Action {index}': '插入 Action {index}',
+  'Insert Action {index} into the draft': '把 Action {index} 插入正文',
   'Ramble is in progress on {title}. Return to continue, or stop it and start here.':
     '正在 {title} 上进行 Ramble。返回继续，或停止后在这里开始。',
   'Ramble in progress': 'Ramble 进行中',

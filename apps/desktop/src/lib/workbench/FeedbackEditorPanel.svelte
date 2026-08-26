@@ -89,6 +89,11 @@
     return visibleEditor()?.applyExternalMarkdown(markdown) ?? false
   }
 
+  export function insertQuotedBlock(lines: string[]) {
+    if (visibleRequestId) onPrepareNonSpeechInsert(visibleRequestId)
+    return visibleEditor()?.insertQuotedBlock?.(lines) ?? false
+  }
+
   export function appendTranscript(text: string, options?: { pending?: boolean }) {
     visibleEditor()?.appendTranscript(text, options)
   }

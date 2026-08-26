@@ -71,6 +71,7 @@
   export let foreignRambleTitle = ''
   export let onReturnToRamble: () => void = () => {}
   export let onHandoffRamble: () => void = () => {}
+  export let onInsertAction: (index: number, instruction: string) => void = () => {}
   export let onCookPreview: () => void = () => {}
   export let onRestoreOriginal: () => void = () => {}
   export let onToggleRamble: () => void = () => {}
@@ -226,6 +227,10 @@
               bind:open={taskBriefOpen}
               {workspace}
               pulseNonce={briefPulseNonce}
+              insertDisabled={interactionLocked ||
+                workspace.request.status === 'completed' ||
+                workspace.request.status === 'cancelled'}
+              onInsertAction={onInsertAction}
               onOpenPreview={(origin) => {
                 taskBriefPreviewOrigin = origin
                 taskBriefPreviewOpen = true
@@ -332,6 +337,8 @@
       {rambleStartedOnce}
       {rambleBusy}
       origin={taskBriefPreviewOrigin}
+      insertDisabled={interactionLocked}
+      onInsertAction={onInsertAction}
     />
   {:else}
     <div class="grid h-full place-items-center p-8 text-center">

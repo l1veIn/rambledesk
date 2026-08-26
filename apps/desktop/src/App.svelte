@@ -1143,6 +1143,9 @@
           {foreignRambleTitle}
           onReturnToRamble={() => void returnToRamble()}
           onHandoffRamble={() => void handoffRamble()}
+          onInsertAction={(index, instruction) => {
+            draftSessions.visible()?.insertActionQuote(index, instruction)
+          }}
           onToggleRamble={() => void toggleRamble()}
           onExitRamble={() => void exitRamble()}
           onOpenVoiceSettings={() => void openSettings('voice')}

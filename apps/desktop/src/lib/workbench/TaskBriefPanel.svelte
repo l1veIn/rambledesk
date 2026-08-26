@@ -14,6 +14,8 @@
   export let open = true
   export let pulseNonce = 0
   export let onOpenPreview: (transformOrigin: string | null) => void = () => {}
+  export let insertDisabled = false
+  export let onInsertAction: (index: number, instruction: string) => void = () => {}
 
   let previewOpen = false
   let previewAttachment: RequestAttachmentView | null = null
@@ -114,9 +116,16 @@
         <ol class="m-0 mt-2 grid list-none gap-2 p-0">
           {#each workspace.actions as action, index (action.id)}
             <li class="grid grid-cols-[22px_minmax(0,1fr)] gap-2 leading-5">
-              <span class="grid size-5 place-items-center rounded-md bg-background text-[9px] font-medium ring-1 ring-border">
+              <button
+                type="button"
+                class="grid size-5 place-items-center rounded-md bg-background text-[9px] font-medium ring-1 ring-border transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={insertDisabled || !action.instruction.trim()}
+                aria-label={tr('Insert Action {index}', { index: index + 1 })}
+                title={tr('Insert Action {index} into the draft', { index: index + 1 })}
+                onclick={() => onInsertAction(index + 1, action.instruction)}
+              >
                 {index + 1}
-              </span>
+              </button>
               <span><LinkifiedText text={action.instruction} /></span>
             </li>
           {/each}

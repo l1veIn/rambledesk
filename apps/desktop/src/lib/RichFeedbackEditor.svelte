@@ -299,6 +299,21 @@
     if (end > 0 && insertionPosition < end) insertionPosition = end
   }
 
+  export function insertQuotedBlock(lines: string[]) {
+    if (!editor || disabled || lines.length === 0) return false
+    const content = lines.map((line) => ({
+      type: 'paragraph' as const,
+      content: line ? [{ type: 'text' as const, text: line }] : [],
+    }))
+    const position = Math.min(Math.max(insertionPosition, 0), editor.state.doc.content.size)
+    const inserted = editor.commands.insertContentAt(position, [
+      { type: 'blockquote', content },
+      { type: 'paragraph' },
+    ])
+    if (inserted) insertionPosition = editor.state.selection.from
+    return inserted
+  }
+
   export function appendClipboardCapture(text: string, label: string) {
     const captured = text.trim()
     if (!editor || !captured || disabled) return false
