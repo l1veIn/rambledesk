@@ -18,7 +18,7 @@ RambleDesk。新的 PR 应当：
    “切换 Request 前必须停止 Ramble”的旧条款；
 4. 正文 = TipTap 里正在编辑的那一份 Feedback Draft。Task Brief 只读。Light cleanup 就是对
    待整理语音做一次可撤销的覆盖编辑，与用户自己改字等价；全程只有这一份正文；
-5. 截图、附件在完成后再插入当前光标，不做发起时预留。点 Action 序号等于把该 Action 原文
+5. 截图、附件在完成后再插入当前光标，不做发起时预留。点 Action 序号切换当前频道，新内容带归属
    粘贴进正文，且永不进入 cleanup；
 6. 工作台全局最多一个 Active Ramble。它由一个未终态 Feedback Request 持有；切换当前可见
    Request 不停止采集，而是把所属 Request 的 Feedback Draft 会话保活，并投影到标题栏胶囊。
@@ -86,14 +86,9 @@ PR #12 不会因为创建 replacement PR 自动关闭。建议在 replacement �
   只有发生在所属 Request 或来自 Ramble 全局采集的非语音输入，才按“插入非语音”时机触发
   其 cleanup；在另一个可见 Request 内进行的普通编辑、Action 粘贴或附件操作不得额外改动
   所属 Request。
-- 点击 Action 序号：在光标处插入该 Action 的 `instruction`，格式与粘贴相同：
-
-  ```markdown
-  > Action 2
-  > 点击保存，看是否出现 toast
-  ```
-
-  这段没有待整理标记，之后任何 cleanup 都跳过它。用户可再当普通文字修改。
+- 点击 Action 序号：切换当前 Action 频道。之后追加到正文段尾的语音、截图和粘贴带上该
+  Action 的节点归属，Markdown 写成 `@ Action 2`。再点一次同一序号回到默认频道（单独一行
+  `@`）。不把 Action 指令原文贴进正文。
 
 ### 待整理 / 整理中 / 正文
 
@@ -117,7 +112,7 @@ PR #12 不会因为创建 replacement PR 自动关闭。建议在 replacement �
 - 待整理达到 3 个 Stable；
 - 待整理超过约 500 字；
 - 上一 Stable 之后约 3 秒没有新语音，且待整理非空；
-- 在所属 Request 上、或经由 Ramble 全局采集插入非语音：截图落地、点 Action、粘贴、拖文件；
+- 在所属 Request 上、或经由 Ramble 全局采集插入非语音：截图落地、粘贴、拖文件；
 - 停止 Ramble、Cooking、提交。
 
 不触发：光标移动、打开 Task Brief、切窗口但还在说、切换当前可见 Request，以及在另一个
@@ -296,7 +291,7 @@ Light cleanup 由人类显式启用，结果原位可见、当前会话可撤销
 | `RambleSessionController.svelte` | 同时拥有 Ramble、Brief Note、语音 session、cleanup、clipboard、drain/lock | 收窄为语音输入；产出 Partial/Stable，由 Active Ramble 路由到所属 Draft Session |
 | `briefNotes.ts` | 混合 Task Brief parsing、clip UI、marker serialization、Markdown 替换 | 删除 clip/note/marker；Action 插入做成“粘贴引用块” |
 | `publisherController.ts` | 发布接口必须理解 capture drain 和 terminal lock | 只等待 inflight cleanup / 草稿保存 |
-| Task Brief preview | 展示、录音、编辑、clip magazine 混在一个 Dialog | 只读展示；序号点击插入 Action 原文 |
+| Task Brief preview | 展示、录音、编辑、clip magazine 混在一个 Dialog | 只读展示；序号点击切换当前 Action 频道 |
 | Markdown marker | `rambledesk-capture://...` 零宽链接承担对象身份 | 删除 |
 | 整理写回 | `setContent` 整篇替换，无法按一次覆盖来撤销 | 对目标区间做 TipTap transaction，进入 Undo 历史 |
 | Request 切换 | 复用同一 TipTap 并以 `setContent` 换文档，所属 Request 的 selection、Undo 和区间会话态失效 | 保活 Active Ramble 所属 Feedback Draft 会话；当前可见 Request 使用独立会话 |
@@ -325,7 +320,7 @@ context hint、Cooking、Cooked Feedback、身份字段、适配器分类：repl
 | PR 中的词 | 偏移 | 判断 |
 | --- | --- | --- |
 | `Ramble clip` | 把 Ramble 从持续采集状态改造成一次 start-stop 产生的对象 | 不加入术语表；删除 |
-| `Brief Note` / `Block Note` | 在 Feedback Draft 之外建立第二反馈通道 | 不加入术语表；改为插入 Action 原文后在正文继续说/写 |
+| `Brief Note` / `Block Note` | 在 Feedback Draft 之外建立第二反馈通道 | 不加入术语表；改为当前 Action 频道归属后在正文继续说/写 |
 | `capture` | 扩大为 speech/note/Markdown wrapper 的通用对象身份 | 收窄；不得把 speech/note 称为 capture |
 | `rambledesk-capture://` | 内部对象身份泄漏进用户 Markdown | 删除 |
 | `Record-first` | 把录音按钮提升为内容边界 | 只可作为实现描述 |
@@ -338,7 +333,7 @@ context hint、Cooking、Cooked Feedback、身份字段、适配器分类：repl
 #### Ramble
 
 > **Ramble**：由一个未终态反馈请求持有的统一、可长时间持续的反馈采集状态。人类可以在该
-> 状态中说话、编辑正文、截图、添加附件和插入 Action 原文；开始/停止一次麦克风会话不构成
+> 状态中说话、编辑正文、截图、添加附件并把新内容归到某个 Action；开始/停止一次麦克风会话不构成
 > 新的反馈对象或文档边界。所属反馈请求可以不是当前可见 Request；工作台全局最多一个 Active
 > Ramble。Ramble 属于人类工作流，不属于适配器协议，也不是系统级听写。
 
@@ -375,9 +370,10 @@ Undo、cleanup 区间和保存队列。它不进入核心术语表，不是新�
 `actions[]` 已是协议字段。建议在核心术语表给出产品对象：
 
 > **Action**：反馈请求中带稳定 id 的一项真实使用或检查指令。它属于反馈请求的不可变输入。
-> 人类可以把编号对应的原文粘贴进 Feedback Draft；这不等于修改原请求，也不等于 `context_refs`。
+> 点序号把后续正文归到该 Action；再点一次回到默认频道。这不等于修改原请求，也不等于
+> `context_refs`。
 
-不新增 **Task Reference** 作为领域对象。插入 Action 就是粘贴。
+不新增 **Task Reference** 作为领域对象。Action 是频道，不是粘贴。
 
 ### 4.4 不建议加入术语表的词
 
@@ -391,10 +387,10 @@ Content Flow、RambleJournal、Ramble owner、Feedback Draft Session、settled/u
 用户只开始一次 Ramble：
 
 1. 第一段话的 Stable 立即出现在 TipTap 并进入草稿保存；
-2. 待整理达到 3 个 Stable、约 500 字、停口约 3 秒，或用户去截图/点 Action/粘贴时，这段
+2. 待整理达到 3 个 Stable、约 500 字、停口约 3 秒，或用户去截图/粘贴时，这段
    语音进入整理中：原文仍在，轻提示，锁住，Undo 禁用；麦克风继续；
 3. 用户截图并批注；完成后插在当前合法光标（若在锁段内则在锁段后）；
-4. 用户点 Action 2，正文插入引用块；这段不会被后续 cleanup 送进模型；
+4. 用户点 Action 2，序号高亮；之后新内容归到 Action 2，Markdown 出现 `@ Action 2`；
 5. 用户继续说，新语音出现在锁段之后，成为新的待整理；
 6. 整理返回，锁段被覆盖成整理结果，Undo 恢复可用；再按撤销即回到覆盖前；
 7. 用户切换到 Request B；Request A 的 editor 会话被保活，语音、cleanup 和 autosave 继续只在
@@ -545,7 +541,7 @@ PR #12 后半段的故障知识仍应写成测试，但目标换成“一份草�
 
 ### Phase 4：Action 粘贴与 UI 删除
 
-- Action 序号插入引用块；
+- Action 序号切换当前频道并为新节点盖章；
 - Task Brief 只读；
 - 删除 clip magazine、note button、tooltip 第二编辑面；
 - Markdown 只保留普通文本、引用、列表和标准 `attachment://`。
@@ -590,7 +586,7 @@ PR #12 后半段的故障知识仍应写成测试，但目标换成“一份草�
 | 手改待整理里的错字后再触发整理 | 模型吃改后的字 |
 | 说话 → 截图完成 → 继续说 | 截图在完成时光标处（或锁段后）；不重排 |
 | 文件选择器取消 | 不插入 |
-| 点击 Action 序号 | 插入引用块；不进 cleanup；不启动新录音 |
+| 点击 Action 序号 | 切换当前频道；不插入指令原文；不进 cleanup |
 | A 正在 Ramble 时切到 B | A 的 editor、selection、Undo、cleanup 和 save queue 保活；B 使用独立 editor |
 | A 隐藏时继续说话/cleanup 返回 | Stable 和 replace 只通过 A 的 editor transaction；B 正文和 revision 不变 |
 | 点击标题栏胶囊 | 回到 A 的同一个 editor session；不是重新从 Markdown `setContent` |

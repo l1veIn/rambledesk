@@ -26,9 +26,24 @@
   animation: record-blink 1s ease-in-out infinite;
 }
 
+@keyframes action-channel-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 45%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--primary) 18%, transparent);
+  }
+}
+
+.action-channel-live {
+  animation: action-channel-breathe 1.6s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .record-blink,
-  .record-led {
+  .record-led,
+  .action-channel-live {
     animation: none;
   }
 }

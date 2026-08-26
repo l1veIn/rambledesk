@@ -1,6 +1,5 @@
 <script lang="ts">
   import { Editor } from '@tiptap/core'
-  import { Fragment } from '@tiptap/pm/model'
   import {
     Bold,
     Heading2,
@@ -21,8 +20,14 @@
     attachmentMarkdownUrl,
     isImageMediaType,
   } from './attachmentMarkdown'
-  import { feedbackEditorExtensions } from './feedbackEditorExtensions'
+  import {
+    feedbackEditorExtensions,
+    parseFeedbackMarkdown,
+    serializeFeedbackMarkdown,
+  } from './feedbackEditorExtensions'
   import { CLEANED_SPEECH_NODE, PENDING_SPEECH_NODE } from './pendingSpeech'
+  import { ACTION_CHANNEL_ATTR } from './workbench/actionChannel'
+  import { alignCleanupParts } from './workbench/speechCleanupPolicy'
 
   export let markdown = ''
   export let previews: Record<string, string> = {}
@@ -46,8 +51,7 @@
     editor = new Editor({
       element: editorHost,
       extensions: feedbackEditorExtensions(),
-      content: markdown,
-      contentType: 'markdown',
+      content: parseFeedbackMarkdown(markdown),
       editable: !disabled,
       editorProps: {
         attributes: {
@@ -76,7 +80,7 @@
         },
       },
       onCreate: () => {
-        editorMarkdown = editor?.getMarkdown() ?? markdown
+        editorMarkdown = editor ? serializeFeedbackMarkdown(editor.getJSON()) : markdown
         insertionPosition = editor?.state.doc.content.size ?? 0
         syncHistoryButtons()
         hydrateAttachmentImages()
@@ -88,7 +92,7 @@
         historyLocked = editorHasCleaningSpeech(updatedEditor)
         syncHistoryButtons()
         if (applyingExternalChange) return
-        const nextMarkdown = updatedEditor.getMarkdown()
+        const nextMarkdown = serializeFeedbackMarkdown(updatedEditor.getJSON())
         editorMarkdown = nextMarkdown
         onChange(nextMarkdown)
       },
@@ -119,8 +123,7 @@
     if (!editor) return
     applyingExternalChange = true
     try {
-      editor.commands.setContent(nextMarkdown, {
-        contentType: 'markdown',
+      editor.commands.setContent(parseFeedbackMarkdown(nextMarkdown), {
         emitUpdate: false,
       })
       editorMarkdown = nextMarkdown
@@ -156,7 +159,7 @@
     if (!changed) return
     applyingExternalChange = true
     editor.view.dispatch(transaction)
-    editorMarkdown = editor.getMarkdown()
+    editorMarkdown = serializeFeedbackMarkdown(editor.getJSON())
     applyingExternalChange = false
   }
 
@@ -183,20 +186,21 @@
           return [
             {
               type: 'image',
-              attrs: {
+              attrs: actionAttrs({
                 src:
                   previews[attachment.attachment_id] ??
                   attachmentMarkdownUrl(attachment.attachment_id),
                 alt: attachment.file_name,
                 attachmentId: attachment.attachment_id,
-              },
+              }),
             },
-            { type: 'paragraph' },
+            { type: 'paragraph', attrs: actionAttrs() },
           ]
         }
         return [
           {
             type: 'paragraph',
+            attrs: actionAttrs(),
             content: [
               {
                 type: 'attachmentFile',
@@ -208,7 +212,7 @@
               },
             ],
           },
-          { type: 'paragraph' },
+          { type: 'paragraph', attrs: actionAttrs() },
         ]
       })
     if (content.length === 0) return false
@@ -237,18 +241,59 @@
     return cleaning
   }
 
+  function currentActionIndex(): number | null {
+    const index = editor?.storage.actionChannel?.currentIndex
+    return typeof index === 'number' && index > 0 ? index : null
+  }
+
+  function actionAttrs(extra: Record<string, unknown> = {}) {
+    const actionIndex = currentActionIndex()
+    return actionIndex != null ? { ...extra, [ACTION_CHANNEL_ATTR]: actionIndex } : extra
+  }
+
+  export function setActionChannel(index: number | null): void {
+    if (!editor) return
+    editor.storage.actionChannel.currentIndex = index
+    const { $from } = editor.state.selection
+    const parent = $from.parent
+    if (!parent.isTextblock || parent.textContent.trim() !== '') return
+    const position = $from.before()
+    const node = editor.state.doc.nodeAt(position)
+    if (!node) return
+    editor.view.dispatch(
+      editor.state.tr.setNodeMarkup(position, undefined, {
+        ...node.attrs,
+        [ACTION_CHANNEL_ATTR]: index,
+      }),
+    )
+  }
+
   export function appendTranscript(text: string, options?: { pending?: boolean }) {
     const transcript = text.trim()
     if (!editor || !transcript || disabled) return
     editor.commands.insertContentAt(editor.state.doc.content.size, {
       type: options?.pending ? PENDING_SPEECH_NODE : 'paragraph',
-      attrs: options?.pending ? { status: 'pending' } : undefined,
+      attrs: actionAttrs(options?.pending ? { status: 'pending' } : {}),
       content: [{ type: 'text', text: transcript }],
     })
   }
 
   export function isSpeechCleaning() {
     return editorHasCleaningSpeech()
+  }
+
+  export function pendingSpeech() {
+    const texts: string[] = []
+    editor?.state.doc.descendants((node) => {
+      if (node.type.name === PENDING_SPEECH_NODE && node.attrs.status === 'pending') {
+        texts.push(node.textContent)
+      }
+    })
+    return {
+      count: texts.length,
+      chars: texts.reduce((sum, text) => sum + text.trim().length, 0),
+      texts,
+    }
   }
 
   export function beginSpeechCleanup(): string {
@@ -277,39 +322,52 @@
 
   export function finishSpeechCleanup(cleaned: string | null): void {
     if (!editor) return
-    const ranges: Array<{ from: number; to: number; text: string }> = []
+    const items: Array<{
+      from: number
+      to: number
+      text: string
+      actionIndex: number | null
+    }> = []
     editor.state.doc.descendants((node, position) => {
       if (node.type.name === PENDING_SPEECH_NODE && node.attrs.status === 'cleaning') {
-        ranges.push({ from: position, to: position + node.nodeSize, text: node.textContent })
+        items.push({
+          from: position,
+          to: position + node.nodeSize,
+          text: node.textContent,
+          actionIndex:
+            typeof node.attrs[ACTION_CHANNEL_ATTR] === 'number'
+              ? node.attrs[ACTION_CHANNEL_ATTR]
+              : null,
+        })
       }
     })
     historyLocked = false
-    if (ranges.length === 0) {
+    if (items.length === 0) {
       syncHistoryButtons()
       return
     }
-    const runs: Array<{ from: number; to: number; text: string }> = []
-    for (const range of ranges) {
-      const last = runs[runs.length - 1]
-      if (last && last.to === range.from) {
-        last.to = range.to
-        last.text = `${last.text}\n\n${range.text}`
-      } else {
-        runs.push({ ...range })
-      }
-    }
+    const parts = alignCleanupParts(
+      items.map((item) => item.text),
+      cleaned,
+    )
     let transaction = editor.state.tr
-    for (let index = runs.length - 1; index >= 0; index -= 1) {
-      const run = runs[index]
-      const source = runs.length === 1 ? cleaned?.trim() || run.text : run.text
-      const markCleaned = Boolean(cleaned?.trim()) && runs.length === 1
+    for (let index = items.length - 1; index >= 0; index -= 1) {
+      const item = items[index]
+      // 1:1 tidy → cleanedSpeech. Timeout/reject → plain paragraph so we
+      // do not immediately re-trigger cleanup. Shape mismatch → keep the
+      // original wording but still mark cleaned.
+      const markCleaned = cleaned != null
+      const text = parts?.[index] ?? item.text
       const type = markCleaned
         ? editor!.schema.nodes[CLEANED_SPEECH_NODE]
         : editor!.schema.nodes.paragraph
-      const nodes = source.split(/\n{2,}/).map((paragraph) =>
-        type.create(null, paragraph ? editor!.schema.text(paragraph) : undefined),
+      const attrs =
+        item.actionIndex != null ? { [ACTION_CHANNEL_ATTR]: item.actionIndex } : null
+      transaction = transaction.replaceWith(
+        item.from,
+        item.to,
+        type.create(attrs, text ? editor!.schema.text(text) : undefined),
       )
-      transaction = transaction.replaceWith(run.from, run.to, Fragment.from(nodes))
     }
     transaction.setMeta('speechCleanup', true)
     editor.view.dispatch(transaction)
@@ -342,8 +400,8 @@
     }))
     const position = resolveInsertPosition()
     const inserted = editor.commands.insertContentAt(position, [
-      { type: 'blockquote', content },
-      { type: 'paragraph' },
+      { type: 'blockquote', attrs: actionAttrs(), content },
+      { type: 'paragraph', attrs: actionAttrs() },
     ])
     if (inserted) insertionPosition = editor.state.selection.from
     return inserted
@@ -353,7 +411,15 @@
     const block = markdown.trim()
     if (!editor || disabled || !block) return false
     const position = resolveInsertPosition()
-    const inserted = editor.commands.insertContentAt(position, block, { contentType: 'markdown' })
+    const parsed = parseFeedbackMarkdown(block)
+    const stamped = {
+      ...parsed,
+      content: (parsed.content ?? []).map((node) => ({
+        ...node,
+        attrs: actionAttrs(node.attrs ?? {}),
+      })),
+    }
+    const inserted = editor.commands.insertContentAt(position, stamped.content ?? [])
     if (inserted) insertionPosition = editor.state.selection.from
     return inserted
   }
@@ -371,6 +437,7 @@
     return editor.commands.insertContentAt(position, [
       {
         type: 'blockquote',
+        attrs: actionAttrs(),
         content: [
           {
             type: 'paragraph',
@@ -388,7 +455,7 @@
           },
         ],
       },
-      { type: 'paragraph' },
+      { type: 'paragraph', attrs: actionAttrs() },
     ])
   }
 
@@ -400,6 +467,7 @@
     return editor.commands.insertContentAt(resolveInsertPosition(), [
       {
         type: 'blockquote',
+        attrs: actionAttrs(),
         content: [
           {
             type: 'paragraph',
@@ -415,15 +483,15 @@
       },
       {
         type: 'image',
-        attrs: {
+        attrs: actionAttrs({
           src:
             previews[attachment.attachment_id] ??
             attachmentMarkdownUrl(attachment.attachment_id),
           alt: attachment.file_name,
           attachmentId: attachment.attachment_id,
-        },
+        }),
       },
-      { type: 'paragraph' },
+      { type: 'paragraph', attrs: actionAttrs() },
     ])
   }
 
@@ -587,6 +655,23 @@
     content: '✦ ';
     font-size: 0.85em;
     pointer-events: none;
+  }
+
+  .editor-host :global(.feedback-prose [data-action-index]) {
+    border-left: 2px solid color-mix(in srgb, var(--primary) 55%, transparent);
+    padding-left: 8px;
+  }
+
+  .editor-host :global(.feedback-prose .action-channel-lead[data-action-index]:not(.speech-cleaned)::before) {
+    color: var(--primary);
+    content: '@' attr(data-action-index) ' ';
+    font-size: 0.8em;
+    font-weight: 600;
+    pointer-events: none;
+  }
+
+  .editor-host :global(.feedback-prose p.speech-cleaned.action-channel-lead[data-action-index]::before) {
+    content: '✦ @' attr(data-action-index) ' ';
   }
 
   .editor-host :global(.feedback-prose h2),

@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { MarkdownManager } from '@tiptap/markdown'
 import type { JSONContent } from '@tiptap/core'
 
-import { feedbackEditorExtensions } from './feedbackEditorExtensions'
+import {
+  feedbackEditorExtensions,
+  parseFeedbackMarkdown,
+  serializeFeedbackMarkdown,
+} from './feedbackEditorExtensions'
 import { CLEANED_SPEECH_NODE, PENDING_SPEECH_NODE } from './pendingSpeech'
 
 function markdown() {
@@ -155,5 +159,30 @@ describe('pending speech markdown', () => {
     expect(serialized).not.toContain('cleanedSpeech')
     expect(serialized).not.toContain('已整理')
     expect(serialized).not.toContain('data-speech-status')
+  })
+})
+
+describe('action channel markdown', () => {
+  it('round-trips action markers onto block nodes and back', () => {
+    const source = [
+      '整体先说两句。',
+      '',
+      '@ Action 2',
+      '保存之后没有 toast。',
+      '',
+      '@',
+      '其实 toast 在右下角。',
+    ].join('\n')
+
+    const doc = parseFeedbackMarkdown(source)
+    expect((doc.content ?? []).map((node) => node.attrs?.actionIndex ?? null)).toEqual([
+      null,
+      2,
+      null,
+    ])
+    expect(serializeFeedbackMarkdown(doc)).toContain('@ Action 2')
+    expect(serializeFeedbackMarkdown(doc)).toContain('保存之后没有 toast。')
+    expect(serializeFeedbackMarkdown(doc).split('\n')).toContain('@')
+    expect(serializeFeedbackMarkdown(doc)).not.toContain('data-action-index')
   })
 })

@@ -33,6 +33,8 @@ export type FeedbackEditorHandle = {
   applyExternalMarkdown(markdown: string): boolean
   insertQuotedBlock?(lines: string[]): boolean
   insertMarkdownAtCaret?(markdown: string): boolean
+  setActionChannel?(index: number | null): void
+  pendingSpeech?: () => { count: number; chars: number; texts: string[] }
   beginSpeechCleanup?: () => string
   finishSpeechCleanup?: (cleaned: string | null) => void
   isSpeechCleaning?: () => boolean

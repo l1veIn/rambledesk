@@ -37,7 +37,8 @@
   /** CSS transform-origin the dialog should shrink toward when closing. */
   export let origin: string | null = null
   export let insertDisabled = false
-  export let onInsertAction: (index: number, instruction: string) => void = () => {}
+  export let currentActionIndex: number | null = null
+  export let onToggleActionChannel: (index: number) => void = () => {}
 
   let attachmentPreviewOpen = false
   let attachmentPreview: RequestAttachmentView | null = null
@@ -132,11 +133,25 @@
                 <li class="grid grid-cols-[28px_minmax(0,1fr)] gap-3">
                   <button
                     type="button"
-                    class="grid size-7 place-items-center rounded-md bg-background text-xs font-semibold text-muted-foreground ring-1 ring-border transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={insertDisabled || readOnly || !action.instruction.trim()}
-                    aria-label={tr('Insert Action {index}', { index: index + 1 })}
-                    title={tr('Insert Action {index} into the draft', { index: index + 1 })}
-                    onclick={() => onInsertAction(index + 1, action.instruction)}
+                    class={[
+                      'grid size-7 place-items-center rounded-md text-xs font-semibold ring-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
+                      currentActionIndex === index + 1
+                        ? 'action-channel-live bg-primary/15 text-primary ring-primary'
+                        : 'bg-background text-muted-foreground ring-border hover:bg-accent hover:text-accent-foreground',
+                    ]}
+                    disabled={insertDisabled || readOnly}
+                    aria-pressed={currentActionIndex === index + 1}
+                    aria-label={
+                      currentActionIndex === index + 1
+                        ? tr('Return to default channel from Action {index}', { index: index + 1 })
+                        : tr('Tune to Action {index}', { index: index + 1 })
+                    }
+                    title={
+                      currentActionIndex === index + 1
+                        ? tr('Return to default channel from Action {index}', { index: index + 1 })
+                        : tr('Tune to Action {index}', { index: index + 1 })
+                    }
+                    onclick={() => onToggleActionChannel(index + 1)}
                   >
                     {index + 1}
                   </button>

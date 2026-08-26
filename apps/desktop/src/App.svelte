@@ -317,6 +317,8 @@
   const resolveHostProfile = navigation.resolveHostProfile
 
   $: dirty = sessionEpoch >= 0 && (draftSessions.visible()?.isDirty() ?? false)
+  $: currentActionIndex =
+    sessionEpoch >= 0 ? (draftSessions.visible()?.currentActionIndex() ?? null) : null
   $: draftEditorViews = draftSessions.mounted().map((session) => ({
     requestId: session.requestId,
     initialMarkdown: session.initialMarkdown,
@@ -1136,9 +1138,8 @@
           onDraftChangeFor={(requestId, markdown) => draftSessions.get(requestId)?.applyUserEdit(markdown)}
           onEditorReady={(requestId, editor) => draftSessions.get(requestId)?.bindEditor(editor)}
           onPrepareNonSpeechInsert={(requestId) => draftSessions.get(requestId)?.prepareNonSpeechInsert()}
-          onInsertAction={(index, instruction) => {
-            draftSessions.visible()?.insertActionQuote(index, instruction)
-          }}
+          {currentActionIndex}
+          onToggleActionChannel={(index) => draftSessions.visible()?.toggleActionChannel(index)}
           onToggleRamble={() => void toggleRamble()}
           onExitRamble={() => void exitRamble()}
           onOpenVoiceSettings={() => void openSettings('voice')}

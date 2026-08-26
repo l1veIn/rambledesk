@@ -86,7 +86,14 @@ describe('FeedbackDraftSession', () => {
     expect(session.markdown()).toBe('Hello\n\nSpoken')
   })
 
-  it('inserts an Action quote as non-speech markdown', () => {
+  it('toggles the current Action channel without pasting the instruction', () => {
+    const setActionChannel = vi.fn()
+    const appendTranscript = vi.fn()
+    const editor = {
+      appendTranscript,
+      applyExternalMarkdown: vi.fn(),
+      setActionChannel,
+    } as unknown as FeedbackEditorHandle
     const session = createFeedbackDraftSession({
       requestId: 'request-a',
       generation: 1,
@@ -94,8 +101,34 @@ describe('FeedbackDraftSession', () => {
       initialRevision: 1,
       save: memorySave(),
     })
-    session.insertActionQuote(2, '点击保存，看是否出现 toast')
-    expect(session.markdown()).toBe('Hello\n\n> Action 2\n> 点击保存，看是否出现 toast')
+    session.bindEditor(editor)
+    session.toggleActionChannel(2)
+    expect(session.currentActionIndex()).toBe(2)
+    expect(setActionChannel).toHaveBeenCalledWith(2)
+    session.appendSpeech('保存之后没有 toast。')
+    expect(appendTranscript).toHaveBeenCalledWith('保存之后没有 toast。')
+    expect(session.markdown()).toBe('Hello')
+    session.toggleActionChannel(2)
+    expect(session.currentActionIndex()).toBeNull()
+    expect(setActionChannel).toHaveBeenCalledWith(null)
+  })
+
+  it('tags speech with the current Action when no editor is bound', () => {
+    const session = createFeedbackDraftSession({
+      requestId: 'request-a',
+      generation: 1,
+      initialMarkdown: 'Hello',
+      initialRevision: 1,
+      save: memorySave(),
+    })
+    session.toggleActionChannel(2)
+    session.appendSpeech('保存之后没有 toast。')
+    expect(session.markdown()).toBe('Hello\n\n@ Action 2\n\n保存之后没有 toast。')
+    session.toggleActionChannel(2)
+    session.appendSpeech('其实 toast 在右下角。')
+    expect(session.markdown()).toBe(
+      'Hello\n\n@ Action 2\n\n保存之后没有 toast。\n\n@\n\n其实 toast 在右下角。',
+    )
   })
 })
 
@@ -264,7 +297,7 @@ describe('Light cleanup on a draft session', () => {
     expect(finishSpeechCleanup).toHaveBeenCalledWith('按钮太小了。')
   })
 
-  it('does not mark a sentence when cleanup leaves the wording unchanged', async () => {
+  it('still marks speech cleaned when the model returns the same wording', async () => {
     const finishSpeechCleanup = vi.fn()
     const editor = {
       appendTranscript: vi.fn(),
@@ -292,7 +325,7 @@ describe('Light cleanup on a draft session', () => {
     session.appendSpeech('第二句')
     session.appendSpeech('第三句')
     await session.settle()
-    expect(finishSpeechCleanup).toHaveBeenCalledWith(null)
+    expect(finishSpeechCleanup).toHaveBeenCalledWith('按钮太小了。')
   })
 })
 

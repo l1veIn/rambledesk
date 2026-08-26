@@ -68,7 +68,8 @@
   export let onDraftChangeFor: (requestId: string, markdown: string) => void = () => {}
   export let onEditorReady: (requestId: string, editor: FeedbackEditorHandle | null) => void = () => {}
   export let onPrepareNonSpeechInsert: (requestId: string) => void = () => {}
-  export let onInsertAction: (index: number, instruction: string) => void = () => {}
+  export let currentActionIndex: number | null = null
+  export let onToggleActionChannel: (index: number) => void = () => {}
   export let onCookPreview: () => void = () => {}
   export let onRestoreOriginal: () => void = () => {}
   export let onToggleRamble: () => void = () => {}
@@ -227,7 +228,8 @@
               insertDisabled={interactionLocked ||
                 workspace.request.status === 'completed' ||
                 workspace.request.status === 'cancelled'}
-              onInsertAction={onInsertAction}
+              {currentActionIndex}
+              {onToggleActionChannel}
               onOpenPreview={(origin) => {
                 taskBriefPreviewOrigin = origin
                 taskBriefPreviewOpen = true
@@ -332,7 +334,8 @@
       {rambleBusy}
       origin={taskBriefPreviewOrigin}
       insertDisabled={interactionLocked}
-      onInsertAction={onInsertAction}
+      {currentActionIndex}
+      {onToggleActionChannel}
     />
   {:else}
     <div class="grid h-full place-items-center p-8 text-center">

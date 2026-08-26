@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  actionQuoteMarkdown,
   appendMarkdownBlock,
   formatTime,
   messageFrom,
@@ -16,20 +15,6 @@ describe('appendMarkdownBlock', () => {
 
   it('returns the block alone for an empty body', () => {
     expect(appendMarkdownBlock('', 'world')).toBe('world')
-  })
-})
-
-describe('actionQuoteMarkdown', () => {
-  it('quotes the numbered action as clipboard-like markdown', () => {
-    expect(actionQuoteMarkdown(2, '点击保存，看是否出现 toast')).toBe(
-      '> Action 2\n> 点击保存，看是否出现 toast',
-    )
-  })
-
-  it('keeps inner line breaks inside the quote', () => {
-    expect(actionQuoteMarkdown(1, 'First line\nSecond line')).toBe(
-      '> Action 1\n> First line\n> Second line',
-    )
   })
 })
 

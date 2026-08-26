@@ -12,6 +12,7 @@ describe('resolveCookingSystemPrompt', () => {
   it('asks cooking to keep the operator language', () => {
     expect(DEFAULT_COOKING_SYSTEM_PROMPT).toContain("Preserve the operator's language")
     expect(DEFAULT_COOKING_SYSTEM_PROMPT).toContain('write the cooked Markdown in Chinese')
+    expect(DEFAULT_COOKING_SYSTEM_PROMPT).toContain('@ Action N')
   })
 
   it('keeps a custom prompt so operators can stop cooking from dropping images', () => {

@@ -9,14 +9,21 @@ export function pendingCharCount(pieces: readonly string[]): number {
   return pieces.reduce((sum, piece) => sum + piece.trim().length, 0)
 }
 
+export type PendingSpeechSnapshot = {
+  count: number
+  chars: number
+  texts: string[]
+}
+
 export function shouldStartCleanup(input: {
   enabled: boolean
   busy: boolean
-  pendingPieces: readonly string[]
+  pendingCount: number
+  pendingChars: number
   trigger: CleanupTrigger
 }): boolean {
   if (!input.enabled || input.busy) return false
-  if (input.pendingPieces.length === 0) return false
+  if (input.pendingCount === 0) return false
   if (input.trigger === 'non-speech' || input.trigger === 'settle') {
     return true
   }
@@ -24,9 +31,20 @@ export function shouldStartCleanup(input: {
     return false
   }
   if (input.trigger === 'stable-count') {
-    return input.pendingPieces.length >= CLEANUP_STABLE_THRESHOLD
+    return input.pendingCount >= CLEANUP_STABLE_THRESHOLD
   }
-  return pendingCharCount(input.pendingPieces) >= CLEANUP_CHAR_THRESHOLD
+  return input.pendingChars >= CLEANUP_CHAR_THRESHOLD
+}
+
+/** Map a batch cleanup result back onto the original speech nodes, or skip it. */
+export function alignCleanupParts(originals: readonly string[], cleaned: string | null): string[] | null {
+  if (!cleaned) return null
+  const parts = cleaned
+    .split(/\n{2,}/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+  if (parts.length !== originals.length) return null
+  return parts
 }
 
 /** Drop model output that grew into an answer instead of a light tidy. */

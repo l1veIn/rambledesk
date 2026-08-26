@@ -4,30 +4,48 @@ import {
   CLEANUP_CHAR_THRESHOLD,
   CLEANUP_STABLE_THRESHOLD,
   acceptCleanupResult,
+  alignCleanupParts,
   shouldStartCleanup,
 } from './speechCleanupPolicy'
 
 describe('shouldStartCleanup', () => {
-  const pending = ['one', 'two', 'three']
-
   it('does nothing when disabled, busy, or empty', () => {
     expect(
-      shouldStartCleanup({ enabled: false, busy: false, pendingPieces: pending, trigger: 'settle' }),
+      shouldStartCleanup({
+        enabled: false,
+        busy: false,
+        pendingCount: 3,
+        pendingChars: 12,
+        trigger: 'settle',
+      }),
     ).toBe(false)
     expect(
-      shouldStartCleanup({ enabled: true, busy: true, pendingPieces: pending, trigger: 'settle' }),
+      shouldStartCleanup({
+        enabled: true,
+        busy: true,
+        pendingCount: 3,
+        pendingChars: 12,
+        trigger: 'settle',
+      }),
     ).toBe(false)
-    expect(
-      shouldStartCleanup({ enabled: true, busy: false, pendingPieces: [], trigger: 'settle' }),
-    ).toBe(false)
-  })
-
-  it('starts after three pending stables or 500 characters', () => {
     expect(
       shouldStartCleanup({
         enabled: true,
         busy: false,
-        pendingPieces: pending.slice(0, CLEANUP_STABLE_THRESHOLD - 1),
+        pendingCount: 0,
+        pendingChars: 0,
+        trigger: 'settle',
+      }),
+    ).toBe(false)
+  })
+
+  it('starts after three uncleaned speech nodes or 500 characters', () => {
+    expect(
+      shouldStartCleanup({
+        enabled: true,
+        busy: false,
+        pendingCount: CLEANUP_STABLE_THRESHOLD - 1,
+        pendingChars: 8,
         trigger: 'stable-count',
       }),
     ).toBe(false)
@@ -35,7 +53,8 @@ describe('shouldStartCleanup', () => {
       shouldStartCleanup({
         enabled: true,
         busy: false,
-        pendingPieces: pending,
+        pendingCount: CLEANUP_STABLE_THRESHOLD,
+        pendingChars: 12,
         trigger: 'stable-count',
       }),
     ).toBe(true)
@@ -43,7 +62,8 @@ describe('shouldStartCleanup', () => {
       shouldStartCleanup({
         enabled: true,
         busy: false,
-        pendingPieces: ['x'.repeat(CLEANUP_CHAR_THRESHOLD)],
+        pendingCount: 1,
+        pendingChars: CLEANUP_CHAR_THRESHOLD,
         trigger: 'char-count',
       }),
     ).toBe(true)
@@ -54,7 +74,8 @@ describe('shouldStartCleanup', () => {
       shouldStartCleanup({
         enabled: true,
         busy: false,
-        pendingPieces: ['one line'],
+        pendingCount: 1,
+        pendingChars: 8,
         trigger: 'silence',
       }),
     ).toBe(false)
@@ -62,7 +83,8 @@ describe('shouldStartCleanup', () => {
       shouldStartCleanup({
         enabled: true,
         busy: false,
-        pendingPieces: ['one line'],
+        pendingCount: 1,
+        pendingChars: 8,
         trigger: 'non-speech',
       }),
     ).toBe(true)
@@ -70,10 +92,25 @@ describe('shouldStartCleanup', () => {
       shouldStartCleanup({
         enabled: true,
         busy: false,
-        pendingPieces: ['one line'],
+        pendingCount: 1,
+        pendingChars: 8,
         trigger: 'settle',
       }),
     ).toBe(true)
+  })
+})
+
+describe('alignCleanupParts', () => {
+  it('keeps a one-to-one mapping onto speech nodes', () => {
+    expect(alignCleanupParts(['啊按钮太小了', '列表还行'], '按钮太小了。\n\n列表还行。')).toEqual([
+      '按钮太小了。',
+      '列表还行。',
+    ])
+  })
+
+  it('rejects a blob that does not match the node count', () => {
+    expect(alignCleanupParts(['one', 'two'], 'one two three four')).toBeNull()
+    expect(alignCleanupParts(['one', 'two'], null)).toBeNull()
   })
 })
 

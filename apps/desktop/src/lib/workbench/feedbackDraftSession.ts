@@ -1,15 +1,13 @@
-import {
-  actionQuoteLines,
-  actionQuoteMarkdown,
-  appendMarkdownBlock,
-  replaceLastOccurrence,
-} from './feedbackText'
+import { appendActionChannelBlock } from './actionChannel'
+import { replaceLastOccurrence } from './feedbackText'
 import {
   CLEANUP_CHAR_THRESHOLD,
   CLEANUP_TIMEOUT_MS,
   acceptCleanupResult,
+  pendingCharCount,
   shouldStartCleanup,
   type CleanupTrigger,
+  type PendingSpeechSnapshot,
 } from './speechCleanupPolicy'
 import type { FeedbackEditorHandle, SavePhase } from './types'
 
@@ -44,7 +42,8 @@ export type FeedbackDraftSession = {
   acknowledgeSave(savedMarkdown: string, savedRevision: number): void
   appendSpeech(text: string): void
   insertMarkdownBlock(markdown: string): void
-  insertActionQuote(index: number, instruction: string): void
+  currentActionIndex(): number | null
+  toggleActionChannel(index: number): void
   prepareNonSpeechInsert(): void
   isCleaning(): boolean
   bindEditor(handle: FeedbackEditorHandle | null): void
@@ -76,6 +75,7 @@ export function createFeedbackDraftSession(input: {
   let saveTimer: ReturnType<typeof setTimeout> | undefined
   let activeSave: Promise<boolean> | null = null
   let pendingPieces: string[] = []
+  let currentActionIndex: number | null = null
   let cleaning = false
   let inflightCleanup: Promise<void> | null = null
   const schedule = input.cleanup?.schedule ?? ((fn: () => void, ms: number) => setTimeout(fn, ms))
@@ -120,30 +120,34 @@ export function createFeedbackDraftSession(input: {
     notify()
   }
 
-  function writeBlock(markdown: string) {
-    if (disposed) return
-    const block = markdown.trim()
-    if (!block) return
-    if (editorHandle?.insertMarkdownAtCaret?.(block)) return
-    applyUserEdit(appendMarkdownBlock(body, block))
-  }
-
   function cleanupEnabled() {
     return input.cleanup?.enabled() === true
   }
 
+  function pendingSpeechSnapshot(): PendingSpeechSnapshot {
+    const fromEditor = editorHandle?.pendingSpeech?.()
+    if (fromEditor) return fromEditor
+    return {
+      count: pendingPieces.length,
+      chars: pendingCharCount(pendingPieces),
+      texts: pendingPieces,
+    }
+  }
+
   async function startCleanup(trigger: CleanupTrigger): Promise<void> {
+    const pending = pendingSpeechSnapshot()
     if (
       !shouldStartCleanup({
         enabled: cleanupEnabled(),
         busy: cleaning,
-        pendingPieces,
+        pendingCount: pending.count,
+        pendingChars: pending.chars,
         trigger,
       })
     ) {
       return
     }
-    const pieces = pendingPieces
+    const pieces = pending.texts
     pendingPieces = []
     cleaning = true
     notify()
@@ -162,7 +166,9 @@ export function createFeedbackDraftSession(input: {
         if (disposed) return
         const accepted = result === TIMEOUT ? raw : acceptCleanupResult(raw, result)
         const replacedInEditor = editorAtStart?.isSpeechCleaning?.() === true
-        editorAtStart?.finishSpeechCleanup?.(accepted === raw ? null : accepted)
+        // Timeout → null (unlock as plain paragraphs). Otherwise pass the
+        // accepted text so each speech node can be marked cleaned 1:1.
+        editorAtStart?.finishSpeechCleanup?.(result === TIMEOUT ? null : accepted)
         if (!replacedInEditor) {
           applyUserEdit(replaceLastOccurrence(body, raw, accepted))
         }
@@ -173,17 +179,20 @@ export function createFeedbackDraftSession(input: {
         inflightCleanup = null
         notify()
         if (!disposed) {
+          const leftover = pendingSpeechSnapshot()
           if (
             shouldStartCleanup({
               enabled: cleanupEnabled(),
               busy: false,
-              pendingPieces,
+              pendingCount: leftover.count,
+              pendingChars: leftover.chars,
               trigger: 'stable-count',
             }) ||
             shouldStartCleanup({
               enabled: cleanupEnabled(),
               busy: false,
-              pendingPieces,
+              pendingCount: leftover.count,
+              pendingChars: leftover.chars,
               trigger: 'char-count',
             })
           ) {
@@ -206,16 +215,20 @@ export function createFeedbackDraftSession(input: {
     if (cleanupEnabled()) {
       pendingPieces = [...pendingPieces, transcript]
       if (editorHandle) editorHandle.appendTranscript(transcript, { pending: true })
-      else applyUserEdit(appendMarkdownBlock(body, transcript))
+      else applyUserEdit(appendActionChannelBlock(body, transcript, currentActionIndex))
+      const pending = pendingSpeechSnapshot()
+      const trigger =
+        pending.chars >= CLEANUP_CHAR_THRESHOLD ? 'char-count' : 'stable-count'
       if (
         shouldStartCleanup({
           enabled: true,
           busy: cleaning,
-          pendingPieces,
-          trigger: pendingPieces.join('').length >= CLEANUP_CHAR_THRESHOLD ? 'char-count' : 'stable-count',
+          pendingCount: pending.count,
+          pendingChars: pending.chars,
+          trigger,
         })
       ) {
-        void startCleanup(pendingPieces.join('').length >= CLEANUP_CHAR_THRESHOLD ? 'char-count' : 'stable-count')
+        void startCleanup(trigger)
       }
       return
     }
@@ -223,12 +236,20 @@ export function createFeedbackDraftSession(input: {
       editorHandle.appendTranscript(transcript)
       return
     }
-    writeBlock(transcript)
+    applyUserEdit(appendActionChannelBlock(body, transcript, currentActionIndex))
+  }
+
+  function toggleActionChannel(index: number) {
+    if (disposed) return
+    currentActionIndex = currentActionIndex === index ? null : index
+    editorHandle?.setActionChannel?.(currentActionIndex)
+    notify()
   }
 
   function bindEditor(handle: FeedbackEditorHandle | null) {
     if (disposed) return
     editorHandle = handle
+    editorHandle?.setActionChannel?.(currentActionIndex)
   }
 
   async function settle(): Promise<boolean> {
@@ -302,14 +323,11 @@ export function createFeedbackDraftSession(input: {
     appendSpeech,
     insertMarkdownBlock: (markdown: string) => {
       prepareNonSpeechInsert()
-      writeBlock(markdown)
+      if (editorHandle?.insertMarkdownAtCaret?.(markdown)) return
+      applyUserEdit(appendActionChannelBlock(body, markdown, currentActionIndex))
     },
-    insertActionQuote: (index: number, instruction: string) => {
-      prepareNonSpeechInsert()
-      const lines = actionQuoteLines(index, instruction)
-      if (editorHandle?.insertQuotedBlock?.(lines)) return
-      writeBlock(actionQuoteMarkdown(index, instruction))
-    },
+    currentActionIndex: () => currentActionIndex,
+    toggleActionChannel,
     prepareNonSpeechInsert,
     isCleaning: () => cleaning,
     bindEditor,

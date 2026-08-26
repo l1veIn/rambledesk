@@ -11,18 +11,6 @@ export function appendMarkdownBlock(body: string, block: string): string {
   return current ? `${current}\n\n${block}` : block
 }
 
-/** Visible Action paste: a blockquote of the numbered instruction, never speech. */
-export function actionQuoteLines(index: number, instruction: string): string[] {
-  const trimmed = instruction.trim()
-  return trimmed ? [`Action ${index}`, ...trimmed.split(/\r?\n/)] : [`Action ${index}`]
-}
-
-export function actionQuoteMarkdown(index: number, instruction: string): string {
-  return actionQuoteLines(index, instruction)
-    .map((line) => `> ${line}`)
-    .join('\n')
-}
-
 export function replaceLastOccurrence(body: string, raw: string, next: string): string {
   if (!raw) return appendMarkdownBlock(body, next)
   const index = body.lastIndexOf(raw)
