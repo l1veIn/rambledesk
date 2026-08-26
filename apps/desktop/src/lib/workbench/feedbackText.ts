@@ -23,6 +23,13 @@ export function actionQuoteMarkdown(index: number, instruction: string): string 
     .join('\n')
 }
 
+export function replaceLastOccurrence(body: string, raw: string, next: string): string {
+  if (!raw) return appendMarkdownBlock(body, next)
+  const index = body.lastIndexOf(raw)
+  if (index < 0) return appendMarkdownBlock(body, next)
+  return `${body.slice(0, index)}${next}${body.slice(index + raw.length)}`
+}
+
 /**
  * Extract the Operator Feedback section from a cooked feedback document.
  * Returns the input unchanged unless it is a cooked document that starts

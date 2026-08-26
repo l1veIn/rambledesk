@@ -348,16 +348,26 @@
     return inserted
   }
 
+  export function insertMarkdownAtCaret(markdown: string) {
+    const block = markdown.trim()
+    if (!editor || disabled || !block) return false
+    const position = resolveInsertPosition()
+    const inserted = editor.commands.insertContentAt(position, block, { contentType: 'markdown' })
+    if (inserted) insertionPosition = editor.state.selection.from
+    return inserted
+  }
+
   export function appendClipboardCapture(text: string, label: string) {
     const captured = text.trim()
     if (!editor || !captured || disabled) return false
+    const position = resolveInsertPosition()
     const capturedContent = captured.split(/\r?\n/).flatMap((line, index) => {
       const content: Array<Record<string, unknown>> = []
       if (index > 0) content.push({ type: 'hardBreak' })
       if (line) content.push({ type: 'text', text: line })
       return content
     })
-    return editor.commands.insertContentAt(editor.state.doc.content.size, [
+    return editor.commands.insertContentAt(position, [
       {
         type: 'blockquote',
         content: [
@@ -386,7 +396,7 @@
     label: string,
   ) {
     if (!editor || disabled) return false
-    return editor.commands.insertContentAt(editor.state.doc.content.size, [
+    return editor.commands.insertContentAt(resolveInsertPosition(), [
       {
         type: 'blockquote',
         content: [

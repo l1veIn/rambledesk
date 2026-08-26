@@ -6,6 +6,7 @@ import {
   formatTime,
   messageFrom,
   operatorFeedbackBody,
+  replaceLastOccurrence,
 } from './feedbackText'
 
 describe('appendMarkdownBlock', () => {
@@ -28,6 +29,15 @@ describe('actionQuoteMarkdown', () => {
   it('keeps inner line breaks inside the quote', () => {
     expect(actionQuoteMarkdown(1, 'First line\nSecond line')).toBe(
       '> Action 1\n> First line\n> Second line',
+    )
+  })
+})
+
+describe('replaceLastOccurrence', () => {
+  it('replaces the spoken tail in place after a clipboard block', () => {
+    const body = '我试一下复制粘贴啊。\n\n> Clipboard import\n\n> pasted'
+    expect(replaceLastOccurrence(body, '我试一下复制粘贴啊。', '我试一下复制粘贴。')).toBe(
+      '我试一下复制粘贴。\n\n> Clipboard import\n\n> pasted',
     )
   })
 })

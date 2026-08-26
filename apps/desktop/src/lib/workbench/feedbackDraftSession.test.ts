@@ -187,6 +187,24 @@ describe('Light cleanup on a draft session', () => {
     expect(session.markdown()).toBe('Hello\n\none\n\ntwo\n\nthree')
   })
 
+  it('does not duplicate speech when a clipboard block is inserted before cleanup finishes', async () => {
+    const clean = vi.fn(async (text: string) => text.replace(/啊。?$/, '。'))
+    const session = createFeedbackDraftSession({
+      requestId: 'request-a',
+      generation: 1,
+      initialMarkdown: '',
+      initialRevision: 1,
+      save: memorySave(),
+      cleanup: { enabled: () => true, clean, silenceMs: 60_000, timeoutMs: 5_000 },
+    })
+    session.appendSpeech('我试一下复制粘贴啊。')
+    session.insertMarkdownBlock('> Clipboard import')
+    await session.settle()
+    const spoken = session.markdown().match(/复制粘贴/g) ?? []
+    expect(spoken).toHaveLength(1)
+    expect(session.markdown()).toContain('Clipboard import')
+  })
+
   it('does not apply a cleanup result after dispose', async () => {
     let finish = (_text: string) => {}
     const session = createFeedbackDraftSession({

@@ -1,4 +1,9 @@
-import { actionQuoteLines, actionQuoteMarkdown, appendMarkdownBlock } from './feedbackText'
+import {
+  actionQuoteLines,
+  actionQuoteMarkdown,
+  appendMarkdownBlock,
+  replaceLastOccurrence,
+} from './feedbackText'
 import {
   CLEANUP_CHAR_THRESHOLD,
   CLEANUP_TIMEOUT_MS,
@@ -119,9 +124,8 @@ export function createFeedbackDraftSession(input: {
     if (disposed) return
     const block = markdown.trim()
     if (!block) return
-    const next = appendMarkdownBlock(body, block)
-    if (editorHandle) editorHandle.applyExternalMarkdown(next)
-    applyUserEdit(next)
+    if (editorHandle?.insertMarkdownAtCaret?.(block)) return
+    applyUserEdit(appendMarkdownBlock(body, block))
   }
 
   function cleanupEnabled() {
@@ -143,8 +147,9 @@ export function createFeedbackDraftSession(input: {
     pendingPieces = []
     cleaning = true
     notify()
-    const raw = editorHandle?.beginSpeechCleanup?.() || pieces.join('\n\n')
-    editorHandle?.moveCursorAfterCleaningSpeech?.()
+    const editorAtStart = editorHandle
+    const raw = editorAtStart?.beginSpeechCleanup?.() || pieces.join('\n\n')
+    editorAtStart?.moveCursorAfterCleaningSpeech?.()
     inflightCleanup = (async () => {
       try {
         const work = input.cleanup!.clean(raw)
@@ -155,21 +160,14 @@ export function createFeedbackDraftSession(input: {
           }),
         ])
         if (disposed) return
-        if (result === TIMEOUT) {
-          editorHandle?.finishSpeechCleanup?.(null)
-        } else {
-          const accepted = acceptCleanupResult(raw, result)
-          editorHandle?.finishSpeechCleanup?.(accepted === raw ? null : accepted)
-          if (!editorHandle) {
-            applyUserEdit(
-              body.endsWith(raw)
-                ? `${body.slice(0, body.length - raw.length)}${accepted}`
-                : appendMarkdownBlock(body, accepted),
-            )
-          }
+        const accepted = result === TIMEOUT ? raw : acceptCleanupResult(raw, result)
+        const replacedInEditor = editorAtStart?.isSpeechCleaning?.() === true
+        editorAtStart?.finishSpeechCleanup?.(accepted === raw ? null : accepted)
+        if (!replacedInEditor) {
+          applyUserEdit(replaceLastOccurrence(body, raw, accepted))
         }
       } catch {
-        if (!disposed) editorHandle?.finishSpeechCleanup?.(null)
+        if (!disposed) editorAtStart?.finishSpeechCleanup?.(null)
       } finally {
         cleaning = false
         inflightCleanup = null

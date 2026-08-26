@@ -32,6 +32,7 @@ export type FeedbackEditorHandle = {
   removeAttachmentReference(attachmentId: string): void
   applyExternalMarkdown(markdown: string): boolean
   insertQuotedBlock?(lines: string[]): boolean
+  insertMarkdownAtCaret?(markdown: string): boolean
   beginSpeechCleanup?: () => string
   finishSpeechCleanup?: (cleaned: string | null) => void
   isSpeechCleaning?: () => boolean
