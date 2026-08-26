@@ -321,10 +321,6 @@
     requestId: session.requestId,
     initialMarkdown: session.initialMarkdown,
   }))
-  $: foreignRambleTitle =
-    rambleEngaged && workspace && workspace.request.request_id !== rambleRequestId
-      ? rambleRequestTitle
-      : ''
   $: rambleOwnerTerminal =
     rambleEngaged &&
     workspace?.request.request_id === rambleRequestId &&
@@ -1140,9 +1136,6 @@
           onDraftChangeFor={(requestId, markdown) => draftSessions.get(requestId)?.applyUserEdit(markdown)}
           onEditorReady={(requestId, editor) => draftSessions.get(requestId)?.bindEditor(editor)}
           onPrepareNonSpeechInsert={(requestId) => draftSessions.get(requestId)?.prepareNonSpeechInsert()}
-          {foreignRambleTitle}
-          onReturnToRamble={() => void returnToRamble()}
-          onHandoffRamble={() => void handoffRamble()}
           onInsertAction={(index, instruction) => {
             draftSessions.visible()?.insertActionQuote(index, instruction)
           }}

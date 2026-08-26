@@ -68,9 +68,6 @@
   export let onDraftChangeFor: (requestId: string, markdown: string) => void = () => {}
   export let onEditorReady: (requestId: string, editor: FeedbackEditorHandle | null) => void = () => {}
   export let onPrepareNonSpeechInsert: (requestId: string) => void = () => {}
-  export let foreignRambleTitle = ''
-  export let onReturnToRamble: () => void = () => {}
-  export let onHandoffRamble: () => void = () => {}
   export let onInsertAction: (index: number, instruction: string) => void = () => {}
   export let onCookPreview: () => void = () => {}
   export let onRestoreOriginal: () => void = () => {}
@@ -300,9 +297,6 @@
         {cancelling}
         {approving}
         {canOpenResumePrompt}
-        {foreignRambleTitle}
-        {onReturnToRamble}
-        {onHandoffRamble}
         {onToggleRamble}
         {onExitRamble}
         {onOpenVoiceSettings}

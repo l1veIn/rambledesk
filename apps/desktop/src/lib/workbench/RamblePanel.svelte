@@ -1,10 +1,12 @@
 <script lang="ts">
-  import { Mic, Pause, Play, X } from '@lucide/svelte'
+  import { LoaderCircle, Mic, X } from '@lucide/svelte'
 
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
+  import RecordLed from './RecordLed.svelte'
+  import { rambleRecordPresentation } from './rambleRecordButton'
   import type { RamblePhase } from './types'
 
   export let rambleEngaged = false
@@ -21,23 +23,21 @@
   export let modelMissing = false
   export let onToggle: () => void = () => {}
   export let onExit: () => void = () => {}
-  export let onReturn: () => void = () => {}
-  export let onHandoff: () => void = () => {}
   export let onOpenVoiceSettings: () => void = () => {}
-  export let foreignRambleTitle = ''
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
   }
 
+  $: record = rambleRecordPresentation(ramblePhase, rambleStartedOnce)
   $: primaryLabel =
-    ramblePhase === 'starting'
+    record.label === 'starting'
       ? tr('Starting…')
-      : ramblePhase === 'stopping'
+      : record.label === 'stopping'
         ? tr('Pausing…')
-        : rambleActive
-          ? tr('Pause recording')
-          : rambleStartedOnce
+        : record.label === 'recording'
+          ? tr('Recording')
+          : record.label === 'resume'
             ? tr('Resume recording')
             : tr('Start recording')
 </script>
@@ -55,25 +55,21 @@
   </header>
 
   <div class="flex gap-2">
-    {#if foreignRambleTitle}
-      <Button class="flex-1" variant="secondary" onclick={onReturn}>
-        {tr('Return to Ramble')}
-      </Button>
-      <Button variant="outline" onclick={onHandoff} disabled={rambleBusy || readOnly}>
-        {tr('Start here')}
-      </Button>
-    {:else}
     <Button
       class="flex-1"
-      variant={rambleActive ? 'secondary' : 'default'}
+      variant={record.variant}
       disabled={rambleBusy || readOnly}
       onclick={onToggle}
+      aria-pressed={record.pressed}
       title={tr('Global shortcut Ctrl + Shift + R')}
     >
-      {#if rambleActive}
-        <Pause data-icon="inline-start" />
+      {#if record.icon === 'spinner'}
+        <LoaderCircle class="animate-spin" data-icon="inline-start" />
       {:else}
-        <Play data-icon="inline-start" />
+        {#if record.icon === 'recording'}
+          <RecordLed />
+        {/if}
+        <Mic data-icon="inline-start" />
       {/if}
       {primaryLabel}
     </Button>
@@ -89,24 +85,19 @@
         <X />
       </Button>
     {/if}
-    {/if}
   </div>
 
   <div class="mt-3 text-[10px] leading-4 text-muted-foreground">
     <div class="flex items-center gap-1.5">
-      <span class={['size-1.5 rounded-full', rambleActive ? 'bg-destructive' : 'bg-muted-foreground/40']}></span>
+      <span
+        class={rambleActive ? 'record-led' : 'inline-block size-1.5 shrink-0 rounded-full bg-muted-foreground/40'}
+      ></span>
       <span class="min-w-0 flex-1 truncate">{voiceDevice || tr('Default microphone')}</span>
       {#if voiceChunkIndex > 0}
         <span class="tabular-nums">{tr('{count} segments', { count: voiceChunkIndex })}</span>
       {/if}
     </div>
-    <p class="m-0 mt-1">
-      {foreignRambleTitle
-        ? tr('Ramble is in progress on {title}. Return to continue, or stop it and start here.', {
-            title: foreignRambleTitle,
-          })
-        : message || tr('Audio is transcribed locally into the document.')}
-    </p>
+    <p class="m-0 mt-1">{message || tr('Audio is transcribed locally into the document.')}</p>
     {#if modelMissing}
       <Button variant="outline" size="sm" class="mt-2 w-full" onclick={onOpenVoiceSettings}>
         {tr('Download speech model')}

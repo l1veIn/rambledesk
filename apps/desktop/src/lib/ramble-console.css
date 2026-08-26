@@ -119,6 +119,37 @@
   background: color-mix(in srgb, var(--destructive) 10%, var(--card));
 }
 
+.record-dot {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 8px;
+  height: 8px;
+  border-radius: 99px;
+  background: var(--destructive);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--destructive) 75%, transparent);
+}
+
+@keyframes record-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.28;
+  }
+}
+
+.record-blink {
+  animation: record-blink 1s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .record-blink {
+    animation: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .floating-tools button,
   .voice-level {

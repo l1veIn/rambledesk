@@ -346,12 +346,8 @@ const chinese: Record<string, string> = {
   'Could not import clipboard: {error}': '无法导入剪贴板：{error}',
   'Loading the local model and connecting the microphone…': '正在加载本地模型并连接麦克风…',
   'Connecting the microphone…': '正在连接麦克风…',
-  'Return to Ramble': '返回 Ramble',
-  'Start here': '在这里开始',
   'Insert Action {index}': '插入 Action {index}',
   'Insert Action {index} into the draft': '把 Action {index} 插入正文',
-  'Ramble is in progress on {title}. Return to continue, or stop it and start here.':
-    '正在 {title} 上进行 Ramble。返回继续，或停止后在这里开始。',
   'Ramble in progress': 'Ramble 进行中',
   'Stop the Ramble on {title} and start on this request? In-progress cleanup will be saved first.':
     '停止 {title} 上的 Ramble 并在当前请求开始？会先保存正在进行的整理。',
