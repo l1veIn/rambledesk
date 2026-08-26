@@ -1,6 +1,7 @@
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core'
   import { emitTo, listen } from '@tauri-apps/api/event'
+  import { get } from 'svelte/store'
   import { onMount, tick } from 'svelte'
 
   import {
@@ -11,8 +12,10 @@
   import type { ActiveAction, DraftOperation } from '../draftOperations'
   import type { FeedbackWorkspaceView } from '../feedback'
   import { t } from '../i18n'
+  import { playRecordArmSound } from '../notifications'
   import {
     locale,
+    notificationVolume,
     speechHotwords,
     speechInputDevice,
     speechModelId,
@@ -316,6 +319,7 @@
     voiceMessage = t($locale, 'Connecting the microphone…')
     voiceLevel = 0
     voiceModelMissing = false
+    void playRecordArmSound(get(notificationVolume))
     try {
       const session = await invoke<VoiceRambleSessionView>('start_voice_ramble', {
         input: {

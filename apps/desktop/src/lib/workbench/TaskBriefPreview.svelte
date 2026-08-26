@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Copy, FileImage, FileText, Paperclip, Pause, Play } from '@lucide/svelte'
+  import { Copy, FileImage, FileText, LoaderCircle, Mic, Paperclip } from '@lucide/svelte'
 
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
@@ -18,6 +18,8 @@
   import { openExternalUrl } from '$lib/openExternalUrl'
   import RequestAttachmentPreview from './RequestAttachmentPreview.svelte'
   import { buildTaskBriefText } from './taskBriefCopy'
+  import RecordLed from './RecordLed.svelte'
+  import { rambleRecordPresentation } from './rambleRecordButton'
   import type { HostProfile, RamblePhase } from './types'
 
   export let open = false
@@ -40,7 +42,6 @@
   let attachmentPreviewOpen = false
   let attachmentPreview: RequestAttachmentView | null = null
 
-  $: rambleActive = ramblePhase === 'active'
   $: readOnly =
     workspace === null ||
     workspace.request.status === 'completed' ||
@@ -65,14 +66,15 @@
     }
   }
 
+  $: record = rambleRecordPresentation(ramblePhase, rambleStartedOnce)
   $: rambleLabel =
-    ramblePhase === 'starting'
+    record.label === 'starting'
       ? tr('Starting…')
-      : ramblePhase === 'stopping'
+      : record.label === 'stopping'
         ? tr('Pausing…')
-        : rambleActive
-          ? tr('Pause Ramble')
-          : rambleStartedOnce
+        : record.label === 'recording'
+          ? tr('Recording')
+          : record.label === 'resume'
             ? tr('Resume Ramble')
             : tr('Start Ramble')
 
@@ -255,14 +257,18 @@
     {#if workspace && !readOnly}
       <div class="flex shrink-0 items-center justify-end gap-2 border-t bg-background px-6 py-3">
         <Button
-          variant={rambleActive ? 'secondary' : 'default'}
+          variant={record.variant}
           disabled={rambleBusy}
           onclick={onToggleRamble}
+          aria-pressed={record.pressed}
         >
-          {#if rambleActive}
-            <Pause data-icon="inline-start" />
+          {#if record.icon === 'spinner'}
+            <LoaderCircle class="animate-spin" data-icon="inline-start" />
           {:else}
-            <Play data-icon="inline-start" />
+            {#if record.icon === 'recording'}
+              <RecordLed />
+            {/if}
+            <Mic data-icon="inline-start" />
           {/if}
           {rambleLabel}
         </Button>
