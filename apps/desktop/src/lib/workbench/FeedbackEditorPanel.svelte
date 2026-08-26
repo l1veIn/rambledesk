@@ -13,11 +13,12 @@
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
   import RichFeedbackEditor from '$lib/RichFeedbackEditor.svelte'
+  import SessionDraftEditor from './SessionDraftEditor.svelte'
   import type { AttachmentView, FeedbackWorkspaceView } from '$lib/feedback'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
   import { hasCookedPublishedVariant } from '$lib/publishedFeedback'
-  import type { SavePhase } from './types'
+  import type { FeedbackEditorHandle, SavePhase } from './types'
 
   export let workspace: FeedbackWorkspaceView
   export let draftBody = ''
@@ -37,8 +38,13 @@
   export let onCookPreview: () => void = () => {}
   export let onRestoreOriginal: () => void = () => {}
   export let onOpenAttachment: (attachmentId: string) => void = () => {}
+  export let draftEditors: Array<{ requestId: string; initialMarkdown: string }> = []
+  export let visibleRequestId = ''
+  export let onDraftChangeFor: (requestId: string, markdown: string) => void = () => {}
+  export let onEditorReady: (requestId: string, editor: FeedbackEditorHandle | null) => void = () => {}
 
   let richEditor: RichFeedbackEditor
+  const sessionEditors: Record<string, RichFeedbackEditor> = {}
   let publishedView: 'cooked' | 'uncooked' = 'cooked'
 
   $: readOnly =
@@ -63,28 +69,38 @@
     return `${tr('Saved')} · r${savedRevision}`
   }
 
+  function visibleEditor() {
+    return sessionEditors[visibleRequestId] ?? richEditor
+  }
+
+  function captureSessionEditor(requestId: string, editor: FeedbackEditorHandle | null) {
+    if (editor) sessionEditors[requestId] = editor as RichFeedbackEditor
+    else delete sessionEditors[requestId]
+    onEditorReady(requestId, editor)
+  }
+
   export function insertAttachments(attachments: AttachmentView[]) {
-    return richEditor?.insertAttachments(attachments) ?? false
+    return visibleEditor()?.insertAttachments(attachments) ?? false
   }
 
   export function applyExternalMarkdown(markdown: string): boolean {
-    return richEditor?.applyExternalMarkdown(markdown) ?? false
+    return visibleEditor()?.applyExternalMarkdown(markdown) ?? false
   }
 
   export function appendTranscript(text: string) {
-    richEditor?.appendTranscript(text)
+    visibleEditor()?.appendTranscript(text)
   }
 
   export function appendClipboardCapture(text: string, label: string) {
-    return richEditor?.appendClipboardCapture(text, label) ?? false
+    return visibleEditor()?.appendClipboardCapture(text, label) ?? false
   }
 
   export function appendCapturedAttachment(attachment: AttachmentView, label: string) {
-    return richEditor?.appendCapturedAttachment(attachment, label) ?? false
+    return visibleEditor()?.appendCapturedAttachment(attachment, label) ?? false
   }
 
   export function removeAttachmentReference(attachmentId: string) {
-    richEditor?.removeAttachmentReference(attachmentId)
+    visibleEditor()?.removeAttachmentReference(attachmentId)
   }
 </script>
 
@@ -161,16 +177,40 @@
   {/if}
 
   <div class="relative flex min-h-0 flex-1">
-    <RichFeedbackEditor
-      bind:this={richEditor}
-      markdown={displayedMarkdown}
-      previews={attachmentPreviews}
-      disabled={editingDisabled}
-      {onOpenAttachment}
-      onChange={(markdown) => {
-        if (!editingDisabled) onChange(markdown)
-      }}
-    />
+    {#if hasCookedVariant || draftEditors.length === 0}
+      <RichFeedbackEditor
+        bind:this={richEditor}
+        markdown={displayedMarkdown}
+        previews={attachmentPreviews}
+        disabled={editingDisabled}
+        {onOpenAttachment}
+        onChange={(markdown) => {
+          if (!editingDisabled) onChange(markdown)
+        }}
+      />
+    {:else}
+      {#each draftEditors as session (session.requestId)}
+        <div
+          class={session.requestId === visibleRequestId
+            ? 'relative flex min-h-0 flex-1'
+            : 'hidden'}
+        >
+          <SessionDraftEditor
+            requestId={session.requestId}
+            markdown={session.initialMarkdown}
+            previews={attachmentPreviews}
+            disabled={session.requestId === visibleRequestId ? editingDisabled : false}
+            {onOpenAttachment}
+            onReady={captureSessionEditor}
+            onChange={(markdown) => {
+              if (session.requestId === visibleRequestId && editingDisabled) return
+              onDraftChangeFor(session.requestId, markdown)
+              if (session.requestId === visibleRequestId) onChange(markdown)
+            }}
+          />
+        </div>
+      {/each}
+    {/if}
 
     {#if cooking}
       <div

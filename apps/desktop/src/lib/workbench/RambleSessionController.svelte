@@ -509,12 +509,9 @@
       case 'stable': {
         const transcript = stableTranscript(event)
         if (transcript && !interactionLocked) {
-          if (workspace?.request.request_id === voiceRequestId) editor?.appendTranscript(transcript)
-          else {
-            void onAppendRambleMarkdown(voiceRequestId, transcript).catch(
-              (cause) => onPageError(t($locale, 'Failed to write Ramble content: {error}', { error: messageFrom(cause) })),
-            )
-          }
+          void onAppendRambleMarkdown(voiceRequestId, transcript).catch(
+            (cause) => onPageError(t($locale, 'Failed to write Ramble content: {error}', { error: messageFrom(cause) })),
+          )
         }
         voicePartial = ''
         voiceChunkIndex = event.chunk_index + 1

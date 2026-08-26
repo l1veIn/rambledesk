@@ -346,6 +346,13 @@ const chinese: Record<string, string> = {
   'Could not import clipboard: {error}': '无法导入剪贴板：{error}',
   'Loading the local model and connecting the microphone…': '正在加载本地模型并连接麦克风…',
   'Connecting the microphone…': '正在连接麦克风…',
+  'Return to Ramble': '返回 Ramble',
+  'Start here': '在这里开始',
+  'Ramble is in progress on {title}. Return to continue, or stop it and start here.':
+    '正在 {title} 上进行 Ramble。返回继续，或停止后在这里开始。',
+  'Ramble in progress': 'Ramble 进行中',
+  'Stop the Ramble on {title} and start on this request? In-progress cleanup will be saved first.':
+    '停止 {title} 上的 Ramble 并在当前请求开始？会先保存正在进行的整理。',
   'Sherpa true streaming recognition · Writes after a natural pause': 'Sherpa 真流式识别 · 自然停顿后写入正文',
   'Finishing the final transcription segment…': '正在完成最后一段识别…',
   'Recording stopped': '录音已停止',

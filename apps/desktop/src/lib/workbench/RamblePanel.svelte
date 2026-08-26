@@ -21,7 +21,10 @@
   export let modelMissing = false
   export let onToggle: () => void = () => {}
   export let onExit: () => void = () => {}
+  export let onReturn: () => void = () => {}
+  export let onHandoff: () => void = () => {}
   export let onOpenVoiceSettings: () => void = () => {}
+  export let foreignRambleTitle = ''
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
@@ -52,6 +55,14 @@
   </header>
 
   <div class="flex gap-2">
+    {#if foreignRambleTitle}
+      <Button class="flex-1" variant="secondary" onclick={onReturn}>
+        {tr('Return to Ramble')}
+      </Button>
+      <Button variant="outline" onclick={onHandoff} disabled={rambleBusy || readOnly}>
+        {tr('Start here')}
+      </Button>
+    {:else}
     <Button
       class="flex-1"
       variant={rambleActive ? 'secondary' : 'default'}
@@ -78,6 +89,7 @@
         <X />
       </Button>
     {/if}
+    {/if}
   </div>
 
   <div class="mt-3 text-[10px] leading-4 text-muted-foreground">
@@ -88,7 +100,13 @@
         <span class="tabular-nums">{tr('{count} segments', { count: voiceChunkIndex })}</span>
       {/if}
     </div>
-    <p class="m-0 mt-1">{message || tr('Audio is transcribed locally into the document.')}</p>
+    <p class="m-0 mt-1">
+      {foreignRambleTitle
+        ? tr('Ramble is in progress on {title}. Return to continue, or stop it and start here.', {
+            title: foreignRambleTitle,
+          })
+        : message || tr('Audio is transcribed locally into the document.')}
+    </p>
     {#if modelMissing}
       <Button variant="outline" size="sm" class="mt-2 w-full" onclick={onOpenVoiceSettings}>
         {tr('Download speech model')}

@@ -36,6 +36,9 @@
   export let canOpenResumePrompt = false
   export let onToggleRamble: () => void = () => {}
   export let onExitRamble: () => void = () => {}
+  export let foreignRambleTitle = ''
+  export let onReturnToRamble: () => void = () => {}
+  export let onHandoffRamble: () => void = () => {}
   export let onOpenVoiceSettings: () => void = () => {}
   export let onStartScreenCapture: () => void = () => {}
   export let onImportClipboard: () => void = () => {}
@@ -73,8 +76,11 @@
         {voiceLevel}
         modelMissing={voiceModelMissing}
         message={rambleMessage}
+        {foreignRambleTitle}
         onToggle={onToggleRamble}
         onExit={onExitRamble}
+        onReturn={onReturnToRamble}
+        onHandoff={onHandoffRamble}
         onOpenVoiceSettings={onOpenVoiceSettings}
       />
 

@@ -63,6 +63,13 @@
   export let formatTime: (value: string | null | undefined) => string
   export let onReload: () => void = () => {}
   export let onDraftChange: (markdown: string) => void = () => {}
+  export let draftEditors: Array<{ requestId: string; initialMarkdown: string }> = []
+  export let visibleRequestId = ''
+  export let onDraftChangeFor: (requestId: string, markdown: string) => void = () => {}
+  export let onEditorReady: (requestId: string, editor: FeedbackEditorHandle | null) => void = () => {}
+  export let foreignRambleTitle = ''
+  export let onReturnToRamble: () => void = () => {}
+  export let onHandoffRamble: () => void = () => {}
   export let onCookPreview: () => void = () => {}
   export let onRestoreOriginal: () => void = () => {}
   export let onToggleRamble: () => void = () => {}
@@ -247,6 +254,10 @@
               locked={interactionLocked}
               cookedMarkdown={publishedFeedback?.markdown ?? ''}
               uncookedMarkdown={publishedFeedback?.uncooked_markdown ?? draftBody}
+              {draftEditors}
+              {visibleRequestId}
+              {onDraftChangeFor}
+              {onEditorReady}
               onChange={onDraftChange}
               onCookPreview={onCookPreview}
               onRestoreOriginal={onRestoreOriginal}
@@ -282,6 +293,9 @@
         {cancelling}
         {approving}
         {canOpenResumePrompt}
+        {foreignRambleTitle}
+        {onReturnToRamble}
+        {onHandoffRamble}
         {onToggleRamble}
         {onExitRamble}
         {onOpenVoiceSettings}
