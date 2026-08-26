@@ -7,6 +7,7 @@ import { Markdown } from '@tiptap/markdown'
 import StarterKit from '@tiptap/starter-kit'
 
 import { attachmentIdFromUrl, attachmentMarkdownUrl } from './attachmentMarkdown'
+import { PendingSpeech } from './pendingSpeech'
 
 const AttachmentImage = Image.extend({
   addAttributes() {
@@ -160,6 +161,7 @@ export function feedbackEditorExtensions(): AnyExtension[] {
     TaskItem.configure({ nested: true }),
     AttachmentImage,
     AttachmentFile,
+    PendingSpeech,
     Markdown,
   ]
 }

@@ -3,6 +3,7 @@ import { MarkdownManager } from '@tiptap/markdown'
 import type { JSONContent } from '@tiptap/core'
 
 import { feedbackEditorExtensions } from './feedbackEditorExtensions'
+import { PENDING_SPEECH_NODE } from './pendingSpeech'
 
 function markdown() {
   return new MarkdownManager({ extensions: feedbackEditorExtensions() })
@@ -108,5 +109,23 @@ describe('feedback editor attachment markdown', () => {
       attachmentId: 'abc-123',
       fileName: 'notes.pdf',
     })
+  })
+})
+
+describe('pending speech markdown', () => {
+  it('serializes pending speech as an ordinary paragraph', () => {
+    const serialized = markdown().serialize({
+      type: 'doc',
+      content: [
+        {
+          type: PENDING_SPEECH_NODE,
+          attrs: { status: 'pending' },
+          content: [{ type: 'text', text: '啊那个按钮太小了' }],
+        },
+      ],
+    })
+    expect(serialized).toContain('啊那个按钮太小了')
+    expect(serialized).not.toContain('pendingSpeech')
+    expect(serialized).not.toContain('data-speech-status')
   })
 })

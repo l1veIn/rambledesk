@@ -26,11 +26,15 @@ export type HostProfile = {
 
 export type FeedbackEditorHandle = {
   insertAttachments(attachments: AttachmentView[]): boolean
-  appendTranscript(text: string): void
+  appendTranscript(text: string, options?: { pending?: boolean }): void
   appendClipboardCapture(text: string, label: string): boolean
   appendCapturedAttachment(attachment: AttachmentView, label: string): boolean
   removeAttachmentReference(attachmentId: string): void
   applyExternalMarkdown(markdown: string): boolean
+  beginSpeechCleanup?: () => string
+  finishSpeechCleanup?: (cleaned: string | null) => void
+  isSpeechCleaning?: () => boolean
+  moveCursorAfterCleaningSpeech?: () => void
 }
 
 export type RambleSessionControllerHandle = {

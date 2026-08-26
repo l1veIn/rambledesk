@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Editor } from '@tiptap/core'
+  import { Fragment } from '@tiptap/pm/model'
   import {
     Bold,
     Heading2,
@@ -21,6 +22,7 @@
     isImageMediaType,
   } from './attachmentMarkdown'
   import { feedbackEditorExtensions } from './feedbackEditorExtensions'
+  import { PENDING_SPEECH_NODE } from './pendingSpeech'
 
   export let markdown = ''
   export let previews: Record<string, string> = {}
@@ -33,6 +35,7 @@
   let applyingExternalChange = false
   let editorMarkdown = ''
   let insertionPosition = 0
+  let historyLocked = false
   let openAttachmentHandler = (_attachmentId: string) => {}
   $: openAttachmentHandler = onOpenAttachment
 
@@ -48,6 +51,14 @@
           class: 'feedback-prose',
           'aria-label': t($locale, 'Markdown rich-text feedback body'),
           'data-placeholder': t($locale, 'Record what you saw, what felt smooth, and where you paused.'),
+        },
+        handleKeyDown: (_view, event) => {
+          if (!historyLocked) return false
+          if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
+            event.preventDefault()
+            return true
+          }
+          return false
         },
         handleClick: (view, pos, event) => {
           const target = event.target as HTMLElement | null
@@ -67,6 +78,7 @@
         hydrateAttachmentImages()
       },
       onUpdate: ({ editor: updatedEditor }) => {
+        historyLocked = editorHasCleaningSpeech(updatedEditor)
         if (applyingExternalChange) return
         const nextMarkdown = updatedEditor.getMarkdown()
         editorMarkdown = nextMarkdown
@@ -201,13 +213,90 @@
     return inserted
   }
 
-  export function appendTranscript(text: string) {
+  function editorHasCleaningSpeech(target = editor) {
+    if (!target) return false
+    let cleaning = false
+    target.state.doc.descendants((node) => {
+      if (node.type.name === PENDING_SPEECH_NODE && node.attrs.status === 'cleaning') {
+        cleaning = true
+      }
+    })
+    return cleaning
+  }
+
+  export function appendTranscript(text: string, options?: { pending?: boolean }) {
     const transcript = text.trim()
     if (!editor || !transcript || disabled) return
     editor.commands.insertContentAt(editor.state.doc.content.size, {
-      type: 'paragraph',
+      type: options?.pending ? PENDING_SPEECH_NODE : 'paragraph',
+      attrs: options?.pending ? { status: 'pending' } : undefined,
       content: [{ type: 'text', text: transcript }],
     })
+  }
+
+  export function isSpeechCleaning() {
+    return editorHasCleaningSpeech()
+  }
+
+  export function beginSpeechCleanup(): string {
+    if (!editor) return ''
+    const ranges: Array<{ from: number; text: string }> = []
+    editor.state.doc.descendants((node, position) => {
+      if (node.type.name === PENDING_SPEECH_NODE && node.attrs.status === 'pending') {
+        ranges.push({ from: position, text: node.textContent })
+      }
+    })
+    if (ranges.length === 0) return ''
+    let transaction = editor.state.tr
+    for (const range of [...ranges].reverse()) {
+      const node = transaction.doc.nodeAt(range.from)
+      if (!node) continue
+      transaction = transaction.setNodeMarkup(range.from, undefined, {
+        ...node.attrs,
+        status: 'cleaning',
+      })
+    }
+    transaction.setMeta('speechCleanup', true)
+    editor.view.dispatch(transaction)
+    historyLocked = true
+    return ranges.map((range) => range.text).join('\n\n')
+  }
+
+  export function finishSpeechCleanup(cleaned: string | null): void {
+    if (!editor) return
+    const ranges: Array<{ from: number; to: number; text: string }> = []
+    editor.state.doc.descendants((node, position) => {
+      if (node.type.name === PENDING_SPEECH_NODE && node.attrs.status === 'cleaning') {
+        ranges.push({ from: position, to: position + node.nodeSize, text: node.textContent })
+      }
+    })
+    historyLocked = false
+    if (ranges.length === 0) return
+    const from = ranges[0].from
+    const to = ranges[ranges.length - 1].to
+    const replacement = (cleaned?.trim() || ranges.map((range) => range.text).join('\n\n'))
+      .split(/\n{2,}/)
+      .map((paragraph) =>
+        editor!.schema.nodes.paragraph.create(
+          null,
+          paragraph ? editor!.schema.text(paragraph) : undefined,
+        ),
+      )
+    const transaction = editor.state.tr
+      .replaceWith(from, to, Fragment.from(replacement))
+      .setMeta('speechCleanup', true)
+    editor.view.dispatch(transaction)
+  }
+
+  export function moveCursorAfterCleaningSpeech() {
+    if (!editor) return
+    let end = 0
+    editor.state.doc.descendants((node, position) => {
+      if (node.type.name === PENDING_SPEECH_NODE && node.attrs.status === 'cleaning') {
+        end = position + node.nodeSize
+      }
+    })
+    if (end > 0 && insertionPosition < end) insertionPosition = end
   }
 
   export function appendClipboardCapture(text: string, label: string) {
@@ -364,7 +453,7 @@
       size="icon-sm"
       aria-label={t($locale, 'Undo')}
       title={t($locale, 'Undo')}
-      disabled={disabled || !editor?.can().undo()}
+      disabled={disabled || historyLocked || !editor?.can().undo()}
       onclick={() => editor?.chain().focus().undo().run()}
     >
       <Undo2 />
@@ -374,7 +463,7 @@
       size="icon-sm"
       aria-label={t($locale, 'Redo')}
       title={t($locale, 'Redo')}
-      disabled={disabled || !editor?.can().redo()}
+      disabled={disabled || historyLocked || !editor?.can().redo()}
       onclick={() => editor?.chain().focus().redo().run()}
     >
       <Redo2 />
@@ -408,6 +497,16 @@
 
   .editor-host :global(.feedback-prose p) {
     margin: 0 0 0.9em;
+  }
+
+  .editor-host :global(.feedback-prose p.speech-pending) {
+    border-radius: 4px;
+  }
+
+  .editor-host :global(.feedback-prose p.speech-cleaning) {
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--muted) 80%, transparent);
+    opacity: 0.78;
   }
 
   .editor-host :global(.feedback-prose h2),

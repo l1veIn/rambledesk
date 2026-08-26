@@ -60,6 +60,7 @@
   import { createPublisherController } from './lib/workbench/publisherController'
   import { createActiveRambleCoordinator } from './lib/workbench/activeRambleCoordinator'
   import { createDraftSessionHost } from './lib/workbench/draftSessionHost'
+  import { lightCleanupTranscript } from './lib/lightCleanup'
   import { buildResumePrompt, shouldShowResumePromptButton } from './lib/workbench/resumePrompt'
   import {
     createAttachmentController,
@@ -92,6 +93,8 @@
     cookingProvider,
     cookingReasoningEffort,
     cookingSystemPrompt,
+    lightCleanupEnabled,
+    lightCleanupSystemPrompt,
     locale,
     notificationPopupEnabled,
     onboardingCompleted,
@@ -187,6 +190,19 @@
   let sessionEpoch = 0
   const rambleOwnership = createActiveRambleCoordinator()
   const draftSessions = createDraftSessionHost({
+    cleanup: {
+      enabled: () => $lightCleanupEnabled,
+      clean: (text) =>
+        lightCleanupTranscript(text, {
+          provider: $cookingProvider,
+          apiKey: $cookingApiKey,
+          baseUrl: $cookingBaseUrl,
+          model: $cookingModel,
+          reasoningEffort: $cookingReasoningEffort,
+          locale: $locale,
+          systemPrompt: $lightCleanupSystemPrompt,
+        }),
+    },
     save: {
       async save({ requestId, body, expectedRevision }) {
         if (previewMode) return { savedRevision: expectedRevision + 1 }
@@ -758,7 +774,7 @@
     isCookingEnabled: () => $cookingEnabled,
     isCooking: () => currentRequestCooking,
     exitRamble: async () => {
-      if (rambleCanExit) await exitRamble()
+      if (rambleCanExit && workspace?.request.request_id === rambleRequestId) await exitRamble()
     },
     setDraftBody: (markdown) => {
       draftBody = markdown
@@ -984,6 +1000,12 @@
     onStartScreenCapture={attachmentController.startScreenCapture}
     onImportAttachmentPaths={attachmentController.importAttachmentPaths}
     onAppendRambleMarkdown={appendRambleMarkdown}
+    getRambleEditor={() => draftSessions.owner()?.editor() ?? workspacePanel}
+    onInsertRambleBlock={(requestId, markdown) => draftSessions.get(requestId)?.insertMarkdownBlock(markdown)}
+    onPrepareNonSpeechInsert={(requestId) => draftSessions.get(requestId)?.prepareNonSpeechInsert()}
+    onRambleStopped={() => {
+      void draftSessions.owner()?.settle()
+    }}
   />
 
   <AppTitlebar
@@ -1117,6 +1139,7 @@
           visibleRequestId={workspace?.request.request_id ?? ''}
           onDraftChangeFor={(requestId, markdown) => draftSessions.get(requestId)?.applyUserEdit(markdown)}
           onEditorReady={(requestId, editor) => draftSessions.get(requestId)?.bindEditor(editor)}
+          onPrepareNonSpeechInsert={(requestId) => draftSessions.get(requestId)?.prepareNonSpeechInsert()}
           {foreignRambleTitle}
           onReturnToRamble={() => void returnToRamble()}
           onHandoffRamble={() => void handoffRamble()}

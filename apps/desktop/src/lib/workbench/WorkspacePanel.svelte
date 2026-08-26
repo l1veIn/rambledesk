@@ -67,6 +67,7 @@
   export let visibleRequestId = ''
   export let onDraftChangeFor: (requestId: string, markdown: string) => void = () => {}
   export let onEditorReady: (requestId: string, editor: FeedbackEditorHandle | null) => void = () => {}
+  export let onPrepareNonSpeechInsert: (requestId: string) => void = () => {}
   export let foreignRambleTitle = ''
   export let onReturnToRamble: () => void = () => {}
   export let onHandoffRamble: () => void = () => {}
@@ -154,8 +155,8 @@
     return feedbackEditor?.applyExternalMarkdown(markdown) ?? false
   }
 
-  export function appendTranscript(text: string) {
-    feedbackEditor?.appendTranscript(text)
+  export function appendTranscript(text: string, options?: { pending?: boolean }) {
+    feedbackEditor?.appendTranscript(text, options)
   }
 
   export function appendClipboardCapture(text: string, label: string) {
@@ -258,6 +259,7 @@
               {visibleRequestId}
               {onDraftChangeFor}
               {onEditorReady}
+              {onPrepareNonSpeechInsert}
               onChange={onDraftChange}
               onCookPreview={onCookPreview}
               onRestoreOriginal={onRestoreOriginal}

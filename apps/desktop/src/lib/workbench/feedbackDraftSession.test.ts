@@ -125,6 +125,84 @@ describe('DraftSessionHost', () => {
   })
 })
 
+describe('Light cleanup on a draft session', () => {
+  it('replaces three pending stables with the cleaned text', async () => {
+    const clean = vi.fn(async (text: string) => `cleaned:${text}`)
+    const session = createFeedbackDraftSession({
+      requestId: 'request-a',
+      generation: 1,
+      initialMarkdown: 'Hello',
+      initialRevision: 1,
+      save: memorySave(),
+      cleanup: { enabled: () => true, clean, silenceMs: 60_000, timeoutMs: 5_000 },
+    })
+    session.appendSpeech('one')
+    session.appendSpeech('two')
+    expect(clean).not.toHaveBeenCalled()
+    session.appendSpeech('three')
+    await session.settle()
+    expect(clean).toHaveBeenCalledWith('one\n\ntwo\n\nthree')
+    expect(session.markdown()).toBe('Hello\n\ncleaned:one\n\ntwo\n\nthree')
+    expect(session.isCleaning()).toBe(false)
+  })
+
+  it('keeps the raw text when cleanup times out', async () => {
+    const queued: Array<() => void> = []
+    const session = createFeedbackDraftSession({
+      requestId: 'request-a',
+      generation: 1,
+      initialMarkdown: 'Hello',
+      initialRevision: 1,
+      save: memorySave(),
+      cleanup: {
+        enabled: () => true,
+        clean: () => new Promise(() => {}),
+        silenceMs: 60_000,
+        timeoutMs: 10,
+        schedule: (fn, ms) => {
+          if (ms === 10) queued.push(fn)
+          return queued.length
+        },
+        cancel: () => {},
+      },
+    })
+    session.appendSpeech('one')
+    session.appendSpeech('two')
+    session.appendSpeech('three')
+    queued.forEach((fn) => fn())
+    await session.settle()
+    expect(session.markdown()).toBe('Hello\n\none\n\ntwo\n\nthree')
+  })
+
+  it('does not apply a cleanup result after dispose', async () => {
+    let finish = (_text: string) => {}
+    const session = createFeedbackDraftSession({
+      requestId: 'request-a',
+      generation: 1,
+      initialMarkdown: 'Hello',
+      initialRevision: 1,
+      save: memorySave(),
+      cleanup: {
+        enabled: () => true,
+        clean: () =>
+          new Promise((resolve) => {
+            finish = resolve
+          }),
+        silenceMs: 60_000,
+        timeoutMs: 5_000,
+      },
+    })
+    session.appendSpeech('one')
+    session.appendSpeech('two')
+    session.appendSpeech('three')
+    await Promise.resolve()
+    session.dispose()
+    finish('GONE')
+    await Promise.resolve()
+    expect(session.markdown()).toBe('Hello\n\none\n\ntwo\n\nthree')
+  })
+})
+
 describe('ActiveRambleCoordinator', () => {
   it('requires an explicit handoff when starting on a different request', () => {
     const ramble = createActiveRambleCoordinator()

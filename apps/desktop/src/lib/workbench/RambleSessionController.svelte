@@ -41,6 +41,7 @@
   export let workspace: FeedbackWorkspaceView | null = null
   export let interactionLocked = false
   export let editor: FeedbackEditorHandle | undefined
+  export let getRambleEditor: () => FeedbackEditorHandle | undefined = () => editor
   export let attachmentBusy = false
   export let screenCaptureBusy = false
   export let attachmentMessage = ''
@@ -62,6 +63,9 @@
   export let onStartScreenCapture: () => Promise<void> = async () => {}
   export let onImportAttachmentPaths: (paths: string[]) => Promise<void> = async () => {}
   export let onAppendRambleMarkdown: (requestId: string, markdown: string) => Promise<void> = async () => {}
+  export let onInsertRambleBlock: (requestId: string, markdown: string) => void = () => {}
+  export let onPrepareNonSpeechInsert: (requestId: string) => void = () => {}
+  export let onRambleStopped: () => void = () => {}
 
   let voiceRequestId = ''
   let voiceSessionId = ''
@@ -191,6 +195,7 @@
     void emitTo('ramble-console', RAMBLE_CONSOLE_HIDE_EVENT).catch(() => {})
     resetVoiceUi()
     resetRambleUi()
+    onRambleStopped()
   }
 
   export async function importClipboardNow() {
@@ -302,6 +307,7 @@
       ramblePhase = 'paused'
       rambleMessage = t($locale, 'Ramble paused; the document is preserved and capture tools remain available')
     }
+    onRambleStopped()
   }
 
   async function startVoiceRamble(): Promise<boolean> {
@@ -397,13 +403,13 @@
     }
     if (event.type === 'text') {
       const label = clipboardCaptureLabel(event.captured_at_ms, event.truncated, $locale)
-      if (workspace?.request.request_id === currentRequestId) {
-        editor?.appendClipboardCapture(event.text, label)
+      onPrepareNonSpeechInsert(currentRequestId)
+      const rambleEditor = getRambleEditor()
+      if (rambleEditor?.appendClipboardCapture(event.text, label)) {
+        // Owner editor, even if hidden, received the capture.
       } else {
         const quoted = event.text.split(/\r?\n/).map((line) => `> ${line}`).join('\n')
-        void onAppendRambleMarkdown(currentRequestId, `> **${label}**\n>\n${quoted}`).catch(
-          (cause) => onPageError(t($locale, 'Failed to write Ramble content: {error}', { error: messageFrom(cause) })),
-        )
+        onInsertRambleBlock(currentRequestId, `> **${label}**\n>\n${quoted}`)
       }
       clipboardCaptureCount += 1
       rambleMessage = t($locale, 'Ramble active · {count} clipboard items captured', { count: clipboardCaptureCount })
@@ -450,16 +456,15 @@
       )
       if (!attachment) throw new Error(t($locale, 'The image attachment was saved, but could not be inserted into the document flow.'))
       const label = clipboardCaptureLabel(event.captured_at_ms, false, $locale)
-      if (visibleTarget && workspace?.request.request_id === requestId) {
-        onApplyWorkspaceMutation(next)
-        await onRefreshAttachmentPreviews(next)
-        await tick()
-        if (!editor?.appendCapturedAttachment(attachment, label)) {
-          throw new Error(t($locale, 'The image attachment was saved, but could not be inserted into the document flow.'))
-        }
+      onPrepareNonSpeechInsert(requestId)
+      onApplyWorkspaceMutation(next)
+      await onRefreshAttachmentPreviews(next)
+      await tick()
+      const rambleEditor = getRambleEditor()
+      if (rambleEditor?.appendCapturedAttachment(attachment, label)) {
         await onSaveDraftNow()
       } else {
-        await onAppendRambleMarkdown(
+        onInsertRambleBlock(
           requestId,
           `> **${label}**\n\n![${attachment.file_name}](${attachmentMarkdownUrl(attachment.attachment_id)})`,
         )

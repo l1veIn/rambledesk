@@ -2,6 +2,7 @@ import {
   createFeedbackDraftSession,
   type DraftSavePort,
   type FeedbackDraftSession,
+  type SpeechCleanupPort,
 } from './feedbackDraftSession'
 
 export type DraftSessionHost = {
@@ -24,6 +25,7 @@ const MAX_MOUNTED = 2
 
 export function createDraftSessionHost(input: {
   save: DraftSavePort
+  cleanup?: SpeechCleanupPort
   onChange?: () => void
 }): DraftSessionHost {
   let generation = 1
@@ -71,6 +73,7 @@ export function createDraftSessionHost(input: {
       initialMarkdown: hydrate.markdown,
       initialRevision: hydrate.revision,
       save: input.save,
+      cleanup: input.cleanup,
       onChange: input.onChange,
     })
     sessions.set(hydrate.requestId, session)

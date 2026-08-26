@@ -42,6 +42,7 @@
   export let visibleRequestId = ''
   export let onDraftChangeFor: (requestId: string, markdown: string) => void = () => {}
   export let onEditorReady: (requestId: string, editor: FeedbackEditorHandle | null) => void = () => {}
+  export let onPrepareNonSpeechInsert: (requestId: string) => void = () => {}
 
   let richEditor: RichFeedbackEditor
   const sessionEditors: Record<string, RichFeedbackEditor> = {}
@@ -80,6 +81,7 @@
   }
 
   export function insertAttachments(attachments: AttachmentView[]) {
+    if (visibleRequestId) onPrepareNonSpeechInsert(visibleRequestId)
     return visibleEditor()?.insertAttachments(attachments) ?? false
   }
 
@@ -87,8 +89,24 @@
     return visibleEditor()?.applyExternalMarkdown(markdown) ?? false
   }
 
-  export function appendTranscript(text: string) {
-    visibleEditor()?.appendTranscript(text)
+  export function appendTranscript(text: string, options?: { pending?: boolean }) {
+    visibleEditor()?.appendTranscript(text, options)
+  }
+
+  export function beginSpeechCleanup() {
+    return visibleEditor()?.beginSpeechCleanup?.() ?? ''
+  }
+
+  export function finishSpeechCleanup(cleaned: string | null) {
+    visibleEditor()?.finishSpeechCleanup?.(cleaned)
+  }
+
+  export function isSpeechCleaning() {
+    return visibleEditor()?.isSpeechCleaning?.() ?? false
+  }
+
+  export function moveCursorAfterCleaningSpeech() {
+    visibleEditor()?.moveCursorAfterCleaningSpeech?.()
   }
 
   export function appendClipboardCapture(text: string, label: string) {
