@@ -10,7 +10,6 @@ import { ActionChannel } from './actionChannelExtension'
 import { attachmentIdFromUrl, attachmentMarkdownUrl } from './attachmentMarkdown'
 import { CleanedSpeech, PendingSpeech } from './pendingSpeech'
 import {
-  parseDocWithActionChannels,
   serializeDocWithActionChannels,
 } from './workbench/actionChannel'
 
@@ -175,7 +174,7 @@ export function feedbackEditorExtensions(): AnyExtension[] {
 
 export function parseFeedbackMarkdown(source: string): JSONContent {
   const manager = new MarkdownManager({ extensions: feedbackEditorExtensions() })
-  return parseDocWithActionChannels(source, (markdown) => manager.parse(markdown))
+  return manager.parse(source)
 }
 
 export function serializeFeedbackMarkdown(doc: JSONContent): string {

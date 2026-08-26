@@ -244,6 +244,7 @@ async fn official_client_exercises_feedback_lifecycle_and_errors() -> anyhow::Re
     let saved = application
         .save_feedback_draft(SaveDraftInput {
             request_id: request_id.clone(),
+            document_json: "{}".to_owned(),
             body_markdown: format!(
                 "The real MCP client observes the completed package.\n\n{}\nEND-OF-FEEDBACK-MARKER",
                 "middle-content-".repeat(200)
@@ -467,6 +468,7 @@ async fn local_api_supports_pi_request_and_blocking_wait() -> anyhow::Result<()>
     let saved = application
         .save_feedback_draft(SaveDraftInput {
             request_id: request_id.clone(),
+            document_json: "{}".to_owned(),
             body_markdown: "Pi waited inside the tool call and received this package.".to_owned(),
             expected_revision: 0,
         })

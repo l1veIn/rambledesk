@@ -13,11 +13,13 @@
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
   import RichFeedbackEditor from '$lib/RichFeedbackEditor.svelte'
+  import type { FeedbackDraftSnapshot } from '$lib/feedbackDraftDocument'
   import SessionDraftEditor from './SessionDraftEditor.svelte'
   import type { AttachmentView, FeedbackWorkspaceView } from '$lib/feedback'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
   import { hasCookedPublishedVariant } from '$lib/publishedFeedback'
+  import MarkdownPreview from './MarkdownPreview.svelte'
   import type { FeedbackEditorHandle, SavePhase } from './types'
 
   export let workspace: FeedbackWorkspaceView
@@ -38,9 +40,13 @@
   export let onCookPreview: () => void = () => {}
   export let onRestoreOriginal: () => void = () => {}
   export let onOpenAttachment: (attachmentId: string) => void = () => {}
-  export let draftEditors: Array<{ requestId: string; initialMarkdown: string }> = []
+  export let draftEditors: Array<{
+    requestId: string
+    initialDocumentJson: string
+    initialMarkdown: string
+  }> = []
   export let visibleRequestId = ''
-  export let onDraftChangeFor: (requestId: string, markdown: string) => void = () => {}
+  export let onDraftChangeFor: (requestId: string, snapshot: FeedbackDraftSnapshot) => void = () => {}
   export let onEditorReady: (requestId: string, editor: FeedbackEditorHandle | null) => void = () => {}
   export let onPrepareNonSpeechInsert: (requestId: string) => void = () => {}
 
@@ -53,11 +59,11 @@
   $: editingDisabled = readOnly || locked
   $: hasCookedVariant = readOnly && hasCookedPublishedVariant(cookedMarkdown, uncookedMarkdown)
   $: displayedMarkdown =
-    hasCookedVariant && publishedView === 'cooked'
-      ? cookedMarkdown
-      : hasCookedVariant && publishedView === 'uncooked'
+    readOnly
+      ? hasCookedVariant && publishedView === 'uncooked'
         ? uncookedMarkdown
-        : draftBody
+        : cookedMarkdown || uncookedMarkdown
+      : draftBody
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
@@ -200,15 +206,21 @@
   {/if}
 
   <div class="relative flex min-h-0 flex-1">
-    {#if hasCookedVariant || draftEditors.length === 0}
+    {#if readOnly}
+      <MarkdownPreview
+        markdown={displayedMarkdown}
+        previews={attachmentPreviews}
+        {onOpenAttachment}
+      />
+    {:else if draftEditors.length === 0}
       <RichFeedbackEditor
         bind:this={richEditor}
         markdown={displayedMarkdown}
         previews={attachmentPreviews}
         disabled={editingDisabled}
         {onOpenAttachment}
-        onChange={(markdown) => {
-          if (!editingDisabled) onChange(markdown)
+        onChange={(snapshot) => {
+          if (!editingDisabled) onChange(snapshot.bodyMarkdown)
         }}
       />
     {:else}
@@ -220,15 +232,15 @@
         >
           <SessionDraftEditor
             requestId={session.requestId}
+            documentJson={session.initialDocumentJson}
             markdown={session.initialMarkdown}
             previews={attachmentPreviews}
             disabled={session.requestId === visibleRequestId ? editingDisabled : false}
             {onOpenAttachment}
             onReady={captureSessionEditor}
-            onChange={(markdown) => {
+            onChange={(snapshot) => {
               if (session.requestId === visibleRequestId && editingDisabled) return
-              onDraftChangeFor(session.requestId, markdown)
-              if (session.requestId === visibleRequestId) onChange(markdown)
+              onDraftChangeFor(session.requestId, snapshot)
             }}
           />
         </div>

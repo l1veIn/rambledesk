@@ -23,18 +23,23 @@
   import {
     feedbackEditorExtensions,
     parseFeedbackMarkdown,
-    serializeFeedbackMarkdown,
   } from './feedbackEditorExtensions'
+  import {
+    restoreFeedbackDraftDocument,
+    snapshotFeedbackDraftDocument,
+    type FeedbackDraftSnapshot,
+  } from './feedbackDraftDocument'
   import { CLEANED_SPEECH_NODE, PENDING_SPEECH_NODE } from './pendingSpeech'
   import { ACTION_CHANNEL_ATTR } from './workbench/actionChannel'
   import { alignCleanupParts } from './workbench/speechCleanupPolicy'
 
   export let markdown = ''
+  export let documentJson: string | null = null
   export let previews: Record<string, string> = {}
   export let disabled = false
   export let acceptExternalMarkdown = true
   export let onOpenAttachment: (attachmentId: string) => void = () => {}
-  export let onChange: (markdown: string) => void = () => {}
+  export let onChange: (snapshot: FeedbackDraftSnapshot) => void = () => {}
 
   let editorHost: HTMLDivElement
   let editor: Editor | null = null
@@ -51,7 +56,7 @@
     editor = new Editor({
       element: editorHost,
       extensions: feedbackEditorExtensions(),
-      content: parseFeedbackMarkdown(markdown),
+      content: restoreFeedbackDraftDocument(documentJson, markdown),
       editable: !disabled,
       editorProps: {
         attributes: {
@@ -80,7 +85,10 @@
         },
       },
       onCreate: () => {
-        editorMarkdown = editor ? serializeFeedbackMarkdown(editor.getJSON()) : markdown
+        const snapshot = editor
+          ? snapshotFeedbackDraftDocument(editor.getJSON())
+          : { documentJson: documentJson ?? '', bodyMarkdown: markdown }
+        editorMarkdown = snapshot.bodyMarkdown
         insertionPosition = editor?.state.doc.content.size ?? 0
         syncHistoryButtons()
         hydrateAttachmentImages()
@@ -92,9 +100,9 @@
         historyLocked = editorHasCleaningSpeech(updatedEditor)
         syncHistoryButtons()
         if (applyingExternalChange) return
-        const nextMarkdown = serializeFeedbackMarkdown(updatedEditor.getJSON())
-        editorMarkdown = nextMarkdown
-        onChange(nextMarkdown)
+        const snapshot = snapshotFeedbackDraftDocument(updatedEditor.getJSON())
+        editorMarkdown = snapshot.bodyMarkdown
+        onChange(snapshot)
       },
       onSelectionUpdate: ({ editor: updatedEditor }) => {
         insertionPosition = updatedEditor.state.selection.from
@@ -119,16 +127,18 @@
     hydrateAttachmentImages()
   }
 
-  function applyMarkdown(nextMarkdown: string) {
+  function applyMarkdown(nextMarkdown: string, emitChange = false) {
     if (!editor) return
     applyingExternalChange = true
     try {
       editor.commands.setContent(parseFeedbackMarkdown(nextMarkdown), {
         emitUpdate: false,
       })
-      editorMarkdown = nextMarkdown
+      const snapshot = snapshotFeedbackDraftDocument(editor.getJSON())
+      editorMarkdown = snapshot.bodyMarkdown
       insertionPosition = Math.min(insertionPosition, editor.state.doc.content.size)
       hydrateAttachmentImages()
+      if (emitChange) onChange(snapshot)
     } catch (cause) {
       console.error('[richEditor] applyMarkdown failed', cause)
     } finally {
@@ -159,14 +169,15 @@
     if (!changed) return
     applyingExternalChange = true
     editor.view.dispatch(transaction)
-    editorMarkdown = serializeFeedbackMarkdown(editor.getJSON())
+    const snapshot = snapshotFeedbackDraftDocument(editor.getJSON())
+    editorMarkdown = snapshot.bodyMarkdown
     applyingExternalChange = false
   }
 
   export function applyExternalMarkdown(nextMarkdown: string): boolean {
     if (!editor) return false
     if (nextMarkdown === editorMarkdown) return true
-    applyMarkdown(nextMarkdown)
+    applyMarkdown(nextMarkdown, true)
     return true
   }
 
@@ -658,20 +669,21 @@
   }
 
   .editor-host :global(.feedback-prose [data-action-index]) {
-    border-left: 2px solid color-mix(in srgb, var(--primary) 55%, transparent);
-    padding-left: 8px;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--muted) 72%, transparent);
+    padding: 6px 8px;
   }
 
   .editor-host :global(.feedback-prose .action-channel-lead[data-action-index]:not(.speech-cleaned)::before) {
     color: var(--primary);
-    content: '@' attr(data-action-index) ' ';
+    content: '@ Action' attr(data-action-index) ' ';
     font-size: 0.8em;
     font-weight: 600;
     pointer-events: none;
   }
 
   .editor-host :global(.feedback-prose p.speech-cleaned.action-channel-lead[data-action-index]::before) {
-    content: '✦ @' attr(data-action-index) ' ';
+    content: '✦ @ Action' attr(data-action-index) ' ';
   }
 
   .editor-host :global(.feedback-prose h2),

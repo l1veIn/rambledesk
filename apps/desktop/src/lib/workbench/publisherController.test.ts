@@ -30,6 +30,7 @@ function workspaceView(): FeedbackWorkspaceView {
     context_refs: [],
     request_attachments: [],
     draft: {
+      document_json: null,
       body_markdown: 'Edited cooked draft.',
       saved_revision: 4,
       updated_at: '2026-08-22T00:00:00Z',

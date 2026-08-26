@@ -1,27 +1,85 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import {
+  decodeFeedbackDraftDocument,
+  snapshotFeedbackDraftDocument,
+  snapshotFeedbackDraftMarkdown,
+} from '../feedbackDraftDocument'
+import { PENDING_SPEECH_NODE } from '../pendingSpeech'
 import { createActiveRambleCoordinator } from './activeRambleCoordinator'
 import { createDraftSessionHost } from './draftSessionHost'
 import { createFeedbackDraftSession } from './feedbackDraftSession'
 import type { FeedbackEditorHandle } from './types'
 
 function memorySave() {
-  const bodies = new Map<string, { body: string; revision: number }>()
+  const bodies = new Map<
+    string,
+    { documentJson: string; bodyMarkdown: string; revision: number }
+  >()
   return {
     bodies,
-    save: vi.fn(async (input: { requestId: string; body: string; expectedRevision: number }) => {
+    save: vi.fn(async (input: {
+      requestId: string
+      documentJson: string
+      bodyMarkdown: string
+      expectedRevision: number
+    }) => {
       const current = bodies.get(input.requestId)
       if (current && current.revision !== input.expectedRevision) {
         throw new Error('revision conflict')
       }
       const savedRevision = input.expectedRevision + 1
-      bodies.set(input.requestId, { body: input.body, revision: savedRevision })
+      bodies.set(input.requestId, {
+        documentJson: input.documentJson,
+        bodyMarkdown: input.bodyMarkdown,
+        revision: savedRevision,
+      })
       return { savedRevision }
     }),
   }
 }
 
 describe('FeedbackDraftSession', () => {
+  it('restores the saved TipTap document instead of reconstructing from Markdown', async () => {
+    const port = memorySave()
+    const session = createFeedbackDraftSession({
+      requestId: 'request-a',
+      generation: 1,
+      initialMarkdown: '',
+      initialRevision: 0,
+      save: port,
+    })
+    session.applyUserEdit(
+      snapshotFeedbackDraftDocument({
+        type: 'doc',
+        content: [
+          {
+            type: PENDING_SPEECH_NODE,
+            attrs: { status: 'pending', actionIndex: 2 },
+            content: [{ type: 'text', text: '还没有整理' }],
+          },
+        ],
+      }),
+    )
+    await expect(session.saveNow()).resolves.toBe(true)
+    const stored = port.bodies.get('request-a')!
+
+    const restarted = createFeedbackDraftSession({
+      requestId: 'request-a',
+      generation: 2,
+      initialDocumentJson: stored.documentJson,
+      initialMarkdown: stored.bodyMarkdown,
+      initialRevision: stored.revision,
+      save: port,
+    })
+
+    expect(restarted.documentJson()).toBe(stored.documentJson)
+    expect(decodeFeedbackDraftDocument(restarted.documentJson())?.content?.[0]).toMatchObject({
+      type: PENDING_SPEECH_NODE,
+      attrs: { status: 'pending', actionIndex: 2 },
+    })
+  })
+
   it('appends speech into its own body and saves against its request id', async () => {
     const port = memorySave()
     const session = createFeedbackDraftSession({
@@ -36,7 +94,8 @@ describe('FeedbackDraftSession', () => {
     await expect(session.saveNow()).resolves.toBe(true)
     expect(port.save).toHaveBeenCalledWith({
       requestId: 'request-a',
-      body: 'Hello\n\nFirst stable',
+      documentJson: expect.any(String),
+      bodyMarkdown: 'Hello\n\nFirst stable',
       expectedRevision: 3,
     })
     expect(session.savedRevision()).toBe(4)
@@ -82,7 +141,7 @@ describe('FeedbackDraftSession', () => {
     session.appendSpeech('Spoken')
     expect(appendTranscript).toHaveBeenCalledWith('Spoken')
     expect(session.markdown()).toBe('Hello')
-    session.applyUserEdit('Hello\n\nSpoken')
+    session.applyUserEdit(snapshotFeedbackDraftMarkdown('Hello\n\nSpoken'))
     expect(session.markdown()).toBe('Hello\n\nSpoken')
   })
 
@@ -123,11 +182,13 @@ describe('FeedbackDraftSession', () => {
     })
     session.toggleActionChannel(2)
     session.appendSpeech('保存之后没有 toast。')
-    expect(session.markdown()).toBe('Hello\n\n@ Action 2\n\n保存之后没有 toast。')
+    expect(session.markdown()).toBe(
+      'Hello\n\n------------------------ Action 2 ------------------------\n\n保存之后没有 toast。',
+    )
     session.toggleActionChannel(2)
     session.appendSpeech('其实 toast 在右下角。')
     expect(session.markdown()).toBe(
-      'Hello\n\n@ Action 2\n\n保存之后没有 toast。\n\n@\n\n其实 toast 在右下角。',
+      'Hello\n\n------------------------ Action 2 ------------------------\n\n保存之后没有 toast。\n\n------------------------------------------------\n\n其实 toast 在右下角。',
     )
   })
 })

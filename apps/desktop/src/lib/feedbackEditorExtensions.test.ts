@@ -163,26 +163,34 @@ describe('pending speech markdown', () => {
 })
 
 describe('action channel markdown', () => {
-  it('round-trips action markers onto block nodes and back', () => {
-    const source = [
-      '整体先说两句。',
-      '',
-      '@ Action 2',
-      '保存之后没有 toast。',
-      '',
-      '@',
-      '其实 toast 在右下角。',
-    ].join('\n')
+  it('exports node attrs as readable dividers', () => {
+    const serialized = serializeFeedbackMarkdown({
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          attrs: { actionIndex: 2 },
+          content: [{ type: 'text', text: '保存之后没有 toast。' }],
+        },
+      ],
+    })
 
-    const doc = parseFeedbackMarkdown(source)
+    expect(serialized).toContain(
+      '------------------------ Action 2 ------------------------',
+    )
+    expect(serialized).toContain('保存之后没有 toast。')
+    expect(serialized).not.toContain('data-action-index')
+  })
+
+  it('parses dividers as ordinary Markdown without restoring action attrs', () => {
+    const doc = parseFeedbackMarkdown(
+      '------------------------ Action 2 ------------------------\n\n保存失败。',
+    )
+
     expect((doc.content ?? []).map((node) => node.attrs?.actionIndex ?? null)).toEqual([
       null,
-      2,
       null,
     ])
-    expect(serializeFeedbackMarkdown(doc)).toContain('@ Action 2')
-    expect(serializeFeedbackMarkdown(doc)).toContain('保存之后没有 toast。')
-    expect(serializeFeedbackMarkdown(doc).split('\n')).toContain('@')
-    expect(serializeFeedbackMarkdown(doc)).not.toContain('data-action-index')
+    expect(doc.content?.[0].content?.[0].text).toContain('Action 2')
   })
 })

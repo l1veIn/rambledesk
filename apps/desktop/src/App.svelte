@@ -28,9 +28,13 @@
     DraftView,
     FeedbackRequestView,
     FeedbackWorkspaceView,
-    SaveDraftInput,
     SubmitFeedbackInput,
   } from './lib/feedback'
+  import {
+    restoreFeedbackDraftDocument,
+    snapshotFeedbackDraftDocument,
+    snapshotFeedbackDraftMarkdown,
+  } from './lib/feedbackDraftDocument'
   import {
     notificationLabel,
     notificationStateForPermission,
@@ -49,14 +53,8 @@
     type PublishedFeedbackPackage,
     type PublishedFeedbackView,
   } from './lib/publishedFeedback'
-  import {
-    appendMarkdownBlock,
-    formatTime,
-    messageFrom,
-    operatorFeedbackBody,
-  } from './lib/workbench/feedbackText'
+  import { formatTime, messageFrom } from './lib/workbench/feedbackText'
   import { createCookingController } from './lib/workbench/cookingController'
-  import { createDraftController } from './lib/workbench/draftController'
   import { createPublisherController } from './lib/workbench/publisherController'
   import { createActiveRambleCoordinator } from './lib/workbench/activeRambleCoordinator'
   import { createDraftSessionHost } from './lib/workbench/draftSessionHost'
@@ -204,12 +202,13 @@
         }),
     },
     save: {
-      async save({ requestId, body, expectedRevision }) {
+      async save({ requestId, documentJson, bodyMarkdown, expectedRevision }) {
         if (previewMode) return { savedRevision: expectedRevision + 1 }
         const saved = await invoke<DraftView>('save_feedback_draft', {
           input: {
             request_id: requestId,
-            body_markdown: body,
+            document_json: documentJson,
+            body_markdown: bodyMarkdown,
             expected_revision: expectedRevision,
           },
         })
@@ -235,38 +234,8 @@
     return t($locale, source, values)
   }
 
-  const draftController = createDraftController({
-    messageFrom,
-    isPreviewMode: () => previewMode,
-    isInteractionLocked: () => interactionLocked,
-    isWorkspaceTerminal: () =>
-      workspace?.request.status === 'completed' || workspace?.request.status === 'cancelled',
-    getWorkspace: () => workspace,
-    getBody: () => draftBody,
-    setBody: (body) => {
-      draftBody = body
-    },
-    getSavedBody: () => savedBody,
-    setSavedBody: (body) => {
-      savedBody = body
-    },
-    getSavedRevision: () => savedRevision,
-    setSavedRevision: (revision) => {
-      savedRevision = revision
-    },
-    getPhase: () => savePhase,
-    setPhase: (phase) => {
-      savePhase = phase
-    },
-    setMessage: (message) => {
-      saveMessage = message
-    },
-    setWorkspaceDraft: (draft) => {
-      if (workspace) workspace = { ...workspace, draft }
-    },
-  })
   const updateDraft = (value: string) => {
-    draftSessions.visible()?.applyUserEdit(value)
+    draftSessions.visible()?.applyUserEdit(snapshotFeedbackDraftMarkdown(value))
   }
   const saveDraftNow = async () => {
     const visible = draftSessions.visible()
@@ -321,6 +290,7 @@
     sessionEpoch >= 0 ? (draftSessions.visible()?.currentActionIndex() ?? null) : null
   $: draftEditorViews = draftSessions.mounted().map((session) => ({
     requestId: session.requestId,
+    initialDocumentJson: session.initialDocumentJson,
     initialMarkdown: session.initialMarkdown,
   }))
   $: rambleOwnerTerminal =
@@ -490,6 +460,7 @@
         workspace = previewFixtures.workspace
         const session = draftSessions.openVisible({
           requestId: workspace.request.request_id,
+          documentJson: workspace.draft.document_json,
           markdown: workspace.draft.body_markdown,
           revision: workspace.draft.saved_revision,
         })
@@ -548,7 +519,6 @@
         // Resume prompt still appears if submit path keeps the main window focused.
       })
     return () => {
-      draftController.cancelPendingSave()
       draftSessions.disposeAll()
       if (inboxTimer) clearInterval(inboxTimer)
       resumePromptUnlisten?.()
@@ -652,6 +622,7 @@
       const existing = draftSessions.get(requestId)
       const session = draftSessions.openVisible({
         requestId,
+        documentJson: existing ? existing.documentJson() : next.draft.document_json,
         markdown: existing ? existing.markdown() : next.draft.body_markdown,
         revision: existing ? existing.savedRevision() : next.draft.saved_revision,
       })
@@ -662,7 +633,10 @@
       saveMessage = session.saveMessage()
       attachmentMessage = ''
       await attachmentController.refreshPreviews(next)
-      if (next.request.status === 'completed' && next.feedback) {
+      if (
+        (next.request.status === 'completed' || next.request.status === 'cancelled') &&
+        next.feedback
+      ) {
         publishedFeedback = previewMode
           ? {
               markdown: next.draft.body_markdown,
@@ -731,16 +705,24 @@
 
   function applyWorkspaceMutation(next: FeedbackWorkspaceView) {
     const session = draftSessions.visible()
-    const localBody = session?.markdown() ?? draftBody
+    const localDraft = session?.snapshot()
+    const savedDraft = snapshotFeedbackDraftDocument(
+      restoreFeedbackDraftDocument(next.draft.document_json, next.draft.body_markdown),
+    )
     workspace = next
-    session?.acknowledgeSave(next.draft.body_markdown, next.draft.saved_revision)
-    if (localBody === next.draft.body_markdown) {
-      draftBody = next.draft.body_markdown
-      savedBody = next.draft.body_markdown
+    session?.acknowledgeSave(savedDraft, next.draft.saved_revision)
+    if (
+      !localDraft ||
+      (localDraft.documentJson === savedDraft.documentJson &&
+        localDraft.bodyMarkdown === savedDraft.bodyMarkdown)
+    ) {
+      draftBody = savedDraft.bodyMarkdown
+      savedBody = savedDraft.bodyMarkdown
       savedRevision = next.draft.saved_revision
       savePhase = 'saved'
     } else {
-      draftBody = localBody
+      draftBody = localDraft.bodyMarkdown
+      savedBody = savedDraft.bodyMarkdown
       savedRevision = next.draft.saved_revision
       savePhase = 'unsaved'
       void session?.saveNow()
@@ -1135,7 +1117,7 @@
           onDraftChange={updateDraft}
           draftEditors={draftEditorViews}
           visibleRequestId={workspace?.request.request_id ?? ''}
-          onDraftChangeFor={(requestId, markdown) => draftSessions.get(requestId)?.applyUserEdit(markdown)}
+          onDraftChangeFor={(requestId, snapshot) => draftSessions.get(requestId)?.applyUserEdit(snapshot)}
           onEditorReady={(requestId, editor) => draftSessions.get(requestId)?.bindEditor(editor)}
           onPrepareNonSpeechInsert={(requestId) => draftSessions.get(requestId)?.prepareNonSpeechInsert()}
           {currentActionIndex}

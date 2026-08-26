@@ -14,6 +14,7 @@ export type DraftSessionHost = {
   mounted(): FeedbackDraftSession[]
   openVisible(input: {
     requestId: string
+    documentJson?: string | null
     markdown: string
     revision: number
   }): FeedbackDraftSession
@@ -57,6 +58,7 @@ export function createDraftSessionHost(input: {
 
   function openVisible(hydrate: {
     requestId: string
+    documentJson?: string | null
     markdown: string
     revision: number
   }): FeedbackDraftSession {
@@ -70,6 +72,7 @@ export function createDraftSessionHost(input: {
     const session = createFeedbackDraftSession({
       requestId: hydrate.requestId,
       generation,
+      initialDocumentJson: hydrate.documentJson,
       initialMarkdown: hydrate.markdown,
       initialRevision: hydrate.revision,
       save: input.save,

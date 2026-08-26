@@ -4,6 +4,7 @@
 - 日期：2026-08-26
 - 取代：ADR 003 中「切换 Request、重新载入或提交前必须先停止当前 Ramble」
 - 补充：ADR 002 的增量入正文；ADR 003 的统一采集状态与文档流映射
+- 部分取代：第 4、5 节的重启恢复与 Markdown 持久化合同已由 ADR 005 取代
 
 ## 上下文
 
@@ -23,7 +24,7 @@
 ### 1. 正文就是 Feedback Draft
 
 工作台里可编辑的正文只有 TipTap 中的 Feedback Draft。Task Brief 只读。点击 Action
-序号等于把该 Action 原文粘贴进正文，不是第二反馈通道。
+序号切换后续内容的归属频道，不创建第二反馈通道。
 
 ### 2. Light cleanup 是一次可撤销覆盖
 
@@ -50,14 +51,12 @@ Undo、待整理/整理中、save queue）保活。工作台最多同时挂载�
 
 用户主动重新载入 Workspace 时：停止原生语音、有界 settle/save、使 session
 generation 失效并 dispose，再从 SQLite hydrate。意外 webview reload 后与原生层
-reconcile，停止孤儿 `SpeechSession`，丢弃旧异步结果。崩溃重启只恢复已保存 Markdown，
-不恢复 Undo、cleanup 或 Active Ramble。
+reconcile，停止孤儿 `SpeechSession`，丢弃旧异步结果。恢复合同见 ADR 005。
 
 ### 5. 持久化合同不变
 
-Draft 仍是整篇 `body_markdown` + CAS revision，存 SQLite。不引入 clip、journal、
-raw sidecar 或隐藏 Markdown 身份。语音追加和 cleanup 必须走 editor transaction，
-不得在所属 Session 存活时直接 merge SQLite。
+结构化 Draft 与 Markdown 投影的持久化合同见 ADR 005。不引入 clip、journal 或 raw sidecar。
+语音追加和 cleanup 必须走 editor transaction，不得在所属 Session 存活时直接 merge SQLite。
 
 音频 warm-up 队列允许大于 ADR 002 所写的 512，以覆盖 recognizer 后台加载窗口，但仍
 必须有界，并在 20 分钟录音中保持内存稳定。

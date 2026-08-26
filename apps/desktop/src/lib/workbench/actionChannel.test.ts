@@ -1,79 +1,61 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  appendActionChannelBlock,
+  actionChannelSeparator,
   joinActionChannelMarkdown,
-  parseActionChannelLine,
-  parseDocWithActionChannels,
   serializeDocWithActionChannels,
-  splitActionChannelMarkdown,
 } from './actionChannel'
 
-describe('action channel markdown', () => {
-  it('treats only exact marker lines as channel switches', () => {
-    expect(parseActionChannelLine('@ Action 2')).toBe(2)
-    expect(parseActionChannelLine(' @ ')).toBe(null)
-    expect(parseActionChannelLine('@ Action 2 保存之后没有 toast。')).toBeUndefined()
-    expect(parseActionChannelLine('email @ Action 2')).toBeUndefined()
+describe('action channel markdown export', () => {
+  it('renders action and default channels as readable dividers', () => {
+    expect(actionChannelSeparator(2)).toBe(
+      '------------------------ Action 2 ------------------------',
+    )
+    expect(actionChannelSeparator(null)).toBe(
+      '------------------------------------------------',
+    )
   })
 
-  it('round-trips default, action, and return-to-default runs', () => {
-    const source = [
-      '整体先说两句。',
-      '',
-      '@ Action 2',
-      '保存之后没有 toast。',
-      '',
-      '![shot.png](attachment://abc-123)',
-      '',
-      '@ Action 3',
-      '返回列表是好的。',
-      '',
-      '@',
-      '其实 toast 在右下角。',
-    ].join('\n')
-
-    expect(splitActionChannelMarkdown(source)).toEqual([
-      { actionIndex: null, markdown: '整体先说两句。' },
-      { actionIndex: 2, markdown: '保存之后没有 toast。\n\n![shot.png](attachment://abc-123)' },
-      { actionIndex: 3, markdown: '返回列表是好的。' },
-      { actionIndex: null, markdown: '其实 toast 在右下角。' },
-    ])
-    expect(joinActionChannelMarkdown(splitActionChannelMarkdown(source))).toBe(
+  it('writes a divider only when the channel changes', () => {
+    expect(
+      joinActionChannelMarkdown([
+        { actionIndex: null, markdown: '整体先说两句。' },
+        { actionIndex: 2, markdown: '保存之后没有 toast。' },
+        { actionIndex: 2, markdown: '截图也属于同一个 Action。' },
+        { actionIndex: 3, markdown: '返回列表是好的。' },
+        { actionIndex: null, markdown: '最后补充整体感受。' },
+      ]),
+    ).toBe(
       [
         '整体先说两句。',
-        '@ Action 2',
-        '保存之后没有 toast。\n\n![shot.png](attachment://abc-123)',
-        '@ Action 3',
+        '------------------------ Action 2 ------------------------',
+        '保存之后没有 toast。',
+        '截图也属于同一个 Action。',
+        '------------------------ Action 3 ------------------------',
         '返回列表是好的。',
-        '@',
-        '其实 toast 在右下角。',
+        '------------------------------------------------',
+        '最后补充整体感受。',
       ].join('\n\n'),
     )
   })
 
-  it('does not emit a marker while staying on the same action', () => {
+  it('exports node attrs without defining a reverse Markdown protocol', () => {
     expect(
-      appendActionChannelBlock('Hello\n\n@ Action 2\n\n第一句。', '第二句。', 2),
-    ).toBe('Hello\n\n@ Action 2\n\n第一句。\n\n第二句。')
-  })
-
-  it('stamps parsed blocks and serializes markers back out', () => {
-    const markdown = '开场。\n\n@ Action 2\n\n保存失败。'
-    const parsed = parseDocWithActionChannels(markdown, (source) => ({
-      type: 'doc',
-      content: source.split(/\n{2,}/).filter(Boolean).map((text) => ({
-        type: 'paragraph',
-        content: [{ type: 'text', text }],
-      })),
-    }))
-    expect(parsed.content?.map((node) => node.attrs?.actionIndex ?? null)).toEqual([null, 2])
-    expect(
-      serializeDocWithActionChannels(parsed, (doc) =>
-        (doc.content ?? [])
-          .map((node) => node.content?.[0]?.text ?? '')
-          .join('\n\n'),
+      serializeDocWithActionChannels(
+        {
+          type: 'doc',
+          content: [
+            {
+              type: 'paragraph',
+              attrs: { actionIndex: 2 },
+              content: [{ type: 'text', text: '保存失败。' }],
+            },
+          ],
+        },
+        (doc) => doc.content?.[0].content?.[0].text ?? '',
       ),
-    ).toBe('开场。\n\n@ Action 2\n\n保存失败。')
+    ).toBe(
+      '------------------------ Action 2 ------------------------\n\n保存失败。',
+    )
   })
 })

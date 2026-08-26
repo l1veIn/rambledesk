@@ -446,6 +446,7 @@ async fn repeated_cancel_preserves_the_first_reason_and_terminal_state() {
     application
         .save_feedback_draft(SaveDraftInput {
             request_id: request_id.clone(),
+            document_json: "{}".to_owned(),
             body_markdown: "Partial human feedback.".to_owned(),
             expected_revision: 0,
         })
@@ -641,6 +642,7 @@ async fn draft_uses_aggregate_revision_and_idempotent_replay() {
     let first = application
         .save_feedback_draft(SaveDraftInput {
             request_id: request_id.clone(),
+            document_json: r#"{"schemaVersion":1,"doc":{"type":"doc","content":[{"type":"paragraph","attrs":{"actionIndex":2},"content":[{"type":"text","text":"The primary flow is clear."}]}]}}"#.to_owned(),
             body_markdown: "The primary flow is clear.".to_owned(),
             expected_revision: 0,
         })
@@ -650,6 +652,10 @@ async fn draft_uses_aggregate_revision_and_idempotent_replay() {
     let replay = application
         .save_feedback_draft(SaveDraftInput {
             request_id: request_id.clone(),
+            document_json: first
+                .document_json
+                .clone()
+                .expect("structured draft document"),
             body_markdown: first.body_markdown.clone(),
             expected_revision: 0,
         })
@@ -660,6 +666,7 @@ async fn draft_uses_aggregate_revision_and_idempotent_replay() {
     let conflict = application
         .save_feedback_draft(SaveDraftInput {
             request_id: request_id.clone(),
+            document_json: r#"{"schemaVersion":1,"doc":{"type":"doc"}}"#.to_owned(),
             body_markdown: "A conflicting edit.".to_owned(),
             expected_revision: 0,
         })
@@ -687,6 +694,7 @@ async fn draft_uses_aggregate_revision_and_idempotent_replay() {
         .expect("recover draft");
     assert_eq!(recovered.draft.saved_revision, 1);
     assert_eq!(recovered.draft.body_markdown, "The primary flow is clear.");
+    assert_eq!(recovered.draft.document_json, first.document_json);
     reopened.close().await;
 }
 
@@ -705,11 +713,13 @@ async fn concurrent_different_drafts_have_one_cas_winner() {
 
     let left = application.save_feedback_draft(SaveDraftInput {
         request_id: request_id.clone(),
+        document_json: r#"{"side":"left"}"#.to_owned(),
         body_markdown: "left".to_owned(),
         expected_revision: 0,
     });
     let right = application.save_feedback_draft(SaveDraftInput {
         request_id: request_id.clone(),
+        document_json: r#"{"side":"right"}"#.to_owned(),
         body_markdown: "right".to_owned(),
         expected_revision: 0,
     });

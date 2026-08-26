@@ -40,7 +40,7 @@ MVP 不做：
 | 适配器 | 宿主接入 RambleDesk 的完整流程。 |
 | 工作台 | 人类处理反馈请求的桌面 UI。 |
 | Ramble | 由一个未终态反馈请求持有的统一采集状态，包含语音、文字和截图。工作台全局最多一个 Active Ramble。 |
-| Feedback Draft | 请求处理期间可编辑并持久化的正文。 |
+| Feedback Draft | 请求处理期间可编辑并完整持久化的结构化文档。 |
 | Cooking | 提交前可选的大模型编辑步骤；把 Uncooked Feedback 整理为 Cooked Feedback，同时保留原稿。 |
 | Light cleanup | 可选的语音轻度整理；等于对 Feedback Draft 的一次可撤销覆盖，不是 Cooking。 |
 

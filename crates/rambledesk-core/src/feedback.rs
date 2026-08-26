@@ -133,6 +133,7 @@ pub trait FeedbackRepository: AttachmentPathResolver + Send + Sync {
     async fn save_draft(
         &self,
         request_id: &str,
+        document_json: &str,
         body_markdown: &str,
         expected_revision: u64,
         now: &str,

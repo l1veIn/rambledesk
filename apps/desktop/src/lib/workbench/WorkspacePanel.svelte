@@ -8,6 +8,7 @@
     FeedbackResultView,
     FeedbackWorkspaceView,
   } from '$lib/feedback'
+  import type { FeedbackDraftSnapshot } from '$lib/feedbackDraftDocument'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
   import { savePaneLayout, savedPaneLayout } from '$lib/uiPreferences'
@@ -63,9 +64,16 @@
   export let formatTime: (value: string | null | undefined) => string
   export let onReload: () => void = () => {}
   export let onDraftChange: (markdown: string) => void = () => {}
-  export let draftEditors: Array<{ requestId: string; initialMarkdown: string }> = []
+  export let draftEditors: Array<{
+    requestId: string
+    initialDocumentJson: string
+    initialMarkdown: string
+  }> = []
   export let visibleRequestId = ''
-  export let onDraftChangeFor: (requestId: string, markdown: string) => void = () => {}
+  export let onDraftChangeFor: (
+    requestId: string,
+    snapshot: FeedbackDraftSnapshot,
+  ) => void = () => {}
   export let onEditorReady: (requestId: string, editor: FeedbackEditorHandle | null) => void = () => {}
   export let onPrepareNonSpeechInsert: (requestId: string) => void = () => {}
   export let currentActionIndex: number | null = null

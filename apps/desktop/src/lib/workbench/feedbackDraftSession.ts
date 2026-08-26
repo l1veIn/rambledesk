@@ -1,9 +1,17 @@
-import { appendActionChannelBlock } from './actionChannel'
-import { replaceLastOccurrence } from './feedbackText'
+import {
+  decodeFeedbackDraftDocument,
+  snapshotFeedbackDraftDocument,
+  snapshotFeedbackDraftMarkdown,
+  updateFeedbackDraftDocument,
+  type FeedbackDraftSnapshot,
+} from '../feedbackDraftDocument'
+import { CLEANED_SPEECH_NODE, PENDING_SPEECH_NODE } from '../pendingSpeech'
+import { ACTION_CHANNEL_ATTR, stampActionIndex } from './actionChannel'
 import {
   CLEANUP_CHAR_THRESHOLD,
   CLEANUP_TIMEOUT_MS,
   acceptCleanupResult,
+  alignCleanupParts,
   pendingCharCount,
   shouldStartCleanup,
   type CleanupTrigger,
@@ -23,7 +31,8 @@ export type SpeechCleanupPort = {
 export type DraftSavePort = {
   save(input: {
     requestId: string
-    body: string
+    documentJson: string
+    bodyMarkdown: string
     expectedRevision: number
   }): Promise<{ savedRevision: number }>
 }
@@ -31,15 +40,18 @@ export type DraftSavePort = {
 export type FeedbackDraftSession = {
   readonly requestId: string
   readonly generation: number
+  readonly initialDocumentJson: string
   readonly initialMarkdown: string
+  documentJson(): string
   markdown(): string
+  snapshot(): FeedbackDraftSnapshot
   savedRevision(): number
   savePhase(): SavePhase
   saveMessage(): string
   isDirty(): boolean
   isDisposed(): boolean
-  applyUserEdit(markdown: string): void
-  acknowledgeSave(savedMarkdown: string, savedRevision: number): void
+  applyUserEdit(snapshot: FeedbackDraftSnapshot): void
+  acknowledgeSave(snapshot: FeedbackDraftSnapshot, savedRevision: number): void
   appendSpeech(text: string): void
   insertMarkdownBlock(markdown: string): void
   currentActionIndex(): number | null
@@ -56,6 +68,7 @@ export type FeedbackDraftSession = {
 export function createFeedbackDraftSession(input: {
   requestId: string
   generation: number
+  initialDocumentJson?: string | null
   initialMarkdown: string
   initialRevision: number
   save: DraftSavePort
@@ -64,11 +77,16 @@ export function createFeedbackDraftSession(input: {
 }): FeedbackDraftSession {
   const requestId = input.requestId
   const generation = input.generation
-  const initialMarkdown = input.initialMarkdown
-  let body = input.initialMarkdown
-  let savedBody = input.initialMarkdown
+  const restoredDocument = decodeFeedbackDraftDocument(input.initialDocumentJson)
+  const initialSnapshot = restoredDocument
+    ? snapshotFeedbackDraftDocument(restoredDocument)
+    : snapshotFeedbackDraftMarkdown(input.initialMarkdown)
+  const initialDocumentJson = initialSnapshot.documentJson
+  const initialMarkdown = initialSnapshot.bodyMarkdown
+  let draft = initialSnapshot
+  let savedDraft = initialSnapshot
   let revision = input.initialRevision
-  let phase: SavePhase = input.initialMarkdown && input.initialRevision > 0 ? 'saved' : 'idle'
+  let phase: SavePhase = input.initialRevision > 0 ? 'saved' : 'idle'
   let message = ''
   let disposed = false
   let editorHandle: FeedbackEditorHandle | null = null
@@ -87,7 +105,10 @@ export function createFeedbackDraftSession(input: {
   }
 
   function dirty() {
-    return body !== savedBody
+    return (
+      draft.documentJson !== savedDraft.documentJson ||
+      draft.bodyMarkdown !== savedDraft.bodyMarkdown
+    )
   }
 
   function cancelPendingSave() {
@@ -103,20 +124,23 @@ export function createFeedbackDraftSession(input: {
     saveTimer = setTimeout(() => void saveNow(), delayMs)
   }
 
-  function applyUserEdit(markdown: string) {
-    if (disposed || markdown === body) return
-    body = markdown
+  function applyUserEdit(snapshot: FeedbackDraftSnapshot) {
+    if (
+      disposed ||
+      (snapshot.documentJson === draft.documentJson && snapshot.bodyMarkdown === draft.bodyMarkdown)
+    ) return
+    draft = snapshot
     phase = dirty() ? 'unsaved' : 'saved'
     message = ''
     scheduleSave()
     notify()
   }
 
-  function acknowledgeSave(savedMarkdown: string, savedRevision: number) {
+  function acknowledgeSave(snapshot: FeedbackDraftSnapshot, savedRevision: number) {
     if (disposed) return
-    savedBody = savedMarkdown
+    savedDraft = snapshot
     revision = savedRevision
-    phase = body === savedMarkdown ? 'saved' : 'unsaved'
+    phase = dirty() ? 'unsaved' : 'saved'
     notify()
   }
 
@@ -134,6 +158,49 @@ export function createFeedbackDraftSession(input: {
     }
   }
 
+  function appendNodes(nodes: NonNullable<ReturnType<typeof decodeFeedbackDraftDocument>>['content']) {
+    if (!nodes?.length) return
+    applyUserEdit(
+      updateFeedbackDraftDocument(draft, (doc) => ({
+        ...doc,
+        content: [...(doc.content ?? []), ...nodes],
+      })),
+    )
+  }
+
+  function actionAttrs(extra: Record<string, unknown> = {}) {
+    return currentActionIndex == null
+      ? extra
+      : { ...extra, [ACTION_CHANNEL_ATTR]: currentActionIndex }
+  }
+
+  function finishSpeechCleanupInDocument(pieces: string[], cleaned: string | null) {
+    if (pieces.length === 0) return
+    const parts = alignCleanupParts(pieces, cleaned)
+    applyUserEdit(
+      updateFeedbackDraftDocument(draft, (doc) => {
+        const content = [...(doc.content ?? [])]
+        const targets: number[] = []
+        for (let index = content.length - 1; index >= 0 && targets.length < pieces.length; index -= 1) {
+          const node = content[index]
+          if (node.type === PENDING_SPEECH_NODE) targets.unshift(index)
+        }
+        targets.forEach((contentIndex, pieceIndex) => {
+          const node = content[contentIndex]
+          const attrs = { ...(node.attrs ?? {}) }
+          delete attrs.status
+          const text = parts?.[pieceIndex] ?? pieces[pieceIndex]
+          content[contentIndex] = {
+            type: cleaned == null ? 'paragraph' : CLEANED_SPEECH_NODE,
+            ...(Object.keys(attrs).length > 0 ? { attrs } : {}),
+            ...(text ? { content: [{ type: 'text', text }] } : {}),
+          }
+        })
+        return { ...doc, content }
+      }),
+    )
+  }
+
   async function startCleanup(trigger: CleanupTrigger): Promise<void> {
     const pending = pendingSpeechSnapshot()
     if (
@@ -144,9 +211,8 @@ export function createFeedbackDraftSession(input: {
         pendingChars: pending.chars,
         trigger,
       })
-    ) {
-      return
-    }
+    ) return
+
     const pieces = pending.texts
     pendingPieces = []
     cleaning = true
@@ -166,14 +232,16 @@ export function createFeedbackDraftSession(input: {
         if (disposed) return
         const accepted = result === TIMEOUT ? raw : acceptCleanupResult(raw, result)
         const replacedInEditor = editorAtStart?.isSpeechCleaning?.() === true
-        // Timeout → null (unlock as plain paragraphs). Otherwise pass the
-        // accepted text so each speech node can be marked cleaned 1:1.
-        editorAtStart?.finishSpeechCleanup?.(result === TIMEOUT ? null : accepted)
-        if (!replacedInEditor) {
-          applyUserEdit(replaceLastOccurrence(body, raw, accepted))
+        if (replacedInEditor) {
+          editorAtStart?.finishSpeechCleanup?.(result === TIMEOUT ? null : accepted)
+        } else {
+          finishSpeechCleanupInDocument(pieces, result === TIMEOUT ? null : accepted)
         }
       } catch {
-        if (!disposed) editorAtStart?.finishSpeechCleanup?.(null)
+        if (!disposed) {
+          if (editorAtStart?.isSpeechCleaning?.() === true) editorAtStart.finishSpeechCleanup?.(null)
+          else finishSpeechCleanupInDocument(pieces, null)
+        }
       } finally {
         cleaning = false
         inflightCleanup = null
@@ -195,9 +263,7 @@ export function createFeedbackDraftSession(input: {
               pendingChars: leftover.chars,
               trigger: 'char-count',
             })
-          ) {
-            void startCleanup('stable-count')
-          }
+          ) void startCleanup('stable-count')
         }
       }
     })()
@@ -215,10 +281,17 @@ export function createFeedbackDraftSession(input: {
     if (cleanupEnabled()) {
       pendingPieces = [...pendingPieces, transcript]
       if (editorHandle) editorHandle.appendTranscript(transcript, { pending: true })
-      else applyUserEdit(appendActionChannelBlock(body, transcript, currentActionIndex))
+      else {
+        appendNodes([
+          {
+            type: PENDING_SPEECH_NODE,
+            attrs: actionAttrs({ status: 'pending' }),
+            content: [{ type: 'text', text: transcript }],
+          },
+        ])
+      }
       const pending = pendingSpeechSnapshot()
-      const trigger =
-        pending.chars >= CLEANUP_CHAR_THRESHOLD ? 'char-count' : 'stable-count'
+      const trigger = pending.chars >= CLEANUP_CHAR_THRESHOLD ? 'char-count' : 'stable-count'
       if (
         shouldStartCleanup({
           enabled: true,
@@ -227,16 +300,20 @@ export function createFeedbackDraftSession(input: {
           pendingChars: pending.chars,
           trigger,
         })
-      ) {
-        void startCleanup(trigger)
-      }
+      ) void startCleanup(trigger)
       return
     }
     if (editorHandle) {
       editorHandle.appendTranscript(transcript)
       return
     }
-    applyUserEdit(appendActionChannelBlock(body, transcript, currentActionIndex))
+    appendNodes([
+      {
+        type: 'paragraph',
+        attrs: actionAttrs(),
+        content: [{ type: 'text', text: transcript }],
+      },
+    ])
   }
 
   function toggleActionChannel(index: number) {
@@ -268,7 +345,7 @@ export function createFeedbackDraftSession(input: {
       return dirty() ? saveNow() : phase !== 'error'
     }
 
-    const bodyToSave = body
+    const draftToSave = draft
     const revisionToSave = revision
     phase = 'saving'
     message = ''
@@ -278,13 +355,14 @@ export function createFeedbackDraftSession(input: {
       try {
         const saved = await input.save.save({
           requestId,
-          body: bodyToSave,
+          documentJson: draftToSave.documentJson,
+          bodyMarkdown: draftToSave.bodyMarkdown,
           expectedRevision: revisionToSave,
         })
         if (disposed) return false
-        savedBody = bodyToSave
+        savedDraft = draftToSave
         revision = saved.savedRevision
-        phase = body === bodyToSave ? 'saved' : 'unsaved'
+        phase = dirty() ? 'unsaved' : 'saved'
         return true
       } catch (cause) {
         if (disposed) return false
@@ -301,6 +379,17 @@ export function createFeedbackDraftSession(input: {
     return succeeded
   }
 
+  function insertMarkdownBlock(markdown: string) {
+    prepareNonSpeechInsert()
+    if (editorHandle?.insertMarkdownAtCaret?.(markdown)) return
+    const block = snapshotFeedbackDraftMarkdown(markdown)
+    const parsed = decodeFeedbackDraftDocument(block.documentJson)
+    const nodes = (parsed?.content ?? []).map((node) =>
+      currentActionIndex == null ? node : stampActionIndex(node, currentActionIndex),
+    )
+    appendNodes(nodes)
+  }
+
   function dispose() {
     if (disposed) return
     disposed = true
@@ -311,8 +400,11 @@ export function createFeedbackDraftSession(input: {
   return {
     requestId,
     generation,
+    initialDocumentJson,
     initialMarkdown,
-    markdown: () => body,
+    documentJson: () => draft.documentJson,
+    markdown: () => draft.bodyMarkdown,
+    snapshot: () => draft,
     savedRevision: () => revision,
     savePhase: () => phase,
     saveMessage: () => message,
@@ -321,11 +413,7 @@ export function createFeedbackDraftSession(input: {
     applyUserEdit,
     acknowledgeSave,
     appendSpeech,
-    insertMarkdownBlock: (markdown: string) => {
-      prepareNonSpeechInsert()
-      if (editorHandle?.insertMarkdownAtCaret?.(markdown)) return
-      applyUserEdit(appendActionChannelBlock(body, markdown, currentActionIndex))
-    },
+    insertMarkdownBlock,
     currentActionIndex: () => currentActionIndex,
     toggleActionChannel,
     prepareNonSpeechInsert,

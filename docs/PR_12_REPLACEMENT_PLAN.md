@@ -37,8 +37,8 @@ PR #12 不会因为创建 replacement PR 自动关闭。建议在 replacement �
 - 所有“正文”都指 TipTap 中可编辑的 Feedback Draft。
 - Task Brief（What happened、Actions to experience、context hint）不能编辑。
 - 开始/停止一次麦克风会话不构成新的反馈对象或文档边界。
-- 事实来源仍是 SQLite 草稿（现有 `save_draft` + CAS revision）。TipTap 是这份 Markdown
-  的编辑面。撤回只活在当前编辑会话，不持久化，也不改用浏览器缓存。
+- 事实来源是 SQLite 中按 CAS revision 原子保存的版本化 TipTap 文档 JSON；由同一文档生成的
+  Markdown 是 Cooking/提交投影。撤回只活在当前编辑会话，不持久化，也不改用浏览器缓存。
 
 ### 全局唯一 Active Ramble 与保活会话
 
@@ -70,8 +70,8 @@ PR #12 不会因为创建 replacement PR 自动关闭。建议在 replacement �
 - 这里的监督不是要求用户实时注视每次自动替换，而是：用户显式启用、结果始终留在可编辑
   Feedback Draft 中、当前会话可撤销，并且最终由人类明确提交。Uncooked 是在这种人类治理下
   形成并确认的源反馈证据，不是逐字转写证据。
-- 未启用 Cooking 时，`feedback.md` 与 `uncooked.md` 仍是同一份编辑器正文（可以已经过
-  cleanup）。Cooking 的原稿也是这份正文。
+- 未启用 Cooking 时，`feedback.md` 与 `uncooked.md` 来自同一份 Feedback Draft 的 Markdown
+  投影（可以已经过 cleanup）。Cooking 的原稿也是这份投影。
 - 失败或超时：原文不动。
 - 默认关闭；启用才自动找时机。涉及模型服务、隐私和费用。
 
@@ -87,8 +87,7 @@ PR #12 不会因为创建 replacement PR 自动关闭。建议在 replacement �
   其 cleanup；在另一个可见 Request 内进行的普通编辑、Action 粘贴或附件操作不得额外改动
   所属 Request。
 - 点击 Action 序号：切换当前 Action 频道。之后追加到正文段尾的语音、截图和粘贴带上该
-  Action 的节点归属，Markdown 写成 `@ Action 2`。再点一次同一序号回到默认频道（单独一行
-  `@`）。不把 Action 指令原文贴进正文。
+  Action 的节点归属，Markdown 用 `------------------------ Action 2 ------------------------` 可读分隔线导出。再点一次同一序号回到默认频道，Markdown 用无标签长横线分隔。不把 Action 指令原文贴进正文，也不从分隔线反向重建节点属性。
 
 ### 待整理 / 整理中 / 正文
 
@@ -289,7 +288,7 @@ Light cleanup 由人类显式启用，结果原位可见、当前会话可撤销
 | --- | --- | --- |
 | `App.svelte` capture orchestration | 保存链、失败列表、重试、Cooking mirror、terminal counter 集中在 UI shell | 只保留导航和状态投影；Draft Session 拥有 editor/save/cleanup，terminal action 调用其 settle |
 | `RambleSessionController.svelte` | 同时拥有 Ramble、Brief Note、语音 session、cleanup、clipboard、drain/lock | 收窄为语音输入；产出 Partial/Stable，由 Active Ramble 路由到所属 Draft Session |
-| `briefNotes.ts` | 混合 Task Brief parsing、clip UI、marker serialization、Markdown 替换 | 删除 clip/note/marker；Action 插入做成“粘贴引用块” |
+| `briefNotes.ts` | 混合 Task Brief parsing、clip UI、marker serialization、Markdown 替换 | 删除 clip/note/marker；Action 序号切换当前归属频道 |
 | `publisherController.ts` | 发布接口必须理解 capture drain 和 terminal lock | 只等待 inflight cleanup / 草稿保存 |
 | Task Brief preview | 展示、录音、编辑、clip magazine 混在一个 Dialog | 只读展示；序号点击切换当前 Action 频道 |
 | Markdown marker | `rambledesk-capture://...` 零宽链接承担对象身份 | 删除 |
@@ -299,14 +298,14 @@ Light cleanup 由人类显式启用，结果原位可见、当前会话可撤销
 
 ### 3.3 PR 没有修改、replacement 也不扩张的基础设施
 
-PR #12 几乎没有改变 `rambledesk-core`、`rambledesk-storage` 的 Draft 合同。replacement
-也不新增 journal 表、reservation 或 raw evidence 列。继续用整篇 `body_markdown` +
-`expected_revision`。待整理/整理中是编辑器会话态；checkpoint 到 SQLite 时就是普通 Markdown。
+replacement 不新增 journal 表、reservation 或 raw evidence 列。Draft 使用版本化 TipTap JSON、
+Markdown 导出投影和一个 `expected_revision` 原子保存；节点类型、属性和 marks 属于可恢复文档，
+inflight cleanup task、selection 与 Undo 属于编辑器会话态。
 
 跨 Request 导航时，不再让 Stable 或异步 cleanup 绕过 TipTap、直接 merge SQLite Markdown。
 Active Ramble 所属 Feedback Draft 会话始终存活；语音追加、cleanup replace、Undo 和 autosave
 继续通过同一个 editor transaction/save queue 完成。`request_id` 负责确认所有权和隔离保存，
-不是绕开 editor 的后台写入口。持久化合同仍不变，因此这不是新的存储模型。
+不是绕开 editor 的后台写入口。ADR 005 把该边界升级为结构化 Draft 存储模型。
 
 ## 4. 术语审计
 
@@ -357,9 +356,9 @@ context hint、Cooking、Cooked Feedback、身份字段、适配器分类：repl
 
 建议加入核心术语表（宪章已有 Draft）：
 
-> **Feedback Draft**：一个反馈请求处理期间持续持久化、可由人类在 TipTap 中直接编辑的正文。
-> 语音、截图、附件和粘贴进来的 Action 原文都进入其中。它是可变的 request-scoped 状态，不是
-> 反馈包；工作台展示和编辑它，SQLite 保存其持久化事实。
+> **Feedback Draft**：一个反馈请求处理期间持续持久化、可由人类在 TipTap 中直接编辑的结构化
+> 文档。语音、截图、附件和带 Action 归属的内容都进入其中。它是可变的 request-scoped 状态，
+> 不是反馈包；工作台展示和编辑它，SQLite 完整保存其文档内容。
 
 `Feedback Draft Session` 只作为实现词：表示一个 Request 在当前应用进程中的 TipTap、selection、
 Undo、cleanup 区间和保存队列。它不进入核心术语表，不是新的持久对象；应用重启后只从 SQLite
@@ -390,7 +389,7 @@ Content Flow、RambleJournal、Ramble owner、Feedback Draft Session、settled/u
 2. 待整理达到 3 个 Stable、约 500 字、停口约 3 秒，或用户去截图/粘贴时，这段
    语音进入整理中：原文仍在，轻提示，锁住，Undo 禁用；麦克风继续；
 3. 用户截图并批注；完成后插在当前合法光标（若在锁段内则在锁段后）；
-4. 用户点 Action 2，序号高亮；之后新内容归到 Action 2，Markdown 出现 `@ Action 2`；
+4. 用户点 Action 2，序号高亮；之后新内容归到 Action 2，Markdown 出现带 `Action 2` 的可读分隔线；
 5. 用户继续说，新语音出现在锁段之后，成为新的待整理；
 6. 整理返回，锁段被覆盖成整理结果，Undo 恢复可用；再按撤销即回到覆盖前；
 7. 用户切换到 Request B；Request A 的 editor 会话被保活，语音、cleanup 和 autosave 继续只在
@@ -434,7 +433,7 @@ resume、handoff、end 和 return-to-owner；implementation 维护 `ownerRequest
 
 Session host 最多保留 Active Ramble 所属会话和当前可见会话；二者相同时复用同一实例。
 Request 切换不得对所属 editor 调用 `setContent`，也不得把后续 Stable/cleanup 改成直接写
-SQLite。生产路径仍是 TipTap transaction → Markdown → `save_feedback_draft`。
+SQLite。生产路径是 TipTap transaction → 文档 JSON + Markdown 投影 → `save_feedback_draft`。
 
 测试以 Feedback Draft Session 的 interface 为主要 seam，使用真实 TipTap state 和可控的本地
 保存 adapter 验证可见结果、Undo、保存隔离和 settle；纯文本 cleanup 仍可有纯函数测试。新的
@@ -631,14 +630,14 @@ PR #12 后半段的故障知识仍应写成测试，但目标换成“一份草�
 - 整理中锁段 + 禁用撤销；完成后 Undo 撤回覆盖；
 - 主动重新载入会停止语音、settle/save 并失效旧 generation；意外 webview reload 会停止孤儿
   语音并丢弃旧异步结果，不恢复会话态；
-- Action 序号粘贴引用块，跳过 cleanup。
+- Action 序号切换当前归属频道，不插入指令原文，也不触发 cleanup。
 
 不应扩大：
 
 - 不重写反馈请求、反馈包、适配器或 continuation；
 - 不把 RambleDesk 变成通用系统听写；
 - 不引入 event-sourced 编辑器或 RambleJournal；
-- 不持久化 TipTap History、selection、cleanup 区间或 Active Ramble，不承诺崩溃后恢复会话；
+- 不持久化 TipTap History、selection、inflight cleanup task 或 Active Ramble；文档节点及属性完整恢复；
 - 不支持多个 Request 同时 Active Ramble，也不做静默抢占；
 - 不让模型决定事实顺序或自动提交；
 - 不增加 Task Brief 录音通道；
