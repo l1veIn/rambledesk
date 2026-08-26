@@ -42,6 +42,7 @@ export const PendingSpeech = Node.create({
         class:
           node.attrs.status === 'cleaning' ? 'speech-cleaning' : 'speech-pending',
         contenteditable: node.attrs.status === 'cleaning' ? 'false' : null,
+        'data-speech-hint': node.attrs.status === 'cleaning' ? '整理中' : null,
       }),
       0,
     ]

@@ -32,7 +32,8 @@ describe('resolveLightCleanupSystemPrompt', () => {
     expect(DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT).toContain('比如说')
     expect(DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT).toMatch(/punctuation|sentence break/i)
     expect(DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT).not.toContain('headings')
-    expect(DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT).toContain('Do not summarize')
+    expect(DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT).toContain('Do not answer')
+    expect(DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT).toContain('SAME utterance')
   })
 })
 
@@ -45,18 +46,27 @@ describe('lightCleanupTranscript', () => {
 
   it('sends the transcript to the model and returns the cleaned text', async () => {
     const generate = vi.fn(async () => ({
-      text: 'The button is too small.',
+      text: 'button 太小了。',
       model: 'deepseek/deepseek-v4-flash',
     }))
     await expect(
       lightCleanupTranscript('啊那个 button 太小了', config, generate),
-    ).resolves.toBe('The button is too small.')
+    ).resolves.toBe('button 太小了。')
     expect(generate).toHaveBeenCalledWith(
       expect.objectContaining({
         system: DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT,
         prompt: '啊那个 button 太小了',
       }),
     )
+  })
+
+  it('keeps the original transcript when the model answers instead of tidying', async () => {
+    const spoken = '呃，跟我说一下当前我们在这个分支上做了哪些工作。'
+    const generate = vi.fn(async () => ({
+      text: '好的，当前这个分支上我们主要做了这些工作：修复了登录页面的一个崩溃问题。',
+      model: 'deepseek/x',
+    }))
+    await expect(lightCleanupTranscript(spoken, config, generate)).resolves.toBe(spoken)
   })
 
   it('keeps the original transcript when the model returns empty text', async () => {

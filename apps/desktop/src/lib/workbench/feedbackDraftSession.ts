@@ -1,8 +1,8 @@
 import { actionQuoteLines, actionQuoteMarkdown, appendMarkdownBlock } from './feedbackText'
 import {
   CLEANUP_CHAR_THRESHOLD,
-  CLEANUP_SILENCE_MS,
   CLEANUP_TIMEOUT_MS,
+  acceptCleanupResult,
   shouldStartCleanup,
   type CleanupTrigger,
 } from './speechCleanupPolicy'
@@ -73,10 +73,7 @@ export function createFeedbackDraftSession(input: {
   let pendingPieces: string[] = []
   let cleaning = false
   let inflightCleanup: Promise<void> | null = null
-  let silenceTimer: unknown
   const schedule = input.cleanup?.schedule ?? ((fn: () => void, ms: number) => setTimeout(fn, ms))
-  const cancelScheduled = input.cleanup?.cancel ?? ((id: unknown) => clearTimeout(id as ReturnType<typeof setTimeout>))
-  const silenceMs = input.cleanup?.silenceMs ?? CLEANUP_SILENCE_MS
   const timeoutMs = input.cleanup?.timeoutMs ?? CLEANUP_TIMEOUT_MS
   const TIMEOUT = Symbol('cleanup-timeout')
 
@@ -131,22 +128,6 @@ export function createFeedbackDraftSession(input: {
     return input.cleanup?.enabled() === true
   }
 
-  function cancelSilence() {
-    if (silenceTimer !== undefined) {
-      cancelScheduled(silenceTimer)
-      silenceTimer = undefined
-    }
-  }
-
-  function armSilence() {
-    cancelSilence()
-    if (!cleanupEnabled() || pendingPieces.length === 0) return
-    silenceTimer = schedule(() => {
-      silenceTimer = undefined
-      void startCleanup('silence')
-    }, silenceMs)
-  }
-
   async function startCleanup(trigger: CleanupTrigger): Promise<void> {
     if (
       !shouldStartCleanup({
@@ -160,7 +141,6 @@ export function createFeedbackDraftSession(input: {
     }
     const pieces = pendingPieces
     pendingPieces = []
-    cancelSilence()
     cleaning = true
     notify()
     const raw = editorHandle?.beginSpeechCleanup?.() || pieces.join('\n\n')
@@ -178,10 +158,13 @@ export function createFeedbackDraftSession(input: {
         if (result === TIMEOUT) {
           editorHandle?.finishSpeechCleanup?.(null)
         } else {
-          editorHandle?.finishSpeechCleanup?.(result)
+          const accepted = acceptCleanupResult(raw, result)
+          editorHandle?.finishSpeechCleanup?.(accepted === raw ? null : accepted)
           if (!editorHandle) {
             applyUserEdit(
-              body.endsWith(raw) ? `${body.slice(0, body.length - raw.length)}${result}` : appendMarkdownBlock(body, result),
+              body.endsWith(raw)
+                ? `${body.slice(0, body.length - raw.length)}${accepted}`
+                : appendMarkdownBlock(body, accepted),
             )
           }
         }
@@ -207,8 +190,6 @@ export function createFeedbackDraftSession(input: {
             })
           ) {
             void startCleanup('stable-count')
-          } else {
-            armSilence()
           }
         }
       }
@@ -228,7 +209,6 @@ export function createFeedbackDraftSession(input: {
       pendingPieces = [...pendingPieces, transcript]
       if (editorHandle) editorHandle.appendTranscript(transcript, { pending: true })
       else applyUserEdit(appendMarkdownBlock(body, transcript))
-      armSilence()
       if (
         shouldStartCleanup({
           enabled: true,
@@ -306,7 +286,6 @@ export function createFeedbackDraftSession(input: {
     if (disposed) return
     disposed = true
     cancelPendingSave()
-    cancelSilence()
     editorHandle = null
   }
 

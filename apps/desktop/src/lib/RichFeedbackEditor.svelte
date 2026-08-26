@@ -27,6 +27,7 @@
   export let markdown = ''
   export let previews: Record<string, string> = {}
   export let disabled = false
+  export let acceptExternalMarkdown = true
   export let onOpenAttachment: (attachmentId: string) => void = () => {}
   export let onChange: (markdown: string) => void = () => {}
 
@@ -36,6 +37,8 @@
   let editorMarkdown = ''
   let insertionPosition = 0
   let historyLocked = false
+  let canUndo = false
+  let canRedo = false
   let openAttachmentHandler = (_attachmentId: string) => {}
   $: openAttachmentHandler = onOpenAttachment
 
@@ -75,10 +78,15 @@
       onCreate: () => {
         editorMarkdown = editor?.getMarkdown() ?? markdown
         insertionPosition = editor?.state.doc.content.size ?? 0
+        syncHistoryButtons()
         hydrateAttachmentImages()
+      },
+      onTransaction: () => {
+        syncHistoryButtons()
       },
       onUpdate: ({ editor: updatedEditor }) => {
         historyLocked = editorHasCleaningSpeech(updatedEditor)
+        syncHistoryButtons()
         if (applyingExternalChange) return
         const nextMarkdown = updatedEditor.getMarkdown()
         editorMarkdown = nextMarkdown
@@ -101,7 +109,7 @@
     editor.view.dom.setAttribute('aria-label', t($locale, 'Markdown rich-text feedback body'))
     editor.view.dom.setAttribute('data-placeholder', t($locale, 'Record what you saw, what felt smooth, and where you paused.'))
   }
-  $: if (editor && markdown !== editorMarkdown) applyMarkdown(markdown)
+  $: if (acceptExternalMarkdown && editor && markdown !== editorMarkdown) applyMarkdown(markdown)
   $: if (editor) {
     previews
     hydrateAttachmentImages()
@@ -213,6 +221,11 @@
     return inserted
   }
 
+  function syncHistoryButtons() {
+    canUndo = Boolean(editor && !historyLocked && editor.can().undo())
+    canRedo = Boolean(editor && !historyLocked && editor.can().redo())
+  }
+
   function editorHasCleaningSpeech(target = editor) {
     if (!target) return false
     let cleaning = false
@@ -271,32 +284,53 @@
       }
     })
     historyLocked = false
-    if (ranges.length === 0) return
-    const from = ranges[0].from
-    const to = ranges[ranges.length - 1].to
-    const replacement = (cleaned?.trim() || ranges.map((range) => range.text).join('\n\n'))
-      .split(/\n{2,}/)
-      .map((paragraph) =>
+    if (ranges.length === 0) {
+      syncHistoryButtons()
+      return
+    }
+    const runs: Array<{ from: number; to: number; text: string }> = []
+    for (const range of ranges) {
+      const last = runs[runs.length - 1]
+      if (last && last.to === range.from) {
+        last.to = range.to
+        last.text = `${last.text}\n\n${range.text}`
+      } else {
+        runs.push({ ...range })
+      }
+    }
+    let transaction = editor.state.tr
+    for (let index = runs.length - 1; index >= 0; index -= 1) {
+      const run = runs[index]
+      const source = runs.length === 1 ? cleaned?.trim() || run.text : run.text
+      const nodes = source.split(/\n{2,}/).map((paragraph) =>
         editor!.schema.nodes.paragraph.create(
           null,
           paragraph ? editor!.schema.text(paragraph) : undefined,
         ),
       )
-    const transaction = editor.state.tr
-      .replaceWith(from, to, Fragment.from(replacement))
-      .setMeta('speechCleanup', true)
+      transaction = transaction.replaceWith(run.from, run.to, Fragment.from(nodes))
+    }
+    transaction.setMeta('speechCleanup', true)
     editor.view.dispatch(transaction)
+    syncHistoryButtons()
+  }
+
+  function resolveInsertPosition() {
+    if (!editor) return 0
+    let position = editor.state.selection.from
+    editor.state.doc.descendants((node, from) => {
+      if (node.type.name !== PENDING_SPEECH_NODE) return
+      const to = from + node.nodeSize
+      if (position > from && position < to) position = to
+    })
+    return Math.min(Math.max(position, 0), editor.state.doc.content.size)
   }
 
   export function moveCursorAfterCleaningSpeech() {
     if (!editor) return
-    let end = 0
-    editor.state.doc.descendants((node, position) => {
-      if (node.type.name === PENDING_SPEECH_NODE && node.attrs.status === 'cleaning') {
-        end = position + node.nodeSize
-      }
-    })
-    if (end > 0 && insertionPosition < end) insertionPosition = end
+    const position = resolveInsertPosition()
+    insertionPosition = position
+    editor.commands.setTextSelection(position)
   }
 
   export function insertQuotedBlock(lines: string[]) {
@@ -305,7 +339,7 @@
       type: 'paragraph' as const,
       content: line ? [{ type: 'text' as const, text: line }] : [],
     }))
-    const position = Math.min(Math.max(insertionPosition, 0), editor.state.doc.content.size)
+    const position = resolveInsertPosition()
     const inserted = editor.commands.insertContentAt(position, [
       { type: 'blockquote', content },
       { type: 'paragraph' },
@@ -468,7 +502,7 @@
       size="icon-sm"
       aria-label={t($locale, 'Undo')}
       title={t($locale, 'Undo')}
-      disabled={disabled || historyLocked || !editor?.can().undo()}
+      disabled={disabled || !canUndo}
       onclick={() => editor?.chain().focus().undo().run()}
     >
       <Undo2 />
@@ -478,7 +512,7 @@
       size="icon-sm"
       aria-label={t($locale, 'Redo')}
       title={t($locale, 'Redo')}
-      disabled={disabled || historyLocked || !editor?.can().redo()}
+      disabled={disabled || !canRedo}
       onclick={() => editor?.chain().focus().redo().run()}
     >
       <Redo2 />
@@ -519,9 +553,17 @@
   }
 
   .editor-host :global(.feedback-prose p.speech-cleaning) {
+    border-left: 3px solid var(--primary);
     border-radius: 4px;
     background: color-mix(in srgb, var(--muted) 80%, transparent);
-    opacity: 0.78;
+    opacity: 0.86;
+    padding-left: 8px;
+  }
+
+  .editor-host :global(.feedback-prose p.speech-cleaning::after) {
+    color: var(--muted-foreground);
+    content: '  ·  ' attr(data-speech-hint);
+    font-size: 11px;
   }
 
   .editor-host :global(.feedback-prose h2),

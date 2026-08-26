@@ -26,6 +26,7 @@
   {markdown}
   {previews}
   {disabled}
+  acceptExternalMarkdown={false}
   {onOpenAttachment}
   {onChange}
 />
