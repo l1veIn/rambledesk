@@ -17,6 +17,7 @@
     Mic,
     MonitorCog,
     Info,
+    Keyboard,
     Play,
     PlugZap,
     RefreshCw,
@@ -41,6 +42,7 @@
   import AboutSettings from '$lib/AboutSettings.svelte'
   import MacPermissions from '$lib/MacPermissions.svelte'
   import PostProcessingSettings from '$lib/PostProcessingSettings.svelte'
+  import ShortcutSettings from '$lib/ShortcutSettings.svelte'
   import appIcon from '../assets/rambledesk-app-icon.webp'
   import rambellePermission from '../assets/rambelle-states/state-permission.webp'
   import piLogoSvg from '../assets/pi-logo.svg?raw'
@@ -98,6 +100,7 @@
     | 'notifications'
     | 'voice'
     | 'post-processing'
+    | 'shortcuts'
     | 'adapters'
     | 'about'
 
@@ -667,6 +670,10 @@
             <Sparkles data-icon="inline-start" />
             {tr('Post-processing')}
           </Tabs.Trigger>
+          <Tabs.Trigger value="shortcuts" class="h-9 w-full justify-start px-2.5">
+            <Keyboard data-icon="inline-start" />
+            {tr('Shortcuts')}
+          </Tabs.Trigger>
           <Tabs.Trigger value="adapters" class="h-9 w-full justify-start px-2.5">
             <PlugZap data-icon="inline-start" />
             <span class="flex-1 text-left">{tr('Adapters')}</span>
@@ -702,7 +709,9 @@
                       ? tr('Voice input')
                       : activeSection === 'post-processing'
                         ? tr('Draft and submission transforms')
-                        : activeSection === 'adapters'
+                        : activeSection === 'shortcuts'
+                          ? tr('Global shortcut keys')
+                          : activeSection === 'adapters'
                           ? tr('Host adapters')
                           : tr('Project information')}
             </p>
@@ -717,9 +726,11 @@
                       ? tr('Voice')
                       : activeSection === 'post-processing'
                         ? tr('Post-processing')
-                        : activeSection === 'adapters'
-                          ? tr('Adapters')
-                          : tr('About')}
+                        : activeSection === 'shortcuts'
+                          ? tr('Shortcuts')
+                          : activeSection === 'adapters'
+                            ? tr('Adapters')
+                            : tr('About')}
             </h2>
           </div>
         </header>
@@ -1324,6 +1335,10 @@
 
           <Tabs.Content value="post-processing" class="m-0 p-6 outline-none">
             <PostProcessingSettings />
+          </Tabs.Content>
+
+          <Tabs.Content value="shortcuts" class="m-0 space-y-8 p-6 outline-none">
+            <ShortcutSettings />
           </Tabs.Content>
 
           <Tabs.Content value="adapters" class="m-0 space-y-8 p-6 outline-none">

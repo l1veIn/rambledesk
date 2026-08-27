@@ -23,6 +23,12 @@
     speechVadThreshold,
   } from '../preferences'
   import {
+    isLocalCaptureActive,
+    matchesShortcut,
+    refreshShortcutSettings,
+    shortcutSettings,
+  } from '../shortcutSettings'
+  import {
     RAMBLE_CONSOLE_COMMAND_EVENT,
     RAMBLE_CONSOLE_HIDE_EVENT,
     RAMBLE_CONSOLE_READY_EVENT,
@@ -103,19 +109,15 @@
 
   onMount(() => {
     if (!isTauri) return
+    void refreshShortcutSettings()
     let voiceUnlisten: (() => void) | undefined
     let rambleShortcutUnlisten: (() => void) | undefined
     let captureShortcutUnlisten: (() => void) | undefined
     let consoleCommandUnlisten: (() => void) | undefined
     let consoleReadyUnlisten: (() => void) | undefined
     const onWindowKeydown = (event: KeyboardEvent) => {
-      if (
-        event.key.toLowerCase() === 'r' &&
-        event.ctrlKey &&
-        event.shiftKey &&
-        !event.altKey &&
-        !event.metaKey
-      ) {
+      if (isLocalCaptureActive()) return
+      if (matchesShortcut(event, $shortcutSettings.rambleToggle)) {
         event.preventDefault()
         void toggleRamble()
       }

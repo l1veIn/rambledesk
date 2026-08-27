@@ -11,6 +11,7 @@ export type SettingsSection =
   | 'notifications'
   | 'voice'
   | 'post-processing'
+  | 'shortcuts'
   | 'adapters'
   | 'about'
 

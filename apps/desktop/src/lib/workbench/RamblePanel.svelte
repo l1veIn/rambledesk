@@ -5,6 +5,7 @@
   import { Button } from '$lib/components/ui/button'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
+  import { shortcutSettings } from '$lib/shortcutSettings'
   import RecordLed from './RecordLed.svelte'
   import { rambleRecordPresentation } from './rambleRecordButton'
   import type { RamblePhase } from './types'
@@ -61,7 +62,7 @@
       disabled={rambleBusy || readOnly}
       onclick={onToggle}
       aria-pressed={record.pressed}
-      title={tr('Global shortcut Ctrl + Shift + R')}
+      title={tr('Global shortcut {shortcut}', { shortcut: $shortcutSettings.rambleToggle })}
     >
       {#if record.icon === 'spinner'}
         <LoaderCircle class="animate-spin" data-icon="inline-start" />
