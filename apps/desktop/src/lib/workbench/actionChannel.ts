@@ -76,23 +76,42 @@ function paragraphText(node: JSONContent): string | null {
  * divider inside the editor. Drop the divider and stamp the following blocks
  * with the channel it opened, so the grouping survives and the divider is
  * re-derived on the next markdown export.
+ *
+ * The default-channel separator (`--------------------------------`) parses as a
+ * horizontal rule; the editor has no horizontal-rule affordance, so such a
+ * rule is treated as "back to the default channel" and dropped instead of
+ * showing a stray line.
  */
 export function migrateActionChannelSeparators(doc: JSONContent): JSONContent {
   const content = doc.content ?? []
   let current: number | null = null
+  let strip: boolean | null = null
   const migrated: JSONContent[] = []
   for (const node of content) {
+    if (node.type === 'horizontalRule') {
+      // The default-channel separator parses as a horizontal rule; the editor
+      // has no horizontal-rule affordance, so treat it as "back to the default
+      // channel" and drop the stray line.
+      current = null
+      strip = true
+      continue
+    }
     const text = paragraphText(node)
     const match = text == null ? null : ACTION_SEPARATOR_PATTERN.exec(text)
     if (match) {
       const raw = match[1]
       const channel = raw == null ? Number.NaN : Number(raw)
       current = Number.isInteger(channel) && channel > 0 ? channel : null
+      strip = current == null
       continue
     }
-    migrated.push(
-      current != null && actionIndexOf(node) == null ? stampActionIndex(node, current) : node,
-    )
+    if (strip === true) {
+      migrated.push(withoutActionIndex(node))
+    } else {
+      migrated.push(
+        current != null && actionIndexOf(node) == null ? stampActionIndex(node, current) : node,
+      )
+    }
   }
   return { ...doc, content: migrated }
 }

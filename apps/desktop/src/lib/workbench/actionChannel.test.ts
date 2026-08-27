@@ -112,6 +112,28 @@ describe('legacy markdown with action dividers', () => {
     expect(migrated.content?.[1]?.attrs?.actionIndex).toBeUndefined()
   })
 
+  it('drops separator-shaped horizontal rules, resets the channel, and unstamps the following blocks', () => {
+    const migrated = migrateActionChannelSeparators(
+      doc([
+        {
+          type: 'paragraph',
+          attrs: { actionIndex: 2 },
+          content: [{ type: 'text', text: 'Action 2 的内容。' }],
+        },
+        { type: 'horizontalRule', attrs: { actionIndex: 2 } },
+        {
+          type: 'paragraph',
+          attrs: { actionIndex: 2 },
+          content: [{ type: 'text', text: '取消之后的话。' }],
+        },
+      ]),
+    )
+    expect(migrated.content?.length).toBe(2)
+    expect(migrated.content?.[0]?.attrs?.actionIndex).toBe(2)
+    expect(migrated.content?.[1]?.attrs?.actionIndex).toBeUndefined()
+    expect(JSON.stringify(migrated.content)).not.toContain('horizontalRule')
+  })
+
   it('leaves normal paragraphs untouched', () => {
     const migrated = migrateActionChannelSeparators(
       doc([{ type: 'paragraph', content: [{ type: 'text', text: '普通内容。' }] }]),

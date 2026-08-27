@@ -210,4 +210,17 @@ describe('action channel markdown', () => {
     expect(doc.content?.[0]?.content?.[0]?.text).toBe('保存失败。')
     expect(JSON.stringify(doc.content)).not.toContain('Action 2')
   })
+
+  it('turns the default-channel separator into a channel reset with no visible rule', () => {
+    const doc = parseFeedbackMarkdown(
+      '------------------------ Action 2 ------------------------\n\n属于 Action 2。\n\n------------------------------------------------\n\n取消之后的新内容。',
+    )
+
+    expect(doc.content?.length).toBe(2)
+    expect(doc.content?.[0]?.attrs?.actionIndex).toBe(2)
+    expect(doc.content?.[0]?.content?.[0]?.text).toBe('属于 Action 2。')
+    expect(doc.content?.[1]?.attrs?.actionIndex).toBeUndefined()
+    expect(doc.content?.[1]?.content?.[0]?.text).toBe('取消之后的新内容。')
+    expect(JSON.stringify(doc.content)).not.toContain('--------------------------------')
+  })
 })
