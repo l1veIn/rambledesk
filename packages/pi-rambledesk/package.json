@@ -1,6 +1,6 @@
 {
   "name": "@rambledesk/pi",
-  "version": "0.3.2",
+  "version": "0.3.3-rc.1",
   "description": "Pi package for native RambleDesk request/get/wait feedback flow.",
   "type": "module",
   "exports": {
