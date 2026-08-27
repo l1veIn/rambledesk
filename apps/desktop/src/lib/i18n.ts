@@ -714,6 +714,9 @@ const chinese: Record<string, string> = {
   'No hotwords configured.': '尚未配置热词。',
   'Add a hotword…': '添加热词…',
   'Add': '添加',
+  'Copy task brief': '复制任务简报',
+  'Task brief copied to clipboard.': '任务简报已复制到剪贴板。',
+  'Could not copy the task brief. Select the text and copy it manually.': '无法复制任务简报，请手动选中文本复制。',
 }
 
 export function t(
