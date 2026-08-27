@@ -5,27 +5,41 @@ import {
   updateFeedbackDraftDocument,
   type FeedbackDraftSnapshot,
 } from '../feedbackDraftDocument'
-import { CLEANED_SPEECH_NODE, PENDING_SPEECH_NODE } from '../pendingSpeech'
+import {
+  CLEANUP_STATE_ATTR,
+  INPUT_SOURCE_ATTR,
+  SPEECH_SEGMENT_ID_ATTR,
+  asrParagraphAttrs,
+  speechCleanupCandidates,
+  type CleanupState,
+  type SpeechCleanupSegment,
+} from '../speechBlockMetadata'
 import { ACTION_CHANNEL_ATTR, stampActionIndex } from './actionChannel'
 import {
-  CLEANUP_CHAR_THRESHOLD,
-  CLEANUP_TIMEOUT_MS,
+  DEFAULT_CLEANUP_CHAR_THRESHOLD,
+  DEFAULT_CLEANUP_IDLE_MS,
+  DEFAULT_CLEANUP_SEGMENT_THRESHOLD,
+  DEFAULT_CLEANUP_TIMEOUT_MS,
   acceptCleanupResult,
   alignCleanupParts,
-  pendingCharCount,
   shouldStartCleanup,
   type CleanupTrigger,
-  type PendingSpeechSnapshot,
 } from './speechCleanupPolicy'
 import type { FeedbackEditorHandle, SavePhase } from './types'
 
 export type SpeechCleanupPort = {
   enabled: () => boolean
   clean: (text: string) => Promise<string>
-  silenceMs?: number
-  timeoutMs?: number
+  settings?: () => SpeechCleanupSettings
   schedule?: (fn: () => void, ms: number) => unknown
   cancel?: (id: unknown) => void
+}
+
+export type SpeechCleanupSettings = {
+  segmentThreshold: number
+  charThreshold: number
+  idleMs: number
+  timeoutMs: number
 }
 
 export type DraftSavePort = {
@@ -73,6 +87,7 @@ export function createFeedbackDraftSession(input: {
   initialRevision: number
   save: DraftSavePort
   cleanup?: SpeechCleanupPort
+  createSpeechSegmentId?: () => string
   onChange?: () => void
 }): FeedbackDraftSession {
   const requestId = input.requestId
@@ -92,12 +107,15 @@ export function createFeedbackDraftSession(input: {
   let editorHandle: FeedbackEditorHandle | null = null
   let saveTimer: ReturnType<typeof setTimeout> | undefined
   let activeSave: Promise<boolean> | null = null
-  let pendingPieces: string[] = []
   let currentActionIndex: number | null = null
   let cleaning = false
   let inflightCleanup: Promise<void> | null = null
+  let cleanupIdleTimer: unknown
   const schedule = input.cleanup?.schedule ?? ((fn: () => void, ms: number) => setTimeout(fn, ms))
-  const timeoutMs = input.cleanup?.timeoutMs ?? CLEANUP_TIMEOUT_MS
+  const cancel = input.cleanup?.cancel ?? ((id: unknown) => clearTimeout(id as ReturnType<typeof setTimeout>))
+  const createSpeechSegmentId =
+    input.createSpeechSegmentId ??
+    (() => globalThis.crypto?.randomUUID?.() ?? `asr-${Date.now()}-${Math.random()}`)
   const TIMEOUT = Symbol('cleanup-timeout')
 
   function notify() {
@@ -148,14 +166,38 @@ export function createFeedbackDraftSession(input: {
     return input.cleanup?.enabled() === true
   }
 
-  function pendingSpeechSnapshot(): PendingSpeechSnapshot {
-    const fromEditor = editorHandle?.pendingSpeech?.()
-    if (fromEditor) return fromEditor
-    return {
-      count: pendingPieces.length,
-      chars: pendingCharCount(pendingPieces),
-      texts: pendingPieces,
+  function cleanupSettings(): SpeechCleanupSettings {
+    return input.cleanup?.settings?.() ?? {
+      segmentThreshold: DEFAULT_CLEANUP_SEGMENT_THRESHOLD,
+      charThreshold: DEFAULT_CLEANUP_CHAR_THRESHOLD,
+      idleMs: DEFAULT_CLEANUP_IDLE_MS,
+      timeoutMs: DEFAULT_CLEANUP_TIMEOUT_MS,
     }
+  }
+
+  function pendingCleanupSnapshot() {
+    const doc = decodeFeedbackDraftDocument(draft.documentJson)
+    const segments = doc ? speechCleanupCandidates(doc) : []
+    return {
+      count: segments.length,
+      chars: segments.reduce((sum, segment) => sum + segment.text.length, 0),
+      segments,
+    }
+  }
+
+  function cancelCleanupIdleTimer() {
+    if (cleanupIdleTimer === undefined) return
+    cancel(cleanupIdleTimer)
+    cleanupIdleTimer = undefined
+  }
+
+  function scheduleCleanupAfterIdle() {
+    cancelCleanupIdleTimer()
+    if (!cleanupEnabled() || cleaning || pendingCleanupSnapshot().count === 0) return
+    cleanupIdleTimer = schedule(() => {
+      cleanupIdleTimer = undefined
+      void startCleanup('idle')
+    }, cleanupSettings().idleMs)
   }
 
   function appendNodes(nodes: NonNullable<ReturnType<typeof decodeFeedbackDraftDocument>>['content']) {
@@ -174,35 +216,56 @@ export function createFeedbackDraftSession(input: {
       : { ...extra, [ACTION_CHANNEL_ATTR]: currentActionIndex }
   }
 
-  function finishSpeechCleanupInDocument(pieces: string[], cleaned: string | null) {
-    if (pieces.length === 0) return
-    const parts = alignCleanupParts(pieces, cleaned)
+  function finishSpeechCleanupInDocument(
+    segments: SpeechCleanupSegment[],
+    cleaned: string | null,
+  ) {
+    if (segments.length === 0) return
+    const parts = alignCleanupParts(segments.map((segment) => segment.text), cleaned)
+    const segmentIndex = new Map(
+      segments.map((segment, index) => [segment.segmentId, { ...segment, index }]),
+    )
     applyUserEdit(
       updateFeedbackDraftDocument(draft, (doc) => {
-        const content = [...(doc.content ?? [])]
-        const targets: number[] = []
-        for (let index = content.length - 1; index >= 0 && targets.length < pieces.length; index -= 1) {
-          const node = content[index]
-          if (node.type === PENDING_SPEECH_NODE) targets.unshift(index)
-        }
-        targets.forEach((contentIndex, pieceIndex) => {
-          const node = content[contentIndex]
-          const attrs = { ...(node.attrs ?? {}) }
-          delete attrs.status
-          const text = parts?.[pieceIndex] ?? pieces[pieceIndex]
-          content[contentIndex] = {
-            type: cleaned == null ? 'paragraph' : CLEANED_SPEECH_NODE,
-            ...(Object.keys(attrs).length > 0 ? { attrs } : {}),
-            ...(text ? { content: [{ type: 'text', text }] } : {}),
+        function updateNode(node: typeof doc): typeof doc {
+          const id = node.attrs?.[SPEECH_SEGMENT_ID_ATTR]
+          const target = typeof id === 'string' ? segmentIndex.get(id) : undefined
+          if (node.type === 'paragraph' && target) {
+            const currentText = (node.content ?? [])
+              .map((child) => child.text ?? '')
+              .join('')
+              .trim()
+            const unchanged = currentText === target.text
+            const state: CleanupState = !unchanged
+              ? 'skipped'
+              : cleaned == null
+                ? 'failed'
+                : 'cleaned'
+            const text = cleaned != null && unchanged
+              ? (parts?.[target.index] ?? currentText)
+              : currentText
+            return {
+              ...node,
+              attrs: {
+                ...node.attrs,
+                [INPUT_SOURCE_ATTR]: 'asr',
+                [CLEANUP_STATE_ATTR]: state,
+              },
+              content: text ? [{ type: 'text', text }] : [],
+            }
           }
-        })
-        return { ...doc, content }
+          return node.content
+            ? { ...node, content: node.content.map((child) => updateNode(child)) }
+            : node
+        }
+        return updateNode(doc)
       }),
     )
   }
 
   async function startCleanup(trigger: CleanupTrigger): Promise<void> {
-    const pending = pendingSpeechSnapshot()
+    const pending = pendingCleanupSnapshot()
+    const settings = cleanupSettings()
     if (
       !shouldStartCleanup({
         enabled: cleanupEnabled(),
@@ -210,15 +273,17 @@ export function createFeedbackDraftSession(input: {
         pendingCount: pending.count,
         pendingChars: pending.chars,
         trigger,
+        thresholds: settings,
       })
     ) return
 
-    const pieces = pending.texts
-    pendingPieces = []
+    cancelCleanupIdleTimer()
+    const segments = pending.segments
     cleaning = true
     notify()
     const editorAtStart = editorHandle
-    const raw = editorAtStart?.beginSpeechCleanup?.() || pieces.join('\n\n')
+    editorAtStart?.beginSpeechCleanup?.(segments)
+    const raw = segments.map((segment) => segment.text).join('\n\n')
     editorAtStart?.moveCursorAfterCleaningSpeech?.()
     inflightCleanup = (async () => {
       try {
@@ -226,35 +291,57 @@ export function createFeedbackDraftSession(input: {
         const result = await Promise.race([
           work.then((text) => text.trim() || raw),
           new Promise<typeof TIMEOUT>((resolve) => {
-            schedule(() => resolve(TIMEOUT), timeoutMs)
+            schedule(() => resolve(TIMEOUT), settings.timeoutMs)
           }),
         ])
         if (disposed) return
         const accepted = result === TIMEOUT ? raw : acceptCleanupResult(raw, result)
         const replacedInEditor = editorAtStart?.isSpeechCleaning?.() === true
         if (replacedInEditor) {
-          editorAtStart?.finishSpeechCleanup?.(result === TIMEOUT ? null : accepted)
+          editorAtStart?.finishSpeechCleanup?.(
+            segments,
+            result === TIMEOUT ? null : accepted,
+          )
+          const remaining = new Set(
+            pendingCleanupSnapshot().segments.map((segment) => segment.segmentId),
+          )
+          if (segments.some((segment) => remaining.has(segment.segmentId))) {
+            finishSpeechCleanupInDocument(
+              segments,
+              result === TIMEOUT ? null : accepted,
+            )
+          }
         } else {
-          finishSpeechCleanupInDocument(pieces, result === TIMEOUT ? null : accepted)
+          finishSpeechCleanupInDocument(segments, result === TIMEOUT ? null : accepted)
         }
       } catch {
         if (!disposed) {
-          if (editorAtStart?.isSpeechCleaning?.() === true) editorAtStart.finishSpeechCleanup?.(null)
-          else finishSpeechCleanupInDocument(pieces, null)
+          if (editorAtStart?.isSpeechCleaning?.() === true) {
+            editorAtStart.finishSpeechCleanup?.(segments, null)
+            const remaining = new Set(
+              pendingCleanupSnapshot().segments.map((segment) => segment.segmentId),
+            )
+            if (segments.some((segment) => remaining.has(segment.segmentId))) {
+              finishSpeechCleanupInDocument(segments, null)
+            }
+          } else {
+            finishSpeechCleanupInDocument(segments, null)
+          }
         }
       } finally {
         cleaning = false
         inflightCleanup = null
         notify()
         if (!disposed) {
-          const leftover = pendingSpeechSnapshot()
+          const leftover = pendingCleanupSnapshot()
           if (
             shouldStartCleanup({
               enabled: cleanupEnabled(),
               busy: false,
               pendingCount: leftover.count,
               pendingChars: leftover.chars,
-              trigger: 'stable-count',
+              trigger: 'segment-count',
+              thresholds: cleanupSettings(),
             }) ||
             shouldStartCleanup({
               enabled: cleanupEnabled(),
@@ -262,8 +349,10 @@ export function createFeedbackDraftSession(input: {
               pendingCount: leftover.count,
               pendingChars: leftover.chars,
               trigger: 'char-count',
+              thresholds: cleanupSettings(),
             })
-          ) void startCleanup('stable-count')
+          ) void startCleanup('segment-count')
+          else scheduleCleanupAfterIdle()
         }
       }
     })()
@@ -271,6 +360,7 @@ export function createFeedbackDraftSession(input: {
   }
 
   function prepareNonSpeechInsert() {
+    cancelCleanupIdleTimer()
     void startCleanup('non-speech')
   }
 
@@ -278,20 +368,24 @@ export function createFeedbackDraftSession(input: {
     if (disposed) return
     const transcript = text.trim()
     if (!transcript) return
-    if (cleanupEnabled()) {
-      pendingPieces = [...pendingPieces, transcript]
-      if (editorHandle) editorHandle.appendTranscript(transcript, { pending: true })
-      else {
-        appendNodes([
-          {
-            type: PENDING_SPEECH_NODE,
-            attrs: actionAttrs({ status: 'pending' }),
-            content: [{ type: 'text', text: transcript }],
-          },
-        ])
-      }
-      const pending = pendingSpeechSnapshot()
-      const trigger = pending.chars >= CLEANUP_CHAR_THRESHOLD ? 'char-count' : 'stable-count'
+    const shouldCleanup = cleanupEnabled()
+    const segmentId = createSpeechSegmentId()
+    const state: CleanupState = shouldCleanup ? 'pending' : 'skipped'
+    if (editorHandle) {
+      editorHandle.appendTranscript(transcript, { asr: { segmentId, cleanupState: state } })
+    } else {
+      appendNodes([
+        {
+          type: 'paragraph',
+          attrs: actionAttrs(asrParagraphAttrs(segmentId, state)),
+          content: [{ type: 'text', text: transcript }],
+        },
+      ])
+    }
+    if (shouldCleanup) {
+      const pending = pendingCleanupSnapshot()
+      const settings = cleanupSettings()
+      const trigger = pending.chars >= settings.charThreshold ? 'char-count' : 'segment-count'
       if (
         shouldStartCleanup({
           enabled: true,
@@ -299,21 +393,12 @@ export function createFeedbackDraftSession(input: {
           pendingCount: pending.count,
           pendingChars: pending.chars,
           trigger,
+          thresholds: settings,
         })
       ) void startCleanup(trigger)
+      else scheduleCleanupAfterIdle()
       return
     }
-    if (editorHandle) {
-      editorHandle.appendTranscript(transcript)
-      return
-    }
-    appendNodes([
-      {
-        type: 'paragraph',
-        attrs: actionAttrs(),
-        content: [{ type: 'text', text: transcript }],
-      },
-    ])
   }
 
   function toggleActionChannel(index: number) {
@@ -330,6 +415,7 @@ export function createFeedbackDraftSession(input: {
   }
 
   async function settle(): Promise<boolean> {
+    cancelCleanupIdleTimer()
     await startCleanup('settle')
     if (inflightCleanup) await inflightCleanup
     return saveNow()
@@ -394,8 +480,11 @@ export function createFeedbackDraftSession(input: {
     if (disposed) return
     disposed = true
     cancelPendingSave()
+    cancelCleanupIdleTimer()
     editorHandle = null
   }
+
+  scheduleCleanupAfterIdle()
 
   return {
     requestId,

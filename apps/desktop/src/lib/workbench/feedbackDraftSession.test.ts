@@ -4,8 +4,14 @@ import {
   decodeFeedbackDraftDocument,
   snapshotFeedbackDraftDocument,
   snapshotFeedbackDraftMarkdown,
+  updateFeedbackDraftDocument,
 } from '../feedbackDraftDocument'
-import { PENDING_SPEECH_NODE } from '../pendingSpeech'
+import {
+  CLEANUP_STATE_ATTR,
+  INPUT_SOURCE_ATTR,
+  SPEECH_SEGMENT_ID_ATTR,
+  asrParagraphAttrs,
+} from '../speechBlockMetadata'
 import { createActiveRambleCoordinator } from './activeRambleCoordinator'
 import { createDraftSessionHost } from './draftSessionHost'
 import { createFeedbackDraftSession } from './feedbackDraftSession'
@@ -54,8 +60,8 @@ describe('FeedbackDraftSession', () => {
         type: 'doc',
         content: [
           {
-            type: PENDING_SPEECH_NODE,
-            attrs: { status: 'pending', actionIndex: 2 },
+            type: 'paragraph',
+            attrs: { ...asrParagraphAttrs('segment-1', 'pending'), actionIndex: 2 },
             content: [{ type: 'text', text: '还没有整理' }],
           },
         ],
@@ -75,8 +81,13 @@ describe('FeedbackDraftSession', () => {
 
     expect(restarted.documentJson()).toBe(stored.documentJson)
     expect(decodeFeedbackDraftDocument(restarted.documentJson())?.content?.[0]).toMatchObject({
-      type: PENDING_SPEECH_NODE,
-      attrs: { status: 'pending', actionIndex: 2 },
+      type: 'paragraph',
+      attrs: {
+        [SPEECH_SEGMENT_ID_ATTR]: 'segment-1',
+        [INPUT_SOURCE_ATTR]: 'asr',
+        [CLEANUP_STATE_ATTR]: 'pending',
+        actionIndex: 2,
+      },
     })
   })
 
@@ -91,6 +102,11 @@ describe('FeedbackDraftSession', () => {
     })
     session.appendSpeech('First stable')
     expect(session.markdown()).toBe('Hello\n\nFirst stable')
+    expect(decodeFeedbackDraftDocument(session.documentJson())?.content?.[1].attrs).toMatchObject({
+      [INPUT_SOURCE_ATTR]: 'asr',
+      [CLEANUP_STATE_ATTR]: 'skipped',
+      [SPEECH_SEGMENT_ID_ATTR]: expect.any(String),
+    })
     await expect(session.saveNow()).resolves.toBe(true)
     expect(port.save).toHaveBeenCalledWith({
       requestId: 'request-a',
@@ -139,7 +155,9 @@ describe('FeedbackDraftSession', () => {
     })
     session.bindEditor(editor)
     session.appendSpeech('Spoken')
-    expect(appendTranscript).toHaveBeenCalledWith('Spoken')
+    expect(appendTranscript).toHaveBeenCalledWith('Spoken', {
+      asr: { cleanupState: 'skipped', segmentId: expect.any(String) },
+    })
     expect(session.markdown()).toBe('Hello')
     session.applyUserEdit(snapshotFeedbackDraftMarkdown('Hello\n\nSpoken'))
     expect(session.markdown()).toBe('Hello\n\nSpoken')
@@ -165,7 +183,9 @@ describe('FeedbackDraftSession', () => {
     expect(session.currentActionIndex()).toBe(2)
     expect(setActionChannel).toHaveBeenCalledWith(2)
     session.appendSpeech('保存之后没有 toast。')
-    expect(appendTranscript).toHaveBeenCalledWith('保存之后没有 toast。')
+    expect(appendTranscript).toHaveBeenCalledWith('保存之后没有 toast。', {
+      asr: { cleanupState: 'skipped', segmentId: expect.any(String) },
+    })
     expect(session.markdown()).toBe('Hello')
     session.toggleActionChannel(2)
     expect(session.currentActionIndex()).toBeNull()
@@ -240,7 +260,11 @@ describe('Light cleanup on a draft session', () => {
       initialMarkdown: 'Hello',
       initialRevision: 1,
       save: memorySave(),
-      cleanup: { enabled: () => true, clean, silenceMs: 60_000, timeoutMs: 5_000 },
+      cleanup: {
+        enabled: () => true,
+        clean,
+        settings: () => ({ segmentThreshold: 3, charThreshold: 500, idleMs: 60_000, timeoutMs: 5_000 }),
+      },
     })
     session.appendSpeech('one')
     session.appendSpeech('two')
@@ -251,6 +275,40 @@ describe('Light cleanup on a draft session', () => {
     expect(session.markdown()).toContain('cleaned:')
     expect(session.markdown()).toContain('one')
     expect(session.isCleaning()).toBe(false)
+    expect(
+      decodeFeedbackDraftDocument(session.documentJson())?.content
+        ?.slice(-3)
+        .map((node) => node.attrs?.[CLEANUP_STATE_ATTR]),
+    ).toEqual(['cleaned', 'cleaned', 'cleaned'])
+  })
+
+  it('starts after the configured idle period when pending ASR nodes remain', async () => {
+    let runIdle = () => {}
+    const clean = vi.fn(async (text: string) => text.replace('啊', ''))
+    const session = createFeedbackDraftSession({
+      requestId: 'request-a',
+      generation: 1,
+      initialMarkdown: '',
+      initialRevision: 1,
+      save: memorySave(),
+      cleanup: {
+        enabled: () => true,
+        clean,
+        settings: () => ({ segmentThreshold: 3, charThreshold: 500, idleMs: 10_000, timeoutMs: 30_000 }),
+        schedule: (fn, ms) => {
+          if (ms === 10_000) runIdle = fn
+          return ms
+        },
+        cancel: () => {},
+      },
+    })
+
+    session.appendSpeech('啊按钮太小了')
+    expect(clean).not.toHaveBeenCalled()
+    runIdle()
+    await session.settle()
+    expect(clean).toHaveBeenCalledOnce()
+    expect(session.markdown()).toBe('按钮太小了')
   })
 
   it('keeps the raw text when cleanup times out', async () => {
@@ -264,8 +322,7 @@ describe('Light cleanup on a draft session', () => {
       cleanup: {
         enabled: () => true,
         clean: () => new Promise(() => {}),
-        silenceMs: 60_000,
-        timeoutMs: 10,
+        settings: () => ({ segmentThreshold: 3, charThreshold: 500, idleMs: 60_000, timeoutMs: 10 }),
         schedule: (fn, ms) => {
           if (ms === 10) queued.push(fn)
           return queued.length
@@ -279,6 +336,55 @@ describe('Light cleanup on a draft session', () => {
     queued.forEach((fn) => fn())
     await session.settle()
     expect(session.markdown()).toBe('Hello\n\none\n\ntwo\n\nthree')
+    expect(
+      decodeFeedbackDraftDocument(session.documentJson())?.content
+        ?.slice(-3)
+        .map((node) => node.attrs?.[CLEANUP_STATE_ATTR]),
+    ).toEqual(['failed', 'failed', 'failed'])
+  })
+
+  it('does not overwrite an ASR node changed after its cleanup batch started', async () => {
+    let finish = (_text: string) => {}
+    let nextId = 0
+    const session = createFeedbackDraftSession({
+      requestId: 'request-a',
+      generation: 1,
+      initialMarkdown: '',
+      initialRevision: 1,
+      save: memorySave(),
+      createSpeechSegmentId: () => `segment-${++nextId}`,
+      cleanup: {
+        enabled: () => true,
+        clean: () => new Promise((resolve) => (finish = resolve)),
+        settings: () => ({ segmentThreshold: 3, charThreshold: 500, idleMs: 60_000, timeoutMs: 30_000 }),
+      },
+    })
+    session.appendSpeech('one')
+    session.appendSpeech('two')
+    session.appendSpeech('three')
+    await Promise.resolve()
+    session.applyUserEdit(
+      updateFeedbackDraftDocument(session.snapshot(), (doc) => ({
+        ...doc,
+        content: (doc.content ?? []).map((node) =>
+          node.attrs?.[SPEECH_SEGMENT_ID_ATTR] === 'segment-1'
+            ? { ...node, content: [{ type: 'text', text: 'human edit' }] }
+            : node,
+        ),
+      })),
+    )
+    finish('clean one\n\nclean two\n\nclean three')
+    await session.settle()
+
+    const nodes = decodeFeedbackDraftDocument(session.documentJson())?.content ?? []
+    expect(nodes[0]).toMatchObject({
+      attrs: { [CLEANUP_STATE_ATTR]: 'skipped' },
+      content: [{ text: 'human edit' }],
+    })
+    expect(nodes.slice(1).map((node) => node.attrs?.[CLEANUP_STATE_ATTR])).toEqual([
+      'cleaned',
+      'cleaned',
+    ])
   })
 
   it('does not duplicate speech when a clipboard block is inserted before cleanup finishes', async () => {
@@ -289,7 +395,11 @@ describe('Light cleanup on a draft session', () => {
       initialMarkdown: '',
       initialRevision: 1,
       save: memorySave(),
-      cleanup: { enabled: () => true, clean, silenceMs: 60_000, timeoutMs: 5_000 },
+      cleanup: {
+        enabled: () => true,
+        clean,
+        settings: () => ({ segmentThreshold: 3, charThreshold: 500, idleMs: 60_000, timeoutMs: 5_000 }),
+      },
     })
     session.appendSpeech('我试一下复制粘贴啊。')
     session.insertMarkdownBlock('> Clipboard import')
@@ -313,8 +423,7 @@ describe('Light cleanup on a draft session', () => {
           new Promise((resolve) => {
             finish = resolve
           }),
-        silenceMs: 60_000,
-        timeoutMs: 5_000,
+        settings: () => ({ segmentThreshold: 3, charThreshold: 500, idleMs: 60_000, timeoutMs: 5_000 }),
       },
     })
     session.appendSpeech('one')
@@ -328,11 +437,19 @@ describe('Light cleanup on a draft session', () => {
   })
 
   it('hands the cleaned text to the editor so it can mark rewritten sentences', async () => {
+    const pending = snapshotFeedbackDraftDocument({
+      type: 'doc',
+      content: ['啊那个按钮太小了', '第二句', '第三句'].map((text, index) => ({
+        type: 'paragraph',
+        attrs: asrParagraphAttrs(`segment-${index + 1}`, 'pending'),
+        content: [{ type: 'text', text }],
+      })),
+    })
     const finishSpeechCleanup = vi.fn()
     const editor = {
       appendTranscript: vi.fn(),
       applyExternalMarkdown: vi.fn(),
-      beginSpeechCleanup: vi.fn(() => '啊那个按钮太小了'),
+      beginSpeechCleanup: vi.fn(),
       finishSpeechCleanup,
       isSpeechCleaning: vi.fn(() => true),
       moveCursorAfterCleaningSpeech: vi.fn(),
@@ -340,30 +457,42 @@ describe('Light cleanup on a draft session', () => {
     const session = createFeedbackDraftSession({
       requestId: 'request-a',
       generation: 1,
-      initialMarkdown: '',
+      initialDocumentJson: pending.documentJson,
+      initialMarkdown: pending.bodyMarkdown,
       initialRevision: 1,
       save: memorySave(),
       cleanup: {
         enabled: () => true,
         clean: async () => '按钮太小了。',
-        silenceMs: 60_000,
-        timeoutMs: 5_000,
+        settings: () => ({ segmentThreshold: 3, charThreshold: 500, idleMs: 60_000, timeoutMs: 5_000 }),
       },
     })
     session.bindEditor(editor)
-    session.appendSpeech('啊那个按钮太小了')
-    session.appendSpeech('第二句')
-    session.appendSpeech('第三句')
     await session.settle()
-    expect(finishSpeechCleanup).toHaveBeenCalledWith('按钮太小了。')
+    expect(finishSpeechCleanup).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        { segmentId: 'segment-1', text: '啊那个按钮太小了' },
+      ]),
+      '按钮太小了。',
+    )
   })
 
   it('still marks speech cleaned when the model returns the same wording', async () => {
+    const pending = snapshotFeedbackDraftDocument({
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          attrs: asrParagraphAttrs('segment-1', 'pending'),
+          content: [{ type: 'text', text: '按钮太小了。' }],
+        },
+      ],
+    })
     const finishSpeechCleanup = vi.fn()
     const editor = {
       appendTranscript: vi.fn(),
       applyExternalMarkdown: vi.fn(),
-      beginSpeechCleanup: vi.fn(() => '按钮太小了。'),
+      beginSpeechCleanup: vi.fn(),
       finishSpeechCleanup,
       isSpeechCleaning: vi.fn(() => true),
       moveCursorAfterCleaningSpeech: vi.fn(),
@@ -371,22 +500,22 @@ describe('Light cleanup on a draft session', () => {
     const session = createFeedbackDraftSession({
       requestId: 'request-a',
       generation: 1,
-      initialMarkdown: '',
+      initialDocumentJson: pending.documentJson,
+      initialMarkdown: pending.bodyMarkdown,
       initialRevision: 1,
       save: memorySave(),
       cleanup: {
         enabled: () => true,
         clean: async (text: string) => text,
-        silenceMs: 60_000,
-        timeoutMs: 5_000,
+        settings: () => ({ segmentThreshold: 3, charThreshold: 500, idleMs: 60_000, timeoutMs: 5_000 }),
       },
     })
     session.bindEditor(editor)
-    session.appendSpeech('按钮太小了。')
-    session.appendSpeech('第二句')
-    session.appendSpeech('第三句')
     await session.settle()
-    expect(finishSpeechCleanup).toHaveBeenCalledWith('按钮太小了。')
+    expect(finishSpeechCleanup).toHaveBeenCalledWith(
+      [{ segmentId: 'segment-1', text: '按钮太小了。' }],
+      '按钮太小了。',
+    )
   })
 })
 

@@ -52,6 +52,15 @@ const COOKING_MODEL_KEY = 'rambledesk.cooking.model'
 const COOKING_REASONING_EFFORT_KEY = 'rambledesk.cooking.reasoning-effort'
 const COOKING_SYSTEM_PROMPT_KEY = 'rambledesk.cooking.system-prompt'
 const LIGHT_CLEANUP_ENABLED_KEY = 'rambledesk.light-cleanup.enabled'
+const LIGHT_CLEANUP_PROVIDER_KEY = 'rambledesk.light-cleanup.provider'
+const LIGHT_CLEANUP_API_KEY_KEY = 'rambledesk.light-cleanup.api-key'
+const LIGHT_CLEANUP_BASE_URL_KEY = 'rambledesk.light-cleanup.base-url'
+const LIGHT_CLEANUP_MODEL_KEY = 'rambledesk.light-cleanup.model'
+const LIGHT_CLEANUP_REASONING_EFFORT_KEY = 'rambledesk.light-cleanup.reasoning-effort'
+const LIGHT_CLEANUP_SEGMENT_THRESHOLD_KEY = 'rambledesk.light-cleanup.segment-threshold'
+const LIGHT_CLEANUP_CHAR_THRESHOLD_KEY = 'rambledesk.light-cleanup.char-threshold'
+const LIGHT_CLEANUP_IDLE_MS_KEY = 'rambledesk.light-cleanup.idle-ms'
+const LIGHT_CLEANUP_TIMEOUT_MS_KEY = 'rambledesk.light-cleanup.timeout-ms'
 const LIGHT_CLEANUP_SYSTEM_PROMPT_KEY = 'rambledesk.light-cleanup.system-prompt'
 const ONBOARDING_COMPLETED_KEY = 'rambledesk.onboarding.completed'
 const ONBOARDING_STEP_KEY = 'rambledesk.onboarding.step'
@@ -182,6 +191,15 @@ function initialCookingProvider(): CookingProvider {
     : 'deepseek'
 }
 
+function initialLightCleanupProvider(): CookingProvider {
+  const saved =
+    localStorage.getItem(LIGHT_CLEANUP_PROVIDER_KEY) ??
+    localStorage.getItem(COOKING_PROVIDER_KEY)
+  return saved === 'openai' || saved === 'compatible' || saved === 'deepseek'
+    ? saved
+    : 'deepseek'
+}
+
 function isCookingReasoningEffort(value: string | null): value is CookingReasoningEffort {
   return (
     value === 'none' ||
@@ -226,10 +244,46 @@ export const cookingModel = writable(
 )
 const savedCookingReasoningEffort = localStorage.getItem(COOKING_REASONING_EFFORT_KEY)
 export const cookingReasoningEffort = writable<CookingReasoningEffort>(
-  isCookingReasoningEffort(savedCookingReasoningEffort) ? savedCookingReasoningEffort : 'medium',
+  isCookingReasoningEffort(savedCookingReasoningEffort) ? savedCookingReasoningEffort : 'none',
 )
 export const cookingSystemPrompt = writable(localStorage.getItem(COOKING_SYSTEM_PROMPT_KEY) ?? '')
 export const lightCleanupEnabled = writable(initialBoolean(LIGHT_CLEANUP_ENABLED_KEY, false))
+export const lightCleanupProvider = writable<CookingProvider>(initialLightCleanupProvider())
+export const lightCleanupApiKey = writable(
+  localStorage.getItem(LIGHT_CLEANUP_API_KEY_KEY) ??
+    localStorage.getItem(COOKING_API_KEY_KEY) ??
+    '',
+)
+export const lightCleanupBaseUrl = writable(
+  localStorage.getItem(LIGHT_CLEANUP_BASE_URL_KEY) ??
+    localStorage.getItem(COOKING_BASE_URL_KEY) ??
+    'https://api.deepseek.com/v1',
+)
+export const lightCleanupModel = writable(
+  localStorage.getItem(LIGHT_CLEANUP_MODEL_KEY) ??
+    localStorage.getItem(COOKING_MODEL_KEY) ??
+    'deepseek-v4-flash',
+)
+const savedLightCleanupReasoningEffort = localStorage.getItem(
+  LIGHT_CLEANUP_REASONING_EFFORT_KEY,
+)
+export const lightCleanupReasoningEffort = writable<CookingReasoningEffort>(
+  isCookingReasoningEffort(savedLightCleanupReasoningEffort)
+    ? savedLightCleanupReasoningEffort
+    : 'none',
+)
+export const lightCleanupSegmentThreshold = writable(
+  initialNumber(LIGHT_CLEANUP_SEGMENT_THRESHOLD_KEY, 3, 1, 20),
+)
+export const lightCleanupCharThreshold = writable(
+  initialNumber(LIGHT_CLEANUP_CHAR_THRESHOLD_KEY, 500, 100, 5000),
+)
+export const lightCleanupIdleMs = writable(
+  initialNumber(LIGHT_CLEANUP_IDLE_MS_KEY, 30_000, 3_000, 120_000),
+)
+export const lightCleanupTimeoutMs = writable(
+  initialNumber(LIGHT_CLEANUP_TIMEOUT_MS_KEY, 30_000, 5_000, 120_000),
+)
 export const lightCleanupSystemPrompt = writable(
   localStorage.getItem(LIGHT_CLEANUP_SYSTEM_PROMPT_KEY) ?? '',
 )
@@ -348,6 +402,42 @@ export function setLightCleanupEnabled(enabled: boolean) {
   lightCleanupEnabled.set(enabled)
 }
 
+export function setLightCleanupProvider(provider: CookingProvider) {
+  lightCleanupProvider.set(provider)
+}
+
+export function setLightCleanupApiKey(apiKey: string) {
+  lightCleanupApiKey.set(apiKey)
+}
+
+export function setLightCleanupBaseUrl(baseUrl: string) {
+  lightCleanupBaseUrl.set(baseUrl)
+}
+
+export function setLightCleanupModel(model: string) {
+  lightCleanupModel.set(model)
+}
+
+export function setLightCleanupReasoningEffort(effort: CookingReasoningEffort) {
+  lightCleanupReasoningEffort.set(effort)
+}
+
+export function setLightCleanupSegmentThreshold(count: number) {
+  lightCleanupSegmentThreshold.set(Math.min(20, Math.max(1, Math.round(count))))
+}
+
+export function setLightCleanupCharThreshold(count: number) {
+  lightCleanupCharThreshold.set(Math.min(5000, Math.max(100, Math.round(count))))
+}
+
+export function setLightCleanupIdleMs(milliseconds: number) {
+  lightCleanupIdleMs.set(Math.min(120_000, Math.max(3_000, Math.round(milliseconds))))
+}
+
+export function setLightCleanupTimeoutMs(milliseconds: number) {
+  lightCleanupTimeoutMs.set(Math.min(120_000, Math.max(5_000, Math.round(milliseconds))))
+}
+
 export function setLightCleanupSystemPrompt(prompt: string) {
   lightCleanupSystemPrompt.set(prompt)
 }
@@ -439,6 +529,33 @@ export function initializePreferences() {
   lightCleanupEnabled.subscribe((next) => {
     localStorage.setItem(LIGHT_CLEANUP_ENABLED_KEY, String(next))
   })
+  lightCleanupProvider.subscribe((next) => {
+    localStorage.setItem(LIGHT_CLEANUP_PROVIDER_KEY, next)
+  })
+  lightCleanupApiKey.subscribe((next) => {
+    localStorage.setItem(LIGHT_CLEANUP_API_KEY_KEY, next)
+  })
+  lightCleanupBaseUrl.subscribe((next) => {
+    localStorage.setItem(LIGHT_CLEANUP_BASE_URL_KEY, next)
+  })
+  lightCleanupModel.subscribe((next) => {
+    localStorage.setItem(LIGHT_CLEANUP_MODEL_KEY, next)
+  })
+  lightCleanupReasoningEffort.subscribe((next) => {
+    localStorage.setItem(LIGHT_CLEANUP_REASONING_EFFORT_KEY, next)
+  })
+  lightCleanupSegmentThreshold.subscribe((next) => {
+    localStorage.setItem(LIGHT_CLEANUP_SEGMENT_THRESHOLD_KEY, String(next))
+  })
+  lightCleanupCharThreshold.subscribe((next) => {
+    localStorage.setItem(LIGHT_CLEANUP_CHAR_THRESHOLD_KEY, String(next))
+  })
+  lightCleanupIdleMs.subscribe((next) => {
+    localStorage.setItem(LIGHT_CLEANUP_IDLE_MS_KEY, String(next))
+  })
+  lightCleanupTimeoutMs.subscribe((next) => {
+    localStorage.setItem(LIGHT_CLEANUP_TIMEOUT_MS_KEY, String(next))
+  })
   lightCleanupSystemPrompt.subscribe((next) => {
     localStorage.setItem(LIGHT_CLEANUP_SYSTEM_PROMPT_KEY, next)
   })
@@ -525,6 +642,33 @@ export function initializePreferences() {
     if (event.key === COOKING_SYSTEM_PROMPT_KEY) cookingSystemPrompt.set(event.newValue ?? '')
     if (event.key === LIGHT_CLEANUP_ENABLED_KEY && event.newValue !== null) {
       lightCleanupEnabled.set(event.newValue === 'true')
+    }
+    if (
+      event.key === LIGHT_CLEANUP_PROVIDER_KEY &&
+      (event.newValue === 'deepseek' || event.newValue === 'openai' || event.newValue === 'compatible')
+    ) {
+      lightCleanupProvider.set(event.newValue)
+    }
+    if (event.key === LIGHT_CLEANUP_API_KEY_KEY) lightCleanupApiKey.set(event.newValue ?? '')
+    if (event.key === LIGHT_CLEANUP_BASE_URL_KEY) lightCleanupBaseUrl.set(event.newValue ?? '')
+    if (event.key === LIGHT_CLEANUP_MODEL_KEY) lightCleanupModel.set(event.newValue ?? '')
+    if (
+      event.key === LIGHT_CLEANUP_REASONING_EFFORT_KEY &&
+      isCookingReasoningEffort(event.newValue)
+    ) {
+      lightCleanupReasoningEffort.set(event.newValue)
+    }
+    if (event.key === LIGHT_CLEANUP_SEGMENT_THRESHOLD_KEY && event.newValue !== null) {
+      setLightCleanupSegmentThreshold(Number(event.newValue))
+    }
+    if (event.key === LIGHT_CLEANUP_CHAR_THRESHOLD_KEY && event.newValue !== null) {
+      setLightCleanupCharThreshold(Number(event.newValue))
+    }
+    if (event.key === LIGHT_CLEANUP_IDLE_MS_KEY && event.newValue !== null) {
+      setLightCleanupIdleMs(Number(event.newValue))
+    }
+    if (event.key === LIGHT_CLEANUP_TIMEOUT_MS_KEY && event.newValue !== null) {
+      setLightCleanupTimeoutMs(Number(event.newValue))
     }
     if (event.key === LIGHT_CLEANUP_SYSTEM_PROMPT_KEY) {
       lightCleanupSystemPrompt.set(event.newValue ?? '')

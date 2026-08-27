@@ -23,8 +23,6 @@ export const ACTION_CHANNEL_NODES = [
   'codeBlock',
   'table',
   'horizontalRule',
-  'pendingSpeech',
-  'cleanedSpeech',
 ] as const
 
 export const ActionChannel = Extension.create({

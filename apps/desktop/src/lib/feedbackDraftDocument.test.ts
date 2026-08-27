@@ -6,7 +6,11 @@ import {
   restoreFeedbackDraftDocument,
   snapshotFeedbackDraftDocument,
 } from './feedbackDraftDocument'
-import { CLEANED_SPEECH_NODE, PENDING_SPEECH_NODE } from './pendingSpeech'
+import {
+  CLEANUP_STATE_ATTR,
+  INPUT_SOURCE_ATTR,
+  SPEECH_SEGMENT_ID_ATTR,
+} from './speechBlockMetadata'
 
 describe('persisted feedback draft document', () => {
   it('restores node types, attrs, and marks that Markdown cannot represent', () => {
@@ -14,13 +18,23 @@ describe('persisted feedback draft document', () => {
       type: 'doc',
       content: [
         {
-          type: PENDING_SPEECH_NODE,
-          attrs: { status: 'pending', actionIndex: 2 },
+          type: 'paragraph',
+          attrs: {
+            [SPEECH_SEGMENT_ID_ATTR]: 'segment-1',
+            [INPUT_SOURCE_ATTR]: 'asr',
+            [CLEANUP_STATE_ATTR]: 'pending',
+            actionIndex: 2,
+          },
           content: [{ type: 'text', text: '按钮', marks: [{ type: 'bold' }] }],
         },
         {
-          type: CLEANED_SPEECH_NODE,
-          attrs: { actionIndex: 3 },
+          type: 'paragraph',
+          attrs: {
+            [SPEECH_SEGMENT_ID_ATTR]: 'segment-2',
+            [INPUT_SOURCE_ATTR]: 'asr',
+            [CLEANUP_STATE_ATTR]: 'cleaned',
+            actionIndex: 3,
+          },
           content: [{ type: 'text', text: '按钮太小了。' }],
         },
       ],
@@ -33,8 +47,50 @@ describe('persisted feedback draft document', () => {
     expect(snapshot.bodyMarkdown).toContain(
       '------------------------ Action 2 ------------------------',
     )
-    expect(snapshot.bodyMarkdown).not.toContain(PENDING_SPEECH_NODE)
-    expect(snapshot.bodyMarkdown).not.toContain(CLEANED_SPEECH_NODE)
+    expect(snapshot.bodyMarkdown).not.toContain(SPEECH_SEGMENT_ID_ATTR)
+    expect(snapshot.bodyMarkdown).not.toContain(CLEANUP_STATE_ATTR)
+  })
+
+  it('migrates v1 speech workflow nodes into ordinary ASR paragraphs', () => {
+    const restored = decodeFeedbackDraftDocument(
+      JSON.stringify({
+        schemaVersion: 1,
+        doc: {
+          type: 'doc',
+          content: [
+            {
+              type: 'pendingSpeech',
+              attrs: { status: 'cleaning', actionIndex: 2 },
+              content: [{ type: 'text', text: '还没整理' }],
+            },
+            {
+              type: 'cleanedSpeech',
+              content: [{ type: 'text', text: '已经整理' }],
+            },
+          ],
+        },
+      }),
+    )
+
+    expect(restored?.content).toMatchObject([
+      {
+        type: 'paragraph',
+        attrs: {
+          actionIndex: 2,
+          [SPEECH_SEGMENT_ID_ATTR]: 'legacy-asr-1',
+          [INPUT_SOURCE_ATTR]: 'asr',
+          [CLEANUP_STATE_ATTR]: 'pending',
+        },
+      },
+      {
+        type: 'paragraph',
+        attrs: {
+          [SPEECH_SEGMENT_ID_ATTR]: 'legacy-asr-2',
+          [INPUT_SOURCE_ATTR]: 'asr',
+          [CLEANUP_STATE_ATTR]: 'cleaned',
+        },
+      },
+    ])
   })
 
   it('stores canonical attachment identities instead of ephemeral preview URLs', () => {

@@ -162,7 +162,10 @@
     return feedbackEditor?.applyExternalMarkdown(markdown) ?? false
   }
 
-  export function appendTranscript(text: string, options?: { pending?: boolean }) {
+  export function appendTranscript(
+    text: string,
+    options?: Parameters<FeedbackEditorHandle['appendTranscript']>[1],
+  ) {
     feedbackEditor?.appendTranscript(text, options)
   }
 

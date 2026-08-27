@@ -100,16 +100,24 @@
     return visibleEditor()?.insertQuotedBlock?.(lines) ?? false
   }
 
-  export function appendTranscript(text: string, options?: { pending?: boolean }) {
+  export function appendTranscript(
+    text: string,
+    options?: Parameters<FeedbackEditorHandle['appendTranscript']>[1],
+  ) {
     visibleEditor()?.appendTranscript(text, options)
   }
 
-  export function beginSpeechCleanup() {
-    return visibleEditor()?.beginSpeechCleanup?.() ?? ''
+  export function beginSpeechCleanup(
+    segments: Parameters<NonNullable<FeedbackEditorHandle['beginSpeechCleanup']>>[0],
+  ) {
+    visibleEditor()?.beginSpeechCleanup?.(segments)
   }
 
-  export function finishSpeechCleanup(cleaned: string | null) {
-    visibleEditor()?.finishSpeechCleanup?.(cleaned)
+  export function finishSpeechCleanup(
+    segments: Parameters<NonNullable<FeedbackEditorHandle['finishSpeechCleanup']>>[0],
+    cleaned: string | null,
+  ) {
+    visibleEditor()?.finishSpeechCleanup?.(segments, cleaned)
   }
 
   export function isSpeechCleaning() {

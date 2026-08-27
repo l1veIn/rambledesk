@@ -1,18 +1,13 @@
-export const CLEANUP_STABLE_THRESHOLD = 3
-export const CLEANUP_CHAR_THRESHOLD = 500
-export const CLEANUP_SILENCE_MS = 3_000
-export const CLEANUP_TIMEOUT_MS = 30_000
+export const DEFAULT_CLEANUP_SEGMENT_THRESHOLD = 3
+export const DEFAULT_CLEANUP_CHAR_THRESHOLD = 500
+export const DEFAULT_CLEANUP_IDLE_MS = 30_000
+export const DEFAULT_CLEANUP_TIMEOUT_MS = 30_000
 
-export type CleanupTrigger = 'stable-count' | 'char-count' | 'silence' | 'non-speech' | 'settle'
+export type CleanupTrigger = 'segment-count' | 'char-count' | 'idle' | 'non-speech' | 'settle'
 
-export function pendingCharCount(pieces: readonly string[]): number {
-  return pieces.reduce((sum, piece) => sum + piece.trim().length, 0)
-}
-
-export type PendingSpeechSnapshot = {
-  count: number
-  chars: number
-  texts: string[]
+export type SpeechCleanupThresholds = {
+  segmentThreshold: number
+  charThreshold: number
 }
 
 export function shouldStartCleanup(input: {
@@ -21,19 +16,17 @@ export function shouldStartCleanup(input: {
   pendingCount: number
   pendingChars: number
   trigger: CleanupTrigger
+  thresholds: SpeechCleanupThresholds
 }): boolean {
   if (!input.enabled || input.busy) return false
   if (input.pendingCount === 0) return false
-  if (input.trigger === 'non-speech' || input.trigger === 'settle') {
+  if (input.trigger === 'idle' || input.trigger === 'non-speech' || input.trigger === 'settle') {
     return true
   }
-  if (input.trigger === 'silence') {
-    return false
+  if (input.trigger === 'segment-count') {
+    return input.pendingCount >= input.thresholds.segmentThreshold
   }
-  if (input.trigger === 'stable-count') {
-    return input.pendingCount >= CLEANUP_STABLE_THRESHOLD
-  }
-  return input.pendingChars >= CLEANUP_CHAR_THRESHOLD
+  return input.pendingChars >= input.thresholds.charThreshold
 }
 
 /** Map a batch cleanup result back onto the original speech nodes, or skip it. */

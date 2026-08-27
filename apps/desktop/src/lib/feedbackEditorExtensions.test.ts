@@ -7,7 +7,11 @@ import {
   parseFeedbackMarkdown,
   serializeFeedbackMarkdown,
 } from './feedbackEditorExtensions'
-import { CLEANED_SPEECH_NODE, PENDING_SPEECH_NODE } from './pendingSpeech'
+import {
+  CLEANUP_STATE_ATTR,
+  INPUT_SOURCE_ATTR,
+  SPEECH_SEGMENT_ID_ATTR,
+} from './speechBlockMetadata'
 
 function markdown() {
   return new MarkdownManager({ extensions: feedbackEditorExtensions() })
@@ -116,21 +120,25 @@ describe('feedback editor attachment markdown', () => {
   })
 })
 
-describe('pending speech markdown', () => {
-  it('serializes pending speech as an ordinary paragraph', () => {
+describe('ASR speech metadata in markdown', () => {
+  it('serializes pending ASR speech as an ordinary paragraph', () => {
     const serialized = markdown().serialize({
       type: 'doc',
       content: [
         {
-          type: PENDING_SPEECH_NODE,
-          attrs: { status: 'pending' },
+          type: 'paragraph',
+          attrs: {
+            [SPEECH_SEGMENT_ID_ATTR]: 'segment-1',
+            [INPUT_SOURCE_ATTR]: 'asr',
+            [CLEANUP_STATE_ATTR]: 'pending',
+          },
           content: [{ type: 'text', text: '啊那个按钮太小了' }],
         },
       ],
     })
     expect(serialized).toContain('啊那个按钮太小了')
-    expect(serialized).not.toContain('pendingSpeech')
-    expect(serialized).not.toContain('data-speech-status')
+    expect(serialized).not.toContain(SPEECH_SEGMENT_ID_ATTR)
+    expect(serialized).not.toContain(CLEANUP_STATE_ATTR)
   })
 
   it('serializes cleaned speech without the editor marker', () => {
@@ -138,12 +146,21 @@ describe('pending speech markdown', () => {
       type: 'doc',
       content: [
         {
-          type: PENDING_SPEECH_NODE,
-          attrs: { status: 'pending' },
+          type: 'paragraph',
+          attrs: {
+            [SPEECH_SEGMENT_ID_ATTR]: 'segment-1',
+            [INPUT_SOURCE_ATTR]: 'asr',
+            [CLEANUP_STATE_ATTR]: 'pending',
+          },
           content: [{ type: 'text', text: '啊那个按钮太小了' }],
         },
         {
-          type: CLEANED_SPEECH_NODE,
+          type: 'paragraph',
+          attrs: {
+            [SPEECH_SEGMENT_ID_ATTR]: 'segment-2',
+            [INPUT_SOURCE_ATTR]: 'asr',
+            [CLEANUP_STATE_ATTR]: 'cleaned',
+          },
           content: [{ type: 'text', text: '按钮太小了。' }],
         },
         {
@@ -156,9 +173,9 @@ describe('pending speech markdown', () => {
     expect(serialized).toContain('按钮太小了。')
     expect(serialized).toContain('我手打的一句')
     expect(serialized).not.toContain('✦')
-    expect(serialized).not.toContain('cleanedSpeech')
+    expect(serialized).not.toContain(CLEANUP_STATE_ATTR)
     expect(serialized).not.toContain('已整理')
-    expect(serialized).not.toContain('data-speech-status')
+    expect(serialized).not.toContain('data-cleanup-state')
   })
 })
 

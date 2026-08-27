@@ -8,7 +8,6 @@
     BellRing,
     Check,
     CheckCircle2,
-    ChefHat,
     ChevronDown,
     Clipboard,
     Download,
@@ -41,14 +40,13 @@
   import { toast } from '$lib/components/ui/sonner'
   import AboutSettings from '$lib/AboutSettings.svelte'
   import MacPermissions from '$lib/MacPermissions.svelte'
+  import PostProcessingSettings from '$lib/PostProcessingSettings.svelte'
   import appIcon from '../assets/rambledesk-app-icon.webp'
   import rambellePermission from '../assets/rambelle-states/state-permission.webp'
   import piLogoSvg from '../assets/pi-logo.svg?raw'
   import dshLogoSvg from '../assets/dsh-logo.svg?raw'
   import * as Select from '$lib/components/ui/select'
   import * as Tabs from '$lib/components/ui/tabs'
-  import { DEFAULT_COOKING_SYSTEM_PROMPT } from '$lib/cooking'
-  import { DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT } from '$lib/lightCleanup'
   import { t } from '$lib/i18n'
   import { currentDesktopPlatform } from '$lib/platform'
   import {
@@ -64,30 +62,12 @@
   } from '$lib/notifications'
   import {
     DEFAULT_SPEECH_MODEL_ID,
-    cookingApiKey,
-    cookingBaseUrl,
-    cookingEnabled,
-    cookingModel,
-    cookingProvider,
-    cookingReasoningEffort,
-    cookingSystemPrompt,
-    lightCleanupEnabled,
-    lightCleanupSystemPrompt,
     customNotificationSound,
     locale,
     notificationPopupEnabled,
     notificationSound,
     notificationSoundEnabled,
     notificationVolume,
-    setCookingApiKey,
-    setCookingBaseUrl,
-    setCookingEnabled,
-    setCookingModel,
-    setCookingProvider,
-    setCookingReasoningEffort,
-    setCookingSystemPrompt,
-    setLightCleanupEnabled,
-    setLightCleanupSystemPrompt,
     setCustomNotificationSound,
     setLocale,
     setNotificationPopupEnabled,
@@ -106,15 +86,20 @@
     speechVadSilenceMs,
     speechVadThreshold,
     themePreference,
-    type CookingProvider,
-    type CookingReasoningEffort,
     type CustomNotificationSound,
     type NotificationSound,
     type SpeechModelId,
     type ThemePreference,
   } from '$lib/preferences'
 
-  type Section = 'general' | 'permissions' | 'notifications' | 'voice' | 'adapters' | 'about'
+  type Section =
+    | 'general'
+    | 'permissions'
+    | 'notifications'
+    | 'voice'
+    | 'post-processing'
+    | 'adapters'
+    | 'about'
 
   export let mcpConfiguration = ''
   export let initialSection: Section = 'general'
@@ -615,17 +600,6 @@
     customSoundError = ''
   }
 
-  function chooseCookingProvider(provider: CookingProvider) {
-    setCookingProvider(provider)
-    if (provider === 'deepseek') {
-      setCookingBaseUrl('https://api.deepseek.com/v1')
-      setCookingModel('deepseek-v4-flash')
-    } else if (provider === 'openai') {
-      setCookingBaseUrl('https://api.openai.com/v1')
-      setCookingModel('gpt-4.1-mini')
-    }
-  }
-
   function messageFrom(cause: unknown) {
     if (cause instanceof Error) return cause.message
     if (cause && typeof cause === 'object' && 'message' in cause) {
@@ -689,6 +663,10 @@
             <Mic data-icon="inline-start" />
             {tr('Voice')}
           </Tabs.Trigger>
+          <Tabs.Trigger value="post-processing" class="h-9 w-full justify-start px-2.5">
+            <Sparkles data-icon="inline-start" />
+            {tr('Post-processing')}
+          </Tabs.Trigger>
           <Tabs.Trigger value="adapters" class="h-9 w-full justify-start px-2.5">
             <PlugZap data-icon="inline-start" />
             <span class="flex-1 text-left">{tr('Adapters')}</span>
@@ -722,9 +700,11 @@
                     ? tr('Alert methods')
                     : activeSection === 'voice'
                       ? tr('Voice input')
-                      : activeSection === 'adapters'
-                        ? tr('Host adapters')
-                        : tr('Project information')}
+                      : activeSection === 'post-processing'
+                        ? tr('Draft and submission transforms')
+                        : activeSection === 'adapters'
+                          ? tr('Host adapters')
+                          : tr('Project information')}
             </p>
             <h2 class="m-0 mt-0.5 text-base font-semibold">
               {activeSection === 'general'
@@ -735,9 +715,11 @@
                     ? tr('Notifications')
                     : activeSection === 'voice'
                       ? tr('Voice')
-                      : activeSection === 'adapters'
-                        ? tr('Adapters')
-                        : tr('About')}
+                      : activeSection === 'post-processing'
+                        ? tr('Post-processing')
+                        : activeSection === 'adapters'
+                          ? tr('Adapters')
+                          : tr('About')}
             </h2>
           </div>
         </header>
@@ -811,7 +793,7 @@
                 <div>
                   <h3 class="m-0 text-sm font-medium">{tr('Getting started')}</h3>
                   <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
-                    {tr('Review initial setup for storage, voice, adapters, notifications, and Cooking.')}
+                    {tr('Review initial setup for storage, voice, adapters, notifications, and post-processing.')}
                   </p>
                 </div>
               </div>
@@ -837,223 +819,6 @@
                 <ArchiveRestore data-icon="inline-start" />
                 {tr('View archived content')}
               </Button>
-            </section>
-
-            <section class="border-b pb-8">
-              <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-8">
-                <div class="flex gap-3">
-                  <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
-                    <ChefHat class="size-4" />
-                  </span>
-                  <div>
-                    <div class="flex items-center gap-2">
-                      <h3 class="m-0 text-sm font-medium">Cooking</h3>
-                      <Badge variant="outline">{tr('Optional')}</Badge>
-                    </div>
-                    <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
-                      {tr('Use an LLM to turn the Ramble draft into formal feedback before submission; the uncooked source remains in the feedback package.')}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={$cookingEnabled}
-                  aria-label="Cooking"
-                  class={[
-                    'relative h-[22px] w-10 rounded-full border border-transparent transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
-                    $cookingEnabled ? 'bg-primary' : 'bg-input',
-                  ]}
-                  onclick={() => setCookingEnabled(!$cookingEnabled)}
-                >
-                  <span
-                    class={[
-                      'absolute left-0.5 top-0.5 size-4 rounded-full bg-background shadow-sm transition-transform',
-                      $cookingEnabled ? 'translate-x-5' : 'translate-x-0',
-                    ]}
-                  ></span>
-                </button>
-              </div>
-
-              <div class="mt-6 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-8">
-                <div class="flex gap-3">
-                  <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
-                    <Sparkles class="size-4" />
-                  </span>
-                  <div>
-                    <div class="flex items-center gap-2">
-                      <h3 class="m-0 text-sm font-medium">{tr('Light cleanup')}</h3>
-                      <Badge variant="outline">{tr('Optional')}</Badge>
-                    </div>
-                    <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
-                      {tr('Remove filler such as 啊 and 比如说, fix broken sentence breaks, and keep the original meaning. Independent of Cooking.')}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={$lightCleanupEnabled}
-                  aria-label={tr('Light cleanup')}
-                  class={[
-                    'relative h-[22px] w-10 rounded-full border border-transparent transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
-                    $lightCleanupEnabled ? 'bg-primary' : 'bg-input',
-                  ]}
-                  onclick={() => setLightCleanupEnabled(!$lightCleanupEnabled)}
-                >
-                  <span
-                    class={[
-                      'absolute left-0.5 top-0.5 size-4 rounded-full bg-background shadow-sm transition-transform',
-                      $lightCleanupEnabled ? 'translate-x-5' : 'translate-x-0',
-                    ]}
-                  ></span>
-                </button>
-              </div>
-
-              {#if $cookingEnabled || $lightCleanupEnabled}
-                <div class="ml-11 mt-5 grid gap-4 rounded-md border bg-muted/20 p-4">
-                  <div class="grid grid-cols-[140px_minmax(0,1fr)] items-center gap-4">
-                    <label for="cooking-provider" class="text-xs font-medium">{tr('Model provider')}</label>
-                    <Select.Root
-                      type="single"
-                      value={$cookingProvider}
-                      onValueChange={(value: string) => chooseCookingProvider(value as CookingProvider)}
-                    >
-                      <Select.Trigger id="cooking-provider" class="w-full">
-                        {$cookingProvider === 'deepseek'
-                          ? 'DeepSeek'
-                          : $cookingProvider === 'openai'
-                            ? 'OpenAI'
-                            : tr('OpenAI-compatible service')}
-                      </Select.Trigger>
-                      <Select.Content>
-                        <Select.Item value="deepseek" label="DeepSeek" />
-                        <Select.Item value="openai" label="OpenAI" />
-                        <Select.Item value="compatible" label={tr('OpenAI-compatible service')} />
-                      </Select.Content>
-                    </Select.Root>
-                  </div>
-                  <div class="grid grid-cols-[140px_minmax(0,1fr)] items-center gap-4">
-                    <label for="cooking-base-url" class="text-xs font-medium">Base URL</label>
-                    <input
-                      id="cooking-base-url"
-                      type="url"
-                      value={$cookingBaseUrl}
-                      placeholder="https://api.example.com/v1"
-                      class="h-9 w-full rounded-md border bg-background px-3 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      oninput={(event) => setCookingBaseUrl((event.currentTarget as HTMLInputElement).value)}
-                    />
-                  </div>
-                  <div class="grid grid-cols-[140px_minmax(0,1fr)] items-center gap-4">
-                    <label for="cooking-model" class="text-xs font-medium">{tr('Model name')}</label>
-                    <input
-                      id="cooking-model"
-                      type="text"
-                      value={$cookingModel}
-                      placeholder="deepseek-v4-flash"
-                      class="h-9 w-full rounded-md border bg-background px-3 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      oninput={(event) => setCookingModel((event.currentTarget as HTMLInputElement).value)}
-                    />
-                  </div>
-                  <div class="grid grid-cols-[140px_minmax(0,1fr)] items-center gap-4">
-                    <label for="cooking-reasoning" class="text-xs font-medium">{tr('Reasoning effort')}</label>
-                    <Select.Root
-                      type="single"
-                      value={$cookingReasoningEffort}
-                      onValueChange={(value: string) =>
-                        setCookingReasoningEffort(value as CookingReasoningEffort)}
-                    >
-                      <Select.Trigger id="cooking-reasoning" class="w-full">
-                        {$cookingReasoningEffort === 'none'
-                          ? tr('None')
-                          : $cookingReasoningEffort === 'minimal'
-                            ? 'minimal'
-                            : $cookingReasoningEffort}
-                      </Select.Trigger>
-                      <Select.Content>
-                        <Select.Item value="none" label={tr('None')} />
-                        <Select.Item value="minimal" label="minimal" />
-                        <Select.Item value="low" label="low" />
-                        <Select.Item value="medium" label="medium" />
-                        <Select.Item value="high" label="high" />
-                        <Select.Item value="xhigh" label="xhigh" />
-                        <Select.Item value="max" label="max" />
-                      </Select.Content>
-                    </Select.Root>
-                  </div>
-                  <div class="grid grid-cols-[140px_minmax(0,1fr)] items-center gap-4">
-                    <label for="cooking-api-key" class="text-xs font-medium">API Key</label>
-                    <input
-                      id="cooking-api-key"
-                      type="password"
-                      value={$cookingApiKey}
-                      autocomplete="off"
-                      placeholder="sk-…"
-                      class="h-9 w-full rounded-md border bg-background px-3 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      oninput={(event) => setCookingApiKey((event.currentTarget as HTMLInputElement).value)}
-                    />
-                  </div>
-                  {#if $cookingEnabled}
-                    <div class="grid grid-cols-[140px_minmax(0,1fr)] items-start gap-4">
-                      <label for="cooking-system-prompt" class="pt-2 text-xs font-medium">{tr('Cooking prompt')}</label>
-                      <div class="grid gap-2">
-                        <textarea
-                          id="cooking-system-prompt"
-                          rows="8"
-                          value={$cookingSystemPrompt || DEFAULT_COOKING_SYSTEM_PROMPT}
-                          class="min-h-40 w-full resize-y rounded-md border bg-background px-3 py-2 font-mono text-[11px] leading-5 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          oninput={(event) =>
-                            setCookingSystemPrompt((event.currentTarget as HTMLTextAreaElement).value)}
-                        ></textarea>
-                        <div class="flex items-center justify-between gap-3">
-                          <p class="m-0 text-[10px] leading-4 text-muted-foreground">
-                            {tr('This prompt is sent with every cook, along with the request title, what happened, and the action list. Keep attachment:// image references if you edit it.')}
-                          </p>
-                          <Button
-                            variant="outline"
-                            size="xs"
-                            disabled={!$cookingSystemPrompt}
-                            onclick={() => setCookingSystemPrompt('')}
-                          >
-                            {tr('Reset to default')}
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  {/if}
-                  {#if $lightCleanupEnabled}
-                    <div class="grid grid-cols-[140px_minmax(0,1fr)] items-start gap-4">
-                      <label for="light-cleanup-system-prompt" class="pt-2 text-xs font-medium">{tr('Light cleanup prompt')}</label>
-                      <div class="grid gap-2">
-                        <textarea
-                          id="light-cleanup-system-prompt"
-                          rows="8"
-                          value={$lightCleanupSystemPrompt || DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT}
-                          class="min-h-40 w-full resize-y rounded-md border bg-background px-3 py-2 font-mono text-[11px] leading-5 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          oninput={(event) =>
-                            setLightCleanupSystemPrompt((event.currentTarget as HTMLTextAreaElement).value)}
-                        ></textarea>
-                        <div class="flex items-center justify-between gap-3">
-                          <p class="m-0 text-[10px] leading-4 text-muted-foreground">
-                            {tr('This prompt is sent with every transcript cleanup. Keep the original language and meaning if you edit it.')}
-                          </p>
-                          <Button
-                            variant="outline"
-                            size="xs"
-                            disabled={!$lightCleanupSystemPrompt}
-                            onclick={() => setLightCleanupSystemPrompt('')}
-                          >
-                            {tr('Reset to default')}
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  {/if}
-                  <p class="m-0 text-[10px] leading-4 text-muted-foreground">
-                    {tr('The API key is stored only in local settings on this device and is never written to feedback packages. Cooking and Light cleanup send text to the selected model provider.')}
-                  </p>
-                </div>
-              {/if}
             </section>
 
             <section class="grid gap-4">
@@ -1555,6 +1320,10 @@
                 </div>
               </div>
             </section>
+          </Tabs.Content>
+
+          <Tabs.Content value="post-processing" class="m-0 p-6 outline-none">
+            <PostProcessingSettings />
           </Tabs.Content>
 
           <Tabs.Content value="adapters" class="m-0 space-y-8 p-6 outline-none">

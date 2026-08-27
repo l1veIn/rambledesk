@@ -55,7 +55,7 @@ MVP 不做：
 | 存储 | 反馈请求、草稿、附件 metadata、宿主会话关联、不可变反馈包。 |
 | continuation | 通用 MCP 手动继续；Pi 无提交后继续；未来原生 continuation 预留。 |
 | 通知 | 系统通知和工作台提示，均为 best-effort side effect。 |
-| 设置 | 通用偏好、首次使用引导、Cooking 模型服务、语音模型，以及各适配器的安装结果与配置说明。 |
+| 设置 | 通用偏好、首次使用引导、Post-processing、语音模型，以及各适配器的安装结果与配置说明。Post-processing 分别配置节点级 Light cleanup 与整篇 Cooking。 |
 
 ## 主流程
 

@@ -8,7 +8,7 @@ import StarterKit from '@tiptap/starter-kit'
 
 import { ActionChannel } from './actionChannelExtension'
 import { attachmentIdFromUrl, attachmentMarkdownUrl } from './attachmentMarkdown'
-import { CleanedSpeech, PendingSpeech } from './pendingSpeech'
+import { SpeechBlockMetadata } from './speechBlockMetadata'
 import {
   serializeDocWithActionChannels,
 } from './workbench/actionChannel'
@@ -165,8 +165,7 @@ export function feedbackEditorExtensions(): AnyExtension[] {
     TaskItem.configure({ nested: true }),
     AttachmentImage,
     AttachmentFile,
-    PendingSpeech,
-    CleanedSpeech,
+    SpeechBlockMetadata,
     ActionChannel,
     Markdown,
   ]

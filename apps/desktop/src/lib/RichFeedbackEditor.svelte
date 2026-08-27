@@ -29,7 +29,17 @@
     snapshotFeedbackDraftDocument,
     type FeedbackDraftSnapshot,
   } from './feedbackDraftDocument'
-  import { CLEANED_SPEECH_NODE, PENDING_SPEECH_NODE } from './pendingSpeech'
+  import {
+    CLEANUP_STATE_ATTR,
+    INPUT_SOURCE_ATTR,
+    SPEECH_CLEANUP_TRANSACTION_META,
+    SPEECH_SEGMENT_ID_ATTR,
+    asrParagraphAttrs,
+    isSpeechCleanupInFlight,
+    setSpeechCleanupInFlight,
+    type CleanupState,
+    type SpeechCleanupSegment,
+  } from './speechBlockMetadata'
   import { ACTION_CHANNEL_ATTR } from './workbench/actionChannel'
   import { alignCleanupParts } from './workbench/speechCleanupPolicy'
 
@@ -245,7 +255,11 @@
     if (!target) return false
     let cleaning = false
     target.state.doc.descendants((node) => {
-      if (node.type.name === PENDING_SPEECH_NODE && node.attrs.status === 'cleaning') {
+      const segmentId = node.attrs?.[SPEECH_SEGMENT_ID_ATTR]
+      if (
+        typeof segmentId === 'string' &&
+        isSpeechCleanupInFlight(target.state, segmentId)
+      ) {
         cleaning = true
       }
     })
@@ -279,12 +293,19 @@
     )
   }
 
-  export function appendTranscript(text: string, options?: { pending?: boolean }) {
+  export function appendTranscript(
+    text: string,
+    options?: { asr?: { segmentId: string; cleanupState: CleanupState } },
+  ) {
     const transcript = text.trim()
     if (!editor || !transcript || disabled) return
     editor.commands.insertContentAt(editor.state.doc.content.size, {
-      type: options?.pending ? PENDING_SPEECH_NODE : 'paragraph',
-      attrs: actionAttrs(options?.pending ? { status: 'pending' } : {}),
+      type: 'paragraph',
+      attrs: actionAttrs(
+        options?.asr
+          ? asrParagraphAttrs(options.asr.segmentId, options.asr.cleanupState)
+          : {},
+      ),
       content: [{ type: 'text', text: transcript }],
     })
   }
@@ -293,67 +314,56 @@
     return editorHasCleaningSpeech()
   }
 
-  export function pendingSpeech() {
-    const texts: string[] = []
-    editor?.state.doc.descendants((node) => {
-      if (node.type.name === PENDING_SPEECH_NODE && node.attrs.status === 'pending') {
-        texts.push(node.textContent)
-      }
-    })
-    return {
-      count: texts.length,
-      chars: texts.reduce((sum, text) => sum + text.trim().length, 0),
-      texts,
-    }
-  }
-
-  export function beginSpeechCleanup(): string {
-    if (!editor) return ''
-    const ranges: Array<{ from: number; text: string }> = []
-    editor.state.doc.descendants((node, position) => {
-      if (node.type.name === PENDING_SPEECH_NODE && node.attrs.status === 'pending') {
-        ranges.push({ from: position, text: node.textContent })
-      }
-    })
-    if (ranges.length === 0) return ''
-    let transaction = editor.state.tr
-    for (const range of [...ranges].reverse()) {
-      const node = transaction.doc.nodeAt(range.from)
-      if (!node) continue
-      transaction = transaction.setNodeMarkup(range.from, undefined, {
-        ...node.attrs,
-        status: 'cleaning',
-      })
-    }
-    transaction.setMeta('speechCleanup', true)
-    editor.view.dispatch(transaction)
+  export function beginSpeechCleanup(segments: SpeechCleanupSegment[]): void {
+    if (!editor || segments.length === 0) return
+    editor.view.dispatch(
+      setSpeechCleanupInFlight(
+        editor.state.tr,
+        segments.map((segment) => segment.segmentId),
+        true,
+      ),
+    )
     historyLocked = true
-    return ranges.map((range) => range.text).join('\n\n')
   }
 
-  export function finishSpeechCleanup(cleaned: string | null): void {
+  export function finishSpeechCleanup(
+    segments: SpeechCleanupSegment[],
+    cleaned: string | null,
+  ): void {
     if (!editor) return
     const items: Array<{
       from: number
       to: number
       text: string
-      actionIndex: number | null
+      attrs: Record<string, unknown>
+      segmentId: string
     }> = []
+    const segmentIds = new Set(segments.map((segment) => segment.segmentId))
     editor.state.doc.descendants((node, position) => {
-      if (node.type.name === PENDING_SPEECH_NODE && node.attrs.status === 'cleaning') {
+      const segmentId = node.attrs?.[SPEECH_SEGMENT_ID_ATTR]
+      if (
+        node.type.name === 'paragraph' &&
+        typeof segmentId === 'string' &&
+        segmentIds.has(segmentId)
+      ) {
         items.push({
           from: position,
           to: position + node.nodeSize,
           text: node.textContent,
-          actionIndex:
-            typeof node.attrs[ACTION_CHANNEL_ATTR] === 'number'
-              ? node.attrs[ACTION_CHANNEL_ATTR]
-              : null,
+          attrs: { ...node.attrs },
+          segmentId,
         })
       }
     })
     historyLocked = false
     if (items.length === 0) {
+      editor.view.dispatch(
+        setSpeechCleanupInFlight(
+          editor.state.tr,
+          segments.map((segment) => segment.segmentId),
+          false,
+        ),
+      )
       syncHistoryButtons()
       return
     }
@@ -361,26 +371,41 @@
       items.map((item) => item.text),
       cleaned,
     )
+    const originalById = new Map(segments.map((segment) => [segment.segmentId, segment.text]))
     let transaction = editor.state.tr
     for (let index = items.length - 1; index >= 0; index -= 1) {
       const item = items[index]
-      // 1:1 tidy → cleanedSpeech. Timeout/reject → plain paragraph so we
-      // do not immediately re-trigger cleanup. Shape mismatch → keep the
-      // original wording but still mark cleaned.
-      const markCleaned = cleaned != null
-      const text = parts?.[index] ?? item.text
-      const type = markCleaned
-        ? editor!.schema.nodes[CLEANED_SPEECH_NODE]
-        : editor!.schema.nodes.paragraph
-      const attrs =
-        item.actionIndex != null ? { [ACTION_CHANNEL_ATTR]: item.actionIndex } : null
+      const original = originalById.get(item.segmentId)
+      const unchanged = original === item.text
+      const state: CleanupState = !unchanged
+        ? 'skipped'
+        : cleaned == null
+          ? 'failed'
+          : 'cleaned'
+      const segmentIndex = segments.findIndex((segment) => segment.segmentId === item.segmentId)
+      const text = cleaned != null && unchanged
+        ? (parts?.[segmentIndex] ?? item.text)
+        : item.text
+      const attrs = {
+        ...item.attrs,
+        [INPUT_SOURCE_ATTR]: 'asr',
+        [CLEANUP_STATE_ATTR]: state,
+      }
       transaction = transaction.replaceWith(
         item.from,
         item.to,
-        type.create(attrs, text ? editor!.schema.text(text) : undefined),
+        editor.schema.nodes.paragraph.create(
+          attrs,
+          text ? editor.schema.text(text) : undefined,
+        ),
       )
     }
-    transaction.setMeta('speechCleanup', true)
+    transaction.setMeta(SPEECH_CLEANUP_TRANSACTION_META, true)
+    setSpeechCleanupInFlight(
+      transaction,
+      segments.map((segment) => segment.segmentId),
+      false,
+    )
     editor.view.dispatch(transaction)
     syncHistoryButtons()
   }
@@ -389,7 +414,11 @@
     if (!editor) return 0
     let position = editor.state.selection.from
     editor.state.doc.descendants((node, from) => {
-      if (node.type.name !== PENDING_SPEECH_NODE) return
+      const segmentId = node.attrs?.[SPEECH_SEGMENT_ID_ATTR]
+      if (
+        typeof segmentId !== 'string' ||
+        !isSpeechCleanupInFlight(editor!.state, segmentId)
+      ) return
       const to = from + node.nodeSize
       if (position > from && position < to) position = to
     })

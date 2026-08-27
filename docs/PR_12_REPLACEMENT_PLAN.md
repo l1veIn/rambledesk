@@ -300,7 +300,8 @@ Light cleanup 由人类显式启用，结果原位可见、当前会话可撤销
 
 replacement 不新增 journal 表、reservation 或 raw evidence 列。Draft 使用版本化 TipTap JSON、
 Markdown 导出投影和一个 `expected_revision` 原子保存；节点类型、属性和 marks 属于可恢复文档，
-inflight cleanup task、selection 与 Undo 属于编辑器会话态。
+其中 ASR 来源、稳定语音段标识与 Light cleanup 状态由普通段落属性表达。inflight cleanup task、
+selection 与 Undo 属于编辑器会话态。
 
 跨 Request 导航时，不再让 Stable 或异步 cleanup 绕过 TipTap、直接 merge SQLite Markdown。
 Active Ramble 所属 Feedback Draft 会话始终存活；语音追加、cleanup replace、Undo 和 autosave

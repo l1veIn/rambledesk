@@ -5,9 +5,16 @@ import {
   parseFeedbackMarkdown,
   serializeFeedbackMarkdown,
 } from './feedbackEditorExtensions'
+import {
+  CLEANUP_STATE_ATTR,
+  INPUT_SOURCE_ATTR,
+  SPEECH_SEGMENT_ID_ATTR,
+  ASR_INPUT_SOURCE,
+} from './speechBlockMetadata'
 import { ACTION_CHANNEL_ATTR } from './workbench/actionChannel'
 
-export const FEEDBACK_DRAFT_DOCUMENT_VERSION = 1
+export const FEEDBACK_DRAFT_DOCUMENT_VERSION = 2
+const LEGACY_FEEDBACK_DRAFT_DOCUMENT_VERSION = 1
 
 type PersistedFeedbackDraftDocument = {
   schemaVersion: number
@@ -23,6 +30,32 @@ function isDocument(value: unknown): value is JSONContent {
   if (!value || typeof value !== 'object') return false
   const record = value as Record<string, unknown>
   return record.type === 'doc' && (record.content === undefined || Array.isArray(record.content))
+}
+
+function migrateLegacySpeechNodes(doc: JSONContent): JSONContent {
+  let segmentIndex = 0
+
+  function migrate(node: JSONContent): JSONContent {
+    const content = node.content?.map(migrate)
+    if (node.type !== 'pendingSpeech' && node.type !== 'cleanedSpeech') {
+      return content ? { ...node, content } : node
+    }
+    segmentIndex += 1
+    const { status: _legacyStatus, ...legacyAttrs } = node.attrs ?? {}
+    return {
+      ...node,
+      type: 'paragraph',
+      attrs: {
+        ...legacyAttrs,
+        [SPEECH_SEGMENT_ID_ATTR]: `legacy-asr-${segmentIndex}`,
+        [INPUT_SOURCE_ATTR]: ASR_INPUT_SOURCE,
+        [CLEANUP_STATE_ATTR]: node.type === 'cleanedSpeech' ? 'cleaned' : 'pending',
+      },
+      ...(content ? { content } : {}),
+    }
+  }
+
+  return migrate(doc)
 }
 
 function canonicalizeNode(node: JSONContent): JSONContent {
@@ -56,10 +89,14 @@ export function decodeFeedbackDraftDocument(source: string | null | undefined): 
   if (!source) return null
   try {
     const parsed = JSON.parse(source) as Partial<PersistedFeedbackDraftDocument>
-    if (parsed.schemaVersion !== FEEDBACK_DRAFT_DOCUMENT_VERSION || !isDocument(parsed.doc)) {
+    if (!isDocument(parsed.doc)) {
       return null
     }
-    return parsed.doc
+    if (parsed.schemaVersion === FEEDBACK_DRAFT_DOCUMENT_VERSION) return parsed.doc
+    if (parsed.schemaVersion === LEGACY_FEEDBACK_DRAFT_DOCUMENT_VERSION) {
+      return migrateLegacySpeechNodes(parsed.doc)
+    }
+    return null
   } catch {
     return null
   }

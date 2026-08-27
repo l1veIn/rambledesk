@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  CLEANUP_CHAR_THRESHOLD,
-  CLEANUP_STABLE_THRESHOLD,
+  DEFAULT_CLEANUP_CHAR_THRESHOLD,
+  DEFAULT_CLEANUP_SEGMENT_THRESHOLD,
   acceptCleanupResult,
   alignCleanupParts,
   shouldStartCleanup,
 } from './speechCleanupPolicy'
+
+const thresholds = {
+  segmentThreshold: DEFAULT_CLEANUP_SEGMENT_THRESHOLD,
+  charThreshold: DEFAULT_CLEANUP_CHAR_THRESHOLD,
+}
 
 describe('shouldStartCleanup', () => {
   it('does nothing when disabled, busy, or empty', () => {
@@ -17,6 +22,7 @@ describe('shouldStartCleanup', () => {
         pendingCount: 3,
         pendingChars: 12,
         trigger: 'settle',
+        thresholds,
       }),
     ).toBe(false)
     expect(
@@ -26,6 +32,7 @@ describe('shouldStartCleanup', () => {
         pendingCount: 3,
         pendingChars: 12,
         trigger: 'settle',
+        thresholds,
       }),
     ).toBe(false)
     expect(
@@ -35,6 +42,7 @@ describe('shouldStartCleanup', () => {
         pendingCount: 0,
         pendingChars: 0,
         trigger: 'settle',
+        thresholds,
       }),
     ).toBe(false)
   })
@@ -44,18 +52,20 @@ describe('shouldStartCleanup', () => {
       shouldStartCleanup({
         enabled: true,
         busy: false,
-        pendingCount: CLEANUP_STABLE_THRESHOLD - 1,
+        pendingCount: DEFAULT_CLEANUP_SEGMENT_THRESHOLD - 1,
         pendingChars: 8,
-        trigger: 'stable-count',
+        trigger: 'segment-count',
+        thresholds,
       }),
     ).toBe(false)
     expect(
       shouldStartCleanup({
         enabled: true,
         busy: false,
-        pendingCount: CLEANUP_STABLE_THRESHOLD,
+        pendingCount: DEFAULT_CLEANUP_SEGMENT_THRESHOLD,
         pendingChars: 12,
-        trigger: 'stable-count',
+        trigger: 'segment-count',
+        thresholds,
       }),
     ).toBe(true)
     expect(
@@ -63,22 +73,24 @@ describe('shouldStartCleanup', () => {
         enabled: true,
         busy: false,
         pendingCount: 1,
-        pendingChars: CLEANUP_CHAR_THRESHOLD,
+        pendingChars: DEFAULT_CLEANUP_CHAR_THRESHOLD,
         trigger: 'char-count',
+        thresholds,
       }),
     ).toBe(true)
   })
 
-  it('does not start on a thinking pause; non-speech insert or settle still flush pending', () => {
+  it('starts after the configured idle period; non-speech insert or settle also flush pending', () => {
     expect(
       shouldStartCleanup({
         enabled: true,
         busy: false,
         pendingCount: 1,
         pendingChars: 8,
-        trigger: 'silence',
+        trigger: 'idle',
+        thresholds,
       }),
-    ).toBe(false)
+    ).toBe(true)
     expect(
       shouldStartCleanup({
         enabled: true,
@@ -86,6 +98,7 @@ describe('shouldStartCleanup', () => {
         pendingCount: 1,
         pendingChars: 8,
         trigger: 'non-speech',
+        thresholds,
       }),
     ).toBe(true)
     expect(
@@ -95,6 +108,7 @@ describe('shouldStartCleanup', () => {
         pendingCount: 1,
         pendingChars: 8,
         trigger: 'settle',
+        thresholds,
       }),
     ).toBe(true)
   })
