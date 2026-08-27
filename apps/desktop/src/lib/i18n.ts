@@ -756,6 +756,9 @@ const chinese: Record<string, string> = {
   'A shortcut needs at least one modifier (Ctrl / Cmd / Alt / Shift), or a function key F1–F24.': '快捷键需要至少一个修饰键（Ctrl / Cmd / Alt / Shift），或使用 F1–F24 功能键。',
   'This key cannot be used as a global shortcut.': '该按键不能用作全局快捷键。',
   'Global shortcuts are available only in the desktop app.': '全局快捷键仅在桌面应用中可用。',
+  'Copy task brief': '复制任务简报',
+  'Task brief copied to clipboard.': '任务简报已复制到剪贴板。',
+  'Could not copy the task brief. Select the text and copy it manually.': '无法复制任务简报，请手动选中文本复制。',
 }
 
 export function t(

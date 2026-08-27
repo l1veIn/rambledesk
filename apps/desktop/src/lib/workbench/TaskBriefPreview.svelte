@@ -1,9 +1,10 @@
 <script lang="ts">
-  import { FileImage, FileText, LoaderCircle, Mic, Paperclip } from '@lucide/svelte'
+  import { Copy, FileImage, FileText, LoaderCircle, Mic, Paperclip } from '@lucide/svelte'
 
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
   import * as Dialog from '$lib/components/ui/dialog'
+  import { toast } from '$lib/components/ui/sonner'
   import {
     requestStatusLabel,
     type FeedbackStatus,
@@ -17,6 +18,7 @@
   import { openExternalUrl } from '$lib/openExternalUrl'
   import RequestAttachmentPreview from './RequestAttachmentPreview.svelte'
   import RecordLed from './RecordLed.svelte'
+  import { buildTaskBriefText } from './taskBriefCopy'
   import { rambleRecordPresentation } from './rambleRecordButton'
   import type { HostProfile, RamblePhase } from './types'
 
@@ -83,6 +85,19 @@
     attachmentPreview = attachment
     attachmentPreviewOpen = true
   }
+
+  async function copyTaskBrief() {
+    if (!workspace) return
+    try {
+      await navigator.clipboard.writeText(buildTaskBriefText(workspace))
+      toast.success(tr('Task brief copied to clipboard.'))
+    } catch (cause) {
+      toast.error(tr('Could not copy the task brief. Select the text and copy it manually.'), {
+        description:
+          cause instanceof Error ? cause.message : String(cause),
+      })
+    }
+  }
 </script>
 
 <Dialog.Root bind:open>
@@ -90,7 +105,19 @@
     class="task-brief-preview-content grid h-[calc(100vh-2rem)] w-[min(1200px,calc(100vw-2rem))] max-w-[min(1200px,calc(100vw-2rem))] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 duration-200 sm:max-w-[min(1200px,calc(100vw-2rem))]"
     style={origin ? `transform-origin: ${origin}` : undefined}
   >
-    <Dialog.Header class="border-b px-6 py-4 pr-14">
+    <Dialog.Header class="relative border-b px-6 py-4 pr-14">
+      {#if workspace}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          class="absolute right-12 top-2.5"
+          aria-label={tr('Copy task brief')}
+          title={tr('Copy task brief')}
+          onclick={() => void copyTaskBrief()}
+        >
+          <Copy />
+        </Button>
+      {/if}
       <Dialog.Title class="text-lg font-semibold leading-snug">
         {workspace?.request.title ?? tr('Task brief')}
       </Dialog.Title>
