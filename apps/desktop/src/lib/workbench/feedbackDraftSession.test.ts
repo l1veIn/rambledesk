@@ -613,6 +613,45 @@ describe('Light cleanup on a draft session', () => {
     expect(doc?.content?.[0]?.content?.[0]?.text).toBe('第一句。')
     expect(doc?.content?.[1]?.content?.[0]?.text).toBe('第二句。')
   })
+
+  it('tidies on demand with auto tidy off and refills by label', async () => {
+    const pending = snapshotFeedbackDraftDocument({
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          attrs: asrParagraphAttrs('segment-1', 'pending'),
+          content: [{ type: 'text', text: 'Um first line' }],
+        },
+        {
+          type: 'paragraph',
+          attrs: asrParagraphAttrs('segment-2', 'pending'),
+          content: [{ type: 'text', text: 'Err second line' }],
+        },
+      ],
+    })
+    const session = createFeedbackDraftSession({
+      requestId: 'request-a',
+      generation: 1,
+      initialDocumentJson: pending.documentJson,
+      initialMarkdown: pending.bodyMarkdown,
+      initialRevision: 1,
+      save: memorySave(),
+      cleanup: {
+        enabled: () => false,
+        clean: async () => '[1] First line.\n[2] Second line.',
+        settings: () => ({ segmentThreshold: 3, charThreshold: 500, idleMs: 60_000, timeoutMs: 5_000 }),
+      },
+    })
+    session.bindEditor({} as FeedbackEditorHandle)
+    expect(session.pendingCleanupCount()).toBe(2)
+    expect(session.tidyNow()).toBe(true)
+    await session.settle()
+    const doc = decodeFeedbackDraftDocument(session.snapshot().documentJson)
+    expect(doc?.content?.[0]?.content?.[0]?.text).toBe('First line.')
+    expect(doc?.content?.[1]?.content?.[0]?.text).toBe('Second line.')
+    expect(session.cleanupCount()).toBeGreaterThan(0)
+  })
 })
 
 describe('ActiveRambleCoordinator', () => {

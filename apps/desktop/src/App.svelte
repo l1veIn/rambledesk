@@ -329,6 +329,9 @@
         )
       : {}
   $: cleanupCount = sessionEpoch >= 0 ? (draftSessions.visible()?.cleanupCount() ?? 0) : 0
+  $: pendingCleanupCount =
+    sessionEpoch >= 0 ? (draftSessions.visible()?.pendingCleanupCount() ?? 0) : 0
+  $: tidyBusy = sessionEpoch >= 0 && (draftSessions.visible()?.isCleaning() ?? false)
   $: if (sessionEpoch >= 0) {
     // Recompute on every session change: the panel mounts a real per-session
     // editor (which binds to the session and preserves rich node attributes)
@@ -1198,6 +1201,9 @@
           {currentActionIndex}
           {actionNotes}
           {cleanupCount}
+          {pendingCleanupCount}
+          {tidyBusy}
+          onTidyNow={() => draftSessions.visible()?.tidyNow()}
           onToggleActionChannel={(index) => draftSessions.visible()?.toggleActionChannel(index)}
           onToggleRamble={() => void toggleRamble()}
           onExitRamble={() => void exitRamble()}

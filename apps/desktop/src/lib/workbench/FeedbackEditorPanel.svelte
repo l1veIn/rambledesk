@@ -34,6 +34,9 @@
   export let cookedPreviewModel = ''
   export let locked = false
   export let cleanupCount = 0
+  export let pendingCleanupCount = 0
+  export let tidyBusy = false
+  export let onTidyNow: () => void = () => {}
   export let cookedMarkdown = ''
   export let uncookedMarkdown = ''
   export let formatTime: (value: string | null | undefined) => string
@@ -161,6 +164,19 @@
       <span class="shrink-0 text-[10px] text-muted-foreground">
         {tr('Cleaned {count} times', { count: cleanupCount })}
       </span>
+    {/if}
+    {#if pendingCleanupCount > 0 && !readOnly}
+      <Button
+        variant="outline"
+        size="sm"
+        class="shrink-0 gap-1.5 h-7 px-2 text-[10px]"
+        disabled={tidyBusy}
+        title={tr('Tidy pending speech')}
+        onclick={onTidyNow}
+      >
+        <Sparkles class="size-3.5" />
+        {tr('Tidy now')}
+      </Button>
     {/if}
     {#if hasCookedVariant}
       <div class="ml-auto flex items-center gap-1 rounded-md border bg-muted/30 p-0.5">

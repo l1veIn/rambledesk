@@ -29,6 +29,7 @@ import {
   DEFAULT_CLEANUP_TIMEOUT_MS,
   acceptCleanupResult,
   alignCleanupParts,
+  parseLabeledOutput,
   shouldStartCleanup,
   type CleanupTrigger,
 } from './speechCleanupPolicy'
@@ -79,6 +80,8 @@ export type FeedbackDraftSession = {
   toggleActionChannel(index: number): void
   clearActionChannel(): void
   cleanupCount(): number
+  pendingCleanupCount(): number
+  tidyNow(): boolean
   beginRecording(): void
   endRecording(): void
   prepareNonSpeechInsert(): void
@@ -253,7 +256,9 @@ export function createFeedbackDraftSession(input: {
     cleaned: string | null,
   ) {
     if (segments.length === 0) return
-    const parts = alignCleanupParts(segments.map((segment) => segment.text), cleaned)
+    const parts =
+      parseLabeledOutput(cleaned ?? '', segments.length) ??
+      alignCleanupParts(segments.map((segment) => segment.text), cleaned)
     const segmentIndex = new Map(
       segments.map((segment, index) => [segment.segmentId, { ...segment, index }]),
     )
@@ -284,10 +289,12 @@ export function createFeedbackDraftSession(input: {
           if (allUnchanged && contiguous) {
             // Batch-whole replacement: one transaction turns the batch range
             // into the model's output blocks (one block when merged).
-            const blocks = cleaned
-              .split(/\n{2,}/)
-              .map((block) => block.trim())
-              .filter(Boolean)
+            const blocks =
+              parts ??
+              cleaned
+                .split(/\n{2,}/)
+                .map((block) => block.trim())
+                .filter(Boolean)
             const first = items[0]!
             const firstAttrs = {
               ...first.node.attrs,
@@ -509,6 +516,19 @@ export function createFeedbackDraftSession(input: {
     void startCleanup('non-speech')
   }
 
+  /** Manual tidy: works with auto tidy disabled, needs pending segments. */
+  function tidyNow(): boolean {
+    if (disposed) return false
+    cancelCleanupIdleTimer()
+    if (pendingCleanupSnapshot().count === 0) return false
+    void startCleanup('manual')
+    return true
+  }
+
+  function pendingCleanupCount(): number {
+    return pendingCleanupSnapshot().count
+  }
+
   function appendSpeech(text: string) {
     if (disposed) return
     const transcript = text.trim()
@@ -712,6 +732,8 @@ export function createFeedbackDraftSession(input: {
     toggleActionChannel,
     clearActionChannel,
     cleanupCount: () => cleanupCount,
+    pendingCleanupCount,
+    tidyNow,
     beginRecording,
     endRecording,
     prepareNonSpeechInsert,

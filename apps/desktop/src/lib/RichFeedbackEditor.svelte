@@ -34,7 +34,7 @@
     type SpeechCleanupSegment,
   } from './speechBlockMetadata'
   import { ACTION_CHANNEL_ATTR } from './workbench/actionChannel'
-  import { alignCleanupParts } from './workbench/speechCleanupPolicy'
+  import { alignCleanupParts, parseLabeledOutput } from './workbench/speechCleanupPolicy'
 
   export let markdown = ''
   export let documentJson: string | null = null
@@ -358,10 +358,12 @@
       syncHistoryButtons()
       return
     }
-    const parts = alignCleanupParts(
-      items.map((item) => item.text),
-      cleaned,
-    )
+    const parts =
+      parseLabeledOutput(cleaned ?? '', items.length) ??
+      alignCleanupParts(
+        items.map((item) => item.text),
+        cleaned,
+      )
     const originalById = new Map(segments.map((segment) => [segment.segmentId, segment.text]))
     const allUnchanged = items.every((item) => originalById.get(item.segmentId) === item.text)
     const contiguous = items.every(
@@ -372,10 +374,12 @@
       // Batch-whole replacement: the batch was untouched and its segments are
       // consecutive, so the whole range becomes whatever the model returned —
       // one block when it merged the batch, several when it kept the count.
-      const blocks = cleaned
-        .split(/\n{2,}/)
-        .map((block) => block.trim())
-        .filter(Boolean)
+      const blocks =
+        parts ??
+        cleaned
+          .split(/\n{2,}/)
+          .map((block) => block.trim())
+          .filter(Boolean)
       const schema = editor.schema
       const paragraphs = (blocks.length > 0 ? blocks : [cleaned]).map((text) =>
         schema.nodes.paragraph.create(

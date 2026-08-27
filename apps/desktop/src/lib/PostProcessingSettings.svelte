@@ -114,16 +114,16 @@
         <Sparkles class="size-4" />
       </span>
       <div class="min-w-0 flex-1">
-        <h3 class="m-0 text-sm font-medium">{tr('Tidy as you speak')}</h3>
+        <h3 class="m-0 text-sm font-medium">{tr('Auto tidy (pause / sentence triggers)')}</h3>
         <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
-          {tr('Tidy while you speak: remove filler words and smooth out broken sentences.')}
+          {tr('The tidy button in the document always works; auto tidy tidies after pauses or sentence counts.')}
         </p>
       </div>
       <button
         type="button"
         role="switch"
         aria-checked={$lightCleanupEnabled}
-        aria-label={tr('Tidy as you speak')}
+        aria-label={tr('Auto tidy (pause / sentence triggers)')}
         class={[
           'relative mt-0.5 h-[22px] w-10 shrink-0 rounded-full border border-transparent transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
           $lightCleanupEnabled ? 'bg-primary' : 'bg-input',

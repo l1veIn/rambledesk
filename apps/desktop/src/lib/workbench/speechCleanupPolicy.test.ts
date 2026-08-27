@@ -6,6 +6,7 @@ import {
   acceptCleanupResult,
   alignCleanupParts,
   normalizeCleanupNewlines,
+  parseLabeledOutput,
   shouldStartCleanup,
 } from './speechCleanupPolicy'
 
@@ -142,10 +143,62 @@ describe('acceptCleanupResult', () => {
   })
 
   it('normalizes JSON-escaped newlines so batch splitting still works', () => {
-    const escaped = '第一句。\\n\\n第二句。'
-    expect(normalizeCleanupNewlines(escaped)).toBe('第一句。\n\n第二句。')
+    const escaped = 'First sentence.\\n\\nSecond sentence.'
+    expect(normalizeCleanupNewlines(escaped)).toBe('First sentence.\n\nSecond sentence.')
     expect(
-      alignCleanupParts(['第一句', '第二句'], acceptCleanupResult('第一句\n\n第二句', escaped)),
-    ).toEqual(['第一句。', '第二句。'])
+      alignCleanupParts(['First sentence', 'Second sentence'], acceptCleanupResult('First sentence\n\nSecond sentence', escaped)),
+    ).toEqual(['First sentence.', 'Second sentence.'])
+  })
+})
+
+describe('parseLabeledOutput', () => {
+  it('extracts an ordered one-to-one mapping', () => {
+    expect(parseLabeledOutput('[1] First line.\n[2] Second line.\n[3] Third line.', 3)).toEqual([
+      'First line.',
+      'Second line.',
+      'Third line.',
+    ])
+  })
+
+  it('rejects merged output and label deviations', () => {
+    expect(parseLabeledOutput('[1] All merged into one.', 3)).toBeNull()
+    expect(parseLabeledOutput('[2] Second.\n[1] First.', 2)).toBeNull()
+    expect(parseLabeledOutput('[1] First.\n[2] Second.', 3)).toBeNull()
+  })
+
+  it('rejects missing or repeated labels and stray text', () => {
+    expect(parseLabeledOutput('[1] First.\n[1] Duplicate.', 2)).toBeNull()
+    expect(parseLabeledOutput('Preamble\n[1] First.', 1)).toBeNull()
+    expect(parseLabeledOutput('[1]', 1)).toBeNull()
+  })
+})
+
+describe('manual tidy bypasses the auto toggle', () => {
+  it('does nothing automatically when the toggle is off', () => {
+    const thresholds = { segmentThreshold: 3, charThreshold: 500 }
+    expect(
+      shouldStartCleanup({ enabled: false, busy: false, pendingCount: 3, pendingChars: 120, trigger: 'idle', thresholds }),
+    ).toBe(false)
+    expect(
+      shouldStartCleanup({ enabled: false, busy: false, pendingCount: 3, pendingChars: 120, trigger: 'segment-count', thresholds }),
+    ).toBe(false)
+    expect(
+      shouldStartCleanup({ enabled: false, busy: false, pendingCount: 1, pendingChars: 20, trigger: 'non-speech', thresholds }),
+    ).toBe(false)
+  })
+
+  it('starts on the manual trigger even with auto tidy off', () => {
+    expect(
+      shouldStartCleanup({ enabled: false, busy: false, pendingCount: 2, pendingChars: 40, trigger: 'manual', thresholds }),
+    ).toBe(true)
+  })
+
+  it('still respects busy and empty queues', () => {
+    expect(
+      shouldStartCleanup({ enabled: true, busy: true, pendingCount: 3, pendingChars: 120, trigger: 'manual', thresholds }),
+    ).toBe(false)
+    expect(
+      shouldStartCleanup({ enabled: false, busy: false, pendingCount: 0, pendingChars: 0, trigger: 'manual', thresholds }),
+    ).toBe(false)
   })
 })

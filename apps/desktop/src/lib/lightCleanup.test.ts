@@ -34,6 +34,8 @@ describe('resolveLightCleanupSystemPrompt', () => {
     expect(DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT).not.toContain('headings')
     expect(DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT).toContain('Do not answer')
     expect(DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT).toContain('SAME utterance')
+    expect(DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT).toMatch(/number of blocks as the input/i)
+    expect(DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT).toContain('[1]')
   })
 })
 

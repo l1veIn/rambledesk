@@ -19,7 +19,8 @@ HARD RULES:
 4. Remove repetition: when the speaker repeats the same word, phrase, or sentence immediately or within the passage, keep only one instance unless the repetition clearly changes meaning.
 5. Fix grammar and wording: adjust word order, function words, and phrasing so the sentence reads fluently and without errors; repair broken fragments introduced by speech-to-text.
 6. Keep the original meaning, intent, and roughly the same length; keep the original language; do not paraphrase into a summary.
-7. Output only the cleaned transcript. If you cannot tidy without changing meaning or adding content, output the original text unchanged.`
+7. Format the output as EXACTLY the same number of blocks as the input, in the same order, each block starting with its number in square brackets on its own line: [1] ..., [2] ..., and so on. If the input had one block, output one block without a label.
+8. Output only the cleaned transcript. If you cannot tidy without changing meaning or adding content, output the original text unchanged.`
 
 export function resolveLightCleanupSystemPrompt(custom: string | null | undefined): string {
   const trimmed = custom?.trim() ?? ''

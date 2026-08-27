@@ -3,7 +3,13 @@ export const DEFAULT_CLEANUP_CHAR_THRESHOLD = 500
 export const DEFAULT_CLEANUP_IDLE_MS = 20_000
 export const DEFAULT_CLEANUP_TIMEOUT_MS = 30_000
 
-export type CleanupTrigger = 'segment-count' | 'char-count' | 'idle' | 'non-speech' | 'settle'
+export type CleanupTrigger =
+  | 'segment-count'
+  | 'char-count'
+  | 'idle'
+  | 'non-speech'
+  | 'settle'
+  | 'manual'
 
 export type SpeechCleanupThresholds = {
   segmentThreshold: number
@@ -18,11 +24,15 @@ export function shouldStartCleanup(input: {
   trigger: CleanupTrigger
   thresholds: SpeechCleanupThresholds
 }): boolean {
-  if (!input.enabled || input.busy) return false
+  // The manual button works with or without auto tidy enabled; every
+  // automatic trigger requires the toggle.
+  if (input.trigger !== 'manual' && !input.enabled) return false
+  if (input.busy) return false
   if (input.pendingCount === 0) return false
   if (input.trigger === 'idle' || input.trigger === 'non-speech' || input.trigger === 'settle') {
     return true
   }
+  if (input.trigger === 'manual') return true
   if (input.trigger === 'segment-count') {
     return input.pendingCount >= input.thresholds.segmentThreshold
   }
@@ -37,6 +47,38 @@ export function alignCleanupParts(originals: readonly string[], cleaned: string 
     .map((part) => part.trim())
     .filter(Boolean)
   if (parts.length !== originals.length) return null
+  return parts
+}
+
+/**
+ * Precisely maps a labeled model output back onto the original nodes.
+ *
+ * The tidy prompt asks for exactly the same number of blocks, in the same
+ * order, each starting with `[n]` (`[1] ...`). When that contract holds, every
+ * block can be refilled into its own node — no fragile counting of blank
+ * lines. Any deviation (merged blocks, dropped/misordered labels) returns null
+ * and the caller falls back to the whole-batch collapse.
+ */
+export function parseLabeledOutput(text: string, count: number): string[] | null {
+  if (count <= 0) return null
+  const source = text.trim()
+  const pattern = /(?:^|[\r\n])\s*\[(\d+)\][ \t]*/g
+  const matches: { index: number; pos: number; end: number }[] = []
+  let match: RegExpExecArray | null
+  while ((match = pattern.exec(source)) != null) {
+    matches.push({ index: Number(match[1]), pos: match.index, end: pattern.lastIndex })
+  }
+  if (matches.length !== count) return null
+  if (matches[0]!.pos !== 0) return null
+  const parts: string[] = []
+  for (let i = 0; i < matches.length; i++) {
+    const current = matches[i]!
+    if (current.index !== i + 1) return null
+    const end = i + 1 < matches.length ? matches[i + 1]!.pos : source.length
+    const block = source.slice(current.end, end).trim()
+    if (!block) return null
+    parts.push(block)
+  }
   return parts
 }
 

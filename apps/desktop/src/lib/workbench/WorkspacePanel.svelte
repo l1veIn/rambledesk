@@ -80,6 +80,9 @@
   export let onToggleActionChannel: (index: number) => void = () => {}
   export let actionNotes: Record<number, string> = {}
   export let cleanupCount = 0
+  export let pendingCleanupCount = 0
+  export let tidyBusy = false
+  export let onTidyNow: () => void = () => {}
   export let onCookPreview: () => void = () => {}
   export let onRestoreOriginal: () => void = () => {}
   export let onToggleRamble: () => void = () => {}
@@ -277,6 +280,9 @@
               {onEditorReady}
               {onPrepareNonSpeechInsert}
               {cleanupCount}
+              {pendingCleanupCount}
+              {tidyBusy}
+              {onTidyNow}
               onChange={onDraftChange}
               onRestoreOriginal={onRestoreOriginal}
               onOpenAttachment={openAttachmentPreviewById}

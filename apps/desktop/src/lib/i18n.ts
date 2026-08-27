@@ -762,6 +762,10 @@ const chinese: Record<string, string> = {
   'My notes for Action {index}': '我在 Action {index} 下的记录',
   'Cleaned {count} times': '已整理 {count} 次',
   'Copy error': '复制报错',
+  'Tidy now': '整理',
+  'Tidy pending speech': '整理待处理语音',
+  'Auto tidy (pause / sentence triggers)': '自动整理（停口/句数触发）',
+  'The tidy button in the document always works; auto tidy tidies after pauses or sentence counts.': '文档里的“整理”按钮随时可用；自动整理在停口或达到句数时触发。',
 }
 
 export function t(
