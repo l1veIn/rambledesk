@@ -1,6 +1,6 @@
 export const DEFAULT_CLEANUP_SEGMENT_THRESHOLD = 3
 export const DEFAULT_CLEANUP_CHAR_THRESHOLD = 500
-export const DEFAULT_CLEANUP_IDLE_MS = 30_000
+export const DEFAULT_CLEANUP_IDLE_MS = 20_000
 export const DEFAULT_CLEANUP_TIMEOUT_MS = 30_000
 
 export type CleanupTrigger = 'segment-count' | 'char-count' | 'idle' | 'non-speech' | 'settle'
@@ -43,9 +43,18 @@ export function alignCleanupParts(originals: readonly string[], cleaned: string 
 /** Drop model output that grew into an answer instead of a light tidy. */
 export function acceptCleanupResult(original: string, cleaned: string): string {
   const source = original.trim()
-  const result = cleaned.trim()
+  const result = normalizeCleanupNewlines(cleaned.trim())
   if (!result) return source
   const extra = Math.max(8, Math.floor(source.length * 0.2))
   if (result.length > source.length + extra) return source
   return result
+}
+
+/**
+ * Models sometimes return JSON-escaped newlines (a literal backslash-n) instead
+ * of real line breaks; normalize both so batch splitting (\n{2,}) and the
+ * per-segment alignment see the real structure.
+ */
+export function normalizeCleanupNewlines(text: string): string {
+  return text.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\r\n/g, '\n')
 }

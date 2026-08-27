@@ -49,6 +49,18 @@ function configureContextMenuAndDevtools() {
   })
 }
 
+function configureConsoleWarnings() {
+  // Multiple TipTap editors each register the same linkify protocols; the
+  // second registration warns "already initialized" by design and is harmless.
+  // Keep real warnings flowing.
+  const originalWarn = console.warn
+  console.warn = (...args: unknown[]) => {
+    const text = args.map(String).join(' ')
+    if (text.includes('linkifyjs: already initialized')) return
+    originalWarn(...args)
+  }
+}
+
 window.addEventListener('error', (event) => {
   reportFrontendError('window', event.message || 'unknown window error')
 })
@@ -63,6 +75,7 @@ window.addEventListener('unhandledrejection', (event) => {
 
 initializePreferences()
 configureContextMenuAndDevtools()
+configureConsoleWarnings()
 
 const captureMode = window.location.hash === '#capture'
 const scrollCaptureMode = window.location.hash === '#capture-scroll'

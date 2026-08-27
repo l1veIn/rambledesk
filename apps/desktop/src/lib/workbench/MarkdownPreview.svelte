@@ -8,7 +8,7 @@
   import StarterKit from '@tiptap/starter-kit'
   import { onMount } from 'svelte'
 
-  import { attachmentIdFromUrl } from '$lib/attachmentMarkdown'
+  import { ATTACHMENT_PLACEHOLDER_IMAGE, attachmentIdFromUrl } from '$lib/attachmentMarkdown'
   import { isSafeHttpUrl } from '$lib/linkify'
   import { openExternalUrl } from '$lib/openExternalUrl'
 
@@ -115,10 +115,11 @@
       const attachmentId = attachmentIdFromUrl(node.attrs.src)
       if (!attachmentId) return
       const preview = previews[attachmentId]
-      if (!preview || node.attrs.src === preview) return
+      const next = preview ?? ATTACHMENT_PLACEHOLDER_IMAGE
+      if (!next || node.attrs.src === next) return
       transaction = transaction.setNodeMarkup(position, undefined, {
         ...node.attrs,
-        src: preview,
+        src: next,
       })
       changed = true
     })

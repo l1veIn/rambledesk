@@ -759,6 +759,9 @@ const chinese: Record<string, string> = {
   'Copy task brief': '复制任务简报',
   'Task brief copied to clipboard.': '任务简报已复制到剪贴板。',
   'Could not copy the task brief. Select the text and copy it manually.': '无法复制任务简报，请手动选中文本复制。',
+  'My notes for Action {index}': '我在 Action {index} 下的记录',
+  'Cleaned {count} times': '已整理 {count} 次',
+  'Copy error': '复制报错',
 }
 
 export function t(

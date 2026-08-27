@@ -13,6 +13,7 @@ import {
   asrParagraphAttrs,
 } from '../speechBlockMetadata'
 import { createActiveRambleCoordinator } from './activeRambleCoordinator'
+import { actionChannelFor } from './actionChannelState'
 import { createDraftSessionHost } from './draftSessionHost'
 import { createFeedbackDraftSession } from './feedbackDraftSession'
 import type { FeedbackEditorHandle } from './types'
@@ -154,6 +155,7 @@ describe('FeedbackDraftSession', () => {
       save: memorySave(),
     })
     session.bindEditor(editor)
+    session.beginRecording()
     session.appendSpeech('Spoken')
     expect(appendTranscript).toHaveBeenCalledWith('Spoken', {
       asr: { cleanupState: 'skipped', segmentId: expect.any(String) },
@@ -179,6 +181,7 @@ describe('FeedbackDraftSession', () => {
       save: memorySave(),
     })
     session.bindEditor(editor)
+    session.beginRecording()
     session.toggleActionChannel(2)
     expect(session.currentActionIndex()).toBe(2)
     expect(setActionChannel).toHaveBeenCalledWith(2)
@@ -190,6 +193,23 @@ describe('FeedbackDraftSession', () => {
     session.toggleActionChannel(2)
     expect(session.currentActionIndex()).toBeNull()
     expect(setActionChannel).toHaveBeenCalledWith(null)
+    expect(actionChannelFor('request-a')).toBeNull()
+  })
+
+  it('shares the channel with editors through the single store and clears it on demand', () => {
+    const session = createFeedbackDraftSession({
+      requestId: 'request-a',
+      generation: 1,
+      initialMarkdown: 'Hello',
+      initialRevision: 1,
+      save: memorySave(),
+    })
+    expect(actionChannelFor('request-a')).toBeNull()
+    session.toggleActionChannel(2)
+    expect(actionChannelFor('request-a')).toBe(2)
+    session.clearActionChannel()
+    expect(session.currentActionIndex()).toBeNull()
+    expect(actionChannelFor('request-a')).toBeNull()
   })
 
   it('tags speech with the current Action when no editor is bound', () => {
@@ -468,6 +488,7 @@ describe('Light cleanup on a draft session', () => {
       },
     })
     session.bindEditor(editor)
+    session.beginRecording()
     await session.settle()
     expect(finishSpeechCleanup).toHaveBeenCalledWith(
       expect.arrayContaining([
@@ -511,11 +532,86 @@ describe('Light cleanup on a draft session', () => {
       },
     })
     session.bindEditor(editor)
+    session.beginRecording()
     await session.settle()
     expect(finishSpeechCleanup).toHaveBeenCalledWith(
       [{ segmentId: 'segment-1', text: '按钮太小了。' }],
       '按钮太小了。',
     )
+  })
+
+  it('merges a model result that collapsed the batch into one block', async () => {
+    const pending = snapshotFeedbackDraftDocument({
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          attrs: asrParagraphAttrs('segment-1', 'pending'),
+          content: [{ type: 'text', text: '第一句啊那个' }],
+        },
+        {
+          type: 'paragraph',
+          attrs: asrParagraphAttrs('segment-2', 'pending'),
+          content: [{ type: 'text', text: '第二句嗯嗯' }],
+        },
+      ],
+    })
+    const session = createFeedbackDraftSession({
+      requestId: 'request-a',
+      generation: 1,
+      initialDocumentJson: pending.documentJson,
+      initialMarkdown: pending.bodyMarkdown,
+      initialRevision: 1,
+      save: memorySave(),
+      cleanup: {
+        enabled: () => true,
+        clean: async () => '第一句，第二句。',
+        settings: () => ({ segmentThreshold: 3, charThreshold: 500, idleMs: 60_000, timeoutMs: 5_000 }),
+      },
+    })
+    session.bindEditor({} as FeedbackEditorHandle)
+    await session.settle()
+    const doc = decodeFeedbackDraftDocument(session.snapshot().documentJson)
+    expect(doc?.content?.length).toBe(1)
+    expect(doc?.content?.[0]?.content?.[0]?.text).toBe('第一句，第二句。')
+    expect(doc?.content?.[0]?.attrs?.cleanupState).toBe('cleaned')
+  })
+
+  it('fills a batch whose model output kept one block per segment', async () => {
+    const pending = snapshotFeedbackDraftDocument({
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          attrs: asrParagraphAttrs('segment-1', 'pending'),
+          content: [{ type: 'text', text: '第一句啊那个' }],
+        },
+        {
+          type: 'paragraph',
+          attrs: asrParagraphAttrs('segment-2', 'pending'),
+          content: [{ type: 'text', text: '第二句嗯嗯' }],
+        },
+      ],
+    })
+    const session = createFeedbackDraftSession({
+      requestId: 'request-a',
+      generation: 1,
+      initialDocumentJson: pending.documentJson,
+      initialMarkdown: pending.bodyMarkdown,
+      initialRevision: 1,
+      save: memorySave(),
+      cleanup: {
+        enabled: () => true,
+        clean: async () => '第一句。\n\n第二句。',
+        settings: () => ({ segmentThreshold: 3, charThreshold: 500, idleMs: 60_000, timeoutMs: 5_000 }),
+      },
+    })
+    session.bindEditor({} as FeedbackEditorHandle)
+    await session.settle()
+    const doc = decodeFeedbackDraftDocument(session.snapshot().documentJson)
+    expect(doc?.content?.length).toBe(2)
+    expect(doc?.content?.[0]?.content?.[0]?.text).toBe('第一句。')
+    expect(doc?.content?.[1]?.content?.[0]?.text).toBe('第二句。')
   })
 })
 

@@ -21,6 +21,7 @@
   import { hasCookedPublishedVariant } from '$lib/publishedFeedback'
   import MarkdownPreview from './MarkdownPreview.svelte'
   import type { FeedbackEditorHandle, SavePhase } from './types'
+  import { actionChannelFor } from './actionChannelState'
 
   export let workspace: FeedbackWorkspaceView
   export let draftBody = ''
@@ -29,15 +30,14 @@
   export let attachmentPreviews: Record<string, string> = {}
   export let dragActive = false
   export let cooking = false
-  export let cookingEnabled = false
   export let cookedDraftReady = false
   export let cookedPreviewModel = ''
   export let locked = false
+  export let cleanupCount = 0
   export let cookedMarkdown = ''
   export let uncookedMarkdown = ''
   export let formatTime: (value: string | null | undefined) => string
   export let onChange: (markdown: string) => void = () => {}
-  export let onCookPreview: () => void = () => {}
   export let onRestoreOriginal: () => void = () => {}
   export let onOpenAttachment: (attachmentId: string) => void = () => {}
   export let draftEditors: Array<{
@@ -81,6 +81,9 @@
   }
 
   function captureSessionEditor(requestId: string, editor: FeedbackEditorHandle | null) {
+    if (import.meta.env.DEV) {
+      console.log('[ramble-cleanup] panel editor-ready request=', requestId, 'editor=', editor != null)
+    }
     if (editor) sessionEditors[requestId] = editor as RichFeedbackEditor
     else delete sessionEditors[requestId]
     onEditorReady(requestId, editor)
@@ -154,6 +157,11 @@
         {readOnly ? tr('This request is closed. The document is read-only.') : tr('Record observations, problems, and suggestions.')}
       </p>
     </div>
+    {#if cleanupCount > 0 && !readOnly}
+      <span class="shrink-0 text-[10px] text-muted-foreground">
+        {tr('Cleaned {count} times', { count: cleanupCount })}
+      </span>
+    {/if}
     {#if hasCookedVariant}
       <div class="ml-auto flex items-center gap-1 rounded-md border bg-muted/30 p-0.5">
         <Button
@@ -179,16 +187,6 @@
           {#if publishedView === 'uncooked'}Uncooked{/if}
         </Button>
       </div>
-    {:else if cookingEnabled && !cookedDraftReady && !readOnly && !locked && !cooking}
-      <Button
-        variant="ghost"
-        size="sm"
-        class="ml-auto h-7 shrink-0 gap-1 px-2 text-[10px] text-muted-foreground hover:text-foreground"
-        onclick={onCookPreview}
-      >
-        <Sparkles class="size-3.5" />
-        {tr('Preview cooking result')}
-      </Button>
     {/if}
   </header>
 
@@ -227,6 +225,7 @@
         previews={attachmentPreviews}
         disabled={editingDisabled}
         {onOpenAttachment}
+        getCurrentActionIndex={() => actionChannelFor(visibleRequestId)}
         onChange={(snapshot) => {
           if (!editingDisabled) onChange(snapshot.bodyMarkdown)
         }}

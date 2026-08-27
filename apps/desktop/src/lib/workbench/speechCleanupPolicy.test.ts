@@ -5,6 +5,7 @@ import {
   DEFAULT_CLEANUP_SEGMENT_THRESHOLD,
   acceptCleanupResult,
   alignCleanupParts,
+  normalizeCleanupNewlines,
   shouldStartCleanup,
 } from './speechCleanupPolicy'
 
@@ -138,5 +139,13 @@ describe('acceptCleanupResult', () => {
 
   it('keeps a same-length tidy', () => {
     expect(acceptCleanupResult('呃，按钮太小了。', '按钮太小了。')).toBe('按钮太小了。')
+  })
+
+  it('normalizes JSON-escaped newlines so batch splitting still works', () => {
+    const escaped = '第一句。\\n\\n第二句。'
+    expect(normalizeCleanupNewlines(escaped)).toBe('第一句。\n\n第二句。')
+    expect(
+      alignCleanupParts(['第一句', '第二句'], acceptCleanupResult('第一句\n\n第二句', escaped)),
+    ).toEqual(['第一句。', '第二句。'])
   })
 })

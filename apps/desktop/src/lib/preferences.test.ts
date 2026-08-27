@@ -72,7 +72,7 @@ describe('light cleanup defaults', () => {
     expect(get(lightCleanupModel)).toBe('deepseek-v4-flash')
     expect(get(lightCleanupSegmentThreshold)).toBe(3)
     expect(get(lightCleanupCharThreshold)).toBe(500)
-    expect(get(lightCleanupIdleMs)).toBe(30_000)
+    expect(get(lightCleanupIdleMs)).toBe(20_000)
     expect(get(lightCleanupTimeoutMs)).toBe(30_000)
     expect(get(lightCleanupReasoningEffort)).toBe('none')
   })

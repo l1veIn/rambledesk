@@ -1,14 +1,6 @@
 <script lang="ts">
   import { Editor } from '@tiptap/core'
-  import {
-    Bold,
-    Heading2,
-    Italic,
-    List,
-    Quote,
-    Redo2,
-    Undo2,
-  } from '@lucide/svelte'
+  import { Bold, Italic, Redo2, Undo2 } from '@lucide/svelte'
   import { onMount } from 'svelte'
 
   import { Button } from '$lib/components/ui/button'
@@ -16,6 +8,7 @@
   import { t } from './i18n'
   import { locale } from './preferences'
   import {
+    ATTACHMENT_PLACEHOLDER_IMAGE,
     attachmentIdFromUrl,
     attachmentMarkdownUrl,
     isImageMediaType,
@@ -50,12 +43,18 @@
   export let acceptExternalMarkdown = true
   export let onOpenAttachment: (attachmentId: string) => void = () => {}
   export let onChange: (snapshot: FeedbackDraftSnapshot) => void = () => {}
+  /**
+   * Live source of the currently selected Action channel. Programmatic inserts
+   * (speech, captures, attachments, pasted blocks) stamp with whatever the
+   * owning session reports right now — never a copy stored inside this editor
+   * instance, which can silently desync after remounts.
+   */
+  export let getCurrentActionIndex: () => number | null = () => null
 
   let editorHost: HTMLDivElement
   let editor: Editor | null = null
   let applyingExternalChange = false
   let editorMarkdown = ''
-  let insertionPosition = 0
   let historyLocked = false
   let canUndo = false
   let canRedo = false
@@ -99,7 +98,6 @@
           ? snapshotFeedbackDraftDocument(editor.getJSON())
           : { documentJson: documentJson ?? '', bodyMarkdown: markdown }
         editorMarkdown = snapshot.bodyMarkdown
-        insertionPosition = editor?.state.doc.content.size ?? 0
         syncHistoryButtons()
         hydrateAttachmentImages()
       },
@@ -109,13 +107,13 @@
       onUpdate: ({ editor: updatedEditor }) => {
         historyLocked = editorHasCleaningSpeech(updatedEditor)
         syncHistoryButtons()
+        // Normalize attachment srcs on every change so an image never stays
+        // on the unsupported attachment:// scheme across renders.
+        hydrateAttachmentImages()
         if (applyingExternalChange) return
         const snapshot = snapshotFeedbackDraftDocument(updatedEditor.getJSON())
         editorMarkdown = snapshot.bodyMarkdown
         onChange(snapshot)
-      },
-      onSelectionUpdate: ({ editor: updatedEditor }) => {
-        insertionPosition = updatedEditor.state.selection.from
       },
     })
 
@@ -146,7 +144,6 @@
       })
       const snapshot = snapshotFeedbackDraftDocument(editor.getJSON())
       editorMarkdown = snapshot.bodyMarkdown
-      insertionPosition = Math.min(insertionPosition, editor.state.doc.content.size)
       hydrateAttachmentImages()
       if (emitChange) onChange(snapshot)
     } catch (cause) {
@@ -166,13 +163,14 @@
         node.attrs.attachmentId ?? attachmentIdFromUrl(node.attrs.src)
       if (!attachmentId) return
       const preview = previews[attachmentId]
-      if (!preview || (node.attrs.attachmentId === attachmentId && node.attrs.src === preview)) {
+      const next = preview ?? ATTACHMENT_PLACEHOLDER_IMAGE
+      if (!next || (node.attrs.attachmentId === attachmentId && node.attrs.src === next)) {
         return
       }
       transaction = transaction.setNodeMarkup(position, undefined, {
         ...node.attrs,
         attachmentId,
-        src: preview,
+        src: next,
       })
       changed = true
     })
@@ -202,48 +200,37 @@
     })
     const content = attachments
       .filter((attachment) => !referencedIds.has(attachment.attachment_id))
-      .flatMap((attachment) => {
+      .map((attachment) => {
         if (isImageMediaType(attachment.media_type)) {
-          return [
-            {
-              type: 'image',
-              attrs: actionAttrs({
-                src:
-                  previews[attachment.attachment_id] ??
-                  attachmentMarkdownUrl(attachment.attachment_id),
-                alt: attachment.file_name,
-                attachmentId: attachment.attachment_id,
-              }),
-            },
-            { type: 'paragraph', attrs: actionAttrs() },
-          ]
+          return {
+            type: 'image',
+            attrs: actionAttrs({
+              src:
+                previews[attachment.attachment_id] ??
+                ATTACHMENT_PLACEHOLDER_IMAGE,
+              alt: attachment.file_name,
+              attachmentId: attachment.attachment_id,
+            }),
+          }
         }
-        return [
-          {
-            type: 'paragraph',
-            attrs: actionAttrs(),
-            content: [
-              {
-                type: 'attachmentFile',
-                attrs: {
-                  attachmentId: attachment.attachment_id,
-                  fileName: attachment.file_name,
-                  mediaType: attachment.media_type,
-                },
+        return {
+          type: 'paragraph',
+          attrs: actionAttrs(),
+          content: [
+            {
+              type: 'attachmentFile',
+              attrs: {
+                attachmentId: attachment.attachment_id,
+                fileName: attachment.file_name,
+                mediaType: attachment.media_type,
               },
-            ],
-          },
-          { type: 'paragraph', attrs: actionAttrs() },
-        ]
+            },
+          ],
+        }
       })
     if (content.length === 0) return false
-    const position = Math.min(
-      Math.max(insertionPosition, 0),
-      editor.state.doc.content.size,
-    )
-    const inserted = editor.commands.insertContentAt(position, content)
-    if (inserted) insertionPosition = editor.state.selection.from
-    return inserted
+    editor.commands.insertContentAt(documentEnd(), content)
+    return true
   }
 
   function syncHistoryButtons() {
@@ -266,19 +253,13 @@
     return cleaning
   }
 
-  function currentActionIndex(): number | null {
-    const index = editor?.storage.actionChannel?.currentIndex
-    return typeof index === 'number' && index > 0 ? index : null
-  }
-
-  function actionAttrs(extra: Record<string, unknown> = {}) {
-    const actionIndex = currentActionIndex()
+  export function actionAttrs(extra: Record<string, unknown> = {}) {
+    const actionIndex = getCurrentActionIndex()
     return actionIndex != null ? { ...extra, [ACTION_CHANNEL_ATTR]: actionIndex } : extra
   }
 
   export function setActionChannel(index: number | null): void {
     if (!editor) return
-    editor.storage.actionChannel.currentIndex = index
     const { $from } = editor.state.selection
     const parent = $from.parent
     if (!parent.isTextblock || parent.textContent.trim() !== '') return
@@ -311,7 +292,11 @@
   }
 
   export function isSpeechCleaning() {
-    return editorHasCleaningSpeech()
+    const cleaning = editorHasCleaningSpeech()
+    if (import.meta.env.DEV) {
+      console.log('[ramble-cleanup] editor isSpeechCleaning=', cleaning)
+    }
+    return cleaning
   }
 
   export function beginSpeechCleanup(segments: SpeechCleanupSegment[]): void {
@@ -324,6 +309,12 @@
       ),
     )
     historyLocked = true
+    if (import.meta.env.DEV) {
+      console.log(
+        '[ramble-cleanup] editor beginSpeechCleanup segments=',
+        segments.map((segment) => segment.segmentId),
+      )
+    }
   }
 
   export function finishSpeechCleanup(
@@ -372,33 +363,93 @@
       cleaned,
     )
     const originalById = new Map(segments.map((segment) => [segment.segmentId, segment.text]))
+    const allUnchanged = items.every((item) => originalById.get(item.segmentId) === item.text)
+    const contiguous = items.every(
+      (item, index) => index === 0 || items[index - 1]!.to === item.from,
+    )
     let transaction = editor.state.tr
-    for (let index = items.length - 1; index >= 0; index -= 1) {
-      const item = items[index]
-      const original = originalById.get(item.segmentId)
-      const unchanged = original === item.text
-      const state: CleanupState = !unchanged
-        ? 'skipped'
-        : cleaned == null
-          ? 'failed'
-          : 'cleaned'
-      const segmentIndex = segments.findIndex((segment) => segment.segmentId === item.segmentId)
-      const text = cleaned != null && unchanged
-        ? (parts?.[segmentIndex] ?? item.text)
-        : item.text
-      const attrs = {
-        ...item.attrs,
-        [INPUT_SOURCE_ATTR]: 'asr',
-        [CLEANUP_STATE_ATTR]: state,
-      }
-      transaction = transaction.replaceWith(
-        item.from,
-        item.to,
-        editor.schema.nodes.paragraph.create(
-          attrs,
-          text ? editor.schema.text(text) : undefined,
+    if (cleaned != null && allUnchanged && contiguous && items.length > 0 && editor) {
+      // Batch-whole replacement: the batch was untouched and its segments are
+      // consecutive, so the whole range becomes whatever the model returned —
+      // one block when it merged the batch, several when it kept the count.
+      const blocks = cleaned
+        .split(/\n{2,}/)
+        .map((block) => block.trim())
+        .filter(Boolean)
+      const schema = editor.schema
+      const paragraphs = (blocks.length > 0 ? blocks : [cleaned]).map((text) =>
+        schema.nodes.paragraph.create(
+          { ...items[0]!.attrs, [INPUT_SOURCE_ATTR]: 'asr', [CLEANUP_STATE_ATTR]: 'cleaned' },
+          text ? schema.text(text) : undefined,
         ),
       )
+      transaction = transaction.replaceWith(
+        items[0]!.from,
+        items[items.length - 1]!.to,
+        paragraphs,
+      )
+      if (import.meta.env.DEV) {
+        console.log(
+          '[ramble-cleanup] editor batch-replace blocks=',
+          paragraphs.length,
+          'items=',
+          items.length,
+          'range=',
+          items[0]!.from,
+          '-',
+          items[items.length - 1]!.to,
+        )
+      }
+    } else if (parts == null && cleaned != null) {
+      // The model merged the batch into fewer blocks: replace the first
+      // segment with the whole cleaned text and drop the rest.
+      for (let index = items.length - 1; index >= 0; index -= 1) {
+        const item = items[index]!
+        if (index === 0) {
+          transaction = transaction.replaceWith(
+            item.from,
+            item.to,
+            editor.schema.nodes.paragraph.create(
+              {
+                ...item.attrs,
+                [INPUT_SOURCE_ATTR]: 'asr',
+                [CLEANUP_STATE_ATTR]: 'cleaned',
+              },
+              cleaned ? editor.schema.text(cleaned) : undefined,
+            ),
+          )
+        } else {
+          transaction = transaction.delete(item.from, item.to)
+        }
+      }
+    } else {
+      for (let index = items.length - 1; index >= 0; index -= 1) {
+        const item = items[index]
+        const original = originalById.get(item.segmentId)
+        const unchanged = original === item.text
+        const state: CleanupState = !unchanged
+          ? 'skipped'
+          : cleaned == null
+            ? 'failed'
+            : 'cleaned'
+        const segmentIndex = segments.findIndex((segment) => segment.segmentId === item.segmentId)
+        const text = cleaned != null && unchanged
+          ? (parts?.[segmentIndex] ?? item.text)
+          : item.text
+        const attrs = {
+          ...item.attrs,
+          [INPUT_SOURCE_ATTR]: 'asr',
+          [CLEANUP_STATE_ATTR]: state,
+        }
+        transaction = transaction.replaceWith(
+          item.from,
+          item.to,
+          editor.schema.nodes.paragraph.create(
+            attrs,
+            text ? editor.schema.text(text) : undefined,
+          ),
+        )
+      }
     }
     transaction.setMeta(SPEECH_CLEANUP_TRANSACTION_META, true)
     setSpeechCleanupInFlight(
@@ -410,8 +461,18 @@
     syncHistoryButtons()
   }
 
-  function resolveInsertPosition() {
-    if (!editor) return 0
+  /**
+   * Programmatic inserts (screenshots, clipboard captures, files, pasted
+   * blocks) always land at the end of the document: a Ramble is authored
+   * voice-first and reorders nothing, while any finer placement remains a
+   * direct manual edit in the editor.
+   */
+  function documentEnd(): number {
+    return editor?.state.doc.content.size ?? 0
+  }
+
+  export function moveCursorAfterCleaningSpeech() {
+    if (!editor) return
     let position = editor.state.selection.from
     editor.state.doc.descendants((node, from) => {
       const segmentId = node.attrs?.[SPEECH_SEGMENT_ID_ATTR]
@@ -422,14 +483,9 @@
       const to = from + node.nodeSize
       if (position > from && position < to) position = to
     })
-    return Math.min(Math.max(position, 0), editor.state.doc.content.size)
-  }
-
-  export function moveCursorAfterCleaningSpeech() {
-    if (!editor) return
-    const position = resolveInsertPosition()
-    insertionPosition = position
-    editor.commands.setTextSelection(position)
+    editor.commands.setTextSelection(
+      Math.min(Math.max(position, 0), editor.state.doc.content.size),
+    )
   }
 
   export function insertQuotedBlock(lines: string[]) {
@@ -438,19 +494,14 @@
       type: 'paragraph' as const,
       content: line ? [{ type: 'text' as const, text: line }] : [],
     }))
-    const position = resolveInsertPosition()
-    const inserted = editor.commands.insertContentAt(position, [
+    return editor.commands.insertContentAt(documentEnd(), [
       { type: 'blockquote', attrs: actionAttrs(), content },
-      { type: 'paragraph', attrs: actionAttrs() },
     ])
-    if (inserted) insertionPosition = editor.state.selection.from
-    return inserted
   }
 
   export function insertMarkdownAtCaret(markdown: string) {
     const block = markdown.trim()
     if (!editor || disabled || !block) return false
-    const position = resolveInsertPosition()
     const parsed = parseFeedbackMarkdown(block)
     const stamped = {
       ...parsed,
@@ -459,22 +510,19 @@
         attrs: actionAttrs(node.attrs ?? {}),
       })),
     }
-    const inserted = editor.commands.insertContentAt(position, stamped.content ?? [])
-    if (inserted) insertionPosition = editor.state.selection.from
-    return inserted
+    return editor.commands.insertContentAt(documentEnd(), stamped.content ?? [])
   }
 
   export function appendClipboardCapture(text: string, label: string) {
     const captured = text.trim()
     if (!editor || !captured || disabled) return false
-    const position = resolveInsertPosition()
     const capturedContent = captured.split(/\r?\n/).flatMap((line, index) => {
       const content: Array<Record<string, unknown>> = []
       if (index > 0) content.push({ type: 'hardBreak' })
       if (line) content.push({ type: 'text', text: line })
       return content
     })
-    return editor.commands.insertContentAt(position, [
+    return editor.commands.insertContentAt(documentEnd(), [
       {
         type: 'blockquote',
         attrs: actionAttrs(),
@@ -495,7 +543,6 @@
           },
         ],
       },
-      { type: 'paragraph', attrs: actionAttrs() },
     ])
   }
 
@@ -504,7 +551,7 @@
     label: string,
   ) {
     if (!editor || disabled) return false
-    return editor.commands.insertContentAt(resolveInsertPosition(), [
+    return editor.commands.insertContentAt(documentEnd(), [
       {
         type: 'blockquote',
         attrs: actionAttrs(),
@@ -526,12 +573,11 @@
         attrs: actionAttrs({
           src:
             previews[attachment.attachment_id] ??
-            attachmentMarkdownUrl(attachment.attachment_id),
+            ATTACHMENT_PLACEHOLDER_IMAGE,
           alt: attachment.file_name,
           attachmentId: attachment.attachment_id,
         }),
       },
-      { type: 'paragraph', attrs: actionAttrs() },
     ])
   }
 
@@ -584,36 +630,6 @@
       onclick={() => editor?.chain().focus().toggleItalic().run()}
     >
       <Italic />
-    </Button>
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      aria-label={t($locale, 'Heading 2')}
-      title={t($locale, 'Heading 2')}
-      disabled={disabled}
-      onclick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}
-    >
-      <Heading2 />
-    </Button>
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      aria-label={t($locale, 'Bullet list')}
-      title={t($locale, 'Bullet list')}
-      disabled={disabled}
-      onclick={() => editor?.chain().focus().toggleBulletList().run()}
-    >
-      <List />
-    </Button>
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      aria-label={t($locale, 'Quote')}
-      title={t($locale, 'Quote')}
-      disabled={disabled}
-      onclick={() => editor?.chain().focus().toggleBlockquote().run()}
-    >
-      <Quote />
     </Button>
     <span class="flex-1"></span>
     <Button
@@ -672,10 +688,9 @@
   }
 
   .editor-host :global(.feedback-prose p.speech-cleaning) {
-    border-left: 3px solid var(--primary);
+    border-left: 1px solid var(--muted-foreground);
     border-radius: 4px;
-    background: color-mix(in srgb, var(--muted) 80%, transparent);
-    opacity: 0.86;
+    background: color-mix(in srgb, var(--muted) 35%, transparent);
     padding-left: 8px;
   }
 
@@ -685,52 +700,36 @@
     font-size: 11px;
   }
 
-  .editor-host :global(.feedback-prose p.speech-cleaned) {
-    padding-left: 1.15em;
-    text-indent: -1.15em;
-  }
-
-  .editor-host :global(.feedback-prose p.speech-cleaned::before) {
-    color: var(--primary);
-    content: '✦ ';
-    font-size: 0.85em;
-    pointer-events: none;
-  }
-
   .editor-host :global(.feedback-prose .action-channel-item) {
     background: color-mix(in srgb, var(--muted) 72%, transparent);
     border-radius: 0;
     margin-bottom: 0;
-    padding: 0 10px;
+    padding: 0 14px;
   }
 
   .editor-host :global(.feedback-prose .action-channel-item.action-channel-lead) {
-    border-radius: 6px 6px 0 0;
-    padding-top: 6px;
+    border-radius: 10px 10px 0 0;
+    padding-top: 10px;
   }
 
   .editor-host :global(.feedback-prose .action-channel-item.action-channel-group-solo) {
-    border-radius: 6px;
+    border-radius: 10px;
     margin-bottom: 0.9em;
-    padding-bottom: 6px;
+    padding-bottom: 10px;
   }
 
   .editor-host :global(.feedback-prose .action-channel-item.action-channel-group-end) {
-    border-radius: 0 0 6px 6px;
+    border-radius: 0 0 10px 10px;
     margin-bottom: 0.9em;
-    padding-bottom: 6px;
+    padding-bottom: 10px;
   }
 
-  .editor-host :global(.feedback-prose .action-channel-lead[data-action-index]:not(.speech-cleaned)::before) {
+  .editor-host :global(.feedback-prose .action-channel-lead[data-action-index]::before) {
     color: var(--primary);
     content: '@ Action' attr(data-action-index) ' ';
     font-size: 0.8em;
     font-weight: 600;
     pointer-events: none;
-  }
-
-  .editor-host :global(.feedback-prose p.speech-cleaned.action-channel-lead[data-action-index]::before) {
-    content: '✦ @ Action' attr(data-action-index) ' ';
   }
 
   .editor-host :global(.feedback-prose h2),
@@ -759,6 +758,17 @@
     border-radius: var(--radius);
     object-fit: contain;
     background: var(--muted);
+  }
+
+  /* Inside an Action channel block the image/quote is part of the continuous
+     background: reduce the outer whitespace so it hugs the block edge. */
+  .editor-host :global(.feedback-prose .action-channel-item img) {
+    margin: 10px 0;
+  }
+
+  .editor-host :global(.feedback-prose .action-channel-item blockquote) {
+    margin: 10px 0;
+    padding: 10px 12px;
   }
 
   /* The table node view always wraps the table, whatever `renderWrapper` says. */

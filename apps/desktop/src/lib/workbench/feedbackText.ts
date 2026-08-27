@@ -53,5 +53,13 @@ export function messageFrom(cause: unknown): string {
   ) {
     return (cause as CommandError).message
   }
+  if (cause && typeof cause === 'object') {
+    try {
+      const json = JSON.stringify(cause)
+      if (json && json !== '{}') return json
+    } catch {
+      // fall through to String()
+    }
+  }
   return String(cause)
 }

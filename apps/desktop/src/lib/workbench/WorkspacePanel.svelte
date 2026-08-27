@@ -78,6 +78,8 @@
   export let onPrepareNonSpeechInsert: (requestId: string) => void = () => {}
   export let currentActionIndex: number | null = null
   export let onToggleActionChannel: (index: number) => void = () => {}
+  export let actionNotes: Record<number, string> = {}
+  export let cleanupCount = 0
   export let onCookPreview: () => void = () => {}
   export let onRestoreOriginal: () => void = () => {}
   export let onToggleRamble: () => void = () => {}
@@ -264,7 +266,6 @@
               {dragActive}
               {formatTime}
               {cooking}
-              cookingEnabled={cookingEnabled && !publishedFeedback}
               {cookedDraftReady}
               {cookedPreviewModel}
               locked={interactionLocked}
@@ -275,8 +276,8 @@
               {onDraftChangeFor}
               {onEditorReady}
               {onPrepareNonSpeechInsert}
+              {cleanupCount}
               onChange={onDraftChange}
-              onCookPreview={onCookPreview}
               onRestoreOriginal={onRestoreOriginal}
               onOpenAttachment={openAttachmentPreviewById}
             />
@@ -347,6 +348,9 @@
       insertDisabled={interactionLocked}
       {currentActionIndex}
       {onToggleActionChannel}
+      {actionNotes}
+      attachmentPreviews={attachmentPreviews}
+      onOpenAttachment={openAttachmentPreviewById}
     />
   {:else}
     <div class="grid h-full place-items-center p-8 text-center">

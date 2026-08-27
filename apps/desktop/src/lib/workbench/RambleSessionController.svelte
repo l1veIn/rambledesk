@@ -74,6 +74,8 @@
   export let onAppendRambleMarkdown: (requestId: string, markdown: string) => Promise<void> = async () => {}
   export let onInsertRambleBlock: (requestId: string, markdown: string) => void = () => {}
   export let onPrepareNonSpeechInsert: (requestId: string) => void = () => {}
+  /** Fired once a Ramble actually starts recording on a request. */
+  export let onRambleStarted: (requestId: string) => void = () => {}
   export let onRambleStopped: () => void = () => {}
 
   let voiceRequestId = ''
@@ -259,6 +261,7 @@
     rambleRequestTitle = workspace.request.title
     rambleSourceLabel = workspace.request.source_hint ?? workspace.request.host_session_id
     rambleContextId = crypto.randomUUID()
+    onRambleStarted(rambleRequestId)
     clipboardCaptureCount = 0
     ramblePhase = 'starting'
     rambleMessage = t($locale, 'Opening the Ramble console…')

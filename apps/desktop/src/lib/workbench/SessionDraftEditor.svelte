@@ -4,6 +4,7 @@
   import RichFeedbackEditor from '$lib/RichFeedbackEditor.svelte'
   import type { FeedbackDraftSnapshot } from '$lib/feedbackDraftDocument'
   import type { FeedbackEditorHandle } from './types'
+  import { actionChannelFor } from './actionChannelState'
 
   export let requestId: string
   export let markdown = ''
@@ -32,4 +33,5 @@
   acceptExternalMarkdown={false}
   {onOpenAttachment}
   {onChange}
+  getCurrentActionIndex={() => actionChannelFor(requestId)}
 />

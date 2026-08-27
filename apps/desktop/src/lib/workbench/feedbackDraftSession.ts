@@ -1,3 +1,6 @@
+import type { JSONContent } from '@tiptap/core'
+
+import { messageFrom } from './feedbackText'
 import {
   decodeFeedbackDraftDocument,
   snapshotFeedbackDraftDocument,
@@ -15,6 +18,10 @@ import {
   type SpeechCleanupSegment,
 } from '../speechBlockMetadata'
 import { ACTION_CHANNEL_ATTR, stampActionIndex } from './actionChannel'
+import {
+  forgetActionChannel,
+  rememberActionChannel,
+} from './actionChannelState'
 import {
   DEFAULT_CLEANUP_CHAR_THRESHOLD,
   DEFAULT_CLEANUP_IDLE_MS,
@@ -70,6 +77,10 @@ export type FeedbackDraftSession = {
   insertMarkdownBlock(markdown: string): void
   currentActionIndex(): number | null
   toggleActionChannel(index: number): void
+  clearActionChannel(): void
+  cleanupCount(): number
+  beginRecording(): void
+  endRecording(): void
   prepareNonSpeechInsert(): void
   isCleaning(): boolean
   bindEditor(handle: FeedbackEditorHandle | null): void
@@ -92,6 +103,16 @@ export function createFeedbackDraftSession(input: {
 }): FeedbackDraftSession {
   const requestId = input.requestId
   const generation = input.generation
+  if (import.meta.env.DEV) {
+    console.log(
+      '[ramble-cleanup] session create request=',
+      requestId,
+      'gen=',
+      generation,
+      'revision=',
+      input.initialRevision,
+    )
+  }
   const restoredDocument = decodeFeedbackDraftDocument(input.initialDocumentJson)
   const initialSnapshot = restoredDocument
     ? snapshotFeedbackDraftDocument(restoredDocument)
@@ -109,6 +130,7 @@ export function createFeedbackDraftSession(input: {
   let activeSave: Promise<boolean> | null = null
   let currentActionIndex: number | null = null
   let cleaning = false
+  let cleanupCount = 0
   let inflightCleanup: Promise<void> | null = null
   let cleanupIdleTimer: unknown
   const schedule = input.cleanup?.schedule ?? ((fn: () => void, ms: number) => setTimeout(fn, ms))
@@ -117,6 +139,16 @@ export function createFeedbackDraftSession(input: {
     input.createSpeechSegmentId ??
     (() => globalThis.crypto?.randomUUID?.() ?? `asr-${Date.now()}-${Math.random()}`)
   const TIMEOUT = Symbol('cleanup-timeout')
+
+  /** Runs an editor call that must never break the cleanup flow (a destroyed
+   *  editor, or one whose view is gone, can throw on access). */
+  function safely<T>(fn: () => T): T | undefined {
+    try {
+      return fn()
+    } catch {
+      return undefined
+    }
+  }
 
   function notify() {
     input.onChange?.()
@@ -227,6 +259,91 @@ export function createFeedbackDraftSession(input: {
     )
     applyUserEdit(
       updateFeedbackDraftDocument(draft, (doc) => {
+        const items = (doc.content ?? [])
+          .map((node, index) => ({ node, index }))
+          .filter(
+            ({ node }) =>
+              node.type === 'paragraph' &&
+              typeof node.attrs?.[SPEECH_SEGMENT_ID_ATTR] === 'string' &&
+              segmentIndex.has(node.attrs[SPEECH_SEGMENT_ID_ATTR] as string),
+          )
+        if (cleaned != null && items.length > 0) {
+          const allUnchanged = items.every(({ node }) => {
+            const id = node.attrs?.[SPEECH_SEGMENT_ID_ATTR] as string
+            const target = segmentIndex.get(id)
+            const text = (node.content ?? [])
+              .map((child) => child.text ?? '')
+              .join('')
+              .trim()
+            return target?.text === text
+          })
+          const contiguous = items.every(
+            ({ index }, position) =>
+              position === 0 || items[position - 1]!.index + 1 === index,
+          )
+          if (allUnchanged && contiguous) {
+            // Batch-whole replacement: one transaction turns the batch range
+            // into the model's output blocks (one block when merged).
+            const blocks = cleaned
+              .split(/\n{2,}/)
+              .map((block) => block.trim())
+              .filter(Boolean)
+            const first = items[0]!
+            const firstAttrs = {
+              ...first.node.attrs,
+              [INPUT_SOURCE_ATTR]: 'asr',
+              [CLEANUP_STATE_ATTR]: 'cleaned',
+            }
+            const paragraphs = (blocks.length > 0 ? blocks : [cleaned]).map((text) => ({
+              ...first.node,
+              attrs: firstAttrs,
+              content: text ? [{ type: 'text' as const, text }] : [],
+            }))
+            if (import.meta.env.DEV) {
+              console.log(
+                '[ramble-cleanup] doc batch-replace blocks=',
+                paragraphs.length,
+                'items=',
+                items.length,
+              )
+            }
+            return {
+              ...doc,
+              content: [
+                ...doc.content!.slice(0, first.index),
+                ...paragraphs,
+                ...doc.content!.slice(items[items.length - 1]!.index + 1),
+              ],
+            }
+          }
+        }
+        // Conservative fallback: per-segment alignment (skips edited
+        // segments) or merged-batch handling when alignment is impossible.
+        const mergedAttrs = {
+          [INPUT_SOURCE_ATTR]: 'asr',
+          [CLEANUP_STATE_ATTR]: 'cleaned',
+        }
+        if (parts == null && cleaned != null) {
+          const content: JSONContent[] = []
+          for (const node of doc.content ?? []) {
+            const id = node.attrs?.[SPEECH_SEGMENT_ID_ATTR]
+            const target = typeof id === 'string' ? segmentIndex.get(id) : undefined
+            if (node.type === 'paragraph' && target && target.index > 0) continue
+            if (node.type === 'paragraph' && target) {
+              content.push({
+                ...node,
+                attrs: {
+                  ...node.attrs,
+                  ...mergedAttrs,
+                },
+                content: [{ type: 'text' as const, text: cleaned }],
+              })
+              continue
+            }
+            content.push(node)
+          }
+          return { ...doc, content }
+        }
         function updateNode(node: typeof doc): typeof doc {
           const id = node.attrs?.[SPEECH_SEGMENT_ID_ATTR]
           const target = typeof id === 'string' ? segmentIndex.get(id) : undefined
@@ -251,7 +368,7 @@ export function createFeedbackDraftSession(input: {
                 [INPUT_SOURCE_ATTR]: 'asr',
                 [CLEANUP_STATE_ATTR]: state,
               },
-              content: text ? [{ type: 'text', text }] : [],
+              content: text ? [{ type: 'text' as const, text }] : [],
             }
           }
           return node.content
@@ -282,9 +399,22 @@ export function createFeedbackDraftSession(input: {
     cleaning = true
     notify()
     const editorAtStart = editorHandle
-    editorAtStart?.beginSpeechCleanup?.(segments)
+    safely(() => editorAtStart?.beginSpeechCleanup?.(segments))
     const raw = segments.map((segment) => segment.text).join('\n\n')
-    editorAtStart?.moveCursorAfterCleaningSpeech?.()
+    safely(() => editorAtStart?.moveCursorAfterCleaningSpeech?.())
+    if (import.meta.env.DEV) {
+      console.log(
+        '[ramble-cleanup] trigger=',
+        trigger,
+        'segments=',
+        segments.length,
+        'chars=',
+        pending.chars,
+        'editorBound=',
+        editorAtStart != null,
+      )
+      console.log('[ramble-cleanup] raw=', JSON.stringify(raw))
+    }
     inflightCleanup = (async () => {
       try {
         const work = input.cleanup!.clean(raw)
@@ -296,11 +426,25 @@ export function createFeedbackDraftSession(input: {
         ])
         if (disposed) return
         const accepted = result === TIMEOUT ? raw : acceptCleanupResult(raw, result)
-        const replacedInEditor = editorAtStart?.isSpeechCleaning?.() === true
+        // The editor may have been destroyed while the model ran (submission,
+        // request switch, reload). Only write back to the live editor that is
+        // STILL bound to this session; anything else is silently dropped and
+        // the document-level fallback takes over.
+        const replacedInEditor =
+          editorHandle != null &&
+          editorHandle === editorAtStart &&
+          safely(() => editorAtStart?.isSpeechCleaning?.() === true) === true
+        if (import.meta.env.DEV) {
+          console.log('[ramble-cleanup] outcome=', result === TIMEOUT ? 'timeout' : 'done')
+          console.log('[ramble-cleanup] cleaned=', JSON.stringify(accepted))
+          console.log('[ramble-cleanup] replacedInEditor=', replacedInEditor)
+        }
         if (replacedInEditor) {
-          editorAtStart?.finishSpeechCleanup?.(
-            segments,
-            result === TIMEOUT ? null : accepted,
+          safely(() =>
+            editorAtStart?.finishSpeechCleanup?.(
+              segments,
+              result === TIMEOUT ? null : accepted,
+            ),
           )
           const remaining = new Set(
             pendingCleanupSnapshot().segments.map((segment) => segment.segmentId),
@@ -314,28 +458,29 @@ export function createFeedbackDraftSession(input: {
         } else {
           finishSpeechCleanupInDocument(segments, result === TIMEOUT ? null : accepted)
         }
+        if (!disposed) cleanupCount += 1
       } catch {
         if (!disposed) {
-          if (editorAtStart?.isSpeechCleaning?.() === true) {
-            editorAtStart.finishSpeechCleanup?.(segments, null)
-            const remaining = new Set(
-              pendingCleanupSnapshot().segments.map((segment) => segment.segmentId),
-            )
-            if (segments.some((segment) => remaining.has(segment.segmentId))) {
-              finishSpeechCleanupInDocument(segments, null)
-            }
-          } else {
-            finishSpeechCleanupInDocument(segments, null)
-          }
+          // Whatever failed, never write into a destroyed editor: prefer the
+          // document-level fallback, which is a no-op when the session is gone.
+          finishSpeechCleanupInDocument(segments, null)
         }
       } finally {
         cleaning = false
         inflightCleanup = null
         notify()
         if (!disposed) {
+          // Only chain another cleanup when NEW speech arrived while this one
+          // was running; without this guard a cleanup that could not reach the
+          // editor re-triggers forever on the same segments.
+          const processedIds = new Set(segments.map((segment) => segment.segmentId))
           const leftover = pendingCleanupSnapshot()
+          const hasNew = leftover.segments.some(
+            (segment) => !processedIds.has(segment.segmentId),
+          )
           if (
-            shouldStartCleanup({
+            hasNew &&
+            (shouldStartCleanup({
               enabled: cleanupEnabled(),
               busy: false,
               pendingCount: leftover.count,
@@ -343,14 +488,14 @@ export function createFeedbackDraftSession(input: {
               trigger: 'segment-count',
               thresholds: cleanupSettings(),
             }) ||
-            shouldStartCleanup({
-              enabled: cleanupEnabled(),
-              busy: false,
-              pendingCount: leftover.count,
-              pendingChars: leftover.chars,
-              trigger: 'char-count',
-              thresholds: cleanupSettings(),
-            })
+              shouldStartCleanup({
+                enabled: cleanupEnabled(),
+                busy: false,
+                pendingCount: leftover.count,
+                pendingChars: leftover.chars,
+                trigger: 'char-count',
+                thresholds: cleanupSettings(),
+              }))
           ) void startCleanup('segment-count')
           else scheduleCleanupAfterIdle()
         }
@@ -403,15 +548,71 @@ export function createFeedbackDraftSession(input: {
 
   function toggleActionChannel(index: number) {
     if (disposed) return
+    const previous = currentActionIndex
     currentActionIndex = currentActionIndex === index ? null : index
+    rememberActionChannel(requestId, currentActionIndex)
     editorHandle?.setActionChannel?.(currentActionIndex)
+    notify()
+    // Switching all? channel is an interaction: tidy whatever speech is still
+    // pending under the previous channel so batches never span topics.
+    if (previous !== currentActionIndex) prepareNonSpeechInsert()
+  }
+
+  function clearActionChannel() {
+    if (disposed) return
+    currentActionIndex = null
+    rememberActionChannel(requestId, null)
+    editorHandle?.setActionChannel?.(null)
     notify()
   }
 
+  /**
+   * The editor captured by `bindEditor` only becomes active while a Ramble is
+   * recording on this request; switching requests or opening a request never
+   * binds on its own.
+   */
+  let recording = false
+  let capturedEditor: FeedbackEditorHandle | null = null
+
   function bindEditor(handle: FeedbackEditorHandle | null) {
     if (disposed) return
-    editorHandle = handle
+    if (import.meta.env.DEV) {
+      console.log(
+        '[ramble-cleanup] bindEditor request=',
+        requestId,
+        'bound=',
+        handle != null,
+      )
+    }
+    capturedEditor = handle
+    if (recording) editorHandle = handle
+    if (recording) rememberActionChannel(requestId, currentActionIndex)
     editorHandle?.setActionChannel?.(currentActionIndex)
+  }
+
+  function beginRecording() {
+    if (disposed || recording) return
+    recording = true
+    editorHandle = capturedEditor
+    rememberActionChannel(requestId, currentActionIndex)
+    editorHandle?.setActionChannel?.(currentActionIndex)
+    if (import.meta.env.DEV) {
+      console.log('[ramble-cleanup] beginRecording request=', requestId, 'editor=', editorHandle != null)
+    }
+    notify()
+  }
+
+  function endRecording() {
+    if (disposed || !recording) return
+    recording = false
+    const handle = editorHandle
+    editorHandle = null
+    rememberActionChannel(requestId, null)
+    handle?.setActionChannel?.(null)
+    if (import.meta.env.DEV) {
+      console.log('[ramble-cleanup] endRecording request=', requestId)
+    }
+    notify()
   }
 
   async function settle(): Promise<boolean> {
@@ -453,7 +654,7 @@ export function createFeedbackDraftSession(input: {
       } catch (cause) {
         if (disposed) return false
         phase = 'error'
-        message = cause instanceof Error ? cause.message : String(cause)
+        message = messageFrom(cause)
         return false
       }
     })()
@@ -478,10 +679,14 @@ export function createFeedbackDraftSession(input: {
 
   function dispose() {
     if (disposed) return
+    if (import.meta.env.DEV) {
+      console.log('[ramble-cleanup] session dispose request=', requestId)
+    }
     disposed = true
     cancelPendingSave()
     cancelCleanupIdleTimer()
     editorHandle = null
+    forgetActionChannel(requestId)
   }
 
   scheduleCleanupAfterIdle()
@@ -505,6 +710,10 @@ export function createFeedbackDraftSession(input: {
     insertMarkdownBlock,
     currentActionIndex: () => currentActionIndex,
     toggleActionChannel,
+    clearActionChannel,
+    cleanupCount: () => cleanupCount,
+    beginRecording,
+    endRecording,
     prepareNonSpeechInsert,
     isCleaning: () => cleaning,
     bindEditor,

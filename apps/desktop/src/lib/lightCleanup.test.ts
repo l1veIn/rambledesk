@@ -30,7 +30,7 @@ describe('resolveLightCleanupSystemPrompt', () => {
   it('asks only for light spoken-text cleanup, not cooking', () => {
     expect(DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT).toContain('filler')
     expect(DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT).toContain('比如说')
-    expect(DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT).toMatch(/punctuation|sentence break/i)
+    expect(DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT).toMatch(/fluent|grammar|wording/i)
     expect(DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT).not.toContain('headings')
     expect(DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT).toContain('Do not answer')
     expect(DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT).toContain('SAME utterance')

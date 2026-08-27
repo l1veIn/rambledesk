@@ -17,9 +17,12 @@ export type DraftSessionHost = {
     documentJson?: string | null
     markdown: string
     revision: number
+    /** Terminal requests never collect, clean, or save again. */
+    terminal?: boolean
   }): FeedbackDraftSession
   setOwner(requestId: string | null): void
   disposeAll(): void
+  dispose(requestId: string): void
 }
 
 const MAX_MOUNTED = 2
@@ -61,6 +64,8 @@ export function createDraftSessionHost(input: {
     documentJson?: string | null
     markdown: string
     revision: number
+    /** Terminal requests never collect, clean, or save again. */
+    terminal?: boolean
   }): FeedbackDraftSession {
     const existing = sessions.get(hydrate.requestId)
     visibleId = hydrate.requestId
@@ -76,7 +81,7 @@ export function createDraftSessionHost(input: {
       initialMarkdown: hydrate.markdown,
       initialRevision: hydrate.revision,
       save: input.save,
-      cleanup: input.cleanup,
+      cleanup: hydrate.terminal ? undefined : input.cleanup,
       onChange: input.onChange,
     })
     sessions.set(hydrate.requestId, session)
@@ -116,6 +121,7 @@ export function createDraftSessionHost(input: {
     mounted,
     openVisible,
     setOwner,
+    dispose: (requestId: string) => disposeSession(requestId),
     disposeAll,
   }
 }

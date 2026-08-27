@@ -20,6 +20,7 @@
   import HostSessionRail from './lib/components/navigation/HostSessionRail.svelte'
   import RequestListPane from './lib/components/navigation/RequestListPane.svelte'
   import { Sonner, toast } from './lib/components/ui/sonner'
+  import { errorToastWithCopy } from './lib/errorToast'
   import ResumePromptDialog from './lib/workbench/ResumePromptDialog.svelte'
   import WorkspacePanel from './lib/workbench/WorkspacePanel.svelte'
   import type {
@@ -57,6 +58,7 @@
   import { createCookingController } from './lib/workbench/cookingController'
   import { createPublisherController } from './lib/workbench/publisherController'
   import { createActiveRambleCoordinator } from './lib/workbench/activeRambleCoordinator'
+  import { actionNotesFromDocument } from './lib/workbench/actionNotes'
   import { createDraftSessionHost } from './lib/workbench/draftSessionHost'
   import { lightCleanupTranscript } from './lib/lightCleanup'
   import { buildResumePrompt, shouldShowResumePromptButton } from './lib/workbench/resumePrompt'
@@ -125,6 +127,11 @@
   let savedBody = ''
   let savedRevision = 0
   let savePhase: SavePhase = 'idle'
+  let draftEditorViews: Array<{
+    requestId: string
+    initialDocumentJson: string
+    initialMarkdown: string
+  }> = []
   let saveMessage = ''
   let pageError = ''
   let loadingWorkspace = false
@@ -242,11 +249,22 @@
       savedRevision = visible.savedRevision()
       savePhase = visible.savePhase()
       saveMessage = visible.saveMessage()
+      // Keep the visible editor in sync with the session only when the session
+      // has NO bound editor (e.g. a Light cleanup that ran before binding).
+      // With a bound editor the session follows the editor, and a markdown
+      // push here would round-trip away the rich node attributes.
+      if (!visible.editor()) {
+        workspacePanel?.applyExternalMarkdown?.(visible.markdown())
+      }
     },
   })
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
+  }
+
+  function isTerminalRequest(request: { status: string }): boolean {
+    return request.status === 'completed' || request.status === 'cancelled'
   }
 
   const updateDraft = (value: string) => {
@@ -303,11 +321,24 @@
   $: dirty = sessionEpoch >= 0 && (draftSessions.visible()?.isDirty() ?? false)
   $: currentActionIndex =
     sessionEpoch >= 0 ? (draftSessions.visible()?.currentActionIndex() ?? null) : null
-  $: draftEditorViews = draftSessions.mounted().map((session) => ({
-    requestId: session.requestId,
-    initialDocumentJson: session.initialDocumentJson,
-    initialMarkdown: session.initialMarkdown,
-  }))
+  $: actionNotes =
+    sessionEpoch >= 0
+      ? actionNotesFromDocument(
+          draftSessions.visible()?.snapshot().documentJson ?? null,
+          draftSessions.visible()?.snapshot().bodyMarkdown ?? '',
+        )
+      : {}
+  $: cleanupCount = sessionEpoch >= 0 ? (draftSessions.visible()?.cleanupCount() ?? 0) : 0
+  $: if (sessionEpoch >= 0) {
+    // Recompute on every session change: the panel mounts a real per-session
+    // editor (which binds to the session and preserves rich node attributes)
+    // instead of staying on the markdown fallback forever.
+    draftEditorViews = draftSessions.mounted().map((session) => ({
+      requestId: session.requestId,
+      initialDocumentJson: session.initialDocumentJson,
+      initialMarkdown: session.initialMarkdown,
+    }))
+  }
   $: rambleOwnerTerminal =
     rambleEngaged &&
     workspace?.request.request_id === rambleRequestId &&
@@ -316,14 +347,14 @@
     if (!pageError) deliveredPageError = ''
     else if (pageError !== deliveredPageError) {
       deliveredPageError = pageError
-      toast.error(tr('Operation failed'), { description: pageError })
+      errorToastWithCopy(tr('Operation failed'), pageError)
     }
   }
   $: {
     if (!saveMessage) deliveredSaveError = ''
     else if (saveMessage !== deliveredSaveError) {
       deliveredSaveError = saveMessage
-      toast.error(tr('Save failed'), { description: saveMessage })
+      errorToastWithCopy(tr('Save failed'), saveMessage)
     }
   }
   $: {
@@ -334,7 +365,7 @@
       const options = { description: attachmentMessage }
       if (attachmentMessageTone === 'success') toast.success(tr('Attachment action completed'), options)
       else if (attachmentMessageTone === 'info') toast.info(tr('Attachment status'), options)
-      else toast.error(tr('Attachment action failed'), options)
+      else errorToastWithCopy(tr('Attachment action failed'), attachmentMessage)
     }
   }
   $: visibleRequests = todayOnly
@@ -478,6 +509,7 @@
           documentJson: workspace.draft.document_json,
           markdown: workspace.draft.body_markdown,
           revision: workspace.draft.saved_revision,
+          terminal: isTerminalRequest(workspace.request),
         })
         draftBody = session.markdown()
         savedBody = draftBody
@@ -640,6 +672,7 @@
         documentJson: existing ? existing.documentJson() : next.draft.document_json,
         markdown: existing ? existing.markdown() : next.draft.body_markdown,
         revision: existing ? existing.savedRevision() : next.draft.saved_revision,
+        terminal: next.request.status === 'completed' || next.request.status === 'cancelled',
       })
       draftBody = session.markdown()
       savedBody = session.markdown()
@@ -848,7 +881,13 @@
       })
     },
   })
-  const submitFeedback = publisherController.submitFeedback
+  const submitFeedback = async () => {
+    await publisherController.submitFeedback()
+    // A terminal request no longer collects Action-tagged input; drop any
+    // still-highlighted channel and dispose its draft session so nothing
+    // tries to save into the now-locked draft.
+    if (workspace) draftSessions.dispose(workspace.request.request_id)
+  }
 
   async function approveFeedback() {
     if (!workspace || !workspace.request.allow_finish || approving) return
@@ -871,6 +910,7 @@
       }
       toast.success(tr('Approved and finished'))
       await navigation.refreshNavigation(true)
+      if (workspace) draftSessions.dispose(workspace.request.request_id)
     } catch (cause) {
       pageError = messageFrom(cause)
     } finally {
@@ -903,6 +943,7 @@
       savePhase = 'saved'
       toast.success(tr('Request cancelled'))
       await navigation.refreshNavigation(true)
+      if (workspace) draftSessions.dispose(workspace.request.request_id)
     } catch (cause) {
       pageError = messageFrom(cause)
     } finally {
@@ -923,6 +964,9 @@
 
   async function exitRamble() {
     await rambleController?.exitRamble()
+    // Ending a Ramble also ends its Action marking: nothing new is appended
+    // while the request is not being recorded.
+    if (rambleRequestId) draftSessions.get(rambleRequestId)?.clearActionChannel()
   }
 
   async function returnToRamble() {
@@ -998,8 +1042,24 @@
     getRambleEditor={() => draftSessions.owner()?.editor() ?? workspacePanel}
     onInsertRambleBlock={(requestId, markdown) => draftSessions.get(requestId)?.insertMarkdownBlock(markdown)}
     onPrepareNonSpeechInsert={(requestId) => draftSessions.get(requestId)?.prepareNonSpeechInsert()}
+    onRambleStarted={(requestId) => {
+      // The editor binds to the draft session only while recording: speech,
+      // captures, and cleanup then flow through one live editor.
+      draftSessions.setOwner(requestId)
+      draftSessions.get(requestId)?.beginRecording()
+    }}
     onRambleStopped={() => {
-      void draftSessions.owner()?.settle()
+      // Stop sequence: settle the remaining speech (a final tidy + save),
+      // then drop the editor binding and the Action highlight. When the stop
+      // is part of submitting/cancelling/approving, the draft is about to be
+      // locked: skip the settle save entirely and just unbind.
+      const owner = draftSessions.owner()
+      if (!owner) return
+      if (submitting || cancelling || approving) {
+        owner.endRecording()
+        return
+      }
+      void owner.settle().finally(() => owner.endRecording())
     }}
   />
 
@@ -1136,6 +1196,8 @@
           onEditorReady={(requestId, editor) => draftSessions.get(requestId)?.bindEditor(editor)}
           onPrepareNonSpeechInsert={(requestId) => draftSessions.get(requestId)?.prepareNonSpeechInsert()}
           {currentActionIndex}
+          {actionNotes}
+          {cleanupCount}
           onToggleActionChannel={(index) => draftSessions.visible()?.toggleActionChannel(index)}
           onToggleRamble={() => void toggleRamble()}
           onExitRamble={() => void exitRamble()}

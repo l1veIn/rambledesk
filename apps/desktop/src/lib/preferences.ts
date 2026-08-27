@@ -60,6 +60,8 @@ const LIGHT_CLEANUP_REASONING_EFFORT_KEY = 'rambledesk.light-cleanup.reasoning-e
 const LIGHT_CLEANUP_SEGMENT_THRESHOLD_KEY = 'rambledesk.light-cleanup.segment-threshold'
 const LIGHT_CLEANUP_CHAR_THRESHOLD_KEY = 'rambledesk.light-cleanup.char-threshold'
 const LIGHT_CLEANUP_IDLE_MS_KEY = 'rambledesk.light-cleanup.idle-ms'
+const LIGHT_CLEANUP_IDLE_REVISION_KEY = 'rambledesk.light-cleanup.idle-ms-revision'
+const LIGHT_CLEANUP_IDLE_DEFAULT_MS = 20_000
 const LIGHT_CLEANUP_TIMEOUT_MS_KEY = 'rambledesk.light-cleanup.timeout-ms'
 const LIGHT_CLEANUP_SYSTEM_PROMPT_KEY = 'rambledesk.light-cleanup.system-prompt'
 const ONBOARDING_COMPLETED_KEY = 'rambledesk.onboarding.completed'
@@ -278,9 +280,18 @@ export const lightCleanupSegmentThreshold = writable(
 export const lightCleanupCharThreshold = writable(
   initialNumber(LIGHT_CLEANUP_CHAR_THRESHOLD_KEY, 500, 100, 5000),
 )
-export const lightCleanupIdleMs = writable(
-  initialNumber(LIGHT_CLEANUP_IDLE_MS_KEY, 30_000, 3_000, 120_000),
-)
+export const lightCleanupIdleMs = writable(initialLightCleanupIdleMs())
+
+function initialLightCleanupIdleMs(): number {
+  const revision = Number(localStorage.getItem(LIGHT_CLEANUP_IDLE_REVISION_KEY) ?? '0')
+  if (revision < 2) {
+    // The 10-second-era saved values are re-based to the 20-second default
+    // once; the user can still override it afterwards in settings.
+    localStorage.removeItem(LIGHT_CLEANUP_IDLE_MS_KEY)
+    localStorage.setItem(LIGHT_CLEANUP_IDLE_REVISION_KEY, '2')
+  }
+  return initialNumber(LIGHT_CLEANUP_IDLE_MS_KEY, LIGHT_CLEANUP_IDLE_DEFAULT_MS, 3_000, 120_000)
+}
 export const lightCleanupTimeoutMs = writable(
   initialNumber(LIGHT_CLEANUP_TIMEOUT_MS_KEY, 30_000, 5_000, 120_000),
 )

@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { Copy, FileImage, FileText, LoaderCircle, Mic, Paperclip } from '@lucide/svelte'
+  import { ChevronDown, Copy, FileImage, FileText, LoaderCircle, Mic, Paperclip } from '@lucide/svelte'
 
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
+  import * as Collapsible from '$lib/components/ui/collapsible'
   import * as Dialog from '$lib/components/ui/dialog'
   import { toast } from '$lib/components/ui/sonner'
   import {
@@ -16,6 +17,7 @@
   import LinkifiedText from '$lib/LinkifiedText.svelte'
   import { isSafeHttpUrl } from '$lib/linkify'
   import { openExternalUrl } from '$lib/openExternalUrl'
+  import MarkdownPreview from './MarkdownPreview.svelte'
   import RequestAttachmentPreview from './RequestAttachmentPreview.svelte'
   import RecordLed from './RecordLed.svelte'
   import { buildTaskBriefText } from './taskBriefCopy'
@@ -41,6 +43,10 @@
   export let insertDisabled = false
   export let currentActionIndex: number | null = null
   export let onToggleActionChannel: (index: number) => void = () => {}
+  /** Markdown notes the human recorded under each Action (from the draft). */
+  export let actionNotes: Record<number, string> = {}
+  export let attachmentPreviews: Record<string, string> = {}
+  export let onOpenAttachment: (attachmentId: string) => void = () => {}
 
   let attachmentPreviewOpen = false
   let attachmentPreview: RequestAttachmentView | null = null
@@ -182,9 +188,34 @@
                   >
                     {index + 1}
                   </button>
-                  <span class="min-w-0 self-center text-[15px] leading-7">
-                    <LinkifiedText text={action.instruction} />
-                  </span>
+                  <div class="min-w-0">
+                    <span class="block self-center text-[15px] leading-7">
+                      <LinkifiedText text={action.instruction} />
+                    </span>
+                    {#if actionNotes[index + 1]}
+                      <Collapsible.Root open class="mt-2 rounded-lg border bg-background/70">
+                        <Collapsible.Trigger>
+                          {#snippet child({ props })}
+                            <button
+                              type="button"
+                              {...props}
+                              class="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                              <ChevronDown class="size-3.5 transition-transform data-[open]:rotate-180" />
+                              {tr('My notes for Action {index}', { index: index + 1 })}
+                            </button>
+                          {/snippet}
+                        </Collapsible.Trigger>
+                        <Collapsible.Content class="max-h-72 overflow-y-auto overscroll-contain border-t px-3 pb-3 pt-2">
+                          <MarkdownPreview
+                            markdown={actionNotes[index + 1] ?? ''}
+                            previews={attachmentPreviews}
+                            {onOpenAttachment}
+                          />
+                        </Collapsible.Content>
+                      </Collapsible.Root>
+                    {/if}
+                  </div>
                 </li>
               {/each}
             </ol>
