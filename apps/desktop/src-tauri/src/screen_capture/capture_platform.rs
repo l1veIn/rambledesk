@@ -91,11 +91,16 @@ fn native_window_id(window: &tauri::WebviewWindow) -> Option<u32> {
 
 #[cfg(target_os = "macos")]
 pub(super) fn excluded_capture_window_ids(app: &AppHandle) -> Vec<u32> {
-    [RAMBLE_CONSOLE_LABEL, OVERLAY_LABEL, SCROLL_LABEL]
-        .into_iter()
-        .filter_map(|label| app.get_webview_window(label))
-        .filter_map(|window| native_window_id(&window))
-        .collect()
+    [
+        super::MAIN_LABEL,
+        RAMBLE_CONSOLE_LABEL,
+        OVERLAY_LABEL,
+        SCROLL_LABEL,
+    ]
+    .into_iter()
+    .filter_map(|label| app.get_webview_window(label))
+    .filter_map(|window| native_window_id(&window))
+    .collect()
 }
 
 #[cfg(not(target_os = "macos"))]

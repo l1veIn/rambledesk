@@ -1,9 +1,11 @@
 <script lang="ts">
-  import { FileImage, FileText, Paperclip, Pause, Play } from '@lucide/svelte'
+  import { ChevronDown, Copy, FileImage, FileText, LoaderCircle, Mic, Paperclip } from '@lucide/svelte'
 
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
+  import * as Collapsible from '$lib/components/ui/collapsible'
   import * as Dialog from '$lib/components/ui/dialog'
+  import { toast } from '$lib/components/ui/sonner'
   import {
     requestStatusLabel,
     type FeedbackStatus,
@@ -15,7 +17,11 @@
   import LinkifiedText from '$lib/LinkifiedText.svelte'
   import { isSafeHttpUrl } from '$lib/linkify'
   import { openExternalUrl } from '$lib/openExternalUrl'
+  import MarkdownPreview from './MarkdownPreview.svelte'
   import RequestAttachmentPreview from './RequestAttachmentPreview.svelte'
+  import RecordLed from './RecordLed.svelte'
+  import { buildTaskBriefText } from './taskBriefCopy'
+  import { rambleRecordPresentation } from './rambleRecordButton'
   import type { HostProfile, RamblePhase } from './types'
 
   export let open = false
@@ -34,11 +40,17 @@
   export let rambleBusy = false
   /** CSS transform-origin the dialog should shrink toward when closing. */
   export let origin: string | null = null
+  export let insertDisabled = false
+  export let currentActionIndex: number | null = null
+  export let onToggleActionChannel: (index: number) => void = () => {}
+  /** Markdown notes the human recorded under each Action (from the draft). */
+  export let actionNotes: Record<number, string> = {}
+  export let attachmentPreviews: Record<string, string> = {}
+  export let onOpenAttachment: (attachmentId: string) => void = () => {}
 
   let attachmentPreviewOpen = false
   let attachmentPreview: RequestAttachmentView | null = null
 
-  $: rambleActive = ramblePhase === 'active'
   $: readOnly =
     workspace === null ||
     workspace.request.status === 'completed' ||
@@ -63,20 +75,34 @@
     }
   }
 
+  $: record = rambleRecordPresentation(ramblePhase, rambleStartedOnce)
   $: rambleLabel =
-    ramblePhase === 'starting'
+    record.label === 'starting'
       ? tr('Starting…')
-      : ramblePhase === 'stopping'
+      : record.label === 'stopping'
         ? tr('Pausing…')
-        : rambleActive
-          ? tr('Pause Ramble')
-          : rambleStartedOnce
+        : record.label === 'recording'
+          ? tr('Recording')
+          : record.label === 'resume'
             ? tr('Resume Ramble')
             : tr('Start Ramble')
 
   function openAttachment(attachment: RequestAttachmentView) {
     attachmentPreview = attachment
     attachmentPreviewOpen = true
+  }
+
+  async function copyTaskBrief() {
+    if (!workspace) return
+    try {
+      await navigator.clipboard.writeText(buildTaskBriefText(workspace))
+      toast.success(tr('Task brief copied to clipboard.'))
+    } catch (cause) {
+      toast.error(tr('Could not copy the task brief. Select the text and copy it manually.'), {
+        description:
+          cause instanceof Error ? cause.message : String(cause),
+      })
+    }
   }
 </script>
 
@@ -85,7 +111,19 @@
     class="task-brief-preview-content grid h-[calc(100vh-2rem)] w-[min(1200px,calc(100vw-2rem))] max-w-[min(1200px,calc(100vw-2rem))] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 duration-200 sm:max-w-[min(1200px,calc(100vw-2rem))]"
     style={origin ? `transform-origin: ${origin}` : undefined}
   >
-    <Dialog.Header class="border-b px-6 py-4 pr-14">
+    <Dialog.Header class="relative border-b px-6 py-4 pr-14">
+      {#if workspace}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          class="absolute right-12 top-2.5"
+          aria-label={tr('Copy task brief')}
+          title={tr('Copy task brief')}
+          onclick={() => void copyTaskBrief()}
+        >
+          <Copy />
+        </Button>
+      {/if}
       <Dialog.Title class="text-lg font-semibold leading-snug">
         {workspace?.request.title ?? tr('Task brief')}
       </Dialog.Title>
@@ -126,14 +164,58 @@
             <ol class="m-0 mt-4 grid list-none gap-3 p-0">
               {#each workspace.actions as action, index (action.id)}
                 <li class="grid grid-cols-[28px_minmax(0,1fr)] gap-3">
-                  <span
-                    class="grid size-7 place-items-center rounded-md bg-background text-xs font-semibold text-muted-foreground ring-1 ring-border"
+                  <button
+                    type="button"
+                    class={[
+                      'grid size-7 place-items-center rounded-md text-xs font-semibold ring-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
+                      currentActionIndex === index + 1
+                        ? 'action-channel-live bg-primary/15 text-primary ring-primary'
+                        : 'bg-background text-muted-foreground ring-border hover:bg-accent hover:text-accent-foreground',
+                    ]}
+                    disabled={insertDisabled || readOnly}
+                    aria-pressed={currentActionIndex === index + 1}
+                    aria-label={
+                      currentActionIndex === index + 1
+                        ? tr('Return to default channel from Action {index}', { index: index + 1 })
+                        : tr('Tune to Action {index}', { index: index + 1 })
+                    }
+                    title={
+                      currentActionIndex === index + 1
+                        ? tr('Return to default channel from Action {index}', { index: index + 1 })
+                        : tr('Tune to Action {index}', { index: index + 1 })
+                    }
+                    onclick={() => onToggleActionChannel(index + 1)}
                   >
                     {index + 1}
-                  </span>
-                  <span class="min-w-0 self-center text-[15px] leading-7">
-                    <LinkifiedText text={action.instruction} />
-                  </span>
+                  </button>
+                  <div class="min-w-0">
+                    <span class="block self-center text-[15px] leading-7">
+                      <LinkifiedText text={action.instruction} />
+                    </span>
+                    {#if actionNotes[index + 1]}
+                      <Collapsible.Root open class="mt-2 rounded-lg border bg-background/70">
+                        <Collapsible.Trigger>
+                          {#snippet child({ props })}
+                            <button
+                              type="button"
+                              {...props}
+                              class="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                              <ChevronDown class="size-3.5 transition-transform data-[open]:rotate-180" />
+                              {tr('My notes for Action {index}', { index: index + 1 })}
+                            </button>
+                          {/snippet}
+                        </Collapsible.Trigger>
+                        <Collapsible.Content class="max-h-72 overflow-y-auto overscroll-contain border-t px-3 pb-3 pt-2">
+                          <MarkdownPreview
+                            markdown={actionNotes[index + 1] ?? ''}
+                            previews={attachmentPreviews}
+                            {onOpenAttachment}
+                          />
+                        </Collapsible.Content>
+                      </Collapsible.Root>
+                    {/if}
+                  </div>
                 </li>
               {/each}
             </ol>
@@ -228,14 +310,18 @@
     {#if workspace && !readOnly}
       <div class="flex shrink-0 items-center justify-end gap-2 border-t bg-background px-6 py-3">
         <Button
-          variant={rambleActive ? 'secondary' : 'default'}
+          variant={record.variant}
           disabled={rambleBusy}
           onclick={onToggleRamble}
+          aria-pressed={record.pressed}
         >
-          {#if rambleActive}
-            <Pause data-icon="inline-start" />
+          {#if record.icon === 'spinner'}
+            <LoaderCircle class="animate-spin" data-icon="inline-start" />
           {:else}
-            <Play data-icon="inline-start" />
+            {#if record.icon === 'recording'}
+              <RecordLed />
+            {/if}
+            <Mic data-icon="inline-start" />
           {/if}
           {rambleLabel}
         </Button>

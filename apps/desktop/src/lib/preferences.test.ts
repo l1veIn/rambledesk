@@ -53,6 +53,66 @@ describe('speech model defaults', () => {
   })
 })
 
+describe('light cleanup defaults', () => {
+  it('defaults light cleanup to off so it can be enabled without cooking', async () => {
+    const {
+      lightCleanupCharThreshold,
+      lightCleanupEnabled,
+      lightCleanupBaseUrl,
+      lightCleanupIdleMs,
+      lightCleanupModel,
+      lightCleanupProvider,
+      lightCleanupReasoningEffort,
+      lightCleanupSegmentThreshold,
+      lightCleanupTimeoutMs,
+    } = await loadPreferences()
+    expect(get(lightCleanupEnabled)).toBe(false)
+    expect(get(lightCleanupProvider)).toBe('deepseek')
+    expect(get(lightCleanupBaseUrl)).toBe('https://api.deepseek.com/v1')
+    expect(get(lightCleanupModel)).toBe('deepseek-v4-flash')
+    expect(get(lightCleanupSegmentThreshold)).toBe(3)
+    expect(get(lightCleanupCharThreshold)).toBe(500)
+    expect(get(lightCleanupIdleMs)).toBe(20_000)
+    expect(get(lightCleanupTimeoutMs)).toBe(30_000)
+    expect(get(lightCleanupReasoningEffort)).toBe('none')
+  })
+
+  it('defaults Cooking to the same fast non-reasoning model independently', async () => {
+    const { cookingModel, cookingProvider, cookingReasoningEffort } = await loadPreferences()
+    expect(get(cookingProvider)).toBe('deepseek')
+    expect(get(cookingModel)).toBe('deepseek-v4-flash')
+    expect(get(cookingReasoningEffort)).toBe('none')
+  })
+
+  it('seeds cleanup from an existing Cooking connection once, then keeps both stores independent', async () => {
+    const preferences = await loadPreferences({
+      'rambledesk.cooking.provider': 'compatible',
+      'rambledesk.cooking.api-key': 'legacy-key',
+      'rambledesk.cooking.base-url': 'https://legacy.example/v1',
+      'rambledesk.cooking.model': 'legacy-model',
+    })
+
+    expect(get(preferences.lightCleanupProvider)).toBe('compatible')
+    expect(get(preferences.lightCleanupApiKey)).toBe('legacy-key')
+    expect(get(preferences.lightCleanupBaseUrl)).toBe('https://legacy.example/v1')
+    expect(get(preferences.lightCleanupModel)).toBe('legacy-model')
+
+    preferences.setCookingProvider('openai')
+    preferences.setCookingApiKey('cooking-key')
+    preferences.setCookingModel('cooking-model')
+    expect(get(preferences.lightCleanupProvider)).toBe('compatible')
+    expect(get(preferences.lightCleanupApiKey)).toBe('legacy-key')
+    expect(get(preferences.lightCleanupModel)).toBe('legacy-model')
+
+    preferences.setLightCleanupProvider('deepseek')
+    preferences.setLightCleanupApiKey('cleanup-key')
+    preferences.setLightCleanupModel('cleanup-model')
+    expect(get(preferences.cookingProvider)).toBe('openai')
+    expect(get(preferences.cookingApiKey)).toBe('cooking-key')
+    expect(get(preferences.cookingModel)).toBe('cooking-model')
+  })
+})
+
 describe('speech hotword defaults', () => {
   it('includes product terms used in rambles', () => {
     expect(DEFAULT_SPEECH_HOTWORDS).toEqual(

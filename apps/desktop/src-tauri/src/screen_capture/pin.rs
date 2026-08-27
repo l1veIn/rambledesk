@@ -12,15 +12,13 @@ pub async fn pin_screen_capture(
             .lock()
             .map_err(|_| "截图状态锁已损坏".to_owned())?;
         let Some(CaptureSession::Editing {
-            monitor,
-            restore_console,
-            ..
+            monitor, restore, ..
         }) = session.as_ref()
         else {
             return Err("没有可固定的截图".to_owned());
         };
         let monitor = monitor.clone();
-        let restore = *restore_console;
+        let restore = *restore;
         let (png, image) = completed_capture_image(session.as_ref().expect("editing"), &input)?;
         (png, image, restore, monitor)
     };
@@ -68,7 +66,7 @@ pub async fn pin_screen_capture(
     if let Some(overlay) = app.get_webview_window(OVERLAY_LABEL) {
         let _ = overlay.hide();
     }
-    restore_console(&app, restore);
+    restore_capture_windows(&app, restore);
     let _ = app.emit_to(
         "main",
         "screen-capture-finished",

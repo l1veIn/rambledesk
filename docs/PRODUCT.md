@@ -27,7 +27,7 @@ MVP 不做：
 - 独立常驻 MCP 网关；
 - 用 CLI resume 探针伪装宿主原生适配器；
 - 通用系统级听写工具；
-- 多阶段智能体编排流水线（仅提供人类可选的单步 Feedback Cooking）。
+- 多阶段智能体编排流水线（仅提供人类可选的单步 Feedback Cooking，以及可选的转写轻度整理）。
 
 ## 核心对象
 
@@ -39,8 +39,10 @@ MVP 不做：
 | 宿主会话 | 宿主中的原对话、任务或运行上下文；同一会话可产生多次请求。 |
 | 适配器 | 宿主接入 RambleDesk 的完整流程。 |
 | 工作台 | 人类处理反馈请求的桌面 UI。 |
-| Ramble | 工作台中的自由反馈采集模式，包含语音、文字和截图。 |
+| Ramble | 由一个未终态反馈请求持有的统一采集状态，包含语音、文字和截图。工作台全局最多一个 Active Ramble。 |
+| Feedback Draft | 请求处理期间可编辑并完整持久化的结构化文档。 |
 | Cooking | 提交前可选的大模型编辑步骤；把 Uncooked Feedback 整理为 Cooked Feedback，同时保留原稿。 |
+| Light cleanup | 可选的语音轻度整理；等于对 Feedback Draft 的一次可撤销覆盖，不是 Cooking。 |
 
 ## MVP 范围
 
@@ -53,7 +55,7 @@ MVP 不做：
 | 存储 | 反馈请求、草稿、附件 metadata、宿主会话关联、不可变反馈包。 |
 | continuation | 通用 MCP 手动继续；Pi 无提交后继续；未来原生 continuation 预留。 |
 | 通知 | 系统通知和工作台提示，均为 best-effort side effect。 |
-| 设置 | 通用偏好、首次使用引导、Cooking 模型服务、语音模型，以及各适配器的安装结果与配置说明。 |
+| 设置 | 通用偏好、首次使用引导、Post-processing、语音模型，以及各适配器的安装结果与配置说明。Post-processing 分别配置节点级 Light cleanup 与整篇 Cooking。 |
 
 ## 主流程
 
@@ -110,7 +112,7 @@ RambleDesk
 │   ├── actions 清单
 │   ├── ramble 录音/转写
 │   ├── 截图和附件
-│   ├── Uncooked Feedback 草稿
+│   ├── Feedback Draft
 │   ├── 可选 Cooking
 │   └── Cook 并提交 / 直接提交 / 取消
 ├── Resume Prompt

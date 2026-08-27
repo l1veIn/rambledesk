@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Editor } from '@tiptap/core'
+  import Image from '@tiptap/extension-image'
   import { TableKit } from '@tiptap/extension-table'
   import TaskItem from '@tiptap/extension-task-item'
   import TaskList from '@tiptap/extension-task-list'
@@ -7,10 +8,13 @@
   import StarterKit from '@tiptap/starter-kit'
   import { onMount } from 'svelte'
 
+  import { ATTACHMENT_PLACEHOLDER_IMAGE, attachmentIdFromUrl } from '$lib/attachmentMarkdown'
   import { isSafeHttpUrl } from '$lib/linkify'
   import { openExternalUrl } from '$lib/openExternalUrl'
 
   export let markdown = ''
+  export let previews: Record<string, string> = {}
+  export let onOpenAttachment: (attachmentId: string) => void = () => {}
 
   let editorHost: HTMLDivElement
   let editor: Editor | null = null
@@ -25,9 +29,10 @@
             openOnClick: false,
             autolink: true,
             defaultProtocol: 'https',
-            protocols: ['http', 'https'],
+            protocols: ['http', 'https', 'attachment'],
           },
         }),
+        Image,
         TableKit,
         TaskList,
         TaskItem.configure({ nested: true }),
@@ -43,9 +48,29 @@
         },
         handleClick: (_view, _pos, event) => {
           const target = event.target as HTMLElement | null
+          const image = target?.closest?.('img[src]')
+          const imageAttachmentId = image
+            ? attachmentIdFromUrl(image.getAttribute('src')) ??
+              Object.entries(previews).find(
+                ([, preview]) => preview === image.getAttribute('src'),
+              )?.[0]
+            : null
+          if (imageAttachmentId) {
+            event.preventDefault()
+            event.stopPropagation()
+            onOpenAttachment(imageAttachmentId)
+            return true
+          }
           const anchor = target?.closest?.('a[href]')
           if (!anchor) return false
           const href = anchor.getAttribute('href') ?? ''
+          const attachmentId = attachmentIdFromUrl(href)
+          if (attachmentId) {
+            event.preventDefault()
+            event.stopPropagation()
+            onOpenAttachment(attachmentId)
+            return true
+          }
           if (!isSafeHttpUrl(href)) return false
           event.preventDefault()
           event.stopPropagation()
@@ -57,6 +82,7 @@
       },
       onCreate: () => {
         renderedMarkdown = markdown
+        hydrateAttachmentImages()
       },
     })
 
@@ -72,10 +98,36 @@
       emitUpdate: false,
     })
     renderedMarkdown = markdown
+    hydrateAttachmentImages()
+  }
+
+  $: if (editor) {
+    previews
+    hydrateAttachmentImages()
+  }
+
+  function hydrateAttachmentImages() {
+    if (!editor) return
+    let transaction = editor.state.tr
+    let changed = false
+    editor.state.doc.descendants((node, position) => {
+      if (node.type.name !== 'image') return
+      const attachmentId = attachmentIdFromUrl(node.attrs.src)
+      if (!attachmentId) return
+      const preview = previews[attachmentId]
+      const next = preview ?? ATTACHMENT_PLACEHOLDER_IMAGE
+      if (!next || node.attrs.src === next) return
+      transaction = transaction.setNodeMarkup(position, undefined, {
+        ...node.attrs,
+        src: next,
+      })
+      changed = true
+    })
+    if (changed) editor.view.dispatch(transaction)
   }
 </script>
 
-<div class="h-full min-h-0 overflow-auto rounded-lg border bg-background px-6 py-5">
+<div class="h-full min-h-0 min-w-0 w-full flex-1 overflow-auto rounded-lg border bg-background px-6 py-5">
   <div bind:this={editorHost}></div>
 </div>
 
@@ -228,5 +280,17 @@
     color: var(--primary);
     text-decoration: underline;
     text-underline-offset: 2px;
+  }
+
+  :global(.attachment-markdown-prose img) {
+    display: block;
+    width: auto;
+    max-width: min(100%, 900px);
+    max-height: 620px;
+    margin: 1.25em auto;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) - 2px);
+    cursor: pointer;
+    object-fit: contain;
   }
 </style>

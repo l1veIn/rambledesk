@@ -7,6 +7,7 @@ mod notification_sounds;
 mod open_attachment;
 mod pi_install;
 mod screen_capture;
+mod shortcuts;
 
 use rambledesk_core::FeedbackApplication;
 use rambledesk_hosts::{ContinuationRouter, known_continuation_strategies};
@@ -24,11 +25,9 @@ use tauri::{
     webview::Color,
 };
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 const TRAY_ID: &str = "rambledesk-main";
 const RAMBLE_CONSOLE_LABEL: &str = "ramble-console";
-const RAMBLE_TOGGLE_SHORTCUT: &str = "Ctrl+Shift+R";
 const RAMBLE_CONSOLE_WIDTH: f64 = 58.0;
 const RAMBLE_CONSOLE_HEIGHT: f64 = 304.0;
 const RAMBLE_CONSOLE_EDGE_GAP: f64 = 10.0;
@@ -128,46 +127,7 @@ pub fn run() {
                 .build()?;
                 position_ramble_console(app.handle(), &console)?;
                 attach_ramble_console_events(&console);
-                if let Err(error) =
-                    app.global_shortcut()
-                        .on_shortcut(RAMBLE_TOGGLE_SHORTCUT, |app, _, event| {
-                            if event.state == ShortcutState::Pressed
-                                && let Err(error) = app.emit_to(
-                                    "main",
-                                    "ramble-toggle-shortcut",
-                                    RAMBLE_TOGGLE_SHORTCUT,
-                                )
-                            {
-                                tracing::warn!(%error, "failed to emit Ramble toggle shortcut");
-                            }
-                        })
-                {
-                    tracing::warn!(
-                        %error,
-                        shortcut = RAMBLE_TOGGLE_SHORTCUT,
-                        "Ramble toggle global shortcut is unavailable"
-                    );
-                }
-                if let Err(error) = app.global_shortcut().on_shortcut(
-                    screen_capture::SCREEN_CAPTURE_SHORTCUT,
-                    |app, _, event| {
-                        if event.state == ShortcutState::Pressed
-                            && let Err(error) = app.emit_to(
-                                "main",
-                                "screen-capture-shortcut",
-                                screen_capture::SCREEN_CAPTURE_SHORTCUT,
-                            )
-                        {
-                            tracing::warn!(%error, "failed to emit screen capture shortcut");
-                        }
-                    },
-                ) {
-                    tracing::warn!(
-                        %error,
-                        shortcut = screen_capture::SCREEN_CAPTURE_SHORTCUT,
-                        "screen capture global shortcut is unavailable"
-                    );
-                }
+                app.manage(shortcuts::ShortcutSettings::initialize(app.handle()));
                 let token = AccessToken::load_or_create(&configured_token_path()?)?;
                 let database_path = configured_database_path()?;
                 let library_root = configured_library_path()?;
@@ -354,6 +314,10 @@ pub fn run() {
             screen_capture::lifecycle::read_completed_screen_capture,
             screen_capture::lifecycle::discard_screen_capture,
             screen_capture::lifecycle::cancel_screen_capture,
+            shortcuts::get_shortcut_settings,
+            shortcuts::set_shortcut_setting,
+            shortcuts::reset_shortcut_settings,
+            shortcuts::set_shortcut_capture_active,
             log_frontend_error,
         ])
         .build(tauri::generate_context!());

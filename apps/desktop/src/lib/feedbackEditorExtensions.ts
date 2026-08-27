@@ -1,12 +1,18 @@
-import { Node, type AnyExtension } from '@tiptap/core'
+import { Node, type AnyExtension, type JSONContent } from '@tiptap/core'
 import Image from '@tiptap/extension-image'
 import { TableKit } from '@tiptap/extension-table'
 import TaskItem from '@tiptap/extension-task-item'
 import TaskList from '@tiptap/extension-task-list'
-import { Markdown } from '@tiptap/markdown'
+import { Markdown, MarkdownManager } from '@tiptap/markdown'
 import StarterKit from '@tiptap/starter-kit'
 
+import { ActionChannel } from './actionChannelExtension'
 import { attachmentIdFromUrl, attachmentMarkdownUrl } from './attachmentMarkdown'
+import { SpeechBlockMetadata } from './speechBlockMetadata'
+import {
+  migrateActionChannelSeparators,
+  serializeDocWithActionChannels,
+} from './workbench/actionChannel'
 
 const AttachmentImage = Image.extend({
   addAttributes() {
@@ -160,6 +166,18 @@ export function feedbackEditorExtensions(): AnyExtension[] {
     TaskItem.configure({ nested: true }),
     AttachmentImage,
     AttachmentFile,
+    SpeechBlockMetadata,
+    ActionChannel,
     Markdown,
   ]
+}
+
+export function parseFeedbackMarkdown(source: string): JSONContent {
+  const manager = new MarkdownManager({ extensions: feedbackEditorExtensions() })
+  return migrateActionChannelSeparators(manager.parse(source))
+}
+
+export function serializeFeedbackMarkdown(doc: JSONContent): string {
+  const manager = new MarkdownManager({ extensions: feedbackEditorExtensions() })
+  return serializeDocWithActionChannels(doc, (piece) => manager.serialize(piece))
 }

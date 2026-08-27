@@ -180,6 +180,7 @@ pub struct HostSessionQuery {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 pub struct DraftView {
+    pub document_json: Option<String>,
     pub body_markdown: String,
     #[ts(type = "number")]
     pub saved_revision: u64,
@@ -250,6 +251,7 @@ pub struct ReorderAttachmentsInput {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 pub struct SaveDraftInput {
     pub request_id: String,
+    pub document_json: String,
     pub body_markdown: String,
     #[ts(type = "number")]
     pub expected_revision: u64,

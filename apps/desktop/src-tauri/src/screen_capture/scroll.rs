@@ -46,7 +46,7 @@ pub async fn begin_scrolling_capture(
     app: AppHandle,
     state: tauri::State<'_, ScreenCaptureState>,
 ) -> Result<ScrollCaptureInfo, String> {
-    let (monitor, selection, first_frame, should_restore_console) = {
+    let (monitor, selection, first_frame, restore) = {
         let mut session = state
             .session
             .lock()
@@ -59,7 +59,7 @@ pub async fn begin_scrolling_capture(
             image,
             monitor,
             targets,
-            restore_console,
+            restore,
             suggested_selection,
         } = active
         else {
@@ -72,7 +72,7 @@ pub async fn begin_scrolling_capture(
                 image,
                 monitor,
                 targets,
-                restore_console,
+                restore,
                 suggested_selection,
             });
             return Err("截图会话已变化，请重新截图".to_owned());
@@ -85,7 +85,7 @@ pub async fn begin_scrolling_capture(
                     image,
                     monitor,
                     targets,
-                    restore_console,
+                    restore,
                     suggested_selection,
                 });
                 return Err(error);
@@ -100,7 +100,7 @@ pub async fn begin_scrolling_capture(
                         image,
                         monitor,
                         targets,
-                        restore_console,
+                        restore,
                         suggested_selection,
                     });
                     return Err(error);
@@ -123,9 +123,9 @@ pub async fn begin_scrolling_capture(
             composite: first_frame.clone(),
             last_frame: first_frame.clone(),
             frame_count: 1,
-            restore_console,
+            restore,
         });
-        (monitor, selection, first_frame, restore_console)
+        (monitor, selection, first_frame, restore)
     };
 
     if let Some(overlay) = app.get_webview_window(OVERLAY_LABEL) {
@@ -135,7 +135,7 @@ pub async fn begin_scrolling_capture(
         if let Ok(mut session) = state.session.lock() {
             *session = None;
         }
-        restore_console(&app, should_restore_console);
+        restore_capture_windows(&app, restore);
         return Err(error);
     }
     Ok(ScrollCaptureInfo {
@@ -318,7 +318,7 @@ pub async fn finish_scrolling_capture(
         let CaptureSession::Scrolling {
             mut monitor,
             composite,
-            restore_console,
+            restore,
             ..
         } = active
         else {
@@ -338,7 +338,7 @@ pub async fn finish_scrolling_capture(
             image: composite,
             monitor: monitor.clone(),
             targets: Vec::new(),
-            restore_console,
+            restore,
             suggested_selection: Some(full),
         });
         monitor

@@ -13,11 +13,15 @@
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
   import RichFeedbackEditor from '$lib/RichFeedbackEditor.svelte'
+  import type { FeedbackDraftSnapshot } from '$lib/feedbackDraftDocument'
+  import SessionDraftEditor from './SessionDraftEditor.svelte'
   import type { AttachmentView, FeedbackWorkspaceView } from '$lib/feedback'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
   import { hasCookedPublishedVariant } from '$lib/publishedFeedback'
-  import type { SavePhase } from './types'
+  import MarkdownPreview from './MarkdownPreview.svelte'
+  import type { FeedbackEditorHandle, SavePhase } from './types'
+  import { actionChannelFor } from './actionChannelState'
 
   export let workspace: FeedbackWorkspaceView
   export let draftBody = ''
@@ -26,19 +30,28 @@
   export let attachmentPreviews: Record<string, string> = {}
   export let dragActive = false
   export let cooking = false
-  export let cookingEnabled = false
   export let cookedDraftReady = false
   export let cookedPreviewModel = ''
   export let locked = false
+  export let cleanupCount = 0
   export let cookedMarkdown = ''
   export let uncookedMarkdown = ''
   export let formatTime: (value: string | null | undefined) => string
   export let onChange: (markdown: string) => void = () => {}
-  export let onCookPreview: () => void = () => {}
   export let onRestoreOriginal: () => void = () => {}
   export let onOpenAttachment: (attachmentId: string) => void = () => {}
+  export let draftEditors: Array<{
+    requestId: string
+    initialDocumentJson: string
+    initialMarkdown: string
+  }> = []
+  export let visibleRequestId = ''
+  export let onDraftChangeFor: (requestId: string, snapshot: FeedbackDraftSnapshot) => void = () => {}
+  export let onEditorReady: (requestId: string, editor: FeedbackEditorHandle | null) => void = () => {}
+  export let onPrepareNonSpeechInsert: (requestId: string) => void = () => {}
 
   let richEditor: RichFeedbackEditor
+  const sessionEditors: Record<string, RichFeedbackEditor> = {}
   let publishedView: 'cooked' | 'uncooked' = 'cooked'
 
   $: readOnly =
@@ -46,11 +59,11 @@
   $: editingDisabled = readOnly || locked
   $: hasCookedVariant = readOnly && hasCookedPublishedVariant(cookedMarkdown, uncookedMarkdown)
   $: displayedMarkdown =
-    hasCookedVariant && publishedView === 'cooked'
-      ? cookedMarkdown
-      : hasCookedVariant && publishedView === 'uncooked'
+    readOnly
+      ? hasCookedVariant && publishedView === 'uncooked'
         ? uncookedMarkdown
-        : draftBody
+        : cookedMarkdown || uncookedMarkdown
+      : draftBody
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
@@ -63,28 +76,71 @@
     return `${tr('Saved')} · r${savedRevision}`
   }
 
+  function visibleEditor() {
+    return sessionEditors[visibleRequestId] ?? richEditor
+  }
+
+  function captureSessionEditor(requestId: string, editor: FeedbackEditorHandle | null) {
+    if (import.meta.env.DEV) {
+      console.log('[ramble-cleanup] panel editor-ready request=', requestId, 'editor=', editor != null)
+    }
+    if (editor) sessionEditors[requestId] = editor as RichFeedbackEditor
+    else delete sessionEditors[requestId]
+    onEditorReady(requestId, editor)
+  }
+
   export function insertAttachments(attachments: AttachmentView[]) {
-    return richEditor?.insertAttachments(attachments) ?? false
+    if (visibleRequestId) onPrepareNonSpeechInsert(visibleRequestId)
+    return visibleEditor()?.insertAttachments(attachments) ?? false
   }
 
   export function applyExternalMarkdown(markdown: string): boolean {
-    return richEditor?.applyExternalMarkdown(markdown) ?? false
+    return visibleEditor()?.applyExternalMarkdown(markdown) ?? false
   }
 
-  export function appendTranscript(text: string) {
-    richEditor?.appendTranscript(text)
+  export function insertQuotedBlock(lines: string[]) {
+    if (visibleRequestId) onPrepareNonSpeechInsert(visibleRequestId)
+    return visibleEditor()?.insertQuotedBlock?.(lines) ?? false
+  }
+
+  export function appendTranscript(
+    text: string,
+    options?: Parameters<FeedbackEditorHandle['appendTranscript']>[1],
+  ) {
+    visibleEditor()?.appendTranscript(text, options)
+  }
+
+  export function beginSpeechCleanup(
+    segments: Parameters<NonNullable<FeedbackEditorHandle['beginSpeechCleanup']>>[0],
+  ) {
+    visibleEditor()?.beginSpeechCleanup?.(segments)
+  }
+
+  export function finishSpeechCleanup(
+    segments: Parameters<NonNullable<FeedbackEditorHandle['finishSpeechCleanup']>>[0],
+    cleaned: string | null,
+  ) {
+    visibleEditor()?.finishSpeechCleanup?.(segments, cleaned)
+  }
+
+  export function isSpeechCleaning() {
+    return visibleEditor()?.isSpeechCleaning?.() ?? false
+  }
+
+  export function moveCursorAfterCleaningSpeech() {
+    visibleEditor()?.moveCursorAfterCleaningSpeech?.()
   }
 
   export function appendClipboardCapture(text: string, label: string) {
-    return richEditor?.appendClipboardCapture(text, label) ?? false
+    return visibleEditor()?.appendClipboardCapture(text, label) ?? false
   }
 
   export function appendCapturedAttachment(attachment: AttachmentView, label: string) {
-    return richEditor?.appendCapturedAttachment(attachment, label) ?? false
+    return visibleEditor()?.appendCapturedAttachment(attachment, label) ?? false
   }
 
   export function removeAttachmentReference(attachmentId: string) {
-    richEditor?.removeAttachmentReference(attachmentId)
+    visibleEditor()?.removeAttachmentReference(attachmentId)
   }
 </script>
 
@@ -101,6 +157,11 @@
         {readOnly ? tr('This request is closed. The document is read-only.') : tr('Record observations, problems, and suggestions.')}
       </p>
     </div>
+    {#if cleanupCount > 0 && !readOnly}
+      <span class="shrink-0 text-[10px] text-muted-foreground">
+        {tr('Cleaned {count} times', { count: cleanupCount })}
+      </span>
+    {/if}
     {#if hasCookedVariant}
       <div class="ml-auto flex items-center gap-1 rounded-md border bg-muted/30 p-0.5">
         <Button
@@ -126,16 +187,6 @@
           {#if publishedView === 'uncooked'}Uncooked{/if}
         </Button>
       </div>
-    {:else if cookingEnabled && !cookedDraftReady && !readOnly && !locked && !cooking}
-      <Button
-        variant="ghost"
-        size="sm"
-        class="ml-auto h-7 shrink-0 gap-1 px-2 text-[10px] text-muted-foreground hover:text-foreground"
-        onclick={onCookPreview}
-      >
-        <Sparkles class="size-3.5" />
-        {tr('Preview cooking result')}
-      </Button>
     {/if}
   </header>
 
@@ -161,16 +212,47 @@
   {/if}
 
   <div class="relative flex min-h-0 flex-1">
-    <RichFeedbackEditor
-      bind:this={richEditor}
-      markdown={displayedMarkdown}
-      previews={attachmentPreviews}
-      disabled={editingDisabled}
-      {onOpenAttachment}
-      onChange={(markdown) => {
-        if (!editingDisabled) onChange(markdown)
-      }}
-    />
+    {#if readOnly}
+      <MarkdownPreview
+        markdown={displayedMarkdown}
+        previews={attachmentPreviews}
+        {onOpenAttachment}
+      />
+    {:else if draftEditors.length === 0}
+      <RichFeedbackEditor
+        bind:this={richEditor}
+        markdown={displayedMarkdown}
+        previews={attachmentPreviews}
+        disabled={editingDisabled}
+        {onOpenAttachment}
+        getCurrentActionIndex={() => actionChannelFor(visibleRequestId)}
+        onChange={(snapshot) => {
+          if (!editingDisabled) onChange(snapshot.bodyMarkdown)
+        }}
+      />
+    {:else}
+      {#each draftEditors as session (session.requestId)}
+        <div
+          class={session.requestId === visibleRequestId
+            ? 'relative flex min-h-0 flex-1'
+            : 'hidden'}
+        >
+          <SessionDraftEditor
+            requestId={session.requestId}
+            documentJson={session.initialDocumentJson}
+            markdown={session.initialMarkdown}
+            previews={attachmentPreviews}
+            disabled={session.requestId === visibleRequestId ? editingDisabled : false}
+            {onOpenAttachment}
+            onReady={captureSessionEditor}
+            onChange={(snapshot) => {
+              if (session.requestId === visibleRequestId && editingDisabled) return
+              onDraftChangeFor(session.requestId, snapshot)
+            }}
+          />
+        </div>
+      {/each}
+    {/if}
 
     {#if cooking}
       <div

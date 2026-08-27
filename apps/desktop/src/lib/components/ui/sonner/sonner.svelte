@@ -28,7 +28,13 @@
   {warningIcon}
   {errorIcon}
   {loadingIcon}
-  toastOptions={{ duration: 4_000 }}
+  toastOptions={{
+    duration: 4_000,
+    actionButtonStyle:
+      'font-size: 11px; padding: 4px 10px; border-radius: 6px; ' +
+      'background: hsl(var(--muted)); color: hsl(var(--foreground)); ' +
+      'border: 1px solid hsl(var(--border));',
+  }}
 />
 
 <style>

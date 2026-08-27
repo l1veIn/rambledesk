@@ -1,3 +1,5 @@
+mod worker;
+
 use super::*;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use sherpa_onnx::{
@@ -10,13 +12,19 @@ use std::{
     sync::{
         Arc,
         atomic::{AtomicBool, AtomicU64, Ordering},
-        mpsc::{Receiver, RecvTimeoutError, SyncSender, sync_channel},
+        mpsc::{SyncSender, sync_channel},
     },
     thread::{self, JoinHandle},
-    time::Duration,
 };
+use worker::{WorkerContext, run_sherpa_worker_after_load};
 
-const AUDIO_QUEUE_CAPACITY: usize = 512;
+// Large enough to hold ~30–40s of typical input callbacks while the ASR
+// model loads. Recording starts before recognizer creation; dropping that
+// warmup audio would make the first utterance disappear.
+const AUDIO_QUEUE_CAPACITY: usize = 4096;
+// Enforced at compile time rather than in a test: both sides are constants, so
+// a runtime assertion is folded away to `assert!(true)` and proves nothing.
+const _: () = assert!(AUDIO_QUEUE_CAPACITY >= 4096);
 const SHERPA_SAMPLE_RATE: i32 = 16_000;
 const SHERPA_FRAME_SAMPLES: usize = 800;
 const SHERPA_TAIL_PADDING_SAMPLES: usize = 12_800;
@@ -441,10 +449,12 @@ struct NativeSpeechSession {
 }
 
 impl NativeSpeechSession {
-    fn start(config: SpeechSessionConfig, sink: SpeechEventSink) -> Result<Self, SpeechError> {
+    fn start(
+        config: SpeechSessionConfig,
+        sink: SpeechEventSink,
+        abort_tx: SyncSender<()>,
+    ) -> Result<Self, SpeechError> {
         let provider = config.provider;
-        let engine = RecognitionEngine::create(&config)?;
-
         let host = cpal::default_host();
         let device = if let Some(selected) = config.input_device.as_deref() {
             host.input_devices()
@@ -487,14 +497,17 @@ impl NativeSpeechSession {
         let worker = thread::Builder::new()
             .name("rambledesk-speech".to_owned())
             .spawn(move || {
-                run_sherpa_worker(
-                    engine,
+                run_sherpa_worker_after_load(
+                    config,
                     audio_rx,
-                    source_rate,
-                    worker_identity,
-                    worker_running,
-                    worker_sink,
-                    worker_dropped,
+                    WorkerContext {
+                        source_rate,
+                        identity: worker_identity,
+                        running: worker_running,
+                        sink: worker_sink,
+                        dropped_buffers: worker_dropped,
+                    },
+                    abort_tx,
                 );
             })
             .map_err(|error| SpeechError::InputStream(error.to_string()))?;
@@ -600,21 +613,24 @@ impl SpeechSession {
     pub fn start(config: SpeechSessionConfig, sink: SpeechEventSink) -> Result<Self, SpeechError> {
         let (startup_tx, startup_rx) = sync_channel(1);
         let (stop_tx, stop_rx) = sync_channel(1);
+        let abort_tx = stop_tx.clone();
         let owner = thread::Builder::new()
             .name("rambledesk-speech-session".to_owned())
-            .spawn(move || match NativeSpeechSession::start(config, sink) {
-                Ok(session) => {
-                    if startup_tx.send(Ok(())).is_err() {
-                        return session.stop();
+            .spawn(
+                move || match NativeSpeechSession::start(config, sink, abort_tx) {
+                    Ok(session) => {
+                        if startup_tx.send(Ok(())).is_err() {
+                            return session.stop();
+                        }
+                        let _ = stop_rx.recv();
+                        session.stop()
                     }
-                    let _ = stop_rx.recv();
-                    session.stop()
-                }
-                Err(error) => {
-                    let _ = startup_tx.send(Err(error));
-                    Ok(())
-                }
-            })
+                    Err(error) => {
+                        let _ = startup_tx.send(Err(error));
+                        Ok(())
+                    }
+                },
+            )
             .map_err(|error| SpeechError::InputStream(error.to_string()))?;
 
         match startup_rx.recv() {
@@ -695,51 +711,6 @@ where
             None,
         )
         .map_err(|error| SpeechError::InputStream(error.to_string()))
-}
-
-fn run_sherpa_worker(
-    mut engine: RecognitionEngine,
-    audio_rx: Receiver<Vec<f32>>,
-    source_rate: u32,
-    identity: EventIdentity,
-    running: Arc<AtomicBool>,
-    sink: SpeechEventSink,
-    dropped_buffers: Arc<AtomicU64>,
-) {
-    loop {
-        match audio_rx.recv_timeout(Duration::from_millis(80)) {
-            Ok(samples) => {
-                sink(SpeechEvent::Level {
-                    request_id: identity.request_id.clone(),
-                    voice_session_id: identity.voice_session_id.clone(),
-                    rms: rms(&samples).clamp(0.0, 1.0),
-                });
-                let audio = resample_linear(&samples, source_rate, SPEECH_SAMPLE_RATE);
-                engine.accept(&audio, &identity, &sink);
-            }
-            Err(RecvTimeoutError::Timeout) if !running.load(Ordering::Acquire) => break,
-            Err(RecvTimeoutError::Disconnected) => break,
-            Err(RecvTimeoutError::Timeout) => {}
-        }
-        emit_backpressure_warning(&identity, &sink, &dropped_buffers);
-    }
-    engine.finish(&identity, &sink);
-}
-
-fn emit_backpressure_warning(
-    identity: &EventIdentity,
-    sink: &SpeechEventSink,
-    dropped_buffers: &AtomicU64,
-) {
-    let dropped = dropped_buffers.swap(0, Ordering::Relaxed);
-    if dropped > 0 {
-        sink(SpeechEvent::Warning {
-            request_id: identity.request_id.clone(),
-            voice_session_id: identity.voice_session_id.clone(),
-            code: "audio_backpressure".to_owned(),
-            message: format!("识别速度暂时跟不上，已跳过 {dropped} 个音频缓冲区"),
-        });
-    }
 }
 
 #[cfg(test)]

@@ -179,7 +179,8 @@ UI 不持有唯一事实状态。Tauri events 和系统通知都是提示，不�
 | 数据 | 唯一事实来源 |
 | --- | --- |
 | 反馈请求状态 | SQLite |
-| 草稿正文 | SQLite |
+| Feedback Draft 文档 | SQLite 中的版本化 TipTap JSON；同 revision 原子保存 Markdown 导出投影。节点属性持有 Action 归属、ASR 来源、语音段标识与 Light cleanup 状态 |
+| Feedback Draft 会话（selection、Undo、当前 Action、inflight cleanup task、Active Ramble） | 前端进程内存；最多所属 + 可见两个会话 |
 | 草稿附件 bytes | 应用 draft 目录，SQLite 存 metadata |
 | 反馈包 | 不可变 package directory + manifest |
 | 宿主身份 | adapter-provided `host_id`，服务端可按安装入口覆盖 |
@@ -187,7 +188,7 @@ UI 不持有唯一事实状态。Tauri events 和系统通知都是提示，不�
 | 上下文提示 | request `context_refs` / `source_hint` |
 | UI 当前页面/展开项 | 前端内存 |
 | 系统通知 | best-effort side effect |
-| 局部转写 | speech session 内存；定期 checkpoint 到 Draft |
+| 局部转写 | speech session 内存中的 Partial；Stable 作为带 ASR 来源属性的普通段落，经所属 Feedback Draft Session 写入结构化文档并 checkpoint 到 SQLite |
 
 ## 核心流程
 
