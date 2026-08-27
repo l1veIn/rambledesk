@@ -697,10 +697,28 @@
     pointer-events: none;
   }
 
-  .editor-host :global(.feedback-prose [data-action-index]) {
-    border-radius: 4px;
+  .editor-host :global(.feedback-prose .action-channel-item) {
     background: color-mix(in srgb, var(--muted) 72%, transparent);
-    padding: 6px 8px;
+    border-radius: 0;
+    margin-bottom: 0;
+    padding: 0 10px;
+  }
+
+  .editor-host :global(.feedback-prose .action-channel-item.action-channel-lead) {
+    border-radius: 6px 6px 0 0;
+    padding-top: 6px;
+  }
+
+  .editor-host :global(.feedback-prose .action-channel-item.action-channel-group-solo) {
+    border-radius: 6px;
+    margin-bottom: 0.9em;
+    padding-bottom: 6px;
+  }
+
+  .editor-host :global(.feedback-prose .action-channel-item.action-channel-group-end) {
+    border-radius: 0 0 6px 6px;
+    margin-bottom: 0.9em;
+    padding-bottom: 6px;
   }
 
   .editor-host :global(.feedback-prose .action-channel-lead[data-action-index]:not(.speech-cleaned)::before) {
