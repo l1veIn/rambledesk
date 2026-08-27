@@ -199,15 +199,15 @@ describe('action channel markdown', () => {
     expect(serialized).not.toContain('data-action-index')
   })
 
-  it('parses dividers as ordinary Markdown without restoring action attrs', () => {
+  it('rehydrates dividers as channel stamps instead of visible text', () => {
     const doc = parseFeedbackMarkdown(
       '------------------------ Action 2 ------------------------\n\n保存失败。',
     )
 
     expect((doc.content ?? []).map((node) => node.attrs?.actionIndex ?? null)).toEqual([
-      null,
-      null,
+      2,
     ])
-    expect(doc.content?.[0].content?.[0].text).toContain('Action 2')
+    expect(doc.content?.[0]?.content?.[0]?.text).toBe('保存失败。')
+    expect(JSON.stringify(doc.content)).not.toContain('Action 2')
   })
 })

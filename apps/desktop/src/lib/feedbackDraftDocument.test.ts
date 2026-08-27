@@ -5,6 +5,7 @@ import {
   decodeFeedbackDraftDocument,
   restoreFeedbackDraftDocument,
   snapshotFeedbackDraftDocument,
+  snapshotFeedbackDraftMarkdown,
 } from './feedbackDraftDocument'
 import {
   CLEANUP_STATE_ATTR,
@@ -133,5 +134,31 @@ describe('persisted feedback draft document', () => {
         'Fallback',
       ).content?.[0].content?.[0]?.text,
     ).toBe('Fallback')
+  })
+
+  it('never rehydrates action dividers as visible text', () => {
+    const markdown =
+      '先说结论。\n\n------------------------ Action 2 ------------------------\n\n保存失败。'
+    const restored = restoreFeedbackDraftDocument(null, markdown)
+
+    const texts = (restored.content ?? []).map((node) =>
+      (node.content ?? []).map((child) => child.text ?? '').join(''),
+    )
+    expect(texts).not.toContain('------------------------ Action 2 ------------------------')
+    expect(restored.content?.[0]?.attrs?.actionIndex).toBeUndefined()
+    expect(restored.content?.[1]?.content?.[0]?.text).toBe('保存失败。')
+    expect(restored.content?.[1]?.attrs?.actionIndex).toBe(2)
+  })
+
+  it('also strips dividers left inside a persisted document JSON', () => {
+    const markdown =
+      '------------------------ Action 2 ------------------------\n\n保存失败。'
+    const snapshot = snapshotFeedbackDraftMarkdown(markdown)
+    const restored = decodeFeedbackDraftDocument(snapshot.documentJson)
+
+    expect((restored?.content ?? []).map((node) => node.attrs?.actionIndex ?? null)).toEqual([
+      2,
+    ])
+    expect(JSON.stringify(restored?.content)).not.toContain('Action 2')
   })
 })

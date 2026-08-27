@@ -11,7 +11,7 @@ import {
   SPEECH_SEGMENT_ID_ATTR,
   ASR_INPUT_SOURCE,
 } from './speechBlockMetadata'
-import { ACTION_CHANNEL_ATTR } from './workbench/actionChannel'
+import { ACTION_CHANNEL_ATTR, migrateActionChannelSeparators } from './workbench/actionChannel'
 
 export const FEEDBACK_DRAFT_DOCUMENT_VERSION = 2
 const LEGACY_FEEDBACK_DRAFT_DOCUMENT_VERSION = 1
@@ -92,9 +92,11 @@ export function decodeFeedbackDraftDocument(source: string | null | undefined): 
     if (!isDocument(parsed.doc)) {
       return null
     }
-    if (parsed.schemaVersion === FEEDBACK_DRAFT_DOCUMENT_VERSION) return parsed.doc
+    if (parsed.schemaVersion === FEEDBACK_DRAFT_DOCUMENT_VERSION) {
+      return migrateActionChannelSeparators(parsed.doc)
+    }
     if (parsed.schemaVersion === LEGACY_FEEDBACK_DRAFT_DOCUMENT_VERSION) {
-      return migrateLegacySpeechNodes(parsed.doc)
+      return migrateActionChannelSeparators(migrateLegacySpeechNodes(parsed.doc))
     }
     return null
   } catch {

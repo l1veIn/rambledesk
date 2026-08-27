@@ -10,6 +10,7 @@ import { ActionChannel } from './actionChannelExtension'
 import { attachmentIdFromUrl, attachmentMarkdownUrl } from './attachmentMarkdown'
 import { SpeechBlockMetadata } from './speechBlockMetadata'
 import {
+  migrateActionChannelSeparators,
   serializeDocWithActionChannels,
 } from './workbench/actionChannel'
 
@@ -173,7 +174,7 @@ export function feedbackEditorExtensions(): AnyExtension[] {
 
 export function parseFeedbackMarkdown(source: string): JSONContent {
   const manager = new MarkdownManager({ extensions: feedbackEditorExtensions() })
-  return manager.parse(source)
+  return migrateActionChannelSeparators(manager.parse(source))
 }
 
 export function serializeFeedbackMarkdown(doc: JSONContent): string {

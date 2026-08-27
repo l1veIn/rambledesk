@@ -4,6 +4,15 @@ export const ACTION_CHANNEL_ATTR = 'actionIndex'
 
 const ACTION_SEPARATOR_SIDE = '------------------------'
 
+/**
+ * A line like `---------------- Action 2 ----------------` (or the plain dashes
+ * for the default channel). It is only meaningful as a markdown projection of
+ * node attributes; when it appears in stored markdown (e.g. drafts saved
+ * before structured documents existed) and has to be parsed back into the
+ * editor, it must become a channel stamp instead of visible text.
+ */
+const ACTION_SEPARATOR_PATTERN = /^-{16,}(?:\s+Action\s+(\d+)\s+)?-{16,}$/
+
 export function actionChannelSeparator(index: number | null): string {
   return index == null
     ? `${ACTION_SEPARATOR_SIDE}${ACTION_SEPARATOR_SIDE}`
@@ -49,6 +58,43 @@ export function stampActionIndex(node: JSONContent, actionIndex: number | null):
 export function actionIndexOf(node: JSONContent): number | null {
   const value = node.attrs?.[ACTION_CHANNEL_ATTR]
   return typeof value === 'number' && value > 0 ? value : null
+}
+
+function paragraphText(node: JSONContent): string | null {
+  if (node.type !== 'paragraph') return null
+  return (node.content ?? [])
+    .map((child) => child.text ?? '')
+    .join('')
+    .trim()
+}
+
+/**
+ * Replaces action-separator lines in a parsed document with channel stamps.
+ *
+ * Legacy drafts (no persisted document JSON) carry the channel boundaries as
+ * markdown divider lines; parsing them back as paragraphs would show the
+ * divider inside the editor. Drop the divider and stamp the following blocks
+ * with the channel it opened, so the grouping survives and the divider is
+ * re-derived on the next markdown export.
+ */
+export function migrateActionChannelSeparators(doc: JSONContent): JSONContent {
+  const content = doc.content ?? []
+  let current: number | null = null
+  const migrated: JSONContent[] = []
+  for (const node of content) {
+    const text = paragraphText(node)
+    const match = text == null ? null : ACTION_SEPARATOR_PATTERN.exec(text)
+    if (match) {
+      const raw = match[1]
+      const channel = raw == null ? Number.NaN : Number(raw)
+      current = Number.isInteger(channel) && channel > 0 ? channel : null
+      continue
+    }
+    migrated.push(
+      current != null && actionIndexOf(node) == null ? stampActionIndex(node, current) : node,
+    )
+  }
+  return { ...doc, content: migrated }
 }
 
 export function serializeDocWithActionChannels(
