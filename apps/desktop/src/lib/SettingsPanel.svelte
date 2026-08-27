@@ -18,6 +18,7 @@
     Mic,
     MonitorCog,
     Info,
+    Keyboard,
     Play,
     PlugZap,
     RefreshCw,
@@ -41,6 +42,7 @@
   import { toast } from '$lib/components/ui/sonner'
   import AboutSettings from '$lib/AboutSettings.svelte'
   import MacPermissions from '$lib/MacPermissions.svelte'
+  import ShortcutSettings from '$lib/ShortcutSettings.svelte'
   import appIcon from '../assets/rambledesk-app-icon.webp'
   import rambellePermission from '../assets/rambelle-states/state-permission.webp'
   import piLogoSvg from '../assets/pi-logo.svg?raw'
@@ -109,7 +111,14 @@
     type ThemePreference,
   } from '$lib/preferences'
 
-  type Section = 'general' | 'permissions' | 'notifications' | 'voice' | 'adapters' | 'about'
+  type Section =
+    | 'general'
+    | 'permissions'
+    | 'notifications'
+    | 'voice'
+    | 'shortcuts'
+    | 'adapters'
+    | 'about'
 
   export let mcpConfiguration = ''
   export let initialSection: Section = 'general'
@@ -684,6 +693,10 @@
             <Mic data-icon="inline-start" />
             {tr('Voice')}
           </Tabs.Trigger>
+          <Tabs.Trigger value="shortcuts" class="h-9 w-full justify-start px-2.5">
+            <Keyboard data-icon="inline-start" />
+            {tr('Shortcuts')}
+          </Tabs.Trigger>
           <Tabs.Trigger value="adapters" class="h-9 w-full justify-start px-2.5">
             <PlugZap data-icon="inline-start" />
             <span class="flex-1 text-left">{tr('Adapters')}</span>
@@ -717,9 +730,11 @@
                     ? tr('Alert methods')
                     : activeSection === 'voice'
                       ? tr('Voice input')
-                      : activeSection === 'adapters'
-                        ? tr('Host adapters')
-                        : tr('Project information')}
+                      : activeSection === 'shortcuts'
+                          ? tr('Global shortcut keys')
+                          : activeSection === 'adapters'
+                            ? tr('Host adapters')
+                            : tr('Project information')}
             </p>
             <h2 class="m-0 mt-0.5 text-base font-semibold">
               {activeSection === 'general'
@@ -730,9 +745,11 @@
                     ? tr('Notifications')
                     : activeSection === 'voice'
                       ? tr('Voice')
-                      : activeSection === 'adapters'
-                        ? tr('Adapters')
-                        : tr('About')}
+                      : activeSection === 'shortcuts'
+                          ? tr('Shortcuts')
+                          : activeSection === 'adapters'
+                            ? tr('Adapters')
+                            : tr('About')}
             </h2>
           </div>
         </header>
@@ -1487,6 +1504,9 @@
             </section>
           </Tabs.Content>
 
+          <Tabs.Content value="shortcuts" class="m-0 space-y-8 p-6 outline-none">
+            <ShortcutSettings />
+          </Tabs.Content>
           <Tabs.Content value="adapters" class="m-0 space-y-8 p-6 outline-none">
             <section class="border-b pb-8">
               <div class="flex items-start gap-3">

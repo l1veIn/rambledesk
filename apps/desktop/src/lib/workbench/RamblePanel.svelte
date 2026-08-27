@@ -5,6 +5,7 @@
   import { Button } from '$lib/components/ui/button'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
+  import { shortcutSettings } from '$lib/shortcutSettings'
   import type { RamblePhase } from './types'
 
   export let rambleEngaged = false
@@ -57,7 +58,7 @@
       variant={rambleActive ? 'secondary' : 'default'}
       disabled={rambleBusy || readOnly}
       onclick={onToggle}
-      title={tr('Global shortcut Ctrl + Shift + R')}
+      title={tr('Global shortcut {shortcut}', { shortcut: $shortcutSettings.rambleToggle })}
     >
       {#if rambleActive}
         <Pause data-icon="inline-start" />

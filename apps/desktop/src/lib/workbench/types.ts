@@ -8,7 +8,15 @@ export type SavePhase = 'idle' | 'unsaved' | 'saving' | 'saved' | 'error'
 export type RamblePhase = 'idle' | 'starting' | 'active' | 'paused' | 'stopping' | 'error'
 export type VoicePhase = 'idle' | 'starting' | 'listening' | 'processing' | 'stopping' | 'error'
 export type SubmitStage = 'idle' | 'cooking' | 'publishing'
-export type SettingsSection = 'general' | 'notifications' | 'voice' | 'adapters' | 'about'
+export type SettingsSection =
+  | 'general'
+  | 'permissions'
+  | 'notifications'
+  | 'voice'
+  | 'post-processing'
+  | 'shortcuts'
+  | 'adapters'
+  | 'about'
 
 export type ResumePrompt = {
   request_id: string

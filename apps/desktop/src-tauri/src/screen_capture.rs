@@ -16,7 +16,6 @@ use tauri::{
     WindowEvent, ipc::Response, window::Color,
 };
 
-pub const SCREEN_CAPTURE_SHORTCUT: &str = "Ctrl+1";
 const MAIN_LABEL: &str = "main";
 const OVERLAY_LABEL: &str = "capture-overlay";
 const SCROLL_LABEL: &str = "capture-scroll";
