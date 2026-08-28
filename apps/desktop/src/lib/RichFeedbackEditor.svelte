@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Editor } from '@tiptap/core'
+  import { Editor, type JSONContent } from '@tiptap/core'
   import {
     Bold,
     Heading2,
@@ -9,29 +9,53 @@
     Redo2,
     Undo2,
   } from '@lucide/svelte'
+  import { EditorState } from '@tiptap/pm/state'
   import { onMount } from 'svelte'
 
   import { Button } from '$lib/components/ui/button'
-  import type { AttachmentView } from './feedback'
-  import { t } from './i18n'
-  import { locale } from './preferences'
+  import { actionBlockquoteNode } from './actionBlockquote'
   import {
     attachmentIdFromUrl,
     attachmentMarkdownUrl,
     isImageMediaType,
   } from './attachmentMarkdown'
+  import {
+    attachmentNodes,
+    clipboardNodes,
+    speechNodes,
+    type DraftOperation,
+  } from './draftOperations'
+  import type { AttachmentView } from './feedback'
+  import {
+    snapshotFeedbackDraftDocument,
+    snapshotFeedbackDraftMarkdown,
+    type FeedbackDraftSnapshot,
+  } from './feedbackDraftDocument'
   import { feedbackEditorExtensions } from './feedbackEditorExtensions'
+  import { t } from './i18n'
+  import { locale } from './preferences'
+  import {
+    CLEANUP_STATE_ATTR,
+    SPEECH_SEGMENT_ID_ATTR,
+    speechCleanupCandidates,
+    type SpeechCleanupSegment,
+  } from './speechBlockMetadata'
 
+  export let document: JSONContent | null = null
+  export let editorEpoch = 0
   export let markdown = ''
+  export let overlayMarkdown: string | null = null
   export let previews: Record<string, string> = {}
   export let disabled = false
   export let onOpenAttachment: (attachmentId: string) => void = () => {}
-  export let onChange: (markdown: string) => void = () => {}
+  export let onChange: (snapshot: FeedbackDraftSnapshot) => void = () => {}
 
   let editorHost: HTMLDivElement
   let editor: Editor | null = null
   let applyingExternalChange = false
   let editorMarkdown = ''
+  let loadedEpoch = -1
+  let loadedOverlay: string | null = null
   let insertionPosition = 0
   let openAttachmentHandler = (_attachmentId: string) => {}
   $: openAttachmentHandler = onOpenAttachment
@@ -40,8 +64,8 @@
     editor = new Editor({
       element: editorHost,
       extensions: feedbackEditorExtensions(),
-      content: markdown,
-      contentType: 'markdown',
+      content: document ?? markdown,
+      ...(document ? {} : { contentType: 'markdown' as const }),
       editable: !disabled,
       editorProps: {
         attributes: {
@@ -63,14 +87,14 @@
       },
       onCreate: () => {
         editorMarkdown = editor?.getMarkdown() ?? markdown
+        loadedEpoch = editorEpoch
+        loadedOverlay = overlayMarkdown
         insertionPosition = editor?.state.doc.content.size ?? 0
         hydrateAttachmentImages()
       },
       onUpdate: ({ editor: updatedEditor }) => {
         if (applyingExternalChange) return
-        const nextMarkdown = updatedEditor.getMarkdown()
-        editorMarkdown = nextMarkdown
-        onChange(nextMarkdown)
+        emitSnapshot(updatedEditor)
       },
       onSelectionUpdate: ({ editor: updatedEditor }) => {
         insertionPosition = updatedEditor.state.selection.from
@@ -89,10 +113,51 @@
     editor.view.dom.setAttribute('aria-label', t($locale, 'Markdown rich-text feedback body'))
     editor.view.dom.setAttribute('data-placeholder', t($locale, 'Record what you saw, what felt smooth, and where you paused.'))
   }
-  $: if (editor && markdown !== editorMarkdown) applyMarkdown(markdown)
+  $: if (editor && overlayMarkdown != null && overlayMarkdown !== loadedOverlay) {
+    applyMarkdown(overlayMarkdown)
+    loadedOverlay = overlayMarkdown
+  }
+  $: if (editor && overlayMarkdown == null && editorEpoch !== loadedEpoch) {
+    applyDocument(document ?? { type: 'doc', content: [{ type: 'paragraph' }] })
+    loadedEpoch = editorEpoch
+    loadedOverlay = null
+  }
   $: if (editor) {
     previews
     hydrateAttachmentImages()
+  }
+
+  function emitSnapshot(source: Editor) {
+    const snapshot = snapshotFeedbackDraftDocument(source.getJSON())
+    editorMarkdown = snapshot.bodyMarkdown
+    onChange(snapshot)
+  }
+
+  function resetHistory() {
+    if (!editor) return
+    editor.view.updateState(
+      EditorState.create({
+        schema: editor.state.schema,
+        doc: editor.state.doc,
+        plugins: editor.state.plugins,
+      }),
+    )
+  }
+
+  function applyDocument(nextDocument: JSONContent) {
+    if (!editor) return
+    applyingExternalChange = true
+    try {
+      editor.commands.setContent(nextDocument, { emitUpdate: false })
+      resetHistory()
+      editorMarkdown = editor.getMarkdown()
+      insertionPosition = Math.min(insertionPosition, editor.state.doc.content.size)
+      hydrateAttachmentImages()
+    } catch (cause) {
+      console.error('[richEditor] applyDocument failed', cause)
+    } finally {
+      applyingExternalChange = false
+    }
   }
 
   function applyMarkdown(nextMarkdown: string) {
@@ -142,8 +207,98 @@
 
   export function applyExternalMarkdown(nextMarkdown: string): boolean {
     if (!editor) return false
-    if (nextMarkdown === editorMarkdown) return true
+    const snapshot = snapshotFeedbackDraftMarkdown(nextMarkdown)
+    if (snapshot.bodyMarkdown === editorMarkdown) return true
     applyMarkdown(nextMarkdown)
+    onChange(snapshot)
+    return true
+  }
+
+  export function applyExternalDocument(nextDocument: JSONContent): boolean {
+    if (!editor) return false
+    applyDocument(nextDocument)
+    emitSnapshot(editor)
+    return true
+  }
+
+  export function applyDraftOperation(operation: DraftOperation): boolean {
+    if (!editor || disabled) return false
+    if (operation.kind === 'startActionGroup') {
+      const last = editor.state.doc.lastChild
+      if (last?.type.name === 'blockquote' && last.attrs.actionId === operation.action.actionId) {
+        return true
+      }
+      return editor.commands.insertContentAt(
+        editor.state.doc.content.size,
+        actionBlockquoteNode(operation.action),
+      )
+    }
+    const nodes =
+      operation.kind === 'appendSpeech'
+        ? speechNodes(operation.segmentId, operation.text)
+        : operation.kind === 'appendClipboardText'
+          ? clipboardNodes(operation.text, operation.label)
+          : attachmentNodes(
+              operation.attachment,
+              operation.label,
+              previews[operation.attachment.attachment_id],
+            )
+    if (operation.action) {
+      const last = editor.state.doc.lastChild
+      if (last?.type.name === 'blockquote' && last.attrs.actionId === operation.action.actionId) {
+        return editor.commands.insertContentAt(editor.state.doc.content.size - 1, nodes)
+      }
+      return editor.commands.insertContentAt(
+        editor.state.doc.content.size,
+        actionBlockquoteNode(operation.action, nodes),
+      )
+    }
+    return editor.commands.insertContentAt(editor.state.doc.content.size, nodes)
+  }
+
+  export function pendingSpeechSegments(): SpeechCleanupSegment[] {
+    if (!editor) return []
+    return speechCleanupCandidates(editor.getJSON())
+  }
+
+  export function replaceSpeechSegments(
+    replacements: Array<{ segmentId: string; originalText: string; nextText: string }>,
+  ): boolean {
+    if (!editor || replacements.length === 0) return false
+    const wanted = new Map(replacements.map((item) => [item.segmentId, item]))
+    const targets: Array<{
+      from: number
+      to: number
+      pos: number
+      attrs: Record<string, unknown>
+      nextText: string
+    }> = []
+    editor.state.doc.descendants((node, position) => {
+      if (node.type.name !== 'paragraph') return
+      const segmentId = node.attrs[SPEECH_SEGMENT_ID_ATTR]
+      const replacement = typeof segmentId === 'string' ? wanted.get(segmentId) : undefined
+      if (!replacement) return
+      if (node.textContent.trim() !== replacement.originalText.trim()) return
+      targets.push({
+        from: position + 1,
+        to: position + node.nodeSize - 1,
+        pos: position,
+        attrs: { ...node.attrs, [CLEANUP_STATE_ATTR]: 'cleaned' },
+        nextText: replacement.nextText,
+      })
+    })
+    if (targets.length === 0) return false
+    let transaction = editor.state.tr
+    for (const target of targets.reverse()) {
+      transaction = transaction.replaceWith(
+        target.from,
+        target.to,
+        editor.schema.text(target.nextText),
+      )
+      transaction = transaction.setNodeMarkup(target.pos, undefined, target.attrs)
+    }
+    editor.view.dispatch(transaction)
+    emitSnapshot(editor)
     return true
   }
 
@@ -424,6 +579,22 @@
     border-left: 3px solid var(--primary);
     color: var(--muted-foreground);
     background: color-mix(in oklab, var(--muted) 65%, transparent);
+  }
+
+  .editor-host :global(.feedback-prose blockquote[data-action-id]) {
+    border-left-color: var(--foreground);
+    color: var(--foreground);
+    background: color-mix(in oklab, var(--muted) 40%, transparent);
+  }
+
+  .editor-host :global(.feedback-prose p[data-cleanup-state='pending']) {
+    box-shadow: inset 3px 0 0 color-mix(in oklab, var(--primary) 55%, transparent);
+    padding-left: 10px;
+  }
+
+  .editor-host :global(.feedback-prose p[data-cleanup-state='cleaned']) {
+    box-shadow: inset 3px 0 0 color-mix(in oklab, var(--muted-foreground) 35%, transparent);
+    padding-left: 10px;
   }
 
   .editor-host :global(.feedback-prose img) {

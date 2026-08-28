@@ -3,7 +3,7 @@ import { listen } from '@tauri-apps/api/event'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { tick } from 'svelte'
 
-import { attachmentMarkdown, isImageMediaType } from '../attachmentMarkdown'
+import { isImageMediaType } from '../attachmentMarkdown'
 import type {
   AddAttachmentInput,
   AttachmentView,
@@ -40,7 +40,8 @@ type AttachmentControllerContext = {
   setDragActive: (active: boolean) => void
   saveDraftNow: () => Promise<boolean>
   waitForRambleMarkdown: () => Promise<void>
-  appendRambleMarkdown: (requestId: string, markdown: string) => Promise<void>
+  routeDraftOperation: (requestId: string, operation: import('../draftOperations').DraftOperation) => Promise<void>
+  activeActionFor: (requestId: string) => import('../draftOperations').ActiveAction
   applyWorkspaceMutation: (next: FeedbackWorkspaceView) => void
 }
 
@@ -189,16 +190,15 @@ export function createAttachmentController(context: AttachmentControllerContext)
         if (visibleTarget) context.applyWorkspaceMutation(next)
       }
       const added = next.attachments.filter((item) => !existingIds.has(item.attachment_id))
-      if (visibleTarget && context.getWorkspace()?.request.request_id === requestId) {
-        await refreshPreviews(next)
-        await tick()
-        context.getEditor()?.insertAttachments(added)
-        await context.saveDraftNow()
-      } else {
-        await context.appendRambleMarkdown(
-          requestId,
-          added.map((attachment) => attachmentMarkdown(attachment)).join('\n\n'),
-        )
+      await refreshPreviews(next)
+      await tick()
+      for (const attachment of added) {
+        await context.routeDraftOperation(requestId, {
+          kind: 'appendAttachment',
+          attachment,
+          label: attachment.file_name,
+          action: context.activeActionFor(requestId),
+        })
       }
     } catch (cause) {
       context.setMessage(context.messageFrom(cause), 'error')
@@ -300,20 +300,17 @@ export function createAttachmentController(context: AttachmentControllerContext)
         context.applyWorkspaceMutation(next)
         await refreshPreviews(next)
         await tick()
-        if (!context.getEditor()?.insertAttachments(added)) {
-          throw new Error(context.tr('The captured attachment was saved, but the editor could not insert it at the current cursor.'))
-        }
-        await context.saveDraftNow()
-      } else {
-        const attachment = added[0]
-        if (!attachment) {
-          throw new Error(context.tr('The captured attachment was saved, but the editor could not insert it at the current cursor.'))
-        }
-        await context.appendRambleMarkdown(
-          requestId,
-          `![${attachment.file_name}](attachment://${attachment.attachment_id})`,
-        )
       }
+      const attachment = added[0]
+      if (!attachment) {
+        throw new Error(context.tr('The captured attachment was saved, but the editor could not insert it at the current cursor.'))
+      }
+      await context.routeDraftOperation(requestId, {
+        kind: 'appendAttachment',
+        attachment,
+        label: attachment.file_name,
+        action: context.activeActionFor(requestId),
+      })
       context.setMessage(context.tr('Capture inserted at the current document position'), 'success')
     } catch (cause) {
       context.setMessage(

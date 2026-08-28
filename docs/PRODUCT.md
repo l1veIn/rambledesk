@@ -40,6 +40,8 @@ MVP 不做：
 | 适配器 | 宿主接入 RambleDesk 的完整流程。 |
 | 工作台 | 人类处理反馈请求的桌面 UI。 |
 | Ramble | 工作台中的自由反馈采集模式，包含语音、文字和截图。 |
+| Action Group | 反馈草稿中用 Blockquote 表达的 `@Action` 归属。 |
+| Tidy | 当前 Editor 中手动触发的 ASR 段落整理，使用 Cooking 模型配置，但不是 Cooking。 |
 | Cooking | 提交前可选的大模型编辑步骤；把 Uncooked Feedback 整理为 Cooked Feedback，同时保留原稿。 |
 
 ## MVP 范围

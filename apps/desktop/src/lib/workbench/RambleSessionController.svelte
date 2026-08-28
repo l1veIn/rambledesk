@@ -8,7 +8,7 @@
     eventBelongsToRamble,
     type ClipboardCaptureEvent,
   } from '../clipboardCapture'
-  import { attachmentMarkdownUrl } from '../attachmentMarkdown'
+  import type { ActiveAction, DraftOperation } from '../draftOperations'
   import type { FeedbackWorkspaceView } from '../feedback'
   import { t } from '../i18n'
   import {
@@ -34,12 +34,11 @@
     type SpeechEvent,
     type VoiceRambleSessionView,
   } from '../speech'
-  import type { FeedbackEditorHandle, RamblePhase, VoicePhase } from './types'
+  import type { RamblePhase, VoicePhase } from './types'
 
   export let isTauri = false
   export let workspace: FeedbackWorkspaceView | null = null
   export let interactionLocked = false
-  export let editor: FeedbackEditorHandle | undefined
   export let attachmentBusy = false
   export let screenCaptureBusy = false
   export let attachmentMessage = ''
@@ -60,7 +59,8 @@
   export let onRefreshAttachmentPreviews: (next: FeedbackWorkspaceView) => Promise<void> = async () => {}
   export let onStartScreenCapture: () => Promise<void> = async () => {}
   export let onImportAttachmentPaths: (paths: string[]) => Promise<void> = async () => {}
-  export let onAppendRambleMarkdown: (requestId: string, markdown: string) => Promise<void> = async () => {}
+  export let onRouteDraftOperation: (requestId: string, operation: DraftOperation) => Promise<void> = async () => {}
+  export let getActiveAction: (requestId: string) => ActiveAction = () => null
 
   let voiceRequestId = ''
   let voiceSessionId = ''
@@ -401,14 +401,14 @@
     }
     if (event.type === 'text') {
       const label = clipboardCaptureLabel(event.captured_at_ms, event.truncated, $locale)
-      if (workspace?.request.request_id === currentRequestId) {
-        editor?.appendClipboardCapture(event.text, label)
-      } else {
-        const quoted = event.text.split(/\r?\n/).map((line) => `> ${line}`).join('\n')
-        void onAppendRambleMarkdown(currentRequestId, `> **${label}**\n>\n${quoted}`).catch(
-          (cause) => onPageError(t($locale, 'Failed to write Ramble content: {error}', { error: messageFrom(cause) })),
-        )
-      }
+      void onRouteDraftOperation(currentRequestId, {
+        kind: 'appendClipboardText',
+        text: event.text,
+        label,
+        action: getActiveAction(currentRequestId),
+      }).catch(
+        (cause) => onPageError(t($locale, 'Failed to write Ramble content: {error}', { error: messageFrom(cause) })),
+      )
       clipboardCaptureCount += 1
       rambleMessage = t($locale, 'Ramble active · {count} clipboard items captured', { count: clipboardCaptureCount })
       return
@@ -458,16 +458,13 @@
         onApplyWorkspaceMutation(next)
         await onRefreshAttachmentPreviews(next)
         await tick()
-        if (!editor?.appendCapturedAttachment(attachment, label)) {
-          throw new Error(t($locale, 'The image attachment was saved, but could not be inserted into the document flow.'))
-        }
-        await onSaveDraftNow()
-      } else {
-        await onAppendRambleMarkdown(
-          requestId,
-          `> **${label}**\n\n![${attachment.file_name}](${attachmentMarkdownUrl(attachment.attachment_id)})`,
-        )
       }
+      await onRouteDraftOperation(requestId, {
+        kind: 'appendAttachment',
+        attachment,
+        label,
+        action: getActiveAction(requestId),
+      })
       clipboardCaptureCount += 1
       rambleMessage = t($locale, 'Ramble active · {count} clipboard items captured', { count: clipboardCaptureCount })
     } finally {
@@ -513,12 +510,14 @@
       case 'stable': {
         const transcript = stableTranscript(event)
         if (transcript && !interactionLocked) {
-          if (workspace?.request.request_id === voiceRequestId) editor?.appendTranscript(transcript)
-          else {
-            void onAppendRambleMarkdown(voiceRequestId, transcript).catch(
-              (cause) => onPageError(t($locale, 'Failed to write Ramble content: {error}', { error: messageFrom(cause) })),
-            )
-          }
+          void onRouteDraftOperation(voiceRequestId, {
+            kind: 'appendSpeech',
+            segmentId: crypto.randomUUID(),
+            text: transcript,
+            action: getActiveAction(voiceRequestId),
+          }).catch(
+            (cause) => onPageError(t($locale, 'Failed to write Ramble content: {error}', { error: messageFrom(cause) })),
+          )
         }
         voicePartial = ''
         voiceChunkIndex = event.chunk_index + 1

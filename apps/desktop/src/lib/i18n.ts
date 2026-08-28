@@ -424,6 +424,13 @@ const chinese: Record<string, string> = {
     '检测到 {count} 个 RambleDesk Pi package 安装记录；卸载会移除全部记录。',
   'The first install can take about ten seconds; please wait.': '首次安装可能耗时十几秒，请稍候。',
   'Preview cooking result': '先看 Cook 结果',
+  'Tidy now': '立即整理',
+  'Tidying…': '正在整理…',
+  'Tidy uses the Cooking model. Configure it in Settings first.': '整理使用 Cooking 模型，请先在设置中配置。',
+  'Tidy did not write back because the model output did not match the original segments.':
+    '模型输出与原始片段不匹配，未写入整理结果。',
+  '{label} needs an API key in Cooking settings.': '请先在 Cooking 设置中填写 {label} 所需的 API key。',
+  '{label} needs a model name in Cooking settings.': '请先在 Cooking 设置中填写 {label} 所需的模型名称。',
   'Cooking prompt': 'Cooking 提示词',
   'This prompt is sent with every cook, along with the request title, what happened, and the action list. Keep attachment:// image references if you edit it.':
     '每次整理都会发送这段提示词，以及请求标题、发生了什么和验收动作。如果自行修改，请保留 attachment:// 图片引用。',

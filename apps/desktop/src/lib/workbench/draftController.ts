@@ -5,6 +5,7 @@
 import { invoke } from '@tauri-apps/api/core'
 
 import type { DraftView, FeedbackWorkspaceView, SaveDraftInput } from '../feedback'
+import type { FeedbackDraftSnapshot } from '../feedbackDraftDocument'
 import type { SavePhase } from './types'
 
 export type DraftControllerContext = {
@@ -13,10 +14,10 @@ export type DraftControllerContext = {
   isInteractionLocked: () => boolean
   isWorkspaceTerminal: () => boolean
   getWorkspace: () => FeedbackWorkspaceView | null
-  getBody: () => string
-  setBody: (body: string) => void
-  getSavedBody: () => string
-  setSavedBody: (body: string) => void
+  getSnapshot: () => FeedbackDraftSnapshot
+  setSnapshot: (snapshot: FeedbackDraftSnapshot) => void
+  getSavedSnapshot: () => FeedbackDraftSnapshot
+  setSavedSnapshot: (snapshot: FeedbackDraftSnapshot) => void
   getSavedRevision: () => number
   setSavedRevision: (revision: number) => void
   getPhase: () => SavePhase
@@ -32,7 +33,7 @@ export function createDraftController(context: DraftControllerContext) {
   let activeSave: Promise<boolean> | null = null
 
   function dirty(): boolean {
-    return context.getBody() !== context.getSavedBody()
+    return context.getSnapshot().documentJson !== context.getSavedSnapshot().documentJson
   }
 
   function cancelPendingSave() {
@@ -47,14 +48,16 @@ export function createDraftController(context: DraftControllerContext) {
     saveTimer = setTimeout(() => void saveDraftNow(), delayMs)
   }
 
-  function updateDraft(value: string) {
+  function updateDraft(snapshot: FeedbackDraftSnapshot) {
     if (
       context.isInteractionLocked() ||
       context.getWorkspace() === null ||
       context.isWorkspaceTerminal()
     ) return
-    context.setBody(value)
-    context.setPhase(context.getBody() === context.getSavedBody() ? 'saved' : 'unsaved')
+    context.setSnapshot(snapshot)
+    context.setPhase(
+      snapshot.documentJson === context.getSavedSnapshot().documentJson ? 'saved' : 'unsaved',
+    )
     context.setMessage('')
     scheduleSave()
   }
@@ -69,7 +72,7 @@ export function createDraftController(context: DraftControllerContext) {
     }
 
     const requestId = workspace.request.request_id
-    const bodyToSave = context.getBody()
+    const snapshotToSave = context.getSnapshot()
     const revisionToSave = context.getSavedRevision()
     context.setPhase('saving')
     context.setMessage('')
@@ -78,21 +81,25 @@ export function createDraftController(context: DraftControllerContext) {
       try {
         const input: SaveDraftInput = {
           request_id: requestId,
-          body_markdown: bodyToSave,
+          document_json: snapshotToSave.documentJson,
+          body_markdown: snapshotToSave.bodyMarkdown,
           expected_revision: revisionToSave,
         }
         const saved: DraftView = context.isPreviewMode()
           ? {
-              body_markdown: bodyToSave,
+              document_json: snapshotToSave.documentJson,
+              body_markdown: snapshotToSave.bodyMarkdown,
               saved_revision: revisionToSave + 1,
               updated_at: new Date().toISOString(),
             }
           : await invoke<DraftView>('save_feedback_draft', { input })
         if (context.getWorkspace()?.request.request_id === requestId) {
-          context.setSavedBody(bodyToSave)
+          context.setSavedSnapshot(snapshotToSave)
           context.setSavedRevision(saved.saved_revision)
           context.setWorkspaceDraft(saved)
-          context.setPhase(context.getBody() === bodyToSave ? 'saved' : 'unsaved')
+          context.setPhase(
+            context.getSnapshot().documentJson === snapshotToSave.documentJson ? 'saved' : 'unsaved',
+          )
         }
         return true
       } catch (cause) {

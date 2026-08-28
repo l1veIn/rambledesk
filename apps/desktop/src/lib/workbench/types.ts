@@ -1,4 +1,8 @@
+import type { JSONContent } from '@tiptap/core'
+
+import type { DraftOperation } from '../draftOperations'
 import type { AttachmentView } from '../feedback'
+import type { SpeechCleanupSegment } from '../speechBlockMetadata'
 
 export type SavePhase = 'idle' | 'unsaved' | 'saving' | 'saved' | 'error'
 export type RamblePhase = 'idle' | 'starting' | 'active' | 'paused' | 'stopping' | 'error'
@@ -31,6 +35,12 @@ export type FeedbackEditorHandle = {
   appendCapturedAttachment(attachment: AttachmentView, label: string): boolean
   removeAttachmentReference(attachmentId: string): void
   applyExternalMarkdown(markdown: string): boolean
+  applyExternalDocument(document: JSONContent): boolean
+  applyDraftOperation(operation: DraftOperation): boolean
+  pendingSpeechSegments(): SpeechCleanupSegment[]
+  replaceSpeechSegments(
+    replacements: Array<{ segmentId: string; originalText: string; nextText: string }>,
+  ): boolean
 }
 
 export type RambleSessionControllerHandle = {

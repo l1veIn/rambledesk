@@ -22,6 +22,8 @@
   import { Sonner, toast } from './lib/components/ui/sonner'
   import ResumePromptDialog from './lib/workbench/ResumePromptDialog.svelte'
   import WorkspacePanel from './lib/workbench/WorkspacePanel.svelte'
+  import type { JSONContent } from '@tiptap/core'
+
   import type {
     ApproveFeedbackInput,
     CancelFeedbackInput,
@@ -31,6 +33,17 @@
     SaveDraftInput,
     SubmitFeedbackInput,
   } from './lib/feedback'
+  import {
+    applyDraftOperation,
+    type ActiveAction,
+    type DraftOperation,
+  } from './lib/draftOperations'
+  import {
+    restoreFeedbackDraftDocument,
+    snapshotFeedbackDraftDocument,
+    snapshotFeedbackDraftMarkdown,
+    type FeedbackDraftSnapshot,
+  } from './lib/feedbackDraftDocument'
   import {
     notificationLabel,
     notificationStateForPermission,
@@ -50,7 +63,6 @@
     type PublishedFeedbackView,
   } from './lib/publishedFeedback'
   import {
-    appendMarkdownBlock,
     formatTime,
     messageFrom,
     operatorFeedbackBody,
@@ -111,6 +123,10 @@
   let publishedFeedback: PublishedFeedbackView | null = null
   let draftBody = ''
   let savedBody = ''
+  let draftDocumentJson = ''
+  let savedDocumentJson = ''
+  let editorDocument: JSONContent | null = null
+  let editorEpoch = 0
   let savedRevision = 0
   let savePhase: SavePhase = 'idle'
   let saveMessage = ''
@@ -180,7 +196,8 @@
   let rambleRequestId = ''
   let rambleRequestTitle = ''
   let rambleMessage = ''
-  let rambleMarkdownQueue: Promise<void> = Promise.resolve()
+  let rambleDocumentQueue: Promise<void> = Promise.resolve()
+  let activeActionByRequest = new Map<string, NonNullable<ActiveAction>>()
   let inboxTimer: ReturnType<typeof setInterval> | undefined
 
   function tr(source: string, values: Record<string, string | number> = {}) {
@@ -194,13 +211,12 @@
     isWorkspaceTerminal: () =>
       workspace?.request.status === 'completed' || workspace?.request.status === 'cancelled',
     getWorkspace: () => workspace,
-    getBody: () => draftBody,
-    setBody: (body) => {
-      draftBody = body
-    },
-    getSavedBody: () => savedBody,
-    setSavedBody: (body) => {
-      savedBody = body
+    getSnapshot: () => currentDraftSnapshot(),
+    setSnapshot: (snapshot) => applyDraftSnapshot(snapshot),
+    getSavedSnapshot: () => savedDraftSnapshot(),
+    setSavedSnapshot: (snapshot) => {
+      savedDocumentJson = snapshot.documentJson
+      savedBody = snapshot.bodyMarkdown
     },
     getSavedRevision: () => savedRevision,
     setSavedRevision: (revision) => {
@@ -241,8 +257,9 @@
     setPreviews: (previews) => (attachmentPreviews = previews),
     setDragActive: (active) => (dragActive = active),
     saveDraftNow,
-    waitForRambleMarkdown: () => rambleMarkdownQueue.catch(() => {}),
-    appendRambleMarkdown,
+    waitForRambleMarkdown: () => rambleDocumentQueue.catch(() => {}),
+    routeDraftOperation,
+    activeActionFor,
     applyWorkspaceMutation,
   })
 
@@ -262,11 +279,38 @@
   })
   const resolveHostProfile = navigation.resolveHostProfile
 
+  function currentDraftSnapshot(): FeedbackDraftSnapshot {
+    return { documentJson: draftDocumentJson, bodyMarkdown: draftBody }
+  }
+
+  function savedDraftSnapshot(): FeedbackDraftSnapshot {
+    return { documentJson: savedDocumentJson, bodyMarkdown: savedBody }
+  }
+
+  function applyDraftSnapshot(snapshot: FeedbackDraftSnapshot) {
+    draftDocumentJson = snapshot.documentJson
+    draftBody = snapshot.bodyMarkdown
+  }
+
+  function adoptDraft(draft: DraftView, options: { loadEditor?: boolean } = {}) {
+    const restored = restoreFeedbackDraftDocument(draft.document_json, draft.body_markdown)
+    const snapshot = snapshotFeedbackDraftDocument(restored)
+    applyDraftSnapshot(snapshot)
+    savedDocumentJson = snapshot.documentJson
+    savedBody = snapshot.bodyMarkdown
+    savedRevision = draft.saved_revision
+    if (options.loadEditor !== false) {
+      editorDocument = restored
+      editorEpoch += 1
+    }
+    return snapshot
+  }
+
   $: dirty =
     workspace !== null &&
     workspace.request.status !== 'completed' &&
     workspace.request.status !== 'cancelled' &&
-    draftBody !== savedBody
+    draftDocumentJson !== savedDocumentJson
   $: {
     if (!pageError) deliveredPageError = ''
     else if (pageError !== deliveredPageError) {
@@ -418,9 +462,7 @@
       startWorkbench()
       if (previewMode) {
         workspace = previewFixtures.workspace
-        draftBody = previewFixtures.workspace.draft.body_markdown
-        savedBody = draftBody
-        savedRevision = previewFixtures.workspace.draft.saved_revision
+        adoptDraft(previewFixtures.workspace.draft)
         savePhase = 'saved'
         if (new URLSearchParams(window.location.search).get('dialog') === 'resume') {
           resumePrompt = previewFixtures.resumePrompt
@@ -555,7 +597,7 @@
   async function openRequest(requestId: string, saveCurrent = true) {
     if (interactionLocked || workspace?.request.request_id === requestId) return
     if (saveCurrent && !(await saveDraftNow())) return
-    if (requestId === rambleRequestId) await rambleMarkdownQueue.catch(() => {})
+    await rambleDocumentQueue.catch(() => {})
 
     loadingWorkspace = true
     pageError = ''
@@ -571,9 +613,7 @@
       workspace = next
       cookedPreview = null
       cookedPreviewOriginal = ''
-      draftBody = next.draft.body_markdown
-      savedBody = next.draft.body_markdown
-      savedRevision = next.draft.saved_revision
+      adoptDraft(next.draft)
       savePhase = next.draft.updated_at ? 'saved' : 'idle'
       saveMessage = ''
       attachmentMessage = ''
@@ -597,16 +637,26 @@
     }
   }
 
-  async function appendRambleMarkdown(requestId: string, markdown: string): Promise<void> {
-    if (interactionLocked) return
-    const block = markdown.trim()
-    if (!requestId || !block) return
+  function activeActionFor(requestId: string): ActiveAction {
+    return activeActionByRequest.get(requestId) ?? null
+  }
 
-    const operation = rambleMarkdownQueue.then(async () => {
+  async function routeDraftOperation(requestId: string, operation: DraftOperation): Promise<void> {
+    if (interactionLocked || !requestId) return
+    const run = rambleDocumentQueue.then(async () => {
       if (workspace?.request.request_id === requestId) {
-        const nextBody = appendMarkdownBlock(draftBody, block)
-        updateDraft(nextBody)
-        if (!(await saveDraftNow())) throw new Error(saveMessage || tr('The current draft could not be saved.'))
+        if (!workspacePanel?.applyDraftOperation(operation)) {
+          const nextDocument = applyDraftOperation(
+            restoreFeedbackDraftDocument(draftDocumentJson, draftBody),
+            operation,
+          )
+          const snapshot = snapshotFeedbackDraftDocument(nextDocument)
+          updateDraft(snapshot)
+          workspacePanel?.applyExternalDocument(nextDocument)
+        }
+        if (!(await saveDraftNow())) {
+          throw new Error(saveMessage || tr('The current draft could not be saved.'))
+        }
         return
       }
 
@@ -614,17 +664,33 @@
         ? previewWorkspaceFor(requestId)
         : await invoke<FeedbackWorkspaceView>('get_feedback_workspace', { requestId })
       if (!target) throw new Error(tr('This feedback request could not be found.'))
+      const snapshot = snapshotFeedbackDraftDocument(
+        applyDraftOperation(
+          restoreFeedbackDraftDocument(target.draft.document_json, target.draft.body_markdown),
+          operation,
+        ),
+      )
       const input: SaveDraftInput = {
         request_id: requestId,
-        body_markdown: appendMarkdownBlock(target.draft.body_markdown, block),
+        document_json: snapshot.documentJson,
+        body_markdown: snapshot.bodyMarkdown,
         expected_revision: target.draft.saved_revision,
       }
       if (!previewMode) await invoke<DraftView>('save_feedback_draft', { input })
     })
-    rambleMarkdownQueue = operation.catch((cause) => {
+    rambleDocumentQueue = run.catch((cause) => {
       pageError = tr('Failed to write Ramble content: {error}', { error: messageFrom(cause) })
     })
-    await operation
+    await run
+  }
+
+  function selectAction(actionId: string, actionIndex: number, title: string) {
+    const requestId = workspace?.request.request_id
+    if (!requestId) return
+    const action = { actionId, actionIndex, title }
+    activeActionByRequest.set(requestId, action)
+    activeActionByRequest = new Map(activeActionByRequest)
+    void routeDraftOperation(requestId, { kind: 'startActionGroup', action })
   }
 
   async function reloadWorkspace() {
@@ -656,15 +722,19 @@
   }
 
   function applyWorkspaceMutation(next: FeedbackWorkspaceView) {
-    const localBody = draftBody
+    const localSnapshot = currentDraftSnapshot()
     workspace = next
-    savedBody = next.draft.body_markdown
     savedRevision = next.draft.saved_revision
-    if (localBody === next.draft.body_markdown) {
-      draftBody = next.draft.body_markdown
+    const remote = snapshotFeedbackDraftDocument(
+      restoreFeedbackDraftDocument(next.draft.document_json, next.draft.body_markdown),
+    )
+    savedDocumentJson = remote.documentJson
+    savedBody = remote.bodyMarkdown
+    if (localSnapshot.documentJson === remote.documentJson) {
+      applyDraftSnapshot(remote)
       savePhase = 'saved'
     } else {
-      draftBody = localBody
+      applyDraftSnapshot(localSnapshot)
       savePhase = 'unsaved'
       draftController.scheduleSave()
     }
@@ -698,7 +768,7 @@
       if (rambleCanExit) await exitRamble()
     },
     setDraftBody: (markdown) => {
-      draftBody = markdown
+      applyDraftSnapshot(snapshotFeedbackDraftMarkdown(markdown))
     },
     setSavePhase: (phase) => {
       savePhase = phase
@@ -870,7 +940,6 @@
     bind:this={rambleController}
     {isTauri}
     {workspace}
-    editor={workspacePanel}
     bind:attachmentBusy
     {screenCaptureBusy}
     bind:attachmentMessage
@@ -892,7 +961,8 @@
     onRefreshAttachmentPreviews={attachmentController.refreshPreviews}
     onStartScreenCapture={attachmentController.startScreenCapture}
     onImportAttachmentPaths={attachmentController.importAttachmentPaths}
-    onAppendRambleMarkdown={appendRambleMarkdown}
+    onRouteDraftOperation={routeDraftOperation}
+    getActiveAction={activeActionFor}
   />
 
   <AppTitlebar
@@ -977,6 +1047,18 @@
           {workspace}
           {feedbackResult}
           {draftBody}
+          {editorDocument}
+          {editorEpoch}
+          cookingConfig={{
+            provider: $cookingProvider,
+            apiKey: $cookingApiKey,
+            baseUrl: $cookingBaseUrl,
+            model: $cookingModel,
+            reasoningEffort: $cookingReasoningEffort,
+            locale: $locale,
+            systemPrompt: $cookingSystemPrompt,
+          }}
+          activeActionId={workspace ? activeActionFor(workspace.request.request_id)?.actionId ?? null : null}
           {savedRevision}
           {savePhase}
           {attachmentPreviews}
@@ -1016,6 +1098,8 @@
           formatTime={formatTimeLocal}
           onReload={() => void reloadWorkspace()}
           onDraftChange={updateDraft}
+          onTidyError={(message) => (pageError = message)}
+          onSelectAction={selectAction}
           onToggleRamble={() => void toggleRamble()}
           onExitRamble={() => void exitRamble()}
           onOpenVoiceSettings={() => void openSettings('voice')}

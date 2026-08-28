@@ -37,6 +37,12 @@
 
 `apps/desktop` 是装配根：它装配 storage、core application、本地服务、host knowledge、desktop-only capabilities。CLI 和测试可以复用同一套 crate，但不能成为第二套业务实现。
 
+## Feedback Draft 所有权
+
+工作台最多只有一个可编辑 `RichFeedbackEditor`。当前 request 通过 Editor transaction 写入；后台 Active Ramble 通过 TipTap JSON transformation 写入。数据库以版本化 `document_json` 为真源，保存时同时生成 `body_markdown`。详见 [ADR 004](adr/004-single-editor-structured-draft.md)。
+
+禁止 per-request Editor、hidden Editor、session 持有 editor handle，以及自动 Tidy。
+
 ## Package 边界
 
 ```text

@@ -39,38 +39,65 @@ export type CookFeedbackInput = {
   uncookedMarkdown: string
 }
 
-export async function cookFeedback(
-  input: CookFeedbackInput,
-  config: CookingConfig,
-): Promise<{ markdown: string; model: string }> {
-  const apiKey = config.apiKey.trim()
-  const modelId = config.model.trim()
-  if (!apiKey) throw new Error(t(config.locale, 'Cooking is enabled, but no API key has been configured.'))
-  if (!modelId) throw new Error(t(config.locale, 'Cooking is enabled, but no model name has been configured.'))
+export type ModelTextRequest = {
+  config: CookingConfig
+  system: string
+  prompt: string
+  label?: string
+}
 
+export type ModelTextGenerator = (request: ModelTextRequest) => Promise<{ text: string; model: string }>
+
+export function assertLlmReady(config: CookingConfig, label: string) {
+  if (!config.apiKey.trim()) {
+    throw new Error(t(config.locale, '{label} needs an API key in Cooking settings.', { label }))
+  }
+  if (!config.model.trim()) {
+    throw new Error(t(config.locale, '{label} needs a model name in Cooking settings.', { label }))
+  }
+}
+
+export async function generateModelText(request: ModelTextRequest): Promise<{ text: string; model: string }> {
+  assertLlmReady(request.config, request.label ?? 'Cooking')
+  const modelId = request.config.model.trim()
   const provider = createOpenAI({
-    apiKey,
-    baseURL: normalizedBaseUrl(config.provider, config.baseUrl),
+    apiKey: request.config.apiKey.trim(),
+    baseURL: normalizedBaseUrl(request.config.provider, request.config.baseUrl),
     fetch: '__TAURI_INTERNALS__' in window ? tauriFetch : globalThis.fetch,
   })
   const result = await generateText({
     model: provider.chat(modelId),
     temperature: 0.2,
     providerOptions: {
-      openai: { reasoningEffort: config.reasoningEffort },
+      openai: { reasoningEffort: request.config.reasoningEffort },
     },
+    system: request.system,
+    prompt: request.prompt,
+  })
+  return {
+    text: result.text.trim(),
+    model: `${request.config.provider}/${modelId}`,
+  }
+}
+
+export async function cookFeedback(
+  input: CookFeedbackInput,
+  config: CookingConfig,
+): Promise<{ markdown: string; model: string }> {
+  const result = await generateModelText({
+    config,
     system: resolveCookingSystemPrompt(config.systemPrompt),
     prompt: `# 请求标题\n${input.title}\n\n# 任务背景\n${input.whatHappened}\n\n# 验收动作\n${input.actions
       .map((action) => `- ${action.id}: ${action.instruction}`)
       .join('\n')}\n\n# Uncooked Operator Feedback\n\n${input.uncookedMarkdown}`,
+    label: 'Cooking',
   })
-  const markdown = result.text.trim()
-  if (!markdown) {
+  if (!result.text) {
     throw new Error(t(config.locale, 'The Cooking model returned an empty response. Check the model configuration and try again.'))
   }
   return {
-    markdown,
-    model: `${config.provider}/${modelId}`,
+    markdown: result.text,
+    model: result.model,
   }
 }
 

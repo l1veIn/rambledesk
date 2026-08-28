@@ -3,11 +3,17 @@
   import { Inbox } from '@lucide/svelte'
   import { Pane, PaneGroup, PaneResizer } from 'paneforge'
   import { Skeleton } from '$lib/components/ui/skeleton'
+  import type { JSONContent } from '@tiptap/core'
+
   import type {
     AttachmentView,
     FeedbackResultView,
     FeedbackWorkspaceView,
   } from '$lib/feedback'
+  import type { CookingConfig } from '$lib/cooking'
+  import type { DraftOperation } from '$lib/draftOperations'
+  import type { FeedbackDraftSnapshot } from '$lib/feedbackDraftDocument'
+  import type { SpeechCleanupSegment } from '$lib/speechBlockMetadata'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
   import { savePaneLayout, savedPaneLayout } from '$lib/uiPreferences'
@@ -30,6 +36,8 @@
   export let feedbackResult: FeedbackResultView | null = null
   export let taskBriefOpen = true
   export let draftBody = ''
+  export let editorDocument: JSONContent | null = null
+  export let editorEpoch = 0
   export let savedRevision = 0
   export let savePhase: SavePhase = 'idle'
   export let attachmentPreviews: Record<string, string> = {}
@@ -52,6 +60,8 @@
   export let cookingEnabled = false
   export let cookedDraftReady = false
   export let cookedPreviewModel = ''
+  export let cookingConfig: CookingConfig | null = null
+  export let activeActionId: string | null = null
   export let submitting = false
   export let submitStage: SubmitStage = 'idle'
   export let publishedFeedback: { markdown: string; uncooked_markdown?: string } | null = null
@@ -62,7 +72,9 @@
   export let resolveHostProfile: (hostId: string) => HostProfile
   export let formatTime: (value: string | null | undefined) => string
   export let onReload: () => void = () => {}
-  export let onDraftChange: (markdown: string) => void = () => {}
+  export let onDraftChange: (snapshot: FeedbackDraftSnapshot) => void = () => {}
+  export let onTidyError: (message: string) => void = () => {}
+  export let onSelectAction: (actionId: string, actionIndex: number, title: string) => void = () => {}
   export let onCookPreview: () => void = () => {}
   export let onRestoreOriginal: () => void = () => {}
   export let onToggleRamble: () => void = () => {}
@@ -147,6 +159,24 @@
     return feedbackEditor?.applyExternalMarkdown(markdown) ?? false
   }
 
+  export function applyExternalDocument(document: JSONContent): boolean {
+    return feedbackEditor?.applyExternalDocument(document) ?? false
+  }
+
+  export function applyDraftOperation(operation: DraftOperation): boolean {
+    return feedbackEditor?.applyDraftOperation(operation) ?? false
+  }
+
+  export function pendingSpeechSegments(): SpeechCleanupSegment[] {
+    return feedbackEditor?.pendingSpeechSegments() ?? []
+  }
+
+  export function replaceSpeechSegments(
+    replacements: Array<{ segmentId: string; originalText: string; nextText: string }>,
+  ): boolean {
+    return feedbackEditor?.replaceSpeechSegments(replacements) ?? false
+  }
+
   export function appendTranscript(text: string) {
     feedbackEditor?.appendTranscript(text)
   }
@@ -217,7 +247,9 @@
             <TaskBriefPanel
               bind:open={taskBriefOpen}
               {workspace}
+              {activeActionId}
               pulseNonce={briefPulseNonce}
+              onSelectAction={onSelectAction}
               onOpenPreview={(origin) => {
                 taskBriefPreviewOrigin = origin
                 taskBriefPreviewOpen = true
@@ -235,6 +267,8 @@
               bind:this={feedbackEditor}
               {workspace}
               {draftBody}
+              {editorDocument}
+              {editorEpoch}
               {savedRevision}
               {savePhase}
               {attachmentPreviews}
@@ -248,6 +282,8 @@
               cookedMarkdown={publishedFeedback?.markdown ?? ''}
               uncookedMarkdown={publishedFeedback?.uncooked_markdown ?? draftBody}
               onChange={onDraftChange}
+              {cookingConfig}
+              onTidyError={onTidyError}
               onCookPreview={onCookPreview}
               onRestoreOriginal={onRestoreOriginal}
               onOpenAttachment={openAttachmentPreviewById}

@@ -172,6 +172,7 @@ const workspace: FeedbackWorkspaceView = {
     },
   ],
   draft: {
+    document_json: null,
     body_markdown:
       'The host and session hierarchy is easy to scan.\n\nThe request list keeps terminal work in the same chronological view.',
     saved_revision: 3,

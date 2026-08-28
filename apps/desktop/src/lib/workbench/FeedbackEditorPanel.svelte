@@ -12,8 +12,21 @@
 
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
+  import type { JSONContent } from '@tiptap/core'
+
   import RichFeedbackEditor from '$lib/RichFeedbackEditor.svelte'
+  import type { CookingConfig } from '$lib/cooking'
+  import type { DraftOperation } from '$lib/draftOperations'
   import type { AttachmentView, FeedbackWorkspaceView } from '$lib/feedback'
+  import {
+    decodeFeedbackDraftDocument,
+    type FeedbackDraftSnapshot,
+  } from '$lib/feedbackDraftDocument'
+  import { tidySpeechSegments } from '$lib/lightCleanup'
+  import {
+    speechCleanupCandidates,
+    type SpeechCleanupSegment,
+  } from '$lib/speechBlockMetadata'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
   import { hasCookedPublishedVariant } from '$lib/publishedFeedback'
@@ -21,6 +34,8 @@
 
   export let workspace: FeedbackWorkspaceView
   export let draftBody = ''
+  export let editorDocument: JSONContent | null = null
+  export let editorEpoch = 0
   export let savedRevision = 0
   export let savePhase: SavePhase = 'idle'
   export let attachmentPreviews: Record<string, string> = {}
@@ -33,10 +48,15 @@
   export let cookedMarkdown = ''
   export let uncookedMarkdown = ''
   export let formatTime: (value: string | null | undefined) => string
-  export let onChange: (markdown: string) => void = () => {}
+  export let onChange: (snapshot: FeedbackDraftSnapshot) => void = () => {}
   export let onCookPreview: () => void = () => {}
   export let onRestoreOriginal: () => void = () => {}
   export let onOpenAttachment: (attachmentId: string) => void = () => {}
+  export let cookingConfig: CookingConfig | null = null
+  export let onTidyError: (message: string) => void = () => {}
+
+  let tidyBusy = false
+  let pendingCount = 0
 
   let richEditor: RichFeedbackEditor
   let publishedView: 'cooked' | 'uncooked' = 'cooked'
@@ -69,6 +89,62 @@
 
   export function applyExternalMarkdown(markdown: string): boolean {
     return richEditor?.applyExternalMarkdown(markdown) ?? false
+  }
+
+  export function applyExternalDocument(document: JSONContent): boolean {
+    return richEditor?.applyExternalDocument(document) ?? false
+  }
+
+  export function applyDraftOperation(operation: DraftOperation): boolean {
+    return richEditor?.applyDraftOperation(operation) ?? false
+  }
+
+  export function pendingSpeechSegments(): SpeechCleanupSegment[] {
+    return richEditor?.pendingSpeechSegments() ?? []
+  }
+
+  export function replaceSpeechSegments(
+    replacements: Array<{ segmentId: string; originalText: string; nextText: string }>,
+  ): boolean {
+    return richEditor?.replaceSpeechSegments(replacements) ?? false
+  }
+
+  $: {
+    editorEpoch
+    editorDocument
+    pendingCount = richEditor?.pendingSpeechSegments().length ??
+      (editorDocument ? speechCleanupCandidates(editorDocument).length : 0)
+  }
+
+  async function tidyNow() {
+    if (tidyBusy || editingDisabled || !cookingConfig) {
+      if (!cookingConfig) onTidyError(tr('Tidy uses the Cooking model. Configure it in Settings first.'))
+      return
+    }
+    const requestId = workspace.request.request_id
+    const epoch = editorEpoch
+    const candidates = richEditor?.pendingSpeechSegments() ?? []
+    if (candidates.length === 0) return
+    tidyBusy = true
+    try {
+      const result = await tidySpeechSegments(candidates, cookingConfig)
+      if (workspace.request.request_id !== requestId || editorEpoch !== epoch) return
+      if (!result) {
+        onTidyError(tr('Tidy did not write back because the model output did not match the original segments.'))
+        return
+      }
+      richEditor?.replaceSpeechSegments(
+        candidates.map((segment, index) => ({
+          segmentId: segment.segmentId,
+          originalText: segment.text,
+          nextText: result[index] ?? segment.text,
+        })),
+      )
+    } catch (cause) {
+      onTidyError(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      tidyBusy = false
+    }
   }
 
   export function appendTranscript(text: string) {
@@ -126,16 +202,32 @@
           {#if publishedView === 'uncooked'}Uncooked{/if}
         </Button>
       </div>
-    {:else if cookingEnabled && !cookedDraftReady && !readOnly && !locked && !cooking}
-      <Button
-        variant="ghost"
-        size="sm"
-        class="ml-auto h-7 shrink-0 gap-1 px-2 text-[10px] text-muted-foreground hover:text-foreground"
-        onclick={onCookPreview}
-      >
-        <Sparkles class="size-3.5" />
-        {tr('Preview cooking result')}
-      </Button>
+    {:else}
+      <div class="ml-auto flex items-center gap-1">
+        {#if pendingCount > 0 && !readOnly && !locked}
+          <Button
+            variant="outline"
+            size="sm"
+            class="h-7 shrink-0 gap-1 px-2 text-[10px]"
+            disabled={tidyBusy || editingDisabled}
+            onclick={() => void tidyNow()}
+          >
+            {tidyBusy ? tr('Tidying…') : tr('Tidy now')}
+            <Badge variant="secondary" class="h-4 px-1 text-[9px]">{pendingCount}</Badge>
+          </Button>
+        {/if}
+        {#if cookingEnabled && !cookedDraftReady && !readOnly && !locked && !cooking}
+          <Button
+            variant="ghost"
+            size="sm"
+            class="h-7 shrink-0 gap-1 px-2 text-[10px] text-muted-foreground hover:text-foreground"
+            onclick={onCookPreview}
+          >
+            <Sparkles class="size-3.5" />
+            {tr('Preview cooking result')}
+          </Button>
+        {/if}
+      </div>
     {/if}
   </header>
 
@@ -163,12 +255,17 @@
   <div class="relative flex min-h-0 flex-1">
     <RichFeedbackEditor
       bind:this={richEditor}
+      document={editorDocument}
+      {editorEpoch}
       markdown={displayedMarkdown}
+      overlayMarkdown={hasCookedVariant ? displayedMarkdown : null}
       previews={attachmentPreviews}
       disabled={editingDisabled}
       {onOpenAttachment}
-      onChange={(markdown) => {
-        if (!editingDisabled) onChange(markdown)
+      onChange={(snapshot) => {
+        const doc = decodeFeedbackDraftDocument(snapshot.documentJson)
+        pendingCount = doc ? speechCleanupCandidates(doc).length : 0
+        if (!editingDisabled) onChange(snapshot)
       }}
     />
 

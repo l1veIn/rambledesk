@@ -13,6 +13,8 @@
   export let workspace: FeedbackWorkspaceView
   export let open = true
   export let pulseNonce = 0
+  export let activeActionId: string | null = null
+  export let onSelectAction: (actionId: string, actionIndex: number, title: string) => void = () => {}
   export let onOpenPreview: (transformOrigin: string | null) => void = () => {}
 
   let previewOpen = false
@@ -113,11 +115,17 @@
         </h2>
         <ol class="m-0 mt-2 grid list-none gap-2 p-0">
           {#each workspace.actions as action, index (action.id)}
-            <li class="grid grid-cols-[22px_minmax(0,1fr)] gap-2 leading-5">
-              <span class="grid size-5 place-items-center rounded-md bg-background text-[9px] font-medium ring-1 ring-border">
-                {index + 1}
-              </span>
-              <span><LinkifiedText text={action.instruction} /></span>
+            <li>
+              <button
+                type="button"
+                class={`grid w-full grid-cols-[22px_minmax(0,1fr)] gap-2 rounded-md px-1 py-1 text-left leading-5 transition-colors hover:bg-accent/60 ${activeActionId === action.id ? 'bg-primary/10 ring-1 ring-primary/30' : ''}`}
+                onclick={() => onSelectAction(action.id, index, action.instruction)}
+              >
+                <span class="grid size-5 place-items-center rounded-md bg-background text-[9px] font-medium ring-1 ring-border">
+                  {index + 1}
+                </span>
+                <span><LinkifiedText text={action.instruction} /></span>
+              </button>
             </li>
           {/each}
         </ol>
