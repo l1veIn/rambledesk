@@ -446,6 +446,7 @@ async fn repeated_cancel_preserves_the_first_reason_and_terminal_state() {
     application
         .save_feedback_draft(SaveDraftInput {
             request_id: request_id.clone(),
+            document_json: r#"{"schemaVersion":2,"doc":{"type":"doc"}}"#.to_owned(),
             body_markdown: "Partial human feedback.".to_owned(),
             expected_revision: 0,
         })
@@ -641,6 +642,7 @@ async fn draft_uses_aggregate_revision_and_idempotent_replay() {
     let first = application
         .save_feedback_draft(SaveDraftInput {
             request_id: request_id.clone(),
+            document_json: r#"{"schemaVersion":2,"doc":{"type":"doc"}}"#.to_owned(),
             body_markdown: "The primary flow is clear.".to_owned(),
             expected_revision: 0,
         })
@@ -650,6 +652,7 @@ async fn draft_uses_aggregate_revision_and_idempotent_replay() {
     let replay = application
         .save_feedback_draft(SaveDraftInput {
             request_id: request_id.clone(),
+            document_json: r#"{"schemaVersion":2,"doc":{"type":"doc"}}"#.to_owned(),
             body_markdown: first.body_markdown.clone(),
             expected_revision: 0,
         })
@@ -660,6 +663,7 @@ async fn draft_uses_aggregate_revision_and_idempotent_replay() {
     let conflict = application
         .save_feedback_draft(SaveDraftInput {
             request_id: request_id.clone(),
+            document_json: r#"{"schemaVersion":2,"doc":{"type":"doc"}}"#.to_owned(),
             body_markdown: "A conflicting edit.".to_owned(),
             expected_revision: 0,
         })
@@ -705,11 +709,14 @@ async fn concurrent_different_drafts_have_one_cas_winner() {
 
     let left = application.save_feedback_draft(SaveDraftInput {
         request_id: request_id.clone(),
+        document_json: r#"{"schemaVersion":2,"doc":{"type":"doc"}}"#.to_owned(),
         body_markdown: "left".to_owned(),
         expected_revision: 0,
     });
     let right = application.save_feedback_draft(SaveDraftInput {
         request_id: request_id.clone(),
+        document_json: r#"{"schemaVersion":2,"doc":{"type":"doc","content":[{"type":"paragraph"}]}}"#
+            .to_owned(),
         body_markdown: "right".to_owned(),
         expected_revision: 0,
     });

@@ -84,6 +84,7 @@ async fn attachments_share_revision_publish_in_order_and_survive_restart() {
     let draft = application
         .save_feedback_draft(SaveDraftInput {
             request_id: request_id.clone(),
+            document_json: r#"{"schemaVersion":2,"doc":{"type":"doc"}}"#.to_owned(),
             body_markdown: format!(
                 "图片前的中文说明。\n\n![中文截图](attachment://{second_id})\n\n图片后的中文结论。"
             ),
@@ -215,6 +216,7 @@ async fn non_image_attachments_detect_publish_and_round_trip() {
     let draft = application
         .save_feedback_draft(SaveDraftInput {
             request_id: request_id.clone(),
+            document_json: r#"{"schemaVersion":2,"doc":{"type":"doc"}}"#.to_owned(),
             body_markdown: format!(
                 "方案见 [plan](attachment://{pdf_id})，笔记见 [notes](attachment://{pdf_id})"
             ),
