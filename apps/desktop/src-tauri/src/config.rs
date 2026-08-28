@@ -1,4 +1,5 @@
 use std::{
+    ffi::OsString,
     fs,
     io::{Read, Write},
     path::{Path, PathBuf},
@@ -6,6 +7,9 @@ use std::{
 
 use rambledesk_local_server::{AccessToken, DEFAULT_PORT, default_token_path};
 use serde::{Deserialize, Serialize};
+
+const NESTED_LIBRARY_PATH_ERROR: &str = "新旧数据存储位置不能互相包含";
+const DESTINATION_RECURSION_ERROR: &str = "迁移目标进入了迁移源扫描范围";
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
@@ -87,22 +91,73 @@ pub(super) fn migrate_library(
     destination: &Path,
     progress: &dyn Fn(u64, u64),
 ) -> Result<u64, String> {
-    if source == destination {
+    let comparable_source = comparable_library_path(source)?;
+    let comparable_destination = comparable_library_path(destination)?;
+    if comparable_source == comparable_destination {
         return Ok(0);
     }
-    if destination.starts_with(source) || source.starts_with(destination) {
-        return Err("新旧数据存储位置不能互相包含".to_owned());
+    if paths_overlap(&comparable_source, &comparable_destination) {
+        return Err(NESTED_LIBRARY_PATH_ERROR.to_owned());
     }
-    let total = directory_bytes(source)?;
+    let total = directory_bytes(source, &comparable_destination)?;
     fs::create_dir_all(destination)
         .map_err(|error| format!("无法创建迁移目标 {}：{error}", destination.display()))?;
     let mut copied = 0;
-    copy_directory(source, source, destination, total, &mut copied, progress)?;
+    copy_directory(
+        source,
+        source,
+        destination,
+        &comparable_destination,
+        total,
+        &mut copied,
+        progress,
+    )?;
     progress(total, total);
     Ok(total)
 }
 
-fn directory_bytes(path: &Path) -> Result<u64, String> {
+fn comparable_library_path(path: &Path) -> Result<PathBuf, String> {
+    // Canonicalize the deepest existing ancestor so a destination that does
+    // not exist yet can still be compared with an already-canonicalized source.
+    let mut candidate = path;
+    let mut missing_components = Vec::<OsString>::new();
+    let mut comparable = loop {
+        match dunce::canonicalize(candidate) {
+            Ok(path) => break path,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                let component = candidate
+                    .file_name()
+                    .ok_or_else(|| format!("无法解析迁移路径 {}：{error}", path.display()))?;
+                missing_components.push(component.to_os_string());
+                candidate = candidate
+                    .parent()
+                    .ok_or_else(|| format!("无法解析迁移路径 {}：{error}", path.display()))?;
+            }
+            Err(error) => {
+                return Err(format!("无法解析迁移路径 {}：{error}", path.display()));
+            }
+        }
+    };
+    for component in missing_components.iter().rev() {
+        comparable.push(component);
+    }
+    Ok(comparable)
+}
+
+fn paths_overlap(left: &Path, right: &Path) -> bool {
+    left.starts_with(right) || right.starts_with(left)
+}
+
+fn reject_destination_recursion(path: &Path, destination: &Path) -> Result<(), String> {
+    let comparable = comparable_library_path(path)?;
+    if paths_overlap(&comparable, destination) {
+        Err(DESTINATION_RECURSION_ERROR.to_owned())
+    } else {
+        Ok(())
+    }
+}
+
+fn directory_bytes(path: &Path, destination: &Path) -> Result<u64, String> {
     if !path.exists() {
         return Ok(0);
     }
@@ -113,7 +168,8 @@ fn directory_bytes(path: &Path) -> Result<u64, String> {
         let entry = entry.map_err(|error| error.to_string())?;
         let metadata = entry.metadata().map_err(|error| error.to_string())?;
         if metadata.is_dir() {
-            total += directory_bytes(&entry.path())?;
+            reject_destination_recursion(&entry.path(), destination)?;
+            total += directory_bytes(&entry.path(), destination)?;
         } else {
             total += metadata.len();
         }
@@ -125,6 +181,7 @@ fn copy_directory(
     source_root: &Path,
     current: &Path,
     destination: &Path,
+    comparable_destination: &Path,
     total: u64,
     copied: &mut u64,
     progress: &dyn Fn(u64, u64),
@@ -144,12 +201,14 @@ fn copy_directory(
         let target = destination.join(relative);
         let metadata = entry.metadata().map_err(|error| error.to_string())?;
         if metadata.is_dir() {
+            reject_destination_recursion(&entry.path(), comparable_destination)?;
             fs::create_dir_all(&target)
                 .map_err(|error| format!("无法创建 {}：{error}", target.display()))?;
             copy_directory(
                 source_root,
                 &entry.path(),
                 destination,
+                comparable_destination,
                 total,
                 copied,
                 progress,
@@ -190,7 +249,7 @@ pub(super) fn save_library_path(path: &Path) -> Result<PathBuf, String> {
     }
     fs::create_dir_all(path)
         .map_err(|error| format!("无法创建数据存储位置 {}：{error}", path.display()))?;
-    let canonical = fs::canonicalize(path)
+    let canonical = dunce::canonicalize(path)
         .map_err(|error| format!("无法访问数据存储位置 {}：{error}", path.display()))?;
     let probe = canonical.join(".rambledesk-write-probe");
     fs::write(&probe, b"rambledesk")
@@ -281,6 +340,67 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let source = temp.path().join("library");
         fs::create_dir_all(&source).unwrap();
-        assert!(migrate_library(&source, &source.join("nested"), &|_, _| {}).is_err());
+        assert_eq!(
+            migrate_library(&source, &source.join("nested"), &|_, _| {}).unwrap_err(),
+            NESTED_LIBRARY_PATH_ERROR
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn library_migration_rejects_nested_destination_with_mixed_windows_path_forms() {
+        let temp = tempfile::tempdir().unwrap();
+        let source_normal = temp.path().join("library");
+        let destination_normal = source_normal.join("RambleDesk");
+        fs::create_dir_all(&destination_normal).unwrap();
+        let source_canonical = fs::canonicalize(&source_normal).unwrap();
+
+        assert_ne!(source_canonical, source_normal);
+        assert_eq!(
+            migrate_library(&source_canonical, &destination_normal, &|_, _| {}).unwrap_err(),
+            NESTED_LIBRARY_PATH_ERROR
+        );
+        assert_eq!(fs::read_dir(destination_normal).unwrap().count(), 0);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn library_migration_treats_mixed_windows_forms_as_the_same_directory() {
+        let temp = tempfile::tempdir().unwrap();
+        let normal = temp.path().join("library");
+        fs::create_dir_all(&normal).unwrap();
+        let canonical = fs::canonicalize(&normal).unwrap();
+
+        assert_ne!(canonical, normal);
+        assert_eq!(migrate_library(&canonical, &normal, &|_, _| {}).unwrap(), 0);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn library_migration_rejects_parent_destination_with_mixed_windows_path_forms() {
+        let temp = tempfile::tempdir().unwrap();
+        let destination_normal = temp.path().join("library");
+        let source_normal = destination_normal.join("nested");
+        fs::create_dir_all(&source_normal).unwrap();
+        let source_canonical = fs::canonicalize(&source_normal).unwrap();
+
+        assert_eq!(
+            migrate_library(&source_canonical, &destination_normal, &|_, _| {}).unwrap_err(),
+            NESTED_LIBRARY_PATH_ERROR
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn recursive_guard_rejects_mixed_windows_destination_forms() {
+        let temp = tempfile::tempdir().unwrap();
+        let destination_normal = temp.path().join("library");
+        fs::create_dir_all(&destination_normal).unwrap();
+        let destination_canonical = fs::canonicalize(&destination_normal).unwrap();
+
+        assert_eq!(
+            reject_destination_recursion(&destination_canonical, &destination_normal).unwrap_err(),
+            DESTINATION_RECURSION_ERROR
+        );
     }
 }
