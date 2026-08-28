@@ -426,6 +426,9 @@ const chinese: Record<string, string> = {
   'Preview cooking result': '先看 Cook 结果',
   'Tidy now': '立即整理',
   'Tidying…': '正在整理…',
+  'Tidy {count} pending speech segments': '整理 {count} 段待处理语音',
+  'Tidy pending speech segments. It appears here after Ramble writes a transcript.':
+    '整理尚未处理的语音段落。Ramble 写入转写后会出现在这里。',
   'Tidy uses the Cooking model. Configure it in Settings first.': '整理使用 Cooking 模型，请先在设置中配置。',
   'Tidy did not write back because the model output did not match the original segments.':
     '模型输出与原始片段不匹配，未写入整理结果。',

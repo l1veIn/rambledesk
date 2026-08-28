@@ -202,32 +202,16 @@
           {#if publishedView === 'uncooked'}Uncooked{/if}
         </Button>
       </div>
-    {:else}
-      <div class="ml-auto flex items-center gap-1">
-        {#if pendingCount > 0 && !readOnly && !locked}
-          <Button
-            variant="outline"
-            size="sm"
-            class="h-7 shrink-0 gap-1 px-2 text-[10px]"
-            disabled={tidyBusy || editingDisabled}
-            onclick={() => void tidyNow()}
-          >
-            {tidyBusy ? tr('Tidying…') : tr('Tidy now')}
-            <Badge variant="secondary" class="h-4 px-1 text-[9px]">{pendingCount}</Badge>
-          </Button>
-        {/if}
-        {#if cookingEnabled && !cookedDraftReady && !readOnly && !locked && !cooking}
-          <Button
-            variant="ghost"
-            size="sm"
-            class="h-7 shrink-0 gap-1 px-2 text-[10px] text-muted-foreground hover:text-foreground"
-            onclick={onCookPreview}
-          >
-            <Sparkles class="size-3.5" />
-            {tr('Preview cooking result')}
-          </Button>
-        {/if}
-      </div>
+    {:else if cookingEnabled && !cookedDraftReady && !readOnly && !locked && !cooking}
+      <Button
+        variant="ghost"
+        size="sm"
+        class="ml-auto h-7 shrink-0 gap-1 px-2 text-[10px] text-muted-foreground hover:text-foreground"
+        onclick={onCookPreview}
+      >
+        <Sparkles class="size-3.5" />
+        {tr('Preview cooking result')}
+      </Button>
     {/if}
   </header>
 
@@ -262,6 +246,8 @@
       previews={attachmentPreviews}
       disabled={editingDisabled}
       {onOpenAttachment}
+      onTidy={() => void tidyNow()}
+      {tidyBusy}
       onChange={(snapshot) => {
         const doc = decodeFeedbackDraftDocument(snapshot.documentJson)
         pendingCount = doc ? speechCleanupCandidates(doc).length : 0

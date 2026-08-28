@@ -7,13 +7,15 @@
     List,
     Quote,
     Redo2,
+    Sparkles,
     Undo2,
   } from '@lucide/svelte'
-  import { EditorState } from '@tiptap/pm/state'
+  import { EditorState, type Transaction } from '@tiptap/pm/state'
   import { onMount } from 'svelte'
 
+  import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
-  import { actionBlockquoteNode } from './actionBlockquote'
+  import { actionBlockquoteNode, isEmptyActionGroup } from './actionBlockquote'
   import {
     attachmentIdFromUrl,
     attachmentMarkdownUrl,
@@ -49,6 +51,8 @@
   export let disabled = false
   export let onOpenAttachment: (attachmentId: string) => void = () => {}
   export let onChange: (snapshot: FeedbackDraftSnapshot) => void = () => {}
+  export let onTidy: () => void = () => {}
+  export let tidyBusy = false
 
   let editorHost: HTMLDivElement
   let editor: Editor | null = null
@@ -57,6 +61,7 @@
   let loadedEpoch = -1
   let loadedOverlay: string | null = null
   let insertionPosition = 0
+  let pendingCount = 0
   let openAttachmentHandler = (_attachmentId: string) => {}
   $: openAttachmentHandler = onOpenAttachment
 
@@ -90,6 +95,7 @@
         loadedEpoch = editorEpoch
         loadedOverlay = overlayMarkdown
         insertionPosition = editor?.state.doc.content.size ?? 0
+        pendingCount = editor ? speechCleanupCandidates(editor.getJSON()).length : 0
         hydrateAttachmentImages()
       },
       onUpdate: ({ editor: updatedEditor }) => {
@@ -128,9 +134,25 @@
   }
 
   function emitSnapshot(source: Editor) {
-    const snapshot = snapshotFeedbackDraftDocument(source.getJSON())
+    const json = source.getJSON()
+    const snapshot = snapshotFeedbackDraftDocument(json)
     editorMarkdown = snapshot.bodyMarkdown
+    pendingCount = speechCleanupCandidates(json).length
     onChange(snapshot)
+  }
+
+  function trimTrailingEmptyActionGroups(
+    transaction: Transaction,
+    keepActionId?: string | null,
+  ): Transaction {
+    let next = transaction
+    while (next.doc.childCount > 0) {
+      const last = next.doc.lastChild
+      if (!last || !isEmptyActionGroup(last.toJSON())) break
+      if (keepActionId && last.attrs.actionId === keepActionId) break
+      next = next.delete(next.doc.content.size - last.nodeSize, next.doc.content.size)
+    }
+    return next
   }
 
   function resetHistory() {
@@ -153,6 +175,7 @@
       editorMarkdown = editor.getMarkdown()
       insertionPosition = Math.min(insertionPosition, editor.state.doc.content.size)
       hydrateAttachmentImages()
+      pendingCount = speechCleanupCandidates(editor.getJSON()).length
     } catch (cause) {
       console.error('[richEditor] applyDocument failed', cause)
     } finally {
@@ -223,15 +246,26 @@
 
   export function applyDraftOperation(operation: DraftOperation): boolean {
     if (!editor || disabled) return false
+    let transaction = trimTrailingEmptyActionGroups(
+      editor.state.tr,
+      operation.kind === 'startActionGroup'
+        ? operation.action.actionId
+        : operation.action?.actionId,
+    )
     if (operation.kind === 'startActionGroup') {
-      const last = editor.state.doc.lastChild
+      const last = transaction.doc.lastChild
       if (last?.type.name === 'blockquote' && last.attrs.actionId === operation.action.actionId) {
+        if (transaction.docChanged) {
+          editor.view.dispatch(transaction)
+          emitSnapshot(editor)
+        }
         return true
       }
-      return editor.commands.insertContentAt(
-        editor.state.doc.content.size,
-        actionBlockquoteNode(operation.action),
-      )
+      const node = editor.schema.nodeFromJSON(actionBlockquoteNode(operation.action))
+      transaction = transaction.insert(transaction.doc.content.size, node)
+      editor.view.dispatch(transaction)
+      emitSnapshot(editor)
+      return true
     }
     const nodes =
       operation.kind === 'appendSpeech'
@@ -243,17 +277,17 @@
               operation.label,
               previews[operation.attachment.attachment_id],
             )
-    if (operation.action) {
-      const last = editor.state.doc.lastChild
-      if (last?.type.name === 'blockquote' && last.attrs.actionId === operation.action.actionId) {
-        return editor.commands.insertContentAt(editor.state.doc.content.size - 1, nodes)
-      }
-      return editor.commands.insertContentAt(
-        editor.state.doc.content.size,
-        actionBlockquoteNode(operation.action, nodes),
-      )
-    }
-    return editor.commands.insertContentAt(editor.state.doc.content.size, nodes)
+    const action = operation.action
+    const last = transaction.doc.lastChild
+    const insertAt =
+      action && last?.type.name === 'blockquote' && last.attrs.actionId === action.actionId
+        ? transaction.doc.content.size - 1
+        : transaction.doc.content.size
+    const content = action && insertAt === transaction.doc.content.size
+      ? actionBlockquoteNode(action, nodes)
+      : nodes
+    if (transaction.docChanged) editor.view.dispatch(transaction)
+    return editor.commands.insertContentAt(insertAt, content)
   }
 
   export function pendingSpeechSegments(): SpeechCleanupSegment[] {
@@ -514,6 +548,23 @@
       <Quote />
     </Button>
     <span class="flex-1"></span>
+    <Button
+      variant={pendingCount > 0 ? 'secondary' : 'ghost'}
+      size="sm"
+      class="h-7 shrink-0 gap-1 px-2 text-[10px]"
+      aria-label={t($locale, 'Tidy now')}
+      title={pendingCount > 0
+        ? t($locale, 'Tidy {count} pending speech segments', { count: pendingCount })
+        : t($locale, 'Tidy pending speech segments. It appears here after Ramble writes a transcript.')}
+      disabled={disabled || tidyBusy || pendingCount === 0}
+      onclick={() => onTidy()}
+    >
+      <Sparkles class="size-3.5" />
+      {tidyBusy ? t($locale, 'Tidying…') : t($locale, 'Tidy now')}
+      {#if pendingCount > 0}
+        <Badge variant="secondary" class="h-4 px-1 text-[9px]">{pendingCount}</Badge>
+      {/if}
+    </Button>
     <Button
       variant="ghost"
       size="icon-sm"

@@ -58,4 +58,50 @@ describe('draft operations', () => {
       true,
     )
   })
+
+  it('does not stack empty Action Blockquotes when the same Action is clicked again', () => {
+    const first = applyDraftOperation(
+      { type: 'doc', content: [] },
+      { kind: 'startActionGroup', action: actionA },
+    )
+    const again = applyDraftOperation(first, { kind: 'startActionGroup', action: actionA })
+    const third = applyDraftOperation(again, { kind: 'startActionGroup', action: actionA })
+    expect(third.content).toHaveLength(1)
+    expect(third.content?.[0].attrs?.[ACTION_ID_ATTR]).toBe('login')
+  })
+
+  it('replaces a trailing empty Action Blockquote instead of leaving both', () => {
+    const emptyA = applyDraftOperation(
+      { type: 'doc', content: [] },
+      { kind: 'startActionGroup', action: actionA },
+    )
+    const switched = applyDraftOperation(emptyA, { kind: 'startActionGroup', action: actionB })
+    expect(switched.content).toHaveLength(1)
+    expect(switched.content?.[0].attrs?.[ACTION_ID_ATTR]).toBe('toast')
+  })
+
+  it('keeps a filled Action Blockquote when opening a different Action', () => {
+    const filled = applyDraftOperation(
+      applyDraftOperation(
+        { type: 'doc', content: [] },
+        { kind: 'startActionGroup', action: actionA },
+      ),
+      { kind: 'appendSpeech', segmentId: 'a1', text: '有内容', action: actionA },
+    )
+    const next = applyDraftOperation(filled, { kind: 'startActionGroup', action: actionB })
+    expect(next.content?.map((node) => node.attrs?.[ACTION_ID_ATTR])).toEqual(['login', 'toast'])
+  })
+
+  it('drops an unused empty Action when returning to a filled one', () => {
+    const filledA = applyDraftOperation(
+      applyDraftOperation(
+        { type: 'doc', content: [] },
+        { kind: 'startActionGroup', action: actionA },
+      ),
+      { kind: 'appendSpeech', segmentId: 'a1', text: '有内容', action: actionA },
+    )
+    const emptyB = applyDraftOperation(filledA, { kind: 'startActionGroup', action: actionB })
+    const backToA = applyDraftOperation(emptyB, { kind: 'startActionGroup', action: actionA })
+    expect(backToA.content?.map((node) => node.attrs?.[ACTION_ID_ATTR])).toEqual(['login'])
+  })
 })

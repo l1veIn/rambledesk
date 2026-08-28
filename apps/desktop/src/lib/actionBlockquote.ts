@@ -35,6 +35,36 @@ export function isActionBlockquote(node: JSONContent): boolean {
   return node.type === 'blockquote' && typeof node.attrs?.[ACTION_ID_ATTR] === 'string'
 }
 
+function isVisuallyEmpty(node: JSONContent): boolean {
+  if (node.type === 'image' || node.type === 'attachmentFile') return false
+  if (node.type === 'hardBreak') return true
+  if (typeof node.text === 'string') return node.text.trim() === ''
+  return (node.content ?? []).every(isVisuallyEmpty)
+}
+
+/** True when the blockquote only has its @Action title (or is otherwise blank). */
+export function isEmptyActionGroup(node: JSONContent): boolean {
+  if (!isActionBlockquote(node)) return false
+  return (node.content ?? []).every((child, index) => {
+    if (index === 0 && parseActionTitle(paragraphText(child))) return true
+    return isVisuallyEmpty(child)
+  })
+}
+
+export function withoutTrailingEmptyActionGroups(
+  doc: JSONContent,
+  keepActionId?: string | null,
+): JSONContent {
+  const content = [...(doc.content ?? [])]
+  while (content.length > 0) {
+    const last = content[content.length - 1]!
+    if (!isEmptyActionGroup(last)) break
+    if (keepActionId && last.attrs?.[ACTION_ID_ATTR] === keepActionId) break
+    content.pop()
+  }
+  return { ...doc, content }
+}
+
 export function actionBlockquoteNode(
   identity: ActionIdentity,
   content: JSONContent[] = [],

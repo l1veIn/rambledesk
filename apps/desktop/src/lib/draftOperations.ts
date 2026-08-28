@@ -3,6 +3,7 @@ import type { JSONContent } from '@tiptap/core'
 import {
   actionBlockquoteNode,
   isActionBlockquote,
+  withoutTrailingEmptyActionGroups,
   type ActionIdentity,
 } from './actionBlockquote'
 import { attachmentMarkdownUrl, isImageMediaType } from './attachmentMarkdown'
@@ -103,7 +104,9 @@ function appendNodes(
   nodes: JSONContent[],
   action: ActiveAction,
 ): JSONContent {
-  const content = [...(doc.content ?? [])]
+  const content = [
+    ...(withoutTrailingEmptyActionGroups(doc, action?.actionId).content ?? []),
+  ]
   if (!action) {
     return { type: 'doc', content: [...content, ...nodes] }
   }
@@ -136,11 +139,12 @@ export function applyDraftOperation(doc: JSONContent, operation: DraftOperation)
         operation.action,
       )
     case 'startActionGroup': {
-      const last = lastNode(doc)
-      if (isOpenActionGroup(last, operation.action.actionId)) return doc
+      const trimmed = withoutTrailingEmptyActionGroups(doc, operation.action.actionId)
+      const last = lastNode(trimmed)
+      if (isOpenActionGroup(last, operation.action.actionId)) return trimmed
       return {
         type: 'doc',
-        content: [...(doc.content ?? []), actionBlockquoteNode(operation.action)],
+        content: [...(trimmed.content ?? []), actionBlockquoteNode(operation.action)],
       }
     }
   }
