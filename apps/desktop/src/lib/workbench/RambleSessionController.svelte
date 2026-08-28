@@ -31,6 +31,7 @@
   import {
     eventBelongsToVoiceSession,
     stableTranscript,
+    voiceStartStillLive,
     type SpeechEvent,
     type VoiceRambleSessionView,
   } from '../speech'
@@ -310,20 +311,10 @@
     voiceSessionId = ''
     voiceDevice = ''
     voicePartial = ''
-    voiceMessage = t($locale, 'Loading the local model and connecting the microphone…')
+    voiceMessage = t($locale, 'Connecting the microphone…')
     voiceLevel = 0
     voiceModelMissing = false
     try {
-      const models = await invoke<Array<{ id: string; installed: boolean; streaming: boolean }>>(
-        'list_speech_models',
-      )
-      const model = models.find((candidate) => candidate.id === $speechModelId)
-      if (!model?.installed) {
-        voiceModelMissing = true
-        voicePhase = 'error'
-        voiceMessage = t($locale, 'The selected speech model is not installed. Open Voice settings to download it.')
-        return false
-      }
       const session = await invoke<VoiceRambleSessionView>('start_voice_ramble', {
         input: {
           request_id: rambleRequestId,
@@ -334,16 +325,21 @@
           hotwords: $speechHotwords,
         },
       })
+      if (!voiceStartStillLive(voicePhase)) {
+        voiceSessionId = ''
+        await invoke('stop_voice_ramble').catch(() => {})
+        return false
+      }
       voiceSessionId = session.voice_session_id
       if (voicePhase === 'starting') {
         voicePhase = 'listening'
-        voiceMessage = model.streaming
-          ? t($locale, 'Streaming recognition · Writes after a natural pause')
-          : t($locale, 'VAD is listening · Transcribes automatically after each spoken segment')
+        voiceMessage = t($locale, 'VAD is listening · Transcribes automatically after each spoken segment')
       }
     } catch (cause) {
+      const message = messageFrom(cause)
       voicePhase = 'error'
-      voiceMessage = messageFrom(cause)
+      voiceMessage = message
+      voiceModelMissing = /not installed|尚未安装/.test(message)
       return false
     }
     return true
