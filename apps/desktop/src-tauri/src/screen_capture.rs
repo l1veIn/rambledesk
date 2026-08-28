@@ -16,6 +16,8 @@ use tauri::{
     WindowEvent, ipc::Response, window::Color,
 };
 
+#[cfg(target_os = "macos")]
+const MAIN_LABEL: &str = "main";
 const OVERLAY_LABEL: &str = "capture-overlay";
 const SCROLL_LABEL: &str = "capture-scroll";
 const RAMBLE_CONSOLE_LABEL: &str = "ramble-console";
