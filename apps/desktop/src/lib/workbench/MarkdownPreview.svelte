@@ -3,7 +3,11 @@
   import { onMount } from 'svelte'
 
   import { attachmentIdFromUrl } from '$lib/attachmentMarkdown'
-  import { feedbackEditorExtensions } from '$lib/feedbackEditorExtensions'
+  import { hydrateActionBlockquotes } from '$lib/actionBlockquote'
+  import {
+    feedbackEditorExtensions,
+    parseFeedbackMarkdown,
+  } from '$lib/feedbackEditorExtensions'
   import { isSafeHttpUrl } from '$lib/linkify'
   import { openExternalUrl } from '$lib/openExternalUrl'
 
@@ -15,12 +19,15 @@
   let editor: Editor | null = null
   let renderedMarkdown = ''
 
+  function previewDocument(source: string) {
+    return hydrateActionBlockquotes(parseFeedbackMarkdown(source))
+  }
+
   onMount(() => {
     editor = new Editor({
       element: editorHost,
       extensions: feedbackEditorExtensions(),
-      content: markdown,
-      contentType: 'markdown',
+      content: previewDocument(markdown),
       editable: false,
       editorProps: {
         attributes: {
@@ -61,8 +68,7 @@
   })
 
   $: if (editor && markdown !== renderedMarkdown) {
-    editor.commands.setContent(markdown, {
-      contentType: 'markdown',
+    editor.commands.setContent(previewDocument(markdown), {
       emitUpdate: false,
     })
     renderedMarkdown = markdown
@@ -189,6 +195,26 @@
     border-left: 3px solid var(--primary);
     color: var(--muted-foreground);
     background: color-mix(in oklab, var(--muted) 65%, transparent);
+  }
+
+  :global(.attachment-markdown-prose blockquote[data-action-id]) {
+    padding: 14px 18px 12px;
+    border: 1px solid color-mix(in oklab, var(--primary) 16%, transparent);
+    border-radius: calc(var(--radius) + 2px);
+    color: var(--foreground);
+    background: color-mix(in oklab, var(--primary) 9%, var(--background));
+  }
+
+  :global(.attachment-markdown-prose blockquote[data-action-id] > p:first-child) {
+    margin: 0 0 0.8em;
+    padding-bottom: 0.65em;
+    border-bottom: 1px solid color-mix(in oklab, var(--primary) 14%, transparent);
+    font-weight: 700;
+    text-align: center;
+  }
+
+  :global(.attachment-markdown-prose blockquote[data-action-id] > p:last-child) {
+    margin-bottom: 0;
   }
 
   :global(.attachment-markdown-prose pre) {

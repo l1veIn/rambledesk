@@ -253,7 +253,6 @@
               {dragActive}
               {formatTime}
               {cooking}
-              cookingEnabled={cookingEnabled && !publishedFeedback}
               {cookedDraftReady}
               {cookedPreviewModel}
               {cookedPreviewMarkdown}
@@ -264,7 +263,6 @@
               {tidyConfig}
               onTidyError={onTidyError}
               onOpenTidySettings={onOpenTidySettings}
-              onCookPreview={onCookPreview}
               onRestoreOriginal={onRestoreOriginal}
               onOpenAttachment={openAttachmentPreviewById}
             />

@@ -41,7 +41,6 @@
   export let attachmentPreviews: Record<string, string> = {}
   export let dragActive = false
   export let cooking = false
-  export let cookingEnabled = false
   export let cookedDraftReady = false
   export let cookedPreviewModel = ''
   export let cookedPreviewMarkdown = ''
@@ -50,7 +49,6 @@
   export let uncookedMarkdown = ''
   export let formatTime: (value: string | null | undefined) => string
   export let onChange: (snapshot: FeedbackDraftSnapshot) => void = () => {}
-  export let onCookPreview: () => void = () => {}
   export let onRestoreOriginal: () => void = () => {}
   export let onOpenAttachment: (attachmentId: string) => void = () => {}
   export let tidyConfig: TidyConfig | null = null
@@ -59,6 +57,7 @@
 
   let tidyBusy = false
   let pendingCount = 0
+  let tidyingSegmentIds: string[] = []
 
   let richEditor: RichFeedbackEditor
   let publishedView: 'cooked' | 'uncooked' = 'cooked'
@@ -121,6 +120,7 @@
     const epoch = editorEpoch
     const candidates = richEditor?.pendingSpeechSegments() ?? []
     if (candidates.length === 0) return
+    tidyingSegmentIds = candidates.map((segment) => segment.segmentId)
     tidyBusy = true
     try {
       const result = await tidySpeechSegments(candidates, tidyConfig)
@@ -139,6 +139,7 @@
     } catch (cause) {
       onTidyError(cause instanceof Error ? cause.message : String(cause))
     } finally {
+      tidyingSegmentIds = []
       tidyBusy = false
     }
   }
@@ -186,15 +187,27 @@
           {#if publishedView === 'uncooked'}Uncooked{/if}
         </Button>
       </div>
-    {:else if cookingEnabled && !cookedDraftReady && !readOnly && !locked && !cooking}
+    {:else if !cookedDraftReady && !readOnly}
       <Button
-        variant="ghost"
+        variant={pendingCount > 0 ? 'secondary' : 'ghost'}
         size="sm"
-        class="ml-auto h-7 shrink-0 gap-1 px-2 text-[10px] text-muted-foreground hover:text-foreground"
-        onclick={onCookPreview}
+        class="ml-auto h-7 shrink-0 gap-1 px-2 text-[10px]"
+        aria-label={tr('Tidy')}
+        title={pendingCount > 0
+          ? tr('Tidy {count} pending speech segments', { count: pendingCount })
+          : tr('Tidy pending speech segments. It appears here after Ramble writes a transcript.')}
+        disabled={editingDisabled || cooking || tidyBusy || pendingCount === 0}
+        onclick={() => void tidyNow()}
       >
-        <Sparkles class="size-3.5" />
-        {tr('Preview cooking result')}
+        {#if tidyBusy}
+          <LoaderCircle class="size-3.5 animate-spin" />
+        {:else}
+          <Sparkles class="size-3.5" />
+        {/if}
+        {tidyBusy ? tr('Tidying…') : tr('Tidy')}
+        {#if pendingCount > 0}
+          <Badge variant="secondary" class="h-4 px-1 text-[9px]">{pendingCount}</Badge>
+        {/if}
       </Button>
     {/if}
   </header>
@@ -232,8 +245,7 @@
         previews={attachmentPreviews}
         disabled={editingDisabled}
         {onOpenAttachment}
-        onTidy={() => void tidyNow()}
-        {tidyBusy}
+        {tidyingSegmentIds}
         onChange={(snapshot) => {
           const doc = decodeFeedbackDraftDocument(snapshot.documentJson)
           pendingCount = doc ? speechCleanupCandidates(doc).length : 0

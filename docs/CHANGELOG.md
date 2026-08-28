@@ -28,12 +28,14 @@ Draft architecture
 Post-processing and controls
 - Tidy is manual-only and applies strict one-to-one labeled results in a single undoable editor transaction.
 - Tidy and Cooking share one Post-processing page but keep separate providers, credentials, models, reasoning settings, and prompts.
+- Pending speech can be shown in italics or left visually neutral; only segments in the active Tidy run receive a transient inline spinner. Action Groups use padded blue-tinted text blocks without a left accent bar.
 - Record-style Ramble controls and configurable global Ramble/screenshot shortcuts are retained. Repeated commands are collapsed, shortcut reset no longer deadlocks, and failed rebinding restores the previous registration.
 
 中文摘要
 - 草稿架构恢复 v0.3.2 已验证的单 Editor 所有权，同时保留以版本化 TipTap JSON 为真源、Markdown 为可读投影的结构化能力；后台 Ramble 使用语义操作、串行队列与 CAS 保存，旧 Markdown 草稿和 rc.1/rc.2 v1 文档惰性升级。
 - Action 改为标准 Blockquote 容器；重新打开会创建独立区块，再次点击活动 Action 会关闭选择；稳定 ASR 段 ID 防止重复写入语音和 Action 标题。
 - Tidy 仅能手动触发，与 Cooking 在同一后处理页面使用两套独立配置；保留录音按钮与可配置全局快捷键，并修复重复命令、快捷键重置死锁和重绑回滚。
+- 待整理语音可选择以斜体区分或完全不区分；只有本轮正在整理的段落显示临时行首转圈。Action Group 改为无左侧强调线的淡蓝色独立文本区块。
 
 Full changelog: https://github.com/l1veIn/rambledesk/compare/v0.3.2...v0.3.3-rc.3
 

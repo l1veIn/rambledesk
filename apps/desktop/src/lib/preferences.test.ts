@@ -73,6 +73,16 @@ describe('speech hotword defaults', () => {
 })
 
 describe('post-processing configuration', () => {
+  it('distinguishes untidied speech by default and preserves an explicit opt-out', async () => {
+    const defaults = await loadPreferences()
+    expect(get(defaults.distinguishUntidiedText)).toBe(true)
+
+    const optedOut = await loadPreferences({
+      'rambledesk.tidy.distinguish-untidied-text': 'false',
+    })
+    expect(get(optedOut.distinguishUntidiedText)).toBe(false)
+  })
+
   it('keeps Tidy credentials independent from Cooking', async () => {
     const preferences = await loadPreferences({
       'rambledesk.cooking.api-key': 'cook-secret',

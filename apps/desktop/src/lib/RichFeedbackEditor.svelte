@@ -7,14 +7,12 @@
     List,
     Quote,
     Redo2,
-    Sparkles,
     Undo2,
   } from '@lucide/svelte'
   import { Fragment } from '@tiptap/pm/model'
   import { EditorState, type Transaction } from '@tiptap/pm/state'
   import { onMount } from 'svelte'
 
-  import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
   import {
     actionBlockquoteNode,
@@ -37,10 +35,11 @@
   } from './feedbackDraftDocument'
   import { feedbackEditorExtensions } from './feedbackEditorExtensions'
   import { t } from './i18n'
-  import { locale } from './preferences'
+  import { distinguishUntidiedText, locale } from './preferences'
   import {
     CLEANUP_STATE_ATTR,
     SPEECH_SEGMENT_ID_ATTR,
+    setTidyingSpeechSegments,
     speechCleanupCandidates,
     type SpeechCleanupSegment,
   } from './speechBlockMetadata'
@@ -52,8 +51,7 @@
   export let disabled = false
   export let onOpenAttachment: (attachmentId: string) => void = () => {}
   export let onChange: (snapshot: FeedbackDraftSnapshot) => void = () => {}
-  export let onTidy: () => void = () => {}
-  export let tidyBusy = false
+  export let tidyingSegmentIds: string[] = []
 
   let editorHost: HTMLDivElement
   let editor: Editor | null = null
@@ -61,7 +59,7 @@
   let editorMarkdown = ''
   let loadedEpoch = -1
   let insertionPosition = 0
-  let pendingCount = 0
+  let tidyingSignature = ''
   let openAttachmentHandler = (_attachmentId: string) => {}
   $: openAttachmentHandler = onOpenAttachment
 
@@ -94,7 +92,6 @@
         editorMarkdown = editor?.getMarkdown() ?? markdown
         loadedEpoch = editorEpoch
         insertionPosition = editor?.state.doc.content.size ?? 0
-        pendingCount = editor ? speechCleanupCandidates(editor.getJSON()).length : 0
         hydrateAttachmentImages()
       },
       onUpdate: ({ editor: updatedEditor }) => {
@@ -126,12 +123,18 @@
     previews
     hydrateAttachmentImages()
   }
+  $: if (editor) {
+    const nextSignature = [...new Set(tidyingSegmentIds)].sort().join('\u0000')
+    if (nextSignature !== tidyingSignature) {
+      tidyingSignature = nextSignature
+      setTidyingSpeechSegments(editor, tidyingSegmentIds)
+    }
+  }
 
   function emitSnapshot(source: Editor) {
     const json = source.getJSON()
     const snapshot = snapshotFeedbackDraftDocument(json)
     editorMarkdown = snapshot.bodyMarkdown
-    pendingCount = speechCleanupCandidates(json).length
     onChange(snapshot)
   }
 
@@ -192,7 +195,6 @@
       editorMarkdown = editor.getMarkdown()
       insertionPosition = Math.min(insertionPosition, editor.state.doc.content.size)
       hydrateAttachmentImages()
-      pendingCount = speechCleanupCandidates(editor.getJSON()).length
     } catch (cause) {
       console.error('[richEditor] applyDocument failed', cause)
     } finally {
@@ -418,23 +420,6 @@
     </Button>
     <span class="flex-1"></span>
     <Button
-      variant={pendingCount > 0 ? 'secondary' : 'ghost'}
-      size="sm"
-      class="h-7 shrink-0 gap-1 px-2 text-[10px]"
-      aria-label={t($locale, 'Tidy now')}
-      title={pendingCount > 0
-        ? t($locale, 'Tidy {count} pending speech segments', { count: pendingCount })
-        : t($locale, 'Tidy pending speech segments. It appears here after Ramble writes a transcript.')}
-      disabled={disabled || tidyBusy || pendingCount === 0}
-      onclick={() => onTidy()}
-    >
-      <Sparkles class="size-3.5" />
-      {tidyBusy ? t($locale, 'Tidying…') : t($locale, 'Tidy now')}
-      {#if pendingCount > 0}
-        <Badge variant="secondary" class="h-4 px-1 text-[9px]">{pendingCount}</Badge>
-      {/if}
-    </Button>
-    <Button
       variant="ghost"
       size="icon-sm"
       aria-label={t($locale, 'Undo')}
@@ -455,7 +440,11 @@
       <Redo2 />
     </Button>
   </div>
-  <div class="editor-host min-h-0 flex-1 overflow-y-auto overscroll-contain" bind:this={editorHost}></div>
+  <div
+    class="editor-host min-h-0 flex-1 overflow-y-auto overscroll-contain"
+    class:distinguish-untidied={$distinguishUntidiedText}
+    bind:this={editorHost}
+  ></div>
 </div>
 
 <style>
@@ -502,19 +491,58 @@
   }
 
   .editor-host :global(.feedback-prose blockquote[data-action-id]) {
-    border-left-color: var(--foreground);
+    padding: 14px 18px 12px;
+    border: 1px solid color-mix(in oklab, var(--primary) 16%, transparent);
+    border-radius: calc(var(--radius) + 2px);
     color: var(--foreground);
-    background: color-mix(in oklab, var(--muted) 40%, transparent);
+    background: color-mix(in oklab, var(--primary) 9%, var(--background));
   }
 
-  .editor-host :global(.feedback-prose p[data-cleanup-state='pending']) {
-    box-shadow: inset 3px 0 0 color-mix(in oklab, var(--primary) 55%, transparent);
-    padding-left: 10px;
+  .editor-host :global(.feedback-prose blockquote[data-action-id] > p:first-child) {
+    margin: 0 0 0.8em;
+    padding-bottom: 0.65em;
+    border-bottom: 1px solid color-mix(in oklab, var(--primary) 14%, transparent);
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    font-weight: 700;
+    text-align: center;
   }
 
-  .editor-host :global(.feedback-prose p[data-cleanup-state='cleaned']) {
-    box-shadow: inset 3px 0 0 color-mix(in oklab, var(--muted-foreground) 35%, transparent);
-    padding-left: 10px;
+  .editor-host :global(.feedback-prose blockquote[data-action-id] > p:last-child) {
+    margin-bottom: 0;
+  }
+
+  .editor-host.distinguish-untidied :global(.feedback-prose p[data-cleanup-state='pending']) {
+    font-style: italic;
+  }
+
+  .editor-host :global(.feedback-prose p.speech-segment-tidying) {
+    position: relative;
+    padding-left: 22px;
+  }
+
+  .editor-host :global(.feedback-prose p.speech-segment-tidying::before) {
+    position: absolute;
+    top: 0.48em;
+    left: 1px;
+    width: 12px;
+    height: 12px;
+    border: 2px solid color-mix(in oklab, var(--primary) 22%, transparent);
+    border-top-color: var(--primary);
+    border-radius: 999px;
+    animation: speech-tidying-spin 0.75s linear infinite;
+    content: '';
+  }
+
+  @keyframes speech-tidying-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .editor-host :global(.feedback-prose p.speech-segment-tidying::before) {
+      animation-duration: 1.8s;
+    }
   }
 
   .editor-host :global(.feedback-prose img) {

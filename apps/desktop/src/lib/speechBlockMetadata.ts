@@ -1,4 +1,6 @@
-import { Extension, type JSONContent } from '@tiptap/core'
+import { Extension, type Editor, type JSONContent } from '@tiptap/core'
+import { Plugin, PluginKey } from '@tiptap/pm/state'
+import { Decoration, DecorationSet } from '@tiptap/pm/view'
 
 export const SPEECH_SEGMENT_ID_ATTR = 'speechSegmentId'
 export const INPUT_SOURCE_ATTR = 'inputSource'
@@ -11,6 +13,15 @@ export type SpeechCleanupSegment = {
   segmentId: string
   text: string
 }
+
+type SpeechTidyingDecorationState = {
+  segmentIds: ReadonlySet<string>
+  decorations: DecorationSet
+}
+
+export const SPEECH_TIDYING_PLUGIN_KEY = new PluginKey<SpeechTidyingDecorationState>(
+  'speechTidying',
+)
 
 function nodeText(node: JSONContent): string {
   if (typeof node.text === 'string') return node.text
@@ -103,3 +114,65 @@ export const SpeechBlockMetadata = Extension.create({
     ]
   },
 })
+
+function tidyingDecorations(
+  doc: Parameters<typeof DecorationSet.create>[0],
+  segmentIds: ReadonlySet<string>,
+): DecorationSet {
+  const decorations: Decoration[] = []
+  doc.descendants((node, position) => {
+    if (
+      node.type.name === 'paragraph' &&
+      typeof node.attrs[SPEECH_SEGMENT_ID_ATTR] === 'string' &&
+      segmentIds.has(node.attrs[SPEECH_SEGMENT_ID_ATTR])
+    ) {
+      decorations.push(
+        Decoration.node(position, position + node.nodeSize, {
+          class: 'speech-segment-tidying',
+          'data-tidying': 'true',
+        }),
+      )
+    }
+  })
+  return DecorationSet.create(doc, decorations)
+}
+
+/** Transient view-only state: it never changes or persists the draft document. */
+export const SpeechTidyingDecorations = Extension.create({
+  name: 'speechTidyingDecorations',
+
+  addProseMirrorPlugins() {
+    return [
+      new Plugin<SpeechTidyingDecorationState>({
+        key: SPEECH_TIDYING_PLUGIN_KEY,
+        state: {
+          init: (_, state) => ({
+            segmentIds: new Set(),
+            decorations: DecorationSet.empty,
+          }),
+          apply: (transaction, previous) => {
+            const meta = transaction.getMeta(SPEECH_TIDYING_PLUGIN_KEY)
+            const segmentIds = Array.isArray(meta)
+              ? new Set(meta.filter((value): value is string => typeof value === 'string'))
+              : previous.segmentIds
+            if (!Array.isArray(meta) && !transaction.docChanged) return previous
+            return {
+              segmentIds,
+              decorations: tidyingDecorations(transaction.doc, segmentIds),
+            }
+          },
+        },
+        props: {
+          decorations: (state) =>
+            SPEECH_TIDYING_PLUGIN_KEY.getState(state)?.decorations ?? null,
+        },
+      }),
+    ]
+  },
+})
+
+export function setTidyingSpeechSegments(editor: Editor, segmentIds: readonly string[]) {
+  editor.view.dispatch(
+    editor.state.tr.setMeta(SPEECH_TIDYING_PLUGIN_KEY, [...new Set(segmentIds)]),
+  )
+}

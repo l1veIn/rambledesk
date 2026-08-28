@@ -14,6 +14,7 @@
     cookingProvider,
     cookingReasoningEffort,
     cookingSystemPrompt,
+    distinguishUntidiedText,
     locale,
     setCookingApiKey,
     setCookingBaseUrl,
@@ -22,6 +23,7 @@
     setCookingProvider,
     setCookingReasoningEffort,
     setCookingSystemPrompt,
+    setDistinguishUntidiedText,
     setTidyApiKey,
     setTidyBaseUrl,
     setTidyModel,
@@ -83,6 +85,31 @@
           {tr('Manually clean pending speech segments in the current document. Tidy never runs automatically.')}
         </p>
       </div>
+    </div>
+
+    <div class="mt-4 flex items-center justify-between gap-6 rounded-md bg-muted/25 px-3 py-2.5">
+      <div>
+        <strong class="block text-xs font-medium">{tr('Distinguish untidied text')}</strong>
+        <span class="mt-0.5 block text-[10px] leading-4 text-muted-foreground">
+          {tr('Show pending speech in italics until Tidy finishes.')}
+        </span>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={$distinguishUntidiedText}
+        aria-label={tr('Distinguish untidied text')}
+        class={[
+          'relative h-[22px] w-10 shrink-0 rounded-full border border-transparent transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+          $distinguishUntidiedText ? 'bg-primary' : 'bg-input',
+        ]}
+        onclick={() => setDistinguishUntidiedText(!$distinguishUntidiedText)}
+      >
+        <span class={[
+          'absolute left-0.5 top-0.5 size-4 rounded-full bg-background shadow-sm transition-transform',
+          $distinguishUntidiedText ? 'translate-x-5' : 'translate-x-0',
+        ]}></span>
+      </button>
     </div>
 
     <LlmConfigurationFields

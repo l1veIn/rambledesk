@@ -8,7 +8,7 @@ import StarterKit from '@tiptap/starter-kit'
 
 import { ActionBlockquote } from './actionBlockquote'
 import { attachmentIdFromUrl, attachmentMarkdownUrl } from './attachmentMarkdown'
-import { SpeechBlockMetadata } from './speechBlockMetadata'
+import { SpeechBlockMetadata, SpeechTidyingDecorations } from './speechBlockMetadata'
 
 const AttachmentImage = Image.extend({
   addAttributes() {
@@ -163,6 +163,7 @@ export function feedbackEditorExtensions(): AnyExtension[] {
     AttachmentImage,
     AttachmentFile,
     SpeechBlockMetadata,
+    SpeechTidyingDecorations,
     ActionBlockquote,
     Markdown,
   ]
