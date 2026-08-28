@@ -20,7 +20,6 @@ export function parseLabeledOutput(text: string, count: number): string[] | null
     if (current.index !== i + 1) return null
     const end = i + 1 < matches.length ? matches[i + 1]!.pos : source.length
     const block = source.slice(current.end, end).trim()
-    if (!block) return null
     parts.push(block)
   }
   return parts
@@ -30,7 +29,7 @@ export function parseLabeledOutput(text: string, count: number): string[] | null
 export function acceptCleanupResult(original: string, cleaned: string): string | null {
   const source = original.trim()
   const result = normalizeCleanupNewlines(cleaned.trim())
-  if (!result) return null
+  if (!result) return ''
   const extra = Math.max(8, Math.floor(source.length * 0.2))
   if (result.length > source.length + extra) return null
   return result

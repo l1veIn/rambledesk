@@ -98,6 +98,48 @@ describe('draft operations', () => {
     expect(cleared.content?.[0].attrs?.[ACTION_ID_ATTR]).toBe(actionA.actionId)
   })
 
+  it('reuses the last filled Action group when the same Action is toggled back on', () => {
+    const filled = applyDraftOperation(
+      applyDraftOperation(
+        { type: 'doc', content: [] },
+        { kind: 'startActionGroup', action: actionA },
+      ),
+      { kind: 'appendSpeech', segmentId: 'a1', text: '第一次', action: actionA },
+    )
+    const cleared = applyDraftOperation(filled, {
+      kind: 'clearActionGroup',
+      actionId: actionA.actionId,
+    })
+    const withBlankLines = {
+      ...cleared,
+      content: [...(cleared.content ?? []), { type: 'paragraph' }, { type: 'paragraph' }],
+    }
+    const reopened = applyDraftOperation(withBlankLines, {
+      kind: 'startActionGroup',
+      action: actionA,
+    })
+    const supplemented = applyDraftOperation(reopened, {
+      kind: 'appendSpeech',
+      segmentId: 'a2',
+      text: '补充内容',
+      action: actionA,
+    })
+
+    const actionGroups = supplemented.content?.filter(
+      (node) => node.attrs?.[ACTION_ID_ATTR] === actionA.actionId,
+    )
+    expect(actionGroups).toHaveLength(1)
+    expect(supplemented.content?.slice(1)).toEqual([
+      { type: 'paragraph' },
+      { type: 'paragraph' },
+    ])
+    expect(
+      actionGroups?.[0].content
+        ?.filter((node) => node.attrs?.[SPEECH_SEGMENT_ID_ATTR])
+        .map((node) => node.content?.[0]?.text),
+    ).toEqual(['第一次', '补充内容'])
+  })
+
   it('does not clear another Action group when a stale toggle-off arrives', () => {
     const openedB = applyDraftOperation(
       { type: 'doc', content: [] },
@@ -177,7 +219,7 @@ describe('draft operations', () => {
     ).toEqual(['喂。', '能听到吗?'])
   })
 
-  it('drops an unused empty Action and opens a fresh group when returning to a filled one', () => {
+  it('drops an unused empty Action and reuses the preceding matching group', () => {
     const filledA = applyDraftOperation(
       applyDraftOperation(
         { type: 'doc', content: [] },
@@ -187,9 +229,6 @@ describe('draft operations', () => {
     )
     const emptyB = applyDraftOperation(filledA, { kind: 'startActionGroup', action: actionB })
     const backToA = applyDraftOperation(emptyB, { kind: 'startActionGroup', action: actionA })
-    expect(backToA.content?.map((node) => node.attrs?.[ACTION_ID_ATTR])).toEqual([
-      'login',
-      'login',
-    ])
+    expect(backToA.content?.map((node) => node.attrs?.[ACTION_ID_ATTR])).toEqual(['login'])
   })
 })

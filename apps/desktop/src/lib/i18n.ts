@@ -147,6 +147,12 @@ const chinese: Record<string, string> = {
   'Sound, volume, and other advanced notification options can be adjusted anytime in Settings → Notifications.': '提示音、音量等高级通知选项可随时在“设置 → 通知”中调整。',
   'You can now start a Ramble directly from a coding tool. Every setting can be changed from the top-right Settings button.': '现在可以从 Coding 工具直接开始 Ramble 了。所有设置均可在右上角设置中更改。',
   'Paste this example prompt into your coding agent or coding tool:': '把这句示例提示词粘贴到 Coding agent / Coding 工具中：',
+  'Copy this prompt, then start': '复制提示词，然后开始',
+  'Paste it into your coding agent and send it to start your first Ramble.': '把它粘贴到 Coding agent 并发送，即可开始第一次 Ramble。',
+  'Copy starter prompt': '复制提示词',
+  'Copied — ready to start': '复制成功，可以开始了',
+  'Copy failed — try again': '复制失败，请重试',
+  'Copy the prompt to continue': '请先复制提示词',
   'Today we are developing with RambleDesk': '今天我们用 RambleDesk 开发',
   '/ramble Let\'s work on something together': '/ramble 一起做点儿什么吧',
   'The capture session changed. Please capture again.': '截图会话已变化，请重新截图',
@@ -222,6 +228,7 @@ const chinese: Record<string, string> = {
   'Reload': '重新载入',
   'Task brief': '任务简报',
   '{count} experience steps': '{count} 个体验步骤',
+  'Action feedback': 'Action 反馈',
   'Collapse': '收起',
   'Expand': '展开',
   'Collapse sidebar': '收起侧栏',
@@ -425,9 +432,14 @@ const chinese: Record<string, string> = {
   'The first install can take about ten seconds; please wait.': '首次安装可能耗时十几秒，请稍候。',
   'Tidy': '整理',
   'Tidying…': '正在整理…',
+  'Clean pending speech segments manually or when the automatic threshold is reached.':
+    '手动整理待处理语音，或在数量达到自动整理阈值时执行。',
+  'Automatic Tidy threshold': '自动整理阈值',
+  'Run Tidy when pending speech segments reach this number. Set 0 to turn it off.':
+    '待整理语音段落达到此数量时自动整理；设为 0 表示关闭。',
   'Distinguish untidied text': '区分未整理文本',
-  'Show pending speech in italics until Tidy finishes.':
-    '在整理完成前，用斜体显示待整理语音。',
+  'Show a microphone beside pending speech until Tidy starts.':
+    '在开始整理前，为待整理语音显示麦克风标记。',
   'Tidy {count} pending speech segments': '整理 {count} 段待处理语音',
   'Tidy pending speech segments. It appears here after Ramble writes a transcript.':
     '整理尚未处理的语音段落。Ramble 写入转写后会出现在这里。',
@@ -742,8 +754,6 @@ const chinese: Record<string, string> = {
   'Post-processing': '后处理',
   'Draft and submission transforms': '草稿与提交处理',
   'Configuration required': '需要配置',
-  'Manually clean pending speech segments in the current document. Tidy never runs automatically.':
-    '手动整理当前文档中待处理的语音段。Tidy 永远不会自动运行。',
   'Tidy model': 'Tidy 模型',
   'Tidy prompt': 'Tidy 提示词',
   'Full Cook': '完整 Cooking',

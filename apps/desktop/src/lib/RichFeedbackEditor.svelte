@@ -37,8 +37,7 @@
   import { t } from './i18n'
   import { distinguishUntidiedText, locale } from './preferences'
   import {
-    CLEANUP_STATE_ATTR,
-    SPEECH_SEGMENT_ID_ATTR,
+    applySpeechCleanupResults,
     setTidyingSpeechSegments,
     speechCleanupCandidates,
     type SpeechCleanupSegment,
@@ -252,8 +251,7 @@
       const last = lastMeaningfulChild(transaction.doc)
       if (
         last?.node.type.name === 'blockquote' &&
-        last.node.attrs.actionId === operation.action.actionId &&
-        isEmptyActionGroup(last.node.toJSON())
+        last.node.attrs.actionId === operation.action.actionId
       ) {
         if (transaction.docChanged) editor.view.dispatch(transaction)
         return true
@@ -302,39 +300,12 @@
     replacements: Array<{ segmentId: string; originalText: string; nextText: string }>,
   ): boolean {
     if (!editor || replacements.length === 0) return false
-    const wanted = new Map(replacements.map((item) => [item.segmentId, item]))
-    const targets: Array<{
-      from: number
-      to: number
-      pos: number
-      attrs: Record<string, unknown>
-      nextText: string
-    }> = []
-    editor.state.doc.descendants((node, position) => {
-      if (node.type.name !== 'paragraph') return
-      const segmentId = node.attrs[SPEECH_SEGMENT_ID_ATTR]
-      const replacement = typeof segmentId === 'string' ? wanted.get(segmentId) : undefined
-      if (!replacement) return
-      if (node.textContent.trim() !== replacement.originalText.trim()) return
-      targets.push({
-        from: position + 1,
-        to: position + node.nodeSize - 1,
-        pos: position,
-        attrs: { ...node.attrs, [CLEANUP_STATE_ATTR]: 'cleaned' },
-        nextText: replacement.nextText,
-      })
-    })
-    if (targets.length === 0) return false
-    let transaction = editor.state.tr
-    for (const target of targets.reverse()) {
-      transaction = transaction.replaceWith(
-        target.from,
-        target.to,
-        editor.schema.text(target.nextText),
-      )
-      transaction = transaction.setNodeMarkup(target.pos, undefined, target.attrs)
-    }
-    editor.view.dispatch(transaction)
+    const result = applySpeechCleanupResults(editor.getJSON(), replacements)
+    if (!result.changed) return false
+    const nextDocument = editor.schema.nodeFromJSON(result.document)
+    editor.view.dispatch(
+      editor.state.tr.replaceWith(0, editor.state.doc.content.size, nextDocument.content),
+    )
     return true
   }
 
@@ -503,8 +474,19 @@
     padding-bottom: 0.65em;
     border-bottom: 1px solid color-mix(in oklab, var(--primary) 14%, transparent);
     font-family: ui-sans-serif, system-ui, sans-serif;
+    font-size: 12px;
     font-weight: 700;
-    text-align: center;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+    text-align: left;
+  }
+
+  .editor-host :global(.feedback-prose blockquote[data-action-id] > p:first-child > strong) {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
   }
 
   .editor-host :global(.feedback-prose blockquote[data-action-id] > p:last-child) {
@@ -512,7 +494,20 @@
   }
 
   .editor-host.distinguish-untidied :global(.feedback-prose p[data-cleanup-state='pending']) {
-    font-style: italic;
+    position: relative;
+    padding-inline-start: 22px;
+  }
+
+  .editor-host.distinguish-untidied :global(.feedback-prose p[data-cleanup-state='pending']:not(.speech-segment-tidying)::before) {
+    position: absolute;
+    top: 0.42em;
+    inset-inline-start: 1px;
+    width: 14px;
+    height: 14px;
+    background-color: color-mix(in oklab, var(--primary) 58%, var(--muted-foreground));
+    content: '';
+    -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20fill='black'%20d='M12%2014q1.25%200%202.125-.875T15%2011V5q0-1.25-.875-2.125T12%202q-1.25%200-2.125.875T9%205v6q0%201.25.875%202.125T12%2014Zm-1%207v-3.075q-2.6-.35-4.3-2.325T5%2011h2q0%202.075%201.463%203.537T12%2016q2.075%200%203.538-1.463T17%2011h2q0%202.625-1.7%204.6T13%2017.925V21Z'/%3E%3C/svg%3E") center / contain no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20fill='black'%20d='M12%2014q1.25%200%202.125-.875T15%2011V5q0-1.25-.875-2.125T12%202q-1.25%200-2.125.875T9%205v6q0%201.25.875%202.125T12%2014Zm-1%207v-3.075q-2.6-.35-4.3-2.325T5%2011h2q0%202.075%201.463%203.537T12%2016q2.075%200%203.538-1.463T17%2011h2q0%202.625-1.7%204.6T13%2017.925V21Z'/%3E%3C/svg%3E") center / contain no-repeat;
   }
 
   .editor-host :global(.feedback-prose p.speech-segment-tidying) {

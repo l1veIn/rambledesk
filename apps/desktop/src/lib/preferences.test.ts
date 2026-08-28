@@ -83,6 +83,24 @@ describe('post-processing configuration', () => {
     expect(get(optedOut.distinguishUntidiedText)).toBe(false)
   })
 
+  it('disables automatic Tidy by default and restores a saved threshold', async () => {
+    const defaults = await loadPreferences()
+    expect(get(defaults.tidyAutoThreshold)).toBe(0)
+
+    const configured = await loadPreferences({
+      'rambledesk.tidy.auto-threshold': '4',
+    })
+    expect(get(configured.tidyAutoThreshold)).toBe(4)
+  })
+
+  it('normalizes automatic Tidy thresholds set by the user', async () => {
+    const preferences = await loadPreferences()
+    preferences.setTidyAutoThreshold(-3)
+    expect(get(preferences.tidyAutoThreshold)).toBe(0)
+    preferences.setTidyAutoThreshold(5.7)
+    expect(get(preferences.tidyAutoThreshold)).toBe(6)
+  })
+
   it('keeps Tidy credentials independent from Cooking', async () => {
     const preferences = await loadPreferences({
       'rambledesk.cooking.api-key': 'cook-secret',

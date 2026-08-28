@@ -38,6 +38,7 @@
   } from './lib/draftOperations'
   import { writeBackgroundDraftOperation } from './lib/backgroundDraftWriter'
   import {
+    decodeFeedbackDraftDocument,
     restoreFeedbackDraftDocument,
     snapshotFeedbackDraftDocument,
     type FeedbackDraftSnapshot,
@@ -74,6 +75,7 @@
     type AttachmentMessageTone,
   } from './lib/workbench/attachmentController'
   import { createNavigationController } from './lib/workbench/navigationController'
+  import { resolvedRamblePhase } from './lib/workbench/rambleSessionState'
   import type {
     FeedbackEditorHandle,
     RamblePhase,
@@ -107,6 +109,7 @@
     notificationSoundEnabled,
     setNotificationPopupEnabled,
     tidyApiKey,
+    tidyAutoThreshold,
     tidyBaseUrl,
     tidyModel,
     tidyProvider,
@@ -292,6 +295,7 @@
   function applyDraftSnapshot(snapshot: FeedbackDraftSnapshot) {
     draftDocumentJson = snapshot.documentJson
     draftBody = snapshot.bodyMarkdown
+    editorDocument = decodeFeedbackDraftDocument(snapshot.documentJson)
   }
 
   function adoptDraft(draft: DraftView, options: { loadEditor?: boolean } = {}) {
@@ -389,8 +393,9 @@
     voicePhase === 'stopping'
   $: voiceCanStop =
     voiceActive || voicePhase === 'error'
-  $: rambleActive = ramblePhase === 'active'
-  $: rambleEngaged = ramblePhase !== 'idle'
+  $: visibleRamblePhase = resolvedRamblePhase(ramblePhase, voicePhase)
+  $: rambleActive = visibleRamblePhase === 'active'
+  $: rambleEngaged = visibleRamblePhase !== 'idle'
   $: rambleBelongsToWorkspace =
     !rambleEngaged || workspace?.request.request_id === rambleRequestId
   $: rambelleStatusPortrait = feedbackResult
@@ -402,7 +407,7 @@
         : rambleEngaged
           ? rambelleOrganizing
           : rambelleIdle
-  $: rambleBusy = ramblePhase === 'starting' || ramblePhase === 'stopping'
+  $: rambleBusy = visibleRamblePhase === 'starting' || visibleRamblePhase === 'stopping'
   $: rambleCanStop = rambleActive || voiceCanStop
   $: rambleCanExit = rambleEngaged || voiceCanStop
   $: updateInstallBlocked =
@@ -1066,7 +1071,10 @@
             locale: $locale,
             systemPrompt: $tidySystemPrompt,
           }}
-          activeActionId={workspace ? activeActionFor(workspace.request.request_id)?.actionId ?? null : null}
+          tidyAutoThreshold={$tidyAutoThreshold}
+          activeActionId={workspace
+            ? activeActionByRequest.get(workspace.request.request_id)?.actionId ?? null
+            : null}
           {savedRevision}
           {savePhase}
           {attachmentPreviews}
@@ -1078,7 +1086,7 @@
               : rambelleIdle}
           rambleEngaged={rambleBelongsToWorkspace ? rambleEngaged : false}
           rambleActive={rambleBelongsToWorkspace ? rambleActive : false}
-          ramblePhase={rambleBelongsToWorkspace ? ramblePhase : 'idle'}
+          ramblePhase={rambleBelongsToWorkspace ? visibleRamblePhase : 'idle'}
           rambleBusy={rambleBelongsToWorkspace ? rambleBusy : true}
           rambleStartedOnce={rambleBelongsToWorkspace ? rambleStartedOnce : false}
           voiceDevice={rambleBelongsToWorkspace ? voiceDevice : ''}

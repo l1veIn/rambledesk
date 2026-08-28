@@ -2,6 +2,7 @@ import { get, writable } from 'svelte/store'
 
 import { savedUiTheme, saveUiTheme } from './uiPreferences'
 import { DEFAULT_SPEECH_HOTWORDS, mergeSpeechHotwords } from './speechHotwords'
+import { normalizeTidyAutoThreshold } from './tidyAuto'
 
 export { DEFAULT_SPEECH_HOTWORDS, mergeSpeechHotwords } from './speechHotwords'
 
@@ -60,6 +61,7 @@ const TIDY_MODEL_KEY = 'rambledesk.light-cleanup.model'
 const TIDY_REASONING_EFFORT_KEY = 'rambledesk.light-cleanup.reasoning-effort'
 const TIDY_SYSTEM_PROMPT_KEY = 'rambledesk.light-cleanup.system-prompt'
 const DISTINGUISH_UNTIDIED_TEXT_KEY = 'rambledesk.tidy.distinguish-untidied-text'
+const TIDY_AUTO_THRESHOLD_KEY = 'rambledesk.tidy.auto-threshold'
 const ONBOARDING_COMPLETED_KEY = 'rambledesk.onboarding.completed'
 const ONBOARDING_STEP_KEY = 'rambledesk.onboarding.step'
 
@@ -259,6 +261,9 @@ export const tidySystemPrompt = writable(localStorage.getItem(TIDY_SYSTEM_PROMPT
 export const distinguishUntidiedText = writable(
   initialBoolean(DISTINGUISH_UNTIDIED_TEXT_KEY, true),
 )
+export const tidyAutoThreshold = writable(
+  normalizeTidyAutoThreshold(initialNumber(TIDY_AUTO_THRESHOLD_KEY, 0, 0, 999)),
+)
 
 let initialized = false
 let mediaQuery: MediaQueryList | null = null
@@ -398,6 +403,10 @@ export function setDistinguishUntidiedText(enabled: boolean) {
   distinguishUntidiedText.set(enabled)
 }
 
+export function setTidyAutoThreshold(threshold: number) {
+  tidyAutoThreshold.set(normalizeTidyAutoThreshold(threshold))
+}
+
 export function setNotificationVolume(volume: number) {
   notificationVolume.set(Math.min(100, Math.max(0, Math.round(volume))))
 }
@@ -503,6 +512,9 @@ export function initializePreferences() {
   distinguishUntidiedText.subscribe((next) => {
     localStorage.setItem(DISTINGUISH_UNTIDIED_TEXT_KEY, String(next))
   })
+  tidyAutoThreshold.subscribe((next) => {
+    localStorage.setItem(TIDY_AUTO_THRESHOLD_KEY, String(next))
+  })
 
   mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
   mediaQuery.addEventListener('change', () => {
@@ -602,6 +614,9 @@ export function initializePreferences() {
     if (event.key === TIDY_SYSTEM_PROMPT_KEY) tidySystemPrompt.set(event.newValue ?? '')
     if (event.key === DISTINGUISH_UNTIDIED_TEXT_KEY && event.newValue !== null) {
       distinguishUntidiedText.set(event.newValue === 'true')
+    }
+    if (event.key === TIDY_AUTO_THRESHOLD_KEY) {
+      setTidyAutoThreshold(Number(event.newValue ?? '0'))
     }
   })
 }

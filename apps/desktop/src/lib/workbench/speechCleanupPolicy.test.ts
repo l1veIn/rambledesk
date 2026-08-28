@@ -18,11 +18,19 @@ describe('parseLabeledOutput', () => {
   it('returns blocks in order when the contract holds', () => {
     expect(parseLabeledOutput('[1] 第一段\n\n[2] 第二段', 2)).toEqual(['第一段', '第二段'])
   })
+
+  it('keeps empty labeled blocks as explicit paragraph deletions', () => {
+    expect(parseLabeledOutput('[1]\n\n[2] 保留\n\n[3]', 3)).toEqual(['', '保留', ''])
+  })
 })
 
 describe('acceptCleanupResult', () => {
   it('rejects answers that grew far beyond the original utterance', () => {
     expect(acceptCleanupResult('按钮太小', '按钮太小，另外我建议重构整个导航并补测试。'.repeat(4))).toBeNull()
     expect(acceptCleanupResult('按钮太小', '按钮太小了。')).toBe('按钮太小了。')
+  })
+
+  it('accepts an empty result for a filler-only block', () => {
+    expect(acceptCleanupResult('嗯，嗯嗯。', '')).toBe('')
   })
 })

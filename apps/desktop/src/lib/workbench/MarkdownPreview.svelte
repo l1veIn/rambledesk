@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Editor } from '@tiptap/core'
+  import type { JSONContent } from '@tiptap/core'
   import { onMount } from 'svelte'
 
   import { attachmentIdFromUrl } from '$lib/attachmentMarkdown'
@@ -12,22 +13,28 @@
   import { openExternalUrl } from '$lib/openExternalUrl'
 
   export let markdown = ''
+  export let document: JSONContent | null = null
   export let previews: Record<string, string> = {}
   export let onOpenAttachment: (attachmentId: string) => void = () => {}
+  export let compact = false
 
   let editorHost: HTMLDivElement
   let editor: Editor | null = null
-  let renderedMarkdown = ''
+  let renderedSource = ''
 
-  function previewDocument(source: string) {
-    return hydrateActionBlockquotes(parseFeedbackMarkdown(source))
+  function previewDocument() {
+    return document ?? hydrateActionBlockquotes(parseFeedbackMarkdown(markdown))
   }
+
+  $: sourceSignature = document
+    ? `document:${JSON.stringify(document)}`
+    : `markdown:${markdown}`
 
   onMount(() => {
     editor = new Editor({
       element: editorHost,
       extensions: feedbackEditorExtensions(),
-      content: previewDocument(markdown),
+      content: previewDocument(),
       editable: false,
       editorProps: {
         attributes: {
@@ -57,7 +64,7 @@
         },
       },
       onCreate: () => {
-        renderedMarkdown = markdown
+        renderedSource = sourceSignature
       },
     })
 
@@ -67,11 +74,11 @@
     }
   })
 
-  $: if (editor && markdown !== renderedMarkdown) {
-    editor.commands.setContent(previewDocument(markdown), {
+  $: if (editor && sourceSignature !== renderedSource) {
+    editor.commands.setContent(previewDocument(), {
       emitUpdate: false,
     })
-    renderedMarkdown = markdown
+    renderedSource = sourceSignature
     hydrateAttachmentImages()
   }
   $: if (editor) {
@@ -99,7 +106,11 @@
   }
 </script>
 
-<div class="h-full min-h-0 overflow-auto rounded-lg border bg-background px-6 py-5">
+<div
+  class={compact
+    ? 'action-feedback-markdown min-h-0 px-4 py-3'
+    : 'h-full min-h-0 overflow-auto rounded-lg border bg-background px-6 py-5'}
+>
   <div bind:this={editorHost}></div>
 </div>
 
@@ -308,5 +319,29 @@
     color: var(--primary-foreground);
     font-size: 9px;
     font-weight: 650;
+  }
+
+  :global(.action-feedback-markdown .attachment-markdown-prose) {
+    max-width: none;
+    min-height: 0;
+    font-size: 13px;
+    line-height: 1.65;
+  }
+
+  :global(.action-feedback-markdown .attachment-markdown-prose p) {
+    margin: 0.6em 0;
+  }
+
+  :global(.action-feedback-markdown .attachment-markdown-prose > *:first-child) {
+    margin-top: 0;
+  }
+
+  :global(.action-feedback-markdown .attachment-markdown-prose > *:last-child) {
+    margin-bottom: 0;
+  }
+
+  :global(.action-feedback-markdown .attachment-markdown-prose img) {
+    max-height: 240px;
+    margin: 12px auto;
   }
 </style>

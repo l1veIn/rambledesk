@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatTidyPrompt, tidySpeechSegments } from './lightCleanup'
+import {
+  DEFAULT_TIDY_SYSTEM_PROMPT,
+  formatTidyPrompt,
+  tidySpeechSegments,
+} from './lightCleanup'
 
 describe('tidySpeechSegments', () => {
   it('formats every input block with a [n] label', () => {
@@ -43,6 +47,31 @@ describe('tidySpeechSegments', () => {
         async () => ({ text: '[1] 按钮太小了。\n\n[2] 没有 toast。', model: 'test' }),
       ),
     ).resolves.toEqual(['按钮太小了。', '没有 toast。'])
+  })
+
+  it('accepts empty labeled results for filler-only segments', async () => {
+    await expect(
+      tidySpeechSegments(
+        [
+          { segmentId: 'a', text: '嗯，嗯嗯。' },
+          { segmentId: 'b', text: '按钮没有反应' },
+        ],
+        {
+          provider: 'openai',
+          apiKey: 'k',
+          baseUrl: '',
+          model: 'm',
+          reasoningEffort: 'low',
+          locale: 'en',
+        },
+        async () => ({ text: '[1]\n\n[2] 按钮没有反应。', model: 'test' }),
+      ),
+    ).resolves.toEqual(['', '按钮没有反应。'])
+  })
+
+  it('tells the model not to delete meaningful short blocks', () => {
+    expect(DEFAULT_TIDY_SYSTEM_PROMPT).toContain('Never delete a block merely because it is short')
+    expect(DEFAULT_TIDY_SYSTEM_PROMPT).toContain('return its [n] label with an empty body')
   })
 
   it('uses the Tidy system prompt supplied by the independent configuration', async () => {

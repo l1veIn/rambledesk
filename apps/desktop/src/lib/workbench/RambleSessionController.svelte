@@ -41,6 +41,7 @@
     type VoiceRambleSessionView,
   } from '../speech'
   import { createSingleFlight } from '../singleFlight'
+  import { resolvedRamblePhase } from './rambleSessionState'
   import type { RamblePhase, VoicePhase } from './types'
 
   export let isTauri = false
@@ -84,15 +85,16 @@
     voicePhase === 'stopping'
   $: voiceCanStop =
     voiceActive || (voicePhase === 'error' && voiceSessionId.length > 0)
-  $: rambleActive = ramblePhase === 'active'
-  $: rambleEngaged = ramblePhase !== 'idle'
-  $: rambleBusy = ramblePhase === 'starting' || ramblePhase === 'stopping'
+  $: visibleRamblePhase = resolvedRamblePhase(ramblePhase, voicePhase)
+  $: rambleActive = visibleRamblePhase === 'active'
+  $: rambleEngaged = visibleRamblePhase !== 'idle'
+  $: rambleBusy = visibleRamblePhase === 'starting' || visibleRamblePhase === 'stopping'
   $: rambleCanStop = rambleActive || voiceCanStop
   $: rambleCanExit = rambleEngaged || voiceCanStop
   $: if (rambleEngaged && workspace) {
     attachmentBusy
     screenCaptureBusy
-    ramblePhase
+    visibleRamblePhase
     rambleBusy
     rambleActive
     rambleMessage
@@ -494,20 +496,24 @@
     switch (event.type) {
       case 'started':
         voicePhase = 'listening'
+        markRambleRecording()
         voiceDevice = event.input_device
         voiceMessage = t($locale, 'Recording · {device}', { device: event.input_device })
         break
       case 'partial':
         voicePartial = event.text
         if (voicePhase !== 'stopping') voicePhase = 'listening'
+        markRambleRecording()
         break
       case 'level':
         voiceLevel = Math.min(1, Math.max(0, event.rms * 8))
         if (voicePhase !== 'stopping') voicePhase = 'listening'
+        markRambleRecording()
         break
       case 'processing':
         voiceChunkIndex = event.chunk_index + 1
         if (voicePhase !== 'stopping') voicePhase = 'processing'
+        markRambleRecording()
         voiceMessage = t($locale, 'Transcribing segment {count}…', { count: event.chunk_index + 1 })
         break
       case 'stable': {
@@ -525,6 +531,7 @@
         voicePartial = ''
         voiceChunkIndex = event.chunk_index + 1
         if (voicePhase !== 'stopping') voicePhase = 'listening'
+        markRambleRecording()
         voiceMessage = t($locale, 'Segment {count} written to the document', { count: event.chunk_index + 1 })
         break
       }
@@ -555,6 +562,12 @@
     }
   }
 
+  function markRambleRecording() {
+    if (voicePhase === 'stopping' || ramblePhase === 'stopping' || ramblePhase === 'active') return
+    ramblePhase = 'active'
+    rambleMessage = t($locale, 'Ramble active · Clipboard is read only when you click import')
+  }
+
   async function handleRambleConsoleCommand(command: RambleConsoleCommand) {
     switch (command.type) {
       case 'toggle-recording':
@@ -579,14 +592,14 @@
     if (!rambleEngaged || !rambleRequestId) return
     const state: RambleConsoleState = {
       phase:
-        ramblePhase === 'active'
+        visibleRamblePhase === 'active'
           ? 'recording'
-          : ramblePhase === 'idle'
+          : visibleRamblePhase === 'idle'
             ? 'paused'
-            : ramblePhase,
+            : visibleRamblePhase,
       sourceLabel: rambleSourceLabel,
       requestTitle: rambleRequestTitle,
-      recording: rambleActive,
+      recording: visibleRamblePhase === 'active',
       busy: rambleBusy,
       captureBusy: screenCaptureBusy,
       voiceLevel,

@@ -19,8 +19,10 @@ HARD RULES:
 4. Remove repetition: when the speaker repeats the same word, phrase, or sentence immediately or within the passage, keep only one instance unless the repetition clearly changes meaning.
 5. Fix grammar and wording: adjust word order, function words, and phrasing so the sentence reads fluently and without errors; repair broken fragments introduced by speech-to-text.
 6. Keep the original meaning, intent, and roughly the same length; keep the original language; do not paraphrase into a summary.
-7. Format the output as EXACTLY the same number of blocks as the input, in the same order. Every block MUST start with its number in square brackets: [1], [2], and so on. A single input block still requires [1].
-8. Output only the cleaned transcript. If you cannot tidy without changing meaning or adding content, output the original text unchanged, still with [n] labels.`
+7. Format the output as EXACTLY the same number of blocks as the input, in the same order. Every block MUST start with its number in square brackets: [1], [2], and so on. A single input block still requires [1]. An empty body still counts as a block.
+8. If an entire block contains only filler, hesitation, a false start, or speech-planning meta-talk and carries no user intent, observation, answer, choice, or meaningful reaction, return its [n] label with an empty body.
+9. Never delete a block merely because it is short. Preserve meaningful short answers and reactions such as yes, no, okay, right, stop, 可以, 不行, 对, and 等等.
+10. Output only the cleaned transcript. If you cannot tidy without changing meaning or adding content, output the original text unchanged, still with [n] labels.`
 
 export function resolveTidySystemPrompt(custom: string | null | undefined): string {
   const trimmed = custom?.trim() ?? ''

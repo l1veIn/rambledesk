@@ -1,6 +1,8 @@
 <script lang="ts">
+  import type { JSONContent } from '@tiptap/core'
   import { Copy, FileImage, FileText, LoaderCircle, Mic, Paperclip } from '@lucide/svelte'
 
+  import { collectActionGroupContent } from '$lib/actionGroupContent'
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
   import * as Dialog from '$lib/components/ui/dialog'
@@ -17,6 +19,7 @@
   import { isSafeHttpUrl } from '$lib/linkify'
   import { openExternalUrl } from '$lib/openExternalUrl'
   import RequestAttachmentPreview from './RequestAttachmentPreview.svelte'
+  import ActionFeedbackCard from './ActionFeedbackCard.svelte'
   import { buildTaskBriefText } from './taskBriefCopy'
   import RecordLed from './RecordLed.svelte'
   import { rambleRecordPresentation } from './rambleRecordButton'
@@ -24,6 +27,9 @@
 
   export let open = false
   export let workspace: FeedbackWorkspaceView | null = null
+  export let editorDocument: JSONContent | null = null
+  export let previews: Record<string, string> = {}
+  export let onOpenAttachment: (attachmentId: string) => void = () => {}
   export let formatTime: (value: string | null | undefined) => string = () => ''
   export let resolveHostProfile: (hostId: string) => HostProfile = (hostId) => ({
     id: hostId,
@@ -46,6 +52,7 @@
     workspace === null ||
     workspace.request.status === 'completed' ||
     workspace.request.status === 'cancelled'
+  $: actionGroupContent = collectActionGroupContent(editorDocument)
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
@@ -154,15 +161,28 @@
             </h2>
             <ol class="m-0 mt-4 grid list-none gap-3 p-0">
               {#each workspace.actions as action, index (action.id)}
+                {@const feedback =
+                  actionGroupContent.get(action.id) ??
+                  actionGroupContent.get(`legacy-action-${index + 1}`)}
                 <li class="grid grid-cols-[28px_minmax(0,1fr)] gap-3">
                   <span
                     class="grid size-7 place-items-center rounded-md bg-background text-xs font-semibold text-muted-foreground ring-1 ring-border"
                   >
                     {index + 1}
                   </span>
-                  <span class="min-w-0 self-center text-[15px] leading-7">
-                    <LinkifiedText text={action.instruction} />
-                  </span>
+                  <div class="min-w-0 self-center">
+                    <div class="text-[15px] leading-7">
+                      <LinkifiedText text={action.instruction} />
+                    </div>
+                    {#if feedback}
+                      <ActionFeedbackCard
+                        document={feedback.document}
+                        groupCount={feedback.groupCount}
+                        {previews}
+                        {onOpenAttachment}
+                      />
+                    {/if}
+                  </div>
                 </li>
               {/each}
             </ol>

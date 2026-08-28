@@ -62,6 +62,7 @@
   export let cookedPreviewModel = ''
   export let cookedPreviewMarkdown = ''
   export let tidyConfig: TidyConfig | null = null
+  export let tidyAutoThreshold = 0
   export let activeActionId: string | null = null
   export let submitting = false
   export let submitStage: SubmitStage = 'idle'
@@ -261,6 +262,7 @@
               uncookedMarkdown={publishedFeedback?.uncooked_markdown ?? draftBody}
               onChange={onDraftChange}
               {tidyConfig}
+              {tidyAutoThreshold}
               onTidyError={onTidyError}
               onOpenTidySettings={onOpenTidySettings}
               onRestoreOriginal={onRestoreOriginal}
@@ -323,6 +325,9 @@
     <TaskBriefPreview
       bind:open={taskBriefPreviewOpen}
       {workspace}
+      {editorDocument}
+      previews={attachmentPreviews}
+      onOpenAttachment={openAttachmentPreviewById}
       {formatTime}
       {resolveHostProfile}
       {onToggleRamble}

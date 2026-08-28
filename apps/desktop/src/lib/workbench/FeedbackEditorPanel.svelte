@@ -28,6 +28,7 @@
   } from '$lib/speechBlockMetadata'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
+  import { shouldAutoTidy } from '$lib/tidyAuto'
   import { hasCookedPublishedVariant } from '$lib/publishedFeedback'
   import MarkdownPreview from './MarkdownPreview.svelte'
   import type { SavePhase } from './types'
@@ -52,12 +53,14 @@
   export let onRestoreOriginal: () => void = () => {}
   export let onOpenAttachment: (attachmentId: string) => void = () => {}
   export let tidyConfig: TidyConfig | null = null
+  export let tidyAutoThreshold = 0
   export let onTidyError: (message: string) => void = () => {}
   export let onOpenTidySettings: () => void = () => {}
 
   let tidyBusy = false
   let pendingCount = 0
   let tidyingSegmentIds: string[] = []
+  let lastAutoTidyAttempt = ''
 
   let richEditor: RichFeedbackEditor
   let publishedView: 'cooked' | 'uncooked' = 'cooked'
@@ -100,17 +103,36 @@
     return richEditor?.replaceSpeechSegments(replacements) ?? false
   }
 
+  $: tidyReady = Boolean(tidyConfig?.apiKey.trim() && tidyConfig.model.trim())
   $: {
     editorEpoch
     editorDocument
-    pendingCount = richEditor?.pendingSpeechSegments().length ??
-      (editorDocument ? speechCleanupCandidates(editorDocument).length : 0)
+    const candidates = richEditor?.pendingSpeechSegments() ??
+      (editorDocument ? speechCleanupCandidates(editorDocument) : [])
+    pendingCount = candidates.length
+    const shouldRun = shouldAutoTidy(pendingCount, tidyAutoThreshold)
+    if (!shouldRun) {
+      lastAutoTidyAttempt = ''
+    } else if (richEditor && tidyReady && !tidyBusy && !editingDisabled) {
+      const attempt = autoTidyAttemptKey(candidates)
+      if (attempt !== lastAutoTidyAttempt) {
+        lastAutoTidyAttempt = attempt
+        void tidyNow(true)
+      }
+    }
   }
 
-  async function tidyNow() {
-    const tidyReady = Boolean(tidyConfig?.apiKey.trim() && tidyConfig.model.trim())
+  function autoTidyAttemptKey(candidates: SpeechCleanupSegment[]): string {
+    return [
+      workspace.request.request_id,
+      String(tidyAutoThreshold),
+      ...candidates.map((segment) => segment.segmentId),
+    ].join('\u0000')
+  }
+
+  async function tidyNow(automatic = false) {
     if (tidyBusy || editingDisabled || !tidyConfig || !tidyReady) {
-      if (!tidyConfig || !tidyReady) {
+      if (!automatic && (!tidyConfig || !tidyReady)) {
         onTidyError(tr('Configure Tidy in Settings → Post-processing → Tidy first.'))
         onOpenTidySettings()
       }
@@ -120,6 +142,7 @@
     const epoch = editorEpoch
     const candidates = richEditor?.pendingSpeechSegments() ?? []
     if (candidates.length === 0) return
+    lastAutoTidyAttempt = autoTidyAttemptKey(candidates)
     tidyingSegmentIds = candidates.map((segment) => segment.segmentId)
     tidyBusy = true
     try {

@@ -25,12 +25,14 @@
     setCookingSystemPrompt,
     setDistinguishUntidiedText,
     setTidyApiKey,
+    setTidyAutoThreshold,
     setTidyBaseUrl,
     setTidyModel,
     setTidyProvider,
     setTidyReasoningEffort,
     setTidySystemPrompt,
     tidyApiKey,
+    tidyAutoThreshold,
     tidyBaseUrl,
     tidyModel,
     tidyProvider,
@@ -82,16 +84,39 @@
           </Badge>
         </div>
         <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
-          {tr('Manually clean pending speech segments in the current document. Tidy never runs automatically.')}
+          {tr('Clean pending speech segments manually or when the automatic threshold is reached.')}
         </p>
       </div>
+    </div>
+
+    <div class="mt-4 grid grid-cols-[minmax(0,1fr)_88px] items-center gap-6 rounded-md bg-muted/25 px-3 py-2.5">
+      <div>
+        <label for="tidy-auto-threshold" class="block text-xs font-medium">
+          {tr('Automatic Tidy threshold')}
+        </label>
+        <span class="mt-0.5 block text-[10px] leading-4 text-muted-foreground">
+          {tr('Run Tidy when pending speech segments reach this number. Set 0 to turn it off.')}
+        </span>
+      </div>
+      <input
+        id="tidy-auto-threshold"
+        type="number"
+        min="0"
+        max="999"
+        step="1"
+        value={$tidyAutoThreshold}
+        class="h-9 w-full rounded-md border bg-background px-3 text-right text-xs tabular-nums"
+        aria-label={tr('Automatic Tidy threshold')}
+        oninput={(event) =>
+          setTidyAutoThreshold((event.currentTarget as HTMLInputElement).valueAsNumber)}
+      />
     </div>
 
     <div class="mt-4 flex items-center justify-between gap-6 rounded-md bg-muted/25 px-3 py-2.5">
       <div>
         <strong class="block text-xs font-medium">{tr('Distinguish untidied text')}</strong>
         <span class="mt-0.5 block text-[10px] leading-4 text-muted-foreground">
-          {tr('Show pending speech in italics until Tidy finishes.')}
+          {tr('Show a microphone beside pending speech until Tidy starts.')}
         </span>
       </div>
       <button

@@ -14,6 +14,18 @@ export type SpeechCleanupSegment = {
   text: string
 }
 
+export type SpeechCleanupReplacement = {
+  segmentId: string
+  originalText: string
+  nextText: string
+}
+
+export type SpeechCleanupDocumentResult = {
+  document: JSONContent
+  replacementsApplied: number
+  changed: boolean
+}
+
 type SpeechTidyingDecorationState = {
   segmentIds: ReadonlySet<string>
   decorations: DecorationSet
@@ -30,6 +42,108 @@ function nodeText(node: JSONContent): string {
 
 function cleanupState(value: unknown): CleanupState | null {
   return value === 'pending' || value === 'cleaned' ? value : null
+}
+
+function isVisuallyEmpty(node: JSONContent): boolean {
+  if (node.type === 'image' || node.type === 'attachmentFile') return false
+  if (node.type === 'hardBreak') return true
+  if (typeof node.text === 'string') return node.text.trim() === ''
+  return (node.content ?? []).every(isVisuallyEmpty)
+}
+
+function removesEmptyParagraphChildren(type: string | undefined): boolean {
+  return (
+    type === 'doc' ||
+    type === 'blockquote' ||
+    type === 'listItem' ||
+    type === 'taskItem' ||
+    type === 'tableCell' ||
+    type === 'tableHeader'
+  )
+}
+
+function prunableWhenEmpty(type: string | undefined): boolean {
+  return (
+    type === 'blockquote' ||
+    type === 'bulletList' ||
+    type === 'orderedList' ||
+    type === 'taskList' ||
+    type === 'listItem' ||
+    type === 'taskItem'
+  )
+}
+
+/** Apply Tidy results and remove blank flow paragraphs in one document update. */
+export function applySpeechCleanupResults(
+  document: JSONContent,
+  replacements: SpeechCleanupReplacement[],
+): SpeechCleanupDocumentResult {
+  const wanted = new Map(replacements.map((item) => [item.segmentId, item]))
+  let replacementsApplied = 0
+  let changed = false
+
+  function visit(node: JSONContent): JSONContent | null {
+    const segmentId = node.attrs?.[SPEECH_SEGMENT_ID_ATTR]
+    const replacement =
+      node.type === 'paragraph' && typeof segmentId === 'string'
+        ? wanted.get(segmentId)
+        : undefined
+
+    if (replacement && nodeText(node).trim() === replacement.originalText.trim()) {
+      replacementsApplied += 1
+      changed = true
+      const nextText = replacement.nextText.trim()
+      if (!nextText) return null
+      return {
+        ...node,
+        attrs: { ...node.attrs, [CLEANUP_STATE_ATTR]: 'cleaned' },
+        content: [{ type: 'text', text: nextText }],
+      }
+    }
+
+    if (!node.content) return node
+
+    const nextContent: JSONContent[] = []
+    for (const child of node.content) {
+      const nextChild = visit(child)
+      if (!nextChild) {
+        changed = true
+        continue
+      }
+      if (
+        removesEmptyParagraphChildren(node.type) &&
+        nextChild.type === 'paragraph' &&
+        isVisuallyEmpty(nextChild)
+      ) {
+        changed = true
+        continue
+      }
+      nextContent.push(nextChild)
+    }
+
+    if (node.type === 'doc' && nextContent.length === 0) {
+      changed = true
+      return { ...node, content: [{ type: 'paragraph' }] }
+    }
+    if (
+      (node.type === 'tableCell' || node.type === 'tableHeader') &&
+      nextContent.length === 0
+    ) {
+      changed = true
+      return { ...node, content: [{ type: 'paragraph' }] }
+    }
+    if (prunableWhenEmpty(node.type) && nextContent.length === 0) {
+      changed = true
+      return null
+    }
+    return { ...node, content: nextContent }
+  }
+
+  return {
+    document: visit(document) ?? { type: 'doc', content: [{ type: 'paragraph' }] },
+    replacementsApplied,
+    changed,
+  }
 }
 
 export function speechCleanupCandidates(doc: JSONContent): SpeechCleanupSegment[] {

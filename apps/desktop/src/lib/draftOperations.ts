@@ -4,7 +4,6 @@ import {
   ACTION_ID_ATTR,
   actionBlockquoteNode,
   isActionBlockquote,
-  isEmptyActionGroup,
   lastMeaningfulNode,
   withoutTrailingEmptyActionGroups,
   type ActionIdentity,
@@ -169,11 +168,7 @@ export function applyDraftOperation(doc: JSONContent, operation: DraftOperation)
     case 'startActionGroup': {
       const trimmed = withoutTrailingEmptyActionGroups(doc, operation.action.actionId)
       const last = lastMeaningfulNode(trimmed)
-      if (
-        isOpenActionGroup(last, operation.action.actionId) &&
-        last &&
-        isEmptyActionGroup(last)
-      ) {
+      if (isOpenActionGroup(last, operation.action.actionId)) {
         return trimmed
       }
       return {
