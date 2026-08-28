@@ -136,6 +136,54 @@ describe('persisted feedback draft document', () => {
     expect(restored.content?.[2].content?.[1].content?.[0]?.text).toBe('再次打开。')
   })
 
+  it('merges consecutive same-Action Blockquotes and drops empty ones', () => {
+    const snapshot = snapshotFeedbackDraftDocument({
+      type: 'doc',
+      content: [
+        {
+          type: 'blockquote',
+          attrs: { [ACTION_ID_ATTR]: 'constraints', [ACTION_INDEX_ATTR]: 2 },
+          content: [
+            {
+              type: 'paragraph',
+              content: [{ type: 'text', text: '@Action 3 · Note constraints', marks: [{ type: 'bold' }] }],
+            },
+          ],
+        },
+        {
+          type: 'blockquote',
+          attrs: { [ACTION_ID_ATTR]: 'constraints', [ACTION_INDEX_ATTR]: 2 },
+          content: [
+            {
+              type: 'paragraph',
+              content: [{ type: 'text', text: '@Action 3 · Note constraints', marks: [{ type: 'bold' }] }],
+            },
+            { type: 'paragraph', content: [{ type: 'text', text: '喂。' }] },
+          ],
+        },
+        {
+          type: 'blockquote',
+          attrs: { [ACTION_ID_ATTR]: 'constraints', [ACTION_INDEX_ATTR]: 2 },
+          content: [
+            {
+              type: 'paragraph',
+              content: [{ type: 'text', text: '@Action 3 · Note constraints', marks: [{ type: 'bold' }] }],
+            },
+            { type: 'paragraph', content: [{ type: 'text', text: '能听到吗?' }] },
+          ],
+        },
+      ],
+    })
+    const restored = restoreFeedbackDraftDocument(snapshot.documentJson, '')
+    expect(restored.content).toHaveLength(1)
+    expect(restored.content?.[0].content?.map((node) => node.content?.[0]?.text)).toEqual([
+      '@Action 3 · Note constraints',
+      '喂。',
+      '能听到吗?',
+    ])
+    expect(snapshot.bodyMarkdown.match(/@Action 3/g)).toHaveLength(1)
+  })
+
   it('hydrates markdown-only drafts and writes v2 on snapshot', () => {
     const snapshot = snapshotFeedbackDraftMarkdown('**Legacy**')
     const parsed = JSON.parse(snapshot.documentJson) as { schemaVersion: number }

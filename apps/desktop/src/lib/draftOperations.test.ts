@@ -92,6 +92,36 @@ describe('draft operations', () => {
     expect(next.content?.map((node) => node.attrs?.[ACTION_ID_ATTR])).toEqual(['login', 'toast'])
   })
 
+  it('puts consecutive speech into the same Action group and ignores trailing empty paragraphs', () => {
+    const opened = applyDraftOperation(
+      { type: 'doc', content: [] },
+      { kind: 'startActionGroup', action: actionA },
+    )
+    const withGap = {
+      type: 'doc' as const,
+      content: [...(opened.content ?? []), { type: 'paragraph' }],
+    }
+    const first = applyDraftOperation(withGap, {
+      kind: 'appendSpeech',
+      segmentId: 'a1',
+      text: '喂。',
+      action: actionA,
+    })
+    const second = applyDraftOperation(first, {
+      kind: 'appendSpeech',
+      segmentId: 'a2',
+      text: '能听到吗?',
+      action: actionA,
+    })
+    expect(second.content).toHaveLength(1)
+    expect(second.content?.[0].attrs?.[ACTION_ID_ATTR]).toBe('login')
+    expect(
+      second.content?.[0].content?.filter((node) => node.attrs?.[SPEECH_SEGMENT_ID_ATTR]).map(
+        (node) => node.content?.[0]?.text,
+      ),
+    ).toEqual(['喂。', '能听到吗?'])
+  })
+
   it('drops an unused empty Action when returning to a filled one', () => {
     const filledA = applyDraftOperation(
       applyDraftOperation(

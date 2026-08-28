@@ -8,6 +8,7 @@ import {
   actionTitleText,
   hydrateActionBlockquotes,
   isActionSeparatorNode,
+  mergeAdjacentActionGroups,
   parseActionTitle,
   stripActionStamp,
 } from './actionBlockquote'
@@ -162,8 +163,10 @@ function wrapActionStamps(doc: JSONContent): JSONContent {
 }
 
 export function migrateFeedbackDraftDocument(doc: JSONContent): JSONContent {
-  return hydrateActionBlockquotes(
-    wrapActionStamps(stampLegacyActionSeparators(migrateLegacySpeechNodes(doc))),
+  return mergeAdjacentActionGroups(
+    hydrateActionBlockquotes(
+      wrapActionStamps(stampLegacyActionSeparators(migrateLegacySpeechNodes(doc))),
+    ),
   )
 }
 

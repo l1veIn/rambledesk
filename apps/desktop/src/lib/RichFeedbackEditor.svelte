@@ -10,12 +10,19 @@
     Sparkles,
     Undo2,
   } from '@lucide/svelte'
+  import { Fragment } from '@tiptap/pm/model'
   import { EditorState, type Transaction } from '@tiptap/pm/state'
   import { onMount } from 'svelte'
 
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
-  import { actionBlockquoteNode, isEmptyActionGroup } from './actionBlockquote'
+  import {
+    actionBlockquoteNode,
+    isEmptyActionGroup,
+    isEmptyParagraph,
+    mergeAdjacentActionGroups,
+    withoutTrailingEmptyActionGroups,
+  } from './actionBlockquote'
   import {
     attachmentIdFromUrl,
     attachmentMarkdownUrl,
@@ -148,11 +155,36 @@
     let next = transaction
     while (next.doc.childCount > 0) {
       const last = next.doc.lastChild
-      if (!last || !isEmptyActionGroup(last.toJSON())) break
-      if (keepActionId && last.attrs.actionId === keepActionId) break
-      next = next.delete(next.doc.content.size - last.nodeSize, next.doc.content.size)
+      if (!last) break
+      const json = last.toJSON()
+      if (isEmptyParagraph(json)) {
+        next = next.delete(next.doc.content.size - last.nodeSize, next.doc.content.size)
+        continue
+      }
+      if (isEmptyActionGroup(json)) {
+        if (keepActionId && last.attrs.actionId === keepActionId) break
+        next = next.delete(next.doc.content.size - last.nodeSize, next.doc.content.size)
+        continue
+      }
+      break
     }
     return next
+  }
+
+  function lastMeaningfulChild(doc: Transaction['doc']): { node: NonNullable<Transaction['doc']['lastChild']>; pos: number } | null {
+    let found: { node: NonNullable<Transaction['doc']['lastChild']>; pos: number } | null = null
+    doc.forEach((node, pos) => {
+      if (isEmptyParagraph(node.toJSON())) return
+      found = { node, pos }
+    })
+    return found
+  }
+
+  function insertJsonContent(transaction: Transaction, pos: number, nodes: JSONContent[]) {
+    const schema = editor?.schema
+    if (!schema || nodes.length === 0) return transaction
+    const fragment = Fragment.fromArray(nodes.map((node) => schema.nodeFromJSON(node)))
+    return transaction.insert(pos, fragment)
   }
 
   function resetHistory() {
@@ -246,25 +278,32 @@
 
   export function applyDraftOperation(operation: DraftOperation): boolean {
     if (!editor || disabled) return false
-    let transaction = trimTrailingEmptyActionGroups(
-      editor.state.tr,
+    const keepActionId =
       operation.kind === 'startActionGroup'
         ? operation.action.actionId
-        : operation.action?.actionId,
+        : operation.action?.actionId
+    const current = editor.getJSON()
+    const repaired = mergeAdjacentActionGroups(
+      withoutTrailingEmptyActionGroups(current, keepActionId),
     )
+    if (JSON.stringify(repaired.content ?? []) !== JSON.stringify(current.content ?? [])) {
+      applyingExternalChange = true
+      editor.commands.setContent(repaired, { emitUpdate: false })
+      applyingExternalChange = false
+    }
+    let transaction = trimTrailingEmptyActionGroups(editor.state.tr, keepActionId)
     if (operation.kind === 'startActionGroup') {
-      const last = transaction.doc.lastChild
-      if (last?.type.name === 'blockquote' && last.attrs.actionId === operation.action.actionId) {
-        if (transaction.docChanged) {
-          editor.view.dispatch(transaction)
-          emitSnapshot(editor)
-        }
+      const last = lastMeaningfulChild(transaction.doc)
+      if (last?.node.type.name === 'blockquote' && last.node.attrs.actionId === operation.action.actionId) {
+        if (transaction.docChanged) editor.view.dispatch(transaction)
         return true
       }
-      const node = editor.schema.nodeFromJSON(actionBlockquoteNode(operation.action))
-      transaction = transaction.insert(transaction.doc.content.size, node)
+      transaction = insertJsonContent(
+        transaction,
+        transaction.doc.content.size,
+        [actionBlockquoteNode(operation.action)],
+      )
       editor.view.dispatch(transaction)
-      emitSnapshot(editor)
       return true
     }
     const nodes =
@@ -278,16 +317,20 @@
               previews[operation.attachment.attachment_id],
             )
     const action = operation.action
-    const last = transaction.doc.lastChild
-    const insertAt =
-      action && last?.type.name === 'blockquote' && last.attrs.actionId === action.actionId
-        ? transaction.doc.content.size - 1
-        : transaction.doc.content.size
-    const content = action && insertAt === transaction.doc.content.size
-      ? actionBlockquoteNode(action, nodes)
-      : nodes
-    if (transaction.docChanged) editor.view.dispatch(transaction)
-    return editor.commands.insertContentAt(insertAt, content)
+    const last = lastMeaningfulChild(transaction.doc)
+    if (action && last?.node.type.name === 'blockquote' && last.node.attrs.actionId === action.actionId) {
+      transaction = insertJsonContent(transaction, last.pos + last.node.nodeSize - 1, nodes)
+    } else if (action) {
+      transaction = insertJsonContent(
+        transaction,
+        transaction.doc.content.size,
+        [actionBlockquoteNode(action, nodes)],
+      )
+    } else {
+      transaction = insertJsonContent(transaction, transaction.doc.content.size, nodes)
+    }
+    editor.view.dispatch(transaction)
+    return true
   }
 
   export function pendingSpeechSegments(): SpeechCleanupSegment[] {

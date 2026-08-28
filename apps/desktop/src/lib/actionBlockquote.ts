@@ -42,6 +42,10 @@ function isVisuallyEmpty(node: JSONContent): boolean {
   return (node.content ?? []).every(isVisuallyEmpty)
 }
 
+export function isEmptyParagraph(node: JSONContent): boolean {
+  return node.type === 'paragraph' && isVisuallyEmpty(node)
+}
+
 /** True when the blockquote only has its @Action title (or is otherwise blank). */
 export function isEmptyActionGroup(node: JSONContent): boolean {
   if (!isActionBlockquote(node)) return false
@@ -51,6 +55,50 @@ export function isEmptyActionGroup(node: JSONContent): boolean {
   })
 }
 
+export function lastMeaningfulNode(doc: JSONContent): JSONContent | undefined {
+  const content = doc.content ?? []
+  for (let index = content.length - 1; index >= 0; index -= 1) {
+    const node = content[index]!
+    if (isEmptyParagraph(node)) continue
+    return node
+  }
+  return undefined
+}
+
+function actionContentWithoutTitle(node: JSONContent): JSONContent[] {
+  return (node.content ?? []).filter((child, index) => {
+    if (index === 0 && parseActionTitle(paragraphText(child))) return false
+    return true
+  })
+}
+
+/** Consecutive groups for the same Action are one container; empty ones drop out. */
+export function mergeAdjacentActionGroups(doc: JSONContent): JSONContent {
+  const next: JSONContent[] = []
+  for (const node of doc.content ?? []) {
+    const previous = next[next.length - 1]
+    if (
+      !isActionBlockquote(node) ||
+      !previous ||
+      !isActionBlockquote(previous) ||
+      previous.attrs?.[ACTION_ID_ATTR] !== node.attrs?.[ACTION_ID_ATTR]
+    ) {
+      next.push(node)
+      continue
+    }
+    if (isEmptyActionGroup(node)) continue
+    if (isEmptyActionGroup(previous)) {
+      next[next.length - 1] = node
+      continue
+    }
+    next[next.length - 1] = {
+      ...previous,
+      content: [...(previous.content ?? []), ...actionContentWithoutTitle(node)],
+    }
+  }
+  return { ...doc, content: next }
+}
+
 export function withoutTrailingEmptyActionGroups(
   doc: JSONContent,
   keepActionId?: string | null,
@@ -58,9 +106,16 @@ export function withoutTrailingEmptyActionGroups(
   const content = [...(doc.content ?? [])]
   while (content.length > 0) {
     const last = content[content.length - 1]!
-    if (!isEmptyActionGroup(last)) break
-    if (keepActionId && last.attrs?.[ACTION_ID_ATTR] === keepActionId) break
-    content.pop()
+    if (isEmptyParagraph(last)) {
+      content.pop()
+      continue
+    }
+    if (isEmptyActionGroup(last)) {
+      if (keepActionId && last.attrs?.[ACTION_ID_ATTR] === keepActionId) break
+      content.pop()
+      continue
+    }
+    break
   }
   return { ...doc, content }
 }

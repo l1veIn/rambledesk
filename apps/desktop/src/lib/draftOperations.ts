@@ -1,8 +1,10 @@
 import type { JSONContent } from '@tiptap/core'
 
 import {
+  ACTION_ID_ATTR,
   actionBlockquoteNode,
   isActionBlockquote,
+  lastMeaningfulNode,
   withoutTrailingEmptyActionGroups,
   type ActionIdentity,
 } from './actionBlockquote'
@@ -90,13 +92,8 @@ export function attachmentNodes(
   ]
 }
 
-function lastNode(doc: JSONContent): JSONContent | undefined {
-  const content = doc.content ?? []
-  return content[content.length - 1]
-}
-
 function isOpenActionGroup(node: JSONContent | undefined, actionId: string): boolean {
-  return Boolean(node && isActionBlockquote(node) && node.attrs?.[ 'actionId'] === actionId)
+  return Boolean(node && isActionBlockquote(node) && node.attrs?.[ACTION_ID_ATTR] === actionId)
 }
 
 function appendNodes(
@@ -110,9 +107,10 @@ function appendNodes(
   if (!action) {
     return { type: 'doc', content: [...content, ...nodes] }
   }
-  const last = lastNode({ type: 'doc', content })
+  const last = lastMeaningfulNode({ type: 'doc', content })
   if (isOpenActionGroup(last, action.actionId) && last) {
-    content[content.length - 1] = {
+    const lastIndex = content.lastIndexOf(last)
+    content[lastIndex] = {
       ...last,
       content: [...(last.content ?? []), ...nodes],
     }
@@ -140,7 +138,7 @@ export function applyDraftOperation(doc: JSONContent, operation: DraftOperation)
       )
     case 'startActionGroup': {
       const trimmed = withoutTrailingEmptyActionGroups(doc, operation.action.actionId)
-      const last = lastNode(trimmed)
+      const last = lastMeaningfulNode(trimmed)
       if (isOpenActionGroup(last, operation.action.actionId)) return trimmed
       return {
         type: 'doc',
