@@ -70,17 +70,17 @@ pub async fn cancel_screen_capture(
         .map(|session| {
             (
                 Some(session.capture_session_id().to_owned()),
-                session.windows_to_restore(),
+                session.restore_console(),
             )
         })
-        .unwrap_or((None, RestoreWindows::default()));
+        .unwrap_or((None, false));
     if let Some(overlay) = app.get_webview_window(OVERLAY_LABEL) {
         let _ = overlay.hide();
     }
     if let Some(scroll) = app.get_webview_window(SCROLL_LABEL) {
         let _ = scroll.close();
     }
-    restore_capture_windows(&app, restore);
+    restore_console(&app, restore);
     crate::diagnostics::record_event(
         "screen_capture_cancelled",
         capture_session_id.as_deref(),

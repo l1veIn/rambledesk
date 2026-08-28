@@ -224,12 +224,10 @@ impl FeedbackApplication {
         input: SaveDraftInput,
     ) -> Result<DraftView, ApplicationError> {
         let request_id = crate::feedback::canonical_uuid(&input.request_id, "request_id")?;
-        crate::feedback::validate_text("document_json", &input.document_json, 2, 1_000_000)?;
         crate::feedback::validate_text("body_markdown", &input.body_markdown, 0, 100_000)?;
         self.repository
             .save_draft(
                 &request_id,
-                &input.document_json,
                 &input.body_markdown,
                 input.expected_revision,
                 &self.clock.now_rfc3339(),

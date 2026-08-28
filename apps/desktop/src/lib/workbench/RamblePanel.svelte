@@ -1,13 +1,10 @@
 <script lang="ts">
-  import { LoaderCircle, Mic, X } from '@lucide/svelte'
+  import { Mic, Pause, Play, X } from '@lucide/svelte'
 
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
-  import { shortcutSettings } from '$lib/shortcutSettings'
-  import RecordLed from './RecordLed.svelte'
-  import { rambleRecordPresentation } from './rambleRecordButton'
   import type { RamblePhase } from './types'
 
   export let rambleEngaged = false
@@ -30,15 +27,14 @@
     return t($locale, source, values)
   }
 
-  $: record = rambleRecordPresentation(ramblePhase, rambleStartedOnce)
   $: primaryLabel =
-    record.label === 'starting'
+    ramblePhase === 'starting'
       ? tr('Starting…')
-      : record.label === 'stopping'
+      : ramblePhase === 'stopping'
         ? tr('Pausing…')
-        : record.label === 'recording'
-          ? tr('Recording')
-          : record.label === 'resume'
+        : rambleActive
+          ? tr('Pause recording')
+          : rambleStartedOnce
             ? tr('Resume recording')
             : tr('Start recording')
 </script>
@@ -58,19 +54,15 @@
   <div class="flex gap-2">
     <Button
       class="flex-1"
-      variant={record.variant}
+      variant={rambleActive ? 'secondary' : 'default'}
       disabled={rambleBusy || readOnly}
       onclick={onToggle}
-      aria-pressed={record.pressed}
-      title={tr('Global shortcut {shortcut}', { shortcut: $shortcutSettings.rambleToggle })}
+      title={tr('Global shortcut Ctrl + Shift + R')}
     >
-      {#if record.icon === 'spinner'}
-        <LoaderCircle class="animate-spin" data-icon="inline-start" />
+      {#if rambleActive}
+        <Pause data-icon="inline-start" />
       {:else}
-        {#if record.icon === 'recording'}
-          <RecordLed />
-        {/if}
-        <Mic data-icon="inline-start" />
+        <Play data-icon="inline-start" />
       {/if}
       {primaryLabel}
     </Button>
@@ -90,9 +82,7 @@
 
   <div class="mt-3 text-[10px] leading-4 text-muted-foreground">
     <div class="flex items-center gap-1.5">
-      <span
-        class={rambleActive ? 'record-led' : 'inline-block size-1.5 shrink-0 rounded-full bg-muted-foreground/40'}
-      ></span>
+      <span class={['size-1.5 rounded-full', rambleActive ? 'bg-destructive' : 'bg-muted-foreground/40']}></span>
       <span class="min-w-0 flex-1 truncate">{voiceDevice || tr('Default microphone')}</span>
       {#if voiceChunkIndex > 0}
         <span class="tabular-nums">{tr('{count} segments', { count: voiceChunkIndex })}</span>

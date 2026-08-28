@@ -98,7 +98,7 @@ pub async fn begin_screen_capture(
     tracing::info!("begin_screen_capture: requesting permission");
     ensure_screen_capture_permission()?;
     leave_main_fullscreen(&app).await;
-    let restore = capture_windows_restore(&app);
+    let should_restore_console = console_was_visible(&app);
     let capture_session_id = uuid::Uuid::now_v7().to_string();
     tracing::info!(%capture_session_id, "begin_screen_capture: session created");
     {
@@ -111,19 +111,15 @@ pub async fn begin_screen_capture(
         }
         *session = Some(CaptureSession::Capturing {
             capture_session_id: capture_session_id.clone(),
-            restore,
+            restore_console: should_restore_console,
         });
     }
-    // Hide RambleDesk's own windows before pixels are read: clicking the
-    // console raises the app (and its main window) over the user's target on
-    // some platforms, which would otherwise block the view and end up inside
-    // the captured image.
-    hide_capture_windows(&app);
 
     let result = async {
         let (monitors, mut descriptor) = choose_capture_monitors(&app)?;
         configure_capture_overlay(&app, &descriptor)?;
         let excluded_window_ids = excluded_capture_window_ids(&app);
+        hide_console(&app);
         #[cfg(not(target_os = "macos"))]
         tokio::time::sleep(Duration::from_millis(90)).await;
         let (image, snapshots) = rayon::join(
@@ -157,7 +153,7 @@ pub async fn begin_screen_capture(
                 image,
                 monitor: descriptor.clone(),
                 targets,
-                restore,
+                restore_console: should_restore_console,
                 suggested_selection: None,
             });
         }
@@ -180,7 +176,7 @@ pub async fn begin_screen_capture(
         {
             *session = None;
         }
-        restore_capture_windows(&app, restore);
+        restore_console(&app, should_restore_console);
         return Err(error);
     }
     Ok(())
@@ -259,7 +255,7 @@ pub async fn complete_screen_capture(
             .lock()
             .map_err(|_| "截图状态锁已损坏".to_owned())?;
         let active = session.as_ref().ok_or("没有活动的截图会话")?;
-        let restore = active.windows_to_restore();
+        let restore = active.restore_console();
         let (png, image) = completed_capture_image(active, &input)?;
         (png, image, restore)
     };
@@ -291,7 +287,7 @@ pub async fn complete_screen_capture(
     if let Some(overlay) = app.get_webview_window(OVERLAY_LABEL) {
         let _ = overlay.hide();
     }
-    restore_capture_windows(&app, restore);
+    restore_console(&app, restore);
     crate::diagnostics::record_event(
         "screen_capture_completed",
         Some(&input.capture_session_id),

@@ -20,20 +20,6 @@ mod host_id_optional;
 
 const TEST_TOKEN: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
-/// Pull the JSON-RPC `result` out of a body that may be plain JSON or a single
-/// SSE `data:` frame, which is how the streamable HTTP transport answers.
-fn json_rpc_result(body: &str) -> Option<serde_json::Value> {
-    let payload = body
-        .lines()
-        .find_map(|line| line.strip_prefix("data:"))
-        .unwrap_or(body)
-        .trim();
-    serde_json::from_str::<serde_json::Value>(payload)
-        .ok()?
-        .get("result")
-        .cloned()
-}
-
 async fn test_application()
 -> anyhow::Result<(rambledesk_core::FeedbackApplication, tempfile::TempDir)> {
     let directory = tempfile::tempdir()?;
@@ -244,7 +230,6 @@ async fn official_client_exercises_feedback_lifecycle_and_errors() -> anyhow::Re
     let saved = application
         .save_feedback_draft(SaveDraftInput {
             request_id: request_id.clone(),
-            document_json: "{}".to_owned(),
             body_markdown: format!(
                 "The real MCP client observes the completed package.\n\n{}\nEND-OF-FEEDBACK-MARKER",
                 "middle-content-".repeat(200)
@@ -468,7 +453,6 @@ async fn local_api_supports_pi_request_and_blocking_wait() -> anyhow::Result<()>
     let saved = application
         .save_feedback_draft(SaveDraftInput {
             request_id: request_id.clone(),
-            document_json: "{}".to_owned(),
             body_markdown: "Pi waited inside the tool call and received this package.".to_owned(),
             expected_revision: 0,
         })
@@ -605,12 +589,6 @@ async fn sse_handshake_emits_endpoint_and_serves_stateless_mcp_tools() -> anyhow
     assert!(tools_body.contains("request_feedback"));
     assert!(tools_body.contains("get_feedback"));
     assert!(tools_body.contains("cancel_feedback"));
-    // Spec 2026-07-28 requires the cache hints on a tools listing. A strict
-    // client rejects the entire listing when they are missing, which leaves the
-    // adapter connected with no tools at all.
-    let tools_result = json_rpc_result(&tools_body).context("tools/list result")?;
-    assert_eq!(tools_result["ttlMs"], serde_json::json!(0));
-    assert_eq!(tools_result["cacheScope"], serde_json::json!("private"));
 
     // A host that accidentally retains an old transport header must still be
     // able to retrieve durable requests: stateless mode ignores the stale MCP

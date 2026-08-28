@@ -1,7 +1,6 @@
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core'
   import { emitTo, listen } from '@tauri-apps/api/event'
-  import { get } from 'svelte/store'
   import { onMount, tick } from 'svelte'
 
   import {
@@ -12,22 +11,14 @@
   import { attachmentMarkdownUrl } from '../attachmentMarkdown'
   import type { FeedbackWorkspaceView } from '../feedback'
   import { t } from '../i18n'
-  import { playRecordArmSound } from '../notifications'
   import {
     locale,
-    notificationVolume,
     speechHotwords,
     speechInputDevice,
     speechModelId,
     speechVadSilenceMs,
     speechVadThreshold,
   } from '../preferences'
-  import {
-    isLocalCaptureActive,
-    matchesShortcut,
-    refreshShortcutSettings,
-    shortcutSettings,
-  } from '../shortcutSettings'
   import {
     RAMBLE_CONSOLE_COMMAND_EVENT,
     RAMBLE_CONSOLE_HIDE_EVENT,
@@ -40,7 +31,6 @@
   import {
     eventBelongsToVoiceSession,
     stableTranscript,
-    voiceStartStillLive,
     type SpeechEvent,
     type VoiceRambleSessionView,
   } from '../speech'
@@ -50,7 +40,6 @@
   export let workspace: FeedbackWorkspaceView | null = null
   export let interactionLocked = false
   export let editor: FeedbackEditorHandle | undefined
-  export let getRambleEditor: () => FeedbackEditorHandle | undefined = () => editor
   export let attachmentBusy = false
   export let screenCaptureBusy = false
   export let attachmentMessage = ''
@@ -72,11 +61,6 @@
   export let onStartScreenCapture: () => Promise<void> = async () => {}
   export let onImportAttachmentPaths: (paths: string[]) => Promise<void> = async () => {}
   export let onAppendRambleMarkdown: (requestId: string, markdown: string) => Promise<void> = async () => {}
-  export let onInsertRambleBlock: (requestId: string, markdown: string) => void = () => {}
-  export let onPrepareNonSpeechInsert: (requestId: string) => void = () => {}
-  /** Fired once a Ramble actually starts recording on a request. */
-  export let onRambleStarted: (requestId: string) => void = () => {}
-  export let onRambleStopped: () => void = () => {}
 
   let voiceRequestId = ''
   let voiceSessionId = ''
@@ -111,15 +95,19 @@
 
   onMount(() => {
     if (!isTauri) return
-    void refreshShortcutSettings()
     let voiceUnlisten: (() => void) | undefined
     let rambleShortcutUnlisten: (() => void) | undefined
     let captureShortcutUnlisten: (() => void) | undefined
     let consoleCommandUnlisten: (() => void) | undefined
     let consoleReadyUnlisten: (() => void) | undefined
     const onWindowKeydown = (event: KeyboardEvent) => {
-      if (isLocalCaptureActive()) return
-      if (matchesShortcut(event, $shortcutSettings.rambleToggle)) {
+      if (
+        event.key.toLowerCase() === 'r' &&
+        event.ctrlKey &&
+        event.shiftKey &&
+        !event.altKey &&
+        !event.metaKey
+      ) {
         event.preventDefault()
         void toggleRamble()
       }
@@ -202,7 +190,6 @@
     void emitTo('ramble-console', RAMBLE_CONSOLE_HIDE_EVENT).catch(() => {})
     resetVoiceUi()
     resetRambleUi()
-    onRambleStopped()
   }
 
   export async function importClipboardNow() {
@@ -261,7 +248,6 @@
     rambleRequestTitle = workspace.request.title
     rambleSourceLabel = workspace.request.source_hint ?? workspace.request.host_session_id
     rambleContextId = crypto.randomUUID()
-    onRambleStarted(rambleRequestId)
     clipboardCaptureCount = 0
     ramblePhase = 'starting'
     rambleMessage = t($locale, 'Opening the Ramble console…')
@@ -315,7 +301,6 @@
       ramblePhase = 'paused'
       rambleMessage = t($locale, 'Ramble paused; the document is preserved and capture tools remain available')
     }
-    onRambleStopped()
   }
 
   async function startVoiceRamble(): Promise<boolean> {
@@ -325,11 +310,20 @@
     voiceSessionId = ''
     voiceDevice = ''
     voicePartial = ''
-    voiceMessage = t($locale, 'Connecting the microphone…')
+    voiceMessage = t($locale, 'Loading the local model and connecting the microphone…')
     voiceLevel = 0
     voiceModelMissing = false
-    void playRecordArmSound(get(notificationVolume))
     try {
+      const models = await invoke<Array<{ id: string; installed: boolean; streaming: boolean }>>(
+        'list_speech_models',
+      )
+      const model = models.find((candidate) => candidate.id === $speechModelId)
+      if (!model?.installed) {
+        voiceModelMissing = true
+        voicePhase = 'error'
+        voiceMessage = t($locale, 'The selected speech model is not installed. Open Voice settings to download it.')
+        return false
+      }
       const session = await invoke<VoiceRambleSessionView>('start_voice_ramble', {
         input: {
           request_id: rambleRequestId,
@@ -340,21 +334,16 @@
           hotwords: $speechHotwords,
         },
       })
-      if (!voiceStartStillLive(voicePhase)) {
-        voiceSessionId = ''
-        await invoke('stop_voice_ramble').catch(() => {})
-        return false
-      }
       voiceSessionId = session.voice_session_id
       if (voicePhase === 'starting') {
         voicePhase = 'listening'
-        voiceMessage = t($locale, 'VAD is listening · Transcribes automatically after each spoken segment')
+        voiceMessage = model.streaming
+          ? t($locale, 'Streaming recognition · Writes after a natural pause')
+          : t($locale, 'VAD is listening · Transcribes automatically after each spoken segment')
       }
     } catch (cause) {
-      const message = messageFrom(cause)
       voicePhase = 'error'
-      voiceMessage = message
-      voiceModelMissing = /not installed|尚未安装/.test(message)
+      voiceMessage = messageFrom(cause)
       return false
     }
     return true
@@ -412,13 +401,13 @@
     }
     if (event.type === 'text') {
       const label = clipboardCaptureLabel(event.captured_at_ms, event.truncated, $locale)
-      onPrepareNonSpeechInsert(currentRequestId)
-      const rambleEditor = getRambleEditor()
-      if (rambleEditor?.appendClipboardCapture(event.text, label)) {
-        // Owner editor, even if hidden, received the capture.
+      if (workspace?.request.request_id === currentRequestId) {
+        editor?.appendClipboardCapture(event.text, label)
       } else {
         const quoted = event.text.split(/\r?\n/).map((line) => `> ${line}`).join('\n')
-        onInsertRambleBlock(currentRequestId, `> **${label}**\n>\n${quoted}`)
+        void onAppendRambleMarkdown(currentRequestId, `> **${label}**\n>\n${quoted}`).catch(
+          (cause) => onPageError(t($locale, 'Failed to write Ramble content: {error}', { error: messageFrom(cause) })),
+        )
       }
       clipboardCaptureCount += 1
       rambleMessage = t($locale, 'Ramble active · {count} clipboard items captured', { count: clipboardCaptureCount })
@@ -465,15 +454,16 @@
       )
       if (!attachment) throw new Error(t($locale, 'The image attachment was saved, but could not be inserted into the document flow.'))
       const label = clipboardCaptureLabel(event.captured_at_ms, false, $locale)
-      onPrepareNonSpeechInsert(requestId)
-      onApplyWorkspaceMutation(next)
-      await onRefreshAttachmentPreviews(next)
-      await tick()
-      const rambleEditor = getRambleEditor()
-      if (rambleEditor?.appendCapturedAttachment(attachment, label)) {
+      if (visibleTarget && workspace?.request.request_id === requestId) {
+        onApplyWorkspaceMutation(next)
+        await onRefreshAttachmentPreviews(next)
+        await tick()
+        if (!editor?.appendCapturedAttachment(attachment, label)) {
+          throw new Error(t($locale, 'The image attachment was saved, but could not be inserted into the document flow.'))
+        }
         await onSaveDraftNow()
       } else {
-        onInsertRambleBlock(
+        await onAppendRambleMarkdown(
           requestId,
           `> **${label}**\n\n![${attachment.file_name}](${attachmentMarkdownUrl(attachment.attachment_id)})`,
         )
@@ -523,9 +513,12 @@
       case 'stable': {
         const transcript = stableTranscript(event)
         if (transcript && !interactionLocked) {
-          void onAppendRambleMarkdown(voiceRequestId, transcript).catch(
-            (cause) => onPageError(t($locale, 'Failed to write Ramble content: {error}', { error: messageFrom(cause) })),
-          )
+          if (workspace?.request.request_id === voiceRequestId) editor?.appendTranscript(transcript)
+          else {
+            void onAppendRambleMarkdown(voiceRequestId, transcript).catch(
+              (cause) => onPageError(t($locale, 'Failed to write Ramble content: {error}', { error: messageFrom(cause) })),
+            )
+          }
         }
         voicePartial = ''
         voiceChunkIndex = event.chunk_index + 1

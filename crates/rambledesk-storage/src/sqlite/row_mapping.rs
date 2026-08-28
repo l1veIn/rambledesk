@@ -156,22 +156,19 @@ pub(super) async fn load_workspace_from_pool(
         .iter()
         .map(request_attachment_view_from_row)
         .collect::<Result<Vec<_>, _>>()?;
-    let draft_row = sqlx::query(
-        "SELECT document_json, body_markdown, revision, updated_at FROM drafts WHERE request_id = ?1",
-    )
+    let draft_row =
+        sqlx::query("SELECT body_markdown, revision, updated_at FROM drafts WHERE request_id = ?1")
             .bind(request_id)
             .fetch_optional(pool)
             .await
             .map_err(storage_error)?;
     let draft = match draft_row {
         Some(row) => DraftView {
-            document_json: row.try_get("document_json").map_err(storage_error)?,
             body_markdown: row.try_get("body_markdown").map_err(storage_error)?,
             saved_revision: row.try_get::<i64, _>("revision").map_err(storage_error)? as u64,
             updated_at: Some(row.try_get("updated_at").map_err(storage_error)?),
         },
         None => DraftView {
-            document_json: None,
             body_markdown: String::new(),
             saved_revision: 0,
             updated_at: None,

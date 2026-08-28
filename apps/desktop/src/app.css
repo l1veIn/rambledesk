@@ -1,53 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-@keyframes record-blink {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.28;
-  }
-}
-
-.record-blink {
-  animation: record-blink 1s ease-in-out infinite;
-}
-
-.record-led {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  flex-shrink: 0;
-  border-radius: 99px;
-  background: var(--destructive);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--destructive) 75%, transparent);
-  animation: record-blink 1s ease-in-out infinite;
-}
-
-@keyframes action-channel-breathe {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 45%, transparent);
-  }
-  50% {
-    box-shadow: 0 0 0 5px color-mix(in srgb, var(--primary) 18%, transparent);
-  }
-}
-
-.action-channel-live {
-  animation: action-channel-breathe 1.6s ease-in-out infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .record-blink,
-  .record-led,
-  .action-channel-live {
-    animation: none;
-  }
-}
-
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 :root {

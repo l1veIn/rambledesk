@@ -226,7 +226,7 @@
 ### 大文件拆分
 
 - `App.svelte` 1217 → 1000 行：抽出 feedbackText（纯函数）、
-  feedbackDraftSession（结构化草稿与自动保存状态机）、cookingController（cook 流程）、
+  draftController（自动保存状态机）、cookingController（cook 流程）、
   publisherController（提交/发布）、publishedFeedback 归一化与类型。
 - `ScreenshotOverlay.svelte` 1027 → 965 行：抽出 overlayGeometry（纯几何
   与布局函数）。

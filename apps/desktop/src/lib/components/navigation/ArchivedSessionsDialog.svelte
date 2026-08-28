@@ -71,7 +71,7 @@
     : null
   $: activePublishedFeedback = activeRequestDetails?.publishedFeedback ?? null
   $: activeUncookedMarkdown =
-    activePublishedFeedback?.uncooked_markdown ?? ''
+    activePublishedFeedback?.uncooked_markdown ?? activeRequestDetails?.workspace.draft.body_markdown ?? ''
 
   $: if (open && !openedOnce) {
     openedOnce = true
@@ -299,8 +299,7 @@
             })
       if (!workspace) throw new Error(tr('This feedback request could not be found.'))
       const publishedFeedback =
-        (workspace.request.status === 'completed' || workspace.request.status === 'cancelled') &&
-        workspace.feedback
+        workspace.request.status === 'completed' && workspace.feedback
           ? previewMode || !isTauri
             ? {
                 markdown: workspace.draft.body_markdown,

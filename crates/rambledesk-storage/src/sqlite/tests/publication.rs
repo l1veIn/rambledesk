@@ -22,7 +22,6 @@ async fn submit_is_idempotent_and_publishes_one_immutable_package() {
     let draft = application
         .save_feedback_draft(SaveDraftInput {
             request_id: request_id.clone(),
-            document_json: r#"{"schemaVersion":1,"doc":{"type":"doc","content":[{"type":"cleanedSpeech","attrs":{"actionIndex":2},"content":[{"type":"text","text":"Ship it after tightening the empty state."}]}]}}"#.to_owned(),
             body_markdown: "Ship it after tightening the empty state.".to_owned(),
             expected_revision: 0,
         })
@@ -139,7 +138,6 @@ async fn cooked_submission_can_preserve_explicit_uncooked_source() {
     let draft = application
         .save_feedback_draft(SaveDraftInput {
             request_id: request_id.clone(),
-            document_json: "{}".to_owned(),
             body_markdown: "Cooked draft currently visible in the editor.".to_owned(),
             expected_revision: 0,
         })
@@ -190,7 +188,6 @@ async fn restart_reconciles_package_published_before_database_completion() {
     let draft = application
         .save_feedback_draft(SaveDraftInput {
             request_id: request_id.clone(),
-            document_json: "{}".to_owned(),
             body_markdown: "Recovery must converge on this package.".to_owned(),
             expected_revision: 0,
         })
@@ -247,7 +244,6 @@ async fn publishes_feedback_package_under_explicit_library_root() {
     let draft = application
         .save_feedback_draft(SaveDraftInput {
             request_id: request_id.clone(),
-            document_json: "{}".to_owned(),
             body_markdown: "Feedback packages are stored under app data.".to_owned(),
             expected_revision: 0,
         })
@@ -286,7 +282,6 @@ async fn mismatched_existing_final_package_is_never_overwritten() {
     let draft = application
         .save_feedback_draft(SaveDraftInput {
             request_id: request_id.clone(),
-            document_json: "{}".to_owned(),
             body_markdown: "Do not overwrite an unexpected package.".to_owned(),
             expected_revision: 0,
         })
@@ -349,7 +344,6 @@ async fn mismatched_pending_package_does_not_block_startup() {
     let draft = application
         .save_feedback_draft(SaveDraftInput {
             request_id: request_id.clone(),
-            document_json: "{}".to_owned(),
             body_markdown: "Keep the workbench available for repair.".to_owned(),
             expected_revision: 0,
         })
@@ -421,7 +415,6 @@ async fn publisher_rejects_feedback_parent_replaced_by_symlink_after_plan() {
     let draft = application
         .save_feedback_draft(SaveDraftInput {
             request_id: request_id.clone(),
-            document_json: "{}".to_owned(),
             body_markdown: "Revalidate the frozen target before writing.".to_owned(),
             expected_revision: 0,
         })

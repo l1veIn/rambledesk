@@ -39,13 +39,8 @@
 </script>
 
 <Dialog.Root open={$updateDialogOpen} onOpenChange={handleOpenChange}>
-  <!-- The update prompt is a system-level modal: it must always stack above
-       every regular dialog (z-[110]) and popover (z-[130]) no matter when it
-       opened relative to them, so e.g. a taller Settings dialog never covers
-       or hides it. Toasts stay above everything. -->
   <Dialog.Content
-    class="max-w-lg gap-5 sm:max-w-lg z-[140]"
-    overlayClass="z-[140]"
+    class="max-w-lg gap-5 sm:max-w-lg"
     showCloseButton={!busy}
     interactOutsideBehavior={busy ? 'ignore' : 'close'}
     escapeKeydownBehavior={busy ? 'ignore' : 'close'}

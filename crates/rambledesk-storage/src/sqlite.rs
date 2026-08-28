@@ -462,19 +462,12 @@ impl FeedbackRepository for SqliteFeedbackStore {
     async fn save_draft(
         &self,
         request_id: &str,
-        document_json: &str,
         body_markdown: &str,
         expected_revision: u64,
         now: &str,
     ) -> Result<DraftView, RepositoryError> {
-        self.save_draft_impl(
-            request_id,
-            document_json,
-            body_markdown,
-            expected_revision,
-            now,
-        )
-        .await
+        self.save_draft_impl(request_id, body_markdown, expected_revision, now)
+            .await
     }
 
     async fn add_attachment(

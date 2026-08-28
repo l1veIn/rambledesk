@@ -10,6 +10,7 @@
     LoaderCircle,
     LogOut,
     Mic,
+    Pause,
     ScanLine,
   } from '@lucide/svelte'
   import { onMount } from 'svelte'
@@ -36,25 +37,14 @@
   $: busy = localBusy || (state?.busy ?? true)
   $: statusLabel = !state
     ? t($locale, 'Waiting for the main window…')
-    : state.phase === 'starting'
-      ? t($locale, 'Starting…')
-      : state.phase === 'recording'
-        ? t($locale, 'Recording')
-        : state.phase === 'stopping'
-          ? t($locale, 'Pausing…')
-          : state.phase === 'paused'
-            ? t($locale, 'Ramble paused')
-            : state.phase === 'error'
-              ? state.message
-              : t($locale, 'Ready')
-  $: recordingLabel =
-    state?.phase === 'starting'
-      ? t($locale, 'Starting…')
-      : state?.phase === 'stopping'
-        ? t($locale, 'Pausing…')
-        : recording
-          ? t($locale, 'Recording')
-          : t($locale, 'Resume recording')
+    : state.phase === 'recording'
+      ? t($locale, 'Recording')
+      : state.phase === 'paused'
+        ? t($locale, 'Ramble paused')
+        : state.phase === 'error'
+          ? state.message
+          : t($locale, 'Ready')
+  $: recordingLabel = recording ? t($locale, 'Pause recording') : t($locale, 'Resume recording')
   $: consoleMessage = errorMessage || state?.message || statusLabel
 
   onMount(() => {
@@ -170,16 +160,8 @@
       onclick={() => send({ type: 'toggle-recording' })}
       title={`${recordingLabel} · Ctrl + Shift + R`}
       aria-label={recordingLabel}
-      aria-pressed={recording}
     >
-      {#if state?.phase === 'starting' || state?.phase === 'stopping'}
-        <LoaderCircle class="animate-spin" size={20} strokeWidth={1.8} />
-      {:else if recording}
-        <span class="record-dot record-blink" aria-hidden="true"></span>
-        <Mic size={20} strokeWidth={1.8} />
-      {:else}
-        <Mic size={20} strokeWidth={1.8} />
-      {/if}
+      {#if recording}<Pause size={20} strokeWidth={1.8} />{:else}<Mic size={20} strokeWidth={1.8} />{/if}
       <span class="voice-level" style={`--level:${Math.max(0.06, state?.voiceLevel ?? 0)}`}></span>
     </button>
     <button

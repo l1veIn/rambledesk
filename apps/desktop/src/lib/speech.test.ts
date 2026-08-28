@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import {
   eventBelongsToVoiceSession,
   stableTranscript,
-  voiceStartStillLive,
   type SpeechEvent,
 } from './speech'
 
@@ -23,14 +22,6 @@ describe('voice ramble events', () => {
   it('rejects events from another request or an old session', () => {
     expect(eventBelongsToVoiceSession(stable, 'request-b', '')).toBe(false)
     expect(eventBelongsToVoiceSession(stable, 'request-a', 'session-b')).toBe(false)
-  })
-
-  it('treats a start as failed if error or stop arrived before the command returned', () => {
-    expect(voiceStartStillLive('starting')).toBe(true)
-    expect(voiceStartStillLive('listening')).toBe(true)
-    expect(voiceStartStillLive('idle')).toBe(false)
-    expect(voiceStartStillLive('error')).toBe(false)
-    expect(voiceStartStillLive('stopping')).toBe(false)
   })
 
   it('only exposes non-empty stable transcript text', () => {

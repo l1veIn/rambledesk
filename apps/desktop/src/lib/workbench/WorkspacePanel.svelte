@@ -8,7 +8,6 @@
     FeedbackResultView,
     FeedbackWorkspaceView,
   } from '$lib/feedback'
-  import type { FeedbackDraftSnapshot } from '$lib/feedbackDraftDocument'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
   import { savePaneLayout, savedPaneLayout } from '$lib/uiPreferences'
@@ -64,22 +63,6 @@
   export let formatTime: (value: string | null | undefined) => string
   export let onReload: () => void = () => {}
   export let onDraftChange: (markdown: string) => void = () => {}
-  export let draftEditors: Array<{
-    requestId: string
-    initialDocumentJson: string
-    initialMarkdown: string
-  }> = []
-  export let visibleRequestId = ''
-  export let onDraftChangeFor: (
-    requestId: string,
-    snapshot: FeedbackDraftSnapshot,
-  ) => void = () => {}
-  export let onEditorReady: (requestId: string, editor: FeedbackEditorHandle | null) => void = () => {}
-  export let onPrepareNonSpeechInsert: (requestId: string) => void = () => {}
-  export let currentActionIndex: number | null = null
-  export let onToggleActionChannel: (index: number) => void = () => {}
-  export let actionNotes: Record<number, string> = {}
-  export let cleanupCount = 0
   export let onCookPreview: () => void = () => {}
   export let onRestoreOriginal: () => void = () => {}
   export let onToggleRamble: () => void = () => {}
@@ -164,11 +147,8 @@
     return feedbackEditor?.applyExternalMarkdown(markdown) ?? false
   }
 
-  export function appendTranscript(
-    text: string,
-    options?: Parameters<FeedbackEditorHandle['appendTranscript']>[1],
-  ) {
-    feedbackEditor?.appendTranscript(text, options)
+  export function appendTranscript(text: string) {
+    feedbackEditor?.appendTranscript(text)
   }
 
   export function appendClipboardCapture(text: string, label: string) {
@@ -238,11 +218,6 @@
               bind:open={taskBriefOpen}
               {workspace}
               pulseNonce={briefPulseNonce}
-              insertDisabled={interactionLocked ||
-                workspace.request.status === 'completed' ||
-                workspace.request.status === 'cancelled'}
-              {currentActionIndex}
-              {onToggleActionChannel}
               onOpenPreview={(origin) => {
                 taskBriefPreviewOrigin = origin
                 taskBriefPreviewOpen = true
@@ -266,18 +241,14 @@
               {dragActive}
               {formatTime}
               {cooking}
+              cookingEnabled={cookingEnabled && !publishedFeedback}
               {cookedDraftReady}
               {cookedPreviewModel}
               locked={interactionLocked}
               cookedMarkdown={publishedFeedback?.markdown ?? ''}
               uncookedMarkdown={publishedFeedback?.uncooked_markdown ?? draftBody}
-              {draftEditors}
-              {visibleRequestId}
-              {onDraftChangeFor}
-              {onEditorReady}
-              {onPrepareNonSpeechInsert}
-              {cleanupCount}
               onChange={onDraftChange}
+              onCookPreview={onCookPreview}
               onRestoreOriginal={onRestoreOriginal}
               onOpenAttachment={openAttachmentPreviewById}
             />
@@ -345,12 +316,6 @@
       {rambleStartedOnce}
       {rambleBusy}
       origin={taskBriefPreviewOrigin}
-      insertDisabled={interactionLocked}
-      {currentActionIndex}
-      {onToggleActionChannel}
-      {actionNotes}
-      attachmentPreviews={attachmentPreviews}
-      onOpenAttachment={openAttachmentPreviewById}
     />
   {:else}
     <div class="grid h-full place-items-center p-8 text-center">

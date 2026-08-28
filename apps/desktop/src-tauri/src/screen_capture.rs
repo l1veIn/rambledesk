@@ -16,7 +16,7 @@ use tauri::{
     WindowEvent, ipc::Response, window::Color,
 };
 
-const MAIN_LABEL: &str = "main";
+pub const SCREEN_CAPTURE_SHORTCUT: &str = "Ctrl+1";
 const OVERLAY_LABEL: &str = "capture-overlay";
 const SCROLL_LABEL: &str = "capture-scroll";
 const RAMBLE_CONSOLE_LABEL: &str = "ramble-console";
@@ -157,23 +157,17 @@ struct MonitorRegion {
     height: u32,
 }
 
-#[derive(Debug, Clone, Copy, Default)]
-struct RestoreWindows {
-    console: bool,
-    main: bool,
-}
-
 enum CaptureSession {
     Capturing {
         capture_session_id: String,
-        restore: RestoreWindows,
+        restore_console: bool,
     },
     Editing {
         capture_session_id: String,
         image: RgbaImage,
         monitor: MonitorWindow,
         targets: Vec<CaptureTarget>,
-        restore: RestoreWindows,
+        restore_console: bool,
         suggested_selection: Option<CaptureRectangle>,
     },
     Scrolling {
@@ -183,7 +177,7 @@ enum CaptureSession {
         composite: RgbaImage,
         last_frame: RgbaImage,
         frame_count: usize,
-        restore: RestoreWindows,
+        restore_console: bool,
     },
     Ready {
         capture_session_id: String,
@@ -209,12 +203,18 @@ impl CaptureSession {
         }
     }
 
-    fn windows_to_restore(&self) -> RestoreWindows {
+    fn restore_console(&self) -> bool {
         match self {
-            Self::Capturing { restore, .. }
-            | Self::Editing { restore, .. }
-            | Self::Scrolling { restore, .. } => *restore,
-            Self::Ready { .. } => RestoreWindows::default(),
+            Self::Capturing {
+                restore_console, ..
+            }
+            | Self::Editing {
+                restore_console, ..
+            }
+            | Self::Scrolling {
+                restore_console, ..
+            } => *restore_console,
+            Self::Ready { .. } => false,
         }
     }
 }
@@ -305,45 +305,14 @@ fn console_was_visible(app: &AppHandle) -> bool {
         .unwrap_or(false)
 }
 
-/// Which RambleDesk windows should be hidden while a capture is in flight and
-/// then restored afterwards.
-///
-/// The main window is hidden whenever it is actually on screen: clicking the
-/// always-on-top console raises the whole app on macOS (and can do the same on
-/// Windows), which puts the main window over the user's target and into the
-/// captured pixels if left alone. Hidden or minimized windows neither block the
-/// view nor appear in the capture, so they are left untouched.
-fn capture_windows_restore(app: &AppHandle) -> RestoreWindows {
-    let console = console_was_visible(app);
-    let main = app
-        .get_webview_window(MAIN_LABEL)
-        .map(|window| {
-            window.is_visible().unwrap_or(false) && !window.is_minimized().unwrap_or(false)
-        })
-        .unwrap_or(false);
-    RestoreWindows { console, main }
-}
-
-fn hide_capture_windows(app: &AppHandle) {
+fn hide_console(app: &AppHandle) {
     if let Some(window) = app.get_webview_window(RAMBLE_CONSOLE_LABEL) {
         let _ = window.hide();
     }
-    if let Some(window) = app.get_webview_window(MAIN_LABEL) {
-        let _ = window.hide();
-    }
 }
 
-fn restore_capture_windows(app: &AppHandle, restore: RestoreWindows) {
-    if restore.console
-        && let Some(window) = app.get_webview_window(RAMBLE_CONSOLE_LABEL)
-    {
-        let _ = window.show();
-        let _ = window.set_focus();
-    }
-    if restore.main
-        && let Some(window) = app.get_webview_window(MAIN_LABEL)
-    {
-        let _ = window.unminimize();
+fn restore_console(app: &AppHandle, should_restore: bool) {
+    if should_restore && let Some(window) = app.get_webview_window(RAMBLE_CONSOLE_LABEL) {
         let _ = window.show();
         let _ = window.set_focus();
     }

@@ -15,8 +15,6 @@
   export let rambleEngaged = false
   export let rambleActive = false
   export let rambleRequestTitle = ''
-  export let rambleStatusLabel = ''
-  export let onReturnToRamble: () => void = () => {}
   export let notificationText = ''
   export let notificationEnabled = false
   export let notificationDisabled = false
@@ -121,23 +119,15 @@
 
   <div class="flex shrink-0 items-center gap-1.5 px-2">
     {#if rambleEngaged}
-      <button
-        type="button"
-        class="inline-flex max-w-64 border-0 bg-transparent p-0 max-[1080px]:max-w-40"
-        title={rambleRequestTitle}
-        onclick={(event) => {
-          event.stopPropagation()
-          onReturnToRamble()
-        }}
-      >
       <Badge
         variant="secondary"
         class={[
-          'h-6 max-w-64 gap-1.5 px-2 text-[9px]',
+          'h-6 max-w-64 gap-1.5 px-2 text-[9px] max-[1080px]:max-w-40',
           rambleActive
             ? 'bg-destructive/10 text-destructive'
             : 'bg-warning/10 text-warning-foreground dark:text-warning',
         ]}
+        title={rambleRequestTitle}
       >
         <span
           class={[
@@ -146,11 +136,9 @@
           ]}
         ></span>
         <span class="truncate">
-          {t($locale, 'Ramble in progress')} · {rambleStatusLabel ||
-            (rambleActive ? t($locale, 'Recording') : t($locale, 'Ramble paused'))} · {rambleRequestTitle}
+          {rambleActive ? t($locale, 'Recording') : t($locale, 'Ramble paused')} · {rambleRequestTitle}
         </span>
       </Badge>
-      </button>
     {/if}
     {#if pendingCount > 0}
       <Badge

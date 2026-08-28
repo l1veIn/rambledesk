@@ -68,12 +68,6 @@ export function eventBelongsToVoiceSession(
   )
 }
 
-export function voiceStartStillLive(
-  phase: 'idle' | 'starting' | 'listening' | 'processing' | 'stopping' | 'error',
-): boolean {
-  return phase === 'starting' || phase === 'listening' || phase === 'processing'
-}
-
 export function stableTranscript(event: SpeechEvent): string | null {
   if (event.type !== 'stable') return null
   const text = event.text.trim()

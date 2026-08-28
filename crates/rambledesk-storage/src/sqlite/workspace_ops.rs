@@ -12,7 +12,6 @@ impl SqliteFeedbackStore {
     pub(super) async fn save_draft_impl(
         &self,
         request_id: &str,
-        document_json: &str,
         body_markdown: &str,
         expected_revision: u64,
         now: &str,
@@ -49,7 +48,7 @@ impl SqliteFeedbackStore {
 
         let current_revision: i64 = request_row.try_get("revision").map_err(storage_error)?;
         let stored_draft = sqlx::query(
-            "SELECT document_json, body_markdown, revision, updated_at FROM drafts WHERE request_id = ?1",
+            "SELECT body_markdown, revision, updated_at FROM drafts WHERE request_id = ?1",
         )
         .bind(request_id)
         .fetch_optional(&mut *transaction)
@@ -57,13 +56,9 @@ impl SqliteFeedbackStore {
         .map_err(storage_error)?;
         if current_revision != expected_revision as i64 {
             if let Some(row) = stored_draft {
-                let stored_document: Option<String> =
-                    row.try_get("document_json").map_err(storage_error)?;
                 let stored_body: String = row.try_get("body_markdown").map_err(storage_error)?;
-                if stored_document.as_deref() == Some(document_json) && stored_body == body_markdown
-                {
+                if stored_body == body_markdown {
                     return Ok(DraftView {
-                        document_json: stored_document,
                         body_markdown: stored_body,
                         saved_revision: row.try_get::<i64, _>("revision").map_err(storage_error)?
                             as u64,
@@ -91,15 +86,14 @@ impl SqliteFeedbackStore {
             return Err(RepositoryError::DraftConflict);
         }
         sqlx::query(
-            "INSERT INTO drafts (request_id, document_json, body_markdown, revision, updated_at) \
-             VALUES (?1, ?2, ?3, ?4, ?5) \
+            "INSERT INTO drafts (request_id, body_markdown, revision, updated_at) \
+             VALUES (?1, ?2, ?3, ?4) \
              ON CONFLICT(request_id) DO UPDATE SET \
-                 document_json = excluded.document_json, body_markdown = excluded.body_markdown, \
+                 body_markdown = excluded.body_markdown, \
                  revision = excluded.revision, \
                  updated_at = excluded.updated_at",
         )
         .bind(request_id)
-        .bind(document_json)
         .bind(body_markdown)
         .bind(next_revision)
         .bind(now)
@@ -108,7 +102,6 @@ impl SqliteFeedbackStore {
         .map_err(storage_error)?;
         transaction.commit().await.map_err(storage_error)?;
         Ok(DraftView {
-            document_json: Some(document_json.to_owned()),
             body_markdown: body_markdown.to_owned(),
             saved_revision: next_revision as u64,
             updated_at: Some(now.to_owned()),

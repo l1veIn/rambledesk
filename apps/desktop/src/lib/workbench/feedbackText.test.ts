@@ -5,7 +5,6 @@ import {
   formatTime,
   messageFrom,
   operatorFeedbackBody,
-  replaceLastOccurrence,
 } from './feedbackText'
 
 describe('appendMarkdownBlock', () => {
@@ -15,15 +14,6 @@ describe('appendMarkdownBlock', () => {
 
   it('returns the block alone for an empty body', () => {
     expect(appendMarkdownBlock('', 'world')).toBe('world')
-  })
-})
-
-describe('replaceLastOccurrence', () => {
-  it('replaces the spoken tail in place after a clipboard block', () => {
-    const body = '我试一下复制粘贴啊。\n\n> Clipboard import\n\n> pasted'
-    expect(replaceLastOccurrence(body, '我试一下复制粘贴啊。', '我试一下复制粘贴。')).toBe(
-      '我试一下复制粘贴。\n\n> Clipboard import\n\n> pasted',
-    )
   })
 })
 

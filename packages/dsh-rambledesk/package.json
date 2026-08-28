@@ -1,6 +1,6 @@
 {
   "name": "@rambledesk/dsh",
-  "version": "0.3.3-rc.1",
+  "version": "0.3.2",
   "description": "RambleDesk native adapter for the DeepSeek Harness (dsh): request/wait/get/resume/cancel feedback inside one Cordis plugin, waiting for the human inside the tool call.",
   "type": "module",
   "main": "./index.js",
