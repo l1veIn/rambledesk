@@ -715,8 +715,9 @@ async fn concurrent_different_drafts_have_one_cas_winner() {
     });
     let right = application.save_feedback_draft(SaveDraftInput {
         request_id: request_id.clone(),
-        document_json: r#"{"schemaVersion":2,"doc":{"type":"doc","content":[{"type":"paragraph"}]}}"#
-            .to_owned(),
+        document_json:
+            r#"{"schemaVersion":2,"doc":{"type":"doc","content":[{"type":"paragraph"}]}}"#
+                .to_owned(),
         body_markdown: "right".to_owned(),
         expected_revision: 0,
     });

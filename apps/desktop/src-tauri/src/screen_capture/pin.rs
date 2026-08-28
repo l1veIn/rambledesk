@@ -12,9 +12,7 @@ pub async fn pin_screen_capture(
             .lock()
             .map_err(|_| "截图状态锁已损坏".to_owned())?;
         let Some(CaptureSession::Editing {
-            monitor,
-            restore,
-            ..
+            monitor, restore, ..
         }) = session.as_ref()
         else {
             return Err("没有可固定的截图".to_owned());
