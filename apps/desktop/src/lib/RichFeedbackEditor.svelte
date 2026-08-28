@@ -20,24 +20,19 @@
     actionBlockquoteNode,
     isEmptyActionGroup,
     isEmptyParagraph,
-    mergeAdjacentActionGroups,
-    withoutTrailingEmptyActionGroups,
   } from './actionBlockquote'
   import {
     attachmentIdFromUrl,
-    attachmentMarkdownUrl,
-    isImageMediaType,
   } from './attachmentMarkdown'
   import {
     attachmentNodes,
     clipboardNodes,
+    draftOperationAlreadyApplied,
     speechNodes,
     type DraftOperation,
   } from './draftOperations'
-  import type { AttachmentView } from './feedback'
   import {
     snapshotFeedbackDraftDocument,
-    snapshotFeedbackDraftMarkdown,
     type FeedbackDraftSnapshot,
   } from './feedbackDraftDocument'
   import { feedbackEditorExtensions } from './feedbackEditorExtensions'
@@ -53,7 +48,6 @@
   export let document: JSONContent | null = null
   export let editorEpoch = 0
   export let markdown = ''
-  export let overlayMarkdown: string | null = null
   export let previews: Record<string, string> = {}
   export let disabled = false
   export let onOpenAttachment: (attachmentId: string) => void = () => {}
@@ -66,7 +60,6 @@
   let applyingExternalChange = false
   let editorMarkdown = ''
   let loadedEpoch = -1
-  let loadedOverlay: string | null = null
   let insertionPosition = 0
   let pendingCount = 0
   let openAttachmentHandler = (_attachmentId: string) => {}
@@ -100,7 +93,6 @@
       onCreate: () => {
         editorMarkdown = editor?.getMarkdown() ?? markdown
         loadedEpoch = editorEpoch
-        loadedOverlay = overlayMarkdown
         insertionPosition = editor?.state.doc.content.size ?? 0
         pendingCount = editor ? speechCleanupCandidates(editor.getJSON()).length : 0
         hydrateAttachmentImages()
@@ -126,14 +118,9 @@
     editor.view.dom.setAttribute('aria-label', t($locale, 'Markdown rich-text feedback body'))
     editor.view.dom.setAttribute('data-placeholder', t($locale, 'Record what you saw, what felt smooth, and where you paused.'))
   }
-  $: if (editor && overlayMarkdown != null && overlayMarkdown !== loadedOverlay) {
-    applyMarkdown(overlayMarkdown)
-    loadedOverlay = overlayMarkdown
-  }
-  $: if (editor && overlayMarkdown == null && editorEpoch !== loadedEpoch) {
+  $: if (editor && editorEpoch !== loadedEpoch) {
     applyDocument(document ?? { type: 'doc', content: [{ type: 'paragraph' }] })
     loadedEpoch = editorEpoch
-    loadedOverlay = null
   }
   $: if (editor) {
     previews
@@ -151,19 +138,17 @@
   function trimTrailingEmptyActionGroups(
     transaction: Transaction,
     keepActionId?: string | null,
+    removeActionId?: string | null,
   ): Transaction {
     let next = transaction
     while (next.doc.childCount > 0) {
-      const last = next.doc.lastChild
-      if (!last) break
-      const json = last.toJSON()
-      if (isEmptyParagraph(json)) {
-        next = next.delete(next.doc.content.size - last.nodeSize, next.doc.content.size)
-        continue
-      }
+      const candidate = lastMeaningfulChild(next.doc)
+      if (!candidate) break
+      const json = candidate.node.toJSON()
       if (isEmptyActionGroup(json)) {
-        if (keepActionId && last.attrs.actionId === keepActionId) break
-        next = next.delete(next.doc.content.size - last.nodeSize, next.doc.content.size)
+        if (keepActionId && candidate.node.attrs.actionId === keepActionId) break
+        if (removeActionId && candidate.node.attrs.actionId !== removeActionId) break
+        next = next.delete(candidate.pos, candidate.pos + candidate.node.nodeSize)
         continue
       }
       break
@@ -215,24 +200,6 @@
     }
   }
 
-  function applyMarkdown(nextMarkdown: string) {
-    if (!editor) return
-    applyingExternalChange = true
-    try {
-      editor.commands.setContent(nextMarkdown, {
-        contentType: 'markdown',
-        emitUpdate: false,
-      })
-      editorMarkdown = nextMarkdown
-      insertionPosition = Math.min(insertionPosition, editor.state.doc.content.size)
-      hydrateAttachmentImages()
-    } catch (cause) {
-      console.error('[richEditor] applyMarkdown failed', cause)
-    } finally {
-      applyingExternalChange = false
-    }
-  }
-
   function hydrateAttachmentImages() {
     if (!editor) return
     let transaction = editor.state.tr
@@ -260,41 +227,32 @@
     applyingExternalChange = false
   }
 
-  export function applyExternalMarkdown(nextMarkdown: string): boolean {
-    if (!editor) return false
-    const snapshot = snapshotFeedbackDraftMarkdown(nextMarkdown)
-    if (snapshot.bodyMarkdown === editorMarkdown) return true
-    applyMarkdown(nextMarkdown)
-    onChange(snapshot)
-    return true
-  }
-
-  export function applyExternalDocument(nextDocument: JSONContent): boolean {
-    if (!editor) return false
-    applyDocument(nextDocument)
-    emitSnapshot(editor)
-    return true
-  }
-
   export function applyDraftOperation(operation: DraftOperation): boolean {
     if (!editor || disabled) return false
+    const current = editor.getJSON()
+    if (draftOperationAlreadyApplied(current, operation)) return true
     const keepActionId =
       operation.kind === 'startActionGroup'
         ? operation.action.actionId
-        : operation.action?.actionId
-    const current = editor.getJSON()
-    const repaired = mergeAdjacentActionGroups(
-      withoutTrailingEmptyActionGroups(current, keepActionId),
+        : operation.kind === 'clearActionGroup'
+          ? null
+          : operation.action?.actionId
+    let transaction = trimTrailingEmptyActionGroups(
+      editor.state.tr,
+      keepActionId,
+      operation.kind === 'clearActionGroup' ? operation.actionId : null,
     )
-    if (JSON.stringify(repaired.content ?? []) !== JSON.stringify(current.content ?? [])) {
-      applyingExternalChange = true
-      editor.commands.setContent(repaired, { emitUpdate: false })
-      applyingExternalChange = false
+    if (operation.kind === 'clearActionGroup') {
+      if (transaction.docChanged) editor.view.dispatch(transaction)
+      return true
     }
-    let transaction = trimTrailingEmptyActionGroups(editor.state.tr, keepActionId)
     if (operation.kind === 'startActionGroup') {
       const last = lastMeaningfulChild(transaction.doc)
-      if (last?.node.type.name === 'blockquote' && last.node.attrs.actionId === operation.action.actionId) {
+      if (
+        last?.node.type.name === 'blockquote' &&
+        last.node.attrs.actionId === operation.action.actionId &&
+        isEmptyActionGroup(last.node.toJSON())
+      ) {
         if (transaction.docChanged) editor.view.dispatch(transaction)
         return true
       }
@@ -375,139 +333,7 @@
       transaction = transaction.setNodeMarkup(target.pos, undefined, target.attrs)
     }
     editor.view.dispatch(transaction)
-    emitSnapshot(editor)
     return true
-  }
-
-  export function insertAttachments(attachments: AttachmentView[]) {
-    if (!editor || attachments.length === 0) return false
-    const referencedIds = new Set<string>()
-    editor.state.doc.descendants((node) => {
-      if (node.type.name !== 'image' && node.type.name !== 'attachmentFile') return
-      const attachmentId =
-        node.attrs.attachmentId ?? attachmentIdFromUrl(node.attrs.src)
-      if (attachmentId) referencedIds.add(attachmentId)
-    })
-    const content = attachments
-      .filter((attachment) => !referencedIds.has(attachment.attachment_id))
-      .flatMap((attachment) => {
-        if (isImageMediaType(attachment.media_type)) {
-          return [
-            {
-              type: 'image',
-              attrs: {
-                src:
-                  previews[attachment.attachment_id] ??
-                  attachmentMarkdownUrl(attachment.attachment_id),
-                alt: attachment.file_name,
-                attachmentId: attachment.attachment_id,
-              },
-            },
-            { type: 'paragraph' },
-          ]
-        }
-        return [
-          {
-            type: 'paragraph',
-            content: [
-              {
-                type: 'attachmentFile',
-                attrs: {
-                  attachmentId: attachment.attachment_id,
-                  fileName: attachment.file_name,
-                  mediaType: attachment.media_type,
-                },
-              },
-            ],
-          },
-          { type: 'paragraph' },
-        ]
-      })
-    if (content.length === 0) return false
-    const position = Math.min(
-      Math.max(insertionPosition, 0),
-      editor.state.doc.content.size,
-    )
-    const inserted = editor.commands.insertContentAt(position, content)
-    if (inserted) insertionPosition = editor.state.selection.from
-    return inserted
-  }
-
-  export function appendTranscript(text: string) {
-    const transcript = text.trim()
-    if (!editor || !transcript || disabled) return
-    editor.commands.insertContentAt(editor.state.doc.content.size, {
-      type: 'paragraph',
-      content: [{ type: 'text', text: transcript }],
-    })
-  }
-
-  export function appendClipboardCapture(text: string, label: string) {
-    const captured = text.trim()
-    if (!editor || !captured || disabled) return false
-    const capturedContent = captured.split(/\r?\n/).flatMap((line, index) => {
-      const content: Array<Record<string, unknown>> = []
-      if (index > 0) content.push({ type: 'hardBreak' })
-      if (line) content.push({ type: 'text', text: line })
-      return content
-    })
-    return editor.commands.insertContentAt(editor.state.doc.content.size, [
-      {
-        type: 'blockquote',
-        content: [
-          {
-            type: 'paragraph',
-            content: [
-              {
-                type: 'text',
-                text: label,
-                marks: [{ type: 'bold' }],
-              },
-            ],
-          },
-          {
-            type: 'paragraph',
-            content: capturedContent,
-          },
-        ],
-      },
-      { type: 'paragraph' },
-    ])
-  }
-
-  export function appendCapturedAttachment(
-    attachment: AttachmentView,
-    label: string,
-  ) {
-    if (!editor || disabled) return false
-    return editor.commands.insertContentAt(editor.state.doc.content.size, [
-      {
-        type: 'blockquote',
-        content: [
-          {
-            type: 'paragraph',
-            content: [
-              {
-                type: 'text',
-                text: label,
-                marks: [{ type: 'bold' }],
-              },
-            ],
-          },
-        ],
-      },
-      {
-        type: 'image',
-        attrs: {
-          src:
-            previews[attachment.attachment_id] ??
-            attachmentMarkdownUrl(attachment.attachment_id),
-          alt: attachment.file_name,
-          attachmentId: attachment.attachment_id,
-        },
-      },
-      { type: 'paragraph' },
-    ])
   }
 
   export function removeAttachmentReference(attachmentId: string) {

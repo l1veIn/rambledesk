@@ -6,9 +6,9 @@ import {
 import type { SpeechCleanupSegment } from './speechBlockMetadata'
 import { acceptCleanupResult, parseLabeledOutput } from './workbench/speechCleanupPolicy'
 
-export type LightCleanupConfig = CookingConfig
+export type TidyConfig = CookingConfig
 
-export const DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT = `You are a speech-to-text cleaner, not an assistant and not Cooking.
+export const DEFAULT_TIDY_SYSTEM_PROMPT = `You are a speech-to-text cleaner, not an assistant and not Cooking.
 
 The input is a verbatim transcript of what a human just said. Return the SAME utterance tidied into fluent, readable language.
 
@@ -22,19 +22,24 @@ HARD RULES:
 7. Format the output as EXACTLY the same number of blocks as the input, in the same order. Every block MUST start with its number in square brackets: [1], [2], and so on. A single input block still requires [1].
 8. Output only the cleaned transcript. If you cannot tidy without changing meaning or adding content, output the original text unchanged, still with [n] labels.`
 
+export function resolveTidySystemPrompt(custom: string | null | undefined): string {
+  const trimmed = custom?.trim() ?? ''
+  return trimmed || DEFAULT_TIDY_SYSTEM_PROMPT
+}
+
 export function formatTidyPrompt(segments: SpeechCleanupSegment[]): string {
   return segments.map((segment, index) => `[${index + 1}] ${segment.text}`).join('\n\n')
 }
 
 export async function tidySpeechSegments(
   segments: SpeechCleanupSegment[],
-  config: LightCleanupConfig,
+  config: TidyConfig,
   generate: ModelTextGenerator = generateModelText,
 ): Promise<string[] | null> {
   if (segments.length === 0) return []
   const result = await generate({
     config,
-    system: DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT,
+    system: resolveTidySystemPrompt(config.systemPrompt),
     prompt: formatTidyPrompt(segments),
     label: 'Tidy',
   })

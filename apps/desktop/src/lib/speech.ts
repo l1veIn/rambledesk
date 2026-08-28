@@ -79,3 +79,9 @@ export function stableTranscript(event: SpeechEvent): string | null {
   const text = event.text.trim()
   return text.length > 0 ? text : null
 }
+
+export function stableSpeechSegmentId(
+  event: Extract<SpeechEvent, { type: 'stable' }>,
+): string {
+  return `asr-${event.voice_session_id}-${event.chunk_index}`
+}

@@ -136,7 +136,7 @@ describe('persisted feedback draft document', () => {
     expect(restored.content?.[2].content?.[1].content?.[0]?.text).toBe('再次打开。')
   })
 
-  it('merges consecutive same-Action Blockquotes and drops empty ones', () => {
+  it('preserves distinct same-Action Blockquotes instead of merging reopened groups', () => {
     const snapshot = snapshotFeedbackDraftDocument({
       type: 'doc',
       content: [
@@ -175,13 +175,64 @@ describe('persisted feedback draft document', () => {
       ],
     })
     const restored = restoreFeedbackDraftDocument(snapshot.documentJson, '')
-    expect(restored.content).toHaveLength(1)
-    expect(restored.content?.[0].content?.map((node) => node.content?.[0]?.text)).toEqual([
-      '@Action 3 · Note constraints',
-      '喂。',
-      '能听到吗?',
+    expect(restored.content).toHaveLength(3)
+    expect(restored.content?.map((node) => node.attrs?.[ACTION_ID_ATTR])).toEqual([
+      'constraints',
+      'constraints',
+      'constraints',
     ])
-    expect(snapshot.bodyMarkdown.match(/@Action 3/g)).toHaveLength(1)
+    expect(snapshot.bodyMarkdown.match(/@Action 3/g)).toHaveLength(3)
+  })
+
+  it('repairs missing and duplicate ASR segment IDs deterministically', () => {
+    const restored = restoreFeedbackDraftDocument(
+      JSON.stringify({
+        schemaVersion: 2,
+        doc: {
+          type: 'doc',
+          content: [
+            {
+              type: 'paragraph',
+              attrs: { [INPUT_SOURCE_ATTR]: ASR_INPUT_SOURCE },
+              content: [{ type: 'text', text: 'missing' }],
+            },
+            {
+              type: 'paragraph',
+              attrs: {
+                [INPUT_SOURCE_ATTR]: ASR_INPUT_SOURCE,
+                [SPEECH_SEGMENT_ID_ATTR]: 'kept',
+                [CLEANUP_STATE_ATTR]: 'cleaned',
+              },
+              content: [{ type: 'text', text: 'first' }],
+            },
+            {
+              type: 'paragraph',
+              attrs: {
+                [INPUT_SOURCE_ATTR]: ASR_INPUT_SOURCE,
+                [SPEECH_SEGMENT_ID_ATTR]: 'kept',
+              },
+              content: [{ type: 'text', text: 'duplicate' }],
+            },
+          ],
+        },
+      }),
+      '',
+    )
+
+    const attrs = restored.content?.map((node) => node.attrs)
+    expect(attrs?.map((entry) => entry?.[SPEECH_SEGMENT_ID_ATTR])).toEqual([
+      'restored-asr-1',
+      'kept',
+      'restored-asr-2',
+    ])
+    expect(attrs?.map((entry) => entry?.[CLEANUP_STATE_ATTR])).toEqual([
+      'pending',
+      'cleaned',
+      'pending',
+    ])
+    expect(restoreFeedbackDraftDocument(snapshotFeedbackDraftDocument(restored).documentJson, '')).toEqual(
+      restored,
+    )
   })
 
   it('hydrates markdown-only drafts and writes v2 on snapshot', () => {
@@ -200,5 +251,21 @@ describe('persisted feedback draft document', () => {
         'Fallback',
       ).content?.[0].content?.[0]?.text,
     ).toBe('Fallback')
+  })
+
+  it('preserves ordinary horizontal rules in v2 documents', () => {
+    const snapshot = snapshotFeedbackDraftDocument({
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: 'before' }] },
+        { type: 'horizontalRule' },
+        { type: 'paragraph', content: [{ type: 'text', text: 'after' }] },
+      ],
+    })
+    expect(restoreFeedbackDraftDocument(snapshot.documentJson, '').content?.map((node) => node.type)).toEqual([
+      'paragraph',
+      'horizontalRule',
+      'paragraph',
+    ])
   })
 })

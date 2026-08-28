@@ -4,6 +4,7 @@ import {
   ACTION_ID_ATTR,
   actionBlockquoteNode,
   isActionBlockquote,
+  isEmptyActionGroup,
   lastMeaningfulNode,
   withoutTrailingEmptyActionGroups,
   type ActionIdentity,
@@ -19,6 +20,7 @@ export type DraftOperation =
   | { kind: 'appendClipboardText'; text: string; label: string; action: ActiveAction }
   | { kind: 'appendAttachment'; attachment: AttachmentView; label: string; action: ActiveAction }
   | { kind: 'startActionGroup'; action: ActionIdentity }
+  | { kind: 'clearActionGroup'; actionId: string }
 
 export function speechNodes(segmentId: string, text: string): JSONContent[] {
   return [
@@ -96,6 +98,33 @@ function isOpenActionGroup(node: JSONContent | undefined, actionId: string): boo
   return Boolean(node && isActionBlockquote(node) && node.attrs?.[ACTION_ID_ATTR] === actionId)
 }
 
+function documentContains(
+  node: JSONContent,
+  predicate: (candidate: JSONContent) => boolean,
+): boolean {
+  if (predicate(node)) return true
+  return (node.content ?? []).some((child) => documentContains(child, predicate))
+}
+
+export function draftOperationAlreadyApplied(
+  doc: JSONContent,
+  operation: DraftOperation,
+): boolean {
+  if (operation.kind === 'appendSpeech') {
+    return documentContains(
+      doc,
+      (node) => node.attrs?.speechSegmentId === operation.segmentId,
+    )
+  }
+  if (operation.kind === 'appendAttachment') {
+    return documentContains(
+      doc,
+      (node) => node.attrs?.attachmentId === operation.attachment.attachment_id,
+    )
+  }
+  return false
+}
+
 function appendNodes(
   doc: JSONContent,
   nodes: JSONContent[],
@@ -121,6 +150,7 @@ function appendNodes(
 }
 
 export function applyDraftOperation(doc: JSONContent, operation: DraftOperation): JSONContent {
+  if (draftOperationAlreadyApplied(doc, operation)) return doc
   switch (operation.kind) {
     case 'appendSpeech':
       return appendNodes(doc, speechNodes(operation.segmentId, operation.text), operation.action)
@@ -139,11 +169,19 @@ export function applyDraftOperation(doc: JSONContent, operation: DraftOperation)
     case 'startActionGroup': {
       const trimmed = withoutTrailingEmptyActionGroups(doc, operation.action.actionId)
       const last = lastMeaningfulNode(trimmed)
-      if (isOpenActionGroup(last, operation.action.actionId)) return trimmed
+      if (
+        isOpenActionGroup(last, operation.action.actionId) &&
+        last &&
+        isEmptyActionGroup(last)
+      ) {
+        return trimmed
+      }
       return {
         type: 'doc',
         content: [...(trimmed.content ?? []), actionBlockquoteNode(operation.action)],
       }
     }
+    case 'clearActionGroup':
+      return withoutTrailingEmptyActionGroups(doc, null, operation.actionId)
   }
 }

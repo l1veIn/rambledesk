@@ -10,7 +10,7 @@
     FeedbackResultView,
     FeedbackWorkspaceView,
   } from '$lib/feedback'
-  import type { CookingConfig } from '$lib/cooking'
+  import type { TidyConfig } from '$lib/lightCleanup'
   import type { DraftOperation } from '$lib/draftOperations'
   import type { FeedbackDraftSnapshot } from '$lib/feedbackDraftDocument'
   import type { SpeechCleanupSegment } from '$lib/speechBlockMetadata'
@@ -60,7 +60,8 @@
   export let cookingEnabled = false
   export let cookedDraftReady = false
   export let cookedPreviewModel = ''
-  export let cookingConfig: CookingConfig | null = null
+  export let cookedPreviewMarkdown = ''
+  export let tidyConfig: TidyConfig | null = null
   export let activeActionId: string | null = null
   export let submitting = false
   export let submitStage: SubmitStage = 'idle'
@@ -74,6 +75,7 @@
   export let onReload: () => void = () => {}
   export let onDraftChange: (snapshot: FeedbackDraftSnapshot) => void = () => {}
   export let onTidyError: (message: string) => void = () => {}
+  export let onOpenTidySettings: () => void = () => {}
   export let onSelectAction: (actionId: string, actionIndex: number, title: string) => void = () => {}
   export let onCookPreview: () => void = () => {}
   export let onRestoreOriginal: () => void = () => {}
@@ -127,7 +129,7 @@
     taskBriefPreviewOrigin = null
     taskBriefPreviewOpen = true
   }
-  $: interactionLocked = cooking || submitting || cancelling || approving
+  $: interactionLocked = cooking || cookedDraftReady || submitting || cancelling || approving
   // Nudge the preview button when the full-screen brief collapses back to it.
   $: {
     const nowOpen = taskBriefPreviewOpen
@@ -151,18 +153,6 @@
     return t($locale, source, values)
   }
 
-  export function insertAttachments(attachments: AttachmentView[]) {
-    return feedbackEditor?.insertAttachments(attachments) ?? false
-  }
-
-  export function applyExternalMarkdown(markdown: string): boolean {
-    return feedbackEditor?.applyExternalMarkdown(markdown) ?? false
-  }
-
-  export function applyExternalDocument(document: JSONContent): boolean {
-    return feedbackEditor?.applyExternalDocument(document) ?? false
-  }
-
   export function applyDraftOperation(operation: DraftOperation): boolean {
     return feedbackEditor?.applyDraftOperation(operation) ?? false
   }
@@ -175,18 +165,6 @@
     replacements: Array<{ segmentId: string; originalText: string; nextText: string }>,
   ): boolean {
     return feedbackEditor?.replaceSpeechSegments(replacements) ?? false
-  }
-
-  export function appendTranscript(text: string) {
-    feedbackEditor?.appendTranscript(text)
-  }
-
-  export function appendClipboardCapture(text: string, label: string) {
-    return feedbackEditor?.appendClipboardCapture(text, label) ?? false
-  }
-
-  export function appendCapturedAttachment(attachment: AttachmentView, label: string) {
-    return feedbackEditor?.appendCapturedAttachment(attachment, label) ?? false
   }
 
   export function removeAttachmentReference(attachmentId: string) {
@@ -278,12 +256,14 @@
               cookingEnabled={cookingEnabled && !publishedFeedback}
               {cookedDraftReady}
               {cookedPreviewModel}
+              {cookedPreviewMarkdown}
               locked={interactionLocked}
               cookedMarkdown={publishedFeedback?.markdown ?? ''}
               uncookedMarkdown={publishedFeedback?.uncooked_markdown ?? draftBody}
               onChange={onDraftChange}
-              {cookingConfig}
+              {tidyConfig}
               onTidyError={onTidyError}
+              onOpenTidySettings={onOpenTidySettings}
               onCookPreview={onCookPreview}
               onRestoreOriginal={onRestoreOriginal}
               onOpenAttachment={openAttachmentPreviewById}

@@ -734,9 +734,30 @@ const chinese: Record<string, string> = {
   'Shortcut saved and active.': '快捷键已保存并生效。',
   'Shortcuts restored to defaults.': '快捷键已恢复默认。',
   'Could not restore shortcut defaults.': '无法恢复快捷键默认设置。',
+  'Could not start shortcut recording.': '无法开始录制快捷键。',
   'A shortcut needs at least one modifier (Ctrl / Cmd / Alt / Shift), or a function key F1–F24.': '快捷键需要至少一个修饰键（Ctrl / Cmd / Alt / Shift），或使用 F1–F24 功能键。',
   'This key cannot be used as a global shortcut.': '该按键不能用作全局快捷键。',
   'Global shortcuts are available only in the desktop app.': '全局快捷键仅在桌面应用中可用。',
+  'Post-processing': '后处理',
+  'Draft and submission transforms': '草稿与提交处理',
+  'Configuration required': '需要配置',
+  'Manually clean pending speech segments in the current document. Tidy never runs automatically.':
+    '手动整理当前文档中待处理的语音段。Tidy 永远不会自动运行。',
+  'Tidy model': 'Tidy 模型',
+  'Tidy prompt': 'Tidy 提示词',
+  'Full Cook': '完整 Cooking',
+  'Full Cook model': 'Cooking 模型',
+  'Full Cook prompt': 'Cooking 提示词',
+  'Organize the complete draft into formal feedback before submission.':
+    '在提交前将完整草稿整理为正式反馈。',
+  'Tidy and Cooking use separate credentials and models. API keys stay in local settings and are never written to feedback packages.':
+    'Tidy 和 Cooking 使用彼此独立的凭据与模型。API Key 只保存在本机设置中，不会写入反馈包。',
+  'Configure Tidy in Settings → Post-processing → Tidy first.':
+    '请先在“设置 → 后处理 → Tidy”中完成配置。',
+  '{label} needs an API key in Post-processing settings.':
+    '{label} 需要在后处理设置中配置 API Key。',
+  '{label} needs a model name in Post-processing settings.':
+    '{label} 需要在后处理设置中配置模型名称。',
 }
 
 export function t(

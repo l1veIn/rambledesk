@@ -48,3 +48,15 @@ export function messageFrom(cause: unknown): string {
   }
   return String(cause)
 }
+
+export function commandErrorCode(cause: unknown): string | null {
+  if (
+    cause &&
+    typeof cause === 'object' &&
+    'code' in cause &&
+    typeof (cause as { code?: unknown }).code === 'string'
+  ) {
+    return (cause as { code: string }).code
+  }
+  return null
+}

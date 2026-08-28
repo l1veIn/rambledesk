@@ -1,16 +1,15 @@
 <script lang="ts">
   import { Editor } from '@tiptap/core'
-  import { TableKit } from '@tiptap/extension-table'
-  import TaskItem from '@tiptap/extension-task-item'
-  import TaskList from '@tiptap/extension-task-list'
-  import { Markdown } from '@tiptap/markdown'
-  import StarterKit from '@tiptap/starter-kit'
   import { onMount } from 'svelte'
 
+  import { attachmentIdFromUrl } from '$lib/attachmentMarkdown'
+  import { feedbackEditorExtensions } from '$lib/feedbackEditorExtensions'
   import { isSafeHttpUrl } from '$lib/linkify'
   import { openExternalUrl } from '$lib/openExternalUrl'
 
   export let markdown = ''
+  export let previews: Record<string, string> = {}
+  export let onOpenAttachment: (attachmentId: string) => void = () => {}
 
   let editorHost: HTMLDivElement
   let editor: Editor | null = null
@@ -19,20 +18,7 @@
   onMount(() => {
     editor = new Editor({
       element: editorHost,
-      extensions: [
-        StarterKit.configure({
-          link: {
-            openOnClick: false,
-            autolink: true,
-            defaultProtocol: 'https',
-            protocols: ['http', 'https'],
-          },
-        }),
-        TableKit,
-        TaskList,
-        TaskItem.configure({ nested: true }),
-        Markdown,
-      ],
+      extensions: feedbackEditorExtensions(),
       content: markdown,
       contentType: 'markdown',
       editable: false,
@@ -43,6 +29,14 @@
         },
         handleClick: (_view, _pos, event) => {
           const target = event.target as HTMLElement | null
+          const attachment = target?.closest?.('[data-attachment-id]')
+          const attachmentId = attachment?.getAttribute('data-attachment-id')
+          if (attachmentId) {
+            event.preventDefault()
+            event.stopPropagation()
+            onOpenAttachment(attachmentId)
+            return true
+          }
           const anchor = target?.closest?.('a[href]')
           if (!anchor) return false
           const href = anchor.getAttribute('href') ?? ''
@@ -72,6 +66,30 @@
       emitUpdate: false,
     })
     renderedMarkdown = markdown
+    hydrateAttachmentImages()
+  }
+  $: if (editor) {
+    previews
+    hydrateAttachmentImages()
+  }
+
+  function hydrateAttachmentImages() {
+    if (!editor) return
+    let transaction = editor.state.tr
+    let changed = false
+    editor.state.doc.descendants((node, position) => {
+      if (node.type.name !== 'image') return
+      const attachmentId = node.attrs.attachmentId ?? attachmentIdFromUrl(node.attrs.src)
+      const preview = attachmentId ? previews[attachmentId] : undefined
+      if (!attachmentId || !preview || node.attrs.src === preview) return
+      transaction = transaction.setNodeMarkup(position, undefined, {
+        ...node.attrs,
+        attachmentId,
+        src: preview,
+      })
+      changed = true
+    })
+    if (changed) editor.view.dispatch(transaction)
   }
 </script>
 
@@ -228,5 +246,41 @@
     color: var(--primary);
     text-decoration: underline;
     text-underline-offset: 2px;
+  }
+
+  :global(.attachment-markdown-prose img) {
+    display: block;
+    width: auto;
+    max-width: min(100%, 900px);
+    max-height: 620px;
+    margin: 18px auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    object-fit: contain;
+    background: var(--muted);
+  }
+
+  :global(.attachment-markdown-prose a.attachment-file-chip) {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 2px;
+    padding: 2px 10px 2px 4px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--muted) 55%, transparent);
+    color: var(--foreground);
+    font-size: 12px;
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  :global(.attachment-markdown-prose .attachment-file-chip-ext) {
+    padding: 1px 5px;
+    border-radius: 999px;
+    background: var(--primary);
+    color: var(--primary-foreground);
+    font-size: 9px;
+    font-weight: 650;
   }
 </style>

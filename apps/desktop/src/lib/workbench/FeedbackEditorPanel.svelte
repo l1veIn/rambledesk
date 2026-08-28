@@ -15,14 +15,13 @@
   import type { JSONContent } from '@tiptap/core'
 
   import RichFeedbackEditor from '$lib/RichFeedbackEditor.svelte'
-  import type { CookingConfig } from '$lib/cooking'
   import type { DraftOperation } from '$lib/draftOperations'
-  import type { AttachmentView, FeedbackWorkspaceView } from '$lib/feedback'
+  import type { FeedbackWorkspaceView } from '$lib/feedback'
   import {
     decodeFeedbackDraftDocument,
     type FeedbackDraftSnapshot,
   } from '$lib/feedbackDraftDocument'
-  import { tidySpeechSegments } from '$lib/lightCleanup'
+  import { tidySpeechSegments, type TidyConfig } from '$lib/lightCleanup'
   import {
     speechCleanupCandidates,
     type SpeechCleanupSegment,
@@ -30,6 +29,7 @@
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
   import { hasCookedPublishedVariant } from '$lib/publishedFeedback'
+  import MarkdownPreview from './MarkdownPreview.svelte'
   import type { SavePhase } from './types'
 
   export let workspace: FeedbackWorkspaceView
@@ -44,6 +44,7 @@
   export let cookingEnabled = false
   export let cookedDraftReady = false
   export let cookedPreviewModel = ''
+  export let cookedPreviewMarkdown = ''
   export let locked = false
   export let cookedMarkdown = ''
   export let uncookedMarkdown = ''
@@ -52,8 +53,9 @@
   export let onCookPreview: () => void = () => {}
   export let onRestoreOriginal: () => void = () => {}
   export let onOpenAttachment: (attachmentId: string) => void = () => {}
-  export let cookingConfig: CookingConfig | null = null
+  export let tidyConfig: TidyConfig | null = null
   export let onTidyError: (message: string) => void = () => {}
+  export let onOpenTidySettings: () => void = () => {}
 
   let tidyBusy = false
   let pendingCount = 0
@@ -66,7 +68,9 @@
   $: editingDisabled = readOnly || locked
   $: hasCookedVariant = readOnly && hasCookedPublishedVariant(cookedMarkdown, uncookedMarkdown)
   $: displayedMarkdown =
-    hasCookedVariant && publishedView === 'cooked'
+    cookedDraftReady
+      ? cookedPreviewMarkdown
+      : hasCookedVariant && publishedView === 'cooked'
       ? cookedMarkdown
       : hasCookedVariant && publishedView === 'uncooked'
         ? uncookedMarkdown
@@ -81,18 +85,6 @@
     if (savePhase === 'unsaved') return tr('Waiting to autosave')
     if (savePhase === 'error') return tr('Save failed')
     return `${tr('Saved')} · r${savedRevision}`
-  }
-
-  export function insertAttachments(attachments: AttachmentView[]) {
-    return richEditor?.insertAttachments(attachments) ?? false
-  }
-
-  export function applyExternalMarkdown(markdown: string): boolean {
-    return richEditor?.applyExternalMarkdown(markdown) ?? false
-  }
-
-  export function applyExternalDocument(document: JSONContent): boolean {
-    return richEditor?.applyExternalDocument(document) ?? false
   }
 
   export function applyDraftOperation(operation: DraftOperation): boolean {
@@ -117,8 +109,12 @@
   }
 
   async function tidyNow() {
-    if (tidyBusy || editingDisabled || !cookingConfig) {
-      if (!cookingConfig) onTidyError(tr('Tidy uses the Cooking model. Configure it in Settings first.'))
+    const tidyReady = Boolean(tidyConfig?.apiKey.trim() && tidyConfig.model.trim())
+    if (tidyBusy || editingDisabled || !tidyConfig || !tidyReady) {
+      if (!tidyConfig || !tidyReady) {
+        onTidyError(tr('Configure Tidy in Settings → Post-processing → Tidy first.'))
+        onOpenTidySettings()
+      }
       return
     }
     const requestId = workspace.request.request_id
@@ -127,7 +123,7 @@
     if (candidates.length === 0) return
     tidyBusy = true
     try {
-      const result = await tidySpeechSegments(candidates, cookingConfig)
+      const result = await tidySpeechSegments(candidates, tidyConfig)
       if (workspace.request.request_id !== requestId || editorEpoch !== epoch) return
       if (!result) {
         onTidyError(tr('Tidy did not write back because the model output did not match the original segments.'))
@@ -145,18 +141,6 @@
     } finally {
       tidyBusy = false
     }
-  }
-
-  export function appendTranscript(text: string) {
-    richEditor?.appendTranscript(text)
-  }
-
-  export function appendClipboardCapture(text: string, label: string) {
-    return richEditor?.appendClipboardCapture(text, label) ?? false
-  }
-
-  export function appendCapturedAttachment(attachment: AttachmentView, label: string) {
-    return richEditor?.appendCapturedAttachment(attachment, label) ?? false
   }
 
   export function removeAttachmentReference(attachmentId: string) {
@@ -237,23 +221,26 @@
   {/if}
 
   <div class="relative flex min-h-0 flex-1">
-    <RichFeedbackEditor
-      bind:this={richEditor}
-      document={editorDocument}
-      {editorEpoch}
-      markdown={displayedMarkdown}
-      overlayMarkdown={hasCookedVariant ? displayedMarkdown : null}
-      previews={attachmentPreviews}
-      disabled={editingDisabled}
-      {onOpenAttachment}
-      onTidy={() => void tidyNow()}
-      {tidyBusy}
-      onChange={(snapshot) => {
-        const doc = decodeFeedbackDraftDocument(snapshot.documentJson)
-        pendingCount = doc ? speechCleanupCandidates(doc).length : 0
-        if (!editingDisabled) onChange(snapshot)
-      }}
-    />
+    {#if cookedDraftReady || hasCookedVariant}
+      <MarkdownPreview markdown={displayedMarkdown} previews={attachmentPreviews} {onOpenAttachment} />
+    {:else}
+      <RichFeedbackEditor
+        bind:this={richEditor}
+        document={editorDocument}
+        {editorEpoch}
+        markdown={draftBody}
+        previews={attachmentPreviews}
+        disabled={editingDisabled}
+        {onOpenAttachment}
+        onTidy={() => void tidyNow()}
+        {tidyBusy}
+        onChange={(snapshot) => {
+          const doc = decodeFeedbackDraftDocument(snapshot.documentJson)
+          pendingCount = doc ? speechCleanupCandidates(doc).length : 0
+          if (!editingDisabled) onChange(snapshot)
+        }}
+      />
+    {/if}
 
     {#if cooking}
       <div

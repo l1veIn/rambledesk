@@ -65,54 +65,20 @@ export function lastMeaningfulNode(doc: JSONContent): JSONContent | undefined {
   return undefined
 }
 
-function actionContentWithoutTitle(node: JSONContent): JSONContent[] {
-  return (node.content ?? []).filter((child, index) => {
-    if (index === 0 && parseActionTitle(paragraphText(child))) return false
-    return true
-  })
-}
-
-/** Consecutive groups for the same Action are one container; empty ones drop out. */
-export function mergeAdjacentActionGroups(doc: JSONContent): JSONContent {
-  const next: JSONContent[] = []
-  for (const node of doc.content ?? []) {
-    const previous = next[next.length - 1]
-    if (
-      !isActionBlockquote(node) ||
-      !previous ||
-      !isActionBlockquote(previous) ||
-      previous.attrs?.[ACTION_ID_ATTR] !== node.attrs?.[ACTION_ID_ATTR]
-    ) {
-      next.push(node)
-      continue
-    }
-    if (isEmptyActionGroup(node)) continue
-    if (isEmptyActionGroup(previous)) {
-      next[next.length - 1] = node
-      continue
-    }
-    next[next.length - 1] = {
-      ...previous,
-      content: [...(previous.content ?? []), ...actionContentWithoutTitle(node)],
-    }
-  }
-  return { ...doc, content: next }
-}
-
 export function withoutTrailingEmptyActionGroups(
   doc: JSONContent,
   keepActionId?: string | null,
+  removeActionId?: string | null,
 ): JSONContent {
   const content = [...(doc.content ?? [])]
   while (content.length > 0) {
-    const last = content[content.length - 1]!
-    if (isEmptyParagraph(last)) {
-      content.pop()
-      continue
-    }
-    if (isEmptyActionGroup(last)) {
-      if (keepActionId && last.attrs?.[ACTION_ID_ATTR] === keepActionId) break
-      content.pop()
+    let index = content.length - 1
+    while (index >= 0 && isEmptyParagraph(content[index]!)) index -= 1
+    if (index >= 0 && isEmptyActionGroup(content[index]!)) {
+      const candidate = content[index]!
+      if (keepActionId && candidate.attrs?.[ACTION_ID_ATTR] === keepActionId) break
+      if (removeActionId && candidate.attrs?.[ACTION_ID_ATTR] !== removeActionId) break
+      content.splice(index, 1)
       continue
     }
     break

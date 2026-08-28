@@ -71,3 +71,42 @@ describe('speech hotword defaults', () => {
     expect(mergeSpeechHotwords(current, ['ramble', 'RambleDesk'])).toBe(current)
   })
 })
+
+describe('post-processing configuration', () => {
+  it('keeps Tidy credentials independent from Cooking', async () => {
+    const preferences = await loadPreferences({
+      'rambledesk.cooking.api-key': 'cook-secret',
+      'rambledesk.cooking.model': 'cook-model',
+    })
+    expect(get(preferences.cookingApiKey)).toBe('cook-secret')
+    expect(get(preferences.cookingModel)).toBe('cook-model')
+    expect(get(preferences.tidyApiKey)).toBe('')
+    expect(get(preferences.tidyModel)).toBe('deepseek-v4-flash')
+  })
+
+  it('preserves the RC light-cleanup keys as the Tidy namespace', async () => {
+    const preferences = await loadPreferences({
+      'rambledesk.light-cleanup.provider': 'openai',
+      'rambledesk.light-cleanup.api-key': 'tidy-secret',
+      'rambledesk.light-cleanup.model': 'tidy-model',
+    })
+    expect(get(preferences.tidyProvider)).toBe('openai')
+    expect(get(preferences.tidyApiKey)).toBe('tidy-secret')
+    expect(get(preferences.tidyModel)).toBe('tidy-model')
+    expect(get(preferences.cookingApiKey)).toBe('')
+    expect(get(preferences.cookingModel)).toBe('deepseek-v4-flash')
+  })
+
+  it('changing one post-processing store does not mutate the other', async () => {
+    const preferences = await loadPreferences()
+    preferences.setTidyApiKey('tidy-only')
+    preferences.setTidyModel('tidy-model')
+    expect(get(preferences.cookingApiKey)).toBe('')
+    expect(get(preferences.cookingModel)).toBe('deepseek-v4-flash')
+
+    preferences.setCookingApiKey('cook-only')
+    preferences.setCookingModel('cook-model')
+    expect(get(preferences.tidyApiKey)).toBe('tidy-only')
+    expect(get(preferences.tidyModel)).toBe('tidy-model')
+  })
+})

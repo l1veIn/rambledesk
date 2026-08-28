@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Keyboard } from '@lucide/svelte'
-  import { onDestroy, onMount } from 'svelte'
+  import { onMount } from 'svelte'
 
   import { Button } from '$lib/components/ui/button'
   import { toast } from '$lib/components/ui/sonner'
@@ -12,7 +12,6 @@
     isAcceptableCombo,
     refreshShortcutSettings,
     resetShortcuts,
-    setLocalCaptureActive,
     setShortcutCaptureActive,
     shortcutSettings,
     updateShortcut,
@@ -62,20 +61,25 @@
     return $shortcutSettings[action] ?? ''
   }
 
-  function beginCapture(action: ShortcutAction) {
+  async function beginCapture(action: ShortcutAction) {
     if (!isTauri || capturing) return
     capturing = action
     draft = ''
     draftError = ''
-    setLocalCaptureActive(true)
-    void setShortcutCaptureActive(true).catch(() => {})
+    try {
+      await setShortcutCaptureActive(true)
+    } catch (cause) {
+      capturing = null
+      toast.error(tr('Could not start shortcut recording.'), {
+        description: messageFrom(cause),
+      })
+    }
   }
 
   function cancelCapture() {
     capturing = null
     draft = ''
     draftError = ''
-    setLocalCaptureActive(false)
     void setShortcutCaptureActive(false).catch(() => {})
   }
 
@@ -95,10 +99,10 @@
       await updateShortcut(action, draft)
       capturing = null
       draft = ''
-      setLocalCaptureActive(false)
       toast.success(tr('Shortcut saved and active.'))
     } catch (cause) {
       draftError = messageFrom(cause)
+      await setShortcutCaptureActive(true).catch(() => {})
     } finally {
       saving = false
     }
@@ -151,7 +155,6 @@
     return () => {
       window.removeEventListener('keydown', onKeydown, { capture: true })
       if (capturing) {
-        setLocalCaptureActive(false)
         void setShortcutCaptureActive(false)
       }
     }
@@ -199,7 +202,7 @@
             >{part}</kbd>
           {/each}
           {#if capturing !== action.id}
-            <Button variant="outline" size="sm" onclick={() => beginCapture(action.id)}>
+            <Button variant="outline" size="sm" onclick={() => void beginCapture(action.id)}>
               {tr('Change…')}
             </Button>
           {/if}

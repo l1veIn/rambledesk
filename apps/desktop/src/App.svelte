@@ -30,18 +30,16 @@
     DraftView,
     FeedbackRequestView,
     FeedbackWorkspaceView,
-    SaveDraftInput,
     SubmitFeedbackInput,
   } from './lib/feedback'
   import {
-    applyDraftOperation,
     type ActiveAction,
     type DraftOperation,
   } from './lib/draftOperations'
+  import { writeBackgroundDraftOperation } from './lib/backgroundDraftWriter'
   import {
     restoreFeedbackDraftDocument,
     snapshotFeedbackDraftDocument,
-    snapshotFeedbackDraftMarkdown,
     type FeedbackDraftSnapshot,
   } from './lib/feedbackDraftDocument'
   import {
@@ -108,6 +106,12 @@
     resetOnboarding,
     notificationSoundEnabled,
     setNotificationPopupEnabled,
+    tidyApiKey,
+    tidyBaseUrl,
+    tidyModel,
+    tidyProvider,
+    tidyReasoningEffort,
+    tidySystemPrompt,
   } from './lib/preferences'
 
   type PaneGroupHandle = {
@@ -137,8 +141,6 @@
   let cookingRequestIds = new Set<string>()
   /** Preview cooking result for the current workspace, if generated and current. */
   let cookedPreview: { markdown: string; original: string; model: string } | null = null
-  /** Pre-cook draft snapshot for the restore action. */
-  let cookedPreviewOriginal = ''
   let cancelling = false
   let approving = false
   let attachmentBusy = false
@@ -243,7 +245,7 @@
     getWorkspace: () => workspace,
     getEditor: () => workspacePanel,
     getRambleRequestId: () => rambleRequestId,
-    getInteractionLocked: () => interactionLocked || currentRequestCooking,
+    getInteractionLocked: () => interactionLocked || currentRequestCooking || cookedDraftReady,
     getSavedRevision: () => savedRevision,
     getBusy: () => attachmentBusy,
     getCaptureBusy: () => screenCaptureBusy,
@@ -597,39 +599,38 @@
   async function openRequest(requestId: string, saveCurrent = true) {
     if (interactionLocked || workspace?.request.request_id === requestId) return
     if (saveCurrent && !(await saveDraftNow())) return
-    await rambleDocumentQueue.catch(() => {})
-
     loadingWorkspace = true
     pageError = ''
     completedResult = null
     publishedFeedback = null
     try {
-      const next = previewMode
-        ? previewWorkspaceFor(requestId)
-        : await invoke<FeedbackWorkspaceView>('get_feedback_workspace', {
-            requestId,
-          })
-      if (!next) throw new Error(tr('This feedback request could not be found.'))
-      workspace = next
-      cookedPreview = null
-      cookedPreviewOriginal = ''
-      adoptDraft(next.draft)
-      savePhase = next.draft.updated_at ? 'saved' : 'idle'
-      saveMessage = ''
-      attachmentMessage = ''
-      await attachmentController.refreshPreviews(next)
-      if (next.request.status === 'completed' && next.feedback) {
-        publishedFeedback = previewMode
-          ? {
-              markdown: next.draft.body_markdown,
-              uncooked_markdown: next.draft.body_markdown,
-            }
-          : normalizePublishedFeedback(
-              await invoke<PublishedFeedbackPackage | null>('read_published_feedback', {
-                requestId: next.request.request_id,
-              }),
-            )
-      }
+      await enqueueDocumentTask(async () => {
+        const next = previewMode
+          ? previewWorkspaceFor(requestId)
+          : await invoke<FeedbackWorkspaceView>('get_feedback_workspace', {
+              requestId,
+            })
+        if (!next) throw new Error(tr('This feedback request could not be found.'))
+        workspace = next
+        cookedPreview = null
+        adoptDraft(next.draft)
+        savePhase = next.draft.updated_at ? 'saved' : 'idle'
+        saveMessage = ''
+        attachmentMessage = ''
+        await attachmentController.refreshPreviews(next)
+        if (next.request.status === 'completed' && next.feedback) {
+          publishedFeedback = previewMode
+            ? {
+                markdown: next.draft.body_markdown,
+                uncooked_markdown: next.draft.body_markdown,
+              }
+            : normalizePublishedFeedback(
+                await invoke<PublishedFeedbackPackage | null>('read_published_feedback', {
+                  requestId: next.request.request_id,
+                }),
+              )
+        }
+      })
     } catch (cause) {
       pageError = messageFrom(cause)
     } finally {
@@ -641,18 +642,32 @@
     return activeActionByRequest.get(requestId) ?? null
   }
 
+  function enqueueDocumentTask<T>(task: () => Promise<T>): Promise<T> {
+    const run = rambleDocumentQueue.then(task)
+    rambleDocumentQueue = run.then(
+      () => undefined,
+      () => undefined,
+    )
+    return run
+  }
+
   async function routeDraftOperation(requestId: string, operation: DraftOperation): Promise<void> {
-    if (interactionLocked || !requestId) return
-    const run = rambleDocumentQueue.then(async () => {
+    if (!requestId) return
+    const run = enqueueDocumentTask(async () => {
       if (workspace?.request.request_id === requestId) {
-        if (!workspacePanel?.applyDraftOperation(operation)) {
-          const nextDocument = applyDraftOperation(
-            restoreFeedbackDraftDocument(draftDocumentJson, draftBody),
-            operation,
-          )
-          const snapshot = snapshotFeedbackDraftDocument(nextDocument)
-          updateDraft(snapshot)
-          workspacePanel?.applyExternalDocument(nextDocument)
+        if (
+          workspace.request.status === 'completed' ||
+          workspace.request.status === 'cancelled'
+        ) {
+          throw new Error(tr('This request is closed. The document is read-only.'))
+        }
+        let applied = workspacePanel?.applyDraftOperation(operation) ?? false
+        if (!applied) {
+          await tick()
+          applied = workspacePanel?.applyDraftOperation(operation) ?? false
+        }
+        if (!applied) {
+          throw new Error(tr('The current editor is not ready. Try the action again.'))
         }
         if (!(await saveDraftNow())) {
           throw new Error(saveMessage || tr('The current draft could not be saved.'))
@@ -660,37 +675,46 @@
         return
       }
 
-      const target = previewMode
-        ? previewWorkspaceFor(requestId)
-        : await invoke<FeedbackWorkspaceView>('get_feedback_workspace', { requestId })
-      if (!target) throw new Error(tr('This feedback request could not be found.'))
-      const snapshot = snapshotFeedbackDraftDocument(
-        applyDraftOperation(
-          restoreFeedbackDraftDocument(target.draft.document_json, target.draft.body_markdown),
-          operation,
-        ),
-      )
-      const input: SaveDraftInput = {
-        request_id: requestId,
-        document_json: snapshot.documentJson,
-        body_markdown: snapshot.bodyMarkdown,
-        expected_revision: target.draft.saved_revision,
-      }
-      if (!previewMode) await invoke<DraftView>('save_feedback_draft', { input })
+      await writeBackgroundDraftOperation(requestId, operation, {
+        load: async () => {
+          const target = previewMode
+            ? previewWorkspaceFor(requestId)
+            : await invoke<FeedbackWorkspaceView>('get_feedback_workspace', { requestId })
+          if (!target) throw new Error(tr('This feedback request could not be found.'))
+          return target
+        },
+        save: async (input) =>
+          previewMode
+            ? {
+                document_json: input.document_json,
+                body_markdown: input.body_markdown,
+                saved_revision: input.expected_revision + 1,
+                updated_at: new Date().toISOString(),
+              }
+            : invoke<DraftView>('save_feedback_draft', { input }),
+      })
     })
-    rambleDocumentQueue = run.catch((cause) => {
+    try {
+      await run
+    } catch (cause) {
       pageError = tr('Failed to write Ramble content: {error}', { error: messageFrom(cause) })
-    })
-    await run
+      throw cause
+    }
   }
 
   function selectAction(actionId: string, actionIndex: number, title: string) {
     const requestId = workspace?.request.request_id
-    if (!requestId) return
+    if (!requestId || cookedDraftReady) return
+    if (activeActionByRequest.get(requestId)?.actionId === actionId) {
+      activeActionByRequest.delete(requestId)
+      activeActionByRequest = new Map(activeActionByRequest)
+      void routeDraftOperation(requestId, { kind: 'clearActionGroup', actionId }).catch(() => {})
+      return
+    }
     const action = { actionId, actionIndex, title }
     activeActionByRequest.set(requestId, action)
     activeActionByRequest = new Map(activeActionByRequest)
-    void routeDraftOperation(requestId, { kind: 'startActionGroup', action })
+    void routeDraftOperation(requestId, { kind: 'startActionGroup', action }).catch(() => {})
   }
 
   async function reloadWorkspace() {
@@ -752,7 +776,6 @@
     messageFrom,
     getWorkspace: () => workspace,
     getDraftBody: () => draftBody,
-    getSavedBody: () => savedBody,
     getCookingConfig: () => ({
       provider: $cookingProvider,
       apiKey: $cookingApiKey,
@@ -767,19 +790,7 @@
     exitRamble: async () => {
       if (rambleCanExit) await exitRamble()
     },
-    setDraftBody: (markdown) => {
-      applyDraftSnapshot(snapshotFeedbackDraftMarkdown(markdown))
-    },
-    setSavePhase: (phase) => {
-      savePhase = phase
-    },
-    setSaveMessage: (message) => {
-      saveMessage = message
-    },
     saveDraftNow,
-    applyEditorMarkdown: (markdown) => {
-      workspacePanel?.applyExternalMarkdown(markdown)
-    },
     setPageError: (message) => {
       pageError = message
     },
@@ -789,10 +800,6 @@
     setPreview: (preview) => {
       cookedPreview = preview
     },
-    setPreviewOriginal: (original) => {
-      cookedPreviewOriginal = original
-    },
-    getPreviewOriginal: () => cookedPreviewOriginal,
   })
   const cookPreviewOnly = cookingController.cookPreviewOnly
   const restoreOriginalAfterCook = cookingController.restoreOriginal
@@ -918,6 +925,7 @@
 
   async function exitRamble() {
     await rambleController?.exitRamble()
+    await rambleDocumentQueue.catch(() => {})
   }
 
   async function toggleRamble() {
@@ -954,7 +962,7 @@
     bind:rambleRequestId
     bind:rambleRequestTitle
     bind:rambleMessage
-    interactionLocked={interactionLocked || currentRequestCooking}
+    interactionLocked={interactionLocked || currentRequestCooking || cookedDraftReady}
     onPageError={(message) => (pageError = message)}
     onSaveDraftNow={saveDraftNow}
     onApplyWorkspaceMutation={applyWorkspaceMutation}
@@ -1049,14 +1057,14 @@
           {draftBody}
           {editorDocument}
           {editorEpoch}
-          cookingConfig={{
-            provider: $cookingProvider,
-            apiKey: $cookingApiKey,
-            baseUrl: $cookingBaseUrl,
-            model: $cookingModel,
-            reasoningEffort: $cookingReasoningEffort,
+          tidyConfig={{
+            provider: $tidyProvider,
+            apiKey: $tidyApiKey,
+            baseUrl: $tidyBaseUrl,
+            model: $tidyModel,
+            reasoningEffort: $tidyReasoningEffort,
             locale: $locale,
-            systemPrompt: $cookingSystemPrompt,
+            systemPrompt: $tidySystemPrompt,
           }}
           activeActionId={workspace ? activeActionFor(workspace.request.request_id)?.actionId ?? null : null}
           {savedRevision}
@@ -1085,6 +1093,7 @@
           cookingEnabled={$cookingEnabled}
           {cookedDraftReady}
           cookedPreviewModel={cookedPreview?.model ?? ''}
+          cookedPreviewMarkdown={cookedPreview?.markdown ?? ''}
           onCookPreview={() => void cookPreviewOnly()}
           onRestoreOriginal={restoreOriginalAfterCook}
           {submitting}
@@ -1099,6 +1108,7 @@
           onReload={() => void reloadWorkspace()}
           onDraftChange={updateDraft}
           onTidyError={(message) => (pageError = message)}
+          onOpenTidySettings={() => void openSettings('post-processing')}
           onSelectAction={selectAction}
           onToggleRamble={() => void toggleRamble()}
           onExitRamble={() => void exitRamble()}

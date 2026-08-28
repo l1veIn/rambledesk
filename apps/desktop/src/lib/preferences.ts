@@ -51,6 +51,14 @@ const COOKING_BASE_URL_KEY = 'rambledesk.cooking.base-url'
 const COOKING_MODEL_KEY = 'rambledesk.cooking.model'
 const COOKING_REASONING_EFFORT_KEY = 'rambledesk.cooking.reasoning-effort'
 const COOKING_SYSTEM_PROMPT_KEY = 'rambledesk.cooking.system-prompt'
+// Keep the existing light-cleanup keys so RC users retain their Tidy credentials.
+// Tidy never falls back to Cooking values: the two features only share field types.
+const TIDY_PROVIDER_KEY = 'rambledesk.light-cleanup.provider'
+const TIDY_API_KEY_KEY = 'rambledesk.light-cleanup.api-key'
+const TIDY_BASE_URL_KEY = 'rambledesk.light-cleanup.base-url'
+const TIDY_MODEL_KEY = 'rambledesk.light-cleanup.model'
+const TIDY_REASONING_EFFORT_KEY = 'rambledesk.light-cleanup.reasoning-effort'
+const TIDY_SYSTEM_PROMPT_KEY = 'rambledesk.light-cleanup.system-prompt'
 const ONBOARDING_COMPLETED_KEY = 'rambledesk.onboarding.completed'
 const ONBOARDING_STEP_KEY = 'rambledesk.onboarding.step'
 
@@ -180,6 +188,13 @@ function initialCookingProvider(): CookingProvider {
     : 'deepseek'
 }
 
+function initialTidyProvider(): CookingProvider {
+  const saved = localStorage.getItem(TIDY_PROVIDER_KEY)
+  return saved === 'openai' || saved === 'compatible' || saved === 'deepseek'
+    ? saved
+    : 'deepseek'
+}
+
 function isCookingReasoningEffort(value: string | null): value is CookingReasoningEffort {
   return (
     value === 'none' ||
@@ -227,6 +242,19 @@ export const cookingReasoningEffort = writable<CookingReasoningEffort>(
   isCookingReasoningEffort(savedCookingReasoningEffort) ? savedCookingReasoningEffort : 'medium',
 )
 export const cookingSystemPrompt = writable(localStorage.getItem(COOKING_SYSTEM_PROMPT_KEY) ?? '')
+export const tidyProvider = writable<CookingProvider>(initialTidyProvider())
+export const tidyApiKey = writable(localStorage.getItem(TIDY_API_KEY_KEY) ?? '')
+export const tidyBaseUrl = writable(
+  localStorage.getItem(TIDY_BASE_URL_KEY) ?? 'https://api.deepseek.com/v1',
+)
+export const tidyModel = writable(
+  localStorage.getItem(TIDY_MODEL_KEY) ?? 'deepseek-v4-flash',
+)
+const savedTidyReasoningEffort = localStorage.getItem(TIDY_REASONING_EFFORT_KEY)
+export const tidyReasoningEffort = writable<CookingReasoningEffort>(
+  isCookingReasoningEffort(savedTidyReasoningEffort) ? savedTidyReasoningEffort : 'medium',
+)
+export const tidySystemPrompt = writable(localStorage.getItem(TIDY_SYSTEM_PROMPT_KEY) ?? '')
 
 let initialized = false
 let mediaQuery: MediaQueryList | null = null
@@ -338,6 +366,30 @@ export function setCookingSystemPrompt(prompt: string) {
   cookingSystemPrompt.set(prompt)
 }
 
+export function setTidyProvider(provider: CookingProvider) {
+  tidyProvider.set(provider)
+}
+
+export function setTidyApiKey(apiKey: string) {
+  tidyApiKey.set(apiKey)
+}
+
+export function setTidyBaseUrl(baseUrl: string) {
+  tidyBaseUrl.set(baseUrl)
+}
+
+export function setTidyModel(model: string) {
+  tidyModel.set(model)
+}
+
+export function setTidyReasoningEffort(effort: CookingReasoningEffort) {
+  tidyReasoningEffort.set(effort)
+}
+
+export function setTidySystemPrompt(prompt: string) {
+  tidySystemPrompt.set(prompt)
+}
+
 export function setNotificationVolume(volume: number) {
   notificationVolume.set(Math.min(100, Math.max(0, Math.round(volume))))
 }
@@ -422,6 +474,24 @@ export function initializePreferences() {
   cookingSystemPrompt.subscribe((next) => {
     localStorage.setItem(COOKING_SYSTEM_PROMPT_KEY, next)
   })
+  tidyProvider.subscribe((next) => {
+    localStorage.setItem(TIDY_PROVIDER_KEY, next)
+  })
+  tidyApiKey.subscribe((next) => {
+    localStorage.setItem(TIDY_API_KEY_KEY, next)
+  })
+  tidyBaseUrl.subscribe((next) => {
+    localStorage.setItem(TIDY_BASE_URL_KEY, next)
+  })
+  tidyModel.subscribe((next) => {
+    localStorage.setItem(TIDY_MODEL_KEY, next)
+  })
+  tidyReasoningEffort.subscribe((next) => {
+    localStorage.setItem(TIDY_REASONING_EFFORT_KEY, next)
+  })
+  tidySystemPrompt.subscribe((next) => {
+    localStorage.setItem(TIDY_SYSTEM_PROMPT_KEY, next)
+  })
 
   mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
   mediaQuery.addEventListener('change', () => {
@@ -503,5 +573,21 @@ export function initializePreferences() {
       cookingReasoningEffort.set(event.newValue)
     }
     if (event.key === COOKING_SYSTEM_PROMPT_KEY) cookingSystemPrompt.set(event.newValue ?? '')
+    if (
+      event.key === TIDY_PROVIDER_KEY &&
+      (event.newValue === 'deepseek' || event.newValue === 'openai' || event.newValue === 'compatible')
+    ) {
+      tidyProvider.set(event.newValue)
+    }
+    if (event.key === TIDY_API_KEY_KEY) tidyApiKey.set(event.newValue ?? '')
+    if (event.key === TIDY_BASE_URL_KEY) tidyBaseUrl.set(event.newValue ?? '')
+    if (event.key === TIDY_MODEL_KEY) tidyModel.set(event.newValue ?? '')
+    if (
+      event.key === TIDY_REASONING_EFFORT_KEY &&
+      isCookingReasoningEffort(event.newValue)
+    ) {
+      tidyReasoningEffort.set(event.newValue)
+    }
+    if (event.key === TIDY_SYSTEM_PROMPT_KEY) tidySystemPrompt.set(event.newValue ?? '')
   })
 }

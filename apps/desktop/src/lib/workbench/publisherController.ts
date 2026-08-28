@@ -123,9 +123,8 @@ export function createPublisherController(context: PublisherControllerContext) {
     }
     context.setPageError('')
 
-    // A generated cooked draft is published directly: no second model call, no
-    // extra wait. If the user edited the cooked text, submit the current editor
-    // body as the cooked variant while preserving the original uncooked source.
+    // A generated cooked preview is published directly without ever replacing
+    // the canonical draft or making a second model call.
     if (context.getCookingEnabled() && context.getPreview()) {
       const preview = context.getPreview()!
       context.setSubmitting(true)
@@ -135,11 +134,11 @@ export function createPublisherController(context: PublisherControllerContext) {
           {
             request_id: submission.request.request_id,
             expected_revision: submission.savedRevision,
-            cooked_markdown: submission.body,
+            cooked_markdown: preview.markdown,
             cooking_model: preview.model,
             uncooked_markdown: preview.original,
           },
-          submission.body,
+          preview.markdown,
           preview.original,
         )
         context.setPreview(null)

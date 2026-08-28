@@ -70,6 +70,60 @@ describe('draft operations', () => {
     expect(third.content?.[0].attrs?.[ACTION_ID_ATTR]).toBe('login')
   })
 
+  it('removes an unused Action group when the active Action is toggled off', () => {
+    const opened = applyDraftOperation(
+      { type: 'doc', content: [] },
+      { kind: 'startActionGroup', action: actionA },
+    )
+    const cleared = applyDraftOperation(opened, {
+      kind: 'clearActionGroup',
+      actionId: actionA.actionId,
+    })
+    expect(cleared.content).toEqual([])
+  })
+
+  it('keeps a filled Action group when the active Action is toggled off', () => {
+    const filled = applyDraftOperation(
+      applyDraftOperation(
+        { type: 'doc', content: [] },
+        { kind: 'startActionGroup', action: actionA },
+      ),
+      { kind: 'appendSpeech', segmentId: 'a1', text: '已填写', action: actionA },
+    )
+    const cleared = applyDraftOperation(filled, {
+      kind: 'clearActionGroup',
+      actionId: actionA.actionId,
+    })
+    expect(cleared.content).toHaveLength(1)
+    expect(cleared.content?.[0].attrs?.[ACTION_ID_ATTR]).toBe(actionA.actionId)
+  })
+
+  it('does not clear another Action group when a stale toggle-off arrives', () => {
+    const openedB = applyDraftOperation(
+      { type: 'doc', content: [] },
+      { kind: 'startActionGroup', action: actionB },
+    )
+    const unchanged = applyDraftOperation(openedB, {
+      kind: 'clearActionGroup',
+      actionId: actionA.actionId,
+    })
+    expect(unchanged).toEqual(openedB)
+  })
+
+  it('deduplicates repeated stable speech without repeating the Action header', () => {
+    const operation = {
+      kind: 'appendSpeech' as const,
+      segmentId: 'asr-session-a-0',
+      text: '同一段语音',
+      action: actionA,
+    }
+    const once = applyDraftOperation({ type: 'doc', content: [] }, operation)
+    const twice = applyDraftOperation(once, operation)
+    expect(twice).toEqual(once)
+    expect(twice.content).toHaveLength(1)
+    expect(twice.content?.[0].content?.filter((node) => node.type === 'paragraph')).toHaveLength(2)
+  })
+
   it('replaces a trailing empty Action Blockquote instead of leaving both', () => {
     const emptyA = applyDraftOperation(
       { type: 'doc', content: [] },
@@ -92,7 +146,7 @@ describe('draft operations', () => {
     expect(next.content?.map((node) => node.attrs?.[ACTION_ID_ATTR])).toEqual(['login', 'toast'])
   })
 
-  it('puts consecutive speech into the same Action group and ignores trailing empty paragraphs', () => {
+  it('puts consecutive speech into the same Action group without deleting user blank paragraphs', () => {
     const opened = applyDraftOperation(
       { type: 'doc', content: [] },
       { kind: 'startActionGroup', action: actionA },
@@ -113,8 +167,9 @@ describe('draft operations', () => {
       text: '能听到吗?',
       action: actionA,
     })
-    expect(second.content).toHaveLength(1)
+    expect(second.content).toHaveLength(2)
     expect(second.content?.[0].attrs?.[ACTION_ID_ATTR]).toBe('login')
+    expect(second.content?.[1]).toEqual({ type: 'paragraph' })
     expect(
       second.content?.[0].content?.filter((node) => node.attrs?.[SPEECH_SEGMENT_ID_ATTR]).map(
         (node) => node.content?.[0]?.text,
@@ -122,7 +177,7 @@ describe('draft operations', () => {
     ).toEqual(['喂。', '能听到吗?'])
   })
 
-  it('drops an unused empty Action when returning to a filled one', () => {
+  it('drops an unused empty Action and opens a fresh group when returning to a filled one', () => {
     const filledA = applyDraftOperation(
       applyDraftOperation(
         { type: 'doc', content: [] },
@@ -132,6 +187,9 @@ describe('draft operations', () => {
     )
     const emptyB = applyDraftOperation(filledA, { kind: 'startActionGroup', action: actionB })
     const backToA = applyDraftOperation(emptyB, { kind: 'startActionGroup', action: actionA })
-    expect(backToA.content?.map((node) => node.attrs?.[ACTION_ID_ATTR])).toEqual(['login'])
+    expect(backToA.content?.map((node) => node.attrs?.[ACTION_ID_ATTR])).toEqual([
+      'login',
+      'login',
+    ])
   })
 })

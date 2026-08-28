@@ -1,11 +1,10 @@
 // Cooking workflow orchestration for the workbench. The controller owns the
-// cooking flow (preview into the editor, cook-and-publish on submit) while
+// read-only preview and cook-and-publish flows while
 // reactive state stays in the component: every mutation goes through the
 // context callbacks, so Svelte re-renders exactly as before.
 
 import type { SubmitFeedbackInput, FeedbackWorkspaceView } from '../feedback'
 import type { CookingConfig } from '../cooking'
-import type { SavePhase } from './types'
 
 export type CookingSubmission = {
   request: FeedbackWorkspaceView['request']
@@ -21,16 +20,11 @@ type CookingControllerContext = {
   messageFrom: (cause: unknown) => string
   getWorkspace: () => FeedbackWorkspaceView | null
   getDraftBody: () => string
-  getSavedBody: () => string
   getCookingConfig: () => CookingConfig
   isCookingEnabled: () => boolean
   isCooking: () => boolean
   exitRamble: () => Promise<void>
-  setDraftBody: (markdown: string) => void
-  setSavePhase: (phase: SavePhase) => void
-  setSaveMessage: (message: string) => void
   saveDraftNow: () => Promise<boolean>
-  applyEditorMarkdown: (markdown: string) => void
   setPageError: (message: string) => void
   setCooking: (requestId: string, cooking: boolean) => void
   publishCooked: (
@@ -39,8 +33,6 @@ type CookingControllerContext = {
     uncookedMarkdown: string,
   ) => Promise<void>
   setPreview: (preview: CookedPreview | null) => void
-  setPreviewOriginal: (original: string) => void
-  getPreviewOriginal: () => string
 }
 
 export type CookingController = ReturnType<typeof createCookingController>
@@ -56,7 +48,7 @@ export function createCookingController(context: CookingControllerContext) {
     return cookFeedback(input, context.getCookingConfig())
   }
 
-  /** Cook the current draft into the editor without publishing. */
+  /** Cook the current draft into a read-only preview without publishing. */
   async function cookPreviewOnly() {
     const workspace = context.getWorkspace()
     if (
@@ -86,16 +78,6 @@ export function createCookingController(context: CookingControllerContext) {
       })
       if (context.getWorkspace()?.request.request_id !== requestId) return
       context.setPreview({ markdown: cooked.markdown, original, model: cooked.model })
-      context.setPreviewOriginal(original)
-      context.setDraftBody(cooked.markdown)
-      // Drive the editor instance directly in addition to the reactive prop
-      // chain, so the cooked text is visible even if a prop update is lost.
-      context.applyEditorMarkdown(cooked.markdown)
-      context.setSavePhase(
-        context.getDraftBody() === context.getSavedBody() ? 'saved' : 'unsaved',
-      )
-      context.setSaveMessage('')
-      void context.saveDraftNow()
     } catch (cause) {
       context.setPageError(context.messageFrom(cause))
     } finally {
@@ -105,14 +87,8 @@ export function createCookingController(context: CookingControllerContext) {
 
   /** Discard the cooked preview and restore the pre-cook draft. */
   function restoreOriginal() {
-    const original = context.getPreviewOriginal()
-    if (!original || context.getWorkspace() === null) return
+    if (context.getWorkspace() === null) return
     context.setPreview(null)
-    context.setDraftBody(original)
-    context.applyEditorMarkdown(original)
-    context.setSavePhase(original === context.getSavedBody() ? 'saved' : 'unsaved')
-    context.setSaveMessage('')
-    void context.saveDraftNow()
   }
 
   /** Cook the submission body and publish it (the one-click path). */

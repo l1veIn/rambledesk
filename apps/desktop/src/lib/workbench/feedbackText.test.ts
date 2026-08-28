@@ -4,6 +4,7 @@ import {
   appendMarkdownBlock,
   formatTime,
   messageFrom,
+  commandErrorCode,
   operatorFeedbackBody,
 } from './feedbackText'
 
@@ -59,5 +60,12 @@ describe('messageFrom', () => {
 
   it('stringifies unknown values', () => {
     expect(messageFrom(42)).toBe('42')
+  })
+})
+
+describe('commandErrorCode', () => {
+  it('reads structured Tauri command error codes', () => {
+    expect(commandErrorCode({ code: 'DRAFT_CONFLICT', message: 'stale' })).toBe('DRAFT_CONFLICT')
+    expect(commandErrorCode(new Error('stale'))).toBeNull()
   })
 })

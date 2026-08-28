@@ -44,4 +44,25 @@ describe('tidySpeechSegments', () => {
       ),
     ).resolves.toEqual(['按钮太小了。', '没有 toast。'])
   })
+
+  it('uses the Tidy system prompt supplied by the independent configuration', async () => {
+    let system = ''
+    await tidySpeechSegments(
+      [{ segmentId: 'a', text: '嗯按钮太小' }],
+      {
+        provider: 'openai',
+        apiKey: 'tidy-key',
+        baseUrl: 'https://tidy.example/v1',
+        model: 'tidy-model',
+        reasoningEffort: 'low',
+        locale: 'en',
+        systemPrompt: 'Tidy only; do not cook.',
+      },
+      async (request) => {
+        system = request.system
+        return { text: '[1] 按钮太小', model: 'test' }
+      },
+    )
+    expect(system).toBe('Tidy only; do not cook.')
+  })
 })

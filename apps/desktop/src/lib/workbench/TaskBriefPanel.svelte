@@ -119,6 +119,7 @@
               <button
                 type="button"
                 class={`grid w-full grid-cols-[22px_minmax(0,1fr)] gap-2 rounded-md px-1 py-1 text-left leading-5 transition-colors hover:bg-accent/60 ${activeActionId === action.id ? 'bg-primary/10 ring-1 ring-primary/30' : ''}`}
+                aria-pressed={activeActionId === action.id}
                 onclick={() => onSelectAction(action.id, index, action.instruction)}
               >
                 <span class="grid size-5 place-items-center rounded-md bg-background text-[9px] font-medium ring-1 ring-border">

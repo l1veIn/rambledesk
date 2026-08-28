@@ -8,7 +8,6 @@ import {
   actionTitleText,
   hydrateActionBlockquotes,
   isActionSeparatorNode,
-  mergeAdjacentActionGroups,
   parseActionTitle,
   stripActionStamp,
 } from './actionBlockquote'
@@ -77,6 +76,66 @@ function migrateLegacySpeechNodes(doc: JSONContent): JSONContent {
   }
 
   return migrate(doc)
+}
+
+function normalizeSpeechSegmentIds(doc: JSONContent): JSONContent {
+  const reservedIds = new Set<string>()
+
+  function reserve(node: JSONContent) {
+    const segmentId = node.attrs?.[SPEECH_SEGMENT_ID_ATTR]
+    if (typeof segmentId === 'string' && segmentId.length > 0) {
+      reservedIds.add(segmentId)
+    }
+    node.content?.forEach(reserve)
+  }
+  reserve(doc)
+
+  const seenIds = new Set<string>()
+  let restoredIndex = 0
+
+  function nextRestoredId(): string {
+    do {
+      restoredIndex += 1
+    } while (reservedIds.has(`restored-asr-${restoredIndex}`))
+    const segmentId = `restored-asr-${restoredIndex}`
+    reservedIds.add(segmentId)
+    return segmentId
+  }
+
+  function normalize(node: JSONContent): JSONContent {
+    const content = node.content?.map(normalize)
+    const attrs = node.attrs ?? {}
+    const currentId = attrs[SPEECH_SEGMENT_ID_ATTR]
+    const isSpeechParagraph =
+      node.type === 'paragraph' &&
+      (attrs[INPUT_SOURCE_ATTR] === ASR_INPUT_SOURCE ||
+        (typeof currentId === 'string' && currentId.length > 0))
+
+    if (!isSpeechParagraph) {
+      return content ? { ...node, content } : node
+    }
+
+    const segmentId =
+      typeof currentId === 'string' && currentId.length > 0 && !seenIds.has(currentId)
+        ? currentId
+        : nextRestoredId()
+    seenIds.add(segmentId)
+    const cleanupState =
+      attrs[CLEANUP_STATE_ATTR] === 'cleaned' ? 'cleaned' : 'pending'
+
+    return {
+      ...node,
+      attrs: {
+        ...attrs,
+        [SPEECH_SEGMENT_ID_ATTR]: segmentId,
+        [INPUT_SOURCE_ATTR]: ASR_INPUT_SOURCE,
+        [CLEANUP_STATE_ATTR]: cleanupState,
+      },
+      ...(content ? { content } : {}),
+    }
+  }
+
+  return normalize(doc)
 }
 
 function stampLegacyActionSeparators(doc: JSONContent): JSONContent {
@@ -162,10 +221,16 @@ function wrapActionStamps(doc: JSONContent): JSONContent {
   return { ...doc, content: next }
 }
 
-export function migrateFeedbackDraftDocument(doc: JSONContent): JSONContent {
-  return mergeAdjacentActionGroups(
+export function migrateFeedbackDraftDocument(
+  doc: JSONContent,
+  recognizeLegacySeparators = false,
+): JSONContent {
+  const speech = migrateLegacySpeechNodes(doc)
+  return normalizeSpeechSegmentIds(
     hydrateActionBlockquotes(
-      wrapActionStamps(stampLegacyActionSeparators(migrateLegacySpeechNodes(doc))),
+      wrapActionStamps(
+        recognizeLegacySeparators ? stampLegacyActionSeparators(speech) : speech,
+      ),
     ),
   )
 }
@@ -203,7 +268,10 @@ export function decodeFeedbackDraftDocument(
     ) {
       return null
     }
-    return migrateFeedbackDraftDocument(parsed.doc)
+    return migrateFeedbackDraftDocument(
+      parsed.doc,
+      parsed.schemaVersion === LEGACY_FEEDBACK_DRAFT_DOCUMENT_VERSION,
+    )
   } catch {
     return null
   }
@@ -226,7 +294,7 @@ export function restoreFeedbackDraftDocument(
 ): JSONContent {
   return (
     decodeFeedbackDraftDocument(documentJson) ??
-    migrateFeedbackDraftDocument(parseFeedbackMarkdown(bodyMarkdown))
+    migrateFeedbackDraftDocument(parseFeedbackMarkdown(bodyMarkdown), true)
   )
 }
 

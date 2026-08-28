@@ -31,7 +31,7 @@ function workspaceView(): FeedbackWorkspaceView {
     request_attachments: [],
     draft: {
       document_json: null,
-      body_markdown: 'Edited cooked draft.',
+      body_markdown: 'Original uncooked ramble.',
       saved_revision: 4,
       updated_at: '2026-08-22T00:00:00Z',
     },
@@ -66,7 +66,7 @@ describe('publisherController', () => {
     mocks.invoke.mockReset()
   })
 
-  it('submits an edited cooked draft without cooking again', async () => {
+  it('submits the read-only cooked preview without replacing the canonical draft', async () => {
     let workspace = workspaceView()
     const setPreview = vi.fn()
     const cookAndPublish = vi.fn()
@@ -96,7 +96,7 @@ describe('publisherController', () => {
       getRambleCanExit: () => false,
       exitRamble: vi.fn(),
       saveDraftNow: vi.fn(async () => true),
-      getDraftBody: () => 'Edited cooked draft.',
+      getDraftBody: () => 'Original uncooked ramble.',
       getSavedRevision: () => 4,
       getCookingEnabled: () => true,
       getPreview: () => ({
@@ -122,7 +122,7 @@ describe('publisherController', () => {
       input: {
         request_id: 'request-1',
         expected_revision: 4,
-        cooked_markdown: 'Edited cooked draft.',
+        cooked_markdown: 'Cooked draft before operator edits.',
         cooking_model: 'deepseek/deepseek-chat',
         uncooked_markdown: 'Original uncooked ramble.',
       },

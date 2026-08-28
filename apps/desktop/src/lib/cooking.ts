@@ -50,10 +50,10 @@ export type ModelTextGenerator = (request: ModelTextRequest) => Promise<{ text: 
 
 export function assertLlmReady(config: CookingConfig, label: string) {
   if (!config.apiKey.trim()) {
-    throw new Error(t(config.locale, '{label} needs an API key in Cooking settings.', { label }))
+    throw new Error(t(config.locale, '{label} needs an API key in Post-processing settings.', { label }))
   }
   if (!config.model.trim()) {
-    throw new Error(t(config.locale, '{label} needs a model name in Cooking settings.', { label }))
+    throw new Error(t(config.locale, '{label} needs a model name in Post-processing settings.', { label }))
   }
 }
 
