@@ -41,7 +41,7 @@ MVP 不做：
 | 工作台 | 人类处理反馈请求的桌面 UI。 |
 | Ramble | 工作台中的自由反馈采集模式，包含语音、文字和截图。 |
 | Action Group | 反馈草稿中用 Blockquote 表达的 `@Action` 归属。 |
-| Tidy | 当前 Editor 中手动触发的 ASR 段落整理，使用 Cooking 模型配置，但不是 Cooking。 |
+| Tidy | 当前 Editor 中手动触发的 ASR 段落整理；使用自己独立的模型配置，不是 Cooking。 |
 | Cooking | 提交前可选的大模型编辑步骤；把 Uncooked Feedback 整理为 Cooked Feedback，同时保留原稿。 |
 
 ## MVP 范围
@@ -55,7 +55,7 @@ MVP 不做：
 | 存储 | 反馈请求、草稿、附件 metadata、宿主会话关联、不可变反馈包。 |
 | continuation | 通用 MCP 手动继续；Pi 无提交后继续；未来原生 continuation 预留。 |
 | 通知 | 系统通知和工作台提示，均为 best-effort side effect。 |
-| 设置 | 通用偏好、首次使用引导、Cooking 模型服务、语音模型，以及各适配器的安装结果与配置说明。 |
+| 设置 | 通用偏好、首次使用引导、独立的 Tidy/Cooking 后处理配置、语音模型、全局快捷键，以及各适配器的安装结果与配置说明。 |
 
 ## 主流程
 
@@ -123,7 +123,9 @@ RambleDesk
 │   ├── Pi 原生适配器
 │   ├── 通知
 │   ├── 外观和语言
-│   └── 语音/转写
+│   ├── 语音/转写
+│   ├── 后处理（Tidy / Cooking 独立配置）
+│   └── 全局快捷键
 └── Tray
     ├── 待处理角标
     └── 打开工作台 / 适配器设置 / 退出

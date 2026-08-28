@@ -16,6 +16,27 @@
 
 ---
 
+## v0.3.3-rc.3
+
+What's new in RambleDesk 0.3.3-rc.3
+
+Draft architecture
+- Restores the proven single-editor ownership model from v0.3.2 while keeping versioned TipTap JSON as the draft source of truth and Markdown as its readable projection.
+- Active background Rambles now use semantic JSON operations, a serialized queue, and compare-and-swap saves; old Markdown-only and rc.1/rc.2 v1 drafts upgrade lazily.
+- Actions are standard Blockquote containers. Reopening an Action creates a distinct group, repeated active clicks toggle it off, and stable ASR segment IDs prevent duplicate transcript/header insertion.
+
+Post-processing and controls
+- Tidy is manual-only and applies strict one-to-one labeled results in a single undoable editor transaction.
+- Tidy and Cooking share one Post-processing page but keep separate providers, credentials, models, reasoning settings, and prompts.
+- Record-style Ramble controls and configurable global Ramble/screenshot shortcuts are retained. Repeated commands are collapsed, shortcut reset no longer deadlocks, and failed rebinding restores the previous registration.
+
+中文摘要
+- 草稿架构恢复 v0.3.2 已验证的单 Editor 所有权，同时保留以版本化 TipTap JSON 为真源、Markdown 为可读投影的结构化能力；后台 Ramble 使用语义操作、串行队列与 CAS 保存，旧 Markdown 草稿和 rc.1/rc.2 v1 文档惰性升级。
+- Action 改为标准 Blockquote 容器；重新打开会创建独立区块，再次点击活动 Action 会关闭选择；稳定 ASR 段 ID 防止重复写入语音和 Action 标题。
+- Tidy 仅能手动触发，与 Cooking 在同一后处理页面使用两套独立配置；保留录音按钮与可配置全局快捷键，并修复重复命令、快捷键重置死锁和重绑回滚。
+
+Full changelog: https://github.com/l1veIn/rambledesk/compare/v0.3.2...v0.3.3-rc.3
+
 ## v0.3.2
 
 What's new in RambleDesk 0.3.2

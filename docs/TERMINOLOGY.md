@@ -49,7 +49,9 @@
 
 ## Cooking 规则
 
-- Cooking 默认关闭，由人类在通用设置中显式启用并配置模型服务、模型和 API Key。
+- Tidy 与 Cooking 位于同一“后处理”设置页，但各自持有 provider、API Key、base URL、model、reasoning effort 和 system prompt；任一功能不得回退使用另一套配置。
+- Tidy 没有自动开关、idle timer 或数量/字符阈值，只能由当前 Editor 的人工按钮触发。
+- Cooking 默认关闭，由人类在后处理设置中显式启用并配置自己的模型服务、模型和 API Key。
 - API Key 是本机凭证，不属于反馈请求、反馈包、日志或宿主协议。
 - 启用 Cooking 时，`uncooked.md` 和 `feedback.md` 必须同时进入不可变反馈包；关闭时两者内容可以相同。
 - `feedback.md` 是宿主默认消费的正式结果，`uncooked.md` 是审计与恢复所需的原始人类证据。

@@ -39,9 +39,11 @@
 
 ## Feedback Draft 所有权
 
-工作台最多只有一个可编辑 `RichFeedbackEditor`。当前 request 通过 Editor transaction 写入；后台 Active Ramble 通过 TipTap JSON transformation 写入。数据库以版本化 `document_json` 为真源，保存时同时生成 `body_markdown`。详见 [ADR 004](adr/004-single-editor-structured-draft.md)。
+工作台最多只有一个可编辑 `RichFeedbackEditor`。当前 request 通过 Editor transaction 写入；后台 Active Ramble 通过 TipTap JSON transformation、单一串行队列和 CAS 写入。数据库以版本化 `document_json` 为真源，保存时从同一 Document 同时生成 `body_markdown`。详见 [ADR 004](adr/004-single-editor-structured-draft.md)。
 
 禁止 per-request Editor、hidden Editor、session 持有 editor handle，以及自动 Tidy。
+
+Action 使用带 `actionId` / `actionIndex` 的标准 Blockquote。ASR paragraph 使用稳定 `speechSegmentId` 与 `pending` / `cleaned` 状态。Tidy 只由当前 Editor 的人工按钮触发；Tidy 与 Cooking 配置彼此独立。全局快捷键只发出语义事件，不读取或持有 Editor。
 
 ## Package 边界
 
@@ -185,7 +187,7 @@ UI 不持有唯一事实状态。Tauri events 和系统通知都是提示，不�
 | 数据 | 唯一事实来源 |
 | --- | --- |
 | 反馈请求状态 | SQLite |
-| 草稿正文 | SQLite |
+| 草稿正文 | SQLite 中的版本化 `document_json`；`body_markdown` 为同文档投影 |
 | 草稿附件 bytes | 应用 draft 目录，SQLite 存 metadata |
 | 反馈包 | 不可变 package directory + manifest |
 | 宿主身份 | adapter-provided `host_id`，服务端可按安装入口覆盖 |
