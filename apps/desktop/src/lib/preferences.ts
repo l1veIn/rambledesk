@@ -2,6 +2,7 @@ import { get, writable } from 'svelte/store'
 
 import { savedUiTheme, saveUiTheme } from './uiPreferences'
 import { DEFAULT_SPEECH_HOTWORDS, mergeSpeechHotwords } from './speechHotwords'
+import { normalizeTidyAutoThreshold } from './tidyAuto'
 
 export { DEFAULT_SPEECH_HOTWORDS, mergeSpeechHotwords } from './speechHotwords'
 
@@ -51,19 +52,16 @@ const COOKING_BASE_URL_KEY = 'rambledesk.cooking.base-url'
 const COOKING_MODEL_KEY = 'rambledesk.cooking.model'
 const COOKING_REASONING_EFFORT_KEY = 'rambledesk.cooking.reasoning-effort'
 const COOKING_SYSTEM_PROMPT_KEY = 'rambledesk.cooking.system-prompt'
-const LIGHT_CLEANUP_ENABLED_KEY = 'rambledesk.light-cleanup.enabled'
-const LIGHT_CLEANUP_PROVIDER_KEY = 'rambledesk.light-cleanup.provider'
-const LIGHT_CLEANUP_API_KEY_KEY = 'rambledesk.light-cleanup.api-key'
-const LIGHT_CLEANUP_BASE_URL_KEY = 'rambledesk.light-cleanup.base-url'
-const LIGHT_CLEANUP_MODEL_KEY = 'rambledesk.light-cleanup.model'
-const LIGHT_CLEANUP_REASONING_EFFORT_KEY = 'rambledesk.light-cleanup.reasoning-effort'
-const LIGHT_CLEANUP_SEGMENT_THRESHOLD_KEY = 'rambledesk.light-cleanup.segment-threshold'
-const LIGHT_CLEANUP_CHAR_THRESHOLD_KEY = 'rambledesk.light-cleanup.char-threshold'
-const LIGHT_CLEANUP_IDLE_MS_KEY = 'rambledesk.light-cleanup.idle-ms'
-const LIGHT_CLEANUP_IDLE_REVISION_KEY = 'rambledesk.light-cleanup.idle-ms-revision'
-const LIGHT_CLEANUP_IDLE_DEFAULT_MS = 20_000
-const LIGHT_CLEANUP_TIMEOUT_MS_KEY = 'rambledesk.light-cleanup.timeout-ms'
-const LIGHT_CLEANUP_SYSTEM_PROMPT_KEY = 'rambledesk.light-cleanup.system-prompt'
+// Keep the existing light-cleanup keys so RC users retain their Tidy credentials.
+// Tidy never falls back to Cooking values: the two features only share field types.
+const TIDY_PROVIDER_KEY = 'rambledesk.light-cleanup.provider'
+const TIDY_API_KEY_KEY = 'rambledesk.light-cleanup.api-key'
+const TIDY_BASE_URL_KEY = 'rambledesk.light-cleanup.base-url'
+const TIDY_MODEL_KEY = 'rambledesk.light-cleanup.model'
+const TIDY_REASONING_EFFORT_KEY = 'rambledesk.light-cleanup.reasoning-effort'
+const TIDY_SYSTEM_PROMPT_KEY = 'rambledesk.light-cleanup.system-prompt'
+const DISTINGUISH_UNTIDIED_TEXT_KEY = 'rambledesk.tidy.distinguish-untidied-text'
+const TIDY_AUTO_THRESHOLD_KEY = 'rambledesk.tidy.auto-threshold'
 const ONBOARDING_COMPLETED_KEY = 'rambledesk.onboarding.completed'
 const ONBOARDING_STEP_KEY = 'rambledesk.onboarding.step'
 
@@ -193,10 +191,8 @@ function initialCookingProvider(): CookingProvider {
     : 'deepseek'
 }
 
-function initialLightCleanupProvider(): CookingProvider {
-  const saved =
-    localStorage.getItem(LIGHT_CLEANUP_PROVIDER_KEY) ??
-    localStorage.getItem(COOKING_PROVIDER_KEY)
+function initialTidyProvider(): CookingProvider {
+  const saved = localStorage.getItem(TIDY_PROVIDER_KEY)
   return saved === 'openai' || saved === 'compatible' || saved === 'deepseek'
     ? saved
     : 'deepseek'
@@ -246,57 +242,27 @@ export const cookingModel = writable(
 )
 const savedCookingReasoningEffort = localStorage.getItem(COOKING_REASONING_EFFORT_KEY)
 export const cookingReasoningEffort = writable<CookingReasoningEffort>(
-  isCookingReasoningEffort(savedCookingReasoningEffort) ? savedCookingReasoningEffort : 'none',
+  isCookingReasoningEffort(savedCookingReasoningEffort) ? savedCookingReasoningEffort : 'medium',
 )
 export const cookingSystemPrompt = writable(localStorage.getItem(COOKING_SYSTEM_PROMPT_KEY) ?? '')
-export const lightCleanupEnabled = writable(initialBoolean(LIGHT_CLEANUP_ENABLED_KEY, false))
-export const lightCleanupProvider = writable<CookingProvider>(initialLightCleanupProvider())
-export const lightCleanupApiKey = writable(
-  localStorage.getItem(LIGHT_CLEANUP_API_KEY_KEY) ??
-    localStorage.getItem(COOKING_API_KEY_KEY) ??
-    '',
+export const tidyProvider = writable<CookingProvider>(initialTidyProvider())
+export const tidyApiKey = writable(localStorage.getItem(TIDY_API_KEY_KEY) ?? '')
+export const tidyBaseUrl = writable(
+  localStorage.getItem(TIDY_BASE_URL_KEY) ?? 'https://api.deepseek.com/v1',
 )
-export const lightCleanupBaseUrl = writable(
-  localStorage.getItem(LIGHT_CLEANUP_BASE_URL_KEY) ??
-    localStorage.getItem(COOKING_BASE_URL_KEY) ??
-    'https://api.deepseek.com/v1',
+export const tidyModel = writable(
+  localStorage.getItem(TIDY_MODEL_KEY) ?? 'deepseek-v4-flash',
 )
-export const lightCleanupModel = writable(
-  localStorage.getItem(LIGHT_CLEANUP_MODEL_KEY) ??
-    localStorage.getItem(COOKING_MODEL_KEY) ??
-    'deepseek-v4-flash',
+const savedTidyReasoningEffort = localStorage.getItem(TIDY_REASONING_EFFORT_KEY)
+export const tidyReasoningEffort = writable<CookingReasoningEffort>(
+  isCookingReasoningEffort(savedTidyReasoningEffort) ? savedTidyReasoningEffort : 'medium',
 )
-const savedLightCleanupReasoningEffort = localStorage.getItem(
-  LIGHT_CLEANUP_REASONING_EFFORT_KEY,
+export const tidySystemPrompt = writable(localStorage.getItem(TIDY_SYSTEM_PROMPT_KEY) ?? '')
+export const distinguishUntidiedText = writable(
+  initialBoolean(DISTINGUISH_UNTIDIED_TEXT_KEY, true),
 )
-export const lightCleanupReasoningEffort = writable<CookingReasoningEffort>(
-  isCookingReasoningEffort(savedLightCleanupReasoningEffort)
-    ? savedLightCleanupReasoningEffort
-    : 'none',
-)
-export const lightCleanupSegmentThreshold = writable(
-  initialNumber(LIGHT_CLEANUP_SEGMENT_THRESHOLD_KEY, 3, 1, 20),
-)
-export const lightCleanupCharThreshold = writable(
-  initialNumber(LIGHT_CLEANUP_CHAR_THRESHOLD_KEY, 500, 100, 5000),
-)
-export const lightCleanupIdleMs = writable(initialLightCleanupIdleMs())
-
-function initialLightCleanupIdleMs(): number {
-  const revision = Number(localStorage.getItem(LIGHT_CLEANUP_IDLE_REVISION_KEY) ?? '0')
-  if (revision < 2) {
-    // The 10-second-era saved values are re-based to the 20-second default
-    // once; the user can still override it afterwards in settings.
-    localStorage.removeItem(LIGHT_CLEANUP_IDLE_MS_KEY)
-    localStorage.setItem(LIGHT_CLEANUP_IDLE_REVISION_KEY, '2')
-  }
-  return initialNumber(LIGHT_CLEANUP_IDLE_MS_KEY, LIGHT_CLEANUP_IDLE_DEFAULT_MS, 3_000, 120_000)
-}
-export const lightCleanupTimeoutMs = writable(
-  initialNumber(LIGHT_CLEANUP_TIMEOUT_MS_KEY, 30_000, 5_000, 120_000),
-)
-export const lightCleanupSystemPrompt = writable(
-  localStorage.getItem(LIGHT_CLEANUP_SYSTEM_PROMPT_KEY) ?? '',
+export const tidyAutoThreshold = writable(
+  normalizeTidyAutoThreshold(initialNumber(TIDY_AUTO_THRESHOLD_KEY, 0, 0, 999)),
 )
 
 let initialized = false
@@ -409,48 +375,36 @@ export function setCookingSystemPrompt(prompt: string) {
   cookingSystemPrompt.set(prompt)
 }
 
-export function setLightCleanupEnabled(enabled: boolean) {
-  lightCleanupEnabled.set(enabled)
+export function setTidyProvider(provider: CookingProvider) {
+  tidyProvider.set(provider)
 }
 
-export function setLightCleanupProvider(provider: CookingProvider) {
-  lightCleanupProvider.set(provider)
+export function setTidyApiKey(apiKey: string) {
+  tidyApiKey.set(apiKey)
 }
 
-export function setLightCleanupApiKey(apiKey: string) {
-  lightCleanupApiKey.set(apiKey)
+export function setTidyBaseUrl(baseUrl: string) {
+  tidyBaseUrl.set(baseUrl)
 }
 
-export function setLightCleanupBaseUrl(baseUrl: string) {
-  lightCleanupBaseUrl.set(baseUrl)
+export function setTidyModel(model: string) {
+  tidyModel.set(model)
 }
 
-export function setLightCleanupModel(model: string) {
-  lightCleanupModel.set(model)
+export function setTidyReasoningEffort(effort: CookingReasoningEffort) {
+  tidyReasoningEffort.set(effort)
 }
 
-export function setLightCleanupReasoningEffort(effort: CookingReasoningEffort) {
-  lightCleanupReasoningEffort.set(effort)
+export function setTidySystemPrompt(prompt: string) {
+  tidySystemPrompt.set(prompt)
 }
 
-export function setLightCleanupSegmentThreshold(count: number) {
-  lightCleanupSegmentThreshold.set(Math.min(20, Math.max(1, Math.round(count))))
+export function setDistinguishUntidiedText(enabled: boolean) {
+  distinguishUntidiedText.set(enabled)
 }
 
-export function setLightCleanupCharThreshold(count: number) {
-  lightCleanupCharThreshold.set(Math.min(5000, Math.max(100, Math.round(count))))
-}
-
-export function setLightCleanupIdleMs(milliseconds: number) {
-  lightCleanupIdleMs.set(Math.min(120_000, Math.max(3_000, Math.round(milliseconds))))
-}
-
-export function setLightCleanupTimeoutMs(milliseconds: number) {
-  lightCleanupTimeoutMs.set(Math.min(120_000, Math.max(5_000, Math.round(milliseconds))))
-}
-
-export function setLightCleanupSystemPrompt(prompt: string) {
-  lightCleanupSystemPrompt.set(prompt)
+export function setTidyAutoThreshold(threshold: number) {
+  tidyAutoThreshold.set(normalizeTidyAutoThreshold(threshold))
 }
 
 export function setNotificationVolume(volume: number) {
@@ -537,38 +491,29 @@ export function initializePreferences() {
   cookingSystemPrompt.subscribe((next) => {
     localStorage.setItem(COOKING_SYSTEM_PROMPT_KEY, next)
   })
-  lightCleanupEnabled.subscribe((next) => {
-    localStorage.setItem(LIGHT_CLEANUP_ENABLED_KEY, String(next))
+  tidyProvider.subscribe((next) => {
+    localStorage.setItem(TIDY_PROVIDER_KEY, next)
   })
-  lightCleanupProvider.subscribe((next) => {
-    localStorage.setItem(LIGHT_CLEANUP_PROVIDER_KEY, next)
+  tidyApiKey.subscribe((next) => {
+    localStorage.setItem(TIDY_API_KEY_KEY, next)
   })
-  lightCleanupApiKey.subscribe((next) => {
-    localStorage.setItem(LIGHT_CLEANUP_API_KEY_KEY, next)
+  tidyBaseUrl.subscribe((next) => {
+    localStorage.setItem(TIDY_BASE_URL_KEY, next)
   })
-  lightCleanupBaseUrl.subscribe((next) => {
-    localStorage.setItem(LIGHT_CLEANUP_BASE_URL_KEY, next)
+  tidyModel.subscribe((next) => {
+    localStorage.setItem(TIDY_MODEL_KEY, next)
   })
-  lightCleanupModel.subscribe((next) => {
-    localStorage.setItem(LIGHT_CLEANUP_MODEL_KEY, next)
+  tidyReasoningEffort.subscribe((next) => {
+    localStorage.setItem(TIDY_REASONING_EFFORT_KEY, next)
   })
-  lightCleanupReasoningEffort.subscribe((next) => {
-    localStorage.setItem(LIGHT_CLEANUP_REASONING_EFFORT_KEY, next)
+  tidySystemPrompt.subscribe((next) => {
+    localStorage.setItem(TIDY_SYSTEM_PROMPT_KEY, next)
   })
-  lightCleanupSegmentThreshold.subscribe((next) => {
-    localStorage.setItem(LIGHT_CLEANUP_SEGMENT_THRESHOLD_KEY, String(next))
+  distinguishUntidiedText.subscribe((next) => {
+    localStorage.setItem(DISTINGUISH_UNTIDIED_TEXT_KEY, String(next))
   })
-  lightCleanupCharThreshold.subscribe((next) => {
-    localStorage.setItem(LIGHT_CLEANUP_CHAR_THRESHOLD_KEY, String(next))
-  })
-  lightCleanupIdleMs.subscribe((next) => {
-    localStorage.setItem(LIGHT_CLEANUP_IDLE_MS_KEY, String(next))
-  })
-  lightCleanupTimeoutMs.subscribe((next) => {
-    localStorage.setItem(LIGHT_CLEANUP_TIMEOUT_MS_KEY, String(next))
-  })
-  lightCleanupSystemPrompt.subscribe((next) => {
-    localStorage.setItem(LIGHT_CLEANUP_SYSTEM_PROMPT_KEY, next)
+  tidyAutoThreshold.subscribe((next) => {
+    localStorage.setItem(TIDY_AUTO_THRESHOLD_KEY, String(next))
   })
 
   mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
@@ -651,38 +596,27 @@ export function initializePreferences() {
       cookingReasoningEffort.set(event.newValue)
     }
     if (event.key === COOKING_SYSTEM_PROMPT_KEY) cookingSystemPrompt.set(event.newValue ?? '')
-    if (event.key === LIGHT_CLEANUP_ENABLED_KEY && event.newValue !== null) {
-      lightCleanupEnabled.set(event.newValue === 'true')
-    }
     if (
-      event.key === LIGHT_CLEANUP_PROVIDER_KEY &&
+      event.key === TIDY_PROVIDER_KEY &&
       (event.newValue === 'deepseek' || event.newValue === 'openai' || event.newValue === 'compatible')
     ) {
-      lightCleanupProvider.set(event.newValue)
+      tidyProvider.set(event.newValue)
     }
-    if (event.key === LIGHT_CLEANUP_API_KEY_KEY) lightCleanupApiKey.set(event.newValue ?? '')
-    if (event.key === LIGHT_CLEANUP_BASE_URL_KEY) lightCleanupBaseUrl.set(event.newValue ?? '')
-    if (event.key === LIGHT_CLEANUP_MODEL_KEY) lightCleanupModel.set(event.newValue ?? '')
+    if (event.key === TIDY_API_KEY_KEY) tidyApiKey.set(event.newValue ?? '')
+    if (event.key === TIDY_BASE_URL_KEY) tidyBaseUrl.set(event.newValue ?? '')
+    if (event.key === TIDY_MODEL_KEY) tidyModel.set(event.newValue ?? '')
     if (
-      event.key === LIGHT_CLEANUP_REASONING_EFFORT_KEY &&
+      event.key === TIDY_REASONING_EFFORT_KEY &&
       isCookingReasoningEffort(event.newValue)
     ) {
-      lightCleanupReasoningEffort.set(event.newValue)
+      tidyReasoningEffort.set(event.newValue)
     }
-    if (event.key === LIGHT_CLEANUP_SEGMENT_THRESHOLD_KEY && event.newValue !== null) {
-      setLightCleanupSegmentThreshold(Number(event.newValue))
+    if (event.key === TIDY_SYSTEM_PROMPT_KEY) tidySystemPrompt.set(event.newValue ?? '')
+    if (event.key === DISTINGUISH_UNTIDIED_TEXT_KEY && event.newValue !== null) {
+      distinguishUntidiedText.set(event.newValue === 'true')
     }
-    if (event.key === LIGHT_CLEANUP_CHAR_THRESHOLD_KEY && event.newValue !== null) {
-      setLightCleanupCharThreshold(Number(event.newValue))
-    }
-    if (event.key === LIGHT_CLEANUP_IDLE_MS_KEY && event.newValue !== null) {
-      setLightCleanupIdleMs(Number(event.newValue))
-    }
-    if (event.key === LIGHT_CLEANUP_TIMEOUT_MS_KEY && event.newValue !== null) {
-      setLightCleanupTimeoutMs(Number(event.newValue))
-    }
-    if (event.key === LIGHT_CLEANUP_SYSTEM_PROMPT_KEY) {
-      lightCleanupSystemPrompt.set(event.newValue ?? '')
+    if (event.key === TIDY_AUTO_THRESHOLD_KEY) {
+      setTidyAutoThreshold(Number(event.newValue ?? '0'))
     }
   })
 }

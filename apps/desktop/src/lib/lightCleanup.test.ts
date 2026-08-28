@@ -1,82 +1,97 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 import {
-  DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT,
-  lightCleanupTranscript,
-  resolveLightCleanupSystemPrompt,
-  type LightCleanupConfig,
+  DEFAULT_TIDY_SYSTEM_PROMPT,
+  formatTidyPrompt,
+  tidySpeechSegments,
 } from './lightCleanup'
 
-const config: LightCleanupConfig = {
-  provider: 'deepseek',
-  apiKey: 'sk-test',
-  baseUrl: 'https://api.deepseek.com/v1',
-  model: 'deepseek-v4-flash',
-  reasoningEffort: 'none',
-  locale: 'en',
-}
-
-describe('resolveLightCleanupSystemPrompt', () => {
-  it('uses the built-in prompt when the custom one is empty', () => {
-    expect(resolveLightCleanupSystemPrompt('')).toBe(DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT)
-    expect(resolveLightCleanupSystemPrompt('   ')).toBe(DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT)
-    expect(resolveLightCleanupSystemPrompt(undefined)).toBe(DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT)
+describe('tidySpeechSegments', () => {
+  it('formats every input block with a [n] label', () => {
+    expect(
+      formatTidyPrompt([
+        { segmentId: 'a', text: '第一段' },
+        { segmentId: 'b', text: '第二段' },
+      ]),
+    ).toBe('[1] 第一段\n\n[2] 第二段')
   })
 
-  it('keeps a custom prompt', () => {
-    expect(resolveLightCleanupSystemPrompt('Just fix punctuation.')).toBe('Just fix punctuation.')
-  })
-
-  it('asks only for light spoken-text cleanup, not cooking', () => {
-    expect(DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT).toContain('filler')
-    expect(DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT).toContain('比如说')
-    expect(DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT).toMatch(/fluent|grammar|wording/i)
-    expect(DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT).not.toContain('headings')
-    expect(DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT).toContain('Do not answer')
-    expect(DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT).toContain('SAME utterance')
-  })
-})
-
-describe('lightCleanupTranscript', () => {
-  it('returns empty input unchanged without calling the model', async () => {
-    const generate = vi.fn()
-    await expect(lightCleanupTranscript('  ', config, generate)).resolves.toBe('')
-    expect(generate).not.toHaveBeenCalled()
-  })
-
-  it('sends the transcript to the model and returns the cleaned text', async () => {
-    const generate = vi.fn(async () => ({
-      text: 'button 太小了。',
-      model: 'deepseek/deepseek-v4-flash',
-    }))
+  it('returns null when the model skips labels', async () => {
     await expect(
-      lightCleanupTranscript('啊那个 button 太小了', config, generate),
-    ).resolves.toBe('button 太小了。')
-    expect(generate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        system: DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT,
-        prompt: '啊那个 button 太小了',
-      }),
+      tidySpeechSegments([{ segmentId: 'a', text: '按钮太小' }], {
+        provider: 'openai',
+        apiKey: 'k',
+        baseUrl: '',
+        model: 'm',
+        reasoningEffort: 'low',
+        locale: 'en',
+      }, async () => ({ text: '按钮太小了。', model: 'test' })),
+    ).resolves.toBeNull()
+  })
+
+  it('accepts a strict one-to-one labeled result', async () => {
+    await expect(
+      tidySpeechSegments(
+        [
+          { segmentId: 'a', text: '按钮太小' },
+          { segmentId: 'b', text: '没有 toast' },
+        ],
+        {
+          provider: 'openai',
+          apiKey: 'k',
+          baseUrl: '',
+          model: 'm',
+          reasoningEffort: 'low',
+          locale: 'en',
+        },
+        async () => ({ text: '[1] 按钮太小了。\n\n[2] 没有 toast。', model: 'test' }),
+      ),
+    ).resolves.toEqual(['按钮太小了。', '没有 toast。'])
+  })
+
+  it('accepts empty labeled results for filler-only segments', async () => {
+    await expect(
+      tidySpeechSegments(
+        [
+          { segmentId: 'a', text: '嗯，嗯嗯。' },
+          { segmentId: 'b', text: '按钮没有反应' },
+        ],
+        {
+          provider: 'openai',
+          apiKey: 'k',
+          baseUrl: '',
+          model: 'm',
+          reasoningEffort: 'low',
+          locale: 'en',
+        },
+        async () => ({ text: '[1]\n\n[2] 按钮没有反应。', model: 'test' }),
+      ),
+    ).resolves.toEqual(['', '按钮没有反应。'])
+  })
+
+  it('tells the model not to delete meaningful short blocks', () => {
+    expect(DEFAULT_TIDY_SYSTEM_PROMPT).toContain('Never delete a block merely because it is short')
+    expect(DEFAULT_TIDY_SYSTEM_PROMPT).toContain('return its [n] label with an empty body')
+  })
+
+  it('uses the Tidy system prompt supplied by the independent configuration', async () => {
+    let system = ''
+    await tidySpeechSegments(
+      [{ segmentId: 'a', text: '嗯按钮太小' }],
+      {
+        provider: 'openai',
+        apiKey: 'tidy-key',
+        baseUrl: 'https://tidy.example/v1',
+        model: 'tidy-model',
+        reasoningEffort: 'low',
+        locale: 'en',
+        systemPrompt: 'Tidy only; do not cook.',
+      },
+      async (request) => {
+        system = request.system
+        return { text: '[1] 按钮太小', model: 'test' }
+      },
     )
-  })
-
-  it('keeps the original transcript when the model answers instead of tidying', async () => {
-    const spoken = '呃，跟我说一下当前我们在这个分支上做了哪些工作。'
-    const generate = vi.fn(async () => ({
-      text: '好的，当前这个分支上我们主要做了这些工作：修复了登录页面的一个崩溃问题。',
-      model: 'deepseek/x',
-    }))
-    await expect(lightCleanupTranscript(spoken, config, generate)).resolves.toBe(spoken)
-  })
-
-  it('keeps the original transcript when the model returns empty text', async () => {
-    const generate = vi.fn(async () => ({ text: '  ', model: 'deepseek/x' }))
-    await expect(lightCleanupTranscript('keep me', config, generate)).resolves.toBe('keep me')
-  })
-
-  it('rejects when no API key is configured', async () => {
-    await expect(
-      lightCleanupTranscript('hello', { ...config, apiKey: '  ' }, vi.fn()),
-    ).rejects.toThrow(/API key/)
+    expect(system).toBe('Tidy only; do not cook.')
   })
 })

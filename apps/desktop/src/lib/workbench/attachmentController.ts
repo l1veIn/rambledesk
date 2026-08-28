@@ -3,7 +3,7 @@ import { listen } from '@tauri-apps/api/event'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { tick } from 'svelte'
 
-import { attachmentMarkdown, isImageMediaType } from '../attachmentMarkdown'
+import { isImageMediaType } from '../attachmentMarkdown'
 import type {
   AddAttachmentInput,
   AttachmentView,
@@ -11,6 +11,7 @@ import type {
   RemoveAttachmentInput,
   ReorderAttachmentsInput,
 } from '../feedback'
+import type { ActiveAction } from '../draftOperations'
 import type { ScreenCaptureReady } from '../screenCapture'
 import type { FeedbackEditorHandle } from './types'
 
@@ -40,7 +41,8 @@ type AttachmentControllerContext = {
   setDragActive: (active: boolean) => void
   saveDraftNow: () => Promise<boolean>
   waitForRambleMarkdown: () => Promise<void>
-  appendRambleMarkdown: (requestId: string, markdown: string) => Promise<void>
+  routeDraftOperation: (requestId: string, operation: import('../draftOperations').DraftOperation) => Promise<void>
+  activeActionFor: (requestId: string) => import('../draftOperations').ActiveAction
   applyWorkspaceMutation: (next: FeedbackWorkspaceView) => void
 }
 
@@ -48,8 +50,10 @@ export type AttachmentController = ReturnType<typeof createAttachmentController>
 
 export function createAttachmentController(context: AttachmentControllerContext) {
   let screenCaptureRequestId = ''
+  let screenCaptureAction: ActiveAction = null
 
   function mount() {
+    let disposed = false
     let dragUnlisten: (() => void) | undefined
     let captureReadyUnlisten: (() => void) | undefined
     let captureFinishedUnlisten: (() => void) | undefined
@@ -59,7 +63,8 @@ export function createAttachmentController(context: AttachmentControllerContext)
         void importScreenCapture(event.payload)
       })
         .then((unlisten) => {
-          captureReadyUnlisten = unlisten
+          if (disposed) unlisten()
+          else captureReadyUnlisten = unlisten
         })
         .catch((cause) => {
           context.setMessage(
@@ -68,11 +73,14 @@ export function createAttachmentController(context: AttachmentControllerContext)
           )
         })
       void listen<ScreenCaptureFinished>('screen-capture-finished', () => {
+        screenCaptureRequestId = ''
+        screenCaptureAction = null
         context.setCaptureBusy(false)
         context.setMessage('')
       })
         .then((unlisten) => {
-          captureFinishedUnlisten = unlisten
+          if (disposed) unlisten()
+          else captureFinishedUnlisten = unlisten
         })
         .catch(() => {
           // A failed cancellation listener does not affect capture or attachment storage.
@@ -88,7 +96,8 @@ export function createAttachmentController(context: AttachmentControllerContext)
           }
         })
         .then((unlisten) => {
-          dragUnlisten = unlisten
+          if (disposed) unlisten()
+          else dragUnlisten = unlisten
         })
         .catch(() => {
           context.setMessage(
@@ -100,6 +109,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
 
     window.addEventListener('paste', handlePaste)
     return () => {
+      disposed = true
       dragUnlisten?.()
       captureReadyUnlisten?.()
       captureFinishedUnlisten?.()
@@ -128,38 +138,46 @@ export function createAttachmentController(context: AttachmentControllerContext)
   async function importFiles(files: File[]) {
     const workspace = context.getWorkspace()
     if (context.getInteractionLocked() || !workspace || files.length === 0 || context.getBusy()) return
+    const requestId = workspace.request.request_id
+    const action = context.activeActionFor(requestId)
     if (!(await context.saveDraftNow())) return
+    await context.waitForRambleMarkdown()
     context.setBusy(true)
     context.setMessage('')
     try {
-      let next = workspace
+      let next = await invoke<FeedbackWorkspaceView>('get_feedback_workspace', { requestId })
+      if (!next) throw new Error(context.tr('This feedback request could not be found.'))
       const existingIds = new Set(next.attachments.map((item) => item.attachment_id))
       for (const file of files) {
         if (file.size > 20 * 1024 * 1024) {
           throw new Error(context.tr('{name} exceeds the 20 MiB limit', { name: file.name }))
         }
         const input: AddAttachmentInput = {
-          request_id: next.request.request_id,
+          request_id: requestId,
           file_name: file.name || `attachment-${Date.now()}`,
           contents: Array.from(new Uint8Array(await file.arrayBuffer())),
           expected_revision: next.draft.saved_revision,
         }
         next = await invoke<FeedbackWorkspaceView>('add_feedback_attachment', { input })
+      }
+      const added = next.attachments.filter((item) => !existingIds.has(item.attachment_id))
+      if (context.getWorkspace()?.request.request_id === requestId) {
         context.applyWorkspaceMutation(next)
+        await refreshPreviews(next)
+        await tick()
       }
-      await refreshPreviews(next)
-      await tick()
-      const inserted = context
-        .getEditor()
-        ?.insertAttachments(next.attachments.filter((item) => !existingIds.has(item.attachment_id)))
-      if (!inserted) {
-        throw new Error(context.tr('The attachment was saved, but the editor could not insert it at the current cursor.'))
+      for (const attachment of added) {
+        await context.routeDraftOperation(requestId, {
+          kind: 'appendAttachment',
+          attachment,
+          label: attachment.file_name,
+          action,
+        })
       }
-      await context.saveDraftNow()
     } catch (cause) {
       context.setMessage(context.messageFrom(cause), 'error')
       const current = context.getWorkspace()
-      if (current) await refreshPreviews(current)
+      if (current?.request.request_id === requestId) await refreshPreviews(current)
     } finally {
       context.setBusy(false)
     }
@@ -170,14 +188,13 @@ export function createAttachmentController(context: AttachmentControllerContext)
     const requestId = context.getRambleRequestId() || workspace?.request.request_id || ''
     if (context.getInteractionLocked() || !requestId || paths.length === 0 || context.getBusy()) return
     const visibleTarget = workspace?.request.request_id === requestId
+    const action = context.activeActionFor(requestId)
     if (visibleTarget && !(await context.saveDraftNow())) return
     await context.waitForRambleMarkdown()
     context.setBusy(true)
     context.setMessage('')
     try {
-      let next = visibleTarget
-        ? workspace
-        : await invoke<FeedbackWorkspaceView>('get_feedback_workspace', { requestId })
+      let next = await invoke<FeedbackWorkspaceView>('get_feedback_workspace', { requestId })
       if (!next) throw new Error(context.tr('This feedback request could not be found.'))
       const existingIds = new Set(next.attachments.map((item) => item.attachment_id))
       for (const path of paths) {
@@ -186,19 +203,22 @@ export function createAttachmentController(context: AttachmentControllerContext)
           path,
           expectedRevision: next.draft.saved_revision,
         })
-        if (visibleTarget) context.applyWorkspaceMutation(next)
+        if (context.getWorkspace()?.request.request_id === requestId) {
+          context.applyWorkspaceMutation(next)
+        }
       }
       const added = next.attachments.filter((item) => !existingIds.has(item.attachment_id))
-      if (visibleTarget && context.getWorkspace()?.request.request_id === requestId) {
+      if (context.getWorkspace()?.request.request_id === requestId) {
         await refreshPreviews(next)
         await tick()
-        context.getEditor()?.insertAttachments(added)
-        await context.saveDraftNow()
-      } else {
-        await context.appendRambleMarkdown(
-          requestId,
-          added.map((attachment) => attachmentMarkdown(attachment)).join('\n\n'),
-        )
+      }
+      for (const attachment of added) {
+        await context.routeDraftOperation(requestId, {
+          kind: 'appendAttachment',
+          attachment,
+          label: attachment.file_name,
+          action,
+        })
       }
     } catch (cause) {
       context.setMessage(context.messageFrom(cause), 'error')
@@ -234,6 +254,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
     if (workspace?.request.request_id === requestId && !(await context.saveDraftNow())) return
     await context.waitForRambleMarkdown()
     screenCaptureRequestId = requestId
+    screenCaptureAction = context.activeActionFor(requestId)
     context.setCaptureBusy(true)
     context.setMessage('')
     try {
@@ -241,6 +262,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
       await invoke('begin_screen_capture')
     } catch (cause) {
       screenCaptureRequestId = ''
+      screenCaptureAction = null
       context.setCaptureBusy(false)
       const message = context.messageFrom(cause)
       if (message.includes('SCREEN_CAPTURE_PERMISSION_RESTART_REQUIRED')) {
@@ -273,6 +295,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
     const workspace = context.getWorkspace()
     const requestId =
       screenCaptureRequestId || context.getRambleRequestId() || workspace?.request.request_id || ''
+    const action = screenCaptureAction
     if (!requestId) {
       await discardScreenCapture(capture.capture_session_id)
       context.setCaptureBusy(false)
@@ -300,20 +323,17 @@ export function createAttachmentController(context: AttachmentControllerContext)
         context.applyWorkspaceMutation(next)
         await refreshPreviews(next)
         await tick()
-        if (!context.getEditor()?.insertAttachments(added)) {
-          throw new Error(context.tr('The captured attachment was saved, but the editor could not insert it at the current cursor.'))
-        }
-        await context.saveDraftNow()
-      } else {
-        const attachment = added[0]
-        if (!attachment) {
-          throw new Error(context.tr('The captured attachment was saved, but the editor could not insert it at the current cursor.'))
-        }
-        await context.appendRambleMarkdown(
-          requestId,
-          `![${attachment.file_name}](attachment://${attachment.attachment_id})`,
-        )
       }
+      const attachment = added[0]
+      if (!attachment) {
+        throw new Error(context.tr('The captured attachment was saved, but the editor could not insert it at the current cursor.'))
+      }
+      await context.routeDraftOperation(requestId, {
+        kind: 'appendAttachment',
+        attachment,
+        label: attachment.file_name,
+        action,
+      })
       context.setMessage(context.tr('Capture inserted at the current document position'), 'success')
     } catch (cause) {
       context.setMessage(
@@ -324,6 +344,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
       if (current?.request.request_id === requestId) await refreshPreviews(current)
     } finally {
       screenCaptureRequestId = ''
+      screenCaptureAction = null
       await discardScreenCapture(capture.capture_session_id)
       context.setCaptureBusy(false)
     }
@@ -353,8 +374,17 @@ export function createAttachmentController(context: AttachmentControllerContext)
   }
 
   function insertExistingAttachment(attachment: AttachmentView) {
-    if (context.getInteractionLocked()) return
-    context.getEditor()?.insertAttachments([attachment])
+    const requestId = context.getWorkspace()?.request.request_id
+    if (context.getInteractionLocked() || !requestId) return
+    const action = context.activeActionFor(requestId)
+    void context.routeDraftOperation(requestId, {
+      kind: 'appendAttachment',
+      attachment,
+      label: attachment.file_name,
+      action,
+    }).catch((cause) => {
+      context.setMessage(context.messageFrom(cause), 'error')
+    })
   }
 
   async function moveAttachment(index: number, offset: number) {

@@ -39,27 +39,24 @@
 | continuation | 请求进入终态后，让原宿主继续的行为。 | 只处理终态之后；不创建请求，不发布反馈包。 |
 | 宿主会话 | 宿主中的原对话、任务或运行上下文。 | 同一宿主会话可以发起多次反馈请求；不是源码 checkout。 |
 | context hint | 适配器可选提供的展示/定位信息，例如标题、路径、URL、文件引用。 | 不参与认证，不是必需身份字段，不保证可恢复。 |
-| Ramble | 由一个未终态反馈请求持有的统一、可长时间持续的反馈采集状态。人类可以在该状态中说话、编辑正文、截图、添加附件，并把新内容归到某个 Action。 | 属于人类工作流，不属于适配器协议，也不是系统级听写。工作台全局最多一个 Active Ramble；所属请求可以不是当前可见请求。开始/停止一次麦克风不构成新的反馈对象或文档边界。 |
-| Feedback Draft | 一个反馈请求处理期间持续持久化、可由人类直接编辑的结构化文档。语音、截图、附件和带 Action 归属的内容都进入其中。 | 可变的 request-scoped 状态，不是反馈包。SQLite 完整保存其文档内容，重启后恢复节点、属性和 marks；Undo、selection、当前 Action、Active Ramble 等编辑会话状态不属于文档内容。 |
-| Action | 反馈请求中带稳定 id 的一项真实使用或检查指令。 | 属于反馈请求的不可变输入。点序号可把后续 Feedback Draft 节点的 `actionIndex` 归到该 Action；再点一次回到默认频道。导出 Markdown 用可读分隔线呈现频道变化，但分隔线不是可逆的节点协议。这不等于修改原请求，也不等于 `context_refs`。 |
-| Post-processing | 设置中承载 Light cleanup 与 Cooking 的分组。 | 不是第三个处理步骤，也不改变两者独立的作用域与执行时机。 |
-| Uncooked Feedback | Cooking 前，从 Feedback Draft 导出的 Markdown 源反馈正文，由人类在提交时确认。可以包含人工编辑，以及用户显式启用、结果原位可见、当前会话可撤销的 Light cleanup。 | `Uncooked` 表示“未经 Cooking”，不表示逐字转写或未经任何机器辅助。提交后保存为 `uncooked.md`；Cooking 不得覆盖它与 Cooked Feedback 的来源关系。 |
-| Cooking | 提交前可选的整篇大模型编辑步骤，把 Uncooked Feedback 整理为正式 Markdown。 | 只做表达整理，不得编造事实、测试结果或删除负面判断；不开启时不调用模型服务。 |
-| Light cleanup | 用户启用后，对 Feedback Draft 中来源为 ASR 且尚未整理的语音节点做自动轻度整理：去掉语气词、修正断句且不改变原意。 | 是节点级增量变换，不是 Cooking，不生成正式反馈结构，不单独保存覆盖前文本。节点来源与整理状态随结构化文档持久化；正在运行的模型请求不恢复。失败或超时则原文不动。默认关闭。 |
+| Ramble | 工作台内的自由反馈采集模式，尤其是语音、文字、截图驱动的反馈。 | 属于人类工作流，不属于适配器协议。 |
+| Uncooked Feedback | 人类通过 Ramble、文字、截图形成的原始反馈正文；允许保留口语、重复和自我修正。 | 是人类原始证据，Cooking 不得覆盖；提交后保存为反馈包中的 `uncooked.md`。 |
+| Feedback Draft | 当前未提交请求的可编辑正文。canonical 真源是版本化 TipTap `document_json`，`body_markdown` 是同一份文档的派生投影。 | 不得把 Markdown 当作第二真源独立维护。 |
+| Action Group | 用标准 Blockquote 表达的 `@Action` 归属容器。 | 同一 Action 再次打开时创建新容器，不与旧区间合并。 |
+| Tidy | 人类在当前 Editor 中手动触发的 ASR 段落整理。 | 只处理 pending 语音节点；后台文档不整理；不是 Cooking。 |
+| Cooking | 提交前可选的大模型编辑步骤，把 Uncooked Feedback 整理为正式 Markdown。 | 只做表达整理，不得编造事实、测试结果或删除负面判断；不开启时不调用模型服务。 |
 | Cooked Feedback | Cooking 生成并经人类选择提交的正式反馈正文。 | 保存为反馈包中的 `feedback.md`，是宿主默认读取的反馈结果；其来源必须可追溯到 `uncooked.md`。 |
 
 ## Cooking 规则
 
-- Cooking 与 Light cleanup 默认关闭，由人类在 Post-processing 设置中分别显式启用。
+- Tidy 与 Cooking 位于同一“后处理”设置页，但各自持有 provider、API Key、base URL、model、reasoning effort 和 system prompt；任一功能不得回退使用另一套配置。
+- Tidy 没有自动开关、idle timer 或数量/字符阈值，只能由当前 Editor 的人工按钮触发。
+- Cooking 默认关闭，由人类在后处理设置中显式启用并配置自己的模型服务、模型和 API Key。
 - API Key 是本机凭证，不属于反馈请求、反馈包、日志或宿主协议。
 - 启用 Cooking 时，`uncooked.md` 和 `feedback.md` 必须同时进入不可变反馈包；关闭时两者内容可以相同。
 - `feedback.md` 是宿主默认消费的正式结果，`uncooked.md` 是审计与恢复所需的原始人类证据。
 - Cooking 失败不得丢失或锁死 Uncooked Feedback，也不得提交半成品反馈包。
 - “Cooking”专指反馈编辑步骤，不指语音转录、反馈包发布或宿主智能体继续。
-- Light cleanup 可独立于 Cooking 开启。两者分别拥有模型服务、API Key、模型、推理强度与提示词配置，不共享运行配置。
-- 同时启用 Light cleanup 与 Cooking 是允许但不推荐的显式选择；界面必须在开启第二项时说明语音节点和整篇反馈将先后经历两次模型处理。
-- Light cleanup 属于 Feedback Draft 上的草稿编辑：结果原位可见、当前会话可撤销，且不能绕过人类提交直接发布。
-- ASR 稳定转写进入普通文本节点，并携带稳定语音段标识、输入来源和整理状态；Light cleanup 只能选择来源为 ASR 且状态为待整理的节点。
 
 ## 身份字段
 

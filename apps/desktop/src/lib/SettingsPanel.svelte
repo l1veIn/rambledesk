@@ -234,6 +234,7 @@
   }
 
   onMount(() => {
+    let disposed = false
     if (isTauri) {
       void refreshHosts()
       void refreshPiStatus()
@@ -243,15 +244,22 @@
       void refreshMacPermissionPresence()
       void listen<SpeechModelProgress>('speech-model-progress', ({ payload }) => {
         modelProgress = payload
-      }).then((unlisten) => (unlistenModelProgress = unlisten))
+      }).then((unlisten) => {
+        if (disposed) unlisten()
+        else unlistenModelProgress = unlisten
+      })
       void listen<StorageMigrationProgress>('storage-migration-progress', ({ payload }) => {
         storageMigration = payload
-      }).then((unlisten) => (unlistenStorageProgress = unlisten))
+      }).then((unlisten) => {
+        if (disposed) unlisten()
+        else unlistenStorageProgress = unlisten
+      })
     } else {
       loadingHosts = false
       piStatusLoading = false
     }
     return () => {
+      disposed = true
       unlistenModelProgress?.()
       unlistenStorageProgress?.()
     }
@@ -712,8 +720,8 @@
                         : activeSection === 'shortcuts'
                           ? tr('Global shortcut keys')
                           : activeSection === 'adapters'
-                          ? tr('Host adapters')
-                          : tr('Project information')}
+                            ? tr('Host adapters')
+                            : tr('Project information')}
             </p>
             <h2 class="m-0 mt-0.5 text-base font-semibold">
               {activeSection === 'general'
@@ -804,7 +812,7 @@
                 <div>
                   <h3 class="m-0 text-sm font-medium">{tr('Getting started')}</h3>
                   <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
-                    {tr('Review initial setup for storage, voice, adapters, notifications, and post-processing.')}
+                    {tr('Review initial setup for storage, voice, adapters, notifications, and Cooking.')}
                   </p>
                 </div>
               </div>
@@ -1340,7 +1348,6 @@
           <Tabs.Content value="shortcuts" class="m-0 space-y-8 p-6 outline-none">
             <ShortcutSettings />
           </Tabs.Content>
-
           <Tabs.Content value="adapters" class="m-0 space-y-8 p-6 outline-none">
             <section class="border-b pb-8">
               <div class="flex items-start gap-3">

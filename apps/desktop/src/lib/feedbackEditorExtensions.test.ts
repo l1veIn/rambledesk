@@ -2,16 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { MarkdownManager } from '@tiptap/markdown'
 import type { JSONContent } from '@tiptap/core'
 
-import {
-  feedbackEditorExtensions,
-  parseFeedbackMarkdown,
-  serializeFeedbackMarkdown,
-} from './feedbackEditorExtensions'
-import {
-  CLEANUP_STATE_ATTR,
-  INPUT_SOURCE_ATTR,
-  SPEECH_SEGMENT_ID_ATTR,
-} from './speechBlockMetadata'
+import { feedbackEditorExtensions } from './feedbackEditorExtensions'
 
 function markdown() {
   return new MarkdownManager({ extensions: feedbackEditorExtensions() })
@@ -117,110 +108,5 @@ describe('feedback editor attachment markdown', () => {
       attachmentId: 'abc-123',
       fileName: 'notes.pdf',
     })
-  })
-})
-
-describe('ASR speech metadata in markdown', () => {
-  it('serializes pending ASR speech as an ordinary paragraph', () => {
-    const serialized = markdown().serialize({
-      type: 'doc',
-      content: [
-        {
-          type: 'paragraph',
-          attrs: {
-            [SPEECH_SEGMENT_ID_ATTR]: 'segment-1',
-            [INPUT_SOURCE_ATTR]: 'asr',
-            [CLEANUP_STATE_ATTR]: 'pending',
-          },
-          content: [{ type: 'text', text: '啊那个按钮太小了' }],
-        },
-      ],
-    })
-    expect(serialized).toContain('啊那个按钮太小了')
-    expect(serialized).not.toContain(SPEECH_SEGMENT_ID_ATTR)
-    expect(serialized).not.toContain(CLEANUP_STATE_ATTR)
-  })
-
-  it('serializes cleaned speech without the editor marker', () => {
-    const serialized = markdown().serialize({
-      type: 'doc',
-      content: [
-        {
-          type: 'paragraph',
-          attrs: {
-            [SPEECH_SEGMENT_ID_ATTR]: 'segment-1',
-            [INPUT_SOURCE_ATTR]: 'asr',
-            [CLEANUP_STATE_ATTR]: 'pending',
-          },
-          content: [{ type: 'text', text: '啊那个按钮太小了' }],
-        },
-        {
-          type: 'paragraph',
-          attrs: {
-            [SPEECH_SEGMENT_ID_ATTR]: 'segment-2',
-            [INPUT_SOURCE_ATTR]: 'asr',
-            [CLEANUP_STATE_ATTR]: 'cleaned',
-          },
-          content: [{ type: 'text', text: '按钮太小了。' }],
-        },
-        {
-          type: 'paragraph',
-          content: [{ type: 'text', text: '我手打的一句' }],
-        },
-      ],
-    })
-    expect(serialized).toContain('啊那个按钮太小了')
-    expect(serialized).toContain('按钮太小了。')
-    expect(serialized).toContain('我手打的一句')
-    expect(serialized).not.toContain('✦')
-    expect(serialized).not.toContain(CLEANUP_STATE_ATTR)
-    expect(serialized).not.toContain('已整理')
-    expect(serialized).not.toContain('data-cleanup-state')
-  })
-})
-
-describe('action channel markdown', () => {
-  it('exports node attrs as readable dividers', () => {
-    const serialized = serializeFeedbackMarkdown({
-      type: 'doc',
-      content: [
-        {
-          type: 'paragraph',
-          attrs: { actionIndex: 2 },
-          content: [{ type: 'text', text: '保存之后没有 toast。' }],
-        },
-      ],
-    })
-
-    expect(serialized).toContain(
-      '------------------------ Action 2 ------------------------',
-    )
-    expect(serialized).toContain('保存之后没有 toast。')
-    expect(serialized).not.toContain('data-action-index')
-  })
-
-  it('rehydrates dividers as channel stamps instead of visible text', () => {
-    const doc = parseFeedbackMarkdown(
-      '------------------------ Action 2 ------------------------\n\n保存失败。',
-    )
-
-    expect((doc.content ?? []).map((node) => node.attrs?.actionIndex ?? null)).toEqual([
-      2,
-    ])
-    expect(doc.content?.[0]?.content?.[0]?.text).toBe('保存失败。')
-    expect(JSON.stringify(doc.content)).not.toContain('Action 2')
-  })
-
-  it('turns the default-channel separator into a channel reset with no visible rule', () => {
-    const doc = parseFeedbackMarkdown(
-      '------------------------ Action 2 ------------------------\n\n属于 Action 2。\n\n------------------------------------------------\n\n取消之后的新内容。',
-    )
-
-    expect(doc.content?.length).toBe(2)
-    expect(doc.content?.[0]?.attrs?.actionIndex).toBe(2)
-    expect(doc.content?.[0]?.content?.[0]?.text).toBe('属于 Action 2。')
-    expect(doc.content?.[1]?.attrs?.actionIndex).toBeUndefined()
-    expect(doc.content?.[1]?.content?.[0]?.text).toBe('取消之后的新内容。')
-    expect(JSON.stringify(doc.content)).not.toContain('--------------------------------')
   })
 })

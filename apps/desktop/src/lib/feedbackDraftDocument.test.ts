@@ -1,6 +1,7 @@
 import type { JSONContent } from '@tiptap/core'
 import { describe, expect, it } from 'vitest'
 
+import { ACTION_ID_ATTR, ACTION_INDEX_ATTR } from './actionBlockquote'
 import {
   decodeFeedbackDraftDocument,
   restoreFeedbackDraftDocument,
@@ -8,96 +9,38 @@ import {
   snapshotFeedbackDraftMarkdown,
 } from './feedbackDraftDocument'
 import {
+  ASR_INPUT_SOURCE,
   CLEANUP_STATE_ATTR,
   INPUT_SOURCE_ATTR,
   SPEECH_SEGMENT_ID_ATTR,
 } from './speechBlockMetadata'
 
 describe('persisted feedback draft document', () => {
-  it('restores node types, attrs, and marks that Markdown cannot represent', () => {
+  it('round-trips Action attrs, ASR attrs, attachments, tables, and task lists', () => {
     const doc: JSONContent = {
       type: 'doc',
       content: [
         {
-          type: 'paragraph',
-          attrs: {
-            [SPEECH_SEGMENT_ID_ATTR]: 'segment-1',
-            [INPUT_SOURCE_ATTR]: 'asr',
-            [CLEANUP_STATE_ATTR]: 'pending',
-            actionIndex: 2,
-          },
-          content: [{ type: 'text', text: '按钮', marks: [{ type: 'bold' }] }],
-        },
-        {
-          type: 'paragraph',
-          attrs: {
-            [SPEECH_SEGMENT_ID_ATTR]: 'segment-2',
-            [INPUT_SOURCE_ATTR]: 'asr',
-            [CLEANUP_STATE_ATTR]: 'cleaned',
-            actionIndex: 3,
-          },
-          content: [{ type: 'text', text: '按钮太小了。' }],
-        },
-      ],
-    }
-
-    const snapshot = snapshotFeedbackDraftDocument(doc)
-    const restored = restoreFeedbackDraftDocument(snapshot.documentJson, 'wrong fallback')
-
-    expect(restored).toEqual(doc)
-    expect(snapshot.bodyMarkdown).toContain(
-      '------------------------ Action 2 ------------------------',
-    )
-    expect(snapshot.bodyMarkdown).not.toContain(SPEECH_SEGMENT_ID_ATTR)
-    expect(snapshot.bodyMarkdown).not.toContain(CLEANUP_STATE_ATTR)
-  })
-
-  it('migrates v1 speech workflow nodes into ordinary ASR paragraphs', () => {
-    const restored = decodeFeedbackDraftDocument(
-      JSON.stringify({
-        schemaVersion: 1,
-        doc: {
-          type: 'doc',
+          type: 'blockquote',
+          attrs: { [ACTION_ID_ATTR]: 'login', [ACTION_INDEX_ATTR]: 0 },
           content: [
             {
-              type: 'pendingSpeech',
-              attrs: { status: 'cleaning', actionIndex: 2 },
-              content: [{ type: 'text', text: '还没整理' }],
+              type: 'paragraph',
+              content: [
+                { type: 'text', text: '@Action 1 · 修复登录状态', marks: [{ type: 'bold' }] },
+              ],
             },
             {
-              type: 'cleanedSpeech',
-              content: [{ type: 'text', text: '已经整理' }],
+              type: 'paragraph',
+              attrs: {
+                [INPUT_SOURCE_ATTR]: ASR_INPUT_SOURCE,
+                [SPEECH_SEGMENT_ID_ATTR]: 'seg-1',
+                [CLEANUP_STATE_ATTR]: 'pending',
+              },
+              content: [{ type: 'text', text: '登录后状态没有更新。' }],
             },
           ],
         },
-      }),
-    )
-
-    expect(restored?.content).toMatchObject([
-      {
-        type: 'paragraph',
-        attrs: {
-          actionIndex: 2,
-          [SPEECH_SEGMENT_ID_ATTR]: 'legacy-asr-1',
-          [INPUT_SOURCE_ATTR]: 'asr',
-          [CLEANUP_STATE_ATTR]: 'pending',
-        },
-      },
-      {
-        type: 'paragraph',
-        attrs: {
-          [SPEECH_SEGMENT_ID_ATTR]: 'legacy-asr-2',
-          [INPUT_SOURCE_ATTR]: 'asr',
-          [CLEANUP_STATE_ATTR]: 'cleaned',
-        },
-      },
-    ])
-  })
-
-  it('stores canonical attachment identities instead of ephemeral preview URLs', () => {
-    const snapshot = snapshotFeedbackDraftDocument({
-      type: 'doc',
-      content: [
         {
           type: 'image',
           attrs: {
@@ -106,25 +49,199 @@ describe('persisted feedback draft document', () => {
             alt: 'shot.png',
           },
         },
+        {
+          type: 'table',
+          content: [
+            {
+              type: 'tableRow',
+              content: [
+                {
+                  type: 'tableHeader',
+                  content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Area' }] }],
+                },
+                {
+                  type: 'tableHeader',
+                  content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Verdict' }] }],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: 'taskList',
+          content: [
+            {
+              type: 'taskItem',
+              attrs: { checked: false },
+              content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Follow up' }] }],
+            },
+          ],
+        },
       ],
-    })
+    }
 
-    const restored = decodeFeedbackDraftDocument(snapshot.documentJson)
-    expect(restored?.content?.[0].attrs?.src).toBe('attachment://abc-123')
+    const snapshot = snapshotFeedbackDraftDocument(doc)
+    const restored = restoreFeedbackDraftDocument(snapshot.documentJson, 'wrong fallback')
+
+    expect(restored.content?.[0]).toMatchObject({
+      type: 'blockquote',
+      attrs: { [ACTION_ID_ATTR]: 'login', [ACTION_INDEX_ATTR]: 0 },
+    })
+    expect(restored.content?.[0].content?.[1].attrs).toMatchObject({
+      [SPEECH_SEGMENT_ID_ATTR]: 'seg-1',
+      [CLEANUP_STATE_ATTR]: 'pending',
+    })
+    expect(decodeFeedbackDraftDocument(snapshot.documentJson)?.content?.[1].attrs?.src).toBe(
+      'attachment://abc-123',
+    )
     expect(snapshot.documentJson).not.toContain('ephemeral-preview')
+    expect(snapshot.bodyMarkdown).toContain('@Action 1 · 修复登录状态')
+    expect(snapshot.bodyMarkdown).toContain('Follow up')
   })
 
-  it('does not persist the current Action staging attr on an empty paragraph', () => {
+  it('wraps adjacent v1 Action stamps into separate Blockquote containers', () => {
+    const v1 = JSON.stringify({
+      schemaVersion: 1,
+      doc: {
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            attrs: { actionIndex: 1 },
+            content: [{ type: 'text', text: '第一次。' }],
+          },
+          {
+            type: 'paragraph',
+            attrs: { actionIndex: 2 },
+            content: [{ type: 'text', text: '中间。' }],
+          },
+          {
+            type: 'paragraph',
+            attrs: { actionIndex: 1 },
+            content: [{ type: 'text', text: '再次打开。' }],
+          },
+        ],
+      },
+    })
+
+    const restored = restoreFeedbackDraftDocument(v1, 'fallback')
+    expect(restored.content?.map((node) => node.type)).toEqual([
+      'blockquote',
+      'blockquote',
+      'blockquote',
+    ])
+    expect(restored.content?.map((node) => node.attrs?.[ACTION_INDEX_ATTR])).toEqual([0, 1, 0])
+    expect(restored.content?.[0].content?.[0].content?.[0]?.text).toBe('@Action 1')
+    expect(restored.content?.[0].content?.[1].content?.[0]?.text).toBe('第一次。')
+    expect(restored.content?.[2].content?.[1].content?.[0]?.text).toBe('再次打开。')
+  })
+
+  it('preserves distinct same-Action Blockquotes instead of merging reopened groups', () => {
     const snapshot = snapshotFeedbackDraftDocument({
       type: 'doc',
-      content: [{ type: 'paragraph', attrs: { actionIndex: 2 } }],
+      content: [
+        {
+          type: 'blockquote',
+          attrs: { [ACTION_ID_ATTR]: 'constraints', [ACTION_INDEX_ATTR]: 2 },
+          content: [
+            {
+              type: 'paragraph',
+              content: [{ type: 'text', text: '@Action 3 · Note constraints', marks: [{ type: 'bold' }] }],
+            },
+          ],
+        },
+        {
+          type: 'blockquote',
+          attrs: { [ACTION_ID_ATTR]: 'constraints', [ACTION_INDEX_ATTR]: 2 },
+          content: [
+            {
+              type: 'paragraph',
+              content: [{ type: 'text', text: '@Action 3 · Note constraints', marks: [{ type: 'bold' }] }],
+            },
+            { type: 'paragraph', content: [{ type: 'text', text: '喂。' }] },
+          ],
+        },
+        {
+          type: 'blockquote',
+          attrs: { [ACTION_ID_ATTR]: 'constraints', [ACTION_INDEX_ATTR]: 2 },
+          content: [
+            {
+              type: 'paragraph',
+              content: [{ type: 'text', text: '@Action 3 · Note constraints', marks: [{ type: 'bold' }] }],
+            },
+            { type: 'paragraph', content: [{ type: 'text', text: '能听到吗?' }] },
+          ],
+        },
+      ],
     })
-
-    expect(decodeFeedbackDraftDocument(snapshot.documentJson)?.content?.[0].attrs).toBeUndefined()
+    const restored = restoreFeedbackDraftDocument(snapshot.documentJson, '')
+    expect(restored.content).toHaveLength(3)
+    expect(restored.content?.map((node) => node.attrs?.[ACTION_ID_ATTR])).toEqual([
+      'constraints',
+      'constraints',
+      'constraints',
+    ])
+    expect(snapshot.bodyMarkdown.match(/@Action 3/g)).toHaveLength(3)
   })
 
-  it('hydrates legacy and unsupported documents from their Markdown projection', () => {
-    expect(restoreFeedbackDraftDocument(null, '**Legacy**').content?.[0].content?.[0]).toMatchObject({
+  it('repairs missing and duplicate ASR segment IDs deterministically', () => {
+    const restored = restoreFeedbackDraftDocument(
+      JSON.stringify({
+        schemaVersion: 2,
+        doc: {
+          type: 'doc',
+          content: [
+            {
+              type: 'paragraph',
+              attrs: { [INPUT_SOURCE_ATTR]: ASR_INPUT_SOURCE },
+              content: [{ type: 'text', text: 'missing' }],
+            },
+            {
+              type: 'paragraph',
+              attrs: {
+                [INPUT_SOURCE_ATTR]: ASR_INPUT_SOURCE,
+                [SPEECH_SEGMENT_ID_ATTR]: 'kept',
+                [CLEANUP_STATE_ATTR]: 'cleaned',
+              },
+              content: [{ type: 'text', text: 'first' }],
+            },
+            {
+              type: 'paragraph',
+              attrs: {
+                [INPUT_SOURCE_ATTR]: ASR_INPUT_SOURCE,
+                [SPEECH_SEGMENT_ID_ATTR]: 'kept',
+              },
+              content: [{ type: 'text', text: 'duplicate' }],
+            },
+          ],
+        },
+      }),
+      '',
+    )
+
+    const attrs = restored.content?.map((node) => node.attrs)
+    expect(attrs?.map((entry) => entry?.[SPEECH_SEGMENT_ID_ATTR])).toEqual([
+      'restored-asr-1',
+      'kept',
+      'restored-asr-2',
+    ])
+    expect(attrs?.map((entry) => entry?.[CLEANUP_STATE_ATTR])).toEqual([
+      'pending',
+      'cleaned',
+      'pending',
+    ])
+    expect(restoreFeedbackDraftDocument(snapshotFeedbackDraftDocument(restored).documentJson, '')).toEqual(
+      restored,
+    )
+  })
+
+  it('hydrates markdown-only drafts and writes v2 on snapshot', () => {
+    const snapshot = snapshotFeedbackDraftMarkdown('**Legacy**')
+    const parsed = JSON.parse(snapshot.documentJson) as { schemaVersion: number }
+    expect(parsed.schemaVersion).toBe(2)
+    expect(
+      restoreFeedbackDraftDocument(null, '**Legacy**').content?.[0].content?.[0],
+    ).toMatchObject({
       text: 'Legacy',
       marks: [{ type: 'bold' }],
     })
@@ -136,29 +253,19 @@ describe('persisted feedback draft document', () => {
     ).toBe('Fallback')
   })
 
-  it('never rehydrates action dividers as visible text', () => {
-    const markdown =
-      '先说结论。\n\n------------------------ Action 2 ------------------------\n\n保存失败。'
-    const restored = restoreFeedbackDraftDocument(null, markdown)
-
-    const texts = (restored.content ?? []).map((node) =>
-      (node.content ?? []).map((child) => child.text ?? '').join(''),
-    )
-    expect(texts).not.toContain('------------------------ Action 2 ------------------------')
-    expect(restored.content?.[0]?.attrs?.actionIndex).toBeUndefined()
-    expect(restored.content?.[1]?.content?.[0]?.text).toBe('保存失败。')
-    expect(restored.content?.[1]?.attrs?.actionIndex).toBe(2)
-  })
-
-  it('also strips dividers left inside a persisted document JSON', () => {
-    const markdown =
-      '------------------------ Action 2 ------------------------\n\n保存失败。'
-    const snapshot = snapshotFeedbackDraftMarkdown(markdown)
-    const restored = decodeFeedbackDraftDocument(snapshot.documentJson)
-
-    expect((restored?.content ?? []).map((node) => node.attrs?.actionIndex ?? null)).toEqual([
-      2,
+  it('preserves ordinary horizontal rules in v2 documents', () => {
+    const snapshot = snapshotFeedbackDraftDocument({
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: 'before' }] },
+        { type: 'horizontalRule' },
+        { type: 'paragraph', content: [{ type: 'text', text: 'after' }] },
+      ],
+    })
+    expect(restoreFeedbackDraftDocument(snapshot.documentJson, '').content?.map((node) => node.type)).toEqual([
+      'paragraph',
+      'horizontalRule',
+      'paragraph',
     ])
-    expect(JSON.stringify(restored?.content)).not.toContain('Action 2')
   })
 })

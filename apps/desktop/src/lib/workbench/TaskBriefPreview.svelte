@@ -1,9 +1,10 @@
 <script lang="ts">
-  import { ChevronDown, Copy, FileImage, FileText, LoaderCircle, Mic, Paperclip } from '@lucide/svelte'
+  import type { JSONContent } from '@tiptap/core'
+  import { Copy, FileImage, FileText, LoaderCircle, Mic, Paperclip } from '@lucide/svelte'
 
+  import { collectActionGroupContent } from '$lib/actionGroupContent'
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
-  import * as Collapsible from '$lib/components/ui/collapsible'
   import * as Dialog from '$lib/components/ui/dialog'
   import { toast } from '$lib/components/ui/sonner'
   import {
@@ -17,15 +18,18 @@
   import LinkifiedText from '$lib/LinkifiedText.svelte'
   import { isSafeHttpUrl } from '$lib/linkify'
   import { openExternalUrl } from '$lib/openExternalUrl'
-  import MarkdownPreview from './MarkdownPreview.svelte'
   import RequestAttachmentPreview from './RequestAttachmentPreview.svelte'
-  import RecordLed from './RecordLed.svelte'
+  import ActionFeedbackCard from './ActionFeedbackCard.svelte'
   import { buildTaskBriefText } from './taskBriefCopy'
+  import RecordLed from './RecordLed.svelte'
   import { rambleRecordPresentation } from './rambleRecordButton'
   import type { HostProfile, RamblePhase } from './types'
 
   export let open = false
   export let workspace: FeedbackWorkspaceView | null = null
+  export let editorDocument: JSONContent | null = null
+  export let previews: Record<string, string> = {}
+  export let onOpenAttachment: (attachmentId: string) => void = () => {}
   export let formatTime: (value: string | null | undefined) => string = () => ''
   export let resolveHostProfile: (hostId: string) => HostProfile = (hostId) => ({
     id: hostId,
@@ -40,13 +44,6 @@
   export let rambleBusy = false
   /** CSS transform-origin the dialog should shrink toward when closing. */
   export let origin: string | null = null
-  export let insertDisabled = false
-  export let currentActionIndex: number | null = null
-  export let onToggleActionChannel: (index: number) => void = () => {}
-  /** Markdown notes the human recorded under each Action (from the draft). */
-  export let actionNotes: Record<number, string> = {}
-  export let attachmentPreviews: Record<string, string> = {}
-  export let onOpenAttachment: (attachmentId: string) => void = () => {}
 
   let attachmentPreviewOpen = false
   let attachmentPreview: RequestAttachmentView | null = null
@@ -55,6 +52,7 @@
     workspace === null ||
     workspace.request.status === 'completed' ||
     workspace.request.status === 'cancelled'
+  $: actionGroupContent = collectActionGroupContent(editorDocument)
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
@@ -163,57 +161,26 @@
             </h2>
             <ol class="m-0 mt-4 grid list-none gap-3 p-0">
               {#each workspace.actions as action, index (action.id)}
+                {@const feedback =
+                  actionGroupContent.get(action.id) ??
+                  actionGroupContent.get(`legacy-action-${index + 1}`)}
                 <li class="grid grid-cols-[28px_minmax(0,1fr)] gap-3">
-                  <button
-                    type="button"
-                    class={[
-                      'grid size-7 place-items-center rounded-md text-xs font-semibold ring-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
-                      currentActionIndex === index + 1
-                        ? 'action-channel-live bg-primary/15 text-primary ring-primary'
-                        : 'bg-background text-muted-foreground ring-border hover:bg-accent hover:text-accent-foreground',
-                    ]}
-                    disabled={insertDisabled || readOnly}
-                    aria-pressed={currentActionIndex === index + 1}
-                    aria-label={
-                      currentActionIndex === index + 1
-                        ? tr('Return to default channel from Action {index}', { index: index + 1 })
-                        : tr('Tune to Action {index}', { index: index + 1 })
-                    }
-                    title={
-                      currentActionIndex === index + 1
-                        ? tr('Return to default channel from Action {index}', { index: index + 1 })
-                        : tr('Tune to Action {index}', { index: index + 1 })
-                    }
-                    onclick={() => onToggleActionChannel(index + 1)}
+                  <span
+                    class="grid size-7 place-items-center rounded-md bg-background text-xs font-semibold text-muted-foreground ring-1 ring-border"
                   >
                     {index + 1}
-                  </button>
-                  <div class="min-w-0">
-                    <span class="block self-center text-[15px] leading-7">
+                  </span>
+                  <div class="min-w-0 self-center">
+                    <div class="text-[15px] leading-7">
                       <LinkifiedText text={action.instruction} />
-                    </span>
-                    {#if actionNotes[index + 1]}
-                      <Collapsible.Root open class="mt-2 rounded-lg border bg-background/70">
-                        <Collapsible.Trigger>
-                          {#snippet child({ props })}
-                            <button
-                              type="button"
-                              {...props}
-                              class="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                            >
-                              <ChevronDown class="size-3.5 transition-transform data-[open]:rotate-180" />
-                              {tr('My notes for Action {index}', { index: index + 1 })}
-                            </button>
-                          {/snippet}
-                        </Collapsible.Trigger>
-                        <Collapsible.Content class="max-h-72 overflow-y-auto overscroll-contain border-t px-3 pb-3 pt-2">
-                          <MarkdownPreview
-                            markdown={actionNotes[index + 1] ?? ''}
-                            previews={attachmentPreviews}
-                            {onOpenAttachment}
-                          />
-                        </Collapsible.Content>
-                      </Collapsible.Root>
+                    </div>
+                    {#if feedback}
+                      <ActionFeedbackCard
+                        document={feedback.document}
+                        groupCount={feedback.groupCount}
+                        {previews}
+                        {onOpenAttachment}
+                      />
                     {/if}
                   </div>
                 </li>

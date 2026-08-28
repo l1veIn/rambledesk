@@ -13,10 +13,9 @@
   export let workspace: FeedbackWorkspaceView
   export let open = true
   export let pulseNonce = 0
+  export let activeActionId: string | null = null
+  export let onSelectAction: (actionId: string, actionIndex: number, title: string) => void = () => {}
   export let onOpenPreview: (transformOrigin: string | null) => void = () => {}
-  export let insertDisabled = false
-  export let currentActionIndex: number | null = null
-  export let onToggleActionChannel: (index: number) => void = () => {}
 
   let previewOpen = false
   let previewAttachment: RequestAttachmentView | null = null
@@ -116,32 +115,18 @@
         </h2>
         <ol class="m-0 mt-2 grid list-none gap-2 p-0">
           {#each workspace.actions as action, index (action.id)}
-            <li class="grid grid-cols-[22px_minmax(0,1fr)] gap-2 leading-5">
+            <li>
               <button
                 type="button"
-                class={[
-                  'grid size-5 place-items-center rounded-md text-[9px] font-medium ring-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
-                  currentActionIndex === index + 1
-                    ? 'action-channel-live bg-primary/15 text-primary ring-primary'
-                    : 'bg-background text-muted-foreground ring-border hover:bg-accent hover:text-accent-foreground',
-                ]}
-                disabled={insertDisabled}
-                aria-pressed={currentActionIndex === index + 1}
-                aria-label={
-                  currentActionIndex === index + 1
-                    ? tr('Return to default channel from Action {index}', { index: index + 1 })
-                    : tr('Tune to Action {index}', { index: index + 1 })
-                }
-                title={
-                  currentActionIndex === index + 1
-                    ? tr('Return to default channel from Action {index}', { index: index + 1 })
-                    : tr('Tune to Action {index}', { index: index + 1 })
-                }
-                onclick={() => onToggleActionChannel(index + 1)}
+                class={`grid w-full grid-cols-[22px_minmax(0,1fr)] gap-2 rounded-md px-1 py-1 text-left leading-5 transition-colors hover:bg-accent/60 ${activeActionId === action.id ? 'bg-primary/10 ring-1 ring-primary/30' : ''}`}
+                aria-pressed={activeActionId === action.id}
+                onclick={() => onSelectAction(action.id, index, action.instruction)}
               >
-                {index + 1}
+                <span class="grid size-5 place-items-center rounded-md bg-background text-[9px] font-medium ring-1 ring-border">
+                  {index + 1}
+                </span>
+                <span><LinkifiedText text={action.instruction} /></span>
               </button>
-              <span><LinkifiedText text={action.instruction} /></span>
             </li>
           {/each}
         </ol>

@@ -1,45 +1,40 @@
 <script lang="ts">
   import { Editor } from '@tiptap/core'
-  import Image from '@tiptap/extension-image'
-  import { TableKit } from '@tiptap/extension-table'
-  import TaskItem from '@tiptap/extension-task-item'
-  import TaskList from '@tiptap/extension-task-list'
-  import { Markdown } from '@tiptap/markdown'
-  import StarterKit from '@tiptap/starter-kit'
+  import type { JSONContent } from '@tiptap/core'
   import { onMount } from 'svelte'
 
-  import { ATTACHMENT_PLACEHOLDER_IMAGE, attachmentIdFromUrl } from '$lib/attachmentMarkdown'
+  import { attachmentIdFromUrl } from '$lib/attachmentMarkdown'
+  import { hydrateActionBlockquotes } from '$lib/actionBlockquote'
+  import {
+    feedbackEditorExtensions,
+    parseFeedbackMarkdown,
+  } from '$lib/feedbackEditorExtensions'
   import { isSafeHttpUrl } from '$lib/linkify'
   import { openExternalUrl } from '$lib/openExternalUrl'
 
   export let markdown = ''
+  export let document: JSONContent | null = null
   export let previews: Record<string, string> = {}
   export let onOpenAttachment: (attachmentId: string) => void = () => {}
+  export let compact = false
 
   let editorHost: HTMLDivElement
   let editor: Editor | null = null
-  let renderedMarkdown = ''
+  let renderedSource = ''
+
+  function previewDocument() {
+    return document ?? hydrateActionBlockquotes(parseFeedbackMarkdown(markdown))
+  }
+
+  $: sourceSignature = document
+    ? `document:${JSON.stringify(document)}`
+    : `markdown:${markdown}`
 
   onMount(() => {
     editor = new Editor({
       element: editorHost,
-      extensions: [
-        StarterKit.configure({
-          link: {
-            openOnClick: false,
-            autolink: true,
-            defaultProtocol: 'https',
-            protocols: ['http', 'https', 'attachment'],
-          },
-        }),
-        Image,
-        TableKit,
-        TaskList,
-        TaskItem.configure({ nested: true }),
-        Markdown,
-      ],
-      content: markdown,
-      contentType: 'markdown',
+      extensions: feedbackEditorExtensions(),
+      content: previewDocument(),
       editable: false,
       editorProps: {
         attributes: {
@@ -48,29 +43,17 @@
         },
         handleClick: (_view, _pos, event) => {
           const target = event.target as HTMLElement | null
-          const image = target?.closest?.('img[src]')
-          const imageAttachmentId = image
-            ? attachmentIdFromUrl(image.getAttribute('src')) ??
-              Object.entries(previews).find(
-                ([, preview]) => preview === image.getAttribute('src'),
-              )?.[0]
-            : null
-          if (imageAttachmentId) {
-            event.preventDefault()
-            event.stopPropagation()
-            onOpenAttachment(imageAttachmentId)
-            return true
-          }
-          const anchor = target?.closest?.('a[href]')
-          if (!anchor) return false
-          const href = anchor.getAttribute('href') ?? ''
-          const attachmentId = attachmentIdFromUrl(href)
+          const attachment = target?.closest?.('[data-attachment-id]')
+          const attachmentId = attachment?.getAttribute('data-attachment-id')
           if (attachmentId) {
             event.preventDefault()
             event.stopPropagation()
             onOpenAttachment(attachmentId)
             return true
           }
+          const anchor = target?.closest?.('a[href]')
+          if (!anchor) return false
+          const href = anchor.getAttribute('href') ?? ''
           if (!isSafeHttpUrl(href)) return false
           event.preventDefault()
           event.stopPropagation()
@@ -81,8 +64,7 @@
         },
       },
       onCreate: () => {
-        renderedMarkdown = markdown
-        hydrateAttachmentImages()
+        renderedSource = sourceSignature
       },
     })
 
@@ -92,15 +74,13 @@
     }
   })
 
-  $: if (editor && markdown !== renderedMarkdown) {
-    editor.commands.setContent(markdown, {
-      contentType: 'markdown',
+  $: if (editor && sourceSignature !== renderedSource) {
+    editor.commands.setContent(previewDocument(), {
       emitUpdate: false,
     })
-    renderedMarkdown = markdown
+    renderedSource = sourceSignature
     hydrateAttachmentImages()
   }
-
   $: if (editor) {
     previews
     hydrateAttachmentImages()
@@ -112,14 +92,13 @@
     let changed = false
     editor.state.doc.descendants((node, position) => {
       if (node.type.name !== 'image') return
-      const attachmentId = attachmentIdFromUrl(node.attrs.src)
-      if (!attachmentId) return
-      const preview = previews[attachmentId]
-      const next = preview ?? ATTACHMENT_PLACEHOLDER_IMAGE
-      if (!next || node.attrs.src === next) return
+      const attachmentId = node.attrs.attachmentId ?? attachmentIdFromUrl(node.attrs.src)
+      const preview = attachmentId ? previews[attachmentId] : undefined
+      if (!attachmentId || !preview || node.attrs.src === preview) return
       transaction = transaction.setNodeMarkup(position, undefined, {
         ...node.attrs,
-        src: next,
+        attachmentId,
+        src: preview,
       })
       changed = true
     })
@@ -127,7 +106,11 @@
   }
 </script>
 
-<div class="h-full min-h-0 min-w-0 w-full flex-1 overflow-auto rounded-lg border bg-background px-6 py-5">
+<div
+  class={compact
+    ? 'action-feedback-markdown min-h-0 px-4 py-3'
+    : 'h-full min-h-0 overflow-auto rounded-lg border bg-background px-6 py-5'}
+>
   <div bind:this={editorHost}></div>
 </div>
 
@@ -225,6 +208,26 @@
     background: color-mix(in oklab, var(--muted) 65%, transparent);
   }
 
+  :global(.attachment-markdown-prose blockquote[data-action-id]) {
+    padding: 14px 18px 12px;
+    border: 1px solid color-mix(in oklab, var(--primary) 16%, transparent);
+    border-radius: calc(var(--radius) + 2px);
+    color: var(--foreground);
+    background: color-mix(in oklab, var(--primary) 9%, var(--background));
+  }
+
+  :global(.attachment-markdown-prose blockquote[data-action-id] > p:first-child) {
+    margin: 0 0 0.8em;
+    padding-bottom: 0.65em;
+    border-bottom: 1px solid color-mix(in oklab, var(--primary) 14%, transparent);
+    font-weight: 700;
+    text-align: center;
+  }
+
+  :global(.attachment-markdown-prose blockquote[data-action-id] > p:last-child) {
+    margin-bottom: 0;
+  }
+
   :global(.attachment-markdown-prose pre) {
     margin: 1em 0;
     overflow-x: auto;
@@ -287,10 +290,58 @@
     width: auto;
     max-width: min(100%, 900px);
     max-height: 620px;
-    margin: 1.25em auto;
+    margin: 18px auto;
     border: 1px solid var(--border);
-    border-radius: calc(var(--radius) - 2px);
-    cursor: pointer;
+    border-radius: var(--radius);
     object-fit: contain;
+    background: var(--muted);
+  }
+
+  :global(.attachment-markdown-prose a.attachment-file-chip) {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 2px;
+    padding: 2px 10px 2px 4px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--muted) 55%, transparent);
+    color: var(--foreground);
+    font-size: 12px;
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  :global(.attachment-markdown-prose .attachment-file-chip-ext) {
+    padding: 1px 5px;
+    border-radius: 999px;
+    background: var(--primary);
+    color: var(--primary-foreground);
+    font-size: 9px;
+    font-weight: 650;
+  }
+
+  :global(.action-feedback-markdown .attachment-markdown-prose) {
+    max-width: none;
+    min-height: 0;
+    font-size: 13px;
+    line-height: 1.65;
+  }
+
+  :global(.action-feedback-markdown .attachment-markdown-prose p) {
+    margin: 0.6em 0;
+  }
+
+  :global(.action-feedback-markdown .attachment-markdown-prose > *:first-child) {
+    margin-top: 0;
+  }
+
+  :global(.action-feedback-markdown .attachment-markdown-prose > *:last-child) {
+    margin-bottom: 0;
+  }
+
+  :global(.action-feedback-markdown .attachment-markdown-prose img) {
+    max-height: 240px;
+    margin: 12px auto;
   }
 </style>

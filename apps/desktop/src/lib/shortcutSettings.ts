@@ -40,23 +40,9 @@ export async function resetShortcuts(): Promise<void> {
 /**
  * While the settings dialog records a combination, the native handlers swallow
  * presses so typing the currently active shortcut does not trigger its action.
- * The same applies to the in-window keydown fallback (see
- * `isLocalCaptureActive`).
  */
 export function setShortcutCaptureActive(active: boolean): Promise<void> {
   return invoke<void>('set_shortcut_capture_active', { active })
-}
-
-let localCaptureActive = false
-
-/** Mirrors `setShortcutCaptureActive` for the in-window keydown fallback. */
-export function setLocalCaptureActive(active: boolean): void {
-  localCaptureActive = active
-}
-
-/** True while the settings dialog is recording a combination. */
-export function isLocalCaptureActive(): boolean {
-  return localCaptureActive
 }
 
 /** Splits "Ctrl+Shift+R" into chips for display. */

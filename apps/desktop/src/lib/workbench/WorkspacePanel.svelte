@@ -3,12 +3,17 @@
   import { Inbox } from '@lucide/svelte'
   import { Pane, PaneGroup, PaneResizer } from 'paneforge'
   import { Skeleton } from '$lib/components/ui/skeleton'
+  import type { JSONContent } from '@tiptap/core'
+
   import type {
     AttachmentView,
     FeedbackResultView,
     FeedbackWorkspaceView,
   } from '$lib/feedback'
+  import type { TidyConfig } from '$lib/lightCleanup'
+  import type { DraftOperation } from '$lib/draftOperations'
   import type { FeedbackDraftSnapshot } from '$lib/feedbackDraftDocument'
+  import type { SpeechCleanupSegment } from '$lib/speechBlockMetadata'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
   import { savePaneLayout, savedPaneLayout } from '$lib/uiPreferences'
@@ -31,6 +36,8 @@
   export let feedbackResult: FeedbackResultView | null = null
   export let taskBriefOpen = true
   export let draftBody = ''
+  export let editorDocument: JSONContent | null = null
+  export let editorEpoch = 0
   export let savedRevision = 0
   export let savePhase: SavePhase = 'idle'
   export let attachmentPreviews: Record<string, string> = {}
@@ -53,6 +60,10 @@
   export let cookingEnabled = false
   export let cookedDraftReady = false
   export let cookedPreviewModel = ''
+  export let cookedPreviewMarkdown = ''
+  export let tidyConfig: TidyConfig | null = null
+  export let tidyAutoThreshold = 0
+  export let activeActionId: string | null = null
   export let submitting = false
   export let submitStage: SubmitStage = 'idle'
   export let publishedFeedback: { markdown: string; uncooked_markdown?: string } | null = null
@@ -63,23 +74,10 @@
   export let resolveHostProfile: (hostId: string) => HostProfile
   export let formatTime: (value: string | null | undefined) => string
   export let onReload: () => void = () => {}
-  export let onDraftChange: (markdown: string) => void = () => {}
-  export let draftEditors: Array<{
-    requestId: string
-    initialDocumentJson: string
-    initialMarkdown: string
-  }> = []
-  export let visibleRequestId = ''
-  export let onDraftChangeFor: (
-    requestId: string,
-    snapshot: FeedbackDraftSnapshot,
-  ) => void = () => {}
-  export let onEditorReady: (requestId: string, editor: FeedbackEditorHandle | null) => void = () => {}
-  export let onPrepareNonSpeechInsert: (requestId: string) => void = () => {}
-  export let currentActionIndex: number | null = null
-  export let onToggleActionChannel: (index: number) => void = () => {}
-  export let actionNotes: Record<number, string> = {}
-  export let cleanupCount = 0
+  export let onDraftChange: (snapshot: FeedbackDraftSnapshot) => void = () => {}
+  export let onTidyError: (message: string) => void = () => {}
+  export let onOpenTidySettings: () => void = () => {}
+  export let onSelectAction: (actionId: string, actionIndex: number, title: string) => void = () => {}
   export let onCookPreview: () => void = () => {}
   export let onRestoreOriginal: () => void = () => {}
   export let onToggleRamble: () => void = () => {}
@@ -132,7 +130,7 @@
     taskBriefPreviewOrigin = null
     taskBriefPreviewOpen = true
   }
-  $: interactionLocked = cooking || submitting || cancelling || approving
+  $: interactionLocked = cooking || cookedDraftReady || submitting || cancelling || approving
   // Nudge the preview button when the full-screen brief collapses back to it.
   $: {
     const nowOpen = taskBriefPreviewOpen
@@ -156,27 +154,18 @@
     return t($locale, source, values)
   }
 
-  export function insertAttachments(attachments: AttachmentView[]) {
-    return feedbackEditor?.insertAttachments(attachments) ?? false
+  export function applyDraftOperation(operation: DraftOperation): boolean {
+    return feedbackEditor?.applyDraftOperation(operation) ?? false
   }
 
-  export function applyExternalMarkdown(markdown: string): boolean {
-    return feedbackEditor?.applyExternalMarkdown(markdown) ?? false
+  export function pendingSpeechSegments(): SpeechCleanupSegment[] {
+    return feedbackEditor?.pendingSpeechSegments() ?? []
   }
 
-  export function appendTranscript(
-    text: string,
-    options?: Parameters<FeedbackEditorHandle['appendTranscript']>[1],
-  ) {
-    feedbackEditor?.appendTranscript(text, options)
-  }
-
-  export function appendClipboardCapture(text: string, label: string) {
-    return feedbackEditor?.appendClipboardCapture(text, label) ?? false
-  }
-
-  export function appendCapturedAttachment(attachment: AttachmentView, label: string) {
-    return feedbackEditor?.appendCapturedAttachment(attachment, label) ?? false
+  export function replaceSpeechSegments(
+    replacements: Array<{ segmentId: string; originalText: string; nextText: string }>,
+  ): boolean {
+    return feedbackEditor?.replaceSpeechSegments(replacements) ?? false
   }
 
   export function removeAttachmentReference(attachmentId: string) {
@@ -237,12 +226,9 @@
             <TaskBriefPanel
               bind:open={taskBriefOpen}
               {workspace}
+              {activeActionId}
               pulseNonce={briefPulseNonce}
-              insertDisabled={interactionLocked ||
-                workspace.request.status === 'completed' ||
-                workspace.request.status === 'cancelled'}
-              {currentActionIndex}
-              {onToggleActionChannel}
+              onSelectAction={onSelectAction}
               onOpenPreview={(origin) => {
                 taskBriefPreviewOrigin = origin
                 taskBriefPreviewOpen = true
@@ -260,6 +246,8 @@
               bind:this={feedbackEditor}
               {workspace}
               {draftBody}
+              {editorDocument}
+              {editorEpoch}
               {savedRevision}
               {savePhase}
               {attachmentPreviews}
@@ -268,16 +256,15 @@
               {cooking}
               {cookedDraftReady}
               {cookedPreviewModel}
+              {cookedPreviewMarkdown}
               locked={interactionLocked}
               cookedMarkdown={publishedFeedback?.markdown ?? ''}
               uncookedMarkdown={publishedFeedback?.uncooked_markdown ?? draftBody}
-              {draftEditors}
-              {visibleRequestId}
-              {onDraftChangeFor}
-              {onEditorReady}
-              {onPrepareNonSpeechInsert}
-              {cleanupCount}
               onChange={onDraftChange}
+              {tidyConfig}
+              {tidyAutoThreshold}
+              onTidyError={onTidyError}
+              onOpenTidySettings={onOpenTidySettings}
               onRestoreOriginal={onRestoreOriginal}
               onOpenAttachment={openAttachmentPreviewById}
             />
@@ -338,6 +325,9 @@
     <TaskBriefPreview
       bind:open={taskBriefPreviewOpen}
       {workspace}
+      {editorDocument}
+      previews={attachmentPreviews}
+      onOpenAttachment={openAttachmentPreviewById}
       {formatTime}
       {resolveHostProfile}
       {onToggleRamble}
@@ -345,12 +335,6 @@
       {rambleStartedOnce}
       {rambleBusy}
       origin={taskBriefPreviewOrigin}
-      insertDisabled={interactionLocked}
-      {currentActionIndex}
-      {onToggleActionChannel}
-      {actionNotes}
-      attachmentPreviews={attachmentPreviews}
-      onOpenAttachment={openAttachmentPreviewById}
     />
   {:else}
     <div class="grid h-full place-items-center p-8 text-center">

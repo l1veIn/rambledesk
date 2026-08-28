@@ -114,10 +114,8 @@ pub async fn begin_screen_capture(
             restore,
         });
     }
-    // Hide RambleDesk's own windows before pixels are read: clicking the
-    // console raises the app (and its main window) over the user's target on
-    // some platforms, which would otherwise block the view and end up inside
-    // the captured image.
+    // Keep the floating console out of the captured pixels. The main window is
+    // intentionally left in its current visible or minimized state.
     hide_capture_windows(&app);
 
     let result = async {

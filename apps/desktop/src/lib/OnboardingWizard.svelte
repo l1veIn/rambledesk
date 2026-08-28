@@ -20,7 +20,6 @@
     Rocket,
     ShieldCheck,
     Sparkles,
-    Volume2,
   } from '@lucide/svelte'
   import { onMount } from 'svelte'
 
@@ -115,17 +114,35 @@
   let piStatusLoading = isTauri
   let dshBusy = false
   let promptCopyState: 'idle' | 'copied' | 'error' = 'idle'
+  let copyCelebrationKey = 0
   let notificationBusy = false
   let unlistenModelProgress: UnlistenFn | undefined
+
+  const copyCelebrationParticles = [
+    { x: -74, y: -38, color: '#67e8f9', delay: 0 },
+    { x: -58, y: -64, color: '#60a5fa', delay: 20 },
+    { x: -26, y: -72, color: '#c084fc', delay: 45 },
+    { x: 12, y: -76, color: '#fbbf24', delay: 10 },
+    { x: 48, y: -62, color: '#fb7185', delay: 35 },
+    { x: 76, y: -34, color: '#67e8f9', delay: 60 },
+    { x: 82, y: 8, color: '#a78bfa', delay: 25 },
+    { x: 60, y: 36, color: '#fbbf24', delay: 50 },
+    { x: 24, y: 48, color: '#34d399', delay: 15 },
+    { x: -18, y: 50, color: '#60a5fa', delay: 55 },
+    { x: -56, y: 34, color: '#fb7185', delay: 30 },
+    { x: -82, y: 4, color: '#fbbf24', delay: 65 },
+  ]
 
   $: selectedModel = models.find((model) => model.id === $speechModelId) ?? models[0]
   $: selectedHosts = [...hostSelections]
   $: modelProgressPercent = modelProgress
     ? Math.min(100, Math.round((modelProgress.downloaded / Math.max(1, modelProgress.total)) * 100))
     : 0
+  $: isFinalStep = step === steps.length - 1
   $: if (openWizard && !wasOpen) {
     wasOpen = true
     closing = false
+    promptCopyState = 'idle'
     step = Math.min(steps.length - 1, onboardingStep())
   }
   $: if (!openWizard && wasOpen) {
@@ -332,9 +349,7 @@
     try {
       await navigator.clipboard.writeText(starterPrompt)
       promptCopyState = 'copied'
-      window.setTimeout(() => {
-        if (promptCopyState === 'copied') promptCopyState = 'idle'
-      }, 2_000)
+      copyCelebrationKey += 1
     } catch {
       promptCopyState = 'error'
     }
@@ -374,33 +389,35 @@
     interactOutsideBehavior="ignore"
     escapeKeydownBehavior="ignore"
     class="flex max-h-[calc(100vh-2rem)] w-[min(760px,calc(100vw-2rem))] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none"
-    aria-describedby="onboarding-description"
+    aria-describedby={isFinalStep ? undefined : 'onboarding-description'}
   >
-    <Dialog.Header class="shrink-0 border-b bg-muted/25 px-7 py-6">
-      <div class="flex items-center gap-3">
-        <span class="grid size-10 place-items-center rounded-xl bg-primary text-primary-foreground">
-          <Sparkles class="size-5" />
-        </span>
-        <div>
-          <Dialog.Title>{tr('Welcome to RambleDesk')}</Dialog.Title>
-          <Dialog.Description id="onboarding-description" class="mt-1 text-xs">
-            {tr('Finish common setup in a few steps. Every option can be changed later in Settings.')}
-          </Dialog.Description>
+    {#if !isFinalStep}
+      <Dialog.Header class="shrink-0 border-b bg-muted/25 px-7 py-6">
+        <div class="flex items-center gap-3">
+          <span class="grid size-10 place-items-center rounded-xl bg-primary text-primary-foreground">
+            <Sparkles class="size-5" />
+          </span>
+          <div>
+            <Dialog.Title>{tr('Welcome to RambleDesk')}</Dialog.Title>
+            <Dialog.Description id="onboarding-description" class="mt-1 text-xs">
+              {tr('Finish common setup in a few steps. Every option can be changed later in Settings.')}
+            </Dialog.Description>
+          </div>
         </div>
-      </div>
-      <div class="mt-5 flex gap-1.5" aria-label={tr('Setup progress')}>
-        {#each steps as label, index}
-          <span
-            class={[
-              'h-1 flex-1 rounded-full transition-colors',
-              index <= step ? 'bg-primary' : 'bg-muted',
-            ]}
-            title={`${index + 1}. ${tr(label)}`}
-          ></span>
-        {/each}
-      </div>
-      <p class="m-0 mt-2 text-[10px] text-muted-foreground">{step + 1} / {steps.length} · {tr(steps[step])}</p>
-    </Dialog.Header>
+        <div class="mt-5 flex gap-1.5" aria-label={tr('Setup progress')}>
+          {#each steps as label, index}
+            <span
+              class={[
+                'h-1 flex-1 rounded-full transition-colors',
+                index <= step ? 'bg-primary' : 'bg-muted',
+              ]}
+              title={`${index + 1}. ${tr(label)}`}
+            ></span>
+          {/each}
+        </div>
+        <p class="m-0 mt-2 text-[10px] text-muted-foreground">{step + 1} / {steps.length} · {tr(steps[step])}</p>
+      </Dialog.Header>
+    {/if}
 
     <div class="min-h-0 flex-1 overflow-y-auto px-7 py-7">
       {#if steps[step] === 'Welcome'}
@@ -566,39 +583,150 @@
       {:else if steps[step] === 'Cooking'}
         <section class="mx-auto max-w-xl">
           <div class="flex gap-3"><ChefHat class="mt-0.5 size-6 text-primary" /><div><h2 class="m-0 text-lg font-semibold">{tr('Enable Feedback Cooking?')}</h2><p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{tr('Optional: use your own model service to turn a raw Ramble into formal feedback before submitting. The uncooked source is always preserved.')}</p></div></div>
-          <div class="mt-6 rounded-lg border bg-muted/20 p-4"><div class="flex items-center justify-between gap-4"><div><strong class="text-xs">{tr('Full Cook')}</strong><p class="mb-0 mt-1 text-[10px] text-muted-foreground">{tr('An API key is required and the feedback body is sent to your selected service.')}</p></div><button type="button" role="switch" aria-label={tr('Full Cook')} aria-checked={$cookingEnabled} class={['relative h-[22px] w-10 rounded-full transition-colors', $cookingEnabled ? 'bg-primary' : 'bg-input']} onclick={() => setCookingEnabled(!$cookingEnabled)}><span class={['absolute left-0.5 top-0.5 size-4 rounded-full bg-background shadow transition-transform', $cookingEnabled ? 'translate-x-5' : '']}></span></button></div>
+          <div class="mt-6 rounded-lg border bg-muted/20 p-4"><div class="flex items-center justify-between gap-4"><div><strong class="text-xs">Cooking</strong><p class="mb-0 mt-1 text-[10px] text-muted-foreground">{tr('An API key is required and the feedback body is sent to your selected service.')}</p></div><button type="button" role="switch" aria-label="Cooking" aria-checked={$cookingEnabled} class={['relative h-[22px] w-10 rounded-full transition-colors', $cookingEnabled ? 'bg-primary' : 'bg-input']} onclick={() => setCookingEnabled(!$cookingEnabled)}><span class={['absolute left-0.5 top-0.5 size-4 rounded-full bg-background shadow transition-transform', $cookingEnabled ? 'translate-x-5' : '']}></span></button></div>
             {#if $cookingEnabled}<div class="mt-5 grid gap-3 border-t pt-4"><label class="text-xs font-medium">{tr('Model provider')}<select class="mt-1.5 h-9 w-full rounded-md border bg-background px-3 text-xs" value={$cookingProvider} onchange={(event) => chooseCookingProvider((event.currentTarget as HTMLSelectElement).value as CookingProvider)}><option value="deepseek">DeepSeek</option><option value="openai">OpenAI</option><option value="compatible">{tr('OpenAI-compatible service')}</option></select></label><label class="text-xs font-medium">Base URL<input class="mt-1.5 h-9 w-full rounded-md border bg-background px-3 text-xs" type="url" value={$cookingBaseUrl} oninput={(event) => setCookingBaseUrl((event.currentTarget as HTMLInputElement).value)} /></label><div class="grid grid-cols-2 gap-3"><label class="text-xs font-medium">{tr('Model name')}<input class="mt-1.5 h-9 w-full rounded-md border bg-background px-3 text-xs" value={$cookingModel} oninput={(event) => setCookingModel((event.currentTarget as HTMLInputElement).value)} /></label><label class="text-xs font-medium">{tr('Reasoning effort')}<select class="mt-1.5 h-9 w-full rounded-md border bg-background px-3 text-xs" value={$cookingReasoningEffort} onchange={(event) => setCookingReasoningEffort((event.currentTarget as HTMLSelectElement).value as CookingReasoningEffort)}><option value="none">{tr('None')}</option><option value="minimal">minimal</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option><option value="xhigh">xhigh</option><option value="max">max</option></select></label></div><label class="text-xs font-medium">API Key<input class="mt-1.5 h-9 w-full rounded-md border bg-background px-3 text-xs" type="password" autocomplete="off" value={$cookingApiKey} placeholder="sk-…" oninput={(event) => setCookingApiKey((event.currentTarget as HTMLInputElement).value)} /></label></div>{/if}
           </div>
         </section>
       {:else}
-        <div class="mx-auto flex max-w-lg flex-col items-center pt-8 text-center">
-          <span class="grid size-16 place-items-center rounded-2xl bg-success/10 text-success"><Check class="size-8" /></span>
-          <h2 class="mb-0 mt-5 text-xl font-semibold">{tr('You are all set')}</h2>
-          <p class="mb-0 mt-3 text-sm leading-6 text-muted-foreground">{tr('You can now start a Ramble directly from a coding tool. Every setting can be changed from the top-right Settings button.')}</p>
-          <div class="mt-6 w-full rounded-lg border bg-muted/20 p-4 text-left">
-            <div class="flex items-center justify-between gap-2">
-              <p class="m-0 text-[10px] font-medium text-muted-foreground">{tr('Paste this example prompt into your coding agent or coding tool:')}</p>
-              <Button variant="outline" size="sm" class="h-7 px-2 text-[10px]" onclick={() => void copyStarterPrompt()}>
-                <Clipboard data-icon="inline-start" />
-                {promptCopyState === 'copied' ? tr('Copied') : promptCopyState === 'error' ? tr('Copy failed') : tr('Copy')}
+        <div class="mx-auto flex max-w-xl flex-col items-center py-5 text-center">
+          <span class="grid size-14 place-items-center rounded-2xl bg-success/10 text-success ring-1 ring-success/20"><Check class="size-7" /></span>
+          <Dialog.Title class="mb-0 mt-5 text-2xl font-semibold">{tr('You are all set')}</Dialog.Title>
+
+          <section class="mt-8 w-full rounded-2xl border-2 border-primary/50 bg-primary/[0.06] p-6 text-left shadow-[0_18px_50px_-32px_hsl(var(--primary))] ring-4 ring-primary/5" aria-labelledby="starter-prompt-title">
+            <div class="text-center">
+              <h3 id="starter-prompt-title" class="m-0 text-lg font-semibold text-foreground">{tr('Copy this prompt, then start')}</h3>
+              <p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{tr('Paste it into your coding agent and send it to start your first Ramble.')}</p>
+            </div>
+
+            <code class="mt-5 block select-all rounded-xl border bg-background px-4 py-4 text-center text-sm font-medium text-foreground shadow-sm">{starterPrompt}</code>
+
+            <div class="mt-4 grid gap-3 sm:grid-cols-2">
+              <div class="relative">
+                <Button
+                  size="lg"
+                  variant={promptCopyState === 'copied' ? 'outline' : 'default'}
+                  class="h-11 w-full"
+                  onclick={() => void copyStarterPrompt()}
+                >
+                  {#if promptCopyState === 'copied'}<Check data-icon="inline-start" />{:else}<Clipboard data-icon="inline-start" />{/if}
+                  {promptCopyState === 'copied' ? tr('Copied — ready to start') : promptCopyState === 'error' ? tr('Copy failed — try again') : tr('Copy starter prompt')}
+                </Button>
+                {#key copyCelebrationKey}
+                  {#if promptCopyState === 'copied'}
+                    <span class="copy-celebration" aria-hidden="true">
+                      {#each copyCelebrationParticles as particle}
+                        <i
+                          class="copy-celebration__spark"
+                          style={`--spark-x:${particle.x}px;--spark-y:${particle.y}px;--spark-color:${particle.color};--spark-delay:${particle.delay}ms`}
+                        ></i>
+                      {/each}
+                    </span>
+                  {/if}
+                {/key}
+              </div>
+              <Button
+                size="lg"
+                variant={promptCopyState === 'copied' ? 'default' : 'secondary'}
+                class="h-11 w-full"
+                disabled={promptCopyState !== 'copied'}
+                title={promptCopyState === 'copied' ? undefined : tr('Copy the prompt to continue')}
+                onclick={() => complete()}
+              >
+                <Check data-icon="inline-start" />
+                {tr('Start using RambleDesk')}
               </Button>
             </div>
-            <code class="mt-2 block rounded-md bg-background px-3 py-2 text-left text-xs text-foreground">{starterPrompt}</code>
-          </div>
-          <div class="mt-3 flex items-center gap-2 rounded-lg border bg-muted/20 px-4 py-3 text-xs text-muted-foreground"><Volume2 class="size-4 text-primary" />{tr('Tip: the microphone is ready once a voice model finishes downloading.')}</div>
+          </section>
         </div>
       {/if}
     </div>
 
-    <footer class="flex shrink-0 items-center justify-between border-t bg-muted/15 px-7 py-4">
-      <Button variant="ghost" size="sm" onclick={() => complete(false)}>{tr('Set up later')}</Button>
-      <div class="flex items-center gap-2">
-        {#if step > 0 && !storageRestartRequired && !permissionRestartRequired}<Button variant="outline" size="sm" onclick={() => move(step - 1)}><ChevronLeft data-icon="inline-start" />{tr('Back')}</Button>{/if}
-        {#if storageRestartRequired}<Button disabled={storageBusy} onclick={() => void restartForStorage()}><Rocket data-icon="inline-start" />{tr('Restart and continue')}</Button>
-        {:else if permissionRestartRequired}<Button onclick={() => void restartForPermissions()}><Rocket data-icon="inline-start" />{tr('Restart and continue')}</Button>
-        {:else if step === steps.length - 1}<Button onclick={() => complete()}><Check data-icon="inline-start" />{tr('Start using RambleDesk')}</Button>
-        {:else}<Button disabled={storageBusy || modelBusy} onclick={() => move(step + 1)}>{steps[step] === 'Voice input' && !selectedModel?.installed ? tr('Skip voice setup') : tr('Continue')}<ChevronRight data-icon="inline-end" /></Button>{/if}
-      </div>
-    </footer>
+    {#if !isFinalStep}
+      <footer class="flex shrink-0 items-center justify-between border-t bg-muted/15 px-7 py-4">
+        <Button variant="ghost" size="sm" onclick={() => complete(false)}>{tr('Set up later')}</Button>
+        <div class="flex items-center gap-2">
+          {#if step > 0 && !storageRestartRequired && !permissionRestartRequired}<Button variant="outline" size="sm" onclick={() => move(step - 1)}><ChevronLeft data-icon="inline-start" />{tr('Back')}</Button>{/if}
+          {#if storageRestartRequired}<Button disabled={storageBusy} onclick={() => void restartForStorage()}><Rocket data-icon="inline-start" />{tr('Restart and continue')}</Button>
+          {:else if permissionRestartRequired}<Button onclick={() => void restartForPermissions()}><Rocket data-icon="inline-start" />{tr('Restart and continue')}</Button>
+          {:else}<Button disabled={storageBusy || modelBusy} onclick={() => move(step + 1)}>{steps[step] === 'Voice input' && !selectedModel?.installed ? tr('Skip voice setup') : tr('Continue')}<ChevronRight data-icon="inline-end" /></Button>{/if}
+        </div>
+      </footer>
+    {/if}
   </Dialog.Content>
 </Dialog.Root>
+
+<style>
+  .copy-celebration {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    pointer-events: none;
+  }
+
+  .copy-celebration::before,
+  .copy-celebration::after {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 18px;
+    height: 18px;
+    border: 2px solid rgb(103 232 249 / 75%);
+    border-radius: 999px;
+    content: '';
+    animation: copy-celebration-ring 620ms ease-out both;
+  }
+
+  .copy-celebration::after {
+    border-color: rgb(251 191 36 / 75%);
+    animation-delay: 90ms;
+  }
+
+  .copy-celebration__spark {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--spark-color);
+    box-shadow: 0 0 9px var(--spark-color);
+    opacity: 0;
+    animation: copy-celebration-spark 900ms cubic-bezier(0.16, 0.8, 0.3, 1) var(--spark-delay) both;
+  }
+
+  @keyframes copy-celebration-ring {
+    0% {
+      opacity: 0.9;
+      transform: translate(-50%, -50%) scale(0.25);
+    }
+    100% {
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(4.8);
+    }
+  }
+
+  @keyframes copy-celebration-spark {
+    0% {
+      opacity: 0;
+      transform: translate(-50%, -50%) rotate(0deg) scale(0.25);
+    }
+    14% {
+      opacity: 1;
+      transform: translate(-50%, -50%) rotate(35deg) scale(1.15);
+    }
+    72% {
+      opacity: 1;
+      transform: translate(calc(-50% + var(--spark-x)), calc(-50% + var(--spark-y))) rotate(135deg) scale(1);
+    }
+    100% {
+      opacity: 0;
+      transform: translate(calc(-50% + var(--spark-x)), calc(-50% + var(--spark-y))) rotate(180deg) scale(0.2);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .copy-celebration {
+      display: none;
+    }
+  }
+</style>

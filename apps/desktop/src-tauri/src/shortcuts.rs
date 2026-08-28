@@ -53,6 +53,8 @@ impl Default for ShortcutConfig {
 pub struct ShortcutSettings {
     config: Mutex<ShortcutConfig>,
     capture_active: AtomicBool,
+    ramble_pressed: AtomicBool,
+    screen_capture_pressed: AtomicBool,
 }
 
 impl ShortcutSettings {
@@ -63,6 +65,8 @@ impl ShortcutSettings {
         let settings = Self {
             config: Mutex::new(config),
             capture_active: AtomicBool::new(false),
+            ramble_pressed: AtomicBool::new(false),
+            screen_capture_pressed: AtomicBool::new(false),
         };
         settings.apply_all(app);
         settings
@@ -77,17 +81,14 @@ impl ShortcutSettings {
     }
 
     fn register_action(&self, app: &AppHandle, action: &'static str) -> Result<(), String> {
-        let config = self
-            .config
-            .lock()
-            .map_err(|_| "快捷键配置锁已损坏".to_owned())?;
-        let value = value_for_action(action, &config)?;
-        let shortcut = validate_shortcut(value)?;
-        app.global_shortcut()
-            .on_shortcut(shortcut, move |app, _shortcut, event| {
-                handle_pressed(app, action, event.state());
-            })
-            .map_err(|error| format!("无法注册快捷键「{value}」：{error}"))?;
+        let value = {
+            let config = self
+                .config
+                .lock()
+                .map_err(|_| "快捷键配置锁已损坏".to_owned())?;
+            value_for_action(action, &config)?.to_owned()
+        };
+        register_value(app, action, &value)?;
         tracing::info!(%action, %value, "registered global shortcut");
         Ok(())
     }
@@ -102,7 +103,7 @@ impl ShortcutSettings {
         shortcut: &str,
     ) -> Result<ShortcutConfig, String> {
         let action_key = static_action(action)?;
-        let validated = validate_shortcut(shortcut)?;
+        validate_shortcut(shortcut)?;
         let mut config = self
             .config
             .lock()
@@ -116,30 +117,24 @@ impl ShortcutSettings {
         if previous == shortcut {
             return Ok(config.clone());
         }
-        if let Ok(previous_shortcut) = previous.parse::<Shortcut>() {
-            let _ = app.global_shortcut().unregister(previous_shortcut);
-        }
-        if let Err(error) =
-            app.global_shortcut()
-                .on_shortcut(validated, move |app, _shortcut, event| {
-                    handle_pressed(app, action_key, event.state());
-                })
-        {
+        unregister_value(app, &previous);
+        if let Err(error) = register_value(app, action_key, shortcut) {
             // Roll back to the previous binding; keep reporting the real error.
-            if let Ok(previous_shortcut) = previous.parse::<Shortcut>()
-                && let Err(rollback) = app.global_shortcut().on_shortcut(
-                    previous_shortcut,
-                    move |app, _shortcut, event| {
-                        handle_pressed(app, action_key, event.state());
-                    },
-                )
-            {
+            if let Err(rollback) = register_value(app, action_key, &previous) {
                 tracing::warn!(%rollback, action = action_key, "failed to restore previous global shortcut");
             }
-            return Err(format!("无法注册快捷键「{shortcut}」：{error}"));
+            return Err(error);
         }
-        set_value_for_action(action_key, &mut config, shortcut.to_owned());
-        save_config(&config);
+        let mut next = config.clone();
+        set_value_for_action(action_key, &mut next, shortcut.to_owned());
+        if let Err(error) = save_config(&next) {
+            unregister_value(app, shortcut);
+            if let Err(rollback) = register_value(app, action_key, &previous) {
+                tracing::warn!(%rollback, action = action_key, "failed to restore previous global shortcut after persistence failure");
+            }
+            return Err(error);
+        }
+        *config = next;
         tracing::info!(
             action = action_key,
             value = shortcut,
@@ -153,10 +148,61 @@ impl ShortcutSettings {
             .config
             .lock()
             .map_err(|_| "快捷键配置锁已损坏".to_owned())?;
-        *config = ShortcutConfig::default();
-        self.apply_all(app);
-        save_config(&config);
+        let previous = config.clone();
+        let next = ShortcutConfig::default();
+        if previous == next {
+            save_config(&next)?;
+            return Ok(next);
+        }
+
+        unregister_config(app, &previous);
+        if let Err(error) = register_config(app, &next) {
+            unregister_config(app, &next);
+            restore_config(app, &previous);
+            return Err(error);
+        }
+        if let Err(error) = save_config(&next) {
+            unregister_config(app, &next);
+            restore_config(app, &previous);
+            return Err(error);
+        }
+        *config = next;
         Ok(config.clone())
+    }
+}
+
+fn register_value(app: &AppHandle, action: &'static str, value: &str) -> Result<(), String> {
+    let shortcut = validate_shortcut(value)?;
+    app.global_shortcut()
+        .on_shortcut(shortcut, move |app, _shortcut, event| {
+            handle_pressed(app, action, event.state());
+        })
+        .map_err(|error| format!("无法注册快捷键「{value}」：{error}"))
+}
+
+fn unregister_value(app: &AppHandle, value: &str) {
+    if let Ok(shortcut) = value.parse::<Shortcut>() {
+        let _ = app.global_shortcut().unregister(shortcut);
+    }
+}
+
+fn unregister_config(app: &AppHandle, config: &ShortcutConfig) {
+    unregister_value(app, &config.ramble_toggle);
+    unregister_value(app, &config.screen_capture);
+}
+
+fn register_config(app: &AppHandle, config: &ShortcutConfig) -> Result<(), String> {
+    register_value(app, RAMBLE_TOGGLE_ACTION, &config.ramble_toggle)?;
+    if let Err(error) = register_value(app, SCREEN_CAPTURE_ACTION, &config.screen_capture) {
+        unregister_value(app, &config.ramble_toggle);
+        return Err(error);
+    }
+    Ok(())
+}
+
+fn restore_config(app: &AppHandle, config: &ShortcutConfig) {
+    if let Err(error) = register_config(app, config) {
+        tracing::warn!(%error, "failed to restore previous global shortcut configuration");
     }
 }
 
@@ -246,13 +292,18 @@ fn is_function_key(key: Code) -> bool {
 }
 
 fn handle_pressed(app: &AppHandle, action: &'static str, state: ShortcutState) {
-    if state != ShortcutState::Pressed {
+    let Some(settings) = app.try_state::<ShortcutSettings>() else {
         return;
-    }
-    if app
-        .try_state::<ShortcutSettings>()
-        .is_some_and(|settings| settings.capture_active.load(Ordering::SeqCst))
-    {
+    };
+    let pressed = match action {
+        RAMBLE_TOGGLE_ACTION => &settings.ramble_pressed,
+        _ => &settings.screen_capture_pressed,
+    };
+    if !should_emit_shortcut(
+        state,
+        pressed,
+        settings.capture_active.load(Ordering::SeqCst),
+    ) {
         return;
     }
     let event = match action {
@@ -272,6 +323,14 @@ fn handle_pressed(app: &AppHandle, action: &'static str, state: ShortcutState) {
     if let Err(error) = app.emit_to(MAIN_LABEL, event, payload) {
         tracing::warn!(%error, action, "failed to emit global shortcut event");
     }
+}
+
+fn should_emit_shortcut(state: ShortcutState, pressed: &AtomicBool, capture_active: bool) -> bool {
+    if state == ShortcutState::Released {
+        pressed.store(false, Ordering::SeqCst);
+        return false;
+    }
+    !pressed.swap(true, Ordering::SeqCst) && !capture_active
 }
 
 fn config_path() -> Option<PathBuf> {
@@ -294,19 +353,14 @@ fn load_config() -> ShortcutConfig {
     loaded.unwrap_or_default()
 }
 
-fn save_config(config: &ShortcutConfig) {
-    let Some(path) = config_path() else {
-        return;
-    };
+fn save_config(config: &ShortcutConfig) -> Result<(), String> {
+    let path = config_path().ok_or_else(|| "无法定位快捷键配置目录".to_owned())?;
     if let Some(parent) = path.parent() {
-        let _ = fs::create_dir_all(parent);
+        fs::create_dir_all(parent).map_err(|error| format!("无法创建快捷键配置目录：{error}"))?;
     }
-    let Ok(json) = serde_json::to_string_pretty(config) else {
-        return;
-    };
-    if let Err(error) = fs::write(&path, json) {
-        tracing::warn!(%error, path = %path.display(), "failed to save shortcut settings");
-    }
+    let json = serde_json::to_string_pretty(config)
+        .map_err(|error| format!("无法编码快捷键配置：{error}"))?;
+    fs::write(&path, json).map_err(|error| format!("无法保存快捷键配置：{error}"))
 }
 
 #[tauri::command]
@@ -346,6 +400,10 @@ pub fn set_shortcut_capture_active(
     state: tauri::State<'_, ShortcutSettings>,
 ) -> Result<(), String> {
     state.capture_active.store(active, Ordering::SeqCst);
+    if !active {
+        state.ramble_pressed.store(false, Ordering::SeqCst);
+        state.screen_capture_pressed.store(false, Ordering::SeqCst);
+    }
     Ok(())
 }
 
@@ -395,5 +453,45 @@ mod tests {
     #[test]
     fn loaded_config_must_parse_and_stay_distinct() {
         assert!(load_config().ramble_toggle != load_config().screen_capture);
+    }
+
+    #[test]
+    fn repeated_pressed_events_emit_once_until_release() {
+        let pressed = AtomicBool::new(false);
+        assert!(should_emit_shortcut(
+            ShortcutState::Pressed,
+            &pressed,
+            false
+        ));
+        assert!(!should_emit_shortcut(
+            ShortcutState::Pressed,
+            &pressed,
+            false
+        ));
+        assert!(!should_emit_shortcut(
+            ShortcutState::Released,
+            &pressed,
+            false
+        ));
+        assert!(should_emit_shortcut(
+            ShortcutState::Pressed,
+            &pressed,
+            false
+        ));
+    }
+
+    #[test]
+    fn shortcut_capture_swallows_the_pressed_event() {
+        let pressed = AtomicBool::new(false);
+        assert!(!should_emit_shortcut(
+            ShortcutState::Pressed,
+            &pressed,
+            true
+        ));
+        assert!(!should_emit_shortcut(
+            ShortcutState::Released,
+            &pressed,
+            true
+        ));
     }
 }

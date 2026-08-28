@@ -16,6 +16,7 @@ use tauri::{
     WindowEvent, ipc::Response, window::Color,
 };
 
+#[cfg(target_os = "macos")]
 const MAIN_LABEL: &str = "main";
 const OVERLAY_LABEL: &str = "capture-overlay";
 const SCROLL_LABEL: &str = "capture-scroll";
@@ -160,7 +161,6 @@ struct MonitorRegion {
 #[derive(Debug, Clone, Copy, Default)]
 struct RestoreWindows {
     console: bool,
-    main: bool,
 }
 
 enum CaptureSession {
@@ -306,29 +306,16 @@ fn console_was_visible(app: &AppHandle) -> bool {
 }
 
 /// Which RambleDesk windows should be hidden while a capture is in flight and
-/// then restored afterwards.
-///
-/// The main window is hidden whenever it is actually on screen: clicking the
-/// always-on-top console raises the whole app on macOS (and can do the same on
-/// Windows), which puts the main window over the user's target and into the
-/// captured pixels if left alone. Hidden or minimized windows neither block the
-/// view nor appear in the capture, so they are left untouched.
+/// then restored afterwards. The main window deliberately stays untouched so a
+/// visible window remains visible and a minimized window is never reopened by
+/// the capture lifecycle.
 fn capture_windows_restore(app: &AppHandle) -> RestoreWindows {
     let console = console_was_visible(app);
-    let main = app
-        .get_webview_window(MAIN_LABEL)
-        .map(|window| {
-            window.is_visible().unwrap_or(false) && !window.is_minimized().unwrap_or(false)
-        })
-        .unwrap_or(false);
-    RestoreWindows { console, main }
+    RestoreWindows { console }
 }
 
 fn hide_capture_windows(app: &AppHandle) {
     if let Some(window) = app.get_webview_window(RAMBLE_CONSOLE_LABEL) {
-        let _ = window.hide();
-    }
-    if let Some(window) = app.get_webview_window(MAIN_LABEL) {
         let _ = window.hide();
     }
 }
@@ -337,13 +324,6 @@ fn restore_capture_windows(app: &AppHandle, restore: RestoreWindows) {
     if restore.console
         && let Some(window) = app.get_webview_window(RAMBLE_CONSOLE_LABEL)
     {
-        let _ = window.show();
-        let _ = window.set_focus();
-    }
-    if restore.main
-        && let Some(window) = app.get_webview_window(MAIN_LABEL)
-    {
-        let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
     }

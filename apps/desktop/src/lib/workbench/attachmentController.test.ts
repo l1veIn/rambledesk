@@ -44,7 +44,8 @@ function controllerContext() {
       setDragActive: vi.fn(),
       saveDraftNow: vi.fn(async () => true),
       waitForRambleMarkdown: vi.fn(async () => undefined),
-      appendRambleMarkdown: vi.fn(async () => undefined),
+      routeDraftOperation: vi.fn(async () => undefined),
+      activeActionFor: () => null,
       applyWorkspaceMutation: vi.fn(),
     },
     setBusy,
@@ -151,5 +152,108 @@ describe('attachmentController screen capture state', () => {
     })
     expect(context.setMessage).not.toHaveBeenCalledWith('Inserting capture…', 'info')
     cleanup()
+  })
+
+  it('keeps the request Action selected when capture started', async () => {
+    const workspace = {
+      request: { request_id: 'request-1' },
+      attachments: [] as Array<{ attachment_id: string; file_name: string; media_type: string }>,
+      draft: { saved_revision: 1 },
+    }
+    const inserted = {
+      ...workspace,
+      draft: { saved_revision: 2 },
+      attachments: [{ attachment_id: 'att-1', file_name: 'shot.png', media_type: 'image/png' }],
+    }
+    let action = { actionId: 'action-a', actionIndex: 0, title: 'First' }
+    const { context } = controllerContext()
+    context.getWorkspace = () => workspace as never
+    context.activeActionFor = (() => action) as never
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn(() => 'blob:preview'),
+      revokeObjectURL: vi.fn(),
+    })
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === 'add_completed_screen_capture') return inserted
+      if (command === 'read_feedback_attachment') return new ArrayBuffer(0)
+      return undefined
+    })
+
+    const controller = createAttachmentController(context)
+    const cleanup = controller.mount()
+    await vi.waitFor(() => expect(mocks.listeners.has('screen-capture-ready')).toBe(true))
+    await controller.startScreenCapture()
+    action = { actionId: 'action-b', actionIndex: 1, title: 'Second' }
+    mocks.listeners.get('screen-capture-ready')?.({
+      payload: { capture_session_id: 'capture-1', file_name: 'shot.png' },
+    })
+
+    await vi.waitFor(() => expect(context.routeDraftOperation).toHaveBeenCalled())
+    expect(context.routeDraftOperation).toHaveBeenCalledWith(
+      'request-1',
+      expect.objectContaining({
+        kind: 'appendAttachment',
+        action: { actionId: 'action-a', actionIndex: 0, title: 'First' },
+      }),
+    )
+    cleanup()
+  })
+
+  it('routes file-picker attachments to the request and Action captured at selection time', async () => {
+    const target = {
+      request: { request_id: 'request-1' },
+      attachments: [],
+      draft: { saved_revision: 1 },
+    }
+    const other = {
+      request: { request_id: 'request-2' },
+      attachments: [],
+      draft: { saved_revision: 8 },
+    }
+    const inserted = {
+      ...target,
+      attachments: [
+        {
+          attachment_id: 'att-1',
+          file_name: 'notes.txt',
+          media_type: 'text/plain',
+        },
+      ],
+      draft: { saved_revision: 2 },
+    }
+    let visible = target
+    const { context } = controllerContext()
+    context.getWorkspace = () => visible as never
+    context.activeActionFor = (() => ({
+      actionId: 'action-a',
+      actionIndex: 0,
+      title: 'First',
+    })) as never
+    context.saveDraftNow = vi.fn(async () => {
+      visible = other
+      return true
+    })
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === 'get_feedback_workspace') return target
+      if (command === 'add_feedback_attachment') return inserted
+      return undefined
+    })
+    const file = {
+      name: 'notes.txt',
+      size: 4,
+      arrayBuffer: async () => new Uint8Array([1, 2, 3, 4]).buffer,
+    } as File
+
+    await createAttachmentController(context).importFiles([file])
+
+    expect(context.routeDraftOperation).toHaveBeenCalledWith(
+      'request-1',
+      expect.objectContaining({
+        kind: 'appendAttachment',
+        attachment: inserted.attachments[0],
+        action: { actionId: 'action-a', actionIndex: 0, title: 'First' },
+      }),
+    )
+    expect(context.applyWorkspaceMutation).not.toHaveBeenCalled()
   })
 })

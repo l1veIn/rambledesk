@@ -12,19 +12,31 @@
 
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
+  import type { JSONContent } from '@tiptap/core'
+
   import RichFeedbackEditor from '$lib/RichFeedbackEditor.svelte'
-  import type { FeedbackDraftSnapshot } from '$lib/feedbackDraftDocument'
-  import SessionDraftEditor from './SessionDraftEditor.svelte'
-  import type { AttachmentView, FeedbackWorkspaceView } from '$lib/feedback'
+  import type { DraftOperation } from '$lib/draftOperations'
+  import type { FeedbackWorkspaceView } from '$lib/feedback'
+  import {
+    decodeFeedbackDraftDocument,
+    type FeedbackDraftSnapshot,
+  } from '$lib/feedbackDraftDocument'
+  import { tidySpeechSegments, type TidyConfig } from '$lib/lightCleanup'
+  import {
+    speechCleanupCandidates,
+    type SpeechCleanupSegment,
+  } from '$lib/speechBlockMetadata'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
+  import { shouldAutoTidy } from '$lib/tidyAuto'
   import { hasCookedPublishedVariant } from '$lib/publishedFeedback'
   import MarkdownPreview from './MarkdownPreview.svelte'
-  import type { FeedbackEditorHandle, SavePhase } from './types'
-  import { actionChannelFor } from './actionChannelState'
+  import type { SavePhase } from './types'
 
   export let workspace: FeedbackWorkspaceView
   export let draftBody = ''
+  export let editorDocument: JSONContent | null = null
+  export let editorEpoch = 0
   export let savedRevision = 0
   export let savePhase: SavePhase = 'idle'
   export let attachmentPreviews: Record<string, string> = {}
@@ -32,26 +44,25 @@
   export let cooking = false
   export let cookedDraftReady = false
   export let cookedPreviewModel = ''
+  export let cookedPreviewMarkdown = ''
   export let locked = false
-  export let cleanupCount = 0
   export let cookedMarkdown = ''
   export let uncookedMarkdown = ''
   export let formatTime: (value: string | null | undefined) => string
-  export let onChange: (markdown: string) => void = () => {}
+  export let onChange: (snapshot: FeedbackDraftSnapshot) => void = () => {}
   export let onRestoreOriginal: () => void = () => {}
   export let onOpenAttachment: (attachmentId: string) => void = () => {}
-  export let draftEditors: Array<{
-    requestId: string
-    initialDocumentJson: string
-    initialMarkdown: string
-  }> = []
-  export let visibleRequestId = ''
-  export let onDraftChangeFor: (requestId: string, snapshot: FeedbackDraftSnapshot) => void = () => {}
-  export let onEditorReady: (requestId: string, editor: FeedbackEditorHandle | null) => void = () => {}
-  export let onPrepareNonSpeechInsert: (requestId: string) => void = () => {}
+  export let tidyConfig: TidyConfig | null = null
+  export let tidyAutoThreshold = 0
+  export let onTidyError: (message: string) => void = () => {}
+  export let onOpenTidySettings: () => void = () => {}
+
+  let tidyBusy = false
+  let pendingCount = 0
+  let tidyingSegmentIds: string[] = []
+  let lastAutoTidyAttempt = ''
 
   let richEditor: RichFeedbackEditor
-  const sessionEditors: Record<string, RichFeedbackEditor> = {}
   let publishedView: 'cooked' | 'uncooked' = 'cooked'
 
   $: readOnly =
@@ -59,11 +70,13 @@
   $: editingDisabled = readOnly || locked
   $: hasCookedVariant = readOnly && hasCookedPublishedVariant(cookedMarkdown, uncookedMarkdown)
   $: displayedMarkdown =
-    readOnly
-      ? hasCookedVariant && publishedView === 'uncooked'
+    cookedDraftReady
+      ? cookedPreviewMarkdown
+      : hasCookedVariant && publishedView === 'cooked'
+      ? cookedMarkdown
+      : hasCookedVariant && publishedView === 'uncooked'
         ? uncookedMarkdown
-        : cookedMarkdown || uncookedMarkdown
-      : draftBody
+        : draftBody
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
@@ -76,71 +89,86 @@
     return `${tr('Saved')} · r${savedRevision}`
   }
 
-  function visibleEditor() {
-    return sessionEditors[visibleRequestId] ?? richEditor
+  export function applyDraftOperation(operation: DraftOperation): boolean {
+    return richEditor?.applyDraftOperation(operation) ?? false
   }
 
-  function captureSessionEditor(requestId: string, editor: FeedbackEditorHandle | null) {
-    if (import.meta.env.DEV) {
-      console.log('[ramble-cleanup] panel editor-ready request=', requestId, 'editor=', editor != null)
+  export function pendingSpeechSegments(): SpeechCleanupSegment[] {
+    return richEditor?.pendingSpeechSegments() ?? []
+  }
+
+  export function replaceSpeechSegments(
+    replacements: Array<{ segmentId: string; originalText: string; nextText: string }>,
+  ): boolean {
+    return richEditor?.replaceSpeechSegments(replacements) ?? false
+  }
+
+  $: tidyReady = Boolean(tidyConfig?.apiKey.trim() && tidyConfig.model.trim())
+  $: {
+    editorEpoch
+    editorDocument
+    const candidates = richEditor?.pendingSpeechSegments() ??
+      (editorDocument ? speechCleanupCandidates(editorDocument) : [])
+    pendingCount = candidates.length
+    const shouldRun = shouldAutoTidy(pendingCount, tidyAutoThreshold)
+    if (!shouldRun) {
+      lastAutoTidyAttempt = ''
+    } else if (richEditor && tidyReady && !tidyBusy && !editingDisabled) {
+      const attempt = autoTidyAttemptKey(candidates)
+      if (attempt !== lastAutoTidyAttempt) {
+        lastAutoTidyAttempt = attempt
+        void tidyNow(true)
+      }
     }
-    if (editor) sessionEditors[requestId] = editor as RichFeedbackEditor
-    else delete sessionEditors[requestId]
-    onEditorReady(requestId, editor)
   }
 
-  export function insertAttachments(attachments: AttachmentView[]) {
-    if (visibleRequestId) onPrepareNonSpeechInsert(visibleRequestId)
-    return visibleEditor()?.insertAttachments(attachments) ?? false
+  function autoTidyAttemptKey(candidates: SpeechCleanupSegment[]): string {
+    return [
+      workspace.request.request_id,
+      String(tidyAutoThreshold),
+      ...candidates.map((segment) => segment.segmentId),
+    ].join('\u0000')
   }
 
-  export function applyExternalMarkdown(markdown: string): boolean {
-    return visibleEditor()?.applyExternalMarkdown(markdown) ?? false
-  }
-
-  export function insertQuotedBlock(lines: string[]) {
-    if (visibleRequestId) onPrepareNonSpeechInsert(visibleRequestId)
-    return visibleEditor()?.insertQuotedBlock?.(lines) ?? false
-  }
-
-  export function appendTranscript(
-    text: string,
-    options?: Parameters<FeedbackEditorHandle['appendTranscript']>[1],
-  ) {
-    visibleEditor()?.appendTranscript(text, options)
-  }
-
-  export function beginSpeechCleanup(
-    segments: Parameters<NonNullable<FeedbackEditorHandle['beginSpeechCleanup']>>[0],
-  ) {
-    visibleEditor()?.beginSpeechCleanup?.(segments)
-  }
-
-  export function finishSpeechCleanup(
-    segments: Parameters<NonNullable<FeedbackEditorHandle['finishSpeechCleanup']>>[0],
-    cleaned: string | null,
-  ) {
-    visibleEditor()?.finishSpeechCleanup?.(segments, cleaned)
-  }
-
-  export function isSpeechCleaning() {
-    return visibleEditor()?.isSpeechCleaning?.() ?? false
-  }
-
-  export function moveCursorAfterCleaningSpeech() {
-    visibleEditor()?.moveCursorAfterCleaningSpeech?.()
-  }
-
-  export function appendClipboardCapture(text: string, label: string) {
-    return visibleEditor()?.appendClipboardCapture(text, label) ?? false
-  }
-
-  export function appendCapturedAttachment(attachment: AttachmentView, label: string) {
-    return visibleEditor()?.appendCapturedAttachment(attachment, label) ?? false
+  async function tidyNow(automatic = false) {
+    if (tidyBusy || editingDisabled || !tidyConfig || !tidyReady) {
+      if (!automatic && (!tidyConfig || !tidyReady)) {
+        onTidyError(tr('Configure Tidy in Settings → Post-processing → Tidy first.'))
+        onOpenTidySettings()
+      }
+      return
+    }
+    const requestId = workspace.request.request_id
+    const epoch = editorEpoch
+    const candidates = richEditor?.pendingSpeechSegments() ?? []
+    if (candidates.length === 0) return
+    lastAutoTidyAttempt = autoTidyAttemptKey(candidates)
+    tidyingSegmentIds = candidates.map((segment) => segment.segmentId)
+    tidyBusy = true
+    try {
+      const result = await tidySpeechSegments(candidates, tidyConfig)
+      if (workspace.request.request_id !== requestId || editorEpoch !== epoch) return
+      if (!result) {
+        onTidyError(tr('Tidy did not write back because the model output did not match the original segments.'))
+        return
+      }
+      richEditor?.replaceSpeechSegments(
+        candidates.map((segment, index) => ({
+          segmentId: segment.segmentId,
+          originalText: segment.text,
+          nextText: result[index] ?? segment.text,
+        })),
+      )
+    } catch (cause) {
+      onTidyError(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      tidyingSegmentIds = []
+      tidyBusy = false
+    }
   }
 
   export function removeAttachmentReference(attachmentId: string) {
-    visibleEditor()?.removeAttachmentReference(attachmentId)
+    richEditor?.removeAttachmentReference(attachmentId)
   }
 </script>
 
@@ -157,11 +185,6 @@
         {readOnly ? tr('This request is closed. The document is read-only.') : tr('Record observations, problems, and suggestions.')}
       </p>
     </div>
-    {#if cleanupCount > 0 && !readOnly}
-      <span class="shrink-0 text-[10px] text-muted-foreground">
-        {tr('Cleaned {count} times', { count: cleanupCount })}
-      </span>
-    {/if}
     {#if hasCookedVariant}
       <div class="ml-auto flex items-center gap-1 rounded-md border bg-muted/30 p-0.5">
         <Button
@@ -187,6 +210,28 @@
           {#if publishedView === 'uncooked'}Uncooked{/if}
         </Button>
       </div>
+    {:else if !cookedDraftReady && !readOnly}
+      <Button
+        variant={pendingCount > 0 ? 'secondary' : 'ghost'}
+        size="sm"
+        class="ml-auto h-7 shrink-0 gap-1 px-2 text-[10px]"
+        aria-label={tr('Tidy')}
+        title={pendingCount > 0
+          ? tr('Tidy {count} pending speech segments', { count: pendingCount })
+          : tr('Tidy pending speech segments. It appears here after Ramble writes a transcript.')}
+        disabled={editingDisabled || cooking || tidyBusy || pendingCount === 0}
+        onclick={() => void tidyNow()}
+      >
+        {#if tidyBusy}
+          <LoaderCircle class="size-3.5 animate-spin" />
+        {:else}
+          <Sparkles class="size-3.5" />
+        {/if}
+        {tidyBusy ? tr('Tidying…') : tr('Tidy')}
+        {#if pendingCount > 0}
+          <Badge variant="secondary" class="h-4 px-1 text-[9px]">{pendingCount}</Badge>
+        {/if}
+      </Button>
     {/if}
   </header>
 
@@ -212,46 +257,24 @@
   {/if}
 
   <div class="relative flex min-h-0 flex-1">
-    {#if readOnly}
-      <MarkdownPreview
-        markdown={displayedMarkdown}
-        previews={attachmentPreviews}
-        {onOpenAttachment}
-      />
-    {:else if draftEditors.length === 0}
+    {#if cookedDraftReady || hasCookedVariant}
+      <MarkdownPreview markdown={displayedMarkdown} previews={attachmentPreviews} {onOpenAttachment} />
+    {:else}
       <RichFeedbackEditor
         bind:this={richEditor}
-        markdown={displayedMarkdown}
+        document={editorDocument}
+        {editorEpoch}
+        markdown={draftBody}
         previews={attachmentPreviews}
         disabled={editingDisabled}
         {onOpenAttachment}
-        getCurrentActionIndex={() => actionChannelFor(visibleRequestId)}
+        {tidyingSegmentIds}
         onChange={(snapshot) => {
-          if (!editingDisabled) onChange(snapshot.bodyMarkdown)
+          const doc = decodeFeedbackDraftDocument(snapshot.documentJson)
+          pendingCount = doc ? speechCleanupCandidates(doc).length : 0
+          if (!editingDisabled) onChange(snapshot)
         }}
       />
-    {:else}
-      {#each draftEditors as session (session.requestId)}
-        <div
-          class={session.requestId === visibleRequestId
-            ? 'relative flex min-h-0 flex-1'
-            : 'hidden'}
-        >
-          <SessionDraftEditor
-            requestId={session.requestId}
-            documentJson={session.initialDocumentJson}
-            markdown={session.initialMarkdown}
-            previews={attachmentPreviews}
-            disabled={session.requestId === visibleRequestId ? editingDisabled : false}
-            {onOpenAttachment}
-            onReady={captureSessionEditor}
-            onChange={(snapshot) => {
-              if (session.requestId === visibleRequestId && editingDisabled) return
-              onDraftChangeFor(session.requestId, snapshot)
-            }}
-          />
-        </div>
-      {/each}
     {/if}
 
     {#if cooking}

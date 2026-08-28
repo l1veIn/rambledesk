@@ -398,7 +398,7 @@ Pi 原生适配器不需要提交后的 continuation。
 ```text
 feedback/<timestamp>-<request-id>/
 ├── feedback.md       # canonical Cooked Feedback；未启用 Cooking 时等同原稿
-├── uncooked.md       # Uncooked Feedback（未经 Cooking、提交时确认的源正文）
+├── uncooked.md       # 人类直接产生的 Uncooked Feedback
 ├── manifest.json
 └── attachments/
 ```

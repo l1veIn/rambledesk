@@ -53,66 +53,6 @@ describe('speech model defaults', () => {
   })
 })
 
-describe('light cleanup defaults', () => {
-  it('defaults light cleanup to off so it can be enabled without cooking', async () => {
-    const {
-      lightCleanupCharThreshold,
-      lightCleanupEnabled,
-      lightCleanupBaseUrl,
-      lightCleanupIdleMs,
-      lightCleanupModel,
-      lightCleanupProvider,
-      lightCleanupReasoningEffort,
-      lightCleanupSegmentThreshold,
-      lightCleanupTimeoutMs,
-    } = await loadPreferences()
-    expect(get(lightCleanupEnabled)).toBe(false)
-    expect(get(lightCleanupProvider)).toBe('deepseek')
-    expect(get(lightCleanupBaseUrl)).toBe('https://api.deepseek.com/v1')
-    expect(get(lightCleanupModel)).toBe('deepseek-v4-flash')
-    expect(get(lightCleanupSegmentThreshold)).toBe(3)
-    expect(get(lightCleanupCharThreshold)).toBe(500)
-    expect(get(lightCleanupIdleMs)).toBe(20_000)
-    expect(get(lightCleanupTimeoutMs)).toBe(30_000)
-    expect(get(lightCleanupReasoningEffort)).toBe('none')
-  })
-
-  it('defaults Cooking to the same fast non-reasoning model independently', async () => {
-    const { cookingModel, cookingProvider, cookingReasoningEffort } = await loadPreferences()
-    expect(get(cookingProvider)).toBe('deepseek')
-    expect(get(cookingModel)).toBe('deepseek-v4-flash')
-    expect(get(cookingReasoningEffort)).toBe('none')
-  })
-
-  it('seeds cleanup from an existing Cooking connection once, then keeps both stores independent', async () => {
-    const preferences = await loadPreferences({
-      'rambledesk.cooking.provider': 'compatible',
-      'rambledesk.cooking.api-key': 'legacy-key',
-      'rambledesk.cooking.base-url': 'https://legacy.example/v1',
-      'rambledesk.cooking.model': 'legacy-model',
-    })
-
-    expect(get(preferences.lightCleanupProvider)).toBe('compatible')
-    expect(get(preferences.lightCleanupApiKey)).toBe('legacy-key')
-    expect(get(preferences.lightCleanupBaseUrl)).toBe('https://legacy.example/v1')
-    expect(get(preferences.lightCleanupModel)).toBe('legacy-model')
-
-    preferences.setCookingProvider('openai')
-    preferences.setCookingApiKey('cooking-key')
-    preferences.setCookingModel('cooking-model')
-    expect(get(preferences.lightCleanupProvider)).toBe('compatible')
-    expect(get(preferences.lightCleanupApiKey)).toBe('legacy-key')
-    expect(get(preferences.lightCleanupModel)).toBe('legacy-model')
-
-    preferences.setLightCleanupProvider('deepseek')
-    preferences.setLightCleanupApiKey('cleanup-key')
-    preferences.setLightCleanupModel('cleanup-model')
-    expect(get(preferences.cookingProvider)).toBe('openai')
-    expect(get(preferences.cookingApiKey)).toBe('cooking-key')
-    expect(get(preferences.cookingModel)).toBe('cooking-model')
-  })
-})
-
 describe('speech hotword defaults', () => {
   it('includes product terms used in rambles', () => {
     expect(DEFAULT_SPEECH_HOTWORDS).toEqual(
@@ -129,5 +69,72 @@ describe('speech hotword defaults', () => {
   it('leaves an already complete list unchanged', () => {
     const current = ['ramble', 'RambleDesk']
     expect(mergeSpeechHotwords(current, ['ramble', 'RambleDesk'])).toBe(current)
+  })
+})
+
+describe('post-processing configuration', () => {
+  it('distinguishes untidied speech by default and preserves an explicit opt-out', async () => {
+    const defaults = await loadPreferences()
+    expect(get(defaults.distinguishUntidiedText)).toBe(true)
+
+    const optedOut = await loadPreferences({
+      'rambledesk.tidy.distinguish-untidied-text': 'false',
+    })
+    expect(get(optedOut.distinguishUntidiedText)).toBe(false)
+  })
+
+  it('disables automatic Tidy by default and restores a saved threshold', async () => {
+    const defaults = await loadPreferences()
+    expect(get(defaults.tidyAutoThreshold)).toBe(0)
+
+    const configured = await loadPreferences({
+      'rambledesk.tidy.auto-threshold': '4',
+    })
+    expect(get(configured.tidyAutoThreshold)).toBe(4)
+  })
+
+  it('normalizes automatic Tidy thresholds set by the user', async () => {
+    const preferences = await loadPreferences()
+    preferences.setTidyAutoThreshold(-3)
+    expect(get(preferences.tidyAutoThreshold)).toBe(0)
+    preferences.setTidyAutoThreshold(5.7)
+    expect(get(preferences.tidyAutoThreshold)).toBe(6)
+  })
+
+  it('keeps Tidy credentials independent from Cooking', async () => {
+    const preferences = await loadPreferences({
+      'rambledesk.cooking.api-key': 'cook-secret',
+      'rambledesk.cooking.model': 'cook-model',
+    })
+    expect(get(preferences.cookingApiKey)).toBe('cook-secret')
+    expect(get(preferences.cookingModel)).toBe('cook-model')
+    expect(get(preferences.tidyApiKey)).toBe('')
+    expect(get(preferences.tidyModel)).toBe('deepseek-v4-flash')
+  })
+
+  it('preserves the RC light-cleanup keys as the Tidy namespace', async () => {
+    const preferences = await loadPreferences({
+      'rambledesk.light-cleanup.provider': 'openai',
+      'rambledesk.light-cleanup.api-key': 'tidy-secret',
+      'rambledesk.light-cleanup.model': 'tidy-model',
+    })
+    expect(get(preferences.tidyProvider)).toBe('openai')
+    expect(get(preferences.tidyApiKey)).toBe('tidy-secret')
+    expect(get(preferences.tidyModel)).toBe('tidy-model')
+    expect(get(preferences.cookingApiKey)).toBe('')
+    expect(get(preferences.cookingModel)).toBe('deepseek-v4-flash')
+  })
+
+  it('changing one post-processing store does not mutate the other', async () => {
+    const preferences = await loadPreferences()
+    preferences.setTidyApiKey('tidy-only')
+    preferences.setTidyModel('tidy-model')
+    expect(get(preferences.cookingApiKey)).toBe('')
+    expect(get(preferences.cookingModel)).toBe('deepseek-v4-flash')
+
+    preferences.setCookingApiKey('cook-only')
+    preferences.setCookingModel('cook-model')
+    expect(get(preferences.tidyApiKey)).toBe('tidy-only')
+    expect(get(preferences.tidyModel)).toBe('tidy-model')
   })
 })

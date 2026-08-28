@@ -185,6 +185,7 @@ async fn reconnect_rejects_arbitrary_migration_checksum_changes() {
     assert!(matches!(error, StorageOpenError::Migrate(_)));
 }
 
+mod document_json_migration;
 mod publication;
 mod requests;
 mod workspace;

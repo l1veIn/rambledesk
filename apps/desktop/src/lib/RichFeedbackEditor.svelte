@@ -1,63 +1,64 @@
 <script lang="ts">
-  import { Editor } from '@tiptap/core'
-  import { Bold, Italic, Redo2, Undo2 } from '@lucide/svelte'
+  import { Editor, type JSONContent } from '@tiptap/core'
+  import {
+    Bold,
+    Heading2,
+    Italic,
+    List,
+    Quote,
+    Redo2,
+    Undo2,
+  } from '@lucide/svelte'
+  import { Fragment } from '@tiptap/pm/model'
+  import { EditorState, type Transaction } from '@tiptap/pm/state'
   import { onMount } from 'svelte'
 
   import { Button } from '$lib/components/ui/button'
-  import type { AttachmentView } from './feedback'
-  import { t } from './i18n'
-  import { locale } from './preferences'
   import {
-    ATTACHMENT_PLACEHOLDER_IMAGE,
+    actionBlockquoteNode,
+    isEmptyActionGroup,
+    isEmptyParagraph,
+  } from './actionBlockquote'
+  import {
     attachmentIdFromUrl,
-    attachmentMarkdownUrl,
-    isImageMediaType,
   } from './attachmentMarkdown'
   import {
-    feedbackEditorExtensions,
-    parseFeedbackMarkdown,
-  } from './feedbackEditorExtensions'
+    attachmentNodes,
+    clipboardNodes,
+    draftOperationAlreadyApplied,
+    speechNodes,
+    type DraftOperation,
+  } from './draftOperations'
   import {
-    restoreFeedbackDraftDocument,
     snapshotFeedbackDraftDocument,
     type FeedbackDraftSnapshot,
   } from './feedbackDraftDocument'
+  import { feedbackEditorExtensions } from './feedbackEditorExtensions'
+  import { t } from './i18n'
+  import { distinguishUntidiedText, locale } from './preferences'
   import {
-    CLEANUP_STATE_ATTR,
-    INPUT_SOURCE_ATTR,
-    SPEECH_CLEANUP_TRANSACTION_META,
-    SPEECH_SEGMENT_ID_ATTR,
-    asrParagraphAttrs,
-    isSpeechCleanupInFlight,
-    setSpeechCleanupInFlight,
-    type CleanupState,
+    applySpeechCleanupResults,
+    setTidyingSpeechSegments,
+    speechCleanupCandidates,
     type SpeechCleanupSegment,
   } from './speechBlockMetadata'
-  import { ACTION_CHANNEL_ATTR } from './workbench/actionChannel'
-  import { alignCleanupParts } from './workbench/speechCleanupPolicy'
 
+  export let document: JSONContent | null = null
+  export let editorEpoch = 0
   export let markdown = ''
-  export let documentJson: string | null = null
   export let previews: Record<string, string> = {}
   export let disabled = false
-  export let acceptExternalMarkdown = true
   export let onOpenAttachment: (attachmentId: string) => void = () => {}
   export let onChange: (snapshot: FeedbackDraftSnapshot) => void = () => {}
-  /**
-   * Live source of the currently selected Action channel. Programmatic inserts
-   * (speech, captures, attachments, pasted blocks) stamp with whatever the
-   * owning session reports right now — never a copy stored inside this editor
-   * instance, which can silently desync after remounts.
-   */
-  export let getCurrentActionIndex: () => number | null = () => null
+  export let tidyingSegmentIds: string[] = []
 
   let editorHost: HTMLDivElement
   let editor: Editor | null = null
   let applyingExternalChange = false
   let editorMarkdown = ''
-  let historyLocked = false
-  let canUndo = false
-  let canRedo = false
+  let loadedEpoch = -1
+  let insertionPosition = 0
+  let tidyingSignature = ''
   let openAttachmentHandler = (_attachmentId: string) => {}
   $: openAttachmentHandler = onOpenAttachment
 
@@ -65,21 +66,14 @@
     editor = new Editor({
       element: editorHost,
       extensions: feedbackEditorExtensions(),
-      content: restoreFeedbackDraftDocument(documentJson, markdown),
+      content: document ?? markdown,
+      ...(document ? {} : { contentType: 'markdown' as const }),
       editable: !disabled,
       editorProps: {
         attributes: {
           class: 'feedback-prose',
           'aria-label': t($locale, 'Markdown rich-text feedback body'),
           'data-placeholder': t($locale, 'Record what you saw, what felt smooth, and where you paused.'),
-        },
-        handleKeyDown: (_view, event) => {
-          if (!historyLocked) return false
-          if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
-            event.preventDefault()
-            return true
-          }
-          return false
         },
         handleClick: (view, pos, event) => {
           const target = event.target as HTMLElement | null
@@ -94,26 +88,17 @@
         },
       },
       onCreate: () => {
-        const snapshot = editor
-          ? snapshotFeedbackDraftDocument(editor.getJSON())
-          : { documentJson: documentJson ?? '', bodyMarkdown: markdown }
-        editorMarkdown = snapshot.bodyMarkdown
-        syncHistoryButtons()
+        editorMarkdown = editor?.getMarkdown() ?? markdown
+        loadedEpoch = editorEpoch
+        insertionPosition = editor?.state.doc.content.size ?? 0
         hydrateAttachmentImages()
-      },
-      onTransaction: () => {
-        syncHistoryButtons()
       },
       onUpdate: ({ editor: updatedEditor }) => {
-        historyLocked = editorHasCleaningSpeech(updatedEditor)
-        syncHistoryButtons()
-        // Normalize attachment srcs on every change so an image never stays
-        // on the unsupported attachment:// scheme across renders.
-        hydrateAttachmentImages()
         if (applyingExternalChange) return
-        const snapshot = snapshotFeedbackDraftDocument(updatedEditor.getJSON())
-        editorMarkdown = snapshot.bodyMarkdown
-        onChange(snapshot)
+        emitSnapshot(updatedEditor)
+      },
+      onSelectionUpdate: ({ editor: updatedEditor }) => {
+        insertionPosition = updatedEditor.state.selection.from
       },
     })
 
@@ -129,25 +114,88 @@
     editor.view.dom.setAttribute('aria-label', t($locale, 'Markdown rich-text feedback body'))
     editor.view.dom.setAttribute('data-placeholder', t($locale, 'Record what you saw, what felt smooth, and where you paused.'))
   }
-  $: if (acceptExternalMarkdown && editor && markdown !== editorMarkdown) applyMarkdown(markdown)
+  $: if (editor && editorEpoch !== loadedEpoch) {
+    applyDocument(document ?? { type: 'doc', content: [{ type: 'paragraph' }] })
+    loadedEpoch = editorEpoch
+  }
   $: if (editor) {
     previews
     hydrateAttachmentImages()
   }
+  $: if (editor) {
+    const nextSignature = [...new Set(tidyingSegmentIds)].sort().join('\u0000')
+    if (nextSignature !== tidyingSignature) {
+      tidyingSignature = nextSignature
+      setTidyingSpeechSegments(editor, tidyingSegmentIds)
+    }
+  }
 
-  function applyMarkdown(nextMarkdown: string, emitChange = false) {
+  function emitSnapshot(source: Editor) {
+    const json = source.getJSON()
+    const snapshot = snapshotFeedbackDraftDocument(json)
+    editorMarkdown = snapshot.bodyMarkdown
+    onChange(snapshot)
+  }
+
+  function trimTrailingEmptyActionGroups(
+    transaction: Transaction,
+    keepActionId?: string | null,
+    removeActionId?: string | null,
+  ): Transaction {
+    let next = transaction
+    while (next.doc.childCount > 0) {
+      const candidate = lastMeaningfulChild(next.doc)
+      if (!candidate) break
+      const json = candidate.node.toJSON()
+      if (isEmptyActionGroup(json)) {
+        if (keepActionId && candidate.node.attrs.actionId === keepActionId) break
+        if (removeActionId && candidate.node.attrs.actionId !== removeActionId) break
+        next = next.delete(candidate.pos, candidate.pos + candidate.node.nodeSize)
+        continue
+      }
+      break
+    }
+    return next
+  }
+
+  function lastMeaningfulChild(doc: Transaction['doc']): { node: NonNullable<Transaction['doc']['lastChild']>; pos: number } | null {
+    let found: { node: NonNullable<Transaction['doc']['lastChild']>; pos: number } | null = null
+    doc.forEach((node, pos) => {
+      if (isEmptyParagraph(node.toJSON())) return
+      found = { node, pos }
+    })
+    return found
+  }
+
+  function insertJsonContent(transaction: Transaction, pos: number, nodes: JSONContent[]) {
+    const schema = editor?.schema
+    if (!schema || nodes.length === 0) return transaction
+    const fragment = Fragment.fromArray(nodes.map((node) => schema.nodeFromJSON(node)))
+    return transaction.insert(pos, fragment)
+  }
+
+  function resetHistory() {
+    if (!editor) return
+    editor.view.updateState(
+      EditorState.create({
+        schema: editor.state.schema,
+        doc: editor.state.doc,
+        plugins: editor.state.plugins,
+      }),
+    )
+  }
+
+  function applyDocument(nextDocument: JSONContent) {
     if (!editor) return
     applyingExternalChange = true
     try {
-      editor.commands.setContent(parseFeedbackMarkdown(nextMarkdown), {
-        emitUpdate: false,
-      })
-      const snapshot = snapshotFeedbackDraftDocument(editor.getJSON())
-      editorMarkdown = snapshot.bodyMarkdown
+      editor.commands.setContent(nextDocument, { emitUpdate: false })
+      resetHistory()
+      editorMarkdown = editor.getMarkdown()
+      insertionPosition = Math.min(insertionPosition, editor.state.doc.content.size)
       hydrateAttachmentImages()
-      if (emitChange) onChange(snapshot)
     } catch (cause) {
-      console.error('[richEditor] applyMarkdown failed', cause)
+      console.error('[richEditor] applyDocument failed', cause)
     } finally {
       applyingExternalChange = false
     }
@@ -163,422 +211,102 @@
         node.attrs.attachmentId ?? attachmentIdFromUrl(node.attrs.src)
       if (!attachmentId) return
       const preview = previews[attachmentId]
-      const next = preview ?? ATTACHMENT_PLACEHOLDER_IMAGE
-      if (!next || (node.attrs.attachmentId === attachmentId && node.attrs.src === next)) {
+      if (!preview || (node.attrs.attachmentId === attachmentId && node.attrs.src === preview)) {
         return
       }
       transaction = transaction.setNodeMarkup(position, undefined, {
         ...node.attrs,
         attachmentId,
-        src: next,
+        src: preview,
       })
       changed = true
     })
     if (!changed) return
     applyingExternalChange = true
     editor.view.dispatch(transaction)
-    const snapshot = snapshotFeedbackDraftDocument(editor.getJSON())
-    editorMarkdown = snapshot.bodyMarkdown
+    editorMarkdown = editor.getMarkdown()
     applyingExternalChange = false
   }
 
-  export function applyExternalMarkdown(nextMarkdown: string): boolean {
-    if (!editor) return false
-    if (nextMarkdown === editorMarkdown) return true
-    applyMarkdown(nextMarkdown, true)
-    return true
-  }
-
-  export function insertAttachments(attachments: AttachmentView[]) {
-    if (!editor || attachments.length === 0) return false
-    const referencedIds = new Set<string>()
-    editor.state.doc.descendants((node) => {
-      if (node.type.name !== 'image' && node.type.name !== 'attachmentFile') return
-      const attachmentId =
-        node.attrs.attachmentId ?? attachmentIdFromUrl(node.attrs.src)
-      if (attachmentId) referencedIds.add(attachmentId)
-    })
-    const content = attachments
-      .filter((attachment) => !referencedIds.has(attachment.attachment_id))
-      .map((attachment) => {
-        if (isImageMediaType(attachment.media_type)) {
-          return {
-            type: 'image',
-            attrs: actionAttrs({
-              src:
-                previews[attachment.attachment_id] ??
-                ATTACHMENT_PLACEHOLDER_IMAGE,
-              alt: attachment.file_name,
-              attachmentId: attachment.attachment_id,
-            }),
-          }
-        }
-        return {
-          type: 'paragraph',
-          attrs: actionAttrs(),
-          content: [
-            {
-              type: 'attachmentFile',
-              attrs: {
-                attachmentId: attachment.attachment_id,
-                fileName: attachment.file_name,
-                mediaType: attachment.media_type,
-              },
-            },
-          ],
-        }
-      })
-    if (content.length === 0) return false
-    editor.commands.insertContentAt(documentEnd(), content)
-    return true
-  }
-
-  function syncHistoryButtons() {
-    canUndo = Boolean(editor && !historyLocked && editor.can().undo())
-    canRedo = Boolean(editor && !historyLocked && editor.can().redo())
-  }
-
-  function editorHasCleaningSpeech(target = editor) {
-    if (!target) return false
-    let cleaning = false
-    target.state.doc.descendants((node) => {
-      const segmentId = node.attrs?.[SPEECH_SEGMENT_ID_ATTR]
-      if (
-        typeof segmentId === 'string' &&
-        isSpeechCleanupInFlight(target.state, segmentId)
-      ) {
-        cleaning = true
-      }
-    })
-    return cleaning
-  }
-
-  export function actionAttrs(extra: Record<string, unknown> = {}) {
-    const actionIndex = getCurrentActionIndex()
-    return actionIndex != null ? { ...extra, [ACTION_CHANNEL_ATTR]: actionIndex } : extra
-  }
-
-  export function setActionChannel(index: number | null): void {
-    if (!editor) return
-    const { $from } = editor.state.selection
-    const parent = $from.parent
-    if (!parent.isTextblock || parent.textContent.trim() !== '') return
-    const position = $from.before()
-    const node = editor.state.doc.nodeAt(position)
-    if (!node) return
-    editor.view.dispatch(
-      editor.state.tr.setNodeMarkup(position, undefined, {
-        ...node.attrs,
-        [ACTION_CHANNEL_ATTR]: index,
-      }),
-    )
-  }
-
-  export function appendTranscript(
-    text: string,
-    options?: { asr?: { segmentId: string; cleanupState: CleanupState } },
-  ) {
-    const transcript = text.trim()
-    if (!editor || !transcript || disabled) return
-    editor.commands.insertContentAt(editor.state.doc.content.size, {
-      type: 'paragraph',
-      attrs: actionAttrs(
-        options?.asr
-          ? asrParagraphAttrs(options.asr.segmentId, options.asr.cleanupState)
-          : {},
-      ),
-      content: [{ type: 'text', text: transcript }],
-    })
-  }
-
-  export function isSpeechCleaning() {
-    const cleaning = editorHasCleaningSpeech()
-    if (import.meta.env.DEV) {
-      console.log('[ramble-cleanup] editor isSpeechCleaning=', cleaning)
-    }
-    return cleaning
-  }
-
-  export function beginSpeechCleanup(segments: SpeechCleanupSegment[]): void {
-    if (!editor || segments.length === 0) return
-    editor.view.dispatch(
-      setSpeechCleanupInFlight(
-        editor.state.tr,
-        segments.map((segment) => segment.segmentId),
-        true,
-      ),
-    )
-    historyLocked = true
-    if (import.meta.env.DEV) {
-      console.log(
-        '[ramble-cleanup] editor beginSpeechCleanup segments=',
-        segments.map((segment) => segment.segmentId),
-      )
-    }
-  }
-
-  export function finishSpeechCleanup(
-    segments: SpeechCleanupSegment[],
-    cleaned: string | null,
-  ): void {
-    if (!editor) return
-    const items: Array<{
-      from: number
-      to: number
-      text: string
-      attrs: Record<string, unknown>
-      segmentId: string
-    }> = []
-    const segmentIds = new Set(segments.map((segment) => segment.segmentId))
-    editor.state.doc.descendants((node, position) => {
-      const segmentId = node.attrs?.[SPEECH_SEGMENT_ID_ATTR]
-      if (
-        node.type.name === 'paragraph' &&
-        typeof segmentId === 'string' &&
-        segmentIds.has(segmentId)
-      ) {
-        items.push({
-          from: position,
-          to: position + node.nodeSize,
-          text: node.textContent,
-          attrs: { ...node.attrs },
-          segmentId,
-        })
-      }
-    })
-    historyLocked = false
-    if (items.length === 0) {
-      editor.view.dispatch(
-        setSpeechCleanupInFlight(
-          editor.state.tr,
-          segments.map((segment) => segment.segmentId),
-          false,
-        ),
-      )
-      syncHistoryButtons()
-      return
-    }
-    const parts = alignCleanupParts(
-      items.map((item) => item.text),
-      cleaned,
-    )
-    const originalById = new Map(segments.map((segment) => [segment.segmentId, segment.text]))
-    const allUnchanged = items.every((item) => originalById.get(item.segmentId) === item.text)
-    const contiguous = items.every(
-      (item, index) => index === 0 || items[index - 1]!.to === item.from,
-    )
-    let transaction = editor.state.tr
-    if (cleaned != null && allUnchanged && contiguous && items.length > 0 && editor) {
-      // Batch-whole replacement: the batch was untouched and its segments are
-      // consecutive, so the whole range becomes whatever the model returned —
-      // one block when it merged the batch, several when it kept the count.
-      const blocks = cleaned
-        .split(/\n{2,}/)
-        .map((block) => block.trim())
-        .filter(Boolean)
-      const schema = editor.schema
-      const paragraphs = (blocks.length > 0 ? blocks : [cleaned]).map((text) =>
-        schema.nodes.paragraph.create(
-          { ...items[0]!.attrs, [INPUT_SOURCE_ATTR]: 'asr', [CLEANUP_STATE_ATTR]: 'cleaned' },
-          text ? schema.text(text) : undefined,
-        ),
-      )
-      transaction = transaction.replaceWith(
-        items[0]!.from,
-        items[items.length - 1]!.to,
-        paragraphs,
-      )
-      if (import.meta.env.DEV) {
-        console.log(
-          '[ramble-cleanup] editor batch-replace blocks=',
-          paragraphs.length,
-          'items=',
-          items.length,
-          'range=',
-          items[0]!.from,
-          '-',
-          items[items.length - 1]!.to,
-        )
-      }
-    } else if (parts == null && cleaned != null) {
-      // The model merged the batch into fewer blocks: replace the first
-      // segment with the whole cleaned text and drop the rest.
-      for (let index = items.length - 1; index >= 0; index -= 1) {
-        const item = items[index]!
-        if (index === 0) {
-          transaction = transaction.replaceWith(
-            item.from,
-            item.to,
-            editor.schema.nodes.paragraph.create(
-              {
-                ...item.attrs,
-                [INPUT_SOURCE_ATTR]: 'asr',
-                [CLEANUP_STATE_ATTR]: 'cleaned',
-              },
-              cleaned ? editor.schema.text(cleaned) : undefined,
-            ),
-          )
-        } else {
-          transaction = transaction.delete(item.from, item.to)
-        }
-      }
-    } else {
-      for (let index = items.length - 1; index >= 0; index -= 1) {
-        const item = items[index]
-        const original = originalById.get(item.segmentId)
-        const unchanged = original === item.text
-        const state: CleanupState = !unchanged
-          ? 'skipped'
-          : cleaned == null
-            ? 'failed'
-            : 'cleaned'
-        const segmentIndex = segments.findIndex((segment) => segment.segmentId === item.segmentId)
-        const text = cleaned != null && unchanged
-          ? (parts?.[segmentIndex] ?? item.text)
-          : item.text
-        const attrs = {
-          ...item.attrs,
-          [INPUT_SOURCE_ATTR]: 'asr',
-          [CLEANUP_STATE_ATTR]: state,
-        }
-        transaction = transaction.replaceWith(
-          item.from,
-          item.to,
-          editor.schema.nodes.paragraph.create(
-            attrs,
-            text ? editor.schema.text(text) : undefined,
-          ),
-        )
-      }
-    }
-    transaction.setMeta(SPEECH_CLEANUP_TRANSACTION_META, true)
-    setSpeechCleanupInFlight(
-      transaction,
-      segments.map((segment) => segment.segmentId),
-      false,
-    )
-    editor.view.dispatch(transaction)
-    syncHistoryButtons()
-  }
-
-  /**
-   * Programmatic inserts (screenshots, clipboard captures, files, pasted
-   * blocks) always land at the end of the document: a Ramble is authored
-   * voice-first and reorders nothing, while any finer placement remains a
-   * direct manual edit in the editor.
-   */
-  function documentEnd(): number {
-    return editor?.state.doc.content.size ?? 0
-  }
-
-  export function moveCursorAfterCleaningSpeech() {
-    if (!editor) return
-    let position = editor.state.selection.from
-    editor.state.doc.descendants((node, from) => {
-      const segmentId = node.attrs?.[SPEECH_SEGMENT_ID_ATTR]
-      if (
-        typeof segmentId !== 'string' ||
-        !isSpeechCleanupInFlight(editor!.state, segmentId)
-      ) return
-      const to = from + node.nodeSize
-      if (position > from && position < to) position = to
-    })
-    editor.commands.setTextSelection(
-      Math.min(Math.max(position, 0), editor.state.doc.content.size),
-    )
-  }
-
-  export function insertQuotedBlock(lines: string[]) {
-    if (!editor || disabled || lines.length === 0) return false
-    const content = lines.map((line) => ({
-      type: 'paragraph' as const,
-      content: line ? [{ type: 'text' as const, text: line }] : [],
-    }))
-    return editor.commands.insertContentAt(documentEnd(), [
-      { type: 'blockquote', attrs: actionAttrs(), content },
-    ])
-  }
-
-  export function insertMarkdownAtCaret(markdown: string) {
-    const block = markdown.trim()
-    if (!editor || disabled || !block) return false
-    const parsed = parseFeedbackMarkdown(block)
-    const stamped = {
-      ...parsed,
-      content: (parsed.content ?? []).map((node) => ({
-        ...node,
-        attrs: actionAttrs(node.attrs ?? {}),
-      })),
-    }
-    return editor.commands.insertContentAt(documentEnd(), stamped.content ?? [])
-  }
-
-  export function appendClipboardCapture(text: string, label: string) {
-    const captured = text.trim()
-    if (!editor || !captured || disabled) return false
-    const capturedContent = captured.split(/\r?\n/).flatMap((line, index) => {
-      const content: Array<Record<string, unknown>> = []
-      if (index > 0) content.push({ type: 'hardBreak' })
-      if (line) content.push({ type: 'text', text: line })
-      return content
-    })
-    return editor.commands.insertContentAt(documentEnd(), [
-      {
-        type: 'blockquote',
-        attrs: actionAttrs(),
-        content: [
-          {
-            type: 'paragraph',
-            content: [
-              {
-                type: 'text',
-                text: label,
-                marks: [{ type: 'bold' }],
-              },
-            ],
-          },
-          {
-            type: 'paragraph',
-            content: capturedContent,
-          },
-        ],
-      },
-    ])
-  }
-
-  export function appendCapturedAttachment(
-    attachment: AttachmentView,
-    label: string,
-  ) {
+  export function applyDraftOperation(operation: DraftOperation): boolean {
     if (!editor || disabled) return false
-    return editor.commands.insertContentAt(documentEnd(), [
-      {
-        type: 'blockquote',
-        attrs: actionAttrs(),
-        content: [
-          {
-            type: 'paragraph',
-            content: [
-              {
-                type: 'text',
-                text: label,
-                marks: [{ type: 'bold' }],
-              },
-            ],
-          },
-        ],
-      },
-      {
-        type: 'image',
-        attrs: actionAttrs({
-          src:
-            previews[attachment.attachment_id] ??
-            ATTACHMENT_PLACEHOLDER_IMAGE,
-          alt: attachment.file_name,
-          attachmentId: attachment.attachment_id,
-        }),
-      },
-    ])
+    const current = editor.getJSON()
+    if (draftOperationAlreadyApplied(current, operation)) return true
+    const keepActionId =
+      operation.kind === 'startActionGroup'
+        ? operation.action.actionId
+        : operation.kind === 'clearActionGroup'
+          ? null
+          : operation.action?.actionId
+    let transaction = trimTrailingEmptyActionGroups(
+      editor.state.tr,
+      keepActionId,
+      operation.kind === 'clearActionGroup' ? operation.actionId : null,
+    )
+    if (operation.kind === 'clearActionGroup') {
+      if (transaction.docChanged) editor.view.dispatch(transaction)
+      return true
+    }
+    if (operation.kind === 'startActionGroup') {
+      const last = lastMeaningfulChild(transaction.doc)
+      if (
+        last?.node.type.name === 'blockquote' &&
+        last.node.attrs.actionId === operation.action.actionId
+      ) {
+        if (transaction.docChanged) editor.view.dispatch(transaction)
+        return true
+      }
+      transaction = insertJsonContent(
+        transaction,
+        transaction.doc.content.size,
+        [actionBlockquoteNode(operation.action)],
+      )
+      editor.view.dispatch(transaction)
+      return true
+    }
+    const nodes =
+      operation.kind === 'appendSpeech'
+        ? speechNodes(operation.segmentId, operation.text)
+        : operation.kind === 'appendClipboardText'
+          ? clipboardNodes(operation.text, operation.label)
+          : attachmentNodes(
+              operation.attachment,
+              operation.label,
+              previews[operation.attachment.attachment_id],
+            )
+    const action = operation.action
+    const last = lastMeaningfulChild(transaction.doc)
+    if (action && last?.node.type.name === 'blockquote' && last.node.attrs.actionId === action.actionId) {
+      transaction = insertJsonContent(transaction, last.pos + last.node.nodeSize - 1, nodes)
+    } else if (action) {
+      transaction = insertJsonContent(
+        transaction,
+        transaction.doc.content.size,
+        [actionBlockquoteNode(action, nodes)],
+      )
+    } else {
+      transaction = insertJsonContent(transaction, transaction.doc.content.size, nodes)
+    }
+    editor.view.dispatch(transaction)
+    return true
+  }
+
+  export function pendingSpeechSegments(): SpeechCleanupSegment[] {
+    if (!editor) return []
+    return speechCleanupCandidates(editor.getJSON())
+  }
+
+  export function replaceSpeechSegments(
+    replacements: Array<{ segmentId: string; originalText: string; nextText: string }>,
+  ): boolean {
+    if (!editor || replacements.length === 0) return false
+    const result = applySpeechCleanupResults(editor.getJSON(), replacements)
+    if (!result.changed) return false
+    const nextDocument = editor.schema.nodeFromJSON(result.document)
+    editor.view.dispatch(
+      editor.state.tr.replaceWith(0, editor.state.doc.content.size, nextDocument.content),
+    )
+    return true
   }
 
   export function removeAttachmentReference(attachmentId: string) {
@@ -631,13 +359,43 @@
     >
       <Italic />
     </Button>
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      aria-label={t($locale, 'Heading 2')}
+      title={t($locale, 'Heading 2')}
+      disabled={disabled}
+      onclick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}
+    >
+      <Heading2 />
+    </Button>
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      aria-label={t($locale, 'Bullet list')}
+      title={t($locale, 'Bullet list')}
+      disabled={disabled}
+      onclick={() => editor?.chain().focus().toggleBulletList().run()}
+    >
+      <List />
+    </Button>
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      aria-label={t($locale, 'Quote')}
+      title={t($locale, 'Quote')}
+      disabled={disabled}
+      onclick={() => editor?.chain().focus().toggleBlockquote().run()}
+    >
+      <Quote />
+    </Button>
     <span class="flex-1"></span>
     <Button
       variant="ghost"
       size="icon-sm"
       aria-label={t($locale, 'Undo')}
       title={t($locale, 'Undo')}
-      disabled={disabled || !canUndo}
+      disabled={disabled || !editor?.can().undo()}
       onclick={() => editor?.chain().focus().undo().run()}
     >
       <Undo2 />
@@ -647,13 +405,17 @@
       size="icon-sm"
       aria-label={t($locale, 'Redo')}
       title={t($locale, 'Redo')}
-      disabled={disabled || !canRedo}
+      disabled={disabled || !editor?.can().redo()}
       onclick={() => editor?.chain().focus().redo().run()}
     >
       <Redo2 />
     </Button>
   </div>
-  <div class="editor-host min-h-0 flex-1 overflow-y-auto overscroll-contain" bind:this={editorHost}></div>
+  <div
+    class="editor-host min-h-0 flex-1 overflow-y-auto overscroll-contain"
+    class:distinguish-untidied={$distinguishUntidiedText}
+    bind:this={editorHost}
+  ></div>
 </div>
 
 <style>
@@ -683,55 +445,6 @@
     margin: 0 0 0.9em;
   }
 
-  .editor-host :global(.feedback-prose p.speech-pending) {
-    border-radius: 4px;
-  }
-
-  .editor-host :global(.feedback-prose p.speech-cleaning) {
-    border-left: 1px solid var(--muted-foreground);
-    border-radius: 4px;
-    background: color-mix(in srgb, var(--muted) 35%, transparent);
-    padding-left: 8px;
-  }
-
-  .editor-host :global(.feedback-prose p.speech-cleaning::after) {
-    color: var(--muted-foreground);
-    content: '  ·  ' attr(data-speech-hint);
-    font-size: 11px;
-  }
-
-  .editor-host :global(.feedback-prose .action-channel-item) {
-    background: color-mix(in srgb, var(--muted) 72%, transparent);
-    border-radius: 0;
-    margin-bottom: 0;
-    padding: 0 14px;
-  }
-
-  .editor-host :global(.feedback-prose .action-channel-item.action-channel-lead) {
-    border-radius: 10px 10px 0 0;
-    padding-top: 10px;
-  }
-
-  .editor-host :global(.feedback-prose .action-channel-item.action-channel-group-solo) {
-    border-radius: 10px;
-    margin-bottom: 0.9em;
-    padding-bottom: 10px;
-  }
-
-  .editor-host :global(.feedback-prose .action-channel-item.action-channel-group-end) {
-    border-radius: 0 0 10px 10px;
-    margin-bottom: 0.9em;
-    padding-bottom: 10px;
-  }
-
-  .editor-host :global(.feedback-prose .action-channel-lead[data-action-index]::before) {
-    color: var(--primary);
-    content: '@ Action' attr(data-action-index) ' ';
-    font-size: 0.8em;
-    font-weight: 600;
-    pointer-events: none;
-  }
-
   .editor-host :global(.feedback-prose h2),
   .editor-host :global(.feedback-prose h3) {
     margin: 1.4em 0 0.55em;
@@ -748,6 +461,85 @@
     background: color-mix(in oklab, var(--muted) 65%, transparent);
   }
 
+  .editor-host :global(.feedback-prose blockquote[data-action-id]) {
+    padding: 14px 18px 12px;
+    border: 1px solid color-mix(in oklab, var(--primary) 16%, transparent);
+    border-radius: calc(var(--radius) + 2px);
+    color: var(--foreground);
+    background: color-mix(in oklab, var(--primary) 9%, var(--background));
+  }
+
+  .editor-host :global(.feedback-prose blockquote[data-action-id] > p:first-child) {
+    margin: 0 0 0.8em;
+    padding-bottom: 0.65em;
+    border-bottom: 1px solid color-mix(in oklab, var(--primary) 14%, transparent);
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+    text-align: left;
+  }
+
+  .editor-host :global(.feedback-prose blockquote[data-action-id] > p:first-child > strong) {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  .editor-host :global(.feedback-prose blockquote[data-action-id] > p:last-child) {
+    margin-bottom: 0;
+  }
+
+  .editor-host.distinguish-untidied :global(.feedback-prose p[data-cleanup-state='pending']) {
+    position: relative;
+    padding-inline-start: 22px;
+  }
+
+  .editor-host.distinguish-untidied :global(.feedback-prose p[data-cleanup-state='pending']:not(.speech-segment-tidying)::before) {
+    position: absolute;
+    top: 0.42em;
+    inset-inline-start: 1px;
+    width: 14px;
+    height: 14px;
+    background-color: color-mix(in oklab, var(--primary) 58%, var(--muted-foreground));
+    content: '';
+    -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20fill='black'%20d='M12%2014q1.25%200%202.125-.875T15%2011V5q0-1.25-.875-2.125T12%202q-1.25%200-2.125.875T9%205v6q0%201.25.875%202.125T12%2014Zm-1%207v-3.075q-2.6-.35-4.3-2.325T5%2011h2q0%202.075%201.463%203.537T12%2016q2.075%200%203.538-1.463T17%2011h2q0%202.625-1.7%204.6T13%2017.925V21Z'/%3E%3C/svg%3E") center / contain no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20fill='black'%20d='M12%2014q1.25%200%202.125-.875T15%2011V5q0-1.25-.875-2.125T12%202q-1.25%200-2.125.875T9%205v6q0%201.25.875%202.125T12%2014Zm-1%207v-3.075q-2.6-.35-4.3-2.325T5%2011h2q0%202.075%201.463%203.537T12%2016q2.075%200%203.538-1.463T17%2011h2q0%202.625-1.7%204.6T13%2017.925V21Z'/%3E%3C/svg%3E") center / contain no-repeat;
+  }
+
+  .editor-host :global(.feedback-prose p.speech-segment-tidying) {
+    position: relative;
+    padding-left: 22px;
+  }
+
+  .editor-host :global(.feedback-prose p.speech-segment-tidying::before) {
+    position: absolute;
+    top: 0.48em;
+    left: 1px;
+    width: 12px;
+    height: 12px;
+    border: 2px solid color-mix(in oklab, var(--primary) 22%, transparent);
+    border-top-color: var(--primary);
+    border-radius: 999px;
+    animation: speech-tidying-spin 0.75s linear infinite;
+    content: '';
+  }
+
+  @keyframes speech-tidying-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .editor-host :global(.feedback-prose p.speech-segment-tidying::before) {
+      animation-duration: 1.8s;
+    }
+  }
+
   .editor-host :global(.feedback-prose img) {
     display: block;
     width: auto;
@@ -758,17 +550,6 @@
     border-radius: var(--radius);
     object-fit: contain;
     background: var(--muted);
-  }
-
-  /* Inside an Action channel block the image/quote is part of the continuous
-     background: reduce the outer whitespace so it hugs the block edge. */
-  .editor-host :global(.feedback-prose .action-channel-item img) {
-    margin: 10px 0;
-  }
-
-  .editor-host :global(.feedback-prose .action-channel-item blockquote) {
-    margin: 10px 0;
-    padding: 10px 12px;
   }
 
   /* The table node view always wraps the table, whatever `renderWrapper` says. */

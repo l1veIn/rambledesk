@@ -37,6 +37,14 @@
 
 `apps/desktop` 是装配根：它装配 storage、core application、本地服务、host knowledge、desktop-only capabilities。CLI 和测试可以复用同一套 crate，但不能成为第二套业务实现。
 
+## Feedback Draft 所有权
+
+工作台最多只有一个可编辑 `RichFeedbackEditor`。当前 request 通过 Editor transaction 写入；后台 Active Ramble 通过 TipTap JSON transformation、单一串行队列和 CAS 写入。数据库以版本化 `document_json` 为真源，保存时从同一 Document 同时生成 `body_markdown`。详见 [ADR 004](adr/004-single-editor-structured-draft.md)。
+
+禁止 per-request Editor、hidden Editor、session 持有 editor handle，以及自动 Tidy。
+
+Action 使用带 `actionId` / `actionIndex` 的标准 Blockquote。ASR paragraph 使用稳定 `speechSegmentId` 与 `pending` / `cleaned` 状态。Tidy 只由当前 Editor 的人工按钮触发；Tidy 与 Cooking 配置彼此独立。全局快捷键只发出语义事件，不读取或持有 Editor。
+
 ## Package 边界
 
 ```text
@@ -179,8 +187,7 @@ UI 不持有唯一事实状态。Tauri events 和系统通知都是提示，不�
 | 数据 | 唯一事实来源 |
 | --- | --- |
 | 反馈请求状态 | SQLite |
-| Feedback Draft 文档 | SQLite 中的版本化 TipTap JSON；同 revision 原子保存 Markdown 导出投影。节点属性持有 Action 归属、ASR 来源、语音段标识与 Light cleanup 状态 |
-| Feedback Draft 会话（selection、Undo、当前 Action、inflight cleanup task、Active Ramble） | 前端进程内存；最多所属 + 可见两个会话 |
+| 草稿正文 | SQLite 中的版本化 `document_json`；`body_markdown` 为同文档投影 |
 | 草稿附件 bytes | 应用 draft 目录，SQLite 存 metadata |
 | 反馈包 | 不可变 package directory + manifest |
 | 宿主身份 | adapter-provided `host_id`，服务端可按安装入口覆盖 |
@@ -188,7 +195,7 @@ UI 不持有唯一事实状态。Tauri events 和系统通知都是提示，不�
 | 上下文提示 | request `context_refs` / `source_hint` |
 | UI 当前页面/展开项 | 前端内存 |
 | 系统通知 | best-effort side effect |
-| 局部转写 | speech session 内存中的 Partial；Stable 作为带 ASR 来源属性的普通段落，经所属 Feedback Draft Session 写入结构化文档并 checkpoint 到 SQLite |
+| 局部转写 | speech session 内存；定期 checkpoint 到 Draft |
 
 ## 核心流程
 

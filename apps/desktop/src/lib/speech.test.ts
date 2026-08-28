@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   eventBelongsToVoiceSession,
+  stableSpeechSegmentId,
   stableTranscript,
   voiceStartStillLive,
   type SpeechEvent,
@@ -44,5 +45,11 @@ describe('voice ramble events', () => {
         chunk_index: 0,
       }),
     ).toBeNull()
+  })
+
+  it('derives a stable segment id so duplicate native delivery is idempotent', () => {
+    const event = stable as Extract<SpeechEvent, { type: 'stable' }>
+    expect(stableSpeechSegmentId(event)).toBe('asr-session-a-0')
+    expect(stableSpeechSegmentId(event)).toBe('asr-session-a-0')
   })
 })

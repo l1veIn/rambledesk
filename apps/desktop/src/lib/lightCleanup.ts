@@ -1,14 +1,14 @@
 import {
-  assertLlmReady,
   generateModelText,
   type CookingConfig,
   type ModelTextGenerator,
 } from './cooking'
-import { acceptCleanupResult } from './workbench/speechCleanupPolicy'
+import type { SpeechCleanupSegment } from './speechBlockMetadata'
+import { acceptCleanupResult, parseLabeledOutput } from './workbench/speechCleanupPolicy'
 
-export type LightCleanupConfig = CookingConfig
+export type TidyConfig = CookingConfig
 
-export const DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT = `You are a speech-to-text cleaner, not an assistant and not Cooking.
+export const DEFAULT_TIDY_SYSTEM_PROMPT = `You are a speech-to-text cleaner, not an assistant and not Cooking.
 
 The input is a verbatim transcript of what a human just said. Return the SAME utterance tidied into fluent, readable language.
 
@@ -19,26 +19,35 @@ HARD RULES:
 4. Remove repetition: when the speaker repeats the same word, phrase, or sentence immediately or within the passage, keep only one instance unless the repetition clearly changes meaning.
 5. Fix grammar and wording: adjust word order, function words, and phrasing so the sentence reads fluently and without errors; repair broken fragments introduced by speech-to-text.
 6. Keep the original meaning, intent, and roughly the same length; keep the original language; do not paraphrase into a summary.
-7. Output only the cleaned transcript. If you cannot tidy without changing meaning or adding content, output the original text unchanged.`
+7. Format the output as EXACTLY the same number of blocks as the input, in the same order. Every block MUST start with its number in square brackets: [1], [2], and so on. A single input block still requires [1]. An empty body still counts as a block.
+8. If an entire block contains only filler, hesitation, a false start, or speech-planning meta-talk and carries no user intent, observation, answer, choice, or meaningful reaction, return its [n] label with an empty body.
+9. Never delete a block merely because it is short. Preserve meaningful short answers and reactions such as yes, no, okay, right, stop, 可以, 不行, 对, and 等等.
+10. Output only the cleaned transcript. If you cannot tidy without changing meaning or adding content, output the original text unchanged, still with [n] labels.`
 
-export function resolveLightCleanupSystemPrompt(custom: string | null | undefined): string {
+export function resolveTidySystemPrompt(custom: string | null | undefined): string {
   const trimmed = custom?.trim() ?? ''
-  return trimmed || DEFAULT_LIGHT_CLEANUP_SYSTEM_PROMPT
+  return trimmed || DEFAULT_TIDY_SYSTEM_PROMPT
 }
 
-export async function lightCleanupTranscript(
-  text: string,
-  config: LightCleanupConfig,
+export function formatTidyPrompt(segments: SpeechCleanupSegment[]): string {
+  return segments.map((segment, index) => `[${index + 1}] ${segment.text}`).join('\n\n')
+}
+
+export async function tidySpeechSegments(
+  segments: SpeechCleanupSegment[],
+  config: TidyConfig,
   generate: ModelTextGenerator = generateModelText,
-): Promise<string> {
-  const transcript = text.trim()
-  if (!transcript) return ''
-  assertLlmReady(config, 'Light cleanup')
+): Promise<string[] | null> {
+  if (segments.length === 0) return []
   const result = await generate({
     config,
-    system: resolveLightCleanupSystemPrompt(config.systemPrompt),
-    prompt: transcript,
+    system: resolveTidySystemPrompt(config.systemPrompt),
+    prompt: formatTidyPrompt(segments),
+    label: 'Tidy',
   })
-  const cleaned = result.text.trim()
-  return acceptCleanupResult(transcript, cleaned || transcript)
+  const parsed = parseLabeledOutput(result.text, segments.length)
+  if (!parsed) return null
+  const accepted = parsed.map((block, index) => acceptCleanupResult(segments[index]!.text, block))
+  if (accepted.some((block) => block == null)) return null
+  return accepted as string[]
 }

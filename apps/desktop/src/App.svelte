@@ -20,9 +20,10 @@
   import HostSessionRail from './lib/components/navigation/HostSessionRail.svelte'
   import RequestListPane from './lib/components/navigation/RequestListPane.svelte'
   import { Sonner, toast } from './lib/components/ui/sonner'
-  import { errorToastWithCopy } from './lib/errorToast'
   import ResumePromptDialog from './lib/workbench/ResumePromptDialog.svelte'
   import WorkspacePanel from './lib/workbench/WorkspacePanel.svelte'
+  import type { JSONContent } from '@tiptap/core'
+
   import type {
     ApproveFeedbackInput,
     CancelFeedbackInput,
@@ -32,9 +33,15 @@
     SubmitFeedbackInput,
   } from './lib/feedback'
   import {
+    type ActiveAction,
+    type DraftOperation,
+  } from './lib/draftOperations'
+  import { writeBackgroundDraftOperation } from './lib/backgroundDraftWriter'
+  import {
+    decodeFeedbackDraftDocument,
     restoreFeedbackDraftDocument,
     snapshotFeedbackDraftDocument,
-    snapshotFeedbackDraftMarkdown,
+    type FeedbackDraftSnapshot,
   } from './lib/feedbackDraftDocument'
   import {
     notificationLabel,
@@ -54,19 +61,21 @@
     type PublishedFeedbackPackage,
     type PublishedFeedbackView,
   } from './lib/publishedFeedback'
-  import { formatTime, messageFrom } from './lib/workbench/feedbackText'
+  import {
+    formatTime,
+    messageFrom,
+    operatorFeedbackBody,
+  } from './lib/workbench/feedbackText'
   import { createCookingController } from './lib/workbench/cookingController'
+  import { createDraftController } from './lib/workbench/draftController'
   import { createPublisherController } from './lib/workbench/publisherController'
-  import { createActiveRambleCoordinator } from './lib/workbench/activeRambleCoordinator'
-  import { actionNotesFromDocument } from './lib/workbench/actionNotes'
-  import { createDraftSessionHost } from './lib/workbench/draftSessionHost'
-  import { lightCleanupTranscript } from './lib/lightCleanup'
   import { buildResumePrompt, shouldShowResumePromptButton } from './lib/workbench/resumePrompt'
   import {
     createAttachmentController,
     type AttachmentMessageTone,
   } from './lib/workbench/attachmentController'
   import { createNavigationController } from './lib/workbench/navigationController'
+  import { resolvedRamblePhase } from './lib/workbench/rambleSessionState'
   import type {
     FeedbackEditorHandle,
     RamblePhase,
@@ -93,23 +102,19 @@
     cookingProvider,
     cookingReasoningEffort,
     cookingSystemPrompt,
-    lightCleanupApiKey,
-    lightCleanupBaseUrl,
-    lightCleanupCharThreshold,
-    lightCleanupEnabled,
-    lightCleanupIdleMs,
-    lightCleanupModel,
-    lightCleanupProvider,
-    lightCleanupReasoningEffort,
-    lightCleanupSegmentThreshold,
-    lightCleanupSystemPrompt,
-    lightCleanupTimeoutMs,
     locale,
     notificationPopupEnabled,
     onboardingCompleted,
     resetOnboarding,
     notificationSoundEnabled,
     setNotificationPopupEnabled,
+    tidyApiKey,
+    tidyAutoThreshold,
+    tidyBaseUrl,
+    tidyModel,
+    tidyProvider,
+    tidyReasoningEffort,
+    tidySystemPrompt,
   } from './lib/preferences'
 
   type PaneGroupHandle = {
@@ -125,13 +130,12 @@
   let publishedFeedback: PublishedFeedbackView | null = null
   let draftBody = ''
   let savedBody = ''
+  let draftDocumentJson = ''
+  let savedDocumentJson = ''
+  let editorDocument: JSONContent | null = null
+  let editorEpoch = 0
   let savedRevision = 0
   let savePhase: SavePhase = 'idle'
-  let draftEditorViews: Array<{
-    requestId: string
-    initialDocumentJson: string
-    initialMarkdown: string
-  }> = []
   let saveMessage = ''
   let pageError = ''
   let loadingWorkspace = false
@@ -140,8 +144,6 @@
   let cookingRequestIds = new Set<string>()
   /** Preview cooking result for the current workspace, if generated and current. */
   let cookedPreview: { markdown: string; original: string; model: string } | null = null
-  /** Pre-cook draft snapshot for the restore action. */
-  let cookedPreviewOriginal = ''
   let cancelling = false
   let approving = false
   let attachmentBusy = false
@@ -199,82 +201,45 @@
   let rambleRequestId = ''
   let rambleRequestTitle = ''
   let rambleMessage = ''
-  let rambleMarkdownQueue: Promise<void> = Promise.resolve()
+  let rambleDocumentQueue: Promise<void> = Promise.resolve()
+  let activeActionByRequest = new Map<string, NonNullable<ActiveAction>>()
   let inboxTimer: ReturnType<typeof setInterval> | undefined
-  let sessionEpoch = 0
-  const rambleOwnership = createActiveRambleCoordinator()
-  const draftSessions = createDraftSessionHost({
-    cleanup: {
-      enabled: () => $lightCleanupEnabled,
-      settings: () => ({
-        segmentThreshold: $lightCleanupSegmentThreshold,
-        charThreshold: $lightCleanupCharThreshold,
-        idleMs: $lightCleanupIdleMs,
-        timeoutMs: $lightCleanupTimeoutMs,
-      }),
-      clean: (text) =>
-        lightCleanupTranscript(text, {
-          provider: $lightCleanupProvider,
-          apiKey: $lightCleanupApiKey,
-          baseUrl: $lightCleanupBaseUrl,
-          model: $lightCleanupModel,
-          reasoningEffort: $lightCleanupReasoningEffort,
-          locale: $locale,
-          systemPrompt: $lightCleanupSystemPrompt,
-        }),
-    },
-    save: {
-      async save({ requestId, documentJson, bodyMarkdown, expectedRevision }) {
-        if (previewMode) return { savedRevision: expectedRevision + 1 }
-        const saved = await invoke<DraftView>('save_feedback_draft', {
-          input: {
-            request_id: requestId,
-            document_json: documentJson,
-            body_markdown: bodyMarkdown,
-            expected_revision: expectedRevision,
-          },
-        })
-        if (workspace?.request.request_id === requestId) {
-          workspace = { ...workspace, draft: saved }
-        }
-        return { savedRevision: saved.saved_revision }
-      },
-    },
-    onChange: () => {
-      sessionEpoch += 1
-      const visible = draftSessions.visible()
-      if (!visible) return
-      draftBody = visible.markdown()
-      savedBody = visible.isDirty() ? savedBody : visible.markdown()
-      savedRevision = visible.savedRevision()
-      savePhase = visible.savePhase()
-      saveMessage = visible.saveMessage()
-      // Keep the visible editor in sync with the session only when the session
-      // has NO bound editor (e.g. a Light cleanup that ran before binding).
-      // With a bound editor the session follows the editor, and a markdown
-      // push here would round-trip away the rich node attributes.
-      if (!visible.editor()) {
-        workspacePanel?.applyExternalMarkdown?.(visible.markdown())
-      }
-    },
-  })
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
   }
 
-  function isTerminalRequest(request: { status: string }): boolean {
-    return request.status === 'completed' || request.status === 'cancelled'
-  }
-
-  const updateDraft = (value: string) => {
-    draftSessions.visible()?.applyUserEdit(snapshotFeedbackDraftMarkdown(value))
-  }
-  const saveDraftNow = async () => {
-    const visible = draftSessions.visible()
-    if (!visible) return true
-    return visible.saveNow()
-  }
+  const draftController = createDraftController({
+    messageFrom,
+    isPreviewMode: () => previewMode,
+    isInteractionLocked: () => interactionLocked,
+    isWorkspaceTerminal: () =>
+      workspace?.request.status === 'completed' || workspace?.request.status === 'cancelled',
+    getWorkspace: () => workspace,
+    getSnapshot: () => currentDraftSnapshot(),
+    setSnapshot: (snapshot) => applyDraftSnapshot(snapshot),
+    getSavedSnapshot: () => savedDraftSnapshot(),
+    setSavedSnapshot: (snapshot) => {
+      savedDocumentJson = snapshot.documentJson
+      savedBody = snapshot.bodyMarkdown
+    },
+    getSavedRevision: () => savedRevision,
+    setSavedRevision: (revision) => {
+      savedRevision = revision
+    },
+    getPhase: () => savePhase,
+    setPhase: (phase) => {
+      savePhase = phase
+    },
+    setMessage: (message) => {
+      saveMessage = message
+    },
+    setWorkspaceDraft: (draft) => {
+      if (workspace) workspace = { ...workspace, draft }
+    },
+  })
+  const updateDraft = draftController.updateDraft
+  const saveDraftNow = draftController.saveDraftNow
 
   const attachmentController = createAttachmentController({
     isTauri,
@@ -283,7 +248,7 @@
     getWorkspace: () => workspace,
     getEditor: () => workspacePanel,
     getRambleRequestId: () => rambleRequestId,
-    getInteractionLocked: () => interactionLocked || currentRequestCooking,
+    getInteractionLocked: () => interactionLocked || currentRequestCooking || cookedDraftReady,
     getSavedRevision: () => savedRevision,
     getBusy: () => attachmentBusy,
     getCaptureBusy: () => screenCaptureBusy,
@@ -297,8 +262,9 @@
     setPreviews: (previews) => (attachmentPreviews = previews),
     setDragActive: (active) => (dragActive = active),
     saveDraftNow,
-    waitForRambleMarkdown: () => rambleMarkdownQueue.catch(() => {}),
-    appendRambleMarkdown,
+    waitForRambleMarkdown: () => rambleDocumentQueue.catch(() => {}),
+    routeDraftOperation,
+    activeActionFor,
     applyWorkspaceMutation,
   })
 
@@ -318,43 +284,51 @@
   })
   const resolveHostProfile = navigation.resolveHostProfile
 
-  $: dirty = sessionEpoch >= 0 && (draftSessions.visible()?.isDirty() ?? false)
-  $: currentActionIndex =
-    sessionEpoch >= 0 ? (draftSessions.visible()?.currentActionIndex() ?? null) : null
-  $: actionNotes =
-    sessionEpoch >= 0
-      ? actionNotesFromDocument(
-          draftSessions.visible()?.snapshot().documentJson ?? null,
-          draftSessions.visible()?.snapshot().bodyMarkdown ?? '',
-        )
-      : {}
-  $: cleanupCount = sessionEpoch >= 0 ? (draftSessions.visible()?.cleanupCount() ?? 0) : 0
-  $: if (sessionEpoch >= 0) {
-    // Recompute on every session change: the panel mounts a real per-session
-    // editor (which binds to the session and preserves rich node attributes)
-    // instead of staying on the markdown fallback forever.
-    draftEditorViews = draftSessions.mounted().map((session) => ({
-      requestId: session.requestId,
-      initialDocumentJson: session.initialDocumentJson,
-      initialMarkdown: session.initialMarkdown,
-    }))
+  function currentDraftSnapshot(): FeedbackDraftSnapshot {
+    return { documentJson: draftDocumentJson, bodyMarkdown: draftBody }
   }
-  $: rambleOwnerTerminal =
-    rambleEngaged &&
-    workspace?.request.request_id === rambleRequestId &&
-    (submitting || cancelling || approving || currentRequestCooking)
+
+  function savedDraftSnapshot(): FeedbackDraftSnapshot {
+    return { documentJson: savedDocumentJson, bodyMarkdown: savedBody }
+  }
+
+  function applyDraftSnapshot(snapshot: FeedbackDraftSnapshot) {
+    draftDocumentJson = snapshot.documentJson
+    draftBody = snapshot.bodyMarkdown
+    editorDocument = decodeFeedbackDraftDocument(snapshot.documentJson)
+  }
+
+  function adoptDraft(draft: DraftView, options: { loadEditor?: boolean } = {}) {
+    const restored = restoreFeedbackDraftDocument(draft.document_json, draft.body_markdown)
+    const snapshot = snapshotFeedbackDraftDocument(restored)
+    applyDraftSnapshot(snapshot)
+    savedDocumentJson = snapshot.documentJson
+    savedBody = snapshot.bodyMarkdown
+    savedRevision = draft.saved_revision
+    if (options.loadEditor !== false) {
+      editorDocument = restored
+      editorEpoch += 1
+    }
+    return snapshot
+  }
+
+  $: dirty =
+    workspace !== null &&
+    workspace.request.status !== 'completed' &&
+    workspace.request.status !== 'cancelled' &&
+    draftDocumentJson !== savedDocumentJson
   $: {
     if (!pageError) deliveredPageError = ''
     else if (pageError !== deliveredPageError) {
       deliveredPageError = pageError
-      errorToastWithCopy(tr('Operation failed'), pageError)
+      toast.error(tr('Operation failed'), { description: pageError })
     }
   }
   $: {
     if (!saveMessage) deliveredSaveError = ''
     else if (saveMessage !== deliveredSaveError) {
       deliveredSaveError = saveMessage
-      errorToastWithCopy(tr('Save failed'), saveMessage)
+      toast.error(tr('Save failed'), { description: saveMessage })
     }
   }
   $: {
@@ -365,7 +339,7 @@
       const options = { description: attachmentMessage }
       if (attachmentMessageTone === 'success') toast.success(tr('Attachment action completed'), options)
       else if (attachmentMessageTone === 'info') toast.info(tr('Attachment status'), options)
-      else errorToastWithCopy(tr('Attachment action failed'), attachmentMessage)
+      else toast.error(tr('Attachment action failed'), options)
     }
   }
   $: visibleRequests = todayOnly
@@ -419,17 +393,11 @@
     voicePhase === 'stopping'
   $: voiceCanStop =
     voiceActive || voicePhase === 'error'
-  $: rambleActive = ramblePhase === 'active'
-  $: rambleEngaged = ramblePhase !== 'idle'
+  $: visibleRamblePhase = resolvedRamblePhase(ramblePhase, voicePhase)
+  $: rambleActive = visibleRamblePhase === 'active'
+  $: rambleEngaged = visibleRamblePhase !== 'idle'
   $: rambleBelongsToWorkspace =
     !rambleEngaged || workspace?.request.request_id === rambleRequestId
-  $: if (rambleEngaged && rambleRequestId) {
-    rambleOwnership.occupy(rambleRequestId)
-    draftSessions.setOwner(rambleRequestId)
-  } else if (!rambleEngaged) {
-    rambleOwnership.release()
-    draftSessions.setOwner(null)
-  }
   $: rambelleStatusPortrait = feedbackResult
     ? rambelleArchived
     : currentRequestCooking
@@ -439,7 +407,7 @@
         : rambleEngaged
           ? rambelleOrganizing
           : rambelleIdle
-  $: rambleBusy = ramblePhase === 'starting' || ramblePhase === 'stopping'
+  $: rambleBusy = visibleRamblePhase === 'starting' || visibleRamblePhase === 'stopping'
   $: rambleCanStop = rambleActive || voiceCanStop
   $: rambleCanExit = rambleEngaged || voiceCanStop
   $: updateInstallBlocked =
@@ -497,23 +465,11 @@
     })
     const cleanupLayoutObserver = () => layoutObserver.disconnect()
 
-    if (isTauri) {
-      void invoke('stop_voice_ramble').catch(() => {})
-    }
     if (!isTauri) {
       startWorkbench()
       if (previewMode) {
         workspace = previewFixtures.workspace
-        const session = draftSessions.openVisible({
-          requestId: workspace.request.request_id,
-          documentJson: workspace.draft.document_json,
-          markdown: workspace.draft.body_markdown,
-          revision: workspace.draft.saved_revision,
-          terminal: isTerminalRequest(workspace.request),
-        })
-        draftBody = session.markdown()
-        savedBody = draftBody
-        savedRevision = session.savedRevision()
+        adoptDraft(previewFixtures.workspace.draft)
         savePhase = 'saved'
         if (new URLSearchParams(window.location.search).get('dialog') === 'resume') {
           resumePrompt = previewFixtures.resumePrompt
@@ -566,7 +522,7 @@
         // Resume prompt still appears if submit path keeps the main window focused.
       })
     return () => {
-      draftSessions.disposeAll()
+      draftController.cancelPendingSave()
       if (inboxTimer) clearInterval(inboxTimer)
       resumePromptUnlisten?.()
       openAdaptersUnlisten?.()
@@ -647,55 +603,39 @@
 
   async function openRequest(requestId: string, saveCurrent = true) {
     if (interactionLocked || workspace?.request.request_id === requestId) return
-    if (saveCurrent) {
-      const current = draftSessions.visible()
-      if (current && !(await current.saveNow())) return
-    }
-
+    if (saveCurrent && !(await saveDraftNow())) return
     loadingWorkspace = true
     pageError = ''
     completedResult = null
     publishedFeedback = null
     try {
-      const next = previewMode
-        ? previewWorkspaceFor(requestId)
-        : await invoke<FeedbackWorkspaceView>('get_feedback_workspace', {
-            requestId,
-          })
-      if (!next) throw new Error(tr('This feedback request could not be found.'))
-      workspace = next
-      cookedPreview = null
-      cookedPreviewOriginal = ''
-      const existing = draftSessions.get(requestId)
-      const session = draftSessions.openVisible({
-        requestId,
-        documentJson: existing ? existing.documentJson() : next.draft.document_json,
-        markdown: existing ? existing.markdown() : next.draft.body_markdown,
-        revision: existing ? existing.savedRevision() : next.draft.saved_revision,
-        terminal: next.request.status === 'completed' || next.request.status === 'cancelled',
+      await enqueueDocumentTask(async () => {
+        const next = previewMode
+          ? previewWorkspaceFor(requestId)
+          : await invoke<FeedbackWorkspaceView>('get_feedback_workspace', {
+              requestId,
+            })
+        if (!next) throw new Error(tr('This feedback request could not be found.'))
+        workspace = next
+        cookedPreview = null
+        adoptDraft(next.draft)
+        savePhase = next.draft.updated_at ? 'saved' : 'idle'
+        saveMessage = ''
+        attachmentMessage = ''
+        await attachmentController.refreshPreviews(next)
+        if (next.request.status === 'completed' && next.feedback) {
+          publishedFeedback = previewMode
+            ? {
+                markdown: next.draft.body_markdown,
+                uncooked_markdown: next.draft.body_markdown,
+              }
+            : normalizePublishedFeedback(
+                await invoke<PublishedFeedbackPackage | null>('read_published_feedback', {
+                  requestId: next.request.request_id,
+                }),
+              )
+        }
       })
-      draftBody = session.markdown()
-      savedBody = session.markdown()
-      savedRevision = session.savedRevision()
-      savePhase = session.savePhase()
-      saveMessage = session.saveMessage()
-      attachmentMessage = ''
-      await attachmentController.refreshPreviews(next)
-      if (
-        (next.request.status === 'completed' || next.request.status === 'cancelled') &&
-        next.feedback
-      ) {
-        publishedFeedback = previewMode
-          ? {
-              markdown: next.draft.body_markdown,
-              uncooked_markdown: next.draft.body_markdown,
-            }
-          : normalizePublishedFeedback(
-              await invoke<PublishedFeedbackPackage | null>('read_published_feedback', {
-                requestId: next.request.request_id,
-              }),
-            )
-      }
     } catch (cause) {
       pageError = messageFrom(cause)
     } finally {
@@ -703,22 +643,83 @@
     }
   }
 
-  async function appendRambleMarkdown(requestId: string, markdown: string): Promise<void> {
-    const block = markdown.trim()
-    if (!requestId || !block) return
-    if (workspace?.request.request_id === requestId && interactionLocked) return
-    const session = draftSessions.get(requestId)
-    if (!session) return
-    const operation = rambleMarkdownQueue.then(async () => {
-      session.appendSpeech(block)
-      if (!(await session.saveNow())) {
-        throw new Error(session.saveMessage() || tr('The current draft could not be saved.'))
+  function activeActionFor(requestId: string): ActiveAction {
+    return activeActionByRequest.get(requestId) ?? null
+  }
+
+  function enqueueDocumentTask<T>(task: () => Promise<T>): Promise<T> {
+    const run = rambleDocumentQueue.then(task)
+    rambleDocumentQueue = run.then(
+      () => undefined,
+      () => undefined,
+    )
+    return run
+  }
+
+  async function routeDraftOperation(requestId: string, operation: DraftOperation): Promise<void> {
+    if (!requestId) return
+    const run = enqueueDocumentTask(async () => {
+      if (workspace?.request.request_id === requestId) {
+        if (
+          workspace.request.status === 'completed' ||
+          workspace.request.status === 'cancelled'
+        ) {
+          throw new Error(tr('This request is closed. The document is read-only.'))
+        }
+        let applied = workspacePanel?.applyDraftOperation(operation) ?? false
+        if (!applied) {
+          await tick()
+          applied = workspacePanel?.applyDraftOperation(operation) ?? false
+        }
+        if (!applied) {
+          throw new Error(tr('The current editor is not ready. Try the action again.'))
+        }
+        if (!(await saveDraftNow())) {
+          throw new Error(saveMessage || tr('The current draft could not be saved.'))
+        }
+        return
       }
+
+      await writeBackgroundDraftOperation(requestId, operation, {
+        load: async () => {
+          const target = previewMode
+            ? previewWorkspaceFor(requestId)
+            : await invoke<FeedbackWorkspaceView>('get_feedback_workspace', { requestId })
+          if (!target) throw new Error(tr('This feedback request could not be found.'))
+          return target
+        },
+        save: async (input) =>
+          previewMode
+            ? {
+                document_json: input.document_json,
+                body_markdown: input.body_markdown,
+                saved_revision: input.expected_revision + 1,
+                updated_at: new Date().toISOString(),
+              }
+            : invoke<DraftView>('save_feedback_draft', { input }),
+      })
     })
-    rambleMarkdownQueue = operation.catch((cause) => {
+    try {
+      await run
+    } catch (cause) {
       pageError = tr('Failed to write Ramble content: {error}', { error: messageFrom(cause) })
-    })
-    await operation
+      throw cause
+    }
+  }
+
+  function selectAction(actionId: string, actionIndex: number, title: string) {
+    const requestId = workspace?.request.request_id
+    if (!requestId || cookedDraftReady) return
+    if (activeActionByRequest.get(requestId)?.actionId === actionId) {
+      activeActionByRequest.delete(requestId)
+      activeActionByRequest = new Map(activeActionByRequest)
+      void routeDraftOperation(requestId, { kind: 'clearActionGroup', actionId }).catch(() => {})
+      return
+    }
+    const action = { actionId, actionIndex, title }
+    activeActionByRequest.set(requestId, action)
+    activeActionByRequest = new Map(activeActionByRequest)
+    void routeDraftOperation(requestId, { kind: 'startActionGroup', action }).catch(() => {})
   }
 
   async function reloadWorkspace() {
@@ -726,9 +727,7 @@
     const requestId = workspace?.request.request_id
     if (!requestId) return
     if (rambleCanExit) await exitRamble()
-    await draftSessions.owner()?.settle()
-    await draftSessions.visible()?.settle()
-    draftSessions.bumpGeneration()
+    if (dirty && !(await saveDraftNow())) return
     workspace = null
     await openRequest(requestId, false)
   }
@@ -752,28 +751,21 @@
   }
 
   function applyWorkspaceMutation(next: FeedbackWorkspaceView) {
-    const session = draftSessions.visible()
-    const localDraft = session?.snapshot()
-    const savedDraft = snapshotFeedbackDraftDocument(
+    const localSnapshot = currentDraftSnapshot()
+    workspace = next
+    savedRevision = next.draft.saved_revision
+    const remote = snapshotFeedbackDraftDocument(
       restoreFeedbackDraftDocument(next.draft.document_json, next.draft.body_markdown),
     )
-    workspace = next
-    session?.acknowledgeSave(savedDraft, next.draft.saved_revision)
-    if (
-      !localDraft ||
-      (localDraft.documentJson === savedDraft.documentJson &&
-        localDraft.bodyMarkdown === savedDraft.bodyMarkdown)
-    ) {
-      draftBody = savedDraft.bodyMarkdown
-      savedBody = savedDraft.bodyMarkdown
-      savedRevision = next.draft.saved_revision
+    savedDocumentJson = remote.documentJson
+    savedBody = remote.bodyMarkdown
+    if (localSnapshot.documentJson === remote.documentJson) {
+      applyDraftSnapshot(remote)
       savePhase = 'saved'
     } else {
-      draftBody = localDraft.bodyMarkdown
-      savedBody = savedDraft.bodyMarkdown
-      savedRevision = next.draft.saved_revision
+      applyDraftSnapshot(localSnapshot)
       savePhase = 'unsaved'
-      void session?.saveNow()
+      draftController.scheduleSave()
     }
   }
 
@@ -789,7 +781,6 @@
     messageFrom,
     getWorkspace: () => workspace,
     getDraftBody: () => draftBody,
-    getSavedBody: () => savedBody,
     getCookingConfig: () => ({
       provider: $cookingProvider,
       apiKey: $cookingApiKey,
@@ -802,21 +793,9 @@
     isCookingEnabled: () => $cookingEnabled,
     isCooking: () => currentRequestCooking,
     exitRamble: async () => {
-      if (rambleCanExit && workspace?.request.request_id === rambleRequestId) await exitRamble()
-    },
-    setDraftBody: (markdown) => {
-      draftBody = markdown
-    },
-    setSavePhase: (phase) => {
-      savePhase = phase
-    },
-    setSaveMessage: (message) => {
-      saveMessage = message
+      if (rambleCanExit) await exitRamble()
     },
     saveDraftNow,
-    applyEditorMarkdown: (markdown) => {
-      workspacePanel?.applyExternalMarkdown(markdown)
-    },
     setPageError: (message) => {
       pageError = message
     },
@@ -826,10 +805,6 @@
     setPreview: (preview) => {
       cookedPreview = preview
     },
-    setPreviewOriginal: (original) => {
-      cookedPreviewOriginal = original
-    },
-    getPreviewOriginal: () => cookedPreviewOriginal,
   })
   const cookPreviewOnly = cookingController.cookPreviewOnly
   const restoreOriginalAfterCook = cookingController.restoreOriginal
@@ -855,8 +830,7 @@
       pageError = message
     },
     getCanSubmit: () => canSubmit,
-    getRambleCanExit: () =>
-      rambleCanExit && workspace?.request.request_id === rambleRequestId,
+    getRambleCanExit: () => rambleCanExit,
     exitRamble,
     saveDraftNow,
     getDraftBody: () => draftBody,
@@ -881,18 +855,12 @@
       })
     },
   })
-  const submitFeedback = async () => {
-    await publisherController.submitFeedback()
-    // A terminal request no longer collects Action-tagged input; drop any
-    // still-highlighted channel and dispose its draft session so nothing
-    // tries to save into the now-locked draft.
-    if (workspace) draftSessions.dispose(workspace.request.request_id)
-  }
+  const submitFeedback = publisherController.submitFeedback
 
   async function approveFeedback() {
     if (!workspace || !workspace.request.allow_finish || approving) return
     if (!window.confirm(tr('Approve this final summary and end Pi’s Ramble flow?'))) return
-    if (rambleCanExit && workspace.request.request_id === rambleRequestId) await exitRamble()
+    if (rambleCanExit) await exitRamble()
     approving = true
     pageError = ''
     try {
@@ -910,7 +878,6 @@
       }
       toast.success(tr('Approved and finished'))
       await navigation.refreshNavigation(true)
-      if (workspace) draftSessions.dispose(workspace.request.request_id)
     } catch (cause) {
       pageError = messageFrom(cause)
     } finally {
@@ -920,7 +887,7 @@
 
   async function cancelFeedback() {
     if (!workspace || !canCancel) return
-    if (rambleCanExit && workspace.request.request_id === rambleRequestId) await exitRamble()
+    if (rambleCanExit) await exitRamble()
 
     cancelling = true
     pageError = ''
@@ -943,7 +910,6 @@
       savePhase = 'saved'
       toast.success(tr('Request cancelled'))
       await navigation.refreshNavigation(true)
-      if (workspace) draftSessions.dispose(workspace.request.request_id)
     } catch (cause) {
       pageError = messageFrom(cause)
     } finally {
@@ -964,39 +930,10 @@
 
   async function exitRamble() {
     await rambleController?.exitRamble()
-    // Ending a Ramble also ends its Action marking: nothing new is appended
-    // while the request is not being recorded.
-    if (rambleRequestId) draftSessions.get(rambleRequestId)?.clearActionChannel()
-  }
-
-  async function returnToRamble() {
-    if (!rambleRequestId) return
-    await openRequest(rambleRequestId)
-  }
-
-  async function handoffRamble() {
-    const nextId = workspace?.request.request_id
-    if (!nextId || nextId === rambleRequestId) return
-    if (
-      !window.confirm(
-        tr('Stop the Ramble on {title} and start on this request? In-progress cleanup will be saved first.', {
-          title: rambleRequestTitle || rambleRequestId,
-        }),
-      )
-    ) {
-      return
-    }
-    await draftSessions.owner()?.settle()
-    await exitRamble()
-    if (rambleEngaged) return
-    await rambleController?.toggleRamble()
+    await rambleDocumentQueue.catch(() => {})
   }
 
   async function toggleRamble() {
-    if (rambleOwnership.needsHandoff(workspace?.request.request_id ?? '')) {
-      await handoffRamble()
-      return
-    }
     await rambleController?.toggleRamble()
   }
 
@@ -1016,7 +953,6 @@
     bind:this={rambleController}
     {isTauri}
     {workspace}
-    editor={workspacePanel}
     bind:attachmentBusy
     {screenCaptureBusy}
     bind:attachmentMessage
@@ -1031,36 +967,15 @@
     bind:rambleRequestId
     bind:rambleRequestTitle
     bind:rambleMessage
-    interactionLocked={rambleOwnerTerminal}
+    interactionLocked={interactionLocked || currentRequestCooking || cookedDraftReady}
     onPageError={(message) => (pageError = message)}
     onSaveDraftNow={saveDraftNow}
     onApplyWorkspaceMutation={applyWorkspaceMutation}
     onRefreshAttachmentPreviews={attachmentController.refreshPreviews}
     onStartScreenCapture={attachmentController.startScreenCapture}
     onImportAttachmentPaths={attachmentController.importAttachmentPaths}
-    onAppendRambleMarkdown={appendRambleMarkdown}
-    getRambleEditor={() => draftSessions.owner()?.editor() ?? workspacePanel}
-    onInsertRambleBlock={(requestId, markdown) => draftSessions.get(requestId)?.insertMarkdownBlock(markdown)}
-    onPrepareNonSpeechInsert={(requestId) => draftSessions.get(requestId)?.prepareNonSpeechInsert()}
-    onRambleStarted={(requestId) => {
-      // The editor binds to the draft session only while recording: speech,
-      // captures, and cleanup then flow through one live editor.
-      draftSessions.setOwner(requestId)
-      draftSessions.get(requestId)?.beginRecording()
-    }}
-    onRambleStopped={() => {
-      // Stop sequence: settle the remaining speech (a final tidy + save),
-      // then drop the editor binding and the Action highlight. When the stop
-      // is part of submitting/cancelling/approving, the draft is about to be
-      // locked: skip the settle save entirely and just unbind.
-      const owner = draftSessions.owner()
-      if (!owner) return
-      if (submitting || cancelling || approving) {
-        owner.endRecording()
-        return
-      }
-      void owner.settle().finally(() => owner.endRecording())
-    }}
+    onRouteDraftOperation={routeDraftOperation}
+    getActiveAction={activeActionFor}
   />
 
   <AppTitlebar
@@ -1069,12 +984,6 @@
     {rambleEngaged}
     {rambleActive}
     {rambleRequestTitle}
-    rambleStatusLabel={ramblePhase === 'error'
-      ? rambleMessage
-      : rambleActive
-        ? tr('Recording')
-        : tr('Ramble paused')}
-    onReturnToRamble={() => void returnToRamble()}
     notificationText={$notificationSoundEnabled
       ? tr('Notification settings · sound on')
       : notificationLabel(notificationState, $locale)}
@@ -1151,6 +1060,21 @@
           {workspace}
           {feedbackResult}
           {draftBody}
+          {editorDocument}
+          {editorEpoch}
+          tidyConfig={{
+            provider: $tidyProvider,
+            apiKey: $tidyApiKey,
+            baseUrl: $tidyBaseUrl,
+            model: $tidyModel,
+            reasoningEffort: $tidyReasoningEffort,
+            locale: $locale,
+            systemPrompt: $tidySystemPrompt,
+          }}
+          tidyAutoThreshold={$tidyAutoThreshold}
+          activeActionId={workspace
+            ? activeActionByRequest.get(workspace.request.request_id)?.actionId ?? null
+            : null}
           {savedRevision}
           {savePhase}
           {attachmentPreviews}
@@ -1162,8 +1086,8 @@
               : rambelleIdle}
           rambleEngaged={rambleBelongsToWorkspace ? rambleEngaged : false}
           rambleActive={rambleBelongsToWorkspace ? rambleActive : false}
-          ramblePhase={rambleBelongsToWorkspace ? ramblePhase : 'idle'}
-          rambleBusy={rambleBelongsToWorkspace ? rambleBusy : false}
+          ramblePhase={rambleBelongsToWorkspace ? visibleRamblePhase : 'idle'}
+          rambleBusy={rambleBelongsToWorkspace ? rambleBusy : true}
           rambleStartedOnce={rambleBelongsToWorkspace ? rambleStartedOnce : false}
           voiceDevice={rambleBelongsToWorkspace ? voiceDevice : ''}
           voiceChunkIndex={rambleBelongsToWorkspace ? voiceChunkIndex : 0}
@@ -1177,6 +1101,7 @@
           cookingEnabled={$cookingEnabled}
           {cookedDraftReady}
           cookedPreviewModel={cookedPreview?.model ?? ''}
+          cookedPreviewMarkdown={cookedPreview?.markdown ?? ''}
           onCookPreview={() => void cookPreviewOnly()}
           onRestoreOriginal={restoreOriginalAfterCook}
           {submitting}
@@ -1190,15 +1115,9 @@
           formatTime={formatTimeLocal}
           onReload={() => void reloadWorkspace()}
           onDraftChange={updateDraft}
-          draftEditors={draftEditorViews}
-          visibleRequestId={workspace?.request.request_id ?? ''}
-          onDraftChangeFor={(requestId, snapshot) => draftSessions.get(requestId)?.applyUserEdit(snapshot)}
-          onEditorReady={(requestId, editor) => draftSessions.get(requestId)?.bindEditor(editor)}
-          onPrepareNonSpeechInsert={(requestId) => draftSessions.get(requestId)?.prepareNonSpeechInsert()}
-          {currentActionIndex}
-          {actionNotes}
-          {cleanupCount}
-          onToggleActionChannel={(index) => draftSessions.visible()?.toggleActionChannel(index)}
+          onTidyError={(message) => (pageError = message)}
+          onOpenTidySettings={() => void openSettings('post-processing')}
+          onSelectAction={selectAction}
           onToggleRamble={() => void toggleRamble()}
           onExitRamble={() => void exitRamble()}
           onOpenVoiceSettings={() => void openSettings('voice')}
