@@ -150,7 +150,8 @@ fn paths_overlap(left: &Path, right: &Path) -> bool {
 
 fn reject_destination_recursion(path: &Path, destination: &Path) -> Result<(), String> {
     let comparable = comparable_library_path(path)?;
-    if paths_overlap(&comparable, destination) {
+    let comparable_destination = comparable_library_path(destination)?;
+    if paths_overlap(&comparable, &comparable_destination) {
         Err(DESTINATION_RECURSION_ERROR.to_owned())
     } else {
         Ok(())
