@@ -1,7 +1,7 @@
 # RambleDesk 开发基线
 
-> 状态：v2 当前基线。
-> 术语源：[TERMINOLOGY.md](TERMINOLOGY.md)。本文若与术语表冲突，以术语表为准。
+> 状态：v2 历史开发基线，已冻结，不用于 v3 新代码。
+> v3 当前 Module 与 Interface 见 [ARCHITECTURE.md](ARCHITECTURE.md)，实施顺序见 [V3_IMPLEMENTATION_PLAN.md](V3_IMPLEMENTATION_PLAN.md)。
 
 ## 技术栈
 

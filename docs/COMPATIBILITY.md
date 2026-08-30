@@ -1,7 +1,7 @@
 # RambleDesk 适配器验证矩阵
 
-> 状态：Generic MCP Adapter 与 Pi Native Adapter 当前验证基线。
-> 术语源：[TERMINOLOGY.md](TERMINOLOGY.md)。
+> 状态：v2 Generic MCP 与 Pi 的历史验证记录，已冻结，不属于 v3 首发合同。
+> v3 是否重建 Compatibility Ingress 以 [V3_IMPLEMENTATION_PLAN.md](V3_IMPLEMENTATION_PLAN.md) 为准。
 
 ## 接入路径
 

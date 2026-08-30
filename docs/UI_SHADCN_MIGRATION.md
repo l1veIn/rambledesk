@@ -1,7 +1,7 @@
 # RambleDesk shadcn 工作台重构
 
-> 状态：实施中。
-> 术语源：[TERMINOLOGY.md](TERMINOLOGY.md)。
+> 状态：v2 历史 UI 计划，已被 v3 Session-first Workbench 取代。
+> 当前信息架构与 UI Gate 见 [PRODUCT.md](PRODUCT.md) 和 [V3_IMPLEMENTATION_PLAN.md](V3_IMPLEMENTATION_PLAN.md)。
 
 这不是样式替换。目标是把 desktop 前端重构为稳定的人类反馈工作台，并用
 shadcn-svelte 统一基础组件、主题 token、交互状态和目录边界。

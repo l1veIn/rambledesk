@@ -1,7 +1,7 @@
 # RambleDesk 产品宪章
 
-> 状态：v2 当前基线。
-> 术语源：[TERMINOLOGY.md](TERMINOLOGY.md)。普通实现不得静默偏离本文。
+> 状态：v2 历史产品宪章，已冻结，不适用于 v3 Implementation。
+> v3 以 [TERMINOLOGY.md](TERMINOLOGY.md) 与 [PRODUCT.md](PRODUCT.md) 为当前合同；本文只保留旧产品判断的演进背景。
 
 ## North Star
 

@@ -39,7 +39,7 @@ RambleDesk 在 ACP 中扮演 **Client**：它可以启动 Agent 子进程、建�
 3. `rambledesk-acp-client` 建立 Agent Run 和 ACP Session Link，把从 `launch` Package 派生的首个 Prompt 交给 ACP Agent。进程启动失败可以重试，但不得重复发布 Package、创建 Session 或发送同一个首个 Prompt。
 4. RambleDesk 持久化 Session Record 和每个 Ramble Submission；ACP `session/update` 只归一化为当前 Context View 的 live event，不写入完整 transcript。Prompt Turn 是运行边界，不要求独立 `turns` 表。
 5. 非 YOLO 模式下，Agent 可以通过 ACP 发出零到多个 Permission Request。RambleDesk 按原 JSON-RPC request 逐项关联和排队，完整呈现 tool call 与选项，并把人类选择直接回给对应请求。
-6. Agent Run 具备 Question Capability 时，Agent 可以发起 Ask Question；问题显示在 Session 输入框上方，直到人类回答、跳过，或承载通道被取消/超时。
+6. Agent Run 具备 Question Capability 时，Agent 可以发起 Ask Question；首选 transport 是 ACP `elicitation/create` form，也可以是经 Launch Profile 验证的 Agent-specific Question Channel。问题显示在 Session 输入框上方，直到人类回答、跳过，或承载通道被取消/断开。
 7. Agent 需要真实体验和判断时，通过注入的 `request_feedback` 工具创建 Feedback Request。请求进入无业务超时的 Waiting for Feedback；工具在持久化确认后立即返回 `request_id`，不把无限等待绑定到某个 MCP request。
 8. Agent 收到确认后结束当前 Prompt Turn；Session 保持 Waiting for Feedback，直到人类提交或明确取消。这个等待可以跨 Prompt Turn、窗口关闭和 Agent Run。重启 RambleDesk 只恢复 Inbox 中的该 Feedback Request，不为了等待人类而提前启动 Agent。
 9. 人类提交 Feedback Ramble 时，RambleDesk 在同一本地事务中幂等固定 Ramble Submission、`package_purpose=response` 的 Feedback Package、Request 的 `submitted` resolution 和唯一 pending Feedback Delivery；人类明确取消时固定 `cancelled` resolution 和 pending Delivery，不伪造空 Package。这个事务不依赖 Agent Run 在线。
@@ -84,7 +84,7 @@ Compatibility Ingress 可以缺少受管进程、ACP 历史和自动 Prompt 能�
 | Attention Item | Inbox 对“当前正在等待人类处理”的统一 read model。 | 可以投影 Permission Request、Ask Question 或 Feedback Request；不要求三者共享 id、生命周期、传输或存储表。 |
 | Permission Request | Agent 在一个 active Prompt Turn 中通过 ACP 请求允许或拒绝某项 tool call。 | 常见于非 YOLO 模式；同一 Run 可以有多个 pending 请求。RambleDesk 保留 live request 关联并直接回包，但不另建持久历史；不生成 Feedback Package。 |
 | Ask Question | Agent 为解决一个具体选择而向人类提出的结构化问题。 | 通过 Question Channel 呈现在 Session 输入框上方；回答或跳过只解除当前 live 等待，不另建持久历史，也不生成 Feedback Package。 |
-| Question Channel | 把 Ask Question 从 Agent 送达人类并把答案交回的能力。 | 可以由经验证的 `ask_user_question` 注入工具或 Agent 原生桥接实现；不是 ACP 全局保证，能力归属具体 Agent Run。 |
+| Question Channel | 把 Ask Question 从 Agent 送达人类并把答案交回的能力。 | 首选 ACP `elicitation/create` form；也可以由经验证的 Agent-specific `ask_user_question` 工具或原生桥接实现。产品不因此引入 Elicitation Request；能力归属具体 Agent Run。 |
 | Session Toolset | RambleDesk 在 Agent Run 建立时提供给 Agent 的工具集合。 | 当前至少可包含 `ask_user_question`、`request_feedback` 和 `get_feedback`；通常经 ACP 的 MCP server 配置注入，但领域合同不依赖 MCP wire shape。 |
 | Feedback Request | Agent 请求人类进行真实体验、判断或审阅的持久单位，用 `request_id` 标识。 | 唯一非终态是 `waiting`，终态 resolution 是 `submitted` 或 `cancelled`；没有业务超时，可以跨 Prompt Turn、Agent Run 和 App 重启。Managed Session 中由注入工具创建，Connected Session 中由 Compatibility Ingress 创建。 |
 | Waiting for Feedback | Session 已有 pending Feedback Request、正在等待人类提交或取消的持久状态。 | 不要求保持 MCP request、Prompt Turn 或 Agent 进程存活；只有人类提交或明确取消才能结束该等待。 |
@@ -277,7 +277,7 @@ Pi 等既有原生 Adapter 在过渡期按 Compatibility Ingress 管理。若其
 | Package / 区域 | 职责 | 不应包含 |
 | --- | --- | --- |
 | `crates/rambledesk-core` | Session Record、Launch Configuration、ACP Session Link、Ramble Intent/Submission、Feedback Request、Feedback Package、Delivery 的领域 DTO、use case 与 ports，以及 Agent Run、Permission、Ask Question 的协议中立 runtime DTO。 | ACP/MCP/HTTP/JSON、进程管理、Agent transcript、Tauri command、厂商启动命令、绝对存储路径、旧表兼容。 |
-| `crates/rambledesk-storage` | 当前数据模型的 SQLite 持久化、结构化 Draft、Session Record 及 Launch Configuration、Ramble Submission、Feedback Request/Package/Delivery，以及本地 FeedbackPackageStore adapter。 | ACP/MCP 协议、进程监督、Agent transcript mirror、Permission/Ask Question 历史表、旧表运行时读取、把本地路径泄漏为领域合同。 |
+| `crates/rambledesk-storage` | 当前数据模型的 SQLite Adapter、结构化 Draft、Session Record 及 Launch Configuration、Ramble Submission、Feedback Request/Package/Delivery，以及本地 content-addressed Artifact Store Adapter。 | ACP/MCP 协议、进程监督、Agent transcript mirror、Permission/Ask Question 历史表、旧表运行时读取、把本地路径泄漏为领域合同。 |
 | `crates/rambledesk-acp-client` | ACP Client 实现、catalog、preflight、launch、Launch Configuration 能力映射、进程树、ACP Session Link、Permission 透传、Question Channel、Live Session Event 归一化、pending Delivery 对账和 Managed Feedback Resume 调度。 | Editor、Cooking、Feedback Package 格式、厂商私有 transcript parser、第二套 Session 存储、Svelte 状态。 |
 | Session Tool Companion（目标 binary） | 每个 Agent Run 按需启动的 stdio MCP adapter，暴露 `ask_user_question`、`request_feedback`、`get_feedback` 并经认证 IPC 回到 RambleDesk。 | 领域真源、无限等待保证、Package 存储、本地路径合同、独立 daemon。 |
 | `crates/rambledesk-local-server` | authenticated loopback listener、Host/Origin guard、本地 JSON API 和 route mounting。 | 领域规则、ACP 会话实现、MCP tool schema。 |

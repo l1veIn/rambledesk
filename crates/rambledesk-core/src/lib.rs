@@ -7,6 +7,10 @@ mod feedback;
 mod process;
 mod workspace;
 
+/// ACP-first domain Interface. The frozen v2 exports below remain wired only
+/// until their callers move to this Module later in the branch.
+pub mod kernel;
+
 /// Install-time / client-config host identity environment key.
 pub const HOST_ENV_KEY: &str = "RAMBLEDESK_HOST";
 /// HTTP header mirror so the loopback server can see the installed host id.

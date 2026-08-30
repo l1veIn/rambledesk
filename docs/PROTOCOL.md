@@ -1,430 +1,584 @@
-# RambleDesk 反馈协议
+# RambleDesk 应用协议
 
-> 状态：v2 当前基线。
+> 状态：v3 ACP-first 可执行基线。
 > 术语源：[TERMINOLOGY.md](TERMINOLOGY.md)。本文若与术语表冲突，以术语表为准。
 
-本文定义 RambleDesk 的应用协议。规范词：MUST / SHOULD / MAY 分别表示必须、建议和可选。
+本文定义 RambleDesk `core` Interface、ACP Managed Path 映射、Session Toolset 与稳定错误。规范词 MUST / SHOULD / MAY 分别表示必须、建议和可选。
 
-## 协议边界
+## 协议分层
 
-RambleDesk 提供两个本机 loopback 入口：
-
-- `/mcp`：通用 MCP 适配器 transport；
-- `/api`：本地 JSON API，供 Pi 等原生适配器调用。
-
-`/mcp` 和 `/api` 都挂载在 `rambledesk-local-server` 上。`rambledesk-core` 只持有 application contract，不持有 JSON、HTTP 或 MCP 细节。
-
-协议分三层：
-
-| 层 | 职责 |
+| 层 | 责任 |
 | --- | --- |
-| 应用合同 | 请求、状态、幂等性、反馈包、错误码。 |
-| 本地 JSON API | HTTP JSON 传输层，供原生适配器使用。 |
-| 通用 MCP 适配器 | MCP tool surface，供通用宿主使用。 |
+| Core Interface | Session、Ramble Submission、Feedback Request、Package、Delivery、幂等与事务。 |
+| Managed Session Interface | Launch Preflight、Agent Run、ACP Session Link、Prompt、Permission、Question、恢复与对账。 |
+| ACP wire | initialize、session lifecycle、session update、permission、elicitation、cancel 与 JSON-RPC correlation。 |
+| Session Toolset | `request_feedback`、`get_feedback`，以及 capability 验证后的 Question Channel。 |
+| Artifact access | 以 Artifact Entry 和 Artifact Locator 交付内容，不暴露 Package 本地目录合同。 |
 
-## 身份字段
+现有 `/mcp`、`/api/feedback/*`、Pi wait 与原生 Adapter 是冻结的 v2 transport，不属于本文。未来 Compatibility Ingress 可以增加 transport 映射，但不得改变 Core Interface。
 
-| 字段 | 类型 | 必需 | 说明 |
-| --- | --- | --- | --- |
-| `request_id` | UUID string | 可选 | 幂等 key。省略时服务端生成。 |
-| `host_id` | string | 可选 | 宿主家族 id，例如 `pi`、`claude`、`codex`、`opencode`、`grok`、`generic`。自动注册客户端（`RAMBLEDESK_HOST` / `X-RambleDesk-Host`）由服务端注入；未提供时服务端默认 `generic`。 |
-| `host_session_id` | string | 必需 | 宿主会话关联。同一宿主会话可发起多次 request。 |
-| `title` | string | 可选 | 请求在人类工作台中的短标题。 |
-| `what_happened` | string | 必需 | 宿主智能体对当前变化或需要检查事项的说明。 |
-| `actions` | array | 必需 | 人类应执行的操作清单。 |
-| `context_refs` | array | 可选 | 文件、URL、diff、截图等可读上下文引用。 |
-| `source_hint` | string | 可选 | 来源提示，可包含路径或标题；不是身份字段。 |
+## 标识与幂等
 
-规则：
+| 字段 | 生成方 | 规则 |
+| --- | --- | --- |
+| `session_id` | Core | RambleDesk Session 的稳定身份。 |
+| `submission_id` | Workbench/调用方 | 每次正式 Ramble 在提交前生成；所有重试 MUST 复用。 |
+| `request_id` | 调用方或 Core | Feedback Request 的稳定 lookup key；拿到返回值后的所有交互 MUST 复用。 |
+| `package_id` | Core | 不可变 Package 身份；同一 Submission 只能有一个。 |
+| `artifact_id` | Core | Package、Request 或 Draft 内稳定 Artifact Entry 身份；不是全局 blob key。 |
+| `delivery_id` | Core | 一个 Feedback Request 的唯一交付身份。 |
+| `acp_session_id` | Agent | opaque identity；只在 ACP Session Link 中保存。 |
+| `work_id` | Core | 持久 Agent side effect 的重试身份。 |
 
-- `request_id` 是唯一持久反馈 lookup key。
-- `host_id` 用于 host profile 匹配、展示和 continuation strategy 选择；省略时默认 `generic`，或被可信适配器头覆盖。
-- `host_session_id` 只用于关联同一宿主会话的多次 request；它不是认证凭据，也不证明可自动继续。
-- RambleDesk MUST NOT 要求源码 checkout 路径。
-- 路径如果作为提示出现，只能出现在 `context_refs` 或 `source_hint` 中。
-- `attachments[].path` 是本机绝对路径：服务端读取该文件作为附件内容，不是提示字段。
+通用幂等规则：
 
-## 输入结构
+- 相同稳定 id 与相同 Core-computed `submission_digest` MUST 返回同一组稳定 identity；其中 Agent work / Delivery state MAY 反映当前投影。
+- 相同稳定 id 与不同 `submission_digest` MUST 返回 `IDEMPOTENCY_CONFLICT`。
+- 服务端生成 id 的首次调用若结果未知，不能声称可安全重试；Managed Path SHOULD 在进入 Core 前生成并保留稳定 id。
+- 幂等返回不能重复发布 Package、创建 Session、固定 resolution 或追加 Agent work。
 
-### `FeedbackRequestInput`
+Core MUST 从完整 command 与 Artifact digest 重新计算版本化 `submission_digest`；调用方 MAY 省略 assertion，提供时只用于核对，不能被要求复制 Core 私有 canonical 算法。Package 另有位置无关 `content_digest`，完整 manifest 另有 `manifest_digest`。三者都不包含临时 locator、绝对路径或传输 metadata。
+
+## Launch
+
+### Launch Preflight
+
+Launch Preflight 输入：
 
 ```json
 {
-  "request_id": "optional UUID",
-  "host_id": "pi",
-  "host_session_id": "pi-session-019...",
-  "title": "Settings adapter review",
-  "what_happened": "The adapter settings panel was changed.",
+  "agent_profile_id": "codex",
+  "launch_profile_id": "codex-acp-local"
+}
+```
+
+输出：
+
+```json
+{
+  "available": true,
+  "agent_version": "opaque display string",
+  "config_options": [],
+  "capabilities": {
+    "load_session": true,
+    "resume_session": true,
+    "elicitation_form": true
+  },
+  "warnings": []
+}
+```
+
+规则：
+
+- Preflight MAY 短暂启动 Agent、完成 initialize、创建临时探测 Session 后立即拆除。
+- Preflight MUST NOT 创建 RambleDesk Session、Launch Submission、Package、ACP Session Link 或用户历史。
+- UI MUST 展示 Agent 实际返回的 config options；不得用静态列表伪造 capability。
+- config options 是首选；只有 Agent 未提供时才 MAY 读取兼容的 modes 信息。
+
+### `launch`
+
+输入：
+
+```json
+{
+  "submission_id": "019...",
+  "submission_digest_assertion": "sha256:...",
+  "launch_configuration": {
+    "agent_profile_id": "codex",
+    "launch_profile_id": "codex-acp-local",
+    "workspace_reference": "/absolute/workspace",
+    "model": "agent-returned-option",
+    "reasoning_effort": "agent-returned-option",
+    "access_mode": "workspace_write",
+    "agent_config_json": "{}"
+  },
+  "ramble": {
+    "document_json": {},
+    "body_markdown": "Implement the requested change.",
+    "artifacts": []
+  }
+}
+```
+
+`access_mode` 的产品值固定为：
+
+- `read_only`
+- `workspace_write`
+- `yolo`
+
+Launch Profile MUST 把它映射到 Agent 实际支持的 config option 或启动参数。映射不存在时 MUST 返回 `UNSUPPORTED_ACCESS_MODE`，不得假装已生效。
+
+成功输出：
+
+```json
+{
+  "session_id": "019...",
+  "submission_id": "019...",
+  "package_id": "019...",
+  "agent_work_id": "019...",
+  "agent_work_state": "pending"
+}
+```
+
+Core MUST 在同一事务中：
+
+1. 固定 Launch Submission；
+2. 发布 `package_purpose=launch` 的 Package metadata；
+3. 创建唯一 Managed Session 与 Launch Configuration；
+4. 创建唯一 `launch_prompt` Agent work。
+
+Artifact bytes 可以在事务前先写入 content-addressed Store；事务失败后的未引用对象由垃圾回收清理。Package 在数据库事务成功前不得对外可见为已发布。
+
+## Steering
+
+### `steer`
+
+输入：
+
+```json
+{
+  "submission_id": "019...",
+  "session_id": "019...",
+  "submission_digest_assertion": "sha256:...",
+  "ramble": {
+    "document_json": {},
+    "body_markdown": "Please keep the existing command names.",
+    "artifacts": []
+  }
+}
+```
+
+Core 固定 Steering Submission 与唯一 `steering_prompt` Agent work。Steering 不创建 Feedback Package。
+
+如果 Session 正在等待 Permission 或 Ask Question，UI SHOULD 明确区分“回答当前请求”和“追加 Steering”；不得用 Steering 文本隐式回答 JSON-RPC request。
+
+## Ramble Draft
+
+`mutate_draft` 以 `draft_id + expected_revision` 提供 CAS 保存、添加 Artifact、删除 Artifact 与重排 Artifact 四类 mutation。Draft 的身份必须与 Ramble Intent 一致：
+
+- Launch Draft 尚未创建 Session，因此 `session_id` 与 `request_id` 都为空，并持有完整 `launch_configuration`；
+- Steering Draft 必须绑定 `session_id`，不绑定 Request，也不持有 Launch Configuration；
+- Feedback Draft 必须同时绑定 `session_id` 与 `request_id`，不持有 Launch Configuration。
+
+`document_json` 是由 Workbench Editor 负责生成和解释的 opaque、versioned 结构化真源；Core 与 Storage 不解析其内部节点，`body_markdown` 是同一 revision 的投影。保存正文或修改 Artifact 都使 revision 加一。revision 不匹配返回 `DRAFT_CONFLICT`，不得覆盖更新后的 Draft。编辑 Draft 不改变 Feedback Request 的 `waiting` 状态。
+
+## Feedback Request
+
+### `request_feedback`
+
+这是 Session Toolset 与未来 Compatibility Ingress 共享的应用 operation。输入：
+
+```json
+{
+  "request_id": "optional stable UUID",
+  "session_id": "injected by trusted Session Toolset",
+  "source_link_id": "optional current ACP Session Link",
+  "title": "Review the new launch flow",
+  "instructions": "Use the desktop build and judge whether the flow feels natural.",
   "actions": [
     {
-      "id": "open-settings",
-      "instruction": "Open settings and inspect the adapter tab."
+      "id": "launch-codex",
+      "instruction": "Launch a Codex session in Workspace Write mode."
     }
   ],
   "context_refs": [
     {
-      "label": "Terminology",
-      "uri": "file:///absolute/path/docs/TERMINOLOGY.md"
+      "label": "Acceptance notes",
+      "uri": "rambledesk-context://019..."
+    }
+  ]
+}
+```
+
+规则：
+
+- Managed Session Toolset MUST 注入可信 `session_id` 与当前 `source_link_id`，不得接受模型覆盖；Compatibility Ingress 可以省略 `source_link_id`。
+- `actions` MUST 包含 1–20 项；id 在同一 Request 内唯一并匹配 `^[a-z0-9][a-z0-9_-]{0,63}$`。
+- `context_refs` 是供人类判断的引用。RambleDesk 不自动执行其中内容，也不要求它是本机路径。
+- 输入不包含 `allow_finish`、`final_summary` 或批准捷径。只需一个即时选择时 Agent 应使用 Ask Question。
+- 创建成功后工具 MUST 立即返回，不等待人类。
+- 同一 `request_id` + 同一输入返回原 Request；同一 id + 不同输入返回 conflict。
+
+返回：
+
+```json
+{
+  "request_id": "019...",
+  "session_id": "019...",
+  "status": "waiting",
+  "created_at": "2026-08-30T08:00:00Z",
+  "instruction": "End the current turn. Feedback may arrive in a future Agent Run."
+}
+```
+
+Feedback Request 的状态投影只有：
+
+- `waiting`：`resolution` 为空；
+- `submitted`：人类提交了 `response` Package；
+- `cancelled`：人类明确取消，没有 Package。
+
+`submitted` 与 `cancelled` 是 resolution，不存在 `in_progress`、`completed` 或 `approved`。
+
+### `get_feedback`
+
+输入：
+
+```json
+{
+  "request_id": "019..."
+}
+```
+
+waiting 返回：
+
+```json
+{
+  "request_id": "019...",
+  "status": "waiting"
+}
+```
+
+submitted 返回稳定 Feedback Delivery Envelope：
+
+```json
+{
+  "delivery_id": "019...",
+  "request_id": "019...",
+  "session_id": "019...",
+  "resolution": "submitted",
+  "package": {
+    "package_id": "019...",
+    "package_purpose": "response",
+    "content_digest": "sha256:...",
+    "manifest_digest": "sha256:...",
+    "feedback_markdown": "The launch controls are clear, but...",
+    "artifacts": [
+      {
+        "artifact_id": "screenshot-1",
+        "role": "attachment",
+        "media_type": "image/png",
+        "size_bytes": 120034,
+        "sha256": "...",
+        "locator": {
+          "kind": "opaque_ref",
+          "value": "rambledesk-artifact://019.../screenshot-1"
+        }
+      }
+    ]
+  }
+}
+```
+
+cancelled 返回：
+
+```json
+{
+  "delivery_id": "019...",
+  "request_id": "019...",
+  "session_id": "019...",
+  "resolution": "cancelled",
+  "reason": "The implementation changed; this review is obsolete."
+}
+```
+
+规则：
+
+- `get_feedback` 是读取 operation，不因读取本身改变人类 resolution。
+- 相同 Request 的所有 terminal 读取 MUST 返回相同 `delivery_id` 与 Package identity。
+- Agent MUST 按 `delivery_id` 去重。
+- Artifact Locator MAY 更新或过期；更新 locator 不改变 Package digest。
+- 未知 `request_id` 返回 `REQUEST_NOT_FOUND`。
+
+## 人类解决 Feedback Request
+
+### 提交 Feedback Ramble
+
+输入：
+
+```json
+{
+  "submission_id": "019...",
+  "request_id": "019...",
+  "expected_draft_revision": 7,
+  "submission_digest_assertion": "sha256:...",
+  "document_json": {},
+  "uncooked_markdown": "原始反馈...",
+  "feedback_markdown": "整理后的正式反馈...",
+  "cooking_model": "opaque model id",
+  "artifacts": []
+}
+```
+
+Core MUST 原子固定：
+
+- Feedback Submission；
+- `package_purpose=response` Package；
+- Request `submitted` resolution；
+- 唯一 pending Feedback Delivery；
+- 唯一 `feedback_resume` Agent work。
+
+该提交路径只对 Managed Session 开放。Connected Session 是迁移与未来 Compatibility Ingress 的边界；v3 首版尝试提交或取消其 Feedback Request 返回 `SESSION_NOT_MANAGED`，不得留下不可消费的 Agent work 或 Delivery。
+
+相同 `submission_id` 的安全重试返回同一 Package、Delivery 与 work identity，state 使用当前投影。另一个 Submission 试图解决已终态 Request 返回 `REQUEST_TERMINAL`。
+
+### 取消 Feedback Request
+
+输入：
+
+```json
+{
+  "request_id": "019...",
+  "reason": "The requested build no longer exists."
+}
+```
+
+Core MUST 原子固定 `cancelled` resolution、唯一 pending Delivery 与 `feedback_resume` Agent work。重复取消返回同一组稳定 identity 与当前 state；取消 submitted Request 返回 `REQUEST_TERMINAL`。
+
+取消不创建 Ramble Submission 或空 Package。
+
+## Feedback Package manifest
+
+规范 manifest：
+
+```json
+{
+  "schema_version": 3,
+  "package_id": "019...",
+  "package_purpose": "launch",
+  "submission_id": "019...",
+  "request_id": null,
+  "content_digest": "sha256:...",
+  "artifacts": [
+    {
+      "artifact_id": "feedback",
+      "position": 0,
+      "role": "feedback",
+      "display_name": "feedback.md",
+      "media_type": "text/markdown; charset=utf-8",
+      "size_bytes": 1234,
+      "sha256": "..."
+    },
+    {
+      "artifact_id": "uncooked",
+      "position": 1,
+      "role": "uncooked",
+      "display_name": "uncooked.md",
+      "media_type": "text/markdown; charset=utf-8",
+      "size_bytes": 1400,
+      "sha256": "..."
     }
   ],
-  "source_hint": "RambleDesk desktop checkout"
+  "published_at": "2026-08-30T08:00:00Z"
 }
 ```
 
 规则：
 
-- `request_id`、`title`、`source_hint`、`context_refs`、`attachments`、`allow_finish`、`final_summary` 均可选。
-- `host_id` 可选：自动注册客户端（`RAMBLEDESK_HOST` / `X-RambleDesk-Host`）由服务端注入；未提供时服务端默认 `generic`。
-- `allow_finish`：**只有**当请求只需要人类做简单批准/拒绝、不需要反馈正文时才设 `true`（例如最终交付确认）；此时 `final_summary`（确切的结束语草稿）MUST 同时提供。需要人类审阅、提意见、逐段反馈的请求（校对、检查、提问等）MUST 省略 `allow_finish`，让人类提交详细反馈而非"直接完成"捷径。
-- 未设置 `allow_finish` 时若提供了 `final_summary`，返回 invalid argument（`final_summary` 依赖 `allow_finish`）。
+- `package_purpose` MUST 是 `launch` 或 `response`。
+- `response` MUST 有 `request_id`；`launch` MUST 没有 `request_id`。
+- `content_digest` 覆盖 purpose、response request binding 与按 position 排序的 Artifact descriptor，但不覆盖 Package/Submission id、时间、storage key 或 locator。
+- `manifest_digest` 在 manifest 本体之外保存，覆盖完整 canonical manifest；不得把自身纳入计算。
+- manifest MUST 不包含绝对路径、临时 URL、opaque storage key、Authorization、API Key 或 Agent transcript。
+- `feedback` 是 Agent 默认消费的正式正文；`uncooked` 是人类原始证据。
+- Artifact descriptor 按 `(position, artifact_id)` 排序，二者在同一 Package 内各自唯一。
+- 未使用 Cooking 时两者 bytes MAY 相同，但仍是两个 role。
+- Package 发布后 manifest 与 Artifact bytes MUST 不可变。
+- Locator 属于某次读取或 Delivery Envelope，不属于 manifest。
 
-### `ActionInput`
+## ACP Session 建立与恢复
 
-```json
-{
-  "id": "open-settings",
-  "instruction": "Open settings and inspect the adapter tab."
-}
-```
+Managed Session 的建立顺序：
 
-规则：
+1. 启动 Agent Run。
+2. 完成 ACP initialize，保存当前 capability snapshot。
+3. 根据 capability 构造 Session Toolset 的 MCP server 配置。
+4. 新 Session 调用 `session/new`；恢复 Session 按以下顺序尝试。
 
-- `actions` MUST contain 1-20 items.
-- `actions[].id` MUST match `^[a-z0-9][a-z0-9_-]{0,63}$`.
-- `actions[].id` MUST be unique within one request.
-
-### `ContextRef`
-
-```json
-{
-  "label": "Build instructions",
-  "uri": "file:///absolute/path/README.md"
-}
-```
-
-规则：
-
-- `context_refs` are saved as readable hints.
-- RambleDesk MUST NOT execute or automatically trust referenced content.
-- Local paths in `context_refs` are optional hints, not required identity.
-
-### `RequestAttachmentInput`
-
-```json
-{
-  "file_name": "shot.png",
-  "path": "C:/absolute/path/shot.png"
-}
-```
-
-规则：
-
-- 每个附件 MUST 恰好提供 `markdown`、`contents_base64`、`path` 之一。
-- 本地已有文件 SHOULD 使用 `path`（绝对路径）。服务端读取该文件；MCP/工具调用 MUST NOT 把整图读进 `contents_base64`。
-- `markdown` 仅用于短 Markdown 正文，且 `file_name` MUST 以 `.md` 或 `.markdown` 结尾。
-- `contents_base64` 仅用于手边没有文件的小图，且 MUST 解码为 PNG / JPEG / GIF / WebP。
-- `path` MUST 指向本机已存在的普通文件。`.md` / `.markdown` 按 Markdown 处理，否则 MUST 是上述图片类型。
-
-## 状态模型
+恢复顺序：
 
 ```text
-waiting → in_progress → completed
-   │           │
-   └───────────┴──────→ cancelled
-```
-
-`completed` 和 `cancelled` 是终态。只有终态触发 continuation。
-
-## `request_feedback`
-
-创建或重新关联一个反馈请求。该操作 MUST 是幂等的。
-
-### 输入
-
-MCP tool input 与 `FeedbackRequestInput` 等价。通用 MCP 适配器 MAY 根据安装入口或 `X-RambleDesk-Host` 覆盖调用方传入的 `host_id`。
-
-### 幂等性
-
-服务端按 `request_id` 执行：
-
-- 不存在：校验输入并创建请求；
-- 已存在且不可变输入一致：返回现有请求；
-- 已存在但不可变输入不同：返回 `REQUEST_CONFLICT`；
-- 已完成：直接返回原完成结果；
-- 已取消：返回取消结果，不隐式重新打开。
-
-不可变输入包括：
-
-- `host_id`
-- `host_session_id`
-- `title`
-- `what_happened`
-- ordered `actions`
-- ordered `context_refs`
-- ordered `attachments`（`file_name` 以及恰好一个内容字段：`markdown`、`contents_base64` 或 `path`；幂等比较使用读入后的文件名、媒体类型和内容哈希）
-- `source_hint`
-
-### 结果
-
-```json
-{
-  "request_id": "019...",
-  "host_id": "pi",
-  "host_session_id": "pi-session-019...",
-  "status": "waiting",
-  "execution_mode": "poll",
-  "created_at": "2026-08-02T08:00:00Z",
-  "updated_at": "2026-08-02T08:00:00Z",
-  "feedback": null
-}
-```
-
-完成结果：
-
-```json
-{
-  "request_id": "019...",
-  "host_id": "pi",
-  "host_session_id": "pi-session-019...",
-  "status": "completed",
-  "execution_mode": "poll",
-  "created_at": "2026-08-02T08:00:00Z",
-  "updated_at": "2026-08-02T08:12:00Z",
-  "feedback": {
-    "package_uri": "rambledesk://feedback/019...",
-    "directory_path": "/absolute/app-data/feedback/20260802T081200Z-019...",
-    "markdown_path": "/absolute/app-data/feedback/20260802T081200Z-019.../feedback.md",
-    "manifest_path": "/absolute/app-data/feedback/20260802T081200Z-019.../manifest.json"
-  }
-}
-```
-
-## `get_feedback`
-
-读取当前反馈请求状态，不改变状态。
-
-输入：
-
-```json
-{
-  "request_id": "019..."
-}
+if resume capability and current ACP Session Link exists:
+    session/resume(sessionId, cwd, mcpServers)
+else if load capability and current ACP Session Link exists:
+    session/load(sessionId, cwd, mcpServers)
+else:
+    session/new(cwd, mcpServers)
+    persist a new ACP Session Link
+    send Recovery Prompt
 ```
 
 规则：
 
-- Unknown `request_id` returns `REQUEST_NOT_FOUND`.
-- Terminal result SHOULD include feedback package metadata.
-- 通用 MCP 适配器使用它进行手动 continuation 和断线恢复。
-- 客户端 MUST NOT 用固定间隔空轮询作为默认等待路径。
+- `session/resume` 与 `session/load` 前 MUST 检查 initialize capability。
+- cwd 来自 Session 的 Workspace Reference，并 MUST 是绝对路径。
+- 每次 resume/load MUST 重新提供完整 Session Toolset 配置；不能假设 Agent 记住旧连接。
+- `session/load` replay 的 event 只进入当前 Context View，不写 RambleDesk transcript。
+- `session/resume` 不期待 replay；成功后直接对账 pending work。
+- `session/new` fallback 不创建新的 RambleDesk Session，只增加新的 ACP Session Link。
+- Agent 返回的 config options/current values 是 live 真源；必要时更新 UI 投影，但不改写最初 Launch Submission。
 
-## `recover_feedback`
+## Agent work 与 Delivery 完成条件
 
-从服务端恢复一个持久化请求，不创建替代请求。该 operation 用于 Pi 等维持原生
-等待状态的 adapter，不属于 Generic MCP 工具面；MCP 持有 `request_id` 后直接调用
-`get_feedback` 即可。
+### Launch 与 Steering
 
-输入：
+- ACP Client claim pending Agent work 后发送 `session/prompt`。
+- 只有 Agent 接受对应 Prompt request，并且其终止结果可归属到同一 `work_id` 时才 complete。
+- 连接在接受结果不确定时断开，work 保持可重试；Prompt 必须携带稳定 work marker，使 Agent 能识别重复输入。
+- ACP Client 记录 retryable failure 时 MUST 使用原 `work_id + claim_token` 释放 lease 并保存稳定错误码；不得创建替代 work。
+- 每次成功 claim 都递增 work `attempt_count`；`feedback_resume` 同时递增对应 Delivery attempt。
+- Retry disposition 把 work 重新置为 `pending`，保留最近 `last_error_code/at`，Delivery 仍为 `pending`；成功完成时才清除最近错误。
 
-```json
-{
-  "request_id": "019...",
-  "host_id": "pi",
-  "host_session_id": "pi-session-019..."
-}
-```
+### Feedback Resume
 
-规则：
+基线 Prompt MUST 包含：
 
-- 客户端 SHOULD 提供原始 `request_id`。
-- Server MUST 校验请求属于给定的 `(host_id, host_session_id)`。
-- 适配器 MAY 用可信的 `X-RambleDesk-Host` 覆盖输入 `host_id`。
-- 缺少 `request_id` 时，只有恰好一个候选请求才可恢复。
-- 多个候选 MUST 返回 `RECOVERY_AMBIGUOUS`，不得擅自选择最新请求。
-- 恢复只读取已有生命周期状态，不得创建新请求。
+- `request_id`
+- `delivery_id`
+- 明确要求调用 `get_feedback(request_id)`
+- 明确要求按 `delivery_id` 去重
+- 若是新 ACP Session，包含足以解释原任务的 Recovery Context，而不是本机 Package 路径
 
-## `wait_feedback`
+Delivery 只有在 ACP Client 观察到对应 `get_feedback` tool call 成功，且承载它的 Prompt Turn 正常结束后才标记 `delivered`。任何不确定失败都保持 `pending` 并使用同一 id 重试。
 
-等待请求进入终态。该 operation 属于 application contract 和本地 JSON API，不属于通用 MCP 工具面。
+Recovery Context 由 Core 的 `SessionRecoverySnapshot` 生成，只含最初 Launch Ramble、后续 Steering Ramble、Launch Configuration、成对的 terminal Feedback Request + pending Delivery 与 pending Agent work；它不包含或推断 Agent transcript。Feedback Request 与 Delivery 必须属于同一 Session 和同一 `request_id`，这样新 Agent 无需 transcript 也能理解人类反馈所回答的原问题。
 
-输入：
+## Permission Request
 
-```json
-{
-  "request_id": "019..."
-}
-```
-
-规则：
-
-- 多个 waiter MUST 被同一个终态释放。
-- transport-level disconnect 只结束当前 wait attempt。
-- 取消等待不等于取消反馈请求；取消请求必须显式调用 `cancel_feedback`。
-
-## `cancel_feedback`
-
-显式取消未完成请求。
-
-输入：
+ACP `session/request_permission` 直接投影为 Permission Request：
 
 ```json
 {
-  "request_id": "019...",
-  "reason": "The implementation changed; this request is obsolete."
-}
-```
-
-规则：
-
-- `waiting` 和 `in_progress` MAY become `cancelled`.
-- `completed` returns `REQUEST_ALREADY_COMPLETED`.
-- Repeated cancellation returns the original cancelled state and reason.
-- Cancellation is a business terminal state, not a transport disconnect.
-
-## 本地 JSON API
-
-本地 JSON API 属于 `rambledesk-local-server`。
-
-所有 endpoint：
-
-- MUST listen on loopback only.
-- MUST require bearer token.
-- MUST enforce loopback Host header.
-- MUST reject disallowed Origin.
-- MUST use JSON request/response bodies.
-
-### `POST /api/feedback/request`
-
-输入：`FeedbackRequestInput`。
-
-输出：与 `request_feedback` 相同。
-
-If `X-RambleDesk-Host` is present, the server MAY treat it as authoritative `host_id` for that installed adapter path.
-
-### `POST /api/feedback/get`
-
-Input:
-
-```json
-{ "request_id": "019..." }
-```
-
-输出：与 `get_feedback` 相同；终态输出 MAY 包含 `feedback_package`.
-
-### `POST /api/feedback/wait`
-
-Blocking wait endpoint for native adapters.
-
-Input:
-
-```json
-{ "request_id": "019..." }
-```
-
-终态输出：
-
-```json
-{
-  "request_id": "019...",
-  "status": "completed",
-  "execution_mode": "wait",
-  "feedback": {
-    "directory_path": "/absolute/package/path",
-    "markdown_path": "/absolute/package/path/feedback.md",
-    "manifest_path": "/absolute/package/path/manifest.json"
+  "live_request_id": "json-rpc correlation owned by ACP Client",
+  "session_id": "019...",
+  "tool_call": {
+    "tool_call_id": "call_001",
+    "title": "Run project tests",
+    "kind": "execute",
+    "raw_input": {}
   },
-  "feedback_package": {
-    "manifest": { "schema_version": 1, "attachments": [] },
-    "markdown": "# RambleDesk Feedback\n...",
-    "attachment_paths": ["/absolute/package/path/attachments/example.png"]
-  }
+  "options": [
+    {
+      "option_id": "allow-once",
+      "name": "Allow once",
+      "kind": "allow_once"
+    },
+    {
+      "option_id": "reject-once",
+      "name": "Reject",
+      "kind": "reject_once"
+    }
+  ]
 }
 ```
 
-### `POST /api/feedback/recover`
+规则：
 
-输入和业务规则与 `recover_feedback` 相同；终态输出 MAY 包含反馈包。
+- ACP Client MUST 保存原 JSON-RPC correlation，答案只能回到原 request。
+- UI MUST 展示 Agent 给出的全部选项，不把它简化成固定 yes/no。
+- 多个 pending Permission Request MUST 独立排队。
+- Access Mode MAY 根据用户已确认设置自动回答，但自动结果仍必须是 Agent 提供的 option。
+- Prompt Turn 取消时所有未回答 Permission Request MUST 回 `cancelled` outcome。
+- Agent Run 断开后 Permission Request 不写入持久 Inbox。
 
-### `POST /api/feedback/approve`
+## Ask Question
 
-由 RambleDesk 人类操作界面调用。Agent adapter 不得通过 MCP 或 Pi tool 自行批准
-最终总结。
+产品只暴露 Ask Question，不暴露 “Elicitation Request” 作为独立类型。
 
-### `POST /api/feedback/cancel`
+首选 transport 是 ACP `elicitation/create` form。Implementation 把 flat object schema 中的 enum/string/boolean 字段投影为一个或多个结构化问题，并把人类最终表单回答回给原 JSON-RPC request。
 
-输入和业务规则与 `cancel_feedback` 相同。
+其他 Agent MAY 使用经该 Launch Profile 验证的 Question Channel。不得因为 `session/new` 支持 MCP server 配置，就推断任意 MCP 工具可以无限等待。
 
-## Generic MCP Adapter
+规则：
 
-工具面：
+- Ask Question MUST 关联 active Agent Run 与原 live request。
+- UI MUST 提供回答、跳过/拒绝和取消当前 turn 的明确操作。
+- Agent 未声明或未通过 Question Capability 验收时，Workbench 不宣称支持。
+- live 通道存在时可以无限等待人类；通道断开时返回 cancel/error，不持久化恢复。
+- 需要真实体验、附件、自由 ramble 或跨重启等待时 MUST 使用 Feedback Request。
+
+## Session Toolset
+
+Managed Session 至少尝试提供：
 
 - `request_feedback`
 - `get_feedback`
-- `cancel_feedback`
 
-通用 MCP 适配器没有 blocking wait tool。目标流程是：
-
-1. 宿主智能体调用 `request_feedback`。
-2. 宿主智能体结束当前 turn。
-3. 人类在 RambleDesk 中提交或取消。
-4. RambleDesk 显示手动 continuation 提示。
-5. 人类返回宿主。
-6. 宿主智能体调用 `get_feedback(request_id)`；发生 MCP transport 断线后仍调用
-   同一个 `get_feedback(request_id)`，不需要单独的恢复工具。
-
-可选优化（宿主交互确认工具）：若宿主提供原生交互确认工具（如 `ask`、
-`ask_choice`），宿主智能体可以在步骤 2 用它替代"直接结束 turn"：在工具调用内
-阻塞等待人类完成反馈，人类返回宿主后点击确认，宿主智能体随即调用
-`get_feedback(request_id)`。该等待发生在宿主原生通道，不受 MCP call timeout
-约束，也不消耗模型 token；headless 宿主或不支持交互确认的宿主继续使用默认
-流程。手动 continuation 提示始终保留为兜底。
-
-## Pi 原生适配器
-
-Pi package 流程：
-
-1. Pi 调用 `request_ramble_feedback`。
-2. Pi package 调用 `/api/feedback/request`。
-3. Pi package 在同一个 tool call 内调用 `/api/feedback/wait`。
-4. 人类在 RambleDesk 中提交或取消。
-5. Wait 返回终态反馈包给 Pi。
-
-Pi 原生适配器不需要提交后的 continuation。
-
-## 反馈包
-
-完成的反馈包包含：
-
-```text
-feedback/<timestamp>-<request-id>/
-├── feedback.md       # canonical Cooked Feedback；未启用 Cooking 时等同原稿
-├── uncooked.md       # 人类直接产生的 Uncooked Feedback
-├── manifest.json
-└── attachments/
-```
+Question Channel 是否通过 ACP elicitation、Agent 原生工具或经验证的 injected tool 提供，由 Launch Profile capability 决定。
 
 规则：
 
-- 反馈包发布 MUST 不可变。
-- `feedback.md` 是适配器和宿主默认读取的正式结果。
-- `uncooked.md` MUST 保留，不得被 Cooking 覆盖。
-- manifest MUST 记录两份 Markdown 的 SHA-256；启用 Cooking 时记录 provider/model 标识。
-- API Key、Authorization header 和模型服务响应 metadata MUST NOT 写入反馈包。
-- 反馈包路径 SHOULD 默认位于 RambleDesk 应用数据目录。
-- 适配器 MAY 提供路径提示，但协议正确性 MUST NOT 依赖源码 checkout 根路径。
-- manifest MUST 包含足够 metadata，用于校验附件 hash 并关联 `request_id`。
+- ACP Agent 必须支持 stdio MCP server 配置才可使用基线 Session Toolset。
+- Toolset 注入失败时 Launch Preflight 或 Session 建立 MUST 明确降级/失败，不得在 UI 中显示虚假能力。
+- `request_feedback` 必须短调用；持久等待发生在 RambleDesk Request 状态，不发生在 MCP request。
+- `get_feedback` 返回内容与位置无关的 Delivery Envelope。
+- Toolset config digest 保存在 ACP Session Link 中；恢复时变更必须显式记录并重新注入。
 
-## 错误码
+## Attention Item
 
-稳定错误码：
+Workbench snapshot 把三类来源归一化：
+
+```json
+{
+  "attention_items": [
+    {
+      "kind": "feedback",
+      "stable_id": "request:019...",
+      "session_id": "019...",
+      "recoverable": true
+    },
+    {
+      "kind": "permission",
+      "stable_id": "live:...",
+      "session_id": "019...",
+      "recoverable": false
+    },
+    {
+      "kind": "question",
+      "stable_id": "live:...",
+      "session_id": "019...",
+      "recoverable": false
+    }
+  ]
+}
+```
+
+Attention Item 是 read model，不是统一写模型。`recoverable=true` 只适用于 waiting Feedback Request。
+
+## 稳定错误码
 
 | 错误码 | 含义 |
 | --- | --- |
-| `INVALID_ARGUMENT` | Invalid input shape, string limit, UUID, or action id. |
-| `REQUEST_NOT_FOUND` | Unknown `request_id`. |
-| `REQUEST_CONFLICT` | Same `request_id`, different immutable input. |
-| `REQUEST_ALREADY_COMPLETED` | Attempted to cancel or mutate completed request. |
-| `REQUEST_TERMINAL` | Attempted to mutate terminal request. |
-| `DRAFT_CONFLICT` | Stale draft revision. |
-| `ATTACHMENT_LIMIT` | Attachment count or bytes exceeded. |
-| `FEEDBACK_PACKAGE_READ_FAILURE` | Terminal package exists but cannot be read. |
+| `INVALID_ARGUMENT` | 输入 shape、限制、id 或 digest 无效。 |
+| `IDEMPOTENCY_CONFLICT` | 相同稳定 id 携带不同 canonical digest。 |
+| `SESSION_NOT_FOUND` | 未知 RambleDesk `session_id`。 |
+| `SESSION_NOT_MANAGED` | operation 要求 Managed Session，但目标是 Connected Session。 |
+| `ACP_SESSION_LINK_NOT_FOUND` | Feedback Request 声明的来源 Link 不存在或不属于目标 Session。 |
+| `REQUEST_NOT_FOUND` | 未知 `request_id`。 |
+| `REQUEST_TERMINAL` | 试图再次解决 terminal Feedback Request。 |
+| `DRAFT_CONFLICT` | Draft revision 已过期。 |
+| `ARTIFACT_NOT_FOUND` | Artifact Entry 存在，但内容不可读取。 |
+| `ARTIFACT_DIGEST_MISMATCH` | Artifact bytes 与 manifest digest 不一致。 |
+| `WORK_NOT_FOUND` | 待处理 Agent work 不存在。 |
+| `WORK_CLAIM_CONFLICT` | Agent work lease、claim token 或完成边界已失效。 |
+| `CORRUPT_DATA` | 已持久化的领域事实彼此矛盾。 |
+| `STORAGE_FAILURE` | Fact Store 或 Artifact Store 暂时失败。 |
+| `AGENT_UNAVAILABLE` | Launch Profile 不可启动。 |
+| `ACP_INITIALIZE_FAILED` | Agent Run 未完成 ACP initialize。 |
+| `ACP_SESSION_RECOVERY_FAILED` | resume/load/new 全部失败。 |
+| `UNSUPPORTED_ACCESS_MODE` | Launch Profile 无法实现所选 Access Mode。 |
+| `UNSUPPORTED_CAPABILITY` | 当前 Agent Run 不支持请求的 Permission、Question、load 等能力。 |
+| `LIVE_REQUEST_GONE` | Permission 或 Ask Question 的原 live request 已取消或断开。 |
+| `DELIVERY_PENDING` | 人类事实已提交，但 Agent 尚未确认交付。 |
+
+错误响应 MUST 区分“人类事实未提交”和“事实已提交但 Agent side effect pending”。后者不得诱导 UI 重复提交。
+
+## Compatibility Ingress 的未来约束
+
+未来重新启用 Generic MCP 或其他外部入口时：
+
+- 只能创建/读取当前 Session、Feedback Request 与 Delivery；
+- 无对应 Session 时创建 Connected Session；
+- 不得复活 `host_id`、`host_session_id`、旧状态机或本地 Package path 结果；
+- 不得承诺受管进程、ACP 历史或自动 resume；
+- 可以在外部 Agent 自己的 turn 中调用同一 `request_feedback` / `get_feedback` application operation；
+- 旧 Pi blocking wait 不自动恢复，必须作为独立的新 Adapter 重新验收。
