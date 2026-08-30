@@ -6,7 +6,9 @@ use sqlx::{Row, SqlitePool, sqlite::SqliteConnectOptions};
 use thiserror::Error;
 use tokio::io::AsyncReadExt;
 
-use crate::legacy_v2::{LegacyPackageIssue, LegacyPackagePaths, inspect_package};
+use crate::legacy_v2::{
+    LegacyPackageIssue, LegacyPackagePaths, inspect_package, package_directory_contains,
+};
 
 const REPORT_SCHEMA: &str = "rambledesk-v2-inspect-v1";
 
@@ -26,6 +28,10 @@ pub enum InspectError {
     SourceSchema(#[source] sqlx::Error),
     #[error("the source database contains an unsupported request state: {0}")]
     UnsupportedState(String),
+    #[error("the source database has failed, invalid, or future migration records")]
+    UnsupportedMigrationState,
+    #[error("the source exceeds the migration resource boundary: {0}")]
+    ResourceLimit(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -138,7 +144,7 @@ pub async fn inspect(source_db: &Path) -> Result<InspectReport, InspectError> {
         .await
         .map_err(InspectError::SourceOpen)?;
 
-    let report = inspect_pool(&pool, source_database_sha256).await;
+    let report = inspect_pool(&pool, source_database_sha256, &source_db).await;
     pool.close().await;
     report
 }
@@ -146,6 +152,7 @@ pub async fn inspect(source_db: &Path) -> Result<InspectReport, InspectError> {
 async fn inspect_pool(
     pool: &SqlitePool,
     source_database_sha256: String,
+    source_db: &Path,
 ) -> Result<InspectReport, InspectError> {
     require_v2_schema(pool).await?;
     let sessions_seen = count(pool, "host_sessions").await?;
@@ -156,7 +163,7 @@ async fn inspect_pool(
     let mut records = Vec::with_capacity(rows.len());
 
     for row in rows {
-        let record = classify_request(row).await?;
+        let record = classify_request(row, source_db).await?;
         records.push(record);
     }
     let orphan_rows = sqlx::query(
@@ -222,7 +229,10 @@ async fn inspect_pool(
     })
 }
 
-async fn classify_request(row: LegacyRequestRow) -> Result<InspectRecord, InspectError> {
+async fn classify_request(
+    row: LegacyRequestRow,
+    source_db: &Path,
+) -> Result<InspectRecord, InspectError> {
     if row.allow_finish || row.resolution.as_deref() == Some("approved") {
         return Ok(InspectRecord {
             legacy_id: row.id,
@@ -248,6 +258,9 @@ async fn classify_request(row: LegacyRequestRow) -> Result<InspectRecord, Inspec
             detail: None,
         }),
         "completed" => match row.package {
+            Some(package) if package_directory_contains(&package, source_db).await => Ok(
+                unreadable_completed(row.id, LegacyPackageIssue::UnsafePackageDirectory),
+            ),
             Some(package) => match inspect_package(&row.id, &package).await {
                 Ok(()) => Ok(InspectRecord {
                     legacy_id: row.id,
@@ -352,6 +365,24 @@ async fn require_v2_schema(pool: &SqlitePool) -> Result<(), InspectError> {
             )));
         }
     }
+    let has_migrations: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = '_sqlx_migrations')",
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(InspectError::SourceSchema)?;
+    if has_migrations {
+        let unsupported: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM _sqlx_migrations \
+             WHERE success != TRUE OR version < 1 OR version > 10)",
+        )
+        .fetch_one(pool)
+        .await
+        .map_err(InspectError::SourceSchema)?;
+        if unsupported {
+            return Err(InspectError::UnsupportedMigrationState);
+        }
+    }
     Ok(())
 }
 
@@ -380,7 +411,7 @@ async fn source_migration_version(pool: &SqlitePool) -> Result<Option<i64>, Insp
         .map_err(InspectError::SourceSchema)
 }
 
-async fn reject_active_wal(source_db: &Path) -> Result<(), InspectError> {
+pub(crate) async fn reject_active_wal(source_db: &Path) -> Result<(), InspectError> {
     let file_name = source_db
         .file_name()
         .ok_or(InspectError::SourceNotFile)?
@@ -394,7 +425,7 @@ async fn reject_active_wal(source_db: &Path) -> Result<(), InspectError> {
     }
 }
 
-async fn file_sha256(path: &Path) -> Result<String, InspectError> {
+pub(crate) async fn file_sha256(path: &Path) -> Result<String, InspectError> {
     let mut file = tokio::fs::File::open(path)
         .await
         .map_err(InspectError::SourceRead)?;

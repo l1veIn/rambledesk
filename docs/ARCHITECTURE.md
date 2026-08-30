@@ -2,6 +2,7 @@
 
 > 状态：v3 ACP-first 可执行基线。
 > 术语源：[TERMINOLOGY.md](TERMINOLOGY.md)。本文描述 Module、Interface、Seam 与持久化实现。
+> 本文描述分支最终目标架构，不代表当前 Desktop 已完成接线；实际阶段以 [V3_IMPLEMENTATION_PLAN.md](V3_IMPLEMENTATION_PLAN.md) 为准。
 
 ## 架构目标
 
@@ -12,7 +13,7 @@ v3 把 Session 提升为顶层对象，并让 ACP Managed Path 成为唯一首�
 3. Agent transcript 不进入 RambleDesk 数据模型；live event 与持久事实明确分离。
 4. Launch、Steering 与 Feedback 的 Agent side effect 都从持久 intent 对账，避免“数据库成功但 Prompt 丢失”或重复发送。
 5. Package 身份与 Artifact 存储实现分离，本地路径不进入内容合同。
-6. 当前运行时只读写新表；旧表只能由一次性迁移器读取。
+6. v3 目标运行时只读写新表；旧表只能由一次性迁移器读取。
 
 ## 运行时拓扑
 

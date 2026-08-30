@@ -64,15 +64,28 @@ fn package(
     purpose: PackagePurpose,
     request_id: Option<&str>,
 ) -> PackageRecord {
-    PackageRecord {
-        package_id: PackageId::new(id),
-        submission_id: SubmissionId::new(submission_id),
+    let package_id = PackageId::new(id);
+    let submission_id = SubmissionId::new(submission_id);
+    let request_id = request_id.map(RequestId::new);
+    let artifacts = Vec::new();
+    let digests = calculate_package_digests(PackageDigestInput {
+        package_id: &package_id,
+        submission_id: &submission_id,
         purpose,
-        request_id: request_id.map(RequestId::new),
-        content_digest: digest('c'),
-        manifest_digest: digest('d'),
+        request_id: request_id.as_ref(),
         schema_version: 3,
-        artifacts: Vec::new(),
+        artifacts: &artifacts,
+        published_at: NOW,
+    });
+    PackageRecord {
+        package_id,
+        submission_id,
+        purpose,
+        request_id,
+        content_digest: digests.content_digest,
+        manifest_digest: digests.manifest_digest,
+        schema_version: 3,
+        artifacts,
         published_at: NOW.to_owned(),
     }
 }

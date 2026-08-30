@@ -6,7 +6,7 @@ use rambledesk_core::kernel::{
     FeedbackResolution, FeedbackResolutionOutcome, LaunchOutcome, PackageArtifact, PackageId,
     PackagePurpose, PackageRecord, RambleIntent, RequestArtifact, RequestId, SessionId,
     SessionKind, SessionLifecycle, SessionRecord, SteeringOutcome, SubmissionArtifact,
-    SubmissionId,
+    SubmissionId, package_digests_match,
 };
 use sqlx::{Row, SqliteConnection, sqlite::SqliteRow};
 
@@ -281,6 +281,9 @@ pub(super) async fn load_package(
     };
     let stored_manifest: String = row.get("manifest_json");
     if build_manifest(&package)? != stored_manifest {
+        return Err(FactStoreError::CorruptData);
+    }
+    if !package_digests_match(&package) {
         return Err(FactStoreError::CorruptData);
     }
     Ok(Some(package))

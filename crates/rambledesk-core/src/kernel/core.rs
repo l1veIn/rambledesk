@@ -12,17 +12,14 @@ use super::{
     FeedbackDeliveryRecord, FeedbackLookup, FeedbackRequestCommit, FeedbackRequestSnapshot,
     FeedbackRequestStatus, FeedbackResolution, FeedbackResolutionCommit, FeedbackResolutionOutcome,
     FeedbackSubmission, GetFeedback, GetFeedbackOutcome, LaunchCommit, LaunchOutcome,
-    LaunchSubmission, PackageId, PackagePurpose, PackageRecord, RambleIntent,
+    LaunchSubmission, PackageDigestInput, PackageId, PackagePurpose, PackageRecord, RambleIntent,
     RambleSubmissionRecord, RequestId, ResolveFeedbackRequest, SessionId, SessionKind,
     SessionLifecycle, SessionRecord, SessionRecoverySnapshot, SteeringCommit, SteeringOutcome,
     SteeringSubmission, StoredDraftMutation, StoredWorkResult, WorkClaim, WorkClaimToken,
-    WorkScope, WorkbenchQuery, WorkbenchSnapshot,
+    WorkScope, WorkbenchQuery, WorkbenchSnapshot, calculate_feedback_request_digest,
+    calculate_feedback_submission_digest, calculate_package_digests,
     core_support::*,
-    digest::{
-        ManifestDigestInput, agent_work_payload_digest, feedback_request_digest,
-        feedback_submission_digest, launch_submission_digest, package_content_digest,
-        package_manifest_digest, steering_submission_digest,
-    },
+    digest::{agent_work_payload_digest, launch_submission_digest, steering_submission_digest},
     ports::{ArtifactStore, FactStore},
 };
 
@@ -56,18 +53,17 @@ impl Core {
         let (package_artifacts, submission_artifacts) = self
             .stage_launch_package_artifacts(&input.ramble.body_markdown, &input.ramble.artifacts)
             .await?;
-        let package_content_digest =
-            package_content_digest(PackagePurpose::Launch, None, &package_artifacts);
-        let package_manifest_digest = package_manifest_digest(ManifestDigestInput {
+        let package_digests = calculate_package_digests(PackageDigestInput {
             package_id: &package_id,
             submission_id: &input.submission_id,
             purpose: PackagePurpose::Launch,
             request_id: None,
-            content_digest: &package_content_digest,
             schema_version: PACKAGE_SCHEMA_VERSION,
             artifacts: &package_artifacts,
             published_at: &now,
         });
+        let package_content_digest = package_digests.content_digest;
+        let package_manifest_digest = package_digests.manifest_digest;
         let package = PackageRecord {
             package_id: package_id.clone(),
             submission_id: input.submission_id.clone(),
@@ -219,26 +215,10 @@ impl Core {
         &self,
         input: CreateFeedbackRequest,
     ) -> Result<FeedbackRequestSnapshot, CoreError> {
-        validate_id("session_id", input.session_id.as_str())?;
-        if let Some(source_link_id) = &input.source_link_id {
-            validate_id("source_link_id", source_link_id.as_str())?;
-        }
-        validate_nonblank("title", &input.title, 1, 160)?;
-        validate_nonblank("instructions", &input.instructions, 1, 12_000)?;
-        validate_actions(&input.actions)?;
-        validate_context_refs(&input.context_refs)?;
-        validate_artifacts(&input.artifacts)?;
+        validate_feedback_request_input(&input)?;
+        let input_digest = calculate_feedback_request_digest(&input);
         let request_id = input.request_id.unwrap_or_else(RequestId::new_id);
         validate_id("request_id", request_id.as_str())?;
-        let input_digest = feedback_request_digest(
-            input.session_id.as_str(),
-            input.source_link_id.as_ref(),
-            &input.title,
-            &input.instructions,
-            &input.actions,
-            &input.context_refs,
-            &input.artifacts,
-        );
         let request_artifacts = self.stage_request_artifacts(&input.artifacts).await?;
         let created_at = now()?;
         let request = FeedbackRequestSnapshot {
@@ -519,15 +499,8 @@ impl Core {
         &self,
         input: FeedbackSubmission,
     ) -> Result<FeedbackResolutionOutcome, CoreError> {
-        validate_id("submission_id", input.submission_id.as_str())?;
-        validate_id("request_id", input.request_id.as_str())?;
-        validate_ramble(&input.document_json, &input.feedback_markdown)?;
-        validate_text("uncooked_markdown", &input.uncooked_markdown, 1, 100_000)?;
-        validate_artifacts(&input.artifacts)?;
-        if let Some(model) = &input.cooking_model {
-            validate_text("cooking_model", model, 1, 500)?;
-        }
-        let submission_digest = feedback_submission_digest(&input);
+        validate_feedback_submission_input(&input)?;
+        let submission_digest = calculate_feedback_submission_digest(&input);
         if let Some(assertion) = &input.submission_digest_assertion {
             verify_submission_digest(assertion, &submission_digest)?;
         }
@@ -549,21 +522,17 @@ impl Core {
                 &input.artifacts,
             )
             .await?;
-        let package_content_digest = package_content_digest(
-            PackagePurpose::Response,
-            Some(&input.request_id),
-            &package_artifacts,
-        );
-        let package_manifest_digest = package_manifest_digest(ManifestDigestInput {
+        let package_digests = calculate_package_digests(PackageDigestInput {
             package_id: &package_id,
             submission_id: &input.submission_id,
             purpose: PackagePurpose::Response,
             request_id: Some(&input.request_id),
-            content_digest: &package_content_digest,
             schema_version: PACKAGE_SCHEMA_VERSION,
             artifacts: &package_artifacts,
             published_at: &now,
         });
+        let package_content_digest = package_digests.content_digest;
+        let package_manifest_digest = package_digests.manifest_digest;
         let package = PackageRecord {
             package_id: package_id.clone(),
             submission_id: input.submission_id.clone(),

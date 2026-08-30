@@ -5,8 +5,9 @@ use uuid::Uuid;
 
 use super::{
     AcpSessionLinkId, AgentWorkId, AgentWorkKind, AgentWorkPayload, AgentWorkRecord,
-    AgentWorkState, ArtifactId, ArtifactInput, ArtifactRole, CoreError, CoreErrorCode, DeliveryId,
-    DraftId, FeedbackAction, LaunchConfiguration, PackageArtifact, PackageId, RambleIntent,
+    AgentWorkState, ArtifactId, ArtifactInput, ArtifactRole, CoreError, CoreErrorCode,
+    CreateFeedbackRequest, DeliveryId, DraftId, FeedbackAction, LaunchConfiguration,
+    MAX_ARTIFACT_BYTES, MAX_ARTIFACT_TOTAL_BYTES, PackageArtifact, PackageId, RambleIntent,
     RequestId, SaveDraft, SessionId, StoredBlob, SubmissionArtifact, WorkClaimToken,
     digest::agent_work_payload_digest,
 };
@@ -14,6 +15,50 @@ use super::{
 pub(super) const PACKAGE_SCHEMA_VERSION: u32 = 3;
 const MAX_ARTIFACTS: usize = 20;
 const MAX_ACTIONS: usize = 20;
+
+/// Validates all facts that participate in a Feedback Request replay.
+///
+/// Importers call this after their documented normalization and before
+/// calculating the canonical request digest.
+pub fn validate_feedback_request_input(input: &CreateFeedbackRequest) -> Result<(), CoreError> {
+    validate_id("session_id", input.session_id.as_str())?;
+    if let Some(request_id) = &input.request_id {
+        validate_id("request_id", request_id.as_str())?;
+    }
+    if let Some(source_link_id) = &input.source_link_id {
+        validate_id("source_link_id", source_link_id.as_str())?;
+    }
+    validate_nonblank("title", &input.title, 1, 160)?;
+    validate_nonblank("instructions", &input.instructions, 1, 12_000)?;
+    validate_actions(&input.actions)?;
+    validate_context_refs(&input.context_refs)?;
+    validate_artifacts(&input.artifacts)
+}
+
+/// Validates a complete persisted Ramble Draft projection.
+pub fn validate_ramble_draft_content(
+    document_json: &str,
+    body_markdown: &str,
+    artifacts: &[ArtifactInput],
+) -> Result<(), CoreError> {
+    validate_ramble(document_json, body_markdown)?;
+    validate_artifacts(artifacts)
+}
+
+/// Validates all facts that participate in Feedback Submission idempotency.
+pub fn validate_feedback_submission_input(
+    input: &super::FeedbackSubmission,
+) -> Result<(), CoreError> {
+    validate_id("submission_id", input.submission_id.as_str())?;
+    validate_id("request_id", input.request_id.as_str())?;
+    validate_ramble(&input.document_json, &input.feedback_markdown)?;
+    validate_text("uncooked_markdown", &input.uncooked_markdown, 1, 100_000)?;
+    validate_artifacts(&input.artifacts)?;
+    if let Some(model) = &input.cooking_model {
+        validate_text("cooking_model", model, 1, 500)?;
+    }
+    Ok(())
+}
 
 pub(super) trait GeneratedId {
     fn new_id() -> Self;
@@ -207,6 +252,7 @@ pub(super) fn validate_artifacts(artifacts: &[ArtifactInput]) -> Result<(), Core
             "artifacts cannot contain more than 20 items",
         ));
     }
+    let mut total_bytes = 0_usize;
     for artifact in artifacts {
         validate_nonblank("artifact.display_name", &artifact.display_name, 1, 255)?;
         if artifact.display_name.contains(['/', '\\']) {
@@ -219,6 +265,19 @@ pub(super) fn validate_artifacts(artifacts: &[ArtifactInput]) -> Result<(), Core
             return Err(CoreError::invalid_argument(
                 "artifact contents cannot be empty",
             ));
+        }
+        if artifact.contents.len() > MAX_ARTIFACT_BYTES {
+            return Err(CoreError::invalid_argument(format!(
+                "each artifact cannot exceed {MAX_ARTIFACT_BYTES} bytes"
+            )));
+        }
+        total_bytes = total_bytes
+            .checked_add(artifact.contents.len())
+            .ok_or_else(|| CoreError::invalid_argument("artifact byte total overflow"))?;
+        if total_bytes > MAX_ARTIFACT_TOTAL_BYTES {
+            return Err(CoreError::invalid_argument(format!(
+                "artifact bytes cannot exceed {MAX_ARTIFACT_TOTAL_BYTES} bytes per command"
+            )));
         }
     }
     Ok(())

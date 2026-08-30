@@ -2,7 +2,7 @@ use rambledesk_core::kernel::ports::FactStoreError;
 use rambledesk_core::kernel::{
     AgentWorkKind, AgentWorkPayload, AgentWorkRecord, DeliveryState, FeedbackDeliveryRecord,
     FeedbackRequestSnapshot, PackageRecord, RambleSubmissionRecord, SessionKind, SessionLifecycle,
-    SessionRecord,
+    SessionRecord, package_digests_match,
 };
 use sqlx::{Row, SqliteConnection};
 
@@ -185,6 +185,9 @@ pub(super) async fn insert_package(
     connection: &mut SqliteConnection,
     package: &PackageRecord,
 ) -> Result<(), FactStoreError> {
+    if !package_digests_match(package) {
+        return Err(FactStoreError::CorruptData);
+    }
     let manifest_json = build_manifest(package)?;
     for artifact in &package.artifacts {
         register_artifact(

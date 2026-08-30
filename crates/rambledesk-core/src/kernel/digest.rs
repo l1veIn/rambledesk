@@ -1,9 +1,10 @@
 use sha2::{Digest, Sha256};
 
 use super::{
-    AccessMode, AcpSessionLinkId, ArtifactInput, ContextReference, FeedbackAction,
-    FeedbackSubmission, LaunchConfiguration, LaunchSubmission, PackageArtifact, PackageId,
-    PackagePurpose, RambleContent, RequestId, SteeringSubmission, SubmissionId,
+    AccessMode, AcpSessionLinkId, ArtifactInput, ContextReference, CreateFeedbackRequest,
+    FeedbackAction, FeedbackSubmission, LaunchConfiguration, LaunchSubmission, PackageArtifact,
+    PackageId, PackagePurpose, PackageRecord, RambleContent, RequestId, SteeringSubmission,
+    SubmissionId,
 };
 
 const DIGEST_VERSION: &str = "rambledesk-kernel-digest-v1";
@@ -112,6 +113,11 @@ pub(super) fn feedback_submission_digest(input: &FeedbackSubmission) -> String {
     digest.finish()
 }
 
+/// Calculates the canonical digest used for Feedback Submission idempotency.
+pub fn calculate_feedback_submission_digest(input: &FeedbackSubmission) -> String {
+    feedback_submission_digest(input)
+}
+
 pub(super) fn feedback_request_digest(
     session_id: &str,
     source_link_id: Option<&AcpSessionLinkId>,
@@ -143,7 +149,23 @@ pub(super) fn feedback_request_digest(
     digest.finish()
 }
 
-pub(super) fn package_content_digest(
+/// Calculates the canonical digest used to make `request_feedback` replay-safe.
+///
+/// One-time importers must call this after applying their documented lossy
+/// normalization so a later Compatibility Ingress replay sees the same facts.
+pub fn calculate_feedback_request_digest(input: &CreateFeedbackRequest) -> String {
+    feedback_request_digest(
+        input.session_id.as_str(),
+        input.source_link_id.as_ref(),
+        &input.title,
+        &input.instructions,
+        &input.actions,
+        &input.context_refs,
+        &input.artifacts,
+    )
+}
+
+fn package_content_digest(
     purpose: PackagePurpose,
     request_id: Option<&RequestId>,
     artifacts: &[PackageArtifact],
@@ -171,7 +193,7 @@ pub(super) fn package_content_digest(
     digest.finish()
 }
 
-pub(super) struct ManifestDigestInput<'a> {
+struct ManifestDigestInput<'a> {
     pub package_id: &'a PackageId,
     pub submission_id: &'a SubmissionId,
     pub purpose: PackagePurpose,
@@ -182,7 +204,7 @@ pub(super) struct ManifestDigestInput<'a> {
     pub published_at: &'a str,
 }
 
-pub(super) fn package_manifest_digest(input: ManifestDigestInput<'_>) -> String {
+fn package_manifest_digest(input: ManifestDigestInput<'_>) -> String {
     let mut digest = CanonicalDigest::new("feedback_package_manifest");
     digest.field("package_id", input.package_id.as_str().as_bytes());
     digest.field("submission_id", input.submission_id.as_str().as_bytes());
@@ -208,6 +230,61 @@ pub(super) fn package_manifest_digest(input: ManifestDigestInput<'_>) -> String 
     }
     digest.field("published_at", input.published_at.as_bytes());
     digest.finish()
+}
+
+/// Immutable Package facts accepted by the Package integrity Interface.
+///
+/// Callers provide domain facts rather than rebuilding the canonical digest
+/// algorithm. This keeps creation, persistence verification, and one-time
+/// import on the same contract.
+pub struct PackageDigestInput<'a> {
+    pub package_id: &'a PackageId,
+    pub submission_id: &'a SubmissionId,
+    pub purpose: PackagePurpose,
+    pub request_id: Option<&'a RequestId>,
+    pub schema_version: u32,
+    pub artifacts: &'a [PackageArtifact],
+    pub published_at: &'a str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PackageDigests {
+    pub content_digest: String,
+    pub manifest_digest: String,
+}
+
+/// Calculates both Package digests with the canonical Core algorithm.
+pub fn calculate_package_digests(input: PackageDigestInput<'_>) -> PackageDigests {
+    let content_digest = package_content_digest(input.purpose, input.request_id, input.artifacts);
+    let manifest_digest = package_manifest_digest(ManifestDigestInput {
+        package_id: input.package_id,
+        submission_id: input.submission_id,
+        purpose: input.purpose,
+        request_id: input.request_id,
+        content_digest: &content_digest,
+        schema_version: input.schema_version,
+        artifacts: input.artifacts,
+        published_at: input.published_at,
+    });
+    PackageDigests {
+        content_digest,
+        manifest_digest,
+    }
+}
+
+/// Verifies persisted Package facts against the canonical Core algorithm.
+pub fn package_digests_match(package: &PackageRecord) -> bool {
+    let expected = calculate_package_digests(PackageDigestInput {
+        package_id: &package.package_id,
+        submission_id: &package.submission_id,
+        purpose: package.purpose,
+        request_id: package.request_id.as_ref(),
+        schema_version: package.schema_version,
+        artifacts: &package.artifacts,
+        published_at: &package.published_at,
+    });
+    package.content_digest == expected.content_digest
+        && package.manifest_digest == expected.manifest_digest
 }
 
 pub(super) fn agent_work_payload_digest(kind: &str, source_id: &str, payload: &str) -> String {

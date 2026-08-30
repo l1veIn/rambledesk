@@ -2,6 +2,7 @@
 
 > 状态：v3 ACP-first 可执行基线。
 > 术语源：[TERMINOLOGY.md](TERMINOLOGY.md)。本文只描述产品承诺，不重新定义产品对象。
+> 本文描述分支最终产品承诺；尚未完成的 Runtime 与 UI 接线见 [V3_IMPLEMENTATION_PLAN.md](V3_IMPLEMENTATION_PLAN.md)。
 
 ## 一句话
 

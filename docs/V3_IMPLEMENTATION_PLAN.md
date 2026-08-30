@@ -1,7 +1,20 @@
 # RambleDesk v3 ACP-first 实施计划
 
-> 状态：Phase 1 实施中。
+> 状态：Phase 1 已完成，Phase 2 待启动。当前 Desktop 仍运行旧装配，尚不能作为 ACP-first 产品验收。
 > 领域术语以 [TERMINOLOGY.md](TERMINOLOGY.md) 为唯一来源；产品、Module 和协议合同分别见 [PRODUCT.md](PRODUCT.md)、[ARCHITECTURE.md](ARCHITECTURE.md)、[PROTOCOL.md](PROTOCOL.md)。
+
+## 当前路线图
+
+| 阶段 | 状态 | 收敛结果 |
+| --- | --- | --- |
+| Phase 0：可执行设计基线 | 已完成 | 术语、产品承诺、Module Interface、协议、数据模型与删除清单已锁定。 |
+| Phase 1：新领域事实与新数据 | 已完成 | Core、SQLite v3、Artifact Store 与一次性有损迁移已形成可独立验证的闭环。 |
+| Phase 2：ACP Client 与 Codex | 下一步 | 先用 fake ACP Agent 验证 Interface 与故障矩阵，再完成真实 Codex smoke。 |
+| Phase 3：Session Toolset 与 Feedback Recovery | 未开始 | 闭合可无限等待、离线提交、恢复后读取的 Feedback Delivery。 |
+| Phase 4：Workbench 重构 | 未开始 | Desktop 切换到 Session-first UI，并完成一次集中设计 Gate 与原生验收。 |
+| Phase 5：旧路径删除与零残留 | 未开始 | 删除旧 MCP/Pi/host continuation 与旧装配，完成全树残留审计。 |
+
+最终收敛点不是“ACP 可以启动”，而是：真实 Codex 的 Launch、Permission、Ask Question 与无限等待 Feedback 全部通过 Desktop 端到端验收；离线提交和跨重启 Delivery 可恢复；运行时只使用 v3 数据与位置无关 Package；旧 MCP/Pi/host continuation 不再进入装配，旧业务概念在迁移器以外零残留。
 
 ## 已锁定决策
 
@@ -27,7 +40,7 @@
 
 - [x] v3 术语与架构公理。
 - [x] v3 产品承诺、非目标、首发范围与端到端验收故事。
-- [x] `core` 与 `rambledesk-acp-client` 深 Module Interface。
+- [x] `core` 与 `rambledesk-acp-client` 深 Module Interface 设计；ACP Client crate Implementation 尚未开始。
 - [x] ACP、Permission、Ask Question、Feedback、Package 与 Recovery 协议。
 - [x] 新逻辑数据模型。
 - [x] 有损迁移策略与旧概念删除清单。
@@ -60,11 +73,12 @@ Phase 0 完成门槛：文档内部无 v2 合同冲突，术语检查通过，�
 
 ### 验收
 
-- 相同 Launch Submission 重试只生成一个 Session、Package 和 work。
-- 相同 id + 不同 digest 返回 conflict。
-- Feedback 提交在 Agent 不存在时仍固定 Package、resolution 与 pending Delivery。
-- App 进程重启后 waiting Request、Draft 和 pending Delivery 可恢复。
-- manifest 与数据库中不存在作为协议字段的绝对 Package 路径。
+- [x] 相同 Launch Submission 重试只生成一个 Session、Package 和 work。
+- [x] 相同 id + 不同 digest 返回 conflict。
+- [x] Feedback 提交在 Agent 不存在时仍固定 Package、resolution 与 pending Delivery。
+- [x] App 进程重启后 waiting Request、Draft 和 pending Delivery 可恢复。
+- [x] manifest 与数据库中不存在作为协议字段的绝对 Package 路径。
+- [x] 迁移器完成 `inspect / dry-run / execute / verify`、只读 backup、损失报告与失败安全验证。
 
 ## Phase 2：`rambledesk-acp-client` 与 Codex
 
@@ -164,8 +178,9 @@ Phase 0 完成门槛：文档内部无 v2 合同冲突，术语检查通过，�
 进入完整 UI Implementation 前只需要一次集中讨论：
 
 1. Launch / Sessions / Inbox / Ramble Workspace 的 wireframe 与信息密度。
-2. 默认 Access Mode 是否采用 `workspace_write`。
-3. Permission 与 Ask Question 同时存在时的 Inbox 排序和 Session 输入区优先级。
+2. Permission 与 Ask Question 同时存在时的 Inbox 排序和 Session 输入区优先级。
+
+默认 Access Mode 已锁定为 `workspace_write`，不在该 Gate 重复讨论。
 
 其余字段、状态、恢复和错误文案由已锁定合同直接实现，不再逐项打断用户。
 
@@ -191,6 +206,10 @@ Phase 0 完成门槛：文档内部无 v2 合同冲突，术语检查通过，�
 | Pi 同 tool-call wait | 冻结后删除出首发 workspace；未来重新设计。 |
 | `rambledesk-hosts` continuation strategy | 删除；Launch Profile 知识进入 ACP Client Implementation。 |
 | `rambledesk-mcp` 旧工具与安装引擎 | 从 v3 装配删除；未来以薄 Compatibility Ingress 重写。 |
+| `rambledesk-local-server` v2 feedback/MCP routes | 删除；只有重写为新 Core Interface 的认证 IPC/薄 Ingress 才能保留。 |
+| `rambledesk-cli` 旧 MCP host、自检与安装命令 | 从首发装配和 release gate 删除或按新 Interface 重写。 |
+| `packages/dsh-rambledesk` 与旧 DSH installer | 删除出首发 workspace；若未来重做，按独立 Compatibility Ingress 重新验收。 |
+| 旧 MCP/Pi/DSH 安装脚本、fixture 与 release check | 随对应 Implementation 删除，不允许继续让旧路径看似受支持。 |
 | 完整 Turn / Timeline 持久化设想 | 不实现；Agent history 是权威来源。 |
 
 ### 残留扫描范围
@@ -206,13 +225,13 @@ Phase 0 完成门槛：文档内部无 v2 合同冲突，术语检查通过，�
 
 ## 一次性有损迁移
 
-迁移器建议命名 `scripts/migrate-v2-to-v3`，但具体语言在 Phase 1 决定。它是显式用户动作，不在 v3 App 启动时自动运行。
+迁移器位于 `tools/migrate-v2-to-v3`，是 root workspace 之外的独立 Rust binary。它是显式用户动作，不在 v3 App 启动时自动运行。
 
 ### 安全流程
 
 1. `inspect`：只读旧库，输出分类与预计损失。
 2. `migrate --dry-run`：验证新对象、Artifact 可读性与唯一性，不写目标库。
-3. 复制旧数据库与旧 feedback/draft 目录作为只读 backup。
+3. 复制旧数据库，以及旧 manifest 明确引用或旧表逐条记录的 feedback/draft 文件，作为只读 backup；不得递归复制数据库给出的任意目录。
 4. `migrate --execute`：只写全新的 v3 数据库与 Artifact Store。
 5. `verify`：检查新外键、digest、Package manifest 与计数。
 6. 输出机器可读 JSON 和人类可读 Markdown 报告。
@@ -231,11 +250,13 @@ Phase 0 完成门槛：文档内部无 v2 合同冲突，术语检查通过，�
 | cancelled Request | 默认丢弃，计入报告；不恢复成 Inbox。 |
 | approved / `allow_finish` Request | 丢弃，报告 `unsupported_approval_semantics`。 |
 | orphan Draft | 丢弃，报告 `orphan_draft`。 |
-| 路径附件可读 | 导入 Artifact Store，重新计算 digest。 |
+| 路径附件可读且满足资源上限 | 导入 Artifact Store，重新计算 digest。 |
 | 路径附件不可读 | 丢弃附件；若它使 submitted Package 不完整，则丢弃整个 completed Request。 |
 | 旧 `host_id` / `host_session_id` | 只用于把请求分组为 Connected Session，并写迁移来源 metadata；不进入新业务 Interface。 |
 
 迁移完成的历史 submitted Request 是只读事实，其 Delivery 直接标记为 `delivered`，因为迁移器不会重新唤醒或推断原 Agent。迁移后的 waiting Request 可以由未来 Compatibility Ingress 读取；v3 首发只保证人类仍能查看和编辑其 Draft，不开放提交或取消，也不自动唤醒旧 Agent。对 Connected Session 调用当前 Feedback resolution Interface 返回 `SESSION_NOT_MANAGED`；未来 Ingress 必须先定义自己的交付确认 Seam，不能制造永久 pending work。
+
+backup 是可验证的已知文件集合，不是旧目录的递归镜像。manifest 或旧表指向的文件若不可读、不一致、超出资源上限或路径不安全，迁移器逐项记录 loss；不得为了“尽量完整”而遍历或复制目录中的无关文件。
 
 ### 报告最小字段
 
@@ -279,4 +300,4 @@ Phase 0 完成门槛：文档内部无 v2 合同冲突，术语检查通过，�
 
 ## 当前下一步
 
-Phase 0 文档校验通过后，立即进入 Phase 1。第一批代码改动只做新 Core Interface、新表、Artifact Store 与迁移 fixture；不会同时修改 ACP、UI 或旧 Adapter。这样可以先锁定最难逆转的数据与幂等合同，再在其上建立受管 Agent Run。
+进入 Phase 2：创建 `crates/rambledesk-acp-client`，先锁定最小 Interface 并用可编程 fake ACP Agent 验收 initialize、Launch、Permission、Ask Question、断线、乱序、取消与 bounded shutdown，再做真实 Codex smoke。Desktop、UI 与旧 Adapter 在各自阶段切换，不在 ACP Client 中提前混装；完整 Workbench UI 前保留既定的一次集中用户设计 Gate。

@@ -2,9 +2,9 @@ use super::{
     AcpSessionLinkId, AcpSessionLinkObservation, AgentObservation, AgentWorkDisposition,
     AgentWorkEvidence, AgentWorkId, AgentWorkKind, AgentWorkResult, AgentWorkState, ArtifactInput,
     CancelFeedbackRequest, CoreErrorCode, CreateFeedbackRequest, DeliveryState, DraftId,
-    DraftMutation, FeedbackAction, RambleContent, RambleIntent, RequestId, ResolveFeedbackRequest,
-    SaveDraft, SessionId, SessionKind, SessionLifecycle, SessionRecord, SteeringSubmission,
-    StoredWorkResult, WorkClaim, WorkClaimToken, WorkScope, WorkbenchQuery,
+    DraftMutation, FeedbackAction, MAX_ARTIFACT_BYTES, RambleContent, RambleIntent, RequestId,
+    ResolveFeedbackRequest, SaveDraft, SessionId, SessionKind, SessionLifecycle, SessionRecord,
+    SteeringSubmission, StoredWorkResult, WorkClaim, WorkClaimToken, WorkScope, WorkbenchQuery,
     digest::launch_submission_digest,
     ports::FactStore,
     test_fixtures::{
@@ -12,6 +12,34 @@ use super::{
         save_feedback_draft,
     },
 };
+
+#[test]
+fn feedback_request_interface_rejects_oversized_artifacts_before_storage() {
+    let input = CreateFeedbackRequest {
+        request_id: Some(RequestId::from("oversized-request")),
+        session_id: SessionId::from("oversized-session"),
+        source_link_id: None,
+        title: "Review".to_owned(),
+        instructions: "Review the work.".to_owned(),
+        actions: vec![FeedbackAction {
+            id: "review".to_owned(),
+            instruction: "Review it.".to_owned(),
+        }],
+        context_refs: Vec::new(),
+        artifacts: vec![ArtifactInput {
+            display_name: "oversized.bin".to_owned(),
+            media_type: "application/octet-stream".to_owned(),
+            contents: vec![0; MAX_ARTIFACT_BYTES + 1],
+        }],
+    };
+
+    assert_eq!(
+        super::validate_feedback_request_input(&input)
+            .expect_err("oversized Artifact")
+            .code(),
+        CoreErrorCode::InvalidArgument
+    );
+}
 
 #[tokio::test]
 async fn launch_draft_requires_and_preserves_launch_configuration() {

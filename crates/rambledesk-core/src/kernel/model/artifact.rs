@@ -2,6 +2,11 @@ use serde::{Deserialize, Serialize};
 
 use super::ArtifactId;
 
+/// Maximum bytes accepted for one Artifact entering the Core Interface.
+pub const MAX_ARTIFACT_BYTES: usize = 20 * 1024 * 1024;
+/// Maximum combined Artifact bytes accepted by one command.
+pub const MAX_ARTIFACT_TOTAL_BYTES: usize = 60 * 1024 * 1024;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ArtifactInput {
     pub display_name: String,

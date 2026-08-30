@@ -2,6 +2,7 @@
 
 > 状态：v3 ACP-first 重构基线。
 > 目标：固定产品对象、协议角色、身份字段和 package 边界。代码、文档、UI 文案、测试命名若与本文冲突，以本文为准。
+> 这是规范目标，不是当前 Desktop 接线快照；过渡期旧 Implementation 的删除进度见 [V3_IMPLEMENTATION_PLAN.md](V3_IMPLEMENTATION_PLAN.md)。
 
 本文是 RambleDesk 的唯一术语源。其他文档只引用本文，不重新定义产品对象。
 
@@ -20,7 +21,7 @@ RambleDesk 在 ACP 中扮演 **Client**：它可以启动 Agent 子进程、建�
 5. **所有接入路径共享同一套新领域模型。** ACP Managed Path 是主路径；MCP 和既有原生 Adapter 是过渡期 Compatibility Ingress，不得形成第二套 Session、Request 或 Package 语义。
 6. **Workspace Reference 是受管 Session 的启动上下文。** RambleDesk 可以要求一个本机目录来启动 Agent，但不管理 branch、worktree、checkout、git 生命周期或文件真源。
 7. **`core` 保持协议中立。** ACP stdio/JSON-RPC、MCP、HTTP、Tauri command、进程树和厂商启动命令不得进入 `core`。
-8. **当前运行时只支持新数据模型。** 新对象写入新表；运行时不得双读旧表、回退旧字段、维护兼容别名，或在同一 use case 中分叉新旧语义。
+8. **v3 目标运行时只支持新数据模型。** 新对象写入新表；运行时不得双读旧表、回退旧字段、维护兼容别名，或在同一 use case 中分叉新旧语义。
 9. **旧数据只通过独立的一次性脚本迁移。** 迁移允许显式、有报告的语义损失；迁移器读取旧表并写入新表，但旧表不是运行时数据源。
 10. **应用生命周期拥有受管进程生命周期。** 关窗口或进入托盘不结束 Agent Run；退出 RambleDesk 结束所有 live Agent Run；取消一个 Session 只结束该 Session 当前的进程树。Session Record、Ramble Submission、Feedback Request、Package 和 Delivery 不随进程退出而删除。
 11. **受管工具能力按 Agent Run 验收。** ACP Client 可以在 Session 建立时向 Agent 提供 MCP server 配置，但不得假设所有 Agent 都会接收、转发或无限期等待注入工具。
@@ -280,10 +281,11 @@ Pi 等既有原生 Adapter 在过渡期按 Compatibility Ingress 管理。若其
 | `crates/rambledesk-storage` | 当前数据模型的 SQLite Adapter、结构化 Draft、Session Record 及 Launch Configuration、Ramble Submission、Feedback Request/Package/Delivery，以及本地 content-addressed Artifact Store Adapter。 | ACP/MCP 协议、进程监督、Agent transcript mirror、Permission/Ask Question 历史表、旧表运行时读取、把本地路径泄漏为领域合同。 |
 | `crates/rambledesk-acp-client` | ACP Client 实现、catalog、preflight、launch、Launch Configuration 能力映射、进程树、ACP Session Link、Permission 透传、Question Channel、Live Session Event 归一化、pending Delivery 对账和 Managed Feedback Resume 调度。 | Editor、Cooking、Feedback Package 格式、厂商私有 transcript parser、第二套 Session 存储、Svelte 状态。 |
 | Session Tool Companion（目标 binary） | 每个 Agent Run 按需启动的 stdio MCP adapter，暴露 `ask_user_question`、`request_feedback`、`get_feedback` 并经认证 IPC 回到 RambleDesk。 | 领域真源、无限等待保证、Package 存储、本地路径合同、独立 daemon。 |
-| `crates/rambledesk-local-server` | authenticated loopback listener、Host/Origin guard、本地 JSON API 和 route mounting。 | 领域规则、ACP 会话实现、MCP tool schema。 |
-| `crates/rambledesk-mcp` | External Compatibility Ingress：MCP tool schema、handler、instructions、Delivery Envelope 和错误映射。 | Session 真源、listener、token path、ACP 生命周期、全局 Agent catalog、本地路径结果合同。 |
-| `crates/rambledesk-hosts` | 过渡期外部工具探测与兼容配置知识；可被 Agent/Launch catalog 替代。 | 当前 Session 模型、MCP implementation、ACP Client、完整 Adapter 流程。 |
+| `crates/rambledesk-local-server`（目标重写或移除） | 若保留，只提供 authenticated IPC/薄 Compatibility Ingress transport。当前 v2 routes 不属于目标合同。 | 领域规则、ACP 会话实现、MCP tool schema、旧 `/api/feedback/*`。 |
+| `crates/rambledesk-mcp`（目标重写或移除） | 若未来保留，作为只调用新 Core Interface 的 External Compatibility Ingress。当前 v2 tool/install Implementation 不属于目标合同。 | Session 真源、listener、token path、ACP 生命周期、全局 Agent catalog、本地路径结果合同。 |
+| `crates/rambledesk-hosts`（冻结后删除） | 只在过渡期提供旧外部工具探测；Launch Profile 知识迁入 ACP Client 后退出首发 workspace。 | 当前 Session 模型、MCP Implementation、ACP Client、完整 Adapter 流程。 |
 | `packages/pi-rambledesk` | Pi Compatibility Ingress。 | 独立 Session 语义、desktop UI 状态、storage 逻辑。 |
+| `packages/dsh-rambledesk` | 旧 DSH Compatibility Ingress；Phase 5 退出首发 workspace 或删除。 | v3 Managed Path、长期 Runtime 依赖。 |
 | `apps/desktop` | composition root、Workbench UI、Tauri wiring、应用与托盘生命周期。 | 领域持久化真源、ACP JSON-RPC、厂商进程实现。 |
 | 离线迁移工具 | 读取旧表、写入新表、输出迁移与损失报告。 | 被桌面运行时自动调用、双写、旧字段 fallback、长期兼容 API。 |
 
@@ -291,7 +293,7 @@ Pi 等既有原生 Adapter 在过渡期按 Compatibility Ingress 管理。若其
 
 - `rambledesk-core` 不依赖 workspace 内的协议或基础设施 crate。
 - `rambledesk-storage` 和 `rambledesk-acp-client` 依赖 `rambledesk-core` 的 ports；二者不互相取得领域所有权。
-- `rambledesk-mcp` 与既有 Adapter 只依赖当前 `core` 合同。
+- 未来重写后的 `rambledesk-mcp` 与既有 Adapter 只依赖当前 `core` Interface；当前 v2 Implementation 不满足此条。
 - Session Tool Companion 是 `rambledesk-acp-client` 使用的 MCP adapter，不绕过 `core` use case 直接操作数据库。
 - `apps/desktop` 负责组装 storage、ACP client、local server 和 compatibility ingress。
 - ACP Agent SDK 只能出现在 `rambledesk-acp-client` 一侧，不能沿 DTO 泄漏到 Svelte 或 `core`。

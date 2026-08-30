@@ -90,6 +90,26 @@ async fn familiar_v3_table_without_migration_identity_is_still_rejected() {
 }
 
 #[tokio::test]
+async fn package_digest_mismatch_is_rejected_before_any_facts_commit() {
+    let temp = TempDir::new().expect("tempdir");
+    let store = open(&temp).await;
+    let mut launch = launch_commit(digest('a'));
+    launch.package.manifest_digest = digest('9');
+
+    let error = store
+        .apply(FactMutation::Launch(Box::new(launch)))
+        .await
+        .expect_err("non-canonical package digest");
+
+    assert_eq!(error, FactStoreError::CorruptData);
+    let session_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sessions_v3")
+        .fetch_one(&store.pool)
+        .await
+        .expect("session count");
+    assert_eq!(session_count, 0, "the rejected aggregate must roll back");
+}
+
+#[tokio::test]
 async fn immutable_package_aggregate_rejects_direct_sql_drift() {
     let temp = TempDir::new().expect("tempdir");
     let store = open(&temp).await;
@@ -113,6 +133,19 @@ async fn immutable_package_aggregate_rejects_direct_sql_drift() {
         sha256: digest('8'),
         storage_key: "test-object".to_owned(),
     });
+    let package_digests = calculate_package_digests(PackageDigestInput {
+        package_id: &launch.package.package_id,
+        submission_id: &launch.package.submission_id,
+        purpose: launch.package.purpose,
+        request_id: launch.package.request_id.as_ref(),
+        schema_version: launch.package.schema_version,
+        artifacts: &launch.package.artifacts,
+        published_at: &launch.package.published_at,
+    });
+    launch.package.content_digest = package_digests.content_digest.clone();
+    launch.package.manifest_digest = package_digests.manifest_digest.clone();
+    launch.outcome.package_content_digest = package_digests.content_digest;
+    launch.outcome.package_manifest_digest = package_digests.manifest_digest;
     store
         .apply(FactMutation::Launch(Box::new(launch)))
         .await

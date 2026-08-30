@@ -14,6 +14,14 @@ mod model;
 pub mod ports;
 
 pub use core::Core;
+pub use core_support::{
+    validate_feedback_request_input, validate_feedback_submission_input,
+    validate_ramble_draft_content,
+};
+pub use digest::{
+    PackageDigestInput, PackageDigests, calculate_feedback_request_digest,
+    calculate_feedback_submission_digest, calculate_package_digests, package_digests_match,
+};
 pub use error::{CoreError, CoreErrorCode};
 pub use model::*;
 
