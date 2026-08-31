@@ -537,6 +537,7 @@ const chinese: Record<string, string> = {
   'Configuration complete': '配置完成',
   'Requests': '请求',
   'Request list': '请求列表',
+  'Sessions': '会话',
   'Manage adapters in the desktop app': '请在桌面应用中管理适配器',
   'All requests': '全部请求',
   'Search active requests…': '搜索未归档请求…',

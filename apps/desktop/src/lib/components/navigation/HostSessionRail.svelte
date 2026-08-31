@@ -2,11 +2,8 @@
   import { tick } from 'svelte'
   import {
     Archive,
-    ChevronDown,
-    ChevronRight,
     Inbox,
     LoaderCircle,
-    MessageSquareText,
     MoreHorizontal,
     PanelLeftClose,
     PanelLeftOpen,
@@ -25,14 +22,7 @@
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
   import type { HostProfile } from '$lib/workbench/types'
-
-  type HostGroup = {
-    hostId: string
-    sessions: HostSessionSummary[]
-    pendingCount: number
-    updatedAt: string
-    hostPinnedAt: string | null
-  }
+  import { hostSessionKey, orderSessionRailSessions } from './sessionRail'
 
   export let sessions: HostSessionSummary[] = []
   export let activeHostId: string | null = null
@@ -56,49 +46,20 @@
   export let onArchiveSession: (session: HostSessionSummary) => Promise<void> | void = () => {}
   export let onSetHostPinned: (hostId: string, pinned: boolean) => Promise<void> | void = () => {}
 
-  let collapsedHosts = new Set<string>()
-  let groups: HostGroup[] = []
+  let orderedSessions: HostSessionSummary[] = []
   let editingSessionKey: string | null = null
   let editingTitle = ''
   let actionKey: string | null = null
   let titleInput: HTMLInputElement | null = null
   let requestSearchTimer: ReturnType<typeof setTimeout> | null = null
 
-  $: groups = Array.from(
-    sessions.reduce((byHost, session) => {
-      const group = byHost.get(session.host_id) ?? {
-        hostId: session.host_id,
-        sessions: [],
-        pendingCount: 0,
-        updatedAt: session.updated_at,
-        hostPinnedAt: session.host_pinned_at,
-      }
-      group.sessions.push(session)
-      group.pendingCount += session.pending_count
-      if (session.updated_at > group.updatedAt) group.updatedAt = session.updated_at
-      group.hostPinnedAt = group.hostPinnedAt ?? session.host_pinned_at
-      byHost.set(session.host_id, group)
-      return byHost
-    }, new Map<string, HostGroup>()),
-  )
-    .map(([, group]) => {
-      group.sessions = group.sessions.sort(compareSessionOrder)
-      return group
-    })
-    .sort(compareHostGroupOrder)
+  $: orderedSessions = orderSessionRailSessions(sessions)
 
   $: totalRequests = sessions.reduce((total, session) => total + session.request_count, 0)
   $: totalPending = sessions.reduce((total, session) => total + session.pending_count, 0)
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
-  }
-
-  function toggleHost(hostId: string) {
-    const next = new Set(collapsedHosts)
-    if (next.has(hostId)) next.delete(hostId)
-    else next.add(hostId)
-    collapsedHosts = next
   }
 
   function toggleSidebar() {
@@ -108,33 +69,6 @@
   function scheduleRequestSearch(value: string) {
     if (requestSearchTimer) clearTimeout(requestSearchTimer)
     requestSearchTimer = setTimeout(() => onRequestSearch(value), 180)
-  }
-
-  function sessionKey(session: HostSessionSummary) {
-    return `${session.host_id}\u0000${session.host_session_id}`
-  }
-
-  function compareNullableIsoDesc(left: string | null | undefined, right: string | null | undefined) {
-    if (left === right) return 0
-    if (!left) return 1
-    if (!right) return -1
-    return right.localeCompare(left)
-  }
-
-  function compareHostGroupOrder(left: HostGroup, right: HostGroup) {
-    return (
-      compareNullableIsoDesc(left.hostPinnedAt, right.hostPinnedAt) ||
-      compareNullableIsoDesc(left.updatedAt, right.updatedAt) ||
-      left.hostId.localeCompare(right.hostId)
-    )
-  }
-
-  function compareSessionOrder(left: HostSessionSummary, right: HostSessionSummary) {
-    return (
-      compareNullableIsoDesc(left.pinned_at, right.pinned_at) ||
-      compareNullableIsoDesc(left.updated_at, right.updated_at) ||
-      left.host_session_id.localeCompare(right.host_session_id)
-    )
   }
 
   async function runAction(key: string, action: () => Promise<void> | void) {
@@ -148,7 +82,7 @@
   }
 
   async function startRename(session: HostSessionSummary) {
-    editingSessionKey = sessionKey(session)
+    editingSessionKey = hostSessionKey(session)
     editingTitle = session.title
     await tick()
     titleInput?.focus()
@@ -161,7 +95,7 @@
   }
 
   async function commitRename(session: HostSessionSummary) {
-    const key = sessionKey(session)
+    const key = hostSessionKey(session)
     if (editingSessionKey !== key) return
     const nextTitle = editingTitle.trim()
     if (!nextTitle || nextTitle === session.title) {
@@ -181,7 +115,7 @@
       'flex min-h-0 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200',
       collapsed ? 'w-14' : 'w-[224px]',
     ]}
-    aria-label={tr('Hosts and sessions')}
+    aria-label={tr('Sessions')}
   >
     <div
       class={[
@@ -191,7 +125,7 @@
     >
       {#if !collapsed}
         <div class="min-w-0">
-          <strong class="block truncate text-xs font-semibold">{tr('Hosts')}</strong>
+          <strong class="block truncate text-xs font-semibold">{tr('Sessions')}</strong>
           <span class="block text-[10px] text-muted-foreground">
             {sessions.length} {tr('sessions')}
           </span>
@@ -227,10 +161,11 @@
         <label
           class="mb-2 flex h-8 items-center gap-2 rounded-md border border-sidebar-border bg-background/80 px-2 text-[11px] text-muted-foreground focus-within:ring-2 focus-within:ring-ring/40"
         >
-          <Search class="size-3.5 shrink-0" />
+          <Search class="size-3.5 shrink-0" aria-hidden="true" />
           <input
             value={requestSearch}
             class="min-w-0 flex-1 bg-transparent text-sidebar-foreground outline-none placeholder:text-muted-foreground"
+            aria-label={tr('Search active requests…')}
             placeholder={tr('Search active requests…')}
             oninput={(event) => scheduleRequestSearch(event.currentTarget.value)}
           />
@@ -249,7 +184,7 @@
         title={collapsed ? tr('All requests') : undefined}
         onclick={() => onSelect(null, null)}
       >
-        <Inbox class="size-5 shrink-0" />
+        <Inbox class="size-5 shrink-0" aria-hidden="true" />
         {#if !collapsed}
           <span class="min-w-0 flex-1 truncate">{tr('All requests')}</span>
           {#if totalPending > 0}
@@ -266,95 +201,102 @@
         <div class={refreshing ? 'pointer-events-none select-none opacity-40' : undefined}>
           {#if collapsed}
             <div class="space-y-1 p-2">
-              {#each groups as group (group.hostId)}
-                {@const profile = resolveHostProfile(group.hostId)}
+              {#each orderedSessions as session (hostSessionKey(session))}
+                {@const profile = resolveHostProfile(session.host_id)}
                 <button
                   type="button"
                   class={[
-                    'grid h-9 w-full place-items-center rounded-md text-muted-foreground transition-colors [&_svg]:size-4',
-                    activeHostId === group.hostId && activeHostSessionId === null
+                    'grid h-9 w-full place-items-center rounded-md text-muted-foreground transition-colors [&_svg]:size-5',
+                    activeHostId === session.host_id &&
+                    (activeHostSessionId === null || activeHostSessionId === session.host_session_id)
                       ? 'bg-sidebar-accent text-sidebar-accent-foreground'
                       : 'hover:bg-sidebar-accent/65 hover:text-sidebar-foreground',
                   ]}
-                  aria-label={profile.label}
-                  title={profile.label}
-                  onclick={() => onSelect(group.hostId, null)}
+                  aria-label={`${session.title} · ${profile.label}`}
+                  title={`${session.title} · ${profile.label}`}
+                  onclick={() => onSelect(session.host_id, session.host_session_id)}
                 >
-                  {@html profile.icon_svg}
+                  <span aria-hidden="true">{@html profile.icon_svg}</span>
                 </button>
-
-                {#each group.sessions as session (session.host_session_id)}
-                  <button
-                    type="button"
-                    class={[
-                      'grid h-8 w-full place-items-center rounded-md text-muted-foreground transition-colors',
-                      activeHostId === group.hostId && activeHostSessionId === session.host_session_id
-                        ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                        : 'hover:bg-sidebar-accent/55 hover:text-sidebar-foreground',
-                    ]}
-                    aria-label={session.title}
-                    title={session.title}
-                    onclick={() => onSelect(group.hostId, session.host_session_id)}
-                  >
-                    <MessageSquareText class="size-4" />
-                  </button>
-                {/each}
               {:else}
                 <div
                   class="grid h-16 place-items-center text-muted-foreground"
                   aria-label={loading ? tr('Loading host sessions…') : tr('No host sessions yet')}
                   title={loading ? tr('Loading host sessions…') : tr('No host sessions yet')}
                 >
-                  <Inbox class="size-4" />
+                  <Inbox class="size-4" aria-hidden="true" />
                 </div>
               {/each}
             </div>
           {:else}
             <div class="space-y-1 p-2">
-              {#each groups as group (group.hostId)}
-                {@const profile = resolveHostProfile(group.hostId)}
-                <div>
-                  <div class="group/host flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      aria-label={collapsedHosts.has(group.hostId) ? tr('Expand sessions') : tr('Collapse sessions')}
-                      title={collapsedHosts.has(group.hostId) ? tr('Expand sessions') : tr('Collapse sessions')}
-                      class="shrink-0 text-muted-foreground opacity-70 hover:opacity-100"
-                      onclick={() => toggleHost(group.hostId)}
+              {#each orderedSessions as session (hostSessionKey(session))}
+                {@const profile = resolveHostProfile(session.host_id)}
+                {@const key = hostSessionKey(session)}
+                <div class="group/session flex min-h-9 items-center gap-1">
+                  <button
+                    type="button"
+                    class={[
+                      'grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-sidebar-accent/65 hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring/40 [&_svg]:size-5',
+                      activeHostId === session.host_id && activeHostSessionId === null
+                        ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                        : undefined,
+                    ]}
+                    aria-label={`${tr('Select host')}: ${profile.label}`}
+                    title={`${tr('Select host')}: ${profile.label}`}
+                    onclick={() => onSelect(session.host_id, null)}
+                  >
+                    <span aria-hidden="true">{@html profile.icon_svg}</span>
+                  </button>
+                  {#if editingSessionKey === key}
+                    <form
+                      class="flex h-9 min-w-0 flex-1 items-center"
+                      onsubmit={(event) => {
+                        event.preventDefault()
+                        void commitRename(session)
+                      }}
                     >
-                      {#if collapsedHosts.has(group.hostId)}
-                        <ChevronRight />
-                      {:else}
-                        <ChevronDown />
-                      {/if}
-                    </Button>
+                      <input
+                        bind:this={titleInput}
+                        bind:value={editingTitle}
+                        class="h-7 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-[11px] outline-none ring-ring/40 focus:ring-2"
+                        aria-label={`${tr('Rename session')}: ${session.title}`}
+                        maxlength="160"
+                        disabled={actionKey === `rename:${key}`}
+                        onblur={() => void commitRename(session)}
+                        onkeydown={(event) => {
+                          if (event.key === 'Escape') {
+                            event.preventDefault()
+                            cancelRename()
+                          }
+                        }}
+                      />
+                    </form>
+                  {:else}
                     <div
                       class={[
-                        'flex h-9 min-w-0 flex-1 items-center rounded-md text-xs transition-colors',
-                        activeHostId === group.hostId && activeHostSessionId === null
+                        'flex min-h-9 min-w-0 flex-1 items-center rounded-md text-[11px] transition-colors',
+                        activeHostId === session.host_id && activeHostSessionId === session.host_session_id
                           ? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground'
-                          : 'hover:bg-sidebar-accent/65',
+                          : 'text-muted-foreground hover:bg-sidebar-accent/55 hover:text-sidebar-foreground',
                       ]}
                     >
                       <button
                         type="button"
-                        class="flex h-full min-w-0 flex-1 items-center gap-2 rounded-md bg-transparent px-2 text-left text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                        onclick={() => onSelect(group.hostId, null)}
+                        class="flex min-h-9 min-w-0 flex-1 items-center gap-2 rounded-md bg-transparent px-2 py-1.5 text-left text-[11px] outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                        aria-label={`${session.title} · ${profile.label}`}
+                        title={`${session.title} · ${profile.label}`}
+                        onclick={() => onSelect(session.host_id, session.host_session_id)}
                       >
-                        <span class="grid size-6 shrink-0 place-items-center text-muted-foreground [&_svg]:size-5">
-                          {@html profile.icon_svg}
-                        </span>
-                        <span class="min-w-0 flex-1 truncate">{profile.label}</span>
-                        {#if group.hostPinnedAt}
-                          <Pin class="size-3 shrink-0 text-primary" />
+                        <span class="min-w-0 flex-1 truncate">{session.title}</span>
+                        {#if session.pinned_at}
+                          <Pin class="size-3 shrink-0 text-primary" aria-hidden="true" />
                         {/if}
-                        {#if group.pendingCount > 0}
-                          <Badge variant="secondary" class="h-5 min-w-5 px-1.5 text-[10px]">
-                            {group.pendingCount}
-                          </Badge>
+                        {#if session.pending_count > 0}
+                          <span class="size-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true"></span>
                         {/if}
                       </button>
+
                       <DropdownMenu.Root>
                         <DropdownMenu.Trigger>
                           {#snippet child({ props })}
@@ -362,138 +304,60 @@
                               {...props}
                               variant="ghost"
                               size="icon-xs"
-                              aria-label={tr('Host actions')}
-                              title={tr('Host actions')}
-                              class="mr-1 hidden hover:bg-transparent aria-expanded:bg-transparent group-hover/host:inline-flex group-focus-within/host:inline-flex aria-expanded:inline-flex dark:hover:bg-transparent"
+                              aria-label={`${tr('Session actions')}: ${session.title}`}
+                              title={tr('Session actions')}
+                              class="mr-1 hidden hover:bg-transparent aria-expanded:bg-transparent group-hover/session:inline-flex group-focus-within/session:inline-flex aria-expanded:inline-flex dark:hover:bg-transparent"
                               disabled={actionKey !== null}
                             >
-                              <MoreHorizontal />
+                              <MoreHorizontal aria-hidden="true" />
                             </Button>
                           {/snippet}
                         </DropdownMenu.Trigger>
-                        <DropdownMenu.Content align="end" class="w-40">
+                        <DropdownMenu.Content align="end" class="w-44">
+                          <DropdownMenu.Item onclick={() => void startRename(session)}>
+                            <Pencil class="size-4" aria-hidden="true" />
+                            {tr('Rename session')}
+                          </DropdownMenu.Item>
                           <DropdownMenu.Item
                             onclick={() =>
-                              void runAction(`host-pin:${group.hostId}`, () =>
-                                onSetHostPinned(group.hostId, !group.hostPinnedAt),
+                              void runAction(`session-pin:${key}`, () =>
+                                onSetSessionPinned(session, !session.pinned_at),
                               )}
                           >
-                            {#if group.hostPinnedAt}
-                              <PinOff class="size-4" />
+                            {#if session.pinned_at}
+                              <PinOff class="size-4" aria-hidden="true" />
+                              {tr('Unpin session')}
+                            {:else}
+                              <Pin class="size-4" aria-hidden="true" />
+                              {tr('Pin session')}
+                            {/if}
+                          </DropdownMenu.Item>
+                          <DropdownMenu.Item
+                            onclick={() =>
+                              void runAction(`host-pin:${session.host_id}`, () =>
+                                onSetHostPinned(session.host_id, !session.host_pinned_at),
+                              )}
+                          >
+                            {#if session.host_pinned_at}
+                              <PinOff class="size-4" aria-hidden="true" />
                               {tr('Unpin host')}
                             {:else}
-                              <Pin class="size-4" />
+                              <Pin class="size-4" aria-hidden="true" />
                               {tr('Pin host')}
                             {/if}
                           </DropdownMenu.Item>
+                          <DropdownMenu.Item
+                            disabled={session.pending_count > 0}
+                            onclick={() =>
+                              session.pending_count === 0
+                                ? void runAction(`session-archive:${key}`, () => onArchiveSession(session))
+                                : undefined}
+                          >
+                            <Archive class="size-4" aria-hidden="true" />
+                            {tr('Archive session')}
+                          </DropdownMenu.Item>
                         </DropdownMenu.Content>
                       </DropdownMenu.Root>
-                    </div>
-                  </div>
-
-                  {#if !collapsedHosts.has(group.hostId)}
-                    <div class="ml-3 border-l border-sidebar-border pl-2">
-                      {#each group.sessions as session (session.host_session_id)}
-                        {@const key = sessionKey(session)}
-                        <div class="group/session flex min-h-8 items-center gap-1">
-                          {#if editingSessionKey === key}
-                            <form
-                              class="flex h-8 min-w-0 flex-1 items-center"
-                              onsubmit={(event) => {
-                                event.preventDefault()
-                                void commitRename(session)
-                              }}
-                            >
-                              <input
-                                bind:this={titleInput}
-                                bind:value={editingTitle}
-                                class="h-7 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-[11px] outline-none ring-ring/40 focus:ring-2"
-                                maxlength="160"
-                                disabled={actionKey === `rename:${key}`}
-                                onblur={() => void commitRename(session)}
-                                onkeydown={(event) => {
-                                  if (event.key === 'Escape') {
-                                    event.preventDefault()
-                                    cancelRename()
-                                  }
-                                }}
-                              />
-                            </form>
-                          {:else}
-                            <div
-                              class={[
-                                'flex min-h-8 min-w-0 flex-1 items-center rounded-md text-[11px] transition-colors',
-                                activeHostId === group.hostId && activeHostSessionId === session.host_session_id
-                                  ? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground'
-                                  : 'text-muted-foreground hover:bg-sidebar-accent/55 hover:text-sidebar-foreground',
-                              ]}
-                            >
-                              <button
-                                type="button"
-                                class="flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded-md bg-transparent px-2 py-1.5 text-left text-[11px] outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                                title={session.title}
-                                onclick={() => onSelect(group.hostId, session.host_session_id)}
-                              >
-                                <span class="min-w-0 flex-1 truncate">{session.title}</span>
-                                {#if session.pinned_at}
-                                  <Pin class="size-3 shrink-0 text-primary" />
-                                {/if}
-                                {#if session.pending_count > 0}
-                                  <span class="size-1.5 shrink-0 rounded-full bg-primary"></span>
-                                {/if}
-                              </button>
-
-                              <DropdownMenu.Root>
-                                <DropdownMenu.Trigger>
-                                  {#snippet child({ props })}
-                                    <Button
-                                      {...props}
-                                      variant="ghost"
-                                      size="icon-xs"
-                                      aria-label={tr('Session actions')}
-                                      title={tr('Session actions')}
-                                      class="mr-1 hidden hover:bg-transparent aria-expanded:bg-transparent group-hover/session:inline-flex group-focus-within/session:inline-flex aria-expanded:inline-flex dark:hover:bg-transparent"
-                                      disabled={actionKey !== null}
-                                    >
-                                      <MoreHorizontal />
-                                    </Button>
-                                  {/snippet}
-                                </DropdownMenu.Trigger>
-                                <DropdownMenu.Content align="end" class="w-44">
-                                  <DropdownMenu.Item onclick={() => void startRename(session)}>
-                                    <Pencil class="size-4" />
-                                    {tr('Rename session')}
-                                  </DropdownMenu.Item>
-                                  <DropdownMenu.Item
-                                    onclick={() =>
-                                      void runAction(`session-pin:${key}`, () =>
-                                        onSetSessionPinned(session, !session.pinned_at),
-                                      )}
-                                  >
-                                    {#if session.pinned_at}
-                                      <PinOff class="size-4" />
-                                      {tr('Unpin session')}
-                                    {:else}
-                                      <Pin class="size-4" />
-                                      {tr('Pin session')}
-                                    {/if}
-                                  </DropdownMenu.Item>
-                                  <DropdownMenu.Item
-                                    disabled={session.pending_count > 0}
-                                    onclick={() =>
-                                      session.pending_count === 0
-                                        ? void runAction(`session-archive:${key}`, () => onArchiveSession(session))
-                                        : undefined}
-                                  >
-                                    <Archive class="size-4" />
-                                    {tr('Archive session')}
-                                  </DropdownMenu.Item>
-                                </DropdownMenu.Content>
-                              </DropdownMenu.Root>
-                            </div>
-                          {/if}
-                        </div>
-                      {/each}
                     </div>
                   {/if}
                 </div>

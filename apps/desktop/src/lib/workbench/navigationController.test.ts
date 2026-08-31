@@ -158,4 +158,49 @@ describe('navigationController', () => {
       unsubscribe()
     }
   })
+
+  it('returns to the visible host scope after archiving the selected flat-rail session', async () => {
+    const selectedSession = { ...hostSession(), pending_count: 0 }
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === 'list_feedback_inbox') return []
+      if (command === 'list_host_sessions') return [selectedSession]
+      if (command === 'list_host_profiles') return []
+      if (command === 'list_feedback_requests') {
+        return { requests: [], next_cursor: null } satisfies ListFeedbackRequestsOutput
+      }
+      if (command === 'archive_host_session') return { ...selectedSession, archived_at: '2026-09-01T00:00:00Z' }
+      return undefined
+    })
+
+    const controller = createController()
+    let state: NavigationState | undefined
+    const unsubscribe = controller.subscribe((next) => {
+      state = next
+    })
+
+    try {
+      await controller.initialize()
+      await controller.selectScope(selectedSession.host_id, selectedSession.host_session_id)
+      expect(state?.selectedHostId).toBe('codex')
+      expect(state?.selectedHostSessionId).toBe('session-1')
+
+      await controller.archiveHostSession(selectedSession)
+
+      expect(state?.selectedHostId).toBe('codex')
+      expect(state?.selectedHostSessionId).toBeNull()
+      expect(mocks.invoke).toHaveBeenLastCalledWith('list_feedback_requests', {
+        input: {
+          host_id: 'codex',
+          host_session_id: null,
+          status: ['waiting', 'in_progress', 'completed', 'cancelled'],
+          archived: null,
+          search: null,
+          limit: 100,
+          cursor: null,
+        },
+      })
+    } finally {
+      unsubscribe()
+    }
+  })
 })
