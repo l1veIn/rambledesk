@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { sessionViewDescriptor, workspaceViewKey } from './viewDescriptors'
+import {
+  sessionViewDescriptor,
+  settingsViewDescriptor,
+  workspaceViewKey,
+  type WorkspaceViewDescriptor,
+} from './viewDescriptors'
 import {
   createSessionWorkspaceTransition,
   type SessionWorkspaceTransitionAdapter,
@@ -13,7 +18,7 @@ const alpha = sessionViewDescriptor('codex', 'alpha')
 const beta = sessionViewDescriptor('pi', 'beta')
 
 function target(
-  view = beta,
+  view: WorkspaceViewDescriptor = beta,
   requestId: string | null = 'request-beta',
 ): SessionWorkspaceTransitionTarget {
   return {
@@ -190,5 +195,16 @@ describe('sessionWorkspaceTransition', () => {
 
     expect(run.events).toEqual(['save', 'unmount', 'commit:null'])
     expect(run.adapter.loadTarget).not.toHaveBeenCalled()
+  })
+
+  it('opens settings through the save gate without loading a session workspace', async () => {
+    const run = harness()
+    const settings = target(settingsViewDescriptor(), null)
+
+    await expect(run.transition.activate(settings)).resolves.toBe('activated')
+
+    expect(run.events).toEqual(['save', 'unmount', 'commit:null'])
+    expect(run.adapter.loadTarget).not.toHaveBeenCalled()
+    expect(run.adapter.commitTarget).toHaveBeenCalledWith(settings, null)
   })
 })

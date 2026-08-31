@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { sessionViewDescriptor, workspaceViewKey } from './viewDescriptors'
+import {
+  sessionViewDescriptor,
+  settingsViewDescriptor,
+  workspaceViewKey,
+} from './viewDescriptors'
 
 describe('workspace view descriptors', () => {
   it('creates a readonly session descriptor with a type-prefixed stable key', () => {
@@ -28,5 +32,14 @@ describe('workspace view descriptors', () => {
     const right = sessionViewDescriptor('host', 'one:session')
 
     expect(workspaceViewKey(left)).not.toBe(workspaceViewKey(right))
+  })
+
+  it('gives every settings entry the same singleton key', () => {
+    const first = settingsViewDescriptor()
+    const second = settingsViewDescriptor()
+
+    expect(first).toEqual({ kind: 'settings' })
+    expect(workspaceViewKey(first)).toBe('settings:singleton')
+    expect(workspaceViewKey(second)).toBe(workspaceViewKey(first))
   })
 })

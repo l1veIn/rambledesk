@@ -106,6 +106,7 @@
 
   export let mcpConfiguration = ''
   export let initialSection: Section = 'general'
+  export let presentation: 'dialog' | 'workspace' = 'dialog'
   export let onClose: () => void = () => {}
   export let onRestartOnboarding: () => void = () => {}
   export let onOpenArchived: () => void = () => {}
@@ -184,6 +185,7 @@
   let dialogOpen = true
   let closeDelivered = false
   let activeSection: Section = initialSection
+  let lastInitialSection: Section = initialSection
   let hosts: McpHostView[] = []
   let selectedIds = new Set<string>()
   let loadingHosts = true
@@ -228,7 +230,11 @@
   $: selectedCount = selectedIds.size
   $: selectedSpeechModel =
     speechModels.find((model) => model.id === $speechModelId) ?? speechModels[0] ?? null
-  $: if (!dialogOpen && !closeDelivered) {
+  $: if (initialSection !== lastInitialSection) {
+    lastInitialSection = initialSection
+    activeSection = initialSection
+  }
+  $: if (presentation === 'dialog' && !dialogOpen && !closeDelivered) {
     closeDelivered = true
     onClose()
   }
@@ -620,25 +626,28 @@
   }
 </script>
 
-<Dialog.Root bind:open={dialogOpen}>
-  <Dialog.Content
-    class="h-[min(680px,calc(100vh-5rem))] w-[min(940px,calc(100vw-3rem))] max-w-none gap-0 overflow-hidden p-0 sm:max-w-none"
-    aria-describedby="settings-description"
-  >
+{#snippet settingsContent()}
+  {#if presentation === 'workspace'}
+    <div class="sr-only">
+      <h2>{tr('Settings')}</h2>
+      <p>{tr('Manage interface preferences and host adapters.')}</p>
+    </div>
+  {:else}
     <Dialog.Header class="sr-only">
       <Dialog.Title>{tr('Settings')}</Dialog.Title>
       <Dialog.Description id="settings-description">
         {tr('Manage interface preferences and host adapters.')}
       </Dialog.Description>
     </Dialog.Header>
+  {/if}
 
     {#key $locale}
     <Tabs.Root
       bind:value={activeSection}
       orientation="vertical"
-      class="grid h-full min-h-0 grid-cols-[184px_minmax(0,1fr)] gap-0"
+      class="settings-layout grid h-full min-h-0 grid-cols-[184px_minmax(0,1fr)] gap-0"
     >
-      <aside class="flex min-h-0 flex-col border-r bg-muted/35 p-3">
+      <aside class="settings-navigation flex min-h-0 flex-col border-r bg-muted/35 p-3">
         <div class="flex h-12 items-center gap-2 px-2">
           <img
             src={appIcon}
@@ -646,7 +655,7 @@
             draggable="false"
             class="size-7 shrink-0 rounded-md object-cover"
           />
-          <div class="min-w-0">
+          <div class="settings-brand-copy min-w-0">
             <strong class="block text-xs font-semibold">RambleDesk</strong>
             <span class="block text-[10px] text-muted-foreground">{tr('Settings')}</span>
           </div>
@@ -697,13 +706,13 @@
           </Tabs.Trigger>
         </Tabs.List>
 
-        <div class="mt-auto flex gap-2 border-t pt-3 text-[10px] leading-4 text-muted-foreground">
+        <div class="settings-navigation-note mt-auto flex gap-2 border-t pt-3 text-[10px] leading-4 text-muted-foreground">
           <ShieldCheck class="mt-0.5 size-3.5 shrink-0" />
           <span>{tr('Adapter configuration is written only to your user directory and preserves other adapters.')}</span>
         </div>
       </aside>
 
-      <div class="flex min-h-0 min-w-0 flex-col">
+      <div class="settings-content flex min-h-0 min-w-0 flex-col">
         <header class="flex h-16 shrink-0 items-center border-b px-6">
           <div>
             <p class="m-0 text-[10px] font-medium uppercase text-muted-foreground">
@@ -1645,8 +1654,68 @@
       </div>
     </Tabs.Root>
     {/key}
-  </Dialog.Content>
-</Dialog.Root>
+{/snippet}
+
+{#if presentation === 'workspace'}
+  <div class="settings-workspace-root h-full min-h-0 overflow-hidden bg-background">
+    {@render settingsContent()}
+  </div>
+{:else}
+  <Dialog.Root bind:open={dialogOpen}>
+    <Dialog.Content
+      class="h-[min(680px,calc(100vh-5rem))] w-[min(940px,calc(100vw-3rem))] max-w-none gap-0 overflow-hidden p-0 sm:max-w-none"
+      aria-describedby="settings-description"
+    >
+      {@render settingsContent()}
+    </Dialog.Content>
+  </Dialog.Root>
+{/if}
+
+<style>
+  .settings-workspace-root {
+    container: settings-workspace / inline-size;
+  }
+
+  @container settings-workspace (max-width: 639px) {
+    :global(.settings-layout) {
+      grid-template-columns: 52px minmax(0, 1fr);
+    }
+
+    .settings-navigation {
+      padding: 0.375rem;
+    }
+
+    .settings-brand-copy,
+    .settings-navigation-note {
+      display: none;
+    }
+
+    .settings-navigation :global([role='tab']) {
+      justify-content: center;
+      gap: 0;
+      padding-inline: 0;
+      font-size: 0;
+    }
+
+    .settings-navigation :global([role='tab'] [data-slot='badge']) {
+      display: none;
+    }
+
+    .settings-content :global(header) {
+      padding-inline: 1rem;
+    }
+
+    .settings-content :global([role='tabpanel']) {
+      padding: 1rem;
+    }
+
+    .settings-content :global([class*='grid-cols-']) {
+      grid-template-columns: minmax(0, 1fr) !important;
+      align-items: stretch;
+      gap: 1rem;
+    }
+  }
+</style>
 
 {#if storageMigrating}
   <div class="fixed inset-0 z-[100] grid place-items-center bg-black/45 p-6 backdrop-blur-sm">

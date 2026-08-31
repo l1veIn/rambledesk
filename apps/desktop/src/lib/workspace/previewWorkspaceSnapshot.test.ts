@@ -14,7 +14,7 @@ describe('preview workspace snapshot store', () => {
   it('keeps preview navigation in memory without browser storage', () => {
     const view = sessionViewDescriptor('codex', 'preview-session')
     savePreviewWorkspaceSnapshot({
-      version: 1,
+      version: 2,
       views: [{ ...view, lastRequestId: 'preview-request' }],
       activeViewKey: workspaceViewKey(view),
     })
@@ -46,5 +46,14 @@ describe('preview workspace snapshot store', () => {
   it('ignores unknown browser acceptance scenarios', () => {
     expect(seedPreviewWorkspaceScenario('other')).toBeNull()
     expect(savedPreviewWorkspaceSnapshot()).toBeNull()
+  })
+
+  it('seeds settings as a singleton workspace view without transient section state', () => {
+    expect(seedPreviewWorkspaceScenario('settings')).toBe('settings')
+    expect(savedPreviewWorkspaceSnapshot()?.shellState).toEqual({
+      views: [{ kind: 'settings' }],
+      activeViewKey: 'settings:singleton',
+    })
+    expect(savedPreviewWorkspaceSnapshot()?.requestIds.size).toBe(0)
   })
 })

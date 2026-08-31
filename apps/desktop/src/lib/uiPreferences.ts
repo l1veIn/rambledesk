@@ -1,7 +1,7 @@
 import {
   restoreWorkspaceSnapshot,
   type RestoredWorkspaceSnapshot,
-  type WorkspaceSnapshotV1,
+  type WorkspaceSnapshotV2,
 } from './workspace/workspaceSnapshot'
 
 export type UiThemePreference = 'system' | 'light' | 'dark'
@@ -93,7 +93,7 @@ export function savedWorkspaceSnapshot(): RestoredWorkspaceSnapshot | null {
   return restoreWorkspaceSnapshot(readState().workbench?.workspaceSnapshot)
 }
 
-export function saveWorkspaceSnapshot(snapshot: WorkspaceSnapshotV1) {
+export function saveWorkspaceSnapshot(snapshot: WorkspaceSnapshotV2) {
   updateState((state) => {
     state.workbench ??= {}
     state.workbench.workspaceSnapshot = snapshot

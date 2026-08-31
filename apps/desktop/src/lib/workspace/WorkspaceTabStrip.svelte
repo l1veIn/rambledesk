@@ -141,8 +141,8 @@
             <button
               type="button"
               class="mr-1 grid size-5 shrink-0 place-items-center rounded-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-40"
-              aria-label={`${tr('Close session tab')}: ${label}`}
-              title={tr('Close session tab')}
+              aria-label={`${tr('Close workspace tab')}: ${label}`}
+              title={tr('Close workspace tab')}
               tabindex={activeViewKey === viewKey ? 0 : -1}
               disabled={disabled || pendingViewKey !== null}
               onclick={() => void closeAndFocus(viewKey)}

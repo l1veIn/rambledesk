@@ -4,7 +4,11 @@ export type SessionViewDescriptor = Readonly<{
   hostSessionId: string
 }>
 
-export type WorkspaceViewDescriptor = SessionViewDescriptor
+export type SettingsViewDescriptor = Readonly<{
+  kind: 'settings'
+}>
+
+export type WorkspaceViewDescriptor = SessionViewDescriptor | SettingsViewDescriptor
 
 export function sessionViewDescriptor(
   hostId: string,
@@ -13,6 +17,11 @@ export function sessionViewDescriptor(
   return { kind: 'session', hostId, hostSessionId }
 }
 
-export function workspaceViewKey(view: SessionViewDescriptor): string {
+export function settingsViewDescriptor(): SettingsViewDescriptor {
+  return { kind: 'settings' }
+}
+
+export function workspaceViewKey(view: WorkspaceViewDescriptor): string {
+  if (view.kind === 'settings') return 'settings:singleton'
   return `${view.kind}:${JSON.stringify([view.hostId, view.hostSessionId])}`
 }

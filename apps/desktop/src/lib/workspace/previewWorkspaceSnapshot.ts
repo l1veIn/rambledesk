@@ -1,25 +1,49 @@
 import {
   restoreWorkspaceSnapshot,
   type RestoredWorkspaceSnapshot,
-  type WorkspaceSnapshotV1,
+  type WorkspaceSnapshotV2,
 } from './workspaceSnapshot'
-import { sessionViewDescriptor, workspaceViewKey } from './viewDescriptors'
+import {
+  sessionViewDescriptor,
+  settingsViewDescriptor,
+  workspaceViewKey,
+} from './viewDescriptors'
 
-export type PreviewWorkspaceScenario = 'restore' | 'archived' | 'unavailable' | 'unknown'
+export type PreviewWorkspaceScenario =
+  | 'restore'
+  | 'archived'
+  | 'unavailable'
+  | 'unknown'
+  | 'settings'
 
-let snapshot: WorkspaceSnapshotV1 | null = null
+let snapshot: WorkspaceSnapshotV2 | null = null
 
 export function savedPreviewWorkspaceSnapshot(): RestoredWorkspaceSnapshot | null {
   return restoreWorkspaceSnapshot(snapshot)
 }
 
-export function savePreviewWorkspaceSnapshot(next: WorkspaceSnapshotV1) {
+export function savePreviewWorkspaceSnapshot(next: WorkspaceSnapshotV2) {
   snapshot = next
 }
 
 export function seedPreviewWorkspaceScenario(value: string | null): PreviewWorkspaceScenario | null {
-  if (value !== 'restore' && value !== 'archived' && value !== 'unavailable' && value !== 'unknown') {
+  if (
+    value !== 'restore' &&
+    value !== 'archived' &&
+    value !== 'unavailable' &&
+    value !== 'unknown' &&
+    value !== 'settings'
+  ) {
     return null
+  }
+  if (value === 'settings') {
+    const view = settingsViewDescriptor()
+    savePreviewWorkspaceSnapshot({
+      version: 2,
+      views: [view],
+      activeViewKey: workspaceViewKey(view),
+    })
+    return value
   }
   const view =
     value === 'restore'
@@ -28,7 +52,7 @@ export function seedPreviewWorkspaceScenario(value: string | null): PreviewWorks
         ? sessionViewDescriptor('codex', 'archived-preview-session')
         : sessionViewDescriptor('codex', 'unavailable-preview-session')
   savePreviewWorkspaceSnapshot({
-    version: 1,
+    version: 2,
     views: [
       {
         ...view,

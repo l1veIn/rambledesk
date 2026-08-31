@@ -14,7 +14,6 @@
   import rambelleRecording from './assets/rambelle-states/recording.webp'
   import AppTitlebar from './lib/AppTitlebar.svelte'
   import OnboardingWizard from './lib/OnboardingWizard.svelte'
-  import SettingsPanel from './lib/SettingsPanel.svelte'
   import UpdateAvailableDialog from './lib/UpdateAvailableDialog.svelte'
   import ArchivedSessionsDialog from './lib/components/navigation/ArchivedSessionsDialog.svelte'
   import HostSessionRail from './lib/components/navigation/HostSessionRail.svelte'
@@ -23,6 +22,7 @@
   import ResumePromptDialog from './lib/workbench/ResumePromptDialog.svelte'
   import SessionWorkbench from './lib/workbench/SessionWorkbench.svelte'
   import MissingSessionView from './lib/workspace/MissingSessionView.svelte'
+  import SettingsWorkspaceView from './lib/workspace/SettingsWorkspaceView.svelte'
   import type { JSONContent } from '@tiptap/core'
 
   import type {
@@ -57,8 +57,10 @@
   import { checkForUpdates } from './lib/updater'
   import {
     sessionViewDescriptor,
+    settingsViewDescriptor,
     workspaceViewKey,
     type SessionViewDescriptor,
+    type WorkspaceViewDescriptor,
   } from './lib/workspace/viewDescriptors'
   import {
     activeWorkspaceView,
@@ -68,7 +70,6 @@
   } from './lib/workspace/workspaceShell'
   import {
     createWorkspaceSnapshot,
-    type WorkspaceSnapshotV1,
   } from './lib/workspace/workspaceSnapshot'
   import {
     savedPreviewWorkspaceSnapshot,
@@ -168,6 +169,7 @@
     formatTime(value, $locale, tr('Not saved yet'))
   let workspace: FeedbackWorkspaceView | null = null
   let workspaceShellState: WorkspaceShellState = EMPTY_WORKSPACE_SHELL_STATE
+  let renderedWorkspaceView: WorkspaceViewDescriptor | null = null
   let renderedSessionView: SessionViewDescriptor | null = null
   let renderedSessionResolution: SessionViewResolution | null = null
   let sessionViewResolutions: readonly SessionViewResolution[] = []
@@ -208,7 +210,6 @@
   let resumePrompt: ResumePrompt | null = null
   let resumeCopyState: 'idle' | 'copied' | 'failed' = 'idle'
   let notificationState: NotificationState = 'checking'
-  let settingsOpen = false
   let archivedSessionsOpen = false
   let archivedInitialSession: SessionViewDescriptor | null = null
   let lastSessionRecoveryFingerprint = ''
@@ -466,7 +467,10 @@
           session.host_session_id === $navigation.selectedHostSessionId,
       )
     : undefined
-  $: renderedSessionView = activeWorkspaceView(workspaceShellState)
+  $: renderedWorkspaceView = activeWorkspaceView(workspaceShellState)
+  $: renderedSessionView = renderedWorkspaceView?.kind === 'session'
+    ? renderedWorkspaceView
+    : null
   $: renderedSessionResolution = sessionViewResolution(
     sessionViewResolutions,
     workspaceShellState.activeViewKey,
@@ -480,6 +484,8 @@
     const hostLabel = resolveHostProfile(view.hostId).label
     return `${session?.title ?? view.hostSessionId} · ${hostLabel}`
   }
+  const workspaceTabLabel = (view: WorkspaceViewDescriptor) =>
+    view.kind === 'settings' ? tr('Settings') : sessionTabLabel(view)
   $: requestScopeLabel = $navigation.selectedHostId
     ? $navigation.selectedHostSessionId
       ? selectedHostSession?.source_hint ??
@@ -714,7 +720,7 @@
 
   function restartOnboarding() {
     resetOnboarding()
-    settingsOpen = false
+    void closeWorkspaceTab(workspaceViewKey(settingsViewDescriptor()))
     onboardingOpen = true
   }
 
@@ -791,7 +797,7 @@
       workspaceShellState.activeViewKey,
     )
     if (
-      activeView &&
+      activeView?.kind === 'session' &&
       nextActive?.kind === 'missing-session' &&
       workspaceView &&
       workspaceViewKey(workspaceView) === workspaceViewKey(activeView)
@@ -827,7 +833,9 @@
 
   async function refreshSessionViewRecovery() {
     return sessionViewRecoveryResolver.refresh(
-      workspaceShellState.views,
+      workspaceShellState.views.filter(
+        (view): view is SessionViewDescriptor => view.kind === 'session',
+      ),
       activeSessionCatalog(),
     )
   }
@@ -859,6 +867,13 @@
       clearWorkspace()
       workbenchMounted = true
       loadingWorkspace = false
+      return
+    }
+    if (view.kind === 'settings') {
+      clearWorkspace()
+      workbenchMounted = true
+      loadingWorkspace = false
+      void refreshGenericMcpConfiguration()
       return
     }
 
@@ -939,7 +954,7 @@
     await restoreNavigationScope(priorScope, outcome)
   }
 
-  async function activateSessionTab(viewKey: string) {
+  async function activateWorkspaceTab(viewKey: string) {
     if (workspaceTransitionLocked || workspaceShellState.activeViewKey === viewKey) return
     const priorScope = currentNavigationScope()
     sessionWorkspaceTransition.invalidate()
@@ -947,6 +962,16 @@
       (candidate) => workspaceViewKey(candidate) === viewKey,
     )
     if (!view) return
+    if (view.kind === 'settings') {
+      const outcome = await sessionWorkspaceTransition.activate({
+        view,
+        requestId: null,
+        shellAction: { type: 'open' },
+        pendingViewKey: viewKey,
+      })
+      if (outcome === 'activated') void refreshGenericMcpConfiguration()
+      return
+    }
     const resolution = sessionViewResolution(sessionViewResolutions, viewKey)
     if (resolution?.kind === 'missing-session') {
       const outcome = await sessionWorkspaceTransition.activate({
@@ -983,7 +1008,7 @@
     await restoreNavigationScope(priorScope, outcome)
   }
 
-  async function closeSessionTab(viewKey: string) {
+  async function closeWorkspaceTab(viewKey: string) {
     if (workspaceTransitionLocked || pendingWorkspaceViewKey) return
     const closingActive = workspaceShellState.activeViewKey === viewKey
     if (!closingActive) {
@@ -1005,11 +1030,11 @@
       viewKey,
     })
     const fallbackView = activeWorkspaceView(nextShellState)
-    const fallbackResolution = fallbackView
+    const fallbackResolution = fallbackView?.kind === 'session'
       ? sessionViewResolution(sessionViewResolutions, workspaceViewKey(fallbackView))
       : null
     let fallbackRequestId: string | null = null
-    if (fallbackView && fallbackResolution?.kind !== 'missing-session') {
+    if (fallbackView?.kind === 'session' && fallbackResolution?.kind !== 'missing-session') {
       const selection = await navigation.selectScope(
         fallbackView.hostId,
         fallbackView.hostSessionId,
@@ -1035,7 +1060,8 @@
     })
     if (
       outcome === 'activated' &&
-      (!fallbackView || fallbackResolution?.kind === 'missing-session')
+      (!fallbackView ||
+        (fallbackView.kind === 'session' && fallbackResolution?.kind === 'missing-session'))
     ) {
       await navigation.selectScope(null, null)
     }
@@ -1265,11 +1291,8 @@
     })
   }
 
-  async function openSettings(section: SettingsSection) {
-    settingsSection = section
-    settingsOpen = true
+  async function refreshGenericMcpConfiguration() {
     pageError = ''
-    await tick()
     if (!isTauri) return
     try {
       genericMcpConfiguration = await invoke<string>('get_generic_mcp_configuration')
@@ -1278,8 +1301,25 @@
     }
   }
 
+  async function openSettings(section: SettingsSection) {
+    settingsSection = section
+    const view = settingsViewDescriptor()
+    const viewKey = workspaceViewKey(view)
+    if (workspaceTransitionLocked || pendingWorkspaceViewKey) return
+    if (workspaceShellState.activeViewKey !== viewKey) {
+      sessionWorkspaceTransition.invalidate()
+      const outcome = await sessionWorkspaceTransition.activate({
+        view,
+        requestId: null,
+        shellAction: { type: 'open' },
+        pendingViewKey: viewKey,
+      })
+      if (outcome !== 'activated') return
+    }
+    await refreshGenericMcpConfiguration()
+  }
+
   function openArchivedSessions(initialSession: SessionViewDescriptor | null = null) {
-    settingsOpen = false
     archivedInitialSession = initialSession
     archivedSessionsOpen = true
   }
@@ -1595,27 +1635,39 @@
             activeViewKey={workspaceShellState.activeViewKey}
             pendingViewKey={pendingWorkspaceViewKey}
             disabled={workspaceTransitionLocked}
-            labelForView={sessionTabLabel}
-            onActivate={(viewKey) => void activateSessionTab(viewKey)}
-            onClose={closeSessionTab}
+            labelForView={workspaceTabLabel}
+            onActivate={(viewKey) => void activateWorkspaceTab(viewKey)}
+            onClose={closeWorkspaceTab}
           />
           <div
             class="min-h-0 flex-1"
-            role={renderedSessionView ? 'tabpanel' : undefined}
-            id={renderedSessionView
-              ? workspaceTabPanelId(workspaceViewKey(renderedSessionView))
+            role={renderedWorkspaceView ? 'tabpanel' : undefined}
+            id={renderedWorkspaceView
+              ? workspaceTabPanelId(workspaceViewKey(renderedWorkspaceView))
               : undefined}
-            aria-labelledby={renderedSessionView
-              ? workspaceTabId(workspaceViewKey(renderedSessionView))
+            aria-labelledby={renderedWorkspaceView
+              ? workspaceTabId(workspaceViewKey(renderedWorkspaceView))
               : undefined}
           >
-            {#if renderedSessionResolution?.kind === 'missing-session'}
+            {#if renderedWorkspaceView?.kind === 'settings'}
+              <SettingsWorkspaceView
+                mcpConfiguration={genericMcpConfiguration}
+                section={settingsSection}
+                {updateInstallBlocked}
+                onRestartOnboarding={restartOnboarding}
+                onOpenArchived={openArchivedSessions}
+                onClose={() => {
+                  void closeWorkspaceTab(workspaceViewKey(settingsViewDescriptor()))
+                  void refreshNotificationPermission()
+                }}
+              />
+            {:else if renderedSessionResolution?.kind === 'missing-session'}
               <MissingSessionView
                 missing={renderedSessionResolution}
                 label={sessionTabLabel(renderedSessionResolution.session)}
                 busy={renderedSessionResolution.reason === 'unresolved' || pendingWorkspaceViewKey !== null}
                 onRetry={retrySessionViewRecovery}
-                onClose={() => closeSessionTab(workspaceViewKey(renderedSessionResolution!.session))}
+                onClose={() => closeWorkspaceTab(workspaceViewKey(renderedSessionResolution!.session))}
                 onOpenArchive={() => openArchivedSessions(renderedSessionResolution!.session)}
               />
             {:else if workbenchMounted}
@@ -1738,20 +1790,6 @@
   onError={(message) => (pageError = message)}
   onChanged={retrySessionViewRecovery}
 />
-
-{#if settingsOpen}
-  <SettingsPanel
-    mcpConfiguration={genericMcpConfiguration}
-    initialSection={settingsSection}
-    {updateInstallBlocked}
-    onRestartOnboarding={restartOnboarding}
-    onOpenArchived={openArchivedSessions}
-    onClose={() => {
-      settingsOpen = false
-      void refreshNotificationPermission()
-    }}
-  />
-{/if}
 
 <UpdateAvailableDialog
   installBlocked={updateInstallBlocked}

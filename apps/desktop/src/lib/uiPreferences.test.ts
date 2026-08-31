@@ -75,7 +75,7 @@ describe('workspace snapshot preferences', () => {
     const preferences = await import('./uiPreferences')
 
     expect(() =>
-      preferences.saveWorkspaceSnapshot({ version: 1, views: [], activeViewKey: null }),
+      preferences.saveWorkspaceSnapshot({ version: 2, views: [], activeViewKey: null }),
     ).not.toThrow()
     expect(preferences.savedWorkspaceSnapshot()).toBeNull()
   })

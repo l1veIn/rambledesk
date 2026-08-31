@@ -1,11 +1,11 @@
-import type { SessionViewDescriptor } from './viewDescriptors'
+import type { WorkspaceViewDescriptor } from './viewDescriptors'
 
 export type SessionWorkspaceShellIntent =
   | Readonly<{ type: 'open' }>
   | Readonly<{ type: 'close'; viewKey: string }>
 
 export type SessionWorkspaceTransitionTarget = Readonly<{
-  view: SessionViewDescriptor | null
+  view: WorkspaceViewDescriptor | null
   requestId: string | null
   shellAction: SessionWorkspaceShellIntent
   pendingViewKey: string

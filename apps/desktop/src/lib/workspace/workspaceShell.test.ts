@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   sessionViewDescriptor,
+  settingsViewDescriptor,
   workspaceViewKey,
   type WorkspaceViewDescriptor,
 } from './viewDescriptors'
@@ -16,6 +17,7 @@ import {
 const alpha = sessionViewDescriptor('codex', 'alpha')
 const beta = sessionViewDescriptor('codex', 'beta')
 const gamma = sessionViewDescriptor('pi', 'gamma')
+const settings = settingsViewDescriptor()
 
 function reduce(
   state: WorkspaceShellState,
@@ -64,6 +66,15 @@ describe('workspaceShellReducer', () => {
     expect(result.views[0]).toBe(alpha)
     expect(result.activeViewKey).toBe(workspaceViewKey(alpha))
     expectValidState(result)
+  })
+
+  it('opens settings once and focuses the singleton on repeated opens', () => {
+    const initial = reduce(EMPTY_WORKSPACE_SHELL_STATE, open(alpha), open(settings), open(beta))
+    const reopened = workspaceShellReducer(initial, open(settingsViewDescriptor()))
+
+    expect(reopened.views).toEqual([alpha, settings, beta])
+    expect(activeWorkspaceView(reopened)).toBe(settings)
+    expectValidState(reopened)
   })
 
   it('keeps the same session id from different hosts as distinct views', () => {
