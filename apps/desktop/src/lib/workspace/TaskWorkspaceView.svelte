@@ -2,8 +2,10 @@
   import type { JSONContent } from '@tiptap/core'
 
   import type { AttachmentView, FeedbackWorkspaceView } from '$lib/feedback'
+  import { t } from '$lib/i18n'
+  import { locale } from '$lib/preferences'
   import RequestAttachmentPreview from '$lib/workbench/RequestAttachmentPreview.svelte'
-  import TaskBriefPreview from '$lib/workbench/TaskBriefPreview.svelte'
+  import TaskBriefView from '$lib/workbench/TaskBriefView.svelte'
   import type { HostProfile } from '$lib/workbench/types'
   import type { RamblePhase } from '$lib/workbench/types'
 
@@ -35,11 +37,10 @@
     aria-busy="true"
     aria-live="polite"
   >
-    Loading workspace…
+    {t($locale, 'Loading workspace…')}
   </div>
 {:else}
-  <TaskBriefPreview
-    presentation="workspace"
+  <TaskBriefView
     {workspace}
     {editorDocument}
     {previews}

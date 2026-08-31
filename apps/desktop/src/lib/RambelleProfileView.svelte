@@ -1,7 +1,4 @@
 <script lang="ts">
-  import { X } from '@lucide/svelte'
-  import { tick } from 'svelte'
-
   import cryo1 from '../assets/rambelle-cryo/cryo-1.webp'
   import cryo2 from '../assets/rambelle-cryo/cryo-2.webp'
   import cryo3 from '../assets/rambelle-cryo/cryo-3.webp'
@@ -22,12 +19,8 @@
   import scenePotatoes from '../assets/rambelle-scenes/potatoes.webp'
   import sceneTea from '../assets/rambelle-scenes/tea.webp'
   import rambelleArchived from '../assets/rambelle-states/archived.webp'
-  import * as Dialog from '$lib/components/ui/dialog'
   import { locale } from '$lib/preferences'
   import { rambelleProfile, type ProfileFigureId } from './rambelleProfile'
-
-  export let open = false
-  export let presentation: 'dialog' | 'workspace' = 'dialog'
 
   $: lang = $locale === 'zh-CN' ? 'zh' : 'en'
 
@@ -64,7 +57,6 @@
 
   let viewport: HTMLElement | undefined
   let activeChapter = 0
-  let lastOpen = false
 
   $: chapter = rambelleProfile.chapters[activeChapter] ?? rambelleProfile.chapters[0]
 
@@ -89,35 +81,13 @@
     target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
-  async function resetViewport() {
-    await tick()
-    if (viewport) viewport.scrollTop = 0
-    activeChapter = 0
-  }
-
-  $: if (open && !lastOpen) {
-    lastOpen = true
-    void resetViewport()
-  } else if (!open && lastOpen) {
-    lastOpen = false
-    activeChapter = 0
-  }
 </script>
 
-{#snippet profileContent(dialogPresentation: boolean)}
-    {#if dialogPresentation}
-      <Dialog.Header class="sr-only">
-        <Dialog.Title>{rambelleProfile.name.zh} · Rambelle</Dialog.Title>
-        <Dialog.Description>
-          {localize(rambelleProfile.subtitle)}
-        </Dialog.Description>
-      </Dialog.Header>
-    {:else}
-      <div class="sr-only">
-        <h1>{rambelleProfile.name.zh} · Rambelle</h1>
-        <p>{localize(rambelleProfile.subtitle)}</p>
-      </div>
-    {/if}
+<div class="relative flex h-full min-h-0 flex-col gap-0 overflow-hidden bg-background">
+    <div class="sr-only">
+      <h1>{rambelleProfile.name.zh} · Rambelle</h1>
+      <p>{localize(rambelleProfile.subtitle)}</p>
+    </div>
 
     <div class="flex min-h-0 flex-1">
       <aside class="relative hidden w-[42%] shrink-0 overflow-hidden bg-[#7eb6de] min-[760px]:block">
@@ -407,27 +377,4 @@
       </div>
     </div>
 
-    {#if dialogPresentation}
-      <Dialog.Close
-        class="absolute top-3 right-3 z-10 grid size-8 place-items-center rounded-md bg-black/25 text-white backdrop-blur-sm hover:bg-black/40"
-        aria-label="Close"
-      >
-        <X class="size-4" />
-      </Dialog.Close>
-    {/if}
-{/snippet}
-
-{#if presentation === 'workspace'}
-  <div class="relative flex h-full min-h-0 flex-col gap-0 overflow-hidden bg-background">
-    {@render profileContent(false)}
-  </div>
-{:else}
-  <Dialog.Root bind:open>
-    <Dialog.Content
-      showCloseButton={false}
-      class="flex h-[min(820px,calc(100vh-2.5rem))] w-[min(1080px,calc(100vw-2rem))] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none"
-    >
-      {@render profileContent(true)}
-    </Dialog.Content>
-  </Dialog.Root>
-{/if}
+</div>

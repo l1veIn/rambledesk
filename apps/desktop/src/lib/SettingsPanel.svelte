@@ -36,7 +36,6 @@
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
   import * as Collapsible from '$lib/components/ui/collapsible'
-  import * as Dialog from '$lib/components/ui/dialog'
   import { ScrollArea } from '$lib/components/ui/scroll-area'
   import { toast } from '$lib/components/ui/sonner'
   import AboutSettings from '$lib/AboutSettings.svelte'
@@ -108,11 +107,9 @@
   export let mcpConfiguration = ''
   export let initialSection: Section = 'general'
   export let sectionSelectionEpoch = 0
-  export let presentation: 'dialog' | 'workspace' = 'dialog'
-  export let onClose: () => void = () => {}
   export let onRestartOnboarding: () => void = () => {}
   export let onOpenArchived: () => void = () => {}
-  export let onOpenRambelleProfile: (() => void) | null = null
+  export let onOpenRambelleProfile: () => void = () => {}
   export let updateInstallBlocked = false
 
   type DataStorageView = {
@@ -185,8 +182,6 @@
     restartRequired: boolean
   }
 
-  let dialogOpen = true
-  let closeDelivered = false
   let activeSection: Section = initialSection
   let sectionCommandState = {
     activeSection: initialSection,
@@ -246,10 +241,6 @@
       sectionCommandState = nextSectionCommandState
       activeSection = nextSectionCommandState.activeSection
     }
-  }
-  $: if (presentation === 'dialog' && !dialogOpen && !closeDelivered) {
-    closeDelivered = true
-    onClose()
   }
 
   onMount(() => {
@@ -639,20 +630,11 @@
   }
 </script>
 
-{#snippet settingsContent()}
-  {#if presentation === 'workspace'}
-    <div class="sr-only">
-      <h2>{tr('Settings')}</h2>
-      <p>{tr('Manage interface preferences and host adapters.')}</p>
-    </div>
-  {:else}
-    <Dialog.Header class="sr-only">
-      <Dialog.Title>{tr('Settings')}</Dialog.Title>
-      <Dialog.Description id="settings-description">
-        {tr('Manage interface preferences and host adapters.')}
-      </Dialog.Description>
-    </Dialog.Header>
-  {/if}
+<div class="settings-workspace-root h-full min-h-0 overflow-hidden bg-background">
+  <div class="sr-only">
+    <h2>{tr('Settings')}</h2>
+    <p>{tr('Manage interface preferences and host adapters.')}</p>
+  </div>
 
     {#key $locale}
     <Tabs.Root
@@ -1670,22 +1652,7 @@
       </div>
     </Tabs.Root>
     {/key}
-{/snippet}
-
-{#if presentation === 'workspace'}
-  <div class="settings-workspace-root h-full min-h-0 overflow-hidden bg-background">
-    {@render settingsContent()}
-  </div>
-{:else}
-  <Dialog.Root bind:open={dialogOpen}>
-    <Dialog.Content
-      class="h-[min(680px,calc(100vh-5rem))] w-[min(940px,calc(100vw-3rem))] max-w-none gap-0 overflow-hidden p-0 sm:max-w-none"
-      aria-describedby="settings-description"
-    >
-      {@render settingsContent()}
-    </Dialog.Content>
-  </Dialog.Root>
-{/if}
+</div>
 
 <style>
   .settings-workspace-root {

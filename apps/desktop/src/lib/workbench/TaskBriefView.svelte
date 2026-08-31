@@ -5,7 +5,6 @@
   import { collectActionGroupContent } from '$lib/actionGroupContent'
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
-  import * as Dialog from '$lib/components/ui/dialog'
   import { toast } from '$lib/components/ui/sonner'
   import {
     requestStatusLabel,
@@ -25,9 +24,6 @@
   import { rambleRecordPresentation } from './rambleRecordButton'
   import type { HostProfile, RamblePhase } from './types'
 
-  export let open = false
-  export let presentation: 'dialog' | 'workspace' = 'dialog'
-  export let workspaceReadOnly = false
   export let workspace: FeedbackWorkspaceView | null = null
   export let editorDocument: JSONContent | null = null
   export let previews: Record<string, string> = {}
@@ -44,14 +40,11 @@
   export let ramblePhase: RamblePhase = 'idle'
   export let rambleStartedOnce = false
   export let rambleBusy = false
-  /** CSS transform-origin the dialog should shrink toward when closing. */
-  export let origin: string | null = null
 
   let attachmentPreviewOpen = false
   let attachmentPreview: RequestAttachmentView | null = null
 
   $: readOnly =
-    workspaceReadOnly ||
     workspace === null ||
     workspace.request.status === 'completed' ||
     workspace.request.status === 'cancelled'
@@ -107,7 +100,7 @@
   }
 </script>
 
-{#snippet taskBriefContent(dialogPresentation: boolean)}
+<div class="task-brief grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-background">
     <header class="relative border-b px-6 py-4 pr-14">
       {#if workspace}
         <Button
@@ -121,15 +114,9 @@
           <Copy />
         </Button>
       {/if}
-      {#if dialogPresentation}
-        <Dialog.Title class="text-lg font-semibold leading-snug">
-          {workspace?.request.title ?? tr('Task brief')}
-        </Dialog.Title>
-      {:else}
-        <h1 class="m-0 text-lg font-semibold leading-snug">
-          {workspace?.request.title ?? tr('Task brief')}
-        </h1>
-      {/if}
+      <h1 class="m-0 text-lg font-semibold leading-snug">
+        {workspace?.request.title ?? tr('Task brief')}
+      </h1>
       <div class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm text-muted-foreground">
         {#if workspace}
           <Badge variant={statusBadgeVariant(workspace.request.status)}>
@@ -299,22 +286,7 @@
         </Button>
       </div>
     {/if}
-{/snippet}
-
-{#if presentation === 'workspace'}
-  <div class="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-background">
-    {@render taskBriefContent(false)}
-  </div>
-{:else}
-  <Dialog.Root bind:open>
-    <Dialog.Content
-      class="task-brief-preview-content grid h-[calc(100vh-2rem)] w-[min(1200px,calc(100vw-2rem))] max-w-[min(1200px,calc(100vw-2rem))] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 duration-200 sm:max-w-[min(1200px,calc(100vw-2rem))]"
-      style={origin ? `transform-origin: ${origin}` : undefined}
-    >
-      {@render taskBriefContent(true)}
-    </Dialog.Content>
-  </Dialog.Root>
-{/if}
+</div>
 
 {#if workspace}
   <RequestAttachmentPreview
@@ -323,10 +295,3 @@
     attachment={attachmentPreview}
   />
 {/if}
-
-<style>
-  /* Collapse toward the preview button instead of the default subtle zoom-out. */
-  :global(.task-brief-preview-content[data-state='closed']) {
-    --tw-exit-scale: 0.08 !important;
-  }
-</style>

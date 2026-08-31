@@ -98,6 +98,10 @@
     type WorkspaceTransitionTarget,
   } from './lib/workspace/workspaceTransition'
   import { leavesSettingsView } from './lib/workspace/workspaceViewLifecycle'
+  import {
+    shouldAdoptTaskBackgroundDraft,
+    shouldUseForegroundDraftEditor,
+  } from './lib/workspace/draftOperationRouting'
   import { previewFixtures, previewWorkspaceFor } from './lib/previewFixtures'
   import {
     restorePublishedAttachmentUrls,
@@ -221,6 +225,7 @@
   let activeRecoveryTransition: object | null = null
   let settingsSection: SettingsSection = 'general'
   let settingsSectionSelectionEpoch = 0
+  let lastAutoOpenedTaskRequestId = ''
   let onboardingOpen = false
   let launchUpdateCheckDue = false
   let workbenchInitialized = false
@@ -1290,10 +1295,17 @@
   async function routeDraftOperation(requestId: string, operation: DraftOperation): Promise<void> {
     if (!requestId) return
     const run = enqueueDocumentTask(async () => {
-      if (workbenchMounted && workspace?.request.request_id === requestId) {
+      const foregroundWorkspace = workspace
+      if (shouldUseForegroundDraftEditor({
+        activeView: activeWorkspaceView(workspaceShellState),
+        workbenchMounted,
+        editorReady: sessionWorkbench !== undefined,
+        workspaceRequestId: foregroundWorkspace?.request.request_id ?? null,
+        requestId,
+      }) && foregroundWorkspace) {
         if (
-          workspace.request.status === 'completed' ||
-          workspace.request.status === 'cancelled'
+          foregroundWorkspace.request.status === 'completed' ||
+          foregroundWorkspace.request.status === 'cancelled'
         ) {
           throw new Error(tr('This request is closed. The document is read-only.'))
         }
@@ -1311,7 +1323,7 @@
         return
       }
 
-      await writeBackgroundDraftOperation(requestId, operation, {
+      const savedDraft = await writeBackgroundDraftOperation(requestId, operation, {
         load: async () => {
           const target = previewMode
             ? previewWorkspaceFor(requestId)
@@ -1329,6 +1341,19 @@
               }
             : invoke<DraftView>('save_feedback_draft', { input }),
       })
+      if (
+        shouldAdoptTaskBackgroundDraft(
+          activeWorkspaceView(workspaceShellState),
+          workspace?.request.request_id ?? null,
+          requestId,
+        ) &&
+        workspace
+      ) {
+        workspace = { ...workspace, draft: savedDraft }
+        adoptDraft(savedDraft)
+        savePhase = savedDraft.updated_at ? 'saved' : 'idle'
+        saveMessage = ''
+      }
     })
     try {
       await run
@@ -1409,6 +1434,12 @@
       shellAction: { type: 'open' },
       pendingViewKey: workspaceViewKey(view),
     })
+  }
+
+  function autoOpenTaskWorkspace(requestId: string) {
+    if (lastAutoOpenedTaskRequestId === requestId) return
+    lastAutoOpenedTaskRequestId = requestId
+    void openTaskWorkspace(requestId)
   }
 
   async function openRambelleProfile() {
@@ -1860,6 +1891,7 @@
             onExitRamble={() => void exitRamble()}
             onOpenVoiceSettings={() => void openSettings('voice')}
             onOpenTask={(requestId) => void openTaskWorkspace(requestId)}
+            onAutoOpenTask={autoOpenTaskWorkspace}
             onStartScreenCapture={() => void attachmentController.startScreenCapture()}
             onImportClipboard={() => void importClipboardNow()}
             onFileSelection={attachmentController.handleFileSelection}

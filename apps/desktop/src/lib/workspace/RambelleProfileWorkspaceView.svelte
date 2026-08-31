@@ -1,5 +1,5 @@
 <script lang="ts">
-  import RambelleProfileDialog from '$lib/RambelleProfileDialog.svelte'
+  import RambelleProfileView from '$lib/RambelleProfileView.svelte'
 </script>
 
-<RambelleProfileDialog open={true} presentation="workspace" />
+<RambelleProfileView />
