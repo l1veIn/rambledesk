@@ -27,6 +27,7 @@
   } from '$lib/publishedFeedback'
   import { previewFixtures, previewWorkspaceFor } from '$lib/previewFixtures'
   import type { HostProfile } from '$lib/workbench/types'
+  import type { SessionViewDescriptor } from '$lib/workspace/viewDescriptors'
 
   const ALL_REQUEST_STATUSES = ['waiting', 'in_progress', 'completed', 'cancelled'] as const
 
@@ -45,6 +46,7 @@
   export let resolveHostProfile: (hostId: string) => HostProfile
   export let formatTime: (value: string | null | undefined) => string
   export let messageFrom: (cause: unknown) => string
+  export let initialSession: SessionViewDescriptor | null = null
   export let onError: (message: string) => void = () => {}
   export let onChanged: () => Promise<void> | void = () => {}
 
@@ -58,6 +60,7 @@
   let selected: SelectedArchivedItem | null = null
   let detailLoadingRequestId: string | null = null
   let openedOnce = false
+  let applyInitialSession = false
   let searchTimer: ReturnType<typeof setTimeout> | null = null
 
   $: activeSession = selected ? sessionForKey(selected.sessionKey) : null
@@ -75,6 +78,7 @@
 
   $: if (open && !openedOnce) {
     openedOnce = true
+    applyInitialSession = true
     void loadArchive()
   }
   $: if (!open && openedOnce) {
@@ -157,8 +161,7 @@
 
   function previewArchivedSessions(query: string) {
     const normalized = query.trim().toLowerCase()
-    return previewFixtures.hostSessions.filter((session) => {
-      if (!session.archived_at) return false
+    return previewFixtures.archivedHostSessions.filter((session) => {
       if (!normalized) return true
       return (
         matchesSearch(session.title, normalized) ||
@@ -249,7 +252,19 @@
       requestsBySession = nextRequests
 
       const nextExpanded = search.trim() ? new Set(nextSessions.map(sessionKey)) : new Set(expandedSessions)
-      if (selectionExists(selected, nextSessions, nextRequests)) {
+      const requestedSession = applyInitialSession && initialSession
+        ? nextSessions.find(
+            (session) =>
+              session.host_id === initialSession?.hostId &&
+              session.host_session_id === initialSession?.hostSessionId,
+          )
+        : null
+      applyInitialSession = false
+      if (requestedSession) {
+        const requestedKey = sessionKey(requestedSession)
+        selected = { kind: 'session', sessionKey: requestedKey }
+        expandedSessions = nextExpanded.add(requestedKey)
+      } else if (selectionExists(selected, nextSessions, nextRequests)) {
         expandedSessions = nextExpanded.add(selected!.sessionKey)
       } else if (nextSessions[0]) {
         const firstKey = sessionKey(nextSessions[0])

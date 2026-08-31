@@ -1,3 +1,9 @@
+import {
+  restoreWorkspaceSnapshot,
+  type RestoredWorkspaceSnapshot,
+  type WorkspaceSnapshotV1,
+} from './workspace/workspaceSnapshot'
+
 export type UiThemePreference = 'system' | 'light' | 'dark'
 
 type UiState = {
@@ -5,6 +11,7 @@ type UiState = {
   workbench?: {
     hostRailCollapsed?: boolean
     paneLayouts?: Record<string, number[]>
+    workspaceSnapshot?: unknown
   }
 }
 
@@ -79,5 +86,16 @@ export function savePaneLayout(key: string, layout: number[]) {
     state.workbench ??= {}
     state.workbench.paneLayouts ??= {}
     state.workbench.paneLayouts[key] = [...layout]
+  })
+}
+
+export function savedWorkspaceSnapshot(): RestoredWorkspaceSnapshot | null {
+  return restoreWorkspaceSnapshot(readState().workbench?.workspaceSnapshot)
+}
+
+export function saveWorkspaceSnapshot(snapshot: WorkspaceSnapshotV1) {
+  updateState((state) => {
+    state.workbench ??= {}
+    state.workbench.workspaceSnapshot = snapshot
   })
 }
