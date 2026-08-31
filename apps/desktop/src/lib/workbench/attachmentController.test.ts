@@ -256,4 +256,59 @@ describe('attachmentController screen capture state', () => {
     )
     expect(context.applyWorkspaceMutation).not.toHaveBeenCalled()
   })
+
+  it.each(['remove', 'reorder'] as const)(
+    'does not apply a late %s result to a newly active workspace',
+    async (operation) => {
+      const attachment = {
+        attachment_id: 'att-1',
+        file_name: 'notes.txt',
+        media_type: 'text/plain',
+      }
+      const original = {
+        request: { request_id: 'request-1' },
+        attachments: [
+          attachment,
+          { attachment_id: 'att-2', file_name: 'other.txt', media_type: 'text/plain' },
+        ],
+        draft: { saved_revision: 1 },
+      }
+      const switched = {
+        request: { request_id: 'request-2' },
+        attachments: [],
+        draft: { saved_revision: 8 },
+      }
+      const result = {
+        ...original,
+        attachments: operation === 'remove' ? original.attachments.slice(1) : [...original.attachments].reverse(),
+        draft: { saved_revision: 2 },
+      }
+      let visible = original
+      let resolveOperation: ((workspace: typeof result) => void) | undefined
+      const operationResult = new Promise<typeof result>((resolve) => (resolveOperation = resolve))
+      const { context } = controllerContext()
+      context.getWorkspace = () => visible as never
+      context.getEditor = () => ({ removeAttachmentReference: vi.fn() }) as never
+      mocks.invoke.mockImplementation(async (command: string) => {
+        if (command === 'remove_feedback_attachment' || command === 'reorder_feedback_attachments') {
+          return operationResult
+        }
+        return undefined
+      })
+      const controller = createAttachmentController(context)
+
+      const pending =
+        operation === 'remove'
+          ? controller.removeAttachment(attachment as never)
+          : controller.moveAttachment(0, 1)
+      await Promise.resolve()
+      await Promise.resolve()
+      visible = switched
+      resolveOperation?.(result)
+      await pending
+
+      expect(context.applyWorkspaceMutation).not.toHaveBeenCalled()
+      expect(context.setPreviews).not.toHaveBeenCalled()
+    },
+  )
 })

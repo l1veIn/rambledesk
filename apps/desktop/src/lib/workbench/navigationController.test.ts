@@ -61,7 +61,9 @@ function hostSession(): HostSessionSummary {
   }
 }
 
-function createController() {
+function createController(
+  overrides: Partial<Parameters<typeof createNavigationController>[0]> = {},
+) {
   return createNavigationController({
     isTauri: true,
     previewMode: false,
@@ -71,10 +73,11 @@ function createController() {
     getWorkspaceRequestId: () => undefined,
     isDirty: () => false,
     saveDraftNow: vi.fn(async () => true),
-    openRequest: vi.fn(async () => undefined),
+    openRequest: vi.fn(async () => true),
     clearWorkspace: vi.fn(),
     onPageError: vi.fn(),
     canSendOsBanners: () => false,
+    ...overrides,
   })
 }
 
@@ -199,6 +202,154 @@ describe('navigationController', () => {
           cursor: null,
         },
       })
+    } finally {
+      unsubscribe()
+    }
+  })
+
+  it('returns the request snapshot for the selected session scope', async () => {
+    const selectedRequest = feedbackRequest('selected-request')
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === 'list_feedback_requests') {
+        return { requests: [selectedRequest], next_cursor: null } satisfies ListFeedbackRequestsOutput
+      }
+      return []
+    })
+
+    const controller = createController()
+    const result = await controller.selectScope('codex', 'session-1')
+
+    expect(result).toEqual({ selected: true, requests: [selectedRequest] })
+    expect(mocks.invoke).toHaveBeenCalledWith('list_feedback_requests', {
+      input: expect.objectContaining({ host_id: 'codex', host_session_id: 'session-1' }),
+    })
+  })
+
+  it('does not select a new scope when saving the current draft fails', async () => {
+    const controller = createController({
+      isDirty: () => true,
+      saveDraftNow: vi.fn(async () => false),
+    })
+    let state: NavigationState | undefined
+    const unsubscribe = controller.subscribe((next) => (state = next))
+
+    try {
+      const result = await controller.selectScope('codex', 'session-1')
+
+      expect(result.selected).toBe(false)
+      expect(state?.selectedHostId).toBeNull()
+      expect(mocks.invoke).not.toHaveBeenCalledWith('list_feedback_requests', expect.anything())
+    } finally {
+      unsubscribe()
+    }
+  })
+
+  it('ignores a stale request-list response after a newer scope wins', async () => {
+    let resolveFirst: ((value: ListFeedbackRequestsOutput) => void) | undefined
+    const firstResult = new Promise<ListFeedbackRequestsOutput>((resolve) => {
+      resolveFirst = resolve
+    })
+    const secondRequest = { ...feedbackRequest('second-request'), host_session_id: 'session-2' }
+    mocks.invoke.mockImplementation(
+      async (command: string, input?: { input?: { host_session_id?: string } }) => {
+        if (command !== 'list_feedback_requests') return []
+        if (input?.input?.host_session_id === 'session-1') return firstResult
+        return { requests: [secondRequest], next_cursor: null } satisfies ListFeedbackRequestsOutput
+      },
+    )
+
+    const controller = createController()
+    let state: NavigationState | undefined
+    const unsubscribe = controller.subscribe((next) => (state = next))
+
+    try {
+      const first = controller.selectScope('codex', 'session-1')
+      await Promise.resolve()
+      const second = await controller.selectScope('codex', 'session-2')
+      resolveFirst?.({ requests: [feedbackRequest('stale-request')], next_cursor: null })
+      const stale = await first
+
+      expect(second.selected).toBe(true)
+      expect(stale.selected).toBe(false)
+      expect(state?.selectedHostSessionId).toBe('session-2')
+      expect(state?.requests).toEqual([secondRequest])
+      expect(state?.loadingRequests).toBe(false)
+    } finally {
+      unsubscribe()
+    }
+  })
+
+  it('rolls back the prior scope and request snapshot when the target refresh fails', async () => {
+    const priorRequest = feedbackRequest('prior-request')
+    let rejectTarget = false
+    mocks.invoke.mockImplementation(
+      async (command: string, input?: { input?: { host_session_id?: string } }) => {
+        if (command !== 'list_feedback_requests') return []
+        if (rejectTarget && input?.input?.host_session_id === 'session-2') {
+          throw new Error('target refresh failed')
+        }
+        return {
+          requests: [priorRequest],
+          next_cursor: 'prior-cursor',
+        } satisfies ListFeedbackRequestsOutput
+      },
+    )
+
+    const controller = createController()
+    let state: NavigationState | undefined
+    const unsubscribe = controller.subscribe((next) => (state = next))
+
+    try {
+      await controller.selectScope('codex', 'session-1')
+      rejectTarget = true
+
+      const result = await controller.selectScope('codex', 'session-2')
+
+      expect(result.selected).toBe(false)
+      expect(state?.selectedHostId).toBe('codex')
+      expect(state?.selectedHostSessionId).toBe('session-1')
+      expect(state?.requests).toEqual([priorRequest])
+      expect(state?.nextRequestCursor).toBe('prior-cursor')
+    } finally {
+      unsubscribe()
+    }
+  })
+
+  it('does not roll back a newer scope when an older target refresh fails late', async () => {
+    let rejectOlder: ((cause: Error) => void) | undefined
+    const olderRefresh = new Promise<ListFeedbackRequestsOutput>((_, reject) => {
+      rejectOlder = reject
+    })
+    const newestRequest = { ...feedbackRequest('newest-request'), host_session_id: 'session-3' }
+    mocks.invoke.mockImplementation(
+      async (command: string, input?: { input?: { host_session_id?: string } }) => {
+        if (command !== 'list_feedback_requests') return []
+        if (input?.input?.host_session_id === 'session-2') return olderRefresh
+        return {
+          requests: [newestRequest],
+          next_cursor: 'newest-cursor',
+        } satisfies ListFeedbackRequestsOutput
+      },
+    )
+
+    const onPageError = vi.fn()
+    const controller = createController({ onPageError })
+    let state: NavigationState | undefined
+    const unsubscribe = controller.subscribe((next) => (state = next))
+
+    try {
+      const older = controller.selectScope('codex', 'session-2')
+      await Promise.resolve()
+      const newest = await controller.selectScope('codex', 'session-3')
+      rejectOlder?.(new Error('older refresh failed'))
+      const stale = await older
+
+      expect(newest.selected).toBe(true)
+      expect(stale.selected).toBe(false)
+      expect(state?.selectedHostSessionId).toBe('session-3')
+      expect(state?.requests).toEqual([newestRequest])
+      expect(state?.nextRequestCursor).toBe('newest-cursor')
+      expect(onPageError).not.toHaveBeenCalled()
     } finally {
       unsubscribe()
     }
