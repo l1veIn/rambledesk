@@ -319,6 +319,7 @@ const chinese: Record<string, string> = {
   'Esc or right-click to cancel · The capture is inserted into the RambleDesk document flow': 'Esc 或右键取消 · 完成后自动插入 RambleDesk 文档流',
   'The capture tool encountered a problem': '截图工具遇到问题',
   'Close': '关闭',
+  'Workspace tabs': '工作区标签页',
   'Connecting…': '正在连接…',
   'Cannot listen for speech events: {error}': '无法监听语音识别事件：{error}',
   'Cannot listen for the capture shortcut: {error}': '无法监听截图快捷键：{error}',

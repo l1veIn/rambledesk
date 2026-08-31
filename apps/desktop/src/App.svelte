@@ -63,6 +63,7 @@
     workspaceShellReducer,
     type WorkspaceShellState,
   } from './lib/workspace/workspaceShell'
+  import WorkspaceTabStrip from './lib/workspace/WorkspaceTabStrip.svelte'
   import { previewFixtures, previewWorkspaceFor } from './lib/previewFixtures'
   import {
     restorePublishedAttachmentUrls,
@@ -377,6 +378,15 @@
       })
     : EMPTY_WORKSPACE_SHELL_STATE
   $: renderedSessionView = activeWorkspaceView(workspaceShellState)
+  const sessionTabLabel = (view: SessionViewDescriptor) => {
+    const session = $navigation.hostSessions.find(
+      (candidate) =>
+        candidate.host_id === view.hostId &&
+        candidate.host_session_id === view.hostSessionId,
+    )
+    const hostLabel = resolveHostProfile(view.hostId).label
+    return `${session?.title ?? view.hostSessionId} · ${hostLabel}`
+  }
   $: requestScopeLabel = $navigation.selectedHostId
     ? $navigation.selectedHostSessionId
       ? selectedHostSession?.source_hint ??
@@ -1078,85 +1088,92 @@
       />
 
       <Pane id="workspace-pane" minSize={workspaceMinimumSize}>
-        <SessionWorkbench
-          bind:this={sessionWorkbench}
-          view={renderedSessionView}
-          bind:taskBriefOpen
-          {loadingWorkspace}
-          {workspace}
-          {feedbackResult}
-          {draftBody}
-          {editorDocument}
-          {editorEpoch}
-          tidyConfig={{
-            provider: $tidyProvider,
-            apiKey: $tidyApiKey,
-            baseUrl: $tidyBaseUrl,
-            model: $tidyModel,
-            reasoningEffort: $tidyReasoningEffort,
-            locale: $locale,
-            systemPrompt: $tidySystemPrompt,
-          }}
-          tidyAutoThreshold={$tidyAutoThreshold}
-          activeActionId={workspace
-            ? activeActionByRequest.get(workspace.request.request_id)?.actionId ?? null
-            : null}
-          {savedRevision}
-          {savePhase}
-          {attachmentPreviews}
-          {dragActive}
-          rambelleStatusPortrait={rambleBelongsToWorkspace
-            ? rambelleStatusPortrait
-            : feedbackResult
-              ? rambelleArchived
-              : rambelleIdle}
-          rambleEngaged={rambleBelongsToWorkspace ? rambleEngaged : false}
-          rambleActive={rambleBelongsToWorkspace ? rambleActive : false}
-          ramblePhase={rambleBelongsToWorkspace ? visibleRamblePhase : 'idle'}
-          rambleBusy={rambleBelongsToWorkspace ? rambleBusy : true}
-          rambleStartedOnce={rambleBelongsToWorkspace ? rambleStartedOnce : false}
-          voiceDevice={rambleBelongsToWorkspace ? voiceDevice : ''}
-          voiceChunkIndex={rambleBelongsToWorkspace ? voiceChunkIndex : 0}
-          voicePartial={rambleBelongsToWorkspace ? voicePartial : ''}
-          voiceLevel={rambleBelongsToWorkspace ? voiceLevel : 0}
-          voiceModelMissing={rambleBelongsToWorkspace ? voiceModelMissing : false}
-          rambleMessage={rambleBelongsToWorkspace ? rambleMessage : ''}
-          attachmentBusy={rambleBelongsToWorkspace ? attachmentBusy : false}
-          {canSubmit}
-          cooking={currentRequestCooking}
-          cookingEnabled={$cookingEnabled}
-          {cookedDraftReady}
-          cookedPreviewModel={cookedPreview?.model ?? ''}
-          cookedPreviewMarkdown={cookedPreview?.markdown ?? ''}
-          onCookPreview={() => void cookPreviewOnly()}
-          onRestoreOriginal={restoreOriginalAfterCook}
-          {submitting}
-          {submitStage}
-          {publishedFeedback}
-          {canCancel}
-          {cancelling}
-          {approving}
-          {canOpenResumePrompt}
-          {resolveHostProfile}
-          formatTime={formatTimeLocal}
-          onReload={() => void reloadWorkspace()}
-          onDraftChange={updateDraft}
-          onTidyError={(message) => (pageError = message)}
-          onOpenTidySettings={() => void openSettings('post-processing')}
-          onSelectAction={selectAction}
-          onToggleRamble={() => void toggleRamble()}
-          onExitRamble={() => void exitRamble()}
-          onOpenVoiceSettings={() => void openSettings('voice')}
-          onStartScreenCapture={() => void attachmentController.startScreenCapture()}
-          onImportClipboard={() => void importClipboardNow()}
-          onFileSelection={attachmentController.handleFileSelection}
-          onRemoveAttachment={(attachment) => void attachmentController.removeAttachment(attachment)}
-          onOpenPackage={() => void openFeedbackPackage()}
-          onOpenResumePrompt={openResumePrompt}
-          onSubmit={() => void submitFeedback()}
-          onCancel={() => void cancelFeedback()}
-          onApprove={() => void approveFeedback()}
-        />
+        <div class="flex h-full min-h-0 min-w-0 flex-col">
+          <WorkspaceTabStrip
+            views={workspaceShellState.views}
+            activeViewKey={workspaceShellState.activeViewKey}
+            labelForView={sessionTabLabel}
+          />
+          <SessionWorkbench
+            bind:this={sessionWorkbench}
+            view={renderedSessionView}
+            bind:taskBriefOpen
+            {loadingWorkspace}
+            {workspace}
+            {feedbackResult}
+            {draftBody}
+            {editorDocument}
+            {editorEpoch}
+            tidyConfig={{
+              provider: $tidyProvider,
+              apiKey: $tidyApiKey,
+              baseUrl: $tidyBaseUrl,
+              model: $tidyModel,
+              reasoningEffort: $tidyReasoningEffort,
+              locale: $locale,
+              systemPrompt: $tidySystemPrompt,
+            }}
+            tidyAutoThreshold={$tidyAutoThreshold}
+            activeActionId={workspace
+              ? activeActionByRequest.get(workspace.request.request_id)?.actionId ?? null
+              : null}
+            {savedRevision}
+            {savePhase}
+            {attachmentPreviews}
+            {dragActive}
+            rambelleStatusPortrait={rambleBelongsToWorkspace
+              ? rambelleStatusPortrait
+              : feedbackResult
+                ? rambelleArchived
+                : rambelleIdle}
+            rambleEngaged={rambleBelongsToWorkspace ? rambleEngaged : false}
+            rambleActive={rambleBelongsToWorkspace ? rambleActive : false}
+            ramblePhase={rambleBelongsToWorkspace ? visibleRamblePhase : 'idle'}
+            rambleBusy={rambleBelongsToWorkspace ? rambleBusy : true}
+            rambleStartedOnce={rambleBelongsToWorkspace ? rambleStartedOnce : false}
+            voiceDevice={rambleBelongsToWorkspace ? voiceDevice : ''}
+            voiceChunkIndex={rambleBelongsToWorkspace ? voiceChunkIndex : 0}
+            voicePartial={rambleBelongsToWorkspace ? voicePartial : ''}
+            voiceLevel={rambleBelongsToWorkspace ? voiceLevel : 0}
+            voiceModelMissing={rambleBelongsToWorkspace ? voiceModelMissing : false}
+            rambleMessage={rambleBelongsToWorkspace ? rambleMessage : ''}
+            attachmentBusy={rambleBelongsToWorkspace ? attachmentBusy : false}
+            {canSubmit}
+            cooking={currentRequestCooking}
+            cookingEnabled={$cookingEnabled}
+            {cookedDraftReady}
+            cookedPreviewModel={cookedPreview?.model ?? ''}
+            cookedPreviewMarkdown={cookedPreview?.markdown ?? ''}
+            onCookPreview={() => void cookPreviewOnly()}
+            onRestoreOriginal={restoreOriginalAfterCook}
+            {submitting}
+            {submitStage}
+            {publishedFeedback}
+            {canCancel}
+            {cancelling}
+            {approving}
+            {canOpenResumePrompt}
+            {resolveHostProfile}
+            formatTime={formatTimeLocal}
+            onReload={() => void reloadWorkspace()}
+            onDraftChange={updateDraft}
+            onTidyError={(message) => (pageError = message)}
+            onOpenTidySettings={() => void openSettings('post-processing')}
+            onSelectAction={selectAction}
+            onToggleRamble={() => void toggleRamble()}
+            onExitRamble={() => void exitRamble()}
+            onOpenVoiceSettings={() => void openSettings('voice')}
+            onStartScreenCapture={() => void attachmentController.startScreenCapture()}
+            onImportClipboard={() => void importClipboardNow()}
+            onFileSelection={attachmentController.handleFileSelection}
+            onRemoveAttachment={(attachment) => void attachmentController.removeAttachment(attachment)}
+            onOpenPackage={() => void openFeedbackPackage()}
+            onOpenResumePrompt={openResumePrompt}
+            onSubmit={() => void submitFeedback()}
+            onCancel={() => void cancelFeedback()}
+            onApprove={() => void approveFeedback()}
+          />
+        </div>
       </Pane>
     </PaneGroup>
 
