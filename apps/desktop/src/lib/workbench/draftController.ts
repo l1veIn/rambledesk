@@ -2,13 +2,13 @@
 // revision-aware conflict handling. All state lives in the component; this
 // controller only owns the save timer and the in-flight save promise.
 
-import { invoke } from '@tauri-apps/api/core'
-
+import type { ApplicationTransport } from '../application/applicationTransport'
 import type { DraftView, FeedbackWorkspaceView, SaveDraftInput } from '../feedback'
 import type { FeedbackDraftSnapshot } from '../feedbackDraftDocument'
 import type { SavePhase } from './types'
 
 export type DraftControllerContext = {
+  transport: ApplicationTransport
   messageFrom: (cause: unknown) => string
   isPreviewMode: () => boolean
   isInteractionLocked: () => boolean
@@ -92,7 +92,7 @@ export function createDraftController(context: DraftControllerContext) {
               saved_revision: revisionToSave + 1,
               updated_at: new Date().toISOString(),
             }
-          : await invoke<DraftView>('save_feedback_draft', { input })
+          : await context.transport.call('saveFeedbackDraft', input)
         if (context.getWorkspace()?.request.request_id === requestId) {
           context.setSavedSnapshot(snapshotToSave)
           context.setSavedRevision(saved.saved_revision)

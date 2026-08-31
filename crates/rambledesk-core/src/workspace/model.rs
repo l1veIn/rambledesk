@@ -12,17 +12,18 @@ pub const MAX_ATTACHMENT_BYTES: usize = 20 * 1024 * 1024;
 pub const MAX_ATTACHMENT_COUNT: usize = 20;
 pub const MAX_REQUEST_ATTACHMENT_TOTAL_BYTES: usize = 60 * 1024 * 1024;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 pub struct FeedbackPackageAttachment {
     pub id: String,
     pub file_name: String,
     pub media_type: String,
+    #[ts(type = "number")]
     pub byte_size: u64,
     pub sha256: String,
     pub path: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 pub struct FeedbackPackageManifest {
     pub schema_version: u32,
     pub request_id: String,
@@ -37,16 +38,22 @@ pub struct FeedbackPackageManifest {
     )]
     pub resolution: FeedbackResolution,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub cancel_reason: Option<String>,
+    #[ts(type = "number")]
     pub source_revision: u64,
+    #[ts(type = "number")]
     pub draft_revision: u64,
     pub feedback_markdown: String,
     pub feedback_sha256: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub uncooked_markdown: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub uncooked_sha256: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub cooking_model: Option<String>,
     pub attachments: Vec<FeedbackPackageAttachment>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -61,15 +68,35 @@ fn is_feedback_submitted(resolution: &FeedbackResolution) -> bool {
     *resolution == FeedbackResolution::FeedbackSubmitted
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 pub struct FeedbackPackageContent {
     pub manifest: FeedbackPackageManifest,
     pub markdown: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub uncooked_markdown: Option<String>,
     pub attachment_paths: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub request_attachment_paths: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
+pub struct FeedbackPackageView {
+    pub manifest: FeedbackPackageManifest,
+    pub markdown: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub uncooked_markdown: Option<String>,
+}
+
+impl From<FeedbackPackageContent> for FeedbackPackageView {
+    fn from(content: FeedbackPackageContent) -> Self {
+        Self {
+            manifest: content.manifest,
+            markdown: content.markdown,
+            uncooked_markdown: content.uncooked_markdown,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
@@ -230,6 +257,12 @@ pub struct AddAttachmentInput {
     pub contents: Vec<u8>,
     #[ts(type = "number")]
     pub expected_revision: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
+pub struct ReadAttachmentInput {
+    pub request_id: String,
+    pub attachment_id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]

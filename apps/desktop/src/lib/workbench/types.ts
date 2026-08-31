@@ -27,13 +27,7 @@ export type ResumePrompt = {
   reason: 'completed' | 'cancelled'
 }
 
-export type HostProfile = {
-  id: string
-  label: string
-  icon_svg: string
-  default_adapter: 'generic_mcp' | 'pi_native'
-  continuation_mode: 'not_required' | 'manual' | 'native'
-}
+export type { HostProfile } from '../generated/hosts'
 
 export type FeedbackEditorHandle = {
   removeAttachmentReference(attachmentId: string): void

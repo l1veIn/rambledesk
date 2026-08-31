@@ -1,4 +1,5 @@
 import { attachmentMarkdownUrl } from './attachmentMarkdown'
+import type { FeedbackPackageAttachment, FeedbackPackageView } from './generated/feedback'
 import { operatorFeedbackBody } from './workbench/feedbackText'
 
 export type PublishedFeedbackView = {
@@ -6,14 +7,8 @@ export type PublishedFeedbackView = {
   uncooked_markdown?: string
 }
 
-export type PublishedFeedbackPackage = PublishedFeedbackView & {
-  manifest?: { attachments?: PublishedAttachmentPath[] }
-}
-
-export type PublishedAttachmentPath = {
-  id: string
-  path: string
-}
+export type PublishedFeedbackPackage = FeedbackPackageView
+export type PublishedAttachmentPath = Pick<FeedbackPackageAttachment, 'id' | 'path'>
 
 /**
  * Normalize a published feedback package into the workbench view: extract the

@@ -1,12 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-
-const mocks = vi.hoisted(() => ({
-  invoke: vi.fn(),
-}))
-
-vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }))
+import { describe, expect, it, vi } from 'vitest'
 
 import type { FeedbackRequestView, FeedbackWorkspaceView } from '../feedback'
+import { TestApplicationTransport } from '../application/testApplicationTransport'
 import { createPublisherController } from './publisherController'
 
 function workspaceView(): FeedbackWorkspaceView {
@@ -62,25 +57,35 @@ function completedRequest(): FeedbackRequestView {
 }
 
 describe('publisherController', () => {
-  beforeEach(() => {
-    mocks.invoke.mockReset()
-  })
-
   it('submits the read-only cooked preview without replacing the canonical draft', async () => {
     let workspace = workspaceView()
     const setPreview = vi.fn()
     const cookAndPublish = vi.fn()
-    mocks.invoke.mockImplementation(async (command: string) => {
-      if (command === 'submit_feedback') return completedRequest()
-      if (command === 'read_published_feedback') {
+    const transport = new TestApplicationTransport(undefined)
+      .resolve('submitFeedback', completedRequest())
+      .handle('readPublishedFeedback', () => {
         return {
+          manifest: {
+            schema_version: 1,
+            request_id: 'request-1',
+            title: 'Review the work',
+            host_id: 'codex',
+            host_session_id: 'session-1',
+            source_hint: null,
+            submitted_at: '2026-08-22T00:01:00Z',
+            source_revision: 4,
+            draft_revision: 4,
+            feedback_markdown: 'feedback.md',
+            feedback_sha256: 'sha256',
+            attachments: [],
+          },
           markdown: '## Operator Feedback\n\nEdited cooked draft.',
           uncooked_markdown: 'Original uncooked ramble.',
+          attachment_paths: [],
         }
-      }
-      return undefined
-    })
+      })
     const controller = createPublisherController({
+      transport,
       tr: (source) => source,
       messageFrom: (cause) => String(cause),
       isPreviewMode: () => false,
@@ -118,15 +123,18 @@ describe('publisherController', () => {
     expect(cookAndPublish).not.toHaveBeenCalled()
     expect(workspace.request.status).toBe('completed')
     expect(workspace.request.resolution).toBe('feedback_submitted')
-    expect(mocks.invoke).toHaveBeenCalledWith('submit_feedback', {
-      input: {
+    expect(transport.callsFor('submitFeedback')).toEqual([
+      {
+        name: 'submitFeedback',
+        input: {
         request_id: 'request-1',
         expected_revision: 4,
         cooked_markdown: 'Cooked draft before operator edits.',
         cooking_model: 'deepseek/deepseek-chat',
         uncooked_markdown: 'Original uncooked ramble.',
+        },
       },
-    })
+    ])
     expect(setPreview).toHaveBeenCalledWith(null)
   })
 })

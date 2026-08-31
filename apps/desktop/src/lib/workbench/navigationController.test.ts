@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => {
   })
   return {
     invoke: vi.fn(),
+    applicationCall: vi.fn(),
     sendNotification: vi.fn(),
     storage,
   }
@@ -26,6 +27,7 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }))
 vi.mock('@tauri-apps/plugin-notification', () => ({ sendNotification: mocks.sendNotification }))
 
 import type { FeedbackRequestSummary, HostSessionSummary, ListFeedbackRequestsOutput } from '../feedback'
+import { TestApplicationTransport } from '../application/testApplicationTransport'
 import { createNavigationController, type NavigationState } from './navigationController'
 
 function feedbackRequest(requestId: string): FeedbackRequestSummary {
@@ -65,9 +67,19 @@ function hostSession(overrides: Partial<HostSessionSummary> = {}): HostSessionSu
 function createController(
   overrides: Partial<Parameters<typeof createNavigationController>[0]> = {},
 ) {
+  const transport = new TestApplicationTransport(undefined)
+    .handle('listFeedbackInbox', (input) => mocks.applicationCall('listFeedbackInbox', input))
+    .handle('listHostSessions', (input) => mocks.applicationCall('listHostSessions', input))
+    .handle('listHostProfiles', (input) => mocks.applicationCall('listHostProfiles', input))
+    .handle('listFeedbackRequests', (input) => mocks.applicationCall('listFeedbackRequests', input))
+    .handle('renameHostSession', (input) => mocks.applicationCall('renameHostSession', input))
+    .handle('setHostSessionPinned', (input) => mocks.applicationCall('setHostSessionPinned', input))
+    .handle('archiveHostSession', (input) => mocks.applicationCall('archiveHostSession', input))
+    .handle('setHostPinned', (input) => mocks.applicationCall('setHostPinned', input))
   return createNavigationController({
     isTauri: true,
     previewMode: false,
+    transport,
     tr: (source) => source,
     messageFrom: (cause) => String(cause),
     getNotificationState: () => 'disabled',
@@ -86,6 +98,8 @@ describe('navigationController', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     mocks.invoke.mockReset()
+    mocks.invoke.mockResolvedValue(undefined)
+    mocks.applicationCall.mockReset()
     mocks.sendNotification.mockReset()
   })
 
@@ -96,11 +110,11 @@ describe('navigationController', () => {
   it('loads navigation facts without opening a default request when workspace restore is pending', async () => {
     const request = feedbackRequest('request-restore')
     const openRequest = vi.fn(async () => true)
-    mocks.invoke.mockImplementation(async (command: string) => {
-      if (command === 'list_feedback_inbox') return [request]
-      if (command === 'list_host_sessions') return [hostSession()]
-      if (command === 'list_host_profiles') return []
-      if (command === 'list_feedback_requests') {
+    mocks.applicationCall.mockImplementation(async (command: string) => {
+      if (command === 'listFeedbackInbox') return [request]
+      if (command === 'listHostSessions') return [hostSession()]
+      if (command === 'listHostProfiles') return []
+      if (command === 'listFeedbackRequests') {
         return { requests: [request], next_cursor: null } satisfies ListFeedbackRequestsOutput
       }
       return undefined
@@ -113,7 +127,7 @@ describe('navigationController', () => {
   })
 
   it('reports when initial navigation facts could not be loaded', async () => {
-    mocks.invoke.mockRejectedValueOnce(new Error('navigation unavailable'))
+    mocks.applicationCall.mockRejectedValueOnce(new Error('navigation unavailable'))
     const onPageError = vi.fn()
     const controller = createController({ onPageError })
 
@@ -126,9 +140,9 @@ describe('navigationController', () => {
     let releaseOlder: ((sessions: HostSessionSummary[]) => void) | undefined
     const olderSessions = new Promise<HostSessionSummary[]>((resolve) => (releaseOlder = resolve))
     let hostSessionCalls = 0
-    mocks.invoke.mockImplementation(async (command: string) => {
-      if (command === 'list_feedback_inbox') return []
-      if (command === 'list_host_sessions') {
+    mocks.applicationCall.mockImplementation(async (command: string) => {
+      if (command === 'listFeedbackInbox') return []
+      if (command === 'listHostSessions') {
         hostSessionCalls += 1
         return hostSessionCalls === 1
           ? olderSessions
@@ -159,14 +173,14 @@ describe('navigationController', () => {
   it('marks failed facts without discarding the last known host sessions', async () => {
     const previous = hostSession()
     let failing = false
-    mocks.invoke.mockImplementation(async (command: string) => {
-      if (command === 'list_feedback_inbox') return []
-      if (command === 'list_host_sessions') {
+    mocks.applicationCall.mockImplementation(async (command: string) => {
+      if (command === 'listFeedbackInbox') return []
+      if (command === 'listHostSessions') {
         if (failing) throw new Error('host sessions unavailable')
         return [previous]
       }
-      if (command === 'list_host_profiles') return []
-      if (command === 'list_feedback_requests') {
+      if (command === 'listHostProfiles') return []
+      if (command === 'listFeedbackRequests') {
         return { requests: [], next_cursor: null } satisfies ListFeedbackRequestsOutput
       }
       return undefined
@@ -190,11 +204,11 @@ describe('navigationController', () => {
   })
 
   it('advances the facts revision when an identical refresh can retry recovery', async () => {
-    mocks.invoke.mockImplementation(async (command: string) => {
-      if (command === 'list_feedback_inbox') return []
-      if (command === 'list_host_sessions') return [hostSession()]
-      if (command === 'list_host_profiles') return []
-      if (command === 'list_feedback_requests') {
+    mocks.applicationCall.mockImplementation(async (command: string) => {
+      if (command === 'listFeedbackInbox') return []
+      if (command === 'listHostSessions') return [hostSession()]
+      if (command === 'listHostProfiles') return []
+      if (command === 'listFeedbackRequests') {
         return { requests: [], next_cursor: null } satisfies ListFeedbackRequestsOutput
       }
       return undefined
@@ -222,11 +236,11 @@ describe('navigationController', () => {
       next_cursor: 'next-page',
     }
     let requestListOutput = firstList
-    mocks.invoke.mockImplementation(async (command: string) => {
-      if (command === 'list_feedback_inbox') return [refreshedRequest]
-      if (command === 'list_host_sessions') return [hostSession()]
-      if (command === 'list_host_profiles') return []
-      if (command === 'list_feedback_requests') return requestListOutput
+    mocks.applicationCall.mockImplementation(async (command: string) => {
+      if (command === 'listFeedbackInbox') return [refreshedRequest]
+      if (command === 'listHostSessions') return [hostSession()]
+      if (command === 'listHostProfiles') return []
+      if (command === 'listFeedbackRequests') return requestListOutput
       if (command === 'set_pending_count') return undefined
       return undefined
     })
@@ -251,10 +265,9 @@ describe('navigationController', () => {
       expect(state?.loadingNavigation).toBe(true)
       expect(state?.loadingRequests).toBe(true)
       expect(state?.refreshingPage).toBe(true)
-      expect(mocks.invoke).toHaveBeenCalledWith('list_feedback_inbox')
-      expect(mocks.invoke).toHaveBeenCalledWith('list_host_sessions')
-      expect(mocks.invoke).toHaveBeenCalledWith('list_feedback_requests', {
-        input: {
+      expect(mocks.applicationCall).toHaveBeenCalledWith('listFeedbackInbox', undefined)
+      expect(mocks.applicationCall).toHaveBeenCalledWith('listHostSessions', undefined)
+      expect(mocks.applicationCall).toHaveBeenCalledWith('listFeedbackRequests', {
           host_id: null,
           host_session_id: null,
           status: ['waiting', 'in_progress', 'completed', 'cancelled'],
@@ -262,7 +275,6 @@ describe('navigationController', () => {
           search: null,
           limit: 100,
           cursor: null,
-        },
       })
 
       await vi.advanceTimersByTimeAsync(299)
@@ -286,14 +298,14 @@ describe('navigationController', () => {
 
   it('returns to the visible host scope after archiving the selected flat-rail session', async () => {
     const selectedSession = { ...hostSession(), pending_count: 0 }
-    mocks.invoke.mockImplementation(async (command: string) => {
-      if (command === 'list_feedback_inbox') return []
-      if (command === 'list_host_sessions') return [selectedSession]
-      if (command === 'list_host_profiles') return []
-      if (command === 'list_feedback_requests') {
+    mocks.applicationCall.mockImplementation(async (command: string) => {
+      if (command === 'listFeedbackInbox') return []
+      if (command === 'listHostSessions') return [selectedSession]
+      if (command === 'listHostProfiles') return []
+      if (command === 'listFeedbackRequests') {
         return { requests: [], next_cursor: null } satisfies ListFeedbackRequestsOutput
       }
-      if (command === 'archive_host_session') return { ...selectedSession, archived_at: '2026-09-01T00:00:00Z' }
+      if (command === 'archiveHostSession') return { ...selectedSession, archived_at: '2026-09-01T00:00:00Z' }
       return undefined
     })
 
@@ -313,8 +325,7 @@ describe('navigationController', () => {
 
       expect(state?.selectedHostId).toBe('codex')
       expect(state?.selectedHostSessionId).toBeNull()
-      expect(mocks.invoke).toHaveBeenLastCalledWith('list_feedback_requests', {
-        input: {
+      expect(mocks.applicationCall).toHaveBeenCalledWith('listFeedbackRequests', {
           host_id: 'codex',
           host_session_id: null,
           status: ['waiting', 'in_progress', 'completed', 'cancelled'],
@@ -322,7 +333,6 @@ describe('navigationController', () => {
           search: null,
           limit: 100,
           cursor: null,
-        },
       })
     } finally {
       unsubscribe()
@@ -331,8 +341,8 @@ describe('navigationController', () => {
 
   it('returns the request snapshot for the selected session scope', async () => {
     const selectedRequest = feedbackRequest('selected-request')
-    mocks.invoke.mockImplementation(async (command: string) => {
-      if (command === 'list_feedback_requests') {
+    mocks.applicationCall.mockImplementation(async (command: string) => {
+      if (command === 'listFeedbackRequests') {
         return { requests: [selectedRequest], next_cursor: null } satisfies ListFeedbackRequestsOutput
       }
       return []
@@ -342,9 +352,10 @@ describe('navigationController', () => {
     const result = await controller.selectScope('codex', 'session-1')
 
     expect(result).toEqual({ selected: true, requests: [selectedRequest] })
-    expect(mocks.invoke).toHaveBeenCalledWith('list_feedback_requests', {
-      input: expect.objectContaining({ host_id: 'codex', host_session_id: 'session-1' }),
-    })
+    expect(mocks.applicationCall).toHaveBeenCalledWith(
+      'listFeedbackRequests',
+      expect.objectContaining({ host_id: 'codex', host_session_id: 'session-1' }),
+    )
   })
 
   it('does not select a new scope when saving the current draft fails', async () => {
@@ -360,7 +371,7 @@ describe('navigationController', () => {
 
       expect(result.selected).toBe(false)
       expect(state?.selectedHostId).toBeNull()
-      expect(mocks.invoke).not.toHaveBeenCalledWith('list_feedback_requests', expect.anything())
+      expect(mocks.applicationCall).not.toHaveBeenCalledWith('listFeedbackRequests', expect.anything())
     } finally {
       unsubscribe()
     }
@@ -372,10 +383,10 @@ describe('navigationController', () => {
       resolveFirst = resolve
     })
     const secondRequest = { ...feedbackRequest('second-request'), host_session_id: 'session-2' }
-    mocks.invoke.mockImplementation(
-      async (command: string, input?: { input?: { host_session_id?: string } }) => {
-        if (command !== 'list_feedback_requests') return []
-        if (input?.input?.host_session_id === 'session-1') return firstResult
+    mocks.applicationCall.mockImplementation(
+      async (command: string, input?: { host_session_id?: string }) => {
+        if (command !== 'listFeedbackRequests') return []
+        if (input?.host_session_id === 'session-1') return firstResult
         return { requests: [secondRequest], next_cursor: null } satisfies ListFeedbackRequestsOutput
       },
     )
@@ -404,10 +415,10 @@ describe('navigationController', () => {
   it('rolls back the prior scope and request snapshot when the target refresh fails', async () => {
     const priorRequest = feedbackRequest('prior-request')
     let rejectTarget = false
-    mocks.invoke.mockImplementation(
-      async (command: string, input?: { input?: { host_session_id?: string } }) => {
-        if (command !== 'list_feedback_requests') return []
-        if (rejectTarget && input?.input?.host_session_id === 'session-2') {
+    mocks.applicationCall.mockImplementation(
+      async (command: string, input?: { host_session_id?: string }) => {
+        if (command !== 'listFeedbackRequests') return []
+        if (rejectTarget && input?.host_session_id === 'session-2') {
           throw new Error('target refresh failed')
         }
         return {
@@ -443,10 +454,10 @@ describe('navigationController', () => {
       rejectOlder = reject
     })
     const newestRequest = { ...feedbackRequest('newest-request'), host_session_id: 'session-3' }
-    mocks.invoke.mockImplementation(
-      async (command: string, input?: { input?: { host_session_id?: string } }) => {
-        if (command !== 'list_feedback_requests') return []
-        if (input?.input?.host_session_id === 'session-2') return olderRefresh
+    mocks.applicationCall.mockImplementation(
+      async (command: string, input?: { host_session_id?: string }) => {
+        if (command !== 'listFeedbackRequests') return []
+        if (input?.host_session_id === 'session-2') return olderRefresh
         return {
           requests: [newestRequest],
           next_cursor: 'newest-cursor',

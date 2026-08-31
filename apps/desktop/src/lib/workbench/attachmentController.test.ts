@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
+  applicationCall: vi.fn(),
   listeners: new Map<string, (event: { payload: unknown }) => void>(),
 }))
 
@@ -17,6 +18,7 @@ vi.mock('@tauri-apps/api/webview', () => ({
 }))
 
 import { createAttachmentController } from './attachmentController'
+import { TestApplicationTransport } from '../application/testApplicationTransport'
 
 function controllerContext() {
   let captureBusy = false
@@ -24,9 +26,16 @@ function controllerContext() {
   const setCaptureBusy = vi.fn((busy: boolean) => {
     captureBusy = busy
   })
+  const transport = new TestApplicationTransport(undefined)
+    .handle('getFeedbackWorkspace', (input) => mocks.applicationCall('getFeedbackWorkspace', input))
+    .handle('addFeedbackAttachment', (input) => mocks.applicationCall('addFeedbackAttachment', input))
+    .handle('removeFeedbackAttachment', (input) => mocks.applicationCall('removeFeedbackAttachment', input))
+    .handle('reorderFeedbackAttachments', (input) => mocks.applicationCall('reorderFeedbackAttachments', input))
+    .handle('readFeedbackAttachment', (input) => mocks.applicationCall('readFeedbackAttachment', input))
   return {
     context: {
       isTauri: true,
+      transport,
       tr: (source: string) => source,
       messageFrom: (cause: unknown) => String(cause),
       getWorkspace: () => null,
@@ -56,6 +65,7 @@ function controllerContext() {
 describe('attachmentController screen capture state', () => {
   beforeEach(() => {
     mocks.invoke.mockReset()
+    mocks.applicationCall.mockReset()
     mocks.listeners.clear()
     vi.stubGlobal('window', {
       addEventListener: vi.fn(),
@@ -132,9 +142,9 @@ describe('attachmentController screen capture state', () => {
     })
     mocks.invoke.mockImplementation(async (command: string) => {
       if (command === 'add_completed_screen_capture') return inserted
-      if (command === 'read_feedback_attachment') return new ArrayBuffer(0)
       return undefined
     })
+    mocks.applicationCall.mockResolvedValue(new ArrayBuffer(0))
 
     const controller = createAttachmentController(context)
     const cleanup = controller.mount()
@@ -175,9 +185,9 @@ describe('attachmentController screen capture state', () => {
     })
     mocks.invoke.mockImplementation(async (command: string) => {
       if (command === 'add_completed_screen_capture') return inserted
-      if (command === 'read_feedback_attachment') return new ArrayBuffer(0)
       return undefined
     })
+    mocks.applicationCall.mockResolvedValue(new ArrayBuffer(0))
 
     const controller = createAttachmentController(context)
     const cleanup = controller.mount()
@@ -233,9 +243,9 @@ describe('attachmentController screen capture state', () => {
       visible = other
       return true
     })
-    mocks.invoke.mockImplementation(async (command: string) => {
-      if (command === 'get_feedback_workspace') return target
-      if (command === 'add_feedback_attachment') return inserted
+    mocks.applicationCall.mockImplementation(async (command: string) => {
+      if (command === 'getFeedbackWorkspace') return target
+      if (command === 'addFeedbackAttachment') return inserted
       return undefined
     })
     const file = {
@@ -289,8 +299,8 @@ describe('attachmentController screen capture state', () => {
       const { context } = controllerContext()
       context.getWorkspace = () => visible as never
       context.getEditor = () => ({ removeAttachmentReference: vi.fn() }) as never
-      mocks.invoke.mockImplementation(async (command: string) => {
-        if (command === 'remove_feedback_attachment' || command === 'reorder_feedback_attachments') {
+      mocks.applicationCall.mockImplementation(async (command: string) => {
+        if (command === 'removeFeedbackAttachment' || command === 'reorderFeedbackAttachments') {
           return operationResult
         }
         return undefined

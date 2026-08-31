@@ -8,6 +8,7 @@ import type {
   ListFeedbackRequestsInput,
   ListFeedbackRequestsOutput,
 } from '../feedback'
+import type { ApplicationTransport } from '../application/applicationTransport'
 import { InboxNotificationTracker, playNotificationSound, type NotificationState } from '../notifications'
 import { previewFixtures } from '../previewFixtures'
 import {
@@ -42,6 +43,7 @@ export type NavigationState = {
 type NavigationControllerContext = {
   isTauri: boolean
   previewMode: boolean
+  transport: ApplicationTransport
   tr: (source: string, values?: Record<string, string | number>) => string
   messageFrom: (cause: unknown) => string
   getNotificationState: () => NotificationState
@@ -162,9 +164,9 @@ export function createNavigationController(context: NavigationControllerContext)
 
     try {
       const [nextInbox, nextHostSessions, profiles] = await Promise.all([
-        invoke<FeedbackRequestSummary[]>('list_feedback_inbox'),
-        invoke<HostSessionSummary[]>('list_host_sessions'),
-        invoke<HostProfile[]>('list_host_profiles'),
+        context.transport.call('listFeedbackInbox', undefined),
+        context.transport.call('listHostSessions', undefined),
+        context.transport.call('listHostProfiles', undefined),
       ])
       patch({
         hostProfiles: Object.fromEntries(profiles.map((profile) => [profile.id, profile])),
@@ -298,12 +300,12 @@ export function createNavigationController(context: NavigationControllerContext)
         ),
       )
     }
-    return invoke<FeedbackRequestSummary[]>('list_feedback_inbox')
+    return context.transport.call('listFeedbackInbox', undefined)
   }
 
   function loadHostSessions(): Promise<HostSessionSummary[]> {
     if (context.previewMode) return Promise.resolve(previewFixtures.hostSessions)
-    return invoke<HostSessionSummary[]>('list_host_sessions')
+    return context.transport.call('listHostSessions', undefined)
   }
 
   function loadRequestList(cursor: string | null = null): Promise<ListFeedbackRequestsOutput> {
@@ -323,9 +325,7 @@ export function createNavigationController(context: NavigationControllerContext)
         next_cursor: null,
       })
     }
-    return invoke<ListFeedbackRequestsOutput>('list_feedback_requests', {
-      input: requestListInput(cursor),
-    })
+    return context.transport.call('listFeedbackRequests', requestListInput(cursor))
   }
 
   function now() {
@@ -441,12 +441,10 @@ export function createNavigationController(context: NavigationControllerContext)
         replaceHostSession({ ...session, title: trimmed })
         return
       }
-      const renamed = await invoke<HostSessionSummary>('rename_host_session', {
-        input: {
-          host_id: session.host_id,
-          host_session_id: session.host_session_id,
-          title: trimmed,
-        },
+      const renamed = await context.transport.call('renameHostSession', {
+        host_id: session.host_id,
+        host_session_id: session.host_session_id,
+        title: trimmed,
       })
       replaceHostSession(renamed)
     } catch (cause) {
@@ -464,12 +462,10 @@ export function createNavigationController(context: NavigationControllerContext)
         })
         return
       }
-      const updated = await invoke<HostSessionSummary>('set_host_session_pinned', {
-        input: {
-          host_id: session.host_id,
-          host_session_id: session.host_session_id,
-          pinned,
-        },
+      const updated = await context.transport.call('setHostSessionPinned', {
+        host_id: session.host_id,
+        host_session_id: session.host_session_id,
+        pinned,
       })
       replaceHostSession(updated)
       await refreshNavigation(false)
@@ -487,11 +483,9 @@ export function createNavigationController(context: NavigationControllerContext)
     if (context.isDirty() && !(await context.saveDraftNow())) return
     try {
       if (!(context.previewMode || !context.isTauri)) {
-        await invoke<HostSessionSummary>('archive_host_session', {
-          input: {
-            host_id: session.host_id,
-            host_session_id: session.host_session_id,
-          },
+        await context.transport.call('archiveHostSession', {
+          host_id: session.host_id,
+          host_session_id: session.host_session_id,
         })
       }
       const current = get(store)
@@ -531,8 +525,9 @@ export function createNavigationController(context: NavigationControllerContext)
         )
         return
       }
-      const nextSessions = await invoke<HostSessionSummary[]>('set_host_pinned', {
-        input: { host_id: hostId, pinned },
+      const nextSessions = await context.transport.call('setHostPinned', {
+        host_id: hostId,
+        pinned,
       })
       applyHostSessionFacts(nextSessions)
     } catch (cause) {

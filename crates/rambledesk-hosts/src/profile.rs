@@ -1,4 +1,5 @@
 use serde::Serialize;
+use ts_rs::TS;
 
 use crate::HOSTS;
 
@@ -15,22 +16,24 @@ const OPENCODE_ICON: &str = include_str!("../assets/icons/opencode.svg");
 const INSPECTOR_ICON: &str = include_str!("../assets/icons/model-context-protocol.svg");
 const GENERIC_ICON: &str = include_str!("../assets/icons/generic-terminal.svg");
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "snake_case")]
+#[ts(rename_all = "snake_case")]
 pub enum HostAdapter {
     GenericMcp,
     PiNative,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "snake_case")]
+#[ts(rename_all = "snake_case")]
 pub enum ContinuationMode {
     NotRequired,
     Manual,
     Native,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 pub struct HostProfile {
     pub id: String,
     pub label: String,

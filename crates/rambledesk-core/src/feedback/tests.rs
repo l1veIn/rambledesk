@@ -48,6 +48,31 @@ fn application_errors_expose_stable_public_fields() {
 }
 
 #[test]
+fn application_error_codes_preserve_the_public_code_contract() {
+    let expected = [
+        "INVALID_ARGUMENT",
+        "REQUEST_NOT_FOUND",
+        "RECOVERY_AMBIGUOUS",
+        "REQUEST_CONFLICT",
+        "REQUEST_ALREADY_COMPLETED",
+        "REQUEST_TERMINAL",
+        "DRAFT_CONFLICT",
+        "ATTACHMENT_NOT_FOUND",
+        "ATTACHMENT_LIMIT",
+        "HOST_SESSION_NOT_FOUND",
+        "HOST_SESSION_HAS_OPEN_REQUESTS",
+        "DELETE_REQUIRES_ARCHIVED_HOST_SESSION",
+        "REQUEST_NOT_TERMINAL",
+        "PACKAGE_PUBLISH_FAILURE",
+        "FEEDBACK_PACKAGE_READ_FAILURE",
+        "STORAGE_FAILURE",
+    ];
+    for (code, expected) in ApplicationErrorCode::ALL.into_iter().zip(expected) {
+        assert_eq!(code.as_str(), expected);
+    }
+}
+
+#[test]
 fn canonicalizes_uuid_inputs() {
     let canonical = "0195f7e2-5c31-7b5a-8ab7-3c84ea4fc827";
     assert_eq!(

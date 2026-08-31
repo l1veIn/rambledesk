@@ -4,6 +4,7 @@ import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { tick } from 'svelte'
 
 import { isImageMediaType } from '../attachmentMarkdown'
+import type { ApplicationTransport } from '../application/applicationTransport'
 import type {
   AddAttachmentInput,
   AttachmentView,
@@ -24,6 +25,7 @@ type ScreenCaptureFinished = {
 
 type AttachmentControllerContext = {
   isTauri: boolean
+  transport: ApplicationTransport
   tr: (source: string, values?: Record<string, string | number>) => string
   messageFrom: (cause: unknown) => string
   getWorkspace: () => FeedbackWorkspaceView | null
@@ -145,7 +147,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
     context.setBusy(true)
     context.setMessage('')
     try {
-      let next = await invoke<FeedbackWorkspaceView>('get_feedback_workspace', { requestId })
+      let next = await context.transport.call('getFeedbackWorkspace', { request_id: requestId })
       if (!next) throw new Error(context.tr('This feedback request could not be found.'))
       const existingIds = new Set(next.attachments.map((item) => item.attachment_id))
       for (const file of files) {
@@ -158,7 +160,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
           contents: Array.from(new Uint8Array(await file.arrayBuffer())),
           expected_revision: next.draft.saved_revision,
         }
-        next = await invoke<FeedbackWorkspaceView>('add_feedback_attachment', { input })
+        next = await context.transport.call('addFeedbackAttachment', input)
       }
       const added = next.attachments.filter((item) => !existingIds.has(item.attachment_id))
       if (context.getWorkspace()?.request.request_id === requestId) {
@@ -194,7 +196,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
     context.setBusy(true)
     context.setMessage('')
     try {
-      let next = await invoke<FeedbackWorkspaceView>('get_feedback_workspace', { requestId })
+      let next = await context.transport.call('getFeedbackWorkspace', { request_id: requestId })
       if (!next) throw new Error(context.tr('This feedback request could not be found.'))
       const existingIds = new Set(next.attachments.map((item) => item.attachment_id))
       for (const path of paths) {
@@ -310,7 +312,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
       await context.waitForRambleMarkdown()
       const target = visibleTarget
         ? workspace
-        : await invoke<FeedbackWorkspaceView>('get_feedback_workspace', { requestId })
+        : await context.transport.call('getFeedbackWorkspace', { request_id: requestId })
       if (!target) throw new Error(context.tr('This feedback request could not be found.'))
       const existingIds = new Set(target.attachments.map((item) => item.attachment_id))
       const next = await invoke<FeedbackWorkspaceView>('add_completed_screen_capture', {
@@ -364,7 +366,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
         attachment_id: attachment.attachment_id,
         expected_revision: context.getSavedRevision(),
       }
-      const next = await invoke<FeedbackWorkspaceView>('remove_feedback_attachment', { input })
+      const next = await context.transport.call('removeFeedbackAttachment', input)
       if (context.getWorkspace()?.request.request_id !== requestId) return
       context.applyWorkspaceMutation(next)
       await refreshPreviews(next)
@@ -406,7 +408,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
         attachment_ids: attachmentIds,
         expected_revision: context.getSavedRevision(),
       }
-      const next = await invoke<FeedbackWorkspaceView>('reorder_feedback_attachments', { input })
+      const next = await context.transport.call('reorderFeedbackAttachments', input)
       if (context.getWorkspace()?.request.request_id !== requestId) return
       context.applyWorkspaceMutation(next)
       await refreshPreviews(next)
@@ -432,9 +434,9 @@ export function createAttachmentController(context: AttachmentControllerContext)
     for (const attachment of next.attachments) {
       if (!isImageMediaType(attachment.media_type) || previews[attachment.attachment_id]) continue
       try {
-        const bytes = await invoke<ArrayBuffer>('read_feedback_attachment', {
-          requestId: next.request.request_id,
-          attachmentId: attachment.attachment_id,
+        const bytes = await context.transport.call('readFeedbackAttachment', {
+          request_id: next.request.request_id,
+          attachment_id: attachment.attachment_id,
         })
         previews[attachment.attachment_id] = URL.createObjectURL(
           new Blob([bytes], { type: attachment.media_type }),

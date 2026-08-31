@@ -69,7 +69,7 @@ pub struct RequestFeedbackInput {
     pub final_summary: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 pub struct GetFeedbackInput {
     pub request_id: String,
 }
