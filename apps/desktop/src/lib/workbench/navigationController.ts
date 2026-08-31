@@ -26,6 +26,8 @@ export type NavigationState = {
   pendingRequests: FeedbackRequestSummary[]
   requests: FeedbackRequestSummary[]
   hostSessions: HostSessionSummary[]
+  hostSessionFactsStatus: 'pending' | 'ready' | 'failed'
+  hostSessionFactsRevision: number
   hostProfiles: Record<string, HostProfile>
   selectedHostId: string | null
   selectedHostSessionId: string | null
@@ -61,6 +63,8 @@ const initialState: NavigationState = {
   pendingRequests: [],
   requests: [],
   hostSessions: [],
+  hostSessionFactsStatus: 'pending',
+  hostSessionFactsRevision: 0,
   hostProfiles: {},
   selectedHostId: null,
   selectedHostSessionId: null,
@@ -77,33 +81,63 @@ export function createNavigationController(context: NavigationControllerContext)
   const notificationTracker = new InboxNotificationTracker()
   let requestRefreshGeneration = 0
   let scopeSelectionGeneration = 0
+  let hostSessionFactsGeneration = 0
 
   function patch(next: Partial<NavigationState>) {
     store.update((current) => ({ ...current, ...next }))
   }
 
+  function beginHostSessionFactsRefresh() {
+    return ++hostSessionFactsGeneration
+  }
+
+  function applyHostSessionFacts(
+    hostSessions: HostSessionSummary[],
+    generation?: number,
+  ) {
+    if (generation !== undefined && generation !== hostSessionFactsGeneration) return false
+    if (generation === undefined) hostSessionFactsGeneration += 1
+    store.update((current) => ({
+      ...current,
+      hostSessions,
+      hostSessionFactsStatus: 'ready',
+      hostSessionFactsRevision: current.hostSessionFactsRevision + 1,
+    }))
+    return true
+  }
+
+  function failHostSessionFacts(generation: number) {
+    if (generation !== hostSessionFactsGeneration) return false
+    store.update((current) => ({
+      ...current,
+      hostSessionFactsStatus: 'failed',
+      hostSessionFactsRevision: current.hostSessionFactsRevision + 1,
+    }))
+    return true
+  }
+
   function replaceHostSession(summary: HostSessionSummary) {
-    store.update((current) => {
-      const nextSessions = current.hostSessions.map((session) =>
-        session.host_id === summary.host_id &&
-        session.host_session_id === summary.host_session_id
-          ? summary
-          : session,
+    const current = get(store)
+    const nextSessions = current.hostSessions.map((session) =>
+      session.host_id === summary.host_id &&
+      session.host_session_id === summary.host_session_id
+        ? summary
+        : session,
+    )
+    if (
+      !nextSessions.some(
+        (session) =>
+          session.host_id === summary.host_id &&
+          session.host_session_id === summary.host_session_id,
       )
-      if (
-        !nextSessions.some(
-          (session) =>
-            session.host_id === summary.host_id &&
-            session.host_session_id === summary.host_session_id,
-        )
-      ) {
-        nextSessions.push(summary)
-      }
-      return { ...current, hostSessions: nextSessions }
-    })
+    ) {
+      nextSessions.push(summary)
+    }
+    applyHostSessionFacts(nextSessions)
   }
 
   async function initialize(openFirstRequest = true) {
+    const hostSessionFactsIntent = beginHostSessionFactsRefresh()
     context.onPageError('')
     patch({ loadingNavigation: true, loadingRequests: true })
 
@@ -114,14 +148,16 @@ export function createNavigationController(context: NavigationControllerContext)
             (request) => request.status === 'waiting' || request.status === 'in_progress',
           ),
           requests: previewFixtures.requests,
-          hostSessions: previewFixtures.hostSessions,
           hostProfiles: Object.fromEntries(
             previewFixtures.hostProfiles.map((profile) => [profile.id, profile]),
           ),
         })
+        applyHostSessionFacts(previewFixtures.hostSessions, hostSessionFactsIntent)
+      } else {
+        failHostSessionFacts(hostSessionFactsIntent)
       }
       patch({ loadingNavigation: false, loadingRequests: false })
-      return
+      return true
     }
 
     try {
@@ -132,32 +168,44 @@ export function createNavigationController(context: NavigationControllerContext)
       ])
       patch({
         hostProfiles: Object.fromEntries(profiles.map((profile) => [profile.id, profile])),
-        hostSessions: nextHostSessions,
       })
+      if (hostSessionFactsIntent !== hostSessionFactsGeneration) return true
+      applyHostSessionFacts(nextHostSessions, hostSessionFactsIntent)
       applyInboxSnapshot(nextInbox)
       await refreshRequests(openFirstRequest)
+      return true
     } catch (cause) {
+      if (hostSessionFactsIntent !== hostSessionFactsGeneration) return true
+      failHostSessionFacts(hostSessionFactsIntent)
       context.onPageError(context.messageFrom(cause))
+      return false
     } finally {
       patch({ loadingNavigation: false, loadingRequests: false })
     }
   }
 
   async function refreshNavigation(refreshRequestList = false) {
+    const hostSessionFactsIntent = beginHostSessionFactsRefresh()
     patch({ loadingNavigation: true })
     try {
       const [nextInbox, nextHostSessions] = await Promise.all([loadInbox(), loadHostSessions()])
+      if (hostSessionFactsIntent !== hostSessionFactsGeneration) return true
       applyInboxSnapshot(nextInbox)
-      patch({ hostSessions: nextHostSessions })
+      applyHostSessionFacts(nextHostSessions, hostSessionFactsIntent)
       if (refreshRequestList) await refreshRequests(false)
+      return true
     } catch (cause) {
+      if (hostSessionFactsIntent !== hostSessionFactsGeneration) return true
+      failHostSessionFacts(hostSessionFactsIntent)
       context.onPageError(context.messageFrom(cause))
+      return false
     } finally {
       patch({ loadingNavigation: false })
     }
   }
 
   async function refreshPage(minimumLoadingMs = MANUAL_PAGE_REFRESH_MIN_MS) {
+    const hostSessionFactsIntent = beginHostSessionFactsRefresh()
     const startedAt = now()
     patch({ loadingNavigation: true, loadingRequests: true, refreshingPage: true })
     try {
@@ -166,13 +214,16 @@ export function createNavigationController(context: NavigationControllerContext)
         loadHostSessions(),
         loadRequestList(),
       ])
+      if (hostSessionFactsIntent !== hostSessionFactsGeneration) return
       applyInboxSnapshot(nextInbox)
       patch({
-        hostSessions: nextHostSessions,
         requests: result.requests,
         nextRequestCursor: result.next_cursor,
       })
+      applyHostSessionFacts(nextHostSessions, hostSessionFactsIntent)
     } catch (cause) {
+      if (hostSessionFactsIntent !== hostSessionFactsGeneration) return
+      failHostSessionFacts(hostSessionFactsIntent)
       context.onPageError(context.messageFrom(cause))
     } finally {
       await waitForMinimumDuration(startedAt, minimumLoadingMs)
@@ -452,13 +503,13 @@ export function createNavigationController(context: NavigationControllerContext)
         context.clearWorkspace()
       }
       if (context.previewMode || !context.isTauri) {
-        patch({
-          hostSessions: get(store).hostSessions.filter(
+        applyHostSessionFacts(
+          get(store).hostSessions.filter(
             (candidate) =>
               candidate.host_id !== session.host_id ||
               candidate.host_session_id !== session.host_session_id,
           ),
-        })
+        )
         await refreshRequests(false)
         return
       }
@@ -473,18 +524,17 @@ export function createNavigationController(context: NavigationControllerContext)
     try {
       if (context.previewMode || !context.isTauri) {
         const pinnedAt = pinned ? new Date().toISOString() : null
-        store.update((current) => ({
-          ...current,
-          hostSessions: current.hostSessions.map((session) =>
+        applyHostSessionFacts(
+          get(store).hostSessions.map((session) =>
             session.host_id === hostId ? { ...session, host_pinned_at: pinnedAt } : session,
           ),
-        }))
+        )
         return
       }
       const nextSessions = await invoke<HostSessionSummary[]>('set_host_pinned', {
         input: { host_id: hostId, pinned },
       })
-      patch({ hostSessions: nextSessions })
+      applyHostSessionFacts(nextSessions)
     } catch (cause) {
       context.onPageError(context.messageFrom(cause))
       throw cause

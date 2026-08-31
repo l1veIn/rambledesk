@@ -107,6 +107,21 @@ const hostSessions: HostSessionSummary[] = [
   },
 ]
 
+const archivedHostSessions: HostSessionSummary[] = [
+  {
+    host_id: 'codex',
+    host_session_id: 'archived-preview-session',
+    title: 'Archived workspace recovery preview',
+    source_hint: 'C:/workspace/archived-preview',
+    request_count: 0,
+    pending_count: 0,
+    updated_at: '2026-08-01T08:12:00Z',
+    pinned_at: null,
+    archived_at: '2026-08-02T08:12:00Z',
+    host_pinned_at: null,
+  },
+]
+
 const hostProfiles: HostProfile[] = [
   {
     id: 'codex',
@@ -196,6 +211,7 @@ const resumePrompt: ResumePrompt = {
 export const previewFixtures = {
   requests,
   hostSessions,
+  archivedHostSessions,
   hostProfiles,
   workspace,
   resumePrompt,

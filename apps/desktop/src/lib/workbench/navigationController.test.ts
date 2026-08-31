@@ -46,7 +46,7 @@ function feedbackRequest(requestId: string): FeedbackRequestSummary {
   }
 }
 
-function hostSession(): HostSessionSummary {
+function hostSession(overrides: Partial<HostSessionSummary> = {}): HostSessionSummary {
   return {
     host_id: 'codex',
     host_session_id: 'session-1',
@@ -58,6 +58,7 @@ function hostSession(): HostSessionSummary {
     pinned_at: null,
     archived_at: null,
     host_pinned_at: null,
+    ...overrides,
   }
 }
 
@@ -106,9 +107,111 @@ describe('navigationController', () => {
     })
     const controller = createController({ openRequest })
 
-    await controller.initialize(false)
+    await expect(controller.initialize(false)).resolves.toBe(true)
 
     expect(openRequest).not.toHaveBeenCalled()
+  })
+
+  it('reports when initial navigation facts could not be loaded', async () => {
+    mocks.invoke.mockRejectedValueOnce(new Error('navigation unavailable'))
+    const onPageError = vi.fn()
+    const controller = createController({ onPageError })
+
+    await expect(controller.initialize(false)).resolves.toBe(false)
+
+    expect(onPageError).toHaveBeenCalledWith('Error: navigation unavailable')
+  })
+
+  it('keeps the newest host-session facts when an older refresh finishes late', async () => {
+    let releaseOlder: ((sessions: HostSessionSummary[]) => void) | undefined
+    const olderSessions = new Promise<HostSessionSummary[]>((resolve) => (releaseOlder = resolve))
+    let hostSessionCalls = 0
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === 'list_feedback_inbox') return []
+      if (command === 'list_host_sessions') {
+        hostSessionCalls += 1
+        return hostSessionCalls === 1
+          ? olderSessions
+          : [hostSession({ host_session_id: 'newest-session' })]
+      }
+      return undefined
+    })
+    const controller = createController()
+    let state: NavigationState | undefined
+    const unsubscribe = controller.subscribe((next) => (state = next))
+
+    try {
+      const older = controller.refreshNavigation()
+      await Promise.resolve()
+      const newest = controller.refreshNavigation()
+      await expect(newest).resolves.toBe(true)
+      releaseOlder?.([hostSession({ host_session_id: 'older-session' })])
+      await expect(older).resolves.toBe(true)
+
+      expect(state?.hostSessions[0]?.host_session_id).toBe('newest-session')
+      expect(state?.hostSessionFactsStatus).toBe('ready')
+      expect(state?.hostSessionFactsRevision).toBe(1)
+    } finally {
+      unsubscribe()
+    }
+  })
+
+  it('marks failed facts without discarding the last known host sessions', async () => {
+    const previous = hostSession()
+    let failing = false
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === 'list_feedback_inbox') return []
+      if (command === 'list_host_sessions') {
+        if (failing) throw new Error('host sessions unavailable')
+        return [previous]
+      }
+      if (command === 'list_host_profiles') return []
+      if (command === 'list_feedback_requests') {
+        return { requests: [], next_cursor: null } satisfies ListFeedbackRequestsOutput
+      }
+      return undefined
+    })
+    const controller = createController()
+    let state: NavigationState | undefined
+    const unsubscribe = controller.subscribe((next) => (state = next))
+
+    try {
+      await controller.initialize(false)
+      const readyRevision = state?.hostSessionFactsRevision
+      failing = true
+      await expect(controller.refreshNavigation()).resolves.toBe(false)
+
+      expect(state?.hostSessions).toEqual([previous])
+      expect(state?.hostSessionFactsStatus).toBe('failed')
+      expect(state?.hostSessionFactsRevision).toBe((readyRevision ?? 0) + 1)
+    } finally {
+      unsubscribe()
+    }
+  })
+
+  it('advances the facts revision when an identical refresh can retry recovery', async () => {
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === 'list_feedback_inbox') return []
+      if (command === 'list_host_sessions') return [hostSession()]
+      if (command === 'list_host_profiles') return []
+      if (command === 'list_feedback_requests') {
+        return { requests: [], next_cursor: null } satisfies ListFeedbackRequestsOutput
+      }
+      return undefined
+    })
+    const controller = createController()
+    let state: NavigationState | undefined
+    const unsubscribe = controller.subscribe((next) => (state = next))
+
+    try {
+      await controller.initialize(false)
+      const initialRevision = state?.hostSessionFactsRevision
+      await controller.refreshNavigation()
+
+      expect(state?.hostSessionFactsRevision).toBe((initialRevision ?? 0) + 1)
+    } finally {
+      unsubscribe()
+    }
   })
 
   it('refreshes page navigation and requests with a minimum loading duration', async () => {

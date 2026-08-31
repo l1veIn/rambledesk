@@ -22,6 +22,7 @@
   import { Sonner, toast } from './lib/components/ui/sonner'
   import ResumePromptDialog from './lib/workbench/ResumePromptDialog.svelte'
   import SessionWorkbench from './lib/workbench/SessionWorkbench.svelte'
+  import MissingSessionView from './lib/workspace/MissingSessionView.svelte'
   import type { JSONContent } from '@tiptap/core'
 
   import type {
@@ -30,6 +31,7 @@
     DraftView,
     FeedbackRequestView,
     FeedbackWorkspaceView,
+    HostSessionSummary,
     SubmitFeedbackInput,
   } from './lib/feedback'
   import {
@@ -68,6 +70,18 @@
     createWorkspaceSnapshot,
     type WorkspaceSnapshotV1,
   } from './lib/workspace/workspaceSnapshot'
+  import {
+    savedPreviewWorkspaceSnapshot,
+    savePreviewWorkspaceSnapshot,
+    seedPreviewWorkspaceScenario,
+  } from './lib/workspace/previewWorkspaceSnapshot'
+  import {
+    createSessionViewRecoveryResolver,
+    preserveLoadedSessionDuringUnconfirmedRecovery,
+    sessionViewResolution,
+    type SessionViewCatalog,
+    type SessionViewResolution,
+  } from './lib/workspace/sessionViewRecovery'
   import WorkspaceTabStrip from './lib/workspace/WorkspaceTabStrip.svelte'
   import {
     workspaceTabId,
@@ -155,6 +169,8 @@
   let workspace: FeedbackWorkspaceView | null = null
   let workspaceShellState: WorkspaceShellState = EMPTY_WORKSPACE_SHELL_STATE
   let renderedSessionView: SessionViewDescriptor | null = null
+  let renderedSessionResolution: SessionViewResolution | null = null
+  let sessionViewResolutions: readonly SessionViewResolution[] = []
   let sessionRequestIds = new Map<string, string>()
   let pendingWorkspaceViewKey: string | null = null
   let workbenchMounted = true
@@ -194,6 +210,9 @@
   let notificationState: NotificationState = 'checking'
   let settingsOpen = false
   let archivedSessionsOpen = false
+  let archivedInitialSession: SessionViewDescriptor | null = null
+  let lastSessionRecoveryFingerprint = ''
+  let activeRecoveryTransition: object | null = null
   let settingsSection: SettingsSection = 'general'
   let onboardingOpen = false
   let launchUpdateCheckDue = false
@@ -204,8 +223,14 @@
     import.meta.env.DEV &&
     !isTauri &&
     new URLSearchParams(window.location.search).get('preview') === 'fixtures'
-  const initialWorkspaceSnapshot = previewMode ? null : savedWorkspaceSnapshot()
-  const previewWorkspaceSnapshotStore: { value: WorkspaceSnapshotV1 | null } = { value: null }
+  const previewWorkspaceScenario = previewMode
+    ? seedPreviewWorkspaceScenario(
+        new URLSearchParams(window.location.search).get('workspace'),
+      )
+    : null
+  const initialWorkspaceSnapshot = previewMode
+    ? savedPreviewWorkspaceSnapshot()
+    : savedWorkspaceSnapshot()
   if (initialWorkspaceSnapshot) {
     workspaceShellState = initialWorkspaceSnapshot.shellState
     sessionRequestIds = new Map(initialWorkspaceSnapshot.requestIds)
@@ -351,6 +376,27 @@
     canSendOsBanners: () => isMac,
   })
   const resolveHostProfile = navigation.resolveHostProfile
+  const sessionViewRecoveryResolver = createSessionViewRecoveryResolver({
+    loadArchived: async () => {
+      const sessions =
+        previewMode || !isTauri
+          ? previewWorkspaceScenario === 'unknown'
+            ? await Promise.reject(new Error('Preview archived catalog unavailable'))
+            : previewFixtures.archivedHostSessions
+          : await invoke<HostSessionSummary[]>('list_archived_host_sessions', {
+              input: { search: null },
+            })
+      return sessions.map((session) =>
+        sessionViewDescriptor(session.host_id, session.host_session_id),
+      )
+    },
+    onInvalidate: () => {
+      if (!activeRecoveryTransition) return
+      activeRecoveryTransition = null
+      sessionWorkspaceTransition.invalidate()
+    },
+    onUpdate: applySessionViewResolutions,
+  })
 
   function currentDraftSnapshot(): FeedbackDraftSnapshot {
     return { documentJson: draftDocumentJson, bodyMarkdown: draftBody }
@@ -421,6 +467,10 @@
       )
     : undefined
   $: renderedSessionView = activeWorkspaceView(workspaceShellState)
+  $: renderedSessionResolution = sessionViewResolution(
+    sessionViewResolutions,
+    workspaceShellState.activeViewKey,
+  )
   const sessionTabLabel = (view: SessionViewDescriptor) => {
     const session = $navigation.hostSessions.find(
       (candidate) =>
@@ -470,6 +520,23 @@
     screenCaptureBusy ||
     currentRequestCooking ||
     cookedDraftReady
+  $: {
+    const recoveryFingerprint = `${$navigation.hostSessionFactsStatus}:${$navigation.hostSessionFactsRevision}:${workspaceShellState.views
+      .map(workspaceViewKey)
+      .join('\u0001')}:${$navigation.hostSessions
+      .map((session) =>
+        workspaceViewKey(sessionViewDescriptor(session.host_id, session.host_session_id)),
+      )
+      .sort()
+      .join('\u0001')}`
+    if (
+      $navigation.hostSessionFactsStatus !== 'pending' &&
+      recoveryFingerprint !== lastSessionRecoveryFingerprint
+    ) {
+      lastSessionRecoveryFingerprint = recoveryFingerprint
+      void refreshSessionViewRecovery()
+    }
+  }
   $: voiceActive =
     voicePhase === 'starting' ||
     voicePhase === 'listening' ||
@@ -552,10 +619,12 @@
     if (!isTauri) {
       startWorkbench()
       if (previewMode) {
-        workspace = previewFixtures.workspace
-        adoptDraft(previewFixtures.workspace.draft)
-        openLoadedWorkspaceView(previewFixtures.workspace)
-        savePhase = 'saved'
+        if (!initialWorkspaceSnapshot) {
+          workspace = previewFixtures.workspace
+          adoptDraft(previewFixtures.workspace.draft)
+          openLoadedWorkspaceView(previewFixtures.workspace)
+          savePhase = 'saved'
+        }
         if (new URLSearchParams(window.location.search).get('dialog') === 'resume') {
           resumePrompt = previewFixtures.resumePrompt
         }
@@ -622,6 +691,7 @@
     workbenchInitialized = true
     void (async () => {
       await navigation.initialize(initialWorkspaceSnapshot === null)
+      await refreshSessionViewRecovery()
       if (initialWorkspaceSnapshot) await restoreInitialWorkspaceSnapshot()
     })()
     if (isTauri) inboxTimer = setInterval(() => void navigation.refreshNavigation(true), 5_000)
@@ -682,7 +752,7 @@
   function persistCurrentWorkspaceSnapshot() {
     const snapshot = createWorkspaceSnapshot(workspaceShellState, sessionRequestIds)
     if (previewMode) {
-      previewWorkspaceSnapshotStore.value = snapshot
+      savePreviewWorkspaceSnapshot(snapshot)
       return
     }
     saveWorkspaceSnapshot(snapshot)
@@ -705,9 +775,95 @@
     )
   }
 
+  async function applySessionViewResolutions(
+    resolutions: readonly SessionViewResolution[],
+  ) {
+    const activeView = activeWorkspaceView(workspaceShellState)
+    const workspaceView = workspace
+      ? sessionViewDescriptor(workspace.request.host_id, workspace.request.host_session_id)
+      : null
+    const safeResolutions = preserveLoadedSessionDuringUnconfirmedRecovery(
+      resolutions,
+      workspaceView,
+    )
+    const nextActive = sessionViewResolution(
+      safeResolutions,
+      workspaceShellState.activeViewKey,
+    )
+    if (
+      activeView &&
+      nextActive?.kind === 'missing-session' &&
+      workspaceView &&
+      workspaceViewKey(workspaceView) === workspaceViewKey(activeView)
+    ) {
+      const recoveryTransition = {}
+      activeRecoveryTransition = recoveryTransition
+      const outcome = await sessionWorkspaceTransition.activate({
+        view: activeView,
+        requestId: null,
+        shellAction: { type: 'open' },
+        pendingViewKey: workspaceViewKey(activeView),
+      })
+      if (activeRecoveryTransition === recoveryTransition) {
+        activeRecoveryTransition = null
+      }
+      if (outcome !== 'activated') return false
+      await navigation.selectScope(null, null)
+    }
+    sessionViewResolutions = safeResolutions
+    return true
+  }
+
+  function activeSessionCatalog(): SessionViewCatalog {
+    if ($navigation.hostSessionFactsStatus === 'pending') return { status: 'pending' }
+    if ($navigation.hostSessionFactsStatus === 'failed') return { status: 'failed' }
+    return {
+      status: 'ready',
+      views: $navigation.hostSessions.map((session) =>
+        sessionViewDescriptor(session.host_id, session.host_session_id),
+      ),
+    }
+  }
+
+  async function refreshSessionViewRecovery() {
+    return sessionViewRecoveryResolver.refresh(
+      workspaceShellState.views,
+      activeSessionCatalog(),
+    )
+  }
+
+  async function retrySessionViewRecovery() {
+    const retryingMissingView = renderedSessionResolution?.kind === 'missing-session'
+    if (retryingMissingView) {
+      workbenchMounted = false
+      loadingWorkspace = true
+    }
+    await navigation.refreshNavigation(true)
+    lastSessionRecoveryFingerprint = ''
+    await refreshSessionViewRecovery()
+    const activeResolution = sessionViewResolution(
+      sessionViewResolutions,
+      workspaceShellState.activeViewKey,
+    )
+    if (activeResolution?.kind === 'active' && workspace === null) {
+      await restoreInitialWorkspaceSnapshot()
+    } else if (retryingMissingView) {
+      workbenchMounted = true
+      loadingWorkspace = false
+    }
+  }
+
   async function restoreInitialWorkspaceSnapshot() {
     const view = activeWorkspaceView(workspaceShellState)
     if (!view) {
+      clearWorkspace()
+      workbenchMounted = true
+      loadingWorkspace = false
+      return
+    }
+
+    const resolution = sessionViewResolution(sessionViewResolutions, workspaceViewKey(view))
+    if (!resolution || resolution.kind !== 'active') {
       clearWorkspace()
       workbenchMounted = true
       loadingWorkspace = false
@@ -791,6 +947,17 @@
       (candidate) => workspaceViewKey(candidate) === viewKey,
     )
     if (!view) return
+    const resolution = sessionViewResolution(sessionViewResolutions, viewKey)
+    if (resolution?.kind === 'missing-session') {
+      const outcome = await sessionWorkspaceTransition.activate({
+        view,
+        requestId: null,
+        shellAction: { type: 'open' },
+        pendingViewKey: viewKey,
+      })
+      if (outcome === 'activated') await navigation.selectScope(null, null)
+      return
+    }
 
     const selection = await navigation.selectScope(view.hostId, view.hostSessionId)
     if (!selection.selected) return
@@ -838,8 +1005,11 @@
       viewKey,
     })
     const fallbackView = activeWorkspaceView(nextShellState)
+    const fallbackResolution = fallbackView
+      ? sessionViewResolution(sessionViewResolutions, workspaceViewKey(fallbackView))
+      : null
     let fallbackRequestId: string | null = null
-    if (fallbackView) {
+    if (fallbackView && fallbackResolution?.kind !== 'missing-session') {
       const selection = await navigation.selectScope(
         fallbackView.hostId,
         fallbackView.hostSessionId,
@@ -863,6 +1033,12 @@
       shellAction: { type: 'close', viewKey },
       pendingViewKey: viewKey,
     })
+    if (
+      outcome === 'activated' &&
+      (!fallbackView || fallbackResolution?.kind === 'missing-session')
+    ) {
+      await navigation.selectScope(null, null)
+    }
     await restoreNavigationScope(priorScope, outcome)
   }
 
@@ -1102,8 +1278,9 @@
     }
   }
 
-  function openArchivedSessions() {
+  function openArchivedSessions(initialSession: SessionViewDescriptor | null = null) {
     settingsOpen = false
+    archivedInitialSession = initialSession
     archivedSessionsOpen = true
   }
 
@@ -1205,7 +1382,9 @@
     setSubmitStage: (stage) => {
       submitStage = stage
     },
-    refreshNavigation: (force) => navigation.refreshNavigation(force),
+    refreshNavigation: async (force) => {
+      await navigation.refreshNavigation(force)
+    },
     showSubmittedToast: (cooked) => {
       toast.success(tr('Feedback submitted'), {
         description: cooked ? tr('Cooked and uncooked feedback published') : tr('Feedback package published'),
@@ -1430,7 +1609,16 @@
               ? workspaceTabId(workspaceViewKey(renderedSessionView))
               : undefined}
           >
-            {#if workbenchMounted}
+            {#if renderedSessionResolution?.kind === 'missing-session'}
+              <MissingSessionView
+                missing={renderedSessionResolution}
+                label={sessionTabLabel(renderedSessionResolution.session)}
+                busy={renderedSessionResolution.reason === 'unresolved' || pendingWorkspaceViewKey !== null}
+                onRetry={retrySessionViewRecovery}
+                onClose={() => closeSessionTab(workspaceViewKey(renderedSessionResolution!.session))}
+                onOpenArchive={() => openArchivedSessions(renderedSessionResolution!.session)}
+              />
+            {:else if workbenchMounted}
               {#key renderedSessionView ? workspaceViewKey(renderedSessionView) : 'workspace:empty'}
               <SessionWorkbench
             bind:this={sessionWorkbench}
@@ -1546,8 +1734,9 @@
   {resolveHostProfile}
   formatTime={formatTimeLocal}
   {messageFrom}
+  initialSession={archivedInitialSession}
   onError={(message) => (pageError = message)}
-  onChanged={() => navigation.refreshNavigation(true)}
+  onChanged={retrySessionViewRecovery}
 />
 
 {#if settingsOpen}
