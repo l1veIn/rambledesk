@@ -4561,6 +4561,7 @@ dependencies = [
  "futures",
  "hex",
  "rambledesk-core",
+ "rambledesk-hosts",
  "rambledesk-mcp",
  "rambledesk-storage",
  "rand 0.10.2",

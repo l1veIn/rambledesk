@@ -12,6 +12,7 @@ futures.workspace = true
 hex.workspace = true
 rand.workspace = true
 rambledesk-core.workspace = true
+rambledesk-hosts.workspace = true
 rambledesk-mcp.workspace = true
 rmcp.workspace = true
 serde.workspace = true

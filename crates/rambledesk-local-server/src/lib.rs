@@ -1,5 +1,6 @@
 //! Authenticated loopback server for RambleDesk local transports.
 
+mod application_api;
 mod token;
 
 use std::{
@@ -38,6 +39,7 @@ use tokio::{net::TcpListener, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 use tower_service::Service;
 
+pub use application_api::application_router;
 pub use token::{AccessToken, TokenError, default_token_path};
 
 pub use rambledesk_core::{HOST_ENV_KEY, HOST_HEADER};
@@ -213,21 +215,26 @@ async fn api_feedback_result(
     Json(structured).into_response()
 }
 
-fn application_error_status(code: &str) -> StatusCode {
+pub(crate) fn application_error_status(code: &str) -> StatusCode {
     match code {
         "INVALID_ARGUMENT" => StatusCode::BAD_REQUEST,
-        "REQUEST_NOT_FOUND" | "ATTACHMENT_NOT_FOUND" => StatusCode::NOT_FOUND,
+        "REQUEST_NOT_FOUND" | "ATTACHMENT_NOT_FOUND" | "HOST_SESSION_NOT_FOUND" => {
+            StatusCode::NOT_FOUND
+        }
         "REQUEST_CONFLICT"
         | "RECOVERY_AMBIGUOUS"
         | "REQUEST_ALREADY_COMPLETED"
         | "REQUEST_TERMINAL"
         | "DRAFT_CONFLICT"
-        | "ATTACHMENT_LIMIT" => StatusCode::CONFLICT,
+        | "ATTACHMENT_LIMIT"
+        | "HOST_SESSION_HAS_OPEN_REQUESTS"
+        | "DELETE_REQUIRES_ARCHIVED_HOST_SESSION"
+        | "REQUEST_NOT_TERMINAL" => StatusCode::CONFLICT,
         _ => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }
 
-fn api_error_response(status: StatusCode, error: ApplicationError) -> Response<Body> {
+pub(crate) fn api_error_response(status: StatusCode, error: ApplicationError) -> Response<Body> {
     api_error_payload(status, error.code(), error.message(), error.retryable())
 }
 
@@ -530,7 +537,8 @@ pub async fn start_server(
         .route("/feedback/cancel", post(api_cancel_feedback))
         .with_state(ApiState {
             application: application.clone(),
-        });
+        })
+        .merge(application_router(application.clone()));
     let mcp = Router::new()
         .fallback(handle_mcp_request)
         .with_state(service);
@@ -560,4 +568,24 @@ pub async fn start_server(
         cancellation,
         task,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn application_error_status_covers_host_session_contracts() {
+        assert_eq!(
+            application_error_status("HOST_SESSION_NOT_FOUND"),
+            StatusCode::NOT_FOUND
+        );
+        for code in [
+            "HOST_SESSION_HAS_OPEN_REQUESTS",
+            "DELETE_REQUIRES_ARCHIVED_HOST_SESSION",
+            "REQUEST_NOT_TERMINAL",
+        ] {
+            assert_eq!(application_error_status(code), StatusCode::CONFLICT);
+        }
+    }
 }
