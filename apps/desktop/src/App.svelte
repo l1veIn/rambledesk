@@ -21,7 +21,7 @@
   import RequestListPane from './lib/components/navigation/RequestListPane.svelte'
   import { Sonner, toast } from './lib/components/ui/sonner'
   import ResumePromptDialog from './lib/workbench/ResumePromptDialog.svelte'
-  import WorkspacePanel from './lib/workbench/WorkspacePanel.svelte'
+  import SessionWorkbench from './lib/workbench/SessionWorkbench.svelte'
   import type { JSONContent } from '@tiptap/core'
 
   import type {
@@ -155,7 +155,7 @@
   let deliveredSaveError = ''
   let attachmentPreviews: Record<string, string> = {}
   let dragActive = false
-  let workspacePanel: FeedbackEditorHandle
+  let sessionWorkbench: FeedbackEditorHandle
   let rambleController: RambleSessionControllerHandle
   let resumePrompt: ResumePrompt | null = null
   let resumeCopyState: 'idle' | 'copied' | 'failed' = 'idle'
@@ -246,7 +246,7 @@
     tr,
     messageFrom,
     getWorkspace: () => workspace,
-    getEditor: () => workspacePanel,
+    getEditor: () => sessionWorkbench,
     getRambleRequestId: () => rambleRequestId,
     getInteractionLocked: () => interactionLocked || currentRequestCooking || cookedDraftReady,
     getSavedRevision: () => savedRevision,
@@ -666,10 +666,10 @@
         ) {
           throw new Error(tr('This request is closed. The document is read-only.'))
         }
-        let applied = workspacePanel?.applyDraftOperation(operation) ?? false
+        let applied = sessionWorkbench?.applyDraftOperation(operation) ?? false
         if (!applied) {
           await tick()
-          applied = workspacePanel?.applyDraftOperation(operation) ?? false
+          applied = sessionWorkbench?.applyDraftOperation(operation) ?? false
         }
         if (!applied) {
           throw new Error(tr('The current editor is not ready. Try the action again.'))
@@ -1053,8 +1053,8 @@
       />
 
       <Pane id="workspace-pane" minSize={workspaceMinimumSize}>
-        <WorkspacePanel
-          bind:this={workspacePanel}
+        <SessionWorkbench
+          bind:this={sessionWorkbench}
           bind:taskBriefOpen
           {loadingWorkspace}
           {workspace}
