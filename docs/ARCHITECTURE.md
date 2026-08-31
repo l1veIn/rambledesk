@@ -1,45 +1,121 @@
 # RambleDesk 架构基线
 
-> 状态：v2 当前基线。
+> 状态：v3 当前与目标边界。
 > 术语源：[TERMINOLOGY.md](TERMINOLOGY.md)。本文若与术语表冲突，以术语表为准。
 
-本文描述 RambleDesk 当前应遵循的结构边界。
+本文同时记录已经存在的结构与后续 Web 工作必须遵守的目标边界：
+
+- **CURRENT** 表示仓库当前已经实现并可验证的事实；
+- **TARGET** 表示已接受但尚未完成的演进边界，不得在产品文案中冒充已有能力。
+
+Backend Runtime 是运行角色，不是新 crate 的名字。除非另有标记，package 章节描述 CURRENT；
+TARGET 不预设新 crate、Web app 目录或 headless composition root。
 
 ## 运行时拓扑
 
+### CURRENT
+
 ```text
-┌────────────────────┐     MCP transport      ┌──────────────────────────────┐
-│ Generic MCP hosts  │ ─────────────────────→ │ RambleDesk local server      │
-│ Claude/Codex/...   │     /mcp               │                              │
-└────────────────────┘                         │  auth / listener / guards    │
-                                               │  route mounting              │
-┌────────────────────┐     Local JSON API      │                              │
-│ Pi package         │ ─────────────────────→ │  /api/feedback/*             │
-│ packages/pi-*      │     /api               │                              │
-└────────────────────┘                         └──────────────┬───────────────┘
-                                                              │
-┌────────────────────┐     Tauri commands/events              │
-│ Workbench UI       │ ←──────────────────────────────────────┘
-└────────────────────┘
-                                                              │
-                                                              ▼
-                                      ┌──────────────────────────────┐
-                                      │ rambledesk-core              │
-                                      │ application contracts         │
-                                      └──────────────┬───────────────┘
-                                                     │
-                                                     ▼
-                                      ┌──────────────────────────────┐
-                                      │ rambledesk-storage           │
-                                      │ SQLite + feedback packages   │
-                                      └──────────────────────────────┘
+┌────────────────────┐   MCP / Local JSON API   ┌──────────────────────────┐
+│ Host Adapters      │ ───────────────────────→ │ Local Integration Server │
+│ Generic MCP / Pi   │                          │ one /api + /mcp listener │
+└────────────────────┘                          └────────────┬─────────────┘
+                                                           │ application calls
+                                                           ▼
+┌────────────────────┐   Tauri Application      ┌──────────────────────────┐
+│ Desktop Client     │ ─ Transport Impl. ─────→ │ Backend Runtime          │
+└────────────────────┘                          │ core + storage + config  │
+                                                └──────────────────────────┘
+
+┌────────────────────┐
+│ Desktop Shell      │ ─── Native Capability Implementation
+└────────────────────┘      (outside Application Transport)
 ```
 
-`apps/desktop` 是装配根：它装配 storage、core application、本地服务、host knowledge、desktop-only capabilities。CLI 和测试可以复用同一套 crate，但不能成为第二套业务实现。
+`apps/desktop` 是 CURRENT composition root。每个 desktop 进程创建一份
+`FeedbackApplication`，由 Tauri state 与该进程的 Local Integration Server 共同调用；这不表示
+跨进程全局单例。当前只有一个承载 `/api` 与 `/mcp` 的 loopback listener，没有 Web 静态资源
+或 WebSocket route。MCP SSE 属于 MCP transport，不是 Web Client 的事件流。
+
+### TARGET
+
+```text
+┌────────────────────┐                          ┌──────────────────────────┐
+│ Host Adapters      │ → Local Integration ──→ │                          │
+└────────────────────┘   Server                 │                          │
+                                                │ Backend Runtime          │
+┌────────────────────┐   Tauri Application      │ same application Module  │
+│ Desktop Client     │ ─ Transport Impl. ─────→ │ and business facts       │
+└────────────────────┘                          │                          │
+                                                │                          │
+┌────────────────────┐   Web Access HTTP + WS   │                          │
+│ future Web Client  │ ─ Transport Impl. ─────→ │                          │
+└────────────────────┘                          └──────────────────────────┘
+
+Desktop Shell ─── Native Capability Implementation ───┐
+                                                      ├─ outside Application Transport
+Web browser  ─── Browser Capability Implementation ───┘
+```
+
+Desktop Client 与 future Web Client 复用同一 Workbench Client 和 Application Transport
+Interface。Tauri 与 HTTP + WebSocket 是两个 Implementation，但调用同一 Backend Runtime
+application Module；Web 路径不得形成第二套业务实现。
+
+Local Integration Server 与 Web Access 必须复用 server Module 内同一套 security policy/primitives，
+但拥有独立 listener handle、route set、credential、auth domain 和启停生命周期。单一安全策略
+实现不等于共享 listener。Web Access 默认关闭；停止它不得停止 Backend Runtime 或 Local
+Integration Server。
+
+## Application Transport 与恢复合同
+
+Application Transport Interface 暴露 typed command/query、变化订阅、ready barrier 和
+capability manifest。Capability manifest 只报告能力是否可用；设备操作不通过 Transport 执行。
+
+TARGET Web Transport 遵循：
+
+1. Backend Runtime 每次启动生成一个 opaque、进程生命周期内不变且跨启动唯一的
+   `runtime_generation`；
+2. WebSocket `ready` frame 携带该 generation。Client 只接受当前 connection epoch 的 ready，并
+   原子替换 active generation、清空旧投影、取消或标记旧 in-flight HTTP request 为 stale；
+3. HTTP snapshot/query 返回 Backend Runtime 当前事实的可丢弃投影，不成为第二事实源；每份
+   snapshot 携带 generation 和相关 resource revision；
+4. WebSocket 只传递 readiness 与轻量 invalidation，不承载 canonical Request/Draft/Package；
+   invalidation 携带同一 generation 下可比较的 resource key/revision；
+5. 客户端确认 ready 并建立 active generation 后，才允许发出会产生事件或修改状态的 command，
+   避免首次订阅窗口丢事件。typed command envelope 携带 `expected_runtime_generation`，Web HTTP
+   Implementation 映射为 `X-RambleDesk-Runtime-Generation`；Web session record 也绑定签发时的
+   generation。服务端在任何领域副作用前原子比较 session、command 与当前 generation，任一不匹配
+   都返回 HTTP `409` / typed `stale_generation`；Client 重新 bootstrap、连接并 refetch。resource
+   revision/CAS 不能替代该 runtime generation 检查；
+6. Client 只应用与 active ready generation 一致、且 revision 不低于已应用投影的 response；来自
+   旧 socket、旧 connection epoch 或旧 generation 的 frame/response 一律丢弃；
+7. fetch 期间若收到更高 revision 的 invalidation，当前 fetch 完成后必须再次 refetch；
+8. WebSocket 断线后先重新建立并确认 ready，再 refetch 完整 snapshot；
+9. 首期不实现 sequence replay、ring buffer 或 multiplex protocol。
+
+CURRENT Tauri commands/events 仍是 Desktop Client 的具体 Implementation。现有 MCP SSE 不能
+复用为上述 WebSocket invalidation/readiness contract。
+
+## Capability 边界
+
+Native Capability 与 Browser Capability 都位于 Application Transport 之外。共享 Workbench
+Client 只能根据 capability manifest 呈现可用操作：
+
+- Native Capability 可以提供全局快捷键、系统截图、原生录音、tray、updater 和 native dialog；
+- Browser Capability 受 secure context、浏览器权限、用户手势和当前设备限制；
+- Browser file picker 选择客户端文件，不代表 Backend Runtime 所在机器的 working directory；
+- 缺失或降级的 Browser Capability 必须明确不可用，不能伪装成 Native Capability 等价实现。
 
 ## Feedback Draft 所有权
 
-工作台最多只有一个可编辑 `RichFeedbackEditor`。当前 request 通过 Editor transaction 写入；后台 Active Ramble 通过 TipTap JSON transformation、单一串行队列和 CAS 写入。数据库以版本化 `document_json` 为真源，保存时从同一 Document 同时生成 `body_markdown`。详见 [ADR 004](adr/004-single-editor-structured-draft.md)。
+每个 Workbench Client instance 最多只有一个可编辑 `RichFeedbackEditor`。当前 request 通过 Editor
+transaction 写入；后台 Active Ramble 通过 TipTap JSON transformation、单一串行队列和
+CAS 写入。数据库以版本化 `document_json` 为真源，保存时从同一 Document 同时生成
+`body_markdown`。多个客户端并发编辑时，Backend Runtime 的 Draft revision/CAS 负责仲裁；
+冲突必须显式反馈给人类，不得静默覆盖。详见
+[ADR 004](adr/004-single-editor-structured-draft.md)。ADR 005 将 ADR 004 的“整个应用”作用域修订为
+“每个 Workbench Client instance”；同一 Draft 可以在多个客户端打开，但只能通过 Backend Runtime
+revision/CAS 协调，不能共享 Editor handle 或 client-local 文档状态。
 
 禁止 per-request Editor、hidden Editor、session 持有 editor handle，以及自动 Tidy。
 
@@ -54,7 +130,7 @@ rambledesk/
 ├── crates/
 │   ├── rambledesk-core/          # application contract
 │   ├── rambledesk-storage/       # SQLite + feedback package publication
-│   ├── rambledesk-local-server/  # loopback HTTP server + JSON API
+│   ├── rambledesk-local-server/  # CURRENT Local Integration Server
 │   ├── rambledesk-mcp/           # Generic MCP Adapter (tool surface + installer engine)
 │   ├── rambledesk-hosts/         # Host knowledge registry + profiles + continuation strategy
 │   ├── rambledesk-speech/
@@ -77,7 +153,7 @@ rambledesk/
 不得持有：
 
 - HTTP、JSON、MCP、Pi package、Tauri command；
-- 本地服务 listener、token path、Host/Origin guard；
+- Local Integration Server listener、token path、Host/Origin guard；
 - 宿主安装逻辑、host profile、continuation strategy；
 - 源码 checkout 模型或路径依赖。
 
@@ -98,7 +174,7 @@ rambledesk/
 - 源码 checkout runtime 语义；
 - UI 或 transport 细节。
 
-### `rambledesk-local-server`
+### `rambledesk-local-server`（CURRENT）
 
 持有：
 
@@ -108,6 +184,10 @@ rambledesk/
 - `/api/feedback/request|get|wait|cancel`；
 - `/mcp` route mounting；
 - server handle、endpoint、port configuration。
+
+TARGET Web Access 必须复用该 crate/server Module 的 security policy/primitives；本架构不据此要求
+新 crate，也不允许它复用 Local Integration Server 的 listener handle、credential、auth domain、
+route set 或启停生命周期。
 
 不得持有：
 
@@ -164,23 +244,46 @@ rambledesk/
 - desktop UI 状态；
 - RambleDesk storage 逻辑。
 
-### Desktop
+### Desktop（CURRENT）
 
-Tauri 壳负责：
+Desktop Shell 负责：
 
 - 进程、窗口、tray、系统通知、文件选择、权限提示；
-- 装配 storage、core、本地服务、hosts；
+- 每进程装配一份 Backend Runtime、Local Integration Server 与 hosts；
 - 暴露 Tauri commands；
 - 桥接领域结果为前端事件。
 
-Svelte UI 负责：
+Desktop Client 中的 Svelte Workbench Client 负责：
 
 - 工作台投影；
 - 人类反馈输入；
 - 草稿、截图、录音、附件交互；
 - 设置中的适配器安装 UX。
 
-UI 不持有唯一事实状态。Tauri events 和系统通知都是提示，不是事实来源。
+Workbench Client 不持有唯一业务事实。Tauri events 和系统通知都是提示，不是事实来源。
+TARGET Web Client 复用该 UI，但不复用 Desktop Shell 或 Native Capability Implementation。
+
+### Workbench Client 生命周期
+
+- 关闭 workspace Tab、关闭或刷新浏览器、Transport 断线，都只结束对应 Client 的 view / projection；
+- 上述行为不得隐式 submit、cancel、archive Request，也不得停止后台 Active Ramble 或未来 Agent /
+  Session Runtime；
+- submit、cancel、archive 与停止 runtime 必须是可审计的显式 application command；
+- Client 应持续 autosave canonical Draft 变更。关闭 workspace view 仍执行既有 save gate；浏览器
+  `unload` 不可靠，因此不能把唯一一次保存或任何终态 mutation 放在 `unload` handler 中；
+- 重连或重新打开 view 时，从 Backend Runtime 重新读取 Request、Draft revision 与运行状态。
+
+### Audio Source 与 Speech Engine
+
+Audio Source 是 device Capability，speech recognition 是 Backend Runtime 使用的 Speech Engine：
+
+- Desktop 的 Native Audio Source 可以把本机音频流直接交给既有 Speech Engine；
+- Browser Audio Source 通过浏览器权限和用户手势取得媒体，首期把 MediaRecorder Blob 或有界分段
+  经 authenticated HTTP 上传到 server-side recognition session；
+- Desktop 与 Web 必须投影同一 SpeechEvent contract，断线、停止、权限拒绝或设备丢失都要显式
+  终结 recognition session；
+- 只有实时 partial transcript 成为明确验收需求时，才新增独立 binary WebSocket；不得复用首期
+  invalidation WebSocket 传 PCM。
 
 ## 事实来源
 
@@ -193,9 +296,13 @@ UI 不持有唯一事实状态。Tauri events 和系统通知都是提示，不�
 | 宿主身份 | adapter-provided `host_id`，服务端可按安装入口覆盖 |
 | 宿主会话关联 | adapter-provided `host_session_id` |
 | 上下文提示 | request `context_refs` / `source_hint` |
-| UI 当前页面/展开项 | 前端内存 |
+| Session tabs、顺序、active view、pane 尺寸 | 每个 Workbench Client 的 client-local workspace snapshot |
 | 系统通知 | best-effort side effect |
 | 局部转写 | speech session 内存；定期 checkpoint 到 Draft |
+
+HTTP snapshot、Tauri query result 和 WebSocket invalidation 都是上述事实的投影或提示，不是
+额外事实源。终态提交、取消等 application operation 必须幂等；CAS 冲突必须保留可见错误，
+不得由任一 Transport Implementation 自动覆盖。
 
 ## 核心流程
 
@@ -206,7 +313,7 @@ MCP request_feedback
   → rambledesk-mcp 映射工具输入
   → rambledesk-core request_feedback
   → rambledesk-storage 持久化请求
-  → 本地服务返回 waiting 结果
+  → Local Integration Server 返回 waiting 结果
   → 宿主智能体结束当前 turn
   → 人类在工作台提交/取消
   → 手动 continuation 提示
@@ -237,7 +344,7 @@ SubmitFeedback(request_id, expected_revision)
   → render package into temp directory
   → flush + hash
   → atomic publish
-  → mark request completed
+  → persist terminal request state + package metadata
   → notify waiters / prepare continuation prompt
 ```
 
@@ -272,9 +379,58 @@ waiting → in_progress → completed
 
 ## 安全边界
 
-- 本地服务只监听 loopback。
-- 所有 `/api` 和 `/mcp` 请求必须通过 bearer token。
-- Host header 必须是 loopback host。
-- Origin 只允许受信任 desktop/webview origin 或空 origin 的本地工具调用。
-- `host_id`、`host_session_id` 不是认证凭据。
-- 返回路径只保证同机、共享文件系统可见。
+### CURRENT：Local Integration Server
+
+- 每个 desktop 进程当前只有一个 `/api` + `/mcp` listener，且只绑定 loopback。
+- Local Integration Server 使用持久的 256-bit hex bearer token，并以 constant-time comparison
+  校验所有 `/api` 与 `/mcp` 请求。
+- token 文件在 Unix 上使用 `0600`；非 Unix 平台当前没有文档化的等价 ACL 保证，因此该凭据
+  不得直接复用为 Web credential。
+- Host 只接受 `127.0.0.1` 或 `localhost`；Origin 缺失时只作为本地非浏览器客户端调用放行，
+  Origin 存在时必须 exact-match allowlist。
+- 当前统一 request body limit 为 96 MiB。
+- 当前 listener 不提供 Web 静态资源或 WebSocket。MCP SSE 不属于 Web event stream。
+- Draft revision/CAS 已存在于 application/storage 路径，但 HTTP command/query parity 尚未实现。
+- `host_id`、`host_session_id` 不是认证凭据；返回路径只保证同机、共享文件系统可见。
+
+### TARGET：Web Access
+
+- Web Access 默认关闭，第一阶段使用独立 listener 且只绑定 `127.0.0.1`；它拥有与 Local
+  Integration Server 分离的 route set、credential、auth domain 和 lifecycle。
+- 静态资源、HTTP API 与 WebSocket 使用 same-origin 且不开放宽泛 CORS。两类 listener 必须复用
+  同一套 security policy/primitives。所有请求严格校验
+  Host；bootstrap、受保护 API 与 WebSocket handshake 还必须 exact-match Origin，以防 DNS
+  rebinding；共享安全实现不表示共享 listener 或 credential。
+- Desktop composition root 装配的 Web Access security Module 在人类显式启用或重新生成 Web
+  credential 时创建并持久化独立的 256-bit durable token；Backend Runtime/core 不拥有 transport
+  credential。只有 Desktop 设置界面可以经人类操作显示或复制 durable token。
+- durable token 优先进入 OS credential store（macOS Keychain、Windows Credential Manager、
+  可用时的 Linux Secret Service），并在平台支持时使用 device-local / non-sync 属性。仅允许回退到
+  通用配置和 RambleDesk backup/export roots 之外的专用 secret file：Unix mode `0600`，Windows
+  使用仅当前用户可读的 DACL，并在平台支持时设置 backup exclusion；无法建立或验证 user-only
+  protection 时 Web Access 必须 fail closed。RambleDesk 不得把 token 复制到通用配置、SQLite、
+  日志、诊断包、自己生成的 backup/export 或 Feedback Package；OS 管理的加密设备/账户备份属于
+  平台安全边界，不宣称应用能够绝对排除。
+- 浏览器以 `Authorization: Bearer <durable-web-token>` 调用 same-origin
+  `POST /api/auth/session` 完成 bootstrap；成功后得到 scope 受限、idle TTL 30 分钟、absolute TTL
+  12 小时的 session token。任一受保护请求或已认证 WebSocket 活动可以刷新 idle TTL，但不能延长
+  absolute TTL。停止 Web Access 必须撤销所有 session；重新生成 durable token 必须同时撤销旧
+  token 与全部 session。
+- session token 只存在 Web Access 进程内存与浏览器当前 JavaScript 内存；durable/session token
+  都不得进入 `sessionStorage`、`localStorage`、IndexedDB、URL、日志或 Feedback Package。刷新或
+  关闭页面后必须重新 bootstrap。服务端比较
+  credential 时使用 constant-time comparison，并对认证 header 和错误上下文做日志脱敏。
+- 浏览器 HTTP 请求使用 `Authorization: Bearer <session-token>`。
+- 浏览器 WebSocket 通过 `Sec-WebSocket-Protocol` 同时提供稳定协议 `rambledesk-events` 与
+  credential-bearing protocol `rambledesk-session.<base64url-no-pad-session-token>`，禁止 query
+  token。服务端校验二者后只选择并回显 `rambledesk-events`，不得把 credential-bearing protocol
+  回显给客户端、代理日志或诊断输出。
+- Web routes 分别设置 body、upload、rate 与 concurrent-connection 上限；不得直接继承当前
+  96 MiB 的统一 body limit 作为完整 Web 资源策略。
+- sensitive command 必须单独分类、授权与审计；Application Transport 可达不等于拥有所有
+  Native Capability 或管理权限。
+- LAN Web Access 延后；启用前必须使用 HTTPS/WSS 或受信任 TLS proxy，并重新审计 origin、
+  credential delivery、设备暴露与文件访问边界。
+
+以上目标决策记录于
+[ADR 005](adr/005-shared-workbench-transport-capabilities.md)。
