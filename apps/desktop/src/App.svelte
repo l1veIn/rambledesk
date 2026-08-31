@@ -21,7 +21,7 @@
   import RequestListPane from './lib/components/navigation/RequestListPane.svelte'
   import { Sonner, toast } from './lib/components/ui/sonner'
   import ResumePromptDialog from './lib/workbench/ResumePromptDialog.svelte'
-  import WorkspacePanel from './lib/workbench/WorkspacePanel.svelte'
+  import SessionWorkbench from './lib/workbench/SessionWorkbench.svelte'
   import type { JSONContent } from '@tiptap/core'
 
   import type {
@@ -53,6 +53,10 @@
   import { currentDesktopPlatform } from './lib/platform'
   import { isWithinLast24Hours } from './lib/requestRecency'
   import { checkForUpdates } from './lib/updater'
+  import {
+    sessionViewDescriptor,
+    type SessionViewDescriptor,
+  } from './lib/workspace/viewDescriptors'
   import { previewFixtures, previewWorkspaceFor } from './lib/previewFixtures'
   import {
     restorePublishedAttachmentUrls,
@@ -126,6 +130,7 @@
   const formatTimeLocal = (value: string | null | undefined) =>
     formatTime(value, $locale, tr('Not saved yet'))
   let workspace: FeedbackWorkspaceView | null = null
+  let sessionView: SessionViewDescriptor | null = null
   let completedResult: FeedbackRequestView | null = null
   let publishedFeedback: PublishedFeedbackView | null = null
   let draftBody = ''
@@ -155,7 +160,7 @@
   let deliveredSaveError = ''
   let attachmentPreviews: Record<string, string> = {}
   let dragActive = false
-  let workspacePanel: FeedbackEditorHandle
+  let sessionWorkbench: FeedbackEditorHandle
   let rambleController: RambleSessionControllerHandle
   let resumePrompt: ResumePrompt | null = null
   let resumeCopyState: 'idle' | 'copied' | 'failed' = 'idle'
@@ -246,7 +251,7 @@
     tr,
     messageFrom,
     getWorkspace: () => workspace,
-    getEditor: () => workspacePanel,
+    getEditor: () => sessionWorkbench,
     getRambleRequestId: () => rambleRequestId,
     getInteractionLocked: () => interactionLocked || currentRequestCooking || cookedDraftReady,
     getSavedRevision: () => savedRevision,
@@ -352,6 +357,11 @@
           session.host_session_id === $navigation.selectedHostSessionId,
       )
     : undefined
+  $: sessionView = workspace
+    ? sessionViewDescriptor(workspace.request.host_id, workspace.request.host_session_id)
+    : $navigation.selectedHostId && $navigation.selectedHostSessionId
+      ? sessionViewDescriptor($navigation.selectedHostId, $navigation.selectedHostSessionId)
+      : null
   $: requestScopeLabel = $navigation.selectedHostId
     ? $navigation.selectedHostSessionId
       ? selectedHostSession?.source_hint ??
@@ -666,10 +676,10 @@
         ) {
           throw new Error(tr('This request is closed. The document is read-only.'))
         }
-        let applied = workspacePanel?.applyDraftOperation(operation) ?? false
+        let applied = sessionWorkbench?.applyDraftOperation(operation) ?? false
         if (!applied) {
           await tick()
-          applied = workspacePanel?.applyDraftOperation(operation) ?? false
+          applied = sessionWorkbench?.applyDraftOperation(operation) ?? false
         }
         if (!applied) {
           throw new Error(tr('The current editor is not ready. Try the action again.'))
@@ -1053,8 +1063,9 @@
       />
 
       <Pane id="workspace-pane" minSize={workspaceMinimumSize}>
-        <WorkspacePanel
-          bind:this={workspacePanel}
+        <SessionWorkbench
+          bind:this={sessionWorkbench}
+          view={sessionView}
           bind:taskBriefOpen
           {loadingWorkspace}
           {workspace}

@@ -1,7 +1,8 @@
 import type { HostSessionSummary } from '$lib/feedback'
+import { sessionViewDescriptor, workspaceViewKey } from '$lib/workspace/viewDescriptors'
 
 export function hostSessionKey(session: HostSessionSummary): string {
-  return `${session.host_id}\u0000${session.host_session_id}`
+  return workspaceViewKey(sessionViewDescriptor(session.host_id, session.host_session_id))
 }
 
 export function orderSessionRailSessions(

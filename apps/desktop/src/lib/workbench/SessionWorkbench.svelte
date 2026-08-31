@@ -17,6 +17,10 @@
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
   import { savePaneLayout, savedPaneLayout } from '$lib/uiPreferences'
+  import {
+    workspaceViewKey,
+    type SessionViewDescriptor,
+  } from '$lib/workspace/viewDescriptors'
   import type {
     FeedbackEditorHandle,
     HostProfile,
@@ -32,6 +36,7 @@
   import WorkspaceHeader from './WorkspaceHeader.svelte'
 
   export let loadingWorkspace = false
+  export let view: SessionViewDescriptor | null = null
   export let workspace: FeedbackWorkspaceView | null = null
   export let feedbackResult: FeedbackResultView | null = null
   export let taskBriefOpen = true
@@ -188,7 +193,10 @@
   }
 </script>
 
-<section class="workspace-panel relative flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background">
+<section
+  class="workspace-panel relative flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background"
+  data-workspace-view-key={view ? workspaceViewKey(view) : undefined}
+>
   {#if loadingWorkspace}
     <div class="grid h-full min-h-0 grid-rows-[64px_1fr]">
       <div class="flex items-center gap-3 border-b px-5">
