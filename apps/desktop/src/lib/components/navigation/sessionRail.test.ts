@@ -34,10 +34,10 @@ describe('orderSessionRailSessions', () => {
     ]
 
     expect(orderSessionRailSessions(sessions).map(hostSessionKey)).toEqual([
-      'claude\u0000latest-pinned',
-      'codex\u0000older-pinned',
-      'pi\u0000latest-unpinned',
-      'codex\u0000older-unpinned',
+      'session:["claude","latest-pinned"]',
+      'session:["codex","older-pinned"]',
+      'session:["pi","latest-unpinned"]',
+      'session:["codex","older-unpinned"]',
     ])
     expect(sessions.map((entry) => entry.host_session_id)).toEqual([
       'latest-unpinned',
@@ -57,10 +57,10 @@ describe('orderSessionRailSessions', () => {
     ]
 
     expect(orderSessionRailSessions(sessions).map(hostSessionKey)).toEqual([
-      'codex\u0000alpha',
-      'codex\u0000shared',
-      'codex\u0000zeta',
-      'pi\u0000shared',
+      'session:["codex","alpha"]',
+      'session:["codex","shared"]',
+      'session:["codex","zeta"]',
+      'session:["pi","shared"]',
     ])
     expect(hostSessionKey(sessions[0])).not.toBe(hostSessionKey(sessions[3]))
   })
@@ -73,9 +73,9 @@ describe('orderSessionRailSessions', () => {
     ]
 
     expect(orderSessionRailSessions(sessions).map(hostSessionKey)).toEqual([
-      'codex\u0000newer-host-session',
-      'codex\u0000older-host-session',
-      'pi\u0000pinned-session',
+      'session:["codex","newer-host-session"]',
+      'session:["codex","older-host-session"]',
+      'session:["pi","pinned-session"]',
     ])
   })
 })

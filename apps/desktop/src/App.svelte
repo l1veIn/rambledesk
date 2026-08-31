@@ -53,6 +53,10 @@
   import { currentDesktopPlatform } from './lib/platform'
   import { isWithinLast24Hours } from './lib/requestRecency'
   import { checkForUpdates } from './lib/updater'
+  import {
+    sessionViewDescriptor,
+    type SessionViewDescriptor,
+  } from './lib/workspace/viewDescriptors'
   import { previewFixtures, previewWorkspaceFor } from './lib/previewFixtures'
   import {
     restorePublishedAttachmentUrls,
@@ -126,6 +130,7 @@
   const formatTimeLocal = (value: string | null | undefined) =>
     formatTime(value, $locale, tr('Not saved yet'))
   let workspace: FeedbackWorkspaceView | null = null
+  let sessionView: SessionViewDescriptor | null = null
   let completedResult: FeedbackRequestView | null = null
   let publishedFeedback: PublishedFeedbackView | null = null
   let draftBody = ''
@@ -352,6 +357,11 @@
           session.host_session_id === $navigation.selectedHostSessionId,
       )
     : undefined
+  $: sessionView = workspace
+    ? sessionViewDescriptor(workspace.request.host_id, workspace.request.host_session_id)
+    : $navigation.selectedHostId && $navigation.selectedHostSessionId
+      ? sessionViewDescriptor($navigation.selectedHostId, $navigation.selectedHostSessionId)
+      : null
   $: requestScopeLabel = $navigation.selectedHostId
     ? $navigation.selectedHostSessionId
       ? selectedHostSession?.source_hint ??
@@ -1055,6 +1065,7 @@
       <Pane id="workspace-pane" minSize={workspaceMinimumSize}>
         <SessionWorkbench
           bind:this={sessionWorkbench}
+          view={sessionView}
           bind:taskBriefOpen
           {loadingWorkspace}
           {workspace}
