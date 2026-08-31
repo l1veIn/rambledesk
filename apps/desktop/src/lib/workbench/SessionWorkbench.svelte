@@ -32,7 +32,6 @@
   import FeedbackEditorPanel from './FeedbackEditorPanel.svelte'
   import RequestAttachmentPreview from './RequestAttachmentPreview.svelte'
   import TaskBriefPanel from './TaskBriefPanel.svelte'
-  import TaskBriefPreview from './TaskBriefPreview.svelte'
   import WorkspaceHeader from './WorkspaceHeader.svelte'
 
   export let loadingWorkspace = false
@@ -88,6 +87,8 @@
   export let onToggleRamble: () => void = () => {}
   export let onExitRamble: () => void = () => {}
   export let onOpenVoiceSettings: () => void = () => {}
+  export let onOpenTask: (requestId: string) => void = () => {}
+  export let onAutoOpenTask: (requestId: string) => void = () => {}
   export let onStartScreenCapture: () => void = () => {}
   export let onImportClipboard: () => void = () => {}
   export let onFileSelection: (event: Event) => void = () => {}
@@ -114,34 +115,23 @@
     | undefined
   let documentPaneGroup: { setLayout: (layout: number[]) => void } | undefined
   let documentLayoutReady = false
-  let taskBriefPreviewOpen = false
-  let taskBriefPreviewOrigin: string | null = null
-  let autoPreviewedRequestId = ''
-  let briefPulseNonce = 0
-  let previewWasOpen = false
+  let autoOpenedTaskRequestId = ''
 
   $: if (taskBriefPane) {
     if (taskBriefOpen && taskBriefPane.isCollapsed()) taskBriefPane.expand()
     else if (!taskBriefOpen && !taskBriefPane.isCollapsed()) taskBriefPane.collapse()
   }
-  // Auto-open the full-screen brief when switching to a request that is still
-  // waiting for the human to begin.
+  // Waiting requests open their Task workspace once through the same route as
+  // the explicit preview action.
   $: if (
     workspace &&
     workspace.request.status === 'waiting' &&
-    workspace.request.request_id !== autoPreviewedRequestId
+    workspace.request.request_id !== autoOpenedTaskRequestId
   ) {
-    autoPreviewedRequestId = workspace.request.request_id
-    taskBriefPreviewOrigin = null
-    taskBriefPreviewOpen = true
+    autoOpenedTaskRequestId = workspace.request.request_id
+    onAutoOpenTask(workspace.request.request_id)
   }
   $: interactionLocked = cooking || cookedDraftReady || submitting || cancelling || approving
-  // Nudge the preview button when the full-screen brief collapses back to it.
-  $: {
-    const nowOpen = taskBriefPreviewOpen
-    if (previewWasOpen && !nowOpen) briefPulseNonce += 1
-    previewWasOpen = nowOpen
-  }
 
   function saveDocumentLayout(layout: number[]) {
     if (documentLayoutReady) savePaneLayout(WORKSPACE_DOCUMENT_LAYOUT_KEY, layout)
@@ -235,12 +225,8 @@
               bind:open={taskBriefOpen}
               {workspace}
               {activeActionId}
-              pulseNonce={briefPulseNonce}
               onSelectAction={onSelectAction}
-              onOpenPreview={(origin) => {
-                taskBriefPreviewOrigin = origin
-                taskBriefPreviewOpen = true
-              }}
+              onOpenPreview={() => onOpenTask(workspace!.request.request_id)}
             />
           </Pane>
 
@@ -330,20 +316,6 @@
       readKind="workspace"
     />
 
-    <TaskBriefPreview
-      bind:open={taskBriefPreviewOpen}
-      {workspace}
-      {editorDocument}
-      previews={attachmentPreviews}
-      onOpenAttachment={openAttachmentPreviewById}
-      {formatTime}
-      {resolveHostProfile}
-      {onToggleRamble}
-      {ramblePhase}
-      {rambleStartedOnce}
-      {rambleBusy}
-      origin={taskBriefPreviewOrigin}
-    />
   {:else}
     <div class="grid h-full place-items-center p-8 text-center">
       <div class="max-w-xs">

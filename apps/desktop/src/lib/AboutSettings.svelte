@@ -6,7 +6,6 @@
   import { onMount } from 'svelte'
 
   import rambelleSticker from '../assets/rambelle-states/idle.webp'
-  import RambelleProfileDialog from './RambelleProfileDialog.svelte'
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
   import { toast } from '$lib/components/ui/sonner'
@@ -25,9 +24,9 @@
   } from '$lib/updater'
 
   export let installBlocked = false
+  export let onOpenRambelleProfile: () => void = () => {}
 
   let version = '0.0.1'
-  let profileOpen = false
   type DiagnosticScope = 'last_24_hours' | 'last_7_days' | 'all'
 
   let exporting: DiagnosticScope | null = null
@@ -159,7 +158,11 @@
           </p>
         </div>
       </div>
-      <Button variant="outline" class="shrink-0" onclick={() => (profileOpen = true)}>
+      <Button
+        variant="outline"
+        class="shrink-0"
+        onclick={onOpenRambelleProfile}
+      >
         <Sparkles data-icon="inline-start" />
         {tr('View character profile')}
       </Button>
@@ -333,5 +336,3 @@
     © 2026 RambleDesk · MIT · {tr('See THIRD_PARTY_NOTICES.md for third-party component notices')}
   </p>
 </div>
-
-<RambelleProfileDialog bind:open={profileOpen} />

@@ -14,7 +14,7 @@ describe('preview workspace snapshot store', () => {
   it('keeps preview navigation in memory without browser storage', () => {
     const view = sessionViewDescriptor('codex', 'preview-session')
     savePreviewWorkspaceSnapshot({
-      version: 1,
+      version: 2,
       views: [{ ...view, lastRequestId: 'preview-request' }],
       activeViewKey: workspaceViewKey(view),
     })
@@ -46,5 +46,28 @@ describe('preview workspace snapshot store', () => {
   it('ignores unknown browser acceptance scenarios', () => {
     expect(seedPreviewWorkspaceScenario('other')).toBeNull()
     expect(savedPreviewWorkspaceSnapshot()).toBeNull()
+  })
+
+  it('seeds settings as a singleton workspace view without transient section state', () => {
+    expect(seedPreviewWorkspaceScenario('settings')).toBe('settings')
+    expect(savedPreviewWorkspaceSnapshot()?.shellState).toEqual({
+      views: [{ kind: 'settings' }],
+      activeViewKey: 'settings:singleton',
+    })
+    expect(savedPreviewWorkspaceSnapshot()?.requestIds.size).toBe(0)
+  })
+
+  it.each([
+    ['task', { kind: 'request-task', requestId: '019fc1d9-51e7-7eb2-b196-e9266947fc41' }],
+    ['profile', { kind: 'rambelle-profile' }],
+  ] as const)('seeds the %s non-session workspace scenario', (scenario, view) => {
+    expect(seedPreviewWorkspaceScenario(scenario)).toBe(scenario)
+    expect(savedPreviewWorkspaceSnapshot()?.shellState).toEqual({
+      views: [view],
+      activeViewKey:
+        scenario === 'task'
+          ? 'request-task:"019fc1d9-51e7-7eb2-b196-e9266947fc41"'
+          : 'rambelle-profile:singleton',
+    })
   })
 })

@@ -320,6 +320,7 @@ const chinese: Record<string, string> = {
   'The capture tool encountered a problem': '截图工具遇到问题',
   'Close': '关闭',
   'Workspace tabs': '工作区标签页',
+  'Close workspace tab': '关闭工作区标签页',
   'Close session tab': '关闭 Session 标签页',
   'Loading workspace…': '正在加载工作区…',
   'Connecting…': '正在连接…',

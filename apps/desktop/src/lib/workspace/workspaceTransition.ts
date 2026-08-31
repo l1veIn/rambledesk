@@ -1,48 +1,48 @@
-import type { SessionViewDescriptor } from './viewDescriptors'
+import type { WorkspaceViewDescriptor } from './viewDescriptors'
 
-export type SessionWorkspaceShellIntent =
+export type WorkspaceShellIntent =
   | Readonly<{ type: 'open' }>
   | Readonly<{ type: 'close'; viewKey: string }>
 
-export type SessionWorkspaceTransitionTarget = Readonly<{
-  view: SessionViewDescriptor | null
+export type WorkspaceTransitionTarget = Readonly<{
+  view: WorkspaceViewDescriptor | null
   requestId: string | null
-  shellAction: SessionWorkspaceShellIntent
+  shellAction: WorkspaceShellIntent
   pendingViewKey: string
 }>
 
-export type SessionWorkspaceTransitionOutcome =
+export type WorkspaceTransitionOutcome =
   | 'activated'
   | 'blocked'
   | 'failed'
   | 'stale'
 
-export type SessionWorkspaceTransitionAdapter<LoadedWorkspace> = {
+export type WorkspaceTransitionAdapter<LoadedWorkspace> = {
   saveCurrent: () => Promise<boolean>
   unmountCurrent: () => void
-  loadTarget: (target: SessionWorkspaceTransitionTarget) => Promise<LoadedWorkspace | null>
+  loadTarget: (target: WorkspaceTransitionTarget) => Promise<LoadedWorkspace | null>
   commitTarget: (
-    target: SessionWorkspaceTransitionTarget,
+    target: WorkspaceTransitionTarget,
     loaded: LoadedWorkspace | null,
   ) => void
   restoreCurrent: () => void
-  setPendingTarget: (target: SessionWorkspaceTransitionTarget | null) => void
+  setPendingTarget: (target: WorkspaceTransitionTarget | null) => void
   reportFailure: (cause: unknown) => void
 }
 
-export function createSessionWorkspaceTransition<LoadedWorkspace>(
-  adapter: SessionWorkspaceTransitionAdapter<LoadedWorkspace>,
+export function createWorkspaceTransition<LoadedWorkspace>(
+  adapter: WorkspaceTransitionAdapter<LoadedWorkspace>,
 ) {
   let latestIntent = 0
   let transitionQueue: Promise<void> = Promise.resolve()
 
   function activate(
-    target: SessionWorkspaceTransitionTarget,
-  ): Promise<SessionWorkspaceTransitionOutcome> {
+    target: WorkspaceTransitionTarget,
+  ): Promise<WorkspaceTransitionOutcome> {
     const intent = ++latestIntent
     adapter.setPendingTarget(target)
 
-    const result = transitionQueue.then(async (): Promise<SessionWorkspaceTransitionOutcome> => {
+    const result = transitionQueue.then(async (): Promise<WorkspaceTransitionOutcome> => {
       if (intent !== latestIntent) return 'stale'
 
       try {

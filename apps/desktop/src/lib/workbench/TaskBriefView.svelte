@@ -5,7 +5,6 @@
   import { collectActionGroupContent } from '$lib/actionGroupContent'
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
-  import * as Dialog from '$lib/components/ui/dialog'
   import { toast } from '$lib/components/ui/sonner'
   import {
     requestStatusLabel,
@@ -25,7 +24,6 @@
   import { rambleRecordPresentation } from './rambleRecordButton'
   import type { HostProfile, RamblePhase } from './types'
 
-  export let open = false
   export let workspace: FeedbackWorkspaceView | null = null
   export let editorDocument: JSONContent | null = null
   export let previews: Record<string, string> = {}
@@ -42,8 +40,6 @@
   export let ramblePhase: RamblePhase = 'idle'
   export let rambleStartedOnce = false
   export let rambleBusy = false
-  /** CSS transform-origin the dialog should shrink toward when closing. */
-  export let origin: string | null = null
 
   let attachmentPreviewOpen = false
   let attachmentPreview: RequestAttachmentView | null = null
@@ -104,12 +100,8 @@
   }
 </script>
 
-<Dialog.Root bind:open>
-  <Dialog.Content
-    class="task-brief-preview-content grid h-[calc(100vh-2rem)] w-[min(1200px,calc(100vw-2rem))] max-w-[min(1200px,calc(100vw-2rem))] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 duration-200 sm:max-w-[min(1200px,calc(100vw-2rem))]"
-    style={origin ? `transform-origin: ${origin}` : undefined}
-  >
-    <Dialog.Header class="relative border-b px-6 py-4 pr-14">
+<div class="task-brief grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-background">
+    <header class="relative border-b px-6 py-4 pr-14">
       {#if workspace}
         <Button
           variant="ghost"
@@ -122,10 +114,10 @@
           <Copy />
         </Button>
       {/if}
-      <Dialog.Title class="text-lg font-semibold leading-snug">
+      <h1 class="m-0 text-lg font-semibold leading-snug">
         {workspace?.request.title ?? tr('Task brief')}
-      </Dialog.Title>
-      <Dialog.Description class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5">
+      </h1>
+      <div class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm text-muted-foreground">
         {#if workspace}
           <Badge variant={statusBadgeVariant(workspace.request.status)}>
             {requestStatusLabel(workspace.request.status, $locale)}
@@ -140,8 +132,8 @@
           <span class="text-muted-foreground">·</span>
           <span>{formatTime(workspace.request.created_at)}</span>
         {/if}
-      </Dialog.Description>
-    </Dialog.Header>
+      </div>
+    </header>
 
     <div class="min-h-0 overflow-y-auto overscroll-contain bg-muted/20">
       {#if workspace}
@@ -294,8 +286,7 @@
         </Button>
       </div>
     {/if}
-  </Dialog.Content>
-</Dialog.Root>
+</div>
 
 {#if workspace}
   <RequestAttachmentPreview
@@ -304,10 +295,3 @@
     attachment={attachmentPreview}
   />
 {/if}
-
-<style>
-  /* Collapse toward the preview button instead of the default subtle zoom-out. */
-  :global(.task-brief-preview-content[data-state='closed']) {
-    --tw-exit-scale: 0.08 !important;
-  }
-</style>

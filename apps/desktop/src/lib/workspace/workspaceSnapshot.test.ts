@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { sessionViewDescriptor, workspaceViewKey } from './viewDescriptors'
+import {
+  rambelleProfileViewDescriptor,
+  requestTaskViewDescriptor,
+  sessionViewDescriptor,
+  settingsViewDescriptor,
+  workspaceViewKey,
+} from './viewDescriptors'
 import { workspaceShellReducer, EMPTY_WORKSPACE_SHELL_STATE } from './workspaceShell'
 import {
   createWorkspaceSnapshot,
@@ -27,7 +33,7 @@ describe('workspace snapshots', () => {
     const restored = restoreWorkspaceSnapshot(serialized)
 
     expect(serialized).toEqual({
-      version: 1,
+      version: 2,
       views: [
         { ...alpha, lastRequestId: 'request-alpha' },
         { ...beta, lastRequestId: 'request-beta' },
@@ -38,7 +44,7 @@ describe('workspace snapshots', () => {
     expect([...restored!.requestIds]).toEqual([...requestIds])
   })
 
-  it('keeps equal session ids from different hosts distinct and deduplicates exact identities', () => {
+  it('reads v1 snapshots while keeping cross-host sessions distinct and deduplicated', () => {
     const value = {
       version: 1,
       views: [
@@ -77,7 +83,7 @@ describe('workspace snapshots', () => {
       lastRequestId: 'request-invalid',
     })
 
-    const restored = restoreWorkspaceSnapshot({ version: 1, views, activeViewKey: null })
+    const restored = restoreWorkspaceSnapshot({ version: 2, views, activeViewKey: null })
 
     expect(restored?.shellState.views).toHaveLength(MAX_WORKSPACE_SNAPSHOT_VIEWS)
     expect(restored?.requestIds.has(workspaceViewKey(sessionViewDescriptor('codex', 'session-0')))).toBe(
@@ -86,12 +92,12 @@ describe('workspace snapshots', () => {
   })
 
   it('preserves a valid empty snapshot and rejects corrupt or unsupported snapshots', () => {
-    expect(restoreWorkspaceSnapshot({ version: 1, views: [], activeViewKey: null })).toEqual({
+    expect(restoreWorkspaceSnapshot({ version: 2, views: [], activeViewKey: null })).toEqual({
       shellState: EMPTY_WORKSPACE_SHELL_STATE,
       requestIds: new Map(),
     })
-    expect(restoreWorkspaceSnapshot({ version: 2, views: [], activeViewKey: null })).toBeNull()
-    expect(restoreWorkspaceSnapshot({ version: 1, views: 'invalid', activeViewKey: null })).toBeNull()
+    expect(restoreWorkspaceSnapshot({ version: 99, views: [], activeViewKey: null })).toBeNull()
+    expect(restoreWorkspaceSnapshot({ version: 2, views: 'invalid', activeViewKey: null })).toBeNull()
     expect(restoreWorkspaceSnapshot(null)).toBeNull()
   })
 
@@ -109,5 +115,56 @@ describe('workspace snapshots', () => {
     expect(serialized).not.toContain('revision')
     expect(serialized).not.toContain('attachment')
     expect(serialized).not.toContain('runtime')
+  })
+
+  it('persists settings identity without transient section or session request fields', () => {
+    const sessionState = workspaceShellReducer(EMPTY_WORKSPACE_SHELL_STATE, {
+      type: 'open',
+      view: alpha,
+    })
+    const settingsState = workspaceShellReducer(sessionState, {
+      type: 'open',
+      view: settingsViewDescriptor(),
+    })
+
+    expect(createWorkspaceSnapshot(settingsState, new Map())).toEqual({
+      version: 2,
+      views: [{ ...alpha, lastRequestId: null }, { kind: 'settings' }],
+      activeViewKey: workspaceViewKey(settingsViewDescriptor()),
+    })
+    expect(
+      restoreWorkspaceSnapshot({
+        version: 2,
+        views: [{ kind: 'settings' }, { ...alpha, lastRequestId: null }],
+        activeViewKey: 'settings:singleton',
+      })?.shellState,
+    ).toEqual({
+      views: [settingsViewDescriptor(), alpha],
+      activeViewKey: workspaceViewKey(settingsViewDescriptor()),
+    })
+  })
+
+  it('round-trips request task and profile descriptors without editor state', () => {
+    const task = requestTaskViewDescriptor('request-alpha')
+    const taskState = workspaceShellReducer(EMPTY_WORKSPACE_SHELL_STATE, {
+      type: 'open',
+      view: task,
+    })
+    const state = workspaceShellReducer(taskState, {
+      type: 'open',
+      view: rambelleProfileViewDescriptor(),
+    })
+    const snapshot = createWorkspaceSnapshot(state, new Map())
+
+    expect(snapshot).toEqual({
+      version: 2,
+      views: [
+        { kind: 'request-task', requestId: 'request-alpha' },
+        { kind: 'rambelle-profile' },
+      ],
+      activeViewKey: 'rambelle-profile:singleton',
+    })
+    expect(restoreWorkspaceSnapshot(snapshot)?.shellState).toEqual(state)
+    expect(JSON.stringify(snapshot)).not.toContain('draft')
   })
 })

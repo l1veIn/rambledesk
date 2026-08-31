@@ -17,13 +17,12 @@ function configureContextMenuAndDevtools() {
       'contextmenu',
       (event) => {
         // The task brief must stay copyable: keep the native menu inside the
-        // brief panel/preview, and anywhere the user already holds a text
+        // brief, and anywhere the user already holds a text
         // selection, so right-click Copy works in the packaged app. Everywhere
         // else the native menu is suppressed because the app draws its own
         // chrome and menus.
         const target = event.target as Element | null
-        const inTaskBrief =
-          target?.closest('.task-brief, .task-brief-preview-content') ?? null
+        const inTaskBrief = target?.closest('.task-brief') ?? null
         const hasSelection = (window.getSelection()?.toString().length ?? 0) > 0
         if (inTaskBrief || hasSelection) return
         event.preventDefault()
