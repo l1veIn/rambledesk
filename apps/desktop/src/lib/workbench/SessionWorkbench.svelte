@@ -4,6 +4,7 @@
   import { Pane, PaneGroup, PaneResizer } from 'paneforge'
   import { Skeleton } from '$lib/components/ui/skeleton'
   import type { JSONContent } from '@tiptap/core'
+  import type { ApplicationTransport } from '$lib/application/applicationTransport'
 
   import type {
     AttachmentView,
@@ -35,6 +36,7 @@
   import WorkspaceHeader from './WorkspaceHeader.svelte'
 
   export let loadingWorkspace = false
+  export let transport: ApplicationTransport
   export let view: SessionViewDescriptor | null = null
   export let workspace: FeedbackWorkspaceView | null = null
   export let feedbackResult: FeedbackResultView | null = null
@@ -222,6 +224,7 @@
             onExpand={() => (taskBriefOpen = true)}
           >
             <TaskBriefPanel
+              {transport}
               bind:open={taskBriefOpen}
               {workspace}
               {activeActionId}
@@ -310,6 +313,7 @@
     </div>
 
     <RequestAttachmentPreview
+      {transport}
       bind:open={previewOpen}
       requestId={workspace.request.request_id}
       attachment={previewAttachment}

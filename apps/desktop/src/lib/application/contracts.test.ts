@@ -2,11 +2,12 @@ import { describe, expect, expectTypeOf, it } from 'vitest'
 
 import type {
   DraftView,
-  FeedbackPackageContent,
+  FeedbackPackageView,
   FeedbackRequestSummary,
   FeedbackWorkspaceView,
   GetFeedbackInput,
   ListFeedbackRequestsInput,
+  ReadAttachmentInput,
 } from '../generated/feedback'
 import type { ContinuationMode, HostAdapter, HostProfile } from '../generated/hosts'
 import {
@@ -15,7 +16,6 @@ import {
   type ApplicationCommandInput,
   type ApplicationCommandName,
   type ApplicationCommandResult,
-  type ReadAttachmentBytesInput,
 } from './contracts'
 
 describe('application command contracts', () => {
@@ -36,16 +36,18 @@ describe('application command contracts', () => {
       FeedbackWorkspaceView
     >()
     expectTypeOf<ApplicationCommandResult<'readPublishedFeedback'>>().toEqualTypeOf<
-      FeedbackPackageContent | null
+      FeedbackPackageView | null
     >()
-    expectTypeOf<FeedbackPackageContent['manifest']['source_revision']>().toEqualTypeOf<number>()
-    expectTypeOf<FeedbackPackageContent['manifest']['draft_revision']>().toEqualTypeOf<number>()
+    expectTypeOf<FeedbackPackageView['manifest']['source_revision']>().toEqualTypeOf<number>()
+    expectTypeOf<FeedbackPackageView['manifest']['draft_revision']>().toEqualTypeOf<number>()
     expectTypeOf<
-      FeedbackPackageContent['manifest']['attachments'][number]['byte_size']
+      FeedbackPackageView['manifest']['attachments'][number]['byte_size']
     >().toEqualTypeOf<number>()
+    type HasStoragePaths = 'attachment_paths' extends keyof FeedbackPackageView ? true : false
+    expectTypeOf<HasStoragePaths>().toEqualTypeOf<false>()
     expectTypeOf<ApplicationCommandResult<'saveFeedbackDraft'>>().toEqualTypeOf<DraftView>()
     expectTypeOf<ApplicationCommandInput<'readFeedbackAttachment'>>().toEqualTypeOf<
-      ReadAttachmentBytesInput
+      ReadAttachmentInput
     >()
     expectTypeOf<ApplicationCommandResult<'readFeedbackAttachment'>>().toEqualTypeOf<ArrayBuffer>()
     expectTypeOf<HostAdapter>().toEqualTypeOf<'generic_mcp' | 'pi_native'>()

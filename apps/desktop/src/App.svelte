@@ -26,6 +26,9 @@
   import SettingsWorkspaceView from './lib/workspace/SettingsWorkspaceView.svelte'
   import TaskWorkspaceView from './lib/workspace/TaskWorkspaceView.svelte'
   import type { JSONContent } from '@tiptap/core'
+  import type { ApplicationTransport } from './lib/application/applicationTransport'
+
+  export let applicationTransport: ApplicationTransport
 
   import type {
     ApproveFeedbackInput,
@@ -33,7 +36,6 @@
     DraftView,
     FeedbackRequestView,
     FeedbackWorkspaceView,
-    HostSessionSummary,
     SubmitFeedbackInput,
   } from './lib/feedback'
   import {
@@ -107,7 +109,6 @@
     restorePublishedAttachmentUrls,
     normalizePublishedFeedback,
     type PublishedAttachmentPath,
-    type PublishedFeedbackPackage,
     type PublishedFeedbackView,
   } from './lib/publishedFeedback'
   import {
@@ -289,6 +290,7 @@
   }
 
   const draftController = createDraftController({
+    transport: applicationTransport,
     messageFrom,
     isPreviewMode: () => previewMode,
     isInteractionLocked: () => interactionLocked,
@@ -322,6 +324,7 @@
 
   const attachmentController = createAttachmentController({
     isTauri,
+    transport: applicationTransport,
     tr,
     messageFrom,
     getWorkspace: () => workspace,
@@ -382,6 +385,7 @@
   const navigation = createNavigationController({
     isTauri,
     previewMode,
+    transport: applicationTransport,
     tr,
     messageFrom,
     getNotificationState: () => notificationState,
@@ -401,9 +405,7 @@
           ? previewWorkspaceScenario === 'unknown'
             ? await Promise.reject(new Error('Preview archived catalog unavailable'))
             : previewFixtures.archivedHostSessions
-          : await invoke<HostSessionSummary[]>('list_archived_host_sessions', {
-              input: { search: null },
-            })
+          : await applicationTransport.call('listArchivedHostSessions', { search: null })
       return sessions.map((session) =>
         sessionViewDescriptor(session.host_id, session.host_session_id),
       )
@@ -1140,11 +1142,12 @@
     target: WorkspaceTransitionTarget,
   ): Promise<LoadedWorkspaceTarget | null> {
     if (!target.requestId) return null
+    const requestId = target.requestId
     return enqueueDocumentTask(async () => {
       const next = previewMode
-        ? previewWorkspaceFor(target.requestId as string)
-        : await invoke<FeedbackWorkspaceView>('get_feedback_workspace', {
-            requestId: target.requestId,
+        ? previewWorkspaceFor(requestId)
+        : await applicationTransport.call('getFeedbackWorkspace', {
+            request_id: requestId,
           })
       if (!next) throw new Error(tr('This feedback request could not be found.'))
 
@@ -1174,8 +1177,8 @@
                 uncooked_markdown: next.draft.body_markdown,
               }
             : normalizePublishedFeedback(
-                await invoke<PublishedFeedbackPackage | null>('read_published_feedback', {
-                  requestId: next.request.request_id,
+                await applicationTransport.call('readPublishedFeedback', {
+                  request_id: next.request.request_id,
                 }),
               )
           : null
@@ -1327,7 +1330,9 @@
         load: async () => {
           const target = previewMode
             ? previewWorkspaceFor(requestId)
-            : await invoke<FeedbackWorkspaceView>('get_feedback_workspace', { requestId })
+            : await applicationTransport.call('getFeedbackWorkspace', {
+                request_id: requestId,
+              })
           if (!target) throw new Error(tr('This feedback request could not be found.'))
           return target
         },
@@ -1339,7 +1344,7 @@
                 saved_revision: input.expected_revision + 1,
                 updated_at: new Date().toISOString(),
               }
-            : invoke<DraftView>('save_feedback_draft', { input }),
+            : applicationTransport.call('saveFeedbackDraft', input),
       })
       if (
         shouldAdoptTaskBackgroundDraft(
@@ -1520,6 +1525,7 @@
   const restoreOriginalAfterCook = cookingController.restoreOriginal
 
   const publisherController = createPublisherController({
+    transport: applicationTransport,
     tr,
     messageFrom,
     isPreviewMode: () => previewMode,
@@ -1577,7 +1583,7 @@
     pageError = ''
     try {
       const input: ApproveFeedbackInput = { request_id: workspace.request.request_id }
-      const result = await invoke<FeedbackRequestView>('approve_feedback_request', { input })
+      const result = await applicationTransport.call('approveFeedbackRequest', input)
       completedResult = result
       workspace = {
         ...workspace,
@@ -1608,7 +1614,7 @@
         request_id: workspace.request.request_id,
         reason: 'Human cancelled from RambleDesk desktop',
       }
-      const result = await invoke<FeedbackRequestView>('cancel_feedback_request', { input })
+      const result = await applicationTransport.call('cancelFeedbackRequest', input)
       completedResult = result
       workspace = {
         ...workspace,
@@ -1664,6 +1670,7 @@
   <RambleSessionController
     bind:this={rambleController}
     {isTauri}
+    transport={applicationTransport}
     {workspace}
     bind:attachmentBusy
     {screenCaptureBusy}
@@ -1797,6 +1804,7 @@
               />
             {:else if renderedWorkspaceView?.kind === 'request-task'}
               <TaskWorkspaceView
+                transport={applicationTransport}
                 {workspace}
                 {editorDocument}
                 previews={attachmentPreviews}
@@ -1822,6 +1830,7 @@
             {:else if workbenchMounted}
               {#key renderedSessionView ? workspaceViewKey(renderedSessionView) : 'workspace:empty'}
               <SessionWorkbench
+            transport={applicationTransport}
             bind:this={sessionWorkbench}
             view={renderedSessionView}
             bind:taskBriefOpen
@@ -1933,6 +1942,7 @@
 <ArchivedSessionsDialog
   bind:open={archivedSessionsOpen}
   {isTauri}
+  transport={applicationTransport}
   {previewMode}
   {resolveHostProfile}
   formatTime={formatTimeLocal}

@@ -81,6 +81,25 @@ pub struct FeedbackPackageContent {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
+pub struct FeedbackPackageView {
+    pub manifest: FeedbackPackageManifest,
+    pub markdown: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub uncooked_markdown: Option<String>,
+}
+
+impl From<FeedbackPackageContent> for FeedbackPackageView {
+    fn from(content: FeedbackPackageContent) -> Self {
+        Self {
+            manifest: content.manifest,
+            markdown: content.markdown,
+            uncooked_markdown: content.uncooked_markdown,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 pub struct FeedbackRequestSummary {
     pub request_id: String,
     pub host_id: String,
@@ -238,6 +257,12 @@ pub struct AddAttachmentInput {
     pub contents: Vec<u8>,
     #[ts(type = "number")]
     pub expected_revision: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
+pub struct ReadAttachmentInput {
+    pub request_id: String,
+    pub attachment_id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]

@@ -7,7 +7,7 @@ import {
   type CancelFeedbackInput,
   type DeleteFeedbackRequestInput,
   type DraftView,
-  type FeedbackPackageContent,
+  type FeedbackPackageView,
   type FeedbackRequestSummary,
   type FeedbackRequestView,
   type FeedbackWorkspaceView,
@@ -18,6 +18,7 @@ import {
   type ListFeedbackRequestsOutput,
   type ListHostSessionsInput,
   type RemoveAttachmentInput,
+  type ReadAttachmentInput,
   type RenameHostSessionInput,
   type ReorderAttachmentsInput,
   type SaveDraftInput,
@@ -32,11 +33,6 @@ type ApplicationCommandContract<Input, Output> = Readonly<{
   output: Output
 }>
 
-export type ReadAttachmentBytesInput = Readonly<{
-  request_id: string
-  attachment_id: string
-}>
-
 /**
  * Cross-client application operations. Inputs are domain/transport contracts,
  * never a Tauri `{ input }` envelope or camelCase invoke argument object.
@@ -48,7 +44,7 @@ export type ApplicationCommandMap = Readonly<{
   listHostProfiles: ApplicationCommandContract<undefined, HostProfile[]>
   listFeedbackRequests: ApplicationCommandContract<ListFeedbackRequestsInput, ListFeedbackRequestsOutput>
   getFeedbackWorkspace: ApplicationCommandContract<GetFeedbackInput, FeedbackWorkspaceView>
-  readPublishedFeedback: ApplicationCommandContract<GetFeedbackInput, FeedbackPackageContent | null>
+  readPublishedFeedback: ApplicationCommandContract<GetFeedbackInput, FeedbackPackageView | null>
   saveFeedbackDraft: ApplicationCommandContract<SaveDraftInput, DraftView>
   addFeedbackAttachment: ApplicationCommandContract<AddAttachmentInput, FeedbackWorkspaceView>
   removeFeedbackAttachment: ApplicationCommandContract<RemoveAttachmentInput, FeedbackWorkspaceView>
@@ -63,8 +59,8 @@ export type ApplicationCommandMap = Readonly<{
   deleteHostSession: ApplicationCommandContract<HostSessionInput, void>
   deleteFeedbackRequest: ApplicationCommandContract<DeleteFeedbackRequestInput, void>
   setHostPinned: ApplicationCommandContract<SetHostPinnedInput, HostSessionSummary[]>
-  readFeedbackAttachment: ApplicationCommandContract<ReadAttachmentBytesInput, ArrayBuffer>
-  readRequestAttachment: ApplicationCommandContract<ReadAttachmentBytesInput, ArrayBuffer>
+  readFeedbackAttachment: ApplicationCommandContract<ReadAttachmentInput, ArrayBuffer>
+  readRequestAttachment: ApplicationCommandContract<ReadAttachmentInput, ArrayBuffer>
 }>
 
 export type ApplicationCommandName = keyof ApplicationCommandMap

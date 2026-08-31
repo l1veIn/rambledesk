@@ -5,12 +5,12 @@ use std::{
 
 use rambledesk_core::{
     AddAttachmentInput, ApplicationError, ApproveFeedbackInput, CancelFeedbackInput,
-    DeleteFeedbackRequestInput, DraftView, FeedbackPackageContent, FeedbackRequestSummary,
+    DeleteFeedbackRequestInput, DraftView, FeedbackPackageView, FeedbackRequestSummary,
     FeedbackRequestView, FeedbackStatus, FeedbackWorkspaceView, GetFeedbackInput, HostSessionInput,
     HostSessionSummary, ListFeedbackRequestsInput, ListFeedbackRequestsOutput,
-    ListHostSessionsInput, MAX_ATTACHMENT_BYTES, RemoveAttachmentInput, RenameHostSessionInput,
-    ReorderAttachmentsInput, SaveDraftInput, SetHostPinnedInput, SetHostSessionPinnedInput,
-    SubmitFeedbackInput,
+    ListHostSessionsInput, MAX_ATTACHMENT_BYTES, ReadAttachmentInput, RemoveAttachmentInput,
+    RenameHostSessionInput, ReorderAttachmentsInput, SaveDraftInput, SetHostPinnedInput,
+    SetHostSessionPinnedInput, SubmitFeedbackInput,
 };
 use rambledesk_hosts::{HostProfile, known_host_profiles};
 use rambledesk_speech::{
@@ -365,23 +365,24 @@ pub(super) async fn list_feedback_requests(
 
 #[tauri::command]
 pub(super) async fn get_feedback_workspace(
-    request_id: String,
+    input: GetFeedbackInput,
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<FeedbackWorkspaceView, ApplicationError> {
     let application = state.application.clone();
-    application.get_feedback_workspace(request_id).await
+    application.get_feedback_workspace(input.request_id).await
 }
 
 #[tauri::command]
 pub(super) async fn read_published_feedback(
-    request_id: String,
+    input: GetFeedbackInput,
     state: tauri::State<'_, WorkbenchState>,
-) -> Result<Option<FeedbackPackageContent>, ApplicationError> {
+) -> Result<Option<FeedbackPackageView>, ApplicationError> {
     let application = state.application.clone();
-    let request = application
-        .get_feedback(GetFeedbackInput { request_id })
-        .await?;
-    application.read_feedback_package(&request).await
+    let request = application.get_feedback(input).await?;
+    application
+        .read_feedback_package(&request)
+        .await
+        .map(|content| content.map(FeedbackPackageView::from))
 }
 
 #[tauri::command]
@@ -551,26 +552,24 @@ pub(super) async fn reorder_feedback_attachments(
 
 #[tauri::command]
 pub(super) async fn read_feedback_attachment(
-    request_id: String,
-    attachment_id: String,
+    input: ReadAttachmentInput,
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<Response, ApplicationError> {
     let application = state.application.clone();
     application
-        .read_feedback_attachment(request_id, attachment_id)
+        .read_feedback_attachment(input.request_id, input.attachment_id)
         .await
         .map(Response::new)
 }
 
 #[tauri::command]
 pub(super) async fn read_request_attachment(
-    request_id: String,
-    attachment_id: String,
+    input: ReadAttachmentInput,
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<Response, ApplicationError> {
     let application = state.application.clone();
     application
-        .read_request_attachment(request_id, attachment_id)
+        .read_request_attachment(input.request_id, input.attachment_id)
         .await
         .map(Response::new)
 }

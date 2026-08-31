@@ -48,7 +48,7 @@ fn application_errors_expose_stable_public_fields() {
 }
 
 #[test]
-fn application_error_codes_preserve_the_public_json_contract() {
+fn application_error_codes_preserve_the_public_code_contract() {
     let expected = [
         "INVALID_ARGUMENT",
         "REQUEST_NOT_FOUND",
@@ -67,31 +67,9 @@ fn application_error_codes_preserve_the_public_json_contract() {
         "FEEDBACK_PACKAGE_READ_FAILURE",
         "STORAGE_FAILURE",
     ];
-    let serialized = ApplicationErrorCode::ALL.map(|code| {
-        serde_json::to_value(code)
-            .expect("application error code should serialize")
-            .as_str()
-            .expect("application error code should be a JSON string")
-            .to_owned()
-    });
-
-    assert_eq!(serialized.as_slice(), expected);
     for (code, expected) in ApplicationErrorCode::ALL.into_iter().zip(expected) {
         assert_eq!(code.as_str(), expected);
     }
-}
-
-#[test]
-fn application_error_json_shape_matches_the_transport_contract() {
-    let error = ApplicationError::from(RepositoryError::PackageRead);
-    assert_eq!(
-        serde_json::to_value(error).expect("application error should serialize"),
-        serde_json::json!({
-            "code": "FEEDBACK_PACKAGE_READ_FAILURE",
-            "message": "feedback package could not be read or verified",
-            "retryable": true,
-        })
-    );
 }
 
 #[test]

@@ -13,6 +13,7 @@
     type RequestAttachmentView,
   } from '$lib/feedback'
   import { t } from '$lib/i18n'
+  import type { ApplicationTransport } from '$lib/application/applicationTransport'
   import { locale } from '$lib/preferences'
   import LinkifiedText from '$lib/LinkifiedText.svelte'
   import { isSafeHttpUrl } from '$lib/linkify'
@@ -25,6 +26,7 @@
   import type { HostProfile, RamblePhase } from './types'
 
   export let workspace: FeedbackWorkspaceView | null = null
+  export let transport: ApplicationTransport
   export let editorDocument: JSONContent | null = null
   export let previews: Record<string, string> = {}
   export let onOpenAttachment: (attachmentId: string) => void = () => {}
@@ -290,6 +292,7 @@
 
 {#if workspace}
   <RequestAttachmentPreview
+    {transport}
     bind:open={attachmentPreviewOpen}
     requestId={workspace.request.request_id}
     attachment={attachmentPreview}

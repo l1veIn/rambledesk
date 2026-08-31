@@ -19,6 +19,7 @@ export type ApplicationStreamEvent<Stream> =
   Stream extends ApplicationStream<infer Event> ? Event : never
 
 export type Unsubscribe = () => void
+export type SubscriptionErrorHandler = (cause: unknown) => void
 
 export function defineApplicationStream<Event>(id: string): ApplicationStream<Event> {
   return Object.freeze({ id }) as unknown as ApplicationStream<Event>
@@ -33,6 +34,7 @@ export interface ApplicationTransport<CapabilityManifest = unknown> {
   subscribe<Event>(
     stream: ApplicationStream<Event>,
     handler: (event: Event) => void,
+    onError: SubscriptionErrorHandler,
   ): Unsubscribe
 
   waitUntilReady(): Promise<void>

@@ -1,6 +1,7 @@
 import { mount } from 'svelte'
 
 import { initializePreferences } from './lib/preferences'
+import { UnavailableApplicationTransport } from './lib/application/unavailableApplicationTransport'
 import './app.css'
 
 function reportFrontendError(context: string, message: string) {
@@ -97,5 +98,8 @@ if (captureMode) {
   mount(RambleConsole, { target })
 } else {
   const { default: App } = await import('./App.svelte')
-  mount(App, { target })
+  const applicationTransport = '__TAURI_INTERNALS__' in window
+    ? new (await import('./lib/application/tauriApplicationTransport')).TauriApplicationTransport()
+    : new UnavailableApplicationTransport()
+  mount(App, { target, props: { applicationTransport } })
 }

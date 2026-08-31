@@ -6,6 +6,7 @@ import type {
 import type {
   ApplicationStream,
   ApplicationTransport,
+  SubscriptionErrorHandler,
   Unsubscribe,
 } from './applicationTransport'
 
@@ -21,14 +22,17 @@ export type ApplicationCommandHandler<Name extends ApplicationCommandName> = (
 ) => ApplicationCommandResult<Name> | Promise<ApplicationCommandResult<Name>>
 
 type ErasedCommandHandler = (input: unknown) => unknown | Promise<unknown>
-type ErasedStreamHandler = (event: unknown) => void
+type StreamSubscription = Readonly<{
+  handler: (event: unknown) => void
+  onError: SubscriptionErrorHandler
+}>
 
 export class TestApplicationTransport<CapabilityManifest = unknown>
   implements ApplicationTransport<CapabilityManifest>
 {
   private readonly handlers = new Map<ApplicationCommandName, ErasedCommandHandler>()
   private readonly callRecords: ApplicationCallRecord[] = []
-  private readonly streamHandlers = new Map<object, Set<ErasedStreamHandler>>()
+  private readonly streamSubscriptions = new Map<string, Set<StreamSubscription>>()
   private readonly readyPromise: Promise<void>
   private resolveReady: (() => void) | null = null
   private ready = false
@@ -94,34 +98,46 @@ export class TestApplicationTransport<CapabilityManifest = unknown>
   subscribe<Event>(
     stream: ApplicationStream<Event>,
     handler: (event: Event) => void,
+    onError: SubscriptionErrorHandler,
   ): Unsubscribe {
-    const streamIdentity = stream as object
-    let handlers = this.streamHandlers.get(streamIdentity)
-    if (!handlers) {
-      handlers = new Set()
-      this.streamHandlers.set(streamIdentity, handlers)
+    let subscriptions = this.streamSubscriptions.get(stream.id)
+    if (!subscriptions) {
+      subscriptions = new Set()
+      this.streamSubscriptions.set(stream.id, subscriptions)
     }
 
-    const erasedHandler = handler as ErasedStreamHandler
-    handlers.add(erasedHandler)
+    const subscription: StreamSubscription = {
+      handler: handler as (event: unknown) => void,
+      onError,
+    }
+    subscriptions.add(subscription)
     let subscribed = true
 
     return () => {
       if (!subscribed) return
       subscribed = false
-      handlers.delete(erasedHandler)
-      if (handlers.size === 0) {
-        this.streamHandlers.delete(streamIdentity)
+      subscriptions.delete(subscription)
+      if (subscriptions.size === 0) {
+        this.streamSubscriptions.delete(stream.id)
       }
     }
   }
 
   emit<Event>(stream: ApplicationStream<Event>, event: Event): void {
-    const handlers = this.streamHandlers.get(stream as object)
-    if (!handlers) return
+    const subscriptions = this.streamSubscriptions.get(stream.id)
+    if (!subscriptions) return
 
-    for (const handler of [...handlers]) {
-      handler(event)
+    for (const subscription of [...subscriptions]) {
+      subscription.handler(event)
+    }
+  }
+
+  emitSubscriptionError(stream: ApplicationStream<unknown>, cause: unknown): void {
+    const subscriptions = this.streamSubscriptions.get(stream.id)
+    if (!subscriptions) return
+
+    for (const subscription of [...subscriptions]) {
+      subscription.onError(cause)
     }
   }
 

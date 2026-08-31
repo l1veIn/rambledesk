@@ -13,6 +13,7 @@
   import { onDestroy, tick } from 'svelte'
 
   import { Button } from '$lib/components/ui/button'
+  import type { ApplicationTransport } from '$lib/application/applicationTransport'
   import * as Dialog from '$lib/components/ui/dialog'
   import { toast } from '$lib/components/ui/sonner'
   import type { AttachmentView, RequestAttachmentView } from '$lib/feedback'
@@ -26,6 +27,7 @@
   import MarkdownPreview from './MarkdownPreview.svelte'
 
   export let open = false
+  export let transport: ApplicationTransport
   export let requestId = ''
   export let readKind: 'request' | 'workspace' = 'request'
   export let attachment: (RequestAttachmentView & AttachmentView) | null = null
@@ -94,13 +96,13 @@
     try {
       const raw =
         readKind === 'workspace'
-          ? await invoke<ArrayBuffer>('read_feedback_attachment', {
-              requestId,
-              attachmentId: current.attachment_id,
+          ? await transport.call('readFeedbackAttachment', {
+              request_id: requestId,
+              attachment_id: current.attachment_id,
             })
-          : await invoke<ArrayBuffer>('read_request_attachment', {
-              requestId,
-              attachmentId: current.attachment_id,
+          : await transport.call('readRequestAttachment', {
+              request_id: requestId,
+              attachment_id: current.attachment_id,
             })
       if (generation !== loadGeneration || !open) return
       const buffer =

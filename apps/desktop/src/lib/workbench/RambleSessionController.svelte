@@ -9,6 +9,7 @@
     eventBelongsToRamble,
     type ClipboardCaptureEvent,
   } from '../clipboardCapture'
+  import type { ApplicationTransport } from '../application/applicationTransport'
   import type { ActiveAction, DraftOperation } from '../draftOperations'
   import type { FeedbackWorkspaceView } from '../feedback'
   import { t } from '../i18n'
@@ -45,6 +46,7 @@
   import type { RamblePhase, VoicePhase } from './types'
 
   export let isTauri = false
+  export let transport: ApplicationTransport
   export let workspace: FeedbackWorkspaceView | null = null
   export let interactionLocked = false
   export let attachmentBusy = false
@@ -441,7 +443,7 @@
       }
       const target = visibleTarget
         ? workspace
-        : await invoke<FeedbackWorkspaceView>('get_feedback_workspace', { requestId })
+        : await transport.call('getFeedbackWorkspace', { request_id: requestId })
       if (!target) return
 
       attachmentBusy = true

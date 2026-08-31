@@ -2,6 +2,7 @@
   import type { JSONContent } from '@tiptap/core'
 
   import type { AttachmentView, FeedbackWorkspaceView } from '$lib/feedback'
+  import type { ApplicationTransport } from '$lib/application/applicationTransport'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
   import RequestAttachmentPreview from '$lib/workbench/RequestAttachmentPreview.svelte'
@@ -10,6 +11,7 @@
   import type { RamblePhase } from '$lib/workbench/types'
 
   export let workspace: FeedbackWorkspaceView | null = null
+  export let transport: ApplicationTransport
   export let loading = false
   export let editorDocument: JSONContent | null = null
   export let previews: Record<string, string> = {}
@@ -41,6 +43,7 @@
   </div>
 {:else}
   <TaskBriefView
+    {transport}
     {workspace}
     {editorDocument}
     {previews}
@@ -56,6 +59,7 @@
 
 {#if workspace}
   <RequestAttachmentPreview
+    {transport}
     bind:open={attachmentPreviewOpen}
     requestId={workspace.request.request_id}
     attachment={previewAttachment}

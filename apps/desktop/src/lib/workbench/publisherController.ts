@@ -2,18 +2,18 @@
 // (preview reuse, auto-cook, direct publish) out of the App.svelte shell;
 // reactive state stays in the component via the context callbacks.
 
-import { invoke } from '@tauri-apps/api/core'
-
+import type { ApplicationTransport } from '../application/applicationTransport'
 import type {
   FeedbackRequestView,
   FeedbackWorkspaceView,
   SubmitFeedbackInput,
 } from '../feedback'
-import { normalizePublishedFeedback, type PublishedFeedbackPackage } from '../publishedFeedback'
+import { normalizePublishedFeedback } from '../publishedFeedback'
 import type { CookingSubmission, CookedPreview } from './cookingController'
 import type { SubmitStage } from './types'
 
 type PublisherControllerContext = {
+  transport: ApplicationTransport
   tr: (source: string, values?: Record<string, string | number>) => string
   messageFrom: (cause: unknown) => string
   isPreviewMode: () => boolean
@@ -78,9 +78,7 @@ export function createPublisherController(context: PublisherControllerContext) {
             uncooked_markdown: uncookedMarkdown,
           }
         : normalizePublishedFeedback(
-            await invoke<PublishedFeedbackPackage | null>('read_published_feedback', {
-              requestId,
-            }),
+            await context.transport.call('readPublishedFeedback', { request_id: requestId }),
           )
       if (context.getWorkspace()?.request.request_id === requestId) {
         context.setPublishedFeedback(next)
@@ -95,7 +93,7 @@ export function createPublisherController(context: PublisherControllerContext) {
     cookedMarkdown: string | undefined,
     uncookedMarkdown: string,
   ) {
-    const result = await invoke<FeedbackRequestView>('submit_feedback', { input })
+    const result = await context.transport.call('submitFeedback', input)
     const visible = applyVisibleSubmissionResult(result)
     context.showSubmittedToast(cookedMarkdown !== undefined)
     if (visible) {

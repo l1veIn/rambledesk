@@ -86,17 +86,19 @@ describe('TestApplicationTransport', () => {
     const stream = defineApplicationStream<RequestChanged>('test:request-changed')
     const sameIdDifferentStream = defineApplicationStream<RequestChanged>('test:request-changed')
     const handler = vi.fn<(event: RequestChanged) => void>()
+    const onError = vi.fn()
     const transport = new TestApplicationTransport(undefined)
-    const unsubscribe = transport.subscribe(stream, handler)
+    const unsubscribe = transport.subscribe(stream, handler, onError)
 
-    transport.emit(sameIdDifferentStream, { requestId: 'ignored' })
-    transport.emit(stream, { requestId: 'request-1' })
+    transport.emit(sameIdDifferentStream, { requestId: 'request-1' })
+    transport.emitSubscriptionError(sameIdDifferentStream, new Error('stream failed'))
     unsubscribe()
     unsubscribe()
     transport.emit(stream, { requestId: 'request-2' })
 
     expect(handler).toHaveBeenCalledTimes(1)
     expect(handler).toHaveBeenCalledWith({ requestId: 'request-1' })
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'stream failed' }))
   })
 
   it('returns the injected capability manifest unchanged', () => {

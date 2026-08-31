@@ -1,5 +1,5 @@
 import { attachmentMarkdownUrl } from './attachmentMarkdown'
-import type { FeedbackPackageAttachment, FeedbackPackageContent } from './generated/feedback'
+import type { FeedbackPackageAttachment, FeedbackPackageView } from './generated/feedback'
 import { operatorFeedbackBody } from './workbench/feedbackText'
 
 export type PublishedFeedbackView = {
@@ -7,7 +7,7 @@ export type PublishedFeedbackView = {
   uncooked_markdown?: string
 }
 
-export type PublishedFeedbackPackage = FeedbackPackageContent
+export type PublishedFeedbackPackage = FeedbackPackageView
 export type PublishedAttachmentPath = Pick<FeedbackPackageAttachment, 'id' | 'path'>
 
 /**
