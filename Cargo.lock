@@ -4497,6 +4497,7 @@ name = "rambledesk-desktop"
 version = "0.3.3"
 dependencies = [
  "arboard",
+ "async-trait",
  "base64 0.22.1",
  "block2",
  "core-graphics-helmer-fork",
@@ -4556,6 +4557,7 @@ name = "rambledesk-local-server"
 version = "0.3.3"
 dependencies = [
  "anyhow",
+ "async-trait",
  "axum",
  "dirs",
  "futures",

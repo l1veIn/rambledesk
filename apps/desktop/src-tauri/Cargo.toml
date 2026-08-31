@@ -19,6 +19,7 @@ path = "src/main.rs"
 tauri-build.workspace = true
 
 [dependencies]
+async-trait.workspace = true
 dunce = "1"
 rambledesk-core.workspace = true
 rambledesk-hosts.workspace = true

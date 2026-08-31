@@ -5,6 +5,7 @@
 
 mod feedback;
 mod process;
+mod terminal_operations;
 mod workspace;
 
 /// Install-time / client-config host identity environment key.
@@ -13,6 +14,10 @@ pub const HOST_ENV_KEY: &str = "RAMBLEDESK_HOST";
 pub const HOST_HEADER: &str = "x-rambledesk-host";
 
 pub use process::{find_executable, find_executable_on_path};
+pub use terminal_operations::{
+    NoopTerminalOperationObserver, TerminalOperation, TerminalOperationEvent,
+    TerminalOperationObserver, WorkbenchTerminalOperations,
+};
 
 pub use feedback::{
     ActionInput, ApplicationError, ApplicationErrorCode, ApproveFeedbackInput,

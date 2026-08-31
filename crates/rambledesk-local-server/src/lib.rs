@@ -27,7 +27,7 @@ use futures::StreamExt;
 use rambledesk_core::{
     ApplicationError, ApproveFeedbackInput, CancelFeedbackInput, FeedbackApplication,
     FeedbackRequestView, FeedbackStatus, GetFeedbackInput, RecoverFeedbackInput,
-    RequestFeedbackInput,
+    RequestFeedbackInput, WorkbenchTerminalOperations,
 };
 use rmcp::transport::streamable_http_server::{
     StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
@@ -502,6 +502,7 @@ async fn handle_mcp_request(
 pub async fn start_server(
     config: ServerConfig,
     application: FeedbackApplication,
+    terminal_operations: WorkbenchTerminalOperations,
 ) -> Result<ServerHandle, ServerError> {
     let cancellation = CancellationToken::new();
     let allowed_origins = config.allowed_origins.clone();
@@ -538,7 +539,7 @@ pub async fn start_server(
         .with_state(ApiState {
             application: application.clone(),
         })
-        .merge(application_router(application.clone()));
+        .merge(application_router(application.clone(), terminal_operations));
     let mcp = Router::new()
         .fallback(handle_mcp_request)
         .with_state(service);

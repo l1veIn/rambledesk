@@ -24,9 +24,9 @@ use tauri::{Emitter, Manager, ipc::Response};
 use rambledesk_mcp::{McpHostView, McpInstallResult, detect_hosts, install_hosts};
 
 use super::{
-    TRAY_ID, WorkbenchState, clipboard_capture::ClipboardCaptureState,
-    continuation::deliver_continuation_after_terminal, diagnostics, migrate_library,
-    pending_tray_icon, pi_install, save_library_path, screen_capture::ScreenCaptureState,
+    TRAY_ID, WorkbenchState, clipboard_capture::ClipboardCaptureState, diagnostics,
+    migrate_library, pending_tray_icon, pi_install, save_library_path,
+    screen_capture::ScreenCaptureState,
 };
 
 #[derive(Debug, Deserialize)]
@@ -577,74 +577,25 @@ pub(super) async fn read_request_attachment(
 #[tauri::command]
 pub(super) async fn submit_feedback(
     input: SubmitFeedbackInput,
-    app: tauri::AppHandle,
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<FeedbackRequestView, ApplicationError> {
-    let application = state.application.clone();
-    let result = application.submit_feedback(input.clone()).await?;
-    diagnostics::record_event(
-        "feedback_submitted",
-        Some(&input.request_id),
-        None,
-        Some("ok"),
-        None,
-        None,
-    );
-    deliver_continuation_after_terminal(
-        &app,
-        &state.continuation,
-        &application,
-        &input.request_id,
-        result.status,
-    )
-    .await;
-    Ok(result)
+    state.terminal_operations.submit_feedback(input).await
 }
 
 #[tauri::command]
 pub(super) async fn approve_feedback_request(
     input: ApproveFeedbackInput,
-    app: tauri::AppHandle,
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<FeedbackRequestView, ApplicationError> {
-    let application = state.application.clone();
-    let result = application.approve_feedback(input.clone()).await?;
-    deliver_continuation_after_terminal(
-        &app,
-        &state.continuation,
-        &application,
-        &input.request_id,
-        result.status,
-    )
-    .await;
-    Ok(result)
+    state.terminal_operations.approve_feedback(input).await
 }
 
 #[tauri::command]
 pub(super) async fn cancel_feedback_request(
     input: CancelFeedbackInput,
-    app: tauri::AppHandle,
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<FeedbackRequestView, ApplicationError> {
-    let application = state.application.clone();
-    let result = application.cancel_feedback(input.clone()).await?;
-    diagnostics::record_event(
-        "feedback_cancelled",
-        Some(&input.request_id),
-        None,
-        Some("ok"),
-        None,
-        None,
-    );
-    deliver_continuation_after_terminal(
-        &app,
-        &state.continuation,
-        &application,
-        &input.request_id,
-        result.status,
-    )
-    .await;
-    Ok(result)
+    state.terminal_operations.cancel_feedback(input).await
 }
 
 #[tauri::command]

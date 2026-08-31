@@ -1,7 +1,7 @@
 use anyhow::Context;
 use rambledesk_core::{
     ActionInput, ApproveFeedbackInput, RequestAttachmentInput, RequestFeedbackInput,
-    SaveDraftInput, SubmitFeedbackInput,
+    SaveDraftInput, SubmitFeedbackInput, WorkbenchTerminalOperations,
 };
 use rambledesk_local_server::{AccessToken, HOST_HEADER, ServerConfig, start_server};
 use rmcp::{
@@ -19,6 +19,12 @@ mod host_header;
 mod host_id_optional;
 
 const TEST_TOKEN: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+fn terminal_operations(
+    application: &rambledesk_core::FeedbackApplication,
+) -> WorkbenchTerminalOperations {
+    WorkbenchTerminalOperations::without_observer(application.clone())
+}
 
 /// Pull the JSON-RPC `result` out of a body that may be plain JSON or a single
 /// SSE `data:` frame, which is how the streamable HTTP transport answers.
@@ -48,7 +54,12 @@ async fn test_application()
 async fn rejects_missing_and_wrong_bearer_tokens() -> anyhow::Result<()> {
     let token = AccessToken::parse(TEST_TOKEN)?;
     let (application, _directory) = test_application().await?;
-    let server = start_server(ServerConfig::new(token).with_port(0), application.clone()).await?;
+    let server = start_server(
+        ServerConfig::new(token).with_port(0),
+        application.clone(),
+        terminal_operations(&application),
+    )
+    .await?;
     let client = reqwest::Client::new();
 
     let missing = client.post(server.endpoint()).send().await?;
@@ -76,7 +87,12 @@ async fn rejects_missing_and_wrong_bearer_tokens() -> anyhow::Result<()> {
 async fn rejects_disallowed_origin_and_host() -> anyhow::Result<()> {
     let token = AccessToken::parse(TEST_TOKEN)?;
     let (application, _directory) = test_application().await?;
-    let server = start_server(ServerConfig::new(token).with_port(0), application.clone()).await?;
+    let server = start_server(
+        ServerConfig::new(token).with_port(0),
+        application.clone(),
+        terminal_operations(&application),
+    )
+    .await?;
     let client = reqwest::Client::new();
 
     let bad_origin = client
@@ -124,7 +140,12 @@ async fn rejects_disallowed_origin_and_host() -> anyhow::Result<()> {
 async fn official_client_exercises_feedback_lifecycle_and_errors() -> anyhow::Result<()> {
     let token = AccessToken::parse(TEST_TOKEN)?;
     let (application, _directory) = test_application().await?;
-    let server = start_server(ServerConfig::new(token).with_port(0), application.clone()).await?;
+    let server = start_server(
+        ServerConfig::new(token).with_port(0),
+        application.clone(),
+        terminal_operations(&application),
+    )
+    .await?;
     assert!(server.address().ip().is_loopback());
 
     let config = StreamableHttpClientTransportConfig::with_uri(server.endpoint().to_owned())
@@ -415,7 +436,12 @@ async fn official_client_exercises_feedback_lifecycle_and_errors() -> anyhow::Re
 async fn local_api_supports_pi_request_and_blocking_wait() -> anyhow::Result<()> {
     let token = AccessToken::parse(TEST_TOKEN)?;
     let (application, _directory) = test_application().await?;
-    let server = start_server(ServerConfig::new(token).with_port(0), application.clone()).await?;
+    let server = start_server(
+        ServerConfig::new(token).with_port(0),
+        application.clone(),
+        terminal_operations(&application),
+    )
+    .await?;
     let client = reqwest::Client::new();
     let api = format!("http://{}/api/feedback", server.address());
     let request_id = uuid::Uuid::now_v7().to_string();
@@ -504,7 +530,12 @@ async fn local_api_supports_pi_request_and_blocking_wait() -> anyhow::Result<()>
 async fn sse_handshake_emits_endpoint_and_serves_stateless_mcp_tools() -> anyhow::Result<()> {
     let token = AccessToken::parse(TEST_TOKEN)?;
     let (application, _directory) = test_application().await?;
-    let server = start_server(ServerConfig::new(token).with_port(0), application.clone()).await?;
+    let server = start_server(
+        ServerConfig::new(token).with_port(0),
+        application.clone(),
+        terminal_operations(&application),
+    )
+    .await?;
     let client = reqwest::Client::new();
 
     // 1. Initial SSE GET request without session ID (Antigravity handshake)

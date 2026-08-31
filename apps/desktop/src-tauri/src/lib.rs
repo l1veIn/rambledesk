@@ -9,13 +9,13 @@ mod pi_install;
 mod screen_capture;
 mod shortcuts;
 
-use rambledesk_core::FeedbackApplication;
+use rambledesk_core::{FeedbackApplication, WorkbenchTerminalOperations};
 use rambledesk_hosts::{ContinuationRouter, known_continuation_strategies};
 use rambledesk_local_server::{AccessToken, ServerConfig, ServerHandle, start_server};
 use rambledesk_speech::SpeechSession;
 use std::{
     path::PathBuf,
-    sync::{RwLock, atomic::AtomicU32},
+    sync::{Arc, RwLock, atomic::AtomicU32},
 };
 use tauri::{
     Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder,
@@ -40,7 +40,7 @@ struct WorkbenchState {
     application: FeedbackApplication,
     store: rambledesk_storage::SqliteFeedbackStore,
     generic_mcp_configuration: String,
-    continuation: ContinuationRouter,
+    terminal_operations: WorkbenchTerminalOperations,
     pending_count: AtomicU32,
     library_root: RwLock<PathBuf>,
     speech_session: tokio::sync::Mutex<Option<SpeechSession>>,
@@ -138,9 +138,20 @@ pub fn run() {
                     ),
                 )?;
                 let application = store.clone().into_application();
+                let terminal_observer =
+                    Arc::new(continuation::DesktopTerminalOperationObserver::new(
+                        app.handle().clone(),
+                        ContinuationRouter::new(known_continuation_strategies()),
+                        application.clone(),
+                    ));
+                let terminal_operations =
+                    WorkbenchTerminalOperations::new(application.clone(), terminal_observer);
                 let config = ServerConfig::new(token.clone()).with_port(configured_port()?);
-                let handle =
-                    tauri::async_runtime::block_on(start_server(config, application.clone()))?;
+                let handle = tauri::async_runtime::block_on(start_server(
+                    config,
+                    application.clone(),
+                    terminal_operations.clone(),
+                ))?;
                 let configuration = generic_mcp_configuration(handle.endpoint(), &token);
                 let open_item =
                     MenuItem::with_id(app, "open", "打开 RambleDesk", true, None::<&str>)?;
@@ -191,7 +202,7 @@ pub fn run() {
                     application,
                     store,
                     generic_mcp_configuration: configuration,
-                    continuation: ContinuationRouter::new(known_continuation_strategies()),
+                    terminal_operations,
                     pending_count: AtomicU32::new(0),
                     library_root: RwLock::new(library_root),
                     speech_session: tokio::sync::Mutex::new(None),
