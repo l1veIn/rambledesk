@@ -11,6 +11,7 @@ description = "Host profiles and continuation strategies for RambleDesk"
 rambledesk-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+ts-rs.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

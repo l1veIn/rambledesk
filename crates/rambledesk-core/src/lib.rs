@@ -15,12 +15,12 @@ pub const HOST_HEADER: &str = "x-rambledesk-host";
 pub use process::{find_executable, find_executable_on_path};
 
 pub use feedback::{
-    ActionInput, ApplicationError, ApproveFeedbackInput, AttachmentPathResolver,
-    CancelFeedbackInput, Clock, ContextRef, ExecutionMode, FeedbackApplication, FeedbackRepository,
-    FeedbackRequestView, FeedbackResolution, FeedbackResultView, FeedbackStatus, GetFeedbackInput,
-    IdGenerator, NewFeedbackRequest, NewRequestAttachment, RecoverFeedbackInput, RepositoryError,
-    RequestAttachmentInput, RequestFeedbackInput, StoredFeedbackRequest, SubmissionPlanInput,
-    SystemClock, UuidV7Generator,
+    ActionInput, ApplicationError, ApplicationErrorCode, ApproveFeedbackInput,
+    AttachmentPathResolver, CancelFeedbackInput, Clock, ContextRef, ExecutionMode,
+    FeedbackApplication, FeedbackRepository, FeedbackRequestView, FeedbackResolution,
+    FeedbackResultView, FeedbackStatus, GetFeedbackInput, IdGenerator, NewFeedbackRequest,
+    NewRequestAttachment, RecoverFeedbackInput, RepositoryError, RequestAttachmentInput,
+    RequestFeedbackInput, StoredFeedbackRequest, SubmissionPlanInput, SystemClock, UuidV7Generator,
 };
 pub use workspace::{
     AddAttachmentInput, AttachmentView, DeleteFeedbackRequestInput, DraftView,

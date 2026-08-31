@@ -1,13 +1,15 @@
 use std::{fs, path::PathBuf};
 
 use rambledesk_core::{
-    ActionInput, AddAttachmentInput, ApproveFeedbackInput, AttachmentView, CancelFeedbackInput,
-    ContextRef, DeleteFeedbackRequestInput, DraftView, ExecutionMode, FeedbackRequestSummary,
-    FeedbackRequestView, FeedbackResolution, FeedbackResultView, FeedbackStatus,
-    FeedbackWorkspaceView, HostSessionInput, HostSessionSummary, ListFeedbackRequestsInput,
-    ListFeedbackRequestsOutput, ListHostSessionsInput, RecoverFeedbackInput, RemoveAttachmentInput,
-    RenameHostSessionInput, ReorderAttachmentsInput, RequestAttachmentView, SaveDraftInput,
-    SetHostPinnedInput, SetHostSessionPinnedInput, SubmitFeedbackInput,
+    ActionInput, AddAttachmentInput, ApplicationError, ApplicationErrorCode, ApproveFeedbackInput,
+    AttachmentView, CancelFeedbackInput, ContextRef, DeleteFeedbackRequestInput, DraftView,
+    ExecutionMode, FeedbackPackageAttachment, FeedbackPackageContent, FeedbackPackageManifest,
+    FeedbackRequestSummary, FeedbackRequestView, FeedbackResolution, FeedbackResultView,
+    FeedbackStatus, FeedbackWorkspaceView, GetFeedbackInput, HostSessionInput, HostSessionSummary,
+    ListFeedbackRequestsInput, ListFeedbackRequestsOutput, ListHostSessionsInput,
+    RecoverFeedbackInput, RemoveAttachmentInput, RenameHostSessionInput, ReorderAttachmentsInput,
+    RequestAttachmentView, SaveDraftInput, SetHostPinnedInput, SetHostSessionPinnedInput,
+    SubmitFeedbackInput,
 };
 use ts_rs::{Config, TS};
 
@@ -15,14 +17,46 @@ fn exported<T: TS>() -> String {
     T::decl(&Config::default()).replacen("type ", "export type ", 1)
 }
 
+fn exported_application_error_codes() -> String {
+    let values = ApplicationErrorCode::ALL
+        .iter()
+        .map(|code| format!("\"{}\"", code.as_str()))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "export const APPLICATION_ERROR_CODES = [{values}] as const satisfies readonly ApplicationErrorCode[];"
+    )
+}
+
+fn exported_feedback_package_manifest() -> String {
+    exported::<FeedbackPackageManifest>().replace(
+        "request_attachments: Array<FeedbackPackageAttachment>",
+        "request_attachments?: Array<FeedbackPackageAttachment>",
+    )
+}
+
+fn exported_feedback_package_content() -> String {
+    exported::<FeedbackPackageContent>().replace(
+        "request_attachment_paths: Array<string>",
+        "request_attachment_paths?: Array<string>",
+    )
+}
+
 fn main() -> std::io::Result<()> {
     let declarations = [
         exported::<FeedbackStatus>(),
         exported::<FeedbackResolution>(),
         exported::<ExecutionMode>(),
+        exported::<ApplicationErrorCode>(),
+        exported_application_error_codes(),
+        exported::<ApplicationError>(),
         exported::<ActionInput>(),
         exported::<ContextRef>(),
+        exported::<GetFeedbackInput>(),
         exported::<FeedbackResultView>(),
+        exported::<FeedbackPackageAttachment>(),
+        exported_feedback_package_manifest(),
+        exported_feedback_package_content(),
         exported::<FeedbackRequestView>(),
         exported::<FeedbackRequestSummary>(),
         exported::<HostSessionSummary>(),

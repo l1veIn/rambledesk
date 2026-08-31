@@ -15,7 +15,7 @@
     "test:rust": "cargo test --workspace",
     "check:rust-size": "node scripts/check-rust-module-size.mjs",
     "check:terminology": "node scripts/check-terminology.mjs",
-    "contracts:generate": "cargo run -p rambledesk-core --example export_types",
+    "contracts:generate": "cargo run -p rambledesk-core --example export_types && cargo run -p rambledesk-hosts --example export_types",
     "contracts:check": "node scripts/contracts-check.mjs",
     "mcp:self-test": "cargo run -p rambledesk-cli -- self-test",
     "mcp:inspector-smoke": "scripts/mcp-inspector-smoke.sh",
