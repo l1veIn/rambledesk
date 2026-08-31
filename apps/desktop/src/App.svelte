@@ -57,6 +57,12 @@
     sessionViewDescriptor,
     type SessionViewDescriptor,
   } from './lib/workspace/viewDescriptors'
+  import {
+    activeWorkspaceView,
+    EMPTY_WORKSPACE_SHELL_STATE,
+    workspaceShellReducer,
+    type WorkspaceShellState,
+  } from './lib/workspace/workspaceShell'
   import { previewFixtures, previewWorkspaceFor } from './lib/previewFixtures'
   import {
     restorePublishedAttachmentUrls,
@@ -131,6 +137,8 @@
     formatTime(value, $locale, tr('Not saved yet'))
   let workspace: FeedbackWorkspaceView | null = null
   let sessionView: SessionViewDescriptor | null = null
+  let workspaceShellState: WorkspaceShellState = EMPTY_WORKSPACE_SHELL_STATE
+  let renderedSessionView: SessionViewDescriptor | null = null
   let completedResult: FeedbackRequestView | null = null
   let publishedFeedback: PublishedFeedbackView | null = null
   let draftBody = ''
@@ -362,6 +370,13 @@
     : $navigation.selectedHostId && $navigation.selectedHostSessionId
       ? sessionViewDescriptor($navigation.selectedHostId, $navigation.selectedHostSessionId)
       : null
+  $: workspaceShellState = sessionView
+    ? workspaceShellReducer(EMPTY_WORKSPACE_SHELL_STATE, {
+        type: 'open',
+        view: sessionView,
+      })
+    : EMPTY_WORKSPACE_SHELL_STATE
+  $: renderedSessionView = activeWorkspaceView(workspaceShellState)
   $: requestScopeLabel = $navigation.selectedHostId
     ? $navigation.selectedHostSessionId
       ? selectedHostSession?.source_hint ??
@@ -1065,7 +1080,7 @@
       <Pane id="workspace-pane" minSize={workspaceMinimumSize}>
         <SessionWorkbench
           bind:this={sessionWorkbench}
-          view={sessionView}
+          view={renderedSessionView}
           bind:taskBriefOpen
           {loadingWorkspace}
           {workspace}
