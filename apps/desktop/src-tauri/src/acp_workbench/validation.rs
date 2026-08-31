@@ -1,5 +1,7 @@
 use std::path::Path;
 
+use rambledesk_acp_client::LaunchConfigKind;
+
 use super::model::{AcpWorkbenchError, LaunchDraftInput, LaunchPreflight};
 
 pub(super) fn title_from_markdown(markdown: &str) -> String {
@@ -11,14 +13,6 @@ pub(super) fn title_from_markdown(markdown: &str) -> String {
         .trim_start_matches('#')
         .trim();
     title.chars().take(160).collect()
-}
-
-pub(super) fn nonblank_option(value: String) -> Option<String> {
-    if value.trim().is_empty() {
-        None
-    } else {
-        Some(value)
-    }
 }
 
 pub(super) fn require_nonblank(field: &str, value: &str) -> Result<(), AcpWorkbenchError> {
@@ -67,30 +61,48 @@ pub(super) fn validate_launch_selection(
     input: &LaunchDraftInput,
     preflight: &LaunchPreflight,
 ) -> Result<(), AcpWorkbenchError> {
-    if !input.model.trim().is_empty() && !preflight.models.contains(&input.model) {
+    if input.agent_id != preflight.agent_id || input.schema_digest != preflight.schema_digest {
         return Err(AcpWorkbenchError::new(
-            "ACP_UNSUPPORTED_MODEL",
-            "the selected model was not returned by the Agent Launch Preflight",
+            "ACP_LAUNCH_SCHEMA_STALE",
+            "the Agent Launch Schema changed; refresh its options and try again",
             false,
         ));
     }
-    if !input.reasoning_effort.trim().is_empty()
-        && !preflight
-            .reasoning_efforts
-            .contains(&input.reasoning_effort)
+    let configurable = preflight
+        .config_options
+        .iter()
+        .filter(|option| !matches!(option.kind, LaunchConfigKind::Unsupported { .. }))
+        .collect::<Vec<_>>();
+    if configurable.len() != input.config_values.len()
+        || configurable
+            .iter()
+            .zip(&input.config_values)
+            .any(|(option, selection)| option.id != selection.id)
     {
         return Err(AcpWorkbenchError::new(
-            "ACP_UNSUPPORTED_REASONING_EFFORT",
-            "the selected reasoning effort was not returned by the Agent Launch Preflight",
+            "ACP_INVALID_CONFIG_SELECTION",
+            "Launch config values must follow the complete order advertised by the Agent",
             false,
         ));
     }
-    if !preflight.access_modes.contains(&input.access_mode) {
-        return Err(AcpWorkbenchError::new(
-            "ACP_UNSUPPORTED_ACCESS_MODE",
-            "the selected Access Mode is not supported by this Agent Launch Profile",
-            false,
-        ));
+    for (option, selection) in configurable.into_iter().zip(&input.config_values) {
+        let valid = match &option.kind {
+            LaunchConfigKind::Select { options, .. } => options
+                .iter()
+                .any(|candidate| selection.value.as_str() == Some(&candidate.value)),
+            LaunchConfigKind::Boolean { .. } => selection.value.is_boolean(),
+            LaunchConfigKind::Unsupported { .. } => unreachable!("filtered above"),
+        };
+        if !valid {
+            return Err(AcpWorkbenchError::new(
+                "ACP_INVALID_CONFIG_SELECTION",
+                format!(
+                    "the selected value for {} was not returned by the Agent Launch Preflight",
+                    option.id
+                ),
+                false,
+            ));
+        }
     }
     Ok(())
 }

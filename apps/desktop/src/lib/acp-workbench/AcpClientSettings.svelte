@@ -154,5 +154,5 @@
     </div>
   {/if}
 
-  <p class="m-0 text-[11px] leading-5 text-muted-foreground">{tr('Agent, model, reasoning effort, workspace, and access permission are chosen when you launch each Ramble.')}</p>
+  <p class="m-0 text-[11px] leading-5 text-muted-foreground">{tr('Workspace, Agent, and the options reported by that Agent are chosen when you launch each Ramble.')}</p>
 </div>

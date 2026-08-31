@@ -30,6 +30,7 @@ RambleDesk 在 ACP 中扮演 **Client**：它可以启动 Agent 子进程、建�
 14. **Agent 是完整会话历史的权威来源。** RambleDesk 不承诺独立于 Agent 的稳定完整历史视图，也不持久化完整 ACP transcript；重新打开 Session 时，历史可见性取决于 Agent 的 `session/load`、原生历史能力和保留策略。
 15. **每个 source 只持久化自己拥有的事实。** Managed ACP 的 Ramble Submission、Feedback Request、Feedback Package 和 Delivery 必须可恢复；Permission Request 与 Ask Question 不另建持久历史，断开其所属 Agent Run 时必须取消。Adapter Session 的持久性由原 owner 保持。
 16. **Feedback Request 的人类决议与 Agent 交付是两个独立事实。** 人类提交或取消时先在本地原子固定 Request resolution、提交时的 Package 和 pending Delivery，再恢复 Agent Run 并交付；Agent 临时离线不得使已提交的人类事实回滚。
+17. **Managed Ramble Loop 由 Feedback Request 设门。** Agent 的普通消息只进入 live Context View，不能充当阶段汇报或任务终点。每个生产性 Prompt Turn 必须以成功创建下一条 Feedback Request 暂停；`request_feedback` 后结束的是当前 Prompt Turn，不是 Session。只有人类在 RambleDesk 发起明确的 Session 结束操作，循环才结束；Agent 不得根据普通消息或反馈正文自行宣布或关闭 Session。归档是结束后的组织操作，不隐式充当结束命令。
 
 ## Session Source 与三类 Session
 
@@ -37,7 +38,7 @@ RambleDesk 在 ACP 中扮演 **Client**：它可以启动 Agent 子进程、建�
 
 1. RambleDesk 先通过 Launch Preflight 确认 Agent 可用性和它实际提供的 session config options；人类再确认 Launch Configuration：Agent Profile、Launch Profile、model、Workspace Reference、reasoning effort 和 Access Mode。
 2. 人类提交 Launch Ramble；RambleDesk 以 `submission_id` 幂等发布 `package_purpose=launch` 的 Feedback Package，并确保只创建一次对应 Session 和初始启动意图。
-3. `rambledesk-acp-client` 建立 Agent Run 和 ACP Session Link，把从 `launch` Package 派生的首个 Prompt 交给 ACP Agent。进程启动失败可以重试，但不得重复发布 Package、创建 Session 或发送同一个首个 Prompt。
+3. `rambledesk-acp-client` 建立 Agent Run 和 ACP Session Link，把从 `launch` Package 派生的 Launch Bootstrap 作为首个 Prompt 交给 ACP Agent，并为 Launch、Steering 和 Feedback Resume 的每个生产性 Prompt 注入同一 Ramble Loop Contract。Launch Bootstrap 只描述本次无任务 kickoff，不发送 `/ramble`，也不依赖文件型 skill。进程启动失败可以重试，但不得重复发布 Package、创建 Session 或发送同一个首个 Prompt。
 4. RambleDesk 持久化 Session Record 和每个 Ramble Submission；ACP `session/update` 只归一化为当前 Context View 的 live event，不写入完整 transcript。Prompt Turn 是运行边界，不要求独立 `turns` 表。
 5. 非 YOLO 模式下，Agent 可以通过 ACP 发出零到多个 Permission Request。RambleDesk 按原 JSON-RPC request 逐项关联和排队，完整呈现 tool call 与选项，并把人类选择直接回给对应请求。
 6. Agent Run 具备 Question Capability 时，Agent 可以发起 Ask Question；首选 transport 是 ACP `elicitation/create` form，也可以是经 Launch Profile 验证的 Agent-specific Question Channel。问题显示在 Session 输入框上方，直到人类回答、跳过，或承载通道被取消/断开。
@@ -95,6 +96,8 @@ Adapter Session 不因出现在统一 Workbench 就获得 ACP Session Link、Man
 | Ask Question | Agent 为解决一个具体选择而向人类提出的结构化问题。 | 通过 Question Channel 呈现在 Session 输入框上方；回答或跳过只解除当前 live 等待，不另建持久历史，也不生成 Feedback Package。 |
 | Question Channel | 把 Ask Question 从 Agent 送达人类并把答案交回的能力。 | 首选 ACP `elicitation/create` form；也可以由经验证的 Agent-specific `ask_user_question` 工具或原生桥接实现。产品不因此引入 Elicitation Request；能力归属具体 Agent Run。 |
 | Session Toolset | RambleDesk 在 Agent Run 建立时提供给 Agent 的工具集合。 | 当前至少可包含 `ask_user_question`、`request_feedback` 和 `get_feedback`；通常经 ACP 的 MCP server 配置注入，但领域合同不依赖 MCP wire shape。 |
+| Launch Bootstrap | Managed ACP Session 的首个 Prompt；当前无任务 Launch 用它要求 Agent 先通过 Feedback Request 收集任务简报。 | 不发送 `/ramble`，不是全局 skill 安装，也不承担后续 Turn 的循环约束；通用约束属于 Ramble Loop Contract。 |
+| Ramble Loop Contract | `rambledesk-acp-client` 附加到每个生产性 Prompt 的 Session 级执行合同：普通消息不是交付，Agent 必须以 `request_feedback` 提交问题、阶段汇报、阻塞、审阅材料或完成提议；恢复后先 `get_feedback` 再继续，并在下一次暂停前再次 `request_feedback`。 | Permission 与 Ask Question 可以在 Turn 内发生，但不能替代 Turn 末尾的 Feedback Request。Agent 在工具返回后结束当前 Prompt Turn 等待人类，不自行结束 Session；纯 Recovery Context Turn 是唯一非生产性例外。 |
 | Feedback Request | Agent 请求人类进行真实体验、判断或审阅的持久单位。 | Managed ACP Session 中遵守 v3 `waiting | submitted | cancelled` 与无限等待合同；Adapter Session 保留原 owner 的状态和操作，只在 Workbench 投影为同类 Attention Item。 |
 | Waiting for Feedback | Session 已有 pending Feedback Request、正在等待人类提交或取消的持久状态。 | 不要求保持 MCP request、Prompt Turn 或 Agent 进程存活；只有人类提交或明确取消才能结束该等待。 |
 | Feedback Package | Launch Ramble 或 Feedback Ramble 提交后发布的不可变、位置无关反馈包，包含 manifest、正式与原始内容、Artifact Entry、digest 和 `package_purpose`。 | `launch` Package 绑定 Launch submission；`response` Package 绑定 Feedback Request。二者格式与发布合同一致，不把绝对文件路径作为内容合同。 |

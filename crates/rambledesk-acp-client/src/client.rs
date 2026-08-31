@@ -1,4 +1,5 @@
 mod configuration;
+mod prompt_contract;
 mod recovery;
 mod runtime;
 
@@ -14,10 +15,10 @@ use serde_json::{Value, json};
 
 use self::configuration::{
     apply_launch_configuration, apply_process_launch_configuration, project_config_options,
-    supported_access_modes,
 };
 use self::recovery::build_recovery_prompt;
 use self::runtime::ManagedRun;
+use crate::launch_schema::project_launch_schema;
 use crate::{
     AcpClientConfig, AcpClientError, AcpErrorCode, CancelOutcome, CapabilitySnapshot,
     LaunchProfile, LaunchProfileRef, LiveAnswerOutcome, LiveSessionEventReceiver,
@@ -72,6 +73,7 @@ impl AcpClient {
     pub async fn preflight(
         &self,
         profile_ref: LaunchProfileRef,
+        workspace: &Path,
     ) -> Result<PreflightReport, AcpClientError> {
         let profile = self.profile(&profile_ref)?;
         let spawned = self.spawner.spawn(profile).await?;
@@ -89,16 +91,16 @@ impl AcpClient {
         let result = async {
             let (capabilities, agent_version) =
                 initialize(&rpc, self.config.preflight_timeout).await?;
-            let probe = tempfile_directory()?;
             let response = rpc
                 .request(
                     "session/new",
-                    json!({"cwd": probe.to_string_lossy(), "mcpServers": []}),
+                    json!({"cwd": workspace.to_string_lossy(), "mcpServers": []}),
                     Some(self.config.preflight_timeout),
                 )
                 .await?;
-            let config_options = config_options(&response);
-            let supported_access_modes = supported_access_modes(profile, &config_options);
+            let raw_config_options = config_options(&response);
+            let (config_options, schema_digest) =
+                project_launch_schema(profile, &raw_config_options);
             let mut warnings = Vec::new();
             if capabilities.close_session
                 && let Some(session_id) = response.get("sessionId").and_then(Value::as_str)
@@ -121,7 +123,7 @@ impl AcpClient {
                 agent_version,
                 capabilities,
                 config_options,
-                supported_access_modes,
+                schema_digest,
                 warnings,
             })
         }
@@ -201,7 +203,7 @@ impl AcpClient {
             launch_profile_id: launch.launch_profile_id.clone(),
         };
         let mut profile = self.profile(&profile_ref)?.clone();
-        apply_process_launch_configuration(&mut profile, launch.access_mode)?;
+        apply_process_launch_configuration(&mut profile, launch)?;
         let spawned = self.spawner.spawn(&profile).await?;
         let (rpc, inbound) = RpcPeer::start(spawned);
         let (capabilities, _) = match initialize(&rpc, self.config.operation_timeout).await {
@@ -645,18 +647,6 @@ fn legacy_mode_option(response: &Value) -> Option<Value> {
             "_rambledeskMutation": "set_mode"
         })
     })
-}
-
-fn tempfile_directory() -> Result<std::path::PathBuf, AcpClientError> {
-    let directory = std::env::temp_dir().join("rambledesk-acp-preflight");
-    std::fs::create_dir_all(&directory).map_err(|error| {
-        AcpClientError::new(
-            AcpErrorCode::AgentLaunchFailed,
-            format!("could not prepare preflight directory: {error}"),
-            true,
-        )
-    })?;
-    Ok(directory)
 }
 
 async fn cleanup_failed_setup(

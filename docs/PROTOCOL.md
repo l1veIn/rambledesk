@@ -419,10 +419,25 @@ else:
 
 ## Agent work 与 Delivery 完成条件
 
+### Ramble Loop Contract
+
+`rambledesk-acp-client` MUST 在每个生产性 Launch、Steering 和 Feedback Resume Prompt 中附加同一 Ramble Loop Contract：
+
+- Agent 的普通消息只作为 live Context View 内容，MUST NOT 替代 Feedback Request、阶段交接或完成提议。
+- Agent 在需要任务简报、澄清、真实判断、阶段汇报、阻塞处理、交付审阅或认为任务完成时，MUST 调用 `request_feedback`。
+- Permission Request 与 Ask Question MAY 在 Turn 内发生，但 MUST NOT 替代 Turn 结束前的 Feedback Request。
+- `request_feedback` 成功后 Agent MUST 结束当前 Prompt Turn 且不得轮询；Session 保持打开并无限等待人类。
+- Feedback Resume Turn MUST 先调用指定的 `get_feedback(request_id)`，应用人类反馈并继续工作，然后在下一次暂停前创建下一条 Feedback Request。
+- 只有人类在 RambleDesk 发起明确的 Session 结束操作时，循环才结束；Agent MUST NOT 根据普通消息或反馈正文自行推断 Session 已结束。归档是结束后的组织操作，MUST NOT 隐式取消仍在等待的 Request 或 Agent work。
+
+纯 Recovery Context Turn 只恢复持久上下文，不是生产性 Turn，不要求创建 Feedback Request；恢复完成后调度的实际 Agent work 才应用 Ramble Loop Contract。
+
 ### Launch 与 Steering
 
 - ACP Client claim pending Agent work 后发送 `session/prompt`。
-- 只有 Agent 接受对应 Prompt request，并且其终止结果可归属到同一 `work_id` 时才 complete。
+- 只有 Agent 接受对应 Prompt request、成功调用 `request_feedback` 创建与同一 `work_id` 关联的下一条 Request，并且 Prompt Turn 正常结束时才 complete。
+- `request_feedback.request_id` MUST 从稳定 `work_id` 派生或由等价幂等映射固定；同一 work 重试不得生成重复 Waiting Request。
+- Agent 只输出普通结果后 `end_turn` 时，ACP Client MUST 记录 `RAMBLE_LOOP_NOT_SUSPENDED` 并保持 work `pending`，不得把普通文本提升为完成证据。
 - 连接在接受结果不确定时断开，work 保持可重试；Prompt 必须携带稳定 work marker，使 Agent 能识别重复输入。
 - ACP Client 记录 retryable failure 时 MUST 使用原 `work_id + claim_token` 释放 lease 并保存稳定错误码；不得创建替代 work。
 - 每次成功 claim 都递增 work `attempt_count`；`feedback_resume` 同时递增对应 Delivery attempt。
@@ -439,6 +454,8 @@ else:
 - 若是新 ACP Session，包含足以解释原任务的 Recovery Context，而不是本机 Package 路径
 
 Delivery 只有在 ACP Client 观察到对应 `get_feedback` tool call 成功，且承载它的 Prompt Turn 正常结束后才标记 `delivered`。任何不确定失败都保持 `pending` 并使用同一 id 重试。
+
+Feedback Resume 的完整 Agent work 只有在同一生产性 Turn 中同时观察到指定 Delivery 被 `get_feedback` 消费、下一条 Feedback Request 成功创建且 Prompt Turn 正常结束时才 complete。只调用 `get_feedback` 后直接普通输出，不满足 Ramble Loop Contract。
 
 Recovery Context 由 Core 的 `SessionRecoverySnapshot` 生成，只含最初 Launch Ramble、后续 Steering Ramble、Launch Configuration、成对的 terminal Feedback Request + pending Delivery 与 pending Agent work；它不包含或推断 Agent transcript。Feedback Request 与 Delivery 必须属于同一 Session 和同一 `request_id`，这样新 Agent 无需 transcript 也能理解人类反馈所回答的原问题。
 
@@ -510,7 +527,9 @@ Question Channel 是否通过 ACP elicitation、Agent 原生工具或经验证�
 - ACP Agent 必须支持 stdio MCP server 配置才可使用基线 Session Toolset。
 - Toolset 注入失败时 Launch Preflight 或 Session 建立 MUST 明确降级/失败，不得在 UI 中显示虚假能力。
 - `request_feedback` 必须短调用；持久等待发生在 RambleDesk Request 状态，不发生在 MCP request。
+- Session Toolset 必须在 `request_feedback` 成功持久化后向 ACP Client 产生内部 observation；完成判定不得依赖 Agent 自报的 tool update 形状。
 - `get_feedback` 返回内容与位置无关的 Delivery Envelope。
+- `get_feedback` 的主要文本 Content MUST 包含已提交的正式反馈正文（缺失时回退到 uncooked 正文），不能只返回 Delivery id；结构化 Envelope 保留完整字段与附件 locator。这样只向模型投影文本 Content 的 ACP Agent 也不会丢失人类反馈，文本层不得复制大型附件的 inline base64 或泄漏本地路径。
 - Toolset config digest 保存在 ACP Session Link 中；恢复时变更必须显式记录并重新注入。
 
 ## Attention Item

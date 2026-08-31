@@ -5,6 +5,7 @@ import {
   isCurrentPreflightContext,
   isUsablePreflight,
   itemsForSession,
+  launchConfigIsComplete,
   reconcileSelection,
   resolvePreflightSelection,
   selectSession,
@@ -31,6 +32,26 @@ const snapshot: AcpWorkbenchSnapshot = {
   ],
   attentionItems: items,
   agents: [],
+}
+
+const configPreflight = {
+  agentId: 'codex',
+  schemaDigest: 'schema-1',
+  configOptions: [
+    {
+      id: 'model', name: 'Model', description: null, category: 'model', source: 'agent' as const,
+      kind: 'select' as const, currentValue: 'supported',
+      options: [
+        { value: 'supported', name: 'Supported', description: null, group: null },
+        { value: 'other', name: 'Other', description: null, group: null },
+      ],
+    },
+    {
+      id: 'fast_mode', name: 'Fast mode', description: null, category: null, source: 'agent' as const,
+      kind: 'boolean' as const, currentValue: false,
+    },
+  ],
+  warning: null,
 }
 
 describe('ACP Workbench selection', () => {
@@ -62,42 +83,48 @@ describe('ACP Workbench selection', () => {
     expect(selectSession(snapshot, 's1')).toEqual({ sessionId: 's1', itemId: 'waiting' })
   })
 
-  it('uses only preflight-supported launch choices', () => {
-    expect(resolvePreflightSelection({
-      agentId: 'codex',
-      models: ['supported'],
-      reasoningEfforts: ['medium'],
-      accessModes: ['read_only'],
-      warning: null,
-    }, {
+  it('uses Agent defaults and only restores still-supported generic choices', () => {
+    expect(resolvePreflightSelection(configPreflight, {
       model: 'stale',
-      reasoningEffort: 'high',
-      accessMode: 'yolo',
-    })).toEqual({ model: 'supported', reasoningEffort: 'medium', accessMode: 'read_only' })
+      fast_mode: true,
+    })).toEqual([
+      { id: 'model', value: 'supported' },
+      { id: 'fast_mode', value: true },
+    ])
+    expect(launchConfigIsComplete(configPreflight, [
+      { id: 'model', value: 'supported' },
+      { id: 'fast_mode', value: true },
+    ])).toBe(true)
   })
 
   it('does not present an empty failed preflight as ready', () => {
     expect(isUsablePreflight(null)).toBe(false)
     expect(isUsablePreflight({
       agentId: 'codex',
-      models: [],
-      reasoningEfforts: [],
-      accessModes: [],
+      schemaDigest: '',
+      configOptions: [],
       warning: 'Agent could not start',
     })).toBe(false)
     expect(isUsablePreflight({
       agentId: 'agent-with-defaults',
-      models: [],
-      reasoningEfforts: [],
-      accessModes: ['workspace_write'],
+      schemaDigest: 'schema-defaults',
+      configOptions: [],
       warning: null,
     })).toBe(true)
     expect(isUsablePreflight({
       agentId: 'codex',
-      models: ['gpt'],
-      reasoningEfforts: ['high'],
-      accessModes: ['workspace_write'],
+      schemaDigest: 'schema-1',
+      configOptions: configPreflight.configOptions,
       warning: null,
+    })).toBe(true)
+    expect(isUsablePreflight({
+      agentId: 'future-agent',
+      schemaDigest: 'schema-2',
+      configOptions: [{
+        id: 'future', name: 'Future', description: null, category: null, source: 'agent',
+        kind: 'unsupported', currentValue: null, rawType: 'number',
+      }],
+      warning: 'Unsupported option',
     })).toBe(true)
   })
 

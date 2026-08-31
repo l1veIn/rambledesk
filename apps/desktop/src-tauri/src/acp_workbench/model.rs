@@ -1,3 +1,4 @@
+use rambledesk_acp_client::{LaunchConfigOption, LaunchConfigSelection};
 use rambledesk_core::kernel::{
     AccessMode, DraftSnapshot, FeedbackDeliveryRecord, FeedbackRequestSnapshot, RambleIntent,
     SessionRecord,
@@ -10,11 +11,17 @@ pub(crate) struct LaunchDraftInput {
     pub submission_id: String,
     pub workspace: String,
     pub agent_id: String,
-    pub model: String,
-    pub reasoning_effort: String,
-    pub access_mode: AccessMode,
+    pub schema_digest: String,
+    pub config_values: Vec<LaunchConfigSelection>,
     pub document_json: String,
     pub body_markdown: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct LaunchPreflightInput {
+    pub workspace: String,
+    pub agent_id: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -328,15 +335,73 @@ pub(crate) struct AcpWorkbenchSnapshot {
     pub(super) sessions: Vec<AcpSessionSummary>,
     pub(super) attention_items: Vec<AttentionItem>,
     pub(super) agents: Vec<AgentSummary>,
+    /// Ephemeral projection of currently observed ACP runs. This is deliberately
+    /// absent from SQLite and is cleared when the Desktop process shuts down.
+    pub(super) timelines: Vec<SessionTimeline>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct SessionTimeline {
+    pub session_id: String,
+    pub live_only: bool,
+    pub turns: Vec<TimelineTurn>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum TimelineTurnStatus {
+    Running,
+    Completed,
+    Failed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct TimelineTurn {
+    pub turn_id: String,
+    pub status: TimelineTurnStatus,
+    pub started_at: String,
+    pub completed_at: Option<String>,
+    pub entries: Vec<TimelineEntry>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum TimelineEntryKind {
+    Thought,
+    Tool,
+    Message,
+    Status,
+    Error,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum TimelineEntryStatus {
+    Running,
+    Completed,
+    Failed,
+    Waiting,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct TimelineEntry {
+    pub id: String,
+    pub kind: TimelineEntryKind,
+    pub title: String,
+    pub content: String,
+    pub status: TimelineEntryStatus,
+    pub created_at: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct LaunchPreflight {
     pub agent_id: String,
-    pub models: Vec<String>,
-    pub reasoning_efforts: Vec<String>,
-    pub access_modes: Vec<AccessMode>,
+    pub schema_digest: String,
+    pub config_options: Vec<LaunchConfigOption>,
     pub warning: Option<String>,
 }
 

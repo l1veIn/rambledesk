@@ -176,13 +176,12 @@ mod tests {
     use std::sync::Mutex;
 
     use rambledesk_core::kernel::{
-        AgentWorkDisposition, AgentWorkEvidence, AgentWorkResult, LaunchConfiguration,
-        LaunchSubmission, RambleContent, SubmissionId, WorkScope,
+        LaunchConfiguration, LaunchSubmission, RambleContent, SubmissionId,
     };
 
     use super::*;
     use crate::acp_workbench::{
-        model::{AttentionItem, AttentionStatus, LaunchDraftInput, LaunchPreflight},
+        model::{AttentionItem, AttentionStatus, LaunchPreflight, LaunchPreflightInput},
         orchestration::{AcpOrchestrationPort, LiveAcpProjection, OrchestrationFuture},
     };
 
@@ -200,7 +199,7 @@ mod tests {
 
         fn preflight<'a>(
             &'a self,
-            _input: &'a LaunchDraftInput,
+            _input: &'a LaunchPreflightInput,
         ) -> OrchestrationFuture<'a, LaunchPreflight> {
             Box::pin(async { unreachable!("not used by this test") })
         }
@@ -264,26 +263,6 @@ mod tests {
             })
             .await
             .expect("launch Session");
-        let batch = state
-            .core
-            .claim_agent_work(WorkScope {
-                session_id: Some(launched.session_id.clone()),
-                limit: 1,
-                lease_seconds: 60,
-            })
-            .await
-            .expect("claim Launch work");
-        state
-            .core
-            .record_agent_work(AgentWorkResult {
-                work_id: batch.items[0].work.work_id.clone(),
-                claim_token: batch.items[0].claim_token.clone(),
-                disposition: AgentWorkDisposition::Completed {
-                    evidence: AgentWorkEvidence::PromptTurnCompleted,
-                },
-            })
-            .await
-            .expect("complete Launch work");
         orchestration
             .0
             .lock()

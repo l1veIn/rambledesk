@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use rambledesk_acp_client::{
-    AcpClient, AcpClientConfig, LaunchProfile, PermissionAnswer, RecoveryMethod, SessionScope,
+    AcpClient, AcpClientConfig, AgentLaunchConfig, LaunchConfigKind, LaunchConfigSelection,
+    LaunchProfile, PermissionAnswer, RecoveryMethod, SessionScope,
 };
 use rambledesk_core::kernel::{
     AccessMode, ArtifactInput, Core, LaunchConfiguration, LaunchSubmission, RambleContent,
@@ -37,7 +38,7 @@ async fn pinned_codex_acp_negotiates_the_v1_contract() {
     .expect("ACP Client");
 
     let report = client
-        .preflight(LaunchProfile::codex_npx().profile_ref)
+        .preflight(LaunchProfile::codex_npx().profile_ref, temp.path())
         .await
         .expect("pinned Codex ACP preflight");
     assert_eq!(report.capabilities.protocol_version, 1);
@@ -55,30 +56,29 @@ async fn pinned_codex_acp_negotiates_the_v1_contract() {
         let option = report
             .config_options
             .iter()
-            .find(|option| option["id"] == id)
+            .find(|option| option.id == id)
             .unwrap_or_else(|| panic!("Codex omitted {id} config option"));
-        assert_eq!(option["type"], "select");
-        assert_eq!(option["category"], category);
-        assert!(!option["options"].as_array().unwrap().is_empty());
+        assert_eq!(option.category.as_deref(), Some(category));
+        let LaunchConfigKind::Select { options, .. } = &option.kind else {
+            panic!("Codex {id} option was not selectable")
+        };
+        assert!(!options.is_empty());
     }
     let mode = report
         .config_options
         .iter()
-        .find(|option| option["id"] == "mode")
+        .find(|option| option.id == "mode")
         .unwrap();
-    let mode_values = mode["options"]
-        .as_array()
-        .unwrap()
+    let LaunchConfigKind::Select { options, .. } = &mode.kind else {
+        panic!("Codex mode option was not selectable")
+    };
+    let mode_values = options
         .iter()
-        .map(|option| option["value"].as_str().unwrap())
+        .map(|option| option.value.as_str())
         .collect::<Vec<_>>();
     assert!(mode_values.contains(&"read-only"));
     assert!(mode_values.contains(&"agent"));
     assert!(mode_values.contains(&"agent-full-access"));
-    assert_eq!(
-        report.supported_access_modes,
-        vec![AccessMode::WorkspaceWrite, AccessMode::Yolo]
-    );
 
     store.close().await;
 }
@@ -104,18 +104,24 @@ async fn pinned_codex_acp_passes_through_permission_and_resumes_after_close() {
     };
     let client = AcpClient::new(core.clone(), config.clone()).expect("ACP Client");
     let preflight = client
-        .preflight(LaunchProfile::codex_npx().profile_ref)
+        .preflight(LaunchProfile::codex_npx().profile_ref, temp.path())
         .await
         .expect("preflight");
-    let selected = |id: &str| {
-        preflight
-            .config_options
-            .iter()
-            .find(|option| option["id"] == id)
-            .and_then(|option| option["currentValue"].as_str())
-            .unwrap_or_else(|| panic!("Codex omitted current {id}"))
-            .to_string()
-    };
+    let config_values = preflight
+        .config_options
+        .iter()
+        .filter_map(|option| match &option.kind {
+            LaunchConfigKind::Select { current_value, .. } => Some(LaunchConfigSelection {
+                id: option.id.clone(),
+                value: serde_json::json!(current_value),
+            }),
+            LaunchConfigKind::Boolean { current_value } => Some(LaunchConfigSelection {
+                id: option.id.clone(),
+                value: serde_json::json!(current_value),
+            }),
+            LaunchConfigKind::Unsupported { .. } => None,
+        })
+        .collect();
     let launch = core
         .launch(LaunchSubmission {
             submission_id: SubmissionId::new("codex-permission-smoke"),
@@ -125,10 +131,15 @@ async fn pinned_codex_acp_passes_through_permission_and_resumes_after_close() {
                 agent_profile_id: "codex".to_string(),
                 launch_profile_id: "codex-acp-npx".to_string(),
                 workspace_reference: temp.path().to_string_lossy().to_string(),
-                model: Some(selected("model")),
-                reasoning_effort: Some(selected("reasoning_effort")),
+                model: None,
+                reasoning_effort: None,
                 access_mode: AccessMode::WorkspaceWrite,
-                agent_config_json: "{}".to_string(),
+                agent_config_json: serde_json::to_string(&AgentLaunchConfig {
+                    version: 1,
+                    schema_digest: preflight.schema_digest,
+                    values: config_values,
+                })
+                .expect("serialize Agent config"),
             },
             ramble: RambleContent {
                 document_json: "{}".to_string(),

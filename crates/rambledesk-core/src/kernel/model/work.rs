@@ -74,8 +74,13 @@ pub struct AgentWorkBatch {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AgentWorkEvidence {
-    PromptTurnCompleted,
-    FeedbackConsumedAndTurnCompleted { delivery_id: DeliveryId },
+    RambleLoopSuspended {
+        request_id: RequestId,
+    },
+    FeedbackConsumedAndLoopSuspended {
+        delivery_id: DeliveryId,
+        request_id: RequestId,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

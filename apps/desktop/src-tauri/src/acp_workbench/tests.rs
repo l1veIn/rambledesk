@@ -24,9 +24,8 @@ impl AcpOrchestrationPort for ReconcileFailsOrchestrator {
         Box::pin(async move {
             Ok(LaunchPreflight {
                 agent_id: agent_id.to_owned(),
-                models: vec!["gpt-5".to_owned()],
-                reasoning_efforts: vec!["high".to_owned()],
-                access_modes: vec![AccessMode::WorkspaceWrite],
+                schema_digest: "schema-v1".to_owned(),
+                config_options: vec![boolean_launch_option(false)],
                 warning: None,
             })
         })
@@ -34,14 +33,13 @@ impl AcpOrchestrationPort for ReconcileFailsOrchestrator {
 
     fn preflight<'a>(
         &'a self,
-        input: &'a LaunchDraftInput,
+        input: &'a LaunchPreflightInput,
     ) -> orchestration::OrchestrationFuture<'a, LaunchPreflight> {
         Box::pin(async move {
             Ok(LaunchPreflight {
                 agent_id: input.agent_id.clone(),
-                models: vec![input.model.clone()],
-                reasoning_efforts: vec![input.reasoning_effort.clone()],
-                access_modes: vec![input.access_mode],
+                schema_digest: "schema-v1".to_owned(),
+                config_options: vec![boolean_launch_option(false)],
                 warning: None,
             })
         })
@@ -79,17 +77,121 @@ impl AcpOrchestrationPort for ReconcileFailsOrchestrator {
     }
 }
 
+fn boolean_launch_option(current_value: bool) -> rambledesk_acp_client::LaunchConfigOption {
+    rambledesk_acp_client::LaunchConfigOption {
+        id: "fast-mode".to_owned(),
+        name: "Fast mode".to_owned(),
+        description: Some("Prefer latency over deliberation".to_owned()),
+        category: None,
+        source: rambledesk_acp_client::LaunchConfigSource::Agent,
+        kind: rambledesk_acp_client::LaunchConfigKind::Boolean { current_value },
+    }
+}
+
 fn launch_input(workspace: impl Into<String>, submission_id: &str) -> LaunchDraftInput {
     LaunchDraftInput {
         submission_id: submission_id.to_owned(),
         workspace: workspace.into(),
         agent_id: "codex".to_owned(),
-        model: "gpt-5".to_owned(),
-        reasoning_effort: "high".to_owned(),
-        access_mode: AccessMode::WorkspaceWrite,
+        schema_digest: "schema-v1".to_owned(),
+        config_values: vec![rambledesk_acp_client::LaunchConfigSelection {
+            id: "fast-mode".to_owned(),
+            value: serde_json::json!(true),
+        }],
         document_json: r#"{"type":"doc"}"#.to_owned(),
         body_markdown: "# Verify the Managed ACP Desktop wiring".to_owned(),
     }
+}
+
+#[tokio::test]
+async fn launch_persists_the_ordered_versioned_agent_config() {
+    let temp = tempfile::tempdir().expect("temporary v3 root");
+    let state = AcpWorkbenchState::open_with_orchestration(
+        crate::config::v3_storage_paths(temp.path().join("target")),
+        Arc::new(ReconcileFailsOrchestrator),
+    )
+    .await
+    .expect("open ACP Workbench");
+
+    let error = state
+        .launch(launch_input(
+            temp.path().to_string_lossy(),
+            "desktop-generic-config",
+        ))
+        .await
+        .expect_err("the fake reconcile fails after the durable launch");
+    assert!(error.local_fact_committed);
+    let session_id = state.read().await.expect("read Workbench").sessions[0]
+        .session_id
+        .clone();
+    let recovery = state
+        .core
+        .read_session_recovery(rambledesk_core::kernel::SessionId::new(session_id))
+        .await
+        .expect("read durable Session");
+    let launch = recovery
+        .session
+        .launch_configuration
+        .expect("Launch Configuration");
+    let config: rambledesk_acp_client::AgentLaunchConfig =
+        serde_json::from_str(&launch.agent_config_json).expect("versioned Agent config");
+    assert_eq!(config.version, 1);
+    assert_eq!(config.schema_digest, "schema-v1");
+    assert_eq!(config.values[0].id, "fast-mode");
+    assert_eq!(config.values[0].value, serde_json::json!(true));
+}
+
+#[tokio::test]
+async fn launch_rejects_a_stale_schema_before_creating_a_session() {
+    let temp = tempfile::tempdir().expect("temporary v3 root");
+    let state = AcpWorkbenchState::open_with_orchestration(
+        crate::config::v3_storage_paths(temp.path().join("target")),
+        Arc::new(ReconcileFailsOrchestrator),
+    )
+    .await
+    .expect("open ACP Workbench");
+    let mut input = launch_input(temp.path().to_string_lossy(), "desktop-stale-launch-schema");
+    input.schema_digest = "stale-schema".to_owned();
+
+    let error = state
+        .launch(input)
+        .await
+        .expect_err("a stale form cannot become a durable Session");
+
+    assert_eq!(error.code, "ACP_LAUNCH_SCHEMA_STALE");
+    assert!(!error.local_fact_committed);
+    assert!(
+        state
+            .read()
+            .await
+            .expect("read Workbench")
+            .sessions
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn launch_rejects_a_non_boolean_value_for_a_boolean_agent_option() {
+    let temp = tempfile::tempdir().expect("temporary v3 root");
+    let state = AcpWorkbenchState::open_with_orchestration(
+        crate::config::v3_storage_paths(temp.path().join("target")),
+        Arc::new(ReconcileFailsOrchestrator),
+    )
+    .await
+    .expect("open ACP Workbench");
+    let mut input = launch_input(
+        temp.path().to_string_lossy(),
+        "desktop-invalid-agent-config",
+    );
+    input.config_values[0].value = serde_json::json!("true");
+
+    let error = state
+        .launch(input)
+        .await
+        .expect_err("boolean config values cannot be stringified");
+
+    assert_eq!(error.code, "ACP_INVALID_CONFIG_SELECTION");
+    assert!(!error.local_fact_committed);
 }
 
 #[tokio::test]
@@ -133,7 +235,10 @@ async fn preflight_rejects_an_invalid_selected_workspace_before_agent_probe() {
     );
 
     let error = state
-        .preflight(&input)
+        .preflight(&LaunchPreflightInput {
+            workspace: input.workspace,
+            agent_id: input.agent_id,
+        })
         .await
         .expect_err("a missing selected workspace must fail before probing the Agent");
 
@@ -240,16 +345,18 @@ async fn desktop_wire_contract_is_camel_case_and_unavailable_is_explicit() {
         "submissionId": "desktop-wire-1",
         "workspace": temp.path().to_string_lossy(),
         "agentId": "codex",
-        "model": "gpt-5",
-        "reasoningEffort": "high",
-        "accessMode": "workspace_write",
+        "schemaDigest": "schema-v1",
+        "configValues": [{"id":"fast-mode","value":true}],
         "documentJson": r#"{"type":"doc"}"#,
         "bodyMarkdown": "# Wire contract"
     }))
     .expect("deserialize the frontend launch payload");
 
     let unavailable = state
-        .preflight(&input)
+        .preflight(&LaunchPreflightInput {
+            workspace: input.workspace.clone(),
+            agent_id: input.agent_id.clone(),
+        })
         .await
         .expect_err("the placeholder orchestration port must not fake success");
     assert_eq!(unavailable.code, "ACP_CLIENT_UNAVAILABLE");

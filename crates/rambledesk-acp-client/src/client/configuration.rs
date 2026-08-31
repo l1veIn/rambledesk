@@ -4,46 +4,14 @@ use rambledesk_core::kernel::{AccessMode, LaunchConfiguration};
 use serde_json::{Value, json};
 
 use crate::{
-    AccessModeTransport, AcpClientError, AcpErrorCode, ConfigOptionSelector, LaunchProfile,
+    AccessModeTransport, AcpClientError, AcpErrorCode, ConfigOptionSelector, LaunchConfigSelection,
+    LaunchProfile,
+    launch_schema::{
+        PROFILE_ACCESS_OPTION_ID, decode_agent_launch_config, project_launch_schema,
+        validate_selections,
+    },
     rpc::RpcPeer,
 };
-
-pub(super) fn supported_access_modes(
-    profile: &LaunchProfile,
-    config_options: &[Value],
-) -> Vec<AccessMode> {
-    let policy = &profile.configuration.access_mode;
-    if policy.transport == AccessModeTransport::ImplicitWorkspaceWrite {
-        return vec![AccessMode::WorkspaceWrite];
-    }
-    if policy.transport == AccessModeTransport::ProcessArguments {
-        return [
-            (!policy.read_only.is_empty()).then_some(AccessMode::ReadOnly),
-            (!policy.workspace_write.is_empty()).then_some(AccessMode::WorkspaceWrite),
-            (!policy.yolo.is_empty()).then_some(AccessMode::Yolo),
-        ]
-        .into_iter()
-        .flatten()
-        .collect();
-    }
-    let Some(selector) = policy.selector.as_ref() else {
-        return Vec::new();
-    };
-    let Some(option) = find_option(config_options, selector) else {
-        return Vec::new();
-    };
-    let mut supported = Vec::new();
-    if any_select_value(option, &policy.read_only) {
-        supported.push(AccessMode::ReadOnly);
-    }
-    if any_select_value(option, &policy.workspace_write) {
-        supported.push(AccessMode::WorkspaceWrite);
-    }
-    if any_select_value(option, &policy.yolo) {
-        supported.push(AccessMode::Yolo);
-    }
-    supported
-}
 
 pub(super) async fn apply_launch_configuration(
     rpc: &RpcPeer,
@@ -53,6 +21,20 @@ pub(super) async fn apply_launch_configuration(
     mut config_options: Vec<Value>,
     timeout: Duration,
 ) -> Result<Vec<Value>, AcpClientError> {
+    if let Some(agent_config) = decode_agent_launch_config(&launch.agent_config_json) {
+        let (schema, _) = project_launch_schema(profile, &config_options);
+        validate_selections(&agent_config.schema_digest, &schema, &agent_config.values)
+            .map_err(AcpClientError::invalid)?;
+        return apply_generic_launch_configuration(
+            rpc,
+            acp_session_id,
+            agent_config.values,
+            config_options,
+            timeout,
+        )
+        .await;
+    }
+
     let mut selections = Vec::new();
     if let (Some(model), Some(selector)) = (
         launch.model.as_deref(),
@@ -141,23 +123,174 @@ pub(super) async fn apply_launch_configuration(
     Ok(config_options)
 }
 
+async fn apply_generic_launch_configuration(
+    rpc: &RpcPeer,
+    acp_session_id: &str,
+    selections: Vec<LaunchConfigSelection>,
+    mut config_options: Vec<Value>,
+    timeout: Duration,
+) -> Result<Vec<Value>, AcpClientError> {
+    for selection in selections {
+        if selection.id == PROFILE_ACCESS_OPTION_ID {
+            continue;
+        }
+        let option = config_options
+            .iter()
+            .find(|option| option.get("id").and_then(Value::as_str) == Some(&selection.id))
+            .ok_or_else(|| {
+                unsupported(format!(
+                    "Agent did not return config option {}",
+                    selection.id
+                ))
+            })?;
+        validate_generic_value(option, &selection)?;
+        if option.get("currentValue") == Some(&selection.value) {
+            continue;
+        }
+        let mutation = option.get("_rambledeskMutation").and_then(Value::as_str);
+        match mutation {
+            Some("set_model") | Some("set_mode") => {
+                let selected = selection.value.as_str().ok_or_else(|| {
+                    unsupported(format!("{} requires a string value", selection.id))
+                })?;
+                let (method, params) = if mutation == Some("set_model") {
+                    (
+                        "session/set_model",
+                        json!({"sessionId": acp_session_id, "modelId": selected}),
+                    )
+                } else {
+                    (
+                        "session/set_mode",
+                        json!({"sessionId": acp_session_id, "modeId": selected}),
+                    )
+                };
+                rpc.request(method, params, Some(timeout)).await?;
+                set_current_value_by_id(&mut config_options, &selection.id, &selection.value);
+            }
+            _ => {
+                let response = rpc
+                    .request(
+                        "session/set_config_option",
+                        json!({
+                            "sessionId": acp_session_id,
+                            "configId": selection.id,
+                            "value": selection.value
+                        }),
+                        Some(timeout),
+                    )
+                    .await?;
+                config_options = project_config_options(
+                    response
+                        .get("configOptions")
+                        .and_then(Value::as_array)
+                        .cloned()
+                        .ok_or_else(|| {
+                            AcpClientError::protocol(
+                                "session/set_config_option response omitted configOptions",
+                            )
+                        })?,
+                );
+            }
+        }
+    }
+    Ok(config_options)
+}
+
+fn validate_generic_value(
+    option: &Value,
+    selection: &LaunchConfigSelection,
+) -> Result<(), AcpClientError> {
+    match option.get("type").and_then(Value::as_str) {
+        Some("select") if option_supports_json_value(option, &selection.value) => Ok(()),
+        Some("select") => Err(unsupported(format!(
+            "Agent config option {} no longer offers the selected value",
+            selection.id
+        ))),
+        Some("boolean") if selection.value.is_boolean() => Ok(()),
+        Some("boolean") => Err(unsupported(format!(
+            "Agent config option {} requires a boolean value",
+            selection.id
+        ))),
+        _ => Err(unsupported(format!(
+            "Agent config option {} has an unsupported type",
+            selection.id
+        ))),
+    }
+}
+
 pub(super) fn apply_process_launch_configuration(
     profile: &mut LaunchProfile,
-    access_mode: AccessMode,
+    launch: &LaunchConfiguration,
 ) -> Result<(), AcpClientError> {
     let policy = &profile.configuration.access_mode;
+    if let Some(agent_config) = decode_agent_launch_config(&launch.agent_config_json) {
+        let selected =
+            match agent_config
+                .values
+                .iter()
+                .find(|selection| selection.id == PROFILE_ACCESS_OPTION_ID)
+            {
+                Some(selection) => Some(selection.value.as_str().ok_or_else(|| {
+                    AcpClientError::invalid("profile Access Mode must be a string")
+                })?),
+                None => None,
+            };
+        return match policy.transport {
+            AccessModeTransport::ProcessArguments => {
+                let selected = selected.ok_or_else(|| {
+                    AcpClientError::invalid("profile Access Mode selection is missing")
+                })?;
+                apply_process_access_value(profile, selected)
+            }
+            AccessModeTransport::ImplicitWorkspaceWrite => match selected {
+                Some("workspace_write") => Ok(()),
+                _ => Err(AcpClientError::new(
+                    AcpErrorCode::UnsupportedAccessMode,
+                    "this Agent exposes only its approval-gated default Access Mode",
+                    false,
+                )),
+            },
+            AccessModeTransport::ConfigOption => Ok(()),
+        };
+    }
     if policy.transport != AccessModeTransport::ProcessArguments {
         return Ok(());
     }
-    let arguments = match access_mode {
-        AccessMode::ReadOnly => &policy.read_only,
-        AccessMode::WorkspaceWrite => &policy.workspace_write,
-        AccessMode::Yolo => &policy.yolo,
+    let legacy_value = match launch.access_mode {
+        AccessMode::ReadOnly => "read_only",
+        AccessMode::WorkspaceWrite => "workspace_write",
+        AccessMode::Yolo => "yolo",
+    };
+    apply_process_access_value(profile, legacy_value)
+}
+
+fn apply_process_access_value(
+    profile: &mut LaunchProfile,
+    selected: &str,
+) -> Result<(), AcpClientError> {
+    let policy = &profile.configuration.access_mode;
+    let arguments = match selected {
+        "read_only" => &policy.read_only,
+        "workspace_write" => &policy.workspace_write,
+        "yolo" => &policy.yolo,
+        _ => {
+            return Err(AcpClientError::new(
+                AcpErrorCode::UnsupportedAccessMode,
+                format!("Launch Profile does not map {selected} for this Agent"),
+                false,
+            ));
+        }
+    };
+    let access_label = match selected {
+        "read_only" => AccessMode::ReadOnly,
+        "workspace_write" => AccessMode::WorkspaceWrite,
+        "yolo" => AccessMode::Yolo,
+        _ => unreachable!("validated above"),
     };
     if arguments.is_empty() {
         return Err(AcpClientError::new(
             AcpErrorCode::UnsupportedAccessMode,
-            format!("Launch Profile does not map {access_mode:?} for this Agent"),
+            format!("Launch Profile does not map {access_label:?} for this Agent"),
             false,
         ));
     }
@@ -257,10 +390,11 @@ fn option_supports_value(option: &Value, selected: &str) -> bool {
         .is_some_and(|options| select_contains(options, selected))
 }
 
-fn any_select_value(option: &Value, candidates: &[String]) -> bool {
-    candidates
-        .iter()
-        .any(|candidate| option_supports_value(option, candidate))
+fn option_supports_json_value(option: &Value, selected: &Value) -> bool {
+    option
+        .get("options")
+        .and_then(Value::as_array)
+        .is_some_and(|options| select_contains_json(options, selected))
 }
 
 fn set_current_value(options: &mut [Value], selector: &ConfigOptionSelector, selected: &str) {
@@ -273,6 +407,16 @@ fn set_current_value(options: &mut [Value], selector: &ConfigOptionSelector, sel
             "currentValue".to_owned(),
             Value::String(selected.to_owned()),
         );
+    }
+}
+
+fn set_current_value_by_id(options: &mut [Value], id: &str, selected: &Value) {
+    if let Some(option) = options
+        .iter_mut()
+        .find(|option| option.get("id").and_then(Value::as_str) == Some(id))
+        .and_then(Value::as_object_mut)
+    {
+        option.insert("currentValue".to_owned(), selected.clone());
     }
 }
 
@@ -299,6 +443,16 @@ fn select_contains(options: &[Value], selected: &str) -> bool {
                 .get("options")
                 .and_then(Value::as_array)
                 .is_some_and(|children| select_contains(children, selected))
+    })
+}
+
+fn select_contains_json(options: &[Value], selected: &Value) -> bool {
+    options.iter().any(|candidate| {
+        candidate.get("value") == Some(selected)
+            || candidate
+                .get("options")
+                .and_then(Value::as_array)
+                .is_some_and(|children| select_contains_json(children, selected))
     })
 }
 
@@ -387,21 +541,7 @@ mod tests {
     }
 
     #[test]
-    fn codex_preflight_never_advertises_a_fake_read_only_mode() {
-        let profile = LaunchProfile::codex_npx();
-        let modes = supported_access_modes(
-            &profile,
-            &[json!({
-                "id":"mode", "category":"mode", "type":"select", "options":[
-                    {"value":"read-only"}, {"value":"agent"}, {"value":"agent-full-access"}
-                ]
-            })],
-        );
-        assert_eq!(modes, vec![AccessMode::WorkspaceWrite, AccessMode::Yolo]);
-    }
-
-    #[test]
-    fn grok_process_modes_are_advertised_and_prepended_before_the_acp_subcommand() {
+    fn grok_process_access_is_a_generic_profile_option_and_legacy_launches_still_map_it() {
         let spec = crate::builtin_agent("grok").expect("grok catalog entry");
         let mut profile = LaunchProfile::for_builtin(
             spec,
@@ -413,17 +553,34 @@ mod tests {
             ],
             BTreeMap::new(),
         );
+        let (schema, _) = crate::launch_schema::project_launch_schema(&profile, &[]);
+        let access = schema.last().expect("synthetic process Access option");
+        assert_eq!(access.id, crate::launch_schema::PROFILE_ACCESS_OPTION_ID);
+        assert_eq!(access.source, crate::LaunchConfigSource::Profile);
+        let crate::LaunchConfigKind::Select { options, .. } = &access.kind else {
+            panic!("process Access option must be selectable")
+        };
         assert_eq!(
-            supported_access_modes(&profile, &[]),
-            vec![
-                AccessMode::ReadOnly,
-                AccessMode::WorkspaceWrite,
-                AccessMode::Yolo
-            ]
+            options
+                .iter()
+                .map(|option| option.value.as_str())
+                .collect::<Vec<_>>(),
+            ["read_only", "workspace_write", "yolo"]
         );
 
-        apply_process_launch_configuration(&mut profile, AccessMode::Yolo)
-            .expect("mapped process mode");
+        apply_process_launch_configuration(
+            &mut profile,
+            &LaunchConfiguration {
+                agent_profile_id: "grok".to_owned(),
+                launch_profile_id: "grok-acp-managed".to_owned(),
+                workspace_reference: "/tmp".to_owned(),
+                model: None,
+                reasoning_effort: None,
+                access_mode: AccessMode::Yolo,
+                agent_config_json: "{}".to_owned(),
+            },
+        )
+        .expect("mapped process mode");
         assert_eq!(
             profile.args,
             [
@@ -433,21 +590,6 @@ mod tests {
                 "agent",
                 "stdio"
             ]
-        );
-    }
-
-    #[test]
-    fn code_buddy_exposes_only_its_approval_gated_default() {
-        let spec = crate::builtin_agent("code_buddy").expect("CodeBuddy catalog entry");
-        let profile = LaunchProfile::for_builtin(
-            spec,
-            PathBuf::from("codebuddy"),
-            Vec::new(),
-            BTreeMap::new(),
-        );
-        assert_eq!(
-            supported_access_modes(&profile, &[]),
-            vec![AccessMode::WorkspaceWrite]
         );
     }
 }

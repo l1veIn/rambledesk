@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashSet, VecDeque},
+    collections::VecDeque,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -22,8 +22,10 @@ use crate::{
     RunState,
     elicitation::{self, ElicitationPlan},
     rpc::{InboundMessage, RpcPeer},
-    toolset::SessionToolsetHandle,
+    toolset::{RequiredFeedback, SessionToolObservation, SessionToolsetHandle},
 };
+
+use super::prompt_contract::{feedback_request_id, prompt_for_work, protocol_repair_prompt};
 
 struct PendingPermission {
     request: PermissionRequest,
@@ -70,7 +72,6 @@ pub(super) struct ManagedRun {
     live: Mutex<LiveState>,
     events: broadcast::Sender<LiveSessionEvent>,
     shutdown_grace: std::time::Duration,
-    consumed_deliveries: Mutex<HashSet<String>>,
     work_worker_started: AtomicBool,
     work_wake: Notify,
     work_stop: CancellationToken,
@@ -104,7 +105,6 @@ impl ManagedRun {
             live: Mutex::new(LiveState::default()),
             events,
             shutdown_grace,
-            consumed_deliveries: Mutex::new(HashSet::new()),
             work_worker_started: AtomicBool::new(false),
             work_wake: Notify::new(),
             work_stop: CancellationToken::new(),
@@ -173,7 +173,6 @@ impl ManagedRun {
             return;
         }
         let update = params.get("update").cloned().unwrap_or(Value::Null);
-        observe_feedback_consumption(&update, &self.consumed_deliveries).await;
         let _ = self.events.send(LiveSessionEvent::SessionUpdate {
             session_id: self.session_id.clone(),
             update,
@@ -511,6 +510,23 @@ impl ManagedRun {
         let mut retry = false;
         for claimed in batch.items {
             self.set_state(RunState::Running).await;
+            let expected_request_id = feedback_request_id(&claimed.work);
+            let required_feedback = match &claimed.work.payload {
+                AgentWorkPayload::FeedbackResume {
+                    delivery_id,
+                    request_id,
+                } => Some(RequiredFeedback {
+                    request_id: request_id.clone(),
+                    delivery_id: delivery_id.clone(),
+                }),
+                _ => None,
+            };
+            let observation_generation = {
+                let toolset = self.toolset.lock().await;
+                toolset.as_ref().map(|toolset| {
+                    toolset.begin_managed_work(expected_request_id.clone(), required_feedback)
+                })
+            };
             let prompt = prompt_for_work(&claimed.work);
             let prompt = self.rpc.request(
                 "session/prompt",
@@ -527,11 +543,66 @@ impl ManagedRun {
                 )),
                 result = &mut prompt => result,
             };
-            let disposition = match result {
-                Ok(response) => completion_evidence(&claimed.work.payload, &response, self).await,
-                Err(error) => AgentWorkDisposition::Retry {
-                    error_code: format!("ACP_{:?}", error.code),
-                },
+            let initial_error_code = result
+                .as_ref()
+                .err()
+                .map(|error| format!("ACP_{:?}", error.code));
+            let initial_cancelled = result.as_ref().is_ok_and(|response| {
+                response.get("stopReason").and_then(Value::as_str) == Some("cancelled")
+            });
+            let mut observations = self.tool_observations_since(observation_generation).await;
+            let repair_attempted = result.is_ok()
+                && !initial_cancelled
+                && !managed_evidence_complete(
+                    &claimed.work.payload,
+                    &expected_request_id,
+                    &observations,
+                );
+            if repair_attempted {
+                let repair = self.rpc.request(
+                    "session/prompt",
+                    json!({
+                        "sessionId": self.acp_session_id,
+                        "prompt": [{
+                            "type": "text",
+                            "text": protocol_repair_prompt(&claimed.work)
+                        }]
+                    }),
+                    None,
+                );
+                tokio::pin!(repair);
+                let _ = tokio::select! {
+                    () = self.work_stop.cancelled() => Err(AcpClientError::disconnected(
+                        "ACP Client shut down while Ramble protocol repair was active",
+                    )),
+                    result = &mut repair => result,
+                };
+                observations = self.tool_observations_since(observation_generation).await;
+            }
+            self.end_managed_work(&expected_request_id).await;
+            let disposition = if managed_evidence_complete(
+                &claimed.work.payload,
+                &expected_request_id,
+                &observations,
+            ) {
+                completion_evidence(&claimed.work.payload, &expected_request_id, &observations)
+            } else if repair_attempted && !loop_suspended(&observations, &expected_request_id) {
+                AgentWorkDisposition::Retry {
+                    error_code: "RAMBLE_LOOP_NOT_SUSPENDED".to_string(),
+                }
+            } else if repair_attempted {
+                AgentWorkDisposition::Retry {
+                    error_code: "FEEDBACK_NOT_CONSUMED".to_string(),
+                }
+            } else if initial_cancelled {
+                AgentWorkDisposition::Retry {
+                    error_code: "ACP_TURN_CANCELLED".to_string(),
+                }
+            } else {
+                AgentWorkDisposition::Retry {
+                    error_code: initial_error_code
+                        .unwrap_or_else(|| "RAMBLE_LOOP_NOT_SUSPENDED".to_string()),
+                }
             };
             retry = matches!(&disposition, AgentWorkDisposition::Retry { .. });
             let _ = self.cancel_live_requests().await;
@@ -549,6 +620,23 @@ impl ManagedRun {
         }
         self.set_idle_state().await;
         had_work && !retry
+    }
+
+    async fn tool_observations_since(
+        &self,
+        generation: Option<u64>,
+    ) -> Vec<SessionToolObservation> {
+        let toolset = self.toolset.lock().await;
+        match (toolset.as_ref(), generation) {
+            (Some(toolset), Some(generation)) => toolset.observations_since(generation),
+            _ => Vec::new(),
+        }
+    }
+
+    async fn end_managed_work(&self, request_id: &rambledesk_core::kernel::RequestId) {
+        if let Some(toolset) = self.toolset.lock().await.as_ref() {
+            toolset.end_managed_work(request_id);
+        }
     }
 
     async fn set_idle_state(&self) {
@@ -660,80 +748,69 @@ fn live_not_current() -> AcpClientError {
     )
 }
 
-fn prompt_for_work(work: &rambledesk_core::kernel::AgentWorkRecord) -> String {
-    let marker = format!("[RambleDesk work_id: {}]", work.work_id);
-    match &work.payload {
-        AgentWorkPayload::Launch {
-            prompt_markdown, ..
-        }
-        | AgentWorkPayload::Steering {
-            prompt_markdown, ..
-        } => format!("{marker}\n\n{prompt_markdown}"),
-        AgentWorkPayload::FeedbackResume {
-            delivery_id,
-            request_id,
-        } => format!(
-            "{marker}\n\nRambleDesk has resolved Feedback Request {request_id}. Call get_feedback with request_id {request_id} now. Consume the returned envelope and de-duplicate it by delivery_id {delivery_id}."
-        ),
-    }
+fn loop_suspended(
+    observations: &[SessionToolObservation],
+    expected_request_id: &rambledesk_core::kernel::RequestId,
+) -> bool {
+    observations.iter().any(|observation| {
+        matches!(
+            observation,
+            SessionToolObservation::FeedbackRequested { request_id }
+                if request_id == expected_request_id
+        )
+    })
 }
 
-async fn completion_evidence(
+fn feedback_consumed(payload: &AgentWorkPayload, observations: &[SessionToolObservation]) -> bool {
+    let AgentWorkPayload::FeedbackResume {
+        delivery_id,
+        request_id,
+    } = payload
+    else {
+        return true;
+    };
+    observations.iter().any(|observation| {
+        matches!(
+            observation,
+            SessionToolObservation::FeedbackConsumed {
+                delivery_id: observed_delivery_id,
+                request_id: observed_request_id,
+            } if observed_delivery_id == delivery_id && observed_request_id == request_id
+        )
+    })
+}
+
+fn managed_evidence_complete(
     payload: &AgentWorkPayload,
-    response: &Value,
-    run: &ManagedRun,
+    expected_request_id: &rambledesk_core::kernel::RequestId,
+    observations: &[SessionToolObservation],
+) -> bool {
+    feedback_consumed(payload, observations) && loop_suspended(observations, expected_request_id)
+}
+
+fn completion_evidence(
+    payload: &AgentWorkPayload,
+    expected_request_id: &rambledesk_core::kernel::RequestId,
+    observations: &[SessionToolObservation],
 ) -> AgentWorkDisposition {
-    if response.get("stopReason").and_then(Value::as_str) == Some("cancelled") {
-        return AgentWorkDisposition::Retry {
-            error_code: "ACP_TURN_CANCELLED".to_string(),
-        };
-    }
     match payload {
         AgentWorkPayload::FeedbackResume { delivery_id, .. } => {
-            if run
-                .consumed_deliveries
-                .lock()
-                .await
-                .remove(delivery_id.as_str())
-            {
-                AgentWorkDisposition::Completed {
-                    evidence: AgentWorkEvidence::FeedbackConsumedAndTurnCompleted {
-                        delivery_id: delivery_id.clone(),
-                    },
-                }
-            } else {
-                AgentWorkDisposition::Retry {
+            if !feedback_consumed(payload, observations) {
+                return AgentWorkDisposition::Retry {
                     error_code: "FEEDBACK_NOT_CONSUMED".to_string(),
-                }
+                };
+            }
+            AgentWorkDisposition::Completed {
+                evidence: AgentWorkEvidence::FeedbackConsumedAndLoopSuspended {
+                    delivery_id: delivery_id.clone(),
+                    request_id: expected_request_id.clone(),
+                },
             }
         }
         _ => AgentWorkDisposition::Completed {
-            evidence: AgentWorkEvidence::PromptTurnCompleted,
+            evidence: AgentWorkEvidence::RambleLoopSuspended {
+                request_id: expected_request_id.clone(),
+            },
         },
-    }
-}
-
-async fn observe_feedback_consumption(update: &Value, consumed: &Mutex<HashSet<String>>) {
-    let update_type = update.get("sessionUpdate").and_then(Value::as_str);
-    if !matches!(update_type, Some("tool_call") | Some("tool_call_update")) {
-        return;
-    }
-    let status = update.get("status").and_then(Value::as_str);
-    if status != Some("completed") {
-        return;
-    }
-    let tool_name = update
-        .get("title")
-        .and_then(Value::as_str)
-        .or_else(|| update.get("name").and_then(Value::as_str));
-    if !tool_name.is_some_and(|name| name.ends_with("get_feedback")) {
-        return;
-    }
-    if let Some(delivery_id) = update
-        .get("rawOutput")
-        .and_then(|value| value.get("delivery_id"))
-        .and_then(Value::as_str)
-    {
-        consumed.lock().await.insert(delivery_id.to_string());
     }
 }

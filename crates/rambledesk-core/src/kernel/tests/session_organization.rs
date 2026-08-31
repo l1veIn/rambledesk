@@ -84,10 +84,10 @@ pub(super) fn archived(state: &MemoryState) -> Vec<SessionRecord> {
 
 #[tokio::test]
 async fn organization_is_idempotent_and_archive_is_hidden_until_restored() {
-    let (core, _) = test_fixtures::harness();
+    let (core, facts) = test_fixtures::harness();
     let launch = test_fixtures::launch_session(&core).await;
     let session_id = launch.session_id;
-    complete_launch_work(&core, &session_id).await;
+    facts.arrange_session_without_pending_work(&session_id);
 
     let renamed = core
         .organize_session(SessionOrganization::Rename {
@@ -157,7 +157,7 @@ async fn organization_is_idempotent_and_archive_is_hidden_until_restored() {
 
 #[tokio::test]
 async fn archive_rejects_pending_feedback_or_agent_work() {
-    let (core, _) = test_fixtures::harness();
+    let (core, facts) = test_fixtures::harness();
     let launch = test_fixtures::launch_session(&core).await;
     let error = core
         .organize_session(SessionOrganization::SetArchived {
@@ -168,34 +168,26 @@ async fn archive_rejects_pending_feedback_or_agent_work() {
         .expect_err("pending launch work");
     assert_eq!(error.code(), CoreErrorCode::SessionHasPendingActivity);
 
-    complete_launch_work(&core, &launch.session_id).await;
-    test_fixtures::create_request(&core, launch.session_id.clone(), "pending-feedback").await;
+    let feedback_session = core
+        .launch(test_fixtures::launch_input(
+            "feedback-archive",
+            "Wait for feedback",
+        ))
+        .await
+        .expect("launch feedback Session");
+    facts.arrange_session_without_pending_work(&feedback_session.session_id);
+    test_fixtures::create_request(
+        &core,
+        feedback_session.session_id.clone(),
+        "pending-feedback",
+    )
+    .await;
     let error = core
         .organize_session(SessionOrganization::SetArchived {
-            session_id: launch.session_id,
+            session_id: feedback_session.session_id,
             archived: true,
         })
         .await
         .expect_err("pending Feedback");
     assert_eq!(error.code(), CoreErrorCode::SessionHasPendingActivity);
-}
-
-async fn complete_launch_work(core: &Core, session_id: &SessionId) {
-    let batch = core
-        .claim_agent_work(WorkScope {
-            session_id: Some(session_id.clone()),
-            limit: 1,
-            lease_seconds: 60,
-        })
-        .await
-        .expect("claim launch");
-    core.record_agent_work(AgentWorkResult {
-        work_id: batch.items[0].work.work_id.clone(),
-        claim_token: batch.items[0].claim_token.clone(),
-        disposition: AgentWorkDisposition::Completed {
-            evidence: AgentWorkEvidence::PromptTurnCompleted,
-        },
-    })
-    .await
-    .expect("complete launch");
 }

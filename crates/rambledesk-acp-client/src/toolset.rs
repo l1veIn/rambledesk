@@ -1,4 +1,7 @@
-use std::{net::Ipv4Addr, sync::Arc};
+use std::{
+    net::Ipv4Addr,
+    sync::{Arc, Mutex},
+};
 
 use axum::{
     Router,
@@ -9,8 +12,8 @@ use axum::{
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use rambledesk_core::kernel::{
-    AcpSessionLinkId, ArtifactRole, ContextReference, Core, CreateFeedbackRequest, FeedbackAction,
-    GetFeedback, GetFeedbackOutcome, RequestId, SessionId,
+    AcpSessionLinkId, ArtifactRole, ContextReference, Core, CreateFeedbackRequest, DeliveryId,
+    FeedbackAction, GetFeedback, GetFeedbackOutcome, RequestId, SessionId,
 };
 use rmcp::{
     ErrorData, RoleServer, ServerHandler,
@@ -71,6 +74,7 @@ struct V3SessionToolset {
     core: Arc<Core>,
     session_id: SessionId,
     source_link_id: Arc<RwLock<Option<AcpSessionLinkId>>>,
+    observations: SessionToolObservationLog,
 }
 
 impl V3SessionToolset {
@@ -78,12 +82,14 @@ impl V3SessionToolset {
         core: Arc<Core>,
         session_id: SessionId,
         source_link_id: Arc<RwLock<Option<AcpSessionLinkId>>>,
+        observations: SessionToolObservationLog,
     ) -> Self {
         Self {
             router: Self::tool_router(),
             core,
             session_id,
             source_link_id,
+            observations,
         }
     }
 }
@@ -92,14 +98,21 @@ impl V3SessionToolset {
 impl V3SessionToolset {
     #[tool(
         name = "request_feedback",
-        description = "Create a durable RambleDesk Feedback Request and return immediately. Use this when the task needs real human testing, judgment, attachments, or a response that may arrive later. After this tool returns, end the current turn. Do not poll or wait in this tool call; RambleDesk will resume this Session later and ask you to call get_feedback with the same request_id."
+        description = "Required end-of-Turn handoff for active managed Ramble work. Create a durable RambleDesk Feedback Request and return immediately, including when the task or current stage appears complete. Permission Requests, Ask Questions, and plain assistant messages do not replace this handoff. After this tool returns, end only the current Turn, never the Session. Do not poll; RambleDesk will resume the Session later and ask you to call get_feedback."
     )]
     async fn request_feedback(
         &self,
         Parameters(input): Parameters<RequestFeedbackToolInput>,
     ) -> CallToolResult {
+        let request_id = match self
+            .observations
+            .resolve_request_id(input.request_id.as_deref())
+        {
+            Ok(request_id) => request_id,
+            Err(result) => return result,
+        };
         let request = CreateFeedbackRequest {
-            request_id: input.request_id.map(RequestId::new),
+            request_id,
             session_id: self.session_id.clone(),
             source_link_id: self.source_link_id.read().await.clone(),
             title: input.title,
@@ -123,19 +136,25 @@ impl V3SessionToolset {
             artifacts: Vec::new(),
         };
         match self.core.request_feedback(request).await {
-            Ok(snapshot) => tool_success(
-                json!({
-                    "request_id": snapshot.request_id,
-                    "session_id": snapshot.session_id,
-                    "status": "waiting",
-                    "created_at": snapshot.created_at,
-                    "instruction": "End the current turn. Feedback may arrive in a future Agent Run."
-                }),
-                format!(
-                    "Feedback request {} is waiting. End this turn; RambleDesk will resume the Session when the human responds.",
-                    snapshot.request_id
-                ),
-            ),
+            Ok(snapshot) => {
+                self.observations
+                    .record(SessionToolObservation::FeedbackRequested {
+                        request_id: snapshot.request_id.clone(),
+                    });
+                tool_success(
+                    json!({
+                        "request_id": snapshot.request_id,
+                        "session_id": snapshot.session_id,
+                        "status": "waiting",
+                        "created_at": snapshot.created_at,
+                        "instruction": "End the current turn. Feedback may arrive in a future Agent Run."
+                    }),
+                    format!(
+                        "Feedback request {} is waiting. End this turn; RambleDesk will resume the Session when the human responds.",
+                        snapshot.request_id
+                    ),
+                )
+            }
             Err(error) => tool_error(error.code().as_str(), error.message(), error.retryable()),
         }
     }
@@ -161,12 +180,144 @@ impl V3SessionToolset {
             }
         };
         match location_independent_delivery(&self.session_id, outcome) {
-            Ok(value) => tool_success(value.clone(), delivery_summary(&value)),
+            Ok(value) => {
+                if let (Some(delivery_id), Some(request_id)) = (
+                    value.get("delivery_id").and_then(Value::as_str),
+                    value.get("request_id").and_then(Value::as_str),
+                ) {
+                    self.observations
+                        .record(SessionToolObservation::FeedbackConsumed {
+                            delivery_id: DeliveryId::new(delivery_id),
+                            request_id: RequestId::new(request_id),
+                        });
+                }
+                tool_success(value.clone(), delivery_summary(&value))
+            }
             Err(error) => tool_error(
                 format!("{:?}", error.code).as_str(),
                 &error.message,
                 error.retryable,
             ),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum SessionToolObservation {
+    FeedbackRequested {
+        request_id: RequestId,
+    },
+    FeedbackConsumed {
+        delivery_id: DeliveryId,
+        request_id: RequestId,
+    },
+}
+
+#[derive(Clone, Default)]
+pub(crate) struct SessionToolObservationLog {
+    state: Arc<Mutex<SessionToolObservationState>>,
+}
+
+#[derive(Default)]
+struct SessionToolObservationState {
+    generation: u64,
+    observations: Vec<SessionToolObservation>,
+    active_feedback_request_id: Option<RequestId>,
+    required_feedback: Option<RequiredFeedback>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RequiredFeedback {
+    pub(crate) request_id: RequestId,
+    pub(crate) delivery_id: DeliveryId,
+}
+
+impl SessionToolObservationLog {
+    fn record(&self, observation: SessionToolObservation) {
+        self.state
+            .lock()
+            .expect("Session Toolset observation lock poisoned")
+            .observations
+            .push(observation);
+    }
+
+    fn resolve_request_id(
+        &self,
+        supplied: Option<&str>,
+    ) -> Result<Option<RequestId>, CallToolResult> {
+        let state = self
+            .state
+            .lock()
+            .expect("Session Toolset observation lock poisoned");
+        if let Some(required) = &state.required_feedback
+            && !state.observations.iter().any(|observation| {
+                matches!(
+                    observation,
+                    SessionToolObservation::FeedbackConsumed {
+                        request_id,
+                        delivery_id,
+                    } if request_id == &required.request_id && delivery_id == &required.delivery_id
+                )
+            })
+        {
+            return Err(tool_error(
+                "FEEDBACK_NOT_CONSUMED",
+                &format!(
+                    "call get_feedback for request_id {} and consume delivery_id {} before request_feedback",
+                    required.request_id, required.delivery_id
+                ),
+                false,
+            ));
+        }
+        let active = state.active_feedback_request_id.clone();
+        drop(state);
+        match (active, supplied) {
+            (Some(expected), Some(actual)) if actual != expected.as_str() => Err(tool_error(
+                "RAMBLE_REQUEST_ID_MISMATCH",
+                &format!("request_id must be `{expected}` for the active managed Ramble Turn"),
+                false,
+            )),
+            (Some(expected), _) => Ok(Some(expected)),
+            (None, supplied) => Ok(supplied.map(RequestId::new)),
+        }
+    }
+
+    pub(crate) fn begin_managed_work(
+        &self,
+        request_id: RequestId,
+        required_feedback: Option<RequiredFeedback>,
+    ) -> u64 {
+        let mut state = self
+            .state
+            .lock()
+            .expect("Session Toolset observation lock poisoned");
+        state.generation = state.generation.wrapping_add(1);
+        state.observations.clear();
+        state.active_feedback_request_id = Some(request_id);
+        state.required_feedback = required_feedback;
+        state.generation
+    }
+
+    pub(crate) fn end_managed_work(&self, request_id: &RequestId) {
+        let mut state = self
+            .state
+            .lock()
+            .expect("Session Toolset observation lock poisoned");
+        if state.active_feedback_request_id.as_ref() == Some(request_id) {
+            state.active_feedback_request_id = None;
+            state.required_feedback = None;
+        }
+    }
+
+    pub(crate) fn since(&self, generation: u64) -> Vec<SessionToolObservation> {
+        let state = self
+            .state
+            .lock()
+            .expect("Session Toolset observation lock poisoned");
+        if state.generation == generation {
+            state.observations.clone()
+        } else {
+            Vec::new()
         }
     }
 }
@@ -195,7 +346,7 @@ impl ServerHandler for V3SessionToolset {
                 env!("CARGO_PKG_VERSION"),
             ))
             .with_instructions(
-                "request_feedback is a short durable write: call it, keep its request_id, and end the turn. RambleDesk may resume this Session much later. When resumed, call get_feedback(request_id); terminal responses carry a stable delivery_id and location-independent content.",
+                "During active managed Ramble work, request_feedback is the required final handoff for every Prompt Turn. Permission Requests, Ask Questions, ordinary messages, and task completion do not replace it. The call is a short durable write: keep its request_id and end only the Turn. RambleDesk may resume this Session much later. When resumed, first call get_feedback(request_id); terminal responses carry a stable delivery_id and location-independent content, then continue work and finish with the next request_feedback handoff.",
             )
     }
 }
@@ -279,13 +430,34 @@ fn delivery_summary(value: &Value) -> String {
         return "Feedback is still waiting; end the turn and do not poll.".to_string();
     }
     match value.get("resolution").and_then(Value::as_str) {
-        Some("submitted") => format!(
-            "Feedback delivery {} is submitted. Consume the package and de-duplicate by delivery_id.",
-            value
+        Some("submitted") => {
+            let delivery_id = value
                 .get("delivery_id")
                 .and_then(Value::as_str)
-                .unwrap_or("unknown")
-        ),
+                .unwrap_or("unknown");
+            let package = value.get("package").unwrap_or(&Value::Null);
+            if let Some(feedback) = package
+                .get("feedback_markdown")
+                .and_then(Value::as_str)
+                .filter(|feedback| !feedback.trim().is_empty())
+            {
+                format!(
+                    "Feedback delivery {delivery_id} is submitted. De-duplicate it by delivery_id.\n\nHuman feedback:\n\n{feedback}\n\nAttachment bytes remain available only in structuredContent and are not repeated here."
+                )
+            } else if let Some(uncooked) = package
+                .get("uncooked_markdown")
+                .and_then(Value::as_str)
+                .filter(|uncooked| !uncooked.trim().is_empty())
+            {
+                format!(
+                    "Feedback delivery {delivery_id} is submitted. De-duplicate it by delivery_id. Structured feedback text was unavailable, so this is the uncooked human feedback:\n\n{uncooked}\n\nAttachment bytes remain available only in structuredContent and are not repeated here."
+                )
+            } else {
+                format!(
+                    "Feedback delivery {delivery_id} is submitted, but it contains no human-readable feedback text. Inspect structuredContent for package metadata and attachments."
+                )
+            }
+        }
         Some("cancelled") => "The human cancelled this Feedback Request.".to_string(),
         _ => "Feedback delivery is available.".to_string(),
     }
@@ -332,6 +504,7 @@ pub(crate) struct SessionToolsetHandle {
     pub(crate) mcp_server: Value,
     pub(crate) digest: String,
     source_link_id: Arc<RwLock<Option<AcpSessionLinkId>>>,
+    observations: SessionToolObservationLog,
     cancellation: CancellationToken,
     task: JoinHandle<Result<(), std::io::Error>>,
 }
@@ -343,7 +516,13 @@ impl SessionToolsetHandle {
     ) -> Result<Self, AcpClientError> {
         let cancellation = CancellationToken::new();
         let source_link_id = Arc::new(RwLock::new(None));
-        let toolset = V3SessionToolset::new(core, session_id, source_link_id.clone());
+        let observations = SessionToolObservationLog::default();
+        let toolset = V3SessionToolset::new(
+            core,
+            session_id,
+            source_link_id.clone(),
+            observations.clone(),
+        );
         let transport = StreamableHttpServerConfig::default()
             .with_legacy_session_mode(false)
             .with_max_request_body_bytes(MAX_BODY_BYTES)
@@ -387,6 +566,7 @@ impl SessionToolsetHandle {
             }),
             digest: toolset_digest(),
             source_link_id,
+            observations,
             cancellation,
             task,
         })
@@ -394,6 +574,23 @@ impl SessionToolsetHandle {
 
     pub(crate) async fn set_source_link(&self, link_id: AcpSessionLinkId) {
         *self.source_link_id.write().await = Some(link_id);
+    }
+
+    pub(crate) fn begin_managed_work(
+        &self,
+        request_id: RequestId,
+        required_feedback: Option<RequiredFeedback>,
+    ) -> u64 {
+        self.observations
+            .begin_managed_work(request_id, required_feedback)
+    }
+
+    pub(crate) fn end_managed_work(&self, request_id: &RequestId) {
+        self.observations.end_managed_work(request_id);
+    }
+
+    pub(crate) fn observations_since(&self, generation: u64) -> Vec<SessionToolObservation> {
+        self.observations.since(generation)
     }
 
     pub(crate) async fn shutdown(self) -> Result<(), AcpClientError> {
@@ -417,7 +614,7 @@ impl SessionToolsetHandle {
 }
 
 pub(crate) fn toolset_digest() -> String {
-    let contract = br#"{"schema_version":1,"tools":["get_feedback","request_feedback"],"transport_contract":"location_independent"}"#;
+    let contract = br#"{"schema_version":3,"tools":["get_feedback","request_feedback"],"transport_contract":"location_independent","managed_ramble_loop":"required_end_of_turn_handoff","terminal_text_projection":"feedback_markdown_with_uncooked_fallback"}"#;
     format!("sha256:{}", hex::encode(Sha256::digest(contract)))
 }
 
@@ -426,8 +623,9 @@ mod tests {
     use std::sync::Arc;
 
     use rambledesk_core::kernel::{
-        AccessMode, AcpSessionLinkObservation, AgentObservation, ArtifactInput,
-        LaunchConfiguration, LaunchSubmission, RambleContent, SubmissionId, WorkbenchQuery,
+        AccessMode, AcpSessionLinkObservation, AgentObservation, ArtifactInput, DraftId,
+        DraftMutation, FeedbackSubmission, LaunchConfiguration, LaunchSubmission, RambleContent,
+        RambleIntent, ResolveFeedbackRequest, SaveDraft, SubmissionId, WorkbenchQuery,
     };
     use rambledesk_storage::v3::{SqliteV3Store, artifact::LocalArtifactStore};
     use reqwest::header::{ACCEPT, AUTHORIZATION};
@@ -441,6 +639,22 @@ mod tests {
         assert_eq!(digest.len(), 71);
         assert!(digest.starts_with("sha256:"));
         assert_eq!(digest, toolset_digest());
+    }
+
+    #[test]
+    fn submitted_delivery_text_falls_back_to_uncooked_without_copying_attachments() {
+        let text = delivery_summary(&json!({
+            "delivery_id":"delivery-fallback",
+            "resolution":"submitted",
+            "package":{
+                "feedback_markdown":null,
+                "uncooked_markdown":"Raw human direction",
+                "artifacts":[{"locator":{"kind":"inline_base64","value":"SECRET_BASE64"}}]
+            }
+        }));
+        assert!(text.contains("uncooked human feedback"), "{text}");
+        assert!(text.contains("Raw human direction"), "{text}");
+        assert!(!text.contains("SECRET_BASE64"), "{text}");
     }
 
     #[tokio::test]
@@ -520,7 +734,15 @@ mod tests {
             .await
             .expect("initialize response");
         assert_eq!(initialize.status(), reqwest::StatusCode::OK);
-        let call = client
+        let blocked_request_id = RequestId::new("blocked-request");
+        handle.begin_managed_work(
+            blocked_request_id.clone(),
+            Some(RequiredFeedback {
+                request_id: RequestId::new("prior-request"),
+                delivery_id: DeliveryId::new("prior-delivery"),
+            }),
+        );
+        let blocked = client
             .post(&endpoint)
             .header(AUTHORIZATION, &authorization)
             .header(ACCEPT, "application/json, text/event-stream")
@@ -531,7 +753,43 @@ mod tests {
                 "params":{
                     "name":"request_feedback",
                     "arguments":{
-                        "request_id":"toolset-request-1",
+                        "title":"Skipped delivery",
+                        "instructions":"This request must not be exposed.",
+                        "actions":[{"id":"continue","instruction":"Continue."}]
+                    }
+                }
+            }))
+            .send()
+            .await
+            .expect("blocked tool call response");
+        let blocked_body = blocked.text().await.expect("blocked tool body");
+        assert!(
+            blocked_body.contains("FEEDBACK_NOT_CONSUMED"),
+            "{blocked_body}"
+        );
+        assert!(
+            core.read_workbench(WorkbenchQuery {
+                session_id: Some(launch.session_id.clone()),
+            })
+            .await
+            .expect("workbench")
+            .waiting_feedback
+            .is_empty()
+        );
+        handle.end_managed_work(&blocked_request_id);
+        let observation_cursor =
+            handle.begin_managed_work(RequestId::new("toolset-request-1"), None);
+        let call = client
+            .post(&endpoint)
+            .header(AUTHORIZATION, &authorization)
+            .header(ACCEPT, "application/json, text/event-stream")
+            .json(&json!({
+                "jsonrpc":"2.0",
+                "id":3,
+                "method":"tools/call",
+                "params":{
+                    "name":"request_feedback",
+                    "arguments":{
                         "title":"Review UI",
                         "instructions":"Judge the full launch experience.",
                         "actions":[{"id":"launch","instruction":"Launch a Session."}]
@@ -556,7 +814,94 @@ mod tests {
             workbench.waiting_feedback[0].request_id.as_str(),
             "toolset-request-1"
         );
+        assert_eq!(
+            handle.observations_since(observation_cursor),
+            vec![SessionToolObservation::FeedbackRequested {
+                request_id: RequestId::new("toolset-request-1")
+            }]
+        );
+        handle.end_managed_work(&RequestId::new("toolset-request-1"));
+
+        let draft = core
+            .mutate_draft(DraftMutation::Save(SaveDraft {
+                draft_id: DraftId::new("toolset-feedback-draft"),
+                intent: RambleIntent::Feedback,
+                session_id: Some(launch.session_id.clone()),
+                request_id: Some(RequestId::new("toolset-request-1")),
+                launch_configuration: None,
+                document_json: "{}".to_owned(),
+                body_markdown: "Uncooked fallback should not win.".to_owned(),
+                expected_revision: 0,
+            }))
+            .await
+            .expect("save feedback draft");
+        let attachment_bytes = b"BINARY_ATTACHMENT_MUST_STAY_STRUCTURED".to_vec();
+        let attachment_base64 = BASE64.encode(&attachment_bytes);
+        core.resolve_feedback(ResolveFeedbackRequest::Submit(FeedbackSubmission {
+            submission_id: SubmissionId::new("toolset-feedback-submission"),
+            request_id: RequestId::new("toolset-request-1"),
+            expected_draft_revision: draft.revision,
+            submission_digest_assertion: None,
+            document_json: "{}".to_owned(),
+            uncooked_markdown: "Uncooked fallback should not win.".to_owned(),
+            feedback_markdown:
+                "Human task body: keep the Session alive and implement the reviewed change."
+                    .to_owned(),
+            cooking_model: None,
+            artifacts: vec![ArtifactInput {
+                display_name: "evidence.bin".to_owned(),
+                media_type: "application/octet-stream".to_owned(),
+                contents: attachment_bytes,
+            }],
+        }))
+        .await
+        .expect("resolve feedback");
+        let get = client
+            .post(&endpoint)
+            .header(AUTHORIZATION, &authorization)
+            .header(ACCEPT, "application/json, text/event-stream")
+            .json(&json!({
+                "jsonrpc":"2.0",
+                "id":4,
+                "method":"tools/call",
+                "params":{
+                    "name":"get_feedback",
+                    "arguments":{"request_id":"toolset-request-1"}
+                }
+            }))
+            .send()
+            .await
+            .expect("get_feedback response");
+        let get_body = get.text().await.expect("get_feedback body");
+        let get_result = mcp_result(&get_body);
+        let visible_text = get_result["content"][0]["text"]
+            .as_str()
+            .expect("human-readable tool content");
+        assert!(
+            visible_text.contains(
+                "Human task body: keep the Session alive and implement the reviewed change."
+            ),
+            "{visible_text}"
+        );
+        assert!(!visible_text.contains("/Users/"), "{visible_text}");
+        assert!(!visible_text.contains(&attachment_base64), "{visible_text}");
+        assert_eq!(
+            get_result["structuredContent"]["package"]["artifacts"][0]["locator"]["value"],
+            attachment_base64
+        );
         handle.shutdown().await.expect("toolset shutdown");
         store.close().await;
+    }
+
+    fn mcp_result(body: &str) -> Value {
+        let json = body
+            .lines()
+            .find_map(|line| line.strip_prefix("data: "))
+            .unwrap_or(body);
+        serde_json::from_str::<Value>(json)
+            .expect("MCP JSON response")
+            .get("result")
+            .cloned()
+            .expect("MCP result")
     }
 }

@@ -109,5 +109,6 @@ pub(super) fn project_workbench(
         sessions,
         attention_items: live.attention_items,
         agents: live.agents,
+        timelines: live.timelines,
     }
 }

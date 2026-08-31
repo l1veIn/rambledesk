@@ -25,6 +25,7 @@
   import {
     orderSessionRailItems,
     sessionRailActions,
+    sessionRailStatusPresentation,
     sessionRailTotals,
     type SessionRailItem,
   } from './sessionRailItem'
@@ -36,6 +37,7 @@
   export let refreshing = false
   export let collapsed = false
   export let onSelect: (item: SessionRailItem | null) => void = () => {}
+  export let onOpenTimeline: (item: SessionRailItem) => void = () => {}
   export let onRequestSearch: (search: string) => void = () => {}
   export let onLaunch: () => void = () => {}
   export let onSettings: () => void = () => {}
@@ -216,6 +218,7 @@
           {#if collapsed}
             <div class="space-y-1 p-2">
               {#each orderedItems as item (item.key)}
+                {@const runtimeStatus = sessionRailStatusPresentation(item.status)}
                 <button
                   type="button"
                   class={[
@@ -225,15 +228,36 @@
                       : 'hover:bg-sidebar-accent/55 hover:text-sidebar-foreground',
                   ]}
                   aria-current={activeKey === item.key ? 'page' : undefined}
-                  aria-label={`${item.hostLabel} · ${item.title}`}
-                  title={`${item.hostLabel} · ${item.title}`}
+                  aria-label={`${item.hostLabel} · ${item.title}${runtimeStatus ? ` · ${tr(runtimeStatus.label)}` : ''}`}
+                  title={`${item.hostLabel} · ${item.title}${runtimeStatus ? ` · ${tr(runtimeStatus.label)}` : ''}`}
                   onclick={() => onSelect(item)}
                 >
-                  <span class="grid size-5 place-items-center [&_svg]:size-4">
+                  <span class="relative grid size-5 place-items-center [&_svg]:size-4">
                     {#if item.hostIconSvg}
                       {@html item.hostIconSvg}
                     {:else}
                       <MessageSquareText />
+                    {/if}
+                    {#if runtimeStatus}
+                      <span
+                        class={[
+                          'absolute -bottom-1 -right-1 grid size-3 place-items-center rounded-full border border-sidebar bg-sidebar',
+                          runtimeStatus.kind === 'running'
+                            ? 'text-primary'
+                            : runtimeStatus.kind === 'waiting'
+                              ? 'text-amber-500'
+                              : runtimeStatus.kind === 'error'
+                                ? 'text-destructive'
+                                : 'text-muted-foreground',
+                        ]}
+                        aria-label={tr(runtimeStatus.label)}
+                      >
+                        {#if runtimeStatus.spinning}
+                          <LoaderCircle class="size-2.5 animate-spin" aria-hidden="true" />
+                        {:else}
+                          <span class="size-1.5 rounded-full bg-current" aria-hidden="true"></span>
+                        {/if}
+                      </span>
                     {/if}
                   </span>
                 </button>
@@ -251,6 +275,7 @@
             <div class="space-y-1 p-2">
               {#each orderedItems as item (item.key)}
                 {@const actions = sessionRailActions(item)}
+                {@const runtimeStatus = sessionRailStatusPresentation(item.status)}
                 <div class="group/session flex min-h-8 items-center gap-1">
                   {#if editingKey === item.key}
                     <span
@@ -315,10 +340,36 @@
                         {#if item.pinnedAt}
                           <Pin class="size-3 shrink-0 text-primary" />
                         {/if}
-                        {#if item.pendingCount > 0}
-                          <span class="size-1.5 shrink-0 rounded-full bg-primary"></span>
+                        {#if !runtimeStatus && item.pendingCount > 0}
+                          <span class="size-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true"></span>
                         {/if}
                       </button>
+
+                      {#if runtimeStatus}
+                        <button
+                          type="button"
+                          class={[
+                            'mr-1 flex h-5 shrink-0 items-center gap-1 rounded-full px-1.5 text-[9px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
+                            runtimeStatus.kind === 'running'
+                              ? 'bg-primary/10 text-primary hover:bg-primary/15'
+                              : runtimeStatus.kind === 'waiting'
+                                ? 'bg-amber-500/10 text-amber-700 hover:bg-amber-500/15 dark:text-amber-300'
+                                : runtimeStatus.kind === 'error'
+                                  ? 'bg-destructive/10 text-destructive hover:bg-destructive/15'
+                                  : 'bg-muted text-muted-foreground hover:bg-muted/80',
+                          ]}
+                          aria-label={`${tr(runtimeStatus.label)} · ${tr('Open Agent timeline')}`}
+                          title={tr('Open Agent timeline')}
+                          onclick={() => onOpenTimeline(item)}
+                        >
+                          {#if runtimeStatus.spinning}
+                            <LoaderCircle class="size-2.5 animate-spin" aria-hidden="true" />
+                          {:else}
+                            <span class="size-1.5 rounded-full bg-current" aria-hidden="true"></span>
+                          {/if}
+                          <span class="max-w-16 truncate">{tr(runtimeStatus.label)}</span>
+                        </button>
+                      {/if}
 
                       {#if actions.any}
                         <DropdownMenu.Root>

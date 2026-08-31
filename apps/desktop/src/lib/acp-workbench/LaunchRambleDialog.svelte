@@ -1,53 +1,61 @@
 <script lang="ts">
   import { open as choosePath } from '@tauri-apps/plugin-dialog'
   import { FolderOpen, LoaderCircle, Play, Rocket } from '@lucide/svelte'
+
   import { Button } from '$lib/components/ui/button'
   import * as Dialog from '$lib/components/ui/dialog'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
-  import { acpClientDefaults } from './preferences'
+
   import AgentLogo from './AgentLogo.svelte'
+  import LaunchConfigField from './LaunchConfigField.svelte'
   import { launchBootstrapDocumentJson, launchBootstrapMarkdown } from './launchBootstrap'
-  import { isCurrentPreflightContext, isUsablePreflight, resolvePreflightSelection } from './state'
-  import type { AccessMode, AgentSummary, LaunchDraft, LaunchPreflight } from './types'
+  import {
+    isCurrentPreflightContext,
+    isUsablePreflight,
+    launchConfigIsComplete,
+    resolvePreflightSelection,
+  } from './state'
+  import type {
+    AgentSummary,
+    LaunchConfigSelection,
+    LaunchConfigValue,
+    LaunchDraft,
+    LaunchPreflight,
+    LaunchPreflightInput,
+  } from './types'
 
   export let open = false
   export let agents: AgentSummary[] = []
   export let busy = false
   export let error = ''
-  export let onPreflight: (draft: LaunchDraft) => Promise<LaunchPreflight> = async () => ({
-    agentId: '', models: [], reasoningEfforts: [], accessModes: [], warning: null,
+  export let onPreflight: (input: LaunchPreflightInput) => Promise<LaunchPreflight> = async () => ({
+    agentId: '', schemaDigest: '', configOptions: [], warning: null,
   })
   export let onLaunch: (draft: LaunchDraft) => void = () => {}
 
   let workspace = ''
   let agentId = ''
-  let model = ''
-  let reasoningEffort = 'high'
-  let accessMode: AccessMode = 'workspace_write'
   let submissionId = crypto.randomUUID()
   let preflight: LaunchPreflight | null = null
+  let configValues: LaunchConfigSelection[] = []
   let preflightBusy = false
   let preflightGeneration = 0
   let preflightTimer: ReturnType<typeof setTimeout> | null = null
   let wasOpen = false
 
-  $: selectedAgent = agents.find((agent) => agent.id === agentId) ?? agents[0] ?? null
+  $: selectedAgent = agents.find((agent) => agent.id === agentId) ?? null
   $: preflightReady = isUsablePreflight(preflight)
+    && launchConfigIsComplete(preflight, configValues)
   $: if (open && !wasOpen) {
     wasOpen = true
+    workspace = ''
+    agentId = ''
     submissionId = crypto.randomUUID()
-    const defaultAgent = agents.find(
-      (agent) => agent.id === $acpClientDefaults.agentId && agent.supportsStructuredRamble,
-    ) ?? agents.find((agent) => agent.supportsStructuredRamble)
-    agentId = defaultAgent?.id ?? ''
-    model = ''
-    reasoningEffort = ''
-    accessMode = $acpClientDefaults.accessMode
     preflight = null
+    configValues = []
     preflightGeneration += 1
     preflightBusy = false
-    if (workspace.trim() && agentId) preflightTimer = setTimeout(() => void runPreflight(), 0)
   }
   $: if (!open) {
     wasOpen = false
@@ -64,21 +72,33 @@
       submissionId,
       workspace: workspace.trim(),
       agentId,
-      model,
-      reasoningEffort,
-      accessMode,
+      schemaDigest: preflight?.schemaDigest ?? '',
+      configValues,
       documentJson: launchBootstrapDocumentJson,
       bodyMarkdown: launchBootstrapMarkdown,
     }
   }
 
+  function resetAgentSelection() {
+    if (preflightTimer) clearTimeout(preflightTimer)
+    preflightTimer = null
+    preflightGeneration += 1
+    preflightBusy = false
+    agentId = ''
+    preflight = null
+    configValues = []
+  }
+
+  function changeWorkspace(next: string) {
+    if (next === workspace) return
+    workspace = next
+    resetAgentSelection()
+  }
+
   async function selectWorkspace() {
     try {
       const selected = await choosePath({ directory: true, multiple: false })
-      if (typeof selected === 'string') {
-        workspace = selected
-        schedulePreflight()
-      }
+      if (typeof selected === 'string') changeWorkspace(selected)
     } catch {
       // Browser preview uses the editable path field instead of a native picker.
     }
@@ -92,12 +112,10 @@
       agentId,
     }
     preflight = null
-    model = ''
-    reasoningEffort = ''
+    configValues = []
     preflightBusy = true
     try {
       const result = await onPreflight({
-        ...draft(),
         workspace: context.workspace,
         agentId: context.agentId,
       })
@@ -107,114 +125,138 @@
         agentId,
       })) return
       preflight = result
-      const selection = resolvePreflightSelection(result, {
-        model: $acpClientDefaults.model,
-        reasoningEffort: $acpClientDefaults.reasoningEffort,
-        accessMode: $acpClientDefaults.accessMode,
-      })
-      model = selection.model
-      reasoningEffort = selection.reasoningEffort
-      if (selection.accessMode) accessMode = selection.accessMode
+      configValues = resolvePreflightSelection(result)
     } finally {
       if (context.generation === preflightGeneration) preflightBusy = false
     }
   }
 
   function changeAgent(nextAgentId: string) {
-    agentId = nextAgentId
-    schedulePreflight()
-  }
-
-  function invalidatePreflight() {
     if (preflightTimer) clearTimeout(preflightTimer)
     preflightTimer = null
     preflightGeneration += 1
     preflightBusy = false
     preflight = null
-    model = ''
-    reasoningEffort = ''
+    configValues = []
+    agentId = nextAgentId
+    if (workspace.trim() && agentId) {
+      preflightTimer = setTimeout(() => void runPreflight(), 250)
+    }
   }
 
-  function schedulePreflight() {
-    invalidatePreflight()
-    if (!workspace.trim() || !agentId) return
-    preflightTimer = setTimeout(() => void runPreflight(), 250)
+  function configValue(id: string): LaunchConfigValue | undefined {
+    return configValues.find((selection) => selection.id === id)?.value
+  }
+
+  function setConfigValue(id: string, value: LaunchConfigValue) {
+    const existing = configValues.findIndex((selection) => selection.id === id)
+    configValues = existing < 0
+      ? [...configValues, { id, value }]
+      : configValues.map((selection, index) => index === existing ? { id, value } : selection)
   }
 </script>
 
 <Dialog.Root bind:open>
-  <Dialog.Content class="flex w-[min(680px,calc(100vw-3rem))] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none">
+  <Dialog.Content class="flex max-h-[calc(100dvh-2rem)] w-[min(680px,calc(100vw-3rem))] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none">
     <Dialog.Header class="shrink-0 border-b px-6 py-4">
       <Dialog.Title class="flex items-center gap-2"><Rocket class="size-4 text-primary" />{tr('Launch new Ramble')}</Dialog.Title>
-      <Dialog.Description>{tr('Choose how the Agent should work. It will open the Session by asking what you want to do.')}</Dialog.Description>
+      <Dialog.Description>{tr('Choose a workspace, then let the selected Agent describe its own launch options.')}</Dialog.Description>
     </Dialog.Header>
 
-    <form class="flex flex-col" onsubmit={(event) => { event.preventDefault(); onLaunch(draft()) }}>
-      <div class="grid grid-cols-2 gap-x-4 gap-y-3 bg-muted/15 px-6 py-5">
-        <label class="grid gap-1.5 text-[11px] font-medium">
-          {tr('Agent')}
-          <span class="relative flex items-center">
-            {#if selectedAgent}<span class="absolute left-2 z-10"><AgentLogo agentId={selectedAgent.id} label={selectedAgent.label} iconSvg={selectedAgent.iconSvg} size="sm" /></span>{/if}
-            <select value={agentId} class="h-9 w-full rounded-md border bg-background pl-10 pr-3 text-xs" onchange={(event) => changeAgent(event.currentTarget.value)}>
-              {#each agents as agent}<option value={agent.id} disabled={!agent.supportsStructuredRamble}>{agent.label}{agent.supportsStructuredRamble ? '' : ` · ${tr('ACP connection only')}`}</option>{/each}
-            </select>
-          </span>
-        </label>
-
-        {#if !preflight || preflight.models.length > 0}
+    <form class="flex min-h-0 flex-1 flex-col overflow-hidden" onsubmit={(event) => { event.preventDefault(); onLaunch(draft()) }}>
+      <div class="min-h-0 flex-1 overflow-y-auto bg-muted/15 px-6 py-5">
+        <div class="grid gap-4">
           <label class="grid gap-1.5 text-[11px] font-medium">
-            {tr('Model')}
-            <select bind:value={model} disabled={!preflight || preflightBusy} class="h-9 rounded-md border bg-background px-3 text-xs">
-              {#if !preflight}<option value="">{preflightBusy ? tr('Checking Agent capabilities…') : tr('Choose a workspace first')}</option>{/if}
-              {#each preflight?.models ?? [] as candidate}<option value={candidate}>{candidate}</option>{/each}
-            </select>
+            <span>{tr('Workspace')}</span>
+            <span class="flex gap-2">
+              <input
+                value={workspace}
+                class="h-9 min-w-0 flex-1 rounded-md border bg-background px-3 text-xs outline-none focus:ring-2 focus:ring-ring/35"
+                placeholder="/path/to/project"
+                oninput={(event) => changeWorkspace(event.currentTarget.value)}
+              />
+              <Button type="button" variant="outline" onclick={() => void selectWorkspace()}>
+                <FolderOpen data-icon="inline-start" />{tr('Choose…')}
+              </Button>
+            </span>
           </label>
-        {/if}
 
-        {#if !preflight || preflight.reasoningEfforts.length > 0}
-          <label class="grid gap-1.5 text-[11px] font-medium">
-            {tr('Reasoning effort')}
-            <select bind:value={reasoningEffort} disabled={!preflight || preflightBusy} class="h-9 rounded-md border bg-background px-3 text-xs">
-              {#if !preflight}<option value="">{preflightBusy ? tr('Checking Agent capabilities…') : tr('Choose a workspace first')}</option>{/if}
-              {#each preflight?.reasoningEfforts ?? [] as effort}<option value={effort}>{effort}</option>{/each}
-            </select>
-          </label>
-        {/if}
+          {#if workspace.trim()}
+            <label class="grid gap-1.5 text-[11px] font-medium">
+              <span>{tr('Agent')}</span>
+              <span class="flex items-center gap-2">
+                {#if selectedAgent}
+                  <AgentLogo agentId={selectedAgent.id} label={selectedAgent.label} iconSvg={selectedAgent.iconSvg} size="sm" />
+                {/if}
+                <select
+                  value={agentId}
+                  class="h-9 min-w-0 flex-1 rounded-md border bg-background px-3 text-xs"
+                  onchange={(event) => changeAgent(event.currentTarget.value)}
+                >
+                  <option value="">{tr('Choose an Agent')}</option>
+                  {#each agents as agent}
+                    <option value={agent.id} disabled={!agent.supportsStructuredRamble}>
+                      {agent.label}{agent.supportsStructuredRamble ? '' : ` · ${tr('ACP connection only')}`}
+                    </option>
+                  {/each}
+                </select>
+              </span>
+            </label>
+          {/if}
 
-        <label class="grid gap-1.5 text-[11px] font-medium">
-          {tr('Access mode')}
-          <select bind:value={accessMode} disabled={!preflight || preflightBusy} class="h-9 rounded-md border bg-background px-3 text-xs">
-            {#if !preflight}<option value={$acpClientDefaults.accessMode}>{preflightBusy ? tr('Checking Agent capabilities…') : tr('Choose a workspace first')}</option>{/if}
-            {#each preflight?.accessModes ?? [] as mode}
-              <option value={mode}>{mode === 'read_only' ? tr('Read Only') : mode === 'workspace_write' ? tr('Workspace Write') : 'YOLO'}</option>
-            {/each}
-          </select>
-        </label>
+          {#if preflightBusy}
+            <div class="flex min-h-20 items-center justify-center gap-2 rounded-md border bg-background/70 text-[11px] text-muted-foreground" aria-live="polite">
+              <LoaderCircle class="size-4 animate-spin text-primary" />
+              {tr('Checking this Agent in the selected workspace…')}
+            </div>
+          {:else if preflight}
+            {#if preflight.configOptions.length > 0}
+              <div class="grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2">
+                {#each preflight.configOptions as option, optionIndex (option.id)}
+                  <div
+                    class={preflight.configOptions.length % 2 === 1 && optionIndex === preflight.configOptions.length - 1
+                      ? 'min-w-0 sm:col-span-2'
+                      : 'min-w-0'}
+                  >
+                    <LaunchConfigField
+                      {option}
+                      value={configValue(option.id)}
+                      disabled={busy}
+                      onChange={(value) => setConfigValue(option.id, value)}
+                    />
+                  </div>
+                {/each}
+              </div>
+            {:else}
+              <p class="m-0 rounded-md border bg-background px-3 py-3 text-[11px] text-muted-foreground">
+                {tr('This Agent did not report any launch options. RambleDesk will use its Agent defaults.')}
+              </p>
+            {/if}
 
-        <label class="col-span-2 grid gap-1.5 text-[11px] font-medium">
-          {tr('Workspace')}
-          <span class="flex gap-2">
-            <input bind:value={workspace} class="h-9 min-w-0 flex-1 rounded-md border bg-background px-3 text-xs outline-none focus:ring-2 focus:ring-ring/35" placeholder="/path/to/project" oninput={schedulePreflight} />
-            <Button type="button" variant="outline" onclick={() => void selectWorkspace()}><FolderOpen data-icon="inline-start" />{tr('Choose…')}</Button>
-          </span>
-        </label>
-
-        <p class="col-span-2 m-0 text-[10px] text-muted-foreground" aria-live="polite">
-          {preflightBusy
-            ? tr('Checking Agent capabilities…')
-            : preflightReady
-              ? tr('Ready. The Agent will ask what you want to do after launch.')
-              : preflight?.warning
-                ? tr('Agent options could not be loaded. Check the reason below and try again.')
-              : tr('Choose a workspace to load the available Agent options automatically.')}
-        </p>
-        {#if preflight?.warning}<p class="col-span-2 m-0 rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-[11px] text-warning-foreground dark:text-warning">{preflight.warning}</p>{/if}
+            <p class="m-0 text-[10px] text-muted-foreground" aria-live="polite">
+              {preflightReady
+                ? tr('Ready. The Agent will ask what you want to do after launch.')
+                : tr('The Agent options are incomplete. Refresh the Agent check and try again.')}
+            </p>
+            {#if preflight.warning}
+              <p class="m-0 rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-[11px] text-warning-foreground dark:text-warning">
+                {preflight.warning}
+              </p>
+            {/if}
+          {:else}
+            <p class="m-0 text-[10px] text-muted-foreground">
+              {workspace.trim()
+                ? tr('Choose an Agent to load the options it provides for this workspace.')
+                : tr('Choose a workspace first. Agent selection and options come next.')}
+            </p>
+          {/if}
+        </div>
       </div>
 
       {#if error}<p class="mx-6 mb-3 rounded-md border border-destructive/25 bg-destructive/5 px-3 py-2 text-[11px] text-destructive">{error}</p>{/if}
-      <Dialog.Footer class="shrink-0 border-t px-6 py-3">
+      <Dialog.Footer class="mx-0 mb-0 shrink-0 rounded-none border-t px-6 py-3">
         <Button type="button" variant="ghost" disabled={busy} onclick={() => (open = false)}>{tr('Cancel')}</Button>
-        <Button type="submit" disabled={busy || !preflightReady || !preflight?.accessModes.includes(accessMode) || !workspace.trim() || !agentId || ((preflight?.models.length ?? 0) > 0 && !model) || ((preflight?.reasoningEfforts.length ?? 0) > 0 && !reasoningEffort)}>
+        <Button type="submit" disabled={busy || !preflightReady || !workspace.trim() || !agentId}>
           {#if busy}<LoaderCircle class="animate-spin" data-icon="inline-start" />{:else}<Play data-icon="inline-start" />{/if}
           {tr('Launch Ramble')}
         </Button>

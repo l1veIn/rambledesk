@@ -31,6 +31,7 @@
   import AskView from './lib/acp-workbench/AskView.svelte'
   import LaunchRambleDialog from './lib/acp-workbench/LaunchRambleDialog.svelte'
   import PermissionView from './lib/acp-workbench/PermissionView.svelte'
+  import SessionTimelineDrawer from './lib/acp-workbench/SessionTimelineDrawer.svelte'
   import {
     acpAdapterErrorMessage,
     createNativeAcpWorkbenchAdapter,
@@ -48,6 +49,7 @@
     FeedbackAttentionItem,
     LaunchDraft,
     LaunchPreflight,
+    LaunchPreflightInput,
     PermissionOption,
     QuestionAttentionItem,
   } from './lib/acp-workbench/types'
@@ -118,6 +120,7 @@
   import { createNavigationController } from './lib/workbench/navigationController'
   import { resolvedRamblePhase } from './lib/workbench/rambleSessionState'
   import {
+    beginWorkspaceSelection,
     createWorkspaceLoadGate,
     ownerForOperation,
     type WorkbenchOperationTarget,
@@ -270,6 +273,7 @@
   let acpActionBusy = false
   let acpSnapshotEpoch = 0
   let launchRambleOpen = false
+  let timelineSessionId: string | null = null
   const feedbackSubmissionIds = new Map<string, string>()
   const workspaceLoadGate = createWorkspaceLoadGate()
 
@@ -587,6 +591,18 @@
     agents: acpSnapshot.agents,
     resolveHostProfile,
   })
+  $: timelineSession = timelineSessionId
+    ? acpSnapshot.sessions.find((session) => session.sessionId === timelineSessionId) ?? null
+    : null
+  $: timelineAgent = timelineSession
+    ? acpSnapshot.agents.find((agent) => agent.id === timelineSession.agentId) ?? null
+    : null
+  $: activeTimeline = timelineSessionId
+    ? acpSnapshot.timelines?.find((timeline) => timeline.sessionId === timelineSessionId) ?? null
+    : null
+  $: timelineAttentionItems = timelineSessionId
+    ? acpSnapshot.attentionItems.filter((item) => item.sessionId === timelineSessionId)
+    : []
   $: selectedSessionItem = activeSessionKey
     ? unifiedWorkbench.sessions.find((session) => session.key === activeSessionKey) ?? null
     : null
@@ -882,6 +898,23 @@
     await openAcpItem(request, false)
   }
 
+  function openSessionTimeline(item: SessionRailItem) {
+    if (item.origin !== 'managed_acp') return
+    timelineSessionId = item.sessionId
+  }
+
+  async function openTimelineRequest(item: AttentionItem) {
+    const request = unifiedWorkbench.requests.find(
+      (candidate) =>
+        candidate.origin === 'managed_acp' &&
+        candidate.rawRequestId === item.id &&
+        candidate.sessionId === item.sessionId,
+    )
+    if (!request) return
+    timelineSessionId = null
+    await openUnifiedRequest(request)
+  }
+
   async function chooseUnifiedSession(item: SessionRailItem | null) {
     if (dirty && !(await saveDraftNow())) return
     if (item && selectedRequestItem?.sessionKey !== item.key) activeRequestKey = null
@@ -1036,15 +1069,14 @@
     }
   }
 
-  async function preflightAcpLaunch(input: LaunchDraft): Promise<LaunchPreflight> {
+  async function preflightAcpLaunch(input: LaunchPreflightInput): Promise<LaunchPreflight> {
     try {
       return await acpAdapter.preflightLaunch(input)
     } catch (cause) {
       return {
         agentId: input.agentId,
-        models: [],
-        reasoningEfforts: [],
-        accessModes: [],
+        schemaDigest: '',
+        configOptions: [],
         warning: acpAdapterErrorMessage(cause),
       }
     }
@@ -1160,7 +1192,13 @@
       (workspaceOrigin === 'adapter' && workspaceRequestKey === requestKey)
     ) return
     if (saveCurrent && !(await saveDraftNow())) return
-    const loadToken = workspaceLoadGate.begin(requestKey ?? null)
+    const loadToken = requestKey
+      ? beginWorkspaceSelection(
+          workspaceLoadGate,
+          requestKey,
+          (selectedKey) => (activeRequestKey = selectedKey),
+        )
+      : workspaceLoadGate.begin(null)
     loadingWorkspace = true
     pageError = ''
     completedResult = null
@@ -1703,6 +1741,7 @@
       loading={$navigation.loadingNavigation || (acpEnabled && acpLoading)}
       refreshing={$navigation.refreshingPage || acpRefreshing}
       onSelect={(item) => void chooseUnifiedSession(item)}
+      onOpenTimeline={openSessionTimeline}
       onRequestSearch={(search) => void navigation.setRequestSearch(search)}
       onLaunch={() => acpEnabled
         ? (launchRambleOpen = true)
@@ -1882,6 +1921,16 @@
     onLaunch={(input) => void launchAcpRamble(input)}
   />
 {/if}
+
+<SessionTimelineDrawer
+  open={timelineSession !== null}
+  session={timelineSession}
+  agent={timelineAgent}
+  timeline={activeTimeline}
+  attentionItems={timelineAttentionItems}
+  onClose={() => (timelineSessionId = null)}
+  onOpenRequest={(item) => void openTimelineRequest(item)}
+/>
 
 <OnboardingWizard bind:openWizard={onboardingOpen} onClose={closeOnboarding} />
 

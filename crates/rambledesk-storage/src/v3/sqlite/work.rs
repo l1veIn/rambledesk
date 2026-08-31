@@ -1,8 +1,8 @@
 use rambledesk_core::kernel::ports::FactStoreError;
 use rambledesk_core::kernel::{
     AgentWorkBatch, AgentWorkDisposition, AgentWorkEvidence, AgentWorkId, AgentWorkKind,
-    AgentWorkRecordOutcome, AgentWorkState, ClaimedAgentWork, DeliveryId, StoredWorkResult,
-    WorkClaim,
+    AgentWorkRecordOutcome, AgentWorkState, ClaimedAgentWork, DeliveryId, RequestId,
+    StoredWorkResult, WorkClaim,
 };
 use sqlx::Row;
 
@@ -95,7 +95,7 @@ impl SqliteV3Store {
             .map_err(storage_error)?;
         let connection = transaction.as_mut();
         let row = sqlx::query(
-            "SELECT kind, source_delivery_id, state, lease_token, lease_until
+            "SELECT session_id, kind, source_delivery_id, state, lease_token, lease_until
              FROM agent_work_v3 WHERE work_id = ?",
         )
         .bind(result.result.work_id.as_str())
@@ -109,6 +109,7 @@ impl SqliteV3Store {
             return Err(FactStoreError::WorkClaimConflict);
         }
         let kind = work_kind_from_label(&row.get::<String, _>("kind"))?;
+        let session_id: String = row.get("session_id");
         let source_delivery = row
             .get::<Option<String>, _>("source_delivery_id")
             .map(DeliveryId::new);
@@ -120,7 +121,14 @@ impl SqliteV3Store {
             return Ok(AgentWorkRecordOutcome {
                 work_id: result.result.work_id,
                 state,
-                delivered: validate_evidence(kind, source_delivery.as_ref(), evidence)?,
+                delivered: validate_evidence(
+                    connection,
+                    kind,
+                    &session_id,
+                    source_delivery.as_ref(),
+                    evidence,
+                )
+                .await?,
             });
         }
         if state != AgentWorkState::Claimed {
@@ -148,7 +156,14 @@ impl SqliteV3Store {
                 None
             }
             AgentWorkDisposition::Completed { evidence } => {
-                let delivered = validate_evidence(kind, source_delivery.as_ref(), evidence)?;
+                let delivered = validate_evidence(
+                    connection,
+                    kind,
+                    &session_id,
+                    source_delivery.as_ref(),
+                    evidence,
+                )
+                .await?;
                 record_completion(
                     connection,
                     &result.result.work_id,
@@ -260,20 +275,69 @@ async fn record_completion(
     Ok(())
 }
 
-fn validate_evidence(
+async fn validate_evidence(
+    connection: &mut sqlx::SqliteConnection,
     kind: AgentWorkKind,
+    session_id: &str,
     source_delivery: Option<&DeliveryId>,
     evidence: &AgentWorkEvidence,
 ) -> Result<Option<DeliveryId>, FactStoreError> {
     match (kind, evidence) {
         (
             AgentWorkKind::LaunchPrompt | AgentWorkKind::SteeringPrompt,
-            AgentWorkEvidence::PromptTurnCompleted,
-        ) => Ok(None),
+            AgentWorkEvidence::RambleLoopSuspended { request_id },
+        ) if is_persisted_request(connection, session_id, request_id).await? => Ok(None),
         (
             AgentWorkKind::FeedbackResume,
-            AgentWorkEvidence::FeedbackConsumedAndTurnCompleted { delivery_id },
-        ) if source_delivery == Some(delivery_id) => Ok(Some(delivery_id.clone())),
+            AgentWorkEvidence::FeedbackConsumedAndLoopSuspended {
+                delivery_id,
+                request_id,
+            },
+        ) if source_delivery == Some(delivery_id)
+            && request_is_new_checkpoint(connection, session_id, delivery_id, request_id)
+                .await? =>
+        {
+            Ok(Some(delivery_id.clone()))
+        }
         _ => Err(FactStoreError::WorkClaimConflict),
     }
+}
+
+async fn request_is_new_checkpoint(
+    connection: &mut sqlx::SqliteConnection,
+    session_id: &str,
+    delivery_id: &DeliveryId,
+    request_id: &RequestId,
+) -> Result<bool, FactStoreError> {
+    if !is_persisted_request(connection, session_id, request_id).await? {
+        return Ok(false);
+    }
+    let consumed_request_id: Option<String> = sqlx::query_scalar(
+        "SELECT request_id FROM feedback_deliveries_v3
+         WHERE delivery_id = ? AND session_id = ?",
+    )
+    .bind(delivery_id.as_str())
+    .bind(session_id)
+    .fetch_optional(connection)
+    .await
+    .map_err(storage_error)?;
+    Ok(consumed_request_id.is_some_and(|consumed| consumed != request_id.as_str()))
+}
+
+async fn is_persisted_request(
+    connection: &mut sqlx::SqliteConnection,
+    session_id: &str,
+    request_id: &RequestId,
+) -> Result<bool, FactStoreError> {
+    sqlx::query_scalar(
+        "SELECT EXISTS(
+            SELECT 1 FROM feedback_requests_v3
+            WHERE request_id = ? AND session_id = ?
+        )",
+    )
+    .bind(request_id.as_str())
+    .bind(session_id)
+    .fetch_one(connection)
+    .await
+    .map_err(storage_error)
 }

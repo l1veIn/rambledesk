@@ -392,11 +392,27 @@ async fn complete_pending_work(core: &Core, session_id: &rambledesk_core::kernel
         .unwrap();
     assert_eq!(batch.items.len(), 2);
     for claimed in batch.items {
+        let request_id = RequestId::new(format!("ramble-work-{}", claimed.work.work_id));
+        core.request_feedback(CreateFeedbackRequest {
+            request_id: Some(request_id.clone()),
+            session_id: session_id.clone(),
+            source_link_id: None,
+            title: "Completed test stage".to_string(),
+            instructions: "Continue the managed Ramble loop.".to_string(),
+            actions: vec![FeedbackAction {
+                id: "continue".to_string(),
+                instruction: "Review the completed stage.".to_string(),
+            }],
+            context_refs: Vec::new(),
+            artifacts: Vec::new(),
+        })
+        .await
+        .unwrap();
         core.record_agent_work(AgentWorkResult {
             work_id: claimed.work.work_id,
             claim_token: claimed.claim_token,
             disposition: AgentWorkDisposition::Completed {
-                evidence: AgentWorkEvidence::PromptTurnCompleted,
+                evidence: AgentWorkEvidence::RambleLoopSuspended { request_id },
             },
         })
         .await

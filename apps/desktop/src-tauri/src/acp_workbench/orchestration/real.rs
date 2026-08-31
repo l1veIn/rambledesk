@@ -14,7 +14,7 @@ use tokio::{sync::broadcast, task::JoinHandle};
 
 use super::{AcpOrchestrationPort, LiveAcpProjection, OrchestrationFuture};
 use crate::acp_workbench::model::{
-    AcpWorkbenchError, AgentSummary, AttentionItem, LaunchDraftInput, LaunchPreflight,
+    AcpWorkbenchError, AgentSummary, AttentionItem, LaunchPreflight, LaunchPreflightInput,
     PermissionAnswerInput, QuestionAnswerInput,
 };
 
@@ -105,7 +105,11 @@ impl AcpClientOrchestrator {
         Ok(())
     }
 
-    async fn probe_agent(&self, agent_id: &str) -> Result<LaunchPreflight, AcpWorkbenchError> {
+    async fn probe_agent(
+        &self,
+        agent_id: &str,
+        workspace: &std::path::Path,
+    ) -> Result<LaunchPreflight, AcpWorkbenchError> {
         let profile_ref = self.profiles.get(agent_id).cloned().ok_or_else(|| {
             AcpWorkbenchError::new(
                 "ACP_LAUNCH_PROFILE_NOT_FOUND",
@@ -115,7 +119,7 @@ impl AcpClientOrchestrator {
         })?;
         let report = self
             .client
-            .preflight(profile_ref)
+            .preflight(profile_ref, workspace)
             .await
             .map_err(map_client_error)?;
         if !report.available {
@@ -125,13 +129,7 @@ impl AcpClientOrchestrator {
                 true,
             ));
         }
-        let projected = project_preflight(agent_id, &report);
-        self.projection.update_agent_options(
-            agent_id,
-            projected.models.clone(),
-            projected.reasoning_efforts.clone(),
-        );
-        Ok(projected)
+        Ok(project_preflight(agent_id, &report))
     }
 }
 
@@ -141,14 +139,17 @@ impl AcpOrchestrationPort for AcpClientOrchestrator {
     }
 
     fn connect<'a>(&'a self, agent_id: &'a str) -> OrchestrationFuture<'a, LaunchPreflight> {
-        Box::pin(async move { self.probe_agent(agent_id).await })
+        Box::pin(async move { self.probe_agent(agent_id, &std::env::temp_dir()).await })
     }
 
     fn preflight<'a>(
         &'a self,
-        input: &'a LaunchDraftInput,
+        input: &'a LaunchPreflightInput,
     ) -> OrchestrationFuture<'a, LaunchPreflight> {
-        Box::pin(async move { self.probe_agent(&input.agent_id).await })
+        Box::pin(async move {
+            self.probe_agent(&input.agent_id, std::path::Path::new(&input.workspace))
+                .await
+        })
     }
 
     fn reconcile<'a>(&'a self, session_id: SessionId) -> OrchestrationFuture<'a, ()> {
@@ -255,6 +256,7 @@ struct RunProjection {
     state: RunState,
     permissions: HashMap<String, ProjectedPermission>,
     questions: HashMap<String, ProjectedQuestion>,
+    timeline: TimelineProjection,
 }
 
 struct ProjectedPermission {
@@ -412,10 +414,17 @@ impl ProjectionStore {
             }));
         }
         ordered.sort_by(|left, right| (&left.0, left.1, left.2).cmp(&(&right.0, right.1, right.2)));
+        let mut timelines = state
+            .runs
+            .iter()
+            .map(|(session_id, run)| run.timeline.snapshot(session_id))
+            .collect::<Vec<_>>();
+        timelines.sort_by(|left, right| left.session_id.cmp(&right.session_id));
         LiveAcpProjection {
             running_session_ids,
             attention_items: ordered.into_iter().map(|(_, _, _, item)| item).collect(),
             agents: state.agents.clone(),
+            timelines,
         }
     }
 
@@ -441,18 +450,35 @@ impl ProjectionStore {
                 )
             })
             .collect();
-        self.state
+        let session_id = snapshot.session_id.to_string();
+        let mut state = self
+            .state
             .write()
-            .unwrap_or_else(|error| error.into_inner())
+            .unwrap_or_else(|error| error.into_inner());
+        let run = state
             .runs
-            .insert(
-                snapshot.session_id.to_string(),
-                RunProjection {
-                    state: snapshot.state,
-                    permissions,
-                    questions,
-                },
+            .entry(session_id.clone())
+            .or_insert_with(empty_run);
+        run.timeline.apply_state(&session_id, snapshot.state, None);
+        run.state = snapshot.state;
+        run.permissions = permissions;
+        run.questions = questions;
+        for request_id in run.permissions.keys().cloned().collect::<Vec<_>>() {
+            run.timeline.mark_waiting(
+                &session_id,
+                &request_id,
+                "Permission required",
+                "The Agent is waiting for permission to continue.",
             );
+        }
+        for request_id in run.questions.keys().cloned().collect::<Vec<_>>() {
+            run.timeline.mark_waiting(
+                &session_id,
+                &request_id,
+                "Question for you",
+                "The Agent is waiting for your answer.",
+            );
+        }
     }
 
     fn apply_event(&self, event: LiveSessionEvent) {
@@ -465,25 +491,39 @@ impl ProjectionStore {
                 session_id,
                 state: run_state,
             } => {
+                let session_id = session_id.to_string();
+                let run = state
+                    .runs
+                    .entry(session_id.clone())
+                    .or_insert_with(empty_run);
+                run.timeline.apply_state(&session_id, run_state, None);
+                run.state = run_state;
+            }
+            LiveSessionEvent::SessionUpdate { session_id, update } => {
+                let session_id = session_id.to_string();
                 state
                     .runs
-                    .entry(session_id.to_string())
+                    .entry(session_id.clone())
                     .or_insert_with(empty_run)
-                    .state = run_state;
-            }
-            LiveSessionEvent::SessionUpdate { .. } => {
-                // Transcript and raw session updates are not Desktop history.
-                // A future live-config DTO may project config_option_update here.
+                    .timeline
+                    .apply_update(&session_id, &update);
             }
             LiveSessionEvent::PermissionQueued { request } => {
+                let now = now_rfc3339();
                 let session = state
                     .runs
                     .entry(request.session_id.to_string())
                     .or_insert_with(empty_run);
                 session.state = RunState::WaitingForPermission;
+                session.timeline.mark_waiting(
+                    request.session_id.as_str(),
+                    &request.live_request_id,
+                    "Permission required",
+                    "The Agent is waiting for permission to continue.",
+                );
                 session.permissions.insert(
                     request.live_request_id.clone(),
-                    project_permission(&request, &now_rfc3339()),
+                    project_permission(&request, &now),
                 );
             }
             LiveSessionEvent::PermissionResolved {
@@ -492,17 +532,25 @@ impl ProjectionStore {
             } => {
                 if let Some(session) = state.runs.get_mut(session_id.as_str()) {
                     session.permissions.remove(&live_request_id);
+                    session.timeline.resolve_waiting(&live_request_id);
                 }
             }
             LiveSessionEvent::QuestionQueued { question } => {
+                let now = now_rfc3339();
                 let session = state
                     .runs
                     .entry(question.session_id.to_string())
                     .or_insert_with(empty_run);
                 session.state = RunState::WaitingForQuestion;
+                session.timeline.mark_waiting(
+                    question.session_id.as_str(),
+                    &question.live_request_id,
+                    "Question for you",
+                    &question.message,
+                );
                 session.questions.insert(
                     question.live_request_id.clone(),
-                    project_question(&question, &now_rfc3339()),
+                    project_question(&question, &now),
                 );
             }
             LiveSessionEvent::QuestionResolved {
@@ -511,10 +559,11 @@ impl ProjectionStore {
             } => {
                 if let Some(session) = state.runs.get_mut(session_id.as_str()) {
                     session.questions.remove(&live_request_id);
+                    session.timeline.resolve_waiting(&live_request_id);
                 }
             }
-            LiveSessionEvent::Disconnected { session_id, .. } => {
-                disconnect_run(&mut state, &session_id);
+            LiveSessionEvent::Disconnected { session_id, reason } => {
+                disconnect_run(&mut state, &session_id, Some(&reason));
             }
         }
     }
@@ -548,6 +597,7 @@ impl ProjectionStore {
             .get_mut(session_id.as_str())
         {
             run.permissions.remove(request_id);
+            run.timeline.resolve_waiting(request_id);
         }
     }
 
@@ -560,6 +610,7 @@ impl ProjectionStore {
             .get_mut(session_id.as_str())
         {
             run.questions.remove(request_id);
+            run.timeline.resolve_waiting(request_id);
         }
     }
 
@@ -568,7 +619,7 @@ impl ProjectionStore {
             .state
             .write()
             .unwrap_or_else(|error| error.into_inner());
-        disconnect_run(&mut state, session_id);
+        disconnect_run(&mut state, session_id, None);
     }
 
     fn clear_runs(&self) {
@@ -578,25 +629,6 @@ impl ProjectionStore {
             .runs
             .clear();
     }
-
-    fn update_agent_options(
-        &self,
-        agent_id: &str,
-        models: Vec<String>,
-        reasoning_efforts: Vec<String>,
-    ) {
-        if let Some(agent) = self
-            .state
-            .write()
-            .unwrap_or_else(|error| error.into_inner())
-            .agents
-            .iter_mut()
-            .find(|agent| agent.id == agent_id)
-        {
-            agent.models = models;
-            agent.reasoning_efforts = reasoning_efforts;
-        }
-    }
 }
 
 fn empty_run() -> RunProjection {
@@ -604,14 +636,17 @@ fn empty_run() -> RunProjection {
         state: RunState::Ready,
         permissions: HashMap::new(),
         questions: HashMap::new(),
+        timeline: TimelineProjection::default(),
     }
 }
 
-fn disconnect_run(state: &mut ProjectionState, session_id: &SessionId) {
+fn disconnect_run(state: &mut ProjectionState, session_id: &SessionId, reason: Option<&str>) {
     let run = state
         .runs
         .entry(session_id.to_string())
         .or_insert_with(empty_run);
+    run.timeline
+        .apply_state(session_id.as_str(), RunState::Disconnected, reason);
     run.state = RunState::Disconnected;
     run.permissions.clear();
     run.questions.clear();
@@ -624,8 +659,10 @@ fn is_connected(state: RunState) -> bool {
 mod mapping;
 #[cfg(test)]
 mod tests;
+mod timeline;
 
 use mapping::{now_rfc3339, project_permission, project_preflight, project_question};
+use timeline::TimelineProjection;
 
 fn live_request_not_found() -> AcpWorkbenchError {
     AcpWorkbenchError::new(

@@ -106,11 +106,11 @@ async fn archive_rejects_pending_feedback_and_agent_work_atomically() {
         .expect_err("pending launch work");
     assert_eq!(error, FactStoreError::SessionHasPendingActivity);
 
-    complete_launch_work(&store, &launch).await;
+    insert_managed_session(&store, "feedback-session", "Feedback").await;
     store
         .apply(FactMutation::FeedbackRequest(Box::new(
             FeedbackRequestCommit {
-                request: waiting_request("pending-feedback", launch.session_id.as_str()),
+                request: waiting_request("pending-feedback", "feedback-session"),
             },
         )))
         .await
@@ -119,7 +119,7 @@ async fn archive_rejects_pending_feedback_and_agent_work_atomically() {
         .apply(FactMutation::SessionOrganization(Box::new(
             SessionOrganizationCommit {
                 mutation: SessionOrganization::SetArchived {
-                    session_id: launch.session_id,
+                    session_id: SessionId::new("feedback-session"),
                     archived: true,
                 },
                 now: LATER.to_owned(),
@@ -180,33 +180,4 @@ async fn archived(store: &SqliteV3Store) -> Vec<SessionRecord> {
         panic!("wrong archived outcome")
     };
     sessions
-}
-
-async fn complete_launch_work(store: &SqliteV3Store, launch: &LaunchOutcome) {
-    let batch = store
-        .claim_work(WorkClaim {
-            scope: WorkScope {
-                session_id: Some(launch.session_id.clone()),
-                limit: 1,
-                lease_seconds: 60,
-            },
-            claim_token: WorkClaimToken::new("organization-claim"),
-            claimed_at: LATER.to_owned(),
-            lease_until: "2026-08-30T00:02:00Z".to_owned(),
-        })
-        .await
-        .expect("claim");
-    store
-        .record_work(StoredWorkResult {
-            result: AgentWorkResult {
-                work_id: batch.items[0].work.work_id.clone(),
-                claim_token: batch.items[0].claim_token.clone(),
-                disposition: AgentWorkDisposition::Completed {
-                    evidence: AgentWorkEvidence::PromptTurnCompleted,
-                },
-            },
-            recorded_at: "2026-08-30T00:01:30Z".to_owned(),
-        })
-        .await
-        .expect("complete");
 }

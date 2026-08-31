@@ -1,8 +1,9 @@
 import type {
-  AccessMode,
   AcpSessionSummary,
   AcpWorkbenchSnapshot,
   AttentionItem,
+  LaunchConfigSelection,
+  LaunchConfigValue,
   LaunchPreflight,
 } from './types'
 
@@ -61,24 +62,48 @@ export function selectSession(
 
 export function resolvePreflightSelection(
   preflight: LaunchPreflight,
-  preferred: { model: string; reasoningEffort: string; accessMode: AccessMode },
-) {
-  return {
-    model: preflight.models.includes(preferred.model)
-      ? preferred.model
-      : preflight.models[0] ?? '',
-    reasoningEffort: preflight.reasoningEfforts.includes(preferred.reasoningEffort)
-      ? preferred.reasoningEffort
-      : preflight.reasoningEfforts[0] ?? '',
-    accessMode: preflight.accessModes.includes(preferred.accessMode)
-      ? preferred.accessMode
-      : preflight.accessModes[0] ?? null,
+  preferred: Record<string, LaunchConfigValue> = {},
+): LaunchConfigSelection[] {
+  const selections: LaunchConfigSelection[] = []
+  for (const option of preflight.configOptions) {
+    if (option.kind === 'unsupported') continue
+    const candidate = preferred[option.id]
+    if (option.kind === 'boolean') {
+      selections.push({
+        id: option.id,
+        value: typeof candidate === 'boolean' ? candidate : option.currentValue,
+      })
+      continue
+    }
+    const selected = typeof candidate === 'string'
+      && option.options.some((choice) => choice.value === candidate)
+      ? candidate
+      : option.options.some((choice) => choice.value === option.currentValue)
+        ? option.currentValue
+        : option.options[0]?.value
+    if (selected !== undefined) selections.push({ id: option.id, value: selected })
   }
+  return selections
+}
+
+export function launchConfigIsComplete(
+  preflight: LaunchPreflight | null,
+  selections: readonly LaunchConfigSelection[],
+): boolean {
+  if (!preflight) return false
+  const selected = new Map(selections.map((selection) => [selection.id, selection.value]))
+  return preflight.configOptions.every((option) => {
+    if (option.kind === 'unsupported') return true
+    const value = selected.get(option.id)
+    if (option.kind === 'boolean') return typeof value === 'boolean'
+    return typeof value === 'string'
+      && option.options.some((choice) => choice.value === value)
+  })
 }
 
 export function isUsablePreflight(preflight: LaunchPreflight | null): boolean {
   return preflight !== null
-    && preflight.accessModes.length > 0
+    && preflight.schemaDigest.length > 0
 }
 
 export type LaunchPreflightContext = {

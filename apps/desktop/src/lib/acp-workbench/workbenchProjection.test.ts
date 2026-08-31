@@ -81,8 +81,6 @@ const agents: AgentSummary[] = [{
   label: 'Codex ACP',
   iconSvg: '<svg data-acp="true" />',
   supportsStructuredRamble: true,
-  models: ['gpt'],
-  reasoningEfforts: ['high'],
 }]
 
 const resolveHostProfile = (hostId: string): HostProfile => ({

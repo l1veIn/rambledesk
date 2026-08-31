@@ -14,13 +14,14 @@
 
 1. **安装**：RambleDesk 能发现准确版本，或把固定版本安装进自己的 `v3/acp-clients` 目录。
 2. **ACP 会话**：进程完成 `initialize` 与临时 `session/new`，并返回真实的模型、思考强度和访问模式。
-3. **结构化 Ramble**：RambleDesk Launch 后，Agent 真的调用 Session Toolset 的 `request_feedback`，并产生持久化 Feedback Request。
+3. **首个结构化 Ramble**：RambleDesk Launch 后，Agent 真的调用 Session Toolset 的 `request_feedback`，并产生持久化 Feedback Request。
+4. **完整 Ramble Loop**：人类提交反馈后，Agent 真的依次调用 `get_feedback`、应用反馈正文，并创建下一条 `request_feedback`；下一条 Request 必须包含只存在于反馈正文中的验收 marker。
 
-认证失败不是安装失败；ACP 会话成功也不等于结构化 Ramble 成功。
+认证失败不是安装失败；ACP 会话成功、首个 Feedback Request 成功也都不等于完整 Ramble Loop 成功。
 
 ## 结果矩阵
 
-| Agent | 安装 / 启动物 | ACP 会话 | 结构化 Feedback Request | 实机结论 |
+| Agent | 安装 / 启动物 | ACP 会话 | 首个结构化 Feedback Request | 实机结论 |
 |---|---|---|---|---|
 | Claude Code `0.69.0` | 通过 | 通过 | **通过** | 返回 model、reasoning 与三档访问模式；产生 “What would you like to work on?” Feedback Request。 |
 | Codex `1.7.0` | 受管安装通过 | 通过 | 超时 | 两组权限/思考强度组合均能 Launch，但 90 秒内没有调用 `request_feedback`。 |
@@ -34,7 +35,7 @@
 | Pi `0.0.33` | 受管安装通过 | 通过 | 不支持 | `pi-acp` 接收但不会把 `mcpServers` 转发给 Pi，因此只提供 ACP 连接，不开放结构化 Ramble。 |
 | Grok `1.0.5` | 受管安装通过 | **通过** | 超时 | 返回 Grok 4.5/4.6；进程级 read-only/workspace-write/YOLO 映射已对齐 Codeg，但 Launch 后未调用 `request_feedback`。 |
 | Cursor `2026.08.11-e8db854` | 受管整树安装通过 | 到达账号边界 | 未执行 | 完整保留 bundled Node/runtime 目录；要求 Cursor 登录。 |
-| DeepSeek ACP `0.7.0` | 启动通过 | 通过 | **通过** | 返回 model、reasoning 与 sandbox 三档访问模式；产生持久化 Feedback Request。 |
+| DeepSeek ACP `0.7.0` | 启动通过 | 通过 | **通过** | 返回 model、reasoning 与 sandbox 三档访问模式；无 `/ramble` 或文件型 skill 依赖，并完成已验证反馈正文的完整双循环。 |
 | Qoder `1.1.33` | 受管安装通过 | 到达账号边界 | 未执行 | 要求 Qoder 登录或有效 token。 |
 | Antigravity `1.0.0` | **受管整树安装通过** | **通过** | 超时 | 879 MB 主程序与 helper 均可执行；缺失时无损写入 `oauth-personal`，严格 ACP capability 形状修正后返回 11 个模型和两档访问模式。Launch 后未调用 `request_feedback`。 |
 
@@ -48,11 +49,14 @@
 - `initialize.clientCapabilities.session.configOptions.boolean` 使用 ACP 要求的对象形状，而不是宽松实现曾接受的布尔值。
 - 安装准备有三分钟上限，取消时会终止 npm 子进程；错误分为运行时、安装、认证、协议、平台与超时。
 - Managed ACP 已提交/取消的 Feedback Request 会继续出现在中栏，并可从持久化 Feedback Package 恢复正文；这不是 Agent transcript 副本。
+- Launch、Steering 与 Feedback Resume 统一注入 Ramble Loop Contract；普通 Agent 输出、Permission Request 与 Ask Question 都不能替代末尾的 `request_feedback`。Runtime 使用 Session Toolset 的可信 observation 与稳定 `work_id → request_id` 完成证据；缺失交接时只补发一次协议修复 Prompt，连续拒绝保持 pending，不自动忙循环。
+- DeepSeek 完整双循环实测通过：首轮创建任务简报 Request；人类提交包含 `RAMBLE_LOOP_CONTENT_42` 的反馈；Agent 经 `get_feedback` 读取正文、只读检查 README，并在下一条 Feedback Request 中原样带回 marker 和两句摘要。验收同时覆盖了“人类在 Agent work 落证据前立即提交”的并发竞态。
+- `get_feedback` 同时保留结构化 Delivery Envelope 和人类可读文本投影；正式反馈正文缺失时回退 uncooked 正文，文本层不复制附件 Base64 或泄漏本地路径。
 
 ## 尚未伪装成完成的边界
 
 - 当前 Session Toolset 只提供 ACP HTTP MCP。只支持 stdio 转发或根本不转发 MCP 的 Agent，不开放结构化 Ramble。
-- Codex、Kimi、Grok 与 Antigravity 虽已能创建真实 Launch Session，但本轮提示下没有调用 `request_feedback`；需要继续调查 prompt/tool 可见性，不能写成全链路通过。
+- Codex、Kimi、Grok 与 Antigravity 的超时结论来自 Ramble Loop Contract 与运行时完成门落地前的 Launch 验收；仍需按新的完整双循环口径逐一重跑，当前不能写成全链路通过。
 - Gemini、Cline、CodeBuddy、Cursor、Qoder 的下一层验收需要对应账号完成登录；这不是代码安装故障。
 - OpenClaw 需要用户自己的 Gateway 配置，且当前不能承载 RambleDesk Session Toolset。
 - 二进制上游 URL 没有提供可固定的 SHA-256；RambleDesk 支持有 checksum 时强制校验，但这一组 Codeg 内置 URL 仍继承上游供应链边界。

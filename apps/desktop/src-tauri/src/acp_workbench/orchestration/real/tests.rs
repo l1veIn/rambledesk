@@ -1,8 +1,9 @@
 use rambledesk_acp_client::{
-    AskField, AskFieldKind, AskOption, AskQuestion, CapabilitySnapshot, LaunchProfileRef,
+    AskField, AskFieldKind, AskOption, AskQuestion, CapabilitySnapshot, LaunchConfigKind,
+    LaunchConfigOption, LaunchConfigSource, LaunchProfileRef, LaunchSelectOption,
     PermissionOption as AcpPermissionOption, PermissionRequest, PreflightReport,
 };
-use rambledesk_core::kernel::{AccessMode, SessionId};
+use rambledesk_core::kernel::SessionId;
 use serde_json::json;
 
 use super::*;
@@ -191,7 +192,7 @@ fn unsupported_question_shape_remains_visible_and_only_allows_decline() {
 }
 
 #[test]
-fn preflight_maps_agent_categories_and_reports_unexposed_options() {
+fn preflight_preserves_every_agent_option_in_order() {
     let report = PreflightReport {
         profile_ref: LaunchProfileRef {
             agent_profile_id: "codex".to_owned(),
@@ -208,7 +209,7 @@ fn preflight_maps_agent_categories_and_reports_unexposed_options() {
             elicitation_form: true,
             raw_agent_capabilities: json!({}),
         },
-        supported_access_modes: vec![AccessMode::WorkspaceWrite, AccessMode::Yolo],
+        schema_digest: "sha256:test-schema".to_owned(),
         config_options: vec![
             select_option("model", "model", "gpt-5", &["gpt-4", "gpt-5"]),
             select_option(
@@ -223,28 +224,58 @@ fn preflight_maps_agent_categories_and_reports_unexposed_options() {
                 "agent",
                 &["read-only", "agent", "agent-full-access"],
             ),
-            json!({"id":"fast-mode","type":"boolean","currentValue":false}),
+            LaunchConfigOption {
+                id: "fast-mode".to_owned(),
+                name: "Fast mode".to_owned(),
+                description: None,
+                category: None,
+                source: LaunchConfigSource::Agent,
+                kind: LaunchConfigKind::Boolean {
+                    current_value: false,
+                },
+            },
         ],
         warnings: Vec::new(),
     };
 
     let mapped = project_preflight("codex", &report);
-    assert_eq!(mapped.models, ["gpt-5", "gpt-4"]);
-    assert_eq!(mapped.reasoning_efforts, ["high", "low"]);
+    assert_eq!(mapped.schema_digest, "sha256:test-schema");
     assert_eq!(
-        mapped.access_modes,
-        [AccessMode::WorkspaceWrite, AccessMode::Yolo]
+        mapped
+            .config_options
+            .iter()
+            .map(|option| option.id.as_str())
+            .collect::<Vec<_>>(),
+        ["model", "reasoning_effort", "mode", "fast-mode"]
     );
-    assert!(mapped.warning.as_deref().unwrap().contains("agent"));
-    assert!(mapped.warning.as_deref().unwrap().contains("fast-mode"));
+    assert!(matches!(
+        mapped.config_options[3].kind,
+        LaunchConfigKind::Boolean {
+            current_value: false
+        }
+    ));
+    assert!(mapped.warning.is_none());
 }
 
-fn select_option(id: &str, category: &str, current: &str, values: &[&str]) -> serde_json::Value {
-    json!({
-        "id": id,
-        "category": category,
-        "type": "select",
-        "currentValue": current,
-        "options": values.iter().map(|value| json!({"value":value,"name":value})).collect::<Vec<_>>()
-    })
+fn select_option(id: &str, category: &str, current: &str, values: &[&str]) -> LaunchConfigOption {
+    LaunchConfigOption {
+        id: id.to_owned(),
+        name: id.to_owned(),
+        description: None,
+        category: Some(category.to_owned()),
+        source: LaunchConfigSource::Agent,
+        kind: LaunchConfigKind::Select {
+            current_value: current.to_owned(),
+            options: values
+                .iter()
+                .map(|value| LaunchSelectOption {
+                    value: (*value).to_owned(),
+                    name: (*value).to_owned(),
+                    description: None,
+                    group: None,
+                })
+                .collect(),
+            groups: Vec::new(),
+        },
+    }
 }

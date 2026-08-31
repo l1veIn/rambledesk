@@ -18,7 +18,7 @@ pub(super) use sessions::{
 use std::{collections::HashSet, sync::Arc};
 
 use rambledesk_core::kernel::{
-    ArtifactInput, ArtifactRole, CancelFeedbackRequest, Core, DraftId, DraftMutation,
+    AccessMode, ArtifactInput, ArtifactRole, CancelFeedbackRequest, Core, DraftId, DraftMutation,
     DraftSnapshot, FeedbackDeliveryRecord, FeedbackRequestStatus, FeedbackSubmission,
     LaunchConfiguration, LaunchSubmission, PackageArtifact, RambleContent, RambleIntent, RequestId,
     ResolveFeedbackRequest, SaveDraft, SubmissionId, WorkbenchQuery, ports::ArtifactStore,
@@ -30,8 +30,8 @@ use crate::config::V3StoragePaths;
 use model::{
     AcpClientReadiness, AcpClientReadinessStatus, AcpWorkbenchError, AcpWorkbenchSnapshot,
     AddDraftArtifactInput, DraftInput, DraftSnapshotView, FeedbackDecisionInput,
-    FeedbackDetailView, LaunchDraftInput, LaunchPreflight, PermissionAnswerInput,
-    PublishedFeedbackView, QuestionAnswerInput, RemoveDraftArtifactInput,
+    FeedbackDetailView, LaunchDraftInput, LaunchPreflight, LaunchPreflightInput,
+    PermissionAnswerInput, PublishedFeedbackView, QuestionAnswerInput, RemoveDraftArtifactInput,
     ReorderDraftArtifactsInput,
 };
 #[cfg(test)]
@@ -42,8 +42,7 @@ use orchestration::{AcpClientOrchestrator, AcpOrchestrationPort};
 use projection::project_workbench;
 use settings::AcpRuntimeCatalog;
 use validation::{
-    nonblank_option, require_nonblank, title_from_markdown, validate_launch_selection,
-    validate_selected_workspace,
+    require_nonblank, title_from_markdown, validate_launch_selection, validate_selected_workspace,
 };
 
 pub(super) struct AcpWorkbenchState {
@@ -162,7 +161,7 @@ impl AcpWorkbenchState {
 
     async fn preflight(
         &self,
-        input: &LaunchDraftInput,
+        input: &LaunchPreflightInput,
     ) -> Result<LaunchPreflight, AcpWorkbenchError> {
         validate_selected_workspace(&input.workspace).await?;
         self.runtime_catalog.prepare(&input.agent_id).await?;
@@ -294,7 +293,11 @@ impl AcpWorkbenchState {
         &self,
         input: LaunchDraftInput,
     ) -> Result<AcpWorkbenchSnapshot, AcpWorkbenchError> {
-        let preflight = self.preflight(&input).await?;
+        let preflight_input = LaunchPreflightInput {
+            workspace: input.workspace.clone(),
+            agent_id: input.agent_id.clone(),
+        };
+        let preflight = self.preflight(&preflight_input).await?;
         validate_launch_selection(&input, &preflight)?;
         let launch_profile_id = self
             .runtime_catalog
@@ -314,10 +317,25 @@ impl AcpWorkbenchState {
                 agent_profile_id: input.agent_id.clone(),
                 launch_profile_id,
                 workspace_reference: input.workspace,
-                model: nonblank_option(input.model),
-                reasoning_effort: nonblank_option(input.reasoning_effort),
-                access_mode: input.access_mode,
-                agent_config_json: "{}".to_owned(),
+                model: None,
+                reasoning_effort: None,
+                // Retained only as a legacy Core projection. The ACP Client
+                // reads the versioned, ordered generic config below.
+                access_mode: AccessMode::WorkspaceWrite,
+                agent_config_json: serde_json::to_string(
+                    &rambledesk_acp_client::AgentLaunchConfig {
+                        version: 1,
+                        schema_digest: input.schema_digest,
+                        values: input.config_values,
+                    },
+                )
+                .map_err(|error| {
+                    AcpWorkbenchError::new(
+                        "ACP_CONFIG_SERIALIZATION_FAILED",
+                        format!("could not serialize Agent Launch Config: {error}"),
+                        false,
+                    )
+                })?,
             },
             ramble: RambleContent {
                 document_json: input.document_json,
@@ -549,7 +567,7 @@ pub(super) async fn read_ramble_draft_v3(
 
 #[tauri::command]
 pub(super) async fn preflight_acp_launch(
-    input: LaunchDraftInput,
+    input: LaunchPreflightInput,
     state: tauri::State<'_, AcpWorkbenchState>,
 ) -> Result<LaunchPreflight, AcpWorkbenchError> {
     state.preflight(&input).await

@@ -24,6 +24,15 @@ export type WorkspaceLoadToken = {
   requestKey: string | null
 }
 
+export function beginWorkspaceSelection(
+  gate: Pick<ReturnType<typeof createWorkspaceLoadGate>, 'begin'>,
+  requestKey: string,
+  select: (requestKey: string) => void,
+): WorkspaceLoadToken {
+  select(requestKey)
+  return gate.begin(requestKey)
+}
+
 export function createWorkspaceLoadGate() {
   let generation = 0
 

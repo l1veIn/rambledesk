@@ -3,8 +3,6 @@ export type AgentSummary = {
   label: string
   iconSvg: string
   supportsStructuredRamble: boolean
-  models: string[]
-  reasoningEfforts: string[]
 }
 
 export type AccessMode = 'read_only' | 'workspace_write' | 'yolo'
@@ -93,24 +91,111 @@ export type AcpWorkbenchSnapshot = {
   sessions: AcpSessionSummary[]
   attentionItems: AttentionItem[]
   agents: AgentSummary[]
+  /**
+   * Ephemeral projection of the currently attached ACP runs. RambleDesk does
+   * not promise that this survives a Desktop or Agent restart.
+   */
+  timelines?: SessionTimeline[]
+}
+
+export type TimelineEntryStatus = 'running' | 'completed' | 'failed' | 'waiting'
+export type TimelineEntryKind = 'thought' | 'tool' | 'message' | 'status' | 'error'
+
+export type TimelineEntry = {
+  id: string
+  kind: TimelineEntryKind
+  title: string
+  content: string
+  status: TimelineEntryStatus
+  createdAt: string
+}
+
+export type TimelineTurn = {
+  turnId: string
+  status: 'running' | 'completed' | 'failed'
+  startedAt: string
+  completedAt: string | null
+  entries: TimelineEntry[]
+}
+
+export type SessionTimeline = {
+  sessionId: string
+  liveOnly: true
+  turns: TimelineTurn[]
 }
 
 export type LaunchDraft = {
   submissionId: string
   workspace: string
   agentId: string
-  model: string
-  reasoningEffort: string
-  accessMode: AccessMode
+  schemaDigest: string
+  configValues: LaunchConfigSelection[]
   documentJson: string
   bodyMarkdown: string
 }
 
+export type LaunchPreflightInput = {
+  workspace: string
+  agentId: string
+}
+
+export type LaunchConfigValue = string | boolean
+
+export type LaunchConfigSelection = {
+  id: string
+  value: LaunchConfigValue
+}
+
+export type LaunchConfigChoice = {
+  value: string
+  name: string
+  description: string | null
+  /** Legacy preview convenience; native ACP uses `groups` on the option. */
+  group?: string | null
+}
+
+export type LaunchConfigGroup = {
+  id: string
+  name: string
+  options: LaunchConfigChoice[]
+}
+
+type LaunchConfigOptionBase = {
+  id: string
+  name: string
+  description: string | null
+  category: string | null
+  source: 'agent' | 'profile'
+}
+
+export type LaunchSelectConfigOption = LaunchConfigOptionBase & {
+  kind: 'select'
+  currentValue: string
+  options: LaunchConfigChoice[]
+  groups?: LaunchConfigGroup[]
+}
+
+export type LaunchBooleanConfigOption = LaunchConfigOptionBase & {
+  kind: 'boolean'
+  currentValue: boolean
+}
+
+export type LaunchUnsupportedConfigOption = LaunchConfigOptionBase & {
+  kind: 'unsupported'
+  currentValue: unknown
+  rawType: string
+  raw?: unknown
+}
+
+export type LaunchConfigOption =
+  | LaunchSelectConfigOption
+  | LaunchBooleanConfigOption
+  | LaunchUnsupportedConfigOption
+
 export type LaunchPreflight = {
   agentId: string
-  models: string[]
-  reasoningEfforts: string[]
-  accessModes: AccessMode[]
+  schemaDigest: string
+  configOptions: LaunchConfigOption[]
   warning: string | null
 }
 

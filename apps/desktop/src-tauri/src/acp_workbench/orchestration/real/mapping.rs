@@ -169,84 +169,11 @@ pub(super) fn project_question(question: &AskQuestion, created_at: &str) -> Proj
 }
 
 pub(super) fn project_preflight(agent_id: &str, report: &PreflightReport) -> LaunchPreflight {
-    let mut models = Vec::new();
-    let mut reasoning_efforts = Vec::new();
-    let mut access_modes = report.supported_access_modes.clone();
-    let mut warnings = report.warnings.clone();
-    let mut unexposed_options = Vec::new();
-    for option in &report.config_options {
-        let id = option
-            .get("id")
-            .and_then(Value::as_str)
-            .unwrap_or("unknown");
-        let category = option.get("category").and_then(Value::as_str);
-        match id {
-            "thought_level" | "reasoning_effort" | "reasoning" => {
-                reasoning_efforts = select_values_current_first(option);
-            }
-            "model" => models = select_values_current_first(option),
-            _ => match category {
-                Some("model") => models = select_values_current_first(option),
-                Some("thought_level") | Some("reasoning_effort") => {
-                    reasoning_efforts = select_values_current_first(option);
-                }
-                Some("mode") => {}
-                // Access Modes are projected from the Launch Profile's explicit
-                // mapping in `PreflightReport`. Extra Agent options stay private
-                // to the ACP client instead of making the simple Launch form look
-                // partially broken.
-                _ => unexposed_options.push(id.to_owned()),
-            },
-        }
-    }
-    if !unexposed_options.is_empty() {
-        warnings.push(format!(
-            "The agent also reported options RambleDesk does not expose: {}.",
-            unexposed_options.join(", ")
-        ));
-    }
-    deduplicate(&mut models);
-    deduplicate(&mut reasoning_efforts);
-    deduplicate(&mut access_modes);
     LaunchPreflight {
         agent_id: agent_id.to_owned(),
-        models,
-        reasoning_efforts,
-        access_modes,
-        warning: (!warnings.is_empty()).then(|| warnings.join(" ")),
-    }
-}
-
-fn select_values_current_first(option: &Value) -> Vec<String> {
-    if option.get("type").and_then(Value::as_str) != Some("select") {
-        return Vec::new();
-    }
-    let current = option
-        .get("currentValue")
-        .and_then(Value::as_str)
-        .map(ToOwned::to_owned);
-    let mut values = current.into_iter().collect::<Vec<_>>();
-    values.extend(
-        option
-            .get("options")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-            .filter_map(|value| value.get("value").and_then(Value::as_str))
-            .map(ToOwned::to_owned),
-    );
-    deduplicate(&mut values);
-    values
-}
-
-fn deduplicate<T: Eq>(values: &mut Vec<T>) {
-    let mut index = 0;
-    while index < values.len() {
-        if values[..index].contains(&values[index]) {
-            values.remove(index);
-        } else {
-            index += 1;
-        }
+        schema_digest: report.schema_digest.clone(),
+        config_options: report.config_options.clone(),
+        warning: (!report.warnings.is_empty()).then(|| report.warnings.join(" ")),
     }
 }
 

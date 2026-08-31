@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, path::PathBuf, time::Duration};
 
-use rambledesk_core::kernel::{AccessMode, SessionId};
+use rambledesk_core::kernel::SessionId;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::broadcast;
@@ -295,14 +295,93 @@ pub struct CapabilitySnapshot {
     pub raw_agent_capabilities: Value,
 }
 
+/// One ordered value selected from the Agent's Launch Schema. Values remain
+/// opaque to callers: ACP currently defines string select values and boolean
+/// toggles, while this shape can preserve future JSON scalar kinds.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LaunchConfigSelection {
+    pub id: String,
+    pub value: Value,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LaunchConfigSource {
+    Agent,
+    Profile,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LaunchSelectOption {
+    pub value: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub group: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LaunchSelectGroup {
+    pub id: String,
+    pub name: String,
+    pub options: Vec<LaunchSelectOption>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum LaunchConfigKind {
+    Select {
+        #[serde(rename = "currentValue")]
+        current_value: String,
+        options: Vec<LaunchSelectOption>,
+        groups: Vec<LaunchSelectGroup>,
+    },
+    Boolean {
+        #[serde(rename = "currentValue")]
+        current_value: bool,
+    },
+    Unsupported {
+        #[serde(rename = "rawType")]
+        raw_type: String,
+        #[serde(rename = "currentValue")]
+        current_value: Value,
+        raw: Value,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LaunchConfigOption {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub category: Option<String>,
+    pub source: LaunchConfigSource,
+    #[serde(flatten)]
+    pub kind: LaunchConfigKind,
+}
+
+/// Durable, versioned projection of Launch selections. The advertised schema
+/// is deliberately not persisted: a resumed Agent remains the authority for
+/// its current option descriptions and choices.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentLaunchConfig {
+    pub version: u32,
+    pub schema_digest: String,
+    pub values: Vec<LaunchConfigSelection>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PreflightReport {
     pub profile_ref: LaunchProfileRef,
     pub available: bool,
     pub agent_version: Option<String>,
     pub capabilities: CapabilitySnapshot,
-    pub config_options: Vec<Value>,
-    pub supported_access_modes: Vec<AccessMode>,
+    pub config_options: Vec<LaunchConfigOption>,
+    pub schema_digest: String,
     pub warnings: Vec<String>,
 }
 

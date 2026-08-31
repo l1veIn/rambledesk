@@ -40,6 +40,20 @@ pub(super) struct MemoryFactStore {
     state: Mutex<MemoryState>,
 }
 
+impl MemoryFactStore {
+    pub(super) fn arrange_session_without_pending_work(&self, session_id: &SessionId) {
+        let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+        for work in state
+            .work
+            .values_mut()
+            .filter(|work| &work.session_id == session_id)
+        {
+            work.state = AgentWorkState::Completed;
+            work.completed_at = Some("2026-08-30T00:00:00Z".to_owned());
+        }
+    }
+}
+
 #[async_trait]
 impl FactStore for MemoryFactStore {
     async fn apply(&self, mutation: FactMutation) -> Result<FactMutationOutcome, FactStoreError> {
@@ -731,15 +745,36 @@ impl FactStore for MemoryFactStore {
         };
         let delivered = match (&work.payload, evidence) {
             (
-                AgentWorkPayload::FeedbackResume { delivery_id, .. },
-                AgentWorkEvidence::FeedbackConsumedAndTurnCompleted {
-                    delivery_id: observed,
+                AgentWorkPayload::FeedbackResume {
+                    delivery_id,
+                    request_id: consumed_request_id,
                 },
-            ) if delivery_id == observed => Some(delivery_id.clone()),
+                AgentWorkEvidence::FeedbackConsumedAndLoopSuspended {
+                    delivery_id: observed_delivery_id,
+                    request_id,
+                },
+            ) if delivery_id == observed_delivery_id
+                && request_id != consumed_request_id
+                && state
+                    .requests
+                    .get(request_id)
+                    .is_some_and(|request| request.session_id == work.session_id) =>
+            {
+                Some(delivery_id.clone())
+            }
             (AgentWorkPayload::FeedbackResume { .. }, _) => {
                 return Err(FactStoreError::WorkClaimConflict);
             }
-            (_, AgentWorkEvidence::PromptTurnCompleted) => None,
+            (
+                AgentWorkPayload::Launch { .. } | AgentWorkPayload::Steering { .. },
+                AgentWorkEvidence::RambleLoopSuspended { request_id },
+            ) if state
+                .requests
+                .get(request_id)
+                .is_some_and(|request| request.session_id == work.session_id) =>
+            {
+                None
+            }
             _ => return Err(FactStoreError::WorkClaimConflict),
         };
         if work.state == AgentWorkState::Completed {

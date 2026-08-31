@@ -179,12 +179,20 @@ async fn claiming_work_does_not_complete_it() {
         snapshot.pending_agent_work[0].state,
         AgentWorkState::Claimed
     );
+    let checkpoint = create_request(
+        &core,
+        batch.items[0].work.session_id.clone(),
+        "workbench-completion-checkpoint",
+    )
+    .await;
     let completed = core
         .record_agent_work(AgentWorkResult {
             work_id: batch.items[0].work.work_id.clone(),
             claim_token: batch.items[0].claim_token.clone(),
             disposition: AgentWorkDisposition::Completed {
-                evidence: AgentWorkEvidence::PromptTurnCompleted,
+                evidence: AgentWorkEvidence::RambleLoopSuspended {
+                    request_id: checkpoint.request_id,
+                },
             },
         })
         .await

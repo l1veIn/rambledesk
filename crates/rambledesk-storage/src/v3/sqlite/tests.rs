@@ -420,10 +420,244 @@ async fn restart_restores_waiting_draft_and_submitted_pending_delivery() {
 }
 
 #[tokio::test]
+async fn work_completion_accepts_a_same_session_request_resolved_before_recording() {
+    let temp = TempDir::new().expect("tempdir");
+    let store = open(&temp).await;
+    let launch = seed_launch(&store).await;
+    let request = waiting_request("launch-checkpoint", launch.session_id.as_str());
+    store
+        .apply(FactMutation::FeedbackRequest(Box::new(
+            FeedbackRequestCommit {
+                request: request.clone(),
+            },
+        )))
+        .await
+        .expect("waiting request");
+    let claimed = store
+        .claim_work(WorkClaim {
+            scope: WorkScope {
+                session_id: Some(launch.session_id),
+                limit: 1,
+                lease_seconds: 30,
+            },
+            claim_token: WorkClaimToken::new("launch-evidence-token"),
+            claimed_at: NOW.to_owned(),
+            lease_until: LATER.to_owned(),
+        })
+        .await
+        .expect("claim launch");
+
+    let missing = store
+        .record_work(StoredWorkResult {
+            result: AgentWorkResult {
+                work_id: claimed.items[0].work.work_id.clone(),
+                claim_token: claimed.items[0].claim_token.clone(),
+                disposition: AgentWorkDisposition::Completed {
+                    evidence: AgentWorkEvidence::RambleLoopSuspended {
+                        request_id: RequestId::new("missing-checkpoint"),
+                    },
+                },
+            },
+            recorded_at: "2026-08-30T00:00:20Z".to_owned(),
+        })
+        .await
+        .expect_err("missing request is not loop suspension evidence");
+    assert_eq!(missing, FactStoreError::WorkClaimConflict);
+
+    let wrong_kind = store
+        .record_work(StoredWorkResult {
+            result: AgentWorkResult {
+                work_id: claimed.items[0].work.work_id.clone(),
+                claim_token: claimed.items[0].claim_token.clone(),
+                disposition: AgentWorkDisposition::Completed {
+                    evidence: AgentWorkEvidence::FeedbackConsumedAndLoopSuspended {
+                        delivery_id: DeliveryId::new("not-a-prompt-delivery"),
+                        request_id: request.request_id.clone(),
+                    },
+                },
+            },
+            recorded_at: "2026-08-30T00:00:20Z".to_owned(),
+        })
+        .await
+        .expect_err("FeedbackResume evidence cannot complete Launch work");
+    assert_eq!(wrong_kind, FactStoreError::WorkClaimConflict);
+    let checkpoint_id = request.request_id.clone();
+    store
+        .apply(FactMutation::FeedbackResolution(Box::new(cancel_commit(
+            request,
+            "resolved-before-launch-record",
+        ))))
+        .await
+        .expect("resolve checkpoint before recording completion");
+
+    let completed = store
+        .record_work(StoredWorkResult {
+            result: AgentWorkResult {
+                work_id: claimed.items[0].work.work_id.clone(),
+                claim_token: claimed.items[0].claim_token.clone(),
+                disposition: AgentWorkDisposition::Completed {
+                    evidence: AgentWorkEvidence::RambleLoopSuspended {
+                        request_id: checkpoint_id,
+                    },
+                },
+            },
+            recorded_at: "2026-08-30T00:00:30Z".to_owned(),
+        })
+        .await
+        .expect("persisted request remains valid after concurrent resolution");
+    assert_eq!(completed.state, AgentWorkState::Completed);
+    assert!(completed.delivered.is_none());
+}
+
+#[tokio::test]
+async fn feedback_resume_completion_accepts_next_request_resolved_before_recording() {
+    let temp = TempDir::new().expect("tempdir");
+    let store = open(&temp).await;
+    let launch = seed_launch(&store).await;
+    let kickoff = waiting_request("feedback-kickoff", launch.session_id.as_str());
+    store
+        .apply(FactMutation::FeedbackRequest(Box::new(
+            FeedbackRequestCommit {
+                request: kickoff.clone(),
+            },
+        )))
+        .await
+        .expect("kickoff request");
+    let launch_claim = store
+        .claim_work(WorkClaim {
+            scope: WorkScope {
+                session_id: Some(launch.session_id.clone()),
+                limit: 1,
+                lease_seconds: 30,
+            },
+            claim_token: WorkClaimToken::new("feedback-launch-token"),
+            claimed_at: NOW.to_owned(),
+            lease_until: LATER.to_owned(),
+        })
+        .await
+        .expect("claim launch");
+    store
+        .record_work(StoredWorkResult {
+            result: AgentWorkResult {
+                work_id: launch_claim.items[0].work.work_id.clone(),
+                claim_token: launch_claim.items[0].claim_token.clone(),
+                disposition: AgentWorkDisposition::Completed {
+                    evidence: AgentWorkEvidence::RambleLoopSuspended {
+                        request_id: kickoff.request_id.clone(),
+                    },
+                },
+            },
+            recorded_at: "2026-08-30T00:00:10Z".to_owned(),
+        })
+        .await
+        .expect("complete launch");
+    let resolution = cancel_commit(kickoff, "feedback-loop");
+    let delivery_id = resolution.delivery.delivery_id.clone();
+    store
+        .apply(FactMutation::FeedbackResolution(Box::new(resolution)))
+        .await
+        .expect("resolve kickoff");
+    let feedback_claim = store
+        .claim_work(WorkClaim {
+            scope: WorkScope {
+                session_id: Some(launch.session_id.clone()),
+                limit: 1,
+                lease_seconds: 30,
+            },
+            claim_token: WorkClaimToken::new("feedback-resume-token"),
+            claimed_at: "2026-08-30T00:00:20Z".to_owned(),
+            lease_until: LATER.to_owned(),
+        })
+        .await
+        .expect("claim feedback resume");
+    let next = waiting_request("feedback-next", launch.session_id.as_str());
+    store
+        .apply(FactMutation::FeedbackRequest(Box::new(
+            FeedbackRequestCommit {
+                request: next.clone(),
+            },
+        )))
+        .await
+        .expect("next waiting request");
+
+    let wrong_delivery = store
+        .record_work(StoredWorkResult {
+            result: AgentWorkResult {
+                work_id: feedback_claim.items[0].work.work_id.clone(),
+                claim_token: feedback_claim.items[0].claim_token.clone(),
+                disposition: AgentWorkDisposition::Completed {
+                    evidence: AgentWorkEvidence::FeedbackConsumedAndLoopSuspended {
+                        delivery_id: DeliveryId::new("wrong-delivery"),
+                        request_id: next.request_id.clone(),
+                    },
+                },
+            },
+            recorded_at: "2026-08-30T00:00:25Z".to_owned(),
+        })
+        .await
+        .expect_err("delivery evidence must match FeedbackResume work");
+    assert_eq!(wrong_delivery, FactStoreError::WorkClaimConflict);
+
+    let consumed_request = store
+        .record_work(StoredWorkResult {
+            result: AgentWorkResult {
+                work_id: feedback_claim.items[0].work.work_id.clone(),
+                claim_token: feedback_claim.items[0].claim_token.clone(),
+                disposition: AgentWorkDisposition::Completed {
+                    evidence: AgentWorkEvidence::FeedbackConsumedAndLoopSuspended {
+                        delivery_id: delivery_id.clone(),
+                        request_id: RequestId::new("feedback-kickoff"),
+                    },
+                },
+            },
+            recorded_at: "2026-08-30T00:00:25Z".to_owned(),
+        })
+        .await
+        .expect_err("consumed request is not a new checkpoint");
+    assert_eq!(consumed_request, FactStoreError::WorkClaimConflict);
+    let next_request_id = next.request_id.clone();
+    store
+        .apply(FactMutation::FeedbackResolution(Box::new(cancel_commit(
+            next,
+            "resolved-before-feedback-record",
+        ))))
+        .await
+        .expect("resolve next checkpoint before recording current work");
+
+    let completed = store
+        .record_work(StoredWorkResult {
+            result: AgentWorkResult {
+                work_id: feedback_claim.items[0].work.work_id.clone(),
+                claim_token: feedback_claim.items[0].claim_token.clone(),
+                disposition: AgentWorkDisposition::Completed {
+                    evidence: AgentWorkEvidence::FeedbackConsumedAndLoopSuspended {
+                        delivery_id: delivery_id.clone(),
+                        request_id: next_request_id,
+                    },
+                },
+            },
+            recorded_at: "2026-08-30T00:00:30Z".to_owned(),
+        })
+        .await
+        .expect("delivery consumption and persisted next request prove loop suspension");
+    assert_eq!(completed.state, AgentWorkState::Completed);
+    assert_eq!(completed.delivered, Some(delivery_id));
+}
+
+#[tokio::test]
 async fn lease_expiry_stale_token_and_feedback_completion_are_atomic() {
     let temp = TempDir::new().expect("tempdir");
     let store = open(&temp).await;
     let launch = seed_launch(&store).await;
+    let request = waiting_request("request-complete", launch.session_id.as_str());
+    store
+        .apply(FactMutation::FeedbackRequest(Box::new(
+            FeedbackRequestCommit {
+                request: request.clone(),
+            },
+        )))
+        .await
+        .expect("request");
     let scope = WorkScope {
         session_id: Some(launch.session_id.clone()),
         limit: 1,
@@ -456,7 +690,9 @@ async fn lease_expiry_stale_token_and_feedback_completion_are_atomic() {
                 work_id: work_id.clone(),
                 claim_token: WorkClaimToken::new("token-1"),
                 disposition: AgentWorkDisposition::Completed {
-                    evidence: AgentWorkEvidence::PromptTurnCompleted,
+                    evidence: AgentWorkEvidence::RambleLoopSuspended {
+                        request_id: request.request_id.clone(),
+                    },
                 },
             },
             recorded_at: LATER.to_owned(),
@@ -470,7 +706,9 @@ async fn lease_expiry_stale_token_and_feedback_completion_are_atomic() {
                 work_id,
                 claim_token: WorkClaimToken::new("token-2"),
                 disposition: AgentWorkDisposition::Completed {
-                    evidence: AgentWorkEvidence::PromptTurnCompleted,
+                    evidence: AgentWorkEvidence::RambleLoopSuspended {
+                        request_id: request.request_id.clone(),
+                    },
                 },
             },
             recorded_at: LATER.to_owned(),
@@ -478,15 +716,6 @@ async fn lease_expiry_stale_token_and_feedback_completion_are_atomic() {
         .await
         .expect("complete prompt");
 
-    let request = waiting_request("request-complete", launch.session_id.as_str());
-    store
-        .apply(FactMutation::FeedbackRequest(Box::new(
-            FeedbackRequestCommit {
-                request: request.clone(),
-            },
-        )))
-        .await
-        .expect("request");
     let commit = cancel_commit(request, "complete");
     let delivery_id = commit.delivery.delivery_id.clone();
     store
@@ -545,14 +774,24 @@ async fn lease_expiry_stale_token_and_feedback_completion_are_atomic() {
     .await
     .expect("delivery retry diagnostics");
     assert_eq!(delivery_attempts, (2, Some("ACP_DISCONNECTED".to_owned())));
+    let next_checkpoint = waiting_request("retry-next-checkpoint", launch.session_id.as_str());
+    store
+        .apply(FactMutation::FeedbackRequest(Box::new(
+            FeedbackRequestCommit {
+                request: next_checkpoint.clone(),
+            },
+        )))
+        .await
+        .expect("next completion checkpoint");
     let expired = store
         .record_work(StoredWorkResult {
             result: AgentWorkResult {
                 work_id: batch.items[0].work.work_id.clone(),
                 claim_token: WorkClaimToken::new("feedback-token-2"),
                 disposition: AgentWorkDisposition::Completed {
-                    evidence: AgentWorkEvidence::FeedbackConsumedAndTurnCompleted {
+                    evidence: AgentWorkEvidence::FeedbackConsumedAndLoopSuspended {
                         delivery_id: delivery_id.clone(),
+                        request_id: next_checkpoint.request_id.clone(),
                     },
                 },
             },
@@ -567,8 +806,9 @@ async fn lease_expiry_stale_token_and_feedback_completion_are_atomic() {
                 work_id: batch.items[0].work.work_id.clone(),
                 claim_token: WorkClaimToken::new("feedback-token-2"),
                 disposition: AgentWorkDisposition::Completed {
-                    evidence: AgentWorkEvidence::FeedbackConsumedAndTurnCompleted {
+                    evidence: AgentWorkEvidence::FeedbackConsumedAndLoopSuspended {
                         delivery_id: delivery_id.clone(),
+                        request_id: next_checkpoint.request_id,
                     },
                 },
             },

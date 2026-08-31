@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  beginWorkspaceSelection,
   createWorkspaceLoadGate,
   ownerForOperation,
   type WorkbenchRequestOwner,
@@ -41,5 +42,19 @@ describe('Workbench request routing', () => {
     gate.invalidate()
 
     expect(gate.isCurrent(pending, null)).toBe(false)
+  })
+
+  it('selects a clicked Adapter request before its Workspace load is checked', () => {
+    const gate = createWorkspaceLoadGate()
+    let activeRequestKey: string | null = 'request-a'
+
+    const pending = beginWorkspaceSelection(
+      gate,
+      'request-b',
+      (requestKey) => (activeRequestKey = requestKey),
+    )
+
+    expect(activeRequestKey).toBe('request-b')
+    expect(gate.isCurrent(pending, activeRequestKey)).toBe(true)
   })
 })

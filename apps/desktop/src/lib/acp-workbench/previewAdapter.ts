@@ -5,7 +5,7 @@ import type {
   AttentionItem,
   DraftArtifactV3,
   DraftSnapshotV3,
-  LaunchDraft,
+  LaunchPreflightInput,
   LaunchPreflight,
 } from './types'
 
@@ -18,16 +18,18 @@ export const acpPreviewSnapshot: AcpWorkbenchSnapshot = {
       label: 'Codex',
       iconSvg: '',
       supportsStructuredRamble: true,
-      models: ['gpt-5.6-sol', 'gpt-5.6-terra'],
-      reasoningEfforts: ['medium', 'high', 'xhigh'],
     },
     {
       id: 'claude_code',
       label: 'Claude Code',
       iconSvg: '',
       supportsStructuredRamble: true,
-      models: ['claude-sonnet-4.5'],
-      reasoningEfforts: ['medium', 'high'],
+    },
+    {
+      id: 'deepseek',
+      label: 'DeepSeek Harness',
+      iconSvg: '',
+      supportsStructuredRamble: true,
     },
   ],
   sessions: [
@@ -129,6 +131,50 @@ export const acpPreviewSnapshot: AcpWorkbenchSnapshot = {
       draftRevision: 1,
       status: 'submitted',
       createdAt: '2026-08-29T15:40:00Z',
+    },
+  ],
+  timelines: [
+    {
+      sessionId: 'session-acp-first',
+      liveOnly: true,
+      turns: [
+        {
+          turnId: 'turn-1',
+          status: 'completed',
+          startedAt: '2026-08-30T09:20:00Z',
+          completedAt: '2026-08-30T09:27:00Z',
+          entries: [
+            {
+              id: 'thought-1', kind: 'thought', title: '分析现有三栏布局',
+              content: '检查 Session、请求列表和反馈工作区的职责边界。',
+              status: 'completed', createdAt: '2026-08-30T09:20:00Z',
+            },
+            {
+              id: 'tool-1', kind: 'tool', title: '读取工作台组件',
+              content: '查看现有导航和正文交互，避免重写成熟区域。',
+              status: 'completed', createdAt: '2026-08-30T09:22:00Z',
+            },
+          ],
+        },
+        {
+          turnId: 'turn-2',
+          status: 'completed',
+          startedAt: '2026-08-30T09:28:00Z',
+          completedAt: '2026-08-30T09:42:00Z',
+          entries: [
+            {
+              id: 'thought-2', kind: 'thought', title: '收敛 ACP 请求投影',
+              content: '把 Agent 工作过程保持在 Timeline，把结构化请求交给 RambleDesk 工作区。',
+              status: 'completed', createdAt: '2026-08-30T09:30:00Z',
+            },
+            {
+              id: 'tool-2', kind: 'tool', title: '更新 Desktop 工作台',
+              content: 'Session 导航与 Permission、Ask Question、Feedback Request 已接入。',
+              status: 'completed', createdAt: '2026-08-30T09:36:00Z',
+            },
+          ],
+        },
+      ],
     },
   ],
 }
@@ -244,32 +290,132 @@ export function createPreviewAcpWorkbenchAdapter(): AcpWorkbenchAdapter {
       draft: draftFor(requestId),
       publishedFeedback: null,
     }),
-    preflightLaunch: async (input: LaunchDraft): Promise<LaunchPreflight> => ({
+    preflightLaunch: async (input: LaunchPreflightInput): Promise<LaunchPreflight> => ({
       agentId: input.agentId,
-      models: snapshot.agents.find((agent) => agent.id === input.agentId)?.models ?? [],
-      reasoningEfforts:
-        snapshot.agents.find((agent) => agent.id === input.agentId)?.reasoningEfforts ?? [],
-      accessModes: ['read_only', 'workspace_write', 'yolo'],
+      schemaDigest: `${input.agentId}:${input.workspace}`,
+      configOptions: input.agentId === 'codex'
+        ? [
+            {
+              id: 'model', name: 'Model', description: null, category: 'model', source: 'agent',
+              kind: 'select', currentValue: 'gpt-5.6-sol', options: [
+                { value: 'gpt-5.6-sol', name: 'gpt-5.6-sol', description: null, group: 'OpenAI' },
+                { value: 'gpt-5.6-terra', name: 'gpt-5.6-terra', description: null, group: 'OpenAI' },
+              ],
+            },
+            {
+              id: 'reasoning_effort', name: 'Reasoning effort', description: null,
+              category: 'thought_level', source: 'agent', kind: 'select', currentValue: 'high',
+              options: ['medium', 'high', 'xhigh'].map((value) => ({
+                value, name: value, description: null, group: null,
+              })),
+            },
+            {
+              id: 'rambledesk.profile.access_mode', name: 'Access permission',
+              description: 'Controls file and command access for this Agent process.',
+              category: 'access_mode', source: 'profile', kind: 'select',
+              currentValue: 'workspace_write',
+              options: ['read_only', 'workspace_write', 'yolo'].map((value) => ({
+                value, name: value, description: null, group: null,
+              })),
+            },
+            {
+              id: 'fast_mode', name: 'Fast mode', description: 'Use lower-latency responses when available.',
+              category: null, source: 'agent', kind: 'boolean', currentValue: false,
+            },
+          ] as LaunchPreflight['configOptions']
+        : input.agentId === 'deepseek'
+          ? [
+              {
+                id: 'model', name: 'Model', description: null, category: 'model', source: 'agent',
+                kind: 'select', currentValue: 'DeepSeek-V4-Flash-Vision-Exp', options: [
+                  {
+                    value: 'DeepSeek-V4-Flash-Vision-Exp',
+                    name: 'DeepSeek-V4-Flash-Vision-Exp',
+                    description: null,
+                    group: null,
+                  },
+                ],
+              },
+              {
+                id: 'reasoning_effort', name: 'Reasoning profile',
+                description: 'Higher settings use more tokens for harder work.',
+                category: 'thought_level', source: 'agent', kind: 'select', currentValue: 'highest',
+                options: ['balanced', 'high', 'highest'].map((value) => ({
+                  value, name: value, description: null, group: null,
+                })),
+              },
+              {
+                id: 'rambledesk.profile.access_mode', name: 'File permission',
+                description: 'Commands and file tools share this boundary.',
+                category: 'access_mode', source: 'profile', kind: 'select', currentValue: 'read_only',
+                options: ['read_only', 'workspace_write', 'yolo'].map((value) => ({
+                  value, name: value, description: null, group: null,
+                })),
+              },
+            ] as LaunchPreflight['configOptions']
+          : [
+            {
+              id: 'model', name: 'Model', description: null, category: 'model', source: 'agent',
+              kind: 'select', currentValue: 'claude-sonnet-4.5', options: [
+                { value: 'claude-sonnet-4.5', name: 'Claude Sonnet 4.5', description: null, group: null },
+              ],
+            },
+            {
+              id: 'rambledesk.profile.access_mode', name: 'Access permission', description: null,
+              category: 'access_mode', source: 'profile', kind: 'select', currentValue: 'workspace_write',
+              options: ['read_only', 'workspace_write'].map((value) => ({
+                value, name: value, description: null, group: null,
+              })),
+            },
+            ] as LaunchPreflight['configOptions'],
       warning: null,
     }),
     launchRamble: async (input) => {
       const agent = snapshot.agents.find((candidate) => candidate.id === input.agentId)
       const sessionId = `preview-session-${snapshot.sessions.length + 1}`
+      const selections = new Map(input.configValues.map((selection) => [selection.id, selection.value]))
+      const access = selections.get('rambledesk.profile.access_mode')
       snapshot.sessions.unshift({
         sessionId,
         title: input.bodyMarkdown.trim().split('\n')[0]?.slice(0, 48) || 'New Ramble',
         agentId: input.agentId,
         agentLabel: agent?.label ?? input.agentId,
         workspace: input.workspace,
-        model: input.model,
-        reasoningEffort: input.reasoningEffort,
-        accessMode: input.accessMode,
+        model: typeof selections.get('model') === 'string' ? String(selections.get('model')) : '',
+        reasoningEffort: typeof selections.get('reasoning_effort') === 'string'
+          ? String(selections.get('reasoning_effort')) : '',
+        accessMode: access === 'read_only' || access === 'yolo' ? access : 'workspace_write',
         status: 'running',
         pendingCount: 0,
         pinnedAt: null,
         archivedAt: null,
         updatedAt: new Date().toISOString(),
       })
+      snapshot.timelines = [
+        {
+          sessionId,
+          liveOnly: true,
+          turns: [
+            {
+              turnId: `${sessionId}:turn-1`,
+              status: 'running',
+              startedAt: new Date().toISOString(),
+              completedAt: null,
+              entries: [
+                {
+                  id: `${sessionId}:status-1`,
+                  kind: 'status',
+                  title: 'Agent Session 已启动',
+                  content: 'Agent 正在准备第一条结构化 Feedback Request。',
+                  status: 'running',
+                  createdAt: new Date().toISOString(),
+                },
+              ],
+            },
+          ],
+        },
+        ...(snapshot.timelines ?? []),
+      ]
       return cloneSnapshot(snapshot)
     },
     saveDraft: async (input) => {

@@ -420,9 +420,141 @@ async fn imported_session_allows_feedback_drafts_but_rejects_agent_delivery() {
 }
 
 #[tokio::test]
-async fn retry_releases_work_without_completing_feedback_delivery() {
+async fn launch_completion_accepts_a_same_session_request_resolved_before_recording() {
     let (core, _) = harness();
     let launch = launch_session(&core).await;
+    let claimed = core
+        .claim_agent_work(WorkScope {
+            session_id: Some(launch.session_id.clone()),
+            limit: 1,
+            lease_seconds: 60,
+        })
+        .await
+        .expect("claim launch");
+
+    let missing = core
+        .record_agent_work(AgentWorkResult {
+            work_id: claimed.items[0].work.work_id.clone(),
+            claim_token: claimed.items[0].claim_token.clone(),
+            disposition: AgentWorkDisposition::Completed {
+                evidence: AgentWorkEvidence::RambleLoopSuspended {
+                    request_id: RequestId::from("missing-request"),
+                },
+            },
+        })
+        .await
+        .expect_err("missing Feedback Request cannot suspend the Ramble Loop");
+    assert_eq!(missing.code(), CoreErrorCode::WorkClaimConflict);
+
+    let foreign_launch = core
+        .launch(super::test_fixtures::launch_input(
+            "foreign-launch",
+            "Another Ramble Loop",
+        ))
+        .await
+        .expect("launch foreign Session");
+    let foreign = create_request(&core, foreign_launch.session_id, "foreign-loop-suspension").await;
+    let wrong_session = core
+        .record_agent_work(AgentWorkResult {
+            work_id: claimed.items[0].work.work_id.clone(),
+            claim_token: claimed.items[0].claim_token.clone(),
+            disposition: AgentWorkDisposition::Completed {
+                evidence: AgentWorkEvidence::RambleLoopSuspended {
+                    request_id: foreign.request_id,
+                },
+            },
+        })
+        .await
+        .expect_err("another Session's request cannot suspend this Ramble Loop");
+    assert_eq!(wrong_session.code(), CoreErrorCode::WorkClaimConflict);
+
+    let waiting = create_request(&core, launch.session_id, "loop-suspension").await;
+    let wrong_kind = core
+        .record_agent_work(AgentWorkResult {
+            work_id: claimed.items[0].work.work_id.clone(),
+            claim_token: claimed.items[0].claim_token.clone(),
+            disposition: AgentWorkDisposition::Completed {
+                evidence: AgentWorkEvidence::FeedbackConsumedAndLoopSuspended {
+                    delivery_id: super::DeliveryId::from("not-a-prompt-delivery"),
+                    request_id: waiting.request_id.clone(),
+                },
+            },
+        })
+        .await
+        .expect_err("FeedbackResume evidence cannot complete Launch work");
+    assert_eq!(wrong_kind.code(), CoreErrorCode::WorkClaimConflict);
+    core.resolve_feedback(ResolveFeedbackRequest::Cancel(CancelFeedbackRequest {
+        request_id: waiting.request_id.clone(),
+        reason: "Human answered before Agent completion was recorded".to_owned(),
+    }))
+    .await
+    .expect("resolve checkpoint before recording completion");
+    let completed = core
+        .record_agent_work(AgentWorkResult {
+            work_id: claimed.items[0].work.work_id.clone(),
+            claim_token: claimed.items[0].claim_token.clone(),
+            disposition: AgentWorkDisposition::Completed {
+                evidence: AgentWorkEvidence::RambleLoopSuspended {
+                    request_id: waiting.request_id,
+                },
+            },
+        })
+        .await
+        .expect("persisted Feedback Request proves loop suspension despite concurrent resolution");
+    assert_eq!(completed.state, AgentWorkState::Completed);
+}
+
+#[tokio::test]
+async fn steering_completion_also_requires_ramble_loop_suspension() {
+    let (core, _) = harness();
+    let launch = launch_session(&core).await;
+    core.steer(SteeringSubmission {
+        submission_id: super::SubmissionId::from("steering-loop-contract"),
+        session_id: launch.session_id.clone(),
+        submission_digest_assertion: None,
+        ramble: RambleContent {
+            document_json: "{}".to_owned(),
+            body_markdown: "Continue after the checkpoint.".to_owned(),
+            artifacts: Vec::new(),
+        },
+    })
+    .await
+    .expect("create steering work");
+    let claimed = core
+        .claim_agent_work(WorkScope {
+            session_id: Some(launch.session_id.clone()),
+            limit: 2,
+            lease_seconds: 60,
+        })
+        .await
+        .expect("claim launch and steering");
+    let steering = claimed
+        .items
+        .iter()
+        .find(|item| item.work.kind == AgentWorkKind::SteeringPrompt)
+        .expect("steering claim");
+    let checkpoint = create_request(&core, launch.session_id, "steering-loop-suspension").await;
+
+    let completed = core
+        .record_agent_work(AgentWorkResult {
+            work_id: steering.work.work_id.clone(),
+            claim_token: steering.claim_token.clone(),
+            disposition: AgentWorkDisposition::Completed {
+                evidence: AgentWorkEvidence::RambleLoopSuspended {
+                    request_id: checkpoint.request_id,
+                },
+            },
+        })
+        .await
+        .expect("Steering work suspends at a waiting request");
+    assert_eq!(completed.state, AgentWorkState::Completed);
+}
+
+#[tokio::test]
+async fn feedback_resume_completion_accepts_next_request_resolved_before_recording() {
+    let (core, _) = harness();
+    let launch = launch_session(&core).await;
+    let kickoff = create_request(&core, launch.session_id.clone(), "kickoff-request").await;
     let launch_claim = core
         .claim_agent_work(WorkScope {
             session_id: Some(launch.session_id.clone()),
@@ -435,7 +567,108 @@ async fn retry_releases_work_without_completing_feedback_delivery() {
         work_id: launch_claim.items[0].work.work_id.clone(),
         claim_token: launch_claim.items[0].claim_token.clone(),
         disposition: AgentWorkDisposition::Completed {
-            evidence: AgentWorkEvidence::PromptTurnCompleted,
+            evidence: AgentWorkEvidence::RambleLoopSuspended {
+                request_id: kickoff.request_id.clone(),
+            },
+        },
+    })
+    .await
+    .expect("complete launch at kickoff request");
+
+    let draft =
+        save_feedback_draft(&core, launch.session_id.clone(), kickoff.request_id.clone()).await;
+    let resolution = core
+        .resolve_feedback(ResolveFeedbackRequest::Submit(feedback_submission(
+            kickoff.request_id.clone(),
+            draft.revision,
+        )))
+        .await
+        .expect("submit kickoff feedback");
+    let feedback_claim = core
+        .claim_agent_work(WorkScope {
+            session_id: Some(launch.session_id.clone()),
+            limit: 1,
+            lease_seconds: 60,
+        })
+        .await
+        .expect("claim feedback resume");
+    let next = create_request(&core, launch.session_id, "next-checkpoint").await;
+
+    let wrong_delivery = core
+        .record_agent_work(AgentWorkResult {
+            work_id: feedback_claim.items[0].work.work_id.clone(),
+            claim_token: feedback_claim.items[0].claim_token.clone(),
+            disposition: AgentWorkDisposition::Completed {
+                evidence: AgentWorkEvidence::FeedbackConsumedAndLoopSuspended {
+                    delivery_id: super::DeliveryId::from("wrong-delivery"),
+                    request_id: next.request_id.clone(),
+                },
+            },
+        })
+        .await
+        .expect_err("completion evidence must identify the consumed delivery");
+    assert_eq!(wrong_delivery.code(), CoreErrorCode::WorkClaimConflict);
+
+    let old_request = core
+        .record_agent_work(AgentWorkResult {
+            work_id: feedback_claim.items[0].work.work_id.clone(),
+            claim_token: feedback_claim.items[0].claim_token.clone(),
+            disposition: AgentWorkDisposition::Completed {
+                evidence: AgentWorkEvidence::FeedbackConsumedAndLoopSuspended {
+                    delivery_id: resolution.delivery_id.clone(),
+                    request_id: kickoff.request_id,
+                },
+            },
+        })
+        .await
+        .expect_err("the consumed request is not a new loop checkpoint");
+    assert_eq!(old_request.code(), CoreErrorCode::WorkClaimConflict);
+
+    core.resolve_feedback(ResolveFeedbackRequest::Cancel(CancelFeedbackRequest {
+        request_id: next.request_id.clone(),
+        reason: "Human answered the next checkpoint immediately".to_owned(),
+    }))
+    .await
+    .expect("resolve next checkpoint before recording current work");
+
+    let completed = core
+        .record_agent_work(AgentWorkResult {
+            work_id: feedback_claim.items[0].work.work_id.clone(),
+            claim_token: feedback_claim.items[0].claim_token.clone(),
+            disposition: AgentWorkDisposition::Completed {
+                evidence: AgentWorkEvidence::FeedbackConsumedAndLoopSuspended {
+                    delivery_id: resolution.delivery_id.clone(),
+                    request_id: next.request_id,
+                },
+            },
+        })
+        .await
+        .expect("consumed feedback and persisted next request prove loop suspension");
+    assert_eq!(completed.state, AgentWorkState::Completed);
+    assert_eq!(completed.delivered, Some(resolution.delivery_id));
+}
+
+#[tokio::test]
+async fn retry_releases_work_without_completing_feedback_delivery() {
+    let (core, _) = harness();
+    let launch = launch_session(&core).await;
+    let launch_checkpoint =
+        create_request(&core, launch.session_id.clone(), "retry-launch-checkpoint").await;
+    let launch_claim = core
+        .claim_agent_work(WorkScope {
+            session_id: Some(launch.session_id.clone()),
+            limit: 1,
+            lease_seconds: 60,
+        })
+        .await
+        .expect("claim launch");
+    core.record_agent_work(AgentWorkResult {
+        work_id: launch_claim.items[0].work.work_id.clone(),
+        claim_token: launch_claim.items[0].claim_token.clone(),
+        disposition: AgentWorkDisposition::Completed {
+            evidence: AgentWorkEvidence::RambleLoopSuspended {
+                request_id: launch_checkpoint.request_id,
+            },
         },
     })
     .await
@@ -597,6 +830,8 @@ async fn expired_claim_is_reclaimed_in_stable_order() {
 async fn lease_expiry_is_exclusive_for_record_and_inclusive_for_reclaim() {
     let (core, facts) = harness();
     let launch = launch_session(&core).await;
+    let checkpoint =
+        create_request(&core, launch.session_id.clone(), "lease-expiry-checkpoint").await;
     let scope = WorkScope {
         session_id: Some(launch.session_id),
         limit: 1,
@@ -617,7 +852,9 @@ async fn lease_expiry_is_exclusive_for_record_and_inclusive_for_reclaim() {
                 work_id: first.items[0].work.work_id.clone(),
                 claim_token: first.items[0].claim_token.clone(),
                 disposition: AgentWorkDisposition::Completed {
-                    evidence: AgentWorkEvidence::PromptTurnCompleted,
+                    evidence: AgentWorkEvidence::RambleLoopSuspended {
+                        request_id: checkpoint.request_id,
+                    },
                 },
             },
             recorded_at: "2026-08-30T00:01:00Z".to_owned(),
@@ -737,6 +974,8 @@ async fn idempotent_replay_returns_the_current_work_and_delivery_projection() {
         .launch(launch_input.clone())
         .await
         .expect("first launch");
+    let launch_checkpoint =
+        create_request(&core, launch.session_id.clone(), "replay-launch-checkpoint").await;
     let launch_claim = core
         .claim_agent_work(WorkScope {
             session_id: Some(launch.session_id.clone()),
@@ -749,7 +988,9 @@ async fn idempotent_replay_returns_the_current_work_and_delivery_projection() {
         work_id: launch_claim.items[0].work.work_id.clone(),
         claim_token: launch_claim.items[0].claim_token.clone(),
         disposition: AgentWorkDisposition::Completed {
-            evidence: AgentWorkEvidence::PromptTurnCompleted,
+            evidence: AgentWorkEvidence::RambleLoopSuspended {
+                request_id: launch_checkpoint.request_id,
+            },
         },
     })
     .await
@@ -773,12 +1014,19 @@ async fn idempotent_replay_returns_the_current_work_and_delivery_projection() {
         })
         .await
         .expect("claim feedback resume");
+    let next_checkpoint = create_request(
+        &core,
+        feedback_claim.items[0].work.session_id.clone(),
+        "replay-next-checkpoint",
+    )
+    .await;
     core.record_agent_work(AgentWorkResult {
         work_id: feedback_claim.items[0].work.work_id.clone(),
         claim_token: feedback_claim.items[0].claim_token.clone(),
         disposition: AgentWorkDisposition::Completed {
-            evidence: AgentWorkEvidence::FeedbackConsumedAndTurnCompleted {
+            evidence: AgentWorkEvidence::FeedbackConsumedAndLoopSuspended {
                 delivery_id: first.delivery_id.clone(),
+                request_id: next_checkpoint.request_id,
             },
         },
     })

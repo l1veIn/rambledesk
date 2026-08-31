@@ -3,8 +3,8 @@ use std::{future::Future, pin::Pin};
 use rambledesk_core::kernel::SessionId;
 
 use super::model::{
-    AcpWorkbenchError, AgentSummary, AttentionItem, LaunchDraftInput, LaunchPreflight,
-    PermissionAnswerInput, QuestionAnswerInput,
+    AcpWorkbenchError, AgentSummary, AttentionItem, LaunchPreflight, LaunchPreflightInput,
+    PermissionAnswerInput, QuestionAnswerInput, SessionTimeline,
 };
 
 mod real;
@@ -19,6 +19,7 @@ pub(super) struct LiveAcpProjection {
     pub running_session_ids: Vec<String>,
     pub attention_items: Vec<AttentionItem>,
     pub agents: Vec<AgentSummary>,
+    pub timelines: Vec<SessionTimeline>,
 }
 
 /// Desktop orchestration seam for `rambledesk-acp-client`.
@@ -36,7 +37,7 @@ pub(super) trait AcpOrchestrationPort: Send + Sync {
 
     fn preflight<'a>(
         &'a self,
-        input: &'a LaunchDraftInput,
+        input: &'a LaunchPreflightInput,
     ) -> OrchestrationFuture<'a, LaunchPreflight>;
 
     fn reconcile<'a>(&'a self, session_id: SessionId) -> OrchestrationFuture<'a, ()>;
@@ -75,7 +76,7 @@ impl AcpOrchestrationPort for UnavailableAcpOrchestrator {
 
     fn preflight<'a>(
         &'a self,
-        _input: &'a LaunchDraftInput,
+        _input: &'a LaunchPreflightInput,
     ) -> OrchestrationFuture<'a, LaunchPreflight> {
         Box::pin(async { Self::unavailable() })
     }

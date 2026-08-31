@@ -13,6 +13,7 @@ import type {
   FeedbackDecisionInput,
   FeedbackDetailV3,
   LaunchDraft,
+  LaunchPreflightInput,
   LaunchPreflight,
   PermissionAnswerInput,
   QuestionAnswerInput,
@@ -29,7 +30,7 @@ export interface AcpWorkbenchAdapter {
   unarchiveSession(sessionId: string): Promise<AcpWorkbenchSnapshot>
   readArchivedSessions(): Promise<AcpSessionSummary[]>
   readFeedback(requestId: string): Promise<FeedbackDetailV3>
-  preflightLaunch(input: LaunchDraft): Promise<LaunchPreflight>
+  preflightLaunch(input: LaunchPreflightInput): Promise<LaunchPreflight>
   launchRamble(input: LaunchDraft): Promise<AcpWorkbenchSnapshot>
   saveDraft(input: DraftInput): Promise<AcpWorkbenchSnapshot>
   addDraftArtifact(input: AddDraftArtifactInput): Promise<DraftSnapshotV3>

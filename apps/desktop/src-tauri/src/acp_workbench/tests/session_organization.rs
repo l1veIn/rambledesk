@@ -1,13 +1,12 @@
 use rambledesk_core::kernel::{
-    AccessMode, AgentWorkDisposition, AgentWorkEvidence, AgentWorkResult, LaunchConfiguration,
-    LaunchSubmission, RambleContent, SubmissionId, WorkScope,
+    AccessMode, LaunchConfiguration, LaunchSubmission, RambleContent, SubmissionId,
 };
 
 use super::super::AcpWorkbenchState;
 use super::super::model::{RenameAcpSessionInput, SetAcpSessionPinnedInput};
 
 #[tokio::test]
-async fn desktop_session_organization_projects_active_archive_and_restore() {
+async fn desktop_session_organization_keeps_active_ramble_visible_until_it_is_ended() {
     let temp = tempfile::tempdir().expect("temporary v3 root");
     let state = AcpWorkbenchState::open_unavailable(crate::config::v3_storage_paths(
         temp.path().join("target"),
@@ -15,7 +14,6 @@ async fn desktop_session_organization_projects_active_archive_and_restore() {
     .await
     .expect("open ACP Workbench");
     let launched = launch_setup_session(&state, temp.path()).await;
-    complete_launch_work(&state, launched.session_id.clone()).await;
 
     let renamed = state
         .rename_session(RenameAcpSessionInput {
@@ -35,26 +33,14 @@ async fn desktop_session_organization_projects_active_archive_and_restore() {
     assert!(pinned.sessions[0].pinned_at.is_some());
     assert!(pinned.sessions[0].archived_at.is_none());
 
-    let active = state
+    let error = state
         .archive_session(launched.session_id.to_string())
         .await
-        .expect("archive idle Session");
-    assert!(active.sessions.is_empty());
-    let archived = state
-        .read_archived_sessions()
-        .await
-        .expect("read archived Sessions");
-    assert_eq!(archived.len(), 1);
-    assert_eq!(archived[0].title, "Pinned project");
-    assert!(archived[0].pinned_at.is_some());
-    assert!(archived[0].archived_at.is_some());
-
-    let restored = state
-        .unarchive_session(launched.session_id.to_string())
-        .await
-        .expect("restore archived Session");
-    assert_eq!(restored.sessions.len(), 1);
-    assert!(restored.sessions[0].archived_at.is_none());
+        .expect_err("an active managed Ramble must be ended before archive");
+    assert_eq!(error.code, "SESSION_HAS_PENDING_ACTIVITY");
+    let active = state.read().await.expect("read active Session");
+    assert_eq!(active.sessions.len(), 1);
+    assert_eq!(active.sessions[0].title, "Pinned project");
 }
 
 async fn launch_setup_session(
@@ -84,30 +70,4 @@ async fn launch_setup_session(
         })
         .await
         .expect("create durable Session")
-}
-
-async fn complete_launch_work(
-    state: &AcpWorkbenchState,
-    session_id: rambledesk_core::kernel::SessionId,
-) {
-    let batch = state
-        .core
-        .claim_agent_work(WorkScope {
-            session_id: Some(session_id),
-            limit: 1,
-            lease_seconds: 60,
-        })
-        .await
-        .expect("claim Launch work");
-    state
-        .core
-        .record_agent_work(AgentWorkResult {
-            work_id: batch.items[0].work.work_id.clone(),
-            claim_token: batch.items[0].claim_token.clone(),
-            disposition: AgentWorkDisposition::Completed {
-                evidence: AgentWorkEvidence::PromptTurnCompleted,
-            },
-        })
-        .await
-        .expect("complete Launch work");
 }

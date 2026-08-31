@@ -10,6 +10,7 @@ mod catalog;
 mod client;
 mod elicitation;
 mod error;
+mod launch_schema;
 mod process;
 mod rpc;
 mod toolset;

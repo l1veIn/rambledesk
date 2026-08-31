@@ -10,9 +10,10 @@ use std::{
 
 use async_trait::async_trait;
 use rambledesk_core::kernel::{
-    AccessMode, AgentWorkState, ArtifactInput, Core, CreateFeedbackRequest, DraftId, DraftMutation,
-    FeedbackAction, FeedbackSubmission, LaunchConfiguration, LaunchSubmission, RambleContent,
-    RambleIntent, RequestId, ResolveFeedbackRequest, SaveDraft, SubmissionId, WorkScope,
+    AccessMode, AgentWorkDisposition, AgentWorkEvidence, AgentWorkState, ArtifactInput, Core,
+    CreateFeedbackRequest, DraftId, DraftMutation, FeedbackAction, FeedbackSubmission,
+    LaunchConfiguration, LaunchSubmission, RambleContent, RambleIntent, RequestId,
+    ResolveFeedbackRequest, SaveDraft, SubmissionId, WorkScope,
 };
 use rambledesk_storage::v3::{SqliteV3Store, artifact::LocalArtifactStore};
 use serde_json::{Value, json};
@@ -24,13 +25,14 @@ use tokio::{
 
 use super::*;
 use crate::{
-    QuestionAction, RunState,
+    AgentLaunchConfig, LaunchConfigKind, LaunchConfigSelection, QuestionAction, RunState,
     process::{AgentSpawner, ProcessControl, SpawnedAgent},
 };
 
 #[derive(Default)]
 struct FakeState {
     lifecycle: Mutex<Vec<(String, Vec<Value>)>>,
+    session_cwds: Mutex<Vec<String>>,
     answers: Mutex<Vec<Value>>,
     prompts: Mutex<Vec<String>>,
     config_options: Mutex<Vec<Value>>,
@@ -43,6 +45,9 @@ struct FakeState {
     fail_resume: AtomicBool,
     fail_load: AtomicBool,
     disconnect_on_prompt: AtomicBool,
+    complete_without_feedback: AtomicBool,
+    repair_with_feedback: AtomicBool,
+    plain_feedback_resume: AtomicBool,
     spawns: AtomicUsize,
     shutdown: AtomicBool,
 }
@@ -87,6 +92,7 @@ async fn fake_agent(stream: DuplexStream, state: Arc<FakeState>) {
     let (reader, mut writer) = tokio::io::split(stream);
     let mut lines = BufReader::new(reader).lines();
     let mut prompt_id = None;
+    let mut pending_feedback_request_id = None;
     let mut live_answers = 0;
     while let Ok(Some(line)) = lines.next_line().await {
         let message: Value = serde_json::from_str(&line).expect("client frame");
@@ -113,6 +119,9 @@ async fn fake_agent(stream: DuplexStream, state: Arc<FakeState>) {
                     .await;
                 }
                 "session/new" | "session/resume" | "session/load" => {
+                    if let Some(cwd) = params.get("cwd").and_then(Value::as_str) {
+                        state.session_cwds.lock().await.push(cwd.to_owned());
+                    }
                     let servers = params
                         .get("mcpServers")
                         .and_then(Value::as_array)
@@ -207,10 +216,38 @@ async fn fake_agent(stream: DuplexStream, state: Arc<FakeState>) {
                         .await;
                         continue;
                     }
+                    if prompt.starts_with("[RambleDesk Protocol Repair]")
+                        && state.repair_with_feedback.load(Ordering::Acquire)
+                    {
+                        if prompt.contains("get_feedback with request_id") {
+                            let resumed_request_id =
+                                between(prompt, "get_feedback with request_id ", ", consume");
+                            let delivery_id = between(prompt, "delivery_id ", ", then");
+                            call_get_feedback(&state, resumed_request_id, delivery_id).await;
+                        }
+                        let request_id = between(prompt, "request_id `", "`");
+                        call_request_feedback(&state, request_id).await;
+                        write_frame(
+                            &mut writer,
+                            json!({"jsonrpc":"2.0", "id":id, "result":{"stopReason":"end_turn"}}),
+                        )
+                        .await;
+                        continue;
+                    }
                     if prompt.contains("Call get_feedback") {
+                        if state.plain_feedback_resume.load(Ordering::Acquire) {
+                            write_frame(
+                                &mut writer,
+                                json!({"jsonrpc":"2.0", "id":id, "result":{"stopReason":"end_turn"}}),
+                            )
+                            .await;
+                            continue;
+                        }
                         let request_id = between(prompt, "request_id ", " now.");
                         let delivery_id = between(prompt, "delivery_id ", ".");
                         call_get_feedback(&state, request_id, delivery_id).await;
+                        let next_request_id = between(prompt, "request_id `", "`");
+                        call_request_feedback(&state, next_request_id).await;
                         write_frame(
                             &mut writer,
                             json!({
@@ -235,7 +272,17 @@ async fn fake_agent(stream: DuplexStream, state: Arc<FakeState>) {
                         .await;
                         continue;
                     }
+                    if state.complete_without_feedback.load(Ordering::Acquire) {
+                        write_frame(
+                            &mut writer,
+                            json!({"jsonrpc":"2.0", "id":id, "result":{"stopReason":"end_turn"}}),
+                        )
+                        .await;
+                        continue;
+                    }
                     prompt_id = id;
+                    pending_feedback_request_id =
+                        Some(between(prompt, "request_id `", "`").to_owned());
                     for (request_id, title) in [(900, "Run tests"), (901, "Write files")] {
                         write_frame(
                             &mut writer,
@@ -316,6 +363,10 @@ async fn fake_agent(stream: DuplexStream, state: Arc<FakeState>) {
             if live_answers == 3
                 && let Some(id) = prompt_id.take()
             {
+                let request_id = pending_feedback_request_id
+                    .take()
+                    .expect("managed request id");
+                call_request_feedback(&state, &request_id).await;
                 write_frame(
                     &mut writer,
                     json!({"jsonrpc":"2.0", "id":id, "result":{"stopReason":"end_turn"}}),
@@ -324,6 +375,278 @@ async fn fake_agent(stream: DuplexStream, state: Arc<FakeState>) {
             }
         }
     }
+}
+
+#[tokio::test]
+async fn plain_agent_completion_cannot_close_a_managed_ramble_turn() {
+    let (temp, core, store) = test_core().await;
+    let launched = launch(&core, temp.path()).await;
+    let state = Arc::new(FakeState::default());
+    state
+        .complete_without_feedback
+        .store(true, Ordering::Release);
+    let client = AcpClient::new_with_spawner(
+        core.clone(),
+        AcpClientConfig {
+            profiles: vec![fake_profile()],
+            preflight_timeout: Duration::from_secs(2),
+            operation_timeout: Duration::from_secs(2),
+            shutdown_grace: Duration::from_millis(20),
+            event_capacity: 32,
+        },
+        Arc::new(FakeSpawner {
+            state: state.clone(),
+        }),
+    )
+    .expect("client");
+
+    client
+        .reconcile(SessionScope {
+            session_id: launched.session_id.clone(),
+        })
+        .await
+        .expect("reconcile");
+
+    let recovery = tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            let recovery = core
+                .read_session_recovery(launched.session_id.clone())
+                .await
+                .expect("recovery");
+            if recovery.pending_agent_work.first().is_some_and(|work| {
+                work.last_error_code.as_deref() == Some("RAMBLE_LOOP_NOT_SUSPENDED")
+            }) {
+                break recovery;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("managed work retried");
+    assert_eq!(recovery.pending_agent_work.len(), 1);
+    for _ in 0..100 {
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(
+        state.prompts.lock().await.len(),
+        2,
+        "one production Prompt and one bounded repair Prompt; no automatic retry loop"
+    );
+
+    client.shutdown().await.expect("shutdown");
+    store.close().await;
+}
+
+#[tokio::test]
+async fn protocol_repair_can_restore_the_missing_feedback_handoff_once() {
+    let (temp, core, store) = test_core().await;
+    let launched = launch(&core, temp.path()).await;
+    let pending = core
+        .read_session_recovery(launched.session_id.clone())
+        .await
+        .expect("recovery")
+        .pending_agent_work;
+    let expected_request_id = format!("ramble-work-{}", pending[0].work_id);
+    let state = Arc::new(FakeState::default());
+    state
+        .complete_without_feedback
+        .store(true, Ordering::Release);
+    state.repair_with_feedback.store(true, Ordering::Release);
+    let client = AcpClient::new_with_spawner(
+        core.clone(),
+        AcpClientConfig {
+            profiles: vec![fake_profile()],
+            preflight_timeout: Duration::from_secs(2),
+            operation_timeout: Duration::from_secs(2),
+            shutdown_grace: Duration::from_millis(20),
+            event_capacity: 32,
+        },
+        Arc::new(FakeSpawner {
+            state: state.clone(),
+        }),
+    )
+    .expect("client");
+
+    client
+        .reconcile(SessionScope {
+            session_id: launched.session_id.clone(),
+        })
+        .await
+        .expect("reconcile");
+
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            let recovery = core
+                .read_session_recovery(launched.session_id.clone())
+                .await
+                .expect("recovery");
+            if recovery.pending_agent_work.is_empty() {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("repair completed managed work");
+    let workbench = core
+        .read_workbench(rambledesk_core::kernel::WorkbenchQuery {
+            session_id: Some(launched.session_id.clone()),
+        })
+        .await
+        .expect("workbench");
+    assert_eq!(workbench.waiting_feedback.len(), 1);
+    assert_eq!(
+        workbench.waiting_feedback[0].request_id.as_str(),
+        expected_request_id
+    );
+    let prompts = state.prompts.lock().await;
+    assert_eq!(prompts.len(), 2);
+    assert!(prompts[1].starts_with("[RambleDesk Protocol Repair]"));
+    drop(prompts);
+
+    client.shutdown().await.expect("shutdown");
+    store.close().await;
+}
+
+#[tokio::test]
+async fn feedback_resume_repair_reads_the_delivery_before_reopening_the_loop() {
+    let (temp, core, store) = test_core().await;
+    let launched = launch(&core, temp.path()).await;
+    let claimed = core
+        .claim_agent_work(WorkScope {
+            session_id: Some(launched.session_id.clone()),
+            limit: 1,
+            lease_seconds: 60,
+        })
+        .await
+        .expect("claim launch")
+        .items
+        .into_iter()
+        .next()
+        .expect("launch work");
+    let launch_request_id = RequestId::new(format!("ramble-work-{}", claimed.work.work_id));
+    let feedback = core
+        .request_feedback(CreateFeedbackRequest {
+            request_id: Some(launch_request_id.clone()),
+            session_id: launched.session_id.clone(),
+            source_link_id: None,
+            title: "Review launch".to_owned(),
+            instructions: "Provide the next direction.".to_owned(),
+            actions: vec![FeedbackAction {
+                id: "continue".to_owned(),
+                instruction: "Continue the work.".to_owned(),
+            }],
+            context_refs: Vec::new(),
+            artifacts: Vec::new(),
+        })
+        .await
+        .expect("request feedback");
+    core.record_agent_work(rambledesk_core::kernel::AgentWorkResult {
+        work_id: claimed.work.work_id,
+        claim_token: claimed.claim_token,
+        disposition: AgentWorkDisposition::Completed {
+            evidence: AgentWorkEvidence::RambleLoopSuspended {
+                request_id: launch_request_id,
+            },
+        },
+    })
+    .await
+    .expect("complete launch");
+    let draft = core
+        .mutate_draft(DraftMutation::Save(SaveDraft {
+            draft_id: DraftId::new("resume-repair-draft"),
+            intent: RambleIntent::Feedback,
+            session_id: Some(launched.session_id.clone()),
+            request_id: Some(feedback.request_id.clone()),
+            launch_configuration: None,
+            document_json: "{}".to_owned(),
+            body_markdown: "Human direction".to_owned(),
+            expected_revision: 0,
+        }))
+        .await
+        .expect("save draft");
+    core.resolve_feedback(ResolveFeedbackRequest::Submit(FeedbackSubmission {
+        submission_id: SubmissionId::new("resume-repair-submission"),
+        request_id: feedback.request_id,
+        expected_draft_revision: draft.revision,
+        submission_digest_assertion: None,
+        document_json: "{}".to_owned(),
+        uncooked_markdown: "Raw direction".to_owned(),
+        feedback_markdown: "Continue with the reviewed direction".to_owned(),
+        cooking_model: None,
+        artifacts: Vec::new(),
+    }))
+    .await
+    .expect("resolve feedback");
+    let pending = core
+        .read_session_recovery(launched.session_id.clone())
+        .await
+        .expect("recovery")
+        .pending_agent_work;
+    assert_eq!(pending.len(), 1);
+    let expected_request_id = format!("ramble-work-{}", pending[0].work_id);
+
+    let state = Arc::new(FakeState::default());
+    state.plain_feedback_resume.store(true, Ordering::Release);
+    state.repair_with_feedback.store(true, Ordering::Release);
+    let client = AcpClient::new_with_spawner(
+        core.clone(),
+        AcpClientConfig {
+            profiles: vec![fake_profile()],
+            preflight_timeout: Duration::from_secs(2),
+            operation_timeout: Duration::from_secs(2),
+            shutdown_grace: Duration::from_millis(20),
+            event_capacity: 32,
+        },
+        Arc::new(FakeSpawner {
+            state: state.clone(),
+        }),
+    )
+    .expect("client");
+    client
+        .reconcile(SessionScope {
+            session_id: launched.session_id.clone(),
+        })
+        .await
+        .expect("reconcile");
+
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if core
+                .read_session_recovery(launched.session_id.clone())
+                .await
+                .expect("recovery")
+                .pending_agent_work
+                .is_empty()
+            {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("feedback resume repaired");
+    assert_eq!(state.feedback_reads.load(Ordering::Acquire), 1);
+    let workbench = core
+        .read_workbench(rambledesk_core::kernel::WorkbenchQuery {
+            session_id: Some(launched.session_id.clone()),
+        })
+        .await
+        .expect("workbench");
+    assert!(
+        workbench
+            .waiting_feedback
+            .iter()
+            .any(|request| request.request_id.as_str() == expected_request_id)
+    );
+    let prompts = state.prompts.lock().await;
+    assert_eq!(prompts.len(), 2);
+    assert!(prompts[0].contains("Call get_feedback"));
+    assert!(prompts[1].starts_with("[RambleDesk Protocol Repair]"));
+    drop(prompts);
+
+    client.shutdown().await.expect("shutdown");
+    store.close().await;
 }
 
 async fn write_frame(writer: &mut tokio::io::WriteHalf<DuplexStream>, value: Value) {
@@ -355,6 +678,14 @@ fn fake_config_options() -> Vec<Value> {
                 {"value":"agent","name":"Approve for me","_meta":{"kind":"auto_review"}},
                 {"value":"agent-full-access","name":"Full access","_meta":{"kind":"full_access"}}
             ]
+        }),
+        json!({
+            "id":"fast-mode", "name":"Fast mode", "type":"boolean",
+            "description":"Prefer latency over deliberation", "currentValue":false
+        }),
+        json!({
+            "id":"temperature", "name":"Temperature", "type":"number",
+            "currentValue":0.4, "minimum":0, "maximum":1
         }),
     ]
 }
@@ -404,6 +735,51 @@ async fn call_get_feedback(state: &FakeState, request_id: &str, delivery_id: &st
         }
     }
     state.feedback_reads.fetch_add(1, Ordering::AcqRel);
+}
+
+async fn call_request_feedback(state: &FakeState, request_id: &str) {
+    let server = state
+        .mcp_server
+        .lock()
+        .await
+        .clone()
+        .expect("injected Session Toolset");
+    let endpoint = server["url"].as_str().expect("toolset endpoint");
+    let authorization = server["headers"][0]["value"]
+        .as_str()
+        .expect("authorization");
+    let client = reqwest::Client::new();
+    for request in [
+        json!({
+            "jsonrpc":"2.0", "id":1, "method":"initialize",
+            "params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"fake-acp","version":"1"}}
+        }),
+        json!({
+            "jsonrpc":"2.0", "id":2, "method":"tools/call",
+            "params":{"name":"request_feedback","arguments":{
+                "request_id":request_id,
+                "title":"Review the managed stage",
+                "instructions":"Review the completed stage and choose what happens next.",
+                "actions":[{"id":"continue","instruction":"Continue the managed Session."}]
+            }}
+        }),
+    ] {
+        let response = client
+            .post(endpoint)
+            .header(reqwest::header::AUTHORIZATION, authorization)
+            .header(
+                reqwest::header::ACCEPT,
+                "application/json, text/event-stream",
+            )
+            .json(&request)
+            .send()
+            .await
+            .expect("toolset response");
+        let body = response.text().await.expect("toolset body");
+        if request["id"] == 2 {
+            assert!(body.contains(request_id), "{body}");
+        }
+    }
 }
 
 async fn test_core() -> (TempDir, Arc<Core>, Arc<SqliteV3Store>) {
@@ -462,7 +838,7 @@ async fn launch(core: &Core, workspace: &Path) -> rambledesk_core::kernel::Launc
 
 #[tokio::test]
 async fn preflight_reports_the_negotiated_agent_contract() {
-    let (_temp, core, store) = test_core().await;
+    let (temp, core, store) = test_core().await;
     let state = Arc::new(FakeState::default());
     let client = AcpClient::new_with_spawner(
         core,
@@ -479,20 +855,121 @@ async fn preflight_reports_the_negotiated_agent_contract() {
     )
     .expect("client");
     let report = client
-        .preflight(fake_profile().profile_ref)
+        .preflight(fake_profile().profile_ref, temp.path())
         .await
         .expect("preflight");
     assert!(report.available);
     assert_eq!(report.agent_version.as_deref(), Some("fake-acp 1"));
     assert!(report.capabilities.resume_session);
     assert!(report.capabilities.mcp_http);
-    assert_eq!(report.config_options.len(), 3);
-    assert_eq!(
-        report.supported_access_modes,
-        vec![AccessMode::WorkspaceWrite, AccessMode::Yolo]
-    );
+    assert_eq!(report.config_options.len(), 5);
+    assert!(matches!(
+        report.config_options[3].kind,
+        LaunchConfigKind::Boolean {
+            current_value: false
+        }
+    ));
+    let LaunchConfigKind::Unsupported { ref raw, .. } = report.config_options[4].kind else {
+        panic!("unknown Agent option kinds must remain visible")
+    };
+    assert_eq!(raw["currentValue"], json!(0.4));
+    assert!(report.schema_digest.starts_with("sha256:"));
     assert_eq!(state.close_calls.load(Ordering::Acquire), 1);
+    assert_eq!(
+        state.session_cwds.lock().await.as_slice(),
+        [temp.path().to_string_lossy().as_ref()]
+    );
     assert!(state.shutdown.load(Ordering::Acquire));
+    store.close().await;
+}
+
+#[tokio::test]
+async fn reconcile_applies_ordered_versioned_agent_config_with_typed_boolean_values() {
+    let (temp, core, store) = test_core().await;
+    let state = Arc::new(FakeState::default());
+    let client = AcpClient::new_with_spawner(
+        core.clone(),
+        AcpClientConfig {
+            profiles: vec![fake_profile()],
+            preflight_timeout: Duration::from_secs(2),
+            operation_timeout: Duration::from_secs(2),
+            shutdown_grace: Duration::from_millis(20),
+            event_capacity: 32,
+        },
+        Arc::new(FakeSpawner {
+            state: state.clone(),
+        }),
+    )
+    .expect("client");
+    let report = client
+        .preflight(fake_profile().profile_ref, temp.path())
+        .await
+        .expect("preflight");
+    let values = report
+        .config_options
+        .iter()
+        .filter_map(|option| match &option.kind {
+            LaunchConfigKind::Select { current_value, .. } => Some(LaunchConfigSelection {
+                id: option.id.clone(),
+                value: if option.id == "model" {
+                    json!("fake-next")
+                } else {
+                    json!(current_value)
+                },
+            }),
+            LaunchConfigKind::Boolean { current_value } => Some(LaunchConfigSelection {
+                id: option.id.clone(),
+                value: if option.id == "fast-mode" {
+                    json!(true)
+                } else {
+                    json!(current_value)
+                },
+            }),
+            LaunchConfigKind::Unsupported { .. } => None,
+        })
+        .collect::<Vec<_>>();
+    let launched = core
+        .launch(LaunchSubmission {
+            submission_id: SubmissionId::new("generic-config-launch"),
+            submission_digest_assertion: None,
+            title: "Generic config".to_owned(),
+            launch_configuration: LaunchConfiguration {
+                agent_profile_id: "codex".to_owned(),
+                launch_profile_id: "codex-acp-npx".to_owned(),
+                workspace_reference: temp.path().to_string_lossy().to_string(),
+                model: None,
+                reasoning_effort: None,
+                access_mode: AccessMode::WorkspaceWrite,
+                agent_config_json: serde_json::to_string(&AgentLaunchConfig {
+                    version: 1,
+                    schema_digest: report.schema_digest,
+                    values,
+                })
+                .expect("serialize Agent config"),
+            },
+            ramble: RambleContent {
+                document_json: "{}".to_owned(),
+                body_markdown: "Use the generic config".to_owned(),
+                artifacts: Vec::new(),
+            },
+        })
+        .await
+        .expect("launch");
+
+    client
+        .reconcile(SessionScope {
+            session_id: launched.session_id,
+        })
+        .await
+        .expect("reconcile");
+
+    assert_eq!(
+        state.config_selections.lock().await.as_slice(),
+        [
+            ("model".to_owned(), json!("fake-next")),
+            ("fast-mode".to_owned(), json!(true)),
+        ]
+    );
     store.close().await;
 }
 
