@@ -353,17 +353,19 @@ export function createAttachmentController(context: AttachmentControllerContext)
   async function removeAttachment(attachment: AttachmentView) {
     const workspace = context.getWorkspace()
     if (context.getInteractionLocked() || !workspace || context.getBusy()) return
-    context.getEditor()?.removeAttachmentReference(attachment.attachment_id)
-    if (!(await context.saveDraftNow())) return
+    const requestId = workspace.request.request_id
     context.setBusy(true)
     context.setMessage('')
     try {
+      context.getEditor()?.removeAttachmentReference(attachment.attachment_id)
+      if (!(await context.saveDraftNow())) return
       const input: RemoveAttachmentInput = {
-        request_id: workspace.request.request_id,
+        request_id: requestId,
         attachment_id: attachment.attachment_id,
         expected_revision: context.getSavedRevision(),
       }
       const next = await invoke<FeedbackWorkspaceView>('remove_feedback_attachment', { input })
+      if (context.getWorkspace()?.request.request_id !== requestId) return
       context.applyWorkspaceMutation(next)
       await refreshPreviews(next)
     } catch (cause) {
@@ -390,20 +392,22 @@ export function createAttachmentController(context: AttachmentControllerContext)
   async function moveAttachment(index: number, offset: number) {
     const workspace = context.getWorkspace()
     if (context.getInteractionLocked() || !workspace || context.getBusy()) return
+    const requestId = workspace.request.request_id
     const target = index + offset
     if (target < 0 || target >= workspace.attachments.length) return
-    if (!(await context.saveDraftNow())) return
     context.setBusy(true)
     context.setMessage('')
     try {
+      if (!(await context.saveDraftNow())) return
       const attachmentIds = workspace.attachments.map((item) => item.attachment_id)
       ;[attachmentIds[index], attachmentIds[target]] = [attachmentIds[target], attachmentIds[index]]
       const input: ReorderAttachmentsInput = {
-        request_id: workspace.request.request_id,
+        request_id: requestId,
         attachment_ids: attachmentIds,
         expected_revision: context.getSavedRevision(),
       }
       const next = await invoke<FeedbackWorkspaceView>('reorder_feedback_attachments', { input })
+      if (context.getWorkspace()?.request.request_id !== requestId) return
       context.applyWorkspaceMutation(next)
       await refreshPreviews(next)
     } catch (cause) {
@@ -438,6 +442,10 @@ export function createAttachmentController(context: AttachmentControllerContext)
       } catch {
         // A missing preview must not block editing or submission.
       }
+    }
+    if (context.getWorkspace()?.request.request_id !== next.request.request_id) {
+      for (const url of Object.values(previews)) URL.revokeObjectURL(url)
+      return
     }
     context.setPreviews(previews)
   }

@@ -320,6 +320,8 @@ const chinese: Record<string, string> = {
   'The capture tool encountered a problem': '截图工具遇到问题',
   'Close': '关闭',
   'Workspace tabs': '工作区标签页',
+  'Close session tab': '关闭 Session 标签页',
+  'Loading workspace…': '正在加载工作区…',
   'Connecting…': '正在连接…',
   'Cannot listen for speech events: {error}': '无法监听语音识别事件：{error}',
   'Cannot listen for the capture shortcut: {error}': '无法监听截图快捷键：{error}',

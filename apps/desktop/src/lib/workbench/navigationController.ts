@@ -287,12 +287,14 @@ export function createNavigationController(context: NavigationControllerContext)
     await new Promise((resolve) => setTimeout(resolve, remainingMs))
   }
 
-  async function refreshRequests(openFirst = false): Promise<ListFeedbackRequestsOutput | null> {
+  async function refreshRequests(
+    openFirst = false,
+  ): Promise<ListFeedbackRequestsOutput | null | undefined> {
     const generation = ++requestRefreshGeneration
     patch({ loadingRequests: true })
     try {
       const result = await loadRequestList()
-      if (generation !== requestRefreshGeneration) return null
+      if (generation !== requestRefreshGeneration) return undefined
       patch({ requests: result.requests, nextRequestCursor: result.next_cursor })
       const currentRequestId = context.getWorkspaceRequestId()
       if (openFirst && result.requests[0]) {
@@ -302,6 +304,7 @@ export function createNavigationController(context: NavigationControllerContext)
       }
       return result
     } catch (cause) {
+      if (generation !== requestRefreshGeneration) return undefined
       context.onPageError(context.messageFrom(cause))
       return null
     } finally {
@@ -338,7 +341,7 @@ export function createNavigationController(context: NavigationControllerContext)
     const generation = ++scopeSelectionGeneration
     const state = get(store)
     if (state.selectedHostId === hostId && state.selectedHostSessionId === hostSessionId) {
-      return { selected: true, requests: state.requests }
+      return { selected: !state.loadingRequests, requests: state.requests }
     }
     if (context.isDirty() && !(await context.saveDraftNow())) {
       return { selected: false, requests: state.requests }
@@ -348,13 +351,28 @@ export function createNavigationController(context: NavigationControllerContext)
     }
     patch({ selectedHostId: hostId, selectedHostSessionId: hostSessionId })
     const result = await refreshRequests(false)
-    const current = get(store)
-    const selected =
-      result !== null &&
+    let current = get(store)
+    if (
+      result === null &&
       generation === scopeSelectionGeneration &&
       current.selectedHostId === hostId &&
       current.selectedHostSessionId === hostSessionId
-    return { selected, requests: selected ? result.requests : current.requests }
+    ) {
+      patch({
+        selectedHostId: state.selectedHostId,
+        selectedHostSessionId: state.selectedHostSessionId,
+        requests: state.requests,
+        nextRequestCursor: state.nextRequestCursor,
+      })
+      current = get(store)
+    }
+    const selected =
+      result !== null &&
+      result !== undefined &&
+      generation === scopeSelectionGeneration &&
+      current.selectedHostId === hostId &&
+      current.selectedHostSessionId === hostSessionId
+    return { selected, requests: selected ? result!.requests : current.requests }
   }
 
   async function setRequestSearch(search: string) {
