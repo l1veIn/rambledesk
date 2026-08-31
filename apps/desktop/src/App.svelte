@@ -55,6 +55,7 @@
   import { checkForUpdates } from './lib/updater'
   import {
     sessionViewDescriptor,
+    workspaceViewKey,
     type SessionViewDescriptor,
   } from './lib/workspace/viewDescriptors'
   import {
@@ -137,9 +138,9 @@
   const formatTimeLocal = (value: string | null | undefined) =>
     formatTime(value, $locale, tr('Not saved yet'))
   let workspace: FeedbackWorkspaceView | null = null
-  let sessionView: SessionViewDescriptor | null = null
   let workspaceShellState: WorkspaceShellState = EMPTY_WORKSPACE_SHELL_STATE
   let renderedSessionView: SessionViewDescriptor | null = null
+  let sessionRequestIds = new Map<string, string>()
   let completedResult: FeedbackRequestView | null = null
   let publishedFeedback: PublishedFeedbackView | null = null
   let draftBody = ''
@@ -366,17 +367,6 @@
           session.host_session_id === $navigation.selectedHostSessionId,
       )
     : undefined
-  $: sessionView = workspace
-    ? sessionViewDescriptor(workspace.request.host_id, workspace.request.host_session_id)
-    : $navigation.selectedHostId && $navigation.selectedHostSessionId
-      ? sessionViewDescriptor($navigation.selectedHostId, $navigation.selectedHostSessionId)
-      : null
-  $: workspaceShellState = sessionView
-    ? workspaceShellReducer(EMPTY_WORKSPACE_SHELL_STATE, {
-        type: 'open',
-        view: sessionView,
-      })
-    : EMPTY_WORKSPACE_SHELL_STATE
   $: renderedSessionView = activeWorkspaceView(workspaceShellState)
   const sessionTabLabel = (view: SessionViewDescriptor) => {
     const session = $navigation.hostSessions.find(
@@ -626,6 +616,65 @@
     attachmentController.releasePreviews()
   }
 
+  function openSessionView(view: SessionViewDescriptor, requestId?: string) {
+    if (requestId) {
+      const nextRequestIds = new Map(sessionRequestIds)
+      nextRequestIds.set(workspaceViewKey(view), requestId)
+      sessionRequestIds = nextRequestIds
+    }
+    workspaceShellState = workspaceShellReducer(workspaceShellState, { type: 'open', view })
+  }
+
+  function openLoadedWorkspaceView(next: FeedbackWorkspaceView) {
+    openSessionView(
+      sessionViewDescriptor(next.request.host_id, next.request.host_session_id),
+      next.request.request_id,
+    )
+  }
+
+  async function selectRailScope(hostId: string | null, hostSessionId: string | null) {
+    const selection = await navigation.selectScope(hostId, hostSessionId)
+    if (!selection.selected || !hostId || !hostSessionId) return
+
+    const view = sessionViewDescriptor(hostId, hostSessionId)
+    const viewKey = workspaceViewKey(view)
+    const rememberedRequestId = sessionRequestIds.get(viewKey)
+    const request =
+      selection.requests.find((candidate) => candidate.request_id === rememberedRequestId) ??
+      selection.requests[0]
+    if (request) {
+      await openRequest(request.request_id)
+      return
+    }
+
+    if (dirty && !(await saveDraftNow())) return
+    clearWorkspace()
+    openSessionView(view)
+  }
+
+  async function activateSessionTab(viewKey: string) {
+    if (workspaceShellState.activeViewKey === viewKey) return
+    const view = workspaceShellState.views.find(
+      (candidate) => workspaceViewKey(candidate) === viewKey,
+    )
+    if (!view) return
+
+    const selection = await navigation.selectScope(view.hostId, view.hostSessionId)
+    if (!selection.selected) return
+    const rememberedRequestId = sessionRequestIds.get(viewKey)
+    const request =
+      selection.requests.find((candidate) => candidate.request_id === rememberedRequestId) ??
+      selection.requests[0]
+    if (request) {
+      await openRequest(request.request_id)
+      return
+    }
+
+    if (dirty && !(await saveDraftNow())) return
+    clearWorkspace()
+    workspaceShellState = workspaceShellReducer(workspaceShellState, { type: 'focus', viewKey })
+  }
+
   async function refreshNotificationPermission() {
     try {
       const granted = await isPermissionGranted()
@@ -636,13 +685,18 @@
     }
   }
 
-  async function openRequest(requestId: string, saveCurrent = true) {
-    if (interactionLocked || workspace?.request.request_id === requestId) return
-    if (saveCurrent && !(await saveDraftNow())) return
+  async function openRequest(requestId: string, saveCurrent = true): Promise<boolean> {
+    if (interactionLocked) return false
+    if (workspace?.request.request_id === requestId) {
+      openLoadedWorkspaceView(workspace)
+      return true
+    }
+    if (saveCurrent && !(await saveDraftNow())) return false
     loadingWorkspace = true
     pageError = ''
     completedResult = null
     publishedFeedback = null
+    let openedWorkspace: FeedbackWorkspaceView | null = null
     try {
       await enqueueDocumentTask(async () => {
         const next = previewMode
@@ -651,6 +705,7 @@
               requestId,
             })
         if (!next) throw new Error(tr('This feedback request could not be found.'))
+        openedWorkspace = next
         workspace = next
         cookedPreview = null
         adoptDraft(next.draft)
@@ -671,8 +726,11 @@
               )
         }
       })
+      if (openedWorkspace) openLoadedWorkspaceView(openedWorkspace)
+      return openedWorkspace !== null
     } catch (cause) {
       pageError = messageFrom(cause)
+      return false
     } finally {
       loadingWorkspace = false
     }
@@ -1039,7 +1097,7 @@
       refreshing={$navigation.refreshingPage}
       {resolveHostProfile}
       onSelect={(hostId, hostSessionId) =>
-        void navigation.selectScope(hostId, hostSessionId)}
+        void selectRailScope(hostId, hostSessionId)}
       onRequestSearch={(search) => void navigation.setRequestSearch(search)}
       onRenameSession={(session, title) => navigation.renameHostSession(session, title)}
       onSetSessionPinned={(session, pinned) => navigation.setHostSessionPinned(session, pinned)}
@@ -1093,6 +1151,7 @@
             views={workspaceShellState.views}
             activeViewKey={workspaceShellState.activeViewKey}
             labelForView={sessionTabLabel}
+            onActivate={(viewKey) => void activateSessionTab(viewKey)}
           />
           <SessionWorkbench
             bind:this={sessionWorkbench}
