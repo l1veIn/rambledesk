@@ -4,6 +4,8 @@ export type SessionViewDescriptor = Readonly<{
   hostSessionId: string
 }>
 
+export type WorkspaceViewDescriptor = SessionViewDescriptor
+
 export function sessionViewDescriptor(
   hostId: string,
   hostSessionId: string,
