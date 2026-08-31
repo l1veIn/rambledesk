@@ -7,10 +7,10 @@ import {
   type WorkspaceViewDescriptor,
 } from './viewDescriptors'
 import {
-  createSessionWorkspaceTransition,
-  type SessionWorkspaceTransitionAdapter,
-  type SessionWorkspaceTransitionTarget,
-} from './sessionWorkspaceTransition'
+  createWorkspaceTransition,
+  type WorkspaceTransitionAdapter,
+  type WorkspaceTransitionTarget,
+} from './workspaceTransition'
 
 type Loaded = Readonly<{ requestId: string }>
 
@@ -20,7 +20,7 @@ const beta = sessionViewDescriptor('pi', 'beta')
 function target(
   view: WorkspaceViewDescriptor = beta,
   requestId: string | null = 'request-beta',
-): SessionWorkspaceTransitionTarget {
+): WorkspaceTransitionTarget {
   return {
     view,
     requestId,
@@ -29,11 +29,11 @@ function target(
   }
 }
 
-function harness(overrides: Partial<SessionWorkspaceTransitionAdapter<Loaded>> = {}) {
+function harness(overrides: Partial<WorkspaceTransitionAdapter<Loaded>> = {}) {
   const events: string[] = []
   let mountedEditors = 1
   let maximumMountedEditors = 1
-  const adapter: SessionWorkspaceTransitionAdapter<Loaded> = {
+  const adapter: WorkspaceTransitionAdapter<Loaded> = {
     saveCurrent: vi.fn(async () => {
       events.push('save')
       return true
@@ -64,11 +64,11 @@ function harness(overrides: Partial<SessionWorkspaceTransitionAdapter<Loaded>> =
     adapter,
     events,
     maximumMountedEditors: () => maximumMountedEditors,
-    transition: createSessionWorkspaceTransition(adapter),
+    transition: createWorkspaceTransition(adapter),
   }
 }
 
-describe('sessionWorkspaceTransition', () => {
+describe('workspaceTransition', () => {
   it('saves, unmounts, loads, and commits in order with at most one editor mounted', async () => {
     const run = harness()
 
@@ -184,7 +184,7 @@ describe('sessionWorkspaceTransition', () => {
 
   it('closes the last view after saving and unmounting without loading another request', async () => {
     const run = harness()
-    const closeLast: SessionWorkspaceTransitionTarget = {
+    const closeLast: WorkspaceTransitionTarget = {
       view: null,
       requestId: null,
       shellAction: { type: 'close', viewKey: workspaceViewKey(alpha) },

@@ -25,6 +25,7 @@
   } from '$lib/updater'
 
   export let installBlocked = false
+  export let onOpenRambelleProfile: (() => void) | null = null
 
   let version = '0.0.1'
   let profileOpen = false
@@ -61,6 +62,11 @@
 
   async function openReleases() {
     await openSafeUrl(releasesUrl)
+  }
+
+  function openRambelleProfile() {
+    if (onOpenRambelleProfile) onOpenRambelleProfile()
+    else profileOpen = true
   }
 
   async function exportDiagnostics(scope: DiagnosticScope) {
@@ -159,7 +165,11 @@
           </p>
         </div>
       </div>
-      <Button variant="outline" class="shrink-0" onclick={() => (profileOpen = true)}>
+      <Button
+        variant="outline"
+        class="shrink-0"
+        onclick={openRambelleProfile}
+      >
         <Sparkles data-icon="inline-start" />
         {tr('View character profile')}
       </Button>

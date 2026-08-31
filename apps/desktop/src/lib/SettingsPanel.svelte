@@ -93,6 +93,7 @@
     type SpeechModelId,
     type ThemePreference,
   } from '$lib/preferences'
+  import { applySettingsSectionCommand } from '$lib/workspace/settingsSectionCommand'
 
   type Section =
     | 'general'
@@ -106,10 +107,12 @@
 
   export let mcpConfiguration = ''
   export let initialSection: Section = 'general'
+  export let sectionSelectionEpoch = 0
   export let presentation: 'dialog' | 'workspace' = 'dialog'
   export let onClose: () => void = () => {}
   export let onRestartOnboarding: () => void = () => {}
   export let onOpenArchived: () => void = () => {}
+  export let onOpenRambelleProfile: (() => void) | null = null
   export let updateInstallBlocked = false
 
   type DataStorageView = {
@@ -185,7 +188,10 @@
   let dialogOpen = true
   let closeDelivered = false
   let activeSection: Section = initialSection
-  let lastInitialSection: Section = initialSection
+  let sectionCommandState = {
+    activeSection: initialSection,
+    appliedEpoch: sectionSelectionEpoch,
+  }
   let hosts: McpHostView[] = []
   let selectedIds = new Set<string>()
   let loadingHosts = true
@@ -230,9 +236,16 @@
   $: selectedCount = selectedIds.size
   $: selectedSpeechModel =
     speechModels.find((model) => model.id === $speechModelId) ?? speechModels[0] ?? null
-  $: if (initialSection !== lastInitialSection) {
-    lastInitialSection = initialSection
-    activeSection = initialSection
+  $: {
+    const nextSectionCommandState = applySettingsSectionCommand(
+      sectionCommandState,
+      initialSection,
+      sectionSelectionEpoch,
+    )
+    if (nextSectionCommandState !== sectionCommandState) {
+      sectionCommandState = nextSectionCommandState
+      activeSection = nextSectionCommandState.activeSection
+    }
   }
   $: if (presentation === 'dialog' && !dialogOpen && !closeDelivered) {
     closeDelivered = true
@@ -1648,7 +1661,10 @@
           </Tabs.Content>
 
           <Tabs.Content value="about" class="m-0 p-6 outline-none">
-            <AboutSettings installBlocked={updateInstallBlocked} />
+            <AboutSettings
+              installBlocked={updateInstallBlocked}
+              {onOpenRambelleProfile}
+            />
           </Tabs.Content>
         </ScrollArea>
       </div>

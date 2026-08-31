@@ -88,6 +88,7 @@
   export let onToggleRamble: () => void = () => {}
   export let onExitRamble: () => void = () => {}
   export let onOpenVoiceSettings: () => void = () => {}
+  export let onOpenTask: (requestId: string) => void = () => {}
   export let onStartScreenCapture: () => void = () => {}
   export let onImportClipboard: () => void = () => {}
   export let onFileSelection: (event: Event) => void = () => {}
@@ -237,10 +238,7 @@
               {activeActionId}
               pulseNonce={briefPulseNonce}
               onSelectAction={onSelectAction}
-              onOpenPreview={(origin) => {
-                taskBriefPreviewOrigin = origin
-                taskBriefPreviewOpen = true
-              }}
+              onOpenPreview={() => onOpenTask(workspace!.request.request_id)}
             />
           </Pane>
 

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  rambelleProfileViewDescriptor,
+  requestTaskViewDescriptor,
   sessionViewDescriptor,
   settingsViewDescriptor,
   workspaceViewKey,
@@ -140,5 +142,29 @@ describe('workspace snapshots', () => {
       views: [settingsViewDescriptor(), alpha],
       activeViewKey: workspaceViewKey(settingsViewDescriptor()),
     })
+  })
+
+  it('round-trips request task and profile descriptors without editor state', () => {
+    const task = requestTaskViewDescriptor('request-alpha')
+    const taskState = workspaceShellReducer(EMPTY_WORKSPACE_SHELL_STATE, {
+      type: 'open',
+      view: task,
+    })
+    const state = workspaceShellReducer(taskState, {
+      type: 'open',
+      view: rambelleProfileViewDescriptor(),
+    })
+    const snapshot = createWorkspaceSnapshot(state, new Map())
+
+    expect(snapshot).toEqual({
+      version: 2,
+      views: [
+        { kind: 'request-task', requestId: 'request-alpha' },
+        { kind: 'rambelle-profile' },
+      ],
+      activeViewKey: 'rambelle-profile:singleton',
+    })
+    expect(restoreWorkspaceSnapshot(snapshot)?.shellState).toEqual(state)
+    expect(JSON.stringify(snapshot)).not.toContain('draft')
   })
 })

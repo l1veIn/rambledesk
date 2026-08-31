@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  rambelleProfileViewDescriptor,
+  requestTaskViewDescriptor,
   sessionViewDescriptor,
   settingsViewDescriptor,
   workspaceViewKey,
@@ -41,5 +43,20 @@ describe('workspace view descriptors', () => {
     expect(first).toEqual({ kind: 'settings' })
     expect(workspaceViewKey(first)).toBe('settings:singleton')
     expect(workspaceViewKey(second)).toBe(workspaceViewKey(first))
+  })
+
+  it('keys request tasks by request id and keeps profile singleton', () => {
+    const task = requestTaskViewDescriptor('request:one')
+
+    expect(workspaceViewKey(task)).toBe('request-task:"request:one"')
+    expect(workspaceViewKey(task)).toBe(
+      workspaceViewKey(requestTaskViewDescriptor('request:one')),
+    )
+    expect(workspaceViewKey(task)).not.toBe(
+      workspaceViewKey(requestTaskViewDescriptor('request')),
+    )
+    expect(workspaceViewKey(rambelleProfileViewDescriptor())).toBe(
+      'rambelle-profile:singleton',
+    )
   })
 })

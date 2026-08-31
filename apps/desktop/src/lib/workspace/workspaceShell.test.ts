@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  rambelleProfileViewDescriptor,
+  requestTaskViewDescriptor,
   sessionViewDescriptor,
   settingsViewDescriptor,
   workspaceViewKey,
@@ -18,6 +20,8 @@ const alpha = sessionViewDescriptor('codex', 'alpha')
 const beta = sessionViewDescriptor('codex', 'beta')
 const gamma = sessionViewDescriptor('pi', 'gamma')
 const settings = settingsViewDescriptor()
+const task = requestTaskViewDescriptor('request-alpha')
+const profile = rambelleProfileViewDescriptor()
 
 function reduce(
   state: WorkspaceShellState,
@@ -75,6 +79,20 @@ describe('workspaceShellReducer', () => {
     expect(reopened.views).toEqual([alpha, settings, beta])
     expect(activeWorkspaceView(reopened)).toBe(settings)
     expectValidState(reopened)
+  })
+
+  it('deduplicates task identity and the Rambelle profile singleton', () => {
+    const result = reduce(
+      EMPTY_WORKSPACE_SHELL_STATE,
+      open(task),
+      open(profile),
+      open(requestTaskViewDescriptor('request-alpha')),
+      open(rambelleProfileViewDescriptor()),
+    )
+
+    expect(result.views).toEqual([task, profile])
+    expect(activeWorkspaceView(result)).toBe(profile)
+    expectValidState(result)
   })
 
   it('keeps the same session id from different hosts as distinct views', () => {

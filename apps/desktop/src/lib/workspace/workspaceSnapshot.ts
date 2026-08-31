@@ -1,4 +1,6 @@
 import {
+  rambelleProfileViewDescriptor,
+  requestTaskViewDescriptor,
   sessionViewDescriptor,
   settingsViewDescriptor,
   workspaceViewKey,
@@ -33,9 +35,20 @@ export type WorkspaceSnapshotSettingsViewV2 = Readonly<{
   kind: 'settings'
 }>
 
+export type WorkspaceSnapshotRequestTaskViewV2 = Readonly<{
+  kind: 'request-task'
+  requestId: string
+}>
+
+export type WorkspaceSnapshotRambelleProfileViewV2 = Readonly<{
+  kind: 'rambelle-profile'
+}>
+
 export type WorkspaceSnapshotViewV2 =
   | WorkspaceSnapshotSessionViewV2
   | WorkspaceSnapshotSettingsViewV2
+  | WorkspaceSnapshotRequestTaskViewV2
+  | WorkspaceSnapshotRambelleProfileViewV2
 
 export type WorkspaceSnapshotV2 = Readonly<{
   version: typeof WORKSPACE_SNAPSHOT_VERSION
@@ -85,7 +98,35 @@ function descriptorForSnapshotView(
   if (version === WORKSPACE_SNAPSHOT_VERSION && isRecord(value) && value.kind === 'settings') {
     return { view: settingsViewDescriptor(), lastRequestId: null }
   }
+  if (
+    version === WORKSPACE_SNAPSHOT_VERSION &&
+    isRecord(value) &&
+    value.kind === 'request-task' &&
+    validId(value.requestId)
+  ) {
+    return { view: requestTaskViewDescriptor(value.requestId), lastRequestId: null }
+  }
+  if (
+    version === WORKSPACE_SNAPSHOT_VERSION &&
+    isRecord(value) &&
+    value.kind === 'rambelle-profile'
+  ) {
+    return { view: rambelleProfileViewDescriptor(), lastRequestId: null }
+  }
   return null
+}
+
+function snapshotViewDescriptor(view: WorkspaceSnapshotViewV2): WorkspaceViewDescriptor {
+  switch (view.kind) {
+    case 'session':
+      return sessionViewDescriptor(view.hostId, view.hostSessionId)
+    case 'settings':
+      return settingsViewDescriptor()
+    case 'request-task':
+      return requestTaskViewDescriptor(view.requestId)
+    case 'rambelle-profile':
+      return rambelleProfileViewDescriptor()
+  }
 }
 
 export function createWorkspaceSnapshot(
@@ -94,14 +135,21 @@ export function createWorkspaceSnapshot(
 ): WorkspaceSnapshotV2 {
   const views = state.views
     .slice(0, MAX_WORKSPACE_SNAPSHOT_VIEWS)
-    .map((view): WorkspaceSnapshotViewV2 =>
-      view.kind === 'session'
-        ? {
+    .map((view): WorkspaceSnapshotViewV2 => {
+      switch (view.kind) {
+        case 'session':
+          return {
             ...view,
             lastRequestId: requestIds.get(workspaceViewKey(view)) ?? null,
           }
-        : { kind: 'settings' },
-    )
+        case 'settings':
+          return { kind: 'settings' }
+        case 'request-task':
+          return { kind: 'request-task', requestId: view.requestId }
+        case 'rambelle-profile':
+          return { kind: 'rambelle-profile' }
+      }
+    })
   const knownKeys = new Set(state.views.slice(0, MAX_WORKSPACE_SNAPSHOT_VIEWS).map(workspaceViewKey))
   return {
     version: WORKSPACE_SNAPSHOT_VERSION,
@@ -110,11 +158,7 @@ export function createWorkspaceSnapshot(
       state.activeViewKey && knownKeys.has(state.activeViewKey)
         ? state.activeViewKey
         : views[0]
-          ? workspaceViewKey(
-              views[0].kind === 'session'
-                ? sessionViewDescriptor(views[0].hostId, views[0].hostSessionId)
-                : settingsViewDescriptor(),
-            )
+          ? workspaceViewKey(snapshotViewDescriptor(views[0]))
           : null,
   }
 }

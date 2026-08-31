@@ -56,4 +56,18 @@ describe('preview workspace snapshot store', () => {
     })
     expect(savedPreviewWorkspaceSnapshot()?.requestIds.size).toBe(0)
   })
+
+  it.each([
+    ['task', { kind: 'request-task', requestId: '019fc1d9-51e7-7eb2-b196-e9266947fc41' }],
+    ['profile', { kind: 'rambelle-profile' }],
+  ] as const)('seeds the %s non-session workspace scenario', (scenario, view) => {
+    expect(seedPreviewWorkspaceScenario(scenario)).toBe(scenario)
+    expect(savedPreviewWorkspaceSnapshot()?.shellState).toEqual({
+      views: [view],
+      activeViewKey:
+        scenario === 'task'
+          ? 'request-task:"019fc1d9-51e7-7eb2-b196-e9266947fc41"'
+          : 'rambelle-profile:singleton',
+    })
+  })
 })

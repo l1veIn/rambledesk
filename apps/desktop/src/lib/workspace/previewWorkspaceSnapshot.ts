@@ -4,6 +4,8 @@ import {
   type WorkspaceSnapshotV2,
 } from './workspaceSnapshot'
 import {
+  rambelleProfileViewDescriptor,
+  requestTaskViewDescriptor,
   sessionViewDescriptor,
   settingsViewDescriptor,
   workspaceViewKey,
@@ -15,6 +17,8 @@ export type PreviewWorkspaceScenario =
   | 'unavailable'
   | 'unknown'
   | 'settings'
+  | 'task'
+  | 'profile'
 
 let snapshot: WorkspaceSnapshotV2 | null = null
 
@@ -32,12 +36,25 @@ export function seedPreviewWorkspaceScenario(value: string | null): PreviewWorks
     value !== 'archived' &&
     value !== 'unavailable' &&
     value !== 'unknown' &&
-    value !== 'settings'
+    value !== 'settings' &&
+    value !== 'task' &&
+    value !== 'profile'
   ) {
     return null
   }
   if (value === 'settings') {
     const view = settingsViewDescriptor()
+    savePreviewWorkspaceSnapshot({
+      version: 2,
+      views: [view],
+      activeViewKey: workspaceViewKey(view),
+    })
+    return value
+  }
+  if (value === 'task' || value === 'profile') {
+    const view = value === 'task'
+      ? requestTaskViewDescriptor('019fc1d9-51e7-7eb2-b196-e9266947fc41')
+      : rambelleProfileViewDescriptor()
     savePreviewWorkspaceSnapshot({
       version: 2,
       views: [view],
