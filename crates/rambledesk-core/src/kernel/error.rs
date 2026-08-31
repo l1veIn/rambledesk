@@ -8,6 +8,7 @@ pub enum CoreErrorCode {
     IdempotencyConflict,
     SessionNotFound,
     SessionNotManaged,
+    SessionHasPendingActivity,
     AcpSessionLinkNotFound,
     RequestNotFound,
     RequestTerminal,
@@ -27,6 +28,7 @@ impl CoreErrorCode {
             Self::IdempotencyConflict => "IDEMPOTENCY_CONFLICT",
             Self::SessionNotFound => "SESSION_NOT_FOUND",
             Self::SessionNotManaged => "SESSION_NOT_MANAGED",
+            Self::SessionHasPendingActivity => "SESSION_HAS_PENDING_ACTIVITY",
             Self::AcpSessionLinkNotFound => "ACP_SESSION_LINK_NOT_FOUND",
             Self::RequestNotFound => "REQUEST_NOT_FOUND",
             Self::RequestTerminal => "REQUEST_TERMINAL",
@@ -95,6 +97,11 @@ impl From<FactStoreError> for CoreError {
             FactStoreError::SessionNotManaged => Self::new(
                 CoreErrorCode::SessionNotManaged,
                 "the operation requires a managed session",
+                false,
+            ),
+            FactStoreError::SessionHasPendingActivity => Self::new(
+                CoreErrorCode::SessionHasPendingActivity,
+                "the session has pending Feedback or Agent work",
                 false,
             ),
             FactStoreError::AcpSessionLinkNotFound => Self::new(

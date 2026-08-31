@@ -151,8 +151,8 @@ pub(super) fn feedback_request_digest(
 
 /// Calculates the canonical digest used to make `request_feedback` replay-safe.
 ///
-/// One-time importers must call this after applying their documented lossy
-/// normalization so a later Compatibility Ingress replay sees the same facts.
+/// One-time importers call this after applying their documented lossy
+/// normalization so an Imported Session records the same canonical facts.
 pub fn calculate_feedback_request_digest(input: &CreateFeedbackRequest) -> String {
     feedback_request_digest(
         input.session_id.as_str(),

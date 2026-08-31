@@ -50,7 +50,7 @@ pub struct ContextReference {
 pub struct CreateFeedbackRequest {
     pub request_id: Option<RequestId>,
     pub session_id: SessionId,
-    /// Provenance for a Managed Session request; absent for Compatibility Ingress.
+    /// Provenance for a Managed ACP Session request; absent for Imported Sessions.
     pub source_link_id: Option<AcpSessionLinkId>,
     pub title: String,
     pub instructions: String,

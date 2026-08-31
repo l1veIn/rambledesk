@@ -17,8 +17,47 @@
   import SettingsPanel from './lib/SettingsPanel.svelte'
   import UpdateAvailableDialog from './lib/UpdateAvailableDialog.svelte'
   import ArchivedSessionsDialog from './lib/components/navigation/ArchivedSessionsDialog.svelte'
-  import HostSessionRail from './lib/components/navigation/HostSessionRail.svelte'
   import RequestListPane from './lib/components/navigation/RequestListPane.svelte'
+  import SessionRail from './lib/components/navigation/SessionRail.svelte'
+  import {
+    workbenchRequestKey,
+    type WorkbenchRequestListItem,
+  } from './lib/components/navigation/requestListItem'
+  import {
+    sessionRailKey,
+    type SessionOrigin,
+    type SessionRailItem,
+  } from './lib/components/navigation/sessionRailItem'
+  import AskView from './lib/acp-workbench/AskView.svelte'
+  import LaunchRambleDialog from './lib/acp-workbench/LaunchRambleDialog.svelte'
+  import PermissionView from './lib/acp-workbench/PermissionView.svelte'
+  import {
+    acpAdapterErrorMessage,
+    createNativeAcpWorkbenchAdapter,
+  } from './lib/acp-workbench/adapter'
+  import { createPreviewAcpWorkbenchAdapter } from './lib/acp-workbench/previewAdapter'
+  import {
+    isAttentionItemAnswerable,
+    itemsForSession,
+    orderSessions,
+  } from './lib/acp-workbench/state'
+  import type {
+    AcpWorkbenchSnapshot,
+    AttentionItem,
+    DraftSnapshotV3,
+    FeedbackAttentionItem,
+    LaunchDraft,
+    LaunchPreflight,
+    PermissionOption,
+    QuestionAttentionItem,
+  } from './lib/acp-workbench/types'
+  import {
+    matchesUnifiedWorkbenchRequestFilter,
+    projectFeedbackWorkspace,
+    projectUnifiedWorkbench,
+    resolveAgentProfile as resolveAcpAgentProfile,
+    type UnifiedWorkbenchRequestListItem,
+  } from './lib/acp-workbench/workbenchProjection'
   import { Sonner, toast } from './lib/components/ui/sonner'
   import ResumePromptDialog from './lib/workbench/ResumePromptDialog.svelte'
   import WorkspacePanel from './lib/workbench/WorkspacePanel.svelte'
@@ -30,6 +69,7 @@
     DraftView,
     FeedbackRequestView,
     FeedbackWorkspaceView,
+    SaveDraftInput,
     SubmitFeedbackInput,
   } from './lib/feedback'
   import {
@@ -72,10 +112,17 @@
   import { buildResumePrompt, shouldShowResumePromptButton } from './lib/workbench/resumePrompt'
   import {
     createAttachmentController,
+    type AttachmentArtifactPort,
     type AttachmentMessageTone,
   } from './lib/workbench/attachmentController'
   import { createNavigationController } from './lib/workbench/navigationController'
   import { resolvedRamblePhase } from './lib/workbench/rambleSessionState'
+  import {
+    createWorkspaceLoadGate,
+    ownerForOperation,
+    type WorkbenchOperationTarget,
+    type WorkbenchRequestOwner,
+  } from './lib/workbench/workbenchRouting'
   import type {
     FeedbackEditorHandle,
     RamblePhase,
@@ -168,10 +215,16 @@
   let workbenchInitialized = false
   const isTauri = '__TAURI_INTERNALS__' in window
   const isMac = currentDesktopPlatform() === 'macOS'
+  const pageParameters = new URLSearchParams(window.location.search)
+  const acpPreviewMode = !isTauri && pageParameters.get('preview') === 'acp'
+  const acpEnabled = isTauri || acpPreviewMode
+  const acpAdapter = acpPreviewMode
+    ? createPreviewAcpWorkbenchAdapter()
+    : createNativeAcpWorkbenchAdapter()
   const previewMode =
     import.meta.env.DEV &&
     !isTauri &&
-    new URLSearchParams(window.location.search).get('preview') === 'fixtures'
+    pageParameters.get('preview') === 'fixtures'
   const REQUEST_LIST_DEFAULT_WIDTH = 296
   const REQUEST_LIST_MIN_WIDTH = 240
   const WIDE_WORKSPACE_MIN_WIDTH = 648
@@ -202,11 +255,92 @@
   let rambleRequestTitle = ''
   let rambleMessage = ''
   let rambleDocumentQueue: Promise<void> = Promise.resolve()
+  let rambleOwner: WorkbenchRequestOwner | null = null
   let activeActionByRequest = new Map<string, NonNullable<ActiveAction>>()
   let inboxTimer: ReturnType<typeof setInterval> | undefined
+  let acpSnapshot: AcpWorkbenchSnapshot = { sessions: [], attentionItems: [], agents: [] }
+  let activeSessionKey: string | null = null
+  let activeRequestKey: string | null = null
+  let workspaceOrigin: SessionOrigin | null = null
+  let workspaceRequestKey: string | null = null
+  let acpLoading = false
+  let acpRefreshing = false
+  let acpRefreshInFlight = false
+  let acpLoadError = ''
+  let acpActionBusy = false
+  let acpSnapshotEpoch = 0
+  let launchRambleOpen = false
+  const feedbackSubmissionIds = new Map<string, string>()
+  const workspaceLoadGate = createWorkspaceLoadGate()
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
+  }
+
+  function currentWorkspaceOwner(): WorkbenchRequestOwner | null {
+    if (!workspace || !workspaceRequestKey || !workspaceOrigin) return null
+    return {
+      key: workspaceRequestKey,
+      origin: workspaceOrigin,
+      requestId: workspace.request.request_id,
+      sessionId: workspace.request.host_session_id,
+    }
+  }
+
+  function ownerForTarget(
+    requestId: string,
+    target: WorkbenchOperationTarget,
+  ): WorkbenchRequestOwner | null {
+    return ownerForOperation(requestId, target, currentWorkspaceOwner(), rambleOwner)
+  }
+
+  function acpArtifactPortFor(sessionId: string): AttachmentArtifactPort {
+    return {
+      loadWorkspace: (requestId) => loadAcpFeedbackWorkspace(requestId, sessionId),
+      addBytes: async (input) => workspaceFromAcpDraft(
+        input.requestId,
+        await acpAdapter.addDraftArtifact(input),
+        sessionId,
+      ),
+      addPath: async (input) => workspaceFromAcpDraft(
+        input.requestId,
+        await acpAdapter.addDraftArtifactPath(input),
+        sessionId,
+      ),
+      addScreenCapture: async (input) => workspaceFromAcpDraft(
+        input.requestId,
+        await acpAdapter.addCompletedScreenCapture(input),
+        sessionId,
+      ),
+      remove: async (input) => workspaceFromAcpDraft(
+        input.requestId,
+        await acpAdapter.removeDraftArtifact(input),
+        sessionId,
+      ),
+      reorder: async (input) => workspaceFromAcpDraft(
+        input.requestId,
+        await acpAdapter.reorderDraftArtifacts(input),
+        sessionId,
+      ),
+      read: (requestId, artifactId) => acpAdapter.readDraftArtifact(requestId, artifactId),
+    }
+  }
+
+  function acpClipboardArtifactPortFor(sessionId: string) {
+    return {
+      loadWorkspace: (requestId: string) => loadAcpFeedbackWorkspace(requestId, sessionId),
+      addClipboardCapture: async (input: {
+        requestId: string
+        captureId: string
+        rambleContextId: string
+        fileName: string
+        expectedRevision: number
+      }) => workspaceFromAcpDraft(
+        input.requestId,
+        await acpAdapter.addCompletedClipboardCapture(input),
+        sessionId,
+      ),
+    }
   }
 
   const draftController = createDraftController({
@@ -237,6 +371,7 @@
     setWorkspaceDraft: (draft) => {
       if (workspace) workspace = { ...workspace, draft }
     },
+    persistDraft: persistActiveDraft,
   })
   const updateDraft = draftController.updateDraft
   const saveDraftNow = draftController.saveDraftNow
@@ -263,9 +398,23 @@
     setDragActive: (active) => (dragActive = active),
     saveDraftNow,
     waitForRambleMarkdown: () => rambleDocumentQueue.catch(() => {}),
-    routeDraftOperation,
-    activeActionFor,
+    routeDraftOperation: (requestId, operation, target = 'workspace') =>
+      routeDraftOperation(
+        requestId,
+        operation,
+        ownerForTarget(requestId, target),
+      ),
+    activeActionFor: (requestId, target = 'workspace') =>
+      activeActionFor(requestId, ownerForTarget(requestId, target)),
     applyWorkspaceMutation,
+    getArtifactPort: (requestId, target) => {
+      const owner = ownerForTarget(requestId, target)
+      return owner?.origin === 'managed_acp'
+        ? acpArtifactPortFor(owner.sessionId)
+        : undefined
+    },
+    isOperationTargetVisible: (requestId, target) =>
+      ownerForTarget(requestId, target)?.key === workspaceRequestKey,
   })
 
   const navigation = createNavigationController({
@@ -312,6 +461,94 @@
     return snapshot
   }
 
+  function resolveRequestAgentProfile(agentId: string) {
+    const hostProfile = resolveHostProfile(agentId)
+    const acpProfile = resolveAcpAgentProfile(acpSnapshot.agents, agentId)
+    return {
+      id: hostProfile.id,
+      label: hostProfile.label || acpProfile.label,
+      iconSvg: hostProfile.icon_svg || acpProfile.iconSvg,
+    }
+  }
+
+  function resolveWorkspaceProfile(agentId: string) {
+    const hostProfile = resolveHostProfile(agentId)
+    if (workspaceOrigin !== 'managed_acp') return hostProfile
+    const profile = resolveAcpAgentProfile(acpSnapshot.agents, agentId)
+    return {
+      id: profile.id,
+      label: profile.label,
+      icon_svg: hostProfile.icon_svg || profile.iconSvg,
+      default_adapter: 'generic_mcp' as const,
+      continuation_mode: 'not_required' as const,
+    }
+  }
+
+  function applyAcpSnapshot(next: AcpWorkbenchSnapshot) {
+    acpSnapshot = next
+  }
+
+  function acpItemById(itemId: string, sessionId?: string): AttentionItem | null {
+    return acpSnapshot.attentionItems.find(
+      (item) => item.id === itemId && (!sessionId || item.sessionId === sessionId),
+    ) ?? null
+  }
+
+  function acpSessionFor(item: AttentionItem) {
+    return acpSnapshot.sessions.find((session) => session.sessionId === item.sessionId)
+  }
+
+  function workspaceFromAcpDraft(
+    requestId: string,
+    draft: DraftSnapshotV3,
+    sessionId = workspace?.request.host_session_id,
+  ) {
+    const item = acpItemById(requestId, sessionId)
+    if (!item || item.kind !== 'feedback') {
+      throw new Error(tr('This Feedback Request could not be found.'))
+    }
+    return projectFeedbackWorkspace(item, acpSessionFor(item), draft)
+  }
+
+  async function loadAcpFeedbackWorkspace(requestId: string, sessionId?: string) {
+    const detail = await acpAdapter.readFeedback(requestId)
+    if (!detail.draft) throw new Error(tr('Save the Feedback Draft before adding an Artifact.'))
+    return workspaceFromAcpDraft(requestId, detail.draft, sessionId)
+  }
+
+  async function persistAcpDraft(input: SaveDraftInput, sessionId?: string): Promise<DraftView> {
+    acpSnapshotEpoch += 1
+    const next = await acpAdapter.saveDraft({
+      requestId: input.request_id,
+      expectedRevision: input.expected_revision,
+      documentJson: input.document_json,
+      bodyMarkdown: input.body_markdown,
+    })
+    applyAcpSnapshot(next)
+    const saved = next.attentionItems.find(
+      (item): item is FeedbackAttentionItem =>
+        item.id === input.request_id &&
+        item.sessionId === (sessionId ?? workspace?.request.host_session_id) &&
+        item.kind === 'feedback',
+    )
+    if (!saved) throw new Error(tr('The saved Feedback Request was not found.'))
+    return {
+      document_json: saved.draftDocument === null
+        ? input.document_json
+        : typeof saved.draftDocument === 'string'
+          ? saved.draftDocument
+          : JSON.stringify(saved.draftDocument),
+      body_markdown: saved.draftMarkdown,
+      saved_revision: saved.draftRevision,
+      updated_at: new Date().toISOString(),
+    }
+  }
+
+  function persistActiveDraft(input: SaveDraftInput): Promise<DraftView> {
+    if (workspaceOrigin === 'managed_acp') return persistAcpDraft(input)
+    return invoke<DraftView>('save_feedback_draft', { input })
+  }
+
   $: dirty =
     workspace !== null &&
     workspace.request.status !== 'completed' &&
@@ -342,30 +579,46 @@
       else toast.error(tr('Attachment action failed'), options)
     }
   }
+  $: unifiedWorkbench = projectUnifiedWorkbench({
+    adapterSessions: $navigation.hostSessions,
+    adapterRequests: $navigation.requests,
+    acpSessions: acpSnapshot.sessions,
+    attentionItems: acpSnapshot.attentionItems,
+    agents: acpSnapshot.agents,
+    resolveHostProfile,
+  })
+  $: selectedSessionItem = activeSessionKey
+    ? unifiedWorkbench.sessions.find((session) => session.key === activeSessionKey) ?? null
+    : null
+  $: requestListItems = unifiedWorkbench.requests.filter((request) =>
+    matchesUnifiedWorkbenchRequestFilter(request, {
+      sessionKey: activeSessionKey,
+      search: $navigation.requestSearch,
+    }))
   $: visibleRequests = todayOnly
-    ? $navigation.requests.filter((request) => isWithinLast24Hours(request.updated_at))
-    : $navigation.requests
-  $: selectedHostSession = $navigation.selectedHostSessionId
-    ? $navigation.hostSessions.find(
-        (session) =>
-          session.host_id === $navigation.selectedHostId &&
-          session.host_session_id === $navigation.selectedHostSessionId,
-      )
-    : undefined
-  $: requestScopeLabel = $navigation.selectedHostId
-    ? $navigation.selectedHostSessionId
-      ? selectedHostSession?.source_hint ??
-        selectedHostSession?.title ??
-        resolveHostProfile($navigation.selectedHostId).label
-      : resolveHostProfile($navigation.selectedHostId).label
-    : tr('All hosts')
+    ? requestListItems.filter((request) => isWithinLast24Hours(request.updatedAt))
+    : requestListItems
+  $: selectedRequestItem = activeRequestKey
+    ? unifiedWorkbench.requests.find((request) => request.key === activeRequestKey) ?? null
+    : null
+  $: selectedAcpItem = selectedRequestItem?.origin === 'managed_acp'
+    ? acpItemById(selectedRequestItem.rawRequestId, selectedRequestItem.sessionId)
+    : null
+  $: visibleAcpItems = selectedAcpItem
+    ? itemsForSession(acpSnapshot.attentionItems, selectedAcpItem.sessionId)
+    : []
+  $: selectedAcpItemAnswerable = selectedAcpItem
+    ? isAttentionItemAnswerable(visibleAcpItems, selectedAcpItem.id)
+    : false
+  $: requestScopeLabel = selectedSessionItem?.title ?? tr('All requests')
   $: feedbackResult = completedResult?.feedback ?? workspace?.feedback ?? null
   $: canOpenResumePrompt = shouldShowResumePromptButton(
     feedbackResult,
     completedResult?.resolution ?? workspace?.request.resolution,
   )
   $: currentRequestCooking =
-    workspace !== null && cookingRequestIds.has(workspace.request.request_id)
+    workspace !== null && cookingRequestIds.has(workspaceRequestKey ?? workspace.request.request_id)
+  $: cookingRequestKeys = cookingRequestIds
   $: cookedDraftReady = cookedPreview !== null
   // Turning Cooking off discards any pending cooked preview: submitting then
   // publishes the editor content as-is.
@@ -396,8 +649,6 @@
   $: visibleRamblePhase = resolvedRamblePhase(ramblePhase, voicePhase)
   $: rambleActive = visibleRamblePhase === 'active'
   $: rambleEngaged = visibleRamblePhase !== 'idle'
-  $: rambleBelongsToWorkspace =
-    !rambleEngaged || workspace?.request.request_id === rambleRequestId
   $: rambelleStatusPortrait = feedbackResult
     ? rambelleArchived
     : currentRequestCooking
@@ -410,6 +661,8 @@
   $: rambleBusy = visibleRamblePhase === 'starting' || visibleRamblePhase === 'stopping'
   $: rambleCanStop = rambleActive || voiceCanStop
   $: rambleCanExit = rambleEngaged || voiceCanStop
+  $: rambleBelongsToWorkspace =
+    !rambleEngaged || (!!workspaceRequestKey && workspaceRequestKey === rambleOwner?.key)
   $: updateInstallBlocked =
     dirty ||
     rambleEngaged ||
@@ -480,6 +733,8 @@
         void checkForUpdates({ prompt: true, forcePrompt: true })
       }
       return () => {
+        draftController.cancelPendingSave()
+        if (inboxTimer) clearInterval(inboxTimer)
         cleanupLayoutObserver()
         cleanupAttachments()
       }
@@ -532,11 +787,302 @@
     }
   })
 
+  async function openAcpItem(
+    request: UnifiedWorkbenchRequestListItem,
+    saveCurrent = true,
+  ) {
+    const item = acpItemById(request.rawRequestId, request.sessionId)
+    if (!item || interactionLocked) return
+    if (saveCurrent && dirty && !(await saveDraftNow())) return
+    if (
+      item.kind === 'feedback' &&
+      workspaceRequestKey !== request.key &&
+      rambleCanExit
+    ) {
+      await exitRamble()
+    }
+    activeRequestKey = request.key
+    if (item.kind !== 'feedback') {
+      workspaceLoadGate.invalidate()
+      loadingWorkspace = false
+      return
+    }
+    if (workspaceRequestKey === request.key) return
+    pageError = ''
+    completedResult = null
+    publishedFeedback = null
+    clearWorkspace()
+    const loadToken = workspaceLoadGate.begin(request.key)
+    loadingWorkspace = true
+    try {
+      const detail = await acpAdapter.readFeedback(item.id)
+      const next = projectFeedbackWorkspace(item, acpSessionFor(item), detail.draft)
+      if (!workspaceLoadGate.isCurrent(loadToken, activeRequestKey)) return
+      workspace = next
+      workspaceOrigin = 'managed_acp'
+      workspaceRequestKey = request.key
+      cookedPreview = null
+      adoptDraft(next.draft)
+      savePhase = next.draft.updated_at ? 'saved' : 'idle'
+      saveMessage = ''
+      attachmentMessage = ''
+      publishedFeedback = detail.publishedFeedback
+      await attachmentController.refreshPreviews(next)
+    } catch (cause) {
+      if (workspaceLoadGate.isCurrent(loadToken, activeRequestKey)) {
+        pageError = acpAdapterErrorMessage(cause)
+      }
+    } finally {
+      if (workspaceLoadGate.isCurrent(loadToken, activeRequestKey)) {
+        loadingWorkspace = false
+      }
+    }
+  }
+
+  async function reconcileManagedSelection(sessionId?: string) {
+    await tick()
+    const current = activeRequestKey
+      ? unifiedWorkbench.requests.find((request) => request.key === activeRequestKey)
+      : null
+    if (current?.origin === 'managed_acp') {
+      if (current.kind === 'feedback' && workspaceRequestKey !== current.key) {
+        await openAcpItem(current, false)
+      }
+      return
+    }
+    if (!sessionId) return
+    const session = acpSnapshot.sessions.find((candidate) => candidate.sessionId === sessionId)
+    const next = session
+      ? unifiedWorkbench.requests.find(
+          (request) =>
+            request.origin === 'managed_acp' &&
+            request.sessionId === sessionId &&
+            request.agentId === session.agentId,
+        )
+      : null
+    activeRequestKey = next?.key ?? null
+    if (next?.kind === 'feedback') await openAcpItem(next, false)
+    else if (!next && workspaceOrigin === 'managed_acp') clearWorkspace()
+  }
+
+  async function openUnifiedRequest(
+    request: WorkbenchRequestListItem,
+    saveCurrent = true,
+  ) {
+    if (
+      interactionLocked ||
+      (activeRequestKey === request.key &&
+        (request.kind !== 'feedback' || workspaceRequestKey === request.key))
+    ) return
+    if (saveCurrent && dirty && !(await saveDraftNow())) return
+    if (request.origin === 'adapter') {
+      await openRequest(request.rawRequestId, false, request.key)
+      return
+    }
+    await openAcpItem(request, false)
+  }
+
+  async function chooseUnifiedSession(item: SessionRailItem | null) {
+    if (dirty && !(await saveDraftNow())) return
+    if (item && selectedRequestItem?.sessionKey !== item.key) activeRequestKey = null
+    activeSessionKey = item?.key ?? null
+    if (!item) {
+      await navigation.selectScope(null, null)
+      return
+    }
+    if (item.origin === 'adapter') {
+      await navigation.selectScope(item.hostId, item.sessionId)
+      return
+    }
+    await navigation.selectScope(null, null)
+  }
+
+  function adapterHostSessionFor(item: SessionRailItem) {
+    if (item.origin !== 'adapter') return null
+    return $navigation.hostSessions.find(
+      (session) =>
+        session.host_id === item.hostId &&
+        session.host_session_id === item.sessionId,
+    ) ?? null
+  }
+
+  async function renameUnifiedSession(item: SessionRailItem, title: string) {
+    if (!item.canRename) return
+    if (item.origin === 'managed_acp') {
+      acpSnapshotEpoch += 1
+      try {
+        applyAcpSnapshot(await acpAdapter.renameSession(item.sessionId, title))
+      } catch (cause) {
+        pageError = acpAdapterErrorMessage(cause)
+      }
+      return
+    }
+    const session = adapterHostSessionFor(item)
+    if (session) await navigation.renameHostSession(session, title)
+  }
+
+  async function setUnifiedSessionPinned(item: SessionRailItem, pinned: boolean) {
+    if (!item.canPin) return
+    if (item.origin === 'managed_acp') {
+      acpSnapshotEpoch += 1
+      try {
+        applyAcpSnapshot(await acpAdapter.setSessionPinned(item.sessionId, pinned))
+      } catch (cause) {
+        pageError = acpAdapterErrorMessage(cause)
+      }
+      return
+    }
+    const session = adapterHostSessionFor(item)
+    if (session) await navigation.setHostSessionPinned(session, pinned)
+  }
+
+  async function archiveUnifiedSession(item: SessionRailItem) {
+    const session = adapterHostSessionFor(item)
+    if (!session || !item.canArchive) return
+    await navigation.archiveHostSession(session)
+    if (activeSessionKey === item.key) {
+      activeSessionKey = null
+      await navigation.selectScope(null, null)
+    }
+    if (activeRequestKey?.startsWith(`${item.origin}\u0000${item.key}\u0000`)) {
+      activeRequestKey = null
+    }
+  }
+
+  async function refreshUnifiedWorkbench() {
+    await Promise.all([
+      navigation.refreshPage(),
+      acpEnabled ? refreshAcp() : Promise.resolve(),
+    ])
+  }
+
+  async function refreshAcp(background = false) {
+    if (acpRefreshInFlight) return
+    acpRefreshInFlight = true
+    if (!background) acpRefreshing = true
+    if (!background) acpLoading = true
+    const refreshEpoch = acpSnapshotEpoch
+    try {
+      const next = await acpAdapter.readWorkbench()
+      if (refreshEpoch !== acpSnapshotEpoch) return
+      const ownerClosed =
+        workspaceOrigin === 'managed_acp' &&
+        rambleEngaged &&
+        rambleRequestId !== '' &&
+        !next.attentionItems.some(
+          (item) =>
+            item.kind === 'feedback' &&
+            item.id === rambleRequestId &&
+            item.sessionId === workspace?.request.host_session_id &&
+            item.status === 'waiting',
+        )
+      const selectedManagedSessionId = selectedAcpItem?.sessionId
+      applyAcpSnapshot(next)
+      if (ownerClosed) {
+        await exitRamble()
+        toast.info(tr('The active Feedback Request was closed, so Ramble recording stopped.'))
+      }
+      acpLoadError = ''
+      await reconcileManagedSelection(selectedManagedSessionId)
+    } catch (cause) {
+      acpLoadError = acpAdapterErrorMessage(cause)
+      if (!background) pageError = acpLoadError
+    } finally {
+      acpRefreshInFlight = false
+      if (!background) {
+        acpRefreshing = false
+        acpLoading = false
+      }
+    }
+  }
+
+  async function answerAcpPermission(requestId: string, option: PermissionOption) {
+    if (acpActionBusy || !selectedAcpItemAnswerable) return
+    const sessionId = selectedAcpItem?.sessionId
+    acpActionBusy = true
+    acpSnapshotEpoch += 1
+    try {
+      applyAcpSnapshot(await acpAdapter.answerPermission({ requestId, optionId: option.id }))
+      toast.success(tr('Permission answered'))
+      await reconcileManagedSelection(sessionId)
+    } catch (cause) {
+      pageError = acpAdapterErrorMessage(cause)
+    } finally {
+      acpActionBusy = false
+    }
+  }
+
+  async function answerAcpQuestion(
+    item: QuestionAttentionItem,
+    choiceIds: string[],
+    skipped: boolean,
+  ) {
+    if (acpActionBusy || !selectedAcpItemAnswerable) return
+    const sessionId = item.sessionId
+    acpActionBusy = true
+    acpSnapshotEpoch += 1
+    try {
+      applyAcpSnapshot(await acpAdapter.answerQuestion({
+        requestId: item.id,
+        choiceIds,
+        skipped,
+      }))
+      toast.success(skipped ? tr('Question skipped') : tr('Answer sent'))
+      await reconcileManagedSelection(sessionId)
+    } catch (cause) {
+      pageError = acpAdapterErrorMessage(cause)
+    } finally {
+      acpActionBusy = false
+    }
+  }
+
+  async function preflightAcpLaunch(input: LaunchDraft): Promise<LaunchPreflight> {
+    try {
+      return await acpAdapter.preflightLaunch(input)
+    } catch (cause) {
+      return {
+        agentId: input.agentId,
+        models: [],
+        reasoningEfforts: [],
+        accessModes: [],
+        warning: acpAdapterErrorMessage(cause),
+      }
+    }
+  }
+
+  async function launchAcpRamble(input: LaunchDraft) {
+    if (acpActionBusy) return
+    acpActionBusy = true
+    acpSnapshotEpoch += 1
+    const existing = new Set(acpSnapshot.sessions.map((session) => session.sessionId))
+    try {
+      const next = await acpAdapter.launchRamble(input)
+      applyAcpSnapshot(next)
+      const launched = orderSessions(next.sessions).find((session) => !existing.has(session.sessionId))
+      if (launched) {
+        activeSessionKey = sessionRailKey('managed_acp', launched.agentId, launched.sessionId)
+      }
+      launchRambleOpen = false
+      toast.success(tr('Ramble launched'))
+      await reconcileManagedSelection(launched?.sessionId)
+    } catch (cause) {
+      pageError = acpAdapterErrorMessage(cause)
+    } finally {
+      acpActionBusy = false
+    }
+  }
+
   function startWorkbench() {
     if (workbenchInitialized) return
     workbenchInitialized = true
     void navigation.initialize()
-    if (isTauri) inboxTimer = setInterval(() => void navigation.refreshNavigation(true), 5_000)
+    if (acpEnabled) void refreshAcp(true)
+    if (isTauri) {
+      inboxTimer = setInterval(() => {
+        void navigation.refreshNavigation(true)
+        void refreshAcp(true)
+      }, 5_000)
+    }
   }
 
   function closeOnboarding() {
@@ -585,7 +1131,10 @@
   }
 
   function clearWorkspace() {
+    workspaceLoadGate.invalidate()
     workspace = null
+    workspaceOrigin = null
+    workspaceRequestKey = null
     completedResult = null
     publishedFeedback = null
     attachmentController.releasePreviews()
@@ -601,9 +1150,17 @@
     }
   }
 
-  async function openRequest(requestId: string, saveCurrent = true) {
-    if (interactionLocked || workspace?.request.request_id === requestId) return
+  async function openRequest(
+    requestId: string,
+    saveCurrent = true,
+    requestKey?: string,
+  ) {
+    if (
+      interactionLocked ||
+      (workspaceOrigin === 'adapter' && workspaceRequestKey === requestKey)
+    ) return
     if (saveCurrent && !(await saveDraftNow())) return
+    const loadToken = workspaceLoadGate.begin(requestKey ?? null)
     loadingWorkspace = true
     pageError = ''
     completedResult = null
@@ -616,15 +1173,8 @@
               requestId,
             })
         if (!next) throw new Error(tr('This feedback request could not be found.'))
-        workspace = next
-        cookedPreview = null
-        adoptDraft(next.draft)
-        savePhase = next.draft.updated_at ? 'saved' : 'idle'
-        saveMessage = ''
-        attachmentMessage = ''
-        await attachmentController.refreshPreviews(next)
-        if (next.request.status === 'completed' && next.feedback) {
-          publishedFeedback = previewMode
+        const nextPublishedFeedback = next.request.status === 'completed' && next.feedback
+          ? previewMode
             ? {
                 markdown: next.draft.body_markdown,
                 uncooked_markdown: next.draft.body_markdown,
@@ -634,17 +1184,41 @@
                   requestId: next.request.request_id,
                 }),
               )
-        }
+          : null
+        if (!workspaceLoadGate.isCurrent(loadToken, activeRequestKey)) return
+        workspace = next
+        workspaceOrigin = 'adapter'
+        workspaceRequestKey = requestKey ?? workbenchRequestKey(
+          'adapter',
+          sessionRailKey('adapter', next.request.host_id, next.request.host_session_id),
+          next.request.request_id,
+        )
+        activeRequestKey = workspaceRequestKey
+        cookedPreview = null
+        adoptDraft(next.draft)
+        savePhase = next.draft.updated_at ? 'saved' : 'idle'
+        saveMessage = ''
+        attachmentMessage = ''
+        publishedFeedback = nextPublishedFeedback
+        await attachmentController.refreshPreviews(next)
       })
     } catch (cause) {
-      pageError = messageFrom(cause)
+      if (workspaceLoadGate.isCurrent(loadToken, activeRequestKey)) {
+        pageError = messageFrom(cause)
+      }
     } finally {
-      loadingWorkspace = false
+      if (workspaceLoadGate.isCurrent(loadToken, activeRequestKey)) {
+        loadingWorkspace = false
+      }
     }
   }
 
-  function activeActionFor(requestId: string): ActiveAction {
-    return activeActionByRequest.get(requestId) ?? null
+  function activeActionFor(
+    requestId: string,
+    owner: WorkbenchRequestOwner | null = currentWorkspaceOwner(),
+  ): ActiveAction {
+    const key = owner?.requestId === requestId ? owner.key : requestId
+    return activeActionByRequest.get(key) ?? null
   }
 
   function enqueueDocumentTask<T>(task: () => Promise<T>): Promise<T> {
@@ -656,10 +1230,14 @@
     return run
   }
 
-  async function routeDraftOperation(requestId: string, operation: DraftOperation): Promise<void> {
+  async function routeDraftOperation(
+    requestId: string,
+    operation: DraftOperation,
+    owner: WorkbenchRequestOwner | null = currentWorkspaceOwner(),
+  ): Promise<void> {
     if (!requestId) return
     const run = enqueueDocumentTask(async () => {
-      if (workspace?.request.request_id === requestId) {
+      if (owner && workspace && workspaceRequestKey === owner.key) {
         if (
           workspace.request.status === 'completed' ||
           workspace.request.status === 'cancelled'
@@ -682,21 +1260,28 @@
 
       await writeBackgroundDraftOperation(requestId, operation, {
         load: async () => {
+          if (owner?.origin === 'managed_acp') {
+            return loadAcpFeedbackWorkspace(requestId, owner.sessionId)
+          }
           const target = previewMode
             ? previewWorkspaceFor(requestId)
             : await invoke<FeedbackWorkspaceView>('get_feedback_workspace', { requestId })
           if (!target) throw new Error(tr('This feedback request could not be found.'))
           return target
         },
-        save: async (input) =>
-          previewMode
+        save: async (input) => {
+          if (owner?.origin === 'managed_acp') {
+            return persistAcpDraft(input, owner.sessionId)
+          }
+          return previewMode
             ? {
                 document_json: input.document_json,
                 body_markdown: input.body_markdown,
                 saved_revision: input.expected_revision + 1,
                 updated_at: new Date().toISOString(),
               }
-            : invoke<DraftView>('save_feedback_draft', { input }),
+            : invoke<DraftView>('save_feedback_draft', { input })
+        },
       })
     })
     try {
@@ -710,16 +1295,26 @@
   function selectAction(actionId: string, actionIndex: number, title: string) {
     const requestId = workspace?.request.request_id
     if (!requestId || cookedDraftReady) return
-    if (activeActionByRequest.get(requestId)?.actionId === actionId) {
-      activeActionByRequest.delete(requestId)
+    const owner = currentWorkspaceOwner()
+    const requestKey = workspaceRequestKey ?? requestId
+    if (activeActionByRequest.get(requestKey)?.actionId === actionId) {
+      activeActionByRequest.delete(requestKey)
       activeActionByRequest = new Map(activeActionByRequest)
-      void routeDraftOperation(requestId, { kind: 'clearActionGroup', actionId }).catch(() => {})
+      void routeDraftOperation(
+        requestId,
+        { kind: 'clearActionGroup', actionId },
+        owner,
+      ).catch(() => {})
       return
     }
     const action = { actionId, actionIndex, title }
-    activeActionByRequest.set(requestId, action)
+    activeActionByRequest.set(requestKey, action)
     activeActionByRequest = new Map(activeActionByRequest)
-    void routeDraftOperation(requestId, { kind: 'startActionGroup', action }).catch(() => {})
+    void routeDraftOperation(
+      requestId,
+      { kind: 'startActionGroup', action },
+      owner,
+    ).catch(() => {})
   }
 
   async function reloadWorkspace() {
@@ -728,8 +1323,13 @@
     if (!requestId) return
     if (rambleCanExit) await exitRamble()
     if (dirty && !(await saveDraftNow())) return
-    workspace = null
-    await openRequest(requestId, false)
+    const requestKey = workspaceRequestKey
+    clearWorkspace()
+    const request = requestKey
+      ? unifiedWorkbench.requests.find((candidate) => candidate.key === requestKey)
+      : null
+    if (request?.origin === 'managed_acp') await openAcpItem(request, false)
+    else await openRequest(requestId, false, requestKey ?? undefined)
   }
 
   async function openSettings(section: SettingsSection) {
@@ -737,7 +1337,7 @@
     settingsOpen = true
     pageError = ''
     await tick()
-    if (!isTauri) return
+    if (!isTauri || section !== 'adapters') return
     try {
       genericMcpConfiguration = await invoke<string>('get_generic_mcp_configuration')
     } catch (cause) {
@@ -771,8 +1371,11 @@
 
   function setCookingRequest(requestId: string, cooking: boolean) {
     const next = new Set(cookingRequestIds)
-    if (cooking) next.add(requestId)
-    else next.delete(requestId)
+    const key = workspace?.request.request_id === requestId
+      ? workspaceRequestKey ?? requestId
+      : requestId
+    if (cooking) next.add(key)
+    else next.delete(key)
     cookingRequestIds = next
   }
 
@@ -855,7 +1458,73 @@
       })
     },
   })
-  const submitFeedback = publisherController.submitFeedback
+  const submitLegacyFeedback = publisherController.submitFeedback
+
+  async function submitFeedback() {
+    if (workspaceOrigin !== 'managed_acp') {
+      await submitLegacyFeedback()
+      return
+    }
+    const item = workspace
+      ? acpItemById(workspace.request.request_id, workspace.request.host_session_id)
+      : null
+    if (!workspace || item?.kind !== 'feedback' || !canSubmit || submitting) return
+    if (rambleCanExit) await exitRamble()
+    if (!(await saveDraftNow())) return
+    if ($cookingEnabled && !cookedPreview) {
+      await cookPreviewOnly()
+      if (!cookedPreview) return
+    }
+    const requestId = item.id
+    const submissionKey = workspaceRequestKey ?? requestId
+    let submissionId = feedbackSubmissionIds.get(submissionKey)
+    if (!submissionId) {
+      submissionId = crypto.randomUUID()
+      feedbackSubmissionIds.set(submissionKey, submissionId)
+    }
+    submitting = true
+    submitStage = 'publishing'
+    pageError = ''
+    acpSnapshotEpoch += 1
+    const submittedFeedback = {
+      markdown: cookedPreview?.markdown ?? draftBody,
+      uncooked_markdown: cookedPreview?.original ?? draftBody,
+    }
+    try {
+      const next = await acpAdapter.submitFeedback({
+        requestId,
+        expectedRevision: savedRevision,
+        documentJson: draftDocumentJson,
+        bodyMarkdown: draftBody,
+        submissionId,
+        cookedMarkdown: cookedPreview?.markdown,
+        cookingModel: cookedPreview?.model,
+        uncookedMarkdown: cookedPreview?.original,
+      })
+      workspace = {
+        ...workspace,
+        request: {
+          ...workspace.request,
+          status: 'completed',
+          resolution: 'feedback_submitted',
+          updated_at: new Date().toISOString(),
+        },
+      }
+      cookedPreview = null
+      publishedFeedback = submittedFeedback
+      savePhase = 'saved'
+      applyAcpSnapshot(next)
+      toast.success(tr('Feedback submitted'), {
+        description: tr('The Agent can continue from this structured Feedback Package.'),
+      })
+      await reconcileManagedSelection(item.sessionId)
+    } catch (cause) {
+      pageError = acpAdapterErrorMessage(cause)
+    } finally {
+      submitting = false
+      submitStage = 'idle'
+    }
+  }
 
   async function approveFeedback() {
     if (!workspace || !workspace.request.allow_finish || approving) return
@@ -892,6 +1561,25 @@
     cancelling = true
     pageError = ''
     try {
+      if (workspaceOrigin === 'managed_acp') {
+        const sessionId = workspace.request.host_session_id
+        acpSnapshotEpoch += 1
+        const next = await acpAdapter.cancelFeedback(workspace.request.request_id)
+        workspace = {
+          ...workspace,
+          request: {
+            ...workspace.request,
+            status: 'cancelled',
+            resolution: 'cancelled',
+            updated_at: new Date().toISOString(),
+          },
+        }
+        savePhase = 'saved'
+        applyAcpSnapshot(next)
+        toast.success(tr('Request cancelled'))
+        await reconcileManagedSelection(sessionId)
+        return
+      }
       const input: CancelFeedbackInput = {
         request_id: workspace.request.request_id,
         reason: 'Human cancelled from RambleDesk desktop',
@@ -933,6 +1621,10 @@
     await rambleDocumentQueue.catch(() => {})
   }
 
+  function captureRambleOwner() {
+    rambleOwner = currentWorkspaceOwner()
+  }
+
   async function toggleRamble() {
     await rambleController?.toggleRamble()
   }
@@ -953,6 +1645,8 @@
     bind:this={rambleController}
     {isTauri}
     {workspace}
+    requestOrigin={rambleOwner?.origin ?? workspaceOrigin}
+    {rambleBelongsToWorkspace}
     bind:attachmentBusy
     {screenCaptureBusy}
     bind:attachmentMessage
@@ -971,16 +1665,23 @@
     onPageError={(message) => (pageError = message)}
     onSaveDraftNow={saveDraftNow}
     onApplyWorkspaceMutation={applyWorkspaceMutation}
-    onRefreshAttachmentPreviews={attachmentController.refreshPreviews}
+    onRefreshAttachmentPreviews={(next) => attachmentController.refreshPreviews(next, 'ramble')}
     onStartScreenCapture={attachmentController.startScreenCapture}
     onImportAttachmentPaths={attachmentController.importAttachmentPaths}
-    onRouteDraftOperation={routeDraftOperation}
-    getActiveAction={activeActionFor}
+    onCaptureRambleOwner={captureRambleOwner}
+    onRouteDraftOperation={(requestId, operation) =>
+      routeDraftOperation(requestId, operation, rambleOwner)}
+    getActiveAction={(requestId) => activeActionFor(requestId, rambleOwner)}
+    artifactPort={rambleOwner?.origin === 'managed_acp'
+      ? acpClipboardArtifactPortFor(rambleOwner.sessionId)
+      : null}
   />
 
   <AppTitlebar
-    sourceLabel={workspace?.request.source_hint ?? workspace?.request.title ?? 'Workbench'}
-    pendingCount={$navigation.pendingRequests.length}
+    sourceLabel={selectedSessionItem?.hostLabel ??
+      workspace?.request.source_hint ?? workspace?.request.title ?? 'Workbench'}
+    pendingCount={$navigation.pendingRequests.length +
+      acpSnapshot.attentionItems.filter((item) => item.status === 'waiting').length}
     {rambleEngaged}
     {rambleActive}
     {rambleRequestTitle}
@@ -994,22 +1695,21 @@
   />
 
   <div bind:this={workbenchLayout} class="flex h-[calc(100%-46px)] min-h-0 min-w-0">
-    <HostSessionRail
+    <SessionRail
       bind:collapsed={hostSessionRailCollapsed}
-      sessions={$navigation.hostSessions}
-      activeHostId={$navigation.selectedHostId}
-      activeHostSessionId={$navigation.selectedHostSessionId}
+      items={unifiedWorkbench.sessions}
+      activeKey={activeSessionKey}
       requestSearch={$navigation.requestSearch}
-      loading={$navigation.loadingNavigation}
-      refreshing={$navigation.refreshingPage}
-      {resolveHostProfile}
-      onSelect={(hostId, hostSessionId) =>
-        void navigation.selectScope(hostId, hostSessionId)}
+      loading={$navigation.loadingNavigation || (acpEnabled && acpLoading)}
+      refreshing={$navigation.refreshingPage || acpRefreshing}
+      onSelect={(item) => void chooseUnifiedSession(item)}
       onRequestSearch={(search) => void navigation.setRequestSearch(search)}
-      onRenameSession={(session, title) => navigation.renameHostSession(session, title)}
-      onSetSessionPinned={(session, pinned) => navigation.setHostSessionPinned(session, pinned)}
-      onArchiveSession={(session) => navigation.archiveHostSession(session)}
-      onSetHostPinned={(hostId, pinned) => navigation.setHostPinned(hostId, pinned)}
+      onLaunch={() => acpEnabled
+        ? (launchRambleOpen = true)
+        : void openSettings('acp-client')}
+      onRenameSession={renameUnifiedSession}
+      onSetSessionPinned={setUnifiedSessionPinned}
+      onArchiveSession={archiveUnifiedSession}
       onSettings={() => void openSettings('general')}
     />
 
@@ -1029,20 +1729,26 @@
       >
         <RequestListPane
           requests={visibleRequests}
-          activeRequestId={workspace?.request.request_id ?? null}
-          cookingRequestIds={cookingRequestIds}
+          {activeRequestKey}
+          {cookingRequestKeys}
           scopeLabel={requestScopeLabel}
           searchQuery={$navigation.requestSearch}
-          loading={$navigation.loadingRequests}
-          refreshing={$navigation.refreshingPage}
+          loading={$navigation.loadingRequests || (acpEnabled && acpLoading)}
+          refreshing={$navigation.refreshingPage || acpRefreshing}
           loadingMore={$navigation.loadingMoreRequests}
-          hasMore={todayOnly ? false : $navigation.nextRequestCursor !== null}
+          hasMore={selectedSessionItem?.origin === 'managed_acp' || todayOnly
+            ? false
+            : $navigation.nextRequestCursor !== null}
           {todayOnly}
-          {resolveHostProfile}
+          resolveAgentProfile={resolveRequestAgentProfile}
           formatTime={formatTimeLocal}
-          onRefresh={() => void navigation.refreshPage()}
-          onLoadMore={() => void navigation.loadMoreRequests()}
-          onOpenRequest={(requestId) => void openRequest(requestId)}
+          onRefresh={() => void refreshUnifiedWorkbench()}
+          onLoadMore={() => {
+            if (selectedSessionItem?.origin !== 'managed_acp') {
+              void navigation.loadMoreRequests()
+            }
+          }}
+          onOpenRequest={(request) => void openUnifiedRequest(request)}
           onToggleToday={() => (todayOnly = !todayOnly)}
         />
       </Pane>
@@ -1053,7 +1759,23 @@
       />
 
       <Pane id="workspace-pane" minSize={workspaceMinimumSize}>
-        <WorkspacePanel
+        {#if selectedAcpItem?.kind === 'permission'}
+          <PermissionView
+            item={selectedAcpItem}
+            busy={acpActionBusy}
+            answerable={selectedAcpItemAnswerable}
+            onAnswer={(option) => void answerAcpPermission(selectedAcpItem.id, option)}
+          />
+        {:else if selectedAcpItem?.kind === 'question'}
+          <AskView
+            item={selectedAcpItem}
+            busy={acpActionBusy}
+            answerable={selectedAcpItemAnswerable}
+            onAnswer={(choiceIds, skipped) =>
+              void answerAcpQuestion(selectedAcpItem, choiceIds, skipped)}
+          />
+        {:else}
+          <WorkspacePanel
           bind:this={workspacePanel}
           bind:taskBriefOpen
           {loadingWorkspace}
@@ -1073,7 +1795,7 @@
           }}
           tidyAutoThreshold={$tidyAutoThreshold}
           activeActionId={workspace
-            ? activeActionByRequest.get(workspace.request.request_id)?.actionId ?? null
+            ? activeActionByRequest.get(workspaceRequestKey ?? workspace.request.request_id)?.actionId ?? null
             : null}
           {savedRevision}
           {savePhase}
@@ -1111,7 +1833,7 @@
           {cancelling}
           {approving}
           {canOpenResumePrompt}
-          {resolveHostProfile}
+          resolveHostProfile={resolveWorkspaceProfile}
           formatTime={formatTimeLocal}
           onReload={() => void reloadWorkspace()}
           onDraftChange={updateDraft}
@@ -1130,7 +1852,12 @@
           onSubmit={() => void submitFeedback()}
           onCancel={() => void cancelFeedback()}
           onApprove={() => void approveFeedback()}
-        />
+          readArtifactBytes={workspaceOrigin === 'managed_acp'
+            ? (requestId, artifactId) => acpAdapter.readDraftArtifact(requestId, artifactId)
+            : null}
+          allowLocalArtifactActions={workspaceOrigin !== 'managed_acp'}
+          />
+        {/if}
       </Pane>
     </PaneGroup>
 
@@ -1144,6 +1871,17 @@
     {/if}
   </div>
 </main>
+
+{#if acpEnabled}
+  <LaunchRambleDialog
+    bind:open={launchRambleOpen}
+    agents={acpSnapshot.agents}
+    busy={acpActionBusy}
+    error={acpLoadError}
+    onPreflight={preflightAcpLaunch}
+    onLaunch={(input) => void launchAcpRamble(input)}
+  />
+{/if}
 
 <OnboardingWizard bind:openWizard={onboardingOpen} onClose={closeOnboarding} />
 

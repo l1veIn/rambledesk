@@ -2,8 +2,8 @@ use super::{
     AcpSessionLinkSnapshot, AgentObservation, AgentWorkRecord, AgentWorkResult, DraftArtifact,
     DraftId, DraftSnapshot, FeedbackDeliveryRecord, FeedbackRequestSnapshot, FeedbackResolution,
     FeedbackResolutionOutcome, LaunchOutcome, PackageRecord, RambleSubmissionRecord,
-    RemoveDraftArtifact, ReorderDraftArtifacts, RequestId, SaveDraft, SessionId, SessionRecord,
-    SteeringOutcome, WorkClaimToken, WorkScope,
+    RemoveDraftArtifact, ReorderDraftArtifacts, RequestId, SaveDraft, SessionId,
+    SessionOrganization, SessionRecord, SteeringOutcome, WorkClaimToken, WorkScope,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,6 +70,12 @@ pub struct AgentObservationCommit {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionOrganizationCommit {
+    pub mutation: SessionOrganization,
+    pub now: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FactMutation {
     Launch(Box<LaunchCommit>),
     Steering(Box<SteeringCommit>),
@@ -77,6 +83,7 @@ pub enum FactMutation {
     FeedbackResolution(Box<FeedbackResolutionCommit>),
     Draft(Box<DraftCommit>),
     AgentObservation(Box<AgentObservationCommit>),
+    SessionOrganization(Box<SessionOrganizationCommit>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,12 +94,14 @@ pub enum FactMutationOutcome {
     FeedbackResolution(FeedbackResolutionOutcome),
     Draft(DraftSnapshot),
     AgentObservation(AcpSessionLinkSnapshot),
+    SessionOrganization(SessionRecord),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FactQuery {
     Feedback(RequestId),
     Workbench(WorkbenchQuery),
+    ArchivedSessions,
     SessionRecovery(SessionId),
 }
 
@@ -114,6 +123,9 @@ pub struct WorkbenchSnapshot {
     pub sessions: Vec<SessionRecord>,
     /// Durable resume checkpoints, at most one current link per Session.
     pub current_acp_links: Vec<AcpSessionLinkSnapshot>,
+    /// RambleDesk-owned structured request history. This is not an ACP
+    /// transcript projection and remains stable after a request resolves.
+    pub feedback_requests: Vec<FeedbackRequestSnapshot>,
     pub waiting_feedback: Vec<FeedbackRequestSnapshot>,
     pub drafts: Vec<DraftSnapshot>,
     pub pending_deliveries: Vec<FeedbackDeliveryRecord>,
@@ -124,7 +136,7 @@ pub struct WorkbenchSnapshot {
 pub struct SessionRecoverySnapshot {
     pub session: SessionRecord,
     pub current_acp_link: Option<AcpSessionLinkSnapshot>,
-    /// Present for Managed Sessions launched by RambleDesk; absent for Connected Sessions.
+    /// Present for Managed Sessions launched by RambleDesk; absent for Imported Sessions.
     pub launch_submission: Option<RambleSubmissionRecord>,
     pub steering_submissions: Vec<RambleSubmissionRecord>,
     pub pending_feedback: Vec<PendingFeedbackRecovery>,
@@ -141,6 +153,7 @@ pub struct PendingFeedbackRecovery {
 pub enum FactQueryOutcome {
     Feedback(FeedbackLookup),
     Workbench(WorkbenchSnapshot),
+    ArchivedSessions(Vec<SessionRecord>),
     SessionRecovery(SessionRecoverySnapshot),
 }
 

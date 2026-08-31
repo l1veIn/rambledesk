@@ -4459,6 +4459,34 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
+name = "rambledesk-acp-client"
+version = "0.3.3"
+dependencies = [
+ "async-trait",
+ "axum",
+ "base64 0.22.1",
+ "futures",
+ "hex",
+ "rambledesk-core",
+ "rambledesk-storage",
+ "reqwest 0.13.4",
+ "rmcp",
+ "rustix 1.1.4",
+ "schemars 1.2.2",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "thiserror 2.0.19",
+ "tokio",
+ "tokio-util",
+ "tower-service",
+ "tracing",
+ "uuid",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "rambledesk-cli"
 version = "0.3.3"
 dependencies = [
@@ -4501,11 +4529,15 @@ dependencies = [
  "block2",
  "core-graphics-helmer-fork",
  "dunce",
+ "flate2",
+ "futures",
+ "hex",
  "image",
  "objc2",
  "objc2-av-foundation",
  "objc2-core-foundation",
  "objc2-core-graphics",
+ "rambledesk-acp-client",
  "rambledesk-core",
  "rambledesk-hosts",
  "rambledesk-local-server",
@@ -4513,10 +4545,13 @@ dependencies = [
  "rambledesk-speech",
  "rambledesk-storage",
  "rayon",
+ "reqwest 0.13.4",
  "scap",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "sysinfo",
+ "tar",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",

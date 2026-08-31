@@ -1,18 +1,30 @@
 <script lang="ts">
-  import { ChevronDown, Inbox, LoaderCircle, RefreshCw } from '@lucide/svelte'
+  import {
+    ChevronDown,
+    CircleHelp,
+    Inbox,
+    LoaderCircle,
+    RefreshCw,
+    ShieldCheck,
+  } from '@lucide/svelte'
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
   import { ScrollArea } from '$lib/components/ui/scroll-area'
   import { Skeleton } from '$lib/components/ui/skeleton'
-  import type { FeedbackRequestSummary } from '$lib/feedback'
   import { requestStatusLabel } from '$lib/feedback'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
-  import type { HostProfile } from '$lib/workbench/types'
+  import {
+    requestListItemKindClass,
+    requestListItemKindLabel,
+    requestListItemStatusClass,
+    type RequestListAgentProfile,
+    type WorkbenchRequestListItem,
+  } from './requestListItem'
 
-  export let requests: FeedbackRequestSummary[] = []
-  export let activeRequestId: string | null = null
-  export let cookingRequestIds: ReadonlySet<string> = new Set()
+  export let requests: WorkbenchRequestListItem[] = []
+  export let activeRequestKey: string | null = null
+  export let cookingRequestKeys: ReadonlySet<string> = new Set()
   export let scopeLabel = ''
   export let searchQuery = ''
   export let loading = false
@@ -20,31 +32,17 @@
   export let loadingMore = false
   export let hasMore = false
   export let todayOnly = false
-  export let resolveHostProfile: (hostId: string) => HostProfile
+  export let resolveAgentProfile: (agentId: string) => RequestListAgentProfile
   export let formatTime: (value: string | null | undefined) => string
   export let onRefresh: () => void = () => {}
   export let onLoadMore: () => void = () => {}
-  export let onOpenRequest: (requestId: string) => void = () => {}
+  export let onOpenRequest: (request: WorkbenchRequestListItem) => void = () => {}
   export let onToggleToday: () => void = () => {}
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
   }
 
-  function statusClass(status: FeedbackRequestSummary['status'] | 'cooking') {
-    switch (status) {
-      case 'cooking':
-        return 'bg-primary/15 text-primary'
-      case 'waiting':
-        return 'bg-warning/15 text-warning-foreground dark:text-warning'
-      case 'in_progress':
-        return 'bg-info/15 text-info'
-      case 'completed':
-        return 'bg-success/15 text-success'
-      case 'cancelled':
-        return 'bg-destructive/12 text-destructive'
-    }
-  }
 </script>
 
 <aside
@@ -116,27 +114,44 @@
           </div>
         {:else}
           <nav class="p-2" aria-label={tr('Requests')}>
-            {#each requests as request (request.request_id)}
-              {@const profile = resolveHostProfile(request.host_id)}
-              {@const displayStatus = cookingRequestIds.has(request.request_id) ? 'cooking' : request.status}
+            {#each requests as request (request.key)}
+              {@const profile = resolveAgentProfile(request.agentId)}
+              {@const displayStatus = cookingRequestKeys.has(request.key) ? 'cooking' : request.status}
               <button
                 type="button"
                 class={[
                   'group relative flex w-full flex-col gap-1.5 border-b px-2.5 py-3 text-left transition-colors last:border-b-0',
-                  activeRequestId === request.request_id
+                  activeRequestKey === request.key
                     ? 'bg-accent text-accent-foreground'
                     : 'hover:bg-muted/75',
                 ]}
-                onclick={() => onOpenRequest(request.request_id)}
+                onclick={() => onOpenRequest(request)}
+                aria-current={activeRequestKey === request.key ? 'page' : undefined}
               >
-                {#if activeRequestId === request.request_id}
+                {#if activeRequestKey === request.key}
                   <span class="absolute inset-y-2 left-0 w-0.5 rounded-full bg-primary"></span>
                 {/if}
                 <div class="flex w-full items-center gap-2">
+                  {#if request.kind !== 'feedback'}
+                    <span
+                      class={[
+                        'grid size-5 shrink-0 place-items-center rounded-md',
+                        requestListItemKindClass(request.kind),
+                      ]}
+                      title={tr(requestListItemKindLabel(request.kind))}
+                    >
+                      {#if request.kind === 'permission'}
+                      <ShieldCheck class="size-3" />
+                      {:else}
+                        <CircleHelp class="size-3" />
+                      {/if}
+                      <span class="sr-only">{tr(requestListItemKindLabel(request.kind))}</span>
+                    </span>
+                  {/if}
                   <strong class="min-w-0 flex-1 truncate text-xs font-medium">{request.title}</strong>
                   <Badge
                     variant="secondary"
-                    class={['h-5 shrink-0 border-0 px-1.5 text-[9px]', statusClass(displayStatus)]}
+                    class={['h-5 shrink-0 border-0 px-1.5 text-[9px]', requestListItemStatusClass(displayStatus)]}
                   >
                     {displayStatus === 'cooking'
                       ? tr('Cooking')
@@ -144,16 +159,16 @@
                   </Badge>
                 </div>
                 <p class="m-0 line-clamp-2 text-[11px] leading-4 text-muted-foreground">
-                  {request.what_happened}
+                  {request.summary}
                 </p>
                 <div class="flex w-full items-center gap-1.5 text-[9px] text-muted-foreground">
                   <span class="grid size-5 shrink-0 place-items-center [&_svg]:size-4">
-                    {@html profile.icon_svg}
+                    {@html profile.iconSvg}
                   </span>
                   <span class="min-w-0 flex-1 truncate">
-                    {request.source_hint ?? request.host_session_id}
+                    {request.sourceHint ?? request.sessionId}
                   </span>
-                  <span class="shrink-0 tabular-nums">{formatTime(request.updated_at)}</span>
+                  <span class="shrink-0 tabular-nums">{formatTime(request.updatedAt)}</span>
                 </div>
               </button>
             {/each}

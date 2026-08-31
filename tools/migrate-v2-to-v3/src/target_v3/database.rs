@@ -102,8 +102,9 @@ pub(crate) async fn write_database(
         session_ids.insert(session.id.clone(), session_id.clone());
         sqlx::query(
             "INSERT INTO sessions_v3 \
-             (session_id, session_kind, title, lifecycle, launch_configuration_json, created_at, updated_at) \
-             VALUES (?1, 'connected', ?2, 'stopped', NULL, ?3, ?4)",
+             (session_id, session_kind_v3001, session_kind, title, lifecycle, \
+              launch_configuration_json, created_at, updated_at) \
+             VALUES (?1, 'connected', 'imported', ?2, 'stopped', NULL, ?3, ?4)",
         )
         .bind(&session_id)
         .bind(nonblank(&session.title, "Migrated Session"))

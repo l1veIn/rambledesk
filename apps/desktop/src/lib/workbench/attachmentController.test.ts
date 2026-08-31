@@ -195,6 +195,7 @@ describe('attachmentController screen capture state', () => {
         kind: 'appendAttachment',
         action: { actionId: 'action-a', actionIndex: 0, title: 'First' },
       }),
+      'ramble',
     )
     cleanup()
   })
@@ -253,7 +254,109 @@ describe('attachmentController screen capture state', () => {
         attachment: inserted.attachments[0],
         action: { actionId: 'action-a', actionIndex: 0, title: 'First' },
       }),
+      'workspace',
     )
+    expect(context.applyWorkspaceMutation).not.toHaveBeenCalled()
+  })
+
+  it('resolves the Artifact port when the operation starts', async () => {
+    const workspace = {
+      request: { request_id: 'request-1' },
+      attachments: [],
+      draft: { saved_revision: 1 },
+    }
+    const inserted = {
+      ...workspace,
+      attachments: [{
+        attachment_id: 'artifact-1',
+        file_name: 'notes.txt',
+        media_type: 'text/plain',
+      }],
+      draft: { saved_revision: 2 },
+    }
+    const { context } = controllerContext()
+    context.getWorkspace = () => workspace as never
+    let managed = false
+    const port = {
+      loadWorkspace: vi.fn(async () => workspace as never),
+      addBytes: vi.fn(async () => inserted as never),
+      addPath: vi.fn(),
+      addScreenCapture: vi.fn(),
+      remove: vi.fn(),
+      reorder: vi.fn(),
+      read: vi.fn(),
+    }
+    const controller = createAttachmentController({
+      ...context,
+      getArtifactPort: () => managed ? port as never : undefined,
+    })
+    managed = true
+
+    await controller.importFiles([{
+      name: 'notes.txt',
+      type: 'text/plain',
+      size: 4,
+      arrayBuffer: async () => new Uint8Array([1, 2, 3, 4]).buffer,
+    } as File])
+
+    expect(port.loadWorkspace).toHaveBeenCalledWith('request-1')
+    expect(port.addBytes).toHaveBeenCalledWith(expect.objectContaining({
+      requestId: 'request-1',
+      fileName: 'notes.txt',
+    }))
+    expect(mocks.invoke).not.toHaveBeenCalledWith('add_feedback_attachment', expect.anything())
+  })
+
+  it('keeps an active Ramble attachment on its owner when the visible request has the same raw id', async () => {
+    const visibleWorkspace = {
+      request: { request_id: 'same-id' },
+      attachments: [],
+      draft: { saved_revision: 9 },
+    }
+    const rambleWorkspace = {
+      request: { request_id: 'same-id' },
+      attachments: [],
+      draft: { saved_revision: 2 },
+    }
+    const inserted = {
+      ...rambleWorkspace,
+      attachments: [{
+        attachment_id: 'artifact-ramble',
+        file_name: 'ramble.txt',
+        media_type: 'text/plain',
+      }],
+      draft: { saved_revision: 3 },
+    }
+    const { context } = controllerContext()
+    context.getWorkspace = () => visibleWorkspace as never
+    const port = {
+      loadWorkspace: vi.fn(async () => rambleWorkspace as never),
+      addBytes: vi.fn(),
+      addPath: vi.fn(async () => inserted as never),
+      addScreenCapture: vi.fn(),
+      remove: vi.fn(),
+      reorder: vi.fn(),
+      read: vi.fn(),
+    }
+    const getArtifactPort = vi.fn(() => port)
+    const getActiveAction = vi.fn(() => null)
+
+    await createAttachmentController({
+      ...context,
+      getRambleRequestId: () => 'same-id',
+      isOperationTargetVisible: (_requestId, target) => target === 'workspace',
+      getArtifactPort: getArtifactPort as never,
+      activeActionFor: getActiveAction,
+    }).importAttachmentPaths(['/tmp/ramble.txt'])
+
+    expect(getArtifactPort).toHaveBeenCalledWith('same-id', 'ramble')
+    expect(getActiveAction).toHaveBeenCalledWith('same-id', 'ramble')
+    expect(context.routeDraftOperation).toHaveBeenCalledWith(
+      'same-id',
+      expect.objectContaining({ kind: 'appendAttachment' }),
+      'ramble',
+    )
+    expect(context.saveDraftNow).not.toHaveBeenCalled()
     expect(context.applyWorkspaceMutation).not.toHaveBeenCalled()
   })
 })

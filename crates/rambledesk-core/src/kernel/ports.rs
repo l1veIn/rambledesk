@@ -14,6 +14,8 @@ pub enum FactStoreError {
     SessionNotFound,
     #[error("operation requires a managed session")]
     SessionNotManaged,
+    #[error("session has pending Feedback or Agent work")]
+    SessionHasPendingActivity,
     #[error("ACP session link was not found for the session")]
     AcpSessionLinkNotFound,
     #[error("feedback request was not found")]

@@ -1,13 +1,14 @@
 use rambledesk_core::kernel::ports::FactStoreError;
 use rambledesk_core::kernel::{
     AgentObservation, DraftCommit, FactMutation, FactMutationOutcome, FeedbackRequestStatus,
-    FeedbackResolution, FeedbackResolutionCommit, StoredDraftMutation,
+    FeedbackResolution, FeedbackResolutionCommit, SessionKind, SessionOrganization,
+    SessionOrganizationCommit, StoredDraftMutation,
 };
 use sqlx::{Row, SqliteConnection};
 
 use super::read::{
     load_draft, load_feedback_request, load_launch_outcome, load_link, load_resolution_outcome,
-    load_steering_outcome, load_submission,
+    load_session, load_steering_outcome, load_submission,
 };
 use super::write_support::{
     insert_delivery, insert_feedback_request, insert_package, insert_session, insert_submission,
@@ -180,10 +181,100 @@ impl SqliteV3Store {
                     FactMutationOutcome::AgentObservation(commit.link)
                 }
             }
+            FactMutation::SessionOrganization(commit) => {
+                apply_session_organization(connection, *commit).await?
+            }
         };
         transaction.commit().await.map_err(storage_error)?;
         Ok(outcome)
     }
+}
+
+async fn apply_session_organization(
+    connection: &mut SqliteConnection,
+    commit: SessionOrganizationCommit,
+) -> Result<FactMutationOutcome, FactStoreError> {
+    let session_id = commit.mutation.session_id().clone();
+    let session = load_session(connection, &session_id)
+        .await?
+        .ok_or(FactStoreError::SessionNotFound)?;
+    if session.kind != SessionKind::Managed {
+        return Err(FactStoreError::SessionNotManaged);
+    }
+    let desired_is_current = match &commit.mutation {
+        SessionOrganization::Rename { title, .. } => session.title == *title,
+        SessionOrganization::SetPinned { pinned, .. } => session.pinned_at.is_some() == *pinned,
+        SessionOrganization::SetArchived { archived, .. } => {
+            session.archived_at.is_some() == *archived
+        }
+    };
+    if desired_is_current {
+        return Ok(FactMutationOutcome::SessionOrganization(session));
+    }
+    if matches!(
+        &commit.mutation,
+        SessionOrganization::SetArchived { archived: true, .. }
+    ) && session_has_pending_activity(connection, session_id.as_str()).await?
+    {
+        return Err(FactStoreError::SessionHasPendingActivity);
+    }
+    match commit.mutation {
+        SessionOrganization::Rename { title, .. } => {
+            sqlx::query("UPDATE sessions_v3 SET title = ?, updated_at = ? WHERE session_id = ?")
+                .bind(title)
+                .bind(&commit.now)
+                .bind(session_id.as_str())
+                .execute(&mut *connection)
+                .await
+                .map_err(storage_error)?;
+        }
+        SessionOrganization::SetPinned { pinned, .. } => {
+            sqlx::query(
+                "UPDATE sessions_v3 SET pinned_at = ?, updated_at = ? WHERE session_id = ?",
+            )
+            .bind(pinned.then_some(commit.now.clone()))
+            .bind(&commit.now)
+            .bind(session_id.as_str())
+            .execute(&mut *connection)
+            .await
+            .map_err(storage_error)?;
+        }
+        SessionOrganization::SetArchived { archived, .. } => {
+            sqlx::query(
+                "UPDATE sessions_v3 SET archived_at = ?, updated_at = ? WHERE session_id = ?",
+            )
+            .bind(archived.then_some(commit.now.clone()))
+            .bind(&commit.now)
+            .bind(session_id.as_str())
+            .execute(&mut *connection)
+            .await
+            .map_err(storage_error)?;
+        }
+    }
+    Ok(FactMutationOutcome::SessionOrganization(
+        load_session(connection, &session_id)
+            .await?
+            .ok_or(FactStoreError::CorruptData)?,
+    ))
+}
+
+async fn session_has_pending_activity(
+    connection: &mut SqliteConnection,
+    session_id: &str,
+) -> Result<bool, FactStoreError> {
+    sqlx::query_scalar(
+        "SELECT EXISTS(
+            SELECT 1 FROM feedback_requests_v3 WHERE session_id = ?1 AND resolution IS NULL
+            UNION ALL
+            SELECT 1 FROM feedback_deliveries_v3 WHERE session_id = ?1 AND state = 'pending'
+            UNION ALL
+            SELECT 1 FROM agent_work_v3 WHERE session_id = ?1 AND state != 'completed'
+        )",
+    )
+    .bind(session_id)
+    .fetch_one(connection)
+    .await
+    .map_err(storage_error)
 }
 
 async fn apply_feedback_resolution(
@@ -577,7 +668,7 @@ async fn require_managed_session(
             .map_err(storage_error)?;
     match kind.as_deref() {
         Some("managed") => Ok(()),
-        Some("connected") => Err(FactStoreError::SessionNotManaged),
+        Some("imported") => Err(FactStoreError::SessionNotManaged),
         Some(_) => Err(FactStoreError::CorruptData),
         None => Err(FactStoreError::SessionNotFound),
     }

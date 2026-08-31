@@ -267,7 +267,8 @@ async fn check_schema(pool: &SqlitePool) -> Result<VerifyCheck, MigrationError> 
             .await
             .map_err(MigrationError::TargetDatabase)?;
     let migration: (i64, i64) = sqlx::query_as(
-        "SELECT COUNT(*), COALESCE(SUM(CASE WHEN version = 3001 AND success = TRUE THEN 1 ELSE 0 END), 0) \
+        "SELECT COUNT(*), COALESCE(SUM(CASE \
+             WHEN version IN (3001, 3002) AND success = TRUE THEN 1 ELSE 0 END), 0) \
          FROM _sqlx_migrations",
     )
     .fetch_one(pool)
@@ -275,8 +276,8 @@ async fn check_schema(pool: &SqlitePool) -> Result<VerifyCheck, MigrationError> 
     .map_err(MigrationError::TargetDatabase)?;
     Ok(VerifyCheck {
         name: "schema_generation".to_owned(),
-        passed: marker == Some((3, 1)) && migration == (1, 1),
-        detail: format!("marker={marker:?}, migration_3001={migration:?}"),
+        passed: marker == Some((3, 2)) && migration == (2, 2),
+        detail: format!("marker={marker:?}, migrations_3001_3002={migration:?}"),
     })
 }
 
@@ -580,7 +581,7 @@ async fn backup_tree_has_write_bits(root: &Path) -> Result<bool, MigrationError>
 async fn check_lifecycle(pool: &SqlitePool) -> Result<VerifyCheck, MigrationError> {
     let violations: i64 = sqlx::query_scalar(
         r#"SELECT (
-            SELECT COUNT(*) FROM sessions_v3 WHERE session_kind != 'connected'
+            SELECT COUNT(*) FROM sessions_v3 WHERE session_kind != 'imported'
          ) + (
             SELECT COUNT(*) FROM agent_work_v3
          ) + (

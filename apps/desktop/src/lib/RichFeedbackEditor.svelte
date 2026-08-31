@@ -108,7 +108,10 @@
     }
   })
 
-  $: if (editor) editor.setEditable(!disabled)
+  // Tiptap emits an update by default when editability changes. Busy/closed
+  // state is not a document edit, so never turn that UI transition into a
+  // dirty Feedback Draft.
+  $: if (editor && editor.isEditable !== !disabled) editor.setEditable(!disabled, false)
   $: if (editor) {
     $locale
     editor.view.dom.setAttribute('aria-label', t($locale, 'Markdown rich-text feedback body'))

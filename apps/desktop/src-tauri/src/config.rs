@@ -17,6 +17,13 @@ pub(super) struct StoragePreferences {
     pub data_storage_path: Option<PathBuf>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct V3StoragePaths {
+    pub root: PathBuf,
+    pub database: PathBuf,
+    pub library: PathBuf,
+}
+
 pub(super) fn configured_port() -> Result<u16, String> {
     match std::env::var("RAMBLEDESK_LOCAL_SERVER_PORT") {
         Ok(value) => value.parse().map_err(|_| {
@@ -50,6 +57,22 @@ pub(super) fn configured_database_path() -> Result<PathBuf, String> {
     configured_path("RAMBLEDESK_DATABASE_FILE", || {
         rambledesk_storage::default_database_path().map_err(|error| error.to_string())
     })
+}
+
+pub(super) fn configured_v3_root() -> Result<PathBuf, String> {
+    configured_path("RAMBLEDESK_V3_ROOT", || {
+        rambledesk_storage::default_app_data_root()
+            .map(|root| root.join("v3"))
+            .map_err(|error| error.to_string())
+    })
+}
+
+pub(super) fn v3_storage_paths(root: PathBuf) -> V3StoragePaths {
+    V3StoragePaths {
+        database: root.join("rambledesk-v3.sqlite3"),
+        library: root.join("library"),
+        root,
+    }
 }
 
 pub(super) fn configured_token_path() -> Result<PathBuf, String> {
@@ -315,6 +338,22 @@ mod tests {
         assert!(
             source.join("draft.txt").exists(),
             "source remains as a restart-safe backup"
+        );
+    }
+
+    #[test]
+    fn v3_storage_layout_matches_the_atomic_migration_target() {
+        let root = PathBuf::from("/tmp/rambledesk-v3-target");
+        let paths = v3_storage_paths(root.clone());
+
+        assert_eq!(paths.root, root);
+        assert_eq!(
+            paths.database,
+            PathBuf::from("/tmp/rambledesk-v3-target/rambledesk-v3.sqlite3")
+        );
+        assert_eq!(
+            paths.library,
+            PathBuf::from("/tmp/rambledesk-v3-target/library")
         );
     }
 

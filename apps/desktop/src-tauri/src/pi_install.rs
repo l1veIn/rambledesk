@@ -244,6 +244,15 @@ fn is_rambledesk_pi_source(
     if current_package_dir.is_some_and(|current| paths_match(&source_path, current)) {
         return true;
     }
+    // The default local registration is self-identifying. Avoid opening its
+    // manifest here: a Finder-launched app may otherwise block on macOS TCC
+    // while probing a package under Desktop/Documents during UI startup.
+    if source_path
+        .file_name()
+        .is_some_and(|name| name == "pi-rambledesk")
+    {
+        return true;
+    }
     let manifest_path = source_path.join("package.json");
     if manifest_path.is_file() {
         return std::fs::read_to_string(manifest_path)
@@ -257,11 +266,7 @@ fn is_rambledesk_pi_source(
             })
             .is_some_and(|name| name == RAMBLEDESK_PI_PACKAGE_NAME);
     }
-    // Keep stale RambleDesk registrations removable after an old local package
-    // directory or app bundle has already disappeared.
-    source_path
-        .file_name()
-        .is_some_and(|name| name == "pi-rambledesk")
+    false
 }
 
 fn absolute_local_source(source: &str, agent_dir: &Path) -> PathBuf {

@@ -4,8 +4,8 @@ mod package;
 mod platform;
 mod sqlite;
 
-/// ACP-first storage Adapters. This Module owns an independent schema and does
-/// not connect through or migrate the frozen v2 store.
+/// v3 storage Adapters. This Module owns an independent schema and does not
+/// implicitly connect through or migrate the Adapter Runtime store.
 pub mod v3;
 
 pub use sqlite::{

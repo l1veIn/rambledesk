@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
   "apps/desktop/src-tauri",
+  "crates/rambledesk-acp-client",
   "crates/rambledesk-cli",
   "crates/rambledesk-core",
   "crates/rambledesk-hosts",
@@ -60,6 +61,7 @@ uuid = { version = "1.24.0", features = ["v7"] }
 windows-sys = { version = "0.61.2", features = ["Win32_Storage_FileSystem"] }
 
 rambledesk-core = { path = "crates/rambledesk-core" }
+rambledesk-acp-client = { path = "crates/rambledesk-acp-client" }
 rambledesk-hosts = { path = "crates/rambledesk-hosts" }
 rambledesk-local-server = { path = "crates/rambledesk-local-server" }
 rambledesk-mcp = { path = "crates/rambledesk-mcp" }

@@ -14,6 +14,7 @@ export type SettingsSection =
   | 'voice'
   | 'post-processing'
   | 'shortcuts'
+  | 'acp-client'
   | 'adapters'
   | 'about'
 

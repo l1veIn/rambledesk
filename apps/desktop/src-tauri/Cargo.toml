@@ -20,7 +20,11 @@ tauri-build.workspace = true
 
 [dependencies]
 dunce = "1"
+flate2 = "1"
+futures.workspace = true
+hex.workspace = true
 rambledesk-core.workspace = true
+rambledesk-acp-client.workspace = true
 rambledesk-hosts.workspace = true
 rambledesk-local-server.workspace = true
 rambledesk-mcp.workspace = true
@@ -50,6 +54,10 @@ arboard = "3.6.1"
 base64 = "0.22"
 image = { version = "0.25.8", default-features = false, features = ["png"] }
 rayon = "1.11"
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "stream"] }
+sha2.workspace = true
+tar = "0.4"
+tempfile.workspace = true
 xcap = { git = "https://github.com/mg-chao/xcap", branch = "custom/master" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -63,5 +71,3 @@ scap = { git = "https://github.com/mg-chao/scap", branch = "20250712_custom" }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_DataExchange", "Win32_UI_WindowsAndMessaging"] }
-[dev-dependencies]
-tempfile.workspace = true

@@ -81,6 +81,8 @@ impl Core {
             title: input.title,
             lifecycle: SessionLifecycle::Ready,
             launch_configuration: Some(input.launch_configuration),
+            pinned_at: None,
+            archived_at: None,
             created_at: now.clone(),
             updated_at: now.clone(),
         };

@@ -297,10 +297,10 @@ async fn submitted_package_with_invalid_utf8_feedback_is_dropped_with_loss() {
 async fn verify_rejects_a_failed_exact_v3_migration() {
     let run = normal_run().await;
     let pool = open_database(&run.target.join("rambledesk-v3.sqlite3"), false).await;
-    sqlx::query("UPDATE _sqlx_migrations SET success = FALSE WHERE version = 3001")
+    sqlx::query("UPDATE _sqlx_migrations SET success = FALSE WHERE version = 3002")
         .execute(&pool)
         .await
-        .expect("mark migration 3001 failed");
+        .expect("mark migration 3002 failed");
     pool.close().await;
 
     assert_failed_schema_check(&run.target).await;
@@ -314,12 +314,12 @@ async fn verify_rejects_a_future_v3_migration() {
     sqlx::query(
         "INSERT INTO _sqlx_migrations \
          (version, description, installed_on, success, checksum, execution_time) \
-         SELECT 3002, 'future', installed_on, TRUE, checksum, execution_time \
-         FROM _sqlx_migrations WHERE version = 3001",
+         SELECT 3003, 'future', installed_on, TRUE, checksum, execution_time \
+         FROM _sqlx_migrations WHERE version = 3002",
     )
     .execute(&pool)
     .await
-    .expect("inject future migration 3002");
+    .expect("inject future migration 3003");
     pool.close().await;
 
     assert_failed_schema_check(&run.target).await;

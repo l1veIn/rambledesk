@@ -1,4 +1,4 @@
-//! ACP-first RambleDesk domain kernel.
+//! RambleDesk v3 domain kernel for Managed ACP Sessions and Imported Sessions.
 //!
 //! This module is intentionally self-contained while the v2 application is
 //! frozen. Its public surface is the durable Core Interface plus the two
@@ -7,6 +7,7 @@
 
 mod core;
 mod core_artifacts;
+mod core_sessions;
 mod core_support;
 mod digest;
 mod error;

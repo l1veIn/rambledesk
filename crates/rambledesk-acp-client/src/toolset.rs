@@ -1,0 +1,562 @@
+use std::{net::Ipv4Addr, sync::Arc};
+
+use axum::{
+    Router,
+    body::Body,
+    extract::State,
+    http::{Request, Response, StatusCode, header::AUTHORIZATION},
+    response::IntoResponse,
+};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+use rambledesk_core::kernel::{
+    AcpSessionLinkId, ArtifactRole, ContextReference, Core, CreateFeedbackRequest, FeedbackAction,
+    GetFeedback, GetFeedbackOutcome, RequestId, SessionId,
+};
+use rmcp::{
+    ErrorData, RoleServer, ServerHandler,
+    handler::server::{router::tool::ToolRouter, wrapper::Parameters},
+    model::{
+        CacheScope, CallToolResult, ContentBlock, Implementation, ListToolsResult,
+        PaginatedRequestParams, ResultType, ServerCapabilities, ServerInfo,
+    },
+    service::RequestContext,
+    tool, tool_handler, tool_router,
+    transport::streamable_http_server::{
+        StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
+    },
+};
+use schemars::JsonSchema;
+use serde::Deserialize;
+use serde_json::{Value, json};
+use sha2::{Digest as _, Sha256};
+use tokio::{net::TcpListener, sync::RwLock, task::JoinHandle};
+use tokio_util::sync::CancellationToken;
+use tower_service::Service;
+
+use crate::{AcpClientError, AcpErrorCode};
+
+const MAX_BODY_BYTES: usize = 96 * 1024 * 1024;
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+struct RequestFeedbackActionInput {
+    id: String,
+    instruction: String,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+struct ContextReferenceInput {
+    label: String,
+    uri: String,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+struct RequestFeedbackToolInput {
+    #[serde(default)]
+    request_id: Option<String>,
+    title: String,
+    instructions: String,
+    actions: Vec<RequestFeedbackActionInput>,
+    #[serde(default)]
+    context_refs: Vec<ContextReferenceInput>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+struct GetFeedbackToolInput {
+    request_id: String,
+}
+
+#[derive(Clone)]
+struct V3SessionToolset {
+    router: ToolRouter<Self>,
+    core: Arc<Core>,
+    session_id: SessionId,
+    source_link_id: Arc<RwLock<Option<AcpSessionLinkId>>>,
+}
+
+impl V3SessionToolset {
+    fn new(
+        core: Arc<Core>,
+        session_id: SessionId,
+        source_link_id: Arc<RwLock<Option<AcpSessionLinkId>>>,
+    ) -> Self {
+        Self {
+            router: Self::tool_router(),
+            core,
+            session_id,
+            source_link_id,
+        }
+    }
+}
+
+#[tool_router]
+impl V3SessionToolset {
+    #[tool(
+        name = "request_feedback",
+        description = "Create a durable RambleDesk Feedback Request and return immediately. Use this when the task needs real human testing, judgment, attachments, or a response that may arrive later. After this tool returns, end the current turn. Do not poll or wait in this tool call; RambleDesk will resume this Session later and ask you to call get_feedback with the same request_id."
+    )]
+    async fn request_feedback(
+        &self,
+        Parameters(input): Parameters<RequestFeedbackToolInput>,
+    ) -> CallToolResult {
+        let request = CreateFeedbackRequest {
+            request_id: input.request_id.map(RequestId::new),
+            session_id: self.session_id.clone(),
+            source_link_id: self.source_link_id.read().await.clone(),
+            title: input.title,
+            instructions: input.instructions,
+            actions: input
+                .actions
+                .into_iter()
+                .map(|action| FeedbackAction {
+                    id: action.id,
+                    instruction: action.instruction,
+                })
+                .collect(),
+            context_refs: input
+                .context_refs
+                .into_iter()
+                .map(|reference| ContextReference {
+                    label: reference.label,
+                    uri: reference.uri,
+                })
+                .collect(),
+            artifacts: Vec::new(),
+        };
+        match self.core.request_feedback(request).await {
+            Ok(snapshot) => tool_success(
+                json!({
+                    "request_id": snapshot.request_id,
+                    "session_id": snapshot.session_id,
+                    "status": "waiting",
+                    "created_at": snapshot.created_at,
+                    "instruction": "End the current turn. Feedback may arrive in a future Agent Run."
+                }),
+                format!(
+                    "Feedback request {} is waiting. End this turn; RambleDesk will resume the Session when the human responds.",
+                    snapshot.request_id
+                ),
+            ),
+            Err(error) => tool_error(error.code().as_str(), error.message(), error.retryable()),
+        }
+    }
+
+    #[tool(
+        name = "get_feedback",
+        description = "Read one durable Feedback Request by request_id. Call this when RambleDesk resumes the Session after feedback. The result is location-independent and never returns a local package path. De-duplicate terminal results by delivery_id."
+    )]
+    async fn get_feedback(
+        &self,
+        Parameters(input): Parameters<GetFeedbackToolInput>,
+    ) -> CallToolResult {
+        let result = self
+            .core
+            .get_feedback(GetFeedback {
+                request_id: RequestId::new(input.request_id),
+            })
+            .await;
+        let outcome = match result {
+            Ok(outcome) => outcome,
+            Err(error) => {
+                return tool_error(error.code().as_str(), error.message(), error.retryable());
+            }
+        };
+        match location_independent_delivery(&self.session_id, outcome) {
+            Ok(value) => tool_success(value.clone(), delivery_summary(&value)),
+            Err(error) => tool_error(
+                format!("{:?}", error.code).as_str(),
+                &error.message,
+                error.retryable,
+            ),
+        }
+    }
+}
+
+#[tool_handler(router = self.router)]
+impl ServerHandler for V3SessionToolset {
+    async fn list_tools(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListToolsResult, ErrorData> {
+        Ok(ListToolsResult {
+            result_type: Some(ResultType::COMPLETE),
+            tools: self.router.list_all(),
+            meta: None,
+            next_cursor: None,
+            ttl_ms: Some(0),
+            cache_scope: Some(CacheScope::Private),
+        })
+    }
+
+    fn get_info(&self) -> ServerInfo {
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+            .with_server_info(Implementation::new(
+                "rambledesk-session-toolset",
+                env!("CARGO_PKG_VERSION"),
+            ))
+            .with_instructions(
+                "request_feedback is a short durable write: call it, keep its request_id, and end the turn. RambleDesk may resume this Session much later. When resumed, call get_feedback(request_id); terminal responses carry a stable delivery_id and location-independent content.",
+            )
+    }
+}
+
+fn location_independent_delivery(
+    bound_session_id: &SessionId,
+    outcome: GetFeedbackOutcome,
+) -> Result<Value, AcpClientError> {
+    match outcome {
+        GetFeedbackOutcome::Waiting {
+            request_id,
+            session_id,
+        } => {
+            ensure_bound_session(bound_session_id, &session_id)?;
+            Ok(json!({
+                "request_id": request_id,
+                "session_id": session_id,
+                "status": "waiting"
+            }))
+        }
+        GetFeedbackOutcome::Terminal(envelope) => {
+            ensure_bound_session(bound_session_id, &envelope.session_id)?;
+            let mut feedback_markdown = None;
+            let mut uncooked_markdown = None;
+            let mut artifacts = Vec::new();
+            for artifact in envelope.artifacts {
+                match artifact.role {
+                    ArtifactRole::Feedback => {
+                        feedback_markdown = String::from_utf8(artifact.contents).ok();
+                    }
+                    ArtifactRole::Uncooked => {
+                        uncooked_markdown = String::from_utf8(artifact.contents).ok();
+                    }
+                    _ => artifacts.push(json!({
+                        "artifact_id": artifact.artifact_id,
+                        "role": artifact.role,
+                        "display_name": artifact.display_name,
+                        "media_type": artifact.media_type,
+                        "size_bytes": artifact.size_bytes,
+                        "sha256": artifact.sha256,
+                        "locator": {
+                            "kind": "inline_base64",
+                            "value": BASE64.encode(artifact.contents)
+                        }
+                    })),
+                }
+            }
+            Ok(json!({
+                "delivery_id": envelope.delivery_id,
+                "request_id": envelope.request_id,
+                "session_id": envelope.session_id,
+                "resolution": envelope.resolution,
+                "package": envelope.package_id.map(|package_id| json!({
+                    "package_id": package_id,
+                    "content_digest": envelope.package_content_digest,
+                    "manifest_digest": envelope.package_manifest_digest,
+                    "feedback_markdown": feedback_markdown,
+                    "uncooked_markdown": uncooked_markdown,
+                    "artifacts": artifacts
+                })),
+                "reason": envelope.cancel_reason
+            }))
+        }
+    }
+}
+
+fn ensure_bound_session(expected: &SessionId, actual: &SessionId) -> Result<(), AcpClientError> {
+    if expected == actual {
+        Ok(())
+    } else {
+        Err(AcpClientError::new(
+            AcpErrorCode::InvalidArgument,
+            "Feedback Request does not belong to this managed Session",
+            false,
+        ))
+    }
+}
+
+fn delivery_summary(value: &Value) -> String {
+    if value.get("status").and_then(Value::as_str) == Some("waiting") {
+        return "Feedback is still waiting; end the turn and do not poll.".to_string();
+    }
+    match value.get("resolution").and_then(Value::as_str) {
+        Some("submitted") => format!(
+            "Feedback delivery {} is submitted. Consume the package and de-duplicate by delivery_id.",
+            value
+                .get("delivery_id")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown")
+        ),
+        Some("cancelled") => "The human cancelled this Feedback Request.".to_string(),
+        _ => "Feedback delivery is available.".to_string(),
+    }
+}
+
+fn tool_success(structured: Value, summary: String) -> CallToolResult {
+    let mut result = CallToolResult::structured(structured);
+    result.content = vec![ContentBlock::text(summary)];
+    result
+}
+
+fn tool_error(code: &str, message: &str, retryable: bool) -> CallToolResult {
+    let mut result = CallToolResult::structured_error(json!({
+        "code": code,
+        "message": message,
+        "retryable": retryable
+    }));
+    result.content = vec![ContentBlock::text(format!("RambleDesk {code}: {message}"))];
+    result
+}
+
+#[derive(Clone)]
+struct HttpState {
+    service: StreamableHttpService<V3SessionToolset, LocalSessionManager>,
+    bearer: Arc<str>,
+}
+
+async fn handle_http(State(mut state): State<HttpState>, request: Request<Body>) -> Response<Body> {
+    let authorized = request
+        .headers()
+        .get(AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value == format!("Bearer {}", state.bearer));
+    if !authorized {
+        return (StatusCode::UNAUTHORIZED, "Unauthorized").into_response();
+    }
+    match state.service.call(request).await {
+        Ok(response) => response.into_response(),
+        Err(infallible) => match infallible {},
+    }
+}
+
+pub(crate) struct SessionToolsetHandle {
+    pub(crate) mcp_server: Value,
+    pub(crate) digest: String,
+    source_link_id: Arc<RwLock<Option<AcpSessionLinkId>>>,
+    cancellation: CancellationToken,
+    task: JoinHandle<Result<(), std::io::Error>>,
+}
+
+impl SessionToolsetHandle {
+    pub(crate) async fn start(
+        core: Arc<Core>,
+        session_id: SessionId,
+    ) -> Result<Self, AcpClientError> {
+        let cancellation = CancellationToken::new();
+        let source_link_id = Arc::new(RwLock::new(None));
+        let toolset = V3SessionToolset::new(core, session_id, source_link_id.clone());
+        let transport = StreamableHttpServerConfig::default()
+            .with_legacy_session_mode(false)
+            .with_max_request_body_bytes(MAX_BODY_BYTES)
+            .with_cancellation_token(cancellation.child_token());
+        let service =
+            StreamableHttpService::new(move || Ok(toolset.clone()), Default::default(), transport);
+        let bearer = uuid::Uuid::now_v7().to_string();
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
+            .await
+            .map_err(|error| {
+                AcpClientError::new(
+                    AcpErrorCode::AgentLaunchFailed,
+                    format!("could not bind Session Toolset: {error}"),
+                    true,
+                )
+            })?;
+        let address = listener.local_addr().map_err(|error| {
+            AcpClientError::new(
+                AcpErrorCode::AgentLaunchFailed,
+                format!("could not inspect Session Toolset listener: {error}"),
+                true,
+            )
+        })?;
+        let endpoint = format!("http://{address}/mcp");
+        let router = Router::new().fallback(handle_http).with_state(HttpState {
+            service,
+            bearer: Arc::from(bearer.as_str()),
+        });
+        let task_cancel = cancellation.clone();
+        let task = tokio::spawn(async move {
+            axum::serve(listener, router)
+                .with_graceful_shutdown(async move { task_cancel.cancelled_owned().await })
+                .await
+        });
+        Ok(Self {
+            mcp_server: json!({
+                "type": "http",
+                "name": "rambledesk",
+                "url": endpoint,
+                "headers": [{"name": "Authorization", "value": format!("Bearer {bearer}")}]
+            }),
+            digest: toolset_digest(),
+            source_link_id,
+            cancellation,
+            task,
+        })
+    }
+
+    pub(crate) async fn set_source_link(&self, link_id: AcpSessionLinkId) {
+        *self.source_link_id.write().await = Some(link_id);
+    }
+
+    pub(crate) async fn shutdown(self) -> Result<(), AcpClientError> {
+        self.cancellation.cancel();
+        let result = self.task.await.map_err(|error| {
+            AcpClientError::new(
+                AcpErrorCode::ShutdownFailed,
+                format!("Session Toolset task failed: {error}"),
+                false,
+            )
+        })?;
+        result.map_err(|error| {
+            AcpClientError::new(
+                AcpErrorCode::ShutdownFailed,
+                format!("Session Toolset server failed: {error}"),
+                false,
+            )
+        })?;
+        Ok(())
+    }
+}
+
+pub(crate) fn toolset_digest() -> String {
+    let contract = br#"{"schema_version":1,"tools":["get_feedback","request_feedback"],"transport_contract":"location_independent"}"#;
+    format!("sha256:{}", hex::encode(Sha256::digest(contract)))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use rambledesk_core::kernel::{
+        AccessMode, AcpSessionLinkObservation, AgentObservation, ArtifactInput,
+        LaunchConfiguration, LaunchSubmission, RambleContent, SubmissionId, WorkbenchQuery,
+    };
+    use rambledesk_storage::v3::{SqliteV3Store, artifact::LocalArtifactStore};
+    use reqwest::header::{ACCEPT, AUTHORIZATION};
+    use tempfile::TempDir;
+
+    use super::*;
+
+    #[test]
+    fn toolset_digest_is_stable_and_canonical() {
+        let digest = toolset_digest();
+        assert_eq!(digest.len(), 71);
+        assert!(digest.starts_with("sha256:"));
+        assert_eq!(digest, toolset_digest());
+    }
+
+    #[tokio::test]
+    async fn loopback_toolset_calls_only_v3_core_and_returns_short_feedback_handle() {
+        let temp = TempDir::new().expect("tempdir");
+        let store = Arc::new(
+            SqliteV3Store::connect(&temp.path().join("v3.sqlite3"))
+                .await
+                .expect("v3 store"),
+        );
+        let artifacts = Arc::new(
+            LocalArtifactStore::open(temp.path().join("library"))
+                .await
+                .expect("artifacts"),
+        );
+        let core = Arc::new(Core::new(store.clone(), artifacts));
+        let launch = core
+            .launch(LaunchSubmission {
+                submission_id: SubmissionId::new("toolset-launch"),
+                submission_digest_assertion: None,
+                title: "Toolset Session".to_string(),
+                launch_configuration: LaunchConfiguration {
+                    agent_profile_id: "fake".to_string(),
+                    launch_profile_id: "fake".to_string(),
+                    workspace_reference: temp.path().to_string_lossy().to_string(),
+                    model: None,
+                    reasoning_effort: None,
+                    access_mode: AccessMode::WorkspaceWrite,
+                    agent_config_json: "{}".to_string(),
+                },
+                ramble: RambleContent {
+                    document_json: "{}".to_string(),
+                    body_markdown: "Launch".to_string(),
+                    artifacts: Vec::<ArtifactInput>::new(),
+                },
+            })
+            .await
+            .expect("launch");
+        let link = core
+            .record_agent_observation(AgentObservation::AcpSessionLinked(
+                AcpSessionLinkObservation {
+                    session_id: launch.session_id.clone(),
+                    agent_profile_id: "fake".to_string(),
+                    launch_profile_id: "fake".to_string(),
+                    acp_session_id: "agent-session".to_string(),
+                    capabilities_json: "{}".to_string(),
+                    session_toolset_digest: toolset_digest(),
+                },
+            ))
+            .await
+            .expect("link");
+        let handle = SessionToolsetHandle::start(core.clone(), launch.session_id.clone())
+            .await
+            .expect("toolset");
+        handle.set_source_link(link.link_id).await;
+        let endpoint = handle.mcp_server["url"].as_str().unwrap().to_string();
+        let authorization = handle.mcp_server["headers"][0]["value"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let client = reqwest::Client::new();
+        let initialize = client
+            .post(&endpoint)
+            .header(AUTHORIZATION, &authorization)
+            .header(ACCEPT, "application/json, text/event-stream")
+            .json(&json!({
+                "jsonrpc":"2.0",
+                "id":1,
+                "method":"initialize",
+                "params":{
+                    "protocolVersion":"2025-06-18",
+                    "capabilities":{},
+                    "clientInfo":{"name":"fake-agent","version":"1"}
+                }
+            }))
+            .send()
+            .await
+            .expect("initialize response");
+        assert_eq!(initialize.status(), reqwest::StatusCode::OK);
+        let call = client
+            .post(&endpoint)
+            .header(AUTHORIZATION, &authorization)
+            .header(ACCEPT, "application/json, text/event-stream")
+            .json(&json!({
+                "jsonrpc":"2.0",
+                "id":2,
+                "method":"tools/call",
+                "params":{
+                    "name":"request_feedback",
+                    "arguments":{
+                        "request_id":"toolset-request-1",
+                        "title":"Review UI",
+                        "instructions":"Judge the full launch experience.",
+                        "actions":[{"id":"launch","instruction":"Launch a Session."}]
+                    }
+                }
+            }))
+            .send()
+            .await
+            .expect("tool call response");
+        assert_eq!(call.status(), reqwest::StatusCode::OK);
+        let body = call.text().await.expect("tool body");
+        assert!(body.contains("toolset-request-1"), "{body}");
+        assert!(body.contains("End this turn"), "{body}");
+        let workbench = core
+            .read_workbench(WorkbenchQuery {
+                session_id: Some(launch.session_id.clone()),
+            })
+            .await
+            .expect("workbench");
+        assert_eq!(workbench.waiting_feedback.len(), 1);
+        assert_eq!(
+            workbench.waiting_feedback[0].request_id.as_str(),
+            "toolset-request-1"
+        );
+        handle.shutdown().await.expect("toolset shutdown");
+        store.close().await;
+    }
+}

@@ -16,6 +16,8 @@ RambleDesk Windows MVP 使用下列独立第三方组件。这里记录来源与
 | xcap 0.9.7 | 鼠标所在显示器的本地区域截图 | Apache-2.0 | <https://github.com/nashaofu/xcap> |
 | tauri-plugin-global-shortcut 2.3.2 | Windows 全局截图快捷键 | Apache-2.0 OR MIT | <https://github.com/tauri-apps/plugins-workspace> |
 | image 0.25 | 内存截图裁剪和 PNG 编码 | Apache-2.0 OR MIT | <https://github.com/image-rs/image> |
+| Codeg Agent icon geometry | OpenClaw、Hermes、Kimi Code 的离线品牌标识参考 | Apache-2.0 | <https://github.com/xintaofei/codeg/blob/769610c626f1fc4b18c11d3e289326acf097b99f/src/components/agent-icon.tsx> |
+| Agent Client Protocol Registry icons | Antigravity、Cline、CodeBuddy、Qoder 的离线品牌标识 | Apache-2.0 | <https://github.com/agentclientprotocol/registry/tree/979f61794e3252907384d1cdfea7036d1f9375d9> |
 
 模型不提交到 RambleDesk Git 仓库。开发机按 `crates/rambledesk-speech/models/`
 中的模型清单获取并校验。

@@ -1,3 +1,4 @@
+mod acp_workbench;
 mod clipboard_capture;
 mod diagnostics;
 mod dsh_install;
@@ -25,6 +26,8 @@ use tauri::{
     webview::Color,
 };
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
+
+use acp_workbench::*;
 
 const TRAY_ID: &str = "rambledesk-main";
 const RAMBLE_CONSOLE_LABEL: &str = "ramble-console";
@@ -131,6 +134,9 @@ pub fn run() {
                 let token = AccessToken::load_or_create(&configured_token_path()?)?;
                 let database_path = configured_database_path()?;
                 let library_root = configured_library_path()?;
+                let v3_paths = v3_storage_paths(configured_v3_root()?);
+                let acp_workbench =
+                    tauri::async_runtime::block_on(AcpWorkbenchState::open(v3_paths))?;
                 let store = tauri::async_runtime::block_on(
                     rambledesk_storage::SqliteFeedbackStore::connect_with_library(
                         &database_path,
@@ -196,6 +202,7 @@ pub fn run() {
                     library_root: RwLock::new(library_root),
                     speech_session: tokio::sync::Mutex::new(None),
                 });
+                app.manage(acp_workbench);
                 app.manage(screen_capture::ScreenCaptureState::default());
                 app.manage(clipboard_capture::ClipboardCaptureState::default());
                 if let Err(error) = screen_capture::prepare_screen_capture_overlay(app.handle()) {
@@ -235,6 +242,29 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            read_acp_workbench,
+            rename_acp_session_v3,
+            set_acp_session_pinned_v3,
+            archive_acp_session_v3,
+            unarchive_acp_session_v3,
+            read_archived_acp_sessions_v3,
+            read_feedback_v3,
+            read_ramble_draft_v3,
+            connect_acp_client,
+            preflight_acp_launch,
+            launch_ramble_v3,
+            save_ramble_draft_v3,
+            add_feedback_draft_artifact_v3,
+            remove_feedback_draft_artifact_v3,
+            reorder_feedback_draft_artifacts_v3,
+            read_feedback_draft_artifact_v3,
+            import_feedback_draft_artifact_path_v3,
+            add_completed_screen_capture_v3,
+            add_completed_clipboard_capture_v3,
+            submit_feedback_v3,
+            cancel_feedback_v3,
+            answer_acp_permission,
+            answer_acp_question,
             show_ramble_console,
             hide_ramble_console,
             get_generic_mcp_configuration,
@@ -339,6 +369,11 @@ pub fn run() {
             && let Some(state) = app_handle.try_state::<WorkbenchState>()
         {
             state.local_server.cancel();
+        }
+        if matches!(event, RunEvent::Exit | RunEvent::ExitRequested { .. })
+            && let Some(state) = app_handle.try_state::<AcpWorkbenchState>()
+        {
+            tauri::async_runtime::block_on(state.shutdown());
         }
     });
 }

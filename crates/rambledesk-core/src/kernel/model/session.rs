@@ -14,7 +14,7 @@ pub enum AccessMode {
 #[serde(rename_all = "snake_case")]
 pub enum SessionKind {
     Managed,
-    Connected,
+    Imported,
 }
 
 /// Durable lifecycle only. Running and waiting-for-feedback are projections
@@ -47,8 +47,36 @@ pub struct SessionRecord {
     pub title: String,
     pub lifecycle: SessionLifecycle,
     pub launch_configuration: Option<LaunchConfiguration>,
+    pub pinned_at: Option<String>,
+    pub archived_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SessionOrganization {
+    Rename {
+        session_id: SessionId,
+        title: String,
+    },
+    SetPinned {
+        session_id: SessionId,
+        pinned: bool,
+    },
+    SetArchived {
+        session_id: SessionId,
+        archived: bool,
+    },
+}
+
+impl SessionOrganization {
+    pub fn session_id(&self) -> &SessionId {
+        match self {
+            Self::Rename { session_id, .. }
+            | Self::SetPinned { session_id, .. }
+            | Self::SetArchived { session_id, .. } => session_id,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

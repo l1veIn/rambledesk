@@ -1,0 +1,36 @@
+[package]
+name = "rambledesk-acp-client"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+axum.workspace = true
+base64.workspace = true
+futures.workspace = true
+hex.workspace = true
+rambledesk-core.workspace = true
+rmcp.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tower-service.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1", features = ["process"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = ["Win32_System_Threading"] }
+
+[dev-dependencies]
+rambledesk-storage.workspace = true
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
+tempfile.workspace = true

@@ -1,7 +1,7 @@
 # RambleDesk 适配器验证矩阵
 
-> 状态：v2 Generic MCP 与 Pi 的历史验证记录，已冻结，不属于 v3 首发合同。
-> v3 是否重建 Compatibility Ingress 以 [V3_IMPLEMENTATION_PLAN.md](V3_IMPLEMENTATION_PLAN.md) 为准。
+> 状态：Adapter Runtime 的维护冻结验证矩阵；这些路径继续服务 Adapter Session，但不进入 v3 Core。
+> Desktop 共存与命令 owner 边界以 [TERMINOLOGY.md](TERMINOLOGY.md) 和 [ADR 005](adr/005-unified-workbench-coexistence.md) 为准。
 
 ## 接入路径
 

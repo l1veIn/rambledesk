@@ -43,9 +43,12 @@
   import { createSingleFlight } from '../singleFlight'
   import { resolvedRamblePhase } from './rambleSessionState'
   import type { RamblePhase, VoicePhase } from './types'
+  import type { SessionOrigin } from '../components/navigation/sessionRailItem'
 
   export let isTauri = false
   export let workspace: FeedbackWorkspaceView | null = null
+  export let requestOrigin: SessionOrigin | null = null
+  export let rambleBelongsToWorkspace = true
   export let interactionLocked = false
   export let attachmentBusy = false
   export let screenCaptureBusy = false
@@ -67,8 +70,19 @@
   export let onRefreshAttachmentPreviews: (next: FeedbackWorkspaceView) => Promise<void> = async () => {}
   export let onStartScreenCapture: () => Promise<void> = async () => {}
   export let onImportAttachmentPaths: (paths: string[]) => Promise<void> = async () => {}
+  export let onCaptureRambleOwner: () => void = () => {}
   export let onRouteDraftOperation: (requestId: string, operation: DraftOperation) => Promise<void> = async () => {}
   export let getActiveAction: (requestId: string) => ActiveAction = () => null
+  export let artifactPort: {
+    loadWorkspace: (requestId: string) => Promise<FeedbackWorkspaceView>
+    addClipboardCapture: (input: {
+      requestId: string
+      captureId: string
+      rambleContextId: string
+      fileName: string
+      expectedRevision: number
+    }) => Promise<FeedbackWorkspaceView>
+  } | null = null
 
   let voiceRequestId = ''
   let voiceSessionId = ''
@@ -243,6 +257,8 @@
     if (
       interactionLocked ||
       !workspace ||
+      attachmentBusy ||
+      screenCaptureBusy ||
       rambleBusy ||
       rambleEngaged ||
       workspace.request.status === 'completed' ||
@@ -250,6 +266,8 @@
     ) {
       return
     }
+    onCaptureRambleOwner()
+    await tick()
     rambleStartedOnce = true
     rambleRequestId = workspace.request.request_id
     rambleRequestTitle = workspace.request.title
@@ -311,7 +329,7 @@
   }
 
   async function startVoiceRamble(): Promise<boolean> {
-    if (!rambleRequestId || voiceActive) return false
+    if (!rambleRequestId || !requestOrigin || voiceActive) return false
     voicePhase = 'starting'
     voiceRequestId = rambleRequestId
     voiceSessionId = ''
@@ -325,6 +343,7 @@
       const session = await invoke<VoiceRambleSessionView>('start_voice_ramble', {
         input: {
           request_id: rambleRequestId,
+          origin: requestOrigin,
           input_device: $speechInputDevice || null,
           model_id: $speechModelId,
           vad_threshold: $speechVadThreshold,
@@ -435,23 +454,28 @@
         await new Promise((resolve) => setTimeout(resolve, 50))
       }
       if (attachmentBusy) throw new Error(t($locale, 'The attachment channel is busy. Try importing the image again shortly.'))
-      const visibleTarget = workspace?.request.request_id === requestId
+      const visibleTarget = rambleBelongsToWorkspace && workspace?.request.request_id === requestId
       if (visibleTarget && !(await onSaveDraftNow())) {
         throw new Error(t($locale, 'The current draft could not be saved.'))
       }
       const target = visibleTarget
         ? workspace
-        : await invoke<FeedbackWorkspaceView>('get_feedback_workspace', { requestId })
+        : artifactPort
+          ? await artifactPort.loadWorkspace(requestId)
+          : await invoke<FeedbackWorkspaceView>('get_feedback_workspace', { requestId })
       if (!target) return
 
       attachmentBusy = true
-      const next = await invoke<FeedbackWorkspaceView>('add_completed_clipboard_capture', {
+      const captureInput = {
         requestId,
         captureId: event.capture_id,
         rambleContextId: event.ramble_context_id,
         fileName: event.file_name,
         expectedRevision: target.draft.saved_revision,
-      })
+      }
+      const next = artifactPort
+        ? await artifactPort.addClipboardCapture(captureInput)
+        : await invoke<FeedbackWorkspaceView>('add_completed_clipboard_capture', captureInput)
       const attachment = next.attachments.find(
         (item) => !target.attachments.some(
           (existing) => existing.attachment_id === item.attachment_id,

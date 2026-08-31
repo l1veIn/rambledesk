@@ -21,14 +21,18 @@ pub(super) async fn insert_session(
         .transpose()?;
     sqlx::query(
         "INSERT INTO sessions_v3 (
-            session_id, session_kind, title, lifecycle, launch_configuration_json,
-            created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            session_id, session_kind_v3001, session_kind, title, lifecycle,
+            launch_configuration_json, pinned_at, archived_at, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(session.session_id.as_str())
     .bind(match session.kind {
         SessionKind::Managed => "managed",
-        SessionKind::Connected => "connected",
+        SessionKind::Imported => "connected",
+    })
+    .bind(match session.kind {
+        SessionKind::Managed => "managed",
+        SessionKind::Imported => "imported",
     })
     .bind(&session.title)
     .bind(match session.lifecycle {
@@ -37,6 +41,8 @@ pub(super) async fn insert_session(
         SessionLifecycle::Failed => "failed",
     })
     .bind(launch_json)
+    .bind(&session.pinned_at)
+    .bind(&session.archived_at)
     .bind(&session.created_at)
     .bind(&session.updated_at)
     .execute(connection)

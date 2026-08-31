@@ -19,7 +19,7 @@ pub(super) fn launch_input(id: &str, body: &str) -> LaunchSubmission {
     let mut input = LaunchSubmission {
         submission_id: SubmissionId::from(id),
         submission_digest_assertion: None,
-        title: "ACP-first session".to_owned(),
+        title: "Managed ACP session".to_owned(),
         launch_configuration: LaunchConfiguration {
             agent_profile_id: "codex".to_owned(),
             launch_profile_id: "codex-acp-local".to_owned(),
@@ -40,7 +40,7 @@ pub(super) fn launch_input(id: &str, body: &str) -> LaunchSubmission {
 }
 
 pub(super) async fn launch_session(core: &Core) -> LaunchOutcome {
-    core.launch(launch_input("launch-1", "Build the ACP-first path."))
+    core.launch(launch_input("launch-1", "Build the Managed ACP path."))
         .await
         .expect("launch")
 }

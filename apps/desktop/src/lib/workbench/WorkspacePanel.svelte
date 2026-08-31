@@ -92,6 +92,8 @@
   export let onSubmit: () => void = () => {}
   export let onCancel: () => void = () => {}
   export let onApprove: () => void = () => {}
+  export let readArtifactBytes: ((requestId: string, artifactId: string) => Promise<ArrayBuffer>) | null = null
+  export let allowLocalArtifactActions = true
 
   const TASK_BRIEF_DEFAULT_SIZE = 30
   const TASK_BRIEF_MIN_SIZE = 8
@@ -320,6 +322,8 @@
       requestId={workspace.request.request_id}
       attachment={previewAttachment}
       readKind="workspace"
+      readBytes={readArtifactBytes}
+      allowLocalActions={allowLocalArtifactActions}
     />
 
     <TaskBriefPreview

@@ -1,24 +1,16 @@
-use std::{
-    path::PathBuf,
-    sync::{Arc, atomic::Ordering},
-};
+use std::{path::PathBuf, sync::atomic::Ordering};
 
 use rambledesk_core::{
     AddAttachmentInput, ApplicationError, ApproveFeedbackInput, CancelFeedbackInput,
     DeleteFeedbackRequestInput, DraftView, FeedbackPackageContent, FeedbackRequestSummary,
-    FeedbackRequestView, FeedbackStatus, FeedbackWorkspaceView, GetFeedbackInput, HostSessionInput,
+    FeedbackRequestView, FeedbackWorkspaceView, GetFeedbackInput, HostSessionInput,
     HostSessionSummary, ListFeedbackRequestsInput, ListFeedbackRequestsOutput,
     ListHostSessionsInput, MAX_ATTACHMENT_BYTES, RemoveAttachmentInput, RenameHostSessionInput,
     ReorderAttachmentsInput, SaveDraftInput, SetHostPinnedInput, SetHostSessionPinnedInput,
     SubmitFeedbackInput,
 };
 use rambledesk_hosts::{HostProfile, known_host_profiles};
-use rambledesk_speech::{
-    SpeechEvent, SpeechEventSink, SpeechProvider, SpeechSession, SpeechSessionConfig,
-    ensure_vad_model, list_input_devices,
-    model::{SpeechModelInfo, delete_model, download_model, list_models, model_dir, model_info},
-};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tauri::{Emitter, Manager, ipc::Response};
 
 use rambledesk_mcp::{McpHostView, McpInstallResult, detect_hosts, install_hosts};
@@ -29,33 +21,15 @@ use super::{
     pending_tray_icon, pi_install, save_library_path, screen_capture::ScreenCaptureState,
 };
 
-#[derive(Debug, Deserialize)]
-pub(super) struct StartVoiceRambleInput {
-    request_id: String,
-    input_device: Option<String>,
-    model_id: String,
-    vad_threshold: f32,
-    vad_silence_ms: u32,
-    hotwords: Vec<String>,
-}
-
-#[derive(Debug, Serialize)]
-pub(super) struct VoiceRambleSessionView {
-    voice_session_id: String,
-    provider: String,
-    model_path: String,
-}
+mod voice;
+pub(super) use voice::{
+    delete_speech_model, download_speech_model, list_speech_input_devices, list_speech_models,
+    start_voice_ramble, stop_voice_ramble,
+};
 
 #[derive(Debug, Clone, Serialize)]
 pub(super) struct StorageMigrationProgress {
     copied: u64,
-    total: u64,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub(super) struct SpeechModelProgress {
-    model_id: String,
-    downloaded: u64,
     total: u64,
 }
 
@@ -217,7 +191,7 @@ pub(super) async fn install_pi_package(
 }
 
 #[tauri::command]
-pub(super) fn get_pi_package_status(
+pub(super) async fn get_pi_package_status(
     app: tauri::AppHandle,
     checkout_root: Option<String>,
 ) -> Result<pi_install::PiPackageStatus, String> {
@@ -228,7 +202,11 @@ pub(super) fn get_pi_package_status(
     let resource_dir = app.path().resource_dir().ok();
     let package_dir =
         pi_install::resolve_package_dir(checkout_root.as_deref(), resource_dir.as_deref());
-    pi_install::package_status(&home, package_dir.as_deref())
+    tauri::async_runtime::spawn_blocking(move || {
+        pi_install::package_status(&home, package_dir.as_deref())
+    })
+    .await
+    .map_err(|error| format!("Pi package status task failed: {error}"))?
 }
 
 #[tauri::command]
@@ -646,146 +624,4 @@ pub(super) async fn cancel_feedback_request(
     )
     .await;
     Ok(result)
-}
-
-#[tauri::command]
-pub(super) fn list_speech_models(state: tauri::State<'_, WorkbenchState>) -> Vec<SpeechModelInfo> {
-    list_models(&state.library_root())
-}
-
-#[tauri::command]
-pub(super) async fn download_speech_model(
-    model_id: String,
-    app: tauri::AppHandle,
-    state: tauri::State<'_, WorkbenchState>,
-) -> Result<SpeechModelInfo, String> {
-    let root = state.library_root();
-    let event_app = app.clone();
-    let progress_model_id = model_id.clone();
-    let download_model_id = model_id.clone();
-    tokio::task::spawn_blocking(move || {
-        download_model(&root, &download_model_id, &|downloaded, total| {
-            let _ = event_app.emit(
-                "speech-model-progress",
-                SpeechModelProgress {
-                    model_id: progress_model_id.clone(),
-                    downloaded,
-                    total,
-                },
-            );
-        })
-    })
-    .await
-    .map_err(|error| format!("模型下载任务异常退出：{error}"))??;
-    model_info(&state.library_root(), &model_id)
-}
-
-#[tauri::command]
-pub(super) async fn delete_speech_model(
-    model_id: String,
-    state: tauri::State<'_, WorkbenchState>,
-) -> Result<SpeechModelInfo, String> {
-    if state.speech_session.lock().await.is_some() {
-        return Err("请先停止语音录入，再删除模型".to_owned());
-    }
-    let root = state.library_root();
-    let delete_model_id = model_id.clone();
-    tokio::task::spawn_blocking(move || delete_model(&root, &delete_model_id))
-        .await
-        .map_err(|error| format!("模型删除任务异常退出：{error}"))??;
-    model_info(&state.library_root(), &model_id)
-}
-
-#[tauri::command]
-pub(super) async fn list_speech_input_devices() -> Result<Vec<String>, String> {
-    tokio::task::spawn_blocking(list_input_devices)
-        .await
-        .map_err(|error| format!("麦克风枚举任务异常退出：{error}"))?
-        .map_err(|error| error.to_string())
-}
-
-#[tauri::command]
-pub(super) async fn start_voice_ramble(
-    input: StartVoiceRambleInput,
-    app: tauri::AppHandle,
-    state: tauri::State<'_, WorkbenchState>,
-) -> Result<VoiceRambleSessionView, String> {
-    let workspace = state
-        .application
-        .clone()
-        .get_feedback_workspace(input.request_id.clone())
-        .await
-        .map_err(|error| error.to_string())?;
-    if matches!(
-        workspace.request.status,
-        FeedbackStatus::Completed | FeedbackStatus::Cancelled
-    ) {
-        return Err("已结束的反馈请求不能继续录入语音".to_owned());
-    }
-
-    let mut active = state.speech_session.lock().await;
-    if active.is_some() {
-        return Err("已有语音 Ramble 正在进行，请先停止当前录音".to_owned());
-    }
-
-    let library_root = state.library_root();
-    let model = model_info(&library_root, &input.model_id)?;
-    if !model.installed {
-        return Err(format!(
-            "语音模型 {} 尚未安装，请先在语音设置中下载",
-            model.display_name
-        ));
-    }
-    tracing::info!(
-        request_id = %input.request_id,
-        model_id = %input.model_id,
-        "start_voice_ramble: starting"
-    );
-    let voice_session_id = uuid::Uuid::now_v7().to_string();
-    let provider =
-        SpeechProvider::from_model_id(&input.model_id).map_err(|error| error.to_string())?;
-    let model_path = model_dir(&library_root, &input.model_id)?;
-    let vad_model_path = ensure_vad_model(&library_root).map_err(|error| error.to_string())?;
-    let config = SpeechSessionConfig {
-        request_id: input.request_id,
-        voice_session_id: voice_session_id.clone(),
-        provider,
-        model_path: model_path.clone(),
-        vad_model_path,
-        vad_threshold: input.vad_threshold,
-        vad_silence_ms: input.vad_silence_ms,
-        input_device: input.input_device,
-        hotwords: input.hotwords,
-    };
-    let event_app = app.clone();
-    let sink: SpeechEventSink = Arc::new(move |event: SpeechEvent| {
-        if let Err(error) = event_app.emit("voice-ramble-event", event) {
-            tracing::warn!(%error, "failed to emit voice ramble event");
-        }
-    });
-    let session = tokio::task::spawn_blocking(move || SpeechSession::start(config, sink))
-        .await
-        .map_err(|error| format!("语音识别启动任务异常退出：{error}"))?
-        .map_err(|error| error.to_string())?;
-    *active = Some(session);
-
-    Ok(VoiceRambleSessionView {
-        voice_session_id,
-        provider: provider.id().to_owned(),
-        model_path: model_path.to_string_lossy().into_owned(),
-    })
-}
-
-#[tauri::command]
-pub(super) async fn stop_voice_ramble(
-    state: tauri::State<'_, WorkbenchState>,
-) -> Result<(), String> {
-    let session = state.speech_session.lock().await.take();
-    let Some(session) = session else {
-        return Ok(());
-    };
-    tokio::task::spawn_blocking(move || session.stop())
-        .await
-        .map_err(|error| format!("语音识别停止任务异常退出：{error}"))?
-        .map_err(|error| error.to_string())
 }

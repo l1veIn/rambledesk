@@ -29,6 +29,8 @@
   export let requestId = ''
   export let readKind: 'request' | 'workspace' = 'request'
   export let attachment: (RequestAttachmentView & AttachmentView) | null = null
+  export let readBytes: ((requestId: string, artifactId: string) => Promise<ArrayBuffer>) | null = null
+  export let allowLocalActions = true
 
   let loading = false
   let error = ''
@@ -92,8 +94,9 @@
     openMessage = ''
     openError = ''
     try {
-      const raw =
-        readKind === 'workspace'
+      const raw = readBytes
+        ? await readBytes(requestId, current.attachment_id)
+        : readKind === 'workspace'
           ? await invoke<ArrayBuffer>('read_feedback_attachment', {
               requestId,
               attachmentId: current.attachment_id,
@@ -287,7 +290,7 @@
             {/if}
           </Dialog.Description>
         </div>
-        {#if attachment}
+        {#if attachment && allowLocalActions}
           <Button
             class="shrink-0"
             variant="outline"
@@ -394,10 +397,12 @@
             {#if openError}
               <p class="m-0 mt-2 break-all text-xs leading-5 text-muted-foreground">{openError}</p>
             {/if}
-            <Button class="mt-4" onclick={() => void openExternally()}>
-              <ExternalLink class="size-4" />
-              {tr('Open with the system default app')}
-            </Button>
+            {#if allowLocalActions}
+              <Button class="mt-4" onclick={() => void openExternally()}>
+                <ExternalLink class="size-4" />
+                {tr('Open with the system default app')}
+              </Button>
+            {/if}
           </div>
         </div>
       {/if}

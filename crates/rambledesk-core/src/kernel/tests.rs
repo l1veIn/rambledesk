@@ -8,12 +8,16 @@ use async_trait::async_trait;
 use super::{
     AcpSessionLinkSnapshot, AgentWorkBatch, AgentWorkDisposition, AgentWorkEvidence,
     AgentWorkPayload, AgentWorkRecordOutcome, AgentWorkState, ClaimedAgentWork, DeliveryState,
-    DraftArtifact, DraftSnapshot, FactMutation, FactMutationOutcome, FactQuery, FactQueryOutcome,
-    FeedbackLookup, FeedbackRequestStatus, FeedbackResolution, FeedbackResolutionOutcome,
-    LaunchOutcome, PackageId, RambleIntent, RequestId, SessionId, SessionRecord,
-    StoredDraftMutation, StoredWorkResult, SubmissionId, WorkClaim, WorkbenchSnapshot,
+    DraftSnapshot, FactMutation, FactMutationOutcome, FactQuery, FactQueryOutcome, FeedbackLookup,
+    FeedbackRequestStatus, FeedbackResolution, FeedbackResolutionOutcome, LaunchOutcome, PackageId,
+    RambleIntent, RequestId, SessionId, SessionRecord, StoredDraftMutation, StoredWorkResult,
+    SubmissionId, WorkClaim, WorkbenchSnapshot,
     ports::{FactStore, FactStoreError},
+    test_adapters::normalize_positions,
 };
+
+mod memory_helpers;
+mod session_organization;
 
 #[derive(Default)]
 pub(super) struct MemoryState {
@@ -34,25 +38,6 @@ pub(super) struct MemoryState {
 #[derive(Default)]
 pub(super) struct MemoryFactStore {
     state: Mutex<MemoryState>,
-}
-
-impl MemoryFactStore {
-    pub(super) fn inspect<T>(&self, reader: impl FnOnce(&MemoryState) -> T) -> T {
-        let state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
-        reader(&state)
-    }
-
-    pub(super) fn links(&self) -> Vec<AcpSessionLinkSnapshot> {
-        self.inspect(|state| state.links.clone())
-    }
-
-    pub(super) fn insert_session(&self, session: SessionRecord) {
-        self.state
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .sessions
-            .insert(session.session_id.clone(), session);
-    }
 }
 
 #[async_trait]
@@ -388,6 +373,9 @@ impl FactStore for MemoryFactStore {
                 state.links.push(commit.link.clone());
                 Ok(FactMutationOutcome::AgentObservation(commit.link))
             }
+            FactMutation::SessionOrganization(commit) => {
+                session_organization::apply(&mut state, *commit)
+            }
         }
     }
 
@@ -434,6 +422,10 @@ impl FactStore for MemoryFactStore {
                         .session_id
                         .as_ref()
                         .is_none_or(|expected| expected == session_id)
+                        && state
+                            .sessions
+                            .get(session_id)
+                            .is_some_and(|session| session.archived_at.is_none())
                 };
                 let mut sessions = state
                     .sessions
@@ -442,10 +434,12 @@ impl FactStore for MemoryFactStore {
                     .cloned()
                     .collect::<Vec<_>>();
                 sessions.sort_by(|left, right| {
-                    right
-                        .updated_at
-                        .cmp(&left.updated_at)
-                        .then_with(|| right.session_id.cmp(&left.session_id))
+                    right.pinned_at.cmp(&left.pinned_at).then_with(|| {
+                        right
+                            .updated_at
+                            .cmp(&left.updated_at)
+                            .then_with(|| right.session_id.cmp(&left.session_id))
+                    })
                 });
                 let mut current_acp_links = state
                     .links
@@ -459,19 +453,22 @@ impl FactStore for MemoryFactStore {
                         .cmp(&left.last_used_at)
                         .then_with(|| right.link_id.cmp(&left.link_id))
                 });
-                let mut waiting_feedback = state
+                let mut feedback_requests = state
                     .requests
                     .values()
-                    .filter(|value| {
-                        matches(&value.session_id) && value.status == FeedbackRequestStatus::Waiting
-                    })
+                    .filter(|value| matches(&value.session_id))
                     .cloned()
                     .collect::<Vec<_>>();
-                waiting_feedback.sort_by(|left, right| {
+                feedback_requests.sort_by(|left, right| {
                     left.created_at
                         .cmp(&right.created_at)
                         .then_with(|| left.request_id.cmp(&right.request_id))
                 });
+                let waiting_feedback = feedback_requests
+                    .iter()
+                    .filter(|value| value.status == FeedbackRequestStatus::Waiting)
+                    .cloned()
+                    .collect();
                 let mut drafts = state
                     .drafts
                     .values()
@@ -513,12 +510,16 @@ impl FactStore for MemoryFactStore {
                 Ok(FactQueryOutcome::Workbench(WorkbenchSnapshot {
                     sessions,
                     current_acp_links,
+                    feedback_requests,
                     waiting_feedback,
                     drafts,
                     pending_deliveries,
                     pending_agent_work,
                 }))
             }
+            FactQuery::ArchivedSessions => Ok(FactQueryOutcome::ArchivedSessions(
+                session_organization::archived(&state),
+            )),
             FactQuery::SessionRecovery(session_id) => {
                 let session = state
                     .sessions
@@ -545,7 +546,7 @@ impl FactStore for MemoryFactStore {
                     .collect::<Vec<_>>();
                 let launch_shape_is_valid = match session.kind {
                     super::SessionKind::Managed => launches.len() == 1,
-                    super::SessionKind::Connected => launches.is_empty(),
+                    super::SessionKind::Imported => launches.is_empty(),
                 };
                 if !launch_shape_is_valid {
                     return Err(FactStoreError::CorruptData);
@@ -778,11 +779,5 @@ impl FactStore for MemoryFactStore {
             state: work.state,
             delivered,
         })
-    }
-}
-
-fn normalize_positions(values: &mut [DraftArtifact]) {
-    for (position, value) in values.iter_mut().enumerate() {
-        value.position = position as u32;
     }
 }

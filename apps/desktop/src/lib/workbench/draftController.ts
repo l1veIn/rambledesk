@@ -24,6 +24,7 @@ export type DraftControllerContext = {
   setPhase: (phase: SavePhase) => void
   setMessage: (message: string) => void
   setWorkspaceDraft: (draft: DraftView) => void
+  persistDraft?: (input: SaveDraftInput) => Promise<DraftView>
 }
 
 export type DraftController = ReturnType<typeof createDraftController>
@@ -92,7 +93,9 @@ export function createDraftController(context: DraftControllerContext) {
               saved_revision: revisionToSave + 1,
               updated_at: new Date().toISOString(),
             }
-          : await invoke<DraftView>('save_feedback_draft', { input })
+          : context.persistDraft
+            ? await context.persistDraft(input)
+            : await invoke<DraftView>('save_feedback_draft', { input })
         if (context.getWorkspace()?.request.request_id === requestId) {
           context.setSavedSnapshot(snapshotToSave)
           context.setSavedRevision(saved.saved_revision)

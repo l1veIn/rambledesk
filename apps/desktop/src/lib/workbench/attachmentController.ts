@@ -14,12 +14,45 @@ import type {
 import type { ActiveAction } from '../draftOperations'
 import type { ScreenCaptureReady } from '../screenCapture'
 import type { FeedbackEditorHandle } from './types'
+import type { WorkbenchOperationTarget } from './workbenchRouting'
 
 export type AttachmentMessageTone = 'info' | 'success' | 'error'
 
 type ScreenCaptureFinished = {
   capture_session_id: string | null
   outcome: 'cancelled' | 'pinned'
+}
+
+export type AttachmentArtifactPort = {
+  loadWorkspace: (requestId: string) => Promise<FeedbackWorkspaceView>
+  addBytes: (input: {
+    requestId: string
+    fileName: string
+    mediaType: string
+    contents: number[]
+    expectedRevision: number
+  }) => Promise<FeedbackWorkspaceView>
+  addPath: (input: {
+    requestId: string
+    path: string
+    expectedRevision: number
+  }) => Promise<FeedbackWorkspaceView>
+  addScreenCapture: (input: {
+    requestId: string
+    captureSessionId: string
+    expectedRevision: number
+  }) => Promise<FeedbackWorkspaceView>
+  remove: (input: {
+    requestId: string
+    artifactId: string
+    expectedRevision: number
+  }) => Promise<FeedbackWorkspaceView>
+  reorder: (input: {
+    requestId: string
+    artifactIds: string[]
+    expectedRevision: number
+  }) => Promise<FeedbackWorkspaceView>
+  read: (requestId: string, artifactId: string) => Promise<ArrayBuffer>
 }
 
 type AttachmentControllerContext = {
@@ -41,9 +74,26 @@ type AttachmentControllerContext = {
   setDragActive: (active: boolean) => void
   saveDraftNow: () => Promise<boolean>
   waitForRambleMarkdown: () => Promise<void>
-  routeDraftOperation: (requestId: string, operation: import('../draftOperations').DraftOperation) => Promise<void>
-  activeActionFor: (requestId: string) => import('../draftOperations').ActiveAction
+  routeDraftOperation: (
+    requestId: string,
+    operation: import('../draftOperations').DraftOperation,
+    target?: WorkbenchOperationTarget,
+  ) => Promise<void>
+  activeActionFor: (
+    requestId: string,
+    target?: WorkbenchOperationTarget,
+  ) => import('../draftOperations').ActiveAction
   applyWorkspaceMutation: (next: FeedbackWorkspaceView) => void
+  /** Resolved at operation time so one Workspace can serve legacy and ACP. */
+  getArtifactPort?: (
+    requestId: string,
+    target: WorkbenchOperationTarget,
+  ) => AttachmentArtifactPort | undefined
+  isOperationTargetVisible?: (
+    requestId: string,
+    target: WorkbenchOperationTarget,
+  ) => boolean
+  artifactPort?: AttachmentArtifactPort
 }
 
 export type AttachmentController = ReturnType<typeof createAttachmentController>
@@ -51,6 +101,16 @@ export type AttachmentController = ReturnType<typeof createAttachmentController>
 export function createAttachmentController(context: AttachmentControllerContext) {
   let screenCaptureRequestId = ''
   let screenCaptureAction: ActiveAction = null
+  let screenCaptureTarget: WorkbenchOperationTarget = 'workspace'
+
+  function artifactPort(requestId: string, target: WorkbenchOperationTarget) {
+    return context.getArtifactPort?.(requestId, target) ?? context.artifactPort
+  }
+
+  function isOperationTargetVisible(requestId: string, target: WorkbenchOperationTarget) {
+    return context.isOperationTargetVisible?.(requestId, target) ??
+      context.getWorkspace()?.request.request_id === requestId
+  }
 
   function mount() {
     let disposed = false
@@ -75,6 +135,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
       void listen<ScreenCaptureFinished>('screen-capture-finished', () => {
         screenCaptureRequestId = ''
         screenCaptureAction = null
+        screenCaptureTarget = 'workspace'
         context.setCaptureBusy(false)
         context.setMessage('')
       })
@@ -139,13 +200,17 @@ export function createAttachmentController(context: AttachmentControllerContext)
     const workspace = context.getWorkspace()
     if (context.getInteractionLocked() || !workspace || files.length === 0 || context.getBusy()) return
     const requestId = workspace.request.request_id
-    const action = context.activeActionFor(requestId)
+    const target: WorkbenchOperationTarget = 'workspace'
+    const action = context.activeActionFor(requestId, target)
     if (!(await context.saveDraftNow())) return
     await context.waitForRambleMarkdown()
     context.setBusy(true)
     context.setMessage('')
+    const port = artifactPort(requestId, target)
     try {
-      let next = await invoke<FeedbackWorkspaceView>('get_feedback_workspace', { requestId })
+      let next = port
+        ? await port.loadWorkspace(requestId)
+        : await invoke<FeedbackWorkspaceView>('get_feedback_workspace', { requestId })
       if (!next) throw new Error(context.tr('This feedback request could not be found.'))
       const existingIds = new Set(next.attachments.map((item) => item.attachment_id))
       for (const file of files) {
@@ -158,12 +223,20 @@ export function createAttachmentController(context: AttachmentControllerContext)
           contents: Array.from(new Uint8Array(await file.arrayBuffer())),
           expected_revision: next.draft.saved_revision,
         }
-        next = await invoke<FeedbackWorkspaceView>('add_feedback_attachment', { input })
+        next = port
+          ? await port.addBytes({
+              requestId,
+              fileName: input.file_name,
+              mediaType: file.type || 'application/octet-stream',
+              contents: input.contents,
+              expectedRevision: input.expected_revision,
+            })
+          : await invoke<FeedbackWorkspaceView>('add_feedback_attachment', { input })
       }
       const added = next.attachments.filter((item) => !existingIds.has(item.attachment_id))
-      if (context.getWorkspace()?.request.request_id === requestId) {
+      if (isOperationTargetVisible(requestId, target)) {
         context.applyWorkspaceMutation(next)
-        await refreshPreviews(next)
+        await refreshPreviews(next, target)
         await tick()
       }
       for (const attachment of added) {
@@ -172,12 +245,14 @@ export function createAttachmentController(context: AttachmentControllerContext)
           attachment,
           label: attachment.file_name,
           action,
-        })
+        }, target)
       }
     } catch (cause) {
       context.setMessage(context.messageFrom(cause), 'error')
       const current = context.getWorkspace()
-      if (current?.request.request_id === requestId) await refreshPreviews(current)
+      if (current && isOperationTargetVisible(requestId, target)) {
+        await refreshPreviews(current, target)
+      }
     } finally {
       context.setBusy(false)
     }
@@ -185,31 +260,42 @@ export function createAttachmentController(context: AttachmentControllerContext)
 
   async function importAttachmentPaths(paths: string[]) {
     const workspace = context.getWorkspace()
-    const requestId = context.getRambleRequestId() || workspace?.request.request_id || ''
+    const rambleRequestId = context.getRambleRequestId()
+    const requestId = rambleRequestId || workspace?.request.request_id || ''
+    const target: WorkbenchOperationTarget = rambleRequestId ? 'ramble' : 'workspace'
     if (context.getInteractionLocked() || !requestId || paths.length === 0 || context.getBusy()) return
-    const visibleTarget = workspace?.request.request_id === requestId
-    const action = context.activeActionFor(requestId)
+    const visibleTarget = isOperationTargetVisible(requestId, target)
+    const action = context.activeActionFor(requestId, target)
     if (visibleTarget && !(await context.saveDraftNow())) return
     await context.waitForRambleMarkdown()
     context.setBusy(true)
     context.setMessage('')
+    const port = artifactPort(requestId, target)
     try {
-      let next = await invoke<FeedbackWorkspaceView>('get_feedback_workspace', { requestId })
+      let next = port
+        ? await port.loadWorkspace(requestId)
+        : await invoke<FeedbackWorkspaceView>('get_feedback_workspace', { requestId })
       if (!next) throw new Error(context.tr('This feedback request could not be found.'))
       const existingIds = new Set(next.attachments.map((item) => item.attachment_id))
       for (const path of paths) {
-        next = await invoke<FeedbackWorkspaceView>('import_feedback_attachment_path', {
-          requestId,
-          path,
-          expectedRevision: next.draft.saved_revision,
-        })
-        if (context.getWorkspace()?.request.request_id === requestId) {
+        next = port
+          ? await port.addPath({
+              requestId,
+              path,
+              expectedRevision: next.draft.saved_revision,
+            })
+          : await invoke<FeedbackWorkspaceView>('import_feedback_attachment_path', {
+              requestId,
+              path,
+              expectedRevision: next.draft.saved_revision,
+            })
+        if (isOperationTargetVisible(requestId, target)) {
           context.applyWorkspaceMutation(next)
         }
       }
       const added = next.attachments.filter((item) => !existingIds.has(item.attachment_id))
-      if (context.getWorkspace()?.request.request_id === requestId) {
-        await refreshPreviews(next)
+      if (isOperationTargetVisible(requestId, target)) {
+        await refreshPreviews(next, target)
         await tick()
       }
       for (const attachment of added) {
@@ -218,12 +304,14 @@ export function createAttachmentController(context: AttachmentControllerContext)
           attachment,
           label: attachment.file_name,
           action,
-        })
+        }, target)
       }
     } catch (cause) {
       context.setMessage(context.messageFrom(cause), 'error')
       const current = context.getWorkspace()
-      if (current?.request.request_id === requestId) await refreshPreviews(current)
+      if (current && isOperationTargetVisible(requestId, target)) {
+        await refreshPreviews(current, target)
+      }
     } finally {
       context.setBusy(false)
     }
@@ -244,17 +332,20 @@ export function createAttachmentController(context: AttachmentControllerContext)
 
   async function startScreenCapture() {
     const workspace = context.getWorkspace()
-    const requestId = context.getRambleRequestId() || workspace?.request.request_id || ''
+    const rambleRequestId = context.getRambleRequestId()
+    const requestId = rambleRequestId || workspace?.request.request_id || ''
+    const target: WorkbenchOperationTarget = rambleRequestId ? 'ramble' : 'workspace'
     if (
       context.getInteractionLocked() ||
       !requestId ||
       context.getBusy() ||
       context.getCaptureBusy()
     ) return
-    if (workspace?.request.request_id === requestId && !(await context.saveDraftNow())) return
+    if (isOperationTargetVisible(requestId, target) && !(await context.saveDraftNow())) return
     await context.waitForRambleMarkdown()
     screenCaptureRequestId = requestId
-    screenCaptureAction = context.activeActionFor(requestId)
+    screenCaptureAction = context.activeActionFor(requestId, target)
+    screenCaptureTarget = target
     context.setCaptureBusy(true)
     context.setMessage('')
     try {
@@ -263,6 +354,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
     } catch (cause) {
       screenCaptureRequestId = ''
       screenCaptureAction = null
+      screenCaptureTarget = 'workspace'
       context.setCaptureBusy(false)
       const message = context.messageFrom(cause)
       if (message.includes('SCREEN_CAPTURE_PERMISSION_RESTART_REQUIRED')) {
@@ -296,32 +388,46 @@ export function createAttachmentController(context: AttachmentControllerContext)
     const requestId =
       screenCaptureRequestId || context.getRambleRequestId() || workspace?.request.request_id || ''
     const action = screenCaptureAction
+    const operationTarget: WorkbenchOperationTarget = screenCaptureRequestId
+      ? screenCaptureTarget
+      : context.getRambleRequestId()
+        ? 'ramble'
+        : 'workspace'
     if (!requestId) {
       await discardScreenCapture(capture.capture_session_id)
       context.setCaptureBusy(false)
       return
     }
     context.setCaptureBusy(true)
+    const port = artifactPort(requestId, operationTarget)
     try {
-      const visibleTarget = workspace?.request.request_id === requestId
+      const visibleTarget = isOperationTargetVisible(requestId, operationTarget)
       if (visibleTarget && !(await context.saveDraftNow())) {
         throw new Error(context.tr('The current draft could not be saved, so the capture was not inserted.'))
       }
       await context.waitForRambleMarkdown()
-      const target = visibleTarget
+      const targetWorkspace = visibleTarget
         ? workspace
-        : await invoke<FeedbackWorkspaceView>('get_feedback_workspace', { requestId })
-      if (!target) throw new Error(context.tr('This feedback request could not be found.'))
-      const existingIds = new Set(target.attachments.map((item) => item.attachment_id))
-      const next = await invoke<FeedbackWorkspaceView>('add_completed_screen_capture', {
-        requestId,
-        captureSessionId: capture.capture_session_id,
-        expectedRevision: target.draft.saved_revision,
-      })
+        : port
+          ? await port.loadWorkspace(requestId)
+          : await invoke<FeedbackWorkspaceView>('get_feedback_workspace', { requestId })
+      if (!targetWorkspace) throw new Error(context.tr('This feedback request could not be found.'))
+      const existingIds = new Set(targetWorkspace.attachments.map((item) => item.attachment_id))
+      const next = port
+        ? await port.addScreenCapture({
+            requestId,
+            captureSessionId: capture.capture_session_id,
+            expectedRevision: targetWorkspace.draft.saved_revision,
+          })
+        : await invoke<FeedbackWorkspaceView>('add_completed_screen_capture', {
+            requestId,
+            captureSessionId: capture.capture_session_id,
+            expectedRevision: targetWorkspace.draft.saved_revision,
+          })
       const added = next.attachments.filter((item) => !existingIds.has(item.attachment_id))
-      if (visibleTarget && context.getWorkspace()?.request.request_id === requestId) {
+      if (visibleTarget && isOperationTargetVisible(requestId, operationTarget)) {
         context.applyWorkspaceMutation(next)
-        await refreshPreviews(next)
+        await refreshPreviews(next, operationTarget)
         await tick()
       }
       const attachment = added[0]
@@ -333,7 +439,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
         attachment,
         label: attachment.file_name,
         action,
-      })
+      }, operationTarget)
       context.setMessage(context.tr('Capture inserted at the current document position'), 'success')
     } catch (cause) {
       context.setMessage(
@@ -341,10 +447,13 @@ export function createAttachmentController(context: AttachmentControllerContext)
         'error',
       )
       const current = context.getWorkspace()
-      if (current?.request.request_id === requestId) await refreshPreviews(current)
+      if (current && isOperationTargetVisible(requestId, operationTarget)) {
+        await refreshPreviews(current, operationTarget)
+      }
     } finally {
       screenCaptureRequestId = ''
       screenCaptureAction = null
+      screenCaptureTarget = 'workspace'
       await discardScreenCapture(capture.capture_session_id)
       context.setCaptureBusy(false)
     }
@@ -357,13 +466,20 @@ export function createAttachmentController(context: AttachmentControllerContext)
     if (!(await context.saveDraftNow())) return
     context.setBusy(true)
     context.setMessage('')
+    const port = artifactPort(workspace.request.request_id, 'workspace')
     try {
       const input: RemoveAttachmentInput = {
         request_id: workspace.request.request_id,
         attachment_id: attachment.attachment_id,
         expected_revision: context.getSavedRevision(),
       }
-      const next = await invoke<FeedbackWorkspaceView>('remove_feedback_attachment', { input })
+      const next = port
+        ? await port.remove({
+            requestId: input.request_id,
+            artifactId: input.attachment_id,
+            expectedRevision: input.expected_revision,
+          })
+        : await invoke<FeedbackWorkspaceView>('remove_feedback_attachment', { input })
       context.applyWorkspaceMutation(next)
       await refreshPreviews(next)
     } catch (cause) {
@@ -376,13 +492,13 @@ export function createAttachmentController(context: AttachmentControllerContext)
   function insertExistingAttachment(attachment: AttachmentView) {
     const requestId = context.getWorkspace()?.request.request_id
     if (context.getInteractionLocked() || !requestId) return
-    const action = context.activeActionFor(requestId)
+    const action = context.activeActionFor(requestId, 'workspace')
     void context.routeDraftOperation(requestId, {
       kind: 'appendAttachment',
       attachment,
       label: attachment.file_name,
       action,
-    }).catch((cause) => {
+    }, 'workspace').catch((cause) => {
       context.setMessage(context.messageFrom(cause), 'error')
     })
   }
@@ -395,6 +511,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
     if (!(await context.saveDraftNow())) return
     context.setBusy(true)
     context.setMessage('')
+    const port = artifactPort(workspace.request.request_id, 'workspace')
     try {
       const attachmentIds = workspace.attachments.map((item) => item.attachment_id)
       ;[attachmentIds[index], attachmentIds[target]] = [attachmentIds[target], attachmentIds[index]]
@@ -403,7 +520,13 @@ export function createAttachmentController(context: AttachmentControllerContext)
         attachment_ids: attachmentIds,
         expected_revision: context.getSavedRevision(),
       }
-      const next = await invoke<FeedbackWorkspaceView>('reorder_feedback_attachments', { input })
+      const next = port
+        ? await port.reorder({
+            requestId: input.request_id,
+            artifactIds: input.attachment_ids,
+            expectedRevision: input.expected_revision,
+          })
+        : await invoke<FeedbackWorkspaceView>('reorder_feedback_attachments', { input })
       context.applyWorkspaceMutation(next)
       await refreshPreviews(next)
     } catch (cause) {
@@ -413,7 +536,11 @@ export function createAttachmentController(context: AttachmentControllerContext)
     }
   }
 
-  async function refreshPreviews(next: FeedbackWorkspaceView) {
+  async function refreshPreviews(
+    next: FeedbackWorkspaceView,
+    target: WorkbenchOperationTarget = 'workspace',
+  ) {
+    const port = artifactPort(next.request.request_id, target)
     const current = context.getPreviews()
     const keep = new Set(
       next.attachments
@@ -428,10 +555,12 @@ export function createAttachmentController(context: AttachmentControllerContext)
     for (const attachment of next.attachments) {
       if (!isImageMediaType(attachment.media_type) || previews[attachment.attachment_id]) continue
       try {
-        const bytes = await invoke<ArrayBuffer>('read_feedback_attachment', {
-          requestId: next.request.request_id,
-          attachmentId: attachment.attachment_id,
-        })
+        const bytes = port
+          ? await port.read(next.request.request_id, attachment.attachment_id)
+          : await invoke<ArrayBuffer>('read_feedback_attachment', {
+              requestId: next.request.request_id,
+              attachmentId: attachment.attachment_id,
+            })
         previews[attachment.attachment_id] = URL.createObjectURL(
           new Blob([bytes], { type: attachment.media_type }),
         )

@@ -43,6 +43,7 @@
   import MacPermissions from '$lib/MacPermissions.svelte'
   import PostProcessingSettings from '$lib/PostProcessingSettings.svelte'
   import ShortcutSettings from '$lib/ShortcutSettings.svelte'
+  import AcpClientSettings from '$lib/acp-workbench/AcpClientSettings.svelte'
   import appIcon from '../assets/rambledesk-app-icon.webp'
   import rambellePermission from '../assets/rambelle-states/state-permission.webp'
   import piLogoSvg from '../assets/pi-logo.svg?raw'
@@ -101,6 +102,7 @@
     | 'voice'
     | 'post-processing'
     | 'shortcuts'
+    | 'acp-client'
     | 'adapters'
     | 'about'
 
@@ -682,6 +684,10 @@
             <Keyboard data-icon="inline-start" />
             {tr('Shortcuts')}
           </Tabs.Trigger>
+          <Tabs.Trigger value="acp-client" class="h-9 w-full justify-start px-2.5">
+            <TerminalSquare data-icon="inline-start" />
+            {tr('ACP Client')}
+          </Tabs.Trigger>
           <Tabs.Trigger value="adapters" class="h-9 w-full justify-start px-2.5">
             <PlugZap data-icon="inline-start" />
             <span class="flex-1 text-left">{tr('Adapters')}</span>
@@ -719,6 +725,8 @@
                         ? tr('Draft and submission transforms')
                         : activeSection === 'shortcuts'
                           ? tr('Global shortcut keys')
+                          : activeSection === 'acp-client'
+                            ? tr('Managed Agent runtime')
                           : activeSection === 'adapters'
                             ? tr('Host adapters')
                             : tr('Project information')}
@@ -734,9 +742,11 @@
                       ? tr('Voice')
                       : activeSection === 'post-processing'
                         ? tr('Post-processing')
-                        : activeSection === 'shortcuts'
-                          ? tr('Shortcuts')
-                          : activeSection === 'adapters'
+                      : activeSection === 'shortcuts'
+                        ? tr('Shortcuts')
+                        : activeSection === 'acp-client'
+                          ? tr('ACP Client')
+                        : activeSection === 'adapters'
                             ? tr('Adapters')
                             : tr('About')}
             </h2>
@@ -1347,6 +1357,9 @@
 
           <Tabs.Content value="shortcuts" class="m-0 space-y-8 p-6 outline-none">
             <ShortcutSettings />
+          </Tabs.Content>
+          <Tabs.Content value="acp-client" class="m-0 p-6 outline-none">
+            <AcpClientSettings />
           </Tabs.Content>
           <Tabs.Content value="adapters" class="m-0 space-y-8 p-6 outline-none">
             <section class="border-b pb-8">

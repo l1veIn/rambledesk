@@ -1,9 +1,9 @@
 # RambleDesk 应用协议
 
-> 状态：v3 ACP-first 可执行基线。
+> 状态：v3 Managed ACP Path 可执行基线；Adapter Session 共存边界已确定。
 > 术语源：[TERMINOLOGY.md](TERMINOLOGY.md)。本文若与术语表冲突，以术语表为准。
 
-本文定义 RambleDesk `core` Interface、ACP Managed Path 映射、Session Toolset 与稳定错误。规范词 MUST / SHOULD / MAY 分别表示必须、建议和可选。
+本文定义 RambleDesk v3 Core Interface、Managed ACP Path 映射、Session Toolset 与稳定错误。Adapter Runtime 的既有 transport 合同见 [COMPATIBILITY.md](COMPATIBILITY.md)；两者只在 Desktop Unified Workbench Projection 汇合。规范词 MUST / SHOULD / MAY 分别表示必须、建议和可选。
 
 ## 协议分层
 
@@ -15,7 +15,7 @@
 | Session Toolset | `request_feedback`、`get_feedback`，以及 capability 验证后的 Question Channel。 |
 | Artifact access | 以 Artifact Entry 和 Artifact Locator 交付内容，不暴露 Package 本地目录合同。 |
 
-现有 `/mcp`、`/api/feedback/*`、Pi wait 与原生 Adapter 是冻结的 v2 transport，不属于本文。未来 Compatibility Ingress 可以增加 transport 映射，但不得改变 Core Interface。
+现有 `/mcp`、`/api/feedback/*`、Pi wait 与原生 Adapter 由维护冻结的 Adapter Runtime 继续拥有，不进入 v3 Core。Desktop 可以并列展示 Adapter Session 与 Managed ACP Session，但保存、提交、取消和 continuation 必须按 Session Source 返回原 owner；禁止双写或跨 source fallback。
 
 ## 标识与幂等
 
@@ -166,7 +166,7 @@ Core 固定 Steering Submission 与唯一 `steering_prompt` Agent work。Steerin
 
 ### `request_feedback`
 
-这是 Session Toolset 与未来 Compatibility Ingress 共享的应用 operation。输入：
+这是 Managed ACP Session Toolset 的应用 operation。输入：
 
 ```json
 {
@@ -192,7 +192,7 @@ Core 固定 Steering Submission 与唯一 `steering_prompt` Agent work。Steerin
 
 规则：
 
-- Managed Session Toolset MUST 注入可信 `session_id` 与当前 `source_link_id`，不得接受模型覆盖；Compatibility Ingress 可以省略 `source_link_id`。
+- Managed Session Toolset MUST 注入可信 `session_id` 与当前 `source_link_id`，不得接受模型覆盖。
 - `actions` MUST 包含 1–20 项；id 在同一 Request 内唯一并匹配 `^[a-z0-9][a-z0-9_-]{0,63}$`。
 - `context_refs` 是供人类判断的引用。RambleDesk 不自动执行其中内容，也不要求它是本机路径。
 - 输入不包含 `allow_finish`、`final_summary` 或批准捷径。只需一个即时选择时 Agent 应使用 Ask Question。
@@ -317,7 +317,7 @@ Core MUST 原子固定：
 - 唯一 pending Feedback Delivery；
 - 唯一 `feedback_resume` Agent work。
 
-该提交路径只对 Managed Session 开放。Connected Session 是迁移与未来 Compatibility Ingress 的边界；v3 首版尝试提交或取消其 Feedback Request 返回 `SESSION_NOT_MANAGED`，不得留下不可消费的 Agent work 或 Delivery。
+该提交路径只对 Managed ACP Session 开放。Imported Session 是可选迁移产生的只读事实快照；尝试通过 Managed Feedback resolution Interface 提交或取消其 Feedback Request 返回 `SESSION_NOT_MANAGED`，不得留下不可消费的 Agent work 或 Delivery。Adapter Session 的提交与取消不经过该 Interface，而是直接回到 Adapter Runtime。
 
 相同 `submission_id` 的安全重试返回同一 Package、Delivery 与 work identity，state 使用当前投影。另一个 Submission 试图解决已终态 Request 返回 `REQUEST_TERMINAL`。
 
@@ -551,7 +551,7 @@ Attention Item 是 read model，不是统一写模型。`recoverable=true` 只�
 | `INVALID_ARGUMENT` | 输入 shape、限制、id 或 digest 无效。 |
 | `IDEMPOTENCY_CONFLICT` | 相同稳定 id 携带不同 canonical digest。 |
 | `SESSION_NOT_FOUND` | 未知 RambleDesk `session_id`。 |
-| `SESSION_NOT_MANAGED` | operation 要求 Managed Session，但目标是 Connected Session。 |
+| `SESSION_NOT_MANAGED` | operation 要求 Managed ACP Session，但目标是 Imported Session。 |
 | `ACP_SESSION_LINK_NOT_FOUND` | Feedback Request 声明的来源 Link 不存在或不属于目标 Session。 |
 | `REQUEST_NOT_FOUND` | 未知 `request_id`。 |
 | `REQUEST_TERMINAL` | 试图再次解决 terminal Feedback Request。 |
@@ -572,13 +572,10 @@ Attention Item 是 read model，不是统一写模型。`recoverable=true` 只�
 
 错误响应 MUST 区分“人类事实未提交”和“事实已提交但 Agent side effect pending”。后者不得诱导 UI 重复提交。
 
-## Compatibility Ingress 的未来约束
+## Adapter Runtime 与 Imported Session 边界
 
-未来重新启用 Generic MCP 或其他外部入口时：
-
-- 只能创建/读取当前 Session、Feedback Request 与 Delivery；
-- 无对应 Session 时创建 Connected Session；
-- 不得复活 `host_id`、`host_session_id`、旧状态机或本地 Package path 结果；
-- 不得承诺受管进程、ACP 历史或自动 resume；
-- 可以在外部 Agent 自己的 turn 中调用同一 `request_feedback` / `get_feedback` application operation；
-- 旧 Pi blocking wait 不自动恢复，必须作为独立的新 Adapter 重新验收。
+- Generic MCP、Pi 与原生 Adapter 继续创建和操作 Adapter Session，不借道 v3 Core，也不获得 Managed ACP 的进程、历史或自动 resume 承诺。
+- 可选迁移器可以把可解释的旧事实写成 Imported Session，并保存显式来源映射；它不得自动停用 Adapter Runtime 或删除旧 store。
+- Imported Session 不复活 `host_id`、`host_session_id`、旧状态机或本地 Package path 结果，也不重新唤醒原 Agent。
+- Unified Workbench Projection 必须利用迁移来源映射避免同时展示同一来源的 Imported Session 与 Adapter Session。
+- 未来若要把某个 Adapter 能力迁入 v3 Core，必须逐能力定义新合同并完成端到端验收，不能以失败回退代替 owner 路由。

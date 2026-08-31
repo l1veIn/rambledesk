@@ -111,7 +111,7 @@ async fn execute_atomically_maps_legacy_facts_and_verify_is_read_only() {
     let database = target.join("rambledesk-v3.sqlite3");
     let projection = read_projection(&database).await;
     assert_eq!(projection.sessions.len(), 1);
-    assert_eq!(projection.sessions[0].1, "connected");
+    assert_eq!(projection.sessions[0].1, "imported");
     assert!(projection.legacy_business_columns.is_empty());
     assert_eq!(report.session_mappings.len(), 1);
     let session_mapping = &report.session_mappings[0];

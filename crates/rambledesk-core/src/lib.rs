@@ -7,8 +7,8 @@ mod feedback;
 mod process;
 mod workspace;
 
-/// ACP-first domain Interface. The frozen v2 exports below remain wired only
-/// until their callers move to this Module later in the branch.
+/// v3 domain Interface for Managed ACP Sessions and Imported Sessions. The
+/// existing exports below continue to serve the separately owned Adapter Runtime.
 pub mod kernel;
 
 /// Install-time / client-config host identity environment key.

@@ -1,0 +1,413 @@
+<script lang="ts">
+  import { tick } from 'svelte'
+  import {
+    Archive,
+    Inbox,
+    LoaderCircle,
+    MessageSquareText,
+    MoreHorizontal,
+    PanelLeftClose,
+    PanelLeftOpen,
+    Pencil,
+    Pin,
+    PinOff,
+    Plus,
+    Search,
+    Settings,
+  } from '@lucide/svelte'
+  import { Badge } from '$lib/components/ui/badge'
+  import { Button } from '$lib/components/ui/button'
+  import * as DropdownMenu from '$lib/components/ui/dropdown-menu'
+  import { ScrollArea } from '$lib/components/ui/scroll-area'
+  import * as Tooltip from '$lib/components/ui/tooltip'
+  import { t } from '$lib/i18n'
+  import { locale } from '$lib/preferences'
+  import {
+    orderSessionRailItems,
+    sessionRailActions,
+    sessionRailTotals,
+    type SessionRailItem,
+  } from './sessionRailItem'
+
+  export let items: SessionRailItem[] = []
+  export let activeKey: string | null = null
+  export let requestSearch = ''
+  export let loading = false
+  export let refreshing = false
+  export let collapsed = false
+  export let onSelect: (item: SessionRailItem | null) => void = () => {}
+  export let onRequestSearch: (search: string) => void = () => {}
+  export let onLaunch: () => void = () => {}
+  export let onSettings: () => void = () => {}
+  export let onRenameSession: (
+    item: SessionRailItem,
+    title: string,
+  ) => Promise<void> | void = () => {}
+  export let onSetSessionPinned: (
+    item: SessionRailItem,
+    pinned: boolean,
+  ) => Promise<void> | void = () => {}
+  export let onArchiveSession: (item: SessionRailItem) => Promise<void> | void = () => {}
+
+  let orderedItems: SessionRailItem[] = []
+  let totals = { requests: 0, pending: 0 }
+  let editingKey: string | null = null
+  let editingTitle = ''
+  let actionKey: string | null = null
+  let titleInput: HTMLInputElement | null = null
+  let requestSearchTimer: ReturnType<typeof setTimeout> | null = null
+
+  $: orderedItems = orderSessionRailItems(items)
+  $: totals = sessionRailTotals(items)
+
+  function tr(source: string, values: Record<string, string | number> = {}) {
+    return t($locale, source, values)
+  }
+
+  function toggleSidebar() {
+    collapsed = !collapsed
+  }
+
+  function scheduleRequestSearch(value: string) {
+    if (requestSearchTimer) clearTimeout(requestSearchTimer)
+    requestSearchTimer = setTimeout(() => onRequestSearch(value), 180)
+  }
+
+  async function runAction(key: string, action: () => Promise<void> | void) {
+    if (actionKey) return
+    actionKey = key
+    try {
+      await action()
+    } finally {
+      actionKey = null
+    }
+  }
+
+  async function startRename(item: SessionRailItem) {
+    if (!item.canRename) return
+    editingKey = item.key
+    editingTitle = item.title
+    await tick()
+    titleInput?.focus()
+    titleInput?.select()
+  }
+
+  function cancelRename() {
+    editingKey = null
+    editingTitle = ''
+  }
+
+  async function commitRename(item: SessionRailItem) {
+    if (!item.canRename || editingKey !== item.key) return
+    const nextTitle = editingTitle.trim()
+    if (!nextTitle || nextTitle === item.title) {
+      cancelRename()
+      return
+    }
+    await runAction(`rename:${item.key}`, async () => {
+      await onRenameSession(item, nextTitle)
+      cancelRename()
+    })
+  }
+</script>
+
+<Tooltip.Provider delayDuration={350}>
+  <aside
+    class={[
+      'flex min-h-0 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200',
+      collapsed ? 'w-14' : 'w-[224px]',
+    ]}
+    aria-label={tr('Sessions')}
+  >
+    <div
+      class={[
+        'flex h-12 shrink-0 items-center border-b border-sidebar-border',
+        collapsed ? 'justify-center px-2' : 'justify-between px-3',
+      ]}
+    >
+      {#if !collapsed}
+        <div class="min-w-0">
+          <strong class="block truncate text-xs font-semibold">{tr('Sessions')}</strong>
+          <span class="block text-[10px] text-muted-foreground">
+            {items.length} {tr('sessions')}
+          </span>
+        </div>
+      {/if}
+
+      <Tooltip.Root>
+        <Tooltip.Trigger>
+          {#snippet child({ props })}
+            <Button
+              {...props}
+              variant="ghost"
+              size="icon-sm"
+              aria-label={collapsed ? tr('Expand sidebar') : tr('Collapse sidebar')}
+              onclick={toggleSidebar}
+            >
+              {#if collapsed}
+                <PanelLeftOpen />
+              {:else}
+                <PanelLeftClose />
+              {/if}
+            </Button>
+          {/snippet}
+        </Tooltip.Trigger>
+        <Tooltip.Content side="right">
+          {collapsed ? tr('Expand sidebar') : tr('Collapse sidebar')}
+        </Tooltip.Content>
+      </Tooltip.Root>
+    </div>
+
+    <div class="space-y-1 border-b border-sidebar-border p-2">
+      <Button
+        class={collapsed ? 'h-9 w-full justify-center px-0' : 'h-9 w-full justify-start'}
+        size="sm"
+        aria-label={tr('Launch new Ramble')}
+        title={collapsed ? tr('Launch new Ramble') : undefined}
+        onclick={onLaunch}
+      >
+        <Plus data-icon="inline-start" />
+        {#if !collapsed}{tr('Launch new Ramble')}{/if}
+      </Button>
+
+      {#if !collapsed}
+        <label
+          class="flex h-8 items-center gap-2 rounded-md border border-sidebar-border bg-background/80 px-2 text-[11px] text-muted-foreground focus-within:ring-2 focus-within:ring-ring/40"
+        >
+          <Search class="size-3.5 shrink-0" />
+          <input
+            value={requestSearch}
+            class="min-w-0 flex-1 bg-transparent text-sidebar-foreground outline-none placeholder:text-muted-foreground"
+            placeholder={tr('Search active requests…')}
+            oninput={(event) => scheduleRequestSearch(event.currentTarget.value)}
+          />
+        </label>
+      {/if}
+
+      <button
+        type="button"
+        class={[
+          'flex h-9 w-full items-center rounded-md text-left text-xs transition-colors',
+          collapsed ? 'justify-center px-2' : 'gap-2 px-2',
+          activeKey === null
+            ? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground'
+            : 'hover:bg-sidebar-accent/65',
+        ]}
+        aria-current={activeKey === null ? 'page' : undefined}
+        aria-label={tr('All requests')}
+        title={collapsed ? tr('All requests') : undefined}
+        onclick={() => onSelect(null)}
+      >
+        <Inbox class="size-5 shrink-0" />
+        {#if !collapsed}
+          <span class="min-w-0 flex-1 truncate">{tr('All requests')}</span>
+          {#if totals.pending > 0}
+            <Badge variant="default" class="h-5 min-w-5 px-1.5 text-[10px]">{totals.pending}</Badge>
+          {:else}
+            <span class="text-[10px] tabular-nums text-muted-foreground">{totals.requests}</span>
+          {/if}
+        {/if}
+      </button>
+    </div>
+
+    <ScrollArea class="min-h-0 flex-1" aria-busy={refreshing}>
+      <div class="relative min-h-full">
+        <div class={refreshing ? 'pointer-events-none select-none opacity-40' : undefined}>
+          {#if collapsed}
+            <div class="space-y-1 p-2">
+              {#each orderedItems as item (item.key)}
+                <button
+                  type="button"
+                  class={[
+                    'grid h-8 w-full place-items-center rounded-md text-muted-foreground transition-colors',
+                    activeKey === item.key
+                      ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                      : 'hover:bg-sidebar-accent/55 hover:text-sidebar-foreground',
+                  ]}
+                  aria-current={activeKey === item.key ? 'page' : undefined}
+                  aria-label={`${item.hostLabel} · ${item.title}`}
+                  title={`${item.hostLabel} · ${item.title}`}
+                  onclick={() => onSelect(item)}
+                >
+                  <span class="grid size-5 place-items-center [&_svg]:size-4">
+                    {#if item.hostIconSvg}
+                      {@html item.hostIconSvg}
+                    {:else}
+                      <MessageSquareText />
+                    {/if}
+                  </span>
+                </button>
+              {:else}
+                <div
+                  class="grid h-16 place-items-center text-muted-foreground"
+                  aria-label={loading ? tr('Loading host sessions…') : tr('No host sessions yet')}
+                  title={loading ? tr('Loading host sessions…') : tr('No host sessions yet')}
+                >
+                  <Inbox class="size-4" />
+                </div>
+              {/each}
+            </div>
+          {:else}
+            <div class="space-y-1 p-2">
+              {#each orderedItems as item (item.key)}
+                {@const actions = sessionRailActions(item)}
+                <div class="group/session flex min-h-8 items-center gap-1">
+                  {#if editingKey === item.key}
+                    <span
+                      class="grid size-6 shrink-0 place-items-center text-muted-foreground [&_svg]:size-5"
+                      title={item.hostLabel}
+                    >
+                      {#if item.hostIconSvg}
+                        {@html item.hostIconSvg}
+                      {:else}
+                        <MessageSquareText />
+                      {/if}
+                    </span>
+                    <form
+                      class="flex h-8 min-w-0 flex-1 items-center"
+                      onsubmit={(event) => {
+                        event.preventDefault()
+                        void commitRename(item)
+                      }}
+                    >
+                      <input
+                        bind:this={titleInput}
+                        bind:value={editingTitle}
+                        class="h-7 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-[11px] outline-none ring-ring/40 focus:ring-2"
+                        maxlength="160"
+                        disabled={actionKey === `rename:${item.key}`}
+                        onblur={() => void commitRename(item)}
+                        onkeydown={(event) => {
+                          if (event.key === 'Escape') {
+                            event.preventDefault()
+                            cancelRename()
+                          }
+                        }}
+                      />
+                    </form>
+                  {:else}
+                    <div
+                      class={[
+                        'flex min-h-8 min-w-0 flex-1 items-center rounded-md text-[11px] transition-colors',
+                        activeKey === item.key
+                          ? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground'
+                          : 'text-muted-foreground hover:bg-sidebar-accent/55 hover:text-sidebar-foreground',
+                      ]}
+                    >
+                      <button
+                        type="button"
+                        class="flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded-md bg-transparent px-2 py-1.5 text-left text-[11px] outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                        aria-current={activeKey === item.key ? 'page' : undefined}
+                        title={`${item.hostLabel} · ${item.title}`}
+                        onclick={() => onSelect(item)}
+                      >
+                        <span
+                          class="grid size-5 shrink-0 place-items-center text-muted-foreground [&_svg]:size-4"
+                          aria-label={item.hostLabel}
+                        >
+                          {#if item.hostIconSvg}
+                            {@html item.hostIconSvg}
+                          {:else}
+                            <MessageSquareText />
+                          {/if}
+                        </span>
+                        <span class="min-w-0 flex-1 truncate">{item.title}</span>
+                        {#if item.pinnedAt}
+                          <Pin class="size-3 shrink-0 text-primary" />
+                        {/if}
+                        {#if item.pendingCount > 0}
+                          <span class="size-1.5 shrink-0 rounded-full bg-primary"></span>
+                        {/if}
+                      </button>
+
+                      {#if actions.any}
+                        <DropdownMenu.Root>
+                          <DropdownMenu.Trigger>
+                            {#snippet child({ props })}
+                              <Button
+                                {...props}
+                                variant="ghost"
+                                size="icon-xs"
+                                aria-label={tr('Session actions')}
+                                title={tr('Session actions')}
+                                class="mr-1 hidden hover:bg-transparent aria-expanded:bg-transparent group-hover/session:inline-flex group-focus-within/session:inline-flex aria-expanded:inline-flex dark:hover:bg-transparent"
+                                disabled={actionKey !== null}
+                              >
+                                <MoreHorizontal />
+                              </Button>
+                            {/snippet}
+                          </DropdownMenu.Trigger>
+                          <DropdownMenu.Content align="end" class="w-44">
+                            {#if actions.rename}
+                              <DropdownMenu.Item onclick={() => void startRename(item)}>
+                                <Pencil class="size-4" />
+                                {tr('Rename session')}
+                              </DropdownMenu.Item>
+                            {/if}
+                            {#if actions.pin}
+                              <DropdownMenu.Item
+                                onclick={() =>
+                                  void runAction(`session-pin:${item.key}`, () =>
+                                    onSetSessionPinned(item, !item.pinnedAt),
+                                  )}
+                              >
+                                {#if item.pinnedAt}
+                                  <PinOff class="size-4" />
+                                  {tr('Unpin session')}
+                                {:else}
+                                  <Pin class="size-4" />
+                                  {tr('Pin session')}
+                                {/if}
+                              </DropdownMenu.Item>
+                            {/if}
+                            {#if actions.archive}
+                              <DropdownMenu.Item
+                                disabled={item.pendingCount > 0}
+                                onclick={() =>
+                                  item.pendingCount === 0
+                                    ? void runAction(`session-archive:${item.key}`, () =>
+                                        onArchiveSession(item),
+                                      )
+                                    : undefined}
+                              >
+                                <Archive class="size-4" />
+                                {tr('Archive session')}
+                              </DropdownMenu.Item>
+                            {/if}
+                          </DropdownMenu.Content>
+                        </DropdownMenu.Root>
+                      {/if}
+                    </div>
+                  {/if}
+                </div>
+              {:else}
+                <div class="px-2 py-8 text-center text-[11px] leading-5 text-muted-foreground">
+                  {loading ? tr('Loading host sessions…') : tr('No host sessions yet')}
+                </div>
+              {/each}
+            </div>
+          {/if}
+        </div>
+
+        {#if refreshing && items.length > 0}
+          <div class="absolute inset-0 z-20 grid place-items-center bg-sidebar/80 backdrop-blur-[1px]">
+            <LoaderCircle class="size-5 animate-spin text-primary" aria-hidden="true" />
+          </div>
+        {/if}
+      </div>
+    </ScrollArea>
+
+    <div class="space-y-1 border-t border-sidebar-border p-2">
+      <Button
+        variant="ghost"
+        class={collapsed ? 'w-full justify-center px-0' : 'w-full justify-start'}
+        aria-label={tr('Settings and adapters')}
+        title={collapsed ? tr('Settings and adapters') : undefined}
+        onclick={onSettings}
+      >
+        <Settings data-icon="inline-start" />
+        {#if !collapsed}{tr('Settings and adapters')}{/if}
+      </Button>
+    </div>
+  </aside>
+</Tooltip.Provider>

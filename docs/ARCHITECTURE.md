@@ -1,19 +1,20 @@
 # RambleDesk 架构基线
 
-> 状态：v3 ACP-first 可执行基线。
+> 状态：v3 Unified Workbench 共存基线。
 > 术语源：[TERMINOLOGY.md](TERMINOLOGY.md)。本文描述 Module、Interface、Seam 与持久化实现。
 > 本文描述分支最终目标架构，不代表当前 Desktop 已完成接线；实际阶段以 [V3_IMPLEMENTATION_PLAN.md](V3_IMPLEMENTATION_PLAN.md) 为准。
 
 ## 架构目标
 
-v3 把 Session 提升为顶层对象，并让 ACP Managed Path 成为唯一首发运行路径。架构必须同时满足：
+v3 把 Session 提升为顶层对象，并在不合并 Core 的前提下让 Managed ACP Session 与 Adapter Session 进入同一个 Workbench。架构必须同时满足：
 
 1. `core` 协议中立，只拥有 RambleDesk 领域事实与原子 use case。
 2. `rambledesk-acp-client` 是深 Module：调用方不编排 initialize、进程树、JSON-RPC、resume/load/new、权限关联或 Delivery 重试。
 3. Agent transcript 不进入 RambleDesk 数据模型；live event 与持久事实明确分离。
 4. Launch、Steering 与 Feedback 的 Agent side effect 都从持久 intent 对账，避免“数据库成功但 Prompt 丢失”或重复发送。
 5. Package 身份与 Artifact 存储实现分离，本地路径不进入内容合同。
-6. v3 目标运行时只读写新表；旧表只能由一次性迁移器读取。
+6. v3 Core 只读写新表，Adapter Runtime 只读写既有 store；Desktop 只合并投影，不双写、不跨 Core fallback。
+7. 旧数据无需迁移即可在 Adapter Session 中查看并继续原操作；有损迁移是显式可选项。
 
 ## 运行时拓扑
 
@@ -24,28 +25,34 @@ v3 把 Session 提升为顶层对象，并让 ACP Managed Path 成为唯一首�
                                 │ Tauri commands + live event stream
                                 ▼
 ┌──────────────────────── apps/desktop composition root ────────────────────┐
-│ wires Core, ACP Client, Storage, Artifact Store, Speech and desktop I/O   │
-└───────────────┬──────────────────────────────┬─────────────────────────────┘
-                │                              │
-                ▼                              ▼
-┌──────────────────────────┐      ┌─────────────────────────────────────────┐
-│ rambledesk-core          │      │ rambledesk-acp-client                   │
-│ durable domain Interface │◀────▶│ managed Agent Run Interface             │
-│ facts + pending work      │      │ preflight / run / recover / live input │
-└──────────────┬───────────┘      └──────────────────┬──────────────────────┘
-               │                                     │ ACP stdio / JSON-RPC
-       ┌───────┴────────┐                            ▼
-       ▼                ▼                  ┌──────────────────────┐
-┌──────────────┐  ┌────────────────┐       │ Codex ACP Agent     │
-│ SQLite Store │  │ Artifact Store │       │ future: Claude ACP  │
-└──────────────┘  └────────────────┘       └──────────────────────┘
+│ source adapters → Unified Workbench Projection → source-aware commands    │
+└───────────────┬───────────────────────────────────────┬────────────────────┘
+                │ Managed ACP source                    │ Adapter source
+                ▼                                      ▼
+┌──────────────────────────┐              ┌───────────────────────────────┐
+│ rambledesk-core (v3)     │              │ Adapter Workbench Source     │
+│ durable v3 facts + work  │              │ projection + command routing │
+└───────────┬──────────────┘              └──────────────┬────────────────┘
+            │                                            ▼
+    ┌───────┴────────┐                     ┌───────────────────────────────┐
+    ▼                ▼                     │ maintained Adapter Runtime    │
+┌──────────┐  ┌──────────────┐             │ MCP/local-server/hosts/Pi     │
+│ v3 SQLite│  │Artifact Store│             └───────────────────────────────┘
+└──────────┘  └──────────────┘
+            ▲
+            │ durable intents / observations
+            ▼
+┌─────────────────────────────────────────┐
+│ rambledesk-acp-client                   │── ACP stdio / JSON-RPC ──▶ Agent
+│ preflight / run / recover / live input  │
+└─────────────────────────────────────────┘
 ```
 
-`apps/desktop` 是唯一装配根。它创建具体 Adapter，并把 Interface 交给 Workbench。UI 不直接调用 ACP wire method，也不直接写数据库。
+`apps/desktop` 是唯一装配根。它分别创建 Managed ACP Workbench Source 与 Adapter Workbench Source，再把 source-tagged Unified Workbench Projection 交给 UI。UI 不直接调用 ACP wire method、Adapter route 或数据库；选择与命令必须携带 `workbench_session_ref`，不能先试一个 Core、失败后再试另一个。
 
 ## 深 Module 与 Interface
 
-### `rambledesk-core`
+### `rambledesk-core`（v3）
 
 `rambledesk-core` 隐藏领域状态机、幂等、原子提交、Package manifest、Draft CAS 和待执行 Agent intent。其外部 Interface 按行为分组，但仍属于一个领域 Module：
 
@@ -74,6 +81,7 @@ Interface 的关键不变量：
 - retryable Agent work failure 会释放 lease、保留 attempt 与最近错误，并保持对应 Delivery pending。
 - ACP Session Link 在 `session/new/load/resume` 成功后立即通过 Agent observation 固定，不能等 Prompt work 完成后才保存。
 - 不确定 side effect 必须以原 work id 重试，不能生成替代事实。
+- 该 Interface 只拥有 Managed ACP Session 与 Imported Session；它不读取 Adapter store，也不提供 Adapter Runtime 的 fallback command。
 
 `core` 不得持有：
 
@@ -129,6 +137,20 @@ ACP Client 的内部 Seam 可以使用进程 Adapter、ACP transport Adapter 与
 
 它不发布 ACP event，不解释 Access Mode，也不保存完整 transcript。
 
+### Adapter Workbench Source
+
+Adapter Workbench Source 是 Desktop 与 Adapter Runtime 之间的隔离 Seam；名称刻意与面向 Agent 的 Host Adapter 区分。它只暴露 Workbench 所需的最小能力：
+
+```text
+snapshot() -> source-tagged Session / Attention projection
+execute(AdapterWorkbenchCommand) -> AdapterCommandOutcome
+subscribe() -> adapter projection invalidation stream
+```
+
+Source 内部可以调用现有 Adapter controllers、local server 或原生 Adapter，但输出必须带稳定 adapter source identity；Desktop 不接触 `host_id`、Adapter row、token path 或 continuation payload。保存、提交、取消与继续原操作由同一个 Source 路由回原 owner。它不调用 `rambledesk-core` 写影子 Session，不把既有结果转换为 v3 Delivery，也不为 Adapter 路径实现 ACP Permission、Ask 或 runtime config。
+
+Adapter Runtime 进入维护冻结：保留可达性与原行为，允许修复安全、数据完整性和阻断性兼容问题；新主动管理能力只进入 Managed ACP Session。未来是否缩小 Adapter 路径以能力成熟度、迁移质量与真实使用证据决定，不设预定删除阶段。
+
 ### Artifact Store
 
 Artifact Store 的 Interface 只表达不可变 bytes：
@@ -149,6 +171,8 @@ Locator 也不由 Artifact Store 生成。Session Toolset 根据 `(package_id, a
 Tauri Implementation 负责：
 
 - 装配各 Module；
+- 从 Managed ACP Workbench Source 与 Adapter Workbench Source 读取 source-tagged snapshot，构建 Unified Workbench Projection；
+- 按 `workbench_session_ref` 把选择、保存、提交、取消与 live 回答路由回唯一 owner；
 - App/window/tray 生命周期；
 - 文件选择、通知、全局快捷键、截图与录音；
 - 把 Core outcome 与 ACP live stream 投影给 Svelte。
@@ -159,8 +183,9 @@ Svelte Implementation 负责：
 - 唯一可编辑的结构化 Editor；
 - Permission 与 Ask Question 的 live 回答 UI；
 - waiting Feedback、Draft 和 Delivery 状态的持久投影。
+- 只按 projection 声明的 capability 展示动作，不从 Agent logo、空字段或在线状态推断 Session Source。
 
-UI 内存、Tauri event 和系统通知都不是事实来源。重新聚焦窗口或丢失 event 后，UI 必须通过 Core snapshot 重新收敛。
+UI 内存、Tauri event 和系统通知都不是事实来源。重新聚焦窗口或丢失 event 后，UI 必须分别刷新两个 source snapshot 并重新构建 Unified Workbench Projection；一个 source 暂时失败不能清空另一个 source 的可用事实。
 
 ## Feedback Draft 所有权
 
@@ -173,18 +198,18 @@ v3 继续遵守 [ADR 004](adr/004-single-editor-structured-draft.md)：
 - Draft 必须显式记录 Ramble Intent 与目标 Session；Feedback Draft 还记录目标 Request；
 - 打开或编辑 Draft 不改变 Feedback Request 的 `waiting` 状态。
 
-## 新数据模型
+## Managed ACP v3 数据模型
 
-以下是逻辑表，不要求把所有字段拆成完全相同的物理列；但身份、唯一性和事务关系必须保持。
+以下逻辑表只属于 v3 Core，不是 Unified Workbench Projection 的共享 schema，也不要求 Adapter Runtime 迁入。字段不必拆成完全相同的物理列；但身份、唯一性和事务关系必须保持。
 
 ### `sessions_v3`
 
 ```text
 session_id                 primary key
-session_kind               managed | connected
+session_kind               managed | imported
 title
 lifecycle                  ready | stopped | failed
-launch_configuration_json  nullable for connected Session
+launch_configuration_json  nullable for Imported Session
 created_at / updated_at
 ```
 
@@ -325,19 +350,22 @@ Launch 与 Steering 使用 Submission 作为稳定 source；Feedback Resume 使�
 ## Attention Item 投影
 
 ```text
-Core waiting Feedback Request ─┐
-ACP pending Permission Request ├─> Attention Item read model ─> Inbox
-Question Channel pending Ask ──┘
+Core Feedback Request history ─┐
+ACP pending Permission Request ├─> Attention Item read model ─> Request list
+Question Channel pending Ask ──┤                              └─ waiting subset: Inbox
+Adapter attention/history ─────┘
 ```
 
-- waiting Feedback 来自 SQLite，App 重启后恢复。
+- Managed ACP Feedback Request 全部来自 v3 SQLite，App 重启后恢复；只有 waiting 项计入待处理 Inbox，terminal 项保留为结构化请求历史。
 - Permission 与 Ask Question 来自当前 Agent Run 内存，断开即取消。
+- Adapter attention 来自原 owner 的 snapshot；其恢复与操作语义不由 v3 Core 重解释。
 - Attention Item 没有统一持久表，也不强迫三类请求共享状态机。
-- 已提交但 pending 的 Delivery 属于 Session 状态，不进入未处理 Inbox。
+- 已提交但 pending 的 Delivery 属于 Session 状态，不进入未处理 Inbox；对应 terminal Feedback Request 仍留在请求历史并可重开结果。
+- projection key 必须包含 Session Source；同 id 或同标题不能触发跨 source 去重。只有迁移 manifest 的显式 source mapping 可以抑制重复展示。
 
-## Agent Run 与历史
+## Managed ACP Agent Run 与历史
 
-ACP Client 为每个 active Managed Session 保存内存态：子进程、连接、protocol request correlation、当前 config、Prompt Turn、Permission、Question、tool call 与 live events。
+ACP Client 为每个 active Managed ACP Session 保存内存态：子进程、连接、protocol request correlation、当前 config、Prompt Turn、Permission、Question、tool call 与 live events。
 
 这些数据不建立历史表。恢复规则：
 
@@ -345,7 +373,7 @@ ACP Client 为每个 active Managed Session 保存内存态：子进程、连接
 2. 否则 Agent 支持 load：`session/load`，把 replay 事件送到当前 Context View，但不落 transcript。
 3. 否则：`session/new`，保留原 RambleDesk Session，写入新的 ACP Session Link，并发送包含恢复上下文的 Prompt。
 
-Agent 返回的 Session config options 优先于旧 modes 字段。Preflight 只用于 Launch UI，不创建 Session 或历史；真正建立/恢复 Session 后，返回的 config 才是 live 真源。
+Agent 返回的 Session config options 优先于旧 modes 字段。Preflight 只用于 Managed ACP Launch UI，不创建 Session 或历史；真正建立/恢复 Session 后，返回的 config 才是 live 真源。Adapter Session 不显示伪造的 ACP runtime 状态或配置。
 
 ## Feedback Delivery 对账
 
@@ -372,18 +400,27 @@ Human resolves Feedback Request
 - 停止 Session 先尝试 ACP `session/close`（若支持），再终止该 Session 进程树。
 - 完整退出 App 对全部 Agent Run 执行有界优雅关闭，随后清理各自进程树。
 - 下次 App 启动只扫描 pending Agent work 与 Delivery；不会为了纯 `waiting` Feedback Request 主动启动 Agent。
+- 上述进程所有权只覆盖 Managed ACP Agent Run；Adapter Runtime 的外部 Agent 与 continuation 继续由原路径拥有。
 
-## 冻结路径
+## 共存边界
 
-以下 v2 Implementation 不进入 v3 装配，也不参与首发测试：
+以下既有 Implementation 组成维护冻结的 Adapter Runtime：
 
 - `rambledesk-mcp` 的 Generic MCP tool surface 与安装引擎；
 - `rambledesk-local-server` 的旧 `/api/feedback/*` 与 `/mcp` 路由；
 - `rambledesk-hosts` 的 host profile 与 continuation strategy；
 - `packages/pi-rambledesk` 的长等待流程；
-- Resume Prompt UI 与 Compatibility Continuation。
+- Resume Prompt UI 与原 continuation。
 
-Phase 1 到 Phase 4 不修改它们来追赶新模型。最终清理阶段从 workspace 与 desktop 装配中删除旧 Implementation。未来 Compatibility Ingress 必须只调用当前 `core` Interface，并使用当前 Session、Request、Package 与 Delivery 合同重新建立。
+它们不追赶 Managed ACP 的 Launch、Permission、Ask、runtime 状态/配置或 Managed Feedback Resume，也不写 v3 新表；Desktop 只能经 Adapter Workbench Source 访问它们。它们保持可达，供既有数据直接显示并继续原操作。修复范围默认限于安全、数据完整性和阻断性兼容；未来缩小或替换必须有逐能力验收、迁移证据和新的决策记录，不能只由新能力已经存在自动推出。
+
+两个 source 在 Desktop 投影层汇合，不在 persistence 或 use case 层汇合。禁止：
+
+- 同一用户动作向 Adapter Runtime 与 v3 Core 双写；
+- v3 command 失败后静默调用旧 command，或反向 fallback；
+- 用含大量 nullable 字段的 DTO 把两套命令伪装成同一状态机；
+- 通过标题、workspace 或裸 id 猜 source；
+- 因 Adapter source 暂时不可用而隐藏或删除其持久事实。
 
 ## 测试策略
 
@@ -391,8 +428,9 @@ Phase 1 到 Phase 4 不修改它们来追赶新模型。最终清理阶段从 wo
 - `storage`：对真实临时 SQLite 与本地 Artifact Adapter 做 schema、事务、崩溃恢复和 digest 测试。
 - `rambledesk-acp-client`：用可编程 fake ACP Agent 覆盖 initialize、config、permission、elicitation、prompt、resume/load/new、断线与重复 Delivery；不通过私有函数测试 wire 细节。
 - Codex smoke：只证明真实 Codex Launch Profile 与能力映射，不替代 fake Agent 的故障矩阵。
-- Desktop：验证 Launch → Permission → Feedback → App restart → Delivery 的真实 UI 竖切。
-- 旧浅 Module 的测试在新 Interface 测试覆盖后删除，不在新旧 Interface 上叠加同一行为测试。
+- Adapter Workbench Source：用 Adapter Runtime fixture 验证 Adapter Session/Request 可直接投影、原保存/提交/取消/continuation 仍路由到原 owner，且 v3 store 零写入。
+- Desktop：同时验证 Managed ACP 的 Launch → Permission → Feedback → App restart → Delivery 竖切，以及两 source Session/Inbox 合并、身份碰撞、source 局部失败与命令路由。
+- 旧路径既有测试保留在维护边界内；不要求复制为 v3 Interface 测试，也不因新路径覆盖相似 UI 就删除原行为保护。
 
 ## 外部协议依据
 

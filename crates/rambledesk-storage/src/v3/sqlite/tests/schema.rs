@@ -15,6 +15,84 @@ async fn existing_empty_database_is_initialized_as_v3() {
 }
 
 #[tokio::test]
+async fn existing_3001_database_upgrades_without_losing_sessions() {
+    let temp = TempDir::new().expect("tempdir");
+    let path = temp.path().join("v3001.sqlite3");
+    let mut connection = SqliteConnection::connect_with(
+        &SqliteConnectOptions::new()
+            .filename(&path)
+            .create_if_missing(true)
+            .foreign_keys(true),
+    )
+    .await
+    .expect("v3001 connection");
+    sqlx::raw_sql(include_str!(
+        "../../../../migrations_v3/3001_v3_foundation.sql"
+    ))
+    .execute(&mut connection)
+    .await
+    .expect("v3001 schema");
+    sqlx::raw_sql(
+        "CREATE TABLE _sqlx_migrations (
+            version BIGINT PRIMARY KEY,
+            description TEXT NOT NULL,
+            installed_on TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            success BOOLEAN NOT NULL,
+            checksum BLOB NOT NULL,
+            execution_time BIGINT NOT NULL
+        )",
+    )
+    .execute(&mut connection)
+    .await
+    .expect("migration table");
+    let migrator = sqlx::migrate!("./migrations_v3");
+    let foundation = migrator
+        .iter()
+        .find(|migration| migration.version == 3001)
+        .expect("foundation migration");
+    sqlx::query(
+        "INSERT INTO _sqlx_migrations
+         (version, description, success, checksum, execution_time)
+         VALUES (3001, 'v3 foundation', TRUE, ?, 0)",
+    )
+    .bind(foundation.checksum.as_ref())
+    .execute(&mut connection)
+    .await
+    .expect("foundation record");
+    sqlx::query(
+        "INSERT INTO sessions_v3 (
+            session_id, session_kind, title, lifecycle, launch_configuration_json,
+            created_at, updated_at
+         ) VALUES ('old-import', 'connected', 'Imported before 3002', 'stopped', NULL, ?, ?)",
+    )
+    .bind(NOW)
+    .bind(NOW)
+    .execute(&mut connection)
+    .await
+    .expect("old imported session");
+    connection.close().await.expect("close v3001");
+
+    let store = SqliteV3Store::connect(&path).await.expect("upgrade v3001");
+    let row: (String, Option<String>, Option<String>) = sqlx::query_as(
+        "SELECT session_kind, pinned_at, archived_at
+         FROM sessions_v3 WHERE session_id = 'old-import'",
+    )
+    .fetch_one(&store.pool)
+    .await
+    .expect("upgraded session");
+    assert_eq!(row, ("imported".to_owned(), None, None));
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT revision FROM schema_generation_v3 WHERE singleton = 1",
+        )
+        .fetch_one(&store.pool)
+        .await
+        .expect("revision"),
+        2
+    );
+}
+
+#[tokio::test]
 async fn unknown_database_is_rejected_without_mutation() {
     let temp = TempDir::new().expect("tempdir");
     let path = temp.path().join("foreign.sqlite3");
@@ -236,9 +314,9 @@ async fn consistency_report_accepts_imported_delivered_feedback_without_work() {
     let store = open(&temp).await;
     sqlx::query(
         "INSERT INTO sessions_v3 (
-            session_id, session_kind, title, lifecycle, launch_configuration_json,
+            session_id, session_kind_v3001, session_kind, title, lifecycle, launch_configuration_json,
             created_at, updated_at
-         ) VALUES ('imported-session', 'connected', 'Imported', 'stopped', NULL, ?, ?)",
+         ) VALUES ('imported-session', 'connected', 'imported', 'Imported', 'stopped', NULL, ?, ?)",
     )
     .bind(NOW)
     .bind(NOW)

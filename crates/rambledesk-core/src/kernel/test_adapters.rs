@@ -6,10 +6,16 @@ use std::{
 use async_trait::async_trait;
 
 use super::{
-    StoredBlob,
+    DraftArtifact, StoredBlob,
     digest::bytes_digest,
     ports::{ArtifactStore, ArtifactStoreError, PutArtifact},
 };
+
+pub(super) fn normalize_positions(values: &mut [DraftArtifact]) {
+    for (position, value) in values.iter_mut().enumerate() {
+        value.position = position as u32;
+    }
+}
 
 #[derive(Default)]
 struct MemoryArtifactStore {

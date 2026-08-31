@@ -14,7 +14,7 @@ pub struct V3ConsistencyReport {
 
 impl V3ConsistencyReport {
     pub fn is_consistent(&self) -> bool {
-        self.generation == Some((3, 1)) && self.violations.is_empty()
+        self.generation == Some((3, 2)) && self.violations.is_empty()
     }
 }
 
@@ -37,8 +37,8 @@ impl SqliteV3Store {
             ))
         });
         let mut violations = Vec::new();
-        if generation != Some((3, 1)) {
-            violations.push("schema_generation_v3 marker is not (3, 1)".to_owned());
+        if generation != Some((3, 2)) {
+            violations.push("schema_generation_v3 marker is not (3, 2)".to_owned());
         }
 
         for row in sqlx::query("PRAGMA foreign_key_check")

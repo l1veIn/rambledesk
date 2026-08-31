@@ -18,7 +18,8 @@ pub(super) async fn load_session(
     session_id: &SessionId,
 ) -> Result<Option<SessionRecord>, FactStoreError> {
     let row = sqlx::query(
-        "SELECT session_kind, title, lifecycle, launch_configuration_json, created_at, updated_at
+        "SELECT session_kind, title, lifecycle, launch_configuration_json, pinned_at, archived_at,
+                created_at, updated_at
          FROM sessions_v3 WHERE session_id = ?",
     )
     .bind(session_id.as_str())
@@ -35,7 +36,7 @@ fn session_from_row(
 ) -> Result<SessionRecord, FactStoreError> {
     let kind = match row.get::<String, _>("session_kind").as_str() {
         "managed" => SessionKind::Managed,
-        "connected" => SessionKind::Connected,
+        "imported" => SessionKind::Imported,
         _ => return Err(FactStoreError::CorruptData),
     };
     let lifecycle = match row.get::<String, _>("lifecycle").as_str() {
@@ -51,6 +52,8 @@ fn session_from_row(
         title: row.get("title"),
         lifecycle,
         launch_configuration: launch_json.as_deref().map(parse_json).transpose()?,
+        pinned_at: row.get("pinned_at"),
+        archived_at: row.get("archived_at"),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
     })

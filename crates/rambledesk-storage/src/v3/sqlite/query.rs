@@ -1,9 +1,11 @@
 use rambledesk_core::kernel::ports::FactStoreError;
 use rambledesk_core::kernel::{
-    AcpSessionLinkId, AgentWorkId, DeliveryId, DraftId, FactQuery, FactQueryOutcome,
-    FeedbackLookup, FeedbackRequestStatus, PendingFeedbackRecovery, RequestId, SessionId,
-    SessionKind, SessionRecoverySnapshot, SubmissionId, WorkbenchSnapshot,
+    AcpSessionLinkId, AgentWorkId, DeliveryId, DraftId, DraftSnapshot, FactQuery, FactQueryOutcome,
+    FeedbackDeliveryRecord, FeedbackLookup, FeedbackRequestSnapshot, FeedbackRequestStatus,
+    PendingFeedbackRecovery, RequestId, SessionId, SessionKind, SessionRecord,
+    SessionRecoverySnapshot, SubmissionId, WorkbenchSnapshot,
 };
+use serde::{Deserialize, Serialize};
 use sqlx::Row;
 
 use super::read::{
@@ -12,7 +14,69 @@ use super::read::{
 };
 use super::{SqliteV3Store, storage_error};
 
+/// Complete durable Feedback detail for Desktop inspection.
+///
+/// This remains a read-only projection: it contains RambleDesk-owned facts,
+/// never ACP transcript or live Permission/Question state.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct V3FeedbackDetail {
+    pub request: FeedbackRequestSnapshot,
+    pub session: SessionRecord,
+    pub delivery: Option<FeedbackDeliveryRecord>,
+    pub draft: Option<DraftSnapshot>,
+}
+
 impl SqliteV3Store {
+    pub async fn read_feedback_detail(
+        &self,
+        request_id: RequestId,
+    ) -> Result<V3FeedbackDetail, FactStoreError> {
+        let mut transaction = self.pool.begin().await.map_err(storage_error)?;
+        let connection = transaction.as_mut();
+        let request = load_feedback_request(connection, &request_id)
+            .await?
+            .ok_or(FactStoreError::RequestNotFound)?;
+        let session = load_session(connection, &request.session_id)
+            .await?
+            .ok_or(FactStoreError::CorruptData)?;
+        let delivery = if request.status == FeedbackRequestStatus::Waiting {
+            None
+        } else {
+            Some(
+                load_delivery_for_request(connection, &request_id)
+                    .await?
+                    .ok_or(FactStoreError::CorruptData)?,
+            )
+        };
+        let draft_id: Option<String> =
+            sqlx::query_scalar("SELECT draft_id FROM ramble_drafts_v3 WHERE request_id = ?")
+                .bind(request_id.as_str())
+                .fetch_optional(&mut *connection)
+                .await
+                .map_err(storage_error)?;
+        let draft = match draft_id {
+            Some(draft_id) => load_draft(connection, &DraftId::new(draft_id)).await?,
+            None => None,
+        };
+        transaction.commit().await.map_err(storage_error)?;
+        Ok(V3FeedbackDetail {
+            request,
+            session,
+            delivery,
+            draft,
+        })
+    }
+
+    pub async fn read_ramble_draft_detail(
+        &self,
+        draft_id: DraftId,
+    ) -> Result<Option<DraftSnapshot>, FactStoreError> {
+        let mut transaction = self.pool.begin().await.map_err(storage_error)?;
+        let draft = load_draft(transaction.as_mut(), &draft_id).await?;
+        transaction.commit().await.map_err(storage_error)?;
+        Ok(draft)
+    }
+
     pub(super) async fn query_facts(
         &self,
         query: FactQuery,
@@ -47,8 +111,8 @@ impl SqliteV3Store {
                 let session_filter = query.session_id.as_ref().map(SessionId::as_str);
                 let session_rows = sqlx::query(
                     "SELECT session_id FROM sessions_v3
-                     WHERE (?1 IS NULL OR session_id = ?1)
-                     ORDER BY updated_at DESC, session_id DESC",
+                     WHERE archived_at IS NULL AND (?1 IS NULL OR session_id = ?1)
+                     ORDER BY pinned_at DESC, updated_at DESC, session_id DESC",
                 )
                 .bind(session_filter)
                 .fetch_all(&mut *connection)
@@ -65,25 +129,40 @@ impl SqliteV3Store {
 
                 let request_rows = sqlx::query(
                     "SELECT request_id FROM feedback_requests_v3
-                     WHERE resolution IS NULL AND (?1 IS NULL OR session_id = ?1)
+                     WHERE (?1 IS NULL OR session_id = ?1)
+                       AND EXISTS (
+                           SELECT 1 FROM sessions_v3 sessions
+                           WHERE sessions.session_id = feedback_requests_v3.session_id
+                             AND sessions.archived_at IS NULL
+                       )
                      ORDER BY created_at, request_id",
                 )
                 .bind(session_filter)
                 .fetch_all(&mut *connection)
                 .await
                 .map_err(storage_error)?;
-                let mut waiting_feedback = Vec::with_capacity(request_rows.len());
+                let mut feedback_requests = Vec::with_capacity(request_rows.len());
                 for row in request_rows {
-                    waiting_feedback.push(
+                    feedback_requests.push(
                         load_feedback_request(connection, &RequestId::new(row.get::<String, _>(0)))
                             .await?
                             .ok_or(FactStoreError::CorruptData)?,
                     );
                 }
+                let waiting_feedback = feedback_requests
+                    .iter()
+                    .filter(|request| request.status == FeedbackRequestStatus::Waiting)
+                    .cloned()
+                    .collect();
 
                 let draft_rows = sqlx::query(
                     "SELECT draft_id FROM ramble_drafts_v3
                      WHERE (?1 IS NULL OR session_id = ?1)
+                       AND (session_id IS NULL OR EXISTS (
+                           SELECT 1 FROM sessions_v3 sessions
+                           WHERE sessions.session_id = ramble_drafts_v3.session_id
+                             AND sessions.archived_at IS NULL
+                       ))
                      ORDER BY updated_at DESC, draft_id DESC",
                 )
                 .bind(session_filter)
@@ -102,6 +181,11 @@ impl SqliteV3Store {
                 let delivery_rows = sqlx::query(
                     "SELECT delivery_id FROM feedback_deliveries_v3
                      WHERE state = 'pending' AND (?1 IS NULL OR session_id = ?1)
+                       AND EXISTS (
+                           SELECT 1 FROM sessions_v3 sessions
+                           WHERE sessions.session_id = feedback_deliveries_v3.session_id
+                             AND sessions.archived_at IS NULL
+                       )
                      ORDER BY created_at, delivery_id",
                 )
                 .bind(session_filter)
@@ -120,6 +204,11 @@ impl SqliteV3Store {
                 let work_rows = sqlx::query(
                     "SELECT work_id FROM agent_work_v3
                      WHERE state != 'completed' AND (?1 IS NULL OR session_id = ?1)
+                       AND EXISTS (
+                           SELECT 1 FROM sessions_v3 sessions
+                           WHERE sessions.session_id = agent_work_v3.session_id
+                             AND sessions.archived_at IS NULL
+                       )
                      ORDER BY created_at, work_id",
                 )
                 .bind(session_filter)
@@ -138,6 +227,11 @@ impl SqliteV3Store {
                 let link_rows = sqlx::query(
                     "SELECT link_id FROM acp_session_links_v3
                      WHERE is_current = 1 AND (?1 IS NULL OR session_id = ?1)
+                       AND EXISTS (
+                           SELECT 1 FROM sessions_v3 sessions
+                           WHERE sessions.session_id = acp_session_links_v3.session_id
+                             AND sessions.archived_at IS NULL
+                       )
                      ORDER BY last_used_at DESC, link_id DESC",
                 )
                 .bind(session_filter)
@@ -155,12 +249,31 @@ impl SqliteV3Store {
 
                 Ok(FactQueryOutcome::Workbench(WorkbenchSnapshot {
                     sessions,
+                    feedback_requests,
                     waiting_feedback,
                     drafts,
                     pending_deliveries,
                     pending_agent_work,
                     current_acp_links,
                 }))
+            }
+            FactQuery::ArchivedSessions => {
+                let rows = sqlx::query(
+                    "SELECT session_id FROM sessions_v3 WHERE archived_at IS NOT NULL
+                     ORDER BY archived_at DESC, session_id DESC",
+                )
+                .fetch_all(&mut *connection)
+                .await
+                .map_err(storage_error)?;
+                let mut sessions = Vec::with_capacity(rows.len());
+                for row in rows {
+                    sessions.push(
+                        load_session(connection, &SessionId::new(row.get::<String, _>(0)))
+                            .await?
+                            .ok_or(FactStoreError::CorruptData)?,
+                    );
+                }
+                Ok(FactQueryOutcome::ArchivedSessions(sessions))
             }
             FactQuery::SessionRecovery(session_id) => Ok(FactQueryOutcome::SessionRecovery(
                 load_session_recovery(connection, &session_id).await?,
@@ -211,7 +324,7 @@ async fn load_session_recovery(
     };
     if matches!(
         (session.kind, launch_submission.is_some()),
-        (SessionKind::Managed, false) | (SessionKind::Connected, true)
+        (SessionKind::Managed, false) | (SessionKind::Imported, true)
     ) {
         return Err(FactStoreError::CorruptData);
     }

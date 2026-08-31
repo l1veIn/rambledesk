@@ -9,6 +9,7 @@ use super::{SqliteV3OpenError, SqliteV3Store};
 
 mod recovery;
 mod schema;
+mod session_organization;
 mod vertical;
 
 const NOW: &str = "2026-08-30T00:00:00Z";
@@ -33,6 +34,8 @@ fn managed_session(id: &str) -> SessionRecord {
             access_mode: AccessMode::WorkspaceWrite,
             agent_config_json: "opaque-agent-config".to_owned(),
         }),
+        pinned_at: None,
+        archived_at: None,
         created_at: NOW.to_owned(),
         updated_at: NOW.to_owned(),
     }
@@ -645,21 +648,21 @@ fn sidecar(path: &Path, suffix: &str) -> std::path::PathBuf {
 }
 
 #[tokio::test]
-async fn connected_feedback_resolution_is_rejected_by_storage() {
+async fn imported_feedback_resolution_is_rejected_by_storage() {
     let temp = TempDir::new().expect("tempdir");
     let store = open(&temp).await;
     sqlx::query(
         "INSERT INTO sessions_v3 (
-            session_id, session_kind, title, lifecycle, launch_configuration_json,
-            created_at, updated_at
-         ) VALUES ('connected-1', 'connected', 'Migrated', 'ready', NULL, ?, ?)",
+            session_id, session_kind_v3001, session_kind, title, lifecycle,
+            launch_configuration_json, created_at, updated_at
+         ) VALUES ('imported-1', 'connected', 'imported', 'Migrated', 'ready', NULL, ?, ?)",
     )
     .bind(NOW)
     .bind(NOW)
     .execute(&store.pool)
     .await
-    .expect("connected session");
-    let request = waiting_request("request-connected", "connected-1");
+    .expect("imported session");
+    let request = waiting_request("request-imported", "imported-1");
     store
         .apply(FactMutation::FeedbackRequest(Box::new(
             FeedbackRequestCommit {
@@ -667,24 +670,24 @@ async fn connected_feedback_resolution_is_rejected_by_storage() {
             },
         )))
         .await
-        .expect("connected request");
+        .expect("imported request");
     let error = store
         .apply(FactMutation::FeedbackResolution(Box::new(cancel_commit(
             request.clone(),
-            "connected",
+            "imported",
         ))))
         .await
-        .expect_err("connected resolution");
+        .expect_err("imported resolution");
     assert_eq!(error, FactStoreError::SessionNotManaged);
     let pending: (i64, i64) = sqlx::query_as(
         "SELECT
             (SELECT COUNT(*) FROM feedback_requests_v3 WHERE request_id = ? AND resolution IS NULL),
-            (SELECT COUNT(*) FROM agent_work_v3 WHERE session_id = 'connected-1')",
+            (SELECT COUNT(*) FROM agent_work_v3 WHERE session_id = 'imported-1')",
     )
     .bind(request.request_id.as_str())
     .fetch_one(&store.pool)
     .await
-    .expect("connected facts");
+    .expect("imported facts");
     assert_eq!(pending, (1, 0));
 }
 

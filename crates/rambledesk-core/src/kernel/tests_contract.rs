@@ -350,21 +350,23 @@ async fn semantic_text_rejects_blank_values_before_the_storage_seam() {
 }
 
 #[tokio::test]
-async fn connected_session_allows_feedback_drafts_but_rejects_agent_delivery() {
+async fn imported_session_allows_feedback_drafts_but_rejects_agent_delivery() {
     let (core, facts) = harness();
-    let session_id = SessionId::from("connected-session");
+    let session_id = SessionId::from("imported-session");
     facts.insert_session(SessionRecord {
         session_id: session_id.clone(),
-        kind: SessionKind::Connected,
-        title: "Connected".to_owned(),
+        kind: SessionKind::Imported,
+        title: "Imported".to_owned(),
         lifecycle: SessionLifecycle::Ready,
         launch_configuration: None,
+        pinned_at: None,
+        archived_at: None,
         created_at: "2026-08-30T00:00:00Z".to_owned(),
         updated_at: "2026-08-30T00:00:00Z".to_owned(),
     });
     let steer_error = core
         .steer(SteeringSubmission {
-            submission_id: super::SubmissionId::from("connected-steer"),
+            submission_id: super::SubmissionId::from("imported-steer"),
             session_id: session_id.clone(),
             submission_digest_assertion: None,
             ramble: RambleContent {
@@ -374,7 +376,7 @@ async fn connected_session_allows_feedback_drafts_but_rejects_agent_delivery() {
             },
         })
         .await
-        .expect_err("connected steer");
+        .expect_err("imported steer");
     assert_eq!(steer_error.code(), CoreErrorCode::SessionNotManaged);
     let link_error = core
         .record_agent_observation(AgentObservation::AcpSessionLinked(
@@ -382,16 +384,16 @@ async fn connected_session_allows_feedback_drafts_but_rejects_agent_delivery() {
                 session_id: session_id.clone(),
                 agent_profile_id: "codex".to_owned(),
                 launch_profile_id: "local".to_owned(),
-                acp_session_id: "connected-acp".to_owned(),
+                acp_session_id: "imported-acp".to_owned(),
                 capabilities_json: "{}".to_owned(),
                 session_toolset_digest: format!("sha256:{}", "4".repeat(64)),
             },
         ))
         .await
-        .expect_err("connected link");
+        .expect_err("imported link");
     assert_eq!(link_error.code(), CoreErrorCode::SessionNotManaged);
 
-    let request = create_request(&core, session_id, "connected-feedback").await;
+    let request = create_request(&core, session_id, "imported-feedback").await;
     save_feedback_draft(
         &core,
         request.session_id.clone(),
@@ -404,7 +406,7 @@ async fn connected_session_allows_feedback_drafts_but_rejects_agent_delivery() {
             reason: "No response needed".to_owned(),
         }))
         .await
-        .expect_err("connected feedback delivery");
+        .expect_err("imported feedback delivery");
     assert_eq!(error.code(), CoreErrorCode::SessionNotManaged);
     let claimed = core
         .claim_agent_work(WorkScope {
@@ -413,7 +415,7 @@ async fn connected_session_allows_feedback_drafts_but_rejects_agent_delivery() {
             lease_seconds: 60,
         })
         .await
-        .expect("connected work query");
+        .expect("imported work query");
     assert!(claimed.items.is_empty());
 }
 

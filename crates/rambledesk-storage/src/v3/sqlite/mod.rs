@@ -56,6 +56,7 @@ pub struct SqliteV3Store {
 }
 
 pub use consistency::V3ConsistencyReport;
+pub use query::V3FeedbackDetail;
 
 impl SqliteV3Store {
     pub async fn connect(path: &Path) -> Result<Self, SqliteV3OpenError> {
@@ -84,7 +85,7 @@ impl SqliteV3Store {
             .map_err(SqliteV3OpenError::Connect)?;
         secure_database_path(path).await?;
 
-        let supported = 3001_u64;
+        let supported = 3002_u64;
         let applied = applied_migration_version(&pool)
             .await
             .map_err(SqliteV3OpenError::InspectSchema)?;
@@ -103,7 +104,7 @@ impl SqliteV3Store {
         .fetch_optional(&pool)
         .await
         .map_err(SqliteV3OpenError::InspectSchema)?;
-        if marker != Some((3, 1)) {
+        if marker != Some((3, 2)) {
             return Err(SqliteV3OpenError::InvalidGeneration);
         }
         let violations = sqlx::query("PRAGMA foreign_key_check")
