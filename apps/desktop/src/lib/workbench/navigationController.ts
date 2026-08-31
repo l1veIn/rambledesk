@@ -103,7 +103,7 @@ export function createNavigationController(context: NavigationControllerContext)
     })
   }
 
-  async function initialize() {
+  async function initialize(openFirstRequest = true) {
     context.onPageError('')
     patch({ loadingNavigation: true, loadingRequests: true })
 
@@ -135,7 +135,7 @@ export function createNavigationController(context: NavigationControllerContext)
         hostSessions: nextHostSessions,
       })
       applyInboxSnapshot(nextInbox)
-      await refreshRequests(true)
+      await refreshRequests(openFirstRequest)
     } catch (cause) {
       context.onPageError(context.messageFrom(cause))
     } finally {

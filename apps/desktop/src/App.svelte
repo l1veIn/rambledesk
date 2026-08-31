@@ -64,6 +64,10 @@
     workspaceShellReducer,
     type WorkspaceShellState,
   } from './lib/workspace/workspaceShell'
+  import {
+    createWorkspaceSnapshot,
+    type WorkspaceSnapshotV1,
+  } from './lib/workspace/workspaceSnapshot'
   import WorkspaceTabStrip from './lib/workspace/WorkspaceTabStrip.svelte'
   import {
     workspaceTabId,
@@ -113,7 +117,9 @@
     initialHostRailCollapsed,
     saveHostRailCollapsed,
     savePaneLayout,
+    saveWorkspaceSnapshot,
     savedPaneLayout,
+    savedWorkspaceSnapshot,
   } from './lib/uiPreferences'
   import {
     cookingApiKey,
@@ -198,6 +204,16 @@
     import.meta.env.DEV &&
     !isTauri &&
     new URLSearchParams(window.location.search).get('preview') === 'fixtures'
+  const initialWorkspaceSnapshot = previewMode ? null : savedWorkspaceSnapshot()
+  const previewWorkspaceSnapshotStore: { value: WorkspaceSnapshotV1 | null } = { value: null }
+  if (initialWorkspaceSnapshot) {
+    workspaceShellState = initialWorkspaceSnapshot.shellState
+    sessionRequestIds = new Map(initialWorkspaceSnapshot.requestIds)
+    if (initialWorkspaceSnapshot.shellState.activeViewKey) {
+      workbenchMounted = false
+      loadingWorkspace = true
+    }
+  }
   const REQUEST_LIST_DEFAULT_WIDTH = 296
   const REQUEST_LIST_MIN_WIDTH = 240
   const WIDE_WORKSPACE_MIN_WIDTH = 648
@@ -604,7 +620,10 @@
   function startWorkbench() {
     if (workbenchInitialized) return
     workbenchInitialized = true
-    void navigation.initialize()
+    void (async () => {
+      await navigation.initialize(initialWorkspaceSnapshot === null)
+      if (initialWorkspaceSnapshot) await restoreInitialWorkspaceSnapshot()
+    })()
     if (isTauri) inboxTimer = setInterval(() => void navigation.refreshNavigation(true), 5_000)
   }
 
@@ -660,6 +679,15 @@
     attachmentController.releasePreviews()
   }
 
+  function persistCurrentWorkspaceSnapshot() {
+    const snapshot = createWorkspaceSnapshot(workspaceShellState, sessionRequestIds)
+    if (previewMode) {
+      previewWorkspaceSnapshotStore.value = snapshot
+      return
+    }
+    saveWorkspaceSnapshot(snapshot)
+  }
+
   function openSessionView(view: SessionViewDescriptor, requestId?: string) {
     if (requestId) {
       const nextRequestIds = new Map(sessionRequestIds)
@@ -667,6 +695,7 @@
       sessionRequestIds = nextRequestIds
     }
     workspaceShellState = workspaceShellReducer(workspaceShellState, { type: 'open', view })
+    persistCurrentWorkspaceSnapshot()
   }
 
   function openLoadedWorkspaceView(next: FeedbackWorkspaceView) {
@@ -674,6 +703,33 @@
       sessionViewDescriptor(next.request.host_id, next.request.host_session_id),
       next.request.request_id,
     )
+  }
+
+  async function restoreInitialWorkspaceSnapshot() {
+    const view = activeWorkspaceView(workspaceShellState)
+    if (!view) {
+      clearWorkspace()
+      workbenchMounted = true
+      loadingWorkspace = false
+      return
+    }
+
+    const selection = await navigation.selectScope(view.hostId, view.hostSessionId)
+    if (!selection.selected) {
+      workbenchMounted = true
+      loadingWorkspace = false
+      return
+    }
+    const rememberedRequestId = sessionRequestIds.get(workspaceViewKey(view))
+    const request =
+      selection.requests.find((candidate) => candidate.request_id === rememberedRequestId) ??
+      selection.requests[0]
+    await sessionWorkspaceTransition.activate({
+      view,
+      requestId: request?.request_id ?? null,
+      shellAction: { type: 'open' },
+      pendingViewKey: workspaceViewKey(view),
+    })
   }
 
   type NavigationScope = Readonly<{
@@ -771,6 +827,7 @@
       const nextRequestIds = new Map(sessionRequestIds)
       nextRequestIds.delete(viewKey)
       sessionRequestIds = nextRequestIds
+      persistCurrentWorkspaceSnapshot()
       return
     }
     sessionWorkspaceTransition.invalidate()
@@ -907,6 +964,7 @@
     }
 
     workspaceShellState = nextShellState
+    persistCurrentWorkspaceSnapshot()
     workbenchMounted = true
     loadingWorkspace = false
     if (loaded) void attachmentController.refreshPreviews(loaded.workspace)

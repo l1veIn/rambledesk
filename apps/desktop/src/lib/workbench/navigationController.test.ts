@@ -92,6 +92,25 @@ describe('navigationController', () => {
     vi.useRealTimers()
   })
 
+  it('loads navigation facts without opening a default request when workspace restore is pending', async () => {
+    const request = feedbackRequest('request-restore')
+    const openRequest = vi.fn(async () => true)
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === 'list_feedback_inbox') return [request]
+      if (command === 'list_host_sessions') return [hostSession()]
+      if (command === 'list_host_profiles') return []
+      if (command === 'list_feedback_requests') {
+        return { requests: [request], next_cursor: null } satisfies ListFeedbackRequestsOutput
+      }
+      return undefined
+    })
+    const controller = createController({ openRequest })
+
+    await controller.initialize(false)
+
+    expect(openRequest).not.toHaveBeenCalled()
+  })
+
   it('refreshes page navigation and requests with a minimum loading duration', async () => {
     const firstList: ListFeedbackRequestsOutput = { requests: [], next_cursor: null }
     const refreshedRequest = feedbackRequest('request-1')
