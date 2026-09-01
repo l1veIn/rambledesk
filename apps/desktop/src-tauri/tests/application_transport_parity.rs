@@ -208,6 +208,16 @@ async fn tauri_facade_and_http_implementation_have_equivalent_contract_outcomes(
     let server = start_http(commands.clone()).await?;
     let client = reqwest::Client::new();
 
+    let direct_profiles = commands.list_host_profiles();
+    let http_profiles = client
+        .post(server.url("listHostProfiles"))
+        .send()
+        .await?
+        .error_for_status()?
+        .json::<serde_json::Value>()
+        .await?;
+    assert_eq!(serde_json::to_value(direct_profiles)?, http_profiles);
+
     let direct_workspace = commands
         .get_feedback_workspace(GetFeedbackInput {
             request_id: REQUEST_ID.into(),

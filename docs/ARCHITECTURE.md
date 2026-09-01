@@ -390,7 +390,9 @@ waiting → in_progress → completed
   Origin 存在时必须 exact-match allowlist。
 - 当前统一 request body limit 为 96 MiB。
 - 当前 listener 不提供 Web 静态资源或 WebSocket。MCP SSE 不属于 Web event stream。
-- Draft revision/CAS 已存在于 application/storage 路径，但 HTTP command/query parity 尚未实现。
+- Draft revision/CAS 已存在于 application/storage 路径。可复用的 application HTTP router、浏览器
+  HTTP Application Transport Implementation 与 Tauri/HTTP conformance tests 已实现，但尚未挂载到
+  production Web Access listener；Local Integration Server 仍不暴露这些 application routes。
 - `host_id`、`host_session_id` 不是认证凭据；返回路径只保证同机、共享文件系统可见。
 
 ### TARGET：Web Access

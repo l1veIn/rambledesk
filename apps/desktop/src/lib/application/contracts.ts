@@ -34,6 +34,13 @@ type ApplicationCommandContract<Input, Output> = Readonly<{
 }>
 
 /**
+ * The cross-client attachment contract keeps bytes binary. Rust's generated
+ * DTO remains the Tauri wire shape, where serde receives a number array.
+ */
+export type ApplicationAddAttachmentInput = Omit<AddAttachmentInput, 'contents'> &
+  Readonly<{ contents: ArrayBuffer }>
+
+/**
  * Cross-client application operations. Inputs are domain/transport contracts,
  * never a Tauri `{ input }` envelope or camelCase invoke argument object.
  */
@@ -46,7 +53,7 @@ export type ApplicationCommandMap = Readonly<{
   getFeedbackWorkspace: ApplicationCommandContract<GetFeedbackInput, ApplicationFeedbackWorkspaceView>
   readPublishedFeedback: ApplicationCommandContract<GetFeedbackInput, FeedbackPackageView | null>
   saveFeedbackDraft: ApplicationCommandContract<SaveDraftInput, DraftView>
-  addFeedbackAttachment: ApplicationCommandContract<AddAttachmentInput, ApplicationFeedbackWorkspaceView>
+  addFeedbackAttachment: ApplicationCommandContract<ApplicationAddAttachmentInput, ApplicationFeedbackWorkspaceView>
   removeFeedbackAttachment: ApplicationCommandContract<RemoveAttachmentInput, ApplicationFeedbackWorkspaceView>
   reorderFeedbackAttachments: ApplicationCommandContract<ReorderAttachmentsInput, ApplicationFeedbackWorkspaceView>
   submitFeedback: ApplicationCommandContract<SubmitFeedbackInput, ApplicationFeedbackRequestView>

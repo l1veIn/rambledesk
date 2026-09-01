@@ -12,83 +12,66 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }))
 vi.mock('@tauri-apps/api/event', () => ({ listen: mocks.listen }))
 
-import type {
-  ApplicationCommandInput,
-  ApplicationCommandName,
-} from './contracts'
+import type { ApplicationCommandInput, ApplicationCommandName } from './contracts'
 import { defineApplicationStream } from './applicationTransport'
+import {
+  APPLICATION_CONFORMANCE_INPUTS,
+  applicationConformanceResult,
+  runApplicationTransportConformance,
+} from './applicationTransportConformance'
 import {
   TAURI_APPLICATION_COMMANDS,
   TauriApplicationTransport,
 } from './tauriApplicationTransport'
 
-const commandInputs = {
-  listFeedbackInbox: undefined,
-  listHostSessions: undefined,
-  listArchivedHostSessions: { search: null },
-  listHostProfiles: undefined,
-  listFeedbackRequests: {
-    host_id: null,
-    host_session_id: null,
-    status: null,
-    archived: null,
-    search: null,
-    limit: null,
-    cursor: null,
-  },
-  getFeedbackWorkspace: { request_id: 'request-1' },
-  readPublishedFeedback: { request_id: 'request-1' },
-  saveFeedbackDraft: {
-    request_id: 'request-1',
-    document_json: '{}',
-    body_markdown: '',
-    expected_revision: 1,
-  },
-  addFeedbackAttachment: {
-    request_id: 'request-1',
-    file_name: 'note.txt',
-    contents: [1, 2, 3],
-    expected_revision: 1,
-  },
-  removeFeedbackAttachment: {
-    request_id: 'request-1',
-    attachment_id: 'attachment-1',
-    expected_revision: 1,
-  },
-  reorderFeedbackAttachments: {
-    request_id: 'request-1',
-    attachment_ids: ['attachment-1'],
-    expected_revision: 1,
-  },
-  submitFeedback: { request_id: 'request-1', expected_revision: 1 },
-  approveFeedbackRequest: { request_id: 'request-1' },
-  cancelFeedbackRequest: { request_id: 'request-1', reason: 'cancelled' },
-  renameHostSession: {
-    host_id: 'codex',
-    host_session_id: 'session-1',
-    title: 'Renamed',
-  },
-  setHostSessionPinned: {
-    host_id: 'codex',
-    host_session_id: 'session-1',
-    pinned: true,
-  },
-  archiveHostSession: { host_id: 'codex', host_session_id: 'session-1' },
-  unarchiveHostSession: { host_id: 'codex', host_session_id: 'session-1' },
-  deleteHostSession: { host_id: 'codex', host_session_id: 'session-1' },
-  deleteFeedbackRequest: { request_id: 'request-1' },
-  setHostPinned: { host_id: 'codex', pinned: true },
-  readFeedbackAttachment: { request_id: 'request-1', attachment_id: 'attachment-1' },
-  readRequestAttachment: { request_id: 'request-1', attachment_id: 'attachment-1' },
-} satisfies { [Name in ApplicationCommandName]: ApplicationCommandInput<Name> }
-
 function expectedArguments(name: ApplicationCommandName): Record<string, unknown> | undefined {
-  const input = commandInputs[name]
+  const input = APPLICATION_CONFORMANCE_INPUTS[name]
   if (name === 'listFeedbackInbox' || name === 'listHostSessions' || name === 'listHostProfiles') {
     return undefined
   }
+  if (name === 'addFeedbackAttachment') {
+    return { input: { ...input, contents: [1, 2, 3] } }
+  }
   return { input }
 }
+
+runApplicationTransportConformance('Tauri', () => {
+  mocks.invoke.mockReset()
+  mocks.listen.mockReset()
+  mocks.listen.mockResolvedValue(vi.fn())
+  let rejection: unknown
+  const semanticNameByCommand = new Map<string, ApplicationCommandName>(
+    Object.entries(TAURI_APPLICATION_COMMANDS).map(([name, command]) => [
+      command,
+      name as ApplicationCommandName,
+    ]),
+  )
+  mocks.invoke.mockImplementation((command: string) => {
+    if (rejection !== undefined) {
+      const cause = rejection
+      rejection = undefined
+      return Promise.reject(cause)
+    }
+    const name = semanticNameByCommand.get(command)
+    if (!name) return Promise.reject(new Error(`Unexpected command: ${command}`))
+    return Promise.resolve(applicationConformanceResult(name))
+  })
+
+  return {
+    transport: new TauriApplicationTransport(),
+    expectWireCall: (index, name) => {
+      const args = expectedArguments(name)
+      expect(mocks.invoke).toHaveBeenNthCalledWith(
+        index + 1,
+        TAURI_APPLICATION_COMMANDS[name],
+        ...(args === undefined ? [] : [args]),
+      )
+    },
+    rejectNext: (error) => {
+      rejection = error
+    },
+  }
+})
 
 async function sourceFiles(directory: string): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true })
@@ -107,21 +90,6 @@ describe('TauriApplicationTransport', () => {
     mocks.invoke.mockReset()
     mocks.listen.mockReset()
     mocks.invoke.mockResolvedValue(undefined)
-  })
-
-  it('maps every semantic command to its complete Tauri command and payload shape', async () => {
-    const transport = new TauriApplicationTransport()
-    const names = Object.keys(TAURI_APPLICATION_COMMANDS) as ApplicationCommandName[]
-
-    for (const name of names) {
-      await transport.call(name, commandInputs[name])
-      const args = expectedArguments(name)
-      expect(mocks.invoke).toHaveBeenLastCalledWith(
-        TAURI_APPLICATION_COMMANDS[name],
-        ...(args === undefined ? [] : [args]),
-      )
-    }
-    expect(mocks.invoke).toHaveBeenCalledTimes(names.length)
   })
 
   it('returns a synchronous idempotent unsubscribe before async listen resolves', async () => {

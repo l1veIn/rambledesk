@@ -29,6 +29,7 @@
   import type { ApplicationTransport } from './lib/application/applicationTransport'
 
   export let applicationTransport: ApplicationTransport
+  export let previewMode = false
 
   import type {
     ApproveFeedbackInput,
@@ -124,6 +125,7 @@
     type AttachmentMessageTone,
   } from './lib/workbench/attachmentController'
   import { createNavigationController } from './lib/workbench/navigationController'
+  import { ensureDesktopNavigationPolling } from './lib/workbench/navigationPolling'
   import { resolvedRamblePhase } from './lib/workbench/rambleSessionState'
   import type {
     FeedbackEditorHandle,
@@ -231,10 +233,6 @@
   let workbenchInitialized = false
   const isTauri = '__TAURI_INTERNALS__' in window
   const isMac = currentDesktopPlatform() === 'macOS'
-  const previewMode =
-    import.meta.env.DEV &&
-    !isTauri &&
-    new URLSearchParams(window.location.search).get('preview') === 'fixtures'
   const previewWorkspaceScenario = previewMode
     ? seedPreviewWorkspaceScenario(
         new URLSearchParams(window.location.search).get('workspace'),
@@ -400,7 +398,7 @@
   const sessionViewRecoveryResolver = createSessionViewRecoveryResolver({
     loadArchived: async () => {
       const sessions =
-        previewMode || !isTauri
+        previewMode
           ? previewWorkspaceScenario === 'unknown'
             ? await Promise.reject(new Error('Preview archived catalog unavailable'))
             : previewFixtures.archivedHostSessions
@@ -730,12 +728,18 @@
   function startWorkbench() {
     if (workbenchInitialized) return
     workbenchInitialized = true
+    inboxTimer = ensureDesktopNavigationPolling(
+      isTauri,
+      inboxTimer,
+      setInterval,
+      () => void navigation.refreshNavigation(true),
+    )
     void (async () => {
-      await navigation.initialize(initialWorkspaceSnapshot === null)
+      const initialized = await navigation.initialize(initialWorkspaceSnapshot === null)
+      if (!initialized) return
       await refreshSessionViewRecovery()
       if (initialWorkspaceSnapshot) await restoreInitialWorkspaceSnapshot()
     })()
-    if (isTauri) inboxTimer = setInterval(() => void navigation.refreshNavigation(true), 5_000)
   }
 
   function closeOnboarding() {
@@ -1940,7 +1944,6 @@
 
 <ArchivedSessionsDialog
   bind:open={archivedSessionsOpen}
-  {isTauri}
   transport={applicationTransport}
   {previewMode}
   {resolveHostProfile}
