@@ -17,7 +17,6 @@ import type {
   ReorderAttachmentsInput,
 } from '../feedback'
 import type { ActiveAction } from '../draftOperations'
-import type { ScreenCaptureReady } from '../screenCapture'
 import type { FeedbackEditorHandle } from './types'
 
 export type AttachmentMessageTone = 'info' | 'success' | 'error'
@@ -52,11 +51,11 @@ export type AttachmentController = ReturnType<typeof createAttachmentController>
 export type AttachmentCandidateTarget = Readonly<{
   requestId: string
   action: ActiveAction
+  label?: string
 }>
 
 export function createAttachmentController(context: AttachmentControllerContext) {
-  let screenCaptureRequestId = ''
-  let screenCaptureAction: ActiveAction = null
+  let screenCaptureTarget: AttachmentCandidateTarget | null = null
   let clientFileImportPending = false
   let candidatePersistenceQueue: Promise<void> = Promise.resolve()
   let candidatePersistencePending = 0
@@ -68,8 +67,8 @@ export function createAttachmentController(context: AttachmentControllerContext)
 
     const screenCapture = context.capabilities.screenCapture
     if (screenCapture.status.availability !== 'unavailable') {
-      captureReadyUnlisten = screenCapture.implementation.onReady(
-        (capture) => void importScreenCapture(capture),
+      captureReadyUnlisten = screenCapture.implementation.onCandidate(
+        (candidate) => void importScreenCapture(candidate),
         (cause) => {
           context.setMessage(
             context.tr('Cannot receive the capture result: {error}', { error: context.messageFrom(cause) }),
@@ -79,8 +78,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
       )
       captureFinishedUnlisten = screenCapture.implementation.onFinished(
         () => {
-          screenCaptureRequestId = ''
-          screenCaptureAction = null
+          screenCaptureTarget = null
           context.setCaptureBusy(false)
           context.setMessage('')
         },
@@ -172,8 +170,8 @@ export function createAttachmentController(context: AttachmentControllerContext)
   function persistAttachmentCandidates(
     target: AttachmentCandidateTarget,
     candidates: readonly AttachmentCandidate[],
-  ): Promise<void> {
-    if (candidates.length === 0) return Promise.resolve()
+  ): Promise<boolean> {
+    if (candidates.length === 0) return Promise.resolve(true)
 
     candidatePersistencePending += 1
     context.setBusy(true)
@@ -191,12 +189,12 @@ export function createAttachmentController(context: AttachmentControllerContext)
   async function persistCandidateBatch(
     target: AttachmentCandidateTarget,
     candidates: readonly AttachmentCandidate[],
-  ) {
+  ): Promise<boolean> {
     const { requestId, action } = target
     context.setMessage('')
     try {
       const visibleTarget = context.getWorkspace()?.request.request_id === requestId
-      if (visibleTarget && !(await context.saveDraftNow())) return
+      if (visibleTarget && !(await context.saveDraftNow())) return false
       await context.waitForRambleMarkdown()
 
       let next = await context.transport.call('getFeedbackWorkspace', { request_id: requestId })
@@ -227,14 +225,16 @@ export function createAttachmentController(context: AttachmentControllerContext)
         await context.routeDraftOperation(requestId, {
           kind: 'appendAttachment',
           attachment,
-          label: attachment.file_name,
+          label: target.label ?? attachment.file_name,
           action,
         })
       }
+      return true
     } catch (cause) {
       context.setMessage(context.messageFrom(cause), 'error')
       const current = context.getWorkspace()
       if (current?.request.request_id === requestId) await refreshPreviews(current)
+      return false
     } finally {
       await Promise.allSettled(candidates.map((candidate) => candidate.dispose()))
     }
@@ -301,7 +301,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
 
   async function startScreenCapture() {
     const workspace = context.getWorkspace()
-    const requestId = context.getRambleRequestId() || workspace?.request.request_id || ''
+    const requestId = workspace?.request.request_id || context.getRambleRequestId() || ''
     if (
       context.getInteractionLocked() ||
       !requestId ||
@@ -310,16 +310,17 @@ export function createAttachmentController(context: AttachmentControllerContext)
     ) return
     if (workspace?.request.request_id === requestId && !(await context.saveDraftNow())) return
     await context.waitForRambleMarkdown()
-    screenCaptureRequestId = requestId
-    screenCaptureAction = context.activeActionFor(requestId)
+    screenCaptureTarget = {
+      requestId,
+      action: context.activeActionFor(requestId),
+    }
     context.setCaptureBusy(true)
     context.setMessage('')
     try {
       await leaveFullscreenIfNeeded()
       await context.capabilities.screenCapture.implementation.begin()
     } catch (cause) {
-      screenCaptureRequestId = ''
-      screenCaptureAction = null
+      screenCaptureTarget = null
       context.setCaptureBusy(false)
       const message = context.messageFrom(cause)
       if (message.includes('SCREEN_CAPTURE_PERMISSION_RESTART_REQUIRED')) {
@@ -343,66 +344,29 @@ export function createAttachmentController(context: AttachmentControllerContext)
     }
   }
 
-  async function importScreenCapture(capture: ScreenCaptureReady) {
+  async function importScreenCapture(candidate: AttachmentCandidate) {
     if (context.getInteractionLocked()) {
-      await discardScreenCapture(capture.capture_session_id)
+      await candidate.dispose().catch(() => {})
       context.setCaptureBusy(false)
       return
     }
-    const workspace = context.getWorkspace()
-    const requestId =
-      screenCaptureRequestId || context.getRambleRequestId() || workspace?.request.request_id || ''
-    const action = screenCaptureAction
-    if (!requestId) {
-      await discardScreenCapture(capture.capture_session_id)
+    const target = screenCaptureTarget
+    if (!target) {
+      await candidate.dispose().catch(() => {})
       context.setCaptureBusy(false)
       return
     }
     context.setCaptureBusy(true)
     try {
-      const visibleTarget = workspace?.request.request_id === requestId
-      if (visibleTarget && !(await context.saveDraftNow())) {
-        throw new Error(context.tr('The current draft could not be saved, so the capture was not inserted.'))
+      const persisted = await persistAttachmentCandidates(target, [candidate])
+      if (persisted) {
+        context.setMessage(
+          context.tr('Capture inserted at the current document position'),
+          'success',
+        )
       }
-      await context.waitForRambleMarkdown()
-      const target = visibleTarget
-        ? workspace
-        : await context.transport.call('getFeedbackWorkspace', { request_id: requestId })
-      if (!target) throw new Error(context.tr('This feedback request could not be found.'))
-      const existingIds = new Set(target.attachments.map((item) => item.attachment_id))
-      const next = await context.capabilities.screenCapture.implementation.complete({
-        requestId,
-        captureSessionId: capture.capture_session_id,
-        expectedRevision: target.draft.saved_revision,
-      })
-      const added = next.attachments.filter((item) => !existingIds.has(item.attachment_id))
-      if (visibleTarget && context.getWorkspace()?.request.request_id === requestId) {
-        context.applyWorkspaceMutation(next)
-        await refreshPreviews(next)
-        await tick()
-      }
-      const attachment = added[0]
-      if (!attachment) {
-        throw new Error(context.tr('The captured attachment was saved, but the editor could not insert it at the current cursor.'))
-      }
-      await context.routeDraftOperation(requestId, {
-        kind: 'appendAttachment',
-        attachment,
-        label: attachment.file_name,
-        action,
-      })
-      context.setMessage(context.tr('Capture inserted at the current document position'), 'success')
-    } catch (cause) {
-      context.setMessage(
-        context.tr('Could not insert capture: {error}', { error: context.messageFrom(cause) }),
-        'error',
-      )
-      const current = context.getWorkspace()
-      if (current?.request.request_id === requestId) await refreshPreviews(current)
     } finally {
-      screenCaptureRequestId = ''
-      screenCaptureAction = null
-      await discardScreenCapture(capture.capture_session_id)
+      screenCaptureTarget = null
       context.setCaptureBusy(false)
     }
   }
@@ -510,10 +474,6 @@ export function createAttachmentController(context: AttachmentControllerContext)
   function releasePreviews() {
     for (const url of Object.values(context.getPreviews())) URL.revokeObjectURL(url)
     context.setPreviews({})
-  }
-
-  async function discardScreenCapture(captureSessionId: string) {
-    await context.capabilities.screenCapture.implementation.discard(captureSessionId).catch(() => {})
   }
 
   return {

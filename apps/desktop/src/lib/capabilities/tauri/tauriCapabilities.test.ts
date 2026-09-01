@@ -190,8 +190,18 @@ describe('Tauri Workbench capabilities', () => {
     expect(onError).not.toHaveBeenCalled()
   })
 
-  it('maps server-path import, capture, and speech inputs to the existing native wire shape', async () => {
-    const api = createFakeApi()
+  it('keeps capture bytes client-local and maps only application-owned server path inputs', async () => {
+    const clipboardBytes = new Uint8Array([1, 2, 3]).buffer
+    const api = createFakeApi({
+      capture_clipboard_once: {
+        type: 'image',
+        capture_id: 'clipboard-1',
+        file_name: 'clipboard.png',
+        captured_at_ms: 42,
+        byte_length: 3,
+      },
+      read_clipboard_capture_image: clipboardBytes,
+    })
     const capabilities = createTauriWorkbenchCapabilities(api)
 
     await capabilities.serverPaths.implementation.importAttachmentPath({
@@ -199,22 +209,12 @@ describe('Tauri Workbench capabilities', () => {
       path: '/tmp/example.png',
       expectedRevision: 7,
     })
-    await capabilities.screenCapture.implementation.complete({
-      requestId: 'request-1',
-      captureSessionId: 'capture-1',
-      expectedRevision: 8,
-    })
-    await capabilities.clipboardCapture.implementation.captureOnce({
-      requestId: 'request-1',
-      rambleContextId: 'context-1',
-    })
-    await capabilities.clipboardCapture.implementation.completeImage({
-      requestId: 'request-1',
-      captureId: 'clipboard-1',
-      rambleContextId: 'context-1',
-      fileName: 'clipboard.png',
-      expectedRevision: 9,
-    })
+    const clipboard = await capabilities.clipboardCapture.implementation.captureOnce()
+    expect(clipboard.kind).toBe('attachment')
+    if (clipboard.kind === 'attachment') {
+      await expect(clipboard.candidate.readBytes()).resolves.toBe(clipboardBytes)
+      await clipboard.candidate.dispose()
+    }
     const speechSession = capabilities.speech.implementation.start(
       {
         inputDevice: null,
@@ -230,18 +230,12 @@ describe('Tauri Workbench capabilities', () => {
     expect(api.invokeMock).toHaveBeenCalledWith('import_feedback_attachment_path', {
       requestId: 'request-1', path: '/tmp/example.png', expectedRevision: 7,
     })
-    expect(api.invokeMock).toHaveBeenCalledWith('add_completed_screen_capture', {
-      requestId: 'request-1', captureSessionId: 'capture-1', expectedRevision: 8,
-    })
-    expect(api.invokeMock).toHaveBeenCalledWith('capture_clipboard_once', {
-      input: { request_id: 'request-1', ramble_context_id: 'context-1' },
-    })
-    expect(api.invokeMock).toHaveBeenCalledWith('add_completed_clipboard_capture', {
-      requestId: 'request-1',
+    expect(api.invokeMock).toHaveBeenCalledWith('capture_clipboard_once')
+    expect(api.invokeMock).toHaveBeenCalledWith('read_clipboard_capture_image', {
       captureId: 'clipboard-1',
-      rambleContextId: 'context-1',
-      fileName: 'clipboard.png',
-      expectedRevision: 9,
+    })
+    expect(api.invokeMock).toHaveBeenCalledWith('discard_clipboard_capture_image', {
+      captureId: 'clipboard-1',
     })
     expect(api.invokeMock).toHaveBeenCalledWith('start_voice_ramble', {
       input: {
@@ -265,7 +259,7 @@ describe('Tauri Workbench capabilities', () => {
     const capabilities = createTauriWorkbenchCapabilities(api)
     const handler = vi.fn()
     const onError = vi.fn()
-    const unsubscribe = capabilities.screenCapture.implementation.onReady(handler, onError)
+    const unsubscribe = capabilities.screenCapture.implementation.onCandidate(handler, onError)
     unsubscribe()
     resolveListen?.(lateUnlisten)
     await Promise.resolve()
@@ -273,16 +267,36 @@ describe('Tauri Workbench capabilities', () => {
     expect(lateUnlisten).toHaveBeenCalledOnce()
     expect(onError).not.toHaveBeenCalled()
 
-    const payload = { capture_session_id: 'capture-1', file_name: 'capture.png' }
-    const api2 = createFakeApi()
+    const payload = {
+      capture_session_id: 'capture-1',
+      file_name: 'capture.png',
+      byte_length: 4,
+    }
+    const bytes = new Uint8Array([1, 2, 3, 4]).buffer
+    const api2 = createFakeApi({ read_completed_screen_capture: bytes })
     const capabilities2 = createTauriWorkbenchCapabilities(api2)
-    capabilities2.screenCapture.implementation.onReady(handler, onError)
+    capabilities2.screenCapture.implementation.onCandidate(handler, onError)
     await Promise.resolve()
     const registered = api2.listenMock.mock.calls[0]?.[1] as
       | ((event: TauriEvent<typeof payload>) => void)
       | undefined
     registered?.({ payload })
-    expect(handler).toHaveBeenCalledWith(payload)
+    const candidate = handler.mock.calls.at(-1)?.[0]
+    expect(candidate).toMatchObject({
+      id: 'capture-1',
+      source: 'screen-capture',
+      fileName: 'capture.png',
+      mediaType: 'image/png',
+      byteLength: 4,
+    })
+    await expect(candidate.readBytes()).resolves.toBe(bytes)
+    await candidate.dispose()
+    expect(api2.invokeMock).toHaveBeenCalledWith('read_completed_screen_capture', {
+      captureSessionId: 'capture-1',
+    })
+    expect(api2.invokeMock).toHaveBeenCalledWith('discard_screen_capture', {
+      captureSessionId: 'capture-1',
+    })
   })
 
   it('preserves console, shortcut, administration, and updater commands', async () => {
@@ -342,8 +356,6 @@ describe('Tauri Workbench capabilities', () => {
     await capabilities.notifications.implementation.send({ title: 'New request', body: 'Body' })
     await capabilities.notifications.implementation.importSound('/tmp/sound.mp3')
     await capabilities.screenCapture.implementation.begin()
-    await capabilities.screenCapture.implementation.discard('capture-1')
-    await capabilities.clipboardCapture.implementation.discardImage('clipboard-1')
     await capabilities.globalShortcuts.implementation.read()
     await capabilities.globalShortcuts.implementation.reset()
     await capabilities.globalShortcuts.implementation.setCaptureActive(true)
@@ -378,12 +390,6 @@ describe('Tauri Workbench capabilities', () => {
       path: '/tmp/sound.mp3',
     })
     expect(api.invokeMock).toHaveBeenCalledWith('begin_screen_capture')
-    expect(api.invokeMock).toHaveBeenCalledWith('discard_screen_capture', {
-      captureSessionId: 'capture-1',
-    })
-    expect(api.invokeMock).toHaveBeenCalledWith('discard_clipboard_capture_image', {
-      captureId: 'clipboard-1',
-    })
     expect(api.invokeMock).toHaveBeenCalledWith('set_shortcut_capture_active', { active: true })
     expect(api.invokeMock).toHaveBeenCalledWith('download_speech_model', {
       modelId: 'sense-voice-small',

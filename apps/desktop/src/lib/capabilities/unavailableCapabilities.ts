@@ -82,19 +82,8 @@ const UNAVAILABLE_WORKBENCH_CAPABILITIES = createWorkbenchCapabilities({
   }),
   tray: slot({ setPendingCount: () => rejected('tray') }),
   externalLinks: slot({ open: () => rejected('externalLinks') }),
-  screenCapture: slot({
-    onReady: (_handler, onError) => unavailableSubscription('screenCapture', onError),
-    onFinished: (_handler, onError) => unavailableSubscription('screenCapture', onError),
-    onShortcut: (_handler, onError) => unavailableSubscription('screenCapture', onError),
-    begin: () => rejected('screenCapture'),
-    complete: () => rejected('screenCapture'),
-    discard: () => rejected('screenCapture'),
-  }),
-  clipboardCapture: slot({
-    captureOnce: () => rejected('clipboardCapture'),
-    completeImage: () => rejected('clipboardCapture'),
-    discardImage: () => rejected('clipboardCapture'),
-  }),
+  screenCapture: slot(UNAVAILABLE_SCREEN_CAPTURE),
+  clipboardCapture: slot(UNAVAILABLE_CLIPBOARD_CAPTURE),
   imagePaste: slot({
     subscribe: (_target, _handler, onError) =>
       unavailableSubscription('imagePaste', onError),

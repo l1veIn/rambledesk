@@ -1,15 +1,17 @@
-import type { ClipboardCaptureEvent } from '$lib/clipboardCapture'
 import type { FeedbackWorkspaceView } from '$lib/feedback'
 import type { DiagnosticExportResult } from '$lib/nativePath'
 import type { SpeechModelId } from '$lib/preferences'
 import type { RambleConsoleCommand, RambleConsoleState } from '$lib/rambleConsole'
-import type { ScreenCaptureReady } from '$lib/screenCapture'
 import type { ShortcutAction, ShortcutConfig } from '$lib/shortcutSettings'
 import type {
   SpeechRecognitionListener,
   SpeechRecognitionSession,
 } from '$lib/speech'
 import type { ClientAttachmentFile } from './clientAttachmentFile'
+import type {
+  ClipboardCapturePlugin,
+  ScreenCapturePlugin,
+} from './capturePlugin'
 
 export type {
   AttachmentCandidate,
@@ -110,48 +112,10 @@ export interface ServerPathCapability {
   }>): Promise<FeedbackWorkspaceView>
 }
 
-export type CaptureFinished = Readonly<{
-  capture_session_id: string | null
-  outcome: 'cancelled' | 'pinned'
-}>
 export type NativeFileDropEvent = Readonly<{
   type: 'enter' | 'over' | 'drop' | 'leave'
   paths: readonly string[]
 }>
-export interface ScreenCaptureCapability {
-  onReady(
-    handler: (capture: ScreenCaptureReady) => void,
-    onError: CapabilityErrorHandler,
-  ): CapabilityUnsubscribe
-  onFinished(
-    handler: (capture: CaptureFinished) => void,
-    onError: CapabilityErrorHandler,
-  ): CapabilityUnsubscribe
-  onShortcut(handler: () => void, onError: CapabilityErrorHandler): CapabilityUnsubscribe
-  begin(): Promise<void>
-  complete(input: Readonly<{
-    requestId: string
-    captureSessionId: string
-    expectedRevision: number
-  }>): Promise<FeedbackWorkspaceView>
-  discard(captureSessionId: string): Promise<void>
-}
-
-export interface ClipboardCaptureCapability {
-  captureOnce(input: Readonly<{
-    requestId: string
-    rambleContextId: string
-  }>): Promise<ClipboardCaptureEvent>
-  completeImage(input: Readonly<{
-    requestId: string
-    captureId: string
-    rambleContextId: string
-    fileName: string
-    expectedRevision: number
-  }>): Promise<FeedbackWorkspaceView>
-  discardImage(captureId: string): Promise<void>
-}
-
 export interface ImagePasteCapability {
   subscribe(
     target: EventTarget,
@@ -320,8 +284,8 @@ export type WorkbenchCapabilitySlots = Readonly<{
   notifications: CapabilitySlot<NotificationCapability>
   tray: CapabilitySlot<TrayCapability>
   externalLinks: CapabilitySlot<ExternalLinkCapability>
-  screenCapture: CapabilitySlot<ScreenCaptureCapability>
-  clipboardCapture: CapabilitySlot<ClipboardCaptureCapability>
+  screenCapture: CapabilitySlot<ScreenCapturePlugin>
+  clipboardCapture: CapabilitySlot<ClipboardCapturePlugin>
   imagePaste: CapabilitySlot<ImagePasteCapability>
   serverPaths: CapabilitySlot<ServerPathCapability>
   globalShortcuts: CapabilitySlot<ShortcutCapability>

@@ -24,10 +24,7 @@ use tauri::{Emitter, Manager, ipc::Response};
 use rambledesk_mcp::{McpHostView, McpInstallResult, detect_hosts, install_hosts};
 
 use super::{
-    TRAY_ID, WorkbenchState,
-    clipboard_capture::ClipboardCaptureState,
-    diagnostics, migrate_library, pending_tray_icon, pi_install, save_library_path,
-    screen_capture::ScreenCaptureState,
+    TRAY_ID, WorkbenchState, migrate_library, pending_tray_icon, pi_install, save_library_path,
     speech_plugin::{
         SpeechRecognitionEventView, SpeechRecognitionSessionView, StartVoiceRambleInput,
     },
@@ -405,99 +402,6 @@ pub(super) async fn add_feedback_attachment(
         .application_commands
         .add_feedback_attachment(input)
         .await
-}
-
-#[tauri::command]
-pub(super) async fn add_completed_screen_capture(
-    request_id: String,
-    capture_session_id: String,
-    expected_revision: u64,
-    capture_state: tauri::State<'_, ScreenCaptureState>,
-    state: tauri::State<'_, WorkbenchState>,
-) -> Result<ApplicationFeedbackWorkspaceView, ApplicationError> {
-    let started = std::time::Instant::now();
-    tracing::info!(%request_id, %capture_session_id, "add_completed_screen_capture: start");
-    let contents = capture_state
-        .take_completed_png(&capture_session_id)
-        .map_err(ApplicationError::invalid_argument)?;
-    tracing::info!(
-        png_bytes = contents.len(),
-        elapsed_ms = started.elapsed().as_millis() as u64,
-        "add_completed_screen_capture: png taken"
-    );
-    if contents.len() > MAX_ATTACHMENT_BYTES {
-        return Err(ApplicationError::invalid_argument(format!(
-            "attachment exceeds the {} MiB limit",
-            MAX_ATTACHMENT_BYTES / 1024 / 1024
-        )));
-    }
-    let application = state.application.clone();
-    diagnostics::record_event(
-        "screen_capture_imported",
-        Some(&request_id),
-        None,
-        Some("ok"),
-        None,
-        None,
-    );
-    let result = application
-        .add_feedback_attachment(AddAttachmentInput {
-            request_id,
-            file_name: format!("ramble-screenshot-{capture_session_id}.png"),
-            contents,
-            expected_revision,
-        })
-        .await;
-    tracing::info!(
-        elapsed_ms = started.elapsed().as_millis() as u64,
-        ok = result.is_ok(),
-        "add_completed_screen_capture: attachment saved"
-    );
-    result.map(Into::into)
-}
-
-#[tauri::command]
-pub(super) async fn add_completed_clipboard_capture(
-    request_id: String,
-    capture_id: String,
-    ramble_context_id: String,
-    file_name: String,
-    expected_revision: u64,
-    clipboard: tauri::State<'_, ClipboardCaptureState>,
-    state: tauri::State<'_, WorkbenchState>,
-) -> Result<ApplicationFeedbackWorkspaceView, ApplicationError> {
-    let contents = clipboard
-        .take_image(&capture_id, &request_id, &ramble_context_id)
-        .map_err(ApplicationError::invalid_argument)?;
-    if contents.len() > MAX_ATTACHMENT_BYTES {
-        return Err(ApplicationError::invalid_argument(format!(
-            "attachment exceeds the {} MiB limit",
-            MAX_ATTACHMENT_BYTES / 1024 / 1024
-        )));
-    }
-    let safe_name = if file_name.starts_with("ramble-clipboard-") && file_name.ends_with(".png") {
-        file_name
-    } else {
-        format!("ramble-clipboard-{capture_id}.png")
-    };
-    diagnostics::record_event(
-        "clipboard_image_imported",
-        Some(&request_id),
-        None,
-        Some("ok"),
-        None,
-        None,
-    );
-    let application = state.application.clone();
-    application
-        .add_feedback_attachment(AddAttachmentInput {
-            request_id,
-            file_name: safe_name,
-            contents,
-            expected_revision,
-        })
-        .await
-        .map(Into::into)
 }
 
 #[tauri::command]

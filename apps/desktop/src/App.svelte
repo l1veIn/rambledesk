@@ -1781,7 +1781,6 @@
   <RambleSessionController
     bind:this={rambleController}
     {capabilities}
-    transport={applicationTransport}
     {workspace}
     bind:attachmentBusy
     {screenCaptureBusy}
@@ -1799,11 +1798,9 @@
     bind:rambleMessage
     interactionLocked={interactionLocked || currentRequestCooking || cookedDraftReady}
     onPageError={(message) => (pageError = message)}
-    onSaveDraftNow={saveDraftNow}
-    onApplyWorkspaceMutation={applyWorkspaceMutation}
-    onRefreshAttachmentPreviews={attachmentController.refreshPreviews}
     onStartScreenCapture={attachmentController.startScreenCapture}
     onImportServerAttachmentPaths={attachmentController.importServerAttachmentPaths}
+    onPersistAttachmentCandidates={attachmentController.persistAttachmentCandidates}
     onRouteDraftOperation={routeDraftOperation}
     getActiveAction={activeActionFor}
   />

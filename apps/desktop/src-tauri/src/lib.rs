@@ -319,8 +319,6 @@ pub fn run() {
             read_published_feedback,
             save_feedback_draft,
             add_feedback_attachment,
-            add_completed_screen_capture,
-            add_completed_clipboard_capture,
             import_feedback_attachment_path,
             diagnostics::export_diagnostics,
             diagnostics::record_diagnostic_event,
