@@ -1,7 +1,7 @@
 # Web Access 支持矩阵
 
-> 状态：WEB10 当前基线。  
-> 术语源：[TERMINOLOGY.md](TERMINOLOGY.md)。  
+> 状态：WEB10 当前基线。
+> 术语源：[TERMINOLOGY.md](TERMINOLOGY.md)。
 > 本表只陈述已经进入仓库的能力、仍需人工验收的能力和明确不支持的能力。
 
 ## 状态标记
