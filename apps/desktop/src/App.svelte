@@ -363,6 +363,12 @@
     routeDraftOperation,
     activeActionFor,
     applyWorkspaceMutation,
+    recordAttachmentDiagnostic: async (activity, requestId) => {
+      if (capabilities.rambleConsole.status.availability === 'unavailable') return
+      await capabilities.rambleConsole.implementation
+        .recordDiagnostic(activity, requestId)
+        .catch(() => {})
+    },
   })
 
   type LoadedWorkspaceTarget =
@@ -2017,7 +2023,7 @@
             onStartScreenCapture={() => void attachmentController.startScreenCapture()}
             onImportClipboard={() => void importClipboardNow()}
             onFileSelection={attachmentController.handleFileSelection}
-            onPasteFiles={attachmentController.acceptClientFiles}
+            onPasteCandidates={attachmentController.acceptAttachmentCandidates}
             onPasteError={attachmentController.reportClientFileError}
             onRemoveAttachment={(attachment) => void attachmentController.removeAttachment(attachment)}
             onOpenPackage={() => void openFeedbackPackage()}

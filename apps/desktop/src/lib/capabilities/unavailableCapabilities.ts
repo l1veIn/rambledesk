@@ -84,10 +84,7 @@ const UNAVAILABLE_WORKBENCH_CAPABILITIES = createWorkbenchCapabilities({
   externalLinks: slot({ open: () => rejected('externalLinks') }),
   screenCapture: slot(UNAVAILABLE_SCREEN_CAPTURE),
   clipboardCapture: slot(UNAVAILABLE_CLIPBOARD_CAPTURE),
-  imagePaste: slot({
-    subscribe: (_target, _handler, onError) =>
-      unavailableSubscription('imagePaste', onError),
-  }),
+  imagePaste: slot(UNAVAILABLE_IMAGE_PASTE),
   serverPaths: slot({
     chooseDirectory: () => rejected('serverPaths'),
     chooseFile: () => rejected('serverPaths'),

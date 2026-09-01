@@ -5,7 +5,7 @@
   import { Skeleton } from '$lib/components/ui/skeleton'
   import type { JSONContent } from '@tiptap/core'
   import type { ApplicationTransport } from '$lib/application/applicationTransport'
-  import type { ClientAttachmentFile } from '$lib/capabilities/clientAttachmentFile'
+  import type { AttachmentCandidate } from '$lib/capabilities/capturePlugin'
   import type { WorkbenchCapabilities } from '$lib/capabilities/workbenchCapabilities'
 
   import type {
@@ -106,7 +106,7 @@
   export let onStartScreenCapture: () => void = () => {}
   export let onImportClipboard: () => void = () => {}
   export let onFileSelection: (event: Event) => void = () => {}
-  export let onPasteFiles: (files: readonly ClientAttachmentFile[]) => boolean = () => false
+  export let onPasteCandidates: (candidates: readonly AttachmentCandidate[]) => boolean = () => false
   export let onPasteError: (cause: unknown) => void = () => {}
   export let onRemoveAttachment: (attachment: AttachmentView) => void = () => {}
   export let onOpenPackage: () => void = () => {}
@@ -161,14 +161,14 @@
       ? undefined
       : imagePaste.implementation.subscribe(
           workspaceRoot,
-          (files) => {
+          (candidates) => {
             if (!canAcceptImagePaste({
               loadingWorkspace,
               requestStatus: workspace?.request.status ?? null,
               interactionLocked,
               attachmentBusy,
             })) return false
-            return onPasteFiles(files)
+            return onPasteCandidates(candidates)
           },
           onPasteError,
         )

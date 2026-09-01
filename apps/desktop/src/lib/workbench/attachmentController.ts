@@ -4,12 +4,8 @@ import { isImageMediaType } from '../attachmentMarkdown'
 import type { ApplicationTransport } from '../application/applicationTransport'
 import type { ApplicationAddAttachmentInput } from '../application/contracts'
 import type { WorkbenchCapabilities } from '../capabilities/workbenchCapabilities'
-import {
-  clientAttachmentCandidate,
-  clientAttachmentFile,
-  type ClientAttachmentFile,
-} from '../capabilities/clientAttachmentFile'
 import type { AttachmentCandidate } from '../capabilities/capturePlugin'
+import { fileAttachmentCandidate } from '../capabilities/fileAttachmentCandidate'
 import type {
   AttachmentView,
   FeedbackWorkspaceView,
@@ -44,6 +40,10 @@ type AttachmentControllerContext = {
   routeDraftOperation: (requestId: string, operation: import('../draftOperations').DraftOperation) => Promise<void>
   activeActionFor: (requestId: string) => import('../draftOperations').ActiveAction
   applyWorkspaceMutation: (next: FeedbackWorkspaceView) => void
+  recordAttachmentDiagnostic?: (
+    activity: AttachmentImportDiagnostic,
+    requestId: string,
+  ) => Promise<void>
 }
 
 export type AttachmentController = ReturnType<typeof createAttachmentController>
@@ -54,9 +54,19 @@ export type AttachmentCandidateTarget = Readonly<{
   label?: string
 }>
 
+type AttachmentImportDiagnostic = 'screen_capture_imported' | 'clipboard_image_imported'
+
+function attachmentDiagnosticActivity(
+  candidate: AttachmentCandidate,
+): AttachmentImportDiagnostic | null {
+  if (candidate.source === 'screen-capture') return 'screen_capture_imported'
+  if (candidate.source === 'clipboard-image') return 'clipboard_image_imported'
+  return null
+}
+
 export function createAttachmentController(context: AttachmentControllerContext) {
   let screenCaptureTarget: AttachmentCandidateTarget | null = null
-  let clientFileImportPending = false
+  let candidateImportPending = false
   let candidatePersistenceQueue: Promise<void> = Promise.resolve()
   let candidatePersistencePending = 0
 
@@ -117,10 +127,10 @@ export function createAttachmentController(context: AttachmentControllerContext)
     }
   }
 
-  function canImportClientFiles(files: readonly ClientAttachmentFile[]): boolean {
+  function canImportCandidates(candidates: readonly AttachmentCandidate[]): boolean {
     const workspace = context.getWorkspace()
-    return files.length > 0
-      && !clientFileImportPending
+    return candidates.length > 0
+      && !candidateImportPending
       && !context.getInteractionLocked()
       && !context.getBusy()
       && workspace !== null
@@ -128,38 +138,51 @@ export function createAttachmentController(context: AttachmentControllerContext)
       && workspace.request.status !== 'cancelled'
   }
 
-  function acceptClientFiles(files: readonly ClientAttachmentFile[]): boolean {
-    if (!canImportClientFiles(files)) return false
-    clientFileImportPending = true
-    void importClientFiles(files).finally(() => {
-      clientFileImportPending = false
+  function acceptAttachmentCandidates(candidates: readonly AttachmentCandidate[]): boolean {
+    if (!canImportCandidates(candidates)) {
+      void disposeCandidates(candidates)
+      return false
+    }
+    candidateImportPending = true
+    void importAttachmentCandidates(candidates).finally(() => {
+      candidateImportPending = false
     })
     return true
   }
 
   function handleFileSelection(event: Event) {
     const input = event.currentTarget as HTMLInputElement
-    const files = Array.from(input.files ?? [], clientAttachmentFile)
+    const candidates = Array.from(input.files ?? [], fileInputCandidate)
     input.value = ''
-    acceptClientFiles(files)
+    acceptAttachmentCandidates(candidates)
   }
 
-  async function importClientFiles(files: readonly ClientAttachmentFile[]) {
+  async function importAttachmentCandidates(candidates: readonly AttachmentCandidate[]) {
     const workspace = context.getWorkspace()
     if (
       context.getInteractionLocked()
       || !workspace
       || workspace.request.status === 'completed'
       || workspace.request.status === 'cancelled'
-      || files.length === 0
+      || candidates.length === 0
       || context.getBusy()
-    ) return
+    ) {
+      await disposeCandidates(candidates)
+      return
+    }
     const target = {
       requestId: workspace.request.request_id,
       action: context.activeActionFor(workspace.request.request_id),
     }
-    const candidates = files.map((file) => clientAttachmentCandidate(file))
     await persistAttachmentCandidates(target, candidates)
+  }
+
+  function fileInputCandidate(file: File): AttachmentCandidate {
+    return fileAttachmentCandidate(file, 'file-input')
+  }
+
+  async function disposeCandidates(candidates: readonly AttachmentCandidate[]) {
+    await Promise.allSettled(candidates.map((candidate) => candidate.dispose()))
   }
 
   /**
@@ -213,6 +236,10 @@ export function createAttachmentController(context: AttachmentControllerContext)
           expected_revision: next.draft.saved_revision,
         }
         next = await context.transport.call('addFeedbackAttachment', input)
+        const activity = attachmentDiagnosticActivity(candidate)
+        if (activity && context.recordAttachmentDiagnostic) {
+          await context.recordAttachmentDiagnostic(activity, requestId).catch(() => {})
+        }
       }
 
       const added = next.attachments.filter((item) => !existingIds.has(item.attachment_id))
@@ -236,7 +263,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
       if (current?.request.request_id === requestId) await refreshPreviews(current)
       return false
     } finally {
-      await Promise.allSettled(candidates.map((candidate) => candidate.dispose()))
+      await disposeCandidates(candidates)
     }
   }
 
@@ -479,8 +506,8 @@ export function createAttachmentController(context: AttachmentControllerContext)
   return {
     mount,
     handleFileSelection,
-    acceptClientFiles,
-    importClientFiles,
+    acceptAttachmentCandidates,
+    importAttachmentCandidates,
     persistAttachmentCandidates,
     reportClientFileError,
     importServerAttachmentPaths,

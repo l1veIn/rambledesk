@@ -4,7 +4,7 @@ import {
   type CapabilitySlot,
   type WorkbenchCapabilities,
 } from '../workbenchCapabilities'
-import { createBrowserImagePasteCapability } from '../browser/imagePasteCapability'
+import { createBrowserImagePastePlugin } from '../browser/imagePasteCapability'
 import {
   createTauriDataStorageCapability,
   createTauriDiagnosticsCapability,
@@ -65,7 +65,7 @@ export function createTauriWorkbenchCapabilities(
     externalLinks: nativeSlot(createTauriExternalLinkCapability(api)),
     screenCapture: nativeSlot(createTauriScreenCaptureCapability(api)),
     clipboardCapture: nativeSlot(createTauriClipboardCaptureCapability(api)),
-    imagePaste: browserSlot(createBrowserImagePasteCapability()),
+    imagePaste: browserSlot(createBrowserImagePastePlugin()),
     serverPaths: nativeSlot(createTauriServerPathCapability(api)),
     globalShortcuts: nativeSlot(createTauriShortcutCapability(api)),
     speech: nativeSlot(createTauriSpeechCapability(api)),

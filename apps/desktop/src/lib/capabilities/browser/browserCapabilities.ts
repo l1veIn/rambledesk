@@ -6,7 +6,7 @@ import {
   type WorkbenchCapabilities,
 } from '../workbenchCapabilities'
 import { createUnavailableWorkbenchCapabilities } from '../unavailableCapabilities'
-import { createBrowserImagePasteCapability } from './imagePasteCapability'
+import { createBrowserImagePastePlugin } from './imagePasteCapability'
 import {
   createBrowserSpeechCapability,
   detectBrowserSpeechSupport,
@@ -60,7 +60,7 @@ export function createBrowserWorkbenchCapabilities(
   return createWorkbenchCapabilities({
     ...slots,
     externalLinks: browserSlot(createBrowserExternalLinkCapability(environment)),
-    imagePaste: browserSlot(createBrowserImagePasteCapability()),
+    imagePaste: browserSlot(createBrowserImagePastePlugin()),
     ...(speech.supported ? { speech: browserSlot(createBrowserSpeechCapability()) } : {}),
   })
 }

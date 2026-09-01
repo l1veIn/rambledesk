@@ -347,8 +347,6 @@ pub fn run() {
             macos_permissions::request_macos_permission,
             macos_permissions::open_macos_privacy_settings,
             clipboard_capture::capture_clipboard_once,
-            clipboard_capture::start_clipboard_capture,
-            clipboard_capture::stop_clipboard_capture,
             clipboard_capture::read_clipboard_capture_image,
             clipboard_capture::discard_clipboard_capture_image,
             screen_capture::overlay::begin_screen_capture,

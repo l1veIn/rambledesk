@@ -7,9 +7,9 @@ import type {
   SpeechRecognitionListener,
   SpeechRecognitionSession,
 } from '$lib/speech'
-import type { ClientAttachmentFile } from './clientAttachmentFile'
 import type {
   ClipboardCapturePlugin,
+  ImagePastePlugin,
   ScreenCapturePlugin,
 } from './capturePlugin'
 
@@ -116,14 +116,6 @@ export type NativeFileDropEvent = Readonly<{
   type: 'enter' | 'over' | 'drop' | 'leave'
   paths: readonly string[]
 }>
-export interface ImagePasteCapability {
-  subscribe(
-    target: EventTarget,
-    handler: (files: readonly ClientAttachmentFile[]) => boolean,
-    onError: CapabilityErrorHandler,
-  ): CapabilityUnsubscribe
-}
-
 export interface ShortcutCapability {
   read(): Promise<ShortcutConfig>
   update(action: ShortcutAction, shortcut: string): Promise<ShortcutConfig>
@@ -286,7 +278,7 @@ export type WorkbenchCapabilitySlots = Readonly<{
   externalLinks: CapabilitySlot<ExternalLinkCapability>
   screenCapture: CapabilitySlot<ScreenCapturePlugin>
   clipboardCapture: CapabilitySlot<ClipboardCapturePlugin>
-  imagePaste: CapabilitySlot<ImagePasteCapability>
+  imagePaste: CapabilitySlot<ImagePastePlugin>
   serverPaths: CapabilitySlot<ServerPathCapability>
   globalShortcuts: CapabilitySlot<ShortcutCapability>
   speech: CapabilitySlot<SpeechRecognitionPlugin & SpeechAdministrationCapability>

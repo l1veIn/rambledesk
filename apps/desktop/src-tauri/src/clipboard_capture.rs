@@ -2,28 +2,17 @@ use serde::Serialize;
 use std::{
     collections::HashMap,
     io::Cursor,
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
-    },
-    thread::{self, JoinHandle},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    sync::Mutex,
+    time::{SystemTime, UNIX_EPOCH},
 };
-use tauri::{AppHandle, Emitter, ipc::Response};
+use tauri::ipc::Response;
 
-const POLL_INTERVAL: Duration = Duration::from_millis(250);
 const MAX_TEXT_CHARS: usize = 50_000;
 const MAX_IMAGE_BYTES: usize = 20 * 1024 * 1024;
 
 #[derive(Default)]
 pub struct ClipboardCaptureState {
-    monitor: Mutex<Option<ClipboardMonitor>>,
-    images: Arc<Mutex<HashMap<String, PendingImage>>>,
-}
-
-struct ClipboardMonitor {
-    running: Arc<AtomicBool>,
-    worker: JoinHandle<()>,
+    images: Mutex<HashMap<String, PendingImage>>,
 }
 
 struct PendingImage {
@@ -43,9 +32,6 @@ pub enum ClipboardCaptureEvent {
         file_name: String,
         captured_at_ms: u64,
         byte_length: usize,
-    },
-    Warning {
-        message: String,
     },
 }
 
@@ -93,54 +79,6 @@ pub fn capture_clipboard_once(
 }
 
 #[tauri::command]
-pub async fn start_clipboard_capture(
-    app: AppHandle,
-    state: tauri::State<'_, ClipboardCaptureState>,
-) -> Result<(), String> {
-    let clipboard =
-        arboard::Clipboard::new().map_err(|error| format!("无法访问 Windows 剪贴板：{error}"))?;
-    let mut monitor = state
-        .monitor
-        .lock()
-        .map_err(|_| "剪贴板监听状态锁已损坏".to_owned())?;
-    if monitor.is_some() {
-        return Err("已有 Ramble 正在监听剪贴板".to_owned());
-    }
-
-    let running = Arc::new(AtomicBool::new(true));
-    let worker_running = Arc::clone(&running);
-    let images = Arc::clone(&state.images);
-    let worker = thread::Builder::new()
-        .name("rambledesk-clipboard".to_owned())
-        .spawn(move || {
-            monitor_clipboard(app, clipboard, worker_running, images);
-        })
-        .map_err(|error| format!("无法启动剪贴板监听线程：{error}"))?;
-
-    *monitor = Some(ClipboardMonitor { running, worker });
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn stop_clipboard_capture(
-    state: tauri::State<'_, ClipboardCaptureState>,
-) -> Result<(), String> {
-    let monitor = state
-        .monitor
-        .lock()
-        .map_err(|_| "剪贴板监听状态锁已损坏".to_owned())?
-        .take();
-    let Some(monitor) = monitor else {
-        return Ok(());
-    };
-    monitor.running.store(false, Ordering::Release);
-    tauri::async_runtime::spawn_blocking(move || monitor.worker.join())
-        .await
-        .map_err(|error| format!("剪贴板监听停止任务异常退出：{error}"))?
-        .map_err(|_| "剪贴板监听线程异常退出".to_owned())
-}
-
-#[tauri::command]
 pub fn read_clipboard_capture_image(
     capture_id: String,
     state: tauri::State<'_, ClipboardCaptureState>,
@@ -168,62 +106,6 @@ pub fn discard_clipboard_capture_image(
     Ok(())
 }
 
-fn monitor_clipboard(
-    app: AppHandle,
-    mut clipboard: arboard::Clipboard,
-    running: Arc<AtomicBool>,
-    images: Arc<Mutex<HashMap<String, PendingImage>>>,
-) {
-    let mut sequence = clipboard_sequence_number();
-    while running.load(Ordering::Acquire) {
-        thread::sleep(POLL_INTERVAL);
-        let next_sequence = clipboard_sequence_number();
-        if next_sequence == 0 || next_sequence == sequence {
-            continue;
-        }
-        sequence = next_sequence;
-
-        if let Ok(image) = clipboard.get_image() {
-            match encode_clipboard_image(image) {
-                Ok(contents) if contents.len() <= MAX_IMAGE_BYTES => {
-                    let capture_id = uuid::Uuid::now_v7().to_string();
-                    let file_name = format!("ramble-clipboard-{capture_id}.png");
-                    let byte_length = contents.len();
-                    if let Ok(mut pending) = images.lock() {
-                        pending.insert(capture_id.clone(), PendingImage { contents });
-                        emit_event(
-                            &app,
-                            ClipboardCaptureEvent::Image {
-                                capture_id,
-                                file_name,
-                                captured_at_ms: unix_time_ms(),
-                                byte_length,
-                            },
-                        );
-                    }
-                }
-                Ok(_) => emit_warning(&app, "剪贴板图片超过 20 MiB，已忽略"),
-                Err(error) => emit_warning(&app, &format!("剪贴板图片编码失败：{error}")),
-            }
-            continue;
-        }
-
-        if let Ok(text) = clipboard.get_text() {
-            let (text, truncated) = truncate_text(text);
-            if !text.trim().is_empty() {
-                emit_event(
-                    &app,
-                    ClipboardCaptureEvent::Text {
-                        text,
-                        captured_at_ms: unix_time_ms(),
-                        truncated,
-                    },
-                );
-            }
-        }
-    }
-}
-
 fn encode_clipboard_image(image: arboard::ImageData<'_>) -> Result<Vec<u8>, String> {
     let width = u32::try_from(image.width).map_err(|_| "剪贴板图片宽度无效".to_owned())?;
     let height = u32::try_from(image.height).map_err(|_| "剪贴板图片高度无效".to_owned())?;
@@ -243,21 +125,6 @@ fn truncate_text(text: String) -> (String, bool) {
     (truncated, was_truncated)
 }
 
-fn emit_warning(app: &AppHandle, message: &str) {
-    emit_event(
-        app,
-        ClipboardCaptureEvent::Warning {
-            message: message.to_owned(),
-        },
-    );
-}
-
-fn emit_event(app: &AppHandle, event: ClipboardCaptureEvent) {
-    if let Err(error) = app.emit_to("main", "clipboard-capture-event", event) {
-        tracing::warn!(%error, "failed to emit clipboard capture event");
-    }
-}
-
 fn unix_time_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -265,16 +132,6 @@ fn unix_time_ms() -> u64 {
         .as_millis()
         .try_into()
         .unwrap_or(u64::MAX)
-}
-
-#[cfg(target_os = "windows")]
-fn clipboard_sequence_number() -> u32 {
-    unsafe { windows::Win32::System::DataExchange::GetClipboardSequenceNumber() }
-}
-
-#[cfg(not(target_os = "windows"))]
-fn clipboard_sequence_number() -> u32 {
-    0
 }
 
 #[cfg(test)]
