@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
 import { createAttachmentController } from './attachmentController'
 import { TestApplicationTransport } from '../application/testApplicationTransport'
 import { clientAttachmentFile } from '../capabilities/clientAttachmentFile'
+import { defineAttachmentCandidate } from '../capabilities/capturePlugin'
 import { createUnavailableWorkbenchCapabilities } from '../capabilities/unavailableCapabilities'
 import type { WorkbenchCapabilities } from '../capabilities/workbenchCapabilities'
 import type { ScreenCaptureReady } from '../screenCapture'
@@ -524,6 +525,128 @@ describe('attachmentController screen capture state', () => {
       }),
     )
     expect(context.applyWorkspaceMutation).not.toHaveBeenCalled()
+  })
+
+  it('serializes candidate batches through one queue and carries the latest CAS revision forward', async () => {
+    let current = {
+      request: { request_id: 'request-1', status: 'in_progress' },
+      attachments: [] as Array<{
+        attachment_id: string
+        file_name: string
+        media_type: string
+      }>,
+      draft: { saved_revision: 3 },
+    }
+    const { context } = controllerContext()
+    context.getWorkspace = () => current as never
+    context.applyWorkspaceMutation = vi.fn((next) => {
+      current = next as never
+    })
+    mocks.applicationCall.mockImplementation(async (command: string, input: {
+      file_name?: string
+      expected_revision?: number
+    }) => {
+      if (command === 'getFeedbackWorkspace') return current
+      if (command === 'addFeedbackAttachment') {
+        const nextRevision = (input.expected_revision ?? 0) + 1
+        return {
+          ...current,
+          attachments: [
+            ...current.attachments,
+            {
+              attachment_id: `att-${nextRevision}`,
+              file_name: input.file_name ?? 'attachment.bin',
+              media_type: 'application/octet-stream',
+            },
+          ],
+          draft: { saved_revision: nextRevision },
+        }
+      }
+      return undefined
+    })
+    const firstDispose = vi.fn(async () => undefined)
+    const secondDispose = vi.fn(async () => undefined)
+    const first = defineAttachmentCandidate({
+      id: 'candidate-1',
+      source: 'file-input',
+      fileName: 'first.txt',
+      mediaType: 'text/plain',
+      byteLength: 1,
+      readBytes: async () => new Uint8Array([1]).buffer,
+      dispose: firstDispose,
+    })
+    const second = defineAttachmentCandidate({
+      id: 'candidate-2',
+      source: 'file-input',
+      fileName: 'second.txt',
+      mediaType: 'text/plain',
+      byteLength: 1,
+      readBytes: async () => new Uint8Array([2]).buffer,
+      dispose: secondDispose,
+    })
+    const controller = createAttachmentController(context)
+    const target = { requestId: 'request-1', action: null }
+
+    await Promise.all([
+      controller.persistAttachmentCandidates(target, [first]),
+      controller.persistAttachmentCandidates(target, [second]),
+    ])
+
+    const attachmentCalls = mocks.applicationCall.mock.calls.filter(
+      ([command]) => command === 'addFeedbackAttachment',
+    )
+    expect(attachmentCalls.map(([, input]) => input.expected_revision)).toEqual([3, 4])
+    expect(firstDispose).toHaveBeenCalledOnce()
+    expect(secondDispose).toHaveBeenCalledOnce()
+  })
+
+  it('disposes every candidate exactly once when candidate persistence fails', async () => {
+    const workspace = {
+      request: { request_id: 'request-1', status: 'in_progress' },
+      attachments: [],
+      draft: { saved_revision: 3 },
+    }
+    const { context } = controllerContext()
+    context.getWorkspace = () => workspace as never
+    mocks.applicationCall.mockImplementation(async (command: string) => {
+      if (command === 'getFeedbackWorkspace') return workspace
+      if (command === 'addFeedbackAttachment') throw new Error('persistence failed')
+      return undefined
+    })
+    const firstRead = vi.fn(async () => new Uint8Array([1]).buffer)
+    const secondRead = vi.fn(async () => new Uint8Array([2]).buffer)
+    const firstDispose = vi.fn(async () => undefined)
+    const secondDispose = vi.fn(async () => undefined)
+    const first = defineAttachmentCandidate({
+      id: 'candidate-1',
+      source: 'file-input',
+      fileName: 'first.txt',
+      mediaType: 'text/plain',
+      byteLength: 1,
+      readBytes: firstRead,
+      dispose: firstDispose,
+    })
+    const second = defineAttachmentCandidate({
+      id: 'candidate-2',
+      source: 'file-input',
+      fileName: 'second.txt',
+      mediaType: 'text/plain',
+      byteLength: 1,
+      readBytes: secondRead,
+      dispose: secondDispose,
+    })
+
+    await createAttachmentController(context).persistAttachmentCandidates(
+      { requestId: 'request-1', action: null },
+      [first, second],
+    )
+    await Promise.all([first.dispose(), second.dispose()])
+
+    expect(firstRead).toHaveBeenCalledOnce()
+    expect(secondRead).not.toHaveBeenCalled()
+    expect(firstDispose).toHaveBeenCalledOnce()
+    expect(secondDispose).toHaveBeenCalledOnce()
+    expect(context.setMessage).toHaveBeenCalledWith('Error: persistence failed', 'error')
   })
 
   it.each(['remove', 'reorder'] as const)(

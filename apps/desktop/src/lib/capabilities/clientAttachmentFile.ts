@@ -1,3 +1,9 @@
+import {
+  defineAttachmentCandidate,
+  type AttachmentCandidate,
+  type AttachmentCandidateSource,
+} from './capturePlugin'
+
 export type ClientAttachmentFile = Readonly<{
   fileName: string
   mediaType: string
@@ -21,5 +27,26 @@ export function clientAttachmentFile(
     mediaType: file.type,
     byteLength: file.size,
     readBytes: () => file.arrayBuffer(),
+  })
+}
+
+/**
+ * Transitional projection for DOM File inputs that still expose the older
+ * ClientAttachmentFile interface. The shared Draft flow owns the returned
+ * candidate and may dispose it without knowing that a browser File needs no
+ * explicit cleanup.
+ */
+export function clientAttachmentCandidate(
+  file: ClientAttachmentFile,
+  source: AttachmentCandidateSource = 'file-input',
+): AttachmentCandidate {
+  return defineAttachmentCandidate({
+    id: crypto.randomUUID(),
+    source,
+    fileName: file.fileName,
+    mediaType: file.mediaType,
+    byteLength: file.byteLength,
+    readBytes: file.readBytes,
+    dispose: async () => undefined,
   })
 }

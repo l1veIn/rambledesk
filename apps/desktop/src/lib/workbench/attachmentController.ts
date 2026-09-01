@@ -5,9 +5,11 @@ import type { ApplicationTransport } from '../application/applicationTransport'
 import type { ApplicationAddAttachmentInput } from '../application/contracts'
 import type { WorkbenchCapabilities } from '../capabilities/workbenchCapabilities'
 import {
+  clientAttachmentCandidate,
   clientAttachmentFile,
   type ClientAttachmentFile,
 } from '../capabilities/clientAttachmentFile'
+import type { AttachmentCandidate } from '../capabilities/capturePlugin'
 import type {
   AttachmentView,
   FeedbackWorkspaceView,
@@ -47,10 +49,17 @@ type AttachmentControllerContext = {
 
 export type AttachmentController = ReturnType<typeof createAttachmentController>
 
+export type AttachmentCandidateTarget = Readonly<{
+  requestId: string
+  action: ActiveAction
+}>
+
 export function createAttachmentController(context: AttachmentControllerContext) {
   let screenCaptureRequestId = ''
   let screenCaptureAction: ActiveAction = null
   let clientFileImportPending = false
+  let candidatePersistenceQueue: Promise<void> = Promise.resolve()
+  let candidatePersistencePending = 0
 
   function mount() {
     let dragUnlisten: (() => void) | undefined
@@ -147,28 +156,67 @@ export function createAttachmentController(context: AttachmentControllerContext)
       || files.length === 0
       || context.getBusy()
     ) return
-    const requestId = workspace.request.request_id
-    const action = context.activeActionFor(requestId)
-    if (!(await context.saveDraftNow())) return
-    await context.waitForRambleMarkdown()
+    const target = {
+      requestId: workspace.request.request_id,
+      action: context.activeActionFor(workspace.request.request_id),
+    }
+    const candidates = files.map((file) => clientAttachmentCandidate(file))
+    await persistAttachmentCandidates(target, candidates)
+  }
+
+  /**
+   * The only shared Attachment Candidate persistence path. Target identity is
+   * supplied by the acquisition caller, so later workspace or Action changes
+   * cannot retarget the bytes. All callers share one CAS queue.
+   */
+  function persistAttachmentCandidates(
+    target: AttachmentCandidateTarget,
+    candidates: readonly AttachmentCandidate[],
+  ): Promise<void> {
+    if (candidates.length === 0) return Promise.resolve()
+
+    candidatePersistencePending += 1
     context.setBusy(true)
+    const run = candidatePersistenceQueue.then(() => persistCandidateBatch(target, candidates))
+    candidatePersistenceQueue = run.then(
+      () => undefined,
+      () => undefined,
+    )
+    return run.finally(() => {
+      candidatePersistencePending -= 1
+      if (candidatePersistencePending === 0) context.setBusy(false)
+    })
+  }
+
+  async function persistCandidateBatch(
+    target: AttachmentCandidateTarget,
+    candidates: readonly AttachmentCandidate[],
+  ) {
+    const { requestId, action } = target
     context.setMessage('')
     try {
+      const visibleTarget = context.getWorkspace()?.request.request_id === requestId
+      if (visibleTarget && !(await context.saveDraftNow())) return
+      await context.waitForRambleMarkdown()
+
       let next = await context.transport.call('getFeedbackWorkspace', { request_id: requestId })
       if (!next) throw new Error(context.tr('This feedback request could not be found.'))
       const existingIds = new Set(next.attachments.map((item) => item.attachment_id))
-      for (const file of files) {
-        if (file.byteLength > 20 * 1024 * 1024) {
-          throw new Error(context.tr('{name} exceeds the 20 MiB limit', { name: file.fileName }))
+      for (const candidate of candidates) {
+        if (candidate.byteLength > 20 * 1024 * 1024) {
+          throw new Error(context.tr('{name} exceeds the 20 MiB limit', {
+            name: candidate.fileName,
+          }))
         }
         const input: ApplicationAddAttachmentInput = {
           request_id: requestId,
-          file_name: file.fileName || `attachment-${Date.now()}`,
-          contents: await file.readBytes(),
+          file_name: candidate.fileName || `attachment-${Date.now()}`,
+          contents: await candidate.readBytes(),
           expected_revision: next.draft.saved_revision,
         }
         next = await context.transport.call('addFeedbackAttachment', input)
       }
+
       const added = next.attachments.filter((item) => !existingIds.has(item.attachment_id))
       if (context.getWorkspace()?.request.request_id === requestId) {
         context.applyWorkspaceMutation(next)
@@ -188,7 +236,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
       const current = context.getWorkspace()
       if (current?.request.request_id === requestId) await refreshPreviews(current)
     } finally {
-      context.setBusy(false)
+      await Promise.allSettled(candidates.map((candidate) => candidate.dispose()))
     }
   }
 
@@ -473,6 +521,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
     handleFileSelection,
     acceptClientFiles,
     importClientFiles,
+    persistAttachmentCandidates,
     reportClientFileError,
     importServerAttachmentPaths,
     startScreenCapture,
