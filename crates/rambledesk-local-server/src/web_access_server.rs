@@ -81,12 +81,20 @@ impl WebAccessServerHandle {
         &self.origin
     }
 
+    pub fn is_finished(&self) -> bool {
+        self.task.is_finished()
+    }
+
     pub fn cancel(&self) {
         self.cancellation.cancel();
     }
 
     pub async fn shutdown(self) -> Result<(), WebAccessServerError> {
         self.cancellation.cancel();
+        self.join().await
+    }
+
+    pub async fn join(self) -> Result<(), WebAccessServerError> {
         self.task.await??;
         Ok(())
     }

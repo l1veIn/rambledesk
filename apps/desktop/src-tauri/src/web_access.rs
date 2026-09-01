@@ -1,11 +1,13 @@
 use std::{
     collections::{HashMap, HashSet},
+    future::Future,
     sync::Arc,
 };
 
+use async_trait::async_trait;
 use rambledesk_local_server::{
     DurableWebAccessToken, SpaAsset, SpaAssetCachePolicy, SpaAssetSource, WebAccessServerConfig,
-    WebAccessServerHandle, WebSessionManager, start_web_access_server,
+    WebAccessServerError, WebAccessServerHandle, WebSessionManager, start_web_access_server,
 };
 use serde::Serialize;
 use tauri::AppHandle;
@@ -35,15 +37,60 @@ impl WebAccessCredentialStore for OsWebAccessCredentialStore {
     }
 }
 
-pub(super) struct WebAccessRuntime {
-    server: WebAccessServerHandle,
-    sessions: Arc<WebSessionManager>,
+#[async_trait]
+trait WebAccessListener: Send {
+    fn origin(&self) -> &str;
+    fn is_finished(&self) -> bool;
+    fn cancel(&self);
+    async fn join(self: Box<Self>) -> Result<(), WebAccessServerError>;
+    async fn shutdown(self: Box<Self>) -> Result<(), WebAccessServerError>;
 }
 
-impl WebAccessRuntime {
-    pub(super) fn cancel(&self) {
+#[async_trait]
+impl WebAccessListener for WebAccessServerHandle {
+    fn origin(&self) -> &str {
+        WebAccessServerHandle::origin(self)
+    }
+
+    fn is_finished(&self) -> bool {
+        WebAccessServerHandle::is_finished(self)
+    }
+
+    fn cancel(&self) {
+        WebAccessServerHandle::cancel(self);
+    }
+
+    async fn join(self: Box<Self>) -> Result<(), WebAccessServerError> {
+        (*self).join().await
+    }
+
+    async fn shutdown(self: Box<Self>) -> Result<(), WebAccessServerError> {
+        (*self).shutdown().await
+    }
+}
+
+struct ActiveWebAccess {
+    listener: Box<dyn WebAccessListener>,
+    sessions: Arc<WebSessionManager>,
+    durable_token: DurableWebAccessToken,
+}
+
+impl ActiveWebAccess {
+    fn new(
+        listener: impl WebAccessListener + 'static,
+        sessions: Arc<WebSessionManager>,
+        durable_token: DurableWebAccessToken,
+    ) -> Self {
+        Self {
+            listener: Box::new(listener),
+            sessions,
+            durable_token,
+        }
+    }
+
+    fn cancel(&self) {
         self.sessions.revoke_all();
-        self.server.cancel();
+        self.listener.cancel();
     }
 }
 
@@ -199,17 +246,250 @@ fn vite_manifest_outputs(bytes: &[u8]) -> Result<HashSet<String>, String> {
     Ok(outputs)
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct WebAccessStatus {
-    running: bool,
-    url: Option<String>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum WebAccessLifecycleState {
+    Stopped,
+    Running,
+    Failed,
 }
 
-fn status(runtime: Option<&WebAccessRuntime>) -> WebAccessStatus {
-    WebAccessStatus {
-        running: runtime.is_some(),
-        url: runtime.map(|runtime| runtime.server.origin().to_owned()),
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum WebAccessFailureCode {
+    CredentialStoreUnavailable,
+    AssetsUnavailable,
+    AddressInUse,
+    ListenerFailed,
+    ShutdownFailed,
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct WebAccessFailure {
+    code: WebAccessFailureCode,
+    message: &'static str,
+}
+
+impl WebAccessFailure {
+    fn new(code: WebAccessFailureCode) -> Self {
+        let message = match code {
+            WebAccessFailureCode::CredentialStoreUnavailable => {
+                "Secure credential storage is unavailable. Check the system credential service, then try again."
+            }
+            WebAccessFailureCode::AssetsUnavailable => {
+                "Web Access files are unavailable. Restart or reinstall RambleDesk, then try again."
+            }
+            WebAccessFailureCode::AddressInUse => {
+                "The local Web Access address is already in use. Close the other process, then try again."
+            }
+            WebAccessFailureCode::ListenerFailed => {
+                "The local Web Access listener stopped unexpectedly. Try starting Web Access again."
+            }
+            WebAccessFailureCode::ShutdownFailed => {
+                "Web Access stopped, but its listener did not shut down cleanly. You can try starting it again."
+            }
+            WebAccessFailureCode::Unknown => {
+                "Web Access could not complete the operation. Try again or restart RambleDesk."
+            }
+        };
+        Self { code, message }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct WebAccessStatus {
+    state: WebAccessLifecycleState,
+    url: Option<String>,
+    failure: Option<WebAccessFailure>,
+}
+
+impl WebAccessStatus {
+    fn stopped() -> Self {
+        Self {
+            state: WebAccessLifecycleState::Stopped,
+            url: None,
+            failure: None,
+        }
+    }
+
+    fn running(url: String) -> Self {
+        Self {
+            state: WebAccessLifecycleState::Running,
+            url: Some(url),
+            failure: None,
+        }
+    }
+
+    fn failed(code: WebAccessFailureCode) -> Self {
+        Self {
+            state: WebAccessLifecycleState::Failed,
+            url: None,
+            failure: Some(WebAccessFailure::new(code)),
+        }
+    }
+}
+
+enum WebAccessRuntimeState {
+    Stopped,
+    Running(ActiveWebAccess),
+    Failed(WebAccessFailureCode),
+}
+
+pub(super) struct WebAccessLifecycle {
+    state: WebAccessRuntimeState,
+}
+
+impl Default for WebAccessLifecycle {
+    fn default() -> Self {
+        Self {
+            state: WebAccessRuntimeState::Stopped,
+        }
+    }
+}
+
+impl WebAccessLifecycle {
+    async fn status(&mut self) -> WebAccessStatus {
+        self.reconcile().await;
+        self.snapshot()
+    }
+
+    async fn start<Start, StartFuture>(&mut self, start: Start) -> WebAccessStatus
+    where
+        Start: FnOnce() -> StartFuture,
+        StartFuture: Future<Output = Result<ActiveWebAccess, WebAccessFailureCode>>,
+    {
+        self.reconcile().await;
+        if !matches!(self.state, WebAccessRuntimeState::Running(_)) {
+            self.state = match start().await {
+                Ok(active) => WebAccessRuntimeState::Running(active),
+                Err(code) => WebAccessRuntimeState::Failed(code),
+            };
+        }
+        self.snapshot()
+    }
+
+    async fn stop(&mut self) -> WebAccessStatus {
+        self.reconcile().await;
+        self.stop_reconciled().await;
+        self.snapshot()
+    }
+
+    async fn active_token(&mut self) -> Result<DurableWebAccessToken, String> {
+        self.reconcile().await;
+        match &self.state {
+            WebAccessRuntimeState::Running(active) => Ok(active.durable_token.clone()),
+            WebAccessRuntimeState::Stopped | WebAccessRuntimeState::Failed(_) => {
+                Err("Start Web Access before copying its access token.".to_owned())
+            }
+        }
+    }
+
+    async fn active_url(&mut self) -> Result<String, String> {
+        self.reconcile().await;
+        match &self.state {
+            WebAccessRuntimeState::Running(active) => Ok(active.listener.origin().to_owned()),
+            WebAccessRuntimeState::Stopped | WebAccessRuntimeState::Failed(_) => {
+                Err("Start Web Access before opening it.".to_owned())
+            }
+        }
+    }
+
+    pub(super) fn cancel_active(&self) {
+        if let WebAccessRuntimeState::Running(active) = &self.state {
+            active.cancel();
+        }
+    }
+
+    async fn reconcile(&mut self) {
+        let finished = matches!(
+            &self.state,
+            WebAccessRuntimeState::Running(active) if active.listener.is_finished()
+        );
+        if !finished {
+            return;
+        }
+        let WebAccessRuntimeState::Running(active) =
+            std::mem::replace(&mut self.state, WebAccessRuntimeState::Stopped)
+        else {
+            unreachable!("finished Web Access state must still be running")
+        };
+        active.sessions.revoke_all();
+        match active.listener.join().await {
+            Ok(()) => tracing::warn!("Web Access listener exited unexpectedly"),
+            Err(error) => tracing::warn!(%error, "Web Access listener failed"),
+        }
+        self.state = WebAccessRuntimeState::Failed(WebAccessFailureCode::ListenerFailed);
+    }
+
+    async fn stop_reconciled(&mut self) {
+        let previous = std::mem::replace(&mut self.state, WebAccessRuntimeState::Stopped);
+        let WebAccessRuntimeState::Running(active) = previous else {
+            return;
+        };
+        active.sessions.revoke_all();
+        if let Err(error) = active.listener.shutdown().await {
+            tracing::warn!(%error, "Web Access listener did not shut down cleanly");
+            self.state = WebAccessRuntimeState::Failed(WebAccessFailureCode::ShutdownFailed);
+        }
+    }
+
+    fn snapshot(&self) -> WebAccessStatus {
+        match &self.state {
+            WebAccessRuntimeState::Stopped => WebAccessStatus::stopped(),
+            WebAccessRuntimeState::Running(active) => {
+                WebAccessStatus::running(active.listener.origin().to_owned())
+            }
+            WebAccessRuntimeState::Failed(code) => WebAccessStatus::failed(*code),
+        }
+    }
+}
+
+async fn start_runtime(
+    app: AppHandle,
+    state: &WorkbenchState,
+) -> Result<ActiveWebAccess, WebAccessFailureCode> {
+    let durable_token = state
+        .web_access_credential_store
+        .load_or_create()
+        .map_err(|error| {
+            tracing::warn!(%error, "Web Access credential store is unavailable");
+            WebAccessFailureCode::CredentialStoreUnavailable
+        })?;
+    let assets = TauriSpaAssets::new(app).map_err(|error| {
+        tracing::warn!(%error, "Web Access assets are unavailable");
+        WebAccessFailureCode::AssetsUnavailable
+    })?;
+    let sessions = Arc::new(WebSessionManager::new(
+        durable_token.clone(),
+        state.application_change_hub.metadata().runtime_generation,
+    ));
+    let server = start_web_access_server(
+        WebAccessServerConfig::default(),
+        state.application_commands.clone(),
+        state.application_change_hub.clone(),
+        sessions.clone(),
+        Arc::new(assets),
+    )
+    .await
+    .map_err(|error| {
+        let code = web_access_start_failure(&error);
+        tracing::warn!(%error, ?code, "Web Access listener did not start");
+        code
+    })?;
+    Ok(ActiveWebAccess::new(server, sessions, durable_token))
+}
+
+fn web_access_start_failure(error: &WebAccessServerError) -> WebAccessFailureCode {
+    match error {
+        WebAccessServerError::Bind(source) if source.kind() == std::io::ErrorKind::AddrInUse => {
+            WebAccessFailureCode::AddressInUse
+        }
+        WebAccessServerError::Bind(_)
+        | WebAccessServerError::Io(_)
+        | WebAccessServerError::Join(_) => WebAccessFailureCode::ListenerFailed,
+        WebAccessServerError::RouteConfig(_) => WebAccessFailureCode::Unknown,
     }
 }
 
@@ -217,8 +497,7 @@ fn status(runtime: Option<&WebAccessRuntime>) -> WebAccessStatus {
 pub(super) async fn get_web_access_status(
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<WebAccessStatus, String> {
-    let runtime = state.web_access_runtime.lock().await;
-    Ok(status(runtime.as_ref()))
+    Ok(state.web_access_lifecycle.lock().await.status().await)
 }
 
 #[tauri::command]
@@ -226,51 +505,31 @@ pub(super) async fn start_web_access(
     app: AppHandle,
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<WebAccessStatus, String> {
-    let mut runtime = state.web_access_runtime.lock().await;
-    if runtime.is_none() {
-        let durable_token = state.web_access_credential_store.load_or_create()?;
-        let sessions = Arc::new(WebSessionManager::new(
-            durable_token,
-            state.application_change_hub.metadata().runtime_generation,
-        ));
-        let server = start_web_access_server(
-            WebAccessServerConfig::default(),
-            state.application_commands.clone(),
-            state.application_change_hub.clone(),
-            sessions.clone(),
-            Arc::new(TauriSpaAssets::new(app)?),
-        )
+    Ok(state
+        .web_access_lifecycle
+        .lock()
         .await
-        .map_err(|error| error.to_string())?;
-        *runtime = Some(WebAccessRuntime { server, sessions });
-    }
-    Ok(status(runtime.as_ref()))
+        .start(|| start_runtime(app, &state))
+        .await)
 }
 
 #[tauri::command]
 pub(super) async fn stop_web_access(
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<WebAccessStatus, String> {
-    let runtime = state.web_access_runtime.lock().await.take();
-    if let Some(runtime) = runtime {
-        runtime.sessions.revoke_all();
-        runtime
-            .server
-            .shutdown()
-            .await
-            .map_err(|error| error.to_string())?;
-    }
-    Ok(status(None))
+    Ok(state.web_access_lifecycle.lock().await.stop().await)
 }
 
 #[tauri::command]
 pub(super) async fn copy_web_access_token(
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<(), String> {
-    if state.web_access_runtime.lock().await.is_none() {
-        return Err("Start Web Access before copying its access token.".to_owned());
-    }
-    let token = state.web_access_credential_store.load_or_create()?;
+    let token = state
+        .web_access_lifecycle
+        .lock()
+        .await
+        .active_token()
+        .await?;
     arboard::Clipboard::new()
         .and_then(|mut clipboard| clipboard.set_text(token.secret()))
         .map_err(|_| "Could not copy the Web Access token to the system clipboard.".to_owned())
@@ -281,11 +540,7 @@ pub(super) async fn open_web_access(
     app: AppHandle,
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<(), String> {
-    let runtime = state.web_access_runtime.lock().await;
-    let url = runtime
-        .as_ref()
-        .map(|runtime| runtime.server.origin())
-        .ok_or_else(|| "Start Web Access before opening it.".to_owned())?;
+    let url = state.web_access_lifecycle.lock().await.active_url().await?;
     app.opener()
         .open_url(url, None::<&str>)
         .map_err(|_| "Could not open Web Access in the default browser.".to_owned())
@@ -319,13 +574,318 @@ fn secure_storage_error() -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
     use super::*;
 
+    #[derive(Default)]
+    struct FakeListenerControl {
+        finished: AtomicBool,
+        cancel_count: AtomicUsize,
+        join_count: AtomicUsize,
+        shutdown_count: AtomicUsize,
+    }
+
+    struct FakeListener {
+        origin: String,
+        control: Arc<FakeListenerControl>,
+        join_fails: bool,
+        shutdown_fails: bool,
+    }
+
+    #[async_trait]
+    impl WebAccessListener for FakeListener {
+        fn origin(&self) -> &str {
+            &self.origin
+        }
+
+        fn is_finished(&self) -> bool {
+            self.control.finished.load(Ordering::SeqCst)
+        }
+
+        fn cancel(&self) {
+            self.control.cancel_count.fetch_add(1, Ordering::SeqCst);
+        }
+
+        async fn join(self: Box<Self>) -> Result<(), WebAccessServerError> {
+            self.control.join_count.fetch_add(1, Ordering::SeqCst);
+            if self.join_fails {
+                Err(WebAccessServerError::RouteConfig(
+                    "fake listener failure".to_owned(),
+                ))
+            } else {
+                Ok(())
+            }
+        }
+
+        async fn shutdown(self: Box<Self>) -> Result<(), WebAccessServerError> {
+            self.control.shutdown_count.fetch_add(1, Ordering::SeqCst);
+            if self.shutdown_fails {
+                Err(WebAccessServerError::RouteConfig(
+                    "fake shutdown failure".to_owned(),
+                ))
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    fn durable_token(byte: char) -> DurableWebAccessToken {
+        DurableWebAccessToken::parse(byte.to_string().repeat(64)).expect("test token")
+    }
+
+    fn fake_active(
+        token: DurableWebAccessToken,
+        control: Arc<FakeListenerControl>,
+        join_fails: bool,
+        shutdown_fails: bool,
+    ) -> (ActiveWebAccess, Arc<WebSessionManager>) {
+        let sessions = Arc::new(WebSessionManager::new(token.clone(), "runtime-1"));
+        let active = ActiveWebAccess::new(
+            FakeListener {
+                origin: "http://127.0.0.1:37643".to_owned(),
+                control,
+                join_fails,
+                shutdown_fails,
+            },
+            sessions.clone(),
+            token,
+        );
+        (active, sessions)
+    }
+
     #[test]
-    fn stopped_status_does_not_invent_an_address() {
+    fn canonical_status_json_preserves_state_invariants_and_stable_failure_codes() {
         assert_eq!(
-            serde_json::to_value(status(None)).expect("serialize status"),
-            serde_json::json!({ "running": false, "url": null })
+            serde_json::to_value(WebAccessStatus::stopped()).expect("serialize stopped status"),
+            serde_json::json!({ "state": "stopped", "url": null, "failure": null })
+        );
+        assert_eq!(
+            serde_json::to_value(WebAccessStatus::running(
+                "http://127.0.0.1:37643".to_owned()
+            ))
+            .expect("serialize running status"),
+            serde_json::json!({
+                "state": "running",
+                "url": "http://127.0.0.1:37643",
+                "failure": null
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(WebAccessStatus::failed(WebAccessFailureCode::AddressInUse))
+                .expect("serialize failed status"),
+            serde_json::json!({
+                "state": "failed",
+                "url": null,
+                "failure": {
+                    "code": "address_in_use",
+                    "message": "The local Web Access address is already in use. Close the other process, then try again."
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn every_failure_code_is_stable_and_its_message_excludes_runtime_details() {
+        for (code, expected) in [
+            (
+                WebAccessFailureCode::CredentialStoreUnavailable,
+                "credential_store_unavailable",
+            ),
+            (
+                WebAccessFailureCode::AssetsUnavailable,
+                "assets_unavailable",
+            ),
+            (WebAccessFailureCode::AddressInUse, "address_in_use"),
+            (WebAccessFailureCode::ListenerFailed, "listener_failed"),
+            (WebAccessFailureCode::ShutdownFailed, "shutdown_failed"),
+            (WebAccessFailureCode::Unknown, "unknown"),
+        ] {
+            let failure = WebAccessFailure::new(code);
+            assert_eq!(
+                serde_json::to_value(failure.code).expect("serialize failure code"),
+                serde_json::json!(expected)
+            );
+            assert!(!failure.message.contains("/Users/private"));
+            assert!(!failure.message.contains(&"a".repeat(64)));
+        }
+    }
+
+    #[tokio::test]
+    async fn start_is_idempotent_and_retry_replaces_a_failed_state() {
+        let starts = Arc::new(AtomicUsize::new(0));
+        let mut lifecycle = WebAccessLifecycle::default();
+
+        let failed = lifecycle
+            .start(|| async { Err(WebAccessFailureCode::AddressInUse) })
+            .await;
+        assert_eq!(
+            failed,
+            WebAccessStatus::failed(WebAccessFailureCode::AddressInUse)
+        );
+
+        let (active, _) = fake_active(
+            durable_token('a'),
+            Arc::new(FakeListenerControl::default()),
+            false,
+            false,
+        );
+        let starts_for_retry = starts.clone();
+        let running = lifecycle
+            .start(|| async move {
+                starts_for_retry.fetch_add(1, Ordering::SeqCst);
+                Ok(active)
+            })
+            .await;
+        assert_eq!(
+            running,
+            WebAccessStatus::running("http://127.0.0.1:37643".to_owned())
+        );
+
+        let still_running = lifecycle
+            .start(|| async {
+                panic!("an already-running lifecycle must not start another listener")
+            })
+            .await;
+        assert_eq!(still_running, running);
+        assert_eq!(starts.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn status_reconciles_a_finished_listener_and_revokes_its_sessions() {
+        let control = Arc::new(FakeListenerControl::default());
+        let token = durable_token('a');
+        let (active, sessions) = fake_active(token.clone(), control.clone(), false, false);
+        let session_token = sessions
+            .issue_session(token.secret())
+            .expect("issue session before listener failure");
+        let authorization = sessions
+            .authorize(&session_token)
+            .expect("authorize session before listener failure");
+        let mut lifecycle = WebAccessLifecycle::default();
+        lifecycle.start(|| async { Ok(active) }).await;
+
+        control.finished.store(true, Ordering::SeqCst);
+        let reconciled = lifecycle.status().await;
+
+        assert_eq!(
+            reconciled,
+            WebAccessStatus::failed(WebAccessFailureCode::ListenerFailed)
+        );
+        assert_eq!(control.join_count.load(Ordering::SeqCst), 1);
+        assert!(!authorization.is_active());
+        assert!(lifecycle.active_token().await.is_err());
+    }
+
+    #[tokio::test]
+    async fn the_active_token_remains_the_token_used_by_the_running_session_manager() {
+        let token_a = durable_token('a');
+        let token_b = durable_token('b');
+        let (active, sessions) = fake_active(
+            token_a.clone(),
+            Arc::new(FakeListenerControl::default()),
+            false,
+            false,
+        );
+        let mut lifecycle = WebAccessLifecycle::default();
+        lifecycle.start(|| async { Ok(active) }).await;
+
+        assert_eq!(
+            lifecycle
+                .active_token()
+                .await
+                .expect("active token")
+                .secret(),
+            token_a.secret()
+        );
+        assert!(sessions.issue_session(token_a.secret()).is_some());
+        assert!(sessions.issue_session(token_b.secret()).is_none());
+    }
+
+    #[tokio::test]
+    async fn a_successful_stop_revokes_sessions_and_cannot_report_running() {
+        let control = Arc::new(FakeListenerControl::default());
+        let token = durable_token('a');
+        let (active, sessions) = fake_active(token.clone(), control.clone(), false, false);
+        let session_token = sessions
+            .issue_session(token.secret())
+            .expect("issue session before stop");
+        let authorization = sessions
+            .authorize(&session_token)
+            .expect("authorize session before stop");
+        let mut lifecycle = WebAccessLifecycle::default();
+        lifecycle.start(|| async { Ok(active) }).await;
+
+        let stopped = lifecycle.stop().await;
+
+        assert_eq!(stopped, WebAccessStatus::stopped());
+        assert_eq!(control.shutdown_count.load(Ordering::SeqCst), 1);
+        assert!(!authorization.is_active());
+        assert_eq!(lifecycle.status().await, WebAccessStatus::stopped());
+    }
+
+    #[tokio::test]
+    async fn process_exit_cancellation_revokes_sessions_and_cancels_the_listener() {
+        let control = Arc::new(FakeListenerControl::default());
+        let token = durable_token('a');
+        let (active, sessions) = fake_active(token.clone(), control.clone(), false, false);
+        let session_token = sessions
+            .issue_session(token.secret())
+            .expect("issue session before process exit");
+        let authorization = sessions
+            .authorize(&session_token)
+            .expect("authorize session before process exit");
+        let mut lifecycle = WebAccessLifecycle::default();
+        lifecycle.start(|| async { Ok(active) }).await;
+
+        lifecycle.cancel_active();
+
+        assert_eq!(control.cancel_count.load(Ordering::SeqCst), 1);
+        assert!(!authorization.is_active());
+    }
+
+    #[tokio::test]
+    async fn a_shutdown_error_reports_the_real_failed_state_and_allows_retry() {
+        let control = Arc::new(FakeListenerControl::default());
+        let (active, _) = fake_active(durable_token('a'), control.clone(), false, true);
+        let mut lifecycle = WebAccessLifecycle::default();
+        lifecycle.start(|| async { Ok(active) }).await;
+
+        let failed = lifecycle.stop().await;
+
+        assert_eq!(
+            failed,
+            WebAccessStatus::failed(WebAccessFailureCode::ShutdownFailed)
+        );
+        assert_eq!(control.shutdown_count.load(Ordering::SeqCst), 1);
+        assert_eq!(lifecycle.status().await, failed);
+        assert!(lifecycle.active_url().await.is_err());
+
+        let (retry, _) = fake_active(
+            durable_token('b'),
+            Arc::new(FakeListenerControl::default()),
+            false,
+            false,
+        );
+        let running = lifecycle.start(|| async { Ok(retry) }).await;
+        assert_eq!(running.state, WebAccessLifecycleState::Running);
+    }
+
+    #[test]
+    fn server_start_errors_map_to_stable_failure_codes() {
+        let address_in_use = WebAccessServerError::Bind(std::io::Error::new(
+            std::io::ErrorKind::AddrInUse,
+            "secret path must not escape",
+        ));
+        assert_eq!(
+            web_access_start_failure(&address_in_use),
+            WebAccessFailureCode::AddressInUse
+        );
+        assert_eq!(
+            web_access_start_failure(&WebAccessServerError::RouteConfig(
+                "internal detail".to_owned()
+            )),
+            WebAccessFailureCode::Unknown
         );
     }
 

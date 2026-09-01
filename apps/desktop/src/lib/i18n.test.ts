@@ -36,4 +36,14 @@ describe('capability fallback copy', () => {
       '打开外部链接仅在桌面应用中可用。',
     )
   })
+
+  it('keeps Web Access lifecycle boundaries explicit in Chinese', () => {
+    expect(
+      t(
+        'zh-CN',
+        'Stopping Web Access only closes browser access. Backend Runtime and Local Integration keep running.',
+      ),
+    ).toContain('后端运行时和本地集成仍会继续运行')
+    expect(t('zh-CN', 'Needs attention')).toBe('需要处理')
+  })
 })

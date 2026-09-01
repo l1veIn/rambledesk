@@ -33,7 +33,17 @@
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
   import { createUnavailableWorkbenchCapabilities } from '$lib/capabilities/unavailableCapabilities'
-  import type { WorkbenchCapabilities } from '$lib/capabilities/workbenchCapabilities'
+  import type {
+    WebAccessStatus,
+    WorkbenchCapabilities,
+  } from '$lib/capabilities/workbenchCapabilities'
+  import {
+    settleWebAccessMutation,
+    webAccessDisplayState as resolveWebAccessDisplayState,
+    webAccessRunningActionsEnabled,
+    webAccessToggleTarget,
+    type WebAccessTransientPhase,
+  } from '$lib/capabilities/webAccessState'
   import { resolveSupportedSpeechModelId } from '$lib/capabilities/speechModelSelection'
   import * as Collapsible from '$lib/components/ui/collapsible'
   import { ScrollArea } from '$lib/components/ui/scroll-area'
@@ -166,13 +176,6 @@
     bytes: number[]
   }
 
-  type WebAccessStatus = {
-    running: boolean
-    url: string | null
-  }
-
-  type WebAccessPhase = 'loading' | 'stopped' | 'starting' | 'running' | 'stopping' | 'error'
-
   type DshInstallResult = {
     profileId: string
     profileDir: string
@@ -232,9 +235,10 @@
   let hotwordDraft = ''
   let unlistenModelProgress: (() => void) | null = null
   let unlistenStorageProgress: (() => void) | null = null
-  let webAccessStatus: WebAccessStatus = { running: false, url: null }
-  let webAccessPhase: WebAccessPhase = 'loading'
-  let webAccessError = ''
+  let webAccessStatus: WebAccessStatus | null = null
+  let webAccessPhase: WebAccessTransientPhase = 'loading'
+  let webAccessActionError = ''
+  let webAccessRefreshError = ''
   const isWindows = platform === 'Windows'
   const onboardingAvailable =
     capabilities.dataStorageAdministration.status.availability !== 'unavailable' ||
@@ -250,6 +254,11 @@
   $: selectedCount = selectedIds.size
   $: selectedSpeechModel =
     speechModels.find((model) => model.id === $speechModelId) ?? speechModels[0] ?? null
+  $: webAccessDisplayState = resolveWebAccessDisplayState(webAccessStatus, webAccessPhase)
+  $: webAccessRunningActions = webAccessRunningActionsEnabled(webAccessStatus, webAccessPhase)
+  $: webAccessError = webAccessStatus?.state === 'failed'
+    ? webAccessStatus.failure.message
+    : webAccessRefreshError || webAccessActionError
   $: {
     const nextSectionCommandState = applySettingsSectionCommand(
       sectionCommandState,
@@ -311,46 +320,77 @@
 
   async function refreshWebAccessStatus() {
     if (capabilities.webAccessAdministration.status.availability === 'unavailable') return
+    webAccessPhase = 'loading'
+    webAccessActionError = ''
+    webAccessRefreshError = ''
     try {
       webAccessStatus = await capabilities.webAccessAdministration.implementation.status()
-      webAccessPhase = webAccessStatus.running ? 'running' : 'stopped'
-      webAccessError = ''
     } catch (cause) {
-      webAccessPhase = 'error'
-      webAccessError = messageFrom(cause)
+      webAccessStatus = null
+      webAccessRefreshError = messageFrom(cause)
+    } finally {
+      webAccessPhase = null
     }
   }
 
   async function toggleWebAccess() {
-    if (capabilities.webAccessAdministration.status.availability === 'unavailable' || webAccessPhase === 'starting' || webAccessPhase === 'stopping') return
-    const stopping = webAccessStatus.running
-    webAccessPhase = stopping ? 'stopping' : 'starting'
-    webAccessError = ''
-    try {
-      webAccessStatus = await capabilities.webAccessAdministration.implementation.setEnabled(!stopping)
-      webAccessPhase = webAccessStatus.running ? 'running' : 'stopped'
-    } catch (cause) {
-      webAccessPhase = 'error'
-      webAccessError = messageFrom(cause)
-    }
+    if (
+      capabilities.webAccessAdministration.status.availability === 'unavailable' ||
+      webAccessPhase !== null
+    ) return
+    const enabled = webAccessToggleTarget(webAccessStatus)
+    if (enabled === null) return
+    webAccessPhase = enabled ? 'starting' : 'stopping'
+    webAccessActionError = ''
+    webAccessRefreshError = ''
+    const result = await settleWebAccessMutation(
+      capabilities.webAccessAdministration.implementation,
+      enabled,
+    )
+    webAccessStatus = result.status
+    webAccessPhase = null
+    webAccessActionError = result.operationError ? messageFrom(result.operationError) : ''
+    webAccessRefreshError = result.refreshError
+      ? tr('Could not verify the current Web Access status: {error}', {
+          error: messageFrom(result.refreshError),
+        })
+      : ''
   }
 
   async function openWebAccess() {
-    if (!webAccessStatus.running) return
+    if (!webAccessRunningActions) return
     try {
       await capabilities.webAccessAdministration.implementation.open()
     } catch (cause) {
-      webAccessError = messageFrom(cause)
+      await refreshWebAccessAfterActionFailure(cause)
     }
   }
 
   async function copyWebAccessToken() {
-    if (!webAccessStatus.running) return
+    if (!webAccessRunningActions) return
     try {
       await capabilities.webAccessAdministration.implementation.copyToken()
       toast.success(tr('Web Access token copied.'))
     } catch (cause) {
-      webAccessError = messageFrom(cause)
+      await refreshWebAccessAfterActionFailure(cause)
+    }
+  }
+
+  async function refreshWebAccessAfterActionFailure(actionCause: unknown) {
+    const actionError = messageFrom(actionCause)
+    webAccessPhase = 'loading'
+    webAccessRefreshError = ''
+    try {
+      webAccessStatus = await capabilities.webAccessAdministration.implementation.status()
+      webAccessActionError = webAccessStatus.state === 'failed' ? '' : actionError
+    } catch (refreshCause) {
+      webAccessStatus = null
+      webAccessActionError = actionError
+      webAccessRefreshError = tr('Could not verify the current Web Access status: {error}', {
+        error: messageFrom(refreshCause),
+      })
+    } finally {
+      webAccessPhase = null
     }
   }
 
@@ -921,21 +961,62 @@
                   <Globe2 class="size-4" />
                 </span>
                 <div>
-                  <h3 class="m-0 text-sm font-medium">{tr('Web Access')}</h3>
+                  <div class="flex items-center gap-2">
+                    <h3 class="m-0 text-sm font-medium">{tr('Web Access')}</h3>
+                    <Badge
+                      variant={webAccessDisplayState === 'failed'
+                        ? 'destructive'
+                        : webAccessDisplayState === 'running'
+                          ? 'default'
+                          : 'secondary'}
+                    >
+                      {webAccessDisplayState === 'loading'
+                        ? tr('Loading…')
+                        : webAccessDisplayState === 'starting'
+                          ? tr('Starting…')
+                          : webAccessDisplayState === 'stopping'
+                            ? tr('Stopping…')
+                            : webAccessDisplayState === 'running'
+                              ? tr('Running')
+                              : webAccessDisplayState === 'stopped'
+                                ? tr('Stopped')
+                                : webAccessDisplayState === 'failed'
+                                  ? tr('Needs attention')
+                                  : tr('Status unavailable')}
+                    </Badge>
+                  </div>
                   <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
-                    {webAccessStatus.running
+                    {webAccessStatus?.state === 'running'
                       ? tr('Available only in a browser on this computer at {url}.', {
-                          url: webAccessStatus.url ?? '',
+                          url: webAccessStatus.url,
                         })
-                      : tr('Start a local browser Workbench. It stays off until you start it.')}
+                      : webAccessStatus?.state === 'failed'
+                        ? tr('Web Access is unavailable until the reported problem is resolved.')
+                        : webAccessStatus?.state === 'stopped'
+                          ? tr('Start a local browser Workbench. It stays off until you start it.')
+                          : tr('The current Web Access status could not be verified.')}
+                  </p>
+                  <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
+                    {tr('Stopping Web Access only closes browser access. Backend Runtime and Local Integration keep running.')}
                   </p>
                   {#if webAccessError}
                     <p class="m-0 mt-1 text-xs text-destructive" role="alert">{webAccessError}</p>
                   {/if}
                 </div>
               </div>
-              <div class="flex items-center gap-2">
-                {#if webAccessPhase === 'running'}
+              <div class="flex flex-wrap items-center justify-end gap-2">
+                <Button
+                  variant="ghost"
+                  disabled={webAccessPhase !== null}
+                  onclick={() => void refreshWebAccessStatus()}
+                >
+                  <RefreshCw
+                    data-icon="inline-start"
+                    class={webAccessPhase === 'loading' ? 'animate-spin' : ''}
+                  />
+                  {tr('Refresh')}
+                </Button>
+                {#if webAccessRunningActions}
                   <Button variant="outline" onclick={() => void copyWebAccessToken()}>
                     <Clipboard data-icon="inline-start" />
                     {tr('Copy token')}
@@ -946,13 +1027,13 @@
                   </Button>
                 {/if}
                 <Button
-                  variant={webAccessStatus.running ? 'destructive' : 'outline'}
-                  disabled={webAccessPhase === 'loading' || webAccessPhase === 'starting' || webAccessPhase === 'stopping'}
+                  variant={webAccessStatus?.state === 'running' ? 'destructive' : 'outline'}
+                  disabled={webAccessPhase !== null || webAccessStatus === null}
                   onclick={() => void toggleWebAccess()}
                 >
-                  {#if webAccessPhase === 'loading' || webAccessPhase === 'starting' || webAccessPhase === 'stopping'}
+                  {#if webAccessPhase !== null}
                     <LoaderCircle data-icon="inline-start" class="animate-spin" />
-                  {:else if webAccessStatus.running}
+                  {:else if webAccessStatus?.state === 'running'}
                     <X data-icon="inline-start" />
                   {:else}
                     <Play data-icon="inline-start" />
@@ -963,7 +1044,7 @@
                       ? tr('Starting…')
                       : webAccessPhase === 'stopping'
                         ? tr('Stopping…')
-                        : webAccessStatus.running
+                        : webAccessStatus?.state === 'running'
                           ? tr('Stop')
                           : tr('Start')}
                 </Button>
