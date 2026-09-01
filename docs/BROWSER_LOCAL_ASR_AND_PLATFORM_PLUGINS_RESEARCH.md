@@ -119,9 +119,9 @@
 
 **官方事实：** 这不自动覆盖模型。官方预训练模型说明会单独指出模型包中的 LICENSE；例如 SenseVoice 页面要求查看解压目录的模型许可证，FunASR Nano 也有独立的模型导出与来源说明。[SenseVoice 模型](https://k2-fsa.github.io/sherpa/onnx/sense-voice/pretrained.html)、[FunASR Nano](https://k2-fsa.github.io/sherpa/onnx/funasr-nano/export.html)
 
-**仓库事实：** 当前 RambleDesk manifest 已把 SenseVoice 标为 `FunASR Model Open Source License Agreement 1.1`，FunASR Nano 标为 `FunASR Model License`；X-ASR manifest 目前没有独立 `license` 字段。
+**仓库事实：** 当前 RambleDesk manifest 已把 SenseVoice 标为 `FunASR Model Open Source License Agreement 1.1`，FunASR Nano 标为 `FunASR Model License`，并把 X-ASR 标为 `Apache-2.0`。这些字段是当前产品 manifest 的声明，不代替对上游模型包内 LICENSE/NOTICE 与再分发条件的独立核验。
 
-**架构推论：** 将模型下载到用户浏览器仍是模型分发。上线前必须逐模型确认官方发布包中的许可证、notice、再分发权限与展示义务；不能以 sherpa-onnx 的 Apache-2.0 代替模型许可证。X-ASR 缺失的 manifest license 是 browser pilot 之前的阻断项。
+**架构推论：** 将模型下载到用户浏览器仍是模型分发。上线前必须逐模型确认官方发布包中的许可证、notice、再分发权限与展示义务；不能只因为 sherpa-onnx 框架采用 Apache-2.0，就推断任一模型也采用相同许可。X-ASR 的 manifest 声明仍需由模型包证据验证，验证结果是 browser pilot 产品化之前的门禁。
 
 ## 6. Ramble 的平台插件设计
 
