@@ -4,15 +4,21 @@ use std::sync::{
 };
 
 use async_trait::async_trait;
-use axum::Router;
+use axum::{
+    Router,
+    body::Body,
+    extract::Request,
+    middleware::{self, Next},
+    response::Response,
+};
 use rambledesk_core::{
-    ActionInput, ApplicationCommandFacade, ApplicationError, ApplicationHostProfileView, Clock,
-    FeedbackApplication, GetFeedbackInput, HostSessionInput, IdGenerator, ReadAttachmentInput,
-    RequestFeedbackInput, SaveDraftInput, SubmitFeedbackInput, TerminalOperationEvent,
-    TerminalOperationObserver, WorkbenchTerminalOperations,
+    ActionInput, ApplicationChangeHub, ApplicationCommandFacade, ApplicationError,
+    ApplicationHostProfileView, Clock, FeedbackApplication, GetFeedbackInput, HostSessionInput,
+    IdGenerator, ReadAttachmentInput, RequestFeedbackInput, SaveDraftInput, SubmitFeedbackInput,
+    TerminalOperationEvent, TerminalOperationObserver, WorkbenchTerminalOperations,
 };
 use rambledesk_hosts::{ContinuationMode, HostAdapter, known_host_profiles};
-use rambledesk_local_server::{API_PATH, application_router};
+use rambledesk_local_server::{API_PATH, RUNTIME_GENERATION_HEADER, application_router};
 use tokio::{net::TcpListener, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 
@@ -78,7 +84,17 @@ impl HttpServer {
 }
 
 async fn start_http(commands: Arc<ApplicationCommandFacade>) -> anyhow::Result<HttpServer> {
-    let router = Router::new().nest(API_PATH, application_router(commands));
+    let router = Router::new()
+        .nest(
+            API_PATH,
+            application_router(
+                commands,
+                Arc::new(ApplicationChangeHub::with_runtime_generation(
+                    "test-runtime",
+                )),
+            ),
+        )
+        .layer(middleware::from_fn(inject_test_runtime_generation));
     let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).await?;
     let address = listener.local_addr()?;
     let cancellation = CancellationToken::new();
@@ -93,6 +109,14 @@ async fn start_http(commands: Arc<ApplicationCommandFacade>) -> anyhow::Result<H
         cancellation,
         task,
     })
+}
+
+async fn inject_test_runtime_generation(mut request: Request, next: Next) -> Response<Body> {
+    request.headers_mut().insert(
+        RUNTIME_GENERATION_HEADER,
+        "test-runtime".parse().expect("test runtime generation"),
+    );
+    next.run(request).await
 }
 
 fn application_host_profiles() -> Vec<ApplicationHostProfileView> {

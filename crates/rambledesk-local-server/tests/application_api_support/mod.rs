@@ -11,10 +11,10 @@ use axum::{
     response::IntoResponse,
 };
 use rambledesk_core::{
-    ApplicationCommandFacade, ApplicationHostProfileView, FeedbackApplication,
-    WorkbenchTerminalOperations,
+    ApplicationChangeHub, ApplicationCommandFacade, ApplicationHostProfileView,
+    FeedbackApplication, WorkbenchTerminalOperations,
 };
-use rambledesk_local_server::{API_PATH, application_router};
+use rambledesk_local_server::{API_PATH, RUNTIME_GENERATION_HEADER, application_router};
 use tokio::{net::TcpListener, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 
@@ -46,11 +46,16 @@ pub async fn start_application_server(
     let router = Router::new()
         .nest(
             API_PATH,
-            application_router(Arc::new(ApplicationCommandFacade::new(
-                application,
-                terminal_operations,
-                test_host_profiles(),
-            ))),
+            application_router(
+                Arc::new(ApplicationCommandFacade::new(
+                    application,
+                    terminal_operations,
+                    test_host_profiles(),
+                )),
+                Arc::new(ApplicationChangeHub::with_runtime_generation(
+                    "test-runtime",
+                )),
+            ),
         )
         .layer(middleware::from_fn(require_test_bearer));
     let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await?;
@@ -69,13 +74,17 @@ pub async fn start_application_server(
     })
 }
 
-async fn require_test_bearer(request: Request<Body>, next: Next) -> Response<Body> {
+async fn require_test_bearer(mut request: Request<Body>, next: Next) -> Response<Body> {
     let authorized = request
         .headers()
         .get(AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
         == Some(TEST_AUTHORIZATION);
     if authorized {
+        request.headers_mut().insert(
+            RUNTIME_GENERATION_HEADER,
+            "test-runtime".parse().expect("test runtime generation"),
+        );
         next.run(request).await
     } else {
         StatusCode::UNAUTHORIZED.into_response()
