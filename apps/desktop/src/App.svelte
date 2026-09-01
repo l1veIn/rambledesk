@@ -243,6 +243,14 @@
   let workbenchInitialized = false
   const desktopShellAvailable = capabilities.windowControls.status.source === 'native'
   const isMac = capabilities.windowControls.implementation.platform() === 'macOS'
+  const notificationsAvailable = capabilities.notifications.status.availability !== 'unavailable'
+  const softwareUpdatesAvailable = capabilities.softwareUpdates.status.availability !== 'unavailable'
+  const onboardingAvailable =
+    capabilities.dataStorageAdministration.status.availability !== 'unavailable' ||
+    capabilities.speech.status.availability !== 'unavailable' ||
+    capabilities.hostIntegrationAdministration.status.availability !== 'unavailable' ||
+    notificationsAvailable ||
+    capabilities.webAccessAdministration.status.availability !== 'unavailable'
   const previewWorkspaceScenario = previewMode
     ? seedPreviewWorkspaceScenario(
         new URLSearchParams(window.location.search).get('workspace'),
@@ -715,15 +723,18 @@
         cleanupAttachments()
       }
     }
-    if ($onboardingCompleted) startWorkbench()
+    if ($onboardingCompleted || !onboardingAvailable) startWorkbench()
     else onboardingOpen = true
-    const updateCheckTimer = window.setTimeout(() => {
-      launchUpdateCheckDue = true
-      if (!onboardingOpen) {
-        void capabilities.softwareUpdates.implementation.check({ prompt: true, forcePrompt: false })
-      }
-    }, 4_000)
-    void refreshNotificationPermission()
+    const updateCheckTimer = softwareUpdatesAvailable
+      ? window.setTimeout(() => {
+          launchUpdateCheckDue = true
+          if (!onboardingOpen) {
+            void capabilities.softwareUpdates.implementation.check({ prompt: true, forcePrompt: false })
+          }
+        }, 4_000)
+      : undefined
+    if (notificationsAvailable) void refreshNotificationPermission()
+    else notificationState = 'unavailable'
     const openAdaptersUnlisten = applicationTransport.subscribe(
       OPEN_ADAPTERS_STREAM,
       () => void openSettings('adapters'),
@@ -736,7 +747,12 @@
       (prompt) => {
         resumePrompt = prompt
         resumeCopyState = 'idle'
-        if (isMac && $notificationPopupEnabled && notificationState === 'enabled') {
+        if (
+          notificationsAvailable &&
+          isMac &&
+          $notificationPopupEnabled &&
+          notificationState === 'enabled'
+        ) {
           void capabilities.notifications.implementation
             .send({
               title: prompt.title,
@@ -788,7 +804,7 @@
   function closeOnboarding() {
     onboardingOpen = false
     startWorkbench()
-    if (launchUpdateCheckDue) {
+    if (softwareUpdatesAvailable && launchUpdateCheckDue) {
       void capabilities.softwareUpdates.implementation.check({ prompt: true, forcePrompt: false })
     }
   }
@@ -1989,7 +2005,6 @@
             {cancelling}
             {approving}
             {canOpenResumePrompt}
-            nativeCapabilities={desktopShellAvailable}
             {resolveHostProfile}
             formatTime={formatTimeLocal}
             onReload={() => void reloadWorkspace()}
@@ -2039,7 +2054,9 @@
   </div>
 </main>
 
-<OnboardingWizard {capabilities} bind:openWizard={onboardingOpen} onClose={closeOnboarding} />
+{#if onboardingAvailable}
+  <OnboardingWizard {capabilities} bind:openWizard={onboardingOpen} onClose={closeOnboarding} />
+{/if}
 
 <ArchivedSessionsDialog
   bind:open={archivedSessionsOpen}
@@ -2053,9 +2070,11 @@
   onChanged={retrySessionViewRecovery}
 />
 
-<UpdateAvailableDialog
-  softwareUpdates={capabilities.softwareUpdates}
-  installBlocked={updateInstallBlocked}
-  onOpenReleases={() => void openGithubReleases()}
-/>
+{#if softwareUpdatesAvailable}
+  <UpdateAvailableDialog
+    softwareUpdates={capabilities.softwareUpdates}
+    installBlocked={updateInstallBlocked}
+    onOpenReleases={() => void openGithubReleases()}
+  />
+{/if}
 {/key}

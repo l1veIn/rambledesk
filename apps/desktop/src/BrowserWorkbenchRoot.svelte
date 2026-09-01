@@ -5,8 +5,10 @@
   import { ReplaceableApplicationTransport } from './lib/application/replaceableApplicationTransport'
   import { replaceReadyApplicationTransport } from './lib/application/browserReauthentication'
   import { createWorkbenchComposition } from './lib/application/workbenchComposition'
+  import { createBrowserWorkbenchCapabilities } from './lib/capabilities/browser/browserCapabilities'
   import { createBrowserPublishedFeedbackAction } from './lib/publishedFeedbackAction'
 
+  const capabilities = createBrowserWorkbenchCapabilities()
   let applicationTransport: ReplaceableApplicationTransport | null = null
   let app: App
   let authenticationRequired = true
@@ -20,11 +22,13 @@
         if (epoch === authenticationEpoch) authenticationRequired = true
       },
     })
-    const next = createWorkbenchComposition({
+    const nextComposition = createWorkbenchComposition({
       environment: 'browser',
       previewMode: false,
       authenticatedWebSession: session,
-    }).applicationTransport
+      capabilities,
+    })
+    const next = nextComposition.applicationTransport
     if (epoch !== authenticationEpoch) return
     if (applicationTransport) {
       await replaceReadyApplicationTransport(applicationTransport, next, () => {
@@ -42,6 +46,7 @@
   <App
     bind:this={app}
     {applicationTransport}
+    {capabilities}
     publishedFeedbackAction={createBrowserPublishedFeedbackAction(applicationTransport)}
     previewMode={false}
   />

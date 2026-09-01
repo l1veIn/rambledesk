@@ -48,7 +48,6 @@
   import * as Select from '$lib/components/ui/select'
   import * as Tabs from '$lib/components/ui/tabs'
   import { t } from '$lib/i18n'
-  import { currentDesktopPlatform } from '$lib/platform'
   import {
     speechModelDescription,
     speechModelDisplayName,
@@ -91,19 +90,16 @@
     type SpeechModelId,
     type ThemePreference,
   } from '$lib/preferences'
+  import {
+    resolveSettingsSection,
+    settingsSectionAvailability,
+  } from '$lib/workspace/settingsCapabilitySections'
   import { applySettingsSectionCommand } from '$lib/workspace/settingsSectionCommand'
+  import type { SettingsSection } from '$lib/workbench/types'
 
   const unavailableCapabilities = createUnavailableWorkbenchCapabilities()
 
-  type Section =
-    | 'general'
-    | 'permissions'
-    | 'notifications'
-    | 'voice'
-    | 'post-processing'
-    | 'shortcuts'
-    | 'adapters'
-    | 'about'
+  type Section = SettingsSection
 
   export let mcpConfiguration = ''
   export let initialSection: Section = 'general'
@@ -191,11 +187,15 @@
     restartRequired: boolean
   }
 
-  let activeSection: Section = initialSection
+  const platform = capabilities.windowControls.implementation.platform()
+  const sectionAvailability = settingsSectionAvailability(capabilities.manifest, platform)
+  const initialSectionResolution = resolveSettingsSection(initialSection, sectionAvailability)
+  let activeSection: Section = initialSectionResolution.activeSection
   let sectionCommandState = {
     activeSection: initialSection,
     appliedEpoch: sectionSelectionEpoch,
   }
+  let initialDesktopOnlyNoticePending = initialSectionResolution.showDesktopOnlyNotice
   let hosts: McpHostView[] = []
   let selectedIds = new Set<string>()
   let loadingHosts = true
@@ -231,13 +231,19 @@
   let hotwordDraft = ''
   let unlistenModelProgress: (() => void) | null = null
   let unlistenStorageProgress: (() => void) | null = null
-  let hasMacPermissions = false
   let webAccessStatus: WebAccessStatus = { running: false, url: null }
   let webAccessPhase: WebAccessPhase = 'loading'
   let webAccessError = ''
-  $: desktopCapabilitiesAvailable = capabilities.windowControls.status.availability !== 'unavailable'
-  const isMac = currentDesktopPlatform() === 'macOS'
-  const isWindows = currentDesktopPlatform() === 'Windows'
+  const isWindows = platform === 'Windows'
+  const onboardingAvailable =
+    capabilities.dataStorageAdministration.status.availability !== 'unavailable' ||
+    capabilities.speech.status.availability !== 'unavailable' ||
+    capabilities.hostIntegrationAdministration.status.availability !== 'unavailable' ||
+    capabilities.notifications.status.availability !== 'unavailable' ||
+    capabilities.webAccessAdministration.status.availability !== 'unavailable'
+  const dataStorageSettingsAvailable =
+    capabilities.dataStorageAdministration.status.availability !== 'unavailable' &&
+    capabilities.serverPaths.status.availability !== 'unavailable'
 
   $: installedHosts = hosts.filter((host) => host.installed)
   $: selectedCount = selectedIds.size
@@ -251,34 +257,48 @@
     )
     if (nextSectionCommandState !== sectionCommandState) {
       sectionCommandState = nextSectionCommandState
-      activeSection = desktopCapabilitiesAvailable ? nextSectionCommandState.activeSection : 'general'
+      const resolution = resolveSettingsSection(
+        nextSectionCommandState.activeSection,
+        sectionAvailability,
+      )
+      activeSection = resolution.activeSection
+      if (resolution.showDesktopOnlyNotice) {
+        toast.info(tr('This settings section is available only in the desktop app.'))
+      }
     }
   }
 
   onMount(() => {
-    let disposed = false
-    if (desktopCapabilitiesAvailable) {
+    if (initialDesktopOnlyNoticePending) {
+      initialDesktopOnlyNoticePending = false
+      toast.info(tr('This settings section is available only in the desktop app.'))
+    }
+    if (sectionAvailability.adapters) {
       void refreshHosts()
       void refreshPiStatus()
-      void refreshDataStorage()
-      void refreshSpeechDevices()
-      void refreshSpeechModels()
-      void refreshMacPermissionPresence()
-      void refreshWebAccessStatus()
-      unlistenModelProgress = capabilities.speech.implementation.onModelProgress(
-        (progress) => (modelProgress = { ...progress }),
-        () => undefined,
-      )
-      unlistenStorageProgress = capabilities.dataStorageAdministration.implementation.onProgress(
-        (progress) => (storageMigration = { ...progress }),
-        () => undefined,
-      )
     } else {
       loadingHosts = false
       piStatusLoading = false
     }
+    if (dataStorageSettingsAvailable) {
+      void refreshDataStorage()
+      unlistenStorageProgress = capabilities.dataStorageAdministration.implementation.onProgress(
+        (progress) => (storageMigration = { ...progress }),
+        () => undefined,
+      )
+    }
+    if (sectionAvailability.voice) {
+      void refreshSpeechDevices()
+      void refreshSpeechModels()
+      unlistenModelProgress = capabilities.speech.implementation.onModelProgress(
+        (progress) => (modelProgress = { ...progress }),
+        () => undefined,
+      )
+    }
+    if (capabilities.webAccessAdministration.status.availability !== 'unavailable') {
+      void refreshWebAccessStatus()
+    }
     return () => {
-      disposed = true
       unlistenModelProgress?.()
       unlistenStorageProgress?.()
     }
@@ -330,15 +350,6 @@
       toast.success(tr('Web Access token copied.'))
     } catch (cause) {
       webAccessError = messageFrom(cause)
-    }
-  }
-
-  async function refreshMacPermissionPresence() {
-    try {
-      const permissions = await capabilities.systemPermissions.implementation.list()
-      hasMacPermissions = permissions.length > 0
-    } catch {
-      hasMacPermissions = false
     }
   }
 
@@ -708,46 +719,52 @@
             <MonitorCog data-icon="inline-start" />
             {tr('General')}
           </Tabs.Trigger>
-          {#if desktopCapabilitiesAvailable}
-          {#if hasMacPermissions}
+          {#if sectionAvailability.permissions}
             <Tabs.Trigger value="permissions" class="h-9 w-full justify-start px-2.5">
               <ShieldCheck data-icon="inline-start" />
               {tr('Permissions')}
             </Tabs.Trigger>
           {/if}
-          <Tabs.Trigger value="notifications" class="h-9 w-full justify-start px-2.5">
-            <BellRing data-icon="inline-start" />
-            {tr('Notifications')}
-          </Tabs.Trigger>
-          <Tabs.Trigger value="voice" class="h-9 w-full justify-start px-2.5">
-            <Mic data-icon="inline-start" />
-            {tr('Voice')}
-          </Tabs.Trigger>
+          {#if sectionAvailability.notifications}
+            <Tabs.Trigger value="notifications" class="h-9 w-full justify-start px-2.5">
+              <BellRing data-icon="inline-start" />
+              {tr('Notifications')}
+            </Tabs.Trigger>
+          {/if}
+          {#if sectionAvailability.voice}
+            <Tabs.Trigger value="voice" class="h-9 w-full justify-start px-2.5">
+              <Mic data-icon="inline-start" />
+              {tr('Voice')}
+            </Tabs.Trigger>
+          {/if}
           <Tabs.Trigger value="post-processing" class="h-9 w-full justify-start px-2.5">
             <Sparkles data-icon="inline-start" />
             {tr('Post-processing')}
           </Tabs.Trigger>
-          <Tabs.Trigger value="shortcuts" class="h-9 w-full justify-start px-2.5">
-            <Keyboard data-icon="inline-start" />
-            {tr('Shortcuts')}
-          </Tabs.Trigger>
-          <Tabs.Trigger value="adapters" class="h-9 w-full justify-start px-2.5">
-            <PlugZap data-icon="inline-start" />
-            <span class="flex-1 text-left">{tr('Adapters')}</span>
-            {#if installedHosts.length > 0}
-              <Badge variant="secondary" class="h-5 px-1.5 text-[9px]">
-                {installedHosts.length}
-              </Badge>
-            {/if}
-          </Tabs.Trigger>
+          {#if sectionAvailability.shortcuts}
+            <Tabs.Trigger value="shortcuts" class="h-9 w-full justify-start px-2.5">
+              <Keyboard data-icon="inline-start" />
+              {tr('Shortcuts')}
+            </Tabs.Trigger>
+          {/if}
+          {#if sectionAvailability.adapters}
+            <Tabs.Trigger value="adapters" class="h-9 w-full justify-start px-2.5">
+              <PlugZap data-icon="inline-start" />
+              <span class="flex-1 text-left">{tr('Adapters')}</span>
+              {#if installedHosts.length > 0}
+                <Badge variant="secondary" class="h-5 px-1.5 text-[9px]">
+                  {installedHosts.length}
+                </Badge>
+              {/if}
+            </Tabs.Trigger>
+          {/if}
           <Tabs.Trigger value="about" class="h-9 w-full justify-start px-2.5">
             <Info data-icon="inline-start" />
             {tr('About')}
           </Tabs.Trigger>
-          {/if}
         </Tabs.List>
 
-        {#if desktopCapabilitiesAvailable}
+        {#if sectionAvailability.adapters}
         <div class="settings-navigation-note mt-auto flex gap-2 border-t pt-3 text-[10px] leading-4 text-muted-foreground">
           <ShieldCheck class="mt-0.5 size-3.5 shrink-0" />
           <span>{tr('Adapter configuration is written only to your user directory and preserves other adapters.')}</span>
@@ -856,7 +873,7 @@
               </Select.Root>
             </section>
 
-            {#if capabilities.windowControls.status.availability !== 'unavailable'}
+            {#if onboardingAvailable}
             <section class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-8 border-b pb-8" aria-live="polite">
               <div class="flex gap-3">
                 <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
@@ -951,7 +968,7 @@
             </section>
             {/if}
 
-            {#if capabilities.dataStorageAdministration.status.availability !== 'unavailable'}
+            {#if dataStorageSettingsAvailable}
             <section class="grid gap-4">
               <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-8">
                 <div class="flex gap-3">
@@ -965,7 +982,7 @@
                     </p>
                   </div>
                 </div>
-                <Button variant="outline" disabled={capabilities.serverPaths.status.availability === 'unavailable' || storageMigrating} onclick={() => void chooseDataStorage()}>
+                <Button variant="outline" disabled={storageMigrating} onclick={() => void chooseDataStorage()}>
                   <FolderCog data-icon="inline-start" />
                   {tr('Change location…')}
                 </Button>
@@ -978,6 +995,7 @@
           </Tabs.Content>
 
 
+          {#if sectionAvailability.permissions}
           <Tabs.Content value="permissions" class="m-0 space-y-8 p-6 outline-none">
             <section class="border-b pb-8">
               <div class="flex gap-3">
@@ -1000,6 +1018,8 @@
               </div>
             </section>
           </Tabs.Content>
+          {/if}
+          {#if sectionAvailability.notifications}
           <Tabs.Content value="notifications" class="m-0 space-y-8 p-6 outline-none">
             <section class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-8 border-b pb-8">
               <div class="flex gap-3">
@@ -1200,7 +1220,9 @@
               {/if}
             </section>
           </Tabs.Content>
+          {/if}
 
+          {#if sectionAvailability.voice}
           <Tabs.Content value="voice" class="m-0 space-y-8 p-6 outline-none">
             <section class="grid grid-cols-[minmax(0,1fr)_280px] items-center gap-8 border-b pb-8">
               <div class="flex gap-3">
@@ -1458,14 +1480,18 @@
               </div>
             </section>
           </Tabs.Content>
+          {/if}
 
           <Tabs.Content value="post-processing" class="m-0 p-6 outline-none">
             <PostProcessingSettings />
           </Tabs.Content>
 
-          <Tabs.Content value="shortcuts" class="m-0 space-y-8 p-6 outline-none">
-            <ShortcutSettings globalShortcuts={capabilities.globalShortcuts} />
-          </Tabs.Content>
+          {#if sectionAvailability.shortcuts}
+            <Tabs.Content value="shortcuts" class="m-0 space-y-8 p-6 outline-none">
+              <ShortcutSettings globalShortcuts={capabilities.globalShortcuts} />
+            </Tabs.Content>
+          {/if}
+          {#if sectionAvailability.adapters}
           <Tabs.Content value="adapters" class="m-0 space-y-8 p-6 outline-none">
             <section class="border-b pb-8">
               <div class="flex items-start gap-3">
@@ -1755,6 +1781,7 @@
               </Collapsible.Content>
             </Collapsible.Root>
           </Tabs.Content>
+          {/if}
 
           <Tabs.Content value="about" class="m-0 p-6 outline-none">
             <AboutSettings

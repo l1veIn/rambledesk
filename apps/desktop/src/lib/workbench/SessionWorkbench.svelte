@@ -38,7 +38,10 @@
 
   export let loadingWorkspace = false
   export let transport: ApplicationTransport
-  export let capabilities: Pick<WorkbenchCapabilities, 'serverPaths'>
+  export let capabilities: Pick<
+    WorkbenchCapabilities,
+    'serverPaths' | 'speech' | 'rambleConsole' | 'screenCapture' | 'clipboardCapture'
+  >
   export let view: SessionViewDescriptor | null = null
   export let workspace: FeedbackWorkspaceView | null = null
   export let feedbackResult: FeedbackResultView | null = null
@@ -79,7 +82,6 @@
   export let cancelling = false
   export let approving = false
   export let canOpenResumePrompt = false
-  export let nativeCapabilities = false
   export let resolveHostProfile: (hostId: string) => HostProfile
   export let formatTime: (value: string | null | undefined) => string
   export let onReload: () => void = () => {}
@@ -275,6 +277,7 @@
       </div>
 
       <CommandRail
+        {capabilities}
         {workspace}
         {feedbackResult}
         {rambelleStatusPortrait}
@@ -300,7 +303,6 @@
         {cancelling}
         {approving}
         {canOpenResumePrompt}
-        {nativeCapabilities}
         {onToggleRamble}
         {onExitRamble}
         {onOpenVoiceSettings}

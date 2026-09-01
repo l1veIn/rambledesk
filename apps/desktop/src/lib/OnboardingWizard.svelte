@@ -88,12 +88,21 @@
     restartRequired: boolean
   }
 
-  const baseSteps = ['Welcome', 'Storage', 'Voice input', 'Adapters', 'Notifications', 'Cooking', 'Finish']
-  const macSteps = ['Welcome', 'Storage', 'Voice input', 'Permissions', 'Adapters', 'Notifications', 'Cooking', 'Finish']
-  let steps = baseSteps
+  const platform = capabilities.windowControls.implementation.platform()
+  const storageAvailable =
+    capabilities.dataStorageAdministration.status.availability !== 'unavailable' &&
+    capabilities.serverPaths.status.availability !== 'unavailable'
+  const voiceAvailable = capabilities.speech.status.availability !== 'unavailable'
+  const permissionsAvailable =
+    platform === 'macOS' &&
+    capabilities.systemPermissions.status.availability !== 'unavailable'
+  const adaptersAvailable =
+    capabilities.hostIntegrationAdministration.status.availability !== 'unavailable'
+  const notificationsAvailable = capabilities.notifications.status.availability !== 'unavailable'
+  const windowControlsAvailable = capabilities.windowControls.status.availability !== 'unavailable'
   let showMacPermissionStep = false
-  $: desktopCapabilitiesAvailable = capabilities.windowControls.status.availability !== 'unavailable'
-  $: isWindows = capabilities.windowControls.implementation.platform() === 'Windows'
+  let steps = onboardingSteps(showMacPermissionStep)
+  const isWindows = platform === 'Windows'
   let step = 0
   let wasOpen = false
   let closing = false
@@ -110,7 +119,7 @@
   let adapterBusy = false
   let piBusy = false
   let piStatus: PiPackageStatus | null = null
-  let piStatusLoading = desktopCapabilitiesAvailable
+  let piStatusLoading = adaptersAvailable
   let dshBusy = false
   let promptCopyState: 'idle' | 'copied' | 'error' = 'idle'
   let copyCelebrationKey = 0
@@ -150,19 +159,34 @@
   }
 
   onMount(() => {
-    if (desktopCapabilitiesAvailable) {
-      void loadStorage()
+    if (storageAvailable) void loadStorage()
+    if (voiceAvailable) {
       void loadModels()
-      void loadHosts()
-      void loadPiStatus()
-      void loadMacPermissionStep()
       unlistenModelProgress = capabilities.speech.implementation.onModelProgress(
         (progress) => (modelProgress = { ...progress }),
         () => undefined,
       )
     }
+    if (adaptersAvailable) {
+      void loadHosts()
+      void loadPiStatus()
+    }
+    if (permissionsAvailable) void loadMacPermissionStep()
     return () => unlistenModelProgress?.()
   })
+
+  function onboardingSteps(includePermissions: boolean) {
+    return [
+      'Welcome',
+      ...(storageAvailable ? ['Storage'] : []),
+      ...(voiceAvailable ? ['Voice input'] : []),
+      ...(includePermissions ? ['Permissions'] : []),
+      ...(adaptersAvailable ? ['Adapters'] : []),
+      ...(notificationsAvailable ? ['Notifications'] : []),
+      'Cooking',
+      'Finish',
+    ]
+  }
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
@@ -177,11 +201,11 @@
     try {
       const permissions = await capabilities.systemPermissions.implementation.list()
       showMacPermissionStep = permissions.length > 0
-      steps = showMacPermissionStep ? macSteps : baseSteps
+      steps = onboardingSteps(showMacPermissionStep)
       step = Math.max(0, Math.min(steps.length - 1, step))
     } catch {
       showMacPermissionStep = false
-      steps = baseSteps
+      steps = onboardingSteps(false)
       step = Math.max(0, Math.min(steps.length - 1, step))
     }
   }
@@ -215,7 +239,7 @@
   }
 
   async function chooseStorage() {
-    if (capabilities.dataStorageAdministration.status.availability === 'unavailable' || storageBusy) return
+    if (!storageAvailable || storageBusy) return
     const path = await capabilities.serverPaths.implementation.chooseDirectory()
     if (!path) return
     storageBusy = true
@@ -231,6 +255,7 @@
   }
 
   async function restartForStorage() {
+    if (!windowControlsAvailable) return
     setOnboardingStep(2)
     try {
       await capabilities.windowControls.implementation.restart()
@@ -240,6 +265,7 @@
   }
 
   async function restartForPermissions() {
+    if (!windowControlsAvailable) return
     setOnboardingStep(step)
     try {
       await capabilities.windowControls.implementation.restart()
@@ -356,7 +382,7 @@
   }
 
   async function enableNotifications() {
-    if (capabilities.notifications.status.availability === 'unavailable' || notificationBusy || isWindows) return
+    if (!notificationsAvailable || notificationBusy || isWindows) return
     notificationBusy = true
     try {
       const currentPermission = await capabilities.notifications.implementation.permission()

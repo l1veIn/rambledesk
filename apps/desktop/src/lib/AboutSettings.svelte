@@ -41,6 +41,8 @@
   $: updatesAvailable = softwareUpdates.status.availability !== 'unavailable'
   $: diagnosticsAvailable = diagnostics.status.availability !== 'unavailable'
   $: serverPathsAvailable = serverPaths.status.availability !== 'unavailable'
+  $: externalLinksAvailable = externalLinks.status.availability !== 'unavailable'
+  $: windowControlsAvailable = windowControls.status.availability !== 'unavailable'
   $: desktopPlatform = windowControls.implementation.platform()
   $: isMac = desktopPlatform === 'macOS'
   const projectUrl = 'https://github.com/l1veIn/rambledesk'
@@ -55,6 +57,10 @@
   }
 
   async function openSafeUrl(url: string) {
+    if (!externalLinksAvailable) {
+      toast.info(tr('Opening external links is available only in the desktop app.'))
+      return
+    }
     try {
       await externalLinks.implementation.open(url)
     } catch (cause) {
@@ -63,12 +69,9 @@
     }
   }
 
-  async function openProject() {
-    await openSafeUrl(projectUrl)
-  }
-
-  async function openReleases() {
-    await openSafeUrl(releasesUrl)
+  function openExternalLink(event: MouseEvent, url: string) {
+    event.preventDefault()
+    void openSafeUrl(url)
   }
 
   async function exportDiagnostics(scope: DiagnosticScope) {
@@ -128,8 +131,8 @@
       <div>
         <div class="flex flex-wrap items-center gap-2">
           <h3 class="m-0 text-xl font-semibold tracking-tight">RambleDesk</h3>
-          <Badge variant="secondary">v{version}</Badge>
-          <Badge variant="outline">{desktopPlatform}</Badge>
+          {#if updatesAvailable}<Badge variant="secondary">v{version}</Badge>{/if}
+          {#if windowControlsAvailable}<Badge variant="outline">{desktopPlatform}</Badge>{/if}
         </div>
         <p class="m-0 mt-3 max-w-xl text-sm leading-6 text-muted-foreground">
           {tr('Let agents pause at key moments and request structured human feedback that can be resumed and archived.')}
@@ -137,7 +140,16 @@
         <p class="m-0 mt-2 text-xs leading-5 text-muted-foreground">
           {tr('Feedback drafts, attachments, and packages stay on your device. The agent only receives results you explicitly submit or cancel.')}
         </p>
-        <Button variant="link" class="mt-3 h-auto gap-1.5 p-0 text-xs" onclick={() => void openProject()}>
+        <Button
+          href={externalLinksAvailable ? projectUrl : undefined}
+          target="_blank"
+          rel="noreferrer"
+          disabled={!externalLinksAvailable}
+          title={!externalLinksAvailable ? tr('Opening external links is available only in the desktop app.') : ''}
+          variant="link"
+          class="mt-3 h-auto gap-1.5 p-0 text-xs"
+          onclick={(event) => openExternalLink(event, projectUrl)}
+        >
           <GitBranch data-icon="inline-start" />
           {tr('View GitHub repository')}
           <ExternalLink class="size-3" />
@@ -178,6 +190,7 @@
     </div>
   </section>
 
+  {#if updatesAvailable}
   <section class="rounded-xl border p-5">
     <div class="flex items-start justify-between gap-6">
       <div>
@@ -236,7 +249,13 @@
                 {tr('Download and install')}
               </Button>
             {:else}
-              <Button onclick={() => void openReleases()}>
+              <Button
+                href={externalLinksAvailable ? releasesUrl : undefined}
+                target="_blank"
+                rel="noreferrer"
+                disabled={!externalLinksAvailable}
+                onclick={(event) => openExternalLink(event, releasesUrl)}
+              >
                 <ExternalLink data-icon="inline-start" />
                 {tr('Open GitHub Releases')}
               </Button>
@@ -259,14 +278,16 @@
       {:else if $updateState.status === 'ready'}
         <div class="flex flex-wrap items-center justify-between gap-3">
           <strong class="text-xs">{tr('v{version} is installed and will take effect after restart.', { version: $updateState.version })}</strong>
-          <Button
-            disabled={installBlocked}
-            title={installBlocked ? tr('Finish or cancel the current feedback before restarting.') : ''}
-            onclick={() => void windowControls.implementation.restart()}
-          >
-            <RotateCw data-icon="inline-start" />
-            {tr('Restart now')}
-          </Button>
+          {#if windowControlsAvailable}
+            <Button
+              disabled={installBlocked}
+              title={installBlocked ? tr('Finish or cancel the current feedback before restarting.') : ''}
+              onclick={() => void windowControls.implementation.restart()}
+            >
+              <RotateCw data-icon="inline-start" />
+              {tr('Restart now')}
+            </Button>
+          {/if}
         </div>
       {:else if $updateState.status === 'error'}
         <div>
@@ -282,7 +303,9 @@
       </p>
     {/if}
   </section>
+  {/if}
 
+  {#if diagnosticsAvailable && serverPathsAvailable}
   <section class="rounded-xl border p-5">
     <div>
       <h3 class="m-0 text-sm font-medium">{tr('Diagnostic package')}</h3>
@@ -340,6 +363,7 @@
       </p>
     {/if}
   </section>
+  {/if}
 
   <p class="m-0 text-center text-[10px] text-muted-foreground">
     © 2026 RambleDesk · MIT · {tr('See THIRD_PARTY_NOTICES.md for third-party component notices')}

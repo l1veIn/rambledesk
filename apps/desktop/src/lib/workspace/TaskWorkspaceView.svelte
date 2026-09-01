@@ -13,7 +13,10 @@
 
   export let workspace: FeedbackWorkspaceView | null = null
   export let transport: ApplicationTransport
-  export let capabilities: Pick<WorkbenchCapabilities, 'externalLinks' | 'serverPaths'>
+  export let capabilities: Pick<
+    WorkbenchCapabilities,
+    'externalLinks' | 'serverPaths' | 'speech' | 'rambleConsole'
+  >
   export let loading = false
   export let editorDocument: JSONContent | null = null
   export let previews: Record<string, string> = {}
