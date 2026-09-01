@@ -215,8 +215,8 @@ Codeg 主业务实时通道是 WebSocket。SSE 只用于代理 `officecli watch`
 | 系统全局快捷键 | Tauri global shortcut | 不支持 | `SystemGlobalShortcut` capability |
 | 原生截图/区域 overlay | Desktop host 原生能力 | 不等价；首版粘贴/上传 | `ImageAttachment` |
 | 主动屏幕分享 | 可保留现有原生实现 | `getDisplayMedia()`，捕获浏览器所在设备 | `ImageAttachment` 或后续 screen-share session |
-| 麦克风录音 | 当前 Tauri/Rust 音频采集 | `getUserMedia` + `MediaRecorder`，采集浏览器所在设备 | `AudioBlob/UploadedAudio` |
-| ASR | 后端 speech service | 上传/流式发送给同一后端 speech service | `Transcript` 与统一错误状态 |
+| 麦克风录音 | 当前 Tauri/Rust 音频采集 | `getUserMedia` + AudioWorklet，采集浏览器所在设备 | 当前客户端的 Speech Recognition Plugin |
+| ASR | Rust sherpa-onnx，在 Desktop 本地运行 | sherpa-onnx WebAssembly，在 dedicated Worker 本地运行 | `SpeechEvent` 与统一错误状态 |
 | 本地文件 | 可传 native path | 必须先上传 bytes/blob | `Attachment` |
 
 ### 5.1 快捷键
@@ -245,23 +245,20 @@ Tauri 的 OS 全局快捷键属于 Desktop plugin 与权限能力。[Tauri Globa
 RambleDesk 更合理的拆法是：
 
 ```text
-AudioCapture（客户端能力）
-  ├─ Tauri：现有 native capture
-  └─ Web：getUserMedia + MediaRecorder
+Speech Recognition Plugin（客户端平台能力）
+  ├─ Desktop：native capture + Rust sherpa-onnx
+  └─ Web：getUserMedia + AudioWorklet + Worker + sherpa-onnx WASM
                  │
                  ▼
-       AudioBlob / UploadedAudio
+       SpeechEvent + timing/error
                  │
                  ▼
-SpeechRecognizerSession（共享后端服务）
-                 │
-                 ▼
-       Transcript + timing/error
+           TipTap Ramble Core
 ```
 
-浏览器麦克风访问要求安全上下文和用户授权；`localhost` 可作为安全上下文，但局域网裸 HTTP 通常不行。浏览器还可能产生不同容器/codec，应通过 `MediaRecorder.isTypeSupported()` 协商，不能假设统一 WAV。[MDN `getUserMedia`](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia)、[MDN `MediaRecorder`](https://developer.mozilla.org/en-US/docs/Web/API/MediaRecorder)、[MDN `dataavailable`](https://developer.mozilla.org/en-US/docs/Web/API/MediaRecorder/dataavailable_event)
+浏览器麦克风访问要求安全上下文和用户授权；loopback 可作为可信上下文，但局域网裸 HTTP 通常不行。Browser Speech Recognition Plugin 应读取实际采样率、用 AudioWorklet 取得 PCM，并在 dedicated Worker 中完成本地重采样、VAD 与 sherpa-onnx WASM 推理。[MDN `getUserMedia`](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia)、[MDN AudioWorklet](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Using_AudioWorklet)
 
-所以“让手机通过 LAN 地址访问并录音”会把 HTTPS/pairing 从部署优化提升为功能前提。Web 第一版若没有可信 HTTPS，可以只承诺 loopback 录音，或先交付文字、图片与音频文件上传，把浏览器实时录音/流式 ASR 拆为后续 PR。
+所以“让手机通过 LAN 地址访问并录音”会把 HTTPS/pairing 从部署优化提升为功能前提。Web 第一版先验证 loopback Browser 本地 ASR；LAN 与 Mobile Client 分别在拥有可信 HTTPS 和本地插件实现后开放，不以服务端音频上传作为 fallback。
 
 ## 6. 建议的 RambleDesk 目标边界
 
@@ -283,12 +280,12 @@ SpeechRecognizerSession（共享后端服务）
                            │
                   rambledesk-storage / SQLite
 
-LocalCapability（由客户端持有）
-  ├─ ShortcutAdapter
-  ├─ CaptureAdapter
-  ├─ AudioCaptureAdapter
-  ├─ AttachmentIngressAdapter
-  └─ WindowIntegrationAdapter
+Platform Capability / Plugin（由客户端持有）
+  ├─ Shortcut Capability
+  ├─ Capture Plugin
+  ├─ Speech Recognition Plugin
+  ├─ Attachment Ingress Capability
+  └─ Window Integration Capability
 ```
 
 这保持 [ARCHITECTURE.md](ARCHITECTURE.md) 的原则：`rambledesk-core` 不持有 HTTP/Tauri，Desktop 继续作为 composition root；新增 Web router 只是 application contract 的第二个 transport adapter。
@@ -348,7 +345,7 @@ interface WorkbenchClient {
 
 1. **定义 Workbench DTO、错误与 BackendTransport 合同。** 为现有 Tauri commands 建立类型化 client，不改变行为。
 2. **收口 UI 中的 Tauri 直接依赖。** 请求、草稿、附件、设置通过 TauriWorkbenchTransport；保留少量 composition root。
-3. **建立 LocalCapability Adapters。** 快捷键、截图、录音、文件与窗口能力从业务组件移出，并加入 capability matrix。
+3. **建立 Platform Capability / Plugin Implementation。** 快捷键、截图、录音、文件与窗口能力从业务 Module 移出，并加入 capability matrix。
 4. **让共享 UI 可在普通浏览器构建。** 不要求此时拥有完整后端；保证 SSR/static build 不直接访问 Tauri globals。
 5. **静态构建与 Desktop bundle 合并。** 同一前端产物供 WebView 与后续 Web server 使用。
 
@@ -363,7 +360,7 @@ interface WorkbenchClient {
 3. **WebTransport 与浏览器登录。** Bearer HTTP；WS 使用 subprotocol token 或换成登录后短期 HttpOnly session，必须有明确威胁模型。
 4. **轻量跨客户端同步。** WS invalidation + reconnect refetch；沿用 draft revision/CAS，不先做 replay ring buffer。
 5. **浏览器附件入口。** 图片粘贴、拖放、文件上传；服务端统一生成 attachment metadata。
-6. **浏览器音频采集与 ASR。** 只有 HTTPS/secure-context 决策明确后再做；先 Blob upload，确有实时性需求再做 chunk streaming。
+6. **浏览器本地音频采集与 ASR。** 先在 loopback secure context 中验证 AudioWorklet、Worker、sherpa-onnx WASM 与模型缓存；不新增音频上传或服务端识别协议。
 7. **LAN opt-in 与配对体验。** 明确监听范围、地址/二维码、失败诊断、HTTPS/tunnel 指引，再承诺跨设备访问。
 
 ## 8. 第一阶段不应直接照搬 Codeg 的复杂度
@@ -389,7 +386,7 @@ interface WorkbenchClient {
 - HTTP API 是 command parity 还是业务资源/用例 allowlist；本报告建议“allowlist”。
 - WS 第一版传 delta 还是 invalidation；本报告建议“invalidation + revision”。
 - 浏览器凭证是长期 bearer token 还是短期 session；需单独安全 ADR。若先用 token，至少与 MCP token 分离。
-- Web ASR 是完整文件上传还是实时 chunk；本报告建议“先上传，后流式”。
+- Web ASR 在浏览器本地使用 streaming 还是 VAD + offline；先以 X-ASR streaming 做 feasibility gate，再按真实设备结果决定后续模型。
 - 静态前端是否保持单一构建产物；本报告建议“是”，避免 Desktop/Web 页面分叉。
 
 ## 10. 一手资料索引
@@ -408,4 +405,4 @@ interface WorkbenchClient {
 - [Tauri Global Shortcut plugin](https://v2.tauri.app/plugin/global-shortcut/)
 - [MDN `MediaDevices.getDisplayMedia()`](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getDisplayMedia)
 - [MDN `MediaDevices.getUserMedia()`](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia)
-- [MDN `MediaRecorder`](https://developer.mozilla.org/en-US/docs/Web/API/MediaRecorder)
+- [MDN AudioWorklet](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Using_AudioWorklet)

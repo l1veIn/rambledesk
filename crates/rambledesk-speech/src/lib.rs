@@ -11,8 +11,8 @@ pub type SpeechEventSink = Arc<dyn Fn(SpeechEvent) + Send + Sync + 'static>;
 
 /// A normalized mono PCM buffer produced by an Audio Source.
 ///
-/// Audio Sources retain their native sample rate. The Speech Engine owns
-/// resampling so browser and native producers share the same recognition path.
+/// Audio Sources retain their native sample rate. Inside the Desktop Speech
+/// Recognition Plugin, the local Speech Engine owns model-rate resampling.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PcmAudioChunk {
     samples: Vec<f32>,

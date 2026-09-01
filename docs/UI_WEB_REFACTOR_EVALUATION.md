@@ -147,7 +147,7 @@ Web Access 与 Local Integration Server 可以复用同一个 server crate 和 r
 
 - JSON HTTP：命令、查询、附件上传下载、设置；
 - WebSocket：请求状态、Draft revision、Session 状态等轻量 invalidate / delta；
-- 浏览器录音首期通过 HTTP 上传分段或完成后的 Blob；只有实时 partial transcript 成为明确需求时，才增加独立 binary WebSocket。
+- 实时音频与 recognition session 不进入 Application Transport；浏览器录音和 ASR 由浏览器本地 Platform Plugin 完成，只把稳定的 TipTap Draft mutation 经现有 HTTP contract 持久化。
 
 事件流从一开始必须定义 snapshot / reconnect，而不是假定广播永不丢失：
 
@@ -180,23 +180,23 @@ Desktop 与 Browser 同时打开后，Server 事实与 Client 工作区状态必
 | 剪贴板 | 可做系统级集成 | 受 secure context、权限和用户手势限制 | `ClipboardCapability` |
 | 文件选择 | 原生文件/目录对话框 | 浏览器选择的是 Client 文件 | `FileCapability` |
 | Server 工作目录 | 本机可用原生对话框 | 必须使用 Server-side folder browser / path picker | Server Interface |
-| 录音 | Tauri / native microphone source | `getUserMedia` + MediaRecorder | `AudioCapture` Adapter |
-| ASR | 本地 microphone + server-side engine | 音频上传到同一 engine | `SpeechEngine` Module |
+| 录音 | Tauri / native microphone source | `getUserMedia` + AudioWorklet | 当前客户端的 `SpeechRecognitionPlugin` |
+| ASR | Rust sherpa-onnx，在 Desktop 本地运行 | sherpa-onnx WebAssembly，在 dedicated Worker 本地运行 | 统一 `SpeechEvent`，不统一引擎进程 |
 | 系统通知 | 原生通知 | Web Notification，best effort | `NotificationCapability` |
 | 更新器、Tray、窗口、系统权限 | 完整 | 不提供 | Desktop-only Capability |
 
 浏览器截图和录音不能伪装成 Desktop 的等价实现：`getDisplayMedia()` 每次都需要用户选择共享源和瞬时用户操作；`getUserMedia()`、Clipboard 等能力依赖 secure context 与权限。远程浏览器捕获的是浏览器所在设备，而不是运行 RambleDesk Server 的设备。
 
-### 5.1 录音与 ASR 的拆分
+### 5.1 TipTap Ramble Core 与平台语音插件
 
-现有 `rambledesk-speech` 已有事件、重采样、VAD 和识别引擎资产，但 native microphone acquisition 与 recognizer 生命周期仍耦合。建议拆成：
+现有 `rambledesk-speech` 已有事件、重采样、VAD 和识别引擎资产。录音与识别继续在输入所在设备本地完成，并通过 Platform Plugin 隐藏平台差异：
 
-- `AudioCapture` Interface：产出有格式说明的 audio chunk / blob；
-- `NativeAudioCapture`：使用当前 cpal 采集，并可继续给本地 engine 提供 PCM；
-- `BrowserAudioCapture`：使用 `getUserMedia` 与 `MediaRecorder`，按浏览器实际支持格式上传；
-- `SpeechEngine`：在后端统一解码、resample、VAD / ASR，并发出统一 SpeechEvent。
+- `SpeechRecognitionPlugin`：对共享 Workbench 只暴露 availability/model status、start/stop/cancel 和统一 SpeechEvent；
+- Desktop Implementation：使用当前 cpal 与 Rust sherpa-onnx，在 Desktop 本地组合 Audio Source 与 Speech Engine；
+- Browser Implementation：使用 `getUserMedia`、AudioWorklet、流式重采样、dedicated Worker 与 sherpa-onnx WASM；
+- TipTap Ramble Core：把 stable SpeechEvent 映射成唯一 Feedback Draft 的 transaction；不拥有 PCM、模型或设备权限。
 
-不建议把 Web Speech API 作为主路径，因为浏览器实现、网络依赖、隐私和转写一致性都难以成为稳定产品合同。
+不建议把 Web Speech API 作为主路径，因为浏览器实现、网络依赖、隐私和转写一致性都难以成为稳定产品合同；也不以音频上传服务端作为 silent fallback。
 
 ## 六、安全模型
 
@@ -325,13 +325,14 @@ Desktop 与 Browser 同时打开后，Server 事实与 Client 工作区状态必
 
 验收：浏览器粘贴或上传的截图可进入现有编辑器与附件管线；远程 Client 文件与 Server path 不混淆。主动屏幕共享作为后续 `BrowserCaptureCapability`：只能通过用户手势调用 `getDisplayMedia()`，不宣称等价于 Desktop 全局区域截图。
 
-#### WEB-9：Web 录音与 ASR（3 commits）
+#### WEB-9：边缘媒体插件与 Browser 本地 ASR（4 commits）
 
 1. `Separate AudioSource from SpeechEngine`
-2. `Add browser audio upload and server-side recognition sessions`
-3. `Add BrowserAudioSource and preserve desktop speech behavior`
+2. `Define edge media plugins and the TipTap Ramble core`
+3. `Route platform input through editor contribution contracts`
+4. `Add browser-local sherpa WASM speech recognition`
 
-验收：Desktop 与 Web 产生相同 SpeechEvent 合同；浏览器通过 `getUserMedia` 采集并协商浏览器支持的格式；断线、停止、权限拒绝、设备丢失不会留下幽灵 recording session。首期可先做分段/结束后上传；只有实时 partial transcript 成为明确验收项时才增加 PCM streaming binary channel。
+验收：Desktop 与 Web 产生相同 SpeechEvent 合同，但各自在输入设备本地识别；浏览器使用 AudioWorklet、流式重采样与 dedicated Worker 运行 sherpa-onnx WASM；权限拒绝、设备丢失、页面隐藏、停止和模型损坏不会破坏 TipTap Draft 或留下幽灵 recording session；网络检查证明没有音频上传或服务端 speech route。
 
 #### WEB-10：Web Access 产品化与清理（3 commits）
 
@@ -339,7 +340,7 @@ Desktop 与 Browser 同时打开后，Server 事实与 Client 工作区状态必
 2. `Add loopback security limits diagnostics and acceptance tests`
 3. `Remove direct UI transport calls and run residual architecture scans`
 
-验收：用户能启动/停止 Web Access、复制 Token、打开本机地址并看到明确状态；Backend Runtime 与 Local Integration Server 不被误关；普通 UI 不再直接调用 invoke，所有调用都经 ApplicationTransport 或明确列出的 native Capability Adapter。
+验收：用户能启动/停止 Web Access、复制 Token、打开本机地址并看到明确状态；Backend Runtime 与 Local Integration Server 不被误关；普通 UI 不再直接调用 invoke，所有调用都经 ApplicationTransport 或明确列出的 Native Capability / Platform Plugin Implementation。
 
 ## 八、每一阶段的质量闸门
 
@@ -362,7 +363,7 @@ Desktop 与 Browser 同时打开后，Server 事实与 Client 工作区状态必
 ### Web 闸门
 
 - 本机文字反馈闭环先于截图和语音；
-- Chrome / Safari 至少覆盖登录、Draft、附件、提交、刷新恢复；
+- Chrome / Safari 至少覆盖登录、Draft、附件、提交、刷新恢复；Browser ASR 的生产兼容矩阵必须由另行记录的真实设备结果支持；
 - insecure context 下明确禁用麦克风、截图或剪贴板能力；
 - 第一版不把 listener 暴露到局域网；
 - Token 不进入 URL、日志、反馈包和浏览器持久明文存储。
@@ -376,7 +377,7 @@ Desktop 与 Browser 同时打开后，Server 事实与 Client 工作区状态必
 | 断线漏掉 Request 状态事件 | 高 | snapshot + invalidate + reconnect refetch + ready gate；高频 Timeline 后续再加 scoped replay |
 | Browser 与 Server 文件系统语义混淆 | 高 | client upload 与 server workspace picker 分开建模 |
 | LAN token 被明文截获 | 高 | 首版 loopback；LAN 必须 HTTPS / WSS 或可信代理 |
-| Web ASR 延迟和断线状态复杂 | 高 | 首期 Blob/分段上传、明确 recognition session、最后实施；实时流按需增加 |
+| Browser ASR 首载、内存和长会话延迟 | 高 | 固定 sherpa-onnx 与模型版本，先做真实设备 feasibility gate；AudioWorklet 采集、Worker 推理、版本化模型缓存 |
 | 前端框架重构吞噬产品开发 | 中 | 保留 Svelte / Vite；只引入两个深 Interface |
 | 设置页“停止 Web”误杀 Desktop 后端 | 中 | Backend Runtime 与 Web Access 两个术语、两个生命周期 |
 

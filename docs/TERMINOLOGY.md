@@ -1,6 +1,6 @@
 # RambleDesk 术语表
 
-> 状态：v4 当前基线。
+> 状态：v5 当前基线。
 > 目标：固定产品语言、协议字段和 package 边界。代码、文档、UI 文案、测试命名若与本文冲突，以本文为准。
 
 本文是 RambleDesk 的唯一术语源。其他文档只引用本文，不重新定义产品对象。
@@ -17,12 +17,13 @@
 8. MCP 是通用 MCP 适配器的一种 transport，不是全局基础设施。
 9. 提交后的 continuation 不是适配器。适配器可以选择“不需要 continuation”“手动 continuation”或“原生 continuation”。
 10. RambleDesk 不要求源码 checkout 路径。路径最多是适配器提供的可选 context hint。
+11. 语音识别与屏幕采集发生在输入所在的客户端设备；Platform Plugin 只把结构化转录事件或附件候选交给 TipTap Ramble Core，不通过 Application Transport 代理设备能力。
 
 ## 核心闭环
 
 1. 宿主中的智能体通过适配器创建反馈请求。
 2. RambleDesk 持久化请求，并在工作台展示。
-3. 人类在工作台中检查上下文、截图、录音、书写反馈，然后提交或取消。
+3. 人类在工作台的 TipTap Feedback Draft 中检查上下文和书写反馈；当前平台的语音、截图等 Platform Plugin 可以向同一文档提供结构化输入。
 4. RambleDesk 发布不可变反馈包。
 5. 适配器或 continuation 让原宿主读取反馈包并继续。
 
@@ -44,15 +45,19 @@
 | Desktop Shell（桌面壳层） | Tauri 进程、窗口、托盘、更新器、原生权限和 desktop composition root。 | 组装 Desktop Client、Backend Runtime 与本地能力；不拥有 UI 业务事实。 |
 | Native Capability（原生能力） | 由 Desktop Shell 提供的 OS / device Implementation，例如全局快捷键、系统截图、原生录音、托盘、更新器和原生对话框。 | 独立于 Application Transport；可访问的设备和权限范围不能被 Web Client 假定。 |
 | Browser Capability（浏览器能力） | 由浏览器 API 提供的 device-scoped Implementation，例如受权限和用户手势约束的媒体、剪贴板、文件选择、下载和通知。 | 独立于 Application Transport；受 secure context、浏览器、权限与当前设备限制，不等价于 Native Capability，也不代表服务器文件系统。 |
-| Audio Source（音频源） | 由 Native Capability 或 Browser Capability 提供的音频输入 Interface/Implementation；可以是本机流，也可以是浏览器上传的 Blob 或有界分段。 | 只负责采集、编码与传输，不执行语音识别，不拥有 Feedback Draft。 |
-| Speech Engine（语音识别引擎） | Backend Runtime 使用的识别能力，消费 Audio Source 输入并产生统一 SpeechEvent。 | 与设备采集分离；Desktop 与 Web 不得各自形成不同的识别语义。 |
+| Platform Plugin（平台插件） | 在一个 Workbench Client 平台内组合设备 Capability、权限、资源和生命周期的深 Module。 | 不是 Host Adapter，也不表示可动态安装的第三方扩展；不经 Application Transport 代理设备操作，不拥有 Feedback Draft。 |
+| Speech Recognition Plugin（语音识别插件） | 在当前客户端设备内组合 Audio Source、重采样、VAD、Speech Engine 与模型管理，并产生统一 SpeechEvent 的 Platform Plugin。 | 原始音频、识别 session 和模型不进入 Application Transport；平台共享事件语义，不共享同一个引擎进程。 |
+| Capture Plugin（采集插件） | 在当前客户端设备上取得截图、相机、粘贴或文件输入，并返回 Attachment Candidate 的 Platform Plugin。 | 不直接编辑 TipTap，不写最终附件路径；平台可以有不同 acquisition UX。 |
+| Attachment Candidate（附件候选） | Platform Plugin 交给共享 Draft 流程验证和持久化的客户端本地 bytes/Blob、MIME 与来源 metadata。 | 不是已持久化附件，也不是服务器路径；只有 application mutation 成功后才能成为 Feedback Draft 附件引用。 |
+| Audio Source（音频源） | Speech Recognition Plugin 内负责取得有明确 sample rate 的本地单声道 PCM 的 Interface/Implementation。 | 不执行语音识别、不传输到 Backend Runtime、不拥有 Feedback Draft。 |
+| Speech Engine（语音识别引擎） | Speech Recognition Plugin 内消费本地 PCM 并产生 SpeechEvent 的识别 Implementation。 | Desktop、Browser 与 Mobile 各自在本设备运行；统一点是事件合同，不是进程、模型或 transport。 |
 | 反馈请求 | 由适配器创建、由人类处理的持久单位，用 `request_id` 标识。 | RambleDesk 的核心输入事实。 |
 | 反馈包 | 请求进入终态后发布的不可变证据，包含 manifest、markdown、附件路径和 hash。 | RambleDesk 的核心输出事实；宿主继续前必须读取。 |
 | 适配器 | 面向一类宿主的完整接入流程：创建请求、读取反馈、处理 continuation。 | 可以由多个 package 或 transport 组成。 |
 | continuation | 请求进入终态后，让原宿主继续的行为。 | 只处理终态之后；不创建请求，不发布反馈包。 |
 | 宿主会话 | 宿主中的原对话、任务或运行上下文。 | 同一宿主会话可以发起多次反馈请求；不是源码 checkout。 |
 | context hint | 适配器可选提供的展示/定位信息，例如标题、路径、URL、文件引用。 | 不参与认证，不是必需身份字段，不保证可恢复。 |
-| Ramble | 工作台内的自由反馈采集模式，尤其是语音、文字、截图驱动的反馈。 | 属于人类工作流，不属于适配器协议。 |
+| Ramble | 以 TipTap Feedback Draft 为中心的自由反馈编辑流程；文字是基础输入，语音、截图等 Platform Plugin 可向同一文档贡献结构化内容。 | 不等同于录音 session，不拥有平台设备能力，也不属于适配器协议。 |
 | Uncooked Feedback | 人类通过 Ramble、文字、截图形成的原始反馈正文；允许保留口语、重复和自我修正。 | 是人类原始证据，Cooking 不得覆盖；提交后保存为反馈包中的 `uncooked.md`。 |
 | Feedback Draft | 当前未提交请求的可编辑正文。canonical 真源是版本化 TipTap `document_json`，`body_markdown` 是同一份文档的派生投影。 | 不得把 Markdown 当作第二真源独立维护。 |
 | Action Group | 用标准 Blockquote 表达的 `@Action` 归属容器。 | 同一 Action 再次打开时创建新容器，不与旧区间合并。 |
@@ -164,6 +169,7 @@ Pi 原生适配器不需要提交后的 continuation，因为 Pi 已经在工具
 | Web Client / HTTP + WebSocket Application Transport Implementation / Web Access | `apps/desktop` 中的共享 Svelte UI、browser composition/auth gate/HTTP Transport，以及 `crates/rambledesk-local-server` 中的独立 Web Access server Module。 | 复用同一 Backend Runtime 与安全 policy/primitives，并与 Local Integration Server 分离 listener、credential、auth domain、生命周期和 route set。 |
 | Native Capability Implementation | `apps/desktop` 及 desktop-only crates。 | 与 Application Transport 分离并通过 capability manifest 暴露可用性。 |
 | Browser Capability Implementation | `apps/desktop` 当前使用浏览器 file picker 与 download，原生截图、原生录音、窗口和系统路径操作明确不可用。 | 后续媒体/剪贴板能力只承诺浏览器实际允许的范围，不模拟原生或服务器文件系统语义。 |
+| Platform Plugin Implementation | `apps/desktop` 的 capability registry、Desktop Tauri Implementation 与 Browser Implementation；`rambledesk-speech` 是 Desktop Speech Recognition Plugin 的内部实现。 | 每个平台本地处理设备输入；只向共享 TipTap Ramble Core 输出 SpeechEvent 或 Attachment Candidate。 |
 
 | Package / 区域 | 职责 | 不应包含 |
 | --- | --- | --- |
@@ -226,6 +232,7 @@ UI 文案允许：
 - “手动继续”
 - “桌面客户端”与“Web 客户端”
 - “Web 访问”
+- “平台插件”
 
 UI 文案避免：
 
@@ -235,12 +242,15 @@ UI 文案避免：
 - 用 “Adapter / 适配器”指代 Application Transport 或 Native / Browser Capability；它们分别称为 Interface 与 Implementation。
 - 把 Backend Runtime 称为“Web Server”，或用“关闭 Web”暗示停止 Backend Runtime / Local Integration Server。
 - 把 Browser Capability 描述成 Native Capability 的等价实现，或把浏览器文件选择描述成服务器工作目录选择。
+- 把 Platform Plugin 描述成 Host Adapter，或把第一方、静态装配的 Platform Plugin 暗示为任意第三方动态插件。
+- 把 Ramble 描述成录音 session，或把 Speech Engine 描述成 Backend Runtime 的跨客户端共享服务。
 
 代码与架构文档命名：
 
 - `Adapter / 适配器` 只用于完整 host-facing 集成，例如 Generic MCP Adapter 与 Pi Native Adapter。
 - Workbench Client 的应用访问 seam 称为 `Application Transport Interface`；Tauri IPC、HTTP + WebSocket 称为其 `Implementation`。
 - OS / device seam 称为 `Native Capability` 或 `Browser Capability`；具体实现称为 `Capability Implementation`，不称为 Adapter。
+- 组合语音、截图等单一平台设备流程的深 Module 称为 `Platform Plugin`；首期是第一方 typed composition，不承诺动态插件系统。
 - `Web Access` 只表示可独立启停的浏览器访问 feature，不表示 Backend Runtime。
 
 ## 合并标准
@@ -249,6 +259,8 @@ UI 文案避免：
 - `core` 不包含 JSON、HTTP、MCP、Pi、Local Integration Server、Web Access 或 desktop command 逻辑。
 - Backend Runtime 是唯一业务事实来源；Workbench Client 只保存 client-local workspace snapshot，不缓存 canonical Feedback Draft。
 - Application Transport 与 Native / Browser Capability 保持独立，Transport Implementation 不执行设备能力。
+- Speech Recognition Plugin 与 Capture Plugin 在当前客户端设备运行；Application Transport 不传输实时音频、识别 session 或设备权限。
+- Ramble Core 的 canonical 输入面是 TipTap Feedback Draft；Platform Plugin 只能通过 SpeechEvent 或 Attachment Candidate 贡献内容。
 - Local Integration Server 与 Web Access 必须复用同一安全 policy/primitives，同时分离 listener、credential、auth domain、启停生命周期和 route set。
 - 本地 JSON API 位于 `rambledesk-local-server`。
 - MCP 是薄适配层，不持有 listener、token path 或 JSON API。
