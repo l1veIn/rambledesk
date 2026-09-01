@@ -5,8 +5,8 @@ import { tick } from 'svelte'
 
 import { isImageMediaType } from '../attachmentMarkdown'
 import type { ApplicationTransport } from '../application/applicationTransport'
+import type { ApplicationAddAttachmentInput } from '../application/contracts'
 import type {
-  AddAttachmentInput,
   AttachmentView,
   FeedbackWorkspaceView,
   RemoveAttachmentInput,
@@ -154,10 +154,10 @@ export function createAttachmentController(context: AttachmentControllerContext)
         if (file.size > 20 * 1024 * 1024) {
           throw new Error(context.tr('{name} exceeds the 20 MiB limit', { name: file.name }))
         }
-        const input: AddAttachmentInput = {
+        const input: ApplicationAddAttachmentInput = {
           request_id: requestId,
           file_name: file.name || `attachment-${Date.now()}`,
-          contents: Array.from(new Uint8Array(await file.arrayBuffer())),
+          contents: await file.arrayBuffer(),
           expected_revision: next.draft.saved_revision,
         }
         next = await context.transport.call('addFeedbackAttachment', input)

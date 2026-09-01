@@ -47,7 +47,7 @@ const commandInputs = {
   addFeedbackAttachment: {
     request_id: 'request-1',
     file_name: 'note.txt',
-    contents: [1, 2, 3],
+    contents: new Uint8Array([1, 2, 3]).buffer,
     expected_revision: 1,
   },
   removeFeedbackAttachment: {
@@ -86,6 +86,9 @@ function expectedArguments(name: ApplicationCommandName): Record<string, unknown
   const input = commandInputs[name]
   if (name === 'listFeedbackInbox' || name === 'listHostSessions' || name === 'listHostProfiles') {
     return undefined
+  }
+  if (name === 'addFeedbackAttachment') {
+    return { input: { ...input, contents: [1, 2, 3] } }
   }
   return { input }
 }

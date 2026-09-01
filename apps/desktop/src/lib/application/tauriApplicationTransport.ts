@@ -50,6 +50,15 @@ function tauriArguments<Name extends ApplicationCommandName>(
   input: ApplicationCommandInput<Name>,
 ): Record<string, unknown> | undefined {
   if (NO_ARGUMENT_COMMANDS.has(name)) return undefined
+  if (name === 'addFeedbackAttachment') {
+    const attachment = input as ApplicationCommandInput<'addFeedbackAttachment'>
+    return {
+      input: {
+        ...attachment,
+        contents: Array.from(new Uint8Array(attachment.contents)),
+      },
+    }
+  }
   return { input }
 }
 

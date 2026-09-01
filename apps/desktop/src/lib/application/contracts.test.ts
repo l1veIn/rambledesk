@@ -13,6 +13,7 @@ import type {
 import {
   isApplicationError,
   isApplicationErrorCode,
+  type ApplicationAddAttachmentInput,
   type ApplicationCommandInput,
   type ApplicationCommandName,
   type ApplicationCommandResult,
@@ -54,6 +55,10 @@ describe('application command contracts', () => {
     type HasStoragePaths = 'attachment_paths' extends keyof FeedbackPackageView ? true : false
     expectTypeOf<HasStoragePaths>().toEqualTypeOf<false>()
     expectTypeOf<ApplicationCommandResult<'saveFeedbackDraft'>>().toEqualTypeOf<DraftView>()
+    expectTypeOf<ApplicationCommandInput<'addFeedbackAttachment'>>().toEqualTypeOf<
+      ApplicationAddAttachmentInput
+    >()
+    expectTypeOf<ApplicationAddAttachmentInput['contents']>().toEqualTypeOf<ArrayBuffer>()
     expectTypeOf<ApplicationCommandInput<'readFeedbackAttachment'>>().toEqualTypeOf<
       ReadAttachmentInput
     >()
