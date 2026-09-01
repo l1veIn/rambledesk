@@ -7,6 +7,7 @@ repository.workspace = true
 
 [dependencies]
 axum = { workspace = true, features = ["multipart", "ws"] }
+base64.workspace = true
 dirs.workspace = true
 futures.workspace = true
 hex.workspace = true
@@ -17,6 +18,7 @@ rambledesk-mcp.workspace = true
 rmcp.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 subtle.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

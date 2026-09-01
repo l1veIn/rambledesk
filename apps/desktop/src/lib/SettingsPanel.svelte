@@ -51,7 +51,6 @@
   import * as Tabs from '$lib/components/ui/tabs'
   import { t } from '$lib/i18n'
   import { currentDesktopPlatform } from '$lib/platform'
-  import { openExternalUrl } from '$lib/openExternalUrl'
   import {
     speechModelDescription,
     speechModelDisplayName,
@@ -174,6 +173,8 @@
     url: string | null
   }
 
+  type WebAccessPhase = 'loading' | 'stopped' | 'starting' | 'running' | 'stopping' | 'error'
+
   type DshInstallResult = {
     profileId: string
     profileDir: string
@@ -231,7 +232,7 @@
   let unlistenStorageProgress: UnlistenFn | null = null
   let hasMacPermissions = false
   let webAccessStatus: WebAccessStatus = { running: false, url: null }
-  let webAccessBusy = false
+  let webAccessPhase: WebAccessPhase = 'loading'
   let webAccessError = ''
   const isTauri = '__TAURI_INTERNALS__' in window
   const isMac = currentDesktopPlatform() === 'macOS'
@@ -294,31 +295,44 @@
     if (!isTauri) return
     try {
       webAccessStatus = await invoke<WebAccessStatus>('get_web_access_status')
+      webAccessPhase = webAccessStatus.running ? 'running' : 'stopped'
       webAccessError = ''
     } catch (cause) {
+      webAccessPhase = 'error'
       webAccessError = messageFrom(cause)
     }
   }
 
   async function toggleWebAccess() {
-    if (!isTauri || webAccessBusy) return
-    webAccessBusy = true
+    if (!isTauri || webAccessPhase === 'starting' || webAccessPhase === 'stopping') return
+    const stopping = webAccessStatus.running
+    webAccessPhase = stopping ? 'stopping' : 'starting'
     webAccessError = ''
     try {
       webAccessStatus = await invoke<WebAccessStatus>(
-        webAccessStatus.running ? 'stop_web_access' : 'start_web_access',
+        stopping ? 'stop_web_access' : 'start_web_access',
       )
+      webAccessPhase = webAccessStatus.running ? 'running' : 'stopped'
     } catch (cause) {
+      webAccessPhase = 'error'
       webAccessError = messageFrom(cause)
-    } finally {
-      webAccessBusy = false
     }
   }
 
   async function openWebAccess() {
-    if (!webAccessStatus.url) return
+    if (!webAccessStatus.running) return
     try {
-      await openExternalUrl(webAccessStatus.url)
+      await invoke('open_web_access')
+    } catch (cause) {
+      webAccessError = messageFrom(cause)
+    }
+  }
+
+  async function copyWebAccessToken() {
+    if (!webAccessStatus.running) return
+    try {
+      await invoke('copy_web_access_token')
+      toast.success(tr('Web Access token copied.'))
     } catch (cause) {
       webAccessError = messageFrom(cause)
     }
@@ -853,7 +867,8 @@
               </Select.Root>
             </section>
 
-            <section class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-8 border-b pb-8">
+            {#if isTauri}
+            <section class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-8 border-b pb-8" aria-live="polite">
               <div class="flex gap-3">
                 <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
                   <Rocket class="size-4" />
@@ -904,33 +919,46 @@
                       : tr('Start a local browser Workbench. It stays off until you start it.')}
                   </p>
                   {#if webAccessError}
-                    <p class="m-0 mt-1 text-xs text-destructive">{webAccessError}</p>
+                    <p class="m-0 mt-1 text-xs text-destructive" role="alert">{webAccessError}</p>
                   {/if}
                 </div>
               </div>
               <div class="flex items-center gap-2">
-                {#if webAccessStatus.running}
-                  <Button variant="outline" disabled={webAccessBusy} onclick={() => void openWebAccess()}>
+                {#if webAccessPhase === 'running'}
+                  <Button variant="outline" onclick={() => void copyWebAccessToken()}>
+                    <Clipboard data-icon="inline-start" />
+                    {tr('Copy token')}
+                  </Button>
+                  <Button variant="outline" onclick={() => void openWebAccess()}>
                     <Globe2 data-icon="inline-start" />
                     {tr('Open')}
                   </Button>
                 {/if}
                 <Button
                   variant={webAccessStatus.running ? 'destructive' : 'outline'}
-                  disabled={!isTauri || webAccessBusy}
+                  disabled={webAccessPhase === 'loading' || webAccessPhase === 'starting' || webAccessPhase === 'stopping'}
                   onclick={() => void toggleWebAccess()}
                 >
-                  {#if webAccessBusy}
+                  {#if webAccessPhase === 'loading' || webAccessPhase === 'starting' || webAccessPhase === 'stopping'}
                     <LoaderCircle data-icon="inline-start" class="animate-spin" />
                   {:else if webAccessStatus.running}
                     <X data-icon="inline-start" />
                   {:else}
                     <Play data-icon="inline-start" />
                   {/if}
-                  {webAccessStatus.running ? tr('Stop') : tr('Start')}
+                  {webAccessPhase === 'loading'
+                    ? tr('Loading…')
+                    : webAccessPhase === 'starting'
+                      ? tr('Starting…')
+                      : webAccessPhase === 'stopping'
+                        ? tr('Stopping…')
+                        : webAccessStatus.running
+                          ? tr('Stop')
+                          : tr('Start')}
                 </Button>
               </div>
             </section>
+            {/if}
 
             <section class="grid gap-4">
               <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-8">

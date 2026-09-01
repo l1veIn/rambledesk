@@ -7,8 +7,8 @@ use rambledesk_core::{
     SaveDraftInput, WorkbenchTerminalOperations,
 };
 use rambledesk_local_server::{
-    EVENT_CREDENTIAL_PROTOCOL_PREFIX, EVENT_PROTOCOL, REVISION_HEADER, RUNTIME_GENERATION_HEADER,
-    WebAccessRouteConfig, WebSessionAuthenticator, web_access_router,
+    DurableWebAccessToken, EVENT_CREDENTIAL_PROTOCOL_PREFIX, EVENT_PROTOCOL, REVISION_HEADER,
+    RUNTIME_GENERATION_HEADER, WebAccessRouteConfig, WebSessionManager, web_access_router,
 };
 use rambledesk_storage::SqliteFeedbackStore;
 use tokio::{net::TcpListener, task::JoinHandle};
@@ -19,21 +19,14 @@ use tokio_tungstenite::{
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-const SESSION_TOKEN: &str = "test_session_token";
+const DURABLE_TOKEN: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const RUNTIME_GENERATION: &str = "runtime-test";
-
-struct TestSessionAuthenticator;
-
-impl WebSessionAuthenticator for TestSessionAuthenticator {
-    fn authenticate(&self, session_token: &str) -> bool {
-        session_token == SESSION_TOKEN
-    }
-}
 
 struct WebAccessFixture {
     address: SocketAddr,
     application: FeedbackApplication,
     changes: Arc<ApplicationChangeHub>,
+    session_token: String,
     cancellation: CancellationToken,
     task: JoinHandle<std::io::Result<()>>,
     _directory: tempfile::TempDir,
@@ -63,17 +56,25 @@ impl WebAccessFixture {
         let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).await?;
         let address = listener.local_addr()?;
         let authority = address.to_string();
+        let sessions = Arc::new(WebSessionManager::new(
+            DurableWebAccessToken::parse(DURABLE_TOKEN)?,
+            RUNTIME_GENERATION,
+        ));
+        let session_token = sessions
+            .issue_session(DURABLE_TOKEN)
+            .expect("test short session");
+        let cancellation = CancellationToken::new();
         let router = axum::Router::new().nest(
             "/api",
             web_access_router(
                 commands,
                 changes.clone(),
-                Arc::new(TestSessionAuthenticator),
-                WebAccessRouteConfig::new(authority.clone(), format!("http://{authority}"), 2)
+                sessions,
+                WebAccessRouteConfig::new(authority.clone(), format!("http://{authority}"), 2, 8)
                     .map_err(anyhow::Error::msg)?,
+                cancellation.clone(),
             ),
         );
-        let cancellation = CancellationToken::new();
         let task_cancellation = cancellation.clone();
         let task = tokio::spawn(async move {
             axum::serve(listener, router)
@@ -84,6 +85,7 @@ impl WebAccessFixture {
             address,
             application,
             changes,
+            session_token,
             cancellation,
             task,
             _directory: directory,
@@ -136,12 +138,12 @@ fn authorized(
     client: &reqwest::Client,
     method: reqwest::Method,
     url: String,
-    origin: &str,
+    fixture: &WebAccessFixture,
 ) -> reqwest::RequestBuilder {
     client
         .request(method, url)
-        .bearer_auth(SESSION_TOKEN)
-        .header(reqwest::header::ORIGIN, origin)
+        .bearer_auth(&fixture.session_token)
+        .header(reqwest::header::ORIGIN, fixture.origin())
 }
 
 async fn connect_event_socket(
@@ -153,7 +155,11 @@ async fn connect_event_socket(
         .insert("Origin", fixture.origin().parse()?);
     request.headers_mut().insert(
         "Sec-WebSocket-Protocol",
-        format!("{EVENT_PROTOCOL}, {EVENT_CREDENTIAL_PROTOCOL_PREFIX}{SESSION_TOKEN}").parse()?,
+        format!(
+            "{EVENT_PROTOCOL}, {EVENT_CREDENTIAL_PROTOCOL_PREFIX}{}",
+            fixture.session_token
+        )
+        .parse()?,
     );
     let (socket, response) = connect_async(request).await?;
     assert_eq!(response.headers()["Sec-WebSocket-Protocol"], EVENT_PROTOCOL);
@@ -197,7 +203,7 @@ async fn web_access_rejects_an_inexact_host_before_authentication() -> anyhow::R
         .post(fixture.http_url("application/listFeedbackInbox"))
         .header(reqwest::header::HOST, "attacker.example")
         .header(reqwest::header::ORIGIN, fixture.origin())
-        .bearer_auth(SESSION_TOKEN)
+        .bearer_auth(&fixture.session_token)
         .send()
         .await?;
     assert_eq!(response.status(), reqwest::StatusCode::FORBIDDEN);
@@ -210,7 +216,7 @@ async fn web_access_rejects_an_inexact_origin_before_authentication() -> anyhow:
     let response = reqwest::Client::new()
         .post(fixture.http_url("application/listFeedbackInbox"))
         .header(reqwest::header::ORIGIN, "http://attacker.example")
-        .bearer_auth(SESSION_TOKEN)
+        .bearer_auth(&fixture.session_token)
         .send()
         .await?;
     assert_eq!(response.status(), reqwest::StatusCode::FORBIDDEN);
@@ -264,7 +270,7 @@ async fn health_and_application_snapshots_require_the_injected_session() -> anyh
         &client,
         reqwest::Method::GET,
         fixture.http_url("health"),
-        &fixture.origin(),
+        &fixture,
     )
     .send()
     .await?;
@@ -276,7 +282,7 @@ async fn health_and_application_snapshots_require_the_injected_session() -> anyh
         &client,
         reqwest::Method::POST,
         fixture.http_url("health"),
-        &fixture.origin(),
+        &fixture,
     )
     .send()
     .await?;
@@ -290,7 +296,7 @@ async fn health_and_application_snapshots_require_the_injected_session() -> anyh
         &client,
         reqwest::Method::POST,
         fixture.http_url("application/listFeedbackInbox"),
-        &fixture.origin(),
+        &fixture,
     )
     .send()
     .await?;
@@ -392,7 +398,7 @@ async fn stale_generation_rejects_mutation_without_side_effects() -> anyhow::Res
         &client,
         reqwest::Method::POST,
         fixture.http_url("application/saveFeedbackDraft"),
-        &fixture.origin(),
+        &fixture,
     )
     .header(RUNTIME_GENERATION_HEADER, "stale-runtime")
     .json(&SaveDraftInput {
@@ -427,7 +433,7 @@ async fn successful_mutation_returns_the_advanced_runtime_ledger() -> anyhow::Re
         &client,
         reqwest::Method::POST,
         fixture.http_url("application/saveFeedbackDraft"),
-        &fixture.origin(),
+        &fixture,
     )
     .header(RUNTIME_GENERATION_HEADER, RUNTIME_GENERATION)
     .json(&SaveDraftInput {
@@ -459,7 +465,7 @@ async fn concurrent_http_snapshot_never_labels_an_old_projection_with_a_new_revi
             &client,
             reqwest::Method::POST,
             fixture.http_url("application/listFeedbackInbox"),
-            &fixture.origin(),
+            &fixture,
         )
         .send();
         let create = fixture

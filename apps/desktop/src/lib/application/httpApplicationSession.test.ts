@@ -110,12 +110,14 @@ async function expectOlderSemanticProjectionRejected(
 
 describe('HttpApplicationSession reconnect state machine', () => {
   it('reports a prior terminal revocation to late subscribers without retaining them', async () => {
+    const onTerminalError = vi.fn()
     const session = HttpApplicationSession.authenticated({
       accessToken: 'session-token',
       pageUrl: 'https://workbench.example/app',
       fetch: vi.fn<typeof fetch>(async () => new Response(null, { status: 401 })),
       webSocket: () => new ControlledWebSocket(),
       scheduleReconnect: () => () => undefined,
+      onTerminalError,
     })
     const transport = new HttpApplicationTransport(session.lease())
     let revoked: unknown
@@ -125,6 +127,8 @@ describe('HttpApplicationSession reconnect state machine', () => {
       revoked = cause
     }
     expect(revoked).toBeInstanceOf(HttpApplicationSessionRevokedError)
+    expect(onTerminalError).toHaveBeenCalledTimes(1)
+    expect(onTerminalError).toHaveBeenCalledWith(revoked)
 
     const onError = vi.fn()
     const handler = vi.fn()

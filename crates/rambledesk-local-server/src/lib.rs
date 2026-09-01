@@ -4,6 +4,8 @@ mod application_api;
 mod token;
 mod web_access;
 mod web_access_server;
+mod web_security;
+mod web_session;
 
 use std::{
     net::{Ipv4Addr, SocketAddr},
@@ -35,7 +37,6 @@ use rmcp::transport::streamable_http_server::{
     StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
 };
 use std::{convert::Infallible, time::Duration};
-use subtle::ConstantTimeEq;
 use thiserror::Error;
 use tokio::{net::TcpListener, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
@@ -48,8 +49,12 @@ pub use web_access::{
     WebSessionAuthenticator, web_access_router,
 };
 pub use web_access_server::{
-    DEFAULT_WEB_ACCESS_PORT, SpaAsset, SpaAssetSource, WebAccessServerConfig, WebAccessServerError,
-    WebAccessServerHandle, start_web_access_server,
+    DEFAULT_WEB_ACCESS_PORT, SpaAsset, SpaAssetCachePolicy, SpaAssetSource, WebAccessServerConfig,
+    WebAccessServerError, WebAccessServerHandle, start_web_access_server,
+};
+pub use web_session::{
+    DurableWebAccessToken, WebSessionAuthorization, WebSessionClock, WebSessionError,
+    WebSessionManager, WebSessionPolicy,
 };
 
 pub use rambledesk_core::{HOST_ENV_KEY, HOST_HEADER};
@@ -278,20 +283,20 @@ struct AuthState {
 impl AuthState {
     fn new(token: &AccessToken, allowed_origins: Vec<String>) -> Self {
         Self {
-            expected: Arc::from(format!("Bearer {}", token.secret()).into_bytes()),
+            expected: Arc::from(token.secret().as_bytes()),
             allowed_origins: Arc::from(allowed_origins),
         }
     }
 
     fn accepts(&self, value: Option<&HeaderValue>) -> bool {
-        let Some(actual) = value.and_then(|value| value.to_str().ok()) else {
+        let Some(actual) = web_security::bearer_credential(value) else {
             return false;
         };
-        bool::from(self.expected.as_ref().ct_eq(actual.as_bytes()))
+        web_security::constant_time_bytes_eq(self.expected.as_ref(), actual.as_bytes())
     }
 
     fn accepts_origin(&self, value: Option<&HeaderValue>) -> bool {
-        let Some(origin) = value.and_then(|value| value.to_str().ok()) else {
+        let Some(origin) = value.and_then(web_security::header_text) else {
             return true;
         };
         self.allowed_origins.iter().any(|allowed| allowed == origin)
@@ -335,7 +340,7 @@ async fn require_bearer(
 
 fn host_is_loopback(value: Option<&HeaderValue>) -> bool {
     let Some(host) = value
-        .and_then(|value| value.to_str().ok())
+        .and_then(web_security::header_text)
         .map(str::trim)
         .filter(|value| !value.is_empty())
     else {
@@ -600,5 +605,34 @@ mod tests {
         ] {
             assert_eq!(application_error_status(code), StatusCode::CONFLICT);
         }
+    }
+
+    #[test]
+    fn local_integration_policy_reuses_parsing_but_keeps_optional_origin_semantics() {
+        let token = AccessToken::parse("a".repeat(64)).expect("token");
+        let auth = AuthState::new(&token, vec!["tauri://localhost".to_owned()]);
+        for (origin, expected) in [
+            (None, true),
+            (Some("tauri://localhost"), true),
+            (Some("http://attacker.example"), false),
+        ] {
+            let header = origin.map(|value| HeaderValue::from_str(value).expect("origin"));
+            assert_eq!(auth.accepts_origin(header.as_ref()), expected, "{origin:?}");
+        }
+        for (host, expected) in [
+            ("127.0.0.1:37642", true),
+            ("localhost:37642", true),
+            ("127.0.0.1.example:37642", false),
+        ] {
+            assert_eq!(
+                host_is_loopback(Some(&HeaderValue::from_str(host).expect("host"))),
+                expected,
+                "{host}",
+            );
+        }
+        assert!(auth.accepts(Some(
+            &HeaderValue::from_str(&format!("Bearer {}", token.secret())).expect("bearer")
+        )));
+        assert!(!auth.accepts(Some(&HeaderValue::from_static("Bearer wrong"))));
     }
 }

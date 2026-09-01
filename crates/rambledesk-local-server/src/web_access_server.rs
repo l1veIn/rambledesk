@@ -1,12 +1,18 @@
-use std::{net::Ipv4Addr, sync::Arc};
+use std::{
+    collections::VecDeque,
+    net::Ipv4Addr,
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
 
 use axum::{
-    Router,
+    Json, Router,
     body::Body,
     extract::{Extension, Request, State},
-    http::{HeaderValue, Method, Response, StatusCode, header},
+    http::{HeaderMap, HeaderValue, Method, Response, StatusCode, header},
     middleware::{self, Next},
     response::IntoResponse,
+    routing::post,
 };
 use percent_encoding::percent_decode_str;
 use rambledesk_core::{ApplicationChangeHub, ApplicationCommandFacade};
@@ -14,7 +20,10 @@ use thiserror::Error;
 use tokio::{net::TcpListener, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 
-use crate::{WebAccessRouteConfig, WebSessionAuthenticator, web_access_router};
+use crate::{
+    WebAccessRouteConfig, WebSessionManager, web_access_router,
+    web_security::{bearer_credential, has_exact_host, has_exact_host_and_origin, header_text},
+};
 
 pub const DEFAULT_WEB_ACCESS_PORT: u16 = 37_643;
 
@@ -23,6 +32,14 @@ pub struct SpaAsset {
     pub bytes: Vec<u8>,
     pub mime_type: String,
     pub content_security_policy: Option<String>,
+    pub cache_policy: SpaAssetCachePolicy,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpaAssetCachePolicy {
+    NoStore,
+    NoCache,
+    Immutable,
 }
 
 pub trait SpaAssetSource: Send + Sync {
@@ -33,6 +50,8 @@ pub trait SpaAssetSource: Send + Sync {
 pub struct WebAccessServerConfig {
     pub port: u16,
     pub max_event_connections: usize,
+    pub max_http_requests: usize,
+    pub max_bootstrap_attempts_per_minute: usize,
 }
 
 impl Default for WebAccessServerConfig {
@@ -40,6 +59,8 @@ impl Default for WebAccessServerConfig {
         Self {
             port: DEFAULT_WEB_ACCESS_PORT,
             max_event_connections: 8,
+            max_http_requests: 16,
+            max_bootstrap_attempts_per_minute: 8,
         }
     }
 }
@@ -90,13 +111,66 @@ struct SpaState {
     assets: Arc<dyn SpaAssetSource>,
 }
 
+#[derive(Clone)]
+struct BootstrapState {
+    allowed_host: String,
+    allowed_origin: String,
+    sessions: Arc<WebSessionManager>,
+    attempts: Arc<BootstrapRateLimiter>,
+}
+
+struct BootstrapRateLimiter {
+    attempts: Mutex<VecDeque<Instant>>,
+    max_attempts: usize,
+    window: Duration,
+}
+
+impl BootstrapRateLimiter {
+    fn per_minute(max_attempts: usize) -> Self {
+        assert!(max_attempts > 0);
+        Self {
+            attempts: Mutex::new(VecDeque::new()),
+            max_attempts,
+            window: Duration::from_secs(60),
+        }
+    }
+
+    fn admit(&self, now: Instant) -> bool {
+        let mut attempts = self
+            .attempts
+            .lock()
+            .expect("bootstrap rate limiter poisoned");
+        while attempts
+            .front()
+            .is_some_and(|attempt| now.saturating_duration_since(*attempt) >= self.window)
+        {
+            attempts.pop_front();
+        }
+        if attempts.len() >= self.max_attempts {
+            return false;
+        }
+        attempts.push_back(now);
+        true
+    }
+}
+
+#[derive(serde::Serialize)]
+struct BootstrapSession {
+    session_token: String,
+}
+
 pub async fn start_web_access_server(
     config: WebAccessServerConfig,
     commands: Arc<ApplicationCommandFacade>,
     changes: Arc<ApplicationChangeHub>,
-    authenticator: Arc<dyn WebSessionAuthenticator>,
+    sessions: Arc<WebSessionManager>,
     assets: Arc<dyn SpaAssetSource>,
 ) -> Result<WebAccessServerHandle, WebAccessServerError> {
+    if config.max_bootstrap_attempts_per_minute == 0 {
+        return Err(WebAccessServerError::RouteConfig(
+            "Web Access bootstrap rate limit must be non-zero".to_owned(),
+        ));
+    }
     let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, config.port))
         .await
         .map_err(WebAccessServerError::Bind)?;
@@ -107,24 +181,42 @@ pub async fn start_web_access_server(
         authority.clone(),
         origin.clone(),
         config.max_event_connections,
+        config.max_http_requests,
     )
     .map_err(WebAccessServerError::RouteConfig)?;
     let spa_state = SpaState {
-        allowed_host: authority,
+        allowed_host: authority.clone(),
         content_security_policy: format!(
             "default-src 'self'; img-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; connect-src 'self' ws://{address}; frame-ancestors 'none'"
         ),
         assets,
     };
+    let bootstrap_state = BootstrapState {
+        allowed_host: authority.clone(),
+        allowed_origin: origin.clone(),
+        sessions: sessions.clone(),
+        attempts: Arc::new(BootstrapRateLimiter::per_minute(
+            config.max_bootstrap_attempts_per_minute,
+        )),
+    };
+    let cancellation = CancellationToken::new();
+    let api_router = web_access_router(
+        commands,
+        changes,
+        sessions,
+        route_config,
+        cancellation.clone(),
+    )
+    .merge(
+        Router::new()
+            .route("/auth/session", post(bootstrap_session))
+            .with_state(bootstrap_state),
+    );
     let router = Router::new()
-        .nest(
-            "/api",
-            web_access_router(commands, changes, authenticator, route_config),
-        )
+        .nest("/api", api_router)
         .fallback(serve_spa)
         .layer(Extension(Arc::new(spa_state.clone())))
         .layer(middleware::from_fn_with_state(spa_state, require_spa_host));
-    let cancellation = CancellationToken::new();
     let task_cancellation = cancellation.clone();
     let task = tokio::spawn(async move {
         axum::serve(listener, router)
@@ -140,14 +232,41 @@ pub async fn start_web_access_server(
     })
 }
 
+async fn bootstrap_session(
+    State(state): State<BootstrapState>,
+    headers: HeaderMap,
+) -> Response<Body> {
+    if !has_exact_host_and_origin(&headers, &state.allowed_host, &state.allowed_origin) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    if !state.attempts.admit(Instant::now()) {
+        let mut response = StatusCode::TOO_MANY_REQUESTS.into_response();
+        response
+            .headers_mut()
+            .insert(header::RETRY_AFTER, HeaderValue::from_static("60"));
+        return response;
+    }
+    let durable_token = bearer_credential(headers.get(header::AUTHORIZATION));
+    let Some(session_token) = durable_token.and_then(|token| state.sessions.issue_session(token))
+    else {
+        return StatusCode::UNAUTHORIZED.into_response();
+    };
+    let mut response = Json(BootstrapSession { session_token }).into_response();
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response
+        .headers_mut()
+        .insert(header::PRAGMA, HeaderValue::from_static("no-cache"));
+    response
+}
+
 async fn require_spa_host(
     State(state): State<SpaState>,
     request: Request,
     next: Next,
 ) -> Response<Body> {
-    if request.headers().get(header::HOST).and_then(header_text)
-        != Some(state.allowed_host.as_str())
-    {
+    if !has_exact_host(request.headers(), &state.allowed_host) {
         return StatusCode::FORBIDDEN.into_response();
     }
     next.run(request).await
@@ -193,10 +312,14 @@ async fn serve_spa(Extension(state): Extension<Arc<SpaState>>, request: Request)
         header::CACHE_CONTROL,
         if history_fallback || asset_path == "index.html" {
             HeaderValue::from_static("no-store")
-        } else if is_hashed_asset(&asset_path) {
-            HeaderValue::from_static("public, max-age=31536000, immutable")
         } else {
-            HeaderValue::from_static("no-cache")
+            match asset.cache_policy {
+                SpaAssetCachePolicy::NoStore => HeaderValue::from_static("no-store"),
+                SpaAssetCachePolicy::NoCache => HeaderValue::from_static("no-cache"),
+                SpaAssetCachePolicy::Immutable => {
+                    HeaderValue::from_static("public, max-age=31536000, immutable")
+                }
+            }
         },
     );
     response.headers_mut().insert(
@@ -232,7 +355,7 @@ fn normalized_asset_path(raw_path: &str) -> Option<String> {
         return None;
     }
     let path = decoded.strip_prefix('/')?;
-    if path.split('/').any(|segment| matches!(segment, "." | "..")) {
+    if path.split('/').any(|segment| segment.starts_with('.')) {
         return None;
     }
     Some(path.to_owned())
@@ -257,26 +380,6 @@ fn has_file_extension(path: &str) -> bool {
         .is_some_and(|name| name.contains('.'))
 }
 
-fn is_hashed_asset(path: &str) -> bool {
-    let Some(name) = path
-        .strip_prefix("assets/")
-        .and_then(|path| path.rsplit('/').next())
-    else {
-        return false;
-    };
-    let stem = name.rsplit_once('.').map_or(name, |(stem, _)| stem);
-    stem.rsplit_once('-').is_some_and(|(_, hash)| {
-        hash.len() >= 8
-            && hash
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
-    })
-}
-
-fn header_text(value: &HeaderValue) -> Option<&str> {
-    value.to_str().ok()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -294,15 +397,9 @@ mod tests {
             "/a%2fb",
             "/a//b",
             "/a%5cb",
+            "/.vite/manifest.json",
         ] {
             assert_eq!(normalized_asset_path(path), None, "{path}");
         }
-    }
-
-    #[test]
-    fn only_fingerprinted_assets_are_immutable() {
-        assert!(is_hashed_asset("assets/app-1234abcd.js"));
-        assert!(!is_hashed_asset("assets/app.js"));
-        assert!(!is_hashed_asset("index.html"));
     }
 }

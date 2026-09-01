@@ -1,6 +1,19 @@
 import type { Locale } from './preferences'
 
 const chinese: Record<string, string> = {
+  'Web Access': '浏览器访问',
+  'Access token': '访问令牌',
+  'Available only in a browser on this computer at {url}.': '仅可在这台电脑的浏览器中通过 {url} 访问。',
+  'Start a local browser Workbench. It stays off until you start it.': '启动仅限本机浏览器访问的工作台；在你手动启动前它会保持关闭。',
+  'Copy the token from Settings on the desktop where RambleDesk is running.': '请从运行 RambleDesk 的桌面应用设置中复制令牌。',
+  'That Web Access token was not accepted. Check it and try again.': '浏览器访问令牌不正确，请检查后重试。',
+  'Web Access token copied.': '浏览器访问令牌已复制。',
+  'Copy token': '复制令牌',
+  'Connect': '连接',
+  'Open': '打开',
+  'Start': '启动',
+  'Stop': '停止',
+  'Stopping…': '正在停止…',
   'pending': '待处理',
   'Window controls': '窗口控制',
   'Close window': '关闭窗口',

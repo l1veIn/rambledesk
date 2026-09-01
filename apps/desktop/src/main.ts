@@ -97,19 +97,24 @@ if (captureMode) {
   const { default: RambleConsole } = await import('./RambleConsole.svelte')
   mount(RambleConsole, { target })
 } else {
-  const { default: App } = await import('./App.svelte')
   const isTauri = '__TAURI_INTERNALS__' in window
   const previewMode =
     import.meta.env.DEV &&
     !isTauri &&
     new URLSearchParams(window.location.search).get('preview') === 'fixtures'
-  const desktopTransport = isTauri
-    ? new (await import('./lib/application/tauriApplicationTransport')).TauriApplicationTransport()
-    : undefined
-  const composition = createWorkbenchComposition({
-    environment: isTauri ? 'desktop' : 'browser',
-    previewMode,
-    desktopTransport,
-  })
-  mount(App, { target, props: composition })
+  if (!isTauri && !previewMode) {
+    const { default: BrowserWorkbenchRoot } = await import('./BrowserWorkbenchRoot.svelte')
+    mount(BrowserWorkbenchRoot, { target })
+  } else {
+    const { default: App } = await import('./App.svelte')
+    const desktopTransport = isTauri
+      ? new (await import('./lib/application/tauriApplicationTransport')).TauriApplicationTransport()
+      : undefined
+    const composition = createWorkbenchComposition({
+      environment: isTauri ? 'desktop' : 'browser',
+      previewMode,
+      desktopTransport,
+    })
+    mount(App, { target, props: composition })
+  }
 }
