@@ -3,8 +3,56 @@ use std::{path::PathBuf, sync::Arc};
 use thiserror::Error;
 
 pub const SPEECH_SAMPLE_RATE: u32 = 16_000;
+const MIN_PCM_SAMPLE_RATE_HZ: u32 = 8_000;
+const MAX_PCM_SAMPLE_RATE_HZ: u32 = 192_000;
+const MAX_PCM_CHUNK_SECONDS: usize = 10;
 
 pub type SpeechEventSink = Arc<dyn Fn(SpeechEvent) + Send + Sync + 'static>;
+
+/// A normalized mono PCM buffer produced by an Audio Source.
+///
+/// Audio Sources retain their native sample rate. The Speech Engine owns
+/// resampling so browser and native producers share the same recognition path.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PcmAudioChunk {
+    samples: Vec<f32>,
+    sample_rate_hz: u32,
+}
+
+impl PcmAudioChunk {
+    pub fn try_new(samples: Vec<f32>, sample_rate_hz: u32) -> Result<Self, SpeechError> {
+        if !(MIN_PCM_SAMPLE_RATE_HZ..=MAX_PCM_SAMPLE_RATE_HZ).contains(&sample_rate_hz) {
+            return Err(SpeechError::InvalidConfiguration(format!(
+                "PCM 采样率必须在 {MIN_PCM_SAMPLE_RATE_HZ} 到 {MAX_PCM_SAMPLE_RATE_HZ} Hz 之间"
+            )));
+        }
+        if samples.is_empty() {
+            return Err(SpeechError::InvalidConfiguration(
+                "PCM 音频块不能为空".to_owned(),
+            ));
+        }
+        let max_samples = sample_rate_hz as usize * MAX_PCM_CHUNK_SECONDS;
+        if samples.len() > max_samples {
+            return Err(SpeechError::InvalidConfiguration(format!(
+                "PCM 音频块不能超过 {MAX_PCM_CHUNK_SECONDS} 秒"
+            )));
+        }
+        if samples.iter().any(|sample| !sample.is_finite()) {
+            return Err(SpeechError::InvalidConfiguration(
+                "PCM 音频块包含非有限采样值".to_owned(),
+            ));
+        }
+        Ok(Self {
+            samples,
+            sample_rate_hz,
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct NativeAudioSourceConfig {
+    pub input_device: Option<String>,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -50,6 +98,41 @@ pub struct SpeechSessionConfig {
     pub vad_silence_ms: u32,
     pub input_device: Option<String>,
     pub hotwords: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SpeechEngineConfig {
+    pub request_id: String,
+    pub voice_session_id: String,
+    pub provider: SpeechProvider,
+    pub model_path: PathBuf,
+    pub vad_model_path: PathBuf,
+    pub vad_threshold: f32,
+    pub vad_silence_ms: u32,
+    pub hotwords: Vec<String>,
+}
+
+impl From<&SpeechSessionConfig> for SpeechEngineConfig {
+    fn from(config: &SpeechSessionConfig) -> Self {
+        Self {
+            request_id: config.request_id.clone(),
+            voice_session_id: config.voice_session_id.clone(),
+            provider: config.provider,
+            model_path: config.model_path.clone(),
+            vad_model_path: config.vad_model_path.clone(),
+            vad_threshold: config.vad_threshold,
+            vad_silence_ms: config.vad_silence_ms,
+            hotwords: config.hotwords.clone(),
+        }
+    }
+}
+
+impl From<&SpeechSessionConfig> for NativeAudioSourceConfig {
+    fn from(config: &SpeechSessionConfig) -> Self {
+        Self {
+            input_device: config.input_device.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -130,8 +213,8 @@ struct EventIdentity {
 }
 
 #[cfg(any(target_os = "windows", target_os = "macos"))]
-impl From<&SpeechSessionConfig> for EventIdentity {
-    fn from(config: &SpeechSessionConfig) -> Self {
+impl From<&SpeechEngineConfig> for EventIdentity {
+    fn from(config: &SpeechEngineConfig) -> Self {
         Self {
             request_id: config.request_id.clone(),
             voice_session_id: config.voice_session_id.clone(),
@@ -170,23 +253,22 @@ pub fn rms(samples: &[f32]) -> f32 {
     (samples.iter().map(|sample| sample * sample).sum::<f32>() / samples.len() as f32).sqrt()
 }
 
-#[cfg(any(target_os = "windows", target_os = "macos", test))]
-fn downmix<T>(input: &[T], channels: usize, normalize: impl Fn(&T) -> f32) -> Vec<f32> {
-    if channels == 0 {
-        return Vec::new();
-    }
-    input
-        .chunks(channels)
-        .map(|frame| frame.iter().map(&normalize).sum::<f32>() / frame.len() as f32)
-        .collect()
-}
-
 pub mod model;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
-mod native;
+mod native_audio_source;
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+mod session;
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+mod speech_engine;
 
 #[cfg(any(target_os = "windows", target_os = "macos"))]
-pub use native::{SpeechSession, ensure_vad_model, list_input_devices};
+pub use native_audio_source::list_input_devices;
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+pub use session::SpeechSession;
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+pub use speech_engine::{
+    SpeechEngineHandle, SpeechEngineInputResult, SpeechEngineSession, ensure_vad_model,
+};
 
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
 pub struct SpeechSession;
@@ -229,12 +311,6 @@ mod tests {
     }
 
     #[test]
-    fn downmixes_stereo_frames() {
-        let input = [1.0_f32, -1.0, 0.5, 0.25];
-        assert_eq!(downmix(&input, 2, |value| *value), vec![0.0, 0.375]);
-    }
-
-    #[test]
     fn rms_handles_empty_and_constant_audio() {
         assert_eq!(rms(&[]), 0.0);
         assert!((rms(&[0.5, -0.5]) - 0.5).abs() < f32::EPSILON);
@@ -251,5 +327,43 @@ mod tests {
         let value = serde_json::to_value(event).expect("serialize event");
         assert_eq!(value["type"], "stable");
         assert_eq!(value["text"], "你好");
+    }
+
+    #[test]
+    fn legacy_session_config_projects_independent_source_and_engine_configs() {
+        let config = SpeechSessionConfig {
+            request_id: "request".to_owned(),
+            voice_session_id: "voice".to_owned(),
+            provider: SpeechProvider::XAsr,
+            model_path: PathBuf::from("model"),
+            vad_model_path: PathBuf::from("vad"),
+            vad_threshold: 0.5,
+            vad_silence_ms: 800,
+            input_device: Some("Microphone".to_owned()),
+            hotwords: vec!["RambleDesk".to_owned()],
+        };
+
+        let source = NativeAudioSourceConfig::from(&config);
+        let engine = SpeechEngineConfig::from(&config);
+        assert_eq!(source.input_device.as_deref(), Some("Microphone"));
+        assert_eq!(engine.request_id, "request");
+        assert_eq!(engine.voice_session_id, "voice");
+        assert_eq!(engine.provider, SpeechProvider::XAsr);
+        assert_eq!(engine.hotwords, vec!["RambleDesk"]);
+    }
+
+    #[test]
+    fn pcm_audio_chunk_rejects_unbounded_or_invalid_input() {
+        assert!(PcmAudioChunk::try_new(vec![0.0], 0).is_err());
+        assert!(PcmAudioChunk::try_new(vec![0.0], 7_999).is_err());
+        assert!(PcmAudioChunk::try_new(Vec::new(), SPEECH_SAMPLE_RATE).is_err());
+        assert!(PcmAudioChunk::try_new(vec![f32::NAN], SPEECH_SAMPLE_RATE).is_err());
+        assert!(
+            PcmAudioChunk::try_new(
+                vec![0.0; SPEECH_SAMPLE_RATE as usize * MAX_PCM_CHUNK_SECONDS + 1],
+                SPEECH_SAMPLE_RATE,
+            )
+            .is_err()
+        );
     }
 }
