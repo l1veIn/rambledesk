@@ -5,6 +5,7 @@
   import { Skeleton } from '$lib/components/ui/skeleton'
   import type { JSONContent } from '@tiptap/core'
   import type { ApplicationTransport } from '$lib/application/applicationTransport'
+  import type { WorkbenchCapabilities } from '$lib/capabilities/workbenchCapabilities'
 
   import type {
     AttachmentView,
@@ -37,6 +38,7 @@
 
   export let loadingWorkspace = false
   export let transport: ApplicationTransport
+  export let capabilities: Pick<WorkbenchCapabilities, 'serverPaths'>
   export let view: SessionViewDescriptor | null = null
   export let workspace: FeedbackWorkspaceView | null = null
   export let feedbackResult: FeedbackResultView | null = null
@@ -227,6 +229,7 @@
           >
             <TaskBriefPanel
               {transport}
+              {capabilities}
               bind:open={taskBriefOpen}
               {workspace}
               {activeActionId}
@@ -318,6 +321,7 @@
 
     <RequestAttachmentPreview
       {transport}
+      {capabilities}
       bind:open={previewOpen}
       requestId={workspace.request.request_id}
       attachment={previewAttachment}

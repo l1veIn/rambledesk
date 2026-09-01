@@ -77,6 +77,7 @@ const UNAVAILABLE_WORKBENCH_CAPABILITIES = createWorkbenchCapabilities({
   serverPaths: slot({
     chooseDirectory: () => rejected('serverPaths'),
     chooseFile: () => rejected('serverPaths'),
+    chooseSaveFile: () => rejected('serverPaths'),
     reveal: () => rejected('serverPaths'),
     openAttachment: () => rejected('serverPaths'),
     revealAttachment: () => rejected('serverPaths'),
@@ -100,6 +101,7 @@ const UNAVAILABLE_WORKBENCH_CAPABILITIES = createWorkbenchCapabilities({
   }),
   rambleConsole: slot({
     show: () => rejected('rambleConsole'),
+    restoreVisibility: () => rejected('rambleConsole'),
     hide: () => rejected('rambleConsole'),
     publish: () => rejected('rambleConsole'),
     onCommand: (_handler, onError) => unavailableSubscription('rambleConsole', onError),
@@ -110,6 +112,7 @@ const UNAVAILABLE_WORKBENCH_CAPABILITIES = createWorkbenchCapabilities({
     version: () => rejected('softwareUpdates'),
     check: () => rejected('softwareUpdates'),
     install: () => rejected('softwareUpdates'),
+    restart: () => rejected('softwareUpdates'),
   }),
   systemPermissions: slot({
     list: () => rejected('systemPermissions'),

@@ -5,6 +5,7 @@
   import { Button } from '$lib/components/ui/button'
   import * as Collapsible from '$lib/components/ui/collapsible'
   import type { ApplicationTransport } from '$lib/application/applicationTransport'
+  import type { WorkbenchCapabilities } from '$lib/capabilities/workbenchCapabilities'
   import type { FeedbackWorkspaceView, RequestAttachmentView } from '$lib/feedback'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
@@ -13,6 +14,7 @@
 
   export let workspace: FeedbackWorkspaceView
   export let transport: ApplicationTransport
+  export let capabilities: Pick<WorkbenchCapabilities, 'serverPaths'>
   export let open = true
   export let pulseNonce = 0
   export let activeActionId: string | null = null
@@ -172,6 +174,7 @@
 
 <RequestAttachmentPreview
   {transport}
+  {capabilities}
   bind:open={previewOpen}
   requestId={workspace.request.request_id}
   attachment={previewAttachment}

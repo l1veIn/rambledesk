@@ -108,13 +108,20 @@ if (entry === 'browser') {
   mount(RambleConsole, { target })
 } else {
   const { default: App } = await import('./App.svelte')
+  const capabilities = isTauri
+    ? (await import('./lib/capabilities/tauri')).createTauriWorkbenchCapabilities()
+    : (await import('./lib/capabilities/unavailableCapabilities'))
+        .createUnavailableWorkbenchCapabilities()
   const desktopTransport = isTauri
-    ? new (await import('./lib/application/tauriApplicationTransport')).TauriApplicationTransport()
+    ? new (await import('./lib/application/tauriApplicationTransport')).TauriApplicationTransport(
+        capabilities.manifest,
+      )
     : undefined
   const composition = createWorkbenchComposition({
     environment: isTauri ? 'desktop' : 'browser',
     previewMode,
     desktopTransport,
+    capabilities,
   })
   const publishedFeedbackAction = isTauri
     ? {

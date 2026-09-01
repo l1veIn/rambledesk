@@ -1,8 +1,4 @@
 <script lang="ts">
-  import { invoke } from '@tauri-apps/api/core'
-  import { listen, type UnlistenFn } from '@tauri-apps/api/event'
-  import { open } from '@tauri-apps/plugin-dialog'
-  import { isPermissionGranted, requestPermission } from '@tauri-apps/plugin-notification'
   import {
     ArchiveRestore,
     BellRing,
@@ -36,6 +32,8 @@
   import * as Alert from '$lib/components/ui/alert'
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
+  import { createUnavailableWorkbenchCapabilities } from '$lib/capabilities/unavailableCapabilities'
+  import type { WorkbenchCapabilities } from '$lib/capabilities/workbenchCapabilities'
   import * as Collapsible from '$lib/components/ui/collapsible'
   import { ScrollArea } from '$lib/components/ui/scroll-area'
   import { toast } from '$lib/components/ui/sonner'
@@ -95,6 +93,8 @@
   } from '$lib/preferences'
   import { applySettingsSectionCommand } from '$lib/workspace/settingsSectionCommand'
 
+  const unavailableCapabilities = createUnavailableWorkbenchCapabilities()
+
   type Section =
     | 'general'
     | 'permissions'
@@ -112,6 +112,7 @@
   export let onOpenArchived: () => void = () => {}
   export let onOpenRambelleProfile: () => void = () => {}
   export let updateInstallBlocked = false
+  export let capabilities: WorkbenchCapabilities = unavailableCapabilities
 
   type DataStorageView = {
     active_path: string
@@ -127,10 +128,10 @@
     size_bytes: number
     installed: boolean
     path: string
-    missing_files: string[]
+    missing_files: readonly string[]
     streaming: boolean
     hotwords_supported: boolean
-    languages: string[]
+    languages: readonly string[]
     license: string
   }
 
@@ -228,13 +229,13 @@
   let modelBusy = false
   let modelError = ''
   let hotwordDraft = ''
-  let unlistenModelProgress: UnlistenFn | null = null
-  let unlistenStorageProgress: UnlistenFn | null = null
+  let unlistenModelProgress: (() => void) | null = null
+  let unlistenStorageProgress: (() => void) | null = null
   let hasMacPermissions = false
   let webAccessStatus: WebAccessStatus = { running: false, url: null }
   let webAccessPhase: WebAccessPhase = 'loading'
   let webAccessError = ''
-  const isTauri = '__TAURI_INTERNALS__' in window
+  $: desktopCapabilitiesAvailable = capabilities.windowControls.status.availability !== 'unavailable'
   const isMac = currentDesktopPlatform() === 'macOS'
   const isWindows = currentDesktopPlatform() === 'Windows'
 
@@ -250,13 +251,13 @@
     )
     if (nextSectionCommandState !== sectionCommandState) {
       sectionCommandState = nextSectionCommandState
-      activeSection = isTauri ? nextSectionCommandState.activeSection : 'general'
+      activeSection = desktopCapabilitiesAvailable ? nextSectionCommandState.activeSection : 'general'
     }
   }
 
   onMount(() => {
     let disposed = false
-    if (isTauri) {
+    if (desktopCapabilitiesAvailable) {
       void refreshHosts()
       void refreshPiStatus()
       void refreshDataStorage()
@@ -264,18 +265,14 @@
       void refreshSpeechModels()
       void refreshMacPermissionPresence()
       void refreshWebAccessStatus()
-      void listen<SpeechModelProgress>('speech-model-progress', ({ payload }) => {
-        modelProgress = payload
-      }).then((unlisten) => {
-        if (disposed) unlisten()
-        else unlistenModelProgress = unlisten
-      })
-      void listen<StorageMigrationProgress>('storage-migration-progress', ({ payload }) => {
-        storageMigration = payload
-      }).then((unlisten) => {
-        if (disposed) unlisten()
-        else unlistenStorageProgress = unlisten
-      })
+      unlistenModelProgress = capabilities.speech.implementation.onModelProgress(
+        (progress) => (modelProgress = { ...progress }),
+        () => undefined,
+      )
+      unlistenStorageProgress = capabilities.dataStorageAdministration.implementation.onProgress(
+        (progress) => (storageMigration = { ...progress }),
+        () => undefined,
+      )
     } else {
       loadingHosts = false
       piStatusLoading = false
@@ -292,9 +289,9 @@
   }
 
   async function refreshWebAccessStatus() {
-    if (!isTauri) return
+    if (capabilities.webAccessAdministration.status.availability === 'unavailable') return
     try {
-      webAccessStatus = await invoke<WebAccessStatus>('get_web_access_status')
+      webAccessStatus = await capabilities.webAccessAdministration.implementation.status()
       webAccessPhase = webAccessStatus.running ? 'running' : 'stopped'
       webAccessError = ''
     } catch (cause) {
@@ -304,14 +301,12 @@
   }
 
   async function toggleWebAccess() {
-    if (!isTauri || webAccessPhase === 'starting' || webAccessPhase === 'stopping') return
+    if (capabilities.webAccessAdministration.status.availability === 'unavailable' || webAccessPhase === 'starting' || webAccessPhase === 'stopping') return
     const stopping = webAccessStatus.running
     webAccessPhase = stopping ? 'stopping' : 'starting'
     webAccessError = ''
     try {
-      webAccessStatus = await invoke<WebAccessStatus>(
-        stopping ? 'stop_web_access' : 'start_web_access',
-      )
+      webAccessStatus = await capabilities.webAccessAdministration.implementation.setEnabled(!stopping)
       webAccessPhase = webAccessStatus.running ? 'running' : 'stopped'
     } catch (cause) {
       webAccessPhase = 'error'
@@ -322,7 +317,7 @@
   async function openWebAccess() {
     if (!webAccessStatus.running) return
     try {
-      await invoke('open_web_access')
+      await capabilities.webAccessAdministration.implementation.open()
     } catch (cause) {
       webAccessError = messageFrom(cause)
     }
@@ -331,7 +326,7 @@
   async function copyWebAccessToken() {
     if (!webAccessStatus.running) return
     try {
-      await invoke('copy_web_access_token')
+      await capabilities.webAccessAdministration.implementation.copyToken()
       toast.success(tr('Web Access token copied.'))
     } catch (cause) {
       webAccessError = messageFrom(cause)
@@ -340,7 +335,7 @@
 
   async function refreshMacPermissionPresence() {
     try {
-      const permissions = await invoke<{ id: string; status: string }[]>('list_macos_permissions')
+      const permissions = await capabilities.systemPermissions.implementation.list()
       hasMacPermissions = permissions.length > 0
     } catch {
       hasMacPermissions = false
@@ -350,7 +345,7 @@
   async function refreshSpeechModels() {
     modelError = ''
     try {
-      speechModels = await invoke<SpeechModelInfo[]>('list_speech_models')
+      speechModels = [...await capabilities.speech.implementation.listModels()]
     } catch (cause) {
       modelError = messageFrom(cause)
     }
@@ -363,7 +358,7 @@
     modelError = ''
     modelProgress = { model_id: modelId, downloaded: 0, total: selectedSpeechModel.size_bytes }
     try {
-      const updated = await invoke<SpeechModelInfo>('download_speech_model', { modelId })
+      const updated = await capabilities.speech.implementation.downloadModel(modelId)
       speechModels = speechModels.map((model) => (model.id === updated.id ? updated : model))
     } catch (cause) {
       modelError = messageFrom(cause)
@@ -378,7 +373,7 @@
     modelBusy = true
     modelError = ''
     try {
-      const updated = await invoke<SpeechModelInfo>('delete_speech_model', { modelId })
+      const updated = await capabilities.speech.implementation.deleteModel(modelId)
       speechModels = speechModels.map((model) => (model.id === updated.id ? updated : model))
       modelProgress = null
     } catch (cause) {
@@ -406,7 +401,7 @@
   async function refreshSpeechDevices() {
     speechDeviceError = ''
     try {
-      speechInputDevices = await invoke<string[]>('list_speech_input_devices')
+      speechInputDevices = [...await capabilities.speech.implementation.listInputDevices()]
     } catch (cause) {
       speechDeviceError = messageFrom(cause)
     }
@@ -414,7 +409,7 @@
 
   async function refreshDataStorage() {
     try {
-      dataStorage = await invoke<DataStorageView>('get_data_storage_settings')
+      dataStorage = await capabilities.dataStorageAdministration.implementation.read()
     } catch (cause) {
       storageError = messageFrom(cause)
     }
@@ -424,11 +419,11 @@
     storageError = ''
     storageMessage = ''
     try {
-      const selected = await open({ directory: true, multiple: false })
-      if (!selected || Array.isArray(selected)) return
+      const selected = await capabilities.serverPaths.implementation.chooseDirectory()
+      if (!selected) return
       storageMigrating = true
       storageMigration = { copied: 0, total: 0 }
-      dataStorage = await invoke<DataStorageView>('set_data_storage_path', { path: selected })
+      dataStorage = await capabilities.dataStorageAdministration.implementation.select(selected)
       storageMessage = dataStorage.restart_required
         ? tr('Data migrated. The new storage location takes effect after restarting RambleDesk.')
         : tr('This data storage location is already active.')
@@ -445,7 +440,7 @@
     loadingHosts = true
     installError = ''
     try {
-      hosts = await invoke<McpHostView[]>('detect_generic_mcp_hosts')
+      hosts = [...await capabilities.hostIntegrationAdministration.implementation.detectGenericMcpHosts()]
       selectedIds = new Set(
         hosts
           .filter((host) => host.installed && !host.configured)
@@ -472,9 +467,7 @@
     installError = ''
     installMessage = ''
     try {
-      const results = await invoke<McpInstallResult[]>('install_generic_mcp_hosts', {
-        hostIds: [...selectedIds],
-      })
+      const results = await capabilities.hostIntegrationAdministration.implementation.installGenericMcpHosts([...selectedIds])
       const changed = results.filter((result) => result.action !== 'unchanged').length
       if (changed > 0) {
         installMessage = tr('Generic MCP adapter config was written to {count} tools. Restart them to apply the change.', {
@@ -505,7 +498,7 @@
   async function refreshPiStatus(reportError = true) {
     piStatusLoading = true
     try {
-      piStatus = await invoke<PiPackageStatus>('get_pi_package_status', { checkoutRoot: null })
+      piStatus = await capabilities.hostIntegrationAdministration.implementation.piStatus()
     } catch (cause) {
       piStatus = null
       if (reportError) {
@@ -524,9 +517,7 @@
     piInstallError = ''
     piInstallMessage = ''
     try {
-      const output = await invoke<string>('install_pi_package', {
-        checkoutRoot: null,
-      })
+      const output = await capabilities.hostIntegrationAdministration.implementation.installPi()
       piInstallMessage =
         tr('Pi native adapter installed; restart your Pi session to apply.') +
         (output.trim() ? `\n${output.trim()}` : '')
@@ -548,7 +539,7 @@
     piInstallError = ''
     piInstallMessage = ''
     try {
-      const output = await invoke<string>('uninstall_pi_package', { checkoutRoot: null })
+      const output = await capabilities.hostIntegrationAdministration.implementation.uninstallPi()
       piInstallMessage =
         tr('Pi native adapter uninstalled; restart your Pi session to apply.') +
         (output.trim() ? `\n${output.trim()}` : '')
@@ -566,10 +557,7 @@
     dshInstallError = ''
     dshInstallMessage = ''
     try {
-      const results = await invoke<DshInstallResult[]>('install_dsh_package', {
-        checkoutRoot: null,
-        profileId: null,
-      })
+      const results = await capabilities.hostIntegrationAdministration.implementation.installDsh()
       const changed = results.filter((result) => result.action !== 'unchanged').length
       dshInstallMessage = tr(
         'DeepSeek Harness native adapter installed ({count} profile(s): {profiles}); restart dsh to apply.',
@@ -598,12 +586,15 @@
       )
       return
     }
-    if (!isTauri) {
+    if (capabilities.notifications.status.availability === 'unavailable') {
       notificationPermissionError = tr('System notifications are available only in the desktop app.')
       return
     }
     try {
-      const permission = (await isPermissionGranted()) ? 'granted' : await requestPermission()
+      const currentPermission = await capabilities.notifications.implementation.permission()
+      const permission = currentPermission === 'granted'
+        ? 'granted'
+        : await capabilities.notifications.implementation.requestPermission()
       if (permission === 'granted') {
         setNotificationPopupEnabled(true)
       } else {
@@ -627,37 +618,31 @@
   }
 
   async function chooseCustomSound() {
-    if (customSoundBusy || !isTauri) return
+    if (customSoundBusy || capabilities.notifications.status.availability === 'unavailable') return
     customSoundBusy = true
     customSoundError = ''
     try {
-      const selected = await open({
-        multiple: false,
-        directory: false,
-        filters: [
-          { name: tr('Audio files'), extensions: ['mp3', 'wav', 'ogg', 'm4a', 'aac'] },
-        ],
+      const selected = await capabilities.serverPaths.implementation.chooseFile({
+        extensions: ['mp3', 'wav', 'ogg', 'm4a', 'aac'],
       })
-      if (typeof selected !== 'string') return
-      const imported = await invoke<NotificationSoundImportView>('import_notification_sound', {
-        path: selected,
-      })
+      if (!selected) return
+      const imported = await capabilities.notifications.implementation.importSound(selected)
       let duration = 0
       try {
-        const decoded = await decodeCustomSoundBytes(imported.id, imported.bytes)
+        const decoded = await decodeCustomSoundBytes(imported.id, [...imported.bytes])
         duration = decoded.duration
       } catch {
-        await invoke('remove_notification_sound', { id: imported.id }).catch(() => {})
+        await capabilities.notifications.implementation.removeSound(imported.id).catch(() => {})
         customSoundError = tr('Could not decode this audio file. Try a different one.')
         return
       }
       if (duration > MAX_CUSTOM_SOUND_SECONDS) {
-        await invoke('remove_notification_sound', { id: imported.id }).catch(() => {})
+        await capabilities.notifications.implementation.removeSound(imported.id).catch(() => {})
         customSoundError = tr('Audio exceeds the 10-second limit. Trim it and try again.')
         return
       }
       // Cleanup of the previous sound happens only after validation succeeded.
-      await invoke('commit_notification_sound', { id: imported.id }).catch(() => {})
+      await capabilities.notifications.implementation.commitSound(imported.id).catch(() => {})
       const next: CustomNotificationSound = { id: imported.id, name: imported.name }
       setCustomNotificationSound(next)
       setNotificationSound('custom')
@@ -672,8 +657,8 @@
     const current = $customNotificationSound
     if (!current) return
     discardCustomSoundCache()
-    if (isTauri) {
-      await invoke('remove_notification_sound', { id: current.id }).catch(() => {})
+    if (capabilities.notifications.status.availability !== 'unavailable') {
+      await capabilities.notifications.implementation.removeSound(current.id).catch(() => {})
     }
     setCustomNotificationSound(null)
     setNotificationSound('chime')
@@ -723,7 +708,7 @@
             <MonitorCog data-icon="inline-start" />
             {tr('General')}
           </Tabs.Trigger>
-          {#if isTauri}
+          {#if desktopCapabilitiesAvailable}
           {#if hasMacPermissions}
             <Tabs.Trigger value="permissions" class="h-9 w-full justify-start px-2.5">
               <ShieldCheck data-icon="inline-start" />
@@ -762,7 +747,7 @@
           {/if}
         </Tabs.List>
 
-        {#if isTauri}
+        {#if desktopCapabilitiesAvailable}
         <div class="settings-navigation-note mt-auto flex gap-2 border-t pt-3 text-[10px] leading-4 text-muted-foreground">
           <ShieldCheck class="mt-0.5 size-3.5 shrink-0" />
           <span>{tr('Adapter configuration is written only to your user directory and preserves other adapters.')}</span>
@@ -871,7 +856,7 @@
               </Select.Root>
             </section>
 
-            {#if isTauri}
+            {#if capabilities.windowControls.status.availability !== 'unavailable'}
             <section class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-8 border-b pb-8" aria-live="polite">
               <div class="flex gap-3">
                 <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
@@ -909,7 +894,7 @@
               </Button>
             </section>
 
-            {#if isTauri}
+            {#if capabilities.webAccessAdministration.status.availability !== 'unavailable'}
             <section class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-8 border-b pb-8">
               <div class="flex gap-3">
                 <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
@@ -966,7 +951,7 @@
             </section>
             {/if}
 
-            {#if isTauri}
+            {#if capabilities.dataStorageAdministration.status.availability !== 'unavailable'}
             <section class="grid gap-4">
               <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-8">
                 <div class="flex gap-3">
@@ -980,7 +965,7 @@
                     </p>
                   </div>
                 </div>
-                <Button variant="outline" disabled={!isTauri || storageMigrating} onclick={() => void chooseDataStorage()}>
+                <Button variant="outline" disabled={capabilities.serverPaths.status.availability === 'unavailable' || storageMigrating} onclick={() => void chooseDataStorage()}>
                   <FolderCog data-icon="inline-start" />
                   {tr('Change location…')}
                 </Button>
@@ -1007,7 +992,11 @@
                 </div>
               </div>
               <div class="ml-11 mt-5">
-                <MacPermissions />
+                <MacPermissions
+                  systemPermissions={capabilities.systemPermissions}
+                  notifications={capabilities.notifications}
+                  windowControls={capabilities.windowControls}
+                />
               </div>
             </section>
           </Tabs.Content>
@@ -1124,6 +1113,7 @@
                             $notificationSound,
                             $notificationVolume,
                             $notificationSound === 'custom' ? $customNotificationSound : null,
+                            capabilities.notifications.implementation.readCustomSound,
                           )}
                       >
                         <Play />
@@ -1144,7 +1134,7 @@
                           variant="outline"
                           size="sm"
                           class="min-w-0 flex-1"
-                          disabled={!isTauri || customSoundBusy}
+                          disabled={capabilities.serverPaths.status.availability === 'unavailable' || customSoundBusy}
                           onclick={() => void chooseCustomSound()}
                         >
                           {#if customSoundBusy}
@@ -1175,7 +1165,7 @@
                     {#if customSoundError}
                       <p class="m-0 text-xs text-destructive">{customSoundError}</p>
                     {/if}
-                    {#if !isTauri}
+                    {#if capabilities.notifications.status.availability === 'unavailable'}
                       <p class="m-0 text-[10px] text-muted-foreground">
                         {tr('Custom alert sounds are available only in the desktop app.')}
                       </p>
@@ -1306,7 +1296,7 @@
                           {selectedSpeechModel.streaming ? tr('Live streaming') : tr('VAD segmented · Non-streaming')}
                         </Badge>
                         <span class="text-[10px] text-muted-foreground">
-                          {Math.round(selectedSpeechModel.size_bytes / 1024 / 1024)} MB · {speechModelLanguages($locale, selectedSpeechModel.id, selectedSpeechModel.languages).join(' / ')}
+                          {Math.round(selectedSpeechModel.size_bytes / 1024 / 1024)} MB · {speechModelLanguages($locale, selectedSpeechModel.id, [...selectedSpeechModel.languages]).join(' / ')}
                         </span>
                       </div>
                       <p class="m-0 mt-2 text-xs leading-5 text-muted-foreground">
@@ -1474,7 +1464,7 @@
           </Tabs.Content>
 
           <Tabs.Content value="shortcuts" class="m-0 space-y-8 p-6 outline-none">
-            <ShortcutSettings />
+            <ShortcutSettings globalShortcuts={capabilities.globalShortcuts} />
           </Tabs.Content>
           <Tabs.Content value="adapters" class="m-0 space-y-8 p-6 outline-none">
             <section class="border-b pb-8">
@@ -1508,7 +1498,7 @@
                 </div>
                 <Button
                   variant={piStatus?.installed ? 'outline' : 'default'}
-                  disabled={piAction !== null || piStatusLoading || !isTauri || piStatus?.cliAvailable === false}
+                  disabled={piAction !== null || piStatusLoading || capabilities.hostIntegrationAdministration.status.availability === 'unavailable' || piStatus?.cliAvailable === false}
                   onclick={() => void (piStatus?.installed ? uninstallPiPackage() : installPiPackage())}
                 >
                   {#if piAction === 'install'}
@@ -1563,7 +1553,7 @@
                     {tr('The Cordis plugin uses the local JSON API to request, get, wait, and cancel; waiting stays inside the dsh tool call, and it installs the ramble guide into the global skill directory.')}
                   </p>
                 </div>
-                <Button disabled={installingDsh || !isTauri} onclick={installDshPackage}>
+                <Button disabled={installingDsh || capabilities.hostIntegrationAdministration.status.availability === 'unavailable'} onclick={installDshPackage}>
                   {#if installingDsh}
                     <LoaderCircle class="animate-spin" data-icon="inline-start" />
                     {tr('Installing…')}
@@ -1607,7 +1597,7 @@
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      disabled={loadingHosts || installing || !isTauri}
+                      disabled={loadingHosts || installing || capabilities.hostIntegrationAdministration.status.availability === 'unavailable'}
                       aria-label={tr('Detect again')}
                       title={tr('Detect again')}
                       onclick={refreshHosts}
@@ -1642,7 +1632,7 @@
                     </div>
                   {:else if hosts.length === 0}
                     <p class="m-0 border-y py-5 text-center text-xs text-muted-foreground">
-                      {isTauri ? tr('No supported hosts detected') : tr('Manage adapters in the desktop app')}
+                      {capabilities.hostIntegrationAdministration.status.availability !== 'unavailable' ? tr('No supported hosts detected') : tr('Manage adapters in the desktop app')}
                     </p>
                   {:else}
                     <div class="divide-y border-y">
@@ -1688,7 +1678,7 @@
                       {tr('Only the RambleDesk MCP entry is updated; other host configuration is preserved.')}
                     </p>
                     <Button
-                      disabled={selectedCount === 0 || installing || !isTauri}
+                      disabled={selectedCount === 0 || installing || capabilities.hostIntegrationAdministration.status.availability === 'unavailable'}
                       onclick={installSelected}
                     >
                       {#if installing}
@@ -1769,6 +1759,11 @@
           <Tabs.Content value="about" class="m-0 p-6 outline-none">
             <AboutSettings
               installBlocked={updateInstallBlocked}
+              softwareUpdates={capabilities.softwareUpdates}
+              diagnostics={capabilities.diagnostics}
+              serverPaths={capabilities.serverPaths}
+              externalLinks={capabilities.externalLinks}
+              windowControls={capabilities.windowControls}
               {onOpenRambelleProfile}
             />
           </Tabs.Content>

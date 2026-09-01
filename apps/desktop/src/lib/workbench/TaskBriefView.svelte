@@ -14,10 +14,10 @@
   } from '$lib/feedback'
   import { t } from '$lib/i18n'
   import type { ApplicationTransport } from '$lib/application/applicationTransport'
+  import type { WorkbenchCapabilities } from '$lib/capabilities/workbenchCapabilities'
   import { locale } from '$lib/preferences'
   import LinkifiedText from '$lib/LinkifiedText.svelte'
   import { isSafeHttpUrl } from '$lib/linkify'
-  import { openExternalUrl } from '$lib/openExternalUrl'
   import RequestAttachmentPreview from './RequestAttachmentPreview.svelte'
   import ActionFeedbackCard from './ActionFeedbackCard.svelte'
   import { buildTaskBriefText } from './taskBriefCopy'
@@ -27,6 +27,7 @@
 
   export let workspace: FeedbackWorkspaceView | null = null
   export let transport: ApplicationTransport
+  export let capabilities: Pick<WorkbenchCapabilities, 'externalLinks' | 'serverPaths'>
   export let editorDocument: JSONContent | null = null
   export let previews: Record<string, string> = {}
   export let onOpenAttachment: (attachmentId: string) => void = () => {}
@@ -204,7 +205,7 @@
                           rel="noreferrer"
                           onclick={(event) => {
                             event.preventDefault()
-                            void openExternalUrl(ref.uri).catch((cause) => {
+                            void capabilities.externalLinks.implementation.open(ref.uri).catch((cause) => {
                               console.warn('Could not open external URL', cause)
                             })
                           }}
@@ -293,6 +294,7 @@
 {#if workspace}
   <RequestAttachmentPreview
     {transport}
+    {capabilities}
     bind:open={attachmentPreviewOpen}
     requestId={workspace.request.request_id}
     attachment={attachmentPreview}

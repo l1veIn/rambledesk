@@ -1,44 +1,53 @@
 <script lang="ts">
-  import { invoke } from '@tauri-apps/api/core'
-  import { getVersion } from '@tauri-apps/api/app'
-  import { save } from '@tauri-apps/plugin-dialog'
   import { Download, ExternalLink, FileArchive, FolderOpen, GitBranch, LoaderCircle, RefreshCw, RotateCw, ShieldCheck, Sparkles } from '@lucide/svelte'
   import { onMount } from 'svelte'
 
   import rambelleSticker from '../assets/rambelle-states/idle.webp'
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
+  import { createUnavailableWorkbenchCapabilities } from '$lib/capabilities/unavailableCapabilities'
+  import type {
+    CapabilitySlot,
+    DiagnosticsCapability,
+    ExternalLinkCapability,
+    ServerPathCapability,
+    UpdaterCapability,
+    WindowCapability,
+  } from '$lib/capabilities/workbenchCapabilities'
   import { toast } from '$lib/components/ui/sonner'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
   import { diagnosticExportView } from './nativePath'
-  import { openExternalUrl } from './openExternalUrl'
-  import { currentDesktopPlatform } from './platform'
   import {
-    canInstallInAppUpdate,
-    checkForUpdates,
-    downloadAndInstallUpdate,
     openUpdateDialog,
-    restartAfterUpdate,
     updateState,
   } from '$lib/updater'
 
+  const unavailableCapabilities = createUnavailableWorkbenchCapabilities()
+
   export let installBlocked = false
   export let onOpenRambelleProfile: () => void = () => {}
+  export let softwareUpdates: CapabilitySlot<UpdaterCapability> = unavailableCapabilities.softwareUpdates
+  export let diagnostics: CapabilitySlot<DiagnosticsCapability> = unavailableCapabilities.diagnostics
+  export let serverPaths: CapabilitySlot<ServerPathCapability> = unavailableCapabilities.serverPaths
+  export let externalLinks: CapabilitySlot<ExternalLinkCapability> = unavailableCapabilities.externalLinks
+  export let windowControls: CapabilitySlot<WindowCapability> = unavailableCapabilities.windowControls
 
   let version = '0.0.1'
   type DiagnosticScope = 'last_24_hours' | 'last_7_days' | 'all'
 
   let exporting: DiagnosticScope | null = null
   let lastExportPath = ''
-  const isTauri = '__TAURI_INTERNALS__' in window
-  const desktopPlatform = currentDesktopPlatform()
-  const isMac = desktopPlatform === 'macOS'
+  $: updatesAvailable = softwareUpdates.status.availability !== 'unavailable'
+  $: diagnosticsAvailable = diagnostics.status.availability !== 'unavailable'
+  $: serverPathsAvailable = serverPaths.status.availability !== 'unavailable'
+  $: desktopPlatform = windowControls.implementation.platform()
+  $: isMac = desktopPlatform === 'macOS'
   const projectUrl = 'https://github.com/l1veIn/rambledesk'
   const releasesUrl = `${projectUrl}/releases`
 
   onMount(async () => {
-    if (isTauri) version = await getVersion().catch(() => version)
+    if (updatesAvailable) version = await softwareUpdates.implementation.version().catch(() => version)
   })
 
   function tr(source: string, values: Record<string, string | number> = {}) {
@@ -47,7 +56,7 @@
 
   async function openSafeUrl(url: string) {
     try {
-      await openExternalUrl(url)
+      await externalLinks.implementation.open(url)
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause)
       toast.error(tr('Could not open link'), { description: message })
@@ -63,16 +72,16 @@
   }
 
   async function exportDiagnostics(scope: DiagnosticScope) {
-    if (!isTauri || exporting) return
+    if (!diagnosticsAvailable || !serverPathsAvailable || exporting) return
     exporting = scope
     try {
       const stamp = new Date().toISOString().slice(0, 10)
-      const path = await save({
-        defaultPath: `RambleDesk-diagnostics-${scope === 'all' ? 'all' : scope === 'last_24_hours' ? '24h' : '7d'}-${stamp}.zip`,
-        filters: [{ name: 'Zip', extensions: ['zip'] }],
+      const path = await serverPaths.implementation.chooseSaveFile({
+        defaultName: `RambleDesk-diagnostics-${scope === 'all' ? 'all' : scope === 'last_24_hours' ? '24h' : '7d'}-${stamp}.zip`,
+        extensions: ['zip'],
       })
       if (!path) return
-      const exported = diagnosticExportView(await invoke('export_diagnostics', { scope, path }))
+      const exported = diagnosticExportView(await diagnostics.implementation.export(scope, path))
       lastExportPath = exported.path
       toast.success(tr('Diagnostic package exported'), {
         duration: 12_000,
@@ -100,7 +109,7 @@
   async function revealExportedPath(path: string) {
     if (!path) return
     try {
-      await invoke('reveal_path_in_folder', { path })
+      await serverPaths.implementation.reveal(path)
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause)
       toast.error(tr('Could not show the file in the folder'), { description: message })
@@ -182,8 +191,8 @@
       </div>
       <Button
         variant="outline"
-        disabled={!isTauri || $updateState.status === 'checking' || $updateState.status === 'downloading'}
-        onclick={() => void checkForUpdates({ prompt: true, forcePrompt: true })}
+        disabled={!updatesAvailable || $updateState.status === 'checking' || $updateState.status === 'downloading'}
+        onclick={() => void softwareUpdates.implementation.check({ prompt: true, forcePrompt: true })}
       >
         {#if $updateState.status === 'checking'}
           <LoaderCircle class="animate-spin" data-icon="inline-start" />
@@ -217,11 +226,11 @@
             <Button variant="outline" onclick={() => openUpdateDialog()}>
               {tr("What's new")}
             </Button>
-            {#if canInstallInAppUpdate()}
+            {#if desktopPlatform === 'Windows'}
               <Button
                 disabled={installBlocked}
                 title={installBlocked ? tr('Finish or cancel the current feedback before installing the update.') : ''}
-                onclick={() => void downloadAndInstallUpdate()}
+                onclick={() => void softwareUpdates.implementation.install()}
               >
                 <Download data-icon="inline-start" />
                 {tr('Download and install')}
@@ -253,7 +262,7 @@
           <Button
             disabled={installBlocked}
             title={installBlocked ? tr('Finish or cancel the current feedback before restarting.') : ''}
-            onclick={() => void restartAfterUpdate()}
+            onclick={() => void windowControls.implementation.restart()}
           >
             <RotateCw data-icon="inline-start" />
             {tr('Restart now')}
@@ -267,7 +276,7 @@
       {/if}
     </div>
 
-    {#if canInstallInAppUpdate() && installBlocked && ($updateState.status === 'available' || $updateState.status === 'ready')}
+    {#if desktopPlatform === 'Windows' && installBlocked && ($updateState.status === 'available' || $updateState.status === 'ready')}
       <p class="m-0 mt-3 text-[10px] leading-4 text-warning-foreground dark:text-warning">
         {tr('Feedback is in progress or has unsaved content. Update restart is disabled to prevent data loss.')}
       </p>
@@ -284,7 +293,7 @@
     <div class="mt-4 flex flex-wrap gap-2">
       <Button
         variant="outline"
-        disabled={!isTauri || exporting !== null}
+        disabled={!diagnosticsAvailable || !serverPathsAvailable || exporting !== null}
         onclick={() => void exportDiagnostics('last_24_hours')}
       >
         {#if exporting === 'last_24_hours'}
@@ -296,7 +305,7 @@
       </Button>
       <Button
         variant="outline"
-        disabled={!isTauri || exporting !== null}
+        disabled={!diagnosticsAvailable || !serverPathsAvailable || exporting !== null}
         onclick={() => void exportDiagnostics('last_7_days')}
       >
         {#if exporting === 'last_7_days'}
@@ -308,7 +317,7 @@
       </Button>
       <Button
         variant="outline"
-        disabled={!isTauri || exporting !== null}
+        disabled={!diagnosticsAvailable || !serverPathsAvailable || exporting !== null}
         onclick={() => void exportDiagnostics('all')}
       >
         {#if exporting === 'all'}

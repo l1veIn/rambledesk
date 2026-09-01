@@ -1,5 +1,3 @@
-import { invoke } from '@tauri-apps/api/core'
-
 import hakimiAudioUrl from '../assets/hakimi.mp3'
 
 import type { FeedbackRequestSummary } from './feedback'
@@ -59,12 +57,16 @@ async function resolveAudioContext(): Promise<AudioContext | null> {
   }
 }
 
-async function decodeCustomSound(context: AudioContext, id: string): Promise<AudioBuffer | null> {
+async function decodeCustomSound(
+  context: AudioContext,
+  id: string,
+  readCustomSound: (id: string) => Promise<ArrayBuffer>,
+): Promise<AudioBuffer | null> {
   if (customSoundCache?.id === id) return customSoundCache.buffer
   try {
-    const bytes = await invoke<number[]>('read_notification_sound', { id })
-    if (!Array.isArray(bytes) || bytes.length === 0) return null
-    const buffer = await context.decodeAudioData(new Uint8Array(bytes).buffer)
+    const bytes = await readCustomSound(id)
+    if (bytes.byteLength === 0) return null
+    const buffer = await context.decodeAudioData(bytes.slice(0))
     customSoundCache = { id, buffer }
     return buffer
   } catch {
@@ -77,10 +79,11 @@ async function playCustomNotificationSound(
   context: AudioContext,
   custom: CustomNotificationSound | null,
   volume: number,
+  readCustomSound: ((id: string) => Promise<ArrayBuffer>) | undefined,
 ): Promise<boolean> {
-  if (!custom) return false
+  if (!custom || !readCustomSound) return false
   try {
-    const buffer = await decodeCustomSound(context, custom.id)
+    const buffer = await decodeCustomSound(context, custom.id, readCustomSound)
     if (!buffer) return false
     const source = context.createBufferSource()
     source.buffer = buffer
@@ -180,6 +183,7 @@ export async function playNotificationSound(
   sound: NotificationSound = 'chime',
   volume = 80,
   custom: CustomNotificationSound | null = null,
+  readCustomSound?: (id: string) => Promise<ArrayBuffer>,
 ): Promise<void> {
   if (sound === 'hakimi') {
     await playBuiltinAudio(volume)
@@ -190,7 +194,7 @@ export async function playNotificationSound(
   if (!context) return
 
   if (sound === 'custom') {
-    if (!(await playCustomNotificationSound(context, custom, volume))) {
+    if (!(await playCustomNotificationSound(context, custom, volume, readCustomSound))) {
       // The custom file is missing or undecodable; keep the reminder audible.
       playPresetSound(context, notificationSounds.chime, volume)
     }

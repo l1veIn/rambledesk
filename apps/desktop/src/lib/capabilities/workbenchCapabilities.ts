@@ -70,6 +70,10 @@ export interface ExternalLinkCapability {
 export interface ServerPathCapability {
   chooseDirectory(): Promise<string | null>
   chooseFile(input: Readonly<{ extensions: readonly string[] }>): Promise<string | null>
+  chooseSaveFile(input: Readonly<{
+    defaultName: string
+    extensions: readonly string[]
+  }>): Promise<string | null>
   reveal(path: string): Promise<void>
   openAttachment(input: Readonly<{
     requestId: string
@@ -158,6 +162,7 @@ export interface SpeechCapability {
 
 export interface RambleConsoleCapability {
   show(): Promise<void>
+  restoreVisibility(): Promise<void>
   hide(): Promise<void>
   publish(state: RambleConsoleState): Promise<void>
   onCommand(
@@ -173,6 +178,7 @@ export interface UpdaterCapability {
   version(): Promise<string>
   check(input: UpdateCheckInput): Promise<void>
   install(): Promise<void>
+  restart(): Promise<void>
 }
 
 export type MacPermissionStatus = 'granted' | 'denied' | 'not_determined' | 'unknown'

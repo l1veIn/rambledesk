@@ -1,20 +1,27 @@
 <script lang="ts">
-  import { invoke } from '@tauri-apps/api/core'
-  import { getCurrentWindow } from '@tauri-apps/api/window'
   import { CheckCircle2, LoaderCircle, RefreshCw, Rocket, Settings2, ShieldAlert } from '@lucide/svelte'
   import { onMount } from 'svelte'
 
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
+  import { createUnavailableWorkbenchCapabilities } from '$lib/capabilities/unavailableCapabilities'
+  import type {
+    CapabilitySlot,
+    MacPermission,
+    NotificationCapability,
+    SystemPermissionCapability,
+    WindowCapability,
+  } from '$lib/capabilities/workbenchCapabilities'
   import { toast } from '$lib/components/ui/sonner'
   import { t } from '$lib/i18n'
-  import { isPermissionGranted, requestPermission } from '@tauri-apps/plugin-notification'
   import { locale, setNotificationPopupEnabled } from '$lib/preferences'
 
-  type MacPermissionStatus = 'granted' | 'denied' | 'not_determined' | 'unknown'
-  type MacPermission = { id: string; status: MacPermissionStatus; restart_required: boolean }
+  const unavailableCapabilities = createUnavailableWorkbenchCapabilities()
 
   export let restartRequired = false
+  export let systemPermissions: CapabilitySlot<SystemPermissionCapability> = unavailableCapabilities.systemPermissions
+  export let notifications: CapabilitySlot<NotificationCapability> = unavailableCapabilities.notifications
+  export let windowControls: CapabilitySlot<WindowCapability> = unavailableCapabilities.windowControls
 
   let permissions: MacPermission[] = []
   let loading = true
@@ -22,7 +29,7 @@
   let restarting = false
   let screenRestartRequired = false
   let loadGeneration = 0
-  const isTauri = '__TAURI_INTERNALS__' in window
+  $: permissionsAvailable = systemPermissions.status.availability !== 'unavailable'
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
@@ -55,10 +62,16 @@
   }
 
   async function notificationPermission(): Promise<MacPermission> {
-    if (!isTauri) return { id: 'notifications', status: 'unknown', restart_required: false }
+    if (notifications.status.availability === 'unavailable') {
+      return { id: 'notifications', status: 'unknown', restart_required: false }
+    }
     try {
-      const granted = await isPermissionGranted()
-      return { id: 'notifications', status: granted ? 'granted' : 'not_determined', restart_required: false }
+      const permission = await notifications.implementation.permission()
+      return {
+        id: 'notifications',
+        status: permission === 'granted' ? 'granted' : permission === 'denied' ? 'denied' : 'not_determined',
+        restart_required: false,
+      }
     } catch {
       return { id: 'notifications', status: 'unknown', restart_required: false }
     }
@@ -93,14 +106,14 @@
     if (busy || restarting) return
     const generation = ++loadGeneration
     if (showLoading) loading = true
-    if (!isTauri) {
+    if (!permissionsAvailable) {
       permissions = []
       loading = false
       restartRequired = false
       return
     }
     try {
-      const next = await invoke<MacPermission[]>('list_macos_permissions')
+      const next = await systemPermissions.implementation.list()
       const withNotifications = [...next, await notificationPermission()]
       if (generation === loadGeneration) syncRestartRequired(withNotifications)
     } catch (cause) {
@@ -118,7 +131,7 @@
     busy = true
     try {
       if (id === 'notifications') {
-        const permission = (await isPermissionGranted()) ? 'granted' : await requestPermission()
+        const permission = await notifications.implementation.requestPermission()
         const next: MacPermission = {
           id: 'notifications',
           status: permission === 'granted' ? 'granted' : 'denied',
@@ -137,7 +150,7 @@
         }
         return
       }
-      const next = await invoke<MacPermission>('request_macos_permission', { permission: id })
+      const next = await systemPermissions.implementation.request(id)
       syncRestartRequired(permissions.map((permission) => (permission.id === id ? next : permission)))
       if (next.restart_required) {
         toast.success(tr('Permission granted. Restart RambleDesk to enable screen capture.'))
@@ -159,7 +172,7 @@
 
   async function openSettings(id: string) {
     try {
-      await invoke('open_macos_privacy_settings', { permission: id })
+      await systemPermissions.implementation.openSettings(id)
       toast.info(tr('Allow RambleDesk in System Settings, then come back and refresh the status.'))
     } catch (cause) {
       toast.error(tr('Could not open System Settings'), { description: messageFrom(cause) })
@@ -170,7 +183,7 @@
     if (restarting) return
     restarting = true
     try {
-      await invoke('restart_application')
+      await windowControls.implementation.restart()
     } catch (cause) {
       restarting = false
       toast.error(tr('Could not restart RambleDesk'), { description: messageFrom(cause) })
@@ -178,7 +191,7 @@
   }
 
   onMount(() => {
-    if (!isTauri) {
+    if (!permissionsAvailable) {
       loading = false
       return
     }
@@ -192,17 +205,15 @@
 
     void load(true)
     document.addEventListener('visibilitychange', refreshWhenVisible)
-    void getCurrentWindow()
-      .onFocusChanged(({ payload: focused }) => {
+    unlistenFocus = windowControls.implementation.onFocusChanged(
+      (focused) => {
         if (focused) void load(false)
-      })
-      .then((unlisten) => {
-        if (disposed) unlisten()
-        else unlistenFocus = unlisten
-      })
-      .catch(() => {
+      },
+      () => {
         // The visibility listener still refreshes status if window event setup is unavailable.
-      })
+      },
+    )
+    if (disposed) unlistenFocus()
 
     return () => {
       disposed = true

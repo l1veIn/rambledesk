@@ -1,4 +1,3 @@
-import { invoke } from '@tauri-apps/api/core'
 import { writable } from 'svelte/store'
 
 export type ShortcutAction = 'rambleToggle' | 'screenCapture'
@@ -13,37 +12,8 @@ const DEFAULT_SHORTCUTS: ShortcutConfig = {
   screenCapture: 'Ctrl+1',
 }
 
-/** Mirrors the native `shortcuts.json` config; the native side is authoritative. */
+/** Mirrors the configured shortcut state; the selected capability is authoritative. */
 export const shortcutSettings = writable<ShortcutConfig>(DEFAULT_SHORTCUTS)
-
-export async function refreshShortcutSettings(): Promise<void> {
-  try {
-    shortcutSettings.set(await invoke<ShortcutConfig>('get_shortcut_settings'))
-  } catch {
-    // Keep the defaults; the native side logs the failure.
-  }
-}
-
-export async function updateShortcut(
-  action: ShortcutAction,
-  shortcut: string,
-): Promise<void> {
-  shortcutSettings.set(
-    await invoke<ShortcutConfig>('set_shortcut_setting', { action, shortcut }),
-  )
-}
-
-export async function resetShortcuts(): Promise<void> {
-  shortcutSettings.set(await invoke<ShortcutConfig>('reset_shortcut_settings'))
-}
-
-/**
- * While the settings dialog records a combination, the native handlers swallow
- * presses so typing the currently active shortcut does not trigger its action.
- */
-export function setShortcutCaptureActive(active: boolean): Promise<void> {
-  return invoke<void>('set_shortcut_capture_active', { active })
-}
 
 /** Splits "Ctrl+Shift+R" into chips for display. */
 export function comboParts(combo: string): string[] {

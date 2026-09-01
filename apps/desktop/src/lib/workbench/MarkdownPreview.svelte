@@ -10,13 +10,14 @@
     parseFeedbackMarkdown,
   } from '$lib/feedbackEditorExtensions'
   import { isSafeHttpUrl } from '$lib/linkify'
-  import { openExternalUrl } from '$lib/openExternalUrl'
+  import { useWorkbenchCapabilities } from '$lib/capabilities/capabilityContext'
 
   export let markdown = ''
   export let document: JSONContent | null = null
   export let previews: Record<string, string> = {}
   export let onOpenAttachment: (attachmentId: string) => void = () => {}
   export let compact = false
+  const capabilities = useWorkbenchCapabilities()
 
   let editorHost: HTMLDivElement
   let editor: Editor | null = null
@@ -57,7 +58,7 @@
           if (!isSafeHttpUrl(href)) return false
           event.preventDefault()
           event.stopPropagation()
-          void openExternalUrl(href).catch((cause) => {
+          void capabilities.externalLinks.implementation.open(href).catch((cause) => {
             console.warn('Could not open external URL', cause)
           })
           return true

@@ -3,20 +3,22 @@
 
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
+  import { createUnavailableWorkbenchCapabilities } from '$lib/capabilities/unavailableCapabilities'
+  import type { CapabilitySlot, UpdaterCapability } from '$lib/capabilities/workbenchCapabilities'
   import * as Dialog from '$lib/components/ui/dialog'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
   import {
     canInstallInAppUpdate,
     dismissUpdateDialog,
-    downloadAndInstallUpdate,
-    restartAfterUpdate,
     updateDialogOpen,
     updateState,
   } from '$lib/updater'
 
   export let installBlocked = false
   export let onOpenReleases: () => void = () => {}
+  export let softwareUpdates: CapabilitySlot<UpdaterCapability> =
+    createUnavailableWorkbenchCapabilities().softwareUpdates
 
   const canInstall = canInstallInAppUpdate()
 
@@ -115,7 +117,7 @@
         <Button
           disabled={installBlocked}
           title={installBlocked ? tr('Finish or cancel the current feedback before restarting.') : ''}
-          onclick={() => void restartAfterUpdate()}
+          onclick={() => void softwareUpdates.implementation.restart()}
         >
           <RotateCw data-icon="inline-start" />
           {tr('Restart now')}
@@ -124,7 +126,7 @@
         <Button
           disabled={installBlocked || busy}
           title={installBlocked ? tr('Finish or cancel the current feedback before installing the update.') : ''}
-          onclick={() => void downloadAndInstallUpdate()}
+          onclick={() => void softwareUpdates.implementation.install()}
         >
           <Download data-icon="inline-start" />
           {tr('Download and install')}
