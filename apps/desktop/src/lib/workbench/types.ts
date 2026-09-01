@@ -27,7 +27,7 @@ export type ResumePrompt = {
   reason: 'completed' | 'cancelled'
 }
 
-export type { HostProfile } from '../generated/hosts'
+export type { ApplicationHostProfileView as HostProfile } from '../generated/feedback'
 
 export type FeedbackEditorHandle = {
   removeAttachmentReference(attachmentId: string): void

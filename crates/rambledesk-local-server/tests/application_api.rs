@@ -2,13 +2,43 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use rambledesk_core::{
-    ActionInput, ApproveFeedbackInput, RequestFeedbackInput, SaveDraftInput, SubmitFeedbackInput,
-    TerminalOperation, TerminalOperationEvent, TerminalOperationObserver,
-    WorkbenchTerminalOperations,
+    ActionInput, ApproveFeedbackInput, RequestAttachmentInput, RequestFeedbackInput,
+    SaveDraftInput, SubmitFeedbackInput, TerminalOperation, TerminalOperationEvent,
+    TerminalOperationObserver, WorkbenchTerminalOperations,
 };
 use rambledesk_local_server::{AccessToken, ServerConfig, start_server};
 
+mod application_api_support;
+use application_api_support::start_application_server;
+
 const TEST_TOKEN: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const REQUEST_ATTACHMENT_BYTES: &[u8] = b"# Request context\n\nInspect the transport contract.";
+
+const APPLICATION_OPERATIONS: [&str; 23] = [
+    "listFeedbackInbox",
+    "listHostSessions",
+    "listArchivedHostSessions",
+    "listHostProfiles",
+    "listFeedbackRequests",
+    "getFeedbackWorkspace",
+    "readPublishedFeedback",
+    "saveFeedbackDraft",
+    "addFeedbackAttachment",
+    "removeFeedbackAttachment",
+    "reorderFeedbackAttachments",
+    "submitFeedback",
+    "approveFeedbackRequest",
+    "cancelFeedbackRequest",
+    "renameHostSession",
+    "setHostSessionPinned",
+    "archiveHostSession",
+    "unarchiveHostSession",
+    "deleteHostSession",
+    "deleteFeedbackRequest",
+    "setHostPinned",
+    "readFeedbackAttachment",
+    "readRequestAttachment",
+];
 
 async fn test_application()
 -> anyhow::Result<(rambledesk_core::FeedbackApplication, tempfile::TempDir)> {
@@ -22,6 +52,19 @@ async fn test_application()
 
 fn application_url(address: std::net::SocketAddr, operation: &str) -> String {
     format!("http://{address}/api/application/{operation}")
+}
+
+fn assert_no_path_keys(value: &serde_json::Value) {
+    match value {
+        serde_json::Value::Array(values) => values.iter().for_each(assert_no_path_keys),
+        serde_json::Value::Object(object) => {
+            for (key, value) in object {
+                assert!(!key.contains("path"), "storage path key leaked: {key}");
+                assert_no_path_keys(value);
+            }
+        }
+        _ => {}
+    }
 }
 
 fn terminal_operations(
@@ -65,7 +108,12 @@ async fn seed_request(application: &rambledesk_core::FeedbackApplication) -> Str
                 instruction: "Verify the read projections.".into(),
             }],
             context_refs: vec![],
-            attachments: vec![],
+            attachments: vec![RequestAttachmentInput {
+                file_name: "request-context.md".into(),
+                markdown: Some(String::from_utf8_lossy(REQUEST_ATTACHMENT_BYTES).into_owned()),
+                contents_base64: None,
+                path: None,
+            }],
             source_hint: Some("application API test".into()),
             allow_finish: false,
             final_summary: None,
@@ -103,15 +151,10 @@ async fn seed_final_summary_request(
 }
 
 #[tokio::test]
-async fn application_routes_use_the_existing_bearer_middleware() -> anyhow::Result<()> {
-    let token = AccessToken::parse(TEST_TOKEN)?;
+async fn application_routes_use_an_independent_bearer_wrapper() -> anyhow::Result<()> {
     let (application, _directory) = test_application().await?;
-    let server = start_server(
-        ServerConfig::new(token).with_port(0),
-        application.clone(),
-        terminal_operations(&application),
-    )
-    .await?;
+    let server =
+        start_application_server(application.clone(), terminal_operations(&application)).await?;
 
     let response = reqwest::Client::new()
         .post(application_url(server.address(), "listHostProfiles"))
@@ -124,16 +167,96 @@ async fn application_routes_use_the_existing_bearer_middleware() -> anyhow::Resu
 }
 
 #[tokio::test]
-async fn read_and_list_routes_use_shared_request_and_response_shapes() -> anyhow::Result<()> {
+async fn local_integration_server_does_not_mount_application_routes() -> anyhow::Result<()> {
     let token = AccessToken::parse(TEST_TOKEN)?;
     let (application, _directory) = test_application().await?;
+    let server = start_server(ServerConfig::new(token).with_port(0), application).await?;
+
+    let response = reqwest::Client::new()
+        .post(application_url(server.address(), "listHostProfiles"))
+        .bearer_auth(TEST_TOKEN)
+        .send()
+        .await?;
+    assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
+
+    server.shutdown().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn application_router_exposes_the_complete_23_operation_surface() -> anyhow::Result<()> {
+    let (application, _directory) = test_application().await?;
+    let server =
+        start_application_server(application.clone(), terminal_operations(&application)).await?;
+    let client = reqwest::Client::new();
+
+    for operation in APPLICATION_OPERATIONS {
+        let response = client
+            .post(application_url(server.address(), operation))
+            .bearer_auth(TEST_TOKEN)
+            .send()
+            .await?;
+        let expected = if matches!(
+            operation,
+            "listFeedbackInbox" | "listHostSessions" | "listHostProfiles"
+        ) {
+            reqwest::StatusCode::OK
+        } else {
+            reqwest::StatusCode::BAD_REQUEST
+        };
+        assert_eq!(response.status(), expected, "operation {operation}");
+        if expected == reqwest::StatusCode::BAD_REQUEST {
+            assert_eq!(
+                response.json::<serde_json::Value>().await?["code"],
+                "INVALID_ARGUMENT",
+                "operation {operation}"
+            );
+        }
+    }
+
+    server.shutdown().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn missing_and_malformed_json_are_typed_invalid_argument_errors() -> anyhow::Result<()> {
+    let (application, _directory) = test_application().await?;
+    let server =
+        start_application_server(application.clone(), terminal_operations(&application)).await?;
+    let client = reqwest::Client::new();
+
+    let missing = client
+        .post(application_url(server.address(), "getFeedbackWorkspace"))
+        .bearer_auth(TEST_TOKEN)
+        .send()
+        .await?;
+    assert_eq!(missing.status(), reqwest::StatusCode::BAD_REQUEST);
+    let missing_error = missing.json::<serde_json::Value>().await?;
+    assert_eq!(missing_error["code"], "INVALID_ARGUMENT");
+    assert_eq!(missing_error["retryable"], false);
+
+    let malformed = client
+        .post(application_url(server.address(), "getFeedbackWorkspace"))
+        .bearer_auth(TEST_TOKEN)
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .body("{")
+        .send()
+        .await?;
+    assert_eq!(malformed.status(), reqwest::StatusCode::BAD_REQUEST);
+    let malformed_error = malformed.json::<serde_json::Value>().await?;
+    assert_eq!(malformed_error["code"], "INVALID_ARGUMENT");
+    assert_eq!(malformed_error["retryable"], false);
+
+    server.shutdown().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn read_and_list_routes_use_shared_request_and_response_shapes() -> anyhow::Result<()> {
+    let (application, _directory) = test_application().await?;
     let request_id = seed_request(&application).await;
-    let server = start_server(
-        ServerConfig::new(token).with_port(0),
-        application.clone(),
-        terminal_operations(&application),
-    )
-    .await?;
+    let server =
+        start_application_server(application.clone(), terminal_operations(&application)).await?;
     let client = reqwest::Client::new();
 
     let inbox = client
@@ -225,7 +348,6 @@ async fn read_and_list_routes_use_shared_request_and_response_shapes() -> anyhow
 #[tokio::test]
 async fn published_projection_hides_storage_paths_and_errors_stay_structured() -> anyhow::Result<()>
 {
-    let token = AccessToken::parse(TEST_TOKEN)?;
     let (application, _directory) = test_application().await?;
     let request_id = seed_request(&application).await;
     let saved = application
@@ -248,12 +370,8 @@ async fn published_projection_hides_storage_paths_and_errors_stay_structured() -
         .await
         .expect("feedback should publish");
 
-    let server = start_server(
-        ServerConfig::new(token).with_port(0),
-        application.clone(),
-        terminal_operations(&application),
-    )
-    .await?;
+    let server =
+        start_application_server(application.clone(), terminal_operations(&application)).await?;
     let client = reqwest::Client::new();
     let published = client
         .post(application_url(server.address(), "readPublishedFeedback"))
@@ -337,7 +455,6 @@ async fn terminal_facade_notifies_once_for_concurrent_success_and_never_for_fail
 #[tokio::test]
 async fn http_terminal_mutations_share_the_observer_and_project_terminal_state()
 -> anyhow::Result<()> {
-    let token = AccessToken::parse(TEST_TOKEN)?;
     let (application, _directory) = test_application().await?;
     let submitted_request = seed_request(&application).await;
     let submitted_draft = application
@@ -352,12 +469,7 @@ async fn http_terminal_mutations_share_the_observer_and_project_terminal_state()
     let cancelled_request = seed_final_summary_request(&application, "http-cancel").await;
     let observer = Arc::new(RecordingTerminalObserver::default());
     let operations = WorkbenchTerminalOperations::new(application.clone(), observer.clone());
-    let server = start_server(
-        ServerConfig::new(token).with_port(0),
-        application,
-        operations,
-    )
-    .await?;
+    let server = start_application_server(application, operations).await?;
     let client = reqwest::Client::new();
 
     for _ in 0..2 {
@@ -374,6 +486,7 @@ async fn http_terminal_mutations_share_the_observer_and_project_terminal_state()
             .json::<serde_json::Value>()
             .await?;
         assert_eq!(submitted["status"], "completed");
+        assert_no_path_keys(&submitted);
     }
 
     let approved = client
@@ -386,6 +499,7 @@ async fn http_terminal_mutations_share_the_observer_and_project_terminal_state()
         .json::<serde_json::Value>()
         .await?;
     assert_eq!(approved["resolution"], "approved");
+    assert_no_path_keys(&approved);
 
     let cancelled = client
         .post(application_url(server.address(), "cancelFeedbackRequest"))
@@ -400,6 +514,7 @@ async fn http_terminal_mutations_share_the_observer_and_project_terminal_state()
         .json::<serde_json::Value>()
         .await?;
     assert_eq!(cancelled["status"], "cancelled");
+    assert_no_path_keys(&cancelled);
 
     let workspace = client
         .post(application_url(server.address(), "getFeedbackWorkspace"))
@@ -412,6 +527,8 @@ async fn http_terminal_mutations_share_the_observer_and_project_terminal_state()
         .await?;
     assert_eq!(workspace["request"]["status"], "completed");
     assert_eq!(workspace["draft"]["body_markdown"], "Submit through HTTP");
+    assert_eq!(workspace["feedback"]["available"], true);
+    assert_no_path_keys(&workspace);
 
     let events = observer.events();
     assert_eq!(events.len(), 3);
@@ -425,15 +542,10 @@ async fn http_terminal_mutations_share_the_observer_and_project_terminal_state()
 
 #[tokio::test]
 async fn draft_cas_error_is_structured_and_preserves_the_saved_projection() -> anyhow::Result<()> {
-    let token = AccessToken::parse(TEST_TOKEN)?;
     let (application, _directory) = test_application().await?;
     let request_id = seed_request(&application).await;
-    let server = start_server(
-        ServerConfig::new(token).with_port(0),
-        application.clone(),
-        terminal_operations(&application),
-    )
-    .await?;
+    let server =
+        start_application_server(application.clone(), terminal_operations(&application)).await?;
     let client = reqwest::Client::new();
 
     let first = client
@@ -488,17 +600,12 @@ async fn draft_cas_error_is_structured_and_preserves_the_saved_projection() -> a
 #[tokio::test]
 async fn host_session_mutations_update_projection_and_delete_routes_return_no_content()
 -> anyhow::Result<()> {
-    let token = AccessToken::parse(TEST_TOKEN)?;
     let (application, _directory) = test_application().await?;
     let request_id = seed_request(&application).await;
     let whole_session_request =
         seed_final_summary_request(&application, "delete-whole-session").await;
-    let server = start_server(
-        ServerConfig::new(token).with_port(0),
-        application.clone(),
-        terminal_operations(&application),
-    )
-    .await?;
+    let server =
+        start_application_server(application.clone(), terminal_operations(&application)).await?;
     let client = reqwest::Client::new();
 
     let renamed = client

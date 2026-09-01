@@ -45,10 +45,7 @@ function completedRequest(): FeedbackRequestView {
     created_at: '2026-08-22T00:00:00Z',
     updated_at: '2026-08-22T00:01:00Z',
     feedback: {
-      package_uri: 'file:///tmp/package',
-      directory_path: '/tmp/package',
-      markdown_path: '/tmp/package/feedback.md',
-      manifest_path: '/tmp/package/manifest.json',
+      available: true,
     },
     resolution: 'feedback_submitted',
     allow_finish: false,

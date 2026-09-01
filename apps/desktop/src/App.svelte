@@ -54,7 +54,6 @@
     notificationStateForPermission,
     type NotificationState,
   } from './lib/notifications'
-  import { desktopPath } from './lib/nativePath'
   import { openExternalUrl } from './lib/openExternalUrl'
   import { currentDesktopPlatform } from './lib/platform'
   import { isWithinLast24Hours } from './lib/requestRecency'
@@ -1636,10 +1635,10 @@
   }
 
   async function openFeedbackPackage() {
-    if (!feedbackResult) return
+    if (!feedbackResult || !workspace) return
     try {
-      await invoke('reveal_path_in_folder', {
-        path: desktopPath(feedbackResult.markdown_path),
+      await invoke('reveal_feedback_package', {
+        input: { request_id: workspace.request.request_id },
       })
     } catch (cause) {
       pageError = tr('Could not open Feedback Package: {error}', { error: messageFrom(cause) })

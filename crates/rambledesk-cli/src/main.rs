@@ -2,7 +2,6 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 use clap::{Parser, Subcommand};
-use rambledesk_core::WorkbenchTerminalOperations;
 use rambledesk_local_server::{
     AccessToken, DEFAULT_PORT, ServerConfig, default_token_path, start_server,
 };
@@ -73,8 +72,7 @@ async fn main() -> anyhow::Result<()> {
             let application = store.clone().into_application();
             let server = start_server(
                 ServerConfig::new(token.clone()).with_port(port),
-                application.clone(),
-                WorkbenchTerminalOperations::without_observer(application),
+                application,
             )
             .await?;
             let mut status = serde_json::json!({
@@ -115,12 +113,8 @@ async fn main() -> anyhow::Result<()> {
             .await?;
             let token = AccessToken::generate();
             let application = store.clone().into_application();
-            let server = start_server(
-                ServerConfig::new(token.clone()).with_port(0),
-                application.clone(),
-                WorkbenchTerminalOperations::without_observer(application),
-            )
-            .await?;
+            let server =
+                start_server(ServerConfig::new(token.clone()).with_port(0), application).await?;
             let result = smoke(server.endpoint(), &token).await?;
             println!("{}", serde_json::to_string_pretty(&result)?);
             server.shutdown().await?;

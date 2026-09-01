@@ -4,12 +4,7 @@ use super::*;
 async fn request_without_host_id_defaults_to_generic() -> anyhow::Result<()> {
     let token = AccessToken::parse(TEST_TOKEN)?;
     let (application, _directory) = test_application().await?;
-    let server = start_server(
-        ServerConfig::new(token).with_port(0),
-        application.clone(),
-        terminal_operations(&application),
-    )
-    .await?;
+    let server = start_server(ServerConfig::new(token).with_port(0), application).await?;
 
     let config = StreamableHttpClientTransportConfig::with_uri(server.endpoint().to_owned())
         .auth_header(TEST_TOKEN);

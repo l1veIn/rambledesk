@@ -25,9 +25,9 @@ use axum::{
 };
 use futures::StreamExt;
 use rambledesk_core::{
-    ApplicationError, ApproveFeedbackInput, CancelFeedbackInput, FeedbackApplication,
-    FeedbackRequestView, FeedbackStatus, GetFeedbackInput, RecoverFeedbackInput,
-    RequestFeedbackInput, WorkbenchTerminalOperations,
+    ApplicationError, ApplicationErrorCode, ApproveFeedbackInput, CancelFeedbackInput,
+    FeedbackApplication, FeedbackRequestView, FeedbackStatus, GetFeedbackInput,
+    RecoverFeedbackInput, RequestFeedbackInput,
 };
 use rmcp::transport::streamable_http_server::{
     StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
@@ -189,7 +189,9 @@ async fn api_feedback_result(
 ) -> Response<Body> {
     let value = match result {
         Ok(value) => value,
-        Err(error) => return api_error_response(application_error_status(error.code()), error),
+        Err(error) => {
+            return api_error_response(application_error_status(error.code_enum()), error);
+        }
     };
 
     let mut structured = serde_json::to_value(&value).expect("application result must serialize");
@@ -207,7 +209,7 @@ async fn api_feedback_result(
                 );
             }
             Err(error) => {
-                return api_error_response(application_error_status(error.code()), error);
+                return api_error_response(application_error_status(error.code_enum()), error);
             }
         }
     }
@@ -215,22 +217,24 @@ async fn api_feedback_result(
     Json(structured).into_response()
 }
 
-pub(crate) fn application_error_status(code: &str) -> StatusCode {
+pub(crate) const fn application_error_status(code: ApplicationErrorCode) -> StatusCode {
     match code {
-        "INVALID_ARGUMENT" => StatusCode::BAD_REQUEST,
-        "REQUEST_NOT_FOUND" | "ATTACHMENT_NOT_FOUND" | "HOST_SESSION_NOT_FOUND" => {
-            StatusCode::NOT_FOUND
-        }
-        "REQUEST_CONFLICT"
-        | "RECOVERY_AMBIGUOUS"
-        | "REQUEST_ALREADY_COMPLETED"
-        | "REQUEST_TERMINAL"
-        | "DRAFT_CONFLICT"
-        | "ATTACHMENT_LIMIT"
-        | "HOST_SESSION_HAS_OPEN_REQUESTS"
-        | "DELETE_REQUIRES_ARCHIVED_HOST_SESSION"
-        | "REQUEST_NOT_TERMINAL" => StatusCode::CONFLICT,
-        _ => StatusCode::INTERNAL_SERVER_ERROR,
+        ApplicationErrorCode::InvalidArgument => StatusCode::BAD_REQUEST,
+        ApplicationErrorCode::RequestNotFound
+        | ApplicationErrorCode::AttachmentNotFound
+        | ApplicationErrorCode::HostSessionNotFound => StatusCode::NOT_FOUND,
+        ApplicationErrorCode::RecoveryAmbiguous
+        | ApplicationErrorCode::RequestConflict
+        | ApplicationErrorCode::RequestAlreadyCompleted
+        | ApplicationErrorCode::RequestTerminal
+        | ApplicationErrorCode::DraftConflict
+        | ApplicationErrorCode::AttachmentLimit
+        | ApplicationErrorCode::HostSessionHasOpenRequests
+        | ApplicationErrorCode::DeleteRequiresArchivedHostSession
+        | ApplicationErrorCode::RequestNotTerminal => StatusCode::CONFLICT,
+        ApplicationErrorCode::PackagePublishFailure
+        | ApplicationErrorCode::FeedbackPackageReadFailure
+        | ApplicationErrorCode::StorageFailure => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }
 
@@ -502,7 +506,6 @@ async fn handle_mcp_request(
 pub async fn start_server(
     config: ServerConfig,
     application: FeedbackApplication,
-    terminal_operations: WorkbenchTerminalOperations,
 ) -> Result<ServerHandle, ServerError> {
     let cancellation = CancellationToken::new();
     let allowed_origins = config.allowed_origins.clone();
@@ -538,8 +541,7 @@ pub async fn start_server(
         .route("/feedback/cancel", post(api_cancel_feedback))
         .with_state(ApiState {
             application: application.clone(),
-        })
-        .merge(application_router(application.clone(), terminal_operations));
+        });
     let mcp = Router::new()
         .fallback(handle_mcp_request)
         .with_state(service);
@@ -578,13 +580,13 @@ mod tests {
     #[test]
     fn application_error_status_covers_host_session_contracts() {
         assert_eq!(
-            application_error_status("HOST_SESSION_NOT_FOUND"),
+            application_error_status(ApplicationErrorCode::HostSessionNotFound),
             StatusCode::NOT_FOUND
         );
         for code in [
-            "HOST_SESSION_HAS_OPEN_REQUESTS",
-            "DELETE_REQUIRES_ARCHIVED_HOST_SESSION",
-            "REQUEST_NOT_TERMINAL",
+            ApplicationErrorCode::HostSessionHasOpenRequests,
+            ApplicationErrorCode::DeleteRequiresArchivedHostSession,
+            ApplicationErrorCode::RequestNotTerminal,
         ] {
             assert_eq!(application_error_status(code), StatusCode::CONFLICT);
         }

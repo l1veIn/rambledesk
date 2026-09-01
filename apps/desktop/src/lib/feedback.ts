@@ -13,10 +13,7 @@ export type {
   ExecutionMode,
   FeedbackRequestSummary,
   FeedbackResolution,
-  FeedbackRequestView,
-  FeedbackResultView,
   FeedbackStatus,
-  FeedbackWorkspaceView,
   HostSessionInput,
   HostSessionSummary,
   ListFeedbackRequestsInput,
@@ -30,6 +27,12 @@ export type {
   SetHostPinnedInput,
   SetHostSessionPinnedInput,
   SubmitFeedbackInput,
+} from './generated/feedback'
+
+export type {
+  ApplicationFeedbackRequestView as FeedbackRequestView,
+  ApplicationFeedbackResultView as FeedbackResultView,
+  ApplicationFeedbackWorkspaceView as FeedbackWorkspaceView,
 } from './generated/feedback'
 
 export function requestStatusLabel(status: FeedbackStatus, locale: Locale = 'zh-CN'): string {
