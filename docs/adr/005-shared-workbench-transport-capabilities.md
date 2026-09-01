@@ -106,7 +106,7 @@ Local Integration Server 服务 Host Adapter；Web Access 服务浏览器。它�
 内同一套 security policy/primitives，但拥有独立 listener handle、route set、credential、auth
 domain 和启停 lifecycle。关闭 Web Access 不得停止 Backend Runtime 或 Local Integration Server。
 
-Web Access 默认关闭，第一阶段只绑定 `127.0.0.1`。本决策不指定新 crate、Web app 目录或
+Web Access 默认关闭，第一阶段固定绑定 `127.0.0.1:37643`。本决策不指定新 crate、Web app 目录或
 headless composition root。
 
 ### 7. Web Access 使用 bootstrap 后的短期 session credential
@@ -159,22 +159,30 @@ Web routes 分别设置 body、upload、rate 与 concurrent-connection 上限。
 - token 文件在 Unix 为 `0600`；非 Unix 当前没有等价 ACL 保证。
 - Host 只接受 `127.0.0.1` 或 `localhost`；Origin 缺失供本地非浏览器客户端，存在时 exact
   allowlist；统一 body limit 为 96 MiB。
-- 默认关闭的独立 Web Access Server 只绑定 `127.0.0.1`，提供共享 SPA、application HTTP 与
+- 默认关闭的独立 Web Access Server 固定绑定 `127.0.0.1:37643`，提供共享 SPA、application HTTP 与
   readiness/invalidation WebSocket；它与 Local Integration Server 分离 listener、credential、auth
   domain、route set 与 lifecycle。
 - Web Client 复用 Workbench Client，以 OS credential store 中的独立 durable token bootstrap
-  短期、仅内存 session；当前支持文字 Draft、附件 file picker、提交、宿主会话操作及安全反馈投影下载。
+  短期、仅内存 session；当前支持 Request/Session、TipTap Draft、附件 file picker、image paste、
+  提交及安全反馈投影下载。
+- Browser local ASR pilot 当前在输入浏览器内运行；自动化覆盖固定模型下载/hash/cache、
+  Wasm/Worker/AudioWorklet 合同与 recognizer creation。真实 Chrome/Safari 麦克风授权、PCM 输入、
+  稳定出字、停止 flush 和长会话尚未人工验证，因此不构成浏览器兼容承诺。
 - Web Access 当前限制为每分钟 8 次 bootstrap、16 个并发 application HTTP request、8 个 event
   socket；JSON 与 attachment upload 分别使用有界 body。session hash 对有界 session 集合完整
   constant-time compare；request authorization 是 admission lease，已入场 mutation 不会在提交后被
   revoke 改写成 401。
 - Draft CAS、Tauri/HTTP application parity、ready/refetch 与 session revoke/re-auth 已实现。
 
-### Target
+### Target / Deferred
 
 - LAN/TLS Web Access 与更完整的 credential 管理 UI。
-- Browser Speech Recognition Plugin、Capture Plugin 与更完整的 capability manifest。
+- Browser local ASR 的真实浏览器矩阵、性能与长会话产品化；Browser screen capture 延后。
 - Native/Browser Capability 继续位于 Application Transport 外，通过 manifest 呈现差异。
+
+LAN、TLS、autostart、可配置端口和 headless Backend Runtime 不属于当前支持面；本 ADR 的 Deferred
+条目不构成已承诺排期。Desktop / Browser 的当前证据边界见
+[Web Access 支持矩阵](../WEB_ACCESS_SUPPORT_MATRIX.md)。
 
 ## Rejected
 
@@ -193,11 +201,12 @@ Web routes 分别设置 body、upload、rate 与 concurrent-connection 上限。
 ## Deferred
 
 - LAN Web Access；启用前必须采用 HTTPS/WSS 或受信任 TLS proxy，并重新安全审计；
+- Web Access autostart 与用户可配置端口；
 - headless Backend Runtime / composition root；
 - headless 或独立 Web deployment packaging；
 - 完整 credential rotation/revocation 管理 UI；
 - sequence replay、ring buffer、multiplex protocol；
-- 浏览器本地 sherpa-onnx WASM 的生产模型矩阵与性能优化；
+- 浏览器本地 sherpa-onnx WASM 的真实 Chrome/Safari 麦克风、PCM、出字、生产模型矩阵与性能优化；
 - ACP、Router 或全局 client state framework。
 
 ## Consequences

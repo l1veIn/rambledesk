@@ -22,6 +22,7 @@ import {
   createTauriTrayCapability,
 } from './navigationCapabilities'
 import { createTauriNotificationCapability } from './notificationCapability'
+import { createTauriPublishedFeedbackAction } from './publishedFeedbackAction'
 import { createTauriRambleConsoleCapability } from './rambleConsoleCapability'
 import { createTauriShortcutCapability } from './shortcutCapability'
 import { createTauriSpeechCapability } from './speechCapability'
@@ -82,3 +83,4 @@ export function createTauriWorkbenchCapabilities(
 }
 
 export type { TauriCapabilityApi } from './tauriCapabilityApi'
+export { createTauriPublishedFeedbackAction }

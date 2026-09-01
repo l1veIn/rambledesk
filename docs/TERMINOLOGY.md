@@ -37,11 +37,11 @@
 | 工作台 | RambleDesk 的人类反馈工作界面；同一套工作台可以由不同 Workbench Client 呈现。 | 拥有人类反馈工作流；不实现宿主协议，不限定为桌面窗口。 |
 | Workbench Client（工作台客户端） | 承载共享工作台 UI 的客户端角色；当前由 `apps/desktop` 中的 Svelte UI 实现，并由 Desktop Client 与 loopback Web Client 复用。 | 只持有 UI 投影和 client-local workspace snapshot；不拥有 Request、Feedback Draft 或 Package 的 canonical 事实。 |
 | Desktop Client（桌面客户端） | 在 Desktop Shell 内运行的 Workbench Client，通过 Tauri IPC 的 Application Transport Implementation 访问 Backend Runtime。 | 是当前已实现的客户端；不把 Tauri API 暴露为共享 UI 的业务合同。 |
-| Web Client（Web 客户端） | 在浏览器中运行的 Workbench Client，通过 Web Access 的 HTTP + WebSocket Application Transport Implementation 访问 Backend Runtime。 | 当前支持默认关闭、仅 loopback 的文字反馈工作流；不据此声称已有 LAN、浏览器录音、截图或桌面原生能力。 |
+| Web Client（Web 客户端） | 在浏览器中运行的 Workbench Client，通过 Web Access 的 HTTP + WebSocket Application Transport Implementation 访问 Backend Runtime。 | 当前支持仅 loopback 的 Request/Session、TipTap Draft、上传/图片粘贴、提交/下载，并提供浏览器本地 ASR pilot；真实 Chrome/Safari 麦克风、PCM 与稳定出字仍需人工验收，浏览器屏幕采集和桌面原生能力不在当前支持面。 |
 | Backend Runtime（后端运行时） | 长期持有 application use cases、storage、配置以及未来 Session Runtime / Timeline 的 Rust 运行角色。 | 是业务事实唯一来源；当前由 desktop composition root 组装，不等同于 HTTP listener，也不预设一个新 crate。 |
 | Application Transport（应用传输） | Workbench Client 调用 application command/query、订阅变化、等待 ready 并读取 capability manifest 的 Interface。 | Tauri IPC 与 HTTP + WebSocket 是不同 Implementation，但调用同一 Backend Runtime application Module；`capabilities` 只报告可用性，不执行设备能力。 |
 | Local Integration Server（本地集成服务） | 为 Generic MCP、Pi 等 Host Adapter 提供 authenticated loopback listener、JSON API、route mounting 和 guard 的 transport Module。 | 服务宿主集成，不拥有领域语义；其启停和 route set 独立于 Web Access。 |
-| Web Access（Web 访问） | 可选、默认关闭的浏览器访问能力，通过独立 loopback listener 向 Web Client 提供静态资源、HTTP 与 WebSocket。 | 当前只监听 `127.0.0.1`；关闭它不停止 Backend Runtime 或 Local Integration Server，开放 LAN 仍需要单独的安全决策。 |
+| Web Access（Web 访问） | 可选、默认关闭的浏览器访问能力，通过独立 loopback listener 向 Web Client 提供静态资源、HTTP 与 WebSocket。 | 当前固定监听 `127.0.0.1:37643`；关闭它不停止 Backend Runtime 或 Local Integration Server。LAN、TLS、autostart、可配置端口与 headless 均不在当前支持面。 |
 | Desktop Shell（桌面壳层） | Tauri 进程、窗口、托盘、更新器、原生权限和 desktop composition root。 | 组装 Desktop Client、Backend Runtime 与本地能力；不拥有 UI 业务事实。 |
 | Native Capability（原生能力） | 由 Desktop Shell 提供的 OS / device Implementation，例如全局快捷键、系统截图、原生录音、托盘、更新器和原生对话框。 | 独立于 Application Transport；可访问的设备和权限范围不能被 Web Client 假定。 |
 | Browser Capability（浏览器能力） | 由浏览器 API 提供的 device-scoped Implementation，例如受权限和用户手势约束的媒体、剪贴板、文件选择、下载和通知。 | 独立于 Application Transport；受 secure context、浏览器、权限与当前设备限制，不等价于 Native Capability，也不代表服务器文件系统。 |
@@ -168,7 +168,7 @@ Pi 原生适配器不需要提交后的 continuation，因为 Pi 已经在工具
 | Local Integration Server | `crates/rambledesk-local-server`。 | 继续服务 Host Adapter；不因 Web Access 启停而停止；与 Web Access 共享同一安全 policy/primitives。 |
 | Web Client / HTTP + WebSocket Application Transport Implementation / Web Access | `apps/desktop` 中的共享 Svelte UI、browser composition/auth gate/HTTP Transport，以及 `crates/rambledesk-local-server` 中的独立 Web Access server Module。 | 复用同一 Backend Runtime 与安全 policy/primitives，并与 Local Integration Server 分离 listener、credential、auth domain、生命周期和 route set。 |
 | Native Capability Implementation | `apps/desktop` 及 desktop-only crates。 | 与 Application Transport 分离并通过 capability manifest 暴露可用性。 |
-| Browser Capability Implementation | `apps/desktop` 当前使用浏览器 file picker 与 download，原生截图、原生录音、窗口和系统路径操作明确不可用。 | 后续媒体/剪贴板能力只承诺浏览器实际允许的范围，不模拟原生或服务器文件系统语义。 |
+| Browser Capability Implementation | `apps/desktop` 当前实现浏览器 file picker、image paste、download 与本地 sherpa-onnx WASM ASR pilot；系统截图、全局快捷键、tray、updater、原生窗口和系统路径操作明确不可用。 | Browser ASR 自动化已覆盖模型/runtime/recognizer 合同，但真实 Chrome/Safari 麦克风、PCM 与稳定出字仍需人工验收；Browser screen capture 延后，不模拟原生或服务器文件系统语义。 |
 | Platform Plugin Implementation | `apps/desktop` 的 capability registry、Desktop Tauri Implementation 与 Browser Implementation；`rambledesk-speech` 是 Desktop Speech Recognition Plugin 的内部实现。 | 每个平台本地处理设备输入；只向共享 TipTap Ramble Core 输出 SpeechEvent 或 Attachment Candidate。 |
 
 | Package / 区域 | 职责 | 不应包含 |

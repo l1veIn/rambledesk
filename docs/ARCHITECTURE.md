@@ -40,7 +40,7 @@ TARGET 不预设新 crate、Web app 目录或 headless composition root。
 application facade，由 Tauri state、该进程的 Local Integration Server 与可选 Web Access Server
 共同调用；这不表示跨进程全局单例。Local Integration Server 继续以独立 loopback listener 承载
 `/api` 与 `/mcp`，不暴露 Web 静态资源、application routes 或 WebSocket。默认关闭的 Web Access
-使用另一 listener、credential、auth domain、route set 与生命周期，只绑定 `127.0.0.1`。MCP SSE
+使用另一 listener、credential、auth domain、route set 与生命周期，固定绑定 `127.0.0.1:37643`。MCP SSE
 属于 MCP transport，不是 Web Client 的事件流。
 
 ### TARGET
@@ -197,11 +197,12 @@ rambledesk/
 - Host/Origin guard；
 - `/api/feedback/request|get|wait|cancel`；
 - `/mcp` route mounting；
-- server handle、endpoint、port configuration。
+- Local Integration 与 Web Access 的独立 server handle、endpoint、Web session auth、静态资源与
+  application/event routes；
+- Web Access 固定 loopback、安全限制 snapshot 与 listener lifecycle。
 
-TARGET Web Access 必须复用该 crate/server Module 的 security policy/primitives；本架构不据此要求
-新 crate，也不允许它复用 Local Integration Server 的 listener handle、credential、auth domain、
-route set 或启停生命周期。
+Web Access 已复用该 crate/server Module 的 security policy/primitives；这不要求新 crate，也不允许它
+复用 Local Integration Server 的 listener handle、credential、auth domain、route set 或启停生命周期。
 
 不得持有：
 
@@ -274,8 +275,9 @@ Desktop Client 中的 Svelte Workbench Client 负责：
 - 草稿、截图、录音、附件交互；
 - 设置中的适配器安装 UX。
 
-Workbench Client 不持有唯一业务事实。Tauri events 和系统通知都是提示，不是事实来源。
-TARGET Web Client 复用该 UI，但不复用 Desktop Shell 或 Native Capability Implementation。
+Workbench Client 不持有唯一业务事实。Tauri events 和系统通知都是提示，不是事实来源。CURRENT Web
+Client 已复用该 UI，但不复用 Desktop Shell 或 Native Capability Implementation；具体支持面见
+[WEB_ACCESS_SUPPORT_MATRIX.md](WEB_ACCESS_SUPPORT_MATRIX.md)。
 
 ### Workbench Client 生命周期
 
@@ -302,6 +304,11 @@ SpeechEvent 到 TipTap transaction 的映射、stable segment identity、附件 
   持久化，成功后再插入 TipTap attachment node；
 - 平台共享 SpeechEvent 与 Attachment Candidate 合同，不共享引擎进程、模型或权限；实时音频、
   recognition session 与设备权限不进入 Application Transport。
+
+CURRENT Browser local ASR pilot 已自动化覆盖固定模型下载/hash/cache、Wasm/Worker/AudioWorklet 合同
+与 recognizer creation；这不是 Chrome/Safari 真实麦克风兼容证明。麦克风授权、PCM 输入、稳定出字、
+停止 flush 与长会话仍是人工未验项。Browser screen capture 尚未交付，不能从 `getDisplayMedia()` 的平台
+API 推断为当前支持。
 
 ## 事实来源
 
@@ -415,7 +422,7 @@ waiting → in_progress → completed
 
 ### CURRENT：loopback Web Access
 
-- Web Access 默认关闭，使用独立 listener 且只绑定 `127.0.0.1`；它拥有与 Local
+- Web Access 默认关闭，使用独立 listener 且固定绑定 `127.0.0.1:37643`；它拥有与 Local
   Integration Server 分离的 route set、credential、auth domain 和 lifecycle。
 - 静态资源、HTTP API 与 WebSocket 使用 same-origin 且不开放宽泛 CORS。两类 listener 必须复用
   同一套 security policy/primitives。所有请求严格校验
@@ -461,7 +468,9 @@ waiting → in_progress → completed
 
 - 后续可按 command sensitivity、client/IP 与运维场景继续细分资源预算和审计；Application
   Transport 可达不等于拥有所有 Native Capability 或管理权限。
-- LAN Web Access 延后；启用前必须使用 HTTPS/WSS 或受信任 TLS proxy，并重新审计 origin、
+- Browser screen capture 延后；平台 API 存在不构成当前产品支持。
+- LAN、TLS、autostart、可配置端口与 headless Backend Runtime 当前均为 unsupported / out of
+  scope；若未来重新立项，LAN 至少必须使用 HTTPS/WSS 或受信任 TLS proxy，并重新审计 origin、
   credential delivery、设备暴露与文件访问边界。
 
 以上目标决策记录于

@@ -1,6 +1,6 @@
 # 浏览器本地 ASR 与平台插件边界调研
 
-> 状态：方向校准研究 + WEB9 实施记录
+> 状态：方向校准研究 + WEB9 实施记录 + WEB10 支持边界收口
 > 日期：2026-09-01  
 > 外部基线：sherpa-onnx `v1.13.7`（`917bed95c8e5c7c18aa4d69fea42e9ef8ef0a60e`）  
 > 仓库基线：`4ea6fbd` 与其后的未提交 Web Speech 实验  
@@ -112,11 +112,15 @@
 
 ### 4.3 CSP 与静态资源
 
-**仓库事实：** `crates/rambledesk-local-server/src/web_access_server.rs` 当前 CSP 只有 `default-src 'self'` 等规则，没有允许 WebAssembly 编译的 `script-src 'wasm-unsafe-eval'`；静态文件服务也需要为 `.wasm` 返回正确的 `application/wasm` MIME。
+**仓库事实：** Web Access 静态服务当前已使用最窄的
+`script-src 'self' 'wasm-unsafe-eval'` 与 `worker-src 'self'`，并为 `.wasm` 返回
+`application/wasm`。自动化还覆盖 SPA history、fingerprinted assets、Wasm MIME 与 CSP；这证明服务
+合同存在，不替代真实 Chrome/Safari 麦克风与识别验收。
 
 **官方事实：** CSP 的 `script-src`/`default-src` 会控制 WebAssembly compilation；`'wasm-unsafe-eval'` 可以只放开 Wasm compilation，而不等同于放开一般 JS `eval()`。[MDN CSP](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy)
 
-**架构推论：** Web pilot 应加入最窄的 `script-src 'self' 'wasm-unsafe-eval'`，Worker 使用同源静态 URL，并明确 `worker-src 'self'`。不要为复制官方示例的动态源码装载而加入 `'unsafe-eval'` 或宽泛 Blob script。COOP/COEP 仍只在未来启用 Wasm threads 时加入。
+**当前决策：** Web pilot 保持上述最窄 CSP，Worker 使用同源静态 URL；不得为复制官方示例的动态源码
+装载加入 `'unsafe-eval'` 或宽泛 Blob script。COOP/COEP 仍只在未来启用 Wasm threads 时重新评估。
 
 ## 5. 许可证与模型分发
 
@@ -132,7 +136,8 @@
 
 ### 6.1 核心原则
 
-这里引入待写入 `docs/TERMINOLOGY.md` 的新术语 **Platform Plugin（平台插件）**：一个在单一客户端平台内实现设备能力、权限、资源与生命周期的深模块。它不是 Host Adapter，也不经 Application Transport 代理设备操作。
+`docs/TERMINOLOGY.md` 已收录 **Platform Plugin（平台插件）**：一个在单一客户端平台内实现设备能力、
+权限、资源与生命周期的深模块。它不是 Host Adapter，也不经 Application Transport 代理设备操作。
 
 Ramble 核心收敛为 TipTap 编辑流程：
 
@@ -163,7 +168,7 @@ TipTap Ramble Core
 | 平台 | SpeechRecognitionPlugin Implementation | CapturePlugin Implementation |
 | --- | --- | --- |
 | Desktop | `cpal`/系统音频 + Rust sherpa-onnx + native worker/thread；模型在 Desktop 本地资料库 | OS 截图、全局快捷键、overlay、文件选择 |
-| Browser | `getUserMedia` + AudioWorklet + 流式 resampler + dedicated Worker + sherpa-onnx WASM + origin model cache | `getDisplayMedia`、文件选择、粘贴/拖入；遵守用户手势与浏览器权限 |
+| Browser | `getUserMedia` + AudioWorklet + 流式 resampler + dedicated Worker + sherpa-onnx WASM + origin model cache；当前为 pilot，真实 mic/PCM/words 待人工验收 | 当前实现文件选择与图片粘贴；`getDisplayMedia` screen capture 延后，遵守用户手势与浏览器权限 |
 | Android | `AudioRecord` + sherpa-onnx JNI/Kotlin；模型在 app sandbox | 系统 picker/camera/media projection，按 Android 权限模型 |
 | iOS | `AVAudioEngine` + sherpa-onnx Swift/XCFramework；模型在 app sandbox | Photos/camera/share sheet 等 iOS 能力 |
 
@@ -209,11 +214,15 @@ TipTap Ramble Core
 
 ## 8. 建议落地顺序与验收门
 
-### Phase 0：浏览器 feasibility spike
+### Phase 0：浏览器 pilot 当前状态与人工门禁
 
-只做 Zipformer Small streaming CTC 单模型闭环：同源静态 WASM/Worker、AudioWorklet、实际采样率读取、流式重采样、Worker 内 recognizer、最小 Model Store、SpeechEvent → 当前 TipTap Editor。它不新增后端 speech route。
+仓库已经完成 Zipformer Small streaming CTC 单模型 pilot 的同源 WASM/Worker、AudioWorklet、流式
+重采样、Worker recognizer、最小 Model Store 与 SpeechEvent → 当前 TipTap Editor 代码路径；它没有
+新增后端 speech route。自动化已验证模型下载/hash/cache、runtime 静态合同和 recognizer creation。
+真实 Chrome/Safari 麦克风许可未在自动化环境中完成，因此真实 PCM、稳定出字、停止 flush 与长会话仍是
+Manual / unverified。
 
-必须在承诺兼容前记录真实目标设备，而不是只跑单元测试：
+必须在承诺浏览器兼容前记录真实目标设备，而不是把已有自动化当作人工验收：
 
 - 浏览器矩阵：RambleDesk 实际支持的 Chrome/Edge/Firefox/Safari 版本与机器架构；
 - cold install bytes/time、warm start time、WASM 初始化、模型 hash 验证、离线重启；
