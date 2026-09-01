@@ -363,6 +363,12 @@
     routeDraftOperation,
     activeActionFor,
     applyWorkspaceMutation,
+    recordAttachmentDiagnostic: async (activity, requestId) => {
+      if (capabilities.rambleConsole.status.availability === 'unavailable') return
+      await capabilities.rambleConsole.implementation
+        .recordDiagnostic(activity, requestId)
+        .catch(() => {})
+    },
   })
 
   type LoadedWorkspaceTarget =
@@ -1781,7 +1787,6 @@
   <RambleSessionController
     bind:this={rambleController}
     {capabilities}
-    transport={applicationTransport}
     {workspace}
     bind:attachmentBusy
     {screenCaptureBusy}
@@ -1799,11 +1804,9 @@
     bind:rambleMessage
     interactionLocked={interactionLocked || currentRequestCooking || cookedDraftReady}
     onPageError={(message) => (pageError = message)}
-    onSaveDraftNow={saveDraftNow}
-    onApplyWorkspaceMutation={applyWorkspaceMutation}
-    onRefreshAttachmentPreviews={attachmentController.refreshPreviews}
     onStartScreenCapture={attachmentController.startScreenCapture}
     onImportServerAttachmentPaths={attachmentController.importServerAttachmentPaths}
+    onPersistAttachmentCandidates={attachmentController.persistAttachmentCandidates}
     onRouteDraftOperation={routeDraftOperation}
     getActiveAction={activeActionFor}
   />
@@ -2020,7 +2023,7 @@
             onStartScreenCapture={() => void attachmentController.startScreenCapture()}
             onImportClipboard={() => void importClipboardNow()}
             onFileSelection={attachmentController.handleFileSelection}
-            onPasteFiles={attachmentController.acceptClientFiles}
+            onPasteCandidates={attachmentController.acceptAttachmentCandidates}
             onPasteError={attachmentController.reportClientFileError}
             onRemoveAttachment={(attachment) => void attachmentController.removeAttachment(attachment)}
             onOpenPackage={() => void openFeedbackPackage()}

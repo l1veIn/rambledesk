@@ -33,10 +33,7 @@ describe('browser Workbench capabilities', () => {
       CapabilityUnavailableError,
     )
     await expect(
-      capabilities.clipboardCapture.implementation.captureOnce({
-        requestId: 'request-1',
-        rambleContextId: 'ramble-1',
-      }),
+      capabilities.clipboardCapture.implementation.captureOnce(),
     ).rejects.toBeInstanceOf(CapabilityUnavailableError)
   })
 

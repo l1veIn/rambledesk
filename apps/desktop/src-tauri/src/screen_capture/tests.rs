@@ -133,17 +133,3 @@ fn crop_selection_uses_the_source_pixels() {
     assert_eq!(cropped.dimensions(), (12, 10));
     assert_eq!(cropped.get_pixel(0, 0).0, [4, 2, 0, 255]);
 }
-
-#[test]
-fn take_completed_png_returns_ready_bytes_once() {
-    let state = ScreenCaptureState::default();
-    *state.session.lock().expect("lock") = Some(CaptureSession::Ready {
-        capture_session_id: "shot-1".to_owned(),
-        png: vec![1, 2, 3, 4],
-    });
-    assert_eq!(
-        state.take_completed_png("shot-1").expect("png"),
-        [1, 2, 3, 4]
-    );
-    assert!(state.take_completed_png("shot-1").is_err());
-}

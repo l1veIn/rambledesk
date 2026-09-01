@@ -49,7 +49,7 @@ describe('capability contracts', () => {
     await Promise.resolve()
     expect(onError).not.toHaveBeenCalled()
 
-    capabilities.screenCapture.implementation.onReady(vi.fn(), onError)
+    capabilities.screenCapture.implementation.onCandidate(vi.fn(), onError)
     await Promise.resolve()
     expect(onError).toHaveBeenCalledWith(expect.any(CapabilityUnavailableError))
   })

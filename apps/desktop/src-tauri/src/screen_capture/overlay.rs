@@ -311,6 +311,7 @@ pub async fn complete_screen_capture(
         ScreenCaptureReady {
             capture_session_id: input.capture_session_id.clone(),
             file_name: format!("ramble-screenshot-{}.png", input.capture_session_id),
+            byte_length: png_len,
         },
     )
     .map_err(|error| format!("无法通知文档插入截图：{error}"))

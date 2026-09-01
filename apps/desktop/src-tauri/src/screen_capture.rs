@@ -31,34 +31,11 @@ pub struct ScreenCaptureState {
     pinned: Mutex<HashMap<String, Vec<u8>>>,
 }
 
-impl ScreenCaptureState {
-    pub fn take_completed_png(&self, capture_session_id: &str) -> Result<Vec<u8>, String> {
-        let mut session = self
-            .session
-            .lock()
-            .map_err(|_| "截图状态锁已损坏".to_owned())?;
-        match session.take() {
-            Some(CaptureSession::Ready {
-                capture_session_id: active_id,
-                png,
-            }) if active_id == capture_session_id => Ok(png),
-            other => {
-                let message = if other.is_none() {
-                    "没有已完成的截图"
-                } else {
-                    "截图会话已变化，请重新截图"
-                };
-                *session = other;
-                Err(message.to_owned())
-            }
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize)]
 struct ScreenCaptureReady {
     capture_session_id: String,
     file_name: String,
+    byte_length: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]

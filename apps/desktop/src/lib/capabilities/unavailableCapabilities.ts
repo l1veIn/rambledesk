@@ -1,4 +1,5 @@
 import type { CapabilityName, CapabilityStatus } from './capabilityManifest'
+import type { CapturePlugins } from './capturePlugin'
 import {
   CapabilityUnavailableError,
   createWorkbenchCapabilities,
@@ -35,6 +36,28 @@ function slot<Implementation>(implementation: Implementation): CapabilitySlot<Im
   return Object.freeze({ status: UNSUPPORTED, implementation })
 }
 
+const UNAVAILABLE_SCREEN_CAPTURE = {
+  onCandidate: (_handler, onError) => unavailableSubscription('screenCapture', onError),
+  onFinished: (_handler, onError) => unavailableSubscription('screenCapture', onError),
+  onShortcut: (_handler, onError) => unavailableSubscription('screenCapture', onError),
+  begin: () => rejected('screenCapture'),
+} satisfies CapturePlugins['screenCapture']
+
+const UNAVAILABLE_CLIPBOARD_CAPTURE = {
+  captureOnce: () => rejected('clipboardCapture'),
+} satisfies CapturePlugins['clipboardCapture']
+
+const UNAVAILABLE_IMAGE_PASTE = {
+  subscribe: (_target, _handler, onError) =>
+    unavailableSubscription('imagePaste', onError),
+} satisfies CapturePlugins['imagePaste']
+
+const UNAVAILABLE_CAPTURE_PLUGINS: CapturePlugins = Object.freeze({
+  screenCapture: Object.freeze(UNAVAILABLE_SCREEN_CAPTURE),
+  clipboardCapture: Object.freeze(UNAVAILABLE_CLIPBOARD_CAPTURE),
+  imagePaste: Object.freeze(UNAVAILABLE_IMAGE_PASTE),
+})
+
 const UNAVAILABLE_WORKBENCH_CAPABILITIES = createWorkbenchCapabilities({
   windowControls: slot({
     platform: () => 'unknown' as const,
@@ -59,23 +82,9 @@ const UNAVAILABLE_WORKBENCH_CAPABILITIES = createWorkbenchCapabilities({
   }),
   tray: slot({ setPendingCount: () => rejected('tray') }),
   externalLinks: slot({ open: () => rejected('externalLinks') }),
-  screenCapture: slot({
-    onReady: (_handler, onError) => unavailableSubscription('screenCapture', onError),
-    onFinished: (_handler, onError) => unavailableSubscription('screenCapture', onError),
-    onShortcut: (_handler, onError) => unavailableSubscription('screenCapture', onError),
-    begin: () => rejected('screenCapture'),
-    complete: () => rejected('screenCapture'),
-    discard: () => rejected('screenCapture'),
-  }),
-  clipboardCapture: slot({
-    captureOnce: () => rejected('clipboardCapture'),
-    completeImage: () => rejected('clipboardCapture'),
-    discardImage: () => rejected('clipboardCapture'),
-  }),
-  imagePaste: slot({
-    subscribe: (_target, _handler, onError) =>
-      unavailableSubscription('imagePaste', onError),
-  }),
+  screenCapture: slot(UNAVAILABLE_SCREEN_CAPTURE),
+  clipboardCapture: slot(UNAVAILABLE_CLIPBOARD_CAPTURE),
+  imagePaste: slot(UNAVAILABLE_IMAGE_PASTE),
   serverPaths: slot({
     chooseDirectory: () => rejected('serverPaths'),
     chooseFile: () => rejected('serverPaths'),
@@ -151,6 +160,11 @@ const UNAVAILABLE_WORKBENCH_CAPABILITIES = createWorkbenchCapabilities({
 })
 
 export const UNAVAILABLE_CAPABILITY_MANIFEST = UNAVAILABLE_WORKBENCH_CAPABILITIES.manifest
+
+/** Contract-only fallback used while concrete capture capability slots migrate. */
+export function createUnavailableCapturePlugins(): CapturePlugins {
+  return UNAVAILABLE_CAPTURE_PLUGINS
+}
 
 export function createUnavailableWorkbenchCapabilities(): WorkbenchCapabilities {
   return UNAVAILABLE_WORKBENCH_CAPABILITIES

@@ -2,12 +2,8 @@
   import { get } from 'svelte/store'
   import { onMount, tick } from 'svelte'
 
-  import {
-    clipboardCaptureLabel,
-    eventBelongsToRamble,
-    type ClipboardCaptureEvent,
-  } from '../clipboardCapture'
-  import type { ApplicationTransport } from '../application/applicationTransport'
+  import { clipboardCaptureLabel } from '../clipboardCapture'
+  import type { AttachmentCandidate } from '../capabilities/capturePlugin'
   import type { WorkbenchCapabilities } from '../capabilities/workbenchCapabilities'
   import type { ActiveAction, DraftOperation } from '../draftOperations'
   import type { FeedbackWorkspaceView } from '../feedback'
@@ -37,13 +33,13 @@
   } from '../speech'
   import { createSingleFlight } from '../singleFlight'
   import { resolvedRamblePhase } from './rambleSessionState'
+  import type { AttachmentCandidateTarget } from './attachmentController'
   import type { RamblePhase, VoicePhase } from './types'
 
   export let capabilities: Pick<
     WorkbenchCapabilities,
     'screenCapture' | 'clipboardCapture' | 'globalShortcuts' | 'speech' | 'rambleConsole'
   >
-  export let transport: ApplicationTransport
   export let workspace: FeedbackWorkspaceView | null = null
   export let interactionLocked = false
   export let attachmentBusy = false
@@ -61,18 +57,21 @@
   export let rambleRequestTitle = ''
   export let rambleMessage = ''
   export let onPageError: (message: string) => void = () => {}
-  export let onSaveDraftNow: () => Promise<boolean> = async () => true
-  export let onApplyWorkspaceMutation: (next: FeedbackWorkspaceView) => void = () => {}
-  export let onRefreshAttachmentPreviews: (next: FeedbackWorkspaceView) => Promise<void> = async () => {}
   export let onStartScreenCapture: () => Promise<void> = async () => {}
   export let onImportServerAttachmentPaths: (paths: string[]) => Promise<void> = async () => {}
+  export let onPersistAttachmentCandidates: (
+    target: AttachmentCandidateTarget,
+    candidates: readonly AttachmentCandidate[],
+  ) => Promise<boolean> = async (_target, candidates) => {
+    await Promise.allSettled(candidates.map((candidate) => candidate.dispose()))
+    return false
+  }
   export let onRouteDraftOperation: (requestId: string, operation: DraftOperation) => Promise<void> = async () => {}
   export let getActiveAction: (requestId: string) => ActiveAction = () => null
 
   let voiceRequestId = ''
   let voiceSessionId = ''
   let speechSession: SpeechRecognitionSession | null = null
-  let rambleContextId = ''
   let rambleSourceLabel = ''
   let clipboardCaptureCount = 0
   let clipboardImageQueue: Promise<void> = Promise.resolve()
@@ -178,16 +177,16 @@
   }
 
   export async function importClipboardNow() {
-    const requestId = rambleRequestId || workspace?.request.request_id || ''
-    const contextId = rambleContextId || crypto.randomUUID()
+    const requestId = workspace?.request.request_id || rambleRequestId || ''
     if (interactionLocked || !requestId || attachmentBusy) return
+    const target: AttachmentCandidateTarget = {
+      requestId,
+      action: getActiveAction(requestId),
+    }
     attachmentMessage = ''
     try {
-      const event = await capabilities.clipboardCapture.implementation.captureOnce({
-        requestId,
-        rambleContextId: contextId,
-      })
-      handleClipboardCaptureEvent(event, requestId, contextId)
+      const result = await capabilities.clipboardCapture.implementation.captureOnce()
+      handleClipboardCaptureResult(result, target)
     } catch (cause) {
       attachmentMessage = t($locale, 'Could not import clipboard: {error}', { error: messageFrom(cause) })
     }
@@ -211,7 +210,6 @@
     rambleRequestId = ''
     rambleRequestTitle = ''
     rambleSourceLabel = ''
-    rambleContextId = ''
     rambleMessage = ''
     clipboardCaptureCount = 0
   }
@@ -231,7 +229,6 @@
     rambleRequestId = workspace.request.request_id
     rambleRequestTitle = workspace.request.title
     rambleSourceLabel = workspace.request.source_hint ?? workspace.request.host_session_id
-    rambleContextId = crypto.randomUUID()
     clipboardCaptureCount = 0
     ramblePhase = 'starting'
     rambleMessage = t($locale, 'Opening the Ramble console…')
@@ -249,7 +246,7 @@
   }
 
   async function resumeRamble() {
-    if (interactionLocked || !rambleRequestId || rambleActive || voiceActive || !rambleContextId) return
+    if (interactionLocked || !rambleRequestId || rambleActive || voiceActive) return
     await beginVoiceRamble()
   }
 
@@ -367,37 +364,22 @@
     return true
   }
 
-  function handleClipboardCaptureEvent(
-    event: ClipboardCaptureEvent,
-    currentRequestId: string,
-    contextId: string,
+  function handleClipboardCaptureResult(
+    result: Awaited<ReturnType<WorkbenchCapabilities['clipboardCapture']['implementation']['captureOnce']>>,
+    target: AttachmentCandidateTarget,
   ) {
-    if (
-      interactionLocked ||
-      !currentRequestId ||
-      !eventBelongsToRamble(
-        event,
-        currentRequestId,
-        contextId,
-      )
-    ) {
-      if (event.type === 'image') {
-        void capabilities.clipboardCapture.implementation.discardImage(event.capture_id)
-      }
+    if (interactionLocked || !target.requestId) {
+      if (result.kind === 'attachment') void result.candidate.dispose().catch(() => {})
       return
     }
 
-    if (event.type === 'warning') {
-      rambleMessage = event.message
-      return
-    }
-    if (event.type === 'text') {
-      const label = clipboardCaptureLabel(event.captured_at_ms, event.truncated, $locale)
-      void onRouteDraftOperation(currentRequestId, {
+    const label = clipboardCaptureLabel(result.capturedAtMs, result.kind === 'text' && result.truncated, $locale)
+    if (result.kind === 'text') {
+      void onRouteDraftOperation(target.requestId, {
         kind: 'appendClipboardText',
-        text: event.text,
+        text: result.text,
         label,
-        action: getActiveAction(currentRequestId),
+        action: target.action,
       }).catch(
         (cause) => onPageError(t($locale, 'Failed to write Ramble content: {error}', { error: messageFrom(cause) })),
       )
@@ -406,65 +388,19 @@
       return
     }
 
-    const action = getActiveAction(currentRequestId)
     clipboardImageQueue = clipboardImageQueue
-      .then(() => importClipboardImage(event, action))
+      .then(async () => {
+        const persisted = await onPersistAttachmentCandidates(
+          { ...target, label },
+          [result.candidate],
+        )
+        if (!persisted) return
+        clipboardCaptureCount += 1
+        rambleMessage = t($locale, 'Ramble active · {count} clipboard items captured', { count: clipboardCaptureCount })
+      })
       .catch((cause) => {
         attachmentMessage = t($locale, 'Could not insert clipboard image: {error}', { error: messageFrom(cause) })
       })
-  }
-
-  async function importClipboardImage(
-    event: Extract<ClipboardCaptureEvent, { type: 'image' }>,
-    action: ActiveAction,
-  ) {
-    const requestId = event.request_id
-    try {
-      for (let attempt = 0; attachmentBusy && attempt < 200; attempt += 1) {
-        await new Promise((resolve) => setTimeout(resolve, 50))
-      }
-      if (attachmentBusy) throw new Error(t($locale, 'The attachment channel is busy. Try importing the image again shortly.'))
-      const visibleTarget = workspace?.request.request_id === requestId
-      if (visibleTarget && !(await onSaveDraftNow())) {
-        throw new Error(t($locale, 'The current draft could not be saved.'))
-      }
-      const target = visibleTarget
-        ? workspace
-        : await transport.call('getFeedbackWorkspace', { request_id: requestId })
-      if (!target) return
-
-      attachmentBusy = true
-      const next = await capabilities.clipboardCapture.implementation.completeImage({
-        requestId,
-        captureId: event.capture_id,
-        rambleContextId: event.ramble_context_id,
-        fileName: event.file_name,
-        expectedRevision: target.draft.saved_revision,
-      })
-      const attachment = next.attachments.find(
-        (item) => !target.attachments.some(
-          (existing) => existing.attachment_id === item.attachment_id,
-        ),
-      )
-      if (!attachment) throw new Error(t($locale, 'The image attachment was saved, but could not be inserted into the document flow.'))
-      const label = clipboardCaptureLabel(event.captured_at_ms, false, $locale)
-      if (visibleTarget && workspace?.request.request_id === requestId) {
-        onApplyWorkspaceMutation(next)
-        await onRefreshAttachmentPreviews(next)
-        await tick()
-      }
-      await onRouteDraftOperation(requestId, {
-        kind: 'appendAttachment',
-        attachment,
-        label,
-        action,
-      })
-      clipboardCaptureCount += 1
-      rambleMessage = t($locale, 'Ramble active · {count} clipboard items captured', { count: clipboardCaptureCount })
-    } finally {
-      attachmentBusy = false
-      await capabilities.clipboardCapture.implementation.discardImage(event.capture_id).catch(() => {})
-    }
   }
 
   function handleVoiceEvent(event: SpeechRecognitionEvent) {

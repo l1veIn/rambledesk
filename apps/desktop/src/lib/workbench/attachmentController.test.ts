@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   applicationCall: vi.fn(),
   beginCapture: vi.fn(),
-  completeCapture: vi.fn(),
   discardCapture: vi.fn(),
   importAttachmentPath: vi.fn(),
   leaveFullscreen: vi.fn(),
@@ -13,10 +12,9 @@ const mocks = vi.hoisted(() => ({
 
 import { createAttachmentController } from './attachmentController'
 import { TestApplicationTransport } from '../application/testApplicationTransport'
-import { clientAttachmentFile } from '../capabilities/clientAttachmentFile'
+import { defineAttachmentCandidate } from '../capabilities/capturePlugin'
 import { createUnavailableWorkbenchCapabilities } from '../capabilities/unavailableCapabilities'
 import type { WorkbenchCapabilities } from '../capabilities/workbenchCapabilities'
-import type { ScreenCaptureReady } from '../screenCapture'
 
 const unavailableCapabilities = createUnavailableWorkbenchCapabilities()
 
@@ -29,7 +27,7 @@ function availableCapabilities(): Pick<
       status: { availability: 'available', source: 'native' },
       implementation: {
         ...unavailableCapabilities.screenCapture.implementation,
-        onReady: (handler) => {
+        onCandidate: (handler) => {
           mocks.listeners.set('screen-capture-ready', handler as (payload: unknown) => void)
           return vi.fn()
         },
@@ -38,8 +36,6 @@ function availableCapabilities(): Pick<
           return vi.fn()
         },
         begin: mocks.beginCapture,
-        complete: mocks.completeCapture,
-        discard: mocks.discardCapture,
       },
     },
     serverPaths: {
@@ -99,6 +95,7 @@ function controllerContext() {
     routeDraftOperation: vi.fn(async () => undefined),
     activeActionFor: () => null,
     applyWorkspaceMutation: vi.fn(),
+    recordAttachmentDiagnostic: vi.fn(async () => undefined),
   }
   return {
     context,
@@ -107,12 +104,40 @@ function controllerContext() {
   }
 }
 
+function screenCandidate() {
+  return defineAttachmentCandidate({
+    id: 'capture-1',
+    source: 'screen-capture',
+    fileName: 'shot.png',
+    mediaType: 'image/png',
+    byteLength: 3,
+    readBytes: async () => new Uint8Array([1, 2, 3]).buffer,
+    dispose: mocks.discardCapture,
+  })
+}
+
+function fileCandidate(input: Readonly<{
+  fileName: string
+  byteLength: number
+  readBytes: () => Promise<ArrayBuffer>
+  dispose?: () => Promise<void>
+}>) {
+  return defineAttachmentCandidate({
+    id: `file-${input.fileName}`,
+    source: 'file-input',
+    fileName: input.fileName,
+    mediaType: 'image/png',
+    byteLength: input.byteLength,
+    readBytes: input.readBytes,
+    dispose: input.dispose ?? (async () => undefined),
+  })
+}
+
 describe('attachmentController screen capture state', () => {
   beforeEach(() => {
     mocks.applicationCall.mockReset()
     mocks.beginCapture.mockReset()
     mocks.beginCapture.mockResolvedValue(undefined)
-    mocks.completeCapture.mockReset()
     mocks.discardCapture.mockReset()
     mocks.discardCapture.mockResolvedValue(undefined)
     mocks.importAttachmentPath.mockReset()
@@ -192,14 +217,13 @@ describe('attachmentController screen capture state', () => {
       : ({ request: { request_id: 'request-1', status }, attachments: [], draft: { saved_revision: 1 } }) as never
     context.getInteractionLocked = () => locked
     context.getBusy = () => busy
-    const source = clientAttachmentFile({
-      name: 'screen.png',
-      type: 'image/png',
-      size: 1,
-      arrayBuffer: async () => new Uint8Array([1]).buffer,
+    const candidate = fileCandidate({
+      fileName: 'screen.png',
+      byteLength: 1,
+      readBytes: async () => new Uint8Array([1]).buffer,
     })
 
-    expect(createAttachmentController(context).acceptClientFiles([source])).toBe(false)
+    expect(createAttachmentController(context).acceptAttachmentCandidates([candidate])).toBe(false)
     expect(context.saveDraftNow).not.toHaveBeenCalled()
   })
 
@@ -223,16 +247,22 @@ describe('attachmentController screen capture state', () => {
       if (command === 'addFeedbackAttachment') return inserted
       return undefined
     })
-    const source = clientAttachmentFile({
-      name: 'screen.png',
-      type: 'image/png',
-      size: 3,
-      arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+    const candidate = fileCandidate({
+      fileName: 'screen.png',
+      byteLength: 3,
+      readBytes: async () => new Uint8Array([1, 2, 3]).buffer,
+    })
+    const rejectedDispose = vi.fn(async () => undefined)
+    const rejected = fileCandidate({
+      fileName: 'rejected.png',
+      byteLength: 1,
+      readBytes: async () => new Uint8Array([4]).buffer,
+      dispose: rejectedDispose,
     })
     const controller = createAttachmentController(context)
 
-    expect(controller.acceptClientFiles([source])).toBe(true)
-    expect(controller.acceptClientFiles([source])).toBe(false)
+    expect(controller.acceptAttachmentCandidates([candidate])).toBe(true)
+    expect(controller.acceptAttachmentCandidates([rejected])).toBe(false)
 
     await vi.waitFor(() => {
       expect(mocks.applicationCall).toHaveBeenCalledWith('addFeedbackAttachment', {
@@ -243,6 +273,47 @@ describe('attachmentController screen capture state', () => {
       })
     })
     await vi.waitFor(() => expect(context.routeDraftOperation).toHaveBeenCalled())
+    await vi.waitFor(() => expect(rejectedDispose).toHaveBeenCalledOnce())
+  })
+
+  it('resets file input immediately and persists it as a file-input candidate', async () => {
+    const workspace = {
+      request: { request_id: 'request-1', status: 'in_progress' },
+      attachments: [],
+      draft: { saved_revision: 3 },
+    }
+    const inserted = {
+      ...workspace,
+      draft: { saved_revision: 4 },
+      attachments: [
+        { attachment_id: 'att-1', file_name: 'notes.txt', media_type: 'text/plain' },
+      ],
+    }
+    const { context } = controllerContext()
+    context.getWorkspace = () => workspace as never
+    mocks.applicationCall.mockImplementation(async (command: string) => {
+      if (command === 'getFeedbackWorkspace') return workspace
+      if (command === 'addFeedbackAttachment') return inserted
+      return undefined
+    })
+    const file = {
+      name: 'notes.txt',
+      type: 'text/plain',
+      size: 4,
+      arrayBuffer: vi.fn(async () => new Uint8Array([1, 2, 3, 4]).buffer),
+    }
+    const input = { files: [file], value: '/fake/notes.txt' }
+
+    createAttachmentController(context).handleFileSelection({ currentTarget: input } as never)
+
+    expect(input.value).toBe('')
+    await vi.waitFor(() => {
+      expect(mocks.applicationCall).toHaveBeenCalledWith(
+        'addFeedbackAttachment',
+        expect.objectContaining({ file_name: 'notes.txt' }),
+      )
+    })
+    expect(context.recordAttachmentDiagnostic).not.toHaveBeenCalled()
   })
 
   it('allows exactly 20 MiB and rejects larger client files before reading bytes', async () => {
@@ -264,12 +335,11 @@ describe('attachmentController screen capture state', () => {
     const tooLargeRead = vi.fn(async () => new ArrayBuffer(0))
     const controller = createAttachmentController(context)
 
-    await controller.importClientFiles([{
+    await controller.importAttachmentCandidates([fileCandidate({
       fileName: 'exact.png',
-      mediaType: 'image/png',
       byteLength: 20 * 1024 * 1024,
       readBytes: exactRead,
-    }])
+    })])
     expect(exactRead).toHaveBeenCalledOnce()
     expect(mocks.applicationCall).toHaveBeenCalledWith(
       'addFeedbackAttachment',
@@ -277,12 +347,11 @@ describe('attachmentController screen capture state', () => {
     )
 
     mocks.applicationCall.mockClear()
-    await controller.importClientFiles([{
+    await controller.importAttachmentCandidates([fileCandidate({
       fileName: 'too-large.png',
-      mediaType: 'image/png',
       byteLength: 20 * 1024 * 1024 + 1,
       readBytes: tooLargeRead,
-    }])
+    })])
     expect(tooLargeRead).not.toHaveBeenCalled()
     expect(mocks.applicationCall).not.toHaveBeenCalledWith(
       'addFeedbackAttachment',
@@ -320,6 +389,51 @@ describe('attachmentController screen capture state', () => {
 
     expect(mocks.beginCapture).toHaveBeenCalledTimes(1)
     expect(context.saveDraftNow).toHaveBeenCalled()
+  })
+
+  it('locks a toolbar capture to the visible workspace instead of a background Ramble', async () => {
+    const workspace = {
+      request: { request_id: 'request-b', status: 'in_progress' },
+      attachments: [] as Array<{ attachment_id: string; file_name: string; media_type: string }>,
+      draft: { saved_revision: 4 },
+    }
+    const inserted = {
+      ...workspace,
+      draft: { saved_revision: 5 },
+      attachments: [{ attachment_id: 'att-b', file_name: 'shot.png', media_type: 'image/png' }],
+    }
+    const { context } = controllerContext()
+    context.getWorkspace = () => workspace as never
+    context.getRambleRequestId = () => 'request-a'
+    context.activeActionFor = ((requestId: string) => ({
+      actionId: `action-${requestId}`,
+      actionIndex: 0,
+      title: requestId,
+    })) as never
+    mocks.applicationCall.mockImplementation(async (command: string, input: { request_id?: string }) => {
+      expect(input.request_id).toBe('request-b')
+      if (command === 'getFeedbackWorkspace') return workspace
+      if (command === 'addFeedbackAttachment') return inserted
+      return new ArrayBuffer(0)
+    })
+
+    const controller = createAttachmentController(context)
+    const cleanup = controller.mount()
+    await controller.startScreenCapture()
+    mocks.listeners.get('screen-capture-ready')?.(screenCandidate())
+
+    await vi.waitFor(() => expect(context.routeDraftOperation).toHaveBeenCalled())
+    expect(context.routeDraftOperation).toHaveBeenCalledWith(
+      'request-b',
+      expect.objectContaining({
+        action: {
+          actionId: 'action-request-b',
+          actionIndex: 0,
+          title: 'request-b',
+        },
+      }),
+    )
+    cleanup()
   })
 
   it('imports multiple server attachment paths with a continuing CAS revision', async () => {
@@ -379,7 +493,7 @@ describe('attachmentController screen capture state', () => {
     await vi.waitFor(() => expect(mocks.listeners.has('screen-capture-finished')).toBe(true))
 
     mocks.listeners.get('screen-capture-finished')?.({
-      capture_session_id: 'capture-1', outcome: 'cancelled',
+      candidateId: 'capture-1', outcome: 'cancelled',
     })
 
     expect(setCaptureBusy).toHaveBeenCalledWith(false)
@@ -404,16 +518,18 @@ describe('attachmentController screen capture state', () => {
       createObjectURL: vi.fn(() => 'blob:preview'),
       revokeObjectURL: vi.fn(),
     })
-    mocks.completeCapture.mockResolvedValue(inserted)
-    mocks.applicationCall.mockResolvedValue(new ArrayBuffer(0))
+    mocks.applicationCall.mockImplementation(async (command: string) => {
+      if (command === 'getFeedbackWorkspace') return workspace
+      if (command === 'addFeedbackAttachment') return inserted
+      return new ArrayBuffer(0)
+    })
 
     const controller = createAttachmentController(context)
     const cleanup = controller.mount()
     await vi.waitFor(() => expect(mocks.listeners.has('screen-capture-ready')).toBe(true))
+    await controller.startScreenCapture()
 
-    mocks.listeners.get('screen-capture-ready')?.({
-      capture_session_id: 'capture-1', file_name: 'shot.png',
-    } satisfies ScreenCaptureReady)
+    mocks.listeners.get('screen-capture-ready')?.(screenCandidate())
 
     await vi.waitFor(() => {
       expect(context.setMessage).toHaveBeenCalledWith(
@@ -444,17 +560,18 @@ describe('attachmentController screen capture state', () => {
       createObjectURL: vi.fn(() => 'blob:preview'),
       revokeObjectURL: vi.fn(),
     })
-    mocks.completeCapture.mockResolvedValue(inserted)
-    mocks.applicationCall.mockResolvedValue(new ArrayBuffer(0))
+    mocks.applicationCall.mockImplementation(async (command: string) => {
+      if (command === 'getFeedbackWorkspace') return workspace
+      if (command === 'addFeedbackAttachment') return inserted
+      return new ArrayBuffer(0)
+    })
 
     const controller = createAttachmentController(context)
     const cleanup = controller.mount()
     await vi.waitFor(() => expect(mocks.listeners.has('screen-capture-ready')).toBe(true))
     await controller.startScreenCapture()
     action = { actionId: 'action-b', actionIndex: 1, title: 'Second' }
-    mocks.listeners.get('screen-capture-ready')?.({
-      capture_session_id: 'capture-1', file_name: 'shot.png',
-    } satisfies ScreenCaptureReady)
+    mocks.listeners.get('screen-capture-ready')?.(screenCandidate())
 
     await vi.waitFor(() => expect(context.routeDraftOperation).toHaveBeenCalled())
     expect(context.routeDraftOperation).toHaveBeenCalledWith(
@@ -506,14 +623,13 @@ describe('attachmentController screen capture state', () => {
       if (command === 'addFeedbackAttachment') return inserted
       return undefined
     })
-    const file = clientAttachmentFile({
-      name: 'notes.txt',
-      type: 'text/plain',
-      size: 4,
-      arrayBuffer: async () => new Uint8Array([1, 2, 3, 4]).buffer,
+    const candidate = fileCandidate({
+      fileName: 'notes.txt',
+      byteLength: 4,
+      readBytes: async () => new Uint8Array([1, 2, 3, 4]).buffer,
     })
 
-    await createAttachmentController(context).importClientFiles([file])
+    await createAttachmentController(context).importAttachmentCandidates([candidate])
 
     expect(context.routeDraftOperation).toHaveBeenCalledWith(
       'request-1',
@@ -524,6 +640,138 @@ describe('attachmentController screen capture state', () => {
       }),
     )
     expect(context.applyWorkspaceMutation).not.toHaveBeenCalled()
+  })
+
+  it('serializes candidate batches through one queue and carries the latest CAS revision forward', async () => {
+    let current = {
+      request: { request_id: 'request-1', status: 'in_progress' },
+      attachments: [] as Array<{
+        attachment_id: string
+        file_name: string
+        media_type: string
+      }>,
+      draft: { saved_revision: 3 },
+    }
+    const { context } = controllerContext()
+    context.getWorkspace = () => current as never
+    context.applyWorkspaceMutation = vi.fn((next) => {
+      current = next as never
+    })
+    mocks.applicationCall.mockImplementation(async (command: string, input: {
+      file_name?: string
+      expected_revision?: number
+    }) => {
+      if (command === 'getFeedbackWorkspace') return current
+      if (command === 'addFeedbackAttachment') {
+        const nextRevision = (input.expected_revision ?? 0) + 1
+        return {
+          ...current,
+          attachments: [
+            ...current.attachments,
+            {
+              attachment_id: `att-${nextRevision}`,
+              file_name: input.file_name ?? 'attachment.bin',
+              media_type: 'application/octet-stream',
+            },
+          ],
+          draft: { saved_revision: nextRevision },
+        }
+      }
+      return undefined
+    })
+    const firstDispose = vi.fn(async () => undefined)
+    const secondDispose = vi.fn(async () => undefined)
+    const first = defineAttachmentCandidate({
+      id: 'candidate-1',
+      source: 'screen-capture',
+      fileName: 'first.txt',
+      mediaType: 'text/plain',
+      byteLength: 1,
+      readBytes: async () => new Uint8Array([1]).buffer,
+      dispose: firstDispose,
+    })
+    const second = defineAttachmentCandidate({
+      id: 'candidate-2',
+      source: 'clipboard-image',
+      fileName: 'second.txt',
+      mediaType: 'text/plain',
+      byteLength: 1,
+      readBytes: async () => new Uint8Array([2]).buffer,
+      dispose: secondDispose,
+    })
+    const controller = createAttachmentController(context)
+    const target = { requestId: 'request-1', action: null }
+
+    await Promise.all([
+      controller.persistAttachmentCandidates(target, [first]),
+      controller.persistAttachmentCandidates(target, [second]),
+    ])
+
+    const attachmentCalls = mocks.applicationCall.mock.calls.filter(
+      ([command]) => command === 'addFeedbackAttachment',
+    )
+    expect(attachmentCalls.map(([, input]) => input.expected_revision)).toEqual([3, 4])
+    expect(context.recordAttachmentDiagnostic).toHaveBeenNthCalledWith(
+      1,
+      'screen_capture_imported',
+      'request-1',
+    )
+    expect(context.recordAttachmentDiagnostic).toHaveBeenNthCalledWith(
+      2,
+      'clipboard_image_imported',
+      'request-1',
+    )
+    expect(firstDispose).toHaveBeenCalledOnce()
+    expect(secondDispose).toHaveBeenCalledOnce()
+  })
+
+  it('disposes every candidate exactly once when candidate persistence fails', async () => {
+    const workspace = {
+      request: { request_id: 'request-1', status: 'in_progress' },
+      attachments: [],
+      draft: { saved_revision: 3 },
+    }
+    const { context } = controllerContext()
+    context.getWorkspace = () => workspace as never
+    mocks.applicationCall.mockImplementation(async (command: string) => {
+      if (command === 'getFeedbackWorkspace') return workspace
+      if (command === 'addFeedbackAttachment') throw new Error('persistence failed')
+      return undefined
+    })
+    const firstRead = vi.fn(async () => new Uint8Array([1]).buffer)
+    const secondRead = vi.fn(async () => new Uint8Array([2]).buffer)
+    const firstDispose = vi.fn(async () => undefined)
+    const secondDispose = vi.fn(async () => undefined)
+    const first = defineAttachmentCandidate({
+      id: 'candidate-1',
+      source: 'file-input',
+      fileName: 'first.txt',
+      mediaType: 'text/plain',
+      byteLength: 1,
+      readBytes: firstRead,
+      dispose: firstDispose,
+    })
+    const second = defineAttachmentCandidate({
+      id: 'candidate-2',
+      source: 'file-input',
+      fileName: 'second.txt',
+      mediaType: 'text/plain',
+      byteLength: 1,
+      readBytes: secondRead,
+      dispose: secondDispose,
+    })
+
+    await createAttachmentController(context).persistAttachmentCandidates(
+      { requestId: 'request-1', action: null },
+      [first, second],
+    )
+    await Promise.all([first.dispose(), second.dispose()])
+
+    expect(firstRead).toHaveBeenCalledOnce()
+    expect(secondRead).not.toHaveBeenCalled()
+    expect(firstDispose).toHaveBeenCalledOnce()
+    expect(secondDispose).toHaveBeenCalledOnce()
+    expect(context.setMessage).toHaveBeenCalledWith('Error: persistence failed', 'error')
   })
 
   it.each(['remove', 'reorder'] as const)(

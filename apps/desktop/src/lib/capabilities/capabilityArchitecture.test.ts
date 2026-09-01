@@ -124,4 +124,29 @@ describe('capability architecture', () => {
     expect(start).not.toContain(['get', 'feedback', 'workspace'].join('_'))
     expect(start).not.toContain(['Feedback', 'Status'].join(''))
   })
+
+  it('keeps native Capture Plugins independent from request persistence', async () => {
+    const sourceRoot = fileURLToPath(new URL('../../', import.meta.url))
+    const plugin = await readFile(
+      path.join(sourceRoot, 'lib', 'capabilities', 'tauri', 'captureCapabilities.ts'),
+      'utf8',
+    )
+    const clipboard = await readFile(
+      path.join(sourceRoot, '..', 'src-tauri', 'src', 'clipboard_capture.rs'),
+      'utf8',
+    )
+    const commands = await readFile(
+      path.join(sourceRoot, '..', 'src-tauri', 'src', 'commands.rs'),
+      'utf8',
+    )
+    const composition = await readFile(
+      path.join(sourceRoot, '..', 'src-tauri', 'src', 'lib.rs'),
+      'utf8',
+    )
+
+    expect(plugin).not.toMatch(/requestId|request_id|rambleContextId|expectedRevision/u)
+    expect(clipboard).not.toMatch(/request_id|ramble_context_id/u)
+    expect(commands).not.toMatch(/add_completed_(?:screen|clipboard)_capture/u)
+    expect(composition).not.toMatch(/add_completed_(?:screen|clipboard)_capture/u)
+  })
 })

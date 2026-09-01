@@ -1,38 +1,3 @@
-export type ClipboardCaptureEvent =
-  | {
-      type: 'text'
-      request_id: string
-      ramble_context_id: string
-      text: string
-      captured_at_ms: number
-      truncated: boolean
-    }
-  | {
-      type: 'image'
-      request_id: string
-      ramble_context_id: string
-      capture_id: string
-      file_name: string
-      captured_at_ms: number
-    }
-  | {
-      type: 'warning'
-      request_id: string
-      ramble_context_id: string
-      message: string
-    }
-
-export function eventBelongsToRamble(
-  event: ClipboardCaptureEvent,
-  requestId: string,
-  rambleContextId: string,
-): boolean {
-  return (
-    event.request_id === requestId &&
-    event.ramble_context_id === rambleContextId
-  )
-}
-
 export function clipboardCaptureLabel(
   capturedAtMs: number,
   truncated = false,

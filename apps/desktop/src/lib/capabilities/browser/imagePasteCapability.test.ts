@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import type { ClientAttachmentFile } from '../clientAttachmentFile'
-import { createBrowserImagePasteCapability } from './imagePasteCapability'
+import type { AttachmentCandidate } from '../capturePlugin'
+import { createBrowserImagePastePlugin } from './imagePasteCapability'
 
 type PasteEventFixture = Event & {
   clipboardData: {
@@ -33,9 +33,9 @@ describe('browser image-paste capability', () => {
     const target = new EventTarget()
     const image = file('screen.png', 'image/png')
     const fallback = file('fallback.png', 'image/png', [4])
-    const handler = vi.fn((_files: readonly ClientAttachmentFile[]) => true)
+    const handler = vi.fn((_candidates: readonly AttachmentCandidate[]) => true)
 
-    const unsubscribe = createBrowserImagePasteCapability().subscribe(
+    const unsubscribe = createBrowserImagePastePlugin().subscribe(
       target,
       handler,
       vi.fn(),
@@ -53,15 +53,16 @@ describe('browser image-paste capability', () => {
     target.dispatchEvent(event)
 
     expect(handler).toHaveBeenCalledTimes(1)
-    const [files] = handler.mock.calls[0]!
-    expect(files).toHaveLength(1)
-    expect(files[0]).toMatchObject({
+    const [candidates] = handler.mock.calls[0]!
+    expect(candidates).toHaveLength(1)
+    expect(candidates[0]).toMatchObject({
+      source: 'image-paste',
       fileName: 'screen.png',
       mediaType: 'image/png',
       byteLength: 3,
     })
-    expect(files[0]).not.toHaveProperty('path')
-    await expect(files[0]!.readBytes()).resolves.toEqual(new Uint8Array([1, 2, 3]).buffer)
+    expect(candidates[0]).not.toHaveProperty('path')
+    await expect(candidates[0]!.readBytes()).resolves.toEqual(new Uint8Array([1, 2, 3]).buffer)
     expect(event.defaultPrevented).toBe(true)
     expect(stopPropagation).toHaveBeenCalledTimes(1)
 
@@ -73,10 +74,10 @@ describe('browser image-paste capability', () => {
   it('falls back to clipboard files and leaves rejected image paste untouched', () => {
     const target = new EventTarget()
     const image = file('fallback.png', 'image/png')
-    const handler = vi.fn((_files: readonly ClientAttachmentFile[]) => false)
+    const handler = vi.fn((_candidates: readonly AttachmentCandidate[]) => false)
     const bubbleListener = vi.fn()
     target.addEventListener('paste', bubbleListener)
-    createBrowserImagePasteCapability().subscribe(target, handler, vi.fn())
+    createBrowserImagePastePlugin().subscribe(target, handler, vi.fn())
     const event = pasteEvent({ files: [image, file('notes.txt', 'text/plain')] })
 
     target.dispatchEvent(event)
@@ -89,11 +90,11 @@ describe('browser image-paste capability', () => {
 
   it('leaves ordinary text paste untouched and reports extraction failures without intercepting', () => {
     const target = new EventTarget()
-    const handler = vi.fn((_files: readonly ClientAttachmentFile[]) => true)
+    const handler = vi.fn((_candidates: readonly AttachmentCandidate[]) => true)
     const onError = vi.fn()
     const bubbleListener = vi.fn()
     target.addEventListener('paste', bubbleListener)
-    createBrowserImagePasteCapability().subscribe(target, handler, onError)
+    createBrowserImagePastePlugin().subscribe(target, handler, onError)
 
     const textEvent = pasteEvent({
       items: [{ kind: 'string', type: 'text/plain', getAsFile: () => null }],

@@ -1,70 +1,42 @@
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::{
     collections::HashMap,
     io::Cursor,
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
-    },
-    thread::{self, JoinHandle},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    sync::Mutex,
+    time::{SystemTime, UNIX_EPOCH},
 };
-use tauri::{AppHandle, Emitter, ipc::Response};
+use tauri::ipc::Response;
 
-const POLL_INTERVAL: Duration = Duration::from_millis(250);
 const MAX_TEXT_CHARS: usize = 50_000;
 const MAX_IMAGE_BYTES: usize = 20 * 1024 * 1024;
 
 #[derive(Default)]
 pub struct ClipboardCaptureState {
-    monitor: Mutex<Option<ClipboardMonitor>>,
-    images: Arc<Mutex<HashMap<String, PendingImage>>>,
-}
-
-struct ClipboardMonitor {
-    running: Arc<AtomicBool>,
-    worker: JoinHandle<()>,
+    images: Mutex<HashMap<String, PendingImage>>,
 }
 
 struct PendingImage {
-    request_id: String,
-    ramble_context_id: String,
     contents: Vec<u8>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct StartClipboardCaptureInput {
-    request_id: String,
-    ramble_context_id: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ClipboardCaptureEvent {
     Text {
-        request_id: String,
-        ramble_context_id: String,
         text: String,
         captured_at_ms: u64,
         truncated: bool,
     },
     Image {
-        request_id: String,
-        ramble_context_id: String,
         capture_id: String,
         file_name: String,
         captured_at_ms: u64,
-    },
-    Warning {
-        request_id: String,
-        ramble_context_id: String,
-        message: String,
+        byte_length: usize,
     },
 }
 
 #[tauri::command]
 pub fn capture_clipboard_once(
-    input: StartClipboardCaptureInput,
     state: tauri::State<'_, ClipboardCaptureState>,
 ) -> Result<ClipboardCaptureEvent, String> {
     let mut clipboard =
@@ -78,24 +50,17 @@ pub fn capture_clipboard_once(
         }
         let capture_id = uuid::Uuid::now_v7().to_string();
         let file_name = format!("ramble-clipboard-{capture_id}.png");
+        let byte_length = contents.len();
         state
             .images
             .lock()
             .map_err(|_| "剪贴板图片状态锁已损坏".to_owned())?
-            .insert(
-                capture_id.clone(),
-                PendingImage {
-                    request_id: input.request_id.clone(),
-                    ramble_context_id: input.ramble_context_id.clone(),
-                    contents,
-                },
-            );
+            .insert(capture_id.clone(), PendingImage { contents });
         return Ok(ClipboardCaptureEvent::Image {
-            request_id: input.request_id,
-            ramble_context_id: input.ramble_context_id,
             capture_id,
             file_name,
             captured_at_ms,
+            byte_length,
         });
     }
 
@@ -103,8 +68,6 @@ pub fn capture_clipboard_once(
         let (text, truncated) = truncate_text(text);
         if !text.trim().is_empty() {
             return Ok(ClipboardCaptureEvent::Text {
-                request_id: input.request_id,
-                ramble_context_id: input.ramble_context_id,
                 text,
                 captured_at_ms,
                 truncated,
@@ -116,90 +79,8 @@ pub fn capture_clipboard_once(
 }
 
 #[tauri::command]
-pub async fn start_clipboard_capture(
-    input: StartClipboardCaptureInput,
-    app: AppHandle,
-    state: tauri::State<'_, ClipboardCaptureState>,
-) -> Result<(), String> {
-    let clipboard =
-        arboard::Clipboard::new().map_err(|error| format!("无法访问 Windows 剪贴板：{error}"))?;
-    let mut monitor = state
-        .monitor
-        .lock()
-        .map_err(|_| "剪贴板监听状态锁已损坏".to_owned())?;
-    if monitor.is_some() {
-        return Err("已有 Ramble 正在监听剪贴板".to_owned());
-    }
-
-    let running = Arc::new(AtomicBool::new(true));
-    let worker_running = Arc::clone(&running);
-    let images = Arc::clone(&state.images);
-    let request_id = input.request_id;
-    let ramble_context_id = input.ramble_context_id;
-    let worker = thread::Builder::new()
-        .name("rambledesk-clipboard".to_owned())
-        .spawn(move || {
-            monitor_clipboard(
-                app,
-                clipboard,
-                request_id,
-                ramble_context_id,
-                worker_running,
-                images,
-            );
-        })
-        .map_err(|error| format!("无法启动剪贴板监听线程：{error}"))?;
-
-    *monitor = Some(ClipboardMonitor { running, worker });
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn stop_clipboard_capture(
-    state: tauri::State<'_, ClipboardCaptureState>,
-) -> Result<(), String> {
-    let monitor = state
-        .monitor
-        .lock()
-        .map_err(|_| "剪贴板监听状态锁已损坏".to_owned())?
-        .take();
-    let Some(monitor) = monitor else {
-        return Ok(());
-    };
-    monitor.running.store(false, Ordering::Release);
-    tauri::async_runtime::spawn_blocking(move || monitor.worker.join())
-        .await
-        .map_err(|error| format!("剪贴板监听停止任务异常退出：{error}"))?
-        .map_err(|_| "剪贴板监听线程异常退出".to_owned())
-}
-
-impl ClipboardCaptureState {
-    pub fn take_image(
-        &self,
-        capture_id: &str,
-        request_id: &str,
-        ramble_context_id: &str,
-    ) -> Result<Vec<u8>, String> {
-        let mut images = self
-            .images
-            .lock()
-            .map_err(|_| "剪贴板图片状态锁已损坏".to_owned())?;
-        let image = images
-            .remove(capture_id)
-            .ok_or_else(|| "剪贴板图片已过期或不存在".to_owned())?;
-        if image.request_id != request_id || image.ramble_context_id != ramble_context_id {
-            images.insert(capture_id.to_owned(), image);
-            return Err("剪贴板图片不属于当前 Ramble".to_owned());
-        }
-        Ok(image.contents)
-    }
-}
-
-#[tauri::command]
 pub fn read_clipboard_capture_image(
     capture_id: String,
-    request_id: String,
-    ramble_context_id: String,
     state: tauri::State<'_, ClipboardCaptureState>,
 ) -> Result<Response, String> {
     let images = state
@@ -209,9 +90,6 @@ pub fn read_clipboard_capture_image(
     let image = images
         .get(&capture_id)
         .ok_or_else(|| "剪贴板图片已过期或不存在".to_owned())?;
-    if image.request_id != request_id || image.ramble_context_id != ramble_context_id {
-        return Err("剪贴板图片不属于当前 Ramble".to_owned());
-    }
     Ok(Response::new(image.contents.clone()))
 }
 
@@ -226,83 +104,6 @@ pub fn discard_clipboard_capture_image(
         .map_err(|_| "剪贴板图片状态锁已损坏".to_owned())?
         .remove(&capture_id);
     Ok(())
-}
-
-fn monitor_clipboard(
-    app: AppHandle,
-    mut clipboard: arboard::Clipboard,
-    request_id: String,
-    ramble_context_id: String,
-    running: Arc<AtomicBool>,
-    images: Arc<Mutex<HashMap<String, PendingImage>>>,
-) {
-    let mut sequence = clipboard_sequence_number();
-    while running.load(Ordering::Acquire) {
-        thread::sleep(POLL_INTERVAL);
-        let next_sequence = clipboard_sequence_number();
-        if next_sequence == 0 || next_sequence == sequence {
-            continue;
-        }
-        sequence = next_sequence;
-
-        if let Ok(image) = clipboard.get_image() {
-            match encode_clipboard_image(image) {
-                Ok(contents) if contents.len() <= MAX_IMAGE_BYTES => {
-                    let capture_id = uuid::Uuid::now_v7().to_string();
-                    let file_name = format!("ramble-clipboard-{capture_id}.png");
-                    if let Ok(mut pending) = images.lock() {
-                        pending.insert(
-                            capture_id.clone(),
-                            PendingImage {
-                                request_id: request_id.clone(),
-                                ramble_context_id: ramble_context_id.clone(),
-                                contents,
-                            },
-                        );
-                        emit_event(
-                            &app,
-                            ClipboardCaptureEvent::Image {
-                                request_id: request_id.clone(),
-                                ramble_context_id: ramble_context_id.clone(),
-                                capture_id,
-                                file_name,
-                                captured_at_ms: unix_time_ms(),
-                            },
-                        );
-                    }
-                }
-                Ok(_) => emit_warning(
-                    &app,
-                    &request_id,
-                    &ramble_context_id,
-                    "剪贴板图片超过 20 MiB，已忽略",
-                ),
-                Err(error) => emit_warning(
-                    &app,
-                    &request_id,
-                    &ramble_context_id,
-                    &format!("剪贴板图片编码失败：{error}"),
-                ),
-            }
-            continue;
-        }
-
-        if let Ok(text) = clipboard.get_text() {
-            let (text, truncated) = truncate_text(text);
-            if !text.trim().is_empty() {
-                emit_event(
-                    &app,
-                    ClipboardCaptureEvent::Text {
-                        request_id: request_id.clone(),
-                        ramble_context_id: ramble_context_id.clone(),
-                        text,
-                        captured_at_ms: unix_time_ms(),
-                        truncated,
-                    },
-                );
-            }
-        }
-    }
 }
 
 fn encode_clipboard_image(image: arboard::ImageData<'_>) -> Result<Vec<u8>, String> {
@@ -324,23 +125,6 @@ fn truncate_text(text: String) -> (String, bool) {
     (truncated, was_truncated)
 }
 
-fn emit_warning(app: &AppHandle, request_id: &str, ramble_context_id: &str, message: &str) {
-    emit_event(
-        app,
-        ClipboardCaptureEvent::Warning {
-            request_id: request_id.to_owned(),
-            ramble_context_id: ramble_context_id.to_owned(),
-            message: message.to_owned(),
-        },
-    );
-}
-
-fn emit_event(app: &AppHandle, event: ClipboardCaptureEvent) {
-    if let Err(error) = app.emit_to("main", "clipboard-capture-event", event) {
-        tracing::warn!(%error, "failed to emit clipboard capture event");
-    }
-}
-
 fn unix_time_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -348,16 +132,6 @@ fn unix_time_ms() -> u64 {
         .as_millis()
         .try_into()
         .unwrap_or(u64::MAX)
-}
-
-#[cfg(target_os = "windows")]
-fn clipboard_sequence_number() -> u32 {
-    unsafe { windows::Win32::System::DataExchange::GetClipboardSequenceNumber() }
-}
-
-#[cfg(not(target_os = "windows"))]
-fn clipboard_sequence_number() -> u32 {
-    0
 }
 
 #[cfg(test)]
@@ -379,20 +153,10 @@ mod tests {
     }
 
     #[test]
-    fn take_image_returns_bytes_once() {
-        let state = ClipboardCaptureState::default();
-        state.images.lock().expect("lock").insert(
-            "cap-1".to_owned(),
-            PendingImage {
-                request_id: "req-1".to_owned(),
-                ramble_context_id: "ctx-1".to_owned(),
-                contents: vec![9, 8, 7],
-            },
-        );
-        assert_eq!(
-            state.take_image("cap-1", "req-1", "ctx-1").expect("png"),
-            [9, 8, 7]
-        );
-        assert!(state.take_image("cap-1", "req-1", "ctx-1").is_err());
+    fn pending_image_contains_only_client_local_bytes() {
+        let image = PendingImage {
+            contents: vec![9, 8, 7],
+        };
+        assert_eq!(image.contents, [9, 8, 7]);
     }
 }
