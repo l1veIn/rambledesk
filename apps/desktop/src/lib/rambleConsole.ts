@@ -28,5 +28,5 @@ export type RambleConsoleCommand =
   | { type: 'toggle-recording' }
   | { type: 'capture-screen' }
   | { type: 'import-clipboard' }
-  | { type: 'import-files'; paths: string[] }
+  | { type: 'import-server-paths'; serverPaths: string[] }
   | { type: 'exit' }

@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
   beginCapture: vi.fn(),
   completeCapture: vi.fn(),
   discardCapture: vi.fn(),
-  importServerPath: vi.fn(),
+  importAttachmentPath: vi.fn(),
   leaveFullscreen: vi.fn(),
   restart: vi.fn(),
   listeners: new Map<string, (payload: unknown) => void>(),
@@ -20,7 +20,10 @@ import type { ScreenCaptureReady } from '../screenCapture'
 
 const unavailableCapabilities = createUnavailableWorkbenchCapabilities()
 
-function availableCapabilities(): Pick<WorkbenchCapabilities, 'screenCapture' | 'windowControls'> {
+function availableCapabilities(): Pick<
+  WorkbenchCapabilities,
+  'screenCapture' | 'serverPaths' | 'windowControls'
+> {
   return {
     screenCapture: {
       status: { availability: 'available', source: 'native' },
@@ -34,14 +37,20 @@ function availableCapabilities(): Pick<WorkbenchCapabilities, 'screenCapture' | 
           mocks.listeners.set('screen-capture-finished', handler as (payload: unknown) => void)
           return vi.fn()
         },
+        begin: mocks.beginCapture,
+        complete: mocks.completeCapture,
+        discard: mocks.discardCapture,
+      },
+    },
+    serverPaths: {
+      status: { availability: 'available', source: 'native' },
+      implementation: {
+        ...unavailableCapabilities.serverPaths.implementation,
         onFileDrop: (handler) => {
           mocks.listeners.set('file-drop', handler as (payload: unknown) => void)
           return vi.fn()
         },
-        begin: mocks.beginCapture,
-        importServerPath: mocks.importServerPath,
-        complete: mocks.completeCapture,
-        discard: mocks.discardCapture,
+        importAttachmentPath: mocks.importAttachmentPath,
       },
     },
     windowControls: {
@@ -106,7 +115,7 @@ describe('attachmentController screen capture state', () => {
     mocks.completeCapture.mockReset()
     mocks.discardCapture.mockReset()
     mocks.discardCapture.mockResolvedValue(undefined)
-    mocks.importServerPath.mockReset()
+    mocks.importAttachmentPath.mockReset()
     mocks.leaveFullscreen.mockReset()
     mocks.leaveFullscreen.mockResolvedValue(undefined)
     mocks.restart.mockReset()
@@ -127,6 +136,46 @@ describe('attachmentController screen capture state', () => {
     const dispose = createAttachmentController(context).mount()
 
     expect(window.addEventListener).not.toHaveBeenCalledWith('paste', expect.any(Function))
+    dispose()
+  })
+
+  it('subscribes and imports file drops when server paths are available without screen capture', async () => {
+    const workspace = {
+      request: { request_id: 'request-1', status: 'in_progress' },
+      attachments: [],
+      draft: { saved_revision: 1 },
+    }
+    const inserted = {
+      ...workspace,
+      draft: { saved_revision: 2 },
+      attachments: [
+        { attachment_id: 'att-1', file_name: 'notes.txt', media_type: 'text/plain' },
+      ],
+    }
+    const { context } = controllerContext()
+    context.capabilities = {
+      ...context.capabilities,
+      screenCapture: unavailableCapabilities.screenCapture,
+    }
+    context.getWorkspace = () => workspace as never
+    mocks.applicationCall.mockImplementation(async (operation: string) => {
+      if (operation === 'getFeedbackWorkspace') return workspace
+      return undefined
+    })
+    mocks.importAttachmentPath.mockResolvedValue(inserted)
+
+    const dispose = createAttachmentController(context).mount()
+    expect(mocks.listeners.has('screen-capture-ready')).toBe(false)
+    expect(mocks.listeners.has('file-drop')).toBe(true)
+    mocks.listeners.get('file-drop')?.({ type: 'drop', paths: ['/tmp/notes.txt'] })
+
+    await vi.waitFor(() => {
+      expect(mocks.importAttachmentPath).toHaveBeenCalledWith({
+        requestId: 'request-1',
+        path: '/tmp/notes.txt',
+        expectedRevision: 1,
+      })
+    })
     dispose()
   })
 
@@ -273,7 +322,7 @@ describe('attachmentController screen capture state', () => {
     expect(context.saveDraftNow).toHaveBeenCalled()
   })
 
-  it('imports a native file-drop path through the screen-capture capability with CAS', async () => {
+  it('imports multiple server attachment paths with a continuing CAS revision', async () => {
     const workspace = {
       request: { request_id: 'request-1' },
       attachments: [],
@@ -286,23 +335,41 @@ describe('attachmentController screen capture state', () => {
         { attachment_id: 'att-1', file_name: 'notes.txt', media_type: 'text/plain' },
       ],
     }
+    const insertedAgain = {
+      ...inserted,
+      draft: { saved_revision: 5 },
+      attachments: [
+        ...inserted.attachments,
+        { attachment_id: 'att-2', file_name: 'other.txt', media_type: 'text/plain' },
+      ],
+    }
     const { context } = controllerContext()
     context.getWorkspace = () => workspace as never
     mocks.applicationCall.mockImplementation(async (operation: string) => {
       if (operation === 'getFeedbackWorkspace') return workspace
       return undefined
     })
-    mocks.importServerPath.mockResolvedValue(inserted)
+    mocks.importAttachmentPath
+      .mockResolvedValueOnce(inserted)
+      .mockResolvedValueOnce(insertedAgain)
 
-    await createAttachmentController(context).importAttachmentPaths(['/tmp/notes.txt'])
+    await createAttachmentController(context).importServerAttachmentPaths([
+      '/tmp/notes.txt',
+      '/tmp/other.txt',
+    ])
 
     expect(context.saveDraftNow).toHaveBeenCalled()
-    expect(mocks.importServerPath).toHaveBeenCalledWith({
+    expect(mocks.importAttachmentPath).toHaveBeenCalledWith({
       requestId: 'request-1',
       path: '/tmp/notes.txt',
       expectedRevision: 3,
     })
-    expect(context.applyWorkspaceMutation).toHaveBeenCalledWith(inserted)
+    expect(mocks.importAttachmentPath).toHaveBeenCalledWith({
+      requestId: 'request-1',
+      path: '/tmp/other.txt',
+      expectedRevision: 4,
+    })
+    expect(context.applyWorkspaceMutation).toHaveBeenLastCalledWith(insertedAgain)
   })
 
   it('clears capture busy without changing attachment busy on cancel or pin', async () => {

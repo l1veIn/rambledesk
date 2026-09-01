@@ -86,6 +86,15 @@ export interface ServerPathCapability {
     attachmentId: string
     kind: 'request' | 'workspace'
   }>): Promise<string>
+  onFileDrop(
+    handler: (event: NativeFileDropEvent) => void,
+    onError: CapabilityErrorHandler,
+  ): CapabilityUnsubscribe
+  importAttachmentPath(input: Readonly<{
+    requestId: string
+    path: string
+    expectedRevision: number
+  }>): Promise<FeedbackWorkspaceView>
 }
 
 export type CaptureFinished = Readonly<{
@@ -106,16 +115,7 @@ export interface ScreenCaptureCapability {
     onError: CapabilityErrorHandler,
   ): CapabilityUnsubscribe
   onShortcut(handler: () => void, onError: CapabilityErrorHandler): CapabilityUnsubscribe
-  onFileDrop(
-    handler: (event: NativeFileDropEvent) => void,
-    onError: CapabilityErrorHandler,
-  ): CapabilityUnsubscribe
   begin(): Promise<void>
-  importServerPath(input: Readonly<{
-    requestId: string
-    path: string
-    expectedRevision: number
-  }>): Promise<FeedbackWorkspaceView>
   complete(input: Readonly<{
     requestId: string
     captureSessionId: string

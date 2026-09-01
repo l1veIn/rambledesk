@@ -63,9 +63,7 @@ const UNAVAILABLE_WORKBENCH_CAPABILITIES = createWorkbenchCapabilities({
     onReady: (_handler, onError) => unavailableSubscription('screenCapture', onError),
     onFinished: (_handler, onError) => unavailableSubscription('screenCapture', onError),
     onShortcut: (_handler, onError) => unavailableSubscription('screenCapture', onError),
-    onFileDrop: (_handler, onError) => unavailableSubscription('screenCapture', onError),
     begin: () => rejected('screenCapture'),
-    importServerPath: () => rejected('screenCapture'),
     complete: () => rejected('screenCapture'),
     discard: () => rejected('screenCapture'),
   }),
@@ -85,6 +83,8 @@ const UNAVAILABLE_WORKBENCH_CAPABILITIES = createWorkbenchCapabilities({
     reveal: () => rejected('serverPaths'),
     openAttachment: () => rejected('serverPaths'),
     revealAttachment: () => rejected('serverPaths'),
+    onFileDrop: (_handler, onError) => unavailableSubscription('serverPaths', onError),
+    importAttachmentPath: () => rejected('serverPaths'),
   }),
   globalShortcuts: slot({
     read: () => rejected('globalShortcuts'),

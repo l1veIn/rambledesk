@@ -15,32 +15,7 @@ export function createTauriScreenCaptureCapability(
       subscribeToTauriEvent(api, 'screen-capture-finished', handler, onError),
     onShortcut: (handler, onError) =>
       subscribeToTauriEvent(api, 'screen-capture-shortcut', handler, onError),
-    onFileDrop(handler, onError) {
-      let active = true
-      let unlisten: (() => void) | undefined
-      void api
-        .currentWebview()
-        .onDragDropEvent(({ payload }) => handler(payload))
-        .then((nextUnlisten) => {
-          if (active) unlisten = nextUnlisten
-          else nextUnlisten()
-        })
-        .catch((cause) => {
-          if (active) onError(cause)
-        })
-      return () => {
-        if (!active) return
-        active = false
-        unlisten?.()
-      }
-    },
     begin: () => api.invoke<void>('begin_screen_capture'),
-    importServerPath: (input) =>
-      api.invoke('import_feedback_attachment_path', {
-        requestId: input.requestId,
-        path: input.path,
-        expectedRevision: input.expectedRevision,
-      }),
     complete: (input) =>
       api.invoke('add_completed_screen_capture', {
         requestId: input.requestId,

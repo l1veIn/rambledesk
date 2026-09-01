@@ -21,7 +21,7 @@ import type { FeedbackEditorHandle } from './types'
 export type AttachmentMessageTone = 'info' | 'success' | 'error'
 
 type AttachmentControllerContext = {
-  capabilities: Pick<WorkbenchCapabilities, 'screenCapture' | 'windowControls'>
+  capabilities: Pick<WorkbenchCapabilities, 'screenCapture' | 'serverPaths' | 'windowControls'>
   transport: ApplicationTransport
   tr: (source: string, values?: Record<string, string | number>) => string
   messageFrom: (cause: unknown) => string
@@ -79,12 +79,16 @@ export function createAttachmentController(context: AttachmentControllerContext)
           // A failed cancellation listener does not affect capture or attachment storage.
         },
       )
-      dragUnlisten = screenCapture.implementation.onFileDrop(
+    }
+
+    const serverPaths = context.capabilities.serverPaths
+    if (serverPaths.status.availability !== 'unavailable') {
+      dragUnlisten = serverPaths.implementation.onFileDrop(
         (event) => {
           context.setDragActive(event.type === 'enter' || event.type === 'over')
           if (event.type === 'drop') {
             context.setDragActive(false)
-            void importAttachmentPaths(event.paths)
+            void importServerAttachmentPaths(event.paths)
           } else if (event.type === 'leave') {
             context.setDragActive(false)
           }
@@ -192,7 +196,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
     context.setMessage(context.messageFrom(cause), 'error')
   }
 
-  async function importAttachmentPaths(paths: readonly string[]) {
+  async function importServerAttachmentPaths(paths: readonly string[]) {
     const workspace = context.getWorkspace()
     const requestId = context.getRambleRequestId() || workspace?.request.request_id || ''
     if (context.getInteractionLocked() || !requestId || paths.length === 0 || context.getBusy()) return
@@ -207,7 +211,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
       if (!next) throw new Error(context.tr('This feedback request could not be found.'))
       const existingIds = new Set(next.attachments.map((item) => item.attachment_id))
       for (const path of paths) {
-        next = await context.capabilities.screenCapture.implementation.importServerPath({
+        next = await context.capabilities.serverPaths.implementation.importAttachmentPath({
           requestId,
           path,
           expectedRevision: next.draft.saved_revision,
@@ -470,7 +474,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
     acceptClientFiles,
     importClientFiles,
     reportClientFileError,
-    importAttachmentPaths,
+    importServerAttachmentPaths,
     startScreenCapture,
     removeAttachment,
     insertExistingAttachment,

@@ -1803,7 +1803,7 @@
     onApplyWorkspaceMutation={applyWorkspaceMutation}
     onRefreshAttachmentPreviews={attachmentController.refreshPreviews}
     onStartScreenCapture={attachmentController.startScreenCapture}
-    onImportAttachmentPaths={attachmentController.importAttachmentPaths}
+    onImportServerAttachmentPaths={attachmentController.importServerAttachmentPaths}
     onRouteDraftOperation={routeDraftOperation}
     getActiveAction={activeActionFor}
   />
