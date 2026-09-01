@@ -15,6 +15,13 @@ use crate::WorkbenchState;
 
 const CREDENTIAL_SERVICE: &str = "com.rambledesk.desktop.web-access";
 const CREDENTIAL_ACCOUNT: &str = "web-access-durable-token";
+const BROWSER_SPEECH_ASSETS: &[&str] = &[
+    "browser-speech/pcm-capture.worklet.js",
+    "browser-speech/sherpa.worker.js",
+    "browser-speech/runtime/sherpa-onnx-asr.js",
+    "browser-speech/runtime/sherpa-onnx-wasm-web.js",
+    "browser-speech/runtime/sherpa-onnx-wasm-web.wasm",
+];
 
 pub(super) trait WebAccessCredentialStore: Send + Sync {
     fn load_or_create(&self) -> Result<DurableWebAccessToken, String>;
@@ -97,11 +104,12 @@ impl TauriSpaAssets {
                     SpaAssetCachePolicy::NoCache
                 };
                 (
-                    path,
+                    path.clone(),
                     SpaAsset {
                         bytes,
-                        mime_type,
-                        content_security_policy: None,
+                        mime_type: web_asset_mime_type(&path, mime_type),
+                        content_security_policy: (path == "browser-speech/sherpa.worker.js")
+                            .then(|| "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'".to_owned()),
                         cache_policy,
                     },
                 )
@@ -121,6 +129,7 @@ fn dev_asset_entries(
     let outputs = vite_manifest_outputs(manifest_bytes)?;
     let mut paths = outputs.into_iter().collect::<Vec<_>>();
     paths.push("index.html".to_owned());
+    paths.extend(BROWSER_SPEECH_ASSETS.iter().map(|path| (*path).to_owned()));
     paths.sort();
     paths.dedup();
     let mut entries = vec![(
@@ -135,6 +144,16 @@ fn dev_asset_entries(
         entries.push((path, bytes, mime_type));
     }
     Ok(entries)
+}
+
+fn web_asset_mime_type(path: &str, resolver_mime_type: String) -> String {
+    if path.ends_with(".wasm") {
+        "application/wasm".to_owned()
+    } else if path.ends_with(".js") {
+        "text/javascript; charset=utf-8".to_owned()
+    } else {
+        resolver_mime_type
+    }
 }
 impl SpaAssetSource for TauriSpaAssets {
     fn load(&self, path: &str) -> Option<SpaAsset> {
@@ -335,11 +354,14 @@ mod tests {
 
     #[test]
     fn dev_manifest_builds_an_exact_cached_inventory_without_request_path_fallback() {
-        let readable = HashMap::from([
+        let mut readable = HashMap::from([
             ("index.html", b"<main>Workbench</main>".to_vec()),
             ("assets/app-abc12345.js", b"export {}".to_vec()),
             ("assets/app-def67890.css", b"body{}".to_vec()),
         ]);
+        for path in BROWSER_SPEECH_ASSETS {
+            readable.insert(path, b"browser speech asset".to_vec());
+        }
         let requested = std::cell::RefCell::new(Vec::new());
         let entries = dev_asset_entries(
             br#"{
@@ -365,13 +387,24 @@ mod tests {
             SpaAssetCachePolicy::Immutable,
         );
         assert!(assets.load("assets/missing.js").is_none());
-        assert_eq!(
-            requested.into_inner(),
-            [
-                "assets/app-abc12345.js",
-                "assets/app-def67890.css",
-                "index.html",
-            ],
+        let requested = requested.into_inner();
+        assert!(requested.contains(&"assets/app-abc12345.js".to_owned()));
+        assert!(requested.contains(&"browser-speech/sherpa.worker.js".to_owned()));
+        let wasm = assets
+            .load("browser-speech/runtime/sherpa-onnx-wasm-web.wasm")
+            .expect("wasm asset");
+        assert_eq!(wasm.mime_type, "application/wasm");
+        let worker = assets
+            .load("browser-speech/sherpa.worker.js")
+            .expect("worker asset");
+        assert!(
+            worker
+                .content_security_policy
+                .as_deref()
+                .is_some_and(|policy| {
+                    policy.contains("script-src 'self' 'wasm-unsafe-eval'")
+                        && policy.contains("connect-src 'self'")
+                })
         );
     }
 

@@ -187,7 +187,7 @@ pub async fn start_web_access_server(
     let spa_state = SpaState {
         allowed_host: authority.clone(),
         content_security_policy: format!(
-            "default-src 'self'; img-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; connect-src 'self' ws://{address}; frame-ancestors 'none'"
+            "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; img-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; connect-src 'self' ws://{address} https://www.modelscope.cn https://cdn-lfs-cn-1.modelscope.cn; frame-ancestors 'none'"
         ),
         assets,
     };

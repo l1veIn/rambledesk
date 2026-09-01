@@ -104,31 +104,41 @@
   }
 
   onMount(() => {
-    if (capabilities.speech.status.availability === 'unavailable') return
-    void capabilities.globalShortcuts.implementation.read()
-      .then((settings) => shortcutSettings.set(settings))
-      .catch(() => {})
-    const captureShortcutUnlisten = capabilities.screenCapture.implementation.onShortcut(() => {
-      if (workspace && !interactionLocked) void onStartScreenCapture()
-    }, (cause) => {
-        attachmentMessage = t($locale, 'Cannot listen for the capture shortcut: {error}', { error: messageFrom(cause) })
-      })
-    const rambleShortcutUnlisten = capabilities.globalShortcuts.implementation.onRambleToggle(() => {
-      void toggleRamble()
-    }, (cause) => {
-        ramblePhase = 'error'
-        rambleMessage = t($locale, 'Cannot listen for the Ramble shortcut: {error}', { error: messageFrom(cause) })
-      })
-    const consoleCommandUnlisten = capabilities.rambleConsole.implementation.onCommand(
-      (command) => void handleRambleConsoleCommand(command),
-      () => {},
-    )
-    const consoleReadyUnlisten = capabilities.rambleConsole.implementation.onReady(() => {
-      if (rambleEngaged) {
-        void capabilities.rambleConsole.implementation.restoreVisibility().catch(() => {})
-      }
-      broadcastRambleConsoleState()
-    }, () => {})
+    let captureShortcutUnlisten = () => {}
+    let rambleShortcutUnlisten = () => {}
+    let consoleCommandUnlisten = () => {}
+    let consoleReadyUnlisten = () => {}
+
+    if (capabilities.globalShortcuts.status.availability !== 'unavailable') {
+      void capabilities.globalShortcuts.implementation.read()
+        .then((settings) => shortcutSettings.set(settings))
+        .catch(() => {})
+      rambleShortcutUnlisten = capabilities.globalShortcuts.implementation.onRambleToggle(() => {
+        void toggleRamble()
+      }, (cause) => {
+          ramblePhase = 'error'
+          rambleMessage = t($locale, 'Cannot listen for the Ramble shortcut: {error}', { error: messageFrom(cause) })
+        })
+    }
+    if (capabilities.screenCapture.status.availability !== 'unavailable') {
+      captureShortcutUnlisten = capabilities.screenCapture.implementation.onShortcut(() => {
+        if (workspace && !interactionLocked) void onStartScreenCapture()
+      }, (cause) => {
+          attachmentMessage = t($locale, 'Cannot listen for the capture shortcut: {error}', { error: messageFrom(cause) })
+        })
+    }
+    if (capabilities.rambleConsole.status.availability !== 'unavailable') {
+      consoleCommandUnlisten = capabilities.rambleConsole.implementation.onCommand(
+        (command) => void handleRambleConsoleCommand(command),
+        () => {},
+      )
+      consoleReadyUnlisten = capabilities.rambleConsole.implementation.onReady(() => {
+        if (rambleEngaged) {
+          void capabilities.rambleConsole.implementation.restoreVisibility().catch(() => {})
+        }
+        broadcastRambleConsoleState()
+      }, () => {})
+    }
 
     return () => {
       rambleShortcutUnlisten()
@@ -228,10 +238,12 @@
     void capabilities.rambleConsole.implementation
       .recordDiagnostic('ramble_started', rambleRequestId)
       .catch(() => {})
-    try {
-      await capabilities.rambleConsole.implementation.show()
-    } catch (cause) {
-      onPageError(t($locale, 'Could not open the Ramble console: {error}', { error: messageFrom(cause) }))
+    if (capabilities.rambleConsole.status.availability !== 'unavailable') {
+      try {
+        await capabilities.rambleConsole.implementation.show()
+      } catch (cause) {
+        onPageError(t($locale, 'Could not open the Ramble console: {error}', { error: messageFrom(cause) }))
+      }
     }
     await beginVoiceRamble()
   }

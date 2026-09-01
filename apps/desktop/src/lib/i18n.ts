@@ -533,7 +533,7 @@ const chinese: Record<string, string> = {
   'VAD segmented · Non-streaming': 'VAD 分段 · 非流式',
   'Model license': '模型许可',
   'Voice activity detection (VAD)': '语音活动检测（VAD）',
-  'SenseVoice and FunASR-Nano use bundled Silero VAD to split long recordings; X-ASR continues to use streaming endpoints.': 'SenseVoice 和 FunASR-Nano 使用内置 Silero VAD 自动切分长录音；X-ASR 仍按流式端点分段。',
+  'Non-streaming models use bundled Silero VAD to split long recordings; streaming models use their own endpoints.': '非流式模型使用内置 Silero VAD 自动切分长录音；流式模型使用各自的端点分段。',
   'Speech threshold': '声音阈值',
   'Raise it in noisy environments; lower it when quiet speech is often missed.': '环境嘈杂时调高；轻声讲话经常漏检时调低。',
   'VAD speech threshold': 'VAD 声音阈值',

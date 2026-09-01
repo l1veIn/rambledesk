@@ -386,7 +386,7 @@ interface WorkbenchClient {
 - HTTP API 是 command parity 还是业务资源/用例 allowlist；本报告建议“allowlist”。
 - WS 第一版传 delta 还是 invalidation；本报告建议“invalidation + revision”。
 - 浏览器凭证是长期 bearer token 还是短期 session；需单独安全 ADR。若先用 token，至少与 MCP token 分离。
-- Web ASR 在浏览器本地使用 streaming 还是 VAD + offline；先以 X-ASR streaming 做 feasibility gate，再按真实设备结果决定后续模型。
+- Web ASR 在浏览器本地使用 streaming 还是 VAD + offline；WEB9 先以 Zipformer Small streaming CTC 做 pilot，再按真实设备结果决定后续模型。
 - 静态前端是否保持单一构建产物；本报告建议“是”，避免 Desktop/Web 页面分叉。
 
 ## 10. 一手资料索引

@@ -16,11 +16,10 @@ const unavailable = {
 } satisfies CapabilityStatus
 
 describe('workbench capability presentation', () => {
-  it('shows voice Ramble only when speech and console capabilities are usable', () => {
-    expect(voiceRambleAvailable({ speech: available, rambleConsole: available })).toBe(true)
-    expect(voiceRambleAvailable({ speech: degraded, rambleConsole: available })).toBe(true)
-    expect(voiceRambleAvailable({ speech: unavailable, rambleConsole: available })).toBe(false)
-    expect(voiceRambleAvailable({ speech: available, rambleConsole: unavailable })).toBe(false)
+  it('shows voice Ramble whenever the platform speech plugin is usable', () => {
+    expect(voiceRambleAvailable(available)).toBe(true)
+    expect(voiceRambleAvailable(degraded)).toBe(true)
+    expect(voiceRambleAvailable(unavailable)).toBe(false)
   })
 
   it('shows native capture actions only when screen and clipboard capture are usable', () => {

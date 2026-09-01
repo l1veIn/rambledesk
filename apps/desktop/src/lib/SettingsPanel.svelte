@@ -34,6 +34,7 @@
   import { Button } from '$lib/components/ui/button'
   import { createUnavailableWorkbenchCapabilities } from '$lib/capabilities/unavailableCapabilities'
   import type { WorkbenchCapabilities } from '$lib/capabilities/workbenchCapabilities'
+  import { resolveSupportedSpeechModelId } from '$lib/capabilities/speechModelSelection'
   import * as Collapsible from '$lib/components/ui/collapsible'
   import { ScrollArea } from '$lib/components/ui/scroll-area'
   import { toast } from '$lib/components/ui/sonner'
@@ -357,6 +358,8 @@
     modelError = ''
     try {
       speechModels = [...await capabilities.speech.implementation.listModels()]
+      const supportedModelId = resolveSupportedSpeechModelId($speechModelId, speechModels)
+      if (supportedModelId && supportedModelId !== $speechModelId) setSpeechModelId(supportedModelId)
     } catch (cause) {
       modelError = messageFrom(cause)
     }
@@ -1425,7 +1428,7 @@
               <div class="min-w-0 flex-1">
                 <h3 class="m-0 text-sm font-medium">{tr('Voice activity detection (VAD)')}</h3>
                 <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
-                  {tr('SenseVoice and FunASR-Nano use bundled Silero VAD to split long recordings; X-ASR continues to use streaming endpoints.')}
+                  {tr('Non-streaming models use bundled Silero VAD to split long recordings; streaming models use their own endpoints.')}
                 </p>
                 <div class="mt-4 grid gap-5 rounded-md border bg-muted/20 p-4">
                   <div class="grid grid-cols-[minmax(0,1fr)_280px] items-center gap-6">

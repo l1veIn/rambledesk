@@ -1,6 +1,6 @@
 # 浏览器本地 ASR 与平台插件边界调研
 
-> 状态：方向校准研究，不是已完成实现  
+> 状态：方向校准研究 + WEB9 实施记录
 > 日期：2026-09-01  
 > 外部基线：sherpa-onnx `v1.13.7`（`917bed95c8e5c7c18aa4d69fea42e9ef8ef0a60e`）  
 > 仓库基线：`4ea6fbd` 与其后的未提交 Web Speech 实验  
@@ -30,6 +30,10 @@
 3. `build-wasm-simd-web.sh` + `wasm/web`：当前模块化 Web 构建，生成 `SherpaOnnx` factory，统一导出 streaming ASR、offline ASR、VAD 等能力，模型不必编进 `.data`。[当前 Web 构建脚本](https://github.com/k2-fsa/sherpa-onnx/blob/v1.13.7/build-wasm-simd-web.sh)、[Web CMake 入口](https://github.com/k2-fsa/sherpa-onnx/blob/v1.13.7/wasm/web/CMakeLists.txt)、[Flutter Web 产物组装](https://github.com/k2-fsa/sherpa-onnx/blob/v1.13.7/build-flutter-web-wasm.sh)
 
 **架构推论：** RambleDesk 应采用第 3 条作为维护基线，固定 sherpa-onnx tag、Emscripten 版本、构建参数和产物 SHA。旧式 `.data` demo 适合验证，不适合把大模型与应用版本强绑定。
+
+**WEB9 交付证据：** 官方 [`sherpa_onnx_web` 1.13.7 package](https://pub.dev/packages/sherpa_onnx_web/versions/1.13.7) 提供可与模型分离的 generic Web runtime。RambleDesk 的 prepare 脚本固定下载 [`sherpa_onnx_web-1.13.7.tar.gz`](https://pub.dev/api/archives/sherpa_onnx_web-1.13.7.tar.gz)（archive SHA-256 `b3b5d54df39e720b626439a8f14ea08ea1bdb5513f64dff2a5c5bb251e6093b7`），并逐项校验 ASR wrapper、modular glue 和 14,869,666-byte Wasm 后写入 gitignored `public/browser-speech/runtime/`。应用仓库只提交 prepare 脚本、Worker 与 AudioWorklet 源码；build/dev 从官方 archive 可复现准备 runtime。浏览器首个模型改为 [pkufool/zipformer-small-streaming](https://www.modelscope.cn/models/pkufool/zipformer-small-streaming) 的 32-chunk int8 CTC 文件与 tokens，共 29,258,848 bytes，由用户显式安装到版本化 Cache Storage。
+
+这条路径与官方 release 中旧的 `sherpa-onnx-wasm-simd-v1.13.7-zh-en-asr-zipformer` 预编译 demo bundle 不同：后者把 `sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20` 模型预载入约 199 MB `.data`，不是 WEB9 的交付资产。RambleDesk 不提交或下载该旧 bundle。
 
 ### 2.2 JS/WASM 调用接口
 
@@ -82,7 +86,8 @@
 
 | 模型 | 当前文件体积 | 浏览器首批判断 |
 | --- | ---: | --- |
-| X-ASR streaming | 169,347,218 bytes；下载包 133,895,136 bytes | 首选 feasibility candidate，但须验证这个具体模型与当前 WASM build |
+| X-ASR streaming | 169,347,218 bytes；下载包 133,895,136 bytes | 在内置浏览器中完成文件与 runtime 校验，但 generic Wasm runtime 创建 recognizer 时抛出原生异常；不作为 browser pilot |
+| Zipformer Small streaming CTC | 29,258,848 bytes | WEB9 browser pilot；已完成真实下载、逐文件 hash、断点恢复和 recognizer 创建 |
 | SenseVoice | 239,549,735 bytes | 可作为 VAD + offline 后续候选，首装和内存成本较高 |
 | FunASR Nano | 1,009,605,061 bytes | 不应成为浏览器默认；先排除首批 |
 
@@ -90,7 +95,7 @@
 
 **官方事实：** sherpa-onnx 没有发布可直接套用到 RambleDesk 目标浏览器/设备的首载时间、峰值内存、实时率或长会话延迟 SLA。官方 demo 和构建成功只能证明运行路径存在，不能替代 RambleDesk 的浏览器 benchmark。
 
-**架构推论：** 浏览器 Phase 0 先验证 X-ASR streaming，从“持续 partial + endpoint 后 stable”的 Ramble 体验入手。它是候选，不是已确认兼容：官方 wrapper 支持 online transducer，但当前资料没有直接证明 RambleDesk 这份 2026 X-ASR manifest 已在目标浏览器矩阵中跑通。SenseVoice/VAD 可进入第二阶段；约 1 GB 的 FunASR Nano 不进入浏览器默认路径。
+**WEB9 实测决策：** X-ASR 仍适合作为 Desktop 原生 streaming 模型，但其 169 MB 文件在当前 generic Wasm runtime 中没有通过 recognizer 创建门禁。Browser pilot 改用 29 MB Zipformer Small streaming CTC：在 Codex 内置 Chromium 中已完成冷下载、SHA-256 校验、失败后断点恢复、Wasm/runtime 校验和 recognizer 创建；麦克风许可提示没有在该自动化浏览器中被响应，因而真实 PCM 输入与出字仍保留为 Chrome/Safari 人工验收项。SenseVoice/VAD 可进入第二阶段；约 1 GB 的 FunASR Nano 不进入浏览器默认路径。
 
 ### 4.2 分发与缓存
 
@@ -119,9 +124,9 @@
 
 **官方事实：** 这不自动覆盖模型。官方预训练模型说明会单独指出模型包中的 LICENSE；例如 SenseVoice 页面要求查看解压目录的模型许可证，FunASR Nano 也有独立的模型导出与来源说明。[SenseVoice 模型](https://k2-fsa.github.io/sherpa/onnx/sense-voice/pretrained.html)、[FunASR Nano](https://k2-fsa.github.io/sherpa/onnx/funasr-nano/export.html)
 
-**仓库事实：** 当前 RambleDesk manifest 已把 SenseVoice 标为 `FunASR Model Open Source License Agreement 1.1`，FunASR Nano 标为 `FunASR Model License`，并把 X-ASR 标为 `Apache-2.0`。这些字段是当前产品 manifest 的声明，不代替对上游模型包内 LICENSE/NOTICE 与再分发条件的独立核验。
+**仓库事实：** 当前 Desktop manifest 已把 SenseVoice 标为 `FunASR Model Open Source License Agreement 1.1`，FunASR Nano 标为 `FunASR Model License`，并把 X-ASR 标为 `Apache-2.0`。Browser pilot 的 ModelScope 仓库元数据声明 Apache-2.0；这些字段不代替对上游模型包内 LICENSE/NOTICE 与再分发条件的独立核验。
 
-**架构推论：** 将模型下载到用户浏览器仍是模型分发。上线前必须逐模型确认官方发布包中的许可证、notice、再分发权限与展示义务；不能只因为 sherpa-onnx 框架采用 Apache-2.0，就推断任一模型也采用相同许可。X-ASR 的 manifest 声明仍需由模型包证据验证，验证结果是 browser pilot 产品化之前的门禁。
+**架构推论：** 将模型下载到用户浏览器仍是模型分发。上线前必须逐模型确认官方发布包中的许可证、notice、再分发权限与展示义务；不能只因为 sherpa-onnx 框架采用 Apache-2.0，就推断任一模型也采用相同许可。模型仓库元数据仍需由包内证据复核，验证结果是 browser pilot 产品化之前的门禁。
 
 ## 6. Ramble 的平台插件设计
 
@@ -206,7 +211,7 @@ TipTap Ramble Core
 
 ### Phase 0：浏览器 feasibility spike
 
-只做 X-ASR streaming 单模型闭环：同源静态 WASM/Worker、AudioWorklet、实际采样率读取、流式重采样、Worker 内 recognizer、最小 Model Store、SpeechEvent → 当前 TipTap Editor。它不新增后端 speech route。
+只做 Zipformer Small streaming CTC 单模型闭环：同源静态 WASM/Worker、AudioWorklet、实际采样率读取、流式重采样、Worker 内 recognizer、最小 Model Store、SpeechEvent → 当前 TipTap Editor。它不新增后端 speech route。
 
 必须在承诺兼容前记录真实目标设备，而不是只跑单元测试：
 
@@ -232,4 +237,4 @@ TipTap Ramble Core
 3. 停止 Web Access WAV 上传/后端识别实验；Web Access 不新增实时音频协议。
 4. 保留 `4ea6fbd` 的采集/recognizer 分离、PCM、重采样和背压设计，但收进 Desktop Speech Plugin。
 5. Ramble 核心只拥有 TipTap Draft、SpeechEvent 插入和附件持久化；语音与截图是独立 Platform Plugin。
-6. 浏览器模型必须版本化缓存、逐文件校验并单独审计模型许可证；X-ASR 是首个待验证候选，不是未经测量的兼容承诺。
+6. 浏览器模型必须版本化缓存、逐文件校验并单独审计模型许可证；Zipformer Small CTC 是 browser pilot，兼容范围仍以真实浏览器矩阵验收为准。

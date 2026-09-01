@@ -56,10 +56,7 @@
     workspace.request.status === 'completed' ||
     workspace.request.status === 'cancelled'
   $: actionGroupContent = collectActionGroupContent(editorDocument)
-  $: voiceRambleAvailable = canStartVoiceRamble({
-    speech: capabilities.speech.status,
-    rambleConsole: capabilities.rambleConsole.status,
-  })
+  $: voiceRambleAvailable = canStartVoiceRamble(capabilities.speech.status)
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)

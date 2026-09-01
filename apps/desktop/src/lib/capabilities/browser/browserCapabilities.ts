@@ -7,6 +7,10 @@ import {
 } from '../workbenchCapabilities'
 import { createUnavailableWorkbenchCapabilities } from '../unavailableCapabilities'
 import { createBrowserImagePasteCapability } from './imagePasteCapability'
+import {
+  createBrowserSpeechCapability,
+  detectBrowserSpeechSupport,
+} from './speech/browserSpeechCapability'
 
 export type BrowserWindowOpen = (
   url?: string | URL,
@@ -44,18 +48,20 @@ export function createBrowserExternalLinkCapability(
 
 /**
  * Browser registry. Ordinary external links and DOM-scoped image paste are
- * available; native paths, native capture, speech, and Desktop administration
- * remain explicitly unavailable.
+ * available. Browser speech is registered only when its hard platform APIs are
+ * present; model installation remains an honest runtime readiness state.
  */
 export function createBrowserWorkbenchCapabilities(
   environment: BrowserCapabilityEnvironment = browserEnvironment(),
 ): WorkbenchCapabilities {
   const unavailable = createUnavailableWorkbenchCapabilities()
   const { manifest: _manifest, ...slots } = unavailable
+  const speech = detectBrowserSpeechSupport()
   return createWorkbenchCapabilities({
     ...slots,
     externalLinks: browserSlot(createBrowserExternalLinkCapability(environment)),
     imagePaste: browserSlot(createBrowserImagePasteCapability()),
+    ...(speech.supported ? { speech: browserSlot(createBrowserSpeechCapability()) } : {}),
   })
 }
 
