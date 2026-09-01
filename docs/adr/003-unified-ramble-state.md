@@ -1,7 +1,11 @@
-# ADR 003：Ramble 是统一的采集状态
+# ADR 003：Ramble 是统一的采集状态（历史决策）
 
-- 状态：Accepted
+- 状态：Superseded by [ADR 006](./006-edge-media-plugins-and-tiptap-ramble-core.md)
 - 日期：2026-07-31
+
+> 本文保留 0.3.x 阶段的历史设计背景，不再定义当前 Ramble 合同。现行决策以
+> `docs/TERMINOLOGY.md` 和 ADR 006 为准：Ramble 以 TipTap Feedback Draft 为核心，
+> 语音、截图与剪贴板是可选的平台输入能力，不构成必须同时启停的统一采集状态机。
 
 ## 背景
 
