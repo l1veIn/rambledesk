@@ -5,6 +5,7 @@
   import { Skeleton } from '$lib/components/ui/skeleton'
   import type { JSONContent } from '@tiptap/core'
   import type { ApplicationTransport } from '$lib/application/applicationTransport'
+  import type { WorkbenchCapabilities } from '$lib/capabilities/workbenchCapabilities'
 
   import type {
     AttachmentView,
@@ -37,6 +38,10 @@
 
   export let loadingWorkspace = false
   export let transport: ApplicationTransport
+  export let capabilities: Pick<
+    WorkbenchCapabilities,
+    'serverPaths' | 'speech' | 'rambleConsole' | 'screenCapture' | 'clipboardCapture'
+  >
   export let view: SessionViewDescriptor | null = null
   export let workspace: FeedbackWorkspaceView | null = null
   export let feedbackResult: FeedbackResultView | null = null
@@ -77,7 +82,6 @@
   export let cancelling = false
   export let approving = false
   export let canOpenResumePrompt = false
-  export let nativeCapabilities = false
   export let resolveHostProfile: (hostId: string) => HostProfile
   export let formatTime: (value: string | null | undefined) => string
   export let onReload: () => void = () => {}
@@ -227,6 +231,7 @@
           >
             <TaskBriefPanel
               {transport}
+              {capabilities}
               bind:open={taskBriefOpen}
               {workspace}
               {activeActionId}
@@ -272,6 +277,7 @@
       </div>
 
       <CommandRail
+        {capabilities}
         {workspace}
         {feedbackResult}
         {rambelleStatusPortrait}
@@ -297,7 +303,6 @@
         {cancelling}
         {approving}
         {canOpenResumePrompt}
-        {nativeCapabilities}
         {onToggleRamble}
         {onExitRamble}
         {onOpenVoiceSettings}
@@ -318,6 +323,7 @@
 
     <RequestAttachmentPreview
       {transport}
+      {capabilities}
       bind:open={previewOpen}
       requestId={workspace.request.request_id}
       attachment={previewAttachment}

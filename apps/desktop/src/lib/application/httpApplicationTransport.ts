@@ -10,6 +10,8 @@ import type {
   SubscriptionErrorHandler,
   Unsubscribe,
 } from './applicationTransport'
+import type { CapabilityManifest } from '../capabilities/capabilityManifest'
+import { UNAVAILABLE_CAPABILITY_MANIFEST } from '../capabilities/unavailableCapabilities'
 import type {
   ApplicationEvent,
   ApplicationResourceKey,
@@ -932,12 +934,10 @@ async function decodeWithActiveLease<Result>(
   return result
 }
 
-export class HttpApplicationTransport<CapabilityManifest = unknown>
-  implements ApplicationTransport<CapabilityManifest>
-{
+export class HttpApplicationTransport implements ApplicationTransport {
   constructor(
     private readonly lease: HttpApplicationLease,
-    private readonly capabilityManifest: CapabilityManifest = undefined as CapabilityManifest,
+    private readonly capabilityManifest: CapabilityManifest = UNAVAILABLE_CAPABILITY_MANIFEST,
   ) {}
 
   async call<Name extends ApplicationCommandName>(

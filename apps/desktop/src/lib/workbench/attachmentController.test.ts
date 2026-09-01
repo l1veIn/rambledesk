@@ -1,24 +1,65 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
-  invoke: vi.fn(),
   applicationCall: vi.fn(),
-  listeners: new Map<string, (event: { payload: unknown }) => void>(),
-}))
-
-vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }))
-vi.mock('@tauri-apps/api/event', () => ({
-  listen: vi.fn(async (event: string, handler: (event: { payload: unknown }) => void) => {
-    mocks.listeners.set(event, handler)
-    return vi.fn()
-  }),
-}))
-vi.mock('@tauri-apps/api/webview', () => ({
-  getCurrentWebview: () => ({ onDragDropEvent: vi.fn(async () => vi.fn()) }),
+  beginCapture: vi.fn(),
+  completeCapture: vi.fn(),
+  discardCapture: vi.fn(),
+  importServerPath: vi.fn(),
+  leaveFullscreen: vi.fn(),
+  restart: vi.fn(),
+  listeners: new Map<string, (payload: unknown) => void>(),
 }))
 
 import { createAttachmentController } from './attachmentController'
 import { TestApplicationTransport } from '../application/testApplicationTransport'
+import { createUnavailableWorkbenchCapabilities } from '../capabilities/unavailableCapabilities'
+import type { WorkbenchCapabilities } from '../capabilities/workbenchCapabilities'
+import type { ScreenCaptureReady } from '../screenCapture'
+
+const unavailableCapabilities = createUnavailableWorkbenchCapabilities()
+
+function availableCapabilities(): Pick<WorkbenchCapabilities, 'screenCapture' | 'windowControls'> {
+  return {
+    screenCapture: {
+      status: { availability: 'available', source: 'native' },
+      implementation: {
+        ...unavailableCapabilities.screenCapture.implementation,
+        onReady: (handler) => {
+          mocks.listeners.set('screen-capture-ready', handler as (payload: unknown) => void)
+          return vi.fn()
+        },
+        onFinished: (handler) => {
+          mocks.listeners.set('screen-capture-finished', handler as (payload: unknown) => void)
+          return vi.fn()
+        },
+        onFileDrop: (handler) => {
+          mocks.listeners.set('file-drop', handler as (payload: unknown) => void)
+          return vi.fn()
+        },
+        begin: mocks.beginCapture,
+        importServerPath: mocks.importServerPath,
+        complete: mocks.completeCapture,
+        discard: mocks.discardCapture,
+      },
+    },
+    windowControls: {
+      status: { availability: 'available', source: 'native' },
+      implementation: {
+        ...unavailableCapabilities.windowControls.implementation,
+        leaveFullscreen: mocks.leaveFullscreen,
+        restart: mocks.restart,
+      },
+    },
+  }
+}
+
+function browserCapabilities(): Pick<WorkbenchCapabilities, 'screenCapture' | 'windowControls'> {
+  return {
+    screenCapture: unavailableCapabilities.screenCapture,
+    windowControls: unavailableCapabilities.windowControls,
+  }
+}
 
 function controllerContext() {
   let captureBusy = false
@@ -32,31 +73,32 @@ function controllerContext() {
     .handle('removeFeedbackAttachment', (input) => mocks.applicationCall('removeFeedbackAttachment', input))
     .handle('reorderFeedbackAttachments', (input) => mocks.applicationCall('reorderFeedbackAttachments', input))
     .handle('readFeedbackAttachment', (input) => mocks.applicationCall('readFeedbackAttachment', input))
+  const context: Parameters<typeof createAttachmentController>[0] = {
+    capabilities: availableCapabilities(),
+    transport,
+    tr: (source: string) => source,
+    messageFrom: (cause: unknown) => String(cause),
+    getWorkspace: () => null,
+    getEditor: () => undefined,
+    getRambleRequestId: () => 'request-1',
+    getInteractionLocked: () => false,
+    getSavedRevision: () => 0,
+    getBusy: () => false,
+    getCaptureBusy: () => captureBusy,
+    getPreviews: () => ({}),
+    setBusy,
+    setCaptureBusy,
+    setMessage: vi.fn(),
+    setPreviews: vi.fn(),
+    setDragActive: vi.fn(),
+    saveDraftNow: vi.fn(async () => true),
+    waitForRambleMarkdown: vi.fn(async () => undefined),
+    routeDraftOperation: vi.fn(async () => undefined),
+    activeActionFor: () => null,
+    applyWorkspaceMutation: vi.fn(),
+  }
   return {
-    context: {
-      isTauri: true,
-      transport,
-      tr: (source: string) => source,
-      messageFrom: (cause: unknown) => String(cause),
-      getWorkspace: () => null,
-      getEditor: () => undefined,
-      getRambleRequestId: () => 'request-1',
-      getInteractionLocked: () => false,
-      getSavedRevision: () => 0,
-      getBusy: () => false,
-      getCaptureBusy: () => captureBusy,
-      getPreviews: () => ({}),
-      setBusy,
-      setCaptureBusy,
-      setMessage: vi.fn(),
-      setPreviews: vi.fn(),
-      setDragActive: vi.fn(),
-      saveDraftNow: vi.fn(async () => true),
-      waitForRambleMarkdown: vi.fn(async () => undefined),
-      routeDraftOperation: vi.fn(async () => undefined),
-      activeActionFor: () => null,
-      applyWorkspaceMutation: vi.fn(),
-    },
+    context,
     setBusy,
     setCaptureBusy,
   }
@@ -64,8 +106,17 @@ function controllerContext() {
 
 describe('attachmentController screen capture state', () => {
   beforeEach(() => {
-    mocks.invoke.mockReset()
     mocks.applicationCall.mockReset()
+    mocks.beginCapture.mockReset()
+    mocks.beginCapture.mockResolvedValue(undefined)
+    mocks.completeCapture.mockReset()
+    mocks.discardCapture.mockReset()
+    mocks.discardCapture.mockResolvedValue(undefined)
+    mocks.importServerPath.mockReset()
+    mocks.leaveFullscreen.mockReset()
+    mocks.leaveFullscreen.mockResolvedValue(undefined)
+    mocks.restart.mockReset()
+    mocks.restart.mockResolvedValue(undefined)
     mocks.listeners.clear()
     vi.stubGlobal('window', {
       addEventListener: vi.fn(),
@@ -79,7 +130,7 @@ describe('attachmentController screen capture state', () => {
 
   it('does not claim browser image-paste support before the browser capability lands', () => {
     const { context } = controllerContext()
-    context.isTauri = false
+    context.capabilities = browserCapabilities()
     const dispose = createAttachmentController(context).mount()
 
     expect(window.addEventListener).not.toHaveBeenCalledWith('paste', expect.any(Function))
@@ -87,21 +138,18 @@ describe('attachmentController screen capture state', () => {
   })
 
   it('keeps capture busy until the capture finishes and blocks duplicate starts', async () => {
-    mocks.invoke.mockResolvedValue(undefined)
     const { context, setCaptureBusy } = controllerContext()
     const controller = createAttachmentController(context)
 
     await controller.startScreenCapture()
     await controller.startScreenCapture()
 
-    expect(mocks.invoke).toHaveBeenCalledTimes(1)
-    expect(mocks.invoke).toHaveBeenCalledWith('begin_screen_capture')
+    expect(mocks.beginCapture).toHaveBeenCalledTimes(1)
     expect(setCaptureBusy).toHaveBeenCalledTimes(1)
     expect(setCaptureBusy).toHaveBeenLastCalledWith(true)
   })
 
   it('starts capture before Ramble when the workspace supplies the request id', async () => {
-    mocks.invoke.mockResolvedValue(undefined)
     const { context } = controllerContext()
     context.getRambleRequestId = () => ''
     context.getWorkspace = () => ({
@@ -113,8 +161,40 @@ describe('attachmentController screen capture state', () => {
 
     await controller.startScreenCapture()
 
-    expect(mocks.invoke).toHaveBeenCalledWith('begin_screen_capture')
+    expect(mocks.beginCapture).toHaveBeenCalledTimes(1)
     expect(context.saveDraftNow).toHaveBeenCalled()
+  })
+
+  it('imports a native file-drop path through the screen-capture capability with CAS', async () => {
+    const workspace = {
+      request: { request_id: 'request-1' },
+      attachments: [],
+      draft: { saved_revision: 3 },
+    }
+    const inserted = {
+      ...workspace,
+      draft: { saved_revision: 4 },
+      attachments: [
+        { attachment_id: 'att-1', file_name: 'notes.txt', media_type: 'text/plain' },
+      ],
+    }
+    const { context } = controllerContext()
+    context.getWorkspace = () => workspace as never
+    mocks.applicationCall.mockImplementation(async (operation: string) => {
+      if (operation === 'getFeedbackWorkspace') return workspace
+      return undefined
+    })
+    mocks.importServerPath.mockResolvedValue(inserted)
+
+    await createAttachmentController(context).importAttachmentPaths(['/tmp/notes.txt'])
+
+    expect(context.saveDraftNow).toHaveBeenCalled()
+    expect(mocks.importServerPath).toHaveBeenCalledWith({
+      requestId: 'request-1',
+      path: '/tmp/notes.txt',
+      expectedRevision: 3,
+    })
+    expect(context.applyWorkspaceMutation).toHaveBeenCalledWith(inserted)
   })
 
   it('clears capture busy without changing attachment busy on cancel or pin', async () => {
@@ -124,7 +204,7 @@ describe('attachmentController screen capture state', () => {
     await vi.waitFor(() => expect(mocks.listeners.has('screen-capture-finished')).toBe(true))
 
     mocks.listeners.get('screen-capture-finished')?.({
-      payload: { capture_session_id: 'capture-1', outcome: 'cancelled' },
+      capture_session_id: 'capture-1', outcome: 'cancelled',
     })
 
     expect(setCaptureBusy).toHaveBeenCalledWith(false)
@@ -149,10 +229,7 @@ describe('attachmentController screen capture state', () => {
       createObjectURL: vi.fn(() => 'blob:preview'),
       revokeObjectURL: vi.fn(),
     })
-    mocks.invoke.mockImplementation(async (command: string) => {
-      if (command === 'add_completed_screen_capture') return inserted
-      return undefined
-    })
+    mocks.completeCapture.mockResolvedValue(inserted)
     mocks.applicationCall.mockResolvedValue(new ArrayBuffer(0))
 
     const controller = createAttachmentController(context)
@@ -160,8 +237,8 @@ describe('attachmentController screen capture state', () => {
     await vi.waitFor(() => expect(mocks.listeners.has('screen-capture-ready')).toBe(true))
 
     mocks.listeners.get('screen-capture-ready')?.({
-      payload: { capture_session_id: 'capture-1', file_name: 'shot.png' },
-    })
+      capture_session_id: 'capture-1', file_name: 'shot.png',
+    } satisfies ScreenCaptureReady)
 
     await vi.waitFor(() => {
       expect(context.setMessage).toHaveBeenCalledWith(
@@ -192,10 +269,7 @@ describe('attachmentController screen capture state', () => {
       createObjectURL: vi.fn(() => 'blob:preview'),
       revokeObjectURL: vi.fn(),
     })
-    mocks.invoke.mockImplementation(async (command: string) => {
-      if (command === 'add_completed_screen_capture') return inserted
-      return undefined
-    })
+    mocks.completeCapture.mockResolvedValue(inserted)
     mocks.applicationCall.mockResolvedValue(new ArrayBuffer(0))
 
     const controller = createAttachmentController(context)
@@ -204,8 +278,8 @@ describe('attachmentController screen capture state', () => {
     await controller.startScreenCapture()
     action = { actionId: 'action-b', actionIndex: 1, title: 'Second' }
     mocks.listeners.get('screen-capture-ready')?.({
-      payload: { capture_session_id: 'capture-1', file_name: 'shot.png' },
-    })
+      capture_session_id: 'capture-1', file_name: 'shot.png',
+    } satisfies ScreenCaptureReady)
 
     await vi.waitFor(() => expect(context.routeDraftOperation).toHaveBeenCalled())
     expect(context.routeDraftOperation).toHaveBeenCalledWith(

@@ -5,6 +5,7 @@ import {
   type ApplicationStreamEvent,
   type ApplicationTransport,
 } from './applicationTransport'
+import type { CapabilityManifest } from '../capabilities/capabilityManifest'
 
 describe('ApplicationTransport contracts', () => {
   it('keeps stream event types on an opaque descriptor', () => {
@@ -17,7 +18,7 @@ describe('ApplicationTransport contracts', () => {
     expectTypeOf<ApplicationStreamEvent<typeof stream>>().toEqualTypeOf<RequestChanged>()
   })
 
-  it('defaults the capability manifest to unknown', () => {
-    expectTypeOf<ApplicationTransport['capabilities']>().returns.toEqualTypeOf<unknown>()
+  it('reports the shared readonly capability manifest', () => {
+    expectTypeOf<ApplicationTransport['capabilities']>().returns.toEqualTypeOf<CapabilityManifest>()
   })
 })

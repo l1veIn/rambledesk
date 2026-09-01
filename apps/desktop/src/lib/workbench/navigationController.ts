@@ -1,5 +1,3 @@
-import { invoke } from '@tauri-apps/api/core'
-import { sendNotification } from '@tauri-apps/plugin-notification'
 import { get, writable } from 'svelte/store'
 
 import type {
@@ -9,6 +7,7 @@ import type {
   ListFeedbackRequestsOutput,
 } from '../feedback'
 import type { ApplicationTransport } from '../application/applicationTransport'
+import type { WorkbenchCapabilities } from '../capabilities/workbenchCapabilities'
 import { InboxNotificationTracker, playNotificationSound, type NotificationState } from '../notifications'
 import { previewFixtures } from '../previewFixtures'
 import {
@@ -41,7 +40,7 @@ export type NavigationState = {
 }
 
 type NavigationControllerContext = {
-  isTauri: boolean
+  capabilities: Pick<WorkbenchCapabilities, 'notifications' | 'tray'>
   previewMode: boolean
   transport: ApplicationTransport
   tr: (source: string, values?: Record<string, string | number>) => string
@@ -233,8 +232,8 @@ export function createNavigationController(context: NavigationControllerContext)
   function applyInboxSnapshot(nextInbox: FeedbackRequestSummary[]) {
     const arrivals = notificationTracker.observe(nextInbox)
     patch({ pendingRequests: nextInbox })
-    if (context.isTauri) {
-      void invoke('set_pending_count', { count: nextInbox.length }).catch(() => {
+    if (context.capabilities.tray.status.availability !== 'unavailable') {
+      void context.capabilities.tray.implementation.setPendingCount(nextInbox.length).catch(() => {
         // Tray updates are a native convenience; the inbox remains authoritative.
       })
     }
@@ -243,9 +242,10 @@ export function createNavigationController(context: NavigationControllerContext)
     if (
       get(notificationPopupEnabled) &&
       context.canSendOsBanners() &&
-      context.getNotificationState() === 'enabled'
+      context.getNotificationState() === 'enabled' &&
+      context.capabilities.notifications.status.availability !== 'unavailable'
     ) {
-      sendNotification({
+      void context.capabilities.notifications.implementation.send({
         title: 'RambleDesk',
         body:
           arrivals.length === 1
@@ -253,6 +253,8 @@ export function createNavigationController(context: NavigationControllerContext)
             : context.tr('{count} new feedback requests arrived. Open the workbench to review them.', {
                 count: arrivals.length,
               }),
+      }).catch(() => {
+        // OS banners are best-effort; the inbox remains authoritative.
       })
     }
     if (get(notificationSoundEnabled)) {
@@ -261,6 +263,7 @@ export function createNavigationController(context: NavigationControllerContext)
         sound,
         get(notificationVolume),
         sound === 'custom' ? get(customNotificationSound) : null,
+        context.capabilities.notifications.implementation.readCustomSound,
       )
     }
   }

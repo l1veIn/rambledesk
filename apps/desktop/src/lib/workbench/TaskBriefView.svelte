@@ -14,19 +14,24 @@
   } from '$lib/feedback'
   import { t } from '$lib/i18n'
   import type { ApplicationTransport } from '$lib/application/applicationTransport'
+  import type { WorkbenchCapabilities } from '$lib/capabilities/workbenchCapabilities'
   import { locale } from '$lib/preferences'
   import LinkifiedText from '$lib/LinkifiedText.svelte'
   import { isSafeHttpUrl } from '$lib/linkify'
-  import { openExternalUrl } from '$lib/openExternalUrl'
   import RequestAttachmentPreview from './RequestAttachmentPreview.svelte'
   import ActionFeedbackCard from './ActionFeedbackCard.svelte'
   import { buildTaskBriefText } from './taskBriefCopy'
   import RecordLed from './RecordLed.svelte'
   import { rambleRecordPresentation } from './rambleRecordButton'
+  import { voiceRambleAvailable as canStartVoiceRamble } from './workbenchCapabilityUi'
   import type { HostProfile, RamblePhase } from './types'
 
   export let workspace: FeedbackWorkspaceView | null = null
   export let transport: ApplicationTransport
+  export let capabilities: Pick<
+    WorkbenchCapabilities,
+    'externalLinks' | 'serverPaths' | 'speech' | 'rambleConsole'
+  >
   export let editorDocument: JSONContent | null = null
   export let previews: Record<string, string> = {}
   export let onOpenAttachment: (attachmentId: string) => void = () => {}
@@ -51,6 +56,10 @@
     workspace.request.status === 'completed' ||
     workspace.request.status === 'cancelled'
   $: actionGroupContent = collectActionGroupContent(editorDocument)
+  $: voiceRambleAvailable = canStartVoiceRamble({
+    speech: capabilities.speech.status,
+    rambleConsole: capabilities.rambleConsole.status,
+  })
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
@@ -204,7 +213,7 @@
                           rel="noreferrer"
                           onclick={(event) => {
                             event.preventDefault()
-                            void openExternalUrl(ref.uri).catch((cause) => {
+                            void capabilities.externalLinks.implementation.open(ref.uri).catch((cause) => {
                               console.warn('Could not open external URL', cause)
                             })
                           }}
@@ -270,22 +279,33 @@
 
     {#if workspace && !readOnly}
       <div class="flex shrink-0 items-center justify-end gap-2 border-t bg-background px-6 py-3">
-        <Button
-          variant={record.variant}
-          disabled={rambleBusy}
-          onclick={onToggleRamble}
-          aria-pressed={record.pressed}
-        >
-          {#if record.icon === 'spinner'}
-            <LoaderCircle class="animate-spin" data-icon="inline-start" />
-          {:else}
-            {#if record.icon === 'recording'}
-              <RecordLed />
+        {#if voiceRambleAvailable}
+          <Button
+            variant={record.variant}
+            disabled={rambleBusy}
+            onclick={onToggleRamble}
+            aria-pressed={record.pressed}
+          >
+            {#if record.icon === 'spinner'}
+              <LoaderCircle class="animate-spin" data-icon="inline-start" />
+            {:else}
+              {#if record.icon === 'recording'}
+                <RecordLed />
+              {/if}
+              <Mic data-icon="inline-start" />
             {/if}
-            <Mic data-icon="inline-start" />
-          {/if}
-          {rambleLabel}
-        </Button>
+            {rambleLabel}
+          </Button>
+        {:else}
+          <div
+            class="flex min-w-0 items-center gap-2 text-xs text-muted-foreground"
+            role="status"
+          >
+            <Mic class="size-4 shrink-0" aria-hidden="true" />
+            <span>{tr('Voice Ramble is available only in the desktop app.')}</span>
+            <Badge variant="outline" class="shrink-0">{tr('Desktop only')}</Badge>
+          </div>
+        {/if}
       </div>
     {/if}
 </div>
@@ -293,6 +313,7 @@
 {#if workspace}
   <RequestAttachmentPreview
     {transport}
+    {capabilities}
     bind:open={attachmentPreviewOpen}
     requestId={workspace.request.request_id}
     attachment={attachmentPreview}

@@ -9,6 +9,8 @@ import type {
   SubscriptionErrorHandler,
   Unsubscribe,
 } from './applicationTransport'
+import type { CapabilityManifest } from '../capabilities/capabilityManifest'
+import { UNAVAILABLE_CAPABILITY_MANIFEST } from '../capabilities/unavailableCapabilities'
 
 export type ApplicationCallRecord = {
   [Name in ApplicationCommandName]: Readonly<{
@@ -27,20 +29,20 @@ type StreamSubscription = Readonly<{
   onError: SubscriptionErrorHandler
 }>
 
-export class TestApplicationTransport<CapabilityManifest = unknown>
-  implements ApplicationTransport<CapabilityManifest>
-{
+export class TestApplicationTransport implements ApplicationTransport {
   private readonly handlers = new Map<ApplicationCommandName, ErasedCommandHandler>()
   private readonly callRecords: ApplicationCallRecord[] = []
   private readonly streamSubscriptions = new Map<string, Set<StreamSubscription>>()
   private readonly readyPromise: Promise<void>
+  private readonly capabilityManifest: CapabilityManifest
   private resolveReady: (() => void) | null = null
   private ready = false
 
   constructor(
-    private readonly capabilityManifest: CapabilityManifest,
+    capabilityManifest: CapabilityManifest | undefined = UNAVAILABLE_CAPABILITY_MANIFEST,
     options: Readonly<{ initiallyReady?: boolean }> = {},
   ) {
+    this.capabilityManifest = capabilityManifest ?? UNAVAILABLE_CAPABILITY_MANIFEST
     this.readyPromise = new Promise((resolve) => {
       this.resolveReady = resolve
     })

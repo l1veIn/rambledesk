@@ -1,14 +1,20 @@
 <script lang="ts">
-  import { getCurrentWindow } from '@tauri-apps/api/window'
   import { Bell, BellOff, Copy, Minus, Square, X } from '@lucide/svelte'
   import { onMount } from 'svelte'
 
   import appIcon from '../assets/rambledesk-app-icon.webp'
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
+  import { createUnavailableWorkbenchCapabilities } from '$lib/capabilities/unavailableCapabilities'
+  import type {
+    CapabilitySlot,
+    NotificationCapability,
+    WindowCapability,
+  } from '$lib/capabilities/workbenchCapabilities'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
-  import { currentDesktopPlatform } from '$lib/platform'
+
+  const unavailableCapabilities = createUnavailableWorkbenchCapabilities()
 
   export let sourceLabel = 'Workbench'
   export let pendingCount = 0
@@ -18,54 +24,53 @@
   export let notificationText = ''
   export let notificationEnabled = false
   export let notificationDisabled = false
+  export let windowControls: CapabilitySlot<WindowCapability> = unavailableCapabilities.windowControls
+  export let notifications: CapabilitySlot<NotificationCapability> = unavailableCapabilities.notifications
   export let onNotifications: () => void = () => {}
   export let onWindowError: (message: string) => void = () => {}
 
-  const isTauri = '__TAURI_INTERNALS__' in window
-  const isMac = currentDesktopPlatform() === 'macOS'
+  $: windowControlsAvailable = windowControls.status.availability !== 'unavailable'
+  $: notificationsAvailable = notifications.status.availability !== 'unavailable'
+  $: isMac = windowControls.implementation.platform() === 'macOS'
   let maximized = false
 
   onMount(() => {
-    if (!isTauri) return
-    const appWindow = getCurrentWindow()
+    if (!windowControlsAvailable) return
     void refreshMaximized()
-    const unlisten = appWindow.onResized(() => {
-      void refreshMaximized()
-    })
-    return () => {
-      void unlisten.then((dispose) => dispose())
-    }
+    return windowControls.implementation.onResized(
+      () => void refreshMaximized(),
+      (cause) => onWindowError(cause instanceof Error ? cause.message : String(cause)),
+    )
   })
 
   async function refreshMaximized() {
     if (isMac) return
-    maximized = await getCurrentWindow().isMaximized()
+    maximized = await windowControls.implementation.isMaximized()
   }
 
   async function runWindowAction(action: 'minimize' | 'maximize' | 'close') {
-    if (!isTauri) return
+    if (!windowControlsAvailable) return
     try {
-      const appWindow = getCurrentWindow()
-      if (action === 'minimize') await appWindow.minimize()
+      if (action === 'minimize') await windowControls.implementation.minimize()
       else if (action === 'maximize') {
         if (isMac) return
-        await appWindow.toggleMaximize()
-        maximized = await appWindow.isMaximized()
-      } else await appWindow.close()
+        await windowControls.implementation.toggleMaximize()
+        maximized = await windowControls.implementation.isMaximized()
+      } else await windowControls.implementation.close()
     } catch (cause) {
       onWindowError(cause instanceof Error ? cause.message : String(cause))
     }
   }
 
   async function startDragging(event: PointerEvent) {
-    if (!isTauri || event.button !== 0) return
+    if (!windowControlsAvailable || event.button !== 0) return
     const target = event.target
     if (target instanceof Element) {
       const button = target.closest('button')
       if (button && !button.matches('.titlebar-brand, .titlebar-drag')) return
     }
     try {
-      await getCurrentWindow().startDragging()
+      await windowControls.implementation.startDragging()
     } catch (cause) {
       onWindowError(cause instanceof Error ? cause.message : String(cause))
     }
@@ -75,10 +80,10 @@
 <header
   class={[
     'relative z-30 flex h-[46px] select-none items-stretch rounded-t-[15px] border-b bg-background/95 backdrop-blur-md',
-    isTauri && isMac ? 'pl-[58px]' : '',
+    windowControlsAvailable && isMac ? 'pl-[58px]' : '',
   ]}
 >
-  {#if isTauri && isMac}
+  {#if windowControlsAvailable && isMac}
     <div class="absolute left-[15px] flex h-full items-center gap-2" aria-label={t($locale, 'Window controls')}>
       <button
         class="traffic close size-3 rounded-full border border-black/10"
@@ -93,7 +98,7 @@
     </div>
   {/if}
 
-  {#if isTauri}
+  {#if windowControlsAvailable}
     <button
       class="titlebar-brand flex min-w-0 cursor-grab items-center gap-2.5 border-0 bg-transparent px-3 text-left text-foreground active:cursor-grabbing focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-ring"
       aria-label={t($locale, 'Drag window')}
@@ -114,7 +119,7 @@
     </div>
   {/if}
 
-  {#if isTauri}
+  {#if windowControlsAvailable}
     <button
       class="titlebar-drag min-w-6 flex-1 cursor-grab border-0 bg-transparent active:cursor-grabbing focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-ring"
       aria-label={t($locale, 'Drag window')}
@@ -156,7 +161,7 @@
         {pendingCount} {t($locale, 'pending')}
       </Badge>
     {/if}
-    {#if isTauri}
+    {#if notificationsAvailable}
       <Button
         variant="ghost"
         size="icon"
@@ -171,7 +176,7 @@
     {/if}
   </div>
 
-  {#if isTauri && !isMac}
+  {#if windowControlsAvailable && !isMac}
     <div class="ml-1 flex items-stretch" aria-label={t($locale, 'Window controls')}>
       <button
         class="grid w-11 place-items-center text-muted-foreground hover:bg-muted hover:text-foreground"

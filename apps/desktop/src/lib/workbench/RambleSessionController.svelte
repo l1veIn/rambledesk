@@ -1,6 +1,4 @@
 <script lang="ts">
-  import { invoke } from '@tauri-apps/api/core'
-  import { emitTo, listen } from '@tauri-apps/api/event'
   import { get } from 'svelte/store'
   import { onMount, tick } from 'svelte'
 
@@ -10,6 +8,7 @@
     type ClipboardCaptureEvent,
   } from '../clipboardCapture'
   import type { ApplicationTransport } from '../application/applicationTransport'
+  import type { WorkbenchCapabilities } from '../capabilities/workbenchCapabilities'
   import type { ActiveAction, DraftOperation } from '../draftOperations'
   import type { FeedbackWorkspaceView } from '../feedback'
   import { t } from '../i18n'
@@ -23,13 +22,8 @@
     speechVadSilenceMs,
     speechVadThreshold,
   } from '../preferences'
-  import { refreshShortcutSettings } from '../shortcutSettings'
+  import { shortcutSettings } from '../shortcutSettings'
   import {
-    RAMBLE_CONSOLE_COMMAND_EVENT,
-    RAMBLE_CONSOLE_HIDE_EVENT,
-    RAMBLE_CONSOLE_READY_EVENT,
-    RAMBLE_CONSOLE_SHOW_EVENT,
-    RAMBLE_CONSOLE_STATE_EVENT,
     type RambleConsoleCommand,
     type RambleConsoleState,
   } from '../rambleConsole'
@@ -39,13 +33,15 @@
     stableTranscript,
     voiceStartStillLive,
     type SpeechEvent,
-    type VoiceRambleSessionView,
   } from '../speech'
   import { createSingleFlight } from '../singleFlight'
   import { resolvedRamblePhase } from './rambleSessionState'
   import type { RamblePhase, VoicePhase } from './types'
 
-  export let isTauri = false
+  export let capabilities: Pick<
+    WorkbenchCapabilities,
+    'screenCapture' | 'clipboardCapture' | 'globalShortcuts' | 'speech' | 'rambleConsole'
+  >
   export let transport: ApplicationTransport
   export let workspace: FeedbackWorkspaceView | null = null
   export let interactionLocked = false
@@ -106,68 +102,46 @@
   }
 
   onMount(() => {
-    if (!isTauri) return
-    void refreshShortcutSettings()
-    let disposed = false
-    let voiceUnlisten: (() => void) | undefined
-    let rambleShortcutUnlisten: (() => void) | undefined
-    let captureShortcutUnlisten: (() => void) | undefined
-    let consoleCommandUnlisten: (() => void) | undefined
-    let consoleReadyUnlisten: (() => void) | undefined
-    void listen<SpeechEvent>('voice-ramble-event', (event) => {
-      handleVoiceEvent(event.payload)
-    })
-      .then((unlisten) => {
-        if (disposed) unlisten()
-        else voiceUnlisten = unlisten
-      })
-      .catch((cause) => {
+    if (capabilities.speech.status.availability === 'unavailable') return
+    void capabilities.globalShortcuts.implementation.read()
+      .then((settings) => shortcutSettings.set(settings))
+      .catch(() => {})
+    const voiceUnlisten = capabilities.speech.implementation.onEvent(
+      handleVoiceEvent,
+      (cause) => {
         voicePhase = 'error'
         voiceMessage = t($locale, 'Cannot listen for speech events: {error}', { error: messageFrom(cause) })
-      })
-    void listen<string>('screen-capture-shortcut', () => {
+      },
+    )
+    const captureShortcutUnlisten = capabilities.screenCapture.implementation.onShortcut(() => {
       if (workspace && !interactionLocked) void onStartScreenCapture()
-    })
-      .then((unlisten) => {
-        if (disposed) unlisten()
-        else captureShortcutUnlisten = unlisten
-      })
-      .catch((cause) => {
+    }, (cause) => {
         attachmentMessage = t($locale, 'Cannot listen for the capture shortcut: {error}', { error: messageFrom(cause) })
       })
-    void listen<string>('ramble-toggle-shortcut', () => {
+    const rambleShortcutUnlisten = capabilities.globalShortcuts.implementation.onRambleToggle(() => {
       void toggleRamble()
-    })
-      .then((unlisten) => {
-        if (disposed) unlisten()
-        else rambleShortcutUnlisten = unlisten
-      })
-      .catch((cause) => {
+    }, (cause) => {
         ramblePhase = 'error'
         rambleMessage = t($locale, 'Cannot listen for the Ramble shortcut: {error}', { error: messageFrom(cause) })
       })
-    void listen<RambleConsoleCommand>(RAMBLE_CONSOLE_COMMAND_EVENT, (event) => {
-      void handleRambleConsoleCommand(event.payload)
-    }).then((unlisten) => {
-      if (disposed) unlisten()
-      else consoleCommandUnlisten = unlisten
-    })
-    void listen(RAMBLE_CONSOLE_READY_EVENT, () => {
-      if (rambleEngaged) void invoke('show_ramble_console').catch(() => {})
+    const consoleCommandUnlisten = capabilities.rambleConsole.implementation.onCommand(
+      (command) => void handleRambleConsoleCommand(command),
+      () => {},
+    )
+    const consoleReadyUnlisten = capabilities.rambleConsole.implementation.onReady(() => {
+      if (rambleEngaged) {
+        void capabilities.rambleConsole.implementation.restoreVisibility().catch(() => {})
+      }
       broadcastRambleConsoleState()
-    }).then((unlisten) => {
-      if (disposed) unlisten()
-      else consoleReadyUnlisten = unlisten
-    })
+    }, () => {})
 
     return () => {
-      disposed = true
-      voiceUnlisten?.()
-      rambleShortcutUnlisten?.()
-      captureShortcutUnlisten?.()
-      consoleCommandUnlisten?.()
-      consoleReadyUnlisten?.()
-      if (voiceCanStop) void invoke('stop_voice_ramble')
+      voiceUnlisten()
+      rambleShortcutUnlisten()
+      captureShortcutUnlisten()
+      consoleCommandUnlisten()
+      consoleReadyUnlisten()
+      if (voiceCanStop) void capabilities.speech.implementation.stop()
     }
   })
 
@@ -184,18 +158,16 @@
     return rambleTransition.run(async () => {
       if (!rambleCanExit && !rambleStartedOnce) return
       if (rambleRequestId) {
-        void invoke('record_diagnostic_event', {
-          activity: 'ramble_stopped',
-          caseId: rambleRequestId,
-        }).catch(() => {})
+        void capabilities.rambleConsole.implementation
+          .recordDiagnostic('ramble_stopped', rambleRequestId)
+          .catch(() => {})
       }
       if (voiceCanStop) {
         ramblePhase = 'stopping'
         rambleMessage = t($locale, 'Ending Ramble…')
         await stopVoiceRamble()
       }
-      void invoke('hide_ramble_console').catch(() => {})
-      void emitTo('ramble-console', RAMBLE_CONSOLE_HIDE_EVENT).catch(() => {})
+      void capabilities.rambleConsole.implementation.hide().catch(() => {})
       resetVoiceUi()
       resetRambleUi()
     })
@@ -207,11 +179,9 @@
     if (interactionLocked || !requestId || attachmentBusy) return
     attachmentMessage = ''
     try {
-      const event = await invoke<ClipboardCaptureEvent>('capture_clipboard_once', {
-        input: {
-          request_id: requestId,
-          ramble_context_id: contextId,
-        },
+      const event = await capabilities.clipboardCapture.implementation.captureOnce({
+        requestId,
+        rambleContextId: contextId,
       })
       handleClipboardCaptureEvent(event, requestId, contextId)
     } catch (cause) {
@@ -260,18 +230,14 @@
     clipboardCaptureCount = 0
     ramblePhase = 'starting'
     rambleMessage = t($locale, 'Opening the Ramble console…')
-    void invoke('record_diagnostic_event', {
-      activity: 'ramble_started',
-      caseId: rambleRequestId,
-    }).catch(() => {})
+    void capabilities.rambleConsole.implementation
+      .recordDiagnostic('ramble_started', rambleRequestId)
+      .catch(() => {})
     try {
-      await invoke('show_ramble_console')
+      await capabilities.rambleConsole.implementation.show()
     } catch (cause) {
       onPageError(t($locale, 'Could not open the Ramble console: {error}', { error: messageFrom(cause) }))
     }
-    void emitTo('ramble-console', RAMBLE_CONSOLE_SHOW_EVENT).catch((cause) => {
-      onPageError(t($locale, 'Could not open the Ramble console: {error}', { error: messageFrom(cause) }))
-    })
     await beginVoiceRamble()
   }
 
@@ -324,19 +290,17 @@
     voiceModelMissing = false
     void playRecordArmSound(get(notificationVolume))
     try {
-      const session = await invoke<VoiceRambleSessionView>('start_voice_ramble', {
-        input: {
-          request_id: rambleRequestId,
-          input_device: $speechInputDevice || null,
-          model_id: $speechModelId,
-          vad_threshold: $speechVadThreshold,
-          vad_silence_ms: $speechVadSilenceMs,
-          hotwords: $speechHotwords,
-        },
+      const session = await capabilities.speech.implementation.start({
+        requestId: rambleRequestId,
+        inputDevice: $speechInputDevice || null,
+        modelId: $speechModelId,
+        vadThreshold: $speechVadThreshold,
+        vadSilenceMs: $speechVadSilenceMs,
+        hotwords: $speechHotwords,
       })
       if (!voiceStartStillLive(voicePhase)) {
         voiceSessionId = ''
-        await invoke('stop_voice_ramble').catch(() => {})
+        await capabilities.speech.implementation.stop().catch(() => {})
         return false
       }
       voiceSessionId = session.voice_session_id
@@ -359,7 +323,7 @@
     voicePhase = 'stopping'
     voiceMessage = t($locale, 'Finishing the final transcription segment…')
     try {
-      await invoke('stop_voice_ramble')
+      await capabilities.speech.implementation.stop()
       for (let attempt = 0; attempt < 5 && voicePhase === 'stopping'; attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, 20))
       }
@@ -393,9 +357,7 @@
       )
     ) {
       if (event.type === 'image') {
-        void invoke('discard_clipboard_capture_image', {
-          captureId: event.capture_id,
-        })
+        void capabilities.clipboardCapture.implementation.discardImage(event.capture_id)
       }
       return
     }
@@ -447,7 +409,7 @@
       if (!target) return
 
       attachmentBusy = true
-      const next = await invoke<FeedbackWorkspaceView>('add_completed_clipboard_capture', {
+      const next = await capabilities.clipboardCapture.implementation.completeImage({
         requestId,
         captureId: event.capture_id,
         rambleContextId: event.ramble_context_id,
@@ -476,9 +438,7 @@
       rambleMessage = t($locale, 'Ramble active · {count} clipboard items captured', { count: clipboardCaptureCount })
     } finally {
       attachmentBusy = false
-      await invoke('discard_clipboard_capture_image', {
-        captureId: event.capture_id,
-      }).catch(() => {})
+      await capabilities.clipboardCapture.implementation.discardImage(event.capture_id).catch(() => {})
     }
   }
 
@@ -608,7 +568,7 @@
       partialTranscript: voicePartial,
       message: rambleMessage,
     }
-    void emitTo('ramble-console', RAMBLE_CONSOLE_STATE_EVENT, state).catch(() => {})
+    void capabilities.rambleConsole.implementation.publish(state).catch(() => {})
   }
 
   let voiceMessage = ''

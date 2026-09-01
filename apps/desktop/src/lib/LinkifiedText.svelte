@@ -1,14 +1,15 @@
 <script lang="ts">
   import { splitTextWithUrls } from './linkify'
-  import { openExternalUrl } from './openExternalUrl'
+  import { useWorkbenchCapabilities } from './capabilities/capabilityContext'
 
   export let text = ''
+  const capabilities = useWorkbenchCapabilities()
 
   $: segments = splitTextWithUrls(text)
 
   function handleClick(event: MouseEvent, href: string) {
     event.preventDefault()
-    void openExternalUrl(href).catch((cause) => {
+    void capabilities.externalLinks.implementation.open(href).catch((cause) => {
       console.warn('Could not open external URL', cause)
     })
   }

@@ -3,6 +3,11 @@
   import { onMount } from 'svelte'
 
   import { Button } from '$lib/components/ui/button'
+  import { createUnavailableWorkbenchCapabilities } from '$lib/capabilities/unavailableCapabilities'
+  import type {
+    CapabilitySlot,
+    ShortcutCapability,
+  } from '$lib/capabilities/workbenchCapabilities'
   import { toast } from '$lib/components/ui/sonner'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
@@ -10,15 +15,14 @@
     comboFromEvent,
     comboParts,
     isAcceptableCombo,
-    refreshShortcutSettings,
-    resetShortcuts,
-    setShortcutCaptureActive,
     shortcutSettings,
-    updateShortcut,
     type ShortcutAction,
   } from '$lib/shortcutSettings'
 
-  const isTauri = '__TAURI_INTERNALS__' in window
+  const unavailableCapabilities = createUnavailableWorkbenchCapabilities()
+  export let globalShortcuts: CapabilitySlot<ShortcutCapability> = unavailableCapabilities.globalShortcuts
+
+  $: shortcutsAvailable = globalShortcuts.status.availability !== 'unavailable'
 
   let capturing: ShortcutAction | null = null
   let draft = ''
@@ -62,12 +66,12 @@
   }
 
   async function beginCapture(action: ShortcutAction) {
-    if (!isTauri || capturing) return
+    if (!shortcutsAvailable || capturing) return
     capturing = action
     draft = ''
     draftError = ''
     try {
-      await setShortcutCaptureActive(true)
+      await globalShortcuts.implementation.setCaptureActive(true)
     } catch (cause) {
       capturing = null
       toast.error(tr('Could not start shortcut recording.'), {
@@ -80,7 +84,7 @@
     capturing = null
     draft = ''
     draftError = ''
-    void setShortcutCaptureActive(false).catch(() => {})
+    void globalShortcuts.implementation.setCaptureActive(false).catch(() => {})
   }
 
   async function confirmCapture() {
@@ -95,14 +99,14 @@
     saving = true
     draftError = ''
     try {
-      await setShortcutCaptureActive(false)
-      await updateShortcut(action, draft)
+      await globalShortcuts.implementation.setCaptureActive(false)
+      shortcutSettings.set(await globalShortcuts.implementation.update(action, draft))
       capturing = null
       draft = ''
       toast.success(tr('Shortcut saved and active.'))
     } catch (cause) {
       draftError = messageFrom(cause)
-      await setShortcutCaptureActive(true).catch(() => {})
+      await globalShortcuts.implementation.setCaptureActive(true).catch(() => {})
     } finally {
       saving = false
     }
@@ -134,10 +138,10 @@
   }
 
   async function restoreDefaults() {
-    if (resetting || !isTauri || capturing) return
+    if (resetting || !shortcutsAvailable || capturing) return
     resetting = true
     try {
-      await resetShortcuts()
+      shortcutSettings.set(await globalShortcuts.implementation.reset())
       toast.success(tr('Shortcuts restored to defaults.'))
     } catch (cause) {
       toast.error(tr('Could not restore shortcut defaults.'), {
@@ -149,13 +153,13 @@
   }
 
   onMount(() => {
-    if (!isTauri) return
-    void refreshShortcutSettings()
+    if (!shortcutsAvailable) return
+    void globalShortcuts.implementation.read().then((settings) => shortcutSettings.set(settings))
     window.addEventListener('keydown', onKeydown, { capture: true })
     return () => {
       window.removeEventListener('keydown', onKeydown, { capture: true })
       if (capturing) {
-        void setShortcutCaptureActive(false)
+        void globalShortcuts.implementation.setCaptureActive(false)
       }
     }
   })
@@ -165,7 +169,7 @@
   }
 </script>
 
-{#if !isTauri}
+{#if !shortcutsAvailable}
   <p class="m-0 text-xs text-muted-foreground">
     {tr('Global shortcuts are available only in the desktop app.')}
   </p>

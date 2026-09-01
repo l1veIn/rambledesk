@@ -3,6 +3,7 @@ import type {
   ApplicationCommandName,
   ApplicationCommandResult,
 } from './contracts'
+import type { CapabilityManifest } from '../capabilities/capabilityManifest'
 
 declare const applicationStreamEvent: unique symbol
 
@@ -25,7 +26,7 @@ export function defineApplicationStream<Event>(id: string): ApplicationStream<Ev
   return Object.freeze({ id }) as unknown as ApplicationStream<Event>
 }
 
-export interface ApplicationTransport<CapabilityManifest = unknown> {
+export interface ApplicationTransport {
   call<Name extends ApplicationCommandName>(
     name: Name,
     input: ApplicationCommandInput<Name>,

@@ -1,11 +1,9 @@
-import { invoke } from '@tauri-apps/api/core'
-import { listen } from '@tauri-apps/api/event'
-import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { tick } from 'svelte'
 
 import { isImageMediaType } from '../attachmentMarkdown'
 import type { ApplicationTransport } from '../application/applicationTransport'
 import type { ApplicationAddAttachmentInput } from '../application/contracts'
+import type { WorkbenchCapabilities } from '../capabilities/workbenchCapabilities'
 import type {
   AttachmentView,
   FeedbackWorkspaceView,
@@ -18,13 +16,8 @@ import type { FeedbackEditorHandle } from './types'
 
 export type AttachmentMessageTone = 'info' | 'success' | 'error'
 
-type ScreenCaptureFinished = {
-  capture_session_id: string | null
-  outcome: 'cancelled' | 'pinned'
-}
-
 type AttachmentControllerContext = {
-  isTauri: boolean
+  capabilities: Pick<WorkbenchCapabilities, 'screenCapture' | 'windowControls'>
   transport: ApplicationTransport
   tr: (source: string, values?: Record<string, string | number>) => string
   messageFrom: (cause: unknown) => string
@@ -55,67 +48,58 @@ export function createAttachmentController(context: AttachmentControllerContext)
   let screenCaptureAction: ActiveAction = null
 
   function mount() {
-    let disposed = false
     let dragUnlisten: (() => void) | undefined
     let captureReadyUnlisten: (() => void) | undefined
     let captureFinishedUnlisten: (() => void) | undefined
 
-    if (context.isTauri) {
-      void listen<ScreenCaptureReady>('screen-capture-ready', (event) => {
-        void importScreenCapture(event.payload)
-      })
-        .then((unlisten) => {
-          if (disposed) unlisten()
-          else captureReadyUnlisten = unlisten
-        })
-        .catch((cause) => {
+    const screenCapture = context.capabilities.screenCapture
+    if (screenCapture.status.availability !== 'unavailable') {
+      captureReadyUnlisten = screenCapture.implementation.onReady(
+        (capture) => void importScreenCapture(capture),
+        (cause) => {
           context.setMessage(
             context.tr('Cannot receive the capture result: {error}', { error: context.messageFrom(cause) }),
             'error',
           )
-        })
-      void listen<ScreenCaptureFinished>('screen-capture-finished', () => {
-        screenCaptureRequestId = ''
-        screenCaptureAction = null
-        context.setCaptureBusy(false)
-        context.setMessage('')
-      })
-        .then((unlisten) => {
-          if (disposed) unlisten()
-          else captureFinishedUnlisten = unlisten
-        })
-        .catch(() => {
+        },
+      )
+      captureFinishedUnlisten = screenCapture.implementation.onFinished(
+        () => {
+          screenCaptureRequestId = ''
+          screenCaptureAction = null
+          context.setCaptureBusy(false)
+          context.setMessage('')
+        },
+        () => {
           // A failed cancellation listener does not affect capture or attachment storage.
-        })
-      void getCurrentWebview()
-        .onDragDropEvent((event) => {
-          context.setDragActive(event.payload.type === 'enter' || event.payload.type === 'over')
-          if (event.payload.type === 'drop') {
+        },
+      )
+      dragUnlisten = screenCapture.implementation.onFileDrop(
+        (event) => {
+          context.setDragActive(event.type === 'enter' || event.type === 'over')
+          if (event.type === 'drop') {
             context.setDragActive(false)
-            void importAttachmentPaths(event.payload.paths)
-          } else if (event.payload.type === 'leave') {
+            void importAttachmentPaths(event.paths)
+          } else if (event.type === 'leave') {
             context.setDragActive(false)
           }
-        })
-        .then((unlisten) => {
-          if (disposed) unlisten()
-          else dragUnlisten = unlisten
-        })
-        .catch(() => {
+        },
+        () => {
           context.setMessage(
             context.tr('File drop is unavailable in this window. Use the file picker or paste instead.'),
             'error',
           )
-        })
+        },
+      )
     }
 
-    if (context.isTauri) window.addEventListener('paste', handlePaste)
+    const nativePasteEnabled = screenCapture.status.source === 'native'
+    if (nativePasteEnabled) window.addEventListener('paste', handlePaste)
     return () => {
-      disposed = true
       dragUnlisten?.()
       captureReadyUnlisten?.()
       captureFinishedUnlisten?.()
-      if (context.isTauri) window.removeEventListener('paste', handlePaste)
+      if (nativePasteEnabled) window.removeEventListener('paste', handlePaste)
       releasePreviews()
     }
   }
@@ -185,7 +169,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
     }
   }
 
-  async function importAttachmentPaths(paths: string[]) {
+  async function importAttachmentPaths(paths: readonly string[]) {
     const workspace = context.getWorkspace()
     const requestId = context.getRambleRequestId() || workspace?.request.request_id || ''
     if (context.getInteractionLocked() || !requestId || paths.length === 0 || context.getBusy()) return
@@ -200,7 +184,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
       if (!next) throw new Error(context.tr('This feedback request could not be found.'))
       const existingIds = new Set(next.attachments.map((item) => item.attachment_id))
       for (const path of paths) {
-        next = await invoke<FeedbackWorkspaceView>('import_feedback_attachment_path', {
+        next = await context.capabilities.screenCapture.implementation.importServerPath({
           requestId,
           path,
           expectedRevision: next.draft.saved_revision,
@@ -232,13 +216,9 @@ export function createAttachmentController(context: AttachmentControllerContext)
   }
 
   async function leaveFullscreenIfNeeded() {
-    if (!context.isTauri) return
+    if (context.capabilities.windowControls.status.availability === 'unavailable') return
     try {
-      const { getCurrentWindow } = await import('@tauri-apps/api/window')
-      const appWindow = getCurrentWindow()
-      if (await appWindow.isFullscreen()) {
-        await appWindow.setFullscreen(false)
-      }
+      await context.capabilities.windowControls.implementation.leaveFullscreen()
     } catch {
       // The native capture command also leaves fullscreen if this fails.
     }
@@ -261,7 +241,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
     context.setMessage('')
     try {
       await leaveFullscreenIfNeeded()
-      await invoke('begin_screen_capture')
+      await context.capabilities.screenCapture.implementation.begin()
     } catch (cause) {
       screenCaptureRequestId = ''
       screenCaptureAction = null
@@ -273,7 +253,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
           'info',
         )
         try {
-          await invoke('restart_application')
+          await context.capabilities.windowControls.implementation.restart()
         } catch (restartCause) {
           context.setMessage(context.messageFrom(restartCause), 'error')
         }
@@ -315,7 +295,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
         : await context.transport.call('getFeedbackWorkspace', { request_id: requestId })
       if (!target) throw new Error(context.tr('This feedback request could not be found.'))
       const existingIds = new Set(target.attachments.map((item) => item.attachment_id))
-      const next = await invoke<FeedbackWorkspaceView>('add_completed_screen_capture', {
+      const next = await context.capabilities.screenCapture.implementation.complete({
         requestId,
         captureSessionId: capture.capture_session_id,
         expectedRevision: target.draft.saved_revision,
@@ -458,7 +438,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
   }
 
   async function discardScreenCapture(captureSessionId: string) {
-    await invoke('discard_screen_capture', { captureSessionId }).catch(() => {})
+    await context.capabilities.screenCapture.implementation.discard(captureSessionId).catch(() => {})
   }
 
   return {

@@ -3,6 +3,7 @@
 
   import type { AttachmentView, FeedbackWorkspaceView } from '$lib/feedback'
   import type { ApplicationTransport } from '$lib/application/applicationTransport'
+  import type { WorkbenchCapabilities } from '$lib/capabilities/workbenchCapabilities'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
   import RequestAttachmentPreview from '$lib/workbench/RequestAttachmentPreview.svelte'
@@ -12,6 +13,10 @@
 
   export let workspace: FeedbackWorkspaceView | null = null
   export let transport: ApplicationTransport
+  export let capabilities: Pick<
+    WorkbenchCapabilities,
+    'externalLinks' | 'serverPaths' | 'speech' | 'rambleConsole'
+  >
   export let loading = false
   export let editorDocument: JSONContent | null = null
   export let previews: Record<string, string> = {}
@@ -44,6 +49,7 @@
 {:else}
   <TaskBriefView
     {transport}
+    {capabilities}
     {workspace}
     {editorDocument}
     {previews}
@@ -60,6 +66,7 @@
 {#if workspace}
   <RequestAttachmentPreview
     {transport}
+    {capabilities}
     bind:open={attachmentPreviewOpen}
     requestId={workspace.request.request_id}
     attachment={previewAttachment}

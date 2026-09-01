@@ -1,6 +1,7 @@
 <script lang="ts">
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
+  import type { WorkbenchCapabilities } from '$lib/capabilities/workbenchCapabilities'
   import type { AttachmentView, FeedbackResultView, FeedbackWorkspaceView } from '../feedback'
   import type { RamblePhase, SubmitStage } from './types'
   import AttachmentsCard from './AttachmentsCard.svelte'
@@ -8,8 +9,16 @@
   import DeliveryCard from './DeliveryCard.svelte'
   import RambelleStatusCard from './RambelleStatusCard.svelte'
   import RamblePanel from './RamblePanel.svelte'
+  import {
+    nativeCaptureAvailable as canShowNativeCapture,
+    voiceRambleAvailable,
+  } from './workbenchCapabilityUi'
 
   export let workspace: FeedbackWorkspaceView
+  export let capabilities: Pick<
+    WorkbenchCapabilities,
+    'speech' | 'rambleConsole' | 'screenCapture' | 'clipboardCapture'
+  >
   export let feedbackResult: FeedbackResultView | null = null
   export let rambelleStatusPortrait = ''
   export let rambleEngaged = false
@@ -34,7 +43,6 @@
   export let cancelling = false
   export let approving = false
   export let canOpenResumePrompt = false
-  export let nativeCapabilities = false
   export let onToggleRamble: () => void = () => {}
   export let onExitRamble: () => void = () => {}
   export let onOpenVoiceSettings: () => void = () => {}
@@ -54,6 +62,14 @@
   $: readOnly =
     workspace.request.status === 'completed' || workspace.request.status === 'cancelled'
   $: interactionLocked = cooking || submitting || cancelling || approving
+  $: ramblePanelAvailable = voiceRambleAvailable({
+    speech: capabilities.speech.status,
+    rambleConsole: capabilities.rambleConsole.status,
+  })
+  $: nativeCaptureAvailable = canShowNativeCapture({
+    screenCapture: capabilities.screenCapture.status,
+    clipboardCapture: capabilities.clipboardCapture.status,
+  })
 </script>
 
 <aside
@@ -62,7 +78,7 @@
 >
   {#if !readOnly && !interactionLocked}
     <div class="shrink-0">
-      {#if nativeCapabilities}
+      {#if ramblePanelAvailable}
         <RamblePanel
         {rambleEngaged}
         {rambleActive}
@@ -86,7 +102,7 @@
         attachmentCount={workspace.attachments.length}
         {attachmentBusy}
         {readOnly}
-        nativeCaptureAvailable={nativeCapabilities}
+        {nativeCaptureAvailable}
         onScreenCapture={onStartScreenCapture}
         onImportClipboard={onImportClipboard}
         {onFileSelection}

@@ -12,6 +12,8 @@ import type {
   SubscriptionErrorHandler,
   Unsubscribe,
 } from './applicationTransport'
+import type { CapabilityManifest } from '../capabilities/capabilityManifest'
+import { UNAVAILABLE_CAPABILITY_MANIFEST } from '../capabilities/unavailableCapabilities'
 
 export const TAURI_APPLICATION_COMMANDS = {
   listFeedbackInbox: 'list_feedback_inbox',
@@ -62,11 +64,9 @@ function tauriArguments<Name extends ApplicationCommandName>(
   return { input }
 }
 
-export class TauriApplicationTransport<CapabilityManifest = unknown>
-  implements ApplicationTransport<CapabilityManifest>
-{
+export class TauriApplicationTransport implements ApplicationTransport {
   constructor(
-    private readonly capabilityManifest: CapabilityManifest = undefined as CapabilityManifest,
+    private readonly capabilityManifest: CapabilityManifest = UNAVAILABLE_CAPABILITY_MANIFEST,
   ) {}
 
   call<Name extends ApplicationCommandName>(

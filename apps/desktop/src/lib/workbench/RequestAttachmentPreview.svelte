@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { invoke } from '@tauri-apps/api/core'
   import {
     AlertCircle,
     ExternalLink,
@@ -14,6 +13,7 @@
 
   import { Button } from '$lib/components/ui/button'
   import type { ApplicationTransport } from '$lib/application/applicationTransport'
+  import type { WorkbenchCapabilities } from '$lib/capabilities/workbenchCapabilities'
   import * as Dialog from '$lib/components/ui/dialog'
   import { toast } from '$lib/components/ui/sonner'
   import type { AttachmentView, RequestAttachmentView } from '$lib/feedback'
@@ -28,6 +28,7 @@
 
   export let open = false
   export let transport: ApplicationTransport
+  export let capabilities: Pick<WorkbenchCapabilities, 'serverPaths'>
   export let requestId = ''
   export let readKind: 'request' | 'workspace' = 'request'
   export let attachment: (RequestAttachmentView & AttachmentView) | null = null
@@ -177,12 +178,10 @@
     if (!current || !requestId || revealBusy) return
     revealBusy = true
     try {
-      const path = await invoke<string>('reveal_feedback_attachment', {
-        input: {
-          requestId,
-          attachmentId: current.attachment_id,
-          kind: readKind,
-        },
+      const path = await capabilities.serverPaths.implementation.revealAttachment({
+        requestId,
+        attachmentId: current.attachment_id,
+        kind: readKind,
       })
       toast.success(tr('Attachment shown in folder'), { description: path })
     } catch (cause) {
@@ -200,12 +199,10 @@
     openError = ''
     openMessage = ''
     try {
-      const path = await invoke<string>('open_feedback_attachment', {
-        input: {
-          requestId,
-          attachmentId: current.attachment_id,
-          kind: readKind,
-        },
+      const path = await capabilities.serverPaths.implementation.openAttachment({
+        requestId,
+        attachmentId: current.attachment_id,
+        kind: readKind,
       })
       openMessage = tr('Opened in the system default app: {path}', { path })
     } catch (cause) {
@@ -289,7 +286,7 @@
             {/if}
           </Dialog.Description>
         </div>
-        {#if attachment}
+        {#if attachment && capabilities.serverPaths.status.availability !== 'unavailable'}
           <Button
             class="shrink-0"
             variant="outline"
@@ -396,10 +393,12 @@
             {#if openError}
               <p class="m-0 mt-2 break-all text-xs leading-5 text-muted-foreground">{openError}</p>
             {/if}
-            <Button class="mt-4" onclick={() => void openExternally()}>
-              <ExternalLink class="size-4" />
-              {tr('Open with the system default app')}
-            </Button>
+            {#if capabilities.serverPaths.status.availability !== 'unavailable'}
+              <Button class="mt-4" onclick={() => void openExternally()}>
+                <ExternalLink class="size-4" />
+                {tr('Open with the system default app')}
+              </Button>
+            {/if}
           </div>
         </div>
       {/if}

@@ -1,8 +1,4 @@
 <script lang="ts">
-  import { invoke } from '@tauri-apps/api/core'
-  import { listen, type UnlistenFn } from '@tauri-apps/api/event'
-  import { open } from '@tauri-apps/plugin-dialog'
-  import { isPermissionGranted, requestPermission } from '@tauri-apps/plugin-notification'
   import {
     BellRing,
     Check,
@@ -24,12 +20,13 @@
   import { onMount } from 'svelte'
 
   import MacPermissions from '$lib/MacPermissions.svelte'
+  import { createUnavailableWorkbenchCapabilities } from '$lib/capabilities/unavailableCapabilities'
+  import type { WorkbenchCapabilities } from '$lib/capabilities/workbenchCapabilities'
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
   import * as Dialog from '$lib/components/ui/dialog'
   import { toast } from '$lib/components/ui/sonner'
   import { t } from '$lib/i18n'
-  import { currentDesktopPlatform } from '$lib/platform'
   import {
     speechModelDescription,
     speechModelDisplayName,
@@ -68,6 +65,8 @@
 
   export let openWizard = false
   export let onClose: () => void = () => {}
+  const unavailableCapabilities = createUnavailableWorkbenchCapabilities()
+  export let capabilities: WorkbenchCapabilities = unavailableCapabilities
 
   type StorageView = { active_path: string; selected_path: string; restart_required: boolean }
   type SpeechModel = {
@@ -77,7 +76,7 @@
     size_bytes: number
     installed: boolean
     streaming: boolean
-    languages: string[]
+    languages: readonly string[]
   }
   type ModelProgress = { model_id: string; downloaded: number; total: number }
   type McpHost = { id: string; name: string; installed: boolean; configured: boolean }
@@ -89,12 +88,21 @@
     restartRequired: boolean
   }
 
-  const baseSteps = ['Welcome', 'Storage', 'Voice input', 'Adapters', 'Notifications', 'Cooking', 'Finish']
-  const macSteps = ['Welcome', 'Storage', 'Voice input', 'Permissions', 'Adapters', 'Notifications', 'Cooking', 'Finish']
-  let steps = baseSteps
+  const platform = capabilities.windowControls.implementation.platform()
+  const storageAvailable =
+    capabilities.dataStorageAdministration.status.availability !== 'unavailable' &&
+    capabilities.serverPaths.status.availability !== 'unavailable'
+  const voiceAvailable = capabilities.speech.status.availability !== 'unavailable'
+  const permissionsAvailable =
+    platform === 'macOS' &&
+    capabilities.systemPermissions.status.availability !== 'unavailable'
+  const adaptersAvailable =
+    capabilities.hostIntegrationAdministration.status.availability !== 'unavailable'
+  const notificationsAvailable = capabilities.notifications.status.availability !== 'unavailable'
+  const windowControlsAvailable = capabilities.windowControls.status.availability !== 'unavailable'
   let showMacPermissionStep = false
-  const isTauri = '__TAURI_INTERNALS__' in window
-  const isWindows = currentDesktopPlatform() === 'Windows'
+  let steps = onboardingSteps(showMacPermissionStep)
+  const isWindows = platform === 'Windows'
   let step = 0
   let wasOpen = false
   let closing = false
@@ -111,12 +119,12 @@
   let adapterBusy = false
   let piBusy = false
   let piStatus: PiPackageStatus | null = null
-  let piStatusLoading = isTauri
+  let piStatusLoading = adaptersAvailable
   let dshBusy = false
   let promptCopyState: 'idle' | 'copied' | 'error' = 'idle'
   let copyCelebrationKey = 0
   let notificationBusy = false
-  let unlistenModelProgress: UnlistenFn | undefined
+  let unlistenModelProgress: (() => void) | undefined
 
   const copyCelebrationParticles = [
     { x: -74, y: -38, color: '#67e8f9', delay: 0 },
@@ -151,18 +159,34 @@
   }
 
   onMount(() => {
-    if (isTauri) {
-      void loadStorage()
+    if (storageAvailable) void loadStorage()
+    if (voiceAvailable) {
       void loadModels()
-      void loadHosts()
-      void loadPiStatus()
-      void loadMacPermissionStep()
-      void listen<ModelProgress>('speech-model-progress', ({ payload }) => (modelProgress = payload)).then(
-        (unlisten) => (unlistenModelProgress = unlisten),
+      unlistenModelProgress = capabilities.speech.implementation.onModelProgress(
+        (progress) => (modelProgress = { ...progress }),
+        () => undefined,
       )
     }
+    if (adaptersAvailable) {
+      void loadHosts()
+      void loadPiStatus()
+    }
+    if (permissionsAvailable) void loadMacPermissionStep()
     return () => unlistenModelProgress?.()
   })
+
+  function onboardingSteps(includePermissions: boolean) {
+    return [
+      'Welcome',
+      ...(storageAvailable ? ['Storage'] : []),
+      ...(voiceAvailable ? ['Voice input'] : []),
+      ...(includePermissions ? ['Permissions'] : []),
+      ...(adaptersAvailable ? ['Adapters'] : []),
+      ...(notificationsAvailable ? ['Notifications'] : []),
+      'Cooking',
+      'Finish',
+    ]
+  }
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
@@ -175,13 +199,13 @@
 
   async function loadMacPermissionStep() {
     try {
-      const permissions = await invoke<{ id: string; status: string }[]>('list_macos_permissions')
+      const permissions = await capabilities.systemPermissions.implementation.list()
       showMacPermissionStep = permissions.length > 0
-      steps = showMacPermissionStep ? macSteps : baseSteps
+      steps = onboardingSteps(showMacPermissionStep)
       step = Math.max(0, Math.min(steps.length - 1, step))
     } catch {
       showMacPermissionStep = false
-      steps = baseSteps
+      steps = onboardingSteps(false)
       step = Math.max(0, Math.min(steps.length - 1, step))
     }
   }
@@ -208,19 +232,19 @@
 
   async function loadStorage() {
     try {
-      storage = await invoke<StorageView>('get_data_storage_settings')
+      storage = await capabilities.dataStorageAdministration.implementation.read()
     } catch (cause) {
       toast.error(tr('Could not read the data storage location'), { description: messageFrom(cause) })
     }
   }
 
   async function chooseStorage() {
-    if (!isTauri || storageBusy) return
-    const path = await open({ directory: true, multiple: false })
-    if (!path || Array.isArray(path)) return
+    if (!storageAvailable || storageBusy) return
+    const path = await capabilities.serverPaths.implementation.chooseDirectory()
+    if (!path) return
     storageBusy = true
     try {
-      storage = await invoke<StorageView>('set_data_storage_path', { path })
+      storage = await capabilities.dataStorageAdministration.implementation.select(path)
       storageRestartRequired = storage.restart_required
       toast.success(tr('Data storage location saved'))
     } catch (cause) {
@@ -231,18 +255,20 @@
   }
 
   async function restartForStorage() {
+    if (!windowControlsAvailable) return
     setOnboardingStep(2)
     try {
-      await invoke('restart_application')
+      await capabilities.windowControls.implementation.restart()
     } catch (cause) {
       toast.error(tr('Could not restart RambleDesk'), { description: messageFrom(cause) })
     }
   }
 
   async function restartForPermissions() {
+    if (!windowControlsAvailable) return
     setOnboardingStep(step)
     try {
-      await invoke('restart_application')
+      await capabilities.windowControls.implementation.restart()
     } catch (cause) {
       toast.error(tr('Could not restart RambleDesk'), { description: messageFrom(cause) })
     }
@@ -250,7 +276,7 @@
 
   async function loadModels() {
     try {
-      models = await invoke<SpeechModel[]>('list_speech_models')
+      models = [...await capabilities.speech.implementation.listModels()]
     } catch (cause) {
       toast.error(tr('Could not read voice models'), { description: messageFrom(cause) })
     }
@@ -261,7 +287,7 @@
     modelBusy = true
     modelProgress = { model_id: selectedModel.id, downloaded: 0, total: selectedModel.size_bytes }
     try {
-      await invoke<SpeechModel>('download_speech_model', { modelId: selectedModel.id })
+      await capabilities.speech.implementation.downloadModel(selectedModel.id)
       await loadModels()
       toast.success(tr('Voice model installed'))
     } catch (cause) {
@@ -274,7 +300,7 @@
   async function loadHosts() {
     hostsLoading = true
     try {
-      hosts = await invoke<McpHost[]>('detect_generic_mcp_hosts')
+      hosts = [...await capabilities.hostIntegrationAdministration.implementation.detectGenericMcpHosts()]
       hostSelections = new Set(hosts.filter((host) => host.installed && !host.configured).map((host) => host.id))
     } catch (cause) {
       toast.error(tr('Could not detect adapter hosts'), { description: messageFrom(cause) })
@@ -294,7 +320,7 @@
     if (!selectedHosts.length || adapterBusy) return
     adapterBusy = true
     try {
-      const results = await invoke<McpInstallResult[]>('install_generic_mcp_hosts', { hostIds: selectedHosts })
+      const results = await capabilities.hostIntegrationAdministration.implementation.installGenericMcpHosts(selectedHosts)
       const changed = results.filter((result) => result.action !== 'unchanged').length
       toast.success(tr('Adapters configured'), { description: tr('Restart {count} host(s) before using them.', { count: changed }) })
       await loadHosts()
@@ -308,7 +334,7 @@
   async function loadPiStatus() {
     piStatusLoading = true
     try {
-      piStatus = await invoke<PiPackageStatus>('get_pi_package_status', { checkoutRoot: null })
+      piStatus = await capabilities.hostIntegrationAdministration.implementation.piStatus()
     } catch {
       piStatus = null
     } finally {
@@ -320,7 +346,7 @@
     if (piBusy) return
     piBusy = true
     try {
-      await invoke<string>('install_pi_package', { checkoutRoot: null })
+      await capabilities.hostIntegrationAdministration.implementation.installPi()
       await loadPiStatus()
       toast.success(tr('Pi native adapter installed'))
     } catch (cause) {
@@ -334,7 +360,7 @@
     if (dshBusy) return
     dshBusy = true
     try {
-      await invoke('install_dsh_package', { checkoutRoot: null, profileId: null })
+      await capabilities.hostIntegrationAdministration.implementation.installDsh()
       toast.success(tr('DSH native adapter installed'))
     } catch (cause) {
       toast.error(tr('DSH adapter installation failed'), { description: messageFrom(cause) })
@@ -356,10 +382,13 @@
   }
 
   async function enableNotifications() {
-    if (!isTauri || notificationBusy || isWindows) return
+    if (!notificationsAvailable || notificationBusy || isWindows) return
     notificationBusy = true
     try {
-      const permission = (await isPermissionGranted()) ? 'granted' : await requestPermission()
+      const currentPermission = await capabilities.notifications.implementation.permission()
+      const permission = currentPermission === 'granted'
+        ? 'granted'
+        : await capabilities.notifications.implementation.requestPermission()
       if (permission !== 'granted') throw new Error(tr('The operating system did not grant notification permission.'))
       setNotificationPopupEnabled(true)
       toast.success(tr('System notifications enabled'))
@@ -442,7 +471,7 @@
         <section class="mx-auto max-w-xl">
           <div class="flex gap-3"><HardDrive class="mt-0.5 size-6 text-primary" /><div><h2 class="m-0 text-lg font-semibold">{tr('Choose where data lives first')}</h2><p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{tr('Feedback attachments, published packages, and voice models live in this folder. Set it first so later downloads and feedback go to the right place.')}</p></div></div>
           <div class="mt-6 rounded-lg border bg-muted/20 p-4"><p class="m-0 text-[10px] font-medium uppercase text-muted-foreground">{tr('Current folder')}</p><p class="mb-0 mt-2 break-all font-mono text-xs">{storage?.selected_path ?? tr('Loading data storage location…')}</p></div>
-          <div class="mt-4 flex items-center justify-between gap-4"><p class="m-0 text-xs text-muted-foreground">{tr('The database and local credentials remain in the system app directory.')}</p><Button variant="outline" disabled={!isTauri || storageBusy} onclick={() => void chooseStorage()}>{#if storageBusy}<LoaderCircle class="animate-spin" data-icon="inline-start" />{:else}<FolderCog data-icon="inline-start" />{/if}{tr('Choose another location…')}</Button></div>
+          <div class="mt-4 flex items-center justify-between gap-4"><p class="m-0 text-xs text-muted-foreground">{tr('The database and local credentials remain in the system app directory.')}</p><Button variant="outline" disabled={capabilities.serverPaths.status.availability === 'unavailable' || storageBusy} onclick={() => void chooseStorage()}>{#if storageBusy}<LoaderCircle class="animate-spin" data-icon="inline-start" />{:else}<FolderCog data-icon="inline-start" />{/if}{tr('Choose another location…')}</Button></div>
           {#if storageRestartRequired}<div class="mt-5 rounded-lg border border-primary/30 bg-primary/5 p-4 text-xs leading-5 text-primary">{tr('The data location has been saved. Restart RambleDesk so the remaining setup uses it directly.')}</div>{/if}
         </section>
       {:else if steps[step] === 'Voice input'}
@@ -461,7 +490,12 @@
           <section class="mx-auto max-w-xl">
             <div class="flex gap-3"><ShieldCheck class="mt-0.5 size-6 text-primary" /><div><h2 class="m-0 text-lg font-semibold">{tr('Grant Mac permissions')}</h2><p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{tr('Screen capture and voice transcription require macOS permissions. Grant them now or later in Settings → Permissions.')}</p></div></div>
             <div class="mt-6">
-              <MacPermissions bind:restartRequired={permissionRestartRequired} />
+              <MacPermissions
+                bind:restartRequired={permissionRestartRequired}
+                systemPermissions={capabilities.systemPermissions}
+                notifications={capabilities.notifications}
+                windowControls={capabilities.windowControls}
+              />
             </div>
           </section>
       {:else if steps[step] === 'Adapters'}
@@ -489,7 +523,7 @@
               <Button
                 size="sm"
                 class="shrink-0"
-                disabled={piBusy || piStatusLoading || piStatus?.installed || !isTauri || piStatus?.cliAvailable === false}
+                disabled={piBusy || piStatusLoading || piStatus?.installed || capabilities.hostIntegrationAdministration.status.availability === 'unavailable' || piStatus?.cliAvailable === false}
                 onclick={() => void installPi()}
               >
                 {#if piBusy}
@@ -520,7 +554,7 @@
                 </div>
                 <p class="mb-0 mt-1 text-xs leading-5 text-muted-foreground">{tr('DeepSeek Harness waits for feedback in the same tool call, then automatically continues.')}</p>
               </div>
-              <Button size="sm" class="shrink-0" disabled={dshBusy || !isTauri} onclick={() => void installDsh()}>
+              <Button size="sm" class="shrink-0" disabled={dshBusy || capabilities.hostIntegrationAdministration.status.availability === 'unavailable'} onclick={() => void installDsh()}>
                 {#if dshBusy}<LoaderCircle class="animate-spin" data-icon="inline-start" />{:else}<Download data-icon="inline-start" />{/if}
                 {dshBusy ? tr('Installing…') : tr('Install DSH adapter')}
               </Button>
@@ -571,7 +605,7 @@
           <div class="mt-6 space-y-3 rounded-lg border bg-muted/20 p-4">
             <div class="flex items-center justify-between gap-4">
               <div><strong class="text-xs">{tr('System notifications')}</strong><p class="mb-0 mt-1 text-[10px] text-muted-foreground">{#if isWindows}{tr('System banners are not available on this Windows build.')}{:else}{tr('Show new feedback requests in the system notification center.')}{/if}</p></div>
-              {#if isWindows}<Badge variant="secondary">{tr('Unavailable')}</Badge>{:else if $notificationPopupEnabled}<Badge variant="secondary">{tr('Enabled')}</Badge>{:else}<Button size="sm" disabled={notificationBusy || !isTauri} onclick={() => void enableNotifications()}>{#if notificationBusy}<LoaderCircle class="animate-spin" data-icon="inline-start" />{/if}{tr('Allow notifications')}</Button>{/if}
+              {#if isWindows}<Badge variant="secondary">{tr('Unavailable')}</Badge>{:else if $notificationPopupEnabled}<Badge variant="secondary">{tr('Enabled')}</Badge>{:else}<Button size="sm" disabled={notificationBusy || capabilities.notifications.status.availability === 'unavailable'} onclick={() => void enableNotifications()}>{#if notificationBusy}<LoaderCircle class="animate-spin" data-icon="inline-start" />{/if}{tr('Allow notifications')}</Button>{/if}
             </div>
             <div class="flex items-center justify-between gap-4 border-t pt-3">
               <div><strong class="text-xs">{tr('Sound alerts')}</strong><p class="mb-0 mt-1 text-[10px] text-muted-foreground">{tr('Play a sound when a notification arrives.')}</p></div>

@@ -16,19 +16,35 @@ const mocks = vi.hoisted(() => {
     value: { language: 'en-US' },
   })
   return {
-    invoke: vi.fn(),
     applicationCall: vi.fn(),
-    sendNotification: vi.fn(),
+    notificationSend: vi.fn(),
+    setPendingCount: vi.fn(),
     storage,
   }
 })
 
-vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }))
-vi.mock('@tauri-apps/plugin-notification', () => ({ sendNotification: mocks.sendNotification }))
-
 import type { FeedbackRequestSummary, HostSessionSummary, ListFeedbackRequestsOutput } from '../feedback'
 import { TestApplicationTransport } from '../application/testApplicationTransport'
+import { createUnavailableWorkbenchCapabilities } from '../capabilities/unavailableCapabilities'
 import { createNavigationController, type NavigationState } from './navigationController'
+
+const unavailableCapabilities = createUnavailableWorkbenchCapabilities()
+
+function testCapabilities() {
+  return {
+    notifications: {
+      status: { availability: 'available', source: 'native' } as const,
+      implementation: {
+        ...unavailableCapabilities.notifications.implementation,
+        send: mocks.notificationSend,
+      },
+    },
+    tray: {
+      status: { availability: 'available', source: 'native' } as const,
+      implementation: { setPendingCount: mocks.setPendingCount },
+    },
+  }
+}
 
 function feedbackRequest(requestId: string): FeedbackRequestSummary {
   return {
@@ -77,7 +93,7 @@ function createController(
     .handle('archiveHostSession', (input) => mocks.applicationCall('archiveHostSession', input))
     .handle('setHostPinned', (input) => mocks.applicationCall('setHostPinned', input))
   return createNavigationController({
-    isTauri: true,
+    capabilities: testCapabilities(),
     previewMode: false,
     transport,
     tr: (source) => source,
@@ -97,10 +113,11 @@ function createController(
 describe('navigationController', () => {
   beforeEach(() => {
     vi.useFakeTimers()
-    mocks.invoke.mockReset()
-    mocks.invoke.mockResolvedValue(undefined)
     mocks.applicationCall.mockReset()
-    mocks.sendNotification.mockReset()
+    mocks.notificationSend.mockReset()
+    mocks.notificationSend.mockResolvedValue(undefined)
+    mocks.setPendingCount.mockReset()
+    mocks.setPendingCount.mockResolvedValue(undefined)
   })
 
   afterEach(() => {
@@ -124,6 +141,7 @@ describe('navigationController', () => {
     await expect(controller.initialize(false)).resolves.toBe(true)
 
     expect(openRequest).not.toHaveBeenCalled()
+    expect(mocks.setPendingCount).toHaveBeenCalledWith(1)
   })
 
   it('waits for transport readiness before loading application facts', async () => {
@@ -304,7 +322,6 @@ describe('navigationController', () => {
       if (command === 'listHostSessions') return [hostSession()]
       if (command === 'listHostProfiles') return []
       if (command === 'listFeedbackRequests') return requestListOutput
-      if (command === 'set_pending_count') return undefined
       return undefined
     })
 

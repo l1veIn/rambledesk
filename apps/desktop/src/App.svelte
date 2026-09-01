@@ -1,10 +1,4 @@
 <script lang="ts">
-  import { invoke } from '@tauri-apps/api/core'
-  import { listen } from '@tauri-apps/api/event'
-  import {
-    isPermissionGranted,
-    sendNotification,
-  } from '@tauri-apps/plugin-notification'
   import { onMount, tick } from 'svelte'
   import { Pane, PaneGroup, PaneResizer } from 'paneforge'
 
@@ -26,7 +20,13 @@
   import SettingsWorkspaceView from './lib/workspace/SettingsWorkspaceView.svelte'
   import TaskWorkspaceView from './lib/workspace/TaskWorkspaceView.svelte'
   import type { JSONContent } from '@tiptap/core'
-  import type { ApplicationTransport } from './lib/application/applicationTransport'
+  import {
+    defineApplicationStream,
+    type ApplicationTransport,
+  } from './lib/application/applicationTransport'
+  import type { WorkbenchCapabilities } from './lib/capabilities/workbenchCapabilities'
+  import { provideWorkbenchCapabilities } from './lib/capabilities/capabilityContext'
+  import { createUnavailableWorkbenchCapabilities } from './lib/capabilities/unavailableCapabilities'
   import type { PublishedFeedbackAction } from './lib/publishedFeedbackAction'
   import { APPLICATION_EVENTS_STREAM } from './lib/application/applicationEvents'
   import {
@@ -38,8 +38,11 @@
   } from './lib/application/applicationSnapshotRefetch'
 
   export let applicationTransport: ApplicationTransport
+  export let capabilities: WorkbenchCapabilities = createUnavailableWorkbenchCapabilities()
   export let publishedFeedbackAction: PublishedFeedbackAction
   export let previewMode = false
+
+  provideWorkbenchCapabilities(capabilities)
 
   import type {
     ApproveFeedbackInput,
@@ -65,10 +68,7 @@
     notificationStateForPermission,
     type NotificationState,
   } from './lib/notifications'
-  import { openExternalUrl } from './lib/openExternalUrl'
-  import { currentDesktopPlatform } from './lib/platform'
   import { isWithinLast24Hours } from './lib/requestRecency'
-  import { checkForUpdates } from './lib/updater'
   import {
     rambelleProfileViewDescriptor,
     requestTaskViewDescriptor,
@@ -184,8 +184,8 @@
     setLayout: (layout: number[]) => void
   }
 
-  const RESUME_PROMPT_EVENT = 'rambledesk://resume-prompt'
-  const OPEN_ADAPTERS_EVENT = 'rambledesk://open-adapters'
+  const RESUME_PROMPT_STREAM = defineApplicationStream<ResumePrompt>('rambledesk://resume-prompt')
+  const OPEN_ADAPTERS_STREAM = defineApplicationStream<void>('rambledesk://open-adapters')
   const formatTimeLocal = (value: string | null | undefined) =>
     formatTime(value, $locale, tr('Not saved yet'))
   let workspace: FeedbackWorkspaceView | null = null
@@ -241,8 +241,16 @@
   let onboardingOpen = false
   let launchUpdateCheckDue = false
   let workbenchInitialized = false
-  const isTauri = '__TAURI_INTERNALS__' in window
-  const isMac = currentDesktopPlatform() === 'macOS'
+  const desktopShellAvailable = capabilities.windowControls.status.source === 'native'
+  const isMac = capabilities.windowControls.implementation.platform() === 'macOS'
+  const notificationsAvailable = capabilities.notifications.status.availability !== 'unavailable'
+  const softwareUpdatesAvailable = capabilities.softwareUpdates.status.availability !== 'unavailable'
+  const onboardingAvailable =
+    capabilities.dataStorageAdministration.status.availability !== 'unavailable' ||
+    capabilities.speech.status.availability !== 'unavailable' ||
+    capabilities.hostIntegrationAdministration.status.availability !== 'unavailable' ||
+    notificationsAvailable ||
+    capabilities.webAccessAdministration.status.availability !== 'unavailable'
   const previewWorkspaceScenario = previewMode
     ? seedPreviewWorkspaceScenario(
         new URLSearchParams(window.location.search).get('workspace'),
@@ -330,7 +338,7 @@
   const saveDraftNow = draftController.saveDraftNow
 
   const attachmentController = createAttachmentController({
-    isTauri,
+    capabilities,
     transport: applicationTransport,
     tr,
     messageFrom,
@@ -390,7 +398,7 @@
   })
 
   const navigation = createNavigationController({
-    isTauri,
+    capabilities,
     previewMode,
     transport: applicationTransport,
     tr,
@@ -674,7 +682,7 @@
       )
     })
     const cleanupLayoutObserver = () => layoutObserver.disconnect()
-    const unsubscribeApplicationEvents = !isTauri && !previewMode
+    const unsubscribeApplicationEvents = !desktopShellAvailable && !previewMode
       ? applicationTransport.subscribe(
           APPLICATION_EVENTS_STREAM,
           (event) => {
@@ -688,7 +696,7 @@
         )
       : () => {}
 
-    if (!isTauri) {
+    if (!desktopShellAvailable) {
       startWorkbench()
       if (previewMode) {
         if (!initialWorkspaceSnapshot) {
@@ -702,8 +710,11 @@
         }
       }
       notificationState = 'unavailable'
-      if (new URLSearchParams(window.location.search).get('dialog') === 'update') {
-        void checkForUpdates({ prompt: true, forcePrompt: true })
+      if (
+        capabilities.softwareUpdates.status.availability !== 'unavailable' &&
+        new URLSearchParams(window.location.search).get('dialog') === 'update'
+      ) {
+        void capabilities.softwareUpdates.implementation.check({ prompt: true, forcePrompt: true })
       }
       return () => {
         unsubscribeApplicationEvents()
@@ -712,50 +723,61 @@
         cleanupAttachments()
       }
     }
-    if ($onboardingCompleted) startWorkbench()
+    if ($onboardingCompleted || !onboardingAvailable) startWorkbench()
     else onboardingOpen = true
-    const updateCheckTimer = window.setTimeout(() => {
-      launchUpdateCheckDue = true
-      if (!onboardingOpen) void checkForUpdates({ prompt: true })
-    }, 4_000)
-    void refreshNotificationPermission()
-    let resumePromptUnlisten: (() => void) | undefined
-    let openAdaptersUnlisten: (() => void) | undefined
-    void listen(OPEN_ADAPTERS_EVENT, () => openSettings('adapters'))
-      .then((unlisten) => {
-        openAdaptersUnlisten = unlisten
-      })
-      .catch(() => {
-        // The tray entry is unavailable in browser preview.
-      })
-    void listen<ResumePrompt>(RESUME_PROMPT_EVENT, (event) => {
-      resumePrompt = event.payload
-      resumeCopyState = 'idle'
-      if (isMac && $notificationPopupEnabled && notificationState === 'enabled') {
-        sendNotification({
-          title: event.payload.title,
-          body: tr('Return to {host} and use the resume prompt to continue the host session.', {
-            host: event.payload.host_label,
-          }),
-        })
-      }
-      // The alert sound is reserved for a new request arriving, not for the
-      // resume prompt shown after a submission completes, so it is not played
-      // here.
-    })
-      .then((unlisten) => {
-        resumePromptUnlisten = unlisten
-      })
-      .catch(() => {
+    const updateCheckTimer = softwareUpdatesAvailable
+      ? window.setTimeout(() => {
+          launchUpdateCheckDue = true
+          if (!onboardingOpen) {
+            void capabilities.softwareUpdates.implementation.check({ prompt: true, forcePrompt: false })
+          }
+        }, 4_000)
+      : undefined
+    if (notificationsAvailable) void refreshNotificationPermission()
+    else notificationState = 'unavailable'
+    const openAdaptersUnlisten = applicationTransport.subscribe(
+      OPEN_ADAPTERS_STREAM,
+      () => void openSettings('adapters'),
+      () => {
+        // The tray entry is an optional Desktop Shell affordance.
+      },
+    )
+    const resumePromptUnlisten = applicationTransport.subscribe(
+      RESUME_PROMPT_STREAM,
+      (prompt) => {
+        resumePrompt = prompt
+        resumeCopyState = 'idle'
+        if (
+          notificationsAvailable &&
+          isMac &&
+          $notificationPopupEnabled &&
+          notificationState === 'enabled'
+        ) {
+          void capabilities.notifications.implementation
+            .send({
+              title: prompt.title,
+              body: tr(
+                'Return to {host} and use the resume prompt to continue the host session.',
+                { host: prompt.host_label },
+              ),
+            })
+            .catch(() => {})
+        }
+        // The alert sound is reserved for a new request arriving, not for the
+        // resume prompt shown after a submission completes, so it is not played
+        // here.
+      },
+      () => {
         // Resume prompt still appears if submit path keeps the main window focused.
-      })
+      },
+    )
     return () => {
       unsubscribeApplicationEvents()
       applicationSnapshotRefetch.dispose()
       draftController.cancelPendingSave()
       if (inboxTimer) clearInterval(inboxTimer)
-      resumePromptUnlisten?.()
-      openAdaptersUnlisten?.()
+      resumePromptUnlisten()
+      openAdaptersUnlisten()
       if (updateCheckTimer !== undefined) clearTimeout(updateCheckTimer)
       cleanupLayoutObserver()
       cleanupAttachments()
@@ -766,7 +788,7 @@
     if (workbenchInitialized) return
     workbenchInitialized = true
     inboxTimer = ensureDesktopNavigationPolling(
-      isTauri,
+      desktopShellAvailable,
       inboxTimer,
       setInterval,
       () => void navigation.refreshNavigation(true),
@@ -782,13 +804,15 @@
   function closeOnboarding() {
     onboardingOpen = false
     startWorkbench()
-    if (launchUpdateCheckDue) void checkForUpdates({ prompt: true })
+    if (softwareUpdatesAvailable && launchUpdateCheckDue) {
+      void capabilities.softwareUpdates.implementation.check({ prompt: true, forcePrompt: false })
+    }
   }
 
   async function openGithubReleases() {
     const releasesUrl = 'https://github.com/l1veIn/rambledesk/releases'
     try {
-      await openExternalUrl(releasesUrl)
+      await capabilities.externalLinks.implementation.open(releasesUrl)
     } catch (cause) {
       pageError = messageFrom(cause)
     }
@@ -1202,7 +1226,7 @@
 
   async function refreshNotificationPermission() {
     try {
-      const granted = await isPermissionGranted()
+      const granted = await capabilities.notifications.implementation.permission() === 'granted'
       if (isMac && !granted && $notificationPopupEnabled) setNotificationPopupEnabled(false)
       notificationState = notificationStateForPermission(granted, $notificationPopupEnabled)
     } catch {
@@ -1485,9 +1509,10 @@
 
   async function refreshGenericMcpConfiguration() {
     pageError = ''
-    if (!isTauri) return
+    if (capabilities.hostIntegrationAdministration.status.availability === 'unavailable') return
     try {
-      genericMcpConfiguration = await invoke<string>('get_generic_mcp_configuration')
+      genericMcpConfiguration = await capabilities.hostIntegrationAdministration.implementation
+        .genericMcpConfiguration()
     } catch (cause) {
       pageError = messageFrom(cause)
     }
@@ -1755,7 +1780,7 @@
   <Sonner />
   <RambleSessionController
     bind:this={rambleController}
-    {isTauri}
+    {capabilities}
     transport={applicationTransport}
     {workspace}
     bind:attachmentBusy
@@ -1784,6 +1809,8 @@
   />
 
   <AppTitlebar
+    windowControls={capabilities.windowControls}
+    notifications={capabilities.notifications}
     sourceLabel={workspace?.request.source_hint ?? workspace?.request.title ?? 'Workbench'}
     pendingCount={$navigation.pendingRequests.length}
     {rambleEngaged}
@@ -1880,6 +1907,7 @@
           >
             {#if renderedWorkspaceView?.kind === 'settings'}
               <SettingsWorkspaceView
+                {capabilities}
                 mcpConfiguration={genericMcpConfiguration}
                 section={settingsSection}
                 sectionSelectionEpoch={settingsSectionSelectionEpoch}
@@ -1891,6 +1919,7 @@
             {:else if renderedWorkspaceView?.kind === 'request-task'}
               <TaskWorkspaceView
                 transport={applicationTransport}
+                {capabilities}
                 {workspace}
                 {editorDocument}
                 previews={attachmentPreviews}
@@ -1917,6 +1946,7 @@
               {#key renderedSessionView ? workspaceViewKey(renderedSessionView) : 'workspace:empty'}
               <SessionWorkbench
             transport={applicationTransport}
+            {capabilities}
             bind:this={sessionWorkbench}
             view={renderedSessionView}
             bind:taskBriefOpen
@@ -1975,7 +2005,6 @@
             {cancelling}
             {approving}
             {canOpenResumePrompt}
-            nativeCapabilities={isTauri}
             {resolveHostProfile}
             formatTime={formatTimeLocal}
             onReload={() => void reloadWorkspace()}
@@ -2025,7 +2054,9 @@
   </div>
 </main>
 
-<OnboardingWizard bind:openWizard={onboardingOpen} onClose={closeOnboarding} />
+{#if onboardingAvailable}
+  <OnboardingWizard {capabilities} bind:openWizard={onboardingOpen} onClose={closeOnboarding} />
+{/if}
 
 <ArchivedSessionsDialog
   bind:open={archivedSessionsOpen}
@@ -2039,8 +2070,11 @@
   onChanged={retrySessionViewRecovery}
 />
 
-<UpdateAvailableDialog
-  installBlocked={updateInstallBlocked}
-  onOpenReleases={() => void openGithubReleases()}
-/>
+{#if softwareUpdatesAvailable}
+  <UpdateAvailableDialog
+    softwareUpdates={capabilities.softwareUpdates}
+    installBlocked={updateInstallBlocked}
+    onOpenReleases={() => void openGithubReleases()}
+  />
+{/if}
 {/key}

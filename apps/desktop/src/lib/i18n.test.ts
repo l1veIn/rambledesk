@@ -26,3 +26,14 @@ describe('notification copy', () => {
     expect(t('zh-CN', 'System notifications')).toBe('系统弹窗')
   })
 })
+
+describe('capability fallback copy', () => {
+  it('translates one-time Desktop-only settings guidance', () => {
+    expect(t('zh-CN', 'This settings section is available only in the desktop app.')).toBe(
+      '此设置页面仅在桌面应用中可用。',
+    )
+    expect(t('zh-CN', 'Opening external links is available only in the desktop app.')).toBe(
+      '打开外部链接仅在桌面应用中可用。',
+    )
+  })
+})
