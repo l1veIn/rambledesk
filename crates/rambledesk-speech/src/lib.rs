@@ -50,6 +50,7 @@ impl PcmAudioChunk {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg(any(target_os = "windows", target_os = "macos", test))]
 pub(crate) struct NativeAudioSourceConfig {
     pub input_device: Option<String>,
 }
@@ -127,6 +128,7 @@ impl From<&SpeechSessionConfig> for SpeechEngineConfig {
     }
 }
 
+#[cfg(any(target_os = "windows", target_os = "macos", test))]
 impl From<&SpeechSessionConfig> for NativeAudioSourceConfig {
     fn from(config: &SpeechSessionConfig) -> Self {
         Self {
