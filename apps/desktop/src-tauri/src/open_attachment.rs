@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use rambledesk_core::GetFeedbackInput;
 use serde::Deserialize;
 use tauri_plugin_opener::OpenerExt;
 
@@ -60,6 +61,28 @@ pub async fn reveal_feedback_attachment(
             .map_err(|error| format!("无法在文件夹中显示 {}：{error}", display_os_path(&path)))?;
     }
     Ok(display_os_path(&path))
+}
+
+#[tauri::command]
+pub async fn reveal_feedback_package(
+    input: GetFeedbackInput,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<(), String> {
+    let request = state
+        .application
+        .get_feedback(input)
+        .await
+        .map_err(|error| error.to_string())?;
+    let feedback = request
+        .feedback
+        .ok_or_else(|| "feedback package is not available".to_owned())?;
+    let path = normalized_existing_path(&feedback.markdown_path)?;
+    if app.opener().reveal_item_in_dir(&path).is_err() {
+        reveal_with_system_command(&path)
+            .map_err(|error| format!("无法在文件夹中显示 {}：{error}", display_os_path(&path)))?;
+    }
+    Ok(())
 }
 
 pub(crate) fn display_os_path(path: &Path) -> String {

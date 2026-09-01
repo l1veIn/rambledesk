@@ -34,10 +34,7 @@ describe('resumePrompt helpers', () => {
 
   it('shows the manual reopen button only for submitted feedback packages', () => {
     const packageResult = {
-      package_uri: 'file:///tmp/package',
-      directory_path: '/tmp/package',
-      markdown_path: '/tmp/package/feedback.md',
-      manifest_path: '/tmp/package/manifest.json',
+      available: true,
     }
 
     expect(shouldShowResumePromptButton(packageResult, 'feedback_submitted')).toBe(true)

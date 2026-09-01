@@ -4,15 +4,15 @@ use std::{
 };
 
 use rambledesk_core::{
-    AddAttachmentInput, ApplicationError, ApproveFeedbackInput, CancelFeedbackInput,
-    DeleteFeedbackRequestInput, DraftView, FeedbackPackageView, FeedbackRequestSummary,
-    FeedbackRequestView, FeedbackStatus, FeedbackWorkspaceView, GetFeedbackInput, HostSessionInput,
-    HostSessionSummary, ListFeedbackRequestsInput, ListFeedbackRequestsOutput,
-    ListHostSessionsInput, MAX_ATTACHMENT_BYTES, ReadAttachmentInput, RemoveAttachmentInput,
-    RenameHostSessionInput, ReorderAttachmentsInput, SaveDraftInput, SetHostPinnedInput,
-    SetHostSessionPinnedInput, SubmitFeedbackInput,
+    AddAttachmentInput, ApplicationError, ApplicationFeedbackRequestView,
+    ApplicationFeedbackWorkspaceView, ApplicationHostProfileView, ApproveFeedbackInput,
+    CancelFeedbackInput, DeleteFeedbackRequestInput, DraftView, FeedbackPackageView,
+    FeedbackRequestSummary, FeedbackStatus, GetFeedbackInput, HostSessionInput, HostSessionSummary,
+    ListFeedbackRequestsInput, ListFeedbackRequestsOutput, ListHostSessionsInput,
+    MAX_ATTACHMENT_BYTES, ReadAttachmentInput, RemoveAttachmentInput, RenameHostSessionInput,
+    ReorderAttachmentsInput, SaveDraftInput, SetHostPinnedInput, SetHostSessionPinnedInput,
+    SubmitFeedbackInput,
 };
-use rambledesk_hosts::{HostProfile, known_host_profiles};
 use rambledesk_speech::{
     SpeechEvent, SpeechEventSink, SpeechProvider, SpeechSession, SpeechSessionConfig,
     ensure_vad_model, list_input_devices,
@@ -24,9 +24,9 @@ use tauri::{Emitter, Manager, ipc::Response};
 use rambledesk_mcp::{McpHostView, McpInstallResult, detect_hosts, install_hosts};
 
 use super::{
-    TRAY_ID, WorkbenchState, clipboard_capture::ClipboardCaptureState,
-    continuation::deliver_continuation_after_terminal, diagnostics, migrate_library,
-    pending_tray_icon, pi_install, save_library_path, screen_capture::ScreenCaptureState,
+    TRAY_ID, WorkbenchState, clipboard_capture::ClipboardCaptureState, diagnostics,
+    migrate_library, pending_tray_icon, pi_install, save_library_path,
+    screen_capture::ScreenCaptureState,
 };
 
 #[derive(Debug, Deserialize)]
@@ -163,8 +163,10 @@ pub(super) fn get_generic_mcp_configuration(state: tauri::State<'_, WorkbenchSta
 }
 
 #[tauri::command]
-pub(super) fn list_host_profiles() -> Vec<HostProfile> {
-    known_host_profiles()
+pub(super) fn list_host_profiles(
+    state: tauri::State<'_, WorkbenchState>,
+) -> Vec<ApplicationHostProfileView> {
+    state.application_commands.list_host_profiles()
 }
 
 #[tauri::command]
@@ -280,15 +282,14 @@ pub(super) fn set_pending_count(
 pub(super) async fn list_feedback_inbox(
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<Vec<FeedbackRequestSummary>, ApplicationError> {
-    let application = state.application.clone();
-    application.list_open_feedback_requests().await
+    state.application_commands.list_feedback_inbox().await
 }
 
 #[tauri::command]
 pub(super) async fn list_host_sessions(
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<Vec<HostSessionSummary>, ApplicationError> {
-    state.application.list_host_sessions().await
+    state.application_commands.list_host_sessions().await
 }
 
 #[tauri::command]
@@ -296,7 +297,10 @@ pub(super) async fn list_archived_host_sessions(
     input: ListHostSessionsInput,
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<Vec<HostSessionSummary>, ApplicationError> {
-    state.application.list_archived_host_sessions(input).await
+    state
+        .application_commands
+        .list_archived_host_sessions(input)
+        .await
 }
 
 #[tauri::command]
@@ -304,7 +308,7 @@ pub(super) async fn rename_host_session(
     input: RenameHostSessionInput,
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<HostSessionSummary, ApplicationError> {
-    state.application.rename_host_session(input).await
+    state.application_commands.rename_host_session(input).await
 }
 
 #[tauri::command]
@@ -312,7 +316,10 @@ pub(super) async fn set_host_session_pinned(
     input: SetHostSessionPinnedInput,
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<HostSessionSummary, ApplicationError> {
-    state.application.set_host_session_pinned(input).await
+    state
+        .application_commands
+        .set_host_session_pinned(input)
+        .await
 }
 
 #[tauri::command]
@@ -320,7 +327,7 @@ pub(super) async fn archive_host_session(
     input: HostSessionInput,
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<HostSessionSummary, ApplicationError> {
-    state.application.archive_host_session(input).await
+    state.application_commands.archive_host_session(input).await
 }
 
 #[tauri::command]
@@ -328,7 +335,10 @@ pub(super) async fn unarchive_host_session(
     input: HostSessionInput,
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<HostSessionSummary, ApplicationError> {
-    state.application.unarchive_host_session(input).await
+    state
+        .application_commands
+        .unarchive_host_session(input)
+        .await
 }
 
 #[tauri::command]
@@ -336,7 +346,7 @@ pub(super) async fn delete_host_session(
     input: HostSessionInput,
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<(), ApplicationError> {
-    state.application.delete_host_session(input).await
+    state.application_commands.delete_host_session(input).await
 }
 
 #[tauri::command]
@@ -344,7 +354,10 @@ pub(super) async fn delete_feedback_request(
     input: DeleteFeedbackRequestInput,
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<(), ApplicationError> {
-    state.application.delete_feedback_request(input).await
+    state
+        .application_commands
+        .delete_feedback_request(input)
+        .await
 }
 
 #[tauri::command]
@@ -352,7 +365,7 @@ pub(super) async fn set_host_pinned(
     input: SetHostPinnedInput,
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<Vec<HostSessionSummary>, ApplicationError> {
-    state.application.set_host_pinned(input).await
+    state.application_commands.set_host_pinned(input).await
 }
 
 #[tauri::command]
@@ -360,16 +373,21 @@ pub(super) async fn list_feedback_requests(
     input: ListFeedbackRequestsInput,
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<ListFeedbackRequestsOutput, ApplicationError> {
-    state.application.list_feedback_requests(input).await
+    state
+        .application_commands
+        .list_feedback_requests(input)
+        .await
 }
 
 #[tauri::command]
 pub(super) async fn get_feedback_workspace(
     input: GetFeedbackInput,
     state: tauri::State<'_, WorkbenchState>,
-) -> Result<FeedbackWorkspaceView, ApplicationError> {
-    let application = state.application.clone();
-    application.get_feedback_workspace(input.request_id).await
+) -> Result<ApplicationFeedbackWorkspaceView, ApplicationError> {
+    state
+        .application_commands
+        .get_feedback_workspace(input)
+        .await
 }
 
 #[tauri::command]
@@ -377,12 +395,10 @@ pub(super) async fn read_published_feedback(
     input: GetFeedbackInput,
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<Option<FeedbackPackageView>, ApplicationError> {
-    let application = state.application.clone();
-    let request = application.get_feedback(input).await?;
-    application
-        .read_feedback_package(&request)
+    state
+        .application_commands
+        .read_published_feedback(input)
         .await
-        .map(|content| content.map(FeedbackPackageView::from))
 }
 
 #[tauri::command]
@@ -390,17 +406,18 @@ pub(super) async fn save_feedback_draft(
     input: SaveDraftInput,
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<DraftView, ApplicationError> {
-    let application = state.application.clone();
-    application.save_feedback_draft(input).await
+    state.application_commands.save_feedback_draft(input).await
 }
 
 #[tauri::command]
 pub(super) async fn add_feedback_attachment(
     input: AddAttachmentInput,
     state: tauri::State<'_, WorkbenchState>,
-) -> Result<FeedbackWorkspaceView, ApplicationError> {
-    let application = state.application.clone();
-    application.add_feedback_attachment(input).await
+) -> Result<ApplicationFeedbackWorkspaceView, ApplicationError> {
+    state
+        .application_commands
+        .add_feedback_attachment(input)
+        .await
 }
 
 #[tauri::command]
@@ -410,7 +427,7 @@ pub(super) async fn add_completed_screen_capture(
     expected_revision: u64,
     capture_state: tauri::State<'_, ScreenCaptureState>,
     state: tauri::State<'_, WorkbenchState>,
-) -> Result<FeedbackWorkspaceView, ApplicationError> {
+) -> Result<ApplicationFeedbackWorkspaceView, ApplicationError> {
     let started = std::time::Instant::now();
     tracing::info!(%request_id, %capture_session_id, "add_completed_screen_capture: start");
     let contents = capture_state
@@ -449,7 +466,7 @@ pub(super) async fn add_completed_screen_capture(
         ok = result.is_ok(),
         "add_completed_screen_capture: attachment saved"
     );
-    result
+    result.map(Into::into)
 }
 
 #[tauri::command]
@@ -461,7 +478,7 @@ pub(super) async fn add_completed_clipboard_capture(
     expected_revision: u64,
     clipboard: tauri::State<'_, ClipboardCaptureState>,
     state: tauri::State<'_, WorkbenchState>,
-) -> Result<FeedbackWorkspaceView, ApplicationError> {
+) -> Result<ApplicationFeedbackWorkspaceView, ApplicationError> {
     let contents = clipboard
         .take_image(&capture_id, &request_id, &ramble_context_id)
         .map_err(ApplicationError::invalid_argument)?;
@@ -493,6 +510,7 @@ pub(super) async fn add_completed_clipboard_capture(
             expected_revision,
         })
         .await
+        .map(Into::into)
 }
 
 #[tauri::command]
@@ -501,7 +519,7 @@ pub(super) async fn import_feedback_attachment_path(
     path: PathBuf,
     expected_revision: u64,
     state: tauri::State<'_, WorkbenchState>,
-) -> Result<FeedbackWorkspaceView, ApplicationError> {
+) -> Result<ApplicationFeedbackWorkspaceView, ApplicationError> {
     let file_name = path
         .file_name()
         .and_then(|value| value.to_str())
@@ -530,24 +548,29 @@ pub(super) async fn import_feedback_attachment_path(
             expected_revision,
         })
         .await
+        .map(Into::into)
 }
 
 #[tauri::command]
 pub(super) async fn remove_feedback_attachment(
     input: RemoveAttachmentInput,
     state: tauri::State<'_, WorkbenchState>,
-) -> Result<FeedbackWorkspaceView, ApplicationError> {
-    let application = state.application.clone();
-    application.remove_feedback_attachment(input).await
+) -> Result<ApplicationFeedbackWorkspaceView, ApplicationError> {
+    state
+        .application_commands
+        .remove_feedback_attachment(input)
+        .await
 }
 
 #[tauri::command]
 pub(super) async fn reorder_feedback_attachments(
     input: ReorderAttachmentsInput,
     state: tauri::State<'_, WorkbenchState>,
-) -> Result<FeedbackWorkspaceView, ApplicationError> {
-    let application = state.application.clone();
-    application.reorder_feedback_attachments(input).await
+) -> Result<ApplicationFeedbackWorkspaceView, ApplicationError> {
+    state
+        .application_commands
+        .reorder_feedback_attachments(input)
+        .await
 }
 
 #[tauri::command]
@@ -555,9 +578,9 @@ pub(super) async fn read_feedback_attachment(
     input: ReadAttachmentInput,
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<Response, ApplicationError> {
-    let application = state.application.clone();
-    application
-        .read_feedback_attachment(input.request_id, input.attachment_id)
+    state
+        .application_commands
+        .read_feedback_attachment(input)
         .await
         .map(Response::new)
 }
@@ -567,9 +590,9 @@ pub(super) async fn read_request_attachment(
     input: ReadAttachmentInput,
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<Response, ApplicationError> {
-    let application = state.application.clone();
-    application
-        .read_request_attachment(input.request_id, input.attachment_id)
+    state
+        .application_commands
+        .read_request_attachment(input)
         .await
         .map(Response::new)
 }
@@ -577,74 +600,31 @@ pub(super) async fn read_request_attachment(
 #[tauri::command]
 pub(super) async fn submit_feedback(
     input: SubmitFeedbackInput,
-    app: tauri::AppHandle,
     state: tauri::State<'_, WorkbenchState>,
-) -> Result<FeedbackRequestView, ApplicationError> {
-    let application = state.application.clone();
-    let result = application.submit_feedback(input.clone()).await?;
-    diagnostics::record_event(
-        "feedback_submitted",
-        Some(&input.request_id),
-        None,
-        Some("ok"),
-        None,
-        None,
-    );
-    deliver_continuation_after_terminal(
-        &app,
-        &state.continuation,
-        &application,
-        &input.request_id,
-        result.status,
-    )
-    .await;
-    Ok(result)
+) -> Result<ApplicationFeedbackRequestView, ApplicationError> {
+    state.application_commands.submit_feedback(input).await
 }
 
 #[tauri::command]
 pub(super) async fn approve_feedback_request(
     input: ApproveFeedbackInput,
-    app: tauri::AppHandle,
     state: tauri::State<'_, WorkbenchState>,
-) -> Result<FeedbackRequestView, ApplicationError> {
-    let application = state.application.clone();
-    let result = application.approve_feedback(input.clone()).await?;
-    deliver_continuation_after_terminal(
-        &app,
-        &state.continuation,
-        &application,
-        &input.request_id,
-        result.status,
-    )
-    .await;
-    Ok(result)
+) -> Result<ApplicationFeedbackRequestView, ApplicationError> {
+    state
+        .application_commands
+        .approve_feedback_request(input)
+        .await
 }
 
 #[tauri::command]
 pub(super) async fn cancel_feedback_request(
     input: CancelFeedbackInput,
-    app: tauri::AppHandle,
     state: tauri::State<'_, WorkbenchState>,
-) -> Result<FeedbackRequestView, ApplicationError> {
-    let application = state.application.clone();
-    let result = application.cancel_feedback(input.clone()).await?;
-    diagnostics::record_event(
-        "feedback_cancelled",
-        Some(&input.request_id),
-        None,
-        Some("ok"),
-        None,
-        None,
-    );
-    deliver_continuation_after_terminal(
-        &app,
-        &state.continuation,
-        &application,
-        &input.request_id,
-        result.status,
-    )
-    .await;
-    Ok(result)
+) -> Result<ApplicationFeedbackRequestView, ApplicationError> {
+    state
+        .application_commands
+        .cancel_feedback_request(input)
+        .await
 }
 
 #[tauri::command]

@@ -1,6 +1,7 @@
 use rambledesk_core::{
-    ApplicationError, ApplicationErrorCode, FeedbackPackageContent, FeedbackPackageManifest,
-    FeedbackPackageView, FeedbackResolution, RepositoryError,
+    ApplicationError, ApplicationErrorCode, ApplicationFeedbackRequestView, ExecutionMode,
+    FeedbackPackageContent, FeedbackPackageManifest, FeedbackPackageView, FeedbackRequestView,
+    FeedbackResolution, FeedbackResultView, FeedbackStatus, RepositoryError,
 };
 
 #[test]
@@ -81,4 +82,33 @@ fn feedback_package_view_omits_storage_paths() {
     assert_eq!(json["uncooked_markdown"], "Original");
     assert!(json.get("attachment_paths").is_none());
     assert!(json.get("request_attachment_paths").is_none());
+}
+
+#[test]
+fn application_terminal_projection_omits_feedback_package_locations() {
+    let view = ApplicationFeedbackRequestView::from(FeedbackRequestView {
+        request_id: "request-1".into(),
+        host_id: "codex".into(),
+        host_session_id: "session-1".into(),
+        status: FeedbackStatus::Completed,
+        execution_mode: ExecutionMode::Wait,
+        created_at: "2026-09-01T00:00:00Z".into(),
+        updated_at: "2026-09-01T00:01:00Z".into(),
+        poll_after_ms: None,
+        feedback: Some(FeedbackResultView {
+            package_uri: "file:///private/library/request-1".into(),
+            directory_path: "/private/library/request-1".into(),
+            markdown_path: "/private/library/request-1/feedback.md".into(),
+            manifest_path: "/private/library/request-1/manifest.json".into(),
+        }),
+        resolution: Some(FeedbackResolution::FeedbackSubmitted),
+        allow_finish: false,
+        final_summary: None,
+    });
+
+    let json = serde_json::to_value(view).expect("application result should serialize");
+    assert_eq!(json["feedback"], serde_json::json!({ "available": true }));
+    let encoded = json.to_string();
+    assert!(!encoded.contains("/private/library"));
+    assert!(!encoded.contains("file://"));
 }

@@ -70,6 +70,10 @@ fn application_error_codes_preserve_the_public_code_contract() {
     for (code, expected) in ApplicationErrorCode::ALL.into_iter().zip(expected) {
         assert_eq!(code.as_str(), expected);
     }
+    assert_eq!(
+        ApplicationError::invalid_argument("invalid").code_enum(),
+        ApplicationErrorCode::InvalidArgument
+    );
 }
 
 #[test]

@@ -1,12 +1,70 @@
-use rambledesk_core::{FeedbackApplication, FeedbackStatus};
+use async_trait::async_trait;
+use rambledesk_core::{
+    FeedbackApplication, FeedbackStatus, TerminalOperation, TerminalOperationEvent,
+    TerminalOperationObserver,
+};
 use rambledesk_hosts::{
     ContinuationPayload, ContinuationReason, ContinuationResult, ContinuationRouter, ResumePrompt,
 };
 use tauri::Emitter;
 
-use super::RESUME_PROMPT_EVENT;
+use super::{RESUME_PROMPT_EVENT, diagnostics};
 
-pub(super) async fn deliver_continuation_after_terminal(
+#[derive(Clone)]
+pub(super) struct DesktopTerminalOperationObserver {
+    app: tauri::AppHandle,
+    router: ContinuationRouter,
+    application: FeedbackApplication,
+}
+
+impl DesktopTerminalOperationObserver {
+    pub(super) fn new(
+        app: tauri::AppHandle,
+        router: ContinuationRouter,
+        application: FeedbackApplication,
+    ) -> Self {
+        Self {
+            app,
+            router,
+            application,
+        }
+    }
+}
+
+#[async_trait]
+impl TerminalOperationObserver for DesktopTerminalOperationObserver {
+    async fn observe(&self, event: &TerminalOperationEvent) {
+        match event.operation {
+            TerminalOperation::SubmitFeedback => diagnostics::record_event(
+                "feedback_submitted",
+                Some(&event.request.request_id),
+                None,
+                Some("ok"),
+                None,
+                None,
+            ),
+            TerminalOperation::CancelFeedback => diagnostics::record_event(
+                "feedback_cancelled",
+                Some(&event.request.request_id),
+                None,
+                Some("ok"),
+                None,
+                None,
+            ),
+            TerminalOperation::ApproveFeedback => {}
+        }
+        deliver_continuation_after_terminal(
+            &self.app,
+            &self.router,
+            &self.application,
+            &event.request.request_id,
+            event.request.status,
+        )
+        .await;
+    }
+}
+
+async fn deliver_continuation_after_terminal(
     app: &tauri::AppHandle,
     router: &ContinuationRouter,
     application: &FeedbackApplication,

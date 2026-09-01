@@ -1,5 +1,6 @@
 //! Authenticated loopback server for RambleDesk local transports.
 
+mod application_api;
 mod token;
 
 use std::{
@@ -24,9 +25,9 @@ use axum::{
 };
 use futures::StreamExt;
 use rambledesk_core::{
-    ApplicationError, ApproveFeedbackInput, CancelFeedbackInput, FeedbackApplication,
-    FeedbackRequestView, FeedbackStatus, GetFeedbackInput, RecoverFeedbackInput,
-    RequestFeedbackInput,
+    ApplicationError, ApplicationErrorCode, ApproveFeedbackInput, CancelFeedbackInput,
+    FeedbackApplication, FeedbackRequestView, FeedbackStatus, GetFeedbackInput,
+    RecoverFeedbackInput, RequestFeedbackInput,
 };
 use rmcp::transport::streamable_http_server::{
     StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
@@ -38,6 +39,7 @@ use tokio::{net::TcpListener, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 use tower_service::Service;
 
+pub use application_api::application_router;
 pub use token::{AccessToken, TokenError, default_token_path};
 
 pub use rambledesk_core::{HOST_ENV_KEY, HOST_HEADER};
@@ -187,7 +189,9 @@ async fn api_feedback_result(
 ) -> Response<Body> {
     let value = match result {
         Ok(value) => value,
-        Err(error) => return api_error_response(application_error_status(error.code()), error),
+        Err(error) => {
+            return api_error_response(application_error_status(error.code_enum()), error);
+        }
     };
 
     let mut structured = serde_json::to_value(&value).expect("application result must serialize");
@@ -205,7 +209,7 @@ async fn api_feedback_result(
                 );
             }
             Err(error) => {
-                return api_error_response(application_error_status(error.code()), error);
+                return api_error_response(application_error_status(error.code_enum()), error);
             }
         }
     }
@@ -213,21 +217,28 @@ async fn api_feedback_result(
     Json(structured).into_response()
 }
 
-fn application_error_status(code: &str) -> StatusCode {
+pub(crate) const fn application_error_status(code: ApplicationErrorCode) -> StatusCode {
     match code {
-        "INVALID_ARGUMENT" => StatusCode::BAD_REQUEST,
-        "REQUEST_NOT_FOUND" | "ATTACHMENT_NOT_FOUND" => StatusCode::NOT_FOUND,
-        "REQUEST_CONFLICT"
-        | "RECOVERY_AMBIGUOUS"
-        | "REQUEST_ALREADY_COMPLETED"
-        | "REQUEST_TERMINAL"
-        | "DRAFT_CONFLICT"
-        | "ATTACHMENT_LIMIT" => StatusCode::CONFLICT,
-        _ => StatusCode::INTERNAL_SERVER_ERROR,
+        ApplicationErrorCode::InvalidArgument => StatusCode::BAD_REQUEST,
+        ApplicationErrorCode::RequestNotFound
+        | ApplicationErrorCode::AttachmentNotFound
+        | ApplicationErrorCode::HostSessionNotFound => StatusCode::NOT_FOUND,
+        ApplicationErrorCode::RecoveryAmbiguous
+        | ApplicationErrorCode::RequestConflict
+        | ApplicationErrorCode::RequestAlreadyCompleted
+        | ApplicationErrorCode::RequestTerminal
+        | ApplicationErrorCode::DraftConflict
+        | ApplicationErrorCode::AttachmentLimit
+        | ApplicationErrorCode::HostSessionHasOpenRequests
+        | ApplicationErrorCode::DeleteRequiresArchivedHostSession
+        | ApplicationErrorCode::RequestNotTerminal => StatusCode::CONFLICT,
+        ApplicationErrorCode::PackagePublishFailure
+        | ApplicationErrorCode::FeedbackPackageReadFailure
+        | ApplicationErrorCode::StorageFailure => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }
 
-fn api_error_response(status: StatusCode, error: ApplicationError) -> Response<Body> {
+pub(crate) fn api_error_response(status: StatusCode, error: ApplicationError) -> Response<Body> {
     api_error_payload(status, error.code(), error.message(), error.retryable())
 }
 
@@ -560,4 +571,24 @@ pub async fn start_server(
         cancellation,
         task,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn application_error_status_covers_host_session_contracts() {
+        assert_eq!(
+            application_error_status(ApplicationErrorCode::HostSessionNotFound),
+            StatusCode::NOT_FOUND
+        );
+        for code in [
+            ApplicationErrorCode::HostSessionHasOpenRequests,
+            ApplicationErrorCode::DeleteRequiresArchivedHostSession,
+            ApplicationErrorCode::RequestNotTerminal,
+        ] {
+            assert_eq!(application_error_status(code), StatusCode::CONFLICT);
+        }
+    }
 }

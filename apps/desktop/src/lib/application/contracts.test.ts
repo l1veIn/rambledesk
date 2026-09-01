@@ -1,15 +1,15 @@
 import { describe, expect, expectTypeOf, it } from 'vitest'
 
 import type {
+  ApplicationFeedbackWorkspaceView,
+  ApplicationHostProfileView,
   DraftView,
   FeedbackPackageView,
   FeedbackRequestSummary,
-  FeedbackWorkspaceView,
   GetFeedbackInput,
   ListFeedbackRequestsInput,
   ReadAttachmentInput,
 } from '../generated/feedback'
-import type { ContinuationMode, HostAdapter, HostProfile } from '../generated/hosts'
 import {
   isApplicationError,
   isApplicationErrorCode,
@@ -25,7 +25,9 @@ describe('application command contracts', () => {
       FeedbackRequestSummary[]
     >()
     expectTypeOf<ApplicationCommandInput<'listHostProfiles'>>().toEqualTypeOf<undefined>()
-    expectTypeOf<ApplicationCommandResult<'listHostProfiles'>>().toEqualTypeOf<HostProfile[]>()
+    expectTypeOf<ApplicationCommandResult<'listHostProfiles'>>().toEqualTypeOf<
+      ApplicationHostProfileView[]
+    >()
     expectTypeOf<ApplicationCommandInput<'listFeedbackRequests'>>().toEqualTypeOf<
       ListFeedbackRequestsInput
     >()
@@ -33,8 +35,14 @@ describe('application command contracts', () => {
       GetFeedbackInput
     >()
     expectTypeOf<ApplicationCommandResult<'getFeedbackWorkspace'>>().toEqualTypeOf<
-      FeedbackWorkspaceView
+      ApplicationFeedbackWorkspaceView
     >()
+    type HasResultStoragePaths = 'markdown_path' extends keyof NonNullable<
+      ApplicationFeedbackWorkspaceView['feedback']
+    >
+      ? true
+      : false
+    expectTypeOf<HasResultStoragePaths>().toEqualTypeOf<false>()
     expectTypeOf<ApplicationCommandResult<'readPublishedFeedback'>>().toEqualTypeOf<
       FeedbackPackageView | null
     >()
@@ -50,8 +58,6 @@ describe('application command contracts', () => {
       ReadAttachmentInput
     >()
     expectTypeOf<ApplicationCommandResult<'readFeedbackAttachment'>>().toEqualTypeOf<ArrayBuffer>()
-    expectTypeOf<HostAdapter>().toEqualTypeOf<'generic_mcp' | 'pi_native'>()
-    expectTypeOf<ContinuationMode>().toEqualTypeOf<'not_required' | 'manual' | 'native'>()
   })
 
   it('contains only the intended cross-client operation names', () => {

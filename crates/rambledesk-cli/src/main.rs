@@ -69,9 +69,10 @@ async fn main() -> anyhow::Result<()> {
                 database_file.unwrap_or(rambledesk_storage::default_database_path()?);
             let token = AccessToken::load_or_create(&token_file)?;
             let store = rambledesk_storage::SqliteFeedbackStore::connect(&database_file).await?;
+            let application = store.clone().into_application();
             let server = start_server(
                 ServerConfig::new(token.clone()).with_port(port),
-                store.clone().into_application(),
+                application,
             )
             .await?;
             let mut status = serde_json::json!({
@@ -111,11 +112,9 @@ async fn main() -> anyhow::Result<()> {
             )
             .await?;
             let token = AccessToken::generate();
-            let server = start_server(
-                ServerConfig::new(token.clone()).with_port(0),
-                store.clone().into_application(),
-            )
-            .await?;
+            let application = store.clone().into_application();
+            let server =
+                start_server(ServerConfig::new(token.clone()).with_port(0), application).await?;
             let result = smoke(server.endpoint(), &token).await?;
             println!("{}", serde_json::to_string_pretty(&result)?);
             server.shutdown().await?;

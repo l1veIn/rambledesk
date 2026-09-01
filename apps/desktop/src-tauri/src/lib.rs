@@ -9,13 +9,19 @@ mod pi_install;
 mod screen_capture;
 mod shortcuts;
 
-use rambledesk_core::FeedbackApplication;
-use rambledesk_hosts::{ContinuationRouter, known_continuation_strategies};
+use rambledesk_core::{
+    ApplicationCommandFacade, ApplicationHostProfileView, FeedbackApplication,
+    WorkbenchTerminalOperations,
+};
+use rambledesk_hosts::{
+    ContinuationMode, ContinuationRouter, HostAdapter, known_continuation_strategies,
+    known_host_profiles,
+};
 use rambledesk_local_server::{AccessToken, ServerConfig, ServerHandle, start_server};
 use rambledesk_speech::SpeechSession;
 use std::{
     path::PathBuf,
-    sync::{RwLock, atomic::AtomicU32},
+    sync::{Arc, RwLock, atomic::AtomicU32},
 };
 use tauri::{
     Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder,
@@ -38,9 +44,9 @@ const BASE_TRAY_ICON: Image<'static> = tauri::include_image!("./icons/32x32.png"
 struct WorkbenchState {
     local_server: ServerHandle,
     application: FeedbackApplication,
+    application_commands: Arc<ApplicationCommandFacade>,
     store: rambledesk_storage::SqliteFeedbackStore,
     generic_mcp_configuration: String,
-    continuation: ContinuationRouter,
     pending_count: AtomicU32,
     library_root: RwLock<PathBuf>,
     speech_session: tokio::sync::Mutex<Option<SpeechSession>>,
@@ -61,6 +67,28 @@ impl WorkbenchState {
             .write()
             .unwrap_or_else(|error| error.into_inner()) = path;
     }
+}
+
+fn application_host_profiles() -> Vec<ApplicationHostProfileView> {
+    known_host_profiles()
+        .into_iter()
+        .map(|profile| ApplicationHostProfileView {
+            id: profile.id,
+            label: profile.label,
+            icon_svg: profile.icon_svg,
+            default_adapter: match profile.default_adapter {
+                HostAdapter::GenericMcp => "generic_mcp",
+                HostAdapter::PiNative => "pi_native",
+            }
+            .into(),
+            continuation_mode: match profile.continuation_mode {
+                ContinuationMode::NotRequired => "not_required",
+                ContinuationMode::Manual => "manual",
+                ContinuationMode::Native => "native",
+            }
+            .into(),
+        })
+        .collect()
 }
 
 #[tauri::command]
@@ -138,6 +166,19 @@ pub fn run() {
                     ),
                 )?;
                 let application = store.clone().into_application();
+                let terminal_observer =
+                    Arc::new(continuation::DesktopTerminalOperationObserver::new(
+                        app.handle().clone(),
+                        ContinuationRouter::new(known_continuation_strategies()),
+                        application.clone(),
+                    ));
+                let terminal_operations =
+                    WorkbenchTerminalOperations::new(application.clone(), terminal_observer);
+                let application_commands = Arc::new(ApplicationCommandFacade::new(
+                    application.clone(),
+                    terminal_operations,
+                    application_host_profiles(),
+                ));
                 let config = ServerConfig::new(token.clone()).with_port(configured_port()?);
                 let handle =
                     tauri::async_runtime::block_on(start_server(config, application.clone()))?;
@@ -189,9 +230,9 @@ pub fn run() {
                 app.manage(WorkbenchState {
                     local_server: handle,
                     application,
+                    application_commands,
                     store,
                     generic_mcp_configuration: configuration,
-                    continuation: ContinuationRouter::new(known_continuation_strategies()),
                     pending_count: AtomicU32::new(0),
                     library_root: RwLock::new(library_root),
                     speech_session: tokio::sync::Mutex::new(None),
@@ -277,6 +318,7 @@ pub fn run() {
             read_request_attachment,
             open_attachment::open_feedback_attachment,
             open_attachment::reveal_feedback_attachment,
+            open_attachment::reveal_feedback_package,
             open_attachment::reveal_path_in_folder,
             submit_feedback,
             approve_feedback_request,

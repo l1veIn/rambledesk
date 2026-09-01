@@ -4,7 +4,7 @@ use super::*;
 async fn host_header_stamps_host_id_on_request_feedback() -> anyhow::Result<()> {
     let token = AccessToken::parse(TEST_TOKEN)?;
     let (application, _directory) = test_application().await?;
-    let server = start_server(ServerConfig::new(token).with_port(0), application.clone()).await?;
+    let server = start_server(ServerConfig::new(token).with_port(0), application).await?;
 
     let client = reqwest::Client::new();
     // Exercise host capture through the HTTP middleware path used by real clients.

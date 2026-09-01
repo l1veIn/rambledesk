@@ -3,8 +3,10 @@
 //! Host profiles and continuation strategy selection live in `rambledesk-hosts`
 //! so host integration cadence stays independent of core protocol changes.
 
+mod application_commands;
 mod feedback;
 mod process;
+mod terminal_operations;
 mod workspace;
 
 /// Install-time / client-config host identity environment key.
@@ -12,7 +14,15 @@ pub const HOST_ENV_KEY: &str = "RAMBLEDESK_HOST";
 /// HTTP header mirror so the loopback server can see the installed host id.
 pub const HOST_HEADER: &str = "x-rambledesk-host";
 
+pub use application_commands::{
+    ApplicationCommandFacade, ApplicationFeedbackRequestView, ApplicationFeedbackResultView,
+    ApplicationFeedbackWorkspaceView, ApplicationHostProfileView,
+};
 pub use process::{find_executable, find_executable_on_path};
+pub use terminal_operations::{
+    NoopTerminalOperationObserver, TerminalOperation, TerminalOperationEvent,
+    TerminalOperationObserver, WorkbenchTerminalOperations,
+};
 
 pub use feedback::{
     ActionInput, ApplicationError, ApplicationErrorCode, ApproveFeedbackInput,

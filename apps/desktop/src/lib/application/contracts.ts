@@ -1,5 +1,8 @@
 import {
   APPLICATION_ERROR_CODES,
+  type ApplicationFeedbackRequestView,
+  type ApplicationFeedbackWorkspaceView,
+  type ApplicationHostProfileView,
   type AddAttachmentInput,
   type ApplicationError,
   type ApplicationErrorCode,
@@ -9,8 +12,6 @@ import {
   type DraftView,
   type FeedbackPackageView,
   type FeedbackRequestSummary,
-  type FeedbackRequestView,
-  type FeedbackWorkspaceView,
   type GetFeedbackInput,
   type HostSessionInput,
   type HostSessionSummary,
@@ -26,7 +27,6 @@ import {
   type SetHostSessionPinnedInput,
   type SubmitFeedbackInput,
 } from '../generated/feedback'
-import type { HostProfile } from '../generated/hosts'
 
 type ApplicationCommandContract<Input, Output> = Readonly<{
   input: Input
@@ -41,17 +41,17 @@ export type ApplicationCommandMap = Readonly<{
   listFeedbackInbox: ApplicationCommandContract<undefined, FeedbackRequestSummary[]>
   listHostSessions: ApplicationCommandContract<undefined, HostSessionSummary[]>
   listArchivedHostSessions: ApplicationCommandContract<ListHostSessionsInput, HostSessionSummary[]>
-  listHostProfiles: ApplicationCommandContract<undefined, HostProfile[]>
+  listHostProfiles: ApplicationCommandContract<undefined, ApplicationHostProfileView[]>
   listFeedbackRequests: ApplicationCommandContract<ListFeedbackRequestsInput, ListFeedbackRequestsOutput>
-  getFeedbackWorkspace: ApplicationCommandContract<GetFeedbackInput, FeedbackWorkspaceView>
+  getFeedbackWorkspace: ApplicationCommandContract<GetFeedbackInput, ApplicationFeedbackWorkspaceView>
   readPublishedFeedback: ApplicationCommandContract<GetFeedbackInput, FeedbackPackageView | null>
   saveFeedbackDraft: ApplicationCommandContract<SaveDraftInput, DraftView>
-  addFeedbackAttachment: ApplicationCommandContract<AddAttachmentInput, FeedbackWorkspaceView>
-  removeFeedbackAttachment: ApplicationCommandContract<RemoveAttachmentInput, FeedbackWorkspaceView>
-  reorderFeedbackAttachments: ApplicationCommandContract<ReorderAttachmentsInput, FeedbackWorkspaceView>
-  submitFeedback: ApplicationCommandContract<SubmitFeedbackInput, FeedbackRequestView>
-  approveFeedbackRequest: ApplicationCommandContract<ApproveFeedbackInput, FeedbackRequestView>
-  cancelFeedbackRequest: ApplicationCommandContract<CancelFeedbackInput, FeedbackRequestView>
+  addFeedbackAttachment: ApplicationCommandContract<AddAttachmentInput, ApplicationFeedbackWorkspaceView>
+  removeFeedbackAttachment: ApplicationCommandContract<RemoveAttachmentInput, ApplicationFeedbackWorkspaceView>
+  reorderFeedbackAttachments: ApplicationCommandContract<ReorderAttachmentsInput, ApplicationFeedbackWorkspaceView>
+  submitFeedback: ApplicationCommandContract<SubmitFeedbackInput, ApplicationFeedbackRequestView>
+  approveFeedbackRequest: ApplicationCommandContract<ApproveFeedbackInput, ApplicationFeedbackRequestView>
+  cancelFeedbackRequest: ApplicationCommandContract<CancelFeedbackInput, ApplicationFeedbackRequestView>
   renameHostSession: ApplicationCommandContract<RenameHostSessionInput, HostSessionSummary>
   setHostSessionPinned: ApplicationCommandContract<SetHostSessionPinnedInput, HostSessionSummary>
   archiveHostSession: ApplicationCommandContract<HostSessionInput, HostSessionSummary>

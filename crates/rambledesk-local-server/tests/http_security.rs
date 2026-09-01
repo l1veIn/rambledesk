@@ -504,7 +504,7 @@ async fn local_api_supports_pi_request_and_blocking_wait() -> anyhow::Result<()>
 async fn sse_handshake_emits_endpoint_and_serves_stateless_mcp_tools() -> anyhow::Result<()> {
     let token = AccessToken::parse(TEST_TOKEN)?;
     let (application, _directory) = test_application().await?;
-    let server = start_server(ServerConfig::new(token).with_port(0), application.clone()).await?;
+    let server = start_server(ServerConfig::new(token).with_port(0), application).await?;
     let client = reqwest::Client::new();
 
     // 1. Initial SSE GET request without session ID (Antigravity handshake)

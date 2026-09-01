@@ -611,6 +611,10 @@ impl ApplicationError {
         self.code.as_str()
     }
 
+    pub const fn code_enum(&self) -> ApplicationErrorCode {
+        self.code
+    }
+
     pub fn message(&self) -> &str {
         &self.message
     }

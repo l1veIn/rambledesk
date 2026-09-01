@@ -14,7 +14,6 @@
   import * as Dialog from '$lib/components/ui/dialog'
   import type { FeedbackResultView } from '$lib/feedback'
   import { t } from '$lib/i18n'
-  import { desktopPath } from '$lib/nativePath'
   import { locale } from '$lib/preferences'
   import type { SubmitStage } from './types'
 
@@ -64,9 +63,6 @@
         {tr('Published')}
       </Badge>
     </header>
-    <p class="m-0 truncate font-mono text-[9px] text-muted-foreground" title={desktopPath(feedbackResult.directory_path)}>
-      {desktopPath(feedbackResult.directory_path)}
-    </p>
     <Button class="mt-3 w-full" variant="outline" onclick={onOpenPackage}>
       <FolderOpen data-icon="inline-start" />
       {tr('Open feedback package')}
