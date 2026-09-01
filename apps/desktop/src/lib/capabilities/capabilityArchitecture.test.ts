@@ -78,4 +78,50 @@ describe('capability architecture', () => {
 
     expect(actual.sort()).toEqual(expected.sort())
   })
+
+  it('keeps platform capability implementations outside Draft and Application Transport', async () => {
+    const sourceRoot = fileURLToPath(new URL('../../', import.meta.url))
+    const capabilityRoot = path.join(sourceRoot, 'lib', 'capabilities')
+    const platformFiles = [
+      ...(await sourceFiles(path.join(capabilityRoot, 'browser'))),
+      ...(await sourceFiles(path.join(capabilityRoot, 'tauri'))),
+    ]
+    const forbidden = [
+      'ApplicationTransport',
+      'RichFeedbackEditor',
+      'draftOperations',
+      '@tiptap/',
+      'FeedbackWorkspace',
+    ]
+    const violations: string[] = []
+
+    for (const file of platformFiles) {
+      const source = await readFile(file, 'utf8')
+      if (forbidden.some((marker) => source.includes(marker))) {
+        violations.push(portableRelativePath(sourceRoot, file))
+      }
+    }
+
+    expect(violations).toEqual([])
+  })
+
+  it('keeps the native Speech Plugin independent from Feedback Requests', async () => {
+    const sourceRoot = fileURLToPath(new URL('../../', import.meta.url))
+    const plugin = await readFile(
+      path.join(sourceRoot, 'lib', 'capabilities', 'tauri', 'speechCapability.ts'),
+      'utf8',
+    )
+    const commands = await readFile(
+      path.join(sourceRoot, '..', 'src-tauri', 'src', 'commands.rs'),
+      'utf8',
+    )
+    const start = commands.slice(
+      commands.indexOf('pub(super) async fn start_voice_ramble'),
+      commands.indexOf('pub(super) async fn stop_voice_ramble'),
+    )
+
+    expect(plugin).not.toMatch(/requestId|request_id|ApplicationTransport|FeedbackWorkspace/u)
+    expect(start).not.toContain(['get', 'feedback', 'workspace'].join('_'))
+    expect(start).not.toContain(['Feedback', 'Status'].join(''))
+  })
 })

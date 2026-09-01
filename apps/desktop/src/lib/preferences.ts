@@ -23,6 +23,7 @@ export type SpeechModelId =
   | 'x-asr-480ms-streaming-zh-en-punct-int8-2026-06-05'
   | 'sense-voice-zh-en-ja-ko-yue-2024-07-17'
   | 'funasr-nano-int8-2025-12-30'
+  | 'zipformer-small-streaming-zh-en-ctc-int8-2026-06-18'
 
 export const DEFAULT_SPEECH_MODEL_ID: SpeechModelId =
   'sense-voice-zh-en-ja-ko-yue-2024-07-17'
@@ -135,7 +136,8 @@ function isSpeechModelId(value: string | null): value is SpeechModelId {
   return (
     value === 'x-asr-480ms-streaming-zh-en-punct-int8-2026-06-05' ||
     value === 'sense-voice-zh-en-ja-ko-yue-2024-07-17' ||
-    value === 'funasr-nano-int8-2025-12-30'
+    value === 'funasr-nano-int8-2025-12-30' ||
+    value === 'zipformer-small-streaming-zh-en-ctc-int8-2026-06-18'
   )
 }
 

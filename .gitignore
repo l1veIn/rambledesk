@@ -8,6 +8,7 @@ dist/
 web/.astro/
 apps/*/node_modules/
 apps/*/dist/
+apps/desktop/public/browser-speech/runtime/
 apps/*/src-tauri/gen/
 apps/*/src-tauri/icons/android/
 apps/*/src-tauri/icons/ios/

@@ -62,10 +62,7 @@
   $: readOnly =
     workspace.request.status === 'completed' || workspace.request.status === 'cancelled'
   $: interactionLocked = cooking || submitting || cancelling || approving
-  $: ramblePanelAvailable = voiceRambleAvailable({
-    speech: capabilities.speech.status,
-    rambleConsole: capabilities.rambleConsole.status,
-  })
+  $: ramblePanelAvailable = voiceRambleAvailable(capabilities.speech.status)
   $: nativeCaptureAvailable = canShowNativeCapture({
     screenCapture: capabilities.screenCapture.status,
     clipboardCapture: capabilities.clipboardCapture.status,

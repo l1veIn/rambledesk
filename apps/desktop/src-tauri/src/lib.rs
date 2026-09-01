@@ -8,6 +8,7 @@ mod open_attachment;
 mod pi_install;
 mod screen_capture;
 mod shortcuts;
+mod speech_plugin;
 mod web_access;
 
 use rambledesk_core::{

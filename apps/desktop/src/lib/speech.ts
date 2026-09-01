@@ -1,71 +1,73 @@
-export type SpeechEvent =
+export type SpeechRecognitionStopReason = 'stopped' | 'cancelled' | 'unexpected'
+
+export type SpeechRecognitionEvent =
   | {
       type: 'started'
-      request_id: string
-      voice_session_id: string
-      input_device: string
+      sessionId: string
+      inputDevice: string
       provider: string
     }
   | {
       type: 'partial'
-      request_id: string
-      voice_session_id: string
+      sessionId: string
       text: string
     }
   | {
       type: 'level'
-      request_id: string
-      voice_session_id: string
+      sessionId: string
       rms: number
     }
   | {
       type: 'processing'
-      request_id: string
-      voice_session_id: string
-      chunk_index: number
+      sessionId: string
+      segmentIndex: number
     }
   | {
       type: 'stable'
-      request_id: string
-      voice_session_id: string
-      chunk_index: number
+      sessionId: string
+      segmentIndex: number
       text: string
     }
   | {
       type: 'warning'
-      request_id: string
-      voice_session_id: string
+      sessionId: string
       code: string
       message: string
     }
   | {
       type: 'stopped'
-      request_id: string
-      voice_session_id: string
+      sessionId: string
+      reason: SpeechRecognitionStopReason
     }
   | {
       type: 'error'
-      request_id: string
-      voice_session_id: string
+      sessionId: string
       code: string
       message: string
     }
 
-export type VoiceRambleSessionView = {
-  voice_session_id: string
-  provider: string
-  model_path: string
+export type SpeechRecognitionListener = Readonly<{
+  onEvent: (event: SpeechRecognitionEvent) => void
+  onError: (cause: unknown) => void
+}>
+
+/**
+ * A client-local recognition session. The Platform Plugin owns devices,
+ * models, workers, and resource cleanup; callers only observe normalized
+ * events and choose graceful stop or abortive cancellation.
+ */
+export interface SpeechRecognitionSession {
+  readonly id: string
+  readonly ready: Promise<void>
+  stop(): Promise<void>
+  cancel(): Promise<void>
 }
 
-export function eventBelongsToVoiceSession(
-  event: SpeechEvent,
-  requestId: string,
-  voiceSessionId: string,
+export function eventBelongsToSpeechSession(
+  event: SpeechRecognitionEvent,
+  sessionId: string,
 ): boolean {
-  return (
-    event.request_id === requestId &&
-    (voiceSessionId.length === 0 || event.voice_session_id === voiceSessionId)
-  )
+  return sessionId.length > 0 && event.sessionId === sessionId
 }
 
 export function voiceStartStillLive(
@@ -74,14 +76,14 @@ export function voiceStartStillLive(
   return phase === 'starting' || phase === 'listening' || phase === 'processing'
 }
 
-export function stableTranscript(event: SpeechEvent): string | null {
+export function stableTranscript(event: SpeechRecognitionEvent): string | null {
   if (event.type !== 'stable') return null
   const text = event.text.trim()
   return text.length > 0 ? text : null
 }
 
 export function stableSpeechSegmentId(
-  event: Extract<SpeechEvent, { type: 'stable' }>,
+  event: Extract<SpeechRecognitionEvent, { type: 'stable' }>,
 ): string {
-  return `asr-${event.voice_session_id}-${event.chunk_index}`
+  return `asr-${event.sessionId}-${event.segmentIndex}`
 }

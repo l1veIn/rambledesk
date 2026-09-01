@@ -89,14 +89,16 @@ Session Runtime。终态与 runtime lifecycle 只能由可审计的显式 applic
 Client 应持续 autosave；关闭 workspace view 继续使用 save gate，但不得依赖不可靠的 browser
 `unload` 完成唯一一次保存或终态 mutation。重连/重开后从 Backend Runtime refetch 事实。
 
-### 5. Audio Source 与 Speech Engine 分离
+### 5. Platform Plugin 在输入设备本地处理媒体
 
-Audio Source 是 Native / Browser Capability，Speech Engine 是 Backend Runtime 使用的识别能力。
-Desktop Native Audio Source 可以直接把本机音频流交给既有 Speech Engine；Browser Audio Source
-通过浏览器权限和用户手势取得媒体，首期使用 authenticated HTTP 上传 MediaRecorder Blob 或
-有界分段到 server-side recognition session。两端投影同一 SpeechEvent contract；断线、停止、
-权限拒绝与设备丢失必须显式终结 recognition session。只有实时 partial transcript 成为明确需求
-时才新增独立 binary WebSocket，不复用 invalidation WebSocket 传输 PCM。
+本节由 [ADR 006](006-edge-media-plugins-and-tiptap-ramble-core.md) 修订。Audio Source 与 Speech
+Engine 可以在单个平台插件内部保持分离，但它们不构成跨客户端网络 seam。Desktop、Browser 与
+未来 Mobile Client 各自在输入所在设备完成采集、重采样、VAD、识别和模型管理；Application
+Transport 不传输实时音频、recognition session 或设备权限。
+
+Speech Recognition Plugin 只向共享 TipTap Ramble Core 投影统一 SpeechEvent；Capture Plugin
+只返回 Attachment Candidate。平台共享事件和候选合同，不共享同一个引擎进程、模型或 acquisition
+UX。
 
 ### 6. Local Integration Server 与 Web Access 独立
 
@@ -171,7 +173,7 @@ Web routes 分别设置 body、upload、rate 与 concurrent-connection 上限。
 ### Target
 
 - LAN/TLS Web Access 与更完整的 credential 管理 UI。
-- Browser Audio Source、浏览器截图/剪贴板与更完整的 capability manifest。
+- Browser Speech Recognition Plugin、Capture Plugin 与更完整的 capability manifest。
 - Native/Browser Capability 继续位于 Application Transport 外，通过 manifest 呈现差异。
 
 ## Rejected
@@ -195,7 +197,7 @@ Web routes 分别设置 body、upload、rate 与 concurrent-connection 上限。
 - headless 或独立 Web deployment packaging；
 - 完整 credential rotation/revocation 管理 UI；
 - sequence replay、ring buffer、multiplex protocol；
-- 实时二进制音频 WebSocket；
+- 浏览器本地 sherpa-onnx WASM 的生产模型矩阵与性能优化；
 - ACP、Router 或全局 client state framework。
 
 ## Consequences
@@ -220,9 +222,9 @@ Web routes 分别设置 body、upload、rate 与 concurrent-connection 上限。
   角色，不创建隐含新 crate，也不把领域规则或 transport credential 放入 core。两个 listener
   必须复用同一套 security policy/primitives，延续“本地安全策略只有一处实现”，但分离 credential、
   auth domain 与 lifecycle。
-- **ADR 002：** 保留 `cpal` / speech crate 的 Native Capability 实现；未来浏览器音频只能通过
-  Browser Capability 接入，不改写现有 speech/application contract。
-- **ADR 003：** Ramble 仍是统一采集状态，但 Web Client 必须按 capability manifest 显示缺失或
+- **ADR 002：** 保留 `cpal` / speech crate 作为 Desktop Speech Recognition Plugin 的内部实现；
+  Browser 通过自己的本地 Plugin 接入，不改写现有 SpeechEvent / Draft contract。
+- **ADR 003：** Ramble 仍是统一 TipTap 编辑流程，但 Web Client 必须按 capability manifest 显示缺失或
   降级的全局快捷键、系统截图和剪贴板能力。
 - **ADR 004：** 本 ADR 修订其“整个应用最多一个 Editor”的所有权作用域为“每个 Workbench Client
   instance 最多一个 Editor”。canonical Draft 仍在 Backend Runtime/SQLite；跨客户端并发只由

@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "tauri dev",
+    "predev:web": "node ../../scripts/prepare-sherpa-web.mjs",
     "dev:web": "vite dev",
     "build": "tauri build",
+    "prebuild:web": "node ../../scripts/prepare-sherpa-web.mjs",
     "build:web": "vite build",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run",

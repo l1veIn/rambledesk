@@ -62,6 +62,7 @@
     type CookingReasoningEffort,
     type SpeechModelId,
   } from '$lib/preferences'
+  import { resolveSupportedSpeechModelId } from '$lib/capabilities/speechModelSelection'
 
   export let openWizard = false
   export let onClose: () => void = () => {}
@@ -277,6 +278,8 @@
   async function loadModels() {
     try {
       models = [...await capabilities.speech.implementation.listModels()]
+      const supportedModelId = resolveSupportedSpeechModelId($speechModelId, models)
+      if (supportedModelId && supportedModelId !== $speechModelId) setSpeechModelId(supportedModelId)
     } catch (cause) {
       toast.error(tr('Could not read voice models'), { description: messageFrom(cause) })
     }

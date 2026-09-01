@@ -80,6 +80,10 @@ async fn independent_server_serves_spa_history_and_fingerprinted_assets() -> any
                     SpaAssetCachePolicy::Immutable,
                 ),
             ),
+            (
+                "browser-speech/runtime/sherpa-onnx-wasm-web.wasm".into(),
+                asset("wasm", "application/wasm", SpaAssetCachePolicy::NoCache),
+            ),
         ]),
     });
     let sessions = Arc::new(WebSessionManager::with_policy(
@@ -184,6 +188,14 @@ async fn independent_server_serves_spa_history_and_fingerprinted_assets() -> any
             response.headers()[reqwest::header::CACHE_CONTROL],
             "no-store"
         );
+        let csp = response.headers()[reqwest::header::CONTENT_SECURITY_POLICY].to_str()?;
+        assert!(csp.contains("script-src 'self' 'wasm-unsafe-eval'"));
+        assert!(csp.contains("worker-src 'self'"));
+        assert!(csp.contains("connect-src 'self' ws://"));
+        assert!(csp.contains("https://www.modelscope.cn"));
+        assert!(csp.contains("https://cdn-lfs-cn-1.modelscope.cn"));
+        assert!(!csp.contains("*.modelscope.cn"));
+        assert!(!csp.contains("'unsafe-eval'"));
         assert_eq!(response.text().await?, "<main>Workbench</main>");
     }
 
@@ -198,6 +210,20 @@ async fn independent_server_serves_spa_history_and_fingerprinted_assets() -> any
     );
     assert_eq!(asset.headers()["x-content-type-options"], "nosniff");
     assert_eq!(asset.headers()["x-frame-options"], "DENY");
+
+    let wasm = client
+        .head(format!(
+            "{}/browser-speech/runtime/sherpa-onnx-wasm-web.wasm",
+            server.origin()
+        ))
+        .send()
+        .await?;
+    assert_eq!(wasm.status(), reqwest::StatusCode::OK);
+    assert_eq!(
+        wasm.headers()[reqwest::header::CONTENT_TYPE],
+        "application/wasm"
+    );
+    assert_eq!(wasm.headers()["x-content-type-options"], "nosniff");
 
     for path in ["/assets/missing", "/missing.js", "/a%2Fb"] {
         let response = client

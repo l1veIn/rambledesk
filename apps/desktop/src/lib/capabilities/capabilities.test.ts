@@ -41,7 +41,10 @@ describe('capability contracts', () => {
   it('reports subscription failure asynchronously and respects early unsubscribe', async () => {
     const capabilities = createUnavailableWorkbenchCapabilities()
     const onError = vi.fn()
-    const unsubscribe = capabilities.speech.implementation.onEvent(vi.fn(), onError)
+    const unsubscribe = capabilities.dataStorageAdministration.implementation.onProgress(
+      vi.fn(),
+      onError,
+    )
     unsubscribe()
     await Promise.resolve()
     expect(onError).not.toHaveBeenCalled()

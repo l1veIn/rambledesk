@@ -1,29 +1,28 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  eventBelongsToVoiceSession,
+  eventBelongsToSpeechSession,
   stableSpeechSegmentId,
   stableTranscript,
   voiceStartStillLive,
-  type SpeechEvent,
+  type SpeechRecognitionEvent,
 } from './speech'
 
 describe('voice ramble events', () => {
-  const stable: SpeechEvent = {
+  const stable: SpeechRecognitionEvent = {
     type: 'stable',
-    request_id: 'request-a',
-    voice_session_id: 'session-a',
-    chunk_index: 0,
+    sessionId: 'session-a',
+    segmentIndex: 0,
     text: '  中文片段  ',
   }
 
-  it('accepts the first event before the start command has returned its session id', () => {
-    expect(eventBelongsToVoiceSession(stable, 'request-a', '')).toBe(true)
+  it('accepts events only for the active client-local recognition session', () => {
+    expect(eventBelongsToSpeechSession(stable, 'session-a')).toBe(true)
   })
 
-  it('rejects events from another request or an old session', () => {
-    expect(eventBelongsToVoiceSession(stable, 'request-b', '')).toBe(false)
-    expect(eventBelongsToVoiceSession(stable, 'request-a', 'session-b')).toBe(false)
+  it('rejects events from an old or not-yet-bound session', () => {
+    expect(eventBelongsToSpeechSession(stable, 'session-b')).toBe(false)
+    expect(eventBelongsToSpeechSession(stable, '')).toBe(false)
   })
 
   it('treats a start as failed if error or stop arrived before the command returned', () => {
@@ -40,15 +39,14 @@ describe('voice ramble events', () => {
     expect(
       stableTranscript({
         type: 'processing',
-        request_id: 'request-a',
-        voice_session_id: 'session-a',
-        chunk_index: 0,
+        sessionId: 'session-a',
+        segmentIndex: 0,
       }),
     ).toBeNull()
   })
 
   it('derives a stable segment id so duplicate native delivery is idempotent', () => {
-    const event = stable as Extract<SpeechEvent, { type: 'stable' }>
+    const event = stable as Extract<SpeechRecognitionEvent, { type: 'stable' }>
     expect(stableSpeechSegmentId(event)).toBe('asr-session-a-0')
     expect(stableSpeechSegmentId(event)).toBe('asr-session-a-0')
   })

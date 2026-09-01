@@ -28,6 +28,11 @@ const englishCopy: Partial<Record<SpeechModelId, EnglishModelCopy>> = {
     description: 'High-quality non-streaming transcription with VAD splitting; it needs a larger download and more memory.',
     languages: { '中文': 'Chinese', English: 'English', '日本語': 'Japanese' },
   },
+  'zipformer-small-streaming-zh-en-ctc-int8-2026-06-18': {
+    displayName: 'Zipformer Small streaming Chinese/English (Browser experimental)',
+    description: 'Browser-local streaming transcription. The model stays in this browser and audio is never uploaded.',
+    languages: { '中文': 'Chinese', English: 'English' },
+  },
 }
 
 export function speechModelDisplayName(locale: Locale, id: SpeechModelId, fallback: string) {

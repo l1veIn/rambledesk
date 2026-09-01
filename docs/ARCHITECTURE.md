@@ -61,6 +61,9 @@ application facade，由 Tauri state、该进程的 Local Integration Server 与
 Desktop Shell ─── Native Capability Implementation ───┐
                                                       ├─ outside Application Transport
 Web browser  ─── Browser Capability Implementation ───┘
+
+Desktop / Browser / Mobile Platform Plugin
+  └─ local speech or capture ──→ SpeechEvent / Attachment Candidate ──→ TipTap Ramble Core
 ```
 
 Desktop Client 与 Web Client 复用同一 Workbench Client 和 Application Transport
@@ -112,6 +115,10 @@ Client 只能根据 capability manifest 呈现可用操作：
 - Browser Capability 受 secure context、浏览器权限、用户手势和当前设备限制；
 - Browser file picker 选择客户端文件，不代表 Backend Runtime 所在机器的 working directory；
 - 缺失或降级的 Browser Capability 必须明确不可用，不能伪装成 Native Capability 等价实现。
+
+语音和截图等设备流程由当前客户端的 Platform Plugin 组合。Platform Plugin 是第一方、typed 的
+Capability Module，不是 Host Adapter，也不隐含动态第三方插件加载器。它不经 Application Transport
+代理设备操作，只向共享 TipTap Ramble Core 返回 `SpeechEvent` 或 `AttachmentCandidate`。
 
 ## Feedback Draft 所有权
 
@@ -280,17 +287,21 @@ TARGET Web Client 复用该 UI，但不复用 Desktop Shell 或 Native Capabilit
   `unload` 不可靠，因此不能把唯一一次保存或任何终态 mutation 放在 `unload` handler 中；
 - 重连或重新打开 view 时，从 Backend Runtime 重新读取 Request、Draft revision 与运行状态。
 
-### Audio Source 与 Speech Engine
+### TipTap Ramble Core 与 Platform Plugin
 
-Audio Source 是 device Capability，speech recognition 是 Backend Runtime 使用的 Speech Engine：
+Ramble 是以 TipTap Feedback Draft 为中心的编辑流程，不是录音 session。共享 Ramble Core 持有
+SpeechEvent 到 TipTap transaction 的映射、stable segment identity、附件 node、autosave 与 CAS；
+它不持有麦克风/屏幕权限、PCM、重采样、VAD、模型、WASM Worker 或系统截图 overlay。
 
-- Desktop 的 Native Audio Source 可以把本机音频流直接交给既有 Speech Engine；
-- Browser Audio Source 通过浏览器权限和用户手势取得媒体，首期把 MediaRecorder Blob 或有界分段
-  经 authenticated HTTP 上传到 server-side recognition session；
-- Desktop 与 Web 必须投影同一 SpeechEvent contract，断线、停止、权限拒绝或设备丢失都要显式
-  终结 recognition session；
-- 只有实时 partial transcript 成为明确验收需求时，才新增独立 binary WebSocket；不得复用首期
-  invalidation WebSocket 传 PCM。
+- Desktop Speech Recognition Plugin 在本机组合 Native Audio Source、Rust sherpa-onnx Speech Engine
+  与模型资料库；`rambledesk-speech` 的 source/engine seam 是其内部实现；
+- Browser Speech Recognition Plugin 在浏览器所在设备组合 `getUserMedia`、AudioWorklet、流式重采样、
+  dedicated Worker、sherpa-onnx WebAssembly 与 origin-local Model Store；
+- Mobile Client 未来通过各自平台的原生音频 API 与 sherpa-onnx binding 实现同一插件合同；
+- Capture Plugin 在当前设备取得图像并返回 Attachment Candidate；共享 Draft 流程负责验证、上传或
+  持久化，成功后再插入 TipTap attachment node；
+- 平台共享 SpeechEvent 与 Attachment Candidate 合同，不共享引擎进程、模型或权限；实时音频、
+  recognition session 与设备权限不进入 Application Transport。
 
 ## 事实来源
 
@@ -305,7 +316,7 @@ Audio Source 是 device Capability，speech recognition 是 Backend Runtime 使�
 | 上下文提示 | request `context_refs` / `source_hint` |
 | Session tabs、顺序、active view、pane 尺寸 | 每个 Workbench Client 的 client-local workspace snapshot |
 | 系统通知 | best-effort side effect |
-| 局部转写 | speech session 内存；定期 checkpoint 到 Draft |
+| 局部转写 | 当前客户端 Platform Plugin 内存；稳定 SpeechEvent 通过 TipTap transaction 写入 Draft |
 
 HTTP snapshot、Tauri query result 和 WebSocket invalidation 都是上述事实的投影或提示，不是
 额外事实源。终态提交、取消等 application operation 必须幂等；CAS 冲突必须保留可见错误，
