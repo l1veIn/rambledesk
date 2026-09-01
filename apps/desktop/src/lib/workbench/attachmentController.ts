@@ -109,13 +109,13 @@ export function createAttachmentController(context: AttachmentControllerContext)
         })
     }
 
-    window.addEventListener('paste', handlePaste)
+    if (context.isTauri) window.addEventListener('paste', handlePaste)
     return () => {
       disposed = true
       dragUnlisten?.()
       captureReadyUnlisten?.()
       captureFinishedUnlisten?.()
-      window.removeEventListener('paste', handlePaste)
+      if (context.isTauri) window.removeEventListener('paste', handlePaste)
       releasePreviews()
     }
   }

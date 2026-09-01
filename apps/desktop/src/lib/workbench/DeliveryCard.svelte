@@ -3,6 +3,7 @@
     Ban,
     ChefHat,
     CheckCircle2,
+    Download,
     FolderOpen,
     MessageSquareReply,
     Send,
@@ -33,6 +34,7 @@
   export let approving = false
   export let canOpenResumePrompt = false
   export let onOpenPackage: () => void = () => {}
+  export let packageActionLabel = 'Open feedback package'
   export let onOpenResumePrompt: () => void = () => {}
   export let onCookPreview: () => void = () => {}
   export let onSubmit: () => void = () => {}
@@ -64,8 +66,12 @@
       </Badge>
     </header>
     <Button class="mt-3 w-full" variant="outline" onclick={onOpenPackage}>
-      <FolderOpen data-icon="inline-start" />
-      {tr('Open feedback package')}
+      {#if packageActionLabel === 'Open feedback package'}
+        <FolderOpen data-icon="inline-start" />
+      {:else}
+        <Download data-icon="inline-start" />
+      {/if}
+      {tr(packageActionLabel)}
     </Button>
     {#if canOpenResumePrompt}
       <Button class="mt-2 w-full" onclick={onOpenResumePrompt}>

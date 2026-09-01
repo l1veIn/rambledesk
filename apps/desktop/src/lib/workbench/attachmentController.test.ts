@@ -77,6 +77,15 @@ describe('attachmentController screen capture state', () => {
     vi.unstubAllGlobals()
   })
 
+  it('does not claim browser image-paste support before the browser capability lands', () => {
+    const { context } = controllerContext()
+    context.isTauri = false
+    const dispose = createAttachmentController(context).mount()
+
+    expect(window.addEventListener).not.toHaveBeenCalledWith('paste', expect.any(Function))
+    dispose()
+  })
+
   it('keeps capture busy until the capture finishes and blocks duplicate starts', async () => {
     mocks.invoke.mockResolvedValue(undefined)
     const { context, setCaptureBusy } = controllerContext()

@@ -8,6 +8,7 @@
   export let attachmentCount = 0
   export let attachmentBusy = false
   export let readOnly = false
+  export let nativeCaptureAvailable = false
   export let onScreenCapture: () => void = () => {}
   export let onImportClipboard: () => void = () => {}
   export let onFileSelection: (event: Event) => void = () => {}
@@ -25,7 +26,8 @@
     <strong class="text-xs font-medium">{tr('Add context')}</strong>
     <span class="ml-auto text-[10px] tabular-nums text-muted-foreground">{attachmentCount}</span>
   </header>
-  <div class="grid grid-cols-3 gap-1.5">
+  <div class={['grid gap-1.5', nativeCaptureAvailable ? 'grid-cols-3' : 'grid-cols-1']}>
+    {#if nativeCaptureAvailable}
     <Button
       variant="outline"
       class="h-14 flex-col gap-1 px-1 text-[10px]"
@@ -46,6 +48,7 @@
       <ClipboardPaste class="size-4" />
       {tr('Clipboard')}
     </Button>
+    {/if}
     <Button
       variant="outline"
       class="h-14 flex-col gap-1 px-1 text-[10px]"
@@ -64,7 +67,9 @@
     multiple
     onchange={onFileSelection}
   />
-  <p class="m-0 mt-2 text-[9px] leading-4 text-muted-foreground">
-    {tr('The clipboard is read once only when you click import.')}
-  </p>
+  {#if nativeCaptureAvailable}
+    <p class="m-0 mt-2 text-[9px] leading-4 text-muted-foreground">
+      {tr('The clipboard is read once only when you click import.')}
+    </p>
+  {/if}
 </section>

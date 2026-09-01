@@ -1,6 +1,6 @@
 # RambleDesk 架构基线
 
-> 状态：v3 当前与目标边界。
+> 状态：v4 当前与目标边界。
 > 术语源：[TERMINOLOGY.md](TERMINOLOGY.md)。本文若与术语表冲突，以术语表为准。
 
 本文同时记录已经存在的结构与后续 Web 工作必须遵守的目标边界：
@@ -24,7 +24,11 @@ TARGET 不预设新 crate、Web app 目录或 headless composition root。
                                                            ▼
 ┌────────────────────┐   Tauri Application      ┌──────────────────────────┐
 │ Desktop Client     │ ─ Transport Impl. ─────→ │ Backend Runtime          │
-└────────────────────┘                          │ core + storage + config  │
+└────────────────────┘                          │ one application Module   │
+                                                │ core + storage + config  │
+┌────────────────────┐   Web Access HTTP + WS   │                          │
+│ Web Client         │ ─ Transport Impl. ─────→ │                          │
+└────────────────────┘                          └──────────────────────────┘
                                                 └──────────────────────────┘
 
 ┌────────────────────┐
@@ -32,10 +36,12 @@ TARGET 不预设新 crate、Web app 目录或 headless composition root。
 └────────────────────┘      (outside Application Transport)
 ```
 
-`apps/desktop` 是 CURRENT composition root。每个 desktop 进程创建一份
-`FeedbackApplication`，由 Tauri state 与该进程的 Local Integration Server 共同调用；这不表示
-跨进程全局单例。当前只有一个承载 `/api` 与 `/mcp` 的 loopback listener，没有 Web 静态资源
-或 WebSocket route。MCP SSE 属于 MCP transport，不是 Web Client 的事件流。
+`apps/desktop` 是 CURRENT composition root。每个 desktop 进程创建一份 Backend Runtime/
+application facade，由 Tauri state、该进程的 Local Integration Server 与可选 Web Access Server
+共同调用；这不表示跨进程全局单例。Local Integration Server 继续以独立 loopback listener 承载
+`/api` 与 `/mcp`，不暴露 Web 静态资源、application routes 或 WebSocket。默认关闭的 Web Access
+使用另一 listener、credential、auth domain、route set 与生命周期，只绑定 `127.0.0.1`。MCP SSE
+属于 MCP transport，不是 Web Client 的事件流。
 
 ### TARGET
 
@@ -49,7 +55,7 @@ TARGET 不预设新 crate、Web app 目录或 headless composition root。
 └────────────────────┘                          │                          │
                                                 │                          │
 ┌────────────────────┐   Web Access HTTP + WS   │                          │
-│ future Web Client  │ ─ Transport Impl. ─────→ │                          │
+│ Web Client         │ ─ Transport Impl. ─────→ │                          │
 └────────────────────┘                          └──────────────────────────┘
 
 Desktop Shell ─── Native Capability Implementation ───┐
@@ -57,7 +63,7 @@ Desktop Shell ─── Native Capability Implementation ───┐
 Web browser  ─── Browser Capability Implementation ───┘
 ```
 
-Desktop Client 与 future Web Client 复用同一 Workbench Client 和 Application Transport
+Desktop Client 与 Web Client 复用同一 Workbench Client 和 Application Transport
 Interface。Tauri 与 HTTP + WebSocket 是两个 Implementation，但调用同一 Backend Runtime
 application Module；Web 路径不得形成第二套业务实现。
 
@@ -71,7 +77,7 @@ Integration Server。
 Application Transport Interface 暴露 typed command/query、变化订阅、ready barrier 和
 capability manifest。Capability manifest 只报告能力是否可用；设备操作不通过 Transport 执行。
 
-TARGET Web Transport 遵循：
+CURRENT Web Transport 遵循：
 
 1. Backend Runtime 每次启动生成一个 opaque、进程生命周期内不变且跨启动唯一的
    `runtime_generation`；
@@ -93,8 +99,9 @@ TARGET Web Transport 遵循：
 8. WebSocket 断线后先重新建立并确认 ready，再 refetch 完整 snapshot；
 9. 首期不实现 sequence replay、ring buffer 或 multiplex protocol。
 
-CURRENT Tauri commands/events 仍是 Desktop Client 的具体 Implementation。现有 MCP SSE 不能
-复用为上述 WebSocket invalidation/readiness contract。
+CURRENT Tauri commands/events 与 Web Access HTTP + WebSocket 分别是 Desktop Client 和 Web
+Client 的具体 Implementation。现有 MCP SSE 不能复用为上述 WebSocket
+invalidation/readiness contract。
 
 ## Capability 边界
 
@@ -391,13 +398,13 @@ waiting → in_progress → completed
 - 当前统一 request body limit 为 96 MiB。
 - 当前 listener 不提供 Web 静态资源或 WebSocket。MCP SSE 不属于 Web event stream。
 - Draft revision/CAS 已存在于 application/storage 路径。可复用的 application HTTP router、浏览器
-  HTTP Application Transport Implementation 与 Tauri/HTTP conformance tests 已实现，但尚未挂载到
-  production Web Access listener；Local Integration Server 仍不暴露这些 application routes。
+  HTTP Application Transport Implementation 与 Tauri/HTTP conformance tests 已实现；Local
+  Integration Server 仍不暴露这些 application routes。
 - `host_id`、`host_session_id` 不是认证凭据；返回路径只保证同机、共享文件系统可见。
 
-### TARGET：Web Access
+### CURRENT：loopback Web Access
 
-- Web Access 默认关闭，第一阶段使用独立 listener 且只绑定 `127.0.0.1`；它拥有与 Local
+- Web Access 默认关闭，使用独立 listener 且只绑定 `127.0.0.1`；它拥有与 Local
   Integration Server 分离的 route set、credential、auth domain 和 lifecycle。
 - 静态资源、HTTP API 与 WebSocket 使用 same-origin 且不开放宽泛 CORS。两类 listener 必须复用
   同一套 security policy/primitives。所有请求严格校验
@@ -405,19 +412,18 @@ waiting → in_progress → completed
   rebinding；共享安全实现不表示共享 listener 或 credential。
 - Desktop composition root 装配的 Web Access security Module 在人类显式启用或重新生成 Web
   credential 时创建并持久化独立的 256-bit durable token；Backend Runtime/core 不拥有 transport
-  credential。只有 Desktop 设置界面可以经人类操作显示或复制 durable token。
-- durable token 优先进入 OS credential store（macOS Keychain、Windows Credential Manager、
-  可用时的 Linux Secret Service），并在平台支持时使用 device-local / non-sync 属性。仅允许回退到
-  通用配置和 RambleDesk backup/export roots 之外的专用 secret file：Unix mode `0600`，Windows
-  使用仅当前用户可读的 DACL，并在平台支持时设置 backup exclusion；无法建立或验证 user-only
-  protection 时 Web Access 必须 fail closed。RambleDesk 不得把 token 复制到通用配置、SQLite、
+  credential。durable token 不返回 UI；只有 Desktop 设置界面可以经专用原生 clipboard command
+  复制它。
+- durable token 进入 OS credential store（macOS Keychain、Windows Credential Manager、
+  Linux Secret Service）；当前不使用 secret-file fallback，安全存储不可用时 Web Access fail closed。
+  RambleDesk 不得把 token 复制到通用配置、SQLite、
   日志、诊断包、自己生成的 backup/export 或 Feedback Package；OS 管理的加密设备/账户备份属于
   平台安全边界，不宣称应用能够绝对排除。
 - 浏览器以 `Authorization: Bearer <durable-web-token>` 调用 same-origin
   `POST /api/auth/session` 完成 bootstrap；成功后得到 scope 受限、idle TTL 30 分钟、absolute TTL
-  12 小时的 session token。任一受保护请求或已认证 WebSocket 活动可以刷新 idle TTL，但不能延长
-  absolute TTL。停止 Web Access 必须撤销所有 session；重新生成 durable token 必须同时撤销旧
-  token 与全部 session。
+  12 小时的 session token。受保护 HTTP 请求或新的 WebSocket 认证会刷新 idle TTL，但不能延长
+  absolute TTL；已连接 WebSocket 到期时主动关闭。停止 Web Access 必须撤销所有 session 并关闭
+  socket；重新生成 durable token 必须同时撤销旧 token 与全部 session。
 - session token 只存在 Web Access 进程内存与浏览器当前 JavaScript 内存；durable/session token
   都不得进入 `sessionStorage`、`localStorage`、IndexedDB、URL、日志或 Feedback Package。刷新或
   关闭页面后必须重新 bootstrap。服务端比较
@@ -427,10 +433,23 @@ waiting → in_progress → completed
   credential-bearing protocol `rambledesk-session.<base64url-no-pad-session-token>`，禁止 query
   token。服务端校验二者后只选择并回显 `rambledesk-events`，不得把 credential-bearing protocol
   回显给客户端、代理日志或诊断输出。
-- Web routes 分别设置 body、upload、rate 与 concurrent-connection 上限；不得直接继承当前
-  96 MiB 的统一 body limit 作为完整 Web 资源策略。
-- sensitive command 必须单独分类、授权与审计；Application Transport 可达不等于拥有所有
-  Native Capability 或管理权限。
+- 静态 SPA 只接受 exact Host；bootstrap、application API 与 WebSocket 还要求 exact Origin。
+  history fallback 不覆盖 `/api/**`、`/assets/**`、扩展名路径、traversal 或 encoded separator；HTML
+  `no-store`，build manifest 明确标记的 fingerprinted asset 使用 immutable cache。
+- 当前每个 listener 每分钟最多接受 8 次 bootstrap 尝试，同时最多处理 16 个 application HTTP
+  request 与 8 个 event socket；超过上限分别返回 `429` 或 `503`。JSON 使用 Axum 的有界 body，
+  multipart 使用 core 的 20 MiB attachment 上限外加 64 KiB metadata allowance。
+- session credential 以固定长度 SHA-256 hash 保存，并对最多 32 个 session 做完整 constant-time
+  compare 扫描。认证是 request admission lease；已入场 mutation 即使随后 stop/expiry，也返回真实
+  结果且绝不自动重放，后续 request 与 event socket 才被撤销。
+- Web Client 只在 bootstrap 成功后创建 HTTP + WebSocket Transport；durable token 输入成功后即清空，
+  session token 只留当前 JavaScript 内存。认证被撤销时 dirty Editor 不被卸载，重新认证后 refetch
+  Backend Runtime 已保存 Draft 与 client-local tab snapshot。
+
+### TARGET：Web Access 扩展
+
+- 后续可按 command sensitivity、client/IP 与运维场景继续细分资源预算和审计；Application
+  Transport 可达不等于拥有所有 Native Capability 或管理权限。
 - LAN Web Access 延后；启用前必须使用 HTTPS/WSS 或受信任 TLS proxy，并重新审计 origin、
   credential delivery、设备暴露与文件访问边界。
 

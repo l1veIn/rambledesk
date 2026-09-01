@@ -250,7 +250,7 @@
     )
     if (nextSectionCommandState !== sectionCommandState) {
       sectionCommandState = nextSectionCommandState
-      activeSection = nextSectionCommandState.activeSection
+      activeSection = isTauri ? nextSectionCommandState.activeSection : 'general'
     }
   }
 
@@ -723,6 +723,7 @@
             <MonitorCog data-icon="inline-start" />
             {tr('General')}
           </Tabs.Trigger>
+          {#if isTauri}
           {#if hasMacPermissions}
             <Tabs.Trigger value="permissions" class="h-9 w-full justify-start px-2.5">
               <ShieldCheck data-icon="inline-start" />
@@ -758,12 +759,15 @@
             <Info data-icon="inline-start" />
             {tr('About')}
           </Tabs.Trigger>
+          {/if}
         </Tabs.List>
 
+        {#if isTauri}
         <div class="settings-navigation-note mt-auto flex gap-2 border-t pt-3 text-[10px] leading-4 text-muted-foreground">
           <ShieldCheck class="mt-0.5 size-3.5 shrink-0" />
           <span>{tr('Adapter configuration is written only to your user directory and preserves other adapters.')}</span>
         </div>
+        {/if}
       </aside>
 
       <div class="settings-content flex min-h-0 min-w-0 flex-col">
@@ -885,6 +889,7 @@
                 {tr('Run getting started again')}
               </Button>
             </section>
+            {/if}
 
             <section class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-8 border-b pb-8">
               <div class="flex gap-3">
@@ -904,6 +909,7 @@
               </Button>
             </section>
 
+            {#if isTauri}
             <section class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-8 border-b pb-8">
               <div class="flex gap-3">
                 <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
@@ -960,6 +966,7 @@
             </section>
             {/if}
 
+            {#if isTauri}
             <section class="grid gap-4">
               <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-8">
                 <div class="flex gap-3">
@@ -982,6 +989,7 @@
                 {dataStorage?.selected_path ?? tr('Loading data storage location…')}
               </div>
             </section>
+            {/if}
           </Tabs.Content>
 
 

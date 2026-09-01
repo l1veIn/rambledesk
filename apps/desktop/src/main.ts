@@ -2,6 +2,7 @@ import { mount } from 'svelte'
 
 import { initializePreferences } from './lib/preferences'
 import { createWorkbenchComposition } from './lib/application/workbenchComposition'
+import { selectWorkbenchEntry } from './lib/workbenchEntry'
 import './app.css'
 
 function reportFrontendError(context: string, message: string) {
@@ -64,15 +65,21 @@ window.addEventListener('unhandledrejection', (event) => {
 initializePreferences()
 configureContextMenuAndDevtools()
 
-const captureMode = window.location.hash === '#capture'
-const scrollCaptureMode = window.location.hash === '#capture-scroll'
-const pinnedCaptureMode = window.location.hash.startsWith('#capture-pin=')
-const rambleConsoleMode =
-  window.location.hash === '#ramble-console' ||
-  window.location.pathname.endsWith('/ramble-console')
-if (captureMode || scrollCaptureMode || pinnedCaptureMode) {
+const isTauri = '__TAURI_INTERNALS__' in window
+const previewMode =
+  import.meta.env.DEV &&
+  !isTauri &&
+  new URLSearchParams(window.location.search).get('preview') === 'fixtures'
+const entry = selectWorkbenchEntry({
+  isTauri,
+  previewMode,
+  pathname: window.location.pathname,
+  hash: window.location.hash,
+})
+
+if (entry === 'capture' || entry === 'scroll-capture' || entry === 'pinned-capture') {
   document.body.classList.add('capture-mode')
-} else if (rambleConsoleMode) {
+} else if (entry === 'ramble-console') {
   document.body.classList.add('ramble-console-mode')
 } else {
   document.body.classList.add('app-mode')
@@ -80,41 +87,45 @@ if (captureMode || scrollCaptureMode || pinnedCaptureMode) {
 
 const target = document.getElementById('app')!
 
-if (captureMode) {
+if (entry === 'browser') {
+  const { default: BrowserWorkbenchRoot } = await import('./BrowserWorkbenchRoot.svelte')
+  mount(BrowserWorkbenchRoot, { target })
+} else if (entry === 'capture') {
   await import('./lib/screen-capture/screenshot-overlay.css')
   const { default: ScreenshotOverlay } = await import('./ScreenshotOverlay.svelte')
   mount(ScreenshotOverlay, { target })
-} else if (scrollCaptureMode) {
+} else if (entry === 'scroll-capture') {
   await import('./lib/screen-capture/screenshot-overlay.css')
   const { default: ScrollCaptureController } = await import('./ScrollCaptureController.svelte')
   mount(ScrollCaptureController, { target })
-} else if (pinnedCaptureMode) {
+} else if (entry === 'pinned-capture') {
   await import('./lib/screen-capture/screenshot-overlay.css')
   const { default: PinnedCapture } = await import('./PinnedCapture.svelte')
   mount(PinnedCapture, { target })
-} else if (rambleConsoleMode) {
+} else if (entry === 'ramble-console') {
   await import('./lib/ramble-console.css')
   const { default: RambleConsole } = await import('./RambleConsole.svelte')
   mount(RambleConsole, { target })
 } else {
-  const isTauri = '__TAURI_INTERNALS__' in window
-  const previewMode =
-    import.meta.env.DEV &&
-    !isTauri &&
-    new URLSearchParams(window.location.search).get('preview') === 'fixtures'
-  if (!isTauri && !previewMode) {
-    const { default: BrowserWorkbenchRoot } = await import('./BrowserWorkbenchRoot.svelte')
-    mount(BrowserWorkbenchRoot, { target })
-  } else {
-    const { default: App } = await import('./App.svelte')
-    const desktopTransport = isTauri
-      ? new (await import('./lib/application/tauriApplicationTransport')).TauriApplicationTransport()
-      : undefined
-    const composition = createWorkbenchComposition({
-      environment: isTauri ? 'desktop' : 'browser',
-      previewMode,
-      desktopTransport,
-    })
-    mount(App, { target, props: composition })
-  }
+  const { default: App } = await import('./App.svelte')
+  const desktopTransport = isTauri
+    ? new (await import('./lib/application/tauriApplicationTransport')).TauriApplicationTransport()
+    : undefined
+  const composition = createWorkbenchComposition({
+    environment: isTauri ? 'desktop' : 'browser',
+    previewMode,
+    desktopTransport,
+  })
+  const publishedFeedbackAction = isTauri
+    ? {
+        label: 'Open feedback package' as const,
+        async run(requestId: string) {
+          const { invoke } = await import('@tauri-apps/api/core')
+          await invoke('reveal_feedback_package', { input: { request_id: requestId } })
+        },
+      }
+    : (await import('./lib/publishedFeedbackAction')).createBrowserPublishedFeedbackAction(
+        composition.applicationTransport,
+      )
+  mount(App, { target, props: { ...composition, publishedFeedbackAction } })
 }
