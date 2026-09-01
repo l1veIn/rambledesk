@@ -45,6 +45,31 @@ export function createTauriServerPathCapability(
       api.invoke<string>('reveal_feedback_attachment', {
         input: attachmentInput(input),
       }),
+    onFileDrop(handler, onError) {
+      let active = true
+      let unlisten: (() => void) | undefined
+      void api
+        .currentWebview()
+        .onDragDropEvent(({ payload }) => handler(payload))
+        .then((nextUnlisten) => {
+          if (active) unlisten = nextUnlisten
+          else nextUnlisten()
+        })
+        .catch((cause) => {
+          if (active) onError(cause)
+        })
+      return () => {
+        if (!active) return
+        active = false
+        unlisten?.()
+      }
+    },
+    importAttachmentPath: (input) =>
+      api.invoke('import_feedback_attachment_path', {
+        requestId: input.requestId,
+        path: input.path,
+        expectedRevision: input.expectedRevision,
+      }),
   }
 }
 

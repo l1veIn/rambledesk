@@ -6,6 +6,7 @@ import type { RambleConsoleCommand, RambleConsoleState } from '$lib/rambleConsol
 import type { ScreenCaptureReady } from '$lib/screenCapture'
 import type { ShortcutAction, ShortcutConfig } from '$lib/shortcutSettings'
 import type { SpeechEvent, VoiceRambleSessionView } from '$lib/speech'
+import type { ClientAttachmentFile } from './clientAttachmentFile'
 
 import {
   capabilityManifest,
@@ -85,6 +86,15 @@ export interface ServerPathCapability {
     attachmentId: string
     kind: 'request' | 'workspace'
   }>): Promise<string>
+  onFileDrop(
+    handler: (event: NativeFileDropEvent) => void,
+    onError: CapabilityErrorHandler,
+  ): CapabilityUnsubscribe
+  importAttachmentPath(input: Readonly<{
+    requestId: string
+    path: string
+    expectedRevision: number
+  }>): Promise<FeedbackWorkspaceView>
 }
 
 export type CaptureFinished = Readonly<{
@@ -105,16 +115,7 @@ export interface ScreenCaptureCapability {
     onError: CapabilityErrorHandler,
   ): CapabilityUnsubscribe
   onShortcut(handler: () => void, onError: CapabilityErrorHandler): CapabilityUnsubscribe
-  onFileDrop(
-    handler: (event: NativeFileDropEvent) => void,
-    onError: CapabilityErrorHandler,
-  ): CapabilityUnsubscribe
   begin(): Promise<void>
-  importServerPath(input: Readonly<{
-    requestId: string
-    path: string
-    expectedRevision: number
-  }>): Promise<FeedbackWorkspaceView>
   complete(input: Readonly<{
     requestId: string
     captureSessionId: string
@@ -136,6 +137,14 @@ export interface ClipboardCaptureCapability {
     expectedRevision: number
   }>): Promise<FeedbackWorkspaceView>
   discardImage(captureId: string): Promise<void>
+}
+
+export interface ImagePasteCapability {
+  subscribe(
+    target: EventTarget,
+    handler: (files: readonly ClientAttachmentFile[]) => boolean,
+    onError: CapabilityErrorHandler,
+  ): CapabilityUnsubscribe
 }
 
 export interface ShortcutCapability {
@@ -300,6 +309,7 @@ export type WorkbenchCapabilitySlots = Readonly<{
   externalLinks: CapabilitySlot<ExternalLinkCapability>
   screenCapture: CapabilitySlot<ScreenCaptureCapability>
   clipboardCapture: CapabilitySlot<ClipboardCaptureCapability>
+  imagePaste: CapabilitySlot<ImagePasteCapability>
   serverPaths: CapabilitySlot<ServerPathCapability>
   globalShortcuts: CapabilitySlot<ShortcutCapability>
   speech: CapabilitySlot<SpeechCapability & SpeechAdministrationCapability>

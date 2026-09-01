@@ -4,6 +4,7 @@ import {
   type CapabilitySlot,
   type WorkbenchCapabilities,
 } from '../workbenchCapabilities'
+import { createBrowserImagePasteCapability } from '../browser/imagePasteCapability'
 import {
   createTauriDataStorageCapability,
   createTauriDiagnosticsCapability,
@@ -36,10 +37,21 @@ const NATIVE_AVAILABLE: CapabilityStatus = Object.freeze({
   source: 'native',
 })
 
+const BROWSER_AVAILABLE: CapabilityStatus = Object.freeze({
+  availability: 'available',
+  source: 'browser',
+})
+
 function nativeSlot<Implementation>(
   implementation: Implementation,
 ): CapabilitySlot<Implementation> {
   return Object.freeze({ status: NATIVE_AVAILABLE, implementation })
+}
+
+function browserSlot<Implementation>(
+  implementation: Implementation,
+): CapabilitySlot<Implementation> {
+  return Object.freeze({ status: BROWSER_AVAILABLE, implementation })
 }
 
 /** Creates the executable Desktop capability registry; its manifest is derived from these slots. */
@@ -53,6 +65,7 @@ export function createTauriWorkbenchCapabilities(
     externalLinks: nativeSlot(createTauriExternalLinkCapability(api)),
     screenCapture: nativeSlot(createTauriScreenCaptureCapability(api)),
     clipboardCapture: nativeSlot(createTauriClipboardCaptureCapability(api)),
+    imagePaste: browserSlot(createBrowserImagePasteCapability()),
     serverPaths: nativeSlot(createTauriServerPathCapability(api)),
     globalShortcuts: nativeSlot(createTauriShortcutCapability(api)),
     speech: nativeSlot(createTauriSpeechCapability(api)),

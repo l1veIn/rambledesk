@@ -31,7 +31,13 @@ function fakeWindow() {
 }
 
 function fakeWebview() {
-  return { onDragDropEvent: vi.fn(async () => vi.fn()) }
+  return {
+    onDragDropEvent: vi.fn(
+      async (
+        _handler: Parameters<ReturnType<TauriCapabilityApi['currentWebview']>['onDragDropEvent']>[0],
+      ): Promise<TauriUnlisten> => () => undefined,
+    ),
+  }
 }
 
 function createFakeApi(responses: Record<string, unknown> = {}): FakeApi {
@@ -67,11 +73,14 @@ function createFakeApi(responses: Record<string, unknown> = {}): FakeApi {
 }
 
 describe('Tauri Workbench capabilities', () => {
-  it('derives a complete native manifest from executable slots', () => {
+  it('derives native slots plus the shared browser image-paste slot', () => {
     const capabilities = createTauriWorkbenchCapabilities(createFakeApi())
     expect(Object.keys(capabilities.manifest).sort()).toEqual([...CAPABILITY_NAMES].sort())
     for (const name of CAPABILITY_NAMES) {
-      expect(capabilities[name].status).toEqual({ availability: 'available', source: 'native' })
+      expect(capabilities[name].status).toEqual({
+        availability: 'available',
+        source: name === 'imagePaste' ? 'browser' : 'native',
+      })
       expect(capabilities.manifest[name]).toEqual(capabilities[name].status)
     }
   })
@@ -131,11 +140,51 @@ describe('Tauri Workbench capabilities', () => {
     })
   })
 
-  it('maps capture and speech inputs to the existing native wire shape', async () => {
+  it('owns native file-drop subscription in the server-path implementation', async () => {
+    const api = createFakeApi()
+    const capabilities = createTauriWorkbenchCapabilities(api)
+    const handler = vi.fn()
+    const onError = vi.fn()
+    const unsubscribe = capabilities.serverPaths.implementation.onFileDrop(handler, onError)
+    await vi.waitFor(() => expect(api.webview.onDragDropEvent).toHaveBeenCalledOnce())
+    const listener = api.webview.onDragDropEvent.mock.calls[0]?.[0] as
+      | ((event: TauriEvent<{ type: 'drop'; paths: string[] }>) => void)
+      | undefined
+
+    listener?.({ payload: { type: 'drop', paths: ['/tmp/notes.txt'] } })
+
+    expect(handler).toHaveBeenCalledWith({ type: 'drop', paths: ['/tmp/notes.txt'] })
+    expect(onError).not.toHaveBeenCalled()
+    unsubscribe()
+  })
+
+  it('cancels a server-path file-drop subscription before async registration completes', async () => {
+    const lateUnlisten = vi.fn()
+    let resolveDrop: ((unlisten: TauriUnlisten) => void) | undefined
+    const api = createFakeApi()
+    api.webview.onDragDropEvent.mockImplementationOnce(
+      () => new Promise<TauriUnlisten>((resolve) => (resolveDrop = resolve)),
+    )
+    const capabilities = createTauriWorkbenchCapabilities(api)
+    const onError = vi.fn()
+
+    const unsubscribe = capabilities.serverPaths.implementation.onFileDrop(
+      vi.fn(),
+      onError,
+    )
+    unsubscribe()
+    resolveDrop?.(lateUnlisten)
+    await Promise.resolve()
+
+    expect(lateUnlisten).toHaveBeenCalledOnce()
+    expect(onError).not.toHaveBeenCalled()
+  })
+
+  it('maps server-path import, capture, and speech inputs to the existing native wire shape', async () => {
     const api = createFakeApi()
     const capabilities = createTauriWorkbenchCapabilities(api)
 
-    await capabilities.screenCapture.implementation.importServerPath({
+    await capabilities.serverPaths.implementation.importAttachmentPath({
       requestId: 'request-1',
       path: '/tmp/example.png',
       expectedRevision: 7,

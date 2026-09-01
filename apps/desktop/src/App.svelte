@@ -1803,7 +1803,7 @@
     onApplyWorkspaceMutation={applyWorkspaceMutation}
     onRefreshAttachmentPreviews={attachmentController.refreshPreviews}
     onStartScreenCapture={attachmentController.startScreenCapture}
-    onImportAttachmentPaths={attachmentController.importAttachmentPaths}
+    onImportServerAttachmentPaths={attachmentController.importServerAttachmentPaths}
     onRouteDraftOperation={routeDraftOperation}
     getActiveAction={activeActionFor}
   />
@@ -2020,6 +2020,8 @@
             onStartScreenCapture={() => void attachmentController.startScreenCapture()}
             onImportClipboard={() => void importClipboardNow()}
             onFileSelection={attachmentController.handleFileSelection}
+            onPasteFiles={attachmentController.acceptClientFiles}
+            onPasteError={attachmentController.reportClientFileError}
             onRemoveAttachment={(attachment) => void attachmentController.removeAttachment(attachment)}
             onOpenPackage={() => void openFeedbackPackage()}
             packageActionLabel={tr(publishedFeedbackAction.label)}

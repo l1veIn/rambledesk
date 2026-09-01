@@ -30,6 +30,7 @@ export const CAPABILITY_NAMES = [
   'externalLinks',
   'screenCapture',
   'clipboardCapture',
+  'imagePaste',
   'serverPaths',
   'globalShortcuts',
   'speech',

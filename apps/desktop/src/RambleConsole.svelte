@@ -77,7 +77,10 @@
         dragActive = event.payload.type === 'enter' || event.payload.type === 'over'
         if (event.payload.type === 'drop') {
           dragActive = false
-          void send({ type: 'import-files', paths: event.payload.paths })
+          void send({
+            type: 'import-server-paths',
+            serverPaths: event.payload.paths,
+          })
         } else if (event.payload.type === 'leave') {
           dragActive = false
         }
@@ -122,7 +125,9 @@
     try {
       const selected = await open({ multiple: true, directory: false })
       const paths = selected ? (Array.isArray(selected) ? selected : [selected]) : []
-      if (paths.length > 0) await send({ type: 'import-files', paths })
+      if (paths.length > 0) {
+        await send({ type: 'import-server-paths', serverPaths: paths })
+      }
     } catch (cause) {
       errorMessage = cause instanceof Error ? cause.message : String(cause)
     } finally {

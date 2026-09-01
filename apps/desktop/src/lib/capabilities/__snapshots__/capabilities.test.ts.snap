@@ -32,6 +32,11 @@ exports[`capability contracts > keeps the unavailable manifest complete and immu
     "reason": "unsupported_environment",
     "source": "none",
   },
+  "imagePaste": {
+    "availability": "unavailable",
+    "reason": "unsupported_environment",
+    "source": "none",
+  },
   "notifications": {
     "availability": "unavailable",
     "reason": "unsupported_environment",

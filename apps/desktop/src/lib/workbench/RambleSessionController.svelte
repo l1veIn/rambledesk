@@ -64,7 +64,7 @@
   export let onApplyWorkspaceMutation: (next: FeedbackWorkspaceView) => void = () => {}
   export let onRefreshAttachmentPreviews: (next: FeedbackWorkspaceView) => Promise<void> = async () => {}
   export let onStartScreenCapture: () => Promise<void> = async () => {}
-  export let onImportAttachmentPaths: (paths: string[]) => Promise<void> = async () => {}
+  export let onImportServerAttachmentPaths: (paths: string[]) => Promise<void> = async () => {}
   export let onRouteDraftOperation: (requestId: string, operation: DraftOperation) => Promise<void> = async () => {}
   export let getActiveAction: (requestId: string) => ActiveAction = () => null
 
@@ -541,8 +541,10 @@
       case 'import-clipboard':
         await importClipboardNow()
         break
-      case 'import-files':
-        if (!interactionLocked) await onImportAttachmentPaths(command.paths)
+      case 'import-server-paths':
+        if (!interactionLocked) {
+          await onImportServerAttachmentPaths(command.serverPaths)
+        }
         break
       case 'exit':
         await exitRamble()

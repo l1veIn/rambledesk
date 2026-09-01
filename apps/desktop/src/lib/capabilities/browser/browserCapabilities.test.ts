@@ -5,7 +5,7 @@ import { CapabilityUnavailableError } from '../workbenchCapabilities'
 import { createBrowserWorkbenchCapabilities } from './browserCapabilities'
 
 describe('browser Workbench capabilities', () => {
-  it('advertises only the implemented browser external-link capability', async () => {
+  it('advertises the implemented external-link and image-paste capabilities', async () => {
     const open = vi.fn(() => null)
     const capabilities = createBrowserWorkbenchCapabilities({
       pageUrl: 'https://workbench.example/app',
@@ -16,7 +16,13 @@ describe('browser Workbench capabilities', () => {
       availability: 'available',
       source: 'browser',
     })
-    for (const name of CAPABILITY_NAMES.filter((name) => name !== 'externalLinks')) {
+    expect(capabilities.manifest.imagePaste).toEqual({
+      availability: 'available',
+      source: 'browser',
+    })
+    for (const name of CAPABILITY_NAMES.filter(
+      (name) => name !== 'externalLinks' && name !== 'imagePaste',
+    )) {
       expect(capabilities.manifest[name]).toEqual({
         availability: 'unavailable',
         source: 'none',
