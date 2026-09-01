@@ -1,11 +1,11 @@
 import { getVersion } from '@tauri-apps/api/app'
-import { invoke } from '@tauri-apps/api/core'
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http'
 import { relaunch } from '@tauri-apps/plugin-process'
 import { check, type Update } from '@tauri-apps/plugin-updater'
 import { get, writable } from 'svelte/store'
 
 import { currentDesktopPlatform } from './platform'
+import { TAURI_DESKTOP_SHELL_INSTRUMENTATION } from './desktop-shell/instrumentation'
 import { isNewerReleaseVersion, normalizeUpdateNotes } from './updateVersion'
 
 export type UpdateStatus =
@@ -197,5 +197,5 @@ function messageFrom(cause: unknown) {
 }
 
 async function logUpdaterError(message: string) {
-  await invoke('log_frontend_error', { context: 'updater', message }).catch(() => undefined)
+  await TAURI_DESKTOP_SHELL_INSTRUMENTATION.reportFrontendError('updater', message)
 }

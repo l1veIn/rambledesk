@@ -21,6 +21,18 @@ Desktop 保留 `rambledesk-speech` 内部的 Audio Source / Speech Engine seam�
 原生音频 API 与 sherpa-onnx binding。Platform Plugin 首期表示静态装配的 typed 深 Module，不承诺
 任意第三方动态插件系统。
 
+## Current implementation status
+
+- Desktop Speech/Capture Plugin contract 已进入自动化；真实 OS 权限、设备、截图 overlay/pin 与
+  全局快捷键仍需发布前人工回归。
+- Browser local ASR pilot 已实现固定模型的下载/hash/cache、同源 Wasm/Worker/AudioWorklet 装载与
+  recognizer creation 自动化。真实 Chrome/Safari 麦克风授权、PCM 输入、稳定出字、停止 flush 与
+  长会话仍为 Manual / unverified，不能从自动化门禁外推浏览器兼容承诺。
+- Browser 当前支持 file input 与 image paste 的 Attachment Candidate；Browser screen capture 是
+  Deferred / Unsupported，不以 `getDisplayMedia()` API 存在为交付证据。
+- 完整 Desktop / Browser 支持边界见
+  [WEB_ACCESS_SUPPORT_MATRIX.md](../WEB_ACCESS_SUPPORT_MATRIX.md)。
+
 ## Rejected
 
 - Browser 把 MediaRecorder Blob、WAV 或 PCM 上传给 Desktop / Backend Runtime 识别；这会把设备能力

@@ -42,15 +42,19 @@ use tokio::{net::TcpListener, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 use tower_service::Service;
 
-pub use application_api::{REVISION_HEADER, RUNTIME_GENERATION_HEADER, application_router};
+pub use application_api::{
+    MAX_APPLICATION_JSON_BODY_BYTES, MAX_ATTACHMENT_UPLOAD_BODY_BYTES, REVISION_HEADER,
+    RUNTIME_GENERATION_HEADER, application_router,
+};
 pub use token::{AccessToken, TokenError, default_token_path};
 pub use web_access::{
     EVENT_CREDENTIAL_PROTOCOL_PREFIX, EVENT_PROTOCOL, WebAccessRouteConfig,
     WebSessionAuthenticator, web_access_router,
 };
 pub use web_access_server::{
-    DEFAULT_WEB_ACCESS_PORT, SpaAsset, SpaAssetCachePolicy, SpaAssetSource, WebAccessServerConfig,
-    WebAccessServerError, WebAccessServerHandle, start_web_access_server,
+    DEFAULT_WEB_ACCESS_PORT, SpaAsset, SpaAssetCachePolicy, SpaAssetSource,
+    WebAccessSecurityLimits, WebAccessServerConfig, WebAccessServerError, WebAccessServerHandle,
+    start_web_access_server,
 };
 pub use web_session::{
     DurableWebAccessToken, WebSessionAuthorization, WebSessionClock, WebSessionError,

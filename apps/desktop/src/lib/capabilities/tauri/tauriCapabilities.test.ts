@@ -53,6 +53,14 @@ function createFakeApi(responses: Record<string, unknown> = {}): FakeApi {
           model_path: '/models/sense-voice',
         }
       }
+      if (responses[command] === undefined) {
+        if (command === 'get_web_access_status' || command === 'stop_web_access') {
+          return { state: 'stopped', url: null, failure: null }
+        }
+        if (command === 'start_web_access') {
+          return { state: 'running', url: 'http://127.0.0.1:38173', failure: null }
+        }
+      }
       return responses[command]
     },
   )

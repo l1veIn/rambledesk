@@ -3,7 +3,9 @@ use std::sync::Arc;
 use axum::{
     Json, Router,
     body::{Body, Bytes},
-    extract::{DefaultBodyLimit, FromRequest, Multipart, Request, State},
+    extract::{
+        DefaultBodyLimit, FromRequest, Multipart, Request, State, multipart::MultipartError,
+    },
     http::{HeaderMap, HeaderName, HeaderValue, Response, StatusCode, header},
     middleware::{self, Next},
     response::IntoResponse,
@@ -33,7 +35,8 @@ struct ApplicationRuntimeState {
 }
 
 const MULTIPART_METADATA_ALLOWANCE_BYTES: usize = 64 * 1024;
-const MAX_ATTACHMENT_UPLOAD_BODY_BYTES: usize =
+pub const MAX_APPLICATION_JSON_BODY_BYTES: usize = 2 * 1024 * 1024;
+pub const MAX_ATTACHMENT_UPLOAD_BODY_BYTES: usize =
     MAX_ATTACHMENT_BYTES + MULTIPART_METADATA_ALLOWANCE_BYTES;
 const X_CONTENT_TYPE_OPTIONS: HeaderName = HeaderName::from_static("x-content-type-options");
 pub const RUNTIME_GENERATION_HEADER: &str = "x-rambledesk-runtime-generation";
@@ -70,6 +73,9 @@ where
             .await
             .map(|Json(value)| Self(value))
             .map_err(|rejection| {
+                if rejection.status() == StatusCode::PAYLOAD_TOO_LARGE {
+                    return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+                }
                 invalid_argument_response(format!(
                     "invalid JSON request body: {}",
                     rejection.body_text()
@@ -91,6 +97,9 @@ where
             .await
             .map(Self)
             .map_err(|rejection| {
+                if rejection.status() == StatusCode::PAYLOAD_TOO_LARGE {
+                    return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+                }
                 invalid_argument_response(format!(
                     "invalid multipart request body: {}",
                     rejection.body_text()
@@ -177,6 +186,7 @@ pub fn application_router(
             commands,
             changes: changes.clone(),
         })
+        .layer(DefaultBodyLimit::max(MAX_APPLICATION_JSON_BODY_BYTES))
         .layer(middleware::from_fn_with_state(
             ApplicationRuntimeState { changes },
             application_runtime_contract,
@@ -403,9 +413,7 @@ async fn add_feedback_attachment(
             Ok(Some(field)) => field,
             Ok(None) => break,
             Err(error) => {
-                return invalid_argument_response(format!(
-                    "invalid multipart request body: {error}"
-                ));
+                return multipart_error_response(error, "invalid multipart request body");
             }
         };
         let Some(name) = field.name().map(str::to_owned) else {
@@ -445,9 +453,7 @@ async fn add_feedback_attachment(
                 match field.bytes().await {
                     Ok(value) => contents = Some(value.to_vec()),
                     Err(error) => {
-                        return invalid_argument_response(format!(
-                            "invalid multipart file field: {error}"
-                        ));
+                        return multipart_error_response(error, "invalid multipart file field");
                     }
                 }
             }
@@ -496,9 +502,18 @@ async fn take_text_field(
             *destination = Some(value);
             Ok(())
         }
-        Err(error) => Err(invalid_argument_response(format!(
-            "invalid multipart {name} field: {error}"
-        ))),
+        Err(error) => Err(multipart_error_response(
+            error,
+            &format!("invalid multipart {name} field"),
+        )),
+    }
+}
+
+fn multipart_error_response(error: MultipartError, context: &str) -> Response<Body> {
+    if error.status() == StatusCode::PAYLOAD_TOO_LARGE {
+        StatusCode::PAYLOAD_TOO_LARGE.into_response()
+    } else {
+        invalid_argument_response(format!("{context}: {error}"))
     }
 }
 

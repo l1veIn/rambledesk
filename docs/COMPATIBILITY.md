@@ -3,6 +3,10 @@
 > 状态：Generic MCP Adapter 与 Pi Native Adapter 当前验证基线。
 > 术语源：[TERMINOLOGY.md](TERMINOLOGY.md)。
 
+Workbench 的 Desktop / Browser 能力、自动化证据、人工待验和明确不支持项由
+[WEB_ACCESS_SUPPORT_MATRIX.md](WEB_ACCESS_SUPPORT_MATRIX.md) 统一记录。适配器兼容不意味着
+Browser Client 自动拥有 Desktop Shell 的截图、全局快捷键、tray、updater 或系统路径能力。
+
 ## 接入路径
 
 RambleDesk 当前提供两类适配器：
@@ -122,3 +126,6 @@ request+手动续接+get 流程；任务级 `/ramble` 与无任务 kickoff 语�
 - Generic MCP Adapter 在 Codex CLI 与 OpenCode 中的安装、认证和完整请求闭环；
 - macOS/Windows 安装包中的 token 权限、loopback 防护和 adapter 配置复制；
 - tray 入口、Resume Prompt 复制和宿主返回后的完整人类路径。
+- Desktop / Browser Workbench 与 Browser local ASR 的人工验收以
+  [Web Access 支持矩阵](WEB_ACCESS_SUPPORT_MATRIX.md#发布前人工验收) 为准；自动化 recognizer
+  creation 不代表真实 Chrome/Safari 麦克风、PCM 或稳定出字已经验证。

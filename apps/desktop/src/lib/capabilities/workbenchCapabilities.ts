@@ -254,7 +254,23 @@ export interface HostIntegrationCapability {
   installDsh(): Promise<readonly DshInstallResult[]>
 }
 
-export type WebAccessStatus = Readonly<{ running: boolean; url: string | null }>
+export const WEB_ACCESS_FAILURE_CODES = [
+  'credential_store_unavailable',
+  'assets_unavailable',
+  'address_in_use',
+  'listener_failed',
+  'shutdown_failed',
+  'unknown',
+] as const
+export type WebAccessFailureCode = (typeof WEB_ACCESS_FAILURE_CODES)[number]
+export type WebAccessFailure = Readonly<{
+  code: WebAccessFailureCode
+  message: string
+}>
+export type WebAccessStatus =
+  | Readonly<{ state: 'stopped'; url: null; failure: null }>
+  | Readonly<{ state: 'running'; url: string; failure: null }>
+  | Readonly<{ state: 'failed'; url: null; failure: WebAccessFailure }>
 export interface WebAccessAdministrationCapability {
   status(): Promise<WebAccessStatus>
   setEnabled(enabled: boolean): Promise<WebAccessStatus>

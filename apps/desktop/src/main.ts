@@ -7,8 +7,10 @@ import './app.css'
 
 function reportFrontendError(context: string, message: string) {
   if (!('__TAURI_INTERNALS__' in window)) return
-  void import('@tauri-apps/api/core')
-    .then(({ invoke }) => invoke('log_frontend_error', { context, message }))
+  void import('./lib/desktop-shell/instrumentation')
+    .then(({ TAURI_DESKTOP_SHELL_INSTRUMENTATION }) =>
+      TAURI_DESKTOP_SHELL_INSTRUMENTATION.reportFrontendError(context, message),
+    )
     .catch(() => undefined)
 }
 
@@ -44,8 +46,10 @@ function configureContextMenuAndDevtools() {
           (event.metaKey && event.altKey)))
     if (!inspectorShortcut) return
     event.preventDefault()
-    void import('@tauri-apps/api/core')
-      .then(({ invoke }) => invoke('open_main_devtools'))
+    void import('./lib/desktop-shell/instrumentation')
+      .then(({ TAURI_DESKTOP_SHELL_INSTRUMENTATION }) =>
+        TAURI_DESKTOP_SHELL_INSTRUMENTATION.openMainDevtools(),
+      )
       .catch((cause) => console.warn('Could not open DevTools', cause))
   })
 }
@@ -108,8 +112,11 @@ if (entry === 'browser') {
   mount(RambleConsole, { target })
 } else {
   const { default: App } = await import('./App.svelte')
-  const capabilities = isTauri
-    ? (await import('./lib/capabilities/tauri')).createTauriWorkbenchCapabilities()
+  const tauriCapabilities = isTauri
+    ? await import('./lib/capabilities/tauri')
+    : undefined
+  const capabilities = tauriCapabilities
+    ? tauriCapabilities.createTauriWorkbenchCapabilities()
     : (await import('./lib/capabilities/unavailableCapabilities'))
         .createUnavailableWorkbenchCapabilities()
   const desktopTransport = isTauri
@@ -123,14 +130,8 @@ if (entry === 'browser') {
     desktopTransport,
     capabilities,
   })
-  const publishedFeedbackAction = isTauri
-    ? {
-        label: 'Open feedback package' as const,
-        async run(requestId: string) {
-          const { invoke } = await import('@tauri-apps/api/core')
-          await invoke('reveal_feedback_package', { input: { request_id: requestId } })
-        },
-      }
+  const publishedFeedbackAction = tauriCapabilities
+    ? tauriCapabilities.createTauriPublishedFeedbackAction()
     : (await import('./lib/publishedFeedbackAction')).createBrowserPublishedFeedbackAction(
         composition.applicationTransport,
       )

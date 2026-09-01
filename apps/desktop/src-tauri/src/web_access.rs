@@ -1,11 +1,14 @@
 use std::{
     collections::{HashMap, HashSet},
+    future::Future,
     sync::Arc,
+    time::Instant,
 };
 
+use async_trait::async_trait;
 use rambledesk_local_server::{
     DurableWebAccessToken, SpaAsset, SpaAssetCachePolicy, SpaAssetSource, WebAccessServerConfig,
-    WebAccessServerHandle, WebSessionManager, start_web_access_server,
+    WebAccessServerError, WebAccessServerHandle, WebSessionManager, start_web_access_server,
 };
 use serde::Serialize;
 use tauri::AppHandle;
@@ -35,15 +38,62 @@ impl WebAccessCredentialStore for OsWebAccessCredentialStore {
     }
 }
 
-pub(super) struct WebAccessRuntime {
-    server: WebAccessServerHandle,
-    sessions: Arc<WebSessionManager>,
+#[async_trait]
+trait WebAccessListener: Send {
+    fn origin(&self) -> &str;
+    fn is_finished(&self) -> bool;
+    fn cancel(&self);
+    async fn join(self: Box<Self>) -> Result<(), WebAccessServerError>;
+    async fn shutdown(self: Box<Self>) -> Result<(), WebAccessServerError>;
 }
 
-impl WebAccessRuntime {
-    pub(super) fn cancel(&self) {
+#[async_trait]
+impl WebAccessListener for WebAccessServerHandle {
+    fn origin(&self) -> &str {
+        WebAccessServerHandle::origin(self)
+    }
+
+    fn is_finished(&self) -> bool {
+        WebAccessServerHandle::is_finished(self)
+    }
+
+    fn cancel(&self) {
+        WebAccessServerHandle::cancel(self);
+    }
+
+    async fn join(self: Box<Self>) -> Result<(), WebAccessServerError> {
+        (*self).join().await
+    }
+
+    async fn shutdown(self: Box<Self>) -> Result<(), WebAccessServerError> {
+        (*self).shutdown().await
+    }
+}
+
+struct ActiveWebAccess {
+    listener: Box<dyn WebAccessListener>,
+    sessions: Arc<WebSessionManager>,
+    durable_token: DurableWebAccessToken,
+    started_at: Instant,
+}
+
+impl ActiveWebAccess {
+    fn new(
+        listener: impl WebAccessListener + 'static,
+        sessions: Arc<WebSessionManager>,
+        durable_token: DurableWebAccessToken,
+    ) -> Self {
+        Self {
+            listener: Box::new(listener),
+            sessions,
+            durable_token,
+            started_at: Instant::now(),
+        }
+    }
+
+    fn cancel(&self) {
         self.sessions.revoke_all();
-        self.server.cancel();
+        self.listener.cancel();
     }
 }
 
@@ -199,17 +249,368 @@ fn vite_manifest_outputs(bytes: &[u8]) -> Result<HashSet<String>, String> {
     Ok(outputs)
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct WebAccessStatus {
-    running: bool,
-    url: Option<String>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum WebAccessLifecycleState {
+    Stopped,
+    Running,
+    Failed,
 }
 
-fn status(runtime: Option<&WebAccessRuntime>) -> WebAccessStatus {
-    WebAccessStatus {
-        running: runtime.is_some(),
-        url: runtime.map(|runtime| runtime.server.origin().to_owned()),
+impl WebAccessLifecycleState {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Stopped => "stopped",
+            Self::Running => "running",
+            Self::Failed => "failed",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum WebAccessFailureCode {
+    CredentialStoreUnavailable,
+    AssetsUnavailable,
+    AddressInUse,
+    ListenerFailed,
+    ShutdownFailed,
+    Unknown,
+}
+
+impl WebAccessFailureCode {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::CredentialStoreUnavailable => "credential_store_unavailable",
+            Self::AssetsUnavailable => "assets_unavailable",
+            Self::AddressInUse => "address_in_use",
+            Self::ListenerFailed => "listener_failed",
+            Self::ShutdownFailed => "shutdown_failed",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct WebAccessLifecycleEvent {
+    activity: &'static str,
+    outcome: &'static str,
+    error_code: Option<WebAccessFailureCode>,
+    duration_ms: u64,
+}
+
+trait WebAccessLifecycleObserver: Send + Sync {
+    fn record(&self, event: WebAccessLifecycleEvent);
+}
+
+struct DiagnosticWebAccessLifecycleObserver;
+
+impl WebAccessLifecycleObserver for DiagnosticWebAccessLifecycleObserver {
+    fn record(&self, event: WebAccessLifecycleEvent) {
+        crate::diagnostics::record_event(
+            event.activity,
+            None,
+            None,
+            Some(event.outcome),
+            event.error_code.map(WebAccessFailureCode::as_str),
+            Some(event.duration_ms),
+        );
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct WebAccessFailure {
+    code: WebAccessFailureCode,
+    message: &'static str,
+}
+
+impl WebAccessFailure {
+    fn new(code: WebAccessFailureCode) -> Self {
+        let message = match code {
+            WebAccessFailureCode::CredentialStoreUnavailable => {
+                "Secure credential storage is unavailable. Check the system credential service, then try again."
+            }
+            WebAccessFailureCode::AssetsUnavailable => {
+                "Web Access files are unavailable. Restart or reinstall RambleDesk, then try again."
+            }
+            WebAccessFailureCode::AddressInUse => {
+                "The local Web Access address is already in use. Close the other process, then try again."
+            }
+            WebAccessFailureCode::ListenerFailed => {
+                "The local Web Access listener stopped unexpectedly. Try starting Web Access again."
+            }
+            WebAccessFailureCode::ShutdownFailed => {
+                "Web Access stopped, but its listener did not shut down cleanly. You can try starting it again."
+            }
+            WebAccessFailureCode::Unknown => {
+                "Web Access could not complete the operation. Try again or restart RambleDesk."
+            }
+        };
+        Self { code, message }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct WebAccessStatus {
+    state: WebAccessLifecycleState,
+    url: Option<String>,
+    failure: Option<WebAccessFailure>,
+}
+
+impl WebAccessStatus {
+    fn stopped() -> Self {
+        Self {
+            state: WebAccessLifecycleState::Stopped,
+            url: None,
+            failure: None,
+        }
+    }
+
+    fn running(url: String) -> Self {
+        Self {
+            state: WebAccessLifecycleState::Running,
+            url: Some(url),
+            failure: None,
+        }
+    }
+
+    fn failed(code: WebAccessFailureCode) -> Self {
+        Self {
+            state: WebAccessLifecycleState::Failed,
+            url: None,
+            failure: Some(WebAccessFailure::new(code)),
+        }
+    }
+}
+
+enum WebAccessRuntimeState {
+    Stopped,
+    Running(ActiveWebAccess),
+    Failed(WebAccessFailureCode),
+}
+
+pub(super) struct WebAccessLifecycle {
+    state: WebAccessRuntimeState,
+    observer: Arc<dyn WebAccessLifecycleObserver>,
+}
+
+impl Default for WebAccessLifecycle {
+    fn default() -> Self {
+        Self {
+            state: WebAccessRuntimeState::Stopped,
+            observer: Arc::new(DiagnosticWebAccessLifecycleObserver),
+        }
+    }
+}
+
+pub(super) struct WebAccessDiagnosticState {
+    pub(super) state: &'static str,
+    pub(super) failure_code: Option<&'static str>,
+}
+
+impl WebAccessLifecycle {
+    async fn status(&mut self) -> WebAccessStatus {
+        self.reconcile().await;
+        self.snapshot()
+    }
+
+    pub(super) async fn diagnostic_state(&mut self) -> WebAccessDiagnosticState {
+        self.reconcile().await;
+        match &self.state {
+            WebAccessRuntimeState::Stopped => WebAccessDiagnosticState {
+                state: WebAccessLifecycleState::Stopped.as_str(),
+                failure_code: None,
+            },
+            WebAccessRuntimeState::Running(_) => WebAccessDiagnosticState {
+                state: WebAccessLifecycleState::Running.as_str(),
+                failure_code: None,
+            },
+            WebAccessRuntimeState::Failed(code) => WebAccessDiagnosticState {
+                state: WebAccessLifecycleState::Failed.as_str(),
+                failure_code: Some(code.as_str()),
+            },
+        }
+    }
+
+    async fn start<Start, StartFuture>(&mut self, start: Start) -> WebAccessStatus
+    where
+        Start: FnOnce() -> StartFuture,
+        StartFuture: Future<Output = Result<ActiveWebAccess, WebAccessFailureCode>>,
+    {
+        self.reconcile().await;
+        if !matches!(self.state, WebAccessRuntimeState::Running(_)) {
+            let started_at = Instant::now();
+            self.state = match start().await {
+                Ok(active) => {
+                    self.observer.record(WebAccessLifecycleEvent {
+                        activity: "web_access_start",
+                        outcome: "ok",
+                        error_code: None,
+                        duration_ms: elapsed_ms(started_at),
+                    });
+                    WebAccessRuntimeState::Running(active)
+                }
+                Err(code) => {
+                    self.observer.record(WebAccessLifecycleEvent {
+                        activity: "web_access_start",
+                        outcome: "error",
+                        error_code: Some(code),
+                        duration_ms: elapsed_ms(started_at),
+                    });
+                    WebAccessRuntimeState::Failed(code)
+                }
+            };
+        }
+        self.snapshot()
+    }
+
+    async fn stop(&mut self) -> WebAccessStatus {
+        self.reconcile().await;
+        self.stop_reconciled().await;
+        self.snapshot()
+    }
+
+    async fn active_token(&mut self) -> Result<DurableWebAccessToken, String> {
+        self.reconcile().await;
+        match &self.state {
+            WebAccessRuntimeState::Running(active) => Ok(active.durable_token.clone()),
+            WebAccessRuntimeState::Stopped | WebAccessRuntimeState::Failed(_) => {
+                Err("Start Web Access before copying its access token.".to_owned())
+            }
+        }
+    }
+
+    async fn active_url(&mut self) -> Result<String, String> {
+        self.reconcile().await;
+        match &self.state {
+            WebAccessRuntimeState::Running(active) => Ok(active.listener.origin().to_owned()),
+            WebAccessRuntimeState::Stopped | WebAccessRuntimeState::Failed(_) => {
+                Err("Start Web Access before opening it.".to_owned())
+            }
+        }
+    }
+
+    pub(super) fn cancel_active(&self) {
+        if let WebAccessRuntimeState::Running(active) = &self.state {
+            active.cancel();
+        }
+    }
+
+    async fn reconcile(&mut self) {
+        let finished = matches!(
+            &self.state,
+            WebAccessRuntimeState::Running(active) if active.listener.is_finished()
+        );
+        if !finished {
+            return;
+        }
+        let WebAccessRuntimeState::Running(active) =
+            std::mem::replace(&mut self.state, WebAccessRuntimeState::Stopped)
+        else {
+            unreachable!("finished Web Access state must still be running")
+        };
+        active.sessions.revoke_all();
+        let duration_ms = elapsed_ms(active.started_at);
+        match active.listener.join().await {
+            Ok(()) => tracing::warn!("Web Access listener exited unexpectedly"),
+            Err(error) => tracing::warn!(%error, "Web Access listener failed"),
+        }
+        self.observer.record(WebAccessLifecycleEvent {
+            activity: "web_access_listener_failed",
+            outcome: "error",
+            error_code: Some(WebAccessFailureCode::ListenerFailed),
+            duration_ms,
+        });
+        self.state = WebAccessRuntimeState::Failed(WebAccessFailureCode::ListenerFailed);
+    }
+
+    async fn stop_reconciled(&mut self) {
+        let previous = std::mem::replace(&mut self.state, WebAccessRuntimeState::Stopped);
+        let WebAccessRuntimeState::Running(active) = previous else {
+            return;
+        };
+        active.sessions.revoke_all();
+        let started_at = Instant::now();
+        match active.listener.shutdown().await {
+            Ok(()) => self.observer.record(WebAccessLifecycleEvent {
+                activity: "web_access_stop",
+                outcome: "ok",
+                error_code: None,
+                duration_ms: elapsed_ms(started_at),
+            }),
+            Err(error) => {
+                tracing::warn!(%error, "Web Access listener did not shut down cleanly");
+                self.observer.record(WebAccessLifecycleEvent {
+                    activity: "web_access_stop",
+                    outcome: "error",
+                    error_code: Some(WebAccessFailureCode::ShutdownFailed),
+                    duration_ms: elapsed_ms(started_at),
+                });
+                self.state = WebAccessRuntimeState::Failed(WebAccessFailureCode::ShutdownFailed);
+            }
+        }
+    }
+
+    fn snapshot(&self) -> WebAccessStatus {
+        match &self.state {
+            WebAccessRuntimeState::Stopped => WebAccessStatus::stopped(),
+            WebAccessRuntimeState::Running(active) => {
+                WebAccessStatus::running(active.listener.origin().to_owned())
+            }
+            WebAccessRuntimeState::Failed(code) => WebAccessStatus::failed(*code),
+        }
+    }
+}
+
+fn elapsed_ms(started_at: Instant) -> u64 {
+    u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX)
+}
+
+async fn start_runtime(
+    app: AppHandle,
+    state: &WorkbenchState,
+) -> Result<ActiveWebAccess, WebAccessFailureCode> {
+    let durable_token = state
+        .web_access_credential_store
+        .load_or_create()
+        .map_err(|error| {
+            tracing::warn!(%error, "Web Access credential store is unavailable");
+            WebAccessFailureCode::CredentialStoreUnavailable
+        })?;
+    let assets = TauriSpaAssets::new(app).map_err(|error| {
+        tracing::warn!(%error, "Web Access assets are unavailable");
+        WebAccessFailureCode::AssetsUnavailable
+    })?;
+    let sessions = Arc::new(WebSessionManager::new(
+        durable_token.clone(),
+        state.application_change_hub.metadata().runtime_generation,
+    ));
+    let server = start_web_access_server(
+        WebAccessServerConfig::default(),
+        state.application_commands.clone(),
+        state.application_change_hub.clone(),
+        sessions.clone(),
+        Arc::new(assets),
+    )
+    .await
+    .map_err(|error| {
+        let code = web_access_start_failure(&error);
+        tracing::warn!(%error, ?code, "Web Access listener did not start");
+        code
+    })?;
+    Ok(ActiveWebAccess::new(server, sessions, durable_token))
+}
+
+fn web_access_start_failure(error: &WebAccessServerError) -> WebAccessFailureCode {
+    match error {
+        WebAccessServerError::Bind(source) if source.kind() == std::io::ErrorKind::AddrInUse => {
+            WebAccessFailureCode::AddressInUse
+        }
+        WebAccessServerError::Bind(_)
+        | WebAccessServerError::Io(_)
+        | WebAccessServerError::Join(_) => WebAccessFailureCode::ListenerFailed,
+        WebAccessServerError::RouteConfig(_) => WebAccessFailureCode::Unknown,
     }
 }
 
@@ -217,8 +618,7 @@ fn status(runtime: Option<&WebAccessRuntime>) -> WebAccessStatus {
 pub(super) async fn get_web_access_status(
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<WebAccessStatus, String> {
-    let runtime = state.web_access_runtime.lock().await;
-    Ok(status(runtime.as_ref()))
+    Ok(state.web_access_lifecycle.lock().await.status().await)
 }
 
 #[tauri::command]
@@ -226,51 +626,31 @@ pub(super) async fn start_web_access(
     app: AppHandle,
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<WebAccessStatus, String> {
-    let mut runtime = state.web_access_runtime.lock().await;
-    if runtime.is_none() {
-        let durable_token = state.web_access_credential_store.load_or_create()?;
-        let sessions = Arc::new(WebSessionManager::new(
-            durable_token,
-            state.application_change_hub.metadata().runtime_generation,
-        ));
-        let server = start_web_access_server(
-            WebAccessServerConfig::default(),
-            state.application_commands.clone(),
-            state.application_change_hub.clone(),
-            sessions.clone(),
-            Arc::new(TauriSpaAssets::new(app)?),
-        )
+    Ok(state
+        .web_access_lifecycle
+        .lock()
         .await
-        .map_err(|error| error.to_string())?;
-        *runtime = Some(WebAccessRuntime { server, sessions });
-    }
-    Ok(status(runtime.as_ref()))
+        .start(|| start_runtime(app, &state))
+        .await)
 }
 
 #[tauri::command]
 pub(super) async fn stop_web_access(
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<WebAccessStatus, String> {
-    let runtime = state.web_access_runtime.lock().await.take();
-    if let Some(runtime) = runtime {
-        runtime.sessions.revoke_all();
-        runtime
-            .server
-            .shutdown()
-            .await
-            .map_err(|error| error.to_string())?;
-    }
-    Ok(status(None))
+    Ok(state.web_access_lifecycle.lock().await.stop().await)
 }
 
 #[tauri::command]
 pub(super) async fn copy_web_access_token(
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<(), String> {
-    if state.web_access_runtime.lock().await.is_none() {
-        return Err("Start Web Access before copying its access token.".to_owned());
-    }
-    let token = state.web_access_credential_store.load_or_create()?;
+    let token = state
+        .web_access_lifecycle
+        .lock()
+        .await
+        .active_token()
+        .await?;
     arboard::Clipboard::new()
         .and_then(|mut clipboard| clipboard.set_text(token.secret()))
         .map_err(|_| "Could not copy the Web Access token to the system clipboard.".to_owned())
@@ -281,11 +661,7 @@ pub(super) async fn open_web_access(
     app: AppHandle,
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<(), String> {
-    let runtime = state.web_access_runtime.lock().await;
-    let url = runtime
-        .as_ref()
-        .map(|runtime| runtime.server.origin())
-        .ok_or_else(|| "Start Web Access before opening it.".to_owned())?;
+    let url = state.web_access_lifecycle.lock().await.active_url().await?;
     app.opener()
         .open_url(url, None::<&str>)
         .map_err(|_| "Could not open Web Access in the default browser.".to_owned())
@@ -318,112 +694,4 @@ fn secure_storage_error() -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn stopped_status_does_not_invent_an_address() {
-        assert_eq!(
-            serde_json::to_value(status(None)).expect("serialize status"),
-            serde_json::json!({ "running": false, "url": null })
-        );
-    }
-
-    #[test]
-    fn secure_storage_errors_never_include_a_credential() {
-        let token = DurableWebAccessToken::generate();
-        assert!(!secure_storage_error().contains(token.secret()));
-        assert!(!format!("{token:?}").contains(token.secret()));
-    }
-
-    #[test]
-    fn exact_manifest_membership_prevents_tauri_fallback_and_false_immutable_assets() {
-        let outputs = vite_manifest_outputs(
-            br#"{
-                "src/main.ts": {"file":"assets/app-abc12345.js","css":["assets/app-def67890.css"]}
-            }"#,
-        )
-        .expect("manifest");
-        assert!(outputs.contains("assets/app-abc12345.js"));
-        assert!(outputs.contains("assets/app-def67890.css"));
-        assert!(!outputs.contains("assets/release-notes-important-name.js"));
-
-        let exact = HashMap::from([("index.html".to_owned(), SpaAssetCachePolicy::NoStore)]);
-        assert!(!exact.contains_key("assets/missing.js"));
-    }
-
-    #[test]
-    fn dev_manifest_builds_an_exact_cached_inventory_without_request_path_fallback() {
-        let mut readable = HashMap::from([
-            ("index.html", b"<main>Workbench</main>".to_vec()),
-            ("assets/app-abc12345.js", b"export {}".to_vec()),
-            ("assets/app-def67890.css", b"body{}".to_vec()),
-        ]);
-        for path in BROWSER_SPEECH_ASSETS {
-            readable.insert(path, b"browser speech asset".to_vec());
-        }
-        let requested = std::cell::RefCell::new(Vec::new());
-        let entries = dev_asset_entries(
-            br#"{
-                "src/main.ts": {"file":"assets/app-abc12345.js","css":["assets/app-def67890.css"]}
-            }"#,
-            |path| {
-                requested.borrow_mut().push(path.to_owned());
-                readable
-                    .get(path)
-                    .cloned()
-                    .map(|bytes| (bytes, "test/type".to_owned()))
-            },
-        )
-        .expect("dev inventory");
-        let assets = TauriSpaAssets::from_entries(entries).expect("assets");
-
-        assert!(assets.load("index.html").is_some());
-        assert_eq!(
-            assets
-                .load("assets/app-abc12345.js")
-                .expect("script")
-                .cache_policy,
-            SpaAssetCachePolicy::Immutable,
-        );
-        assert!(assets.load("assets/missing.js").is_none());
-        let requested = requested.into_inner();
-        assert!(requested.contains(&"assets/app-abc12345.js".to_owned()));
-        assert!(requested.contains(&"browser-speech/sherpa.worker.js".to_owned()));
-        let wasm = assets
-            .load("browser-speech/runtime/sherpa-onnx-wasm-web.wasm")
-            .expect("wasm asset");
-        assert_eq!(wasm.mime_type, "application/wasm");
-        let worker = assets
-            .load("browser-speech/sherpa.worker.js")
-            .expect("worker asset");
-        assert!(
-            worker
-                .content_security_policy
-                .as_deref()
-                .is_some_and(|policy| {
-                    policy.contains("script-src 'self' 'wasm-unsafe-eval'")
-                        && policy.contains("connect-src 'self'")
-                })
-        );
-    }
-
-    #[test]
-    fn manifest_paths_reject_non_relative_and_ambiguous_forms() {
-        for path in [
-            "/absolute.js",
-            "../escape.js",
-            "assets/./app.js",
-            "assets\\app.js",
-            "assets/app.js?query",
-            "assets/app.js#fragment",
-            "assets/\0app.js",
-        ] {
-            let manifest = serde_json::json!({ "entry": { "file": path } });
-            assert!(
-                vite_manifest_outputs(manifest.to_string().as_bytes()).is_err(),
-                "{path:?}"
-            );
-        }
-    }
-}
+mod tests;

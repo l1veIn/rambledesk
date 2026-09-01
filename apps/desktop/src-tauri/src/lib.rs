@@ -48,7 +48,7 @@ struct WorkbenchState {
     application: FeedbackApplication,
     application_commands: Arc<ApplicationCommandFacade>,
     application_change_hub: Arc<ApplicationChangeHub>,
-    web_access_runtime: tokio::sync::Mutex<Option<web_access::WebAccessRuntime>>,
+    web_access_lifecycle: tokio::sync::Mutex<web_access::WebAccessLifecycle>,
     web_access_credential_store: Arc<dyn web_access::WebAccessCredentialStore>,
     store: rambledesk_storage::SqliteFeedbackStore,
     generic_mcp_configuration: String,
@@ -241,7 +241,9 @@ pub fn run() {
                     application,
                     application_commands,
                     application_change_hub,
-                    web_access_runtime: tokio::sync::Mutex::new(None),
+                    web_access_lifecycle: tokio::sync::Mutex::new(
+                        web_access::WebAccessLifecycle::default(),
+                    ),
                     web_access_credential_store: Arc::new(web_access::OsWebAccessCredentialStore),
                     store,
                     generic_mcp_configuration: configuration,
@@ -394,10 +396,8 @@ pub fn run() {
             && let Some(state) = app_handle.try_state::<WorkbenchState>()
         {
             state.local_server.cancel();
-            if let Ok(runtime) = state.web_access_runtime.try_lock()
-                && let Some(runtime) = runtime.as_ref()
-            {
-                runtime.cancel();
+            if let Ok(lifecycle) = state.web_access_lifecycle.try_lock() {
+                lifecycle.cancel_active();
             }
         }
     });

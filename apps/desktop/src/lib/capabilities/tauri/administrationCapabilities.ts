@@ -3,8 +3,11 @@ import type {
   DiagnosticsCapability,
   HostIntegrationCapability,
   SystemPermissionCapability,
+  WebAccessFailureCode,
+  WebAccessStatus,
   WebAccessAdministrationCapability,
 } from '../workbenchCapabilities'
+import { WEB_ACCESS_FAILURE_CODES } from '../workbenchCapabilities'
 import { subscribeToTauriEvent } from './subscription'
 import type { TauriCapabilityApi } from './tauriCapabilityApi'
 
@@ -51,12 +54,69 @@ export function createTauriWebAccessAdministrationCapability(
   api: TauriCapabilityApi,
 ): WebAccessAdministrationCapability {
   return {
-    status: () => api.invoke('get_web_access_status'),
+    status: () => webAccessStatus(api, 'get_web_access_status'),
     setEnabled: (enabled) =>
-      api.invoke(enabled ? 'start_web_access' : 'stop_web_access'),
+      webAccessStatus(api, enabled ? 'start_web_access' : 'stop_web_access'),
     open: () => api.invoke<void>('open_web_access'),
     copyToken: () => api.invoke<void>('copy_web_access_token'),
   }
+}
+
+async function webAccessStatus(
+  api: TauriCapabilityApi,
+  command: 'get_web_access_status' | 'start_web_access' | 'stop_web_access',
+): Promise<WebAccessStatus> {
+  return parseWebAccessStatus(await api.invoke<unknown>(command))
+}
+
+export function parseWebAccessStatus(value: unknown): WebAccessStatus {
+  if (value === null || typeof value !== 'object') throw invalidWebAccessStatus()
+  const candidate = value as Record<string, unknown>
+  if (candidate.state === 'stopped' && candidate.url === null && candidate.failure === null) {
+    return { state: 'stopped', url: null, failure: null }
+  }
+  if (
+    candidate.state === 'running' &&
+    typeof candidate.url === 'string' &&
+    candidate.url.length > 0 &&
+    candidate.failure === null
+  ) {
+    return { state: 'running', url: candidate.url, failure: null }
+  }
+  if (
+    candidate.state === 'failed' &&
+    candidate.url === null &&
+    candidate.failure !== null &&
+    typeof candidate.failure === 'object'
+  ) {
+    const failure = candidate.failure as Record<string, unknown>
+    if (
+      isWebAccessFailureCode(failure.code) &&
+      typeof failure.message === 'string' &&
+      failure.message.length > 0
+    ) {
+      return {
+        state: 'failed',
+        url: null,
+        failure: {
+          code: failure.code,
+          message: failure.message,
+        },
+      }
+    }
+  }
+  throw invalidWebAccessStatus()
+}
+
+function isWebAccessFailureCode(value: unknown): value is WebAccessFailureCode {
+  return (
+    typeof value === 'string' &&
+    (WEB_ACCESS_FAILURE_CODES as readonly string[]).includes(value)
+  )
+}
+
+function invalidWebAccessStatus(): TypeError {
+  return new TypeError('Web Access returned an invalid lifecycle status.')
 }
 
 export function createTauriDiagnosticsCapability(
