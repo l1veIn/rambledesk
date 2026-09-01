@@ -16,6 +16,10 @@ async function sourceFiles(directory: string): Promise<string[]> {
   return nested.flat()
 }
 
+function portableRelativePath(from: string, to: string): string {
+  return path.relative(from, to).split(path.sep).join('/')
+}
+
 describe('capability architecture', () => {
   it('keeps shared views and workbench controllers independent from Tauri detection', async () => {
     const sourceRoot = fileURLToPath(new URL('../../', import.meta.url))
@@ -42,7 +46,7 @@ describe('capability architecture', () => {
           source.includes(tauriImportMarker) ||
           /__TAURI_INTERNALS__|\bisTauri\b|\binvoke\s*\(/u.test(source)
         ) {
-          violations.push(path.relative(sourceRoot, file))
+          violations.push(portableRelativePath(sourceRoot, file))
         }
       }
     }
@@ -69,7 +73,7 @@ describe('capability architecture', () => {
 
     for (const file of await sourceFiles(sourceRoot)) {
       const source = await readFile(file, 'utf8')
-      if (source.includes(tauriImportMarker)) actual.push(path.relative(sourceRoot, file))
+      if (source.includes(tauriImportMarker)) actual.push(portableRelativePath(sourceRoot, file))
     }
 
     expect(actual.sort()).toEqual(expected.sort())
