@@ -9,6 +9,8 @@ import {
   RUNTIME_GENERATION_HEADER,
   applicationEventRevision,
   isRuntimeGenerationStaleError,
+  isSnapshotUnstableError,
+  parseApplicationEvent,
 } from './applicationEvents'
 
 describe('application event contracts', () => {
@@ -24,6 +26,35 @@ describe('application event contracts', () => {
     expect(applicationEventRevision(event)).toBe(9_007_199_254_740_993n)
   })
 
+  it('strictly validates ready and invalidation event fields', () => {
+    expect(
+      parseApplicationEvent({
+        type: 'ready',
+        runtime_generation: 'runtime-a',
+        revision: '0',
+      }),
+    ).toMatchObject({ type: 'ready', revision: '0' })
+    expect(() =>
+      parseApplicationEvent({ type: 'ready', revision: '0' }),
+    ).toThrow('metadata is invalid')
+    expect(() =>
+      parseApplicationEvent({
+        type: 'invalidate',
+        runtime_generation: 'runtime-a',
+        revision: '1.5',
+        resources: [{ kind: 'navigation' }],
+      }),
+    ).toThrow('metadata is invalid')
+    expect(() =>
+      parseApplicationEvent({
+        type: 'invalidate',
+        runtime_generation: 'runtime-a',
+        revision: '1',
+        resources: [{ kind: 'published_feedback' }],
+      }),
+    ).toThrow('payload is invalid')
+  })
+
   it('defines transport-only metadata and stale generation errors', () => {
     expect(RUNTIME_GENERATION_HEADER).toBe('X-RambleDesk-Runtime-Generation')
     expect(REVISION_HEADER).toBe('X-RambleDesk-Revision')
@@ -36,5 +67,19 @@ describe('application event contracts', () => {
         retryable: false,
       }),
     ).toBe(true)
+    expect(
+      isSnapshotUnstableError({
+        code: 'SNAPSHOT_UNSTABLE',
+        message: 'retry the snapshot query',
+        retryable: true,
+      }),
+    ).toBe(true)
+    expect(
+      isSnapshotUnstableError({
+        code: 'SNAPSHOT_UNSTABLE',
+        message: 'wrong retry flag',
+        retryable: false,
+      }),
+    ).toBe(false)
   })
 })
