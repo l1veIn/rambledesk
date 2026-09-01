@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
 
 import { createAttachmentController } from './attachmentController'
 import { TestApplicationTransport } from '../application/testApplicationTransport'
+import { clientAttachmentFile } from '../capabilities/clientAttachmentFile'
 import { createUnavailableWorkbenchCapabilities } from '../capabilities/unavailableCapabilities'
 import type { WorkbenchCapabilities } from '../capabilities/workbenchCapabilities'
 import type { ScreenCaptureReady } from '../screenCapture'
@@ -51,13 +52,6 @@ function availableCapabilities(): Pick<WorkbenchCapabilities, 'screenCapture' | 
         restart: mocks.restart,
       },
     },
-  }
-}
-
-function browserCapabilities(): Pick<WorkbenchCapabilities, 'screenCapture' | 'windowControls'> {
-  return {
-    screenCapture: unavailableCapabilities.screenCapture,
-    windowControls: unavailableCapabilities.windowControls,
   }
 }
 
@@ -128,13 +122,127 @@ describe('attachmentController screen capture state', () => {
     vi.unstubAllGlobals()
   })
 
-  it('does not claim browser image-paste support before the browser capability lands', () => {
+  it('never registers a global paste listener', () => {
     const { context } = controllerContext()
-    context.capabilities = browserCapabilities()
     const dispose = createAttachmentController(context).mount()
 
     expect(window.addEventListener).not.toHaveBeenCalledWith('paste', expect.any(Function))
     dispose()
+  })
+
+  it.each([
+    ['missing workspace', null, false, false],
+    ['completed workspace', 'completed', false, false],
+    ['cancelled workspace', 'cancelled', false, false],
+    ['locked workspace', 'in_progress', true, false],
+    ['busy workspace', 'in_progress', false, true],
+  ] as const)('rejects pasted files synchronously for a %s', (_label, status, locked, busy) => {
+    const { context } = controllerContext()
+    context.getWorkspace = () => status === null
+      ? null
+      : ({ request: { request_id: 'request-1', status }, attachments: [], draft: { saved_revision: 1 } }) as never
+    context.getInteractionLocked = () => locked
+    context.getBusy = () => busy
+    const source = clientAttachmentFile({
+      name: 'screen.png',
+      type: 'image/png',
+      size: 1,
+      arrayBuffer: async () => new Uint8Array([1]).buffer,
+    })
+
+    expect(createAttachmentController(context).acceptClientFiles([source])).toBe(false)
+    expect(context.saveDraftNow).not.toHaveBeenCalled()
+  })
+
+  it('accepts an editable pasted file synchronously and reuses the attachment upload flow', async () => {
+    const workspace = {
+      request: { request_id: 'request-1', status: 'in_progress' },
+      attachments: [],
+      draft: { saved_revision: 3 },
+    }
+    const inserted = {
+      ...workspace,
+      draft: { saved_revision: 4 },
+      attachments: [
+        { attachment_id: 'att-1', file_name: 'screen.png', media_type: 'application/octet-stream' },
+      ],
+    }
+    const { context } = controllerContext()
+    context.getWorkspace = () => workspace as never
+    mocks.applicationCall.mockImplementation(async (command: string) => {
+      if (command === 'getFeedbackWorkspace') return workspace
+      if (command === 'addFeedbackAttachment') return inserted
+      return undefined
+    })
+    const source = clientAttachmentFile({
+      name: 'screen.png',
+      type: 'image/png',
+      size: 3,
+      arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+    })
+    const controller = createAttachmentController(context)
+
+    expect(controller.acceptClientFiles([source])).toBe(true)
+    expect(controller.acceptClientFiles([source])).toBe(false)
+
+    await vi.waitFor(() => {
+      expect(mocks.applicationCall).toHaveBeenCalledWith('addFeedbackAttachment', {
+        request_id: 'request-1',
+        file_name: 'screen.png',
+        contents: new Uint8Array([1, 2, 3]).buffer,
+        expected_revision: 3,
+      })
+    })
+    await vi.waitFor(() => expect(context.routeDraftOperation).toHaveBeenCalled())
+  })
+
+  it('allows exactly 20 MiB and rejects larger client files before reading bytes', async () => {
+    const workspace = {
+      request: { request_id: 'request-1', status: 'in_progress' },
+      attachments: [],
+      draft: { saved_revision: 3 },
+    }
+    const { context } = controllerContext()
+    context.getWorkspace = () => workspace as never
+    context.tr = (source, values) => source.replace('{name}', String(values?.name ?? ''))
+    mocks.applicationCall.mockImplementation(async (command: string) => {
+      if (command === 'getFeedbackWorkspace' || command === 'addFeedbackAttachment') {
+        return workspace
+      }
+      return undefined
+    })
+    const exactRead = vi.fn(async () => new ArrayBuffer(0))
+    const tooLargeRead = vi.fn(async () => new ArrayBuffer(0))
+    const controller = createAttachmentController(context)
+
+    await controller.importClientFiles([{
+      fileName: 'exact.png',
+      mediaType: 'image/png',
+      byteLength: 20 * 1024 * 1024,
+      readBytes: exactRead,
+    }])
+    expect(exactRead).toHaveBeenCalledOnce()
+    expect(mocks.applicationCall).toHaveBeenCalledWith(
+      'addFeedbackAttachment',
+      expect.objectContaining({ file_name: 'exact.png' }),
+    )
+
+    mocks.applicationCall.mockClear()
+    await controller.importClientFiles([{
+      fileName: 'too-large.png',
+      mediaType: 'image/png',
+      byteLength: 20 * 1024 * 1024 + 1,
+      readBytes: tooLargeRead,
+    }])
+    expect(tooLargeRead).not.toHaveBeenCalled()
+    expect(mocks.applicationCall).not.toHaveBeenCalledWith(
+      'addFeedbackAttachment',
+      expect.anything(),
+    )
+    expect(context.setMessage).toHaveBeenCalledWith(
+      expect.stringContaining('too-large.png exceeds the 20 MiB limit'),
+      'error',
+    )
   })
 
   it('keeps capture busy until the capture finishes and blocks duplicate starts', async () => {
@@ -331,13 +439,14 @@ describe('attachmentController screen capture state', () => {
       if (command === 'addFeedbackAttachment') return inserted
       return undefined
     })
-    const file = {
+    const file = clientAttachmentFile({
       name: 'notes.txt',
+      type: 'text/plain',
       size: 4,
       arrayBuffer: async () => new Uint8Array([1, 2, 3, 4]).buffer,
-    } as File
+    })
 
-    await createAttachmentController(context).importFiles([file])
+    await createAttachmentController(context).importClientFiles([file])
 
     expect(context.routeDraftOperation).toHaveBeenCalledWith(
       'request-1',

@@ -74,6 +74,10 @@ const UNAVAILABLE_WORKBENCH_CAPABILITIES = createWorkbenchCapabilities({
     completeImage: () => rejected('clipboardCapture'),
     discardImage: () => rejected('clipboardCapture'),
   }),
+  imagePaste: slot({
+    subscribe: (_target, _handler, onError) =>
+      unavailableSubscription('imagePaste', onError),
+  }),
   serverPaths: slot({
     chooseDirectory: () => rejected('serverPaths'),
     chooseFile: () => rejected('serverPaths'),

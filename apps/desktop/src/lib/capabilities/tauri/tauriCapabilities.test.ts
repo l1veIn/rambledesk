@@ -67,11 +67,14 @@ function createFakeApi(responses: Record<string, unknown> = {}): FakeApi {
 }
 
 describe('Tauri Workbench capabilities', () => {
-  it('derives a complete native manifest from executable slots', () => {
+  it('derives native slots plus the shared browser image-paste slot', () => {
     const capabilities = createTauriWorkbenchCapabilities(createFakeApi())
     expect(Object.keys(capabilities.manifest).sort()).toEqual([...CAPABILITY_NAMES].sort())
     for (const name of CAPABILITY_NAMES) {
-      expect(capabilities[name].status).toEqual({ availability: 'available', source: 'native' })
+      expect(capabilities[name].status).toEqual({
+        availability: 'available',
+        source: name === 'imagePaste' ? 'browser' : 'native',
+      })
       expect(capabilities.manifest[name]).toEqual(capabilities[name].status)
     }
   })

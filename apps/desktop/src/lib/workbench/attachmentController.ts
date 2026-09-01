@@ -4,6 +4,10 @@ import { isImageMediaType } from '../attachmentMarkdown'
 import type { ApplicationTransport } from '../application/applicationTransport'
 import type { ApplicationAddAttachmentInput } from '../application/contracts'
 import type { WorkbenchCapabilities } from '../capabilities/workbenchCapabilities'
+import {
+  clientAttachmentFile,
+  type ClientAttachmentFile,
+} from '../capabilities/clientAttachmentFile'
 import type {
   AttachmentView,
   FeedbackWorkspaceView,
@@ -46,6 +50,7 @@ export type AttachmentController = ReturnType<typeof createAttachmentController>
 export function createAttachmentController(context: AttachmentControllerContext) {
   let screenCaptureRequestId = ''
   let screenCaptureAction: ActiveAction = null
+  let clientFileImportPending = false
 
   function mount() {
     let dragUnlisten: (() => void) | undefined
@@ -93,37 +98,51 @@ export function createAttachmentController(context: AttachmentControllerContext)
       )
     }
 
-    const nativePasteEnabled = screenCapture.status.source === 'native'
-    if (nativePasteEnabled) window.addEventListener('paste', handlePaste)
     return () => {
       dragUnlisten?.()
       captureReadyUnlisten?.()
       captureFinishedUnlisten?.()
-      if (nativePasteEnabled) window.removeEventListener('paste', handlePaste)
       releasePreviews()
     }
   }
 
-  function handlePaste(event: ClipboardEvent) {
-    if (context.getInteractionLocked() || !context.getWorkspace() || context.getBusy() || !event.clipboardData) return
-    const images = Array.from(event.clipboardData.files).filter((file) =>
-      file.type.startsWith('image/'),
-    )
-    if (images.length === 0) return
-    event.preventDefault()
-    void importFiles(images)
+  function canImportClientFiles(files: readonly ClientAttachmentFile[]): boolean {
+    const workspace = context.getWorkspace()
+    return files.length > 0
+      && !clientFileImportPending
+      && !context.getInteractionLocked()
+      && !context.getBusy()
+      && workspace !== null
+      && workspace.request.status !== 'completed'
+      && workspace.request.status !== 'cancelled'
+  }
+
+  function acceptClientFiles(files: readonly ClientAttachmentFile[]): boolean {
+    if (!canImportClientFiles(files)) return false
+    clientFileImportPending = true
+    void importClientFiles(files).finally(() => {
+      clientFileImportPending = false
+    })
+    return true
   }
 
   function handleFileSelection(event: Event) {
     const input = event.currentTarget as HTMLInputElement
-    const files = Array.from(input.files ?? [])
+    const files = Array.from(input.files ?? [], clientAttachmentFile)
     input.value = ''
-    void importFiles(files)
+    acceptClientFiles(files)
   }
 
-  async function importFiles(files: File[]) {
+  async function importClientFiles(files: readonly ClientAttachmentFile[]) {
     const workspace = context.getWorkspace()
-    if (context.getInteractionLocked() || !workspace || files.length === 0 || context.getBusy()) return
+    if (
+      context.getInteractionLocked()
+      || !workspace
+      || workspace.request.status === 'completed'
+      || workspace.request.status === 'cancelled'
+      || files.length === 0
+      || context.getBusy()
+    ) return
     const requestId = workspace.request.request_id
     const action = context.activeActionFor(requestId)
     if (!(await context.saveDraftNow())) return
@@ -135,13 +154,13 @@ export function createAttachmentController(context: AttachmentControllerContext)
       if (!next) throw new Error(context.tr('This feedback request could not be found.'))
       const existingIds = new Set(next.attachments.map((item) => item.attachment_id))
       for (const file of files) {
-        if (file.size > 20 * 1024 * 1024) {
-          throw new Error(context.tr('{name} exceeds the 20 MiB limit', { name: file.name }))
+        if (file.byteLength > 20 * 1024 * 1024) {
+          throw new Error(context.tr('{name} exceeds the 20 MiB limit', { name: file.fileName }))
         }
         const input: ApplicationAddAttachmentInput = {
           request_id: requestId,
-          file_name: file.name || `attachment-${Date.now()}`,
-          contents: await file.arrayBuffer(),
+          file_name: file.fileName || `attachment-${Date.now()}`,
+          contents: await file.readBytes(),
           expected_revision: next.draft.saved_revision,
         }
         next = await context.transport.call('addFeedbackAttachment', input)
@@ -167,6 +186,10 @@ export function createAttachmentController(context: AttachmentControllerContext)
     } finally {
       context.setBusy(false)
     }
+  }
+
+  function reportClientFileError(cause: unknown) {
+    context.setMessage(context.messageFrom(cause), 'error')
   }
 
   async function importAttachmentPaths(paths: readonly string[]) {
@@ -444,7 +467,9 @@ export function createAttachmentController(context: AttachmentControllerContext)
   return {
     mount,
     handleFileSelection,
-    importFiles,
+    acceptClientFiles,
+    importClientFiles,
+    reportClientFileError,
     importAttachmentPaths,
     startScreenCapture,
     removeAttachment,

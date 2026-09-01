@@ -2020,6 +2020,8 @@
             onStartScreenCapture={() => void attachmentController.startScreenCapture()}
             onImportClipboard={() => void importClipboardNow()}
             onFileSelection={attachmentController.handleFileSelection}
+            onPasteFiles={attachmentController.acceptClientFiles}
+            onPasteError={attachmentController.reportClientFileError}
             onRemoveAttachment={(attachment) => void attachmentController.removeAttachment(attachment)}
             onOpenPackage={() => void openFeedbackPackage()}
             packageActionLabel={tr(publishedFeedbackAction.label)}

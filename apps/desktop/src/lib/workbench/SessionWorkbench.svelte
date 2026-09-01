@@ -5,6 +5,7 @@
   import { Skeleton } from '$lib/components/ui/skeleton'
   import type { JSONContent } from '@tiptap/core'
   import type { ApplicationTransport } from '$lib/application/applicationTransport'
+  import type { ClientAttachmentFile } from '$lib/capabilities/clientAttachmentFile'
   import type { WorkbenchCapabilities } from '$lib/capabilities/workbenchCapabilities'
 
   import type {
@@ -35,12 +36,18 @@
   import RequestAttachmentPreview from './RequestAttachmentPreview.svelte'
   import TaskBriefPanel from './TaskBriefPanel.svelte'
   import WorkspaceHeader from './WorkspaceHeader.svelte'
+  import { canAcceptImagePaste } from './imagePasteAcceptance'
 
   export let loadingWorkspace = false
   export let transport: ApplicationTransport
   export let capabilities: Pick<
     WorkbenchCapabilities,
-    'serverPaths' | 'speech' | 'rambleConsole' | 'screenCapture' | 'clipboardCapture'
+    | 'serverPaths'
+    | 'speech'
+    | 'rambleConsole'
+    | 'screenCapture'
+    | 'clipboardCapture'
+    | 'imagePaste'
   >
   export let view: SessionViewDescriptor | null = null
   export let workspace: FeedbackWorkspaceView | null = null
@@ -99,6 +106,8 @@
   export let onStartScreenCapture: () => void = () => {}
   export let onImportClipboard: () => void = () => {}
   export let onFileSelection: (event: Event) => void = () => {}
+  export let onPasteFiles: (files: readonly ClientAttachmentFile[]) => boolean = () => false
+  export let onPasteError: (cause: unknown) => void = () => {}
   export let onRemoveAttachment: (attachment: AttachmentView) => void = () => {}
   export let onOpenPackage: () => void = () => {}
   export let packageActionLabel = 'Open feedback package'
@@ -124,6 +133,7 @@
   let documentPaneGroup: { setLayout: (layout: number[]) => void } | undefined
   let documentLayoutReady = false
   let autoOpenedTaskRequestId = ''
+  let workspaceRoot: HTMLElement
 
   $: if (taskBriefPane) {
     if (taskBriefOpen && taskBriefPane.isCollapsed()) taskBriefPane.expand()
@@ -146,11 +156,28 @@
   }
 
   onMount(() => {
+    const imagePaste = capabilities.imagePaste
+    const unsubscribePaste = imagePaste.status.availability === 'unavailable'
+      ? undefined
+      : imagePaste.implementation.subscribe(
+          workspaceRoot,
+          (files) => {
+            if (!canAcceptImagePaste({
+              loadingWorkspace,
+              requestStatus: workspace?.request.status ?? null,
+              interactionLocked,
+              attachmentBusy,
+            })) return false
+            return onPasteFiles(files)
+          },
+          onPasteError,
+        )
     void tick().then(() => {
       if (!documentPaneGroup) return
       documentLayoutReady = true
       if (savedDocumentLayout) documentPaneGroup.setLayout(savedDocumentLayout)
     })
+    return () => unsubscribePaste?.()
   })
 
   function tr(source: string, values: Record<string, string | number> = {}) {
@@ -192,6 +219,7 @@
 </script>
 
 <section
+  bind:this={workspaceRoot}
   class="workspace-panel relative flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background"
   data-workspace-view-key={view ? workspaceViewKey(view) : undefined}
 >

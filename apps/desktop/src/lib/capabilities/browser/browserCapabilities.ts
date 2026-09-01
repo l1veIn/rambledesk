@@ -6,6 +6,7 @@ import {
   type WorkbenchCapabilities,
 } from '../workbenchCapabilities'
 import { createUnavailableWorkbenchCapabilities } from '../unavailableCapabilities'
+import { createBrowserImagePasteCapability } from './imagePasteCapability'
 
 export type BrowserWindowOpen = (
   url?: string | URL,
@@ -42,9 +43,9 @@ export function createBrowserExternalLinkCapability(
 }
 
 /**
- * Browser registry for WEB-7. Only an ordinary external link is implemented;
- * native paths, capture, clipboard, speech, and desktop administration remain
- * explicitly unavailable until their focused browser capabilities exist.
+ * Browser registry. Ordinary external links and DOM-scoped image paste are
+ * available; native paths, native capture, speech, and Desktop administration
+ * remain explicitly unavailable.
  */
 export function createBrowserWorkbenchCapabilities(
   environment: BrowserCapabilityEnvironment = browserEnvironment(),
@@ -54,6 +55,7 @@ export function createBrowserWorkbenchCapabilities(
   return createWorkbenchCapabilities({
     ...slots,
     externalLinks: browserSlot(createBrowserExternalLinkCapability(environment)),
+    imagePaste: browserSlot(createBrowserImagePasteCapability()),
   })
 }
 
