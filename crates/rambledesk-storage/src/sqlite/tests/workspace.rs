@@ -670,13 +670,14 @@ async fn delete_host_session_removes_all_archived_requests() {
         .await
         .expect("archive session");
 
-    application
-        .delete_host_session(HostSessionInput {
-            host_id: "test-host".to_owned(),
-            host_session_id: "test-session".to_owned(),
-        })
-        .await
-        .expect("delete archived session");
+    let mut deleted_request_ids =
+        FeedbackRepository::delete_host_session(&store, "test-host", "test-session")
+            .await
+            .expect("delete archived session");
+    deleted_request_ids.sort();
+    let mut expected_request_ids = vec![first_id.clone(), second_id.clone()];
+    expected_request_ids.sort();
+    assert_eq!(deleted_request_ids, expected_request_ids);
     for request_id in [first_id, second_id] {
         let missing = application
             .get_feedback(GetFeedbackInput { request_id })

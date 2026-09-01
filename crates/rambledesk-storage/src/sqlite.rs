@@ -333,7 +333,7 @@ impl FeedbackRepository for SqliteFeedbackStore {
     async fn create_or_get_request(
         &self,
         request: NewFeedbackRequest,
-    ) -> Result<StoredFeedbackRequest, RepositoryError> {
+    ) -> Result<rambledesk_core::MutationOutcome<StoredFeedbackRequest>, RepositoryError> {
         self.create_or_get_request_impl(request).await
     }
 
@@ -359,7 +359,7 @@ impl FeedbackRepository for SqliteFeedbackStore {
         &self,
         plan: &SubmissionPlan,
         published: &PublishedFeedbackPackage,
-    ) -> Result<StoredFeedbackRequest, RepositoryError> {
+    ) -> Result<rambledesk_core::MutationOutcome<StoredFeedbackRequest>, RepositoryError> {
         self.complete_cancellation_impl(plan, published).await
     }
 
@@ -367,7 +367,7 @@ impl FeedbackRepository for SqliteFeedbackStore {
         &self,
         request_id: &str,
         now: &str,
-    ) -> Result<StoredFeedbackRequest, RepositoryError> {
+    ) -> Result<rambledesk_core::MutationOutcome<StoredFeedbackRequest>, RepositoryError> {
         self.approve_request_impl(request_id, now).await
     }
 
@@ -443,7 +443,7 @@ impl FeedbackRepository for SqliteFeedbackStore {
         &self,
         host_id: &str,
         host_session_id: &str,
-    ) -> Result<(), RepositoryError> {
+    ) -> Result<Vec<String>, RepositoryError> {
         self.delete_host_session_impl(host_id, host_session_id)
             .await
     }
@@ -538,7 +538,7 @@ impl FeedbackRepository for SqliteFeedbackStore {
         &self,
         plan: &SubmissionPlan,
         published: &PublishedFeedbackPackage,
-    ) -> Result<StoredFeedbackRequest, RepositoryError> {
+    ) -> Result<rambledesk_core::MutationOutcome<StoredFeedbackRequest>, RepositoryError> {
         self.complete_submission_impl(plan, published).await
     }
 }

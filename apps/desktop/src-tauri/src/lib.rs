@@ -10,8 +10,8 @@ mod screen_capture;
 mod shortcuts;
 
 use rambledesk_core::{
-    ApplicationCommandFacade, ApplicationHostProfileView, FeedbackApplication,
-    WorkbenchTerminalOperations,
+    ApplicationChangeHub, ApplicationCommandFacade, ApplicationHostProfileView,
+    FeedbackApplication, WorkbenchTerminalOperations,
 };
 use rambledesk_hosts::{
     ContinuationMode, ContinuationRouter, HostAdapter, known_continuation_strategies,
@@ -165,7 +165,11 @@ pub fn run() {
                         &library_root,
                     ),
                 )?;
-                let application = store.clone().into_application();
+                let application_change_hub = Arc::new(ApplicationChangeHub::new());
+                let application = store
+                    .clone()
+                    .into_application()
+                    .with_change_observer(application_change_hub.clone());
                 let terminal_observer =
                     Arc::new(continuation::DesktopTerminalOperationObserver::new(
                         app.handle().clone(),

@@ -41,12 +41,34 @@ pub struct SubmissionPlanInput<'a> {
     pub now: &'a str,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MutationOutcome<Value> {
+    pub value: Value,
+    pub changed: bool,
+}
+
+impl<Value> MutationOutcome<Value> {
+    pub fn changed(value: Value) -> Self {
+        Self {
+            value,
+            changed: true,
+        }
+    }
+
+    pub fn unchanged(value: Value) -> Self {
+        Self {
+            value,
+            changed: false,
+        }
+    }
+}
+
 #[async_trait]
 pub trait FeedbackRepository: AttachmentPathResolver + Send + Sync {
     async fn create_or_get_request(
         &self,
         request: NewFeedbackRequest,
-    ) -> Result<StoredFeedbackRequest, RepositoryError>;
+    ) -> Result<MutationOutcome<StoredFeedbackRequest>, RepositoryError>;
 
     async fn get_request(&self, request_id: &str)
     -> Result<StoredFeedbackRequest, RepositoryError>;
@@ -63,13 +85,13 @@ pub trait FeedbackRepository: AttachmentPathResolver + Send + Sync {
         &self,
         plan: &SubmissionPlan,
         published: &PublishedFeedbackPackage,
-    ) -> Result<StoredFeedbackRequest, RepositoryError>;
+    ) -> Result<MutationOutcome<StoredFeedbackRequest>, RepositoryError>;
 
     async fn approve_request(
         &self,
         request_id: &str,
         now: &str,
-    ) -> Result<StoredFeedbackRequest, RepositoryError>;
+    ) -> Result<MutationOutcome<StoredFeedbackRequest>, RepositoryError>;
 
     async fn list_open_requests(&self) -> Result<Vec<FeedbackRequestSummary>, RepositoryError>;
 
@@ -123,7 +145,7 @@ pub trait FeedbackRepository: AttachmentPathResolver + Send + Sync {
         &self,
         host_id: &str,
         host_session_id: &str,
-    ) -> Result<(), RepositoryError>;
+    ) -> Result<Vec<String>, RepositoryError>;
 
     async fn delete_feedback_request(&self, request_id: &str) -> Result<(), RepositoryError>;
 
@@ -186,7 +208,7 @@ pub trait FeedbackRepository: AttachmentPathResolver + Send + Sync {
         &self,
         plan: &SubmissionPlan,
         published: &PublishedFeedbackPackage,
-    ) -> Result<StoredFeedbackRequest, RepositoryError>;
+    ) -> Result<MutationOutcome<StoredFeedbackRequest>, RepositoryError>;
 }
 
 pub trait Clock: Send + Sync {
@@ -225,9 +247,15 @@ pub struct FeedbackApplication {
     pub(crate) clock: Arc<dyn Clock>,
     pub(crate) ids: Arc<dyn IdGenerator>,
     waiters: Arc<FeedbackWaiters>,
+    change_observer: Arc<dyn crate::ApplicationChangeObserver>,
 }
 
 impl FeedbackApplication {
+    pub(crate) fn notify_application_changed(&self, resources: Vec<crate::ApplicationResourceKey>) {
+        self.change_observer
+            .observe(crate::ApplicationChange { resources });
+    }
+
     pub(crate) fn notify_feedback_terminal(&self, request_id: &str) {
         self.waiters.notify_terminal(request_id);
     }
@@ -260,7 +288,16 @@ impl FeedbackApplication {
             clock,
             ids,
             waiters: Arc::new(FeedbackWaiters::default()),
+            change_observer: Arc::new(crate::NoopApplicationChangeObserver),
         }
+    }
+
+    pub fn with_change_observer(
+        mut self,
+        observer: Arc<dyn crate::ApplicationChangeObserver>,
+    ) -> Self {
+        self.change_observer = observer;
+        self
     }
 
     pub async fn request_feedback(
@@ -313,7 +350,7 @@ impl FeedbackApplication {
             });
         }
         let now = self.clock.now_rfc3339();
-        let stored = self
+        let outcome = self
             .repository
             .create_or_get_request(NewFeedbackRequest {
                 request_id,
@@ -332,7 +369,16 @@ impl FeedbackApplication {
             })
             .await
             .map_err(ApplicationError::from)?;
-        Ok(stored.into())
+        let request: FeedbackRequestView = outcome.value.into();
+        if outcome.changed {
+            self.notify_application_changed(vec![
+                crate::ApplicationResourceKey::Navigation,
+                crate::ApplicationResourceKey::FeedbackWorkspace {
+                    request_id: request.request_id.clone(),
+                },
+            ]);
+        }
+        Ok(request)
     }
 
     pub async fn get_feedback(
@@ -431,13 +477,22 @@ impl FeedbackApplication {
         input: ApproveFeedbackInput,
     ) -> Result<FeedbackRequestView, ApplicationError> {
         let request_id = canonical_uuid(&input.request_id, "request_id")?;
-        let stored = self
+        let outcome = self
             .repository
             .approve_request(&request_id, &self.clock.now_rfc3339())
             .await
             .map_err(ApplicationError::from)?;
         self.notify_feedback_terminal(&request_id);
-        Ok(stored.into())
+        let request: FeedbackRequestView = outcome.value.into();
+        if outcome.changed {
+            self.notify_application_changed(vec![
+                crate::ApplicationResourceKey::Navigation,
+                crate::ApplicationResourceKey::FeedbackWorkspace {
+                    request_id: request_id.clone(),
+                },
+            ]);
+        }
+        Ok(request)
     }
 
     pub async fn cancel_feedback(
@@ -456,7 +511,8 @@ impl FeedbackApplication {
         }
         if existing.status == FeedbackStatus::Cancelled && existing.feedback.is_some() {
             self.notify_feedback_terminal(&request_id);
-            return Ok(existing.into());
+            let request: FeedbackRequestView = existing.into();
+            return Ok(request);
         }
         let now = self.clock.now_rfc3339();
         let plan = self
@@ -469,13 +525,23 @@ impl FeedbackApplication {
             .publish(&plan)
             .await
             .map_err(ApplicationError::from)?;
-        let stored = self
+        let outcome = self
             .repository
             .complete_cancellation(&plan, &published)
             .await
             .map_err(ApplicationError::from)?;
         self.notify_feedback_terminal(&request_id);
-        Ok(stored.into())
+        let request: FeedbackRequestView = outcome.value.into();
+        if outcome.changed {
+            self.notify_application_changed(vec![
+                crate::ApplicationResourceKey::Navigation,
+                crate::ApplicationResourceKey::FeedbackWorkspace {
+                    request_id: request_id.clone(),
+                },
+                crate::ApplicationResourceKey::PublishedFeedback { request_id },
+            ]);
+        }
+        Ok(request)
     }
 }
 

@@ -1,7 +1,7 @@
 use sha2::{Digest, Sha256};
 
 use crate::{
-    ApplicationError, FeedbackApplication, FeedbackStatus, RepositoryError, StoredFeedbackRequest,
+    ApplicationError, ApplicationResourceKey, FeedbackApplication, FeedbackStatus, RepositoryError,
     SubmissionPlanInput,
 };
 
@@ -56,7 +56,8 @@ impl FeedbackApplication {
             validate_host_session_identity(input.host_id, input.host_session_id)?;
         let title = input.title.trim().to_owned();
         crate::feedback::validate_text("title", &title, 1, 160)?;
-        self.repository
+        let session = self
+            .repository
             .rename_host_session(
                 &host_id,
                 &host_session_id,
@@ -64,7 +65,9 @@ impl FeedbackApplication {
                 &self.clock.now_rfc3339(),
             )
             .await
-            .map_err(ApplicationError::from)
+            .map_err(ApplicationError::from)?;
+        self.notify_application_changed(vec![ApplicationResourceKey::Navigation]);
+        Ok(session)
     }
 
     pub async fn set_host_session_pinned(
@@ -74,10 +77,13 @@ impl FeedbackApplication {
         let (host_id, host_session_id) =
             validate_host_session_identity(input.host_id, input.host_session_id)?;
         let pinned_at = input.pinned.then(|| self.clock.now_rfc3339());
-        self.repository
+        let session = self
+            .repository
             .set_host_session_pinned(&host_id, &host_session_id, pinned_at.as_deref())
             .await
-            .map_err(ApplicationError::from)
+            .map_err(ApplicationError::from)?;
+        self.notify_application_changed(vec![ApplicationResourceKey::Navigation]);
+        Ok(session)
     }
 
     pub async fn archive_host_session(
@@ -86,10 +92,13 @@ impl FeedbackApplication {
     ) -> Result<HostSessionSummary, ApplicationError> {
         let (host_id, host_session_id) =
             validate_host_session_identity(input.host_id, input.host_session_id)?;
-        self.repository
+        let session = self
+            .repository
             .archive_host_session(&host_id, &host_session_id, &self.clock.now_rfc3339())
             .await
-            .map_err(ApplicationError::from)
+            .map_err(ApplicationError::from)?;
+        self.notify_application_changed(vec![ApplicationResourceKey::Navigation]);
+        Ok(session)
     }
 
     pub async fn unarchive_host_session(
@@ -98,10 +107,13 @@ impl FeedbackApplication {
     ) -> Result<HostSessionSummary, ApplicationError> {
         let (host_id, host_session_id) =
             validate_host_session_identity(input.host_id, input.host_session_id)?;
-        self.repository
+        let session = self
+            .repository
             .unarchive_host_session(&host_id, &host_session_id, &self.clock.now_rfc3339())
             .await
-            .map_err(ApplicationError::from)
+            .map_err(ApplicationError::from)?;
+        self.notify_application_changed(vec![ApplicationResourceKey::Navigation]);
+        Ok(session)
     }
 
     pub async fn delete_host_session(
@@ -110,10 +122,26 @@ impl FeedbackApplication {
     ) -> Result<(), ApplicationError> {
         let (host_id, host_session_id) =
             validate_host_session_identity(input.host_id, input.host_session_id)?;
-        self.repository
+        let request_ids = self
+            .repository
             .delete_host_session(&host_id, &host_session_id)
             .await
-            .map_err(ApplicationError::from)
+            .map_err(ApplicationError::from)?;
+        let mut resources = vec![
+            ApplicationResourceKey::Navigation,
+            ApplicationResourceKey::HostSessionResources {
+                host_id,
+                host_session_id,
+            },
+        ];
+        for request_id in request_ids {
+            resources.push(ApplicationResourceKey::FeedbackWorkspace {
+                request_id: request_id.clone(),
+            });
+            resources.push(ApplicationResourceKey::PublishedFeedback { request_id });
+        }
+        self.notify_application_changed(resources);
+        Ok(())
     }
 
     pub async fn delete_feedback_request(
@@ -124,7 +152,15 @@ impl FeedbackApplication {
         self.repository
             .delete_feedback_request(&request_id)
             .await
-            .map_err(ApplicationError::from)
+            .map_err(ApplicationError::from)?;
+        self.notify_application_changed(vec![
+            ApplicationResourceKey::Navigation,
+            ApplicationResourceKey::FeedbackWorkspace {
+                request_id: request_id.clone(),
+            },
+            ApplicationResourceKey::PublishedFeedback { request_id },
+        ]);
+        Ok(())
     }
 
     pub async fn set_host_pinned(
@@ -138,7 +174,9 @@ impl FeedbackApplication {
             .set_host_pinned(&host_id, pinned_at.as_deref(), &now)
             .await
             .map_err(ApplicationError::from)?;
-        self.list_host_sessions().await
+        self.notify_application_changed(vec![ApplicationResourceKey::Navigation]);
+        let sessions = self.list_host_sessions().await?;
+        Ok(sessions)
     }
 
     pub async fn list_open_feedback_requests(
@@ -226,7 +264,8 @@ impl FeedbackApplication {
         let request_id = crate::feedback::canonical_uuid(&input.request_id, "request_id")?;
         crate::feedback::validate_text("document_json", &input.document_json, 2, 1_000_000)?;
         crate::feedback::validate_text("body_markdown", &input.body_markdown, 0, 100_000)?;
-        self.repository
+        let draft = self
+            .repository
             .save_draft(
                 &request_id,
                 &input.document_json,
@@ -235,7 +274,12 @@ impl FeedbackApplication {
                 &self.clock.now_rfc3339(),
             )
             .await
-            .map_err(ApplicationError::from)
+            .map_err(ApplicationError::from)?;
+        self.notify_application_changed(vec![
+            ApplicationResourceKey::Navigation,
+            ApplicationResourceKey::FeedbackWorkspace { request_id },
+        ]);
+        Ok(draft)
     }
 
     pub async fn add_feedback_attachment(
@@ -260,7 +304,8 @@ impl FeedbackApplication {
             file_name = normalize_image_file_name(&file_name, media_type);
         }
         let sha256 = hex::encode(Sha256::digest(&input.contents));
-        self.repository
+        let workspace = self
+            .repository
             .add_attachment(
                 &request_id,
                 NewAttachment {
@@ -275,7 +320,12 @@ impl FeedbackApplication {
             )
             .await
             .map(Into::into)
-            .map_err(ApplicationError::from)
+            .map_err(ApplicationError::from)?;
+        self.notify_application_changed(vec![
+            ApplicationResourceKey::Navigation,
+            ApplicationResourceKey::FeedbackWorkspace { request_id },
+        ]);
+        Ok(workspace)
     }
 
     pub async fn remove_feedback_attachment(
@@ -284,7 +334,8 @@ impl FeedbackApplication {
     ) -> Result<FeedbackWorkspaceView, ApplicationError> {
         let request_id = crate::feedback::canonical_uuid(&input.request_id, "request_id")?;
         let attachment_id = crate::feedback::canonical_uuid(&input.attachment_id, "attachment_id")?;
-        self.repository
+        let workspace = self
+            .repository
             .remove_attachment(
                 &request_id,
                 &attachment_id,
@@ -293,7 +344,12 @@ impl FeedbackApplication {
             )
             .await
             .map(Into::into)
-            .map_err(ApplicationError::from)
+            .map_err(ApplicationError::from)?;
+        self.notify_application_changed(vec![
+            ApplicationResourceKey::Navigation,
+            ApplicationResourceKey::FeedbackWorkspace { request_id },
+        ]);
+        Ok(workspace)
     }
 
     pub async fn reorder_feedback_attachments(
@@ -306,7 +362,8 @@ impl FeedbackApplication {
             .iter()
             .map(|id| crate::feedback::canonical_uuid(id, "attachment_ids"))
             .collect::<Result<Vec<_>, _>>()?;
-        self.repository
+        let workspace = self
+            .repository
             .reorder_attachments(
                 &request_id,
                 &attachment_ids,
@@ -315,7 +372,12 @@ impl FeedbackApplication {
             )
             .await
             .map(Into::into)
-            .map_err(ApplicationError::from)
+            .map_err(ApplicationError::from)?;
+        self.notify_application_changed(vec![
+            ApplicationResourceKey::Navigation,
+            ApplicationResourceKey::FeedbackWorkspace { request_id },
+        ]);
+        Ok(workspace)
     }
 
     pub async fn read_feedback_attachment(
@@ -406,7 +468,8 @@ impl FeedbackApplication {
             .map_err(ApplicationError::from)?;
         if existing.status == FeedbackStatus::Completed {
             self.notify_feedback_terminal(&request_id);
-            return Ok(existing.into());
+            let request = existing.into();
+            return Ok(request);
         }
         let now = self.clock.now_rfc3339();
         let publication_id = self.ids.new_id();
@@ -432,7 +495,8 @@ impl FeedbackApplication {
                     .map_err(ApplicationError::from)?;
                 if raced.status == FeedbackStatus::Completed {
                     self.notify_feedback_terminal(&request_id);
-                    return Ok(raced.into());
+                    let request = raced.into();
+                    return Ok(request);
                 }
                 return Err(ApplicationError::from(RepositoryError::RequestTerminal));
             }
@@ -443,13 +507,23 @@ impl FeedbackApplication {
             .publish(&plan)
             .await
             .map_err(ApplicationError::from)?;
-        let stored: StoredFeedbackRequest = self
+        let outcome = self
             .repository
             .complete_submission(&plan, &published)
             .await
             .map_err(ApplicationError::from)?;
         self.notify_feedback_terminal(&request_id);
-        Ok(stored.into())
+        let request = outcome.value.into();
+        if outcome.changed {
+            self.notify_application_changed(vec![
+                ApplicationResourceKey::Navigation,
+                ApplicationResourceKey::FeedbackWorkspace {
+                    request_id: request_id.clone(),
+                },
+                ApplicationResourceKey::PublishedFeedback { request_id },
+            ]);
+        }
+        Ok(request)
     }
 }
 
