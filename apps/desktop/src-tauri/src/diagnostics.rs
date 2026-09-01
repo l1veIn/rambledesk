@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use rambledesk_core::{FeedbackApplication, FeedbackStatus, ListFeedbackRequestsInput};
+use rambledesk_local_server::{WebAccessSecurityLimits, WebAccessServerConfig};
 use rambledesk_speech::model::list_models;
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
@@ -94,8 +95,32 @@ struct RuntimeSnapshot {
     data_storage_customized: bool,
     library_root: String,
     local_server_loopback: bool,
+    web_access: WebAccessRuntimeSnapshot,
     speech_session_active: bool,
     macos_permissions: Vec<PermissionSnapshot>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WebAccessRuntimeSnapshot {
+    state: String,
+    loopback_only: bool,
+    fixed_port: u16,
+    failure_code: Option<String>,
+    security_limits: WebAccessSecurityLimitsSnapshot,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WebAccessSecurityLimitsSnapshot {
+    max_bootstrap_attempts_per_minute: usize,
+    max_http_requests: usize,
+    max_event_connections: usize,
+    max_json_body_bytes: usize,
+    max_attachment_upload_body_bytes: usize,
+    session_idle_timeout_seconds: u64,
+    session_absolute_timeout_seconds: u64,
+    max_sessions: usize,
 }
 
 #[derive(Serialize)]
@@ -275,12 +300,23 @@ async fn runtime_snapshot(state: &WorkbenchState) -> RuntimeSnapshot {
         .and_then(|preferences| preferences.data_storage_path)
         .is_some();
     let speech_session_active = state.speech_session.lock().await.is_some();
+    let web_access_state = state
+        .web_access_lifecycle
+        .lock()
+        .await
+        .diagnostic_state()
+        .await;
+    let web_access = web_access_runtime_snapshot(
+        web_access_state,
+        WebAccessServerConfig::default().security_limits(),
+    );
     let library_root = state.library_root();
     RuntimeSnapshot {
         app_session_id: events::app_session_id().to_owned(),
         data_storage_customized: customized,
         library_root: redact_home(&library_root.display().to_string()),
         local_server_loopback: true,
+        web_access,
         speech_session_active,
         macos_permissions: list_macos_permissions()
             .into_iter()
@@ -292,6 +328,28 @@ async fn runtime_snapshot(state: &WorkbenchState) -> RuntimeSnapshot {
                     .unwrap_or_else(|| "unknown".to_owned()),
             })
             .collect(),
+    }
+}
+
+fn web_access_runtime_snapshot(
+    state: crate::web_access::WebAccessDiagnosticState,
+    limits: WebAccessSecurityLimits,
+) -> WebAccessRuntimeSnapshot {
+    WebAccessRuntimeSnapshot {
+        state: state.state.to_owned(),
+        loopback_only: limits.loopback_address.is_loopback(),
+        fixed_port: limits.port,
+        failure_code: state.failure_code.map(ToOwned::to_owned),
+        security_limits: WebAccessSecurityLimitsSnapshot {
+            max_bootstrap_attempts_per_minute: limits.max_bootstrap_attempts_per_minute,
+            max_http_requests: limits.max_http_requests,
+            max_event_connections: limits.max_event_connections,
+            max_json_body_bytes: limits.max_json_body_bytes,
+            max_attachment_upload_body_bytes: limits.max_attachment_upload_body_bytes,
+            session_idle_timeout_seconds: limits.session_idle_timeout_seconds,
+            session_absolute_timeout_seconds: limits.session_absolute_timeout_seconds,
+            max_sessions: limits.max_sessions,
+        },
     }
 }
 
@@ -399,7 +457,7 @@ fn collect_logs(
         let start = bytes
             .len()
             .saturating_sub(usize::try_from(MAX_LOG_FILE_BYTES).unwrap_or(bytes.len()));
-        let raw = String::from_utf8_lossy(&bytes[start..]);
+        let raw = String::from_utf8_lossy(complete_log_tail(&bytes, start));
         let sanitized = raw
             .lines()
             .map(redact_log_line)
@@ -408,6 +466,16 @@ fn collect_logs(
         logs.push((name.to_string_lossy().into_owned(), sanitized));
     }
     Ok(logs)
+}
+
+fn complete_log_tail(bytes: &[u8], start: usize) -> &[u8] {
+    let tail = &bytes[start..];
+    if start == 0 || bytes.get(start - 1) == Some(&b'\n') {
+        return tail;
+    }
+    tail.iter()
+        .position(|byte| *byte == b'\n')
+        .map_or(&[], |newline| &tail[newline + 1..])
 }
 
 fn write_zip(path: &Path, entries: &[(String, String)]) -> Result<(), String> {
@@ -466,7 +534,53 @@ fn package_readme(report_id: &str, scope: &str) -> String {
 }
 
 fn redact_log_line(line: &str) -> String {
-    redact_home(line).chars().take(2_000).collect()
+    redact_log_credentials(&redact_home(line))
+        .chars()
+        .take(2_000)
+        .collect()
+}
+
+fn redact_log_credentials(input: &str) -> String {
+    let without_bearer = redact_prefixed_credential(input, "bearer ");
+    redact_prefixed_credential(&without_bearer, "rambledesk-session.")
+}
+
+fn redact_prefixed_credential(input: &str, prefix: &str) -> String {
+    let bytes = input.as_bytes();
+    let prefix_bytes = prefix.as_bytes();
+    let mut output = String::with_capacity(input.len());
+    let mut cursor = 0;
+    while let Some(relative_start) = find_ascii_case_insensitive(&bytes[cursor..], prefix_bytes) {
+        let prefix_start = cursor + relative_start;
+        let credential_start = prefix_start + prefix_bytes.len();
+        output.push_str(&input[cursor..credential_start]);
+        let credential_end = bytes[credential_start..]
+            .iter()
+            .position(|byte| credential_delimiter(*byte))
+            .map_or(bytes.len(), |offset| credential_start + offset);
+        if credential_end == credential_start {
+            cursor = credential_start;
+            continue;
+        }
+        output.push_str("[REDACTED]");
+        cursor = credential_end;
+    }
+    output.push_str(&input[cursor..]);
+    output
+}
+
+fn find_ascii_case_insensitive(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack.windows(needle.len()).position(|window| {
+        window
+            .iter()
+            .zip(needle)
+            .all(|(left, right)| left.eq_ignore_ascii_case(right))
+    })
+}
+
+fn credential_delimiter(byte: u8) -> bool {
+    byte.is_ascii_whitespace()
+        || matches!(byte, b'"' | b'\'' | b',' | b';' | b')' | b']' | b'}' | b'>')
 }
 
 pub(crate) fn redact_home(input: &str) -> String {
@@ -544,5 +658,105 @@ mod tests {
         let redacted = redact_home(&sample);
         assert!(redacted.starts_with("%HOME%/"));
         assert!(!redacted.contains(&home.to_string_lossy().replace('\\', "/")));
+    }
+
+    #[test]
+    fn exported_log_lines_redact_bearer_and_websocket_protocol_credentials() {
+        let durable_token = "a".repeat(64);
+        let session_token = "session-token_value";
+        let line = format!(
+            "Authorization: Bearer {durable_token}; Sec-WebSocket-Protocol: rambledesk-events, rambledesk-session.{session_token}"
+        );
+
+        let redacted = redact_log_line(&line);
+
+        assert_eq!(
+            redacted,
+            "Authorization: Bearer [REDACTED]; Sec-WebSocket-Protocol: rambledesk-events, rambledesk-session.[REDACTED]"
+        );
+        assert!(!redacted.contains(&durable_token));
+        assert!(!redacted.contains(session_token));
+    }
+
+    #[test]
+    fn credential_redaction_handles_json_and_header_case_without_touching_labels() {
+        let line = r#"{"authorization":"bEaReR secret-token","protocol":"RAMBLEDESK-SESSION.another_secret"}"#;
+        assert_eq!(
+            redact_log_line(line),
+            r#"{"authorization":"bEaReR [REDACTED]","protocol":"RAMBLEDESK-SESSION.[REDACTED]"}"#
+        );
+    }
+
+    #[test]
+    fn truncated_log_tails_drop_the_partial_first_line_before_redaction() {
+        let bytes = b"Authorization: Bearer secret-token\nsafe next line\n";
+        assert_eq!(
+            complete_log_tail(bytes, "Authorization: Bearer ".len()),
+            b"safe next line\n"
+        );
+        assert_eq!(complete_log_tail(bytes, 0), bytes);
+        assert_eq!(
+            complete_log_tail(bytes, "Authorization: Bearer secret-token\n".len()),
+            b"safe next line\n"
+        );
+    }
+
+    #[test]
+    fn web_access_runtime_diagnostics_expose_limits_without_address_or_credentials() {
+        let limits = WebAccessServerConfig::default().security_limits();
+        let snapshot = web_access_runtime_snapshot(
+            crate::web_access::WebAccessDiagnosticState {
+                state: "failed",
+                failure_code: Some("listener_failed"),
+            },
+            limits,
+        );
+        let value = serde_json::to_value(snapshot).expect("serialize Web Access diagnostics");
+
+        assert_eq!(value["state"], "failed");
+        assert_eq!(value["loopbackOnly"], true);
+        assert_eq!(value["fixedPort"], limits.port);
+        assert_eq!(value["failureCode"], "listener_failed");
+        assert_eq!(
+            value["securityLimits"]["maxBootstrapAttemptsPerMinute"],
+            limits.max_bootstrap_attempts_per_minute
+        );
+        assert_eq!(
+            value["securityLimits"]["maxHttpRequests"],
+            limits.max_http_requests
+        );
+        assert_eq!(
+            value["securityLimits"]["maxEventConnections"],
+            limits.max_event_connections
+        );
+        assert_eq!(
+            value["securityLimits"]["maxJsonBodyBytes"],
+            limits.max_json_body_bytes
+        );
+        assert_eq!(
+            value["securityLimits"]["maxAttachmentUploadBodyBytes"],
+            limits.max_attachment_upload_body_bytes
+        );
+        assert_eq!(
+            value["securityLimits"]["sessionIdleTimeoutSeconds"],
+            limits.session_idle_timeout_seconds
+        );
+        assert_eq!(
+            value["securityLimits"]["sessionAbsoluteTimeoutSeconds"],
+            limits.session_absolute_timeout_seconds
+        );
+        assert_eq!(value["securityLimits"]["maxSessions"], limits.max_sessions);
+        let serialized = value.to_string();
+        for forbidden in [
+            "127.0.0.1",
+            "http://",
+            "authorization",
+            "bearer",
+            "rambledesk-session.",
+            "session_token",
+            "durable_token",
+        ] {
+            assert!(!serialized.to_ascii_lowercase().contains(forbidden));
+        }
     }
 }

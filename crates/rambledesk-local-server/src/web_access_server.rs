@@ -21,11 +21,13 @@ use tokio::{net::TcpListener, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    WebAccessRouteConfig, WebSessionManager, web_access_router,
+    MAX_APPLICATION_JSON_BODY_BYTES, MAX_ATTACHMENT_UPLOAD_BODY_BYTES, WebAccessRouteConfig,
+    WebSessionManager, WebSessionPolicy, web_access_router,
     web_security::{bearer_credential, has_exact_host, has_exact_host_and_origin, header_text},
 };
 
 pub const DEFAULT_WEB_ACCESS_PORT: u16 = 37_643;
+const WEB_ACCESS_LOOPBACK_ADDRESS: Ipv4Addr = Ipv4Addr::LOCALHOST;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SpaAsset {
@@ -61,6 +63,38 @@ impl Default for WebAccessServerConfig {
             max_event_connections: 8,
             max_http_requests: 16,
             max_bootstrap_attempts_per_minute: 8,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WebAccessSecurityLimits {
+    pub loopback_address: Ipv4Addr,
+    pub port: u16,
+    pub max_bootstrap_attempts_per_minute: usize,
+    pub max_http_requests: usize,
+    pub max_event_connections: usize,
+    pub max_json_body_bytes: usize,
+    pub max_attachment_upload_body_bytes: usize,
+    pub session_idle_timeout_seconds: u64,
+    pub session_absolute_timeout_seconds: u64,
+    pub max_sessions: usize,
+}
+
+impl WebAccessServerConfig {
+    pub fn security_limits(&self) -> WebAccessSecurityLimits {
+        let sessions = WebSessionPolicy::default();
+        WebAccessSecurityLimits {
+            loopback_address: WEB_ACCESS_LOOPBACK_ADDRESS,
+            port: self.port,
+            max_bootstrap_attempts_per_minute: self.max_bootstrap_attempts_per_minute,
+            max_http_requests: self.max_http_requests,
+            max_event_connections: self.max_event_connections,
+            max_json_body_bytes: MAX_APPLICATION_JSON_BODY_BYTES,
+            max_attachment_upload_body_bytes: MAX_ATTACHMENT_UPLOAD_BODY_BYTES,
+            session_idle_timeout_seconds: sessions.idle_timeout_seconds,
+            session_absolute_timeout_seconds: sessions.absolute_timeout_seconds,
+            max_sessions: sessions.max_sessions,
         }
     }
 }
@@ -179,7 +213,7 @@ pub async fn start_web_access_server(
             "Web Access bootstrap rate limit must be non-zero".to_owned(),
         ));
     }
-    let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, config.port))
+    let listener = TcpListener::bind((WEB_ACCESS_LOOPBACK_ADDRESS, config.port))
         .await
         .map_err(WebAccessServerError::Bind)?;
     let address = listener.local_addr().map_err(WebAccessServerError::Bind)?;
