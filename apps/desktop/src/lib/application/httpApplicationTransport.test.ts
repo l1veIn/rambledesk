@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { defineApplicationStream } from './applicationTransport'
+import type { ApplicationCommandInput, ApplicationCommandName } from './contracts'
+import {
+  APPLICATION_CONFORMANCE_INPUTS,
+  applicationConformanceResult,
+  runApplicationTransportConformance,
+} from './applicationTransportConformance'
 import {
   HTTP_APPLICATION_OPERATIONS,
   HttpApplicationSession,
@@ -16,6 +22,66 @@ function authenticatedSession(fetchImplementation: typeof fetch) {
     fetch: fetchImplementation,
   })
 }
+
+runApplicationTransportConformance('HTTP', () => {
+  const calls: Array<readonly [URL | RequestInfo, RequestInit | undefined]> = []
+  let rejection: unknown
+  const semanticNameByOperation = new Map<string, ApplicationCommandName>(
+    Object.entries(HTTP_APPLICATION_OPERATIONS).map(([name, operation]) => [
+      operation,
+      name as ApplicationCommandName,
+    ]),
+  )
+  const fetchImplementation = vi.fn<typeof fetch>(async (url, init) => {
+    calls.push([url, init])
+    if (rejection !== undefined) {
+      const error = rejection
+      rejection = undefined
+      return Response.json(error, { status: 409 })
+    }
+    const operation = String(url).split('/').at(-1) ?? ''
+    const name = semanticNameByOperation.get(operation)
+    if (!name) return Response.json({ message: 'unknown operation' }, { status: 404 })
+    const result = applicationConformanceResult(name)
+    if (name === 'deleteHostSession' || name === 'deleteFeedbackRequest') {
+      return new Response(null, { status: 204 })
+    }
+    if (result instanceof ArrayBuffer) return new Response(result)
+    return Response.json(result)
+  })
+
+  return {
+    transport: new HttpApplicationTransport(authenticatedSession(fetchImplementation).lease()),
+    expectWireCall: async <Name extends ApplicationCommandName>(
+      index: number,
+      name: Name,
+      input: ApplicationCommandInput<Name>,
+    ) => {
+      const [url, init] = calls[index]!
+      expect(String(url).split('/').at(-1)).toBe(HTTP_APPLICATION_OPERATIONS[name])
+      expect(init?.method).toBe('POST')
+      if (
+        name === 'listFeedbackInbox' ||
+        name === 'listHostSessions' ||
+        name === 'listHostProfiles'
+      ) {
+        expect(init?.body).toBeUndefined()
+      } else if (name === 'addFeedbackAttachment') {
+        const attachment = input as ApplicationCommandInput<'addFeedbackAttachment'>
+        const form = init?.body as FormData
+        expect(form.get('request_id')).toBe(attachment.request_id)
+        expect(form.get('file_name')).toBe(attachment.file_name)
+        expect(form.get('expected_revision')).toBe(String(attachment.expected_revision))
+        await expect((form.get('file') as Blob).arrayBuffer()).resolves.toEqual(attachment.contents)
+      } else {
+        expect(JSON.parse(String(init?.body))).toEqual(input)
+      }
+    },
+    rejectNext: (error) => {
+      rejection = error
+    },
+  }
+})
 
 describe('HttpApplicationSession', () => {
   it('restricts the application endpoint to the Workbench page origin', () => {
@@ -258,5 +324,27 @@ describe('HttpApplicationTransport', () => {
     expect(onError).toHaveBeenCalledWith(expect.any(HttpApplicationStreamUnavailableError))
     unsubscribe()
     unsubscribe()
+  })
+
+  it('does not report ready before its lease readiness barrier resolves', async () => {
+    let releaseReady: (() => void) | undefined
+    const ready = new Promise<void>((resolve) => {
+      releaseReady = resolve
+    })
+    const transport = new HttpApplicationTransport({
+      request: () => Promise.reject(new Error('not used')),
+      assertActive: () => undefined,
+      waitUntilReady: () => ready,
+    })
+    let settled = false
+    const waiting = transport.waitUntilReady().then(() => {
+      settled = true
+    })
+
+    await Promise.resolve()
+    expect(settled).toBe(false)
+    releaseReady?.()
+    await waiting
+    expect(settled).toBe(true)
   })
 })
