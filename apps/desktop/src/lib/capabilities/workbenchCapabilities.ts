@@ -11,6 +11,16 @@ import type {
 } from '$lib/speech'
 import type { ClientAttachmentFile } from './clientAttachmentFile'
 
+export type {
+  AttachmentCandidate,
+  AttachmentCandidateSource,
+  ClipboardCapturePlugin,
+  ClipboardCaptureResult,
+  ImagePastePlugin,
+  ScreenCaptureFinished,
+  ScreenCapturePlugin,
+} from './capturePlugin'
+
 import {
   capabilityManifest,
   type CapabilityManifest,
