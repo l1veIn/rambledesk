@@ -166,7 +166,7 @@ impl SqliteFeedbackStore {
     pub(super) async fn create_or_get_request_impl(
         &self,
         request: NewFeedbackRequest,
-    ) -> Result<StoredFeedbackRequest, RepositoryError> {
+    ) -> Result<rambledesk_core::MutationOutcome<StoredFeedbackRequest>, RepositoryError> {
         let mut transaction = self
             .pool
             .begin_with("BEGIN IMMEDIATE")
@@ -176,7 +176,7 @@ impl SqliteFeedbackStore {
             let input_hash = immutable_input_hash(&request)?;
             let stored_hash: String = existing.try_get("input_hash").map_err(storage_error)?;
             return if stored_hash == input_hash {
-                stored_request_from_row(&existing)
+                stored_request_from_row(&existing).map(rambledesk_core::MutationOutcome::unchanged)
             } else {
                 Err(RepositoryError::RequestConflict)
             };
@@ -301,7 +301,7 @@ impl SqliteFeedbackStore {
             self.cleanup_staged_request_attachments(&staged).await;
             return Err(storage_error(error));
         }
-        Ok(stored)
+        Ok(rambledesk_core::MutationOutcome::changed(stored))
     }
 
     pub(super) async fn externalize_legacy_request_attachments(
@@ -414,7 +414,7 @@ impl SqliteFeedbackStore {
         &self,
         request_id: &str,
         now: &str,
-    ) -> Result<StoredFeedbackRequest, RepositoryError> {
+    ) -> Result<rambledesk_core::MutationOutcome<StoredFeedbackRequest>, RepositoryError> {
         let updated = sqlx::query(
             "UPDATE feedback_requests SET status = 'completed', resolution = 'approved', \
              completed_at = ?2, updated_at = ?2, revision = revision + 1 \
@@ -431,12 +431,14 @@ impl SqliteFeedbackStore {
             return if existing.status == FeedbackStatus::Completed
                 && existing.resolution == Some(FeedbackResolution::Approved)
             {
-                Ok(existing)
+                Ok(rambledesk_core::MutationOutcome::unchanged(existing))
             } else {
                 Err(RepositoryError::RequestTerminal)
             };
         }
-        self.get_request_impl(request_id).await
+        self.get_request_impl(request_id)
+            .await
+            .map(rambledesk_core::MutationOutcome::changed)
     }
 
     pub(super) async fn list_open_requests_impl(

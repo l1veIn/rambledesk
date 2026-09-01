@@ -1,17 +1,18 @@
 use std::{fs, path::PathBuf};
 
 use rambledesk_core::{
-    ActionInput, AddAttachmentInput, ApplicationError, ApplicationErrorCode,
+    ActionInput, AddAttachmentInput, ApplicationError, ApplicationErrorCode, ApplicationEvent,
     ApplicationFeedbackRequestView, ApplicationFeedbackResultView,
-    ApplicationFeedbackWorkspaceView, ApplicationHostProfileView, ApproveFeedbackInput,
-    AttachmentView, CancelFeedbackInput, ContextRef, DeleteFeedbackRequestInput, DraftView,
-    ExecutionMode, FeedbackPackageAttachment, FeedbackPackageContent, FeedbackPackageManifest,
-    FeedbackPackageView, FeedbackRequestSummary, FeedbackRequestView, FeedbackResolution,
-    FeedbackResultView, FeedbackStatus, FeedbackWorkspaceView, GetFeedbackInput, HostSessionInput,
-    HostSessionSummary, ListFeedbackRequestsInput, ListFeedbackRequestsOutput,
-    ListHostSessionsInput, ReadAttachmentInput, RecoverFeedbackInput, RemoveAttachmentInput,
-    RenameHostSessionInput, ReorderAttachmentsInput, RequestAttachmentView, SaveDraftInput,
-    SetHostPinnedInput, SetHostSessionPinnedInput, SubmitFeedbackInput,
+    ApplicationFeedbackWorkspaceView, ApplicationHostProfileView, ApplicationResourceKey,
+    ApplicationSnapshotMetadata, ApproveFeedbackInput, AttachmentView, CancelFeedbackInput,
+    ContextRef, DeleteFeedbackRequestInput, DraftView, ExecutionMode, FeedbackPackageAttachment,
+    FeedbackPackageContent, FeedbackPackageManifest, FeedbackPackageView, FeedbackRequestSummary,
+    FeedbackRequestView, FeedbackResolution, FeedbackResultView, FeedbackStatus,
+    FeedbackWorkspaceView, GetFeedbackInput, HostSessionInput, HostSessionSummary,
+    ListFeedbackRequestsInput, ListFeedbackRequestsOutput, ListHostSessionsInput,
+    ReadAttachmentInput, RecoverFeedbackInput, RemoveAttachmentInput, RenameHostSessionInput,
+    ReorderAttachmentsInput, RequestAttachmentView, SaveDraftInput, SetHostPinnedInput,
+    SetHostSessionPinnedInput, SubmitFeedbackInput,
 };
 use ts_rs::{Config, TS};
 
@@ -52,6 +53,9 @@ fn main() -> std::io::Result<()> {
         exported::<ApplicationErrorCode>(),
         exported_application_error_codes(),
         exported::<ApplicationError>(),
+        exported::<ApplicationResourceKey>(),
+        exported::<ApplicationSnapshotMetadata>(),
+        exported::<ApplicationEvent>(),
         exported::<ApplicationHostProfileView>(),
         exported::<ActionInput>(),
         exported::<ContextRef>(),

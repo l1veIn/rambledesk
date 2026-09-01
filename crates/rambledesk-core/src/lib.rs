@@ -3,6 +3,7 @@
 //! Host profiles and continuation strategy selection live in `rambledesk-hosts`
 //! so host integration cadence stays independent of core protocol changes.
 
+mod application_changes;
 mod application_commands;
 mod feedback;
 mod process;
@@ -14,6 +15,11 @@ pub const HOST_ENV_KEY: &str = "RAMBLEDESK_HOST";
 /// HTTP header mirror so the loopback server can see the installed host id.
 pub const HOST_HEADER: &str = "x-rambledesk-host";
 
+pub use application_changes::{
+    ApplicationChange, ApplicationChangeHub, ApplicationChangeObserver, ApplicationEvent,
+    ApplicationInvalidation, ApplicationResourceKey, ApplicationSnapshot, ApplicationSnapshotError,
+    ApplicationSnapshotMetadata, NoopApplicationChangeObserver,
+};
 pub use application_commands::{
     ApplicationCommandFacade, ApplicationFeedbackRequestView, ApplicationFeedbackResultView,
     ApplicationFeedbackWorkspaceView, ApplicationHostProfileView,
@@ -28,9 +34,10 @@ pub use feedback::{
     ActionInput, ApplicationError, ApplicationErrorCode, ApproveFeedbackInput,
     AttachmentPathResolver, CancelFeedbackInput, Clock, ContextRef, ExecutionMode,
     FeedbackApplication, FeedbackRepository, FeedbackRequestView, FeedbackResolution,
-    FeedbackResultView, FeedbackStatus, GetFeedbackInput, IdGenerator, NewFeedbackRequest,
-    NewRequestAttachment, RecoverFeedbackInput, RepositoryError, RequestAttachmentInput,
-    RequestFeedbackInput, StoredFeedbackRequest, SubmissionPlanInput, SystemClock, UuidV7Generator,
+    FeedbackResultView, FeedbackStatus, GetFeedbackInput, IdGenerator, MutationOutcome,
+    NewFeedbackRequest, NewRequestAttachment, RecoverFeedbackInput, RepositoryError,
+    RequestAttachmentInput, RequestFeedbackInput, StoredFeedbackRequest, SubmissionPlanInput,
+    SystemClock, UuidV7Generator,
 };
 pub use workspace::{
     AddAttachmentInput, AttachmentView, DeleteFeedbackRequestInput, DraftView,

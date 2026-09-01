@@ -180,7 +180,7 @@ impl SqliteFeedbackStore {
         &self,
         host_id: &str,
         host_session_id: &str,
-    ) -> Result<(), RepositoryError> {
+    ) -> Result<Vec<String>, RepositoryError> {
         let mut transaction = self
             .pool
             .begin_with("BEGIN IMMEDIATE")
@@ -230,7 +230,7 @@ impl SqliteFeedbackStore {
             .map_err(storage_error)?;
         transaction.commit().await.map_err(storage_error)?;
         cleanup_deletion_artifacts(artifacts).await;
-        Ok(())
+        Ok(request_ids)
     }
 
     pub(super) async fn delete_feedback_request_impl(

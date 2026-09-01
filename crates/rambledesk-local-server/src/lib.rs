@@ -2,6 +2,7 @@
 
 mod application_api;
 mod token;
+mod web_access;
 
 use std::{
     net::{Ipv4Addr, SocketAddr},
@@ -39,8 +40,12 @@ use tokio::{net::TcpListener, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 use tower_service::Service;
 
-pub use application_api::application_router;
+pub use application_api::{REVISION_HEADER, RUNTIME_GENERATION_HEADER, application_router};
 pub use token::{AccessToken, TokenError, default_token_path};
+pub use web_access::{
+    EVENT_CREDENTIAL_PROTOCOL_PREFIX, EVENT_PROTOCOL, WebAccessRouteConfig,
+    WebSessionAuthenticator, web_access_router,
+};
 
 pub use rambledesk_core::{HOST_ENV_KEY, HOST_HEADER};
 

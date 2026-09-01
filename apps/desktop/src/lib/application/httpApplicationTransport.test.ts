@@ -3,6 +3,12 @@ import { describe, expect, it, vi } from 'vitest'
 import { defineApplicationStream } from './applicationTransport'
 import type { ApplicationCommandInput, ApplicationCommandName } from './contracts'
 import {
+  APPLICATION_EVENT_PROTOCOL,
+  APPLICATION_EVENTS_STREAM,
+  REVISION_HEADER,
+  RUNTIME_GENERATION_HEADER,
+} from './applicationEvents'
+import {
   APPLICATION_CONFORMANCE_INPUTS,
   applicationConformanceResult,
   runApplicationTransportConformance,
@@ -13,13 +19,62 @@ import {
   HttpApplicationStreamUnavailableError,
   HttpApplicationTransport,
   StaleHttpApplicationLeaseError,
+  applicationCommandProjectionKey,
+  applicationCommandResponseResources,
+  type ApplicationWebSocket,
 } from './httpApplicationTransport'
 
+const TEST_RUNTIME_GENERATION = 'runtime-test'
+
+function readyWebSocket(): ApplicationWebSocket {
+  const listeners = new Map<string, Set<EventListener>>()
+  const socket = {
+    protocol: APPLICATION_EVENT_PROTOCOL,
+    readyState: 1,
+    addEventListener(type: string, listener: EventListenerOrEventListenerObject) {
+      let entries = listeners.get(type)
+      if (!entries) {
+        entries = new Set()
+        listeners.set(type, entries)
+      }
+      entries.add(listener as EventListener)
+    },
+    removeEventListener(type: string, listener: EventListenerOrEventListenerObject) {
+      listeners.get(type)?.delete(listener as EventListener)
+    },
+    close() {},
+  } as ApplicationWebSocket
+  queueMicrotask(() => {
+    const event = new MessageEvent('message', {
+      data: JSON.stringify({
+        type: 'ready',
+        runtime_generation: TEST_RUNTIME_GENERATION,
+        revision: '0',
+      }),
+    })
+    for (const listener of listeners.get('message') ?? []) listener(event)
+  })
+  return socket
+}
+
 function authenticatedSession(fetchImplementation: typeof fetch) {
+  const sessionFetch = vi.fn<typeof fetch>(async (url, init) => {
+    if (String(url).endsWith('/api/health')) {
+      return Response.json({
+        runtime_generation: TEST_RUNTIME_GENERATION,
+        revision: '0',
+      })
+    }
+    const response = await fetchImplementation(url, init)
+    response.headers.set(RUNTIME_GENERATION_HEADER, TEST_RUNTIME_GENERATION)
+    response.headers.set(REVISION_HEADER, '0')
+    return response
+  })
   return HttpApplicationSession.authenticated({
     accessToken: 'short-lived-session-token',
     pageUrl: 'https://workbench.example/app',
-    fetch: fetchImplementation,
+    fetch: sessionFetch,
+    webSocket: readyWebSocket,
   })
 }
 
@@ -84,6 +139,16 @@ runApplicationTransportConformance('HTTP', () => {
 })
 
 describe('HttpApplicationSession', () => {
+  it('requires a base64url short-lived session token', () => {
+    expect(() =>
+      HttpApplicationSession.authenticated({
+        accessToken: 'not a websocket protocol token',
+        pageUrl: 'https://workbench.example/app',
+        fetch,
+      }),
+    ).toThrow('base64url session token')
+  })
+
   it('restricts the application endpoint to the Workbench page origin', () => {
     expect(() =>
       HttpApplicationSession.authenticated({
@@ -147,6 +212,142 @@ describe('HttpApplicationSession', () => {
 })
 
 describe('HttpApplicationTransport', () => {
+  it('maps command projections to resource-scoped freshness identities', () => {
+    expect(applicationCommandResponseResources('listHostSessions', undefined)).toEqual([
+      { kind: 'navigation' },
+    ])
+    expect(
+      applicationCommandResponseResources('getFeedbackWorkspace', {
+        request_id: 'request-1',
+      }),
+    ).toEqual([{ kind: 'feedback_workspace', request_id: 'request-1' }])
+    expect(
+      applicationCommandResponseResources('submitFeedback', {
+        request_id: 'request-1',
+        expected_revision: 1,
+      }),
+    ).toEqual([
+      { kind: 'feedback_workspace', request_id: 'request-1' },
+      { kind: 'published_feedback', request_id: 'request-1' },
+    ])
+    expect(
+      applicationCommandResponseResources('deleteHostSession', {
+        host_id: 'codex',
+        host_session_id: 'session-1',
+      }),
+    ).toEqual([
+      {
+        kind: 'host_session_resources',
+        host_id: 'codex',
+        host_session_id: 'session-1',
+      },
+    ])
+  })
+
+  it('uses canonical projection identities per operation and list scope', () => {
+    const base = {
+      host_id: 'codex',
+      host_session_id: 'session-1',
+      archived: false,
+      search: null,
+      limit: 50,
+      cursor: null,
+    }
+    const first = applicationCommandProjectionKey('listFeedbackRequests', {
+      ...base,
+      status: ['waiting', 'completed'],
+    })
+    const reordered = applicationCommandProjectionKey('listFeedbackRequests', {
+      ...base,
+      status: ['completed', 'waiting'],
+    })
+    const otherScope = applicationCommandProjectionKey('listFeedbackRequests', {
+      ...base,
+      host_session_id: 'session-2',
+      status: ['waiting', 'completed'],
+    })
+
+    expect(first).toBe(reordered)
+    expect(first).not.toBe(otherScope)
+    expect(first).not.toBe(
+      applicationCommandProjectionKey('listHostSessions', undefined),
+    )
+
+    const defaults = applicationCommandProjectionKey('listFeedbackRequests', {
+      host_id: null,
+      host_session_id: null,
+      status: null,
+      archived: null,
+      search: '   ',
+      limit: null,
+      cursor: null,
+    })
+    const explicitDefaults = applicationCommandProjectionKey('listFeedbackRequests', {
+      host_id: null,
+      host_session_id: null,
+      status: ['in_progress', 'waiting', 'waiting'],
+      archived: false,
+      search: null,
+      limit: 50,
+      cursor: null,
+    })
+    expect(defaults).toBe(explicitDefaults)
+
+    expect(
+      applicationCommandProjectionKey('listArchivedHostSessions', { search: '  needle  ' }),
+    ).toBe(
+      applicationCommandProjectionKey('listArchivedHostSessions', { search: 'needle' }),
+    )
+    expect(
+      applicationCommandProjectionKey('listArchivedHostSessions', { search: 'needle' }),
+    ).not.toBe(
+      applicationCommandProjectionKey('listArchivedHostSessions', { search: 'other' }),
+    )
+  })
+
+  it('canonicalizes UUID aliases and host session identities for response tracking', () => {
+    const canonicalRequestId = '0195f7e2-5c31-7b5a-8ab7-3c84ea4fc827'
+    const requestAlias = canonicalRequestId.toUpperCase()
+    const canonicalAttachmentId = '0195f7e2-5c31-7b5a-8ab7-3c84ea4fc828'
+    const attachmentAlias = canonicalAttachmentId.replaceAll('-', '')
+
+    expect(
+      applicationCommandProjectionKey('getFeedbackWorkspace', { request_id: requestAlias }),
+    ).toBe(
+      applicationCommandProjectionKey('getFeedbackWorkspace', {
+        request_id: canonicalRequestId,
+      }),
+    )
+    expect(
+      applicationCommandProjectionKey('readFeedbackAttachment', {
+        request_id: requestAlias,
+        attachment_id: attachmentAlias,
+      }),
+    ).toBe(
+      applicationCommandProjectionKey('readFeedbackAttachment', {
+        request_id: canonicalRequestId,
+        attachment_id: canonicalAttachmentId,
+      }),
+    )
+    expect(
+      applicationCommandResponseResources('getFeedbackWorkspace', {
+        request_id: requestAlias,
+      }),
+    ).toEqual([{ kind: 'feedback_workspace', request_id: canonicalRequestId }])
+    expect(
+      applicationCommandResponseResources('deleteHostSession', {
+        host_id: '  codex ',
+        host_session_id: ' session-1  ',
+      }),
+    ).toEqual([
+      {
+        kind: 'host_session_resources',
+        host_id: 'codex',
+        host_session_id: 'session-1',
+      },
+    ])
+  })
+
   it('defines one complete HTTP operation mapping', () => {
     expect(Object.keys(HTTP_APPLICATION_OPERATIONS)).toHaveLength(23)
     expect(new Set(Object.values(HTTP_APPLICATION_OPERATIONS)).size).toBe(23)
@@ -222,6 +423,25 @@ describe('HttpApplicationTransport', () => {
         expected_revision: 1,
       }),
     ).rejects.toEqual(applicationError)
+  })
+
+  it('preserves retryable unstable snapshot transport errors', async () => {
+    const snapshotError = {
+      code: 'SNAPSHOT_UNSTABLE',
+      message: 'snapshot changed during capture',
+      retryable: true,
+    } as const
+    const transport = new HttpApplicationTransport(
+      authenticatedSession(
+        vi.fn<typeof fetch>().mockResolvedValue(
+          Response.json(snapshotError, { status: 503 }),
+        ),
+      ).lease(),
+    )
+
+    await expect(transport.call('listFeedbackInbox', undefined)).rejects.toEqual(
+      snapshotError,
+    )
   })
 
   it('prefers stale-lease rejection when an error body finishes after invalidation', async () => {
@@ -335,6 +555,7 @@ describe('HttpApplicationTransport', () => {
       request: () => Promise.reject(new Error('not used')),
       assertActive: () => undefined,
       waitUntilReady: () => ready,
+      subscribe: () => () => undefined,
     })
     let settled = false
     const waiting = transport.waitUntilReady().then(() => {

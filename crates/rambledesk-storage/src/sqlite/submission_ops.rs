@@ -381,7 +381,7 @@ impl SqliteFeedbackStore {
         &self,
         plan: &SubmissionPlan,
         published: &PublishedFeedbackPackage,
-    ) -> Result<StoredFeedbackRequest, RepositoryError> {
+    ) -> Result<rambledesk_core::MutationOutcome<StoredFeedbackRequest>, RepositoryError> {
         if plan.resolution != FeedbackResolution::FeedbackSubmitted || plan.cancel_reason.is_some()
         {
             return Err(RepositoryError::CorruptData);
@@ -393,7 +393,7 @@ impl SqliteFeedbackStore {
         &self,
         plan: &SubmissionPlan,
         published: &PublishedFeedbackPackage,
-    ) -> Result<StoredFeedbackRequest, RepositoryError> {
+    ) -> Result<rambledesk_core::MutationOutcome<StoredFeedbackRequest>, RepositoryError> {
         if plan.resolution != FeedbackResolution::Cancelled || plan.cancel_reason.is_none() {
             return Err(RepositoryError::CorruptData);
         }
@@ -404,7 +404,7 @@ impl SqliteFeedbackStore {
         &self,
         plan: &SubmissionPlan,
         published: &PublishedFeedbackPackage,
-    ) -> Result<StoredFeedbackRequest, RepositoryError> {
+    ) -> Result<rambledesk_core::MutationOutcome<StoredFeedbackRequest>, RepositoryError> {
         let mut transaction = self
             .pool
             .begin_with("BEGIN IMMEDIATE")
@@ -429,7 +429,7 @@ impl SqliteFeedbackStore {
                 .and_then(|row| stored_request_from_row(&row))?;
             if stored.feedback.is_some() {
                 transaction.commit().await.map_err(storage_error)?;
-                return Ok(stored);
+                return Ok(rambledesk_core::MutationOutcome::unchanged(stored));
             }
         }
         if (status == "cancelled" && plan.resolution != FeedbackResolution::Cancelled)
@@ -569,6 +569,6 @@ impl SqliteFeedbackStore {
         let _ =
             tokio::fs::remove_dir_all(self.library_root().join("drafts").join(&plan.request_id))
                 .await;
-        Ok(stored)
+        Ok(rambledesk_core::MutationOutcome::changed(stored))
     }
 }

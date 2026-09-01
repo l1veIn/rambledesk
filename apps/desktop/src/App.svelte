@@ -27,6 +27,14 @@
   import TaskWorkspaceView from './lib/workspace/TaskWorkspaceView.svelte'
   import type { JSONContent } from '@tiptap/core'
   import type { ApplicationTransport } from './lib/application/applicationTransport'
+  import { APPLICATION_EVENTS_STREAM } from './lib/application/applicationEvents'
+  import {
+    applicationResourcesAffectNavigation,
+    applicationResourcesAffectWorkspace,
+    applicationResourcesRequireFullNavigationSnapshot,
+    createApplicationSnapshotRefetch,
+    type ApplicationSnapshotRefetchIntent,
+  } from './lib/application/applicationSnapshotRefetch'
 
   export let applicationTransport: ApplicationTransport
   export let previewMode = false
@@ -414,6 +422,12 @@
     },
     onUpdate: applySessionViewResolutions,
   })
+  const applicationSnapshotRefetch = createApplicationSnapshotRefetch({
+    refetch: refetchApplicationSnapshots,
+    reportError: (cause) => {
+      pageError = messageFrom(cause)
+    },
+  })
 
   function currentDraftSnapshot(): FeedbackDraftSnapshot {
     return { documentJson: draftDocumentJson, bodyMarkdown: draftBody }
@@ -654,6 +668,19 @@
       )
     })
     const cleanupLayoutObserver = () => layoutObserver.disconnect()
+    const unsubscribeApplicationEvents = !isTauri && !previewMode
+      ? applicationTransport.subscribe(
+          APPLICATION_EVENTS_STREAM,
+          (event) => {
+            if (event.type === 'invalidate') {
+              applicationSnapshotRefetch.request(event.resources)
+            }
+          },
+          (cause) => {
+            pageError = messageFrom(cause)
+          },
+        )
+      : () => {}
 
     if (!isTauri) {
       startWorkbench()
@@ -673,6 +700,8 @@
         void checkForUpdates({ prompt: true, forcePrompt: true })
       }
       return () => {
+        unsubscribeApplicationEvents()
+        applicationSnapshotRefetch.dispose()
         cleanupLayoutObserver()
         cleanupAttachments()
       }
@@ -715,6 +744,8 @@
         // Resume prompt still appears if submit path keeps the main window focused.
       })
     return () => {
+      unsubscribeApplicationEvents()
+      applicationSnapshotRefetch.dispose()
       draftController.cancelPendingSave()
       if (inboxTimer) clearInterval(inboxTimer)
       resumePromptUnlisten?.()
@@ -877,6 +908,49 @@
       ),
       activeSessionCatalog(),
     )
+  }
+
+  async function refetchApplicationSnapshots(
+    intent: ApplicationSnapshotRefetchIntent,
+  ): Promise<void> {
+    if (applicationResourcesAffectNavigation(intent.resources)) {
+      if (applicationResourcesRequireFullNavigationSnapshot(intent.resources)) {
+        await navigation.initialize(false)
+      } else {
+        await navigation.refreshNavigation(true)
+      }
+      if (!intent.isCurrent()) return
+      await refreshSessionViewRecovery()
+      if (!intent.isCurrent()) return
+    }
+
+    while (workspaceTransitionLocked && intent.isCurrent()) {
+      await new Promise((resolve) => window.setTimeout(resolve, 50))
+    }
+    if (!intent.isCurrent()) return
+
+    const activeView = activeWorkspaceView(workspaceShellState)
+    const activeWorkspace = workspace
+    if (
+      !activeView ||
+      !activeWorkspace ||
+      (activeView.kind !== 'session' && activeView.kind !== 'request-task') ||
+      !applicationResourcesAffectWorkspace(intent.resources, {
+        requestId: activeWorkspace.request.request_id,
+        hostId: activeWorkspace.request.host_id,
+        hostSessionId: activeWorkspace.request.host_session_id,
+      })
+    ) {
+      return
+    }
+
+    const outcome = await workspaceTransition.activate({
+      view: activeView,
+      requestId: activeWorkspace.request.request_id,
+      shellAction: { type: 'open' },
+      pendingViewKey: workspaceViewKey(activeView),
+    })
+    if (!intent.isCurrent() || outcome === 'stale') return
   }
 
   async function retrySessionViewRecovery() {

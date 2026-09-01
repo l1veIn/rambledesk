@@ -5,15 +5,17 @@ use axum::{
     body::{Body, Bytes},
     extract::{DefaultBodyLimit, FromRequest, Multipart, Request, State},
     http::{HeaderMap, HeaderName, HeaderValue, Response, StatusCode, header},
+    middleware::{self, Next},
     response::IntoResponse,
     routing::post,
 };
 use rambledesk_core::{
-    AddAttachmentInput, ApplicationCommandFacade, ApplicationError, ApplicationHostProfileView,
-    ApproveFeedbackInput, CancelFeedbackInput, DeleteFeedbackRequestInput, GetFeedbackInput,
-    HostSessionInput, ListFeedbackRequestsInput, ListHostSessionsInput, MAX_ATTACHMENT_BYTES,
-    ReadAttachmentInput, RemoveAttachmentInput, RenameHostSessionInput, ReorderAttachmentsInput,
-    SaveDraftInput, SetHostPinnedInput, SetHostSessionPinnedInput, SubmitFeedbackInput,
+    AddAttachmentInput, ApplicationChangeHub, ApplicationCommandFacade, ApplicationError,
+    ApplicationSnapshotError, ApplicationSnapshotMetadata, ApproveFeedbackInput,
+    CancelFeedbackInput, DeleteFeedbackRequestInput, GetFeedbackInput, HostSessionInput,
+    ListFeedbackRequestsInput, ListHostSessionsInput, MAX_ATTACHMENT_BYTES, ReadAttachmentInput,
+    RemoveAttachmentInput, RenameHostSessionInput, ReorderAttachmentsInput, SaveDraftInput,
+    SetHostPinnedInput, SetHostSessionPinnedInput, SubmitFeedbackInput,
 };
 use serde::{Serialize, de::DeserializeOwned};
 
@@ -22,12 +24,37 @@ use crate::{api_error_response, application_error_status};
 #[derive(Clone)]
 struct ApplicationApiState {
     commands: Arc<ApplicationCommandFacade>,
+    changes: Arc<ApplicationChangeHub>,
+}
+
+#[derive(Clone)]
+struct ApplicationRuntimeState {
+    changes: Arc<ApplicationChangeHub>,
 }
 
 const MULTIPART_METADATA_ALLOWANCE_BYTES: usize = 64 * 1024;
 const MAX_ATTACHMENT_UPLOAD_BODY_BYTES: usize =
     MAX_ATTACHMENT_BYTES + MULTIPART_METADATA_ALLOWANCE_BYTES;
 const X_CONTENT_TYPE_OPTIONS: HeaderName = HeaderName::from_static("x-content-type-options");
+pub const RUNTIME_GENERATION_HEADER: &str = "x-rambledesk-runtime-generation";
+pub const REVISION_HEADER: &str = "x-rambledesk-revision";
+
+const MUTATION_OPERATIONS: &[&str] = &[
+    "saveFeedbackDraft",
+    "addFeedbackAttachment",
+    "removeFeedbackAttachment",
+    "reorderFeedbackAttachments",
+    "submitFeedback",
+    "approveFeedbackRequest",
+    "cancelFeedbackRequest",
+    "renameHostSession",
+    "setHostSessionPinned",
+    "archiveHostSession",
+    "unarchiveHostSession",
+    "deleteHostSession",
+    "deleteFeedbackRequest",
+    "setHostPinned",
+];
 
 struct ApplicationJson<T>(T);
 
@@ -72,7 +99,10 @@ where
     }
 }
 
-pub fn application_router(commands: Arc<ApplicationCommandFacade>) -> Router {
+pub fn application_router(
+    commands: Arc<ApplicationCommandFacade>,
+    changes: Arc<ApplicationChangeHub>,
+) -> Router {
     Router::new()
         .route("/application/listFeedbackInbox", post(list_feedback_inbox))
         .route("/application/listHostSessions", post(list_host_sessions))
@@ -143,7 +173,137 @@ pub fn application_router(commands: Arc<ApplicationCommandFacade>) -> Router {
             "/application/readRequestAttachment",
             post(read_request_attachment),
         )
-        .with_state(ApplicationApiState { commands })
+        .with_state(ApplicationApiState {
+            commands,
+            changes: changes.clone(),
+        })
+        .layer(middleware::from_fn_with_state(
+            ApplicationRuntimeState { changes },
+            application_runtime_contract,
+        ))
+}
+
+async fn application_runtime_contract(
+    State(state): State<ApplicationRuntimeState>,
+    request: Request,
+    next: Next,
+) -> Response<Body> {
+    let operation = request.uri().path().rsplit('/').next().unwrap_or_default();
+    let mutation = MUTATION_OPERATIONS.contains(&operation);
+    let before = state.changes.metadata();
+    if mutation
+        && request
+            .headers()
+            .get(RUNTIME_GENERATION_HEADER)
+            .and_then(|value| value.to_str().ok())
+            != Some(before.runtime_generation.as_str())
+    {
+        let response = (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({
+                "code": "RUNTIME_GENERATION_STALE",
+                "message": "the Backend Runtime generation changed; refetch before mutating",
+                "retryable": false,
+            })),
+        )
+            .into_response();
+        return with_snapshot_metadata(response, &before);
+    }
+
+    let response = next.run(request).await;
+    if !mutation && response.headers().contains_key(RUNTIME_GENERATION_HEADER) {
+        return response;
+    }
+    let metadata = if mutation {
+        state.changes.metadata()
+    } else {
+        before
+    };
+    with_snapshot_metadata(response, &metadata)
+}
+
+async fn stable_application_result<Value, Query, QueryFuture>(
+    state: &ApplicationApiState,
+    query: Query,
+) -> Response<Body>
+where
+    Value: Serialize,
+    Query: FnMut() -> QueryFuture,
+    QueryFuture: std::future::Future<Output = Result<Value, ApplicationError>>,
+{
+    match state.changes.capture_snapshot(query).await {
+        Ok(snapshot) => {
+            with_snapshot_metadata(application_result(Ok(snapshot.value)), &snapshot.metadata)
+        }
+        Err(ApplicationSnapshotError::Query(error)) => {
+            let metadata = state.changes.metadata();
+            with_snapshot_metadata(
+                api_error_response(application_error_status(error.code_enum()), error),
+                &metadata,
+            )
+        }
+        Err(ApplicationSnapshotError::Unstable) => {
+            unstable_snapshot_response(&state.changes.metadata())
+        }
+    }
+}
+
+async fn stable_attachment_result<Query, QueryFuture>(
+    state: &ApplicationApiState,
+    query: Query,
+) -> Response<Body>
+where
+    Query: FnMut() -> QueryFuture,
+    QueryFuture: std::future::Future<Output = Result<Vec<u8>, ApplicationError>>,
+{
+    match state.changes.capture_snapshot(query).await {
+        Ok(snapshot) => with_snapshot_metadata(
+            attachment_bytes_response(Ok(snapshot.value)),
+            &snapshot.metadata,
+        ),
+        Err(ApplicationSnapshotError::Query(error)) => {
+            let metadata = state.changes.metadata();
+            with_snapshot_metadata(
+                api_error_response(application_error_status(error.code_enum()), error),
+                &metadata,
+            )
+        }
+        Err(ApplicationSnapshotError::Unstable) => {
+            unstable_snapshot_response(&state.changes.metadata())
+        }
+    }
+}
+
+fn unstable_snapshot_response(metadata: &ApplicationSnapshotMetadata) -> Response<Body> {
+    with_snapshot_metadata(
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({
+                "code": "SNAPSHOT_UNSTABLE",
+                "message": "application facts changed while reading the snapshot; retry",
+                "retryable": true,
+            })),
+        )
+            .into_response(),
+        metadata,
+    )
+}
+
+fn with_snapshot_metadata(
+    mut response: Response<Body>,
+    metadata: &ApplicationSnapshotMetadata,
+) -> Response<Body> {
+    response.headers_mut().insert(
+        HeaderName::from_static(RUNTIME_GENERATION_HEADER),
+        HeaderValue::from_str(&metadata.runtime_generation)
+            .expect("runtime generation must be an HTTP header value"),
+    );
+    response.headers_mut().insert(
+        HeaderName::from_static(REVISION_HEADER),
+        HeaderValue::from_str(&metadata.revision)
+            .expect("application revision must be an HTTP header value"),
+    );
+    response
 }
 
 fn invalid_argument_response(message: impl Into<String>) -> Response<Body> {
@@ -166,45 +326,60 @@ fn application_void_result(result: Result<(), ApplicationError>) -> Response<Bod
 }
 
 async fn list_feedback_inbox(State(state): State<ApplicationApiState>) -> Response<Body> {
-    application_result(state.commands.list_feedback_inbox().await)
+    stable_application_result(&state, || state.commands.list_feedback_inbox()).await
 }
 
 async fn list_host_sessions(State(state): State<ApplicationApiState>) -> Response<Body> {
-    application_result(state.commands.list_host_sessions().await)
+    stable_application_result(&state, || state.commands.list_host_sessions()).await
 }
 
 async fn list_archived_host_sessions(
     State(state): State<ApplicationApiState>,
     ApplicationJson(input): ApplicationJson<ListHostSessionsInput>,
 ) -> Response<Body> {
-    application_result(state.commands.list_archived_host_sessions(input).await)
+    stable_application_result(&state, || {
+        state.commands.list_archived_host_sessions(input.clone())
+    })
+    .await
 }
 
-async fn list_host_profiles(
-    State(state): State<ApplicationApiState>,
-) -> Json<Vec<ApplicationHostProfileView>> {
-    Json(state.commands.list_host_profiles())
+async fn list_host_profiles(State(state): State<ApplicationApiState>) -> Response<Body> {
+    stable_application_result(&state, || {
+        std::future::ready(Ok::<_, ApplicationError>(
+            state.commands.list_host_profiles(),
+        ))
+    })
+    .await
 }
 
 async fn list_feedback_requests(
     State(state): State<ApplicationApiState>,
     ApplicationJson(input): ApplicationJson<ListFeedbackRequestsInput>,
 ) -> Response<Body> {
-    application_result(state.commands.list_feedback_requests(input).await)
+    stable_application_result(&state, || {
+        state.commands.list_feedback_requests(input.clone())
+    })
+    .await
 }
 
 async fn get_feedback_workspace(
     State(state): State<ApplicationApiState>,
     ApplicationJson(input): ApplicationJson<GetFeedbackInput>,
 ) -> Response<Body> {
-    application_result(state.commands.get_feedback_workspace(input).await)
+    stable_application_result(&state, || {
+        state.commands.get_feedback_workspace(input.clone())
+    })
+    .await
 }
 
 async fn read_published_feedback(
     State(state): State<ApplicationApiState>,
     ApplicationJson(input): ApplicationJson<GetFeedbackInput>,
 ) -> Response<Body> {
-    application_result(state.commands.read_published_feedback(input).await)
+    stable_application_result(&state, || {
+        state.commands.read_published_feedback(input.clone())
+    })
+    .await
 }
 
 async fn save_feedback_draft(
@@ -361,14 +536,20 @@ async fn read_feedback_attachment(
     State(state): State<ApplicationApiState>,
     ApplicationJson(input): ApplicationJson<ReadAttachmentInput>,
 ) -> Response<Body> {
-    attachment_bytes_response(state.commands.read_feedback_attachment(input).await)
+    stable_attachment_result(&state, || {
+        state.commands.read_feedback_attachment(input.clone())
+    })
+    .await
 }
 
 async fn read_request_attachment(
     State(state): State<ApplicationApiState>,
     ApplicationJson(input): ApplicationJson<ReadAttachmentInput>,
 ) -> Response<Body> {
-    attachment_bytes_response(state.commands.read_request_attachment(input).await)
+    stable_attachment_result(&state, || {
+        state.commands.read_request_attachment(input.clone())
+    })
+    .await
 }
 
 async fn submit_feedback(
