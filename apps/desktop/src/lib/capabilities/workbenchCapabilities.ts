@@ -5,7 +5,10 @@ import type { SpeechModelId } from '$lib/preferences'
 import type { RambleConsoleCommand, RambleConsoleState } from '$lib/rambleConsole'
 import type { ScreenCaptureReady } from '$lib/screenCapture'
 import type { ShortcutAction, ShortcutConfig } from '$lib/shortcutSettings'
-import type { SpeechEvent, VoiceRambleSessionView } from '$lib/speech'
+import type {
+  SpeechRecognitionListener,
+  SpeechRecognitionSession,
+} from '$lib/speech'
 import type { ClientAttachmentFile } from './clientAttachmentFile'
 
 import {
@@ -155,18 +158,18 @@ export interface ShortcutCapability {
   onRambleToggle(handler: () => void, onError: CapabilityErrorHandler): CapabilityUnsubscribe
 }
 
-export type StartSpeechInput = Readonly<{
-  requestId: string
+export type SpeechRecognitionOptions = Readonly<{
   inputDevice: string | null
   modelId: string
   vadThreshold: number
   vadSilenceMs: number
   hotwords: readonly string[]
 }>
-export interface SpeechCapability {
-  start(input: StartSpeechInput): Promise<VoiceRambleSessionView>
-  stop(): Promise<void>
-  onEvent(handler: (event: SpeechEvent) => void, onError: CapabilityErrorHandler): CapabilityUnsubscribe
+export interface SpeechRecognitionPlugin {
+  start(
+    options: SpeechRecognitionOptions,
+    listener: SpeechRecognitionListener,
+  ): SpeechRecognitionSession
 }
 
 export interface RambleConsoleCapability {
@@ -312,7 +315,7 @@ export type WorkbenchCapabilitySlots = Readonly<{
   imagePaste: CapabilitySlot<ImagePasteCapability>
   serverPaths: CapabilitySlot<ServerPathCapability>
   globalShortcuts: CapabilitySlot<ShortcutCapability>
-  speech: CapabilitySlot<SpeechCapability & SpeechAdministrationCapability>
+  speech: CapabilitySlot<SpeechRecognitionPlugin & SpeechAdministrationCapability>
   rambleConsole: CapabilitySlot<RambleConsoleCapability>
   softwareUpdates: CapabilitySlot<UpdaterCapability>
   systemPermissions: CapabilitySlot<SystemPermissionCapability>

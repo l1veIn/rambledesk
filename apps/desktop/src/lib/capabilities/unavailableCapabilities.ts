@@ -94,9 +94,12 @@ const UNAVAILABLE_WORKBENCH_CAPABILITIES = createWorkbenchCapabilities({
     onRambleToggle: (_handler, onError) => unavailableSubscription('globalShortcuts', onError),
   }),
   speech: slot({
-    start: () => rejected('speech'),
-    stop: () => rejected('speech'),
-    onEvent: (_handler, onError) => unavailableSubscription('speech', onError),
+    start: () => ({
+      id: 'unavailable-speech',
+      ready: rejected('speech'),
+      stop: () => rejected('speech'),
+      cancel: () => rejected('speech'),
+    }),
     listModels: () => rejected('speech'),
     downloadModel: () => rejected('speech'),
     deleteModel: () => rejected('speech'),

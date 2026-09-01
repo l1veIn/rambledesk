@@ -7,7 +7,7 @@ use rambledesk_core::{
     AddAttachmentInput, ApplicationError, ApplicationFeedbackRequestView,
     ApplicationFeedbackWorkspaceView, ApplicationHostProfileView, ApproveFeedbackInput,
     CancelFeedbackInput, DeleteFeedbackRequestInput, DraftView, FeedbackPackageView,
-    FeedbackRequestSummary, FeedbackStatus, GetFeedbackInput, HostSessionInput, HostSessionSummary,
+    FeedbackRequestSummary, GetFeedbackInput, HostSessionInput, HostSessionSummary,
     ListFeedbackRequestsInput, ListFeedbackRequestsOutput, ListHostSessionsInput,
     MAX_ATTACHMENT_BYTES, ReadAttachmentInput, RemoveAttachmentInput, RenameHostSessionInput,
     ReorderAttachmentsInput, SaveDraftInput, SetHostPinnedInput, SetHostSessionPinnedInput,
@@ -18,33 +18,20 @@ use rambledesk_speech::{
     ensure_vad_model, list_input_devices,
     model::{SpeechModelInfo, delete_model, download_model, list_models, model_dir, model_info},
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tauri::{Emitter, Manager, ipc::Response};
 
 use rambledesk_mcp::{McpHostView, McpInstallResult, detect_hosts, install_hosts};
 
 use super::{
-    TRAY_ID, WorkbenchState, clipboard_capture::ClipboardCaptureState, diagnostics,
-    migrate_library, pending_tray_icon, pi_install, save_library_path,
+    TRAY_ID, WorkbenchState,
+    clipboard_capture::ClipboardCaptureState,
+    diagnostics, migrate_library, pending_tray_icon, pi_install, save_library_path,
     screen_capture::ScreenCaptureState,
+    speech_plugin::{
+        SpeechRecognitionEventView, SpeechRecognitionSessionView, StartVoiceRambleInput,
+    },
 };
-
-#[derive(Debug, Deserialize)]
-pub(super) struct StartVoiceRambleInput {
-    request_id: String,
-    input_device: Option<String>,
-    model_id: String,
-    vad_threshold: f32,
-    vad_silence_ms: u32,
-    hotwords: Vec<String>,
-}
-
-#[derive(Debug, Serialize)]
-pub(super) struct VoiceRambleSessionView {
-    voice_session_id: String,
-    provider: String,
-    model_path: String,
-}
 
 #[derive(Debug, Clone, Serialize)]
 pub(super) struct StorageMigrationProgress {
@@ -688,20 +675,7 @@ pub(super) async fn start_voice_ramble(
     input: StartVoiceRambleInput,
     app: tauri::AppHandle,
     state: tauri::State<'_, WorkbenchState>,
-) -> Result<VoiceRambleSessionView, String> {
-    let workspace = state
-        .application
-        .clone()
-        .get_feedback_workspace(input.request_id.clone())
-        .await
-        .map_err(|error| error.to_string())?;
-    if matches!(
-        workspace.request.status,
-        FeedbackStatus::Completed | FeedbackStatus::Cancelled
-    ) {
-        return Err("已结束的反馈请求不能继续录入语音".to_owned());
-    }
-
+) -> Result<SpeechRecognitionSessionView, String> {
     let mut active = state.speech_session.lock().await;
     if active.is_some() {
         return Err("已有语音 Ramble 正在进行，请先停止当前录音".to_owned());
@@ -716,18 +690,23 @@ pub(super) async fn start_voice_ramble(
         ));
     }
     tracing::info!(
-        request_id = %input.request_id,
+        recognition_session_id = %input.recognition_session_id,
         model_id = %input.model_id,
         "start_voice_ramble: starting"
     );
-    let voice_session_id = uuid::Uuid::now_v7().to_string();
+    let recognition_session_id = input.recognition_session_id;
+    if recognition_session_id.trim().is_empty() {
+        return Err("语音识别会话 ID 不能为空".to_owned());
+    }
     let provider =
         SpeechProvider::from_model_id(&input.model_id).map_err(|error| error.to_string())?;
     let model_path = model_dir(&library_root, &input.model_id)?;
     let vad_model_path = ensure_vad_model(&library_root).map_err(|error| error.to_string())?;
     let config = SpeechSessionConfig {
-        request_id: input.request_id,
-        voice_session_id: voice_session_id.clone(),
+        // The native recognizer still uses the legacy internal identity shape,
+        // but the Platform Plugin does not know about Feedback Requests.
+        request_id: String::new(),
+        voice_session_id: recognition_session_id.clone(),
         provider,
         model_path: model_path.clone(),
         vad_model_path,
@@ -738,7 +717,10 @@ pub(super) async fn start_voice_ramble(
     };
     let event_app = app.clone();
     let sink: SpeechEventSink = Arc::new(move |event: SpeechEvent| {
-        if let Err(error) = event_app.emit("voice-ramble-event", event) {
+        if let Err(error) = event_app.emit(
+            "voice-ramble-event",
+            SpeechRecognitionEventView::from(event),
+        ) {
             tracing::warn!(%error, "failed to emit voice ramble event");
         }
     });
@@ -748,8 +730,8 @@ pub(super) async fn start_voice_ramble(
         .map_err(|error| error.to_string())?;
     *active = Some(session);
 
-    Ok(VoiceRambleSessionView {
-        voice_session_id,
+    Ok(SpeechRecognitionSessionView {
+        recognition_session_id,
         provider: provider.id().to_owned(),
         model_path: model_path.to_string_lossy().into_owned(),
     })

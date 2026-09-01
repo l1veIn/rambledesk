@@ -44,7 +44,17 @@ function createFakeApi(responses: Record<string, unknown> = {}): FakeApi {
   const window = fakeWindow()
   const webview = fakeWebview()
   const invokeMock = vi.fn(
-    async (command: string) => responses[command],
+    async (command: string, args?: Record<string, unknown>) => {
+      if (command === 'start_voice_ramble' && responses[command] === undefined) {
+        const input = args?.input as { recognition_session_id?: string } | undefined
+        return {
+          recognition_session_id: input?.recognition_session_id,
+          provider: 'sense_voice',
+          model_path: '/models/sense-voice',
+        }
+      }
+      return responses[command]
+    },
   )
   const listenMock = vi.fn(async () => vi.fn())
   const emitMock = vi.fn(async () => undefined)
@@ -205,14 +215,17 @@ describe('Tauri Workbench capabilities', () => {
       fileName: 'clipboard.png',
       expectedRevision: 9,
     })
-    await capabilities.speech.implementation.start({
-      requestId: 'request-1',
-      inputDevice: null,
-      modelId: 'sense-voice-small',
-      vadThreshold: 0.4,
-      vadSilenceMs: 650,
-      hotwords: ['RambleDesk'],
-    })
+    const speechSession = capabilities.speech.implementation.start(
+      {
+        inputDevice: null,
+        modelId: 'sense-voice-small',
+        vadThreshold: 0.4,
+        vadSilenceMs: 650,
+        hotwords: ['RambleDesk'],
+      },
+      { onEvent: vi.fn(), onError: vi.fn() },
+    )
+    await speechSession.ready
 
     expect(api.invokeMock).toHaveBeenCalledWith('import_feedback_attachment_path', {
       requestId: 'request-1', path: '/tmp/example.png', expectedRevision: 7,
@@ -232,7 +245,7 @@ describe('Tauri Workbench capabilities', () => {
     })
     expect(api.invokeMock).toHaveBeenCalledWith('start_voice_ramble', {
       input: {
-        request_id: 'request-1',
+        recognition_session_id: speechSession.id,
         input_device: null,
         model_id: 'sense-voice-small',
         vad_threshold: 0.4,
@@ -334,7 +347,6 @@ describe('Tauri Workbench capabilities', () => {
     await capabilities.globalShortcuts.implementation.read()
     await capabilities.globalShortcuts.implementation.reset()
     await capabilities.globalShortcuts.implementation.setCaptureActive(true)
-    await capabilities.speech.implementation.stop()
     await capabilities.speech.implementation.listModels()
     await capabilities.speech.implementation.downloadModel('sense-voice-small')
     await capabilities.speech.implementation.deleteModel('sense-voice-small')
@@ -354,7 +366,6 @@ describe('Tauri Workbench capabilities', () => {
     capabilities.screenCapture.implementation.onFinished(handler, onError)
     capabilities.screenCapture.implementation.onShortcut(handler, onError)
     capabilities.globalShortcuts.implementation.onRambleToggle(handler, onError)
-    capabilities.speech.implementation.onEvent(handler, onError)
     capabilities.speech.implementation.onModelProgress(handler, onError)
     capabilities.rambleConsole.implementation.onCommand(handler, onError)
     capabilities.rambleConsole.implementation.onReady(handler, onError)
@@ -392,7 +403,6 @@ describe('Tauri Workbench capabilities', () => {
       'screen-capture-finished',
       'screen-capture-shortcut',
       'ramble-toggle-shortcut',
-      'voice-ramble-event',
       'speech-model-progress',
       'ramble-console-command',
       'ramble-console-ready',
