@@ -5,6 +5,8 @@ import type {
 } from '../generated/feedback'
 import { defineApplicationStream } from './applicationTransport'
 import { TestApplicationTransport } from './testApplicationTransport'
+import type { CapabilityManifest } from '../capabilities/capabilityManifest'
+import { UNAVAILABLE_CAPABILITY_MANIFEST } from '../capabilities/unavailableCapabilities'
 
 const hostSession: HostSessionSummary = {
   host_id: 'codex',
@@ -21,7 +23,7 @@ const hostSession: HostSessionSummary = {
 
 describe('TestApplicationTransport', () => {
   it('dispatches typed calls and records their semantic inputs', async () => {
-    const transport = new TestApplicationTransport({ mode: 'test' })
+    const transport = new TestApplicationTransport(UNAVAILABLE_CAPABILITY_MANIFEST)
     transport.handle('renameHostSession', (input) => {
       expectTypeOf(input).toEqualTypeOf<RenameHostSessionInput>()
       return { ...hostSession, title: input.title }
@@ -102,10 +104,13 @@ describe('TestApplicationTransport', () => {
   })
 
   it('returns the injected capability manifest unchanged', () => {
-    const capabilities = { testCapability: true } as const
+    const capabilities = {
+      ...UNAVAILABLE_CAPABILITY_MANIFEST,
+      externalLinks: { availability: 'available', source: 'browser' },
+    } as const
     const transport = new TestApplicationTransport(capabilities, { initiallyReady: true })
 
     expect(transport.capabilities()).toBe(capabilities)
-    expectTypeOf(transport.capabilities()).toEqualTypeOf<typeof capabilities>()
+    expectTypeOf(transport.capabilities()).toEqualTypeOf<CapabilityManifest>()
   })
 })

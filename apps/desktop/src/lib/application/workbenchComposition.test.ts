@@ -4,6 +4,7 @@ import { HttpApplicationSession, HttpApplicationTransport } from './httpApplicat
 import { TestApplicationTransport } from './testApplicationTransport'
 import { UnavailableApplicationTransport } from './unavailableApplicationTransport'
 import { createWorkbenchComposition } from './workbenchComposition'
+import { UNAVAILABLE_CAPABILITY_MANIFEST } from '../capabilities/unavailableCapabilities'
 
 describe('createWorkbenchComposition', () => {
   it('selects the Tauri implementation supplied by the desktop composition root', () => {
@@ -15,6 +16,7 @@ describe('createWorkbenchComposition', () => {
     })
 
     expect(composition.applicationTransport).toBe(desktopTransport)
+    expect(composition.capabilities.manifest).toBe(UNAVAILABLE_CAPABILITY_MANIFEST)
   })
 
   it('selects HTTP only for an explicit authenticated browser session', () => {
@@ -30,6 +32,7 @@ describe('createWorkbenchComposition', () => {
     })
 
     expect(composition.applicationTransport).toBeInstanceOf(HttpApplicationTransport)
+    expect(composition.applicationTransport.capabilities()).toBe(composition.capabilities.manifest)
   })
 
   it('keeps preview fixtures offline even if a web session is present', async () => {

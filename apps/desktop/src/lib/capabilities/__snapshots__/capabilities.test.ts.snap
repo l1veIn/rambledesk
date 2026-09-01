@@ -1,0 +1,86 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`capability contracts > keeps the unavailable manifest complete and immutable 1`] = `
+{
+  "clipboardCapture": {
+    "availability": "unavailable",
+    "reason": "unsupported_environment",
+    "source": "none",
+  },
+  "dataStorageAdministration": {
+    "availability": "unavailable",
+    "reason": "unsupported_environment",
+    "source": "none",
+  },
+  "diagnostics": {
+    "availability": "unavailable",
+    "reason": "unsupported_environment",
+    "source": "none",
+  },
+  "externalLinks": {
+    "availability": "unavailable",
+    "reason": "unsupported_environment",
+    "source": "none",
+  },
+  "globalShortcuts": {
+    "availability": "unavailable",
+    "reason": "unsupported_environment",
+    "source": "none",
+  },
+  "hostIntegrationAdministration": {
+    "availability": "unavailable",
+    "reason": "unsupported_environment",
+    "source": "none",
+  },
+  "notifications": {
+    "availability": "unavailable",
+    "reason": "unsupported_environment",
+    "source": "none",
+  },
+  "rambleConsole": {
+    "availability": "unavailable",
+    "reason": "unsupported_environment",
+    "source": "none",
+  },
+  "screenCapture": {
+    "availability": "unavailable",
+    "reason": "unsupported_environment",
+    "source": "none",
+  },
+  "serverPaths": {
+    "availability": "unavailable",
+    "reason": "unsupported_environment",
+    "source": "none",
+  },
+  "softwareUpdates": {
+    "availability": "unavailable",
+    "reason": "unsupported_environment",
+    "source": "none",
+  },
+  "speech": {
+    "availability": "unavailable",
+    "reason": "unsupported_environment",
+    "source": "none",
+  },
+  "systemPermissions": {
+    "availability": "unavailable",
+    "reason": "unsupported_environment",
+    "source": "none",
+  },
+  "tray": {
+    "availability": "unavailable",
+    "reason": "unsupported_environment",
+    "source": "none",
+  },
+  "webAccessAdministration": {
+    "availability": "unavailable",
+    "reason": "unsupported_environment",
+    "source": "none",
+  },
+  "windowControls": {
+    "availability": "unavailable",
+    "reason": "unsupported_environment",
+    "source": "none",
+  },
+}
+`;

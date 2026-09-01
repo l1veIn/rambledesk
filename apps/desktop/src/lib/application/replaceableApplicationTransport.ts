@@ -9,6 +9,7 @@ import type {
   ApplicationCommandName,
   ApplicationCommandResult,
 } from './contracts'
+import type { CapabilityManifest } from '../capabilities/capabilityManifest'
 
 type Subscription = {
   stream: ApplicationStream<unknown>
@@ -68,7 +69,7 @@ export class ReplaceableApplicationTransport implements ApplicationTransport {
     return this.current.waitUntilReady()
   }
 
-  capabilities(): unknown {
+  capabilities(): CapabilityManifest {
     return this.current.capabilities()
   }
 }
