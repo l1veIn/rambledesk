@@ -10,6 +10,7 @@ axum = { workspace = true, features = ["multipart", "ws"] }
 dirs.workspace = true
 futures.workspace = true
 hex.workspace = true
+percent-encoding = "2"
 rand.workspace = true
 rambledesk-core.workspace = true
 rambledesk-mcp.workspace = true

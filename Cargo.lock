@@ -4603,6 +4603,7 @@ dependencies = [
  "dirs",
  "futures",
  "hex",
+ "percent-encoding",
  "rambledesk-core",
  "rambledesk-mcp",
  "rambledesk-storage",

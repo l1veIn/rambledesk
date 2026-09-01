@@ -12,6 +12,7 @@
     Clipboard,
     Download,
     FolderCog,
+    Globe2,
     Languages,
     LoaderCircle,
     Mic,
@@ -50,6 +51,7 @@
   import * as Tabs from '$lib/components/ui/tabs'
   import { t } from '$lib/i18n'
   import { currentDesktopPlatform } from '$lib/platform'
+  import { openExternalUrl } from '$lib/openExternalUrl'
   import {
     speechModelDescription,
     speechModelDisplayName,
@@ -167,6 +169,11 @@
     bytes: number[]
   }
 
+  type WebAccessStatus = {
+    running: boolean
+    url: string | null
+  }
+
   type DshInstallResult = {
     profileId: string
     profileDir: string
@@ -223,6 +230,9 @@
   let unlistenModelProgress: UnlistenFn | null = null
   let unlistenStorageProgress: UnlistenFn | null = null
   let hasMacPermissions = false
+  let webAccessStatus: WebAccessStatus = { running: false, url: null }
+  let webAccessBusy = false
+  let webAccessError = ''
   const isTauri = '__TAURI_INTERNALS__' in window
   const isMac = currentDesktopPlatform() === 'macOS'
   const isWindows = currentDesktopPlatform() === 'Windows'
@@ -252,6 +262,7 @@
       void refreshSpeechDevices()
       void refreshSpeechModels()
       void refreshMacPermissionPresence()
+      void refreshWebAccessStatus()
       void listen<SpeechModelProgress>('speech-model-progress', ({ payload }) => {
         modelProgress = payload
       }).then((unlisten) => {
@@ -277,6 +288,40 @@
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
+  }
+
+  async function refreshWebAccessStatus() {
+    if (!isTauri) return
+    try {
+      webAccessStatus = await invoke<WebAccessStatus>('get_web_access_status')
+      webAccessError = ''
+    } catch (cause) {
+      webAccessError = messageFrom(cause)
+    }
+  }
+
+  async function toggleWebAccess() {
+    if (!isTauri || webAccessBusy) return
+    webAccessBusy = true
+    webAccessError = ''
+    try {
+      webAccessStatus = await invoke<WebAccessStatus>(
+        webAccessStatus.running ? 'stop_web_access' : 'start_web_access',
+      )
+    } catch (cause) {
+      webAccessError = messageFrom(cause)
+    } finally {
+      webAccessBusy = false
+    }
+  }
+
+  async function openWebAccess() {
+    if (!webAccessStatus.url) return
+    try {
+      await openExternalUrl(webAccessStatus.url)
+    } catch (cause) {
+      webAccessError = messageFrom(cause)
+    }
   }
 
   async function refreshMacPermissionPresence() {
@@ -842,6 +887,49 @@
                 <ArchiveRestore data-icon="inline-start" />
                 {tr('View archived content')}
               </Button>
+            </section>
+
+            <section class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-8 border-b pb-8">
+              <div class="flex gap-3">
+                <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+                  <Globe2 class="size-4" />
+                </span>
+                <div>
+                  <h3 class="m-0 text-sm font-medium">{tr('Web Access')}</h3>
+                  <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
+                    {webAccessStatus.running
+                      ? tr('Available only in a browser on this computer at {url}.', {
+                          url: webAccessStatus.url ?? '',
+                        })
+                      : tr('Start a local browser Workbench. It stays off until you start it.')}
+                  </p>
+                  {#if webAccessError}
+                    <p class="m-0 mt-1 text-xs text-destructive">{webAccessError}</p>
+                  {/if}
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                {#if webAccessStatus.running}
+                  <Button variant="outline" disabled={webAccessBusy} onclick={() => void openWebAccess()}>
+                    <Globe2 data-icon="inline-start" />
+                    {tr('Open')}
+                  </Button>
+                {/if}
+                <Button
+                  variant={webAccessStatus.running ? 'destructive' : 'outline'}
+                  disabled={!isTauri || webAccessBusy}
+                  onclick={() => void toggleWebAccess()}
+                >
+                  {#if webAccessBusy}
+                    <LoaderCircle data-icon="inline-start" class="animate-spin" />
+                  {:else if webAccessStatus.running}
+                    <X data-icon="inline-start" />
+                  {:else}
+                    <Play data-icon="inline-start" />
+                  {/if}
+                  {webAccessStatus.running ? tr('Stop') : tr('Start')}
+                </Button>
+              </div>
             </section>
 
             <section class="grid gap-4">

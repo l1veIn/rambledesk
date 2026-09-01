@@ -3,6 +3,7 @@
 mod application_api;
 mod token;
 mod web_access;
+mod web_access_server;
 
 use std::{
     net::{Ipv4Addr, SocketAddr},
@@ -45,6 +46,10 @@ pub use token::{AccessToken, TokenError, default_token_path};
 pub use web_access::{
     EVENT_CREDENTIAL_PROTOCOL_PREFIX, EVENT_PROTOCOL, WebAccessRouteConfig,
     WebSessionAuthenticator, web_access_router,
+};
+pub use web_access_server::{
+    DEFAULT_WEB_ACCESS_PORT, SpaAsset, SpaAssetSource, WebAccessServerConfig, WebAccessServerError,
+    WebAccessServerHandle, start_web_access_server,
 };
 
 pub use rambledesk_core::{HOST_ENV_KEY, HOST_HEADER};

@@ -8,6 +8,7 @@ mod open_attachment;
 mod pi_install;
 mod screen_capture;
 mod shortcuts;
+mod web_access;
 
 use rambledesk_core::{
     ApplicationChangeHub, ApplicationCommandFacade, ApplicationHostProfileView,
@@ -45,6 +46,8 @@ struct WorkbenchState {
     local_server: ServerHandle,
     application: FeedbackApplication,
     application_commands: Arc<ApplicationCommandFacade>,
+    application_change_hub: Arc<ApplicationChangeHub>,
+    web_access_server: tokio::sync::Mutex<Option<rambledesk_local_server::WebAccessServerHandle>>,
     store: rambledesk_storage::SqliteFeedbackStore,
     generic_mcp_configuration: String,
     pending_count: AtomicU32,
@@ -235,6 +238,8 @@ pub fn run() {
                     local_server: handle,
                     application,
                     application_commands,
+                    application_change_hub,
+                    web_access_server: tokio::sync::Mutex::new(None),
                     store,
                     generic_mcp_configuration: configuration,
                     pending_count: AtomicU32::new(0),
@@ -364,6 +369,9 @@ pub fn run() {
             shortcuts::set_shortcut_setting,
             shortcuts::reset_shortcut_settings,
             shortcuts::set_shortcut_capture_active,
+            web_access::get_web_access_status,
+            web_access::start_web_access,
+            web_access::stop_web_access,
             log_frontend_error,
         ])
         .build(tauri::generate_context!());
@@ -385,6 +393,11 @@ pub fn run() {
             && let Some(state) = app_handle.try_state::<WorkbenchState>()
         {
             state.local_server.cancel();
+            if let Ok(server) = state.web_access_server.try_lock()
+                && let Some(server) = server.as_ref()
+            {
+                server.cancel();
+            }
         }
     });
 }
