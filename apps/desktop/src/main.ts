@@ -1,7 +1,7 @@
 import { mount } from 'svelte'
 
 import { initializePreferences } from './lib/preferences'
-import { UnavailableApplicationTransport } from './lib/application/unavailableApplicationTransport'
+import { createWorkbenchComposition } from './lib/application/workbenchComposition'
 import './app.css'
 
 function reportFrontendError(context: string, message: string) {
@@ -98,8 +98,18 @@ if (captureMode) {
   mount(RambleConsole, { target })
 } else {
   const { default: App } = await import('./App.svelte')
-  const applicationTransport = '__TAURI_INTERNALS__' in window
+  const isTauri = '__TAURI_INTERNALS__' in window
+  const previewMode =
+    import.meta.env.DEV &&
+    !isTauri &&
+    new URLSearchParams(window.location.search).get('preview') === 'fixtures'
+  const desktopTransport = isTauri
     ? new (await import('./lib/application/tauriApplicationTransport')).TauriApplicationTransport()
-    : new UnavailableApplicationTransport()
-  mount(App, { target, props: { applicationTransport } })
+    : undefined
+  const composition = createWorkbenchComposition({
+    environment: isTauri ? 'desktop' : 'browser',
+    previewMode,
+    desktopTransport,
+  })
+  mount(App, { target, props: composition })
 }

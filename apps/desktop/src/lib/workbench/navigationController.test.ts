@@ -67,7 +67,7 @@ function hostSession(overrides: Partial<HostSessionSummary> = {}): HostSessionSu
 function createController(
   overrides: Partial<Parameters<typeof createNavigationController>[0]> = {},
 ) {
-  const transport = new TestApplicationTransport(undefined)
+  const transport = new TestApplicationTransport(undefined, { initiallyReady: true })
     .handle('listFeedbackInbox', (input) => mocks.applicationCall('listFeedbackInbox', input))
     .handle('listHostSessions', (input) => mocks.applicationCall('listHostSessions', input))
     .handle('listHostProfiles', (input) => mocks.applicationCall('listHostProfiles', input))
@@ -124,6 +124,69 @@ describe('navigationController', () => {
     await expect(controller.initialize(false)).resolves.toBe(true)
 
     expect(openRequest).not.toHaveBeenCalled()
+  })
+
+  it('waits for transport readiness before loading application facts', async () => {
+    const transport = new TestApplicationTransport(undefined)
+      .handle('listFeedbackInbox', (input) => mocks.applicationCall('listFeedbackInbox', input))
+      .handle('listHostSessions', (input) => mocks.applicationCall('listHostSessions', input))
+      .handle('listHostProfiles', (input) => mocks.applicationCall('listHostProfiles', input))
+      .handle('listFeedbackRequests', (input) => mocks.applicationCall('listFeedbackRequests', input))
+    mocks.applicationCall.mockImplementation(async (command: string) => {
+      if (command === 'listHostSessions') return [hostSession()]
+      if (command === 'listFeedbackRequests') {
+        return { requests: [], next_cursor: null } satisfies ListFeedbackRequestsOutput
+      }
+      return []
+    })
+    const controller = createController({ transport })
+    const initializing = controller.initialize(false)
+
+    await Promise.resolve()
+    expect(mocks.applicationCall).not.toHaveBeenCalled()
+    transport.markReady()
+    await expect(initializing).resolves.toBe(true)
+    expect(mocks.applicationCall).toHaveBeenCalledWith('listHostSessions', undefined)
+  })
+
+  it('preserves existing navigation facts when a later readiness check fails', async () => {
+    class ToggleReadyTransport extends TestApplicationTransport {
+      failReadiness = false
+
+      override waitUntilReady(): Promise<void> {
+        return this.failReadiness
+          ? Promise.reject(new Error('authenticated session expired'))
+          : super.waitUntilReady()
+      }
+    }
+    const transport = new ToggleReadyTransport(undefined, { initiallyReady: true })
+      .handle('listFeedbackInbox', (input) => mocks.applicationCall('listFeedbackInbox', input))
+      .handle('listHostSessions', (input) => mocks.applicationCall('listHostSessions', input))
+      .handle('listHostProfiles', (input) => mocks.applicationCall('listHostProfiles', input))
+      .handle('listFeedbackRequests', (input) => mocks.applicationCall('listFeedbackRequests', input))
+    mocks.applicationCall.mockImplementation(async (command: string) => {
+      if (command === 'listHostSessions') return [hostSession()]
+      if (command === 'listFeedbackRequests') {
+        return { requests: [], next_cursor: null } satisfies ListFeedbackRequestsOutput
+      }
+      return []
+    })
+    const onPageError = vi.fn()
+    const controller = createController({ transport, onPageError })
+    let state: NavigationState | undefined
+    const unsubscribe = controller.subscribe((next) => (state = next))
+
+    try {
+      await expect(controller.initialize(false)).resolves.toBe(true)
+      transport.failReadiness = true
+      await expect(controller.initialize(false)).resolves.toBe(false)
+
+      expect(state?.hostSessions).toEqual([hostSession()])
+      expect(state?.hostSessionFactsStatus).toBe('failed')
+      expect(onPageError).toHaveBeenCalledWith('Error: authenticated session expired')
+    } finally {
+      unsubscribe()
+    }
   })
 
   it('reports when initial navigation facts could not be loaded', async () => {

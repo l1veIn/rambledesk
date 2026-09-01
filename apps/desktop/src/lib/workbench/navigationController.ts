@@ -143,26 +143,23 @@ export function createNavigationController(context: NavigationControllerContext)
     context.onPageError('')
     patch({ loadingNavigation: true, loadingRequests: true })
 
-    if (!context.isTauri) {
-      if (context.previewMode) {
-        patch({
-          pendingRequests: previewFixtures.requests.filter(
-            (request) => request.status === 'waiting' || request.status === 'in_progress',
-          ),
-          requests: previewFixtures.requests,
-          hostProfiles: Object.fromEntries(
-            previewFixtures.hostProfiles.map((profile) => [profile.id, profile]),
-          ),
-        })
-        applyHostSessionFacts(previewFixtures.hostSessions, hostSessionFactsIntent)
-      } else {
-        failHostSessionFacts(hostSessionFactsIntent)
-      }
+    if (context.previewMode) {
+      patch({
+        pendingRequests: previewFixtures.requests.filter(
+          (request) => request.status === 'waiting' || request.status === 'in_progress',
+        ),
+        requests: previewFixtures.requests,
+        hostProfiles: Object.fromEntries(
+          previewFixtures.hostProfiles.map((profile) => [profile.id, profile]),
+        ),
+      })
+      applyHostSessionFacts(previewFixtures.hostSessions, hostSessionFactsIntent)
       patch({ loadingNavigation: false, loadingRequests: false })
       return true
     }
 
     try {
+      await context.transport.waitUntilReady()
       const [nextInbox, nextHostSessions, profiles] = await Promise.all([
         context.transport.call('listFeedbackInbox', undefined),
         context.transport.call('listHostSessions', undefined),
@@ -236,9 +233,11 @@ export function createNavigationController(context: NavigationControllerContext)
   function applyInboxSnapshot(nextInbox: FeedbackRequestSummary[]) {
     const arrivals = notificationTracker.observe(nextInbox)
     patch({ pendingRequests: nextInbox })
-    void invoke('set_pending_count', { count: nextInbox.length }).catch(() => {
-      // Tray updates are a convenience; the inbox remains authoritative.
-    })
+    if (context.isTauri) {
+      void invoke('set_pending_count', { count: nextInbox.length }).catch(() => {
+        // Tray updates are a native convenience; the inbox remains authoritative.
+      })
+    }
     if (arrivals.length === 0) return
 
     if (
@@ -437,7 +436,7 @@ export function createNavigationController(context: NavigationControllerContext)
     const trimmed = title.trim()
     if (!trimmed || trimmed === session.title) return
     try {
-      if (context.previewMode || !context.isTauri) {
+      if (context.previewMode) {
         replaceHostSession({ ...session, title: trimmed })
         return
       }
@@ -455,7 +454,7 @@ export function createNavigationController(context: NavigationControllerContext)
 
   async function setHostSessionPinned(session: HostSessionSummary, pinned: boolean) {
     try {
-      if (context.previewMode || !context.isTauri) {
+      if (context.previewMode) {
         replaceHostSession({
           ...session,
           pinned_at: pinned ? new Date().toISOString() : null,
@@ -482,7 +481,7 @@ export function createNavigationController(context: NavigationControllerContext)
     }
     if (context.isDirty() && !(await context.saveDraftNow())) return
     try {
-      if (!(context.previewMode || !context.isTauri)) {
+      if (!context.previewMode) {
         await context.transport.call('archiveHostSession', {
           host_id: session.host_id,
           host_session_id: session.host_session_id,
@@ -496,7 +495,7 @@ export function createNavigationController(context: NavigationControllerContext)
         patch({ selectedHostId: session.host_id, selectedHostSessionId: null })
         context.clearWorkspace()
       }
-      if (context.previewMode || !context.isTauri) {
+      if (context.previewMode) {
         applyHostSessionFacts(
           get(store).hostSessions.filter(
             (candidate) =>
@@ -516,7 +515,7 @@ export function createNavigationController(context: NavigationControllerContext)
 
   async function setHostPinned(hostId: string, pinned: boolean) {
     try {
-      if (context.previewMode || !context.isTauri) {
+      if (context.previewMode) {
         const pinnedAt = pinned ? new Date().toISOString() : null
         applyHostSessionFacts(
           get(store).hostSessions.map((session) =>

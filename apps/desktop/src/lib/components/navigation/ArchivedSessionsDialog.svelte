@@ -40,7 +40,6 @@
   }
 
   export let open = false
-  export let isTauri = false
   export let transport: ApplicationTransport
   export let previewMode = false
   export let resolveHostProfile: (hostId: string) => HostProfile
@@ -214,7 +213,7 @@
   }
 
   async function fetchSessionRequests(session: HostSessionSummary) {
-    if (previewMode || !isTauri) return previewArchivedRequests(session, search)
+    if (previewMode) return previewArchivedRequests(session, search)
     return (
       await transport.call('listFeedbackRequests', {
         host_id: session.host_id,
@@ -232,7 +231,7 @@
     loading = true
     try {
       const nextSessions =
-        previewMode || !isTauri
+        previewMode
           ? previewArchivedSessions(search)
           : await transport.call('listArchivedHostSessions', {
               search: search.trim() || null,
@@ -302,7 +301,7 @@
     detailLoadingRequestId = request.request_id
     try {
       const workspace =
-        previewMode || !isTauri
+        previewMode
           ? previewWorkspaceFor(request.request_id)
           : await transport.call('getFeedbackWorkspace', {
               request_id: request.request_id,
@@ -310,7 +309,7 @@
       if (!workspace) throw new Error(tr('This feedback request could not be found.'))
       const publishedFeedback =
         workspace.request.status === 'completed' && workspace.feedback
-          ? previewMode || !isTauri
+          ? previewMode
             ? {
                 markdown: workspace.draft.body_markdown,
                 uncooked_markdown: workspace.draft.body_markdown,
@@ -348,7 +347,7 @@
 
   async function unarchiveSession(session: HostSessionSummary) {
     await runAction(`unarchive:${session.host_id}:${session.host_session_id}`, async () => {
-      if (!(previewMode || !isTauri)) {
+      if (!previewMode) {
         await transport.call('unarchiveHostSession', {
           host_id: session.host_id,
           host_session_id: session.host_session_id,
@@ -360,7 +359,7 @@
   async function deleteSession(session: HostSessionSummary) {
     if (!confirm(tr('Delete this archived session permanently?'))) return
     await runAction(`delete-session:${session.host_id}:${session.host_session_id}`, async () => {
-      if (!(previewMode || !isTauri)) {
+      if (!previewMode) {
         await transport.call('deleteHostSession', {
           host_id: session.host_id,
           host_session_id: session.host_session_id,
@@ -372,7 +371,7 @@
   async function deleteRequest(request: FeedbackRequestSummary) {
     if (!confirm(tr('Delete this archived request permanently?'))) return
     await runAction(`delete-request:${request.request_id}`, async () => {
-      if (!(previewMode || !isTauri)) {
+      if (!previewMode) {
         await transport.call('deleteFeedbackRequest', { request_id: request.request_id })
       }
     })
