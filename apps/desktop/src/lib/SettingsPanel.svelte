@@ -12,6 +12,7 @@
     Clipboard,
     Download,
     FolderCog,
+    Globe2,
     Languages,
     LoaderCircle,
     Mic,
@@ -167,6 +168,13 @@
     bytes: number[]
   }
 
+  type WebAccessStatus = {
+    running: boolean
+    url: string | null
+  }
+
+  type WebAccessPhase = 'loading' | 'stopped' | 'starting' | 'running' | 'stopping' | 'error'
+
   type DshInstallResult = {
     profileId: string
     profileDir: string
@@ -223,6 +231,9 @@
   let unlistenModelProgress: UnlistenFn | null = null
   let unlistenStorageProgress: UnlistenFn | null = null
   let hasMacPermissions = false
+  let webAccessStatus: WebAccessStatus = { running: false, url: null }
+  let webAccessPhase: WebAccessPhase = 'loading'
+  let webAccessError = ''
   const isTauri = '__TAURI_INTERNALS__' in window
   const isMac = currentDesktopPlatform() === 'macOS'
   const isWindows = currentDesktopPlatform() === 'Windows'
@@ -239,7 +250,7 @@
     )
     if (nextSectionCommandState !== sectionCommandState) {
       sectionCommandState = nextSectionCommandState
-      activeSection = nextSectionCommandState.activeSection
+      activeSection = isTauri ? nextSectionCommandState.activeSection : 'general'
     }
   }
 
@@ -252,6 +263,7 @@
       void refreshSpeechDevices()
       void refreshSpeechModels()
       void refreshMacPermissionPresence()
+      void refreshWebAccessStatus()
       void listen<SpeechModelProgress>('speech-model-progress', ({ payload }) => {
         modelProgress = payload
       }).then((unlisten) => {
@@ -277,6 +289,53 @@
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
+  }
+
+  async function refreshWebAccessStatus() {
+    if (!isTauri) return
+    try {
+      webAccessStatus = await invoke<WebAccessStatus>('get_web_access_status')
+      webAccessPhase = webAccessStatus.running ? 'running' : 'stopped'
+      webAccessError = ''
+    } catch (cause) {
+      webAccessPhase = 'error'
+      webAccessError = messageFrom(cause)
+    }
+  }
+
+  async function toggleWebAccess() {
+    if (!isTauri || webAccessPhase === 'starting' || webAccessPhase === 'stopping') return
+    const stopping = webAccessStatus.running
+    webAccessPhase = stopping ? 'stopping' : 'starting'
+    webAccessError = ''
+    try {
+      webAccessStatus = await invoke<WebAccessStatus>(
+        stopping ? 'stop_web_access' : 'start_web_access',
+      )
+      webAccessPhase = webAccessStatus.running ? 'running' : 'stopped'
+    } catch (cause) {
+      webAccessPhase = 'error'
+      webAccessError = messageFrom(cause)
+    }
+  }
+
+  async function openWebAccess() {
+    if (!webAccessStatus.running) return
+    try {
+      await invoke('open_web_access')
+    } catch (cause) {
+      webAccessError = messageFrom(cause)
+    }
+  }
+
+  async function copyWebAccessToken() {
+    if (!webAccessStatus.running) return
+    try {
+      await invoke('copy_web_access_token')
+      toast.success(tr('Web Access token copied.'))
+    } catch (cause) {
+      webAccessError = messageFrom(cause)
+    }
   }
 
   async function refreshMacPermissionPresence() {
@@ -664,6 +723,7 @@
             <MonitorCog data-icon="inline-start" />
             {tr('General')}
           </Tabs.Trigger>
+          {#if isTauri}
           {#if hasMacPermissions}
             <Tabs.Trigger value="permissions" class="h-9 w-full justify-start px-2.5">
               <ShieldCheck data-icon="inline-start" />
@@ -699,12 +759,15 @@
             <Info data-icon="inline-start" />
             {tr('About')}
           </Tabs.Trigger>
+          {/if}
         </Tabs.List>
 
+        {#if isTauri}
         <div class="settings-navigation-note mt-auto flex gap-2 border-t pt-3 text-[10px] leading-4 text-muted-foreground">
           <ShieldCheck class="mt-0.5 size-3.5 shrink-0" />
           <span>{tr('Adapter configuration is written only to your user directory and preserves other adapters.')}</span>
         </div>
+        {/if}
       </aside>
 
       <div class="settings-content flex min-h-0 min-w-0 flex-col">
@@ -808,7 +871,8 @@
               </Select.Root>
             </section>
 
-            <section class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-8 border-b pb-8">
+            {#if isTauri}
+            <section class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-8 border-b pb-8" aria-live="polite">
               <div class="flex gap-3">
                 <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
                   <Rocket class="size-4" />
@@ -825,6 +889,7 @@
                 {tr('Run getting started again')}
               </Button>
             </section>
+            {/if}
 
             <section class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-8 border-b pb-8">
               <div class="flex gap-3">
@@ -844,6 +909,64 @@
               </Button>
             </section>
 
+            {#if isTauri}
+            <section class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-8 border-b pb-8">
+              <div class="flex gap-3">
+                <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+                  <Globe2 class="size-4" />
+                </span>
+                <div>
+                  <h3 class="m-0 text-sm font-medium">{tr('Web Access')}</h3>
+                  <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
+                    {webAccessStatus.running
+                      ? tr('Available only in a browser on this computer at {url}.', {
+                          url: webAccessStatus.url ?? '',
+                        })
+                      : tr('Start a local browser Workbench. It stays off until you start it.')}
+                  </p>
+                  {#if webAccessError}
+                    <p class="m-0 mt-1 text-xs text-destructive" role="alert">{webAccessError}</p>
+                  {/if}
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                {#if webAccessPhase === 'running'}
+                  <Button variant="outline" onclick={() => void copyWebAccessToken()}>
+                    <Clipboard data-icon="inline-start" />
+                    {tr('Copy token')}
+                  </Button>
+                  <Button variant="outline" onclick={() => void openWebAccess()}>
+                    <Globe2 data-icon="inline-start" />
+                    {tr('Open')}
+                  </Button>
+                {/if}
+                <Button
+                  variant={webAccessStatus.running ? 'destructive' : 'outline'}
+                  disabled={webAccessPhase === 'loading' || webAccessPhase === 'starting' || webAccessPhase === 'stopping'}
+                  onclick={() => void toggleWebAccess()}
+                >
+                  {#if webAccessPhase === 'loading' || webAccessPhase === 'starting' || webAccessPhase === 'stopping'}
+                    <LoaderCircle data-icon="inline-start" class="animate-spin" />
+                  {:else if webAccessStatus.running}
+                    <X data-icon="inline-start" />
+                  {:else}
+                    <Play data-icon="inline-start" />
+                  {/if}
+                  {webAccessPhase === 'loading'
+                    ? tr('Loading…')
+                    : webAccessPhase === 'starting'
+                      ? tr('Starting…')
+                      : webAccessPhase === 'stopping'
+                        ? tr('Stopping…')
+                        : webAccessStatus.running
+                          ? tr('Stop')
+                          : tr('Start')}
+                </Button>
+              </div>
+            </section>
+            {/if}
+
+            {#if isTauri}
             <section class="grid gap-4">
               <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-8">
                 <div class="flex gap-3">
@@ -866,6 +989,7 @@
                 {dataStorage?.selected_path ?? tr('Loading data storage location…')}
               </div>
             </section>
+            {/if}
           </Tabs.Content>
 
 

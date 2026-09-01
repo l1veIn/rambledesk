@@ -27,6 +27,7 @@
   import TaskWorkspaceView from './lib/workspace/TaskWorkspaceView.svelte'
   import type { JSONContent } from '@tiptap/core'
   import type { ApplicationTransport } from './lib/application/applicationTransport'
+  import type { PublishedFeedbackAction } from './lib/publishedFeedbackAction'
   import { APPLICATION_EVENTS_STREAM } from './lib/application/applicationEvents'
   import {
     applicationResourcesAffectNavigation,
@@ -37,6 +38,7 @@
   } from './lib/application/applicationSnapshotRefetch'
 
   export let applicationTransport: ApplicationTransport
+  export let publishedFeedbackAction: PublishedFeedbackAction
   export let previewMode = false
 
   import type {
@@ -428,6 +430,10 @@
       pageError = messageFrom(cause)
     },
   })
+
+  export function refetchAfterTransportReady() {
+    applicationSnapshotRefetch.request([{ kind: 'all' }])
+  }
 
   function currentDraftSnapshot(): FeedbackDraftSnapshot {
     return { documentJson: draftDocumentJson, bodyMarkdown: draftBody }
@@ -1689,7 +1695,7 @@
     try {
       const input: CancelFeedbackInput = {
         request_id: workspace.request.request_id,
-        reason: 'Human cancelled from RambleDesk desktop',
+        reason: 'Human cancelled from RambleDesk',
       }
       const result = await applicationTransport.call('cancelFeedbackRequest', input)
       completedResult = result
@@ -1715,11 +1721,14 @@
   async function openFeedbackPackage() {
     if (!feedbackResult || !workspace) return
     try {
-      await invoke('reveal_feedback_package', {
-        input: { request_id: workspace.request.request_id },
-      })
+      await publishedFeedbackAction.run(workspace.request.request_id)
     } catch (cause) {
-      pageError = tr('Could not open Feedback Package: {error}', { error: messageFrom(cause) })
+      pageError = tr(
+        publishedFeedbackAction.label === 'Open feedback package'
+          ? 'Could not open Feedback Package: {error}'
+          : 'Could not download published feedback: {error}',
+        { error: messageFrom(cause) },
+      )
     }
   }
 
@@ -1966,6 +1975,7 @@
             {cancelling}
             {approving}
             {canOpenResumePrompt}
+            nativeCapabilities={isTauri}
             {resolveHostProfile}
             formatTime={formatTimeLocal}
             onReload={() => void reloadWorkspace()}
@@ -1983,6 +1993,7 @@
             onFileSelection={attachmentController.handleFileSelection}
             onRemoveAttachment={(attachment) => void attachmentController.removeAttachment(attachment)}
             onOpenPackage={() => void openFeedbackPackage()}
+            packageActionLabel={tr(publishedFeedbackAction.label)}
             onOpenResumePrompt={openResumePrompt}
             onSubmit={() => void submitFeedback()}
             onCancel={() => void cancelFeedback()}

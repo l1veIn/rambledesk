@@ -5,6 +5,11 @@ import path from 'node:path'
 
 export default defineConfig({
   plugins: [tailwindcss(), svelte()],
+  build: {
+    // Web Access reads this exact output inventory from the Tauri asset bundle.
+    // It is the source of truth for immutable caching and missing-asset rejection.
+    manifest: true,
+  },
   resolve: {
     alias: {
       $lib: path.resolve('./src/lib'),

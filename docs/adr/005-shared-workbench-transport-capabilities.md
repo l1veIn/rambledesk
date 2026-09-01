@@ -9,10 +9,10 @@
 本文使用的 Workbench Client、Backend Runtime、Application Transport、Capability、Local
 Integration Server 与 Web Access 均以唯一术语源为准；这里只记录它们之间的决策和后果。
 
-RambleDesk 当前只有 Desktop Client。Svelte 工作台直接通过 Tauri commands/events 调用由
-desktop composition root 装配的 application；同一进程还启动一个供 Generic MCP 与 Pi Host
-Adapter 使用的 Local Integration Server。为了支持 future Web Client，不能复制业务实现、把
-Desktop 强制改走 HTTP，或把浏览器能力伪装成原生能力。
+RambleDesk 最初只有 Desktop Client。Svelte 工作台通过 Tauri commands/events 调用由 desktop
+composition root 装配的 application；同一进程还启动一个供 Generic MCP 与 Pi Host Adapter 使用的
+Local Integration Server。现已增加共享该工作台与 Backend Runtime 的 loopback Web Client；实现
+不得复制业务规则、把 Desktop 强制改走 HTTP，或把浏览器能力伪装成原生能力。
 
 Transport、设备 Capability 和 listener 生命周期若没有独立边界，会产生以下风险：
 
@@ -27,7 +27,7 @@ Transport、设备 Capability 和 listener 生命周期若没有独立边界，�
 ### 1. 一个 Backend Runtime，多种 Workbench Client
 
 Backend Runtime 是 Request、Feedback Draft、Package、配置以及未来 Session Runtime / Timeline
-的唯一业务事实来源。Desktop Client 和 future Web Client 复用同一 Workbench Client，并通过
+的唯一业务事实来源。Desktop Client 和 Web Client 复用同一 Workbench Client，并通过
 同一个 Application Transport Interface 调用同一 application Module。
 
 Backend Runtime 是运行角色，不要求新增同名 crate。当前每个 desktop 进程只装配一份
@@ -37,8 +37,8 @@ Backend Runtime 是运行角色，不要求新增同名 crate。当前每个 des
 ### 2. Application Transport 是 Interface，Tauri 与 HTTP + WebSocket 是 Implementation
 
 Application Transport Interface 提供 typed command/query、变化订阅、ready barrier 与
-capability manifest。Tauri IPC 是 Desktop Implementation；Web Access 的 HTTP + WebSocket 是
-future Web Implementation。两者只做 DTO、错误和传输映射，不实现领域规则。
+capability manifest。Tauri IPC 是 Desktop Implementation；Web Access 的 HTTP + WebSocket 是 Web
+Implementation。两者只做 DTO、错误和传输映射，不实现领域规则。
 
 Backend Runtime 每次启动生成一个 opaque、进程生命周期内不变且跨启动唯一的
 `runtime_generation`。WebSocket `ready` frame 携带该 generation；Client 只接受当前 local
@@ -113,18 +113,20 @@ Web Access 使用与 Local Integration Server 不同的 credential：
 
 1. Desktop composition root 装配的 Web Access security Module 在人类显式启用或重新生成
    credential 时创建并持久化独立的 256-bit durable Web token；Backend Runtime/core 不拥有
-   transport credential；只有 Desktop 设置界面可经人类操作显示或复制它；
+   transport credential；durable token 不返回 UI，只有 Desktop 设置界面可经专用原生 clipboard
+   command 复制它；
 2. durable token 优先存入 OS credential store（macOS Keychain、Windows Credential Manager、
    可用时的 Linux Secret Service），并在平台支持时使用 device-local / non-sync 属性。仅允许回退
    到通用配置和 RambleDesk backup/export roots 之外的专用 secret file：Unix mode `0600`，
-   Windows 使用仅当前用户可读的 DACL，并在平台支持时设置 backup exclusion；无法建立或验证
-   user-only protection 时 Web Access 必须 fail closed。RambleDesk 不得把 token 复制到通用配置、
+   Windows 使用仅当前用户可读的 DACL，并在平台支持时设置 backup exclusion；当前实现不使用
+   secret-file fallback，无法使用 OS credential store 时 Web Access 必须 fail closed。RambleDesk
+   不得把 token 复制到通用配置、
    SQLite、日志、诊断包、自己生成的 backup/export 或 Feedback Package；OS 管理的加密设备/账户
    备份属于平台安全边界，不宣称应用能够绝对排除；
 3. 浏览器以 `Authorization: Bearer <durable-web-token>` 调用 same-origin
    `POST /api/auth/session`；成功后签发 scope 受限、idle TTL 30 分钟、absolute TTL 12 小时的
-   session token；任一受保护请求或已认证 WebSocket 活动可以刷新 idle TTL，但不能延长 absolute
-   TTL；
+   session token；受保护 HTTP 请求或新的 WebSocket 认证可以刷新 idle TTL，但不能延长 absolute
+   TTL，已连接 WebSocket 到期时主动关闭；
 4. session token 只存在 Web Access 进程内存与浏览器当前 JavaScript 内存；页面刷新或关闭后必须
    重新 bootstrap；
 5. durable/session token 禁止进入 `sessionStorage`、`localStorage`、IndexedDB、URL、日志或
@@ -149,19 +151,28 @@ Web routes 分别设置 body、upload、rate 与 concurrent-connection 上限。
 
 - `apps/desktop` 是 composition root；每个 desktop 进程装配一份 `FeedbackApplication`。
 - Desktop Client 使用 Tauri commands/events；Desktop Shell 提供 Native Capability。
-- 一个 loopback listener 同时承载 `/api` 与 `/mcp`，不提供 Web static/WS route。
+- Local Integration Server 的 loopback listener 承载 `/api` 与 `/mcp`，不提供 Web
+  static/application/WS route。
 - Local Integration Server 使用持久 256-bit hex bearer token，并 constant-time compare。
 - token 文件在 Unix 为 `0600`；非 Unix 当前没有等价 ACL 保证。
 - Host 只接受 `127.0.0.1` 或 `localhost`；Origin 缺失供本地非浏览器客户端，存在时 exact
   allowlist；统一 body limit 为 96 MiB。
-- Draft CAS 已存在，但 HTTP application command/query parity 尚未实现。
+- 默认关闭的独立 Web Access Server 只绑定 `127.0.0.1`，提供共享 SPA、application HTTP 与
+  readiness/invalidation WebSocket；它与 Local Integration Server 分离 listener、credential、auth
+  domain、route set 与 lifecycle。
+- Web Client 复用 Workbench Client，以 OS credential store 中的独立 durable token bootstrap
+  短期、仅内存 session；当前支持文字 Draft、附件 file picker、提交、宿主会话操作及安全反馈投影下载。
+- Web Access 当前限制为每分钟 8 次 bootstrap、16 个并发 application HTTP request、8 个 event
+  socket；JSON 与 attachment upload 分别使用有界 body。session hash 对有界 session 集合完整
+  constant-time compare；request authorization 是 admission lease，已入场 mutation 不会在提交后被
+  revoke 改写成 401。
+- Draft CAS、Tauri/HTTP application parity、ready/refetch 与 session revoke/re-auth 已实现。
 
 ### Target
 
-- future Web Client 复用 Workbench Client 与 Backend Runtime。
-- Web Access 提供 HTTP snapshot/commands 与 WebSocket readiness/invalidation。
-- Web Access 默认关闭、独立监听 `127.0.0.1`，使用独立 Web credential 与 auth domain。
-- Native/Browser Capability 均在 Application Transport 外，通过 manifest 呈现差异。
+- LAN/TLS Web Access 与更完整的 credential 管理 UI。
+- Browser Audio Source、浏览器截图/剪贴板与更完整的 capability manifest。
+- Native/Browser Capability 继续位于 Application Transport 外，通过 manifest 呈现差异。
 
 ## Rejected
 
@@ -181,8 +192,8 @@ Web routes 分别设置 body、upload、rate 与 concurrent-connection 上限。
 
 - LAN Web Access；启用前必须采用 HTTPS/WSS 或受信任 TLS proxy，并重新安全审计；
 - headless Backend Runtime / composition root；
-- Web app 最终目录、新 crate 或 deployment packaging；
-- credential revocation UI 与浏览器重新认证恢复流程；
+- headless 或独立 Web deployment packaging；
+- 完整 credential rotation/revocation 管理 UI；
 - sequence replay、ring buffer、multiplex protocol；
 - 实时二进制音频 WebSocket；
 - ACP、Router 或全局 client state framework。
@@ -198,8 +209,8 @@ Web routes 分别设置 body、upload、rate 与 concurrent-connection 上限。
 
 代价：
 
-- 需要实现 Application Transport Interface、HTTP parity、ready/refetch 协议和 Web credential
-  bootstrap/session lifecycle；
+- 需要维护 Tauri/HTTP parity、ready/refetch、Web credential bootstrap/session lifecycle 与静态
+  资源安全合同；
 - 多客户端会暴露真实 CAS 冲突，UI 必须提供恢复而非静默重试；
 - Desktop 与 Web 需要分别验收设备权限和安全策略。
 

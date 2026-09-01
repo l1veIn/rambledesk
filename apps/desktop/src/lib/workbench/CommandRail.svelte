@@ -34,6 +34,7 @@
   export let cancelling = false
   export let approving = false
   export let canOpenResumePrompt = false
+  export let nativeCapabilities = false
   export let onToggleRamble: () => void = () => {}
   export let onExitRamble: () => void = () => {}
   export let onOpenVoiceSettings: () => void = () => {}
@@ -43,6 +44,7 @@
   export let onRemoveAttachment: (attachment: AttachmentView) => void = () => {}
   export let onPreviewAttachment: (attachment: AttachmentView) => void = () => {}
   export let onOpenPackage: () => void = () => {}
+  export let packageActionLabel = 'Open feedback package'
   export let onOpenResumePrompt: () => void = () => {}
   export let onCookPreview: () => void = () => {}
   export let onSubmit: () => void = () => {}
@@ -60,7 +62,8 @@
 >
   {#if !readOnly && !interactionLocked}
     <div class="shrink-0">
-      <RamblePanel
+      {#if nativeCapabilities}
+        <RamblePanel
         {rambleEngaged}
         {rambleActive}
         {ramblePhase}
@@ -76,12 +79,14 @@
         onToggle={onToggleRamble}
         onExit={onExitRamble}
         onOpenVoiceSettings={onOpenVoiceSettings}
-      />
+        />
+      {/if}
 
       <CaptureToolsCard
         attachmentCount={workspace.attachments.length}
         {attachmentBusy}
         {readOnly}
+        nativeCaptureAvailable={nativeCapabilities}
         onScreenCapture={onStartScreenCapture}
         onImportClipboard={onImportClipboard}
         {onFileSelection}
@@ -115,6 +120,7 @@
       {approving}
       {canOpenResumePrompt}
       onOpenPackage={onOpenPackage}
+      {packageActionLabel}
       onOpenResumePrompt={onOpenResumePrompt}
       onCookPreview={onCookPreview}
       onSubmit={onSubmit}

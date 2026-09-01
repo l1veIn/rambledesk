@@ -77,6 +77,7 @@
   export let cancelling = false
   export let approving = false
   export let canOpenResumePrompt = false
+  export let nativeCapabilities = false
   export let resolveHostProfile: (hostId: string) => HostProfile
   export let formatTime: (value: string | null | undefined) => string
   export let onReload: () => void = () => {}
@@ -96,6 +97,7 @@
   export let onFileSelection: (event: Event) => void = () => {}
   export let onRemoveAttachment: (attachment: AttachmentView) => void = () => {}
   export let onOpenPackage: () => void = () => {}
+  export let packageActionLabel = 'Open feedback package'
   export let onOpenResumePrompt: () => void = () => {}
   export let onSubmit: () => void = () => {}
   export let onCancel: () => void = () => {}
@@ -295,6 +297,7 @@
         {cancelling}
         {approving}
         {canOpenResumePrompt}
+        {nativeCapabilities}
         {onToggleRamble}
         {onExitRamble}
         {onOpenVoiceSettings}
@@ -304,6 +307,7 @@
         {onRemoveAttachment}
         onPreviewAttachment={openAttachmentPreview}
         {onOpenPackage}
+        {packageActionLabel}
         {onOpenResumePrompt}
         {onCookPreview}
         {onSubmit}

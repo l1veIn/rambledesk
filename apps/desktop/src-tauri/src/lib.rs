@@ -8,6 +8,7 @@ mod open_attachment;
 mod pi_install;
 mod screen_capture;
 mod shortcuts;
+mod web_access;
 
 use rambledesk_core::{
     ApplicationChangeHub, ApplicationCommandFacade, ApplicationHostProfileView,
@@ -45,6 +46,9 @@ struct WorkbenchState {
     local_server: ServerHandle,
     application: FeedbackApplication,
     application_commands: Arc<ApplicationCommandFacade>,
+    application_change_hub: Arc<ApplicationChangeHub>,
+    web_access_runtime: tokio::sync::Mutex<Option<web_access::WebAccessRuntime>>,
+    web_access_credential_store: Arc<dyn web_access::WebAccessCredentialStore>,
     store: rambledesk_storage::SqliteFeedbackStore,
     generic_mcp_configuration: String,
     pending_count: AtomicU32,
@@ -235,6 +239,9 @@ pub fn run() {
                     local_server: handle,
                     application,
                     application_commands,
+                    application_change_hub,
+                    web_access_runtime: tokio::sync::Mutex::new(None),
+                    web_access_credential_store: Arc::new(web_access::OsWebAccessCredentialStore),
                     store,
                     generic_mcp_configuration: configuration,
                     pending_count: AtomicU32::new(0),
@@ -364,6 +371,11 @@ pub fn run() {
             shortcuts::set_shortcut_setting,
             shortcuts::reset_shortcut_settings,
             shortcuts::set_shortcut_capture_active,
+            web_access::get_web_access_status,
+            web_access::start_web_access,
+            web_access::stop_web_access,
+            web_access::copy_web_access_token,
+            web_access::open_web_access,
             log_frontend_error,
         ])
         .build(tauri::generate_context!());
@@ -385,6 +397,11 @@ pub fn run() {
             && let Some(state) = app_handle.try_state::<WorkbenchState>()
         {
             state.local_server.cancel();
+            if let Ok(runtime) = state.web_access_runtime.try_lock()
+                && let Some(runtime) = runtime.as_ref()
+            {
+                runtime.cancel();
+            }
         }
     });
 }

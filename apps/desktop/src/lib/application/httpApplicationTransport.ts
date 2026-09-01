@@ -173,6 +173,7 @@ export type AuthenticatedHttpApplicationSessionOptions = Readonly<{
   scheduleReconnect?: HttpApplicationReconnectScheduler
   random?: () => number
   reconnectBaseDelayMs?: number
+  onTerminalError?: (error: HttpApplicationSessionRevokedError) => void
 }>
 
 export class HttpApplicationSession {
@@ -185,6 +186,7 @@ export class HttpApplicationSession {
   readonly #scheduleReconnect: HttpApplicationReconnectScheduler
   readonly #random: () => number
   readonly #reconnectBaseDelayMs: number
+  readonly #onTerminalError: (error: HttpApplicationSessionRevokedError) => void
   readonly #subscribers = new Set<
     Readonly<{
       handler: (event: ApplicationEvent) => void
@@ -245,6 +247,7 @@ export class HttpApplicationSession {
       })
     this.#random = options.random ?? Math.random
     this.#reconnectBaseDelayMs = options.reconnectBaseDelayMs ?? 250
+    this.#onTerminalError = options.onTerminalError ?? (() => {})
     this.#resetReadyBarrier()
   }
 
@@ -660,6 +663,11 @@ export class HttpApplicationSession {
     this.#cancelReconnect = null
     this.#reportSubscriptionError(error)
     this.#subscribers.clear()
+    try {
+      this.#onTerminalError(error)
+    } catch {
+      // The composition root cannot keep a revoked authenticated session alive.
+    }
     return error
   }
 

@@ -1,6 +1,6 @@
 # RambleDesk 术语表
 
-> 状态：v3 当前基线。
+> 状态：v4 当前基线。
 > 目标：固定产品语言、协议字段和 package 边界。代码、文档、UI 文案、测试命名若与本文冲突，以本文为准。
 
 本文是 RambleDesk 的唯一术语源。其他文档只引用本文，不重新定义产品对象。
@@ -34,13 +34,13 @@
 | 智能体 | 发起反馈请求并读取反馈包继续工作的 LLM coding actor。 | 拥有任务推理；不拥有 RambleDesk 持久状态。 |
 | 宿主 | 智能体运行所在的 runtime/container，例如 Pi、Claude Code、Codex、OpenCode。 | 拥有自己的 session、tool、plugin API；不定义 RambleDesk 存储合同。 |
 | 工作台 | RambleDesk 的人类反馈工作界面；同一套工作台可以由不同 Workbench Client 呈现。 | 拥有人类反馈工作流；不实现宿主协议，不限定为桌面窗口。 |
-| Workbench Client（工作台客户端） | 承载共享工作台 UI 的客户端角色；当前由 `apps/desktop` 中的 Svelte UI 实现，目标是由 Desktop Client 与 Web Client 复用。 | 只持有 UI 投影和 client-local workspace snapshot；不拥有 Request、Feedback Draft 或 Package 的 canonical 事实。 |
+| Workbench Client（工作台客户端） | 承载共享工作台 UI 的客户端角色；当前由 `apps/desktop` 中的 Svelte UI 实现，并由 Desktop Client 与 loopback Web Client 复用。 | 只持有 UI 投影和 client-local workspace snapshot；不拥有 Request、Feedback Draft 或 Package 的 canonical 事实。 |
 | Desktop Client（桌面客户端） | 在 Desktop Shell 内运行的 Workbench Client，通过 Tauri IPC 的 Application Transport Implementation 访问 Backend Runtime。 | 是当前已实现的客户端；不把 Tauri API 暴露为共享 UI 的业务合同。 |
-| Web Client（Web 客户端） | 在浏览器中运行的 Workbench Client，通过 Web Access 的 HTTP + WebSocket Application Transport Implementation 访问 Backend Runtime。 | 是目标客户端，当前尚未实现；不得被文档或 UI 描述成已有能力。 |
+| Web Client（Web 客户端） | 在浏览器中运行的 Workbench Client，通过 Web Access 的 HTTP + WebSocket Application Transport Implementation 访问 Backend Runtime。 | 当前支持默认关闭、仅 loopback 的文字反馈工作流；不据此声称已有 LAN、浏览器录音、截图或桌面原生能力。 |
 | Backend Runtime（后端运行时） | 长期持有 application use cases、storage、配置以及未来 Session Runtime / Timeline 的 Rust 运行角色。 | 是业务事实唯一来源；当前由 desktop composition root 组装，不等同于 HTTP listener，也不预设一个新 crate。 |
-| Application Transport（应用传输） | Workbench Client 调用 application command/query、订阅变化、等待 ready 并读取 capability manifest 的 Interface。 | Tauri IPC 与未来 HTTP + WebSocket 是不同 Implementation，但必须调用同一 Backend Runtime application Module；`capabilities` 只报告可用性，不执行设备能力。 |
+| Application Transport（应用传输） | Workbench Client 调用 application command/query、订阅变化、等待 ready 并读取 capability manifest 的 Interface。 | Tauri IPC 与 HTTP + WebSocket 是不同 Implementation，但调用同一 Backend Runtime application Module；`capabilities` 只报告可用性，不执行设备能力。 |
 | Local Integration Server（本地集成服务） | 为 Generic MCP、Pi 等 Host Adapter 提供 authenticated loopback listener、JSON API、route mounting 和 guard 的 transport Module。 | 服务宿主集成，不拥有领域语义；其启停和 route set 独立于 Web Access。 |
-| Web Access（Web 访问） | 可选、默认关闭的浏览器访问能力，目标是向 Web Client 提供静态资源、HTTP 和 WebSocket；第一阶段只监听 `127.0.0.1`。 | 当前尚未实现；关闭 Web Access 不得停止 Backend Runtime 或 Local Integration Server，开放 LAN 需要单独的安全决策。 |
+| Web Access（Web 访问） | 可选、默认关闭的浏览器访问能力，通过独立 loopback listener 向 Web Client 提供静态资源、HTTP 与 WebSocket。 | 当前只监听 `127.0.0.1`；关闭它不停止 Backend Runtime 或 Local Integration Server，开放 LAN 仍需要单独的安全决策。 |
 | Desktop Shell（桌面壳层） | Tauri 进程、窗口、托盘、更新器、原生权限和 desktop composition root。 | 组装 Desktop Client、Backend Runtime 与本地能力；不拥有 UI 业务事实。 |
 | Native Capability（原生能力） | 由 Desktop Shell 提供的 OS / device Implementation，例如全局快捷键、系统截图、原生录音、托盘、更新器和原生对话框。 | 独立于 Application Transport；可访问的设备和权限范围不能被 Web Client 假定。 |
 | Browser Capability（浏览器能力） | 由浏览器 API 提供的 device-scoped Implementation，例如受权限和用户手势约束的媒体、剪贴板、文件选择、下载和通知。 | 独立于 Application Transport；受 secure context、浏览器、权限与当前设备限制，不等价于 Native Capability，也不代表服务器文件系统。 |
@@ -152,7 +152,7 @@ Pi 原生适配器不需要提交后的 continuation，因为 Pi 已经在工具
 
 ## Package 边界
 
-下表描述当前代码位置；架构角色不等于新 package 规划。特别是 Backend Runtime 是当前由 desktop composition root 组装的运行角色，Web Client 与 Web Access 仍是目标能力，本文不据此虚构新 crate。
+下表描述当前代码位置；架构角色不等于新 package 规划。特别是 Backend Runtime 是当前由 desktop composition root 组装的运行角色；Web Client 与 Web Access 复用现有 `apps/desktop` 与 server Module，本文不据此虚构新 crate。
 
 | 架构角色 | 当前映射 | 目标边界 |
 | --- | --- | --- |
@@ -161,15 +161,15 @@ Pi 原生适配器不需要提交后的 continuation，因为 Pi 已经在工具
 | Desktop Client / Desktop Shell | `apps/desktop`。 | Shell 只保留 desktop composition 与 Native Capability；共享 UI 不依赖 Tauri 细节。 |
 | Tauri Application Transport Implementation | `apps/desktop` 的 Tauri command/event wiring。 | 实现统一 Application Transport Interface，调用同一 Backend Runtime application Module。 |
 | Local Integration Server | `crates/rambledesk-local-server`。 | 继续服务 Host Adapter；不因 Web Access 启停而停止；与 Web Access 共享同一安全 policy/primitives。 |
-| Web Client / HTTP + WebSocket Application Transport Implementation / Web Access | 尚未实现。 | 后续实现必须复用 Backend Runtime 与安全 policy/primitives，并与 Local Integration Server 分离 listener、credential、auth domain、生命周期和 route set；本文不指定新目录或 crate。 |
+| Web Client / HTTP + WebSocket Application Transport Implementation / Web Access | `apps/desktop` 中的共享 Svelte UI、browser composition/auth gate/HTTP Transport，以及 `crates/rambledesk-local-server` 中的独立 Web Access server Module。 | 复用同一 Backend Runtime 与安全 policy/primitives，并与 Local Integration Server 分离 listener、credential、auth domain、生命周期和 route set。 |
 | Native Capability Implementation | `apps/desktop` 及 desktop-only crates。 | 与 Application Transport 分离并通过 capability manifest 暴露可用性。 |
-| Browser Capability Implementation | 尚未实现。 | 只承诺浏览器实际允许的能力，不模拟原生或服务器文件系统语义。 |
+| Browser Capability Implementation | `apps/desktop` 当前使用浏览器 file picker 与 download，原生截图、原生录音、窗口和系统路径操作明确不可用。 | 后续媒体/剪贴板能力只承诺浏览器实际允许的范围，不模拟原生或服务器文件系统语义。 |
 
 | Package / 区域 | 职责 | 不应包含 |
 | --- | --- | --- |
 | `crates/rambledesk-core` | 领域 DTO、application use cases、反馈请求/反馈包合同。 | HTTP、JSON、MCP、Pi、desktop commands、host install、Local Integration Server、Web Access。 |
 | `crates/rambledesk-storage` | SQLite 持久化、请求/草稿/附件 metadata、宿主会话关联、反馈包发布。 | 宿主协议、适配器安装、源码 checkout runtime 语义。 |
-| `crates/rambledesk-local-server` | 当前实现 Local Integration Server：loopback listener、auth token、Host/Origin guard、本地 JSON API、route mounting。 | 领域规则、MCP tool schema、Pi package 代码；不得因未来复用 router Module 而把 Web Access 与 Local Integration Server 的生命周期合并。 |
+| `crates/rambledesk-local-server` | 实现 Local Integration Server，并提供独立可组合的 Web Access server、session auth、静态资源与 application/event routes。 | 领域规则、MCP tool schema、Pi package 代码；两个 listener 的 credential、auth domain、route set 与生命周期不得合并。 |
 | `crates/rambledesk-mcp` | Generic MCP Adapter 完整方案：MCP schema、tool handler、instructions、结果/错误映射、客户端检测/安装执行引擎。 | listener、token path、JSON API、host-specific continuation、per-host 知识。 |
 | `crates/rambledesk-hosts` | 宿主知识注册表（executable/marker/配置路径/ConfigFormat）、Host profile、展示元数据、默认适配器选择、continuation strategy。 | MCP implementation、Pi package、适配器安装/写入执行逻辑。 |
 | `packages/pi-rambledesk` | Pi 原生适配器 package。 | MCP client 行为、desktop UI 状态、storage 逻辑。 |

@@ -61,9 +61,14 @@ objc2-av-foundation = { version = "0.3.2", features = ["block2"] }
 objc2-core-foundation = "0.3.2"
 objc2-core-graphics = "0.3.2"
 scap = { git = "https://github.com/mg-chao/scap", branch = "20250712_custom" }
+keyring = { version = "3.6.3", default-features = false, features = ["apple-native"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_DataExchange", "Win32_UI_WindowsAndMessaging"] }
+keyring = { version = "3.6.3", default-features = false, features = ["windows-native"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3.6.3", default-features = false, features = ["linux-native-sync-persistent", "crypto-rust", "vendored"] }
 [dev-dependencies]
 anyhow.workspace = true
 axum.workspace = true

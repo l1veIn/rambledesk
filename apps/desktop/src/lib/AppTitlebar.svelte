@@ -75,10 +75,10 @@
 <header
   class={[
     'relative z-30 flex h-[46px] select-none items-stretch rounded-t-[15px] border-b bg-background/95 backdrop-blur-md',
-    isMac ? 'pl-[58px]' : '',
+    isTauri && isMac ? 'pl-[58px]' : '',
   ]}
 >
-  {#if isMac}
+  {#if isTauri && isMac}
     <div class="absolute left-[15px] flex h-full items-center gap-2" aria-label={t($locale, 'Window controls')}>
       <button
         class="traffic close size-3 rounded-full border border-black/10"
@@ -93,29 +93,37 @@
     </div>
   {/if}
 
-  <button
-    class="titlebar-brand flex min-w-0 cursor-grab items-center gap-2.5 border-0 bg-transparent px-3 text-left text-foreground active:cursor-grabbing focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-ring"
-    aria-label={t($locale, 'Drag window')}
-    title={t($locale, 'Drag window')}
-    onpointerdown={(event) => void startDragging(event)}
-  >
-    <img
-      class="size-7 shrink-0 rounded-md object-contain"
-      src={appIcon}
-      alt=""
-      draggable="false"
-    />
-    <strong class="text-xs font-semibold">RambleDesk</strong>
-    <span class="h-4 w-px bg-border"></span>
-    <span class="max-w-56 truncate text-[10px] text-muted-foreground">{sourceLabel}</span>
-  </button>
+  {#if isTauri}
+    <button
+      class="titlebar-brand flex min-w-0 cursor-grab items-center gap-2.5 border-0 bg-transparent px-3 text-left text-foreground active:cursor-grabbing focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-ring"
+      aria-label={t($locale, 'Drag window')}
+      title={t($locale, 'Drag window')}
+      onpointerdown={(event) => void startDragging(event)}
+    >
+      <img class="size-7 shrink-0 rounded-md object-contain" src={appIcon} alt="" draggable="false" />
+      <strong class="text-xs font-semibold">RambleDesk</strong>
+      <span class="h-4 w-px bg-border"></span>
+      <span class="max-w-56 truncate text-[10px] text-muted-foreground">{sourceLabel}</span>
+    </button>
+  {:else}
+    <div class="titlebar-brand flex min-w-0 items-center gap-2.5 px-3 text-foreground">
+      <img class="size-7 shrink-0 rounded-md object-contain" src={appIcon} alt="" draggable="false" />
+      <strong class="text-xs font-semibold">RambleDesk</strong>
+      <span class="h-4 w-px bg-border"></span>
+      <span class="max-w-56 truncate text-[10px] text-muted-foreground">{sourceLabel}</span>
+    </div>
+  {/if}
 
-  <button
-    class="titlebar-drag min-w-6 flex-1 cursor-grab border-0 bg-transparent active:cursor-grabbing focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-ring"
-    aria-label={t($locale, 'Drag window')}
-    title={t($locale, 'Drag window')}
-    onpointerdown={(event) => void startDragging(event)}
-  ></button>
+  {#if isTauri}
+    <button
+      class="titlebar-drag min-w-6 flex-1 cursor-grab border-0 bg-transparent active:cursor-grabbing focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-ring"
+      aria-label={t($locale, 'Drag window')}
+      title={t($locale, 'Drag window')}
+      onpointerdown={(event) => void startDragging(event)}
+    ></button>
+  {:else}
+    <div class="min-w-6 flex-1"></div>
+  {/if}
 
   <div class="flex shrink-0 items-center gap-1.5 px-2">
     {#if rambleEngaged}
@@ -148,20 +156,22 @@
         {pendingCount} {t($locale, 'pending')}
       </Badge>
     {/if}
-    <Button
-      variant="ghost"
-      size="icon"
-      class={notificationEnabled ? 'text-info' : ''}
-      disabled={notificationDisabled}
-      onclick={onNotifications}
-      title={notificationText || t($locale, 'Notifications')}
-      aria-label={notificationText || t($locale, 'Notifications')}
-    >
-      {#if notificationEnabled}<Bell />{:else}<BellOff />{/if}
-    </Button>
+    {#if isTauri}
+      <Button
+        variant="ghost"
+        size="icon"
+        class={notificationEnabled ? 'text-info' : ''}
+        disabled={notificationDisabled}
+        onclick={onNotifications}
+        title={notificationText || t($locale, 'Notifications')}
+        aria-label={notificationText || t($locale, 'Notifications')}
+      >
+        {#if notificationEnabled}<Bell />{:else}<BellOff />{/if}
+      </Button>
+    {/if}
   </div>
 
-  {#if !isMac}
+  {#if isTauri && !isMac}
     <div class="ml-1 flex items-stretch" aria-label={t($locale, 'Window controls')}>
       <button
         class="grid w-11 place-items-center text-muted-foreground hover:bg-muted hover:text-foreground"

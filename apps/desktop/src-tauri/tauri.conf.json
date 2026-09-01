@@ -4,7 +4,7 @@
   "version": "0.3.3",
   "identifier": "io.rambledesk.desktop",
   "build": {
-    "beforeDevCommand": "pnpm dev:web",
+    "beforeDevCommand": "pnpm build:web && pnpm dev:web",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "pnpm build:web",
     "frontendDist": "../dist"
