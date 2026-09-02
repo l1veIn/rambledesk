@@ -91,7 +91,6 @@
   export let canOpenResumePrompt = false
   export let resolveHostProfile: (hostId: string) => HostProfile
   export let formatTime: (value: string | null | undefined) => string
-  export let onReload: () => void = () => {}
   export let onDraftChange: (snapshot: FeedbackDraftSnapshot) => void = () => {}
   export let onTidyError: (message: string) => void = () => {}
   export let onOpenTidySettings: () => void = () => {}
@@ -235,7 +234,7 @@
       </div>
     </div>
   {:else if workspace}
-    <WorkspaceHeader {workspace} {resolveHostProfile} {cooking} disabled={interactionLocked} onReload={onReload} />
+    <WorkspaceHeader {workspace} {resolveHostProfile} {cooking} />
 
     <div class="workspace-columns min-h-0 flex-1">
       <div class="document-column min-h-0 min-w-0 overflow-hidden @container">

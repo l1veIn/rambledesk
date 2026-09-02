@@ -1,8 +1,5 @@
 <script lang="ts">
-  import { RefreshCw } from '@lucide/svelte'
-
   import { Badge } from '$lib/components/ui/badge'
-  import { Button } from '$lib/components/ui/button'
   import type { FeedbackWorkspaceView } from '$lib/feedback'
   import { requestStatusLabel } from '$lib/feedback'
   import { t } from '$lib/i18n'
@@ -12,8 +9,6 @@
   export let workspace: FeedbackWorkspaceView
   export let resolveHostProfile: (hostId: string) => HostProfile
   export let cooking = false
-  export let disabled = false
-  export let onReload: () => void = () => {}
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
@@ -49,23 +44,13 @@
       <span class="max-w-48 truncate" title={workspace.request.host_session_id}>
         {workspace.request.host_session_id}
       </span>
-      <Badge variant="outline" class={['h-5 px-1.5 text-[9px]', statusClass()]}>
-        {cooking ? tr('Cooking') : requestStatusLabel(workspace.request.status, $locale)}
-      </Badge>
     </div>
     <h1 class="m-0 mt-1 truncate text-sm font-semibold">
       {workspace.request.title || tr('Untitled request')}
     </h1>
   </div>
 
-  <Button
-    variant="ghost"
-    size="icon-sm"
-    aria-label={tr('Reload')}
-    title={tr('Reload')}
-    {disabled}
-    onclick={onReload}
-  >
-    <RefreshCw />
-  </Button>
+  <Badge variant="outline" class={['h-5 shrink-0 px-1.5 text-[9px]', statusClass()]}>
+    {cooking ? tr('Cooking') : requestStatusLabel(workspace.request.status, $locale)}
+  </Badge>
 </header>

@@ -1485,23 +1485,6 @@
     void routeDraftOperation(requestId, { kind: 'startActionGroup', action }).catch(() => {})
   }
 
-  async function reloadWorkspace() {
-    if (workspaceTransitionLocked) return
-    const requestId = workspace?.request.request_id
-    if (!requestId) return
-    if (rambleCanExit) await exitRamble()
-    const view = sessionViewDescriptor(
-      workspace!.request.host_id,
-      workspace!.request.host_session_id,
-    )
-    await workspaceTransition.activate({
-      view,
-      requestId,
-      shellAction: { type: 'open' },
-      pendingViewKey: workspaceViewKey(view),
-    })
-  }
-
   async function refreshGenericMcpConfiguration() {
     pageError = ''
     if (capabilities.hostIntegrationAdministration.status.availability === 'unavailable') return
@@ -2013,7 +1996,6 @@
             {canOpenResumePrompt}
             {resolveHostProfile}
             formatTime={formatTimeLocal}
-            onReload={() => void reloadWorkspace()}
             onDraftChange={updateDraft}
             onTidyError={(message) => (pageError = message)}
             onOpenTidySettings={() => void openSettings('post-processing')}

@@ -25,6 +25,9 @@
   let previewAttachment: RequestAttachmentView | null = null
   let previewButton: HTMLElement | null = null
 
+  $: readOnly =
+    workspace.request.status === 'completed' || workspace.request.status === 'cancelled'
+
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
   }
@@ -122,7 +125,8 @@
             <li>
               <button
                 type="button"
-                class={`grid w-full grid-cols-[22px_minmax(0,1fr)] gap-2 rounded-md px-1 py-1 text-left leading-5 transition-colors hover:bg-accent/60 ${activeActionId === action.id ? 'bg-primary/10 ring-1 ring-primary/30' : ''}`}
+                disabled={readOnly}
+                class={`grid w-full grid-cols-[22px_minmax(0,1fr)] gap-2 rounded-md px-1 py-1 text-left leading-5 transition-colors hover:bg-accent/60 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent ${activeActionId === action.id ? 'bg-primary/10 ring-1 ring-primary/30' : ''}`}
                 aria-pressed={activeActionId === action.id}
                 onclick={() => onSelectAction(action.id, index, action.instruction)}
               >
