@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  archiveViewDescriptor,
+  inboxViewDescriptor,
   rambelleProfileViewDescriptor,
   requestTaskViewDescriptor,
   sessionViewDescriptor,
@@ -42,6 +44,24 @@ describe('workspace snapshots', () => {
     })
     expect(restored?.shellState).toEqual(state)
     expect([...restored!.requestIds]).toEqual([...requestIds])
+  })
+
+  it('round-trips a reordered tab strip without changing its active identity', () => {
+    const opened = workspaceShellReducer(
+      workspaceShellReducer(EMPTY_WORKSPACE_SHELL_STATE, { type: 'open', view: alpha }),
+      { type: 'open', view: beta },
+    )
+    const reordered = workspaceShellReducer(opened, {
+      type: 'reorder',
+      viewKeys: [workspaceViewKey(beta), workspaceViewKey(alpha)],
+    })
+
+    const restored = restoreWorkspaceSnapshot(
+      createWorkspaceSnapshot(reordered, new Map()),
+    )
+
+    expect(restored?.shellState.views).toEqual([beta, alpha])
+    expect(restored?.shellState.activeViewKey).toBe(workspaceViewKey(beta))
   })
 
   it('reads v1 snapshots while keeping cross-host sessions distinct and deduplicated', () => {
@@ -142,6 +162,36 @@ describe('workspace snapshots', () => {
       views: [settingsViewDescriptor(), alpha],
       activeViewKey: workspaceViewKey(settingsViewDescriptor()),
     })
+  })
+
+  it('round-trips the aggregate Inbox as a singleton client view', () => {
+    const state = workspaceShellReducer(EMPTY_WORKSPACE_SHELL_STATE, {
+      type: 'open',
+      view: inboxViewDescriptor(),
+    })
+    const snapshot = createWorkspaceSnapshot(state, new Map())
+
+    expect(snapshot).toEqual({
+      version: 2,
+      views: [{ kind: 'inbox' }],
+      activeViewKey: 'inbox:singleton',
+    })
+    expect(restoreWorkspaceSnapshot(snapshot)?.shellState).toEqual(state)
+  })
+
+  it('round-trips the archive workspace as a singleton client view', () => {
+    const state = workspaceShellReducer(EMPTY_WORKSPACE_SHELL_STATE, {
+      type: 'open',
+      view: archiveViewDescriptor(),
+    })
+    const snapshot = createWorkspaceSnapshot(state, new Map())
+
+    expect(snapshot).toEqual({
+      version: 2,
+      views: [{ kind: 'archive' }],
+      activeViewKey: 'archive:singleton',
+    })
+    expect(restoreWorkspaceSnapshot(snapshot)?.shellState).toEqual(state)
   })
 
   it('round-trips request task and profile descriptors without editor state', () => {

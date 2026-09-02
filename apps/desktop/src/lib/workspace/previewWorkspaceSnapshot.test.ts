@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { sessionViewDescriptor, workspaceViewKey } from './viewDescriptors'
+import { archiveViewDescriptor, sessionViewDescriptor, workspaceViewKey } from './viewDescriptors'
 import {
   resetPreviewWorkspaceSnapshot,
   savedPreviewWorkspaceSnapshot,
@@ -57,6 +57,14 @@ describe('preview workspace snapshot store', () => {
     expect(savedPreviewWorkspaceSnapshot()?.requestIds.size).toBe(0)
   })
 
+  it('seeds the archive workspace acceptance scenario', () => {
+    expect(seedPreviewWorkspaceScenario('archive')).toBe('archive')
+    expect(savedPreviewWorkspaceSnapshot()?.shellState).toEqual({
+      views: [archiveViewDescriptor()],
+      activeViewKey: 'archive:singleton',
+    })
+  })
+
   it.each([
     ['task', { kind: 'request-task', requestId: '019fc1d9-51e7-7eb2-b196-e9266947fc41' }],
     ['profile', { kind: 'rambelle-profile' }],
@@ -69,5 +77,29 @@ describe('preview workspace snapshot store', () => {
           ? 'request-task:"019fc1d9-51e7-7eb2-b196-e9266947fc41"'
           : 'rambelle-profile:singleton',
     })
+  })
+
+  it('seeds a dense mixed tab strip for browser interaction acceptance', () => {
+    expect(seedPreviewWorkspaceScenario('tabs')).toBe('tabs')
+
+    const restored = savedPreviewWorkspaceSnapshot()!
+    expect(restored.shellState.views).toHaveLength(12)
+    expect(restored.shellState.views.map((view) => view.kind)).toEqual([
+      'inbox',
+      'session',
+      'session',
+      'session',
+      'request-task',
+      'rambelle-profile',
+      'settings',
+      'session',
+      'session',
+      'session',
+      'session',
+      'session',
+    ])
+    expect(restored.shellState.activeViewKey).toBe(
+      workspaceViewKey(restored.shellState.views[1]),
+    )
   })
 })

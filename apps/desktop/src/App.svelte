@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
-  import { Pane, PaneGroup, PaneResizer } from 'paneforge'
 
   import rambelleArchived from './assets/rambelle-states/archived.webp'
   import rambelleIdle from './assets/rambelle-states/idle.webp'
@@ -9,16 +8,17 @@
   import AppTitlebar from './lib/AppTitlebar.svelte'
   import OnboardingWizard from './lib/OnboardingWizard.svelte'
   import UpdateAvailableDialog from './lib/UpdateAvailableDialog.svelte'
-  import ArchivedSessionsDialog from './lib/components/navigation/ArchivedSessionsDialog.svelte'
   import HostSessionRail from './lib/components/navigation/HostSessionRail.svelte'
   import RequestListPane from './lib/components/navigation/RequestListPane.svelte'
   import { Sonner, toast } from './lib/components/ui/sonner'
   import ResumePromptDialog from './lib/workbench/ResumePromptDialog.svelte'
   import SessionWorkbench from './lib/workbench/SessionWorkbench.svelte'
+  import InboxWorkspaceView from './lib/workspace/InboxWorkspaceView.svelte'
   import MissingSessionView from './lib/workspace/MissingSessionView.svelte'
   import RambelleProfileWorkspaceView from './lib/workspace/RambelleProfileWorkspaceView.svelte'
   import SettingsWorkspaceView from './lib/workspace/SettingsWorkspaceView.svelte'
   import TaskWorkspaceView from './lib/workspace/TaskWorkspaceView.svelte'
+  import ArchivedSessionsWorkspaceView from './lib/workspace/ArchivedSessionsWorkspaceView.svelte'
   import type { JSONContent } from '@tiptap/core'
   import {
     defineApplicationStream,
@@ -70,6 +70,8 @@
   } from './lib/notifications'
   import { isWithinLast24Hours } from './lib/requestRecency'
   import {
+    archiveViewDescriptor,
+    inboxViewDescriptor,
     rambelleProfileViewDescriptor,
     requestTaskViewDescriptor,
     sessionViewDescriptor,
@@ -99,11 +101,12 @@
     type SessionViewCatalog,
     type SessionViewResolution,
   } from './lib/workspace/sessionViewRecovery'
-  import WorkspaceTabStrip from './lib/workspace/WorkspaceTabStrip.svelte'
   import {
     workspaceTabId,
     workspaceTabPanelId,
   } from './lib/workspace/workspaceTabNavigation'
+  import WorkspaceTabStrip from './lib/workspace/WorkspaceTabStrip.svelte'
+  import { workspaceSurface } from './lib/workspace/workspaceSurface'
   import {
     createWorkspaceTransition,
     type WorkspaceTransitionOutcome,
@@ -152,9 +155,7 @@
   import {
     initialHostRailCollapsed,
     saveHostRailCollapsed,
-    savePaneLayout,
     saveWorkspaceSnapshot,
-    savedPaneLayout,
     savedWorkspaceSnapshot,
   } from './lib/uiPreferences'
   import {
@@ -179,10 +180,6 @@
     tidyReasoningEffort,
     tidySystemPrompt,
   } from './lib/preferences'
-
-  type PaneGroupHandle = {
-    setLayout: (layout: number[]) => void
-  }
 
   const RESUME_PROMPT_STREAM = defineApplicationStream<ResumePrompt>('rambledesk://resume-prompt')
   const OPEN_ADAPTERS_STREAM = defineApplicationStream<void>('rambledesk://open-adapters')
@@ -231,8 +228,8 @@
   let resumePrompt: ResumePrompt | null = null
   let resumeCopyState: 'idle' | 'copied' | 'failed' = 'idle'
   let notificationState: NotificationState = 'checking'
-  let archivedSessionsOpen = false
   let archivedInitialSession: SessionViewDescriptor | null = null
+  let archivedSelectionEpoch = 0
   let lastSessionRecoveryFingerprint = ''
   let activeRecoveryTransition: object | null = null
   let settingsSection: SettingsSection = 'general'
@@ -267,23 +264,9 @@
       loadingWorkspace = true
     }
   }
-  const REQUEST_LIST_DEFAULT_WIDTH = 296
-  const REQUEST_LIST_MIN_WIDTH = 240
-  const WIDE_WORKSPACE_MIN_WIDTH = 648
-  const NARROW_WORKSPACE_MIN_WIDTH = 360
-  const PANE_RESIZER_SIZE = 11
-  const REQUEST_WORKSPACE_LAYOUT_KEY = 'request-workspace-layout'
-  const savedRequestWorkspaceLayout = savedPaneLayout(REQUEST_WORKSPACE_LAYOUT_KEY)
-
   let taskBriefOpen = true
   let todayOnly = false
   let hostSessionRailCollapsed = initialHostRailCollapsed()
-  let workbenchLayout: HTMLDivElement
-  let requestWorkspaceGroup: HTMLDivElement | null = null
-  let requestWorkspacePaneGroup: PaneGroupHandle | undefined
-  let requestWorkspaceLayoutReady = false
-  let workbenchLayoutWidth = 0
-  let requestWorkspaceWidth = 0
   let genericMcpConfiguration = ''
   let voicePhase: VoicePhase = 'idle'
   let voiceDevice = ''
@@ -518,6 +501,7 @@
       )
     : undefined
   $: renderedWorkspaceView = activeWorkspaceView(workspaceShellState)
+  $: renderedWorkspaceSurface = workspaceSurface(renderedWorkspaceView)
   $: renderedSessionView = renderedWorkspaceView?.kind === 'session'
     ? renderedWorkspaceView
     : null
@@ -536,6 +520,10 @@
   }
   const workspaceTabLabel = (view: WorkspaceViewDescriptor) => {
     switch (view.kind) {
+      case 'inbox':
+        return tr('All requests')
+      case 'archive':
+        return tr('Archived sessions')
       case 'settings':
         return tr('Settings')
       case 'request-task': {
@@ -643,51 +631,10 @@
     approving ||
     currentRequestCooking ||
     workspace?.request.status === 'in_progress'
-  $: workspaceMinimumWidth =
-    workbenchLayoutWidth > 1180 ? WIDE_WORKSPACE_MIN_WIDTH : NARROW_WORKSPACE_MIN_WIDTH
-  $: requestWorkspacePaneWidth = Math.max(0, requestWorkspaceWidth - PANE_RESIZER_SIZE)
-  $: requestListMinimumSize = requestWorkspacePaneWidth
-    ? Math.min(100, (REQUEST_LIST_MIN_WIDTH / requestWorkspacePaneWidth) * 100)
-    : 0
-  $: desiredWorkspaceMinimumSize = requestWorkspacePaneWidth
-    ? Math.min(100, (workspaceMinimumWidth / requestWorkspacePaneWidth) * 100)
-    : 0
-  $: workspaceMinimumSize = Math.min(
-    desiredWorkspaceMinimumSize,
-    Math.max(0, 100 - requestListMinimumSize),
-  )
-  $: requestListMaximumSize = Math.max(requestListMinimumSize, 100 - workspaceMinimumSize)
   $: saveHostRailCollapsed(hostSessionRailCollapsed)
-
-  function saveRequestWorkspaceLayout(layout: number[]) {
-    if (requestWorkspaceLayoutReady) savePaneLayout(REQUEST_WORKSPACE_LAYOUT_KEY, layout)
-  }
 
   onMount(() => {
     const cleanupAttachments = attachmentController.mount()
-    const syncLayoutDimensions = () => {
-      workbenchLayoutWidth = workbenchLayout?.clientWidth ?? 0
-      requestWorkspaceWidth = requestWorkspaceGroup?.clientWidth ?? 0
-    }
-    const layoutObserver = new ResizeObserver(syncLayoutDimensions)
-    if (workbenchLayout) layoutObserver.observe(workbenchLayout)
-    if (requestWorkspaceGroup) layoutObserver.observe(requestWorkspaceGroup)
-    syncLayoutDimensions()
-    void tick().then(() => {
-      if (!requestWorkspacePaneGroup || requestWorkspacePaneWidth <= 0) return
-      const defaultRequestListSize = Math.min(
-        requestListMaximumSize,
-        Math.max(
-          requestListMinimumSize,
-          (REQUEST_LIST_DEFAULT_WIDTH / requestWorkspacePaneWidth) * 100,
-        ),
-      )
-      requestWorkspaceLayoutReady = true
-      requestWorkspacePaneGroup.setLayout(
-        savedRequestWorkspaceLayout ?? [defaultRequestListSize, 100 - defaultRequestListSize],
-      )
-    })
-    const cleanupLayoutObserver = () => layoutObserver.disconnect()
     const unsubscribeApplicationEvents = !desktopShellAvailable && !previewMode
       ? applicationTransport.subscribe(
           APPLICATION_EVENTS_STREAM,
@@ -725,7 +672,6 @@
       return () => {
         unsubscribeApplicationEvents()
         applicationSnapshotRefetch.dispose()
-        cleanupLayoutObserver()
         cleanupAttachments()
       }
     }
@@ -785,7 +731,6 @@
       resumePromptUnlisten()
       openAdaptersUnlisten()
       if (updateCheckTimer !== undefined) clearTimeout(updateCheckTimer)
-      cleanupLayoutObserver()
       cleanupAttachments()
     }
   })
@@ -804,6 +749,9 @@
       if (!initialized) return
       await refreshSessionViewRecovery()
       if (initialWorkspaceSnapshot) await restoreInitialWorkspaceSnapshot()
+      else if (previewMode && workspace) {
+        await navigation.selectScope(workspace.request.host_id, workspace.request.host_session_id)
+      }
     })()
   }
 
@@ -877,6 +825,16 @@
       sessionRequestIds = nextRequestIds
     }
     workspaceShellState = workspaceShellReducer(workspaceShellState, { type: 'open', view })
+    persistCurrentWorkspaceSnapshot()
+  }
+
+  function reorderWorkspaceTabs(viewKeys: readonly string[]) {
+    const nextState = workspaceShellReducer(workspaceShellState, {
+      type: 'reorder',
+      viewKeys,
+    })
+    if (nextState === workspaceShellState) return
+    workspaceShellState = nextState
     persistCurrentWorkspaceSnapshot()
   }
 
@@ -1018,11 +976,17 @@
       loadingWorkspace = false
       return
     }
-    if (view.kind === 'settings' || view.kind === 'rambelle-profile') {
+    if (
+      view.kind === 'inbox' ||
+      view.kind === 'archive' ||
+      view.kind === 'settings' ||
+      view.kind === 'rambelle-profile'
+    ) {
       clearWorkspace()
       workbenchMounted = true
       loadingWorkspace = false
-      if (view.kind === 'settings') void refreshGenericMcpConfiguration()
+      if (view.kind === 'inbox') await navigation.selectScope(null, null)
+      else if (view.kind === 'settings') void refreshGenericMcpConfiguration()
       return
     }
     if (view.kind === 'request-task') {
@@ -1086,7 +1050,17 @@
     const priorScope = currentNavigationScope()
     workspaceTransition.invalidate()
     const selection = await navigation.selectScope(hostId, hostSessionId)
-    if (!selection.selected || !hostId || !hostSessionId) return
+    if (!selection.selected) return
+    if (!hostId || !hostSessionId) {
+      const outcome = await workspaceTransition.activate({
+        view: inboxViewDescriptor(),
+        requestId: null,
+        shellAction: { type: 'open' },
+        pendingViewKey: workspaceViewKey(inboxViewDescriptor()),
+      })
+      await restoreNavigationScope(priorScope, outcome)
+      return
+    }
     if (workspaceTransitionLocked) {
       await navigation.selectScope(priorScope.hostId, priorScope.hostSessionId)
       return
@@ -1121,6 +1095,10 @@
     )
     if (!view) return
     if (view.kind !== 'session') {
+      if (view.kind === 'inbox') {
+        const selection = await navigation.selectScope(null, null)
+        if (!selection.selected) return
+      }
       const outcome = await workspaceTransition.activate({
         view,
         requestId: view.kind === 'request-task' ? view.requestId : null,
@@ -1130,6 +1108,7 @@
       if (outcome === 'activated' && view.kind === 'settings') {
         void refreshGenericMcpConfiguration()
       }
+      if (view.kind === 'inbox') await restoreNavigationScope(priorScope, outcome)
       return
     }
     const resolution = sessionViewResolution(sessionViewResolutions, viewKey)
@@ -1210,6 +1189,9 @@
           ?.request_id ??
         selection.requests[0]?.request_id ??
         null
+    } else if (fallbackView?.kind === 'inbox') {
+      const selection = await navigation.selectScope(null, null)
+      if (!selection.selected) return
     } else if (fallbackView?.kind === 'request-task') {
       fallbackRequestId = fallbackView.requestId
     }
@@ -1373,6 +1355,7 @@
     requestId: string,
   ): Promise<WorkspaceTransitionOutcome> {
     if (workspaceTransitionLocked) return 'blocked'
+    const priorScope = currentNavigationScope()
     workspaceTransition.invalidate()
     if (
       workspace?.request.request_id === requestId &&
@@ -1383,12 +1366,18 @@
     }
     pageError = ''
     const view = viewForRequest(requestId)
-    return workspaceTransition.activate({
+    if (view) {
+      const selection = await navigation.selectScope(view.hostId, view.hostSessionId)
+      if (!selection.selected) return 'failed'
+    }
+    const outcome = await workspaceTransition.activate({
       view,
       requestId,
       shellAction: { type: 'open' },
       pendingViewKey: view ? workspaceViewKey(view) : `request:${JSON.stringify(requestId)}`,
     })
+    await restoreNavigationScope(priorScope, outcome)
+    return outcome
   }
 
   async function openRequest(requestId: string, _saveCurrent = true): Promise<boolean> {
@@ -1574,9 +1563,20 @@
     })
   }
 
-  function openArchivedSessions(initialSession: SessionViewDescriptor | null = null) {
+  async function openArchivedSessions(initialSession: SessionViewDescriptor | null = null) {
+    if (workspaceTransitionLocked || pendingWorkspaceViewKey) return
     archivedInitialSession = initialSession
-    archivedSessionsOpen = true
+    archivedSelectionEpoch += 1
+    const view = archiveViewDescriptor()
+    const viewKey = workspaceViewKey(view)
+    if (workspaceShellState.activeViewKey === viewKey) return
+    workspaceTransition.invalidate()
+    await workspaceTransition.activate({
+      view,
+      requestId: null,
+      shellAction: { type: 'open' },
+      pendingViewKey: viewKey,
+    })
   }
 
   function applyWorkspaceMutation(next: FeedbackWorkspaceView) {
@@ -1814,7 +1814,7 @@
   <AppTitlebar
     windowControls={capabilities.windowControls}
     notifications={capabilities.notifications}
-    sourceLabel={workspace?.request.source_hint ?? workspace?.request.title ?? 'Workbench'}
+    sidebarCollapsed={hostSessionRailCollapsed}
     pendingCount={$navigation.pendingRequests.length}
     {rambleEngaged}
     {rambleActive}
@@ -1826,9 +1826,22 @@
     notificationDisabled={false}
     onNotifications={() => void openSettings('notifications')}
     onWindowError={(message) => (pageError = tr('Window action failed: {error}', { error: message }))}
-  />
+  >
+    {#snippet workspaceTabs()}
+      <WorkspaceTabStrip
+        views={workspaceShellState.views}
+        activeViewKey={workspaceShellState.activeViewKey}
+        pendingViewKey={pendingWorkspaceViewKey}
+        disabled={workspaceTransitionLocked}
+        labelForView={workspaceTabLabel}
+        onActivate={(viewKey) => void activateWorkspaceTab(viewKey)}
+        onClose={closeWorkspaceTab}
+        onReorder={reorderWorkspaceTabs}
+      />
+    {/snippet}
+  </AppTitlebar>
 
-  <div bind:this={workbenchLayout} class="flex h-[calc(100%-46px)] min-h-0 min-w-0">
+  <div class="flex h-[calc(100%-40px)] min-h-0 min-w-0">
     <HostSessionRail
       bind:collapsed={hostSessionRailCollapsed}
       sessions={$navigation.hostSessions}
@@ -1848,56 +1861,32 @@
       onSettings={() => void openSettings('general')}
     />
 
-    <PaneGroup
-      bind:this={requestWorkspacePaneGroup}
-      bind:ref={requestWorkspaceGroup}
-      direction="horizontal"
-      class="min-h-0 min-w-0 flex-1"
-      id="request-workspace-split"
-      onLayoutChange={saveRequestWorkspaceLayout}
-    >
-      <Pane
-        id="request-list-pane"
-        defaultSize={28}
-        minSize={requestListMinimumSize}
-        maxSize={requestListMaximumSize}
-      >
-        <RequestListPane
-          requests={visibleRequests}
-          activeRequestId={workspace?.request.request_id ?? null}
-          cookingRequestIds={cookingRequestIds}
-          scopeLabel={requestScopeLabel}
-          searchQuery={$navigation.requestSearch}
-          loading={$navigation.loadingRequests}
-          refreshing={$navigation.refreshingPage}
-          loadingMore={$navigation.loadingMoreRequests}
-          hasMore={todayOnly ? false : $navigation.nextRequestCursor !== null}
-          {todayOnly}
-          {resolveHostProfile}
-          formatTime={formatTimeLocal}
-          onRefresh={() => void navigation.refreshPage()}
-          onLoadMore={() => void navigation.loadMoreRequests()}
-          onOpenRequest={(requestId) => void openRequest(requestId)}
-          onToggleToday={() => (todayOnly = !todayOnly)}
-        />
-      </Pane>
-
-      <PaneResizer
-        class="workbench-pane-resizer workbench-pane-resizer--vertical"
-        aria-label={tr('Resize request list')}
-      />
-
-      <Pane id="workspace-pane" minSize={workspaceMinimumSize}>
-        <div class="flex h-full min-h-0 min-w-0 flex-col">
-          <WorkspaceTabStrip
-            views={workspaceShellState.views}
-            activeViewKey={workspaceShellState.activeViewKey}
-            pendingViewKey={pendingWorkspaceViewKey}
-            disabled={workspaceTransitionLocked}
-            labelForView={workspaceTabLabel}
-            onActivate={(viewKey) => void activateWorkspaceTab(viewKey)}
-            onClose={closeWorkspaceTab}
+    <div class="flex min-h-0 min-w-0 flex-1" id="request-workspace-layout">
+      {#if renderedWorkspaceSurface !== 'standalone'}
+        <div class="w-[296px] shrink-0 border-r" id="request-list-pane">
+          <RequestListPane
+            requests={visibleRequests}
+            activeRequestId={workspace?.request.request_id ?? null}
+            cookingRequestIds={cookingRequestIds}
+            scopeLabel={requestScopeLabel}
+            searchQuery={$navigation.requestSearch}
+            loading={$navigation.loadingRequests}
+            refreshing={$navigation.refreshingPage}
+            loadingMore={$navigation.loadingMoreRequests}
+            hasMore={todayOnly ? false : $navigation.nextRequestCursor !== null}
+            {todayOnly}
+            {resolveHostProfile}
+            formatTime={formatTimeLocal}
+            onRefresh={() => void navigation.refreshPage()}
+            onLoadMore={() => void navigation.loadMoreRequests()}
+            onOpenRequest={(requestId) => void openRequest(requestId)}
+            onToggleToday={() => (todayOnly = !todayOnly)}
           />
+        </div>
+      {/if}
+
+      <div class="min-h-0 min-w-0 flex-1" id="workspace-pane">
+        <div class="flex h-full min-h-0 min-w-0 flex-col">
           <div
             class="min-h-0 flex-1"
             role={renderedWorkspaceView ? 'tabpanel' : undefined}
@@ -1908,7 +1897,21 @@
               ? workspaceTabId(workspaceViewKey(renderedWorkspaceView))
               : undefined}
           >
-            {#if renderedWorkspaceView?.kind === 'settings'}
+            {#if renderedWorkspaceView?.kind === 'inbox'}
+              <InboxWorkspaceView />
+            {:else if renderedWorkspaceView?.kind === 'archive'}
+              <ArchivedSessionsWorkspaceView
+                transport={applicationTransport}
+                {previewMode}
+                {resolveHostProfile}
+                formatTime={formatTimeLocal}
+                {messageFrom}
+                initialSession={archivedInitialSession}
+                selectionEpoch={archivedSelectionEpoch}
+                onError={(message) => (pageError = message)}
+                onChanged={retrySessionViewRecovery}
+              />
+            {:else if renderedWorkspaceView?.kind === 'settings'}
               <SettingsWorkspaceView
                 {capabilities}
                 mcpConfiguration={genericMcpConfiguration}
@@ -1916,7 +1919,7 @@
                 sectionSelectionEpoch={settingsSectionSelectionEpoch}
                 {updateInstallBlocked}
                 onRestartOnboarding={restartOnboarding}
-                onOpenArchived={openArchivedSessions}
+                onOpenArchived={() => void openArchivedSessions()}
                 onOpenRambelleProfile={() => void openRambelleProfile()}
               />
             {:else if renderedWorkspaceView?.kind === 'request-task'}
@@ -1943,7 +1946,7 @@
                 busy={renderedSessionResolution.reason === 'unresolved' || pendingWorkspaceViewKey !== null}
                 onRetry={retrySessionViewRecovery}
                 onClose={() => closeWorkspaceTab(workspaceViewKey(renderedSessionResolution!.session))}
-                onOpenArchive={() => openArchivedSessions(renderedSessionResolution!.session)}
+                onOpenArchive={() => void openArchivedSessions(renderedSessionResolution!.session)}
               />
             {:else if workbenchMounted}
               {#key renderedSessionView ? workspaceViewKey(renderedSessionView) : 'workspace:empty'}
@@ -2045,8 +2048,8 @@
             {/if}
           </div>
         </div>
-      </Pane>
-    </PaneGroup>
+      </div>
+    </div>
 
     {#if resumePrompt}
       <ResumePromptDialog
@@ -2062,18 +2065,6 @@
 {#if onboardingAvailable}
   <OnboardingWizard {capabilities} bind:openWizard={onboardingOpen} onClose={closeOnboarding} />
 {/if}
-
-<ArchivedSessionsDialog
-  bind:open={archivedSessionsOpen}
-  transport={applicationTransport}
-  {previewMode}
-  {resolveHostProfile}
-  formatTime={formatTimeLocal}
-  {messageFrom}
-  initialSession={archivedInitialSession}
-  onError={(message) => (pageError = message)}
-  onChanged={retrySessionViewRecovery}
-/>
 
 {#if softwareUpdatesAvailable}
   <UpdateAvailableDialog

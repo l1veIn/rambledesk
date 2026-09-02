@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  archiveViewDescriptor,
+  inboxViewDescriptor,
   rambelleProfileViewDescriptor,
   requestTaskViewDescriptor,
   sessionViewDescriptor,
@@ -9,6 +11,10 @@ import {
 } from './viewDescriptors'
 
 describe('workspace view descriptors', () => {
+  it('uses one stable key for the aggregate Inbox view', () => {
+    expect(workspaceViewKey(inboxViewDescriptor())).toBe('inbox:singleton')
+  })
+
   it('creates a readonly session descriptor with a type-prefixed stable key', () => {
     const first = sessionViewDescriptor('codex', 'session-1')
     const second = sessionViewDescriptor('codex', 'session-1')
@@ -43,6 +49,11 @@ describe('workspace view descriptors', () => {
     expect(first).toEqual({ kind: 'settings' })
     expect(workspaceViewKey(first)).toBe('settings:singleton')
     expect(workspaceViewKey(second)).toBe(workspaceViewKey(first))
+  })
+
+  it('gives the archive workspace one singleton key', () => {
+    expect(archiveViewDescriptor()).toEqual({ kind: 'archive' })
+    expect(workspaceViewKey(archiveViewDescriptor())).toBe('archive:singleton')
   })
 
   it('keys request tasks by request id and keeps profile singleton', () => {

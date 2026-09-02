@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  inboxViewDescriptor,
   rambelleProfileViewDescriptor,
   requestTaskViewDescriptor,
   sessionViewDescriptor,
@@ -20,6 +21,7 @@ const alpha = sessionViewDescriptor('codex', 'alpha')
 const beta = sessionViewDescriptor('codex', 'beta')
 const gamma = sessionViewDescriptor('pi', 'gamma')
 const settings = settingsViewDescriptor()
+const inbox = inboxViewDescriptor()
 const task = requestTaskViewDescriptor('request-alpha')
 const profile = rambelleProfileViewDescriptor()
 
@@ -81,6 +83,15 @@ describe('workspaceShellReducer', () => {
     expectValidState(reopened)
   })
 
+  it('opens the aggregate Inbox once and focuses the existing singleton', () => {
+    const initial = reduce(EMPTY_WORKSPACE_SHELL_STATE, open(inbox), open(alpha))
+    const reopened = workspaceShellReducer(initial, open(inboxViewDescriptor()))
+
+    expect(reopened.views).toEqual([inbox, alpha])
+    expect(activeWorkspaceView(reopened)).toBe(inbox)
+    expectValidState(reopened)
+  })
+
   it('deduplicates task identity and the Rambelle profile singleton', () => {
     const result = reduce(
       EMPTY_WORKSPACE_SHELL_STATE,
@@ -123,6 +134,46 @@ describe('workspaceShellReducer', () => {
       focused,
     )
     expectValidState(focused)
+  })
+
+  it('reorders the complete view set without changing the active view', () => {
+    const initial = reduce(
+      EMPTY_WORKSPACE_SHELL_STATE,
+      open(alpha),
+      open(settings),
+      open(beta),
+      { type: 'focus', viewKey: workspaceViewKey(settings) },
+    )
+    const result = workspaceShellReducer(initial, {
+      type: 'reorder',
+      viewKeys: [workspaceViewKey(beta), workspaceViewKey(alpha), workspaceViewKey(settings)],
+    })
+
+    expect(result.views).toEqual([beta, alpha, settings])
+    expect(result.activeViewKey).toBe(workspaceViewKey(settings))
+    expectValidState(result)
+  })
+
+  it('ignores incomplete, duplicate, unknown, and no-op reorder actions', () => {
+    const initial = reduce(EMPTY_WORKSPACE_SHELL_STATE, open(alpha), open(beta), open(gamma))
+
+    expect(workspaceShellReducer(initial, {
+      type: 'reorder',
+      viewKeys: [workspaceViewKey(alpha), workspaceViewKey(beta)],
+    })).toBe(initial)
+    expect(workspaceShellReducer(initial, {
+      type: 'reorder',
+      viewKeys: [workspaceViewKey(alpha), workspaceViewKey(alpha), workspaceViewKey(gamma)],
+    })).toBe(initial)
+    expect(workspaceShellReducer(initial, {
+      type: 'reorder',
+      viewKeys: [workspaceViewKey(alpha), workspaceViewKey(beta), 'session:missing'],
+    })).toBe(initial)
+    expect(workspaceShellReducer(initial, {
+      type: 'reorder',
+      viewKeys: initial.views.map(workspaceViewKey),
+    })).toBe(initial)
+    expectValidState(initial)
   })
 
   it('closes an inactive view without changing the active view', () => {

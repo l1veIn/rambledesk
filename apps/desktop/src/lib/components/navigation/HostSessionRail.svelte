@@ -208,7 +208,7 @@
                   class={[
                     'grid h-9 w-full place-items-center rounded-md text-muted-foreground transition-colors [&_svg]:size-5',
                     activeHostId === session.host_id &&
-                    (activeHostSessionId === null || activeHostSessionId === session.host_session_id)
+                    activeHostSessionId === session.host_session_id
                       ? 'bg-sidebar-accent text-sidebar-accent-foreground'
                       : 'hover:bg-sidebar-accent/65 hover:text-sidebar-foreground',
                   ]}
@@ -234,20 +234,6 @@
                 {@const profile = resolveHostProfile(session.host_id)}
                 {@const key = hostSessionKey(session)}
                 <div class="group/session flex min-h-9 items-center gap-1">
-                  <button
-                    type="button"
-                    class={[
-                      'grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-sidebar-accent/65 hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring/40 [&_svg]:size-5',
-                      activeHostId === session.host_id && activeHostSessionId === null
-                        ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                        : undefined,
-                    ]}
-                    aria-label={`${tr('Select host')}: ${profile.label}`}
-                    title={`${tr('Select host')}: ${profile.label}`}
-                    onclick={() => onSelect(session.host_id, null)}
-                  >
-                    <span aria-hidden="true">{@html profile.icon_svg}</span>
-                  </button>
                   {#if editingSessionKey === key}
                     <form
                       class="flex h-9 min-w-0 flex-1 items-center"
@@ -288,6 +274,9 @@
                         title={`${session.title} · ${profile.label}`}
                         onclick={() => onSelect(session.host_id, session.host_session_id)}
                       >
+                        <span class="grid size-5 shrink-0 place-items-center text-muted-foreground [&_svg]:size-4" aria-hidden="true">
+                          {@html profile.icon_svg}
+                        </span>
                         <span class="min-w-0 flex-1 truncate">{session.title}</span>
                         {#if session.pinned_at}
                           <Pin class="size-3 shrink-0 text-primary" aria-hidden="true" />

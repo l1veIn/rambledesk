@@ -107,6 +107,10 @@ describe('Tauri Workbench capabilities', () => {
     const api = createFakeApi({ read_notification_sound: [1, 2, 255] })
     const capabilities = createTauriWorkbenchCapabilities(api)
 
+    await capabilities.windowControls.implementation.startDragging()
+    await capabilities.windowControls.implementation.toggleMaximize()
+    expect(api.window.startDragging).toHaveBeenCalledOnce()
+    expect(api.window.toggleMaximize).toHaveBeenCalledOnce()
     await capabilities.windowControls.implementation.leaveFullscreen()
     expect(api.window.isFullscreen).toHaveBeenCalledOnce()
     expect(api.window.setFullscreen).toHaveBeenCalledWith(false)

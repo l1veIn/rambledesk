@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Bell, BellOff, Copy, Minus, Square, X } from '@lucide/svelte'
-  import { onMount } from 'svelte'
+  import { onMount, type Snippet } from 'svelte'
 
   import appIcon from '../assets/rambledesk-app-icon.webp'
   import { Badge } from '$lib/components/ui/badge'
@@ -13,10 +13,12 @@
   } from '$lib/capabilities/workbenchCapabilities'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
+  import { titlebarPointerIntent } from '$lib/titlebarInteractions'
 
   const unavailableCapabilities = createUnavailableWorkbenchCapabilities()
 
-  export let sourceLabel = 'Workbench'
+  export let sidebarCollapsed = false
+  export let workspaceTabs: Snippet
   export let pendingCount = 0
   export let rambleEngaged = false
   export let rambleActive = false
@@ -62,26 +64,41 @@
     }
   }
 
-  async function startDragging(event: PointerEvent) {
-    if (!windowControlsAvailable || event.button !== 0) return
-    const target = event.target
-    if (target instanceof Element) {
-      const button = target.closest('button')
-      if (button && !button.matches('.titlebar-brand, .titlebar-drag')) return
-    }
+  function isInteractiveTitlebarTarget(target: EventTarget | null) {
+    if (!(target instanceof Element)) return false
+    const button = target.closest('button')
+    if (button?.matches('.titlebar-brand')) return false
+    return Boolean(button || target.closest('[role="tab"], [data-workspace-tab-item]'))
+  }
+
+  async function handleTitlebarPointerDown(event: PointerEvent) {
+    if (!windowControlsAvailable) return
+    const intent = titlebarPointerIntent({
+      button: event.button,
+      clickCount: event.detail,
+      interactive: isInteractiveTitlebarTarget(event.target),
+    })
+    if (intent === 'ignore') return
     try {
-      await windowControls.implementation.startDragging()
+      if (intent === 'toggle-maximize') {
+        await windowControls.implementation.toggleMaximize()
+        if (!isMac) maximized = await windowControls.implementation.isMaximized()
+      } else {
+        await windowControls.implementation.startDragging()
+      }
     } catch (cause) {
       onWindowError(cause instanceof Error ? cause.message : String(cause))
     }
   }
 </script>
 
+<!-- svelte-ignore a11y_no_static_element_interactions (the handler delegates native titlebar dragging while preserving interactive descendants) -->
 <header
   class={[
-    'relative z-30 flex h-[46px] select-none items-stretch rounded-t-[15px] border-b bg-background/95 backdrop-blur-md',
-    windowControlsAvailable && isMac ? 'pl-[58px]' : '',
+    'app-titlebar relative z-30 flex h-10 select-none items-stretch overflow-hidden rounded-t-[15px] border-b',
   ]}
+  data-titlebar-event-boundary
+  onpointerdown={(event) => void handleTitlebarPointerDown(event)}
 >
   {#if windowControlsAvailable && isMac}
     <div class="absolute left-[15px] flex h-full items-center gap-2" aria-label={t($locale, 'Window controls')}>
@@ -98,112 +115,128 @@
     </div>
   {/if}
 
-  {#if windowControlsAvailable}
-    <button
-      class="titlebar-brand flex min-w-0 cursor-grab items-center gap-2.5 border-0 bg-transparent px-3 text-left text-foreground active:cursor-grabbing focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-ring"
-      aria-label={t($locale, 'Drag window')}
-      title={t($locale, 'Drag window')}
-      onpointerdown={(event) => void startDragging(event)}
-    >
-      <img class="size-7 shrink-0 rounded-md object-contain" src={appIcon} alt="" draggable="false" />
-      <strong class="text-xs font-semibold">RambleDesk</strong>
-      <span class="h-4 w-px bg-border"></span>
-      <span class="max-w-56 truncate text-[10px] text-muted-foreground">{sourceLabel}</span>
-    </button>
-  {:else}
-    <div class="titlebar-brand flex min-w-0 items-center gap-2.5 px-3 text-foreground">
-      <img class="size-7 shrink-0 rounded-md object-contain" src={appIcon} alt="" draggable="false" />
-      <strong class="text-xs font-semibold">RambleDesk</strong>
-      <span class="h-4 w-px bg-border"></span>
-      <span class="max-w-56 truncate text-[10px] text-muted-foreground">{sourceLabel}</span>
-    </div>
-  {/if}
-
-  {#if windowControlsAvailable}
-    <button
-      class="titlebar-drag min-w-6 flex-1 cursor-grab border-0 bg-transparent active:cursor-grabbing focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-ring"
-      aria-label={t($locale, 'Drag window')}
-      title={t($locale, 'Drag window')}
-      onpointerdown={(event) => void startDragging(event)}
-    ></button>
-  {:else}
-    <div class="min-w-6 flex-1"></div>
-  {/if}
-
-  <div class="flex shrink-0 items-center gap-1.5 px-2">
-    {#if rambleEngaged}
-      <Badge
-        variant="secondary"
+  <div
+    class={[
+      'flex h-full shrink-0 items-stretch border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200',
+      sidebarCollapsed ? 'w-14' : 'w-[224px]',
+    ]}
+  >
+    {#if windowControlsAvailable}
+      <button
         class={[
-          'h-6 max-w-64 gap-1.5 px-2 text-[9px] max-[1080px]:max-w-40',
-          rambleActive
-            ? 'bg-destructive/10 text-destructive'
-            : 'bg-warning/10 text-warning-foreground dark:text-warning',
+          'titlebar-brand flex h-full min-w-0 flex-1 cursor-grab items-center border-0 bg-transparent text-left active:cursor-grabbing focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-ring',
+          sidebarCollapsed ? 'justify-center px-2' : 'gap-2.5 px-3',
+          isMac && !sidebarCollapsed ? 'pl-[58px]' : '',
         ]}
-        title={rambleRequestTitle}
+        aria-label={t($locale, 'Drag window')}
+        title={t($locale, 'Drag window')}
       >
-        <span
-          class={[
-            'size-1.5 shrink-0 rounded-full',
-            rambleActive ? 'animate-pulse bg-destructive' : 'bg-warning',
-          ]}
-        ></span>
-        <span class="truncate">
-          {rambleActive ? t($locale, 'Recording') : t($locale, 'Ramble paused')} · {rambleRequestTitle}
-        </span>
-      </Badge>
-    {/if}
-    {#if pendingCount > 0}
-      <Badge
-        variant="secondary"
-        class="h-6 bg-warning/10 px-2 text-[9px] text-warning-foreground max-[900px]:hidden dark:text-warning"
+        {#if !sidebarCollapsed || !isMac}
+          <img class="size-7 shrink-0 rounded-md object-contain" src={appIcon} alt="" draggable="false" />
+        {/if}
+        {#if !sidebarCollapsed}
+          <strong class="truncate text-xs font-semibold">RambleDesk</strong>
+        {/if}
+      </button>
+    {:else}
+      <div
+        class={[
+          'titlebar-brand flex h-full min-w-0 flex-1 items-center text-sidebar-foreground',
+          sidebarCollapsed ? 'justify-center px-2' : 'gap-2.5 px-3',
+        ]}
       >
-        {pendingCount} {t($locale, 'pending')}
-      </Badge>
-    {/if}
-    {#if notificationsAvailable}
-      <Button
-        variant="ghost"
-        size="icon"
-        class={notificationEnabled ? 'text-info' : ''}
-        disabled={notificationDisabled}
-        onclick={onNotifications}
-        title={notificationText || t($locale, 'Notifications')}
-        aria-label={notificationText || t($locale, 'Notifications')}
-      >
-        {#if notificationEnabled}<Bell />{:else}<BellOff />{/if}
-      </Button>
+        <img class="size-7 shrink-0 rounded-md object-contain" src={appIcon} alt="" draggable="false" />
+        {#if !sidebarCollapsed}
+          <strong class="truncate text-xs font-semibold">RambleDesk</strong>
+        {/if}
+      </div>
     {/if}
   </div>
 
-  {#if windowControlsAvailable && !isMac}
-    <div class="ml-1 flex items-stretch" aria-label={t($locale, 'Window controls')}>
-      <button
-        class="grid w-11 place-items-center text-muted-foreground hover:bg-muted hover:text-foreground"
-        aria-label={t($locale, 'Minimize window')}
-        onclick={() => runWindowAction('minimize')}
-      >
-        <Minus class="size-4" />
-      </button>
-      <button
-        class="grid w-11 place-items-center text-muted-foreground hover:bg-muted hover:text-foreground"
-        aria-label={t($locale, 'Maximize or restore window')}
-        onclick={() => runWindowAction('maximize')}
-      >
-        {#if maximized}<Copy class="size-3.5" />{:else}<Square class="size-3.5" />{/if}
-      </button>
-      <button
-        class="grid w-11 place-items-center text-muted-foreground hover:bg-destructive hover:text-white"
-        aria-label={t($locale, 'Close window')}
-        onclick={() => runWindowAction('close')}
-      >
-        <X class="size-4" />
-      </button>
+  <div class="flex min-w-0 flex-1 items-stretch">
+    <div class="min-w-0 flex-1">
+      {@render workspaceTabs()}
     </div>
-  {/if}
+
+    <div class="flex shrink-0 items-center gap-1.5 px-2">
+      {#if rambleEngaged}
+        <Badge
+          variant="secondary"
+          class={[
+            'h-6 max-w-64 gap-1.5 px-2 text-[9px] max-[1080px]:max-w-40',
+            rambleActive
+              ? 'bg-destructive/10 text-destructive'
+              : 'bg-warning/10 text-warning-foreground dark:text-warning',
+          ]}
+          title={rambleRequestTitle}
+        >
+          <span
+            class={[
+              'size-1.5 shrink-0 rounded-full',
+              rambleActive ? 'animate-pulse bg-destructive' : 'bg-warning',
+            ]}
+          ></span>
+          <span class="truncate">
+            {rambleActive ? t($locale, 'Recording') : t($locale, 'Ramble paused')} · {rambleRequestTitle}
+          </span>
+        </Badge>
+      {/if}
+      {#if pendingCount > 0}
+        <Badge
+          variant="secondary"
+          class="h-6 bg-warning/10 px-2 text-[9px] text-warning-foreground max-[900px]:hidden dark:text-warning"
+        >
+          {pendingCount} {t($locale, 'pending')}
+        </Badge>
+      {/if}
+      {#if notificationsAvailable}
+        <Button
+          variant="ghost"
+          size="icon"
+          class={notificationEnabled ? 'text-info' : ''}
+          disabled={notificationDisabled}
+          onclick={onNotifications}
+          title={notificationText || t($locale, 'Notifications')}
+          aria-label={notificationText || t($locale, 'Notifications')}
+        >
+          {#if notificationEnabled}<Bell />{:else}<BellOff />{/if}
+        </Button>
+      {/if}
+    </div>
+
+    {#if windowControlsAvailable && !isMac}
+      <div class="ml-1 flex items-stretch" aria-label={t($locale, 'Window controls')}>
+        <button
+          class="grid w-11 place-items-center text-muted-foreground hover:bg-muted hover:text-foreground"
+          aria-label={t($locale, 'Minimize window')}
+          onclick={() => runWindowAction('minimize')}
+        >
+          <Minus class="size-4" />
+        </button>
+        <button
+          class="grid w-11 place-items-center text-muted-foreground hover:bg-muted hover:text-foreground"
+          aria-label={t($locale, 'Maximize or restore window')}
+          onclick={() => runWindowAction('maximize')}
+        >
+          {#if maximized}<Copy class="size-3.5" />{:else}<Square class="size-3.5" />{/if}
+        </button>
+        <button
+          class="grid w-11 place-items-center text-muted-foreground hover:bg-destructive hover:text-white"
+          aria-label={t($locale, 'Close window')}
+          onclick={() => runWindowAction('close')}
+        >
+          <X class="size-4" />
+        </button>
+      </div>
+    {/if}
+  </div>
 </header>
 
 <style>
+  .app-titlebar {
+    background: var(--titlebar-background);
+  }
+
   .traffic.close {
     background: #ff5f57;
   }

@@ -34,9 +34,9 @@
   }
 </script>
 
-<header class="flex min-h-16 shrink-0 items-center gap-4 border-b px-5 py-3">
+<header class="flex h-12 shrink-0 items-center gap-4 overflow-hidden border-b px-4">
   <div class="min-w-0 flex-1">
-    <div class="flex min-w-0 flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
+    <div class="flex min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap text-[10px] text-muted-foreground">
       <span class="flex min-w-0 items-center gap-1.5">
         <span class="grid size-4 shrink-0 place-items-center [&_svg]:size-3.5">
           {@html resolveHostProfile(workspace.request.host_id).icon_svg}
