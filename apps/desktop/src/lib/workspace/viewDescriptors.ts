@@ -8,6 +8,10 @@ export type SettingsViewDescriptor = Readonly<{
   kind: 'settings'
 }>
 
+export type InboxViewDescriptor = Readonly<{
+  kind: 'inbox'
+}>
+
 export type RequestTaskViewDescriptor = Readonly<{
   kind: 'request-task'
   requestId: string
@@ -19,6 +23,7 @@ export type RambelleProfileViewDescriptor = Readonly<{
 
 export type WorkspaceViewDescriptor =
   | SessionViewDescriptor
+  | InboxViewDescriptor
   | SettingsViewDescriptor
   | RequestTaskViewDescriptor
   | RambelleProfileViewDescriptor
@@ -34,6 +39,10 @@ export function settingsViewDescriptor(): SettingsViewDescriptor {
   return { kind: 'settings' }
 }
 
+export function inboxViewDescriptor(): InboxViewDescriptor {
+  return { kind: 'inbox' }
+}
+
 export function requestTaskViewDescriptor(requestId: string): RequestTaskViewDescriptor {
   return { kind: 'request-task', requestId }
 }
@@ -44,6 +53,8 @@ export function rambelleProfileViewDescriptor(): RambelleProfileViewDescriptor {
 
 export function workspaceViewKey(view: WorkspaceViewDescriptor): string {
   switch (view.kind) {
+    case 'inbox':
+      return 'inbox:singleton'
     case 'settings':
       return 'settings:singleton'
     case 'request-task':

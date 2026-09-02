@@ -24,6 +24,7 @@
   export let labelForView: (view: WorkspaceViewDescriptor) => string
   export let onActivate: (viewKey: string) => void = () => {}
   export let onClose: (viewKey: string) => Promise<void> | void = () => {}
+  export let onStartDragging: ((event: PointerEvent) => void) | null = null
 
   let viewKeys: string[] = []
   let focusedViewKey: string | null = null
@@ -95,23 +96,23 @@
   }
 </script>
 
-{#if views.length > 0}
-  <div class="shrink-0 border-b bg-muted/25 px-2 pt-1.5">
+<div class="flex h-full min-w-0 items-end overflow-hidden px-2 pt-1.5">
+  {#if views.length > 0}
     <div
-      class="overflow-x-auto overscroll-x-contain [scrollbar-width:thin]"
+      class="h-full min-w-0 overflow-x-auto overscroll-x-contain [scrollbar-width:thin]"
       role="tablist"
       aria-label={tr('Workspace tabs')}
       aria-orientation="horizontal"
       aria-busy={pendingViewKey !== null}
     >
-      <div class="flex min-w-max items-end gap-1">
+      <div class="flex h-full w-max items-end gap-1">
         {#each views as view (workspaceViewKey(view))}
           {@const viewKey = workspaceViewKey(view)}
           {@const label = labelForView(view)}
           <div
             role="presentation"
             class={[
-              'flex max-w-56 shrink-0 items-center rounded-t-md border border-b-0 transition-colors',
+              'mb-[-1px] flex h-[35px] max-w-56 shrink-0 items-center rounded-t-md border border-b-0 transition-colors',
               activeViewKey === viewKey
                 ? 'bg-background text-foreground'
                 : 'border-transparent text-muted-foreground hover:bg-background/60 hover:text-foreground',
@@ -153,5 +154,16 @@
         {/each}
       </div>
     </div>
-  </div>
-{/if}
+  {/if}
+  {#if onStartDragging}
+    <button
+      type="button"
+      class="titlebar-drag h-full min-w-6 flex-1 cursor-grab border-0 bg-transparent active:cursor-grabbing focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-ring"
+      aria-label={tr('Drag window')}
+      title={tr('Drag window')}
+      onpointerdown={onStartDragging}
+    ></button>
+  {:else}
+    <div class="h-full min-w-6 flex-1"></div>
+  {/if}
+</div>

@@ -1,4 +1,5 @@
 import {
+  inboxViewDescriptor,
   rambelleProfileViewDescriptor,
   requestTaskViewDescriptor,
   sessionViewDescriptor,
@@ -35,6 +36,10 @@ export type WorkspaceSnapshotSettingsViewV2 = Readonly<{
   kind: 'settings'
 }>
 
+export type WorkspaceSnapshotInboxViewV2 = Readonly<{
+  kind: 'inbox'
+}>
+
 export type WorkspaceSnapshotRequestTaskViewV2 = Readonly<{
   kind: 'request-task'
   requestId: string
@@ -46,6 +51,7 @@ export type WorkspaceSnapshotRambelleProfileViewV2 = Readonly<{
 
 export type WorkspaceSnapshotViewV2 =
   | WorkspaceSnapshotSessionViewV2
+  | WorkspaceSnapshotInboxViewV2
   | WorkspaceSnapshotSettingsViewV2
   | WorkspaceSnapshotRequestTaskViewV2
   | WorkspaceSnapshotRambelleProfileViewV2
@@ -98,6 +104,9 @@ function descriptorForSnapshotView(
   if (version === WORKSPACE_SNAPSHOT_VERSION && isRecord(value) && value.kind === 'settings') {
     return { view: settingsViewDescriptor(), lastRequestId: null }
   }
+  if (version === WORKSPACE_SNAPSHOT_VERSION && isRecord(value) && value.kind === 'inbox') {
+    return { view: inboxViewDescriptor(), lastRequestId: null }
+  }
   if (
     version === WORKSPACE_SNAPSHOT_VERSION &&
     isRecord(value) &&
@@ -120,6 +129,8 @@ function snapshotViewDescriptor(view: WorkspaceSnapshotViewV2): WorkspaceViewDes
   switch (view.kind) {
     case 'session':
       return sessionViewDescriptor(view.hostId, view.hostSessionId)
+    case 'inbox':
+      return inboxViewDescriptor()
     case 'settings':
       return settingsViewDescriptor()
     case 'request-task':
@@ -144,6 +155,8 @@ export function createWorkspaceSnapshot(
           }
         case 'settings':
           return { kind: 'settings' }
+        case 'inbox':
+          return { kind: 'inbox' }
         case 'request-task':
           return { kind: 'request-task', requestId: view.requestId }
         case 'rambelle-profile':

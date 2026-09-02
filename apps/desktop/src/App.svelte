@@ -15,6 +15,7 @@
   import { Sonner, toast } from './lib/components/ui/sonner'
   import ResumePromptDialog from './lib/workbench/ResumePromptDialog.svelte'
   import SessionWorkbench from './lib/workbench/SessionWorkbench.svelte'
+  import InboxWorkspaceView from './lib/workspace/InboxWorkspaceView.svelte'
   import MissingSessionView from './lib/workspace/MissingSessionView.svelte'
   import RambelleProfileWorkspaceView from './lib/workspace/RambelleProfileWorkspaceView.svelte'
   import SettingsWorkspaceView from './lib/workspace/SettingsWorkspaceView.svelte'
@@ -70,6 +71,7 @@
   } from './lib/notifications'
   import { isWithinLast24Hours } from './lib/requestRecency'
   import {
+    inboxViewDescriptor,
     rambelleProfileViewDescriptor,
     requestTaskViewDescriptor,
     sessionViewDescriptor,
@@ -99,11 +101,12 @@
     type SessionViewCatalog,
     type SessionViewResolution,
   } from './lib/workspace/sessionViewRecovery'
-  import WorkspaceTabStrip from './lib/workspace/WorkspaceTabStrip.svelte'
   import {
     workspaceTabId,
     workspaceTabPanelId,
   } from './lib/workspace/workspaceTabNavigation'
+  import WorkspaceTabStrip from './lib/workspace/WorkspaceTabStrip.svelte'
+  import { workspaceSurface } from './lib/workspace/workspaceSurface'
   import {
     createWorkspaceTransition,
     type WorkspaceTransitionOutcome,
@@ -273,7 +276,7 @@
   const NARROW_WORKSPACE_MIN_WIDTH = 360
   const PANE_RESIZER_SIZE = 11
   const REQUEST_WORKSPACE_LAYOUT_KEY = 'request-workspace-layout'
-  const savedRequestWorkspaceLayout = savedPaneLayout(REQUEST_WORKSPACE_LAYOUT_KEY)
+  let latestRequestWorkspaceLayout = savedPaneLayout(REQUEST_WORKSPACE_LAYOUT_KEY)
 
   let taskBriefOpen = true
   let todayOnly = false
@@ -282,6 +285,7 @@
   let requestWorkspaceGroup: HTMLDivElement | null = null
   let requestWorkspacePaneGroup: PaneGroupHandle | undefined
   let requestWorkspaceLayoutReady = false
+  let requestWorkspaceLayoutInitializing = false
   let workbenchLayoutWidth = 0
   let requestWorkspaceWidth = 0
   let genericMcpConfiguration = ''
@@ -518,6 +522,7 @@
       )
     : undefined
   $: renderedWorkspaceView = activeWorkspaceView(workspaceShellState)
+  $: renderedWorkspaceSurface = workspaceSurface(renderedWorkspaceView)
   $: renderedSessionView = renderedWorkspaceView?.kind === 'session'
     ? renderedWorkspaceView
     : null
@@ -536,6 +541,8 @@
   }
   const workspaceTabLabel = (view: WorkspaceViewDescriptor) => {
     switch (view.kind) {
+      case 'inbox':
+        return tr('All requests')
       case 'settings':
         return tr('Settings')
       case 'request-task': {
@@ -660,7 +667,41 @@
   $: saveHostRailCollapsed(hostSessionRailCollapsed)
 
   function saveRequestWorkspaceLayout(layout: number[]) {
-    if (requestWorkspaceLayoutReady) savePaneLayout(REQUEST_WORKSPACE_LAYOUT_KEY, layout)
+    if (!requestWorkspaceLayoutReady) return
+    latestRequestWorkspaceLayout = layout
+    savePaneLayout(REQUEST_WORKSPACE_LAYOUT_KEY, layout)
+  }
+
+  async function initializeRequestWorkspaceLayout() {
+    if (requestWorkspaceLayoutReady || requestWorkspaceLayoutInitializing) return
+    requestWorkspaceLayoutInitializing = true
+    try {
+      await tick()
+      if (
+        renderedWorkspaceSurface === 'standalone' ||
+        !requestWorkspacePaneGroup ||
+        requestWorkspacePaneWidth <= 0
+      ) return
+      const defaultRequestListSize = Math.min(
+        requestListMaximumSize,
+        Math.max(
+          requestListMinimumSize,
+          (REQUEST_LIST_DEFAULT_WIDTH / requestWorkspacePaneWidth) * 100,
+        ),
+      )
+      requestWorkspacePaneGroup.setLayout(
+        latestRequestWorkspaceLayout ?? [defaultRequestListSize, 100 - defaultRequestListSize],
+      )
+      requestWorkspaceLayoutReady = true
+    } finally {
+      requestWorkspaceLayoutInitializing = false
+    }
+  }
+
+  $: if (renderedWorkspaceSurface !== 'standalone') {
+    void initializeRequestWorkspaceLayout()
+  } else {
+    requestWorkspaceLayoutReady = false
   }
 
   onMount(() => {
@@ -673,20 +714,6 @@
     if (workbenchLayout) layoutObserver.observe(workbenchLayout)
     if (requestWorkspaceGroup) layoutObserver.observe(requestWorkspaceGroup)
     syncLayoutDimensions()
-    void tick().then(() => {
-      if (!requestWorkspacePaneGroup || requestWorkspacePaneWidth <= 0) return
-      const defaultRequestListSize = Math.min(
-        requestListMaximumSize,
-        Math.max(
-          requestListMinimumSize,
-          (REQUEST_LIST_DEFAULT_WIDTH / requestWorkspacePaneWidth) * 100,
-        ),
-      )
-      requestWorkspaceLayoutReady = true
-      requestWorkspacePaneGroup.setLayout(
-        savedRequestWorkspaceLayout ?? [defaultRequestListSize, 100 - defaultRequestListSize],
-      )
-    })
     const cleanupLayoutObserver = () => layoutObserver.disconnect()
     const unsubscribeApplicationEvents = !desktopShellAvailable && !previewMode
       ? applicationTransport.subscribe(
@@ -804,6 +831,9 @@
       if (!initialized) return
       await refreshSessionViewRecovery()
       if (initialWorkspaceSnapshot) await restoreInitialWorkspaceSnapshot()
+      else if (previewMode && workspace) {
+        await navigation.selectScope(workspace.request.host_id, workspace.request.host_session_id)
+      }
     })()
   }
 
@@ -1018,11 +1048,12 @@
       loadingWorkspace = false
       return
     }
-    if (view.kind === 'settings' || view.kind === 'rambelle-profile') {
+    if (view.kind === 'inbox' || view.kind === 'settings' || view.kind === 'rambelle-profile') {
       clearWorkspace()
       workbenchMounted = true
       loadingWorkspace = false
-      if (view.kind === 'settings') void refreshGenericMcpConfiguration()
+      if (view.kind === 'inbox') await navigation.selectScope(null, null)
+      else if (view.kind === 'settings') void refreshGenericMcpConfiguration()
       return
     }
     if (view.kind === 'request-task') {
@@ -1086,7 +1117,17 @@
     const priorScope = currentNavigationScope()
     workspaceTransition.invalidate()
     const selection = await navigation.selectScope(hostId, hostSessionId)
-    if (!selection.selected || !hostId || !hostSessionId) return
+    if (!selection.selected) return
+    if (!hostId || !hostSessionId) {
+      const outcome = await workspaceTransition.activate({
+        view: inboxViewDescriptor(),
+        requestId: null,
+        shellAction: { type: 'open' },
+        pendingViewKey: workspaceViewKey(inboxViewDescriptor()),
+      })
+      await restoreNavigationScope(priorScope, outcome)
+      return
+    }
     if (workspaceTransitionLocked) {
       await navigation.selectScope(priorScope.hostId, priorScope.hostSessionId)
       return
@@ -1121,6 +1162,10 @@
     )
     if (!view) return
     if (view.kind !== 'session') {
+      if (view.kind === 'inbox') {
+        const selection = await navigation.selectScope(null, null)
+        if (!selection.selected) return
+      }
       const outcome = await workspaceTransition.activate({
         view,
         requestId: view.kind === 'request-task' ? view.requestId : null,
@@ -1130,6 +1175,7 @@
       if (outcome === 'activated' && view.kind === 'settings') {
         void refreshGenericMcpConfiguration()
       }
+      if (view.kind === 'inbox') await restoreNavigationScope(priorScope, outcome)
       return
     }
     const resolution = sessionViewResolution(sessionViewResolutions, viewKey)
@@ -1210,6 +1256,9 @@
           ?.request_id ??
         selection.requests[0]?.request_id ??
         null
+    } else if (fallbackView?.kind === 'inbox') {
+      const selection = await navigation.selectScope(null, null)
+      if (!selection.selected) return
     } else if (fallbackView?.kind === 'request-task') {
       fallbackRequestId = fallbackView.requestId
     }
@@ -1373,6 +1422,7 @@
     requestId: string,
   ): Promise<WorkspaceTransitionOutcome> {
     if (workspaceTransitionLocked) return 'blocked'
+    const priorScope = currentNavigationScope()
     workspaceTransition.invalidate()
     if (
       workspace?.request.request_id === requestId &&
@@ -1383,12 +1433,18 @@
     }
     pageError = ''
     const view = viewForRequest(requestId)
-    return workspaceTransition.activate({
+    if (view) {
+      const selection = await navigation.selectScope(view.hostId, view.hostSessionId)
+      if (!selection.selected) return 'failed'
+    }
+    const outcome = await workspaceTransition.activate({
       view,
       requestId,
       shellAction: { type: 'open' },
       pendingViewKey: view ? workspaceViewKey(view) : `request:${JSON.stringify(requestId)}`,
     })
+    await restoreNavigationScope(priorScope, outcome)
+    return outcome
   }
 
   async function openRequest(requestId: string, _saveCurrent = true): Promise<boolean> {
@@ -1814,7 +1870,7 @@
   <AppTitlebar
     windowControls={capabilities.windowControls}
     notifications={capabilities.notifications}
-    sourceLabel={workspace?.request.source_hint ?? workspace?.request.title ?? 'Workbench'}
+    sidebarCollapsed={hostSessionRailCollapsed}
     pendingCount={$navigation.pendingRequests.length}
     {rambleEngaged}
     {rambleActive}
@@ -1826,7 +1882,20 @@
     notificationDisabled={false}
     onNotifications={() => void openSettings('notifications')}
     onWindowError={(message) => (pageError = tr('Window action failed: {error}', { error: message }))}
-  />
+  >
+    {#snippet workspaceTabs(onStartDragging: ((event: PointerEvent) => void) | null)}
+      <WorkspaceTabStrip
+        views={workspaceShellState.views}
+        activeViewKey={workspaceShellState.activeViewKey}
+        pendingViewKey={pendingWorkspaceViewKey}
+        disabled={workspaceTransitionLocked}
+        labelForView={workspaceTabLabel}
+        onActivate={(viewKey) => void activateWorkspaceTab(viewKey)}
+        onClose={closeWorkspaceTab}
+        {onStartDragging}
+      />
+    {/snippet}
+  </AppTitlebar>
 
   <div bind:this={workbenchLayout} class="flex h-[calc(100%-46px)] min-h-0 min-w-0">
     <HostSessionRail
@@ -1856,48 +1925,44 @@
       id="request-workspace-split"
       onLayoutChange={saveRequestWorkspaceLayout}
     >
-      <Pane
-        id="request-list-pane"
-        defaultSize={28}
-        minSize={requestListMinimumSize}
-        maxSize={requestListMaximumSize}
-      >
-        <RequestListPane
-          requests={visibleRequests}
-          activeRequestId={workspace?.request.request_id ?? null}
-          cookingRequestIds={cookingRequestIds}
-          scopeLabel={requestScopeLabel}
-          searchQuery={$navigation.requestSearch}
-          loading={$navigation.loadingRequests}
-          refreshing={$navigation.refreshingPage}
-          loadingMore={$navigation.loadingMoreRequests}
-          hasMore={todayOnly ? false : $navigation.nextRequestCursor !== null}
-          {todayOnly}
-          {resolveHostProfile}
-          formatTime={formatTimeLocal}
-          onRefresh={() => void navigation.refreshPage()}
-          onLoadMore={() => void navigation.loadMoreRequests()}
-          onOpenRequest={(requestId) => void openRequest(requestId)}
-          onToggleToday={() => (todayOnly = !todayOnly)}
-        />
-      </Pane>
-
-      <PaneResizer
-        class="workbench-pane-resizer workbench-pane-resizer--vertical"
-        aria-label={tr('Resize request list')}
-      />
-
-      <Pane id="workspace-pane" minSize={workspaceMinimumSize}>
-        <div class="flex h-full min-h-0 min-w-0 flex-col">
-          <WorkspaceTabStrip
-            views={workspaceShellState.views}
-            activeViewKey={workspaceShellState.activeViewKey}
-            pendingViewKey={pendingWorkspaceViewKey}
-            disabled={workspaceTransitionLocked}
-            labelForView={workspaceTabLabel}
-            onActivate={(viewKey) => void activateWorkspaceTab(viewKey)}
-            onClose={closeWorkspaceTab}
+      {#if renderedWorkspaceSurface !== 'standalone'}
+        <Pane
+          id="request-list-pane"
+          defaultSize={28}
+          minSize={requestListMinimumSize}
+          maxSize={requestListMaximumSize}
+        >
+          <RequestListPane
+            requests={visibleRequests}
+            activeRequestId={workspace?.request.request_id ?? null}
+            cookingRequestIds={cookingRequestIds}
+            scopeLabel={requestScopeLabel}
+            searchQuery={$navigation.requestSearch}
+            loading={$navigation.loadingRequests}
+            refreshing={$navigation.refreshingPage}
+            loadingMore={$navigation.loadingMoreRequests}
+            hasMore={todayOnly ? false : $navigation.nextRequestCursor !== null}
+            {todayOnly}
+            {resolveHostProfile}
+            formatTime={formatTimeLocal}
+            onRefresh={() => void navigation.refreshPage()}
+            onLoadMore={() => void navigation.loadMoreRequests()}
+            onOpenRequest={(requestId) => void openRequest(requestId)}
+            onToggleToday={() => (todayOnly = !todayOnly)}
           />
+        </Pane>
+
+        <PaneResizer
+          class="workbench-pane-resizer workbench-pane-resizer--vertical"
+          aria-label={tr('Resize request list')}
+        />
+      {/if}
+
+      <Pane
+        id="workspace-pane"
+        minSize={renderedWorkspaceSurface !== 'standalone' ? workspaceMinimumSize : 0}
+      >
+        <div class="flex h-full min-h-0 min-w-0 flex-col">
           <div
             class="min-h-0 flex-1"
             role={renderedWorkspaceView ? 'tabpanel' : undefined}
@@ -1908,7 +1973,9 @@
               ? workspaceTabId(workspaceViewKey(renderedWorkspaceView))
               : undefined}
           >
-            {#if renderedWorkspaceView?.kind === 'settings'}
+            {#if renderedWorkspaceView?.kind === 'inbox'}
+              <InboxWorkspaceView />
+            {:else if renderedWorkspaceView?.kind === 'settings'}
               <SettingsWorkspaceView
                 {capabilities}
                 mcpConfiguration={genericMcpConfiguration}

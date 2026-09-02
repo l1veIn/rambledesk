@@ -633,6 +633,7 @@ const chinese: Record<string, string> = {
   'Actions to experience': '需要体验',
   'Select host': '选择宿主',
   'Select a request': '选择一个请求',
+  'Open a request from the Inbox to continue in its Session tab.': '从收件箱打开请求，在对应的 Session 标签页中继续。',
   'Published': '已发布',
   'Cancelled': '已取消',
   'Paused': '已暂停',

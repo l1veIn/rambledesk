@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  inboxViewDescriptor,
   rambelleProfileViewDescriptor,
   requestTaskViewDescriptor,
   sessionViewDescriptor,
@@ -20,6 +21,7 @@ const alpha = sessionViewDescriptor('codex', 'alpha')
 const beta = sessionViewDescriptor('codex', 'beta')
 const gamma = sessionViewDescriptor('pi', 'gamma')
 const settings = settingsViewDescriptor()
+const inbox = inboxViewDescriptor()
 const task = requestTaskViewDescriptor('request-alpha')
 const profile = rambelleProfileViewDescriptor()
 
@@ -78,6 +80,15 @@ describe('workspaceShellReducer', () => {
 
     expect(reopened.views).toEqual([alpha, settings, beta])
     expect(activeWorkspaceView(reopened)).toBe(settings)
+    expectValidState(reopened)
+  })
+
+  it('opens the aggregate Inbox once and focuses the existing singleton', () => {
+    const initial = reduce(EMPTY_WORKSPACE_SHELL_STATE, open(inbox), open(alpha))
+    const reopened = workspaceShellReducer(initial, open(inboxViewDescriptor()))
+
+    expect(reopened.views).toEqual([inbox, alpha])
+    expect(activeWorkspaceView(reopened)).toBe(inbox)
     expectValidState(reopened)
   })
 

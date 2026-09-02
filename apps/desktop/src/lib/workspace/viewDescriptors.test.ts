@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  inboxViewDescriptor,
   rambelleProfileViewDescriptor,
   requestTaskViewDescriptor,
   sessionViewDescriptor,
@@ -9,6 +10,10 @@ import {
 } from './viewDescriptors'
 
 describe('workspace view descriptors', () => {
+  it('uses one stable key for the aggregate Inbox view', () => {
+    expect(workspaceViewKey(inboxViewDescriptor())).toBe('inbox:singleton')
+  })
+
   it('creates a readonly session descriptor with a type-prefixed stable key', () => {
     const first = sessionViewDescriptor('codex', 'session-1')
     const second = sessionViewDescriptor('codex', 'session-1')

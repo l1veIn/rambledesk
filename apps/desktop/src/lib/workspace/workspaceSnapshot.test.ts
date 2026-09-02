@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  inboxViewDescriptor,
   rambelleProfileViewDescriptor,
   requestTaskViewDescriptor,
   sessionViewDescriptor,
@@ -142,6 +143,21 @@ describe('workspace snapshots', () => {
       views: [settingsViewDescriptor(), alpha],
       activeViewKey: workspaceViewKey(settingsViewDescriptor()),
     })
+  })
+
+  it('round-trips the aggregate Inbox as a singleton client view', () => {
+    const state = workspaceShellReducer(EMPTY_WORKSPACE_SHELL_STATE, {
+      type: 'open',
+      view: inboxViewDescriptor(),
+    })
+    const snapshot = createWorkspaceSnapshot(state, new Map())
+
+    expect(snapshot).toEqual({
+      version: 2,
+      views: [{ kind: 'inbox' }],
+      activeViewKey: 'inbox:singleton',
+    })
+    expect(restoreWorkspaceSnapshot(snapshot)?.shellState).toEqual(state)
   })
 
   it('round-trips request task and profile descriptors without editor state', () => {
