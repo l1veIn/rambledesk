@@ -83,6 +83,7 @@
   --sidebar-accent-foreground: #205b96;
   --sidebar-border: #c8d5e3;
   --sidebar-ring: var(--brand-ice);
+  --titlebar-background: #dfe7f0;
   --app-background: var(--brand-silver);
   --glass: rgb(247 249 252 / 92%);
   --shadow: 0 18px 50px rgb(42 70 101 / 10%);
@@ -123,6 +124,7 @@
   --sidebar-accent-foreground: #b7dbfa;
   --sidebar-border: #34465a;
   --sidebar-ring: #78b7f5;
+  --titlebar-background: #0d1722;
   --app-background: #101823;
   --glass: rgb(20 31 44 / 94%);
   --shadow: 0 20px 58px rgb(0 0 0 / 38%);

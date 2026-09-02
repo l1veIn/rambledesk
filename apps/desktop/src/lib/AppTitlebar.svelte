@@ -82,7 +82,7 @@
 
 <header
   class={[
-    'relative z-30 flex h-10 select-none items-stretch overflow-hidden rounded-t-[15px] border-b bg-background/95 backdrop-blur-md',
+    'app-titlebar relative z-30 flex h-10 select-none items-stretch overflow-hidden rounded-t-[15px] border-b',
   ]}
 >
   {#if windowControlsAvailable && isMac}
@@ -139,7 +139,7 @@
     {/if}
   </div>
 
-  <div class="flex min-w-0 flex-1 items-stretch bg-muted/25">
+  <div class="flex min-w-0 flex-1 items-stretch">
     <div class="min-w-0 flex-1">
       {@render workspaceTabs(windowControlsAvailable ? startDragging : null)}
     </div>
@@ -219,6 +219,10 @@
 </header>
 
 <style>
+  .app-titlebar {
+    background: var(--titlebar-background);
+  }
+
   .traffic.close {
     background: #ff5f57;
   }
