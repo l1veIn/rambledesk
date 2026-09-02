@@ -8,7 +8,6 @@
   import AppTitlebar from './lib/AppTitlebar.svelte'
   import OnboardingWizard from './lib/OnboardingWizard.svelte'
   import UpdateAvailableDialog from './lib/UpdateAvailableDialog.svelte'
-  import ArchivedSessionsDialog from './lib/components/navigation/ArchivedSessionsDialog.svelte'
   import HostSessionRail from './lib/components/navigation/HostSessionRail.svelte'
   import RequestListPane from './lib/components/navigation/RequestListPane.svelte'
   import { Sonner, toast } from './lib/components/ui/sonner'
@@ -19,6 +18,7 @@
   import RambelleProfileWorkspaceView from './lib/workspace/RambelleProfileWorkspaceView.svelte'
   import SettingsWorkspaceView from './lib/workspace/SettingsWorkspaceView.svelte'
   import TaskWorkspaceView from './lib/workspace/TaskWorkspaceView.svelte'
+  import ArchivedSessionsWorkspaceView from './lib/workspace/ArchivedSessionsWorkspaceView.svelte'
   import type { JSONContent } from '@tiptap/core'
   import {
     defineApplicationStream,
@@ -70,6 +70,7 @@
   } from './lib/notifications'
   import { isWithinLast24Hours } from './lib/requestRecency'
   import {
+    archiveViewDescriptor,
     inboxViewDescriptor,
     rambelleProfileViewDescriptor,
     requestTaskViewDescriptor,
@@ -227,8 +228,8 @@
   let resumePrompt: ResumePrompt | null = null
   let resumeCopyState: 'idle' | 'copied' | 'failed' = 'idle'
   let notificationState: NotificationState = 'checking'
-  let archivedSessionsOpen = false
   let archivedInitialSession: SessionViewDescriptor | null = null
+  let archivedSelectionEpoch = 0
   let lastSessionRecoveryFingerprint = ''
   let activeRecoveryTransition: object | null = null
   let settingsSection: SettingsSection = 'general'
@@ -521,6 +522,8 @@
     switch (view.kind) {
       case 'inbox':
         return tr('All requests')
+      case 'archive':
+        return tr('Archived sessions')
       case 'settings':
         return tr('Settings')
       case 'request-task': {
@@ -973,7 +976,12 @@
       loadingWorkspace = false
       return
     }
-    if (view.kind === 'inbox' || view.kind === 'settings' || view.kind === 'rambelle-profile') {
+    if (
+      view.kind === 'inbox' ||
+      view.kind === 'archive' ||
+      view.kind === 'settings' ||
+      view.kind === 'rambelle-profile'
+    ) {
       clearWorkspace()
       workbenchMounted = true
       loadingWorkspace = false
@@ -1555,9 +1563,20 @@
     })
   }
 
-  function openArchivedSessions(initialSession: SessionViewDescriptor | null = null) {
+  async function openArchivedSessions(initialSession: SessionViewDescriptor | null = null) {
+    if (workspaceTransitionLocked || pendingWorkspaceViewKey) return
     archivedInitialSession = initialSession
-    archivedSessionsOpen = true
+    archivedSelectionEpoch += 1
+    const view = archiveViewDescriptor()
+    const viewKey = workspaceViewKey(view)
+    if (workspaceShellState.activeViewKey === viewKey) return
+    workspaceTransition.invalidate()
+    await workspaceTransition.activate({
+      view,
+      requestId: null,
+      shellAction: { type: 'open' },
+      pendingViewKey: viewKey,
+    })
   }
 
   function applyWorkspaceMutation(next: FeedbackWorkspaceView) {
@@ -1881,6 +1900,18 @@
           >
             {#if renderedWorkspaceView?.kind === 'inbox'}
               <InboxWorkspaceView />
+            {:else if renderedWorkspaceView?.kind === 'archive'}
+              <ArchivedSessionsWorkspaceView
+                transport={applicationTransport}
+                {previewMode}
+                {resolveHostProfile}
+                formatTime={formatTimeLocal}
+                {messageFrom}
+                initialSession={archivedInitialSession}
+                selectionEpoch={archivedSelectionEpoch}
+                onError={(message) => (pageError = message)}
+                onChanged={retrySessionViewRecovery}
+              />
             {:else if renderedWorkspaceView?.kind === 'settings'}
               <SettingsWorkspaceView
                 {capabilities}
@@ -1889,7 +1920,7 @@
                 sectionSelectionEpoch={settingsSectionSelectionEpoch}
                 {updateInstallBlocked}
                 onRestartOnboarding={restartOnboarding}
-                onOpenArchived={openArchivedSessions}
+                onOpenArchived={() => void openArchivedSessions()}
                 onOpenRambelleProfile={() => void openRambelleProfile()}
               />
             {:else if renderedWorkspaceView?.kind === 'request-task'}
@@ -1916,7 +1947,7 @@
                 busy={renderedSessionResolution.reason === 'unresolved' || pendingWorkspaceViewKey !== null}
                 onRetry={retrySessionViewRecovery}
                 onClose={() => closeWorkspaceTab(workspaceViewKey(renderedSessionResolution!.session))}
-                onOpenArchive={() => openArchivedSessions(renderedSessionResolution!.session)}
+                onOpenArchive={() => void openArchivedSessions(renderedSessionResolution!.session)}
               />
             {:else if workbenchMounted}
               {#key renderedSessionView ? workspaceViewKey(renderedSessionView) : 'workspace:empty'}
@@ -2035,18 +2066,6 @@
 {#if onboardingAvailable}
   <OnboardingWizard {capabilities} bind:openWizard={onboardingOpen} onClose={closeOnboarding} />
 {/if}
-
-<ArchivedSessionsDialog
-  bind:open={archivedSessionsOpen}
-  transport={applicationTransport}
-  {previewMode}
-  {resolveHostProfile}
-  formatTime={formatTimeLocal}
-  {messageFrom}
-  initialSession={archivedInitialSession}
-  onError={(message) => (pageError = message)}
-  onChanged={retrySessionViewRecovery}
-/>
 
 {#if softwareUpdatesAvailable}
   <UpdateAvailableDialog

@@ -15,6 +15,7 @@ export function workspaceSurface(view: WorkspaceViewDescriptor | null): Workspac
     case 'session':
       return 'session'
     case 'settings':
+    case 'archive':
     case 'request-task':
     case 'rambelle-profile':
       return 'standalone'

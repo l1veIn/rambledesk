@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  archiveViewDescriptor,
   inboxViewDescriptor,
   rambelleProfileViewDescriptor,
   requestTaskViewDescriptor,
@@ -48,6 +49,11 @@ describe('workspace view descriptors', () => {
     expect(first).toEqual({ kind: 'settings' })
     expect(workspaceViewKey(first)).toBe('settings:singleton')
     expect(workspaceViewKey(second)).toBe(workspaceViewKey(first))
+  })
+
+  it('gives the archive workspace one singleton key', () => {
+    expect(archiveViewDescriptor()).toEqual({ kind: 'archive' })
+    expect(workspaceViewKey(archiveViewDescriptor())).toBe('archive:singleton')
   })
 
   it('keys request tasks by request id and keeps profile singleton', () => {

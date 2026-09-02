@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  archiveViewDescriptor,
   inboxViewDescriptor,
   rambelleProfileViewDescriptor,
   requestTaskViewDescriptor,
@@ -174,6 +175,21 @@ describe('workspace snapshots', () => {
       version: 2,
       views: [{ kind: 'inbox' }],
       activeViewKey: 'inbox:singleton',
+    })
+    expect(restoreWorkspaceSnapshot(snapshot)?.shellState).toEqual(state)
+  })
+
+  it('round-trips the archive workspace as a singleton client view', () => {
+    const state = workspaceShellReducer(EMPTY_WORKSPACE_SHELL_STATE, {
+      type: 'open',
+      view: archiveViewDescriptor(),
+    })
+    const snapshot = createWorkspaceSnapshot(state, new Map())
+
+    expect(snapshot).toEqual({
+      version: 2,
+      views: [{ kind: 'archive' }],
+      activeViewKey: 'archive:singleton',
     })
     expect(restoreWorkspaceSnapshot(snapshot)?.shellState).toEqual(state)
   })

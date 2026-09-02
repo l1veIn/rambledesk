@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte'
   import {
     ArchiveRestore,
     ChevronDown,
@@ -9,12 +10,10 @@
     RefreshCw,
     Search,
     Trash2,
-    X,
   } from '@lucide/svelte'
   import { Badge } from '$lib/components/ui/badge'
   import type { ApplicationTransport } from '$lib/application/applicationTransport'
   import { Button } from '$lib/components/ui/button'
-  import * as Dialog from '$lib/components/ui/dialog'
   import { ScrollArea } from '$lib/components/ui/scroll-area'
   import type { FeedbackRequestSummary, FeedbackWorkspaceView, HostSessionSummary } from '$lib/feedback'
   import { requestStatusLabel } from '$lib/feedback'
@@ -39,13 +38,13 @@
     publishedFeedback: PublishedFeedbackView | null
   }
 
-  export let open = false
   export let transport: ApplicationTransport
   export let previewMode = false
   export let resolveHostProfile: (hostId: string) => HostProfile
   export let formatTime: (value: string | null | undefined) => string
   export let messageFrom: (cause: unknown) => string
   export let initialSession: SessionViewDescriptor | null = null
+  export let selectionEpoch = 0
   export let onError: (message: string) => void = () => {}
   export let onChanged: () => Promise<void> | void = () => {}
 
@@ -58,7 +57,8 @@
   let expandedSessions = new Set<string>()
   let selected: SelectedArchivedItem | null = null
   let detailLoadingRequestId: string | null = null
-  let openedOnce = false
+  let mounted = false
+  let appliedSelectionEpoch = -1
   let applyInitialSession = false
   let searchTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -75,18 +75,21 @@
   $: activeUncookedMarkdown =
     activePublishedFeedback?.uncooked_markdown ?? activeRequestDetails?.workspace.draft.body_markdown ?? ''
 
-  $: if (open && !openedOnce) {
-    openedOnce = true
+  onMount(() => {
+    mounted = true
+    appliedSelectionEpoch = selectionEpoch
     applyInitialSession = true
     void loadArchive()
-  }
-  $: if (!open && openedOnce) {
-    openedOnce = false
-    sessions = []
-    requestsBySession = {}
-    requestDetailsById = {}
-    selected = null
-    detailLoadingRequestId = null
+    return () => {
+      mounted = false
+      if (searchTimer) clearTimeout(searchTimer)
+    }
+  })
+
+  $: if (mounted && selectionEpoch !== appliedSelectionEpoch) {
+    appliedSelectionEpoch = selectionEpoch
+    applyInitialSession = true
+    void loadArchive()
   }
 
   function tr(source: string, values: Record<string, string | number> = {}) {
@@ -378,15 +381,11 @@
   }
 </script>
 
-<Dialog.Root bind:open>
-  <Dialog.Content
-    showCloseButton={false}
-    class="grid h-[min(760px,calc(100vh-3rem))] w-[min(1060px,calc(100vw-2rem))] max-w-none grid-rows-[56px_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-none"
-  >
-    <div class="flex min-h-0 items-center gap-2 border-b px-4">
-      <Dialog.Title class="min-w-0 flex-1 text-sm font-semibold">
+<section class="grid h-full min-h-0 min-w-0 grid-rows-[48px_minmax(0,1fr)] overflow-hidden bg-background">
+    <header class="flex min-h-0 items-center gap-2 border-b px-4">
+      <h1 class="min-w-0 flex-1 text-sm font-semibold">
         {tr('Archived sessions')}
-      </Dialog.Title>
+      </h1>
       <Button
         variant="ghost"
         size="icon-sm"
@@ -397,13 +396,7 @@
       >
         <RefreshCw class={loading ? 'animate-spin' : ''} />
       </Button>
-      <Dialog.Close
-        class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-        aria-label={tr('Close')}
-      >
-        <X class="size-4" />
-      </Dialog.Close>
-    </div>
+    </header>
 
     <div class="grid min-h-0 overflow-hidden grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
       <aside class="grid min-h-0 min-w-0 overflow-hidden grid-rows-[56px_minmax(0,1fr)] border-r bg-muted/20">
@@ -524,7 +517,7 @@
 
       <section class="grid min-h-0 min-w-0 overflow-hidden grid-rows-[72px_minmax(0,1fr)]">
         {#if activeSession && activeRequest}
-          <div class="flex min-h-0 items-center gap-2 border-b px-5">
+          <div class="flex min-h-0 min-w-0 items-center gap-2 overflow-hidden border-b px-5">
             <div class="min-w-0 flex-1">
               <p class="m-0 text-[10px] font-medium uppercase text-muted-foreground">
                 {tr('Request details')}
@@ -626,7 +619,7 @@
             </div>
           </ScrollArea>
         {:else if activeSession}
-          <div class="flex min-h-0 items-center gap-2 border-b px-5">
+          <div class="flex min-h-0 min-w-0 items-center gap-2 overflow-hidden border-b px-5">
             <div class="min-w-0 flex-1">
               <p class="m-0 text-[10px] font-medium uppercase text-muted-foreground">
                 {tr('Session details')}
@@ -719,5 +712,4 @@
         {/if}
       </section>
     </div>
-  </Dialog.Content>
-</Dialog.Root>
+</section>

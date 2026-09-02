@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { sessionViewDescriptor, workspaceViewKey } from './viewDescriptors'
+import { archiveViewDescriptor, sessionViewDescriptor, workspaceViewKey } from './viewDescriptors'
 import {
   resetPreviewWorkspaceSnapshot,
   savedPreviewWorkspaceSnapshot,
@@ -55,6 +55,14 @@ describe('preview workspace snapshot store', () => {
       activeViewKey: 'settings:singleton',
     })
     expect(savedPreviewWorkspaceSnapshot()?.requestIds.size).toBe(0)
+  })
+
+  it('seeds the archive workspace acceptance scenario', () => {
+    expect(seedPreviewWorkspaceScenario('archive')).toBe('archive')
+    expect(savedPreviewWorkspaceSnapshot()?.shellState).toEqual({
+      views: [archiveViewDescriptor()],
+      activeViewKey: 'archive:singleton',
+    })
   })
 
   it.each([

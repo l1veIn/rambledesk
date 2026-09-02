@@ -4,6 +4,7 @@ import {
   type WorkspaceSnapshotV2,
 } from './workspaceSnapshot'
 import {
+  archiveViewDescriptor,
   inboxViewDescriptor,
   rambelleProfileViewDescriptor,
   requestTaskViewDescriptor,
@@ -14,6 +15,7 @@ import {
 
 export type PreviewWorkspaceScenario =
   | 'restore'
+  | 'archive'
   | 'archived'
   | 'unavailable'
   | 'unknown'
@@ -35,6 +37,7 @@ export function savePreviewWorkspaceSnapshot(next: WorkspaceSnapshotV2) {
 export function seedPreviewWorkspaceScenario(value: string | null): PreviewWorkspaceScenario | null {
   if (
     value !== 'restore' &&
+    value !== 'archive' &&
     value !== 'archived' &&
     value !== 'unavailable' &&
     value !== 'unknown' &&
@@ -44,6 +47,15 @@ export function seedPreviewWorkspaceScenario(value: string | null): PreviewWorks
     value !== 'tabs'
   ) {
     return null
+  }
+  if (value === 'archive') {
+    const view = archiveViewDescriptor()
+    savePreviewWorkspaceSnapshot({
+      version: 2,
+      views: [view],
+      activeViewKey: workspaceViewKey(view),
+    })
+    return value
   }
   if (value === 'tabs') {
     const activeView = sessionViewDescriptor('codex', 'desktop-refactor-2026-08-02')
