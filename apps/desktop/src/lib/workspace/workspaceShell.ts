@@ -12,6 +12,7 @@ export type WorkspaceShellAction =
   | Readonly<{ type: 'open'; view: WorkspaceViewDescriptor }>
   | Readonly<{ type: 'focus'; viewKey: string }>
   | Readonly<{ type: 'close'; viewKey: string }>
+  | Readonly<{ type: 'reorder'; viewKeys: readonly string[] }>
 
 const EMPTY_WORKSPACE_VIEWS: readonly WorkspaceViewDescriptor[] = Object.freeze([])
 
@@ -55,6 +56,26 @@ export function workspaceShellReducer(
         views,
         activeViewKey: fallback ? workspaceViewKey(fallback) : null,
       }
+    }
+    case 'reorder': {
+      if (action.viewKeys.length !== state.views.length) return state
+
+      const viewsByKey = new Map(
+        state.views.map((view) => [workspaceViewKey(view), view] as const),
+      )
+      if (viewsByKey.size !== state.views.length) return state
+
+      const reorderedViews: WorkspaceViewDescriptor[] = []
+      const seen = new Set<string>()
+      for (const viewKey of action.viewKeys) {
+        const view = viewsByKey.get(viewKey)
+        if (!view || seen.has(viewKey)) return state
+        seen.add(viewKey)
+        reorderedViews.push(view)
+      }
+
+      const unchanged = reorderedViews.every((view, index) => view === state.views[index])
+      return unchanged ? state : { ...state, views: reorderedViews }
     }
   }
 }

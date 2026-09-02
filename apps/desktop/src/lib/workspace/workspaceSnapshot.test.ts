@@ -45,6 +45,24 @@ describe('workspace snapshots', () => {
     expect([...restored!.requestIds]).toEqual([...requestIds])
   })
 
+  it('round-trips a reordered tab strip without changing its active identity', () => {
+    const opened = workspaceShellReducer(
+      workspaceShellReducer(EMPTY_WORKSPACE_SHELL_STATE, { type: 'open', view: alpha }),
+      { type: 'open', view: beta },
+    )
+    const reordered = workspaceShellReducer(opened, {
+      type: 'reorder',
+      viewKeys: [workspaceViewKey(beta), workspaceViewKey(alpha)],
+    })
+
+    const restored = restoreWorkspaceSnapshot(
+      createWorkspaceSnapshot(reordered, new Map()),
+    )
+
+    expect(restored?.shellState.views).toEqual([beta, alpha])
+    expect(restored?.shellState.activeViewKey).toBe(workspaceViewKey(beta))
+  })
+
   it('reads v1 snapshots while keeping cross-host sessions distinct and deduplicated', () => {
     const value = {
       version: 1,

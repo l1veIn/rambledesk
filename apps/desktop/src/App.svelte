@@ -910,6 +910,16 @@
     persistCurrentWorkspaceSnapshot()
   }
 
+  function reorderWorkspaceTabs(viewKeys: readonly string[]) {
+    const nextState = workspaceShellReducer(workspaceShellState, {
+      type: 'reorder',
+      viewKeys,
+    })
+    if (nextState === workspaceShellState) return
+    workspaceShellState = nextState
+    persistCurrentWorkspaceSnapshot()
+  }
+
   function openLoadedWorkspaceView(next: FeedbackWorkspaceView) {
     openSessionView(
       sessionViewDescriptor(next.request.host_id, next.request.host_session_id),
@@ -1892,12 +1902,13 @@
         labelForView={workspaceTabLabel}
         onActivate={(viewKey) => void activateWorkspaceTab(viewKey)}
         onClose={closeWorkspaceTab}
+        onReorder={reorderWorkspaceTabs}
         {onStartDragging}
       />
     {/snippet}
   </AppTitlebar>
 
-  <div bind:this={workbenchLayout} class="flex h-[calc(100%-46px)] min-h-0 min-w-0">
+  <div bind:this={workbenchLayout} class="flex h-[calc(100%-40px)] min-h-0 min-w-0">
     <HostSessionRail
       bind:collapsed={hostSessionRailCollapsed}
       sessions={$navigation.hostSessions}

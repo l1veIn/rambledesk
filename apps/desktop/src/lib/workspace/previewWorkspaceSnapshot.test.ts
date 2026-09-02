@@ -70,4 +70,28 @@ describe('preview workspace snapshot store', () => {
           : 'rambelle-profile:singleton',
     })
   })
+
+  it('seeds a dense mixed tab strip for browser interaction acceptance', () => {
+    expect(seedPreviewWorkspaceScenario('tabs')).toBe('tabs')
+
+    const restored = savedPreviewWorkspaceSnapshot()!
+    expect(restored.shellState.views).toHaveLength(12)
+    expect(restored.shellState.views.map((view) => view.kind)).toEqual([
+      'inbox',
+      'session',
+      'session',
+      'session',
+      'request-task',
+      'rambelle-profile',
+      'settings',
+      'session',
+      'session',
+      'session',
+      'session',
+      'session',
+    ])
+    expect(restored.shellState.activeViewKey).toBe(
+      workspaceViewKey(restored.shellState.views[1]),
+    )
+  })
 })

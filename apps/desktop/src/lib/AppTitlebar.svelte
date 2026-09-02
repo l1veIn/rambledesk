@@ -82,7 +82,7 @@
 
 <header
   class={[
-    'relative z-30 flex h-[46px] select-none items-stretch rounded-t-[15px] border-b bg-background/95 backdrop-blur-md',
+    'relative z-30 flex h-10 select-none items-stretch overflow-hidden rounded-t-[15px] border-b bg-background/95 backdrop-blur-md',
   ]}
 >
   {#if windowControlsAvailable && isMac}

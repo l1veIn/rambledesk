@@ -136,6 +136,46 @@ describe('workspaceShellReducer', () => {
     expectValidState(focused)
   })
 
+  it('reorders the complete view set without changing the active view', () => {
+    const initial = reduce(
+      EMPTY_WORKSPACE_SHELL_STATE,
+      open(alpha),
+      open(settings),
+      open(beta),
+      { type: 'focus', viewKey: workspaceViewKey(settings) },
+    )
+    const result = workspaceShellReducer(initial, {
+      type: 'reorder',
+      viewKeys: [workspaceViewKey(beta), workspaceViewKey(alpha), workspaceViewKey(settings)],
+    })
+
+    expect(result.views).toEqual([beta, alpha, settings])
+    expect(result.activeViewKey).toBe(workspaceViewKey(settings))
+    expectValidState(result)
+  })
+
+  it('ignores incomplete, duplicate, unknown, and no-op reorder actions', () => {
+    const initial = reduce(EMPTY_WORKSPACE_SHELL_STATE, open(alpha), open(beta), open(gamma))
+
+    expect(workspaceShellReducer(initial, {
+      type: 'reorder',
+      viewKeys: [workspaceViewKey(alpha), workspaceViewKey(beta)],
+    })).toBe(initial)
+    expect(workspaceShellReducer(initial, {
+      type: 'reorder',
+      viewKeys: [workspaceViewKey(alpha), workspaceViewKey(alpha), workspaceViewKey(gamma)],
+    })).toBe(initial)
+    expect(workspaceShellReducer(initial, {
+      type: 'reorder',
+      viewKeys: [workspaceViewKey(alpha), workspaceViewKey(beta), 'session:missing'],
+    })).toBe(initial)
+    expect(workspaceShellReducer(initial, {
+      type: 'reorder',
+      viewKeys: initial.views.map(workspaceViewKey),
+    })).toBe(initial)
+    expectValidState(initial)
+  })
+
   it('closes an inactive view without changing the active view', () => {
     const initial = reduce(
       EMPTY_WORKSPACE_SHELL_STATE,
