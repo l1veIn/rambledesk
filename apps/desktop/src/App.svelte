@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
-  import { Pane, PaneGroup, PaneResizer } from 'paneforge'
 
   import rambelleArchived from './assets/rambelle-states/archived.webp'
   import rambelleIdle from './assets/rambelle-states/idle.webp'
@@ -155,9 +154,7 @@
   import {
     initialHostRailCollapsed,
     saveHostRailCollapsed,
-    savePaneLayout,
     saveWorkspaceSnapshot,
-    savedPaneLayout,
     savedWorkspaceSnapshot,
   } from './lib/uiPreferences'
   import {
@@ -182,10 +179,6 @@
     tidyReasoningEffort,
     tidySystemPrompt,
   } from './lib/preferences'
-
-  type PaneGroupHandle = {
-    setLayout: (layout: number[]) => void
-  }
 
   const RESUME_PROMPT_STREAM = defineApplicationStream<ResumePrompt>('rambledesk://resume-prompt')
   const OPEN_ADAPTERS_STREAM = defineApplicationStream<void>('rambledesk://open-adapters')
@@ -270,24 +263,9 @@
       loadingWorkspace = true
     }
   }
-  const REQUEST_LIST_DEFAULT_WIDTH = 296
-  const REQUEST_LIST_MIN_WIDTH = 240
-  const WIDE_WORKSPACE_MIN_WIDTH = 648
-  const NARROW_WORKSPACE_MIN_WIDTH = 360
-  const PANE_RESIZER_SIZE = 11
-  const REQUEST_WORKSPACE_LAYOUT_KEY = 'request-workspace-layout'
-  let latestRequestWorkspaceLayout = savedPaneLayout(REQUEST_WORKSPACE_LAYOUT_KEY)
-
   let taskBriefOpen = true
   let todayOnly = false
   let hostSessionRailCollapsed = initialHostRailCollapsed()
-  let workbenchLayout: HTMLDivElement
-  let requestWorkspaceGroup: HTMLDivElement | null = null
-  let requestWorkspacePaneGroup: PaneGroupHandle | undefined
-  let requestWorkspaceLayoutReady = false
-  let requestWorkspaceLayoutInitializing = false
-  let workbenchLayoutWidth = 0
-  let requestWorkspaceWidth = 0
   let genericMcpConfiguration = ''
   let voicePhase: VoicePhase = 'idle'
   let voiceDevice = ''
@@ -650,71 +628,10 @@
     approving ||
     currentRequestCooking ||
     workspace?.request.status === 'in_progress'
-  $: workspaceMinimumWidth =
-    workbenchLayoutWidth > 1180 ? WIDE_WORKSPACE_MIN_WIDTH : NARROW_WORKSPACE_MIN_WIDTH
-  $: requestWorkspacePaneWidth = Math.max(0, requestWorkspaceWidth - PANE_RESIZER_SIZE)
-  $: requestListMinimumSize = requestWorkspacePaneWidth
-    ? Math.min(100, (REQUEST_LIST_MIN_WIDTH / requestWorkspacePaneWidth) * 100)
-    : 0
-  $: desiredWorkspaceMinimumSize = requestWorkspacePaneWidth
-    ? Math.min(100, (workspaceMinimumWidth / requestWorkspacePaneWidth) * 100)
-    : 0
-  $: workspaceMinimumSize = Math.min(
-    desiredWorkspaceMinimumSize,
-    Math.max(0, 100 - requestListMinimumSize),
-  )
-  $: requestListMaximumSize = Math.max(requestListMinimumSize, 100 - workspaceMinimumSize)
   $: saveHostRailCollapsed(hostSessionRailCollapsed)
-
-  function saveRequestWorkspaceLayout(layout: number[]) {
-    if (!requestWorkspaceLayoutReady) return
-    latestRequestWorkspaceLayout = layout
-    savePaneLayout(REQUEST_WORKSPACE_LAYOUT_KEY, layout)
-  }
-
-  async function initializeRequestWorkspaceLayout() {
-    if (requestWorkspaceLayoutReady || requestWorkspaceLayoutInitializing) return
-    requestWorkspaceLayoutInitializing = true
-    try {
-      await tick()
-      if (
-        renderedWorkspaceSurface === 'standalone' ||
-        !requestWorkspacePaneGroup ||
-        requestWorkspacePaneWidth <= 0
-      ) return
-      const defaultRequestListSize = Math.min(
-        requestListMaximumSize,
-        Math.max(
-          requestListMinimumSize,
-          (REQUEST_LIST_DEFAULT_WIDTH / requestWorkspacePaneWidth) * 100,
-        ),
-      )
-      requestWorkspacePaneGroup.setLayout(
-        latestRequestWorkspaceLayout ?? [defaultRequestListSize, 100 - defaultRequestListSize],
-      )
-      requestWorkspaceLayoutReady = true
-    } finally {
-      requestWorkspaceLayoutInitializing = false
-    }
-  }
-
-  $: if (renderedWorkspaceSurface !== 'standalone') {
-    void initializeRequestWorkspaceLayout()
-  } else {
-    requestWorkspaceLayoutReady = false
-  }
 
   onMount(() => {
     const cleanupAttachments = attachmentController.mount()
-    const syncLayoutDimensions = () => {
-      workbenchLayoutWidth = workbenchLayout?.clientWidth ?? 0
-      requestWorkspaceWidth = requestWorkspaceGroup?.clientWidth ?? 0
-    }
-    const layoutObserver = new ResizeObserver(syncLayoutDimensions)
-    if (workbenchLayout) layoutObserver.observe(workbenchLayout)
-    if (requestWorkspaceGroup) layoutObserver.observe(requestWorkspaceGroup)
-    syncLayoutDimensions()
-    const cleanupLayoutObserver = () => layoutObserver.disconnect()
     const unsubscribeApplicationEvents = !desktopShellAvailable && !previewMode
       ? applicationTransport.subscribe(
           APPLICATION_EVENTS_STREAM,
@@ -752,7 +669,6 @@
       return () => {
         unsubscribeApplicationEvents()
         applicationSnapshotRefetch.dispose()
-        cleanupLayoutObserver()
         cleanupAttachments()
       }
     }
@@ -812,7 +728,6 @@
       resumePromptUnlisten()
       openAdaptersUnlisten()
       if (updateCheckTimer !== undefined) clearTimeout(updateCheckTimer)
-      cleanupLayoutObserver()
       cleanupAttachments()
     }
   })
@@ -1908,7 +1823,7 @@
     {/snippet}
   </AppTitlebar>
 
-  <div bind:this={workbenchLayout} class="flex h-[calc(100%-40px)] min-h-0 min-w-0">
+  <div class="flex h-[calc(100%-40px)] min-h-0 min-w-0">
     <HostSessionRail
       bind:collapsed={hostSessionRailCollapsed}
       sessions={$navigation.hostSessions}
@@ -1928,21 +1843,9 @@
       onSettings={() => void openSettings('general')}
     />
 
-    <PaneGroup
-      bind:this={requestWorkspacePaneGroup}
-      bind:ref={requestWorkspaceGroup}
-      direction="horizontal"
-      class="min-h-0 min-w-0 flex-1"
-      id="request-workspace-split"
-      onLayoutChange={saveRequestWorkspaceLayout}
-    >
+    <div class="flex min-h-0 min-w-0 flex-1" id="request-workspace-layout">
       {#if renderedWorkspaceSurface !== 'standalone'}
-        <Pane
-          id="request-list-pane"
-          defaultSize={28}
-          minSize={requestListMinimumSize}
-          maxSize={requestListMaximumSize}
-        >
+        <div class="w-[296px] shrink-0 border-r" id="request-list-pane">
           <RequestListPane
             requests={visibleRequests}
             activeRequestId={workspace?.request.request_id ?? null}
@@ -1961,18 +1864,10 @@
             onOpenRequest={(requestId) => void openRequest(requestId)}
             onToggleToday={() => (todayOnly = !todayOnly)}
           />
-        </Pane>
-
-        <PaneResizer
-          class="workbench-pane-resizer workbench-pane-resizer--vertical"
-          aria-label={tr('Resize request list')}
-        />
+        </div>
       {/if}
 
-      <Pane
-        id="workspace-pane"
-        minSize={renderedWorkspaceSurface !== 'standalone' ? workspaceMinimumSize : 0}
-      >
+      <div class="min-h-0 min-w-0 flex-1" id="workspace-pane">
         <div class="flex h-full min-h-0 min-w-0 flex-col">
           <div
             class="min-h-0 flex-1"
@@ -2123,8 +2018,8 @@
             {/if}
           </div>
         </div>
-      </Pane>
-    </PaneGroup>
+      </div>
+    </div>
 
     {#if resumePrompt}
       <ResumePromptDialog
