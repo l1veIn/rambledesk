@@ -13,13 +13,12 @@
   } from '$lib/capabilities/workbenchCapabilities'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
+  import { titlebarPointerIntent } from '$lib/titlebarInteractions'
 
   const unavailableCapabilities = createUnavailableWorkbenchCapabilities()
 
   export let sidebarCollapsed = false
-  export let workspaceTabs: Snippet<[
-    onStartDragging: ((event: PointerEvent) => void) | null,
-  ]>
+  export let workspaceTabs: Snippet
   export let pendingCount = 0
   export let rambleEngaged = false
   export let rambleActive = false
@@ -65,25 +64,41 @@
     }
   }
 
-  async function startDragging(event: PointerEvent) {
-    if (!windowControlsAvailable || event.button !== 0) return
-    const target = event.target
-    if (target instanceof Element) {
-      const button = target.closest('button')
-      if (button && !button.matches('.titlebar-brand, .titlebar-drag')) return
-    }
+  function isInteractiveTitlebarTarget(target: EventTarget | null) {
+    if (!(target instanceof Element)) return false
+    const button = target.closest('button')
+    if (button?.matches('.titlebar-brand')) return false
+    return Boolean(button || target.closest('[role="tab"], [data-workspace-tab-item]'))
+  }
+
+  async function handleTitlebarPointerDown(event: PointerEvent) {
+    if (!windowControlsAvailable) return
+    const intent = titlebarPointerIntent({
+      button: event.button,
+      clickCount: event.detail,
+      interactive: isInteractiveTitlebarTarget(event.target),
+    })
+    if (intent === 'ignore') return
     try {
-      await windowControls.implementation.startDragging()
+      if (intent === 'toggle-maximize') {
+        await windowControls.implementation.toggleMaximize()
+        if (!isMac) maximized = await windowControls.implementation.isMaximized()
+      } else {
+        await windowControls.implementation.startDragging()
+      }
     } catch (cause) {
       onWindowError(cause instanceof Error ? cause.message : String(cause))
     }
   }
 </script>
 
+<!-- svelte-ignore a11y_no_static_element_interactions (the handler delegates native titlebar dragging while preserving interactive descendants) -->
 <header
   class={[
     'app-titlebar relative z-30 flex h-10 select-none items-stretch overflow-hidden rounded-t-[15px] border-b',
   ]}
+  data-titlebar-event-boundary
+  onpointerdown={(event) => void handleTitlebarPointerDown(event)}
 >
   {#if windowControlsAvailable && isMac}
     <div class="absolute left-[15px] flex h-full items-center gap-2" aria-label={t($locale, 'Window controls')}>
@@ -115,7 +130,6 @@
         ]}
         aria-label={t($locale, 'Drag window')}
         title={t($locale, 'Drag window')}
-        onpointerdown={(event) => void startDragging(event)}
       >
         {#if !sidebarCollapsed || !isMac}
           <img class="size-7 shrink-0 rounded-md object-contain" src={appIcon} alt="" draggable="false" />
@@ -141,7 +155,7 @@
 
   <div class="flex min-w-0 flex-1 items-stretch">
     <div class="min-w-0 flex-1">
-      {@render workspaceTabs(windowControlsAvailable ? startDragging : null)}
+      {@render workspaceTabs()}
     </div>
 
     <div class="flex shrink-0 items-center gap-1.5 px-2">

@@ -1827,7 +1827,7 @@
     onNotifications={() => void openSettings('notifications')}
     onWindowError={(message) => (pageError = tr('Window action failed: {error}', { error: message }))}
   >
-    {#snippet workspaceTabs(onStartDragging: ((event: PointerEvent) => void) | null)}
+    {#snippet workspaceTabs()}
       <WorkspaceTabStrip
         views={workspaceShellState.views}
         activeViewKey={workspaceShellState.activeViewKey}
@@ -1837,7 +1837,6 @@
         onActivate={(viewKey) => void activateWorkspaceTab(viewKey)}
         onClose={closeWorkspaceTab}
         onReorder={reorderWorkspaceTabs}
-        {onStartDragging}
       />
     {/snippet}
   </AppTitlebar>

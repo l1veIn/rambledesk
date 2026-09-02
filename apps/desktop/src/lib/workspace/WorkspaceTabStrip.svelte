@@ -35,7 +35,6 @@
   export let onActivate: (viewKey: string) => void = () => {}
   export let onClose: (viewKey: string) => Promise<void> | void = () => {}
   export let onReorder: (viewKeys: readonly string[]) => void = () => {}
-  export let onStartDragging: ((event: PointerEvent) => void) | null = null
 
   let dndItems: WorkspaceTabDndItem[] = []
   let dragging = false
@@ -221,16 +220,11 @@
     </div>
   {/if}
 
-  {#if onStartDragging}
-    <!-- svelte-ignore a11y_no_static_element_interactions (window dragging is a pointer-only titlebar surface) -->
-    <div
-      class="titlebar-drag h-full min-w-10 flex-1 cursor-grab active:cursor-grabbing"
-      title={tr('Drag window')}
-      onpointerdown={onStartDragging}
-    ></div>
-  {:else}
-    <div class="h-full min-w-10 flex-1"></div>
-  {/if}
+  <div
+    class="titlebar-drag h-full min-w-10 flex-1 cursor-grab active:cursor-grabbing"
+    data-titlebar-drag-surface
+    title={tr('Drag window')}
+  ></div>
 </div>
 
 <style>
