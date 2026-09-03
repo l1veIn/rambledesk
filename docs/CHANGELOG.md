@@ -16,6 +16,40 @@
 
 ---
 
+## v0.3.4
+
+What's new in RambleDesk 0.3.4
+
+Web Access
+- New authenticated local Web Client: the shared Workbench client is served over HTTP from the Web Access Server with first-visit token authentication and a browser bootstrap, so a local browser can open workspaces and submit text feedback.
+- The Workbench application API — workspace read and list, draft mutation, submit and cancel, attachment streaming — runs over authenticated HTTP through a single ApplicationTransport contract, with conformance tests shared by the Tauri and HTTP transports.
+- Browser sessions stay current via realtime invalidation: authenticated WebSocket events, health probing, and snapshot refetch after reconnect.
+- Capability boundaries are explicit per runtime: native operations sit behind Tauri capability implementations, browser implementations report unavailable states instead of degrading silently, and capability manifests are scanned consistently across platforms.
+- Browser workflows add image paste/upload attachments (client uploads separated from server workspace selection), local edge speech recognition with sherpa Wasm, and the completed edge capture plugin boundary with attachment candidates.
+- Web Access lifecycle and support boundaries are productized: live runtime health with actionable failures is reported, security and lifecycle acceptance is complete, and the support matrix is published.
+
+Workspace tabs and navigation
+- Sessions, archives, settings, task briefs, and profiles now open as browser-style draggable workspace tabs with keyboard navigation and overflow handling; superseded full-screen and modal flows are removed, and tab snapshots restore safely after relaunch.
+- The request list is collapsible and filterable with preserved task titles, and automatic task brief previews can be disabled in General settings (on by default).
+- The titlebar is compacted with a clearer color hierarchy: the status capsule moved to the far right, drag and double-click maximize gestures cover the whole bar, and the inactive Reload button was removed.
+
+Feedback, speech, and the task brief preview
+- The task brief preview tab gains one primary action on the far left of its footer — Submit feedback, or Cook and submit when Cooking is enabled — at the opposite end from the Ramble control and reusing the session submission pipeline.
+- Empty and whitespace-only replies are now blocked at the publish gate with a clear notice, in the session and preview views alike; completed or cancelled requests are rejected before any side effect.
+- The speech overlay is draggable, shows live voice levels, can confirm before writing, has configurable visibility and opacity, and confirms or discards pending speech via global shortcuts. The opacity slider now fades only the frosted glass layer while the text stays crisp, with a new default of 95.
+
+中文摘要
+- 新增带鉴权的本地 Web Client：Workbench 客户端由 Web Access Server 经 HTTP 提供，配合首次访问令牌鉴权与浏览器引导，本地浏览器即可打开工作区并提交文本反馈；完整应用 API 通过统一 ApplicationTransport 契约暴露到 HTTP，Tauri 与 HTTP 传输共享一致性测试。
+- 浏览器会话经鉴权 WebSocket 实时失效、健康探测与重连后快照重取保持同步；能力边界按运行时显式声明，浏览器对不可用能力明确报告而非静默降级。
+- 浏览器支持图片粘贴/上传附件（客户端上传与服务端选路分离）、边缘本地语音识别（sherpa Wasm）与完整的边缘捕获插件边界；Web Access 生命周期、安全验收与支持矩阵完成，并实时上报运行时健康。
+- 会话、归档、设置、任务简报与资料页统一为浏览器式可拖拽工作区标签页，支持键盘切换与溢出管理，废弃的全屏/模态流程移除，标签页快照重启后可安全恢复。
+- 请求列表可折叠并支持筛选；自动任务简报预览可在 General 设置中关闭（默认开启）；标题栏更紧凑、配色层级更清晰，状态胶囊移到最右侧，拖拽与双击最大化覆盖整条标题栏。
+- 任务简报预览页底部最左侧新增单一主操作——提交反馈（启用 Cooking 时为 Cook 并提交），与右侧 Ramble 控制相隔最远、避免误触，复用会话视图的提交管线；空回复与纯空白回复在提交入口即被拦截并提示，已完成/已取消请求在任何副作用前被拒绝。
+- 语音悬浮窗可拖动、实时显示电平、写入前可确认，可见性与不透明度可配置，并支持全局确认/丢弃快捷键；不透明度滑块现在只淡化磨砂玻璃层、文字保持清晰，默认不透明度为 95。
+- 任务简报中的 Action 组仅在请求可操作时可点击；设置导航移除重复的适配器配置脚注。
+
+Full changelog: https://github.com/l1veIn/rambledesk/compare/v0.3.3...v0.3.4
+
 ## v0.3.3
 
 What's new in RambleDesk 0.3.3
