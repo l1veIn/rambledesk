@@ -61,6 +61,7 @@ describe('capability architecture', () => {
       'RambleConsole.svelte': 'ramble-console platform window',
       'ScreenshotOverlay.svelte': 'screen-capture platform window',
       'ScrollCaptureController.svelte': 'scroll-capture platform window',
+      'SpeechOverlay.svelte': 'speech-overlay platform window',
       [`lib/application/${['tauri', 'ApplicationTransport.test.ts'].join('')}`]:
         'Application Transport adapter test',
       [`lib/application/${['tauri', 'ApplicationTransport.ts'].join('')}`]:
@@ -114,6 +115,10 @@ describe('capability architecture', () => {
           'finish_scrolling_capture',
           'get_scrolling_capture_info',
         ],
+      },
+      'SpeechOverlay.svelte': {
+        role: 'speech-overlay platform window',
+        commands: ['focus_speech_feedback', 'set_speech_overlay_layout'],
       },
       'lib/capabilities/tauri/administrationCapabilities.ts': {
         role: 'Native Administration Capability implementations',
@@ -184,6 +189,7 @@ describe('capability architecture', () => {
           'reset_shortcut_settings',
           'set_shortcut_capture_active',
           'set_shortcut_setting',
+          'set_speech_review_shortcuts_active',
         ],
       },
       'lib/capabilities/tauri/speechCapability.ts': {
