@@ -816,12 +816,6 @@
           </Tabs.Trigger>
         </Tabs.List>
 
-        {#if sectionAvailability.adapters}
-        <div class="settings-navigation-note mt-auto flex gap-2 border-t pt-3 text-[10px] leading-4 text-muted-foreground">
-          <ShieldCheck class="mt-0.5 size-3.5 shrink-0" />
-          <span>{tr('Adapter configuration is written only to your user directory and preserves other adapters.')}</span>
-        </div>
-        {/if}
       </aside>
 
       <div class="settings-content flex min-h-0 min-w-0 flex-col">
