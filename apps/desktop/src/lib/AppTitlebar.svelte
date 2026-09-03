@@ -1,39 +1,42 @@
 <script lang="ts">
-  import { Bell, BellOff, Copy, Minus, Square, X } from '@lucide/svelte'
+  import { CircleAlert, Copy, Inbox, LoaderCircle, Mic, Minus, Pause, Square, X } from '@lucide/svelte'
   import { onMount, type Snippet } from 'svelte'
 
   import appIcon from '../assets/rambledesk-app-icon.webp'
   import { Badge } from '$lib/components/ui/badge'
-  import { Button } from '$lib/components/ui/button'
   import { createUnavailableWorkbenchCapabilities } from '$lib/capabilities/unavailableCapabilities'
   import type {
     CapabilitySlot,
-    NotificationCapability,
     WindowCapability,
   } from '$lib/capabilities/workbenchCapabilities'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
   import { titlebarPointerIntent } from '$lib/titlebarInteractions'
+  import type { RamblePhase } from '$lib/workbench/types'
 
   const unavailableCapabilities = createUnavailableWorkbenchCapabilities()
 
   export let sidebarCollapsed = false
   export let workspaceTabs: Snippet
   export let pendingCount = 0
-  export let rambleEngaged = false
-  export let rambleActive = false
+  export let ramblePhase: RamblePhase = 'idle'
   export let rambleRequestTitle = ''
-  export let notificationText = ''
-  export let notificationEnabled = false
-  export let notificationDisabled = false
   export let windowControls: CapabilitySlot<WindowCapability> = unavailableCapabilities.windowControls
-  export let notifications: CapabilitySlot<NotificationCapability> = unavailableCapabilities.notifications
-  export let onNotifications: () => void = () => {}
   export let onWindowError: (message: string) => void = () => {}
 
   $: windowControlsAvailable = windowControls.status.availability !== 'unavailable'
-  $: notificationsAvailable = notifications.status.availability !== 'unavailable'
   $: isMac = windowControls.implementation.platform() === 'macOS'
+  $: rambleStatusLabel = ramblePhase === 'active'
+    ? t($locale, 'Recording')
+    : ramblePhase === 'starting'
+      ? t($locale, 'Starting…')
+      : ramblePhase === 'stopping'
+        ? t($locale, 'Pausing…')
+        : ramblePhase === 'error'
+          ? t($locale, 'Ramble error')
+          : t($locale, 'Ramble paused')
+  $: rambleStatusTitle = [rambleStatusLabel, rambleRequestTitle].filter(Boolean).join(' · ')
+  $: pendingLabel = `${pendingCount} ${t($locale, 'pending')}`
   let maximized = false
 
   onMount(() => {
@@ -95,7 +98,7 @@
 <!-- svelte-ignore a11y_no_static_element_interactions (the handler delegates native titlebar dragging while preserving interactive descendants) -->
 <header
   class={[
-    'app-titlebar relative z-30 flex h-10 select-none items-stretch overflow-hidden rounded-t-[15px] border-b',
+    'app-titlebar relative z-30 flex h-10 select-none items-stretch overflow-hidden rounded-t-[15px]',
   ]}
   data-titlebar-event-boundary
   onpointerdown={(event) => void handleTitlebarPointerDown(event)}
@@ -158,51 +161,44 @@
       {@render workspaceTabs()}
     </div>
 
-    <div class="flex shrink-0 items-center gap-1.5 px-2">
-      {#if rambleEngaged}
-        <Badge
-          variant="secondary"
-          class={[
-            'h-6 max-w-64 gap-1.5 px-2 text-[9px] max-[1080px]:max-w-40',
-            rambleActive
-              ? 'bg-destructive/10 text-destructive'
-              : 'bg-warning/10 text-warning-foreground dark:text-warning',
-          ]}
-          title={rambleRequestTitle}
-        >
+    {#if ramblePhase !== 'idle' || pendingCount > 0}
+      <div class="flex shrink-0 items-center gap-1 px-1.5">
+        {#if ramblePhase !== 'idle'}
           <span
             class={[
-              'size-1.5 shrink-0 rounded-full',
-              rambleActive ? 'animate-pulse bg-destructive' : 'bg-warning',
+              'grid size-6 shrink-0 place-items-center rounded-full',
+              ramblePhase === 'active' || ramblePhase === 'error'
+                ? 'bg-destructive/10 text-destructive'
+                : 'bg-warning/10 text-warning-foreground dark:text-warning',
             ]}
-          ></span>
-          <span class="truncate">
-            {rambleActive ? t($locale, 'Recording') : t($locale, 'Ramble paused')} · {rambleRequestTitle}
+            title={rambleStatusTitle}
+            role="status"
+          >
+            {#if ramblePhase === 'starting' || ramblePhase === 'stopping'}
+              <LoaderCircle class="size-3.5 motion-safe:animate-spin" aria-hidden="true" />
+            {:else if ramblePhase === 'active'}
+              <Mic class="size-3.5 motion-safe:animate-pulse" aria-hidden="true" />
+            {:else if ramblePhase === 'error'}
+              <CircleAlert class="size-3.5" aria-hidden="true" />
+            {:else}
+              <Pause class="size-3.5" aria-hidden="true" />
+            {/if}
+            <span class="sr-only">{rambleStatusTitle}</span>
           </span>
-        </Badge>
-      {/if}
-      {#if pendingCount > 0}
-        <Badge
-          variant="secondary"
-          class="h-6 bg-warning/10 px-2 text-[9px] text-warning-foreground max-[900px]:hidden dark:text-warning"
-        >
-          {pendingCount} {t($locale, 'pending')}
-        </Badge>
-      {/if}
-      {#if notificationsAvailable}
-        <Button
-          variant="ghost"
-          size="icon"
-          class={notificationEnabled ? 'text-info' : ''}
-          disabled={notificationDisabled}
-          onclick={onNotifications}
-          title={notificationText || t($locale, 'Notifications')}
-          aria-label={notificationText || t($locale, 'Notifications')}
-        >
-          {#if notificationEnabled}<Bell />{:else}<BellOff />{/if}
-        </Button>
-      {/if}
-    </div>
+        {/if}
+        {#if pendingCount > 0}
+          <Badge
+            variant="secondary"
+            class="h-6 gap-1 bg-warning/10 px-1.5 text-[10px] tabular-nums text-warning-foreground dark:text-warning"
+            title={pendingLabel}
+          >
+            <Inbox class="size-3" aria-hidden="true" />
+            <span aria-hidden="true">{pendingCount > 99 ? '99+' : pendingCount}</span>
+            <span class="sr-only">{pendingLabel}</span>
+          </Badge>
+        {/if}
+      </div>
+    {/if}
 
     {#if windowControlsAvailable && !isMac}
       <div class="ml-1 flex items-stretch" aria-label={t($locale, 'Window controls')}>
@@ -235,6 +231,21 @@
 <style>
   .app-titlebar {
     background: var(--titlebar-background);
+    /* Keep the divider as the only bottom edge, including after CSS-only hot updates. */
+    border-bottom: 0;
+  }
+
+  .app-titlebar::after {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 1;
+    height: 0;
+    content: '';
+    border-bottom: 1px solid var(--border);
+    pointer-events: none;
+    /* The active tab (z-10), including its reverse corners, covers this divider. */
   }
 
   .traffic.close {

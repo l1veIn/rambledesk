@@ -10,6 +10,7 @@ type UiState = {
   theme?: UiThemePreference
   workbench?: {
     hostRailCollapsed?: boolean
+    requestRailCollapsed?: boolean
     paneLayouts?: Record<string, number[]>
     workspaceSnapshot?: unknown
   }
@@ -59,6 +60,17 @@ export function saveHostRailCollapsed(collapsed: boolean) {
   updateState((state) => {
     state.workbench ??= {}
     state.workbench.hostRailCollapsed = collapsed
+  })
+}
+
+export function initialRequestRailCollapsed() {
+  return readState().workbench?.requestRailCollapsed === true
+}
+
+export function saveRequestRailCollapsed(collapsed: boolean) {
+  updateState((state) => {
+    state.workbench ??= {}
+    state.workbench.requestRailCollapsed = collapsed
   })
 }
 

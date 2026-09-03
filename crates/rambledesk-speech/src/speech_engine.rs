@@ -182,6 +182,7 @@ struct SherpaOffline {
     recognizer: OfflineRecognizer,
     vad: VoiceActivityDetector,
     segment_index: u64,
+    speech_detected: bool,
 }
 
 impl SherpaOffline {
@@ -229,12 +230,28 @@ impl SherpaOffline {
             recognizer,
             vad,
             segment_index: 0,
+            speech_detected: false,
         })
     }
 
     fn accept(&mut self, samples: &[f32], identity: &EventIdentity, sink: &SpeechEventSink) {
         self.vad.accept_waveform(samples);
+        let detected = self.vad.detected();
+        if detected && !self.speech_detected {
+            sink(SpeechEvent::SpeechStarted {
+                request_id: identity.request_id.clone(),
+                voice_session_id: identity.voice_session_id.clone(),
+                chunk_index: self.segment_index,
+            });
+        }
+        self.speech_detected = detected;
+        let previous_segment = self.segment_index;
         self.decode_ready_segments(identity, sink);
+        if self.segment_index != previous_segment {
+            // A maximum-duration split may happen without silence. The next
+            // audio frame must pin a fresh destination for the new segment.
+            self.speech_detected = false;
+        }
     }
 
     fn finish(mut self, identity: &EventIdentity, sink: &SpeechEventSink) {
@@ -263,9 +280,9 @@ impl SherpaOffline {
                 .get_result()
                 .map(|result| result.text.trim().to_owned())
                 .unwrap_or_default();
-            if !text.is_empty() {
-                emit_stable(identity, sink, self.segment_index, text);
-            }
+            // Also finish empty results so clients can leave the processing
+            // state and release this segment's pinned destination.
+            emit_stable(identity, sink, self.segment_index, text);
             self.segment_index += 1;
         }
     }

@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import type { DraftView, FeedbackWorkspaceView } from './feedback'
+import type { DraftView, FeedbackWorkspaceView, SaveDraftInput } from './feedback'
+import { ACTION_ID_ATTR } from './actionBlockquote'
+import { collectActionGroupContent } from './actionGroupContent'
 import { writeBackgroundDraftOperation } from './backgroundDraftWriter'
-import { snapshotFeedbackDraftDocument } from './feedbackDraftDocument'
+import { restoreFeedbackDraftDocument, snapshotFeedbackDraftDocument } from './feedbackDraftDocument'
 
 function workspace(draft: DraftView): FeedbackWorkspaceView {
   return {
@@ -33,6 +35,46 @@ function workspace(draft: DraftView): FeedbackWorkspaceView {
 const empty = snapshotFeedbackDraftDocument({ type: 'doc', content: [] })
 
 describe('background draft writer', () => {
+  it('persists a Task tab action and its feedback for the Session editor to reload', async () => {
+    let persisted: DraftView = {
+      document_json: empty.documentJson,
+      body_markdown: empty.bodyMarkdown,
+      saved_revision: 1,
+      updated_at: '',
+    }
+    const writer = {
+      load: async () => workspace(persisted),
+      save: vi.fn(async (input: SaveDraftInput): Promise<DraftView> => {
+        persisted = {
+          document_json: input.document_json,
+          body_markdown: input.body_markdown,
+          saved_revision: input.expected_revision + 1,
+          updated_at: '',
+        }
+        return persisted
+      }),
+    }
+    const action = { actionId: 'verify-startup', actionIndex: 0, title: 'Verify startup' }
+
+    await writeBackgroundDraftOperation('request-a', { kind: 'startActionGroup', action }, writer)
+    const selected = restoreFeedbackDraftDocument(persisted.document_json, persisted.body_markdown)
+    expect(selected.content?.[0].attrs?.[ACTION_ID_ATTR]).toBe(action.actionId)
+
+    await writeBackgroundDraftOperation('request-a', {
+      kind: 'appendSpeech', segmentId: 'task-tab-speech', text: 'Startup works.', action,
+    }, writer)
+    await writeBackgroundDraftOperation('request-a', {
+      kind: 'clearActionGroup', actionId: action.actionId,
+    }, writer)
+
+    const reopened = await writer.load()
+    const document = restoreFeedbackDraftDocument(reopened.draft.document_json, reopened.draft.body_markdown)
+    const feedback = collectActionGroupContent(document).get(action.actionId)
+    expect(feedback?.groupCount).toBe(1)
+    expect(JSON.stringify(feedback?.document)).toContain('Startup works.')
+    expect(writer.save.mock.calls.map(([input]) => input.request_id)).toEqual(['request-a', 'request-a'])
+  })
+
   it('reloads and reapplies an idempotent operation after a CAS conflict', async () => {
     const initial = workspace({
       document_json: empty.documentJson,

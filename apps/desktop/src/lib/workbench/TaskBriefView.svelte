@@ -33,6 +33,9 @@
     'externalLinks' | 'serverPaths' | 'speech' | 'rambleConsole'
   >
   export let editorDocument: JSONContent | null = null
+  export let activeActionId: string | null = null
+  export let actionsDisabled = false
+  export let onSelectAction: (actionId: string, actionIndex: number, title: string) => void = () => {}
   export let previews: Record<string, string> = {}
   export let onOpenAttachment: (attachmentId: string) => void = () => {}
   export let formatTime: (value: string | null | undefined) => string = () => ''
@@ -164,25 +167,38 @@
                 {@const feedback =
                   actionGroupContent.get(action.id) ??
                   actionGroupContent.get(`legacy-action-${index + 1}`)}
-                <li class="grid grid-cols-[28px_minmax(0,1fr)] gap-3">
-                  <span
-                    class="grid size-7 place-items-center rounded-md bg-background text-xs font-semibold text-muted-foreground ring-1 ring-border"
+                <li>
+                  <button
+                    type="button"
+                    disabled={readOnly || actionsDisabled}
+                    aria-pressed={activeActionId === action.id}
+                    class={[
+                      'grid w-full grid-cols-[28px_minmax(0,1fr)] gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent',
+                      activeActionId === action.id ? 'bg-primary/10 ring-1 ring-primary/30' : '',
+                    ]}
+                    onclick={(event) => {
+                      if (!event.defaultPrevented) onSelectAction(action.id, index, action.instruction)
+                    }}
                   >
-                    {index + 1}
-                  </span>
-                  <div class="min-w-0 self-center">
-                    <div class="text-[15px] leading-7">
+                    <span
+                      class="grid size-7 place-items-center rounded-md bg-background text-xs font-semibold text-muted-foreground ring-1 ring-border"
+                    >
+                      {index + 1}
+                    </span>
+                    <span class="min-w-0 self-center text-[15px] leading-7">
                       <LinkifiedText text={action.instruction} />
-                    </div>
-                    {#if feedback}
+                    </span>
+                  </button>
+                  {#if feedback}
+                    <div class="ml-12 min-w-0 pr-2">
                       <ActionFeedbackCard
                         document={feedback.document}
                         groupCount={feedback.groupCount}
                         {previews}
                         {onOpenAttachment}
                       />
-                    {/if}
-                  </div>
+                    </div>
+                  {/if}
                 </li>
               {/each}
             </ol>

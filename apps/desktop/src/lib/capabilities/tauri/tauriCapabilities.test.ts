@@ -371,6 +371,7 @@ describe('Tauri Workbench capabilities', () => {
     await capabilities.globalShortcuts.implementation.read()
     await capabilities.globalShortcuts.implementation.reset()
     await capabilities.globalShortcuts.implementation.setCaptureActive(true)
+    await capabilities.globalShortcuts.implementation.setSpeechReviewActive(true)
     await capabilities.speech.implementation.listModels()
     await capabilities.speech.implementation.downloadModel('sense-voice-small')
     await capabilities.speech.implementation.deleteModel('sense-voice-small')
@@ -390,6 +391,7 @@ describe('Tauri Workbench capabilities', () => {
     capabilities.screenCapture.implementation.onFinished(handler, onError)
     capabilities.screenCapture.implementation.onShortcut(handler, onError)
     capabilities.globalShortcuts.implementation.onRambleToggle(handler, onError)
+    capabilities.globalShortcuts.implementation.onSpeechReview(handler, onError)
     capabilities.speech.implementation.onModelProgress(handler, onError)
     capabilities.rambleConsole.implementation.onCommand(handler, onError)
     capabilities.rambleConsole.implementation.onReady(handler, onError)
@@ -403,6 +405,7 @@ describe('Tauri Workbench capabilities', () => {
     })
     expect(api.invokeMock).toHaveBeenCalledWith('begin_screen_capture')
     expect(api.invokeMock).toHaveBeenCalledWith('set_shortcut_capture_active', { active: true })
+    expect(api.invokeMock).toHaveBeenCalledWith('set_speech_review_shortcuts_active', { active: true })
     expect(api.invokeMock).toHaveBeenCalledWith('download_speech_model', {
       modelId: 'sense-voice-small',
     })
@@ -421,6 +424,7 @@ describe('Tauri Workbench capabilities', () => {
       'screen-capture-finished',
       'screen-capture-shortcut',
       'ramble-toggle-shortcut',
+      'speech-review-shortcut',
       'speech-model-progress',
       'ramble-console-command',
       'ramble-console-ready',

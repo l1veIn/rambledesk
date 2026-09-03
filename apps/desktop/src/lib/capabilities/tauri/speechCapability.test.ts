@@ -122,6 +122,11 @@ describe('Tauri SpeechRecognitionPlugin contract', () => {
       text: '旧内容',
     })
     base.emit({
+      type: 'speech_started',
+      recognition_session_id: 'session-a',
+      chunk_index: 2,
+    })
+    base.emit({
       type: 'stable',
       recognition_session_id: 'session-a',
       chunk_index: 2,
@@ -129,6 +134,7 @@ describe('Tauri SpeechRecognitionPlugin contract', () => {
     })
 
     expect(observed.events).toEqual([
+      { type: 'speech-started', sessionId: 'session-a', segmentIndex: 2 },
       { type: 'stable', sessionId: 'session-a', segmentIndex: 2, text: '新内容' },
     ])
   })

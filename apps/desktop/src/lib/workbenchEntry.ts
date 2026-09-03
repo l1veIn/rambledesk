@@ -6,6 +6,7 @@ export type WorkbenchEntry =
   | 'scroll-capture'
   | 'pinned-capture'
   | 'ramble-console'
+  | 'speech-overlay'
 
 export type WorkbenchEntryInput = Readonly<{
   isTauri: boolean
@@ -21,6 +22,7 @@ export type WorkbenchEntryInput = Readonly<{
 export function selectWorkbenchEntry(input: WorkbenchEntryInput): WorkbenchEntry {
   if (!input.isTauri) return input.previewMode ? 'preview' : 'browser'
   if (input.hash === '#capture') return 'capture'
+  if (input.hash === '#speech-overlay') return 'speech-overlay'
   if (input.hash === '#capture-scroll') return 'scroll-capture'
   if (input.hash.startsWith('#capture-pin=')) return 'pinned-capture'
   if (input.hash === '#ramble-console' || input.pathname.endsWith('/ramble-console')) {

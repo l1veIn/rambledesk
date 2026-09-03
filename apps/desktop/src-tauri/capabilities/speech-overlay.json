@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "speech-overlay",
+  "description": "Speech capsule state and review commands",
+  "windows": ["speech-overlay"],
+  "permissions": ["core:event:default", "core:window:allow-outer-position", "core:window:allow-scale-factor", "core:window:allow-set-position"]
+}

@@ -8,6 +8,7 @@ import {
 } from '$lib/rambleConsole'
 
 import type { RambleConsoleCapability } from '../workbenchCapabilities'
+import { SPEECH_OVERLAY_LABEL, SPEECH_OVERLAY_READY_EVENT, SPEECH_OVERLAY_STATE_EVENT } from '$lib/speechOverlay'
 import { subscribeToTauriEvent } from './subscription'
 import type { TauriCapabilityApi } from './tauriCapabilityApi'
 
@@ -26,6 +27,9 @@ export function createTauriRambleConsoleCapability(
     },
     publish: (state) =>
       api.emitTo(RAMBLE_CONSOLE_LABEL, RAMBLE_CONSOLE_STATE_EVENT, state),
+    publishSpeechOverlay: (state) => api.emitTo(SPEECH_OVERLAY_LABEL, SPEECH_OVERLAY_STATE_EVENT, state),
+    onSpeechOverlayReady: (handler, onError) =>
+      subscribeToTauriEvent(api, SPEECH_OVERLAY_READY_EVENT, handler, onError),
     onCommand: (handler, onError) =>
       subscribeToTauriEvent(api, RAMBLE_CONSOLE_COMMAND_EVENT, handler, onError),
     onReady: (handler, onError) =>

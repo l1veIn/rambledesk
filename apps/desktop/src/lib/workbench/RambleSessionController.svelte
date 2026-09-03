@@ -9,16 +9,23 @@
   import type { FeedbackWorkspaceView } from '../feedback'
   import { t } from '../i18n'
   import { playRecordArmSound } from '../notifications'
+  import RecordingOverlay from '../RecordingOverlay.svelte'
+  import { selectedSpeechGroup, speechReviewCommand, type SpeechOverlayState } from '../speechOverlay'
+  import { createSpeechDraftQueue, groupSpeechDrafts, type SpeechTarget } from './speechDraftQueue'
+  import { createSpeechTargetTracker } from './speechTargetTracker'
   import {
     locale,
     notificationVolume,
     speechHotwords,
     speechInputDevice,
+    speechConfirmBeforeWrite,
+    speechOverlayEnabled,
+    speechOverlayOpacity,
     speechModelId,
     speechVadSilenceMs,
     speechVadThreshold,
   } from '../preferences'
-  import { shortcutSettings } from '../shortcutSettings'
+  import { matchesShortcut, shortcutSettings } from '../shortcutSettings'
   import {
     type RambleConsoleCommand,
     type RambleConsoleState,
@@ -68,6 +75,7 @@
   }
   export let onRouteDraftOperation: (requestId: string, operation: DraftOperation) => Promise<void> = async () => {}
   export let getActiveAction: (requestId: string) => ActiveAction = () => null
+  export let onOpenSpeechTarget: (requestId: string, segmentId?: string) => Promise<void> = async () => {}
 
   let voiceRequestId = ''
   let voiceSessionId = ''
@@ -76,6 +84,50 @@
   let clipboardCaptureCount = 0
   let clipboardImageQueue: Promise<void> = Promise.resolve()
   const rambleTransition = createSingleFlight()
+  const speechDrafts = createSpeechDraftQueue({
+    write: (requestId, operation) => onRouteDraftOperation(requestId, operation),
+    storage: localStorage,
+    onStorageError: () => onPageError(t($locale, 'Pending speech could not be saved on this device. Keep this window open until you review it.')),
+  })
+  const speechTargets = createSpeechTargetTracker(captureSpeechTarget)
+  let receiptTimer: ReturnType<typeof setTimeout> | undefined
+  let shownReceiptId = ''
+  let nativeOverlayFailed = false
+  let voiceMessage = ''
+  let selectedGroupId: string | null = null
+  let reviewOpen = false
+  let shortcutsMounted = false
+  let reviewShortcutKey = ''
+  let reviewShortcutQueue = Promise.resolve()
+
+  $: pendingSpeechGroups = groupSpeechDrafts($speechDrafts.drafts)
+  $: speechReviewNeeded = pendingSpeechGroups.some((group) => !group.busy)
+  $: selectedGroupId = selectedSpeechGroup({ groups: pendingSpeechGroups, selectedGroupId })?.ids[0] ?? null
+  $: if (pendingSpeechGroups.length === 0 || $speechOverlayEnabled) reviewOpen = false
+  $: speechOverlayState = {
+    enabled: $speechOverlayEnabled,
+    opacity: $speechOverlayOpacity,
+    selectedGroupId,
+    shortcuts: $shortcutSettings,
+    phase: voicePhase,
+    level: voiceLevel,
+    partial: voicePartial,
+    error: voicePhase === 'error' ? voiceMessage : '',
+    target: rambleRequestId ? captureSpeechTarget() : null,
+    groups: pendingSpeechGroups,
+    receipt: $speechDrafts.receipt,
+  } satisfies SpeechOverlayState
+  $: if (shortcutsMounted) syncReviewShortcuts(speechReviewNeeded, $shortcutSettings.speechAccept, $shortcutSettings.speechDiscard)
+  $: if (capabilities.rambleConsole.status.availability !== 'unavailable') {
+    void capabilities.rambleConsole.implementation.publishSpeechOverlay(speechOverlayState)
+      .catch(() => { nativeOverlayFailed = true })
+  }
+  $: if ($speechDrafts.receipt && $speechDrafts.receipt.id !== shownReceiptId) {
+    shownReceiptId = $speechDrafts.receipt.id
+    clearTimeout(receiptTimer)
+    const receiptId = shownReceiptId
+    receiptTimer = setTimeout(() => speechDrafts.clearReceipt(receiptId), 2600)
+  }
 
   $: voiceActive =
     voicePhase === 'starting' ||
@@ -103,12 +155,19 @@
   }
 
   onMount(() => {
+    shortcutsMounted = true
     let captureShortcutUnlisten = () => {}
     let rambleShortcutUnlisten = () => {}
+    let reviewShortcutUnlisten = () => {}
     let consoleCommandUnlisten = () => {}
     let consoleReadyUnlisten = () => {}
+    let overlayReadyUnlisten = () => {}
 
     if (capabilities.globalShortcuts.status.availability !== 'unavailable') {
+      reviewShortcutUnlisten = capabilities.globalShortcuts.implementation.onSpeechReview(
+        handleSpeechReviewShortcut,
+        (cause) => onPageError(t($locale, 'Speech confirmation shortcuts are unavailable: {error}', { error: messageFrom(cause) })),
+      )
       void capabilities.globalShortcuts.implementation.read()
         .then((settings) => shortcutSettings.set(settings))
         .catch(() => {})
@@ -127,6 +186,11 @@
         })
     }
     if (capabilities.rambleConsole.status.availability !== 'unavailable') {
+      overlayReadyUnlisten = capabilities.rambleConsole.implementation.onSpeechOverlayReady(() => {
+        nativeOverlayFailed = false
+        void capabilities.rambleConsole.implementation.publishSpeechOverlay(speechOverlayState)
+          .catch(() => { nativeOverlayFailed = true })
+      }, () => { nativeOverlayFailed = true })
       consoleCommandUnlisten = capabilities.rambleConsole.implementation.onCommand(
         (command) => void handleRambleConsoleCommand(command),
         () => {},
@@ -139,14 +203,46 @@
       }, () => {})
     }
 
+    const onReviewKeydown = (event: KeyboardEvent) => {
+      if (capabilities.globalShortcuts.status.availability !== 'unavailable' || event.defaultPrevented || event.repeat || event.isComposing) return
+      const action = matchesShortcut(event, $shortcutSettings.speechAccept) ? 'accept'
+        : matchesShortcut(event, $shortcutSettings.speechDiscard) ? 'discard' : null
+      if (action && selectedSpeechGroup(speechOverlayState)) {
+        event.preventDefault()
+        handleSpeechReviewShortcut(action)
+      }
+    }
+    window.addEventListener('keydown', onReviewKeydown)
+
     return () => {
+      shortcutsMounted = false
+      reviewShortcutUnlisten()
+      window.removeEventListener('keydown', onReviewKeydown)
+      syncReviewShortcuts(false, '', '')
       rambleShortcutUnlisten()
       captureShortcutUnlisten()
       consoleCommandUnlisten()
       consoleReadyUnlisten()
+      overlayReadyUnlisten()
+      clearTimeout(receiptTimer)
       void speechSession?.cancel().catch(() => {})
     }
   })
+
+  function syncReviewShortcuts(active: boolean, accept: string, discard: string) {
+    if (capabilities.globalShortcuts.status.availability === 'unavailable') return
+    const key = `${active}:${accept}:${discard}`
+    if (reviewShortcutKey === key) return
+    reviewShortcutKey = key
+    reviewShortcutQueue = reviewShortcutQueue
+      .then(() => capabilities.globalShortcuts.implementation.setSpeechReviewActive(active))
+      .catch((cause) => onPageError(t($locale, 'Speech confirmation shortcuts are unavailable: {error}', { error: messageFrom(cause) })))
+  }
+
+  function handleSpeechReviewShortcut(action: 'accept' | 'discard') {
+    const command = speechReviewCommand(speechOverlayState, action, interactionLocked)
+    if (command) void handleRambleConsoleCommand(command)
+  }
 
   export function toggleRamble(): Promise<void> {
     return rambleTransition.run(async () => {
@@ -168,7 +264,11 @@
       if (voiceCanStop) {
         ramblePhase = 'stopping'
         rambleMessage = t($locale, 'Ending Ramble…')
-        await stopVoiceRamble()
+        if (!(await stopVoiceRamble())) {
+          ramblePhase = 'error'
+          rambleMessage = voiceMessage
+          return
+        }
       }
       void capabilities.rambleConsole.implementation.hide().catch(() => {})
       resetVoiceUi()
@@ -202,6 +302,21 @@
     voiceLevel = 0
     voiceChunkIndex = 0
     voiceModelMissing = false
+    speechTargets.reset()
+  }
+
+  export function hasPendingSpeech(requestId: string) {
+    return speechDrafts.hasPending(requestId)
+  }
+
+  export function settleSpeechDrafts() {
+    return speechDrafts.settled()
+  }
+
+  function captureSpeechTarget(): SpeechTarget {
+    const action = getActiveAction(voiceRequestId || rambleRequestId)
+    return { requestId: voiceRequestId || rambleRequestId, requestTitle: rambleRequestTitle,
+      action: action ? { ...action } : null }
   }
 
   export function resetRambleUi() {
@@ -292,6 +407,7 @@
     voiceMessage = t($locale, 'Connecting the microphone…')
     voiceLevel = 0
     voiceModelMissing = false
+    speechTargets.reset()
     void playRecordArmSound(get(notificationVolume))
     try {
       const session = capabilities.speech.implementation.start(
@@ -350,6 +466,7 @@
         await new Promise((resolve) => setTimeout(resolve, 20))
       }
       await tick()
+      await speechDrafts.settled()
       if (voicePhase === 'stopping') {
         voicePhase = 'idle'
         voiceMessage = t($locale, 'Recording stopped')
@@ -361,7 +478,7 @@
     } finally {
       voiceLevel = 0
     }
-    return true
+    return (voicePhase as VoicePhase) !== 'error'
   }
 
   function handleClipboardCaptureResult(
@@ -411,6 +528,7 @@
     ) {
       return
     }
+    const speechTarget = speechTargets.observe(event)
     switch (event.type) {
       case 'started':
         voicePhase = 'listening'
@@ -425,8 +543,10 @@
         break
       case 'level':
         voiceLevel = Math.min(1, Math.max(0, event.rms * 8))
-        if (voicePhase !== 'stopping') voicePhase = 'listening'
         markRambleRecording()
+        break
+      case 'speech-started':
+        if (voicePhase !== 'stopping') voicePhase = 'listening'
         break
       case 'processing':
         voiceChunkIndex = event.segmentIndex + 1
@@ -436,33 +556,32 @@
         break
       case 'stable': {
         const transcript = stableTranscript(event)
+        const target = speechTarget ?? captureSpeechTarget()
         if (transcript) {
-          void onRouteDraftOperation(voiceRequestId, {
-            kind: 'appendSpeech',
-            segmentId: stableSpeechSegmentId(event),
-            text: transcript,
-            action: getActiveAction(voiceRequestId),
-          }).catch(
-            (cause) => onPageError(t($locale, 'Failed to write Ramble content: {error}', { error: messageFrom(cause) })),
-          )
+          speechDrafts.enqueue(stableSpeechSegmentId(event), transcript, target, $speechConfirmBeforeWrite)
         }
         voicePartial = ''
         voiceChunkIndex = event.segmentIndex + 1
         if (voicePhase !== 'stopping') voicePhase = 'listening'
         markRambleRecording()
-        voiceMessage = t($locale, 'Segment {count} written to the document', { count: event.segmentIndex + 1 })
+        voiceMessage = t($locale, 'Listening…')
         break
       }
       case 'warning':
         voiceMessage = event.message
         break
       case 'stopped':
-        voicePhase = 'idle'
+        if (event.reason === 'unexpected' || voicePhase === 'error') {
+          if (voicePhase !== 'error') voiceMessage = t($locale, 'The microphone stopped unexpectedly; Ramble is paused')
+          voicePhase = 'error'
+        } else {
+          voicePhase = 'idle'
+          voiceMessage = t($locale, 'Recording stopped')
+        }
         speechSession = null
         voiceSessionId = ''
         voiceLevel = 0
         voicePartial = ''
-        voiceMessage = t($locale, 'Recording stopped')
         if (ramblePhase === 'active') {
           ramblePhase = 'error'
           rambleMessage = t($locale, 'The microphone stopped unexpectedly; Ramble is paused')
@@ -489,6 +608,25 @@
 
   async function handleRambleConsoleCommand(command: RambleConsoleCommand) {
     switch (command.type) {
+      case 'select-speech-group':
+        if (pendingSpeechGroups.some((group) => group.ids.includes(command.id))) selectedGroupId = command.id
+        break
+      case 'accept-speech':
+        if (!interactionLocked) await speechDrafts.accept(command.ids)
+        break
+      case 'discard-speech':
+        speechDrafts.discard(command.ids)
+        break
+      case 'open-speech-target':
+        await onOpenSpeechTarget(command.requestId, command.segmentId)
+        break
+      case 'retry-recording':
+        await rambleTransition.run(async () => {
+          if (interactionLocked || !rambleRequestId) return
+          if (voiceCanStop) await stopVoiceRamble()
+          await beginVoiceRamble()
+        })
+        break
       case 'toggle-recording':
         await toggleRamble()
         break
@@ -530,9 +668,31 @@
     void capabilities.rambleConsole.implementation.publish(state).catch(() => {})
   }
 
-  let voiceMessage = ''
-
   function messageFrom(cause: unknown) {
     return cause instanceof Error ? cause.message : String(cause)
   }
 </script>
+
+{#if capabilities.rambleConsole.status.availability === 'unavailable' || nativeOverlayFailed}
+  <RecordingOverlay state={speechOverlayState} onCommand={(command) => void handleRambleConsoleCommand(command)} />
+{/if}
+
+{#if !$speechOverlayEnabled && pendingSpeechGroups.length > 0 && (speechReviewNeeded || reviewOpen)}
+  <aside class="speech-review-dock" aria-label={t($locale, 'Pending speech groups')}>
+    {#if reviewOpen}
+      <div id="pending-speech-review">
+        <RecordingOverlay state={{ ...speechOverlayState, enabled: true, opacity: 100 }} embedded draggable={false} onCommand={(command) => void handleRambleConsoleCommand(command)} />
+      </div>
+    {/if}
+    <button class="review-toggle" aria-expanded={reviewOpen} aria-controls="pending-speech-review" onclick={() => reviewOpen = !reviewOpen}>
+      {reviewOpen ? t($locale, 'Collapse transcript') : t($locale, 'Pending speech · {count}', { count: pendingSpeechGroups.length })}
+    </button>
+  </aside>
+{/if}
+
+<style>
+  .speech-review-dock { position: fixed; right: 20px; bottom: 16px; z-index: 80; width: min(436px, calc(100vw - 32px)); pointer-events: none; display: flex; flex-direction: column; align-items: flex-end; }
+  .speech-review-dock > div { width: 100%; }
+  .review-toggle { pointer-events: auto; padding: 7px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); color: var(--foreground); box-shadow: 0 3px 12px #0002; font-size: 11px; cursor: pointer; }
+  .review-toggle:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+</style>

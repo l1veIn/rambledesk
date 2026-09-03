@@ -160,6 +160,27 @@ pub fn run() {
                 .build()?;
                 position_ramble_console(app.handle(), &console)?;
                 attach_ramble_console_events(&console);
+                app.manage(window::SpeechOverlayVisibility::default());
+                let speech_overlay = WebviewWindowBuilder::new(
+                    app,
+                    "speech-overlay",
+                    WebviewUrl::App("index.html#speech-overlay".into()),
+                )
+                .title("RambleDesk · Speech")
+                .inner_size(436.0, 140.0)
+                .resizable(false)
+                .decorations(false)
+                .transparent(true)
+                .background_color(Color(0, 0, 0, 0))
+                .accept_first_mouse(true)
+                .shadow(false)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .visible_on_all_workspaces(true)
+                .focused(false)
+                .visible(false)
+                .build()?;
+                window::attach_speech_overlay_events(&speech_overlay);
                 app.manage(shortcuts::ShortcutSettings::initialize(app.handle()));
                 let token = AccessToken::load_or_create(&configured_token_path()?)?;
                 let database_path = configured_database_path()?;
@@ -292,6 +313,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             show_ramble_console,
             hide_ramble_console,
+            window::set_speech_overlay_layout,
+            window::focus_speech_feedback,
             get_generic_mcp_configuration,
             restart_application,
             open_main_devtools,
@@ -370,6 +393,7 @@ pub fn run() {
             shortcuts::set_shortcut_setting,
             shortcuts::reset_shortcut_settings,
             shortcuts::set_shortcut_capture_active,
+            shortcuts::set_speech_review_shortcuts_active,
             web_access::get_web_access_status,
             web_access::start_web_access,
             web_access::stop_web_access,

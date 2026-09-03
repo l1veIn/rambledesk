@@ -1,4 +1,6 @@
 use std::fs;
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::{Deserialize, Serialize};
 use tauri::{Manager, PhysicalPosition, PhysicalRect, PhysicalSize, WebviewWindow};
@@ -6,6 +8,131 @@ use tauri::{Manager, PhysicalPosition, PhysicalRect, PhysicalSize, WebviewWindow
 use super::RAMBLE_CONSOLE_EDGE_GAP;
 
 const WINDOWS_EXTRA_EDGE_GAP: f64 = 16.0;
+
+pub(super) struct SpeechOverlayVisibility {
+    requested: AtomicBool,
+    capture_hidden: AtomicBool,
+    position: Mutex<Option<SavedSpeechPosition>>,
+    layout_position: Mutex<Option<PhysicalPosition<i32>>>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+struct SavedSpeechPosition {
+    x: i32,
+    bottom: i32,
+}
+
+impl Default for SpeechOverlayVisibility {
+    fn default() -> Self {
+        let position = speech_position_path()
+            .and_then(|path| fs::read_to_string(path).ok())
+            .and_then(|raw| serde_json::from_str(&raw).ok());
+        Self {
+            requested: AtomicBool::new(false),
+            capture_hidden: AtomicBool::new(false),
+            position: Mutex::new(position),
+            layout_position: Mutex::new(None),
+        }
+    }
+}
+
+fn speech_position_path() -> Option<std::path::PathBuf> {
+    rambledesk_storage::default_app_data_root()
+        .ok()
+        .map(|root| root.join("speech-overlay-position.json"))
+}
+
+pub(super) fn attach_speech_overlay_events(overlay: &WebviewWindow) {
+    let handle = overlay.clone();
+    overlay.on_window_event(move |event| match event {
+        tauri::WindowEvent::CloseRequested { api, .. } => {
+            api.prevent_close();
+            let _ = handle.hide();
+        }
+        tauri::WindowEvent::Moved(position) if handle.is_visible().unwrap_or(false) => {
+            let state = handle.app_handle().state::<SpeechOverlayVisibility>();
+            // Layout updates also emit Moved. Only persist actual user movement.
+            if state
+                .layout_position
+                .lock()
+                .ok()
+                .is_some_and(|mut expected| expected.take() == Some(*position))
+            {
+                return;
+            }
+            let Ok(size) = handle.outer_size() else {
+                return;
+            };
+            let saved = SavedSpeechPosition {
+                x: position.x,
+                bottom: clamp_i32(i64::from(position.y) + i64::from(size.height)),
+            };
+            if let Ok(mut value) = state.position.lock() {
+                *value = Some(saved);
+            }
+            if let Some(path) = speech_position_path() {
+                if let Some(parent) = path.parent() {
+                    let _ = fs::create_dir_all(parent);
+                }
+                if let Ok(json) = serde_json::to_string(&saved)
+                    && let Err(error) = fs::write(path, json)
+                {
+                    tracing::warn!(%error, "failed to save speech overlay position");
+                }
+            }
+        }
+        _ => {}
+    });
+}
+
+fn speech_overlay_position(
+    area: PhysicalRect<i32, u32>,
+    size: PhysicalSize<u32>,
+    scale: f64,
+    saved: Option<SavedSpeechPosition>,
+) -> PhysicalPosition<i32> {
+    let position = saved.map_or_else(
+        || {
+            PhysicalPosition::new(
+                clamp_i32(
+                    i64::from(area.position.x)
+                        + (i64::from(area.size.width) - i64::from(size.width)) / 2,
+                ),
+                clamp_i32(
+                    i64::from(area.position.y) + i64::from(area.size.height)
+                        - i64::from(size.height)
+                        - (24.0 * scale).round() as i64,
+                ),
+            )
+        },
+        |saved| {
+            PhysicalPosition::new(
+                saved.x,
+                clamp_i32(i64::from(saved.bottom) - i64::from(size.height)),
+            )
+        },
+    );
+    clamp_position_to_work_area(position, size, area)
+}
+
+fn speech_anchor_in_area(saved: SavedSpeechPosition, area: PhysicalRect<i32, u32>) -> bool {
+    i64::from(saved.x) >= i64::from(area.position.x)
+        && i64::from(saved.x) < i64::from(area.position.x) + i64::from(area.size.width)
+        && i64::from(saved.bottom) > i64::from(area.position.y)
+        && i64::from(saved.bottom) <= i64::from(area.position.y) + i64::from(area.size.height)
+}
+
+pub(super) fn suspend_speech_overlay(app: &tauri::AppHandle, hidden: bool) {
+    let state = app.state::<SpeechOverlayVisibility>();
+    state.capture_hidden.store(hidden, Ordering::SeqCst);
+    if let Some(overlay) = app.get_webview_window("speech-overlay") {
+        if hidden || !state.requested.load(Ordering::SeqCst) {
+            let _ = overlay.hide();
+        } else {
+            let _ = overlay.show();
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 struct SavedConsolePosition {
@@ -255,6 +382,75 @@ pub(super) fn hide_ramble_console(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+pub(super) fn focus_speech_feedback(app: tauri::AppHandle) {
+    show_main_window(&app);
+}
+
+#[tauri::command]
+pub(super) fn set_speech_overlay_layout(
+    app: tauri::AppHandle,
+    visible: bool,
+    height: f64,
+) -> Result<(), String> {
+    let visibility = app.state::<SpeechOverlayVisibility>();
+    visibility.requested.store(visible, Ordering::SeqCst);
+    let overlay = app
+        .get_webview_window("speech-overlay")
+        .ok_or_else(|| "Speech overlay window is not available".to_owned())?;
+    if !visible {
+        return overlay.hide().map_err(|error| error.to_string());
+    }
+    let saved = *visibility
+        .position
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let saved_monitor = saved.and_then(|position| {
+        app.available_monitors()
+            .ok()?
+            .into_iter()
+            .find(|monitor| speech_anchor_in_area(position, *monitor.work_area()))
+    });
+    let saved = if saved_monitor.is_some() { saved } else { None };
+    let monitor = saved_monitor
+        .or_else(|| {
+            app.get_webview_window("main")
+                .and_then(|window| window.current_monitor().ok().flatten())
+        })
+        .or(overlay
+            .primary_monitor()
+            .map_err(|error| error.to_string())?);
+    if let Some(monitor) = monitor {
+        let area = monitor.work_area();
+        let scale = monitor.scale_factor();
+        let width = 436.0_f64
+            .min(f64::from(area.size.width) / scale - 24.0)
+            .max(200.0);
+        let height = if height.is_finite() { height } else { 140.0 }
+            .clamp(80.0, 480.0)
+            .min(f64::from(area.size.height) / scale - 48.0);
+        let size = PhysicalSize::new(
+            (width * scale).round() as u32,
+            (height * scale).round() as u32,
+        );
+        let position = speech_overlay_position(*area, size, scale, saved);
+        *visibility
+            .layout_position
+            .lock()
+            .map_err(|error| error.to_string())? = Some(position);
+        overlay.set_size(size).map_err(|error| error.to_string())?;
+        overlay
+            .set_position(position)
+            .map_err(|error| error.to_string())?;
+    }
+    if visibility.capture_hidden.load(Ordering::SeqCst) {
+        overlay.hide().map_err(|error| error.to_string())?;
+    } else if !overlay.is_visible().unwrap_or(false) {
+        overlay.show().map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -264,6 +460,44 @@ mod tests {
             position: PhysicalPosition::new(x, y),
             size: PhysicalSize::new(width, height),
         }
+    }
+
+    #[test]
+    fn speech_overlay_expands_upward_from_the_dragged_bottom_anchor() {
+        let saved = Some(SavedSpeechPosition {
+            x: -1200,
+            bottom: 850,
+        });
+        let monitor = area(-1920, 0, 1920, 1080);
+        let short = speech_overlay_position(monitor, PhysicalSize::new(654, 210), 1.5, saved);
+        let tall = speech_overlay_position(monitor, PhysicalSize::new(654, 600), 1.5, saved);
+        assert_eq!(short, PhysicalPosition::new(-1200, 640));
+        assert_eq!(tall, PhysicalPosition::new(-1200, 250));
+    }
+
+    #[test]
+    fn speech_overlay_clamps_saved_position_and_detects_disconnected_monitors() {
+        let monitor = area(0, 0, 1920, 1040);
+        let saved = SavedSpeechPosition {
+            x: 1800,
+            bottom: 100,
+        };
+        assert!(speech_anchor_in_area(saved, monitor));
+        assert_eq!(
+            speech_overlay_position(monitor, PhysicalSize::new(436, 400), 1.0, Some(saved)),
+            PhysicalPosition::new(1484, 0)
+        );
+        assert!(!speech_anchor_in_area(
+            SavedSpeechPosition {
+                x: -1200,
+                bottom: 850
+            },
+            monitor
+        ));
+        assert_eq!(
+            speech_overlay_position(monitor, PhysicalSize::new(436, 140), 1.0, None),
+            PhysicalPosition::new(742, 876)
+        );
     }
 
     #[test]

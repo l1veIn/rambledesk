@@ -156,7 +156,7 @@
         autoAriaDisabled: true,
         delayTouchStart: 500,
       }}
-      class="workspace-tab-list flex h-full min-w-0 flex-[0_1_auto] items-stretch overflow-hidden"
+      class="workspace-tab-list flex h-full min-w-0 flex-[0_1_auto] items-stretch"
       role="tablist"
       aria-label={tr('Workspace tabs')}
       aria-orientation="horizontal"

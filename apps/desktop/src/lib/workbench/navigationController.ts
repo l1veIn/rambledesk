@@ -18,8 +18,13 @@ import {
   notificationVolume,
 } from '../preferences'
 import type { HostProfile } from './types'
+import {
+  DEFAULT_REQUEST_FILTERS,
+  filterRequestPage,
+  requestFilterStatuses,
+  type RequestFilters,
+} from './requestFilters'
 
-const ALL_REQUEST_STATUSES = ['waiting', 'in_progress', 'completed', 'cancelled'] as const
 const MANUAL_PAGE_REFRESH_MIN_MS = 300
 
 export type NavigationState = {
@@ -32,6 +37,7 @@ export type NavigationState = {
   selectedHostId: string | null
   selectedHostSessionId: string | null
   requestSearch: string
+  requestFilters: RequestFilters
   nextRequestCursor: string | null
   loadingNavigation: boolean
   loadingRequests: boolean
@@ -70,6 +76,7 @@ const initialState: NavigationState = {
   selectedHostId: null,
   selectedHostSessionId: null,
   requestSearch: '',
+  requestFilters: DEFAULT_REQUEST_FILTERS,
   nextRequestCursor: null,
   loadingNavigation: true,
   loadingRequests: true,
@@ -204,8 +211,14 @@ export function createNavigationController(context: NavigationControllerContext)
 
   async function refreshPage(minimumLoadingMs = MANUAL_PAGE_REFRESH_MIN_MS) {
     const hostSessionFactsIntent = beginHostSessionFactsRefresh()
+    const requestGeneration = ++requestRefreshGeneration
     const startedAt = now()
-    patch({ loadingNavigation: true, loadingRequests: true, refreshingPage: true })
+    patch({
+      loadingNavigation: true,
+      loadingRequests: true,
+      loadingMoreRequests: false,
+      refreshingPage: true,
+    })
     try {
       const [nextInbox, nextHostSessions, result] = await Promise.all([
         loadInbox(),
@@ -214,10 +227,9 @@ export function createNavigationController(context: NavigationControllerContext)
       ])
       if (hostSessionFactsIntent !== hostSessionFactsGeneration) return
       applyInboxSnapshot(nextInbox)
-      patch({
-        requests: result.requests,
-        nextRequestCursor: result.next_cursor,
-      })
+      if (requestGeneration === requestRefreshGeneration) {
+        patch({ requests: result.requests, nextRequestCursor: result.next_cursor })
+      }
       applyHostSessionFacts(nextHostSessions, hostSessionFactsIntent)
     } catch (cause) {
       if (hostSessionFactsIntent !== hostSessionFactsGeneration) return
@@ -225,7 +237,8 @@ export function createNavigationController(context: NavigationControllerContext)
       context.onPageError(context.messageFrom(cause))
     } finally {
       await waitForMinimumDuration(startedAt, minimumLoadingMs)
-      patch({ loadingNavigation: false, loadingRequests: false, refreshingPage: false })
+      patch({ loadingNavigation: false, refreshingPage: false })
+      if (requestGeneration === requestRefreshGeneration) patch({ loadingRequests: false })
     }
   }
 
@@ -273,7 +286,7 @@ export function createNavigationController(context: NavigationControllerContext)
     return {
       host_id: state.selectedHostId,
       host_session_id: state.selectedHostSessionId,
-      status: [...ALL_REQUEST_STATUSES],
+      status: requestFilterStatuses(state.requestFilters.status),
       archived: null,
       search: state.requestSearch.trim() || null,
       limit: 100,
@@ -310,24 +323,31 @@ export function createNavigationController(context: NavigationControllerContext)
     return context.transport.call('listHostSessions', undefined)
   }
 
-  function loadRequestList(cursor: string | null = null): Promise<ListFeedbackRequestsOutput> {
+  async function loadRequestList(cursor: string | null = null): Promise<ListFeedbackRequestsOutput> {
     const state = get(store)
+    const { timeRange, status } = state.requestFilters
     if (context.previewMode) {
-      return Promise.resolve({
-        requests:
-          cursor === null
-            ? previewFixtures.requests.filter(
-                (request) =>
-                  (!state.selectedHostId || request.host_id === state.selectedHostId) &&
-                  (!state.selectedHostSessionId ||
-                    request.host_session_id === state.selectedHostSessionId) &&
-                  requestMatchesSearch(request, state.requestSearch),
-              )
-            : [],
-        next_cursor: null,
-      })
+      const statuses = requestFilterStatuses(status)
+      return filterRequestPage(
+        {
+          requests:
+            cursor === null
+              ? previewFixtures.requests.filter(
+                  (request) =>
+                    (!state.selectedHostId || request.host_id === state.selectedHostId) &&
+                    (!state.selectedHostSessionId ||
+                      request.host_session_id === state.selectedHostSessionId) &&
+                    requestMatchesSearch(request, state.requestSearch) &&
+                    statuses.includes(request.status),
+                )
+              : [],
+          next_cursor: null,
+        },
+        timeRange,
+      )
     }
-    return context.transport.call('listFeedbackRequests', requestListInput(cursor))
+    const page = await context.transport.call('listFeedbackRequests', requestListInput(cursor))
+    return filterRequestPage(page, timeRange)
   }
 
   function now() {
@@ -344,7 +364,7 @@ export function createNavigationController(context: NavigationControllerContext)
     openFirst = false,
   ): Promise<ListFeedbackRequestsOutput | null | undefined> {
     const generation = ++requestRefreshGeneration
-    patch({ loadingRequests: true })
+    patch({ loadingRequests: true, loadingMoreRequests: false })
     try {
       const result = await loadRequestList()
       if (generation !== requestRefreshGeneration) return undefined
@@ -367,10 +387,12 @@ export function createNavigationController(context: NavigationControllerContext)
 
   async function loadMoreRequests() {
     const state = get(store)
-    if (!state.nextRequestCursor || state.loadingMoreRequests) return
+    if (!state.nextRequestCursor || state.loadingMoreRequests || state.loadingRequests) return
+    const generation = requestRefreshGeneration
     patch({ loadingMoreRequests: true })
     try {
       const result = await loadRequestList(state.nextRequestCursor)
+      if (generation !== requestRefreshGeneration) return
       const current = get(store)
       const known = new Set(current.requests.map((request) => request.request_id))
       patch({
@@ -381,9 +403,10 @@ export function createNavigationController(context: NavigationControllerContext)
         nextRequestCursor: result.next_cursor,
       })
     } catch (cause) {
+      if (generation !== requestRefreshGeneration) return
       context.onPageError(context.messageFrom(cause))
     } finally {
-      patch({ loadingMoreRequests: false })
+      if (generation === requestRefreshGeneration) patch({ loadingMoreRequests: false })
     }
   }
 
@@ -432,6 +455,13 @@ export function createNavigationController(context: NavigationControllerContext)
     const current = get(store).requestSearch
     if (current === search) return
     patch({ requestSearch: search, nextRequestCursor: null })
+    await refreshRequests(false)
+  }
+
+  async function setRequestFilters(filters: RequestFilters) {
+    const current = get(store).requestFilters
+    if (current.status === filters.status && current.timeRange === filters.timeRange) return
+    patch({ requestFilters: { ...filters }, requests: [], nextRequestCursor: null })
     await refreshRequests(false)
   }
 
@@ -561,6 +591,7 @@ export function createNavigationController(context: NavigationControllerContext)
     loadMoreRequests,
     selectScope,
     setRequestSearch,
+    setRequestFilters,
     renameHostSession,
     setHostSessionPinned,
     archiveHostSession,

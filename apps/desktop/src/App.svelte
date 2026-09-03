@@ -49,6 +49,7 @@
     CancelFeedbackInput,
     DraftView,
     FeedbackRequestView,
+    FeedbackRequestSummary,
     FeedbackWorkspaceView,
     SubmitFeedbackInput,
   } from './lib/feedback'
@@ -64,11 +65,9 @@
     type FeedbackDraftSnapshot,
   } from './lib/feedbackDraftDocument'
   import {
-    notificationLabel,
     notificationStateForPermission,
     type NotificationState,
   } from './lib/notifications'
-  import { isWithinLast24Hours } from './lib/requestRecency'
   import {
     archiveViewDescriptor,
     inboxViewDescriptor,
@@ -89,6 +88,7 @@
   import {
     createWorkspaceSnapshot,
   } from './lib/workspace/workspaceSnapshot'
+  import { updateTaskTabTitles } from './lib/workspace/taskTabTitles'
   import {
     savedPreviewWorkspaceSnapshot,
     savePreviewWorkspaceSnapshot,
@@ -138,6 +138,7 @@
     type AttachmentMessageTone,
   } from './lib/workbench/attachmentController'
   import { createNavigationController } from './lib/workbench/navigationController'
+  import { requestFilterCount } from './lib/workbench/requestFilters'
   import { ensureDesktopNavigationPolling } from './lib/workbench/navigationPolling'
   import { resolvedRamblePhase } from './lib/workbench/rambleSessionState'
   import type {
@@ -151,10 +152,13 @@
     VoicePhase,
   } from './lib/workbench/types'
   import RambleSessionController from './lib/workbench/RambleSessionController.svelte'
+  import { highlightSpeechSegment } from './lib/highlightSpeechSegment'
   import { t } from './lib/i18n'
   import {
     initialHostRailCollapsed,
+    initialRequestRailCollapsed,
     saveHostRailCollapsed,
+    saveRequestRailCollapsed,
     saveWorkspaceSnapshot,
     savedWorkspaceSnapshot,
   } from './lib/uiPreferences'
@@ -170,7 +174,6 @@
     notificationPopupEnabled,
     onboardingCompleted,
     resetOnboarding,
-    notificationSoundEnabled,
     setNotificationPopupEnabled,
     tidyApiKey,
     tidyAutoThreshold,
@@ -187,6 +190,7 @@
     formatTime(value, $locale, tr('Not saved yet'))
   let workspace: FeedbackWorkspaceView | null = null
   let workspaceShellState: WorkspaceShellState = EMPTY_WORKSPACE_SHELL_STATE
+  let taskTabTitles: ReadonlyMap<string, string> = new Map()
   let renderedWorkspaceView: WorkspaceViewDescriptor | null = null
   let renderedSessionView: SessionViewDescriptor | null = null
   let renderedSessionResolution: SessionViewResolution | null = null
@@ -265,7 +269,7 @@
     }
   }
   let taskBriefOpen = true
-  let todayOnly = false
+  let requestRailCollapsed = initialRequestRailCollapsed()
   let hostSessionRailCollapsed = initialHostRailCollapsed()
   let genericMcpConfiguration = ''
   let voicePhase: VoicePhase = 'idle'
@@ -490,9 +494,6 @@
       else toast.error(tr('Attachment action failed'), options)
     }
   }
-  $: visibleRequests = todayOnly
-    ? $navigation.requests.filter((request) => isWithinLast24Hours(request.updated_at))
-    : $navigation.requests
   $: selectedHostSession = $navigation.selectedHostSessionId
     ? $navigation.hostSessions.find(
         (session) =>
@@ -518,7 +519,12 @@
     const hostLabel = resolveHostProfile(view.hostId).label
     return `${session?.title ?? view.hostSessionId} · ${hostLabel}`
   }
-  const workspaceTabLabel = (view: WorkspaceViewDescriptor) => {
+  $: taskTabTitles = updateTaskTabTitles(taskTabTitles, workspaceShellState.views, [
+    ...(workspace ? [workspace.request] : []),
+    ...$navigation.pendingRequests,
+    ...$navigation.requests,
+  ])
+  $: workspaceTabLabel = (view: WorkspaceViewDescriptor) => {
     switch (view.kind) {
       case 'inbox':
         return tr('All requests')
@@ -526,15 +532,8 @@
         return tr('Archived sessions')
       case 'settings':
         return tr('Settings')
-      case 'request-task': {
-        const request = [...$navigation.requests, ...$navigation.pendingRequests].find(
-          (candidate) => candidate.request_id === view.requestId,
-        )
-        return request?.title ??
-          (workspace?.request.request_id === view.requestId
-            ? workspace.request.title
-            : tr('Task brief'))
-      }
+      case 'request-task':
+        return taskTabTitles.get(view.requestId) ?? tr('Task brief')
       case 'rambelle-profile':
         return 'Rambelle'
       case 'session':
@@ -632,6 +631,7 @@
     currentRequestCooking ||
     workspace?.request.status === 'in_progress'
   $: saveHostRailCollapsed(hostSessionRailCollapsed)
+  $: saveRequestRailCollapsed(requestRailCollapsed)
 
   onMount(() => {
     const cleanupAttachments = attachmentController.mount()
@@ -1013,13 +1013,9 @@
       loadingWorkspace = false
       return
     }
-    const rememberedRequestId = sessionRequestIds.get(workspaceViewKey(view))
-    const request =
-      selection.requests.find((candidate) => candidate.request_id === rememberedRequestId) ??
-      selection.requests[0]
     await workspaceTransition.activate({
       view,
-      requestId: request?.request_id ?? null,
+      requestId: requestIdForSession(view, selection.requests),
       shellAction: { type: 'open' },
       pendingViewKey: workspaceViewKey(view),
     })
@@ -1029,6 +1025,19 @@
     hostId: string | null
     hostSessionId: string | null
   }>
+
+  function requestIdForSession(
+    view: SessionViewDescriptor,
+    requests: readonly FeedbackRequestSummary[],
+  ): string | null {
+    const rememberedRequestId = sessionRequestIds.get(workspaceViewKey(view))
+    // List filters may hide an open request; they must not reset its workspace tab.
+    if (rememberedRequestId && (
+      requestFilterCount($navigation.requestFilters) > 0 ||
+      requests.some((request) => request.request_id === rememberedRequestId)
+    )) return rememberedRequestId
+    return requests[0]?.request_id ?? null
+  }
 
   function currentNavigationScope(): NavigationScope {
     return {
@@ -1068,12 +1077,9 @@
 
     const view = sessionViewDescriptor(hostId, hostSessionId)
     const viewKey = workspaceViewKey(view)
-    const rememberedRequestId = sessionRequestIds.get(viewKey)
-    const request =
-      selection.requests.find((candidate) => candidate.request_id === rememberedRequestId) ??
-      selection.requests[0]
-    if (request) {
-      const outcome = await activateRequest(request.request_id)
+    const requestId = requestIdForSession(view, selection.requests)
+    if (requestId) {
+      const outcome = await activateRequest(requestId)
       await restoreNavigationScope(priorScope, outcome)
       return
     }
@@ -1129,12 +1135,9 @@
       await navigation.selectScope(priorScope.hostId, priorScope.hostSessionId)
       return
     }
-    const rememberedRequestId = sessionRequestIds.get(viewKey)
-    const request =
-      selection.requests.find((candidate) => candidate.request_id === rememberedRequestId) ??
-      selection.requests[0]
-    if (request) {
-      const outcome = await activateRequest(request.request_id)
+    const requestId = requestIdForSession(view, selection.requests)
+    if (requestId) {
+      const outcome = await activateRequest(requestId)
       await restoreNavigationScope(priorScope, outcome)
       return
     }
@@ -1183,12 +1186,7 @@
         await navigation.selectScope(priorScope.hostId, priorScope.hostSessionId)
         return
       }
-      const rememberedRequestId = sessionRequestIds.get(workspaceViewKey(fallbackView))
-      fallbackRequestId =
-        selection.requests.find((candidate) => candidate.request_id === rememberedRequestId)
-          ?.request_id ??
-        selection.requests[0]?.request_id ??
-        null
+      fallbackRequestId = requestIdForSession(fallbackView, selection.requests)
     } else if (fallbackView?.kind === 'inbox') {
       const selection = await navigation.selectScope(null, null)
       if (!selection.selected) return
@@ -1472,7 +1470,13 @@
 
   function selectAction(actionId: string, actionIndex: number, title: string) {
     const requestId = workspace?.request.request_id
-    if (!requestId || cookedDraftReady) return
+    if (
+      !requestId ||
+      workspaceTransitionLocked ||
+      pendingWorkspaceViewKey !== null ||
+      workspace?.request.status === 'completed' ||
+      workspace?.request.status === 'cancelled'
+    ) return
     if (activeActionByRequest.get(requestId)?.actionId === actionId) {
       activeActionByRequest.delete(requestId)
       activeActionByRequest = new Map(activeActionByRequest)
@@ -1644,6 +1648,8 @@
     },
     getCanSubmit: () => canSubmit,
     getRambleCanExit: () => rambleCanExit,
+    hasPendingSpeech: (requestId) => rambleController?.hasPendingSpeech(requestId) ?? false,
+    getSpeechStopError: () => voicePhase === 'error' ? rambleMessage : '',
     exitRamble,
     saveDraftNow,
     getDraftBody: () => draftBody,
@@ -1748,6 +1754,7 @@
 
   async function exitRamble() {
     await rambleController?.exitRamble()
+    await rambleController?.settleSpeechDrafts()
     await rambleDocumentQueue.catch(() => {})
   }
 
@@ -1792,22 +1799,20 @@
     onPersistAttachmentCandidates={attachmentController.persistAttachmentCandidates}
     onRouteDraftOperation={routeDraftOperation}
     getActiveAction={activeActionFor}
+    onOpenSpeechTarget={async (requestId, segmentId) => {
+      if (await openRequest(requestId)) {
+        await tick()
+        if (segmentId) highlightSpeechSegment(document, segmentId, true)
+      }
+    }}
   />
 
   <AppTitlebar
     windowControls={capabilities.windowControls}
-    notifications={capabilities.notifications}
     sidebarCollapsed={hostSessionRailCollapsed}
     pendingCount={$navigation.pendingRequests.length}
-    {rambleEngaged}
-    {rambleActive}
+    ramblePhase={visibleRamblePhase}
     {rambleRequestTitle}
-    notificationText={$notificationSoundEnabled
-      ? tr('Notification settings · sound on')
-      : notificationLabel(notificationState, $locale)}
-    notificationEnabled={notificationState === 'enabled' || $notificationSoundEnabled}
-    notificationDisabled={false}
-    onNotifications={() => void openSettings('notifications')}
     onWindowError={(message) => (pageError = tr('Window action failed: {error}', { error: message }))}
   >
     {#snippet workspaceTabs()}
@@ -1846,9 +1851,13 @@
 
     <div class="flex min-h-0 min-w-0 flex-1" id="request-workspace-layout">
       {#if renderedWorkspaceSurface !== 'standalone'}
-        <div class="w-[296px] shrink-0 border-r" id="request-list-pane">
+        <div
+          class={['shrink-0 border-r transition-[width] duration-200 motion-reduce:transition-none', requestRailCollapsed ? 'w-14' : 'w-[296px]']}
+          id="request-list-pane"
+        >
           <RequestListPane
-            requests={visibleRequests}
+            bind:collapsed={requestRailCollapsed}
+            requests={$navigation.requests}
             activeRequestId={workspace?.request.request_id ?? null}
             cookingRequestIds={cookingRequestIds}
             scopeLabel={requestScopeLabel}
@@ -1856,14 +1865,13 @@
             loading={$navigation.loadingRequests}
             refreshing={$navigation.refreshingPage}
             loadingMore={$navigation.loadingMoreRequests}
-            hasMore={todayOnly ? false : $navigation.nextRequestCursor !== null}
-            {todayOnly}
+            hasMore={$navigation.nextRequestCursor !== null}
+            filters={$navigation.requestFilters}
             {resolveHostProfile}
             formatTime={formatTimeLocal}
-            onRefresh={() => void navigation.refreshPage()}
             onLoadMore={() => void navigation.loadMoreRequests()}
             onOpenRequest={(requestId) => void openRequest(requestId)}
-            onToggleToday={() => (todayOnly = !todayOnly)}
+            onFiltersChange={(filters) => void navigation.setRequestFilters(filters)}
           />
         </div>
       {/if}
@@ -1911,6 +1919,11 @@
                 {capabilities}
                 {workspace}
                 {editorDocument}
+                activeActionId={workspace
+                  ? activeActionByRequest.get(workspace.request.request_id)?.actionId ?? null
+                  : null}
+                actionsDisabled={workspaceTransitionLocked || pendingWorkspaceViewKey !== null}
+                onSelectAction={selectAction}
                 previews={attachmentPreviews}
                 loading={loadingWorkspace}
                 formatTime={formatTimeLocal}

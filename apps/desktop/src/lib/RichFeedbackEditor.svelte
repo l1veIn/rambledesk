@@ -288,6 +288,11 @@
       transaction = insertJsonContent(transaction, transaction.doc.content.size, nodes)
     }
     editor.view.dispatch(transaction)
+    if (operation.kind === 'appendSpeech') {
+      void import('./highlightSpeechSegment').then(({ highlightSpeechSegment }) => {
+        if (editor) highlightSpeechSegment(editor.view.dom, operation.segmentId)
+      })
+    }
     return true
   }
 

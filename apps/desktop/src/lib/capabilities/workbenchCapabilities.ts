@@ -2,6 +2,7 @@ import type { FeedbackWorkspaceView } from '$lib/feedback'
 import type { DiagnosticExportResult } from '$lib/nativePath'
 import type { SpeechModelId } from '$lib/preferences'
 import type { RambleConsoleCommand, RambleConsoleState } from '$lib/rambleConsole'
+import type { SpeechOverlayState } from '$lib/speechOverlay'
 import type { ShortcutAction, ShortcutConfig } from '$lib/shortcutSettings'
 import type {
   SpeechRecognitionListener,
@@ -121,6 +122,8 @@ export interface ShortcutCapability {
   update(action: ShortcutAction, shortcut: string): Promise<ShortcutConfig>
   reset(): Promise<ShortcutConfig>
   setCaptureActive(active: boolean): Promise<void>
+  setSpeechReviewActive(active: boolean): Promise<void>
+  onSpeechReview(handler: (action: 'accept' | 'discard') => void, onError: CapabilityErrorHandler): CapabilityUnsubscribe
   onRambleToggle(handler: () => void, onError: CapabilityErrorHandler): CapabilityUnsubscribe
 }
 
@@ -143,6 +146,8 @@ export interface RambleConsoleCapability {
   restoreVisibility(): Promise<void>
   hide(): Promise<void>
   publish(state: RambleConsoleState): Promise<void>
+  publishSpeechOverlay(state: SpeechOverlayState): Promise<void>
+  onSpeechOverlayReady(handler: () => void, onError: CapabilityErrorHandler): CapabilityUnsubscribe
   onCommand(
     handler: (command: RambleConsoleCommand) => void,
     onError: CapabilityErrorHandler,

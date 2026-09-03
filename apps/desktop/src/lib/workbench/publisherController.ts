@@ -28,6 +28,8 @@ type PublisherControllerContext = {
   getCanSubmit: () => boolean
   getRambleCanExit: () => boolean
   exitRamble: () => Promise<void>
+  hasPendingSpeech?: (requestId: string) => boolean
+  getSpeechStopError?: () => string
   saveDraftNow: () => Promise<boolean>
   getDraftBody: () => string
   getSavedRevision: () => number
@@ -106,7 +108,16 @@ export function createPublisherController(context: PublisherControllerContext) {
     const workspace = context.getWorkspace()
     if (!workspace || !context.getCanSubmit()) return
     if (context.getRambleCanExit()) await context.exitRamble()
+    const speechError = context.getSpeechStopError?.()
+    if (speechError) {
+      context.setPageError(speechError)
+      return
+    }
     const requestId = workspace.request.request_id
+    if (context.hasPendingSpeech?.(requestId)) {
+      context.setPageError(context.tr('Review the pending speech in the capsule before submitting feedback.'))
+      return
+    }
     if (!(await context.saveDraftNow())) return
     if (
       context.getWorkspace()?.request.request_id !== requestId ||

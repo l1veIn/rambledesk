@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ChevronDown, Inbox, LoaderCircle, RefreshCw } from '@lucide/svelte'
+  import { ChevronDown, FileText, Inbox, LoaderCircle, PanelLeftClose, PanelLeftOpen } from '@lucide/svelte'
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
   import { ScrollArea } from '$lib/components/ui/scroll-area'
@@ -9,6 +9,8 @@
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
   import type { HostProfile } from '$lib/workbench/types'
+  import { DEFAULT_REQUEST_FILTERS, requestFilterCount, type RequestFilters } from '$lib/workbench/requestFilters'
+  import RequestFilterPopover from './RequestFilterPopover.svelte'
 
   export let requests: FeedbackRequestSummary[] = []
   export let activeRequestId: string | null = null
@@ -19,13 +21,16 @@
   export let refreshing = false
   export let loadingMore = false
   export let hasMore = false
-  export let todayOnly = false
+  export let collapsed = false
+  export let filters: RequestFilters = DEFAULT_REQUEST_FILTERS
   export let resolveHostProfile: (hostId: string) => HostProfile
   export let formatTime: (value: string | null | undefined) => string
-  export let onRefresh: () => void = () => {}
   export let onLoadMore: () => void = () => {}
   export let onOpenRequest: (requestId: string) => void = () => {}
-  export let onToggleToday: () => void = () => {}
+  export let onFiltersChange: (filters: RequestFilters) => void = () => {}
+
+  $: filtered = requestFilterCount(filters) > 0
+  $: busy = loading || refreshing
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
@@ -51,44 +56,66 @@
   class="flex h-full min-h-0 flex-col bg-background"
   aria-label={tr('Request list')}
 >
-  <div class="flex h-12 items-center gap-1.5 border-b px-3">
-    <div class="min-w-0 flex-1">
-      <strong class="flex items-center gap-1.5 text-xs font-semibold">
-        {tr('Requests')}
-        {#if requests.length > 0}
-          <Badge variant="secondary" class="h-4 rounded-full px-1.5 text-[9px] font-medium tabular-nums">
-            {requests.length}{hasMore ? '+' : ''}
-          </Badge>
-        {/if}
-      </strong>
-      <span class="block truncate text-[10px] text-muted-foreground">{scopeLabel}</span>
-    </div>
-    <Button
-      variant={todayOnly ? 'secondary' : 'ghost'}
-      size="sm"
-      class="h-7 shrink-0 px-2 text-[11px]"
-      aria-pressed={todayOnly}
-      title={tr('Last 24h')}
-      onclick={onToggleToday}
-    >
-      {tr('Last 24h')}
-    </Button>
+  <div class={['flex h-12 shrink-0 items-center gap-1.5 border-b', collapsed ? 'justify-center px-2' : 'px-3']}>
+    {#if !collapsed}
+      <div class="min-w-0 flex-1">
+        <strong class="flex items-center gap-1.5 text-xs font-semibold">
+          {tr('Requests')}
+          {#if requests.length > 0}
+            <Badge variant="secondary" class="h-4 rounded-full px-1.5 text-[9px] font-medium tabular-nums">
+              {requests.length}{hasMore ? '+' : ''}
+            </Badge>
+          {/if}
+        </strong>
+        <span class="block truncate text-[10px] text-muted-foreground">{scopeLabel}</span>
+      </div>
+      <RequestFilterPopover {filters} onChange={onFiltersChange} />
+    {/if}
     <Button
       variant="ghost"
       size="icon-sm"
-      disabled={loading || refreshing}
-      aria-label={tr('Refresh sessions and requests')}
-      title={tr('Refresh sessions and requests')}
-      onclick={onRefresh}
+      aria-label={collapsed ? tr('Expand request list') : tr('Collapse request list')}
+      title={collapsed ? tr('Expand request list') : tr('Collapse request list')}
+      aria-expanded={!collapsed}
+      onclick={() => (collapsed = !collapsed)}
     >
-      <RefreshCw class={loading || refreshing ? 'animate-spin' : ''} />
+      {#if collapsed}<PanelLeftOpen />{:else}<PanelLeftClose />{/if}
     </Button>
   </div>
 
-  <ScrollArea class="min-h-0 flex-1" aria-busy={refreshing}>
+  {#if collapsed}
+    <div class="flex flex-col items-center gap-2 border-b py-2">
+      <RequestFilterPopover {filters} {collapsed} onChange={onFiltersChange} />
+      <span class="text-[10px] tabular-nums text-muted-foreground" title={tr('Requests')}>
+        {requests.length}{hasMore ? '+' : ''}
+      </span>
+    </div>
+  {/if}
+  <ScrollArea class="min-h-0 flex-1" aria-busy={busy}>
     <div class="relative min-h-full">
-      <div class={refreshing ? 'pointer-events-none select-none opacity-40' : undefined}>
-        {#if loading && requests.length === 0}
+      <div class={busy ? 'pointer-events-none select-none opacity-40' : undefined} inert={busy}>
+        {#if collapsed}
+          <nav class="flex flex-col items-center gap-1 py-2" aria-label={tr('Requests')}>
+            {#each requests as request (request.request_id)}
+              {@const displayStatus = cookingRequestIds.has(request.request_id) ? 'cooking' : request.status}
+              <button
+                type="button"
+                class={['relative grid size-9 shrink-0 place-items-center rounded-md transition-colors hover:bg-muted', activeRequestId === request.request_id && 'bg-accent text-accent-foreground']}
+                aria-label={request.title}
+                aria-current={activeRequestId === request.request_id ? 'true' : undefined}
+                title={`${request.title} · ${displayStatus === 'cooking' ? tr('Cooking') : requestStatusLabel(displayStatus, $locale)}`}
+                onclick={() => onOpenRequest(request.request_id)}
+              >
+                <span class={['grid size-6 place-items-center rounded', statusClass(displayStatus)]}>
+                  <FileText class="size-3.5" />
+                </span>
+                {#if activeRequestId === request.request_id}
+                  <span class="absolute inset-y-2 left-0 w-0.5 rounded-full bg-primary"></span>
+                {/if}
+              </button>
+            {/each}
+          </nav>
+        {:else if loading && requests.length === 0}
           <div class="space-y-2 p-2">
             {#each Array(6) as _}
               <div class="space-y-2 border-b px-2 py-3">
@@ -104,15 +131,16 @@
               <Inbox class="size-4" />
             </div>
             <strong class="text-xs">
-              {searchQuery.trim()
+              {searchQuery.trim() || filtered
                 ? tr('No matching requests')
-                : todayOnly
-                  ? tr('No requests in the last 24 hours')
-                  : tr('No requests in this scope')}
+                : tr('No requests in this scope')}
             </strong>
             <span class="text-[11px] leading-5 text-muted-foreground">
-              {tr('New requests appear here by most recent update.')}
+              {filtered ? tr('Try changing or resetting your filters.') : tr('New requests appear here by most recent update.')}
             </span>
+            {#if filtered}
+              <Button variant="ghost" size="sm" onclick={() => onFiltersChange(DEFAULT_REQUEST_FILTERS)}>{tr('Reset filters')}</Button>
+            {/if}
           </div>
         {:else}
           <nav class="p-2" aria-label={tr('Requests')}>
@@ -121,6 +149,7 @@
               {@const displayStatus = cookingRequestIds.has(request.request_id) ? 'cooking' : request.status}
               <button
                 type="button"
+                aria-current={activeRequestId === request.request_id ? 'true' : undefined}
                 class={[
                   'group relative flex w-full flex-col gap-1.5 border-b px-2.5 py-3 text-left transition-colors last:border-b-0',
                   activeRequestId === request.request_id
@@ -158,24 +187,25 @@
               </button>
             {/each}
           </nav>
-
-          {#if hasMore}
-            <div class="border-t p-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                class="w-full"
-                disabled={loadingMore}
-                onclick={onLoadMore}
-              >
-                <ChevronDown data-icon="inline-start" />
-                {loadingMore ? tr('Loading…') : tr('Load more')}
-              </Button>
-            </div>
-          {/if}
+        {/if}
+        {#if hasMore}
+          <div class="border-t p-2">
+            <Button
+              variant="ghost"
+              size={collapsed ? 'icon-sm' : 'sm'}
+              class="w-full"
+              disabled={loadingMore}
+              onclick={onLoadMore}
+              aria-label={loadingMore ? tr('Loading…') : tr('Load more')}
+              title={tr('Load more')}
+            >
+              <ChevronDown data-icon="inline-start" />
+              {#if !collapsed}{loadingMore ? tr('Loading…') : tr('Load more')}{/if}
+            </Button>
+          </div>
         {/if}
       </div>
-      {#if refreshing && requests.length > 0}
+      {#if busy && (requests.length > 0 || collapsed)}
         <div class="absolute inset-0 z-20 grid place-items-center bg-background/80 backdrop-blur-[1px]">
           <LoaderCircle class="size-5 animate-spin text-primary" aria-hidden="true" />
         </div>

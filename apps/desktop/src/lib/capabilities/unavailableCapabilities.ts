@@ -100,6 +100,8 @@ const UNAVAILABLE_WORKBENCH_CAPABILITIES = createWorkbenchCapabilities({
     update: () => rejected('globalShortcuts'),
     reset: () => rejected('globalShortcuts'),
     setCaptureActive: () => rejected('globalShortcuts'),
+    setSpeechReviewActive: () => rejected('globalShortcuts'),
+    onSpeechReview: (_handler, onError) => unavailableSubscription('globalShortcuts', onError),
     onRambleToggle: (_handler, onError) => unavailableSubscription('globalShortcuts', onError),
   }),
   speech: slot({
@@ -120,6 +122,8 @@ const UNAVAILABLE_WORKBENCH_CAPABILITIES = createWorkbenchCapabilities({
     restoreVisibility: () => rejected('rambleConsole'),
     hide: () => rejected('rambleConsole'),
     publish: () => rejected('rambleConsole'),
+    publishSpeechOverlay: () => rejected('rambleConsole'),
+    onSpeechOverlayReady: (_handler, onError) => unavailableSubscription('rambleConsole', onError),
     onCommand: (_handler, onError) => unavailableSubscription('rambleConsole', onError),
     onReady: (_handler, onError) => unavailableSubscription('rambleConsole', onError),
     recordDiagnostic: () => rejected('diagnostics'),

@@ -1,15 +1,19 @@
 import { writable } from 'svelte/store'
 
-export type ShortcutAction = 'rambleToggle' | 'screenCapture'
+export type ShortcutAction = 'rambleToggle' | 'screenCapture' | 'speechAccept' | 'speechDiscard'
 
 export type ShortcutConfig = {
   rambleToggle: string
   screenCapture: string
+  speechAccept: string
+  speechDiscard: string
 }
 
 const DEFAULT_SHORTCUTS: ShortcutConfig = {
   rambleToggle: 'Ctrl+Shift+R',
   screenCapture: 'Ctrl+1',
+  speechAccept: 'Ctrl+Shift+Enter',
+  speechDiscard: 'Ctrl+Shift+Backspace',
 }
 
 /** Mirrors the configured shortcut state; the selected capability is authoritative. */
@@ -72,6 +76,14 @@ const PUNCTUATION: Record<string, string> = {
 }
 
 function keyToken(event: KeyboardEvent): string | null {
+  // Some Windows input sources omit the scan code. Preserve physical-key
+  // matching when available, but still allow named keys from those sources.
+  if (!event.code || event.code === 'Unidentified') {
+    if (/^[a-z0-9]$/i.test(event.key) || /^F(?:[1-9]|1[0-9]|2[0-4])$/i.test(event.key)) return event.key.toUpperCase()
+    if (event.key === ' ') return 'Space'
+    if (['Enter', 'Tab', 'Backspace', 'Delete', 'Home', 'End', 'PageUp', 'PageDown', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) return event.key
+    return null
+  }
   const letter = /^Key([A-Z])$/.exec(event.code)
   if (letter) return letter[1] ?? null
   const digit = /^Digit([0-9])$/.exec(event.code)

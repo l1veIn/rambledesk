@@ -156,6 +156,11 @@ pub enum SpeechEvent {
         voice_session_id: String,
         rms: f32,
     },
+    SpeechStarted {
+        request_id: String,
+        voice_session_id: String,
+        chunk_index: u64,
+    },
     Processing {
         request_id: String,
         voice_session_id: String,

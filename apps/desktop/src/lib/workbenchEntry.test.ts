@@ -10,6 +10,7 @@ const nativeRoutes: ReadonlyArray<
   ['/', '#capture-pin=window-1', 'pinned-capture'],
   ['/', '#capture-pin=', 'pinned-capture'],
   ['/', '#ramble-console', 'ramble-console'],
+  ['/', '#speech-overlay', 'speech-overlay'],
   ['/ramble-console', '', 'ramble-console'],
   ['/nested/ramble-console', '', 'ramble-console'],
 ]

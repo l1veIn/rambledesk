@@ -83,7 +83,7 @@ const entry = selectWorkbenchEntry({
 
 if (entry === 'capture' || entry === 'scroll-capture' || entry === 'pinned-capture') {
   document.body.classList.add('capture-mode')
-} else if (entry === 'ramble-console') {
+} else if (entry === 'ramble-console' || entry === 'speech-overlay') {
   document.body.classList.add('ramble-console-mode')
 } else {
   document.body.classList.add('app-mode')
@@ -110,6 +110,9 @@ if (entry === 'browser') {
   await import('./lib/ramble-console.css')
   const { default: RambleConsole } = await import('./RambleConsole.svelte')
   mount(RambleConsole, { target })
+} else if (entry === 'speech-overlay') {
+  const { default: SpeechOverlay } = await import('./SpeechOverlay.svelte')
+  mount(SpeechOverlay, { target })
 } else {
   const { default: App } = await import('./App.svelte')
   const tauriCapabilities = isTauri

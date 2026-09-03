@@ -44,4 +44,6 @@ export type RambleSessionControllerHandle = {
   importClipboardNow(): Promise<void>
   resetVoiceUi(): void
   resetRambleUi(): void
+  hasPendingSpeech(requestId: string): boolean
+  settleSpeechDrafts(): Promise<void>
 }

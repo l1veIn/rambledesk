@@ -292,12 +292,14 @@ fn capture_windows_restore(app: &AppHandle) -> RestoreWindows {
 }
 
 fn hide_capture_windows(app: &AppHandle) {
+    crate::window::suspend_speech_overlay(app, true);
     if let Some(window) = app.get_webview_window(RAMBLE_CONSOLE_LABEL) {
         let _ = window.hide();
     }
 }
 
 fn restore_capture_windows(app: &AppHandle, restore: RestoreWindows) {
+    crate::window::suspend_speech_overlay(app, false);
     if restore.console
         && let Some(window) = app.get_webview_window(RAMBLE_CONSOLE_LABEL)
     {

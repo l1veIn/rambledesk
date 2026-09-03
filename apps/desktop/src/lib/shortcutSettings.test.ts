@@ -55,6 +55,12 @@ describe('isAcceptableCombo', () => {
 })
 
 describe('comboFromEvent', () => {
+  it('accepts Windows key events that omit the scan code', () => {
+    expect(comboFromEvent(keyEvent({ key: 'F8', code: '' }))).toBe('F8')
+    expect(comboFromEvent(keyEvent({ key: 'Enter', code: '', ctrlKey: true, shiftKey: true }))).toBe('Ctrl+Shift+Enter')
+    expect(comboFromEvent(keyEvent({ key: 'Backspace', code: 'Unidentified', ctrlKey: true }))).toBe('Ctrl+Backspace')
+    expect(comboFromEvent(keyEvent({ key: 'Unidentified', code: '' }))).toBeNull()
+  })
   it('captures letters with modifiers', () => {
     expect(
       comboFromEvent(keyEvent({ key: 'R', code: 'KeyR', ctrlKey: true, shiftKey: true })),

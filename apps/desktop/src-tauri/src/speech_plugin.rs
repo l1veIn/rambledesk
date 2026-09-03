@@ -34,6 +34,10 @@ pub(super) enum SpeechRecognitionEventView {
         recognition_session_id: String,
         rms: f32,
     },
+    SpeechStarted {
+        recognition_session_id: String,
+        chunk_index: u64,
+    },
     Processing {
         recognition_session_id: String,
         chunk_index: u64,
@@ -86,6 +90,14 @@ impl From<SpeechEvent> for SpeechRecognitionEventView {
             } => Self::Level {
                 recognition_session_id: voice_session_id,
                 rms,
+            },
+            SpeechEvent::SpeechStarted {
+                voice_session_id,
+                chunk_index,
+                ..
+            } => Self::SpeechStarted {
+                recognition_session_id: voice_session_id,
+                chunk_index,
             },
             SpeechEvent::Processing {
                 voice_session_id,

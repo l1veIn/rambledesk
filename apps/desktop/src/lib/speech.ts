@@ -18,7 +18,7 @@ export type SpeechRecognitionEvent =
       rms: number
     }
   | {
-      type: 'processing'
+      type: 'processing' | 'speech-started'
       sessionId: string
       segmentIndex: number
     }

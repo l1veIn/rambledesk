@@ -25,6 +25,11 @@ export type RambleConsoleState = {
 }
 
 export type RambleConsoleCommand =
+  | { type: 'select-speech-group'; id: string }
+  | { type: 'accept-speech'; ids: string[] }
+  | { type: 'discard-speech'; ids: string[] }
+  | { type: 'open-speech-target'; requestId: string; segmentId?: string }
+  | { type: 'retry-recording' }
   | { type: 'toggle-recording' }
   | { type: 'capture-screen' }
   | { type: 'import-clipboard' }

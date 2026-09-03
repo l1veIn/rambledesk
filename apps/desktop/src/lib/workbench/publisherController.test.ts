@@ -54,6 +54,29 @@ function completedRequest(): FeedbackRequestView {
 }
 
 describe('publisherController', () => {
+  it('checks pending speech after stopping recording, before saving or publishing', async () => {
+    let pending = false
+    const transport = new TestApplicationTransport(undefined)
+    const saveDraftNow = vi.fn(async () => true)
+    const setPageError = vi.fn()
+    const controller = createPublisherController({
+      transport, tr: (source) => source, messageFrom: String,
+      isPreviewMode: () => false, getWorkspace: workspaceView,
+      setWorkspace: vi.fn(), setCompletedResult: vi.fn(), setPublishedFeedback: vi.fn(),
+      setSavePhase: vi.fn(), setPageError,
+      getCanSubmit: () => true, getRambleCanExit: () => true,
+      exitRamble: async () => { pending = true },
+      hasPendingSpeech: (requestId) => requestId === 'request-1' && pending,
+      saveDraftNow, getDraftBody: () => 'Existing draft', getSavedRevision: () => 4,
+      getCookingEnabled: () => false, getPreview: () => null, setPreview: vi.fn(),
+      setCooking: vi.fn(), cookAndPublish: vi.fn(), setSubmitting: vi.fn(), setSubmitStage: vi.fn(),
+      refreshNavigation: vi.fn(async () => {}), showSubmittedToast: vi.fn(),
+    })
+    await controller.submitFeedback()
+    expect(setPageError).toHaveBeenCalledWith('Review the pending speech in the capsule before submitting feedback.')
+    expect(saveDraftNow).not.toHaveBeenCalled()
+    expect(transport.callsFor('submitFeedback')).toEqual([])
+  })
   it('submits the read-only cooked preview without replacing the canonical draft', async () => {
     let workspace = workspaceView()
     const setPreview = vi.fn()

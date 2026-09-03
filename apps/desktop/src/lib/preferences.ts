@@ -38,6 +38,9 @@ const NOTIFICATION_SOUND_KEY = 'rambledesk.notifications.sound'
 const NOTIFICATION_CUSTOM_SOUND_KEY = 'rambledesk.notifications.custom-sound'
 const NOTIFICATION_VOLUME_KEY = 'rambledesk.notifications.volume'
 const SPEECH_INPUT_DEVICE_KEY = 'rambledesk.speech.input-device'
+const SPEECH_CONFIRM_BEFORE_WRITE_KEY = 'rambledesk.speech.confirm-before-write'
+const SPEECH_OVERLAY_ENABLED_KEY = 'rambledesk.speech.overlay-enabled'
+const SPEECH_OVERLAY_OPACITY_KEY = 'rambledesk.speech.overlay-opacity'
 const SPEECH_MODEL_KEY = 'rambledesk.speech.model'
 const SPEECH_MODEL_DEFAULT_REVISION_KEY = 'rambledesk.speech.model-default-revision'
 const SPEECH_MODEL_DEFAULT_REVISION = 1
@@ -224,6 +227,9 @@ export const customNotificationSound = writable<CustomNotificationSound | null>(
 )
 export const notificationVolume = writable(initialNotificationVolume())
 export const speechInputDevice = writable(localStorage.getItem(SPEECH_INPUT_DEVICE_KEY) ?? '')
+export const speechConfirmBeforeWrite = writable(initialBoolean(SPEECH_CONFIRM_BEFORE_WRITE_KEY, false))
+export const speechOverlayEnabled = writable(initialBoolean(SPEECH_OVERLAY_ENABLED_KEY, true))
+export const speechOverlayOpacity = writable(initialNumber(SPEECH_OVERLAY_OPACITY_KEY, 97, 30, 100))
 export const speechModelId = writable<SpeechModelId>(initialSpeechModel())
 export const speechVadThreshold = writable(
   initialNumber(SPEECH_VAD_THRESHOLD_KEY, 0.5, 0.05, 0.95),
@@ -304,6 +310,18 @@ export function setCustomNotificationSound(sound: CustomNotificationSound | null
 
 export function setSpeechInputDevice(device: string) {
   speechInputDevice.set(device)
+}
+
+export function setSpeechConfirmBeforeWrite(enabled: boolean) {
+  speechConfirmBeforeWrite.set(enabled)
+}
+
+export function setSpeechOverlayEnabled(enabled: boolean) {
+  speechOverlayEnabled.set(enabled)
+}
+
+export function setSpeechOverlayOpacity(value: number) {
+  speechOverlayOpacity.set(Number.isFinite(value) ? Math.round(Math.max(30, Math.min(100, value))) : 97)
 }
 
 export function setSpeechModelId(modelId: SpeechModelId) {
@@ -445,6 +463,15 @@ export function initializePreferences() {
   speechInputDevice.subscribe((next) => {
     localStorage.setItem(SPEECH_INPUT_DEVICE_KEY, next)
   })
+  speechConfirmBeforeWrite.subscribe((next) => {
+    localStorage.setItem(SPEECH_CONFIRM_BEFORE_WRITE_KEY, String(next))
+  })
+  speechOverlayEnabled.subscribe((next) => {
+    localStorage.setItem(SPEECH_OVERLAY_ENABLED_KEY, String(next))
+  })
+  speechOverlayOpacity.subscribe((next) => {
+    localStorage.setItem(SPEECH_OVERLAY_OPACITY_KEY, String(next))
+  })
   speechModelId.subscribe((next) => {
     localStorage.setItem(SPEECH_MODEL_KEY, next)
   })
@@ -566,6 +593,15 @@ export function initializePreferences() {
     }
     if (event.key === SPEECH_MODEL_KEY && isSpeechModelId(event.newValue)) {
       speechModelId.set(event.newValue)
+    }
+    if (event.key === SPEECH_CONFIRM_BEFORE_WRITE_KEY) {
+      speechConfirmBeforeWrite.set(event.newValue === 'true')
+    }
+    if (event.key === SPEECH_OVERLAY_ENABLED_KEY) {
+      speechOverlayEnabled.set(event.newValue !== 'false')
+    }
+    if (event.key === SPEECH_OVERLAY_OPACITY_KEY) {
+      setSpeechOverlayOpacity(event.newValue === null ? 97 : Number(event.newValue))
     }
     if (event.key === SPEECH_VAD_THRESHOLD_KEY && event.newValue !== null) {
       setSpeechVadThreshold(Number(event.newValue))

@@ -86,12 +86,18 @@
     setNotificationVolume,
     setSpeechHotwords,
     setSpeechInputDevice,
+    setSpeechConfirmBeforeWrite,
     setSpeechModelId,
     setSpeechVadSilenceMs,
     setSpeechVadThreshold,
     setThemePreference,
     speechHotwords,
     speechInputDevice,
+    speechConfirmBeforeWrite,
+    speechOverlayEnabled,
+    speechOverlayOpacity,
+    setSpeechOverlayEnabled,
+    setSpeechOverlayOpacity,
     speechModelId,
     speechVadSilenceMs,
     speechVadThreshold,
@@ -1308,6 +1314,48 @@
 
           {#if sectionAvailability.voice}
           <Tabs.Content value="voice" class="m-0 space-y-8 p-6 outline-none">
+            <section class="space-y-5 border-b pb-8">
+              <div class="flex items-center justify-between gap-8">
+                <div>
+                  <h3 class="m-0 text-sm font-medium" id="speech-overlay-label">{tr('Show speech overlay')}</h3>
+                  <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground" id="speech-overlay-description">{tr('Show transcription above other windows. Drag the handle to move it; its position is remembered. Hiding it keeps recording and confirmation shortcuts available.')}</p>
+                </div>
+                <button type="button" role="switch" aria-checked={$speechOverlayEnabled} aria-labelledby="speech-overlay-label" aria-describedby="speech-overlay-description"
+                  class={`relative h-6 w-11 shrink-0 rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-ring ${$speechOverlayEnabled ? 'bg-primary' : 'bg-muted-foreground/30'}`}
+                  onclick={() => setSpeechOverlayEnabled(!$speechOverlayEnabled)}>
+                  <span class={`absolute top-0.5 size-5 rounded-full bg-background shadow-sm transition-transform ${$speechOverlayEnabled ? 'left-0.5 translate-x-5' : 'left-0.5'}`}></span>
+                </button>
+              </div>
+              <div class="flex items-center gap-4">
+                <label for="speech-overlay-opacity" class="text-xs">{tr('Overlay opacity')}</label>
+                <input id="speech-overlay-opacity" type="range" min="30" max="100" step="1" value={$speechOverlayOpacity} disabled={!$speechOverlayEnabled}
+                  class="max-w-64 flex-1 accent-primary disabled:opacity-40" oninput={(event) => setSpeechOverlayOpacity(Number(event.currentTarget.value))} />
+                <output for="speech-overlay-opacity" class="w-10 text-xs tabular-nums text-muted-foreground">{$speechOverlayOpacity}%</output>
+              </div>
+              <p class="m-0 text-xs text-muted-foreground">{tr('Adjust background opacity while keeping the text readable.')}</p>
+            </section>
+            <section class="flex items-center justify-between gap-8 border-b pb-8">
+              <div>
+                <h3 class="m-0 text-sm font-medium" id="speech-confirm-label">{tr('Confirm before writing speech')}</h3>
+                <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground" id="speech-confirm-description">
+                  {tr('Keep transcribed speech pending until you write it to the feedback draft or discard it. Recording can continue while you review. When the overlay is hidden, review pending speech in the main window.')}
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={$speechConfirmBeforeWrite}
+                aria-labelledby="speech-confirm-label"
+                aria-describedby="speech-confirm-description"
+                class={`relative h-6 w-11 shrink-0 rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-ring ${$speechConfirmBeforeWrite ? 'bg-primary' : 'bg-muted-foreground/30'}`}
+                onclick={() => setSpeechConfirmBeforeWrite(!$speechConfirmBeforeWrite)}
+              >
+                <span class={`absolute top-0.5 size-5 rounded-full bg-background shadow-sm transition-transform ${$speechConfirmBeforeWrite ? 'left-0.5 translate-x-5' : 'left-0.5'}`}></span>
+              </button>
+            </section>
+            {#if $speechConfirmBeforeWrite}
+              <ShortcutSettings globalShortcuts={capabilities.globalShortcuts} onlyActions={['speechAccept', 'speechDiscard']} />
+            {/if}
             <section class="grid grid-cols-[minmax(0,1fr)_280px] items-center gap-8 border-b pb-8">
               <div class="flex gap-3">
                 <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">

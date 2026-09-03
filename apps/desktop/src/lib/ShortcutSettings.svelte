@@ -21,6 +21,7 @@
 
   const unavailableCapabilities = createUnavailableWorkbenchCapabilities()
   export let globalShortcuts: CapabilitySlot<ShortcutCapability> = unavailableCapabilities.globalShortcuts
+  export let onlyActions: ShortcutAction[] | null = null
 
   $: shortcutsAvailable = globalShortcuts.status.availability !== 'unavailable'
 
@@ -44,6 +45,18 @@
 
   const actions: { id: ShortcutAction; icon: typeof Keyboard; title: string; description: string }[] = [
     {
+      id: 'speechAccept',
+      icon: Keyboard,
+      title: tr('Confirm speech input'),
+      description: tr('Write the selected pending speech group to its feedback document. Active only while speech is awaiting review, even when the overlay is hidden.'),
+    },
+    {
+      id: 'speechDiscard',
+      icon: Keyboard,
+      title: tr('Discard speech input'),
+      description: tr('Discard the selected pending speech group without stopping recording. Active only while speech is awaiting review.'),
+    },
+    {
       id: 'rambleToggle',
       icon: Keyboard,
       title: tr('Voice toggle'),
@@ -60,10 +73,6 @@
       ),
     },
   ]
-
-  function combo(action: ShortcutAction): string {
-    return $shortcutSettings[action] ?? ''
-  }
 
   async function beginCapture(action: ShortcutAction) {
     if (!shortcutsAvailable || capturing) return
@@ -174,7 +183,7 @@
     {tr('Global shortcuts are available only in the desktop app.')}
   </p>
 {:else}
-  <section class="flex items-center justify-end">
+  <section class="flex items-center justify-end" class:hidden={onlyActions !== null}>
     <Button
       variant="outline"
       size="sm"
@@ -185,7 +194,7 @@
     </Button>
   </section>
 
-  {#each actions as action (action.id)}
+  {#each actions.filter((action) => !onlyActions || onlyActions.includes(action.id)) as action (action.id)}
     <section class="border-b pb-8">
       <div class="flex items-start justify-between gap-8">
         <div class="flex gap-3">
@@ -200,7 +209,7 @@
           </div>
         </div>
         <div class="flex items-center gap-2">
-          {#each chips(combo(action.id)) as part (part)}
+          {#each chips($shortcutSettings[action.id] ?? '') as part (part)}
             <kbd
               class="rounded-md border bg-muted/40 px-1.5 py-0.5 font-mono text-[10px] text-foreground"
             >{part}</kbd>

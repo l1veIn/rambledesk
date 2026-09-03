@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { get } from 'svelte/store'
 
 const mocks = vi.hoisted(() => {
   const storage = new Map<string, string>()
@@ -122,6 +123,79 @@ describe('navigationController', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  it('combines status filters with the selected session and search without changing the open request', async () => {
+    const openRequest = vi.fn(async () => true)
+    const clearWorkspace = vi.fn()
+    mocks.applicationCall.mockResolvedValue({ requests: [feedbackRequest('match')], next_cursor: null })
+    const controller = createController({ openRequest, clearWorkspace })
+    await controller.selectScope('codex', 'session-1')
+    await controller.setRequestSearch('refresh')
+    await controller.setRequestFilters({ status: 'pending', timeRange: 'all' })
+
+    expect(mocks.applicationCall).toHaveBeenLastCalledWith('listFeedbackRequests', {
+      host_id: 'codex', host_session_id: 'session-1', search: 'refresh',
+      status: ['waiting', 'in_progress'], archived: null, limit: 100, cursor: null,
+    })
+    expect(openRequest).not.toHaveBeenCalled()
+    expect(clearWorkspace).not.toHaveBeenCalled()
+
+    await controller.setRequestFilters({ status: 'all', timeRange: 'all' })
+    expect(mocks.applicationCall).toHaveBeenLastCalledWith('listFeedbackRequests', expect.objectContaining({
+      status: ['waiting', 'in_progress', 'completed', 'cancelled'], search: 'refresh',
+    }))
+  })
+
+  it('discards an old load-more response after the filters change', async () => {
+    let releasePage!: (page: ListFeedbackRequestsOutput) => void
+    const oldPage = new Promise<ListFeedbackRequestsOutput>((resolve) => { releasePage = resolve })
+    const completed = { ...feedbackRequest('completed'), status: 'completed' as const }
+    mocks.applicationCall.mockImplementation(async (_command, input) => {
+      if (input.cursor) return oldPage
+      if (input.status.length === 1) return { requests: [completed], next_cursor: null }
+      return { requests: [feedbackRequest('waiting')], next_cursor: 'page-2' }
+    })
+    const controller = createController()
+    await controller.refreshRequests()
+    const loadingMore = controller.loadMoreRequests()
+    await controller.setRequestFilters({ status: 'completed', timeRange: 'all' })
+    releasePage({ requests: [feedbackRequest('stale')], next_cursor: 'stale-cursor' })
+    await loadingMore
+
+    expect(get(controller)).toMatchObject({
+      requests: [completed], nextRequestCursor: null, loadingMoreRequests: false,
+      requestFilters: { status: 'completed', timeRange: 'all' },
+    })
+  })
+
+  it('does not let a page refresh replace a newer filtered list', async () => {
+    let releaseRefresh!: (page: ListFeedbackRequestsOutput) => void
+    const oldPage = new Promise<ListFeedbackRequestsOutput>((resolve) => { releaseRefresh = resolve })
+    const completed = { ...feedbackRequest('completed'), status: 'completed' as const }
+    mocks.applicationCall.mockImplementation(async (command, input) => {
+      if (command !== 'listFeedbackRequests') return []
+      return input.status.length === 1 ? { requests: [completed], next_cursor: null } : oldPage
+    })
+    const controller = createController()
+    const refreshing = controller.refreshPage(0)
+    await controller.setRequestFilters({ status: 'completed', timeRange: 'all' })
+    releaseRefresh({ requests: [feedbackRequest('stale')], next_cursor: 'stale-cursor' })
+    await refreshing
+
+    expect(get(controller)).toMatchObject({ requests: [completed], nextRequestCursor: null, loadingRequests: false })
+  })
+
+  it('applies status and time filters consistently in preview mode', async () => {
+    vi.setSystemTime(new Date('2026-09-03T12:00:00Z'))
+    const controller = createController({ previewMode: true })
+    await controller.initialize(false)
+    await controller.setRequestFilters({ status: 'pending', timeRange: 'all' })
+    expect(get(controller).requests.map((request) => request.status).sort()).toEqual(['in_progress', 'waiting'])
+    await controller.setRequestFilters({ status: 'pending', timeRange: '24h' })
+    expect(get(controller).requests).toEqual([])
+    await controller.setRequestFilters({ status: 'all', timeRange: 'all' })
+    expect(get(controller).requests).toHaveLength(4)
   })
 
   it('loads navigation facts without opening a default request when workspace restore is pending', async () => {

@@ -19,6 +19,9 @@
   >
   export let loading = false
   export let editorDocument: JSONContent | null = null
+  export let activeActionId: string | null = null
+  export let actionsDisabled = false
+  export let onSelectAction: (actionId: string, actionIndex: number, title: string) => void = () => {}
   export let previews: Record<string, string> = {}
   export let formatTime: (value: string | null | undefined) => string
   export let resolveHostProfile: (hostId: string) => HostProfile
@@ -52,6 +55,9 @@
     {capabilities}
     {workspace}
     {editorDocument}
+    {activeActionId}
+    {actionsDisabled}
+    {onSelectAction}
     {previews}
     {formatTime}
     {resolveHostProfile}

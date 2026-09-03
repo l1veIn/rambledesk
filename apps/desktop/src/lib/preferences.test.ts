@@ -32,6 +32,38 @@ afterEach(() => {
 })
 
 describe('speech model defaults', () => {
+  it('restores overlay visibility and opacity independently from confirmation', async () => {
+    const defaults = await loadPreferences()
+    expect(get(defaults.speechOverlayEnabled)).toBe(true)
+    expect(get(defaults.speechOverlayOpacity)).toBe(97)
+    const restored = await loadPreferences({
+      'rambledesk.speech.overlay-enabled': 'false',
+      'rambledesk.speech.overlay-opacity': '55',
+      'rambledesk.speech.confirm-before-write': 'true',
+    })
+    expect(get(restored.speechOverlayEnabled)).toBe(false)
+    expect(get(restored.speechOverlayOpacity)).toBe(55)
+    expect(get(restored.speechConfirmBeforeWrite)).toBe(true)
+  })
+
+  it('keeps opacity readable and recovers from invalid saved values', async () => {
+    const preferences = await loadPreferences({ 'rambledesk.speech.overlay-opacity': 'invalid' })
+    expect(get(preferences.speechOverlayOpacity)).toBe(97)
+    preferences.setSpeechOverlayOpacity(0)
+    expect(get(preferences.speechOverlayOpacity)).toBe(30)
+    preferences.setSpeechOverlayOpacity(150)
+    expect(get(preferences.speechOverlayOpacity)).toBe(100)
+    preferences.setSpeechOverlayOpacity(Number.NaN)
+    expect(get(preferences.speechOverlayOpacity)).toBe(97)
+  })
+  it('requires an explicit opt-in for speech confirmation and restores it', async () => {
+    const defaults = await loadPreferences()
+    expect(get(defaults.speechConfirmBeforeWrite)).toBe(false)
+    defaults.setSpeechConfirmBeforeWrite(true)
+    expect(get(defaults.speechConfirmBeforeWrite)).toBe(true)
+    const restored = await loadPreferences({ 'rambledesk.speech.confirm-before-write': 'true' })
+    expect(get(restored.speechConfirmBeforeWrite)).toBe(true)
+  })
   it('defaults fresh installs to SenseVoice', async () => {
     const { speechModelId } = await loadPreferences()
     expect(get(speechModelId)).toBe(senseVoice)

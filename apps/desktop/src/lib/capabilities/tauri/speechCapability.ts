@@ -30,7 +30,7 @@ type NativeSpeechEvent =
       rms: number
     }>
   | Readonly<{
-      type: 'processing'
+      type: 'processing' | 'speech_started'
       recognition_session_id: string
       chunk_index: number
     }>
@@ -267,6 +267,10 @@ function mapNativeSpeechEvent(
       return { type: 'partial', sessionId: wire.recognition_session_id, text: wire.text }
     case 'level':
       return { type: 'level', sessionId: wire.recognition_session_id, rms: wire.rms }
+    case 'speech_started':
+      return {
+        type: 'speech-started', sessionId: wire.recognition_session_id, segmentIndex: wire.chunk_index,
+      }
     case 'processing':
       return {
         type: 'processing',

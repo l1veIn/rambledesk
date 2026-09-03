@@ -94,6 +94,7 @@ pub(super) fn excluded_capture_window_ids(app: &AppHandle) -> Vec<u32> {
     [
         super::MAIN_LABEL,
         RAMBLE_CONSOLE_LABEL,
+        "speech-overlay",
         OVERLAY_LABEL,
         SCROLL_LABEL,
     ]
