@@ -1932,6 +1932,12 @@
                 ramblePhase={rambleBelongsToWorkspace ? visibleRamblePhase : 'idle'}
                 rambleStartedOnce={rambleBelongsToWorkspace ? rambleStartedOnce : false}
                 rambleBusy={rambleBelongsToWorkspace ? rambleBusy : true}
+                canSubmit
+                cookingEnabled={$cookingEnabled}
+                {cookedDraftReady}
+                cooking={currentRequestCooking}
+                {submitting}
+                onSubmitFeedback={() => void submitFeedback()}
               />
             {:else if renderedWorkspaceView?.kind === 'rambelle-profile'}
               <RambelleProfileWorkspaceView />

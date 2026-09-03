@@ -54,6 +54,29 @@ function completedRequest(): FeedbackRequestView {
 }
 
 describe('publisherController', () => {
+  it('blocks empty and whitespace-only replies before saving or publishing', async () => {
+    const transport = new TestApplicationTransport(undefined)
+    const saveDraftNow = vi.fn(async () => true)
+    const setPageError = vi.fn()
+    const controller = createPublisherController({
+      transport, tr: (source) => source, messageFrom: String,
+      isPreviewMode: () => false, getWorkspace: workspaceView,
+      setWorkspace: vi.fn(), setCompletedResult: vi.fn(), setPublishedFeedback: vi.fn(),
+      setSavePhase: vi.fn(), setPageError,
+      getCanSubmit: () => true, getRambleCanExit: () => true,
+      exitRamble: async () => {}, saveDraftNow, getDraftBody: () => '  \n\t  ',
+      getSavedRevision: () => 4, getCookingEnabled: () => false, getPreview: () => null,
+      setPreview: vi.fn(), setCooking: vi.fn(), cookAndPublish: vi.fn(),
+      setSubmitting: vi.fn(), setSubmitStage: vi.fn(), refreshNavigation: vi.fn(async () => {}),
+      showSubmittedToast: vi.fn(),
+    })
+    await controller.submitFeedback()
+    expect(setPageError).toHaveBeenCalledWith(
+      'Cannot send an empty reply. Write some feedback content first.',
+    )
+    expect(saveDraftNow).not.toHaveBeenCalled()
+    expect(transport.callsFor('submitFeedback')).toEqual([])
+  })
   it('checks pending speech after stopping recording, before saving or publishing', async () => {
     let pending = false
     const transport = new TestApplicationTransport(undefined)

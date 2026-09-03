@@ -106,7 +106,21 @@ export function createPublisherController(context: PublisherControllerContext) {
 
   async function submitFeedback() {
     const workspace = context.getWorkspace()
-    if (!workspace || !context.getCanSubmit()) return
+    if (!workspace) return
+    if (
+      workspace.request.status === 'completed' ||
+      workspace.request.status === 'cancelled'
+    ) {
+      return
+    }
+    // Never publish an empty reply — whitespace-only bodies count as empty.
+    // Guards the submit path even when the UI gate failed to disable the
+    // button (empty drafts should not reach the host from any view).
+    if (context.getDraftBody().trim().length === 0) {
+      context.setPageError(context.tr('Cannot send an empty reply. Write some feedback content first.'))
+      return
+    }
+    if (!context.getCanSubmit()) return
     if (context.getRambleCanExit()) await context.exitRamble()
     const speechError = context.getSpeechStopError?.()
     if (speechError) {

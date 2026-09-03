@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { JSONContent } from '@tiptap/core'
-  import { Copy, FileImage, FileText, LoaderCircle, Mic, Paperclip } from '@lucide/svelte'
+  import { ChefHat, Copy, FileImage, FileText, LoaderCircle, Mic, Paperclip, Send } from '@lucide/svelte'
 
   import { collectActionGroupContent } from '$lib/actionGroupContent'
   import { Badge } from '$lib/components/ui/badge'
@@ -50,6 +50,12 @@
   export let ramblePhase: RamblePhase = 'idle'
   export let rambleStartedOnce = false
   export let rambleBusy = false
+  export let canSubmit = false
+  export let cookingEnabled = false
+  export let cookedDraftReady = false
+  export let cooking = false
+  export let submitting = false
+  export let onSubmitFeedback: () => void = () => {}
 
   let attachmentPreviewOpen = false
   let attachmentPreview: RequestAttachmentView | null = null
@@ -91,6 +97,14 @@
           : record.label === 'resume'
             ? tr('Resume Ramble')
             : tr('Start Ramble')
+  $: deliveryLabel = cooking
+    ? tr('Cooking…')
+    : submitting
+      ? tr('Publishing…')
+      : cookingEnabled && !cookedDraftReady
+        ? tr('Cook and submit')
+        : tr('Submit feedback')
+  $: deliveryBusy = cooking || submitting
 
   function openAttachment(attachment: RequestAttachmentView) {
     attachmentPreview = attachment
@@ -291,7 +305,24 @@
     </div>
 
     {#if workspace && !readOnly}
-      <div class="flex shrink-0 items-center justify-end gap-2 border-t bg-background px-6 py-3">
+      <div class="flex shrink-0 items-center justify-between gap-2 border-t bg-background px-6 py-2">
+        <Button
+          variant={cookingEnabled && !cookedDraftReady ? 'secondary' : 'default'}
+          disabled={!canSubmit}
+          onclick={onSubmitFeedback}
+          title={tr('Submit the feedback for this task')}
+        >
+          {#if deliveryBusy}
+            <LoaderCircle class="animate-spin" data-icon="inline-start" />
+          {:else}
+            {#if cookingEnabled && !cookedDraftReady}
+              <ChefHat data-icon="inline-start" />
+            {:else}
+              <Send data-icon="inline-start" />
+            {/if}
+          {/if}
+          {deliveryLabel}
+        </Button>
         {#if voiceRambleAvailable}
           <Button
             variant={record.variant}

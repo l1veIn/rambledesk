@@ -29,6 +29,12 @@
   export let ramblePhase: RamblePhase = 'idle'
   export let rambleStartedOnce = false
   export let rambleBusy = false
+  export let canSubmit = false
+  export let cookingEnabled = false
+  export let cookedDraftReady = false
+  export let cooking = false
+  export let submitting = false
+  export let onSubmitFeedback: () => void = () => {}
 
   let attachmentPreviewOpen = false
   let previewAttachment: AttachmentView | null = null
@@ -66,6 +72,12 @@
     {ramblePhase}
     {rambleStartedOnce}
     {rambleBusy}
+    {canSubmit}
+    {cookingEnabled}
+    {cookedDraftReady}
+    {cooking}
+    {submitting}
+    {onSubmitFeedback}
   />
 {/if}
 
