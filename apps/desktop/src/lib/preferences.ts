@@ -231,7 +231,7 @@ export const notificationVolume = writable(initialNotificationVolume())
 export const speechInputDevice = writable(localStorage.getItem(SPEECH_INPUT_DEVICE_KEY) ?? '')
 export const speechConfirmBeforeWrite = writable(initialBoolean(SPEECH_CONFIRM_BEFORE_WRITE_KEY, false))
 export const speechOverlayEnabled = writable(initialBoolean(SPEECH_OVERLAY_ENABLED_KEY, true))
-export const speechOverlayOpacity = writable(initialNumber(SPEECH_OVERLAY_OPACITY_KEY, 97, 30, 100))
+export const speechOverlayOpacity = writable(initialNumber(SPEECH_OVERLAY_OPACITY_KEY, 95, 30, 100))
 export const speechModelId = writable<SpeechModelId>(initialSpeechModel())
 export const speechVadThreshold = writable(
   initialNumber(SPEECH_VAD_THRESHOLD_KEY, 0.5, 0.05, 0.95),
@@ -327,7 +327,7 @@ export function setSpeechOverlayEnabled(enabled: boolean) {
 }
 
 export function setSpeechOverlayOpacity(value: number) {
-  speechOverlayOpacity.set(Number.isFinite(value) ? Math.round(Math.max(30, Math.min(100, value))) : 97)
+  speechOverlayOpacity.set(Number.isFinite(value) ? Math.round(Math.max(30, Math.min(100, value))) : 95)
 }
 
 export function setSpeechModelId(modelId: SpeechModelId) {
@@ -613,7 +613,7 @@ export function initializePreferences() {
       speechOverlayEnabled.set(event.newValue !== 'false')
     }
     if (event.key === SPEECH_OVERLAY_OPACITY_KEY) {
-      setSpeechOverlayOpacity(event.newValue === null ? 97 : Number(event.newValue))
+      setSpeechOverlayOpacity(event.newValue === null ? 95 : Number(event.newValue))
     }
     if (event.key === SPEECH_VAD_THRESHOLD_KEY && event.newValue !== null) {
       setSpeechVadThreshold(Number(event.newValue))

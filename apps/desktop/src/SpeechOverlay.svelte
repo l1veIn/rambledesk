@@ -9,7 +9,7 @@
   import { RAMBLE_CONSOLE_COMMAND_EVENT, type RambleConsoleCommand } from './lib/rambleConsole'
   import { SPEECH_OVERLAY_READY_EVENT, SPEECH_OVERLAY_STATE_EVENT, speechOverlayVisible, type SpeechOverlayState } from './lib/speechOverlay'
 
-  let state: SpeechOverlayState = { enabled: true, opacity: 97, selectedGroupId: null, shortcuts: $shortcutSettings, phase: 'idle', level: 0, partial: '', error: '', target: null, groups: [], receipt: null }
+  let state: SpeechOverlayState = { enabled: true, opacity: 95, selectedGroupId: null, shortcuts: $shortcutSettings, phase: 'idle', level: 0, partial: '', error: '', target: null, groups: [], receipt: null }
   let content: HTMLDivElement
   let commandError = ''
   let layoutQueue = Promise.resolve()

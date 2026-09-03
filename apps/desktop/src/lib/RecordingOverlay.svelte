@@ -36,7 +36,7 @@
 </script>
 
 {#if speechOverlayVisible(state)}
-  <div class="speech-capsule-host" class:embedded use:speechOverlayDrag={!embedded && draggable} style={`--speech-overlay-opacity: ${state.opacity}%`}>
+  <div class="speech-capsule-host" class:embedded use:speechOverlayDrag={!embedded && draggable} style={`--speech-overlay-opacity: ${state.opacity}`}>
     <section class="speech-capsule" class:has-error={!!error} aria-label={tr('Speech transcription')}>
       <header>
         {#if draggable}
@@ -105,7 +105,8 @@
 <style>
   .speech-capsule-host { position: fixed; bottom: 24px; left: 50%; z-index: 80; width: min(420px, calc(100vw - 32px)); transform: translateX(-50%); pointer-events: none; }
   .speech-capsule-host.embedded { position: relative; bottom: auto; left: auto; width: 100%; transform: none; padding: 8px; }
-  .speech-capsule { pointer-events: auto; padding: 12px 14px 10px; border: 1px solid var(--border); border-radius: 22px; background: color-mix(in srgb, var(--card) var(--speech-overlay-opacity, 97%), transparent); color: var(--foreground); box-shadow: 0 6px 22px #0002; backdrop-filter: blur(18px); font-size: 12px; }
+  .speech-capsule { position: relative; isolation: isolate; pointer-events: auto; padding: 12px 14px 10px; border: 1px solid var(--border); border-radius: 22px; background: transparent; color: var(--foreground); box-shadow: 0 6px 22px #0002; font-size: 12px; }
+  .speech-capsule::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--card); backdrop-filter: blur(calc(var(--speech-overlay-opacity, 95) * 0.18px)); opacity: calc(var(--speech-overlay-opacity, 95) / 100); }
   .speech-capsule.has-error { border-color: color-mix(in srgb, var(--destructive) 55%, var(--border)); }
   header, footer, nav, .destination, .text-button { display: flex; align-items: center; gap: 8px; }
   header { min-height: 24px; }
