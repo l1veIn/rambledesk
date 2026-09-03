@@ -111,6 +111,8 @@ const chinese: Record<string, string> = {
   'Chinese': '中文',
   'English': '英文',
   'Appearance': '外观',
+  'Automatically preview waiting requests': '自动预览待处理请求',
+  'When opening a waiting request, switch to its Task brief tab automatically. You can still open the preview manually when this is off.': '打开等待中的请求时，自动切换到任务简报标签页。关闭后，仍可点击预览按钮手动打开。',
   'Optional': '可选',
   'Use an LLM to turn the Ramble draft into formal feedback before submission; the uncooked source remains in the feedback package.': '提交前用大模型把 Ramble 原稿整理成正式反馈；uncooked 原稿仍会保存在反馈包中。',
   'Model provider': '模型服务',

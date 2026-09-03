@@ -18,7 +18,7 @@
   import type { FeedbackDraftSnapshot } from '$lib/feedbackDraftDocument'
   import type { SpeechCleanupSegment } from '$lib/speechBlockMetadata'
   import { t } from '$lib/i18n'
-  import { locale } from '$lib/preferences'
+  import { autoOpenTaskBrief, locale } from '$lib/preferences'
   import { savePaneLayout, savedPaneLayout } from '$lib/uiPreferences'
   import {
     workspaceViewKey,
@@ -138,9 +138,10 @@
     if (taskBriefOpen && taskBriefPane.isCollapsed()) taskBriefPane.expand()
     else if (!taskBriefOpen && !taskBriefPane.isCollapsed()) taskBriefPane.collapse()
   }
-  // Waiting requests open their Task workspace once through the same route as
-  // the explicit preview action.
+  // When enabled, waiting requests open their Task workspace once through the
+  // same route as the explicit preview action.
   $: if (
+    $autoOpenTaskBrief &&
     workspace &&
     workspace.request.status === 'waiting' &&
     workspace.request.request_id !== autoOpenedTaskRequestId

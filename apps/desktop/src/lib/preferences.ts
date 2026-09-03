@@ -32,6 +32,7 @@ const LEGACY_DEFAULT_SPEECH_MODEL_ID: SpeechModelId =
 
 const LOCALE_KEY = 'rambledesk.locale'
 const THEME_KEY = 'rambledesk.theme'
+const AUTO_OPEN_TASK_BRIEF_KEY = 'rambledesk.workspace.auto-open-task-brief'
 const NOTIFICATION_POPUP_KEY = 'rambledesk.notifications.popup'
 const NOTIFICATION_SOUND_ENABLED_KEY = 'rambledesk.notifications.sound-enabled'
 const NOTIFICATION_SOUND_KEY = 'rambledesk.notifications.sound'
@@ -217,6 +218,7 @@ function isCookingReasoningEffort(value: string | null): value is CookingReasoni
 
 export const locale = writable<Locale>(initialLocale())
 export const themePreference = writable<ThemePreference>(initialTheme())
+export const autoOpenTaskBrief = writable(initialBoolean(AUTO_OPEN_TASK_BRIEF_KEY, true))
 export const notificationPopupEnabled = writable(initialBoolean(NOTIFICATION_POPUP_KEY, true))
 export const notificationSoundEnabled = writable(
   initialBoolean(NOTIFICATION_SOUND_ENABLED_KEY, true),
@@ -290,6 +292,10 @@ export function setLocale(next: Locale) {
 
 export function setThemePreference(next: ThemePreference) {
   themePreference.set(next)
+}
+
+export function setAutoOpenTaskBrief(enabled: boolean) {
+  autoOpenTaskBrief.set(enabled)
 }
 
 export function setNotificationPopupEnabled(enabled: boolean) {
@@ -444,6 +450,9 @@ export function initializePreferences() {
     saveUiTheme(next)
     applyTheme(next)
   })
+  autoOpenTaskBrief.subscribe((next) => {
+    localStorage.setItem(AUTO_OPEN_TASK_BRIEF_KEY, String(next))
+  })
   notificationPopupEnabled.subscribe((next) => {
     localStorage.setItem(NOTIFICATION_POPUP_KEY, String(next))
   })
@@ -552,6 +561,9 @@ export function initializePreferences() {
   window.addEventListener('storage', (event) => {
     if (event.key === LOCALE_KEY && (event.newValue === 'zh-CN' || event.newValue === 'en')) {
       locale.set(event.newValue)
+    }
+    if (event.key === AUTO_OPEN_TASK_BRIEF_KEY) {
+      autoOpenTaskBrief.set(event.newValue !== 'false')
     }
     if (
       event.key === THEME_KEY &&

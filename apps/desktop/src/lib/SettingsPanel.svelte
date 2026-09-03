@@ -10,6 +10,7 @@
     FolderCog,
     Globe2,
     Languages,
+    ListChecks,
     LoaderCircle,
     Mic,
     MonitorCog,
@@ -72,6 +73,7 @@
   } from '$lib/notifications'
   import {
     DEFAULT_SPEECH_MODEL_ID,
+    autoOpenTaskBrief,
     customNotificationSound,
     locale,
     notificationPopupEnabled,
@@ -79,6 +81,7 @@
     notificationSoundEnabled,
     notificationVolume,
     setCustomNotificationSound,
+    setAutoOpenTaskBrief,
     setLocale,
     setNotificationPopupEnabled,
     setNotificationSound,
@@ -920,6 +923,31 @@
                   <Select.Item value="dark" label={tr('Dark')} />
                 </Select.Content>
               </Select.Root>
+            </section>
+
+            <section class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-8 border-b pb-8">
+              <div class="flex gap-3">
+                <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+                  <ListChecks class="size-4" />
+                </span>
+                <div>
+                  <h3 class="m-0 text-sm font-medium" id="auto-open-task-brief-label">{tr('Automatically preview waiting requests')}</h3>
+                  <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground" id="auto-open-task-brief-description">
+                    {tr('When opening a waiting request, switch to its Task brief tab automatically. You can still open the preview manually when this is off.')}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={$autoOpenTaskBrief}
+                aria-labelledby="auto-open-task-brief-label"
+                aria-describedby="auto-open-task-brief-description"
+                class={`relative h-6 w-11 shrink-0 rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-ring ${$autoOpenTaskBrief ? 'bg-primary' : 'bg-muted-foreground/30'}`}
+                onclick={() => setAutoOpenTaskBrief(!$autoOpenTaskBrief)}
+              >
+                <span class={`absolute top-0.5 left-0.5 size-5 rounded-full bg-background shadow-sm transition-transform ${$autoOpenTaskBrief ? 'translate-x-5' : ''}`}></span>
+              </button>
             </section>
 
             {#if onboardingAvailable}
