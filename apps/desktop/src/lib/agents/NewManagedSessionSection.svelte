@@ -8,6 +8,7 @@
   export let transport: ApplicationTransport
   export let onCreated: (snapshot: ManagedSessionSnapshot) => Promise<void> | void
   export let onConfigure: () => void
+  export let onChooseDirectory: (() => Promise<string | null>) | undefined = undefined
   export let onCreating: (creating: boolean) => void = () => {}
   const settings = createAgentSettingsController(transport)
   onMount(() => settings.start())
@@ -21,4 +22,4 @@
   }
 </script>
 
-<NewManagedSessionForm configs={$settings.configs} busy={$settings.loading} error={$settings.error} showHeading={false} onCreate={create} {onConfigure} />
+<NewManagedSessionForm configs={$settings.configs} busy={$settings.loading} error={$settings.error} showHeading={false} onCreate={create} {onConfigure} {onChooseDirectory} />

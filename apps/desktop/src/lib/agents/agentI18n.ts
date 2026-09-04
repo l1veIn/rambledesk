@@ -2,6 +2,9 @@ import { t } from '$lib/i18n'
 import type { Locale } from '$lib/preferences'
 
 const chinese: Readonly<Record<string, string>> = {
+  'Choose an agent': '选择智能体',
+  'Browse…': '浏览…',
+  'Could not choose the project directory.': '无法选择项目目录。',
   'Agents': 'Agents',
   'Could not load agent configurations.': '无法加载 Agent 配置。',
   'Agent settings are no longer open.': 'Agent 设置页面已经关闭。',

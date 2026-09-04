@@ -2260,6 +2260,7 @@
     <Dialog.Description class="sr-only">{agentText($locale, 'Use an absolute directory on the computer running RambleDesk.')}</Dialog.Description>
     <NewManagedSessionSection
       transport={applicationTransport}
+      onChooseDirectory={capabilities.serverPaths.status.availability === 'unavailable' ? undefined : () => capabilities.serverPaths.implementation.chooseDirectory()}
       onCreating={(creating) => { creatingManagedSession = creating }}
       onCreated={managedSessionCreated}
       onConfigure={() => { newManagedSessionOpen = false; void openSettings('agents') }}
