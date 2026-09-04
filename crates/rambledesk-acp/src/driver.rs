@@ -17,6 +17,7 @@ struct ManagedConnection {
     shutdown: tokio::sync::Mutex<()>,
     sender: agent_client_protocol::ConnectionTo<agent_client_protocol::Agent>,
     remote: String,
+    permissions: Arc<crate::permissions::PermissionQueue>,
 }
 
 #[async_trait]
@@ -37,6 +38,7 @@ impl AgentSessionDriver for AcpSessionDriver {
         let observer = Arc::new(crate::observer::ManagedObserver {
             sink: launch.observer,
             remote: Mutex::new(None),
+            local_session_id: launch.session.session_id.clone(),
         });
         let connection = AcpConnection::connect_observed(&options, observer.clone())
             .await
@@ -59,6 +61,7 @@ impl AgentSessionDriver for AcpSessionDriver {
         *observer.remote.lock().expect("remote attribution lock") =
             Some(info.remote_session_id.clone());
         let sender = connection.sender();
+        let permissions = connection.permission_queue();
         Ok(StartedAgentSession {
             remote_session_id: info.remote_session_id.clone(),
             capabilities: AgentSessionCapabilities {
@@ -71,6 +74,7 @@ impl AgentSessionDriver for AcpSessionDriver {
                 shutdown: tokio::sync::Mutex::new(()),
                 sender,
                 remote: info.remote_session_id,
+                permissions,
             }),
         })
     }
@@ -92,6 +96,23 @@ impl AgentSessionDriver for AcpSessionDriver {
 
 #[async_trait]
 impl AgentSessionConnection for ManagedConnection {
+    async fn cancel(&self) -> Result<(), AgentDriverError> {
+        self.permissions.cancel_all();
+        self.sender
+            .send_notification(agent_client_protocol::schema::v1::CancelNotification::new(
+                self.remote.clone(),
+            ))
+            .map_err(|_| AgentDriverError::new("ACP cancellation failed"))
+    }
+    async fn respond_permission(
+        &self,
+        request_id: &str,
+        option_id: Option<&str>,
+    ) -> Result<(), AgentDriverError> {
+        self.permissions
+            .respond(request_id, option_id)
+            .map_err(safe_error)
+    }
     async fn prompt(&self, text: &str) -> Result<String, AgentDriverError> {
         use agent_client_protocol::schema::v1::{
             ContentBlock, PromptRequest, SessionId, TextContent,
@@ -104,6 +125,7 @@ impl AgentSessionConnection for ManagedConnection {
             ))
             .block_task()
             .await;
+        self.permissions.cancel_all();
         result
             .map(|response| format!("{:?}", response.stop_reason))
             .map_err(|_| {

@@ -25,6 +25,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             AcpEvent::PermissionDeclined => {
                 eprintln!("permission declined (probe has no approval UI)")
             }
+            AcpEvent::PermissionRequested { .. } => {
+                unreachable!("probe permissions are always declined")
+            }
         }),
     )
     .await?;

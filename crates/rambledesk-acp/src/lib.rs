@@ -2,6 +2,7 @@
 mod connection;
 mod driver;
 mod observer;
+mod permissions;
 mod process;
 
 pub use connection::{AcpConnection, AcpError, AcpEvent, AcpLaunch, AcpSessionInfo};

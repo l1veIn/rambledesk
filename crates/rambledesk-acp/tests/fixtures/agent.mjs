@@ -5,11 +5,19 @@ const respond = (id,result) => send({id,result})
 const fail = id => send({id,error:{code:-32601,message:'not supported'}})
 const mode = process.argv[2] ?? 'load'
 let prompting = null
+let approvals = []
+function finish(stopReason) {
+  const id = prompting
+  prompting = null
+  if (id !== null) respond(id, {stopReason})
+}
 createInterface({input:process.stdin}).on('line',line => {
   const message = JSON.parse(line)
   const {id,method,params} = message
-  if (id === 'permission' && !method) {
-    respond(prompting,{stopReason:message.result?.outcome?.outcome === 'cancelled' ? 'cancelled' : 'end_turn'})
+  if (typeof id === 'string' && id.startsWith('permission') && !method) {
+    approvals.push(message.result?.outcome?.outcome)
+    if (id === 'permission' || approvals.length === 2)
+      finish(approvals.includes('cancelled') ? 'cancelled' : 'end_turn')
     return
   }
   switch (method) {
@@ -31,17 +39,22 @@ createInterface({input:process.stdin}).on('line',line => {
       break
     case 'session/prompt':
       prompting = id
+      approvals = []
       if (params.prompt[0].text === 'permission') {
         send({id:'permission',method:'session/request_permission',params:{sessionId:params.sessionId,
           toolCall:{toolCallId:'tool-1',title:'Run command',status:'pending'},
           options:[{optionId:'allow',name:'Allow',kind:'allow_once'}]}})
+      } else if (params.prompt[0].text === 'permission_pair') {
+        for (const number of [1, 2]) send({id:`permission-${number}`,method:'session/request_permission',params:{sessionId:params.sessionId,
+          toolCall:{toolCallId:`tool-${number}`,title:`Run command ${number}`,status:'pending'},
+          options:[{optionId:'allow',name:'Allow',kind:'allow_once'}]}})
       } else if (params.prompt[0].text !== 'wait') {
         for(const text of ['fixture ',`reply: ${params.prompt[0].text}`])
           send({method:'session/update',params:{sessionId:params.sessionId,update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text}}}})
-        respond(id,{stopReason:'end_turn'})
+        finish('end_turn')
       }
       break
-    case 'session/cancel': if(prompting!==null) respond(prompting,{stopReason:'cancelled'}); break
+    case 'session/cancel': if(mode !== 'ignore_cancel') finish('cancelled'); break
     case 'session/close':
       if(process.env.FIXTURE_CLOSE_LOG) appendFileSync(process.env.FIXTURE_CLOSE_LOG,params.sessionId+'\n')
       respond(id,{}); break

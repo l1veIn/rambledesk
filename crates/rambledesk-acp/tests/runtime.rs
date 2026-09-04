@@ -71,6 +71,154 @@ async fn idle(app: &SessionApplication, session: ManagedSessionInput) -> Managed
     .expect("prompt did not settle")
 }
 
+async fn permissions(
+    app: &SessionApplication,
+    session: ManagedSessionInput,
+) -> ManagedSessionSnapshot {
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let snapshot = app.get_session(session.clone()).await.unwrap();
+            if snapshot.permissions.len() == 2 {
+                return snapshot;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("permissions did not arrive")
+}
+
+#[tokio::test]
+async fn permission_queue_is_scoped_validated_and_consumed_once() {
+    let (dir, store, app, config) = setup().await;
+    let first = create(&app, &dir, &config, "One").await;
+    let other = create(&app, &dir, &config, "Two").await;
+    app.send_prompt(SendManagedPromptInput {
+        session_id: first.session.session_id.clone(),
+        text: "permission_pair".into(),
+    })
+    .await
+    .unwrap();
+    let first = permissions(&app, id(&first)).await;
+    assert_eq!(
+        first.runtime.activity,
+        SessionActivityState::WaitingPermission
+    );
+    let answer = RespondManagedPermissionInput {
+        session_id: first.session.session_id.clone(),
+        request_id: first.permissions[0].request_id.clone(),
+        option_id: Some("allow".into()),
+    };
+    assert!(
+        app.respond_permission(RespondManagedPermissionInput {
+            session_id: other.session.session_id.clone(),
+            ..answer.clone()
+        })
+        .await
+        .is_err()
+    );
+    assert!(
+        app.respond_permission(RespondManagedPermissionInput {
+            option_id: Some("invented".into()),
+            ..answer.clone()
+        })
+        .await
+        .is_err()
+    );
+    assert_eq!(
+        app.get_session(id(&first)).await.unwrap().permissions.len(),
+        2
+    );
+    let remaining = app.respond_permission(answer.clone()).await.unwrap();
+    assert_eq!(remaining.permissions.len(), 1);
+    assert!(app.respond_permission(answer).await.is_err());
+    app.respond_permission(RespondManagedPermissionInput {
+        session_id: first.session.session_id.clone(),
+        request_id: remaining.permissions[0].request_id.clone(),
+        option_id: None,
+    })
+    .await
+    .unwrap();
+    assert!(idle(&app, id(&first)).await.permissions.is_empty());
+    assert_eq!(
+        app.get_session(id(&other)).await.unwrap().runtime.activity,
+        SessionActivityState::Idle
+    );
+    app.shutdown().await.unwrap();
+    store.close().await;
+}
+
+#[tokio::test]
+async fn cancellation_drains_permissions_and_does_not_cancel_a_later_turn() {
+    let (dir, store, app, config) = setup().await;
+    let first = create(&app, &dir, &config, "One").await;
+    app.send_prompt(SendManagedPromptInput {
+        session_id: first.session.session_id.clone(),
+        text: "permission_pair".into(),
+    })
+    .await
+    .unwrap();
+    let first = permissions(&app, id(&first)).await;
+    app.cancel_prompt(id(&first)).await.unwrap();
+    let done = idle(&app, id(&first)).await;
+    assert!(done.permissions.is_empty());
+    app.send_prompt(SendManagedPromptInput {
+        session_id: first.session.session_id.clone(),
+        text: "wait".into(),
+    })
+    .await
+    .unwrap();
+    tokio::time::sleep(Duration::from_millis(5300)).await;
+    let running = app.get_session(id(&first)).await.unwrap();
+    assert_eq!(
+        running.runtime.connection,
+        SessionConnectionState::Connected
+    );
+    assert_eq!(running.runtime.activity, SessionActivityState::Running);
+    app.cancel_prompt(id(&first)).await.unwrap();
+    idle(&app, id(&first)).await;
+    app.shutdown().await.unwrap();
+    store.close().await;
+}
+
+#[tokio::test]
+async fn uncooperative_cancel_stops_only_the_owned_instance() {
+    let (dir, store, app, config) = setup().await;
+    let mut saved = store.get_agent_config(&config).await.unwrap();
+    saved.args[1] = "ignore_cancel".into();
+    store.save_agent_config(saved).await.unwrap();
+    let first = create(&app, &dir, &config, "One").await;
+    let other = create(&app, &dir, &config, "Two").await;
+    app.send_prompt(SendManagedPromptInput {
+        session_id: first.session.session_id.clone(),
+        text: "wait".into(),
+    })
+    .await
+    .unwrap();
+    app.cancel_prompt(id(&first)).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let state = app.get_session(id(&first)).await.unwrap();
+            if state.runtime.connection == SessionConnectionState::Stopped {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        app.get_session(id(&other))
+            .await
+            .unwrap()
+            .runtime
+            .connection,
+        SessionConnectionState::Connected
+    );
+    app.shutdown().await.unwrap();
+    store.close().await;
+}
+
 #[tokio::test]
 async fn two_instances_stream_to_their_own_durable_activity_and_resume_without_replay() {
     let (dir, store, app, config) = setup().await;

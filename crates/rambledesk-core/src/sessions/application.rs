@@ -36,6 +36,8 @@ pub enum SessionError {
 pub(super) struct LiveSession {
     pub runtime: SessionRuntime,
     pub connection: Option<Arc<dyn AgentSessionConnection>>,
+    pub permissions: Vec<SessionPermission>,
+    pub cancelling: bool,
 }
 
 pub(super) struct SessionEntry {
@@ -51,6 +53,8 @@ impl Default for SessionEntry {
             live: Mutex::new(LiveSession {
                 runtime: SessionRuntime::default(),
                 connection: None,
+                permissions: vec![],
+                cancelling: false,
             }),
             lifecycle: Mutex::new(()),
             interrupt: watch::channel(0).0,
@@ -206,11 +210,13 @@ impl SessionApplication {
             .is_some_and(|connection| connection.is_closed())
         {
             live.runtime.connection = SessionConnectionState::Disconnected;
+            live.permissions.clear();
             live.runtime.activity = SessionActivityState::Idle;
             live.runtime.last_error =
                 Some("Agent connection closed; resume the original session to continue".into());
         }
         let runtime = live.runtime.clone();
+        let permissions = live.permissions.clone();
         drop(live);
         let activities = self
             .activities
@@ -220,6 +226,7 @@ impl SessionApplication {
             session,
             runtime,
             activities,
+            permissions,
         })
     }
 
@@ -283,9 +290,10 @@ impl SessionApplication {
                     )
                     .await
                 {
-                    let _ = started.connection.stop().await;
                     live.runtime.connection = SessionConnectionState::Failed;
                     live.runtime.last_error = Some(error.to_string());
+                    drop(live);
+                    let _ = started.connection.stop().await;
                     self.changed();
                     return Err(error.into());
                 }
@@ -324,6 +332,7 @@ impl SessionApplication {
         let mut live = entry.live.lock().await;
         let connection = live.connection.clone();
         live.runtime.connection = SessionConnectionState::Disconnected;
+        live.permissions.clear();
         drop(live);
         if let Some(connection) = connection
             && let Err(error) = connection.stop().await

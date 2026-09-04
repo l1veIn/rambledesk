@@ -33,6 +33,8 @@ pub enum AcpError {
     Timeout(&'static str),
     #[error("Agent does not support loading the original session")]
     CannotLoad,
+    #[error("Permission request or selected option is no longer valid")]
+    InvalidPermission,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -51,6 +53,10 @@ pub struct AcpSessionInfo {
 pub enum AcpEvent {
     Update(Box<SessionNotification>),
     PermissionDeclined,
+    PermissionRequested {
+        request_id: String,
+        request: Box<RequestPermissionRequest>,
+    },
 }
 
 pub struct AcpConnection {
@@ -61,6 +67,7 @@ pub struct AcpConnection {
     stderr: JoinHandle<()>,
     initialized: InitializeResponse,
     remote_session_id: std::sync::Mutex<Option<String>>,
+    permissions: Arc<crate::permissions::PermissionQueue>,
 }
 
 impl AcpConnection {
@@ -89,7 +96,11 @@ impl AcpConnection {
         let (ready_tx, ready_rx) = oneshot::channel();
         let (stop, stopped) = oneshot::channel();
         let notification_observer = observer.clone();
+        let permissions = Arc::new(crate::permissions::PermissionQueue::default());
+        let request_permissions = permissions.clone();
         let task = tokio::spawn(async move {
+            let _permission_guard =
+                crate::permissions::CancelPermissionsOnDrop(request_permissions.clone());
             Client
                 .builder()
                 .name("rambledesk")
@@ -104,9 +115,18 @@ impl AcpConnection {
                     agent_client_protocol::on_receive_notification!(),
                 )
                 .on_receive_request(
-                    async move |_: RequestPermissionRequest, responder, _| {
-                        // Smoke probes never approve operations implicitly. The managed
-                        // runtime installs an explicit permission queue in a later slice.
+                    async move |request: RequestPermissionRequest, responder, _| {
+                        if observer.manages_permissions() {
+                            let request_id = request_permissions.insert(&request, responder);
+                            return observer
+                                .observe(AcpEvent::PermissionRequested {
+                                    request_id,
+                                    request: Box::new(request),
+                                })
+                                .await
+                                .map_err(|_| agent_client_protocol::Error::internal_error());
+                        }
+                        // Smoke probes never approve operations implicitly.
                         observer
                             .observe(AcpEvent::PermissionDeclined)
                             .await
@@ -158,6 +178,7 @@ impl AcpConnection {
                 stderr,
                 initialized,
                 remote_session_id: std::sync::Mutex::new(None),
+                permissions,
             }),
             other => {
                 let _ = stop.send(());
@@ -179,6 +200,9 @@ impl AcpConnection {
     }
     pub(crate) fn sender(&self) -> ConnectionTo<Agent> {
         self.connection.clone()
+    }
+    pub(crate) fn permission_queue(&self) -> Arc<crate::permissions::PermissionQueue> {
+        self.permissions.clone()
     }
     pub fn capabilities(&self) -> rambledesk_core::AgentSessionCapabilities {
         rambledesk_core::AgentSessionCapabilities {
@@ -281,18 +305,23 @@ impl AcpConnection {
     }
 
     pub fn cancel(&self, remote: &str) -> Result<(), AcpError> {
+        self.permissions.cancel_all();
         self.connection
             .send_notification(CancelNotification::new(SessionId::new(remote)))
             .map_err(|_| AcpError::Closed)
     }
 
     pub async fn shutdown(mut self) -> Result<(), AcpError> {
+        self.permissions.cancel_all();
         let remote = self
             .remote_session_id
             .lock()
             .expect("remote session lock")
             .clone();
         let mut close_result = Ok(());
+        if let Some(remote) = remote.as_deref() {
+            let _ = self.cancel(remote);
+        }
         if self
             .initialized
             .agent_capabilities

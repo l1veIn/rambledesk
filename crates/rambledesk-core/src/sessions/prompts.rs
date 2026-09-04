@@ -63,6 +63,7 @@ impl SessionApplication {
             .clone()
             .ok_or(SessionError::NotConnected)?;
         live.runtime.activity = SessionActivityState::Running;
+        live.cancelling = false;
         live.runtime.last_error = None;
         drop(live);
         let turn_id = self.ids.new_id();
@@ -137,6 +138,8 @@ impl SessionApplication {
             .append_activity(session_id, Some(turn_id), kind, text, None)
             .await;
         live.runtime.activity = SessionActivityState::Idle;
+        live.permissions.clear();
+        live.cancelling = false;
         if let Err(error) = result {
             live.runtime.last_error = Some(error.to_string());
         }
@@ -171,12 +174,49 @@ impl SessionApplication {
             return Ok(());
         }
         drop(live);
-        let AgentSessionEvent::Activity {
-            kind,
-            text,
-            tool_call_id,
-            append,
-        } = event;
+        let (kind, text, tool_call_id, append) = match event {
+            AgentSessionEvent::Activity {
+                kind,
+                text,
+                tool_call_id,
+                append,
+            } => (kind, text, tool_call_id, append),
+            AgentSessionEvent::PermissionRequested(permission) => {
+                if permission.session_id != session_id {
+                    return Err(SessionError::InvalidInput);
+                }
+                let mut live = entry.live.lock().await;
+                if live.cancelling || live.runtime.activity == SessionActivityState::Idle {
+                    let connection = live.connection.clone();
+                    drop(live);
+                    if let Some(connection) = connection {
+                        let _ = connection
+                            .respond_permission(&permission.request_id, None)
+                            .await;
+                    }
+                    return Ok(());
+                }
+                if !live
+                    .permissions
+                    .iter()
+                    .any(|pending| pending.request_id == permission.request_id)
+                {
+                    live.permissions.push(permission.clone());
+                }
+                live.runtime.activity = SessionActivityState::WaitingPermission;
+                drop(live);
+                self.append_activity(
+                    session_id,
+                    stream.turn_id.as_deref(),
+                    SessionActivityKind::Status,
+                    format!("Permission required: {}", permission.title),
+                    None,
+                )
+                .await?;
+                self.session_changed(session_id);
+                return Ok(());
+            }
+        };
         if text.is_empty() {
             return Ok(());
         }

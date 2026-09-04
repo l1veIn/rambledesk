@@ -34,6 +34,12 @@ struct FakeConnection {
 
 #[async_trait]
 impl AgentSessionConnection for FakeConnection {
+    async fn cancel(&self) -> Result<(), AgentDriverError> {
+        Ok(())
+    }
+    async fn respond_permission(&self, _: &str, _: Option<&str>) -> Result<(), AgentDriverError> {
+        Ok(())
+    }
     async fn prompt(&self, _: &str) -> Result<String, AgentDriverError> {
         Ok("EndTurn".into())
     }
