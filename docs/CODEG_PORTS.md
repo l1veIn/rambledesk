@@ -21,4 +21,6 @@ Codeg 作者和贡献者保留其版权；根仓库为 Apache-2.0，完整条款
 
 | 托管 stdio 反馈 companion | `src-tauri/src/delegation/companion.rs`、`acp/connection.rs` | 复用实例私有 HTTP 归属与撤销，环境变量授权，三工具原样转发；CLI 和 Desktop 早分派。真实 CLI/两 scope/SQLite/HTTP 集成及 bounded input 用例通过；自动选择接线在后续提交。 |
 
+| 结构化提示输入 | `src-tauri/src/acp/types.rs`、`connection.rs` | 沿用共用发送/取消/continuation，独立完整输入与历史预览限制；协商能力、真实 stdio 图片和资源 4 个用例，详见 [输入记录](CODEG_TYPED_PROMPTS.md)。 |
+
 后续每个移植提交添加实际条目。第三方依赖各自遵循其许可证，不因 Codeg 根许可证而改变。

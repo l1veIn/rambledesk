@@ -7,6 +7,9 @@ use rambledesk_core::{
     SessionToolLocation, SessionToolStatus,
 };
 use rambledesk_core::{
+    AgentPromptCapabilities, SendManagedPromptContentInput, SessionPromptContent,
+};
+use rambledesk_core::{
     SessionConfigChange, SessionConfigChoice, SessionConfigKind, SessionConfigOption,
     SessionConfigValue, SessionConfiguration, SessionMode, SessionModeCatalog, SessionModel,
     SessionModelCatalog, SetManagedSessionConfigInput,
@@ -80,6 +83,9 @@ fn exported_feedback_package_content() -> String {
 
 fn main() -> std::io::Result<()> {
     let declarations = [
+        exported::<AgentPromptCapabilities>(),
+        exported::<SessionPromptContent>(),
+        exported::<SendManagedPromptContentInput>(),
         exported::<SessionConfiguration>(),
         exported::<SessionConfigOption>(),
         exported::<SessionConfigKind>(),

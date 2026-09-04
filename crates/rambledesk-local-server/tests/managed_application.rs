@@ -93,6 +93,7 @@ impl AgentSessionDriver for Driver {
                 load_session: true,
                 resume_session: true,
                 http_mcp: true,
+                prompt: AgentPromptCapabilities::default(),
             },
         })
     }
@@ -400,6 +401,8 @@ async fn every_managed_mutation_requires_current_runtime_generation_including_co
         "startManagedSession",
         "stopManagedSession",
         "sendManagedPrompt",
+        "setManagedSessionConfig",
+        "sendManagedPromptContent",
         "cancelManagedPrompt",
         "respondManagedPermission",
         "resolveFeedbackDelivery",
@@ -455,6 +458,8 @@ fn tauri_managed_commands_match_http_names_and_delegate_to_the_same_facade() {
         ("startManagedSession", "start_managed_session"),
         ("stopManagedSession", "stop_managed_session"),
         ("sendManagedPrompt", "send_managed_prompt"),
+        ("setManagedSessionConfig", "set_managed_session_config"),
+        ("sendManagedPromptContent", "send_managed_prompt_content"),
         ("cancelManagedPrompt", "cancel_managed_prompt"),
         ("respondManagedPermission", "respond_managed_permission"),
         ("resolveFeedbackDelivery", "resolve_feedback_delivery"),
@@ -471,11 +476,34 @@ fn tauri_managed_commands_match_http_names_and_delegate_to_the_same_facade() {
         );
         assert!(routes.contains(&format!("/application/{camel}")), "{camel}");
     }
-    assert_eq!(commands.matches("#[tauri::command]").count(), 13);
-    assert_eq!(commands.matches("input:").count(), 12);
+    assert_eq!(commands.matches("#[tauri::command]").count(), 15);
+    assert_eq!(commands.matches("input:").count(), 14);
     assert!(registration.contains(".with_sessions(sessions.clone())"));
     assert!(registration.contains("state.sessions.shutdown()"));
     assert!(registration.contains("sessions.start_delivery_worker()"));
+}
+
+#[tokio::test]
+async fn typed_prompt_has_a_bounded_larger_body_without_relaxing_other_commands() -> anyhow::Result<()> {
+    let fixture = Fixture::new().await?;
+    let oversized_image = json!({
+        "session_id": "00000000-0000-0000-0000-000000000001", "text": "",
+        "content": [{"type":"image","mime_type":"image/png","data":"a".repeat(2 * 1024 * 1024 + 1024)}]
+    });
+    let response = fixture.request("sendManagedPromptContent", oversized_image)
+        .header(RUNTIME_GENERATION_HEADER, "managed-test").send().await?;
+    // The route accepts an envelope larger than 2 MiB, then core rejects the
+    // invalid image before starting a turn. Other JSON routes retain 2 MiB.
+    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+    let response = fixture.request("sendManagedPrompt", json!({
+        "session_id":"00000000-0000-0000-0000-000000000001", "text":"x".repeat(2 * 1024 * 1024)
+    })).header(RUNTIME_GENERATION_HEADER, "managed-test").send().await?;
+    assert_eq!(response.status(), reqwest::StatusCode::PAYLOAD_TOO_LARGE);
+    let response = fixture.request("sendManagedPromptContent", json!({
+        "session_id":"00000000-0000-0000-0000-000000000001", "text":"x".repeat(5 * 1024 * 1024), "content":[]
+    })).header(RUNTIME_GENERATION_HEADER, "managed-test").send().await?;
+    assert_eq!(response.status(), reqwest::StatusCode::PAYLOAD_TOO_LARGE);
+    fixture.shutdown().await
 }
 
 #[tokio::test]

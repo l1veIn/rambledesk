@@ -66,3 +66,4 @@ Chat 展示流式文本、思考、结构化工具内容和权限；输入器支
 - C2：结构化时间线已接入 Workspace，保留权限/恢复/反馈界面；33 个有针对性的测试、Svelte 检查及隔离浏览器工具差异卡片通过。
 - F1a：stdio companion 已完成真实子进程验证，复用私有 MCP 权限、三工具 schema 和持久请求；不创建额外 continuation。ACP 自动选择及 Pi 原生扩展接线继续。
 - C4b：输入区配置控件完成，模型/模式/boolean 来自 Agent 选项并以确认值呈现；8 个专项用例通过，隔离浏览器验证选中后先等待确认。
+- C4c：结构化输入后端已接入共用 turn 生命周期，支持协商的图片、内嵌文本与资源链接。真实 stdio、取消、历史预览限额及 continuation 回归通过；Web 独立 5MiB body 上限与 generation 门禁通过。

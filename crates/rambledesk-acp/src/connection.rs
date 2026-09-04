@@ -248,6 +248,9 @@ impl AcpConnection {
                 .resume
                 .is_some(),
             http_mcp: self.initialized.agent_capabilities.mcp_capabilities.http,
+            prompt: crate::prompt_content::capabilities(
+                &self.initialized.agent_capabilities.prompt_capabilities,
+            ),
         }
     }
     pub fn is_closed(&self) -> bool {

@@ -46,6 +46,7 @@ export const HTTP_APPLICATION_OPERATIONS = {
   stopManagedSession: 'stopManagedSession',
   cancelManagedPrompt: 'cancelManagedPrompt',
   sendManagedPrompt: 'sendManagedPrompt',
+  sendManagedPromptContent: 'sendManagedPromptContent',
   setManagedSessionConfig: 'setManagedSessionConfig',
   respondManagedPermission: 'respondManagedPermission',
   resolveFeedbackDelivery: 'resolveFeedbackDelivery',
@@ -110,6 +111,7 @@ const MUTATION_COMMANDS: ReadonlySet<ApplicationCommandName> = new Set([
   'stopManagedSession',
   'cancelManagedPrompt',
   'sendManagedPrompt',
+  'sendManagedPromptContent',
   'setManagedSessionConfig',
   'respondManagedPermission',
   'resolveFeedbackDelivery',
@@ -842,6 +844,7 @@ export function applicationCommandResponseResources<Name extends ApplicationComm
     case 'stopManagedSession':
     case 'cancelManagedPrompt':
     case 'sendManagedPrompt':
+    case 'sendManagedPromptContent':
     case 'setManagedSessionConfig':
     case 'respondManagedPermission':
     case 'resolveFeedbackDelivery':
@@ -923,6 +926,7 @@ export function applicationCommandProjectionKey<Name extends ApplicationCommandN
     case 'stopManagedSession':
     case 'cancelManagedPrompt':
     case 'sendManagedPrompt':
+    case 'sendManagedPromptContent':
     case 'setManagedSessionConfig':
     case 'respondManagedPermission':
     case 'resolveFeedbackDelivery':

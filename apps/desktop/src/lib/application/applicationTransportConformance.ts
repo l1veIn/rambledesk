@@ -9,6 +9,7 @@ import type {
 
 export const APPLICATION_CONFORMANCE_INPUTS = {
   setManagedSessionConfig: { session_id: 'local-session-1', change: { type: 'mode', mode_id: 'ask' } },
+  sendManagedPromptContent: { session_id: 'local-session-1', text: 'Read this', content: [{ type: 'resource_link', uri: 'file:///project/main.ts', name: 'main.ts', mime_type: 'text/typescript' }] },
   listAvailableAgents: undefined,
   inspectAgentInstallation: { agent_id: 'deepseek' },
   listAgentInstallJobs: undefined,
@@ -153,7 +154,7 @@ export function runApplicationTransportConformance(
   describe(`${implementationName} ApplicationTransport conformance`, () => {
     it('maps all query mutation multipart binary and void operations', async () => {
       const fixture = createFixture()
-      expect(APPLICATION_COMMAND_NAMES).toHaveLength(42)
+      expect(APPLICATION_COMMAND_NAMES).toHaveLength(43)
 
       for (const [index, name] of APPLICATION_COMMAND_NAMES.entries()) {
         const input = APPLICATION_CONFORMANCE_INPUTS[name]

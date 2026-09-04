@@ -84,6 +84,22 @@ pub trait AgentSessionConnection: Send + Sync {
     }
     fn is_closed(&self) -> bool;
     async fn prompt(&self, text: &str) -> Result<String, AgentDriverError>;
+    async fn prompt_content(
+        &self,
+        blocks: &[super::SessionPromptContent],
+    ) -> Result<String, AgentDriverError> {
+        super::validate_prompt_content(blocks)?;
+        let mut text = String::new();
+        for block in blocks {
+            let super::SessionPromptContent::Text { text: part } = block else {
+                return Err(AgentDriverError::new(
+                    "Agent does not support this prompt content",
+                ));
+            };
+            text.push_str(part);
+        }
+        self.prompt(&text).await
+    }
     async fn cancel(&self) -> Result<(), AgentDriverError>;
     async fn respond_permission(
         &self,

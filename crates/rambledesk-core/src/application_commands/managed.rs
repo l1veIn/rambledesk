@@ -209,6 +209,16 @@ impl ApplicationCommandFacade {
             .await
             .map_err(Into::into)
     }
+    pub async fn send_managed_prompt_content(
+        &self,
+        input: crate::SendManagedPromptContentInput,
+    ) -> Result<ManagedSessionSnapshot, ManagedCommandError> {
+        self.managed_sessions()?
+            .send_prompt_content(input)
+            .await
+            .map_err(Into::into)
+    }
+
     pub async fn set_managed_session_config(
         &self,
         input: crate::SetManagedSessionConfigInput,

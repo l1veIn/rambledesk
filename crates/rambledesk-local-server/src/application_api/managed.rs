@@ -9,6 +9,10 @@ use super::*;
 pub(super) fn routes() -> Router<ApplicationApiState> {
     Router::new()
         .route(
+            "/application/sendManagedPromptContent",
+            post(send_managed_prompt_content).layer(DefaultBodyLimit::max(5 * 1024 * 1024)),
+        )
+        .route(
             "/application/setManagedSessionConfig",
             post(set_managed_session_config),
         )
@@ -185,4 +189,11 @@ async fn set_managed_session_config(
     ApplicationJson(input): ApplicationJson<rambledesk_core::SetManagedSessionConfigInput>,
 ) -> Response<Body> {
     managed_result(state.commands.set_managed_session_config(input).await)
+}
+
+async fn send_managed_prompt_content(
+    State(state): State<ApplicationApiState>,
+    ApplicationJson(input): ApplicationJson<rambledesk_core::SendManagedPromptContentInput>,
+) -> Response<Body> {
+    managed_result(state.commands.send_managed_prompt_content(input).await)
 }

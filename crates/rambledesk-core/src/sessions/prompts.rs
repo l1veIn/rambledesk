@@ -48,10 +48,34 @@ impl SessionApplication {
         self.dispatch_prompt(input, None).await
     }
 
+    pub async fn send_prompt_content(
+        &self,
+        input: SendManagedPromptContentInput,
+    ) -> Result<ManagedSessionSnapshot, SessionError> {
+        let session_id = input.session_id.clone();
+        let blocks = input.into_blocks()?;
+        let text = super::prompt_content::prompt_display(&blocks).summary();
+        self.dispatch_prompt_inner(
+            SendManagedPromptInput { session_id, text },
+            None,
+            Some(blocks),
+        )
+        .await
+    }
+
     pub(super) async fn dispatch_prompt(
         &self,
         input: SendManagedPromptInput,
         delivery: Option<FeedbackDelivery>,
+    ) -> Result<ManagedSessionSnapshot, SessionError> {
+        self.dispatch_prompt_inner(input, delivery, None).await
+    }
+
+    async fn dispatch_prompt_inner(
+        &self,
+        input: SendManagedPromptInput,
+        delivery: Option<FeedbackDelivery>,
+        content: Option<Vec<SessionPromptContent>>,
     ) -> Result<ManagedSessionSnapshot, SessionError> {
         if input.text.trim().is_empty() || input.text.len() > 1_000_000 {
             return Err(SessionError::InvalidInput);
@@ -84,6 +108,11 @@ impl SessionApplication {
         }
         if live.runtime.activity != SessionActivityState::Idle {
             return Err(SessionError::Busy);
+        }
+        if content.as_ref().is_some_and(|blocks| {
+            !prompt_content_supported(blocks, &live.runtime.capabilities.prompt)
+        }) {
+            return Err(SessionError::InvalidInput);
         }
         let connection = live.connection.clone().ok_or(SessionError::NotConnected)?;
         let instance = live
@@ -119,14 +148,30 @@ impl SessionApplication {
         let saved = async {
             self.begin_turn(&input.session_id, &instance, &turn_id)
                 .await?;
-            self.append_activity(
-                &input.session_id,
-                Some(&turn_id),
-                SessionActivityKind::UserMessage,
-                input.text.clone(),
-                None,
-            )
-            .await?;
+            if let Some(blocks) = &content {
+                let display = super::prompt_content::prompt_display(blocks);
+                self.activities
+                    .append_activity(NewSessionActivity {
+                        id: self.ids.new_id(),
+                        session_id: input.session_id.clone(),
+                        turn_id: Some(turn_id.clone()),
+                        kind: SessionActivityKind::UserMessage,
+                        text: display.summary(),
+                        content: Some(display),
+                        tool_call_id: None,
+                        created_at: self.clock.now_rfc3339(),
+                    })
+                    .await?;
+            } else {
+                self.append_activity(
+                    &input.session_id,
+                    Some(&turn_id),
+                    SessionActivityKind::UserMessage,
+                    input.text.clone(),
+                    None,
+                )
+                .await?;
+            }
             self.append_activity(
                 &input.session_id,
                 Some(&turn_id),
@@ -168,7 +213,10 @@ impl SessionApplication {
         let application = self.clone();
         let session_id = input.session_id.clone();
         tokio::spawn(async move {
-            let result = connection.prompt(&input.text).await;
+            let result = match content {
+                Some(blocks) => connection.prompt_content(&blocks).await,
+                None => connection.prompt(&input.text).await,
+            };
             application
                 .finish_prompt(&session_id, &instance, &turn_id, delivery, result)
                 .await;

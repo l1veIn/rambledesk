@@ -111,6 +111,7 @@ impl AgentSessionDriver for Driver {
                 load_session: true,
                 resume_session: true,
                 http_mcp: true,
+                prompt: AgentPromptCapabilities::default(),
             },
         })
     }

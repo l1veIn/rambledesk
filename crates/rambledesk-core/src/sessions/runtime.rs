@@ -28,6 +28,8 @@ pub struct AgentSessionCapabilities {
     pub load_session: bool,
     pub resume_session: bool,
     pub http_mcp: bool,
+    #[serde(default)]
+    pub prompt: super::AgentPromptCapabilities,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]

@@ -16,7 +16,7 @@ describe('Managed session rendering', () => {
         created_at: 'today', updated_at: 'today',
         management: { kind: 'managed', protocol: 'acp', agent_config_id: 'config', cwd: '/repo', remote_session_id: 'remote' } },
       runtime: { configuration: { options: [], modes: null, models: null }, connection: 'connected', activity: 'waiting_permission', instance_id: 'instance', config_updated_at: null,
-        capabilities: { load_session: true, resume_session: false, http_mcp: true }, last_error: null },
+        capabilities: { prompt: { image: false, audio: false, embedded_context: false, resource_links: true }, load_session: true, resume_session: false, http_mcp: true }, last_error: null },
     }
     const action = vi.fn()
     const { body } = render(ManagedSessionWorkspace, { props: {
@@ -47,7 +47,7 @@ describe('Managed session rendering', () => {
         created_at: 'today', updated_at: 'today',
         management: { kind: 'managed', protocol: 'acp', agent_config_id: 'config', cwd: '/repo', remote_session_id: 'remote' } },
       runtime: { configuration: { options: [], modes: null, models: null }, connection: 'connected', activity: 'running', instance_id: 'instance', config_updated_at: null,
-        capabilities: { load_session: true, resume_session: false, http_mcp: true }, last_error: 'Cleanup failed' },
+        capabilities: { prompt: { image: false, audio: false, embedded_context: false, resource_links: true }, load_session: true, resume_session: false, http_mcp: true }, last_error: 'Cleanup failed' },
     }
     const action = vi.fn()
     const { body } = render(ManagedSessionWorkspace, { props: {
@@ -72,7 +72,7 @@ describe('Managed session rendering', () => {
         created_at: '2026-09-04', updated_at: '2026-09-04',
         management: { kind: 'managed', protocol: 'acp', agent_config_id: 'config', cwd: '/repo', remote_session_id: null } },
       runtime: { configuration: { options: [], modes: null, models: null }, connection: 'stopped', activity: 'idle', instance_id: null,
-        config_updated_at: null, capabilities: { load_session: false, resume_session: false, http_mcp: false }, last_error: null },
+        config_updated_at: null, capabilities: { prompt: { image: false, audio: false, embedded_context: false, resource_links: true }, load_session: false, resume_session: false, http_mcp: false }, last_error: null },
     }
     const runtimeAction = vi.fn()
     const { body } = render(ManagedSessionWorkspace, { props: {
@@ -93,7 +93,7 @@ describe('Managed session rendering', () => {
         created_at: '2026-09-04', updated_at: '2026-09-04',
         management: { kind: 'managed', protocol: 'acp', agent_config_id: 'config-one', cwd: '/repo', remote_session_id: 'remote-one' } },
       runtime: { configuration: { options: [], modes: null, models: null }, connection: 'connected', activity: 'waiting_permission', instance_id: 'instance-one',
-        config_updated_at: null, capabilities: { load_session: true, resume_session: false, http_mcp: true }, last_error: null },
+        config_updated_at: null, capabilities: { prompt: { image: false, audio: false, embedded_context: false, resource_links: true }, load_session: true, resume_session: false, http_mcp: true }, last_error: null },
     }
     const runtimeAction = vi.fn()
     const { body } = render(ManagedSessionWorkspace, { props: {

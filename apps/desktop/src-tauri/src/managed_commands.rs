@@ -137,3 +137,14 @@ pub(crate) async fn set_managed_session_config(
         .set_managed_session_config(input)
         .await
 }
+
+#[tauri::command]
+pub(crate) async fn send_managed_prompt_content(
+    state: tauri::State<'_, WorkbenchState>,
+    input: rambledesk_core::SendManagedPromptContentInput,
+) -> Result<ManagedSessionSnapshot, ManagedCommandError> {
+    state
+        .application_commands
+        .send_managed_prompt_content(input)
+        .await
+}

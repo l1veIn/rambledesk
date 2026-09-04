@@ -1,3 +1,4 @@
+import type { SendManagedPromptContentInput } from '$lib/generated/feedback'
 import type { SetManagedSessionConfigInput } from '$lib/generated/feedback'
 import type { AgentCatalogEntry, AgentInspection, CatalogAgentInput, AgentInstallJob, InstallAgentInput, AgentInstallJobInput } from '../generated/feedback'
 import {
@@ -72,6 +73,7 @@ export type ApplicationCommandMap = Readonly<{
   stopManagedSession: ApplicationCommandContract<ManagedSessionInput, ManagedSessionSnapshot>
   cancelManagedPrompt: ApplicationCommandContract<ManagedSessionInput, ManagedSessionSnapshot>
   setManagedSessionConfig: { input: SetManagedSessionConfigInput; output: ManagedSessionSnapshot }
+  sendManagedPromptContent: { input: SendManagedPromptContentInput; output: ManagedSessionSnapshot }
   sendManagedPrompt: ApplicationCommandContract<SendManagedPromptInput, ManagedSessionSnapshot>
   respondManagedPermission: ApplicationCommandContract<RespondManagedPermissionInput, ManagedSessionSnapshot>
   resolveFeedbackDelivery: ApplicationCommandContract<ResolveFeedbackDeliveryInput, ManagedSessionSnapshot>

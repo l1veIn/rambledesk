@@ -19,6 +19,7 @@ struct ManagedConnection {
     remote: String,
     permissions: Arc<crate::permissions::PermissionQueue>,
     configuration: crate::session_configuration::SharedConfiguration,
+    prompt_capabilities: rambledesk_core::AgentPromptCapabilities,
 }
 
 #[async_trait]
@@ -79,13 +80,11 @@ impl AgentSessionDriver for AcpSessionDriver {
         let sender = connection.sender();
         let permissions = connection.permission_queue();
         let configuration = connection.configuration_cache();
+        let capabilities = connection.capabilities();
+        let prompt_capabilities = capabilities.prompt.clone();
         Ok(StartedAgentSession {
             remote_session_id: info.remote_session_id.clone(),
-            capabilities: AgentSessionCapabilities {
-                load_session: info.load_session,
-                resume_session: info.resume_session,
-                http_mcp: info.http_mcp,
-            },
+            capabilities,
             connection: Arc::new(ManagedConnection {
                 owned: Mutex::new(Some(connection)),
                 shutdown: tokio::sync::Mutex::new(()),
@@ -93,6 +92,7 @@ impl AgentSessionDriver for AcpSessionDriver {
                 remote: info.remote_session_id,
                 permissions,
                 configuration,
+                prompt_capabilities,
             }),
         })
     }
@@ -146,25 +146,22 @@ impl AgentSessionConnection for ManagedConnection {
             .map_err(safe_error)
     }
     async fn prompt(&self, text: &str) -> Result<String, AgentDriverError> {
-        use agent_client_protocol::schema::v1::{
-            ContentBlock, PromptRequest, SessionId, TextContent,
-        };
-        let result = self
-            .sender
-            .send_request(PromptRequest::new(
-                SessionId::new(self.remote.clone()),
-                vec![ContentBlock::Text(TextContent::new(text))],
-            ))
-            .block_task()
-            .await;
-        self.permissions.cancel_all();
-        result
-            .map(|response| format!("{:?}", response.stop_reason))
-            .map_err(|_| {
-                AgentDriverError::new(
-                    "ACP prompt failed; reconnect to the original session before continuing",
-                )
-            })
+        use agent_client_protocol::schema::v1::{ContentBlock, TextContent};
+        self.send_prompt_blocks(vec![ContentBlock::Text(TextContent::new(text))])
+            .await
+    }
+    async fn prompt_content(
+        &self,
+        blocks: &[rambledesk_core::SessionPromptContent],
+    ) -> Result<String, AgentDriverError> {
+        rambledesk_core::validate_prompt_content(blocks)?;
+        if !rambledesk_core::prompt_content_supported(blocks, &self.prompt_capabilities) {
+            return Err(AgentDriverError::new(
+                "Agent does not support this prompt content",
+            ));
+        }
+        self.send_prompt_blocks(crate::prompt_content::map(blocks))
+            .await
     }
     fn is_closed(&self) -> bool {
         self.owned
@@ -180,6 +177,31 @@ impl AgentSessionConnection for ManagedConnection {
             owned.shutdown().await.map_err(safe_error)?;
         }
         Ok(())
+    }
+}
+
+impl ManagedConnection {
+    async fn send_prompt_blocks(
+        &self,
+        blocks: Vec<agent_client_protocol::schema::v1::ContentBlock>,
+    ) -> Result<String, AgentDriverError> {
+        use agent_client_protocol::schema::v1::{PromptRequest, SessionId};
+        let result = self
+            .sender
+            .send_request(PromptRequest::new(
+                SessionId::new(self.remote.clone()),
+                blocks,
+            ))
+            .block_task()
+            .await;
+        self.permissions.cancel_all();
+        result
+            .map(|response| format!("{:?}", response.stop_reason))
+            .map_err(|_| {
+                AgentDriverError::new(
+                    "ACP prompt failed; reconnect to the original session before continuing",
+                )
+            })
     }
 }
 

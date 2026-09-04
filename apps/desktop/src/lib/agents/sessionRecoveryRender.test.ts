@@ -17,7 +17,7 @@ function snapshot(connection: ManagedSessionViewSnapshot['runtime']['connection'
       created_at: 'today', updated_at: 'today',
       management: { kind: 'managed', protocol: 'acp', agent_config_id: 'config', cwd: '/repo', remote_session_id: 'original' } },
     runtime: { configuration: { options: [], modes: null, models: null }, connection, activity: 'idle', instance_id: null, config_updated_at: null,
-      capabilities: { load_session: true, resume_session: false, http_mcp: true }, last_error: null },
+      capabilities: { prompt: { image: false, audio: false, embedded_context: false, resource_links: true }, load_session: true, resume_session: false, http_mcp: true }, last_error: null },
   }
 }
 
