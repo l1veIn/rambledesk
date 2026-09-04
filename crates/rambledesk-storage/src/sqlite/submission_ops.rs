@@ -428,6 +428,7 @@ impl SqliteFeedbackStore {
                 .ok_or(RepositoryError::CorruptData)
                 .and_then(|row| stored_request_from_row(&row))?;
             if stored.feedback.is_some() {
+                delivery_ops::enqueue_terminal_delivery(&mut transaction, &plan.request_id).await?;
                 transaction.commit().await.map_err(storage_error)?;
                 return Ok(rambledesk_core::MutationOutcome::unchanged(stored));
             }
@@ -559,6 +560,7 @@ impl SqliteFeedbackStore {
             .await?
             .ok_or(RepositoryError::CorruptData)
             .and_then(|row| stored_request_from_row(&row))?;
+        delivery_ops::enqueue_terminal_delivery(&mut transaction, &plan.request_id).await?;
         transaction.commit().await.map_err(storage_error)?;
         for attachment in &plan.attachments {
             let _ = tokio::fs::remove_file(&attachment.draft_path).await;

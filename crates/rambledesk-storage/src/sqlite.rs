@@ -26,6 +26,7 @@ use thiserror::Error;
 
 mod activity_ops;
 mod backup;
+mod delivery_ops;
 mod managed_ops;
 mod migration_compat;
 mod paths;

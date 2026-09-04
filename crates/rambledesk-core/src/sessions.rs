@@ -5,6 +5,7 @@
 
 mod activity;
 mod application;
+mod delivery;
 mod driver;
 mod feedback_binding;
 mod model;
@@ -15,6 +16,7 @@ mod runtime;
 
 pub use activity::*;
 pub use application::{SessionApplication, SessionError};
+pub use delivery::*;
 pub use driver::*;
 pub use feedback_binding::*;
 pub use model::*;

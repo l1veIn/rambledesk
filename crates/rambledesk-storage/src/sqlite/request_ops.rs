@@ -419,6 +419,11 @@ impl SqliteFeedbackStore {
         request_id: &str,
         now: &str,
     ) -> Result<rambledesk_core::MutationOutcome<StoredFeedbackRequest>, RepositoryError> {
+        let mut transaction = self
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(storage_error)?;
         let updated = sqlx::query(
             "UPDATE feedback_requests SET status = 'completed', resolution = 'approved', \
              completed_at = ?2, updated_at = ?2, revision = revision + 1 \
@@ -427,22 +432,27 @@ impl SqliteFeedbackStore {
         )
         .bind(request_id)
         .bind(now)
-        .execute(&self.pool)
+        .execute(&mut *transaction)
         .await
         .map_err(storage_error)?;
+        let stored = load_request_row(&mut transaction, request_id)
+            .await?
+            .ok_or(RepositoryError::RequestNotFound)
+            .and_then(|row| stored_request_from_row(&row))?;
         if updated.rows_affected() != 1 {
-            let existing = self.get_request_impl(request_id).await?;
-            return if existing.status == FeedbackStatus::Completed
-                && existing.resolution == Some(FeedbackResolution::Approved)
+            return if stored.status == FeedbackStatus::Completed
+                && stored.resolution == Some(FeedbackResolution::Approved)
             {
-                Ok(rambledesk_core::MutationOutcome::unchanged(existing))
+                delivery_ops::enqueue_terminal_delivery(&mut transaction, request_id).await?;
+                transaction.commit().await.map_err(storage_error)?;
+                Ok(rambledesk_core::MutationOutcome::unchanged(stored))
             } else {
                 Err(RepositoryError::RequestTerminal)
             };
         }
-        self.get_request_impl(request_id)
-            .await
-            .map(rambledesk_core::MutationOutcome::changed)
+        delivery_ops::enqueue_terminal_delivery(&mut transaction, request_id).await?;
+        transaction.commit().await.map_err(storage_error)?;
+        Ok(rambledesk_core::MutationOutcome::changed(stored))
     }
 
     pub(super) async fn list_open_requests_impl(

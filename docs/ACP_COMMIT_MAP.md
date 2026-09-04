@@ -59,4 +59,5 @@
 - 步骤 9a：Desktop/Web 独立 Agent 设置页，支持配置列表、编辑、启用与连接检查；命令参数按数组保存，环境值默认遮蔽，配置草稿按 ID 保留，界面卸载不操作后端。20 项配置/控制器/SSR 测试与 Svelte 检查通过。
 - 步骤 9b：导航接入新建配置/目录会话与 Agent 工作区；零反馈默认显示 Agent，反馈与 Agent 面板可切换，权限/取消独立响应，关闭视图仅释放订阅。会话 ID 固定控制器，精确失效与并发快照合并避免串会话。Agent UI 共 30 项测试、Svelte 0 error / 0 warning 通过；直接删除入口留待步骤 13 接入。
 - 步骤 10：托管 MCP 固定请求归属，独立随机凭据与独立 transport session manager；撤销等待已进入操作退出，跨 scope、伪造身份与混用 MCP session 均拒绝。实例启动注入 HTTP MCP，恢复轮换凭据，失败/停止撤销；Desktop 共享同一 provider/listener。4 项 HTTP 作用域测试、16 项 MCP、7 项原 HTTP 安全回归、4 项 runtime（含凭据生命周期）通过；Desktop 编译与相关 clippy 通过。
-- 步骤 11–15：推进中，逐步验收后记录。
+- 步骤 11：所有托管反馈终态与 outbox 同事务写入，重复提交/发布恢复幂等；attempt CAS 防止并发重复认领，重启 sending 转 uncertain，只能显式重试或确认。迁移补齐已有托管终态，按会话丢弃与跨作用域校验完善。8 项 outbox 测试及 storage 共 74 项回归通过。
+- 步骤 12–15：推进中，逐步验收后记录。
