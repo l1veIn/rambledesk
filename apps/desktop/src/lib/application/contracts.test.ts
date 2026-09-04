@@ -93,6 +93,7 @@ describe('application command contracts', () => {
 
   it('contains only the intended cross-client operation names', () => {
     const commands = [
+      'listAvailableAgents', 'inspectAgentInstallation', 'listAgentInstallJobs', 'installAgent', 'cancelAgentInstall',
       'listAgentConfigs',
       'saveAgentConfig',
       'deleteAgentConfig',
@@ -131,7 +132,7 @@ describe('application command contracts', () => {
       'readRequestAttachment',
     ] as const satisfies readonly ApplicationCommandName[]
 
-    expect(commands).toHaveLength(36)
+    expect(commands).toHaveLength(41)
     expectTypeOf<(typeof commands)[number]>().toEqualTypeOf<ApplicationCommandName>()
   })
 })

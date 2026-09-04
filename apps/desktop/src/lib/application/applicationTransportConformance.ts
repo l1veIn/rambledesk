@@ -8,6 +8,11 @@ import type {
 } from './contracts'
 
 export const APPLICATION_CONFORMANCE_INPUTS = {
+  listAvailableAgents: undefined,
+  inspectAgentInstallation: { agent_id: 'deepseek' },
+  listAgentInstallJobs: undefined,
+  installAgent: { agent_id: 'deepseek', version: null },
+  cancelAgentInstall: { job_id: 'job-1' },
   listAgentConfigs: undefined,
   saveAgentConfig: {
     id: null, name: 'DeepSeek', host_id: 'dsh', protocol: 'acp', enabled: true,
@@ -99,10 +104,10 @@ export function applicationConformanceResult<Name extends ApplicationCommandName
   let result: unknown
   if (name === 'readFeedbackAttachment' || name === 'readRequestAttachment') {
     result = new Uint8Array([4, 5, 6]).buffer
-  } else if (name === 'deleteHostSession' || name === 'deleteFeedbackRequest' || name === 'deleteAgentConfig' || name === 'deleteManagedSession') {
+  } else if (name === 'cancelAgentInstall' || name === 'deleteHostSession' || name === 'deleteFeedbackRequest' || name === 'deleteAgentConfig' || name === 'deleteManagedSession') {
     result = undefined
   } else if (
-    name === 'listAgentConfigs' ||
+    name === 'listAvailableAgents' || name === 'listAgentInstallJobs' || name === 'listAgentConfigs' ||
     name === 'listFeedbackInbox' ||
     name === 'listHostSessions' ||
     name === 'listArchivedHostSessions' ||
@@ -145,9 +150,9 @@ export function runApplicationTransportConformance(
   createFixture: () => ApplicationTransportConformanceFixture,
 ): void {
   describe(`${implementationName} ApplicationTransport conformance`, () => {
-    it('maps all 36 query mutation multipart binary and void operations', async () => {
+    it('maps all query mutation multipart binary and void operations', async () => {
       const fixture = createFixture()
-      expect(APPLICATION_COMMAND_NAMES).toHaveLength(36)
+      expect(APPLICATION_COMMAND_NAMES).toHaveLength(41)
 
       for (const [index, name] of APPLICATION_COMMAND_NAMES.entries()) {
         const input = APPLICATION_CONFORMANCE_INPUTS[name]

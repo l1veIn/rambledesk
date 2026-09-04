@@ -1,3 +1,4 @@
+use rambledesk_core::{CatalogAgentInput, AgentInstallJobInput, AgentInstallJob};
 use rambledesk_core::{AgentConnectionKind, AgentDistribution, AgentVerificationStatus, AgentVerification, AgentDependency, AgentCatalogEntry, AgentInstallSource, AgentCheckStatus, AgentCatalogCheck, AgentDependencyInspection, AgentInspection, InstallAgentInput, AgentInstallPhase, AgentInstallProgress, InstalledAgent};
 use rambledesk_core::{SessionActivityContent, SessionContentBlock, SessionToolKind, SessionToolStatus, SessionToolLocation, SessionToolCall};
 use std::{fs, path::PathBuf};
@@ -64,6 +65,10 @@ fn exported_feedback_package_content() -> String {
 
 fn main() -> std::io::Result<()> {
     let declarations = [
+        exported::<CatalogAgentInput>(),
+        exported::<AgentInstallJobInput>(),
+        exported::<AgentInstallJob>(),
+
         exported::<AgentConnectionKind>(),
         exported::<AgentDistribution>(),
         exported::<AgentVerificationStatus>(),

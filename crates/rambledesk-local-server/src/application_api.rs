@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+mod agents;
 mod managed;
 
 use axum::{
@@ -45,6 +46,9 @@ pub const RUNTIME_GENERATION_HEADER: &str = "x-rambledesk-runtime-generation";
 pub const REVISION_HEADER: &str = "x-rambledesk-revision";
 
 const MUTATION_OPERATIONS: &[&str] = &[
+    "inspectAgentInstallation",
+    "installAgent",
+    "cancelAgentInstall",
     "deleteManagedSession",
     "resolveFeedbackDelivery",
     "saveAgentConfig",
@@ -127,6 +131,7 @@ pub fn application_router(
 ) -> Router {
     Router::new()
         .merge(managed::routes())
+        .merge(agents::routes())
         .route("/application/listFeedbackInbox", post(list_feedback_inbox))
         .route("/application/listHostSessions", post(list_host_sessions))
         .route(

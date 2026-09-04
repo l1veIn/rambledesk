@@ -3,7 +3,9 @@
 //! Host profiles and continuation strategy selection live in `rambledesk-hosts`
 //! so host integration cadence stays independent of core protocol changes.
 
+mod agent_management;
 mod application_changes;
+pub use agent_management::*;
 mod application_commands;
 mod feedback;
 mod process;
@@ -22,9 +24,9 @@ pub use application_changes::{
     ApplicationSnapshotMetadata, NoopApplicationChangeObserver,
 };
 pub use application_commands::{
-    ApplicationCommandFacade, ApplicationFeedbackRequestView, ApplicationFeedbackResultView,
-    ApplicationFeedbackWorkspaceView, ApplicationHostProfileView, ManagedCommandError,
-    ManagedCommandErrorCode,
+    AgentManagementError, ApplicationCommandFacade, ApplicationFeedbackRequestView,
+    ApplicationFeedbackResultView, ApplicationFeedbackWorkspaceView, ApplicationHostProfileView,
+    ManagedCommandError, ManagedCommandErrorCode,
 };
 pub use process::{find_executable, find_executable_on_path};
 pub use sessions::*;

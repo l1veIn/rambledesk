@@ -1,3 +1,4 @@
+type CatalogInput = { agent_id: string }
 import type {
   ApplicationCommandInput,
   ApplicationCommandName,
@@ -30,6 +31,11 @@ import {
 } from './applicationEvents'
 
 export const HTTP_APPLICATION_OPERATIONS = {
+  listAvailableAgents: 'listAvailableAgents',
+  inspectAgentInstallation: 'inspectAgentInstallation',
+  listAgentInstallJobs: 'listAgentInstallJobs',
+  installAgent: 'installAgent',
+  cancelAgentInstall: 'cancelAgentInstall',
   listAgentConfigs: 'listAgentConfigs',
   saveAgentConfig: 'saveAgentConfig',
   deleteAgentConfig: 'deleteAgentConfig',
@@ -72,6 +78,7 @@ export type HttpApplicationOperation =
   (typeof HTTP_APPLICATION_OPERATIONS)[ApplicationCommandName]
 
 const NO_ARGUMENT_COMMANDS: ReadonlySet<ApplicationCommandName> = new Set([
+  'listAvailableAgents', 'listAgentInstallJobs',
   'listAgentConfigs',
   'listFeedbackInbox',
   'listHostSessions',
@@ -79,6 +86,7 @@ const NO_ARGUMENT_COMMANDS: ReadonlySet<ApplicationCommandName> = new Set([
 ])
 
 const VOID_COMMANDS: ReadonlySet<ApplicationCommandName> = new Set([
+  'cancelAgentInstall',
   'deleteManagedSession',
   'deleteAgentConfig',
   'deleteHostSession',
@@ -91,6 +99,7 @@ const BINARY_COMMANDS: ReadonlySet<ApplicationCommandName> = new Set([
 ])
 
 const MUTATION_COMMANDS: ReadonlySet<ApplicationCommandName> = new Set([
+  'inspectAgentInstallation', 'installAgent', 'cancelAgentInstall',
   'saveAgentConfig',
   'deleteAgentConfig',
   // The check starts a real agent process and must never be replayed as a query.
@@ -814,6 +823,11 @@ export function applicationCommandResponseResources<Name extends ApplicationComm
   input: ApplicationCommandInput<Name>,
 ): readonly ApplicationResourceKey[] {
   switch (name) {
+    case 'listAvailableAgents':
+    case 'inspectAgentInstallation':
+    case 'listAgentInstallJobs':
+    case 'installAgent':
+    case 'cancelAgentInstall':
     case 'listAgentConfigs':
     case 'saveAgentConfig':
     case 'deleteAgentConfig':
@@ -883,8 +897,15 @@ export function applicationCommandProjectionKey<Name extends ApplicationCommandN
   input: ApplicationCommandInput<Name>,
 ): string {
   switch (name) {
+    case 'listAvailableAgents':
+    case 'listAgentInstallJobs':
     case 'listAgentConfigs':
       return projectionKey(name)
+    case 'inspectAgentInstallation':
+    case 'installAgent':
+      return projectionKey(name, (input as CatalogInput).agent_id)
+    case 'cancelAgentInstall':
+      return projectionKey(name, (input as { job_id: string }).job_id)
     case 'saveAgentConfig':
       return projectionKey(name, (input as ApplicationCommandInput<'saveAgentConfig'>).id)
     case 'deleteAgentConfig':

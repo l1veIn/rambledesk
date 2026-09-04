@@ -1,3 +1,4 @@
+import type { AgentCatalogEntry, AgentInspection, CatalogAgentInput, AgentInstallJob, InstallAgentInput, AgentInstallJobInput } from '../generated/feedback'
 import {
   APPLICATION_ERROR_CODES,
   type AgentConfig,
@@ -55,6 +56,11 @@ export type ApplicationAddAttachmentInput = Omit<AddAttachmentInput, 'contents'>
  * never a Tauri `{ input }` envelope or camelCase invoke argument object.
  */
 export type ApplicationCommandMap = Readonly<{
+  listAvailableAgents: ApplicationCommandContract<undefined, AgentCatalogEntry[]>
+  inspectAgentInstallation: ApplicationCommandContract<CatalogAgentInput, AgentInspection>
+  listAgentInstallJobs: ApplicationCommandContract<undefined, AgentInstallJob[]>
+  installAgent: ApplicationCommandContract<InstallAgentInput, AgentInstallJob>
+  cancelAgentInstall: ApplicationCommandContract<AgentInstallJobInput, void>
   listAgentConfigs: ApplicationCommandContract<undefined, AgentConfig[]>
   saveAgentConfig: ApplicationCommandContract<SaveAgentConfigInput, AgentConfig>
   deleteAgentConfig: ApplicationCommandContract<AgentConfigInput, void>

@@ -17,6 +17,11 @@ import { UNAVAILABLE_CAPABILITY_MANIFEST } from '../capabilities/unavailableCapa
 import { APPLICATION_EVENTS_STREAM } from './applicationEvents'
 
 export const TAURI_APPLICATION_COMMANDS = {
+  listAvailableAgents: 'list_available_agents',
+  inspectAgentInstallation: 'inspect_agent_installation',
+  listAgentInstallJobs: 'list_agent_install_jobs',
+  installAgent: 'install_agent',
+  cancelAgentInstall: 'cancel_agent_install',
   listAgentConfigs: 'list_agent_configs',
   saveAgentConfig: 'save_agent_config',
   deleteAgentConfig: 'delete_agent_config',
@@ -56,6 +61,7 @@ export const TAURI_APPLICATION_COMMANDS = {
 } as const satisfies Record<ApplicationCommandName, string>
 
 const NO_ARGUMENT_COMMANDS: ReadonlySet<ApplicationCommandName> = new Set([
+  'listAvailableAgents', 'listAgentInstallJobs',
   'listAgentConfigs',
   'listFeedbackInbox',
   'listHostSessions',

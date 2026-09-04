@@ -1,3 +1,4 @@
+mod agent_commands;
 mod application_events;
 mod clipboard_capture;
 mod diagnostics;
@@ -53,6 +54,7 @@ struct WorkbenchState {
     application: FeedbackApplication,
     application_commands: Arc<ApplicationCommandFacade>,
     sessions: SessionApplication,
+    agents: rambledesk_core::AgentManagementApplication,
     application_change_hub: Arc<ApplicationChangeHub>,
     application_events: application_events::ApplicationEventBridge,
     web_access_lifecycle: tokio::sync::Mutex<web_access::WebAccessLifecycle>,
@@ -227,13 +229,20 @@ pub fn run() {
                 .with_deliveries(Arc::new(store.clone()))
                 .with_deletions(Arc::new(store.clone()))
                 .with_recovery(Arc::new(store.clone()));
+                let agents = rambledesk_core::AgentManagementApplication::new(
+                    Arc::new(rambledesk_acp::agents::AgentCatalogService::new(
+                        app.path().app_local_data_dir()?.join("agents"),
+                    )?),
+                    application_change_hub.clone(),
+                );
                 let application_commands = Arc::new(
                     ApplicationCommandFacade::new(
                         application.clone(),
                         terminal_operations,
                         application_host_profiles(),
                     )
-                    .with_sessions(sessions.clone()),
+                    .with_sessions(sessions.clone())
+                    .with_agent_management(agents.clone()),
                 );
                 let config = ServerConfig::new(token.clone()).with_port(configured_port()?);
                 let handle = tauri::async_runtime::block_on(start_server_with_managed(
@@ -293,6 +302,7 @@ pub fn run() {
                     application,
                     application_commands,
                     sessions,
+                    agents,
                     application_change_hub,
                     application_events,
                     web_access_lifecycle: tokio::sync::Mutex::new(
@@ -348,6 +358,11 @@ pub fn run() {
             managed_commands::save_agent_config,
             managed_commands::delete_agent_config,
             managed_commands::check_agent_config,
+            agent_commands::list_available_agents,
+            agent_commands::inspect_agent_installation,
+            agent_commands::list_agent_install_jobs,
+            agent_commands::install_agent,
+            agent_commands::cancel_agent_install,
             managed_commands::create_managed_session,
             managed_commands::get_managed_session,
             managed_commands::start_managed_session,
@@ -465,6 +480,7 @@ pub fn run() {
         if matches!(event, RunEvent::Exit | RunEvent::ExitRequested { .. })
             && let Some(state) = app_handle.try_state::<WorkbenchState>()
         {
+            tauri::async_runtime::block_on(state.agents.shutdown());
             if tauri::async_runtime::block_on(state.sessions.shutdown()).is_err() {
                 tracing::warn!("managed session shutdown completed with a cleanup error");
             }

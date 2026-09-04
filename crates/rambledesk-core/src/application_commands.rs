@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
+mod agents;
 mod managed;
+pub use agents::AgentManagementError;
 pub use managed::{ManagedCommandError, ManagedCommandErrorCode};
 
 use schemars::JsonSchema;
@@ -100,6 +102,7 @@ impl From<FeedbackWorkspaceView> for ApplicationFeedbackWorkspaceView {
 
 #[derive(Clone)]
 pub struct ApplicationCommandFacade {
+    agents: Option<crate::AgentManagementApplication>,
     sessions: Option<crate::SessionApplication>,
     application: FeedbackApplication,
     terminal_operations: WorkbenchTerminalOperations,
@@ -113,6 +116,7 @@ impl ApplicationCommandFacade {
         host_profiles: Vec<ApplicationHostProfileView>,
     ) -> Self {
         Self {
+            agents: None,
             sessions: None,
             application,
             terminal_operations,
