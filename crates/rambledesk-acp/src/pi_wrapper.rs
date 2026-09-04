@@ -1,12 +1,13 @@
 //! Pi ACP 0.0.33 has a command override, but does not forward extension arguments
 //! or MCP servers. This wrapper adds one explicitly selected managed extension
 //! without editing Pi/project settings. It shares RambleDesk's process ownership.
+#[cfg(not(unix))]
+use std::{collections::BTreeMap, time::Duration};
 use std::{
-    collections::BTreeMap,
     fmt,
     path::{Path, PathBuf},
-    time::Duration,
 };
+#[cfg(not(unix))]
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 
 pub const WRAPPER_ENV: &str = "RAMBLEDESK_MANAGED_PI_WRAPPER";
@@ -185,6 +186,7 @@ impl PiWrapperLaunch {
     }
 }
 
+#[cfg(not(unix))]
 pub async fn run<R, W>(
     launch: PiWrapperLaunch,
     mut input: R,
@@ -244,6 +246,38 @@ where
     Ok(status.and_then(|status| status.code()).unwrap_or(1))
 }
 
+#[cfg(unix)]
+pub fn run_process() -> i32 {
+    use std::os::unix::process::CommandExt;
+    // The ACP owner already established the instance's process group. Replacing
+    // this wrapper keeps Pi and its descendants inside that group, including
+    // when cancellation kills the wrapper before it could run Rust destructors.
+    // A second OwnedProcess group here would escape the outer owner's SIGKILL.
+    let error = match PiWrapperLaunch::from_env() {
+        Ok(launch) => {
+            let mut command = std::process::Command::new(&launch.native.command);
+            command
+                .args(&launch.native.args)
+                .args(&launch.args)
+                .arg("--extension")
+                .arg(&launch.extension)
+                .current_dir(&launch.cwd)
+                // Native stderr may contain credentials. Discarding it retains
+                // the Windows wrapper's no-log policy without creating a pipe.
+                .stderr(std::process::Stdio::null());
+            for name in CONTROL_ENV {
+                command.env_remove(name);
+            }
+            let _ = command.exec();
+            PiWrapperError
+        }
+        Err(error) => error,
+    };
+    eprintln!("{error}");
+    1
+}
+
+#[cfg(not(unix))]
 pub fn run_process() -> i32 {
     let result = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)

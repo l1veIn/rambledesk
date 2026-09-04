@@ -18,6 +18,9 @@ use tokio::{
 
 #[path = "support/native_pi.rs"]
 mod native_pi;
+#[cfg(unix)]
+#[path = "support/owned_group.rs"]
+mod owned_group;
 
 struct Fixture {
     _directory: tempfile::TempDir,
@@ -77,6 +80,9 @@ impl Fixture {
 }
 
 struct Companion {
+    // Drop before Child: an unreaped leader pins the test-owned group ID.
+    #[cfg(unix)]
+    group: Option<owned_group::OwnedGroup>,
     child: Child,
     input: Option<ChildStdin>,
     output: BufReader<ChildStdout>,
@@ -92,7 +98,8 @@ impl Companion {
         let node = rambledesk_core::find_executable("node").context("Node fixture")?;
         let native =
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/pi_rpc.mjs");
-        let mut child = Command::new(env!("CARGO_BIN_EXE_rambledesk"))
+        let mut command = Command::new(env!("CARGO_BIN_EXE_rambledesk"));
+        command
             .args([
                 "--mode",
                 "rpc",
@@ -118,8 +125,16 @@ impl Companion {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .kill_on_drop(true)
-            .spawn()?;
+            .kill_on_drop(true);
+        // Production uses the ACP owner's group. This direct wrapper fixture
+        // supplies that same outer ownership itself on Unix.
+        #[cfg(unix)]
+        command.process_group(0);
+        let mut child = command.spawn()?;
+        #[cfg(unix)]
+        let group = Some(owned_group::OwnedGroup::new(
+            child.id().context("child ID")?,
+        ));
         let input = child.stdin.take();
         let output = BufReader::new(child.stdout.take().context("stdout")?);
         let mut stderr = child.stderr.take().context("stderr")?;
@@ -129,6 +144,8 @@ impl Companion {
             bytes
         });
         Ok(Self {
+            #[cfg(unix)]
+            group,
             child,
             input,
             output,
@@ -163,6 +180,8 @@ impl Companion {
             bytes
         });
         Ok(Self {
+            #[cfg(unix)]
+            group: None,
             child,
             input,
             output,
@@ -217,6 +236,8 @@ impl Companion {
     }
     async fn stop(mut self, secret: &str) -> anyhow::Result<()> {
         drop(self.input.take());
+        #[cfg(unix)]
+        drop(self.group.take());
         tokio::time::timeout(Duration::from_secs(8), self.child.wait()).await??;
         let stderr = self.stderr.await?;
         let text = String::from_utf8_lossy(&stderr);

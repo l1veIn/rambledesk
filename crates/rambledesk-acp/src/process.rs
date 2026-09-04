@@ -104,8 +104,9 @@ impl OwnedProcess {
         Ok(exited.then_some(status))
     }
 
-    /// Wait without imposing a session lifetime. Periodic observation preserves
-    /// the Unix leader until all descendants can be cleaned before reaping it.
+    /// Wait without imposing a session lifetime. Unix wrappers use exec to stay
+    /// inside their outer ACP owner's group instead of creating a nested owner.
+    #[cfg(not(unix))]
     pub(crate) async fn wait_for_exit(&mut self) -> Result<std::process::ExitStatus, AcpError> {
         loop {
             if self

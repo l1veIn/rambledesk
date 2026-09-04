@@ -4837,6 +4837,7 @@ version = "0.3.4"
 dependencies = [
  "anyhow",
  "clap",
+ "libc",
  "rambledesk-acp",
  "rambledesk-core",
  "rambledesk-local-server",
