@@ -1,10 +1,11 @@
 # ADR 007：ACP 托管会话与反馈适配器分工
 
-- 状态：Accepted / TARGET，尚未实现
+- 状态：Accepted / CURRENT，首期已实现
 - 日期：2026-09-04
 - 术语源：[TERMINOLOGY.md](../TERMINOLOGY.md)
 - 调研：[Codeg ACP 接入与设置页](../CODEG_ACP_RESEARCH.md)
 - 交付顺序：[ACP 提交地图](../ACP_COMMIT_MAP.md)
+- 使用与支持范围：[ACP 托管会话](../ACP_MANAGED_SESSIONS.md)
 
 ## 背景
 
@@ -38,15 +39,15 @@ ACP 的进程归属由 Backend Runtime 控制。
 ### 2. 身份、配置与运行资源分离
 
 遵守术语表中的一会话对一 Agent Session 约束；多个任务与请求都留在该会话。CURRENT 的
-`(host_id, host_session_id)` 是外部关联合同，历史分组保留。TARGET 暴露 `host_sessions.id` 为稳定
+`(host_id, host_session_id)` 是外部关联合同，历史分组保留。现已暴露 `host_sessions.id` 为稳定
 `session_id`，托管路径创建反馈时由 controller 注入会话归属；模型不得任意重选关联 id。
 
 使用有分支的 `management`，区分 `external` 与带 `protocol`、`agent_config_id`、`cwd`、
 `remote_session_id` 的 `managed`。启动配置与 Host Profile 分离；同一配置可用于多个会话，每个会话
 固定自己的工作目录。运行实例身份和连接/执行状态属于 runtime 投影，反馈投递属于独立持久记录。
 
-存储首选在现有 `host_sessions` 上增加托管扩展记录，而非复制一套会话表；具体 migration 与 Rust DTO
-在持久化提交内定稿。创建前先保存本地会话，Agent 创建成功后绑定 remote id；失败也应能查看和清理。
+存储在现有 `host_sessions` 上增加 `managed_sessions` 扩展记录，并独立持久化启动配置、活动、投递、
+删除意图和运行检查点。创建前先保存本地会话，Agent 创建成功后绑定 remote id；失败仍能查看和清理。
 重连不改变本地身份，恢复必须由后端能力支持，不能把新建的空白 Agent Session 冒充原上下文。
 
 ### 3. 首期独占实例，保留后续调整空间
@@ -71,18 +72,28 @@ ACP 的进程归属由 Backend Runtime 控制。
 执行轮次结束；用户提交后，Backend Runtime 等待会话可接收输入，再投递携带 `request_id` 的续接消息。
 Agent 通过原反馈合同取得持久结果。原生适配器在 tool call 内等待时，不再额外发送一次 continuation。
 
-反馈终态发布与待投递记录必须原子完成或可恢复对账。发送结果不明时不能盲目重放；重启后不能凭旧
-connected 字段或 in-memory 去重集合宣称投递成功。具体状态迁移与失败证据随实现及测试交付。
+反馈终态与 outbox 入队在同一事务完成，文件发布中断由既有 publication plan 恢复对账。投递按 attempt id
+领取和完成，旧 attempt 不能覆盖新发送。`delivered` 表示续接轮次成功结束或用户确认已处理，不表示任务
+完成；`uncertain` 只允许用户显式重试或确认。重启后 sending 转为 uncertain，不能凭旧 connected 字段
+或 in-memory 去重集合宣称成功。
+
+运行恢复使用独立 run/turn 检查点。退出或重启发现未完成轮次时，原子写入可见的中断活动；只有用户显式
+恢复才重新启动实例。删除先写持久意图、封锁输入并撤销 scope，再停止所属实例和清理文件/记录；失败保留
+删除意图供重试。删除优先于恢复，不会为了继续清理而启动新的 Agent。
 
 ## 参考取舍与验收
 
 Codeg 的启动注册表、后端专属配置和设置页信息组织可参考；其 UI 框架、历史导入、自动安装与会话展示策略
 不直接成为 RambleDesk 的需求。尤其要区分 Codeg 使用的 `deepseek-acp` 与官方 dsh ACP 入口，分别记录
-版本和能力；先验证一个真实后端的 initialize、session/new、prompt、反馈工具可达性与资源清理。
+版本和能力。社区 `deepseek-acp@0.8.0` 与官方 `@deepseek-ai/dsh@0.1.2-rc.1` 均已通过真实双项目
+托管反馈闭环、整个 application/server/store 正常关闭重开后的显式原 Agent ID 恢复，以及删除一个会话时
+保留另一会话连接的验证；没有隐式重启 Agent，所观察的自有后代进程均已退出。提交由 application 探针
+模拟用户执行，真实重启不包含异常强杀。详细证据与尚未
+手工验收的项目见 [ACP_BACKEND_PROBE.md](../ACP_BACKEND_PROBE.md)，不据此宣称 Pi 或 Codex 兼容。
 
-后续采用小步、可合并的正式迭代：每步一个完整 commit，合同、migration、生成类型和相关测试同行。
-首个完整闭环为：创建会话 → 发送任务 → 固定归属的反馈请求 → 人类提交 → 同一 Agent Session 继续 →
-直接删除并清理。多项目并发不串会话、中断恢复不丢反馈是验收条件。CURRENT 外部适配器持续可用。
+本轮采用小步、可合并的正式迭代：每步一个完整 commit，合同、migration、生成类型和相关测试同行。
+已实现闭环为：创建会话 → 发送任务 → 固定归属的反馈请求 → 人类提交 → 同一 Agent Session 继续 →
+直接删除并清理。多项目并发不串会话、中断恢复不丢反馈由对应存储、协议和应用测试覆盖；外部适配器持续可用。
 
 ## 未进入首期的能力
 

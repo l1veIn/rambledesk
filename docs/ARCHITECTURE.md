@@ -1,9 +1,9 @@
 # RambleDesk 架构基线
 
-> 状态：v5 当前与目标边界。
+> 状态：v6 当前与目标边界，包含 ACP 托管会话。
 > 术语源：[TERMINOLOGY.md](TERMINOLOGY.md)。本文若与术语表冲突，以术语表为准。
 
-本文同时记录已经存在的结构与后续 Web、ACP 会话管理工作必须遵守的目标边界：
+本文同时记录已经存在的结构与后续平台扩展必须遵守的目标边界：
 
 - **CURRENT** 表示仓库当前已经实现并可验证的事实；
 - **TARGET** 表示已接受但尚未完成的演进边界，不得在产品文案中冒充已有能力。
@@ -11,12 +11,13 @@
 Backend Runtime 是运行角色，不是新 crate 的名字。除非另有标记，package 章节描述 CURRENT；
 TARGET 不预设新 crate、Web app 目录或 headless composition root。
 
-ACP 托管会话的 TARGET 见 [ADR 007](adr/007-acp-managed-sessions.md)：Backend Runtime 增加
+ACP 托管会话的 CURRENT 见 [ADR 007](adr/007-acp-managed-sessions.md)：Backend Runtime 持有
 Agent Session Management，ACP Client 与进程管理实现位于 core application contract 之外。
 一个 RambleDesk Session 对应一个 Agent Session；首期独占 ACP Instance，不要求实例只有一个 OS
-进程。持久会话、运行投影与反馈投递分别建模，Client view 不拥有其生命周期。下方 CURRENT 拓扑尚不包含 ACP。
-独立 `rambledesk-acp` 库现已提供稳定协议 v1 的 stdio 客户端与 smoke example；采用官方 Rust SDK 2.0.0，
-SDK 主版本不等于 wire 协议版本。尚未接入的托管产品能力继续标为 TARGET。
+进程。持久会话、运行投影与反馈投递分别建模，Client view 不拥有其生命周期。
+独立 `rambledesk-acp` 库提供稳定协议 v1 的 stdio 客户端、application driver 与 smoke example；采用官方
+Rust SDK 2.0.0，SDK 主版本不等于 wire 协议版本。配置、交互、权限、托管反馈、停止、恢复和删除均已
+接入 Desktop/Web 的统一 application 合同。支持版本和操作说明见 [ACP 托管会话](ACP_MANAGED_SESSIONS.md)。
 
 ## 运行时拓扑
 
@@ -41,14 +42,28 @@ SDK 主版本不等于 wire 协议版本。尚未接入的托管产品能力继�
 ┌────────────────────┐
 │ Desktop Shell      │ ─── Native Capability Implementation
 └────────────────────┘      (outside Application Transport)
+
+Backend Runtime
+  └─ core::SessionApplication
+      ├─ storage: Session / AgentConfig / Activity / Delivery / Recovery / Deletion
+      └─ AcpSessionDriver → owned stdio ACP Instance → Agent Backend
+           └─ scoped HTTP MCP → Local Integration Server /mcp-managed → feedback application
 ```
 
 `apps/desktop` 是 CURRENT composition root。每个 desktop 进程创建一份 Backend Runtime/
 application facade，由 Tauri state、该进程的 Local Integration Server 与可选 Web Access Server
 共同调用；这不表示跨进程全局单例。Local Integration Server 继续以独立 loopback listener 承载
-`/api` 与 `/mcp`，不暴露 Web 静态资源、application routes 或 WebSocket。默认关闭的 Web Access
+`/api`、`/mcp` 与托管会话专用 `/mcp-managed`，不暴露 Web 静态资源、application routes 或 WebSocket。默认关闭的 Web Access
 使用另一 listener、credential、auth domain、route set 与生命周期，固定绑定 `127.0.0.1:37643`。MCP SSE
 属于 MCP transport，不是 Web Client 的事件流。
+
+`/mcp-managed` 为每次运行绑定单会话凭据，复用相同 listener 与 Host/Origin policy；凭据不能访问 Generic
+MCP，也不能跨会话或跨 MCP transport session 使用。停止/删除会话撤销绑定。托管请求在可信 application
+入口注入本地会话归属，反馈终态与 outbox 入队原子提交；worker 只在原会话空闲后发送，结果不明需人工处理。
+
+运行检查点与实时投影分开。重启不信任旧 connected 状态；未完成轮次通过持久检查点产生中断活动，显式恢复
+使用原 remote id 的 resume/load。删除先持久化 intent，再停止资源并清理所属数据，失败可重试；文件清理与
+发布共用锁，旧 publication plan 不得重新生成已删除的包。
 
 ### TARGET
 
@@ -150,6 +165,7 @@ rambledesk/
 │   └── desktop/                  # Workbench UI + Tauri composition root
 ├── crates/
 │   ├── rambledesk-core/          # application contract
+│   ├── rambledesk-acp/           # ACP stdio driver + owned process resources
 │   ├── rambledesk-storage/       # SQLite + feedback package publication
 │   ├── rambledesk-local-server/  # CURRENT Local Integration Server
 │   ├── rambledesk-mcp/           # Generic MCP Adapter (tool surface + installer engine)
@@ -157,7 +173,8 @@ rambledesk/
 │   ├── rambledesk-speech/
 │   └── rambledesk-cli/
 ├── packages/
-│   └── pi-rambledesk/            # Pi Native Adapter
+│   ├── pi-rambledesk/            # Pi Native Adapter
+│   └── dsh-rambledesk/           # dsh Native Adapter
 └── docs/
 ```
 
@@ -168,6 +185,7 @@ rambledesk/
 - 反馈请求 use cases：request/get/wait/cancel/list；
 - 反馈草稿、附件和提交 use cases；
 - 反馈包输出合同；
+- 托管会话、启动配置、输入/权限/生命周期、活动和反馈投递 use cases；
 - 稳定 DTO、错误码、状态机；
 - Repository、PackagePublisher、Clock、IdGenerator 等 ports。
 
@@ -176,7 +194,13 @@ rambledesk/
 - HTTP、JSON、MCP、Pi package、Tauri command；
 - Local Integration Server listener、token path、Host/Origin guard；
 - 宿主安装逻辑、host profile、continuation strategy；
-- 源码 checkout 模型或把外部反馈请求绑定到源码路径的依赖；TARGET 会话合同可以携带执行目录 `cwd`。
+- 源码 checkout 模型或把外部反馈请求绑定到源码路径的依赖；托管会话合同携带执行目录 `cwd`。
+
+### `rambledesk-acp`
+
+持有官方 ACP SDK、stdio 通信、能力协商、权限回调映射，以及独占实例的启动与进程树清理。实现 core 的
+Agent driver ports，不持有 SQLite、HTTP 路由或 Tauri UI。当前只宣告已实现的 Client capabilities，不承接
+客户端文件/终端执行；有远端绑定时严格 resume/load，失败不回退为新会话。
 
 ### `rambledesk-storage`
 
@@ -186,6 +210,7 @@ rambledesk/
 - core repository ports 的实现；
 - request、draft、attachment metadata 持久化；
 - 跨请求宿主会话关联；
+- Agent 配置、托管会话、活动、投递、删除意图与运行检查点持久化；
 - 不可变反馈包发布和恢复对账。
 
 不得持有：
@@ -203,7 +228,7 @@ rambledesk/
 - bearer token 生成、读取、默认路径；
 - Host/Origin guard；
 - `/api/feedback/request|get|wait|cancel`；
-- `/mcp` route mounting；
+- `/mcp` 与受会话作用域约束的 `/mcp-managed` route mounting；
 - Local Integration 与 Web Access 的独立 server handle、endpoint、Web session auth、静态资源与
   application/event routes；
 - Web Access 固定 loopback、安全限制 snapshot 与 listener lifecycle。

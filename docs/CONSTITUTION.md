@@ -1,6 +1,6 @@
 # RambleDesk 产品宪章
 
-> 状态：v3 当前基线与 ACP 托管目标。
+> 状态：v4 当前基线，包含 ACP 托管会话。
 > 术语源：[TERMINOLOGY.md](TERMINOLOGY.md)。普通实现不得静默偏离本文。
 
 ## North Star
@@ -100,7 +100,7 @@ MVP 必须做到：
 
 - 远程或云端入口；
 - 多用户、团队协作和权限系统；
-- 内置智能体推理与工具执行引擎（外部 Agent 会话托管的 TARGET 例外见下文）；
+- 内置智能体推理与工具执行引擎（外部 Agent 会话托管的边界见下文）；
 - 由 RambleDesk 自行规划并自动修改用户代码；
 - 通用听写或全局语音输入；
 - 对反馈内容进行不可追溯的 LLM 重写；
@@ -129,7 +129,7 @@ MVP 必须做到：
 
 普通实现便利、单个依赖偏好或尚未验证的竞品功能，不足以修改 North Star。
 
-## 2026-09-04：允许托管外部 Agent 会话（TARGET）
+## 2026-09-04：允许托管外部 Agent 会话（已实现）
 
 - **真实信号**：现有反馈适配器已可用，但用户必须分别启动 RambleDesk 和 Agent Backend；Generic MCP
   的手动 continuation 还要求在两个界面之间切换。用户同时观察到一个 Agent 会话被模型按任务拆成多个工作台会话。
@@ -139,7 +139,7 @@ MVP 必须做到：
   推理与工具执行仍由外部 Agent Backend 负责，反馈仍形成持久请求与不可变反馈包。
 - **影响**：外部适配器合同保持兼容；新增稳定会话身份、管理方式、启动配置、运行投影和投递记录；托管路径
   使用工作目录但不引入 checkout 管理。首期一会话独占一个 ACP 实例，直接删除由同一操作完成停止与清理。
-  该变更按小提交交付，不将已接受目标表述为现成功能。
+  该变更已按小提交交付；后端兼容性按入口与版本单独验收，不从预设或能力声明推断完整支持。
 
 术语以 [TERMINOLOGY.md](TERMINOLOGY.md) 为准；决策见 [ADR 007](adr/007-acp-managed-sessions.md)，
-里程碑见 [ACP 提交地图](ACP_COMMIT_MAP.md)。North Star 保持不变。
+里程碑见 [ACP 提交地图](ACP_COMMIT_MAP.md)，使用与支持范围见 [ACP 托管会话](ACP_MANAGED_SESSIONS.md)。North Star 保持不变。

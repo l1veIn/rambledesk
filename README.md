@@ -61,7 +61,11 @@ xattr -dr com.apple.quarantine /Applications/RambleDesk.app
 
 ## Supported coding agents
 
-RambleDesk supports Claude Code, Cursor, Codex, Gemini CLI, Grok, OpenCode, Reasonix, Antigravity IDE, plus native adapters for Pi and DeepSeek Harness.
+Feedback adapters support Claude Code, Cursor, Codex, Gemini CLI, Grok, OpenCode, Reasonix, Antigravity IDE, plus native adapters for Pi and DeepSeek Harness.
+
+You can also create **ACP managed sessions** directly in RambleDesk: configure an installed agent under **Settings → Agents**, create a session with its working directory, and send it a task. Feedback returns to the same agent session automatically. Each session owns its own ACP instance; closing its view keeps it running.
+
+The current source has passed real feedback loops with community `deepseek-acp@0.8.0` and official `@deepseek-ai/dsh@0.1.2-rc.1`. Pi and Codex ACP presets remain unverified. See the [managed session guide and support matrix](docs/ACP_MANAGED_SESSIONS.md) for setup, stopping, recovery, and delivery status.
 
 ## From source
 
@@ -81,6 +85,7 @@ RambleDesk does not ask you to organize the thought before you say it. You rambl
 - [Snow Shot](https://github.com/mg-chao/snow-shot), for the screenshot stack
 - [RepoChan](https://github.com/l1veIn/repochan-mono), for brand and character assets
 - [Kotone](https://github.com/l1veIn), for the local speech stack this workbench grew from
+- [Codeg](https://github.com/xintaofei/codeg), for ACP integration and agent settings references
 
 ## License
 

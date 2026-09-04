@@ -1,6 +1,6 @@
 # ACP 托管会话提交地图
 
-> 状态：计划；本文件随已完成步骤更新，不表示所有目标均已实现。
+> 状态：本分支迭代已完成；以下执行记录列明实现、验收与平台边界。
 > 分支：`codex/acp-managed-sessions`；从更新后的 main `367eb09` 开始。
 > 术语源：[TERMINOLOGY.md](TERMINOLOGY.md)；决策：[ADR 007](adr/007-acp-managed-sessions.md)。
 
@@ -77,4 +77,6 @@
 - 步骤 15d：权限请求携带有界纯文本详情，覆盖 raw input、路径、文本与文件差异；最多 32 KiB 并明确提示截断，界面默认展开、转义且脱敏。3 项转换单测、2 项权限 runtime、4 项 HTTP facade 测试与权限渲染测试通过；完整前端 103 文件/573 项测试与 Svelte 检查通过。同时收敛发送按钮中文和新建弹窗重复标题。
 - 步骤 15：加入可复现的真实模型闭环与隔离 Web 预览 examples。社区 DeepSeek ACP 0.8.0、官方 dsh 0.1.2-rc.1 均通过双项目请求/提交/自动读反馈、整个 application/server/store 正常重启后原 ID 恢复、删除 A 保留 B；观测到的自有后代均退出。最终全工作区 Rust tests/all-targets、Clippy、格式、生成合同、573 项 TS、Web build、术语/边界/文件大小及 Generic MCP self-test 通过；Pi/dsh 原生适配器分别 21/27 项测试通过。实机是 Windows；Linux/macOS 仍由对应平台 CI 验证。实际 Web 操作推动 15e 读取竞态修正，复验另记。
 - 步骤 15e：发布后的 workspace、反馈包和导航查询使用只读白名单，遇到旧水位或不稳定快照最多重读两次；会话租约、认证、generation 和网络错误直接上报。70 项定向回归通过，发布回归断言提交仅一次；完整前端 104 文件/578 项测试、Svelte 检查及 Web build 通过。浏览器复验 task-tab 填写并提交反馈，只显示成功提示，随后显示 delivered，无旧水位错误或手动续接弹窗。
-- 步骤 16：文档收尾中。
+- 步骤 16：CURRENT 术语、架构、产品职责与 ADR 已同步，新增使用说明、真实支持矩阵及两类复现入口；未验证的后端、远程 ACP、模型/模式控件、安装器等范围明确保留。术语/包边界、本地文档链接和 diff 检查通过。
+
+提交独立性额外抽查：步骤 10 与步骤 12 分别在独立 checkout、独立构建目录通过其存储/runtime/闭环测试；步骤 10 使用最高 0013 的 schema，步骤 12 使用最高 0014，不依赖后续迁移。临时审阅 checkout 与 UI 预览进程已清理，Codeg 参考库继续保留。

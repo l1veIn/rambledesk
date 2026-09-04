@@ -1,8 +1,23 @@
 # Codeg ACP 源码借鉴地图
 
-> 日期：2026-09-04；状态：源码评估与移植候选，未移植运行代码、未执行 Codeg 的测试或真实 Agent。
+> 日期：2026-09-04；状态：固定版本的源码参考地图，另记本轮采用情况；未运行 Codeg 应用或测试。
 > 关联：[ACP 提交地图](ACP_COMMIT_MAP.md)、[首轮 Codeg ACP 调研](CODEG_ACP_RESEARCH.md)。
 > 术语仍以 [TERMINOLOGY.md](TERMINOLOGY.md) 为准。
+
+## 本轮采用结果
+
+RambleDesk 的 ACP 托管闭环已为 CURRENT，操作与实测支持见 [使用指南](ACP_MANAGED_SESSIONS.md)。
+下方候选表保留调研时的取舍，不应把候选项整体视为已经实现：
+
+- 已按本项目边界实现独占实例、进程树回收、有界脱敏诊断、权限队列、受会话约束的 MCP 注入、配置变化提示，
+  以及 Svelte Agent 设置与工作区。活动落库后通过现有 invalidation + snapshot 恢复，未引入 Codeg 的 replay buffer。
+- 持久 Request/Package/Delivery、发送结果不明状态、删除意图和 run/turn 恢复检查点使用 RambleDesk 的领域合同。
+  `delivered` 的自动路径等到续接轮次成功结束；恢复失败保留绑定，不采用 resume/load 失败后静默 new 的回退。
+- 未引入客户端文件/终端执行、动态会话配置选择器、自动安装、registry 市场、历史导入、连接池或 Codeg 的 UI/数据库。
+- 后端兼容性以 [实机报告](ACP_BACKEND_PROBE.md) 为准。社区 `deepseek-acp@0.8.0` 和官方 dsh 的实测
+  结论不来自 Codeg 的旧注释；Pi/Codex 预设仍不代表 ACP 兼容性验收。
+
+这些是本地实现与验收结果；不声称 Codeg 的测试已经在 RambleDesk 运行，也不表示整文件移植。
 
 ## 本地参考库
 
@@ -97,7 +112,7 @@ Codeg 不仅发送 prompt，还能承接 ACP `fs/*` 与 `terminal/*` 回调。`H
 归属声明与变更说明，涉及 NOTICE 内容时一并处理。Codeg 根仓库为 Apache-2.0；vendored `sacp-tokio`
 声明 MIT OR Apache-2.0，应单独追踪来源。[Codeg LICENSE][license]、[vendored manifest][vendor-license]、[Apache 条款][apache]
 
-本次只增加参考地图；不引入源代码、包依赖、能力默认值或新的产品承诺。
+初次调研只增加参考地图；后续实现与测试按 [ACP 提交地图](ACP_COMMIT_MAP.md) 交付，当前采用范围见本文开头。
 
 [process]: https://github.com/xintaofei/codeg/blob/3ebdfed1d7c0b71d71880a3d2e0f8e09545feae1/src-tauri/src/process.rs
 [spawn]: https://github.com/xintaofei/codeg/blob/3ebdfed1d7c0b71d71880a3d2e0f8e09545feae1/src-tauri/vendor/sacp-tokio/src/acp_agent.rs#L451

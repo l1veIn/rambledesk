@@ -1,5 +1,9 @@
 # Codeg：ACP 接入与 Agent 设置参考
 
+> 后续状态：本文件保留固定版本的调研结论；RambleDesk 当前已实现的功能与后端支持以
+> [ACP 托管会话指南](ACP_MANAGED_SESSIONS.md)、[实机探针](ACP_BACKEND_PROBE.md) 和
+> [源码借鉴地图的采用记录](CODEG_ACP_REFERENCE_MAP.md) 为准。
+
 > 日期：2026-09-04；状态：源码与官方文档调研，未运行 Codeg 或真实 Agent 验证。
 > 来源：用户指定的 [xintaofei/codeg](https://github.com/xintaofei/codeg)。
 > 源码快照：[`3ebdfed1d7c0b71d71880a3d2e0f8e09545feae1`](https://github.com/xintaofei/codeg/tree/3ebdfed1d7c0b71d71880a3d2e0f8e09545feae1)。
