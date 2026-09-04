@@ -577,6 +577,6 @@ function stripTrailingSlash(value) {
 export default function rambledeskPiPackage(pi) {
   // ACP-managed Pi explicitly loads managed.mjs with its instance capability.
   // Do not also register the generic/global-token tools or their blocking wait.
-  if (process.env.RAMBLEDESK_MANAGED_MCP_URL || process.env.RAMBLEDESK_MANAGED_MCP_TOKEN) return;
+  if (process.env.RAMBLEDESK_MANAGED_PI_ACTIVE === "1" || process.env.RAMBLEDESK_MANAGED_MCP_URL || process.env.RAMBLEDESK_MANAGED_MCP_TOKEN) return;
   registerRambleDeskPiTools(pi);
 }

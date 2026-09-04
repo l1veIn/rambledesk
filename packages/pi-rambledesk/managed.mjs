@@ -15,7 +15,17 @@ function restoredRequest(ctx) {
 }
 
 export async function registerManagedRambleDeskTools(pi, env = process.env) {
-  const client = new ManagedFeedbackClient(env);
+  // Consume credentials before the first await, before Pi can launch tools.
+  // The no-secret marker also disables generic tools after another copy of this
+  // extension loads, including when initialization fails or is still pending.
+  if (env.RAMBLEDESK_MANAGED_PI_ACTIVE === "1" && !env.RAMBLEDESK_MANAGED_MCP_URL && !env.RAMBLEDESK_MANAGED_MCP_TOKEN) return;
+  let client;
+  try { client = new ManagedFeedbackClient(env); }
+  finally {
+    delete env.RAMBLEDESK_MANAGED_MCP_URL;
+    delete env.RAMBLEDESK_MANAGED_MCP_TOKEN;
+    env.RAMBLEDESK_MANAGED_PI_ACTIVE = "1";
+  }
   const info = await client.initialize();
   const tools = await client.tools();
   if (!Array.isArray(tools) || NAMES.some((name) => !tools.some((tool) => tool.name === name))) throw new Error("The managed feedback binding does not expose the required private tools.");

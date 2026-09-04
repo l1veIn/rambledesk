@@ -2,7 +2,7 @@
 // production RPC wrapper. No provider/model calls or global configuration.
 import { pathToFileURL } from "node:url";
 import { createInterface } from "node:readline";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 const args = process.argv.slice(2);
 const extension = args[args.indexOf("--extension") + 1];
 const tools = new Map(), handlers = new Map(), entries = [];
@@ -16,11 +16,14 @@ const pi = {
   appendEntry(customType, data) { entries.push({ type: "custom", customType, data }); },
   sendUserMessage() { throw new Error("The extension must never dispatch continuation"); },
 };
+const syntheticSecret = process.env.RAMBLEDESK_MANAGED_MCP_TOKEN;
 await (await import(pathToFileURL(extension).href)).default(pi);
+const inherited = spawnSync(process.execPath, ["-e", "process.stdout.write(JSON.stringify({url:process.env.RAMBLEDESK_MANAGED_MCP_URL!==undefined,token:process.env.RAMBLEDESK_MANAGED_MCP_TOKEN!==undefined}))"], { encoding: "utf8", windowsHide: true });
+if (inherited.status !== 0 || inherited.stdout !== '{"url":false,"token":false}') throw new Error("A Pi child inherited managed credentials");
 if (process.env.FIXTURE_HEARTBEAT) spawn(process.execPath, ["-e", "const fs=require('node:fs');setInterval(()=>fs.writeFileSync(process.env.FIXTURE_HEARTBEAT,String(Date.now())),10)"], { stdio: "inherit", windowsHide: true });
 // Diagnostics deliberately contain the synthetic capability; the wrapper must
 // drain them without exposing stderr to ACP or its parent process.
-process.stderr.write(process.env.RAMBLEDESK_MANAGED_MCP_TOKEN);
+process.stderr.write(syntheticSecret);
 const lines = createInterface({ input: process.stdin });
 for await (const line of lines) {
   const input = JSON.parse(line);
