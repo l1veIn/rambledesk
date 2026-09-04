@@ -64,7 +64,10 @@ impl AgentSessionDriver for FakeDriver {
         let _guard = StartGuard(self.starting_count.clone());
         self.starting.notify_one();
         if let Some(endpoint) = launch.feedback {
-            self.feedback_tokens.lock().unwrap().push(endpoint.bearer_token);
+            self.feedback_tokens
+                .lock()
+                .unwrap()
+                .push(endpoint.bearer_token);
         }
         if self.hang.load(Ordering::SeqCst) {
             std::future::pending::<()>().await;
@@ -103,17 +106,29 @@ impl AgentSessionDriver for FakeDriver {
 
 #[derive(Default)]
 struct FakeFeedbackProvider {
-    bindings: Mutex<BTreeMap<String,String>>,
+    bindings: Mutex<BTreeMap<String, String>>,
     generation: AtomicUsize,
 }
 #[async_trait]
 impl ManagedFeedbackProvider for FakeFeedbackProvider {
-    async fn bind(&self, session:&SessionRecord)->Result<ManagedFeedbackEndpoint,AgentDriverError> {
-        let token = format!("test-capability-{}",self.generation.fetch_add(1,Ordering::SeqCst));
-        self.bindings.lock().unwrap().insert(session.session_id.clone(),token.clone());
-        Ok(ManagedFeedbackEndpoint{url:"http://127.0.0.1:1/mcp-managed".into(),bearer_token:token})
+    async fn bind(
+        &self,
+        session: &SessionRecord,
+    ) -> Result<ManagedFeedbackEndpoint, AgentDriverError> {
+        let token = format!(
+            "test-capability-{}",
+            self.generation.fetch_add(1, Ordering::SeqCst)
+        );
+        self.bindings
+            .lock()
+            .unwrap()
+            .insert(session.session_id.clone(), token.clone());
+        Ok(ManagedFeedbackEndpoint {
+            url: "http://127.0.0.1:1/mcp-managed".into(),
+            bearer_token: token,
+        })
     }
-    async fn revoke(&self, session_id:&str)->Result<(),AgentDriverError> {
+    async fn revoke(&self, session_id: &str) -> Result<(), AgentDriverError> {
         self.bindings.lock().unwrap().remove(session_id);
         Ok(())
     }
@@ -121,21 +136,43 @@ impl ManagedFeedbackProvider for FakeFeedbackProvider {
 
 #[tokio::test]
 async fn feedback_capabilities_rotate_on_resume_and_are_revoked_on_failure_and_stop() {
-    let (dir,store,driver,app,config) = setup().await;
+    let (dir, store, driver, app, config) = setup().await;
     let provider = Arc::new(FakeFeedbackProvider::default());
     let app = app.with_feedback_provider(provider.clone());
-    let first = app.create_session(input(&dir,&config,"One")).await.unwrap();
-    let second = app.create_session(input(&dir,&config,"Two")).await.unwrap();
-    assert_eq!(provider.bindings.lock().unwrap().len(),2);
+    let first = app
+        .create_session(input(&dir, &config, "One"))
+        .await
+        .unwrap();
+    let second = app
+        .create_session(input(&dir, &config, "Two"))
+        .await
+        .unwrap();
+    assert_eq!(provider.bindings.lock().unwrap().len(), 2);
     app.stop_session(target(&first)).await.unwrap();
-    assert_eq!(provider.bindings.lock().unwrap().len(),1);
+    assert_eq!(provider.bindings.lock().unwrap().len(), 1);
     app.start_session(target(&first)).await.unwrap();
     let tokens = driver.feedback_tokens.lock().unwrap().clone();
-    assert_eq!(tokens.len(),3); assert_ne!(tokens[0],tokens[2]);
-    driver.fail.store(true,Ordering::SeqCst);
-    let failed = app.create_session(input(&dir,&config,"Failed")).await.unwrap();
-    assert!(!provider.bindings.lock().unwrap().contains_key(&failed.session.session_id));
-    assert!(provider.bindings.lock().unwrap().contains_key(&second.session.session_id));
+    assert_eq!(tokens.len(), 3);
+    assert_ne!(tokens[0], tokens[2]);
+    driver.fail.store(true, Ordering::SeqCst);
+    let failed = app
+        .create_session(input(&dir, &config, "Failed"))
+        .await
+        .unwrap();
+    assert!(
+        !provider
+            .bindings
+            .lock()
+            .unwrap()
+            .contains_key(&failed.session.session_id)
+    );
+    assert!(
+        provider
+            .bindings
+            .lock()
+            .unwrap()
+            .contains_key(&second.session.session_id)
+    );
     app.shutdown().await.unwrap();
     assert!(provider.bindings.lock().unwrap().is_empty());
     store.close().await;

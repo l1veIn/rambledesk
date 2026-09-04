@@ -1,6 +1,6 @@
 # ACP 后端实机探针
 
-状态：协议级真实后端验证完成；尚不代表 RambleDesk 托管反馈闭环已完成。
+状态：协议探针、真实双项目托管反馈闭环、整运行时正常关闭后恢复原会话、删除隔离均已通过；Desktop/Web 手工界面验收另行记录。
 
 验证日期：2026-09-04。环境：Windows、Node.js 24.18.1。
 
@@ -113,12 +113,48 @@ node "$probeRoot\probe.mjs" "$probeRoot\official-dsh\node_modules\@deepseek-ai\d
 
 最终探针 SHA-256：`probe.mjs` 为 `08e55f3d270b537bace9f62f1e4606e6e215d98f24408bdc08e75b855ca004c8`；`mcp-stdio.mjs` 为 `87d38442aa44eec6f5e21bc3348b93261f85ac7733a6220f15b538f970002135`。第一轮 0.7.0 运行时误把关闭 LSP 发现的值设成 `[]`，后端警告并回退内建发现；后续已修正为 `{}`，后两轮没有该警告。
 
+## 真实托管反馈闭环
+
+`crates/rambledesk-local-server/examples/managed_loop.rs` 组合真实 `SessionApplication`、`AcpSessionDriver`、`LocalManagedFeedbackProvider`、SQLite、恢复检查点和 outbox worker。2026-09-04 在社区 0.8.0 与官方 0.1.2-rc.1 上分别完成初次闭环，并在完整恢复/删除接线后各复核一次，均通过：
+
+1. 两个独立临时项目同时创建各自的 Agent 会话，并各调用一次 scoped `request_feedback` 后结束 turn。
+2. 探针通过工作台 application 入口保存并提交两个不同标记的反馈。这是模拟用户提交，用于验证应用与协议链路，不代替手工 UI 验收。
+3. worker 自动续接原会话，两个 Agent 都调用 `get_feedback`，执行读取工具并返回各自反馈中的标记。初始提示不包含答案，两边均未输出另一会话的标记。
+4. 两条持久化投递记录均为 `delivered`，随后 stop/start 仍恢复原来的两个 Agent Session ID。
+5. 关闭整个 application、HTTP server 和 SQLite store，再从原数据库建立新的运行时与 scoped MCP provider。读取列表/会话不会隐式启动 Agent。
+6. 显式并发恢复原来两个 Agent Session ID，通过新 scoped MCP 连接再次调用 `get_feedback`、读取原反馈并返回正确标记。新提示只提供 request ID，不提供答案；验收只检查这次新 turn 的工具和回复，避免把本地历史误当成恢复成功。
+7. 直接删除会话 A，确认其 session、request 和 outbox 记录均已移除；会话 B 保持 Connected 与原 Agent Session ID。
+8. 两次最终 harness 均正常 exit 0，未强制终止。按父子关系定期记录了社区后端 9 个、官方后端 13 个后代进程，退出后按 PID 与创建时间复核均无存活；初次闭环两次各记录 5 个后代，也均已退出。
+
+社区后端的活动记录明确包含各自 `feedback.md` 的完整读取路径及 `Completed`；官方后端的协议标题仅显示 `read · Completed`，因此此处不将官方工具标题当作完整路径审计。官方回复同样精确包含对应反馈标记。
+
+原始报告位于临时探针目录：
+
+- `managed-community-0.8.0-2026-09-04T09-57-52-662Z/report.json`
+- `managed-official-0.1.2-rc.1-2026-09-04T09-58-12-484Z/report.json`
+- `managed-community-0.8.0-2026-09-04T10-20-00-677Z/report.json`：最终闭环、整运行时重启与删除。
+- `managed-official-0.1.2-rc.1-2026-09-04T10-20-00-677Z/report.json`：同上。
+- 每个目录的 `processes.json` 记录本次拥有的子进程、创建时间和退出复核；`launch.json` 不含凭据。
+
+仓库 example 默认只显示说明，不启动 Agent。显式设置以下变量才会执行真实模型调用：
+
+```powershell
+$env:RAMBLEDESK_MANAGED_PROBE_RUN = '1'
+$env:RAMBLEDESK_MANAGED_PROBE_LAUNCH = 'C:\path\to\launch.json'
+$env:RAMBLEDESK_MANAGED_PROBE_RUN_DIR = 'C:\path\to\new-probe-directory'
+cargo run -p rambledesk-local-server --example managed_loop
+```
+
+启动 JSON 接受 `command`、`args`、`env`、`label`。凭据应放在继承的进程环境中，不能写进启动 JSON；JSON 中的环境变量会作为 Agent 配置持久化。示例要求新数据库路径，并为两个项目建立独立目录。一次执行包含两项目各三轮短模型调用：反馈请求、自动续接、整个运行时重开后的读取。每个等待阶段最多 180 秒；遇到权限请求时停止探针，不自动批准额外操作；成功或失败均执行 session/server/store 清理。
+
+本机辅助 runner 是临时目录中的 `managed-loop.mjs`，沿用已有凭据的安全读取方式：`node managed-loop.mjs` 验证社区 bridge，`node managed-loop.mjs official` 验证官方 dsh。它只把凭据传入子进程环境，对输出脱敏，并复核本次后代进程退出。
+
 ## 对本轮实现的要求
 
 1. 恢复策略按能力区分 load 与 resume；失败时显示真实原因，不静默 new 一个空上下文。
 2. 恢复过程区分历史重放与新回合输出，避免重复插入活动记录或把旧工具当作重新执行。
-3. 配置控件支持分组 select，选项 id/value 由后端提供；持久配置与运行会话实际使用值分开。
+3. 当前提供启动配置；后续扩展 ACP 模型/模式控件时，应支持后端提供的分组选项 id/value，并区分持久配置与运行会话实际使用值。
 4. 启动程序版本和 `agentInfo` 分开记录；预设只提供默认值，实际能力来自协商和验证。
 5. 管理器只回收自身创建的实例资源；正常 EOF 验收不能代替崩溃与进程树清理测试。
 
-未在本次探针中执行：权限请求的用户交互、运行中取消、多项目并发隔离、异常终止恢复、真实 RambleDesk 反馈工具、反馈提交后的 continuation、删除会话的完整持久化清理，以及 Pi/Codex 的兼容验收。这些仍由后续各 commit 的验收覆盖。
+未在上述真实后端探针中执行：权限请求的用户交互、运行中取消、整个应用异常终止后的恢复，以及 Pi/Codex 的兼容验收。真实重启验证使用正常关闭；异常中断检查点、EOF 清理、延迟取消回调与新实例隔离由 `session_recovery_runtime` 的四项运行时测试覆盖。恢复原上下文与重新读取反馈成功仍不代表后端自身历史日志已全量 flush。

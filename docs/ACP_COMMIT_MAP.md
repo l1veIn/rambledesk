@@ -31,10 +31,12 @@
 | 15b | `fix(ui): subscribe managed feedback task tabs` | 请求独立标签同样订阅所属托管会话，显示恢复/投递状态并遵守持久删除意图。 |
 | 15c | `fix(ui): refresh managed session state labels` | 流式快照更新后，连接与执行状态标签立即响应。 |
 | 15d | `feat(acp): show permission operation details` | 权限申请展示有界命令、路径及内容，保留明确的截断标记与纯文本渲染。 |
+| 15e | `fix(ui): retry stale feedback queries after publication` | 自动续接推进资源版本时，发布后的只读查询有界重读；旧快照仍被拒绝，提交操作只执行一次。 |
 | 15 | `test(acp): verify the managed feedback loop` | 补齐跨模块与真实后端验收：两个项目并发、完整反馈续接、直接删除、断开/重启；发布实际支持矩阵与使用说明。 |
+| 16 | `docs: document managed session workflow and support` | 将已实现边界同步至术语、架构、产品与使用文档，记录实测版本、复现入口及未验证范围。 |
 
-步骤 9 从原来的一个 UI 提交拆为 9a、9b，整合审阅增加 13b；自动安装/更新 Agent、ACP registry 导入
-和各后端全部设置不进入这两个 UI 提交。首期使用已安装的可执行程序与明确的参数/环境配置。
+步骤 9 从原来的一个 UI 提交拆为 9a、9b；整合审阅与实际界面验收增加 13b、14b、15a–15e；最终使用文档独立为步骤 16。
+自动安装/更新 Agent、ACP registry 导入和各后端全部设置不进入本轮。首期使用已安装的可执行程序与明确的参数/环境配置。
 
 ## Codeg 源码阅读配套
 
@@ -73,4 +75,5 @@
 - 步骤 14b：完成状态落库失败时只重试同 attempt 的 CAS；sending/uncertain 阻止后续投递越过。3 项真实 SQLite 故障注入测试验证恢复后补存、无重复 prompt、退出后交由启动恢复；通过。
 - 步骤 15a–15c：浏览器实测推动三项独立修正：配置初始选择/删除后选择与草稿隔离、独立请求标签的托管状态订阅、等待权限/停止/恢复状态标签实时更新。配置相关定向测试通过；标签订阅随最终反馈操作一同验收。
 - 步骤 15d：权限请求携带有界纯文本详情，覆盖 raw input、路径、文本与文件差异；最多 32 KiB 并明确提示截断，界面默认展开、转义且脱敏。3 项转换单测、2 项权限 runtime、4 项 HTTP facade 测试与权限渲染测试通过；完整前端 103 文件/573 项测试与 Svelte 检查通过。同时收敛发送按钮中文和新建弹窗重复标题。
-- 步骤 15：最终实机、界面与工作区门禁收尾中。
+- 步骤 15：加入可复现的真实模型闭环与隔离 Web 预览 examples。社区 DeepSeek ACP 0.8.0、官方 dsh 0.1.2-rc.1 均通过双项目请求/提交/自动读反馈、整个 application/server/store 正常重启后原 ID 恢复、删除 A 保留 B；观测到的自有后代均退出。最终全工作区 Rust tests/all-targets、Clippy、格式、生成合同、573 项 TS、Web build、术语/边界/文件大小及 Generic MCP self-test 通过；Pi/dsh 原生适配器分别 21/27 项测试通过。实机是 Windows；Linux/macOS 仍由对应平台 CI 验证。实际 Web 操作推动 15e 读取竞态修正，复验另记。
+- 步骤 15e、16：收尾中。

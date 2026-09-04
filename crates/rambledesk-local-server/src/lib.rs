@@ -394,7 +394,9 @@ impl ServerHandle {
 
 #[derive(Debug, Error)]
 pub enum ServerError {
-    #[error("managed feedback provider already belongs to a local server; shut it down before restarting")]
+    #[error(
+        "managed feedback provider already belongs to a local server; shut it down before restarting"
+    )]
     ManagedFeedbackAlreadyBound,
     #[error("failed to bind RambleDesk local server loopback listener: {0}")]
     Bind(#[source] std::io::Error),

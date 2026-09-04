@@ -26,15 +26,15 @@ use thiserror::Error;
 
 mod activity_ops;
 mod backup;
-mod delivery_ops;
 mod deletion_ops;
+mod delivery_ops;
 mod managed_ops;
 mod migration_compat;
 mod paths;
 mod publication_paths;
+mod recovery_ops;
 mod request_ops;
 mod request_scope;
-mod recovery_ops;
 mod resolve_ops;
 mod session_ops;
 mod submission_ops;
