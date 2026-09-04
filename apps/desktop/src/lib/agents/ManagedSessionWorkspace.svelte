@@ -128,8 +128,8 @@
     }
   }
 
-  function connectionLabel() {
-    switch (snapshot.runtime.connection) {
+  function connectionLabel(connection: ManagedSessionViewSnapshot['runtime']['connection']) {
+    switch (connection) {
       case 'connecting': return 'Connecting…'
       case 'connected': return 'Connected'
       case 'disconnected': return 'Disconnected'
@@ -138,8 +138,8 @@
     }
   }
 
-  function currentActivityLabel() {
-    switch (snapshot.runtime.activity) {
+  function currentActivityLabel(activity: ManagedSessionViewSnapshot['runtime']['activity']) {
+    switch (activity) {
       case 'running': return 'Agent is working'
       case 'waiting_permission': return 'Waiting for permission'
       case 'idle': return 'Idle'
@@ -160,8 +160,8 @@
     </div>
     <div class="flex items-center gap-2 text-xs" role="status">
       {#if snapshot.runtime.connection === 'connecting'}<LoaderCircle class="size-3.5 animate-spin" />{/if}
-      <Badge variant={snapshot.runtime.connection === 'failed' ? 'destructive' : 'outline'}>{tr(connectionLabel())}</Badge>
-      <span class="text-muted-foreground">{tr(currentActivityLabel())}</span>
+      <Badge variant={snapshot.runtime.connection === 'failed' ? 'destructive' : 'outline'}>{tr(connectionLabel(snapshot.runtime.connection))}</Badge>
+      <span class="text-muted-foreground">{tr(currentActivityLabel(snapshot.runtime.activity))}</span>
     </div>
     <div class="flex items-center gap-1">
       {#if actions.canStart}<Button variant="outline" size="sm" disabled={busy || lifecyclePending} onclick={() => void run('start', onStart)}><Play class="size-3.5" />{tr(actions.startLabel)}</Button>{/if}
