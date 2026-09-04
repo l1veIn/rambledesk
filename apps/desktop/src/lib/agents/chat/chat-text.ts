@@ -12,6 +12,8 @@ const zh: Record<string, string> = {
   'Resource': '资源', 'Image output': '图片输出', 'Audio output': '音频输出',
   'Media preview unavailable': '无法预览此媒体', 'Terminal reference': '终端引用',
   'Unsupported content': '暂不支持的内容', 'Could not open the link': '无法打开链接',
+  'Load earlier messages': '加载更早的消息', 'Loading earlier messages…': '正在加载更早的消息…',
+  'Could not load earlier messages.': '无法加载更早的消息。',
 }
 
 export function chatText(locale: Locale, text: string): string { return locale === 'zh-CN' ? (zh[text] ?? text) : text }

@@ -9,6 +9,27 @@ vi.mock('$lib/preferences', async () => {
 })
 
 describe('Managed session rendering', () => {
+  it('initially mounts 60 rows of a large snapshot and leaves older history behind an explicit action', () => {
+    const snapshot: ManagedSessionViewSnapshot = {
+      deleting: false,
+      session: { session_id: 'history-window', host_id: 'dsh', host_session_id: 'feedback-history', title: 'Long history', created_at: 'today', updated_at: 'today',
+        management: { kind: 'managed', protocol: 'acp', agent_config_id: 'config', cwd: '/repo', remote_session_id: 'remote' } },
+      runtime: { configuration: { options: [], modes: null, models: null }, connection: 'connected', activity: 'idle', instance_id: 'instance', config_updated_at: null,
+        capabilities: { load_session: true, resume_session: false, http_mcp: true, prompt: { image: false, audio: false, embedded_context: false, resource_links: true } }, last_error: null },
+    }
+    const action = vi.fn()
+    const { body } = render(ManagedSessionWorkspace, { props: {
+      snapshot, onPrompt: action, onStart: action, onStop: action, onCancel: action, onRespondPermission: action, onOpenFeedback: action, onLoadOlder: action,
+      activities: Array.from({ length: 1000 }, (_, index) => ({ id: `history-${index + 1}`, sequence: index + 1, session_id: 'history-window', kind: 'user_message' as const, text: `Message ${index + 1}`, tool_call_id: null, created_at: 'today' })),
+    } })
+    expect(body.match(/data-activity-id=/g)).toHaveLength(60)
+    expect(body).toContain('Message 941')
+    expect(body).toContain('Message 1000')
+    expect(body).not.toContain('Message 940')
+    expect(body).toContain('Load earlier messages')
+    expect(action).not.toHaveBeenCalled()
+  })
+
   it('shows only the active permission details as escaped, redacted text before approval', () => {
     const snapshot: ManagedSessionViewSnapshot = {
       deleting: false,

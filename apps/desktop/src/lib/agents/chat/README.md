@@ -16,6 +16,12 @@ insert selected text (when selection is within that activity) or the full struct
 result into the active composer's draft. Session keys isolate expansion state; the
 owning workspace keeps drafts and scroll-follow decisions isolated.
 
+The workspace initially mounts the newest 60 activity rows. “Load earlier messages”
+reveals another 60 locally cached rows before requesting a backend page. It preserves
+the first partially visible row and its offset while prepending history. Fresh tool
+patches replace their existing row; a user reviewing history is not pulled to the
+live bottom. Switching sessions resets the rendering window.
+
 ## Codeg source and modifications
 
 Source: <https://github.com/xintaofei/codeg>, commit

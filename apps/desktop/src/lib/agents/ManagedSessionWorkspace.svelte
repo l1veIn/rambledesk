@@ -8,6 +8,9 @@
   import SessionRecoveryNotice from './SessionRecoveryNotice.svelte'
   import AgentComposer from './composer/AgentComposer.svelte'
   import SessionTimeline from './chat/SessionTimeline.svelte'
+  import { TimelineWindow } from './chat/timeline-window'
+  import { captureActivityAnchor, restoreActivityAnchor } from './chat/scroll-anchor'
+  import { chatText } from './chat/chat-text'
   import SessionConfigurationControls from './configuration/SessionConfigurationControls.svelte'
   import { attachmentAccept, canAttachFiles, readPromptFiles, validatePromptAttachments, type PromptAttachment } from './attachments/promptAttachments'
   import { attachmentText } from './attachments/attachmentText'
@@ -22,6 +25,10 @@
 
   export let snapshot: ManagedSessionViewSnapshot
   export let activities: readonly SessionActivity[] = []
+  export let historyLoading = false
+  export let historyHasMore = false
+  export let historyError = ''
+  export let onLoadOlder: (() => Promise<void> | void) | undefined = undefined
   export let permissions: readonly SessionPermission[] = []
   export let feedbackRequests: readonly FeedbackRequestSummary[] = []
   export let deliveries: readonly FeedbackDelivery[] = []
@@ -51,10 +58,21 @@
   let attachments: readonly PromptAttachment[] = []
   let fileInput: HTMLInputElement | undefined
   let chooserTarget: { sessionId: string; capabilities: AgentPromptCapabilities } | null = null
+  const timelineWindow = new TimelineWindow()
+  let windowRevision = 0
+  let historyRequestId = ''
+  let historyErrors: Record<string, string> = {}
+  let renderedActivities: readonly SessionActivity[] = []
 
   $: if (snapshot.session.session_id !== activeSessionId) selectSession(snapshot.session.session_id)
   $: if (activeSessionId) sessionPromptDrafts.write(activeSessionId, prompt)
   $: visibleActivities = activitiesForSession(snapshot.session.session_id, activities)
+  $: {
+    windowRevision
+    renderedActivities = timelineWindow.read(snapshot.session.session_id, visibleActivities, stickToBottom)
+  }
+  $: localHistory = renderedActivities.length < visibleActivities.length
+  $: loadingHistory = historyLoading || historyRequestId === activeSessionId
   $: visiblePermissions = permissionsForSession(snapshot.session.session_id, permissions)
   $: permission = visiblePermissions[0] ?? null
   $: visibleFeedback = feedbackForSession(snapshot.session, feedbackRequests)
@@ -63,6 +81,7 @@
   $: envText = Object.entries(config?.env ?? {}).map(([key, value]) => `${key}=${value}`).join('\n')
   $: permissionDetails = redactAgentMessage(permission?.details ?? '', envText)
   $: visibleError = redactAgentMessage(errors[snapshot.session.session_id] || error || snapshot.runtime.last_error || '', envText)
+  $: visibleHistoryError = redactAgentMessage(historyErrors[activeSessionId] || historyError, envText)
   $: permissionPending = permission ? pending.has(`${activeSessionId}:permission:${permission.request_id}`) : false
   $: lifecyclePending = pending.has(`${activeSessionId}:start`) || pending.has(`${activeSessionId}:stop`) || pending.has(`${activeSessionId}:delete`)
   $: sendPending = pending.has(`${activeSessionId}:prompt`)
@@ -74,7 +93,7 @@
   $: runActive = snapshot.runtime.connection === 'connected' && snapshot.runtime.activity !== 'idle'
   $: if (visibleActivities.length > 0) void followActivity(visibleActivities)
 
-  function tr(source: string) { return attachmentText($locale, agentText($locale, source)) }
+  function tr(source: string) { return chatText($locale, attachmentText($locale, agentText($locale, source))) }
 
   function selectSession(id: string) {
     if (activeSessionId) sessionPromptDrafts.write(activeSessionId, prompt)
@@ -100,6 +119,35 @@
   function rememberScroll() {
     if (!activityViewport) return
     stickToBottom = activityViewport.scrollHeight - activityViewport.scrollTop - activityViewport.clientHeight < 80
+  }
+
+  async function loadEarlier() {
+    if (loadingHistory || (!localHistory && (!historyHasMore || !onLoadOlder))) return
+    const id = activeSessionId
+    const load = onLoadOlder
+    historyRequestId = id
+    historyErrors = { ...historyErrors, [id]: '' }
+    stickToBottom = false
+    try {
+      if (!localHistory && load) { await load(); await tick() }
+      if (destroyed || activeSessionId !== id || !activityViewport) return
+      const viewport = activityViewport
+      const anchor = captureActivityAnchor(viewport)
+      timelineWindow.revealOlder(visibleActivities)
+      windowRevision += 1
+      await tick()
+      if (destroyed || activeSessionId !== id) return
+      if (anchor) {
+        restoreActivityAnchor(viewport, anchor)
+        const restoredTop = viewport.scrollTop
+        // Newly mounted Markdown editors finish their first layout on this frame.
+        requestAnimationFrame(() => {
+          if (!destroyed && activeSessionId === id && Math.abs(viewport.scrollTop - restoredTop) < 1) restoreActivityAnchor(viewport, anchor)
+        })
+      }
+    } catch {
+      historyErrors = { ...historyErrors, [id]: tr('Could not load earlier messages.') }
+    } finally { if (historyRequestId === id) historyRequestId = '' }
   }
 
   async function run(name: string, operation: () => Promise<void> | void, id = activeSessionId): Promise<boolean> {
@@ -251,7 +299,13 @@
   {#if visibleError}<p role="alert" class="m-0 break-words border-b border-destructive/25 bg-destructive/5 px-5 py-3 text-xs text-destructive">{tr(visibleError)}</p>{/if}
 
   <div bind:this={activityViewport} onscroll={rememberScroll} class="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-5 py-5" aria-label={tr('Session activity')}>
-    <SessionTimeline sessionId={snapshot.session.session_id} activities={visibleActivities} {runActive}
+    {#if localHistory || historyHasMore || visibleHistoryError}
+      <div class="mx-auto flex max-w-4xl flex-col items-center gap-2 pb-1">
+        <Button variant="ghost" size="sm" disabled={loadingHistory || (!localHistory && !onLoadOlder)} onclick={() => void loadEarlier()}>{#if loadingHistory}<LoaderCircle class="size-3.5 animate-spin" />{/if}{tr(loadingHistory ? 'Loading earlier messages…' : 'Load earlier messages')}</Button>
+        {#if visibleHistoryError}<p class="m-0 text-xs text-destructive" role="alert">{visibleHistoryError}</p>{/if}
+      </div>
+    {/if}
+    <SessionTimeline sessionId={snapshot.session.session_id} activities={renderedActivities} {runActive}
       quoteDisabled={composerState.disabled} onQuote={(text) => composer?.insertQuote(text)}
       onResize={() => void followActivity(visibleActivities)} />
     {#if visibleActivities.length === 0}

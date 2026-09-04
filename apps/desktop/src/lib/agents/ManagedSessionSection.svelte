@@ -58,6 +58,10 @@
   <ManagedSessionWorkspace
     snapshot={$session.snapshot}
     activities={$session.snapshot.activities}
+    historyLoading={$session.historyLoading}
+    historyHasMore={$session.historyHasMore}
+    historyError={$session.historyError}
+    onLoadOlder={session.loadOlder}
     permissions={$session.snapshot.permissions}
     deliveries={$session.snapshot.deliveries}
     recovery={$session.snapshot.recovery}
