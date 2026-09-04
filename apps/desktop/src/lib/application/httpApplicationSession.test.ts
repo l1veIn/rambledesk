@@ -14,6 +14,7 @@ import {
   StaleHttpApplicationResponseError,
   type ApplicationWebSocket,
 } from './httpApplicationTransport'
+import { APPLICATION_CONFORMANCE_INPUTS } from './applicationTransportConformance'
 
 class ControlledWebSocket implements ApplicationWebSocket {
   protocol = APPLICATION_EVENT_PROTOCOL
@@ -109,6 +110,75 @@ async function expectOlderSemanticProjectionRejected(
 }
 
 describe('HttpApplicationSession reconnect state machine', () => {
+  it('rejects a managed snapshot invalidated in flight without invalidating another session', async () => {
+    const socket = new ControlledWebSocket()
+    let socketCreated = false
+    let resolveFirst: ((value: Response) => void) | undefined
+    const firstResponse = new Promise<Response>((resolve) => { resolveFirst = resolve })
+    let firstRequested = false
+    const session = HttpApplicationSession.authenticated({
+      accessToken: 'session-token', pageUrl: 'https://workbench.example/app',
+      fetch: vi.fn<typeof fetch>(async (url, init) => {
+        if (String(url).endsWith('/api/health')) return Response.json({ runtime_generation: 'runtime-a', revision: '5' })
+        const input = JSON.parse(String(init?.body)) as { session_id: string }
+        if (input.session_id === 'local-one') { firstRequested = true; return firstResponse }
+        return response({ session: 'local-two' }, 'runtime-a', '6')
+      }),
+      webSocket: () => { socketCreated = true; return socket },
+    })
+    const transport = new HttpApplicationTransport(session.lease())
+    await vi.waitFor(() => expect(socketCreated).toBe(true))
+    socket.emit({ type: 'ready', runtime_generation: 'runtime-a', revision: '5' })
+    const first = transport.call('getManagedSession', { session_id: 'local-one' })
+    const firstRejected = expect(first).rejects.toBeInstanceOf(StaleHttpApplicationResponseError)
+    await vi.waitFor(() => expect(firstRequested).toBe(true))
+    socket.emit({ type: 'invalidate', runtime_generation: 'runtime-a', revision: '8', resources: [{ kind: 'managed_session', session_id: 'local-one' }] })
+    await expect(transport.call('getManagedSession', { session_id: 'local-two' })).resolves.toEqual({ session: 'local-two' })
+    resolveFirst?.(response({ session: 'local-one' }, 'runtime-a', '7'))
+    await firstRejected
+  })
+
+  it('rejects older reads of the same canonical managed-session projection', async () => {
+    await expectOlderSemanticProjectionRejected(
+      (transport) => transport.call('getManagedSession', { session_id: '0195f7e2-5c31-7b5a-8ab7-3c84ea4fc827' }),
+      (transport) => transport.call('getManagedSession', { session_id: '0195F7E25C317B5A8AB73C84EA4FC827' }),
+    )
+  })
+
+  it.each([
+    'saveAgentConfig', 'deleteAgentConfig', 'checkAgentConfig', 'createManagedSession',
+    'startManagedSession', 'stopManagedSession', 'cancelManagedPrompt', 'sendManagedPrompt', 'respondManagedPermission',
+  ] as const)('returns %s once after a newer invalidation without replaying the operation', async (name) => {
+    const socket = new ControlledWebSocket()
+    let socketCreated = false
+    let applicationCalls = 0
+    let resolveOperation: ((value: Response) => void) | undefined
+    const pendingResponse = new Promise<Response>((resolve) => { resolveOperation = resolve })
+    const session = HttpApplicationSession.authenticated({
+      accessToken: 'session-token', pageUrl: 'https://workbench.example/app',
+      fetch: vi.fn<typeof fetch>(async (url) => {
+        if (String(url).endsWith('/api/health')) return Response.json({ runtime_generation: 'runtime-a', revision: '5' })
+        applicationCalls += 1
+        return pendingResponse
+      }),
+      webSocket: () => { socketCreated = true; return socket },
+    })
+    const transport = new HttpApplicationTransport(session.lease())
+    await vi.waitFor(() => expect(socketCreated).toBe(true))
+    socket.emit({ type: 'ready', runtime_generation: 'runtime-a', revision: '5' })
+    const result = transport.call(name, APPLICATION_CONFORMANCE_INPUTS[name])
+    await vi.waitFor(() => expect(applicationCalls).toBe(1))
+    socket.emit({ type: 'invalidate', runtime_generation: 'runtime-a', revision: '8', resources: [{ kind: 'all' }] })
+    if (name === 'deleteAgentConfig') {
+      resolveOperation?.(new Response(null, { status: 204, headers: { [RUNTIME_GENERATION_HEADER]: 'runtime-a', [REVISION_HEADER]: '6' } }))
+      await expect(result).resolves.toBeUndefined()
+    } else {
+      resolveOperation?.(response({ accepted: true }, 'runtime-a', '6'))
+      await expect(result).resolves.toEqual({ accepted: true })
+    }
+    expect(applicationCalls).toBe(1)
+  })
+
   it('reports a prior terminal revocation to late subscribers without retaining them', async () => {
     const onTerminalError = vi.fn()
     const session = HttpApplicationSession.authenticated({

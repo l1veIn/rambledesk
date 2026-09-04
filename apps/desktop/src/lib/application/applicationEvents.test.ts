@@ -8,12 +8,27 @@ import {
   REVISION_HEADER,
   RUNTIME_GENERATION_HEADER,
   applicationEventRevision,
+  applicationResourceKeyIdentity,
   isRuntimeGenerationStaleError,
   isSnapshotUnstableError,
   parseApplicationEvent,
 } from './applicationEvents'
 
 describe('application event contracts', () => {
+  it('recognizes configuration and individually scoped managed-session invalidations', () => {
+    const event = {
+      type: 'invalidate', runtime_generation: 'runtime-a', revision: '8',
+      resources: [{ kind: 'agent_configurations' }, { kind: 'managed_session', session_id: 'session-one' }],
+    }
+    expect(parseApplicationEvent(event)).toEqual(event)
+    expect(applicationResourceKeyIdentity({ kind: 'agent_configurations' })).toBe('agent_configurations')
+    expect(applicationResourceKeyIdentity({ kind: 'managed_session', session_id: 'session-one' }))
+      .not.toBe(applicationResourceKeyIdentity({ kind: 'managed_session', session_id: 'session-two' }))
+    for (const resource of [{ kind: 'managed_session' }, { kind: 'managed_session', session_id: '' }]) {
+      expect(() => parseApplicationEvent({ ...event, resources: [resource] })).toThrow('payload is invalid')
+    }
+  })
+
   it('uses a stable stream identity and decimal revisions', () => {
     const event: ApplicationEvent = {
       type: 'invalidate',

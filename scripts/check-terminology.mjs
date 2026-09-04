@@ -64,7 +64,7 @@ const dependencyContracts = new Map([
   ["crates/rambledesk-cli/Cargo.toml", ["rambledesk-core", "rambledesk-local-server", "rambledesk-storage"]],
   [
     "apps/desktop/src-tauri/Cargo.toml",
-    ["rambledesk-core", "rambledesk-hosts", "rambledesk-local-server", "rambledesk-mcp", "rambledesk-speech", "rambledesk-storage"],
+    ["rambledesk-acp", "rambledesk-core", "rambledesk-hosts", "rambledesk-local-server", "rambledesk-mcp", "rambledesk-speech", "rambledesk-storage"],
   ],
 ]);
 for (const [manifest, expected] of dependencyContracts) {

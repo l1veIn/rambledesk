@@ -1,5 +1,8 @@
 import {
   APPLICATION_ERROR_CODES,
+  type AgentConfig,
+  type AgentConfigInput,
+  type AgentConnectionCheck,
   type ApplicationFeedbackRequestView,
   type ApplicationFeedbackWorkspaceView,
   type ApplicationHostProfileView,
@@ -8,6 +11,7 @@ import {
   type ApplicationErrorCode,
   type ApproveFeedbackInput,
   type CancelFeedbackInput,
+  type CreateManagedSessionInput,
   type DeleteFeedbackRequestInput,
   type DraftView,
   type FeedbackPackageView,
@@ -18,11 +22,16 @@ import {
   type ListFeedbackRequestsInput,
   type ListFeedbackRequestsOutput,
   type ListHostSessionsInput,
+  type ManagedSessionInput,
+  type ManagedSessionSnapshot,
   type RemoveAttachmentInput,
   type ReadAttachmentInput,
   type RenameHostSessionInput,
   type ReorderAttachmentsInput,
   type SaveDraftInput,
+  type SaveAgentConfigInput,
+  type SendManagedPromptInput,
+  type RespondManagedPermissionInput,
   type SetHostPinnedInput,
   type SetHostSessionPinnedInput,
   type SubmitFeedbackInput,
@@ -45,6 +54,17 @@ export type ApplicationAddAttachmentInput = Omit<AddAttachmentInput, 'contents'>
  * never a Tauri `{ input }` envelope or camelCase invoke argument object.
  */
 export type ApplicationCommandMap = Readonly<{
+  listAgentConfigs: ApplicationCommandContract<undefined, AgentConfig[]>
+  saveAgentConfig: ApplicationCommandContract<SaveAgentConfigInput, AgentConfig>
+  deleteAgentConfig: ApplicationCommandContract<AgentConfigInput, void>
+  checkAgentConfig: ApplicationCommandContract<AgentConfigInput, AgentConnectionCheck>
+  createManagedSession: ApplicationCommandContract<CreateManagedSessionInput, ManagedSessionSnapshot>
+  getManagedSession: ApplicationCommandContract<ManagedSessionInput, ManagedSessionSnapshot>
+  startManagedSession: ApplicationCommandContract<ManagedSessionInput, ManagedSessionSnapshot>
+  stopManagedSession: ApplicationCommandContract<ManagedSessionInput, ManagedSessionSnapshot>
+  cancelManagedPrompt: ApplicationCommandContract<ManagedSessionInput, ManagedSessionSnapshot>
+  sendManagedPrompt: ApplicationCommandContract<SendManagedPromptInput, ManagedSessionSnapshot>
+  respondManagedPermission: ApplicationCommandContract<RespondManagedPermissionInput, ManagedSessionSnapshot>
   listFeedbackInbox: ApplicationCommandContract<undefined, FeedbackRequestSummary[]>
   listHostSessions: ApplicationCommandContract<undefined, HostSessionSummary[]>
   listArchivedHostSessions: ApplicationCommandContract<ListHostSessionsInput, HostSessionSummary[]>

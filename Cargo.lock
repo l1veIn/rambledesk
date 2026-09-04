@@ -4883,6 +4883,7 @@ dependencies = [
  "objc2-av-foundation",
  "objc2-core-foundation",
  "objc2-core-graphics",
+ "rambledesk-acp",
  "rambledesk-core",
  "rambledesk-hosts",
  "rambledesk-local-server",

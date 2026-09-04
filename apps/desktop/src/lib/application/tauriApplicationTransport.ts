@@ -16,6 +16,17 @@ import type { CapabilityManifest } from '../capabilities/capabilityManifest'
 import { UNAVAILABLE_CAPABILITY_MANIFEST } from '../capabilities/unavailableCapabilities'
 
 export const TAURI_APPLICATION_COMMANDS = {
+  listAgentConfigs: 'list_agent_configs',
+  saveAgentConfig: 'save_agent_config',
+  deleteAgentConfig: 'delete_agent_config',
+  checkAgentConfig: 'check_agent_config',
+  createManagedSession: 'create_managed_session',
+  getManagedSession: 'get_managed_session',
+  startManagedSession: 'start_managed_session',
+  stopManagedSession: 'stop_managed_session',
+  cancelManagedPrompt: 'cancel_managed_prompt',
+  sendManagedPrompt: 'send_managed_prompt',
+  respondManagedPermission: 'respond_managed_permission',
   listFeedbackInbox: 'list_feedback_inbox',
   listHostSessions: 'list_host_sessions',
   listArchivedHostSessions: 'list_archived_host_sessions',
@@ -42,6 +53,7 @@ export const TAURI_APPLICATION_COMMANDS = {
 } as const satisfies Record<ApplicationCommandName, string>
 
 const NO_ARGUMENT_COMMANDS: ReadonlySet<ApplicationCommandName> = new Set([
+  'listAgentConfigs',
   'listFeedbackInbox',
   'listHostSessions',
   'listHostProfiles',

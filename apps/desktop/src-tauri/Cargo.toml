@@ -21,6 +21,7 @@ tauri-build.workspace = true
 [dependencies]
 async-trait.workspace = true
 dunce = "1"
+rambledesk-acp.workspace = true
 rambledesk-core.workspace = true
 rambledesk-hosts.workspace = true
 rambledesk-local-server.workspace = true

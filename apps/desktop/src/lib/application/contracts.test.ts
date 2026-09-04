@@ -1,6 +1,9 @@
 import { describe, expect, expectTypeOf, it } from 'vitest'
 
 import type {
+  AgentConfig,
+  AgentConfigInput,
+  AgentConnectionCheck,
   ApplicationFeedbackWorkspaceView,
   ApplicationHostProfileView,
   DraftView,
@@ -9,6 +12,12 @@ import type {
   GetFeedbackInput,
   ListFeedbackRequestsInput,
   ReadAttachmentInput,
+  CreateManagedSessionInput,
+  ManagedSessionInput,
+  ManagedSessionSnapshot,
+  SaveAgentConfigInput,
+  SendManagedPromptInput,
+  RespondManagedPermissionInput,
 } from '../generated/feedback'
 import {
   isApplicationError,
@@ -21,6 +30,18 @@ import {
 
 describe('application command contracts', () => {
   it('binds semantic command names to domain inputs and results', () => {
+    expectTypeOf<ApplicationCommandInput<'listAgentConfigs'>>().toEqualTypeOf<undefined>()
+    expectTypeOf<ApplicationCommandResult<'listAgentConfigs'>>().toEqualTypeOf<AgentConfig[]>()
+    expectTypeOf<ApplicationCommandInput<'saveAgentConfig'>>().toEqualTypeOf<SaveAgentConfigInput>()
+    expectTypeOf<ApplicationCommandResult<'saveAgentConfig'>>().toEqualTypeOf<AgentConfig>()
+    expectTypeOf<ApplicationCommandInput<'deleteAgentConfig'>>().toEqualTypeOf<AgentConfigInput>()
+    expectTypeOf<ApplicationCommandResult<'deleteAgentConfig'>>().toEqualTypeOf<void>()
+    expectTypeOf<ApplicationCommandResult<'checkAgentConfig'>>().toEqualTypeOf<AgentConnectionCheck>()
+    expectTypeOf<ApplicationCommandInput<'createManagedSession'>>().toEqualTypeOf<CreateManagedSessionInput>()
+    expectTypeOf<ApplicationCommandInput<'getManagedSession'>>().toEqualTypeOf<ManagedSessionInput>()
+    expectTypeOf<ApplicationCommandInput<'sendManagedPrompt'>>().toEqualTypeOf<SendManagedPromptInput>()
+    expectTypeOf<ApplicationCommandInput<'respondManagedPermission'>>().toEqualTypeOf<RespondManagedPermissionInput>()
+    expectTypeOf<ApplicationCommandResult<'getManagedSession'>>().toEqualTypeOf<ManagedSessionSnapshot>()
     expectTypeOf<ApplicationCommandInput<'listFeedbackInbox'>>().toEqualTypeOf<undefined>()
     expectTypeOf<ApplicationCommandResult<'listFeedbackInbox'>>().toEqualTypeOf<
       FeedbackRequestSummary[]
@@ -67,6 +88,17 @@ describe('application command contracts', () => {
 
   it('contains only the intended cross-client operation names', () => {
     const commands = [
+      'listAgentConfigs',
+      'saveAgentConfig',
+      'deleteAgentConfig',
+      'checkAgentConfig',
+      'createManagedSession',
+      'getManagedSession',
+      'startManagedSession',
+      'stopManagedSession',
+      'cancelManagedPrompt',
+      'sendManagedPrompt',
+      'respondManagedPermission',
       'listFeedbackInbox',
       'listHostSessions',
       'listArchivedHostSessions',
@@ -92,7 +124,7 @@ describe('application command contracts', () => {
       'readRequestAttachment',
     ] as const satisfies readonly ApplicationCommandName[]
 
-    expect(commands).toHaveLength(23)
+    expect(commands).toHaveLength(34)
     expectTypeOf<(typeof commands)[number]>().toEqualTypeOf<ApplicationCommandName>()
   })
 })

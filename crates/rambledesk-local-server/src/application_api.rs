@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+mod managed;
+
 use axum::{
     Json, Router,
     body::{Body, Bytes},
@@ -43,6 +45,15 @@ pub const RUNTIME_GENERATION_HEADER: &str = "x-rambledesk-runtime-generation";
 pub const REVISION_HEADER: &str = "x-rambledesk-revision";
 
 const MUTATION_OPERATIONS: &[&str] = &[
+    "saveAgentConfig",
+    "deleteAgentConfig",
+    "checkAgentConfig",
+    "createManagedSession",
+    "startManagedSession",
+    "stopManagedSession",
+    "sendManagedPrompt",
+    "cancelManagedPrompt",
+    "respondManagedPermission",
     "saveFeedbackDraft",
     "addFeedbackAttachment",
     "removeFeedbackAttachment",
@@ -113,6 +124,7 @@ pub fn application_router(
     changes: Arc<ApplicationChangeHub>,
 ) -> Router {
     Router::new()
+        .merge(managed::routes())
         .route("/application/listFeedbackInbox", post(list_feedback_inbox))
         .route("/application/listHostSessions", post(list_host_sessions))
         .route(

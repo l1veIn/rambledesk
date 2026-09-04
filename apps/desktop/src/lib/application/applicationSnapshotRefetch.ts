@@ -83,6 +83,20 @@ export function applicationResourcesRequireFullNavigationSnapshot(
   return resources.some((resource) => resource.kind === 'all')
 }
 
+export function applicationResourcesAffectAgentConfigurations(
+  resources: readonly ApplicationResourceKey[],
+): boolean {
+  return resources.some((resource) => resource.kind === 'all' || resource.kind === 'agent_configurations')
+}
+
+export function applicationResourcesAffectManagedSession(
+  resources: readonly ApplicationResourceKey[],
+  sessionId: string,
+): boolean {
+  return resources.some((resource) => resource.kind === 'all'
+    || (resource.kind === 'managed_session' && resource.session_id === sessionId))
+}
+
 export function applicationResourcesAffectWorkspace(
   resources: readonly ApplicationResourceKey[],
   workspace: Readonly<{
@@ -96,6 +110,8 @@ export function applicationResourcesAffectWorkspace(
       case 'all':
         return true
       case 'navigation':
+      case 'agent_configurations':
+      case 'managed_session':
         return false
       case 'host_session_resources':
         return (

@@ -1,5 +1,8 @@
 use std::sync::Arc;
 
+mod managed;
+pub use managed::{ManagedCommandError, ManagedCommandErrorCode};
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -97,6 +100,7 @@ impl From<FeedbackWorkspaceView> for ApplicationFeedbackWorkspaceView {
 
 #[derive(Clone)]
 pub struct ApplicationCommandFacade {
+    sessions: Option<crate::SessionApplication>,
     application: FeedbackApplication,
     terminal_operations: WorkbenchTerminalOperations,
     host_profiles: Arc<[ApplicationHostProfileView]>,
@@ -109,6 +113,7 @@ impl ApplicationCommandFacade {
         host_profiles: Vec<ApplicationHostProfileView>,
     ) -> Self {
         Self {
+            sessions: None,
             application,
             terminal_operations,
             host_profiles: Arc::from(host_profiles),

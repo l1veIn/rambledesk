@@ -3,6 +3,7 @@ mod diagnostics;
 mod dsh_install;
 mod logging;
 mod macos_permissions;
+mod managed_commands;
 mod notification_sounds;
 mod open_attachment;
 mod pi_install;
@@ -13,7 +14,7 @@ mod web_access;
 
 use rambledesk_core::{
     ApplicationChangeHub, ApplicationCommandFacade, ApplicationHostProfileView,
-    FeedbackApplication, WorkbenchTerminalOperations,
+    FeedbackApplication, SessionApplication, WorkbenchTerminalOperations,
 };
 use rambledesk_hosts::{
     ContinuationMode, ContinuationRouter, HostAdapter, known_continuation_strategies,
@@ -47,6 +48,7 @@ struct WorkbenchState {
     local_server: ServerHandle,
     application: FeedbackApplication,
     application_commands: Arc<ApplicationCommandFacade>,
+    sessions: SessionApplication,
     application_change_hub: Arc<ApplicationChangeHub>,
     web_access_lifecycle: tokio::sync::Mutex<web_access::WebAccessLifecycle>,
     web_access_credential_store: Arc<dyn web_access::WebAccessCredentialStore>,
@@ -204,11 +206,20 @@ pub fn run() {
                     ));
                 let terminal_operations =
                     WorkbenchTerminalOperations::new(application.clone(), terminal_observer);
-                let application_commands = Arc::new(ApplicationCommandFacade::new(
-                    application.clone(),
-                    terminal_operations,
-                    application_host_profiles(),
-                ));
+                let sessions = SessionApplication::new(
+                    Arc::new(store.clone()),
+                    Arc::new(store.clone()),
+                    Arc::new(rambledesk_acp::AcpSessionDriver),
+                )
+                .with_change_observer(application_change_hub.clone());
+                let application_commands = Arc::new(
+                    ApplicationCommandFacade::new(
+                        application.clone(),
+                        terminal_operations,
+                        application_host_profiles(),
+                    )
+                    .with_sessions(sessions.clone()),
+                );
                 let config = ServerConfig::new(token.clone()).with_port(configured_port()?);
                 let handle =
                     tauri::async_runtime::block_on(start_server(config, application.clone()))?;
@@ -261,6 +272,7 @@ pub fn run() {
                     local_server: handle,
                     application,
                     application_commands,
+                    sessions,
                     application_change_hub,
                     web_access_lifecycle: tokio::sync::Mutex::new(
                         web_access::WebAccessLifecycle::default(),
@@ -311,6 +323,17 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            managed_commands::list_agent_configs,
+            managed_commands::save_agent_config,
+            managed_commands::delete_agent_config,
+            managed_commands::check_agent_config,
+            managed_commands::create_managed_session,
+            managed_commands::get_managed_session,
+            managed_commands::start_managed_session,
+            managed_commands::stop_managed_session,
+            managed_commands::send_managed_prompt,
+            managed_commands::cancel_managed_prompt,
+            managed_commands::respond_managed_permission,
             show_ramble_console,
             hide_ramble_console,
             window::set_speech_overlay_layout,
@@ -419,6 +442,9 @@ pub fn run() {
         if matches!(event, RunEvent::Exit | RunEvent::ExitRequested { .. })
             && let Some(state) = app_handle.try_state::<WorkbenchState>()
         {
+            if tauri::async_runtime::block_on(state.sessions.shutdown()).is_err() {
+                tracing::warn!("managed session shutdown completed with a cleanup error");
+            }
             state.local_server.cancel();
             if let Ok(lifecycle) = state.web_access_lifecycle.try_lock() {
                 lifecycle.cancel_active();

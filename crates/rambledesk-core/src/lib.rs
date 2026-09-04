@@ -23,7 +23,8 @@ pub use application_changes::{
 };
 pub use application_commands::{
     ApplicationCommandFacade, ApplicationFeedbackRequestView, ApplicationFeedbackResultView,
-    ApplicationFeedbackWorkspaceView, ApplicationHostProfileView,
+    ApplicationFeedbackWorkspaceView, ApplicationHostProfileView, ManagedCommandError,
+    ManagedCommandErrorCode,
 };
 pub use process::{find_executable, find_executable_on_path};
 pub use sessions::*;

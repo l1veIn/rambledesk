@@ -30,6 +30,17 @@ import {
 } from './applicationEvents'
 
 export const HTTP_APPLICATION_OPERATIONS = {
+  listAgentConfigs: 'listAgentConfigs',
+  saveAgentConfig: 'saveAgentConfig',
+  deleteAgentConfig: 'deleteAgentConfig',
+  checkAgentConfig: 'checkAgentConfig',
+  createManagedSession: 'createManagedSession',
+  getManagedSession: 'getManagedSession',
+  startManagedSession: 'startManagedSession',
+  stopManagedSession: 'stopManagedSession',
+  cancelManagedPrompt: 'cancelManagedPrompt',
+  sendManagedPrompt: 'sendManagedPrompt',
+  respondManagedPermission: 'respondManagedPermission',
   listFeedbackInbox: 'listFeedbackInbox',
   listHostSessions: 'listHostSessions',
   listArchivedHostSessions: 'listArchivedHostSessions',
@@ -59,12 +70,14 @@ export type HttpApplicationOperation =
   (typeof HTTP_APPLICATION_OPERATIONS)[ApplicationCommandName]
 
 const NO_ARGUMENT_COMMANDS: ReadonlySet<ApplicationCommandName> = new Set([
+  'listAgentConfigs',
   'listFeedbackInbox',
   'listHostSessions',
   'listHostProfiles',
 ])
 
 const VOID_COMMANDS: ReadonlySet<ApplicationCommandName> = new Set([
+  'deleteAgentConfig',
   'deleteHostSession',
   'deleteFeedbackRequest',
 ])
@@ -75,6 +88,16 @@ const BINARY_COMMANDS: ReadonlySet<ApplicationCommandName> = new Set([
 ])
 
 const MUTATION_COMMANDS: ReadonlySet<ApplicationCommandName> = new Set([
+  'saveAgentConfig',
+  'deleteAgentConfig',
+  // The check starts a real agent process and must never be replayed as a query.
+  'checkAgentConfig',
+  'createManagedSession',
+  'startManagedSession',
+  'stopManagedSession',
+  'cancelManagedPrompt',
+  'sendManagedPrompt',
+  'respondManagedPermission',
   'saveFeedbackDraft',
   'addFeedbackAttachment',
   'removeFeedbackAttachment',
@@ -786,6 +809,20 @@ export function applicationCommandResponseResources<Name extends ApplicationComm
   input: ApplicationCommandInput<Name>,
 ): readonly ApplicationResourceKey[] {
   switch (name) {
+    case 'listAgentConfigs':
+    case 'saveAgentConfig':
+    case 'deleteAgentConfig':
+    case 'checkAgentConfig':
+      return [{ kind: 'agent_configurations' }]
+    case 'createManagedSession':
+      return [{ kind: 'navigation' }]
+    case 'getManagedSession':
+    case 'startManagedSession':
+    case 'stopManagedSession':
+    case 'cancelManagedPrompt':
+    case 'sendManagedPrompt':
+    case 'respondManagedPermission':
+      return [{ kind: 'managed_session', session_id: canonicalUuid((input as { session_id: string }).session_id.trim()) }]
     case 'getFeedbackWorkspace':
     case 'saveFeedbackDraft':
     case 'addFeedbackAttachment':
@@ -839,6 +876,24 @@ export function applicationCommandProjectionKey<Name extends ApplicationCommandN
   input: ApplicationCommandInput<Name>,
 ): string {
   switch (name) {
+    case 'listAgentConfigs':
+      return projectionKey(name)
+    case 'saveAgentConfig':
+      return projectionKey(name, (input as ApplicationCommandInput<'saveAgentConfig'>).id)
+    case 'deleteAgentConfig':
+    case 'checkAgentConfig':
+      return projectionKey(name, canonicalUuid((input as { agent_config_id: string }).agent_config_id.trim()))
+    case 'createManagedSession': {
+      const createInput = input as ApplicationCommandInput<'createManagedSession'>
+      return projectionKey(name, canonicalUuid(createInput.agent_config_id.trim()), createInput.cwd.trim())
+    }
+    case 'getManagedSession':
+    case 'startManagedSession':
+    case 'stopManagedSession':
+    case 'cancelManagedPrompt':
+    case 'sendManagedPrompt':
+    case 'respondManagedPermission':
+      return projectionKey(name, canonicalUuid((input as { session_id: string }).session_id.trim()))
     case 'listFeedbackInbox':
     case 'listHostSessions':
     case 'listHostProfiles':

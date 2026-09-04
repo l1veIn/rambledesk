@@ -98,7 +98,7 @@ runApplicationTransportConformance('HTTP', () => {
     const name = semanticNameByOperation.get(operation)
     if (!name) return Response.json({ message: 'unknown operation' }, { status: 404 })
     const result = applicationConformanceResult(name)
-    if (name === 'deleteHostSession' || name === 'deleteFeedbackRequest') {
+    if (name === 'deleteHostSession' || name === 'deleteFeedbackRequest' || name === 'deleteAgentConfig') {
       return new Response(null, { status: 204 })
     }
     if (result instanceof ArrayBuffer) return new Response(result)
@@ -116,6 +116,7 @@ runApplicationTransportConformance('HTTP', () => {
       expect(String(url).split('/').at(-1)).toBe(HTTP_APPLICATION_OPERATIONS[name])
       expect(init?.method).toBe('POST')
       if (
+        name === 'listAgentConfigs' ||
         name === 'listFeedbackInbox' ||
         name === 'listHostSessions' ||
         name === 'listHostProfiles'
@@ -212,6 +213,36 @@ describe('HttpApplicationSession', () => {
 })
 
 describe('HttpApplicationTransport', () => {
+  it('scopes managed snapshots by local session id and keeps config secrets out of projection keys', () => {
+    expect(applicationCommandResponseResources('listAgentConfigs', undefined)).toEqual([{ kind: 'agent_configurations' }])
+    expect(applicationCommandResponseResources('getManagedSession', { session_id: 'local-session-one' }))
+      .toEqual([{ kind: 'managed_session', session_id: 'local-session-one' }])
+    expect(applicationCommandProjectionKey('getManagedSession', { session_id: 'local-session-one' }))
+      .not.toBe(applicationCommandProjectionKey('getManagedSession', { session_id: 'local-session-two' }))
+    expect(applicationCommandProjectionKey('getManagedSession', { session_id: '0195F7E25C317B5A8AB73C84EA4FC827' }))
+      .toBe(applicationCommandProjectionKey('getManagedSession', { session_id: '0195f7e2-5c31-7b5a-8ab7-3c84ea4fc827' }))
+    expect(applicationCommandProjectionKey('saveAgentConfig', {
+      ...APPLICATION_CONFORMANCE_INPUTS.saveAgentConfig, env: { TOKEN: 'sensitive-value' },
+    })).not.toContain('sensitive-value')
+    expect(applicationCommandProjectionKey('sendManagedPrompt', {
+      session_id: 'local-session-one', text: 'Private prompt content',
+    })).not.toContain('Private prompt content')
+  })
+
+  it('sends a cancelled permission as explicit null in the authenticated JSON body', async () => {
+    const fetchImplementation = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ accepted: true }))
+    const transport = new HttpApplicationTransport(authenticatedSession(fetchImplementation).lease())
+    await transport.call('respondManagedPermission', {
+      session_id: 'local-session-one', request_id: 'permission-one', option_id: null,
+    })
+    const [url, init] = fetchImplementation.mock.calls[0]!
+    expect(String(url)).toBe('https://workbench.example/api/application/respondManagedPermission')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      session_id: 'local-session-one', request_id: 'permission-one', option_id: null,
+    })
+    expect(new Headers(init?.headers).get(RUNTIME_GENERATION_HEADER)).toBe(TEST_RUNTIME_GENERATION)
+  })
+
   it('maps command projections to resource-scoped freshness identities', () => {
     expect(applicationCommandResponseResources('listHostSessions', undefined)).toEqual([
       { kind: 'navigation' },
@@ -349,8 +380,8 @@ describe('HttpApplicationTransport', () => {
   })
 
   it('defines one complete HTTP operation mapping', () => {
-    expect(Object.keys(HTTP_APPLICATION_OPERATIONS)).toHaveLength(23)
-    expect(new Set(Object.values(HTTP_APPLICATION_OPERATIONS)).size).toBe(23)
+    expect(Object.keys(HTTP_APPLICATION_OPERATIONS)).toHaveLength(34)
+    expect(new Set(Object.values(HTTP_APPLICATION_OPERATIONS)).size).toBe(34)
   })
 
   it('encodes JSON, multipart bytes, binary responses, and no-content outcomes', async () => {

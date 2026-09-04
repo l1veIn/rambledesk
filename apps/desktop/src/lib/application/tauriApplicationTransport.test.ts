@@ -26,7 +26,7 @@ import {
 
 function expectedArguments(name: ApplicationCommandName): Record<string, unknown> | undefined {
   const input = APPLICATION_CONFORMANCE_INPUTS[name]
-  if (name === 'listFeedbackInbox' || name === 'listHostSessions' || name === 'listHostProfiles') {
+  if (name === 'listAgentConfigs' || name === 'listFeedbackInbox' || name === 'listHostSessions' || name === 'listHostProfiles') {
     return undefined
   }
   if (name === 'addFeedbackAttachment') {
