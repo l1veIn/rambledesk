@@ -34,7 +34,8 @@ impl Fixture {
         .unwrap();
         let app = SessionApplication::new(store.clone(), store.clone(), Arc::new(AcpSessionDriver))
             .with_feedback_provider(provider)
-            .with_deliveries(store.clone());
+            .with_deliveries(store.clone())
+            .with_deletions(store.clone());
         app.start_delivery_worker().await.unwrap();
         let config = app
             .save_agent_config(SaveAgentConfigInput {
@@ -300,5 +301,94 @@ async fn disconnect_after_feedback_read_is_uncertain_and_never_blindly_replayed(
         fixture.snapshot(&session).await.deliveries[0].state,
         FeedbackDeliveryState::Delivered
     );
+    fixture.close().await;
+}
+
+#[tokio::test]
+async fn direct_delete_stops_a_busy_session_discards_feedback_and_keeps_its_neighbor() {
+    let fixture = Fixture::new("normal").await;
+    let first = fixture.create("Busy").await;
+    let other = fixture.create("Neighbor").await;
+    let request = fixture.request(&first, true).await;
+    fixture.submitted(&request).await;
+    let input = ManagedSessionInput {
+        session_id: first.clone(),
+    };
+    fixture
+        .app
+        .delete_managed_session(input.clone())
+        .await
+        .unwrap();
+    fixture.app.delete_managed_session(input).await.unwrap();
+    assert!(matches!(
+        fixture.store.get_session(&first).await,
+        Err(SessionRepositoryError::SessionNotFound)
+    ));
+    assert!(fixture.store.get_request(&request).await.is_err());
+    assert!(
+        fixture
+            .store
+            .list_session_deliveries(&first)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        fixture.snapshot(&other).await.runtime.connection,
+        SessionConnectionState::Connected
+    );
+    assert!(fixture.snapshot(&other).await.activities.is_empty());
+    // A zero-feedback session can also be removed directly.
+    fixture
+        .app
+        .delete_managed_session(ManagedSessionInput { session_id: other })
+        .await
+        .unwrap();
+    fixture.close().await;
+}
+
+#[tokio::test]
+async fn durable_deletion_intent_blocks_new_work_and_can_be_finished_by_a_new_runtime() {
+    let fixture = Fixture::new("normal").await;
+    let session = fixture.create("Deleting").await;
+    fixture
+        .app
+        .stop_session(ManagedSessionInput {
+            session_id: session.clone(),
+        })
+        .await
+        .unwrap();
+    fixture
+        .store
+        .begin_managed_session_deletion(&session, "2026-09-04T00:00:00Z")
+        .await
+        .unwrap();
+    let app = SessionApplication::new(
+        fixture.store.clone(),
+        fixture.store.clone(),
+        Arc::new(AcpSessionDriver),
+    )
+    .with_deletions(fixture.store.clone());
+    assert!(
+        app.get_session(ManagedSessionInput {
+            session_id: session.clone()
+        })
+        .await
+        .unwrap()
+        .deleting
+    );
+    assert!(matches!(
+        app.start_session(ManagedSessionInput {
+            session_id: session.clone()
+        })
+        .await,
+        Err(SessionError::NotConnected)
+    ));
+    app.delete_managed_session(ManagedSessionInput {
+        session_id: session,
+    })
+    .await
+    .unwrap();
+    app.shutdown().await.unwrap();
     fixture.close().await;
 }

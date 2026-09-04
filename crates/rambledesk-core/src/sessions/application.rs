@@ -73,7 +73,8 @@ pub struct SessionApplication {
     pub(super) ids: Arc<dyn IdGenerator>,
     pub(super) observer: Arc<dyn ApplicationChangeObserver>,
     pub(super) closing: Arc<AtomicBool>,
-    feedback: Option<Arc<dyn ManagedFeedbackProvider>>,
+    pub(super) feedback: Option<Arc<dyn ManagedFeedbackProvider>>,
+    pub(super) deletions: Option<Arc<dyn SessionDeletionRepository>>,
     pub(super) deliveries: Option<Arc<dyn FeedbackDeliveryRepository>>,
     pub(super) delivery_worker: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
     pub(super) delivery_wake: Arc<tokio::sync::Notify>,
@@ -95,6 +96,7 @@ impl SessionApplication {
             observer: Arc::new(NoopApplicationChangeObserver),
             closing: Arc::new(AtomicBool::new(false)),
             feedback: None,
+            deletions: None,
             deliveries: None,
             delivery_worker: Arc::new(Mutex::new(None)),
             delivery_wake: Arc::new(tokio::sync::Notify::new()),
@@ -243,12 +245,21 @@ impl SessionApplication {
             }
             None => vec![],
         };
+        let deleting = match &self.deletions {
+            Some(repository) => {
+                repository
+                    .is_managed_session_deleting(&input.session_id)
+                    .await?
+            }
+            None => false,
+        };
         Ok(ManagedSessionSnapshot {
             session,
             runtime,
             activities,
             permissions,
             deliveries,
+            deleting,
         })
     }
 
@@ -273,6 +284,7 @@ impl SessionApplication {
         let entry = self.entry(&input.session_id).await;
         let mut interrupted = entry.interrupt.subscribe();
         let _lifecycle = entry.lifecycle.lock().await;
+        self.require_workable(&input.session_id).await?;
         if self.closing.load(Ordering::SeqCst) {
             return Err(SessionError::ShuttingDown);
         }
@@ -409,7 +421,10 @@ impl SessionApplication {
                 })
                 .await
             {
-                error = Some(failed);
+                error = match failed {
+                    SessionError::Repository(SessionRepositoryError::SessionNotFound) => error,
+                    failed => Some(failed),
+                };
             }
         }
         match error {

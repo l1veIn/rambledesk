@@ -91,7 +91,7 @@ impl SessionApplication {
         &self,
         input: ResolveFeedbackDeliveryInput,
     ) -> Result<ManagedSessionSnapshot, SessionError> {
-        self.managed_record(&input.session_id).await?;
+        self.require_workable(&input.session_id).await?;
         let repository = self.deliveries.as_ref().ok_or(SessionError::InvalidInput)?;
         repository
             .resolve_delivery(

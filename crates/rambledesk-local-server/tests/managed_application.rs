@@ -130,7 +130,8 @@ impl Fixture {
         let driver = Arc::new(Driver::default());
         let sessions = SessionApplication::new(store.clone(), store.clone(), driver.clone())
             .with_change_observer(changes.clone())
-            .with_deliveries(store.clone());
+            .with_deliveries(store.clone())
+            .with_deletions(store.clone());
         let facade = Arc::new(
             ApplicationCommandFacade::new(
                 application.clone(),
@@ -322,6 +323,21 @@ async fn managed_http_uses_the_facade_for_configuration_session_prompt_and_permi
         .await?;
     assert_eq!(in_use.status(), reqwest::StatusCode::CONFLICT);
     assert_eq!(in_use.json::<Value>().await?["code"], "AGENT_CONFIG_IN_USE");
+    let deleted = fixture
+        .request("deleteManagedSession", json!({"session_id":id}))
+        .header(RUNTIME_GENERATION_HEADER, "managed-test")
+        .send()
+        .await?;
+    assert_eq!(deleted.status(), reqwest::StatusCode::NO_CONTENT);
+    let missing = fixture
+        .request("getManagedSession", json!({"session_id":id}))
+        .send()
+        .await?;
+    assert_eq!(missing.status(), reqwest::StatusCode::NOT_FOUND);
+    assert_eq!(
+        missing.json::<Value>().await?["code"],
+        "MANAGED_SESSION_NOT_FOUND"
+    );
     fixture.shutdown().await
 }
 
@@ -341,6 +357,7 @@ async fn every_managed_mutation_requires_current_runtime_generation_including_co
         "cancelManagedPrompt",
         "respondManagedPermission",
         "resolveFeedbackDelivery",
+        "deleteManagedSession",
     ] {
         for generation in [None, Some("old-runtime")] {
             let request = fixture.request(operation, json!({"agent_config_id":config.id}));
@@ -395,6 +412,7 @@ fn tauri_managed_commands_match_http_names_and_delegate_to_the_same_facade() {
         ("cancelManagedPrompt", "cancel_managed_prompt"),
         ("respondManagedPermission", "respond_managed_permission"),
         ("resolveFeedbackDelivery", "resolve_feedback_delivery"),
+        ("deleteManagedSession", "delete_managed_session"),
     ] {
         assert!(commands.contains(&format!("async fn {snake}(")), "{snake}");
         assert!(
@@ -407,8 +425,8 @@ fn tauri_managed_commands_match_http_names_and_delegate_to_the_same_facade() {
         );
         assert!(routes.contains(&format!("/application/{camel}")), "{camel}");
     }
-    assert_eq!(commands.matches("#[tauri::command]").count(), 12);
-    assert_eq!(commands.matches("input:").count(), 11);
+    assert_eq!(commands.matches("#[tauri::command]").count(), 13);
+    assert_eq!(commands.matches("input:").count(), 12);
     assert!(registration.contains(".with_sessions(sessions.clone())"));
     assert!(registration.contains("state.sessions.shutdown()"));
     assert!(registration.contains("sessions.start_delivery_worker()"));

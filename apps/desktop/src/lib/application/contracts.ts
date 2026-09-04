@@ -67,6 +67,7 @@ export type ApplicationCommandMap = Readonly<{
   sendManagedPrompt: ApplicationCommandContract<SendManagedPromptInput, ManagedSessionSnapshot>
   respondManagedPermission: ApplicationCommandContract<RespondManagedPermissionInput, ManagedSessionSnapshot>
   resolveFeedbackDelivery: ApplicationCommandContract<ResolveFeedbackDeliveryInput, ManagedSessionSnapshot>
+  deleteManagedSession: ApplicationCommandContract<ManagedSessionInput, void>
   listFeedbackInbox: ApplicationCommandContract<undefined, FeedbackRequestSummary[]>
   listHostSessions: ApplicationCommandContract<undefined, HostSessionSummary[]>
   listArchivedHostSessions: ApplicationCommandContract<ListHostSessionsInput, HostSessionSummary[]>

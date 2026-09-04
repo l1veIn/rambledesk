@@ -115,3 +115,14 @@ pub(crate) async fn resolve_feedback_delivery(
         .resolve_feedback_delivery(input)
         .await
 }
+
+#[tauri::command]
+pub(crate) async fn delete_managed_session(
+    state: tauri::State<'_, WorkbenchState>,
+    input: ManagedSessionInput,
+) -> Result<(), ManagedCommandError> {
+    state
+        .application_commands
+        .delete_managed_session(input)
+        .await
+}

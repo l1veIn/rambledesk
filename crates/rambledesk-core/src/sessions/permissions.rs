@@ -31,7 +31,7 @@ impl SessionApplication {
         &self,
         input: RespondManagedPermissionInput,
     ) -> Result<ManagedSessionSnapshot, SessionError> {
-        self.managed_record(&input.session_id).await?;
+        self.require_workable(&input.session_id).await?;
         let entry = self.entry(&input.session_id).await;
         let live = entry.live.lock().await;
         let permission = live

@@ -39,6 +39,7 @@
   import { canAcceptImagePaste } from './imagePasteAcceptance'
 
   export let loadingWorkspace = false
+  export let readOnly = false
   export let transport: ApplicationTransport
   export let capabilities: Pick<
     WorkbenchCapabilities,
@@ -142,6 +143,7 @@
   // same route as the explicit preview action.
   $: if (
     $autoOpenTaskBrief &&
+    !readOnly &&
     workspace &&
     workspace.request.status === 'waiting' &&
     workspace.request.request_id !== autoOpenedTaskRequestId
@@ -149,7 +151,7 @@
     autoOpenedTaskRequestId = workspace.request.request_id
     onAutoOpenTask(workspace.request.request_id)
   }
-  $: interactionLocked = cooking || cookedDraftReady || submitting || cancelling || approving
+  $: interactionLocked = readOnly || cooking || cookedDraftReady || submitting || cancelling || approving
 
   function saveDocumentLayout(layout: number[]) {
     if (documentLayoutReady) savePaneLayout(WORKSPACE_DOCUMENT_LAYOUT_KEY, layout)
@@ -263,7 +265,7 @@
               bind:open={taskBriefOpen}
               {workspace}
               {activeActionId}
-              onSelectAction={onSelectAction}
+              onSelectAction={(id, index, title) => { if (!readOnly) onSelectAction(id, index, title) }}
               onOpenPreview={() => onOpenTask(workspace!.request.request_id)}
             />
           </Pane>
@@ -305,6 +307,7 @@
       </div>
 
       <CommandRail
+        workDisabled={readOnly}
         {capabilities}
         {workspace}
         {feedbackResult}

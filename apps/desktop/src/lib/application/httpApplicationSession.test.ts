@@ -149,6 +149,7 @@ describe('HttpApplicationSession reconnect state machine', () => {
     'saveAgentConfig', 'deleteAgentConfig', 'checkAgentConfig', 'createManagedSession',
     'startManagedSession', 'stopManagedSession', 'cancelManagedPrompt', 'sendManagedPrompt', 'respondManagedPermission',
     'resolveFeedbackDelivery',
+    'deleteManagedSession',
   ] as const)('returns %s once after a newer invalidation without replaying the operation', async (name) => {
     const socket = new ControlledWebSocket()
     let socketCreated = false
@@ -170,7 +171,7 @@ describe('HttpApplicationSession reconnect state machine', () => {
     const result = transport.call(name, APPLICATION_CONFORMANCE_INPUTS[name])
     await vi.waitFor(() => expect(applicationCalls).toBe(1))
     socket.emit({ type: 'invalidate', runtime_generation: 'runtime-a', revision: '8', resources: [{ kind: 'all' }] })
-    if (name === 'deleteAgentConfig') {
+    if (name === 'deleteAgentConfig' || name === 'deleteManagedSession') {
       resolveOperation?.(new Response(null, { status: 204, headers: { [RUNTIME_GENERATION_HEADER]: 'runtime-a', [REVISION_HEADER]: '6' } }))
       await expect(result).resolves.toBeUndefined()
     } else {

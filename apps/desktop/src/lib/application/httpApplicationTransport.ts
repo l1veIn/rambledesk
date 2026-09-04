@@ -42,6 +42,7 @@ export const HTTP_APPLICATION_OPERATIONS = {
   sendManagedPrompt: 'sendManagedPrompt',
   respondManagedPermission: 'respondManagedPermission',
   resolveFeedbackDelivery: 'resolveFeedbackDelivery',
+  deleteManagedSession: 'deleteManagedSession',
   listFeedbackInbox: 'listFeedbackInbox',
   listHostSessions: 'listHostSessions',
   listArchivedHostSessions: 'listArchivedHostSessions',
@@ -78,6 +79,7 @@ const NO_ARGUMENT_COMMANDS: ReadonlySet<ApplicationCommandName> = new Set([
 ])
 
 const VOID_COMMANDS: ReadonlySet<ApplicationCommandName> = new Set([
+  'deleteManagedSession',
   'deleteAgentConfig',
   'deleteHostSession',
   'deleteFeedbackRequest',
@@ -100,6 +102,7 @@ const MUTATION_COMMANDS: ReadonlySet<ApplicationCommandName> = new Set([
   'sendManagedPrompt',
   'respondManagedPermission',
   'resolveFeedbackDelivery',
+  'deleteManagedSession',
   'saveFeedbackDraft',
   'addFeedbackAttachment',
   'removeFeedbackAttachment',
@@ -825,6 +828,7 @@ export function applicationCommandResponseResources<Name extends ApplicationComm
     case 'sendManagedPrompt':
     case 'respondManagedPermission':
     case 'resolveFeedbackDelivery':
+    case 'deleteManagedSession':
       return [{ kind: 'managed_session', session_id: canonicalUuid((input as { session_id: string }).session_id.trim()) }]
     case 'getFeedbackWorkspace':
     case 'saveFeedbackDraft':
@@ -897,6 +901,7 @@ export function applicationCommandProjectionKey<Name extends ApplicationCommandN
     case 'sendManagedPrompt':
     case 'respondManagedPermission':
     case 'resolveFeedbackDelivery':
+    case 'deleteManagedSession':
       return projectionKey(name, canonicalUuid((input as { session_id: string }).session_id.trim()))
     case 'listFeedbackInbox':
     case 'listHostSessions':

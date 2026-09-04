@@ -237,4 +237,14 @@ impl ApplicationCommandFacade {
             .await
             .map_err(Into::into)
     }
+
+    pub async fn delete_managed_session(
+        &self,
+        input: ManagedSessionInput,
+    ) -> Result<(), ManagedCommandError> {
+        self.managed_sessions()?
+            .delete_managed_session(input)
+            .await
+            .map_err(Into::into)
+    }
 }

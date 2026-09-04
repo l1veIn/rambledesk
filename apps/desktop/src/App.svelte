@@ -22,6 +22,7 @@
   import ManagedSessionSection from './lib/agents/ManagedSessionSection.svelte'
   import NewManagedSessionSection from './lib/agents/NewManagedSessionSection.svelte'
   import { agentText } from './lib/agents/agentI18n'
+  import { deleteSessionRecord, removeManagedSessionViews } from './lib/agents/managedSessionDeletion'
   import { Button } from './lib/components/ui/button'
   import * as Dialog from './lib/components/ui/dialog'
   import type { JSONContent } from '@tiptap/core'
@@ -58,7 +59,7 @@
     FeedbackWorkspaceView,
     SubmitFeedbackInput,
   } from './lib/feedback'
-  import type { ManagedSessionSnapshot } from './lib/generated/feedback'
+  import type { HostSessionSummary, ManagedSessionSnapshot } from './lib/generated/feedback'
   import {
     type ActiveAction,
     type DraftOperation,
@@ -205,6 +206,8 @@
   let managedSessionPanels: ReadonlyMap<string, 'agent' | 'feedback'> = new Map()
   let newManagedSessionOpen = false
   let creatingManagedSession = false
+  let deletingSessionCommands = new Set<string>()
+  let deletingManagedSessionIds = new Set<string>()
   let pendingWorkspaceViewKey: string | null = null
   let workbenchMounted = true
   let completedResult: FeedbackRequestView | null = null
@@ -577,6 +580,9 @@
     completedResult?.resolution ?? workspace?.request.resolution,
     requestSessionManagement(workspace?.request, $navigation.hostSessions),
   )
+  $: feedbackManagedSession = workspace ? $navigation.hostSessions.find((session) => session.management.kind === 'managed'
+    && session.host_id === workspace!.request.host_id && session.host_session_id === workspace!.request.host_session_id) : undefined
+  $: managedFeedbackReadOnly = !!feedbackManagedSession && (deletingSessionCommands.has(feedbackManagedSession.session_id) || deletingManagedSessionIds.has(feedbackManagedSession.session_id))
   $: currentRequestCooking =
     workspace !== null && cookingRequestIds.has(workspace.request.request_id)
   $: cookedDraftReady = cookedPreview !== null
@@ -584,6 +590,7 @@
   // publishes the editor content as-is.
   $: if (!$cookingEnabled) cookedPreview = null
   $: canSubmit =
+    !managedFeedbackReadOnly &&
     workspace !== null &&
     workspace.request.status !== 'completed' &&
     workspace.request.status !== 'cancelled' &&
@@ -1454,6 +1461,54 @@
     await selectRailScope(snapshot.session.host_id, snapshot.session.host_session_id)
   }
 
+  function observeManagedDeletion(sessionId: string, deleting: boolean) {
+    const next = new Set(deletingManagedSessionIds)
+    if (deleting) next.add(sessionId)
+    else next.delete(sessionId)
+    deletingManagedSessionIds = next
+  }
+
+  async function deleteManagedSessionFromUi(session: HostSessionSummary) {
+    if (session.management.kind !== 'managed' || deletingSessionCommands.has(session.session_id)) return
+    deletingSessionCommands = new Set([...deletingSessionCommands, session.session_id])
+    try {
+      const ownsFeedback = () => workspace?.request.host_id === session.host_id && workspace?.request.host_session_id === session.host_session_id
+      if (ownsFeedback() && rambleBelongsToWorkspace && rambleCanExit) await exitRamble()
+      await deleteSessionRecord(applicationTransport, session)
+      const viewKey = workspaceViewKey(sessionViewDescriptor(session.host_id, session.host_session_id))
+      const requestId = ownsFeedback() ? workspace!.request.request_id : null
+      const rememberedRequestId = sessionRequestIds.get(viewKey)
+      const cleanup = removeManagedSessionViews(workspaceShellState, session, [requestId, rememberedRequestId].filter((id): id is string => !!id))
+      const closedActive = cleanup.closedActive || ownsFeedback()
+      if (pendingWorkspaceViewKey && cleanup.closedViewKeys.includes(pendingWorkspaceViewKey)) workspaceTransition.invalidate()
+      if (closedActive) {
+        workspaceTransition.invalidate()
+        draftController.cancelPendingSave()
+        clearWorkspace()
+        cookedPreview = null
+      }
+      workspaceShellState = cleanup.shell
+      if (closedActive) workspaceShellState = workspaceShellReducer(workspaceShellState, { type: 'open', view: inboxViewDescriptor() })
+      const requestIds = new Map(sessionRequestIds)
+      requestIds.delete(viewKey)
+      sessionRequestIds = requestIds
+      const panels = new Map(managedSessionPanels)
+      panels.delete(session.session_id)
+      managedSessionPanels = panels
+      observeManagedDeletion(session.session_id, false)
+      persistCurrentWorkspaceSnapshot()
+      if (closedActive || ($navigation.selectedHostId === session.host_id && $navigation.selectedHostSessionId === session.host_session_id)) await navigation.selectScope(null, null)
+      await navigation.refreshNavigation(true)
+    } catch (cause) {
+      pageError = messageFrom(cause)
+      throw cause
+    } finally {
+      const pending = new Set(deletingSessionCommands)
+      pending.delete(session.session_id)
+      deletingSessionCommands = pending
+    }
+  }
+
   function activeActionFor(requestId: string): ActiveAction {
     return activeActionByRequest.get(requestId) ?? null
   }
@@ -1864,7 +1919,7 @@
     bind:rambleRequestId
     bind:rambleRequestTitle
     bind:rambleMessage
-    interactionLocked={interactionLocked || currentRequestCooking || cookedDraftReady}
+    interactionLocked={managedFeedbackReadOnly || interactionLocked || currentRequestCooking || cookedDraftReady}
     onPageError={(message) => (pageError = message)}
     onStartScreenCapture={attachmentController.startScreenCapture}
     onImportServerAttachmentPaths={attachmentController.importServerAttachmentPaths}
@@ -1920,6 +1975,7 @@
       onSetHostPinned={(hostId, pinned) => navigation.setHostPinned(hostId, pinned)}
       onSettings={() => void openSettings('general')}
       onNewSession={previewMode ? undefined : () => void openNewManagedSession()}
+      onDeleteManagedSession={(session) => deleteManagedSessionFromUi(session).catch(() => {})}
     />
 
     <div class="flex min-h-0 min-w-0 flex-1" id="request-workspace-layout">
@@ -1980,6 +2036,7 @@
                 selectionEpoch={archivedSelectionEpoch}
                 onError={(message) => (pageError = message)}
                 onChanged={retrySessionViewRecovery}
+                onDeleteManagedSession={deleteManagedSessionFromUi}
               />
             {:else if renderedWorkspaceView?.kind === 'settings'}
               <SettingsWorkspaceView
@@ -2002,7 +2059,7 @@
                 activeActionId={workspace
                   ? activeActionByRequest.get(workspace.request.request_id)?.actionId ?? null
                   : null}
-                actionsDisabled={workspaceTransitionLocked || pendingWorkspaceViewKey !== null}
+                actionsDisabled={managedFeedbackReadOnly || workspaceTransitionLocked || pendingWorkspaceViewKey !== null}
                 onSelectAction={selectAction}
                 previews={attachmentPreviews}
                 loading={loadingWorkspace}
@@ -2012,7 +2069,7 @@
                 ramblePhase={rambleBelongsToWorkspace ? visibleRamblePhase : 'idle'}
                 rambleStartedOnce={rambleBelongsToWorkspace ? rambleStartedOnce : false}
                 rambleBusy={rambleBelongsToWorkspace ? rambleBusy : true}
-                canSubmit
+                canSubmit={!managedFeedbackReadOnly}
                 cookingEnabled={$cookingEnabled}
                 {cookedDraftReady}
                 cooking={currentRequestCooking}
@@ -2035,6 +2092,9 @@
                 <ManagedSessionSection
                   transport={applicationTransport}
                   sessionId={renderedManagedSession.session_id}
+                  deletionPending={deletingSessionCommands.has(renderedManagedSession.session_id)}
+                  onDeletingChange={observeManagedDeletion}
+                  onDelete={() => deleteManagedSessionFromUi(renderedManagedSession!)}
                   feedbackRequests={renderedManagedFeedbackRequests}
                   onOpenFeedback={async (requestId) => { await openRequest(requestId) }}
                 />
@@ -2046,6 +2106,9 @@
                   <ManagedSessionSection
                     transport={applicationTransport}
                     sessionId={renderedManagedSession.session_id}
+                    deletionPending={deletingSessionCommands.has(renderedManagedSession.session_id)}
+                    onDeletingChange={observeManagedDeletion}
+                    onDelete={() => deleteManagedSessionFromUi(renderedManagedSession!)}
                     showWorkspace={false}
                     feedbackRequests={renderedManagedFeedbackRequests}
                     onOpenFeedback={async (requestId) => { await openRequest(requestId) }}
@@ -2055,6 +2118,7 @@
               <div class="min-h-0 flex-1">
               {#key renderedSessionView ? workspaceViewKey(renderedSessionView) : 'workspace:empty'}
               <SessionWorkbench
+            readOnly={managedFeedbackReadOnly}
             transport={applicationTransport}
             {capabilities}
             bind:this={sessionWorkbench}

@@ -121,7 +121,7 @@
     if (busy || lifecyclePending || !onDelete) return
     const id = activeSessionId
     if (await run('delete', onDelete)) {
-      sessionPromptDrafts.remove(id)
+      sessionPromptDrafts.forgetSession(id)
       if (activeSessionId === id) prompt = ''
     }
   }
@@ -167,8 +167,9 @@
       {#if onDelete}<Button variant="ghost" size="icon-sm" class="text-muted-foreground hover:text-destructive" disabled={busy || lifecyclePending} aria-label={tr('Delete session')} title={tr('Delete session')} onclick={() => void remove()}><Trash2 class="size-3.5" /></Button>{/if}
     </div>
   </header>
+  {#if snapshot.deleting}<p role="status" class="m-0 border-b border-destructive/25 bg-destructive/5 px-5 py-3 text-xs">{tr('This session is being deleted. Retry deletion to finish cleanup.')}</p>{/if}
   {#if onResolveDelivery}
-    <FeedbackDeliveryStatus sessionId={snapshot.session.session_id} {deliveries} requests={visibleFeedback} {envText} onResolve={onResolveDelivery} {onOpenFeedback} />
+    <FeedbackDeliveryStatus sessionId={snapshot.session.session_id} {deliveries} requests={visibleFeedback} {envText} disabled={busy || snapshot.deleting} onResolve={onResolveDelivery} {onOpenFeedback} />
   {/if}
 
   {#if configurationChanged}<p role="status" class="m-0 border-b border-amber-500/25 bg-amber-500/5 px-5 py-2 text-xs leading-5">{tr('This agent is using an earlier configuration. Saved changes apply on its next start.')}</p>{/if}
@@ -209,7 +210,7 @@
 
   <form class="shrink-0 space-y-2 border-t px-5 py-3" onsubmit={(event) => { event.preventDefault(); void send() }}>
     <label class="sr-only" for={`managed-session-prompt-${snapshot.session.session_id}`}>{tr('Message the agent')}</label>
-    <textarea id={`managed-session-prompt-${snapshot.session.session_id}`} bind:value={prompt} rows="3" class="max-h-56 min-h-20 w-full resize-y rounded-lg border bg-background px-3 py-2 text-xs leading-5 outline-none focus:ring-2 focus:ring-ring" placeholder={tr('Message the agent')} disabled={busy || pending.has(`${activeSessionId}:delete`)}></textarea>
+    <textarea id={`managed-session-prompt-${snapshot.session.session_id}`} bind:value={prompt} rows="3" class="max-h-56 min-h-20 w-full resize-y rounded-lg border bg-background px-3 py-2 text-xs leading-5 outline-none focus:ring-2 focus:ring-ring" placeholder={tr('Message the agent')} disabled={busy || snapshot.deleting || pending.has(`${activeSessionId}:delete`)}></textarea>
     <div class="flex items-center justify-between gap-3">
       <p class="m-0 text-[10px] text-muted-foreground">{tr('Closing this view keeps the agent running.')}</p>
       <div class="flex items-center gap-2">

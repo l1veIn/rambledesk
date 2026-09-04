@@ -23,6 +23,7 @@ export const APPLICATION_CONFORMANCE_INPUTS = {
   sendManagedPrompt: { session_id: 'local-session-1', text: 'Review this project.' },
   respondManagedPermission: { session_id: 'local-session-1', request_id: 'permission-1', option_id: null },
   resolveFeedbackDelivery: { session_id: 'local-session-1', request_id: 'request-1', action: 'acknowledge' },
+  deleteManagedSession: { session_id: 'local-session-1' },
   listFeedbackInbox: undefined,
   listHostSessions: undefined,
   listArchivedHostSessions: { search: null },
@@ -98,7 +99,7 @@ export function applicationConformanceResult<Name extends ApplicationCommandName
   let result: unknown
   if (name === 'readFeedbackAttachment' || name === 'readRequestAttachment') {
     result = new Uint8Array([4, 5, 6]).buffer
-  } else if (name === 'deleteHostSession' || name === 'deleteFeedbackRequest' || name === 'deleteAgentConfig') {
+  } else if (name === 'deleteHostSession' || name === 'deleteFeedbackRequest' || name === 'deleteAgentConfig' || name === 'deleteManagedSession') {
     result = undefined
   } else if (
     name === 'listAgentConfigs' ||
@@ -144,9 +145,9 @@ export function runApplicationTransportConformance(
   createFixture: () => ApplicationTransportConformanceFixture,
 ): void {
   describe(`${implementationName} ApplicationTransport conformance`, () => {
-    it('maps all 35 query mutation multipart binary and void operations', async () => {
+    it('maps all 36 query mutation multipart binary and void operations', async () => {
       const fixture = createFixture()
-      expect(APPLICATION_COMMAND_NAMES).toHaveLength(35)
+      expect(APPLICATION_COMMAND_NAMES).toHaveLength(36)
 
       for (const [index, name] of APPLICATION_COMMAND_NAMES.entries()) {
         const input = APPLICATION_CONFORMANCE_INPUTS[name]

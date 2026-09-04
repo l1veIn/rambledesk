@@ -15,6 +15,7 @@
   } from './workbenchCapabilityUi'
 
   export let workspace: FeedbackWorkspaceView
+  export let workDisabled = false
   export let capabilities: Pick<
     WorkbenchCapabilities,
     'speech' | 'rambleConsole' | 'screenCapture' | 'clipboardCapture'
@@ -60,7 +61,7 @@
   export let onApprove: () => void = () => {}
 
   $: readOnly =
-    workspace.request.status === 'completed' || workspace.request.status === 'cancelled'
+    workDisabled || workspace.request.status === 'completed' || workspace.request.status === 'cancelled'
   $: interactionLocked = cooking || submitting || cancelling || approving
   $: ramblePanelAvailable = voiceRambleAvailable(capabilities.speech.status)
   $: nativeCaptureAvailable = canShowNativeCapture({
@@ -120,18 +121,18 @@
       {feedbackResult}
       cancelled={workspace.request.status === 'cancelled'}
       approved={workspace.request.resolution === 'approved'}
-      {canSubmit}
+      canSubmit={canSubmit && !workDisabled}
       {cooking}
       {cookingEnabled}
       {cookedDraftReady}
       {submitting}
       {submitStage}
-      {canCancel}
+      canCancel={canCancel && !workDisabled}
       {cancelling}
-      allowFinish={workspace.request.allow_finish}
+      allowFinish={workspace.request.allow_finish && !workDisabled}
       finalSummary={workspace.request.final_summary ?? ''}
       {approving}
-      {canOpenResumePrompt}
+      canOpenResumePrompt={canOpenResumePrompt && !workDisabled}
       onOpenPackage={onOpenPackage}
       {packageActionLabel}
       onOpenResumePrompt={onOpenResumePrompt}

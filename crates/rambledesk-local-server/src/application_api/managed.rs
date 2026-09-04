@@ -9,6 +9,10 @@ use super::*;
 pub(super) fn routes() -> Router<ApplicationApiState> {
     Router::new()
         .route(
+            "/application/deleteManagedSession",
+            post(delete_managed_session),
+        )
+        .route(
             "/application/resolveFeedbackDelivery",
             post(resolve_feedback_delivery),
         )
@@ -160,4 +164,14 @@ async fn resolve_feedback_delivery(
     ApplicationJson(input): ApplicationJson<ResolveFeedbackDeliveryInput>,
 ) -> Response<Body> {
     managed_result(state.commands.resolve_feedback_delivery(input).await)
+}
+
+async fn delete_managed_session(
+    State(state): State<ApplicationApiState>,
+    ApplicationJson(input): ApplicationJson<ManagedSessionInput>,
+) -> Response<Body> {
+    match state.commands.delete_managed_session(input).await {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(error) => error_response(error),
+    }
 }

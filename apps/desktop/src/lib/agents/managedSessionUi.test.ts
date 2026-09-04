@@ -8,6 +8,7 @@ import {
 
 function snapshot(): ManagedSessionViewSnapshot {
   return {
+    deleting: false,
     session: {
       session_id: 'local-one', host_id: 'dsh', host_session_id: 'feedback-one', title: 'First project',
       created_at: '2026-09-04', updated_at: '2026-09-04',
@@ -29,6 +30,12 @@ const permission = (requestId: string, sessionId = 'local-one'): SessionPermissi
 })
 
 describe('managed session views', () => {
+  it('disables every work action while deletion is incomplete without changing the history identity', () => {
+    const deleting = { ...snapshot(), deleting: true }
+    const actions = managedSessionActions(deleting, 1)
+    expect(actions).toMatchObject({ canPrompt: false, canStart: false, canCancel: false, canStop: false })
+    expect(deleting.session.session_id).toBe('local-one')
+  })
   it('isolates activities and replaces repeated tool ids without reordering the timeline', () => {
     const visible = activitiesForSession('local-one', [
       activity('first', 'local-one', 'running'), activity('other', 'local-two', 'private project'),

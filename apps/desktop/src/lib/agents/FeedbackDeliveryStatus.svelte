@@ -12,6 +12,7 @@
   export let deliveries: readonly FeedbackDelivery[] = []
   export let requests: readonly FeedbackRequestSummary[] = []
   export let envText = ''
+  export let disabled = false
   export let onResolve: (requestId: string, action: ResolveDeliveryAction) => Promise<void> | void
   export let onOpenFeedback: (requestId: string) => Promise<void> | void
 
@@ -22,7 +23,7 @@
   function tr(source: string) { return agentText($locale, source) }
 
   async function resolve(delivery: FeedbackDelivery, action: ResolveDeliveryAction) {
-    if (delivery.session_id !== sessionId || delivery.state !== 'uncertain') return
+    if (disabled || delivery.session_id !== sessionId || delivery.state !== 'uncertain') return
     const key = `${delivery.session_id}:${delivery.request_id}`
     if (pending.has(key)) return
     const respond = onResolve
@@ -61,8 +62,8 @@
           {#if delivery.last_error}<p class="m-0 break-words text-[11px] text-destructive">{redactAgentMessage(delivery.last_error, envText)}</p>{/if}
           {#if delivery.state === 'uncertain'}
             <div class="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" disabled={pending.has(key)} onclick={() => void resolve(delivery, 'retry')}>{tr('Send again')}</Button>
-              <Button variant="ghost" size="sm" disabled={pending.has(key)} onclick={() => void resolve(delivery, 'acknowledge')}>{tr('Mark as delivered')}</Button>
+              <Button variant="outline" size="sm" disabled={disabled || pending.has(key)} onclick={() => void resolve(delivery, 'retry')}>{tr('Send again')}</Button>
+              <Button variant="ghost" size="sm" disabled={disabled || pending.has(key)} onclick={() => void resolve(delivery, 'acknowledge')}>{tr('Mark as delivered')}</Button>
             </div>
           {/if}
           {#if errors[key]}<p role="alert" class="m-0 break-words text-[11px] text-destructive">{errors[key]}</p>{/if}

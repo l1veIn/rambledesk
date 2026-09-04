@@ -44,6 +44,8 @@ describe('application command contracts', () => {
     expectTypeOf<ApplicationCommandInput<'respondManagedPermission'>>().toEqualTypeOf<RespondManagedPermissionInput>()
     expectTypeOf<ApplicationCommandInput<'resolveFeedbackDelivery'>>().toEqualTypeOf<ResolveFeedbackDeliveryInput>()
     expectTypeOf<ApplicationCommandResult<'resolveFeedbackDelivery'>>().toEqualTypeOf<ManagedSessionSnapshot>()
+    expectTypeOf<ApplicationCommandInput<'deleteManagedSession'>>().toEqualTypeOf<ManagedSessionInput>()
+    expectTypeOf<ApplicationCommandResult<'deleteManagedSession'>>().toEqualTypeOf<void>()
     expectTypeOf<ApplicationCommandResult<'getManagedSession'>>().toEqualTypeOf<ManagedSessionSnapshot>()
     expectTypeOf<ApplicationCommandInput<'listFeedbackInbox'>>().toEqualTypeOf<undefined>()
     expectTypeOf<ApplicationCommandResult<'listFeedbackInbox'>>().toEqualTypeOf<
@@ -103,6 +105,7 @@ describe('application command contracts', () => {
       'sendManagedPrompt',
       'respondManagedPermission',
       'resolveFeedbackDelivery',
+      'deleteManagedSession',
       'listFeedbackInbox',
       'listHostSessions',
       'listArchivedHostSessions',
@@ -128,7 +131,7 @@ describe('application command contracts', () => {
       'readRequestAttachment',
     ] as const satisfies readonly ApplicationCommandName[]
 
-    expect(commands).toHaveLength(35)
+    expect(commands).toHaveLength(36)
     expectTypeOf<(typeof commands)[number]>().toEqualTypeOf<ApplicationCommandName>()
   })
 })

@@ -466,9 +466,20 @@ async fn migration_reconciles_preexisting_terminal_managed_requests_only() {
         publish_lock: Arc::new(tokio::sync::Mutex::new(())),
     };
     seed_sessions(&workspace, &store).await;
-    let managed = new_request(&store, Some("one")).await;
-    let external = new_request(&store, None).await;
-    let _waiting = new_request(&store, Some("one")).await;
+    // Build the old-schema fixture directly: current repository guards can
+    // legitimately require tables introduced after migration 13.
+    sqlx::query("INSERT INTO host_sessions(id,host_id,host_session_id,created_at,updated_at) VALUES ('external','dsh','external',?1,?1)")
+        .bind(NOW).execute(&store.pool).await.unwrap();
+    let managed = "managed-before-migration";
+    let external = "external-before-migration";
+    for (id, session_id, marker) in [
+        (managed, "one", Some("one")),
+        (external, "external", None),
+        ("waiting-before-migration", "one", Some("one")),
+    ] {
+        sqlx::query("INSERT INTO feedback_requests(id,host_session_record_id,managed_session_id,title,what_happened,status,input_hash,created_at,updated_at) VALUES (?1,?2,?3,'Review','Before migration','waiting','fixture',?4,?4)")
+            .bind(id).bind(session_id).bind(marker).bind(NOW).execute(&store.pool).await.unwrap();
+    }
     for id in [&managed, &external] {
         sqlx::query("UPDATE feedback_requests SET status='completed', resolution='approved', completed_at=?2 WHERE id=?1").bind(id).bind(NOW).execute(&store.pool).await.unwrap();
     }

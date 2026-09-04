@@ -388,7 +388,7 @@ fn removable_library_directory(
     }
 }
 
-async fn delete_feedback_request_rows(
+pub(super) async fn delete_feedback_request_rows(
     transaction: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     request_id: &str,
 ) -> Result<(), RepositoryError> {

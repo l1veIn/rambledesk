@@ -18,6 +18,10 @@
   export let feedbackRequests: readonly FeedbackRequestSummary[] = []
   export let onOpenFeedback: (requestId: string) => Promise<void> | void
   export let onDelete: (() => Promise<void> | void) | undefined = undefined
+  export let deletionPending = false
+  export let onDeletingChange: (sessionId: string, deleting: boolean) => void = () => {}
+  let reportedDeleting: boolean | undefined
+  let wasDeletionPending = false
 
   // The parent keys this component by local session ID; handlers never follow another tab's selection.
   const session = createManagedSessionController(transport, sessionId)
@@ -28,6 +32,19 @@
     : null
   $: envText = Object.entries(config?.env ?? {}).map(([key, value]) => `${key}=${value}`).join('\n')
   $: error = redactAgentMessage($session.error || $settings.error, envText)
+  $: if ($session.snapshot && $session.snapshot.deleting !== reportedDeleting) {
+    reportedDeleting = $session.snapshot.deleting
+    onDeletingChange(sessionId, reportedDeleting)
+  }
+  $: if (wasDeletionPending !== deletionPending) {
+    wasDeletionPending = deletionPending
+    if (!deletionPending) session.refresh()
+  }
+
+  async function remove() {
+    try { await onDelete?.() }
+    finally { session.refresh() }
+  }
 
   onMount(() => {
     const stopSession = session.start()
@@ -46,16 +63,18 @@
     {feedbackRequests}
     {config}
     {error}
+    busy={deletionPending}
     onPrompt={session.prompt}
     onCancel={session.cancel}
     onStart={session.startAgent}
     onStop={session.stopAgent}
     onRespondPermission={session.respondPermission}
-    {onDelete}
+    onDelete={onDelete ? remove : undefined}
     {onOpenFeedback}
   />
 {:else if $session.snapshot}
-  <FeedbackDeliveryStatus {sessionId} deliveries={$session.snapshot.deliveries} requests={feedbackRequests} {envText} onResolve={session.resolveDelivery} {onOpenFeedback} />
+  {#if $session.snapshot.deleting}<p role="status" class="m-0 shrink-0 border-b border-destructive/25 bg-destructive/5 px-5 py-3 text-xs">{agentText($locale, 'This session is being deleted. Retry deletion to finish cleanup.')}</p>{/if}
+  <FeedbackDeliveryStatus {sessionId} deliveries={$session.snapshot.deliveries} requests={feedbackRequests} {envText} disabled={deletionPending || $session.snapshot.deleting} onResolve={session.resolveDelivery} {onOpenFeedback} />
   {#if error}<div class="flex shrink-0 items-center gap-3 border-b px-5 py-2 text-xs"><p role="alert" class="m-0 min-w-0 flex-1 break-words text-destructive">{error}</p><Button variant="ghost" size="sm" onclick={session.refresh}>{agentText($locale, 'Retry')}</Button></div>{/if}
 {:else if showWorkspace}
   <div class="flex h-full flex-col items-center justify-center gap-4 p-6 text-sm text-muted-foreground">

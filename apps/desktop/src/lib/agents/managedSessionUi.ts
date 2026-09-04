@@ -1,6 +1,6 @@
 import type { AgentConfig, FeedbackRequestSummary, ManagedSessionSnapshot, SessionActivity as GeneratedSessionActivity, SessionPermission as GeneratedSessionPermission, SessionRecord } from '$lib/generated/feedback'
 
-export type ManagedSessionViewSnapshot = Readonly<Pick<ManagedSessionSnapshot, 'session' | 'runtime'>>
+export type ManagedSessionViewSnapshot = Readonly<Pick<ManagedSessionSnapshot, 'session' | 'runtime' | 'deleting'>>
 
 export type SessionActivity = Readonly<Pick<GeneratedSessionActivity,
   'id' | 'session_id' | 'kind' | 'text' | 'tool_call_id' | 'created_at'>>
@@ -31,7 +31,7 @@ export function feedbackForSession(session: SessionRecord, requests: readonly Fe
 
 export function managedSessionActions(snapshot: ManagedSessionViewSnapshot, pendingPermissions: number) {
   const { connection, activity } = snapshot.runtime
-  const managed = snapshot.session.management.kind === 'managed'
+  const managed = snapshot.session.management.kind === 'managed' && !snapshot.deleting
   return {
     canPrompt: managed && connection === 'connected' && activity === 'idle' && pendingPermissions === 0,
     canStart: managed && connection !== 'connected' && connection !== 'connecting',
@@ -63,10 +63,12 @@ export function activityLabel(kind: SessionActivity['kind']): string {
 /** View state only; no credentials, runtime ownership, or transport side effects. */
 export class SessionPromptDrafts {
   readonly #drafts = new Map<string, string>()
+  readonly #deletedSessions = new Set<string>()
 
   read(sessionId: string): string { return this.#drafts.get(sessionId) ?? '' }
-  write(sessionId: string, text: string): void { this.#drafts.set(sessionId, text) }
+  write(sessionId: string, text: string): void { if (!this.#deletedSessions.has(sessionId)) this.#drafts.set(sessionId, text) }
   remove(sessionId: string): void { this.#drafts.delete(sessionId) }
+  forgetSession(sessionId: string): void { this.#deletedSessions.add(sessionId); this.remove(sessionId) }
 
   accepted(sessionId: string, submittedText: string): void {
     // Do not clear a newer draft written while the previous prompt was sending.

@@ -9,8 +9,33 @@ vi.mock('$lib/preferences', async () => {
 })
 
 describe('Managed session rendering', () => {
+  it('keeps history and deletion available while disabling work for a deleting session', () => {
+    const snapshot: ManagedSessionViewSnapshot = {
+      deleting: true,
+      session: { session_id: 'deleting-render', host_id: 'dsh', host_session_id: 'feedback-deleting', title: 'Cleanup incomplete',
+        created_at: 'today', updated_at: 'today',
+        management: { kind: 'managed', protocol: 'acp', agent_config_id: 'config', cwd: '/repo', remote_session_id: 'remote' } },
+      runtime: { connection: 'connected', activity: 'running', instance_id: 'instance', config_updated_at: null,
+        capabilities: { load_session: true, resume_session: false, http_mcp: true }, last_error: 'Cleanup failed' },
+    }
+    const action = vi.fn()
+    const { body } = render(ManagedSessionWorkspace, { props: {
+      snapshot, onPrompt: action, onStart: action, onStop: action, onCancel: action,
+      onRespondPermission: action, onDelete: action, onOpenFeedback: action,
+      activities: [{ id: 'past', session_id: 'deleting-render', kind: 'agent_message', text: 'Readable history', tool_call_id: null, created_at: 'today' }],
+    } })
+    expect(body).toContain('Readable history')
+    expect(body).toContain('Retry deletion to finish cleanup')
+    expect(body).toContain('Delete session')
+    expect(body).not.toContain('Stop agent')
+    expect(body).not.toContain('Cancel turn')
+    expect(body).toMatch(/<textarea[^>]*disabled/)
+    expect(action).not.toHaveBeenCalled()
+  })
+
   it('hides deletion until the owning application provides the deletion operation', () => {
     const snapshot: ManagedSessionViewSnapshot = {
+      deleting: false,
       session: { session_id: 'local-empty', host_id: 'dsh', host_session_id: 'feedback-empty', title: 'Empty project',
         created_at: '2026-09-04', updated_at: '2026-09-04',
         management: { kind: 'managed', protocol: 'acp', agent_config_id: 'config', cwd: '/repo', remote_session_id: null } },
@@ -31,6 +56,7 @@ describe('Managed session rendering', () => {
 
   it('shows only current-session activity and the first permission without starting or stopping anything', () => {
     const snapshot: ManagedSessionViewSnapshot = {
+      deleting: false,
       session: { session_id: 'local-one', host_id: 'dsh', host_session_id: 'feedback-one', title: 'Project one',
         created_at: '2026-09-04', updated_at: '2026-09-04',
         management: { kind: 'managed', protocol: 'acp', agent_config_id: 'config-one', cwd: '/repo', remote_session_id: 'remote-one' } },

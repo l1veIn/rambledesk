@@ -61,4 +61,5 @@
 - 步骤 10：托管 MCP 固定请求归属，独立随机凭据与独立 transport session manager；撤销等待已进入操作退出，跨 scope、伪造身份与混用 MCP session 均拒绝。实例启动注入 HTTP MCP，恢复轮换凭据，失败/停止撤销；Desktop 共享同一 provider/listener。4 项 HTTP 作用域测试、16 项 MCP、7 项原 HTTP 安全回归、4 项 runtime（含凭据生命周期）通过；Desktop 编译与相关 clippy 通过。
 - 步骤 11：所有托管反馈终态与 outbox 同事务写入，重复提交/发布恢复幂等；attempt CAS 防止并发重复认领，重启 sending 转 uncertain，只能显式重试或确认。迁移补齐已有托管终态，按会话丢弃与跨作用域校验完善。8 项 outbox 测试及 storage 共 74 项回归通过。
 - 步骤 12：runtime worker 只向空闲且连接有效的原会话续接；发送前持久认领，正常轮次终态后标记 delivered，断开/异常标记 uncertain 并停止自动重放。Desktop/Web 同时展示投递状态与显式重试/确认，托管请求隐藏旧的返宿主续接流程。真实 stdio→专属 MCP→提交→outbox→同上下文 get_feedback 的 2 项集成通过（含忙时等待、多次反馈、重复提交与读反馈后断线），HTTP resolve/generation、前端 115 项及 clippy 通过。断线测试推动修正 SDK task 与底层 EOF 的存活判断差异。
-- 步骤 13–15：推进中，逐步验收后记录。
+- 步骤 13：运行中、空闲和零反馈会话均可直接删除；持久删除意图阻止新工作，先撤销 scope/停止所属实例，再丢弃投递并清理文件与记录，失败保留可重试状态。严格验证所属目录并拒绝越界/junction，发布与删除共用锁阻止旧任务重建文件；已删会话的迟到事件不重建 runtime。8 项存储删除测试、4 项跨模块闭环/删除/重启后删除测试、HTTP 204/404 与 generation/parity、前端删除/只读/标签隔离验收通过。
+- 步骤 14–15：推进中，逐步验收后记录。

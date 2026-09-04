@@ -28,6 +28,7 @@ export const TAURI_APPLICATION_COMMANDS = {
   sendManagedPrompt: 'send_managed_prompt',
   respondManagedPermission: 'respond_managed_permission',
   resolveFeedbackDelivery: 'resolve_feedback_delivery',
+  deleteManagedSession: 'delete_managed_session',
   listFeedbackInbox: 'list_feedback_inbox',
   listHostSessions: 'list_host_sessions',
   listArchivedHostSessions: 'list_archived_host_sessions',

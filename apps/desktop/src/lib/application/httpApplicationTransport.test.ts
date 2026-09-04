@@ -98,7 +98,7 @@ runApplicationTransportConformance('HTTP', () => {
     const name = semanticNameByOperation.get(operation)
     if (!name) return Response.json({ message: 'unknown operation' }, { status: 404 })
     const result = applicationConformanceResult(name)
-    if (name === 'deleteHostSession' || name === 'deleteFeedbackRequest' || name === 'deleteAgentConfig') {
+    if (name === 'deleteHostSession' || name === 'deleteFeedbackRequest' || name === 'deleteAgentConfig' || name === 'deleteManagedSession') {
       return new Response(null, { status: 204 })
     }
     if (result instanceof ArrayBuffer) return new Response(result)
@@ -213,6 +213,16 @@ describe('HttpApplicationSession', () => {
 })
 
 describe('HttpApplicationTransport', () => {
+  it('deletes the owning managed session with a raw JSON mutation and accepts HTTP 204', async () => {
+    const fetchImplementation = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 204 }))
+    const transport = new HttpApplicationTransport(authenticatedSession(fetchImplementation).lease())
+    await expect(transport.call('deleteManagedSession', { session_id: 'local-delete' })).resolves.toBeUndefined()
+    const [url, init] = fetchImplementation.mock.calls[0]!
+    expect(String(url)).toBe('https://workbench.example/api/application/deleteManagedSession')
+    expect(JSON.parse(String(init?.body))).toEqual({ session_id: 'local-delete' })
+    expect(new Headers(init?.headers).get(RUNTIME_GENERATION_HEADER)).toBe(TEST_RUNTIME_GENERATION)
+    expect(fetchImplementation).toHaveBeenCalledTimes(1)
+  })
   it.each(['retry', 'acknowledge'] as const)('sends an explicit %s feedback-delivery decision as a managed-session mutation', async (action) => {
     const fetchImplementation = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ accepted: true }))
     const transport = new HttpApplicationTransport(authenticatedSession(fetchImplementation).lease())
@@ -394,8 +404,8 @@ describe('HttpApplicationTransport', () => {
   })
 
   it('defines one complete HTTP operation mapping', () => {
-    expect(Object.keys(HTTP_APPLICATION_OPERATIONS)).toHaveLength(35)
-    expect(new Set(Object.values(HTTP_APPLICATION_OPERATIONS)).size).toBe(35)
+    expect(Object.keys(HTTP_APPLICATION_OPERATIONS)).toHaveLength(36)
+    expect(new Set(Object.values(HTTP_APPLICATION_OPERATIONS)).size).toBe(36)
   })
 
   it('encodes JSON, multipart bytes, binary responses, and no-content outcomes', async () => {

@@ -59,6 +59,7 @@ export function createManagedSessionController(transport: ApplicationTransport, 
 
   async function run(operation: () => Promise<ManagedSessionSnapshot>): Promise<void> {
     if (!active) throw new Error('The agent session is no longer open.')
+    if (get(state).snapshot?.deleting) throw new Error('This session is being deleted. Retry deletion to finish cleanup.')
     try {
       // A mutation response acknowledges the action. Reads alone update the projection, so a
       // prompt finishing late cannot overwrite newer activity, permission, or cancellation data.

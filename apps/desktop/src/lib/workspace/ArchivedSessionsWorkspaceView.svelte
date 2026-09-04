@@ -26,6 +26,7 @@
   import { previewFixtures, previewWorkspaceFor } from '$lib/previewFixtures'
   import type { HostProfile } from '$lib/workbench/types'
   import type { SessionViewDescriptor } from '$lib/workspace/viewDescriptors'
+  import { deleteSessionRecord } from '$lib/agents/managedSessionDeletion'
 
   const ALL_REQUEST_STATUSES = ['waiting', 'in_progress', 'completed', 'cancelled'] as const
 
@@ -47,6 +48,7 @@
   export let selectionEpoch = 0
   export let onError: (message: string) => void = () => {}
   export let onChanged: () => Promise<void> | void = () => {}
+  export let onDeleteManagedSession: ((session: HostSessionSummary) => Promise<void> | void) | undefined = undefined
 
   let search = ''
   let loading = false
@@ -360,13 +362,15 @@
   }
 
   async function deleteSession(session: HostSessionSummary) {
-    if (!confirm(tr('Delete this archived session permanently?'))) return
+    if (session.management.kind !== 'managed' && !confirm(tr('Delete this archived session permanently?'))) return
     await runAction(`delete-session:${session.host_id}:${session.host_session_id}`, async () => {
       if (!previewMode) {
-        await transport.call('deleteHostSession', {
-          host_id: session.host_id,
-          host_session_id: session.host_session_id,
-        })
+        if (session.management.kind === 'managed') {
+          if (onDeleteManagedSession) await onDeleteManagedSession(session)
+          else await deleteSessionRecord(transport, session)
+        } else {
+          await transport.call('deleteHostSession', { host_id: session.host_id, host_session_id: session.host_session_id })
+        }
       }
     })
   }

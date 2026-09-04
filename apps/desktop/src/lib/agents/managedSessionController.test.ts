@@ -16,6 +16,7 @@ function snapshot(id: string, text = ''): ManagedSessionSnapshot {
       kind: 'agent_message', text, tool_call_id: null, created_at: '2026-09-04' }] : [],
     permissions: [],
     deliveries: [],
+    deleting: false,
   }
 }
 
@@ -30,6 +31,19 @@ function invalidate(transport: TestApplicationTransport, id: string) {
 }
 
 describe('managed workspace transport integration', () => {
+  it('does not dispatch work from a durable deleting snapshot', async () => {
+    const transport = new TestApplicationTransport(undefined, { initiallyReady: true }).resolve('getManagedSession', { ...snapshot('one'), deleting: true })
+    const controller = createManagedSessionController(transport, 'one')
+    controller.start()
+    await flush()
+    for (const action of [controller.startAgent, controller.stopAgent, controller.cancel,
+      () => controller.prompt('New work'), () => controller.respondPermission('permission', 'allow'),
+      () => controller.resolveDelivery('feedback', 'retry')]) {
+      await expect(action()).rejects.toThrow('being deleted')
+    }
+    expect(transport.calls.map((call) => call.name)).toEqual(['getManagedSession'])
+    controller.dispose()
+  })
   it('isolates two sessions and refreshes only their own invalidations or transport readiness', async () => {
     const transport = new TestApplicationTransport(undefined, { initiallyReady: true })
       .handle('getManagedSession', ({ session_id }) => snapshot(session_id))

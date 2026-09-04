@@ -57,6 +57,7 @@ impl SessionApplication {
         self.managed_record(&input.session_id).await?;
         let entry = self.entry(&input.session_id).await;
         let lifecycle = entry.lifecycle.lock().await;
+        self.require_workable(&input.session_id).await?;
         if self.closing.load(std::sync::atomic::Ordering::SeqCst) {
             return Err(SessionError::ShuttingDown);
         }
@@ -160,7 +161,9 @@ impl SessionApplication {
         delivery: Option<(String, String)>,
         result: Result<String, AgentDriverError>,
     ) {
-        let entry = self.entry(session_id).await;
+        let Some(entry) = self.entries.lock().await.get(session_id).cloned() else {
+            return;
+        };
         let _events = entry.events.lock().await;
         let mut live = entry.live.lock().await;
         let same_instance = live.runtime.instance_id.as_deref() == Some(instance);
@@ -210,7 +213,9 @@ impl SessionApplication {
         instance: &str,
         event: AgentSessionEvent,
     ) -> Result<(), SessionError> {
-        let entry = self.entry(session_id).await;
+        let Some(entry) = self.entries.lock().await.get(session_id).cloned() else {
+            return Ok(());
+        };
         let mut stream = entry.events.lock().await;
         let live = entry.live.lock().await;
         // Backend load can replay old updates. Our durable activity is authoritative;

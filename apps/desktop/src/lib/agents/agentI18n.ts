@@ -61,6 +61,7 @@ const chinese: Readonly<Record<string, string>> = {
   'Stop agent': '停止 Agent',
   'Resume session': '恢复会话',
   'Delete session': '删除会话',
+  'This session is being deleted. Retry deletion to finish cleanup.': '此会话正在删除中。请重试删除以完成清理。',
   'Connecting…': '正在连接…',
   'Connected': '已连接',
   'Disconnected': '连接已断开',

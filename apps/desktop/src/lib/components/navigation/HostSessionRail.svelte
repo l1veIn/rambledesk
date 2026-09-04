@@ -13,6 +13,7 @@
     Plus,
     Search,
     Settings,
+    Trash2,
   } from '@lucide/svelte'
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
@@ -38,6 +39,7 @@
   export let onRequestSearch: (search: string) => void = () => {}
   export let onSettings: () => void = () => {}
   export let onNewSession: (() => void) | undefined = undefined
+  export let onDeleteManagedSession: ((session: HostSessionSummary) => Promise<void> | void) | undefined = undefined
   export let onRenameSession: (
     session: HostSessionSummary,
     title: string,
@@ -345,6 +347,12 @@
                               {tr('Pin host')}
                             {/if}
                           </DropdownMenu.Item>
+                          {#if session.management.kind === 'managed' && onDeleteManagedSession}
+                            <DropdownMenu.Item onclick={() => void runAction(`session-delete:${key}`, () => onDeleteManagedSession!(session))}>
+                              <Trash2 class="size-4" aria-hidden="true" />
+                              {agentText($locale, 'Delete session')}
+                            </DropdownMenu.Item>
+                          {:else}
                           <DropdownMenu.Item
                             disabled={session.pending_count > 0}
                             onclick={() =>
@@ -355,6 +363,7 @@
                             <Archive class="size-4" aria-hidden="true" />
                             {tr('Archive session')}
                           </DropdownMenu.Item>
+                          {/if}
                         </DropdownMenu.Content>
                       </DropdownMenu.Root>
                     </div>
