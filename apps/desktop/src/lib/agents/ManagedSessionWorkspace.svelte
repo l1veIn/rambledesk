@@ -3,11 +3,12 @@
   import { onDestroy, tick } from 'svelte'
   import { Button } from '$lib/components/ui/button'
   import { Badge } from '$lib/components/ui/badge'
-  import type { AgentConfig, FeedbackDelivery, FeedbackRequestSummary, ResolveDeliveryAction, SessionRecovery } from '$lib/generated/feedback'
+  import type { AgentConfig, FeedbackDelivery, FeedbackRequestSummary, ResolveDeliveryAction, SessionConfigChange, SessionRecovery } from '$lib/generated/feedback'
   import FeedbackDeliveryStatus from './FeedbackDeliveryStatus.svelte'
   import SessionRecoveryNotice from './SessionRecoveryNotice.svelte'
   import AgentComposer from './composer/AgentComposer.svelte'
   import SessionTimeline from './chat/SessionTimeline.svelte'
+  import SessionConfigurationControls from './configuration/SessionConfigurationControls.svelte'
   import { locale } from '$lib/preferences'
   import { redactAgentMessage } from './agentConfigForm'
   import { agentText } from './agentI18n'
@@ -28,6 +29,7 @@
   export let busy = false
   export let error = ''
   export let onPrompt: (text: string) => Promise<void> | void
+  export let onSetConfiguration: ((change: SessionConfigChange) => Promise<void> | void) | undefined = undefined
   export let onCancel: () => Promise<void> | void
   export let onStart: () => Promise<void> | void
   export let onStop: () => Promise<void> | void
@@ -58,7 +60,8 @@
   $: permissionPending = permission ? pending.has(`${activeSessionId}:permission:${permission.request_id}`) : false
   $: lifecyclePending = pending.has(`${activeSessionId}:start`) || pending.has(`${activeSessionId}:stop`) || pending.has(`${activeSessionId}:delete`)
   $: sendPending = pending.has(`${activeSessionId}:prompt`)
-  $: composerState = managedSessionComposerState(snapshot, visiblePermissions.length, { busy, lifecycle: lifecyclePending, prompt: sendPending })
+  $: configurationPending = pending.has(`${activeSessionId}:configuration`)
+  $: composerState = managedSessionComposerState(snapshot, visiblePermissions.length, { busy, lifecycle: lifecyclePending || configurationPending, prompt: sendPending })
   $: runActive = snapshot.runtime.connection === 'connected' && snapshot.runtime.activity !== 'idle'
   $: if (visibleActivities.length > 0) void followActivity(visibleActivities)
 
@@ -108,7 +111,7 @@
   }
 
   async function send(text: string) {
-    if (busy || lifecyclePending || sendPending || !actions.canPrompt || !text.trim()) return
+    if (busy || lifecyclePending || configurationPending || sendPending || !actions.canPrompt || !text.trim()) return
     const id = activeSessionId
     const submitted = prompt
     const sendPrompt = onPrompt
@@ -117,6 +120,12 @@
       sessionPromptDrafts.accepted(id, submitted)
       if (activeSessionId === id && prompt === submitted) prompt = sessionPromptDrafts.read(id)
     }
+  }
+
+  async function setConfiguration(change: SessionConfigChange) {
+    if (busy || lifecyclePending || configurationPending || sendPending || !actions.canPrompt || !onSetConfiguration) return
+    const updateConfiguration = onSetConfiguration
+    await run('configuration', () => updateConfiguration(change))
   }
 
   function respond(requestId: string, optionId: string | null) {
@@ -223,7 +232,12 @@
       <AgentComposer bind:this={composer} value={prompt} draftKey={snapshot.session.session_id}
         onchange={(text) => { prompt = text }} onsubmit={send}
         disabled={composerState.disabled} busy={composerState.busy} sendDisabled={composerState.sendDisabled}
-        oncancel={composerState.canCancel ? async () => { await run('cancel', onCancel) } : undefined} />
+        oncancel={composerState.canCancel ? async () => { await run('cancel', onCancel) } : undefined}>
+        <svelte:fragment slot="footer">
+          {#if onSetConfiguration}<SessionConfigurationControls configuration={snapshot.runtime.configuration}
+            disabled={busy || lifecyclePending || configurationPending || sendPending || !actions.canPrompt} onChange={setConfiguration} />{/if}
+        </svelte:fragment>
+      </AgentComposer>
     {/key}
     <p class="m-0 px-1 text-[10px] text-muted-foreground">{tr('Closing this view keeps the agent running.')}</p>
   </div>

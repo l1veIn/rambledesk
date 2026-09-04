@@ -65,3 +65,4 @@ Chat 展示流式文本、思考、结构化工具内容和权限；输入器支
 - C4a：动态配置后端与 Desktop/Web 命令已接通，模型/模式来自协商结果，写入等待 Agent 确认；typed prompt 与配置选择 UI 分别继续。
 - C2：结构化时间线已接入 Workspace，保留权限/恢复/反馈界面；33 个有针对性的测试、Svelte 检查及隔离浏览器工具差异卡片通过。
 - F1a：stdio companion 已完成真实子进程验证，复用私有 MCP 权限、三工具 schema 和持久请求；不创建额外 continuation。ACP 自动选择及 Pi 原生扩展接线继续。
+- C4b：输入区配置控件完成，模型/模式/boolean 来自 Agent 选项并以确认值呈现；8 个专项用例通过，隔离浏览器验证选中后先等待确认。
