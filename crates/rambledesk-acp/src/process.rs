@@ -74,15 +74,26 @@ impl OwnedProcess {
         Ok(())
     }
 
+    /// Observe the exit status before cleaning the owned tree. A timeout never
+    /// leaves an installer or version probe running in the background.
+    pub(crate) async fn wait_with_timeout(
+        &mut self,
+        timeout: Duration,
+    ) -> Result<Option<std::process::ExitStatus>, AcpError> {
+        self.child.stdin.take();
+        let exited = self
+            .ownership
+            .wait_before_cleanup(&mut self.child, timeout)
+            .await?;
+        self.ownership.terminate()?;
+        let status = self.child.wait().await?;
+        Ok(exited.then_some(status))
+    }
+
     async fn reap_with_grace(&mut self, grace: Duration) -> Result<(), AcpError> {
         // Usually moved into the protocol connection; closing a still-owned stdin
         // also makes this operation useful during failed setup.
-        self.child.stdin.take();
-        self.ownership
-            .wait_before_cleanup(&mut self.child, grace)
-            .await?;
-        // A leader can exit normally while a tool child keeps running.
-        self.kill_and_reap().await
+        self.wait_with_timeout(grace).await.map(|_| ())
     }
 }
 

@@ -95,11 +95,11 @@ impl Ownership {
         &self,
         child: &mut Child,
         grace: Duration,
-    ) -> io::Result<()> {
-        if let Ok(result) = tokio::time::timeout(grace, child.wait()).await {
-            result?;
+    ) -> io::Result<bool> {
+        match tokio::time::timeout(grace, child.wait()).await {
+            Ok(result) => result.map(|_| true),
+            Err(_) => Ok(false),
         }
-        Ok(())
     }
 }
 

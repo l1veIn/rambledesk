@@ -36,9 +36,9 @@ impl Ownership {
         &self,
         _child: &mut Child,
         grace: Duration,
-    ) -> io::Result<()> {
+    ) -> io::Result<bool> {
         let Some(group) = self.group else {
-            return Ok(());
+            return Ok(true);
         };
         let deadline = tokio::time::Instant::now() + grace;
         loop {
@@ -59,10 +59,10 @@ impl Ownership {
                     return Err(error);
                 }
             } else if unsafe { status.si_pid() } != 0 {
-                return Ok(());
+                return Ok(true);
             }
             if tokio::time::Instant::now() >= deadline {
-                return Ok(());
+                return Ok(false);
             }
             tokio::time::sleep(Duration::from_millis(20)).await;
         }

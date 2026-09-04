@@ -11,4 +11,6 @@ Codeg 作者和贡献者保留其版权；根仓库为 Apache-2.0，完整条款
 
 | Agent 输入器 | `src/components/chat/composer/*`、`src/lib/message-quote.ts` | 移植纯文本 Tiptap 配置、序列化、引用、IME 和快捷键；Svelte 包装接入会话草稿和发送/取消。48 个编辑器用例、58 个集成相关用例通过，详见输入器 README。 |
 
+| Agent 目录、检测、安装 | `src-tauri/src/acp/{registry,preflight,binary_cache}.rs`、`commands/acp.rs` | 固定版本目录、独立安装代、原子发布、真实包入口检查、自有进程取消清理；7 项真实 Node 子进程 fixture 及 clippy 通过。 |
+
 后续每个移植提交添加实际条目。第三方依赖各自遵循其许可证，不因 Codeg 根许可证而改变。
