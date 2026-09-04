@@ -1,6 +1,6 @@
 # RambleDesk 产品文档
 
-> 状态：v2 当前基线。
+> 状态：v3 当前基线与 ACP 托管目标。
 > 术语源：[TERMINOLOGY.md](TERMINOLOGY.md)。本文若与术语表冲突，以术语表为准。
 
 ## 一句话
@@ -11,7 +11,7 @@ RambleDesk 是本地人类反馈工作台：宿主智能体通过适配器请求
 
 - 编码智能体能写更多代码，但仍需要人类做真实判断、体验和取舍。
 - 人类反馈不应被淹没在聊天上下文里；它需要请求、待办、草稿、附件、提交和不可变结果。
-- RambleDesk 不内置智能体运行时，不内置 shell multiplexer，不持有源码 checkout 模型。
+- RambleDesk 不内置智能体推理与工具执行引擎，不内置 shell multiplexer，不持有源码 checkout 模型；允许托管外部 Agent 会话，见下方 TARGET。
 - 宿主通过适配器接入：Generic MCP 是通用路径，Pi package 是首个原生路径。
 - 反馈正确性不依赖某次 tool call 或连接存活；请求与反馈包必须先落盘。
 
@@ -21,13 +21,23 @@ MVP 不做：
 
 - 内置完整智能体运行时；
 - 管理源码 checkout 或 workspace；
-- 要求源码 checkout 路径；
+- 在外部反馈请求中要求源码 checkout 路径；
 - 云同步、账号体系、多人协作；
 - 移动端完整 App；
 - 独立常驻 MCP 网关；
 - 用 CLI resume 探针伪装宿主原生适配器；
 - 通用系统级听写工具；
 - 多阶段智能体编排流水线（仅提供人类可选的单步 Feedback Cooking）。
+
+## TARGET：ACP 托管会话
+
+用户在 RambleDesk 选择 Agent 启动配置与工作目录后即可创建会话、发送任务、处理权限与反馈，并在提交后
+继续同一个 Agent Session。零反馈请求的会话也出现在列表；删除会话由一次操作完成停止与清理，不要求先归档。
+关闭会话视图只关闭视图。现有外部反馈适配器继续可用，同一后端可以同时存在外部会话与托管会话。
+
+这是已接受、尚待实现的产品目标；术语和边界见 [TERMINOLOGY.md](TERMINOLOGY.md)，交付顺序见
+[ACP 提交地图](ACP_COMMIT_MAP.md)。Agent 设置页参考 Codeg 的列表、详情、检查结果分区，具体取舍见
+[Codeg ACP 调研](CODEG_ACP_RESEARCH.md)。
 
 ## 核心对象
 
@@ -36,7 +46,7 @@ MVP 不做：
 | 反馈请求 | 宿主智能体发给人类的一次体验/检查任务，用 `request_id` 标识。 |
 | 反馈包 | 人类提交后生成的不可变证据，包含 markdown、manifest 和附件。 |
 | 宿主 | 宿主智能体运行环境，例如 Pi、Claude Code、Codex、OpenCode、Reasonix、Grok。 |
-| 宿主会话 | 宿主中的原对话、任务或运行上下文；同一会话可产生多次请求。 |
+| Agent Session / 宿主会话 | 宿主中的持续对话与执行上下文；同一会话可处理多个任务并产生多次请求。 |
 | 适配器 | 宿主接入 RambleDesk 的完整流程。 |
 | 工作台 | 人类处理反馈请求的桌面 UI。 |
 | Ramble | 以 TipTap Feedback Draft 为核心的自由反馈编辑流程；语音、截图和粘贴是可选的平台输入能力。 |

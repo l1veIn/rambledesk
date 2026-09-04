@@ -1,22 +1,26 @@
 # RambleDesk 术语表
 
-> 状态：v5 当前基线。
+> 状态：v6 当前基线与 ACP 托管会话目标。
 > 目标：固定产品语言、协议字段和 package 边界。代码、文档、UI 文案、测试命名若与本文冲突，以本文为准。
 
 本文是 RambleDesk 的唯一术语源。其他文档只引用本文，不重新定义产品对象。
 
+**CURRENT** 表示当前实现；**TARGET** 表示已接受、尚待实现的边界。本文新增的托管会话、Agent
+启动配置与 ACP 实例均为 TARGET；更新术语不表示这些能力已经可用。决策和提交顺序见
+[ADR 007](adr/007-acp-managed-sessions.md) 与 [ACP 提交地图](ACP_COMMIT_MAP.md)。
+
 ## 架构公理
 
-1. RambleDesk 是本地 human-feedback workbench，不是智能体运行时，不内置 shell multiplexer，也不持有源码 checkout 模型。
+1. RambleDesk 是本地 human-feedback workbench，不实现智能体的推理与工具执行引擎，不内置 shell multiplexer，也不持有源码 checkout 模型；TARGET 允许由 Backend Runtime 托管外部 Agent 的会话与启动资源。
 2. 反馈请求和反馈包构成核心闭环；请求、Feedback Draft、反馈包、配置以及未来的 Session Runtime / Timeline 等业务事实只由 Backend Runtime 持有。
-3. 宿主通过适配器接入 RambleDesk；适配器是完整宿主流程，不是图标、label 或单个命令。
-4. `core` 只持有 application contract，不持有 HTTP、JSON、MCP、Pi、Local Integration Server、Web Access、desktop command 或宿主安装逻辑。
+3. 反馈适配器负责请求、反馈读取与 continuation；TARGET 的 Agent Session Management 负责启动、交互和会话生命周期。两者是独立职责，可以组合使用。
+4. `core` 只持有 application contract，不持有 HTTP、JSON、MCP、ACP wire/SDK、Pi、Local Integration Server、Web Access、desktop command 或宿主安装逻辑。
 5. Workbench Client 通过 Application Transport Interface 访问 Backend Runtime；Transport 与设备 Capability 是两个独立边界。
 6. Local Integration Server 与 Web Access 必须复用一套安全 policy/primitives，但拥有显式分离的 listener、credential、auth domain、启停生命周期和 route set。
 7. Workbench Client 的 workspace snapshot（view、顺序、active view、pane 尺寸）是 client-local 状态，不是 Backend Runtime 业务事实，也不得缓存 Feedback Draft 正文。
 8. MCP 是通用 MCP 适配器的一种 transport，不是全局基础设施。
-9. 提交后的 continuation 不是适配器。适配器可以选择“不需要 continuation”“手动 continuation”或“原生 continuation”。
-10. RambleDesk 不要求源码 checkout 路径。路径最多是适配器提供的可选 context hint。
+9. 提交后的 continuation 不是适配器。反馈路径可以选择“不需要 continuation”“手动 continuation”“原生 continuation”或 TARGET 的“托管 continuation”。
+10. 外部反馈请求不要求源码 checkout 路径，路径可以是可选 context hint；TARGET 的托管会话必须指定 Backend Runtime 所在机器上的工作目录 `cwd`，它不建立源码 checkout 管理模型。
 11. 语音识别与屏幕采集发生在输入所在的客户端设备；Platform Plugin 只把结构化转录事件或附件候选交给 TipTap Ramble Core，不通过 Application Transport 代理设备能力。
 
 ## 核心闭环
@@ -53,9 +57,10 @@
 | Speech Engine（语音识别引擎） | Speech Recognition Plugin 内消费本地 PCM 并产生 SpeechEvent 的识别 Implementation。 | Desktop、Browser 与 Mobile 各自在本设备运行；统一点是事件合同，不是进程、模型或 transport。 |
 | 反馈请求 | 由适配器创建、由人类处理的持久单位，用 `request_id` 标识。 | RambleDesk 的核心输入事实。 |
 | 反馈包 | 请求进入终态后发布的不可变证据，包含 manifest、markdown、附件路径和 hash。 | RambleDesk 的核心输出事实；宿主继续前必须读取。 |
-| 适配器 | 面向一类宿主的完整接入流程：创建请求、读取反馈、处理 continuation。 | 可以由多个 package 或 transport 组成。 |
+| Feedback Adapter（反馈适配器，简称适配器） | 面向一类宿主的完整反馈接入流程：创建请求、读取反馈、处理 continuation。 | 可以由多个 package 或 transport 组成；不因此拥有 Agent 会话启动与进程管理职责。 |
 | continuation | 请求进入终态后，让原宿主继续的行为。 | 只处理终态之后；不创建请求，不发布反馈包。 |
-| 宿主会话 | 宿主中的原对话、任务或运行上下文。 | 同一宿主会话可以发起多次反馈请求；不是源码 checkout。 |
+| Agent Backend（智能体后端，现有文档称宿主 / Host） | 提供智能体推理、工具和会话能力的外部软件，例如 Pi、dsh、Codex。 | 不等于 RambleDesk 的 Backend Runtime，也不等于某一个 OS 进程。 |
+| Agent Session（智能体会话，现有文档称宿主会话） | Agent Backend 中持续关联的一段对话与执行上下文。 | 可处理多个任务、产生多次反馈请求；任务切换不自动创建新会话。 |
 | context hint | 适配器可选提供的展示/定位信息，例如标题、路径、URL、文件引用。 | 不参与认证，不是必需身份字段，不保证可恢复。 |
 | Ramble | 以 TipTap Feedback Draft 为中心的自由反馈编辑流程；文字是基础输入，语音、截图等 Platform Plugin 可向同一文档贡献结构化内容。 | 不等同于录音 session，不拥有平台设备能力，也不属于适配器协议。 |
 | Uncooked Feedback | 人类通过 Ramble、文字、截图形成的原始反馈正文；允许保留口语、重复和自我修正。 | 是人类原始证据，Cooking 不得覆盖；提交后保存为反馈包中的 `uncooked.md`。 |
@@ -64,6 +69,38 @@
 | Tidy | 人类在当前 Editor 中手动触发的 ASR 段落整理。 | 只处理 pending 语音节点；后台文档不整理；不是 Cooking。 |
 | Cooking | 提交前可选的大模型编辑步骤，把 Uncooked Feedback 整理为正式 Markdown。 | 只做表达整理，不得编造事实、测试结果或删除负面判断；不开启时不调用模型服务。 |
 | Cooked Feedback | Cooking 生成并经人类选择提交的正式反馈正文。 | 保存为反馈包中的 `feedback.md`，是宿主默认读取的反馈结果；其来源必须可追溯到 `uncooked.md`。 |
+
+## 会话与 ACP 术语
+
+| 术语 | 定义与边界 |
+| --- | --- |
+| RambleDesk Session（RambleDesk 会话） | 工作台中持久化的会话单位。CURRENT 由 `host_sessions` 记录关联反馈；TARGET 可在零反馈请求时独立创建、展示，并对应一个 Agent Session。 |
+| External Session（外部会话） | Agent Session 的启动与交互由外部宿主管理，RambleDesk 通过反馈适配器协作。CURRENT 的会话均属于此类。 |
+| Managed Session（托管会话，TARGET） | RambleDesk 通过 Agent Session Management 创建和控制的会话。它是 RambleDesk Session 的管理方式，不是另一种反馈请求。 |
+| Agent Session Management（智能体会话管理，TARGET） | Backend Runtime 的 application 能力：创建会话、发送输入、处理权限、取消当前执行、停止运行、删除与恢复。ACP Client 是首个协议实现。 |
+| Task（任务） | 人类或 Agent 希望完成的一项工作；一个 Agent Session 可以连续处理多个任务。首期不要求建立独立 Task 存储模型。 |
+| Turn（执行轮次） | Agent 接收一次输入后的一轮执行；一个任务可跨多轮，一个会话可处理多项任务。取消当前轮次不等于删除会话。 |
+| ACP（Agent Client Protocol） | 工作台与 Agent 之间的交互协议。它不替代 RambleDesk 的反馈请求、草稿和反馈包合同。 |
+| ACP Client（ACP 客户端，TARGET） | 发起 ACP 初始化、会话和输入操作，并处理 Agent 回调的协议角色，由 RambleDesk Backend Runtime 中的协议实现承担。它不是 Workbench Client。 |
+| ACP Server / Agent（ACP 服务端） | 对 ACP Client 暴露 Agent 能力的一端，可以由 Agent Backend 原生提供，也可以由 ACP Bridge 提供。此处 server 不表示必须有常驻 daemon 或网络监听端口。 |
+| ACP Bridge（ACP 桥接程序） | 把某个 Agent Backend 的原生接口转换为 ACP 的外部程序，例如 `pi-acp`。上游可能称其为 adapter；RambleDesk 文档使用 bridge，避免与反馈适配器混淆。 |
+| Agent Launch Configuration（Agent 启动配置，简称 AgentConfig，TARGET） | 可复用的启动选择，包含后端家族、协议、启动命令/参数/环境等配置，由 `agent_config_id` 标识。同一后端可以有多个配置；它不是 Host Profile，也不是一个会话或进程。 |
+| ACP Connection（ACP 连接，TARGET） | 一次 ACP 协议通信通道，首期使用 stdio；断开后原连接身份失效。它不等于 Agent Session 的持久身份。 |
+| ACP Instance（ACP 实例，TARGET） | RambleDesk 管理的一次 ACP 启动及连接资源集合。首期每个托管会话独占一个实例；实例可包含桥接进程及其子进程，不保证只有一个 OS 进程。 |
+| Session Runtime（会话运行状态，TARGET） | Backend Runtime 根据当前连接和执行情况产生的投影，例如连接中、空闲、执行中、等待权限、断开。不得把上次落盘的 connected 状态当作重启后的事实。 |
+| Feedback Delivery（反馈投递，TARGET） | 某次反馈终态需要送回托管 Agent Session 的持久记录；用于排队、去重与恢复。一个会话可以有多条投递，不能由一个会话级布尔值代替。 |
+
+关系约束：
+
+- TARGET：一个 RambleDesk Session 对应一个 Agent Session；一个 Agent Session 可执行多个 Task、
+  多个 Turn，并创建多个 Feedback Request。任务拆分不能成为另建 RambleDesk Session 的理由。
+- CURRENT：Generic MCP 的关联 id 由调用者提供，历史数据不能据此证明真实 Agent Session 的一一关系；
+  保留已有分组，不在术语更新中合并或改写历史。托管路径由 controller 固定反馈归属，不能由模型自由选择。
+- 首期托管策略为一个会话独占一个 ACP Instance；ACP 协议是否支持连接内多会话，与本产品首期是否共享实例是两件事。
+  后续共享属于实例分配策略，不改变会话的一一关系。
+- View / Tab 是客户端视图；关闭视图不停止实例或删除会话。删除托管会话是一条直接操作，内部负责停止与清理，
+  不要求人类先结束或归档。停止运行并保留历史可以是另一条操作。
+- 不用“Ramble session”同时指代会话、反馈请求与 Ramble 编辑流程；分别使用完整术语。
 
 ## Cooking 规则
 
@@ -82,7 +119,7 @@
 | --- | --- | --- |
 | `request_id` | 唯一持久反馈请求 id。 | 创建幂等 key，也是读取反馈包的 lookup key。 |
 | `host_id` | 稳定宿主家族 id，例如 `pi`、`claude`、`codex`、`opencode`、`grok`、`generic`。 | 用于展示、host profile 匹配和 continuation strategy 选择。 |
-| `host_session_id` | 宿主提供或适配器生成的会话关联 id。 | 用于把同一宿主会话的多次 request 收敛；不是认证凭据，也不证明可自动继续。 |
+| `host_session_id` | 宿主提供或适配器生成的会话关联 id。 | CURRENT 外部反馈合同；不保证等于 Agent 的真实 session id，不是 MCP transport session id、认证凭据或自动恢复证明。 |
 | `context_refs` | 可选上下文引用列表。 | 承载文件、URL、diff、截图等可读线索。 |
 | `source_hint` | 可选来源提示。 | 可包含路径或标题；不得成为创建请求的硬前提。 |
 
@@ -91,7 +128,20 @@
 - `host_id` 是宿主身份字段。
 - `host_session_id` 是宿主会话关联字段。
 - 同一宿主会话的多次 request 通过 `(host_id, host_session_id)` 收敛。
-- RambleDesk 不理解也不要求源码 checkout 地址。
+- 外部反馈合同不要求源码 checkout 地址；托管会话的 `cwd` 属于执行配置。
+
+TARGET 新增字段类别（表达合同方向，最终 Rust DTO 与 migration 随实现提交）：
+
+| 类别 | 字段方向 | 规则 |
+| --- | --- | --- |
+| 本地身份 | `session_id` | 暴露现有 `host_sessions.id` 的稳定身份；不会随连接重建而改变。 |
+| 管理方式 | typed `management`：`external` 或 `managed` | `managed` 分支包含 `protocol: acp`、`agent_config_id`、`cwd` 和可空的 `remote_session_id`；不增加含义不清的 `acp_manage` 布尔值，也不同时存重复的布尔值与枚举。 |
+| Agent 会话绑定 | `remote_session_id` | ACP 返回的 Agent Session id，可持久化用于受能力约束的恢复；不作为 RambleDesk 主键或全局唯一 id。创建完成前允许为空。 |
+| 启动实例绑定 | `acp_instance_id` | 当前实例的运行时身份；重启可变化，不表示可恢复的进程句柄。 |
+| 可用性与运行投影 | `runtime`，分别表达连接状态与执行状态 | 不与 Request 的 waiting/completed 等业务状态混用；UI 状态来自 Backend Runtime。 |
+| 反馈投递 | 独立 delivery 记录 | 关联会话、请求和终态版本；能表达待发送、已发送、失败与结果不明，不把投递状态塞进 `management`。 |
+
+`agent_config_id` 指向可复用启动配置；`cwd` 固定在具体会话。配置编辑仅影响后续启动，不能静默改变正在运行的实例。
 
 ## 适配器分类
 
@@ -131,6 +181,11 @@ Pi 原生适配器是 `packages/pi-rambledesk`，通过本地 JSON API 工作。
 
 Pi 原生适配器不需要提交后的 continuation，因为 Pi 已经在工具调用中等待，终态反馈会直接返回原 Pi 流程。
 
+### dsh 原生适配器
+
+`packages/dsh-rambledesk` 是 CURRENT 的 dsh 原生反馈适配器，通过本地 JSON API 在同一 tool call
+内等待并返回反馈，也提供中断后的恢复读取。它与 TARGET 的 dsh ACP 启动配置承担不同职责，不能互相替代名称。
+
 ### 未来原生适配器
 
 只有当宿主提供可靠、已验收的原上下文保留/恢复方式时，才允许新增原生适配器。
@@ -151,9 +206,10 @@ Pi 原生适配器不需要提交后的 continuation，因为 Pi 已经在工具
 
 | 类型 | 含义 | 使用场景 |
 | --- | --- | --- |
-| 无提交后 continuation | 适配器已在 active tool call 内等待，终态直接返回。 | Pi 原生适配器。 |
+| 无提交后 continuation | 适配器已在 active tool call 内等待，终态直接返回。 | Pi、dsh 原生适配器。 |
 | 手动 continuation | 显示恢复提示，让人类回宿主调用 `get_feedback`。 | 通用 MCP 适配器。 |
 | 原生 continuation | 由宿主官方能力安全恢复原上下文。 | 未来原生适配器。 |
+| 托管 continuation（TARGET） | Backend Runtime 在目标 Agent Session 可接收输入后投递反馈续接消息。 | ACP 托管路径；使用持久投递记录，不要求人类回到外部宿主确认。 |
 
 ## Package 边界
 
@@ -162,6 +218,7 @@ Pi 原生适配器不需要提交后的 continuation，因为 Pi 已经在工具
 | 架构角色 | 当前映射 | 目标边界 |
 | --- | --- | --- |
 | Backend Runtime | 由 `apps/desktop` composition root 组装 `core`、storage、配置和运行时 controller。 | 保持单一 application Module 和业务事实来源；是否重排 crate 留给后续实现决策。 |
+| Agent Session Management / ACP Client | 尚未实现。 | application 合同进入 core；ACP wire/SDK 与进程管理在边界外实现，由 Backend Runtime 组装。 |
 | Workbench Client | `apps/desktop` 中的 Svelte 工作台 UI。 | Desktop Client 与 Web Client 复用同一 UI 和 Application Transport Interface。 |
 | Desktop Client / Desktop Shell | `apps/desktop`。 | Shell 只保留 desktop composition 与 Native Capability；共享 UI 不依赖 Tauri 细节。 |
 | Tauri Application Transport Implementation | `apps/desktop` 的 Tauri command/event wiring。 | 实现统一 Application Transport Interface，调用同一 Backend Runtime application Module。 |
@@ -179,6 +236,7 @@ Pi 原生适配器不需要提交后的 continuation，因为 Pi 已经在工具
 | `crates/rambledesk-mcp` | Generic MCP Adapter 完整方案：MCP schema、tool handler、instructions、结果/错误映射、客户端检测/安装执行引擎。 | listener、token path、JSON API、host-specific continuation、per-host 知识。 |
 | `crates/rambledesk-hosts` | 宿主知识注册表（executable/marker/配置路径/ConfigFormat）、Host profile、展示元数据、默认适配器选择、continuation strategy。 | MCP implementation、Pi package、适配器安装/写入执行逻辑。 |
 | `packages/pi-rambledesk` | Pi 原生适配器 package。 | MCP client 行为、desktop UI 状态、storage 逻辑。 |
+| `packages/dsh-rambledesk` | dsh 原生适配器 package。 | ACP Client、desktop UI 状态、storage 逻辑。 |
 | `apps/desktop` | 当前实现 Workbench Client、Desktop Client、Desktop Shell、Tauri Application Transport Implementation、composition root 和适配器安装 UX。 | 领域存储语义、host package 内部实现；共享 Workbench Client 不应直接依赖 Tauri 或 Native Capability 细节。 |
 
 目标 Cargo 依赖方向：
@@ -220,6 +278,10 @@ Host Profile 描述：
 | `inspector` | 通用 MCP 适配器 | 手动 continuation |
 | `reasonix` | 通用 MCP 适配器 | 手动 continuation |
 | `pi` | Pi 原生适配器 | 无提交后 continuation |
+| `dsh` | dsh 原生适配器 | 无提交后 continuation |
+
+上表是反馈适配器的默认选择，不是某个会话的管理方式。TARGET 的 AgentConfig 独立描述 ACP 启动方式；
+同一 `host_id` 可以同时有外部会话和托管会话。
 
 ## 命名规则
 
@@ -228,6 +290,8 @@ UI 文案允许：
 - “适配器”
 - “通用 MCP 适配器”
 - “Pi 原生适配器”
+- “dsh 原生适配器”
+- “Agent 配置”“托管会话”“停止运行”“删除会话”（TARGET）
 - “检测到的 Coding 工具”
 - “手动继续”
 - “桌面客户端”与“Web 客户端”
@@ -244,6 +308,8 @@ UI 文案避免：
 - 把 Browser Capability 描述成 Native Capability 的等价实现，或把浏览器文件选择描述成服务器工作目录选择。
 - 把 Platform Plugin 描述成 Host Adapter，或把第一方、静态装配的 Platform Plugin 暗示为任意第三方动态插件。
 - 把 Ramble 描述成录音 session，或把 Speech Engine 描述成 Backend Runtime 的跨客户端共享服务。
+- 把 Agent 配置称为“ACP Client 配置”而混淆协议角色，或把 ACP Bridge 称为 RambleDesk 的反馈适配器。
+- 把会话、任务、执行轮次、反馈请求、Tab 和 ACP 实例混为同一个对象。
 
 代码与架构文档命名：
 
@@ -252,6 +318,7 @@ UI 文案避免：
 - OS / device seam 称为 `Native Capability` 或 `Browser Capability`；具体实现称为 `Capability Implementation`，不称为 Adapter。
 - 组合语音、截图等单一平台设备流程的深 Module 称为 `Platform Plugin`；首期是第一方 typed composition，不承诺动态插件系统。
 - `Web Access` 只表示可独立启停的浏览器访问 feature，不表示 Backend Runtime。
+- `Agent Session Management` 表示会话管理能力；`ACP Client` 是协议实现；`ACP Instance` 是受控启动资源，不使用笼统的“ACP base”作为领域对象名。
 
 ## 合并标准
 
@@ -265,6 +332,6 @@ UI 文案避免：
 - 本地 JSON API 位于 `rambledesk-local-server`。
 - MCP 是薄适配层，不持有 listener、token path 或 JSON API。
 - `rambledesk-hosts` 只持有 host profile 和 strategy 选择，不实现完整适配器。
-- 协议不要求源码 checkout 地址。
+- 外部反馈协议不要求源码 checkout 地址；托管会话单独验证执行目录。
 - Pi 被描述为 Pi 原生适配器。
 - 通用 MCP 适配器明确使用手动 continuation，不承诺自动恢复原宿主上下文。

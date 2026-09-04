@@ -1,15 +1,20 @@
 # RambleDesk 架构基线
 
-> 状态：v4 当前与目标边界。
+> 状态：v5 当前与目标边界。
 > 术语源：[TERMINOLOGY.md](TERMINOLOGY.md)。本文若与术语表冲突，以术语表为准。
 
-本文同时记录已经存在的结构与后续 Web 工作必须遵守的目标边界：
+本文同时记录已经存在的结构与后续 Web、ACP 会话管理工作必须遵守的目标边界：
 
 - **CURRENT** 表示仓库当前已经实现并可验证的事实；
 - **TARGET** 表示已接受但尚未完成的演进边界，不得在产品文案中冒充已有能力。
 
 Backend Runtime 是运行角色，不是新 crate 的名字。除非另有标记，package 章节描述 CURRENT；
 TARGET 不预设新 crate、Web app 目录或 headless composition root。
+
+ACP 托管会话的 TARGET 见 [ADR 007](adr/007-acp-managed-sessions.md)：Backend Runtime 增加
+Agent Session Management，ACP Client 与进程管理实现位于 core application contract 之外。
+一个 RambleDesk Session 对应一个 Agent Session；首期独占 ACP Instance，不要求实例只有一个 OS
+进程。持久会话、运行投影与反馈投递分别建模，Client view 不拥有其生命周期。下方 CURRENT 拓扑尚不包含 ACP。
 
 ## 运行时拓扑
 
@@ -169,7 +174,7 @@ rambledesk/
 - HTTP、JSON、MCP、Pi package、Tauri command；
 - Local Integration Server listener、token path、Host/Origin guard；
 - 宿主安装逻辑、host profile、continuation strategy；
-- 源码 checkout 模型或路径依赖。
+- 源码 checkout 模型或把外部反馈请求绑定到源码路径的依赖；TARGET 会话合同可以携带执行目录 `cwd`。
 
 ### `rambledesk-storage`
 

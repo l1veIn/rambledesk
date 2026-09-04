@@ -1,6 +1,6 @@
 # RambleDesk 产品宪章
 
-> 状态：v2 当前基线。
+> 状态：v3 当前基线与 ACP 托管目标。
 > 术语源：[TERMINOLOGY.md](TERMINOLOGY.md)。普通实现不得静默偏离本文。
 
 ## North Star
@@ -73,7 +73,7 @@ MVP 服务于同机宿主，默认只监听 loopback，数据默认保存在本�
 | --- | --- |
 | Human | 使用 RambleDesk 完成体验并提交反馈的人。 |
 | Host | 运行智能体并消费结果的宿主。 |
-| Host Session | 宿主中的原对话、任务或运行上下文。 |
+| Agent Session / Host Session | 宿主中的持续对话与执行上下文；任务不等于会话，完整定义见术语表。 |
 | Feedback Request | 一次持久化体验请求。 |
 | Invocation Attempt | 一次 transport 调用尝试；可断开、取消或完成。 |
 | Draft | 尚未提交的文字和附件。 |
@@ -100,8 +100,8 @@ MVP 必须做到：
 
 - 远程或云端入口；
 - 多用户、团队协作和权限系统；
-- 内置智能体 runtime；
-- 自动修改用户代码；
+- 内置智能体推理与工具执行引擎（外部 Agent 会话托管的 TARGET 例外见下文）；
+- 由 RambleDesk 自行规划并自动修改用户代码；
 - 通用听写或全局语音输入；
 - 对反馈内容进行不可追溯的 LLM 重写；
 - 移动端 App；
@@ -128,3 +128,18 @@ MVP 必须做到：
 - 对现有协议、数据和里程碑的影响。
 
 普通实现便利、单个依赖偏好或尚未验证的竞品功能，不足以修改 North Star。
+
+## 2026-09-04：允许托管外部 Agent 会话（TARGET）
+
+- **真实信号**：现有反馈适配器已可用，但用户必须分别启动 RambleDesk 和 Agent Backend；Generic MCP
+  的手动 continuation 还要求在两个界面之间切换。用户同时观察到一个 Agent 会话被模型按任务拆成多个工作台会话。
+- **失效范围**：“不内置智能体 runtime”不能再被解释为禁止启动或控制外部 Agent；“自动修改用户代码”
+  的边界需要区分 RambleDesk 自行执行任务与外部 Agent 按用户指令执行任务。
+- **替代条款**：允许 Backend Runtime 通过 ACP 托管外部 Agent Session 的启动、交互、权限与生命周期；
+  推理与工具执行仍由外部 Agent Backend 负责，反馈仍形成持久请求与不可变反馈包。
+- **影响**：外部适配器合同保持兼容；新增稳定会话身份、管理方式、启动配置、运行投影和投递记录；托管路径
+  使用工作目录但不引入 checkout 管理。首期一会话独占一个 ACP 实例，直接删除由同一操作完成停止与清理。
+  该变更按小提交交付，不将已接受目标表述为现成功能。
+
+术语以 [TERMINOLOGY.md](TERMINOLOGY.md) 为准；决策见 [ADR 007](adr/007-acp-managed-sessions.md)，
+里程碑见 [ACP 提交地图](ACP_COMMIT_MAP.md)。North Star 保持不变。
