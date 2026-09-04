@@ -1,6 +1,16 @@
-use rambledesk_core::{CatalogAgentInput, AgentInstallJobInput, AgentInstallJob};
-use rambledesk_core::{AgentConnectionKind, AgentDistribution, AgentVerificationStatus, AgentVerification, AgentDependency, AgentCatalogEntry, AgentInstallSource, AgentCheckStatus, AgentCatalogCheck, AgentDependencyInspection, AgentInspection, InstallAgentInput, AgentInstallPhase, AgentInstallProgress, InstalledAgent};
-use rambledesk_core::{SessionActivityContent, SessionContentBlock, SessionToolKind, SessionToolStatus, SessionToolLocation, SessionToolCall};
+use rambledesk_core::{
+    AgentCatalogCheck, AgentCatalogEntry, AgentCheckStatus, AgentConnectionKind, AgentDependency,
+    AgentDependencyInspection, AgentDistribution, AgentInspection, AgentInstallJob,
+    AgentInstallJobInput, AgentInstallPhase, AgentInstallProgress, AgentInstallSource,
+    AgentVerification, AgentVerificationStatus, CatalogAgentInput, InstallAgentInput,
+    InstalledAgent, SessionActivityContent, SessionContentBlock, SessionToolCall, SessionToolKind,
+    SessionToolLocation, SessionToolStatus,
+};
+use rambledesk_core::{
+    SessionConfigChange, SessionConfigChoice, SessionConfigKind, SessionConfigOption,
+    SessionConfigValue, SessionConfiguration, SessionMode, SessionModeCatalog, SessionModel,
+    SessionModelCatalog, SetManagedSessionConfigInput,
+};
 use std::{fs, path::PathBuf};
 
 use rambledesk_core::{
@@ -35,7 +45,12 @@ use rambledesk_core::{SessionRecovery, SessionRecoveryStatus};
 use ts_rs::{Config, TS};
 
 fn exported<T: TS>() -> String {
-    T::decl(&Config::default()).replacen("type ", "export type ", 1)
+    T::decl(&Config::default())
+        .replacen("type ", "export type ", 1)
+        .lines()
+        .map(str::trim_end)
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn exported_application_error_codes() -> String {
@@ -65,10 +80,17 @@ fn exported_feedback_package_content() -> String {
 
 fn main() -> std::io::Result<()> {
     let declarations = [
-        exported::<CatalogAgentInput>(),
-        exported::<AgentInstallJobInput>(),
-        exported::<AgentInstallJob>(),
-
+        exported::<SessionConfiguration>(),
+        exported::<SessionConfigOption>(),
+        exported::<SessionConfigKind>(),
+        exported::<SessionConfigChoice>(),
+        exported::<SessionModeCatalog>(),
+        exported::<SessionMode>(),
+        exported::<SessionModelCatalog>(),
+        exported::<SessionModel>(),
+        exported::<SessionConfigValue>(),
+        exported::<SessionConfigChange>(),
+        exported::<SetManagedSessionConfigInput>(),
         exported::<AgentConnectionKind>(),
         exported::<AgentDistribution>(),
         exported::<AgentVerificationStatus>(),
@@ -84,14 +106,15 @@ fn main() -> std::io::Result<()> {
         exported::<AgentInstallPhase>(),
         exported::<AgentInstallProgress>(),
         exported::<InstalledAgent>(),
-
+        exported::<CatalogAgentInput>(),
+        exported::<AgentInstallJobInput>(),
+        exported::<AgentInstallJob>(),
         exported::<SessionActivityContent>(),
         exported::<SessionContentBlock>(),
         exported::<SessionToolKind>(),
         exported::<SessionToolStatus>(),
         exported::<SessionToolLocation>(),
         exported::<SessionToolCall>(),
-
         exported::<SessionRecoveryStatus>(),
         exported::<SessionRecovery>(),
         exported::<FeedbackDelivery>(),

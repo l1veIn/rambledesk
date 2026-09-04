@@ -94,7 +94,7 @@ function managedSnapshot(sessionId: string, sequence: number): ManagedSessionSna
     session: { session_id: sessionId, host_id: 'dsh', host_session_id: `host-${sessionId}`, title: sessionId,
       management: { kind: 'managed', protocol: 'acp', agent_config_id: 'config', cwd: '/repo', remote_session_id: `remote-${sessionId}` },
       created_at: '2026-09-04', updated_at: '2026-09-04' },
-    runtime: { connection: 'connected', activity: sequence === 36 ? 'idle' : 'running', instance_id: `instance-${sessionId}`, config_updated_at: null,
+    runtime: { configuration: { options: [], modes: null, models: null }, connection: 'connected', activity: sequence === 36 ? 'idle' : 'running', instance_id: `instance-${sessionId}`, config_updated_at: null,
       capabilities: { load_session: true, resume_session: false, http_mcp: true }, last_error: null },
     activities: Array.from({ length: sequence }, (_, index) => ({ id: `message-${index}`, session_id: sessionId, sequence: index + 1, turn_id: 'turn',
       kind: 'agent_message', text: `Chunk ${index + 1}`, tool_call_id: null, created_at: '2026-09-04' })),

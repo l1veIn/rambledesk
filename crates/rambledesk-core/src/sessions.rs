@@ -6,6 +6,7 @@
 mod activity;
 mod agent_catalog;
 mod application;
+mod configuration;
 mod continuation;
 mod deletion;
 mod delivery;
@@ -22,6 +23,7 @@ mod runtime;
 pub use activity::*;
 pub use agent_catalog::*;
 pub use application::{SessionApplication, SessionError};
+pub use configuration::*;
 pub use continuation::ResolveFeedbackDeliveryInput;
 pub use deletion::*;
 pub use delivery::*;

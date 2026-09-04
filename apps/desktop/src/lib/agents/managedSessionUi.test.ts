@@ -14,7 +14,7 @@ function snapshot(): ManagedSessionViewSnapshot {
       created_at: '2026-09-04', updated_at: '2026-09-04',
       management: { kind: 'managed', protocol: 'acp', agent_config_id: 'config-one', cwd: '/project', remote_session_id: null },
     },
-    runtime: {
+    runtime: { configuration: { options: [], modes: null, models: null },
       connection: 'connected', activity: 'idle', instance_id: 'instance-one', config_updated_at: 'old',
       capabilities: { load_session: true, resume_session: false, http_mcp: true }, last_error: null,
     },

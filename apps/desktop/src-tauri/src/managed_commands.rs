@@ -126,3 +126,14 @@ pub(crate) async fn delete_managed_session(
         .delete_managed_session(input)
         .await
 }
+
+#[tauri::command]
+pub(crate) async fn set_managed_session_config(
+    state: tauri::State<'_, WorkbenchState>,
+    input: rambledesk_core::SetManagedSessionConfigInput,
+) -> Result<ManagedSessionSnapshot, ManagedCommandError> {
+    state
+        .application_commands
+        .set_managed_session_config(input)
+        .await
+}

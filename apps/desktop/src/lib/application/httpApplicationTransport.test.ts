@@ -404,8 +404,8 @@ describe('HttpApplicationTransport', () => {
   })
 
   it('defines one complete HTTP operation mapping', () => {
-    expect(Object.keys(HTTP_APPLICATION_OPERATIONS)).toHaveLength(41)
-    expect(new Set(Object.values(HTTP_APPLICATION_OPERATIONS)).size).toBe(41)
+    expect(Object.keys(HTTP_APPLICATION_OPERATIONS)).toHaveLength(42)
+    expect(new Set(Object.values(HTTP_APPLICATION_OPERATIONS)).size).toBe(42)
   })
 
   it('encodes JSON, multipart bytes, binary responses, and no-content outcomes', async () => {

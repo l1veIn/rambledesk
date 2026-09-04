@@ -18,6 +18,7 @@ struct ManagedConnection {
     sender: agent_client_protocol::ConnectionTo<agent_client_protocol::Agent>,
     remote: String,
     permissions: Arc<crate::permissions::PermissionQueue>,
+    configuration: crate::session_configuration::SharedConfiguration,
 }
 
 #[async_trait]
@@ -77,6 +78,7 @@ impl AgentSessionDriver for AcpSessionDriver {
             Some(info.remote_session_id.clone());
         let sender = connection.sender();
         let permissions = connection.permission_queue();
+        let configuration = connection.configuration_cache();
         Ok(StartedAgentSession {
             remote_session_id: info.remote_session_id.clone(),
             capabilities: AgentSessionCapabilities {
@@ -90,6 +92,7 @@ impl AgentSessionDriver for AcpSessionDriver {
                 sender,
                 remote: info.remote_session_id,
                 permissions,
+                configuration,
             }),
         })
     }
@@ -111,6 +114,20 @@ impl AgentSessionDriver for AcpSessionDriver {
 
 #[async_trait]
 impl AgentSessionConnection for ManagedConnection {
+    fn configuration(&self) -> rambledesk_core::SessionConfiguration {
+        self.configuration
+            .lock()
+            .expect("configuration cache")
+            .state
+            .clone()
+    }
+    async fn set_configuration(
+        &self,
+        change: rambledesk_core::SessionConfigChange,
+    ) -> Result<(), AgentDriverError> {
+        crate::session_configuration::set(&self.sender, &self.remote, &self.configuration, change)
+            .await
+    }
     async fn cancel(&self) -> Result<(), AgentDriverError> {
         self.permissions.cancel_all();
         self.sender

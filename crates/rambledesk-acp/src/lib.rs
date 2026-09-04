@@ -8,6 +8,7 @@ mod observer;
 mod permission_details;
 mod permissions;
 mod process;
+mod session_configuration;
 
 pub use connection::{AcpConnection, AcpError, AcpEvent, AcpLaunch, AcpSessionInfo};
 pub use driver::AcpSessionDriver;

@@ -16,7 +16,7 @@ function snapshot(connection: ManagedSessionViewSnapshot['runtime']['connection'
     session: { session_id: 'local', host_id: 'dsh', host_session_id: 'feedback', title: 'Interrupted work',
       created_at: 'today', updated_at: 'today',
       management: { kind: 'managed', protocol: 'acp', agent_config_id: 'config', cwd: '/repo', remote_session_id: 'original' } },
-    runtime: { connection, activity: 'idle', instance_id: null, config_updated_at: null,
+    runtime: { configuration: { options: [], modes: null, models: null }, connection, activity: 'idle', instance_id: null, config_updated_at: null,
       capabilities: { load_session: true, resume_session: false, http_mcp: true }, last_error: null },
   }
 }

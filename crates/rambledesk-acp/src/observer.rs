@@ -87,6 +87,17 @@ impl ProtocolObserver for ManagedObserver {
         if update.session_id.to_string() != remote {
             return Err(AcpError::Protocol("session attribution"));
         }
+        if matches!(
+            update.update,
+            agent_client_protocol::schema::v1::SessionUpdate::ConfigOptionUpdate(_)
+                | agent_client_protocol::schema::v1::SessionUpdate::CurrentModeUpdate(_)
+        ) {
+            return self
+                .sink
+                .observe(AgentSessionEvent::ConfigurationChanged)
+                .await
+                .map_err(|_| AcpError::Protocol("configuration update"));
+        }
         let Some(event) = crate::activity_content::convert(update.update)? else {
             return Ok(());
         };

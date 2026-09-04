@@ -26,6 +26,7 @@ pub struct AgentSessionLaunch {
 }
 
 pub enum AgentSessionEvent {
+    ConfigurationChanged,
     PermissionRequested(super::SessionPermission),
     Activity {
         kind: super::SessionActivityKind,
@@ -70,6 +71,17 @@ pub trait AgentSessionDriver: Send + Sync {
 
 #[async_trait]
 pub trait AgentSessionConnection: Send + Sync {
+    fn configuration(&self) -> super::SessionConfiguration {
+        super::SessionConfiguration::default()
+    }
+    async fn set_configuration(
+        &self,
+        _: super::SessionConfigChange,
+    ) -> Result<(), AgentDriverError> {
+        Err(AgentDriverError::new(
+            "Agent does not support session configuration",
+        ))
+    }
     fn is_closed(&self) -> bool;
     async fn prompt(&self, text: &str) -> Result<String, AgentDriverError>;
     async fn cancel(&self) -> Result<(), AgentDriverError>;

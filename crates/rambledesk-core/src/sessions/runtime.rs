@@ -37,6 +37,8 @@ pub struct SessionRuntime {
     pub instance_id: Option<String>,
     pub config_updated_at: Option<String>,
     pub capabilities: AgentSessionCapabilities,
+    #[serde(default)]
+    pub configuration: super::SessionConfiguration,
     pub last_error: Option<String>,
 }
 
@@ -48,6 +50,7 @@ impl Default for SessionRuntime {
             instance_id: None,
             config_updated_at: None,
             capabilities: AgentSessionCapabilities::default(),
+            configuration: super::SessionConfiguration::default(),
             last_error: None,
         }
     }

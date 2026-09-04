@@ -9,6 +9,10 @@ use super::*;
 pub(super) fn routes() -> Router<ApplicationApiState> {
     Router::new()
         .route(
+            "/application/setManagedSessionConfig",
+            post(set_managed_session_config),
+        )
+        .route(
             "/application/deleteManagedSession",
             post(delete_managed_session),
         )
@@ -174,4 +178,11 @@ async fn delete_managed_session(
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(error) => error_response(error),
     }
+}
+
+async fn set_managed_session_config(
+    State(state): State<ApplicationApiState>,
+    ApplicationJson(input): ApplicationJson<rambledesk_core::SetManagedSessionConfigInput>,
+) -> Response<Body> {
+    managed_result(state.commands.set_managed_session_config(input).await)
 }

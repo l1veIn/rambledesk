@@ -271,6 +271,19 @@ impl SessionApplication {
         let Some(entry) = self.entries.lock().await.get(session_id).cloned() else {
             return Ok(());
         };
+        if matches!(event, AgentSessionEvent::ConfigurationChanged) {
+            let live = entry.live.lock().await;
+            if live.runtime.instance_id.as_deref() == Some(instance)
+                && matches!(
+                    live.runtime.connection,
+                    SessionConnectionState::Connected | SessionConnectionState::Connecting
+                )
+            {
+                drop(live);
+                self.session_changed(session_id);
+            }
+            return Ok(());
+        }
         let mut stream = entry.events.lock().await;
         let live = entry.live.lock().await;
         // Backend load can replay old updates. Our durable activity is authoritative;
@@ -283,6 +296,9 @@ impl SessionApplication {
         }
         drop(live);
         let (kind, text, tool_call_id, append) = match event {
+            AgentSessionEvent::ConfigurationChanged => {
+                unreachable!("handled before turn attribution")
+            }
             AgentSessionEvent::MessageChunk {
                 kind,
                 block,

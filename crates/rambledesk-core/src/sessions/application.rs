@@ -231,7 +231,12 @@ impl SessionApplication {
         self.reconcile_closed_entry(&input.session_id, &entry)
             .await?;
         let live = entry.live.lock().await;
-        let runtime = live.runtime.clone();
+        let mut runtime = live.runtime.clone();
+        runtime.configuration = live
+            .connection
+            .as_ref()
+            .map(|connection| connection.configuration())
+            .unwrap_or_default();
         let permissions = live.permissions.clone();
         drop(live);
         let activities = self
@@ -371,6 +376,7 @@ impl SessionApplication {
                     instance_id: Some(instance_id),
                     config_updated_at: Some(version),
                     capabilities: started.capabilities,
+                    configuration: started.connection.configuration(),
                     last_error: None,
                 };
                 live.connection = Some(started.connection);

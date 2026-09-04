@@ -15,7 +15,7 @@ describe('Managed session rendering', () => {
       session: { session_id: 'local-details', host_id: 'dsh', host_session_id: 'feedback-details', title: 'Permission context',
         created_at: 'today', updated_at: 'today',
         management: { kind: 'managed', protocol: 'acp', agent_config_id: 'config', cwd: '/repo', remote_session_id: 'remote' } },
-      runtime: { connection: 'connected', activity: 'waiting_permission', instance_id: 'instance', config_updated_at: null,
+      runtime: { configuration: { options: [], modes: null, models: null }, connection: 'connected', activity: 'waiting_permission', instance_id: 'instance', config_updated_at: null,
         capabilities: { load_session: true, resume_session: false, http_mcp: true }, last_error: null },
     }
     const action = vi.fn()
@@ -46,7 +46,7 @@ describe('Managed session rendering', () => {
       session: { session_id: 'deleting-render', host_id: 'dsh', host_session_id: 'feedback-deleting', title: 'Cleanup incomplete',
         created_at: 'today', updated_at: 'today',
         management: { kind: 'managed', protocol: 'acp', agent_config_id: 'config', cwd: '/repo', remote_session_id: 'remote' } },
-      runtime: { connection: 'connected', activity: 'running', instance_id: 'instance', config_updated_at: null,
+      runtime: { configuration: { options: [], modes: null, models: null }, connection: 'connected', activity: 'running', instance_id: 'instance', config_updated_at: null,
         capabilities: { load_session: true, resume_session: false, http_mcp: true }, last_error: 'Cleanup failed' },
     }
     const action = vi.fn()
@@ -70,7 +70,7 @@ describe('Managed session rendering', () => {
       session: { session_id: 'local-empty', host_id: 'dsh', host_session_id: 'feedback-empty', title: 'Empty project',
         created_at: '2026-09-04', updated_at: '2026-09-04',
         management: { kind: 'managed', protocol: 'acp', agent_config_id: 'config', cwd: '/repo', remote_session_id: null } },
-      runtime: { connection: 'stopped', activity: 'idle', instance_id: null,
+      runtime: { configuration: { options: [], modes: null, models: null }, connection: 'stopped', activity: 'idle', instance_id: null,
         config_updated_at: null, capabilities: { load_session: false, resume_session: false, http_mcp: false }, last_error: null },
     }
     const runtimeAction = vi.fn()
@@ -91,7 +91,7 @@ describe('Managed session rendering', () => {
       session: { session_id: 'local-one', host_id: 'dsh', host_session_id: 'feedback-one', title: 'Project one',
         created_at: '2026-09-04', updated_at: '2026-09-04',
         management: { kind: 'managed', protocol: 'acp', agent_config_id: 'config-one', cwd: '/repo', remote_session_id: 'remote-one' } },
-      runtime: { connection: 'connected', activity: 'waiting_permission', instance_id: 'instance-one',
+      runtime: { configuration: { options: [], modes: null, models: null }, connection: 'connected', activity: 'waiting_permission', instance_id: 'instance-one',
         config_updated_at: null, capabilities: { load_session: true, resume_session: false, http_mcp: true }, last_error: null },
     }
     const runtimeAction = vi.fn()

@@ -45,6 +45,7 @@ pub struct AcpSessionInfo {
     pub load_session: bool,
     pub resume_session: bool,
     pub http_mcp: bool,
+    pub configuration: rambledesk_core::SessionConfiguration,
 }
 
 /// Protocol notifications are kept inside the ACP package boundary. Application
@@ -66,6 +67,7 @@ pub struct AcpConnection {
     stop: Option<oneshot::Sender<()>>,
     stderr: JoinHandle<()>,
     initialized: InitializeResponse,
+    configuration: crate::session_configuration::SharedConfiguration,
     remote_session_id: std::sync::Mutex<Option<String>>,
     permissions: Arc<crate::permissions::PermissionQueue>,
     transport_closed: Arc<std::sync::atomic::AtomicBool>,
@@ -102,78 +104,99 @@ impl AcpConnection {
         let (ready_tx, ready_rx) = oneshot::channel();
         let (stop, stopped) = oneshot::channel();
         let notification_observer = observer.clone();
+        let configuration = Arc::new(std::sync::Mutex::new(
+            crate::session_configuration::ConfigurationCache::default(),
+        ));
+        let notification_configuration = configuration.clone();
         let permissions = Arc::new(crate::permissions::PermissionQueue::default());
         let request_permissions = permissions.clone();
-        let task = tokio::spawn(async move {
-            let _permission_guard =
-                crate::permissions::CancelPermissionsOnDrop(request_permissions.clone());
-            Client
-                .builder()
-                .name("rambledesk")
-                .on_receive_notification(
-                    async move |notification: SessionNotification, _| {
-                        notification_observer
-                            .observe(AcpEvent::Update(Box::new(notification)))
-                            .await
-                            .map_err(|_| agent_client_protocol::Error::internal_error())?;
-                        Ok(())
-                    },
-                    agent_client_protocol::on_receive_notification!(),
-                )
-                .on_receive_request(
-                    async move |request: RequestPermissionRequest, responder, _| {
-                        if observer.manages_permissions() {
-                            let request_id = request_permissions.insert(&request, responder);
-                            return observer
-                                .observe(AcpEvent::PermissionRequested {
-                                    request_id,
-                                    request: Box::new(request),
-                                })
+        let task =
+            tokio::spawn(async move {
+                let _permission_guard =
+                    crate::permissions::CancelPermissionsOnDrop(request_permissions.clone());
+                Client
+                    .builder()
+                    .name("rambledesk")
+                    .on_receive_notification(
+                        async move |notification: SessionNotification, _| {
+                            notification_configuration
+                                .lock()
+                                .expect("configuration cache")
+                                .observe(&notification)
+                                .map_err(|_| agent_client_protocol::Error::internal_error())?;
+                            notification_observer
+                                .observe(AcpEvent::Update(Box::new(notification)))
                                 .await
-                                .map_err(|_| agent_client_protocol::Error::internal_error());
-                        }
-                        // Smoke probes never approve operations implicitly.
-                        observer
-                            .observe(AcpEvent::PermissionDeclined)
-                            .await
-                            .map_err(|_| agent_client_protocol::Error::internal_error())?;
-                        responder.respond(RequestPermissionResponse::new(
-                            RequestPermissionOutcome::Cancelled,
-                        ))
-                    },
-                    agent_client_protocol::on_receive_request!(),
-                )
-                .connect_with(
-                    ByteStreams::new(stdin.compat_write(), stdout.compat()),
-                    async move |cx| {
-                        let result = cx
-                            .send_request(InitializeRequest::new(ProtocolVersion::V1).client_info(
-                                Implementation::new("rambledesk", env!("CARGO_PKG_VERSION")),
+                                .map_err(|_| agent_client_protocol::Error::internal_error())?;
+                            Ok(())
+                        },
+                        agent_client_protocol::on_receive_notification!(),
+                    )
+                    .on_receive_request(
+                        async move |request: RequestPermissionRequest, responder, _| {
+                            if observer.manages_permissions() {
+                                let request_id = request_permissions.insert(&request, responder);
+                                return observer
+                                    .observe(AcpEvent::PermissionRequested {
+                                        request_id,
+                                        request: Box::new(request),
+                                    })
+                                    .await
+                                    .map_err(|_| agent_client_protocol::Error::internal_error());
+                            }
+                            // Smoke probes never approve operations implicitly.
+                            observer
+                                .observe(AcpEvent::PermissionDeclined)
+                                .await
+                                .map_err(|_| agent_client_protocol::Error::internal_error())?;
+                            responder.respond(RequestPermissionResponse::new(
+                                RequestPermissionOutcome::Cancelled,
                             ))
-                            .block_task()
-                            .await;
-                        match result {
-                            Ok(initialized)
-                                if initialized.protocol_version == ProtocolVersion::V1 =>
-                            {
-                                let _ = ready_tx.send(Ok((cx, initialized)));
+                        },
+                        agent_client_protocol::on_receive_request!(),
+                    )
+                    .connect_with(
+                        ByteStreams::new(stdin.compat_write(), stdout.compat()),
+                        async move |cx| {
+                            let result = cx
+                                .send_request(
+                                    InitializeRequest::new(ProtocolVersion::V1)
+                                        .client_info(Implementation::new(
+                                            "rambledesk",
+                                            env!("CARGO_PKG_VERSION"),
+                                        ))
+                                        .client_capabilities(ClientCapabilities::new().session(
+                                            ClientSessionCapabilities::new().config_options(
+                                                SessionConfigOptionsCapabilities::new().boolean(
+                                                    BooleanConfigOptionCapabilities::default(),
+                                                ),
+                                            ),
+                                        )),
+                                )
+                                .block_task()
+                                .await;
+                            match result {
+                                Ok(initialized)
+                                    if initialized.protocol_version == ProtocolVersion::V1 =>
+                                {
+                                    let _ = ready_tx.send(Ok((cx, initialized)));
+                                }
+                                Ok(_) => {
+                                    let _ = ready_tx
+                                        .send(Err(AcpError::Protocol("protocol negotiation")));
+                                    return Ok(());
+                                }
+                                Err(error) => {
+                                    let _ = ready_tx.send(Err(AcpError::Protocol("initialize")));
+                                    return Err(error);
+                                }
                             }
-                            Ok(_) => {
-                                let _ =
-                                    ready_tx.send(Err(AcpError::Protocol("protocol negotiation")));
-                                return Ok(());
-                            }
-                            Err(error) => {
-                                let _ = ready_tx.send(Err(AcpError::Protocol("initialize")));
-                                return Err(error);
-                            }
-                        }
-                        let _ = stopped.await;
-                        Ok(())
-                    },
-                )
-                .await
-        });
+                            let _ = stopped.await;
+                            Ok(())
+                        },
+                    )
+                    .await
+            });
         let result = tokio::time::timeout(Duration::from_secs(30), ready_rx).await;
         match result {
             Ok(Ok(Ok((connection, initialized)))) => Ok(Self {
@@ -183,6 +206,7 @@ impl AcpConnection {
                 stop: Some(stop),
                 stderr,
                 initialized,
+                configuration,
                 remote_session_id: std::sync::Mutex::new(None),
                 permissions,
                 transport_closed,
@@ -204,6 +228,9 @@ impl AcpConnection {
 
     pub fn process_id(&self) -> Option<u32> {
         self.child.id()
+    }
+    pub(crate) fn configuration_cache(&self) -> crate::session_configuration::SharedConfiguration {
+        self.configuration.clone()
     }
     pub(crate) fn sender(&self) -> ConnectionTo<Agent> {
         self.connection.clone()
@@ -235,47 +262,13 @@ impl AcpConnection {
         launch: &AcpLaunch,
         remote: Option<&str>,
     ) -> Result<AcpSessionInfo, AcpError> {
-        let remote_session_id = if let Some(remote) = remote {
-            if self
-                .initialized
-                .agent_capabilities
-                .session_capabilities
-                .resume
-                .is_some()
-            {
-                self.connection
-                    .send_request(
-                        ResumeSessionRequest::new(SessionId::new(remote), launch.cwd.clone())
-                            .mcp_servers(launch.mcp_servers.clone()),
-                    )
-                    .block_task()
-                    .await
-                    .map_err(|_| AcpError::Protocol("session/resume"))?;
-            } else if self.initialized.agent_capabilities.load_session {
-                self.connection
-                    .send_request(
-                        LoadSessionRequest::new(SessionId::new(remote), launch.cwd.clone())
-                            .mcp_servers(launch.mcp_servers.clone()),
-                    )
-                    .block_task()
-                    .await
-                    .map_err(|_| AcpError::Protocol("session/load"))?;
-            } else {
-                return Err(AcpError::CannotLoad);
-            }
-            remote.to_owned()
-        } else {
-            self.connection
-                .send_request(
-                    NewSessionRequest::new(launch.cwd.clone())
-                        .mcp_servers(launch.mcp_servers.clone()),
-                )
-                .block_task()
-                .await
-                .map_err(|_| AcpError::Protocol("session/new"))?
-                .session_id
-                .to_string()
-        };
+        let (remote_session_id, configuration) =
+            crate::session_configuration::open(&self.connection, &self.initialized, launch, remote)
+                .await?;
+        self.configuration
+            .lock()
+            .expect("configuration cache")
+            .opened(&remote_session_id, configuration)?;
         *self.remote_session_id.lock().expect("remote session lock") =
             Some(remote_session_id.clone());
         Ok(AcpSessionInfo {
@@ -298,6 +291,12 @@ impl AcpConnection {
                 .resume
                 .is_some(),
             http_mcp: self.initialized.agent_capabilities.mcp_capabilities.http,
+            configuration: self
+                .configuration
+                .lock()
+                .expect("configuration cache")
+                .state
+                .clone(),
         })
     }
 

@@ -8,6 +8,7 @@ import type {
 } from './contracts'
 
 export const APPLICATION_CONFORMANCE_INPUTS = {
+  setManagedSessionConfig: { session_id: 'local-session-1', change: { type: 'mode', mode_id: 'ask' } },
   listAvailableAgents: undefined,
   inspectAgentInstallation: { agent_id: 'deepseek' },
   listAgentInstallJobs: undefined,
@@ -152,7 +153,7 @@ export function runApplicationTransportConformance(
   describe(`${implementationName} ApplicationTransport conformance`, () => {
     it('maps all query mutation multipart binary and void operations', async () => {
       const fixture = createFixture()
-      expect(APPLICATION_COMMAND_NAMES).toHaveLength(41)
+      expect(APPLICATION_COMMAND_NAMES).toHaveLength(42)
 
       for (const [index, name] of APPLICATION_COMMAND_NAMES.entries()) {
         const input = APPLICATION_CONFORMANCE_INPUTS[name]
