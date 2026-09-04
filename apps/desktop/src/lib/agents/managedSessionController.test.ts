@@ -21,6 +21,49 @@ function snapshot(id: string, text = ''): ManagedSessionSnapshot {
   }
 }
 
+function historySnapshot(sequences: number[], text = 'old'): ManagedSessionSnapshot {
+  const view = snapshot('history', text)
+  view.activities = sequences.map(sequence => ({ ...view.activities[0], id: `row-${sequence}`, sequence, text }))
+  return view
+}
+
+describe('managed session history', () => {
+  it('retains older pages while newer live rows replace overlapping activity', async () => {
+    const transport = new TestApplicationTransport(undefined, { initiallyReady: true }).resolve('getManagedSession', historySnapshot([1001, 1002]))
+    const controller = createManagedSessionController(transport, 'history')
+    controller.start()
+    await flush()
+    transport.resolve('listManagedSessionActivity', { activities: historySnapshot([999, 1000]).activities, has_more: true })
+    await controller.loadOlder()
+    expect(transport.callsFor('listManagedSessionActivity')[0].input).toEqual({ session_id: 'history', before_sequence: 1001, limit: 100 })
+    expect(get(controller).snapshot?.activities.map(row => row.sequence)).toEqual([999, 1000, 1001, 1002])
+    transport.resolve('getManagedSession', historySnapshot([1002, 1003], 'new'))
+    invalidate(transport, 'history')
+    await flush()
+    expect(get(controller).snapshot?.activities.map(row => row.sequence)).toEqual([999, 1000, 1001, 1002, 1003])
+    expect(get(controller).snapshot?.activities.find(row => row.sequence === 1002)?.text).toBe('new')
+    controller.dispose()
+  })
+
+  it('rejects foreign pages and ignores a page finishing after the workspace closes', async () => {
+    const transport = new TestApplicationTransport(undefined, { initiallyReady: true }).resolve('getManagedSession', historySnapshot([10]))
+    const controller = createManagedSessionController(transport, 'history')
+    controller.start()
+    await flush()
+    transport.resolve('listManagedSessionActivity', { activities: snapshot('foreign', 'secret').activities, has_more: false })
+    await controller.loadOlder()
+    expect(get(controller).historyError).toContain('invalid session')
+    expect(get(controller).snapshot?.activities).toHaveLength(1)
+    const pending = deferred<{ activities: ManagedSessionSnapshot['activities']; has_more: boolean }>()
+    transport.handle('listManagedSessionActivity', () => pending.promise)
+    const loading = controller.loadOlder()
+    controller.dispose()
+    pending.resolve({ activities: historySnapshot([1, 2]).activities, has_more: false })
+    await loading
+    expect(get(controller).snapshot?.activities).toHaveLength(1)
+  })
+})
+
 function deferred<T>() {
   let resolve!: (value: T) => void
   const promise = new Promise<T>((done) => { resolve = done })

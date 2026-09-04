@@ -4,6 +4,7 @@ import { isSnapshotUnstableError } from './applicationEvents'
 import { StaleHttpApplicationResponseError } from './httpApplicationTransport'
 
 const snapshotQueries = [
+  'listAvailableAgents', 'listAgentInstallJobs', 'listManagedSessionActivity',
   'listAgentConfigs', 'getManagedSession', 'listFeedbackInbox', 'listHostSessions',
   'listArchivedHostSessions', 'listHostProfiles', 'listFeedbackRequests',
   'getFeedbackWorkspace', 'readPublishedFeedback',

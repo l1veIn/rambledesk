@@ -4,6 +4,7 @@
 //! absent: they are owned by the running application, not recovered from SQLite.
 
 mod activity;
+mod activity_history;
 mod agent_catalog;
 mod application;
 mod configuration;
@@ -22,6 +23,7 @@ mod repository;
 mod runtime;
 
 pub use activity::*;
+pub use activity_history::*;
 pub use agent_catalog::*;
 pub use application::{SessionApplication, SessionError};
 pub use configuration::*;

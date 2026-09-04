@@ -32,6 +32,7 @@ export const TAURI_APPLICATION_COMMANDS = {
   stopManagedSession: 'stop_managed_session',
   cancelManagedPrompt: 'cancel_managed_prompt',
   sendManagedPrompt: 'send_managed_prompt',
+  listManagedSessionActivity: 'list_managed_session_activity',
   sendManagedPromptContent: 'send_managed_prompt_content',
   setManagedSessionConfig: 'set_managed_session_config',
   respondManagedPermission: 'respond_managed_permission',

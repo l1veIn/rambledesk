@@ -368,6 +368,7 @@ pub fn run() {
             managed_commands::start_managed_session,
             managed_commands::stop_managed_session,
             managed_commands::send_managed_prompt,
+            managed_commands::list_managed_session_activity,
             managed_commands::send_managed_prompt_content,
             managed_commands::set_managed_session_config,
             managed_commands::cancel_managed_prompt,

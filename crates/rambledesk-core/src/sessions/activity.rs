@@ -107,6 +107,14 @@ pub trait SessionActivityRepository: Send + Sync {
         limit: u32,
     ) -> Result<Vec<SessionActivity>, SessionRepositoryError>;
 
+    /// Older immutable window, exclusive of the cursor, in ascending order.
+    async fn list_session_activity_before(
+        &self,
+        session_id: &str,
+        before_sequence: u64,
+        limit: u32,
+    ) -> Result<Vec<SessionActivity>, SessionRepositoryError>;
+
     /// Replaces the entire text after verifying local session ownership. The
     /// application serializes streaming aggregation before calling this method.
     async fn update_activity_text(

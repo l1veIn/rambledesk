@@ -46,6 +46,7 @@ export const HTTP_APPLICATION_OPERATIONS = {
   stopManagedSession: 'stopManagedSession',
   cancelManagedPrompt: 'cancelManagedPrompt',
   sendManagedPrompt: 'sendManagedPrompt',
+  listManagedSessionActivity: 'listManagedSessionActivity',
   sendManagedPromptContent: 'sendManagedPromptContent',
   setManagedSessionConfig: 'setManagedSessionConfig',
   respondManagedPermission: 'respondManagedPermission',
@@ -839,6 +840,7 @@ export function applicationCommandResponseResources<Name extends ApplicationComm
       return [{ kind: 'agent_configurations' }]
     case 'createManagedSession':
       return [{ kind: 'navigation' }]
+    case 'listManagedSessionActivity':
     case 'getManagedSession':
     case 'startManagedSession':
     case 'stopManagedSession':
@@ -903,6 +905,10 @@ export function applicationCommandProjectionKey<Name extends ApplicationCommandN
   input: ApplicationCommandInput<Name>,
 ): string {
   switch (name) {
+    case 'listManagedSessionActivity': {
+      const page = input as ApplicationCommandInput<'listManagedSessionActivity'>
+      return projectionKey(name, page.session_id, String(page.before_sequence), String(page.limit ?? 100))
+    }
     case 'listAvailableAgents':
     case 'listAgentInstallJobs':
     case 'listAgentConfigs':

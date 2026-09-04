@@ -148,3 +148,14 @@ pub(crate) async fn send_managed_prompt_content(
         .send_managed_prompt_content(input)
         .await
 }
+
+#[tauri::command]
+pub(crate) async fn list_managed_session_activity(
+    state: tauri::State<'_, WorkbenchState>,
+    input: rambledesk_core::ListManagedSessionActivityInput,
+) -> Result<rambledesk_core::ManagedSessionActivityPage, ManagedCommandError> {
+    state
+        .application_commands
+        .list_managed_session_activity(input)
+        .await
+}

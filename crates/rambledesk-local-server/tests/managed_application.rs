@@ -460,6 +460,7 @@ fn tauri_managed_commands_match_http_names_and_delegate_to_the_same_facade() {
         ("sendManagedPrompt", "send_managed_prompt"),
         ("setManagedSessionConfig", "set_managed_session_config"),
         ("sendManagedPromptContent", "send_managed_prompt_content"),
+        ("listManagedSessionActivity", "list_managed_session_activity"),
         ("cancelManagedPrompt", "cancel_managed_prompt"),
         ("respondManagedPermission", "respond_managed_permission"),
         ("resolveFeedbackDelivery", "resolve_feedback_delivery"),
@@ -476,8 +477,8 @@ fn tauri_managed_commands_match_http_names_and_delegate_to_the_same_facade() {
         );
         assert!(routes.contains(&format!("/application/{camel}")), "{camel}");
     }
-    assert_eq!(commands.matches("#[tauri::command]").count(), 15);
-    assert_eq!(commands.matches("input:").count(), 14);
+    assert_eq!(commands.matches("#[tauri::command]").count(), 16);
+    assert_eq!(commands.matches("input:").count(), 15);
     assert!(registration.contains(".with_sessions(sessions.clone())"));
     assert!(registration.contains("state.sessions.shutdown()"));
     assert!(registration.contains("sessions.start_delivery_worker()"));

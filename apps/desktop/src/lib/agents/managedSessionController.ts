@@ -2,17 +2,25 @@ import { get, writable } from 'svelte/store'
 import type { ApplicationTransport } from '$lib/application/applicationTransport'
 import { APPLICATION_EVENTS_STREAM } from '$lib/application/applicationEvents'
 import { applicationResourcesAffectManagedSession, createApplicationSnapshotRefetch } from '$lib/application/applicationSnapshotRefetch'
-import type { ManagedSessionSnapshot, ResolveDeliveryAction, SessionConfigChange, SessionPromptContent } from '$lib/generated/feedback'
+import type { ManagedSessionSnapshot, ResolveDeliveryAction, SessionActivity, SessionConfigChange, SessionPromptContent } from '$lib/generated/feedback'
+import { mergeActivityWindows, validateActivityPage } from './activityHistory'
+import { readApplicationSnapshot } from '$lib/application/readApplicationSnapshot'
 
 export type ManagedSessionState = Readonly<{
   snapshot: ManagedSessionSnapshot | null
   loading: boolean
   error: string
+  historyLoading: boolean
+  historyHasMore: boolean
+  historyError: string
 }>
 
 /** One mounted workspace owns one local session ID, never the current navigation selection. */
 export function createManagedSessionController(transport: ApplicationTransport, sessionId: string) {
-  const state = writable<ManagedSessionState>({ snapshot: null, loading: true, error: '' })
+  const state = writable<ManagedSessionState>({ snapshot: null, loading: true, error: '', historyLoading: false, historyHasMore: false, historyError: '' })
+  let older: SessionActivity[] = []
+  let latest: ManagedSessionSnapshot | null = null
+  let historyExhausted = false
   let active = false
   let unsubscribe: (() => void) | null = null
 
@@ -36,7 +44,14 @@ export function createManagedSessionController(transport: ApplicationTransport, 
       await transport.waitUntilReady()
       if (!active || !intent.isCurrent()) return
       const snapshot = validate(await transport.call('getManagedSession', { session_id: sessionId }))
-      if (active && intent.isCurrent()) patch({ snapshot, loading: false, error: '' })
+      if (active && intent.isCurrent()) {
+        if (older.length && snapshot.activities[0]) {
+          older = mergeActivityWindows(older, (get(state).snapshot?.activities ?? []).filter(row => row.sequence < snapshot.activities[0].sequence))
+        }
+        latest = snapshot
+        projectHistory()
+        patch({ loading: false, error: '' })
+      }
     },
     reportError(cause) { patch({ loading: false, error: message(cause) }) },
   })
@@ -45,6 +60,29 @@ export function createManagedSessionController(transport: ApplicationTransport, 
     if (!active) return
     patch({ loading: get(state).snapshot === null })
     refetch.request([{ kind: 'managed_session', session_id: sessionId }])
+  }
+
+  function projectHistory() {
+    if (!latest) return
+    const activities = mergeActivityWindows(older, latest.activities)
+    patch({ snapshot: { ...latest, activities }, historyHasMore: !historyExhausted && (activities[0]?.sequence ?? 0) > 1 })
+  }
+
+  async function loadOlder(): Promise<void> {
+    if (!active || get(state).historyLoading || !get(state).historyHasMore) return
+    const before = get(state).snapshot?.activities[0]?.sequence
+    if (!before) return
+    patch({ historyLoading: true, historyError: '' })
+    try {
+      const page = await readApplicationSnapshot(transport, 'listManagedSessionActivity', { session_id: sessionId, before_sequence: before, limit: 100 })
+      if (!active) return
+      validateActivityPage(page.activities, sessionId, before)
+      older = mergeActivityWindows(page.activities, older)
+      historyExhausted = !page.has_more
+      projectHistory()
+    } catch (cause) {
+      patch({ historyError: message(cause) })
+    } finally { patch({ historyLoading: false }) }
   }
 
   function start(): () => void {
@@ -79,7 +117,7 @@ export function createManagedSessionController(transport: ApplicationTransport, 
   }
 
   return {
-    subscribe: state.subscribe, start, refresh, dispose,
+    subscribe: state.subscribe, start, refresh, dispose, loadOlder,
     setConfiguration: (change: SessionConfigChange) => run(() => transport.call('setManagedSessionConfig', { session_id: sessionId, change })),
     promptContent: (text: string, content: SessionPromptContent[]) => run(() => transport.call('sendManagedPromptContent', { session_id: sessionId, text, content })),
     startAgent: () => run(() => transport.call('startManagedSession', { session_id: sessionId })),

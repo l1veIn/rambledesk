@@ -1,3 +1,4 @@
+use rambledesk_core::{ListManagedSessionActivityInput, ManagedSessionActivityPage};
 use rambledesk_core::{
     AgentCatalogCheck, AgentCatalogEntry, AgentCheckStatus, AgentConnectionKind, AgentDependency,
     AgentDependencyInspection, AgentDistribution, AgentInspection, AgentInstallJob,
@@ -83,6 +84,9 @@ fn exported_feedback_package_content() -> String {
 
 fn main() -> std::io::Result<()> {
     let declarations = [
+        exported::<ListManagedSessionActivityInput>(),
+        exported::<ManagedSessionActivityPage>(),
+
         exported::<AgentPromptCapabilities>(),
         exported::<SessionPromptContent>(),
         exported::<SendManagedPromptContentInput>(),

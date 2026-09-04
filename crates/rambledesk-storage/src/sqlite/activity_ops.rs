@@ -170,6 +170,37 @@ impl SessionActivityRepository for SqliteFeedbackStore {
         rows.iter().map(activity_from_row).collect()
     }
 
+    async fn list_session_activity_before(
+        &self,
+        session_id: &str,
+        before_sequence: u64,
+        limit: u32,
+    ) -> Result<Vec<SessionActivity>, SessionRepositoryError> {
+        if limit == 0 || limit > MAX_SESSION_ACTIVITY_PAGE_SIZE || before_sequence == 0 {
+            return Err(SessionRepositoryError::InvalidInput);
+        }
+        let before: i64 = before_sequence
+            .try_into()
+            .map_err(|_| SessionRepositoryError::InvalidInput)?;
+        let mut transaction = self.pool.begin().await.map_err(storage_error)?;
+        let managed: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM managed_sessions WHERE session_id = ?1)",
+        )
+        .bind(session_id)
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(storage_error)?;
+        if !managed {
+            return Err(SessionRepositoryError::SessionNotFound);
+        }
+        let rows = sqlx::query(
+            "SELECT * FROM (SELECT * FROM session_activity WHERE session_id = ?1 AND sequence < ?2 ORDER BY sequence DESC LIMIT ?3) ORDER BY sequence",
+        ).bind(session_id).bind(before).bind(i64::from(limit))
+            .fetch_all(&mut *transaction).await.map_err(storage_error)?;
+        transaction.commit().await.map_err(storage_error)?;
+        rows.iter().map(activity_from_row).collect()
+    }
+
     async fn update_activity_text(
         &self,
         id: &str,

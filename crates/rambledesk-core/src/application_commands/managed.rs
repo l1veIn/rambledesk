@@ -258,6 +258,16 @@ impl ApplicationCommandFacade {
             .map_err(Into::into)
     }
 
+    pub async fn list_managed_session_activity(
+        &self,
+        input: crate::ListManagedSessionActivityInput,
+    ) -> Result<crate::ManagedSessionActivityPage, ManagedCommandError> {
+        self.managed_sessions()?
+            .list_activity_history(input)
+            .await
+            .map_err(Into::into)
+    }
+
     pub async fn delete_managed_session(
         &self,
         input: ManagedSessionInput,

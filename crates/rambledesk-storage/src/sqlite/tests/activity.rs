@@ -9,6 +9,8 @@ use super::*;
 
 #[path = "structured_activity.rs"]
 mod structured;
+#[path = "activity_history.rs"]
+mod history;
 
 async fn setup() -> (TestWorkspace, SqliteFeedbackStore) {
     let workspace = TestWorkspace::new().await;
