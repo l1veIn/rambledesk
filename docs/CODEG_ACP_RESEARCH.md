@@ -5,6 +5,9 @@
 > 源码快照：[`3ebdfed1d7c0b71d71880a3d2e0f8e09545feae1`](https://github.com/xintaofei/codeg/tree/3ebdfed1d7c0b71d71880a3d2e0f8e09545feae1)。
 > 本文记录来源观察与设计取舍；RambleDesk 术语仍以 [TERMINOLOGY.md](TERMINOLOGY.md) 为准。
 
+后续已 clone 本地参考库，并补充会话、权限、进程、反馈投递和重连的
+[源码借鉴地图](CODEG_ACP_REFERENCE_MAP.md)，包含可移植单元、与本项目不同的语义及对应回归案例。
+
 已有 [Codeg Web Service 调研](CODEG_WEB_SERVICE_RESEARCH.md) 使用另一源码快照并聚焦应用传输；本文补充
 ACP 启动方式与设置页，不把两次调研当作同一版本的兼容性证据。官网文档是访问当日内容，源码链接固定版本。
 
