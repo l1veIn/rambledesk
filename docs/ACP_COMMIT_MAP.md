@@ -84,3 +84,4 @@
 ## 用户试用后的独立修正
 
 - `fix(feedback): retain managed MCP sessions until instance shutdown`：真实日志显示托管 MCP 初始化后恰好 5 分钟空闲即关闭，稍后创建反馈收到 `404 Session not found`。私有 transport manager 改由实例生命周期管理；停止、替换或删除绑定时显式关闭所有 worker，并阻止已经认证的迟到 initialize 留下资源。验收：虚拟推进 16 分钟的真实 HTTP 回归在旧代码稳定复现 404，修复后原 MCP session 的创建/读取/恢复均成功；5 项 HTTP、2 项撤销生命周期及 4 项 ACP fixture 续接测试通过，覆盖跨会话隔离、未完成 initialize 不阻塞撤销与 worker 实际退出。此前真实模型短回合探针未覆盖长时间空闲。
+- `fix(agents): check required feedback capability before session creation`：连接检查同时判断 HTTP MCP 能力，避免握手成功却必然在创建托管会话时失败；更新 Pi 0.0.33 的已知限制、缺失启动命令的提示，并说明新建标题不会自动发送为任务。验收：5 项 application HTTP 测试通过，新增无 HTTP MCP 的 fixture 证明检查失败且不会创建会话；Svelte 检查 0 error / 0 warning。用户试用的三条记录均为零反馈请求的托管会话；保留其数据库与配置，未自动安装或替换后端。

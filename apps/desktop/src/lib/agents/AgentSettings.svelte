@@ -211,7 +211,7 @@
         {#if draft.id}<Button type="button" variant="outline" size="sm" disabled={locked || dirty} title={dirty ? tr('Save changes before checking this configuration.') : undefined} onclick={() => void check()}>{#if pending === 'check'}<LoaderCircle class="size-3.5 animate-spin" />{/if}{tr(pending === 'check' ? 'Checking…' : 'Check connection')}</Button><Button type="button" variant="ghost" size="icon-sm" class="ml-auto text-muted-foreground hover:text-destructive" disabled={locked} aria-label={tr('Delete configuration')} onclick={() => void remove()}><Trash2 class="size-3.5" /></Button>{:else}<Badge variant="outline">{tr('Needs checking')}</Badge>{/if}
       </div>
       <p class="m-0 text-[11px] leading-5 text-muted-foreground">{tr('Saved changes apply when an agent instance next starts.')}</p>
-      <p class="m-0 text-[11px] leading-5 text-muted-foreground">{tr('Connection checks verify the ACP handshake. Session and feedback support depend on the installed agent.')}</p>
+      <p class="m-0 text-[11px] leading-5 text-muted-foreground">{tr('Checks verify the ACP handshake and required feedback capability. Model access and the full workflow still depend on the installed agent.')}</p>
     </form>
   </div>
 </section>

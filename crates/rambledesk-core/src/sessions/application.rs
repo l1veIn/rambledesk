@@ -171,8 +171,13 @@ impl SessionApplication {
         let result = self.driver.check(&config).await;
         Ok(match result {
             Ok(caps) => AgentConnectionCheck {
-                ok: true,
-                message: "ACP connection succeeded".into(),
+                ok: caps.http_mcp,
+                message: if caps.http_mcp {
+                    "ACP connection and required feedback capability checks passed"
+                } else {
+                    "ACP connected, but this Agent cannot provide managed feedback because HTTP MCP is unsupported"
+                }
+                .into(),
                 details: vec![format!(
                     "Load: {}; resume: {}; HTTP MCP: {}",
                     caps.load_session, caps.resume_session, caps.http_mcp

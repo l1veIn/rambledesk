@@ -96,9 +96,15 @@ impl AgentSessionDriver for Driver {
             },
         })
     }
-    async fn check(&self, _: &AgentConfig) -> Result<AgentSessionCapabilities, AgentDriverError> {
+    async fn check(
+        &self,
+        config: &AgentConfig,
+    ) -> Result<AgentSessionCapabilities, AgentDriverError> {
         self.checks.fetch_add(1, Ordering::SeqCst);
-        Ok(AgentSessionCapabilities::default())
+        Ok(AgentSessionCapabilities {
+            http_mcp: config.command != "no-http-mcp",
+            ..Default::default()
+        })
     }
 }
 
@@ -225,6 +231,45 @@ fn config_input() -> SaveAgentConfigInput {
         args: vec![],
         env: BTreeMap::new(),
     }
+}
+
+#[tokio::test]
+async fn configuration_check_rejects_missing_feedback_capability_before_creating_a_session()
+-> anyhow::Result<()> {
+    let fixture = Fixture::new().await?;
+    let config = fixture
+        .facade
+        .save_agent_config(SaveAgentConfigInput {
+            command: "no-http-mcp".into(),
+            ..config_input()
+        })
+        .await?;
+    let checked = fixture
+        .call("checkAgentConfig", json!({"agent_config_id":config.id}))
+        .await?;
+    assert_eq!(checked["ok"], false);
+    assert!(
+        checked["message"]
+            .as_str()
+            .unwrap()
+            .contains("HTTP MCP is unsupported")
+    );
+    assert!(
+        checked["details"][0]
+            .as_str()
+            .unwrap()
+            .contains("HTTP MCP: false")
+    );
+    assert_eq!(fixture.driver.checks.load(Ordering::SeqCst), 1);
+    assert!(
+        fixture
+            .call("listHostSessions", Value::Null)
+            .await?
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    fixture.shutdown().await
 }
 
 #[tokio::test]

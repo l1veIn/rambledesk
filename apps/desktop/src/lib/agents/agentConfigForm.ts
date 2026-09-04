@@ -23,7 +23,7 @@ export type AgentPreset = Readonly<{
 export const AGENT_PRESETS: readonly AgentPreset[] = [
   { id: 'deepseek', name: 'DeepSeek ACP', hostId: 'dsh', command: 'deepseek-acp', args: [], note: 'Community bridge · versions 0.7 / 0.8' },
   { id: 'dsh', name: 'DeepSeek Harness', hostId: 'dsh', command: 'dsh', args: ['--profile', 'acp'], note: 'Official profile · version 0.1.2-rc.1' },
-  { id: 'pi', name: 'Pi ACP', hostId: 'pi', command: 'pi-acp', args: [], note: 'Bridge and feedback support need checking' },
+  { id: 'pi', name: 'Pi ACP', hostId: 'pi', command: 'pi-acp', args: [], note: 'Version 0.0.33 lacks HTTP MCP support required for managed feedback' },
   { id: 'codex', name: 'Codex ACP', hostId: 'codex', command: 'codex-acp', args: [], note: 'Bridge and feedback support need checking' },
 ]
 
