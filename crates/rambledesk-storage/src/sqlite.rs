@@ -24,6 +24,7 @@ use sqlx::{
 };
 use thiserror::Error;
 
+mod activity_ops;
 mod backup;
 mod managed_ops;
 mod migration_compat;

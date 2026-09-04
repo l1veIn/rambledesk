@@ -34,6 +34,9 @@ struct FakeConnection {
 
 #[async_trait]
 impl AgentSessionConnection for FakeConnection {
+    async fn prompt(&self, _: &str) -> Result<String, AgentDriverError> {
+        Ok("EndTurn".into())
+    }
     fn is_closed(&self) -> bool {
         self.closed.load(Ordering::SeqCst)
     }
@@ -102,7 +105,7 @@ async fn setup() -> (
             .unwrap(),
     );
     let driver = Arc::new(FakeDriver::default());
-    let application = SessionApplication::new(store.clone(), driver.clone());
+    let application = SessionApplication::new(store.clone(), store.clone(), driver.clone());
     let config = application
         .save_agent_config(SaveAgentConfigInput {
             id: None,

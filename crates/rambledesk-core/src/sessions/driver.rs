@@ -21,6 +21,21 @@ impl AgentDriverError {
 pub struct AgentSessionLaunch {
     pub config: AgentConfig,
     pub session: SessionRecord,
+    pub observer: Arc<dyn AgentSessionObserver>,
+}
+
+pub enum AgentSessionEvent {
+    Activity {
+        kind: super::SessionActivityKind,
+        text: String,
+        tool_call_id: Option<String>,
+        append: bool,
+    },
+}
+
+#[async_trait]
+pub trait AgentSessionObserver: Send + Sync {
+    async fn observe(&self, event: AgentSessionEvent) -> Result<(), AgentDriverError>;
 }
 
 pub struct StartedAgentSession {
@@ -45,5 +60,6 @@ pub trait AgentSessionDriver: Send + Sync {
 #[async_trait]
 pub trait AgentSessionConnection: Send + Sync {
     fn is_closed(&self) -> bool;
+    async fn prompt(&self, text: &str) -> Result<String, AgentDriverError>;
     async fn stop(&self) -> Result<(), AgentDriverError>;
 }

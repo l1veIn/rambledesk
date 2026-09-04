@@ -4820,6 +4820,7 @@ dependencies = [
  "futures",
  "libc",
  "rambledesk-core",
+ "rambledesk-storage",
  "serde",
  "serde_json",
  "tempfile",

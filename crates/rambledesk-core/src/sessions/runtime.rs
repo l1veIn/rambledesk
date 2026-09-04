@@ -57,6 +57,7 @@ impl Default for SessionRuntime {
 pub struct ManagedSessionSnapshot {
     pub session: SessionRecord,
     pub runtime: SessionRuntime,
+    pub activities: Vec<super::SessionActivity>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]

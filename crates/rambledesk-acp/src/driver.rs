@@ -15,6 +15,8 @@ pub struct AcpSessionDriver;
 struct ManagedConnection {
     owned: Mutex<Option<AcpConnection>>,
     shutdown: tokio::sync::Mutex<()>,
+    sender: agent_client_protocol::ConnectionTo<agent_client_protocol::Agent>,
+    remote: String,
 }
 
 #[async_trait]
@@ -32,7 +34,11 @@ impl AgentSessionDriver for AcpSessionDriver {
             return Err(AgentDriverError::new("ACP requires a managed session"));
         };
         let options = options(&launch.config, cwd.into());
-        let connection = AcpConnection::connect(&options, Arc::new(|_| {}))
+        let observer = Arc::new(crate::observer::ManagedObserver {
+            sink: launch.observer,
+            remote: Mutex::new(None),
+        });
+        let connection = AcpConnection::connect_observed(&options, observer.clone())
             .await
             .map_err(safe_error)?;
         let result = tokio::time::timeout(
@@ -50,8 +56,11 @@ impl AgentSessionDriver for AcpSessionDriver {
                 });
             }
         };
+        *observer.remote.lock().expect("remote attribution lock") =
+            Some(info.remote_session_id.clone());
+        let sender = connection.sender();
         Ok(StartedAgentSession {
-            remote_session_id: info.remote_session_id,
+            remote_session_id: info.remote_session_id.clone(),
             capabilities: AgentSessionCapabilities {
                 load_session: info.load_session,
                 resume_session: info.resume_session,
@@ -60,6 +69,8 @@ impl AgentSessionDriver for AcpSessionDriver {
             connection: Arc::new(ManagedConnection {
                 owned: Mutex::new(Some(connection)),
                 shutdown: tokio::sync::Mutex::new(()),
+                sender,
+                remote: info.remote_session_id,
             }),
         })
     }
@@ -81,6 +92,26 @@ impl AgentSessionDriver for AcpSessionDriver {
 
 #[async_trait]
 impl AgentSessionConnection for ManagedConnection {
+    async fn prompt(&self, text: &str) -> Result<String, AgentDriverError> {
+        use agent_client_protocol::schema::v1::{
+            ContentBlock, PromptRequest, SessionId, TextContent,
+        };
+        let result = self
+            .sender
+            .send_request(PromptRequest::new(
+                SessionId::new(self.remote.clone()),
+                vec![ContentBlock::Text(TextContent::new(text))],
+            ))
+            .block_task()
+            .await;
+        result
+            .map(|response| format!("{:?}", response.stop_reason))
+            .map_err(|_| {
+                AgentDriverError::new(
+                    "ACP prompt failed; reconnect to the original session before continuing",
+                )
+            })
+    }
     fn is_closed(&self) -> bool {
         self.owned
             .lock()

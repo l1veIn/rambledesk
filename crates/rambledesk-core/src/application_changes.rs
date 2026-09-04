@@ -11,6 +11,10 @@ use uuid::Uuid;
 pub enum ApplicationResourceKey {
     All,
     Navigation,
+    AgentConfigurations,
+    ManagedSession {
+        session_id: String,
+    },
     HostSessionResources {
         host_id: String,
         host_session_id: String,

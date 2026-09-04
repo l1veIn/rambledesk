@@ -23,7 +23,10 @@ createInterface({input:process.stdin}).on('line',line => {
       break
     case 'session/load':
     case 'session/resume':
-      if (method === `session/${mode}` && params.sessionId==='original-session') respond(id,{})
+      if (method === `session/${mode}` && params.sessionId==='original-session') {
+        send({method:'session/update',params:{sessionId:params.sessionId,update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text:'REPLAY SHOULD NOT BE DUPLICATED'}}}})
+        respond(id,{})
+      }
       else fail(id)
       break
     case 'session/prompt':
@@ -33,7 +36,8 @@ createInterface({input:process.stdin}).on('line',line => {
           toolCall:{toolCallId:'tool-1',title:'Run command',status:'pending'},
           options:[{optionId:'allow',name:'Allow',kind:'allow_once'}]}})
       } else if (params.prompt[0].text !== 'wait') {
-        send({method:'session/update',params:{sessionId:params.sessionId,update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text:'fixture reply'}}}})
+        for(const text of ['fixture ',`reply: ${params.prompt[0].text}`])
+          send({method:'session/update',params:{sessionId:params.sessionId,update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text}}}})
         respond(id,{stopReason:'end_turn'})
       }
       break

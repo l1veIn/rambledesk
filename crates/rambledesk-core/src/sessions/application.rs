@@ -42,6 +42,7 @@ pub(super) struct SessionEntry {
     pub live: Mutex<LiveSession>,
     pub lifecycle: Mutex<()>,
     pub interrupt: watch::Sender<u64>,
+    pub events: Mutex<super::prompts::StreamState>,
 }
 
 impl Default for SessionEntry {
@@ -53,6 +54,7 @@ impl Default for SessionEntry {
             }),
             lifecycle: Mutex::new(()),
             interrupt: watch::channel(0).0,
+            events: Mutex::new(super::prompts::StreamState::default()),
         }
     }
 }
@@ -60,6 +62,7 @@ impl Default for SessionEntry {
 #[derive(Clone)]
 pub struct SessionApplication {
     pub(super) repository: Arc<dyn SessionRepository>,
+    pub(super) activities: Arc<dyn SessionActivityRepository>,
     driver: Arc<dyn AgentSessionDriver>,
     pub(super) entries: Arc<Mutex<HashMap<String, Arc<SessionEntry>>>>,
     pub(super) clock: Arc<dyn Clock>,
@@ -71,10 +74,12 @@ pub struct SessionApplication {
 impl SessionApplication {
     pub fn new(
         repository: Arc<dyn SessionRepository>,
+        activities: Arc<dyn SessionActivityRepository>,
         driver: Arc<dyn AgentSessionDriver>,
     ) -> Self {
         Self {
             repository,
+            activities,
             driver,
             entries: Arc::new(Mutex::new(HashMap::new())),
             clock: Arc::new(SystemClock),
@@ -205,9 +210,16 @@ impl SessionApplication {
             live.runtime.last_error =
                 Some("Agent connection closed; resume the original session to continue".into());
         }
+        let runtime = live.runtime.clone();
+        drop(live);
+        let activities = self
+            .activities
+            .list_recent_session_activity(&input.session_id, 1000)
+            .await?;
         Ok(ManagedSessionSnapshot {
             session,
-            runtime: live.runtime.clone(),
+            runtime,
+            activities,
         })
     }
 
@@ -246,6 +258,8 @@ impl SessionApplication {
         }
         let old = live.connection.take();
         live.runtime.connection = SessionConnectionState::Connecting;
+        let instance_id = self.ids.new_id();
+        live.runtime.instance_id = Some(instance_id.clone());
         live.runtime.last_error = None;
         drop(live);
         if let Some(old) = old {
@@ -254,7 +268,7 @@ impl SessionApplication {
         self.changed();
         let version = config.updated_at.clone();
         let result = tokio::select! {
-            result=self.driver.start(AgentSessionLaunch{config,session})=>result.map_err(SessionError::from),
+            result=self.driver.start(AgentSessionLaunch{config,session,observer:Arc::new(super::prompts::SessionEventCollector{application:self.clone(),session_id:input.session_id.clone(),instance_id:instance_id.clone()})})=>result.map_err(SessionError::from),
             _=interrupted.changed()=>Err(SessionError::Interrupted),
         };
         let mut live = entry.live.lock().await;
@@ -278,7 +292,7 @@ impl SessionApplication {
                 live.runtime = SessionRuntime {
                     connection: SessionConnectionState::Connected,
                     activity: SessionActivityState::Idle,
-                    instance_id: Some(self.ids.new_id()),
+                    instance_id: Some(instance_id),
                     config_updated_at: Some(version),
                     capabilities: started.capabilities,
                     last_error: None,
@@ -372,6 +386,13 @@ impl SessionApplication {
     pub(super) fn changed(&self) {
         self.observer.observe(ApplicationChange {
             resources: vec![ApplicationResourceKey::All],
+        });
+    }
+    pub(super) fn session_changed(&self, session_id: &str) {
+        self.observer.observe(ApplicationChange {
+            resources: vec![ApplicationResourceKey::ManagedSession {
+                session_id: session_id.into(),
+            }],
         });
     }
 }

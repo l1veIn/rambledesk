@@ -53,4 +53,5 @@
 - 步骤 3：启动配置 CRUD、稳定本地会话 ID、typed management、一次性 remote binding 与配置引用保护已完成；migration 0011 保留历史 external 语义，生成 TS 合同同步。51 项 storage 测试（含 v10→v11 migration）与 core 凭据 Debug 脱敏测试通过。
 - 步骤 4：列表暴露 `session_id` / management；零请求托管会话支持标题、时间、搜索和现有会话操作，删除末条反馈保留本地与远端绑定。旧外部聚合语义保持；53 项 storage 与 21 项导航 TS 测试通过。
 - 步骤 5：`SessionApplication` 与 driver port 创建/重试/启动/停止独占实例，进程细节留在 ACP 库。Windows 暂停启动后加入私有 Job Object 再执行；Unix 持有未回收 leader 的进程组，避免按过期 PID 清理。正常 EOF、悬挂后代、超时、Drop、握手失败、close 拒绝/超时与另一实例隔离共 6 项过程测试通过；失败保留会话、并发启动幂等、关闭 runtime 中断启动共 3 项应用测试通过，clippy 通过。Unix 代码尚待相应平台 CI 实跑。
-- 步骤 6–15（含 9a / 9b）：推进中，逐步验收后记录。
+- 步骤 6：输入先持久化，再进入目标实例；运行状态与连接状态分开。Activity repository 提供幂等序号、串行文本合并、工具归属、最近窗口及游标读取，原会话恢复不重复写入重放。新增按会话失效资源键，流式更新不刷新全部导航。7 项 activity 存储测试、2 项真实 stdio driver/application 集成（两实例输出隔离、忙时拒绝重复输入、停止隔离、重开数据库与原 ID 恢复）通过，core/ACP/storage clippy 通过。
+- 步骤 7–15（含 9a / 9b）：推进中，逐步验收后记录。

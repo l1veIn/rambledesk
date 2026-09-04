@@ -68,6 +68,17 @@ impl AcpConnection {
         launch: &AcpLaunch,
         observer: Arc<dyn Fn(AcpEvent) + Send + Sync>,
     ) -> Result<Self, AcpError> {
+        Self::connect_observed(
+            launch,
+            Arc::new(crate::observer::CallbackObserver(observer)),
+        )
+        .await
+    }
+
+    pub(crate) async fn connect_observed(
+        launch: &AcpLaunch,
+        observer: Arc<dyn crate::observer::ProtocolObserver>,
+    ) -> Result<Self, AcpError> {
         let mut child =
             crate::process::spawn(&launch.command, &launch.args, &launch.env, &launch.cwd)?;
         let stdin = child.take_stdin().ok_or(AcpError::Closed)?;
@@ -84,7 +95,10 @@ impl AcpConnection {
                 .name("rambledesk")
                 .on_receive_notification(
                     async move |notification: SessionNotification, _| {
-                        notification_observer(AcpEvent::Update(Box::new(notification)));
+                        notification_observer
+                            .observe(AcpEvent::Update(Box::new(notification)))
+                            .await
+                            .map_err(|_| agent_client_protocol::Error::internal_error())?;
                         Ok(())
                     },
                     agent_client_protocol::on_receive_notification!(),
@@ -93,7 +107,10 @@ impl AcpConnection {
                     async move |_: RequestPermissionRequest, responder, _| {
                         // Smoke probes never approve operations implicitly. The managed
                         // runtime installs an explicit permission queue in a later slice.
-                        observer(AcpEvent::PermissionDeclined);
+                        observer
+                            .observe(AcpEvent::PermissionDeclined)
+                            .await
+                            .map_err(|_| agent_client_protocol::Error::internal_error())?;
                         responder.respond(RequestPermissionResponse::new(
                             RequestPermissionOutcome::Cancelled,
                         ))
@@ -159,6 +176,9 @@ impl AcpConnection {
 
     pub fn process_id(&self) -> Option<u32> {
         self.child.id()
+    }
+    pub(crate) fn sender(&self) -> ConnectionTo<Agent> {
+        self.connection.clone()
     }
     pub fn capabilities(&self) -> rambledesk_core::AgentSessionCapabilities {
         rambledesk_core::AgentSessionCapabilities {

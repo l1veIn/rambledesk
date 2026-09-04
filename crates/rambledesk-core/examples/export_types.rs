@@ -1,5 +1,6 @@
 use std::{fs, path::PathBuf};
 
+use rambledesk_core::SendManagedPromptInput;
 use rambledesk_core::{
     ActionInput, AddAttachmentInput, AgentConfig, AgentConfigInput, ApplicationError,
     ApplicationErrorCode, ApplicationEvent, ApplicationFeedbackRequestView,
@@ -20,6 +21,7 @@ use rambledesk_core::{
     AgentConnectionCheck, AgentSessionCapabilities, ManagedSessionSnapshot, SessionActivityState,
     SessionConnectionState, SessionRuntime,
 };
+use rambledesk_core::{SessionActivity, SessionActivityKind};
 use ts_rs::{Config, TS};
 
 fn exported<T: TS>() -> String {
@@ -53,6 +55,9 @@ fn exported_feedback_package_content() -> String {
 
 fn main() -> std::io::Result<()> {
     let declarations = [
+        exported::<SendManagedPromptInput>(),
+        exported::<SessionActivityKind>(),
+        exported::<SessionActivity>(),
         exported::<AgentSessionCapabilities>(),
         exported::<SessionConnectionState>(),
         exported::<SessionActivityState>(),
