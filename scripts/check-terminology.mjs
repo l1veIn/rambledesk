@@ -42,7 +42,7 @@ for (const path of sourceFiles(root)) {
 }
 
 const coreFiles = sourceFiles(join(root, "crates/rambledesk-core"));
-const forbiddenCoreTerms = [/\baxum\b/, /\brmcp\b/, /\bserde_json\b/, /\btauri\b/, /rambledesk_(?:hosts|local_server|mcp|storage)/];
+const forbiddenCoreTerms = [/\baxum\b/, /\brmcp\b/, /\bserde_json\b/, /\btauri\b/, /rambledesk_(?:acp|hosts|local_server|mcp|storage)/];
 for (const path of coreFiles) {
   const displayPath = repositoryPath(path);
   const lines = readFileSync(path, "utf8").split(/\r?\n/);
@@ -55,6 +55,7 @@ for (const path of coreFiles) {
 
 const dependencyContracts = new Map([
   ["crates/rambledesk-core/Cargo.toml", []],
+  ["crates/rambledesk-acp/Cargo.toml", ["rambledesk-core"]],
   ["crates/rambledesk-storage/Cargo.toml", ["rambledesk-core"]],
   ["crates/rambledesk-mcp/Cargo.toml", ["rambledesk-core", "rambledesk-hosts"]],
   ["crates/rambledesk-local-server/Cargo.toml", ["rambledesk-core", "rambledesk-mcp"]],

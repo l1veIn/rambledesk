@@ -15,6 +15,8 @@ ACP 托管会话的 TARGET 见 [ADR 007](adr/007-acp-managed-sessions.md)：Back
 Agent Session Management，ACP Client 与进程管理实现位于 core application contract 之外。
 一个 RambleDesk Session 对应一个 Agent Session；首期独占 ACP Instance，不要求实例只有一个 OS
 进程。持久会话、运行投影与反馈投递分别建模，Client view 不拥有其生命周期。下方 CURRENT 拓扑尚不包含 ACP。
+独立 `rambledesk-acp` 库现已提供稳定协议 v1 的 stdio 客户端与 smoke example；采用官方 Rust SDK 2.0.0，
+SDK 主版本不等于 wire 协议版本。尚未接入的托管产品能力继续标为 TARGET。
 
 ## 运行时拓扑
 

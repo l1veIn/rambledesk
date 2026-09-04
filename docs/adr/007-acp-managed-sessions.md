@@ -30,7 +30,10 @@ Workbench Client
 
 core 定义 typed application contract 与 ports，ACP SDK、stdio、子进程管理和宿主特例在实现边界外。
 Desktop 与 Web 调用同一 application 能力；首期不增加独立 daemon、网络 ACP listener 或 checkout 模型。
-不提前承诺 crate 划分，ACP 的进程归属由 Backend Runtime 控制。
+实现采用一个新增库 `rambledesk-acp`：封装官方 SDK、stdio 与进程资源，不依赖 SQLite、Tauri 或 MCP server。
+会话领域、application use cases 与 driver/repository ports 留在 `core`；storage 实现持久化；desktop
+composition root 组装 driver。`host` 已表示 Agent Backend，不使用 `rambledesk-acp-host` 名称。
+ACP 的进程归属由 Backend Runtime 控制。
 
 ### 2. 身份、配置与运行资源分离
 

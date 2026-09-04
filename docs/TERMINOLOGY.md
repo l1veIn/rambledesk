@@ -218,7 +218,7 @@ Pi 原生适配器不需要提交后的 continuation，因为 Pi 已经在工具
 | 架构角色 | 当前映射 | 目标边界 |
 | --- | --- | --- |
 | Backend Runtime | 由 `apps/desktop` composition root 组装 `core`、storage、配置和运行时 controller。 | 保持单一 application Module 和业务事实来源；是否重排 crate 留给后续实现决策。 |
-| Agent Session Management / ACP Client | 尚未实现。 | application 合同进入 core；ACP wire/SDK 与进程管理在边界外实现，由 Backend Runtime 组装。 |
+| Agent Session Management / ACP Client | `crates/rambledesk-acp` 已提供独立 stdio 探针；托管产品入口仍待完成。 | application 合同进入 core；ACP wire/SDK 与进程管理由 `rambledesk-acp` 实现，Backend Runtime 组装。 |
 | Workbench Client | `apps/desktop` 中的 Svelte 工作台 UI。 | Desktop Client 与 Web Client 复用同一 UI 和 Application Transport Interface。 |
 | Desktop Client / Desktop Shell | `apps/desktop`。 | Shell 只保留 desktop composition 与 Native Capability；共享 UI 不依赖 Tauri 细节。 |
 | Tauri Application Transport Implementation | `apps/desktop` 的 Tauri command/event wiring。 | 实现统一 Application Transport Interface，调用同一 Backend Runtime application Module。 |
@@ -231,6 +231,7 @@ Pi 原生适配器不需要提交后的 continuation，因为 Pi 已经在工具
 | Package / 区域 | 职责 | 不应包含 |
 | --- | --- | --- |
 | `crates/rambledesk-core` | 领域 DTO、application use cases、反馈请求/反馈包合同。 | HTTP、JSON、MCP、Pi、desktop commands、host install、Local Integration Server、Web Access。 |
+| `crates/rambledesk-acp` | ACP SDK、stdio、能力协商、协议事件与所属进程资源。仅依赖 core 领域合同。 | SQLite、Tauri、HTTP 路由、反馈适配器实现与产品持久化规则。 |
 | `crates/rambledesk-storage` | SQLite 持久化、请求/草稿/附件 metadata、宿主会话关联、反馈包发布。 | 宿主协议、适配器安装、源码 checkout runtime 语义。 |
 | `crates/rambledesk-local-server` | 实现 Local Integration Server，并提供独立可组合的 Web Access server、session auth、静态资源与 application/event routes。 | 领域规则、MCP tool schema、Pi package 代码；两个 listener 的 credential、auth domain、route set 与生命周期不得合并。 |
 | `crates/rambledesk-mcp` | Generic MCP Adapter 完整方案：MCP schema、tool handler、instructions、结果/错误映射、客户端检测/安装执行引擎。 | listener、token path、JSON API、host-specific continuation、per-host 知识。 |

@@ -49,4 +49,5 @@
 ## 执行记录
 
 - 步骤 1：完成术语表、基线文档、ADR、Codeg 调研与提交地图；术语/包边界检查、本地文档链接检查和 diff 空白检查通过。
-- 步骤 2–15（含 9a / 9b）：尚未开始。
+- 步骤 2：新增 `rambledesk-acp`（官方 SDK 2.0.0、稳定协议 v1），stdio 初始化/能力/创建/输入/取消/原 ID load 或 resume/显式 close 与回收。自动 fixture 覆盖取消、权限默认拒绝、恢复能力与 close 顺序；crate tests、clippy、术语/包边界检查通过。社区 0.7.0、0.8.0 与官方 dsh 的真实 MCP、上下文恢复证据见 [后端探针](ACP_BACKEND_PROBE.md)；Rust smoke 另验证实际回复和同 ID 恢复。首条 UI 验收采用社区 0.8.0，官方 dsh 保留作为 resume 差异对照。未宣告 client fs/terminal 能力。
+- 步骤 3–15（含 9a / 9b）：推进中，逐步验收后记录。
