@@ -19,4 +19,6 @@ Codeg 作者和贡献者保留其版权；根仓库为 Apache-2.0，完整条款
 
 | Chat 时间线与工具卡片 | `src/components/message/*`、`ai-elements/reasoning.tsx`、`src/lib/{line-diff,unified-diff-generator}.ts` | Svelte 消息/思考/工具/差异卡片、安全 Markdown、引用输入器；33 个渲染与补丁/差异测试通过，隔离浏览器验证实际卡片渲染。 |
 
+| 托管 stdio 反馈 companion | `src-tauri/src/delegation/companion.rs`、`acp/connection.rs` | 复用实例私有 HTTP 归属与撤销，环境变量授权，三工具原样转发；CLI 和 Desktop 早分派。真实 CLI/两 scope/SQLite/HTTP 集成及 bounded input 用例通过；自动选择接线在后续提交。 |
+
 后续每个移植提交添加实际条目。第三方依赖各自遵循其许可证，不因 Codeg 根许可证而改变。

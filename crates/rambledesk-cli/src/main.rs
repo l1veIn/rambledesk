@@ -22,6 +22,8 @@ struct Arguments {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Forward private instance feedback MCP over stdio; credentials come only from environment.
+    ManagedMcpStdio,
     /// Run the authenticated loopback local server without Tauri.
     Serve {
         #[arg(long, default_value_t = DEFAULT_PORT)]
@@ -46,8 +48,21 @@ enum Command {
     SelfTest,
 }
 
+fn main() -> anyhow::Result<()> {
+    // No tracing subscriber in companion mode, even when RUST_LOG=trace: SDK
+    // diagnostics can include capability headers and model-supplied tool data.
+    if std::env::args_os()
+        .nth(1)
+        .is_some_and(|arg| arg == "managed-mcp-stdio")
+    {
+        std::process::exit(rambledesk_mcp::managed_stdio::run_process());
+    }
+    run_cli()
+}
+
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn run_cli() -> anyhow::Result<()> {
+    let arguments = Arguments::parse();
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
         .with_env_filter(
@@ -57,7 +72,8 @@ async fn main() -> anyhow::Result<()> {
         .with_target(false)
         .init();
 
-    match Arguments::parse().command {
+    match arguments.command {
+        Command::ManagedMcpStdio => unreachable!("handled before logging initialization"),
         Command::Serve {
             port,
             token_file,

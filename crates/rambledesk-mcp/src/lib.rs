@@ -24,6 +24,8 @@ use rmcp::{
 
 mod install;
 mod managed;
+#[cfg(feature = "managed-stdio")]
+pub mod managed_stdio;
 mod result;
 pub use managed::{ManagedMcpScope, ManagedRambleDeskMcp};
 use result::feedback_tool_result;

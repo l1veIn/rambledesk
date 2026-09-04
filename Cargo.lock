@@ -4839,6 +4839,7 @@ dependencies = [
  "clap",
  "rambledesk-core",
  "rambledesk-local-server",
+ "rambledesk-mcp",
  "rambledesk-storage",
  "rmcp",
  "serde_json",
@@ -4970,6 +4971,7 @@ version = "0.3.4"
 dependencies = [
  "rambledesk-core",
  "rambledesk-hosts",
+ "reqwest 0.13.4",
  "rmcp",
  "schemars 1.2.2",
  "serde",

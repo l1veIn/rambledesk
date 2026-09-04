@@ -16,6 +16,7 @@ anyhow.workspace = true
 clap.workspace = true
 rambledesk-core.workspace = true
 rambledesk-local-server.workspace = true
+rambledesk-mcp = { workspace = true, features = ["managed-stdio"] }
 rambledesk-storage.workspace = true
 rmcp = { workspace = true, features = [
   "client",
