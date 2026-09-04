@@ -277,3 +277,136 @@ async fn invalid_creation_and_identity_conflicts_leave_no_partial_records() {
         Err(SessionRepositoryError::AgentConfigNotFound)
     );
 }
+
+#[tokio::test]
+async fn zero_feedback_session_can_be_listed_renamed_pinned_and_archived() {
+    let workspace = TestWorkspace::new().await;
+    let store = SqliteFeedbackStore::connect(&workspace.database)
+        .await
+        .unwrap();
+    store.save_agent_config(config()).await.unwrap();
+    let record = store
+        .create_managed_session(session(&workspace, "zero-feedback"))
+        .await
+        .unwrap();
+    let summaries = store
+        .list_host_sessions(HostSessionQuery {
+            archived: false,
+            search: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(summaries.len(), 1);
+    assert_eq!(summaries[0].session_id, record.session_id);
+    assert_eq!(summaries[0].management, record.management);
+    assert_eq!(summaries[0].request_count, 0);
+    assert_eq!(summaries[0].pending_count, 0);
+    assert_eq!(summaries[0].title, "Independent session");
+    assert_eq!(summaries[0].updated_at, CREATED);
+    assert_eq!(
+        summaries[0].source_hint,
+        Some(workspace._temp.path().to_string_lossy().into_owned())
+    );
+
+    let renamed = store
+        .rename_host_session(
+            &record.host_id,
+            &record.host_session_id,
+            "Searchable project",
+            UPDATED,
+        )
+        .await
+        .unwrap();
+    assert_eq!(renamed.updated_at, UPDATED);
+    assert_eq!(renamed.title, "Searchable project");
+    let pinned = store
+        .set_host_session_pinned(&record.host_id, &record.host_session_id, Some(UPDATED))
+        .await
+        .unwrap();
+    assert_eq!(pinned.pinned_at.as_deref(), Some(UPDATED));
+    store
+        .archive_host_session(&record.host_id, &record.host_session_id, UPDATED)
+        .await
+        .unwrap();
+    assert!(
+        store
+            .list_host_sessions(HostSessionQuery {
+                archived: false,
+                search: None
+            })
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    let archived = store
+        .list_host_sessions(HostSessionQuery {
+            archived: true,
+            search: Some("Searchable".into()),
+        })
+        .await
+        .unwrap();
+    assert_eq!(archived.len(), 1);
+    assert_eq!(archived[0].request_count, 0);
+    assert_eq!(archived[0].pinned_at, None);
+    store
+        .unarchive_host_session(&record.host_id, &record.host_session_id, UPDATED)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn deleting_last_feedback_keeps_managed_session_and_remote_binding() {
+    let workspace = TestWorkspace::new().await;
+    let store = SqliteFeedbackStore::connect(&workspace.database)
+        .await
+        .unwrap();
+    store.save_agent_config(config()).await.unwrap();
+    let record = store
+        .create_managed_session(session(&workspace, "keep-session"))
+        .await
+        .unwrap();
+    store
+        .bind_remote_session(&record.session_id, "keep-agent-context", UPDATED)
+        .await
+        .unwrap();
+    let application = store.clone().into_application();
+    let request_id = Uuid::now_v7().to_string();
+    let mut input = workspace.request(request_id.clone());
+    input.host_id = Some(record.host_id.clone());
+    input.host_session_id = record.host_session_id.clone();
+    application.request_feedback(input).await.unwrap();
+    let summaries = application.list_host_sessions().await.unwrap();
+    assert_eq!(summaries.len(), 1);
+    assert_eq!(summaries[0].session_id, record.session_id);
+    assert_eq!(summaries[0].request_count, 1);
+    application
+        .cancel_feedback(CancelFeedbackInput {
+            request_id: request_id.clone(),
+            reason: "Fixture cleanup".into(),
+        })
+        .await
+        .unwrap();
+    application
+        .archive_host_session(HostSessionInput {
+            host_id: record.host_id,
+            host_session_id: record.host_session_id,
+        })
+        .await
+        .unwrap();
+    application
+        .delete_feedback_request(DeleteFeedbackRequestInput { request_id })
+        .await
+        .unwrap();
+    let summaries = application
+        .list_archived_host_sessions(ListHostSessionsInput::default())
+        .await
+        .unwrap();
+    assert_eq!(summaries.len(), 1);
+    assert_eq!(summaries[0].request_count, 0);
+    assert_eq!(summaries[0].pending_count, 0);
+    assert_eq!(summaries[0].session_id, record.session_id);
+    assert!(
+        matches!(&summaries[0].management, SessionManagement::Managed { remote_session_id: Some(id), .. } if id == "keep-agent-context")
+    );
+    assert!(store.get_session(&record.session_id).await.is_ok());
+}

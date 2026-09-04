@@ -67,6 +67,8 @@ function feedbackRequest(requestId: string): FeedbackRequestSummary {
 
 function hostSession(overrides: Partial<HostSessionSummary> = {}): HostSessionSummary {
   return {
+    session_id: 'local-session-1',
+    management: { kind: 'external' },
     host_id: 'codex',
     host_session_id: 'session-1',
     title: 'Refresh workbench',

@@ -605,6 +605,9 @@ fn host_session_summary_from_row(row: &SqliteRow) -> Result<HostSessionSummary, 
         .try_get::<i64, _>("pending_count")
         .map_err(storage_error)?;
     Ok(HostSessionSummary {
+        session_id: row.try_get("session_id").map_err(storage_error)?,
+        management: managed_ops::management_from_row(row)
+            .map_err(|_| RepositoryError::CorruptData)?,
         host_id: row.try_get("host_id").map_err(storage_error)?,
         host_session_id: row.try_get("host_session_id").map_err(storage_error)?,
         title: row.try_get("title").map_err(storage_error)?,

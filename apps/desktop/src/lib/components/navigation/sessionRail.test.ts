@@ -11,6 +11,8 @@ function session(
   hostPinnedAt: string | null = null,
 ): HostSessionSummary {
   return {
+    session_id: `local:${hostId}:${hostSessionId}`,
+    management: { kind: 'external' },
     host_id: hostId,
     host_session_id: hostSessionId,
     title: hostSessionId,

@@ -5,7 +5,7 @@ use ts_rs::TS;
 
 use crate::{
     ActionInput, ContextRef, FeedbackResolution, FeedbackResultView, FeedbackStatus,
-    RepositoryError,
+    RepositoryError, SessionManagement,
 };
 
 pub const MAX_ATTACHMENT_BYTES: usize = 20 * 1024 * 1024;
@@ -119,6 +119,8 @@ pub struct FeedbackRequestSummary {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 pub struct HostSessionSummary {
+    pub session_id: String,
+    pub management: SessionManagement,
     pub host_id: String,
     pub host_session_id: String,
     pub title: String,
