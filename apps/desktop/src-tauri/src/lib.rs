@@ -219,7 +219,8 @@ pub fn run() {
                 .with_change_observer(application_change_hub.clone())
                 .with_feedback_provider(feedback_provider.clone())
                 .with_deliveries(Arc::new(store.clone()))
-                .with_deletions(Arc::new(store.clone()));
+                .with_deletions(Arc::new(store.clone()))
+                .with_recovery(Arc::new(store.clone()));
                 let application_commands = Arc::new(
                     ApplicationCommandFacade::new(
                         application.clone(),
@@ -279,6 +280,7 @@ pub fn run() {
                         }
                     });
                 }
+                tauri::async_runtime::block_on(sessions.recover_runtime())?;
                 tauri::async_runtime::block_on(sessions.start_delivery_worker())?;
                 app.manage(WorkbenchState {
                     local_server: handle,

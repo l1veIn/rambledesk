@@ -11,6 +11,7 @@
   import { createManagedSessionController } from './managedSessionController'
   import ManagedSessionWorkspace from './ManagedSessionWorkspace.svelte'
   import FeedbackDeliveryStatus from './FeedbackDeliveryStatus.svelte'
+  import SessionRecoveryNotice from './SessionRecoveryNotice.svelte'
 
   export let transport: ApplicationTransport
   export let sessionId: string
@@ -59,6 +60,7 @@
     activities={$session.snapshot.activities}
     permissions={$session.snapshot.permissions}
     deliveries={$session.snapshot.deliveries}
+    recovery={$session.snapshot.recovery}
     onResolveDelivery={session.resolveDelivery}
     {feedbackRequests}
     {config}
@@ -74,6 +76,7 @@
   />
 {:else if $session.snapshot}
   {#if $session.snapshot.deleting}<p role="status" class="m-0 shrink-0 border-b border-destructive/25 bg-destructive/5 px-5 py-3 text-xs">{agentText($locale, 'This session is being deleted. Retry deletion to finish cleanup.')}</p>{/if}
+  <SessionRecoveryNotice snapshot={$session.snapshot} recovery={$session.snapshot.recovery} {envText} />
   <FeedbackDeliveryStatus {sessionId} deliveries={$session.snapshot.deliveries} requests={feedbackRequests} {envText} disabled={deletionPending || $session.snapshot.deleting} onResolve={session.resolveDelivery} {onOpenFeedback} />
   {#if error}<div class="flex shrink-0 items-center gap-3 border-b px-5 py-2 text-xs"><p role="alert" class="m-0 min-w-0 flex-1 break-words text-destructive">{error}</p><Button variant="ghost" size="sm" onclick={session.refresh}>{agentText($locale, 'Retry')}</Button></div>{/if}
 {:else if showWorkspace}

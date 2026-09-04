@@ -65,6 +65,21 @@ impl SessionApplication {
         if live.runtime.connection != SessionConnectionState::Connected {
             return Err(SessionError::NotConnected);
         }
+        if live
+            .connection
+            .as_ref()
+            .is_some_and(|connection| connection.is_closed())
+        {
+            drop(live);
+            self.retire_entry_locked(
+                &input.session_id,
+                &entry,
+                SessionRunEnd::Interrupted,
+                Some("Agent connection closed before the prompt was sent"),
+            )
+            .await?;
+            return Err(SessionError::NotConnected);
+        }
         if live.runtime.activity != SessionActivityState::Idle {
             return Err(SessionError::Busy);
         }
@@ -100,6 +115,8 @@ impl SessionApplication {
             ..Default::default()
         };
         let saved = async {
+            self.begin_turn(&input.session_id, &instance, &turn_id)
+                .await?;
             self.append_activity(
                 &input.session_id,
                 Some(&turn_id),
@@ -122,9 +139,10 @@ impl SessionApplication {
             let mut live = entry.live.lock().await;
             live.runtime.activity = SessionActivityState::Idle;
             live.runtime.last_error = Some(error.to_string());
+            drop(live);
             if let (Some(repository), Some((request, attempt))) = (&self.deliveries, &delivery) {
                 // No protocol prompt was sent: returning to pending is safe.
-                repository
+                let _ = repository
                     .finish_delivery(
                         request,
                         attempt,
@@ -132,8 +150,16 @@ impl SessionApplication {
                         Some("Unable to persist continuation before sending"),
                         &self.clock.now_rfc3339(),
                     )
-                    .await?;
+                    .await;
             }
+            let _ = self
+                .retire_entry_locked(
+                    &input.session_id,
+                    &entry,
+                    SessionRunEnd::Interrupted,
+                    Some("Unable to persist the turn before sending"),
+                )
+                .await;
             self.changed();
             return Err(error);
         }
@@ -164,12 +190,12 @@ impl SessionApplication {
         let Some(entry) = self.entries.lock().await.get(session_id).cloned() else {
             return;
         };
-        let _events = entry.events.lock().await;
+        let mut events = entry.events.lock().await;
         let mut live = entry.live.lock().await;
         let same_instance = live.runtime.instance_id.as_deref() == Some(instance);
         // Persist the attempt outcome even if stop/restart replaced the live entry.
         let delivered = self.finish_feedback_delivery(delivery, &result).await;
-        if !same_instance {
+        if !same_instance || live.runtime.connection != SessionConnectionState::Connected {
             return;
         }
         let (kind, text) = match &result {
@@ -183,6 +209,23 @@ impl SessionApplication {
         let persisted = self
             .append_activity(session_id, Some(turn_id), kind, text, None)
             .await;
+        let connection_closed = live
+            .connection
+            .as_ref()
+            .is_some_and(|connection| connection.is_closed());
+        let checkpoint = if persisted.is_ok() && !connection_closed {
+            self.finish_turn(session_id, instance, turn_id).await
+        } else {
+            Ok(())
+        };
+        let interrupted = persisted.is_err() || checkpoint.is_err() || connection_closed;
+        if !interrupted {
+            events.turn_id = None;
+        } else {
+            // A lifecycle owner may prevent immediate retirement below. Keep
+            // the instance unavailable until the background owner can retry it.
+            live.runtime.connection = SessionConnectionState::Disconnected;
+        }
         live.runtime.activity = SessionActivityState::Idle;
         live.permissions.clear();
         live.cancelling = false;
@@ -195,14 +238,24 @@ impl SessionApplication {
         if let Err(error) = delivered {
             live.runtime.last_error = Some(error.to_string());
         }
-        if live
-            .connection
-            .as_ref()
-            .is_some_and(|connection| connection.is_closed())
-        {
-            live.runtime.connection = SessionConnectionState::Disconnected;
+        if let Err(error) = checkpoint {
+            live.runtime.last_error = Some(error.to_string());
         }
         drop(live);
+        drop(events);
+        if interrupted && let Ok(_lifecycle) = entry.lifecycle.try_lock() {
+            let current = entry.live.lock().await.runtime.instance_id.as_deref() == Some(instance);
+            if current {
+                let _ = self
+                    .retire_entry_locked(
+                        session_id,
+                        &entry,
+                        SessionRunEnd::Interrupted,
+                        Some("Agent turn was interrupted before durable completion"),
+                    )
+                    .await;
+            }
+        }
         self.changed();
         self.delivery_wake.notify_one();
     }
@@ -222,6 +275,7 @@ impl SessionApplication {
         // startup replay and late traffic from a replaced instance are not new turns.
         if live.runtime.instance_id.as_deref() != Some(instance)
             || live.runtime.connection != SessionConnectionState::Connected
+            || stream.turn_id.is_none()
         {
             return Ok(());
         }

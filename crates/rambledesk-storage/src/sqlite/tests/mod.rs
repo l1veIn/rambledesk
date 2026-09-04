@@ -194,4 +194,5 @@ mod managed_feedback;
 mod managed_sessions;
 mod publication;
 mod requests;
+mod recovery;
 mod workspace;

@@ -74,10 +74,12 @@ impl SessionApplication {
     ) -> Result<ManagedSessionSnapshot, SessionError> {
         self.managed_record(&input.session_id).await?;
         let entry = self.entry(&input.session_id).await;
-        let turn = entry.events.lock().await.turn_id.clone();
+        let events = entry.events.lock().await;
+        let turn = events.turn_id.clone();
         let mut live = entry.live.lock().await;
         if live.runtime.activity == SessionActivityState::Idle {
             drop(live);
+            drop(events);
             return self.get_session(input).await;
         }
         let connection = live.connection.clone().ok_or(SessionError::NotConnected)?;
@@ -86,27 +88,15 @@ impl SessionApplication {
         live.cancelling = true;
         live.runtime.activity = SessionActivityState::Running;
         drop(live);
+        drop(events);
         connection.cancel().await?;
         self.session_changed(&input.session_id);
         let app = self.clone();
         let session_id = input.session_id.clone();
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(5)).await;
-            let same_turn = entry.events.lock().await.turn_id == turn;
-            let live = entry.live.lock().await;
-            let still_running = same_turn
-                && live.runtime.instance_id == instance
-                && live.runtime.activity != SessionActivityState::Idle;
-            drop(live);
-            if still_running {
-                let _ = app
-                    .stop_session(ManagedSessionInput {
-                        session_id: session_id.clone(),
-                    })
-                    .await;
-                entry.live.lock().await.runtime.last_error =
-                    Some("Agent did not finish cancellation; its instance was stopped".into());
-                app.session_changed(&session_id);
+            if let (Some(instance), Some(turn)) = (instance, turn) {
+                let _ = app.stop_if_current(&session_id, &instance, &turn).await;
             }
         });
         self.get_session(input).await

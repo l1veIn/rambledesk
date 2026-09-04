@@ -34,6 +34,7 @@ mod paths;
 mod publication_paths;
 mod request_ops;
 mod request_scope;
+mod recovery_ops;
 mod resolve_ops;
 mod session_ops;
 mod submission_ops;

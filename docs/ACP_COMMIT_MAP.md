@@ -26,6 +26,11 @@
 | 13 | `feat(sessions): delete managed sessions directly` | 运行中与空闲会话均可直接删除；停止所属资源、撤销反馈绑定、处理待投递并清理记录，失败可见可重试，不影响其他会话。 |
 | 13b | `fix(feedback): route managed continuation through runtime` | 整合审阅补充：Desktop 后端按持久请求标记绕过旧 Host continuation router；同 host label 下 external 与 managed 正确分流。 |
 | 14 | `feat(sessions): recover interrupted managed sessions` | 根据后端能力恢复；保留请求、草稿、结果与待投递，不把旧 connected 或不明发送结果当作成功。 |
+| 14b | `fix(sessions): retry delivery completion persistence` | Agent 已完成而 SQLite 暂时无法保存投递结果时，只重试同 attempt 的收尾，不重复 prompt；同会话后续投递不能越过 sending 或 uncertain。 |
+| 15a | `fix(ui): preserve agent configuration selection` | 修复首次加载与删除配置后的选中项，保留独立草稿并按提交时的配置脱敏错误。 |
+| 15b | `fix(ui): subscribe managed feedback task tabs` | 请求独立标签同样订阅所属托管会话，显示恢复/投递状态并遵守持久删除意图。 |
+| 15c | `fix(ui): refresh managed session state labels` | 流式快照更新后，连接与执行状态标签立即响应。 |
+| 15d | `feat(acp): show permission operation details` | 权限申请展示有界命令、路径及内容，保留明确的截断标记与纯文本渲染。 |
 | 15 | `test(acp): verify the managed feedback loop` | 补齐跨模块与真实后端验收：两个项目并发、完整反馈续接、直接删除、断开/重启；发布实际支持矩阵与使用说明。 |
 
 步骤 9 从原来的一个 UI 提交拆为 9a、9b，整合审阅增加 13b；自动安装/更新 Agent、ACP registry 导入
@@ -64,4 +69,5 @@
 - 步骤 12：runtime worker 只向空闲且连接有效的原会话续接；发送前持久认领，正常轮次终态后标记 delivered，断开/异常标记 uncertain 并停止自动重放。Desktop/Web 同时展示投递状态与显式重试/确认，托管请求隐藏旧的返宿主续接流程。真实 stdio→专属 MCP→提交→outbox→同上下文 get_feedback 的 2 项集成通过（含忙时等待、多次反馈、重复提交与读反馈后断线），HTTP resolve/generation、前端 115 项及 clippy 通过。断线测试推动修正 SDK task 与底层 EOF 的存活判断差异。
 - 步骤 13：运行中、空闲和零反馈会话均可直接删除；持久删除意图阻止新工作，先撤销 scope/停止所属实例，再丢弃投递并清理文件与记录，失败保留可重试状态。严格验证所属目录并拒绝越界/junction，发布与删除共用锁阻止旧任务重建文件；已删会话的迟到事件不重建 runtime。8 项存储删除测试、4 项跨模块闭环/删除/重启后删除测试、HTTP 204/404 与 generation/parity、前端删除/只读/标签隔离验收通过。
 - 步骤 13b：Desktop terminal observer 读取持久 managed 标记，在进入旧 Host continuation router 前完成分流；归属读取失败不推断为 external。新增同 host label 下 managed/external/未知请求的路由归属测试通过。
-- 步骤 14–15：推进中，逐步验收后记录。
+- 步骤 14：migration 0016 持久保存 run/turn 检查点；启动先对账未关闭运行，读取列表不隐式启动 Agent，恢复只允许原远端会话。EOF 与持久收尾失败会撤销 scope、回收所属进程并留下可见中断；旧取消 watchdog 在生命周期锁内检查 instance/turn，不会停止新运行。8 项存储恢复测试、4 项 runtime 恢复/延迟取消测试、恢复提示 UI 测试与全工作区 Rust 测试通过。
+- 步骤 14b–15：收尾中，逐项验收后记录。

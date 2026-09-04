@@ -17,6 +17,7 @@ function snapshot(id: string, text = ''): ManagedSessionSnapshot {
     permissions: [],
     deliveries: [],
     deleting: false,
+    recovery: null,
   }
 }
 

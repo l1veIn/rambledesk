@@ -78,6 +78,8 @@ pub struct SessionApplication {
     pub(super) deliveries: Option<Arc<dyn FeedbackDeliveryRepository>>,
     pub(super) delivery_worker: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
     pub(super) delivery_wake: Arc<tokio::sync::Notify>,
+    pub(super) recovery: Option<Arc<dyn SessionRecoveryRepository>>,
+    pub(super) recovery_ready: Arc<tokio::sync::OnceCell<()>>,
 }
 
 impl SessionApplication {
@@ -100,6 +102,8 @@ impl SessionApplication {
             deliveries: None,
             delivery_worker: Arc::new(Mutex::new(None)),
             delivery_wake: Arc::new(tokio::sync::Notify::new()),
+            recovery: None,
+            recovery_ready: Arc::new(tokio::sync::OnceCell::new()),
         }
     }
 
@@ -216,20 +220,12 @@ impl SessionApplication {
         &self,
         input: ManagedSessionInput,
     ) -> Result<ManagedSessionSnapshot, SessionError> {
+        self.recover_runtime().await?;
         let session = self.managed_record(&input.session_id).await?;
         let entry = self.entry(&input.session_id).await;
-        let mut live = entry.live.lock().await;
-        if live
-            .connection
-            .as_ref()
-            .is_some_and(|connection| connection.is_closed())
-        {
-            live.runtime.connection = SessionConnectionState::Disconnected;
-            live.permissions.clear();
-            live.runtime.activity = SessionActivityState::Idle;
-            live.runtime.last_error =
-                Some("Agent connection closed; resume the original session to continue".into());
-        }
+        self.reconcile_closed_entry(&input.session_id, &entry)
+            .await?;
+        let live = entry.live.lock().await;
         let runtime = live.runtime.clone();
         let permissions = live.permissions.clone();
         drop(live);
@@ -253,7 +249,12 @@ impl SessionApplication {
             }
             None => false,
         };
+        let recovery = match &self.recovery {
+            Some(repository) => Some(repository.get_session_recovery(&input.session_id).await?),
+            None => None,
+        };
         Ok(ManagedSessionSnapshot {
+            recovery,
             session,
             runtime,
             activities,
@@ -267,6 +268,7 @@ impl SessionApplication {
         &self,
         input: ManagedSessionInput,
     ) -> Result<ManagedSessionSnapshot, SessionError> {
+        self.recover_runtime().await?;
         if self.closing.load(Ordering::SeqCst) {
             return Err(SessionError::ShuttingDown);
         }
@@ -288,7 +290,7 @@ impl SessionApplication {
         if self.closing.load(Ordering::SeqCst) {
             return Err(SessionError::ShuttingDown);
         }
-        let mut live = entry.live.lock().await;
+        let live = entry.live.lock().await;
         if live
             .connection
             .as_ref()
@@ -297,15 +299,24 @@ impl SessionApplication {
             drop(live);
             return self.get_session(input).await;
         }
-        let old = live.connection.take();
-        live.runtime.connection = SessionConnectionState::Connecting;
+        let needs_cleanup = live.connection.is_some() || live.runtime.instance_id.is_some();
+        drop(live);
+        if needs_cleanup {
+            self.retire_entry_locked(
+                &input.session_id,
+                &entry,
+                SessionRunEnd::Interrupted,
+                Some("Previous Agent connection closed before recovery"),
+            )
+            .await?;
+        }
         let instance_id = self.ids.new_id();
+        self.begin_run(&input.session_id, &instance_id).await?;
+        let mut live = entry.live.lock().await;
+        live.runtime.connection = SessionConnectionState::Connecting;
         live.runtime.instance_id = Some(instance_id.clone());
         live.runtime.last_error = None;
         drop(live);
-        if let Some(old) = old {
-            old.stop().await?;
-        }
         self.changed();
         let version = config.updated_at.clone();
         let result = tokio::select! {
@@ -337,6 +348,15 @@ impl SessionApplication {
                     if let Some(provider) = &self.feedback {
                         let _ = provider.revoke(&input.session_id).await;
                     }
+                    let _ = self
+                        .retire_entry_locked(
+                            &input.session_id,
+                            &entry,
+                            SessionRunEnd::Interrupted,
+                            Some(&error.to_string()),
+                        )
+                        .await;
+                    entry.live.lock().await.runtime.connection = SessionConnectionState::Failed;
                     self.changed();
                     return Err(error.into());
                 }
@@ -357,6 +377,15 @@ impl SessionApplication {
                 if let Some(provider) = &self.feedback {
                     let _ = provider.revoke(&input.session_id).await;
                 }
+                let _ = self
+                    .retire_entry_locked(
+                        &input.session_id,
+                        &entry,
+                        SessionRunEnd::Interrupted,
+                        Some(&error.to_string()),
+                    )
+                    .await;
+                entry.live.lock().await.runtime.connection = SessionConnectionState::Failed;
                 self.changed();
                 return Err(error);
             }
@@ -376,27 +405,8 @@ impl SessionApplication {
             .interrupt
             .send_modify(|epoch| *epoch = epoch.wrapping_add(1));
         let _lifecycle = entry.lifecycle.lock().await;
-        let mut live = entry.live.lock().await;
-        let connection = live.connection.clone();
-        live.runtime.connection = SessionConnectionState::Disconnected;
-        live.permissions.clear();
-        drop(live);
-        if let Some(provider) = &self.feedback {
-            provider.revoke(&input.session_id).await?;
-        }
-        if let Some(connection) = connection
-            && let Err(error) = connection.stop().await
-        {
-            entry.live.lock().await.runtime.last_error = Some(error.to_string());
-            self.changed();
-            return Err(error.into());
-        }
-        let mut live = entry.live.lock().await;
-        live.connection = None;
-        live.runtime.connection = SessionConnectionState::Stopped;
-        live.runtime.activity = SessionActivityState::Idle;
-        live.runtime.instance_id = None;
-        drop(live);
+        self.retire_entry_locked(&input.session_id, &entry, SessionRunEnd::Stopped, None)
+            .await?;
         self.changed();
         self.get_session(input).await
     }
@@ -420,11 +430,12 @@ impl SessionApplication {
                     session_id: session_id.clone(),
                 })
                 .await
+                && !matches!(
+                    failed,
+                    SessionError::Repository(SessionRepositoryError::SessionNotFound)
+                )
             {
-                error = match failed {
-                    SessionError::Repository(SessionRepositoryError::SessionNotFound) => error,
-                    failed => Some(failed),
-                };
+                error = Some(failed);
             }
         }
         match error {

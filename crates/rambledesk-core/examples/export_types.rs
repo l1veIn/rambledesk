@@ -28,6 +28,7 @@ use rambledesk_core::{
     SessionPermissionOption,
 };
 use rambledesk_core::{SessionActivity, SessionActivityKind};
+use rambledesk_core::{SessionRecovery, SessionRecoveryStatus};
 use ts_rs::{Config, TS};
 
 fn exported<T: TS>() -> String {
@@ -61,6 +62,8 @@ fn exported_feedback_package_content() -> String {
 
 fn main() -> std::io::Result<()> {
     let declarations = [
+        exported::<SessionRecoveryStatus>(),
+        exported::<SessionRecovery>(),
         exported::<FeedbackDelivery>(),
         exported::<FeedbackDeliveryState>(),
         exported::<ResolveDeliveryAction>(),

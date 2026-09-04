@@ -3,8 +3,9 @@
   import { onDestroy, tick } from 'svelte'
   import { Button } from '$lib/components/ui/button'
   import { Badge } from '$lib/components/ui/badge'
-  import type { AgentConfig, FeedbackDelivery, FeedbackRequestSummary, ResolveDeliveryAction } from '$lib/generated/feedback'
+  import type { AgentConfig, FeedbackDelivery, FeedbackRequestSummary, ResolveDeliveryAction, SessionRecovery } from '$lib/generated/feedback'
   import FeedbackDeliveryStatus from './FeedbackDeliveryStatus.svelte'
+  import SessionRecoveryNotice from './SessionRecoveryNotice.svelte'
   import { locale } from '$lib/preferences'
   import { redactAgentMessage } from './agentConfigForm'
   import { agentText } from './agentI18n'
@@ -19,6 +20,7 @@
   export let permissions: readonly SessionPermission[] = []
   export let feedbackRequests: readonly FeedbackRequestSummary[] = []
   export let deliveries: readonly FeedbackDelivery[] = []
+  export let recovery: SessionRecovery | null = null
   export let onResolveDelivery: ((requestId: string, action: ResolveDeliveryAction) => Promise<void> | void) | undefined = undefined
   export let config: AgentConfig | null = null
   export let busy = false
@@ -168,6 +170,7 @@
     </div>
   </header>
   {#if snapshot.deleting}<p role="status" class="m-0 border-b border-destructive/25 bg-destructive/5 px-5 py-3 text-xs">{tr('This session is being deleted. Retry deletion to finish cleanup.')}</p>{/if}
+  <SessionRecoveryNotice {snapshot} {recovery} {envText} />
   {#if onResolveDelivery}
     <FeedbackDeliveryStatus sessionId={snapshot.session.session_id} {deliveries} requests={visibleFeedback} {envText} disabled={busy || snapshot.deleting} onResolve={onResolveDelivery} {onOpenFeedback} />
   {/if}

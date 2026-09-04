@@ -23,6 +23,7 @@ impl SessionApplication {
     /// One runtime owner starts the worker after composing its repositories and listener.
     /// Recovered sending attempts require an explicit user decision; they are not replayed.
     pub async fn start_delivery_worker(&self) -> Result<(), SessionError> {
+        self.recover_runtime().await?;
         let mut worker = self.delivery_worker.lock().await;
         if worker.is_some() {
             return Ok(());
@@ -54,6 +55,7 @@ impl SessionApplication {
     }
 
     async fn deliver_pending_feedback(&self) -> Result<(), SessionError> {
+        self.reconcile_closed_sessions().await?;
         let repository = self.deliveries.as_ref().ok_or(SessionError::InvalidInput)?;
         for delivery in repository.list_pending_deliveries().await? {
             if self.closing.load(Ordering::SeqCst) {
