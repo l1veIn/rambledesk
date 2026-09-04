@@ -35,6 +35,9 @@
     "active": true,
     "createUpdaterArtifacts": true,
     "resources": {
+      "../../../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md",
+      "../../../licenses/codeg-APACHE-2.0.txt": "licenses/codeg-APACHE-2.0.txt",
+      "../../../docs/CODEG_PORTS.md": "docs/CODEG_PORTS.md",
       "../../../packages/pi-rambledesk/index.js": "pi-rambledesk/index.js",
       "../../../packages/pi-rambledesk/package.json": "pi-rambledesk/package.json",
       "../../../packages/pi-rambledesk/README.md": "pi-rambledesk/README.md",
