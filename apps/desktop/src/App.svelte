@@ -19,6 +19,11 @@
   import SettingsWorkspaceView from './lib/workspace/SettingsWorkspaceView.svelte'
   import TaskWorkspaceView from './lib/workspace/TaskWorkspaceView.svelte'
   import ArchivedSessionsWorkspaceView from './lib/workspace/ArchivedSessionsWorkspaceView.svelte'
+  import ManagedSessionSection from './lib/agents/ManagedSessionSection.svelte'
+  import NewManagedSessionSection from './lib/agents/NewManagedSessionSection.svelte'
+  import { agentText } from './lib/agents/agentI18n'
+  import { Button } from './lib/components/ui/button'
+  import * as Dialog from './lib/components/ui/dialog'
   import type { JSONContent } from '@tiptap/core'
   import {
     defineApplicationStream,
@@ -53,6 +58,7 @@
     FeedbackWorkspaceView,
     SubmitFeedbackInput,
   } from './lib/feedback'
+  import type { ManagedSessionSnapshot } from './lib/generated/feedback'
   import {
     type ActiveAction,
     type DraftOperation,
@@ -196,6 +202,9 @@
   let renderedSessionResolution: SessionViewResolution | null = null
   let sessionViewResolutions: readonly SessionViewResolution[] = []
   let sessionRequestIds = new Map<string, string>()
+  let managedSessionPanels: ReadonlyMap<string, 'agent' | 'feedback'> = new Map()
+  let newManagedSessionOpen = false
+  let creatingManagedSession = false
   let pendingWorkspaceViewKey: string | null = null
   let workbenchMounted = true
   let completedResult: FeedbackRequestView | null = null
@@ -510,6 +519,21 @@
     sessionViewResolutions,
     workspaceShellState.activeViewKey,
   )
+  $: renderedManagedSession = renderedSessionView
+    ? $navigation.hostSessions.find((session) => session.management.kind === 'managed'
+      && session.host_id === renderedSessionView!.hostId
+      && session.host_session_id === renderedSessionView!.hostSessionId)
+    : undefined
+  $: managedFeedbackRequestId = renderedManagedSession && workspace
+    && workspace.request.host_id === renderedManagedSession.host_id
+    && workspace.request.host_session_id === renderedManagedSession.host_session_id
+      ? workspace.request.request_id : null
+  $: renderedManagedFeedbackRequests = renderedManagedSession
+    ? $navigation.requests.filter((request) => request.host_id === renderedManagedSession!.host_id
+      && request.host_session_id === renderedManagedSession!.host_session_id)
+    : []
+  $: showManagedAgent = renderedManagedSession !== undefined
+    && (managedSessionPanels.get(renderedManagedSession.session_id) !== 'feedback' || !managedFeedbackRequestId)
   const sessionTabLabel = (view: SessionViewDescriptor) => {
     const session = $navigation.hostSessions.find(
       (candidate) =>
@@ -1379,7 +1403,33 @@
   }
 
   async function openRequest(requestId: string, _saveCurrent = true): Promise<boolean> {
-    return (await activateRequest(requestId)) === 'activated'
+    const opened = (await activateRequest(requestId)) === 'activated'
+    if (opened && workspace?.request.request_id === requestId) {
+      const session = $navigation.hostSessions.find((candidate) => candidate.management.kind === 'managed'
+        && candidate.host_id === workspace!.request.host_id
+        && candidate.host_session_id === workspace!.request.host_session_id)
+      if (session) managedSessionPanels = new Map(managedSessionPanels).set(session.session_id, 'feedback')
+    }
+    return opened
+  }
+
+  async function showManagedAgentPanel() {
+    if (!renderedManagedSession || workspaceTransitionLocked) return
+    const sessionId = renderedManagedSession.session_id
+    if (!(await saveDraftNow()) || renderedManagedSession?.session_id !== sessionId) return
+    managedSessionPanels = new Map(managedSessionPanels).set(sessionId, 'agent')
+  }
+
+  async function openNewManagedSession() {
+    if (workspaceTransitionLocked || previewMode || !(await saveDraftNow())) return
+    newManagedSessionOpen = true
+  }
+
+  async function managedSessionCreated(snapshot: ManagedSessionSnapshot) {
+    newManagedSessionOpen = false
+    managedSessionPanels = new Map(managedSessionPanels).set(snapshot.session.session_id, 'agent')
+    await navigation.refreshNavigation(true)
+    await selectRailScope(snapshot.session.host_id, snapshot.session.host_session_id)
   }
 
   function activeActionFor(requestId: string): ActiveAction {
@@ -1847,6 +1897,7 @@
       onArchiveSession={(session) => navigation.archiveHostSession(session)}
       onSetHostPinned={(hostId, pinned) => navigation.setHostPinned(hostId, pinned)}
       onSettings={() => void openSettings('general')}
+      onNewSession={previewMode ? undefined : () => void openNewManagedSession()}
     />
 
     <div class="flex min-h-0 min-w-0 flex-1" id="request-workspace-layout">
@@ -1878,6 +1929,12 @@
 
       <div class="min-h-0 min-w-0 flex-1" id="workspace-pane">
         <div class="flex h-full min-h-0 min-w-0 flex-col">
+          {#if renderedManagedSession && renderedSessionResolution?.kind !== 'missing-session'}
+            <div class="flex shrink-0 items-center gap-1 border-b px-4 py-2" role="group" aria-label={agentText($locale, 'Managed session')}>
+              <Button size="sm" variant={showManagedAgent ? 'secondary' : 'ghost'} aria-pressed={showManagedAgent} disabled={workspaceTransitionLocked} onclick={() => void showManagedAgentPanel()}>{agentText($locale, 'Agent session')}</Button>
+              <Button size="sm" variant={!showManagedAgent ? 'secondary' : 'ghost'} aria-pressed={!showManagedAgent} disabled={workspaceTransitionLocked || (!managedFeedbackRequestId && renderedManagedFeedbackRequests.length === 0)} onclick={() => { const requestId = managedFeedbackRequestId ?? renderedManagedFeedbackRequests[0]?.request_id; if (requestId) void openRequest(requestId) }}>{agentText($locale, 'Feedback requests')}<span class="ml-1 text-[10px] tabular-nums text-muted-foreground">{renderedManagedSession.request_count}</span></Button>
+            </div>
+          {/if}
           <div
             class="min-h-0 flex-1"
             role={renderedWorkspaceView ? 'tabpanel' : undefined}
@@ -1951,6 +2008,15 @@
                 onClose={() => closeWorkspaceTab(workspaceViewKey(renderedSessionResolution!.session))}
                 onOpenArchive={() => void openArchivedSessions(renderedSessionResolution!.session)}
               />
+            {:else if workbenchMounted && renderedManagedSession && showManagedAgent}
+              {#key renderedManagedSession.session_id}
+                <ManagedSessionSection
+                  transport={applicationTransport}
+                  sessionId={renderedManagedSession.session_id}
+                  feedbackRequests={renderedManagedFeedbackRequests}
+                  onOpenFeedback={async (requestId) => { await openRequest(requestId) }}
+                />
+              {/key}
             {:else if workbenchMounted}
               {#key renderedSessionView ? workspaceViewKey(renderedSessionView) : 'workspace:empty'}
               <SessionWorkbench
@@ -2063,6 +2129,19 @@
     {/if}
   </div>
 </main>
+
+<Dialog.Root open={newManagedSessionOpen} onOpenChange={(open) => { if (!creatingManagedSession) newManagedSessionOpen = open }}>
+  <Dialog.Content class="max-h-[90vh] overflow-y-auto p-0 sm:max-w-xl" showCloseButton={!creatingManagedSession}>
+    <Dialog.Title class="sr-only">{agentText($locale, 'New agent session')}</Dialog.Title>
+    <Dialog.Description class="sr-only">{agentText($locale, 'Use an absolute directory on the computer running RambleDesk.')}</Dialog.Description>
+    <NewManagedSessionSection
+      transport={applicationTransport}
+      onCreating={(creating) => { creatingManagedSession = creating }}
+      onCreated={managedSessionCreated}
+      onConfigure={() => { newManagedSessionOpen = false; void openSettings('agents') }}
+    />
+  </Dialog.Content>
+</Dialog.Root>
 
 {#if onboardingAvailable}
   <OnboardingWizard {capabilities} bind:openWizard={onboardingOpen} onClose={closeOnboarding} />

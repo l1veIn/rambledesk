@@ -10,6 +10,7 @@
     Pencil,
     Pin,
     PinOff,
+    Plus,
     Search,
     Settings,
   } from '@lucide/svelte'
@@ -20,6 +21,7 @@
   import * as Tooltip from '$lib/components/ui/tooltip'
   import type { HostSessionSummary } from '$lib/feedback'
   import { t } from '$lib/i18n'
+  import { agentText } from '$lib/agents/agentI18n'
   import { locale } from '$lib/preferences'
   import type { HostProfile } from '$lib/workbench/types'
   import { hostSessionKey, orderSessionRailSessions } from './sessionRail'
@@ -35,6 +37,7 @@
   export let onSelect: (hostId: string | null, hostSessionId: string | null) => void = () => {}
   export let onRequestSearch: (search: string) => void = () => {}
   export let onSettings: () => void = () => {}
+  export let onNewSession: (() => void) | undefined = undefined
   export let onRenameSession: (
     session: HostSessionSummary,
     title: string,
@@ -157,6 +160,11 @@
     </div>
 
     <div class="border-b border-sidebar-border p-2">
+      {#if onNewSession}
+        <Button variant="outline" size="sm" class={collapsed ? 'mb-2 w-full justify-center px-0' : 'mb-2 w-full justify-start'} aria-label={agentText($locale, 'New agent session')} title={collapsed ? agentText($locale, 'New agent session') : undefined} onclick={onNewSession}>
+          <Plus class="size-4" />{#if !collapsed}{agentText($locale, 'New agent session')}{/if}
+        </Button>
+      {/if}
       {#if !collapsed}
         <label
           class="mb-2 flex h-8 items-center gap-2 rounded-md border border-sidebar-border bg-background/80 px-2 text-[11px] text-muted-foreground focus-within:ring-2 focus-within:ring-ring/40"
@@ -206,7 +214,7 @@
                 <button
                   type="button"
                   class={[
-                    'grid h-9 w-full place-items-center rounded-md text-muted-foreground transition-colors [&_svg]:size-5',
+                    'relative grid h-9 w-full place-items-center rounded-md text-muted-foreground transition-colors [&_svg]:size-5',
                     activeHostId === session.host_id &&
                     activeHostSessionId === session.host_session_id
                       ? 'bg-sidebar-accent text-sidebar-accent-foreground'
@@ -217,6 +225,7 @@
                   onclick={() => onSelect(session.host_id, session.host_session_id)}
                 >
                   <span aria-hidden="true">{@html profile.icon_svg}</span>
+                  {#if session.management.kind === 'managed'}<span class="absolute bottom-0.5 right-0.5 rounded bg-sidebar px-0.5 text-[7px] font-medium text-primary" title={agentText($locale, 'Managed session')}>ACP</span>{/if}
                 </button>
               {:else}
                 <div
@@ -278,6 +287,7 @@
                           {@html profile.icon_svg}
                         </span>
                         <span class="min-w-0 flex-1 truncate">{session.title}</span>
+                        {#if session.management.kind === 'managed'}<span class="shrink-0 text-[8px] font-medium text-muted-foreground" title={agentText($locale, 'Managed session')}>ACP</span>{/if}
                         {#if session.pinned_at}
                           <Pin class="size-3 shrink-0 text-primary" aria-hidden="true" />
                         {/if}
