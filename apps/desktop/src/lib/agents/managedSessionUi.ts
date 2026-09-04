@@ -42,6 +42,20 @@ export function managedSessionActions(snapshot: ManagedSessionViewSnapshot, pend
   }
 }
 
+export function managedSessionComposerState(
+  snapshot: ManagedSessionViewSnapshot,
+  pendingPermissions: number,
+  pending: { busy: boolean; lifecycle: boolean; prompt: boolean },
+) {
+  const actions = managedSessionActions(snapshot, pendingPermissions)
+  return {
+    disabled: pending.busy || snapshot.deleting,
+    busy: snapshot.runtime.activity !== 'idle' || pending.prompt,
+    sendDisabled: pending.busy || pending.lifecycle || !actions.canPrompt,
+    canCancel: !pending.busy && !pending.lifecycle && actions.canCancel,
+  }
+}
+
 export function sessionConfigurationChanged(snapshot: ManagedSessionViewSnapshot, config: AgentConfig | null): boolean {
   const management = snapshot.session.management
   return management.kind === 'managed' && config?.id === management.agent_config_id

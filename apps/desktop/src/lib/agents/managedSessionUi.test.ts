@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentConfig, FeedbackRequestSummary } from '$lib/generated/feedback'
 import {
-  activitiesForSession, feedbackForSession, managedSessionActions, permissionsForSession,
+  activitiesForSession, feedbackForSession, managedSessionActions, managedSessionComposerState, permissionsForSession,
   sessionConfigurationChanged, SessionPromptDrafts,
   type ManagedSessionViewSnapshot, type SessionActivity, type SessionPermission,
 } from './managedSessionUi'
@@ -30,6 +30,17 @@ const permission = (requestId: string, sessionId = 'local-one'): SessionPermissi
 })
 
 describe('managed session views', () => {
+  it('keeps draft editing available offline and during a turn while independently gating send and cancel', () => {
+    const view = snapshot()
+    const pending = { busy: false, lifecycle: false, prompt: false }
+    expect(managedSessionComposerState(view, 0, pending)).toEqual({ disabled: false, busy: false, sendDisabled: false, canCancel: false })
+    view.runtime.connection = 'stopped'
+    expect(managedSessionComposerState(view, 0, pending)).toEqual({ disabled: false, busy: false, sendDisabled: true, canCancel: false })
+    view.runtime.connection = 'connected'
+    view.runtime.activity = 'running'
+    expect(managedSessionComposerState(view, 0, pending)).toEqual({ disabled: false, busy: true, sendDisabled: true, canCancel: true })
+    expect(managedSessionComposerState({ ...view, deleting: true }, 0, pending)).toMatchObject({ disabled: true, sendDisabled: true, canCancel: false })
+  })
   it('disables every work action while deletion is incomplete without changing the history identity', () => {
     const deleting = { ...snapshot(), deleting: true }
     const actions = managedSessionActions(deleting, 1)

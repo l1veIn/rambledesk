@@ -1,16 +1,17 @@
 <script lang="ts">
-  import { LoaderCircle, MessageSquare, Play, Send, ShieldQuestion, Square, Trash2 } from '@lucide/svelte'
+  import { LoaderCircle, MessageSquare, Play, ShieldQuestion, Square, Trash2 } from '@lucide/svelte'
   import { onDestroy, tick } from 'svelte'
   import { Button } from '$lib/components/ui/button'
   import { Badge } from '$lib/components/ui/badge'
   import type { AgentConfig, FeedbackDelivery, FeedbackRequestSummary, ResolveDeliveryAction, SessionRecovery } from '$lib/generated/feedback'
   import FeedbackDeliveryStatus from './FeedbackDeliveryStatus.svelte'
   import SessionRecoveryNotice from './SessionRecoveryNotice.svelte'
+  import AgentComposer from './composer/AgentComposer.svelte'
   import { locale } from '$lib/preferences'
   import { redactAgentMessage } from './agentConfigForm'
   import { agentText } from './agentI18n'
   import {
-    activitiesForSession, activityLabel, feedbackForSession, managedSessionActions,
+    activitiesForSession, activityLabel, feedbackForSession, managedSessionActions, managedSessionComposerState,
     permissionsForSession, sessionConfigurationChanged, sessionPromptDrafts,
     type ManagedSessionViewSnapshot, type SessionActivity, type SessionPermission,
   } from './managedSessionUi'
@@ -40,6 +41,7 @@
   let activityViewport: HTMLDivElement | undefined
   let stickToBottom = true
   let destroyed = false
+  let composer: AgentComposer | undefined
 
   $: if (snapshot.session.session_id !== activeSessionId) selectSession(snapshot.session.session_id)
   $: if (activeSessionId) sessionPromptDrafts.write(activeSessionId, prompt)
@@ -55,6 +57,7 @@
   $: permissionPending = permission ? pending.has(`${activeSessionId}:permission:${permission.request_id}`) : false
   $: lifecyclePending = pending.has(`${activeSessionId}:start`) || pending.has(`${activeSessionId}:stop`) || pending.has(`${activeSessionId}:delete`)
   $: sendPending = pending.has(`${activeSessionId}:prompt`)
+  $: composerState = managedSessionComposerState(snapshot, visiblePermissions.length, { busy, lifecycle: lifecyclePending, prompt: sendPending })
   $: if (visibleActivities.length > 0) void followActivity(visibleActivities)
 
   function tr(source: string) { return agentText($locale, source) }
@@ -102,13 +105,13 @@
     }
   }
 
-  async function send() {
-    if (busy || lifecyclePending || sendPending || !actions.canPrompt || !prompt.trim()) return
+  async function send(text: string) {
+    if (busy || lifecyclePending || sendPending || !actions.canPrompt || !text.trim()) return
     const id = activeSessionId
     const submitted = prompt
     const sendPrompt = onPrompt
     sessionPromptDrafts.write(id, submitted)
-    if (await run('prompt', () => sendPrompt(submitted.trim()))) {
+    if (await run('prompt', () => sendPrompt(text))) {
       sessionPromptDrafts.accepted(id, submitted)
       if (activeSessionId === id && prompt === submitted) prompt = sessionPromptDrafts.read(id)
     }
@@ -220,15 +223,13 @@
     </section>
   {/if}
 
-  <form class="shrink-0 space-y-2 border-t px-5 py-3" onsubmit={(event) => { event.preventDefault(); void send() }}>
-    <label class="sr-only" for={`managed-session-prompt-${snapshot.session.session_id}`}>{tr('Message the agent')}</label>
-    <textarea id={`managed-session-prompt-${snapshot.session.session_id}`} bind:value={prompt} rows="3" class="max-h-56 min-h-20 w-full resize-y rounded-lg border bg-background px-3 py-2 text-xs leading-5 outline-none focus:ring-2 focus:ring-ring" placeholder={tr('Message the agent')} disabled={busy || snapshot.deleting || pending.has(`${activeSessionId}:delete`)}></textarea>
-    <div class="flex items-center justify-between gap-3">
-      <p class="m-0 text-[10px] text-muted-foreground">{tr('Closing this view keeps the agent running.')}</p>
-      <div class="flex items-center gap-2">
-        {#if actions.canCancel}<Button type="button" variant="outline" size="sm" disabled={busy || lifecyclePending || pending.has(`${activeSessionId}:cancel`)} onclick={() => void run('cancel', onCancel)}><Square class="size-3.5" />{tr('Cancel turn')}</Button>{/if}
-        <Button type="submit" size="sm" disabled={busy || lifecyclePending || sendPending || !actions.canPrompt || !prompt.trim()}>{#if sendPending}<LoaderCircle class="size-3.5 animate-spin" />{:else}<Send class="size-3.5" />{/if}{tr('Send')}</Button>
-      </div>
-    </div>
-  </form>
+  <div class="shrink-0 space-y-2 border-t px-5 py-3">
+    {#key snapshot.session.session_id}
+      <AgentComposer bind:this={composer} value={prompt} draftKey={snapshot.session.session_id}
+        onchange={(text) => { prompt = text }} onsubmit={send}
+        disabled={composerState.disabled} busy={composerState.busy} sendDisabled={composerState.sendDisabled}
+        oncancel={composerState.canCancel ? async () => { await run('cancel', onCancel) } : undefined} />
+    {/key}
+    <p class="m-0 px-1 text-[10px] text-muted-foreground">{tr('Closing this view keeps the agent running.')}</p>
+  </div>
 </section>
