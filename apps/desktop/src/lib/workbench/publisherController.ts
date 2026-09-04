@@ -3,6 +3,7 @@
 // reactive state stays in the component via the context callbacks.
 
 import type { ApplicationTransport } from '../application/applicationTransport'
+import { readApplicationSnapshot } from '../application/readApplicationSnapshot'
 import type {
   FeedbackRequestView,
   FeedbackWorkspaceView,
@@ -80,7 +81,7 @@ export function createPublisherController(context: PublisherControllerContext) {
             uncooked_markdown: uncookedMarkdown,
           }
         : normalizePublishedFeedback(
-            await context.transport.call('readPublishedFeedback', { request_id: requestId }),
+            await readApplicationSnapshot(context.transport, 'readPublishedFeedback', { request_id: requestId }),
           )
       if (context.getWorkspace()?.request.request_id === requestId) {
         context.setPublishedFeedback(next)

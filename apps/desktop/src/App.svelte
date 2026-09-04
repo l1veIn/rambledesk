@@ -35,6 +35,7 @@
   import { createUnavailableWorkbenchCapabilities } from './lib/capabilities/unavailableCapabilities'
   import type { PublishedFeedbackAction } from './lib/publishedFeedbackAction'
   import { APPLICATION_EVENTS_STREAM } from './lib/application/applicationEvents'
+  import { readApplicationSnapshot } from './lib/application/readApplicationSnapshot'
   import {
     applicationResourcesAffectNavigation,
     applicationResourcesAffectWorkspace,
@@ -742,7 +743,7 @@
       try {
         const knownRequest = workspace?.request.request_id === prompt.request_id ? workspace.request
           : [...$navigation.requests, ...$navigation.pendingRequests].find((request) => request.request_id === prompt.request_id)
-        const request = knownRequest ?? (await applicationTransport.call('getFeedbackWorkspace', { request_id: prompt.request_id })).request
+        const request = knownRequest ?? (await readApplicationSnapshot(applicationTransport, 'getFeedbackWorkspace', { request_id: prompt.request_id })).request
         if (!isCurrent()) return
         let management = requestSessionManagement(request, $navigation.hostSessions)
         if (!management) management = requestSessionManagement(request, await applicationTransport.call('listHostSessions', undefined))
@@ -1292,7 +1293,7 @@
     return enqueueDocumentTask(async () => {
       const next = previewMode
         ? previewWorkspaceFor(requestId)
-        : await applicationTransport.call('getFeedbackWorkspace', {
+        : await readApplicationSnapshot(applicationTransport, 'getFeedbackWorkspace', {
             request_id: requestId,
           })
       if (!next) throw new Error(tr('This feedback request could not be found.'))
@@ -1323,7 +1324,7 @@
                 uncooked_markdown: next.draft.body_markdown,
               }
             : normalizePublishedFeedback(
-                await applicationTransport.call('readPublishedFeedback', {
+                await readApplicationSnapshot(applicationTransport, 'readPublishedFeedback', {
                   request_id: next.request.request_id,
                 }),
               )
@@ -1560,7 +1561,7 @@
         load: async () => {
           const target = previewMode
             ? previewWorkspaceFor(requestId)
-            : await applicationTransport.call('getFeedbackWorkspace', {
+            : await readApplicationSnapshot(applicationTransport, 'getFeedbackWorkspace', {
                 request_id: requestId,
               })
           if (!target) throw new Error(tr('This feedback request could not be found.'))

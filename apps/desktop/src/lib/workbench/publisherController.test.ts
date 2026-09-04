@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { FeedbackRequestView, FeedbackWorkspaceView } from '../feedback'
 import { TestApplicationTransport } from '../application/testApplicationTransport'
+import { StaleHttpApplicationResponseError } from '../application/httpApplicationTransport'
 import { createPublisherController } from './publisherController'
 
 function workspaceView(): FeedbackWorkspaceView {
@@ -54,6 +55,42 @@ function completedRequest(): FeedbackRequestView {
 }
 
 describe('publisherController', () => {
+  it('re-reads published feedback after an invalidation race without resubmitting or reporting failure', async () => {
+    let workspace = workspaceView()
+    let publishedReads = 0
+    const transport = new TestApplicationTransport()
+      .resolve('submitFeedback', completedRequest())
+      .handle('readPublishedFeedback', () => {
+        if (++publishedReads === 1) throw new StaleHttpApplicationResponseError()
+        return {
+          manifest: { schema_version: 1, request_id: 'request-1', title: 'Review the work', host_id: 'codex',
+            host_session_id: 'session-1', source_hint: null, submitted_at: 'today', source_revision: 4,
+            draft_revision: 4, feedback_markdown: 'feedback.md', feedback_sha256: 'sha256', attachments: [] },
+          markdown: 'Fresh published feedback', uncooked_markdown: 'Original uncooked ramble.', attachment_paths: [],
+        }
+      })
+    const setPageError = vi.fn()
+    const setPublishedFeedback = vi.fn()
+    const showSubmittedToast = vi.fn()
+    const controller = createPublisherController({
+      transport, tr: (source) => source, messageFrom: String, isPreviewMode: () => false,
+      getWorkspace: () => workspace, setWorkspace: (next) => { workspace = next }, setCompletedResult: vi.fn(),
+      setPublishedFeedback, setSavePhase: vi.fn(), setPageError, getCanSubmit: () => true,
+      getRambleCanExit: () => false, exitRamble: async () => {}, saveDraftNow: async () => true,
+      getDraftBody: () => 'Original uncooked ramble.', getSavedRevision: () => 4,
+      getCookingEnabled: () => false, getPreview: () => null, setPreview: vi.fn(),
+      setCooking: vi.fn(), cookAndPublish: vi.fn(), setSubmitting: vi.fn(), setSubmitStage: vi.fn(),
+      refreshNavigation: vi.fn(async () => {}), showSubmittedToast,
+    })
+    await controller.submitFeedback()
+    expect(transport.callsFor('submitFeedback')).toHaveLength(1)
+    expect(transport.callsFor('readPublishedFeedback')).toHaveLength(2)
+    expect(setPublishedFeedback).toHaveBeenCalledWith(expect.objectContaining({ markdown: 'Fresh published feedback' }))
+    expect(setPageError.mock.calls).toEqual([['']])
+    expect(showSubmittedToast).toHaveBeenCalledTimes(1)
+    expect(workspace.request.status).toBe('completed')
+  })
+
   it('blocks empty and whitespace-only replies before saving or publishing', async () => {
     const transport = new TestApplicationTransport(undefined)
     const saveDraftNow = vi.fn(async () => true)

@@ -7,6 +7,7 @@ import type {
   ListFeedbackRequestsOutput,
 } from '../feedback'
 import type { ApplicationTransport } from '../application/applicationTransport'
+import { readApplicationSnapshot } from '../application/readApplicationSnapshot'
 import type { WorkbenchCapabilities } from '../capabilities/workbenchCapabilities'
 import { InboxNotificationTracker, playNotificationSound, type NotificationState } from '../notifications'
 import { previewFixtures } from '../previewFixtures'
@@ -167,9 +168,9 @@ export function createNavigationController(context: NavigationControllerContext)
     try {
       await context.transport.waitUntilReady()
       const [nextInbox, nextHostSessions, profiles] = await Promise.all([
-        context.transport.call('listFeedbackInbox', undefined),
-        context.transport.call('listHostSessions', undefined),
-        context.transport.call('listHostProfiles', undefined),
+        readApplicationSnapshot(context.transport, 'listFeedbackInbox', undefined),
+        readApplicationSnapshot(context.transport, 'listHostSessions', undefined),
+        readApplicationSnapshot(context.transport, 'listHostProfiles', undefined),
       ])
       patch({
         hostProfiles: Object.fromEntries(profiles.map((profile) => [profile.id, profile])),
@@ -315,12 +316,12 @@ export function createNavigationController(context: NavigationControllerContext)
         ),
       )
     }
-    return context.transport.call('listFeedbackInbox', undefined)
+    return readApplicationSnapshot(context.transport, 'listFeedbackInbox', undefined)
   }
 
   function loadHostSessions(): Promise<HostSessionSummary[]> {
     if (context.previewMode) return Promise.resolve(previewFixtures.hostSessions)
-    return context.transport.call('listHostSessions', undefined)
+    return readApplicationSnapshot(context.transport, 'listHostSessions', undefined)
   }
 
   async function loadRequestList(cursor: string | null = null): Promise<ListFeedbackRequestsOutput> {
@@ -346,7 +347,7 @@ export function createNavigationController(context: NavigationControllerContext)
         timeRange,
       )
     }
-    const page = await context.transport.call('listFeedbackRequests', requestListInput(cursor))
+    const page = await readApplicationSnapshot(context.transport, 'listFeedbackRequests', requestListInput(cursor))
     return filterRequestPage(page, timeRange)
   }
 
