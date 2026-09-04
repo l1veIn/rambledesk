@@ -26,7 +26,7 @@ describe('settings capability sections', () => {
       Object.entries(availability)
         .filter(([, available]) => available)
         .map(([section]) => section),
-    ).toEqual(['general', 'post-processing', 'about'])
+    ).toEqual(['general', 'post-processing', 'agents', 'about'])
   })
 
   it('projects each native section from its own capability', () => {
@@ -47,6 +47,7 @@ describe('settings capability sections', () => {
       voice: true,
       shortcuts: true,
       adapters: true,
+      agents: true,
     })
   })
 

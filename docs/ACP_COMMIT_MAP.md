@@ -56,4 +56,5 @@
 - 步骤 6：输入先持久化，再进入目标实例；运行状态与连接状态分开。Activity repository 提供幂等序号、串行文本合并、工具归属、最近窗口及游标读取，原会话恢复不重复写入重放。新增按会话失效资源键，流式更新不刷新全部导航。7 项 activity 存储测试、2 项真实 stdio driver/application 集成（两实例输出隔离、忙时拒绝重复输入、停止隔离、重开数据库与原 ID 恢复）通过，core/ACP/storage clippy 通过。
 - 步骤 7：权限队列按本地会话与随机请求 ID 关联，校验选项并只消费一次；取消清空挂起权限，未及时完成时停止所属实例。取消超时按 instance 与 turn 双重关联，避免误停后续任务。5 项 runtime 集成测试、2 项 stdio 测试与 6 项进程测试通过，覆盖跨会话拒绝、非法选项、并发权限、取消后新任务及不合作后端的隔离收尾。
 - 步骤 8：11 项配置/会话命令通过同一 application facade 暴露到 Tauri 与 HTTP，新增稳定错误映射；所有 9 项 mutation（含连接检查）受 runtime generation 约束。3 项真实 HTTP/facade、失效 generation 与 Tauri 注册/输入 parity 测试通过，Desktop 编译通过；前端 106 项合同/transport/投影测试通过。
-- 步骤 9a–15：推进中，逐步验收后记录。
+- 步骤 9a：Desktop/Web 独立 Agent 设置页，支持配置列表、编辑、启用与连接检查；命令参数按数组保存，环境值默认遮蔽，配置草稿按 ID 保留，界面卸载不操作后端。20 项配置/控制器/SSR 测试与 Svelte 检查通过。
+- 步骤 9b–15：推进中，逐步验收后记录。

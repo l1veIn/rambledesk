@@ -17,6 +17,7 @@ export function settingsSectionAvailability(
     'post-processing': true,
     shortcuts: manifest.globalShortcuts.availability !== 'unavailable',
     adapters: manifest.hostIntegrationAdministration.availability !== 'unavailable',
+    agents: true,
     about: true,
   })
 }

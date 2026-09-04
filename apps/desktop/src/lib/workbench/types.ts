@@ -15,6 +15,7 @@ export type SettingsSection =
   | 'post-processing'
   | 'shortcuts'
   | 'adapters'
+  | 'agents'
   | 'about'
 
 export type ResumePrompt = {

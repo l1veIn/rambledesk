@@ -1904,6 +1904,7 @@
               />
             {:else if renderedWorkspaceView?.kind === 'settings'}
               <SettingsWorkspaceView
+                transport={applicationTransport}
                 {capabilities}
                 mcpConfiguration={genericMcpConfiguration}
                 section={settingsSection}

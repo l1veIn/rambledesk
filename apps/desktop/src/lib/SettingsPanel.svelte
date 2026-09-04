@@ -34,6 +34,9 @@
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
   import { createUnavailableWorkbenchCapabilities } from '$lib/capabilities/unavailableCapabilities'
+  import type { ApplicationTransport } from '$lib/application/applicationTransport'
+  import AgentSettingsSection from '$lib/agents/AgentSettingsSection.svelte'
+  import { agentText } from '$lib/agents/agentI18n'
   import type {
     WebAccessStatus,
     WorkbenchCapabilities,
@@ -129,6 +132,7 @@
   export let onOpenRambelleProfile: () => void = () => {}
   export let updateInstallBlocked = false
   export let capabilities: WorkbenchCapabilities = unavailableCapabilities
+  export let transport: ApplicationTransport
 
   type DataStorageView = {
     active_path: string
@@ -810,6 +814,10 @@
               {/if}
             </Tabs.Trigger>
           {/if}
+          <Tabs.Trigger value="agents" class="h-9 w-full justify-start px-2.5">
+            <TerminalSquare data-icon="inline-start" />
+            {agentText($locale, 'Agents')}
+          </Tabs.Trigger>
           <Tabs.Trigger value="about" class="h-9 w-full justify-start px-2.5">
             <Info data-icon="inline-start" />
             {tr('About')}
@@ -836,7 +844,9 @@
                           ? tr('Global shortcut keys')
                           : activeSection === 'adapters'
                             ? tr('Host adapters')
-                            : tr('Project information')}
+                            : activeSection === 'agents'
+                              ? agentText($locale, 'Agent configurations')
+                              : tr('Project information')}
             </p>
             <h2 class="m-0 mt-0.5 text-base font-semibold">
               {activeSection === 'general'
@@ -853,7 +863,9 @@
                           ? tr('Shortcuts')
                           : activeSection === 'adapters'
                             ? tr('Adapters')
-                            : tr('About')}
+                            : activeSection === 'agents'
+                              ? agentText($locale, 'Agents')
+                              : tr('About')}
             </h2>
           </div>
         </header>
@@ -1936,6 +1948,12 @@
             </Collapsible.Root>
           </Tabs.Content>
           {/if}
+
+          <Tabs.Content value="agents" class="m-0 p-6 outline-none">
+            {#if activeSection === 'agents'}
+              <AgentSettingsSection {transport} />
+            {/if}
+          </Tabs.Content>
 
           <Tabs.Content value="about" class="m-0 p-6 outline-none">
             <AboutSettings
