@@ -22,11 +22,14 @@
   $: enabledConfigs = configs.filter((config) => config.enabled)
   $: if (!configId && enabledConfigs.length) configId = enabledConfigs[0].id
   $: locked = busy || pending
+  $: envText = Object.entries(configs.find((config) => config.id === configId)?.env ?? {}).map(([key, value]) => `${key}=${value}`).join('\n')
+  $: safeError = redactAgentMessage(localError || error, envText)
   function tr(source: string) { return agentText($locale, source) }
 
   async function create() {
     if (locked) return
     localError = ''
+    const operationEnv = envText
     try {
       const input = managedSessionDraftInput(configId, cwd, title, configs)
       pending = true
@@ -35,7 +38,7 @@
       const message = cause instanceof Error ? cause.message
         : typeof cause === 'object' && cause !== null && 'message' in cause ? String(cause.message)
           : tr('Something went wrong')
-      localError = redactAgentMessage(message, Object.entries(configs.find((config) => config.id === configId)?.env ?? {}).map(([key, value]) => `${key}=${value}`).join('\n'))
+      localError = redactAgentMessage(message, operationEnv)
     } finally { pending = false }
   }
 </script>
@@ -53,5 +56,5 @@
     </fieldset>
     <Button type="submit" size="sm" disabled={locked}>{#if pending}<LoaderCircle class="size-3.5 animate-spin" />{:else}<Plus class="size-3.5" />{/if}{tr(pending ? 'Creating…' : 'Create session')}</Button>
   {/if}
-  {#if localError || error}<p role="alert" class="m-0 break-words text-xs text-destructive">{tr(localError || error)}</p>{/if}
+  {#if safeError}<p role="alert" class="m-0 break-words text-xs text-destructive">{tr(safeError)}</p>{/if}
 </form>

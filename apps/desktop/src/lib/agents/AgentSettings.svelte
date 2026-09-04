@@ -31,7 +31,7 @@
   let notice = ''
   let checkResult: { ok: boolean; message: string; details: readonly string[] } | null = null
 
-  $: if (!initialized && configs.length > 0) selectConfig(configs[0].id)
+  $: if (!initialized && !locked && configs.length > 0) selectConfig(configs[0].id)
   $: cache.remember(draft)
   $: locked = busy || pending !== null
   $: signature = JSON.stringify(draft)
@@ -41,7 +41,8 @@
   function tr(source: string) { return agentText($locale, source) }
 
   function selectConfig(id: string | null) {
-    if (locked) return
+    // Read the source state directly: deletion can select another config before the next reactive flush.
+    if (busy || pending !== null) return
     cache.remember(draft)
     initialized = true
     draft = cache.select(id, configs)
@@ -210,6 +211,7 @@
         {#if draft.id}<Button type="button" variant="outline" size="sm" disabled={locked || dirty} title={dirty ? tr('Save changes before checking this configuration.') : undefined} onclick={() => void check()}>{#if pending === 'check'}<LoaderCircle class="size-3.5 animate-spin" />{/if}{tr(pending === 'check' ? 'Checking…' : 'Check connection')}</Button><Button type="button" variant="ghost" size="icon-sm" class="ml-auto text-muted-foreground hover:text-destructive" disabled={locked} aria-label={tr('Delete configuration')} onclick={() => void remove()}><Trash2 class="size-3.5" /></Button>{:else}<Badge variant="outline">{tr('Needs checking')}</Badge>{/if}
       </div>
       <p class="m-0 text-[11px] leading-5 text-muted-foreground">{tr('Saved changes apply when an agent instance next starts.')}</p>
+      <p class="m-0 text-[11px] leading-5 text-muted-foreground">{tr('Connection checks verify the ACP handshake. Session and feedback support depend on the installed agent.')}</p>
     </form>
   </div>
 </section>
