@@ -1,6 +1,6 @@
 # ACP 托管会话提交地图
 
-> 状态：本分支迭代已完成；以下执行记录列明实现、验收与平台边界。
+> 状态：首轮实现与验收已完成；用户试用发现的问题按下方独立修正记录继续收敛。
 > 分支：`codex/acp-managed-sessions`；从更新后的 main `367eb09` 开始。
 > 术语源：[TERMINOLOGY.md](TERMINOLOGY.md)；决策：[ADR 007](adr/007-acp-managed-sessions.md)。
 
@@ -80,3 +80,7 @@
 - 步骤 16：CURRENT 术语、架构、产品职责与 ADR 已同步，新增使用说明、真实支持矩阵及两类复现入口；未验证的后端、远程 ACP、模型/模式控件、安装器等范围明确保留。术语/包边界、本地文档链接和 diff 检查通过。
 
 提交独立性额外抽查：步骤 10 与步骤 12 分别在独立 checkout、独立构建目录通过其存储/runtime/闭环测试；步骤 10 使用最高 0013 的 schema，步骤 12 使用最高 0014，不依赖后续迁移。临时审阅 checkout 与 UI 预览进程已清理，Codeg 参考库继续保留。
+
+## 用户试用后的独立修正
+
+- `fix(feedback): retain managed MCP sessions until instance shutdown`：真实日志显示托管 MCP 初始化后恰好 5 分钟空闲即关闭，稍后创建反馈收到 `404 Session not found`。私有 transport manager 改由实例生命周期管理；停止、替换或删除绑定时显式关闭所有 worker，并阻止已经认证的迟到 initialize 留下资源。验收：虚拟推进 16 分钟的真实 HTTP 回归在旧代码稳定复现 404，修复后原 MCP session 的创建/读取/恢复均成功；5 项 HTTP、2 项撤销生命周期及 4 项 ACP fixture 续接测试通过，覆盖跨会话隔离、未完成 initialize 不阻塞撤销与 worker 实际退出。此前真实模型短回合探针未覆盖长时间空闲。

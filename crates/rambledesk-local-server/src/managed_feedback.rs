@@ -17,7 +17,8 @@ use rambledesk_core::{
 };
 use rambledesk_mcp::{ManagedMcpScope, ManagedRambleDeskMcp};
 use rmcp::transport::streamable_http_server::{
-    StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
+    StreamableHttpServerConfig, StreamableHttpService,
+    session::{SessionManager, local::LocalSessionManager},
 };
 use tokio::sync::{Mutex, RwLock};
 use tokio_util::sync::CancellationToken;
@@ -33,14 +34,36 @@ struct Binding {
     token: AccessToken,
     scope: Arc<ManagedMcpScope>,
     service: ManagedService,
+    sessions: Arc<LocalSessionManager>,
+    active: RwLock<bool>,
     cancellation: CancellationToken,
 }
 
 impl Binding {
     async fn revoke(&self) {
-        // Drain admitted tool operations before cancelling their transports.
-        self.scope.revoke().await;
+        // Wake admitted HTTP requests first, including clients that never finish
+        // sending initialize's body. Their read leases cannot stall revocation.
         self.cancellation.cancel();
+        // An HTTP request may already have authenticated when revoke removes the
+        // binding. Serialize transport creation with closure so no late initialize
+        // can leave a new worker behind after the owned manager is drained.
+        let mut active = self.active.write().await;
+        *active = false;
+        // Tool operations admitted before revocation still finish before delete.
+        self.scope.revoke().await;
+        let ids: Vec<_> = self
+            .sessions
+            .sessions
+            .read()
+            .await
+            .keys()
+            .cloned()
+            .collect();
+        for id in ids {
+            // rmcp's HTTP cancellation token closes SSE streams, not the session
+            // worker. Remove every owned handle and explicitly close its worker.
+            let _ = self.sessions.close_session(&id).await;
+        }
     }
 }
 
@@ -165,6 +188,12 @@ impl ManagedFeedbackProvider for LocalManagedFeedbackProvider {
         let handler_scope = scope.clone();
         // A session manager is owned by exactly one binding. A valid bearer for
         // another scope can never select this scope's handler by MCP-Session-Id.
+        let mut sessions = LocalSessionManager::default();
+        // Human feedback commonly takes longer than rmcp's default five-minute
+        // idle limit. This private manager lives until its Agent instance is
+        // revoked; Binding::revoke explicitly closes all of its transports.
+        sessions.session_config.keep_alive = None;
+        let sessions = Arc::new(sessions);
         let service = ManagedService::new(
             move || {
                 Ok(ManagedRambleDeskMcp::new(
@@ -172,7 +201,7 @@ impl ManagedFeedbackProvider for LocalManagedFeedbackProvider {
                     handler_scope.clone(),
                 ))
             },
-            Default::default(),
+            sessions.clone(),
             StreamableHttpServerConfig::default()
                 .with_legacy_session_mode(true)
                 .with_allowed_origins(listener.allowed_origins)
@@ -189,6 +218,8 @@ impl ManagedFeedbackProvider for LocalManagedFeedbackProvider {
                 token,
                 scope,
                 service,
+                sessions,
+                active: RwLock::new(true),
                 cancellation,
             }),
         );
@@ -213,7 +244,16 @@ async fn handle_request(
         Ok(binding) => binding,
         Err(status) => return status.into_response(),
     };
-    match binding.service.clone().call(request).await {
+    let active = binding.active.read().await;
+    if !*active {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let response = tokio::select! {
+        biased;
+        _ = binding.cancellation.cancelled() => return StatusCode::UNAUTHORIZED.into_response(),
+        response = binding.service.clone().call(request) => response,
+    };
+    match response {
         Ok(response) => response.into_response(),
         Err(infallible) => match infallible {},
     }
@@ -225,3 +265,7 @@ pub(crate) fn managed_router(provider: Arc<LocalManagedFeedbackProvider>) -> Rou
         Router::new().fallback(handle_request).with_state(provider),
     )
 }
+
+#[cfg(test)]
+#[path = "managed_feedback_tests.rs"]
+mod tests;

@@ -160,6 +160,81 @@ fn request_input(request_id: &str) -> Value {
 }
 
 #[tokio::test]
+async fn managed_transport_survives_long_user_idle_until_its_binding_is_revoked()
+-> anyhow::Result<()> {
+    let fixture = Fixture::new().await?;
+    let a = fixture.provider.bind(&fixture.sessions[0]).await?;
+    let b = fixture.provider.bind(&fixture.sessions[1]).await?;
+    let sa = fixture.initialize(&a).await?;
+    let sb = fixture.initialize(&b).await?;
+
+    // Prevent the paused runtime from automatically skipping further deadlines
+    // while advancing exactly sixteen idle minutes. No keepalive request is sent.
+    let runnable = tokio::spawn(async {
+        loop {
+            tokio::task::yield_now().await;
+        }
+    });
+    tokio::time::pause();
+    tokio::time::advance(Duration::from_secs(16 * 60)).await;
+    for _ in 0..32 {
+        tokio::task::yield_now().await;
+    }
+    tokio::time::resume();
+    runnable.abort();
+
+    let request_id = uuid::Uuid::now_v7().to_string();
+    let result = fixture
+        .call(&a, &sa, "request_feedback", request_input(&request_id))
+        .await?;
+    assert_ne!(result["isError"], true, "{result}");
+    assert_eq!(
+        fixture
+            .store
+            .get_request(&request_id)
+            .await?
+            .managed_session_id
+            .as_deref(),
+        Some("managed-a")
+    );
+    for name in ["get_feedback", "recover_feedback"] {
+        let result = fixture
+            .call(&a, &sa, name, json!({"request_id":request_id}))
+            .await?;
+        assert_ne!(result["isError"], true, "{result}");
+    }
+    let list = json!({"jsonrpc":"2.0","id":3,"method":"tools/list"});
+    assert_eq!(
+        fixture
+            .post(&b, Some(&sa), list.clone())
+            .send()
+            .await?
+            .status(),
+        reqwest::StatusCode::NOT_FOUND
+    );
+    fixture.provider.revoke("managed-a").await?;
+    assert_eq!(
+        fixture
+            .post(&a, Some(&sa), list.clone())
+            .send()
+            .await?
+            .status(),
+        reqwest::StatusCode::UNAUTHORIZED
+    );
+    assert!(
+        fixture
+            .post(&b, Some(&sb), list)
+            .send()
+            .await?
+            .status()
+            .is_success()
+    );
+    fixture.server.shutdown().await?;
+    fixture.store.close().await;
+    Ok(())
+}
+
+#[tokio::test]
 async fn managed_tools_fix_identity_and_reject_cross_scope_reads_and_external_spoofing()
 -> anyhow::Result<()> {
     let fixture = Fixture::new().await?;
