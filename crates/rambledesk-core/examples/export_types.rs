@@ -16,6 +16,10 @@ use rambledesk_core::{
     SessionProtocol, SessionRecord, SetHostPinnedInput, SetHostSessionPinnedInput,
     SubmitFeedbackInput,
 };
+use rambledesk_core::{
+    AgentConnectionCheck, AgentSessionCapabilities, ManagedSessionSnapshot, SessionActivityState,
+    SessionConnectionState, SessionRuntime,
+};
 use ts_rs::{Config, TS};
 
 fn exported<T: TS>() -> String {
@@ -49,6 +53,12 @@ fn exported_feedback_package_content() -> String {
 
 fn main() -> std::io::Result<()> {
     let declarations = [
+        exported::<AgentSessionCapabilities>(),
+        exported::<SessionConnectionState>(),
+        exported::<SessionActivityState>(),
+        exported::<SessionRuntime>(),
+        exported::<ManagedSessionSnapshot>(),
+        exported::<AgentConnectionCheck>(),
         exported::<SessionProtocol>(),
         exported::<SessionManagement>(),
         exported::<AgentConfig>(),

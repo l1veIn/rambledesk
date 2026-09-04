@@ -4,7 +4,7 @@ use agent_client_protocol::{
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc, time::Duration};
-use tokio::{process::Child, sync::oneshot, task::JoinHandle};
+use tokio::{sync::oneshot, task::JoinHandle};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 #[derive(Clone, Deserialize)]
@@ -55,7 +55,7 @@ pub enum AcpEvent {
 
 pub struct AcpConnection {
     connection: ConnectionTo<Agent>,
-    child: Child,
+    child: crate::process::OwnedProcess,
     task: JoinHandle<Result<(), agent_client_protocol::Error>>,
     stop: Option<oneshot::Sender<()>>,
     stderr: JoinHandle<()>,
@@ -70,10 +70,10 @@ impl AcpConnection {
     ) -> Result<Self, AcpError> {
         let mut child =
             crate::process::spawn(&launch.command, &launch.args, &launch.env, &launch.cwd)?;
-        let stdin = child.stdin.take().ok_or(AcpError::Closed)?;
-        let stdout = child.stdout.take().ok_or(AcpError::Closed)?;
+        let stdin = child.take_stdin().ok_or(AcpError::Closed)?;
+        let stdout = child.take_stdout().ok_or(AcpError::Closed)?;
         let stderr = tokio::spawn(crate::process::drain_stderr(
-            child.stderr.take().ok_or(AcpError::Closed)?,
+            child.take_stderr().ok_or(AcpError::Closed)?,
         ));
         let (ready_tx, ready_rx) = oneshot::channel();
         let (stop, stopped) = oneshot::channel();
@@ -146,8 +146,7 @@ impl AcpConnection {
                 let _ = stop.send(());
                 task.abort();
                 let _ = task.await;
-                let _ = child.kill().await;
-                let _ = child.wait().await;
+                let _ = child.kill_and_reap().await;
                 stderr.abort();
                 match other {
                     Err(_) => Err(AcpError::Timeout("initialize")),
@@ -160,6 +159,18 @@ impl AcpConnection {
 
     pub fn process_id(&self) -> Option<u32> {
         self.child.id()
+    }
+    pub fn capabilities(&self) -> rambledesk_core::AgentSessionCapabilities {
+        rambledesk_core::AgentSessionCapabilities {
+            load_session: self.initialized.agent_capabilities.load_session,
+            resume_session: self
+                .initialized
+                .agent_capabilities
+                .session_capabilities
+                .resume
+                .is_some(),
+            http_mcp: self.initialized.agent_capabilities.mcp_capabilities.http,
+        }
     }
     pub fn is_closed(&self) -> bool {
         self.task.is_finished()

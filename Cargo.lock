@@ -4816,7 +4816,9 @@ name = "rambledesk-acp"
 version = "0.3.4"
 dependencies = [
  "agent-client-protocol",
+ "async-trait",
  "futures",
+ "libc",
  "rambledesk-core",
  "serde",
  "serde_json",
@@ -4824,6 +4826,7 @@ dependencies = [
  "thiserror 2.0.19",
  "tokio",
  "tokio-util",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

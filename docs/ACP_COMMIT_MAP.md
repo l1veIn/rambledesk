@@ -52,4 +52,5 @@
 - 步骤 2：新增 `rambledesk-acp`（官方 SDK 2.0.0、稳定协议 v1），stdio 初始化/能力/创建/输入/取消/原 ID load 或 resume/显式 close 与回收。自动 fixture 覆盖取消、权限默认拒绝、恢复能力与 close 顺序；crate tests、clippy、术语/包边界检查通过。社区 0.7.0、0.8.0 与官方 dsh 的真实 MCP、上下文恢复证据见 [后端探针](ACP_BACKEND_PROBE.md)；Rust smoke 另验证实际回复和同 ID 恢复。首条 UI 验收采用社区 0.8.0，官方 dsh 保留作为 resume 差异对照。未宣告 client fs/terminal 能力。
 - 步骤 3：启动配置 CRUD、稳定本地会话 ID、typed management、一次性 remote binding 与配置引用保护已完成；migration 0011 保留历史 external 语义，生成 TS 合同同步。51 项 storage 测试（含 v10→v11 migration）与 core 凭据 Debug 脱敏测试通过。
 - 步骤 4：列表暴露 `session_id` / management；零请求托管会话支持标题、时间、搜索和现有会话操作，删除末条反馈保留本地与远端绑定。旧外部聚合语义保持；53 项 storage 与 21 项导航 TS 测试通过。
-- 步骤 5–15（含 9a / 9b）：推进中，逐步验收后记录。
+- 步骤 5：`SessionApplication` 与 driver port 创建/重试/启动/停止独占实例，进程细节留在 ACP 库。Windows 暂停启动后加入私有 Job Object 再执行；Unix 持有未回收 leader 的进程组，避免按过期 PID 清理。正常 EOF、悬挂后代、超时、Drop、握手失败、close 拒绝/超时与另一实例隔离共 6 项过程测试通过；失败保留会话、并发启动幂等、关闭 runtime 中断启动共 3 项应用测试通过，clippy 通过。Unix 代码尚待相应平台 CI 实跑。
+- 步骤 6–15（含 9a / 9b）：推进中，逐步验收后记录。
