@@ -61,7 +61,7 @@ const dependencyContracts = new Map([
   ["crates/rambledesk-local-server/Cargo.toml", ["rambledesk-core", "rambledesk-mcp"]],
   ["crates/rambledesk-hosts/Cargo.toml", ["rambledesk-core"]],
   ["crates/rambledesk-speech/Cargo.toml", []],
-  ["crates/rambledesk-cli/Cargo.toml", ["rambledesk-core", "rambledesk-local-server", "rambledesk-storage"]],
+  ["crates/rambledesk-cli/Cargo.toml", ["rambledesk-acp", "rambledesk-core", "rambledesk-local-server", "rambledesk-mcp", "rambledesk-storage"]],
   [
     "apps/desktop/src-tauri/Cargo.toml",
     ["rambledesk-acp", "rambledesk-core", "rambledesk-hosts", "rambledesk-local-server", "rambledesk-mcp", "rambledesk-speech", "rambledesk-storage"],
@@ -70,7 +70,8 @@ const dependencyContracts = new Map([
 for (const [manifest, expected] of dependencyContracts) {
   const contents = readFileSync(join(root, manifest), "utf8");
   const dependencies = contents.split(/\[dependencies\]\r?\n/, 2)[1]?.split(/\r?\n\[/, 1)[0] ?? "";
-  const actual = [...dependencies.matchAll(/^(rambledesk-[a-z-]+)\.workspace\s*=\s*true$/gm)]
+  // Include inline workspace declarations with feature flags as dependency edges.
+  const actual = [...dependencies.matchAll(/^(rambledesk-[a-z-]+)(?:\.workspace\s*=\s*true\s*$|\s*=\s*\{[^}]*\bworkspace\s*=\s*true\b[^}]*\})/gm)]
     .map((match) => match[1])
     .sort();
   if (actual.join("\0") !== [...expected].sort().join("\0")) {
