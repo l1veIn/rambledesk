@@ -9,6 +9,7 @@
   export let configs: AgentConfig[] = []
   export let busy = false
   export let error = ''
+  export let showHeading = true
   export let initialConfigId = ''
   export let initialCwd = ''
   export let onCreate: (input: CreateManagedSessionDraftInput) => Promise<void> | void
@@ -44,7 +45,7 @@
 </script>
 
 <form class="w-full max-w-xl space-y-5 rounded-xl border bg-background p-5" onsubmit={(event) => { event.preventDefault(); void create() }}>
-  <div><h2 class="m-0 text-base font-medium">{tr('New agent session')}</h2></div>
+  {#if showHeading}<div><h2 class="m-0 text-base font-medium">{tr('New agent session')}</h2></div>{/if}
   {#if enabledConfigs.length === 0}
     <p class="m-0 text-xs leading-5 text-muted-foreground">{tr('Configure an agent before creating a session.')}</p>
     {#if onConfigure}<Button type="button" variant="outline" size="sm" onclick={onConfigure}>{tr('Agent configurations')}</Button>{/if}

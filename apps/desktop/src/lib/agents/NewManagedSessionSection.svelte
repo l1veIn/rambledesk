@@ -21,4 +21,4 @@
   }
 </script>
 
-<NewManagedSessionForm configs={$settings.configs} busy={$settings.loading} error={$settings.error} onCreate={create} {onConfigure} />
+<NewManagedSessionForm configs={$settings.configs} busy={$settings.loading} error={$settings.error} showHeading={false} onCreate={create} {onConfigure} />

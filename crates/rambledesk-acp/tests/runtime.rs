@@ -100,6 +100,21 @@ async fn permission_queue_is_scoped_validated_and_consumed_once() {
     .await
     .unwrap();
     let first = permissions(&app, id(&first)).await;
+    let details = first
+        .permissions
+        .iter()
+        .find_map(|permission| permission.details.as_deref())
+        .unwrap();
+    assert!(details.contains("cargo check"));
+    assert!(details.contains("C:/fixture-project/Cargo.toml:4"));
+    assert_eq!(
+        first
+            .permissions
+            .iter()
+            .filter(|permission| permission.details.is_none())
+            .count(),
+        1
+    );
     assert_eq!(
         first.runtime.activity,
         SessionActivityState::WaitingPermission

@@ -25,7 +25,7 @@ const activity = (id: string, sessionId: string, text: string): SessionActivity 
   id, session_id: sessionId, kind: 'tool_call', text, tool_call_id: `tool-${id}`, created_at: '2026-09-04',
 })
 const permission = (requestId: string, sessionId = 'local-one'): SessionPermission => ({
-  request_id: requestId, session_id: sessionId, title: 'Run command?',
+  request_id: requestId, session_id: sessionId, title: 'Run command?', details: null,
   options: [{ option_id: 'approve', name: 'Allow once', kind: 'allow_once' }],
 })
 

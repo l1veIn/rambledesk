@@ -3,6 +3,7 @@ mod connection;
 mod disconnect;
 mod driver;
 mod observer;
+mod permission_details;
 mod permissions;
 mod process;
 

@@ -40,6 +40,7 @@ impl AgentSessionConnection for Connection {
                     request_id: "permission-one".into(),
                     session_id: self.session_id.clone(),
                     title: "Review fixture access".into(),
+                    details: None,
                     options: vec![SessionPermissionOption {
                         option_id: "allow".into(),
                         name: "Allow once".into(),

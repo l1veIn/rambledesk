@@ -50,6 +50,7 @@
   $: actions = managedSessionActions(snapshot, visiblePermissions.length)
   $: configurationChanged = sessionConfigurationChanged(snapshot, config)
   $: envText = Object.entries(config?.env ?? {}).map(([key, value]) => `${key}=${value}`).join('\n')
+  $: permissionDetails = redactAgentMessage(permission?.details ?? '', envText)
   $: visibleError = redactAgentMessage(errors[snapshot.session.session_id] || error || snapshot.runtime.last_error || '', envText)
   $: permissionPending = permission ? pending.has(`${activeSessionId}:permission:${permission.request_id}`) : false
   $: lifecyclePending = pending.has(`${activeSessionId}:start`) || pending.has(`${activeSessionId}:stop`) || pending.has(`${activeSessionId}:delete`)
@@ -203,6 +204,14 @@
   {#if permission}
     <section class="max-h-72 shrink-0 overflow-y-auto border-t border-amber-500/25 bg-amber-500/5 px-5 py-3" aria-label={tr('Agent permission')}>
       <div class="flex items-start gap-2"><ShieldQuestion class="mt-0.5 size-4 shrink-0 text-amber-600" /><div class="min-w-0 flex-1"><h3 class="m-0 whitespace-pre-wrap break-words text-xs font-medium">{permission.title}</h3>{#if visiblePermissions.length > 1}<p class="mb-0 mt-1 text-[11px] text-muted-foreground">{tr('More permissions waiting')}: {visiblePermissions.length - 1}</p>{/if}</div></div>
+      {#if permissionDetails.trim()}
+        {#key permission.request_id}
+          <details open class="mt-3 rounded-md border border-amber-500/25 bg-background/50 px-3 py-2 text-xs">
+            <summary class="cursor-pointer select-none font-medium">{tr('Operation details')}</summary>
+            <pre class="mb-0 mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-5">{permissionDetails}</pre>
+          </details>
+        {/key}
+      {/if}
       <div class="mt-3 flex flex-wrap gap-2">
         {#each permission.options as option (option.option_id)}<Button variant={option.kind.startsWith('reject') ? 'outline' : 'secondary'} size="sm" disabled={busy || lifecyclePending || permissionPending || !actions.canCancel} onclick={() => respond(permission.request_id, option.option_id)}>{option.name}</Button>{/each}
         <Button variant="ghost" size="sm" disabled={busy || lifecyclePending || permissionPending || !actions.canCancel} onclick={() => respond(permission.request_id, null)}>{tr('Cancel permission')}</Button>

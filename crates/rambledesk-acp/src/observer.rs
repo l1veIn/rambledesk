@@ -45,6 +45,7 @@ impl ProtocolObserver for ManagedObserver {
                 let permission = rambledesk_core::SessionPermission {
                     request_id,
                     session_id: self.local_session_id.clone(),
+                    details: crate::permission_details::describe(&request.tool_call.fields),
                     title: request
                         .tool_call
                         .fields

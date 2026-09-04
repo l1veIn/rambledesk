@@ -16,6 +16,8 @@ pub struct SessionPermission {
     pub request_id: String,
     pub session_id: String,
     pub title: String,
+    // Bounded plain text describing the requested operation, when supplied.
+    pub details: Option<String>,
     pub options: Vec<SessionPermissionOption>,
 }
 

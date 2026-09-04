@@ -9,6 +9,37 @@ vi.mock('$lib/preferences', async () => {
 })
 
 describe('Managed session rendering', () => {
+  it('shows only the active permission details as escaped, redacted text before approval', () => {
+    const snapshot: ManagedSessionViewSnapshot = {
+      deleting: false,
+      session: { session_id: 'local-details', host_id: 'dsh', host_session_id: 'feedback-details', title: 'Permission context',
+        created_at: 'today', updated_at: 'today',
+        management: { kind: 'managed', protocol: 'acp', agent_config_id: 'config', cwd: '/repo', remote_session_id: 'remote' } },
+      runtime: { connection: 'connected', activity: 'waiting_permission', instance_id: 'instance', config_updated_at: null,
+        capabilities: { load_session: true, resume_session: false, http_mcp: true }, last_error: null },
+    }
+    const action = vi.fn()
+    const { body } = render(ManagedSessionWorkspace, { props: {
+      snapshot, config: { id: 'config', name: 'Agent', host_id: 'dsh', protocol: 'acp', enabled: true,
+        command: 'agent', args: [], env: { TOKEN: 'private-permission-token' }, created_at: 'today', updated_at: 'today' },
+      permissions: [
+        { request_id: 'active', session_id: 'local-details', title: 'Run command?', details: 'command: cat /repo/input\nTOKEN=private-permission-token\n<script>untrusted()</script>', options: [{ option_id: 'allow', name: 'Allow once', kind: 'allow_once' }] },
+        { request_id: 'foreign', session_id: 'another-session', title: 'Foreign permission', details: 'Foreign operation details', options: [] },
+        { request_id: 'queued', session_id: 'local-details', title: 'Queued permission', details: 'Queued operation details', options: [] },
+      ],
+      onPrompt: action, onStart: action, onStop: action, onCancel: action, onRespondPermission: action, onOpenFeedback: action,
+    } })
+    expect(body).toContain('Operation details')
+    expect(body).toMatch(/<details[^>]*open/)
+    expect(body).toContain('command: cat /repo/input\nTOKEN=[redacted]')
+    expect(body).toMatch(/&lt;script(?:&gt;|>)untrusted\(\)&lt;\/script(?:&gt;|>)/)
+    expect(body).not.toContain('<script>')
+    expect(body).not.toContain('private-permission-token')
+    expect(body).not.toContain('Foreign operation details')
+    expect(body).not.toContain('Queued operation details')
+    expect(action).not.toHaveBeenCalled()
+  })
+
   it('keeps history and deletion available while disabling work for a deleting session', () => {
     const snapshot: ManagedSessionViewSnapshot = {
       deleting: true,
@@ -71,9 +102,9 @@ describe('Managed session rendering', () => {
         { id: 'two', session_id: 'local-two', kind: 'agent_message', text: 'Foreign project output', tool_call_id: null, created_at: '2026-09-04' },
       ],
       permissions: [
-        { request_id: 'first', session_id: 'local-one', title: 'First permission title', options: [{ option_id: 'once', name: 'Allow precisely once', kind: 'allow_once' }] },
-        { request_id: 'foreign', session_id: 'local-two', title: 'Foreign permission title', options: [] },
-        { request_id: 'second', session_id: 'local-one', title: 'Second permission title', options: [] },
+        { request_id: 'first', session_id: 'local-one', title: 'First permission title', details: null, options: [{ option_id: 'once', name: 'Allow precisely once', kind: 'allow_once' }] },
+        { request_id: 'foreign', session_id: 'local-two', title: 'Foreign permission title', details: null, options: [] },
+        { request_id: 'second', session_id: 'local-one', title: 'Second permission title', details: null, options: [] },
       ],
       onPrompt: runtimeAction, onCancel: runtimeAction, onStart: runtimeAction, onStop: runtimeAction,
       onRespondPermission: runtimeAction, onDelete: runtimeAction, onOpenFeedback: runtimeAction,
@@ -84,6 +115,7 @@ describe('Managed session rendering', () => {
     expect(body).toContain('Allow precisely once')
     expect(body).not.toContain('Second permission title')
     expect(body).not.toContain('Foreign permission title')
+    expect(body).not.toContain('Operation details')
     expect(runtimeAction).not.toHaveBeenCalled()
   })
 })

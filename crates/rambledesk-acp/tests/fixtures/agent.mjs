@@ -46,7 +46,8 @@ createInterface({input:process.stdin}).on('line',line => {
           options:[{optionId:'allow',name:'Allow',kind:'allow_once'}]}})
       } else if (params.prompt[0].text === 'permission_pair') {
         for (const number of [1, 2]) send({id:`permission-${number}`,method:'session/request_permission',params:{sessionId:params.sessionId,
-          toolCall:{toolCallId:`tool-${number}`,title:`Run command ${number}`,status:'pending'},
+          toolCall:{toolCallId:`tool-${number}`,title:`Run command ${number}`,status:'pending',
+            ...(number === 1 ? {rawInput:{command:'cargo check',cwd:'C:/fixture-project'},locations:[{path:'C:/fixture-project/Cargo.toml',line:4}]} : {})},
           options:[{optionId:'allow',name:'Allow',kind:'allow_once'}]}})
       } else if (params.prompt[0].text !== 'wait') {
         for(const text of ['fixture ',`reply: ${params.prompt[0].text}`])
