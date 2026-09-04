@@ -41,12 +41,18 @@ export function contentText(block: SessionContentBlock): string {
   switch (block.type) {
     case 'text': return block.text
     case 'diff': return generateUnifiedDiff(block.old_text ?? '', block.new_text, block.path) ?? block.new_text
-    case 'resource': return [block.name || block.uri, block.text].filter(Boolean).join('\n')
+    case 'resource': return [block.name || embeddedAttachmentName(block.uri) || block.uri, block.text].filter(Boolean).join('\n')
     case 'image': return block.uri || `[${block.mime_type}]`
     case 'audio': return `[${block.mime_type}]`
     case 'terminal': return `Terminal: ${block.terminal_id}`
     case 'unsupported': return block.label
   }
+}
+
+export function embeddedAttachmentName(uri: string): string | null {
+  if (!uri.startsWith('ramble-attachment://')) return null
+  try { return decodeURIComponent(new URL(uri).pathname.slice(1)) || null }
+  catch { return null }
 }
 
 export function activityQuoteText(activity: SessionActivity): string {

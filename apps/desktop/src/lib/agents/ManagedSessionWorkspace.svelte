@@ -3,12 +3,14 @@
   import { onDestroy, tick } from 'svelte'
   import { Button } from '$lib/components/ui/button'
   import { Badge } from '$lib/components/ui/badge'
-  import type { AgentConfig, FeedbackDelivery, FeedbackRequestSummary, ResolveDeliveryAction, SessionConfigChange, SessionRecovery } from '$lib/generated/feedback'
+  import type { AgentConfig, AgentPromptCapabilities, FeedbackDelivery, FeedbackRequestSummary, ResolveDeliveryAction, SessionConfigChange, SessionPromptContent, SessionRecovery } from '$lib/generated/feedback'
   import FeedbackDeliveryStatus from './FeedbackDeliveryStatus.svelte'
   import SessionRecoveryNotice from './SessionRecoveryNotice.svelte'
   import AgentComposer from './composer/AgentComposer.svelte'
   import SessionTimeline from './chat/SessionTimeline.svelte'
   import SessionConfigurationControls from './configuration/SessionConfigurationControls.svelte'
+  import { attachmentAccept, canAttachFiles, readPromptFiles, validatePromptAttachments, type PromptAttachment } from './attachments/promptAttachments'
+  import { attachmentText } from './attachments/attachmentText'
   import { locale } from '$lib/preferences'
   import { redactAgentMessage } from './agentConfigForm'
   import { agentText } from './agentI18n'
@@ -29,6 +31,7 @@
   export let busy = false
   export let error = ''
   export let onPrompt: (text: string) => Promise<void> | void
+  export let onPromptContent: ((text: string, content: SessionPromptContent[]) => Promise<void> | void) | undefined = undefined
   export let onSetConfiguration: ((change: SessionConfigChange) => Promise<void> | void) | undefined = undefined
   export let onCancel: () => Promise<void> | void
   export let onStart: () => Promise<void> | void
@@ -45,6 +48,9 @@
   let stickToBottom = true
   let destroyed = false
   let composer: AgentComposer | undefined
+  let attachments: readonly PromptAttachment[] = []
+  let fileInput: HTMLInputElement | undefined
+  let chooserTarget: { sessionId: string; capabilities: AgentPromptCapabilities } | null = null
 
   $: if (snapshot.session.session_id !== activeSessionId) selectSession(snapshot.session.session_id)
   $: if (activeSessionId) sessionPromptDrafts.write(activeSessionId, prompt)
@@ -61,16 +67,20 @@
   $: lifecyclePending = pending.has(`${activeSessionId}:start`) || pending.has(`${activeSessionId}:stop`) || pending.has(`${activeSessionId}:delete`)
   $: sendPending = pending.has(`${activeSessionId}:prompt`)
   $: configurationPending = pending.has(`${activeSessionId}:configuration`)
-  $: composerState = managedSessionComposerState(snapshot, visiblePermissions.length, { busy, lifecycle: lifecyclePending || configurationPending, prompt: sendPending })
+  $: attachmentPending = pending.has(`${activeSessionId}:attachments`)
+  $: composerState = managedSessionComposerState(snapshot, visiblePermissions.length, { busy, lifecycle: lifecyclePending || configurationPending || attachmentPending, prompt: sendPending })
+  $: promptCapabilities = snapshot.runtime.capabilities.prompt
+  $: acceptsFiles = Boolean(onPromptContent) && canAttachFiles(promptCapabilities)
   $: runActive = snapshot.runtime.connection === 'connected' && snapshot.runtime.activity !== 'idle'
   $: if (visibleActivities.length > 0) void followActivity(visibleActivities)
 
-  function tr(source: string) { return agentText($locale, source) }
+  function tr(source: string) { return attachmentText($locale, agentText($locale, source)) }
 
   function selectSession(id: string) {
     if (activeSessionId) sessionPromptDrafts.write(activeSessionId, prompt)
     activeSessionId = id
     prompt = sessionPromptDrafts.read(id)
+    attachments = sessionPromptDrafts.readAttachments(id)
     stickToBottom = true
   }
 
@@ -92,8 +102,7 @@
     stickToBottom = activityViewport.scrollHeight - activityViewport.scrollTop - activityViewport.clientHeight < 80
   }
 
-  async function run(name: string, operation: () => Promise<void> | void): Promise<boolean> {
-    const id = activeSessionId
+  async function run(name: string, operation: () => Promise<void> | void, id = activeSessionId): Promise<boolean> {
     const key = `${id}:${name}`
     if (pending.has(key)) return false
     const operationEnv = envText
@@ -116,14 +125,58 @@
   }
 
   async function send(text: string) {
-    if (busy || lifecyclePending || configurationPending || sendPending || !actions.canPrompt || !text.trim()) return
+    if (busy || lifecyclePending || configurationPending || attachmentPending || sendPending || !actions.canPrompt || (!text.trim() && attachments.length === 0)) return
     const id = activeSessionId
+    const sendPromptContent = onPromptContent
+    try {
+      if (attachments.length && !sendPromptContent) throw new Error('This session does not support typed attachments.')
+      validatePromptAttachments(text, attachments, promptCapabilities)
+    } catch (cause) {
+      errors = { ...errors, [id]: cause instanceof Error ? cause.message : 'Could not send these attachments.' }
+      return
+    }
     const submission = sessionPromptDrafts.beginSubmission(id, prompt)
     const sendPrompt = onPrompt
     prompt = ''
-    if (!await run('prompt', () => sendPrompt(text))) {
-      if (sessionPromptDrafts.restoreSubmission(submission) && activeSessionId === id) prompt = sessionPromptDrafts.read(id)
+    attachments = []
+    if (!await run('prompt', () => submission.attachments.length
+      ? sendPromptContent!(text, submission.attachments.map((attachment) => attachment.content)) : sendPrompt(text))) {
+      if (sessionPromptDrafts.restoreSubmission(submission) && activeSessionId === id) {
+        prompt = sessionPromptDrafts.read(id)
+        attachments = sessionPromptDrafts.readAttachments(id)
+      }
     }
+  }
+
+  function chooseFiles() {
+    if (!acceptsFiles || composerState.disabled || attachmentPending || !fileInput) return
+    chooserTarget = { sessionId: activeSessionId, capabilities: { ...promptCapabilities } }
+    fileInput.value = ''
+    fileInput.click()
+  }
+
+  function selectedFiles(event: Event) {
+    const files = Array.from((event.currentTarget as HTMLInputElement).files ?? [])
+    const target = chooserTarget
+    chooserTarget = null
+    if (files.length && target) void addFiles(files, target)
+  }
+
+  async function addFiles(files: readonly File[], target = { sessionId: activeSessionId, capabilities: { ...promptCapabilities } }) {
+    if (!files.length) return
+    await run('attachments', async () => {
+      const added = await readPromptFiles(files, target.capabilities)
+      const next = [...sessionPromptDrafts.readAttachments(target.sessionId), ...added]
+      validatePromptAttachments(sessionPromptDrafts.read(target.sessionId), next, target.capabilities)
+      sessionPromptDrafts.writeAttachments(target.sessionId, next)
+      if (activeSessionId === target.sessionId) attachments = sessionPromptDrafts.readAttachments(target.sessionId)
+    }, target.sessionId)
+  }
+
+  function removeAttachment(id: string) {
+    if (composerState.disabled) return
+    attachments = attachments.filter((attachment) => attachment.id !== id)
+    sessionPromptDrafts.writeAttachments(activeSessionId, attachments)
   }
 
   async function setConfiguration(change: SessionConfigChange) {
@@ -143,7 +196,7 @@
     const id = activeSessionId
     if (await run('delete', onDelete)) {
       sessionPromptDrafts.forgetSession(id)
-      if (activeSessionId === id) prompt = ''
+      if (activeSessionId === id) { prompt = ''; attachments = [] }
     }
   }
 
@@ -232,9 +285,12 @@
   {/if}
 
   <div class="shrink-0 space-y-2 border-t px-5 py-3">
+    <input bind:this={fileInput} type="file" class="hidden" tabindex="-1" multiple accept={attachmentAccept(promptCapabilities)} onchange={selectedFiles} aria-label={tr('Attach files')} />
     {#key snapshot.session.session_id}
       <AgentComposer bind:this={composer} value={prompt} draftKey={snapshot.session.session_id}
         onchange={editPrompt} onsubmit={send}
+        {attachments} onAddAttachments={acceptsFiles ? chooseFiles : undefined} onRemoveAttachment={removeAttachment}
+        onPasteFiles={acceptsFiles ? (files) => addFiles(files) : undefined}
         disabled={composerState.disabled} busy={composerState.busy} sendDisabled={composerState.sendDisabled}
         oncancel={composerState.canCancel ? async () => { await run('cancel', onCancel) } : undefined}>
         <svelte:fragment slot="footer">

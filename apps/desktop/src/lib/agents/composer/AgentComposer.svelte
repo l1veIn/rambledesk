@@ -172,7 +172,7 @@
     if (disabled || sendDisabled || busy || sending || adding || !editor || editor.view.composing) return
     const text = serializeDocToText(editor.state.doc).trim()
     if (!text && attachments.length === 0) return
-    // The host clears an acknowledged draft. Never erase newer typing here.
+      // The host owns submit/restore draft transitions. Never erase newer typing here.
     void runAction('submit', () => onsubmit(text))
   }
 

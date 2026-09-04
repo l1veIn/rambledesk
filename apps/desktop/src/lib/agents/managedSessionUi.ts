@@ -1,4 +1,5 @@
 import type { AgentConfig, FeedbackRequestSummary, ManagedSessionSnapshot, SessionActivity as GeneratedSessionActivity, SessionPermission as GeneratedSessionPermission, SessionRecord } from '$lib/generated/feedback'
+import type { PromptAttachment } from './attachments/promptAttachments'
 
 export type ManagedSessionViewSnapshot = Readonly<Pick<ManagedSessionSnapshot, 'session' | 'runtime' | 'deleting'>>
 
@@ -80,38 +81,54 @@ export function activityLabel(kind: SessionActivity['kind']): string {
 }
 
 /** View state only; no credentials, runtime ownership, or transport side effects. */
-export type PromptSubmission = Readonly<{ sessionId: string; text: string; clearedRevision: number }>
+export type PromptSubmission = Readonly<{ sessionId: string; text: string; attachments: readonly PromptAttachment[]; clearedRevision: number }>
 
 export class SessionPromptDrafts {
   readonly #drafts = new Map<string, string>()
+  readonly #attachments = new Map<string, readonly PromptAttachment[]>()
   readonly #revisions = new Map<string, number>()
   readonly #deletedSessions = new Set<string>()
 
   read(sessionId: string): string { return this.#drafts.get(sessionId) ?? '' }
+  readAttachments(sessionId: string): readonly PromptAttachment[] { return this.#attachments.get(sessionId) ?? [] }
+  writeAttachments(sessionId: string, attachments: readonly PromptAttachment[]): void {
+    if (this.#deletedSessions.has(sessionId)) return
+    const previous = this.readAttachments(sessionId)
+    if (attachments.length === previous.length && attachments.every((attachment, index) => attachment === previous[index])) return
+    this.#attachments.set(sessionId, [...attachments])
+    this.#revisions.set(sessionId, (this.#revisions.get(sessionId) ?? 0) + 1)
+  }
   write(sessionId: string, text: string): void {
     if (this.#deletedSessions.has(sessionId) || this.read(sessionId) === text) return
     this.#drafts.set(sessionId, text)
     this.#revisions.set(sessionId, (this.#revisions.get(sessionId) ?? 0) + 1)
   }
-  remove(sessionId: string): void { this.write(sessionId, ''); this.#drafts.delete(sessionId) }
+  remove(sessionId: string): void {
+    this.write(sessionId, '')
+    this.writeAttachments(sessionId, [])
+    this.#drafts.delete(sessionId)
+    this.#attachments.delete(sessionId)
+  }
   forgetSession(sessionId: string): void { this.remove(sessionId); this.#deletedSessions.add(sessionId) }
 
   beginSubmission(sessionId: string, text: string): PromptSubmission {
     this.write(sessionId, text)
+    const attachments = this.readAttachments(sessionId)
     this.remove(sessionId)
-    return { sessionId, text, clearedRevision: this.#revisions.get(sessionId) ?? 0 }
+    return { sessionId, text, attachments, clearedRevision: this.#revisions.get(sessionId) ?? 0 }
   }
 
   restoreSubmission(submission: PromptSubmission): boolean {
-    const { sessionId, text, clearedRevision } = submission
-    if (this.#deletedSessions.has(sessionId) || this.read(sessionId) !== '' || (this.#revisions.get(sessionId) ?? 0) !== clearedRevision) return false
+    const { sessionId, text, attachments, clearedRevision } = submission
+    if (this.#deletedSessions.has(sessionId) || this.read(sessionId) !== '' || this.readAttachments(sessionId).length > 0 || (this.#revisions.get(sessionId) ?? 0) !== clearedRevision) return false
     this.write(sessionId, text)
+    this.writeAttachments(sessionId, attachments)
     return true
   }
 
   accepted(sessionId: string, submittedText: string): void {
     // Do not clear a newer draft written while the previous prompt was sending.
-    if (this.read(sessionId) === submittedText) this.remove(sessionId)
+    if (this.read(sessionId) === submittedText && this.readAttachments(sessionId).length === 0) this.remove(sessionId)
   }
 }
 

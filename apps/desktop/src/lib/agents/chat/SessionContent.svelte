@@ -2,7 +2,7 @@
   import type { SessionContentBlock } from '$lib/generated/feedback'
   import { locale } from '$lib/preferences'
   import { chatText } from './chat-text'
-  import { inlineMediaSource } from './activity-presentation'
+  import { embeddedAttachmentName, inlineMediaSource } from './activity-presentation'
   import DiffPreview from './DiffPreview.svelte'
   import MessageMarkdown from './MessageMarkdown.svelte'
   import UserMessageText from './UserMessageText.svelte'
@@ -33,9 +33,10 @@
         <audio controls src={source} aria-label={chatText($locale, 'Audio output')} class="max-w-full"></audio>
       {:else}<p class="m-0 text-xs text-muted-foreground">{chatText($locale, 'Media preview unavailable')} · {block.mime_type}</p>{/if}
     {:else if block.type === 'resource'}
+      {@const filename = embeddedAttachmentName(block.uri)}
       <section class="space-y-2 rounded-md border p-3 text-xs" aria-label={chatText($locale, 'Resource')}>
-        {#if block.name}<p class="m-0 font-medium">{block.name}</p>{/if}
-        <ResourceLink uri={block.uri} />
+        {#if block.name || filename}<p class="m-0 font-medium">{block.name || filename}</p>{/if}
+        {#if !filename}<ResourceLink uri={block.uri} />{/if}
         {#if block.text}<pre class="m-0 max-h-80 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-5">{block.text}</pre>{/if}
       </section>
     {:else if block.type === 'terminal'}

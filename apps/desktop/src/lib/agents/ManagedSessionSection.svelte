@@ -67,6 +67,7 @@
     {error}
     busy={deletionPending}
     onPrompt={session.prompt}
+    onPromptContent={session.promptContent}
     onSetConfiguration={session.setConfiguration}
     onCancel={session.cancel}
     onStart={session.startAgent}
