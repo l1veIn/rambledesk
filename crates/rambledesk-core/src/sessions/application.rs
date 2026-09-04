@@ -180,7 +180,12 @@ impl SessionApplication {
                 .into(),
                 details: vec![format!(
                     "Load: {}; resume: {}; HTTP MCP: {}; managed feedback: {}",
-                    caps.load_session, caps.resume_session, caps.http_mcp, caps.feedback_transport.map(|transport| transport.as_str()).unwrap_or("unavailable")
+                    caps.load_session,
+                    caps.resume_session,
+                    caps.http_mcp,
+                    caps.feedback_transport
+                        .map(|transport| transport.as_str())
+                        .unwrap_or("unavailable")
                 )],
             },
             Err(error) => AgentConnectionCheck {

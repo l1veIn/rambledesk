@@ -226,7 +226,9 @@ pub fn run() {
                         rambledesk_acp::AcpSessionDriver::with_feedback_companion(
                             std::env::current_exe()?,
                         )
-                        .with_pi_extension_root(app.path().app_local_data_dir()?.join("pi-runtime")),
+                        .with_pi_extension_root(
+                            app.path().app_local_data_dir()?.join("pi-runtime"),
+                        ),
                     ),
                 )
                 .with_change_observer(application_change_hub.clone())

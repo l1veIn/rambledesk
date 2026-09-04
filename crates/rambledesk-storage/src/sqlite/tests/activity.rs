@@ -7,10 +7,10 @@ use rambledesk_core::{
 
 use super::*;
 
-#[path = "structured_activity.rs"]
-mod structured;
 #[path = "activity_history.rs"]
 mod history;
+#[path = "structured_activity.rs"]
+mod structured;
 
 async fn setup() -> (TestWorkspace, SqliteFeedbackStore) {
     let workspace = TestWorkspace::new().await;

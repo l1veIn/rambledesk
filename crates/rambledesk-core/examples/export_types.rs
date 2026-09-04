@@ -1,5 +1,4 @@
 use rambledesk_core::FeedbackTransport;
-use rambledesk_core::{ListManagedSessionActivityInput, ManagedSessionActivityPage};
 use rambledesk_core::{
     AgentCatalogCheck, AgentCatalogEntry, AgentCheckStatus, AgentConnectionKind, AgentDependency,
     AgentDependencyInspection, AgentDistribution, AgentInspection, AgentInstallJob,
@@ -11,6 +10,7 @@ use rambledesk_core::{
 use rambledesk_core::{
     AgentPromptCapabilities, SendManagedPromptContentInput, SessionPromptContent,
 };
+use rambledesk_core::{ListManagedSessionActivityInput, ManagedSessionActivityPage};
 use rambledesk_core::{
     SessionConfigChange, SessionConfigChoice, SessionConfigKind, SessionConfigOption,
     SessionConfigValue, SessionConfiguration, SessionMode, SessionModeCatalog, SessionModel,
@@ -88,7 +88,6 @@ fn main() -> std::io::Result<()> {
         exported::<FeedbackTransport>(),
         exported::<ListManagedSessionActivityInput>(),
         exported::<ManagedSessionActivityPage>(),
-
         exported::<AgentPromptCapabilities>(),
         exported::<SessionPromptContent>(),
         exported::<SendManagedPromptContentInput>(),
