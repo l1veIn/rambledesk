@@ -80,14 +80,34 @@ export function activityLabel(kind: SessionActivity['kind']): string {
 }
 
 /** View state only; no credentials, runtime ownership, or transport side effects. */
+export type PromptSubmission = Readonly<{ sessionId: string; text: string; clearedRevision: number }>
+
 export class SessionPromptDrafts {
   readonly #drafts = new Map<string, string>()
+  readonly #revisions = new Map<string, number>()
   readonly #deletedSessions = new Set<string>()
 
   read(sessionId: string): string { return this.#drafts.get(sessionId) ?? '' }
-  write(sessionId: string, text: string): void { if (!this.#deletedSessions.has(sessionId)) this.#drafts.set(sessionId, text) }
-  remove(sessionId: string): void { this.#drafts.delete(sessionId) }
-  forgetSession(sessionId: string): void { this.#deletedSessions.add(sessionId); this.remove(sessionId) }
+  write(sessionId: string, text: string): void {
+    if (this.#deletedSessions.has(sessionId) || this.read(sessionId) === text) return
+    this.#drafts.set(sessionId, text)
+    this.#revisions.set(sessionId, (this.#revisions.get(sessionId) ?? 0) + 1)
+  }
+  remove(sessionId: string): void { this.write(sessionId, ''); this.#drafts.delete(sessionId) }
+  forgetSession(sessionId: string): void { this.remove(sessionId); this.#deletedSessions.add(sessionId) }
+
+  beginSubmission(sessionId: string, text: string): PromptSubmission {
+    this.write(sessionId, text)
+    this.remove(sessionId)
+    return { sessionId, text, clearedRevision: this.#revisions.get(sessionId) ?? 0 }
+  }
+
+  restoreSubmission(submission: PromptSubmission): boolean {
+    const { sessionId, text, clearedRevision } = submission
+    if (this.#deletedSessions.has(sessionId) || this.read(sessionId) !== '' || (this.#revisions.get(sessionId) ?? 0) !== clearedRevision) return false
+    this.write(sessionId, text)
+    return true
+  }
 
   accepted(sessionId: string, submittedText: string): void {
     // Do not clear a newer draft written while the previous prompt was sending.

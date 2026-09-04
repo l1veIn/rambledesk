@@ -104,6 +104,30 @@ describe('managed session views', () => {
 })
 
 describe('session prompt drafts', () => {
+  it('clears an accepted send attempt immediately and restores a failed attempt only when untouched', () => {
+    const drafts = new SessionPromptDrafts()
+    drafts.write('one', 'First task')
+    const submitted = drafts.beginSubmission('one', 'First task')
+    expect(drafts.read('one')).toBe('')
+    drafts.write('two', 'Another session')
+    expect(drafts.restoreSubmission(submitted)).toBe(true)
+    expect(drafts.read('one')).toBe('First task')
+    expect(drafts.read('two')).toBe('Another session')
+  })
+
+  it('never overwrites next-turn edits or revives a deleted session after an older send fails', () => {
+    const drafts = new SessionPromptDrafts()
+    const first = drafts.beginSubmission('one', 'First task')
+    drafts.write('one', 'Next task')
+    expect(drafts.restoreSubmission(first)).toBe(false)
+    expect(drafts.read('one')).toBe('Next task')
+    drafts.write('one', '')
+    expect(drafts.restoreSubmission(first)).toBe(false)
+    const deleted = drafts.beginSubmission('two', 'Deleted task')
+    drafts.forgetSession('two')
+    expect(drafts.restoreSubmission(deleted)).toBe(false)
+  })
+
   it('keeps drafts distinct across session view switches', () => {
     const drafts = new SessionPromptDrafts()
     drafts.write('local-one', 'Work in project one')

@@ -74,6 +74,11 @@
     stickToBottom = true
   }
 
+  function editPrompt(text: string) {
+    prompt = text
+    sessionPromptDrafts.write(activeSessionId, text)
+  }
+
   async function followActivity(_activities: readonly SessionActivity[]) {
     const id = activeSessionId
     await tick()
@@ -113,12 +118,11 @@
   async function send(text: string) {
     if (busy || lifecyclePending || configurationPending || sendPending || !actions.canPrompt || !text.trim()) return
     const id = activeSessionId
-    const submitted = prompt
+    const submission = sessionPromptDrafts.beginSubmission(id, prompt)
     const sendPrompt = onPrompt
-    sessionPromptDrafts.write(id, submitted)
-    if (await run('prompt', () => sendPrompt(text))) {
-      sessionPromptDrafts.accepted(id, submitted)
-      if (activeSessionId === id && prompt === submitted) prompt = sessionPromptDrafts.read(id)
+    prompt = ''
+    if (!await run('prompt', () => sendPrompt(text))) {
+      if (sessionPromptDrafts.restoreSubmission(submission) && activeSessionId === id) prompt = sessionPromptDrafts.read(id)
     }
   }
 
@@ -230,7 +234,7 @@
   <div class="shrink-0 space-y-2 border-t px-5 py-3">
     {#key snapshot.session.session_id}
       <AgentComposer bind:this={composer} value={prompt} draftKey={snapshot.session.session_id}
-        onchange={(text) => { prompt = text }} onsubmit={send}
+        onchange={editPrompt} onsubmit={send}
         disabled={composerState.disabled} busy={composerState.busy} sendDisabled={composerState.sendDisabled}
         oncancel={composerState.canCancel ? async () => { await run('cancel', onCancel) } : undefined}>
         <svelte:fragment slot="footer">
