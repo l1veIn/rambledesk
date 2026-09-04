@@ -11,7 +11,7 @@ const MARKER: &str = "RambleDesk managed Agent packages v1\n";
 // Rust canonicalization uses verbatim Windows paths. Node's module resolver does
 // not reliably accept those as CLI arguments; keep canonical paths for boundary
 // checks and use ordinary absolute paths when crossing the subprocess boundary.
-pub(super) fn command_path(path: &Path) -> String {
+pub(crate) fn command_path(path: &Path) -> String {
     let value = path.to_string_lossy();
     #[cfg(windows)]
     {

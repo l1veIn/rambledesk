@@ -8,6 +8,7 @@ mod feedback_transport;
 mod observer;
 mod permission_details;
 mod permissions;
+pub mod pi_wrapper;
 mod process;
 mod prompt_content;
 mod session_configuration;

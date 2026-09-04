@@ -14,6 +14,107 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 pub use catalog::catalog;
+pub(crate) use paths::command_path;
+
+/// Resolve Pi's actual entry point without executing a shell/npm shim. The
+/// wrapper uses the same package metadata and containment checks as installs.
+pub(crate) async fn resolve_native_pi(
+    command: &str,
+) -> Result<(String, Vec<String>), CatalogError> {
+    let path = if std::path::Path::new(command).is_absolute() {
+        PathBuf::from(command)
+    } else {
+        find_executable(command).ok_or(CatalogError::CommandUnavailable)?
+    };
+    let node = find_executable("node").unwrap_or_default();
+    let extension = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default();
+    let launch = if matches!(
+        extension.to_ascii_lowercase().as_str(),
+        "cmd" | "bat" | "ps1"
+    ) {
+        let parent = path.parent().ok_or(CatalogError::CommandUnavailable)?;
+        let prefixes = [parent.to_path_buf(), parent.join("../..")];
+        let mut found = None;
+        for prefix in prefixes {
+            if let Ok((_, launch)) =
+                paths::package(&prefix, "@earendil-works/pi-coding-agent", "pi", &node).await
+            {
+                found = Some(launch);
+                break;
+            }
+        }
+        found.ok_or(CatalogError::CommandUnavailable)?
+    } else {
+        paths::launch(&path, &node).await?
+    };
+    Ok((launch.command, launch.args))
+}
+
+pub(crate) async fn resolve_managed_pi_dependency(
+    command: &str,
+    args: &[String],
+) -> Option<(String, Vec<String>)> {
+    let prefix = pi_acp_package_prefix(command, args).await?;
+    let node = find_executable("node")?;
+    let (_, launch) = paths::package(&prefix, "@earendil-works/pi-coding-agent", "pi", &node)
+        .await
+        .ok()?;
+    Some((launch.command, launch.args))
+}
+
+pub(crate) async fn pi_acp_package_prefix(command: &str, args: &[String]) -> Option<PathBuf> {
+    let basename = std::path::Path::new(command)
+        .file_name()?
+        .to_str()?
+        .to_ascii_lowercase();
+    let entry = if matches!(basename.as_str(), "node" | "node.exe") {
+        PathBuf::from(args.first()?)
+    } else if std::path::Path::new(command).is_absolute() {
+        PathBuf::from(command)
+    } else {
+        find_executable(command)?
+    };
+    let entry = tokio::fs::canonicalize(entry).await.ok()?;
+    let node = find_executable("node")?;
+    // Windows npm launchers are scripts, not executable Agent binaries. Resolve
+    // their colocated package exactly as the installer does, without a shell.
+    if matches!(
+        basename.as_str(),
+        "pi-acp.cmd" | "pi-acp.bat" | "pi-acp.ps1"
+    ) {
+        let parent = entry.parent()?;
+        for prefix in [parent.to_path_buf(), parent.join("../..")] {
+            if paths::package(&prefix, "pi-acp", "pi-acp", &node)
+                .await
+                .is_ok()
+            {
+                return tokio::fs::canonicalize(prefix).await.ok();
+            }
+        }
+        return None;
+    }
+    let mut directory = entry.parent()?;
+    for _ in 0..6 {
+        if let Ok(meta) = paths::json(&directory.join("package.json")).await
+            && meta["name"] == "pi-acp"
+        {
+            let prefix = directory.parent()?.parent()?;
+            let (_, launch) = paths::package(prefix, "pi-acp", "pi-acp", &node)
+                .await
+                .ok()?;
+            let actual = launch.args.first().unwrap_or(&launch.command);
+            if tokio::fs::canonicalize(actual).await.ok()? == entry {
+                return tokio::fs::canonicalize(prefix).await.ok();
+            }
+            return None;
+        }
+        directory = directory.parent()?;
+    }
+    None
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum CatalogError {

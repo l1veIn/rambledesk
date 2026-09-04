@@ -104,6 +104,21 @@ impl OwnedProcess {
         Ok(exited.then_some(status))
     }
 
+    /// Wait without imposing a session lifetime. Periodic observation preserves
+    /// the Unix leader until all descendants can be cleaned before reaping it.
+    pub(crate) async fn wait_for_exit(&mut self) -> Result<std::process::ExitStatus, AcpError> {
+        loop {
+            if self
+                .ownership
+                .wait_before_cleanup(&mut self.child, Duration::from_secs(60))
+                .await?
+            {
+                self.ownership.terminate()?;
+                return self.child.wait().await.map_err(Into::into);
+            }
+        }
+    }
+
     async fn reap_with_grace(&mut self, grace: Duration) -> Result<(), AcpError> {
         // Usually moved into the protocol connection; closing a still-owned stdin
         // also makes this operation useful during failed setup.

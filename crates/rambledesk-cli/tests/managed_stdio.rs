@@ -16,6 +16,9 @@ use tokio::{
     process::{Child, ChildStdin, ChildStdout, Command},
 };
 
+#[path = "support/native_pi.rs"]
+mod native_pi;
+
 struct Fixture {
     _directory: tempfile::TempDir,
     store: SqliteFeedbackStore,
@@ -81,6 +84,58 @@ struct Companion {
     next_id: u32,
 }
 impl Companion {
+    fn spawn_pi(
+        endpoint: &ManagedFeedbackEndpoint,
+        extension: &std::path::Path,
+        heartbeat: &std::path::Path,
+    ) -> anyhow::Result<Self> {
+        let node = rambledesk_core::find_executable("node").context("Node fixture")?;
+        let native =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/pi_rpc.mjs");
+        let mut child = Command::new(env!("CARGO_BIN_EXE_rambledesk"))
+            .args([
+                "--mode",
+                "rpc",
+                "--no-themes",
+                "--session",
+                "fixture-session.json",
+            ])
+            .env(rambledesk_acp::pi_wrapper::WRAPPER_ENV, "1")
+            .env(rambledesk_acp::pi_wrapper::COMMAND_ENV, node)
+            .env(
+                rambledesk_acp::pi_wrapper::ARGS_ENV,
+                serde_json::to_string(&vec![native])?,
+            )
+            .env(rambledesk_acp::pi_wrapper::EXTENSION_ENV, extension)
+            .env("PI_ACP_PI_COMMAND", env!("CARGO_BIN_EXE_rambledesk"))
+            .env(rambledesk_mcp::managed_stdio::URL_ENV, &endpoint.url)
+            .env(
+                rambledesk_mcp::managed_stdio::TOKEN_ENV,
+                &endpoint.bearer_token,
+            )
+            .env("FIXTURE_HEARTBEAT", heartbeat)
+            .env("RUST_LOG", "trace")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()?;
+        let input = child.stdin.take();
+        let output = BufReader::new(child.stdout.take().context("stdout")?);
+        let mut stderr = child.stderr.take().context("stderr")?;
+        let stderr = tokio::spawn(async move {
+            let mut bytes = vec![];
+            stderr.read_to_end(&mut bytes).await.unwrap();
+            bytes
+        });
+        Ok(Self {
+            child,
+            input,
+            output,
+            stderr,
+            next_id: 0,
+        })
+    }
     fn spawn(endpoint: &ManagedFeedbackEndpoint) -> anyhow::Result<Self> {
         let mut child = Command::new(env!("CARGO_BIN_EXE_rambledesk"))
             .arg("managed-mcp-stdio")
@@ -270,6 +325,78 @@ async fn real_stdio_companions_preserve_private_identity_idempotency_and_revocat
     let mut stale = Companion::spawn(&a)?;
     assert!(stale.initialize().await.is_err());
     stale.stop(&a.bearer_token).await?;
+    fixture.server.shutdown().await?;
+    fixture.store.close().await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn managed_pi_extension_uses_private_tools_without_wait_or_duplicate_continuation()
+-> anyhow::Result<()> {
+    let fixture = Fixture::new().await?;
+    let a = fixture.provider.bind(&fixture.sessions[0]).await?;
+    let b = fixture.provider.bind(&fixture.sessions[1]).await?;
+    let extension = rambledesk_acp::pi_wrapper::install_managed_extension(
+        &fixture._directory.path().join("pi-runtime"),
+    )
+    .await?;
+    let heartbeat = fixture._directory.path().join("pi-heartbeat");
+    let mut pi = Companion::spawn_pi(&a, &extension, &heartbeat)?;
+    let mut other = Companion::spawn(&b)?;
+    pi.initialize().await?;
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while !heartbeat.exists() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .context("owned fixture descendant starts")?;
+    other.initialize().await?;
+    let listed = pi.rpc("tools/list", json!({})).await?;
+    assert_eq!(listed["result"]["tools"].as_array().unwrap().len(), 3);
+    let created=pi.call("request_feedback",json!({"what_happened":"Managed Pi fixture","actions":[{"id":"review","instruction":"Review Pi fixture"}],"host_session_id":"managed-b","wait":true})).await?;
+    assert_ne!(created["result"]["isError"], true, "{created}");
+    assert_eq!(created["result"]["structuredContent"]["status"], "waiting");
+    let id = created["result"]["structuredContent"]["request_id"]
+        .as_str()
+        .context("request id")?;
+    assert_eq!(
+        fixture
+            .store
+            .get_request(id)
+            .await?
+            .managed_session_id
+            .as_deref(),
+        Some("managed-a")
+    );
+    assert_eq!(
+        other.call("get_feedback", json!({"request_id":id})).await?["result"]["structuredContent"]
+            ["code"],
+        "REQUEST_NOT_FOUND"
+    );
+    let recovered = pi.call("recover_feedback", json!({})).await?;
+    assert_eq!(recovered["result"]["structuredContent"]["request_id"], id);
+    fixture.provider.revoke("managed-a").await?;
+    assert_eq!(
+        pi.call("get_feedback", json!({"request_id":id})).await?["result"]["isError"],
+        true
+    );
+    pi.stop(&a.bearer_token).await?;
+    let before = tokio::fs::read(&heartbeat).await?;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(
+        before,
+        tokio::fs::read(&heartbeat).await?,
+        "wrapper EOF cleans the descendant tree"
+    );
+    assert_eq!(
+        other.rpc("tools/list", json!({})).await?["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .len(),
+        3
+    );
+    other.stop(&b.bearer_token).await?;
     fixture.server.shutdown().await?;
     fixture.store.close().await;
     Ok(())

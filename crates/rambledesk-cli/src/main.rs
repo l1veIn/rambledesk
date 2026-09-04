@@ -49,6 +49,9 @@ enum Command {
 }
 
 fn main() -> anyhow::Result<()> {
+    if rambledesk_acp::pi_wrapper::process_requested() {
+        std::process::exit(rambledesk_acp::pi_wrapper::run_process());
+    }
     // No tracing subscriber in companion mode, even when RUST_LOG=trace: SDK
     // diagnostics can include capability headers and model-supplied tool data.
     if std::env::args_os()
