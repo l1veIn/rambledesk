@@ -5,6 +5,10 @@ use ts_rs::TS;
 
 use super::SessionRepositoryError;
 
+#[path = "activity_content.rs"]
+mod content;
+pub use content::*;
+
 pub const MAX_SESSION_ACTIVITY_PAGE_SIZE: u32 = 1_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
@@ -57,6 +61,9 @@ pub struct SessionActivity {
     pub turn_id: Option<String>,
     pub kind: SessionActivityKind,
     pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub content: Option<SessionActivityContent>,
     pub tool_call_id: Option<String>,
     pub created_at: String,
 }
@@ -68,6 +75,7 @@ pub struct NewSessionActivity {
     pub turn_id: Option<String>,
     pub kind: SessionActivityKind,
     pub text: String,
+    pub content: Option<SessionActivityContent>,
     pub tool_call_id: Option<String>,
     pub created_at: String,
 }
@@ -106,5 +114,15 @@ pub trait SessionActivityRepository: Send + Sync {
         id: &str,
         session_id: &str,
         text: &str,
+    ) -> Result<SessionActivity, SessionRepositoryError>;
+
+    /// Replaces a consistent display summary and typed content together after
+    /// verifying session ownership. Aggregation is serialized by the application.
+    async fn update_activity_content(
+        &self,
+        id: &str,
+        session_id: &str,
+        text: &str,
+        content: &SessionActivityContent,
     ) -> Result<SessionActivity, SessionRepositoryError>;
 }

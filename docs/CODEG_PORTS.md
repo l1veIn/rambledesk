@@ -7,4 +7,6 @@ Codeg 作者和贡献者保留其版权；根仓库为 Apache-2.0，完整条款
 | RambleDesk 模块 | 上游来源 | 修改及验收 |
 | --- | --- | --- |
 
+| 结构化会话记录与工具补丁 | `src-tauri/src/acp/session_state.rs`、`types.rs` | 适配持久化存储、旧历史兼容和大小限制；迁移、补丁、流式顺序与隔离测试通过，详见 [记录](CODEG_STRUCTURED_ACTIVITY.md)。 |
+
 后续每个移植提交添加实际条目。第三方依赖各自遵循其许可证，不因 Codeg 根许可证而改变。

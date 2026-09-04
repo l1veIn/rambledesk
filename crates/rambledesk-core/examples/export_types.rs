@@ -1,3 +1,4 @@
+use rambledesk_core::{SessionActivityContent, SessionContentBlock, SessionToolKind, SessionToolStatus, SessionToolLocation, SessionToolCall};
 use std::{fs, path::PathBuf};
 
 use rambledesk_core::{
@@ -62,6 +63,13 @@ fn exported_feedback_package_content() -> String {
 
 fn main() -> std::io::Result<()> {
     let declarations = [
+        exported::<SessionActivityContent>(),
+        exported::<SessionContentBlock>(),
+        exported::<SessionToolKind>(),
+        exported::<SessionToolStatus>(),
+        exported::<SessionToolLocation>(),
+        exported::<SessionToolCall>(),
+
         exported::<SessionRecoveryStatus>(),
         exported::<SessionRecovery>(),
         exported::<FeedbackDelivery>(),

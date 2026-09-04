@@ -1,4 +1,6 @@
 use super::*;
+#[path = "activity_aggregation.rs"]
+mod aggregation;
 use async_trait::async_trait;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -281,6 +283,25 @@ impl SessionApplication {
         }
         drop(live);
         let (kind, text, tool_call_id, append) = match event {
+            AgentSessionEvent::MessageChunk {
+                kind,
+                block,
+                truncated,
+            } => {
+                self.record_message_chunk(session_id, &mut stream, kind, block, truncated)
+                    .await?;
+                self.session_changed(session_id);
+                return Ok(());
+            }
+            AgentSessionEvent::ToolCall {
+                tool_call_id,
+                patch,
+            } => {
+                self.record_tool_patch(session_id, &mut stream, tool_call_id, patch)
+                    .await?;
+                self.session_changed(session_id);
+                return Ok(());
+            }
             AgentSessionEvent::Activity {
                 kind,
                 text,
@@ -386,6 +407,7 @@ impl SessionApplication {
                 turn_id: turn.map(Into::into),
                 kind,
                 text,
+                content: None,
                 tool_call_id,
                 created_at: self.clock.now_rfc3339(),
             })

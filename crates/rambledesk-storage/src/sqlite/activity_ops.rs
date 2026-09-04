@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use rambledesk_core::{
-    MAX_SESSION_ACTIVITY_PAGE_SIZE, NewSessionActivity, SessionActivity, SessionActivityKind,
-    SessionActivityRepository, SessionRepositoryError,
+    MAX_SESSION_ACTIVITY_PAGE_SIZE, NewSessionActivity, SessionActivity, SessionActivityContent,
+    SessionActivityKind, SessionActivityRepository, SessionRepositoryError,
 };
 use sqlx::{Row, sqlite::SqliteRow};
 
@@ -24,6 +24,11 @@ impl SessionActivityRepository for SqliteFeedbackStore {
         {
             return Err(SessionRepositoryError::InvalidInput);
         }
+        let content_json = activity
+            .content
+            .as_ref()
+            .map(serialize_content)
+            .transpose()?;
         let mut transaction = self
             .pool
             .begin_with("BEGIN IMMEDIATE")
@@ -40,6 +45,7 @@ impl SessionActivityRepository for SqliteFeedbackStore {
                 || stored.turn_id != activity.turn_id
                 || stored.kind != activity.kind
                 || stored.text != activity.text
+                || stored.content != activity.content
                 || stored.tool_call_id != activity.tool_call_id
                 || stored.created_at != activity.created_at
             {
@@ -66,12 +72,12 @@ impl SessionActivityRepository for SqliteFeedbackStore {
         .await
         .map_err(storage_error)?;
         sqlx::query(
-            "INSERT INTO session_activity (id, session_id, sequence, turn_id, kind, text, tool_call_id, created_at) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT INTO session_activity (id, session_id, sequence, turn_id, kind, text, tool_call_id, created_at, content_json) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         )
         .bind(&activity.id).bind(&activity.session_id).bind(sequence).bind(&activity.turn_id)
         .bind(activity.kind.as_str()).bind(&activity.text).bind(&activity.tool_call_id)
-        .bind(&activity.created_at).execute(&mut *transaction).await.map_err(storage_error)?;
+        .bind(&activity.created_at).bind(content_json).execute(&mut *transaction).await.map_err(storage_error)?;
         sqlx::query("UPDATE host_sessions SET updated_at = MAX(updated_at, ?2) WHERE id = ?1")
             .bind(&activity.session_id)
             .bind(&activity.created_at)
@@ -88,6 +94,7 @@ impl SessionActivityRepository for SqliteFeedbackStore {
             turn_id: activity.turn_id,
             kind: activity.kind,
             text: activity.text,
+            content: activity.content,
             tool_call_id: activity.tool_call_id,
             created_at: activity.created_at,
         })
@@ -188,6 +195,29 @@ impl SessionActivityRepository for SqliteFeedbackStore {
         transaction.commit().await.map_err(storage_error)?;
         Ok(updated)
     }
+
+    async fn update_activity_content(
+        &self,
+        id: &str,
+        session_id: &str,
+        text: &str,
+        content: &SessionActivityContent,
+    ) -> Result<SessionActivity, SessionRepositoryError> {
+        let content_json = serialize_content(content)?;
+        let row = sqlx::query(
+            "UPDATE session_activity SET text = ?3, content_json = ?4 \
+             WHERE id = ?1 AND session_id = ?2 RETURNING *",
+        )
+        .bind(id)
+        .bind(session_id)
+        .bind(text)
+        .bind(content_json)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(storage_error)?
+        .ok_or(SessionRepositoryError::SessionNotFound)?;
+        activity_from_row(&row)
+    }
 }
 
 fn activity_from_row(row: &SqliteRow) -> Result<SessionActivity, SessionRepositoryError> {
@@ -202,9 +232,28 @@ fn activity_from_row(row: &SqliteRow) -> Result<SessionActivity, SessionReposito
         turn_id: row.try_get("turn_id").map_err(storage_error)?,
         kind: SessionActivityKind::try_from(kind.as_str())?,
         text: row.try_get("text").map_err(storage_error)?,
+        content: row
+            .try_get::<Option<String>, _>("content_json")
+            .map_err(storage_error)?
+            .map(|value| {
+                serde_json::from_str(&value).map_err(|_| SessionRepositoryError::CorruptData)
+            })
+            .transpose()?,
         tool_call_id: row.try_get("tool_call_id").map_err(storage_error)?,
         created_at: row.try_get("created_at").map_err(storage_error)?,
     })
+}
+
+fn serialize_content(content: &SessionActivityContent) -> Result<String, SessionRepositoryError> {
+    if !content.valid_size() {
+        return Err(SessionRepositoryError::InvalidInput);
+    }
+    // JSON escaping can expand a valid display payload by up to six times.
+    let json = serde_json::to_string(content).map_err(storage_error)?;
+    if json.len() > 4 * 1024 * 1024 {
+        return Err(SessionRepositoryError::InvalidInput);
+    }
+    Ok(json)
 }
 
 fn valid_id(value: &str) -> bool {

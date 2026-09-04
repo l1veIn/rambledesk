@@ -33,6 +33,15 @@ pub enum AgentSessionEvent {
         tool_call_id: Option<String>,
         append: bool,
     },
+    MessageChunk {
+        kind: super::SessionActivityKind,
+        block: super::SessionContentBlock,
+        truncated: bool,
+    },
+    ToolCall {
+        tool_call_id: String,
+        patch: super::SessionToolCallPatch,
+    },
 }
 
 #[async_trait]

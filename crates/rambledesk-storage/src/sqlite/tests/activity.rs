@@ -7,6 +7,9 @@ use rambledesk_core::{
 
 use super::*;
 
+#[path = "structured_activity.rs"]
+mod structured;
+
 async fn setup() -> (TestWorkspace, SqliteFeedbackStore) {
     let workspace = TestWorkspace::new().await;
     let store = SqliteFeedbackStore::connect(&workspace.database)
@@ -49,6 +52,7 @@ fn activity(id: &str, session_id: &str) -> NewSessionActivity {
         turn_id: Some("turn-one".into()),
         kind: SessionActivityKind::AgentMessage,
         text: "Partial reply".into(),
+        content: None,
         tool_call_id: None,
         created_at: "2026-09-04T01:00:00Z".into(),
     }

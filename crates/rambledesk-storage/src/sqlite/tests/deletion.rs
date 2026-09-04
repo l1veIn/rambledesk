@@ -133,6 +133,7 @@ async fn direct_deletion_cleans_owned_data_and_files_without_archiving() {
                 turn_id: None,
                 kind: SessionActivityKind::UserMessage,
                 text: "Work".into(),
+                content: None,
                 tool_call_id: None,
                 created_at: NOW.into(),
             })
