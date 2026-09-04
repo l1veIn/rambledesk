@@ -12,7 +12,7 @@
     "test": "pnpm -C apps/desktop test",
     "test:pi": "pnpm -C packages/pi-rambledesk test",
     "test:dsh": "pnpm -C packages/dsh-rambledesk test",
-    "test:rust": "cargo test --workspace",
+    "test:rust": "cargo test --workspace --exclude rambledesk-desktop && cargo test -p rambledesk-desktop --target-dir target/desktop",
     "check:rust-size": "node scripts/check-rust-module-size.mjs",
     "check:terminology": "node scripts/check-terminology.mjs",
     "contracts:generate": "cargo run -p rambledesk-core --example export_types && cargo run -p rambledesk-hosts --example export_host_types",
