@@ -145,3 +145,35 @@ fn large_input_is_sent_whole_but_display_preview_omits_media_and_preserves_text(
         matches!(&blocks[0], SessionPromptContent::Image { data, .. } if data.len() > MAX_INLINE_MEDIA_BASE64_BYTES)
     );
 }
+
+#[test]
+fn browser_attachment_uri_is_scoped_to_embedded_resources_and_a_valid_filename() {
+    let authority = "019914a1-79d9-7a5d-8306-58f6ce62daa1";
+    let valid = format!("ramble-attachment://{authority}/%E6%96%87%E6%A1%A3%20notes.md");
+    let resource = |uri: String| SessionPromptContent::Resource {
+        uri,
+        mime_type: Some("text/markdown".into()),
+        text: "Uploaded body".into(),
+    };
+    assert!(validate_prompt_content(&[resource(valid.clone())]).is_ok());
+    assert!(
+        validate_prompt_content(&[SessionPromptContent::ResourceLink {
+            uri: valid,
+            name: "Notes".into(),
+            mime_type: None
+        }])
+        .is_err()
+    );
+    for invalid in [
+        "ramble-attachment://not-a-uuid/notes.md".to_string(),
+        format!("ramble-attachment://user@{authority}/notes.md"),
+        format!("ramble-attachment://{authority}/"),
+        format!("ramble-attachment://{authority}/notes.md?x=1"),
+        format!("ramble-attachment://{authority}/notes.md#part"),
+        format!("ramble-attachment://{authority}/a%2Fb"),
+        format!("ramble-attachment://{authority}/%00"),
+        format!("ramble-attachment://{authority}/%zz"),
+    ] {
+        assert!(validate_prompt_content(&[resource(invalid)]).is_err());
+    }
+}

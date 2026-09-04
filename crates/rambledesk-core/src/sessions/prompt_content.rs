@@ -122,7 +122,7 @@ pub fn validate_prompt_content(blocks: &[SessionPromptContent]) -> Result<(), Ag
                 mime_type,
                 text,
             } => {
-                if !valid_uri(uri) || !valid_mime(mime_type) {
+                if !(valid_uri(uri) || valid_attachment_uri(uri)) || !valid_mime(mime_type) {
                     return Err(invalid());
                 }
                 text_bytes += text.len();
@@ -151,6 +151,48 @@ fn valid_uri(uri: &str) -> bool {
     }
     uri.split_once("://").is_some_and(|(scheme, rest)| {
         matches!(scheme, "file" | "http" | "https") && !rest.is_empty()
+    })
+}
+fn valid_attachment_uri(uri: &str) -> bool {
+    let Some(rest) = uri.strip_prefix("ramble-attachment://") else {
+        return false;
+    };
+    let Some((authority, filename)) = rest.split_once('/') else {
+        return false;
+    };
+    if uri.len() > 8192
+        || filename.is_empty()
+        || filename.contains(['/', '?', '#'])
+        || !uuid::Uuid::parse_str(authority)
+            .is_ok_and(|id| id.to_string() == authority.to_ascii_lowercase())
+    {
+        return false;
+    }
+    let mut decoded = Vec::new();
+    let mut bytes = filename.bytes();
+    while let Some(byte) = bytes.next() {
+        if byte == b'%' {
+            let Some(high) = bytes.next().and_then(|byte| (byte as char).to_digit(16)) else {
+                return false;
+            };
+            let Some(low) = bytes.next().and_then(|byte| (byte as char).to_digit(16)) else {
+                return false;
+            };
+            decoded.push((high * 16 + low) as u8);
+        } else if byte.is_ascii_alphanumeric() || b"-_.!~*'()".contains(&byte) {
+            decoded.push(byte);
+        } else {
+            return false;
+        }
+    }
+    String::from_utf8(decoded).is_ok_and(|name| {
+        !name.trim().is_empty()
+            && name.len() <= 1024
+            && name != "."
+            && name != ".."
+            && !name
+                .chars()
+                .any(|ch| ch.is_control() || matches!(ch, '/' | '\\'))
     })
 }
 fn valid_mime(mime: &Option<String>) -> bool {
