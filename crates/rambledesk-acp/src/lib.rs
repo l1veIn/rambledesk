@@ -8,6 +8,7 @@ mod feedback_transport;
 mod observer;
 mod permission_details;
 mod permissions;
+mod pi_feedback;
 pub mod pi_wrapper;
 mod process;
 mod prompt_content;

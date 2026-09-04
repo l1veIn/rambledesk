@@ -222,9 +222,12 @@ pub fn run() {
                 let sessions = SessionApplication::new(
                     Arc::new(store.clone()),
                     Arc::new(store.clone()),
-                    Arc::new(rambledesk_acp::AcpSessionDriver::with_feedback_companion(
-                        std::env::current_exe()?,
-                    )),
+                    Arc::new(
+                        rambledesk_acp::AcpSessionDriver::with_feedback_companion(
+                            std::env::current_exe()?,
+                        )
+                        .with_pi_extension_root(app.path().app_local_data_dir()?.join("pi-runtime")),
+                    ),
                 )
                 .with_change_observer(application_change_hub.clone())
                 .with_feedback_provider(feedback_provider.clone())

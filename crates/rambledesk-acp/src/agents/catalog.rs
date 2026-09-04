@@ -209,9 +209,9 @@ pub fn catalog() -> Vec<AgentCatalogEntry> {
             },
             "pi-acp" => {
                 entry.dependencies.push(AgentDependency { command: "pi".into(), required: true, package: Some("@earendil-works/pi-coding-agent".into()), pinned_version: Some("0.83.0".into()), instructions: "The bridge launches pi --mode rpc. Its required Pi CLI is installed beside the bridge in the managed prefix.".into() });
-                entry.verification = AgentVerification { status: AgentVerificationStatus::Unsupported, versions: vec!["0.0.33".into()], note: "Pi ACP 0.0.33 lacks HTTP MCP support required by managed feedback. Installation alone does not enable managed feedback.".into() };
+                entry.verification = AgentVerification { status: AgentVerificationStatus::Unverified, versions: vec!["0.0.33".into(), "Pi 0.83.0".into()], note: "RambleDesk supplies a managed Pi extension for feedback. Native Pi 0.83.0 extension loading and scoped requests have been tested on Windows; model-driven sessions still require your connection and authentication checks.".into() };
             },
-            "openclaw-acp" => entry.verification = AgentVerification { status: AgentVerificationStatus::Unsupported, versions: vec!["2026.8.1".into()], note: "Codeg records that this release rejects MCP servers in session/new; managed feedback requires HTTP MCP.".into() },
+            "openclaw-acp" => entry.verification = AgentVerification { status: AgentVerificationStatus::Unsupported, versions: vec!["2026.8.1".into()], note: "This release does not accept MCP servers in session/new; RambleDesk cannot provide managed feedback for it.".into() },
             "claude-acp" | "codex-acp" => entry.dependencies.push(AgentDependency {
                 command: if entry.id == "claude-acp" { "claude" } else { "codex" }.into(), required: false, package: None, pinned_version: None,
                 instructions: "The vendor CLI and ACP bridge are distinct programs and versions. Vendor installation alone does not install the ACP bridge; existing vendor authentication may be shared.".into(),

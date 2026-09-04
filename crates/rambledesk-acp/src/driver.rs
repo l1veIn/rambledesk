@@ -16,12 +16,21 @@ pub struct AcpSessionDriver;
 #[derive(Clone)]
 pub struct ConfiguredAcpSessionDriver {
     companion: PathBuf,
+    pi_extension_root: Option<PathBuf>,
 }
 impl AcpSessionDriver {
     pub fn with_feedback_companion(path: impl Into<PathBuf>) -> ConfiguredAcpSessionDriver {
         ConfiguredAcpSessionDriver {
             companion: path.into(),
+            pi_extension_root: None,
         }
+    }
+}
+
+impl ConfiguredAcpSessionDriver {
+    pub fn with_pi_extension_root(mut self, path: impl Into<PathBuf>) -> Self {
+        self.pi_extension_root = Some(path.into());
+        self
     }
 }
 
@@ -41,13 +50,13 @@ impl AgentSessionDriver for AcpSessionDriver {
         &self,
         launch: AgentSessionLaunch,
     ) -> Result<StartedAgentSession, AgentDriverError> {
-        start(launch, None).await
+        start(launch, None, None).await
     }
     async fn check(
         &self,
         config: &AgentConfig,
     ) -> Result<AgentSessionCapabilities, AgentDriverError> {
-        check(config, None).await
+        check(config, None, None).await
     }
 }
 #[async_trait]
@@ -56,19 +65,30 @@ impl AgentSessionDriver for ConfiguredAcpSessionDriver {
         &self,
         launch: AgentSessionLaunch,
     ) -> Result<StartedAgentSession, AgentDriverError> {
-        start(launch, Some(&self.companion)).await
+        start(
+            launch,
+            Some(&self.companion),
+            self.pi_extension_root.as_deref(),
+        )
+        .await
     }
     async fn check(
         &self,
         config: &AgentConfig,
     ) -> Result<AgentSessionCapabilities, AgentDriverError> {
-        check(config, Some(&self.companion)).await
+        check(
+            config,
+            Some(&self.companion),
+            self.pi_extension_root.as_deref(),
+        )
+        .await
     }
 }
 
 async fn start(
     launch: AgentSessionLaunch,
     companion: Option<&Path>,
+    pi_extension_root: Option<&Path>,
 ) -> Result<StartedAgentSession, AgentDriverError> {
     let SessionManagement::Managed {
         cwd,
@@ -84,18 +104,33 @@ async fn start(
         remote: Mutex::new(None),
         local_session_id: launch.session.session_id.clone(),
     });
-    let connection = AcpConnection::connect_observed(&options, observer.clone())
+    let mut connection = AcpConnection::connect_observed(&options, observer.clone())
         .await
         .map_err(safe_error)?;
-    let selected = crate::feedback_transport::select(connection.capabilities().http_mcp, companion);
-    let feedback_transport = match selected {
+    let selected = crate::pi_feedback::select(
+        &launch.config,
+        connection.capabilities().http_mcp,
+        companion,
+        pi_extension_root,
+    )
+    .await;
+    let (feedback_transport, pi) = match selected {
         Ok(transport) => transport,
         Err(error) => {
             let _ = connection.shutdown().await;
             return Err(error);
         }
     };
-    if let Some(endpoint) = launch.feedback {
+    if let (Some(pi), Some(endpoint)) = (pi, launch.feedback.clone()) {
+        // Capability discovery never creates an Agent session. Close that process
+        // before spawning the private wrapper environment; cancellation drops the
+        // one currently owned process at every await boundary.
+        connection.shutdown().await.map_err(safe_error)?;
+        pi.inject(&mut options, endpoint).await?;
+        connection = AcpConnection::connect_observed(&options, observer.clone())
+            .await
+            .map_err(safe_error)?;
+    } else if let Some(endpoint) = launch.feedback {
         let injected = feedback_transport
             .ok_or_else(|| {
                 AgentDriverError::new("No managed feedback transport is available for this Agent")
@@ -152,6 +187,7 @@ async fn start(
 async fn check(
     config: &AgentConfig,
     companion: Option<&Path>,
+    pi_extension_root: Option<&Path>,
 ) -> Result<AgentSessionCapabilities, AgentDriverError> {
     let cwd = std::env::current_dir()
         .map_err(|_| AgentDriverError::new("Cannot determine the runtime working directory"))?;
@@ -159,9 +195,11 @@ async fn check(
         .await
         .map_err(safe_error)?;
     let mut capabilities = connection.capabilities();
-    let selected = crate::feedback_transport::select(capabilities.http_mcp, companion);
+    let selected =
+        crate::pi_feedback::select(config, capabilities.http_mcp, companion, pi_extension_root)
+            .await;
     connection.shutdown().await.map_err(safe_error)?;
-    capabilities.feedback_transport = selected?;
+    capabilities.feedback_transport = selected?.0;
     Ok(capabilities)
 }
 
