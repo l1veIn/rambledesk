@@ -73,6 +73,7 @@ pub struct SessionApplication {
     pub(super) ids: Arc<dyn IdGenerator>,
     pub(super) observer: Arc<dyn ApplicationChangeObserver>,
     closing: Arc<AtomicBool>,
+    feedback: Option<Arc<dyn ManagedFeedbackProvider>>,
 }
 
 impl SessionApplication {
@@ -90,11 +91,17 @@ impl SessionApplication {
             ids: Arc::new(UuidV7Generator),
             observer: Arc::new(NoopApplicationChangeObserver),
             closing: Arc::new(AtomicBool::new(false)),
+            feedback: None,
         }
     }
 
     pub fn with_change_observer(mut self, observer: Arc<dyn ApplicationChangeObserver>) -> Self {
         self.observer = observer;
+        self
+    }
+
+    pub fn with_feedback_provider(mut self, provider: Arc<dyn ManagedFeedbackProvider>) -> Self {
+        self.feedback = Some(provider);
         self
     }
 
@@ -275,7 +282,13 @@ impl SessionApplication {
         self.changed();
         let version = config.updated_at.clone();
         let result = tokio::select! {
-            result=self.driver.start(AgentSessionLaunch{config,session,observer:Arc::new(super::prompts::SessionEventCollector{application:self.clone(),session_id:input.session_id.clone(),instance_id:instance_id.clone()})})=>result.map_err(SessionError::from),
+            result=async {
+                let feedback = match &self.feedback {
+                    Some(provider) => Some(provider.bind(&session).await?),
+                    None => None,
+                };
+                self.driver.start(AgentSessionLaunch{config,session,feedback,observer:Arc::new(super::prompts::SessionEventCollector{application:self.clone(),session_id:input.session_id.clone(),instance_id:instance_id.clone()})}).await
+            }=>result.map_err(SessionError::from),
             _=interrupted.changed()=>Err(SessionError::Interrupted),
         };
         let mut live = entry.live.lock().await;
@@ -294,6 +307,7 @@ impl SessionApplication {
                     live.runtime.last_error = Some(error.to_string());
                     drop(live);
                     let _ = started.connection.stop().await;
+                    if let Some(provider) = &self.feedback { let _ = provider.revoke(&input.session_id).await; }
                     self.changed();
                     return Err(error.into());
                 }
@@ -310,6 +324,8 @@ impl SessionApplication {
             Err(error) => {
                 live.runtime.connection = SessionConnectionState::Failed;
                 live.runtime.last_error = Some(error.to_string());
+                drop(live);
+                if let Some(provider) = &self.feedback { let _ = provider.revoke(&input.session_id).await; }
                 self.changed();
                 return Err(error);
             }
@@ -334,6 +350,7 @@ impl SessionApplication {
         live.runtime.connection = SessionConnectionState::Disconnected;
         live.permissions.clear();
         drop(live);
+        if let Some(provider) = &self.feedback { provider.revoke(&input.session_id).await?; }
         if let Some(connection) = connection
             && let Err(error) = connection.stop().await
         {

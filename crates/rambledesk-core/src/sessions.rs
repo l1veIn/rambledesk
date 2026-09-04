@@ -6,6 +6,7 @@
 mod activity;
 mod application;
 mod driver;
+mod feedback_binding;
 mod model;
 mod permissions;
 mod prompts;
@@ -15,6 +16,7 @@ mod runtime;
 pub use activity::*;
 pub use application::{SessionApplication, SessionError};
 pub use driver::*;
+pub use feedback_binding::*;
 pub use model::*;
 pub use permissions::*;
 pub use prompts::SendManagedPromptInput;

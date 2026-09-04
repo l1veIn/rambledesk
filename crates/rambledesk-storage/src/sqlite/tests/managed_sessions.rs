@@ -374,7 +374,13 @@ async fn deleting_last_feedback_keeps_managed_session_and_remote_binding() {
     let mut input = workspace.request(request_id.clone());
     input.host_id = Some(record.host_id.clone());
     input.host_session_id = record.host_session_id.clone();
-    application.request_feedback(input).await.unwrap();
+    application
+        .request_managed_feedback(
+            &rambledesk_core::ManagedFeedbackScope::from_session(&record).unwrap(),
+            input,
+        )
+        .await
+        .unwrap();
     let summaries = application.list_host_sessions().await.unwrap();
     assert_eq!(summaries.len(), 1);
     assert_eq!(summaries[0].session_id, record.session_id);

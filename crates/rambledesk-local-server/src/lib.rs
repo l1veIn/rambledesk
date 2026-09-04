@@ -1,6 +1,7 @@
 //! Authenticated loopback server for RambleDesk local transports.
 
 mod application_api;
+mod managed_feedback;
 mod token;
 mod web_access;
 mod web_access_server;
@@ -46,6 +47,7 @@ pub use application_api::{
     MAX_APPLICATION_JSON_BODY_BYTES, MAX_ATTACHMENT_UPLOAD_BODY_BYTES, REVISION_HEADER,
     RUNTIME_GENERATION_HEADER, application_router,
 };
+pub use managed_feedback::{LocalManagedFeedbackProvider, MANAGED_MCP_PATH};
 pub use token::{AccessToken, TokenError, default_token_path};
 pub use web_access::{
     EVENT_CREDENTIAL_PROTOCOL_PREFIX, EVENT_PROTOCOL, WebAccessRouteConfig,
@@ -362,6 +364,7 @@ pub struct ServerHandle {
     endpoint: String,
     cancellation: CancellationToken,
     task: JoinHandle<Result<(), std::io::Error>>,
+    managed_feedback: Arc<LocalManagedFeedbackProvider>,
 }
 
 impl ServerHandle {
@@ -377,7 +380,12 @@ impl ServerHandle {
         self.cancellation.cancel();
     }
 
+    pub fn managed_feedback_provider(&self) -> Arc<LocalManagedFeedbackProvider> {
+        self.managed_feedback.clone()
+    }
+
     pub async fn shutdown(self) -> Result<(), ServerError> {
+        self.managed_feedback.shutdown().await;
         self.cancellation.cancel();
         self.task.await??;
         Ok(())
@@ -386,6 +394,8 @@ impl ServerHandle {
 
 #[derive(Debug, Error)]
 pub enum ServerError {
+    #[error("managed feedback provider already belongs to a local server; shut it down before restarting")]
+    ManagedFeedbackAlreadyBound,
     #[error("failed to bind RambleDesk local server loopback listener: {0}")]
     Bind(#[source] std::io::Error),
     #[error("RambleDesk local server failed: {0}")]
@@ -526,8 +536,25 @@ pub async fn start_server(
     config: ServerConfig,
     application: FeedbackApplication,
 ) -> Result<ServerHandle, ServerError> {
+    let managed_feedback = Arc::new(LocalManagedFeedbackProvider::new(application.clone()));
+    start_server_with_managed(config, application, managed_feedback).await
+}
+
+pub async fn start_server_with_managed(
+    config: ServerConfig,
+    application: FeedbackApplication,
+    managed_feedback: Arc<LocalManagedFeedbackProvider>,
+) -> Result<ServerHandle, ServerError> {
     let cancellation = CancellationToken::new();
     let allowed_origins = config.allowed_origins.clone();
+    let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, config.port))
+        .await
+        .map_err(ServerError::Bind)?;
+    let address = listener.local_addr().map_err(ServerError::Bind)?;
+    let endpoint = format!("http://{address}{MCP_PATH}");
+    managed_feedback
+        .configure(address, allowed_origins.clone(), cancellation.clone())
+        .await?;
     let transport_config = StreamableHttpServerConfig::default()
         // Feedback requests are durable application records keyed by
         // request_id. Generic hosts can wait on a human for hours, so their
@@ -567,13 +594,8 @@ pub async fn start_server(
     let router = Router::new()
         .nest(MCP_PATH, mcp)
         .nest(API_PATH, api)
-        .layer(middleware::from_fn_with_state(auth, require_bearer));
-
-    let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, config.port))
-        .await
-        .map_err(ServerError::Bind)?;
-    let address = listener.local_addr().map_err(ServerError::Bind)?;
-    let endpoint = format!("http://{address}{MCP_PATH}");
+        .layer(middleware::from_fn_with_state(auth, require_bearer))
+        .merge(managed_feedback::managed_router(managed_feedback.clone()));
 
     let task_cancellation = cancellation.clone();
     let task = tokio::spawn(async move {
@@ -589,6 +611,7 @@ pub async fn start_server(
         endpoint,
         cancellation,
         task,
+        managed_feedback,
     })
 }
 

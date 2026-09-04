@@ -34,7 +34,12 @@ impl AgentSessionDriver for AcpSessionDriver {
         else {
             return Err(AgentDriverError::new("ACP requires a managed session"));
         };
-        let options = options(&launch.config, cwd.into());
+        let mut options = options(&launch.config, cwd.into());
+        if let Some(endpoint) = launch.feedback {
+            use agent_client_protocol::schema::v1::{McpServer, McpServerHttp, HttpHeader};
+            options.mcp_servers.push(McpServer::Http(McpServerHttp::new("rambledesk", endpoint.url)
+                .headers(vec![HttpHeader::new("Authorization", format!("Bearer {}", endpoint.bearer_token))])));
+        }
         let observer = Arc::new(crate::observer::ManagedObserver {
             sink: launch.observer,
             remote: Mutex::new(None),
@@ -43,6 +48,10 @@ impl AgentSessionDriver for AcpSessionDriver {
         let connection = AcpConnection::connect_observed(&options, observer.clone())
             .await
             .map_err(safe_error)?;
+        if !options.mcp_servers.is_empty() && !connection.capabilities().http_mcp {
+            let _ = connection.shutdown().await;
+            return Err(AgentDriverError::new("This Agent does not support the HTTP MCP transport required for managed feedback"));
+        }
         let result = tokio::time::timeout(
             Duration::from_secs(60),
             connection.open_session(&options, remote_session_id.as_deref()),

@@ -16,6 +16,7 @@ use crate::workspace::{
 };
 
 mod attachment_source;
+mod managed;
 mod model;
 mod path_resolver;
 mod repository_error;
@@ -304,6 +305,14 @@ impl FeedbackApplication {
         &self,
         input: RequestFeedbackInput,
     ) -> Result<FeedbackRequestView, ApplicationError> {
+        self.request_feedback_with_scope(input, None).await
+    }
+
+    async fn request_feedback_with_scope(
+        &self,
+        input: RequestFeedbackInput,
+        managed_session_id: Option<&str>,
+    ) -> Result<FeedbackRequestView, ApplicationError> {
         validate_request_input(&input)?;
         let host_id = input.host_id.as_deref().unwrap_or("generic").to_owned();
         let title = input
@@ -354,7 +363,10 @@ impl FeedbackApplication {
             .repository
             .create_or_get_request(NewFeedbackRequest {
                 request_id,
-                host_session_record_id: self.ids.new_id(),
+                managed_session_id: managed_session_id.map(ToOwned::to_owned),
+                host_session_record_id: managed_session_id
+                    .map(ToOwned::to_owned)
+                    .unwrap_or_else(|| self.ids.new_id()),
                 host_id,
                 host_session_id: input.host_session_id,
                 title,

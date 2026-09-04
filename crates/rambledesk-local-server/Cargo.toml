@@ -6,6 +6,7 @@ rust-version.workspace = true
 repository.workspace = true
 
 [dependencies]
+async-trait.workspace = true
 axum = { workspace = true, features = ["multipart", "ws"] }
 base64.workspace = true
 dirs.workspace = true
@@ -28,7 +29,6 @@ tracing.workspace = true
 
 [dev-dependencies]
 anyhow.workspace = true
-async-trait.workspace = true
 reqwest = { version = "0.13", default-features = false, features = ["json", "multipart", "rustls"] }
 rmcp = { workspace = true, features = [
   "client",

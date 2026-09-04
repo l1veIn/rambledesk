@@ -89,6 +89,7 @@ fn canonicalizes_uuid_inputs() {
 fn terminal_results_omit_poll_interval() {
     let value = FeedbackRequestView::from(StoredFeedbackRequest {
         request_id: "request".to_owned(),
+        managed_session_id: None,
         host_id: "generic".to_owned(),
         host_session_id: "session".to_owned(),
         status: FeedbackStatus::Cancelled,

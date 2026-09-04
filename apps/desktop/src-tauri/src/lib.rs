@@ -20,7 +20,10 @@ use rambledesk_hosts::{
     ContinuationMode, ContinuationRouter, HostAdapter, known_continuation_strategies,
     known_host_profiles,
 };
-use rambledesk_local_server::{AccessToken, ServerConfig, ServerHandle, start_server};
+use rambledesk_local_server::{
+    AccessToken, LocalManagedFeedbackProvider, ServerConfig, ServerHandle,
+    start_server_with_managed,
+};
 use rambledesk_speech::SpeechSession;
 use std::{
     path::PathBuf,
@@ -206,12 +209,15 @@ pub fn run() {
                     ));
                 let terminal_operations =
                     WorkbenchTerminalOperations::new(application.clone(), terminal_observer);
+                let feedback_provider =
+                    Arc::new(LocalManagedFeedbackProvider::new(application.clone()));
                 let sessions = SessionApplication::new(
                     Arc::new(store.clone()),
                     Arc::new(store.clone()),
                     Arc::new(rambledesk_acp::AcpSessionDriver),
                 )
-                .with_change_observer(application_change_hub.clone());
+                .with_change_observer(application_change_hub.clone())
+                .with_feedback_provider(feedback_provider.clone());
                 let application_commands = Arc::new(
                     ApplicationCommandFacade::new(
                         application.clone(),
@@ -221,8 +227,11 @@ pub fn run() {
                     .with_sessions(sessions.clone()),
                 );
                 let config = ServerConfig::new(token.clone()).with_port(configured_port()?);
-                let handle =
-                    tauri::async_runtime::block_on(start_server(config, application.clone()))?;
+                let handle = tauri::async_runtime::block_on(start_server_with_managed(
+                    config,
+                    application.clone(),
+                    feedback_provider,
+                ))?;
                 let configuration = generic_mcp_configuration(handle.endpoint(), &token);
                 let open_item =
                     MenuItem::with_id(app, "open", "打开 RambleDesk", true, None::<&str>)?;

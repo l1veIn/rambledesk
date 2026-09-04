@@ -22,6 +22,7 @@ pub struct AgentSessionLaunch {
     pub config: AgentConfig,
     pub session: SessionRecord,
     pub observer: Arc<dyn AgentSessionObserver>,
+    pub feedback: Option<super::ManagedFeedbackEndpoint>,
 }
 
 pub enum AgentSessionEvent {

@@ -31,6 +31,7 @@ mod migration_compat;
 mod paths;
 mod publication_paths;
 mod request_ops;
+mod request_scope;
 mod resolve_ops;
 mod session_ops;
 mod submission_ops;
@@ -555,7 +556,7 @@ async fn load_request_row(
     request_id: &str,
 ) -> Result<Option<SqliteRow>, RepositoryError> {
     sqlx::query(
-        "SELECT r.id, hs.host_id, hs.host_session_id, \
+        "SELECT r.id, r.managed_session_id, hs.host_id, hs.host_session_id, \
                 r.status, r.resolution, r.allow_finish, r.final_summary, \
                 r.created_at, r.updated_at, r.input_hash, \
                 fr.package_uri, fr.directory_path, fr.markdown_path, fr.manifest_path \
@@ -586,6 +587,7 @@ fn stored_request_from_row(row: &SqliteRow) -> Result<StoredFeedbackRequest, Rep
     }
     Ok(StoredFeedbackRequest {
         request_id: row.try_get("id").map_err(storage_error)?,
+        managed_session_id: row.try_get("managed_session_id").map_err(storage_error)?,
         host_id: row.try_get("host_id").map_err(storage_error)?,
         host_session_id: row.try_get("host_session_id").map_err(storage_error)?,
         status,

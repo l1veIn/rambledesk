@@ -172,7 +172,9 @@ impl SqliteFeedbackStore {
             .begin_with("BEGIN IMMEDIATE")
             .await
             .map_err(storage_error)?;
+        request_scope::validate_request_scope(&mut transaction, &request).await?;
         if let Some(existing) = load_request_row(&mut transaction, &request.request_id).await? {
+            request_scope::validate_existing_request_scope(&existing, &request)?;
             let input_hash = immutable_input_hash(&request)?;
             let stored_hash: String = existing.try_get("input_hash").map_err(storage_error)?;
             return if stored_hash == input_hash {
@@ -210,8 +212,8 @@ impl SqliteFeedbackStore {
 
         let inserted = sqlx::query(
             "INSERT INTO feedback_requests \
-             (id, host_session_record_id, title, what_happened, source_hint, status, input_hash, allow_finish, final_summary, created_at, updated_at) \
-             VALUES (?1, ?2, ?3, ?4, ?5, 'waiting', ?6, ?7, ?8, ?9, ?9) \
+             (id, host_session_record_id, title, what_happened, source_hint, status, input_hash, allow_finish, final_summary, created_at, updated_at, managed_session_id) \
+             VALUES (?1, ?2, ?3, ?4, ?5, 'waiting', ?6, ?7, ?8, ?9, ?9, ?10) \
              ON CONFLICT(id) DO NOTHING",
         )
         .bind(&request.request_id)
@@ -223,6 +225,7 @@ impl SqliteFeedbackStore {
         .bind(request.allow_finish)
         .bind(request.final_summary.as_deref())
         .bind(&request.created_at)
+        .bind(request.managed_session_id.as_deref())
         .execute(&mut *transaction)
         .await
         .map_err(storage_error)?;
@@ -287,6 +290,7 @@ impl SqliteFeedbackStore {
 
         let stored = StoredFeedbackRequest {
             request_id: request.request_id,
+            managed_session_id: request.managed_session_id,
             host_id: request.host_id,
             host_session_id: request.host_session_id,
             status: FeedbackStatus::Waiting,
@@ -395,7 +399,7 @@ impl SqliteFeedbackStore {
         request_id: &str,
     ) -> Result<StoredFeedbackRequest, RepositoryError> {
         let row = sqlx::query(
-            "SELECT r.id, hs.host_id, hs.host_session_id, r.status, r.resolution, r.allow_finish, r.final_summary, \
+            "SELECT r.id, r.managed_session_id, hs.host_id, hs.host_session_id, r.status, r.resolution, r.allow_finish, r.final_summary, \
                     r.created_at, r.updated_at, r.input_hash, fr.package_uri, fr.directory_path, fr.markdown_path, fr.manifest_path \
              FROM feedback_requests r \
              JOIN host_sessions hs ON hs.id = r.host_session_record_id \
@@ -568,6 +572,7 @@ mod hash_tests {
     fn request(allow_finish: bool, final_summary: Option<&str>) -> NewFeedbackRequest {
         NewFeedbackRequest {
             request_id: "request-id".to_owned(),
+            managed_session_id: None,
             host_session_record_id: "host-session-record-id".to_owned(),
             host_id: "generic".to_owned(),
             host_session_id: "session-1".to_owned(),

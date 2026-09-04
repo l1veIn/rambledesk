@@ -200,6 +200,8 @@ pub struct FeedbackRequestView {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewFeedbackRequest {
     pub request_id: String,
+    /// Present only when injected by the managed-session application entry point.
+    pub managed_session_id: Option<String>,
     pub host_session_record_id: String,
     pub host_id: String,
     pub host_session_id: String,
@@ -226,6 +228,7 @@ pub struct NewRequestAttachment {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoredFeedbackRequest {
     pub request_id: String,
+    pub managed_session_id: Option<String>,
     pub host_id: String,
     pub host_session_id: String,
     pub status: FeedbackStatus,
