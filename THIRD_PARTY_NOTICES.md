@@ -3,6 +3,10 @@
 RambleDesk Windows MVP 使用下列独立第三方组件。这里记录来源与许可证，
 不改变各组件自己的许可证条款。
 
+Codeg 的 Agent 管理与 Chat 模块按固定 commit `3ebdfed1d7c0b71d71880a3d2e0f8e09545feae1`
+提取并修改。来源 <https://github.com/xintaofei/codeg>，版权归 Codeg 作者和贡献者；Apache-2.0
+全文随附于 `licenses/codeg-APACHE-2.0.txt`。逐文件来源、修改与验收见 `docs/CODEG_PORTS.md`。
+
 | 组件 | 用途 | 许可证 | 来源 |
 |------|------|--------|------|
 | cpal 0.16 | 跨平台麦克风采集 | Apache-2.0 | <https://github.com/RustAudio/cpal> |

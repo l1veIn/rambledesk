@@ -292,6 +292,15 @@ Host Profile 描述：
 
 ## 命名规则
 
+### Agent 管理扩展（2026-09-04）
+
+- **Agent Catalog / 智能体目录**：可选择的 Agent 定义，包含名称、分发入口、推荐版本和能力说明；不是已安装清单。
+- **Agent Installation / 智能体安装**：当前机器上的程序、版本和安装位置；ACP Bridge 与厂商 Agent 可分别需要安装。
+- **AgentConfig / Agent 配置**：用户保存的启动选择、后端配置与环境；可以由目录和安装结果生成，高级用户也可手动填写。
+- **Conversation Content / 对话内容**：有序的用户/Agent 消息及文本、思考、工具等内容块；流式更新修改所属内容，不创建新的 RambleDesk 会话。
+
+上述能力按 [Codeg 移植地图](CODEG_ADOPTION_PLAN.md) 扩展，不改变反馈适配器及会话/轮次/请求的定义。
+
 UI 文案允许：
 
 - “适配器”

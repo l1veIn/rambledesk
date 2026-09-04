@@ -1,6 +1,6 @@
 # ACP 托管会话提交地图
 
-> 状态：首轮实现与验收已完成；用户试用发现的问题按下方独立修正记录继续收敛。
+> 状态：首轮实现及用户试用修正已完成；新增 [Codeg 深度移植阶段](CODEG_ADOPTION_PLAN.md) 正在执行。
 > 分支：`codex/acp-managed-sessions`；从更新后的 main `367eb09` 开始。
 > 术语源：[TERMINOLOGY.md](TERMINOLOGY.md)；决策：[ADR 007](adr/007-acp-managed-sessions.md)。
 
