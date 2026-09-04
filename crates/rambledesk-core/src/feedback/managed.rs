@@ -2,6 +2,21 @@ use super::*;
 use crate::ManagedFeedbackScope;
 
 impl FeedbackApplication {
+    /// Trusted attribution for runtime continuation routing. The marker is read
+    /// from storage, never inferred from a model-supplied host label.
+    pub async fn managed_feedback_session(
+        &self,
+        request_id: &str,
+    ) -> Result<Option<String>, ApplicationError> {
+        let request_id = canonical_uuid(request_id, "request_id")?;
+        Ok(self
+            .repository
+            .get_request(&request_id)
+            .await
+            .map_err(ApplicationError::from)?
+            .managed_session_id)
+    }
+
     pub async fn request_managed_feedback(
         &self,
         scope: &ManagedFeedbackScope,

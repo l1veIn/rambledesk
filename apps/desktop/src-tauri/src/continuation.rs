@@ -53,6 +53,18 @@ impl TerminalOperationObserver for DesktopTerminalOperationObserver {
             ),
             TerminalOperation::ApproveFeedback => {}
         }
+        match self
+            .application
+            .managed_feedback_session(&event.request.request_id)
+            .await
+        {
+            Ok(Some(_)) => return,
+            Ok(None) => {}
+            Err(error) => {
+                tracing::warn!(%error, "continuation attribution could not be verified");
+                return;
+            }
+        }
         deliver_continuation_after_terminal(
             &self.app,
             &self.router,

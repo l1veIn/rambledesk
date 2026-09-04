@@ -60,6 +60,43 @@ fn request(request_id: &str, managed_session_id: Option<&str>) -> NewFeedbackReq
 }
 
 #[tokio::test]
+async fn continuation_routing_uses_the_stored_marker_for_identical_host_labels() {
+    let (_workspace, store) = setup().await;
+    let managed = Uuid::now_v7().to_string();
+    let external = Uuid::now_v7().to_string();
+    store
+        .create_or_get_request(request(&managed, Some("managed-one")))
+        .await
+        .unwrap();
+    store
+        .create_or_get_request(request(&external, None))
+        .await
+        .unwrap();
+    let application = store.clone().into_application();
+    assert_eq!(
+        application
+            .managed_feedback_session(&managed)
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("managed-one")
+    );
+    assert_eq!(
+        application
+            .managed_feedback_session(&external)
+            .await
+            .unwrap(),
+        None
+    );
+    assert!(
+        application
+            .managed_feedback_session(&Uuid::now_v7().to_string())
+            .await
+            .is_err()
+    );
+}
+
+#[tokio::test]
 async fn managed_delivery_ownership_is_persistent_and_replay_is_idempotent() {
     let (workspace, store) = setup().await;
     let original = request("request-one", Some("managed-one"));
