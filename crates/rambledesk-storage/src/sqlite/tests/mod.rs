@@ -187,6 +187,7 @@ async fn reconnect_rejects_arbitrary_migration_checksum_changes() {
 
 mod application_changes;
 mod document_json_migration;
+mod managed_sessions;
 mod publication;
 mod requests;
 mod workspace;

@@ -7,6 +7,7 @@ mod application_changes;
 mod application_commands;
 mod feedback;
 mod process;
+mod sessions;
 mod terminal_operations;
 mod workspace;
 
@@ -25,6 +26,7 @@ pub use application_commands::{
     ApplicationFeedbackWorkspaceView, ApplicationHostProfileView,
 };
 pub use process::{find_executable, find_executable_on_path};
+pub use sessions::*;
 pub use terminal_operations::{
     NoopTerminalOperationObserver, TerminalOperation, TerminalOperationEvent,
     TerminalOperationObserver, WorkbenchTerminalOperations,

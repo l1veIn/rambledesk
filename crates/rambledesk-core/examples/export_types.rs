@@ -1,18 +1,20 @@
 use std::{fs, path::PathBuf};
 
 use rambledesk_core::{
-    ActionInput, AddAttachmentInput, ApplicationError, ApplicationErrorCode, ApplicationEvent,
-    ApplicationFeedbackRequestView, ApplicationFeedbackResultView,
-    ApplicationFeedbackWorkspaceView, ApplicationHostProfileView, ApplicationResourceKey,
-    ApplicationSnapshotMetadata, ApproveFeedbackInput, AttachmentView, CancelFeedbackInput,
-    ContextRef, DeleteFeedbackRequestInput, DraftView, ExecutionMode, FeedbackPackageAttachment,
-    FeedbackPackageContent, FeedbackPackageManifest, FeedbackPackageView, FeedbackRequestSummary,
-    FeedbackRequestView, FeedbackResolution, FeedbackResultView, FeedbackStatus,
-    FeedbackWorkspaceView, GetFeedbackInput, HostSessionInput, HostSessionSummary,
-    ListFeedbackRequestsInput, ListFeedbackRequestsOutput, ListHostSessionsInput,
-    ReadAttachmentInput, RecoverFeedbackInput, RemoveAttachmentInput, RenameHostSessionInput,
-    ReorderAttachmentsInput, RequestAttachmentView, SaveDraftInput, SetHostPinnedInput,
-    SetHostSessionPinnedInput, SubmitFeedbackInput,
+    ActionInput, AddAttachmentInput, AgentConfig, AgentConfigInput, ApplicationError,
+    ApplicationErrorCode, ApplicationEvent, ApplicationFeedbackRequestView,
+    ApplicationFeedbackResultView, ApplicationFeedbackWorkspaceView, ApplicationHostProfileView,
+    ApplicationResourceKey, ApplicationSnapshotMetadata, ApproveFeedbackInput, AttachmentView,
+    CancelFeedbackInput, ContextRef, CreateManagedSessionInput, DeleteFeedbackRequestInput,
+    DraftView, ExecutionMode, FeedbackPackageAttachment, FeedbackPackageContent,
+    FeedbackPackageManifest, FeedbackPackageView, FeedbackRequestSummary, FeedbackRequestView,
+    FeedbackResolution, FeedbackResultView, FeedbackStatus, FeedbackWorkspaceView,
+    GetFeedbackInput, HostSessionInput, HostSessionSummary, ListFeedbackRequestsInput,
+    ListFeedbackRequestsOutput, ListHostSessionsInput, ManagedSessionInput, ReadAttachmentInput,
+    RecoverFeedbackInput, RemoveAttachmentInput, RenameHostSessionInput, ReorderAttachmentsInput,
+    RequestAttachmentView, SaveAgentConfigInput, SaveDraftInput, SessionManagement,
+    SessionProtocol, SessionRecord, SetHostPinnedInput, SetHostSessionPinnedInput,
+    SubmitFeedbackInput,
 };
 use ts_rs::{Config, TS};
 
@@ -47,6 +49,14 @@ fn exported_feedback_package_content() -> String {
 
 fn main() -> std::io::Result<()> {
     let declarations = [
+        exported::<SessionProtocol>(),
+        exported::<SessionManagement>(),
+        exported::<AgentConfig>(),
+        exported::<SaveAgentConfigInput>(),
+        exported::<AgentConfigInput>(),
+        exported::<SessionRecord>(),
+        exported::<CreateManagedSessionInput>(),
+        exported::<ManagedSessionInput>(),
         exported::<FeedbackStatus>(),
         exported::<FeedbackResolution>(),
         exported::<ExecutionMode>(),
