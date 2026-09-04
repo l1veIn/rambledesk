@@ -17,4 +17,6 @@ Codeg 作者和贡献者保留其版权；根仓库为 Apache-2.0，完整条款
 
 | 动态会话配置 | `src-tauri/src/acp/{connection,types}.rs` | Agent 确认的 options、模型、模式缓存，兼容 legacy models；现代 option 完整替换。3 个真实 stdio 用例覆盖 ACK、拒绝、推送、原会话恢复与取消；原 runtime/stdio 7 个回归通过。 |
 
+| Chat 时间线与工具卡片 | `src/components/message/*`、`ai-elements/reasoning.tsx`、`src/lib/{line-diff,unified-diff-generator}.ts` | Svelte 消息/思考/工具/差异卡片、安全 Markdown、引用输入器；33 个渲染与补丁/差异测试通过，隔离浏览器验证实际卡片渲染。 |
+
 后续每个移植提交添加实际条目。第三方依赖各自遵循其许可证，不因 Codeg 根许可证而改变。

@@ -3,7 +3,8 @@ import type { AgentConfig, FeedbackRequestSummary, ManagedSessionSnapshot, Sessi
 export type ManagedSessionViewSnapshot = Readonly<Pick<ManagedSessionSnapshot, 'session' | 'runtime' | 'deleting'>>
 
 export type SessionActivity = Readonly<Pick<GeneratedSessionActivity,
-  'id' | 'session_id' | 'kind' | 'text' | 'tool_call_id' | 'created_at'>>
+  'id' | 'session_id' | 'kind' | 'text' | 'tool_call_id' | 'created_at'>
+  & Partial<Pick<GeneratedSessionActivity, 'sequence' | 'turn_id' | 'content'>>>
 
 export type SessionPermission = Readonly<GeneratedSessionPermission>
 
@@ -13,7 +14,11 @@ export function activitiesForSession(sessionId: string, activities: readonly Ses
   for (const activity of activities) {
     if (activity.session_id === sessionId) entries.set(activity.id, activity)
   }
-  return [...entries.values()]
+  const result = [...entries.values()]
+  // Structured snapshots carry the durable sequence, including updated tools.
+  // Legacy text-only view fixtures retain their original encounter order.
+  return result.every((entry) => typeof entry.sequence === 'number')
+    ? result.sort((left, right) => left.sequence! - right.sequence!) : result
 }
 
 export function permissionsForSession(sessionId: string, permissions: readonly SessionPermission[]): SessionPermission[] {

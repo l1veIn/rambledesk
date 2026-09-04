@@ -7,11 +7,12 @@
   import FeedbackDeliveryStatus from './FeedbackDeliveryStatus.svelte'
   import SessionRecoveryNotice from './SessionRecoveryNotice.svelte'
   import AgentComposer from './composer/AgentComposer.svelte'
+  import SessionTimeline from './chat/SessionTimeline.svelte'
   import { locale } from '$lib/preferences'
   import { redactAgentMessage } from './agentConfigForm'
   import { agentText } from './agentI18n'
   import {
-    activitiesForSession, activityLabel, feedbackForSession, managedSessionActions, managedSessionComposerState,
+    activitiesForSession, feedbackForSession, managedSessionActions, managedSessionComposerState,
     permissionsForSession, sessionConfigurationChanged, sessionPromptDrafts,
     type ManagedSessionViewSnapshot, type SessionActivity, type SessionPermission,
   } from './managedSessionUi'
@@ -58,6 +59,7 @@
   $: lifecyclePending = pending.has(`${activeSessionId}:start`) || pending.has(`${activeSessionId}:stop`) || pending.has(`${activeSessionId}:delete`)
   $: sendPending = pending.has(`${activeSessionId}:prompt`)
   $: composerState = managedSessionComposerState(snapshot, visiblePermissions.length, { busy, lifecycle: lifecyclePending, prompt: sendPending })
+  $: runActive = snapshot.runtime.connection === 'connected' && snapshot.runtime.activity !== 'idle'
   $: if (visibleActivities.length > 0) void followActivity(visibleActivities)
 
   function tr(source: string) { return agentText($locale, source) }
@@ -183,16 +185,9 @@
   {#if visibleError}<p role="alert" class="m-0 break-words border-b border-destructive/25 bg-destructive/5 px-5 py-3 text-xs text-destructive">{tr(visibleError)}</p>{/if}
 
   <div bind:this={activityViewport} onscroll={rememberScroll} class="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-5 py-5" aria-label={tr('Session activity')}>
-    {#each visibleActivities as activity (activity.id)}
-      {#if activity.kind === 'agent_thought'}
-        <details class="rounded-md border bg-muted/15 px-3 py-2 text-xs text-muted-foreground"><summary class="cursor-pointer select-none">{tr(activityLabel(activity.kind))}</summary><p class="mb-0 whitespace-pre-wrap break-words leading-6">{activity.text}</p></details>
-      {:else}
-        <article class={`space-y-1.5 ${activity.kind === 'user_message' ? 'ml-6 rounded-lg border bg-muted/35 p-3' : activity.kind === 'tool_call' ? 'rounded-lg border border-dashed p-3' : activity.kind === 'error' ? 'rounded-lg border border-destructive/25 p-3 text-destructive' : ''}`}>
-          <p class="m-0 text-[10px] font-medium text-muted-foreground">{tr(activityLabel(activity.kind))}</p>
-          <div class={`whitespace-pre-wrap break-words text-xs leading-6 ${activity.kind === 'tool_call' ? 'font-mono' : ''}`}>{activity.text}</div>
-        </article>
-      {/if}
-    {/each}
+    <SessionTimeline sessionId={snapshot.session.session_id} activities={visibleActivities} {runActive}
+      quoteDisabled={composerState.disabled} onQuote={(text) => composer?.insertQuote(text)}
+      onResize={() => void followActivity(visibleActivities)} />
     {#if visibleActivities.length === 0}
       <div class="mx-auto flex min-h-48 max-w-md flex-col items-center justify-center text-center"><MessageSquare class="mb-3 size-6 text-muted-foreground/50" /><strong class="text-sm font-medium">{tr('No messages yet')}</strong><p class="mb-0 mt-2 text-xs leading-5 text-muted-foreground">{tr(actions.canStart ? 'Start the agent, then describe what you want to work on.' : 'Describe what you want to work on. Feedback requests will appear in this session.')}</p></div>
     {/if}

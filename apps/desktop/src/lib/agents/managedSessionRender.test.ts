@@ -60,7 +60,8 @@ describe('Managed session rendering', () => {
     expect(body).toContain('Delete session')
     expect(body).not.toContain('Stop agent')
     expect(body).not.toContain('Cancel turn')
-    expect(body).toMatch(/<textarea[^>]*disabled/)
+    expect(body).toMatch(/<button[^>]*disabled[^>]*aria-label="Send message"/)
+    expect(body).not.toContain('aria-label="Cancel current turn"')
     expect(action).not.toHaveBeenCalled()
   })
 
