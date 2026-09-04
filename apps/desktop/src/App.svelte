@@ -1442,10 +1442,13 @@
     return opened
   }
 
-  async function showManagedAgentPanel() {
-    if (!renderedManagedSession || workspaceTransitionLocked) return
-    const sessionId = renderedManagedSession.session_id
-    if (!(await saveDraftNow()) || renderedManagedSession?.session_id !== sessionId) return
+  async function showManagedAgentPanel(session = renderedManagedSession) {
+    if (!session || workspaceTransitionLocked) return
+    const sessionId = session.session_id
+    if (!(await saveDraftNow())) return
+    if (renderedManagedSession?.session_id !== sessionId) {
+      await selectRailScope(session.host_id, session.host_session_id)
+    }
     managedSessionPanels = new Map(managedSessionPanels).set(sessionId, 'agent')
   }
 
@@ -2051,6 +2054,23 @@
                 onOpenRambelleProfile={() => void openRambelleProfile()}
               />
             {:else if renderedWorkspaceView?.kind === 'request-task'}
+              <div class="flex h-full min-h-0 flex-col">
+              {#if feedbackManagedSession}
+                <div class="flex shrink-0 items-center border-b px-4 py-2"><Button size="sm" variant="outline" disabled={workspaceTransitionLocked} onclick={() => void showManagedAgentPanel(feedbackManagedSession)}>{agentText($locale, 'Agent session')}</Button></div>
+                {#key feedbackManagedSession.session_id}
+                  <ManagedSessionSection
+                    transport={applicationTransport}
+                    sessionId={feedbackManagedSession.session_id}
+                    deletionPending={deletingSessionCommands.has(feedbackManagedSession.session_id)}
+                    onDeletingChange={observeManagedDeletion}
+                    onDelete={() => deleteManagedSessionFromUi(feedbackManagedSession!)}
+                    showWorkspace={false}
+                    feedbackRequests={$navigation.requests}
+                    onOpenFeedback={async (requestId) => { await openRequest(requestId) }}
+                  />
+                {/key}
+              {/if}
+              <div class="min-h-0 flex-1">
               <TaskWorkspaceView
                 transport={applicationTransport}
                 {capabilities}
@@ -2076,6 +2096,8 @@
                 {submitting}
                 onSubmitFeedback={() => void submitFeedback()}
               />
+              </div>
+              </div>
             {:else if renderedWorkspaceView?.kind === 'rambelle-profile'}
               <RambelleProfileWorkspaceView />
             {:else if renderedSessionResolution?.kind === 'missing-session'}
