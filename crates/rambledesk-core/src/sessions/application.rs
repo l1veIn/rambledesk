@@ -171,16 +171,16 @@ impl SessionApplication {
         let result = self.driver.check(&config).await;
         Ok(match result {
             Ok(caps) => AgentConnectionCheck {
-                ok: caps.http_mcp,
-                message: if caps.http_mcp {
+                ok: caps.feedback_transport.is_some(),
+                message: if caps.feedback_transport.is_some() {
                     "ACP connection and required feedback capability checks passed"
                 } else {
-                    "ACP connected, but this Agent cannot provide managed feedback because HTTP MCP is unsupported"
+                    "ACP connected, but no managed feedback transport is configured for this Agent"
                 }
                 .into(),
                 details: vec![format!(
-                    "Load: {}; resume: {}; HTTP MCP: {}",
-                    caps.load_session, caps.resume_session, caps.http_mcp
+                    "Load: {}; resume: {}; HTTP MCP: {}; managed feedback: {}",
+                    caps.load_session, caps.resume_session, caps.http_mcp, caps.feedback_transport.map(|transport| transport.as_str()).unwrap_or("unavailable")
                 )],
             },
             Err(error) => AgentConnectionCheck {

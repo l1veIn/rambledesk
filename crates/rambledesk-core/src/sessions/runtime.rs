@@ -30,6 +30,27 @@ pub struct AgentSessionCapabilities {
     pub http_mcp: bool,
     #[serde(default)]
     pub prompt: super::AgentPromptCapabilities,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub feedback_transport: Option<FeedbackTransport>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum FeedbackTransport {
+    Http,
+    Stdio,
+    PiExtension,
+}
+
+impl FeedbackTransport {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Http => "http",
+            Self::Stdio => "stdio",
+            Self::PiExtension => "pi_extension",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]

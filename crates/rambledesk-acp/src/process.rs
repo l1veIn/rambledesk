@@ -28,6 +28,16 @@ pub(crate) fn spawn(
     env: &BTreeMap<String, String>,
     cwd: &Path,
 ) -> Result<OwnedProcess, AcpError> {
+    spawn_filtered(command, args, env, cwd, &[])
+}
+
+pub(crate) fn spawn_filtered(
+    command: &str,
+    args: &[String],
+    env: &BTreeMap<String, String>,
+    cwd: &Path,
+    removed_env: &[&str],
+) -> Result<OwnedProcess, AcpError> {
     if !cwd.is_absolute() || !cwd.is_dir() {
         return Err(AcpError::InvalidLaunch(
             "cwd must be an existing absolute directory".into(),
@@ -42,12 +52,16 @@ pub(crate) fn spawn(
     };
     let mut cmd = Command::new(executable);
     cmd.args(args)
-        .envs(env)
         .current_dir(cwd)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+    for name in removed_env {
+        cmd.env_remove(name);
+    }
+    // Trusted explicit launch values can replace removed inherited values.
+    cmd.envs(env);
     // Windows enters its Job Object before its suspended primary thread resumes.
     // Unix creates a separate process group inside spawn.
     let (child, ownership) = Ownership::spawn(cmd)?;

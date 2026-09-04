@@ -5,12 +5,25 @@ use rambledesk_core::{
     AgentSessionDriver, AgentSessionLaunch, SessionManagement, StartedAgentSession,
 };
 use std::{
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::Duration,
 };
 
 #[derive(Default)]
 pub struct AcpSessionDriver;
+
+#[derive(Clone)]
+pub struct ConfiguredAcpSessionDriver {
+    companion: PathBuf,
+}
+impl AcpSessionDriver {
+    pub fn with_feedback_companion(path: impl Into<PathBuf>) -> ConfiguredAcpSessionDriver {
+        ConfiguredAcpSessionDriver {
+            companion: path.into(),
+        }
+    }
+}
 
 struct ManagedConnection {
     owned: Mutex<Option<AcpConnection>>,
@@ -28,88 +41,128 @@ impl AgentSessionDriver for AcpSessionDriver {
         &self,
         launch: AgentSessionLaunch,
     ) -> Result<StartedAgentSession, AgentDriverError> {
-        let SessionManagement::Managed {
-            cwd,
-            remote_session_id,
-            ..
-        } = &launch.session.management
-        else {
-            return Err(AgentDriverError::new("ACP requires a managed session"));
-        };
-        let mut options = options(&launch.config, cwd.into());
-        if let Some(endpoint) = launch.feedback {
-            use agent_client_protocol::schema::v1::{HttpHeader, McpServer, McpServerHttp};
-            options.mcp_servers.push(McpServer::Http(
-                McpServerHttp::new("rambledesk", endpoint.url).headers(vec![HttpHeader::new(
-                    "Authorization",
-                    format!("Bearer {}", endpoint.bearer_token),
-                )]),
-            ));
-        }
-        let observer = Arc::new(crate::observer::ManagedObserver {
-            sink: launch.observer,
-            remote: Mutex::new(None),
-            local_session_id: launch.session.session_id.clone(),
-        });
-        let connection = AcpConnection::connect_observed(&options, observer.clone())
-            .await
-            .map_err(safe_error)?;
-        if !options.mcp_servers.is_empty() && !connection.capabilities().http_mcp {
-            let _ = connection.shutdown().await;
-            return Err(AgentDriverError::new(
-                "This Agent does not support the HTTP MCP transport required for managed feedback",
-            ));
-        }
-        let result = tokio::time::timeout(
-            Duration::from_secs(60),
-            connection.open_session(&options, remote_session_id.as_deref()),
-        )
-        .await;
-        let info = match result {
-            Ok(Ok(info)) => info,
-            other => {
-                let _ = connection.shutdown().await;
-                return Err(match other {
-                    Ok(Err(error)) => safe_error(error),
-                    _ => AgentDriverError::new("ACP session creation or recovery timed out"),
-                });
-            }
-        };
-        *observer.remote.lock().expect("remote attribution lock") =
-            Some(info.remote_session_id.clone());
-        let sender = connection.sender();
-        let permissions = connection.permission_queue();
-        let configuration = connection.configuration_cache();
-        let capabilities = connection.capabilities();
-        let prompt_capabilities = capabilities.prompt.clone();
-        Ok(StartedAgentSession {
-            remote_session_id: info.remote_session_id.clone(),
-            capabilities,
-            connection: Arc::new(ManagedConnection {
-                owned: Mutex::new(Some(connection)),
-                shutdown: tokio::sync::Mutex::new(()),
-                sender,
-                remote: info.remote_session_id,
-                permissions,
-                configuration,
-                prompt_capabilities,
-            }),
-        })
+        start(launch, None).await
     }
-
     async fn check(
         &self,
         config: &AgentConfig,
     ) -> Result<AgentSessionCapabilities, AgentDriverError> {
-        let cwd = std::env::current_dir()
-            .map_err(|_| AgentDriverError::new("Cannot determine the runtime working directory"))?;
-        let connection = AcpConnection::connect(&options(config, cwd), Arc::new(|_| {}))
-            .await
-            .map_err(safe_error)?;
-        let capabilities = connection.capabilities();
-        connection.shutdown().await.map_err(safe_error)?;
-        Ok(capabilities)
+        check(config, None).await
     }
+}
+#[async_trait]
+impl AgentSessionDriver for ConfiguredAcpSessionDriver {
+    async fn start(
+        &self,
+        launch: AgentSessionLaunch,
+    ) -> Result<StartedAgentSession, AgentDriverError> {
+        start(launch, Some(&self.companion)).await
+    }
+    async fn check(
+        &self,
+        config: &AgentConfig,
+    ) -> Result<AgentSessionCapabilities, AgentDriverError> {
+        check(config, Some(&self.companion)).await
+    }
+}
+
+async fn start(
+    launch: AgentSessionLaunch,
+    companion: Option<&Path>,
+) -> Result<StartedAgentSession, AgentDriverError> {
+    let SessionManagement::Managed {
+        cwd,
+        remote_session_id,
+        ..
+    } = &launch.session.management
+    else {
+        return Err(AgentDriverError::new("ACP requires a managed session"));
+    };
+    let mut options = options(&launch.config, cwd.into());
+    let observer = Arc::new(crate::observer::ManagedObserver {
+        sink: launch.observer,
+        remote: Mutex::new(None),
+        local_session_id: launch.session.session_id.clone(),
+    });
+    let connection = AcpConnection::connect_observed(&options, observer.clone())
+        .await
+        .map_err(safe_error)?;
+    let selected = crate::feedback_transport::select(connection.capabilities().http_mcp, companion);
+    let feedback_transport = match selected {
+        Ok(transport) => transport,
+        Err(error) => {
+            let _ = connection.shutdown().await;
+            return Err(error);
+        }
+    };
+    if let Some(endpoint) = launch.feedback {
+        let injected = feedback_transport
+            .ok_or_else(|| {
+                AgentDriverError::new("No managed feedback transport is available for this Agent")
+            })
+            .and_then(|transport| {
+                crate::feedback_transport::server(transport, endpoint, companion)
+            });
+        match injected {
+            Ok(server) => options.mcp_servers.push(server),
+            Err(error) => {
+                let _ = connection.shutdown().await;
+                return Err(error);
+            }
+        }
+    }
+    let result = tokio::time::timeout(
+        Duration::from_secs(60),
+        connection.open_session(&options, remote_session_id.as_deref()),
+    )
+    .await;
+    let info = match result {
+        Ok(Ok(info)) => info,
+        other => {
+            let _ = connection.shutdown().await;
+            return Err(match other {
+                Ok(Err(error)) => safe_error(error),
+                _ => AgentDriverError::new("ACP session creation or recovery timed out"),
+            });
+        }
+    };
+    *observer.remote.lock().expect("remote attribution lock") =
+        Some(info.remote_session_id.clone());
+    let sender = connection.sender();
+    let permissions = connection.permission_queue();
+    let configuration = connection.configuration_cache();
+    let mut capabilities = connection.capabilities();
+    capabilities.feedback_transport = feedback_transport;
+    let prompt_capabilities = capabilities.prompt.clone();
+    Ok(StartedAgentSession {
+        remote_session_id: info.remote_session_id.clone(),
+        capabilities,
+        connection: Arc::new(ManagedConnection {
+            owned: Mutex::new(Some(connection)),
+            shutdown: tokio::sync::Mutex::new(()),
+            sender,
+            remote: info.remote_session_id,
+            permissions,
+            configuration,
+            prompt_capabilities,
+        }),
+    })
+}
+
+async fn check(
+    config: &AgentConfig,
+    companion: Option<&Path>,
+) -> Result<AgentSessionCapabilities, AgentDriverError> {
+    let cwd = std::env::current_dir()
+        .map_err(|_| AgentDriverError::new("Cannot determine the runtime working directory"))?;
+    let connection = AcpConnection::connect(&options(config, cwd), Arc::new(|_| {}))
+        .await
+        .map_err(safe_error)?;
+    let mut capabilities = connection.capabilities();
+    let selected = crate::feedback_transport::select(capabilities.http_mcp, companion);
+    connection.shutdown().await.map_err(safe_error)?;
+    capabilities.feedback_transport = selected?;
+    Ok(capabilities)
 }
 
 #[async_trait]
@@ -209,7 +262,7 @@ fn options(config: &AgentConfig, cwd: std::path::PathBuf) -> AcpLaunch {
     AcpLaunch {
         command: config.command.clone(),
         args: config.args.clone(),
-        env: config.env.clone(),
+        env: crate::feedback_transport::public_environment(&config.env),
         cwd,
         mcp_servers: vec![],
     }

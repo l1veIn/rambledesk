@@ -222,7 +222,9 @@ pub fn run() {
                 let sessions = SessionApplication::new(
                     Arc::new(store.clone()),
                     Arc::new(store.clone()),
-                    Arc::new(rambledesk_acp::AcpSessionDriver),
+                    Arc::new(rambledesk_acp::AcpSessionDriver::with_feedback_companion(
+                        std::env::current_exe()?,
+                    )),
                 )
                 .with_change_observer(application_change_hub.clone())
                 .with_feedback_provider(feedback_provider.clone())

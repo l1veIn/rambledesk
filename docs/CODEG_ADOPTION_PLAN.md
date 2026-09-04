@@ -70,3 +70,4 @@ Chat 展示流式文本、思考、结构化工具内容和权限；输入器支
 - C3b：消息提交后立即腾空输入器；失败只恢复未被后续编辑改变的会话草稿，删除后不复活，12 项草稿/UI 回归通过。
 - C4d：真实图片/UTF-8 附件选择与粘贴已接 typed command，控件遵循协商能力；发送与失败恢复复用会话草稿版本，36 项附件/草稿/渲染用例及 Svelte 检查通过。
 - C2b：历史分页应用接口与客户端合并完成；exclusive sequence cursor、会话隔离、实时覆盖旧页和离开后迟到响应均通过回归。Timeline 的按需挂载与滚动锚点接线继续。
+- F1b：生产 Desktop 已启用 HTTP 优先、stdio companion 回退；真实 CLI→私有 HTTP→SQLite 双会话与恢复测试通过，Desktop 编译通过。Pi 特殊通道在 F2 接线。

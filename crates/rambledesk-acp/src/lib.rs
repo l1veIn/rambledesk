@@ -4,6 +4,7 @@ pub mod agents;
 mod connection;
 mod disconnect;
 mod driver;
+mod feedback_transport;
 mod observer;
 mod permission_details;
 mod permissions;
@@ -12,4 +13,4 @@ mod prompt_content;
 mod session_configuration;
 
 pub use connection::{AcpConnection, AcpError, AcpEvent, AcpLaunch, AcpSessionInfo};
-pub use driver::AcpSessionDriver;
+pub use driver::{AcpSessionDriver, ConfiguredAcpSessionDriver};

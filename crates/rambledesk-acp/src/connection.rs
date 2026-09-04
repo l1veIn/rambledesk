@@ -89,8 +89,13 @@ impl AcpConnection {
         launch: &AcpLaunch,
         observer: Arc<dyn crate::observer::ProtocolObserver>,
     ) -> Result<Self, AcpError> {
-        let mut child =
-            crate::process::spawn(&launch.command, &launch.args, &launch.env, &launch.cwd)?;
+        let mut child = crate::process::spawn_filtered(
+            &launch.command,
+            &launch.args,
+            &launch.env,
+            &launch.cwd,
+            &crate::feedback_transport::inherited_private_env_to_remove(&launch.env),
+        )?;
         let stdin = child.take_stdin().ok_or(AcpError::Closed)?;
         let stdout = child.take_stdout().ok_or(AcpError::Closed)?;
         let transport_closed = Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -248,6 +253,12 @@ impl AcpConnection {
                 .resume
                 .is_some(),
             http_mcp: self.initialized.agent_capabilities.mcp_capabilities.http,
+            feedback_transport: self
+                .initialized
+                .agent_capabilities
+                .mcp_capabilities
+                .http
+                .then_some(rambledesk_core::FeedbackTransport::Http),
             prompt: crate::prompt_content::capabilities(
                 &self.initialized.agent_capabilities.prompt_capabilities,
             ),

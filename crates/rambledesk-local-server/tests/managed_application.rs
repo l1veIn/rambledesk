@@ -93,6 +93,7 @@ impl AgentSessionDriver for Driver {
                 load_session: true,
                 resume_session: true,
                 http_mcp: true,
+                feedback_transport: Some(FeedbackTransport::Http),
                 prompt: AgentPromptCapabilities::default(),
             },
         })
