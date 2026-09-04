@@ -41,6 +41,7 @@ export const HTTP_APPLICATION_OPERATIONS = {
   cancelManagedPrompt: 'cancelManagedPrompt',
   sendManagedPrompt: 'sendManagedPrompt',
   respondManagedPermission: 'respondManagedPermission',
+  resolveFeedbackDelivery: 'resolveFeedbackDelivery',
   listFeedbackInbox: 'listFeedbackInbox',
   listHostSessions: 'listHostSessions',
   listArchivedHostSessions: 'listArchivedHostSessions',
@@ -98,6 +99,7 @@ const MUTATION_COMMANDS: ReadonlySet<ApplicationCommandName> = new Set([
   'cancelManagedPrompt',
   'sendManagedPrompt',
   'respondManagedPermission',
+  'resolveFeedbackDelivery',
   'saveFeedbackDraft',
   'addFeedbackAttachment',
   'removeFeedbackAttachment',
@@ -822,6 +824,7 @@ export function applicationCommandResponseResources<Name extends ApplicationComm
     case 'cancelManagedPrompt':
     case 'sendManagedPrompt':
     case 'respondManagedPermission':
+    case 'resolveFeedbackDelivery':
       return [{ kind: 'managed_session', session_id: canonicalUuid((input as { session_id: string }).session_id.trim()) }]
     case 'getFeedbackWorkspace':
     case 'saveFeedbackDraft':
@@ -893,6 +896,7 @@ export function applicationCommandProjectionKey<Name extends ApplicationCommandN
     case 'cancelManagedPrompt':
     case 'sendManagedPrompt':
     case 'respondManagedPermission':
+    case 'resolveFeedbackDelivery':
       return projectionKey(name, canonicalUuid((input as { session_id: string }).session_id.trim()))
     case 'listFeedbackInbox':
     case 'listHostSessions':

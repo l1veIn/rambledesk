@@ -148,6 +148,7 @@ describe('HttpApplicationSession reconnect state machine', () => {
   it.each([
     'saveAgentConfig', 'deleteAgentConfig', 'checkAgentConfig', 'createManagedSession',
     'startManagedSession', 'stopManagedSession', 'cancelManagedPrompt', 'sendManagedPrompt', 'respondManagedPermission',
+    'resolveFeedbackDelivery',
   ] as const)('returns %s once after a newer invalidation without replaying the operation', async (name) => {
     const socket = new ControlledWebSocket()
     let socketCreated = false

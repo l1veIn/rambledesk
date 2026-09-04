@@ -60,4 +60,5 @@
 - 步骤 9b：导航接入新建配置/目录会话与 Agent 工作区；零反馈默认显示 Agent，反馈与 Agent 面板可切换，权限/取消独立响应，关闭视图仅释放订阅。会话 ID 固定控制器，精确失效与并发快照合并避免串会话。Agent UI 共 30 项测试、Svelte 0 error / 0 warning 通过；直接删除入口留待步骤 13 接入。
 - 步骤 10：托管 MCP 固定请求归属，独立随机凭据与独立 transport session manager；撤销等待已进入操作退出，跨 scope、伪造身份与混用 MCP session 均拒绝。实例启动注入 HTTP MCP，恢复轮换凭据，失败/停止撤销；Desktop 共享同一 provider/listener。4 项 HTTP 作用域测试、16 项 MCP、7 项原 HTTP 安全回归、4 项 runtime（含凭据生命周期）通过；Desktop 编译与相关 clippy 通过。
 - 步骤 11：所有托管反馈终态与 outbox 同事务写入，重复提交/发布恢复幂等；attempt CAS 防止并发重复认领，重启 sending 转 uncertain，只能显式重试或确认。迁移补齐已有托管终态，按会话丢弃与跨作用域校验完善。8 项 outbox 测试及 storage 共 74 项回归通过。
-- 步骤 12–15：推进中，逐步验收后记录。
+- 步骤 12：runtime worker 只向空闲且连接有效的原会话续接；发送前持久认领，正常轮次终态后标记 delivered，断开/异常标记 uncertain 并停止自动重放。Desktop/Web 同时展示投递状态与显式重试/确认，托管请求隐藏旧的返宿主续接流程。真实 stdio→专属 MCP→提交→outbox→同上下文 get_feedback 的 2 项集成通过（含忙时等待、多次反馈、重复提交与读反馈后断线），HTTP resolve/generation、前端 115 项及 clippy 通过。断线测试推动修正 SDK task 与底层 EOF 的存活判断差异。
+- 步骤 13–15：推进中，逐步验收后记录。

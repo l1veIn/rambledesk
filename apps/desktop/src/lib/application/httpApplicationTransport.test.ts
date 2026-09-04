@@ -213,6 +213,20 @@ describe('HttpApplicationSession', () => {
 })
 
 describe('HttpApplicationTransport', () => {
+  it.each(['retry', 'acknowledge'] as const)('sends an explicit %s feedback-delivery decision as a managed-session mutation', async (action) => {
+    const fetchImplementation = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ accepted: true }))
+    const transport = new HttpApplicationTransport(authenticatedSession(fetchImplementation).lease())
+    const input = { session_id: 'local-one', request_id: 'feedback-one', action }
+    await transport.call('resolveFeedbackDelivery', input)
+    const [url, init] = fetchImplementation.mock.calls[0]!
+    expect(String(url)).toBe('https://workbench.example/api/application/resolveFeedbackDelivery')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual(input)
+    expect(new Headers(init?.headers).get(RUNTIME_GENERATION_HEADER)).toBe(TEST_RUNTIME_GENERATION)
+    expect(applicationCommandResponseResources('resolveFeedbackDelivery', input)).toEqual([{ kind: 'managed_session', session_id: 'local-one' }])
+    expect(fetchImplementation).toHaveBeenCalledTimes(1)
+  })
+
   it('scopes managed snapshots by local session id and keeps config secrets out of projection keys', () => {
     expect(applicationCommandResponseResources('listAgentConfigs', undefined)).toEqual([{ kind: 'agent_configurations' }])
     expect(applicationCommandResponseResources('getManagedSession', { session_id: 'local-session-one' }))
@@ -380,8 +394,8 @@ describe('HttpApplicationTransport', () => {
   })
 
   it('defines one complete HTTP operation mapping', () => {
-    expect(Object.keys(HTTP_APPLICATION_OPERATIONS)).toHaveLength(34)
-    expect(new Set(Object.values(HTTP_APPLICATION_OPERATIONS)).size).toBe(34)
+    expect(Object.keys(HTTP_APPLICATION_OPERATIONS)).toHaveLength(35)
+    expect(new Set(Object.values(HTTP_APPLICATION_OPERATIONS)).size).toBe(35)
   })
 
   it('encodes JSON, multipart bytes, binary responses, and no-content outcomes', async () => {

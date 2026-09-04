@@ -3,7 +3,8 @@
   import { onDestroy, tick } from 'svelte'
   import { Button } from '$lib/components/ui/button'
   import { Badge } from '$lib/components/ui/badge'
-  import type { AgentConfig, FeedbackRequestSummary } from '$lib/generated/feedback'
+  import type { AgentConfig, FeedbackDelivery, FeedbackRequestSummary, ResolveDeliveryAction } from '$lib/generated/feedback'
+  import FeedbackDeliveryStatus from './FeedbackDeliveryStatus.svelte'
   import { locale } from '$lib/preferences'
   import { redactAgentMessage } from './agentConfigForm'
   import { agentText } from './agentI18n'
@@ -17,6 +18,8 @@
   export let activities: readonly SessionActivity[] = []
   export let permissions: readonly SessionPermission[] = []
   export let feedbackRequests: readonly FeedbackRequestSummary[] = []
+  export let deliveries: readonly FeedbackDelivery[] = []
+  export let onResolveDelivery: ((requestId: string, action: ResolveDeliveryAction) => Promise<void> | void) | undefined = undefined
   export let config: AgentConfig | null = null
   export let busy = false
   export let error = ''
@@ -164,6 +167,9 @@
       {#if onDelete}<Button variant="ghost" size="icon-sm" class="text-muted-foreground hover:text-destructive" disabled={busy || lifecyclePending} aria-label={tr('Delete session')} title={tr('Delete session')} onclick={() => void remove()}><Trash2 class="size-3.5" /></Button>{/if}
     </div>
   </header>
+  {#if onResolveDelivery}
+    <FeedbackDeliveryStatus sessionId={snapshot.session.session_id} {deliveries} requests={visibleFeedback} {envText} onResolve={onResolveDelivery} {onOpenFeedback} />
+  {/if}
 
   {#if configurationChanged}<p role="status" class="m-0 border-b border-amber-500/25 bg-amber-500/5 px-5 py-2 text-xs leading-5">{tr('This agent is using an earlier configuration. Saved changes apply on its next start.')}</p>{/if}
   {#if visibleError}<p role="alert" class="m-0 break-words border-b border-destructive/25 bg-destructive/5 px-5 py-3 text-xs text-destructive">{tr(visibleError)}</p>{/if}

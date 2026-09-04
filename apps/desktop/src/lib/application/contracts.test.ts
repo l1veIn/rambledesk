@@ -18,6 +18,7 @@ import type {
   SaveAgentConfigInput,
   SendManagedPromptInput,
   RespondManagedPermissionInput,
+  ResolveFeedbackDeliveryInput,
 } from '../generated/feedback'
 import {
   isApplicationError,
@@ -41,6 +42,8 @@ describe('application command contracts', () => {
     expectTypeOf<ApplicationCommandInput<'getManagedSession'>>().toEqualTypeOf<ManagedSessionInput>()
     expectTypeOf<ApplicationCommandInput<'sendManagedPrompt'>>().toEqualTypeOf<SendManagedPromptInput>()
     expectTypeOf<ApplicationCommandInput<'respondManagedPermission'>>().toEqualTypeOf<RespondManagedPermissionInput>()
+    expectTypeOf<ApplicationCommandInput<'resolveFeedbackDelivery'>>().toEqualTypeOf<ResolveFeedbackDeliveryInput>()
+    expectTypeOf<ApplicationCommandResult<'resolveFeedbackDelivery'>>().toEqualTypeOf<ManagedSessionSnapshot>()
     expectTypeOf<ApplicationCommandResult<'getManagedSession'>>().toEqualTypeOf<ManagedSessionSnapshot>()
     expectTypeOf<ApplicationCommandInput<'listFeedbackInbox'>>().toEqualTypeOf<undefined>()
     expectTypeOf<ApplicationCommandResult<'listFeedbackInbox'>>().toEqualTypeOf<
@@ -99,6 +102,7 @@ describe('application command contracts', () => {
       'cancelManagedPrompt',
       'sendManagedPrompt',
       'respondManagedPermission',
+      'resolveFeedbackDelivery',
       'listFeedbackInbox',
       'listHostSessions',
       'listArchivedHostSessions',
@@ -124,7 +128,7 @@ describe('application command contracts', () => {
       'readRequestAttachment',
     ] as const satisfies readonly ApplicationCommandName[]
 
-    expect(commands).toHaveLength(34)
+    expect(commands).toHaveLength(35)
     expectTypeOf<(typeof commands)[number]>().toEqualTypeOf<ApplicationCommandName>()
   })
 })

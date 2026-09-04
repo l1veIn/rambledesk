@@ -59,6 +59,7 @@ pub struct ManagedSessionSnapshot {
     pub runtime: SessionRuntime,
     pub activities: Vec<super::SessionActivity>,
     pub permissions: Vec<super::SessionPermission>,
+    pub deliveries: Vec<super::FeedbackDelivery>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]

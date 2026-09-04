@@ -36,9 +36,13 @@ impl AgentSessionDriver for AcpSessionDriver {
         };
         let mut options = options(&launch.config, cwd.into());
         if let Some(endpoint) = launch.feedback {
-            use agent_client_protocol::schema::v1::{McpServer, McpServerHttp, HttpHeader};
-            options.mcp_servers.push(McpServer::Http(McpServerHttp::new("rambledesk", endpoint.url)
-                .headers(vec![HttpHeader::new("Authorization", format!("Bearer {}", endpoint.bearer_token))])));
+            use agent_client_protocol::schema::v1::{HttpHeader, McpServer, McpServerHttp};
+            options.mcp_servers.push(McpServer::Http(
+                McpServerHttp::new("rambledesk", endpoint.url).headers(vec![HttpHeader::new(
+                    "Authorization",
+                    format!("Bearer {}", endpoint.bearer_token),
+                )]),
+            ));
         }
         let observer = Arc::new(crate::observer::ManagedObserver {
             sink: launch.observer,
@@ -50,7 +54,9 @@ impl AgentSessionDriver for AcpSessionDriver {
             .map_err(safe_error)?;
         if !options.mcp_servers.is_empty() && !connection.capabilities().http_mcp {
             let _ = connection.shutdown().await;
-            return Err(AgentDriverError::new("This Agent does not support the HTTP MCP transport required for managed feedback"));
+            return Err(AgentDriverError::new(
+                "This Agent does not support the HTTP MCP transport required for managed feedback",
+            ));
         }
         let result = tokio::time::timeout(
             Duration::from_secs(60),

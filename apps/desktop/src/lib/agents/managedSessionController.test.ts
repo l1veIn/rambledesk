@@ -15,6 +15,7 @@ function snapshot(id: string, text = ''): ManagedSessionSnapshot {
     activities: text ? [{ id: 'message', session_id: id, sequence: 1, turn_id: 'turn',
       kind: 'agent_message', text, tool_call_id: null, created_at: '2026-09-04' }] : [],
     permissions: [],
+    deliveries: [],
   }
 }
 
@@ -154,5 +155,26 @@ describe('managed workspace transport integration', () => {
     await flush()
     expect(get(controller).snapshot).toBeNull()
     expect(transport.callsFor('stopManagedSession')).toHaveLength(0)
+  })
+
+  it('resolves uncertain feedback only through the requested action and reads the resulting projection', async () => {
+    const current = snapshot('one')
+    const transport = new TestApplicationTransport(undefined, { initiallyReady: true })
+      .resolve('getManagedSession', current)
+      .resolve('resolveFeedbackDelivery', current)
+    const controller = createManagedSessionController(transport, 'one')
+    controller.start()
+    await flush()
+    expect(transport.callsFor('resolveFeedbackDelivery')).toHaveLength(0)
+    await controller.resolveDelivery('feedback-one', 'retry')
+    await controller.resolveDelivery('feedback-two', 'acknowledge')
+    expect(transport.callsFor('resolveFeedbackDelivery').map((call) => call.input)).toEqual([
+      { session_id: 'one', request_id: 'feedback-one', action: 'retry' },
+      { session_id: 'one', request_id: 'feedback-two', action: 'acknowledge' },
+    ])
+    transport.reject('resolveFeedbackDelivery', new Error('Outcome unknown'))
+    await expect(controller.resolveDelivery('feedback-three', 'retry')).rejects.toThrow('Outcome unknown')
+    expect(transport.callsFor('resolveFeedbackDelivery')).toHaveLength(3)
+    controller.dispose()
   })
 })

@@ -2,7 +2,7 @@ import { get, writable } from 'svelte/store'
 import type { ApplicationTransport } from '$lib/application/applicationTransport'
 import { APPLICATION_EVENTS_STREAM } from '$lib/application/applicationEvents'
 import { applicationResourcesAffectManagedSession, createApplicationSnapshotRefetch } from '$lib/application/applicationSnapshotRefetch'
-import type { ManagedSessionSnapshot } from '$lib/generated/feedback'
+import type { ManagedSessionSnapshot, ResolveDeliveryAction } from '$lib/generated/feedback'
 
 export type ManagedSessionState = Readonly<{
   snapshot: ManagedSessionSnapshot | null
@@ -85,6 +85,9 @@ export function createManagedSessionController(transport: ApplicationTransport, 
     prompt: (text: string) => run(() => transport.call('sendManagedPrompt', { session_id: sessionId, text })),
     respondPermission: (requestId: string, optionId: string | null) => run(() => transport.call('respondManagedPermission', {
       session_id: sessionId, request_id: requestId, option_id: optionId,
+    })),
+    resolveDelivery: (requestId: string, action: ResolveDeliveryAction) => run(() => transport.call('resolveFeedbackDelivery', {
+      session_id: sessionId, request_id: requestId, action,
     })),
   }
 }

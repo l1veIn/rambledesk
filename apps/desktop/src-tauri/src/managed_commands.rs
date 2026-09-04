@@ -1,6 +1,6 @@
 use rambledesk_core::{
     AgentConfig, AgentConfigInput, AgentConnectionCheck, CreateManagedSessionInput,
-    ManagedCommandError, ManagedSessionInput, ManagedSessionSnapshot,
+    ManagedCommandError, ManagedSessionInput, ManagedSessionSnapshot, ResolveFeedbackDeliveryInput,
     RespondManagedPermissionInput, SaveAgentConfigInput, SendManagedPromptInput,
 };
 
@@ -102,5 +102,16 @@ pub(crate) async fn respond_managed_permission(
     state
         .application_commands
         .respond_managed_permission(input)
+        .await
+}
+
+#[tauri::command]
+pub(crate) async fn resolve_feedback_delivery(
+    state: tauri::State<'_, WorkbenchState>,
+    input: ResolveFeedbackDeliveryInput,
+) -> Result<ManagedSessionSnapshot, ManagedCommandError> {
+    state
+        .application_commands
+        .resolve_feedback_delivery(input)
         .await
 }

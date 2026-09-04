@@ -4943,6 +4943,7 @@ dependencies = [
  "futures",
  "hex",
  "percent-encoding",
+ "rambledesk-acp",
  "rambledesk-core",
  "rambledesk-mcp",
  "rambledesk-storage",

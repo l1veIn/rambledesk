@@ -22,6 +22,7 @@ export const APPLICATION_CONFORMANCE_INPUTS = {
   cancelManagedPrompt: { session_id: 'local-session-1' },
   sendManagedPrompt: { session_id: 'local-session-1', text: 'Review this project.' },
   respondManagedPermission: { session_id: 'local-session-1', request_id: 'permission-1', option_id: null },
+  resolveFeedbackDelivery: { session_id: 'local-session-1', request_id: 'request-1', action: 'acknowledge' },
   listFeedbackInbox: undefined,
   listHostSessions: undefined,
   listArchivedHostSessions: { search: null },
@@ -143,9 +144,9 @@ export function runApplicationTransportConformance(
   createFixture: () => ApplicationTransportConformanceFixture,
 ): void {
   describe(`${implementationName} ApplicationTransport conformance`, () => {
-    it('maps all 34 query mutation multipart binary and void operations', async () => {
+    it('maps all 35 query mutation multipart binary and void operations', async () => {
       const fixture = createFixture()
-      expect(APPLICATION_COMMAND_NAMES).toHaveLength(34)
+      expect(APPLICATION_COMMAND_NAMES).toHaveLength(35)
 
       for (const [index, name] of APPLICATION_COMMAND_NAMES.entries()) {
         const input = APPLICATION_CONFORMANCE_INPUTS[name]

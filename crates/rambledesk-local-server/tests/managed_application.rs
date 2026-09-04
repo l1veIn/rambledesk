@@ -103,6 +103,8 @@ impl AgentSessionDriver for Driver {
 
 struct Fixture {
     directory: tempfile::TempDir,
+    store: Arc<SqliteFeedbackStore>,
+    feedback: FeedbackApplication,
     facade: Arc<ApplicationCommandFacade>,
     sessions: SessionApplication,
     driver: Arc<Driver>,
@@ -126,12 +128,13 @@ impl Fixture {
             .into_application()
             .with_change_observer(changes.clone());
         let driver = Arc::new(Driver::default());
-        let sessions = SessionApplication::new(store.clone(), store, driver.clone())
-            .with_change_observer(changes.clone());
+        let sessions = SessionApplication::new(store.clone(), store.clone(), driver.clone())
+            .with_change_observer(changes.clone())
+            .with_deliveries(store.clone());
         let facade = Arc::new(
             ApplicationCommandFacade::new(
                 application.clone(),
-                WorkbenchTerminalOperations::without_observer(application),
+                WorkbenchTerminalOperations::without_observer(application.clone()),
                 vec![],
             )
             .with_sessions(sessions.clone()),
@@ -148,6 +151,8 @@ impl Fixture {
         });
         Ok(Self {
             directory,
+            store,
+            feedback: application,
             facade,
             sessions,
             driver,
@@ -335,6 +340,7 @@ async fn every_managed_mutation_requires_current_runtime_generation_including_co
         "sendManagedPrompt",
         "cancelManagedPrompt",
         "respondManagedPermission",
+        "resolveFeedbackDelivery",
     ] {
         for generation in [None, Some("old-runtime")] {
             let request = fixture.request(operation, json!({"agent_config_id":config.id}));
@@ -388,6 +394,7 @@ fn tauri_managed_commands_match_http_names_and_delegate_to_the_same_facade() {
         ("sendManagedPrompt", "send_managed_prompt"),
         ("cancelManagedPrompt", "cancel_managed_prompt"),
         ("respondManagedPermission", "respond_managed_permission"),
+        ("resolveFeedbackDelivery", "resolve_feedback_delivery"),
     ] {
         assert!(commands.contains(&format!("async fn {snake}(")), "{snake}");
         assert!(
@@ -400,8 +407,82 @@ fn tauri_managed_commands_match_http_names_and_delegate_to_the_same_facade() {
         );
         assert!(routes.contains(&format!("/application/{camel}")), "{camel}");
     }
-    assert_eq!(commands.matches("#[tauri::command]").count(), 11);
-    assert_eq!(commands.matches("input:").count(), 10);
+    assert_eq!(commands.matches("#[tauri::command]").count(), 12);
+    assert_eq!(commands.matches("input:").count(), 11);
     assert!(registration.contains(".with_sessions(sessions.clone())"));
     assert!(registration.contains("state.sessions.shutdown()"));
+    assert!(registration.contains("sessions.start_delivery_worker()"));
+}
+
+#[tokio::test]
+async fn uncertain_delivery_decisions_are_scoped_and_return_the_updated_snapshot()
+-> anyhow::Result<()> {
+    let fixture = Fixture::new().await?;
+    let config = fixture.facade.save_agent_config(config_input()).await?;
+    let session = fixture
+        .facade
+        .create_managed_session(CreateManagedSessionInput {
+            agent_config_id: config.id,
+            cwd: fixture.directory.path().to_string_lossy().into_owned(),
+            title: "Delivery decision".into(),
+        })
+        .await?;
+    let scope = ManagedFeedbackScope::from_session(&session.session)?;
+    for (action, expected) in [("retry", "pending"), ("acknowledge", "delivered")] {
+        let request = fixture
+            .feedback
+            .request_managed_feedback(
+                &scope,
+                RequestFeedbackInput {
+                    request_id: None,
+                    host_id: None,
+                    host_session_id: String::new(),
+                    title: Some("Review".into()),
+                    what_happened: "Review delivery".into(),
+                    actions: vec![ActionInput {
+                        id: "review".into(),
+                        instruction: "Review fixture".into(),
+                    }],
+                    context_refs: vec![],
+                    attachments: vec![],
+                    source_hint: None,
+                    allow_finish: false,
+                    final_summary: None,
+                },
+            )
+            .await?;
+        fixture
+            .feedback
+            .cancel_feedback(CancelFeedbackInput {
+                request_id: request.request_id.clone(),
+                reason: "Fixture cancellation".into(),
+            })
+            .await?;
+        let now = "2026-09-04T12:00:00Z";
+        fixture
+            .store
+            .claim_delivery(&request.request_id, "attempt", now)
+            .await?
+            .expect("pending delivery");
+        fixture
+            .store
+            .finish_delivery(
+                &request.request_id,
+                "attempt",
+                FeedbackDeliveryState::Uncertain,
+                Some("fixture interruption"),
+                now,
+            )
+            .await?;
+        let resolved = fixture.call("resolveFeedbackDelivery", json!({"session_id":session.session.session_id,"request_id":request.request_id,"action":action})).await?;
+        let delivery = resolved["deliveries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|delivery| delivery["request_id"] == request.request_id)
+            .unwrap();
+        assert_eq!(delivery["state"], expected);
+        assert_eq!(delivery["session_id"], session.session.session_id);
+    }
+    fixture.shutdown().await
 }

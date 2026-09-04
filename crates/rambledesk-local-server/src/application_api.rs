@@ -45,6 +45,7 @@ pub const RUNTIME_GENERATION_HEADER: &str = "x-rambledesk-runtime-generation";
 pub const REVISION_HEADER: &str = "x-rambledesk-revision";
 
 const MUTATION_OPERATIONS: &[&str] = &[
+    "resolveFeedbackDelivery",
     "saveAgentConfig",
     "deleteAgentConfig",
     "checkAgentConfig",

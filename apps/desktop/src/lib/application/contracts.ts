@@ -32,6 +32,7 @@ import {
   type SaveAgentConfigInput,
   type SendManagedPromptInput,
   type RespondManagedPermissionInput,
+  type ResolveFeedbackDeliveryInput,
   type SetHostPinnedInput,
   type SetHostSessionPinnedInput,
   type SubmitFeedbackInput,
@@ -65,6 +66,7 @@ export type ApplicationCommandMap = Readonly<{
   cancelManagedPrompt: ApplicationCommandContract<ManagedSessionInput, ManagedSessionSnapshot>
   sendManagedPrompt: ApplicationCommandContract<SendManagedPromptInput, ManagedSessionSnapshot>
   respondManagedPermission: ApplicationCommandContract<RespondManagedPermissionInput, ManagedSessionSnapshot>
+  resolveFeedbackDelivery: ApplicationCommandContract<ResolveFeedbackDeliveryInput, ManagedSessionSnapshot>
   listFeedbackInbox: ApplicationCommandContract<undefined, FeedbackRequestSummary[]>
   listHostSessions: ApplicationCommandContract<undefined, HostSessionSummary[]>
   listArchivedHostSessions: ApplicationCommandContract<ListHostSessionsInput, HostSessionSummary[]>

@@ -1,5 +1,6 @@
 //! ACP client implementation. Protocol and subprocess details stay outside core.
 mod connection;
+mod disconnect;
 mod driver;
 mod observer;
 mod permissions;

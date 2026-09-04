@@ -68,6 +68,7 @@ pub struct AcpConnection {
     initialized: InitializeResponse,
     remote_session_id: std::sync::Mutex<Option<String>>,
     permissions: Arc<crate::permissions::PermissionQueue>,
+    transport_closed: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl AcpConnection {
@@ -90,6 +91,11 @@ impl AcpConnection {
             crate::process::spawn(&launch.command, &launch.args, &launch.env, &launch.cwd)?;
         let stdin = child.take_stdin().ok_or(AcpError::Closed)?;
         let stdout = child.take_stdout().ok_or(AcpError::Closed)?;
+        let transport_closed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let stdout = crate::disconnect::DisconnectReader {
+            inner: stdout,
+            closed: transport_closed.clone(),
+        };
         let stderr = tokio::spawn(crate::process::drain_stderr(
             child.take_stderr().ok_or(AcpError::Closed)?,
         ));
@@ -179,6 +185,7 @@ impl AcpConnection {
                 initialized,
                 remote_session_id: std::sync::Mutex::new(None),
                 permissions,
+                transport_closed,
             }),
             other => {
                 let _ = stop.send(());
@@ -218,6 +225,9 @@ impl AcpConnection {
     }
     pub fn is_closed(&self) -> bool {
         self.task.is_finished()
+            || self
+                .transport_closed
+                .load(std::sync::atomic::Ordering::SeqCst)
     }
 
     pub async fn open_session(

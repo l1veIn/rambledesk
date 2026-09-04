@@ -138,7 +138,7 @@
   import { createCookingController } from './lib/workbench/cookingController'
   import { createDraftController } from './lib/workbench/draftController'
   import { createPublisherController } from './lib/workbench/publisherController'
-  import { buildResumePrompt, shouldShowResumePromptButton } from './lib/workbench/resumePrompt'
+  import { buildResumePrompt, requestSessionManagement, shouldShowResumePromptButton } from './lib/workbench/resumePrompt'
   import {
     createAttachmentController,
     type AttachmentMessageTone,
@@ -575,6 +575,7 @@
   $: canOpenResumePrompt = shouldShowResumePromptButton(
     feedbackResult,
     completedResult?.resolution ?? workspace?.request.resolution,
+    requestSessionManagement(workspace?.request, $navigation.hostSessions),
   )
   $: currentRequestCooking =
     workspace !== null && cookingRequestIds.has(workspace.request.request_id)
@@ -718,9 +719,29 @@
         // The tray entry is an optional Desktop Shell affordance.
       },
     )
+    let resumePromptMounted = true
+    let resumePromptGeneration = 0
     const resumePromptUnlisten = applicationTransport.subscribe(
       RESUME_PROMPT_STREAM,
       (prompt) => {
+        const generation = ++resumePromptGeneration
+        void presentExternalResumePrompt(prompt, () => resumePromptMounted && generation === resumePromptGeneration)
+      },
+      () => {
+        // The manual reopen action remains available for external sessions.
+      },
+    )
+    async function presentExternalResumePrompt(prompt: ResumePrompt, isCurrent: () => boolean) {
+      try {
+        const knownRequest = workspace?.request.request_id === prompt.request_id ? workspace.request
+          : [...$navigation.requests, ...$navigation.pendingRequests].find((request) => request.request_id === prompt.request_id)
+        const request = knownRequest ?? (await applicationTransport.call('getFeedbackWorkspace', { request_id: prompt.request_id })).request
+        if (!isCurrent()) return
+        let management = requestSessionManagement(request, $navigation.hostSessions)
+        if (!management) management = requestSessionManagement(request, await applicationTransport.call('listHostSessions', undefined))
+        if (!isCurrent()) return
+        if (!management) management = requestSessionManagement(request, await applicationTransport.call('listArchivedHostSessions', { search: null }))
+        if (!isCurrent() || management?.kind === 'managed') return
         resumePrompt = prompt
         resumeCopyState = 'idle'
         if (
@@ -742,12 +763,13 @@
         // The alert sound is reserved for a new request arriving, not for the
         // resume prompt shown after a submission completes, so it is not played
         // here.
-      },
-      () => {
-        // Resume prompt still appears if submit path keeps the main window focused.
-      },
-    )
+      } catch (cause) {
+        if (isCurrent()) pageError = messageFrom(cause)
+      }
+    }
     return () => {
+      resumePromptMounted = false
+      resumePromptGeneration += 1
       unsubscribeApplicationEvents()
       applicationSnapshotRefetch.dispose()
       draftController.cancelPendingSave()
@@ -2018,6 +2040,19 @@
                 />
               {/key}
             {:else if workbenchMounted}
+              <div class="flex h-full min-h-0 flex-col">
+              {#if renderedManagedSession}
+                {#key renderedManagedSession.session_id}
+                  <ManagedSessionSection
+                    transport={applicationTransport}
+                    sessionId={renderedManagedSession.session_id}
+                    showWorkspace={false}
+                    feedbackRequests={renderedManagedFeedbackRequests}
+                    onOpenFeedback={async (requestId) => { await openRequest(requestId) }}
+                  />
+                {/key}
+              {/if}
+              <div class="min-h-0 flex-1">
               {#key renderedSessionView ? workspaceViewKey(renderedSessionView) : 'workspace:empty'}
               <SessionWorkbench
             transport={applicationTransport}
@@ -2105,6 +2140,8 @@
             onApprove={() => void approveFeedback()}
               />
               {/key}
+              </div>
+              </div>
             {:else}
               <div
                 class="grid h-full min-h-0 place-items-center text-sm text-muted-foreground"

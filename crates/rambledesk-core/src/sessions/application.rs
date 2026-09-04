@@ -72,8 +72,11 @@ pub struct SessionApplication {
     pub(super) clock: Arc<dyn Clock>,
     pub(super) ids: Arc<dyn IdGenerator>,
     pub(super) observer: Arc<dyn ApplicationChangeObserver>,
-    closing: Arc<AtomicBool>,
+    pub(super) closing: Arc<AtomicBool>,
     feedback: Option<Arc<dyn ManagedFeedbackProvider>>,
+    pub(super) deliveries: Option<Arc<dyn FeedbackDeliveryRepository>>,
+    pub(super) delivery_worker: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
+    pub(super) delivery_wake: Arc<tokio::sync::Notify>,
 }
 
 impl SessionApplication {
@@ -92,6 +95,9 @@ impl SessionApplication {
             observer: Arc::new(NoopApplicationChangeObserver),
             closing: Arc::new(AtomicBool::new(false)),
             feedback: None,
+            deliveries: None,
+            delivery_worker: Arc::new(Mutex::new(None)),
+            delivery_wake: Arc::new(tokio::sync::Notify::new()),
         }
     }
 
@@ -229,11 +235,20 @@ impl SessionApplication {
             .activities
             .list_recent_session_activity(&input.session_id, 1000)
             .await?;
+        let deliveries = match &self.deliveries {
+            Some(repository) => {
+                repository
+                    .list_session_deliveries(&input.session_id)
+                    .await?
+            }
+            None => vec![],
+        };
         Ok(ManagedSessionSnapshot {
             session,
             runtime,
             activities,
             permissions,
+            deliveries,
         })
     }
 
@@ -307,7 +322,9 @@ impl SessionApplication {
                     live.runtime.last_error = Some(error.to_string());
                     drop(live);
                     let _ = started.connection.stop().await;
-                    if let Some(provider) = &self.feedback { let _ = provider.revoke(&input.session_id).await; }
+                    if let Some(provider) = &self.feedback {
+                        let _ = provider.revoke(&input.session_id).await;
+                    }
                     self.changed();
                     return Err(error.into());
                 }
@@ -325,7 +342,9 @@ impl SessionApplication {
                 live.runtime.connection = SessionConnectionState::Failed;
                 live.runtime.last_error = Some(error.to_string());
                 drop(live);
-                if let Some(provider) = &self.feedback { let _ = provider.revoke(&input.session_id).await; }
+                if let Some(provider) = &self.feedback {
+                    let _ = provider.revoke(&input.session_id).await;
+                }
                 self.changed();
                 return Err(error);
             }
@@ -350,7 +369,9 @@ impl SessionApplication {
         live.runtime.connection = SessionConnectionState::Disconnected;
         live.permissions.clear();
         drop(live);
-        if let Some(provider) = &self.feedback { provider.revoke(&input.session_id).await?; }
+        if let Some(provider) = &self.feedback {
+            provider.revoke(&input.session_id).await?;
+        }
         if let Some(connection) = connection
             && let Err(error) = connection.stop().await
         {
@@ -370,11 +391,15 @@ impl SessionApplication {
 
     pub async fn shutdown(&self) -> Result<(), SessionError> {
         self.closing.store(true, Ordering::SeqCst);
+        self.delivery_wake.notify_waiters();
         let entries = self.entries.lock().await.clone();
         for entry in entries.values() {
             entry
                 .interrupt
                 .send_modify(|epoch| *epoch = epoch.wrapping_add(1));
+        }
+        if let Some(worker) = self.delivery_worker.lock().await.take() {
+            let _ = worker.await;
         }
         let mut error = None;
         for session_id in entries.keys() {

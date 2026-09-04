@@ -28,6 +28,7 @@ tower-service.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+rambledesk-acp.workspace = true
 anyhow.workspace = true
 reqwest = { version = "0.13", default-features = false, features = ["json", "multipart", "rustls"] }
 rmcp = { workspace = true, features = [

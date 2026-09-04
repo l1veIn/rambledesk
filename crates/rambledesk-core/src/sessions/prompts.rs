@@ -43,12 +43,23 @@ impl SessionApplication {
         &self,
         input: SendManagedPromptInput,
     ) -> Result<ManagedSessionSnapshot, SessionError> {
+        self.dispatch_prompt(input, None).await
+    }
+
+    pub(super) async fn dispatch_prompt(
+        &self,
+        input: SendManagedPromptInput,
+        delivery: Option<FeedbackDelivery>,
+    ) -> Result<ManagedSessionSnapshot, SessionError> {
         if input.text.trim().is_empty() || input.text.len() > 1_000_000 {
             return Err(SessionError::InvalidInput);
         }
         self.managed_record(&input.session_id).await?;
         let entry = self.entry(&input.session_id).await;
         let lifecycle = entry.lifecycle.lock().await;
+        if self.closing.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(SessionError::ShuttingDown);
+        }
         let mut live = entry.live.lock().await;
         if live.runtime.connection != SessionConnectionState::Connected {
             return Err(SessionError::NotConnected);
@@ -62,6 +73,22 @@ impl SessionApplication {
             .instance_id
             .clone()
             .ok_or(SessionError::NotConnected)?;
+        let delivery = if let Some(delivery) = delivery {
+            let attempt = self.ids.new_id();
+            if self
+                .deliveries
+                .as_ref()
+                .ok_or(SessionError::InvalidInput)?
+                .claim_delivery(&delivery.request_id, &attempt, &self.clock.now_rfc3339())
+                .await?
+                .is_none()
+            {
+                return Err(SessionError::Busy);
+            }
+            Some((delivery.request_id, attempt))
+        } else {
+            None
+        };
         live.runtime.activity = SessionActivityState::Running;
         live.cancelling = false;
         live.runtime.last_error = None;
@@ -94,6 +121,18 @@ impl SessionApplication {
             let mut live = entry.live.lock().await;
             live.runtime.activity = SessionActivityState::Idle;
             live.runtime.last_error = Some(error.to_string());
+            if let (Some(repository), Some((request, attempt))) = (&self.deliveries, &delivery) {
+                // No protocol prompt was sent: returning to pending is safe.
+                repository
+                    .finish_delivery(
+                        request,
+                        attempt,
+                        FeedbackDeliveryState::Pending,
+                        Some("Unable to persist continuation before sending"),
+                        &self.clock.now_rfc3339(),
+                    )
+                    .await?;
+            }
             self.changed();
             return Err(error);
         }
@@ -102,7 +141,7 @@ impl SessionApplication {
         tokio::spawn(async move {
             let result = connection.prompt(&input.text).await;
             application
-                .finish_prompt(&session_id, &instance, &turn_id, result)
+                .finish_prompt(&session_id, &instance, &turn_id, delivery, result)
                 .await;
         });
         drop(lifecycle);
@@ -118,12 +157,16 @@ impl SessionApplication {
         session_id: &str,
         instance: &str,
         turn_id: &str,
+        delivery: Option<(String, String)>,
         result: Result<String, AgentDriverError>,
     ) {
         let entry = self.entry(session_id).await;
         let _events = entry.events.lock().await;
         let mut live = entry.live.lock().await;
-        if live.runtime.instance_id.as_deref() != Some(instance) {
+        let same_instance = live.runtime.instance_id.as_deref() == Some(instance);
+        // Persist the attempt outcome even if stop/restart replaced the live entry.
+        let delivered = self.finish_feedback_delivery(delivery, &result).await;
+        if !same_instance {
             return;
         }
         let (kind, text) = match &result {
@@ -146,6 +189,9 @@ impl SessionApplication {
         if let Err(error) = persisted {
             live.runtime.last_error = Some(error.to_string());
         }
+        if let Err(error) = delivered {
+            live.runtime.last_error = Some(error.to_string());
+        }
         if live
             .connection
             .as_ref()
@@ -155,6 +201,7 @@ impl SessionApplication {
         }
         drop(live);
         self.changed();
+        self.delivery_wake.notify_one();
     }
 
     async fn record_agent_event(

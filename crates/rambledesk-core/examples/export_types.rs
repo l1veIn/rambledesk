@@ -21,6 +21,9 @@ use rambledesk_core::{
     SessionConnectionState, SessionRuntime,
 };
 use rambledesk_core::{
+    FeedbackDelivery, FeedbackDeliveryState, ResolveDeliveryAction, ResolveFeedbackDeliveryInput,
+};
+use rambledesk_core::{
     RespondManagedPermissionInput, SendManagedPromptInput, SessionPermission,
     SessionPermissionOption,
 };
@@ -58,6 +61,10 @@ fn exported_feedback_package_content() -> String {
 
 fn main() -> std::io::Result<()> {
     let declarations = [
+        exported::<FeedbackDelivery>(),
+        exported::<FeedbackDeliveryState>(),
+        exported::<ResolveDeliveryAction>(),
+        exported::<ResolveFeedbackDeliveryInput>(),
         exported::<SessionPermissionOption>(),
         exported::<SessionPermission>(),
         exported::<RespondManagedPermissionInput>(),
