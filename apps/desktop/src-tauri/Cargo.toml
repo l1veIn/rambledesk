@@ -71,6 +71,7 @@ keyring = { version = "3.6.3", default-features = false, features = ["windows-na
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "3.6.3", default-features = false, features = ["linux-native-sync-persistent", "crypto-rust", "vendored"] }
 [dev-dependencies]
+tauri = { workspace = true, features = ["test"] }
 anyhow.workspace = true
 axum.workspace = true
 reqwest = { version = "0.13", default-features = false, features = ["json", "multipart", "rustls"] }

@@ -1,3 +1,4 @@
+mod application_events;
 mod clipboard_capture;
 mod diagnostics;
 mod dsh_install;
@@ -53,6 +54,7 @@ struct WorkbenchState {
     application_commands: Arc<ApplicationCommandFacade>,
     sessions: SessionApplication,
     application_change_hub: Arc<ApplicationChangeHub>,
+    application_events: application_events::ApplicationEventBridge,
     web_access_lifecycle: tokio::sync::Mutex<web_access::WebAccessLifecycle>,
     web_access_credential_store: Arc<dyn web_access::WebAccessCredentialStore>,
     store: rambledesk_storage::SqliteFeedbackStore,
@@ -197,6 +199,10 @@ pub fn run() {
                     ),
                 )?;
                 let application_change_hub = Arc::new(ApplicationChangeHub::new());
+                let application_events = application_events::ApplicationEventBridge::start(
+                    app.handle().clone(),
+                    application_change_hub.clone(),
+                );
                 let application = store
                     .clone()
                     .into_application()
@@ -288,6 +294,7 @@ pub fn run() {
                     application_commands,
                     sessions,
                     application_change_hub,
+                    application_events,
                     web_access_lifecycle: tokio::sync::Mutex::new(
                         web_access::WebAccessLifecycle::default(),
                     ),
@@ -462,6 +469,7 @@ pub fn run() {
                 tracing::warn!("managed session shutdown completed with a cleanup error");
             }
             state.local_server.cancel();
+            state.application_events.cancel();
             if let Ok(lifecycle) = state.web_access_lifecycle.try_lock() {
                 lifecycle.cancel_active();
             }

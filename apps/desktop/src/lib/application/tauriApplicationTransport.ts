@@ -14,6 +14,7 @@ import type {
 } from './applicationTransport'
 import type { CapabilityManifest } from '../capabilities/capabilityManifest'
 import { UNAVAILABLE_CAPABILITY_MANIFEST } from '../capabilities/unavailableCapabilities'
+import { APPLICATION_EVENTS_STREAM } from './applicationEvents'
 
 export const TAURI_APPLICATION_COMMANDS = {
   listAgentConfigs: 'list_agent_configs',
@@ -79,6 +80,8 @@ function tauriArguments<Name extends ApplicationCommandName>(
 }
 
 export class TauriApplicationTransport implements ApplicationTransport {
+  private readonly pendingApplicationSubscriptions = new Set<Promise<void>>()
+
   constructor(
     private readonly capabilityManifest: CapabilityManifest = UNAVAILABLE_CAPABILITY_MANIFEST,
   ) {}
@@ -102,27 +105,39 @@ export class TauriApplicationTransport implements ApplicationTransport {
     let active = true
     let unlisten: Unsubscribe | null = null
 
-    void listen<Event>(stream.id, ({ payload }) => {
+    const registration = listen<Event>(stream.id, ({ payload }) => {
       if (active) handler(payload)
     })
       .then((nextUnlisten) => {
         if (active) unlisten = nextUnlisten
         else nextUnlisten()
       })
-      .catch((cause) => {
+
+    if (stream.id === APPLICATION_EVENTS_STREAM.id) {
+      this.pendingApplicationSubscriptions.add(registration)
+    }
+    void registration.then(
+      () => this.pendingApplicationSubscriptions.delete(registration),
+      (cause) => {
+        // Keep a failed active subscription as a readiness failure; a successful
+        // snapshot must not erase the error and leave a silently frozen view.
         if (active) onError(cause)
-      })
+      },
+    )
 
     return () => {
       if (!active) return
       active = false
+      this.pendingApplicationSubscriptions.delete(registration)
       unlisten?.()
       unlisten = null
     }
   }
 
-  waitUntilReady(): Promise<void> {
-    return Promise.resolve()
+  async waitUntilReady(): Promise<void> {
+    // Native listen registers asynchronously. Read only after registration so
+    // a change between mounting a projection and its first snapshot is covered.
+    await Promise.all(this.pendingApplicationSubscriptions)
   }
 
   capabilities(): CapabilityManifest {
