@@ -104,7 +104,12 @@ impl AgentSessionDriver for Driver {
     ) -> Result<AgentSessionCapabilities, AgentDriverError> {
         self.checks.fetch_add(1, Ordering::SeqCst);
         Ok(AgentSessionCapabilities {
-            http_mcp: config.command != "no-http-mcp",
+            http_mcp: !matches!(config.command.as_str(), "no-http-mcp" | "stdio-mcp"),
+            feedback_transport: match config.command.as_str() {
+                "no-http-mcp" => None,
+                "stdio-mcp" => Some(FeedbackTransport::Stdio),
+                _ => Some(FeedbackTransport::Http),
+            },
             ..Default::default()
         })
     }
@@ -254,7 +259,7 @@ async fn configuration_check_rejects_missing_feedback_capability_before_creating
         checked["message"]
             .as_str()
             .unwrap()
-            .contains("HTTP MCP is unsupported")
+            .contains("no managed feedback transport")
     );
     assert!(
         checked["details"][0]
@@ -271,6 +276,27 @@ async fn configuration_check_rejects_missing_feedback_capability_before_creating
             .unwrap()
             .is_empty()
     );
+    fixture.shutdown().await
+}
+
+#[tokio::test]
+async fn configuration_check_accepts_stdio_feedback_without_advertising_http() -> anyhow::Result<()>
+{
+    let fixture = Fixture::new().await?;
+    let config = fixture
+        .facade
+        .save_agent_config(SaveAgentConfigInput {
+            command: "stdio-mcp".into(),
+            ..config_input()
+        })
+        .await?;
+    let checked = fixture
+        .call("checkAgentConfig", json!({"agent_config_id": config.id}))
+        .await?;
+    assert_eq!(checked["ok"], true);
+    let details = checked["details"][0].as_str().unwrap();
+    assert!(details.contains("HTTP MCP: false"));
+    assert!(details.contains("managed feedback: stdio"));
     fixture.shutdown().await
 }
 
@@ -461,7 +487,10 @@ fn tauri_managed_commands_match_http_names_and_delegate_to_the_same_facade() {
         ("sendManagedPrompt", "send_managed_prompt"),
         ("setManagedSessionConfig", "set_managed_session_config"),
         ("sendManagedPromptContent", "send_managed_prompt_content"),
-        ("listManagedSessionActivity", "list_managed_session_activity"),
+        (
+            "listManagedSessionActivity",
+            "list_managed_session_activity",
+        ),
         ("cancelManagedPrompt", "cancel_managed_prompt"),
         ("respondManagedPermission", "respond_managed_permission"),
         ("resolveFeedbackDelivery", "resolve_feedback_delivery"),
@@ -486,14 +515,18 @@ fn tauri_managed_commands_match_http_names_and_delegate_to_the_same_facade() {
 }
 
 #[tokio::test]
-async fn typed_prompt_has_a_bounded_larger_body_without_relaxing_other_commands() -> anyhow::Result<()> {
+async fn typed_prompt_has_a_bounded_larger_body_without_relaxing_other_commands()
+-> anyhow::Result<()> {
     let fixture = Fixture::new().await?;
     let oversized_image = json!({
         "session_id": "00000000-0000-0000-0000-000000000001", "text": "",
         "content": [{"type":"image","mime_type":"image/png","data":"a".repeat(2 * 1024 * 1024 + 1024)}]
     });
-    let response = fixture.request("sendManagedPromptContent", oversized_image)
-        .header(RUNTIME_GENERATION_HEADER, "managed-test").send().await?;
+    let response = fixture
+        .request("sendManagedPromptContent", oversized_image)
+        .header(RUNTIME_GENERATION_HEADER, "managed-test")
+        .send()
+        .await?;
     // The route accepts an envelope larger than 2 MiB, then core rejects the
     // invalid image before starting a turn. Other JSON routes retain 2 MiB.
     assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);

@@ -116,7 +116,7 @@ async fn five_npm_paths_install_detect_actual_versions_and_generate_launchable_c
             );
         }
         if id == "pi-acp" {
-            assert!(!installed.config.enabled);
+            assert!(installed.config.enabled);
             assert_eq!(found.dependencies[0].version.as_deref(), Some("0.83.0"));
             assert!(std::path::Path::new(&installed.config.env["PI_ACP_PI_COMMAND"]).is_file());
             assert!(
