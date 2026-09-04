@@ -61,12 +61,18 @@ impl SessionApplication {
             if self.closing.load(Ordering::SeqCst) {
                 break;
             }
-            // Do not cross an unresolved uncertain attempt in this conversation.
+            // A finished prompt may still be retrying its durable completion.
+            // Do not cross either that sending attempt or an uncertain outcome.
             if repository
                 .list_session_deliveries(&delivery.session_id)
                 .await?
                 .iter()
-                .any(|item| item.state == FeedbackDeliveryState::Uncertain)
+                .any(|item| {
+                    matches!(
+                        item.state,
+                        FeedbackDeliveryState::Sending | FeedbackDeliveryState::Uncertain
+                    )
+                })
             {
                 continue;
             }
@@ -126,9 +132,42 @@ impl SessionApplication {
                     ),
                 ),
             };
-            repository
+            let completed = repository
                 .finish_delivery(&request, &attempt, state, error, &self.clock.now_rfc3339())
-                .await?;
+                .await;
+            if matches!(completed, Err(SessionRepositoryError::Storage)) {
+                let app = self.clone();
+                let repository = repository.clone();
+                tokio::spawn(async move {
+                    // Retry only the known result of this exact attempt. No prompt
+                    // is sent again, and a discarded/replaced attempt ends the loop.
+                    while !app.closing.load(Ordering::SeqCst) {
+                        tokio::time::sleep(Duration::from_millis(250)).await;
+                        if app.closing.load(Ordering::SeqCst) {
+                            break;
+                        }
+                        match repository
+                            .finish_delivery(
+                                &request,
+                                &attempt,
+                                state,
+                                error,
+                                &app.clock.now_rfc3339(),
+                            )
+                            .await
+                        {
+                            Ok(delivery) => {
+                                app.session_changed(&delivery.session_id);
+                                app.delivery_wake.notify_one();
+                                break;
+                            }
+                            Err(SessionRepositoryError::Storage) => continue,
+                            Err(_) => break,
+                        }
+                    }
+                });
+            }
+            completed?;
         }
         Ok(())
     }

@@ -70,4 +70,5 @@
 - 步骤 13：运行中、空闲和零反馈会话均可直接删除；持久删除意图阻止新工作，先撤销 scope/停止所属实例，再丢弃投递并清理文件与记录，失败保留可重试状态。严格验证所属目录并拒绝越界/junction，发布与删除共用锁阻止旧任务重建文件；已删会话的迟到事件不重建 runtime。8 项存储删除测试、4 项跨模块闭环/删除/重启后删除测试、HTTP 204/404 与 generation/parity、前端删除/只读/标签隔离验收通过。
 - 步骤 13b：Desktop terminal observer 读取持久 managed 标记，在进入旧 Host continuation router 前完成分流；归属读取失败不推断为 external。新增同 host label 下 managed/external/未知请求的路由归属测试通过。
 - 步骤 14：migration 0016 持久保存 run/turn 检查点；启动先对账未关闭运行，读取列表不隐式启动 Agent，恢复只允许原远端会话。EOF 与持久收尾失败会撤销 scope、回收所属进程并留下可见中断；旧取消 watchdog 在生命周期锁内检查 instance/turn，不会停止新运行。8 项存储恢复测试、4 项 runtime 恢复/延迟取消测试、恢复提示 UI 测试与全工作区 Rust 测试通过。
-- 步骤 14b–15：收尾中，逐项验收后记录。
+- 步骤 14b：完成状态落库失败时只重试同 attempt 的 CAS；sending/uncertain 阻止后续投递越过。3 项真实 SQLite 故障注入测试验证恢复后补存、无重复 prompt、退出后交由启动恢复；通过。
+- 步骤 15a–15：收尾中，逐项验收后记录。
