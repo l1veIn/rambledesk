@@ -38,6 +38,7 @@ pub struct AgentSessionCapabilities {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 #[serde(rename_all = "snake_case")]
 pub enum FeedbackTransport {
+    Command,
     Http,
     Stdio,
     PiExtension,
@@ -46,6 +47,7 @@ pub enum FeedbackTransport {
 impl FeedbackTransport {
     pub fn as_str(self) -> &'static str {
         match self {
+            Self::Command => "command",
             Self::Http => "http",
             Self::Stdio => "stdio",
             Self::PiExtension => "pi_extension",

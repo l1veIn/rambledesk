@@ -123,7 +123,7 @@ async fn run_conversations(
     println!("{}", json!({"stage":"connected","sessions":2}));
     let prompts: Vec<_> = conversations.iter().map(|item| SendManagedPromptInput {
         session_id: item.session_id.clone(),
-        text: format!("This is a harmless RambleDesk integration probe in an isolated project. Call the rambledesk MCP request_feedback tool exactly once with request_id '{}', title 'Managed integration probe', what_happened 'Please provide the probe marker', and actions [{{\"id\":\"marker\",\"instruction\":\"Provide the unique probe marker\"}}]. Do not supply host/session identity. After the tool returns, END THIS TURN immediately; do not wait, poll, call get_feedback, create another request, or ask for external confirmation. RambleDesk will later continue this SAME Agent session. On that later continuation, call get_feedback with the original request_id, read the returned feedback markdown file, and reply only with the exact marker in that file. Do not edit any project files or inspect credentials, configuration, environment variables, or unrelated files. No shell commands are needed.", item.request_id),
+        text: format!("This is a harmless RambleDesk integration probe in an isolated project. Follow the built-in session workflow and execute the RambleDesk feedback request command exactly once with request_id '{}', title 'Managed integration probe', what_happened 'Please provide the probe marker', and actions [{{\"id\":\"marker\",\"instruction\":\"Provide the unique probe marker\"}}]. Use stdin or a temporary JSON file. Do not supply host/session identity. After the command returns, END THIS TURN immediately; do not wait, poll, read feedback yet, create another request, or ask for external confirmation. RambleDesk will later continue this SAME Agent session. On that continuation, execute feedback get with the original request_id, read the returned feedback package, and reply only with its exact marker. Only run commands needed for this feedback workflow. Do not edit project files or inspect credentials, configuration, or unrelated files.", item.request_id),
     }).collect();
     let (one, two) = tokio::join!(
         app.send_prompt(prompts[0].clone()),
@@ -280,11 +280,17 @@ async fn verify_reopened(
         provider.clone(),
     )
     .await?;
-    let app = SessionApplication::new(store.clone(), store.clone(), Arc::new(AcpSessionDriver))
-        .with_feedback_provider(provider)
-        .with_deliveries(store.clone())
-        .with_deletions(store.clone())
-        .with_recovery(store.clone());
+    let app = SessionApplication::new(
+        store.clone(),
+        store.clone(),
+        Arc::new(AcpSessionDriver::with_feedback_companion(
+            std::env::current_exe()?,
+        )),
+    )
+    .with_feedback_provider(provider)
+    .with_deliveries(store.clone())
+    .with_deletions(store.clone())
+    .with_recovery(store.clone());
     let result = async {
         app.recover_runtime().await?;
         app.start_delivery_worker().await?;
@@ -302,7 +308,7 @@ async fn verify_reopened(
             let boundary = resumed.activities.iter().map(|row| row.sequence).max().unwrap_or(0);
             app.send_prompt(SendManagedPromptInput {
                 session_id: item.session_id.clone(),
-                text: format!("RambleDesk was restarted and explicitly resumed this SAME Agent conversation. Call the rambledesk MCP get_feedback tool now for the existing request_id '{}', read the returned feedback markdown file again, then reply only with the exact unique marker from that file. Use the current MCP connection; do not rely only on remembered text. Do not create a new feedback request or edit files. Do not inspect credentials, config, environment or unrelated files. No shell commands are needed.",item.request_id),
+                text: format!("RambleDesk was restarted and explicitly resumed this SAME Agent conversation. Execute the built-in feedback get command now for the existing request_id '{}', read the returned feedback package again, then reply only with its exact unique marker. Use the current inherited command capability; do not rely only on remembered text. Do not create a new feedback request or edit files. Only run commands needed to read this feedback. Do not inspect credentials, config, or unrelated files.",item.request_id),
             }).await?;
             let done = wait_for(&app, &item.session_id, "reopened feedback read", |value| {
                 value.runtime.activity == SessionActivityState::Idle
@@ -310,7 +316,7 @@ async fn verify_reopened(
             }).await?;
             ensure!(remote(&done)? == item.remote_id, "Reopened prompt changed identity");
             let new_rows: Vec<_> = done.activities.iter().filter(|row| row.sequence > boundary).collect();
-            ensure!(new_rows.iter().any(|row| row.kind == SessionActivityKind::ToolCall && row.text.contains("get_feedback")), "Reopened Agent did not use its new scoped MCP connection");
+            ensure!(new_rows.iter().any(|row| row.kind == SessionActivityKind::ToolCall), "Reopened Agent did not execute a tool to read feedback");
             let messages = new_rows.iter().filter(|row| row.kind == SessionActivityKind::AgentMessage)
                 .map(|row| row.text.as_str()).collect::<Vec<_>>().join("\n");
             ensure!(messages.contains(&item.marker), "Reopened Agent did not read its original marker");
@@ -343,8 +349,15 @@ async fn verify_reopened(
     result
 }
 
+fn main() -> anyhow::Result<()> {
+    if rambledesk_feedback_client::process_requested() {
+        std::process::exit(rambledesk_feedback_client::run_process());
+    }
+    run_probe()
+}
+
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn run_probe() -> anyhow::Result<()> {
     if std::env::var("RAMBLEDESK_MANAGED_PROBE_RUN").as_deref() != Ok("1") {
         println!(
             "No Agent launched. Set RAMBLEDESK_MANAGED_PROBE_RUN=1, RAMBLEDESK_MANAGED_PROBE_LAUNCH=<launch.json>, and RAMBLEDESK_MANAGED_PROBE_RUN_DIR=<new absolute directory> to run a real two-project feedback probe. Model usage may be billed."
@@ -380,11 +393,17 @@ async fn main() -> anyhow::Result<()> {
         provider.clone(),
     )
     .await?;
-    let app = SessionApplication::new(store.clone(), store.clone(), Arc::new(AcpSessionDriver))
-        .with_feedback_provider(provider)
-        .with_deliveries(store.clone())
-        .with_deletions(store.clone())
-        .with_recovery(store.clone());
+    let app = SessionApplication::new(
+        store.clone(),
+        store.clone(),
+        Arc::new(AcpSessionDriver::with_feedback_companion(
+            std::env::current_exe()?,
+        )),
+    )
+    .with_feedback_provider(provider)
+    .with_deliveries(store.clone())
+    .with_deletions(store.clone())
+    .with_recovery(store.clone());
     let mut report = json!({"label":launch.label,"sessions":[],"cleanup_complete":false});
     let result = async {
         app.start_delivery_worker().await?;

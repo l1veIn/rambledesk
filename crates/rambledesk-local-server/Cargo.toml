@@ -28,6 +28,7 @@ tower-service.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+rambledesk-feedback-client.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 rambledesk-acp.workspace = true
 anyhow.workspace = true

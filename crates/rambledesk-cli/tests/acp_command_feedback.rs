@@ -39,20 +39,29 @@ impl Fixture {
         app.start_delivery_worker().await.unwrap();
         let config = app
             .save_agent_config(SaveAgentConfigInput {
+                catalog_id: None,
                 id: None,
-                name: "Stdio fixture".into(),
+                name: "Command fixture".into(),
                 host_id: "fixture".into(),
                 protocol: SessionProtocol::Acp,
                 enabled: true,
                 command: "node".into(),
                 args: vec![
                     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                        .join("tests/fixtures/acp_stdio_feedback.mjs")
+                        .join("tests/fixtures/acp_command_feedback.mjs")
                         .to_string_lossy()
                         .into(),
-                    if http { "http" } else { "stdio" }.into(),
+                    if http { "http" } else { "no-mcp" }.into(),
                 ],
                 env: BTreeMap::from([
+                    (
+                        "RAMBLEDESK_FEEDBACK_TOKEN".into(),
+                        "persisted-value-must-not-be-trusted".into(),
+                    ),
+                    (
+                        "RAMBLEDESK_COMMAND".into(),
+                        "persisted-command-must-not-run".into(),
+                    ),
                     (
                         "RAMBLEDESK_MANAGED_MCP_TOKEN".into(),
                         "persisted-value-must-not-be-trusted".into(),
@@ -136,7 +145,7 @@ async fn configured_driver_runs_real_scoped_companion_chain_and_original_context
         .await
         .unwrap();
     assert!(check.ok, "{}", check.message);
-    assert!(check.details[0].contains("managed feedback: stdio"));
+    assert!(check.details[0].contains("managed feedback: command"));
     let first = fixture.create().await;
     let second = fixture.create().await;
     for snapshot in [&first, &second] {
@@ -149,7 +158,7 @@ async fn configured_driver_runs_real_scoped_companion_chain_and_original_context
         assert!(!snapshot.runtime.capabilities.http_mcp);
         assert_eq!(
             snapshot.runtime.capabilities.feedback_transport,
-            Some(FeedbackTransport::Stdio)
+            Some(FeedbackTransport::Command)
         );
     }
     let one = &first.session.session_id;
@@ -240,8 +249,8 @@ async fn configured_driver_runs_real_scoped_companion_chain_and_original_context
 }
 
 #[tokio::test]
-async fn http_remains_preferred_and_missing_companion_is_reported_without_claiming_http_support() {
-    let fixture = Fixture::new(true, PathBuf::from("missing-relative-companion")).await;
+async fn mcp_capabilities_do_not_change_workflow_and_missing_command_fails_explicitly() {
+    let fixture = Fixture::new(true, PathBuf::from(env!("CARGO_BIN_EXE_rambledesk"))).await;
     assert!(
         fixture
             .app
@@ -259,7 +268,7 @@ async fn http_remains_preferred_and_missing_companion_is_reported_without_claimi
     );
     assert_eq!(
         snapshot.runtime.capabilities.feedback_transport,
-        Some(FeedbackTransport::Http)
+        Some(FeedbackTransport::Command)
     );
     fixture.close().await;
     let fixture = Fixture::new(false, PathBuf::from("missing-relative-companion")).await;

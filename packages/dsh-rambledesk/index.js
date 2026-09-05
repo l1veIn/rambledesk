@@ -753,6 +753,9 @@ const name = "rambledesk";
 const inject = ["tools", "commands", "systemPrompt"];
 
 async function apply(ctx, config = {}) {
+  // ACP owns communication and continuation through its common command. Do not
+  // register a second external request route or an incompatible mode prompt.
+  if (process.env.RAMBLEDESK_MANAGED_SESSION === "1") return;
   const options = {
     hostId: config.hostId ?? "dsh",
     apiBaseUrl: config.apiBaseUrl,

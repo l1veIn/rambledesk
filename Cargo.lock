@@ -4966,6 +4966,7 @@ dependencies = [
  "percent-encoding",
  "rambledesk-acp",
  "rambledesk-core",
+ "rambledesk-feedback-client",
  "rambledesk-mcp",
  "rambledesk-storage",
  "rand 0.10.2",

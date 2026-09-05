@@ -79,7 +79,7 @@ impl SessionApplication {
             let input = SendManagedPromptInput {
                 session_id: delivery.session_id.clone(),
                 text: format!(
-                    "RambleDesk human feedback is ready for request {} (resolution: {}). Call get_feedback with this request_id to retrieve the durable result and its feedback files, then continue the original task in this same Agent session. This is a continuation of your existing task, not a new task.",
+                    "RambleDesk human feedback is ready for request {} (resolution: {}). Use the built-in RambleDesk feedback command: feedback get --request-id <the request_id above>. Read its durable feedback package and continue the original task in this same Agent session. Follow the managed workflow context for invoking RAMBLEDESK_COMMAND. Do not create a replacement request or use external feedback tools.",
                     delivery.request_id,
                     delivery.resolution.as_str()
                 ),

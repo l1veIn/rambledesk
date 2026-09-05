@@ -1,7 +1,4 @@
-use agent_client_protocol::schema::v1::{
-    EnvVariable, HttpHeader, McpServer, McpServerHttp, McpServerStdio,
-};
-use rambledesk_core::{AgentDriverError, FeedbackTransport, ManagedFeedbackEndpoint};
+use rambledesk_core::AgentDriverError;
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
@@ -13,6 +10,11 @@ pub(crate) const TOKEN_ENV: &str = "RAMBLEDESK_MANAGED_MCP_TOKEN";
 const PRIVATE_ENV: &[&str] = &[
     URL_ENV,
     TOKEN_ENV,
+    "RAMBLEDESK_FEEDBACK_URL",
+    "RAMBLEDESK_FEEDBACK_TOKEN",
+    "RAMBLEDESK_COMMAND",
+    "RAMBLEDESK_MANAGED_SESSION",
+    "RAMBLEDESK_MANAGED_PI_ACTIVE",
     "RAMBLEDESK_MANAGED_PI_WRAPPER",
     "RAMBLEDESK_MANAGED_PI_COMMAND",
     "RAMBLEDESK_MANAGED_PI_ARGS",
@@ -46,48 +48,4 @@ pub(crate) fn validate_companion(path: &Path) -> Result<PathBuf, AgentDriverErro
     }
     path.canonicalize()
         .map_err(|_| AgentDriverError::new("Managed feedback companion is unavailable"))
-}
-
-pub(crate) fn select(
-    http: bool,
-    companion: Option<&Path>,
-) -> Result<Option<FeedbackTransport>, AgentDriverError> {
-    if http {
-        return Ok(Some(FeedbackTransport::Http));
-    }
-    companion
-        .map(validate_companion)
-        .transpose()
-        .map(|path| path.map(|_| FeedbackTransport::Stdio))
-}
-
-pub(crate) fn server(
-    transport: FeedbackTransport,
-    endpoint: ManagedFeedbackEndpoint,
-    companion: Option<&Path>,
-) -> Result<McpServer, AgentDriverError> {
-    match transport {
-        FeedbackTransport::Http => Ok(McpServer::Http(
-            McpServerHttp::new("rambledesk", endpoint.url).headers(vec![HttpHeader::new(
-                "Authorization",
-                format!("Bearer {}", endpoint.bearer_token),
-            )]),
-        )),
-        FeedbackTransport::Stdio => {
-            let companion = validate_companion(companion.ok_or_else(|| {
-                AgentDriverError::new("Managed feedback companion is unavailable")
-            })?)?;
-            Ok(McpServer::Stdio(
-                McpServerStdio::new("rambledesk", companion)
-                    .args(vec!["managed-mcp-stdio".into()])
-                    .env(vec![
-                        EnvVariable::new(URL_ENV, endpoint.url),
-                        EnvVariable::new(TOKEN_ENV, endpoint.bearer_token),
-                    ]),
-            ))
-        }
-        FeedbackTransport::PiExtension => Err(AgentDriverError::new(
-            "Pi feedback requires its managed extension",
-        )),
-    }
 }

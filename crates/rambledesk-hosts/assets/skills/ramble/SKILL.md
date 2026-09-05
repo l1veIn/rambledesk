@@ -42,6 +42,16 @@ experience through the RambleDesk feedback loop instead of asking in chat.
 
 ## Select the available flow
 
+If the current session includes RambleDesk managed workflow context (or
+`RAMBLEDESK_MANAGED_SESSION=1`), follow that context first. Use the application
+command supplied by `RAMBLEDESK_COMMAND`: `feedback request --input <json-file>`,
+then end the Agent turn. RambleDesk resumes this same conversation after human
+feedback; use `feedback get --request-id <original-id>` to read it. Use
+`feedback recover` after an interruption. Do not select the native adapter or
+Generic MCP flows below, do not poll or block, and never choose host/session
+identifiers yourself. The private capability is supplied by the runtime;
+missing credentials require reconnecting this session, never external fallback.
+
 Prefer the native adapter flow when a tool equivalent to
 `request_ramble_feedback` is available. Otherwise use the Generic MCP flow with
 a tool equivalent to `request_feedback`. Discover renamed RambleDesk tools by

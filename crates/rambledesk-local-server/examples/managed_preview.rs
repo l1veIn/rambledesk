@@ -43,8 +43,15 @@ impl SpaAssetSource for Assets {
         })
     }
 }
+fn main() -> anyhow::Result<()> {
+    if rambledesk_feedback_client::process_requested() {
+        std::process::exit(rambledesk_feedback_client::run_process());
+    }
+    run_preview()
+}
+
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn run_preview() -> anyhow::Result<()> {
     anyhow::ensure!(
         std::env::var("RAMBLEDESK_MANAGED_PREVIEW").as_deref() == Ok("1"),
         "Set RAMBLEDESK_MANAGED_PREVIEW=1 to run this isolated fixture"
@@ -70,13 +77,18 @@ async fn main() -> anyhow::Result<()> {
         provider.clone(),
     )
     .await?;
-    let sessions =
-        SessionApplication::new(store.clone(), store.clone(), Arc::new(AcpSessionDriver))
-            .with_change_observer(hub.clone())
-            .with_feedback_provider(provider)
-            .with_deliveries(store.clone())
-            .with_deletions(store.clone())
-            .with_recovery(store.clone());
+    let sessions = SessionApplication::new(
+        store.clone(),
+        store.clone(),
+        Arc::new(AcpSessionDriver::with_feedback_companion(
+            std::env::current_exe()?,
+        )),
+    )
+    .with_change_observer(hub.clone())
+    .with_feedback_provider(provider)
+    .with_deliveries(store.clone())
+    .with_deletions(store.clone())
+    .with_recovery(store.clone());
     sessions.recover_runtime().await?;
     sessions.start_delivery_worker().await?;
     let config = sessions
