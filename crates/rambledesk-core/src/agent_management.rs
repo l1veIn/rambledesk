@@ -1,4 +1,5 @@
 //! Application-owned installation jobs shared by Desktop and Web clients.
+mod catalog_resolution;
 #[cfg(test)]
 #[path = "agent_management_tests.rs"]
 mod tests;
@@ -18,6 +19,16 @@ use ts_rs::TS;
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct CatalogAgentInput {
     pub agent_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct ResolveCatalogAgentInput {
+    pub agent_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub agent_config_id: Option<String>,
+    #[serde(default)]
+    pub enable: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -56,6 +67,7 @@ pub struct AgentManagementApplication {
     provider: Arc<dyn AgentCatalogProvider>,
     state: Arc<Mutex<State>>,
     changes: Arc<dyn ApplicationChangeObserver>,
+    pub(crate) catalog_resolution: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl AgentManagementApplication {
@@ -70,6 +82,7 @@ impl AgentManagementApplication {
                 shutting_down: false,
             })),
             changes,
+            catalog_resolution: Arc::new(tokio::sync::Mutex::new(())),
         }
     }
 

@@ -42,6 +42,7 @@ fn installed() -> InstalledAgent {
         agent_id: "fixture".into(),
         version: "1".into(),
         config: SaveAgentConfigInput {
+            catalog_id: None,
             id: None,
             name: "Fixture".into(),
             host_id: "fixture".into(),

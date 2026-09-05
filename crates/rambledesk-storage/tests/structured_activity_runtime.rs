@@ -110,6 +110,7 @@ async fn setup() -> (
         );
     }
     (dir, store, app, driver, ids)
+            catalog_id: None,
 }
 async fn prompt(app: &SessionApplication, id: &str) {
     app.send_prompt(SendManagedPromptInput {

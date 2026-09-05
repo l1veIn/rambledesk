@@ -81,6 +81,7 @@ async fn main() -> anyhow::Result<()> {
     sessions.start_delivery_worker().await?;
     let config = sessions
         .save_agent_config(SaveAgentConfigInput {
+            catalog_id: None,
             id: None,
             name: "Local ACP fixture".into(),
             host_id: "dsh".into(),

@@ -390,6 +390,7 @@ async fn main() -> anyhow::Result<()> {
         app.start_delivery_worker().await?;
         let config = app
             .save_agent_config(SaveAgentConfigInput {
+                catalog_id: None,
                 id: None,
                 name: "Isolated managed probe".into(),
                 host_id: "dsh".into(),

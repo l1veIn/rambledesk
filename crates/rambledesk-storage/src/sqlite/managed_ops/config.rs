@@ -8,6 +8,7 @@ impl SqliteFeedbackStore {
         config: AgentConfig,
     ) -> Result<AgentConfig, SessionRepositoryError> {
         if !nonempty(&config.id)
+            || config.catalog_id.as_ref().is_some_and(|id| !nonempty(id))
             || !nonempty(&config.name)
             || !nonempty(&config.host_id)
             || !nonempty(&config.command)
@@ -43,11 +44,11 @@ impl SqliteFeedbackStore {
         }
         sqlx::query(
             "INSERT INTO agent_configs \
-             (id, name, host_id, protocol, enabled, command, args_json, env_json, created_at, updated_at) \
-             VALUES (?1, ?2, ?3, 'acp', ?4, ?5, ?6, ?7, ?8, ?9) \
+             (id, name, host_id, protocol, enabled, command, args_json, env_json, created_at, updated_at, catalog_id) \
+             VALUES (?1, ?2, ?3, 'acp', ?4, ?5, ?6, ?7, ?8, ?9, ?10) \
              ON CONFLICT(id) DO UPDATE SET name = excluded.name, host_id = excluded.host_id, \
              enabled = excluded.enabled, command = excluded.command, args_json = excluded.args_json, \
-             env_json = excluded.env_json, updated_at = excluded.updated_at",
+             env_json = excluded.env_json, updated_at = excluded.updated_at, catalog_id = excluded.catalog_id",
         )
         .bind(&config.id)
         .bind(&config.name)
@@ -58,6 +59,7 @@ impl SqliteFeedbackStore {
         .bind(env_json)
         .bind(&config.created_at)
         .bind(&config.updated_at)
+        .bind(&config.catalog_id)
         .execute(&mut *transaction)
         .await
         .map_err(write_error)?;
@@ -137,6 +139,7 @@ fn config_from_row(row: &SqliteRow) -> Result<AgentConfig, SessionRepositoryErro
     .map_err(|_| SessionRepositoryError::CorruptData)?;
     Ok(AgentConfig {
         id: row.try_get("id").map_err(storage_error)?,
+        catalog_id: row.try_get("catalog_id").map_err(storage_error)?,
         name: row.try_get("name").map_err(storage_error)?,
         host_id: row.try_get("host_id").map_err(storage_error)?,
         protocol: SessionProtocol::Acp,

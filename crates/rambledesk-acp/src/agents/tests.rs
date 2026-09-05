@@ -75,6 +75,7 @@ async fn five_npm_paths_install_detect_actual_versions_and_generate_launchable_c
             .await
             .unwrap();
         assert_eq!(found.source, AgentInstallSource::Managed);
+        assert_eq!(found.env.clone().unwrap_or_default(), installed.config.env);
         assert_eq!(found.version.as_deref(), Some(installed.version.as_str()));
         assert_eq!(
             found.command.as_deref(),
@@ -173,6 +174,46 @@ async fn five_npm_paths_install_detect_actual_versions_and_generate_launchable_c
         }
         no_staging(&service, id).await;
     }
+}
+
+#[tokio::test]
+async fn historical_pi_defaults_follow_the_selected_generation_without_overwriting_user_env() {
+    let (_dir, service) = fixture("success");
+    let old = install(&service, "pi-acp", None).await.config;
+    let expected = old.env.clone();
+    let current = install(&service, "pi-acp", None).await.config;
+    assert_ne!(old.args, current.args);
+    let mut config = AgentConfig {
+        id: "old".into(),
+        catalog_id: old.catalog_id,
+        name: old.name,
+        host_id: old.host_id,
+        protocol: old.protocol,
+        enabled: old.enabled,
+        command: old.command,
+        args: old.args,
+        env: BTreeMap::new(),
+        created_at: "old".into(),
+        updated_at: "old".into(),
+    };
+    let mut env = BTreeMap::new();
+    apply_managed_pi_defaults(&config, &mut env).await;
+    assert_eq!(env, expected);
+    env.insert("PI_ACP_PI_COMMAND".into(), "explicit-native-pi".into());
+    env.insert("CUSTOM".into(), "retain".into());
+    apply_managed_pi_defaults(&config, &mut env).await;
+    assert_eq!(env["PI_ACP_PI_COMMAND"], "explicit-native-pi");
+    assert_eq!(env["CUSTOM"], "retain");
+    config.catalog_id = None;
+    let mut unrelated = BTreeMap::new();
+    apply_managed_pi_defaults(&config, &mut unrelated).await;
+    assert!(unrelated.is_empty());
+    config.catalog_id = Some("pi-acp".into());
+    tokio::fs::remove_file(service.root.join(".rambledesk-agents"))
+        .await
+        .unwrap();
+    apply_managed_pi_defaults(&config, &mut unrelated).await;
+    assert!(unrelated.is_empty());
 }
 
 #[tokio::test]

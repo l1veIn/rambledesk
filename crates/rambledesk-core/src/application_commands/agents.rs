@@ -1,7 +1,7 @@
 use super::{ApplicationCommandFacade, ManagedCommandErrorCode};
 use crate::{
-    AgentCatalogEntry, AgentInspection, AgentInstallJob, AgentInstallJobInput,
-    AgentManagementApplication, CatalogAgentInput, InstallAgentInput,
+    AgentCatalogEntry, AgentConfig, AgentInspection, AgentInstallJob, AgentInstallJobInput,
+    AgentManagementApplication, CatalogAgentInput, InstallAgentInput, ResolveCatalogAgentInput,
 };
 use serde::Serialize;
 
@@ -22,6 +22,20 @@ impl From<crate::AgentDriverError> for AgentManagementError {
     }
 }
 impl ApplicationCommandFacade {
+    pub async fn resolve_catalog_agent(
+        &self,
+        input: ResolveCatalogAgentInput,
+    ) -> Result<AgentConfig, AgentManagementError> {
+        let sessions = self.sessions.as_ref().ok_or_else(|| AgentManagementError {
+            code: ManagedCommandErrorCode::ManagedRuntimeUnavailable,
+            message: "Managed session runtime is unavailable".into(),
+            retryable: false,
+        })?;
+        self.agent_management()?
+            .resolve_configuration(sessions, input)
+            .await
+            .map_err(Into::into)
+    }
     pub fn with_agent_management(mut self, agents: AgentManagementApplication) -> Self {
         self.agents = Some(agents);
         self

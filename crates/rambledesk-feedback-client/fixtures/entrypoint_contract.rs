@@ -87,6 +87,7 @@ async fn binary_feedback_preserves_scope_unicode_packages_and_revocation_without
         .unwrap();
     store
         .save_agent_config(AgentConfig {
+            catalog_id: None,
             id: "fixture".into(),
             name: "Fixture".into(),
             host_id: "pi".into(),

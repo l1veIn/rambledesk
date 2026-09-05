@@ -214,6 +214,7 @@ async fn setup() -> (
 fn input(dir: &tempfile::TempDir, config: &str, title: &str) -> CreateManagedSessionInput {
     CreateManagedSessionInput {
         agent_config_id: config.into(),
+            catalog_id: None,
         cwd: dir.path().to_string_lossy().into_owned(),
         title: title.into(),
     }

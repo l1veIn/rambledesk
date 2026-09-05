@@ -19,6 +19,7 @@ async fn setup() -> (TestWorkspace, SqliteFeedbackStore) {
         .unwrap();
     store
         .save_agent_config(AgentConfig {
+            catalog_id: None,
             id: "config".into(),
             name: "Test".into(),
             host_id: "dsh".into(),

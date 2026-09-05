@@ -94,6 +94,7 @@ impl Fixture {
         .with_deliveries(store.clone());
         let config = app
             .save_agent_config(SaveAgentConfigInput {
+                catalog_id: None,
                 id: None,
                 name: "Fixture".into(),
                 host_id: "fixture".into(),

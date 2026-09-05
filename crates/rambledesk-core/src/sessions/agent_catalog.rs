@@ -108,6 +108,10 @@ pub struct AgentInspection {
     pub version: Option<String>,
     pub command: Option<String>,
     pub args: Vec<String>,
+    /// Launch defaults for this installation, never inherited account credentials.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub env: Option<std::collections::BTreeMap<String, String>>,
     pub dependencies: Vec<AgentDependencyInspection>,
     pub checks: Vec<AgentCatalogCheck>,
 }

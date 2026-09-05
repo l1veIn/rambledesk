@@ -27,6 +27,9 @@ pub enum SessionManagement {
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 pub struct AgentConfig {
     pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub catalog_id: Option<String>,
     pub name: String,
     pub host_id: String,
     pub protocol: SessionProtocol,
@@ -61,6 +64,9 @@ impl fmt::Debug for AgentConfig {
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 pub struct SaveAgentConfigInput {
     pub id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub catalog_id: Option<String>,
     pub name: String,
     pub host_id: String,
     pub protocol: SessionProtocol,
@@ -147,3 +153,4 @@ mod tests {
         assert!(debug.contains("TOKEN"));
     }
 }
+            catalog_id: None,

@@ -43,6 +43,23 @@ impl Toolchain {
     }
 }
 
+pub(super) fn managed_launch_environment(id: &str, prefix: &Path) -> BTreeMap<String, String> {
+    if id != "pi-acp" {
+        return BTreeMap::new();
+    }
+    BTreeMap::from([
+        ("PI_ACP_ENABLE_EMBEDDED_CONTEXT".into(), "true".into()),
+        (
+            "PI_ACP_PI_COMMAND".into(),
+            paths::command_path(&prefix.join(if cfg!(windows) {
+                "node_modules/.bin/pi.cmd"
+            } else {
+                "node_modules/.bin/pi"
+            })),
+        ),
+    ])
+}
+
 impl AgentCatalogService {
     pub(super) async fn tools(&self) -> Toolchain {
         #[cfg(test)]
@@ -318,6 +335,10 @@ impl AgentCatalogService {
             .unwrap_or((None, None));
         Ok(AgentInspection {
             agent_id: id.into(),
+            env: installed_prefix
+                .as_ref()
+                .map(|prefix| managed_launch_environment(id, prefix))
+                .filter(|env| !env.is_empty()),
             source,
             version: actual,
             command: launch.as_ref().map(|launch| launch.command.clone()),

@@ -229,6 +229,7 @@ impl Fixture {
 
 fn config_input() -> SaveAgentConfigInput {
     SaveAgentConfigInput {
+        catalog_id: None,
         id: None,
         name: "Fixture".into(),
         host_id: "dsh".into(),
@@ -323,6 +324,7 @@ async fn managed_http_uses_the_facade_for_configuration_session_prompt_and_permi
     let input = json!({"session_id":id});
     let snapshot = fixture.call("getManagedSession", input.clone()).await?;
     assert_eq!(
+            catalog_id: None,
         snapshot,
         serde_json::to_value(
             fixture
@@ -362,6 +364,7 @@ async fn managed_http_uses_the_facade_for_configuration_session_prompt_and_permi
     fixture
         .wait_for(&id, |snapshot| {
             snapshot.runtime.activity == SessionActivityState::Idle
+            catalog_id: None,
         })
         .await?;
     fixture

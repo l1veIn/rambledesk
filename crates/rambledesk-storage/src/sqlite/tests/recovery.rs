@@ -24,6 +24,7 @@ async fn setup() -> (TestWorkspace, SqliteFeedbackStore) {
 async fn seed(workspace: &TestWorkspace, store: &SqliteFeedbackStore) {
     store
         .save_agent_config(AgentConfig {
+            catalog_id: None,
             id: "config".into(),
             name: "Test".into(),
             host_id: "dsh".into(),

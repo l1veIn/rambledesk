@@ -14,8 +14,87 @@ const UPDATED: &str = "2026-09-04T01:00:00Z";
 fn config() -> AgentConfig {
     AgentConfig {
         id: "agent-config".into(),
+#[tokio::test]
+async fn catalog_identity_migration_links_only_unambiguous_historical_recipes_and_preserves_settings()
+ {
+    let workspace = TestWorkspace::new().await;
+    tokio::fs::create_dir_all(workspace.database.parent().unwrap())
+        .await
+        .unwrap();
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(
+            SqliteConnectOptions::new()
+                .filename(&workspace.database)
+                .create_if_missing(true),
+        )
+        .await
+        .unwrap();
+    let mut connection = pool.acquire().await.unwrap();
+    connection.ensure_migrations_table().await.unwrap();
+    for migration in MIGRATOR.iter().filter(|migration| migration.version <= 17) {
+        connection.apply(migration).await.unwrap();
+    }
+    let cases = [
+        (
+            "legacy-command",
+            "dsh",
+            r"C:\Tools\deepseek-acp.CMD",
+            r#"["--custom","literal value"]"#,
+            Some("deepseek-acp"),
+        ),
+        (
+            "legacy-package",
+            "pi",
+            "node",
+            r#"["C:\\old\\node_modules\\pi-acp\\dist\\index.js","--custom"]"#,
+            Some("pi-acp"),
+        ),
+        (
+            "ambiguous",
+            "dsh",
+            "node",
+            r#"["/old/node_modules/deepseek-acp/index.js","/old/node_modules/@deepseek-ai/dsh/main.js"]"#,
+            None,
+        ),
+        ("custom", "pi", "/custom/my-pi-wrapper", "[]", None),
+        ("different-host", "custom", "deepseek-acp", "[]", None),
+    ];
+    for (id, host, command, args, _) in cases {
+        sqlx::query("INSERT INTO agent_configs(id,name,host_id,protocol,enabled,command,args_json,env_json,created_at,updated_at) VALUES(?1,?1,?2,'acp',0,?3,?4,?5,?6,?6)")
+            .bind(id).bind(host).bind(command).bind(args).bind(r#"{"TOKEN":"keep-secret","CUSTOM":"keep"}"#).bind(CREATED)
+            .execute(&mut *connection).await.unwrap();
+    }
+    drop(connection);
+    pool.close().await;
+    let store = SqliteFeedbackStore::connect(&workspace.database)
+        .await
+        .unwrap();
+    for (id, host, command, args, catalog) in cases {
+        let config = store.get_agent_config(id).await.unwrap();
+        assert_eq!(config.catalog_id.as_deref(), catalog, "{id}");
+        assert_eq!(
+            (
+                config.id.as_str(),
+                config.name.as_str(),
+                config.host_id.as_str()
+            ),
+            (id, id, host)
+        );
+        assert_eq!(config.command, command);
+        assert_eq!(
+            config.args,
+            serde_json::from_str::<Vec<String>>(args).unwrap()
+        );
+        assert_eq!(config.env["TOKEN"], "keep-secret");
+        assert!(!config.enabled);
+        assert_eq!(config.updated_at, CREATED);
+    }
+}
+
         name: "Local dsh".into(),
         host_id: "deepseek-harness".into(),
+        catalog_id: None,
         protocol: SessionProtocol::Acp,
         enabled: true,
         command: "dsh".into(),

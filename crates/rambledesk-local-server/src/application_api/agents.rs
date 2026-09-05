@@ -1,10 +1,11 @@
 use super::*;
 use rambledesk_core::{
-    AgentInstallJobInput, AgentManagementError, CatalogAgentInput, InstallAgentInput,
+    AgentInstallJobInput, AgentManagementError, CatalogAgentInput, InstallAgentInput, ResolveCatalogAgentInput,
 };
 
 pub(super) fn routes() -> Router<ApplicationApiState> {
     Router::new()
+        .route("/application/resolveCatalogAgent", post(resolve_catalog_agent))
         .route(
             "/application/listAvailableAgents",
             post(list_available_agents),
@@ -42,6 +43,12 @@ fn result<T: Serialize>(result: Result<T, AgentManagementError>) -> Response<Bod
 
 async fn list_available_agents(State(state): State<ApplicationApiState>) -> Response<Body> {
     stable_result(&state, || async { state.commands.list_available_agents() }).await
+}
+async fn resolve_catalog_agent(
+    State(state): State<ApplicationApiState>,
+    ApplicationJson(input): ApplicationJson<ResolveCatalogAgentInput>,
+) -> Response<Body> {
+    result(state.commands.resolve_catalog_agent(input).await)
 }
 async fn list_agent_install_jobs(State(state): State<ApplicationApiState>) -> Response<Body> {
     stable_result(&state, || async {

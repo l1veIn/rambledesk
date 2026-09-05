@@ -33,6 +33,7 @@ impl Fixture {
         let store = SqliteFeedbackStore::connect(&directory.path().join("scope.sqlite3")).await?;
         store
             .save_agent_config(AgentConfig {
+                catalog_id: None,
                 id: "desktop-fixture".into(),
                 name: "Desktop entrypoint fixture".into(),
                 host_id: "pi".into(),

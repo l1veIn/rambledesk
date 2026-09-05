@@ -18,6 +18,7 @@ async fn setup() -> (
     let app = SessionApplication::new(store.clone(), store.clone(), Arc::new(AcpSessionDriver));
     let config = app
         .save_agent_config(SaveAgentConfigInput {
+            catalog_id: None,
             id: None,
             name: "Fixture".into(),
             host_id: "fixture".into(),

@@ -4,8 +4,8 @@ use rambledesk_core::{
     AgentDependencyInspection, AgentDistribution, AgentInspection, AgentInstallJob,
     AgentInstallJobInput, AgentInstallPhase, AgentInstallProgress, AgentInstallSource,
     AgentVerification, AgentVerificationStatus, CatalogAgentInput, InstallAgentInput,
-    InstalledAgent, SessionActivityContent, SessionContentBlock, SessionToolCall, SessionToolKind,
-    SessionToolLocation, SessionToolStatus,
+    InstalledAgent, ResolveCatalogAgentInput, SessionActivityContent, SessionContentBlock,
+    SessionToolCall, SessionToolKind, SessionToolLocation, SessionToolStatus,
 };
 use rambledesk_core::{
     AgentPromptCapabilities, SendManagedPromptContentInput, SessionPromptContent,
@@ -119,6 +119,7 @@ fn main() -> std::io::Result<()> {
         exported::<InstalledAgent>(),
         exported::<CatalogAgentInput>(),
         exported::<AgentInstallJobInput>(),
+        exported::<ResolveCatalogAgentInput>(),
         exported::<AgentInstallJob>(),
         exported::<SessionActivityContent>(),
         exported::<SessionContentBlock>(),

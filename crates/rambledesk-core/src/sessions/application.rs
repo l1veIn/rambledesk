@@ -126,17 +126,18 @@ impl SessionApplication {
         input: SaveAgentConfigInput,
     ) -> Result<AgentConfig, SessionError> {
         let now = self.clock.now_rfc3339();
-        let (id, created_at) = match input.id {
+        let (id, created_at, catalog_id) = match input.id {
             Some(id) => {
                 let old = self.repository.get_agent_config(&id).await?;
-                (id, old.created_at)
+                (id, old.created_at, input.catalog_id.or(old.catalog_id))
             }
-            None => (self.ids.new_id(), now.clone()),
+            None => (self.ids.new_id(), now.clone(), input.catalog_id),
         };
         let saved = self
             .repository
             .save_agent_config(AgentConfig {
                 id,
+                catalog_id,
                 name: input.name,
                 host_id: input.host_id,
                 protocol: input.protocol,

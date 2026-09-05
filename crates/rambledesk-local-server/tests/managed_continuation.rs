@@ -39,6 +39,7 @@ impl Fixture {
         app.start_delivery_worker().await.unwrap();
         let config = app
             .save_agent_config(SaveAgentConfigInput {
+                catalog_id: None,
                 id: None,
                 name: "Fixture".into(),
                 host_id: "fixture".into(),

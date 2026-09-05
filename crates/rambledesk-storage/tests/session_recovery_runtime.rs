@@ -182,6 +182,7 @@ async fn setup() -> (
     let (app, driver) = runtime(store.clone(), provider.clone());
     let config = app
         .save_agent_config(SaveAgentConfigInput {
+            catalog_id: None,
             id: None,
             name: "Fixture".into(),
             host_id: "dsh".into(),

@@ -116,6 +116,35 @@ pub(crate) async fn pi_acp_package_prefix(command: &str, args: &[String]) -> Opt
     None
 }
 
+/// Fill missing historical recipe defaults from the selected immutable install.
+/// Existing user values and unrelated/custom launchers are left untouched.
+pub(crate) async fn apply_managed_pi_defaults(
+    config: &AgentConfig,
+    env: &mut std::collections::BTreeMap<String, String>,
+) {
+    if config.catalog_id.as_deref() != Some("pi-acp") {
+        return;
+    }
+    let Some(prefix) = pi_acp_package_prefix(&config.command, &config.args).await else {
+        return;
+    };
+    if !paths::is_managed_generation(&prefix, "pi-acp").await {
+        return;
+    }
+    let Some(node) = find_executable("node") else {
+        return;
+    };
+    if paths::package(&prefix, "@earendil-works/pi-coding-agent", "pi", &node)
+        .await
+        .is_err()
+    {
+        return;
+    }
+    for (key, value) in inspect::managed_launch_environment("pi-acp", &prefix) {
+        env.entry(key).or_insert(value);
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum CatalogError {
     #[error("Agent catalog entry does not exist")]

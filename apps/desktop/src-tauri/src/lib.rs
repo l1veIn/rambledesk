@@ -363,6 +363,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             managed_commands::list_agent_configs,
             managed_commands::save_agent_config,
+            agent_commands::resolve_catalog_agent,
             managed_commands::delete_agent_config,
             managed_commands::check_agent_config,
             agent_commands::list_available_agents,

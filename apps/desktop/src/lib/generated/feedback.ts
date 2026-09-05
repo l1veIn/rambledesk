@@ -32,12 +32,17 @@ export type AgentInstallSource = "managed" | "system" | "missing";
 export type AgentCheckStatus = "pass" | "fail" | "warn";
 export type AgentCatalogCheck = { id: string, status: AgentCheckStatus, message: string, };
 export type AgentDependencyInspection = { command: string, required: boolean, path: string | null, version: string | null, };
-export type AgentInspection = { agent_id: string, source: AgentInstallSource, version: string | null, command: string | null, args: Array<string>, dependencies: Array<AgentDependencyInspection>, checks: Array<AgentCatalogCheck>, };
+export type AgentInspection = { agent_id: string, source: AgentInstallSource, version: string | null, command: string | null, args: Array<string>,
+/**
+ * Launch defaults for this installation, never inherited account credentials.
+ */
+env?: { [key in string]: string }, dependencies: Array<AgentDependencyInspection>, checks: Array<AgentCatalogCheck>, };
 export type InstallAgentInput = { agent_id: string, version: string | null, };
 export type AgentInstallPhase = "preparing" | "installing" | "verifying" | "complete" | "cancelled" | "failed";
 export type AgentInstallProgress = { phase: AgentInstallPhase, message: string, };
 export type InstalledAgent = { agent_id: string, version: string, config: SaveAgentConfigInput, };
 export type CatalogAgentInput = { agent_id: string, };
+export type ResolveCatalogAgentInput = { agent_id: string, agent_config_id?: string, enable: boolean, };
 export type AgentInstallJobInput = { job_id: string, };
 export type AgentInstallJob = { id: string, agent_id: string, phase: AgentInstallPhase, messages: Array<string>, result: InstalledAgent | null, cancel_requested: boolean, };
 export type SessionActivityContent = { "type": "message", blocks: Array<SessionContentBlock>, truncated: boolean, } | { "type": "tool_call", tool: SessionToolCall, };
@@ -71,8 +76,8 @@ export type ManagedSessionSnapshot = { recovery: SessionRecovery | null, session
 export type AgentConnectionCheck = { ok: boolean, message: string, details: Array<string>, };
 export type SessionProtocol = "acp";
 export type SessionManagement = { "kind": "external" } | { "kind": "managed", protocol: SessionProtocol, agent_config_id: string, cwd: string, remote_session_id: string | null, };
-export type AgentConfig = { id: string, name: string, host_id: string, protocol: SessionProtocol, enabled: boolean, command: string, args: Array<string>, env: { [key in string]: string }, created_at: string, updated_at: string, };
-export type SaveAgentConfigInput = { id: string | null, name: string, host_id: string, protocol: SessionProtocol, enabled: boolean, command: string, args: Array<string>, env: { [key in string]: string }, };
+export type AgentConfig = { id: string, catalog_id?: string, name: string, host_id: string, protocol: SessionProtocol, enabled: boolean, command: string, args: Array<string>, env: { [key in string]: string }, created_at: string, updated_at: string, };
+export type SaveAgentConfigInput = { id: string | null, catalog_id?: string, name: string, host_id: string, protocol: SessionProtocol, enabled: boolean, command: string, args: Array<string>, env: { [key in string]: string }, };
 export type AgentConfigInput = { agent_config_id: string, };
 export type SessionRecord = { session_id: string, host_id: string, host_session_id: string, title: string, created_at: string, updated_at: string, management: SessionManagement, };
 export type CreateManagedSessionInput = { agent_config_id: string, cwd: string, title: string, };

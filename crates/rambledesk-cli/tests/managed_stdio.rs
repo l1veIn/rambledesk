@@ -35,6 +35,7 @@ impl Fixture {
         let store = SqliteFeedbackStore::connect(&directory.path().join("fixture.sqlite3")).await?;
         store
             .save_agent_config(AgentConfig {
+                catalog_id: None,
                 id: "config".into(),
                 name: "Fixture".into(),
                 host_id: "dsh".into(),

@@ -9,10 +9,7 @@ use super::{
     version,
 };
 use rambledesk_core::*;
-use std::{
-    collections::{BTreeMap, HashMap},
-    sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
@@ -196,19 +193,9 @@ impl AgentCatalogService {
             std::fs::rename(&staging.path, &destination).map_err(|_| CatalogError::Storage)?;
             staging.path = destination;
             let (_, launch) = paths::package(&staging.path, package, command, &tools.node).await?;
-            let mut env = BTreeMap::new();
-            if entry.id == "pi-acp" {
-                env.insert("PI_ACP_ENABLE_EMBEDDED_CONTEXT".into(), "true".into());
-                env.insert(
-                    "PI_ACP_PI_COMMAND".into(),
-                    paths::command_path(&staging.path.join(if cfg!(windows) {
-                        "node_modules/.bin/pi.cmd"
-                    } else {
-                        "node_modules/.bin/pi"
-                    })),
-                );
-            }
+            let env = super::inspect::managed_launch_environment(&entry.id, &staging.path);
             let config = SaveAgentConfigInput {
+                catalog_id: Some(entry.id.clone()),
                 id: None,
                 name: entry.name.clone(),
                 host_id: entry.host_id.clone(),

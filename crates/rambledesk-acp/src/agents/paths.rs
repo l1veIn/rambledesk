@@ -8,6 +8,31 @@ use tokio::io::AsyncReadExt;
 
 const MARKER: &str = "RambleDesk managed Agent packages v1\n";
 
+pub(super) async fn is_managed_generation(prefix: &Path, id: &str) -> bool {
+    let Some(generation) = prefix.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    if uuid::Uuid::parse_str(generation).is_err() {
+        return false;
+    }
+    let Some(versions) = prefix.parent() else {
+        return false;
+    };
+    let Some(agent) = versions.parent() else {
+        return false;
+    };
+    let Some(root) = agent.parent() else {
+        return false;
+    };
+    versions.file_name().is_some_and(|name| name == "versions")
+        && agent.file_name().is_some_and(|name| name == id)
+        && tokio::fs::read_to_string(root.join(".rambledesk-agents"))
+            .await
+            .ok()
+            .as_deref()
+            == Some(MARKER)
+}
+
 // Rust canonicalization uses verbatim Windows paths. Node's module resolver does
 // not reliably accept those as CLI arguments; keep canonical paths for boundary
 // checks and use ordinary absolute paths when crossing the subprocess boundary.
