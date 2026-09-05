@@ -459,7 +459,7 @@ impl SqliteFeedbackStore {
         &self,
     ) -> Result<Vec<FeedbackRequestSummary>, RepositoryError> {
         let rows = sqlx::query(
-            "SELECT r.id, hs.host_id, hs.host_session_id, r.source_hint, \
+            "SELECT r.id, r.managed_session_id, hs.host_id, hs.host_session_id, r.source_hint, \
                     r.title, r.what_happened, r.status, r.resolution, r.allow_finish, r.final_summary, \
                     r.revision, r.created_at, r.updated_at \
              FROM feedback_requests r \
@@ -479,7 +479,7 @@ impl SqliteFeedbackStore {
         query: FeedbackRequestQuery,
     ) -> Result<Vec<FeedbackRequestSummary>, RepositoryError> {
         let rows = sqlx::query(
-            "SELECT r.id, hs.host_id, hs.host_session_id, r.source_hint, \
+            "SELECT r.id, r.managed_session_id, hs.host_id, hs.host_session_id, r.source_hint, \
                     r.title, r.what_happened, r.status, r.resolution, r.allow_finish, r.final_summary, \
                     r.revision, r.created_at, r.updated_at \
              FROM feedback_requests r \

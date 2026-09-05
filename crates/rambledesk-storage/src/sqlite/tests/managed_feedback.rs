@@ -73,6 +73,46 @@ async fn continuation_routing_uses_the_stored_marker_for_identical_host_labels()
         .await
         .unwrap();
     let application = store.clone().into_application();
+    for (id, expected) in [(&managed, Some("managed-one")), (&external, None)] {
+        let view = application
+            .get_feedback(GetFeedbackInput {
+                request_id: id.clone(),
+            })
+            .await
+            .unwrap();
+        assert_eq!(view.managed_session_id.as_deref(), expected);
+        let workspace = application
+            .get_feedback_workspace(id.clone())
+            .await
+            .unwrap();
+        assert_eq!(workspace.request.managed_session_id.as_deref(), expected);
+        let summaries = application.list_open_feedback_requests().await.unwrap();
+        assert_eq!(
+            summaries
+                .iter()
+                .find(|item| item.request_id == *id)
+                .unwrap()
+                .managed_session_id
+                .as_deref(),
+            expected,
+        );
+        let listed = application
+            .list_feedback_requests(ListFeedbackRequestsInput::default())
+            .await
+            .unwrap();
+        assert_eq!(
+            listed
+                .requests
+                .iter()
+                .find(|item| item.request_id == *id)
+                .unwrap()
+                .managed_session_id
+                .as_deref(),
+            expected,
+        );
+        let json = serde_json::to_value(view).unwrap();
+        assert_eq!(json.get("managed_session_id").is_some(), expected.is_some());
+    }
     assert_eq!(
         application
             .managed_feedback_session(&managed)

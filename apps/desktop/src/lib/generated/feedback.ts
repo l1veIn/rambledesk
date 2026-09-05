@@ -96,9 +96,17 @@ export type FeedbackPackageAttachment = { id: string, file_name: string, media_t
 export type FeedbackPackageManifest = { schema_version: number, request_id: string, title: string, host_id: string, host_session_id: string, source_hint: string | null, submitted_at: string, resolution?: FeedbackResolution, cancel_reason?: string, source_revision: number, draft_revision: number, feedback_markdown: string, feedback_sha256: string, uncooked_markdown?: string, uncooked_sha256?: string, cooking_model?: string, attachments: Array<FeedbackPackageAttachment>, request_attachments?: Array<FeedbackPackageAttachment>, };
 export type FeedbackPackageContent = { manifest: FeedbackPackageManifest, markdown: string, uncooked_markdown?: string, attachment_paths: Array<string>, request_attachment_paths?: Array<string>, };
 export type FeedbackPackageView = { manifest: FeedbackPackageManifest, markdown: string, uncooked_markdown?: string, };
-export type FeedbackRequestView = { request_id: string, host_id: string, host_session_id: string, status: FeedbackStatus, execution_mode: ExecutionMode, created_at: string, updated_at: string, poll_after_ms?: number, feedback: FeedbackResultView | null, resolution: FeedbackResolution | null, allow_finish: boolean, final_summary: string | null, };
-export type ApplicationFeedbackRequestView = { request_id: string, host_id: string, host_session_id: string, status: FeedbackStatus, execution_mode: ExecutionMode, created_at: string, updated_at: string, poll_after_ms?: number, feedback: ApplicationFeedbackResultView | null, resolution: FeedbackResolution | null, allow_finish: boolean, final_summary: string | null, };
-export type FeedbackRequestSummary = { request_id: string, host_id: string, host_session_id: string, source_hint: string | null, title: string, what_happened: string, status: FeedbackStatus, resolution: FeedbackResolution | null, allow_finish: boolean, final_summary: string | null, revision: number, created_at: string, updated_at: string, };
+export type FeedbackRequestView = { request_id: string,
+/**
+ * Trusted local origin, assigned only by the managed-session entry point.
+ */
+managed_session_id?: string, host_id: string, host_session_id: string, status: FeedbackStatus, execution_mode: ExecutionMode, created_at: string, updated_at: string, poll_after_ms?: number, feedback: FeedbackResultView | null, resolution: FeedbackResolution | null, allow_finish: boolean, final_summary: string | null, };
+export type ApplicationFeedbackRequestView = { request_id: string, managed_session_id?: string, host_id: string, host_session_id: string, status: FeedbackStatus, execution_mode: ExecutionMode, created_at: string, updated_at: string, poll_after_ms?: number, feedback: ApplicationFeedbackResultView | null, resolution: FeedbackResolution | null, allow_finish: boolean, final_summary: string | null, };
+export type FeedbackRequestSummary = { request_id: string,
+/**
+ * Trusted local origin; external requests do not have an Agent view.
+ */
+managed_session_id?: string, host_id: string, host_session_id: string, source_hint: string | null, title: string, what_happened: string, status: FeedbackStatus, resolution: FeedbackResolution | null, allow_finish: boolean, final_summary: string | null, revision: number, created_at: string, updated_at: string, };
 export type HostSessionSummary = { session_id: string, management: SessionManagement, host_id: string, host_session_id: string, title: string, source_hint: string | null, request_count: number, pending_count: number, updated_at: string, pinned_at: string | null, archived_at: string | null, host_pinned_at: string | null, };
 export type HostSessionInput = { host_id: string, host_session_id: string, };
 export type RenameHostSessionInput = { host_id: string, host_session_id: string, title: string, };

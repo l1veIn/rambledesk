@@ -37,6 +37,9 @@ pub struct ApplicationFeedbackResultView {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 pub struct ApplicationFeedbackRequestView {
     pub request_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub managed_session_id: Option<String>,
     pub host_id: String,
     pub host_session_id: String,
     pub status: FeedbackStatus,
@@ -56,6 +59,7 @@ impl From<FeedbackRequestView> for ApplicationFeedbackRequestView {
     fn from(value: FeedbackRequestView) -> Self {
         Self {
             request_id: value.request_id,
+            managed_session_id: value.managed_session_id,
             host_id: value.host_id,
             host_session_id: value.host_session_id,
             status: value.status,

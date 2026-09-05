@@ -4,6 +4,7 @@ pub(super) fn summary_from_row(row: &SqliteRow) -> Result<FeedbackRequestSummary
     let status: String = row.try_get("status").map_err(storage_error)?;
     Ok(FeedbackRequestSummary {
         request_id: row.try_get("id").map_err(storage_error)?,
+        managed_session_id: row.try_get("managed_session_id").map_err(storage_error)?,
         host_id: row.try_get("host_id").map_err(storage_error)?,
         host_session_id: row.try_get("host_session_id").map_err(storage_error)?,
         source_hint: row.try_get("source_hint").map_err(storage_error)?,
@@ -96,7 +97,7 @@ pub(super) async fn load_workspace_from_pool(
     request_id: &str,
 ) -> Result<StoredFeedbackWorkspace, RepositoryError> {
     let row = sqlx::query(
-        "SELECT r.id, hs.host_id, hs.host_session_id, r.source_hint, \
+        "SELECT r.id, r.managed_session_id, hs.host_id, hs.host_session_id, r.source_hint, \
                 r.title, r.what_happened, r.status, r.resolution, r.allow_finish, r.final_summary, \
                 r.revision, r.created_at, r.updated_at, \
                 fr.package_uri, fr.directory_path, fr.markdown_path, fr.manifest_path \

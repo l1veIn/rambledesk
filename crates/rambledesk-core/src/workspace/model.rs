@@ -102,6 +102,10 @@ impl From<FeedbackPackageContent> for FeedbackPackageView {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 pub struct FeedbackRequestSummary {
     pub request_id: String,
+    /// Trusted local origin; external requests do not have an Agent view.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub managed_session_id: Option<String>,
     pub host_id: String,
     pub host_session_id: String,
     pub source_hint: Option<String>,
