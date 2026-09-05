@@ -131,6 +131,7 @@ async fn run_preview() -> anyhow::Result<()> {
     )
     .with_change_observer(hub.clone())
     .with_feedback_provider(provider)
+    .with_workspace_info_provider(Arc::new(LocalWorkspaceInfoProvider))
     .with_deliveries(store.clone())
     .with_deletions(store.clone())
     .with_recovery(store.clone());
@@ -140,6 +141,12 @@ async fn run_preview() -> anyhow::Result<()> {
     for title in ["Website project", "CLI project"] {
         let project = directory.path().join(title);
         std::fs::create_dir(&project)?;
+        // Git metadata fixture for the conversation footer, without invoking Git.
+        std::fs::create_dir(project.join(".git"))?;
+        std::fs::write(
+            project.join(".git/HEAD"),
+            "ref: refs/heads/preview/agent-ui\n",
+        )?;
         let snapshot = sessions
             .create_session(CreateManagedSessionInput {
                 agent_config_id: config.id.clone(),
@@ -164,6 +171,13 @@ async fn run_preview() -> anyhow::Result<()> {
                 actions: vec![ActionInput { id: "review".into(), instruction: "Review the preview and provide feedback".into() }], context_refs: vec![], attachments: vec![], source_hint: None,
                 allow_finish: true, final_summary: Some("Preview review completed".into()),
             }).await?;
+        } else {
+            // Opening this existing conversation in the UI must resume it automatically.
+            sessions
+                .stop_session(ManagedSessionInput {
+                    session_id: snapshot.session.session_id,
+                })
+                .await?;
         }
     }
     let commands = Arc::new(

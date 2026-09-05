@@ -6,7 +6,7 @@ Svelte port of the plain-text composer in [Codeg](https://github.com/xintaofei/c
 
 `disabled` makes the editor read-only. `busy` allows editing but prevents submission. `sendDisabled` blocks submission while retaining editing, for example before an offline agent has connected; it does not imply that the agent is running. Pass `oncancel` only when the active turn really can be cancelled. Submission and provider errors retain the draft, and late callbacks from another `draftKey` cannot change the visible operation state. `submitShortcut` is `enter` (default) or `mod+enter`; composition flags and the legacy IME 229 key are always guarded.
 
-The imperative handle exposes `focus()`, `getText()`, `insertText(text)`, and `insertQuote(text)`. Quoting appends literal Markdown quote markers with paragraph separation; decoration changes only their appearance, never the bytes sent.
+The imperative handle exposes `focus()`, `getText()`, and `insertText(text)`. Literal Markdown quote markers typed or pasted into the editor retain their bytes when sent.
 
 `referenceSearch(query, { signal })` is optional. Its results are real `ComposerReference` file URIs supplied by a host capability. Only then does `@` autocomplete and its toolbar button appear. Results are aborted and discarded when stale. A selected reference is an inline atom serialized to an escaped file link; persisted string drafts restore that link literally, preserving the send text without inventing access to the file.
 

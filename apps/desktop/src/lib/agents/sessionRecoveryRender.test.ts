@@ -30,28 +30,30 @@ describe('managed session recovery rendering', () => {
   it('preserves history, redacts recovery errors, and offers explicit original-session recovery without any automatic work', () => {
     const action = vi.fn()
     const { body } = render(ManagedSessionWorkspace, { props: {
-      snapshot: snapshot(), recovery: recovery(),
+      snapshot: snapshot(), recovery: recovery(), connectionError: 'This session needs an explicit connection retry before continuing.',
       config: { id: 'config', name: 'Agent', host_id: 'dsh', protocol: 'acp', enabled: true,
         command: 'deepseek-acp', args: [], env: { TOKEN: 'private-token' }, created_at: 'today', updated_at: 'today' },
       activities: [{ id: 'past', session_id: 'local', kind: 'agent_message', text: 'Preserved output', tool_call_id: null, created_at: 'today' }],
-      onPrompt: action, onStart: action, onStop: action, onCancel: action, onRespondPermission: action, onOpenFeedback: action,
+      onPrompt: action, onStart: action, onCancel: action, onRespondPermission: action,
     } })
     expect(body).toContain('previous agent turn was interrupted')
     expect(body).toContain('will not be sent again automatically')
     expect(body).toContain('original agent session')
-    expect(body).toContain('Resume session')
-    expect(body).toContain('Stopped')
+    expect(body).toContain('Retry')
+    expect(body).not.toContain('Resume session')
+    expect(body).not.toContain('Stopped')
     expect(body).toContain('Preserved output')
     expect(body).not.toContain('private-token')
     expect(action).not.toHaveBeenCalled()
   })
 
-  it('uses Start when no remote session exists and never suggests replacing the original session', () => {
+  it('explains when no remote session exists without directing the user to removed controls', () => {
     const state = snapshot()
     if (state.session.management.kind === 'managed') state.session.management.remote_session_id = null
     const { body } = render(SessionRecoveryNotice, { props: { snapshot: state, recovery: recovery() } })
     expect(body).toContain('No agent session was established')
-    expect(body).toContain('Start agent')
+    expect(body).toContain('Reconnect before continuing')
+    expect(body).not.toContain('Start agent')
     expect(body).not.toContain('Resume session')
   })
 

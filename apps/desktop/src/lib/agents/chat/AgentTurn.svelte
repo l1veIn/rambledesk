@@ -11,8 +11,6 @@
   export let turn: AgentTurn
   export let open = false
   export let onOpenChange: (open: boolean) => void
-  export let quoteDisabled = false
-  export let onQuote: (text: string) => void
   export let streamingId: string | null = null
   $: expanded = !turn.foldable || open
   $: label = turn.outcome === 'working' ? 'Working…' : turn.outcome === 'cancelled' ? 'Turn cancelled'
@@ -40,10 +38,10 @@
   {#if turn.partialStart}<p class="m-0 text-[11px] text-muted-foreground">{chatText($locale, 'Earlier activity for this turn is not loaded.')}</p>{/if}
   {#if expanded && turn.process.length}
     <div id={`process-${turn.id}`} class="space-y-4" data-turn-process>
-      {#each turn.process as activity (activity.id)}<SessionActivityRow {activity} runActive={turn.active} streaming={streamingId === activity.id} {quoteDisabled} {onQuote} />{/each}
+      {#each turn.process as activity (activity.id)}<SessionActivityRow {activity} runActive={turn.active} streaming={streamingId === activity.id} />{/each}
     </div>
   {/if}
-  {#each turn.answer as activity (activity.id)}<SessionActivityRow {activity} runActive={turn.active} streaming={streamingId === activity.id} {quoteDisabled} {onQuote} />{/each}
-  {#each turn.notices as activity (activity.id)}<SessionActivityRow {activity} {quoteDisabled} {onQuote} />{/each}
+  {#each turn.answer as activity (activity.id)}<SessionActivityRow {activity} runActive={turn.active} streaming={streamingId === activity.id} />{/each}
+  {#each turn.notices as activity (activity.id)}<SessionActivityRow {activity} />{/each}
   {#if !turn.active}<TurnFooter {copyText} completedAt={turn.completedAt} />{/if}
 </section>

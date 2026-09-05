@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { Check, FolderOpen, LoaderCircle, MessageSquare, RefreshCw, Settings } from '@lucide/svelte'
+  import { Check, Folder, FolderOpen, GitBranch, LoaderCircle, MessageSquare, RefreshCw, Settings } from '@lucide/svelte'
   import { onMount } from 'svelte'
   import { Button } from '$lib/components/ui/button'
+  import type { ApplicationTransport } from '$lib/application/applicationTransport'
   import { locale } from '$lib/preferences'
   import AgentComposer from './composer/AgentComposer.svelte'
   import SessionConfigurationControls from './configuration/SessionConfigurationControls.svelte'
@@ -11,7 +12,9 @@
   import { isAbsoluteAgentDirectory } from './agentConfigForm'
   import { agentText } from './agentI18n'
   import type { DraftManagedSessionController } from './draftManagedSessionController'
+  import { createManagedWorkspaceInfoController } from './managedWorkspaceInfoController'
 
+  export let transport: ApplicationTransport
   export let controller: DraftManagedSessionController
   export let draftId: string
   export let onConfigure: () => void
@@ -20,6 +23,8 @@
   let localError = ''
   let choosingDirectory = false
   let mounted = false
+  const workspaceInfo = createManagedWorkspaceInfoController(transport)
+  $: workspaceInfo.setSessionId($controller.snapshot?.session.session_id ?? null)
   $: locked = $controller.awaitingAcknowledgement || $controller.phase === 'closing' || $controller.phase === 'promoted'
   $: promptCapabilities = $controller.snapshot?.runtime.capabilities.prompt
   $: acceptsFiles = promptCapabilities ? canAttachFiles(promptCapabilities) : false
@@ -41,7 +46,12 @@
   }
   function tr(text: string) { return $locale === 'zh-CN' ? zh[text] ?? attachmentText($locale, agentText($locale, text)) : text }
 
-  onMount(() => { mounted = true; controller.start(); return () => { mounted = false } })
+  onMount(() => {
+    mounted = true
+    controller.start()
+    const stopWorkspaceInfo = workspaceInfo.start()
+    return () => { mounted = false; stopWorkspaceInfo() }
+  })
   async function chooseDirectory() {
     if (!onChooseDirectory || locked || choosingDirectory) return
     choosingDirectory = true
@@ -66,7 +76,7 @@
     <Button variant="ghost" size="sm" onclick={onConfigure}><Settings class="size-3.5" />{tr('Manage agents')}</Button>
   </header>
   <div class="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-6">
-    <div class="mx-auto my-auto w-full max-w-3xl space-y-5 py-4">
+    <div class="mx-auto my-auto w-full max-w-4xl space-y-5 py-4">
       <div class="pb-2 text-center">
         <MessageSquare class="mx-auto mb-4 size-7 text-muted-foreground/50" />
         <h3 class="m-0 text-lg font-medium">{tr('What would you like to work on?')}</h3>
@@ -105,16 +115,22 @@
       {#if $controller.error || $controller.choicesError || localError}<p role="alert" class="m-0 break-words text-xs text-destructive">{tr(localError || $controller.error || $controller.choicesError)}</p>{/if}
       <input bind:this={fileInput} type="file" class="hidden" multiple tabindex="-1" accept={promptCapabilities ? attachmentAccept(promptCapabilities) : ''} aria-label={tr('Attach files')}
         onchange={(event) => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ''; void addFiles(files) }} />
+      <div class="space-y-2" data-agent-composer>
       <AgentComposer value={$controller.text} draftKey={draftId} onchange={(text) => controller.edit(text)} onsubmit={(text) => controller.send(text)}
         disabled={$controller.phase === 'closing' || $controller.phase === 'promoted'} busy={$controller.phase === 'sending'} sendDisabled={$controller.phase !== 'ready'}
         attachments={$controller.attachments} onRemoveAttachment={controller.removeAttachment} onAddAttachments={acceptsFiles ? () => fileInput?.click() : undefined}
         onPasteFiles={acceptsFiles ? addFiles : undefined}>
         <svelte:fragment slot="footer">
-          {#if $controller.snapshot}<SessionConfigurationControls configuration={$controller.snapshot.runtime.configuration} disabled={$controller.phase !== 'ready'} onChange={controller.configure} /><SessionContextUsage usage={$controller.snapshot.runtime.context_usage} />
+          {#if $controller.snapshot}<span class="max-w-32 truncate px-1 text-[10px] text-muted-foreground">{$controller.choices.find(choice => choice.key === $controller.choice)?.name ?? ''}</span><SessionConfigurationControls configuration={$controller.snapshot.runtime.configuration} disabled={$controller.phase !== 'ready'} onChange={controller.configure} />
           {:else}<span class="px-1 text-[10px] text-muted-foreground">{tr('Connecting will load the agent’s session options.')}</span>{/if}
         </svelte:fragment>
       </AgentComposer>
-      <p class="m-0 text-center text-[10px] text-muted-foreground">{tr('Your session appears in the sidebar after the first message.')}</p>
+      <div class="flex min-w-0 items-center gap-3 px-1 text-[10px] text-muted-foreground" data-workspace-metadata>
+        {#if $controller.cwd}<span class="flex min-w-0 items-center gap-1.5" title={$controller.cwd}><Folder class="size-3 shrink-0" /><span class="truncate">{$controller.cwd}</span></span>{/if}
+        {#if $workspaceInfo?.branch}<span class="flex min-w-0 max-w-[35%] items-center gap-1.5" title={$workspaceInfo.branch}><GitBranch class="size-3 shrink-0" /><span class="truncate">{$workspaceInfo.branch}</span></span>{/if}
+        <span class="flex-1"></span><SessionContextUsage usage={$controller.snapshot?.runtime.context_usage} />
+      </div>
+      </div>
     </div>
   </div>
 </section>

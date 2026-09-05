@@ -8,7 +8,7 @@
   import { Button } from '$lib/components/ui/button'
   import { locale as appLocale, type Locale } from '$lib/preferences'
   import { buildComposerExtensions } from './editor-config'
-  import { appendComposerQuote, insertComposerText, replaceComposerText } from './composer-commands'
+  import { insertComposerText, replaceComposerText } from './composer-commands'
   import { decidePastedContent, textToSeededDoc } from './plain-text-content'
   import { composerLeafText, serializeDocToText } from './to-prompt-blocks'
   import { decideComposerKey } from './submit-key'
@@ -141,12 +141,6 @@
     editor.commands.focus()
     return insertComposerText(editor, text)
   }
-  export function insertQuote(text: string): boolean {
-    if (!editor || disabled) return false
-    const inserted = appendComposerQuote(editor, text)
-    if (inserted) editor.commands.focus('end')
-    return inserted
-  }
 
   async function runAction(kind: 'submit' | 'cancel' | 'attachment', operation: () => void | Promise<void>) {
     if ((kind === 'submit' && sending) || (kind === 'cancel' && cancelling) || (kind === 'attachment' && adding)) return
@@ -256,7 +250,7 @@
       {/if}
     </div>
   {/if}
-  <div bind:this={editorHost} class="min-h-24 px-4 pt-3"></div>
+  <div bind:this={editorHost} class="min-h-12 px-4 pb-1 pt-3"></div>
   {#if attachments.length}
     <div class="flex flex-wrap gap-1.5 px-3 pb-2">
       {#each attachments as attachment (attachment.id)}
@@ -274,13 +268,13 @@
       onclick={() => void runAction('attachment', () => onAddAttachments?.())}><Paperclip class="size-4" /></Button>{/if}
     {#if referenceSearch}<Button variant="ghost" size="icon" class="size-8 rounded-lg" title={tr('Mention a file')} aria-label={tr('Mention a file')} {disabled}
       onclick={openReferenceSearch}><AtSign class="size-4" /></Button>{/if}
-    <slot name="footer" />
-    <span class="ml-1 min-w-0 flex-1 text-[10px] leading-4 text-muted-foreground">{hint}</span>
+    <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1"><slot name="footer" /></div>
+    <span class="sr-only">{hint}</span>
     {#if busy && oncancel}
       <Button variant="secondary" size="icon" class="size-8 shrink-0 rounded-xl" aria-label={tr('Cancel current turn')} title={tr('Cancel current turn')} disabled={disabled || cancelling}
         onclick={() => void runAction('cancel', () => oncancel?.())}>{#if cancelling}<LoaderCircle class="size-4 animate-spin" />{:else}<Square class="size-3.5 fill-current" />{/if}</Button>
     {:else}
-      <Button size="icon" class="size-8 shrink-0 rounded-xl" aria-label={tr('Send message')} title={tr('Send message')} disabled={!canSend} onclick={submit}>
+      <Button size="icon" class="size-8 shrink-0 rounded-xl" aria-label={tr('Send message')} title={`${tr('Send message')} · ${hint}`} disabled={!canSend} onclick={submit}>
         {#if sending}<LoaderCircle class="size-4 animate-spin" />{:else}<ArrowUp class="size-4" />{/if}
       </Button>
     {/if}
@@ -288,7 +282,7 @@
 </div>
 
 <style>
-  .agent-composer :global(.ramble-composer-editor) { min-height: 5.25rem; max-height: 16rem; overflow-y: auto; outline: none; font-size: 0.875rem; line-height: 1.65; overflow-wrap: anywhere; white-space: pre-wrap; padding-bottom: 0.65rem; }
+  .agent-composer :global(.ramble-composer-editor) { min-height: 1.75rem; max-height: min(16rem, 35vh); overflow-y: auto; outline: none; font-size: 0.875rem; line-height: 1.65; overflow-wrap: anywhere; white-space: pre-wrap; padding-bottom: 0.25rem; }
   .agent-composer :global(.ramble-composer-editor p) { margin: 0; }
   .agent-composer :global(.ramble-composer-empty::before) { color: var(--muted-foreground); content: attr(data-placeholder); float: left; height: 0; pointer-events: none; }
   .agent-composer :global(.ramble-composer-quote-marker) { color: transparent; border-left: 2px solid var(--muted-foreground); margin-left: 0.1em; }

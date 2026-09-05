@@ -1,9 +1,8 @@
 <script lang="ts">
-  import { Quote } from '@lucide/svelte'
   import { locale } from '$lib/preferences'
   import type { SessionActivity } from '../managedSessionUi'
   import { activityLabel } from '../managedSessionUi'
-  import { activityHasQuote, activityMessage, activityQuoteText, activityTool } from './activity-presentation'
+  import { activityMessage, activityTool } from './activity-presentation'
   import { chatText } from './chat-text'
   import SessionContent from './SessionContent.svelte'
   import ToolCallCard from './ToolCallCard.svelte'
@@ -11,17 +10,8 @@
   export let activity: SessionActivity
   export let runActive = false
   export let streaming = false
-  export let quoteDisabled = false
-  export let onQuote: (text: string) => void
   $: message = activityMessage(activity)
   $: tool = activityTool(activity)
-  function quote(event: MouseEvent) {
-    const root = (event.currentTarget as HTMLElement).closest('[data-activity-id]')
-    const selection = window.getSelection()
-    const text = selection && root?.contains(selection.anchorNode) && root.contains(selection.focusNode)
-      ? selection.toString().trim() : ''
-    onQuote(text || activityQuoteText(activity))
-  }
 </script>
 
 <article data-activity-id={activity.id} data-activity-kind={activity.kind} class={`group/activity min-w-0 ${activity.kind === 'user_message' ? 'ml-auto max-w-[90%] rounded-xl bg-muted/50 px-4 py-3' : ''}`}>
@@ -37,10 +27,5 @@
   {:else}
     {#if activity.kind === 'user_message'}<p class="mb-2 mt-0 text-[10px] font-medium text-muted-foreground">{chatText($locale, 'You')}</p>{/if}
     <SessionContent blocks={message.blocks} truncated={message.truncated} userMessage={activity.kind === 'user_message'} />
-  {/if}
-  {#if activity.kind !== 'status' && activity.kind !== 'error' && activityHasQuote(activity)}
-    <div class="mt-1 flex justify-end">
-      <button type="button" class="rounded p-1 text-muted-foreground opacity-50 transition-opacity hover:bg-muted hover:text-foreground hover:opacity-100 focus-visible:opacity-100 group-hover/activity:opacity-100 disabled:opacity-25" disabled={quoteDisabled} aria-label={chatText($locale, 'Quote in message')} title={chatText($locale, 'Quote in message')} onmousedown={(event) => event.preventDefault()} onclick={quote}><Quote class="size-3.5" /></button>
-    </div>
   {/if}
 </article>

@@ -7,8 +7,6 @@
   export let sessionId: string
   export let activities: readonly SessionActivity[]
   export let runActive = false
-  export let quoteDisabled = false
-  export let onQuote: (text: string) => void
   export let onResize: () => void = () => {}
   let foldRevision = 0
   let openTurns = new Map<string, boolean>()
@@ -29,11 +27,11 @@
 </script>
 
 {#key sessionId}
-  <div class="mx-auto w-full max-w-4xl space-y-5" use:observeSize>
+  <div class="mx-auto w-full max-w-4xl space-y-5" data-agent-timeline use:observeSize>
     {#each items as item (item.id)}
       {#if item.type === 'turn'}
-        <AgentTurn turn={item.turn} open={openTurns.get(item.id) ?? false} onOpenChange={(open) => toggle(item.turn.id, open)} {streamingId} {quoteDisabled} {onQuote} />
-      {:else}<SessionActivityRow activity={item.activity} runActive={activityInRunningTurn(item.activity, activities, runActive)} streaming={streamingId === item.activity.id} {quoteDisabled} {onQuote} />{/if}
+        <AgentTurn turn={item.turn} open={openTurns.get(item.id) ?? false} onOpenChange={(open) => toggle(item.turn.id, open)} {streamingId} />
+      {:else}<SessionActivityRow activity={item.activity} runActive={activityInRunningTurn(item.activity, activities, runActive)} streaming={streamingId === item.activity.id} />{/if}
     {/each}
   </div>
 {/key}

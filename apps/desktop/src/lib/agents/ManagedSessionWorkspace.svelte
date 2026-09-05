@@ -1,10 +1,8 @@
 <script lang="ts">
-  import { LoaderCircle, MessageSquare, Play, ShieldQuestion, Square, Trash2 } from '@lucide/svelte'
+  import { ArrowUpRight, Folder, GitBranch, LoaderCircle, MessageSquare, RefreshCw, ShieldQuestion } from '@lucide/svelte'
   import { onDestroy, tick } from 'svelte'
   import { Button } from '$lib/components/ui/button'
-  import { Badge } from '$lib/components/ui/badge'
-  import type { AgentConfig, AgentPromptCapabilities, FeedbackDelivery, FeedbackRequestSummary, ResolveDeliveryAction, SessionConfigChange, SessionPromptContent, SessionRecovery } from '$lib/generated/feedback'
-  import FeedbackDeliveryStatus from './FeedbackDeliveryStatus.svelte'
+  import type { AgentConfig, AgentPromptCapabilities, SessionConfigChange, SessionPromptContent, SessionRecovery } from '$lib/generated/feedback'
   import SessionRecoveryNotice from './SessionRecoveryNotice.svelte'
   import AgentComposer from './composer/AgentComposer.svelte'
   import SessionTimeline from './chat/SessionTimeline.svelte'
@@ -19,7 +17,7 @@
   import { redactAgentMessage } from './agentConfigForm'
   import { agentText } from './agentI18n'
   import {
-    activitiesForSession, feedbackForSession, managedSessionActions, managedSessionComposerState,
+    activitiesForSession, managedSessionActions, managedSessionComposerState,
     permissionsForSession, sessionConfigurationChanged, sessionPromptDrafts,
     type ManagedSessionViewSnapshot, type SessionActivity, type SessionPermission,
   } from './managedSessionUi'
@@ -31,22 +29,21 @@
   export let historyError = ''
   export let onLoadOlder: (() => Promise<void> | void) | undefined = undefined
   export let permissions: readonly SessionPermission[] = []
-  export let feedbackRequests: readonly FeedbackRequestSummary[] = []
-  export let deliveries: readonly FeedbackDelivery[] = []
   export let recovery: SessionRecovery | null = null
-  export let onResolveDelivery: ((requestId: string, action: ResolveDeliveryAction) => Promise<void> | void) | undefined = undefined
   export let config: AgentConfig | null = null
   export let busy = false
   export let error = ''
+  export let connecting = false
+  export let connectionError = ''
+  export let branch: string | null = null
   export let onPrompt: (text: string) => Promise<void> | void
   export let onPromptContent: ((text: string, content: SessionPromptContent[]) => Promise<void> | void) | undefined = undefined
   export let onSetConfiguration: ((change: SessionConfigChange) => Promise<void> | void) | undefined = undefined
   export let onCancel: () => Promise<void> | void
   export let onStart: () => Promise<void> | void
-  export let onStop: () => Promise<void> | void
+  export let onRefresh: (() => Promise<void> | void) | undefined = undefined
   export let onRespondPermission: (requestId: string, optionId: string | null) => Promise<void> | void
-  export let onDelete: (() => Promise<void> | void) | undefined = undefined
-  export let onOpenFeedback: (requestId: string) => Promise<void> | void
+  export let onOpenRamble: (() => Promise<void> | void) | undefined = undefined
 
   let activeSessionId = ''
   let prompt = ''
@@ -55,7 +52,6 @@
   let activityViewport: HTMLDivElement | undefined
   let stickToBottom = true
   let destroyed = false
-  let composer: AgentComposer | undefined
   let attachments: readonly PromptAttachment[] = []
   let fileInput: HTMLInputElement | undefined
   let chooserTarget: { sessionId: string; capabilities: AgentPromptCapabilities } | null = null
@@ -76,15 +72,18 @@
   $: loadingHistory = historyLoading || historyRequestId === activeSessionId
   $: visiblePermissions = permissionsForSession(snapshot.session.session_id, permissions)
   $: permission = visiblePermissions[0] ?? null
-  $: visibleFeedback = feedbackForSession(snapshot.session, feedbackRequests)
   $: actions = managedSessionActions(snapshot, visiblePermissions.length)
   $: configurationChanged = sessionConfigurationChanged(snapshot, config)
   $: envText = Object.entries(config?.env ?? {}).map(([key, value]) => `${key}=${value}`).join('\n')
   $: permissionDetails = redactAgentMessage(permission?.details ?? '', envText)
-  $: visibleError = redactAgentMessage(errors[snapshot.session.session_id] || error || snapshot.runtime.last_error || '', envText)
+  $: runtimeConnectionFailed = snapshot.runtime.connection === 'failed' || snapshot.runtime.connection === 'disconnected'
+  $: visibleQueryError = redactAgentMessage(error, envText)
+  $: visibleConnectionError = redactAgentMessage(connectionError || (runtimeConnectionFailed ? snapshot.runtime.last_error : '') || '', envText)
+  $: visibleOperationError = redactAgentMessage(errors[snapshot.session.session_id] || (!runtimeConnectionFailed ? snapshot.runtime.last_error : '') || '', envText)
+  $: cwd = snapshot.session.management.kind === 'managed' ? snapshot.session.management.cwd : ''
   $: visibleHistoryError = redactAgentMessage(historyErrors[activeSessionId] || historyError, envText)
   $: permissionPending = permission ? pending.has(`${activeSessionId}:permission:${permission.request_id}`) : false
-  $: lifecyclePending = pending.has(`${activeSessionId}:start`) || pending.has(`${activeSessionId}:stop`) || pending.has(`${activeSessionId}:delete`)
+  $: lifecyclePending = connecting || pending.has(`${activeSessionId}:start`)
   $: sendPending = pending.has(`${activeSessionId}:prompt`)
   $: configurationPending = pending.has(`${activeSessionId}:configuration`)
   $: attachmentPending = pending.has(`${activeSessionId}:attachments`)
@@ -94,7 +93,17 @@
   $: runActive = snapshot.runtime.connection === 'connected' && snapshot.runtime.activity !== 'idle'
   $: if (visibleActivities.length > 0) void followActivity(visibleActivities)
 
-  function tr(source: string) { return chatText($locale, attachmentText($locale, agentText($locale, source))) }
+  function tr(source: string) {
+    const zh: Record<string, string> = {
+      'View Ramble': '查看 Ramble', 'Describe what you want to work on.': '描述你想完成的任务。',
+      'This session needs an explicit connection retry before continuing.': '此会话需要手动重试连接后才能继续。',
+      'The agent session is still loading.': '正在读取 Agent 会话。',
+      'Could not connect to the agent.': '无法连接智能体。',
+      'Agent connection ended. Retry to reconnect.': 'Agent 连接已断开，请重试连接。',
+      'Reload session': '重新读取会话', 'Retry connection': '重试连接',
+    }
+    return $locale === 'zh-CN' && zh[source] ? zh[source] : chatText($locale, attachmentText($locale, agentText($locale, source)))
+  }
 
   function selectSession(id: string) {
     if (activeSessionId) sessionPromptDrafts.write(activeSessionId, prompt)
@@ -240,33 +249,6 @@
     void run(`permission:${requestId}`, () => respondToPermission(requestId, optionId))
   }
 
-  async function remove() {
-    if (busy || lifecyclePending || !onDelete) return
-    const id = activeSessionId
-    if (await run('delete', onDelete)) {
-      sessionPromptDrafts.forgetSession(id)
-      if (activeSessionId === id) { prompt = ''; attachments = [] }
-    }
-  }
-
-  function connectionLabel(connection: ManagedSessionViewSnapshot['runtime']['connection']) {
-    switch (connection) {
-      case 'connecting': return 'Connecting…'
-      case 'connected': return 'Connected'
-      case 'disconnected': return 'Disconnected'
-      case 'failed': return 'Connection failed'
-      case 'stopped': return 'Stopped'
-    }
-  }
-
-  function currentActivityLabel(activity: ManagedSessionViewSnapshot['runtime']['activity']) {
-    switch (activity) {
-      case 'running': return 'Agent is working'
-      case 'waiting_permission': return 'Waiting for permission'
-      case 'idle': return 'Idle'
-    }
-  }
-
   onDestroy(() => {
     destroyed = true
     if (activeSessionId) sessionPromptDrafts.write(activeSessionId, prompt)
@@ -274,30 +256,29 @@
 </script>
 
 <section class="flex h-full min-h-0 flex-col bg-background @container" aria-label={tr('Agent session')} data-managed-session-id={snapshot.session.session_id}>
-  <header class="flex flex-wrap items-center gap-3 border-b px-5 py-3">
-    <div class="min-w-0 flex-1">
-      <h2 class="m-0 truncate text-sm font-medium">{snapshot.session.title}</h2>
-      <p class="m-0 mt-1 truncate text-[11px] text-muted-foreground">{config?.name ?? snapshot.session.host_id}{#if snapshot.session.management.kind === 'managed'} · {snapshot.session.management.cwd}{/if}</p>
-    </div>
-    <div class="flex items-center gap-2 text-xs" role="status">
-      {#if snapshot.runtime.connection === 'connecting'}<LoaderCircle class="size-3.5 animate-spin" />{/if}
-      <Badge variant={snapshot.runtime.connection === 'failed' ? 'destructive' : 'outline'}>{tr(connectionLabel(snapshot.runtime.connection))}</Badge>
-      <span class="text-muted-foreground">{tr(currentActivityLabel(snapshot.runtime.activity))}</span>
-    </div>
-    <div class="flex items-center gap-1">
-      {#if actions.canStart}<Button variant="outline" size="sm" disabled={busy || lifecyclePending} onclick={() => void run('start', onStart)}><Play class="size-3.5" />{tr(actions.startLabel)}</Button>{/if}
-      {#if actions.canStop}<Button variant="ghost" size="sm" disabled={busy || lifecyclePending} onclick={() => void run('stop', onStop)}><Square class="size-3.5" />{tr('Stop agent')}</Button>{/if}
-      {#if onDelete}<Button variant="ghost" size="icon-sm" class="text-muted-foreground hover:text-destructive" disabled={busy || lifecyclePending} aria-label={tr('Delete session')} title={tr('Delete session')} onclick={() => void remove()}><Trash2 class="size-3.5" /></Button>{/if}
-    </div>
+  <header class="flex min-h-12 shrink-0 items-center gap-3 border-b px-5 py-2">
+    <h2 class="m-0 min-w-0 flex-1 truncate text-sm font-medium">{snapshot.session.title}</h2>
+    {#if onOpenRamble}<Button variant="ghost" size="sm" class="h-7 shrink-0 gap-1.5 text-xs" onclick={() => void run('ramble', onOpenRamble!)}>{tr('View Ramble')}<ArrowUpRight class="size-3.5" /></Button>{/if}
   </header>
   {#if snapshot.deleting}<p role="status" class="m-0 border-b border-destructive/25 bg-destructive/5 px-5 py-3 text-xs">{tr('This session is being deleted. Retry deletion to finish cleanup.')}</p>{/if}
   <SessionRecoveryNotice {snapshot} {recovery} {envText} />
-  {#if onResolveDelivery}
-    <FeedbackDeliveryStatus sessionId={snapshot.session.session_id} {deliveries} requests={visibleFeedback} {envText} disabled={busy || snapshot.deleting} onResolve={onResolveDelivery} {onOpenFeedback} />
-  {/if}
 
   {#if configurationChanged}<p role="status" class="m-0 border-b border-amber-500/25 bg-amber-500/5 px-5 py-2 text-xs leading-5">{tr('This agent is using an earlier configuration. Saved changes apply on its next start.')}</p>{/if}
-  {#if visibleError}<p role="alert" class="m-0 break-words border-b border-destructive/25 bg-destructive/5 px-5 py-3 text-xs text-destructive">{tr(visibleError)}</p>{/if}
+  {#if visibleConnectionError}
+    <div class="flex shrink-0 items-center gap-3 border-b border-destructive/25 bg-destructive/5 px-5 py-2 text-xs">
+      <p role="alert" class="m-0 min-w-0 flex-1 break-words text-destructive">{tr(visibleConnectionError)}</p>
+      {#if actions.canStart}<Button variant="outline" size="sm" aria-label={tr('Retry connection')} disabled={busy || lifecyclePending} onclick={() => void run('start', onStart)}><RefreshCw class="size-3.5" />{tr('Retry')}</Button>{/if}
+    </div>
+  {/if}
+  {#if visibleQueryError}
+    <div class="flex shrink-0 items-center gap-3 border-b border-destructive/25 bg-destructive/5 px-5 py-2 text-xs">
+      <p role="alert" class="m-0 min-w-0 flex-1 break-words text-destructive">{tr(visibleQueryError)}</p>
+      {#if onRefresh}<Button variant="outline" size="sm" aria-label={tr('Reload session')} disabled={pending.has(`${activeSessionId}:refresh`)} onclick={() => void run('refresh', onRefresh!)}><RefreshCw class="size-3.5" />{tr('Retry')}</Button>{/if}
+    </div>
+  {/if}
+  {#if visibleOperationError && visibleOperationError !== visibleQueryError && visibleOperationError !== visibleConnectionError}
+    <p role="alert" class="m-0 shrink-0 break-words border-b border-destructive/25 bg-destructive/5 px-5 py-3 text-xs text-destructive">{tr(visibleOperationError)}</p>
+  {/if}
 
   <div bind:this={activityViewport} onscroll={rememberScroll} class="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-5 py-5" aria-label={tr('Session activity')}>
     {#if localHistory || historyHasMore || visibleHistoryError}
@@ -306,22 +287,15 @@
         {#if visibleHistoryError}<p class="m-0 text-xs text-destructive" role="alert">{visibleHistoryError}</p>{/if}
       </div>
     {/if}
-    <SessionTimeline sessionId={snapshot.session.session_id} activities={renderedActivities} {runActive}
-      quoteDisabled={composerState.disabled} onQuote={(text) => composer?.insertQuote(text)}
-      onResize={() => void followActivity(visibleActivities)} />
+    <SessionTimeline sessionId={snapshot.session.session_id} activities={renderedActivities} {runActive} onResize={() => void followActivity(visibleActivities)} />
     {#if visibleActivities.length === 0}
-      <div class="mx-auto flex min-h-48 max-w-md flex-col items-center justify-center text-center"><MessageSquare class="mb-3 size-6 text-muted-foreground/50" /><strong class="text-sm font-medium">{tr('No messages yet')}</strong><p class="mb-0 mt-2 text-xs leading-5 text-muted-foreground">{tr(actions.canStart ? 'Start the agent, then describe what you want to work on.' : 'Describe what you want to work on. Feedback requests will appear in this session.')}</p></div>
+      <div class="mx-auto flex min-h-48 max-w-md flex-col items-center justify-center text-center"><MessageSquare class="mb-3 size-6 text-muted-foreground/50" /><strong class="text-sm font-medium">{tr('No messages yet')}</strong><p class="mb-0 mt-2 text-xs leading-5 text-muted-foreground">{tr('Describe what you want to work on.')}</p></div>
     {/if}
   </div>
 
-  {#if visibleFeedback.length > 0}
-    <div class="flex shrink-0 gap-2 overflow-x-auto border-t bg-muted/15 px-5 py-2" aria-label={tr('Feedback requests')}>
-      {#each visibleFeedback as request (request.request_id)}<Button variant="outline" size="sm" class="max-w-72 shrink-0" onclick={() => void run(`feedback:${request.request_id}`, () => onOpenFeedback(request.request_id))}><MessageSquare class="size-3.5 shrink-0" /><span class="truncate">{request.title}</span>{#if request.status === 'waiting' || request.status === 'in_progress'}<span class="size-1.5 shrink-0 rounded-full bg-primary"></span>{/if}</Button>{/each}
-    </div>
-  {/if}
-
   {#if permission}
     <section class="max-h-72 shrink-0 overflow-y-auto border-t border-amber-500/25 bg-amber-500/5 px-5 py-3" aria-label={tr('Agent permission')}>
+      <div class="mx-auto w-full max-w-4xl">
       <div class="flex items-start gap-2"><ShieldQuestion class="mt-0.5 size-4 shrink-0 text-amber-600" /><div class="min-w-0 flex-1"><h3 class="m-0 whitespace-pre-wrap break-words text-xs font-medium">{permission.title}</h3>{#if visiblePermissions.length > 1}<p class="mb-0 mt-1 text-[11px] text-muted-foreground">{tr('More permissions waiting')}: {visiblePermissions.length - 1}</p>{/if}</div></div>
       {#if permissionDetails.trim()}
         {#key permission.request_id}
@@ -336,27 +310,34 @@
         <Button variant="ghost" size="sm" disabled={busy || lifecyclePending || permissionPending || !actions.canCancel} onclick={() => respond(permission.request_id, null)}>{tr('Cancel permission')}</Button>
         {#if permissionPending}<LoaderCircle class="size-4 self-center animate-spin text-muted-foreground" />{/if}
       </div>
+      </div>
     </section>
   {/if}
 
-  <div class="shrink-0 space-y-2 border-t px-5 py-3">
+  <div class="shrink-0 px-5 pb-3 pt-2">
+    <div class="mx-auto w-full max-w-4xl space-y-2" data-agent-composer>
     <input bind:this={fileInput} type="file" class="hidden" tabindex="-1" multiple accept={attachmentAccept(promptCapabilities)} onchange={selectedFiles} aria-label={tr('Attach files')} />
     {#key snapshot.session.session_id}
-      <AgentComposer bind:this={composer} value={prompt} draftKey={snapshot.session.session_id}
+      <AgentComposer value={prompt} draftKey={snapshot.session.session_id}
         onchange={editPrompt} onsubmit={send}
         {attachments} onAddAttachments={acceptsFiles ? chooseFiles : undefined} onRemoveAttachment={removeAttachment}
         onPasteFiles={acceptsFiles ? (files) => addFiles(files) : undefined}
         disabled={composerState.disabled} busy={composerState.busy} sendDisabled={composerState.sendDisabled}
         oncancel={composerState.canCancel ? async () => { await run('cancel', onCancel) } : undefined}>
         <svelte:fragment slot="footer">
+          <span class="max-w-32 truncate px-1 text-[10px] text-muted-foreground" title={config?.name ?? snapshot.session.host_id}>{config?.name ?? snapshot.session.host_id}</span>
           {#if onSetConfiguration}<SessionConfigurationControls configuration={snapshot.runtime.configuration}
             disabled={busy || lifecyclePending || configurationPending || sendPending || !actions.canPrompt} onChange={setConfiguration} />{/if}
+          {#if connecting || snapshot.runtime.connection === 'connecting'}<span class="flex items-center gap-1 text-[10px] text-muted-foreground" role="status"><LoaderCircle class="size-3 animate-spin" />{tr('Connecting…')}</span>{/if}
         </svelte:fragment>
       </AgentComposer>
     {/key}
-    <div class="flex items-center justify-between gap-3 px-1">
-      <p class="m-0 text-[10px] text-muted-foreground">{tr('Closing this view keeps the agent running.')}</p>
+    <div class="flex min-w-0 items-center gap-3 px-1 text-[10px] text-muted-foreground" data-workspace-metadata>
+      {#if cwd}<span class="flex min-w-0 items-center gap-1.5" title={cwd}><Folder class="size-3 shrink-0" /><span class="truncate">{cwd}</span></span>{/if}
+      {#if branch}<span class="flex min-w-0 max-w-[35%] items-center gap-1.5" title={branch}><GitBranch class="size-3 shrink-0" /><span class="truncate">{branch}</span></span>{/if}
+      <span class="flex-1"></span>
       <SessionContextUsage usage={snapshot.runtime.context_usage} />
+    </div>
     </div>
   </div>
 </section>

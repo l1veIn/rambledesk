@@ -25,20 +25,22 @@ describe('structured timeline rendering', () => {
     const start = activity('call', 1, {})
     const final = activity('call', 1, { status: 'completed', raw_output: '{"written":true}', content: [{ type: 'diff', path: '/repo/main.ts', old_text: 'old content', new_text: 'new content' }] })
     const message: SessionActivity = { ...activity('answer', 2, {}), kind: 'agent_message', content: { type: 'message', blocks: [{ type: 'text', text: 'Final answer' }], truncated: false } }
-    const { body } = render(SessionTimeline, { props: { sessionId: 'session', activities: activitiesForSession('session', [message, start, final]), runActive: false, onQuote: vi.fn() } })
+    const { body } = render(SessionTimeline, { props: { sessionId: 'session', activities: activitiesForSession('session', [message, start, final]), runActive: false } })
     expect(body).not.toContain('data-tool-id="call"')
     expect(body).not.toContain('old content')
     expect(body).not.toContain('Raw output')
     expect(body).not.toContain('Old plain summary')
     expect(body).toContain('Final answer')
     expect(body).toContain('Copy reply')
+    expect(body).not.toContain('Quote in message')
     const item = groupTimeline(activitiesForSession('session', [message, start, final]), false)[0]
     if (item.type !== 'turn') throw new Error('missing turn')
-    const expanded = render(AgentTurn, { props: { turn: item.turn, open: true, onOpenChange: vi.fn(), onQuote: vi.fn() } }).body
+    const expanded = render(AgentTurn, { props: { turn: item.turn, open: true, onOpenChange: vi.fn() } }).body
     expect(expanded.match(/data-tool-id="call"/g)).toHaveLength(1)
     expect(expanded).toContain('data-tool-status="completed"')
     expect(expanded.indexOf('data-activity-id="call"')).toBeLessThan(expanded.indexOf('Final answer'))
     expect(expanded).not.toContain('Raw output')
+    expect(expanded).not.toContain('Quote in message')
     if (final.content?.type !== 'tool_call') throw new Error('missing tool')
     const details = render(ToolCallCard, { props: { tool: final.content.tool, open: true } }).body
     expect(details).toContain('/repo/main.ts:4')
@@ -48,7 +50,7 @@ describe('structured timeline rendering', () => {
   })
 
   it('shows unfinished tool history without a spinner and escapes untrusted raw input', () => {
-    const { body } = render(SessionTimeline, { props: { sessionId: 'session', activities: [activity('call', 1, { raw_input: '<script>unsafe()</script>' })], runActive: false, onQuote: vi.fn() } })
+    const { body } = render(SessionTimeline, { props: { sessionId: 'session', activities: [activity('call', 1, { raw_input: '<script>unsafe()</script>' })], runActive: false } })
     expect(body).toContain('No final result')
     expect(body).not.toContain('animate-spin')
     expect(body).not.toContain('<script>unsafe()')

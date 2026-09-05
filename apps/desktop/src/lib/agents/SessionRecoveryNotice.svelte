@@ -25,9 +25,9 @@
 {#if visible}
   <div role="status" class="shrink-0 space-y-1 border-b border-amber-500/25 bg-amber-500/5 px-5 py-3 text-xs leading-5">
     <p class="m-0">{agentText($locale, message)}</p>
-    <p class="m-0 text-muted-foreground">{agentText($locale, hasRemoteSession
-      ? 'Choose Resume session in the Agent panel to reconnect to the original agent session.'
-      : 'No agent session was established. Choose Start agent in the Agent panel when you are ready.')}</p>
+    <p class="m-0 text-muted-foreground">{hasRemoteSession
+      ? $locale === 'zh-CN' ? '重新连接会使用原来的 Agent 会话。' : 'Reconnecting will use the original agent session.'
+      : $locale === 'zh-CN' ? '尚未建立 Agent 会话，需要先重新连接。' : 'No agent session was established. Reconnect before continuing.'}</p>
     {#if recoveryError}<p class="m-0 break-words text-muted-foreground">{recoveryError}</p>{/if}
   </div>
 {/if}

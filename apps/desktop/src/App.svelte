@@ -534,9 +534,6 @@
   $: renderedAgentDraftView = renderedWorkspaceView?.kind === 'agent-draft' ? renderedWorkspaceView : null
   $: renderedAgentDraftController = renderedAgentDraftView ? managedDraftController(renderedAgentDraftView.draftId) : null
   $: renderedManagedSession = agentSessionForView(renderedAgentSessionView, $navigation.hostSessions)
-  $: renderedManagedFeedbackRequests = renderedAgentSessionView
-    ? $navigation.requests.filter((request) => request.managed_session_id === renderedAgentSessionView!.sessionId)
-    : []
   const sessionTabLabel = (view: SessionViewDescriptor) => {
     const session = $navigation.hostSessions.find(
       (candidate) =>
@@ -2158,7 +2155,7 @@
               />
             {:else if renderedAgentDraftView && renderedAgentDraftController}
               {#key renderedAgentDraftView.draftId}
-                <DraftManagedSessionWorkspace controller={renderedAgentDraftController} draftId={renderedAgentDraftView.draftId}
+                <DraftManagedSessionWorkspace transport={applicationTransport} controller={renderedAgentDraftController} draftId={renderedAgentDraftView.draftId}
                   onConfigure={() => void openSettings('agents')}
                   onChooseDirectory={capabilities.serverPaths.status.availability === 'unavailable' ? undefined : () => capabilities.serverPaths.implementation.chooseDirectory()} />
               {/key}
@@ -2169,9 +2166,9 @@
                   sessionId={renderedAgentSessionView.sessionId}
                   deletionPending={deletingSessionCommands.has(renderedAgentSessionView.sessionId)}
                   onDeletingChange={observeManagedDeletion}
-                  onDelete={renderedManagedSession ? () => deleteManagedSessionFromUi(renderedManagedSession!) : undefined}
-                  feedbackRequests={renderedManagedFeedbackRequests}
-                  onOpenFeedback={async (requestId) => { await openRequest(requestId) }}
+                  onOpenRamble={renderedManagedSession ? async () => {
+                    if (renderedManagedSession) await selectRailScope(renderedManagedSession.host_id, renderedManagedSession.host_session_id)
+                  } : undefined}
                 />
               {/key}
             {:else if renderedWorkspaceView?.kind === 'rambelle-profile'}

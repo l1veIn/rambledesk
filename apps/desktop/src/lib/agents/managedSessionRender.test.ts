@@ -9,6 +9,87 @@ vi.mock('$lib/preferences', async () => {
 })
 
 describe('Managed session rendering', () => {
+  function pageSnapshot(): ManagedSessionViewSnapshot {
+    return {
+      deleting: false,
+      session: { session_id: 'compact-ui', host_id: 'claude', host_session_id: 'feedback-compact', title: 'Simplify the workspace', created_at: 'today', updated_at: 'today',
+        management: { kind: 'managed', protocol: 'acp', agent_config_id: 'config', cwd: '/work/project', remote_session_id: 'remote' } },
+      runtime: { configuration: { options: [], modes: null, models: { current_model_id: 'fast', available_models: [{ model_id: 'fast', name: 'Fast model', description: null }] } },
+        connection: 'connected', activity: 'idle', instance_id: 'instance', config_updated_at: null, context_usage: { used: 2560, size: 10240 },
+        capabilities: { load_session: true, resume_session: false, http_mcp: false, prompt: { image: false, audio: false, embedded_context: false, resource_links: true } }, last_error: null },
+    }
+  }
+
+  it('keeps the heading focused and moves project details below the shared-width composer', () => {
+    const action = vi.fn()
+    const { body } = render(ManagedSessionWorkspace, { props: {
+      snapshot: pageSnapshot(), branch: 'codex/compact-ui', onOpenRamble: action, onPrompt: action,
+      onCancel: action, onStart: action, onRespondPermission: action, onSetConfiguration: action,
+    } })
+    const heading = body.match(/<header\b[^>]*>[\s\S]*?<\/header>/)?.[0] ?? ''
+    expect(heading).toContain('Simplify the workspace')
+    expect(heading).toContain('View Ramble')
+    expect(heading).not.toContain('/work/project')
+    expect(heading).not.toContain('Connected')
+    expect(heading).not.toContain('Idle')
+    expect(body).toContain('Fast model')
+    expect(body).toContain('data-workspace-metadata')
+    expect(body).toContain('title="/work/project"')
+    expect(body).toContain('title="codex/compact-ui"')
+    expect(body).toContain('Context 25%')
+    expect(body).toMatch(/max-w-4xl[^>]*data-agent-timeline/)
+    expect(body).toMatch(/max-w-4xl[^>]*data-agent-composer/)
+    expect(body).not.toContain('Feedback requests')
+    expect(body).not.toContain('Quote in message')
+    expect(body).not.toContain('Delete session')
+    expect(body).not.toContain('Stop agent')
+    expect(action).not.toHaveBeenCalled()
+  })
+
+  it('only offers a connection retry for a visible error and never during deletion', () => {
+    const action = vi.fn()
+    const snapshot = pageSnapshot()
+    const props = { snapshot, onPrompt: action, onCancel: action, onStart: action, onRespondPermission: action }
+    const ready = render(ManagedSessionWorkspace, { props }).body
+    expect(ready).not.toContain('Retry')
+    expect(ready).not.toContain('codex/compact-ui')
+    const offline = { ...snapshot, runtime: { ...snapshot.runtime, connection: 'failed' as const, instance_id: null } }
+    const failed = render(ManagedSessionWorkspace, { props: { ...props, snapshot: offline, connectionError: 'Connection timed out' } }).body
+    expect(failed).toContain('Connection timed out')
+    expect(failed).toContain('Retry')
+    const deleting = render(ManagedSessionWorkspace, { props: { ...props, snapshot: { ...offline, deleting: true }, connectionError: 'Connection timed out' } }).body
+    expect(deleting).not.toMatch(/<button[^>]*>[\s\S]*?>Retry</)
+    expect(action).not.toHaveBeenCalled()
+  })
+
+  it('offers read retry for query failures without treating them or turn failures as connection attempts', () => {
+    const onStart = vi.fn()
+    const onPrompt = vi.fn()
+    const onRefresh = vi.fn()
+    const base = pageSnapshot()
+    const props = { onPrompt, onStart, onRefresh, onCancel: vi.fn(), onRespondPermission: vi.fn() }
+    for (const connection of ['connected', 'stopped'] as const) {
+      const snapshot = { ...base, runtime: { ...base.runtime, connection } }
+      const { body } = render(ManagedSessionWorkspace, { props: { ...props, snapshot, error: 'Could not load agent configurations.' } })
+      expect(body).toContain('aria-label="Reload session"')
+      expect(body).not.toContain('aria-label="Retry connection"')
+    }
+    const connected = render(ManagedSessionWorkspace, { props: {
+      ...props, snapshot: { ...base, runtime: { ...base.runtime, last_error: 'Prompt failed; draft preserved' } },
+    } }).body
+    expect(connected).toContain('Prompt failed; draft preserved')
+    expect(connected).not.toContain('aria-label="Retry connection"')
+    expect(connected).not.toContain('aria-label="Reload session"')
+    const failed = render(ManagedSessionWorkspace, { props: {
+      ...props, snapshot: { ...base, runtime: { ...base.runtime, connection: 'failed', last_error: 'Connection failed' } },
+    } }).body
+    expect(failed).toContain('aria-label="Retry connection"')
+    expect(failed).not.toContain('aria-label="Reload session"')
+    expect(onStart).not.toHaveBeenCalled()
+    expect(onPrompt).not.toHaveBeenCalled()
+    expect(onRefresh).not.toHaveBeenCalled()
+  })
+
   it('initially mounts 60 rows of a large snapshot and leaves older history behind an explicit action', () => {
     const snapshot: ManagedSessionViewSnapshot = {
       deleting: false,
@@ -19,7 +100,7 @@ describe('Managed session rendering', () => {
     }
     const action = vi.fn()
     const { body } = render(ManagedSessionWorkspace, { props: {
-      snapshot, onPrompt: action, onStart: action, onStop: action, onCancel: action, onRespondPermission: action, onOpenFeedback: action, onLoadOlder: action,
+      snapshot, onPrompt: action, onStart: action, onCancel: action, onRespondPermission: action, onLoadOlder: action,
       activities: Array.from({ length: 1000 }, (_, index) => ({ id: `history-${index + 1}`, sequence: index + 1, session_id: 'history-window', kind: 'user_message' as const, text: `Message ${index + 1}`, tool_call_id: null, created_at: 'today' })),
     } })
     expect(body.match(/data-activity-id=/g)).toHaveLength(60)
@@ -48,7 +129,7 @@ describe('Managed session rendering', () => {
         { request_id: 'foreign', session_id: 'another-session', title: 'Foreign permission', details: 'Foreign operation details', options: [] },
         { request_id: 'queued', session_id: 'local-details', title: 'Queued permission', details: 'Queued operation details', options: [] },
       ],
-      onPrompt: action, onStart: action, onStop: action, onCancel: action, onRespondPermission: action, onOpenFeedback: action,
+      onPrompt: action, onStart: action, onCancel: action, onRespondPermission: action,
     } })
     expect(body).toContain('Operation details')
     expect(body).toMatch(/<details[^>]*open/)
@@ -61,7 +142,7 @@ describe('Managed session rendering', () => {
     expect(action).not.toHaveBeenCalled()
   })
 
-  it('keeps history and deletion available while disabling work for a deleting session', () => {
+  it('keeps history and the deletion warning while disabling work for a deleting session', () => {
     const snapshot: ManagedSessionViewSnapshot = {
       deleting: true,
       session: { session_id: 'deleting-render', host_id: 'dsh', host_session_id: 'feedback-deleting', title: 'Cleanup incomplete',
@@ -72,13 +153,13 @@ describe('Managed session rendering', () => {
     }
     const action = vi.fn()
     const { body } = render(ManagedSessionWorkspace, { props: {
-      snapshot, onPrompt: action, onStart: action, onStop: action, onCancel: action,
-      onRespondPermission: action, onDelete: action, onOpenFeedback: action,
+      snapshot, onPrompt: action, onStart: action, onCancel: action,
+      onRespondPermission: action,
       activities: [{ id: 'past', session_id: 'deleting-render', kind: 'agent_message', text: 'Readable history', tool_call_id: null, created_at: 'today' }],
     } })
     expect(body).toContain('Readable history')
     expect(body).toContain('Retry deletion to finish cleanup')
-    expect(body).toContain('Delete session')
+    expect(body).not.toContain('Delete session')
     expect(body).not.toContain('Stop agent')
     expect(body).not.toContain('Cancel turn')
     expect(body).toMatch(/<button[^>]*disabled[^>]*aria-label="Send message"/)
@@ -86,7 +167,7 @@ describe('Managed session rendering', () => {
     expect(action).not.toHaveBeenCalled()
   })
 
-  it('hides deletion until the owning application provides the deletion operation', () => {
+  it('keeps a new session free of manual connection and deletion controls', () => {
     const snapshot: ManagedSessionViewSnapshot = {
       deleting: false,
       session: { session_id: 'local-empty', host_id: 'dsh', host_session_id: 'feedback-empty', title: 'Empty project',
@@ -98,11 +179,11 @@ describe('Managed session rendering', () => {
     const runtimeAction = vi.fn()
     const { body } = render(ManagedSessionWorkspace, { props: {
       snapshot, onPrompt: runtimeAction, onCancel: runtimeAction, onStart: runtimeAction,
-      onStop: runtimeAction, onRespondPermission: runtimeAction, onOpenFeedback: runtimeAction,
+      onRespondPermission: runtimeAction,
     } })
     expect(body).toContain('Empty project')
     expect(body).toContain('No messages yet')
-    expect(body).toContain('Start agent')
+    expect(body).not.toContain('Start agent')
     expect(body).not.toContain('Delete session')
     expect(runtimeAction).not.toHaveBeenCalled()
   })
@@ -128,8 +209,8 @@ describe('Managed session rendering', () => {
         { request_id: 'foreign', session_id: 'local-two', title: 'Foreign permission title', details: null, options: [] },
         { request_id: 'second', session_id: 'local-one', title: 'Second permission title', details: null, options: [] },
       ],
-      onPrompt: runtimeAction, onCancel: runtimeAction, onStart: runtimeAction, onStop: runtimeAction,
-      onRespondPermission: runtimeAction, onDelete: runtimeAction, onOpenFeedback: runtimeAction,
+      onPrompt: runtimeAction, onCancel: runtimeAction, onStart: runtimeAction,
+      onRespondPermission: runtimeAction,
     } })
     expect(body).toContain('Current project output')
     expect(body).not.toContain('Foreign project output')
