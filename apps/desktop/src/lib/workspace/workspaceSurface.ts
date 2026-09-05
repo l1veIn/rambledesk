@@ -16,6 +16,7 @@ export function workspaceSurface(view: WorkspaceViewDescriptor | null): Workspac
       return 'session'
     case 'settings':
     case 'agent-session':
+    case 'agent-draft':
     case 'archive':
     case 'request-task':
     case 'rambelle-profile':

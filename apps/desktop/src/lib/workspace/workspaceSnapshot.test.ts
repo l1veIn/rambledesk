@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  agentDraftViewDescriptor,
   agentSessionViewDescriptor,
   archiveViewDescriptor,
   inboxViewDescriptor,
@@ -21,6 +22,12 @@ const alpha = sessionViewDescriptor('codex', 'alpha')
 const beta = sessionViewDescriptor('pi', 'beta')
 
 describe('workspace snapshots', () => {
+  it('round-trips only local draft identity, discarding injected preparation metadata', () => {
+    const draft = agentDraftViewDescriptor('draft')
+    const restored = restoreWorkspaceSnapshot({ version: 2, views: [{ ...draft, sessionId: 'prepared-secret', token: 'secret' }], activeViewKey: workspaceViewKey(draft) })!
+    expect(restored.shellState.views).toEqual([draft])
+    expect(createWorkspaceSnapshot(restored.shellState, new Map()).views).toEqual([draft])
+  })
   it('restores Agent tabs by durable id without turning request hints into Agent content', () => {
     const agent = agentSessionViewDescriptor('agent-one')
     const state = workspaceShellReducer(

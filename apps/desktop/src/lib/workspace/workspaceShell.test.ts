@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  agentDraftViewDescriptor,
+  agentSessionViewDescriptor,
   inboxViewDescriptor,
   rambelleProfileViewDescriptor,
   requestTaskViewDescriptor,
@@ -44,6 +46,18 @@ function expectValidState(state: WorkspaceShellState) {
 }
 
 describe('workspaceShellReducer', () => {
+  it('promotes a draft in place without changing the active background tab', () => {
+    const draft = agentDraftViewDescriptor('draft')
+    const agent = agentSessionViewDescriptor('active-session')
+    const before = reduce(EMPTY_WORKSPACE_SHELL_STATE, open(alpha), open(draft), open(beta))
+    const after = workspaceShellReducer(before, { type: 'replace', viewKey: workspaceViewKey(draft), view: agent })
+    expect(after.views).toEqual([alpha, agent, beta])
+    expect(after.activeViewKey).toBe(workspaceViewKey(beta))
+    const focused = workspaceShellReducer({ ...before, activeViewKey: workspaceViewKey(draft) }, { type: 'replace', viewKey: workspaceViewKey(draft), view: agent })
+    expect(focused.activeViewKey).toBe(workspaceViewKey(agent))
+    expectValidState(after)
+    expectValidState(focused)
+  })
   it('starts empty and opens consecutive views with the latest active', () => {
     expect(EMPTY_WORKSPACE_SHELL_STATE).toEqual({ views: [], activeViewKey: null })
     expect(activeWorkspaceView(EMPTY_WORKSPACE_SHELL_STATE)).toBeNull()

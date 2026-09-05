@@ -20,11 +20,13 @@
   import TaskWorkspaceView from './lib/workspace/TaskWorkspaceView.svelte'
   import ArchivedSessionsWorkspaceView from './lib/workspace/ArchivedSessionsWorkspaceView.svelte'
   import ManagedSessionSection from './lib/agents/ManagedSessionSection.svelte'
-  import NewManagedSessionSection from './lib/agents/NewManagedSessionSection.svelte'
+  import ManagedFeedbackRequestStatus from './lib/agents/ManagedFeedbackRequestStatus.svelte'
+  import DraftManagedSessionWorkspace from './lib/agents/DraftManagedSessionWorkspace.svelte'
+  import { createDraftManagedSessionController, type DraftManagedSessionController } from './lib/agents/draftManagedSessionController'
+  import { createManagedSessionDraftStorage } from './lib/agents/managedSessionDrafts'
   import { agentText } from './lib/agents/agentI18n'
   import { deleteSessionRecord, removeManagedSessionViews } from './lib/agents/managedSessionDeletion'
   import { Button } from './lib/components/ui/button'
-  import * as Dialog from './lib/components/ui/dialog'
   import type { JSONContent } from '@tiptap/core'
   import {
     defineApplicationStream,
@@ -77,6 +79,7 @@
     type NotificationState,
   } from './lib/notifications'
   import {
+    agentDraftViewDescriptor,
     agentSessionViewDescriptor,
     archiveViewDescriptor,
     inboxViewDescriptor,
@@ -207,8 +210,10 @@
   let renderedSessionResolution: SessionViewResolution | null = null
   let sessionViewResolutions: readonly SessionViewResolution[] = []
   let sessionRequestIds = new Map<string, string>()
-  let newManagedSessionOpen = false
-  let creatingManagedSession = false
+  const managedDraftStorage = createManagedSessionDraftStorage(typeof localStorage === 'undefined' ? undefined : localStorage)
+  const managedDraftControllers = new Map<string, DraftManagedSessionController>()
+  const promotedManagedDrafts = new Map<string, string>()
+  const closingManagedDrafts = new Set<string>()
   let deletingSessionCommands = new Set<string>()
   let deletingManagedSessionIds = new Set<string>()
   let pendingWorkspaceViewKey: string | null = null
@@ -526,6 +531,8 @@
     workspaceShellState.activeViewKey,
   )
   $: renderedAgentSessionView = renderedWorkspaceView?.kind === 'agent-session' ? renderedWorkspaceView : null
+  $: renderedAgentDraftView = renderedWorkspaceView?.kind === 'agent-draft' ? renderedWorkspaceView : null
+  $: renderedAgentDraftController = renderedAgentDraftView ? managedDraftController(renderedAgentDraftView.draftId) : null
   $: renderedManagedSession = agentSessionForView(renderedAgentSessionView, $navigation.hostSessions)
   $: renderedManagedFeedbackRequests = renderedAgentSessionView
     ? $navigation.requests.filter((request) => request.managed_session_id === renderedAgentSessionView!.sessionId)
@@ -546,6 +553,8 @@
   ])
   $: workspaceTabLabel = (view: WorkspaceViewDescriptor) => {
     switch (view.kind) {
+      case 'agent-draft':
+        return $locale === 'zh-CN' ? '新建 Agent 会话' : 'New agent session'
       case 'inbox':
         return tr('All requests')
       case 'archive':
@@ -778,6 +787,8 @@
       openAdaptersUnlisten()
       if (updateCheckTimer !== undefined) clearTimeout(updateCheckTimer)
       cleanupAttachments()
+      for (const controller of managedDraftControllers.values()) void controller.close().catch(() => {})
+      managedDraftControllers.clear()
     }
   })
 
@@ -1022,6 +1033,12 @@
       loadingWorkspace = false
       return
     }
+    if (view.kind === 'agent-draft') {
+      clearWorkspace()
+      loadingWorkspace = false
+      workbenchMounted = true
+      return
+    }
     if (view.kind === 'agent-session') {
       await selectAgentNavigationScope(view)
       clearWorkspace()
@@ -1206,6 +1223,26 @@
 
   async function closeWorkspaceTab(viewKey: string) {
     if (workspaceTransitionLocked || pendingWorkspaceViewKey) return
+    const closingView = workspaceShellState.views.find((view) => workspaceViewKey(view) === viewKey)
+    if (closingView?.kind === 'agent-draft') {
+      if (closingManagedDrafts.has(closingView.draftId)) return
+      closingManagedDrafts.add(closingView.draftId)
+      try {
+        const promotedSessionId = await managedDraftController(closingView.draftId).close()
+        managedDraftControllers.delete(closingView.draftId)
+        if (promotedSessionId) viewKey = workspaceViewKey(agentSessionViewDescriptor(promotedSessionId))
+      } catch (cause) {
+        toast.error(messageFrom(cause))
+        return
+      } finally { closingManagedDrafts.delete(closingView.draftId) }
+      // Another tab activation may have started while cleanup awaited the agent.
+      // Its pending target owns the next mount; only remove the closed descriptor.
+      if (pendingWorkspaceViewKey) {
+        workspaceShellState = workspaceShellReducer(workspaceShellState, { type: 'close', viewKey })
+        persistCurrentWorkspaceSnapshot()
+        return
+      }
+    }
     const closingActive = workspaceShellState.activeViewKey === viewKey
     if (!closingActive) {
       workspaceShellState = workspaceShellReducer(workspaceShellState, {
@@ -1340,7 +1377,7 @@
     loaded: LoadedWorkspaceTarget | null,
   ) {
     const previousActiveView = activeWorkspaceView(workspaceShellState)
-    const loadedView = loaded?.kind === 'session'
+    const requestedView = loaded?.kind === 'session'
       ? sessionViewDescriptor(
           loaded.workspace.request.host_id,
           loaded.workspace.request.host_session_id,
@@ -1348,6 +1385,8 @@
       : loaded?.kind === 'request-task'
         ? requestTaskViewDescriptor(loaded.workspace.request.request_id)
         : target.view
+    const promotedSessionId = requestedView?.kind === 'agent-draft' ? promotedManagedDrafts.get(requestedView.draftId) : undefined
+    const loadedView = promotedSessionId ? agentSessionViewDescriptor(promotedSessionId) : requestedView
     if (target.shellAction.type === 'open' && !loadedView) {
       throw new Error(tr('This feedback request could not be found.'))
     }
@@ -1459,14 +1498,32 @@
   }
 
   async function openNewManagedSession() {
-    if (workspaceTransitionLocked || previewMode || !(await saveDraftNow())) return
-    newManagedSessionOpen = true
+    if (workspaceTransitionLocked || previewMode) return
+    const view = agentDraftViewDescriptor(crypto.randomUUID())
+    workspaceTransition.invalidate()
+    await workspaceTransition.activate({ view, requestId: null, shellAction: { type: 'open' }, pendingViewKey: workspaceViewKey(view) })
   }
 
-  async function managedSessionCreated(snapshot: ManagedSessionSnapshot) {
-    newManagedSessionOpen = false
+  function managedDraftController(draftId: string): DraftManagedSessionController {
+    let controller = managedDraftControllers.get(draftId)
+    if (!controller) {
+      controller = createDraftManagedSessionController(applicationTransport, draftId, managedDraftStorage,
+        (snapshot) => managedDraftPromoted(draftId, snapshot))
+      managedDraftControllers.set(draftId, controller)
+    }
+    return controller
+  }
+
+  async function managedDraftPromoted(draftId: string, snapshot: ManagedSessionSnapshot) {
+    promotedManagedDrafts.set(draftId, snapshot.session.session_id)
+    const view = agentSessionViewDescriptor(snapshot.session.session_id)
+    workspaceShellState = workspaceShellReducer(workspaceShellState, {
+      type: 'replace', viewKey: workspaceViewKey(agentDraftViewDescriptor(draftId)), view,
+    })
+    managedDraftControllers.delete(draftId)
+    persistCurrentWorkspaceSnapshot()
     await navigation.refreshNavigation(true)
-    await openAgentSession(snapshot.session.session_id)
+    if (workspaceShellState.activeViewKey === workspaceViewKey(view)) await selectAgentNavigationScope(view)
   }
 
   function observeManagedDeletion(sessionId: string, deleting: boolean) {
@@ -2024,6 +2081,14 @@
               <Button size="sm" variant="ghost" disabled={workspaceTransitionLocked || pendingWorkspaceViewKey !== null} onclick={() => rambleAgentSessionId && void openAgentSession(rambleAgentSessionId)}>{$locale === 'zh-CN' ? '查看 Agent' : 'View Agent'}</Button>
             </div>
           {/if}
+          {#if workspace && feedbackManagedSessionId && !previewMode && (renderedWorkspaceView?.kind === 'session' || renderedWorkspaceView?.kind === 'request-task') && renderedSessionResolution?.kind !== 'missing-session'}
+            {#key `${feedbackManagedSessionId}:${workspace.request.request_id}`}
+              <div class="shrink-0">
+                <ManagedFeedbackRequestStatus transport={applicationTransport} sessionId={feedbackManagedSessionId} requestId={workspace.request.request_id}
+                  disabled={managedFeedbackReadOnly || workspaceTransitionLocked || pendingWorkspaceViewKey !== null} onDeletingChange={observeManagedDeletion} />
+              </div>
+            {/key}
+          {/if}
           <div
             class="min-h-0 flex-1"
             role={renderedWorkspaceView ? 'tabpanel' : undefined}
@@ -2087,6 +2152,12 @@
                 {submitting}
                 onSubmitFeedback={() => void submitFeedback()}
               />
+            {:else if renderedAgentDraftView && renderedAgentDraftController}
+              {#key renderedAgentDraftView.draftId}
+                <DraftManagedSessionWorkspace controller={renderedAgentDraftController} draftId={renderedAgentDraftView.draftId}
+                  onConfigure={() => void openSettings('agents')}
+                  onChooseDirectory={capabilities.serverPaths.status.availability === 'unavailable' ? undefined : () => capabilities.serverPaths.implementation.chooseDirectory()} />
+              {/key}
             {:else if renderedAgentSessionView}
               {#key renderedAgentSessionView.sessionId}
                 <ManagedSessionSection
@@ -2223,20 +2294,6 @@
     {/if}
   </div>
 </main>
-
-<Dialog.Root open={newManagedSessionOpen} onOpenChange={(open) => { if (!creatingManagedSession) newManagedSessionOpen = open }}>
-  <Dialog.Content class="max-h-[90vh] overflow-y-auto p-0 sm:max-w-xl" showCloseButton={!creatingManagedSession}>
-    <Dialog.Title class="sr-only">{agentText($locale, 'New agent session')}</Dialog.Title>
-    <Dialog.Description class="sr-only">{agentText($locale, 'Use an absolute directory on the computer running RambleDesk.')}</Dialog.Description>
-    <NewManagedSessionSection
-      transport={applicationTransport}
-      onChooseDirectory={capabilities.serverPaths.status.availability === 'unavailable' ? undefined : () => capabilities.serverPaths.implementation.chooseDirectory()}
-      onCreating={(creating) => { creatingManagedSession = creating }}
-      onCreated={managedSessionCreated}
-      onConfigure={() => { newManagedSessionOpen = false; void openSettings('agents') }}
-    />
-  </Dialog.Content>
-</Dialog.Root>
 
 {#if onboardingAvailable}
   <OnboardingWizard {capabilities} bind:openWizard={onboardingOpen} onClose={closeOnboarding} />

@@ -10,6 +10,7 @@ export type WorkspaceShellState = Readonly<{
 
 export type WorkspaceShellAction =
   | Readonly<{ type: 'open'; view: WorkspaceViewDescriptor }>
+  | Readonly<{ type: 'replace'; viewKey: string; view: WorkspaceViewDescriptor }>
   | Readonly<{ type: 'focus'; viewKey: string }>
   | Readonly<{ type: 'close'; viewKey: string }>
   | Readonly<{ type: 'reorder'; viewKeys: readonly string[] }>
@@ -26,6 +27,14 @@ export function workspaceShellReducer(
   action: WorkspaceShellAction,
 ): WorkspaceShellState {
   switch (action.type) {
+    case 'replace': {
+      if (!state.views.some((view) => workspaceViewKey(view) === action.viewKey)) return state
+      const nextKey = workspaceViewKey(action.view)
+      const views = state.views.flatMap((view) => workspaceViewKey(view) === action.viewKey
+        ? [action.view]
+        : workspaceViewKey(view) === nextKey ? [] : [view])
+      return { views, activeViewKey: state.activeViewKey === action.viewKey ? nextKey : state.activeViewKey }
+    }
     case 'open': {
       const viewKey = workspaceViewKey(action.view)
       const alreadyOpen = state.views.some((view) => workspaceViewKey(view) === viewKey)
