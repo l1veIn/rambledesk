@@ -1962,6 +1962,23 @@
   }
 </script>
 
+{#snippet requestAgentStatus()}
+  {#if feedbackManagedSessionId && workspace && !previewMode}
+    {#key `${feedbackManagedSessionId}:${workspace.request.request_id}`}
+      <ManagedFeedbackRequestStatus transport={applicationTransport} sessionId={feedbackManagedSessionId} requestId={workspace.request.request_id}
+        disabled={managedFeedbackReadOnly || workspaceTransitionLocked || pendingWorkspaceViewKey !== null}
+        navigationDisabled={workspaceTransitionLocked || pendingWorkspaceViewKey !== null}
+        onOpenAgent={() => feedbackManagedSessionId && void openAgentSession(feedbackManagedSessionId)}
+        onDeletingChange={observeManagedDeletion} />
+    {/key}
+  {:else if rambleAgentSessionId}
+    <div class="flex items-center justify-between gap-2 text-xs">
+      <span class="text-muted-foreground">ACP</span>
+      <Button size="sm" variant="ghost" disabled={workspaceTransitionLocked || pendingWorkspaceViewKey !== null} onclick={() => rambleAgentSessionId && void openAgentSession(rambleAgentSessionId)}>{$locale === 'zh-CN' ? '查看 Agent' : 'View Agent'}</Button>
+    </div>
+  {/if}
+{/snippet}
+
 <svelte:head>
   <title>RambleDesk · Feedback Inbox</title>
 </svelte:head>
@@ -2075,20 +2092,6 @@
 
       <div class="min-h-0 min-w-0 flex-1" id="workspace-pane">
         <div class="flex h-full min-h-0 min-w-0 flex-col">
-          {#if rambleAgentSessionId && (renderedWorkspaceView?.kind === 'session' || renderedWorkspaceView?.kind === 'request-task') && renderedSessionResolution?.kind !== 'missing-session'}
-            <div class="flex shrink-0 items-center justify-between gap-3 border-b px-4 py-1.5 text-xs text-muted-foreground" data-request-agent-source>
-              <span>{workspace ? ($locale === 'zh-CN' ? '此 Ramble 来自 Agent 会话' : 'This Ramble was created by an Agent session') : ($locale === 'zh-CN' ? '此 Agent 会话的 Ramble 请求' : 'Ramble requests from this Agent session')}</span>
-              <Button size="sm" variant="ghost" disabled={workspaceTransitionLocked || pendingWorkspaceViewKey !== null} onclick={() => rambleAgentSessionId && void openAgentSession(rambleAgentSessionId)}>{$locale === 'zh-CN' ? '查看 Agent' : 'View Agent'}</Button>
-            </div>
-          {/if}
-          {#if workspace && feedbackManagedSessionId && !previewMode && (renderedWorkspaceView?.kind === 'session' || renderedWorkspaceView?.kind === 'request-task') && renderedSessionResolution?.kind !== 'missing-session'}
-            {#key `${feedbackManagedSessionId}:${workspace.request.request_id}`}
-              <div class="shrink-0">
-                <ManagedFeedbackRequestStatus transport={applicationTransport} sessionId={feedbackManagedSessionId} requestId={workspace.request.request_id}
-                  disabled={managedFeedbackReadOnly || workspaceTransitionLocked || pendingWorkspaceViewKey !== null} onDeletingChange={observeManagedDeletion} />
-              </div>
-            {/key}
-          {/if}
           <div
             class="min-h-0 flex-1"
             role={renderedWorkspaceView ? 'tabpanel' : undefined}
@@ -2128,6 +2131,7 @@
               />
             {:else if renderedWorkspaceView?.kind === 'request-task'}
               <TaskWorkspaceView
+                agentStatus={rambleAgentSessionId ? requestAgentStatus : undefined}
                 transport={applicationTransport}
                 {capabilities}
                 {workspace}
@@ -2184,6 +2188,7 @@
             {:else if workbenchMounted}
               {#key renderedSessionView ? workspaceViewKey(renderedSessionView) : 'workspace:empty'}
               <SessionWorkbench
+            agentStatus={rambleAgentSessionId ? requestAgentStatus : undefined}
             readOnly={managedFeedbackReadOnly}
             transport={applicationTransport}
             {capabilities}

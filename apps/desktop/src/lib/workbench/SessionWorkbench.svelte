@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte'
+  import { onMount, tick, type Snippet } from 'svelte'
   import { Inbox } from '@lucide/svelte'
   import { Pane, PaneGroup, PaneResizer } from 'paneforge'
   import { Skeleton } from '$lib/components/ui/skeleton'
@@ -40,6 +40,7 @@
 
   export let loadingWorkspace = false
   export let readOnly = false
+  export let agentStatus: Snippet | undefined = undefined
   export let transport: ApplicationTransport
   export let capabilities: Pick<
     WorkbenchCapabilities,
@@ -237,7 +238,7 @@
       </div>
     </div>
   {:else if workspace}
-    <WorkspaceHeader {workspace} {resolveHostProfile} {cooking} />
+    <WorkspaceHeader {workspace} {resolveHostProfile} {cooking} {agentStatus} />
 
     <div class="workspace-columns min-h-0 flex-1">
       <div class="document-column min-h-0 min-w-0 overflow-hidden @container">
@@ -379,6 +380,7 @@
         <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
           {tr('Choose a host, session, and request from the left to open its workspace.')}
         </p>
+        {#if agentStatus}<div class="mt-4 text-left">{@render agentStatus()}</div>{/if}
       </div>
     </div>
   {/if}
@@ -386,9 +388,10 @@
 </section>
 
 <style>
+  .workspace-panel { --workspace-rail-width: 288px; }
   .workspace-columns {
     display: grid;
-    grid-template-columns: minmax(360px, 1fr) 288px;
+    grid-template-columns: minmax(0, 1fr) var(--workspace-rail-width);
     overflow: hidden;
   }
 

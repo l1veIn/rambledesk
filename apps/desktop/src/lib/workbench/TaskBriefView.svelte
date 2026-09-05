@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Snippet } from 'svelte'
   import type { JSONContent } from '@tiptap/core'
   import { ChefHat, Copy, FileImage, FileText, LoaderCircle, Mic, Paperclip, Send } from '@lucide/svelte'
 
@@ -35,6 +36,7 @@
   export let editorDocument: JSONContent | null = null
   export let activeActionId: string | null = null
   export let actionsDisabled = false
+  export let agentStatus: Snippet | undefined = undefined
   export let onSelectAction: (actionId: string, actionIndex: number, title: string) => void = () => {}
   export let previews: Record<string, string> = {}
   export let onOpenAttachment: (attachmentId: string) => void = () => {}
@@ -126,12 +128,13 @@
 </script>
 
 <div class="task-brief grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-background">
-    <header class="relative border-b px-6 py-4 pr-14">
+    <header class="task-header border-b" class:has-agent-status={!!agentStatus}>
+      <div class="relative min-w-0 px-6 py-4 pr-14">
       {#if workspace}
         <Button
           variant="ghost"
           size="icon-sm"
-          class="absolute right-12 top-2.5"
+          class="absolute right-3 top-3"
           aria-label={tr('Copy task brief')}
           title={tr('Copy task brief')}
           onclick={() => void copyTaskBrief()}
@@ -139,14 +142,18 @@
           <Copy />
         </Button>
       {/if}
-      <h1 class="m-0 text-lg font-semibold leading-snug">
-        {workspace?.request.title ?? tr('Task brief')}
-      </h1>
-      <div class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm text-muted-foreground">
+      <div class="flex items-center gap-2">
         {#if workspace}
-          <Badge variant={statusBadgeVariant(workspace.request.status)}>
+          <Badge variant={statusBadgeVariant(workspace.request.status)} class="shrink-0">
             {requestStatusLabel(workspace.request.status, $locale)}
           </Badge>
+        {/if}
+        <h1 class="m-0 min-w-0 text-lg font-semibold leading-snug">
+          {workspace?.request.title ?? tr('Task brief')}
+        </h1>
+      </div>
+      <div class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm text-muted-foreground">
+        {#if workspace}
           <span>{resolveHostProfile(workspace.request.host_id).label}</span>
           {#if workspace.request.source_hint}
             <span class="text-muted-foreground">·</span>
@@ -158,6 +165,12 @@
           <span>{formatTime(workspace.request.created_at)}</span>
         {/if}
       </div>
+      </div>
+      {#if agentStatus}
+        <div class="agent-status-column min-w-0 border-l bg-muted/15 px-4 py-2">
+          {@render agentStatus()}
+        </div>
+      {/if}
     </header>
 
     <div class="min-h-0 overflow-y-auto overscroll-contain bg-muted/20">
@@ -363,3 +376,14 @@
     attachment={attachmentPreview}
   />
 {/if}
+
+<style>
+  .task-header.has-agent-status {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) var(--workspace-rail-width, 288px);
+  }
+  @media (max-width: 1180px) {
+    .task-header.has-agent-status { grid-template-columns: minmax(0, 1fr); }
+    .agent-status-column { border-left: 0; border-top: 1px solid var(--border); }
+  }
+</style>

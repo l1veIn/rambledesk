@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Snippet } from 'svelte'
   import type { JSONContent } from '@tiptap/core'
 
   import type { AttachmentView, FeedbackWorkspaceView } from '$lib/feedback'
@@ -18,6 +19,7 @@
     'externalLinks' | 'serverPaths' | 'speech' | 'rambleConsole'
   >
   export let loading = false
+  export let agentStatus: Snippet | undefined = undefined
   export let editorDocument: JSONContent | null = null
   export let activeActionId: string | null = null
   export let actionsDisabled = false
@@ -57,6 +59,7 @@
   </div>
 {:else}
   <TaskBriefView
+    {agentStatus}
     {transport}
     {capabilities}
     {workspace}
