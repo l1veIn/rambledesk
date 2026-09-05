@@ -24,6 +24,7 @@ for (const packageName of [
   "rambledesk-cli",
   "rambledesk-core",
   "rambledesk-desktop",
+  "rambledesk-feedback-client",
   "rambledesk-hosts",
   "rambledesk-local-server",
   "rambledesk-mcp",

@@ -4827,6 +4827,7 @@ dependencies = [
  "thiserror 2.0.19",
  "tokio",
  "tokio-util",
+ "url",
  "uuid",
  "windows-sys 0.61.2",
 ]
@@ -4840,6 +4841,7 @@ dependencies = [
  "libc",
  "rambledesk-acp",
  "rambledesk-core",
+ "rambledesk-feedback-client",
  "rambledesk-local-server",
  "rambledesk-mcp",
  "rambledesk-storage",
@@ -4888,6 +4890,7 @@ dependencies = [
  "objc2-core-graphics",
  "rambledesk-acp",
  "rambledesk-core",
+ "rambledesk-feedback-client",
  "rambledesk-hosts",
  "rambledesk-local-server",
  "rambledesk-mcp",
@@ -4921,6 +4924,21 @@ dependencies = [
  "windows 0.62.2",
  "xcap",
  "zip 2.4.2",
+]
+
+[[package]]
+name = "rambledesk-feedback-client"
+version = "0.3.4"
+dependencies = [
+ "axum",
+ "clap",
+ "rambledesk-core",
+ "reqwest 0.13.4",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]

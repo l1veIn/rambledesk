@@ -15,6 +15,7 @@ tokio.workspace = true
 tokio-util = { workspace = true, features = ["compat"] }
 async-trait.workspace = true
 uuid.workspace = true
+url = "2"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_System_Diagnostics_ToolHelp"] }

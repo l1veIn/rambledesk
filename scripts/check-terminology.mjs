@@ -55,16 +55,17 @@ for (const path of coreFiles) {
 
 const dependencyContracts = new Map([
   ["crates/rambledesk-core/Cargo.toml", []],
+  ["crates/rambledesk-feedback-client/Cargo.toml", ["rambledesk-core"]],
   ["crates/rambledesk-acp/Cargo.toml", ["rambledesk-core"]],
   ["crates/rambledesk-storage/Cargo.toml", ["rambledesk-core"]],
   ["crates/rambledesk-mcp/Cargo.toml", ["rambledesk-core", "rambledesk-hosts"]],
   ["crates/rambledesk-local-server/Cargo.toml", ["rambledesk-core", "rambledesk-mcp"]],
   ["crates/rambledesk-hosts/Cargo.toml", ["rambledesk-core"]],
   ["crates/rambledesk-speech/Cargo.toml", []],
-  ["crates/rambledesk-cli/Cargo.toml", ["rambledesk-acp", "rambledesk-core", "rambledesk-local-server", "rambledesk-mcp", "rambledesk-storage"]],
+  ["crates/rambledesk-cli/Cargo.toml", ["rambledesk-acp", "rambledesk-core", "rambledesk-feedback-client", "rambledesk-local-server", "rambledesk-mcp", "rambledesk-storage"]],
   [
     "apps/desktop/src-tauri/Cargo.toml",
-    ["rambledesk-acp", "rambledesk-core", "rambledesk-hosts", "rambledesk-local-server", "rambledesk-mcp", "rambledesk-speech", "rambledesk-storage"],
+    ["rambledesk-acp", "rambledesk-core", "rambledesk-feedback-client", "rambledesk-hosts", "rambledesk-local-server", "rambledesk-mcp", "rambledesk-speech", "rambledesk-storage"],
   ],
 ]);
 for (const [manifest, expected] of dependencyContracts) {
