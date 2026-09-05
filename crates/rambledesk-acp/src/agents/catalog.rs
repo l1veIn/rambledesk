@@ -12,7 +12,7 @@ pub fn catalog() -> Vec<AgentCatalogEntry> {
                 connection_kind: if $bridge { AgentConnectionKind::Bridge } else { AgentConnectionKind::Native },
                 distribution: AgentDistribution::Npm { package: $package.into(), pinned_version: $version.into(), command: $command.into(), node_required: $node.into() },
                 args: $args.iter().map(|value: &&str| (*value).into()).collect(), dependencies: vec![],
-                verification: AgentVerification { status: AgentVerificationStatus::Unverified, versions: vec![], note: "Run the connection check before creating a managed session.".into() },
+                verification: AgentVerification { status: AgentVerificationStatus::Unverified, versions: vec![], note: "Installed Agents can be selected directly. Check the connection to diagnose ACP access; model-driven command feedback still requires verification.".into() },
             }
         }
     }
@@ -203,15 +203,15 @@ pub fn catalog() -> Vec<AgentCatalogEntry> {
     for entry in &mut entries {
         match entry.id.as_str() {
             "deepseek-acp" | "dsh" => entry.verification = AgentVerification {
-                status: AgentVerificationStatus::Verified,
+                status: AgentVerificationStatus::Unverified,
                 versions: if entry.id == "dsh" { vec!["0.1.2-rc.1".into()] } else { vec!["0.8.0".into()] },
-                note: "RambleDesk verified two-project feedback, original-session recovery and deletion isolation on Windows. Other versions/platforms still require a connection check.".into(),
+                note: "Previous Windows testing covered ACP sessions, recovery and deletion isolation. The shared command feedback workflow still requires model-driven verification with this installed version.".into(),
             },
             "pi-acp" => {
                 entry.dependencies.push(AgentDependency { command: "pi".into(), required: true, package: Some("@earendil-works/pi-coding-agent".into()), pinned_version: Some("0.83.0".into()), instructions: "The bridge launches pi --mode rpc. Its required Pi CLI is installed beside the bridge in the managed prefix.".into() });
-                entry.verification = AgentVerification { status: AgentVerificationStatus::Unverified, versions: vec!["0.0.33".into(), "Pi 0.83.0".into()], note: "RambleDesk supplies a managed Pi extension for feedback. Native Pi 0.83.0 extension loading and scoped requests have been tested on Windows; model-driven sessions still require your connection and authentication checks.".into() };
+                entry.verification = AgentVerification { status: AgentVerificationStatus::Unverified, versions: vec!["0.0.33".into(), "Pi 0.83.0".into()], note: "Pi runs through its ACP bridge with the native Pi CLI. RambleDesk feedback uses the shared command workflow; model-driven sessions still require connection and authentication verification.".into() };
             },
-            "openclaw-acp" => entry.verification = AgentVerification { status: AgentVerificationStatus::Unsupported, versions: vec!["2026.8.1".into()], note: "This release does not accept MCP servers in session/new; RambleDesk cannot provide managed feedback for it.".into() },
+            "openclaw-acp" => entry.verification = AgentVerification { status: AgentVerificationStatus::Unverified, versions: vec!["2026.8.1".into()], note: "This release does not accept ACP-injected MCP servers. RambleDesk feedback uses a command, so MCP support is not required; the model-driven feedback workflow remains unverified.".into() },
             "claude-acp" | "codex-acp" => entry.dependencies.push(AgentDependency {
                 command: if entry.id == "claude-acp" { "claude" } else { "codex" }.into(), required: false, package: None, pinned_version: None,
                 instructions: "The vendor CLI and ACP bridge are distinct programs and versions. Vendor installation alone does not install the ACP bridge; existing vendor authentication may be shared.".into(),

@@ -2,7 +2,7 @@ import { get, writable } from 'svelte/store'
 import type { ApplicationTransport } from '$lib/application/applicationTransport'
 import { APPLICATION_EVENTS_STREAM } from '$lib/application/applicationEvents'
 import { applicationResourcesAffectAgentConfigurations } from '$lib/application/applicationSnapshotRefetch'
-import type { AgentConfig, AgentConnectionCheck, SaveAgentConfigInput } from '$lib/generated/feedback'
+import type { AgentConfig, AgentConnectionCheck, ResolveCatalogAgentInput, SaveAgentConfigInput } from '$lib/generated/feedback'
 import { redactAgentMessage } from './agentConfigForm'
 
 export type AgentSettingsState = Readonly<{ configs: AgentConfig[]; loading: boolean; error: string }>
@@ -76,8 +76,22 @@ export function createAgentSettingsController(transport: ApplicationTransport) {
     patch({ configs: get(state).configs.filter((config) => config.id !== id), loading: false, error: '' })
   }
 
+  async function resolve(input: ResolveCatalogAgentInput): Promise<AgentConfig> {
+    assertActive()
+    generation += 1
+    patch({ loading: false })
+    const saved = await transport.call('resolveCatalogAgent', input)
+    generation += 1
+    patch({ configs: [...get(state).configs.filter(config => config.id !== saved.id), saved], loading: false, error: '' })
+    return saved
+  }
+
   async function check(id: string): Promise<AgentConnectionCheck> {
     assertActive()
+    const config = get(state).configs.find(config => config.id === id)
+    // Checking a saved Agent is explicit launch intent, just like selecting it
+    // in a new tab. Migrate the old enable flag without a separate UI step.
+    if (config && !config.enabled) await save({ ...config, enabled: true })
     return transport.call('checkAgentConfig', { agent_config_id: id })
   }
 
@@ -88,5 +102,5 @@ export function createAgentSettingsController(transport: ApplicationTransport) {
     unsubscribe = null
   }
 
-  return { subscribe: state.subscribe, start, refresh, save, remove, check, dispose }
+  return { subscribe: state.subscribe, start, refresh, save, remove, check, resolve, dispose }
 }

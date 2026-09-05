@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentConfig } from '$lib/generated/feedback'
 import {
-  AGENT_PRESETS,
   AgentDraftCache,
   agentConfigDraft,
   agentDraftInput,
@@ -21,7 +20,7 @@ const config = (id: string): AgentConfig => ({
 describe('agent configuration drafts', () => {
   it('keeps arguments as separate literal values and preserves equals signs in secrets', () => {
     const input = agentDraftInput({
-      ...newAgentDraft(AGENT_PRESETS[0]),
+      ...newAgentDraft(), name: 'My agent', command: 'my-agent',
       argsText: '--label\nproject with spaces\n$(not-a-shell)\n',
       envText: '# local environment\r\n TOKEN = abc==\r\nEMPTY=\r\n',
     })
@@ -64,11 +63,21 @@ describe('agent configuration drafts', () => {
   })
 
   it('round-trips saved configurations without deriving commands from labels', () => {
-    const saved = { ...config('custom'), command: 'C:\\Agents\\my agent.exe', args: ['--stdio'], env: { KEY: 'abc==' } }
+    const saved = { ...config('custom'), catalog_id: 'pi-acp', command: 'C:\\Agents\\my agent.exe', args: ['--stdio'], env: { KEY: 'abc==' } }
     expect(agentDraftInput(agentConfigDraft(saved))).toEqual({
-      id: saved.id, name: saved.name, host_id: saved.host_id, protocol: saved.protocol,
+      id: saved.id, catalog_id: saved.catalog_id, name: saved.name, host_id: saved.host_id, protocol: saved.protocol,
       command: saved.command, args: saved.args, env: saved.env, enabled: saved.enabled,
     })
+  })
+
+  it('refreshes saved credentials and enabled state without losing unsaved command edits', () => {
+    const cache = new AgentDraftCache()
+    const saved = { ...config('one'), enabled: false }
+    const draft = cache.select(saved.id, [saved])
+    draft.command = 'unsaved-command'
+    cache.remember(draft)
+    const updated = { ...saved, enabled: true, env: { KEY: 'new-key' } }
+    expect(cache.reconcile(updated)).toMatchObject({ command: 'unsaved-command', enabled: true, envText: 'KEY=new-key' })
   })
 
   it('redacts env values from diagnostic and error messages', () => {
@@ -76,10 +85,6 @@ describe('agent configuration drafts', () => {
       .toBe('TOKEN=[redacted]; command failed with [redacted]')
   })
 
-  it('presets reference installed commands without package-manager installation', () => {
-    expect(AGENT_PRESETS.map((preset) => preset.command)).toEqual(['deepseek-acp', 'dsh', 'pi-acp', 'codex-acp'])
-    expect(AGENT_PRESETS.find((preset) => preset.id === 'dsh')?.args).toEqual(['--profile', 'acp'])
-  })
 })
 
 describe('managed session creation', () => {

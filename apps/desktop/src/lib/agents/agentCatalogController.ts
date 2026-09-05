@@ -8,17 +8,23 @@ export function installIsActive(job: AgentInstallJob) { return ['preparing', 'in
 export function catalogConfiguration(entry: AgentCatalogEntry, inspection: AgentInspection) {
   if (!inspection.command) throw new Error('Install this agent before using it.')
   if (inspection.checks.some(check => check.status === 'fail')) throw new Error('Resolve the failed checks before using this agent.')
-  return { id: null, name: entry.name, host_id: entry.host_id, protocol: 'acp' as const, enabled: true, command: inspection.command, args: inspection.args, env: {} }
+  return { id: null, catalog_id: entry.id, name: entry.name, host_id: entry.host_id, protocol: 'acp' as const, enabled: true, command: inspection.command, args: inspection.args, env: inspection.env ?? {} }
 }
-export function configurationsForAgent(entry: AgentCatalogEntry, configs: readonly AgentConfig[], inspection?: AgentInspection): AgentConfig[] {
-  const command = entry.distribution.command.toLowerCase()
-  const packagePath = entry.distribution.kind === 'npm' ? `/node_modules/${entry.distribution.package.toLowerCase()}/` : undefined
-  const normalized = (value: string) => value.replace(/\\/gu, '/').toLowerCase()
-  return configs.filter(config => config.host_id === entry.host_id && (
-    normalized(config.command).split('/').at(-1)?.replace(/\.(cmd|exe|bat)$/iu, '') === command ||
-    (packagePath && config.args.some(arg => normalized(arg).includes(packagePath))) ||
-    (config.command === inspection?.command && config.args.length === inspection.args.length && config.args.every((arg, index) => arg === inspection.args[index]))
-  ))
+export function configurationsForAgent(entry: AgentCatalogEntry, configs: readonly AgentConfig[]): AgentConfig[] {
+  return configs.filter(config => config.catalog_id === entry.id)
+}
+
+export type AgentListItem = { key: string; name: string; entry?: AgentCatalogEntry; config?: AgentConfig }
+/** Each saved profile is a first-class list entry, including custom and retired catalog entries. */
+export function agentListItems(entries: readonly AgentCatalogEntry[], configs: readonly AgentConfig[]): AgentListItem[] {
+  const items: AgentListItem[] = entries.flatMap(entry => {
+    const profiles = configurationsForAgent(entry, configs)
+    return profiles.length
+      ? profiles.map(config => ({ key: `config:${config.id}`, name: config.name, entry, config }))
+      : [{ key: `catalog:${entry.id}`, name: entry.name, entry }]
+  })
+  return [...items, ...configs.filter(config => !entries.some(entry => entry.id === config.catalog_id))
+    .map(config => ({ key: `config:${config.id}`, name: config.name, config }))]
 }
 
 export function createAgentCatalogController(transport: ApplicationTransport) {
@@ -70,6 +76,13 @@ export function createAgentCatalogController(transport: ApplicationTransport) {
     }
   }
 
+  async function inspectAll() {
+    const entries = get(state).entries
+    for (let index = 0; active && index < entries.length; index += 3) {
+      await Promise.all(entries.slice(index, index + 3).map(entry => inspect(entry.id)))
+    }
+  }
+
   async function refresh() {
     if (!active) return
     patch({ loading: true, error: '' })
@@ -107,5 +120,5 @@ export function createAgentCatalogController(transport: ApplicationTransport) {
     return dispose
   }
   function dispose() { active = false; clearTimeout(timer); unsubscribe?.() }
-  return { subscribe: state.subscribe, start, dispose, refresh, inspect, install, cancel }
+  return { subscribe: state.subscribe, start, dispose, refresh, inspect, inspectAll, install, cancel }
 }

@@ -405,11 +405,28 @@ async fn existing_system_package_and_standalone_command_report_actual_not_catalo
     tokio::fs::write(&standalone, "process.stdout.write('version unavailable');")
         .await
         .unwrap();
+    service.tools.as_mut().unwrap().npm = None;
     let found = service
         .inspect_with_cancel("deepseek-acp", &CancellationToken::new())
         .await
         .unwrap();
     assert_eq!(found.version, None);
+    assert!(found.command.is_some());
+    assert_eq!(
+        found
+            .checks
+            .iter()
+            .find(|check| check.id == "npm")
+            .unwrap()
+            .status,
+        AgentCheckStatus::Warn
+    );
+    assert!(
+        !found
+            .checks
+            .iter()
+            .any(|check| check.status == AgentCheckStatus::Fail)
+    );
 }
 
 #[tokio::test]

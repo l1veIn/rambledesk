@@ -2,7 +2,7 @@ import { get } from 'svelte/store'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { TestApplicationTransport } from '$lib/application/testApplicationTransport'
 import type { AgentCatalogEntry, AgentConfig, AgentInspection, AgentInstallJob } from '$lib/generated/feedback'
-import { catalogConfiguration, configurationsForAgent, createAgentCatalogController } from './agentCatalogController'
+import { agentListItems, catalogConfiguration, configurationsForAgent, createAgentCatalogController } from './agentCatalogController'
 import { AGENT_SETUP, applyAgentCredentials } from './agentOnboarding'
 
 const entry: AgentCatalogEntry = {
@@ -92,11 +92,29 @@ describe('Agent catalog application integration', () => {
     controller.dispose()
   })
 
-  it('matches the agent package across generations without confusing agents sharing node and a host', () => {
+  it('uses durable catalog identity while preserving custom commands and multiple profiles', () => {
     const config: AgentConfig = { ...catalogConfiguration(entry, inspection), id: 'old', command: 'C:/node.exe', args: ['C:\\agents\\old\\node_modules\\deepseek-acp\\index.js'], created_at: '', updated_at: '' }
-    const other = { ...config, id: 'dsh', args: ['C:/agents/dsh/node_modules/@deepseek-ai/dsh/main.js', '--profile', 'acp'] }
-    expect(configurationsForAgent(entry, [config, other], inspection)).toEqual([config])
+    const other = { ...config, catalog_id: 'dsh', id: 'dsh', args: ['C:/agents/dsh/node_modules/@deepseek-ai/dsh/main.js', '--profile', 'acp'] }
+    const custom = { ...config, id: 'custom', catalog_id: undefined }
+    const edited = { ...config, id: 'edited', name: 'My account', command: 'custom-wrapper', args: ['anything'] }
+    expect(configurationsForAgent(entry, [config, other, custom, edited])).toEqual([config, edited])
+    expect(agentListItems([entry], [config, other, custom, edited]).map(item => [item.key, item.name])).toEqual([
+      ['config:old', entry.name], ['config:edited', 'My account'], ['config:dsh', entry.name], ['config:custom', entry.name],
+    ])
+    expect(agentListItems([entry], [])).toEqual([{ key: `catalog:${entry.id}`, name: entry.name, entry }])
+    expect(catalogConfiguration(entry, { ...inspection, env: { DEFAULT: 'retain' } }).env).toEqual({ DEFAULT: 'retain' })
     expect(() => catalogConfiguration(entry, { ...inspection, checks: [{ id: 'node', status: 'fail', message: 'Missing' }] })).toThrow('failed checks')
     expect(() => catalogConfiguration(entry, { ...inspection, command: null })).toThrow('Install')
+  })
+
+  it('detects installed agents without saving or resolving a configuration', async () => {
+    const { controller, transport } = harness()
+    controller.start()
+    await flush()
+    await controller.inspectAll()
+    expect(get(controller).inspections[entry.id]).toEqual(inspection)
+    expect(transport.callsFor('saveAgentConfig')).toHaveLength(0)
+    expect(transport.callsFor('resolveCatalogAgent')).toHaveLength(0)
+    controller.dispose()
   })
 })

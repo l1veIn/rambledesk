@@ -1,11 +1,15 @@
 // Isolated UI fixture. No native invocation, external credentials or real agents.
 import { TestApplicationTransport } from '$lib/application/testApplicationTransport'
 import { APPLICATION_EVENTS_STREAM } from '$lib/application/applicationEvents'
-import type { AgentCatalogEntry, AgentConfig, AgentInstallJob, ManagedSessionSnapshot, SessionActivity, SessionConfigChange, SessionPromptContent, SessionContentBlock } from '$lib/generated/feedback'
+import type { AgentCatalogEntry, AgentConfig, AgentInspection, AgentInstallJob, ManagedSessionSnapshot, SessionActivity, SessionConfigChange, SessionPromptContent, SessionContentBlock } from '$lib/generated/feedback'
 
 const names = [['deepseek-acp', 'DeepSeek ACP', 'dsh'], ['dsh', 'DeepSeek Harness', 'dsh'], ['claude-acp', 'Claude Code', 'claude'], ['codex-acp', 'Codex CLI', 'codex'], ['gemini', 'Gemini CLI', 'gemini'], ['pi-acp', 'Pi', 'pi']]
 const entries: AgentCatalogEntry[] = names.map(([id, name, host_id]) => ({ id, name, host_id, description: '', connection_kind: 'bridge', distribution: { kind: 'npm', package: id, pinned_version: '0.8.0', command: id, node_required: '22.0.0' }, args: [], dependencies: [], verification: { status: 'unverified', versions: [], note: 'Fixture' } }))
-let configs: AgentConfig[] = []
+let configs: AgentConfig[] = new URLSearchParams(location.search).has('profiles') ? [
+  { id: 'work', catalog_id: 'deepseek-acp', name: 'DeepSeek · Work', host_id: 'dsh', protocol: 'acp', enabled: true, command: 'custom-launcher', args: ['--work'], env: { CUSTOM: 'keep' }, created_at: '', updated_at: '' },
+  { id: 'personal', catalog_id: 'deepseek-acp', name: 'DeepSeek · Personal', host_id: 'dsh', protocol: 'acp', enabled: false, command: 'deepseek-acp', args: [], env: {}, created_at: '', updated_at: '' },
+  { id: 'custom', name: 'My ACP agent', host_id: 'generic', protocol: 'acp', enabled: true, command: 'my-agent', args: ['--acp'], env: {}, created_at: '', updated_at: '' },
+] : []
 let jobs: AgentInstallJob[] = []
 let revision = 0
 let promptEpoch = 0
@@ -32,9 +36,23 @@ const snapshot: ManagedSessionSnapshot = {
 }
 transport.handle('listAvailableAgents', () => entries).handle('listAgentConfigs', () => configs)
   .handle('listAgentInstallJobs', () => structuredClone(jobs))
-  .handle('inspectAgentInstallation', async ({ agent_id }) => { await delay(150); return { agent_id, source: 'managed', version: '0.8.0', command: `C:/Agents/${agent_id}.cmd`, args: [], dependencies: [], checks: [{ id: 'node', status: 'pass', message: 'Node.js 22.18.0' }, { id: 'agent', status: 'pass', message: '智能体已安装，可以配置连接。' }] } })
+  .handle('inspectAgentInstallation', async ({ agent_id }): Promise<AgentInspection> => { await delay(150); return { agent_id, source: 'managed', version: '0.8.0', command: `C:/Agents/${agent_id}.cmd`, args: [], dependencies: [], checks: [{ id: 'node', status: 'pass', message: 'Node.js 22.18.0' }, { id: 'agent', status: 'pass', message: '智能体已安装，可用于新会话。' }] } })
+  .handle('resolveCatalogAgent', ({ agent_id, agent_config_id, enable }) => {
+    const profiles = configs.filter(config => config.catalog_id === agent_id)
+    const existing = agent_config_id ? profiles.find(config => config.id === agent_config_id) : profiles[0]
+    if (!agent_config_id && profiles.length > 1) throw new Error('Choose a specific configuration for this Agent')
+    if (existing) {
+      if (!existing.enabled && !enable) throw new Error('This Agent is disabled')
+      existing.enabled = existing.enabled || enable
+      return existing
+    }
+    const entry = entries.find(entry => entry.id === agent_id)!
+    const config: AgentConfig = { id: crypto.randomUUID(), catalog_id: entry.id, name: entry.name, host_id: entry.host_id, protocol: 'acp', enabled: true, command: `C:/Agents/${agent_id}.cmd`, args: [], env: {}, created_at: '', updated_at: '' }
+    configs.push(config); changed(); return config
+  })
   .handle('saveAgentConfig', input => { const config = { ...input, id: input.id ?? crypto.randomUUID(), created_at: '', updated_at: '' }; configs = [...configs.filter(item => item.id !== config.id), config]; changed(); return config })
   .resolve('checkAgentConfig', { ok: true, message: '连接成功。', details: [] })
+  .handle('deleteAgentConfig', ({ agent_config_id }) => { configs = configs.filter(config => config.id !== agent_config_id); changed() })
   .handle('installAgent', ({ agent_id }) => { const job: AgentInstallJob = { id: crypto.randomUUID(), agent_id, phase: 'installing', messages: ['正在下载安装包…'], result: null, cancel_requested: false }; jobs.push(job); setTimeout(() => { if (!job.cancel_requested) { job.phase = 'complete'; job.messages.push('安装完成，启动入口检查通过。'); changed() } }, 1600); return structuredClone(job) })
   .handle('cancelAgentInstall', ({ job_id }) => { const job = jobs.find(job => job.id === job_id); if (job) { job.cancel_requested = true; job.phase = 'cancelled'; changed() } })
   .handle('getManagedSession', () => structuredClone({ ...snapshot, activities: snapshot.activities.slice(-1000) }))

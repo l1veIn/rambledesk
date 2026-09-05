@@ -2,6 +2,7 @@ import type { AgentConfig, CreateManagedSessionInput, SaveAgentConfigInput } fro
 
 export type AgentDraft = {
   id: string | null
+  catalogId?: string
   name: string
   hostId: string
   enabled: boolean
@@ -10,38 +11,13 @@ export type AgentDraft = {
   envText: string
 }
 
-export type AgentPreset = Readonly<{
-  id: string
-  name: string
-  hostId: string
-  command: string
-  args: readonly string[]
-  note: string
-}>
-
-/** Executables must already be installed; choosing a preset never launches it. */
-export const AGENT_PRESETS: readonly AgentPreset[] = [
-  { id: 'deepseek', name: 'DeepSeek ACP', hostId: 'dsh', command: 'deepseek-acp', args: [], note: 'Community bridge · versions 0.7 / 0.8' },
-  { id: 'dsh', name: 'DeepSeek Harness', hostId: 'dsh', command: 'dsh', args: ['--profile', 'acp'], note: 'Official profile · version 0.1.2-rc.1' },
-  { id: 'pi', name: 'Pi ACP', hostId: 'pi', command: 'pi-acp', args: [], note: 'Version 0.0.33 lacks HTTP MCP support required for managed feedback' },
-  { id: 'codex', name: 'Codex ACP', hostId: 'codex', command: 'codex-acp', args: [], note: 'Bridge and feedback support need checking' },
-]
-
-export function newAgentDraft(preset?: AgentPreset): AgentDraft {
-  return {
-    id: null,
-    name: preset?.name ?? '',
-    hostId: preset?.hostId ?? 'generic',
-    enabled: true,
-    command: preset?.command ?? '',
-    argsText: preset?.args.join('\n') ?? '',
-    envText: '',
-  }
+export function newAgentDraft(): AgentDraft {
+  return { id: null, name: '', hostId: 'generic', enabled: true, command: '', argsText: '', envText: '' }
 }
-
 export function agentConfigDraft(config: AgentConfig): AgentDraft {
   return {
     id: config.id,
+    catalogId: config.catalog_id,
     name: config.name,
     hostId: config.host_id,
     enabled: config.enabled,
@@ -74,6 +50,7 @@ export function agentDraftInput(draft: AgentDraft): SaveAgentConfigInput {
   if (draft.argsText.includes('\0')) throw new Error('Arguments cannot contain null characters.')
   return {
     id: draft.id,
+    ...(draft.catalogId ? { catalog_id: draft.catalogId } : {}),
     name: draft.name.trim(),
     host_id: draft.hostId.trim(),
     protocol: 'acp',
@@ -120,6 +97,7 @@ export function managedSessionDraftInput(
 
 export class AgentDraftCache {
   readonly #drafts = new Map<string, AgentDraft>()
+  readonly #saved = new Map<string, AgentDraft>()
 
   select(id: string | null, configs: readonly AgentConfig[]): AgentDraft {
     const key = id ?? 'new'
@@ -127,6 +105,7 @@ export class AgentDraftCache {
     if (remembered) return { ...remembered }
     const config = configs.find((item) => item.id === id)
     const draft = config ? agentConfigDraft(config) : newAgentDraft()
+    if (config) this.#saved.set(key, { ...draft })
     this.#drafts.set(key, draft)
     return { ...draft }
   }
@@ -135,7 +114,22 @@ export class AgentDraftCache {
     this.#drafts.set(draft.id ?? 'new', { ...draft })
   }
 
+  /** Refresh untouched fields after a credential/enable save while retaining local edits. */
+  reconcile(config: AgentConfig): AgentDraft {
+    const next = agentConfigDraft(config)
+    const current = this.#drafts.get(config.id)
+    const previous = this.#saved.get(config.id)
+    const merged = current && previous ? Object.fromEntries(
+      Object.entries(next).map(([key, value]) => [key,
+        current[key as keyof AgentDraft] === previous[key as keyof AgentDraft] ? value : current[key as keyof AgentDraft]]),
+    ) as AgentDraft : next
+    this.#saved.set(config.id, { ...next })
+    this.#drafts.set(config.id, { ...merged })
+    return { ...merged }
+  }
+
   remove(id: string | null): void {
     this.#drafts.delete(id ?? 'new')
+    this.#saved.delete(id ?? 'new')
   }
 }

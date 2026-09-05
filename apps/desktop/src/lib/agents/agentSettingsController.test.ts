@@ -13,6 +13,40 @@ const config: AgentConfig = {
 async function flush() { await Promise.resolve(); await Promise.resolve(); await Promise.resolve() }
 
 describe('Agent settings transport integration', () => {
+  it('checks a legacy disabled profile directly while preserving its launch settings', async () => {
+    const saved = { ...config, enabled: false, args: ['--account', 'work'], env: { TOKEN: 'keep' } }
+    const transport = new TestApplicationTransport(undefined, { initiallyReady: true })
+      .resolve('listAgentConfigs', [saved])
+      .handle('saveAgentConfig', input => ({ ...saved, ...input, id: saved.id }))
+      .resolve('checkAgentConfig', { ok: true, message: 'Connected', details: [] })
+    const controller = createAgentSettingsController(transport)
+    controller.start(); await flush()
+    await controller.check(saved.id)
+    expect(transport.callsFor('saveAgentConfig')[0].input).toEqual({ ...saved, enabled: true })
+    expect(transport.callsFor('checkAgentConfig')).toHaveLength(1)
+    expect(get(controller).configs[0].enabled).toBe(true)
+    controller.dispose()
+  })
+  it('resolves only an explicit catalog selection and ignores an older list response', async () => {
+    const transport = new TestApplicationTransport(undefined, { initiallyReady: true }).resolve('listAgentConfigs', [])
+    const controller = createAgentSettingsController(transport)
+    controller.start()
+    await flush()
+    expect(transport.callsFor('resolveCatalogAgent')).toHaveLength(0)
+    let finish!: (configs: AgentConfig[]) => void
+    transport.handle('listAgentConfigs', () => new Promise(resolve => { finish = resolve }))
+    const oldRead = controller.refresh()
+    await flush()
+    const selected = { ...config, catalog_id: 'pi-acp', command: 'custom-wrapper', args: ['keep'], env: { TOKEN: 'keep' } }
+    transport.resolve('resolveCatalogAgent', selected)
+    const input = { agent_id: 'pi-acp', agent_config_id: selected.id, enable: true }
+    expect(await controller.resolve(input)).toEqual(selected)
+    finish([]); await oldRead
+    expect(get(controller).configs).toEqual([selected])
+    expect(transport.callsFor('saveAgentConfig')).toHaveLength(0)
+    expect(transport.callsFor('resolveCatalogAgent')[0].input).toEqual(input)
+    controller.dispose()
+  })
   it('loads configs and refreshes only for configuration changes or a ready connection', async () => {
     const transport = new TestApplicationTransport(undefined).resolve('listAgentConfigs', [config])
     transport.markReady()

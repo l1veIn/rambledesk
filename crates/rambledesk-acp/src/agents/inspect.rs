@@ -276,6 +276,14 @@ impl AgentCatalogService {
             }
         }
         let mut dependencies = vec![];
+        if installed.is_some()
+            && let Some(check) = checks
+                .iter_mut()
+                .find(|check| check.id == "npm" && check.status == AgentCheckStatus::Fail)
+        {
+            check.status = AgentCheckStatus::Warn;
+            check.message = "npm is unavailable; the installed Agent can run, but managed installation and updates require npm".into();
+        }
         for dependency in &entry.dependencies {
             let managed =
                 if let (Some(prefix), Some(package)) = (&installed_prefix, &dependency.package) {
