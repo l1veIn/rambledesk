@@ -5,7 +5,7 @@ import { StaleHttpApplicationResponseError } from './httpApplicationTransport'
 
 const snapshotQueries = [
   'listAvailableAgents', 'listAgentInstallJobs', 'listManagedSessionActivity',
-  'listAgentConfigs', 'getManagedSession', 'getManagedFeedbackStatus', 'listFeedbackInbox', 'listHostSessions',
+  'listAgentConfigs', 'getManagedSession', 'getManagedFeedbackStatus', 'getManagedWorkspaceInfo', 'listFeedbackInbox', 'listHostSessions',
   'listArchivedHostSessions', 'listHostProfiles', 'listFeedbackRequests',
   'getFeedbackWorkspace', 'readPublishedFeedback',
 ] as const satisfies readonly ApplicationCommandName[]

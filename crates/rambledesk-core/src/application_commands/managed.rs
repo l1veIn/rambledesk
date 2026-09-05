@@ -209,6 +209,15 @@ impl ApplicationCommandFacade {
             .await
             .map_err(Into::into)
     }
+    pub async fn get_managed_workspace_info(
+        &self,
+        input: ManagedSessionInput,
+    ) -> Result<crate::ManagedWorkspaceInfo, ManagedCommandError> {
+        self.managed_sessions()?
+            .get_workspace_info(input)
+            .await
+            .map_err(Into::into)
+    }
     pub async fn start_managed_session(
         &self,
         input: ManagedSessionInput,

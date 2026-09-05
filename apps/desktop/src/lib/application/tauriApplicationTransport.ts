@@ -32,6 +32,7 @@ export const TAURI_APPLICATION_COMMANDS = {
   discardPreparedSession: 'discard_prepared_session',
   getManagedSession: 'get_managed_session',
   getManagedFeedbackStatus: 'get_managed_feedback_status',
+  getManagedWorkspaceInfo: 'get_managed_workspace_info',
   startManagedSession: 'start_managed_session',
   stopManagedSession: 'stop_managed_session',
   cancelManagedPrompt: 'cancel_managed_prompt',

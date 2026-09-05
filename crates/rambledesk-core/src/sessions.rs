@@ -22,6 +22,7 @@ mod recovery;
 mod recovery_runtime;
 mod repository;
 mod runtime;
+mod workspace_info;
 
 pub use activity::*;
 pub use activity_history::*;
@@ -41,3 +42,4 @@ pub use prompts::SendManagedPromptInput;
 pub use recovery::*;
 pub use repository::{SessionRepository, SessionRepositoryError};
 pub use runtime::*;
+pub use workspace_info::*;

@@ -228,6 +228,9 @@ pub fn run() {
                 )
                 .with_change_observer(application_change_hub.clone())
                 .with_feedback_provider(feedback_provider.clone())
+                .with_workspace_info_provider(Arc::new(
+                    rambledesk_local_server::LocalWorkspaceInfoProvider,
+                ))
                 .with_deliveries(Arc::new(store.clone()))
                 .with_deletions(Arc::new(store.clone()))
                 .with_recovery(Arc::new(store.clone()));
@@ -371,6 +374,7 @@ pub fn run() {
             managed_commands::discard_prepared_session,
             managed_commands::get_managed_session,
             managed_commands::get_managed_feedback_status,
+            managed_commands::get_managed_workspace_info,
             managed_commands::start_managed_session,
             managed_commands::stop_managed_session,
             managed_commands::send_managed_prompt,

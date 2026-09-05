@@ -7,6 +7,7 @@ mod web_access;
 mod web_access_server;
 mod web_security;
 mod web_session;
+mod workspace_info;
 
 use std::{
     net::{Ipv4Addr, SocketAddr},
@@ -62,6 +63,7 @@ pub use web_session::{
     DurableWebAccessToken, WebSessionAuthorization, WebSessionClock, WebSessionError,
     WebSessionManager, WebSessionPolicy,
 };
+pub use workspace_info::LocalWorkspaceInfoProvider;
 
 pub use rambledesk_core::{HOST_ENV_KEY, HOST_HEADER};
 

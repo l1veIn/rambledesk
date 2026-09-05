@@ -16,6 +16,9 @@ use serde_json::{Value, json};
 use tokio::{net::TcpListener, sync::Notify, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 
+#[path = "managed_application/workspace_info.rs"]
+mod workspace_info;
+
 #[derive(Default)]
 struct Driver {
     checks: AtomicUsize,
@@ -143,6 +146,9 @@ impl Fixture {
             .with_change_observer(changes.clone());
         let driver = Arc::new(Driver::default());
         let sessions = SessionApplication::new(store.clone(), store.clone(), driver.clone())
+            .with_workspace_info_provider(Arc::new(
+                rambledesk_local_server::LocalWorkspaceInfoProvider,
+            ))
             .with_change_observer(changes.clone())
             .with_deliveries(store.clone())
             .with_deletions(store.clone());
@@ -566,6 +572,7 @@ fn tauri_managed_commands_match_http_names_and_delegate_to_the_same_facade() {
         ("discardPreparedSession", "discard_prepared_session"),
         ("getManagedSession", "get_managed_session"),
         ("getManagedFeedbackStatus", "get_managed_feedback_status"),
+        ("getManagedWorkspaceInfo", "get_managed_workspace_info"),
         ("startManagedSession", "start_managed_session"),
         ("stopManagedSession", "stop_managed_session"),
         ("sendManagedPrompt", "send_managed_prompt"),
@@ -591,8 +598,8 @@ fn tauri_managed_commands_match_http_names_and_delegate_to_the_same_facade() {
         );
         assert!(routes.contains(&format!("/application/{camel}")), "{camel}");
     }
-    assert_eq!(commands.matches("#[tauri::command]").count(), 19);
-    assert_eq!(commands.matches("input:").count(), 18);
+    assert_eq!(commands.matches("#[tauri::command]").count(), 20);
+    assert_eq!(commands.matches("input:").count(), 19);
     assert!(registration.contains(".with_sessions(sessions.clone())"));
     assert!(registration.contains("state.sessions.shutdown()"));
     assert!(registration.contains("sessions.start_delivery_worker()"));

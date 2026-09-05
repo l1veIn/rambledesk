@@ -46,6 +46,7 @@ export const HTTP_APPLICATION_OPERATIONS = {
   discardPreparedSession: 'discardPreparedSession',
   getManagedSession: 'getManagedSession',
   getManagedFeedbackStatus: 'getManagedFeedbackStatus',
+  getManagedWorkspaceInfo: 'getManagedWorkspaceInfo',
   startManagedSession: 'startManagedSession',
   stopManagedSession: 'stopManagedSession',
   cancelManagedPrompt: 'cancelManagedPrompt',
@@ -853,6 +854,7 @@ export function applicationCommandResponseResources<Name extends ApplicationComm
     case 'listManagedSessionActivity':
     case 'getManagedSession':
     case 'getManagedFeedbackStatus':
+    case 'getManagedWorkspaceInfo':
     case 'startManagedSession':
     case 'stopManagedSession':
     case 'cancelManagedPrompt':
@@ -946,6 +948,7 @@ export function applicationCommandProjectionKey<Name extends ApplicationCommandN
     }
     case 'getManagedSession':
     case 'getManagedFeedbackStatus':
+    case 'getManagedWorkspaceInfo':
     case 'startManagedSession':
     case 'stopManagedSession':
     case 'cancelManagedPrompt':

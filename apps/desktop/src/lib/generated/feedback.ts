@@ -88,6 +88,11 @@ used: number,
 size: number, };
 export type ManagedSessionSnapshot = { recovery: SessionRecovery | null, session: SessionRecord, runtime: SessionRuntime, activities: Array<SessionActivity>, permissions: Array<SessionPermission>, deliveries: Array<FeedbackDelivery>, deleting: boolean, };
 export type ManagedFeedbackStatus = { session_id: string, deleting: boolean, connection: SessionConnectionState, activity: SessionActivityState, deliveries: Array<FeedbackDelivery>, };
+export type ManagedWorkspaceInfo = { cwd: string,
+/**
+ * Current branch, or a short commit id for a detached HEAD.
+ */
+branch: string | null, };
 export type AgentConnectionCheck = { ok: boolean, message: string, details: Array<string>, };
 export type SessionProtocol = "acp";
 export type SessionManagement = { "kind": "external" } | { "kind": "managed", protocol: SessionProtocol, agent_config_id: string, cwd: string, remote_session_id: string | null, };

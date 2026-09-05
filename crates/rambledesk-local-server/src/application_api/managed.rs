@@ -50,6 +50,10 @@ pub(super) fn routes() -> Router<ApplicationApiState> {
             post(get_managed_feedback_status),
         )
         .route(
+            "/application/getManagedWorkspaceInfo",
+            post(get_managed_workspace_info),
+        )
+        .route(
             "/application/startManagedSession",
             post(start_managed_session),
         )
@@ -159,6 +163,16 @@ async fn get_managed_feedback_status(
 ) -> Response<Body> {
     stable_managed_result(&state, || {
         state.commands.get_managed_feedback_status(input.clone())
+    })
+    .await
+}
+
+async fn get_managed_workspace_info(
+    State(state): State<ApplicationApiState>,
+    ApplicationJson(input): ApplicationJson<ManagedSessionInput>,
+) -> Response<Body> {
+    stable_managed_result(&state, || {
+        state.commands.get_managed_workspace_info(input.clone())
     })
     .await
 }

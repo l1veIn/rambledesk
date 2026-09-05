@@ -30,6 +30,7 @@ import {
   type ManagedSessionInput,
   type ManagedSessionSnapshot,
   type ManagedFeedbackStatus,
+  type ManagedWorkspaceInfo,
   type RemoveAttachmentInput,
   type ReadAttachmentInput,
   type RenameHostSessionInput,
@@ -76,6 +77,7 @@ export type ApplicationCommandMap = Readonly<{
   discardPreparedSession: ApplicationCommandContract<ManagedSessionInput, void>
   getManagedSession: ApplicationCommandContract<ManagedSessionInput, ManagedSessionSnapshot>
   getManagedFeedbackStatus: ApplicationCommandContract<ManagedSessionInput, ManagedFeedbackStatus>
+  getManagedWorkspaceInfo: ApplicationCommandContract<ManagedSessionInput, ManagedWorkspaceInfo>
   startManagedSession: ApplicationCommandContract<ManagedSessionInput, ManagedSessionSnapshot>
   stopManagedSession: ApplicationCommandContract<ManagedSessionInput, ManagedSessionSnapshot>
   cancelManagedPrompt: ApplicationCommandContract<ManagedSessionInput, ManagedSessionSnapshot>

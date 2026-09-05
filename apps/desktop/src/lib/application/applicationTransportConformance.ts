@@ -29,6 +29,7 @@ export const APPLICATION_CONFORMANCE_INPUTS = {
   discardPreparedSession: { session_id: 'local-session-1' },
   getManagedSession: { session_id: 'local-session-1' },
   getManagedFeedbackStatus: { session_id: 'local-session-1' },
+  getManagedWorkspaceInfo: { session_id: 'local-session-1' },
   startManagedSession: { session_id: 'local-session-1' },
   stopManagedSession: { session_id: 'local-session-1' },
   cancelManagedPrompt: { session_id: 'local-session-1' },
@@ -159,7 +160,7 @@ export function runApplicationTransportConformance(
   describe(`${implementationName} ApplicationTransport conformance`, () => {
     it('maps all query mutation multipart binary and void operations', async () => {
       const fixture = createFixture()
-      expect(APPLICATION_COMMAND_NAMES).toHaveLength(48)
+      expect(APPLICATION_COMMAND_NAMES).toHaveLength(49)
 
       for (const [index, name] of APPLICATION_COMMAND_NAMES.entries()) {
         const input = APPLICATION_CONFORMANCE_INPUTS[name]

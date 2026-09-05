@@ -9,7 +9,9 @@ use rambledesk_core::{
 use rambledesk_core::{
     AgentPromptCapabilities, SendManagedPromptContentInput, SessionPromptContent,
 };
-use rambledesk_core::{FeedbackTransport, ManagedFeedbackStatus, SessionContextUsage};
+use rambledesk_core::{
+    FeedbackTransport, ManagedFeedbackStatus, ManagedWorkspaceInfo, SessionContextUsage,
+};
 use rambledesk_core::{ListManagedSessionActivityInput, ManagedSessionActivityPage};
 use rambledesk_core::{PrepareManagedSessionInput, SessionLifecycle};
 use rambledesk_core::{
@@ -147,6 +149,7 @@ fn main() -> std::io::Result<()> {
         exported::<SessionContextUsage>(),
         exported::<ManagedSessionSnapshot>(),
         exported::<ManagedFeedbackStatus>(),
+        exported::<ManagedWorkspaceInfo>(),
         exported::<AgentConnectionCheck>(),
         exported::<SessionProtocol>(),
         exported::<SessionManagement>(),

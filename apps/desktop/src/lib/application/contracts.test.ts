@@ -16,6 +16,7 @@ import type {
   ManagedSessionInput,
   ManagedSessionSnapshot,
   ManagedFeedbackStatus,
+  ManagedWorkspaceInfo,
   SessionConnectionState,
   SessionActivityState,
   SaveAgentConfigInput,
@@ -51,6 +52,7 @@ describe('application command contracts', () => {
     expectTypeOf<ApplicationCommandResult<'deleteManagedSession'>>().toEqualTypeOf<void>()
     expectTypeOf<ApplicationCommandResult<'getManagedSession'>>().toEqualTypeOf<ManagedSessionSnapshot>()
     expectTypeOf<ApplicationCommandResult<'getManagedFeedbackStatus'>>().toEqualTypeOf<ManagedFeedbackStatus>()
+    expectTypeOf<ApplicationCommandResult<'getManagedWorkspaceInfo'>>().toEqualTypeOf<ManagedWorkspaceInfo>()
     expectTypeOf<ManagedFeedbackStatus['connection']>().toEqualTypeOf<SessionConnectionState>()
     expectTypeOf<ManagedFeedbackStatus['activity']>().toEqualTypeOf<SessionActivityState>()
     expectTypeOf<ApplicationCommandInput<'listFeedbackInbox'>>().toEqualTypeOf<undefined>()
@@ -112,6 +114,7 @@ describe('application command contracts', () => {
       'discardPreparedSession',
       'getManagedSession',
       'getManagedFeedbackStatus',
+      'getManagedWorkspaceInfo',
       'startManagedSession',
       'stopManagedSession',
       'cancelManagedPrompt',
@@ -144,7 +147,7 @@ describe('application command contracts', () => {
       'readRequestAttachment',
     ] as const satisfies readonly ApplicationCommandName[]
 
-    expect(commands).toHaveLength(48)
+    expect(commands).toHaveLength(49)
     expectTypeOf<(typeof commands)[number]>().toEqualTypeOf<ApplicationCommandName>()
   })
 })
