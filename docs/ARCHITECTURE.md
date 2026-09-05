@@ -1,6 +1,6 @@
 # RambleDesk 架构基线
 
-> 状态：v6 当前与目标边界，包含 ACP 托管会话。
+> 状态：v7 当前与目标边界，包含 ACP 体验重设计；实现完成，Windows 自动化与隔离浏览器验收已完成。
 > 术语源：[TERMINOLOGY.md](TERMINOLOGY.md)。本文若与术语表冲突，以术语表为准。
 
 本文同时记录已经存在的结构与后续平台扩展必须遵守的目标边界：
@@ -14,7 +14,7 @@ TARGET 不预设新 crate、Web app 目录或 headless composition root。
 ACP 托管会话的 CURRENT 见 [ADR 007](adr/007-acp-managed-sessions.md)：Backend Runtime 持有
 Agent Session Management，ACP Client 与进程管理实现位于 core application contract 之外。
 一个 RambleDesk Session 对应一个 Agent Session；首期独占 ACP Instance，不要求实例只有一个 OS
-进程。持久会话、运行投影与反馈投递分别建模，Client view 不拥有其生命周期。
+进程。持久会话、运行投影与反馈投递分别建模；正式会话的 Client view 不拥有其运行生命周期，未发送草稿关闭则回收准备资源。
 独立 `rambledesk-acp` 库提供稳定协议 v1 的 stdio 客户端、application driver 与 smoke example；采用官方
 Rust SDK 2.0.0，SDK 主版本不等于 wire 协议版本。配置、交互、权限、托管反馈、停止、恢复和删除均已
 接入 Desktop/Web 的统一 application 合同。支持版本和操作说明见 [ACP 托管会话](ACP_MANAGED_SESSIONS.md)。
@@ -47,23 +47,36 @@ Backend Runtime
   └─ core::SessionApplication
       ├─ storage: Session / AgentConfig / Activity / Delivery / Recovery / Deletion
       └─ AcpSessionDriver → owned stdio ACP Instance → Agent Backend
-           └─ scoped HTTP MCP → Local Integration Server /mcp-managed → feedback application
+           └─ Agent 自有执行工具 → 应用 feedback command → /agent-feedback/* → feedback application
 ```
 
 `apps/desktop` 是 CURRENT composition root。每个 desktop 进程创建一份 Backend Runtime/
 application facade，由 Tauri state、该进程的 Local Integration Server 与可选 Web Access Server
 共同调用；这不表示跨进程全局单例。Local Integration Server 继续以独立 loopback listener 承载
-`/api`、`/mcp` 与托管会话专用 `/mcp-managed`，不暴露 Web 静态资源、application routes 或 WebSocket。默认关闭的 Web Access
+`/api`、`/mcp` 与托管会话专用 `/agent-feedback/*`，另保留旧 `/mcp-managed` 的兼容入口；不暴露 Web 静态资源、application routes 或 WebSocket。默认关闭的 Web Access
 使用另一 listener、credential、auth domain、route set 与生命周期，固定绑定 `127.0.0.1:37643`。MCP SSE
 属于 MCP transport，不是 Web Client 的事件流。
 
-`/mcp-managed` 为每次运行绑定单会话凭据，复用相同 listener 与 Host/Origin policy；凭据不能访问 Generic
-MCP，也不能跨会话或跨 MCP transport session 使用。停止/删除会话撤销绑定。托管请求在可信 application
+`/agent-feedback/*` 为每次运行绑定单会话凭据，复用相同 listener、Host/Origin policy 和 scope 撤销保护；凭据不能访问 Generic
+MCP，也不能跨会话使用。生产 ACP 启动不再注入 MCP server 或 Pi 反馈扩展。停止/删除会话撤销绑定。托管请求在可信 application
 入口注入本地会话归属，反馈终态与 outbox 入队原子提交；worker 只在原会话空闲后发送，结果不明需人工处理。
 
 运行检查点与实时投影分开。重启不信任旧 connected 状态；未完成轮次通过持久检查点产生中断活动，显式恢复
 使用原 remote id 的 resume/load。删除先持久化 intent，再停止资源并清理所属数据，失败可重试；文件清理与
 发布共用锁，旧 publication plan 不得重新生成已删除的包。
+
+应用可执行文件内置无界面 `feedback request/get/recover` 分支，由 `rambledesk-feedback-client` 共享命令解析和 HTTP 客户端；
+该分支不启动 UI、不另启后端、不打开业务数据库。ACP 实例通过私有环境取得可执行路径、会话 API 和凭据。
+每条用户/续接 prompt 前置工作流上下文，用户活动不保存这些说明；prepare 不发 prompt，用户全局 Skills 不受修改。
+Agent 自有执行工具和 bridge 环境传播仍是实际能力边界，不能把 ACP 握手当作命令可执行性证明。
+
+新建采用内部持久 `prepared` 生命周期，首条真实用户消息接受与落盘时原子转为 `active` 并生成后备标题。
+导航查询排除 prepared；失败准备可用原 ID 重试，关闭/变更/重启清理准备资源，active 不能被 draft discard 删除。
+前端 `agent-draft` tab 原位变为 `agent-session`，仅用户输入可本地恢复，不恢复准备会话的凭据或身份。
+
+内部会话的 Ramble 和 Agent 页面是平级视图。Ramble/Task Preview 通过可信 `managed_session_id` 跳转，
+仅用 `getManagedFeedbackStatus` 读取删除与投递状态；Agent tab 才订阅相应会话历史和配置。
+Agent 时间线按真实 turn 分组，折叠过程延迟挂载；实时上下文 `used/size` 只来自 Agent usage 更新，按当前实例隔离且不落入历史数据库。
 
 ### TARGET
 
@@ -166,6 +179,7 @@ rambledesk/
 ├── crates/
 │   ├── rambledesk-core/          # application contract
 │   ├── rambledesk-acp/           # ACP stdio driver + owned process resources
+│   ├── rambledesk-feedback-client/ # headless feedback command + scoped HTTP client
 │   ├── rambledesk-storage/       # SQLite + feedback package publication
 │   ├── rambledesk-local-server/  # CURRENT Local Integration Server
 │   ├── rambledesk-mcp/           # Generic MCP Adapter (tool surface + installer engine)
@@ -202,6 +216,11 @@ rambledesk/
 Agent driver ports，不持有 SQLite、HTTP 路由或 Tauri UI。当前只宣告已实现的 Client capabilities，不承接
 客户端文件/终端执行；有远端绑定时严格 resume/load，失败不回退为新会话。
 
+### `rambledesk-feedback-client`
+
+共享桌面与 CLI 的无界面反馈命令、输入边界和会话专用 HTTP 客户端。只使用已有运行时的地址与授权，
+不创建 Backend Runtime、不访问业务数据库、不持有 Agent 推理或会话生命周期。路由归属与反馈业务规则仍由 server/core 负责。
+
 ### `rambledesk-storage`
 
 持有：
@@ -228,7 +247,8 @@ Agent driver ports，不持有 SQLite、HTTP 路由或 Tauri UI。当前只宣�
 - bearer token 生成、读取、默认路径；
 - Host/Origin guard；
 - `/api/feedback/request|get|wait|cancel`；
-- `/mcp` 与受会话作用域约束的 `/mcp-managed` route mounting；
+- `/agent-feedback/request|get|recover` 及会话私有授权与撤销；
+- `/mcp` 与旧 `/mcp-managed` 兼容 route mounting；后者不再由生产 ACP 启动注入；
 - Local Integration 与 Web Access 的独立 server handle、endpoint、Web session auth、静态资源与
   application/event routes；
 - Web Access 固定 loopback、安全限制 snapshot 与 listener lifecycle。

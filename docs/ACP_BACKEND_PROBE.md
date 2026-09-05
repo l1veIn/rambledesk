@@ -1,14 +1,16 @@
 # ACP 后端实机探针
 
-状态：协议探针、真实双项目托管反馈闭环、整运行时正常关闭后恢复原会话、删除隔离均已通过；Desktop/Web 手工界面验收另行记录。
+状态：历史实机报告。下列协议探针、真实双项目托管反馈闭环、正常关闭后的恢复与删除隔离，验证的是 2026-09-04 的 MCP 托管实现。
+
+2026-09-05 的生产路径已改为应用内置 `feedback request/get/recover` 命令与 `/agent-feedback/*` HTTP JSON，ACP 不再注入 MCP server 或 Pi 专用扩展。prepared 生命周期、两种视图与真实 usage 已实现，Windows 自动化与隔离浏览器验收已完成，见 [体验重设计计划](ACP_EXPERIENCE_REDESIGN_PLAN.md)。本报告不构成新 command 路径的真实模型、Linux/macOS、安装包或性能验收。
 
 验证日期：2026-09-04。环境：Windows、Node.js 24.18.1。
 
 ## 结论
 
-`deepseek-acp` 社区 bridge 和官方 `dsh --profile acp` 都已经通过真实模型、MCP 工具调用、进程重启后恢复上下文的验证。建议以社区 `deepseek-acp@0.8.0` 作为第一条 UI 验收路径，同时保留官方 dsh 作为协议差异对照。
+当时的 `deepseek-acp` 社区 bridge 和官方 `dsh --profile acp` 均通过真实模型、MCP 工具调用与进程重启后恢复上下文验证。社区 `deepseek-acp@0.8.0` 与官方 dsh 的结果分别记录，不能外推为其他版本或新的反馈入口已通过。
 
-**不能依据 Codeg 的旧注释断言官方 dsh 不支持 MCP 或会话恢复。** 当前官方发行版已经支持 MCP、list/resume/close 和标准工具生命周期更新；它仍不提供 `session/load` 与历史更新重放。本次对此做了实机验证，而非只检查 capability 声明。
+**不能依据 Codeg 的旧注释断言官方 dsh 不支持 MCP 或会话恢复。** 本次记录的官方 `0.1.2-rc.1` 支持 MCP、list/resume/close 和标准工具生命周期更新，不提供 `session/load` 与历史更新重放。这是指定版本的实机结果；当前 RambleDesk 的统一反馈命令不再以 MCP capability 作为可用条件。
 
 参考代码固定为 Codeg `3ebdfed1d7c0b71d71880a3d2e0f8e09545feae1`。官方文档固定为 DeepSeek Harness `76fda729799fe9b3848dbe2c211d4b231032b81e`，其 [ACP 合同](https://github.com/deepseek-ai/deepseek-harness/blob/76fda729799fe9b3848dbe2c211d4b231032b81e/packages/acp/acp/README.md) 区分已提交语义更新、resume 与历史重放。Codeg 的 [DeepSeek 注册项](https://github.com/xintaofei/codeg/blob/3ebdfed1d7c0b71d71880a3d2e0f8e09545feae1/src-tauri/src/acp/registry.rs#L1265) 可用来理解社区 bridge 的产品取舍，但其官方后端对比不是当前能力真值。
 
@@ -115,7 +117,7 @@ node "$probeRoot\probe.mjs" "$probeRoot\official-dsh\node_modules\@deepseek-ai\d
 
 ## 真实托管反馈闭环
 
-`crates/rambledesk-local-server/examples/managed_loop.rs` 组合真实 `SessionApplication`、`AcpSessionDriver`、`LocalManagedFeedbackProvider`、SQLite、恢复检查点和 outbox worker。2026-09-04 在社区 0.8.0 与官方 0.1.2-rc.1 上分别完成初次闭环，并在完整恢复/删除接线后各复核一次，均通过：
+当时版本的 `crates/rambledesk-local-server/examples/managed_loop.rs` 组合真实 `SessionApplication`、`AcpSessionDriver`、`LocalManagedFeedbackProvider`、SQLite、恢复检查点和 outbox worker。2026-09-04 在社区 0.8.0 与官方 0.1.2-rc.1 上分别完成初次闭环，并在完整恢复/删除接线后各复核一次，均通过：
 
 1. 两个独立临时项目同时创建各自的 Agent 会话，并各调用一次 scoped `request_feedback` 后结束 turn。
 2. 探针通过工作台 application 入口保存并提交两个不同标记的反馈。这是模拟用户提交，用于验证应用与协议链路，不代替手工 UI 验收。
@@ -136,7 +138,7 @@ node "$probeRoot\probe.mjs" "$probeRoot\official-dsh\node_modules\@deepseek-ai\d
 - `managed-official-0.1.2-rc.1-2026-09-04T10-20-00-677Z/report.json`：同上。
 - 每个目录的 `processes.json` 记录本次拥有的子进程、创建时间和退出复核；`launch.json` 不含凭据。
 
-仓库 example 默认只显示说明，不启动 Agent。显式设置以下变量才会执行真实模型调用：
+以下是历史执行参数，不代表当前 example 已重新通过真实模型验收。当前源码已接入统一反馈命令；重跑时还须按 [example 说明](../crates/rambledesk-local-server/examples/managed_loop.rs) 指定可执行命令并显式授权模型调用。历史探针使用：
 
 ```powershell
 $env:RAMBLEDESK_MANAGED_PROBE_RUN = '1'
@@ -149,11 +151,11 @@ cargo run -p rambledesk-local-server --example managed_loop
 
 本机辅助 runner 是临时目录中的 `managed-loop.mjs`，沿用已有凭据的安全读取方式：`node managed-loop.mjs` 验证社区 bridge，`node managed-loop.mjs official` 验证官方 dsh。它只把凭据传入子进程环境，对输出脱敏，并复核本次后代进程退出。
 
-## 对本轮实现的要求
+## 历史发现与仍适用的约束
 
 1. 恢复策略按能力区分 load 与 resume；失败时显示真实原因，不静默 new 一个空上下文。
 2. 恢复过程区分历史重放与新回合输出，避免重复插入活动记录或把旧工具当作重新执行。
-3. 当前提供启动配置；后续扩展 ACP 模型/模式控件时，应支持后端提供的分组选项 id/value，并区分持久配置与运行会话实际使用值。
+3. 动态模型/模式控件现已实现，继续原样使用后端提供的分组选项 id/value，并区分持久配置与运行会话实际使用值。
 4. 启动程序版本和 `agentInfo` 分开记录；预设只提供默认值，实际能力来自协商和验证。
 5. 管理器只回收自身创建的实例资源；正常 EOF 验收不能代替崩溃与进程树清理测试。
 

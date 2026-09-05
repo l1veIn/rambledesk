@@ -1,10 +1,11 @@
 # ADR 007：ACP 托管会话与反馈适配器分工
 
-- 状态：Accepted / CURRENT，首期已实现
-- 日期：2026-09-04
+- 状态：Accepted / CURRENT，体验重设计已实现，Windows 自动化与隔离浏览器验收已完成
+- 日期：2026-09-04；2026-09-05 修订统一反馈命令、准备生命周期与视图边界
 - 术语源：[TERMINOLOGY.md](../TERMINOLOGY.md)
 - 调研：[Codeg ACP 接入与设置页](../CODEG_ACP_RESEARCH.md)
 - 交付顺序：[ACP 提交地图](../ACP_COMMIT_MAP.md)
+- 本轮实现：[ACP 体验重设计](../ACP_EXPERIENCE_REDESIGN_PLAN.md)
 - 使用与支持范围：[ACP 托管会话](../ACP_MANAGED_SESSIONS.md)
 
 ## 背景
@@ -18,15 +19,18 @@ Session 的反馈分散到多个工作台会话。这些实际摩擦推动会话
 
 ### 1. 保留反馈适配器，新增会话管理能力
 
-Backend Runtime 持有 Agent Session Management，通过 ACP Client 控制外部 Agent；反馈适配器
-继续处理 Request / Package 与 continuation。ACP 不是新的全能 Adapter，也不替代反馈合同。
+Backend Runtime 持有 Agent Session Management，通过 ACP Client 控制外部 Agent；外部客户端的反馈适配器
+继续处理既有闭环。托管路径通过应用内置反馈命令进入同一个 Request / Package / Delivery application。
+ACP 控制执行会话，不替代反馈合同。
 
 ```text
 Workbench Client
   → Application Transport
   → Backend Runtime
       ├─ Agent Session Management → ACP Client → ACP Server / Bridge → Agent Backend
-      └─ Feedback application ← Feedback Adapter ← Agent 的反馈工具调用
+      └─ Feedback application
+          ├─ 会话专用 HTTP JSON ← 应用 feedback command ← 托管 Agent 自有执行工具
+          └─ Feedback Adapter ← 外部客户端的反馈工具调用
 ```
 
 core 定义 typed application contract 与 ports，ACP SDK、stdio、子进程管理和宿主特例在实现边界外。
@@ -47,7 +51,8 @@ ACP 的进程归属由 Backend Runtime 控制。
 固定自己的工作目录。运行实例身份和连接/执行状态属于 runtime 投影，反馈投递属于独立持久记录。
 
 存储在现有 `host_sessions` 上增加 `managed_sessions` 扩展记录，并独立持久化启动配置、活动、投递、
-删除意图和运行检查点。创建前先保存本地会话，Agent 创建成功后绑定 remote id；失败仍能查看和清理。
+删除意图和运行检查点。新建先保存隐藏的 prepared 记录，Agent 创建成功后绑定 remote id；失败仍可在草稿重试和清理。
+首条真实用户消息的接受与持久化原子转为 active 并生成后备标题。prepared 不进入正式导航，旧记录缺省为 active。
 重连不改变本地身份，恢复必须由后端能力支持，不能把新建的空白 Agent Session 冒充原上下文。
 
 ### 3. 首期独占实例，保留后续调整空间
@@ -58,8 +63,10 @@ ACP 的进程归属由 Backend Runtime 控制。
 
 ### 4. 生命周期按用户动作表达
 
-- 零反馈请求的会话可创建、显示；删除最后一个请求不隐式删除托管会话。
-- 关闭 Tab、浏览器或 Web Access 不停止托管会话；退出拥有 runtime 的应用需要显式处理资源收尾与中断状态。
+- 零反馈请求的正式会话可显示；删除最后一个请求不隐式删除托管会话。尚未发送的草稿不进入正式列表。
+- 新建草稿 tab 预连接后仍可编辑，取得 Agent 实际动态选项；prepare 不发送引导或任务 prompt。
+- 关闭/更换未发送草稿回收准备实例与凭据，迟到结果仍需清理；应用重启不恢复旧准备凭据，客户端只保留输入。
+- 关闭正式会话 Tab、浏览器或 Web Access 不停止托管会话；退出拥有 runtime 的应用需要处理资源收尾与中断状态。
 - 取消当前轮次、停止运行并保留历史、删除会话是不同动作。删除托管会话不以先结束/归档为前提。
 - 删除操作先阻止新输入与反馈归属，停止本实例资源并处理待投递项，然后清理本地记录；失败必须可见、可重试，
   不得返回成功却遗留可继续工作的孤儿实例。不得清理其他会话或用户独立启动的共享服务。
@@ -67,10 +74,18 @@ ACP 的进程归属由 Backend Runtime 控制。
 
 ### 5. 反馈归属、等待与投递共同形成闭环
 
+生产托管入口统一为应用可执行文件的 `feedback request/get/recover` 命令，经 `/agent-feedback/*` HTTP JSON 调用。
+共享命令模块只解析输入并访问已有 runtime，不启动 UI、另建后端或打开数据库。实例私有环境提供可执行绝对路径、
+API 地址、令牌与托管标记，生产 ACP 不再注入 MCP server、stdio companion 或 Pi 托管扩展。
+旧外部反馈入口继续可用，但托管标记下缺少身份必须失败，不能创建相邻外部会话。
+
+ACP v1 没有统一 system prompt 或任意工具注册字段。每条真实用户/续接 prompt 前置运行时工作流上下文，
+不写入用户活动、不修改全局 Skills。Agent 自有命令执行能力、bridge 环境传播和私有 API 可达性仍须实际验证。
+
 托管会话使用受会话作用域约束的反馈入口；其身份绑定不能依赖模型遵守提示词。Generic MCP 现有的外部
 宿主确认等待说明不能直接套到托管路径，否则仍会要求人类回到宿主。首期非阻塞反馈调用返回后，让当前
 执行轮次结束；用户提交后，Backend Runtime 等待会话可接收输入，再投递携带 `request_id` 的续接消息。
-Agent 通过原反馈合同取得持久结果。原生适配器在 tool call 内等待时，不再额外发送一次 continuation。
+Agent 通过统一命令取得持久结果。外部原生适配器在 tool call 内等待时，不再额外发送一次 continuation。
 
 反馈终态与 outbox 入队在同一事务完成，文件发布中断由既有 publication plan 恢复对账。投递按 attempt id
 领取和完成，旧 attempt 不能覆盖新发送。`delivered` 表示续接轮次成功结束或用户确认已处理，不表示任务
@@ -81,21 +96,31 @@ Agent 通过原反馈合同取得持久结果。原生适配器在 tool call 内
 恢复才重新启动实例。删除先写持久意图、封锁输入并撤销 scope，再停止所属实例和清理文件/记录；失败保留
 删除意图供重试。删除优先于恢复，不会为了继续清理而启动新的 Agent。
 
+### 6. 两种视图与真实运行数据
+
+内部业务会话有 Ramble 和 Agent 两个平级页面，各自通过 workspace tab 承载。草稿在第一次真实发送后原位替换为
+Agent tab；Ramble 列表的默认打开语义不变。请求与 Task Preview 仅使用可信来源 ID 和轻量投递/删除投影，
+不嵌入 Agent 对话、配置和恢复控制器，不为浏览请求加载 Agent 历史。
+
+时间线按真实 turn 区分工作过程与最终回答，折叠时延迟挂载，时间/耗时仅使用可证实的持久边界。
+上下文 `used/size` 仅来自当前实例的 Agent usage 更新，无上报时隐藏；不推算累计 token 或费用。
+
 ## 参考取舍与验收
 
 Codeg 的启动注册表、后端专属配置和设置页信息组织可参考；其 UI 框架、历史导入、自动安装与会话展示策略
 不直接成为 RambleDesk 的需求。尤其要区分 Codeg 使用的 `deepseek-acp` 与官方 dsh ACP 入口，分别记录
-版本和能力。社区 `deepseek-acp@0.8.0` 与官方 `@deepseek-ai/dsh@0.1.2-rc.1` 均已通过真实双项目
+版本和能力。前一阶段社区 `deepseek-acp@0.8.0` 与官方 `@deepseek-ai/dsh@0.1.2-rc.1` 均已通过真实双项目
 托管反馈闭环、整个 application/server/store 正常关闭重开后的显式原 Agent ID 恢复，以及删除一个会话时
 保留另一会话连接的验证；没有隐式重启 Agent，所观察的自有后代进程均已退出。提交由 application 探针
 模拟用户执行，真实重启不包含异常强杀。详细证据与尚未
-手工验收的项目见 [ACP_BACKEND_PROBE.md](../ACP_BACKEND_PROBE.md)，不据此宣称 Pi 或 Codex 兼容。
+手工验收的项目见 [ACP_BACKEND_PROBE.md](../ACP_BACKEND_PROBE.md)。这些是旧 MCP 路径的历史证据，不据此宣称
+本轮统一命令、Pi/Codex 真实模型或 Linux/macOS 已完成验收；最终 QA 与性能对照另记。
 
 本轮采用小步、可合并的正式迭代：每步一个完整 commit，合同、migration、生成类型和相关测试同行。
 已实现闭环为：创建会话 → 发送任务 → 固定归属的反馈请求 → 人类提交 → 同一 Agent Session 继续 →
 直接删除并清理。多项目并发不串会话、中断恢复不丢反馈由对应存储、协议和应用测试覆盖；外部适配器持续可用。
 
-## 未进入首期的能力
+## 尚未实现的能力
 
-共享实例池、任意远程 ACP transport、通用 Agent 安装器、ACP registry 市场、跨后端历史导入、自动迁移旧
-会话分组与多 Agent 编排。Codeg 有相应实现时可作为后续参考，不能以此扩大本轮闭环。
+共享实例池、任意远程 ACP transport、ACP registry 市场、跨后端历史导入、自动合并旧会话分组与多 Agent 编排。
+设备 Agent 目录、npm 安装管理、动态会话配置与 Chat 已在后续授权中实现，不再属于首期排除项。

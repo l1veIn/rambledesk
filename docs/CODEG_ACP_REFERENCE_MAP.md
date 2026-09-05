@@ -9,13 +9,13 @@
 RambleDesk 的 ACP 托管闭环已为 CURRENT，操作与实测支持见 [使用指南](ACP_MANAGED_SESSIONS.md)。
 下方候选表保留调研时的取舍，不应把候选项整体视为已经实现：
 
-- 已按本项目边界实现独占实例、进程树回收、有界脱敏诊断、权限队列、受会话约束的 MCP 注入、配置变化提示，
+- 已按本项目边界实现独占实例、进程树回收、有界脱敏诊断、权限队列、受会话约束的反馈命令、配置变化提示，
   以及 Svelte Agent 设置与工作区。活动落库后通过现有 invalidation + snapshot 恢复，未引入 Codeg 的 replay buffer。
 - 持久 Request/Package/Delivery、发送结果不明状态、删除意图和 run/turn 恢复检查点使用 RambleDesk 的领域合同。
   `delivered` 的自动路径等到续接轮次成功结束；恢复失败保留绑定，不采用 resume/load 失败后静默 new 的回退。
-- 未引入客户端文件/终端执行、动态会话配置选择器、自动安装、registry 市场、历史导入、连接池或 Codeg 的 UI/数据库。
+- 动态会话配置、用户触发的安装管理、结构化 Chat、prepared 草稿与两种视图已在后续授权中实现；未引入客户端文件/终端执行、registry 市场、历史导入、连接池或 Codeg 的 UI/数据库。
 - 后端兼容性以 [实机报告](ACP_BACKEND_PROBE.md) 为准。社区 `deepseek-acp@0.8.0` 和官方 dsh 的实测
-  结论不来自 Codeg 的旧注释；Pi/Codex 预设仍不代表 ACP 兼容性验收。
+  结论不来自 Codeg 的旧注释。旧 MCP/Pi 验收只作为历史证据；当前统一 command 的真实模型、Linux/macOS 与性能对照仍待验证，见[体验重设计计划](ACP_EXPERIENCE_REDESIGN_PLAN.md)。
 
 这些是本地实现与验收结果；不声称 Codeg 的测试已经在 RambleDesk 运行，也不表示整文件移植。
 

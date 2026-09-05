@@ -99,7 +99,8 @@ ACP 实例及持久投递现为 CURRENT；具体后端支持仍以版本化实�
   保留已有分组，不在术语更新中合并或改写历史。托管路径由 controller 固定反馈归属，不能由模型自由选择。
 - 首期托管策略为一个会话独占一个 ACP Instance；ACP 协议是否支持连接内多会话，与本产品首期是否共享实例是两件事。
   后续共享属于实例分配策略，不改变会话的一一关系。
-- View / Tab 是客户端视图；关闭视图不停止实例或删除会话。删除托管会话是一条直接操作，内部负责停止与清理，
+- View / Tab 是客户端视图；关闭正式会话视图不停止实例或删除会话。未发送的 prepared 草稿关闭时清理准备资源。
+  内部托管会话的 Ramble 与 Agent 页面是同一业务会话的平级视图。删除托管会话是一条直接操作，内部负责停止与清理，
   不要求人类先结束或归档。停止运行并保留历史可以是另一条操作。
 - 不用“Ramble session”同时指代会话、反馈请求与 Ramble 编辑流程；分别使用完整术语。
 
@@ -136,23 +137,30 @@ CURRENT 会话字段类别：
 | 类别 | 字段方向 | 规则 |
 | --- | --- | --- |
 | 本地身份 | `session_id` | 暴露现有 `host_sessions.id` 的稳定身份；不会随连接重建而改变。 |
+| 准备/正式生命周期 | `lifecycle: prepared / active` | prepared 是未发送的内部准备记录，不进入正式导航。首条真实用户消息接受与持久化时转为 active；缺省旧记录按 active 兼容。 |
 | 管理方式 | typed `management`：`external` 或 `managed` | `managed` 分支包含 `protocol: acp`、`agent_config_id`、`cwd` 和可空的 `remote_session_id`；不增加含义不清的 `acp_manage` 布尔值，也不同时存重复的布尔值与枚举。 |
 | Agent 会话绑定 | `remote_session_id` | ACP 返回的 Agent Session id，可持久化用于受能力约束的恢复；不作为 RambleDesk 主键或全局唯一 id。创建完成前允许为空。 |
 | 启动实例绑定 | `runtime.instance_id` | 当前实例的运行时身份；重启可变化，不表示可恢复的进程句柄。 |
 | 可用性与运行投影 | `runtime`，分别表达连接状态与执行状态 | 不与 Request 的 waiting/completed 等业务状态混用；UI 状态来自 Backend Runtime。 |
+| 上下文占用 | `runtime.context_usage: { used, size }` | 仅来自 Agent usage 更新的当前上下文 token 数与容量；不代表累计消耗或费用。不持久化为历史，未上报/换实例后未知。 |
 | 反馈投递 | 独立 `FeedbackDelivery` 记录 | 以 `request_id` 关联会话与终态，状态为 pending / sending / delivered / uncertain / discarded，不把投递状态塞进 `management`。 |
 | 删除意图 | `deleting` 投影与持久 deletion intent | 在清理前落盘，失败或重启后仍可重试；成功删除时随所属会话清理。 |
 | 运行检查点 | 独立 `SessionRecovery` 记录 | 以 run/turn id 限定写入归属；记录历史事实，不能代替实时连接状态。 |
 
 `agent_config_id` 指向可复用启动配置；`cwd` 固定在具体会话。配置编辑仅影响后续启动，不能静默改变正在运行的实例。
+`AgentConfig.catalog_id` 是可选的目录身份；多连接分别保留自己的配置 ID。历史迁移只保守识别一次，未知项保留自定义身份，运行时不再通过命令或路径猜测。
 配置参数与环境变量值以结构化数据保存在本地 SQLite；界面隐藏和日志脱敏不表示加密凭据库。已绑定的
 `remote_session_id` 只能通过 resume/load 恢复，失败不能静默创建空白替代会话。
 
 ## 适配器分类
 
+以下适配器服务外部客户端。生产 ACP 托管会话使用应用自带的 `feedback request/get/recover` 命令与
+`/agent-feedback/*` 会话专用 HTTP JSON 入口，由运行时凭据固定归属；没有托管凭据时不能回退成外部会话。
+Agent 自带 MCP、Skills 或原生插件与此托管反馈入口是不同层次，不能据其存在推断或重选会话身份。
+
 ### 通用 MCP 适配器
 
-默认通用路径，面向能调用 MCP tools、但不能被外部可靠恢复原上下文的宿主。
+默认通用外部接入路径，面向能调用 MCP tools、但不能被外部可靠恢复原上下文的宿主。
 
 包含：
 

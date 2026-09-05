@@ -1,6 +1,7 @@
 # ACP 托管会话提交地图
 
-> 状态：首轮实现及用户试用修正已完成；新增 [Codeg 深度移植阶段](CODEG_ADOPTION_PLAN.md) 正在执行。
+> 状态：首轮实现、用户试用修正与 Codeg 原移植阶段的历史提交记录。
+> 当前[体验重设计](ACP_EXPERIENCE_REDESIGN_PLAN.md)实现完成，Windows 自动化与隔离浏览器验收已完成。下列托管 MCP、Pi 扩展和内嵌 Agent 界面描述仅记录当时提交；当前生产为统一 feedback command、prepared 草稿与独立两种视图。
 > 分支：`codex/acp-managed-sessions`；从更新后的 main `367eb09` 开始。
 > 术语源：[TERMINOLOGY.md](TERMINOLOGY.md)；决策：[ADR 007](adr/007-acp-managed-sessions.md)。
 

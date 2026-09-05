@@ -1,10 +1,12 @@
 # Codeg 深度移植验收
 
+> 历史阶段验收：本文件的数量、网络安装、MCP/Pi 通道与浏览器操作记录对应原移植阶段。后续[体验重设计](ACP_EXPERIENCE_REDESIGN_PLAN.md)实现完成，Windows 自动化与隔离浏览器验收已完成；不能将这些旧结果作为新路径全部通过的证明。
+
 范围：`ccbc083` 之后的 Agent 管理、Chat、结构化输入、反馈接入扩展。
 参考 Codeg `3ebdfed1d7c0b71d71880a3d2e0f8e09545feae1`；实现分独立提交，保留原有反馈与会话身份合同。
 实跑环境为 Windows，2026-09-04 至 2026-09-05。没有修改用户数据库或重发用户历史任务。
 
-## 已实现的产品行为
+## 该阶段已实现的产品行为
 
 - 内置 16 个 Agent 入口，npm 分发可安装到自有目录、检测实际版本和更新；非 npm 入口显示官方安装引导。
 - 普通连接字段按智能体提供，命令/参数/环境变量保留在高级配置；后台安装支持取消、失败回滚和跨页进度。
@@ -12,7 +14,9 @@
 - 发送立即清空当前草稿，后续编辑不会被迟到的发送结果覆盖；附件受实际 ACP 能力和大小限制约束。
 - 模型/模式/其他配置来自 Agent，等待确认后更新；拒绝或重新连接会显示当前真实值。
 - 持久结构化历史支持游标分页；初次挂载 60 条，按需展开并保持阅读位置。
-- HTTP MCP 优先，stdio companion 回退；Pi 使用自有 RPC wrapper 加载托管扩展。各通道共用归属、撤销、原会话自动续接和删除合同。
+- 当时使用 HTTP MCP、stdio companion 和 Pi wrapper/托管扩展，共用归属、撤销、原会话续接和删除合同。当前生产 ACP 统一使用应用内置 command，不再选择上述托管注入通道。
+
+当前新增 prepared 草稿、首发原位转正、Ramble/Agent 两种视图、设备智能体统一列表，以及真实 turn 折叠与 Agent 上报的上下文 used/size。无上报时隐藏统计；完成时间/耗时不从渲染时刻猜测。实现与最新验证以体验重设计计划为准。
 
 ## 真实程序与网络证据
 
@@ -20,14 +24,14 @@
 | --- | --- | --- |
 | DeepSeek ACP 0.8.0 | 自有 npm 安装、Managed 检测、真实 bin.js 握手与退出；前一阶段已完成双项目真实模型反馈闭环 | 其他版本/平台完整闭环 |
 | Codex ACP 1.8.0 | 自有 npm 安装、dist/index.js 启动及 bundled Codex 0.152.1 握手，确认 HTTP、load/resume，正常退出 | 模型、反馈与恢复端到端 |
-| 原生 Pi 0.83.0 | 离线加载生产托管扩展、原生参数校验、实际私有请求入库；未调用模型 | pi-acp 桥接后的真实模型闭环 |
+| 原生 Pi 0.83.0 | 离线加载当时的托管扩展、原生参数校验、实际私有请求入库；未调用模型 | pi-acp 桥接后的真实模型闭环，以及新 command 路径 |
 | stdio 与 Pi 协议夹具 | 真实 CLI/wrapper/Node/HTTP/SQLite，自动续接、原 ID load/resume、删除 A 保留 B、启动未 ACK 时停止及孙进程回收 | 将协议夹具等同于真实 Agent 推理 |
 
 网络安装最初遇到一次 ECONNRESET，有限重试后通过；Codex 探针补建自己的 CODEX_HOME 后握手通过。
 这些修正未更改全局代理、npmrc、用户认证或生产安装算法。
 网络报告位于本机临时目录 `rambledesk-catalog-network-LAuW8u/report.json`。
 可复现 gate：`cargo test -p rambledesk-acp --test catalog_network -- --ignored --nocapture`；默认测试不会下载或启动真实 Agent。
-真实 Pi gate 为 CLI 的 `installed_native_pi` ignored test，需要显式指定隔离 Pi 路径。
+历史 Pi gate 为 CLI 的 `installed_native_pi` ignored test，需要显式指定隔离 Pi 路径；这不构成当前托管反馈命令的模型验收。
 
 ## 自动化与界面验证
 
@@ -43,7 +47,8 @@
 ## 实施边界
 
 安装、认证、ACP 握手和完整反馈闭环是不同证据。目录没有把未验证入口标记为完整兼容。
-OpenClaw 的固定版本不接受所需 MCP 入口，仍明确不可用于托管反馈。
-本机没有可用的 Unix 运行环境；Unix wrapper 改为 exec 保持外层进程组，实跑由已配置的 Linux/macOS CI 承担。
+当时 OpenClaw 的 MCP 入口限制只属于旧路径结论。统一 command 是否可执行须重新验证，不能再以缺少 MCP 单独判断托管反馈不可用。
+本机没有可用的 Unix 运行环境；对应 Linux/macOS CI 可提供后续证据，但配置了 CI 不等于已经实跑通过。
 当前没有远程 ACP、共享 Agent 进程池、外部历史批量导入或 Codeg 的多 Agent 编排。
 这一轮没有生成发布签名安装包，也没有执行原生桌面整个用户流程的人工验收。
+后续统一 command 路径仍未完成真实 Agent 模型、Linux/macOS、签名安装包及性能对照；原阶段的浏览器夹具不能填补这些边界。

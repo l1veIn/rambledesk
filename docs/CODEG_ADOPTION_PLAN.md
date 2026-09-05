@@ -1,6 +1,7 @@
 # Codeg 深度移植：Agent 管理与 Chat
 
-> 状态：本轮实现及 Windows 验收已完成。用户于 2026-09-04 扩大范围并授权实施，2026-09-05 完成；未验证范围见 CODEG_ACCEPTANCE.md。
+> 状态：历史阶段记录。用户于 2026-09-04 扩大范围并授权实施，原 Agent 管理/Chat 移植于 2026-09-05 完成；该阶段验收见 CODEG_ACCEPTANCE.md。
+> 当前：后续[体验重设计](ACP_EXPERIENCE_REDESIGN_PLAN.md)实现完成，Windows 自动化与隔离浏览器验收已完成。本文 F1/F2 的 MCP/Pi 通道已由统一 command 生产路径替代。
 > 基线：RambleDesk `ccbc083`；Codeg `3ebdfed1d7c0b71d71880a3d2e0f8e09545feae1`。
 > 前一阶段及修正见 [ACP 提交地图](ACP_COMMIT_MAP.md)，术语以 [TERMINOLOGY.md](TERMINOLOGY.md) 为准。
 
@@ -21,10 +22,10 @@ Chat 展示流式文本、思考、结构化工具内容和权限；输入器支
   实时与持久历史保持同一轮次和消息身份，更新不重复追加；关闭视图不停止 Agent。
 - Backend Runtime 继续拥有会话身份、实例、权限、持久反馈、投递、恢复和删除。Codeg 的临时 live feedback
   不替代 Request/Package/Delivery，恢复失败不静默创建新 Agent 会话。
-- stdio MCP 作为 HTTP 注入之外的接入候选；不同后端需要实际验证，不从 Codeg 目录或 ACP 握手推断兼容。
+- 本阶段曾扩展 stdio MCP/Pi 专用通道。后续生产 ACP 已统一到应用反馈命令与会话 HTTP JSON，仍需逐入口验证 Agent 命令执行、环境传播与恢复，不能从目录或握手推断兼容。
 - 此次扩展包含 Agent 管理与 Chat，不引入 Codeg 的多 Agent 编排、远程部署、全量外部历史导入或 checkout 管理。
 
-## 小提交地图
+## 历史小提交地图
 
 | 切片 | 独立行为目标 | 验收条件 |
 | --- | --- | --- |
@@ -55,7 +56,7 @@ Chat 展示流式文本、思考、结构化工具内容和权限；输入器支
 
 具体移植文件随提交记录到 [CODEG_PORTS.md](CODEG_PORTS.md)，许可证随代码分发。
 
-## 执行记录
+## 历史执行记录
 
 - A0：已建立本地图，正式纳入安装管理、结构化 Chat 与动态配置；保留旧会话与反馈合同。
 
@@ -71,10 +72,10 @@ Chat 展示流式文本、思考、结构化工具内容和权限；输入器支
 - C3b：消息提交后立即腾空输入器；失败只恢复未被后续编辑改变的会话草稿，删除后不复活，12 项草稿/UI 回归通过。
 - C4d：真实图片/UTF-8 附件选择与粘贴已接 typed command，控件遵循协商能力；发送与失败恢复复用会话草稿版本，36 项附件/草稿/渲染用例及 Svelte 检查通过。
 - C2b：历史分页应用接口与客户端合并完成；exclusive sequence cursor、会话隔离、实时覆盖旧页和离开后迟到响应均通过回归。Timeline 的按需挂载与滚动锚点接线继续。
-- F1b：生产 Desktop 已启用 HTTP 优先、stdio companion 回退；真实 CLI→私有 HTTP→SQLite 双会话与恢复测试通过，Desktop 编译通过。Pi 特殊通道在 F2 接线。
+- F1b：当时 Desktop 使用 HTTP MCP 优先、stdio companion 回退；真实 CLI→私有 HTTP→SQLite 双会话与恢复测试及 Desktop 编译通过。该生产选择现已由统一 command 替代。
 - C2c：时间线首次挂载 60 条，按需展开与服务端分页；可见消息锚点保持滚动位置。1000 条真实组件 SSR 与窗口/滚动回归 9 项通过。
 - F2a：Pi 私有 RPC wrapper 与无依赖托管扩展完成；真实 Pi 0.83.0 离线加载、原生参数校验和反馈请求持久化通过。不触发模型、不改用户全局 Pi 设置；默认测试含双 scope 隔离与撤销。
-- F2b：生产 ACP 启动自动选择 Pi 扩展通道；真实子进程夹具覆盖新建、自动续接、load/resume、删除隔离，以及启动未确认时停止并回收孙进程，3 项通过。Pi 目录允许连接检查，仍明确未完成模型端到端验收。
+- F2b：当时 ACP 启动选择 Pi 扩展通道；真实子进程夹具覆盖新建、自动续接、load/resume、删除隔离及启动未确认时停止，3 项通过。该通道现已退出生产 ACP 选择；这些结果不证明统一 command 的 Pi 模型闭环。
 - V1：前端 673、核心 Rust 295、Desktop 103、Pi 24、dsh 27 项通过；真实 npm 安装 DeepSeek 0.8.0/Codex ACP 1.8.0 完成检测与握手，真实 Pi 0.83.0 离线扩展/请求复验通过。
 - 审查修复：Unix wrapper 使用 exec 保持外层进程组，Pi 在工具运行前消费并清除私密环境；未扩大到其他 Agent 的未验证兼容承诺。
 - 分发与CI：Apache 全文/声明/移植记录随 Web 与 Desktop 分发；同名 CLI/Desktop 测试使用独立输出目录。最终证据及未实跑边界见 [验收记录](CODEG_ACCEPTANCE.md)。
