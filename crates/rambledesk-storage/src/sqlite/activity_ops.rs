@@ -275,7 +275,9 @@ fn activity_from_row(row: &SqliteRow) -> Result<SessionActivity, SessionReposito
     })
 }
 
-fn serialize_content(content: &SessionActivityContent) -> Result<String, SessionRepositoryError> {
+pub(super) fn serialize_content(
+    content: &SessionActivityContent,
+) -> Result<String, SessionRepositoryError> {
     if !content.valid_size() {
         return Err(SessionRepositoryError::InvalidInput);
     }

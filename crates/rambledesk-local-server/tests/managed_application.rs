@@ -242,12 +242,89 @@ fn config_input() -> SaveAgentConfigInput {
 }
 
 #[tokio::test]
+async fn prepared_http_session_stays_hidden_and_promotes_on_first_send() -> anyhow::Result<()> {
+    let fixture = Fixture::new().await?;
+    let config = fixture.facade.save_agent_config(config_input()).await?;
+    let draft = fixture
+        .call(
+            "prepareManagedSession",
+            json!({
+                "agent_config_id": config.id, "cwd": fixture.directory.path(),
+            }),
+        )
+        .await?;
+    assert_eq!(draft["session"]["lifecycle"], "prepared");
+    assert_eq!(draft["runtime"]["connection"], "connected");
+    assert!(
+        fixture
+            .call("listHostSessions", Value::Null)
+            .await?
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    let session = json!({"session_id": draft["session"]["session_id"]});
+    let sent = fixture
+        .call(
+            "sendManagedPrompt",
+            json!({
+                "session_id": draft["session"]["session_id"], "text": "First task title",
+            }),
+        )
+        .await?;
+    assert_eq!(sent["session"]["lifecycle"], "active");
+    assert_eq!(sent["session"]["title"], "First task title");
+    assert_eq!(
+        sent["session"]["management"],
+        draft["session"]["management"]
+    );
+    assert_eq!(
+        fixture
+            .call("listHostSessions", Value::Null)
+            .await?
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    let denied = fixture
+        .request("discardPreparedSession", session)
+        .header(RUNTIME_GENERATION_HEADER, "managed-test")
+        .send()
+        .await?;
+    assert_eq!(denied.status(), reqwest::StatusCode::CONFLICT);
+    let discardable = fixture
+        .call(
+            "prepareManagedSession",
+            json!({
+                "agent_config_id": config.id, "cwd": fixture.directory.path(),
+            }),
+        )
+        .await?;
+    for _ in 0..2 {
+        let response = fixture
+            .request(
+                "discardPreparedSession",
+                json!({
+                    "session_id": discardable["session"]["session_id"],
+                }),
+            )
+            .header(RUNTIME_GENERATION_HEADER, "managed-test")
+            .send()
+            .await?;
+        assert_eq!(response.status(), reqwest::StatusCode::NO_CONTENT);
+    }
+    fixture.shutdown().await
+}
+
+#[tokio::test]
 async fn configuration_check_rejects_missing_feedback_capability_before_creating_a_session()
 -> anyhow::Result<()> {
     let fixture = Fixture::new().await?;
     let config = fixture
         .facade
         .save_agent_config(SaveAgentConfigInput {
+            catalog_id: None,
             command: "no-http-mcp".into(),
             ..config_input()
         })
@@ -287,6 +364,7 @@ async fn configuration_check_accepts_stdio_feedback_without_advertising_http() -
     let config = fixture
         .facade
         .save_agent_config(SaveAgentConfigInput {
+            catalog_id: None,
             command: "stdio-mcp".into(),
             ..config_input()
         })
@@ -324,7 +402,6 @@ async fn managed_http_uses_the_facade_for_configuration_session_prompt_and_permi
     let input = json!({"session_id":id});
     let snapshot = fixture.call("getManagedSession", input.clone()).await?;
     assert_eq!(
-            catalog_id: None,
         snapshot,
         serde_json::to_value(
             fixture
@@ -364,7 +441,6 @@ async fn managed_http_uses_the_facade_for_configuration_session_prompt_and_permi
     fixture
         .wait_for(&id, |snapshot| {
             snapshot.runtime.activity == SessionActivityState::Idle
-            catalog_id: None,
         })
         .await?;
     fixture
@@ -428,6 +504,8 @@ async fn every_managed_mutation_requires_current_runtime_generation_including_co
         "deleteAgentConfig",
         "checkAgentConfig",
         "createManagedSession",
+        "prepareManagedSession",
+        "discardPreparedSession",
         "startManagedSession",
         "stopManagedSession",
         "sendManagedPrompt",
@@ -484,6 +562,8 @@ fn tauri_managed_commands_match_http_names_and_delegate_to_the_same_facade() {
         ("deleteAgentConfig", "delete_agent_config"),
         ("checkAgentConfig", "check_agent_config"),
         ("createManagedSession", "create_managed_session"),
+        ("prepareManagedSession", "prepare_managed_session"),
+        ("discardPreparedSession", "discard_prepared_session"),
         ("getManagedSession", "get_managed_session"),
         ("startManagedSession", "start_managed_session"),
         ("stopManagedSession", "stop_managed_session"),
@@ -510,8 +590,8 @@ fn tauri_managed_commands_match_http_names_and_delegate_to_the_same_facade() {
         );
         assert!(routes.contains(&format!("/application/{camel}")), "{camel}");
     }
-    assert_eq!(commands.matches("#[tauri::command]").count(), 16);
-    assert_eq!(commands.matches("input:").count(), 15);
+    assert_eq!(commands.matches("#[tauri::command]").count(), 18);
+    assert_eq!(commands.matches("input:").count(), 17);
     assert!(registration.contains(".with_sessions(sessions.clone())"));
     assert!(registration.contains("state.sessions.shutdown()"));
     assert!(registration.contains("sessions.start_delivery_worker()"));

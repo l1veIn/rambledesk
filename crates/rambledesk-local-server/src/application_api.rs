@@ -55,6 +55,8 @@ const MUTATION_OPERATIONS: &[&str] = &[
     "deleteAgentConfig",
     "checkAgentConfig",
     "createManagedSession",
+    "prepareManagedSession",
+    "discardPreparedSession",
     "startManagedSession",
     "stopManagedSession",
     "sendManagedPrompt",

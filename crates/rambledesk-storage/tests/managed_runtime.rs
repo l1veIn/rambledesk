@@ -1,4 +1,6 @@
 use async_trait::async_trait;
+#[path = "managed_runtime/prepared.rs"]
+mod prepared;
 use rambledesk_core::*;
 use rambledesk_storage::SqliteFeedbackStore;
 use std::{
@@ -31,6 +33,7 @@ impl Drop for StartGuard {
 struct FakeConnection {
     closed: AtomicBool,
     stops: AtomicUsize,
+    prompts: AtomicUsize,
 }
 
 #[async_trait]
@@ -42,7 +45,21 @@ impl AgentSessionConnection for FakeConnection {
         Ok(())
     }
     async fn prompt(&self, _: &str) -> Result<String, AgentDriverError> {
+        self.prompts.fetch_add(1, Ordering::SeqCst);
         Ok("EndTurn".into())
+    }
+    fn configuration(&self) -> SessionConfiguration {
+        SessionConfiguration {
+            models: Some(SessionModelCatalog {
+                current_model_id: "fixture-model".into(),
+                available_models: vec![SessionModel {
+                    model_id: "fixture-model".into(),
+                    name: "Fixture model".into(),
+                    description: None,
+                }],
+            }),
+            ..Default::default()
+        }
     }
     fn is_closed(&self) -> bool {
         self.closed.load(Ordering::SeqCst)
@@ -197,6 +214,7 @@ async fn setup() -> (
     let application = SessionApplication::new(store.clone(), store.clone(), driver.clone());
     let config = application
         .save_agent_config(SaveAgentConfigInput {
+            catalog_id: None,
             id: None,
             name: "Fixture".into(),
             host_id: "fixture".into(),
@@ -214,7 +232,6 @@ async fn setup() -> (
 fn input(dir: &tempfile::TempDir, config: &str, title: &str) -> CreateManagedSessionInput {
     CreateManagedSessionInput {
         agent_config_id: config.into(),
-            catalog_id: None,
         cwd: dir.path().to_string_lossy().into_owned(),
         title: title.into(),
     }

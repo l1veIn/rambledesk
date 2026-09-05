@@ -201,6 +201,7 @@ impl SessionApplication {
         &self,
         input: CreateManagedSessionInput,
     ) -> Result<ManagedSessionSnapshot, SessionError> {
+        self.recover_runtime().await?;
         if self.closing.load(Ordering::SeqCst) {
             return Err(SessionError::ShuttingDown);
         }
@@ -225,6 +226,68 @@ impl SessionApplication {
             session_id: session.session_id,
         })
         .await
+    }
+
+    pub async fn prepare_session(
+        &self,
+        input: PrepareManagedSessionInput,
+    ) -> Result<ManagedSessionSnapshot, SessionError> {
+        self.recover_runtime().await?;
+        if self.closing.load(Ordering::SeqCst) {
+            return Err(SessionError::ShuttingDown);
+        }
+        let session = self
+            .repository
+            .create_prepared_session(NewManagedSession {
+                session_id: self.ids.new_id(),
+                agent_config_id: input.agent_config_id,
+                cwd: input.cwd,
+                title: String::new(),
+                created_at: self.clock.now_rfc3339(),
+            })
+            .await?;
+        let input = ManagedSessionInput {
+            session_id: session.session_id,
+        };
+        // Return the same durable draft on launch failure so retry does not make
+        // another local identity. A connected draft already exposes model/config.
+        let _ = self.start_session(input.clone()).await;
+        self.get_session(input).await
+    }
+
+    pub async fn discard_prepared_session(
+        &self,
+        input: ManagedSessionInput,
+    ) -> Result<(), SessionError> {
+        let session = match self.managed_record(&input.session_id).await {
+            Err(SessionError::Repository(SessionRepositoryError::SessionNotFound)) => return Ok(()),
+            result => result?,
+        };
+        if !session.is_prepared() {
+            return Err(SessionRepositoryError::Conflict.into());
+        }
+        let entry = self.entry(&input.session_id).await;
+        entry
+            .interrupt
+            .send_modify(|epoch| *epoch = epoch.wrapping_add(1));
+        let _lifecycle = entry.lifecycle.lock().await;
+        let session = match self.managed_record(&input.session_id).await {
+            Err(SessionError::Repository(SessionRepositoryError::SessionNotFound)) => return Ok(()),
+            result => result?,
+        };
+        // First send and discard share this lock. Never stop a draft that became
+        // a real conversation while discard was waiting for the lifecycle owner.
+        if !session.is_prepared() {
+            return Err(SessionRepositoryError::Conflict.into());
+        }
+        self.retire_entry_locked(&input.session_id, &entry, SessionRunEnd::Stopped, None)
+            .await?;
+        self.repository
+            .discard_prepared_session(&input.session_id)
+            .await?;
+        self.entries.lock().await.remove(&input.session_id);
+        self.session_changed(&input.session_id);
+        Ok(())
     }
 
     pub async fn get_session(

@@ -2,20 +2,22 @@ use std::path::Path;
 
 use async_trait::async_trait;
 use rambledesk_core::{
-    AgentConfig, NewManagedSession, SessionManagement, SessionProtocol, SessionRecord,
-    SessionRepository, SessionRepositoryError,
+    AgentConfig, NewManagedSession, NewSessionActivity, SessionLifecycle, SessionManagement,
+    SessionProtocol, SessionRecord, SessionRepository, SessionRepositoryError,
 };
 use sqlx::{Row, sqlite::SqliteRow};
 
 use super::SqliteFeedbackStore;
 
 mod config;
+mod prepared;
 
 const SESSION_SELECT: &str = "SELECT hs.id AS session_id, hs.host_id, hs.host_session_id, hs.created_at, hs.updated_at, \
      COALESCE(NULLIF(hs.display_title, ''), \
        (SELECT r.title FROM feedback_requests r WHERE r.host_session_record_id = hs.id \
-        ORDER BY r.created_at, r.id LIMIT 1), hs.host_session_id) AS title, \
-     ms.protocol, ms.agent_config_id, ms.cwd, ms.remote_session_id \
+        ORDER BY r.created_at, r.id LIMIT 1), \
+       CASE WHEN ms.lifecycle = 'prepared' THEN 'New agent session' ELSE hs.host_session_id END) AS title, \
+     ms.protocol, ms.agent_config_id, ms.cwd, ms.remote_session_id, ms.lifecycle \
      FROM host_sessions hs LEFT JOIN managed_sessions ms ON ms.session_id = hs.id";
 
 #[async_trait]
@@ -43,9 +45,81 @@ impl SessionRepository for SqliteFeedbackStore {
         &self,
         session: NewManagedSession,
     ) -> Result<SessionRecord, SessionRepositoryError> {
+        self.create_session_impl(session, SessionLifecycle::Active)
+            .await
+    }
+
+    async fn create_prepared_session(
+        &self,
+        session: NewManagedSession,
+    ) -> Result<SessionRecord, SessionRepositoryError> {
+        self.create_session_impl(session, SessionLifecycle::Prepared)
+            .await
+    }
+
+    async fn promote_prepared_session(
+        &self,
+        user_activity: NewSessionActivity,
+        turn_activity: NewSessionActivity,
+        fallback_title: &str,
+    ) -> Result<(), SessionRepositoryError> {
+        self.promote_prepared_session_impl(user_activity, turn_activity, fallback_title)
+            .await
+    }
+
+    async fn discard_prepared_session(
+        &self,
+        session_id: &str,
+    ) -> Result<(), SessionRepositoryError> {
+        self.discard_prepared_session_impl(session_id).await
+    }
+
+    async fn discard_stale_prepared_sessions(&self) -> Result<u64, SessionRepositoryError> {
+        let result = sqlx::query("DELETE FROM host_sessions WHERE id IN (SELECT session_id FROM managed_sessions WHERE lifecycle = 'prepared')")
+            .execute(&self.pool).await.map_err(storage_error)?;
+        Ok(result.rows_affected())
+    }
+
+    async fn get_session(&self, session_id: &str) -> Result<SessionRecord, SessionRepositoryError> {
+        let row = sqlx::query(&format!("{SESSION_SELECT} WHERE hs.id = ?1"))
+            .bind(session_id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(storage_error)?
+            .ok_or(SessionRepositoryError::SessionNotFound)?;
+        record_from_row(&row)
+    }
+
+    async fn list_managed_sessions(&self) -> Result<Vec<SessionRecord>, SessionRepositoryError> {
+        let rows = sqlx::query(&format!(
+            "{SESSION_SELECT} WHERE ms.lifecycle = 'active' ORDER BY hs.updated_at DESC, hs.id"
+        ))
+        .fetch_all(&self.pool)
+        .await
+        .map_err(storage_error)?;
+        rows.iter().map(record_from_row).collect()
+    }
+
+    async fn bind_remote_session(
+        &self,
+        session_id: &str,
+        remote_session_id: &str,
+        now: &str,
+    ) -> Result<SessionRecord, SessionRepositoryError> {
+        self.bind_remote_session_impl(session_id, remote_session_id, now)
+            .await
+    }
+}
+
+impl SqliteFeedbackStore {
+    async fn create_session_impl(
+        &self,
+        session: NewManagedSession,
+        lifecycle: SessionLifecycle,
+    ) -> Result<SessionRecord, SessionRepositoryError> {
         if !nonempty(&session.session_id)
             || !nonempty(&session.agent_config_id)
-            || !nonempty(&session.title)
+            || (lifecycle == SessionLifecycle::Active && !nonempty(&session.title))
             || !nonempty(&session.created_at)
             || !nonempty(&session.cwd)
             || !Path::new(&session.cwd).is_absolute()
@@ -83,13 +157,18 @@ impl SessionRepository for SqliteFeedbackStore {
         .await
         .map_err(write_error)?;
         sqlx::query(
-            "INSERT INTO managed_sessions (session_id, protocol, agent_config_id, cwd) \
-             VALUES (?1, ?2, ?3, ?4)",
+            "INSERT INTO managed_sessions (session_id, protocol, agent_config_id, cwd, lifecycle) \
+             VALUES (?1, ?2, ?3, ?4, ?5)",
         )
         .bind(&session.session_id)
         .bind(&protocol)
         .bind(&session.agent_config_id)
         .bind(&session.cwd)
+        .bind(if lifecycle == SessionLifecycle::Prepared {
+            "prepared"
+        } else {
+            "active"
+        })
         .execute(&mut *transaction)
         .await
         .map_err(write_error)?;
@@ -97,27 +176,7 @@ impl SessionRepository for SqliteFeedbackStore {
         self.get_session(&session.session_id).await
     }
 
-    async fn get_session(&self, session_id: &str) -> Result<SessionRecord, SessionRepositoryError> {
-        let row = sqlx::query(&format!("{SESSION_SELECT} WHERE hs.id = ?1"))
-            .bind(session_id)
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(storage_error)?
-            .ok_or(SessionRepositoryError::SessionNotFound)?;
-        record_from_row(&row)
-    }
-
-    async fn list_managed_sessions(&self) -> Result<Vec<SessionRecord>, SessionRepositoryError> {
-        let rows = sqlx::query(&format!(
-            "{SESSION_SELECT} WHERE ms.session_id IS NOT NULL ORDER BY hs.updated_at DESC, hs.id"
-        ))
-        .fetch_all(&self.pool)
-        .await
-        .map_err(storage_error)?;
-        rows.iter().map(record_from_row).collect()
-    }
-
-    async fn bind_remote_session(
+    async fn bind_remote_session_impl(
         &self,
         session_id: &str,
         remote_session_id: &str,
@@ -171,6 +230,16 @@ fn record_from_row(row: &SqliteRow) -> Result<SessionRecord, SessionRepositoryEr
         host_id: row.try_get("host_id").map_err(storage_error)?,
         host_session_id: row.try_get("host_session_id").map_err(storage_error)?,
         title: row.try_get("title").map_err(storage_error)?,
+        lifecycle: Some(
+            match row
+                .try_get::<Option<&str>, _>("lifecycle")
+                .map_err(storage_error)?
+            {
+                Some("prepared") => SessionLifecycle::Prepared,
+                Some("active") | None => SessionLifecycle::Active,
+                Some(_) => return Err(SessionRepositoryError::CorruptData),
+            },
+        ),
         created_at: row.try_get("created_at").map_err(storage_error)?,
         updated_at: row.try_get("updated_at").map_err(storage_error)?,
         management: management_from_row(row)?,

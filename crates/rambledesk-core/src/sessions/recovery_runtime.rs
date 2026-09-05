@@ -13,6 +13,9 @@ impl SessionApplication {
     pub async fn recover_runtime(&self) -> Result<(), SessionError> {
         self.recovery_ready
             .get_or_try_init(|| async {
+                // Prepared tabs have no submitted human message or feedback.
+                // Their old process capabilities cannot survive this app owner.
+                self.repository.discard_stale_prepared_sessions().await?;
                 if let Some(repository) = &self.recovery {
                     let recovered = repository
                         .recover_open_runs(&self.clock.now_rfc3339())

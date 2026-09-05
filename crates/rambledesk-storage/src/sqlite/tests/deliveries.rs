@@ -466,7 +466,7 @@ async fn migration_reconciles_preexisting_terminal_managed_requests_only() {
         library_root: Arc::new(RwLock::new(workspace._temp.path().into())),
         publish_lock: Arc::new(tokio::sync::Mutex::new(())),
     };
-    seed_sessions(&workspace, &store).await;
+    seed_legacy_managed_sessions(&store.pool, &["one", "two"], workspace._temp.path(), NOW).await;
     // Build the old-schema fixture directly: current repository guards can
     // legitimately require tables introduced after migration 13.
     sqlx::query("INSERT INTO host_sessions(id,host_id,host_session_id,created_at,updated_at) VALUES ('external','dsh','external',?1,?1)")

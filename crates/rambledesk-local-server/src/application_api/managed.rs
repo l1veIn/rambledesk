@@ -1,7 +1,7 @@
 use rambledesk_core::{
     AgentConfigInput, CreateManagedSessionInput, ManagedCommandError, ManagedCommandErrorCode,
-    ManagedSessionInput, ResolveFeedbackDeliveryInput, RespondManagedPermissionInput,
-    SaveAgentConfigInput, SendManagedPromptInput,
+    ManagedSessionInput, PrepareManagedSessionInput, ResolveFeedbackDeliveryInput,
+    RespondManagedPermissionInput, SaveAgentConfigInput, SendManagedPromptInput,
 };
 
 use super::*;
@@ -35,6 +35,14 @@ pub(super) fn routes() -> Router<ApplicationApiState> {
         .route(
             "/application/createManagedSession",
             post(create_managed_session),
+        )
+        .route(
+            "/application/prepareManagedSession",
+            post(prepare_managed_session),
+        )
+        .route(
+            "/application/discardPreparedSession",
+            post(discard_prepared_session),
         )
         .route("/application/getManagedSession", post(get_managed_session))
         .route(
@@ -139,6 +147,23 @@ async fn get_managed_session(
     ApplicationJson(input): ApplicationJson<ManagedSessionInput>,
 ) -> Response<Body> {
     stable_managed_result(&state, || state.commands.get_managed_session(input.clone())).await
+}
+
+async fn prepare_managed_session(
+    State(state): State<ApplicationApiState>,
+    ApplicationJson(input): ApplicationJson<PrepareManagedSessionInput>,
+) -> Response<Body> {
+    managed_result(state.commands.prepare_managed_session(input).await)
+}
+
+async fn discard_prepared_session(
+    State(state): State<ApplicationApiState>,
+    ApplicationJson(input): ApplicationJson<ManagedSessionInput>,
+) -> Response<Body> {
+    match state.commands.discard_prepared_session(input).await {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(error) => error_response(error),
+    }
 }
 async fn start_managed_session(
     State(state): State<ApplicationApiState>,

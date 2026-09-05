@@ -16,6 +16,7 @@ pub(super) async fn validate_request_scope(
                 "SELECT EXISTS(SELECT 1 FROM managed_sessions ms \
                  JOIN host_sessions hs ON hs.id = ms.session_id \
                  WHERE ms.session_id = ?1 AND hs.host_id = ?2 AND hs.host_session_id = ?3 \
+                 AND ms.lifecycle = 'active' \
                  AND NOT EXISTS(SELECT 1 FROM session_deletions sd WHERE sd.session_id = ms.session_id))",
             )
             .bind(session_id)

@@ -375,11 +375,19 @@ async fn migration_treats_old_remote_bindings_as_interrupted_without_guessing_tu
         library_root: Arc::new(RwLock::new(workspace._temp.path().into())),
         publish_lock: Arc::new(tokio::sync::Mutex::new(())),
     };
-    seed(&workspace, &store).await;
-    store
-        .bind_remote_session("active", "existing-agent", NOW)
-        .await
-        .unwrap();
+    seed_legacy_managed_sessions(
+        &store.pool,
+        &["active", "idle", "stopped", "new"],
+        workspace._temp.path(),
+        NOW,
+    )
+    .await;
+    sqlx::query(
+        "UPDATE managed_sessions SET remote_session_id='existing-agent' WHERE session_id='active'",
+    )
+    .execute(&store.pool)
+    .await
+    .unwrap();
     store.close().await;
     let store = SqliteFeedbackStore::connect(&workspace.database)
         .await

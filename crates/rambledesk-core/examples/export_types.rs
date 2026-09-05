@@ -11,6 +11,7 @@ use rambledesk_core::{
     AgentPromptCapabilities, SendManagedPromptContentInput, SessionPromptContent,
 };
 use rambledesk_core::{ListManagedSessionActivityInput, ManagedSessionActivityPage};
+use rambledesk_core::{PrepareManagedSessionInput, SessionLifecycle};
 use rambledesk_core::{
     SessionConfigChange, SessionConfigChoice, SessionConfigKind, SessionConfigOption,
     SessionConfigValue, SessionConfiguration, SessionMode, SessionModeCatalog, SessionModel,
@@ -153,6 +154,8 @@ fn main() -> std::io::Result<()> {
         exported::<SessionRecord>(),
         exported::<CreateManagedSessionInput>(),
         exported::<ManagedSessionInput>(),
+        exported::<PrepareManagedSessionInput>(),
+        exported::<SessionLifecycle>(),
         exported::<FeedbackStatus>(),
         exported::<FeedbackResolution>(),
         exported::<ExecutionMode>(),

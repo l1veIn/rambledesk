@@ -24,6 +24,7 @@ const HOST_SESSION_SUMMARY_BY_ID: &str = "\
     LEFT JOIN managed_sessions ms ON ms.session_id = hs.id \
     LEFT JOIN host_preferences hp ON hp.host_id = hs.host_id \
     WHERE hs.id = ?1 AND (ms.session_id IS NOT NULL OR r.id IS NOT NULL) \
+      AND (ms.lifecycle IS NULL OR ms.lifecycle = 'active') \
     GROUP BY hs.id, hs.host_id, hs.host_session_id";
 
 impl SqliteFeedbackStore {

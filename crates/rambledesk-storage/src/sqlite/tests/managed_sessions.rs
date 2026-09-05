@@ -8,12 +8,12 @@ use sqlx::migrate::Migrate;
 
 use super::*;
 
+#[path = "managed_sessions/prepared.rs"]
+mod prepared;
+
 const CREATED: &str = "2026-09-04T00:00:00Z";
 const UPDATED: &str = "2026-09-04T01:00:00Z";
 
-fn config() -> AgentConfig {
-    AgentConfig {
-        id: "agent-config".into(),
 #[tokio::test]
 async fn catalog_identity_migration_links_only_unambiguous_historical_recipes_and_preserves_settings()
  {
@@ -92,9 +92,12 @@ async fn catalog_identity_migration_links_only_unambiguous_historical_recipes_an
     }
 }
 
+fn config() -> AgentConfig {
+    AgentConfig {
+        catalog_id: None,
+        id: "agent-config".into(),
         name: "Local dsh".into(),
         host_id: "deepseek-harness".into(),
-        catalog_id: None,
         protocol: SessionProtocol::Acp,
         enabled: true,
         command: "dsh".into(),

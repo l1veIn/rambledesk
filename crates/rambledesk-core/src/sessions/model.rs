@@ -103,9 +103,34 @@ pub struct SessionRecord {
     // Correlation identity used by the feedback adapters, not an ACP remote id.
     pub host_session_id: String,
     pub title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub lifecycle: Option<SessionLifecycle>,
     pub created_at: String,
     pub updated_at: String,
     pub management: SessionManagement,
+}
+
+impl SessionRecord {
+    /// Legacy records and snapshots without this field are active conversations.
+    pub fn is_prepared(&self) -> bool {
+        self.lifecycle == Some(SessionLifecycle::Prepared)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(rename_all = "snake_case")]
+pub enum SessionLifecycle {
+    Prepared,
+    #[default]
+    Active,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
+pub struct PrepareManagedSessionInput {
+    pub agent_config_id: String,
+    pub cwd: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
@@ -136,6 +161,7 @@ mod tests {
     #[test]
     fn launch_configuration_debug_does_not_expose_credentials() {
         let config = AgentConfig {
+            catalog_id: None,
             id: "config".into(),
             name: "Test".into(),
             host_id: "dsh".into(),
@@ -153,4 +179,3 @@ mod tests {
         assert!(debug.contains("TOKEN"));
     }
 }
-            catalog_id: None,

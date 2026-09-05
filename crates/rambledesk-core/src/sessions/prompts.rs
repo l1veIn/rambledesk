@@ -80,10 +80,17 @@ impl SessionApplication {
         if input.text.trim().is_empty() || input.text.len() > 1_000_000 {
             return Err(SessionError::InvalidInput);
         }
-        self.managed_record(&input.session_id).await?;
+        let was_prepared = self.managed_record(&input.session_id).await?.is_prepared();
         let entry = self.entry(&input.session_id).await;
-        let lifecycle = entry.lifecycle.lock().await;
+        let lifecycle = entry.lifecycle.try_lock().map_err(|_| SessionError::Busy)?;
         self.require_workable(&input.session_id).await?;
+        let prepared = self.managed_record(&input.session_id).await?.is_prepared();
+        if was_prepared && !prepared {
+            return Err(SessionError::Busy);
+        }
+        if prepared && delivery.is_some() {
+            return Err(SessionError::InvalidInput);
+        }
         if self.closing.load(std::sync::atomic::Ordering::SeqCst) {
             return Err(SessionError::ShuttingDown);
         }
@@ -148,6 +155,38 @@ impl SessionApplication {
         let saved = async {
             self.begin_turn(&input.session_id, &instance, &turn_id)
                 .await?;
+            if prepared {
+                let display = content
+                    .as_ref()
+                    .map(|blocks| super::prompt_content::prompt_display(blocks));
+                let now = self.clock.now_rfc3339();
+                self.repository
+                    .promote_prepared_session(
+                        NewSessionActivity {
+                            id: self.ids.new_id(),
+                            session_id: input.session_id.clone(),
+                            turn_id: Some(turn_id.clone()),
+                            kind: SessionActivityKind::UserMessage,
+                            text: input.text.clone(),
+                            content: display,
+                            tool_call_id: None,
+                            created_at: now.clone(),
+                        },
+                        NewSessionActivity {
+                            id: self.ids.new_id(),
+                            session_id: input.session_id.clone(),
+                            turn_id: Some(turn_id.clone()),
+                            kind: SessionActivityKind::Status,
+                            text: "Turn started".into(),
+                            content: None,
+                            tool_call_id: None,
+                            created_at: now,
+                        },
+                        &first_prompt_title(&input.text),
+                    )
+                    .await?;
+                return Ok(());
+            }
             if let Some(blocks) = &content {
                 let display = super::prompt_content::prompt_display(blocks);
                 self.activities
@@ -179,7 +218,8 @@ impl SessionApplication {
                 "Turn started".into(),
                 None,
             )
-            .await
+            .await?;
+            Ok::<_, SessionError>(())
         }
         .await;
         if let Err(error) = saved {
@@ -477,4 +517,13 @@ impl SessionApplication {
             })
             .await?)
     }
+}
+
+fn first_prompt_title(text: &str) -> String {
+    text.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(80)
+        .collect()
 }

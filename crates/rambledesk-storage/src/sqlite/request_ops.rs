@@ -547,6 +547,7 @@ impl SqliteFeedbackStore {
              LEFT JOIN host_preferences hp ON hp.host_id = hs.host_id \
              WHERE (?1 = (hs.archived_at IS NOT NULL)) \
                AND (ms.session_id IS NOT NULL OR r.id IS NOT NULL) \
+               AND (ms.lifecycle IS NULL OR ms.lifecycle = 'active') \
                AND (?2 IS NULL \
                  OR COALESCE(NULLIF(hs.display_title, ''), '') LIKE ?2 \
                  OR hs.host_id LIKE ?2 \

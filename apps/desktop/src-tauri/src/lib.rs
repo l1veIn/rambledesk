@@ -369,6 +369,8 @@ pub fn run() {
             agent_commands::list_available_agents,
             agent_commands::inspect_agent_installation,
             agent_commands::list_agent_install_jobs,
+            managed_commands::prepare_managed_session,
+            managed_commands::discard_prepared_session,
             agent_commands::install_agent,
             agent_commands::cancel_agent_install,
             managed_commands::create_managed_session,

@@ -1,7 +1,8 @@
 use rambledesk_core::{
     AgentConfig, AgentConfigInput, AgentConnectionCheck, CreateManagedSessionInput,
-    ManagedCommandError, ManagedSessionInput, ManagedSessionSnapshot, ResolveFeedbackDeliveryInput,
-    RespondManagedPermissionInput, SaveAgentConfigInput, SendManagedPromptInput,
+    ManagedCommandError, ManagedSessionInput, ManagedSessionSnapshot, PrepareManagedSessionInput,
+    ResolveFeedbackDeliveryInput, RespondManagedPermissionInput, SaveAgentConfigInput,
+    SendManagedPromptInput,
 };
 
 use crate::WorkbenchState;
@@ -54,6 +55,28 @@ pub(crate) async fn get_managed_session(
     input: ManagedSessionInput,
 ) -> Result<ManagedSessionSnapshot, ManagedCommandError> {
     state.application_commands.get_managed_session(input).await
+}
+
+#[tauri::command]
+pub(crate) async fn prepare_managed_session(
+    state: tauri::State<'_, WorkbenchState>,
+    input: PrepareManagedSessionInput,
+) -> Result<ManagedSessionSnapshot, ManagedCommandError> {
+    state
+        .application_commands
+        .prepare_managed_session(input)
+        .await
+}
+
+#[tauri::command]
+pub(crate) async fn discard_prepared_session(
+    state: tauri::State<'_, WorkbenchState>,
+    input: ManagedSessionInput,
+) -> Result<(), ManagedCommandError> {
+    state
+        .application_commands
+        .discard_prepared_session(input)
+        .await
 }
 
 #[tauri::command]

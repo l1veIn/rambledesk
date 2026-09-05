@@ -4,9 +4,9 @@ use thiserror::Error;
 use super::ApplicationCommandFacade;
 use crate::{
     AgentConfig, AgentConfigInput, AgentConnectionCheck, CreateManagedSessionInput,
-    ManagedSessionInput, ManagedSessionSnapshot, ResolveFeedbackDeliveryInput,
-    RespondManagedPermissionInput, SaveAgentConfigInput, SendManagedPromptInput,
-    SessionApplication, SessionError, SessionRepositoryError,
+    ManagedSessionInput, ManagedSessionSnapshot, PrepareManagedSessionInput,
+    ResolveFeedbackDeliveryInput, RespondManagedPermissionInput, SaveAgentConfigInput,
+    SendManagedPromptInput, SessionApplication, SessionError, SessionRepositoryError,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -170,6 +170,24 @@ impl ApplicationCommandFacade {
     ) -> Result<ManagedSessionSnapshot, ManagedCommandError> {
         self.managed_sessions()?
             .create_session(input)
+            .await
+            .map_err(Into::into)
+    }
+    pub async fn prepare_managed_session(
+        &self,
+        input: PrepareManagedSessionInput,
+    ) -> Result<ManagedSessionSnapshot, ManagedCommandError> {
+        self.managed_sessions()?
+            .prepare_session(input)
+            .await
+            .map_err(Into::into)
+    }
+    pub async fn discard_prepared_session(
+        &self,
+        input: ManagedSessionInput,
+    ) -> Result<(), ManagedCommandError> {
+        self.managed_sessions()?
+            .discard_prepared_session(input)
             .await
             .map_err(Into::into)
     }

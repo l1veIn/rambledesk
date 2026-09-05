@@ -32,6 +32,7 @@ async fn provider() -> (
             host_id: "fixture".into(),
             host_session_id: "managed-a".into(),
             title: "Fixture".into(),
+            lifecycle: Some(rambledesk_core::SessionLifecycle::Active),
             created_at: "2026-09-04T00:00:00Z".into(),
             updated_at: "2026-09-04T00:00:00Z".into(),
             management: SessionManagement::Managed {

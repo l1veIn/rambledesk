@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use thiserror::Error;
 
-use super::{AgentConfig, NewManagedSession, SessionRecord};
+use super::{AgentConfig, NewManagedSession, NewSessionActivity, SessionRecord};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum SessionRepositoryError {
@@ -43,6 +43,31 @@ pub trait SessionRepository: Send + Sync {
         &self,
         session: NewManagedSession,
     ) -> Result<SessionRecord, SessionRepositoryError>;
+
+    /// Creates a hidden session that can connect before the first human prompt.
+    async fn create_prepared_session(
+        &self,
+        session: NewManagedSession,
+    ) -> Result<SessionRecord, SessionRepositoryError>;
+
+    /// Atomically publishes the session, its first human message, and turn marker.
+    /// An already active session conflicts, so competing first sends cannot win.
+    async fn promote_prepared_session(
+        &self,
+        user_activity: NewSessionActivity,
+        turn_activity: NewSessionActivity,
+        fallback_title: &str,
+    ) -> Result<(), SessionRepositoryError>;
+
+    /// Runtime must already be stopped and its feedback capability revoked.
+    /// Missing is idempotent; an active or external session is never deleted.
+    async fn discard_prepared_session(
+        &self,
+        session_id: &str,
+    ) -> Result<(), SessionRepositoryError>;
+
+    /// One application owner calls this before creating or connecting sessions.
+    async fn discard_stale_prepared_sessions(&self) -> Result<u64, SessionRepositoryError>;
 
     async fn get_session(&self, session_id: &str) -> Result<SessionRecord, SessionRepositoryError>;
 
