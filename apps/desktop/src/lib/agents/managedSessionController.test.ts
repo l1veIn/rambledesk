@@ -180,7 +180,8 @@ describe('managed workspace transport integration', () => {
       { session_id: 'one', request_id: 'request-one', option_id: 'allow-once' },
       { session_id: 'one', request_id: 'request-two', option_id: null },
     ])
-    for (const name of ['startManagedSession', 'cancelManagedPrompt', 'stopManagedSession'] as const) {
+    expect(transport.callsFor('startManagedSession')).toHaveLength(0)
+    for (const name of ['cancelManagedPrompt', 'stopManagedSession'] as const) {
       expect(transport.callsFor(name).map((call) => call.input)).toEqual([{ session_id: 'one' }])
     }
     transport.reject('sendManagedPrompt', new Error('Connection ended'))
@@ -188,7 +189,7 @@ describe('managed workspace transport integration', () => {
     expect(transport.callsFor('sendManagedPrompt')).toHaveLength(1)
     controller.dispose()
     await expect(controller.startAgent()).rejects.toThrow('no longer open')
-    expect(transport.callsFor('startManagedSession')).toHaveLength(1)
+    expect(transport.callsFor('startManagedSession')).toHaveLength(0)
   })
 
   it('rejects foreign snapshots and disposes pending readiness and requests without runtime commands', async () => {

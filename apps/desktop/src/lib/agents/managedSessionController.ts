@@ -5,24 +5,35 @@ import { applicationResourcesAffectManagedSession, createApplicationSnapshotRefe
 import type { ManagedSessionSnapshot, ResolveDeliveryAction, SessionActivity, SessionConfigChange, SessionPromptContent } from '$lib/generated/feedback'
 import { mergeActivityWindows, validateActivityPage } from './activityHistory'
 import { readApplicationSnapshot } from '$lib/application/readApplicationSnapshot'
+import { automaticConnectionIssue, startManagedSessionOnce } from './managedSessionConnection'
 
 export type ManagedSessionState = Readonly<{
   snapshot: ManagedSessionSnapshot | null
   loading: boolean
   error: string
+  connecting: boolean
+  connectionError: string
   historyLoading: boolean
   historyHasMore: boolean
   historyError: string
 }>
 
 /** One mounted workspace owns one local session ID, never the current navigation selection. */
-export function createManagedSessionController(transport: ApplicationTransport, sessionId: string) {
-  const state = writable<ManagedSessionState>({ snapshot: null, loading: true, error: '', historyLoading: false, historyHasMore: false, historyError: '' })
+export function createManagedSessionController(transport: ApplicationTransport, sessionId: string,
+  options: Readonly<{ autoConnectBlocked?: () => boolean }> = {}) {
+  const state = writable<ManagedSessionState>({ snapshot: null, loading: true, error: '', connecting: false, connectionError: '', historyLoading: false, historyHasMore: false, historyError: '' })
   let older: SessionActivity[] = []
   let latest: ManagedSessionSnapshot | null = null
   let historyExhausted = false
   let active = false
   let unsubscribe: (() => void) | null = null
+  let runtimeGeneration: string | null = null
+  let connectionEpoch = 0
+  let snapshotCurrent = false
+  let autoConnectAttempted = false
+  let autoConnectFailed = false
+  let manuallyStopped = false
+  let connectionTask: Promise<void> | null = null
 
   function patch(next: Partial<ManagedSessionState>) {
     if (active) state.update((current) => ({ ...current, ...next }))
@@ -49,8 +60,11 @@ export function createManagedSessionController(transport: ApplicationTransport, 
           older = mergeActivityWindows(older, (get(state).snapshot?.activities ?? []).filter(row => row.sequence < snapshot.activities[0].sequence))
         }
         latest = snapshot
+        snapshotCurrent = true
         projectHistory()
         patch({ loading: false, error: '' })
+        if (snapshot.runtime.connection === 'connected') patch({ connectionError: '' })
+        ensureConnection()
       }
     },
     reportError(cause) { patch({ loading: false, error: message(cause) }) },
@@ -89,7 +103,16 @@ export function createManagedSessionController(transport: ApplicationTransport, 
     if (active) return dispose
     active = true
     unsubscribe = transport.subscribe(APPLICATION_EVENTS_STREAM, (event) => {
-      if (event.type === 'ready' || applicationResourcesAffectManagedSession(event.resources, sessionId)) refresh()
+      if (event.type === 'ready') {
+        if (runtimeGeneration !== null && runtimeGeneration !== event.runtime_generation) {
+          connectionEpoch += 1
+          if (!autoConnectFailed && !manuallyStopped) autoConnectAttempted = false
+        }
+        runtimeGeneration = event.runtime_generation
+        snapshotCurrent = false
+        refetch.invalidate()
+        refresh()
+      } else if (applicationResourcesAffectManagedSession(event.resources, sessionId)) refresh()
     }, (cause) => patch({ error: message(cause) }))
     refresh()
     return dispose
@@ -108,6 +131,55 @@ export function createManagedSessionController(transport: ApplicationTransport, 
     }
   }
 
+  function ensureConnection(): void {
+    const snapshot = latest
+    if (!snapshot || !active || !snapshotCurrent || snapshot.deleting || options.autoConnectBlocked?.()
+      || snapshot.session.management.kind !== 'managed' || snapshot.session.lifecycle === 'prepared'
+      || snapshot.runtime.activity !== 'idle' || manuallyStopped) return
+    if (snapshot.runtime.connection === 'connected' || snapshot.runtime.connection === 'connecting') return
+    const issue = automaticConnectionIssue(snapshot)
+    if (issue) { patch({ connectionError: get(state).connectionError || issue }); return }
+    if (connectionTask) return
+    if (!autoConnectAttempted && !autoConnectFailed) void connectAgent(false).catch(() => {})
+    else patch({ connectionError: get(state).connectionError || 'Agent connection ended. Retry to reconnect.' })
+  }
+
+  function connectAgent(explicit = true): Promise<void> {
+    if (!active) return Promise.reject(new Error('The agent session is no longer open.'))
+    if (latest?.deleting || options.autoConnectBlocked?.()) return Promise.reject(new Error('This session is being deleted. Retry deletion to finish cleanup.'))
+    if (connectionTask) return connectionTask
+    if (!latest) return Promise.reject(new Error('The agent session is still loading.'))
+    if (latest.runtime.connection === 'connected' || latest.runtime.connection === 'connecting') return Promise.resolve()
+    patch({ connecting: true, connectionError: '' })
+    const attemptEpoch = connectionEpoch
+    const task = (async () => {
+      try {
+        await transport.waitUntilReady()
+        if (!active || attemptEpoch !== connectionEpoch || !snapshotCurrent || latest?.deleting || options.autoConnectBlocked?.()) return
+        if (!latest || latest.runtime.connection === 'connected' || latest.runtime.connection === 'connecting') return
+        if (!explicit && (autoConnectAttempted || autoConnectFailed || automaticConnectionIssue(latest))) return
+        autoConnectAttempted = true
+        if (explicit) manuallyStopped = false
+        const result = validate(await startManagedSessionOnce(transport, sessionId))
+        if (!active || attemptEpoch !== connectionEpoch) return
+        if (!['connected', 'connecting'].includes(result.runtime.connection)) throw new Error(result.runtime.last_error || 'Could not connect to the agent.')
+        autoConnectFailed = false
+        patch({ connectionError: '' })
+      } catch (cause) {
+        if (!active || attemptEpoch !== connectionEpoch) return
+        autoConnectFailed = true
+        patch({ connectionError: message(cause) })
+        throw cause
+      } finally {
+        connectionTask = null
+        patch({ connecting: false })
+        refresh()
+      }
+    })()
+    connectionTask = task
+    return task
+  }
+
   function dispose(): void {
     active = false
     unsubscribe?.()
@@ -120,8 +192,8 @@ export function createManagedSessionController(transport: ApplicationTransport, 
     subscribe: state.subscribe, start, refresh, dispose, loadOlder,
     setConfiguration: (change: SessionConfigChange) => run(() => transport.call('setManagedSessionConfig', { session_id: sessionId, change })),
     promptContent: (text: string, content: SessionPromptContent[]) => run(() => transport.call('sendManagedPromptContent', { session_id: sessionId, text, content })),
-    startAgent: () => run(() => transport.call('startManagedSession', { session_id: sessionId })),
-    stopAgent: () => run(() => transport.call('stopManagedSession', { session_id: sessionId })),
+    startAgent: () => connectAgent(),
+    stopAgent: () => { manuallyStopped = true; return run(() => transport.call('stopManagedSession', { session_id: sessionId })) },
     cancel: () => run(() => transport.call('cancelManagedPrompt', { session_id: sessionId })),
     prompt: (text: string) => run(() => transport.call('sendManagedPrompt', { session_id: sessionId, text })),
     respondPermission: (requestId: string, optionId: string | null) => run(() => transport.call('respondManagedPermission', {
