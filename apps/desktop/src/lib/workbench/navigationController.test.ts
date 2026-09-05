@@ -127,6 +127,108 @@ describe('navigationController', () => {
     vi.useRealTimers()
   })
 
+  it('keeps the displayed list interactive during a background refresh and updates it in place', async () => {
+    const request = feedbackRequest('visible-request')
+    const updated = { ...request, status: 'completed' as const, revision: 2 }
+    const openRequest = vi.fn(async () => true)
+    const clearWorkspace = vi.fn()
+    mocks.applicationCall.mockResolvedValueOnce({ requests: [request], next_cursor: null })
+    const controller = createController({
+      openRequest, clearWorkspace, getWorkspaceRequestId: () => request.request_id,
+    })
+    await controller.refreshRequests()
+    const displayedRows = get(controller).requests
+    let releaseRefresh!: (page: ListFeedbackRequestsOutput) => void
+    mocks.applicationCall.mockReturnValueOnce(new Promise<ListFeedbackRequestsOutput>((resolve) => {
+      releaseRefresh = resolve
+    }))
+    const loadingStates: boolean[] = []
+    const unsubscribe = controller.subscribe((state) => loadingStates.push(state.loadingRequests))
+    try {
+      const refreshing = controller.refreshRequests()
+      expect(get(controller).requests).toBe(displayedRows)
+      expect(get(controller).loadingRequests).toBe(false)
+
+      releaseRefresh({ requests: [updated], next_cursor: null })
+      await refreshing
+
+      expect(loadingStates.every((loading) => !loading)).toBe(true)
+      expect(get(controller).requests).toEqual([updated])
+      expect(openRequest).not.toHaveBeenCalled()
+      expect(clearWorkspace).not.toHaveBeenCalled()
+    } finally {
+      unsubscribe()
+    }
+  })
+
+  it('shows the first load but keeps a previously loaded empty state stable on refresh failure', async () => {
+    let releaseInitial!: (page: ListFeedbackRequestsOutput) => void
+    mocks.applicationCall.mockReturnValueOnce(new Promise<ListFeedbackRequestsOutput>((resolve) => {
+      releaseInitial = resolve
+    }))
+    const onPageError = vi.fn()
+    const controller = createController({ onPageError })
+    const initializing = controller.refreshRequests()
+    expect(get(controller).loadingRequests).toBe(true)
+    releaseInitial({ requests: [], next_cursor: null })
+    await initializing
+
+    mocks.applicationCall.mockRejectedValueOnce(new Error('refresh unavailable'))
+    const refreshing = controller.refreshRequests()
+    expect(get(controller).loadingRequests).toBe(false)
+    await refreshing
+
+    expect(get(controller)).toMatchObject({ loadingRequests: false, requests: [] })
+    expect(onPageError).toHaveBeenCalledWith('Error: refresh unavailable')
+  })
+
+  it.each(['scope', 'search', 'filter'] as const)('still shows loading when the %s changes', async (change) => {
+    mocks.applicationCall.mockResolvedValueOnce({ requests: [feedbackRequest('original')], next_cursor: null })
+    const controller = createController()
+    await controller.refreshRequests()
+    let releaseQuery!: (page: ListFeedbackRequestsOutput) => void
+    mocks.applicationCall.mockReturnValueOnce(new Promise<ListFeedbackRequestsOutput>((resolve) => {
+      releaseQuery = resolve
+    }))
+
+    const loading = change === 'scope'
+      ? controller.selectScope('codex', 'session-2')
+      : change === 'search'
+        ? controller.setRequestSearch('changed')
+        : controller.setRequestFilters({ status: 'completed', timeRange: 'all' })
+    expect(get(controller).loadingRequests).toBe(true)
+    releaseQuery({ requests: [feedbackRequest('changed')], next_cursor: null })
+    await loading
+    expect(get(controller)).toMatchObject({ loadingRequests: false, requests: [feedbackRequest('changed')] })
+  })
+
+  it('keeps pagination protected until the newest background refresh finishes', async () => {
+    mocks.applicationCall.mockResolvedValueOnce({ requests: [feedbackRequest('original')], next_cursor: 'old-cursor' })
+    const controller = createController()
+    await controller.refreshRequests()
+    let releaseOlder!: (page: ListFeedbackRequestsOutput) => void
+    let releaseNewest!: (page: ListFeedbackRequestsOutput) => void
+    mocks.applicationCall.mockReturnValueOnce(new Promise<ListFeedbackRequestsOutput>((resolve) => {
+      releaseOlder = resolve
+    })).mockReturnValueOnce(new Promise<ListFeedbackRequestsOutput>((resolve) => {
+      releaseNewest = resolve
+    }))
+    const older = controller.refreshRequests()
+    const newest = controller.refreshRequests()
+    releaseOlder({ requests: [feedbackRequest('stale')], next_cursor: 'stale-cursor' })
+    await older
+    await controller.loadMoreRequests()
+    expect(mocks.applicationCall).toHaveBeenCalledTimes(3)
+    expect(get(controller)).toMatchObject({ loadingRequests: false, requests: [feedbackRequest('original')] })
+
+    releaseNewest({ requests: [feedbackRequest('newest')], next_cursor: 'new-cursor' })
+    await newest
+    mocks.applicationCall.mockResolvedValueOnce({ requests: [feedbackRequest('older-page')], next_cursor: null })
+    await controller.loadMoreRequests()
+    expect(mocks.applicationCall).toHaveBeenLastCalledWith('listFeedbackRequests', expect.objectContaining({ cursor: 'new-cursor' }))
+    expect(get(controller).requests.map((request) => request.request_id)).toEqual(['newest', 'older-page'])
+  })
+
   it('combines status filters with the selected session and search without changing the open request', async () => {
     const openRequest = vi.fn(async () => true)
     const clearWorkspace = vi.fn()
