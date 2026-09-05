@@ -4,6 +4,11 @@ export type SessionViewDescriptor = Readonly<{
   hostSessionId: string
 }>
 
+export type AgentSessionViewDescriptor = Readonly<{
+  kind: 'agent-session'
+  sessionId: string
+}>
+
 export type SettingsViewDescriptor = Readonly<{
   kind: 'settings'
 }>
@@ -27,6 +32,7 @@ export type RambelleProfileViewDescriptor = Readonly<{
 
 export type WorkspaceViewDescriptor =
   | SessionViewDescriptor
+  | AgentSessionViewDescriptor
   | InboxViewDescriptor
   | ArchiveViewDescriptor
   | SettingsViewDescriptor
@@ -38,6 +44,10 @@ export function sessionViewDescriptor(
   hostSessionId: string,
 ): SessionViewDescriptor {
   return { kind: 'session', hostId, hostSessionId }
+}
+
+export function agentSessionViewDescriptor(sessionId: string): AgentSessionViewDescriptor {
+  return { kind: 'agent-session', sessionId }
 }
 
 export function settingsViewDescriptor(): SettingsViewDescriptor {
@@ -62,6 +72,8 @@ export function rambelleProfileViewDescriptor(): RambelleProfileViewDescriptor {
 
 export function workspaceViewKey(view: WorkspaceViewDescriptor): string {
   switch (view.kind) {
+    case 'agent-session':
+      return `${view.kind}:${JSON.stringify(view.sessionId)}`
     case 'inbox':
       return 'inbox:singleton'
     case 'archive':

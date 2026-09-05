@@ -1,21 +1,12 @@
 import type { FeedbackResolution, FeedbackResultView, FeedbackWorkspaceView } from '../feedback'
 import type { HostProfile, ResumePrompt } from './types'
-import type { HostSessionSummary, SessionManagement } from '../generated/feedback'
 
 export function shouldShowResumePromptButton(
   feedbackResult: FeedbackResultView | null,
   resolution: FeedbackResolution | null | undefined,
-  management?: SessionManagement,
+  managedSessionId?: string | null,
 ): boolean {
-  return management?.kind !== 'managed' && feedbackResult !== null && resolution === 'feedback_submitted'
-}
-
-export function requestSessionManagement(
-  request: Readonly<{ host_id: string; host_session_id: string }> | null | undefined,
-  sessions: readonly HostSessionSummary[],
-): SessionManagement | undefined {
-  return request ? sessions.find((session) => session.host_id === request.host_id
-    && session.host_session_id === request.host_session_id)?.management : undefined
+  return !managedSessionId && feedbackResult !== null && resolution === 'feedback_submitted'
 }
 
 export function buildResumePrompt(

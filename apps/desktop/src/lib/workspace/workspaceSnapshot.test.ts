@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  agentSessionViewDescriptor,
   archiveViewDescriptor,
   inboxViewDescriptor,
   rambelleProfileViewDescriptor,
@@ -20,6 +21,18 @@ const alpha = sessionViewDescriptor('codex', 'alpha')
 const beta = sessionViewDescriptor('pi', 'beta')
 
 describe('workspace snapshots', () => {
+  it('restores Agent tabs by durable id without turning request hints into Agent content', () => {
+    const agent = agentSessionViewDescriptor('agent-one')
+    const state = workspaceShellReducer(
+      workspaceShellReducer(EMPTY_WORKSPACE_SHELL_STATE, { type: 'open', view: alpha }),
+      { type: 'open', view: agent },
+    )
+    const snapshot = createWorkspaceSnapshot(state, new Map([[workspaceViewKey(agent), 'not-an-agent-request']]))
+    expect(snapshot.views).toEqual([{ ...alpha, lastRequestId: null }, { kind: 'agent-session', sessionId: 'agent-one' }])
+    expect(restoreWorkspaceSnapshot(snapshot)).toEqual({ shellState: state, requestIds: new Map() })
+    const malformed = restoreWorkspaceSnapshot({ version: 2, views: [{ kind: 'agent-session', sessionId: '' }, agent, agent], activeViewKey: workspaceViewKey(agent) })
+    expect(malformed?.shellState.views).toEqual([agent])
+  })
   it('round-trips view order, active identity, and request hints', () => {
     const openedAlpha = workspaceShellReducer(EMPTY_WORKSPACE_SHELL_STATE, {
       type: 'open',

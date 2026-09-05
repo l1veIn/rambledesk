@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { TestApplicationTransport } from '$lib/application/testApplicationTransport'
 import type { HostSessionSummary } from '$lib/generated/feedback'
 import { deleteSessionRecord, removeManagedSessionViews } from './managedSessionDeletion'
-import { requestTaskViewDescriptor, sessionViewDescriptor, workspaceViewKey } from '$lib/workspace/viewDescriptors'
+import { agentSessionViewDescriptor, requestTaskViewDescriptor, sessionViewDescriptor, workspaceViewKey } from '$lib/workspace/viewDescriptors'
 import { sessionPromptDrafts } from './managedSessionUi'
 
 function session(id: string, managed = true): HostSessionSummary {
@@ -12,6 +12,16 @@ function session(id: string, managed = true): HostSessionSummary {
 }
 
 describe('managed session deletion', () => {
+  it('closes the Agent conversation and related Ramble views together', () => {
+    const agent = agentSessionViewDescriptor('one')
+    const ramble = sessionViewDescriptor('dsh', 'host-one')
+    const brief = requestTaskViewDescriptor('request-one')
+    const other = agentSessionViewDescriptor('two')
+    const result = removeManagedSessionViews({ views: [ramble, agent, brief, other], activeViewKey: workspaceViewKey(agent) }, session('one'), ['request-one'])
+    expect(result.closedActive).toBe(true)
+    expect(result.shell.views).toEqual([other])
+    expect(result.shell.activeViewKey).toBe(workspaceViewKey(other))
+  })
   it('closes only the matching host pair and its known task view while preserving another active session', () => {
     const target = sessionViewDescriptor('dsh', 'host-one')
     const other = sessionViewDescriptor('dsh', 'host-two')

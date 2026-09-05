@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  agentSessionViewDescriptor,
   archiveViewDescriptor,
   inboxViewDescriptor,
   rambelleProfileViewDescriptor,
@@ -11,6 +12,12 @@ import {
 } from './viewDescriptors'
 
 describe('workspace view descriptors', () => {
+  it('gives Agent conversations a durable identity separate from a Ramble session', () => {
+    const agent = agentSessionViewDescriptor('session:one')
+    expect(agent).toEqual({ kind: 'agent-session', sessionId: 'session:one' })
+    expect(workspaceViewKey(agent)).toBe('agent-session:"session:one"')
+    expect(workspaceViewKey(agent)).not.toBe(workspaceViewKey(sessionViewDescriptor('pi', 'session:one')))
+  })
   it('uses one stable key for the aggregate Inbox view', () => {
     expect(workspaceViewKey(inboxViewDescriptor())).toBe('inbox:singleton')
   })

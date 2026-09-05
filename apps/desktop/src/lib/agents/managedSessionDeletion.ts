@@ -1,15 +1,16 @@
 import type { ApplicationTransport } from '$lib/application/applicationTransport'
 import type { HostSessionSummary } from '$lib/generated/feedback'
 import { sessionPromptDrafts } from './managedSessionUi'
-import { requestTaskViewDescriptor, sessionViewDescriptor, workspaceViewKey } from '$lib/workspace/viewDescriptors'
+import { agentSessionViewDescriptor, requestTaskViewDescriptor, sessionViewDescriptor, workspaceViewKey } from '$lib/workspace/viewDescriptors'
 import { workspaceShellReducer, type WorkspaceShellState } from '$lib/workspace/workspaceShell'
 
 export function removeManagedSessionViews(
   shell: WorkspaceShellState,
-  session: Pick<HostSessionSummary, 'host_id' | 'host_session_id'>,
+  session: Pick<HostSessionSummary, 'session_id' | 'host_id' | 'host_session_id'>,
   requestIds: readonly string[],
 ) {
-  const closedViewKeys = [workspaceViewKey(sessionViewDescriptor(session.host_id, session.host_session_id)),
+  const closedViewKeys = [workspaceViewKey(agentSessionViewDescriptor(session.session_id)),
+    workspaceViewKey(sessionViewDescriptor(session.host_id, session.host_session_id)),
     ...requestIds.map((id) => workspaceViewKey(requestTaskViewDescriptor(id)))]
   const closedActive = shell.activeViewKey !== null && closedViewKeys.includes(shell.activeViewKey)
   return {

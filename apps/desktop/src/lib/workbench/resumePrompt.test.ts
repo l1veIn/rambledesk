@@ -2,8 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { FeedbackWorkspaceView } from '../feedback'
 import type { HostProfile } from './types'
-import type { HostSessionSummary, SessionManagement } from '../generated/feedback'
-import { buildResumePrompt, requestSessionManagement, shouldShowResumePromptButton } from './resumePrompt'
+import { buildResumePrompt, shouldShowResumePromptButton } from './resumePrompt'
 
 const workspace = {
   request: {
@@ -44,18 +43,8 @@ describe('resumePrompt helpers', () => {
     expect(shouldShowResumePromptButton(null, 'feedback_submitted')).toBe(false)
   })
 
-  it('keeps manual continuation for external sessions while suppressing managed sessions of the same backend', () => {
-    const managed: SessionManagement = { kind: 'managed', protocol: 'acp', agent_config_id: 'config', cwd: '/repo', remote_session_id: 'remote' }
-    const session = (id: string, management: SessionManagement): HostSessionSummary => ({
-      session_id: id, host_id: 'codex', host_session_id: id, title: id, management,
-      source_hint: null, request_count: 1, pending_count: 0, updated_at: 'today', pinned_at: null, archived_at: null, host_pinned_at: null,
-    })
-    const sessions = [session('managed', managed), session('external', { kind: 'external' })]
-    const managedRequest = { host_id: 'codex', host_session_id: 'managed' }
-    const externalRequest = { host_id: 'codex', host_session_id: 'external' }
-    expect(shouldShowResumePromptButton({ available: true }, 'feedback_submitted', requestSessionManagement(managedRequest, sessions))).toBe(false)
-    expect(shouldShowResumePromptButton({ available: true }, 'feedback_submitted', requestSessionManagement(externalRequest, sessions))).toBe(true)
-    expect(requestSessionManagement({ host_id: 'another', host_session_id: 'managed' }, sessions)).toBeUndefined()
-    expect(requestSessionManagement(null, sessions)).toBeUndefined()
+  it('uses the trusted request binding even when the owning Agent is not in navigation', () => {
+    expect(shouldShowResumePromptButton({ available: true }, 'feedback_submitted', 'managed-session')).toBe(false)
+    expect(shouldShowResumePromptButton({ available: true }, 'feedback_submitted', undefined)).toBe(true)
   })
 })

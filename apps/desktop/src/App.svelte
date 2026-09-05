@@ -77,6 +77,7 @@
     type NotificationState,
   } from './lib/notifications'
   import {
+    agentSessionViewDescriptor,
     archiveViewDescriptor,
     inboxViewDescriptor,
     rambelleProfileViewDescriptor,
@@ -84,6 +85,7 @@
     sessionViewDescriptor,
     settingsViewDescriptor,
     workspaceViewKey,
+    type AgentSessionViewDescriptor,
     type SessionViewDescriptor,
     type WorkspaceViewDescriptor,
   } from './lib/workspace/viewDescriptors'
@@ -97,6 +99,7 @@
     createWorkspaceSnapshot,
   } from './lib/workspace/workspaceSnapshot'
   import { updateTaskTabTitles } from './lib/workspace/taskTabTitles'
+  import { agentSessionForView, agentViewForEmptyRamble, agentViewForRequest } from './lib/workspace/agentViewRouting'
   import {
     savedPreviewWorkspaceSnapshot,
     savePreviewWorkspaceSnapshot,
@@ -140,7 +143,7 @@
   import { createCookingController } from './lib/workbench/cookingController'
   import { createDraftController } from './lib/workbench/draftController'
   import { createPublisherController } from './lib/workbench/publisherController'
-  import { buildResumePrompt, requestSessionManagement, shouldShowResumePromptButton } from './lib/workbench/resumePrompt'
+  import { buildResumePrompt, shouldShowResumePromptButton } from './lib/workbench/resumePrompt'
   import {
     createAttachmentController,
     type AttachmentMessageTone,
@@ -204,7 +207,6 @@
   let renderedSessionResolution: SessionViewResolution | null = null
   let sessionViewResolutions: readonly SessionViewResolution[] = []
   let sessionRequestIds = new Map<string, string>()
-  let managedSessionPanels: ReadonlyMap<string, 'agent' | 'feedback'> = new Map()
   let newManagedSessionOpen = false
   let creatingManagedSession = false
   let deletingSessionCommands = new Set<string>()
@@ -523,21 +525,11 @@
     sessionViewResolutions,
     workspaceShellState.activeViewKey,
   )
-  $: renderedManagedSession = renderedSessionView
-    ? $navigation.hostSessions.find((session) => session.management.kind === 'managed'
-      && session.host_id === renderedSessionView!.hostId
-      && session.host_session_id === renderedSessionView!.hostSessionId)
-    : undefined
-  $: managedFeedbackRequestId = renderedManagedSession && workspace
-    && workspace.request.host_id === renderedManagedSession.host_id
-    && workspace.request.host_session_id === renderedManagedSession.host_session_id
-      ? workspace.request.request_id : null
-  $: renderedManagedFeedbackRequests = renderedManagedSession
-    ? $navigation.requests.filter((request) => request.host_id === renderedManagedSession!.host_id
-      && request.host_session_id === renderedManagedSession!.host_session_id)
+  $: renderedAgentSessionView = renderedWorkspaceView?.kind === 'agent-session' ? renderedWorkspaceView : null
+  $: renderedManagedSession = agentSessionForView(renderedAgentSessionView, $navigation.hostSessions)
+  $: renderedManagedFeedbackRequests = renderedAgentSessionView
+    ? $navigation.requests.filter((request) => request.managed_session_id === renderedAgentSessionView!.sessionId)
     : []
-  $: showManagedAgent = renderedManagedSession !== undefined
-    && (managedSessionPanels.get(renderedManagedSession.session_id) !== 'feedback' || !managedFeedbackRequestId)
   const sessionTabLabel = (view: SessionViewDescriptor) => {
     const session = $navigation.hostSessions.find(
       (candidate) =>
@@ -560,6 +552,10 @@
         return tr('Archived sessions')
       case 'settings':
         return tr('Settings')
+      case 'agent-session': {
+        const session = $navigation.hostSessions.find((candidate) => candidate.session_id === view.sessionId)
+        return session ? `${session.title} · Agent` : agentText($locale, 'Agent session')
+      }
       case 'request-task':
         return taskTabTitles.get(view.requestId) ?? tr('Task brief')
       case 'rambelle-profile':
@@ -579,11 +575,11 @@
   $: canOpenResumePrompt = shouldShowResumePromptButton(
     feedbackResult,
     completedResult?.resolution ?? workspace?.request.resolution,
-    requestSessionManagement(workspace?.request, $navigation.hostSessions),
+    workspace?.request.managed_session_id,
   )
-  $: feedbackManagedSession = workspace ? $navigation.hostSessions.find((session) => session.management.kind === 'managed'
-    && session.host_id === workspace!.request.host_id && session.host_session_id === workspace!.request.host_session_id) : undefined
-  $: managedFeedbackReadOnly = !!feedbackManagedSession && (deletingSessionCommands.has(feedbackManagedSession.session_id) || deletingManagedSessionIds.has(feedbackManagedSession.session_id))
+  $: feedbackManagedSessionId = agentViewForRequest(workspace?.request)?.sessionId ?? null
+  $: rambleAgentSessionId = feedbackManagedSessionId ?? (workspace ? null : agentViewForEmptyRamble(renderedSessionView, $navigation.hostSessions)?.sessionId ?? null)
+  $: managedFeedbackReadOnly = !!feedbackManagedSessionId && (deletingSessionCommands.has(feedbackManagedSessionId) || deletingManagedSessionIds.has(feedbackManagedSessionId))
   $: currentRequestCooking =
     workspace !== null && cookingRequestIds.has(workspace.request.request_id)
   $: cookedDraftReady = cookedPreview !== null
@@ -745,11 +741,7 @@
           : [...$navigation.requests, ...$navigation.pendingRequests].find((request) => request.request_id === prompt.request_id)
         const request = knownRequest ?? (await readApplicationSnapshot(applicationTransport, 'getFeedbackWorkspace', { request_id: prompt.request_id })).request
         if (!isCurrent()) return
-        let management = requestSessionManagement(request, $navigation.hostSessions)
-        if (!management) management = requestSessionManagement(request, await applicationTransport.call('listHostSessions', undefined))
-        if (!isCurrent()) return
-        if (!management) management = requestSessionManagement(request, await applicationTransport.call('listArchivedHostSessions', { search: null }))
-        if (!isCurrent() || management?.kind === 'managed') return
+        if (request.managed_session_id) return
         resumePrompt = prompt
         resumeCopyState = 'idle'
         if (
@@ -1030,6 +1022,13 @@
       loadingWorkspace = false
       return
     }
+    if (view.kind === 'agent-session') {
+      await selectAgentNavigationScope(view)
+      clearWorkspace()
+      workbenchMounted = true
+      loadingWorkspace = false
+      return
+    }
     if (
       view.kind === 'inbox' ||
       view.kind === 'archive' ||
@@ -1159,6 +1158,7 @@
         const selection = await navigation.selectScope(null, null)
         if (!selection.selected) return
       }
+      if (view.kind === 'agent-session') await selectAgentNavigationScope(view)
       const outcome = await workspaceTransition.activate({
         view,
         requestId: view.kind === 'request-task' ? view.requestId : null,
@@ -1168,7 +1168,7 @@
       if (outcome === 'activated' && view.kind === 'settings') {
         void refreshGenericMcpConfiguration()
       }
-      if (view.kind === 'inbox') await restoreNavigationScope(priorScope, outcome)
+      if (view.kind === 'inbox' || view.kind === 'agent-session') await restoreNavigationScope(priorScope, outcome)
       return
     }
     const resolution = sessionViewResolution(sessionViewResolutions, viewKey)
@@ -1246,6 +1246,8 @@
       if (!selection.selected) return
     } else if (fallbackView?.kind === 'request-task') {
       fallbackRequestId = fallbackView.requestId
+    } else if (fallbackView?.kind === 'agent-session') {
+      await selectAgentNavigationScope(fallbackView)
     }
 
     const outcome = await workspaceTransition.activate({
@@ -1433,24 +1435,27 @@
   }
 
   async function openRequest(requestId: string, _saveCurrent = true): Promise<boolean> {
-    const opened = (await activateRequest(requestId)) === 'activated'
-    if (opened && workspace?.request.request_id === requestId) {
-      const session = $navigation.hostSessions.find((candidate) => candidate.management.kind === 'managed'
-        && candidate.host_id === workspace!.request.host_id
-        && candidate.host_session_id === workspace!.request.host_session_id)
-      if (session) managedSessionPanels = new Map(managedSessionPanels).set(session.session_id, 'feedback')
-    }
-    return opened
+    return (await activateRequest(requestId)) === 'activated'
   }
 
-  async function showManagedAgentPanel(session = renderedManagedSession) {
-    if (!session || workspaceTransitionLocked) return
-    const sessionId = session.session_id
-    if (!(await saveDraftNow())) return
-    if (renderedManagedSession?.session_id !== sessionId) {
-      await selectRailScope(session.host_id, session.host_session_id)
-    }
-    managedSessionPanels = new Map(managedSessionPanels).set(sessionId, 'agent')
+  async function selectAgentNavigationScope(view: AgentSessionViewDescriptor) {
+    const session = agentSessionForView(view, $navigation.hostSessions)
+    return navigation.selectScope(session?.host_id ?? null, session?.host_session_id ?? null)
+  }
+
+  async function openAgentSession(sessionId: string) {
+    if (workspaceTransitionLocked) return
+    const view = agentSessionViewDescriptor(sessionId)
+    const priorScope = currentNavigationScope()
+    workspaceTransition.invalidate()
+    await selectAgentNavigationScope(view)
+    const outcome = await workspaceTransition.activate({
+      view,
+      requestId: null,
+      shellAction: { type: 'open' },
+      pendingViewKey: workspaceViewKey(view),
+    })
+    await restoreNavigationScope(priorScope, outcome)
   }
 
   async function openNewManagedSession() {
@@ -1460,9 +1465,8 @@
 
   async function managedSessionCreated(snapshot: ManagedSessionSnapshot) {
     newManagedSessionOpen = false
-    managedSessionPanels = new Map(managedSessionPanels).set(snapshot.session.session_id, 'agent')
     await navigation.refreshNavigation(true)
-    await selectRailScope(snapshot.session.host_id, snapshot.session.host_session_id)
+    await openAgentSession(snapshot.session.session_id)
   }
 
   function observeManagedDeletion(sessionId: string, deleting: boolean) {
@@ -1476,13 +1480,19 @@
     if (session.management.kind !== 'managed' || deletingSessionCommands.has(session.session_id)) return
     deletingSessionCommands = new Set([...deletingSessionCommands, session.session_id])
     try {
-      const ownsFeedback = () => workspace?.request.host_id === session.host_id && workspace?.request.host_session_id === session.host_session_id
+      const ownsFeedback = () => workspace?.request.managed_session_id === session.session_id
       if (ownsFeedback() && rambleBelongsToWorkspace && rambleCanExit) await exitRamble()
       await deleteSessionRecord(applicationTransport, session)
       const viewKey = workspaceViewKey(sessionViewDescriptor(session.host_id, session.host_session_id))
       const requestId = ownsFeedback() ? workspace!.request.request_id : null
       const rememberedRequestId = sessionRequestIds.get(viewKey)
-      const cleanup = removeManagedSessionViews(workspaceShellState, session, [requestId, rememberedRequestId].filter((id): id is string => !!id))
+      const knownRequestIds = [...new Set([
+        requestId, rememberedRequestId,
+        ...[...$navigation.requests, ...$navigation.pendingRequests]
+          .filter((request) => request.managed_session_id === session.session_id)
+          .map((request) => request.request_id),
+      ].filter((id): id is string => !!id))]
+      const cleanup = removeManagedSessionViews(workspaceShellState, session, knownRequestIds)
       const closedActive = cleanup.closedActive || ownsFeedback()
       if (pendingWorkspaceViewKey && cleanup.closedViewKeys.includes(pendingWorkspaceViewKey)) workspaceTransition.invalidate()
       if (closedActive) {
@@ -1496,9 +1506,6 @@
       const requestIds = new Map(sessionRequestIds)
       requestIds.delete(viewKey)
       sessionRequestIds = requestIds
-      const panels = new Map(managedSessionPanels)
-      panels.delete(session.session_id)
-      managedSessionPanels = panels
       observeManagedDeletion(session.session_id, false)
       persistCurrentWorkspaceSnapshot()
       if (closedActive || ($navigation.selectedHostId === session.host_id && $navigation.selectedHostSessionId === session.host_session_id)) await navigation.selectScope(null, null)
@@ -2011,10 +2018,10 @@
 
       <div class="min-h-0 min-w-0 flex-1" id="workspace-pane">
         <div class="flex h-full min-h-0 min-w-0 flex-col">
-          {#if renderedManagedSession && renderedSessionResolution?.kind !== 'missing-session'}
-            <div class="flex shrink-0 items-center gap-1 border-b px-4 py-2" role="group" aria-label={agentText($locale, 'Managed session')}>
-              <Button size="sm" variant={showManagedAgent ? 'secondary' : 'ghost'} aria-pressed={showManagedAgent} disabled={workspaceTransitionLocked} onclick={() => void showManagedAgentPanel()}>{agentText($locale, 'Agent session')}</Button>
-              <Button size="sm" variant={!showManagedAgent ? 'secondary' : 'ghost'} aria-pressed={!showManagedAgent} disabled={workspaceTransitionLocked || (!managedFeedbackRequestId && renderedManagedFeedbackRequests.length === 0)} onclick={() => { const requestId = managedFeedbackRequestId ?? renderedManagedFeedbackRequests[0]?.request_id; if (requestId) void openRequest(requestId) }}>{agentText($locale, 'Feedback requests')}<span class="ml-1 text-[10px] tabular-nums text-muted-foreground">{renderedManagedSession.request_count}</span></Button>
+          {#if rambleAgentSessionId && (renderedWorkspaceView?.kind === 'session' || renderedWorkspaceView?.kind === 'request-task') && renderedSessionResolution?.kind !== 'missing-session'}
+            <div class="flex shrink-0 items-center justify-between gap-3 border-b px-4 py-1.5 text-xs text-muted-foreground" data-request-agent-source>
+              <span>{workspace ? ($locale === 'zh-CN' ? '此 Ramble 来自 Agent 会话' : 'This Ramble was created by an Agent session') : ($locale === 'zh-CN' ? '此 Agent 会话的 Ramble 请求' : 'Ramble requests from this Agent session')}</span>
+              <Button size="sm" variant="ghost" disabled={workspaceTransitionLocked || pendingWorkspaceViewKey !== null} onclick={() => rambleAgentSessionId && void openAgentSession(rambleAgentSessionId)}>{$locale === 'zh-CN' ? '查看 Agent' : 'View Agent'}</Button>
             </div>
           {/if}
           <div
@@ -2055,23 +2062,6 @@
                 onOpenRambelleProfile={() => void openRambelleProfile()}
               />
             {:else if renderedWorkspaceView?.kind === 'request-task'}
-              <div class="flex h-full min-h-0 flex-col">
-              {#if feedbackManagedSession}
-                <div class="flex shrink-0 items-center border-b px-4 py-2"><Button size="sm" variant="outline" disabled={workspaceTransitionLocked} onclick={() => void showManagedAgentPanel(feedbackManagedSession)}>{agentText($locale, 'Agent session')}</Button></div>
-                {#key feedbackManagedSession.session_id}
-                  <ManagedSessionSection
-                    transport={applicationTransport}
-                    sessionId={feedbackManagedSession.session_id}
-                    deletionPending={deletingSessionCommands.has(feedbackManagedSession.session_id)}
-                    onDeletingChange={observeManagedDeletion}
-                    onDelete={() => deleteManagedSessionFromUi(feedbackManagedSession!)}
-                    showWorkspace={false}
-                    feedbackRequests={$navigation.requests}
-                    onOpenFeedback={async (requestId) => { await openRequest(requestId) }}
-                  />
-                {/key}
-              {/if}
-              <div class="min-h-0 flex-1">
               <TaskWorkspaceView
                 transport={applicationTransport}
                 {capabilities}
@@ -2097,8 +2087,18 @@
                 {submitting}
                 onSubmitFeedback={() => void submitFeedback()}
               />
-              </div>
-              </div>
+            {:else if renderedAgentSessionView}
+              {#key renderedAgentSessionView.sessionId}
+                <ManagedSessionSection
+                  transport={applicationTransport}
+                  sessionId={renderedAgentSessionView.sessionId}
+                  deletionPending={deletingSessionCommands.has(renderedAgentSessionView.sessionId)}
+                  onDeletingChange={observeManagedDeletion}
+                  onDelete={renderedManagedSession ? () => deleteManagedSessionFromUi(renderedManagedSession!) : undefined}
+                  feedbackRequests={renderedManagedFeedbackRequests}
+                  onOpenFeedback={async (requestId) => { await openRequest(requestId) }}
+                />
+              {/key}
             {:else if renderedWorkspaceView?.kind === 'rambelle-profile'}
               <RambelleProfileWorkspaceView />
             {:else if renderedSessionResolution?.kind === 'missing-session'}
@@ -2110,35 +2110,7 @@
                 onClose={() => closeWorkspaceTab(workspaceViewKey(renderedSessionResolution!.session))}
                 onOpenArchive={() => void openArchivedSessions(renderedSessionResolution!.session)}
               />
-            {:else if workbenchMounted && renderedManagedSession && showManagedAgent}
-              {#key renderedManagedSession.session_id}
-                <ManagedSessionSection
-                  transport={applicationTransport}
-                  sessionId={renderedManagedSession.session_id}
-                  deletionPending={deletingSessionCommands.has(renderedManagedSession.session_id)}
-                  onDeletingChange={observeManagedDeletion}
-                  onDelete={() => deleteManagedSessionFromUi(renderedManagedSession!)}
-                  feedbackRequests={renderedManagedFeedbackRequests}
-                  onOpenFeedback={async (requestId) => { await openRequest(requestId) }}
-                />
-              {/key}
             {:else if workbenchMounted}
-              <div class="flex h-full min-h-0 flex-col">
-              {#if renderedManagedSession}
-                {#key renderedManagedSession.session_id}
-                  <ManagedSessionSection
-                    transport={applicationTransport}
-                    sessionId={renderedManagedSession.session_id}
-                    deletionPending={deletingSessionCommands.has(renderedManagedSession.session_id)}
-                    onDeletingChange={observeManagedDeletion}
-                    onDelete={() => deleteManagedSessionFromUi(renderedManagedSession!)}
-                    showWorkspace={false}
-                    feedbackRequests={renderedManagedFeedbackRequests}
-                    onOpenFeedback={async (requestId) => { await openRequest(requestId) }}
-                  />
-                {/key}
-              {/if}
-              <div class="min-h-0 flex-1">
               {#key renderedSessionView ? workspaceViewKey(renderedSessionView) : 'workspace:empty'}
               <SessionWorkbench
             readOnly={managedFeedbackReadOnly}
@@ -2227,8 +2199,6 @@
             onApprove={() => void approveFeedback()}
               />
               {/key}
-              </div>
-              </div>
             {:else}
               <div
                 class="grid h-full min-h-0 place-items-center text-sm text-muted-foreground"

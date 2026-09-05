@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  agentSessionViewDescriptor,
   archiveViewDescriptor,
   inboxViewDescriptor,
   rambelleProfileViewDescriptor,
@@ -20,6 +21,7 @@ describe('workspaceSurface', () => {
   })
 
   it('lets non-Session tabs use the complete surface beside the Session rail', () => {
+    expect(workspaceSurface(agentSessionViewDescriptor('agent-1'))).toBe('standalone')
     expect(workspaceSurface(archiveViewDescriptor())).toBe('standalone')
     expect(workspaceSurface(settingsViewDescriptor())).toBe('standalone')
     expect(workspaceSurface(requestTaskViewDescriptor('request-1'))).toBe('standalone')
