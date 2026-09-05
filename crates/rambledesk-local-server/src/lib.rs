@@ -47,7 +47,7 @@ pub use application_api::{
     MAX_APPLICATION_JSON_BODY_BYTES, MAX_ATTACHMENT_UPLOAD_BODY_BYTES, REVISION_HEADER,
     RUNTIME_GENERATION_HEADER, application_router,
 };
-pub use managed_feedback::{LocalManagedFeedbackProvider, MANAGED_MCP_PATH};
+pub use managed_feedback::{AGENT_FEEDBACK_PATH, LocalManagedFeedbackProvider, MANAGED_MCP_PATH};
 pub use token::{AccessToken, TokenError, default_token_path};
 pub use web_access::{
     EVENT_CREDENTIAL_PROTOCOL_PREFIX, EVENT_PROTOCOL, WebAccessRouteConfig,
@@ -208,6 +208,23 @@ async fn api_feedback_result(
     result: Result<FeedbackRequestView, ApplicationError>,
     include_package_when_terminal: bool,
 ) -> Response<Body> {
+    feedback_result(application, result, include_package_when_terminal, false).await
+}
+
+async fn api_managed_feedback_result(
+    application: &FeedbackApplication,
+    result: Result<FeedbackRequestView, ApplicationError>,
+    include_package_when_terminal: bool,
+) -> Response<Body> {
+    feedback_result(application, result, include_package_when_terminal, true).await
+}
+
+async fn feedback_result(
+    application: &FeedbackApplication,
+    result: Result<FeedbackRequestView, ApplicationError>,
+    include_package_when_terminal: bool,
+    managed: bool,
+) -> Response<Body> {
     let value = match result {
         Ok(value) => value,
         Err(error) => {
@@ -219,6 +236,11 @@ async fn api_feedback_result(
     let object = structured
         .as_object_mut()
         .expect("feedback request view must serialize as an object");
+    if managed {
+        // Managed Agents end their turn; the durable continuation resumes them.
+        object.remove("poll_after_ms");
+        object.remove("execution_mode");
+    }
     if include_package_when_terminal
         && (value.feedback.is_some() || value.status == FeedbackStatus::Cancelled)
     {

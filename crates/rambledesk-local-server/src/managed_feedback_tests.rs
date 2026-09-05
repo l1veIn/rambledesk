@@ -91,6 +91,68 @@ async fn revoke_does_not_wait_for_an_admitted_but_unfinished_initialize_body() {
 }
 
 #[tokio::test]
+async fn json_revocation_cancels_an_unfinished_body_before_operation_admission() {
+    let (_directory, store, provider, endpoint) = provider().await;
+    let (polled, body_polled) = tokio::sync::oneshot::channel();
+    let body = Body::from_stream(futures::stream::once(async move {
+        let _ = polled.send(());
+        std::future::pending::<Result<axum::body::Bytes, std::io::Error>>().await
+    }));
+    let mut request = request(&endpoint, body, None);
+    *request.uri_mut() = "/agent-feedback/request".parse().unwrap();
+    let mut router = managed_router(provider.clone());
+    let pending = tokio::spawn(async move { router.call(request).await.unwrap() });
+    body_polled.await.unwrap();
+    tokio::time::timeout(Duration::from_secs(1), provider.revoke("managed-a"))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(pending.await.unwrap().status(), StatusCode::UNAUTHORIZED);
+    provider.shutdown().await;
+    store.close().await;
+}
+
+#[tokio::test]
+async fn json_rejects_malformed_oversized_and_non_json_bodies() {
+    let (_directory, store, provider, endpoint) = provider().await;
+    let mut router = managed_router(provider.clone());
+    for (body, content_type, expected) in [
+        (Body::from("{"), "application/json", StatusCode::BAD_REQUEST),
+        (
+            Body::from("{}"),
+            "application/json",
+            StatusCode::BAD_REQUEST,
+        ),
+        (
+            Body::from("{}"),
+            "text/plain",
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+        ),
+        (
+            Body::from(vec![b' '; MAX_ATTACHMENT_REQUEST_BODY_BYTES + 1]),
+            "application/json",
+            StatusCode::PAYLOAD_TOO_LARGE,
+        ),
+    ] {
+        let mut request = request(&endpoint, body, None);
+        *request.uri_mut() = "/agent-feedback/request".parse().unwrap();
+        request
+            .headers_mut()
+            .insert("Content-Type", content_type.parse().unwrap());
+        let response = router.call(request).await.unwrap();
+        assert_eq!(response.status(), expected);
+        let bytes = axum::body::to_bytes(response.into_body(), 1024)
+            .await
+            .unwrap();
+        let error: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(error["code"], "INVALID_ARGUMENT");
+        assert_eq!(error["retryable"], false);
+    }
+    provider.shutdown().await;
+    store.close().await;
+}
+
+#[tokio::test]
 async fn revoke_releases_initialized_workers_instead_of_leaving_the_manager_alive() {
     let (_directory, store, provider, endpoint) = provider().await;
     let binding = provider.bindings.read().await["managed-a"].clone();

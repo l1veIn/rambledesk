@@ -12,10 +12,10 @@ use axum::{
     response::IntoResponse,
 };
 use rambledesk_core::{
-    AgentDriverError, FeedbackApplication, ManagedFeedbackEndpoint, ManagedFeedbackProvider,
-    ManagedFeedbackScope, SessionRecord,
+    AgentDriverError, FeedbackApplication, ManagedFeedbackBinding, ManagedFeedbackEndpoint,
+    ManagedFeedbackProvider, ManagedFeedbackScope, SessionRecord,
 };
-use rambledesk_mcp::{ManagedMcpScope, ManagedRambleDeskMcp};
+use rambledesk_mcp::ManagedRambleDeskMcp;
 use rmcp::transport::streamable_http_server::{
     StreamableHttpServerConfig, StreamableHttpService,
     session::{SessionManager, local::LocalSessionManager},
@@ -27,12 +27,16 @@ use tower_service::Service;
 use crate::{AccessToken, MAX_ATTACHMENT_REQUEST_BODY_BYTES, host_is_loopback, web_security};
 
 pub const MANAGED_MCP_PATH: &str = "/mcp-managed";
+pub const AGENT_FEEDBACK_PATH: &str = "/agent-feedback";
+
+#[path = "managed_feedback_json.rs"]
+mod json;
 
 type ManagedService = StreamableHttpService<ManagedRambleDeskMcp, LocalSessionManager>;
 
 struct Binding {
     token: AccessToken,
-    scope: Arc<ManagedMcpScope>,
+    scope: Arc<ManagedFeedbackBinding>,
     service: ManagedService,
     sessions: Arc<LocalSessionManager>,
     active: RwLock<bool>,
@@ -182,7 +186,7 @@ impl ManagedFeedbackProvider for LocalManagedFeedbackProvider {
             .filter(|listener| !listener.cancellation.is_cancelled())
             .ok_or_else(|| AgentDriverError::new("Managed feedback listener is unavailable"))?;
         let token = AccessToken::generate();
-        let scope = Arc::new(ManagedMcpScope::new(identity));
+        let scope = Arc::new(ManagedFeedbackBinding::new(identity));
         let cancellation = listener.cancellation.child_token();
         let application = self.application.clone();
         let handler_scope = scope.clone();
@@ -260,10 +264,14 @@ async fn handle_request(
 }
 
 pub(crate) fn managed_router(provider: Arc<LocalManagedFeedbackProvider>) -> Router {
-    Router::new().nest(
-        MANAGED_MCP_PATH,
-        Router::new().fallback(handle_request).with_state(provider),
-    )
+    Router::new()
+        .nest(
+            MANAGED_MCP_PATH,
+            Router::new()
+                .fallback(handle_request)
+                .with_state(provider.clone()),
+        )
+        .nest(AGENT_FEEDBACK_PATH, json::router(provider))
 }
 
 #[cfg(test)]

@@ -2,8 +2,8 @@ use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 use anyhow::Context;
 use rambledesk_core::{
-    AgentConfig, FeedbackRepository, ManagedFeedbackEndpoint, ManagedFeedbackProvider,
-    NewManagedSession, SessionProtocol, SessionRecord, SessionRepository,
+    AgentConfig, CancelFeedbackInput, FeedbackRepository, ManagedFeedbackEndpoint,
+    ManagedFeedbackProvider, NewManagedSession, SessionProtocol, SessionRecord, SessionRepository,
 };
 use rambledesk_local_server::{
     AccessToken, LocalManagedFeedbackProvider, ServerConfig, ServerHandle,
@@ -95,6 +95,21 @@ impl Fixture {
         }
     }
 
+    fn command(
+        &self,
+        endpoint: &ManagedFeedbackEndpoint,
+        command: &str,
+        body: Value,
+    ) -> reqwest::RequestBuilder {
+        self.client
+            .post(format!(
+                "http://{}/agent-feedback/{command}",
+                self.server.address()
+            ))
+            .bearer_auth(&endpoint.bearer_token)
+            .json(&body)
+    }
+
     async fn initialize(&self, endpoint: &ManagedFeedbackEndpoint) -> anyhow::Result<String> {
         assert_eq!(
             endpoint.url,
@@ -157,6 +172,207 @@ async fn rpc_body(response: reqwest::Response) -> anyhow::Result<Value> {
 
 fn request_input(request_id: &str) -> Value {
     json!({"request_id":request_id,"what_happened":"Please review this fixture", "actions":[{"id":"review","instruction":"Review the fixture"}]})
+}
+
+#[tokio::test]
+async fn json_commands_fix_scope_replay_requests_and_return_terminal_packages() -> anyhow::Result<()>
+{
+    let fixture = Fixture::new().await?;
+    let a = fixture.provider.bind(&fixture.sessions[0]).await?;
+    let b = fixture.provider.bind(&fixture.sessions[1]).await?;
+    let request_id = uuid::Uuid::now_v7().to_string();
+    let mut input = request_input(&request_id);
+    input["host_id"] = json!("attacker");
+    input["host_session_id"] = json!(fixture.sessions[1].host_session_id);
+    input["managed_session_id"] = json!(fixture.sessions[1].session_id);
+    let created: Value = fixture
+        .command(&a, "request", input.clone())
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    assert_eq!(created["request_id"], request_id);
+    assert_eq!(created["status"], "waiting");
+    assert!(created.get("execution_mode").is_none());
+    assert!(created.get("poll_after_ms").is_none());
+    assert!(created.get("feedback_package").is_none());
+    let replay: Value = fixture
+        .command(&a, "request", input)
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    assert_eq!(created, replay);
+    let stored = fixture.store.get_request(&request_id).await?;
+    assert_eq!(stored.managed_session_id.as_deref(), Some("managed-a"));
+    assert_eq!(stored.host_id, fixture.sessions[0].host_id);
+    assert_eq!(stored.host_session_id, fixture.sessions[0].host_session_id);
+    for command in ["get", "recover"] {
+        let denied = fixture
+            .command(&b, command, json!({"request_id":request_id}))
+            .send()
+            .await?;
+        assert_eq!(denied.status(), reqwest::StatusCode::NOT_FOUND);
+        assert_eq!(denied.json::<Value>().await?["code"], "REQUEST_NOT_FOUND");
+    }
+    let recovered: Value = fixture
+        .command(
+            &a,
+            "recover",
+            json!({
+                "host_id":"attacker", "host_session_id":"managed-b"
+            }),
+        )
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    assert_eq!(recovered["request_id"], request_id);
+    // A human-side terminal operation still publishes the durable package. Both
+    // transports read that same package after the managed Agent is continued.
+    fixture
+        .store
+        .clone()
+        .into_application()
+        .cancel_feedback(CancelFeedbackInput {
+            request_id: request_id.clone(),
+            reason: "Review cancelled by the user".into(),
+        })
+        .await?;
+    for command in ["get", "recover"] {
+        let terminal: Value = fixture
+            .command(&a, command, json!({"request_id":request_id}))
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        assert_eq!(terminal["status"], "cancelled");
+        assert!(
+            terminal["feedback_package"]["markdown"]
+                .as_str()
+                .context("cancelled package markdown")?
+                .contains("Review cancelled by the user")
+        );
+        assert!(terminal.get("execution_mode").is_none());
+        assert!(terminal.get("poll_after_ms").is_none());
+    }
+    let sa = fixture.initialize(&a).await?;
+    let mcp = fixture
+        .call(&a, &sa, "get_feedback", json!({"request_id":request_id}))
+        .await?;
+    assert_eq!(mcp["structuredContent"]["status"], "cancelled");
+    assert!(mcp["structuredContent"]["feedback_package"].is_object());
+    fixture.server.shutdown().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn json_commands_enforce_private_credentials_and_revoke_with_mcp() -> anyhow::Result<()> {
+    let fixture = Fixture::new().await?;
+    let a = fixture.provider.bind(&fixture.sessions[0]).await?;
+    let b = fixture.provider.bind(&fixture.sessions[1]).await?;
+    let sa = fixture.initialize(&a).await?;
+    let sb = fixture.initialize(&b).await?;
+    for (header, value) in [
+        ("Host", "attacker.example"),
+        ("Origin", "https://attacker.example"),
+    ] {
+        assert_eq!(
+            fixture
+                .command(&a, "recover", json!({}))
+                .header(header, value)
+                .send()
+                .await?
+                .status(),
+            reqwest::StatusCode::FORBIDDEN
+        );
+    }
+    for token in [None, Some(GLOBAL_TOKEN)] {
+        let mut request = fixture
+            .client
+            .post(format!(
+                "http://{}/agent-feedback/recover",
+                fixture.server.address()
+            ))
+            .json(&json!({}));
+        if let Some(token) = token {
+            request = request.bearer_auth(token);
+        }
+        assert_eq!(
+            request.send().await?.status(),
+            reqwest::StatusCode::UNAUTHORIZED
+        );
+    }
+    assert_eq!(
+        fixture
+            .client
+            .post(format!(
+                "http://{}/api/feedback/recover",
+                fixture.server.address()
+            ))
+            .bearer_auth(&a.bearer_token)
+            .json(&json!({}))
+            .send()
+            .await?
+            .status(),
+        reqwest::StatusCode::UNAUTHORIZED
+    );
+    let replacement = fixture.provider.bind(&fixture.sessions[0]).await?;
+    for command in ["request", "get", "recover"] {
+        assert_eq!(
+            fixture
+                .command(&a, command, json!({}))
+                .send()
+                .await?
+                .status(),
+            reqwest::StatusCode::UNAUTHORIZED
+        );
+    }
+    let list = json!({"jsonrpc":"2.0","id":3,"method":"tools/list"});
+    assert_eq!(
+        fixture
+            .post(&a, Some(&sa), list.clone())
+            .send()
+            .await?
+            .status(),
+        reqwest::StatusCode::UNAUTHORIZED
+    );
+    assert!(
+        fixture
+            .post(&b, Some(&sb), list)
+            .send()
+            .await?
+            .status()
+            .is_success()
+    );
+    for endpoint in [&b, &replacement] {
+        let request_id = uuid::Uuid::now_v7().to_string();
+        fixture
+            .command(endpoint, "request", request_input(&request_id))
+            .send()
+            .await?
+            .error_for_status()?;
+    }
+    fixture.provider.revoke("managed-a").await?;
+    assert_eq!(
+        fixture
+            .command(&replacement, "recover", json!({}))
+            .send()
+            .await?
+            .status(),
+        reqwest::StatusCode::UNAUTHORIZED
+    );
+    fixture
+        .command(&b, "recover", json!({}))
+        .send()
+        .await?
+        .error_for_status()?;
+    fixture.server.shutdown().await?;
+    Ok(())
 }
 
 #[tokio::test]
