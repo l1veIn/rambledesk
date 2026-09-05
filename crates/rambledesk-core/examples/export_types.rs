@@ -1,4 +1,3 @@
-use rambledesk_core::FeedbackTransport;
 use rambledesk_core::{
     AgentCatalogCheck, AgentCatalogEntry, AgentCheckStatus, AgentConnectionKind, AgentDependency,
     AgentDependencyInspection, AgentDistribution, AgentInspection, AgentInstallJob,
@@ -10,6 +9,7 @@ use rambledesk_core::{
 use rambledesk_core::{
     AgentPromptCapabilities, SendManagedPromptContentInput, SessionPromptContent,
 };
+use rambledesk_core::{FeedbackTransport, ManagedFeedbackStatus, SessionContextUsage};
 use rambledesk_core::{ListManagedSessionActivityInput, ManagedSessionActivityPage};
 use rambledesk_core::{PrepareManagedSessionInput, SessionLifecycle};
 use rambledesk_core::{
@@ -119,8 +119,8 @@ fn main() -> std::io::Result<()> {
         exported::<AgentInstallProgress>(),
         exported::<InstalledAgent>(),
         exported::<CatalogAgentInput>(),
-        exported::<AgentInstallJobInput>(),
         exported::<ResolveCatalogAgentInput>(),
+        exported::<AgentInstallJobInput>(),
         exported::<AgentInstallJob>(),
         exported::<SessionActivityContent>(),
         exported::<SessionContentBlock>(),
@@ -144,7 +144,9 @@ fn main() -> std::io::Result<()> {
         exported::<SessionConnectionState>(),
         exported::<SessionActivityState>(),
         exported::<SessionRuntime>(),
+        exported::<SessionContextUsage>(),
         exported::<ManagedSessionSnapshot>(),
+        exported::<ManagedFeedbackStatus>(),
         exported::<AgentConnectionCheck>(),
         exported::<SessionProtocol>(),
         exported::<SessionManagement>(),
@@ -153,9 +155,9 @@ fn main() -> std::io::Result<()> {
         exported::<AgentConfigInput>(),
         exported::<SessionRecord>(),
         exported::<CreateManagedSessionInput>(),
-        exported::<ManagedSessionInput>(),
         exported::<PrepareManagedSessionInput>(),
         exported::<SessionLifecycle>(),
+        exported::<ManagedSessionInput>(),
         exported::<FeedbackStatus>(),
         exported::<FeedbackResolution>(),
         exported::<ExecutionMode>(),

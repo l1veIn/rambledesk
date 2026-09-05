@@ -19,6 +19,7 @@ import { APPLICATION_EVENTS_STREAM } from './applicationEvents'
 export const TAURI_APPLICATION_COMMANDS = {
   listAvailableAgents: 'list_available_agents',
   inspectAgentInstallation: 'inspect_agent_installation',
+  resolveCatalogAgent: 'resolve_catalog_agent',
   listAgentInstallJobs: 'list_agent_install_jobs',
   installAgent: 'install_agent',
   cancelAgentInstall: 'cancel_agent_install',
@@ -27,7 +28,10 @@ export const TAURI_APPLICATION_COMMANDS = {
   deleteAgentConfig: 'delete_agent_config',
   checkAgentConfig: 'check_agent_config',
   createManagedSession: 'create_managed_session',
+  prepareManagedSession: 'prepare_managed_session',
+  discardPreparedSession: 'discard_prepared_session',
   getManagedSession: 'get_managed_session',
+  getManagedFeedbackStatus: 'get_managed_feedback_status',
   startManagedSession: 'start_managed_session',
   stopManagedSession: 'stop_managed_session',
   cancelManagedPrompt: 'cancel_managed_prompt',

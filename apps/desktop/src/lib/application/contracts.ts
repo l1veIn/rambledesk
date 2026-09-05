@@ -1,7 +1,7 @@
 import type { ListManagedSessionActivityInput, ManagedSessionActivityPage } from '$lib/generated/feedback'
 import type { SendManagedPromptContentInput } from '$lib/generated/feedback'
 import type { SetManagedSessionConfigInput } from '$lib/generated/feedback'
-import type { AgentCatalogEntry, AgentInspection, CatalogAgentInput, AgentInstallJob, InstallAgentInput, AgentInstallJobInput } from '../generated/feedback'
+import type { AgentCatalogEntry, AgentInspection, CatalogAgentInput, ResolveCatalogAgentInput, AgentInstallJob, InstallAgentInput, AgentInstallJobInput } from '../generated/feedback'
 import {
   APPLICATION_ERROR_CODES,
   type AgentConfig,
@@ -16,6 +16,7 @@ import {
   type ApproveFeedbackInput,
   type CancelFeedbackInput,
   type CreateManagedSessionInput,
+  type PrepareManagedSessionInput,
   type DeleteFeedbackRequestInput,
   type DraftView,
   type FeedbackPackageView,
@@ -28,6 +29,7 @@ import {
   type ListHostSessionsInput,
   type ManagedSessionInput,
   type ManagedSessionSnapshot,
+  type ManagedFeedbackStatus,
   type RemoveAttachmentInput,
   type ReadAttachmentInput,
   type RenameHostSessionInput,
@@ -61,6 +63,7 @@ export type ApplicationAddAttachmentInput = Omit<AddAttachmentInput, 'contents'>
 export type ApplicationCommandMap = Readonly<{
   listAvailableAgents: ApplicationCommandContract<undefined, AgentCatalogEntry[]>
   inspectAgentInstallation: ApplicationCommandContract<CatalogAgentInput, AgentInspection>
+  resolveCatalogAgent: ApplicationCommandContract<ResolveCatalogAgentInput, AgentConfig>
   listAgentInstallJobs: ApplicationCommandContract<undefined, AgentInstallJob[]>
   installAgent: ApplicationCommandContract<InstallAgentInput, AgentInstallJob>
   cancelAgentInstall: ApplicationCommandContract<AgentInstallJobInput, void>
@@ -69,7 +72,10 @@ export type ApplicationCommandMap = Readonly<{
   deleteAgentConfig: ApplicationCommandContract<AgentConfigInput, void>
   checkAgentConfig: ApplicationCommandContract<AgentConfigInput, AgentConnectionCheck>
   createManagedSession: ApplicationCommandContract<CreateManagedSessionInput, ManagedSessionSnapshot>
+  prepareManagedSession: ApplicationCommandContract<PrepareManagedSessionInput, ManagedSessionSnapshot>
+  discardPreparedSession: ApplicationCommandContract<ManagedSessionInput, void>
   getManagedSession: ApplicationCommandContract<ManagedSessionInput, ManagedSessionSnapshot>
+  getManagedFeedbackStatus: ApplicationCommandContract<ManagedSessionInput, ManagedFeedbackStatus>
   startManagedSession: ApplicationCommandContract<ManagedSessionInput, ManagedSessionSnapshot>
   stopManagedSession: ApplicationCommandContract<ManagedSessionInput, ManagedSessionSnapshot>
   cancelManagedPrompt: ApplicationCommandContract<ManagedSessionInput, ManagedSessionSnapshot>

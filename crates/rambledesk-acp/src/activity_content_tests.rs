@@ -1,4 +1,23 @@
 use super::*;
+
+#[test]
+fn usage_update_preserves_agent_reported_context_counts() {
+    let event = convert(acp::SessionUpdate::UsageUpdate(acp::UsageUpdate::new(
+        12345, 128000,
+    )))
+    .unwrap()
+    .unwrap();
+    let AgentSessionEvent::ContextUsage(usage) = event else {
+        panic!("expected usage event")
+    };
+    assert_eq!(
+        usage,
+        SessionContextUsage {
+            used: 12345,
+            size: 128000
+        }
+    );
+}
 use serde_json::json;
 
 fn tool(value: serde_json::Value, initial: bool) -> SessionToolCallPatch {

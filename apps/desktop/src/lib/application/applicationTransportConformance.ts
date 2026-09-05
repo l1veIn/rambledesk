@@ -13,6 +13,7 @@ export const APPLICATION_CONFORMANCE_INPUTS = {
   listManagedSessionActivity: { session_id: 'local-session-1', before_sequence: 100, limit: 50 },
   listAvailableAgents: undefined,
   inspectAgentInstallation: { agent_id: 'deepseek' },
+  resolveCatalogAgent: { agent_id: 'deepseek', enable: false },
   listAgentInstallJobs: undefined,
   installAgent: { agent_id: 'deepseek', version: null },
   cancelAgentInstall: { job_id: 'job-1' },
@@ -24,7 +25,10 @@ export const APPLICATION_CONFORMANCE_INPUTS = {
   deleteAgentConfig: { agent_config_id: 'config-1' },
   checkAgentConfig: { agent_config_id: 'config-1' },
   createManagedSession: { agent_config_id: 'config-1', cwd: '/project', title: 'Project' },
+  prepareManagedSession: { agent_config_id: 'config-1', cwd: '/project' },
+  discardPreparedSession: { session_id: 'local-session-1' },
   getManagedSession: { session_id: 'local-session-1' },
+  getManagedFeedbackStatus: { session_id: 'local-session-1' },
   startManagedSession: { session_id: 'local-session-1' },
   stopManagedSession: { session_id: 'local-session-1' },
   cancelManagedPrompt: { session_id: 'local-session-1' },
@@ -107,7 +111,7 @@ export function applicationConformanceResult<Name extends ApplicationCommandName
   let result: unknown
   if (name === 'readFeedbackAttachment' || name === 'readRequestAttachment') {
     result = new Uint8Array([4, 5, 6]).buffer
-  } else if (name === 'cancelAgentInstall' || name === 'deleteHostSession' || name === 'deleteFeedbackRequest' || name === 'deleteAgentConfig' || name === 'deleteManagedSession') {
+  } else if (name === 'discardPreparedSession' || name === 'cancelAgentInstall' || name === 'deleteHostSession' || name === 'deleteFeedbackRequest' || name === 'deleteAgentConfig' || name === 'deleteManagedSession') {
     result = undefined
   } else if (
     name === 'listAvailableAgents' || name === 'listAgentInstallJobs' || name === 'listAgentConfigs' ||
@@ -155,7 +159,7 @@ export function runApplicationTransportConformance(
   describe(`${implementationName} ApplicationTransport conformance`, () => {
     it('maps all query mutation multipart binary and void operations', async () => {
       const fixture = createFixture()
-      expect(APPLICATION_COMMAND_NAMES).toHaveLength(44)
+      expect(APPLICATION_COMMAND_NAMES).toHaveLength(48)
 
       for (const [index, name] of APPLICATION_COMMAND_NAMES.entries()) {
         const input = APPLICATION_CONFORMANCE_INPUTS[name]

@@ -98,7 +98,7 @@ runApplicationTransportConformance('HTTP', () => {
     const name = semanticNameByOperation.get(operation)
     if (!name) return Response.json({ message: 'unknown operation' }, { status: 404 })
     const result = applicationConformanceResult(name)
-    if (name === 'cancelAgentInstall' || name === 'deleteHostSession' || name === 'deleteFeedbackRequest' || name === 'deleteAgentConfig' || name === 'deleteManagedSession') {
+    if (name === 'discardPreparedSession' || name === 'cancelAgentInstall' || name === 'deleteHostSession' || name === 'deleteFeedbackRequest' || name === 'deleteAgentConfig' || name === 'deleteManagedSession') {
       return new Response(null, { status: 204 })
     }
     if (result instanceof ArrayBuffer) return new Response(result)
@@ -404,8 +404,8 @@ describe('HttpApplicationTransport', () => {
   })
 
   it('defines one complete HTTP operation mapping', () => {
-    expect(Object.keys(HTTP_APPLICATION_OPERATIONS)).toHaveLength(44)
-    expect(new Set(Object.values(HTTP_APPLICATION_OPERATIONS)).size).toBe(44)
+    expect(Object.keys(HTTP_APPLICATION_OPERATIONS).sort()).toEqual(Object.keys(APPLICATION_CONFORMANCE_INPUTS).sort())
+    expect(new Set(Object.values(HTTP_APPLICATION_OPERATIONS)).size).toBe(Object.keys(HTTP_APPLICATION_OPERATIONS).length)
   })
 
   it('encodes JSON, multipart bytes, binary responses, and no-content outcomes', async () => {

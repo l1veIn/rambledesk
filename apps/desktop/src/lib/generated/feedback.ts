@@ -71,8 +71,23 @@ export type SessionActivity = { id: string, session_id: string, sequence: number
 export type AgentSessionCapabilities = { load_session: boolean, resume_session: boolean, http_mcp: boolean, prompt: AgentPromptCapabilities, feedback_transport?: FeedbackTransport, };
 export type SessionConnectionState = "stopped" | "connecting" | "connected" | "disconnected" | "failed";
 export type SessionActivityState = "idle" | "running" | "waiting_permission";
-export type SessionRuntime = { connection: SessionConnectionState, activity: SessionActivityState, instance_id: string | null, config_updated_at: string | null, capabilities: AgentSessionCapabilities, configuration: SessionConfiguration, last_error: string | null, };
+export type SessionRuntime = { connection: SessionConnectionState, activity: SessionActivityState, instance_id: string | null, config_updated_at: string | null, capabilities: AgentSessionCapabilities, configuration: SessionConfiguration,
+/**
+ * Live instance telemetry. Unknown until this instance reports usage; not
+ * persisted across application restarts or inferred from transcript text.
+ */
+context_usage?: SessionContextUsage, last_error: string | null, };
+export type SessionContextUsage = {
+/**
+ * Actual tokens currently in context, reported by the Agent.
+ */
+used: number,
+/**
+ * Context window capacity reported by the Agent; never inferred locally.
+ */
+size: number, };
 export type ManagedSessionSnapshot = { recovery: SessionRecovery | null, session: SessionRecord, runtime: SessionRuntime, activities: Array<SessionActivity>, permissions: Array<SessionPermission>, deliveries: Array<FeedbackDelivery>, deleting: boolean, };
+export type ManagedFeedbackStatus = { session_id: string, deleting: boolean, deliveries: Array<FeedbackDelivery>, };
 export type AgentConnectionCheck = { ok: boolean, message: string, details: Array<string>, };
 export type SessionProtocol = "acp";
 export type SessionManagement = { "kind": "external" } | { "kind": "managed", protocol: SessionProtocol, agent_config_id: string, cwd: string, remote_session_id: string | null, };
@@ -81,6 +96,8 @@ export type SaveAgentConfigInput = { id: string | null, catalog_id?: string, nam
 export type AgentConfigInput = { agent_config_id: string, };
 export type SessionRecord = { session_id: string, host_id: string, host_session_id: string, title: string, lifecycle?: SessionLifecycle, created_at: string, updated_at: string, management: SessionManagement, };
 export type CreateManagedSessionInput = { agent_config_id: string, cwd: string, title: string, };
+export type PrepareManagedSessionInput = { agent_config_id: string, cwd: string, };
+export type SessionLifecycle = "prepared" | "active";
 export type ManagedSessionInput = { session_id: string, };
 export type FeedbackStatus = "waiting" | "in_progress" | "completed" | "cancelled";
 export type FeedbackResolution = "feedback_submitted" | "approved" | "cancelled";
@@ -95,8 +112,6 @@ export type ApplicationHostProfileView = { id: string, label: string, icon_svg: 
 export type ActionInput = { id: string, instruction: string, };
 export type ContextRef = { label: string, uri: string, };
 export type GetFeedbackInput = { request_id: string, };
-export type PrepareManagedSessionInput = { agent_config_id: string, cwd: string, };
-export type SessionLifecycle = "prepared" | "active";
 export type FeedbackResultView = { package_uri: string, directory_path: string, markdown_path: string, manifest_path: string, };
 export type ApplicationFeedbackResultView = { available: boolean, };
 export type FeedbackPackageAttachment = { id: string, file_name: string, media_type: string, byte_size: number, sha256: string, path: string, };

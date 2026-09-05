@@ -565,6 +565,7 @@ fn tauri_managed_commands_match_http_names_and_delegate_to_the_same_facade() {
         ("prepareManagedSession", "prepare_managed_session"),
         ("discardPreparedSession", "discard_prepared_session"),
         ("getManagedSession", "get_managed_session"),
+        ("getManagedFeedbackStatus", "get_managed_feedback_status"),
         ("startManagedSession", "start_managed_session"),
         ("stopManagedSession", "stop_managed_session"),
         ("sendManagedPrompt", "send_managed_prompt"),
@@ -590,8 +591,8 @@ fn tauri_managed_commands_match_http_names_and_delegate_to_the_same_facade() {
         );
         assert!(routes.contains(&format!("/application/{camel}")), "{camel}");
     }
-    assert_eq!(commands.matches("#[tauri::command]").count(), 18);
-    assert_eq!(commands.matches("input:").count(), 17);
+    assert_eq!(commands.matches("#[tauri::command]").count(), 19);
+    assert_eq!(commands.matches("input:").count(), 18);
     assert!(registration.contains(".with_sessions(sessions.clone())"));
     assert!(registration.contains("state.sessions.shutdown()"));
     assert!(registration.contains("sessions.start_delivery_worker()"));
@@ -684,6 +685,29 @@ async fn uncertain_delivery_decisions_are_scoped_and_return_the_updated_snapshot
                 now,
             )
             .await?;
+        // This is a read-only projection: no generation fence or Agent snapshot
+        // is required to show the request's durable continuation state.
+        let status: Value = fixture
+            .request(
+                "getManagedFeedbackStatus",
+                json!({"session_id":session.session.session_id}),
+            )
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        assert_eq!(status.as_object().unwrap().len(), 3);
+        assert_eq!(status["session_id"], session.session.session_id);
+        assert_eq!(status["deleting"], false);
+        let pending = status["deliveries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|delivery| delivery["request_id"] == request.request_id)
+            .unwrap();
+        assert_eq!(pending["state"], "uncertain");
+        assert_eq!(pending["last_error"], "fixture interruption");
         let resolved = fixture.call("resolveFeedbackDelivery", json!({"session_id":session.session.session_id,"request_id":request.request_id,"action":action})).await?;
         let delivery = resolved["deliveries"]
             .as_array()
@@ -693,6 +717,32 @@ async fn uncertain_delivery_decisions_are_scoped_and_return_the_updated_snapshot
             .unwrap();
         assert_eq!(delivery["state"], expected);
         assert_eq!(delivery["session_id"], session.session.session_id);
+        let status = fixture
+            .call(
+                "getManagedFeedbackStatus",
+                json!({"session_id":session.session.session_id}),
+            )
+            .await?;
+        assert_eq!(
+            status["deliveries"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|delivery| delivery["request_id"] == request.request_id)
+                .unwrap()["state"],
+            expected
+        );
     }
+    fixture
+        .store
+        .begin_managed_session_deletion(&session.session.session_id, "2026-09-05T12:00:00Z")
+        .await?;
+    let status = fixture
+        .call(
+            "getManagedFeedbackStatus",
+            json!({"session_id":session.session.session_id}),
+        )
+        .await?;
+    assert_eq!(status["deleting"], true);
     fixture.shutdown().await
 }

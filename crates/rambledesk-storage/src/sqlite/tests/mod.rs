@@ -186,6 +186,24 @@ async fn reconnect_rejects_arbitrary_migration_checksum_changes() {
 }
 
 mod activity;
+
+// Migration fixtures must write the schema version under test directly. Current
+// repositories may legitimately require columns added by later migrations.
+async fn seed_legacy_managed_sessions(
+    pool: &SqlitePool,
+    ids: &[&str],
+    cwd: &std::path::Path,
+    now: &str,
+) {
+    sqlx::query("INSERT INTO agent_configs(id,name,host_id,protocol,enabled,command,args_json,env_json,created_at,updated_at) VALUES ('config','Test','dsh','acp',1,'agent','[]','{}',?1,?1)")
+        .bind(now).execute(pool).await.unwrap();
+    for id in ids {
+        sqlx::query("INSERT INTO host_sessions(id,host_id,host_session_id,display_title,created_at,updated_at) VALUES (?1,'dsh',?1,?1,?2,?2)")
+            .bind(id).bind(now).execute(pool).await.unwrap();
+        sqlx::query("INSERT INTO managed_sessions(session_id,protocol,agent_config_id,cwd) VALUES (?1,'acp','config',?2)")
+            .bind(id).bind(cwd.to_string_lossy().as_ref()).execute(pool).await.unwrap();
+    }
+}
 mod application_changes;
 mod deletion;
 mod deliveries;

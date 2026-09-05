@@ -33,6 +33,7 @@ import {
 export const HTTP_APPLICATION_OPERATIONS = {
   listAvailableAgents: 'listAvailableAgents',
   inspectAgentInstallation: 'inspectAgentInstallation',
+  resolveCatalogAgent: 'resolveCatalogAgent',
   listAgentInstallJobs: 'listAgentInstallJobs',
   installAgent: 'installAgent',
   cancelAgentInstall: 'cancelAgentInstall',
@@ -41,7 +42,10 @@ export const HTTP_APPLICATION_OPERATIONS = {
   deleteAgentConfig: 'deleteAgentConfig',
   checkAgentConfig: 'checkAgentConfig',
   createManagedSession: 'createManagedSession',
+  prepareManagedSession: 'prepareManagedSession',
+  discardPreparedSession: 'discardPreparedSession',
   getManagedSession: 'getManagedSession',
+  getManagedFeedbackStatus: 'getManagedFeedbackStatus',
   startManagedSession: 'startManagedSession',
   stopManagedSession: 'stopManagedSession',
   cancelManagedPrompt: 'cancelManagedPrompt',
@@ -89,6 +93,7 @@ const NO_ARGUMENT_COMMANDS: ReadonlySet<ApplicationCommandName> = new Set([
 ])
 
 const VOID_COMMANDS: ReadonlySet<ApplicationCommandName> = new Set([
+  'discardPreparedSession',
   'cancelAgentInstall',
   'deleteManagedSession',
   'deleteAgentConfig',
@@ -102,6 +107,9 @@ const BINARY_COMMANDS: ReadonlySet<ApplicationCommandName> = new Set([
 ])
 
 const MUTATION_COMMANDS: ReadonlySet<ApplicationCommandName> = new Set([
+  'prepareManagedSession',
+  'discardPreparedSession',
+  'resolveCatalogAgent',
   'inspectAgentInstallation', 'installAgent', 'cancelAgentInstall',
   'saveAgentConfig',
   'deleteAgentConfig',
@@ -830,6 +838,7 @@ export function applicationCommandResponseResources<Name extends ApplicationComm
   switch (name) {
     case 'listAvailableAgents':
     case 'inspectAgentInstallation':
+    case 'resolveCatalogAgent':
     case 'listAgentInstallJobs':
     case 'installAgent':
     case 'cancelAgentInstall':
@@ -839,9 +848,11 @@ export function applicationCommandResponseResources<Name extends ApplicationComm
     case 'checkAgentConfig':
       return [{ kind: 'agent_configurations' }]
     case 'createManagedSession':
+    case 'prepareManagedSession':
       return [{ kind: 'navigation' }]
     case 'listManagedSessionActivity':
     case 'getManagedSession':
+    case 'getManagedFeedbackStatus':
     case 'startManagedSession':
     case 'stopManagedSession':
     case 'cancelManagedPrompt':
@@ -851,6 +862,7 @@ export function applicationCommandResponseResources<Name extends ApplicationComm
     case 'respondManagedPermission':
     case 'resolveFeedbackDelivery':
     case 'deleteManagedSession':
+    case 'discardPreparedSession':
       return [{ kind: 'managed_session', session_id: canonicalUuid((input as { session_id: string }).session_id.trim()) }]
     case 'getFeedbackWorkspace':
     case 'saveFeedbackDraft':
@@ -913,6 +925,10 @@ export function applicationCommandProjectionKey<Name extends ApplicationCommandN
     case 'listAgentInstallJobs':
     case 'listAgentConfigs':
       return projectionKey(name)
+    case 'resolveCatalogAgent': {
+      const resolve = input as ApplicationCommandInput<'resolveCatalogAgent'>
+      return projectionKey(name, resolve.agent_id, resolve.agent_config_id ?? null)
+    }
     case 'inspectAgentInstallation':
     case 'installAgent':
       return projectionKey(name, (input as CatalogInput).agent_id)
@@ -923,11 +939,13 @@ export function applicationCommandProjectionKey<Name extends ApplicationCommandN
     case 'deleteAgentConfig':
     case 'checkAgentConfig':
       return projectionKey(name, canonicalUuid((input as { agent_config_id: string }).agent_config_id.trim()))
+    case 'prepareManagedSession':
     case 'createManagedSession': {
       const createInput = input as ApplicationCommandInput<'createManagedSession'>
       return projectionKey(name, canonicalUuid(createInput.agent_config_id.trim()), createInput.cwd.trim())
     }
     case 'getManagedSession':
+    case 'getManagedFeedbackStatus':
     case 'startManagedSession':
     case 'stopManagedSession':
     case 'cancelManagedPrompt':
@@ -937,6 +955,7 @@ export function applicationCommandProjectionKey<Name extends ApplicationCommandN
     case 'respondManagedPermission':
     case 'resolveFeedbackDelivery':
     case 'deleteManagedSession':
+    case 'discardPreparedSession':
       return projectionKey(name, canonicalUuid((input as { session_id: string }).session_id.trim()))
     case 'listFeedbackInbox':
     case 'listHostSessions':

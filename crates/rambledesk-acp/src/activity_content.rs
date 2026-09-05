@@ -8,6 +8,12 @@ use crate::AcpError;
 
 pub(crate) fn convert(update: acp::SessionUpdate) -> Result<Option<AgentSessionEvent>, AcpError> {
     let event = match update {
+        acp::SessionUpdate::UsageUpdate(usage) => {
+            AgentSessionEvent::ContextUsage(SessionContextUsage {
+                used: usage.used,
+                size: usage.size,
+            })
+        }
         acp::SessionUpdate::AgentMessageChunk(chunk) => {
             message(SessionActivityKind::AgentMessage, &chunk.content)
         }

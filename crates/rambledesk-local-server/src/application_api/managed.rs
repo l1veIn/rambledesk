@@ -46,6 +46,10 @@ pub(super) fn routes() -> Router<ApplicationApiState> {
         )
         .route("/application/getManagedSession", post(get_managed_session))
         .route(
+            "/application/getManagedFeedbackStatus",
+            post(get_managed_feedback_status),
+        )
+        .route(
             "/application/startManagedSession",
             post(start_managed_session),
         )
@@ -147,6 +151,16 @@ async fn get_managed_session(
     ApplicationJson(input): ApplicationJson<ManagedSessionInput>,
 ) -> Response<Body> {
     stable_managed_result(&state, || state.commands.get_managed_session(input.clone())).await
+}
+
+async fn get_managed_feedback_status(
+    State(state): State<ApplicationApiState>,
+    ApplicationJson(input): ApplicationJson<ManagedSessionInput>,
+) -> Response<Body> {
+    stable_managed_result(&state, || {
+        state.commands.get_managed_feedback_status(input.clone())
+    })
+    .await
 }
 
 async fn prepare_managed_session(

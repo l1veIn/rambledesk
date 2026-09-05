@@ -15,6 +15,7 @@ import type {
   CreateManagedSessionInput,
   ManagedSessionInput,
   ManagedSessionSnapshot,
+  ManagedFeedbackStatus,
   SaveAgentConfigInput,
   SendManagedPromptInput,
   RespondManagedPermissionInput,
@@ -47,6 +48,7 @@ describe('application command contracts', () => {
     expectTypeOf<ApplicationCommandInput<'deleteManagedSession'>>().toEqualTypeOf<ManagedSessionInput>()
     expectTypeOf<ApplicationCommandResult<'deleteManagedSession'>>().toEqualTypeOf<void>()
     expectTypeOf<ApplicationCommandResult<'getManagedSession'>>().toEqualTypeOf<ManagedSessionSnapshot>()
+    expectTypeOf<ApplicationCommandResult<'getManagedFeedbackStatus'>>().toEqualTypeOf<ManagedFeedbackStatus>()
     expectTypeOf<ApplicationCommandInput<'listFeedbackInbox'>>().toEqualTypeOf<undefined>()
     expectTypeOf<ApplicationCommandResult<'listFeedbackInbox'>>().toEqualTypeOf<
       FeedbackRequestSummary[]
@@ -96,13 +98,16 @@ describe('application command contracts', () => {
       'listManagedSessionActivity',
       'sendManagedPromptContent',
       'setManagedSessionConfig',
-      'listAvailableAgents', 'inspectAgentInstallation', 'listAgentInstallJobs', 'installAgent', 'cancelAgentInstall',
+      'listAvailableAgents', 'inspectAgentInstallation', 'resolveCatalogAgent', 'listAgentInstallJobs', 'installAgent', 'cancelAgentInstall',
       'listAgentConfigs',
       'saveAgentConfig',
       'deleteAgentConfig',
       'checkAgentConfig',
       'createManagedSession',
+      'prepareManagedSession',
+      'discardPreparedSession',
       'getManagedSession',
+      'getManagedFeedbackStatus',
       'startManagedSession',
       'stopManagedSession',
       'cancelManagedPrompt',
@@ -135,7 +140,7 @@ describe('application command contracts', () => {
       'readRequestAttachment',
     ] as const satisfies readonly ApplicationCommandName[]
 
-    expect(commands).toHaveLength(44)
+    expect(commands).toHaveLength(48)
     expectTypeOf<(typeof commands)[number]>().toEqualTypeOf<ApplicationCommandName>()
   })
 })

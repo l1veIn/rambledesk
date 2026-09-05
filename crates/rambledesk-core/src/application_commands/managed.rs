@@ -200,6 +200,15 @@ impl ApplicationCommandFacade {
             .await
             .map_err(Into::into)
     }
+    pub async fn get_managed_feedback_status(
+        &self,
+        input: ManagedSessionInput,
+    ) -> Result<crate::ManagedFeedbackStatus, ManagedCommandError> {
+        self.managed_sessions()?
+            .get_feedback_status(input)
+            .await
+            .map_err(Into::into)
+    }
     pub async fn start_managed_session(
         &self,
         input: ManagedSessionInput,

@@ -58,6 +58,17 @@ pub(crate) async fn get_managed_session(
 }
 
 #[tauri::command]
+pub(crate) async fn get_managed_feedback_status(
+    state: tauri::State<'_, WorkbenchState>,
+    input: ManagedSessionInput,
+) -> Result<rambledesk_core::ManagedFeedbackStatus, ManagedCommandError> {
+    state
+        .application_commands
+        .get_managed_feedback_status(input)
+        .await
+}
+
+#[tauri::command]
 pub(crate) async fn prepare_managed_session(
     state: tauri::State<'_, WorkbenchState>,
     input: PrepareManagedSessionInput,

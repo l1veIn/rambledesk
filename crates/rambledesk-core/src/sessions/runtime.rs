@@ -56,6 +56,16 @@ impl FeedbackTransport {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
+pub struct SessionContextUsage {
+    /// Actual tokens currently in context, reported by the Agent.
+    #[ts(type = "number")]
+    pub used: u64,
+    /// Context window capacity reported by the Agent; never inferred locally.
+    #[ts(type = "number")]
+    pub size: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 pub struct SessionRuntime {
     pub connection: SessionConnectionState,
     pub activity: SessionActivityState,
@@ -64,6 +74,11 @@ pub struct SessionRuntime {
     pub capabilities: AgentSessionCapabilities,
     #[serde(default)]
     pub configuration: super::SessionConfiguration,
+    /// Live instance telemetry. Unknown until this instance reports usage; not
+    /// persisted across application restarts or inferred from transcript text.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub context_usage: Option<SessionContextUsage>,
     pub last_error: Option<String>,
 }
 
@@ -76,6 +91,7 @@ impl Default for SessionRuntime {
             config_updated_at: None,
             capabilities: AgentSessionCapabilities::default(),
             configuration: super::SessionConfiguration::default(),
+            context_usage: None,
             last_error: None,
         }
     }

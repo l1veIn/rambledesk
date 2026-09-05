@@ -12,6 +12,7 @@
   import { captureActivityAnchor, restoreActivityAnchor } from './chat/scroll-anchor'
   import { chatText } from './chat/chat-text'
   import SessionConfigurationControls from './configuration/SessionConfigurationControls.svelte'
+  import SessionContextUsage from './SessionContextUsage.svelte'
   import { attachmentAccept, canAttachFiles, readPromptFiles, validatePromptAttachments, type PromptAttachment } from './attachments/promptAttachments'
   import { attachmentText } from './attachments/attachmentText'
   import { locale } from '$lib/preferences'
@@ -353,6 +354,9 @@
         </svelte:fragment>
       </AgentComposer>
     {/key}
-    <p class="m-0 px-1 text-[10px] text-muted-foreground">{tr('Closing this view keeps the agent running.')}</p>
+    <div class="flex items-center justify-between gap-3 px-1">
+      <p class="m-0 text-[10px] text-muted-foreground">{tr('Closing this view keeps the agent running.')}</p>
+      <SessionContextUsage usage={snapshot.runtime.context_usage} />
+    </div>
   </div>
 </section>

@@ -27,6 +27,7 @@ pub struct AgentSessionLaunch {
 
 pub enum AgentSessionEvent {
     ConfigurationChanged,
+    ContextUsage(super::SessionContextUsage),
     PermissionRequested(super::SessionPermission),
     Activity {
         kind: super::SessionActivityKind,

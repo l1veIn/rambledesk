@@ -310,7 +310,7 @@ impl SessionApplication {
         drop(live);
         let activities = self
             .activities
-            .list_recent_session_activity(&input.session_id, 1000)
+            .list_recent_session_activity(&input.session_id, 100)
             .await?;
         let deliveries = match &self.deliveries {
             Some(repository) => {
@@ -394,6 +394,7 @@ impl SessionApplication {
         let mut live = entry.live.lock().await;
         live.runtime.connection = SessionConnectionState::Connecting;
         live.runtime.instance_id = Some(instance_id.clone());
+        live.runtime.context_usage = None;
         live.runtime.last_error = None;
         drop(live);
         self.changed();
@@ -446,6 +447,7 @@ impl SessionApplication {
                     config_updated_at: Some(version),
                     capabilities: started.capabilities,
                     configuration: started.connection.configuration(),
+                    context_usage: live.runtime.context_usage.clone(),
                     last_error: None,
                 };
                 live.connection = Some(started.connection);

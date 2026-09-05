@@ -359,6 +359,21 @@ impl SessionApplication {
         let Some(entry) = self.entries.lock().await.get(session_id).cloned() else {
             return Ok(());
         };
+        if let AgentSessionEvent::ContextUsage(usage) = event {
+            let mut live = entry.live.lock().await;
+            if live.runtime.instance_id.as_deref() == Some(instance)
+                && matches!(
+                    live.runtime.connection,
+                    SessionConnectionState::Connected | SessionConnectionState::Connecting
+                )
+                && live.runtime.context_usage.as_ref() != Some(&usage)
+            {
+                live.runtime.context_usage = Some(usage);
+                drop(live);
+                self.session_changed(session_id);
+            }
+            return Ok(());
+        }
         if matches!(event, AgentSessionEvent::ConfigurationChanged) {
             let live = entry.live.lock().await;
             if live.runtime.instance_id.as_deref() == Some(instance)
@@ -387,6 +402,7 @@ impl SessionApplication {
             AgentSessionEvent::ConfigurationChanged => {
                 unreachable!("handled before turn attribution")
             }
+            AgentSessionEvent::ContextUsage(_) => unreachable!("handled before turn attribution"),
             AgentSessionEvent::MessageChunk {
                 kind,
                 block,

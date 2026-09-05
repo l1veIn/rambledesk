@@ -10,6 +10,158 @@ use std::{
 };
 use tokio::sync::Notify;
 
+#[tokio::test]
+async fn initial_snapshot_is_bounded_and_older_pages_recover_the_complete_history() {
+    let (_dir, store, app, _driver, ids) = setup().await;
+    let id = &ids[0];
+    for sequence in 1..=205 {
+        store
+            .append_activity(NewSessionActivity {
+                id: format!("row-{sequence}"),
+                session_id: id.clone(),
+                turn_id: None,
+                kind: SessionActivityKind::AgentMessage,
+                text: format!("message {sequence}"),
+                tool_call_id: None,
+                created_at: "2026-09-05T12:00:00Z".into(),
+                content: None,
+            })
+            .await
+            .unwrap();
+    }
+    let recent = app
+        .get_session(ManagedSessionInput {
+            session_id: id.clone(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(recent.activities.len(), 100);
+    assert_eq!(recent.activities.first().unwrap().sequence, 106);
+    assert_eq!(recent.activities.last().unwrap().sequence, 205);
+    let older = app
+        .list_activity_history(ListManagedSessionActivityInput {
+            session_id: id.clone(),
+            before_sequence: 106,
+            limit: None,
+        })
+        .await
+        .unwrap();
+    assert!(older.has_more);
+    assert_eq!(older.activities.len(), 100);
+    assert_eq!(older.activities.first().unwrap().sequence, 6);
+    assert_eq!(older.activities.last().unwrap().sequence, 105);
+    let first = app
+        .list_activity_history(ListManagedSessionActivityInput {
+            session_id: id.clone(),
+            before_sequence: 6,
+            limit: None,
+        })
+        .await
+        .unwrap();
+    assert!(!first.has_more);
+    let all = first
+        .activities
+        .iter()
+        .chain(&older.activities)
+        .chain(&recent.activities)
+        .map(|row| row.sequence)
+        .collect::<Vec<_>>();
+    assert_eq!(all, (1..=205).collect::<Vec<_>>());
+    app.shutdown().await.unwrap();
+    store.close().await;
+}
+
+#[tokio::test]
+async fn context_usage_is_instance_scoped_and_unknown_after_restart() {
+    let (_dir, store, app, driver, ids) = setup().await;
+    let id = &ids[0];
+    let old = driver.connections.lock().unwrap()[id].clone();
+    let input = ManagedSessionInput {
+        session_id: id.clone(),
+    };
+    assert_eq!(
+        app.get_session(input.clone())
+            .await
+            .unwrap()
+            .runtime
+            .context_usage,
+        None
+    );
+    old.observer
+        .observe(AgentSessionEvent::ContextUsage(SessionContextUsage {
+            used: 40000,
+            size: 128000,
+        }))
+        .await
+        .unwrap();
+    let snapshot = app.get_session(input.clone()).await.unwrap();
+    assert_eq!(
+        snapshot.runtime.context_usage,
+        Some(SessionContextUsage {
+            used: 40000,
+            size: 128000
+        })
+    );
+    assert!(snapshot.activities.is_empty());
+    assert_eq!(
+        app.get_session(ManagedSessionInput {
+            session_id: ids[1].clone()
+        })
+        .await
+        .unwrap()
+        .runtime
+        .context_usage,
+        None
+    );
+    app.stop_session(input.clone()).await.unwrap();
+    app.start_session(input.clone()).await.unwrap();
+    assert_eq!(
+        app.get_session(input.clone())
+            .await
+            .unwrap()
+            .runtime
+            .context_usage,
+        None
+    );
+    old.observer
+        .observe(AgentSessionEvent::ContextUsage(SessionContextUsage {
+            used: 999,
+            size: 1000,
+        }))
+        .await
+        .unwrap();
+    assert_eq!(
+        app.get_session(input.clone())
+            .await
+            .unwrap()
+            .runtime
+            .context_usage,
+        None
+    );
+    let current = driver.connections.lock().unwrap()[id].clone();
+    current
+        .observer
+        .observe(AgentSessionEvent::ContextUsage(SessionContextUsage {
+            used: 100,
+            size: 128000,
+        }))
+        .await
+        .unwrap();
+    app.shutdown().await.unwrap();
+    let fresh = SessionApplication::new(store.clone(), store.clone(), driver);
+    assert_eq!(
+        fresh
+            .get_session(input)
+            .await
+            .unwrap()
+            .runtime
+            .context_usage,
+        None
+    );
+    fresh.shutdown().await.unwrap();
+    store.close().await;
+}
+
 #[derive(Default)]
 struct Driver {
     connections: Mutex<HashMap<String, Arc<Connection>>>,
@@ -84,6 +236,7 @@ async fn setup() -> (
     let app = SessionApplication::new(store.clone(), store.clone(), driver.clone());
     let config = app
         .save_agent_config(SaveAgentConfigInput {
+            catalog_id: None,
             id: None,
             name: "Fixture".into(),
             host_id: "fixture".into(),
@@ -110,7 +263,6 @@ async fn setup() -> (
         );
     }
     (dir, store, app, driver, ids)
-            catalog_id: None,
 }
 async fn prompt(app: &SessionApplication, id: &str) {
     app.send_prompt(SendManagedPromptInput {
