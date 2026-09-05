@@ -1,11 +1,15 @@
 use super::*;
 use rambledesk_core::{
-    AgentInstallJobInput, AgentManagementError, CatalogAgentInput, InstallAgentInput, ResolveCatalogAgentInput,
+    AgentInstallJobInput, AgentManagementError, CatalogAgentInput, InstallAgentInput,
+    ResolveCatalogAgentInput,
 };
 
 pub(super) fn routes() -> Router<ApplicationApiState> {
     Router::new()
-        .route("/application/resolveCatalogAgent", post(resolve_catalog_agent))
+        .route(
+            "/application/resolveCatalogAgent",
+            post(resolve_catalog_agent),
+        )
         .route(
             "/application/listAvailableAgents",
             post(list_available_agents),

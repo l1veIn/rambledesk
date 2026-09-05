@@ -1,7 +1,7 @@
 use crate::WorkbenchState;
 use rambledesk_core::{
-    AgentCatalogEntry, AgentInspection, AgentInstallJob, AgentInstallJobInput,
-    AgentManagementError, CatalogAgentInput, InstallAgentInput, ResolveCatalogAgentInput, AgentConfig,
+    AgentCatalogEntry, AgentConfig, AgentInspection, AgentInstallJob, AgentInstallJobInput,
+    AgentManagementError, CatalogAgentInput, InstallAgentInput, ResolveCatalogAgentInput,
 };
 
 #[tauri::command]
@@ -9,7 +9,10 @@ pub(crate) async fn resolve_catalog_agent(
     state: tauri::State<'_, WorkbenchState>,
     input: ResolveCatalogAgentInput,
 ) -> Result<AgentConfig, AgentManagementError> {
-    state.application_commands.resolve_catalog_agent(input).await
+    state
+        .application_commands
+        .resolve_catalog_agent(input)
+        .await
 }
 
 #[tauri::command]

@@ -107,9 +107,8 @@ export class TurnFoldState {
   #latestUserSequence = -1
   #latestUserId: string | null = null
   #observedSequence = -1
-  #currentTurn: string | null = null
   #overrides = new Map<string, boolean>()
-  observe(activities: readonly SessionActivity[], items: readonly TimelineItem[]): void {
+  observe(activities: readonly SessionActivity[], _items: readonly TimelineItem[]): void {
     const user = activities.findLast((row) => row.kind === 'user_message')
     const sequence = user?.sequence ?? 0
     if (user && user.id !== this.#latestUserId && (sequence > this.#latestUserSequence || this.#latestUserSequence < 0)) {
@@ -117,18 +116,15 @@ export class TurnFoldState {
       const newSend = typeof user.sequence === 'number' ? user.sequence > this.#observedSequence : this.#latestUserId !== null
       if (this.#initialized && newSend) {
         this.#overrides.clear()
-        this.#currentTurn = user.turn_id ?? null
       }
       this.#latestUserId = user.id
       this.#latestUserSequence = sequence
     }
-    const active = items.findLast((item) => item.type === 'turn' && item.turn.active)
-    if (active?.type === 'turn') this.#currentTurn = active.turn.id
     for (const row of activities) this.#observedSequence = Math.max(this.#observedSequence, row.sequence ?? -1)
     this.#initialized = true
   }
   open(turn: AgentTurn): boolean {
-    return !turn.foldable || (this.#overrides.get(turn.id) ?? (turn.active || this.#currentTurn === turn.id))
+    return !turn.foldable || (this.#overrides.get(turn.id) ?? turn.active)
   }
   toggle(id: string, open: boolean): void { this.#overrides.set(id, open) }
 }

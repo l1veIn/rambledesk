@@ -91,12 +91,21 @@ describe('turn fold state', () => {
     state.observe(next, groupTimeline(next, false))
     expect(state.open(turn)).toBe(false)
   })
-  it('does not snap the current round shut on completion, including manual live folds', () => {
+  it('automatically folds work when the current turn finishes', () => {
     const state = new TurnFoldState()
     const all = fixture()
     const live = all.slice(0, -1)
     state.observe(live, groupTimeline(live, true))
     expect(state.open(lastTurn(live, true))).toBe(true)
+    state.observe(all, groupTimeline(all, false))
+    expect(state.open(lastTurn(all))).toBe(false)
+  })
+  it('keeps explicit reader choices across turn completion', () => {
+    const state = new TurnFoldState()
+    const all = fixture()
+    const live = all.slice(0, -1)
+    state.observe(live, groupTimeline(live, true))
+    state.toggle('one', true)
     state.observe(all, groupTimeline(all, false))
     expect(state.open(lastTurn(all))).toBe(true)
     state.toggle('one', false)
