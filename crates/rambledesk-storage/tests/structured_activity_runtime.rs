@@ -11,6 +11,86 @@ use std::{
 use tokio::sync::Notify;
 
 #[tokio::test]
+async fn feedback_status_reads_live_execution_and_defaults_to_stopped_without_a_runtime_owner() {
+    let (_dir, store, app, driver, ids) = setup().await;
+    let input = ManagedSessionInput {
+        session_id: ids[0].clone(),
+    };
+    let initial = app.get_feedback_status(input.clone()).await.unwrap();
+    assert_eq!(initial.connection, SessionConnectionState::Connected);
+    assert_eq!(initial.activity, SessionActivityState::Idle);
+    // The durable record still exists, but another application instance has no
+    // running Agent. The light query must not restore or create that runtime.
+    let fresh = SessionApplication::new(store.clone(), store.clone(), driver.clone());
+    let stopped = fresh.get_feedback_status(input.clone()).await.unwrap();
+    assert_eq!(stopped.connection, SessionConnectionState::Stopped);
+    assert_eq!(stopped.activity, SessionActivityState::Idle);
+    prompt(&app, &ids[0]).await;
+    assert_eq!(
+        app.get_feedback_status(input.clone())
+            .await
+            .unwrap()
+            .activity,
+        SessionActivityState::Running
+    );
+    let connection = driver.connections.lock().unwrap()[&ids[0]].clone();
+    connection
+        .observer
+        .observe(AgentSessionEvent::PermissionRequested(SessionPermission {
+            request_id: "permission".into(),
+            session_id: ids[0].clone(),
+            title: "Approve".into(),
+            details: None,
+            options: vec![],
+        }))
+        .await
+        .unwrap();
+    let waiting = app.get_feedback_status(input.clone()).await.unwrap();
+    assert_eq!(waiting.connection, SessionConnectionState::Connected);
+    assert_eq!(waiting.activity, SessionActivityState::WaitingPermission);
+    assert_eq!(
+        app.get_feedback_status(ManagedSessionInput {
+            session_id: ids[1].clone()
+        })
+        .await
+        .unwrap()
+        .activity,
+        SessionActivityState::Idle
+    );
+    app.respond_permission(RespondManagedPermissionInput {
+        session_id: ids[0].clone(),
+        request_id: "permission".into(),
+        option_id: None,
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        app.get_feedback_status(input.clone())
+            .await
+            .unwrap()
+            .activity,
+        SessionActivityState::Running
+    );
+    connection.closed.store(true, Ordering::SeqCst);
+    let disconnected = app.get_feedback_status(input.clone()).await.unwrap();
+    assert_eq!(
+        disconnected.connection,
+        SessionConnectionState::Disconnected
+    );
+    assert_eq!(disconnected.activity, SessionActivityState::Idle);
+    // The fixture has no OS process. Finish its pending future before cleanup.
+    connection.finish.notify_one();
+    idle(&app, &ids[0]).await;
+    app.stop_session(input.clone()).await.unwrap();
+    let stopped = app.get_feedback_status(input).await.unwrap();
+    assert_eq!(stopped.connection, SessionConnectionState::Stopped);
+    assert_eq!(stopped.activity, SessionActivityState::Idle);
+    app.shutdown().await.unwrap();
+    fresh.shutdown().await.unwrap();
+    store.close().await;
+}
+
+#[tokio::test]
 async fn initial_snapshot_is_bounded_and_older_pages_recover_the_complete_history() {
     let (_dir, store, app, _driver, ids) = setup().await;
     let id = &ids[0];

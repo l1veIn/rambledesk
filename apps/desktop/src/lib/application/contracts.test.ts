@@ -16,6 +16,8 @@ import type {
   ManagedSessionInput,
   ManagedSessionSnapshot,
   ManagedFeedbackStatus,
+  SessionConnectionState,
+  SessionActivityState,
   SaveAgentConfigInput,
   SendManagedPromptInput,
   RespondManagedPermissionInput,
@@ -49,6 +51,8 @@ describe('application command contracts', () => {
     expectTypeOf<ApplicationCommandResult<'deleteManagedSession'>>().toEqualTypeOf<void>()
     expectTypeOf<ApplicationCommandResult<'getManagedSession'>>().toEqualTypeOf<ManagedSessionSnapshot>()
     expectTypeOf<ApplicationCommandResult<'getManagedFeedbackStatus'>>().toEqualTypeOf<ManagedFeedbackStatus>()
+    expectTypeOf<ManagedFeedbackStatus['connection']>().toEqualTypeOf<SessionConnectionState>()
+    expectTypeOf<ManagedFeedbackStatus['activity']>().toEqualTypeOf<SessionActivityState>()
     expectTypeOf<ApplicationCommandInput<'listFeedbackInbox'>>().toEqualTypeOf<undefined>()
     expectTypeOf<ApplicationCommandResult<'listFeedbackInbox'>>().toEqualTypeOf<
       FeedbackRequestSummary[]

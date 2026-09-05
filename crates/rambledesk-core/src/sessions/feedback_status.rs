@@ -4,12 +4,14 @@ use ts_rs::TS;
 
 use super::*;
 
-/// Request-side continuation state without loading the Agent conversation,
-/// launch configuration, environment, or transcript.
+/// Request-side execution and continuation state without loading the Agent
+/// conversation, launch configuration, environment, or transcript.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 pub struct ManagedFeedbackStatus {
     pub session_id: String,
     pub deleting: bool,
+    pub connection: SessionConnectionState,
+    pub activity: SessionActivityState,
     pub deliveries: Vec<FeedbackDelivery>,
 }
 
@@ -35,9 +37,35 @@ impl SessionApplication {
             }
             None => vec![],
         };
+        // Observe only an existing in-memory owner. A read must not create a
+        // runtime entry, recover a session, or invoke any Agent configuration.
+        let entry = self.entries.lock().await.get(&input.session_id).cloned();
+        let (connection, activity) = match entry {
+            Some(entry) => {
+                let live = entry.live.lock().await;
+                if live.runtime.connection == SessionConnectionState::Connected
+                    && live
+                        .connection
+                        .as_ref()
+                        .is_some_and(|connection| connection.is_closed())
+                {
+                    // Transport closure can precede the runtime worker's next
+                    // reconciliation. Report it without performing cleanup.
+                    (
+                        SessionConnectionState::Disconnected,
+                        SessionActivityState::Idle,
+                    )
+                } else {
+                    (live.runtime.connection, live.runtime.activity)
+                }
+            }
+            None => (SessionConnectionState::Stopped, SessionActivityState::Idle),
+        };
         Ok(ManagedFeedbackStatus {
             session_id: input.session_id,
             deleting,
+            connection,
+            activity,
             deliveries,
         })
     }

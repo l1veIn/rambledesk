@@ -10,7 +10,7 @@ function delivery(requestId = 'request', sessionId = 'one'): FeedbackDelivery {
     state: 'uncertain', attempt_id: 'attempt', created_at: '2026-09-05', updated_at: '2026-09-05', last_error: 'Interrupted' }
 }
 function status(sessionId = 'one', deliveries: FeedbackDelivery[] = []): ManagedFeedbackStatus {
-  return { session_id: sessionId, deleting: false, deliveries }
+  return { session_id: sessionId, deleting: false, connection: 'stopped', activity: 'idle', deliveries }
 }
 async function flush() { for (let i = 0; i < 24; i += 1) await Promise.resolve() }
 function invalidate(transport: TestApplicationTransport, resources: ApplicationResourceKey[]) {
@@ -23,6 +23,32 @@ function deferred<T>() {
 }
 
 describe('request-side managed feedback status', () => {
+  it('refreshes execution state from managed session events and clears it when reconnecting to a stopped runtime', async () => {
+    const transport = new TestApplicationTransport(undefined, { initiallyReady: true })
+      .resolve('getManagedFeedbackStatus', { ...status(), connection: 'connected', activity: 'running' })
+    const controller = createManagedFeedbackStatusController(transport, 'one', 'request')
+    controller.start()
+    await flush()
+    expect(get(controller).status?.activity).toBe('running')
+    transport.resolve('getManagedFeedbackStatus', { ...status(), connection: 'connected', activity: 'waiting_permission' })
+    invalidate(transport, [{ kind: 'managed_session', session_id: 'one' }])
+    await flush()
+    expect(get(controller).status?.connection).toBe('connected')
+    expect(get(controller).status?.activity).toBe('waiting_permission')
+    transport.resolve('getManagedFeedbackStatus', { ...status(), connection: 'disconnected' })
+    invalidate(transport, [{ kind: 'managed_session', session_id: 'one' }])
+    await flush()
+    expect(get(controller).status?.connection).toBe('disconnected')
+    expect(get(controller).status?.activity).toBe('idle')
+    transport.resolve('getManagedFeedbackStatus', status())
+    transport.emit(APPLICATION_EVENTS_STREAM, { type: 'ready', runtime_generation: 'new', revision: '0' })
+    await flush()
+    expect(get(controller).status?.connection).toBe('stopped')
+    expect(get(controller).status?.activity).toBe('idle')
+    expect(transport.calls.map(call => call.name)).toEqual(Array(4).fill('getManagedFeedbackStatus'))
+    controller.dispose()
+  })
+
   it('reads only lightweight status and refreshes relevant request or session changes', async () => {
     const transport = new TestApplicationTransport(undefined, { initiallyReady: true })
       .handle('getManagedFeedbackStatus', ({ session_id }) => status(session_id))
@@ -66,7 +92,7 @@ describe('request-side managed feedback status', () => {
 
   it('blocks delivery changes while deleting, and preserves the delete lock after the row disappears', async () => {
     const transport = new TestApplicationTransport(undefined, { initiallyReady: true })
-      .resolve('getManagedFeedbackStatus', { ...status('one', [delivery()]), deleting: true })
+      .resolve('getManagedFeedbackStatus', { ...status('one', [delivery()]), deleting: true, connection: 'connected', activity: 'running' })
     const controller = createManagedFeedbackStatusController(transport, 'one', 'request')
     controller.start()
     await flush()
@@ -76,6 +102,8 @@ describe('request-side managed feedback status', () => {
     controller.refresh()
     await flush()
     expect(get(controller).status?.deleting).toBe(true)
+    expect(get(controller).status?.connection).toBe('stopped')
+    expect(get(controller).status?.activity).toBe('idle')
     expect(get(controller).status?.deliveries).toEqual([delivery()])
     expect(get(controller).error).toContain('Could not load')
     controller.dispose()

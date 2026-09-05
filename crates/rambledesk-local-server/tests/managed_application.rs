@@ -697,9 +697,11 @@ async fn uncertain_delivery_decisions_are_scoped_and_return_the_updated_snapshot
             .error_for_status()?
             .json()
             .await?;
-        assert_eq!(status.as_object().unwrap().len(), 3);
+        assert_eq!(status.as_object().unwrap().len(), 5);
         assert_eq!(status["session_id"], session.session.session_id);
         assert_eq!(status["deleting"], false);
+        assert_eq!(status["connection"], "connected");
+        assert_eq!(status["activity"], "idle");
         let pending = status["deliveries"]
             .as_array()
             .unwrap()

@@ -13,7 +13,7 @@ type StatusState = Readonly<{
   resolveError: string
 }>
 
-/** A request view observes ownership and durable delivery only, never Agent activity. */
+/** A request view observes execution state and durable delivery, never Agent history or configuration. */
 export function createManagedFeedbackStatusController(transport: ApplicationTransport, sessionId: string, requestId: string) {
   const state = writable<StatusState>({ status: null, loading: true, error: '', resolving: false, resolveError: '' })
   let active = false
@@ -33,7 +33,7 @@ export function createManagedFeedbackStatusController(transport: ApplicationTran
     },
     reportError(cause) {
       if (typeof cause === 'object' && cause !== null && 'code' in cause && cause.code === 'MANAGED_SESSION_NOT_FOUND') {
-        patch({ status: { session_id: sessionId, deleting: true, deliveries: get(state).status?.deliveries ?? [] } })
+        patch({ status: { session_id: sessionId, deleting: true, connection: 'stopped', activity: 'idle', deliveries: get(state).status?.deliveries ?? [] } })
       }
       patch({ loading: false, error: 'Could not load feedback continuation status.' })
     },
