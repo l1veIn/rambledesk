@@ -32,7 +32,10 @@ impl Fixture {
         )
         .await
         .unwrap();
-        let app = SessionApplication::new(store.clone(), store.clone(), Arc::new(AcpSessionDriver))
+        // This fixture exercises the scoped HTTP capability and delivery worker.
+        // The CLI suite separately runs the real feedback companion binary.
+        let driver = AcpSessionDriver::with_feedback_companion(std::env::current_exe().unwrap());
+        let app = SessionApplication::new(store.clone(), store.clone(), Arc::new(driver))
             .with_feedback_provider(provider)
             .with_deliveries(store.clone())
             .with_deletions(store.clone());
@@ -182,7 +185,7 @@ impl Fixture {
 }
 
 #[tokio::test]
-async fn scoped_mcp_feedback_waits_for_idle_then_continues_the_original_session_once() {
+async fn scoped_command_capability_waits_for_idle_then_continues_the_original_session_once() {
     let fixture = Fixture::new("normal").await;
     let first = fixture.create("One").await;
     let second = fixture.create("Two").await;
