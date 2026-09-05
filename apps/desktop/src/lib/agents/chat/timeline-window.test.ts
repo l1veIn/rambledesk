@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { SessionActivity } from '../managedSessionUi'
-import { TimelineWindow } from './timeline-window'
+import { TimelineWindow, crossedHistoryThreshold } from './timeline-window'
 import { captureActivityAnchor, restoreActivityAnchor } from './scroll-anchor'
 
 function rows(first: number, last: number): SessionActivity[] {
@@ -8,14 +8,39 @@ function rows(first: number, last: number): SessionActivity[] {
 }
 
 describe('timeline rendering window', () => {
-  it('mounts only the latest 60 of 1000 activities and reveals locally loaded history 60 at a time', () => {
+  it('shows twenty conversations even when their last turn contains hundreds of work rows', () => {
+    const activities: SessionActivity[] = []
+    for (let turn = 0; turn < 40; turn += 1) {
+      for (let work = 0; work < (turn === 39 ? 300 : 5); work += 1) {
+        const sequence = activities.length + 1
+        activities.push({ ...rows(sequence, sequence)[0], turn_id: `turn-${turn}`, kind: work === 0 ? 'user_message' : 'tool_call' })
+      }
+    }
+    const window = new TimelineWindow()
+    const visible = window.read('one', activities, true)
+    expect(visible.filter(row => row.kind === 'user_message')).toHaveLength(20)
+    expect(visible[0].turn_id).toBe('turn-20')
+    expect(visible).toHaveLength(395)
+    window.revealOlder(activities)
+    expect(window.read('one', activities, false)).toHaveLength(495)
+  })
+
+  it('loads only on an upward near-top crossing, never initial layout or a stationary short list', () => {
+    expect(crossedHistoryThreshold(null, 0)).toBe(false)
+    expect(crossedHistoryThreshold(0, 0)).toBe(false)
+    expect(crossedHistoryThreshold(40, 200)).toBe(false)
+    expect(crossedHistoryThreshold(400, 200)).toBe(true)
+    expect(crossedHistoryThreshold(240, 0)).toBe(true)
+  })
+
+  it('mounts only the latest 20 of 1000 legacy activities and reveals locally loaded history 20 at a time', () => {
     const window = new TimelineWindow()
     const activities = rows(1, 1000)
-    expect(window.read('one', activities, true)).toHaveLength(60)
-    expect(window.read('one', activities, true)[0].id).toBe('row-941')
+    expect(window.read('one', activities, true)).toHaveLength(20)
+    expect(window.read('one', activities, true)[0].id).toBe('row-981')
     window.revealOlder(activities)
-    expect(window.read('one', activities, false)).toHaveLength(120)
-    expect(window.read('one', activities, false)[0].id).toBe('row-881')
+    expect(window.read('one', activities, false)).toHaveLength(40)
+    expect(window.read('one', activities, false)[0].id).toBe('row-961')
   })
 
   it('retains review identity during fresh patches and appended messages, but resets for another session', () => {
@@ -23,30 +48,30 @@ describe('timeline rendering window', () => {
     const activities = rows(1, 100)
     window.read('one', activities, true)
     const updated = [...activities, ...rows(101, 102)]
-    updated[50] = { ...updated[50], text: 'Final complete patch' }
+    updated[90] = { ...updated[90], text: 'Final complete patch' }
     const reviewing = window.read('one', updated, false)
-    expect(reviewing[0].id).toBe('row-41')
-    expect(reviewing.find((row) => row.id === 'row-51')?.text).toBe('Final complete patch')
-    expect(window.read('one', updated, true)[0].id).toBe('row-43')
-    expect(window.read('two', rows(1, 200), false)[0].id).toBe('row-141')
+    expect(reviewing[0].id).toBe('row-81')
+    expect(reviewing.find((row) => row.id === 'row-91')?.text).toBe('Final complete patch')
+    expect(window.read('one', updated, true)[0].id).toBe('row-83')
+    expect(window.read('two', rows(1, 200), false)[0].id).toBe('row-181')
   })
 
-  it('reveals only 60 of a fetched 100-row page while retaining the existing visible rows', () => {
+  it('reveals only 20 of a fetched 100-row page while retaining the existing visible rows', () => {
     const window = new TimelineWindow()
     window.read('one', rows(101, 130), true)
     const fetched = rows(1, 130)
-    expect(window.read('one', fetched, false)[0].id).toBe('row-101')
+    expect(window.read('one', fetched, false)[0].id).toBe('row-111')
     window.revealOlder(fetched)
-    expect(window.read('one', fetched, false)[0].id).toBe('row-41')
-    expect(window.read('one', fetched, false)).toHaveLength(90)
+    expect(window.read('one', fetched, false)[0].id).toBe('row-91')
+    expect(window.read('one', fetched, false)).toHaveLength(40)
   })
 
   it('extends the visible start to the loaded beginning of a turn instead of slicing its answer', () => {
     const window = new TimelineWindow()
     const activities = rows(1, 100).map((row) => ({ ...row, turn_id: row.sequence! <= 30 ? 'older' : 'large' }))
     const visible = window.read('one', activities, true)
-    expect(visible[0].id).toBe('row-31')
-    expect(visible).toHaveLength(70)
+    expect(visible[0].id).toBe('row-1')
+    expect(visible).toHaveLength(100)
     expect(visible.at(-1)?.id).toBe('row-100')
   })
 

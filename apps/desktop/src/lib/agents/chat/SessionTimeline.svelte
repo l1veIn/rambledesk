@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { SessionActivity } from '../managedSessionUi'
   import { activityInRunningTurn, latestStreamingActivity } from './activity-presentation'
-  import { groupTimeline, sessionTurnFolds } from './turn-presentation'
+  import { groupTimeline, sessionTurnFolds, type TimelineItem } from './turn-presentation'
   import SessionActivityRow from './SessionActivityRow.svelte'
   import AgentTurn from './AgentTurn.svelte'
   export let sessionId: string
@@ -10,8 +10,13 @@
   export let onResize: () => void = () => {}
   let foldRevision = 0
   let openTurns = new Map<string, boolean>()
+  let previousItems: TimelineItem[] = []
+  function project(activities: readonly SessionActivity[], runActive: boolean) {
+    previousItems = groupTimeline(activities, runActive, previousItems)
+    return previousItems
+  }
   $: streamingId = latestStreamingActivity(activities, runActive)
-  $: items = groupTimeline(activities, runActive)
+  $: items = project(activities, runActive)
   $: folds = sessionTurnFolds(sessionId)
   $: {
     foldRevision

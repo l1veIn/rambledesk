@@ -62,6 +62,34 @@ describe('structured timeline rendering', () => {
     expect(details).not.toContain('<script>unsafe()')
   })
 
+  it('bounds long running and expanded work to the latest 60 rows while preserving replies and errors', () => {
+    const process = Array.from({ length: 2000 }, (_, index) => activity(`tool-${index}`, index + 1, { status: 'completed' }))
+    const error: SessionActivity = { ...activity('error', 2001, {}), kind: 'error', text: 'A tool needs attention', content: undefined }
+    const running = render(SessionTimeline, { props: { sessionId: 'long-running', activities: [...process, error], runActive: true } }).body
+    expect(running.match(/data-tool-id=/g)).toHaveLength(60)
+    expect(running).toContain('data-tool-id="tool-1999"')
+    expect(running).not.toContain('data-tool-id="tool-1939"')
+    expect(running).toContain('View earlier work')
+    expect(running).toContain('1940')
+    expect(running).toContain('A tool needs attention')
+
+    const answer: SessionActivity = { ...activity('answer', 2002, {}), kind: 'agent_message', text: 'Final reply', content: undefined }
+    const completed = [...process, error, answer]
+    const folded = render(SessionTimeline, { props: { sessionId: 'long-completed', activities: completed, runActive: false } }).body
+    expect(folded).not.toContain('data-tool-id=')
+    expect(folded).toContain('Final reply')
+    expect(folded).toContain('A tool needs attention')
+    const item = groupTimeline(completed, false)[0]
+    if (item.type !== 'turn') throw new Error('missing turn')
+    const expanded = render(AgentTurn, { props: { turn: item.turn, open: true, onOpenChange: vi.fn() } }).body
+    expect(expanded.match(/data-tool-id=/g)).toHaveLength(60)
+    expect(expanded).toContain('data-tool-id="tool-1999"')
+    expect(expanded).not.toContain('data-tool-id="tool-1939"')
+    expect(expanded).toContain('View earlier work')
+    expect(expanded).toContain('Final reply')
+    expect(expanded).toContain('A tool needs attention')
+  })
+
   it('keeps a true completion timestamp without deriving one from message chunks', () => {
     const { body } = render(TurnFooter, { props: { copyText: 'Answer', completedAt: '2026-09-05T10:00:29Z' } })
     expect(body).toContain('datetime="2026-09-05T10:00:29Z"')

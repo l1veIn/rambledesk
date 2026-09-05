@@ -12,7 +12,17 @@
   export let open = false
   export let onOpenChange: (open: boolean) => void
   export let streamingId: string | null = null
+  let processLimit = 60
+  let processTurnId = turn.id
+  $: if (processTurnId !== turn.id) {
+    processTurnId = turn.id
+    processLimit = 60
+  }
   $: expanded = !turn.foldable || open
+  // Long running turns can have thousands of tool/thinking rows. Mount only the
+  // latest page until the reader explicitly asks to reveal earlier work.
+  $: hiddenProcessCount = Math.max(0, turn.process.length - processLimit)
+  $: visibleProcess = turn.process.slice(hiddenProcessCount)
   $: label = turn.outcome === 'working' ? 'Working…' : turn.outcome === 'cancelled' ? 'Turn cancelled'
     : turn.outcome === 'interrupted' ? 'Turn interrupted' : turn.outcome === 'finished' ? 'Finished working' : 'Work stopped'
   $: elapsed = turn.durationMs !== null ? turnDurationLabel(turn.durationMs, $locale) : null
@@ -38,7 +48,12 @@
   {#if turn.partialStart}<p class="m-0 text-[11px] text-muted-foreground">{chatText($locale, 'Earlier activity for this turn is not loaded.')}</p>{/if}
   {#if expanded && turn.process.length}
     <div id={`process-${turn.id}`} class="space-y-4" data-turn-process>
-      {#each turn.process as activity (activity.id)}<SessionActivityRow {activity} runActive={turn.active} streaming={streamingId === activity.id} />{/each}
+      {#if hiddenProcessCount}
+        <button type="button" class="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline" onclick={() => processLimit += 60}>
+          {chatText($locale, 'View earlier work')} · {hiddenProcessCount}
+        </button>
+      {/if}
+      {#each visibleProcess as activity (activity.id)}<SessionActivityRow {activity} runActive={turn.active} streaming={streamingId === activity.id} />{/each}
     </div>
   {/if}
   {#each turn.answer as activity (activity.id)}<SessionActivityRow {activity} runActive={turn.active} streaming={streamingId === activity.id} />{/each}

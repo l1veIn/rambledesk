@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import type { AgentConfig, FeedbackRequestSummary } from '$lib/generated/feedback'
+import type { AgentConfig } from '$lib/generated/feedback'
 import {
-  activitiesForSession, feedbackForSession, managedSessionActions, managedSessionComposerState, permissionsForSession,
+  activitiesForSession, managedSessionActions, managedSessionComposerState, permissionsForSession,
   sessionConfigurationChanged, SessionPromptDrafts,
   type ManagedSessionViewSnapshot, type SessionActivity, type SessionPermission,
 } from './managedSessionUi'
@@ -44,7 +44,7 @@ describe('managed session views', () => {
   it('disables every work action while deletion is incomplete without changing the history identity', () => {
     const deleting = { ...snapshot(), deleting: true }
     const actions = managedSessionActions(deleting, 1)
-    expect(actions).toMatchObject({ canPrompt: false, canStart: false, canCancel: false, canStop: false })
+    expect(actions).toMatchObject({ canPrompt: false, canStart: false, canCancel: false })
     expect(deleting.session.session_id).toBe('local-one')
   })
   it('isolates activities and replaces repeated tool ids without reordering the timeline', () => {
@@ -72,7 +72,6 @@ describe('managed session views', () => {
       const actions = managedSessionActions({ ...view, runtime: { ...view.runtime, activity } }, 0)
       expect(actions.canPrompt).toBe(false)
       expect(actions.canCancel).toBe(true)
-      expect(actions.canStop).toBe(true)
     }
   })
 
@@ -81,9 +80,9 @@ describe('managed session views', () => {
     view.session.management = { kind: 'managed', protocol: 'acp', agent_config_id: 'config-one', cwd: '/project', remote_session_id: 'remote-one' }
     view.runtime.connection = 'stopped'
     view.runtime.capabilities.load_session = false
-    expect(managedSessionActions(view, 0)).toMatchObject({ canStart: true, canStop: false, startLabel: 'Resume session' })
+    expect(managedSessionActions(view, 0)).toMatchObject({ canStart: true })
     view.runtime.connection = 'connecting'
-    expect(managedSessionActions(view, 0)).toMatchObject({ canStart: false, canStop: true })
+    expect(managedSessionActions(view, 0)).toMatchObject({ canStart: false })
   })
 
   it('only reports configuration changes against the configuration used by this instance', () => {
@@ -94,12 +93,6 @@ describe('managed session views', () => {
     const view = snapshot()
     view.runtime.config_updated_at = null
     expect(sessionConfigurationChanged(view, config)).toBe(false)
-  })
-
-  it('matches feedback on both legacy host identifiers without inventing ACP session identity', () => {
-    const request = { request_id: 'feedback', host_id: 'dsh', host_session_id: 'feedback-one' } as FeedbackRequestSummary
-    const requests = [request, { ...request, request_id: 'wrong-host', host_id: 'pi' }, { ...request, request_id: 'wrong-session', host_session_id: 'different' }]
-    expect(feedbackForSession(snapshot().session, requests).map((item) => item.request_id)).toEqual(['feedback'])
   })
 })
 
@@ -133,20 +126,8 @@ describe('session prompt drafts', () => {
     drafts.write('local-one', 'Work in project one')
     drafts.write('local-two', 'Work in project two')
     expect(drafts.read('local-one')).toBe('Work in project one')
-    drafts.accepted('local-one', 'Work in project one')
+    drafts.beginSubmission('local-one', 'Work in project one')
     expect(drafts.read('local-one')).toBe('')
     expect(drafts.read('local-two')).toBe('Work in project two')
-  })
-
-  it('retains a newer draft when a prior prompt finishes sending and removes only deleted sessions', () => {
-    const drafts = new SessionPromptDrafts()
-    drafts.write('one', 'First prompt')
-    drafts.write('one', 'Next prompt')
-    drafts.accepted('one', 'First prompt')
-    expect(drafts.read('one')).toBe('Next prompt')
-    drafts.write('two', 'Another project')
-    drafts.remove('one')
-    expect(drafts.read('one')).toBe('')
-    expect(drafts.read('two')).toBe('Another project')
   })
 })

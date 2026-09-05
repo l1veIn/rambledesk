@@ -86,15 +86,14 @@ export function quoteLineDecorations(doc: ProseMirrorNode): DecorationSet {
 /**
  * Paint literal `> ` markers in the composer as a blockquote rule.
  *
- * The quote action ({@link "./message-quote".buildQuotedMarkdown}) inserts
- * real `> ` characters because this composer is plain text and the agent has to
- * receive Markdown. Shown raw that's a wall of `>`; shown as a rule it reads
+ * Typed or pasted quote markers remain real `> ` characters because this
+ * composer sends plain text. Shown raw that's a wall of `>`; shown as a rule it reads
  * like the transcript does.
  *
  * This is a DECORATION, never a schema change. Adding a blockquote node would
  * change what `serializeDocToText` walks, what the clipboard round-trips, and —
  * worst — what `setContent` does to drafts saved by an older build (an unknown
- * node type silently wipes the whole document; see `composer-draft-sanitize.ts`).
+ * node type can invalidate a previously saved document).
  * Decorations touch none of that: the two characters stay in the document, still
  * occupy their width, and still delete with two backspaces. The CSS only makes
  * their glyphs transparent and draws the rule in their place — so what the user

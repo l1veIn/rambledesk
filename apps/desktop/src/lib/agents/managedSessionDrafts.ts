@@ -3,7 +3,7 @@ type DraftStorage = Pick<Storage, 'getItem' | 'setItem'>
 const STORAGE_KEY = 'rambledesk.agent-drafts'
 const EMPTY: SavedManagedSessionDraft = { choice: '', cwd: '', text: '' }
 
-/** Persist only user input. Prepared session ids, credentials and attachments stay in memory. */
+/** Persist only user input. Prepared session ids and credentials stay in memory. */
 export function createManagedSessionDraftStorage(storage?: DraftStorage) {
   function read(): { recent?: SavedManagedSessionDraft; drafts?: Record<string, SavedManagedSessionDraft> } {
     try { return JSON.parse(storage?.getItem(STORAGE_KEY) ?? '{}') ?? {} } catch { return {} }

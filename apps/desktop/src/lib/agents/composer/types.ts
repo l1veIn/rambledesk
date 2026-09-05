@@ -5,12 +5,4 @@ export type ComposerReference = Readonly<{
   uri: string
 }>
 
-export type ReferenceSearch = (
-  query: string,
-  context: Readonly<{ signal: AbortSignal }>,
-) => Promise<readonly ComposerReference[]>
-
-/** Attachment data and upload/serialization remain owned by the host. */
-export type ComposerAttachment = Readonly<{ id: string; name: string; detail?: string }>
-export type ComposerPromptBlock = Readonly<{ type: 'text'; text: string }>
 export type ComposerSubmitShortcut = 'enter' | 'mod+enter'

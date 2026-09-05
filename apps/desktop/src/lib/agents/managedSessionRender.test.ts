@@ -43,6 +43,9 @@ describe('Managed session rendering', () => {
     expect(body).not.toContain('Quote in message')
     expect(body).not.toContain('Delete session')
     expect(body).not.toContain('Stop agent')
+    expect(body).not.toContain('type="file"')
+    expect(body).not.toContain('aria-label="Add attachment"')
+    expect(body.slice(body.indexOf('data-agent-composer'))).toContain('<svg')
     expect(action).not.toHaveBeenCalled()
   })
 
@@ -90,7 +93,7 @@ describe('Managed session rendering', () => {
     expect(onRefresh).not.toHaveBeenCalled()
   })
 
-  it('initially mounts 60 rows of a large snapshot and leaves older history behind an explicit action', () => {
+  it('initially mounts twenty prompts and keeps an accessible fallback for loading older history', () => {
     const snapshot: ManagedSessionViewSnapshot = {
       deleting: false,
       session: { session_id: 'history-window', host_id: 'dsh', host_session_id: 'feedback-history', title: 'Long history', created_at: 'today', updated_at: 'today',
@@ -103,10 +106,10 @@ describe('Managed session rendering', () => {
       snapshot, onPrompt: action, onStart: action, onCancel: action, onRespondPermission: action, onLoadOlder: action,
       activities: Array.from({ length: 1000 }, (_, index) => ({ id: `history-${index + 1}`, sequence: index + 1, session_id: 'history-window', kind: 'user_message' as const, text: `Message ${index + 1}`, tool_call_id: null, created_at: 'today' })),
     } })
-    expect(body.match(/data-activity-id=/g)).toHaveLength(60)
-    expect(body).toContain('Message 941')
+    expect(body.match(/data-activity-id=/g)).toHaveLength(20)
+    expect(body).toContain('Message 981')
     expect(body).toContain('Message 1000')
-    expect(body).not.toContain('Message 940')
+    expect(body).not.toContain('Message 980')
     expect(body).toContain('Load earlier messages')
     expect(action).not.toHaveBeenCalled()
   })

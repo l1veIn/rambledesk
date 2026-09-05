@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import { render } from 'svelte/server'
 import AgentSettings from './AgentSettings.svelte'
-import NewManagedSessionForm from './NewManagedSessionForm.svelte'
+import AgentIcon from './AgentIcon.svelte'
+import claudeIcon from '../../../../../crates/rambledesk-hosts/assets/icons/claude.svg?raw'
+import piIcon from '../../../../../crates/rambledesk-hosts/assets/icons/pi.svg?raw'
+import dshIcon from '../../../../../crates/rambledesk-hosts/assets/icons/dsh.svg?raw'
+import genericIcon from '../../../../../crates/rambledesk-hosts/assets/icons/generic-terminal.svg?raw'
 
 vi.mock('$lib/preferences', async () => {
   const { writable } = await import('svelte/store')
@@ -9,14 +13,12 @@ vi.mock('$lib/preferences', async () => {
 })
 
 describe('Agent settings rendering', () => {
-  it('redacts the selected configuration environment in new-session errors', () => {
-    const { body } = render(NewManagedSessionForm, { props: {
-      configs: [{ id: 'config-one', name: 'DeepSeek', host_id: 'dsh', protocol: 'acp', enabled: true,
-        command: 'deepseek-acp', args: [], env: { TOKEN: 'private-test-value' }, created_at: 'today', updated_at: 'today' }],
-      error: 'Connection failed for private-test-value', onCreate: () => {},
-    } })
-    expect(body).toContain('Connection failed for [redacted]')
-    expect(body).not.toContain('private-test-value')
+  it('reuses adapter logos by backend identity and gives custom backends a generic icon', () => {
+    for (const [hostId, icon] of [[' Claude ', claudeIcon], ['pi', piIcon], ['dsh', dshIcon], ['custom-agent', genericIcon], ['constructor', genericIcon]]) {
+      const { body } = render(AgentIcon, { props: { hostId } })
+      expect(body).toContain(icon)
+      expect(body).toContain('aria-hidden="true"')
+    }
   })
 
   it('keeps stored environment values out of settings markup until explicitly revealed', () => {

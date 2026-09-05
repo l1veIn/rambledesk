@@ -5,7 +5,6 @@ import {
   agentConfigDraft,
   agentDraftInput,
   isAbsoluteAgentDirectory,
-  managedSessionDraftInput,
   newAgentDraft,
   parseAgentEnvironment,
   redactAgentMessage,
@@ -95,18 +94,6 @@ describe('managed session creation', () => {
     for (const path of ['', 'repo', '../repo', '~/', 'C:repo', '\\repo', '/repo\0bad', '\\\\server']) {
       expect(isAbsoluteAgentDirectory(path), path).toBe(false)
     }
-  })
-
-  it('rejects disabled or removed configurations and trims optional titles', () => {
-    const configs = [config('one'), { ...config('two'), enabled: false }]
-    expect(managedSessionDraftInput('one', ' C:\\Projects\\hello ', ' Review ', configs))
-      .toEqual({ agent_config_id: 'one', cwd: 'C:\\Projects\\hello', title: 'Review' })
-    expect(managedSessionDraftInput('one', '/repo', ' ', configs).title).toBe('repo')
-    expect(managedSessionDraftInput('one', 'C:\\Projects\\hello\\', ' ', configs).title).toBe('hello')
-    expect(managedSessionDraftInput('one', '/', ' ', configs).title).toBe('New session')
-    expect(() => managedSessionDraftInput('two', '/repo', '', configs)).toThrow('enabled')
-    expect(() => managedSessionDraftInput('removed', '/repo', '', configs)).toThrow('enabled')
-    expect(() => managedSessionDraftInput('one', 'relative', '', configs)).toThrow('absolute')
   })
 
   it('localizes validation without exposing the rejected value', () => {

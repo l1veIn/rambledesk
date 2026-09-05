@@ -18,6 +18,18 @@ function lastTurn(rows: readonly SessionActivity[], running = false): AgentTurn 
 }
 
 describe('durable turn presentation', () => {
+  it('reuses completed turn projections while the live tail changes', () => {
+    const settled = fixture()
+    const all = [...settled, ...fixture().map(row => ({ ...row, id: `second-${row.id}`, turn_id: 'two', sequence: row.sequence! + 10 }))]
+    const previous = groupTimeline(all, false)
+    const next = [...all]
+    next[next.length - 2] = { ...next[next.length - 2], text: 'A newer reply' }
+    const current = groupTimeline(next, false, previous)
+    expect(current[1]).toBe(previous[1])
+    expect(current[3]).not.toBe(previous[3])
+    expect(groupTimeline(next, false, current)[3]).toBe(current[3])
+  })
+
   it('groups by backend turn identity and preserves every trailing answer paragraph', () => {
     const rows = fixture()
     const items = groupTimeline(rows, false)

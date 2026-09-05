@@ -16,6 +16,7 @@ const zh: Record<string, string> = {
   'Could not load earlier messages.': '无法加载更早的消息。',
   'Working…': '正在工作…', 'Finished working': '工作已结束', 'Worked for': '工作了',
   'Writing reply': '正在回复',
+  'View earlier work': '查看更早的工作',
   'Turn cancelled': '本轮已取消', 'Turn interrupted': '本轮已中断', 'Work stopped': '工作已停止',
   'Copy reply': '复制回复', 'Copied': '已复制', 'Completed at': '完成于',
   'Could not copy the reply.': '无法复制回复。',

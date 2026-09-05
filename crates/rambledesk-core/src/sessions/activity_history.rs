@@ -8,6 +8,9 @@ pub struct ListManagedSessionActivityInput {
     #[ts(type = "number")]
     pub before_sequence: u64,
     pub limit: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub turn_limit: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -22,9 +25,40 @@ impl SessionApplication {
         input: ListManagedSessionActivityInput,
     ) -> Result<ManagedSessionActivityPage, SessionError> {
         self.managed_record(&input.session_id).await?;
-        let limit = input.limit.unwrap_or(100);
-        if limit == 0 || limit > 500 || input.before_sequence == 0 {
+        let limit = input.limit.unwrap_or(if input.turn_limit.is_some() {
+            1_000
+        } else {
+            100
+        });
+        if limit == 0
+            || limit
+                > if input.turn_limit.is_some() {
+                    1_000
+                } else {
+                    500
+                }
+            || input.before_sequence == 0
+            || input
+                .turn_limit
+                .is_some_and(|count| count == 0 || count > 50)
+        {
             return Err(SessionError::InvalidInput);
+        }
+        if let Some(turn_limit) = input.turn_limit {
+            let activities = self
+                .activities
+                .list_session_turn_activity_before(
+                    &input.session_id,
+                    input.before_sequence,
+                    turn_limit,
+                    limit,
+                )
+                .await?;
+            let has_more = activities.first().is_some_and(|row| row.sequence > 1);
+            return Ok(ManagedSessionActivityPage {
+                activities,
+                has_more,
+            });
         }
         let mut activities = self
             .activities

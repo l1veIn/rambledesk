@@ -4,13 +4,10 @@
 import { Editor } from '@tiptap/core'
 import { afterEach, describe, expect, it } from 'vitest'
 import { buildComposerExtensions } from './editor-config'
-import { appendComposerQuote, insertComposerText, replaceComposerText } from './composer-commands'
-import { blocksToRestoredDraft } from './from-prompt-blocks'
-import { decidePastedContent, textToSeededDoc } from './plain-text-content'
-import { buildQuotedMarkdown } from './message-quote'
+import { replaceComposerText } from './composer-commands'
+import { decidePastedContent, textToInlineContent, textToSeededDoc } from './plain-text-content'
 import { quoteLineDecorations } from './quote-decoration'
-import { composerLeafText, docToPromptBlocks, serializeDocToText } from './to-prompt-blocks'
-import type { ComposerPromptBlock } from './types'
+import { composerLeafText, serializeDocToText } from './to-prompt-blocks'
 
 const editors: Editor[] = []
 function makeEditor(text = '') {
@@ -32,16 +29,15 @@ describe('Codeg plain-text composer port', () => {
   it.each(['# Heading', '**bold** and _italic_', '- [ ] checklist', '```ts\nconst literal = true\n```', '[link](https://example.com)', '<script>alert(1)</script>', '  首行\n\n第二行 😀\n'])('round-trips literal draft text: %s', (text) => {
     const editor = makeEditor(text)
     expect(serializeDocToText(editor.state.doc)).toBe(text)
-    expect(docToPromptBlocks(editor)).toEqual([{ type: 'text', text: text.trim() }])
     expect(editor.getJSON().content?.every((node) => node.type === 'paragraph')).toBe(true)
     expect(serializeDocToText(editor.schema.nodeFromJSON(editor.getJSON()))).toBe(text)
   })
 
   it('uses actual editor transactions for multi-line text insertion and hard breaks', () => {
     const editor = makeEditor()
-    insertComposerText(editor, 'one\n\n# literal')
+    editor.commands.insertContent(textToInlineContent('one\n\n# literal'))
     editor.commands.setHardBreak()
-    insertComposerText(editor, '**two**')
+    editor.commands.insertContent(textToInlineContent('**two**'))
     expect(serializeDocToText(editor.state.doc)).toBe('one\n\n# literal\n**two**')
     expect(editor.state.doc.firstChild?.content.childCount).toBe(6)
   })
@@ -58,13 +54,10 @@ describe('Codeg plain-text composer port', () => {
   })
 
   it('keeps nested quote markers and blank quote lines in send text while decorating their positions', () => {
-    const editor = makeEditor('What does this mean?')
-    appendComposerQuote(editor, '\r\nfirst  \r\n\r\n> nested\r\n')
-    expect(serializeDocToText(editor.state.doc)).toBe('What does this mean?\n\n> first\n>\n> > nested\n\n')
+    const text = 'What does this mean?\n\n> first\n>\n> > nested\n\n'
+    const editor = makeEditor(text)
+    expect(serializeDocToText(editor.state.doc)).toBe(text)
     expect(quoteLineDecorations(editor.state.doc).find()).toHaveLength(4)
-    expect(docToPromptBlocks(editor)[0].text).toBe('What does this mean?\n\n> first\n>\n> > nested')
-    expect(buildQuotedMarkdown(' \n\t')).toBe('')
-    expect(appendComposerQuote(editor, ' \n')).toBe(false)
   })
 
   it('serializes a real file reference atom in place without losing following quote positions', () => {
@@ -77,20 +70,12 @@ describe('Codeg plain-text composer port', () => {
     expect(quoteLineDecorations(editor.state.doc).find().map(({ from, to }) => [from, to])).toEqual([[3, 5]])
   })
 
-  it('restores supported prompt text losslessly and refuses unhandled content', () => {
-    const editor = makeEditor('> first\n>\n> second\n\nQuestion?')
-    const restored = blocksToRestoredDraft(docToPromptBlocks(editor))
-    editor.commands.setContent(restored.document)
-    expect(serializeDocToText(editor.state.doc)).toBe(restored.text)
-    expect(() => blocksToRestoredDraft([{ type: 'image' } as unknown as ComposerPromptBlock])).toThrow('host adapter')
-  })
-
   it('resets undo when switching controlled drafts, so another session cannot be restored with Undo', () => {
     const editor = makeEditor('Session one')
     editor.commands.setTextSelection(editor.state.doc.content.size - 1)
-    insertComposerText(editor, ' private draft')
+    editor.commands.insertContent(textToInlineContent(' private draft'))
     expect(editor.commands.undo()).toBe(true)
-    insertComposerText(editor, ' previous session')
+    editor.commands.insertContent(textToInlineContent(' previous session'))
     replaceComposerText(editor, 'Session two', true)
     expect(editor.commands.undo()).toBe(false)
     expect(serializeDocToText(editor.state.doc)).toBe('Session two')
@@ -103,7 +88,7 @@ describe('Codeg plain-text composer port', () => {
     replaceComposerText(editor, 'Loaded draft')
     expect(updates).toEqual([])
     editor.commands.setTextSelection(editor.state.doc.content.size - 1)
-    insertComposerText(editor, ' typing')
+    editor.commands.insertContent(textToInlineContent(' typing'))
     expect(updates).toEqual(['Loaded draft typing'])
   })
 })

@@ -107,11 +107,22 @@ pub trait SessionActivityRepository: Send + Sync {
         limit: u32,
     ) -> Result<Vec<SessionActivity>, SessionRepositoryError>;
 
-    /// Older immutable window, exclusive of the cursor, in ascending order.
+    /// Reverse window, exclusive of the cursor, in ascending order. A running
+    /// turn's older tools can still receive in-place updates.
     async fn list_session_activity_before(
         &self,
         session_id: &str,
         before_sequence: u64,
+        limit: u32,
+    ) -> Result<Vec<SessionActivity>, SessionRepositoryError>;
+
+    /// A reverse window bounded by user turns, activity count and payload size.
+    /// Very large turns can be partial; their remaining rows use the same cursor.
+    async fn list_session_turn_activity_before(
+        &self,
+        session_id: &str,
+        before_sequence: u64,
+        turn_limit: u32,
         limit: u32,
     ) -> Result<Vec<SessionActivity>, SessionRepositoryError>;
 

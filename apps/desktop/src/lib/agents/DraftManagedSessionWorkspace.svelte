@@ -5,10 +5,9 @@
   import type { ApplicationTransport } from '$lib/application/applicationTransport'
   import { locale } from '$lib/preferences'
   import AgentComposer from './composer/AgentComposer.svelte'
+  import AgentIcon from './AgentIcon.svelte'
   import SessionConfigurationControls from './configuration/SessionConfigurationControls.svelte'
   import SessionContextUsage from './SessionContextUsage.svelte'
-  import { attachmentAccept, canAttachFiles } from './attachments/promptAttachments'
-  import { attachmentText } from './attachments/attachmentText'
   import { isAbsoluteAgentDirectory } from './agentConfigForm'
   import { agentText } from './agentI18n'
   import type { DraftManagedSessionController } from './draftManagedSessionController'
@@ -19,15 +18,13 @@
   export let draftId: string
   export let onConfigure: () => void
   export let onChooseDirectory: (() => Promise<string | null>) | undefined = undefined
-  let fileInput: HTMLInputElement | undefined
   let localError = ''
   let choosingDirectory = false
   let mounted = false
   const workspaceInfo = createManagedWorkspaceInfoController(transport)
   $: workspaceInfo.setSessionId($controller.snapshot?.session.session_id ?? null)
   $: locked = $controller.awaitingAcknowledgement || $controller.phase === 'closing' || $controller.phase === 'promoted'
-  $: promptCapabilities = $controller.snapshot?.runtime.capabilities.prompt
-  $: acceptsFiles = promptCapabilities ? canAttachFiles(promptCapabilities) : false
+  $: selectedAgent = $controller.choices.find(choice => choice.key === $controller.choice)
   $: directoryValid = !$controller.cwd || isAbsoluteAgentDirectory($controller.cwd.trim())
 
   const zh: Record<string, string> = {
@@ -44,7 +41,7 @@
     'Enter an absolute project directory.': '请输入项目目录的绝对路径。',
     'Could not confirm whether the first message was accepted. Retry to check the session.': '暂时无法确认第一条消息是否已接纳。请重试以检查会话。',
   }
-  function tr(text: string) { return $locale === 'zh-CN' ? zh[text] ?? attachmentText($locale, agentText($locale, text)) : text }
+  function tr(text: string) { return $locale === 'zh-CN' ? zh[text] ?? agentText($locale, text) : text }
 
   onMount(() => {
     mounted = true
@@ -63,11 +60,6 @@
     } catch { localError = tr('Could not choose the project directory.') }
     finally { choosingDirectory = false }
   }
-  async function addFiles(files: readonly File[]) {
-    localError = ''
-    try { await controller.addFiles(files) }
-    catch (cause) { localError = cause instanceof Error ? tr(cause.message) : tr('Could not add attachments.') }
-  }
 </script>
 
 <section class="flex h-full min-h-0 min-w-0 flex-col bg-background" aria-label={tr('New agent session')}>
@@ -85,12 +77,15 @@
       <div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
         <label class="min-w-0 space-y-1.5 text-xs">
           <span class="font-medium">{tr('Agent')}</span>
-          <select value={$controller.choice} disabled={locked || $controller.loadingChoices} class="h-9 w-full min-w-0 truncate rounded-md border bg-background px-2 disabled:opacity-50"
+          <span class="relative block">
+          <span class="pointer-events-none absolute inset-y-0 left-2.5 flex items-center"><AgentIcon hostId={selectedAgent?.hostId} class="size-4" /></span>
+          <select value={$controller.choice} disabled={locked || $controller.loadingChoices} class="h-9 w-full min-w-0 truncate rounded-md border bg-background pl-9 pr-2 disabled:opacity-50"
             onchange={(event) => controller.select(event.currentTarget.value, $controller.cwd)}>
             <option value="" disabled>{tr($controller.loadingChoices ? 'Loading agents…' : 'Choose an agent')}</option>
             {#if $controller.choice && !$controller.choices.some((choice) => choice.key === $controller.choice)}<option value={$controller.choice} disabled>{tr('Selected agent is unavailable')}</option>{/if}
             {#each $controller.choices as choice (choice.key)}<option value={choice.key}>{choice.name}</option>{/each}
           </select>
+          </span>
         </label>
         <div class="min-w-0 space-y-1.5 text-xs">
           <label for={`draft-cwd-${draftId}`} class="font-medium">{tr('Project directory')}</label>
@@ -113,15 +108,11 @@
         <Button class="ml-auto" size="icon-sm" variant="ghost" disabled={locked || $controller.loadingChoices} title={tr('Refresh agents')} aria-label={tr('Refresh agents')} onclick={() => void controller.refreshChoices()}><RefreshCw class="size-3.5" /></Button>
       </div>
       {#if $controller.error || $controller.choicesError || localError}<p role="alert" class="m-0 break-words text-xs text-destructive">{tr(localError || $controller.error || $controller.choicesError)}</p>{/if}
-      <input bind:this={fileInput} type="file" class="hidden" multiple tabindex="-1" accept={promptCapabilities ? attachmentAccept(promptCapabilities) : ''} aria-label={tr('Attach files')}
-        onchange={(event) => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ''; void addFiles(files) }} />
       <div class="space-y-2" data-agent-composer>
       <AgentComposer value={$controller.text} draftKey={draftId} onchange={(text) => controller.edit(text)} onsubmit={(text) => controller.send(text)}
-        disabled={$controller.phase === 'closing' || $controller.phase === 'promoted'} busy={$controller.phase === 'sending'} sendDisabled={$controller.phase !== 'ready'}
-        attachments={$controller.attachments} onRemoveAttachment={controller.removeAttachment} onAddAttachments={acceptsFiles ? () => fileInput?.click() : undefined}
-        onPasteFiles={acceptsFiles ? addFiles : undefined}>
+        disabled={$controller.phase === 'closing' || $controller.phase === 'promoted'} busy={$controller.phase === 'sending'} sendDisabled={$controller.phase !== 'ready'}>
         <svelte:fragment slot="footer">
-          {#if $controller.snapshot}<span class="max-w-32 truncate px-1 text-[10px] text-muted-foreground">{$controller.choices.find(choice => choice.key === $controller.choice)?.name ?? ''}</span><SessionConfigurationControls configuration={$controller.snapshot.runtime.configuration} disabled={$controller.phase !== 'ready'} onChange={controller.configure} />
+          {#if $controller.snapshot}<span class="flex min-w-0 max-w-40 items-center gap-1.5 px-1 text-[10px] text-muted-foreground"><AgentIcon hostId={selectedAgent?.hostId} class="size-3.5" /><span class="truncate">{selectedAgent?.name ?? ''}</span></span><SessionConfigurationControls configuration={$controller.snapshot.runtime.configuration} disabled={$controller.phase !== 'ready'} onChange={controller.configure} />
           {:else}<span class="px-1 text-[10px] text-muted-foreground">{tr('Connecting will load the agent’s session options.')}</span>{/if}
         </svelte:fragment>
       </AgentComposer>

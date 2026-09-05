@@ -62,15 +62,19 @@ function presentTurn(id: string, activities: readonly SessionActivity[], activeI
   }
 }
 
-export function groupTimeline(activities: readonly SessionActivity[], runActive: boolean): TimelineItem[] {
+export function groupTimeline(activities: readonly SessionActivity[], runActive: boolean, previous: readonly TimelineItem[] = []): TimelineItem[] {
   const activeId = runActive ? activities.findLast((row) => row.turn_id)?.turn_id ?? null : null
+  const previousTurns = new Map(previous.flatMap(item => item.type === 'turn' ? [[item.turn.id, item] as const] : []))
   const result: TimelineItem[] = []
   let pending: SessionActivity[] = []
   let pendingId: string | null = null
   const flush = () => {
     if (!pendingId || pending.length === 0) return
-    const partialStart = result.length === 0 && (pending[0].sequence ?? 1) > 1
-    result.push({ type: 'turn', id: `turn:${pendingId}`, turn: presentTurn(pendingId, pending, activeId, partialStart) })
+    const partialStart = result.length === 0 && (pending[0].sequence ?? 1) > 1 && !pending.some(isTurnStart)
+    const cached = previousTurns.get(pendingId)
+    if (cached && cached.turn.active === (pendingId === activeId) && cached.turn.partialStart === partialStart
+      && cached.turn.activities.length === pending.length && pending.every((row, index) => row === cached.turn.activities[index])) result.push(cached)
+    else result.push({ type: 'turn', id: `turn:${pendingId}`, turn: presentTurn(pendingId, pending, activeId, partialStart) })
     pending = []
     pendingId = null
   }

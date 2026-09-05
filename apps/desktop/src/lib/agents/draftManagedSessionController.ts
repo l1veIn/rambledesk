@@ -5,21 +5,20 @@ import { readApplicationSnapshot } from '$lib/application/readApplicationSnapsho
 import { applicationResourcesAffectManagedSession } from '$lib/application/applicationSnapshotRefetch'
 import type { AgentCatalogEntry, AgentConfig, AgentInspection, ManagedSessionSnapshot, SessionConfigChange } from '$lib/generated/feedback'
 import { isAbsoluteAgentDirectory, redactAgentMessage } from './agentConfigForm'
-import { readPromptFiles, validatePromptAttachments, type PromptAttachment } from './attachments/promptAttachments'
 import { sessionPromptDrafts } from './managedSessionUi'
 import type { ManagedSessionDraftStorage } from './managedSessionDrafts'
 
-export type DraftAgentChoice = Readonly<{ key: string; name: string; config?: AgentConfig; catalogId?: string }>
+export type DraftAgentChoice = Readonly<{ key: string; name: string; hostId: string; config?: AgentConfig; catalogId?: string }>
 export function draftAgentChoices(configs: readonly AgentConfig[], catalog: readonly AgentCatalogEntry[], inspections: readonly AgentInspection[]): DraftAgentChoice[] {
-  const profiles = configs.map((config) => ({ key: `config:${config.id}`, name: config.name, config }))
+  const profiles = configs.map((config) => ({ key: `config:${config.id}`, name: config.name, hostId: config.host_id, config }))
   const installed = catalog.filter((entry) => !configs.some((config) => config.catalog_id === entry.id)
     && inspections.some((inspection) => inspection.agent_id === entry.id && Boolean(inspection.command)))
-    .map((entry) => ({ key: `catalog:${entry.id}`, name: entry.name, catalogId: entry.id }))
+    .map((entry) => ({ key: `catalog:${entry.id}`, name: entry.name, hostId: entry.host_id, catalogId: entry.id }))
   return [...profiles, ...installed]
 }
 
 export type DraftManagedSessionState = Readonly<{
-  choice: string; cwd: string; text: string; attachments: readonly PromptAttachment[]
+  choice: string; cwd: string; text: string
   choices: readonly DraftAgentChoice[]; loadingChoices: boolean; choicesError: string
   awaitingAcknowledgement: boolean
   phase: 'idle' | 'preparing' | 'ready' | 'failed' | 'sending' | 'closing' | 'promoted'
@@ -33,7 +32,7 @@ export function createDraftManagedSessionController(
   onPromoted: (snapshot: ManagedSessionSnapshot) => Promise<void> | void,
 ) {
   const initial = storage.load(draftId)
-  const state = writable<DraftManagedSessionState>({ ...initial, attachments: [], choices: [], loadingChoices: true, choicesError: '', awaitingAcknowledgement: false, phase: 'idle', snapshot: null, error: '' })
+  const state = writable<DraftManagedSessionState>({ ...initial, choices: [], loadingChoices: true, choicesError: '', awaitingAcknowledgement: false, phase: 'idle', snapshot: null, error: '' })
   let started = false
   let closed = false
   let closing = false
@@ -47,6 +46,10 @@ export function createDraftManagedSessionController(
   let operations: Promise<void> = Promise.resolve()
   let unsubscribe: (() => void) | null = null
   let preparationTimer: ReturnType<typeof setTimeout> | null = null
+  let choicesTask: Promise<void> | null = null
+  let inspectedCatalog = ''
+  let catalogEntries: AgentCatalogEntry[] = []
+  const inspections = new Map<string, AgentInspection>()
 
   function patch(next: Partial<DraftManagedSessionState>) { state.update((value) => ({ ...value, ...next })) }
   function persist() { const { choice, cwd, text } = get(state); storage.save(draftId, { choice, cwd, text }) }
@@ -73,18 +76,16 @@ export function createDraftManagedSessionController(
     const latest = get(state)
     const remainingText = latest.text
     sessionPromptDrafts.write(snapshot.session.session_id, remainingText)
-    const remainingAttachments = latest.attachments
-    sessionPromptDrafts.writeAttachments(snapshot.session.session_id, remainingAttachments)
-    patch({ phase: 'promoted', snapshot, text: remainingText, attachments: remainingAttachments, awaitingAcknowledgement: false, error: '' })
+    patch({ phase: 'promoted', snapshot, text: remainingText, awaitingAcknowledgement: false, error: '' })
     storage.remove(draftId)
     unsubscribe?.(); unsubscribe = null
     await onPromoted(snapshot)
   }
 
-  let sent: { text: string; attachments: readonly PromptAttachment[]; editRevision: number } | null = null
+  let sent: { text: string; editRevision: number } | null = null
   function restoreRejectedSubmission() {
     if (!sent) return
-    if (draftEditRevision === sent.editRevision) { patch({ text: sent.text, attachments: sent.attachments }); persist() }
+    if (draftEditRevision === sent.editRevision) { patch({ text: sent.text }); persist() }
     sent = null
     patch({ awaitingAcknowledgement: false })
   }
@@ -147,7 +148,7 @@ export function createDraftManagedSessionController(
           })
         if (!current(intent)) return
         if (config !== previous) {
-          const resolved = { key: `config:${config.id}`, name: config.name, config }
+          const resolved = { key: `config:${config.id}`, name: config.name, hostId: config.host_id, config }
           choicesRevision += 1
           patch({ choice: resolved.key, choices: [...get(state).choices.filter((item) => item.key !== choice.key && item.key !== resolved.key), resolved], loadingChoices: false })
           persist()
@@ -174,38 +175,73 @@ export function createDraftManagedSessionController(
     })
   }
 
-  async function refreshChoices() {
-    if (closed || promoted) return
+  function publishChoices(configs: readonly AgentConfig[], catalog: readonly AgentCatalogEntry[]) {
+    const choices = draftAgentChoices(configs, catalog, [...inspections.values()])
+    const value = get(state)
+    const previousProfile = value.choices.find((item) => item.key === value.choice)?.config
+    const selectedProfile = choices.find((item) => item.key === value.choice)?.config
+    const selectionChanged = previousProfile && (!selectedProfile || selectedProfile.updated_at !== previousProfile.updated_at)
+    if (selectionChanged && !sent) {
+      revision += 1
+      readRevision += 1
+      patch({ snapshot: null, phase: 'idle', error: '' })
+    }
+    // Discovery never selects or materializes an installed catalog entry.
+    const choice = value.choice || choices.find((item) => item.config?.enabled)?.key || ''
+    patch({ choices, choice, loadingChoices: false })
+    persist()
+    if ((!prepared || selectionChanged) && !sent) void schedule()
+  }
+  function refreshChoices(rescan = true): Promise<void> {
+    if (closed || closing || promoted) return Promise.resolve()
+    if (choicesTask) return choicesTask
     const intent = ++choicesRevision
     patch({ loadingChoices: true, choicesError: '' })
-    try {
-      await transport.waitUntilReady()
-      const [configs, catalog] = await Promise.all([transport.call('listAgentConfigs', undefined), transport.call('listAvailableAgents', undefined)])
-      const inspected = await Promise.allSettled(catalog.map((entry) => transport.call('inspectAgentInstallation', { agent_id: entry.id })))
-      if (intent !== choicesRevision || closed || promoted) return
-      const choices = draftAgentChoices(configs, catalog, inspected.flatMap((result) => result.status === 'fulfilled' ? [result.value] : []))
-      const value = get(state)
-      const previousProfile = value.choices.find((item) => item.key === value.choice)?.config
-      const selectedProfile = choices.find((item) => item.key === value.choice)?.config
-      const selectionChanged = previousProfile && (!selectedProfile || selectedProfile.updated_at !== previousProfile.updated_at)
-      if (selectionChanged && !sent && !closing) {
-        revision += 1
-        readRevision += 1
-        patch({ snapshot: null, phase: 'idle', error: '' })
-      }
-      // Catalog materialization requires choosing that row. A saved profile can
-      // be the default; discovering an installed catalog entry alone cannot save it.
-      const choice = value.choice || choices.find((item) => item.config?.enabled)?.key || ''
-      patch({ choices, choice, loadingChoices: false, choicesError: inspected.some((result) => result.status === 'rejected') ? 'Some installed agents could not be checked.' : '' })
-      persist()
-      if ((!prepared || selectionChanged) && !closing && !sent) void schedule()
-    } catch (cause) {
-      if (intent === choicesRevision && !closed) patch({ loadingChoices: false, choicesError: message(cause) })
-    }
+    choicesTask = (async () => {
+      try {
+        await transport.waitUntilReady()
+        if (closed || closing || promoted) return
+        const configs = await transport.call('listAgentConfigs', undefined)
+        if (intent !== choicesRevision || closed || closing || promoted) return
+        // Configured agents connect immediately, independent of slow version probes.
+        publishChoices(configs, catalogEntries)
+        const catalog = await transport.call('listAvailableAgents', undefined)
+        if (closed || closing || promoted) return
+        catalogEntries = catalog
+        publishChoices(get(state).choices.flatMap(choice => choice.config ? [choice.config] : []), catalog)
+        const catalogKey = catalog.map(entry => entry.id).join('|')
+        if (!rescan && inspectedCatalog === catalogKey) return
+        let next = 0
+        let failed = false
+        async function inspectNext() {
+          while (!closed && !closing && !promoted && next < catalog.length) {
+            const entry = catalog[next++]
+            try {
+              const inspection = await transport.call('inspectAgentInstallation', { agent_id: entry.id })
+              if (closed || closing || promoted) return
+              inspections.set(entry.id, inspection)
+            } catch {
+              if (closed || closing || promoted) return
+              inspections.delete(entry.id)
+              failed = true
+            }
+            // Resolution and user selection can change during a probe. Retain the
+            // current saved profiles instead of restoring the scan's older list.
+            publishChoices(get(state).choices.flatMap(choice => choice.config ? [choice.config] : []), catalog)
+            patch({ choicesError: failed ? 'Some installed agents could not be checked.' : '' })
+          }
+        }
+        await Promise.all(Array.from({ length: Math.min(3, catalog.length) }, inspectNext))
+        if (!closed && !closing && !promoted && !failed) inspectedCatalog = catalogKey
+      } catch (cause) {
+        if (!closed && !closing && !promoted) patch({ loadingChoices: false, choicesError: message(cause) })
+      } finally { choicesTask = null }
+    })()
+    return choicesTask
   }
   function start() {
     if (closed || promoted) return
-    if (started) { void refreshChoices(); return }
+    if (started) { void refreshChoices(false); return }
     started = true
     unsubscribe = transport.subscribe(APPLICATION_EVENTS_STREAM, (event) => {
       if (event.type === 'ready') { if (prepared) void refreshPrepared(); return }
@@ -213,7 +249,7 @@ export function createDraftManagedSessionController(
       // on explicit UI activation, avoiding an inspect -> event -> inspect loop.
       if (prepared && applicationResourcesAffectManagedSession(event.resources, prepared.session.session_id)) void refreshPrepared()
     }, (cause) => { if (!closed && !promoted) patch({ error: message(cause) }) })
-    void refreshChoices()
+    void refreshChoices(false)
   }
   function select(choice: string, cwd: string, delayMs = 0) {
     if (closed || closing || promoted || sent) return
@@ -232,20 +268,18 @@ export function createDraftManagedSessionController(
   async function send(text: string) {
     const value = get(state)
     if (closed || closing || promoted || sent || value.phase !== 'ready' || !prepared) return
-    const attachments = value.attachments
     const trimmed = text.trim()
-    if (!trimmed && attachments.length === 0) return
-    validatePromptAttachments(trimmed, attachments, prepared.runtime.capabilities.prompt)
+    if (!trimmed) return
     const target = prepared.session.session_id
     const intent = revision
-    sent = { text, attachments, editRevision: draftEditRevision }
+    sent = { text, editRevision: draftEditRevision }
     sendPending = true
     // The submission stays recoverable until accepted; the composer is available
-    // for the next draft without retaining already submitted attachments.
-    patch({ phase: 'sending', text: '', attachments: [], awaitingAcknowledgement: true, error: '' })
+    // for the next draft while the first message is being accepted.
+    patch({ phase: 'sending', text: '', awaitingAcknowledgement: true, error: '' })
     await enqueue(async () => {
       try {
-        const snapshot = await transport.call('sendManagedPromptContent', { session_id: target, text: trimmed, content: attachments.map((attachment) => attachment.content) })
+        const snapshot = await transport.call('sendManagedPrompt', { session_id: target, text: trimmed })
         assertSession(snapshot, target)
         await acceptPromotion(snapshot)
         if (!promoted && current(intent)) { prepared = snapshot; restoreRejectedSubmission(); patch({ snapshot, phase: ready(snapshot) ? 'ready' : 'failed' }) }
@@ -267,17 +301,6 @@ export function createDraftManagedSessionController(
       await transport.call('setManagedSessionConfig', { session_id: target.session.session_id, change })
       if (current(intent)) await refreshPrepared()
     })
-  }
-  async function addFiles(files: readonly File[]) {
-    const value = get(state)
-    if (!value.snapshot || closing || closed || promoted) return
-    const intent = revision
-    const attachments = await readPromptFiles(files, value.snapshot.runtime.capabilities.prompt)
-    if (!current(intent)) return
-    const combined = [...get(state).attachments, ...attachments]
-    validatePromptAttachments(get(state).text.trim(), combined, value.snapshot.runtime.capabilities.prompt)
-    draftEditRevision += 1
-    patch({ attachments: combined })
   }
   async function close(): Promise<string | null> {
     if (preparationTimer) clearTimeout(preparationTimer)
@@ -303,9 +326,8 @@ export function createDraftManagedSessionController(
       throw cause
     }
   }
-  return { subscribe: state.subscribe, start, select, edit, send, configure, addFiles, close, refreshChoices,
+  return { subscribe: state.subscribe, start, select, edit, send, configure, close, refreshChoices,
     retry: () => schedule(true),
-    removeAttachment: (id: string) => { if (!closing && !promoted) { draftEditRevision += 1; patch({ attachments: get(state).attachments.filter((item) => item.id !== id) }) } },
   }
 }
 

@@ -1,4 +1,4 @@
-import type { AgentConfig, CreateManagedSessionInput, SaveAgentConfigInput } from '$lib/generated/feedback'
+import type { AgentConfig, SaveAgentConfigInput } from '$lib/generated/feedback'
 
 export type AgentDraft = {
   id: string | null
@@ -75,24 +75,6 @@ export function isAbsoluteAgentDirectory(value: string): boolean {
   const path = value.trim()
   if (/[\r\n\0]/u.test(path)) return false
   return path.startsWith('/') || /^[A-Za-z]:[\\/]/u.test(path) || /^\\\\[^\\]+\\[^\\]+/u.test(path)
-}
-
-export type CreateManagedSessionDraftInput = Readonly<CreateManagedSessionInput>
-
-export function managedSessionDraftInput(
-  configId: string,
-  cwd: string,
-  title: string,
-  configs: readonly AgentConfig[],
-): CreateManagedSessionDraftInput {
-  if (!configs.some((config) => config.id === configId && config.enabled)) {
-    throw new Error('Choose an enabled agent configuration.')
-  }
-  if (!isAbsoluteAgentDirectory(cwd)) throw new Error('Enter an absolute project directory.')
-  const directory = cwd.trim()
-  const directoryName = directory.replace(/[\\/]+$/u, '').split(/[\\/]/u).at(-1)
-  const fallbackTitle = directoryName && !/^[A-Za-z]:$/u.test(directoryName) ? directoryName : 'New session'
-  return { agent_config_id: configId, cwd: directory, title: title.trim() || fallbackTitle }
 }
 
 export class AgentDraftCache {

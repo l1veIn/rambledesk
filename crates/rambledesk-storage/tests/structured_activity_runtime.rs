@@ -123,6 +123,7 @@ async fn initial_snapshot_is_bounded_and_older_pages_recover_the_complete_histor
             session_id: id.clone(),
             before_sequence: 106,
             limit: None,
+            turn_limit: None,
         })
         .await
         .unwrap();
@@ -135,6 +136,7 @@ async fn initial_snapshot_is_bounded_and_older_pages_recover_the_complete_histor
             session_id: id.clone(),
             before_sequence: 6,
             limit: None,
+            turn_limit: None,
         })
         .await
         .unwrap();

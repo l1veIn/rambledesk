@@ -9,11 +9,7 @@ const zh: Record<string, string> = {
   'Draft saved while the agent works': 'Agent 工作时可以继续编辑草稿',
   'Could not send. Your draft is preserved.': '发送失败，草稿已保留。',
   'Could not cancel the current turn.': '未能取消当前轮次。',
-  'Could not add the attachment.': '未能添加附件。',
-  'Attachments are not supported by this session.': '此会话暂不支持附件。',
-  'Add attachment': '添加附件', 'Remove attachment': '移除附件',
-  'Mention a file': '提及文件', 'Files': '文件', 'Searching…': '正在搜索…',
-  'No matching files': '没有匹配的文件', 'File search failed': '文件搜索失败',
+  'Add attachments in the Ramble request.': '请在 Ramble 请求中添加附件。',
 }
 
 export function composerText(locale: Locale, text: string): string {

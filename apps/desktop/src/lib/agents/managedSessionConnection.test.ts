@@ -222,27 +222,18 @@ describe('opening an Agent workspace', () => {
     controller.dispose()
   })
 
-  it('permits one new connection after a runtime generation changes, but respects an explicit stop', async () => {
+  it('permits one new connection after a runtime generation changes', async () => {
     const transport = new TestApplicationTransport(undefined, { initiallyReady: true })
       .resolve('getManagedSession', snapshot())
       .handle('startManagedSession', () => {
         transport.resolve('getManagedSession', snapshot('connected'))
         return snapshot('connected')
       })
-      .handle('stopManagedSession', () => {
-        transport.resolve('getManagedSession', snapshot())
-        return snapshot()
-      })
     const controller = createManagedSessionController(transport, 'one')
     controller.start(); ready(transport, 'first')
     await flush()
     transport.resolve('getManagedSession', snapshot())
     ready(transport, 'second')
-    await flush()
-    expect(transport.callsFor('startManagedSession')).toHaveLength(2)
-    await controller.stopAgent()
-    await flush()
-    ready(transport, 'third')
     await flush()
     expect(transport.callsFor('startManagedSession')).toHaveLength(2)
     controller.dispose()

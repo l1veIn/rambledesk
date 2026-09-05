@@ -201,6 +201,17 @@ impl SessionActivityRepository for SqliteFeedbackStore {
         rows.iter().map(activity_from_row).collect()
     }
 
+    async fn list_session_turn_activity_before(
+        &self,
+        session_id: &str,
+        before_sequence: u64,
+        turn_limit: u32,
+        limit: u32,
+    ) -> Result<Vec<SessionActivity>, SessionRepositoryError> {
+        self.turn_activity_history(session_id, before_sequence, turn_limit, limit)
+            .await
+    }
+
     async fn update_activity_text(
         &self,
         id: &str,
@@ -251,7 +262,9 @@ impl SessionActivityRepository for SqliteFeedbackStore {
     }
 }
 
-fn activity_from_row(row: &SqliteRow) -> Result<SessionActivity, SessionRepositoryError> {
+pub(super) fn activity_from_row(
+    row: &SqliteRow,
+) -> Result<SessionActivity, SessionRepositoryError> {
     let sequence: i64 = row.try_get("sequence").map_err(storage_error)?;
     let kind: String = row.try_get("kind").map_err(storage_error)?;
     Ok(SessionActivity {

@@ -1,13 +1,14 @@
 <!-- Installation detail flow adapted from Codeg 3ebdfed acp-agent-settings.tsx (Apache-2.0). -->
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { Bot, CheckCircle2, ChevronRight, Download, ExternalLink, LoaderCircle, Plus, RefreshCw, Settings2, XCircle } from '@lucide/svelte'
+  import { CheckCircle2, ChevronRight, Download, ExternalLink, LoaderCircle, Plus, RefreshCw, Settings2, XCircle } from '@lucide/svelte'
   import { Button } from '$lib/components/ui/button'
   import type { ApplicationTransport } from '$lib/application/applicationTransport'
   import type { SaveAgentConfigInput } from '$lib/generated/feedback'
   import { locale } from '$lib/preferences'
   import { agentListItems, catalogConfiguration, createAgentCatalogController, installIsActive, type AgentListItem } from './agentCatalogController'
   import AgentSettings from './AgentSettings.svelte'
+  import AgentIcon from './AgentIcon.svelte'
   import { AGENT_SETUP, applyAgentCredentials } from './agentOnboarding'
   import { AgentDraftCache, redactAgentMessage } from './agentConfigForm'
   import { createAgentSettingsController } from './agentSettingsController'
@@ -131,7 +132,7 @@
       <div class="max-h-[640px] space-y-1 overflow-y-auto p-2">
         {#each items as row (row.key)}
           <button type="button" disabled={locked} class={`flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-3 text-left transition-colors disabled:opacity-50 ${item?.key === row.key ? 'border-primary/30 bg-primary/5' : 'border-transparent hover:bg-muted/60'}`} aria-current={item?.key === row.key ? 'page' : undefined} onclick={() => selected = row.key}>
-            <span class="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-background"><Bot class="size-4 text-muted-foreground" /></span>
+            <span class="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-background"><AgentIcon hostId={row.config?.host_id ?? row.entry?.host_id} class="size-4" /></span>
             <span class="min-w-0 flex-1"><strong class="block truncate text-xs font-medium">{row.name}</strong><span class="mt-1 block text-[10px] text-muted-foreground">{status(row)}</span>{#if row.config}<span class="mt-1 block truncate text-[10px] text-muted-foreground">{row.entry?.name ?? tr('自定义 ACP 智能体', 'Custom ACP agent')}</span>{/if}</span>
             {#if item?.key === row.key}<ChevronRight class="size-3 text-muted-foreground" />{/if}
           </button>
@@ -146,7 +147,7 @@
         <p class="m-0 text-xs leading-5 text-muted-foreground">{tr('连接已安装的 ACP 程序，保存后会出现在同一个智能体列表中。', 'Connect an installed ACP program. It will appear in this agent list after saving.')}</p>
         {#key selected}<AgentSettings {cache} {baselines} busy={locked} onSave={saveProfile} onDelete={removeProfile} onCheck={settings.check} />{/key}
       {:else if item}
-        <div class="flex items-start gap-3"><div class="flex size-11 items-center justify-center rounded-xl border bg-muted/30"><Bot class="size-6" /></div><div class="min-w-0 flex-1"><h4 class="m-0 text-base font-semibold">{item.name}</h4><p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">{setup ? tr(...setup.description) : tr('使用已有的登录与项目环境连接此智能体。', 'Connect this agent using its existing login and project environment.')}</p></div></div>
+        <div class="flex items-start gap-3"><div class="flex size-11 items-center justify-center rounded-xl border bg-muted/30"><AgentIcon hostId={profile?.host_id ?? entry?.host_id} class="size-6" /></div><div class="min-w-0 flex-1"><h4 class="m-0 text-base font-semibold">{item.name}</h4><p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">{setup ? tr(...setup.description) : tr('使用已有的登录与项目环境连接此智能体。', 'Connect this agent using its existing login and project environment.')}</p></div></div>
         {#if entry}
           <div class="flex flex-wrap gap-2 text-[10px]"><span class="rounded-full border px-2 py-1">{entry.connection_kind === 'bridge' ? tr('通过 ACP 桥接', 'ACP bridge') : tr('原生 ACP', 'Native ACP')}</span><span class="rounded-full border px-2 py-1">{tr('推荐版本', 'Recommended')} {entry.distribution.kind === 'npm' ? entry.distribution.pinned_version : entry.distribution.version}</span>{#if inspection?.version}<span class="rounded-full border px-2 py-1">{tr('本机版本', 'Installed')} {inspection.version}</span>{/if}</div>
           <section class="space-y-3 rounded-lg border p-3">

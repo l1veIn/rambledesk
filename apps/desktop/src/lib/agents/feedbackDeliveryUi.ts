@@ -1,12 +1,4 @@
-import type { FeedbackDelivery, FeedbackDeliveryState } from '$lib/generated/feedback'
-
-export function deliveriesForSession(sessionId: string, deliveries: readonly FeedbackDelivery[]): FeedbackDelivery[] {
-  const visible = new Map<string, FeedbackDelivery>()
-  for (const delivery of deliveries) {
-    if (delivery.session_id === sessionId) visible.set(delivery.request_id, delivery)
-  }
-  return [...visible.values()]
-}
+import type { FeedbackDeliveryState } from '$lib/generated/feedback'
 
 export function deliveryStateLabel(state: FeedbackDeliveryState): string {
   switch (state) {

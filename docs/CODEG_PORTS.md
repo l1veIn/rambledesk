@@ -4,7 +4,7 @@
 Codeg 作者和贡献者保留其版权；根仓库为 Apache-2.0，完整条款见 `licenses/codeg-APACHE-2.0.txt`。
 本文件记录直接改写的来源与本项目变更；仅阅读过的候选来源见 [参考地图](CODEG_ACP_REFERENCE_MAP.md)。
 
-2026-09-05 体验重设计已实现，Windows 自动化与隔离浏览器验收已完成。旧通道及其测试作为历史移植证据保留；当前生产反馈使用应用内置 command，完整架构与未验证边界见 [本轮计划](ACP_EXPERIENCE_REDESIGN_PLAN.md)。
+2026-09-05 体验重设计已实现，Windows 自动化与隔离浏览器验收已完成。旧通道的来源与历次验证记录作为历史移植证据保留；当前生产反馈使用应用内置 command，完整架构与未验证边界见 [本轮计划](ACP_EXPERIENCE_REDESIGN_PLAN.md)。
 
 Web 构建输出和 Desktop 安装资源均包含 `THIRD_PARTY_NOTICES.md`、
 `licenses/codeg-APACHE-2.0.txt` 与本文件 `docs/CODEG_PORTS.md`。
@@ -21,8 +21,9 @@ Vite 构建与 Tauri 资源映射直接读取仓库中的原文件，不维护�
 | 托管 stdio 反馈 companion（历史通道） | `src-tauri/src/delegation/companion.rs`、`acp/connection.rs` | 曾改写实例私有 HTTP 归属、撤销、环境授权与三工具转发，并完成 CLI/两 scope/SQLite/HTTP 等测试。现已退出生产 ACP 启动选择；保留来源声明，不把旧测试视为统一 command 的模型验收。 |
 | 按轮次的过程折叠、最终回答与页脚 | `src/components/message/completed-turn-content.tsx`、`turn-stats.tsx`、`live-turn-stats.tsx` | Svelte 适配真实 turn ID 和持久起止标记；运行中默认展开、结束自动收起，手动选择优先；最终回答独立、复制和完成时间、未知耗时隐藏、跨页轮次与延迟挂载。定向回归已通过，性能对照尚待记录。 |
 | 输入器上下文占用 | `src/components/chat/composer-context-usage.tsx` | 参考上下文占用呈现，接入 ACP 实际 `usage_update` 的 used/size；无上报隐藏，实例更换后等待新值。不推算累计 token、费用或任务消耗。 |
+| 历史预取与向上翻页 | `src/stores/conversation-runtime-store.ts`、`src/components/message/virtualized-message-thread.tsx` | 参考 turn 窗口和向上跨过 240px 触发；使用自有 SQLite 游标、默认 20 轮展示/历史查询、1000 活动及约 2MiB 单页预算。实时快照仍为 100 活动，历史只在打开时预取一次，加载前捕获锚点；复用未变化轮次，折叠过程延迟挂载。 |
 | 结构化提示输入 | `src-tauri/src/acp/types.rs`、`connection.rs` | 沿用共用发送/取消/continuation，独立完整输入与历史预览限制；协商能力、真实 stdio 图片和资源 4 个用例，详见 [输入记录](CODEG_TYPED_PROMPTS.md)。 |
 
-统一反馈命令、HTTP 归属、prepared 生命周期、草稿控制器与持久投递是 RambleDesk 自有实现，继续使用既有撤销、幂等和恢复合同。Pi 专用 wrapper/托管扩展不再作为生产 ACP 反馈路径；外部 Pi/dsh 适配器保留。历史移植验收见 [CODEG_ACCEPTANCE.md](CODEG_ACCEPTANCE.md)，本次最终 QA 见体验重设计计划。
+统一反馈命令、HTTP 归属、prepared 生命周期、草稿控制器与持久投递是 RambleDesk 自有实现，继续使用既有撤销、幂等和恢复合同。当前分支已移除旧 Pi wrapper/托管扩展及 `managed-mcp-stdio` 转发入口；CLI 和桌面二进制均通过内置 `feedback` 命令处理 ACP 反馈。外部 Pi/dsh 适配器、普通 MCP 服务与安装流程、现存托管 HTTP scope 隔离和撤销合同保留。历史移植验收见 [CODEG_ACCEPTANCE.md](CODEG_ACCEPTANCE.md)，本次最终 QA 见体验重设计计划。
 
 第三方依赖各自遵循其许可证，不因 Codeg 根许可证而改变。
