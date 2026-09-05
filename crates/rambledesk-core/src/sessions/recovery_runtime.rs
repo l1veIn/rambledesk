@@ -1,3 +1,4 @@
+use crate::ApplicationResourceKey;
 use std::sync::Arc;
 
 use super::{application::SessionEntry, *};
@@ -21,7 +22,7 @@ impl SessionApplication {
                         .recover_open_runs(&self.clock.now_rfc3339())
                         .await?;
                     if !recovered.is_empty() {
-                        self.changed();
+                        self.changed(vec![ApplicationResourceKey::All]);
                     }
                 }
                 Ok::<_, SessionError>(())
@@ -80,7 +81,7 @@ impl SessionApplication {
         end: SessionRunEnd,
         diagnostic: Option<&str>,
     ) -> Result<(), SessionError> {
-        let events = entry.events.lock().await;
+        let mut events = entry.events.lock().await;
         let mut live = entry.live.lock().await;
         let connection = live.connection.clone();
         let instance = live.runtime.instance_id.clone();
@@ -88,6 +89,7 @@ impl SessionApplication {
         live.runtime.activity = SessionActivityState::Idle;
         live.permissions.clear();
         live.cancelling = false;
+        events.release_content();
         drop(live);
         drop(events);
         let revoked = match &self.feedback {
@@ -139,7 +141,12 @@ impl SessionApplication {
             live.runtime.last_error = Some(error.to_string());
         }
         drop(live);
-        self.session_changed(session_id);
+        self.changed(vec![
+            ApplicationResourceKey::Navigation,
+            ApplicationResourceKey::ManagedSession {
+                session_id: session_id.into(),
+            },
+        ]);
         result
     }
 

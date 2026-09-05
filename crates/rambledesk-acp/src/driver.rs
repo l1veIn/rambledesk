@@ -25,14 +25,6 @@ impl AcpSessionDriver {
     }
 }
 
-impl ConfiguredAcpSessionDriver {
-    /// Kept for callers upgrading from the extension-based Pi bridge. Managed
-    /// feedback now uses the same command for every Agent and installs no plugin.
-    pub fn with_pi_extension_root(self, _path: impl Into<PathBuf>) -> Self {
-        self
-    }
-}
-
 struct ManagedConnection {
     owned: Mutex<Option<AcpConnection>>,
     shutdown: tokio::sync::Mutex<()>,

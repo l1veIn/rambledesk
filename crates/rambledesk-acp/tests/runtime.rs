@@ -1,97 +1,28 @@
+mod support;
+
 use rambledesk_acp::AcpSessionDriver;
 use rambledesk_core::*;
 use rambledesk_storage::SqliteFeedbackStore;
-use std::{collections::BTreeMap, path::PathBuf, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
+use support::{create, id, setup, wait_for};
 
-async fn setup() -> (
-    tempfile::TempDir,
-    Arc<SqliteFeedbackStore>,
-    SessionApplication,
-    String,
-) {
-    let dir = tempfile::tempdir().unwrap();
-    let store = Arc::new(
-        SqliteFeedbackStore::connect(&dir.path().join("db.sqlite"))
-            .await
-            .unwrap(),
-    );
-    let app = SessionApplication::new(store.clone(), store.clone(), Arc::new(AcpSessionDriver));
-    let config = app
-        .save_agent_config(SaveAgentConfigInput {
-            catalog_id: None,
-            id: None,
-            name: "Fixture".into(),
-            host_id: "fixture".into(),
-            protocol: SessionProtocol::Acp,
-            enabled: true,
-            command: "node".into(),
-            args: vec![
-                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                    .join("tests/fixtures/agent.mjs")
-                    .to_string_lossy()
-                    .into_owned(),
-                "load".into(),
-            ],
-            env: BTreeMap::new(),
-        })
-        .await
-        .unwrap();
-    (dir, store, app, config.id)
-}
-
-async fn create(
-    app: &SessionApplication,
-    dir: &tempfile::TempDir,
-    config: &str,
-    title: &str,
-) -> ManagedSessionSnapshot {
-    app.create_session(CreateManagedSessionInput {
-        agent_config_id: config.into(),
-        cwd: dir.path().to_string_lossy().into_owned(),
-        title: title.into(),
-    })
-    .await
-    .unwrap()
-}
-fn id(snapshot: &ManagedSessionSnapshot) -> ManagedSessionInput {
-    ManagedSessionInput {
-        session_id: snapshot.session.session_id.clone(),
-    }
-}
 async fn idle(app: &SessionApplication, session: ManagedSessionInput) -> ManagedSessionSnapshot {
-    tokio::time::timeout(Duration::from_secs(5), async {
-        loop {
-            let snapshot = app.get_session(session.clone()).await.unwrap();
-            if snapshot.runtime.activity == SessionActivityState::Idle {
-                return snapshot;
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
+    wait_for(app, &session, |snapshot| {
+        snapshot.runtime.activity == SessionActivityState::Idle
     })
     .await
-    .expect("prompt did not settle")
 }
 
 async fn permissions(
     app: &SessionApplication,
     session: ManagedSessionInput,
 ) -> ManagedSessionSnapshot {
-    tokio::time::timeout(Duration::from_secs(5), async {
-        loop {
-            let snapshot = app.get_session(session.clone()).await.unwrap();
-            if snapshot.permissions.len() == 2 {
-                return snapshot;
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    })
-    .await
-    .expect("permissions did not arrive")
+    wait_for(app, &session, |snapshot| !snapshot.permissions.is_empty()).await
 }
 
 #[tokio::test]
 async fn permission_queue_is_scoped_validated_and_consumed_once() {
-    let (dir, store, app, config) = setup().await;
+    let (dir, store, app, config) = setup("agent", "load").await;
     let first = create(&app, &dir, &config, "One").await;
     let other = create(&app, &dir, &config, "Two").await;
     app.send_prompt(SendManagedPromptInput {
@@ -100,7 +31,11 @@ async fn permission_queue_is_scoped_validated_and_consumed_once() {
     })
     .await
     .unwrap();
-    let first = permissions(&app, id(&first)).await;
+    // Both independent callbacks must arrive before inspecting the full queue.
+    let first = wait_for(&app, &id(&first), |snapshot| {
+        snapshot.permissions.len() == 2
+    })
+    .await;
     let details = first
         .permissions
         .iter()
@@ -166,7 +101,7 @@ async fn permission_queue_is_scoped_validated_and_consumed_once() {
 
 #[tokio::test]
 async fn cancellation_drains_permissions_and_does_not_cancel_a_later_turn() {
-    let (dir, store, app, config) = setup().await;
+    let (dir, store, app, config) = setup("agent", "load").await;
     let first = create(&app, &dir, &config, "One").await;
     app.send_prompt(SendManagedPromptInput {
         session_id: first.session.session_id.clone(),
@@ -199,7 +134,7 @@ async fn cancellation_drains_permissions_and_does_not_cancel_a_later_turn() {
 
 #[tokio::test]
 async fn uncooperative_cancel_stops_only_the_owned_instance() {
-    let (dir, store, app, config) = setup().await;
+    let (dir, store, app, config) = setup("agent", "load").await;
     let mut saved = store.get_agent_config(&config).await.unwrap();
     saved.args[1] = "ignore_cancel".into();
     store.save_agent_config(saved).await.unwrap();
@@ -237,7 +172,7 @@ async fn uncooperative_cancel_stops_only_the_owned_instance() {
 
 #[tokio::test]
 async fn two_instances_stream_to_their_own_durable_activity_and_resume_without_replay() {
-    let (dir, store, app, config) = setup().await;
+    let (dir, store, app, config) = setup("agent", "load").await;
     let first = create(&app, &dir, &config, "One").await;
     let second = create(&app, &dir, &config, "Two").await;
     let (a, b) = tokio::join!(
@@ -297,7 +232,7 @@ async fn two_instances_stream_to_their_own_durable_activity_and_resume_without_r
 
 #[tokio::test]
 async fn busy_session_rejects_duplicate_input_and_stopping_it_keeps_other_instance_connected() {
-    let (dir, store, app, config) = setup().await;
+    let (dir, store, app, config) = setup("agent", "load").await;
     let first = create(&app, &dir, &config, "One").await;
     let second = create(&app, &dir, &config, "Two").await;
     app.send_prompt(SendManagedPromptInput {

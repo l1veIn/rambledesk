@@ -9,7 +9,6 @@ mod feedback_workflow;
 mod observer;
 mod permission_details;
 mod permissions;
-pub mod pi_wrapper;
 mod process;
 mod prompt_content;
 mod session_configuration;

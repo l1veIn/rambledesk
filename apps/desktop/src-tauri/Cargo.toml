@@ -26,7 +26,7 @@ rambledesk-core.workspace = true
 rambledesk-feedback-client.workspace = true
 rambledesk-hosts.workspace = true
 rambledesk-local-server.workspace = true
-rambledesk-mcp = { workspace = true, features = ["managed-stdio"] }
+rambledesk-mcp.workspace = true
 rambledesk-speech.workspace = true
 rambledesk-storage.workspace = true
 serde.workspace = true

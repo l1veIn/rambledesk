@@ -4838,7 +4838,6 @@ version = "0.3.4"
 dependencies = [
  "anyhow",
  "clap",
- "libc",
  "rambledesk-acp",
  "rambledesk-core",
  "rambledesk-feedback-client",
@@ -4992,7 +4991,6 @@ version = "0.3.4"
 dependencies = [
  "rambledesk-core",
  "rambledesk-hosts",
- "reqwest 0.13.4",
  "rmcp",
  "schemars 1.2.2",
  "serde",

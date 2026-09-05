@@ -151,7 +151,7 @@ impl SessionApplication {
                 updated_at: now,
             })
             .await?;
-        self.changed();
+        self.changed(vec![ApplicationResourceKey::AgentConfigurations]);
         Ok(saved)
     }
 
@@ -159,7 +159,7 @@ impl SessionApplication {
         self.repository
             .delete_agent_config(&input.agent_config_id)
             .await?;
-        self.changed();
+        self.changed(vec![ApplicationResourceKey::AgentConfigurations]);
         Ok(())
     }
 
@@ -217,7 +217,7 @@ impl SessionApplication {
                 created_at: self.clock.now_rfc3339(),
             })
             .await?;
-        self.changed();
+        self.changed(vec![ApplicationResourceKey::Navigation]);
         // Creation is durable even if startup fails; the user can repair/retry it.
         let _ = self
             .start_session(ManagedSessionInput {
@@ -399,7 +399,7 @@ impl SessionApplication {
         live.runtime.context_usage = None;
         live.runtime.last_error = None;
         drop(live);
-        self.changed();
+        self.session_changed(&input.session_id);
         let version = config.updated_at.clone();
         let result = tokio::select! {
             result=async {
@@ -439,7 +439,7 @@ impl SessionApplication {
                         )
                         .await;
                     entry.live.lock().await.runtime.connection = SessionConnectionState::Failed;
-                    self.changed();
+                    self.session_changed(&input.session_id);
                     return Err(error.into());
                 }
                 live.runtime = SessionRuntime {
@@ -470,12 +470,17 @@ impl SessionApplication {
                     )
                     .await;
                 entry.live.lock().await.runtime.connection = SessionConnectionState::Failed;
-                self.changed();
+                self.session_changed(&input.session_id);
                 return Err(error);
             }
         }
         drop(live);
-        self.changed();
+        self.changed(vec![
+            ApplicationResourceKey::Navigation,
+            ApplicationResourceKey::ManagedSession {
+                session_id: input.session_id.clone(),
+            },
+        ]);
         self.get_session(input).await
     }
 
@@ -491,7 +496,6 @@ impl SessionApplication {
         let _lifecycle = entry.lifecycle.lock().await;
         self.retire_entry_locked(&input.session_id, &entry, SessionRunEnd::Stopped, None)
             .await?;
-        self.changed();
         self.get_session(input).await
     }
 
@@ -544,16 +548,12 @@ impl SessionApplication {
             .or_default()
             .clone()
     }
-    pub(super) fn changed(&self) {
-        self.observer.observe(ApplicationChange {
-            resources: vec![ApplicationResourceKey::All],
-        });
+    pub(super) fn changed(&self, resources: Vec<ApplicationResourceKey>) {
+        self.observer.observe(ApplicationChange { resources });
     }
     pub(super) fn session_changed(&self, session_id: &str) {
-        self.observer.observe(ApplicationChange {
-            resources: vec![ApplicationResourceKey::ManagedSession {
-                session_id: session_id.into(),
-            }],
-        });
+        self.changed(vec![ApplicationResourceKey::ManagedSession {
+            session_id: session_id.into(),
+        }]);
     }
 }

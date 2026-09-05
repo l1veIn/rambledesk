@@ -1,4 +1,5 @@
 use super::*;
+use crate::ApplicationResourceKey;
 #[path = "activity_aggregation.rs"]
 mod aggregation;
 use async_trait::async_trait;
@@ -18,6 +19,15 @@ pub(super) struct StreamState {
     pub turn_id: Option<String>,
     last: Option<SessionActivity>,
     tools: HashMap<String, SessionActivity>,
+}
+
+impl StreamState {
+    pub(super) fn release_content(&mut self) {
+        // SQLite owns the transcript. Retain only turn attribution while a
+        // failed completion/stop waits for recovery; release allocation capacity.
+        self.last = None;
+        self.tools = HashMap::new();
+    }
 }
 
 pub(super) struct SessionEventCollector {
@@ -155,70 +165,37 @@ impl SessionApplication {
         let saved = async {
             self.begin_turn(&input.session_id, &instance, &turn_id)
                 .await?;
-            if prepared {
-                let display = content
+            let now = self.clock.now_rfc3339();
+            let user = NewSessionActivity {
+                id: self.ids.new_id(),
+                session_id: input.session_id.clone(),
+                turn_id: Some(turn_id.clone()),
+                kind: SessionActivityKind::UserMessage,
+                text: input.text.clone(),
+                content: content
                     .as_ref()
-                    .map(|blocks| super::prompt_content::prompt_display(blocks));
-                let now = self.clock.now_rfc3339();
+                    .map(|blocks| super::prompt_content::prompt_display(blocks)),
+                tool_call_id: None,
+                created_at: now.clone(),
+            };
+            let started = NewSessionActivity {
+                id: self.ids.new_id(),
+                session_id: input.session_id.clone(),
+                turn_id: Some(turn_id.clone()),
+                kind: SessionActivityKind::Status,
+                text: "Turn started".into(),
+                content: None,
+                tool_call_id: None,
+                created_at: now,
+            };
+            if prepared {
                 self.repository
-                    .promote_prepared_session(
-                        NewSessionActivity {
-                            id: self.ids.new_id(),
-                            session_id: input.session_id.clone(),
-                            turn_id: Some(turn_id.clone()),
-                            kind: SessionActivityKind::UserMessage,
-                            text: input.text.clone(),
-                            content: display,
-                            tool_call_id: None,
-                            created_at: now.clone(),
-                        },
-                        NewSessionActivity {
-                            id: self.ids.new_id(),
-                            session_id: input.session_id.clone(),
-                            turn_id: Some(turn_id.clone()),
-                            kind: SessionActivityKind::Status,
-                            text: "Turn started".into(),
-                            content: None,
-                            tool_call_id: None,
-                            created_at: now,
-                        },
-                        &first_prompt_title(&input.text),
-                    )
-                    .await?;
-                return Ok(());
-            }
-            if let Some(blocks) = &content {
-                let display = super::prompt_content::prompt_display(blocks);
-                self.activities
-                    .append_activity(NewSessionActivity {
-                        id: self.ids.new_id(),
-                        session_id: input.session_id.clone(),
-                        turn_id: Some(turn_id.clone()),
-                        kind: SessionActivityKind::UserMessage,
-                        text: display.summary(),
-                        content: Some(display),
-                        tool_call_id: None,
-                        created_at: self.clock.now_rfc3339(),
-                    })
+                    .promote_prepared_session(user, started, &first_prompt_title(&input.text))
                     .await?;
             } else {
-                self.append_activity(
-                    &input.session_id,
-                    Some(&turn_id),
-                    SessionActivityKind::UserMessage,
-                    input.text.clone(),
-                    None,
-                )
-                .await?;
+                self.activities.append_activity(user).await?;
+                self.activities.append_activity(started).await?;
             }
-            self.append_activity(
-                &input.session_id,
-                Some(&turn_id),
-                SessionActivityKind::Status,
-                "Turn started".into(),
-                None,
-            )
-            .await?;
             Ok::<_, SessionError>(())
         }
         .await;
@@ -247,7 +224,7 @@ impl SessionApplication {
                     Some("Unable to persist the turn before sending"),
                 )
                 .await;
-            self.changed();
+            self.session_changed(&input.session_id);
             return Err(error);
         }
         let application = self.clone();
@@ -262,7 +239,12 @@ impl SessionApplication {
                 .await;
         });
         drop(lifecycle);
-        self.changed();
+        self.changed(vec![
+            ApplicationResourceKey::Navigation,
+            ApplicationResourceKey::ManagedSession {
+                session_id: input.session_id.clone(),
+            },
+        ]);
         self.get_session(ManagedSessionInput {
             session_id: input.session_id,
         })
@@ -316,6 +298,7 @@ impl SessionApplication {
             // the instance unavailable until the background owner can retry it.
             live.runtime.connection = SessionConnectionState::Disconnected;
         }
+        events.release_content();
         live.runtime.activity = SessionActivityState::Idle;
         live.permissions.clear();
         live.cancelling = false;
@@ -346,7 +329,12 @@ impl SessionApplication {
                     .await;
             }
         }
-        self.changed();
+        self.changed(vec![
+            ApplicationResourceKey::Navigation,
+            ApplicationResourceKey::ManagedSession {
+                session_id: session_id.into(),
+            },
+        ]);
         self.delivery_wake.notify_one();
     }
 

@@ -343,3 +343,79 @@ async fn owner_shutdown_interrupts_in_progress_launch_and_rejects_new_work() {
     assert_eq!(store.list_managed_sessions().await.unwrap().len(), 1);
     store.close().await;
 }
+
+#[tokio::test]
+async fn working_in_one_session_does_not_invalidate_other_conversations_or_settings() {
+    let (dir, store, _, app, config) = setup().await;
+    let changes = Arc::new(ApplicationChangeHub::new());
+    let app = app.with_change_observer(changes.clone());
+    let mut events = changes.subscribe();
+    let draft = app
+        .prepare_session(PrepareManagedSessionInput {
+            agent_config_id: config,
+            cwd: dir.path().to_string_lossy().into_owned(),
+        })
+        .await
+        .unwrap();
+    while let Ok(event) = events.try_recv() {
+        assert!(event.resources.iter().all(|resource| matches!(
+            resource,
+            ApplicationResourceKey::Navigation | ApplicationResourceKey::ManagedSession { .. }
+        )));
+    }
+
+    app.send_prompt(SendManagedPromptInput {
+        session_id: draft.session.session_id.clone(),
+        text: "First task promotes this draft and updates navigation".into(),
+    })
+    .await
+    .unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        loop {
+            let snapshot = app.get_session(target(&draft)).await.unwrap();
+            if snapshot.runtime.activity == SessionActivityState::Idle {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    let mut navigation_changed = false;
+    let mut session_changed = false;
+    while let Ok(event) = events.try_recv() {
+        for resource in event.resources {
+            match resource {
+                ApplicationResourceKey::Navigation => navigation_changed = true,
+                ApplicationResourceKey::ManagedSession { session_id } => {
+                    assert_eq!(session_id, draft.session.session_id);
+                    session_changed = true;
+                }
+                other => panic!("A turn invalidated unrelated state: {other:?}"),
+            }
+        }
+    }
+    assert!(navigation_changed && session_changed);
+    assert!(
+        !app.get_session(target(&draft))
+            .await
+            .unwrap()
+            .session
+            .is_prepared()
+    );
+
+    app.stop_session(target(&draft)).await.unwrap();
+    let stopped = events.try_recv().unwrap();
+    assert_eq!(
+        stopped.resources,
+        vec![
+            ApplicationResourceKey::Navigation,
+            ApplicationResourceKey::ManagedSession {
+                session_id: draft.session.session_id.clone()
+            },
+        ]
+    );
+    assert!(events.try_recv().is_err());
+    app.shutdown().await.unwrap();
+    store.close().await;
+}

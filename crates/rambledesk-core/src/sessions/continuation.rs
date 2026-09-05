@@ -1,4 +1,5 @@
 use super::*;
+use crate::ApplicationResourceKey;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -50,7 +51,7 @@ impl SessionApplication {
                 }
             }
         }));
-        self.changed();
+        self.changed(vec![ApplicationResourceKey::All]);
         Ok(())
     }
 

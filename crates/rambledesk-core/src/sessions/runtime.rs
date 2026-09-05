@@ -41,7 +41,6 @@ pub enum FeedbackTransport {
     Command,
     Http,
     Stdio,
-    PiExtension,
 }
 
 impl FeedbackTransport {
@@ -50,7 +49,6 @@ impl FeedbackTransport {
             Self::Command => "command",
             Self::Http => "http",
             Self::Stdio => "stdio",
-            Self::PiExtension => "pi_extension",
         }
     }
 }

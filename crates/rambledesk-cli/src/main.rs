@@ -24,8 +24,6 @@ struct Arguments {
 enum Command {
     /// Request, read, or recover feedback in the current managed Agent session.
     Feedback,
-    /// Forward private instance feedback MCP over stdio; credentials come only from environment.
-    ManagedMcpStdio,
     /// Run the authenticated loopback local server without Tauri.
     Serve {
         #[arg(long, default_value_t = DEFAULT_PORT)]
@@ -54,17 +52,6 @@ fn main() -> anyhow::Result<()> {
     if rambledesk_feedback_client::process_requested() {
         std::process::exit(rambledesk_feedback_client::run_process());
     }
-    if rambledesk_acp::pi_wrapper::process_requested() {
-        std::process::exit(rambledesk_acp::pi_wrapper::run_process());
-    }
-    // No tracing subscriber in companion mode, even when RUST_LOG=trace: SDK
-    // diagnostics can include capability headers and model-supplied tool data.
-    if std::env::args_os()
-        .nth(1)
-        .is_some_and(|arg| arg == "managed-mcp-stdio")
-    {
-        std::process::exit(rambledesk_mcp::managed_stdio::run_process());
-    }
     run_cli()
 }
 
@@ -82,7 +69,6 @@ async fn run_cli() -> anyhow::Result<()> {
 
     match arguments.command {
         Command::Feedback => unreachable!("handled before logging initialization"),
-        Command::ManagedMcpStdio => unreachable!("handled before logging initialization"),
         Command::Serve {
             port,
             token_file,

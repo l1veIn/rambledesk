@@ -1,7 +1,9 @@
-use rambledesk_acp::AcpSessionDriver;
+mod support;
+
 use rambledesk_core::*;
 use rambledesk_storage::SqliteFeedbackStore;
-use std::{collections::BTreeMap, path::PathBuf, sync::Arc, time::Duration};
+use std::sync::Arc;
+use support::{create, id, setup as setup_fixture, wait_for};
 
 const PNG: &str =
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jP1sAAAAASUVORK5CYII=";
@@ -19,41 +21,9 @@ async fn setup(
     SessionApplication,
     ManagedSessionInput,
 ) {
-    let dir = tempfile::tempdir().unwrap();
-    let store = Arc::new(
-        SqliteFeedbackStore::connect(&dir.path().join("db.sqlite"))
-            .await
-            .unwrap(),
-    );
-    let app = SessionApplication::new(store.clone(), store.clone(), Arc::new(AcpSessionDriver));
-    let config = app
-        .save_agent_config(SaveAgentConfigInput {
-            catalog_id: None,
-            id: None,
-            name: "Typed fixture".into(),
-            host_id: "fixture".into(),
-            protocol: SessionProtocol::Acp,
-            enabled: true,
-            command: "node".into(),
-            args: vec![
-                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                    .join("tests/fixtures/prompt_content.mjs")
-                    .to_string_lossy()
-                    .into(),
-                if full { "full" } else { "baseline" }.into(),
-            ],
-            env: BTreeMap::new(),
-        })
-        .await
-        .unwrap();
-    let session = app
-        .create_session(CreateManagedSessionInput {
-            agent_config_id: config.id,
-            cwd: dir.path().to_string_lossy().into(),
-            title: "Typed".into(),
-        })
-        .await
-        .unwrap();
+    let (dir, store, app, config) =
+        setup_fixture("prompt_content", if full { "full" } else { "baseline" }).await;
+    let session = create(&app, &dir, &config, "Typed").await;
     assert_eq!(
         session.runtime.connection,
         SessionConnectionState::Connected
@@ -61,14 +31,7 @@ async fn setup(
     assert_eq!(session.runtime.capabilities.prompt.image, full);
     assert_eq!(session.runtime.capabilities.prompt.embedded_context, full);
     assert!(session.runtime.capabilities.prompt.resource_links);
-    (
-        dir,
-        store,
-        app,
-        ManagedSessionInput {
-            session_id: session.session.session_id,
-        },
-    )
+    (dir, store, app, id(&session))
 }
 fn input(
     id: &ManagedSessionInput,
@@ -82,17 +45,10 @@ fn input(
     }
 }
 async fn idle(app: &SessionApplication, id: &ManagedSessionInput) -> ManagedSessionSnapshot {
-    tokio::time::timeout(Duration::from_secs(3), async {
-        loop {
-            let snapshot = app.get_session(id.clone()).await.unwrap();
-            if snapshot.runtime.activity == SessionActivityState::Idle {
-                return snapshot;
-            }
-            tokio::task::yield_now().await;
-        }
+    wait_for(app, id, |snapshot| {
+        snapshot.runtime.activity == SessionActivityState::Idle
     })
     .await
-    .unwrap()
 }
 
 #[tokio::test]

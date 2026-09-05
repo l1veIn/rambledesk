@@ -2,6 +2,7 @@ use async_trait::async_trait;
 
 use super::SessionRepositoryError;
 use super::*;
+use crate::ApplicationResourceKey;
 use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -118,7 +119,7 @@ impl SessionApplication {
             return Err(error);
         }
         self.entries.lock().await.remove(&input.session_id);
-        self.changed();
+        self.changed(vec![ApplicationResourceKey::All]);
         Ok(())
     }
 }

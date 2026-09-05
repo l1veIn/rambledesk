@@ -1,7 +1,9 @@
-use rambledesk_acp::AcpSessionDriver;
+mod support;
+
 use rambledesk_core::*;
 use rambledesk_storage::SqliteFeedbackStore;
-use std::{collections::BTreeMap, path::PathBuf, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
+use support::{create, id, setup as setup_fixture, wait_for};
 
 async fn setup(
     mode: &str,
@@ -11,55 +13,15 @@ async fn setup(
     SessionApplication,
     ManagedSessionInput,
 ) {
-    let dir = tempfile::tempdir().unwrap();
-    let store = Arc::new(
-        SqliteFeedbackStore::connect(&dir.path().join("db.sqlite"))
-            .await
-            .unwrap(),
-    );
-    let app = SessionApplication::new(store.clone(), store.clone(), Arc::new(AcpSessionDriver));
-    let config = app
-        .save_agent_config(SaveAgentConfigInput {
-            catalog_id: None,
-            id: None,
-            name: "Configuration fixture".into(),
-            host_id: "fixture".into(),
-            protocol: SessionProtocol::Acp,
-            enabled: true,
-            command: "node".into(),
-            args: vec![
-                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                    .join("tests/fixtures/configuration.mjs")
-                    .to_string_lossy()
-                    .into(),
-                mode.into(),
-            ],
-            env: BTreeMap::new(),
-        })
-        .await
-        .unwrap();
-    let session = app
-        .create_session(CreateManagedSessionInput {
-            agent_config_id: config.id,
-            cwd: dir.path().to_string_lossy().into(),
-            title: "Session".into(),
-        })
-        .await
-        .unwrap();
+    let (dir, store, app, config) = setup_fixture("configuration", mode).await;
+    let session = create(&app, &dir, &config, "Session").await;
     assert_eq!(
         session.runtime.connection,
         SessionConnectionState::Connected,
         "{:?}",
         session.runtime.last_error
     );
-    (
-        dir,
-        store,
-        app,
-        ManagedSessionInput {
-            session_id: session.session.session_id,
-        },
-    )
+    (dir, store, app, id(&session))
 }
 fn change(id: &ManagedSessionInput, change: SessionConfigChange) -> SetManagedSessionConfigInput {
     SetManagedSessionConfigInput {
@@ -189,28 +151,20 @@ async fn original_load_and_resume_restore_config_and_notifications_update_idle_s
         })
         .await
         .unwrap();
-        tokio::time::timeout(Duration::from_secs(3), async {
-            loop {
-                let snapshot = app.get_session(id.clone()).await.unwrap();
-                if snapshot.runtime.activity == SessionActivityState::Idle
-                    && snapshot.runtime.configuration.confirms(&model("small"))
-                {
-                    assert_eq!(
-                        snapshot
-                            .runtime
-                            .configuration
-                            .modes
-                            .unwrap()
-                            .current_mode_id,
-                        "ask"
-                    );
-                    break;
-                }
-                tokio::task::yield_now().await;
-            }
+        let snapshot = wait_for(&app, &id, |snapshot| {
+            snapshot.runtime.activity == SessionActivityState::Idle
+                && snapshot.runtime.configuration.confirms(&model("small"))
         })
-        .await
-        .unwrap();
+        .await;
+        assert_eq!(
+            snapshot
+                .runtime
+                .configuration
+                .modes
+                .unwrap()
+                .current_mode_id,
+            "ask"
+        );
         app.shutdown().await.unwrap();
         store.close().await;
     }

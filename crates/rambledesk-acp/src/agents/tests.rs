@@ -121,55 +121,37 @@ async fn five_npm_paths_install_detect_actual_versions_and_generate_launchable_c
             assert_eq!(found.dependencies[0].version.as_deref(), Some("0.83.0"));
             assert!(std::path::Path::new(&installed.config.env["PI_ACP_PI_COMMAND"]).is_file());
             assert!(
-                crate::pi_wrapper::is_pi_acp_recipe(
-                    &installed.config.command,
-                    &installed.config.args
-                )
-                .await
+                pi_acp_package_prefix(&installed.config.command, &installed.config.args)
+                    .await
+                    .is_some()
             );
-            let native = crate::pi_wrapper::resolve_native_pi_for_agent(
-                &installed.config.command,
-                &installed.config.args,
-                None,
-            )
-            .await
-            .unwrap();
-            assert!(native.args[0].contains("pi-coding-agent"));
-            let explicit = crate::pi_wrapper::resolve_native_pi_for_agent(
-                &installed.config.command,
-                &installed.config.args,
-                Some(&installed.config.env["PI_ACP_PI_COMMAND"]),
-            )
-            .await
-            .unwrap();
-            assert_eq!(explicit.command, native.command);
-            assert_eq!(explicit.args, native.args);
             let other_script = prefix.join("node_modules/pi-acp/nested/other.mjs");
             tokio::fs::write(&other_script, "// not the package bin")
                 .await
                 .unwrap();
             assert!(
-                !crate::pi_wrapper::is_pi_acp_recipe(
+                pi_acp_package_prefix(
                     &installed.config.command,
                     &[other_script.to_string_lossy().into_owned()]
                 )
                 .await
+                .is_none()
             );
             let fake = prefix.join("pi-acp.exe");
             tokio::fs::write(&fake, "unrelated command").await.unwrap();
-            assert!(!crate::pi_wrapper::is_pi_acp_recipe(&fake.to_string_lossy(), &[]).await);
+            assert!(
+                pi_acp_package_prefix(&fake.to_string_lossy(), &[])
+                    .await
+                    .is_none()
+            );
             #[cfg(windows)]
             {
                 let shim = prefix.join("node_modules/.bin/pi-acp.cmd");
-                assert!(crate::pi_wrapper::is_pi_acp_recipe(&shim.to_string_lossy(), &[]).await);
-                let through_shim = crate::pi_wrapper::resolve_native_pi_for_agent(
-                    &shim.to_string_lossy(),
-                    &[],
-                    None,
-                )
-                .await
-                .unwrap();
-                assert_eq!(through_shim.args, native.args);
+                assert!(
+                    pi_acp_package_prefix(&shim.to_string_lossy(), &[])
+                        .await
+                        .is_some()
+                );
             }
         }
         no_staging(&service, id).await;
