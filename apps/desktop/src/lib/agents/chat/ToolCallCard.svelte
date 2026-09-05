@@ -10,14 +10,15 @@
 
   export let tool: SessionToolCall
   export let runActive = false
+  export let open = false
   $: presentation = toolPresentation(tool.status, runActive)
-  $: input = formatToolJson(tool.raw_input)
-  $: output = formatToolJson(tool.raw_output)
+  $: input = open ? formatToolJson(tool.raw_input) : ''
+  $: output = open ? formatToolJson(tool.raw_output) : ''
   $: kindIcon = tool.kind === 'execute' ? Terminal : tool.kind === 'search' ? Search
     : ['edit', 'read', 'delete', 'move'].includes(tool.kind) ? FileCode2 : Wrench
 </script>
 
-<details class="group/tool overflow-hidden rounded-lg border bg-muted/15" data-tool-id={tool.id} data-tool-status={tool.status}>
+<details bind:open class="group/tool overflow-hidden rounded-lg border bg-muted/15" data-tool-id={tool.id} data-tool-status={tool.status}>
   <summary class="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-xs">
     <svelte:component this={kindIcon} class="size-3.5 shrink-0 text-muted-foreground" />
     <span class="min-w-0 flex-1 break-words font-medium">{tool.title || tool.name || chatText($locale, 'Tool activity')}</span>
@@ -30,7 +31,7 @@
     </span>
     <span aria-hidden="true" class="text-muted-foreground transition-transform group-open/tool:rotate-90">›</span>
   </summary>
-  <div class="space-y-3 border-t bg-background/60 p-3 text-xs">
+  {#if open}<div class="space-y-3 border-t bg-background/60 p-3 text-xs">
     {#if tool.name && tool.name !== tool.title}<p class="m-0 break-all font-mono text-[11px] text-muted-foreground">{tool.name}</p>{/if}
     {#if presentation.incomplete}<p class="m-0 text-muted-foreground">{chatText($locale, 'The tool did not report a final result before the turn stopped.')}</p>{/if}
     {#if input}
@@ -44,5 +45,5 @@
       <section aria-label={chatText($locale, 'Locations')}><h4 class="mb-1 mt-0 text-[10px] font-medium text-muted-foreground">{chatText($locale, 'Locations')}</h4>{#each tool.locations as location}<p class="m-0 break-all font-mono text-[11px] leading-5">{locationLabel(location)}</p>{/each}</section>
     {/if}
     {#if tool.truncated}<p class="m-0 text-[11px] text-muted-foreground">{chatText($locale, 'Content truncated by the agent host')}</p>{/if}
-  </div>
+  </div>{/if}
 </details>

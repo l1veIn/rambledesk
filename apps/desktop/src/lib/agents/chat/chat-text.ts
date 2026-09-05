@@ -14,6 +14,12 @@ const zh: Record<string, string> = {
   'Unsupported content': '暂不支持的内容', 'Could not open the link': '无法打开链接',
   'Load earlier messages': '加载更早的消息', 'Loading earlier messages…': '正在加载更早的消息…',
   'Could not load earlier messages.': '无法加载更早的消息。',
+  'Working…': '正在工作…', 'Finished working': '工作已结束', 'Worked for': '工作了',
+  'Writing reply': '正在回复',
+  'Turn cancelled': '本轮已取消', 'Turn interrupted': '本轮已中断', 'Work stopped': '工作已停止',
+  'Copy reply': '复制回复', 'Copied': '已复制', 'Completed at': '完成于',
+  'Could not copy the reply.': '无法复制回复。',
+  'Earlier activity for this turn is not loaded.': '本轮更早的活动尚未加载。',
 }
 
 export function chatText(locale: Locale, text: string): string { return locale === 'zh-CN' ? (zh[text] ?? text) : text }

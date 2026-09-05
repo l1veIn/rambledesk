@@ -4,6 +4,10 @@ import type { SessionActivity, SessionToolCall } from '$lib/generated/feedback'
 import { activitiesForSession } from '../managedSessionUi'
 import SessionTimeline from './SessionTimeline.svelte'
 import UserMessageText from './UserMessageText.svelte'
+import ToolCallCard from './ToolCallCard.svelte'
+import AgentTurn from './AgentTurn.svelte'
+import TurnFooter from './TurnFooter.svelte'
+import { groupTimeline } from './turn-presentation'
 
 vi.mock('$lib/preferences', async () => {
   const { writable } = await import('svelte/store')
@@ -17,20 +21,30 @@ function activity(id: string, sequence: number, tool: Partial<SessionToolCall>):
 }
 
 describe('structured timeline rendering', () => {
-  it('renders the latest completed tool patch with details, diff and location in original sequence order', () => {
+  it('folds settled process without mounting its details, while retaining the final reply', () => {
     const start = activity('call', 1, {})
     const final = activity('call', 1, { status: 'completed', raw_output: '{"written":true}', content: [{ type: 'diff', path: '/repo/main.ts', old_text: 'old content', new_text: 'new content' }] })
     const message: SessionActivity = { ...activity('answer', 2, {}), kind: 'agent_message', content: { type: 'message', blocks: [{ type: 'text', text: 'Final answer' }], truncated: false } }
     const { body } = render(SessionTimeline, { props: { sessionId: 'session', activities: activitiesForSession('session', [message, start, final]), runActive: false, onQuote: vi.fn() } })
-    expect(body.match(/data-tool-id="call"/g)).toHaveLength(1)
-    expect(body).toContain('data-tool-status="completed"')
-    expect(body).toContain('Completed')
-    expect(body).toContain('/repo/main.ts:4')
-    expect(body).toContain('-old content')
-    expect(body).toContain('+new content')
-    expect(body).toContain('Raw output')
+    expect(body).not.toContain('data-tool-id="call"')
+    expect(body).not.toContain('old content')
+    expect(body).not.toContain('Raw output')
     expect(body).not.toContain('Old plain summary')
-    expect(body.indexOf('data-activity-id="call"')).toBeLessThan(body.indexOf('Final answer'))
+    expect(body).toContain('Final answer')
+    expect(body).toContain('Copy reply')
+    const item = groupTimeline(activitiesForSession('session', [message, start, final]), false)[0]
+    if (item.type !== 'turn') throw new Error('missing turn')
+    const expanded = render(AgentTurn, { props: { turn: item.turn, open: true, onOpenChange: vi.fn(), onQuote: vi.fn() } }).body
+    expect(expanded.match(/data-tool-id="call"/g)).toHaveLength(1)
+    expect(expanded).toContain('data-tool-status="completed"')
+    expect(expanded.indexOf('data-activity-id="call"')).toBeLessThan(expanded.indexOf('Final answer'))
+    expect(expanded).not.toContain('Raw output')
+    if (final.content?.type !== 'tool_call') throw new Error('missing tool')
+    const details = render(ToolCallCard, { props: { tool: final.content.tool, open: true } }).body
+    expect(details).toContain('/repo/main.ts:4')
+    expect(details).toContain('-old content')
+    expect(details).toContain('+new content')
+    expect(details).toContain('Raw output')
   })
 
   it('shows unfinished tool history without a spinner and escapes untrusted raw input', () => {
@@ -38,7 +52,21 @@ describe('structured timeline rendering', () => {
     expect(body).toContain('No final result')
     expect(body).not.toContain('animate-spin')
     expect(body).not.toContain('<script>unsafe()')
-    expect(body).toContain('&lt;script')
+    expect(body).not.toContain('unsafe()')
+    const tool = activity('call', 1, { raw_input: '<script>unsafe()</script>' }).content
+    if (tool?.type !== 'tool_call') throw new Error('missing tool')
+    const details = render(ToolCallCard, { props: { tool: tool.tool, open: true } }).body
+    expect(details).toContain('&lt;script')
+    expect(details).not.toContain('<script>unsafe()')
+  })
+
+  it('keeps a true completion timestamp without deriving one from message chunks', () => {
+    const { body } = render(TurnFooter, { props: { copyText: 'Answer', completedAt: '2026-09-05T10:00:29Z' } })
+    expect(body).toContain('datetime="2026-09-05T10:00:29Z"')
+    expect(body).toContain('Completed at')
+    const unknown = render(TurnFooter, { props: { copyText: 'Answer', completedAt: null } }).body
+    expect(unknown).not.toContain('<time')
+    expect(unknown).toContain('Copy reply')
   })
 
   it('keeps typed Markdown literal while rendering composer quote structure', () => {

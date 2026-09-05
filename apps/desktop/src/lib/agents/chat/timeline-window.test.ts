@@ -40,6 +40,25 @@ describe('timeline rendering window', () => {
     expect(window.read('one', fetched, false)[0].id).toBe('row-41')
     expect(window.read('one', fetched, false)).toHaveLength(90)
   })
+
+  it('extends the visible start to the loaded beginning of a turn instead of slicing its answer', () => {
+    const window = new TimelineWindow()
+    const activities = rows(1, 100).map((row) => ({ ...row, turn_id: row.sequence! <= 30 ? 'older' : 'large' }))
+    const visible = window.read('one', activities, true)
+    expect(visible[0].id).toBe('row-31')
+    expect(visible).toHaveLength(70)
+    expect(visible.at(-1)?.id).toBe('row-100')
+  })
+
+  it('retains a partial turn and includes its beginning when a previous server page arrives', () => {
+    const window = new TimelineWindow()
+    const page = rows(101, 130).map((row) => ({ ...row, turn_id: 'large' }))
+    expect(window.read('one', page, true)).toHaveLength(30)
+    const all = rows(1, 130).map((row) => ({ ...row, turn_id: 'large' }))
+    const visible = window.read('one', all, false)
+    expect(visible[0].id).toBe('row-1')
+    expect(visible.at(-1)?.id).toBe('row-130')
+  })
 })
 
 describe('prepended activity scroll anchors', () => {

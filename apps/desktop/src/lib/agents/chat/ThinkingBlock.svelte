@@ -22,5 +22,5 @@
     {#if streaming}<LoaderCircle class="size-3 animate-spin" />{/if}
     <span>{chatText($locale, streaming ? 'Thinking' : 'Reasoning')}</span><span aria-hidden="true">{open ? '⌄' : '›'}</span>
   </summary>
-  <div class="mt-3 border-l-2 border-muted pl-3"><SessionContent {blocks} {truncated} /></div>
+  {#if open}<div class="mt-3 border-l-2 border-muted pl-3"><SessionContent {blocks} {truncated} /></div>{/if}
 </details>
