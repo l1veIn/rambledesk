@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use super::*;
 
 const HOST_SESSION_SUMMARY_BY_ID: &str = "\
-    SELECT hs.id AS session_id, hs.host_id, hs.host_session_id, \
+    SELECT hs.id AS session_id, hs.created_at, hs.host_id, hs.host_session_id, \
            ms.protocol, ms.agent_config_id, ms.cwd, ms.remote_session_id, \
            COALESCE(NULLIF(hs.display_title, ''), (SELECT first_request.title \
             FROM feedback_requests first_request \

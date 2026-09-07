@@ -124,6 +124,10 @@ pub struct FeedbackRequestSummary {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 pub struct HostSessionSummary {
     pub session_id: String,
+    /// Stable local session creation time; absent in older server responses.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub created_at: Option<String>,
     pub management: SessionManagement,
     pub host_id: String,
     pub host_session_id: String,

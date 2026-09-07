@@ -141,7 +141,11 @@ export type FeedbackRequestSummary = { request_id: string,
  * Trusted local origin; external requests do not have an Agent view.
  */
 managed_session_id?: string, host_id: string, host_session_id: string, source_hint: string | null, title: string, what_happened: string, status: FeedbackStatus, resolution: FeedbackResolution | null, allow_finish: boolean, final_summary: string | null, revision: number, created_at: string, updated_at: string, };
-export type HostSessionSummary = { session_id: string, management: SessionManagement, host_id: string, host_session_id: string, title: string, source_hint: string | null,
+export type HostSessionSummary = { session_id: string,
+/**
+ * Stable local session creation time; absent in older server responses.
+ */
+created_at?: string, management: SessionManagement, host_id: string, host_session_id: string, title: string, source_hint: string | null,
 /**
  * Project directory, when known. Legacy external sessions may only have a display hint.
  */

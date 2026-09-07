@@ -525,7 +525,7 @@ impl SqliteFeedbackStore {
         query: HostSessionQuery,
     ) -> Result<Vec<HostSessionSummary>, RepositoryError> {
         let rows = sqlx::query(
-            "SELECT hs.id AS session_id, hs.host_id, hs.host_session_id, \
+            "SELECT hs.id AS session_id, hs.created_at, hs.host_id, hs.host_session_id, \
                     ms.protocol, ms.agent_config_id, ms.cwd, ms.remote_session_id, \
                     COALESCE(NULLIF(hs.display_title, ''), (SELECT first_request.title \
                      FROM feedback_requests first_request \

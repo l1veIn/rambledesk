@@ -423,6 +423,7 @@ async fn zero_feedback_session_can_be_listed_renamed_pinned_and_archived() {
     assert_eq!(summaries[0].pending_count, 0);
     assert_eq!(summaries[0].title, "Independent session");
     assert_eq!(summaries[0].updated_at, CREATED);
+    assert_eq!(summaries[0].created_at.as_deref(), Some(CREATED));
     assert_eq!(
         summaries[0].source_hint,
         Some(workspace._temp.path().to_string_lossy().into_owned())
@@ -438,6 +439,7 @@ async fn zero_feedback_session_can_be_listed_renamed_pinned_and_archived() {
         .await
         .unwrap();
     assert_eq!(renamed.updated_at, UPDATED);
+    assert_eq!(renamed.created_at.as_deref(), Some(CREATED));
     assert_eq!(renamed.title, "Searchable project");
     let pinned = store
         .set_host_session_pinned(&record.host_id, &record.host_session_id, Some(UPDATED))

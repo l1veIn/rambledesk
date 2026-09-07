@@ -11,7 +11,7 @@ export function orderSessionRailSessions(
   return [...sessions].sort((left, right) => {
     return (
       compareNullableIsoDesc(left.pinned_at, right.pinned_at) ||
-      right.updated_at.localeCompare(left.updated_at) ||
+      (right.created_at || right.updated_at).localeCompare(left.created_at || left.updated_at) ||
       left.host_id.localeCompare(right.host_id) ||
       left.host_session_id.localeCompare(right.host_session_id)
     )

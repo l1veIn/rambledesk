@@ -109,7 +109,9 @@
               {#snippet child({ props })}
                 <Button {...props} variant="ghost" size="sm" class="min-w-0 max-w-[70%] justify-start gap-2 px-2 text-xs" disabled={locked}
                   title={$controller.cwd || tr('Project directory is required.')} aria-label={`${tr('Project directory')}: ${$controller.cwd || tr('Choose a project')}`}>
-                  <Folder class="size-4 shrink-0" /><span class="truncate">{projectName || tr('Choose a project')}</span><ChevronDown class="size-3 shrink-0 text-muted-foreground" />
+                  <Folder class="size-4 shrink-0" />
+                  {#if !directoryValid}<span class="size-1.5 shrink-0 rounded-full bg-destructive" aria-hidden="true"></span>{/if}
+                  <span class="truncate">{projectName || tr('Choose a project')}</span><ChevronDown class="size-3 shrink-0 text-muted-foreground" />
                 </Button>
               {/snippet}
             </Popover.Trigger>

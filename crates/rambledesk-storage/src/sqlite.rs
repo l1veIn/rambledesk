@@ -620,6 +620,7 @@ fn host_session_summary_from_row(row: &SqliteRow) -> Result<HostSessionSummary, 
         .map_err(storage_error)?;
     Ok(HostSessionSummary {
         session_id: row.try_get("session_id").map_err(storage_error)?,
+        created_at: Some(row.try_get("created_at").map_err(storage_error)?),
         management,
         host_id: row.try_get("host_id").map_err(storage_error)?,
         host_session_id: row.try_get("host_session_id").map_err(storage_error)?,

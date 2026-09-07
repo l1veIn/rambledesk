@@ -27,6 +27,15 @@ function session(
 }
 
 describe('orderSessionRailSessions', () => {
+  it('keeps creation order when an older session receives activity or is renamed', () => {
+    const older = { ...inProject('claude', 'older', '/work/repo', '2026-09-07T12:00:00Z'), created_at: '2026-09-01T10:00:00Z' }
+    const newer = { ...inProject('codex', 'newer', '/work/repo', '2026-09-03T10:00:00Z'), created_at: '2026-09-03T10:00:00Z' }
+    const order = (entries: HostSessionSummary[]) => groupSessionRailProjects(entries)[0].sessions.map(entry => entry.host_session_id)
+    expect(order([older, newer])).toEqual(['newer', 'older'])
+    expect(order([{ ...older, title: 'Renamed', updated_at: '2026-09-08T10:00:00Z' }, newer])).toEqual(['newer', 'older'])
+    expect(order([{ ...older, pinned_at: '2026-09-07T12:00:00Z' }, newer])).toEqual(['older', 'newer'])
+  })
+
   it('orders the flat rail globally by session pin and recency', () => {
     const sessions = [
       session('pi', 'latest-unpinned', '2026-09-01T10:00:00Z'),
