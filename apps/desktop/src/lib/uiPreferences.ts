@@ -3,6 +3,7 @@ import {
   type RestoredWorkspaceSnapshot,
   type WorkspaceSnapshotV2,
 } from './workspace/workspaceSnapshot'
+import { normalizeRailWidth } from './components/navigation/railResize'
 
 export type UiThemePreference = 'system' | 'light' | 'dark'
 
@@ -11,6 +12,8 @@ type UiState = {
   workbench?: {
     hostRailCollapsed?: boolean
     requestRailCollapsed?: boolean
+    hostRailWidth?: number
+    requestRailWidth?: number
     paneLayouts?: Record<string, number[]>
     workspaceSnapshot?: unknown
   }
@@ -24,7 +27,14 @@ function readState(): UiState {
     const raw = localStorage.getItem(UI_STATE_KEY)
     if (!raw) return {}
     const value: unknown = JSON.parse(raw)
-    return value && typeof value === 'object' ? (value as UiState) : {}
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+    const state = value as UiState
+    if (state.workbench !== undefined && (
+      !state.workbench || typeof state.workbench !== 'object' || Array.isArray(state.workbench)
+    )) {
+      delete state.workbench
+    }
+    return state
   } catch {
     return {}
   }
@@ -71,6 +81,28 @@ export function saveRequestRailCollapsed(collapsed: boolean) {
   updateState((state) => {
     state.workbench ??= {}
     state.workbench.requestRailCollapsed = collapsed
+  })
+}
+
+export function initialHostRailWidth(): number {
+  return normalizeRailWidth('host', readState().workbench?.hostRailWidth)
+}
+
+export function saveHostRailWidth(width: number) {
+  updateState((state) => {
+    state.workbench ??= {}
+    state.workbench.hostRailWidth = normalizeRailWidth('host', width)
+  })
+}
+
+export function initialRequestRailWidth(): number {
+  return normalizeRailWidth('request', readState().workbench?.requestRailWidth)
+}
+
+export function saveRequestRailWidth(width: number) {
+  updateState((state) => {
+    state.workbench ??= {}
+    state.workbench.requestRailWidth = normalizeRailWidth('request', width)
   })
 }
 

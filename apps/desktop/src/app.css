@@ -244,6 +244,12 @@ body.app-mode {
   background: transparent;
 }
 
+/* Keep the divider and titlebar aligned with the pointer during rail resizing. */
+.navigation-resizing [data-navigation-pane],
+.navigation-resizing [data-titlebar-sidebar] {
+  transition: none;
+}
+
 body.ramble-console-mode {
   min-width: 0;
   min-height: 0;

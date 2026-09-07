@@ -102,8 +102,9 @@
 </script>
 
 <aside
+  data-navigation-pane
   class={[
-    'flex min-h-0 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200',
+    'flex min-h-0 shrink-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200',
     collapsed ? 'w-[var(--workbench-sidebar-collapsed-width)]' : 'w-[var(--workbench-sidebar-width)]',
   ]}
   aria-label={tr('Projects')}
@@ -148,15 +149,15 @@
   </div>
 
   {#if onNewSession}
-    <div class="px-2 pb-3">
+    <div class="shrink-0 px-2 pb-3">
       <Button variant="ghost" size="sm" class={collapsed ? 'w-full justify-center px-0' : 'w-full justify-start'} aria-label={tr('New session')} title={collapsed ? tr('New session') : undefined} onclick={() => onNewSession?.()}>
         <Plus class="size-4" aria-hidden="true" />{#if !collapsed}{tr('New session')}{/if}
       </Button>
     </div>
   {/if}
-  {#if !collapsed}<div class="px-4 pb-1 text-[10px] font-medium text-muted-foreground">{tr('Projects')}</div>{/if}
+  {#if !collapsed}<div class="shrink-0 px-4 pb-1 text-[10px] font-medium text-muted-foreground">{tr('Projects')}</div>{/if}
 
-  <ScrollArea class="min-h-0 flex-1" aria-busy={refreshing}>
+  <ScrollArea class="min-h-0 flex-1 overflow-hidden" aria-busy={refreshing}>
     <div class="relative min-h-full">
       <div class={refreshing ? 'pointer-events-none select-none opacity-40' : undefined}>
         {#if collapsed}
@@ -226,7 +227,7 @@
       {#if !collapsed && refreshing && sessions.length > 0}<div class="absolute inset-0 z-20 grid place-items-center bg-sidebar/80 backdrop-blur-[1px]"><LoaderCircle class="size-5 animate-spin text-primary" aria-hidden="true" /></div>{/if}
     </div>
   </ScrollArea>
-  <div class="border-t border-sidebar-border p-2">
+  <div class="shrink-0 border-t border-sidebar-border p-2">
     <Button variant="ghost" class={collapsed ? 'w-full justify-center px-0' : 'w-full justify-start'} aria-label={tr('Settings')} title={collapsed ? tr('Settings') : undefined} onclick={onSettings}><Settings data-icon="inline-start" aria-hidden="true" />{#if !collapsed}{tr('Settings')}{/if}</Button>
   </div>
 </aside>

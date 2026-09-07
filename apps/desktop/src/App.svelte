@@ -12,6 +12,8 @@
   import UpdateAvailableDialog from './lib/UpdateAvailableDialog.svelte'
   import HostSessionRail from './lib/components/navigation/HostSessionRail.svelte'
   import RequestListPane from './lib/components/navigation/RequestListPane.svelte'
+  import NavigationResizeHandle from './lib/components/navigation/NavigationResizeHandle.svelte'
+  import { fitNavigationWidths, RAIL_LIMITS } from './lib/components/navigation/railResize'
   import { Sonner, toast } from './lib/components/ui/sonner'
   import ResumePromptDialog from './lib/workbench/ResumePromptDialog.svelte'
   import SessionWorkbench from './lib/workbench/SessionWorkbench.svelte'
@@ -181,8 +183,12 @@
   import {
     initialHostRailCollapsed,
     initialRequestRailCollapsed,
+    initialHostRailWidth,
+    initialRequestRailWidth,
     saveHostRailCollapsed,
     saveRequestRailCollapsed,
+    saveHostRailWidth,
+    saveRequestRailWidth,
     saveWorkspaceSnapshot,
     savedWorkspaceSnapshot,
   } from './lib/uiPreferences'
@@ -300,6 +306,11 @@
   let taskBriefOpen = true
   let requestRailCollapsed = initialRequestRailCollapsed()
   let hostSessionRailCollapsed = initialHostRailCollapsed()
+  let hostRailWidth = initialHostRailWidth()
+  let requestRailWidth = initialRequestRailWidth()
+  let navigationWidth = 1320
+  let resizingHostRail = false
+  let resizingRequestRail = false
   let projectSearch = ''
   let voicePhase: VoicePhase = 'idle'
   let voiceDevice = ''
@@ -546,6 +557,16 @@
     : undefined
   $: renderedWorkspaceView = activeWorkspaceView(workspaceShellState)
   $: renderedWorkspaceSurface = workspaceSurface(renderedWorkspaceView)
+  $: requestRailVisible = workbenchStartup !== 'failed' && renderedWorkspaceSurface !== 'standalone'
+  $: navigationWidths = fitNavigationWidths({
+    hostWidth: hostRailWidth,
+    requestWidth: requestRailVisible ? requestRailWidth : null,
+    hostCollapsed: hostSessionRailCollapsed,
+    requestCollapsed: requestRailCollapsed,
+    containerWidth: navigationWidth,
+  })
+  $: hostRailMaxWidth = Math.max(RAIL_LIMITS.host.minWidth, Math.min(RAIL_LIMITS.host.maxWidth, navigationWidth - navigationWidths.request - 640))
+  $: requestRailMaxWidth = Math.max(RAIL_LIMITS.request.minWidth, Math.min(RAIL_LIMITS.request.maxWidth, navigationWidth - navigationWidths.host - 640))
   $: renderedSessionView = renderedWorkspaceView?.kind === 'session'
     ? renderedWorkspaceView
     : null
@@ -2093,7 +2114,9 @@
 </svelte:head>
 
 {#key $locale}
-<main class="h-full w-full overflow-hidden rounded-[16px] border bg-background text-foreground shadow-sm">
+<main class="flex h-full w-full flex-col overflow-hidden rounded-[16px] border bg-background text-foreground shadow-sm"
+  class:navigation-resizing={resizingHostRail || resizingRequestRail}
+  style:--workbench-sidebar-width={`${navigationWidths.host}px`}>
   <Sonner />
   <RambleSessionController
     bind:this={rambleController}
@@ -2151,7 +2174,8 @@
     {/snippet}
   </AppTitlebar>
 
-  <div class="flex h-[calc(100%-40px)] min-h-0 min-w-0">
+  <div class="flex min-h-0 min-w-0 flex-1" bind:clientWidth={navigationWidth}>
+    <div id="host-navigation-pane" data-navigation-pane class="relative flex min-h-0 shrink-0 transition-[width] duration-200 motion-reduce:transition-none" style:width={`${navigationWidths.host}px`}>
     <HostSessionRail
       bind:collapsed={hostSessionRailCollapsed}
       sessions={$navigation.hostSessions}
@@ -2171,6 +2195,15 @@
       onSettings={() => void openSettings('general')}
       onNewSession={previewMode ? undefined : (cwd) => void openNewManagedSession(undefined, cwd)}
     />
+      <NavigationResizeHandle
+        label={$locale === 'zh-CN' ? '调整侧边栏宽度' : 'Resize sidebar'} controls="host-navigation-pane"
+        expandedWidth={hostRailWidth} displayWidth={navigationWidths.host} collapsed={hostSessionRailCollapsed}
+        minWidth={RAIL_LIMITS.host.minWidth} maxWidth={hostRailMaxWidth}
+        onResize={(next) => { hostRailWidth = next.width; hostSessionRailCollapsed = next.collapsed }}
+        onCommit={() => saveHostRailWidth(hostRailWidth)}
+        onDraggingChange={(active) => resizingHostRail = active}
+      />
+    </div>
 
     <div class="appearance-workspace flex min-h-0 min-w-0 flex-1" id="request-workspace-layout">
       {#if workbenchStartup === 'failed'}
@@ -2178,8 +2211,10 @@
       {:else}
       {#if renderedWorkspaceSurface !== 'standalone'}
         <div
-          class={['shrink-0 border-r transition-[width] duration-200 motion-reduce:transition-none', requestRailCollapsed ? 'w-14' : 'w-[296px]']}
+          class="relative shrink-0 border-r transition-[width] duration-200 motion-reduce:transition-none"
           id="request-list-pane"
+          data-navigation-pane
+          style:width={`${navigationWidths.request}px`}
         >
           <RequestListPane
             bind:collapsed={requestRailCollapsed}
@@ -2199,6 +2234,14 @@
             onOpenRequest={(requestId) => void openRequest(requestId)}
             onFiltersChange={(filters) => void navigation.setRequestFilters(filters)}
             onClearSearch={() => void navigation.setRequestSearch('')}
+          />
+          <NavigationResizeHandle
+            label={$locale === 'zh-CN' ? '调整请求列宽度' : 'Resize request list'} controls="request-list-pane"
+            expandedWidth={requestRailWidth} displayWidth={navigationWidths.request} collapsed={requestRailCollapsed}
+            minWidth={RAIL_LIMITS.request.minWidth} maxWidth={requestRailMaxWidth}
+            onResize={(next) => { requestRailWidth = next.width; requestRailCollapsed = next.collapsed }}
+            onCommit={() => saveRequestRailWidth(requestRailWidth)}
+            onDraggingChange={(active) => resizingRequestRail = active}
           />
         </div>
       {/if}

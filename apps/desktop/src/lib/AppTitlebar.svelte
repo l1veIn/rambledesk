@@ -98,7 +98,7 @@
 <!-- svelte-ignore a11y_no_static_element_interactions (the handler delegates native titlebar dragging while preserving interactive descendants) -->
 <header
   class={[
-    'app-titlebar relative z-30 flex h-10 select-none items-stretch overflow-hidden rounded-t-[15px]',
+    'app-titlebar relative z-30 flex h-10 shrink-0 select-none items-stretch overflow-hidden rounded-t-[15px]',
   ]}
   data-titlebar-event-boundary
   onpointerdown={(event) => void handleTitlebarPointerDown(event)}
@@ -123,6 +123,7 @@
       'flex h-full shrink-0 items-stretch border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200',
       sidebarCollapsed ? 'w-[var(--workbench-sidebar-collapsed-width)]' : 'w-[var(--workbench-sidebar-width)]',
     ]}
+    data-titlebar-sidebar
   >
     {#if windowControlsAvailable}
       <button
