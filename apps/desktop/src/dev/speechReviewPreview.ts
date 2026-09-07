@@ -17,6 +17,8 @@ if (import.meta.env.DEV) {
   document.documentElement.dataset.theme = 'light'
   const target = document.getElementById('app')!
   if (params.has('settings')) {
+    document.body.classList.add('app-mode')
+    target.classList.add('appearance-workspace')
     const [{ default: SettingsPanel }, { createOnboardingPreviewCapabilities }, { transport }, { initializePreferences }] = await Promise.all([
       import('$lib/SettingsPanel.svelte'),
       import('./onboardingPreviewCapabilities'),
@@ -24,9 +26,11 @@ if (import.meta.env.DEV) {
       import('$lib/preferences'),
     ])
     initializePreferences()
+    const { initializeAppearance } = await import('$lib/appearance/appearanceRuntime')
+    initializeAppearance()
     mount(SettingsPanel, {
       target,
-      props: { transport, capabilities: createOnboardingPreviewCapabilities('Windows'), initialSection: 'voice' },
+      props: { transport, capabilities: createOnboardingPreviewCapabilities('Windows'), initialSection: params.get('settings') === 'appearance' ? 'appearance' : 'voice' },
     })
   } else {
     const { default: Preview } = await import('./SpeechReviewPreview.svelte')

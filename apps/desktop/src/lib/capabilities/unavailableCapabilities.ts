@@ -67,6 +67,7 @@ const UNAVAILABLE_WORKBENCH_CAPABILITIES = createWorkbenchCapabilities({
     close: () => rejected('windowControls'),
     startDragging: () => rejected('windowControls'),
     leaveFullscreen: () => rejected('windowControls'),
+    setZoom: () => rejected('windowControls'),
     restart: () => rejected('windowControls'),
     onResized: (_handler, onError) => unavailableSubscription('windowControls', onError),
     onFocusChanged: (_handler, onError) => unavailableSubscription('windowControls', onError),

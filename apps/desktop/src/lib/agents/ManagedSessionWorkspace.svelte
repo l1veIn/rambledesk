@@ -143,7 +143,7 @@
   })
 </script>
 
-<section class="flex h-full min-h-0 flex-col bg-background @container" aria-label={tr('Agent session')} data-managed-session-id={snapshot.session.session_id}>
+<section class="appearance-surface flex h-full min-h-0 flex-col bg-background @container" aria-label={tr('Agent session')} data-managed-session-id={snapshot.session.session_id}>
   <header class="flex min-h-12 shrink-0 items-center gap-3 border-b px-5 py-2">
     <h2 class="m-0 min-w-0 flex-1 truncate text-sm font-medium">{snapshot.session.title}</h2>
     {#if onOpenRamble}<Button variant="ghost" size="sm" class="h-7 shrink-0 gap-1.5 text-xs" onclick={() => void run('ramble', onOpenRamble!)}>{tr('View Ramble')}<ArrowUpRight class="size-3.5" /></Button>{/if}

@@ -16,6 +16,7 @@
     MonitorCog,
     Info,
     Keyboard,
+    Palette,
     Play,
     PlugZap,
     RefreshCw,
@@ -36,6 +37,7 @@
   import { createUnavailableWorkbenchCapabilities } from '$lib/capabilities/unavailableCapabilities'
   import type { ApplicationTransport } from '$lib/application/applicationTransport'
   import AgentSettingsSection from '$lib/agents/AgentSettingsSection.svelte'
+  import AppearanceSettingsPanel from '$lib/appearance/AppearanceSettingsPanel.svelte'
   import { agentText } from '$lib/agents/agentI18n'
   import type {
     WebAccessStatus,
@@ -97,7 +99,6 @@
     setSpeechModelId,
     setSpeechVadSilenceMs,
     setSpeechVadThreshold,
-    setThemePreference,
     speechHotwords,
     speechInputDevice,
     speechConfirmBeforeWrite,
@@ -109,11 +110,9 @@
     speechModelId,
     speechVadSilenceMs,
     speechVadThreshold,
-    themePreference,
     type CustomNotificationSound,
     type NotificationSound,
     type SpeechModelId,
-    type ThemePreference,
   } from '$lib/preferences'
   import {
     resolveSettingsSection,
@@ -819,6 +818,10 @@
             <TerminalSquare data-icon="inline-start" />
             {agentText($locale, 'Agents')}
           </Tabs.Trigger>
+          <Tabs.Trigger value="appearance" class="h-9 w-full justify-start px-2.5">
+            <Palette data-icon="inline-start" />
+            {tr('Appearance')}
+          </Tabs.Trigger>
           {#if sectionAvailability.adapters}
             <Tabs.Trigger value="adapters" class="h-9 w-full justify-start px-2.5">
               <PlugZap data-icon="inline-start" />
@@ -867,6 +870,8 @@
             <p class="m-0 text-[10px] font-medium uppercase text-muted-foreground">
               {activeSection === 'general'
                 ? tr('Preferences')
+                : activeSection === 'appearance'
+                  ? tr('Preferences')
                 : activeSection === 'permissions'
                   ? tr('System permissions')
                   : activeSection === 'notifications'
@@ -886,6 +891,8 @@
             <h2 class="m-0 mt-0.5 text-base font-semibold">
               {activeSection === 'general'
                 ? tr('General')
+                : activeSection === 'appearance'
+                  ? tr('Appearance')
                 : activeSection === 'permissions'
                   ? tr('Permissions')
                   : activeSection === 'notifications'
@@ -930,38 +937,6 @@
                 <Select.Content>
                   <Select.Item value="zh-CN" label="简体中文" />
                   <Select.Item value="en" label="English" />
-                </Select.Content>
-              </Select.Root>
-            </section>
-
-            <section class="grid grid-cols-[minmax(0,1fr)_240px] items-center gap-8 border-b pb-8">
-              <div class="flex gap-3">
-                <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
-                  <MonitorCog class="size-4" />
-                </span>
-                <div>
-                  <h3 class="m-0 text-sm font-medium">{tr('Appearance')}</h3>
-                  <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
-                    {tr('Choose a light or dark appearance, or follow the operating system.')}
-                  </p>
-                </div>
-              </div>
-              <Select.Root
-                type="single"
-                value={$themePreference}
-                onValueChange={(value: string) => setThemePreference(value as ThemePreference)}
-              >
-                <Select.Trigger class="w-full">
-                  {$themePreference === 'system'
-                    ? tr('System')
-                    : $themePreference === 'light'
-                      ? tr('Light')
-                      : tr('Dark')}
-                </Select.Trigger>
-                <Select.Content>
-                  <Select.Item value="system" label={tr('System')} />
-                  <Select.Item value="light" label={tr('Light')} />
-                  <Select.Item value="dark" label={tr('Dark')} />
                 </Select.Content>
               </Select.Root>
             </section>
@@ -1706,6 +1681,10 @@
             </section>
           </Tabs.Content>
           {/if}
+
+          <Tabs.Content value="appearance" class="m-0 p-6 outline-none">
+            {#if activeSection === 'appearance'}<AppearanceSettingsPanel />{/if}
+          </Tabs.Content>
 
           <Tabs.Content value="post-processing" class="m-0 p-6 outline-none">
             <PostProcessingSettings />

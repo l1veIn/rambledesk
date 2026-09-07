@@ -32,6 +32,7 @@ function fakeWindow() {
 
 function fakeWebview() {
   return {
+    setZoom: vi.fn(async (_factor: number) => undefined),
     onDragDropEvent: vi.fn(
       async (
         _handler: Parameters<ReturnType<TauriCapabilityApi['currentWebview']>['onDragDropEvent']>[0],
@@ -91,6 +92,24 @@ function createFakeApi(responses: Record<string, unknown> = {}): FakeApi {
 }
 
 describe('Tauri Workbench capabilities', () => {
+  it('applies bounded zoom to the current webview and forwards native failures', async () => {
+    const api = createFakeApi()
+    const window = createTauriWorkbenchCapabilities(api).windowControls.implementation
+    for (const factor of [0.8, 1, 1.25, 3]) await window.setZoom(factor)
+    expect(api.webview.setZoom.mock.calls).toEqual([[0.8], [1], [1.25], [3]])
+    api.webview.setZoom.mockRejectedValueOnce(new Error('native zoom unavailable'))
+    await expect(window.setZoom(1.5)).rejects.toThrow('native zoom unavailable')
+  })
+
+  it('rejects invalid zoom before reaching native IPC', async () => {
+    const api = createFakeApi()
+    const window = createTauriWorkbenchCapabilities(api).windowControls.implementation
+    for (const factor of [0, -1, 0.79, 3.01, Number.NaN, Number.POSITIVE_INFINITY]) {
+      await expect(window.setZoom(factor)).rejects.toThrow(RangeError)
+    }
+    expect(api.webview.setZoom).not.toHaveBeenCalled()
+  })
+
   it('derives native slots plus the shared browser image-paste slot', () => {
     const capabilities = createTauriWorkbenchCapabilities(createFakeApi())
     expect(Object.keys(capabilities.manifest).sort()).toEqual([...CAPABILITY_NAMES].sort())

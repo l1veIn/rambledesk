@@ -1,0 +1,56 @@
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/jetbrains-mono";
+@import "@fontsource-variable/fira-code";
+@import "@fontsource-variable/geist-mono";
+@import "./palettes.css";
+
+:root[data-appearance="enabled"] {
+  font-family: var(--appearance-ui-font);
+  --font-sans: var(--appearance-ui-font);
+  --font-mono: var(--appearance-code-font);
+}
+
+:root[data-appearance="enabled"] body :is(pre, code, kbd, .font-mono) {
+  font-family: var(--appearance-code-font);
+  font-size: var(--appearance-code-size);
+}
+
+:root[data-appearance="enabled"]:not([data-ui-font="system"]) body :is(.attachment-markdown-prose, .tiptap) {
+  font-family: var(--appearance-ui-font);
+}
+
+/* One image beneath the working area; dialogs, inputs and tool details stay opaque. */
+.appearance-workspace {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+:root[data-workspace-background="image"][data-background-ready="true"] .appearance-workspace::before,
+:root[data-workspace-background="image"][data-background-ready="true"] .appearance-workspace::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  pointer-events: none;
+}
+
+:root[data-workspace-background="image"][data-background-ready="true"] .appearance-workspace::before {
+  background-image: var(--workspace-background-image);
+  background-position: center;
+  background-size: var(--workspace-background-size);
+  background-repeat: var(--workspace-background-repeat);
+  filter: blur(var(--workspace-background-blur));
+}
+
+:root[data-workspace-background="image"][data-background-ready="true"] .appearance-workspace::after {
+  background: color-mix(in srgb, var(--background) var(--workspace-background-mask), transparent);
+}
+
+:root[data-workspace-background="image"][data-background-ready="true"] .appearance-workspace :is(.appearance-surface, .settings-workspace-root, .workspace-panel) {
+  background-color: color-mix(in srgb, var(--background) var(--workspace-panel-opacity), transparent);
+}
+
+:root[data-workspace-background="solid"] .workspace-panel::before,
+:root[data-workspace-background="image"] .workspace-panel::before { display: none; }

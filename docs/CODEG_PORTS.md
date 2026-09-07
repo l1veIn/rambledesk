@@ -12,6 +12,7 @@ Vite 构建与 Tauri 资源映射直接读取仓库中的原文件，不维护�
 
 | RambleDesk 模块 | 上游来源 | 修改及验收 |
 | --- | --- | --- |
+| 外观配置（2026-09-07） | `src/lib/theme-presets.ts`、`src/app/globals.css`，参考 `appearance-provider.tsx`、`font-presets.ts`、`workspace-background.ts` | 13 套配色（含 RambleDesk 原色）及完整明暗语义变量；调整部分主按钮文字以保持对比度。Svelte 独立外观页，主窗口 WebView 缩放、界面/代码字体；默认花纹、纯色、本地图片背景。偏好校验、IndexedDB 图片存储和生命周期为本项目实现；字体独立 OFL 许可证随包提供。 |
 | 结构化会话记录与工具补丁 | `src-tauri/src/acp/session_state.rs`、`types.rs` | 适配持久化存储、旧历史兼容和大小限制；迁移、补丁、流式顺序与隔离测试通过，详见 [记录](CODEG_STRUCTURED_ACTIVITY.md)。 |
 | Agent 输入器 | `src/components/chat/composer/*`、`src/lib/message-quote.ts` | 移植纯文本 Tiptap 配置、序列化、引用、IME 和快捷键；Svelte 包装接入会话草稿和发送/取消。48 个编辑器用例、58 个集成相关用例通过，详见输入器 README。 |
 | Agent 目录、检测、安装 | `src-tauri/src/acp/{registry,preflight,binary_cache}.rs`、`commands/acp.rs` | 固定版本目录、独立安装代、原子发布、真实包入口检查、自有进程取消清理；7 项真实 Node 子进程 fixture 及 clippy 通过。 |

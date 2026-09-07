@@ -385,7 +385,7 @@
   }
 </script>
 
-<section class="grid h-full min-h-0 min-w-0 grid-rows-[48px_minmax(0,1fr)] overflow-hidden bg-background">
+<section class="appearance-surface grid h-full min-h-0 min-w-0 grid-rows-[48px_minmax(0,1fr)] overflow-hidden bg-background">
     <header class="flex min-h-0 items-center gap-2 border-b px-4">
       <h1 class="min-w-0 flex-1 text-sm font-semibold">
         {tr('Archived sessions')}

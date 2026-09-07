@@ -1,6 +1,7 @@
 <script lang="ts">
   import { diagnosticErrorCategory, startClientDiagnostic } from '$lib/diagnostics/clientDiagnostics'
   import { onMount, tick } from 'svelte'
+  import { initializeAppearance } from './lib/appearance/appearanceRuntime'
 
   import rambelleArchived from './assets/rambelle-states/archived.webp'
   import rambelleIdle from './assets/rambelle-states/idle.webp'
@@ -56,6 +57,11 @@
   export let previewMode = false
 
   provideWorkbenchCapabilities(capabilities)
+  onMount(() => initializeAppearance({
+    setZoom: capabilities.windowControls.status.source === 'native'
+      ? factor => capabilities.windowControls.implementation.setZoom(factor)
+      : undefined,
+  }))
 
   import type {
     ApproveFeedbackInput,
@@ -2166,7 +2172,7 @@
       onNewSession={previewMode ? undefined : (cwd) => void openNewManagedSession(undefined, cwd)}
     />
 
-    <div class="flex min-h-0 min-w-0 flex-1" id="request-workspace-layout">
+    <div class="appearance-workspace flex min-h-0 min-w-0 flex-1" id="request-workspace-layout">
       {#if workbenchStartup === 'failed'}
         <StartupRecoveryPanel {capabilities} message={startupFailureMessage} timedOut={startupFailureTimedOut} bind:settingsOpen={startupSettingsOpen} onRetry={() => void startWorkbench()} />
       {:else}

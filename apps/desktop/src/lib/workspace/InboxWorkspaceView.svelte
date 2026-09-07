@@ -12,7 +12,7 @@
   }
 </script>
 
-<section class="grid h-full min-h-0 place-items-center bg-background px-8 text-center">
+<section class="appearance-surface grid h-full min-h-0 place-items-center bg-background px-8 text-center">
   <div class="max-w-sm">
     <div class="mx-auto grid size-11 place-items-center rounded-lg bg-muted text-muted-foreground">
       <Inbox class="size-5" aria-hidden="true" />

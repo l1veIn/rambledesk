@@ -1,6 +1,7 @@
 import { currentDesktopPlatform } from '$lib/platform'
 
 import type { WindowCapability } from '../workbenchCapabilities'
+import { validateWindowZoom } from '../windowZoom'
 import { subscribeToTauriEvent } from './subscription'
 import type { TauriCapabilityApi } from './tauriCapabilityApi'
 
@@ -12,6 +13,10 @@ export function createTauriWindowCapability(api: TauriCapabilityApi): WindowCapa
     toggleMaximize: () => api.currentWindow().toggleMaximize(),
     close: () => api.currentWindow().close(),
     startDragging: () => api.currentWindow().startDragging(),
+    async setZoom(factor) {
+      validateWindowZoom(factor)
+      await api.currentWebview().setZoom(factor)
+    },
     async leaveFullscreen() {
       const window = api.currentWindow()
       if (await window.isFullscreen()) await window.setFullscreen(false)

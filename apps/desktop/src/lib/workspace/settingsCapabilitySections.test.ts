@@ -26,7 +26,7 @@ describe('settings capability sections', () => {
       Object.entries(availability)
         .filter(([, available]) => available)
         .map(([section]) => section),
-    ).toEqual(['general', 'post-processing', 'agents', 'about'])
+    ).toEqual(['general', 'appearance', 'post-processing', 'agents', 'about'])
   })
 
   it('projects each native section from its own capability', () => {

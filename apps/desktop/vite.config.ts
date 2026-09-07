@@ -13,6 +13,11 @@ function thirdPartyNotices(): Plugin {
       for (const fileName of [
         'THIRD_PARTY_NOTICES.md',
         'licenses/codeg-APACHE-2.0.txt',
+        'licenses/font-inter-OFL-1.1.txt',
+        'licenses/font-geist-OFL-1.1.txt',
+        'licenses/font-jetbrains-mono-OFL-1.1.txt',
+        'licenses/font-fira-code-OFL-1.1.txt',
+        'licenses/font-geist-mono-OFL-1.1.txt',
         'docs/CODEG_PORTS.md',
       ]) {
         this.emitFile({

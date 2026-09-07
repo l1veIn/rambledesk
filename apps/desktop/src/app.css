@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "./lib/appearance/appearance.css";
 
 @keyframes record-blink {
   0%,

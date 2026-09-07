@@ -10,6 +10,7 @@ export function settingsSectionAvailability(
 ): SettingsSectionAvailability {
   return Object.freeze({
     general: true,
+    appearance: true,
     permissions:
       platform === 'macOS' && manifest.systemPermissions.availability !== 'unavailable',
     notifications: manifest.notifications.availability !== 'unavailable',

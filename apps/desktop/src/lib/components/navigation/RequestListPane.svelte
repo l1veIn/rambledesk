@@ -54,7 +54,7 @@
 </script>
 
 <aside
-  class="flex h-full min-h-0 flex-col bg-background"
+  class="appearance-surface flex h-full min-h-0 flex-col bg-background"
   aria-label={tr('Request list')}
 >
   <div class={['flex h-12 shrink-0 items-center gap-1.5 border-b', collapsed ? 'justify-center px-2' : 'px-3']}>

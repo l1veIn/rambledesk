@@ -52,6 +52,7 @@ export interface WindowCapability {
   close(): Promise<void>
   startDragging(): Promise<void>
   leaveFullscreen(): Promise<void>
+  setZoom(factor: number): Promise<void>
   restart(): Promise<void>
   onResized(handler: () => void, onError: CapabilityErrorHandler): CapabilityUnsubscribe
   onFocusChanged(

@@ -39,6 +39,7 @@ export interface TauriCapabilityApi {
     onFocusChanged(handler: (event: TauriEvent<boolean>) => void): Promise<TauriUnlisten>
   }>
   currentWebview(): Readonly<{
+    setZoom(factor: number): Promise<void>
     onDragDropEvent(
       handler: (event: TauriEvent<{
         type: 'enter' | 'over' | 'drop' | 'leave'
@@ -66,6 +67,7 @@ export const DEFAULT_TAURI_CAPABILITY_API: TauriCapabilityApi = {
   currentWebview: () => {
     const webview = getCurrentWebview()
     return {
+      setZoom: (factor) => webview.setZoom(factor),
       onDragDropEvent: (handler) =>
         webview.onDragDropEvent(({ payload }) => {
           handler({

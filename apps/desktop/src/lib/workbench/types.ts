@@ -9,6 +9,7 @@ export type VoicePhase = 'idle' | 'starting' | 'listening' | 'processing' | 'sto
 export type SubmitStage = 'idle' | 'cooking' | 'publishing'
 export type SettingsSection =
   | 'general'
+  | 'appearance'
   | 'permissions'
   | 'notifications'
   | 'voice'

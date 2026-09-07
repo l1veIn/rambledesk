@@ -95,7 +95,7 @@
 
 <svelte:window onfocus={refreshOnReturn} />
 
-<section class="flex h-full min-h-0 min-w-0 flex-col bg-background" aria-label={tr('New session')}>
+<section class="appearance-surface flex h-full min-h-0 min-w-0 flex-col bg-background" aria-label={tr('New session')}>
   <div class="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-8 sm:px-8">
     <div class="mx-auto my-auto w-full max-w-3xl space-y-4 py-8">
       <div class="pb-8 text-center sm:pb-12">

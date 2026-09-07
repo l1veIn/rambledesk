@@ -127,7 +127,7 @@
   }
 </script>
 
-<div class="task-brief grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-background">
+<div class="appearance-surface task-brief grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-background">
     <header class="task-header border-b" class:has-agent-status={!!agentStatus}>
       <div class="relative min-w-0 px-6 py-4 pr-14">
       {#if workspace}

@@ -3,12 +3,16 @@
 RambleDesk Windows MVP 使用下列独立第三方组件。这里记录来源与许可证，
 不改变各组件自己的许可证条款。
 
-Codeg 的 Agent 管理与 Chat 模块按固定 commit `3ebdfed1d7c0b71d71880a3d2e0f8e09545feae1`
+Codeg 的 Agent 管理、Chat 与外观配色模块按固定 commit `3ebdfed1d7c0b71d71880a3d2e0f8e09545feae1`
 提取并修改。来源 <https://github.com/xintaofei/codeg>，版权归 Codeg 作者和贡献者；Apache-2.0
 全文随附于 `licenses/codeg-APACHE-2.0.txt`。逐文件来源、修改与验收见 `docs/CODEG_PORTS.md`。
 
 | 组件 | 用途 | 许可证 | 来源 |
 |------|------|--------|------|
+| Inter Variable 5.3.0 | 内置界面字体 | SIL OFL 1.1（随附 `licenses/font-inter-OFL-1.1.txt`） | <https://github.com/rsms/inter> |
+| Geist Variable / Geist Mono Variable 5.3.0 | 内置界面与代码字体 | SIL OFL 1.1（随附各 `licenses/font-geist*-OFL-1.1.txt`） | <https://github.com/vercel/geist-font> |
+| JetBrains Mono Variable 5.3.0 | 内置代码字体 | SIL OFL 1.1（随附 `licenses/font-jetbrains-mono-OFL-1.1.txt`） | <https://github.com/JetBrains/JetBrainsMono> |
+| Fira Code Variable 5.3.0 | 内置代码字体 | SIL OFL 1.1（随附 `licenses/font-fira-code-OFL-1.1.txt`） | <https://github.com/tonsky/FiraCode> |
 | cpal 0.16 | 跨平台麦克风采集 | Apache-2.0 | <https://github.com/RustAudio/cpal> |
 | sherpa-onnx 1.13.4 | 本地流式 ASR runtime 与 Rust binding | Apache-2.0 | <https://github.com/k2-fsa/sherpa-onnx> |
 | X-ASR 480ms streaming zh/en punct int8 | 默认本地流式中英标点模型 | Apache-2.0 | <https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-x-asr-480ms-streaming-zipformer-transducer-zh-en-punct-int8-2026-06-05.tar.bz2> |
