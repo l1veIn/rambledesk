@@ -129,6 +129,10 @@ pub struct HostSessionSummary {
     pub host_session_id: String,
     pub title: String,
     pub source_hint: Option<String>,
+    /// Project directory, when known. Legacy external sessions may only have a display hint.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub cwd: Option<String>,
     #[ts(type = "number")]
     pub request_count: u64,
     #[ts(type = "number")]

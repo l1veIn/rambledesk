@@ -7,92 +7,15 @@ use serde::Deserialize;
 use std::sync::{Arc, Mutex};
 
 use crate::AcpError;
+#[path = "session_configuration_cache.rs"]
+mod cache;
+#[path = "session_configuration_extension.rs"]
+mod extension;
 #[path = "session_configuration_mapping.rs"]
 mod mapping;
+use cache::Route;
+pub(crate) use cache::{ConfigurationCache, InitialConfiguration};
 pub(crate) type SharedConfiguration = Arc<Mutex<ConfigurationCache>>;
-
-#[derive(Default)]
-pub(crate) struct ConfigurationCache {
-    pub state: SessionConfiguration,
-    remote: Option<String>,
-    early_remote: Option<String>,
-    early_options: Option<Vec<SessionConfigOption>>,
-    early_mode: Option<String>,
-    mode_revision: u64,
-}
-
-impl ConfigurationCache {
-    pub fn opened(
-        &mut self,
-        remote: &str,
-        mut initial: SessionConfiguration,
-    ) -> Result<(), AcpError> {
-        if self
-            .early_remote
-            .as_deref()
-            .is_some_and(|early| early != remote)
-        {
-            return Err(AcpError::Protocol("configuration attribution"));
-        }
-        if let Some(options) = self.early_options.take() {
-            initial.options = options;
-        }
-        if let Some(mode) = self.early_mode.take() {
-            apply_mode(&mut initial, mode);
-        }
-        self.state = initial;
-        self.remote = Some(remote.into());
-        Ok(())
-    }
-
-    pub fn observe(&mut self, notification: &acp::SessionNotification) -> Result<(), AcpError> {
-        let (options, mode) = match &notification.update {
-            acp::SessionUpdate::ConfigOptionUpdate(update) => {
-                (Some(mapping::options(&update.config_options)?), None)
-            }
-            acp::SessionUpdate::CurrentModeUpdate(update) => (
-                None,
-                Some(mapping::identifier(&update.current_mode_id.to_string())?),
-            ),
-            _ => return Ok(()),
-        };
-        let remote = notification.session_id.to_string();
-        if self
-            .remote
-            .as_ref()
-            .or(self.early_remote.as_ref())
-            .is_some_and(|expected| expected != &remote)
-        {
-            return Err(AcpError::Protocol("configuration attribution"));
-        }
-        if self.remote.is_none() {
-            self.early_remote = Some(remote);
-            if options.is_some() {
-                self.early_options = options;
-            }
-            if mode.is_some() {
-                self.early_mode = mode;
-            }
-        } else {
-            if let Some(options) = options {
-                self.state.options = options;
-            }
-            if let Some(mode) = mode {
-                apply_mode(&mut self.state, mode);
-                self.mode_revision = self.mode_revision.wrapping_add(1);
-            }
-        }
-        Ok(())
-    }
-}
-
-fn apply_mode(state: &mut SessionConfiguration, id: String) {
-    let modes = state.modes.get_or_insert_with(|| SessionModeCatalog {
-        current_mode_id: id.clone(),
-        available_modes: vec![],
-    });
-    modes.current_mode_id = id;
-}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -108,7 +31,7 @@ pub(crate) async fn open(
     initialized: &acp::InitializeResponse,
     launch: &crate::AcpLaunch,
     remote: Option<&str>,
-) -> Result<(String, SessionConfiguration), AcpError> {
+) -> Result<(String, InitialConfiguration), AcpError> {
     let (method, request) = match remote {
         Some(remote)
             if initialized
@@ -148,19 +71,28 @@ pub(crate) async fn open(
         .block_task()
         .await
         .map_err(|_| AcpError::Protocol(method))?;
-    let response: OpenResponse =
-        serde_json::from_value(raw).map_err(|_| AcpError::Protocol("session configuration"))?;
+    let response: OpenResponse = serde_json::from_value(raw.clone())
+        .map_err(|_| AcpError::Protocol("session configuration"))?;
     let id = remote
         .map(str::to_owned)
         .or(response.session_id)
         .ok_or(AcpError::Protocol("session identity"))?;
     mapping::identifier(&id)?;
-    let state = SessionConfiguration {
-        options: mapping::options(response.config_options.as_deref().unwrap_or_default())?,
-        modes: response.modes.map(mapping::modes).transpose()?,
-        models: response.models.map(mapping::models).transpose()?,
+    let standard = mapping::options(response.config_options.as_deref().unwrap_or_default())?;
+    let extension = if standard.is_empty() {
+        extension::Configuration::parse(&raw)?
+    } else {
+        None
     };
-    Ok((id, state))
+    Ok((
+        id,
+        InitialConfiguration {
+            standard,
+            modes: response.modes.map(mapping::modes).transpose()?,
+            models: response.models.map(mapping::models).transpose()?,
+            extension,
+        },
+    ))
 }
 
 pub(crate) async fn set(
@@ -169,18 +101,36 @@ pub(crate) async fn set(
     cache: &SharedConfiguration,
     change: SessionConfigChange,
 ) -> Result<(), AgentDriverError> {
-    let mode_revision = {
+    let (route, mode_revision, extension_request) = {
         let cache = cache.lock().expect("configuration cache");
         if !cache.state.allows(&change) {
             return Err(AgentDriverError::new(
                 "Agent does not advertise this configuration value",
             ));
         }
-        cache.mode_revision
+        let route = cache
+            .route(&change.config_id)
+            .cloned()
+            .ok_or_else(|| AgentDriverError::new("Unknown session configuration option"))?;
+        let request = if let Route::Extension(id) = &route {
+            Some(
+                cache
+                    .initial
+                    .extension
+                    .as_ref()
+                    .and_then(|extension| extension.request(remote, id, &change.value))
+                    .ok_or_else(|| {
+                        AgentDriverError::new("Unsupported configuration extension value")
+                    })?,
+            )
+        } else {
+            None
+        };
+        (route, cache.mode_revision, request)
     };
-    match &change {
-        SessionConfigChange::Option { config_id, value } => {
-            let value = match value {
+    match route {
+        Route::Standard(config_id) => {
+            let value = match &change.value {
                 SessionConfigValue::Select { value } => {
                     acp::SessionConfigOptionValue::value_id(value.clone())
                 }
@@ -191,7 +141,7 @@ pub(crate) async fn set(
             let response = sender
                 .send_request(acp::SetSessionConfigOptionRequest::new(
                     remote.to_owned(),
-                    config_id.clone(),
+                    config_id,
                     value,
                 ))
                 .block_task()
@@ -200,38 +150,61 @@ pub(crate) async fn set(
             let options = mapping::options(&response.config_options).map_err(|_| {
                 AgentDriverError::new("Agent returned invalid configuration options")
             })?;
-            cache.lock().expect("configuration cache").state.options = options;
-        }
-        SessionConfigChange::Mode { mode_id } => {
-            sender
-                .send_request(acp::SetSessionModeRequest::new(
-                    remote.to_owned(),
-                    mode_id.clone(),
-                ))
-                .block_task()
-                .await
-                .map_err(|_| AgentDriverError::new("Agent rejected the mode change"))?;
             let mut cache = cache.lock().expect("configuration cache");
-            // Empty set_mode acknowledgement confirms the requested value unless
-            // an explicit current_mode_update has supplied a more precise result.
-            if cache.mode_revision == mode_revision {
-                apply_mode(&mut cache.state, mode_id.clone());
+            cache.initial.standard = options;
+            cache.refresh();
+        }
+        Route::Mode | Route::Model => {
+            let SessionConfigValue::Select { value } = &change.value else {
+                return Err(AgentDriverError::new("Expected a configuration choice"));
+            };
+            if route == Route::Mode {
+                sender
+                    .send_request(acp::SetSessionModeRequest::new(
+                        remote.to_owned(),
+                        value.clone(),
+                    ))
+                    .block_task()
+                    .await
+                    .map_err(|_| AgentDriverError::new("Agent rejected the mode change"))?;
+                let mut cache = cache.lock().expect("configuration cache");
+                // Empty ACK confirms the request unless a notification gave a more precise result.
+                if cache.mode_revision == mode_revision {
+                    cache.apply_mode(value.clone());
+                }
+                cache.refresh();
+            } else {
+                let request = UntypedMessage::new(
+                    "session/set_model",
+                    serde_json::json!({"sessionId":remote,"modelId":value}),
+                )
+                .map_err(|_| AgentDriverError::new("Unable to encode the model change"))?;
+                sender
+                    .send_request_to(Agent, request)
+                    .block_task()
+                    .await
+                    .map_err(|_| AgentDriverError::new("Agent rejected the model change"))?;
+                let mut cache = cache.lock().expect("configuration cache");
+                if let Some(models) = &mut cache.initial.models {
+                    models.current = value.clone();
+                }
+                cache.refresh();
             }
         }
-        SessionConfigChange::Model { model_id } => {
-            let request = UntypedMessage::new(
-                "session/set_model",
-                serde_json::json!({"sessionId":remote,"modelId":model_id}),
-            )
-            .map_err(|_| AgentDriverError::new("Unable to encode the model change"))?;
+        Route::Extension(id) => {
+            let request = extension_request.expect("validated extension request");
+            let request = UntypedMessage::new(request.method, request.params)
+                .map_err(|_| AgentDriverError::new("Unable to encode the configuration change"))?;
             sender
                 .send_request_to(Agent, request)
                 .block_task()
                 .await
-                .map_err(|_| AgentDriverError::new("Agent rejected the model change"))?;
-            if let Some(models) = &mut cache.lock().expect("configuration cache").state.models {
-                models.current_model_id = model_id.clone();
+                .map_err(|_| AgentDriverError::new("Agent rejected the configuration change"))?;
+            let mut cache = cache.lock().expect("configuration cache");
+            if let Some(extension) = &mut cache.initial.extension {
+                extension.confirmed(&id, &change.value);
             }
+            cache.refresh();
         }
     }
     if !cache

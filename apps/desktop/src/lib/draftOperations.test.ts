@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { ACTION_ID_ATTR, ACTION_INDEX_ATTR } from './actionBlockquote'
 import { applyDraftOperation } from './draftOperations'
-import { SPEECH_SEGMENT_ID_ATTR } from './speechBlockMetadata'
+import { SPEECH_SEGMENT_ID_ATTR, speechCleanupCandidates } from './speechBlockMetadata'
 
 const actionA = { actionId: 'login', actionIndex: 0, title: '修复登录状态' }
 const actionB = { actionId: 'toast', actionIndex: 1, title: '检查 toast' }
@@ -15,8 +15,30 @@ describe('draft operations', () => {
     )
     expect(next.content?.[0]).toMatchObject({
       type: 'paragraph',
-      attrs: { [SPEECH_SEGMENT_ID_ATTR]: 'seg-1' },
+      attrs: { [SPEECH_SEGMENT_ID_ATTR]: 'seg-1', inputSource: 'asr', cleanupState: 'pending' },
     })
+    expect(speechCleanupCandidates(next)).toEqual([{ segmentId: 'seg-1', text: '登录失败' }])
+  })
+
+  it('excludes speech tidied before confirmation from pending Tidy candidates', () => {
+    const withRawSpeech = applyDraftOperation(
+      { type: 'doc', content: [] },
+      { kind: 'appendSpeech', segmentId: 'raw', text: '嗯，登录失败', action: null },
+    )
+    const next = applyDraftOperation(withRawSpeech, {
+      kind: 'appendSpeech',
+      segmentId: 'tidied',
+      text: '登录失败。',
+      action: actionA,
+      cleanupState: 'cleaned',
+    })
+
+    expect(speechCleanupCandidates(next)).toEqual([{ segmentId: 'raw', text: '嗯，登录失败' }])
+    expect(next.content?.[1].content?.find((node) => node.attrs?.[SPEECH_SEGMENT_ID_ATTR] === 'tidied'))
+      .toMatchObject({
+        attrs: { speechSegmentId: 'tidied', inputSource: 'asr', cleanupState: 'cleaned' },
+        content: [{ type: 'text', text: '登录失败。' }],
+      })
   })
 
   it('reuses the open Action Blockquote and creates a new one after reopen', () => {
@@ -152,12 +174,13 @@ describe('draft operations', () => {
     expect(unchanged).toEqual(openedB)
   })
 
-  it('deduplicates repeated stable speech without repeating the Action header', () => {
+  it.each(['pending', 'cleaned'] as const)('deduplicates repeated %s speech without repeating the Action header', (cleanupState) => {
     const operation = {
       kind: 'appendSpeech' as const,
       segmentId: 'asr-session-a-0',
       text: '同一段语音',
       action: actionA,
+      cleanupState,
     }
     const once = applyDraftOperation({ type: 'doc', content: [] }, operation)
     const twice = applyDraftOperation(once, operation)

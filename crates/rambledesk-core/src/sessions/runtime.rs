@@ -20,7 +20,7 @@ pub enum SessionConnectionState {
 pub enum SessionActivityState {
     Idle,
     Running,
-    WaitingPermission,
+    WaitingInput,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
@@ -101,7 +101,7 @@ pub struct ManagedSessionSnapshot {
     pub session: SessionRecord,
     pub runtime: SessionRuntime,
     pub activities: Vec<super::SessionActivity>,
-    pub permissions: Vec<super::SessionPermission>,
+    pub interactions: Vec<super::SessionInteraction>,
     pub deliveries: Vec<super::FeedbackDelivery>,
     pub deleting: bool,
 }

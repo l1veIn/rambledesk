@@ -193,7 +193,11 @@ impl AgentCatalogService {
             std::fs::rename(&staging.path, &destination).map_err(|_| CatalogError::Storage)?;
             staging.path = destination;
             let (_, launch) = paths::package(&staging.path, package, command, &tools.node).await?;
-            let env = super::inspect::managed_launch_environment(&entry.id, &staging.path);
+            let mut env = super::inspect::runtime_environment(&tools.node, &[]);
+            env.extend(super::inspect::managed_launch_environment(
+                &entry.id,
+                &staging.path,
+            ));
             let config = SaveAgentConfigInput {
                 catalog_id: Some(entry.id.clone()),
                 id: None,

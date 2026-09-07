@@ -13,7 +13,7 @@
   let failed = false
   $: controls = configurationControls(configuration)
   function tr(text: string) {
-    const zh: Record<string, string> = { Mode: '模式', Model: '模型', On: '开启', Off: '关闭', 'Updating session options…': '正在更新会话选项…', 'Could not change this option.': '无法更改此选项。' }
+    const zh: Record<string, string> = { Mode: '模式', Model: '模型', 'Reasoning effort': '思考强度', On: '开启', Off: '关闭', 'Updating session options…': '正在更新会话选项…', 'Could not change this option.': '无法更改此选项。' }
     return $locale === 'zh-CN' ? zh[text] ?? text : text
   }
 

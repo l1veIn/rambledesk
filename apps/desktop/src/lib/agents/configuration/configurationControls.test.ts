@@ -16,26 +16,30 @@ function configuration(): SessionConfiguration {
       { value: 'provider/model-b', name: 'B', description: 'Second model', group: 'Provider' },
     ] } },
     { id: 'auto', category: null, name: 'Auto approve', description: null, kind: { type: 'boolean', current_value: false } },
-  ], models: { current_model_id: 'legacy-a', available_models: [{ model_id: 'legacy-a', name: 'Duplicate legacy model', description: null }] },
-  modes: { current_mode_id: 'ask', available_modes: [{ id: 'ask', name: 'Ask', description: null }, { id: 'edit', name: 'Edit', description: null }] } }
+    { id: 'opaque-mode', category: 'mode', name: 'Mode', description: null, kind: { type: 'select', current_value: 'ask', options: [
+      { value: 'ask', name: 'Ask', description: null, group: null },
+      { value: 'edit', name: 'Edit', description: null, group: null },
+    ] } },
+  ] }
 }
 
 describe('Agent-confirmed session controls', () => {
-  it('prefers modern model options, preserves legacy mode support and updates when capabilities change', () => {
+  it('renders supplied options uniformly and updates when the advertisement changes', () => {
     const config = configuration()
     const controls = configurationControls(config)
-    expect(controls.map((control) => control.id)).toEqual(['option:model-picker', 'option:auto', 'legacy:mode'])
+    expect(controls.map((control) => control.id)).toEqual(['model-picker', 'auto', 'opaque-mode'])
+    config.options = config.options.slice(1)
+    expect(configurationControls(config).map((control) => control.id)).toEqual(['auto', 'opaque-mode'])
     config.options = []
-    expect(configurationControls(config).map((control) => control.id)).toEqual(['legacy:mode', 'legacy:model'])
-    expect(configurationControls({ options: [], modes: null, models: null })).toEqual([])
+    expect(configurationControls(config)).toEqual([])
   })
 
   it('sends opaque values and real booleans without changing the last confirmed projection', () => {
     const config = configuration()
     const controls = configurationControls(config)
-    expect(changeForControl(controls[0], 'provider/model-b')).toEqual({ type: 'option', config_id: 'model-picker', value: { type: 'select', value: 'provider/model-b' } })
-    expect(changeForControl(controls[1], true)).toEqual({ type: 'option', config_id: 'auto', value: { type: 'boolean', value: true } })
-    expect(changeForControl(controls[2], 'edit')).toEqual({ type: 'mode', mode_id: 'edit' })
+    expect(changeForControl(controls[0], 'provider/model-b')).toEqual({ config_id: 'model-picker', value: { type: 'select', value: 'provider/model-b' } })
+    expect(changeForControl(controls[1], true)).toEqual({ config_id: 'auto', value: { type: 'boolean', value: true } })
+    expect(changeForControl(controls[2], 'edit')).toEqual({ config_id: 'opaque-mode', value: { type: 'select', value: 'edit' } })
     expect(controls[0].value).toBe('provider/model-a')
     expect(config.options[0].kind.current_value).toBe('provider/model-a')
     expect(changeForControl(controls[0], 'B')).toBeNull()
@@ -52,7 +56,7 @@ describe('Agent-confirmed session controls', () => {
     expect(body).toContain('title="Second model"')
     expect(body).toMatch(/<select[^>]*disabled[^>]*aria-label="Agent model"/)
     expect(body).toContain('aria-pressed="false"')
-    expect(body).not.toContain('Duplicate legacy model')
+    expect(body).toContain('aria-label="Mode"')
   })
 
   it('shows an unknown confirmed value without silently picking a different available choice', () => {

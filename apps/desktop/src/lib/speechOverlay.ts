@@ -19,6 +19,7 @@ export type SpeechOverlayState = {
   target: SpeechTarget | null
   groups: SpeechDraftGroup[]
   receipt: SpeechReceipt | null
+  edit?: { ids: string[]; text: string } | null
 }
 
 export function speechOverlayVisible(state: SpeechOverlayState): boolean {
@@ -31,6 +32,6 @@ export function selectedSpeechGroup(state: Pick<SpeechOverlayState, 'groups' | '
 
 export function speechReviewCommand(state: SpeechOverlayState, action: 'accept' | 'discard', locked = false): RambleConsoleCommand | null {
   const group = selectedSpeechGroup(state)
-  if (!group || group.busy || locked) return null
+  if (!group || group.busy || state.edit || locked) return null
   return { type: action === 'accept' ? 'accept-speech' : 'discard-speech', ids: [...group.ids] }
 }

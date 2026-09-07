@@ -48,7 +48,11 @@ pub(super) async fn forward_events<R: Runtime>(
     loop {
         match receiver.recv().await {
             Ok(invalidation) => emit(&app, invalidation.into()),
-            Err(broadcast::error::RecvError::Lagged(_)) => {
+            Err(broadcast::error::RecvError::Lagged(skipped_events)) => {
+                tracing::warn!(
+                    skipped_events,
+                    "desktop application events lagged; requesting fresh snapshots"
+                );
                 // A readiness event makes every mounted projection reread. A
                 // fresh receiver avoids replaying invalidations below its revision.
                 let (ready, next_receiver) = hub.subscribe_with_ready();

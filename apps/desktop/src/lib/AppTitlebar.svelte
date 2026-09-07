@@ -121,7 +121,7 @@
   <div
     class={[
       'flex h-full shrink-0 items-stretch border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200',
-      sidebarCollapsed ? 'w-14' : 'w-[224px]',
+      sidebarCollapsed ? 'w-[var(--workbench-sidebar-collapsed-width)]' : 'w-[var(--workbench-sidebar-width)]',
     ]}
   >
     {#if windowControlsAvailable}
@@ -240,12 +240,12 @@
     right: 0;
     bottom: 0;
     left: 0;
-    z-index: 1;
+    z-index: 20;
     height: 0;
     content: '';
     border-bottom: 1px solid var(--border);
     pointer-events: none;
-    /* The active tab (z-10), including its reverse corners, covers this divider. */
+    /* Stay above the active tab (z-10) and its corners so pane dividers meet a continuous edge. */
   }
 
   .traffic.close {

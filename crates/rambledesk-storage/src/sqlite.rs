@@ -31,6 +31,7 @@ mod deletion_ops;
 mod delivery_ops;
 mod managed_ops;
 mod migration_compat;
+mod migration_extensions;
 mod paths;
 mod publication_paths;
 mod recovery_ops;
@@ -166,10 +167,7 @@ impl SqliteFeedbackStore {
         if applied > supported {
             return Err(StorageOpenError::NewerDatabase { applied, supported });
         }
-        MIGRATOR
-            .run(&pool)
-            .await
-            .map_err(StorageOpenError::Migrate)?;
+        migration_extensions::run(&pool).await?;
         let library_existed = tokio::fs::try_exists(library_root)
             .await
             .map_err(StorageOpenError::CreateDirectory)?;
@@ -605,6 +603,15 @@ fn stored_request_from_row(row: &SqliteRow) -> Result<StoredFeedbackRequest, Rep
 }
 
 fn host_session_summary_from_row(row: &SqliteRow) -> Result<HostSessionSummary, RepositoryError> {
+    let management =
+        managed_ops::management_from_row(row).map_err(|_| RepositoryError::CorruptData)?;
+    let source_hint: Option<String> = row.try_get("source_hint").map_err(storage_error)?;
+    let cwd = match &management {
+        rambledesk_core::SessionManagement::Managed { cwd, .. } => Some(cwd.clone()),
+        // source_hint is free-form display text, including possible file paths.
+        // External adapters do not currently persist an explicit directory.
+        rambledesk_core::SessionManagement::External => None,
+    };
     let request_count = row
         .try_get::<i64, _>("request_count")
         .map_err(storage_error)?;
@@ -613,12 +620,12 @@ fn host_session_summary_from_row(row: &SqliteRow) -> Result<HostSessionSummary, 
         .map_err(storage_error)?;
     Ok(HostSessionSummary {
         session_id: row.try_get("session_id").map_err(storage_error)?,
-        management: managed_ops::management_from_row(row)
-            .map_err(|_| RepositoryError::CorruptData)?,
+        management,
         host_id: row.try_get("host_id").map_err(storage_error)?,
         host_session_id: row.try_get("host_session_id").map_err(storage_error)?,
         title: row.try_get("title").map_err(storage_error)?,
-        source_hint: row.try_get("source_hint").map_err(storage_error)?,
+        source_hint,
+        cwd,
         request_count: u64::try_from(request_count).map_err(|_| RepositoryError::CorruptData)?,
         pending_count: u64::try_from(pending_count).map_err(|_| RepositoryError::CorruptData)?,
         updated_at: row.try_get("updated_at").map_err(storage_error)?,
@@ -680,6 +687,7 @@ fn repository_error_code(error: RepositoryError) -> &'static str {
             "RECOVERY_FAILURE"
         }
         RepositoryError::DeleteRequiresArchivedHostSession
+        | RepositoryError::ManagedSessionRequiresRuntimeDeletion
         | RepositoryError::RequestNotTerminal => "RECOVERY_FAILURE",
     }
 }

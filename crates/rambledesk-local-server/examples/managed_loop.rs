@@ -61,7 +61,7 @@ async fn wait_for(
         loop {
             let value = snapshot(app, id).await?;
             ensure!(
-                value.permissions.is_empty(),
+                value.interactions.is_empty(),
                 "Probe stopped at an Agent permission request; no automatic approval was granted"
             );
             ensure!(
@@ -136,7 +136,7 @@ async fn run_conversations(
             loop {
                 let value = snapshot(app, &item.session_id).await?;
                 ensure!(
-                    value.permissions.is_empty(),
+                    value.interactions.is_empty(),
                     "Probe stopped at an Agent permission request"
                 );
                 match store.get_request(&item.request_id).await {

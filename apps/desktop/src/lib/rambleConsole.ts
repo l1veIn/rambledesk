@@ -28,6 +28,10 @@ export type RambleConsoleCommand =
   | { type: 'select-speech-group'; id: string }
   | { type: 'accept-speech'; ids: string[] }
   | { type: 'discard-speech'; ids: string[] }
+  | { type: 'tidy-speech'; ids: string[] }
+  | { type: 'edit-speech'; ids: string[] }
+  | { type: 'save-speech-edit'; ids: string[]; text: string }
+  | { type: 'cancel-speech-edit'; ids: string[] }
   | { type: 'open-speech-target'; requestId: string; segmentId?: string }
   | { type: 'retry-recording' }
   | { type: 'toggle-recording' }

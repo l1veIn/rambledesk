@@ -1,4 +1,4 @@
-import type { AgentConfig, ManagedSessionSnapshot, SessionActivity as GeneratedSessionActivity, SessionPermission as GeneratedSessionPermission } from '$lib/generated/feedback'
+import type { AgentConfig, ManagedSessionSnapshot, SessionActivity as GeneratedSessionActivity, SessionInteraction as GeneratedSessionInteraction } from '$lib/generated/feedback'
 
 export type ManagedSessionViewSnapshot = Readonly<Pick<ManagedSessionSnapshot, 'session' | 'runtime' | 'deleting'>>
 
@@ -6,7 +6,7 @@ export type SessionActivity = Readonly<Pick<GeneratedSessionActivity,
   'id' | 'session_id' | 'kind' | 'text' | 'tool_call_id' | 'created_at'>
   & Partial<Pick<GeneratedSessionActivity, 'sequence' | 'turn_id' | 'content'>>>
 
-export type SessionPermission = Readonly<GeneratedSessionPermission>
+export type SessionInteraction = Readonly<GeneratedSessionInteraction>
 
 export function activitiesForSession(sessionId: string, activities: readonly SessionActivity[]): SessionActivity[] {
   // A newer snapshot may contain an updated tool call with the same id.
@@ -21,20 +21,20 @@ export function activitiesForSession(sessionId: string, activities: readonly Ses
     ? result.sort((left, right) => left.sequence! - right.sequence!) : result
 }
 
-export function permissionsForSession(sessionId: string, permissions: readonly SessionPermission[]): SessionPermission[] {
+export function interactionsForSession(sessionId: string, interactions: readonly SessionInteraction[]): SessionInteraction[] {
   const seen = new Set<string>()
-  return permissions.filter((permission) => {
-    if (permission.session_id !== sessionId || seen.has(permission.request_id)) return false
-    seen.add(permission.request_id)
+  return interactions.filter((interaction) => {
+    if (interaction.session_id !== sessionId || seen.has(interaction.request_id)) return false
+    seen.add(interaction.request_id)
     return true
   })
 }
 
-export function managedSessionActions(snapshot: ManagedSessionViewSnapshot, pendingPermissions: number) {
+export function managedSessionActions(snapshot: ManagedSessionViewSnapshot, pendingInteractions: number) {
   const { connection, activity } = snapshot.runtime
   const managed = snapshot.session.management.kind === 'managed' && !snapshot.deleting
   return {
-    canPrompt: managed && connection === 'connected' && activity === 'idle' && pendingPermissions === 0,
+    canPrompt: managed && connection === 'connected' && activity === 'idle' && pendingInteractions === 0,
     canStart: managed && connection !== 'connected' && connection !== 'connecting',
     canCancel: managed && connection === 'connected' && activity !== 'idle',
   }
@@ -42,10 +42,10 @@ export function managedSessionActions(snapshot: ManagedSessionViewSnapshot, pend
 
 export function managedSessionComposerState(
   snapshot: ManagedSessionViewSnapshot,
-  pendingPermissions: number,
+  pendingInteractions: number,
   pending: { busy: boolean; lifecycle: boolean; prompt: boolean },
 ) {
-  const actions = managedSessionActions(snapshot, pendingPermissions)
+  const actions = managedSessionActions(snapshot, pendingInteractions)
   return {
     disabled: pending.busy || snapshot.deleting,
     busy: snapshot.runtime.activity !== 'idle' || pending.prompt,

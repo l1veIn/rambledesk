@@ -16,7 +16,7 @@ function snapshot(connection: ManagedSessionViewSnapshot['runtime']['connection'
     session: { session_id: 'local', host_id: 'dsh', host_session_id: 'feedback', title: 'Interrupted work',
       created_at: 'today', updated_at: 'today',
       management: { kind: 'managed', protocol: 'acp', agent_config_id: 'config', cwd: '/repo', remote_session_id: 'original' } },
-    runtime: { configuration: { options: [], modes: null, models: null }, connection, activity: 'idle', instance_id: null, config_updated_at: null,
+    runtime: { configuration: { options: [] }, connection, activity: 'idle', instance_id: null, config_updated_at: null,
       capabilities: { prompt: { image: false, audio: false, embedded_context: false, resource_links: true }, load_session: true, resume_session: false, http_mcp: true }, last_error: null },
   }
 }
@@ -34,7 +34,7 @@ describe('managed session recovery rendering', () => {
       config: { id: 'config', name: 'Agent', host_id: 'dsh', protocol: 'acp', enabled: true,
         command: 'deepseek-acp', args: [], env: { TOKEN: 'private-token' }, created_at: 'today', updated_at: 'today' },
       activities: [{ id: 'past', session_id: 'local', kind: 'agent_message', text: 'Preserved output', tool_call_id: null, created_at: 'today' }],
-      onPrompt: action, onStart: action, onCancel: action, onRespondPermission: action,
+      onPrompt: action, onStart: action, onCancel: action, onRespondInteraction: action,
     } })
     expect(body).toContain('previous agent turn was interrupted')
     expect(body).toContain('will not be sent again automatically')

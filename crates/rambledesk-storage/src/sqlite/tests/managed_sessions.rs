@@ -15,6 +15,40 @@ const CREATED: &str = "2026-09-04T00:00:00Z";
 const UPDATED: &str = "2026-09-04T01:00:00Z";
 
 #[tokio::test]
+async fn external_display_hints_do_not_invent_project_directories() {
+    let workspace = TestWorkspace::new().await;
+    let store = SqliteFeedbackStore::connect(&workspace.database)
+        .await
+        .unwrap();
+    let application = store.clone().into_application();
+    let path_hint = workspace
+        ._temp
+        .path()
+        .join("review.md")
+        .to_string_lossy()
+        .into_owned();
+    for (index, hint) in [Some(path_hint), Some("Review this project".into()), None]
+        .into_iter()
+        .enumerate()
+    {
+        let mut request = workspace.request(Uuid::now_v7().to_string());
+        request.host_session_id = format!("external-{index}");
+        request.source_hint = hint;
+        application.request_feedback(request).await.unwrap();
+    }
+    let summaries = application.list_host_sessions().await.unwrap();
+    assert_eq!(summaries.len(), 3);
+    for summary in summaries {
+        assert_eq!(summary.management, SessionManagement::External);
+        assert_eq!(summary.cwd, None);
+        let json = serde_json::to_value(&summary).unwrap();
+        assert!(json.get("cwd").is_none());
+        let legacy: HostSessionSummary = serde_json::from_value(json).unwrap();
+        assert_eq!(legacy, summary);
+    }
+}
+
+#[tokio::test]
 async fn catalog_identity_migration_links_only_unambiguous_historical_recipes_and_preserves_settings()
  {
     let workspace = TestWorkspace::new().await;
@@ -381,6 +415,10 @@ async fn zero_feedback_session_can_be_listed_renamed_pinned_and_archived() {
     assert_eq!(summaries.len(), 1);
     assert_eq!(summaries[0].session_id, record.session_id);
     assert_eq!(summaries[0].management, record.management);
+    assert_eq!(
+        summaries[0].cwd,
+        Some(workspace._temp.path().to_string_lossy().into_owned())
+    );
     assert_eq!(summaries[0].request_count, 0);
     assert_eq!(summaries[0].pending_count, 0);
     assert_eq!(summaries[0].title, "Independent session");
@@ -406,6 +444,7 @@ async fn zero_feedback_session_can_be_listed_renamed_pinned_and_archived() {
         .await
         .unwrap();
     assert_eq!(pinned.pinned_at.as_deref(), Some(UPDATED));
+    assert_eq!(pinned.cwd, summaries[0].cwd);
     store
         .archive_host_session(&record.host_id, &record.host_session_id, UPDATED)
         .await
@@ -429,11 +468,34 @@ async fn zero_feedback_session_can_be_listed_renamed_pinned_and_archived() {
         .unwrap();
     assert_eq!(archived.len(), 1);
     assert_eq!(archived[0].request_count, 0);
+    assert_eq!(archived[0].cwd, summaries[0].cwd);
     assert_eq!(archived[0].pinned_at, None);
     store
         .unarchive_host_session(&record.host_id, &record.host_session_id, UPDATED)
         .await
         .unwrap();
+    let restored = store
+        .list_host_sessions(HostSessionQuery {
+            archived: false,
+            search: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(restored.len(), 1);
+    assert_eq!(restored[0].session_id, record.session_id);
+    assert_eq!(restored[0].management, record.management);
+    assert_eq!(restored[0].archived_at, None);
+    assert_eq!(restored[0].cwd, summaries[0].cwd);
+    assert!(
+        store
+            .list_host_sessions(HostSessionQuery {
+                archived: true,
+                search: None
+            })
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[tokio::test]

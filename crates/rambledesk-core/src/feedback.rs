@@ -760,6 +760,11 @@ impl From<RepositoryError> for ApplicationError {
                 "archive the host session before deleting requests",
                 false,
             ),
+            RepositoryError::ManagedSessionRequiresRuntimeDeletion => (
+                ApplicationErrorCode::InvalidArgument,
+                "delete managed sessions through the managed session command so runtime resources are stopped first",
+                false,
+            ),
             RepositoryError::RequestNotTerminal => (
                 ApplicationErrorCode::RequestNotTerminal,
                 "finish or cancel the feedback request before deleting it",

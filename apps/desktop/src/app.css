@@ -44,6 +44,8 @@
   font-synthesis: none;
 
   --radius: 0.375rem;
+  --workbench-sidebar-width: 240px;
+  --workbench-sidebar-collapsed-width: 3.5rem;
 
   /* RepoChan persona primitives. */
   --brand-silver: #e3e9f0;

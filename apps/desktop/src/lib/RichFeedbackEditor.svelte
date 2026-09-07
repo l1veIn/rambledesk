@@ -266,7 +266,7 @@
     }
     const nodes =
       operation.kind === 'appendSpeech'
-        ? speechNodes(operation.segmentId, operation.text)
+        ? speechNodes(operation.segmentId, operation.text, operation.cleanupState)
         : operation.kind === 'appendClipboardText'
           ? clipboardNodes(operation.text, operation.label)
           : attachmentNodes(

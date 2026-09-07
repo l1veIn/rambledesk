@@ -5,7 +5,7 @@ use super::ApplicationCommandFacade;
 use crate::{
     AgentConfig, AgentConfigInput, AgentConnectionCheck, CreateManagedSessionInput,
     ManagedSessionInput, ManagedSessionSnapshot, PrepareManagedSessionInput,
-    ResolveFeedbackDeliveryInput, RespondManagedPermissionInput, SaveAgentConfigInput,
+    ResolveFeedbackDeliveryInput, RespondManagedInteractionInput, SaveAgentConfigInput,
     SendManagedPromptInput, SessionApplication, SessionError, SessionRepositoryError,
 };
 
@@ -274,12 +274,12 @@ impl ApplicationCommandFacade {
             .await
             .map_err(Into::into)
     }
-    pub async fn respond_managed_permission(
+    pub async fn respond_managed_interaction(
         &self,
-        input: RespondManagedPermissionInput,
+        input: RespondManagedInteractionInput,
     ) -> Result<ManagedSessionSnapshot, ManagedCommandError> {
         self.managed_sessions()?
-            .respond_permission(input)
+            .respond_interaction(input)
             .await
             .map_err(Into::into)
     }

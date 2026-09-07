@@ -11,16 +11,12 @@ export type AgentPromptCapabilities = { image: boolean, audio: boolean, embedded
 resource_links: boolean, };
 export type SessionPromptContent = { "type": "text", text: string, } | { "type": "image", mime_type: string, data: string, } | { "type": "resource_link", uri: string, name: string, mime_type: string | null, } | { "type": "resource", uri: string, mime_type: string | null, text: string, };
 export type SendManagedPromptContentInput = { session_id: string, text: string, content: Array<SessionPromptContent>, };
-export type SessionConfiguration = { options: Array<SessionConfigOption>, modes: SessionModeCatalog | null, models: SessionModelCatalog | null, };
+export type SessionConfiguration = { options: Array<SessionConfigOption>, };
 export type SessionConfigOption = { id: string, name: string, description: string | null, category: string | null, kind: SessionConfigKind, };
 export type SessionConfigKind = { "type": "select", current_value: string, options: Array<SessionConfigChoice>, } | { "type": "boolean", current_value: boolean, };
 export type SessionConfigChoice = { value: string, name: string, description: string | null, group: string | null, };
-export type SessionModeCatalog = { current_mode_id: string, available_modes: Array<SessionMode>, };
-export type SessionMode = { id: string, name: string, description: string | null, };
-export type SessionModelCatalog = { current_model_id: string, available_models: Array<SessionModel>, };
-export type SessionModel = { model_id: string, name: string, description: string | null, };
 export type SessionConfigValue = { "type": "select", value: string, } | { "type": "boolean", value: boolean, };
-export type SessionConfigChange = { "type": "option", config_id: string, value: SessionConfigValue, } | { "type": "mode", mode_id: string, } | { "type": "model", model_id: string, };
+export type SessionConfigChange = { config_id: string, value: SessionConfigValue, };
 export type SetManagedSessionConfigInput = { session_id: string, change: SessionConfigChange, };
 export type AgentConnectionKind = "native" | "bridge";
 export type AgentDistribution = { "kind": "npm", package: string, pinned_version: string, command: string, node_required: string, } | { "kind": "manual", command: string, version: string, instructions: string, docs_url: string, };
@@ -63,14 +59,25 @@ export type FeedbackDeliveryState = "pending" | "sending" | "delivered" | "uncer
 export type ResolveDeliveryAction = "retry" | "acknowledge";
 export type ResolveFeedbackDeliveryInput = { session_id: string, request_id: string, action: ResolveDeliveryAction, };
 export type SessionPermissionOption = { option_id: string, name: string, kind: string, };
-export type SessionPermission = { request_id: string, session_id: string, title: string, details: string | null, options: Array<SessionPermissionOption>, };
-export type RespondManagedPermissionInput = { session_id: string, request_id: string, option_id: string | null, };
+export type SessionInputRequest = {
+/**
+ * Application form schema: a flat object of text, choice, boolean, numeric
+ * or choice-array fields. ACP validates its supported subset before accept;
+ * unknown constraints remain visible but cannot be silently weakened.
+ */
+schema: Record<string, unknown>, };
+export type SessionInputResponse = { action: SessionInputAction, content: Record<string, unknown> | null, };
+export type SessionInputAction = "accept" | "decline" | "cancel";
+export type SessionInteraction = { request_id: string, session_id: string, title: string, details: string | null, } & ({ "kind": "permission", options: Array<SessionPermissionOption>, } | { "kind": "question", input: SessionInputRequest, } | { "kind": "plan", input: SessionInputRequest, });
+export type SessionInteractionKind = { "kind": "permission", options: Array<SessionPermissionOption>, } | { "kind": "question", input: SessionInputRequest, } | { "kind": "plan", input: SessionInputRequest, };
+export type SessionInteractionResponse = { "kind": "permission", option_id: string | null, } | { "kind": "question", response: SessionInputResponse, } | { "kind": "plan", response: SessionInputResponse, };
+export type RespondManagedInteractionInput = { session_id: string, request_id: string, response: SessionInteractionResponse, };
 export type SendManagedPromptInput = { session_id: string, text: string, };
 export type SessionActivityKind = "user_message" | "agent_message" | "agent_thought" | "tool_call" | "status" | "error";
 export type SessionActivity = { id: string, session_id: string, sequence: number, turn_id: string | null, kind: SessionActivityKind, text: string, content?: SessionActivityContent, tool_call_id: string | null, created_at: string, };
 export type AgentSessionCapabilities = { load_session: boolean, resume_session: boolean, http_mcp: boolean, prompt: AgentPromptCapabilities, feedback_transport?: FeedbackTransport, };
 export type SessionConnectionState = "stopped" | "connecting" | "connected" | "disconnected" | "failed";
-export type SessionActivityState = "idle" | "running" | "waiting_permission";
+export type SessionActivityState = "idle" | "running" | "waiting_input";
 export type SessionRuntime = { connection: SessionConnectionState, activity: SessionActivityState, instance_id: string | null, config_updated_at: string | null, capabilities: AgentSessionCapabilities, configuration: SessionConfiguration,
 /**
  * Live instance telemetry. Unknown until this instance reports usage; not
@@ -86,7 +93,7 @@ used: number,
  * Context window capacity reported by the Agent; never inferred locally.
  */
 size: number, };
-export type ManagedSessionSnapshot = { recovery: SessionRecovery | null, session: SessionRecord, runtime: SessionRuntime, activities: Array<SessionActivity>, permissions: Array<SessionPermission>, deliveries: Array<FeedbackDelivery>, deleting: boolean, };
+export type ManagedSessionSnapshot = { recovery: SessionRecovery | null, session: SessionRecord, runtime: SessionRuntime, activities: Array<SessionActivity>, interactions: Array<SessionInteraction>, deliveries: Array<FeedbackDelivery>, deleting: boolean, };
 export type ManagedFeedbackStatus = { session_id: string, deleting: boolean, connection: SessionConnectionState, activity: SessionActivityState, deliveries: Array<FeedbackDelivery>, };
 export type ManagedWorkspaceInfo = { cwd: string,
 /**
@@ -134,7 +141,11 @@ export type FeedbackRequestSummary = { request_id: string,
  * Trusted local origin; external requests do not have an Agent view.
  */
 managed_session_id?: string, host_id: string, host_session_id: string, source_hint: string | null, title: string, what_happened: string, status: FeedbackStatus, resolution: FeedbackResolution | null, allow_finish: boolean, final_summary: string | null, revision: number, created_at: string, updated_at: string, };
-export type HostSessionSummary = { session_id: string, management: SessionManagement, host_id: string, host_session_id: string, title: string, source_hint: string | null, request_count: number, pending_count: number, updated_at: string, pinned_at: string | null, archived_at: string | null, host_pinned_at: string | null, };
+export type HostSessionSummary = { session_id: string, management: SessionManagement, host_id: string, host_session_id: string, title: string, source_hint: string | null,
+/**
+ * Project directory, when known. Legacy external sessions may only have a display hint.
+ */
+cwd?: string, request_count: number, pending_count: number, updated_at: string, pinned_at: string | null, archived_at: string | null, host_pinned_at: string | null, };
 export type HostSessionInput = { host_id: string, host_session_id: string, };
 export type RenameHostSessionInput = { host_id: string, host_session_id: string, title: string, };
 export type SetHostSessionPinnedInput = { host_id: string, host_session_id: string, pinned: boolean, };

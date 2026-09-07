@@ -5,6 +5,9 @@ use std::sync::{Arc, Mutex};
 
 #[async_trait]
 pub(crate) trait ProtocolObserver: Send + Sync {
+    fn remote_session_id(&self) -> Option<String> {
+        None
+    }
     fn manages_permissions(&self) -> bool {
         false
     }
@@ -28,11 +31,51 @@ pub(crate) struct ManagedObserver {
 
 #[async_trait]
 impl ProtocolObserver for ManagedObserver {
+    fn remote_session_id(&self) -> Option<String> {
+        self.remote.lock().expect("remote attribution lock").clone()
+    }
     fn manages_permissions(&self) -> bool {
         true
     }
     async fn observe(&self, event: AcpEvent) -> Result<(), AcpError> {
         let update = match event {
+            AcpEvent::InputRequested {
+                request_id,
+                remote,
+                title,
+                input,
+                kind,
+            } => {
+                if self
+                    .remote
+                    .lock()
+                    .expect("remote attribution lock")
+                    .as_deref()
+                    != Some(remote.as_str())
+                {
+                    return Err(AcpError::Protocol("input attribution"));
+                }
+                return self
+                    .sink
+                    .observe(AgentSessionEvent::InteractionRequested(
+                        rambledesk_core::SessionInteraction {
+                            request_id,
+                            session_id: self.local_session_id.clone(),
+                            title,
+                            details: None,
+                            kind: match kind {
+                                rambledesk_core::SessionInputKind::Question => {
+                                    rambledesk_core::SessionInteractionKind::Question { input }
+                                }
+                                rambledesk_core::SessionInputKind::Plan => {
+                                    rambledesk_core::SessionInteractionKind::Plan { input }
+                                }
+                            },
+                        },
+                    ))
+                    .await
+                    .map_err(|_| AcpError::Protocol("input event"));
+            }
             AcpEvent::PermissionRequested {
                 request_id,
                 request,
@@ -41,7 +84,7 @@ impl ProtocolObserver for ManagedObserver {
                 if remote.as_deref() != Some(request.session_id.to_string().as_str()) {
                     return Err(AcpError::Protocol("permission attribution"));
                 }
-                let permission = rambledesk_core::SessionPermission {
+                let permission = rambledesk_core::SessionInteraction {
                     request_id,
                     session_id: self.local_session_id.clone(),
                     details: crate::permission_details::describe(&request.tool_call.fields),
@@ -50,19 +93,21 @@ impl ProtocolObserver for ManagedObserver {
                         .fields
                         .title
                         .unwrap_or_else(|| "Agent tool operation".into()),
-                    options: request
-                        .options
-                        .into_iter()
-                        .map(|option| rambledesk_core::SessionPermissionOption {
-                            option_id: option.option_id.to_string(),
-                            name: option.name,
-                            kind: format!("{:?}", option.kind),
-                        })
-                        .collect(),
+                    kind: rambledesk_core::SessionInteractionKind::Permission {
+                        options: request
+                            .options
+                            .into_iter()
+                            .map(|option| rambledesk_core::SessionPermissionOption {
+                                option_id: option.option_id.to_string(),
+                                name: option.name,
+                                kind: format!("{:?}", option.kind),
+                            })
+                            .collect(),
+                    },
                 };
                 return self
                     .sink
-                    .observe(AgentSessionEvent::PermissionRequested(permission))
+                    .observe(AgentSessionEvent::InteractionRequested(permission))
                     .await
                     .map_err(|_| AcpError::Protocol("permission event"));
             }

@@ -159,6 +159,7 @@
   {#if failure}<p class="m-0 px-4 pb-2 text-xs text-destructive" role="alert">{tr(failure)}</p>{/if}
   <footer class="flex min-h-11 items-center gap-1.5 px-2.5 pb-2">
     <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1"><slot name="footer" /></div>
+    <slot name="footer-end" />
     <span class="sr-only">{hint}</span>
     {#if busy && oncancel}
       <Button variant="secondary" size="icon" class="size-8 shrink-0 rounded-xl" aria-label={tr('Cancel current turn')} title={tr('Cancel current turn')} disabled={disabled || cancelling}

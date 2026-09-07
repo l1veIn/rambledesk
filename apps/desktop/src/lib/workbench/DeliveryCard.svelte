@@ -43,7 +43,7 @@
 
   let cancelConfirmOpen = false
 
-  $: published = feedbackResult !== null && !submitting && !cooking
+  $: published = feedbackResult !== null && !submitting && !cooking && !cancelled
   $: operationLocked = cooking || submitting || cancelling || approving
 
   function tr(source: string, values: Record<string, string | number> = {}) {
@@ -91,8 +91,14 @@
   <section class="p-4">
     <Badge variant="destructive">{tr('Cancelled')}</Badge>
     <p class="m-0 mt-3 text-[10px] leading-4 text-muted-foreground">
-      {tr('The host can read the cancellation state and continue the session.')}
+      {tr('Feedback is cancelled. No continuation message is sent. You can open the Agent conversation whenever you want to continue.')}
     </p>
+    {#if feedbackResult}
+      <Button class="mt-3 w-full" variant="outline" onclick={onOpenPackage}>
+        {#if packageActionLabel === 'Open feedback package'}<FolderOpen data-icon="inline-start" />{:else}<Download data-icon="inline-start" />{/if}
+        {tr(packageActionLabel)}
+      </Button>
+    {/if}
   </section>
 {:else}
   <section class="p-4">
@@ -163,7 +169,7 @@
     <Dialog.Header>
       <Dialog.Title>{tr('Cancel this request?')}</Dialog.Title>
       <Dialog.Description class="mt-1 leading-5">
-        {tr('The agent will receive a terminal state, and this draft can no longer be edited. This action cannot be undone.')}
+        {tr('This request will be marked as cancelled without sending a continuation message. The draft can no longer be edited. This action cannot be undone.')}
       </Dialog.Description>
     </Dialog.Header>
     <Dialog.Footer class="gap-2 sm:justify-end">

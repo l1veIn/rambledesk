@@ -4,28 +4,33 @@
 //! events, and redacted logs. It never copies drafts, feedback markdown,
 //! attachments, tokens, API keys, or request titles.
 
+mod client;
+pub(crate) mod control;
+mod event_export;
 mod events;
+mod logs;
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 
 use rambledesk_core::{FeedbackApplication, FeedbackStatus, ListFeedbackRequestsInput};
 use rambledesk_local_server::{WebAccessSecurityLimits, WebAccessServerConfig};
 use rambledesk_speech::model::list_models;
 use serde::Serialize;
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 use zip::write::SimpleFileOptions;
 
 use crate::WorkbenchState;
 use crate::config::load_storage_preferences;
-use crate::logging;
 use crate::macos_permissions::list_macos_permissions;
 
+pub use client::ClientDiagnosticInput;
 pub(crate) use events::record as record_event;
+pub(crate) use logs::redact_home;
+use logs::{LogCoverage, MAX_LOG_FILE_BYTES, MAX_LOG_FILES, collect_logs};
 
-const PACKAGE_SCHEMA_VERSION: u32 = 1;
-const MAX_LOG_FILE_BYTES: u64 = 1024 * 1024;
+const PACKAGE_SCHEMA_VERSION: u32 = 2;
 const MAX_REQUESTS: usize = 2_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
@@ -77,6 +82,17 @@ struct Manifest<'a> {
     contains_feedback_text: bool,
     contains_attachments: bool,
     contains_tokens: bool,
+    app_session_id: &'a str,
+    requested_since: Option<&'a str>,
+    event_count: usize,
+    event_coverage: &'a event_export::Coverage,
+    log_coverage: &'a LogCoverage,
+    max_event_file_bytes: u64,
+    max_exported_events: usize,
+    max_log_files: usize,
+    max_log_file_bytes: u64,
+    request_limit_reached: bool,
+    debug_build: bool,
 }
 
 #[derive(Serialize)]
@@ -142,14 +158,6 @@ struct ModelSnapshot {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct AdapterSnapshot {
-    id: String,
-    installed: bool,
-    configured: bool,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 struct RequestMetadata {
     request_id: String,
     host_id: String,
@@ -200,20 +208,13 @@ pub async fn export_diagnostics(
             streaming: model.streaming,
         })
         .collect();
-    let adapters: Vec<AdapterSnapshot> = app
-        .path()
-        .home_dir()
-        .map(|home| rambledesk_mcp::detect_hosts(&home))
-        .unwrap_or_default()
-        .into_iter()
-        .map(|host| AdapterSnapshot {
-            id: host.id.to_owned(),
-            installed: host.installed,
-            configured: host.configured,
-        })
-        .collect();
+    // Diagnostics must not discover external integrations. Only an explicit
+    // visit to External adapters may scan their installations and configuration.
+    // null means uncollected, rather than an empty list of detected adapters.
+    let adapters = serde_json::Value::Null;
     let requests = request_metadata(&state.application, since.as_deref()).await?;
-    let events = events::list_since(&events::events_path(), since.as_deref());
+    let event_snapshot = events::snapshot(since.as_deref());
+    let events = &event_snapshot.events;
     let logs = collect_logs(since.as_deref(), scope.lookback())?;
     let summary = usage_summary(&requests);
     let manifest = Manifest {
@@ -225,6 +226,17 @@ pub async fn export_diagnostics(
         contains_feedback_text: false,
         contains_attachments: false,
         contains_tokens: false,
+        app_session_id: events::app_session_id(),
+        requested_since: since.as_deref(),
+        event_count: events.len(),
+        event_coverage: &event_snapshot.coverage,
+        log_coverage: &logs.coverage,
+        max_event_file_bytes: events::TRIM_AT_BYTES,
+        max_exported_events: events::MAX_EVENTS,
+        max_log_files: MAX_LOG_FILES,
+        max_log_file_bytes: MAX_LOG_FILE_BYTES,
+        request_limit_reached: requests.len() >= MAX_REQUESTS,
+        debug_build: cfg!(debug_assertions),
     };
 
     let mut entries = vec![
@@ -258,14 +270,19 @@ pub async fn export_diagnostics(
         ),
         (
             "events.csv".to_owned(),
-            events::to_csv(&events, &app_version),
+            events::to_csv(events, &app_version),
+        ),
+        ("events.jsonl".to_owned(), event_export::to_jsonl(events)?),
+        (
+            "event-summary.json".to_owned(),
+            pretty_json(&event_export::summarize(events), "序列化事件摘要")?,
         ),
         (
             "README.txt".to_owned(),
             package_readme(&report_id, scope.as_label()),
         ),
     ];
-    for (name, contents) in logs {
+    for (name, contents) in logs.entries {
         entries.push((format!("logs/{name}"), contents));
     }
 
@@ -281,6 +298,11 @@ pub async fn export_diagnostics(
             .filter(|(name, _)| name.starts_with("logs/"))
             .count(),
     })
+}
+
+#[tauri::command]
+pub fn record_client_diagnostic(input: ClientDiagnosticInput) -> Result<(), String> {
+    client::record(input)
 }
 
 #[tauri::command]
@@ -422,62 +444,6 @@ fn increment(map: &mut serde_json::Map<String, serde_json::Value>, key: &str) {
     map.insert(key.to_owned(), serde_json::json!(count + 1));
 }
 
-fn collect_logs(
-    since: Option<&str>,
-    lookback: Option<Duration>,
-) -> Result<Vec<(String, String)>, String> {
-    let directory = logging::directory()?;
-    let Ok(entries) = std::fs::read_dir(&directory) else {
-        return Ok(Vec::new());
-    };
-    let mut files = entries
-        .filter_map(Result::ok)
-        .filter(|entry| {
-            entry
-                .file_name()
-                .to_string_lossy()
-                .starts_with("rambledesk.log")
-        })
-        .filter_map(|entry| {
-            let modified = entry.metadata().ok()?.modified().ok()?;
-            Some((modified, entry.file_name(), entry.path()))
-        })
-        .collect::<Vec<_>>();
-    files.sort_by_key(|(modified, _, _)| *modified);
-    let cutoff =
-        since.and_then(|_| lookback.and_then(|duration| SystemTime::now().checked_sub(duration)));
-    let mut logs = Vec::new();
-    for (modified, name, path) in files {
-        if cutoff.is_some_and(|bound| modified < bound) {
-            continue;
-        }
-        let Ok(bytes) = std::fs::read(&path) else {
-            continue;
-        };
-        let start = bytes
-            .len()
-            .saturating_sub(usize::try_from(MAX_LOG_FILE_BYTES).unwrap_or(bytes.len()));
-        let raw = String::from_utf8_lossy(complete_log_tail(&bytes, start));
-        let sanitized = raw
-            .lines()
-            .map(redact_log_line)
-            .collect::<Vec<_>>()
-            .join("\n");
-        logs.push((name.to_string_lossy().into_owned(), sanitized));
-    }
-    Ok(logs)
-}
-
-fn complete_log_tail(bytes: &[u8], start: usize) -> &[u8] {
-    let tail = &bytes[start..];
-    if start == 0 || bytes.get(start - 1) == Some(&b'\n') {
-        return tail;
-    }
-    tail.iter()
-        .position(|byte| *byte == b'\n')
-        .map_or(&[], |newline| &tail[newline + 1..])
-}
-
 fn write_zip(path: &Path, entries: &[(String, String)]) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|error| format!("无法创建诊断包目录：{error}"))?;
@@ -527,77 +493,46 @@ fn package_readme(report_id: &str, scope: &str) -> String {
         "RambleDesk diagnostic package\n\
          Report: {report_id}\n\
          Scope: {scope}\n\n\
-         This zip does not contain drafts, feedback markdown, attachments,\n\
-         API keys, or local-server tokens. Request titles and source text\n\
-         are omitted. Home directories in logs are replaced with %HOME%.\n"
+         Start with manifest.json (build, app session, requested range and coverage),\n\
+         then event-summary.json (activity/outcome/failure counts and duration percentiles).\n\
+         events.jsonl preserves typed metadata; events.csv is the same event set for tables.\n\
+         Correlate UI operations by appSessionId + operationId; order within a session\n\
+         by eventIndex and compare UTC timestamps. Details such as step/action/phase\n\
+         identify onboarding, model downloads, agent checks and session preparation.\n\
+         Search logs for 'agent operation': native ACP INFO records have operation_id,\n\
+         stable IDs, phase/status/error_code/elapsed_ms. Native and UI operation IDs\n\
+         are separate scopes; correlate these using stable IDs and nearby timestamps.\n\n\
+         Durations summarize events carrying durationMs, not inferred wall-clock spans.\n\
+         Failed/error outcomes count as failures; skipped/blocked/cancelled stay separate.\n\
+         An operation without a terminal event can be running, interrupted, dropped, or\n\
+         outside the retained window. It is not proof of an authentication failure.\n\n\
+         Retention: the event file trims from 4 MiB to at most 3 MiB / 20,000 records.\n\
+         Export reads at most the latest 4 MiB and 20,000 events. Earlier trims are\n\
+         irreversible and their total historical counts are unknown. See eventCoverage\n\
+         for actual first/last times, invalid records, and export truncation.\n\
+         Logs retain up to 7 files at startup; export includes at most 7 newest eligible\n\
+         files, each limited to its last 1 MiB of complete lines and 2,000 chars/line.\n\
+         Each redacted output is also capped at 1 MiB; omitted lines are counted.\n\
+         Log scope filters file modification time, so a retained file may include older\n\
+         lines. Incomplete first/last lines are omitted; see logCoverage for counts.\n\
+         Requests are limited to 2,000 metadata records. All means all retained evidence.\n\
+         Old events lacking appVersion are unknown, not assigned the exporting version.\n\n\
+         Drafts, feedback bodies, attachments and request titles are not copied.\n\
+         Client events accept only a shared static vocabulary and numeric/boolean metadata.\n\
+         Logs redact credential patterns and home directories (%HOME%); old frontend\n\
+         error lines and unstructured continuations omit their free text.\n\
+         Raw error/message/body/prompt fields are omitted.\n\
+         Review the package before sharing; application logs may still contain operational\n\
+         paths or third-party text outside recognized sensitive fields.\n\
+         Export reads existing evidence only. No Agent or external adapter is scanned\n\
+         or installed. External adapter state is uncollected; adapters.json is null.\n"
     )
-}
-
-fn redact_log_line(line: &str) -> String {
-    redact_log_credentials(&redact_home(line))
-        .chars()
-        .take(2_000)
-        .collect()
-}
-
-fn redact_log_credentials(input: &str) -> String {
-    let without_bearer = redact_prefixed_credential(input, "bearer ");
-    redact_prefixed_credential(&without_bearer, "rambledesk-session.")
-}
-
-fn redact_prefixed_credential(input: &str, prefix: &str) -> String {
-    let bytes = input.as_bytes();
-    let prefix_bytes = prefix.as_bytes();
-    let mut output = String::with_capacity(input.len());
-    let mut cursor = 0;
-    while let Some(relative_start) = find_ascii_case_insensitive(&bytes[cursor..], prefix_bytes) {
-        let prefix_start = cursor + relative_start;
-        let credential_start = prefix_start + prefix_bytes.len();
-        output.push_str(&input[cursor..credential_start]);
-        let credential_end = bytes[credential_start..]
-            .iter()
-            .position(|byte| credential_delimiter(*byte))
-            .map_or(bytes.len(), |offset| credential_start + offset);
-        if credential_end == credential_start {
-            cursor = credential_start;
-            continue;
-        }
-        output.push_str("[REDACTED]");
-        cursor = credential_end;
-    }
-    output.push_str(&input[cursor..]);
-    output
-}
-
-fn find_ascii_case_insensitive(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    haystack.windows(needle.len()).position(|window| {
-        window
-            .iter()
-            .zip(needle)
-            .all(|(left, right)| left.eq_ignore_ascii_case(right))
-    })
-}
-
-fn credential_delimiter(byte: u8) -> bool {
-    byte.is_ascii_whitespace()
-        || matches!(byte, b'"' | b'\'' | b',' | b';' | b')' | b']' | b'}' | b'>')
-}
-
-pub(crate) fn redact_home(input: &str) -> String {
-    let Some(home) = std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
-        .map(PathBuf::from)
-    else {
-        return input.chars().take(2_000).collect();
-    };
-    let normalized_input = input.replace('\\', "/");
-    let normalized_home = home.to_string_lossy().replace('\\', "/");
-    normalized_input.replace(&normalized_home, "%HOME%")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Read;
 
     #[test]
     fn diagnostic_scope_accepts_frontend_and_legacy_labels() {
@@ -649,56 +584,62 @@ mod tests {
     }
 
     #[test]
-    fn home_paths_are_redacted() {
-        let home = std::env::var_os("HOME")
-            .or_else(|| std::env::var_os("USERPROFILE"))
-            .map(PathBuf::from)
-            .expect("home");
-        let sample = format!("{}/Library/logs/rambledesk.log", home.display());
-        let redacted = redact_home(&sample);
-        assert!(redacted.starts_with("%HOME%/"));
-        assert!(!redacted.contains(&home.to_string_lossy().replace('\\', "/")));
-    }
-
-    #[test]
-    fn exported_log_lines_redact_bearer_and_websocket_protocol_credentials() {
-        let durable_token = "a".repeat(64);
-        let session_token = "session-token_value";
-        let line = format!(
-            "Authorization: Bearer {durable_token}; Sec-WebSocket-Protocol: rambledesk-events, rambledesk-session.{session_token}"
+    fn zip_contains_matching_jsonl_csv_and_summary_for_offline_analysis() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("report.zip");
+        let mut event = events::new_event(
+            "onboarding_action",
+            None,
+            None,
+            Some("failed"),
+            Some("timeout"),
+            Some(100),
         );
-
-        let redacted = redact_log_line(&line);
-
-        assert_eq!(
-            redacted,
-            "Authorization: Bearer [REDACTED]; Sec-WebSocket-Protocol: rambledesk-events, rambledesk-session.[REDACTED]"
-        );
-        assert!(!redacted.contains(&durable_token));
-        assert!(!redacted.contains(session_token));
-    }
-
-    #[test]
-    fn credential_redaction_handles_json_and_header_case_without_touching_labels() {
-        let line = r#"{"authorization":"bEaReR secret-token","protocol":"RAMBLEDESK-SESSION.another_secret"}"#;
-        assert_eq!(
-            redact_log_line(line),
-            r#"{"authorization":"bEaReR [REDACTED]","protocol":"RAMBLEDESK-SESSION.[REDACTED]"}"#
-        );
-    }
-
-    #[test]
-    fn truncated_log_tails_drop_the_partial_first_line_before_redaction() {
-        let bytes = b"Authorization: Bearer secret-token\nsafe next line\n";
-        assert_eq!(
-            complete_log_tail(bytes, "Authorization: Bearer ".len()),
-            b"safe next line\n"
-        );
-        assert_eq!(complete_log_tail(bytes, 0), bytes);
-        assert_eq!(
-            complete_log_tail(bytes, "Authorization: Bearer secret-token\n".len()),
-            b"safe next line\n"
-        );
+        event.operation_id = Some(uuid::Uuid::now_v7().to_string());
+        event.details.insert("step".into(), "agents".into());
+        let events = vec![event];
+        write_zip(
+            &path,
+            &[
+                (
+                    "events.jsonl".into(),
+                    event_export::to_jsonl(&events).unwrap(),
+                ),
+                (
+                    "events.csv".into(),
+                    events::to_csv(&events, "export-version"),
+                ),
+                (
+                    "event-summary.json".into(),
+                    pretty_json(&event_export::summarize(&events), "summary").unwrap(),
+                ),
+            ],
+        )
+        .unwrap();
+        let mut zip = zip::ZipArchive::new(std::fs::File::open(path).unwrap()).unwrap();
+        let mut jsonl = String::new();
+        zip.by_name("events.jsonl")
+            .unwrap()
+            .read_to_string(&mut jsonl)
+            .unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(jsonl.trim()).unwrap();
+        assert_eq!(parsed["details"]["step"], "agents");
+        assert_eq!(parsed["schemaVersion"], 2);
+        let mut summary = String::new();
+        zip.by_name("event-summary.json")
+            .unwrap()
+            .read_to_string(&mut summary)
+            .unwrap();
+        let summary: serde_json::Value = serde_json::from_str(&summary).unwrap();
+        assert_eq!(summary["eventCount"], 1);
+        assert_eq!(summary["failureCount"], 1);
+        let mut csv = String::new();
+        zip.by_name("events.csv")
+            .unwrap()
+            .read_to_string(&mut csv)
+            .unwrap();
+        assert_eq!(csv.lines().count(), 2);
+        assert!(csv.contains(parsed["operationId"].as_str().unwrap()));
     }
 
     #[test]

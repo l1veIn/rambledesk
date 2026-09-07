@@ -16,8 +16,7 @@ use rambledesk_core::{ListManagedSessionActivityInput, ManagedSessionActivityPag
 use rambledesk_core::{PrepareManagedSessionInput, SessionLifecycle};
 use rambledesk_core::{
     SessionConfigChange, SessionConfigChoice, SessionConfigKind, SessionConfigOption,
-    SessionConfigValue, SessionConfiguration, SessionMode, SessionModeCatalog, SessionModel,
-    SessionModelCatalog, SetManagedSessionConfigInput,
+    SessionConfigValue, SessionConfiguration, SetManagedSessionConfigInput,
 };
 use std::{fs, path::PathBuf};
 
@@ -45,8 +44,9 @@ use rambledesk_core::{
     FeedbackDelivery, FeedbackDeliveryState, ResolveDeliveryAction, ResolveFeedbackDeliveryInput,
 };
 use rambledesk_core::{
-    RespondManagedPermissionInput, SendManagedPromptInput, SessionPermission,
-    SessionPermissionOption,
+    RespondManagedInteractionInput, SendManagedPromptInput, SessionInputAction,
+    SessionInputRequest, SessionInputResponse, SessionInteraction, SessionInteractionKind,
+    SessionInteractionResponse, SessionPermissionOption,
 };
 use rambledesk_core::{SessionActivity, SessionActivityKind};
 use rambledesk_core::{SessionRecovery, SessionRecoveryStatus};
@@ -98,10 +98,6 @@ fn main() -> std::io::Result<()> {
         exported::<SessionConfigOption>(),
         exported::<SessionConfigKind>(),
         exported::<SessionConfigChoice>(),
-        exported::<SessionModeCatalog>(),
-        exported::<SessionMode>(),
-        exported::<SessionModelCatalog>(),
-        exported::<SessionModel>(),
         exported::<SessionConfigValue>(),
         exported::<SessionConfigChange>(),
         exported::<SetManagedSessionConfigInput>(),
@@ -137,8 +133,13 @@ fn main() -> std::io::Result<()> {
         exported::<ResolveDeliveryAction>(),
         exported::<ResolveFeedbackDeliveryInput>(),
         exported::<SessionPermissionOption>(),
-        exported::<SessionPermission>(),
-        exported::<RespondManagedPermissionInput>(),
+        exported::<SessionInputRequest>(),
+        exported::<SessionInputResponse>(),
+        exported::<SessionInputAction>(),
+        exported::<SessionInteraction>(),
+        exported::<SessionInteractionKind>(),
+        exported::<SessionInteractionResponse>(),
+        exported::<RespondManagedInteractionInput>(),
         exported::<SendManagedPromptInput>(),
         exported::<SessionActivityKind>(),
         exported::<SessionActivity>(),

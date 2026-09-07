@@ -59,7 +59,7 @@
     historyHasMore={$session.historyHasMore}
     historyError={$session.historyError}
     onLoadOlder={session.loadOlder}
-    permissions={$session.snapshot.permissions}
+    interactions={$session.snapshot.interactions}
     recovery={$session.snapshot.recovery}
     connecting={$session.connecting}
     connectionError={$session.connectionError}
@@ -72,7 +72,7 @@
     onCancel={session.cancel}
     onStart={session.startAgent}
     onRefresh={refresh}
-    onRespondPermission={session.respondPermission}
+    onRespondInteraction={session.respondInteraction}
     {onOpenRamble}
   />
 {:else}

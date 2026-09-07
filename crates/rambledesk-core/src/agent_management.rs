@@ -154,6 +154,11 @@ impl AgentManagementApplication {
         }
         let this = self.clone();
         let job_id = job.id.clone();
+        let mut trace = crate::agent_operation_trace::AgentOperationTrace::new(
+            "agent.install_job",
+            Some(&job_id),
+        );
+        trace.link("agent", &job.agent_id);
         tokio::spawn(async move {
             // Keep the job active until the provider has actually cleaned up;
             // progress is descriptive and cannot publish an early terminal state.
@@ -205,6 +210,7 @@ impl AgentManagementApplication {
                         Ok(installed) => {
                             job.phase = AgentInstallPhase::Complete;
                             job.result = Some(installed);
+                            trace.finish("succeeded", "");
                         }
                         Err(error) => {
                             job.phase = if job.cancel_requested {
@@ -214,6 +220,18 @@ impl AgentManagementApplication {
                             };
                             job.messages
                                 .push(error.message.chars().take(1024).collect());
+                            trace.finish(
+                                if job.cancel_requested {
+                                    "cancelled"
+                                } else {
+                                    "failed"
+                                },
+                                if job.cancel_requested {
+                                    "cancelled"
+                                } else {
+                                    "installer"
+                                },
+                            );
                         }
                     }
                 }
@@ -225,6 +243,15 @@ impl AgentManagementApplication {
     }
 
     pub async fn cancel(&self, input: AgentInstallJobInput) -> Result<(), AgentDriverError> {
+        let trace = crate::agent_operation_trace::AgentOperationTrace::new(
+            "agent.install_job_cancel",
+            Some(&input.job_id),
+        );
+        let result = self.cancel_inner(input).await;
+        trace.result(result, |_| "job_cancel")
+    }
+
+    async fn cancel_inner(&self, input: AgentInstallJobInput) -> Result<(), AgentDriverError> {
         let agent_id = {
             let mut state = self.state.lock().expect("installation jobs");
             let job = state

@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentConfig } from '$lib/generated/feedback'
 import {
-  activitiesForSession, managedSessionActions, managedSessionComposerState, permissionsForSession,
+  activitiesForSession, managedSessionActions, managedSessionComposerState, interactionsForSession,
   sessionConfigurationChanged, SessionPromptDrafts,
-  type ManagedSessionViewSnapshot, type SessionActivity, type SessionPermission,
+  type ManagedSessionViewSnapshot, type SessionActivity, type SessionInteraction,
 } from './managedSessionUi'
 
 function snapshot(): ManagedSessionViewSnapshot {
@@ -14,7 +14,7 @@ function snapshot(): ManagedSessionViewSnapshot {
       created_at: '2026-09-04', updated_at: '2026-09-04',
       management: { kind: 'managed', protocol: 'acp', agent_config_id: 'config-one', cwd: '/project', remote_session_id: null },
     },
-    runtime: { configuration: { options: [], modes: null, models: null },
+    runtime: { configuration: { options: [] },
       connection: 'connected', activity: 'idle', instance_id: 'instance-one', config_updated_at: 'old',
       capabilities: { prompt: { image: false, audio: false, embedded_context: false, resource_links: true }, load_session: true, resume_session: false, http_mcp: true }, last_error: null,
     },
@@ -24,8 +24,8 @@ function snapshot(): ManagedSessionViewSnapshot {
 const activity = (id: string, sessionId: string, text: string): SessionActivity => ({
   id, session_id: sessionId, kind: 'tool_call', text, tool_call_id: `tool-${id}`, created_at: '2026-09-04',
 })
-const permission = (requestId: string, sessionId = 'local-one'): SessionPermission => ({
-  request_id: requestId, session_id: sessionId, title: 'Run command?', details: null,
+const permission = (requestId: string, sessionId = 'local-one'): SessionInteraction => ({
+  request_id: requestId, session_id: sessionId, title: 'Run command?', details: null, kind: 'permission',
   options: [{ option_id: 'approve', name: 'Allow once', kind: 'allow_once' }],
 })
 
@@ -55,10 +55,12 @@ describe('managed session views', () => {
     expect(visible.map((item) => item.text)).toEqual(['completed', 'message'])
   })
 
-  it('keeps permissions in backend FIFO order and excludes other sessions and duplicate requests', () => {
-    expect(permissionsForSession('local-one', [
-      permission('one'), permission('foreign', 'local-two'), permission('two'), permission('one'),
-    ]).map((item) => item.request_id)).toEqual(['one', 'two'])
+  it('keeps mixed interactions in backend FIFO order and excludes other sessions and duplicate requests', () => {
+    const question: SessionInteraction = { kind: 'question', request_id: 'question', session_id: 'local-one', title: 'Choose a target', details: null, input: { schema: {} } }
+    const plan: SessionInteraction = { ...question, kind: 'plan', request_id: 'plan' }
+    expect(interactionsForSession('local-one', [
+      permission('one'), permission('foreign', 'local-two'), question, plan, permission('two'), permission('one'), question,
+    ]).map((item) => item.request_id)).toEqual(['one', 'question', 'plan', 'two'])
   })
 
   it('disables prompt submission for disconnected, running, and waiting-permission sessions', () => {
@@ -68,7 +70,7 @@ describe('managed session views', () => {
     for (const connection of ['stopped', 'connecting', 'disconnected', 'failed'] as const) {
       expect(managedSessionActions({ ...view, runtime: { ...view.runtime, connection } }, 0).canPrompt).toBe(false)
     }
-    for (const activity of ['running', 'waiting_permission'] as const) {
+    for (const activity of ['running', 'waiting_input'] as const) {
       const actions = managedSessionActions({ ...view, runtime: { ...view.runtime, activity } }, 0)
       expect(actions.canPrompt).toBe(false)
       expect(actions.canCancel).toBe(true)

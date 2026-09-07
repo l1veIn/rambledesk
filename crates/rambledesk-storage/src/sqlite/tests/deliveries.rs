@@ -109,7 +109,7 @@ async fn prepare_draft(store: &SqliteFeedbackStore, request_id: &str) -> u64 {
 }
 
 #[tokio::test]
-async fn all_managed_terminal_resolutions_enqueue_once_and_external_requests_do_not() {
+async fn completed_managed_reviews_enqueue_once_but_cancellations_and_external_requests_do_not() {
     let (_workspace, store) = setup().await;
     let approve_id = approved(&store, "one").await;
     let cancel_id = new_request(&store, Some("one")).await;
@@ -131,8 +131,12 @@ async fn all_managed_terminal_resolutions_enqueue_once_and_external_requests_do_
     app.submit_feedback(submission(&submit_id, 0))
         .await
         .unwrap();
+    assert_eq!(
+        store.recover_interrupted_deliveries(LATER).await.unwrap(),
+        0
+    );
     let pending = store.list_pending_deliveries().await.unwrap();
-    assert_eq!(pending.len(), 3);
+    assert_eq!(pending.len(), 2);
     assert!(
         pending
             .iter()
@@ -146,13 +150,17 @@ async fn all_managed_terminal_resolutions_enqueue_once_and_external_requests_do_
             .resolution,
         FeedbackResolution::Approved
     );
-    assert_eq!(
-        pending
-            .iter()
-            .find(|item| item.request_id == cancel_id)
+    let cancelled = store.get_request(&cancel_id).await.unwrap();
+    assert_eq!(cancelled.status, FeedbackStatus::Cancelled);
+    assert_eq!(cancelled.resolution, Some(FeedbackResolution::Cancelled));
+    assert!(cancelled.feedback.is_some());
+    assert!(
+        store
+            .list_session_deliveries("one")
+            .await
             .unwrap()
-            .resolution,
-        FeedbackResolution::Cancelled
+            .iter()
+            .all(|item| item.request_id != cancel_id)
     );
     assert_eq!(
         pending
@@ -161,6 +169,116 @@ async fn all_managed_terminal_resolutions_enqueue_once_and_external_requests_do_
             .unwrap()
             .resolution,
         FeedbackResolution::FeedbackSubmitted
+    );
+}
+
+#[tokio::test]
+async fn cancelled_legacy_deliveries_cannot_be_claimed_or_retried_and_recovery_discards_them() {
+    let (workspace, store) = setup().await;
+    let app = store.clone().into_application();
+    let mut cancellations = Vec::new();
+    for state in ["pending", "sending", "uncertain", "delivered", "discarded"] {
+        let id = new_request(&store, Some("one")).await;
+        app.cancel_feedback(CancelFeedbackInput {
+            request_id: id.clone(),
+            reason: "Cancelled in an earlier build".into(),
+        })
+        .await
+        .unwrap();
+        // Reproduce the old queue without changing the terminal request or its package.
+        sqlx::query(
+            "INSERT INTO feedback_deliveries \
+             (request_id, session_id, resolution, state, attempt_id, created_at, updated_at, last_error) \
+             VALUES (?1, 'one', 'cancelled', ?2, 'legacy-attempt', ?3, ?3, 'Legacy delivery error')",
+        ).bind(&id).bind(state).bind(NOW).execute(&store.pool).await.unwrap();
+        cancellations.push((id, state));
+    }
+    let approved = approved(&store, "one").await;
+    let pending = store.list_pending_deliveries().await.unwrap();
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0].request_id, approved);
+    assert!(
+        store
+            .claim_delivery(&cancellations[0].0, "late-claim", LATER)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    for action in [
+        ResolveDeliveryAction::Retry,
+        ResolveDeliveryAction::Acknowledge,
+    ] {
+        assert_eq!(
+            store
+                .resolve_delivery(&cancellations[2].0, "one", action, LATER)
+                .await,
+            Err(SessionRepositoryError::Conflict)
+        );
+    }
+    assert_eq!(
+        store
+            .finish_delivery(
+                &cancellations[1].0,
+                "legacy-attempt",
+                DeliveryState::Delivered,
+                None,
+                LATER
+            )
+            .await,
+        Err(SessionRepositoryError::Conflict)
+    );
+    let original = store.list_session_deliveries("one").await.unwrap();
+    store.close().await;
+    let store = SqliteFeedbackStore::connect(&workspace.database)
+        .await
+        .unwrap();
+    let app = store.clone().into_application();
+    assert_eq!(
+        store.recover_interrupted_deliveries(LATER).await.unwrap(),
+        3
+    );
+    assert_eq!(
+        store.recover_interrupted_deliveries(LATER).await.unwrap(),
+        0
+    );
+    let recovered = store.list_session_deliveries("one").await.unwrap();
+    for (id, state) in &cancellations {
+        let delivery = recovered
+            .iter()
+            .find(|item| item.request_id == *id)
+            .unwrap();
+        let prior = original.iter().find(|item| item.request_id == *id).unwrap();
+        if matches!(*state, "delivered" | "discarded") {
+            assert_eq!(delivery, prior);
+        } else {
+            assert_eq!(delivery.state, DeliveryState::Discarded);
+            assert_eq!(delivery.updated_at, LATER);
+            assert_eq!(delivery.attempt_id, prior.attempt_id);
+            assert!(delivery.last_error.is_none());
+        }
+        app.cancel_feedback(CancelFeedbackInput {
+            request_id: id.clone(),
+            reason: "Replay must not enqueue another continuation".into(),
+        })
+        .await
+        .unwrap();
+    }
+    assert_eq!(
+        recovered,
+        store.list_session_deliveries("one").await.unwrap()
+    );
+    assert!(recovered.iter().all(|item| !matches!(
+        item.state,
+        DeliveryState::Sending | DeliveryState::Uncertain
+    )));
+    assert_eq!(
+        store
+            .claim_delivery(&approved, "real-feedback", LATER)
+            .await
+            .unwrap()
+            .unwrap()
+            .state,
+        DeliveryState::Sending
     );
 }
 
@@ -472,9 +590,11 @@ async fn migration_reconciles_preexisting_terminal_managed_requests_only() {
     sqlx::query("INSERT INTO host_sessions(id,host_id,host_session_id,created_at,updated_at) VALUES ('external','dsh','external',?1,?1)")
         .bind(NOW).execute(&store.pool).await.unwrap();
     let managed = "managed-before-migration";
+    let cancelled = "cancelled-before-migration";
     let external = "external-before-migration";
     for (id, session_id, marker) in [
         (managed, "one", Some("one")),
+        (cancelled, "one", Some("one")),
         (external, "external", None),
         ("waiting-before-migration", "one", Some("one")),
     ] {
@@ -484,6 +604,8 @@ async fn migration_reconciles_preexisting_terminal_managed_requests_only() {
     for id in [&managed, &external] {
         sqlx::query("UPDATE feedback_requests SET status='completed', resolution='approved', completed_at=?2 WHERE id=?1").bind(id).bind(NOW).execute(&store.pool).await.unwrap();
     }
+    sqlx::query("UPDATE feedback_requests SET status='cancelled', resolution='cancelled', cancelled_at=?2, cancel_reason='Legacy cancellation' WHERE id=?1")
+        .bind(cancelled).bind(NOW).execute(&store.pool).await.unwrap();
     store.close().await;
     let store = SqliteFeedbackStore::connect(&workspace.database)
         .await
@@ -491,4 +613,115 @@ async fn migration_reconciles_preexisting_terminal_managed_requests_only() {
     let pending = store.list_pending_deliveries().await.unwrap();
     assert_eq!(pending.len(), 1);
     assert_eq!(pending[0].request_id, managed);
+    // Keep the released migration intact for downgrade compatibility. Its old
+    // cancellation queue entry is inert immediately and discarded by recovery.
+    assert_eq!(
+        store.recover_interrupted_deliveries(LATER).await.unwrap(),
+        1
+    );
+    let deliveries = store.list_session_deliveries("one").await.unwrap();
+    assert_eq!(
+        deliveries
+            .iter()
+            .find(|item| item.request_id == cancelled)
+            .unwrap()
+            .state,
+        DeliveryState::Discarded
+    );
+    assert_eq!(store.list_pending_deliveries().await.unwrap(), pending);
+}
+
+#[tokio::test]
+async fn startup_recovers_missing_legacy_deliveries_as_uncertain_without_changing_packages() {
+    let (workspace, store) = setup().await;
+    let approve_id = new_request(&store, Some("one")).await;
+    let cancel_id = new_request(&store, Some("one")).await;
+    let submit_id = new_request(&store, Some("one")).await;
+    let waiting = new_request(&store, Some("one")).await;
+    let external = new_request(&store, None).await;
+    let existing = approved(&store, "two").await;
+    store
+        .claim_delivery(&existing, "attempt", NOW)
+        .await
+        .unwrap();
+    // Exact legacy approval update: no delivery enqueue existed in v0.3.3.
+    sqlx::query("UPDATE feedback_requests SET status='completed',resolution='approved',completed_at=?2,updated_at=?2,revision=revision+1
+        WHERE id=?1 AND status IN ('waiting','in_progress') AND allow_finish=1 AND final_summary IS NOT NULL")
+        .bind(&approve_id).bind(NOW).execute(&store.pool).await.unwrap();
+    store.approve_request(&external, NOW).await.unwrap();
+    let app = store.clone().into_application();
+    app.cancel_feedback(CancelFeedbackInput {
+        request_id: cancel_id.clone(),
+        reason: "Fixture cancellation".into(),
+    })
+    .await
+    .unwrap();
+    let revision = prepare_draft(&store, &submit_id).await;
+    app.submit_feedback(submission(&submit_id, revision))
+        .await
+        .unwrap();
+    // Published packages are the same legacy format. Remove the submitted
+    // feedback queue entry to reproduce the old publisher; cancellation never
+    // needs a continuation record.
+    sqlx::query("DELETE FROM feedback_deliveries WHERE request_id = ?1")
+        .bind(&submit_id)
+        .execute(&store.pool)
+        .await
+        .unwrap();
+    let mut original = Vec::new();
+    for id in [&approve_id, &cancel_id, &submit_id] {
+        original.push(store.get_request(id).await.unwrap());
+    }
+    let package_path = original[2].feedback.as_ref().unwrap().manifest_path.clone();
+    let package = tokio::fs::read(&package_path).await.unwrap();
+    store.close().await;
+
+    let store = SqliteFeedbackStore::connect(&workspace.database)
+        .await
+        .unwrap();
+    assert_eq!(
+        store.recover_interrupted_deliveries(LATER).await.unwrap(),
+        3
+    );
+    assert_eq!(
+        store.recover_interrupted_deliveries(LATER).await.unwrap(),
+        0
+    );
+    assert!(store.list_pending_deliveries().await.unwrap().is_empty());
+    let recovered = store.list_session_deliveries("one").await.unwrap();
+    assert_eq!(recovered.len(), 2);
+    for request in original {
+        assert_eq!(
+            store.get_request(&request.request_id).await.unwrap(),
+            request
+        );
+        let delivery = recovered
+            .iter()
+            .find(|delivery| delivery.request_id == request.request_id);
+        if request.status == FeedbackStatus::Cancelled {
+            assert!(delivery.is_none());
+            continue;
+        }
+        let delivery = delivery.unwrap();
+        assert_eq!(delivery.state, DeliveryState::Uncertain);
+        assert_eq!(delivery.resolution, request.resolution.unwrap());
+        assert_eq!(delivery.created_at, request.updated_at);
+        assert!(delivery.attempt_id.is_none());
+    }
+    assert_eq!(tokio::fs::read(package_path).await.unwrap(), package);
+    assert_eq!(
+        store.get_request(&waiting).await.unwrap().status,
+        FeedbackStatus::Waiting
+    );
+    assert_eq!(
+        store
+            .list_session_deliveries("external")
+            .await
+            .unwrap()
+            .len(),
+        0
+    );
+    let prior = store.list_session_deliveries("two").await.unwrap();
+    assert_eq!(prior[0].attempt_id.as_deref(), Some("attempt"));
+    assert_eq!(prior[0].state, DeliveryState::Uncertain);
 }

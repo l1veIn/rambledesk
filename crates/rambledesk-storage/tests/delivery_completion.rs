@@ -38,7 +38,11 @@ impl AgentSessionConnection for Connection {
     async fn cancel(&self) -> Result<(), AgentDriverError> {
         Ok(())
     }
-    async fn respond_permission(&self, _: &str, _: Option<&str>) -> Result<(), AgentDriverError> {
+    async fn respond_interaction(
+        &self,
+        _: &str,
+        _: SessionInteractionResponse,
+    ) -> Result<(), AgentDriverError> {
         Ok(())
     }
     async fn stop(&self) -> Result<(), AgentDriverError> {

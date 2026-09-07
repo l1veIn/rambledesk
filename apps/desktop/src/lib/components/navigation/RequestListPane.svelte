@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ChevronDown, FileText, Inbox, LoaderCircle, PanelLeftClose, PanelLeftOpen } from '@lucide/svelte'
+  import { ChevronDown, FileText, Inbox, LoaderCircle, PanelLeftClose, PanelLeftOpen, Search, X } from '@lucide/svelte'
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
   import { ScrollArea } from '$lib/components/ui/scroll-area'
@@ -28,6 +28,7 @@
   export let onLoadMore: () => void = () => {}
   export let onOpenRequest: (requestId: string) => void = () => {}
   export let onFiltersChange: (filters: RequestFilters) => void = () => {}
+  export let onClearSearch: () => void = () => {}
 
   $: filtered = requestFilterCount(filters) > 0
   $: busy = loading || refreshing
@@ -82,6 +83,16 @@
       {#if collapsed}<PanelLeftOpen />{:else}<PanelLeftClose />{/if}
     </Button>
   </div>
+
+  {#if searchQuery.trim()}
+    <div class={['flex items-center gap-2 border-b py-2 text-xs text-muted-foreground', collapsed ? 'justify-center px-2' : 'px-3']}>
+      {#if !collapsed}
+        <Search class="size-3.5 shrink-0" aria-hidden="true" />
+        <span class="min-w-0 flex-1 truncate" title={searchQuery}>{searchQuery}</span>
+      {/if}
+      <Button variant="ghost" size="icon-xs" aria-label={tr('Clear search')} title={tr('Clear search')} onclick={onClearSearch}><X aria-hidden="true" /></Button>
+    </div>
+  {/if}
 
   {#if collapsed}
     <div class="flex flex-col items-center gap-2 border-b py-2">

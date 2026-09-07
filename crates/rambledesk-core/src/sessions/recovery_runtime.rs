@@ -87,7 +87,7 @@ impl SessionApplication {
         let instance = live.runtime.instance_id.clone();
         live.runtime.connection = SessionConnectionState::Disconnected;
         live.runtime.activity = SessionActivityState::Idle;
-        live.permissions.clear();
+        live.interactions.clear();
         live.cancelling = false;
         events.release_content();
         drop(live);
@@ -203,13 +203,20 @@ impl SessionApplication {
         if !current {
             return Ok(false);
         }
-        self.retire_entry_locked(
-            session_id,
-            &entry,
-            SessionRunEnd::Stopped,
-            Some("Agent did not finish cancellation; its instance was stopped"),
-        )
-        .await?;
+        let trace = crate::agent_operation_trace::AgentOperationTrace::new(
+            "session.cancel_watchdog",
+            Some(session_id),
+        );
+        trace.checkpoint("cancellation", "timed_out");
+        let result = self
+            .retire_entry_locked(
+                session_id,
+                &entry,
+                SessionRunEnd::Stopped,
+                Some("Agent did not finish cancellation; its instance was stopped"),
+            )
+            .await;
+        trace.result(result, SessionError::diagnostic_code)?;
         Ok(true)
     }
 

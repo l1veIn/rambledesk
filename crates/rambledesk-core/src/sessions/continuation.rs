@@ -30,9 +30,15 @@ impl SessionApplication {
             return Ok(());
         }
         let repository = self.deliveries.as_ref().ok_or(SessionError::InvalidInput)?;
-        repository
+        let recovered_count = repository
             .recover_interrupted_deliveries(&self.clock.now_rfc3339())
             .await?;
+        if recovered_count > 0 {
+            tracing::info!(
+                recovered_count,
+                "feedback delivery records reconciled after recovery"
+            );
+        }
         let app = self.clone();
         *worker = Some(tokio::spawn(async move {
             while !app.closing.load(Ordering::SeqCst) {
@@ -62,6 +68,11 @@ impl SessionApplication {
             if self.closing.load(Ordering::SeqCst) {
                 break;
             }
+            // Cancellation closes the feedback request without resuming the Agent.
+            // Also guard older/custom repositories that still expose cancelled jobs.
+            if delivery.resolution == crate::FeedbackResolution::Cancelled {
+                continue;
+            }
             // A finished prompt may still be retrying its durable completion.
             // Do not cross either that sending attempt or an uncertain outcome.
             if repository
@@ -69,10 +80,11 @@ impl SessionApplication {
                 .await?
                 .iter()
                 .any(|item| {
-                    matches!(
-                        item.state,
-                        FeedbackDeliveryState::Sending | FeedbackDeliveryState::Uncertain
-                    )
+                    item.resolution != crate::FeedbackResolution::Cancelled
+                        && matches!(
+                            item.state,
+                            FeedbackDeliveryState::Sending | FeedbackDeliveryState::Uncertain
+                        )
                 })
             {
                 continue;

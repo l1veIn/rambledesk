@@ -12,6 +12,8 @@
   import RecordingOverlay from '../RecordingOverlay.svelte'
   import { selectedSpeechGroup, speechReviewCommand, type SpeechOverlayState } from '../speechOverlay'
   import { createSpeechDraftQueue, groupSpeechDrafts, type SpeechTarget } from './speechDraftQueue'
+  import { handleSpeechDraftCommand } from './speechDraftCommands'
+  import { tidySpeechSegments, type TidyConfig } from '../lightCleanup'
   import { createSpeechTargetTracker } from './speechTargetTracker'
   import {
     locale,
@@ -19,6 +21,7 @@
     speechHotwords,
     speechInputDevice,
     speechConfirmBeforeWrite,
+    speechAutoTidy,
     speechOverlayEnabled,
     speechOverlayOpacity,
     speechModelId,
@@ -48,6 +51,7 @@
     'screenCapture' | 'clipboardCapture' | 'globalShortcuts' | 'speech' | 'rambleConsole'
   >
   export let workspace: FeedbackWorkspaceView | null = null
+  export let tidyConfig: TidyConfig | null = null
   export let interactionLocked = false
   export let attachmentBusy = false
   export let screenCaptureBusy = false
@@ -86,6 +90,12 @@
   const rambleTransition = createSingleFlight()
   const speechDrafts = createSpeechDraftQueue({
     write: (requestId, operation) => onRouteDraftOperation(requestId, operation),
+    tidy: async (text) => {
+      if (!tidyConfig) throw new Error(t($locale, 'Configure Tidy in Post-processing settings before tidying speech.'))
+      const result = await tidySpeechSegments([{ segmentId: 'speech-review', text }], tidyConfig)
+      if (!result?.[0]?.trim()) throw new Error(t($locale, 'Tidy returned no usable text. Your original transcript has been kept.'))
+      return result[0]
+    },
     storage: localStorage,
     onStorageError: () => onPageError(t($locale, 'Pending speech could not be saved on this device. Keep this window open until you review it.')),
   })
@@ -101,7 +111,7 @@
   let reviewShortcutQueue = Promise.resolve()
 
   $: pendingSpeechGroups = groupSpeechDrafts($speechDrafts.drafts)
-  $: speechReviewNeeded = pendingSpeechGroups.some((group) => !group.busy)
+  $: speechReviewNeeded = !$speechDrafts.edit && pendingSpeechGroups.some((group) => !group.busy)
   $: selectedGroupId = selectedSpeechGroup({ groups: pendingSpeechGroups, selectedGroupId })?.ids[0] ?? null
   $: if (pendingSpeechGroups.length === 0 || $speechOverlayEnabled) reviewOpen = false
   $: speechOverlayState = {
@@ -116,6 +126,7 @@
     target: rambleRequestId ? captureSpeechTarget() : null,
     groups: pendingSpeechGroups,
     receipt: $speechDrafts.receipt,
+    edit: $speechDrafts.edit,
   } satisfies SpeechOverlayState
   $: if (shortcutsMounted) syncReviewShortcuts(speechReviewNeeded, $shortcutSettings.speechAccept, $shortcutSettings.speechDiscard)
   $: if (capabilities.rambleConsole.status.availability !== 'unavailable') {
@@ -216,6 +227,7 @@
 
     return () => {
       shortcutsMounted = false
+      speechDrafts.dispose()
       reviewShortcutUnlisten()
       window.removeEventListener('keydown', onReviewKeydown)
       syncReviewShortcuts(false, '', '')
@@ -558,7 +570,7 @@
         const transcript = stableTranscript(event)
         const target = speechTarget ?? captureSpeechTarget()
         if (transcript) {
-          speechDrafts.enqueue(stableSpeechSegmentId(event), transcript, target, $speechConfirmBeforeWrite)
+          speechDrafts.enqueue(stableSpeechSegmentId(event), transcript, target, $speechConfirmBeforeWrite, $speechAutoTidy)
         }
         voicePartial = ''
         voiceChunkIndex = event.segmentIndex + 1
@@ -607,15 +619,10 @@
   }
 
   async function handleRambleConsoleCommand(command: RambleConsoleCommand) {
+    if (await handleSpeechDraftCommand(speechDrafts, command, interactionLocked)) return
     switch (command.type) {
       case 'select-speech-group':
-        if (pendingSpeechGroups.some((group) => group.ids.includes(command.id))) selectedGroupId = command.id
-        break
-      case 'accept-speech':
-        if (!interactionLocked) await speechDrafts.accept(command.ids)
-        break
-      case 'discard-speech':
-        speechDrafts.discard(command.ids)
+        if (!$speechDrafts.edit && pendingSpeechGroups.some((group) => group.ids.includes(command.id))) selectedGroupId = command.id
         break
       case 'open-speech-target':
         await onOpenSpeechTarget(command.requestId, command.segmentId)
@@ -677,14 +684,14 @@
   <RecordingOverlay state={speechOverlayState} onCommand={(command) => void handleRambleConsoleCommand(command)} />
 {/if}
 
-{#if !$speechOverlayEnabled && pendingSpeechGroups.length > 0 && (speechReviewNeeded || reviewOpen)}
+{#if !$speechOverlayEnabled && pendingSpeechGroups.length > 0 && (speechReviewNeeded || reviewOpen || $speechDrafts.edit)}
   <aside class="speech-review-dock" aria-label={t($locale, 'Pending speech groups')}>
-    {#if reviewOpen}
+    {#if reviewOpen || $speechDrafts.edit}
       <div id="pending-speech-review">
         <RecordingOverlay state={{ ...speechOverlayState, enabled: true, opacity: 100 }} embedded draggable={false} onCommand={(command) => void handleRambleConsoleCommand(command)} />
       </div>
     {/if}
-    <button class="review-toggle" aria-expanded={reviewOpen} aria-controls="pending-speech-review" onclick={() => reviewOpen = !reviewOpen}>
+    <button class="review-toggle" disabled={!!$speechDrafts.edit} aria-expanded={reviewOpen || !!$speechDrafts.edit} aria-controls="pending-speech-review" onclick={() => reviewOpen = !reviewOpen}>
       {reviewOpen ? t($locale, 'Collapse transcript') : t($locale, 'Pending speech · {count}', { count: pendingSpeechGroups.length })}
     </button>
   </aside>

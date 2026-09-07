@@ -7,8 +7,6 @@ use ts_rs::TS;
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 pub struct SessionConfiguration {
     pub options: Vec<SessionConfigOption>,
-    pub modes: Option<SessionModeCatalog>,
-    pub models: Option<SessionModelCatalog>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
@@ -41,32 +39,6 @@ pub struct SessionConfigChoice {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
-pub struct SessionModeCatalog {
-    pub current_mode_id: String,
-    pub available_modes: Vec<SessionMode>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
-pub struct SessionMode {
-    pub id: String,
-    pub name: String,
-    pub description: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
-pub struct SessionModelCatalog {
-    pub current_model_id: String,
-    pub available_models: Vec<SessionModel>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
-pub struct SessionModel {
-    pub model_id: String,
-    pub name: String,
-    pub description: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SessionConfigValue {
     Select { value: String },
@@ -74,18 +46,9 @@ pub enum SessionConfigValue {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum SessionConfigChange {
-    Option {
-        config_id: String,
-        value: SessionConfigValue,
-    },
-    Mode {
-        mode_id: String,
-    },
-    Model {
-        model_id: String,
-    },
+pub struct SessionConfigChange {
+    pub config_id: String,
+    pub value: SessionConfigValue,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
@@ -96,58 +59,34 @@ pub struct SetManagedSessionConfigInput {
 
 impl SessionConfiguration {
     pub fn allows(&self, change: &SessionConfigChange) -> bool {
-        match change {
-            SessionConfigChange::Option { config_id, value } => self.options.iter().any(|option| {
-                option.id == *config_id
-                    && match (&option.kind, value) {
-                        (
-                            SessionConfigKind::Select { options, .. },
-                            SessionConfigValue::Select { value },
-                        ) => options.iter().any(|option| option.value == *value),
-                        (SessionConfigKind::Boolean { .. }, SessionConfigValue::Boolean { .. }) => {
-                            true
-                        }
-                        _ => false,
-                    }
-            }),
-            SessionConfigChange::Mode { mode_id } => self
-                .modes
-                .as_ref()
-                .is_some_and(|modes| modes.available_modes.iter().any(|mode| mode.id == *mode_id)),
-            SessionConfigChange::Model { model_id } => self.models.as_ref().is_some_and(|models| {
-                models
-                    .available_models
-                    .iter()
-                    .any(|model| model.model_id == *model_id)
-            }),
-        }
+        self.options.iter().any(|option| {
+            option.id == change.config_id
+                && match (&option.kind, &change.value) {
+                    (
+                        SessionConfigKind::Select { options, .. },
+                        SessionConfigValue::Select { value },
+                    ) => options.iter().any(|option| option.value == *value),
+                    (SessionConfigKind::Boolean { .. }, SessionConfigValue::Boolean { .. }) => true,
+                    _ => false,
+                }
+        })
     }
 
     pub fn confirms(&self, change: &SessionConfigChange) -> bool {
-        match change {
-            SessionConfigChange::Option { config_id, value } => self.options.iter().any(|option| {
-                option.id == *config_id
-                    && match (&option.kind, value) {
-                        (
-                            SessionConfigKind::Select { current_value, .. },
-                            SessionConfigValue::Select { value },
-                        ) => current_value == value,
-                        (
-                            SessionConfigKind::Boolean { current_value },
-                            SessionConfigValue::Boolean { value },
-                        ) => current_value == value,
-                        _ => false,
-                    }
-            }),
-            SessionConfigChange::Mode { mode_id } => self
-                .modes
-                .as_ref()
-                .is_some_and(|modes| modes.current_mode_id == *mode_id),
-            SessionConfigChange::Model { model_id } => self
-                .models
-                .as_ref()
-                .is_some_and(|models| models.current_model_id == *model_id),
-        }
+        self.options.iter().any(|option| {
+            option.id == change.config_id
+                && match (&option.kind, &change.value) {
+                    (
+                        SessionConfigKind::Select { current_value, .. },
+                        SessionConfigValue::Select { value },
+                    ) => current_value == value,
+                    (
+                        SessionConfigKind::Boolean { current_value },
+                        SessionConfigValue::Boolean { value },
+                    ) => current_value == value,
+                    _ => false,
+                }
+        })
     }
 }
 

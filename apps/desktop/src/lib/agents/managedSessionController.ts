@@ -1,8 +1,9 @@
 import { get, writable } from 'svelte/store'
 import type { ApplicationTransport } from '$lib/application/applicationTransport'
 import { APPLICATION_EVENTS_STREAM } from '$lib/application/applicationEvents'
+import { diagnosticErrorCategory, recordClientDiagnostic, startClientDiagnostic } from '$lib/diagnostics/clientDiagnostics'
 import { applicationResourcesAffectManagedSession, createApplicationSnapshotRefetch } from '$lib/application/applicationSnapshotRefetch'
-import type { ManagedSessionSnapshot, SessionActivity, SessionConfigChange } from '$lib/generated/feedback'
+import type { ManagedSessionSnapshot, SessionActivity, SessionConfigChange, SessionInteractionResponse } from '$lib/generated/feedback'
 import { HISTORY_ACTIVITY_LIMIT, HISTORY_TURN_COUNT, completedHistoryRanges, mergeActivityWindows, retainActivityIdentity, validateActivityPage, type CompletedHistoryRange } from './activityHistory'
 import { readApplicationSnapshot } from '$lib/application/readApplicationSnapshot'
 import { automaticConnectionIssue, startManagedSessionOnce } from './managedSessionConnection'
@@ -194,13 +195,20 @@ export function createManagedSessionController(transport: ApplicationTransport, 
     return dispose
   }
 
-  async function run(operation: () => Promise<ManagedSessionSnapshot>): Promise<void> {
-    if (!active) throw new Error('The agent session is no longer open.')
-    if (get(state).snapshot?.deleting) throw new Error('This session is being deleted. Retry deletion to finish cleanup.')
+  async function run(action: 'configure' | 'cancel' | 'send' | 'permission', operation: () => Promise<ManagedSessionSnapshot>): Promise<void> {
+    if (!active || get(state).snapshot?.deleting) {
+      recordClientDiagnostic({ activity: 'session_runtime', outcome: 'blocked', details: { action, source: 'runtime', reason: active ? 'deleting' : 'inactive' } })
+      throw new Error(active ? 'This session is being deleted. Retry deletion to finish cleanup.' : 'The agent session is no longer open.')
+    }
+    const finish = startClientDiagnostic('session_runtime', { action, source: 'runtime' })
     try {
       // A mutation response acknowledges the action. Reads alone update the projection, so a
       // prompt finishing late cannot overwrite newer activity, permission, or cancellation data.
       validate(await operation())
+      finish('ok')
+    } catch (cause) {
+      finish('failed', { error_category: diagnosticErrorCategory(cause) })
+      throw cause
     } finally {
       // Query the current projection after either outcome, without replaying the command.
       refresh()
@@ -227,6 +235,7 @@ export function createManagedSessionController(transport: ApplicationTransport, 
     if (!latest) return Promise.reject(new Error('The agent session is still loading.'))
     if (latest.runtime.connection === 'connected' || latest.runtime.connection === 'connecting') return Promise.resolve()
     patch({ connecting: true, connectionError: '' })
+    const finish = startClientDiagnostic('session_runtime', { action: 'connect', source: 'runtime', explicit })
     const attemptEpoch = connectionEpoch
     const task = (async () => {
       try {
@@ -240,12 +249,15 @@ export function createManagedSessionController(transport: ApplicationTransport, 
         if (!['connected', 'connecting'].includes(result.runtime.connection)) throw new Error(result.runtime.last_error || 'Could not connect to the agent.')
         autoConnectFailed = false
         patch({ connectionError: '' })
+        finish('ok', { status: result.runtime.connection })
       } catch (cause) {
-        if (!active || attemptEpoch !== connectionEpoch) return
+        if (!active || attemptEpoch !== connectionEpoch) { finish('cancelled', { reason: 'stale' }); return }
+        finish('failed', { error_category: diagnosticErrorCategory(cause) })
         autoConnectFailed = true
         patch({ connectionError: message(cause) })
         throw cause
       } finally {
+        finish('skipped', { reason: active ? 'stale' : 'inactive' })
         connectionTask = null
         patch({ connecting: false })
         refresh()
@@ -266,12 +278,12 @@ export function createManagedSessionController(transport: ApplicationTransport, 
 
   return {
     subscribe: state.subscribe, start, refresh, dispose, loadOlder,
-    setConfiguration: (change: SessionConfigChange) => run(() => transport.call('setManagedSessionConfig', { session_id: sessionId, change })),
+    setConfiguration: (change: SessionConfigChange) => run('configure', () => transport.call('setManagedSessionConfig', { session_id: sessionId, change })),
     startAgent: () => connectAgent(),
-    cancel: () => run(() => transport.call('cancelManagedPrompt', { session_id: sessionId })),
-    prompt: (text: string) => run(() => transport.call('sendManagedPrompt', { session_id: sessionId, text })),
-    respondPermission: (requestId: string, optionId: string | null) => run(() => transport.call('respondManagedPermission', {
-      session_id: sessionId, request_id: requestId, option_id: optionId,
+    cancel: () => run('cancel', () => transport.call('cancelManagedPrompt', { session_id: sessionId })),
+    prompt: (text: string) => run('send', () => transport.call('sendManagedPrompt', { session_id: sessionId, text })),
+    respondInteraction: (requestId: string, response: SessionInteractionResponse) => run('permission', () => transport.call('respondManagedInteraction', {
+      session_id: sessionId, request_id: requestId, response,
     })),
   }
 }

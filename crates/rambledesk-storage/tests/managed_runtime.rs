@@ -1,4 +1,6 @@
 use async_trait::async_trait;
+#[path = "managed_runtime/cancelled_feedback.rs"]
+mod cancelled_feedback;
 #[path = "managed_runtime/prepared.rs"]
 mod prepared;
 use rambledesk_core::*;
@@ -41,7 +43,11 @@ impl AgentSessionConnection for FakeConnection {
     async fn cancel(&self) -> Result<(), AgentDriverError> {
         Ok(())
     }
-    async fn respond_permission(&self, _: &str, _: Option<&str>) -> Result<(), AgentDriverError> {
+    async fn respond_interaction(
+        &self,
+        _: &str,
+        _: SessionInteractionResponse,
+    ) -> Result<(), AgentDriverError> {
         Ok(())
     }
     async fn prompt(&self, _: &str) -> Result<String, AgentDriverError> {
@@ -50,15 +56,21 @@ impl AgentSessionConnection for FakeConnection {
     }
     fn configuration(&self) -> SessionConfiguration {
         SessionConfiguration {
-            models: Some(SessionModelCatalog {
-                current_model_id: "fixture-model".into(),
-                available_models: vec![SessionModel {
-                    model_id: "fixture-model".into(),
-                    name: "Fixture model".into(),
-                    description: None,
-                }],
-            }),
-            ..Default::default()
+            options: vec![SessionConfigOption {
+                id: "model-control".into(),
+                name: "Model".into(),
+                description: None,
+                category: Some("model".into()),
+                kind: SessionConfigKind::Select {
+                    current_value: "fixture-model".into(),
+                    options: vec![SessionConfigChoice {
+                        value: "fixture-model".into(),
+                        name: "Fixture model".into(),
+                        description: None,
+                        group: None,
+                    }],
+                },
+            }],
         }
     }
     fn is_closed(&self) -> bool {

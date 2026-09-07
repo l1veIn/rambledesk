@@ -28,6 +28,7 @@ import type { FeedbackRequestSummary, HostSessionSummary, ListFeedbackRequestsOu
 import { TestApplicationTransport } from '../application/testApplicationTransport'
 import { createUnavailableWorkbenchCapabilities } from '../capabilities/unavailableCapabilities'
 import { createNavigationController, type NavigationState } from './navigationController'
+import { APPLICATION_READ_TIMEOUT_MS } from '../application/applicationReadTimeout'
 
 const unavailableCapabilities = createUnavailableWorkbenchCapabilities()
 
@@ -125,6 +126,112 @@ describe('navigationController', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  it('exposes a stalled readiness error, stops loading, and allows a later retry', async () => {
+    const transport = new TestApplicationTransport()
+      .resolve('listFeedbackInbox', [])
+      .resolve('listHostSessions', [])
+      .resolve('listHostProfiles', [])
+      .resolve('listFeedbackRequests', { requests: [], next_cursor: null })
+    const controller = createController({ transport })
+    const first = controller.initialize(false)
+    await vi.advanceTimersByTimeAsync(APPLICATION_READ_TIMEOUT_MS)
+    await expect(first).resolves.toBe(false)
+    expect(get(controller)).toMatchObject({ loadingNavigation: false, loadingRequests: false,
+      initializationFailure: { timedOut: true, message: expect.stringContaining('application readiness') } })
+    transport.markReady()
+    await expect(controller.initialize(false)).resolves.toBe(true)
+    expect(get(controller).initializationFailure).toBeNull()
+    expect(transport.callsFor('listHostSessions')).toHaveLength(1)
+  })
+
+  it('does not let a timed-out session snapshot overwrite a successful retry', async () => {
+    let resolveLate!: (sessions: HostSessionSummary[]) => void
+    let first = true
+    const stalled = new Promise<HostSessionSummary[]>((resolve) => { resolveLate = resolve })
+    mocks.applicationCall.mockImplementation((name: string) => {
+      if (name === 'listHostSessions') {
+        if (first) { first = false; return stalled }
+        return [hostSession({ title: 'Current retry' })]
+      }
+      return name === 'listFeedbackRequests' ? { requests: [], next_cursor: null } : []
+    })
+    const controller = createController()
+    const initial = controller.initialize(false)
+    await vi.advanceTimersByTimeAsync(APPLICATION_READ_TIMEOUT_MS)
+    await expect(initial).resolves.toBe(false)
+    expect(get(controller).initializationFailure?.timedOut).toBe(true)
+    await expect(controller.initialize(false)).resolves.toBe(true)
+    resolveLate([hostSession({ title: 'Old stalled result' })])
+    await Promise.resolve()
+    expect(get(controller).hostSessions[0]?.title).toBe('Current retry')
+  })
+
+  it('treats initial request-list errors and failed workspace activation as startup failures', async () => {
+    mocks.applicationCall.mockImplementation((name: string) => {
+      if (name === 'listFeedbackRequests') throw new Error('Database schema is newer than this version supports.')
+      return []
+    })
+    const controller = createController({ openRequest: vi.fn(async () => false) })
+    await expect(controller.initialize()).resolves.toBe(false)
+    expect(get(controller).initializationFailure).toEqual({ timedOut: false,
+      message: 'Error: Database schema is newer than this version supports.' })
+    mocks.applicationCall.mockImplementation((name: string) => name === 'listFeedbackRequests'
+      ? { requests: [feedbackRequest('test')], next_cursor: null } : [])
+    await expect(controller.initialize()).resolves.toBe(false)
+    expect(get(controller).initializationFailure?.message).toContain('initial workspace could not be opened')
+    expect(get(controller).loadingNavigation).toBe(false)
+  })
+
+  it.each(['failed', 'stalled'] as const)('waits for a superseding %s invalidation instead of announcing startup success', async (failure) => {
+    let resolveInitial!: (sessions: HostSessionSummary[]) => void
+    const initialSessions = new Promise<HostSessionSummary[]>(resolve => { resolveInitial = resolve })
+    let reads = 0
+    mocks.applicationCall.mockImplementation((name: string) => {
+      if (name === 'listHostSessions') {
+        reads += 1
+        if (reads === 1) return initialSessions
+        if (failure === 'stalled') return new Promise<never>(() => {})
+        throw new Error('Newer snapshot failed')
+      }
+      return name === 'listFeedbackRequests' ? { requests: [], next_cursor: null } : []
+    })
+    const controller = createController()
+    const initial = controller.initialize(false)
+    await vi.advanceTimersByTimeAsync(0)
+    const invalidation = controller.refreshNavigation()
+    resolveInitial([hostSession()])
+    await vi.advanceTimersByTimeAsync(failure === 'stalled' ? APPLICATION_READ_TIMEOUT_MS : 0)
+    await expect(invalidation).resolves.toBe(false)
+    await expect(initial).resolves.toBe(false)
+    expect(get(controller).initializationFailure?.timedOut).toBe(failure === 'stalled')
+    expect(get(controller).hostSessionFactsStatus).toBe('failed')
+    expect(get(controller).loadingNavigation).toBe(false)
+  })
+
+  it('still loads profiles and the first request list after a successful sessions-only invalidation wins', async () => {
+    let resolveInitial!: (sessions: HostSessionSummary[]) => void
+    const initialSessions = new Promise<HostSessionSummary[]>(resolve => { resolveInitial = resolve })
+    let reads = 0
+    const firstRequest = feedbackRequest('initial-request')
+    const openRequest = vi.fn(async () => true)
+    const profile = { id: 'codex', label: 'Codex', icon_svg: '', default_adapter: 'generic_mcp', continuation_mode: 'manual' }
+    mocks.applicationCall.mockImplementation((name: string) => {
+      if (name === 'listHostSessions') return ++reads === 1 ? initialSessions : [hostSession({ title: 'Current' })]
+      if (name === 'listHostProfiles') return [profile]
+      return name === 'listFeedbackRequests' ? { requests: [firstRequest], next_cursor: null } : []
+    })
+    const controller = createController({ openRequest })
+    const initial = controller.initialize()
+    await vi.advanceTimersByTimeAsync(0)
+    await expect(controller.refreshNavigation(false)).resolves.toBe(true)
+    resolveInitial([hostSession({ title: 'Stale' })])
+    await expect(initial).resolves.toBe(true)
+    expect(get(controller)).toMatchObject({ loadingNavigation: false, loadingRequests: false,
+      hostProfiles: { codex: profile }, requests: [firstRequest] })
+    expect(get(controller).hostSessions[0]?.title).toBe('Current')
+    expect(openRequest).toHaveBeenCalledWith('initial-request', false)
   })
 
   it('keeps the displayed list interactive during a background refresh and updates it in place', async () => {
@@ -554,8 +661,10 @@ describe('navigationController', () => {
     }
   })
 
-  it('returns to the visible host scope after archiving the selected flat-rail session', async () => {
-    const selectedSession = { ...hostSession(), pending_count: 0 }
+  it.each(['external', 'managed'] as const)('returns to the visible host scope after archiving a selected %s session', async (kind) => {
+    const selectedSession = hostSession({ pending_count: 0, management: kind === 'external' ? { kind } : {
+      kind, protocol: 'acp', agent_config_id: 'config', cwd: '/repo', remote_session_id: 'remote',
+    } })
     mocks.applicationCall.mockImplementation(async (command: string) => {
       if (command === 'listFeedbackInbox') return []
       if (command === 'listHostSessions') return [selectedSession]
@@ -579,7 +688,7 @@ describe('navigationController', () => {
       expect(state?.selectedHostId).toBe('codex')
       expect(state?.selectedHostSessionId).toBe('session-1')
 
-      await controller.archiveHostSession(selectedSession)
+      expect(await controller.archiveHostSession(selectedSession)).toBe(true)
 
       expect(state?.selectedHostId).toBe('codex')
       expect(state?.selectedHostSessionId).toBeNull()
@@ -595,6 +704,14 @@ describe('navigationController', () => {
     } finally {
       unsubscribe()
     }
+  })
+
+  it('does not report archive success while requests remain open or draft saving fails', async () => {
+    const pending = createController()
+    expect(await pending.archiveHostSession(hostSession())).toBe(false)
+    const unsaved = createController({ isDirty: () => true, saveDraftNow: vi.fn(async () => false) })
+    expect(await unsaved.archiveHostSession(hostSession({ pending_count: 0 }))).toBe(false)
+    expect(mocks.applicationCall).not.toHaveBeenCalledWith('archiveHostSession', expect.anything())
   })
 
   it('returns the request snapshot for the selected session scope', async () => {

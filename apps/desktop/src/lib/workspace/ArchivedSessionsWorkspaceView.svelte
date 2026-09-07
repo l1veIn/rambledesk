@@ -466,6 +466,7 @@
                         <strong class="min-w-0 flex-1 truncate font-medium">
                           {@html highlighted(session.title)}
                         </strong>
+                        {#if session.management.kind === 'external'}<span class="shrink-0 text-[8px] font-medium text-muted-foreground" title={tr('External session')}>{tr('External')}</span>{/if}
                         <span class="shrink-0 text-[10px] tabular-nums text-muted-foreground">
                           {session.request_count}
                         </span>

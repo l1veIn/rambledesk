@@ -93,6 +93,7 @@
     setSpeechHotwords,
     setSpeechInputDevice,
     setSpeechConfirmBeforeWrite,
+    setSpeechAutoTidy,
     setSpeechModelId,
     setSpeechVadSilenceMs,
     setSpeechVadThreshold,
@@ -100,6 +101,7 @@
     speechHotwords,
     speechInputDevice,
     speechConfirmBeforeWrite,
+    speechAutoTidy,
     speechOverlayEnabled,
     speechOverlayOpacity,
     setSpeechOverlayEnabled,
@@ -118,6 +120,8 @@
     settingsSectionAvailability,
   } from '$lib/workspace/settingsCapabilitySections'
   import { applySettingsSectionCommand } from '$lib/workspace/settingsSectionCommand'
+  import { createExternalAdapterSettingsAccess } from '$lib/workspace/externalAdapterSettingsAccess'
+  import type { DshHostStatus } from '$lib/capabilities/workbenchCapabilities'
   import type { SettingsSection } from '$lib/workbench/types'
 
   const unavailableCapabilities = createUnavailableWorkbenchCapabilities()
@@ -215,12 +219,12 @@
   let initialDesktopOnlyNoticePending = initialSectionResolution.showDesktopOnlyNotice
   let hosts: McpHostView[] = []
   let selectedIds = new Set<string>()
-  let loadingHosts = true
+  let loadingHosts = false
   let installing = false
   let installMessage = ''
   let installError = ''
   let piStatus: PiPackageStatus | null = null
-  let piStatusLoading = true
+  let piStatusLoading = false
   let piAction: 'install' | 'uninstall' | null = null
   let piLastAction: 'status' | 'install' | 'uninstall' = 'status'
   let piInstallMessage = ''
@@ -228,7 +232,15 @@
   let installingDsh = false
   let dshInstallMessage = ''
   let dshInstallError = ''
+  let dshStatus: DshHostStatus | null = null
+  let dshStatusLoading = false
+  let mounted = false
+  const adapterSettingsAccess = createExternalAdapterSettingsAccess([
+    refreshHosts, refreshPiStatus, refreshDshStatus, refreshMcpConfiguration,
+  ])
   let copyState: 'idle' | 'copied' | 'error' = 'idle'
+  let starterPromptCopyState: 'idle' | 'copied' | 'error' = 'idle'
+  const adapterStarterPrompt = 'Please request feedback through RambleDesk so I can first describe the goal of this task.'
   let genericAdapterOpen = true
   let configurationOpen = false
   let notificationPermissionError = ''
@@ -263,7 +275,7 @@
     capabilities.dataStorageAdministration.status.availability !== 'unavailable' &&
     capabilities.serverPaths.status.availability !== 'unavailable'
 
-  $: installedHosts = hosts.filter((host) => host.installed)
+  $: if (mounted) void adapterSettingsAccess.setSection(activeSection, sectionAvailability.adapters)
   $: selectedCount = selectedIds.size
   $: selectedSpeechModel =
     speechModels.find((model) => model.id === $speechModelId) ?? speechModels[0] ?? null
@@ -292,16 +304,10 @@
   }
 
   onMount(() => {
+    mounted = true
     if (initialDesktopOnlyNoticePending) {
       initialDesktopOnlyNoticePending = false
       toast.info(tr('This settings section is available only in the desktop app.'))
-    }
-    if (sectionAvailability.adapters) {
-      void refreshHosts()
-      void refreshPiStatus()
-    } else {
-      loadingHosts = false
-      piStatusLoading = false
     }
     if (dataStorageSettingsAvailable) {
       void refreshDataStorage()
@@ -322,6 +328,8 @@
       void refreshWebAccessStatus()
     }
     return () => {
+      mounted = false
+      void adapterSettingsAccess.setSection('general', false)
       unlistenModelProgress?.()
       unlistenStorageProgress?.()
     }
@@ -504,6 +512,7 @@
   }
 
   async function refreshHosts() {
+    if (!adapterSettingsAccess.isActive()) return
     loadingHosts = true
     installError = ''
     try {
@@ -529,7 +538,7 @@
   }
 
   async function installSelected() {
-    if (selectedIds.size === 0 || installing) return
+    if (!adapterSettingsAccess.isActive() || selectedIds.size === 0 || installing) return
     installing = true
     installError = ''
     installMessage = ''
@@ -554,6 +563,7 @@
   }
 
   async function copyConfiguration() {
+    if (!adapterSettingsAccess.isActive()) return
     try {
       await navigator.clipboard.writeText(mcpConfiguration)
       copyState = 'copied'
@@ -562,7 +572,18 @@
     }
   }
 
+  async function copyAdapterStarterPrompt() {
+    if (!adapterSettingsAccess.isActive()) return
+    try {
+      await navigator.clipboard.writeText(tr(adapterStarterPrompt))
+      starterPromptCopyState = 'copied'
+    } catch {
+      starterPromptCopyState = 'error'
+    }
+  }
+
   async function refreshPiStatus(reportError = true) {
+    if (!adapterSettingsAccess.isActive()) return
     piStatusLoading = true
     try {
       piStatus = await capabilities.hostIntegrationAdministration.implementation.piStatus()
@@ -578,7 +599,7 @@
   }
 
   async function installPiPackage() {
-    if (piAction) return
+    if (!adapterSettingsAccess.isActive() || piAction) return
     piAction = 'install'
     piLastAction = 'install'
     piInstallError = ''
@@ -600,7 +621,7 @@
   }
 
   async function uninstallPiPackage() {
-    if (piAction || !piStatus?.installed || !confirm(tr('Uninstall the Pi native adapter?'))) return
+    if (!adapterSettingsAccess.isActive() || piAction || !piStatus?.installed || !confirm(tr('Uninstall the Pi native adapter?'))) return
     piAction = 'uninstall'
     piLastAction = 'uninstall'
     piInstallError = ''
@@ -619,7 +640,7 @@
   }
 
   async function installDshPackage() {
-    if (installingDsh) return
+    if (!adapterSettingsAccess.isActive() || installingDsh) return
     installingDsh = true
     dshInstallError = ''
     dshInstallMessage = ''
@@ -636,8 +657,27 @@
     } catch (cause) {
       dshInstallError = messageFrom(cause)
     } finally {
+      await refreshDshStatus(false)
       installingDsh = false
     }
+  }
+
+  async function refreshDshStatus(reportError = true) {
+    if (!adapterSettingsAccess.isActive()) return
+    dshStatusLoading = true
+    try {
+      dshStatus = await capabilities.hostIntegrationAdministration.implementation.dshStatus()
+    } catch (cause) {
+      dshStatus = null
+      if (reportError) dshInstallError = messageFrom(cause)
+    } finally { dshStatusLoading = false }
+  }
+
+  async function refreshMcpConfiguration() {
+    if (!adapterSettingsAccess.isActive()) return
+    try {
+      mcpConfiguration = await capabilities.hostIntegrationAdministration.implementation.genericMcpConfiguration()
+    } catch (cause) { installError = messageFrom(cause) }
   }
 
   async function togglePopupNotifications(enabled: boolean) {
@@ -744,7 +784,7 @@
 <div class="settings-workspace-root h-full min-h-0 overflow-hidden bg-background">
   <div class="sr-only">
     <h2>{tr('Settings')}</h2>
-    <p>{tr('Manage interface preferences and host adapters.')}</p>
+    <p>{tr('Manage interface preferences and agent connections.')}</p>
   </div>
 
     {#key $locale}
@@ -775,6 +815,16 @@
             <MonitorCog data-icon="inline-start" />
             {tr('General')}
           </Tabs.Trigger>
+          <Tabs.Trigger value="agents" class="h-9 w-full justify-start px-2.5">
+            <TerminalSquare data-icon="inline-start" />
+            {agentText($locale, 'Agents')}
+          </Tabs.Trigger>
+          {#if sectionAvailability.adapters}
+            <Tabs.Trigger value="adapters" class="h-9 w-full justify-start px-2.5">
+              <PlugZap data-icon="inline-start" />
+              {tr('External adapters')}
+            </Tabs.Trigger>
+          {/if}
           {#if sectionAvailability.permissions}
             <Tabs.Trigger value="permissions" class="h-9 w-full justify-start px-2.5">
               <ShieldCheck data-icon="inline-start" />
@@ -803,21 +853,6 @@
               {tr('Shortcuts')}
             </Tabs.Trigger>
           {/if}
-          {#if sectionAvailability.adapters}
-            <Tabs.Trigger value="adapters" class="h-9 w-full justify-start px-2.5">
-              <PlugZap data-icon="inline-start" />
-              <span class="flex-1 text-left">{tr('Adapters')}</span>
-              {#if installedHosts.length > 0}
-                <Badge variant="secondary" class="h-5 px-1.5 text-[9px]">
-                  {installedHosts.length}
-                </Badge>
-              {/if}
-            </Tabs.Trigger>
-          {/if}
-          <Tabs.Trigger value="agents" class="h-9 w-full justify-start px-2.5">
-            <TerminalSquare data-icon="inline-start" />
-            {agentText($locale, 'Agents')}
-          </Tabs.Trigger>
           <Tabs.Trigger value="about" class="h-9 w-full justify-start px-2.5">
             <Info data-icon="inline-start" />
             {tr('About')}
@@ -843,7 +878,7 @@
                         : activeSection === 'shortcuts'
                           ? tr('Global shortcut keys')
                           : activeSection === 'adapters'
-                            ? tr('Host adapters')
+                            ? tr('Feedback from external agents')
                             : activeSection === 'agents'
                               ? agentText($locale, 'Agent configurations')
                               : tr('Project information')}
@@ -862,7 +897,7 @@
                         : activeSection === 'shortcuts'
                           ? tr('Shortcuts')
                           : activeSection === 'adapters'
-                            ? tr('Adapters')
+                            ? tr('External adapters')
                             : activeSection === 'agents'
                               ? agentText($locale, 'Agents')
                               : tr('About')}
@@ -965,7 +1000,7 @@
                 <div>
                   <h3 class="m-0 text-sm font-medium">{tr('Getting started')}</h3>
                   <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
-                    {tr('Review initial setup for storage, voice, adapters, notifications, and Cooking.')}
+                    {tr('Review storage, voice, permissions, agent connections, notifications, and Cooking, then start a new session.')}
                   </p>
                 </div>
               </div>
@@ -1388,6 +1423,30 @@
               </button>
             </section>
             {#if $speechConfirmBeforeWrite}
+              <section class="space-y-3 border-b pb-8">
+                <div class="flex items-center justify-between gap-8">
+                  <div>
+                    <h3 class="m-0 text-sm font-medium" id="speech-auto-tidy-label">{tr('Automatically tidy speech')}</h3>
+                    <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground" id="speech-auto-tidy-description">
+                      {tr('Tidy each transcribed segment before you review it. You still choose when to write it to feedback.')}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={$speechAutoTidy}
+                    aria-labelledby="speech-auto-tidy-label"
+                    aria-describedby="speech-auto-tidy-description speech-auto-tidy-hint"
+                    class={`relative h-6 w-11 shrink-0 rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-ring ${$speechAutoTidy ? 'bg-primary' : 'bg-muted-foreground/30'}`}
+                    onclick={() => setSpeechAutoTidy(!$speechAutoTidy)}
+                  >
+                    <span class={`absolute top-0.5 size-5 rounded-full bg-background shadow-sm transition-transform ${$speechAutoTidy ? 'left-0.5 translate-x-5' : 'left-0.5'}`}></span>
+                  </button>
+                </div>
+                <p class="m-0 text-xs leading-5 text-muted-foreground" id="speech-auto-tidy-hint">
+                  {tr('Tidy also has an Auto-tidy threshold under Post-processing → Tidy. Review both settings to avoid tidying the same text twice.')}
+                </p>
+              </section>
               <ShortcutSettings globalShortcuts={capabilities.globalShortcuts} onlyActions={['speechAccept', 'speechDiscard']} />
             {/if}
             <section class="grid grid-cols-[minmax(0,1fr)_280px] items-center gap-8 border-b pb-8">
@@ -1659,6 +1718,41 @@
           {/if}
           {#if sectionAvailability.adapters}
           <Tabs.Content value="adapters" class="m-0 space-y-8 p-6 outline-none">
+            <section class="space-y-4 rounded-lg border bg-muted/20 p-4">
+              <div class="space-y-2">
+                <h3 class="m-0 text-sm font-medium">{tr('A lightweight connection to your existing workflow')}</h3>
+                <p class="m-0 text-xs leading-5 text-muted-foreground">{tr('Keep working in your agent’s app or terminal. It manages the session and conversation, while RambleDesk handles feedback requests and your replies.')}</p>
+                <ol class="m-0 list-decimal space-y-1 pl-4 text-xs leading-5 text-muted-foreground">
+                  <li>{tr('Install the adapter for the external agent below, then restart that agent.')}</li>
+                  <li>{tr('Continue your work there and ask the agent to request RambleDesk feedback when needed.')}</li>
+                  <li>{tr('Review and submit the feedback in RambleDesk. Follow a Resume Prompt back to the external agent when one is provided.')}</li>
+                </ol>
+                <div class="space-y-2 pt-2">
+                  <p class="m-0 text-xs leading-5 text-muted-foreground">{tr('Paste this example into your external agent:')}</p>
+                  <p class="m-0 select-text rounded-md border bg-background p-3 text-xs leading-5">{tr(adapterStarterPrompt)}</p>
+                  <div class="flex flex-wrap items-center gap-2">
+                    <Button variant="outline" size="sm" onclick={copyAdapterStarterPrompt}>
+                      {#if starterPromptCopyState === 'copied'}
+                        <Check data-icon="inline-start" />
+                        {tr('Copied')}
+                      {:else}
+                        <Clipboard data-icon="inline-start" />
+                        {tr('Copy starter prompt')}
+                      {/if}
+                    </Button>
+                    {#if starterPromptCopyState === 'error'}
+                      <span class="text-xs text-destructive" role="status">{tr('Could not copy the prompt. Select the text and copy it manually.')}</span>
+                    {/if}
+                  </div>
+                  <p class="m-0 text-xs leading-5 text-muted-foreground">{tr('If your agent supports /ramble, you can also use it to start a feedback request.')}</p>
+                </div>
+              </div>
+              <div class="space-y-2 border-t pt-4">
+                <h3 class="m-0 text-sm font-medium">{tr('Work in RambleDesk (recommended)')}</h3>
+                <p class="m-0 text-xs leading-5 text-muted-foreground">{tr('Connect through ACP to create sessions, chat with agents, and handle feedback in RambleDesk.')}</p>
+                <Button variant="outline" size="sm" onclick={() => activeSection = 'agents'}>{tr('Go to Agents')}</Button>
+              </div>
+            </section>
             <section class="border-b pb-8">
               <div class="flex items-start gap-3">
                 <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground [&_svg]:size-4">
@@ -1680,7 +1774,7 @@
                     {/if}
                   </div>
                   <p class="m-0 mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">
-                    {tr('The Pi package uses the local JSON API to request, get, wait, and cancel; waiting stays inside the Pi tool call.')}
+                    {tr('Adds feedback requests to your external Pi session. Pi can wait for your reply while you review the request in RambleDesk.')}
                   </p>
                   {#if piStatus && piStatus.sourceCount > 1}
                     <p class="m-0 mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">
@@ -1740,12 +1834,16 @@
                   <div class="flex flex-wrap items-center gap-2">
                     <h3 class="m-0 text-sm font-medium">{tr('DeepSeek Harness native adapter')}</h3>
                     <Badge variant="secondary">{tr('Native wait')}</Badge>
+                    {#if dshStatusLoading}<Badge variant="outline">{tr('Checking…')}</Badge>
+                    {:else if dshStatus?.profiles.some(profile => profile.configured)}<Badge variant="secondary">{tr('Installed')}</Badge>
+                    {:else if dshStatus}<Badge variant="outline">{tr('Not installed')}</Badge>{/if}
+                    {#if dshStatus && !dshStatus.installed}<Badge variant="outline">{tr('DSH not detected')}</Badge>{/if}
                   </div>
                   <p class="m-0 mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">
-                    {tr('The Cordis plugin uses the local JSON API to request, get, wait, and cancel; waiting stays inside the dsh tool call, and it installs the ramble guide into the global skill directory.')}
+                    {tr('Adds feedback requests to your external DSH profiles and installs the Ramble guide. DSH can wait for your reply in its own session.')}
                   </p>
                 </div>
-                <Button disabled={installingDsh || capabilities.hostIntegrationAdministration.status.availability === 'unavailable'} onclick={installDshPackage}>
+                <Button disabled={installingDsh || dshStatusLoading || dshStatus?.profiles.length === 0 || capabilities.hostIntegrationAdministration.status.availability === 'unavailable'} onclick={installDshPackage}>
                   {#if installingDsh}
                     <LoaderCircle class="animate-spin" data-icon="inline-start" />
                     {tr('Installing…')}

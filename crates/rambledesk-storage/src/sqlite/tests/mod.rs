@@ -210,6 +210,7 @@ mod deliveries;
 mod document_json_migration;
 mod managed_feedback;
 mod managed_sessions;
+mod migration_downgrade;
 mod publication;
 mod recovery;
 mod requests;

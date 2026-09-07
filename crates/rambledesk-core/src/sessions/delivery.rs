@@ -75,7 +75,7 @@ pub trait FeedbackDeliveryRepository: Send + Sync {
         &self,
     ) -> Result<Vec<FeedbackDelivery>, SessionRepositoryError>;
 
-    /// Claims a pending record before any send attempt. None means another worker
+    /// Claims a non-cancelled pending record before any send attempt. None means another worker
     /// already claimed it, it is terminal/uncertain, or the record no longer exists.
     async fn claim_delivery(
         &self,
@@ -97,6 +97,8 @@ pub trait FeedbackDeliveryRepository: Send + Sync {
     ) -> Result<FeedbackDelivery, SessionRepositoryError>;
 
     /// Startup recovery never automatically retries an attempt with unknown outcome.
+    /// Legacy cancellation attempts are discarded; cancellation never resumes an Agent.
+    /// Returns the total number of reconciled records.
     async fn recover_interrupted_deliveries(
         &self,
         now: &str,

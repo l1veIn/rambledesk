@@ -13,6 +13,7 @@ use tokio::io::{AsyncRead, ReadBuf};
 pub(crate) struct DisconnectReader<R> {
     pub inner: R,
     pub closed: Arc<AtomicBool>,
+    pub trace: rambledesk_core::agent_operation_trace::AgentOperationTrace,
 }
 impl<R: AsyncRead + Unpin> AsyncRead for DisconnectReader<R> {
     fn poll_read(
@@ -29,7 +30,21 @@ impl<R: AsyncRead + Unpin> AsyncRead for DisconnectReader<R> {
                 && buffer.filled().len() == before)
         {
             self.closed.store(true, Ordering::SeqCst);
+            self.trace.finish(
+                "disconnected",
+                if matches!(result, Poll::Ready(Err(_))) {
+                    "transport_io"
+                } else {
+                    "eof"
+                },
+            );
         }
         result
+    }
+}
+
+impl<R> Drop for DisconnectReader<R> {
+    fn drop(&mut self) {
+        self.trace.finish("closed", "reader_dropped");
     }
 }

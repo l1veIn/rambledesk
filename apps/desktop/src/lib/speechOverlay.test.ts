@@ -40,4 +40,10 @@ describe('speech overlay review', () => {
     expect(speechReviewCommand(current, 'accept')).toBeNull()
     expect(speechOverlayVisible(current)).toBe(false)
   })
+
+  it('blocks global confirmation while an edit buffer is open even if another group is selected', () => {
+    const current = { ...state(), edit: { ids: ['A'], text: 'Unsaved changes' } }
+    expect(speechReviewCommand(current, 'accept')).toBeNull()
+    expect(speechReviewCommand(current, 'discard')).toBeNull()
+  })
 })

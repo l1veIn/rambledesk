@@ -192,6 +192,18 @@ impl SqliteFeedbackStore {
             .await
             .map_err(storage_error)?;
         let record_id = host_session_record_id(&mut transaction, host_id, host_session_id).await?;
+        // This repository path cannot stop owned Agent processes or revoke their
+        // feedback access. Archived managed sessions must use SessionApplication.
+        let managed: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM managed_sessions WHERE session_id = ?1)",
+        )
+        .bind(&record_id)
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(storage_error)?;
+        if managed {
+            return Err(RepositoryError::ManagedSessionRequiresRuntimeDeletion);
+        }
         let archived_at: Option<String> =
             sqlx::query_scalar("SELECT archived_at FROM host_sessions WHERE id = ?1")
                 .bind(&record_id)

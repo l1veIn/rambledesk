@@ -256,13 +256,29 @@ describe('HttpApplicationTransport', () => {
   it('sends a cancelled permission as explicit null in the authenticated JSON body', async () => {
     const fetchImplementation = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ accepted: true }))
     const transport = new HttpApplicationTransport(authenticatedSession(fetchImplementation).lease())
-    await transport.call('respondManagedPermission', {
-      session_id: 'local-session-one', request_id: 'permission-one', option_id: null,
+    await transport.call('respondManagedInteraction', {
+      session_id: 'local-session-one', request_id: 'permission-one', response: { kind: 'permission', option_id: null },
     })
     const [url, init] = fetchImplementation.mock.calls[0]!
-    expect(String(url)).toBe('https://workbench.example/api/application/respondManagedPermission')
+    expect(String(url)).toBe('https://workbench.example/api/application/respondManagedInteraction')
     expect(JSON.parse(String(init?.body))).toEqual({
-      session_id: 'local-session-one', request_id: 'permission-one', option_id: null,
+      session_id: 'local-session-one', request_id: 'permission-one', response: { kind: 'permission', option_id: null },
+    })
+    expect(new Headers(init?.headers).get(RUNTIME_GENERATION_HEADER)).toBe(TEST_RUNTIME_GENERATION)
+  })
+
+  it('preserves structured question answers on the authenticated response route', async () => {
+    const fetchImplementation = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ accepted: true }))
+    const transport = new HttpApplicationTransport(authenticatedSession(fetchImplementation).lease())
+    await transport.call('respondManagedInteraction', {
+      session_id: 'local-session-one', request_id: 'question-one',
+      response: { kind: 'question', response: { action: 'accept', content: { platforms: ['desktop', 'web'], confirmed: false, count: 2 } } },
+    })
+    const [url, init] = fetchImplementation.mock.calls[0]!
+    expect(String(url)).toBe('https://workbench.example/api/application/respondManagedInteraction')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      session_id: 'local-session-one', request_id: 'question-one',
+      response: { kind: 'question', response: { action: 'accept', content: { platforms: ['desktop', 'web'], confirmed: false, count: 2 } } },
     })
     expect(new Headers(init?.headers).get(RUNTIME_GENERATION_HEADER)).toBe(TEST_RUNTIME_GENERATION)
   })

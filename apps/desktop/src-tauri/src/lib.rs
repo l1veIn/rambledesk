@@ -12,6 +12,7 @@ mod pi_install;
 mod screen_capture;
 mod shortcuts;
 mod speech_plugin;
+mod startup;
 mod web_access;
 
 use rambledesk_core::{
@@ -32,13 +33,12 @@ use std::{
     sync::{Arc, RwLock, atomic::AtomicU32},
 };
 use tauri::{
-    Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder,
+    Manager, RunEvent, WebviewUrl, WebviewWindowBuilder,
     image::Image,
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     webview::Color,
 };
-use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 
 const TRAY_ID: &str = "rambledesk-main";
 const RAMBLE_CONSOLE_LABEL: &str = "ramble-console";
@@ -46,7 +46,6 @@ const RAMBLE_CONSOLE_WIDTH: f64 = 58.0;
 const RAMBLE_CONSOLE_HEIGHT: f64 = 304.0;
 const RAMBLE_CONSOLE_EDGE_GAP: f64 = 10.0;
 const RESUME_PROMPT_EVENT: &str = "rambledesk://resume-prompt";
-const OPEN_ADAPTERS_EVENT: &str = "rambledesk://open-adapters";
 const BASE_TRAY_ICON: Image<'static> = tauri::include_image!("./icons/32x32.png");
 
 struct WorkbenchState {
@@ -146,6 +145,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
+            let mut phase = startup::StartupPhase::Windows;
             let setup = (|| -> Result<(), Box<dyn std::error::Error>> {
                 let console = WebviewWindowBuilder::new(
                     app,
@@ -190,16 +190,19 @@ pub fn run() {
                 .visible(false)
                 .build()?;
                 window::attach_speech_overlay_events(&speech_overlay);
+                phase = startup::StartupPhase::Configuration;
                 app.manage(shortcuts::ShortcutSettings::initialize(app.handle()));
                 let token = AccessToken::load_or_create(&configured_token_path()?)?;
                 let database_path = configured_database_path()?;
                 let library_root = configured_library_path()?;
+                phase = startup::StartupPhase::Storage;
                 let store = tauri::async_runtime::block_on(
                     rambledesk_storage::SqliteFeedbackStore::connect_with_library(
                         &database_path,
                         &library_root,
                     ),
                 )?;
+                phase = startup::StartupPhase::Services;
                 let application_change_hub = Arc::new(ApplicationChangeHub::new());
                 let application_events = application_events::ApplicationEventBridge::start(
                     app.handle().clone(),
@@ -234,6 +237,7 @@ pub fn run() {
                 .with_deliveries(Arc::new(store.clone()))
                 .with_deletions(Arc::new(store.clone()))
                 .with_recovery(Arc::new(store.clone()));
+                phase = startup::StartupPhase::Agents;
                 let agents = rambledesk_core::AgentManagementApplication::new(
                     Arc::new(rambledesk_acp::agents::AgentCatalogService::new(
                         app.path().app_local_data_dir()?.join("agents"),
@@ -249,6 +253,7 @@ pub fn run() {
                     .with_sessions(sessions.clone())
                     .with_agent_management(agents.clone()),
                 );
+                phase = startup::StartupPhase::LocalServer;
                 let config = ServerConfig::new(token.clone()).with_port(configured_port()?);
                 let handle = tauri::async_runtime::block_on(start_server_with_managed(
                     config,
@@ -256,12 +261,11 @@ pub fn run() {
                     feedback_provider,
                 ))?;
                 let configuration = generic_mcp_configuration(handle.endpoint(), &token);
+                phase = startup::StartupPhase::Tray;
                 let open_item =
                     MenuItem::with_id(app, "open", "打开 RambleDesk", true, None::<&str>)?;
-                let adapters_item =
-                    MenuItem::with_id(app, "adapters", "适配器设置", true, None::<&str>)?;
                 let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-                let menu = Menu::with_items(app, &[&open_item, &adapters_item, &quit_item])?;
+                let menu = Menu::with_items(app, &[&open_item, &quit_item])?;
                 TrayIconBuilder::with_id(TRAY_ID)
                     .icon(pending_tray_icon(0))
                     .tooltip("RambleDesk · 没有待处理反馈")
@@ -269,12 +273,6 @@ pub fn run() {
                     .show_menu_on_left_click(false)
                     .on_menu_event(|app, event| match event.id.as_ref() {
                         "open" => show_main_window(app),
-                        "adapters" => {
-                            show_main_window(app);
-                            if let Err(error) = app.emit(OPEN_ADAPTERS_EVENT, ()) {
-                                tracing::warn!(%error, "failed to emit open adapters event");
-                            }
-                        }
                         "quit" => app.exit(0),
                         _ => {}
                     })
@@ -300,6 +298,7 @@ pub fn run() {
                         }
                     });
                 }
+                phase = startup::StartupPhase::Recovery;
                 tauri::async_runtime::block_on(sessions.recover_runtime())?;
                 tauri::async_runtime::block_on(sessions.start_delivery_worker())?;
                 app.manage(WorkbenchState {
@@ -329,32 +328,11 @@ pub fn run() {
                 Ok(())
             })();
 
-            // Tauri turns a setup-hook error into a panic from its event-loop
-            // callback, which on macOS aborts the process without any visible
-            // explanation. Handle failures here: log the reason, ask the user,
-            // and exit cleanly instead.
+            // Returning an error makes Tauri panic in its event-loop callback.
+            // Return successfully after scheduling the failure dialog so the
+            // event loop can actually render it and process the user's choice.
             if let Err(error) = setup {
-                let message = error.to_string();
-                tracing::error!(%message, "RambleDesk setup failed");
-                let title = format!("{} · 启动失败", app.package_info().name);
-                let text = format!(
-                    "RambleDesk 无法启动。\n\n{message}\n\n诊断日志目录：\n{}",
-                    logging::directory_hint()
-                );
-                let handle = app.handle().clone();
-                let (dialog_done_tx, dialog_done_rx) = std::sync::mpsc::channel();
-                std::thread::spawn(move || {
-                    let _ = handle
-                        .dialog()
-                        .message(text)
-                        .title(title)
-                        .buttons(MessageDialogButtons::Ok)
-                        .blocking_show();
-                    let _ = dialog_done_tx.send(());
-                });
-                // Give the dialog a moment to be dismissed before exiting.
-                let _ = dialog_done_rx.recv_timeout(std::time::Duration::from_secs(30));
-                std::process::exit(1);
+                startup::show_setup_failure(app.handle(), phase, error.as_ref());
             }
             Ok(())
         })
@@ -382,7 +360,7 @@ pub fn run() {
             managed_commands::send_managed_prompt_content,
             managed_commands::set_managed_session_config,
             managed_commands::cancel_managed_prompt,
-            managed_commands::respond_managed_permission,
+            managed_commands::respond_managed_interaction,
             managed_commands::resolve_feedback_delivery,
             managed_commands::delete_managed_session,
             show_ramble_console,
@@ -420,7 +398,11 @@ pub fn run() {
             add_feedback_attachment,
             import_feedback_attachment_path,
             diagnostics::export_diagnostics,
+            diagnostics::control::get_diagnostics_settings,
+            diagnostics::control::set_diagnostics_enabled,
+            diagnostics::control::clear_diagnostics,
             diagnostics::record_diagnostic_event,
+            diagnostics::record_client_diagnostic,
             remove_feedback_attachment,
             reorder_feedback_attachments,
             read_feedback_attachment,
@@ -480,12 +462,26 @@ pub fn run() {
     let app = match app {
         Ok(app) => app,
         Err(error) => {
-            logging::show_fatal_startup_error(&error.to_string());
+            logging::show_fatal_startup_error(&error);
             return;
         }
     };
 
     app.run(|app_handle, event| {
+        // A failed setup must never leave a hidden, unusable process when the
+        // user closes its window, including after the tray close handler ran.
+        if app_handle.try_state::<startup::StartupFailure>().is_some()
+            && matches!(
+                event,
+                RunEvent::WindowEvent {
+                    event: tauri::WindowEvent::CloseRequested { .. },
+                    ..
+                }
+            )
+        {
+            app_handle.exit(1);
+            return;
+        }
         #[cfg(target_os = "macos")]
         if matches!(event, RunEvent::Reopen { .. }) {
             show_main_window(app_handle);

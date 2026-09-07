@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { Download, ExternalLink, FileArchive, FolderOpen, GitBranch, LoaderCircle, RefreshCw, RotateCw, ShieldCheck, Sparkles } from '@lucide/svelte'
+  import { flushClientDiagnostics, setClientDiagnosticsEnabled } from '$lib/diagnostics/clientDiagnostics'
+  import { createDiagnosticSettingsController } from '$lib/diagnostics/diagnosticSettingsController'
+  import { Download, ExternalLink, FileArchive, FolderOpen, GitBranch, LoaderCircle, RefreshCw, RotateCw, ShieldCheck, Sparkles, Trash2 } from '@lucide/svelte'
   import { onMount } from 'svelte'
 
   import rambelleSticker from '../assets/rambelle-states/idle.webp'
@@ -38,6 +40,11 @@
 
   let exporting: DiagnosticScope | null = null
   let lastExportPath = ''
+  const diagnosticSettings = createDiagnosticSettingsController({
+    readSettings: () => diagnostics.implementation.readSettings(),
+    setEnabled: (enabled) => diagnostics.implementation.setEnabled(enabled),
+    clear: () => diagnostics.implementation.clear(),
+  }, { setClientEnabled: setClientDiagnosticsEnabled, flush: flushClientDiagnostics })
   $: updatesAvailable = softwareUpdates.status.availability !== 'unavailable'
   $: diagnosticsAvailable = diagnostics.status.availability !== 'unavailable'
   $: serverPathsAvailable = serverPaths.status.availability !== 'unavailable'
@@ -49,6 +56,7 @@
   const releasesUrl = `${projectUrl}/releases`
 
   onMount(async () => {
+    if (diagnosticsAvailable) void diagnosticSettings.load()
     if (updatesAvailable) version = await softwareUpdates.implementation.version().catch(() => version)
   })
 
@@ -75,7 +83,7 @@
   }
 
   async function exportDiagnostics(scope: DiagnosticScope) {
-    if (!diagnosticsAvailable || !serverPathsAvailable || exporting) return
+    if (!diagnosticsAvailable || !serverPathsAvailable || exporting || $diagnosticSettings.busy) return
     exporting = scope
     try {
       const stamp = new Date().toISOString().slice(0, 10)
@@ -84,6 +92,7 @@
         extensions: ['zip'],
       })
       if (!path) return
+      await flushClientDiagnostics()
       const exported = diagnosticExportView(await diagnostics.implementation.export(scope, path))
       lastExportPath = exported.path
       toast.success(tr('Diagnostic package exported'), {
@@ -305,10 +314,96 @@
   </section>
   {/if}
 
-  {#if diagnosticsAvailable && serverPathsAvailable}
+  {#if diagnosticsAvailable}
   <section class="rounded-xl border p-5">
     <div>
-      <h3 class="m-0 text-sm font-medium">{tr('Diagnostic package')}</h3>
+      <h3 class="m-0 text-sm font-medium">{tr('Diagnostics')}</h3>
+    </div>
+    <div class="mt-4 flex items-start justify-between gap-4">
+      <div>
+        <h4 id="diagnostic-recording-label" class="m-0 text-xs font-medium">{tr('Record diagnostic information')}</h4>
+        <p id="diagnostic-recording-description" class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
+          {tr('Keep local diagnostic events and logs to help investigate problems. Turning this off keeps existing diagnostics.')}
+        </p>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={$diagnosticSettings.enabled === true}
+        aria-labelledby="diagnostic-recording-label"
+        aria-describedby="diagnostic-recording-description"
+        disabled={$diagnosticSettings.enabled === null || $diagnosticSettings.busy !== null || exporting !== null}
+        class={[
+          'relative h-[22px] w-10 shrink-0 rounded-full border border-transparent transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50',
+          $diagnosticSettings.enabled === true ? 'bg-primary' : 'bg-input',
+        ]}
+        onclick={() => void diagnosticSettings.setEnabled(!$diagnosticSettings.enabled)}
+      >
+        <span class={[
+          'absolute left-0.5 top-0.5 size-4 rounded-full bg-background shadow-sm transition-transform',
+          $diagnosticSettings.enabled === true ? 'translate-x-5' : 'translate-x-0',
+        ]}></span>
+      </button>
+    </div>
+    <div class="mt-4 flex flex-wrap items-center gap-3">
+      <Button
+        variant="outline"
+        disabled={$diagnosticSettings.busy !== null || exporting !== null}
+        onclick={() => void diagnosticSettings.clear()}
+      >
+        {#if $diagnosticSettings.busy === 'clearing'}
+          <LoaderCircle class="animate-spin" data-icon="inline-start" />
+        {:else}
+          <Trash2 data-icon="inline-start" />
+        {/if}
+        {tr('Clear diagnostics')}
+      </Button>
+      {#if $diagnosticSettings.busy === 'loading' || $diagnosticSettings.busy === 'saving'}
+        <span class="flex items-center gap-1.5 text-xs text-muted-foreground" role="status">
+          <LoaderCircle class="size-3.5 animate-spin" />
+          {tr($diagnosticSettings.busy === 'loading' ? 'Loading diagnostic settings…' : 'Saving diagnostic settings…')}
+        </span>
+      {/if}
+    </div>
+    <p class="m-0 mt-2 text-xs leading-5 text-muted-foreground">
+      {tr('Clearing diagnostics keeps your sessions, feedback, attachments, and exported ZIP files.')}
+      {#if $diagnosticSettings.enabled === true}
+        {tr('New entries may appear while recording is enabled.')}
+      {/if}
+    </p>
+    {#if $diagnosticSettings.error}
+      <div class="mt-3 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs" role="alert">
+        <p class="m-0 font-medium text-destructive">
+          {tr($diagnosticSettings.error.action === 'loading'
+            ? 'Could not load diagnostic settings'
+            : $diagnosticSettings.error.action === 'saving'
+              ? 'Could not save diagnostic settings'
+              : 'Could not clear diagnostics')}
+        </p>
+        <p class="m-0 mt-1 break-words text-muted-foreground">{$diagnosticSettings.error.message}</p>
+      </div>
+    {:else if $diagnosticSettings.cleared}
+      <p class="m-0 mt-3 text-xs text-success" role="status">{tr('Diagnostics cleared')}</p>
+    {/if}
+    {#if $diagnosticSettings.enabled === null && $diagnosticSettings.busy !== 'loading'}
+      <Button
+        class="mt-3"
+        variant="outline"
+        size="sm"
+        disabled={$diagnosticSettings.busy !== null || exporting !== null}
+        onclick={() => void diagnosticSettings.setEnabled(false)}
+      >{tr('Turn off recording')}</Button>
+      <Button
+        class="mt-3"
+        variant="outline"
+        size="sm"
+        disabled={$diagnosticSettings.busy !== null || exporting !== null}
+        onclick={() => void diagnosticSettings.load()}
+      >{tr('Reload diagnostic settings')}</Button>
+    {/if}
+    {#if serverPathsAvailable}
+    <div class="mt-5 border-t pt-4">
+      <h4 class="m-0 text-xs font-medium">{tr('Diagnostic package')}</h4>
       <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
         {tr('Export logs, environment, adapter status, and usage metadata as a zip. Drafts, feedback text, attachments, and API keys are never included.')}
       </p>
@@ -316,7 +411,7 @@
     <div class="mt-4 flex flex-wrap gap-2">
       <Button
         variant="outline"
-        disabled={!diagnosticsAvailable || !serverPathsAvailable || exporting !== null}
+        disabled={exporting !== null || $diagnosticSettings.busy !== null}
         onclick={() => void exportDiagnostics('last_24_hours')}
       >
         {#if exporting === 'last_24_hours'}
@@ -328,7 +423,7 @@
       </Button>
       <Button
         variant="outline"
-        disabled={!diagnosticsAvailable || !serverPathsAvailable || exporting !== null}
+        disabled={exporting !== null || $diagnosticSettings.busy !== null}
         onclick={() => void exportDiagnostics('last_7_days')}
       >
         {#if exporting === 'last_7_days'}
@@ -340,7 +435,7 @@
       </Button>
       <Button
         variant="outline"
-        disabled={!diagnosticsAvailable || !serverPathsAvailable || exporting !== null}
+        disabled={exporting !== null || $diagnosticSettings.busy !== null}
         onclick={() => void exportDiagnostics('all')}
       >
         {#if exporting === 'all'}
@@ -361,6 +456,7 @@
       <p class="m-0 mt-3 truncate font-mono text-[10px] leading-4 text-muted-foreground" title={lastExportPath}>
         {lastExportPath}
       </p>
+    {/if}
     {/if}
   </section>
   {/if}

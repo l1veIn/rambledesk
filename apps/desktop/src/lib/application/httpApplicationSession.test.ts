@@ -147,7 +147,7 @@ describe('HttpApplicationSession reconnect state machine', () => {
 
   it.each([
     'saveAgentConfig', 'deleteAgentConfig', 'checkAgentConfig', 'createManagedSession',
-    'startManagedSession', 'stopManagedSession', 'cancelManagedPrompt', 'sendManagedPrompt', 'respondManagedPermission',
+    'startManagedSession', 'stopManagedSession', 'cancelManagedPrompt', 'sendManagedPrompt', 'respondManagedInteraction',
     'resolveFeedbackDelivery',
     'deleteManagedSession',
   ] as const)('returns %s once after a newer invalidation without replaying the operation', async (name) => {

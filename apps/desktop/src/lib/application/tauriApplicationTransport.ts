@@ -15,6 +15,7 @@ import type {
 import type { CapabilityManifest } from '../capabilities/capabilityManifest'
 import { UNAVAILABLE_CAPABILITY_MANIFEST } from '../capabilities/unavailableCapabilities'
 import { APPLICATION_EVENTS_STREAM } from './applicationEvents'
+import { diagnosticErrorCategory, recordClientDiagnostic } from '../diagnostics/clientDiagnostics'
 
 export const TAURI_APPLICATION_COMMANDS = {
   listAvailableAgents: 'list_available_agents',
@@ -40,7 +41,7 @@ export const TAURI_APPLICATION_COMMANDS = {
   listManagedSessionActivity: 'list_managed_session_activity',
   sendManagedPromptContent: 'send_managed_prompt_content',
   setManagedSessionConfig: 'set_managed_session_config',
-  respondManagedPermission: 'respond_managed_permission',
+  respondManagedInteraction: 'respond_managed_interaction',
   resolveFeedbackDelivery: 'resolve_feedback_delivery',
   deleteManagedSession: 'delete_managed_session',
   listFeedbackInbox: 'list_feedback_inbox',
@@ -125,6 +126,7 @@ export class TauriApplicationTransport implements ApplicationTransport {
       .then((nextUnlisten) => {
         if (active) unlisten = nextUnlisten
         else nextUnlisten()
+        if (active && stream.id === APPLICATION_EVENTS_STREAM.id) recordClientDiagnostic({ activity: 'application_subscription', outcome: 'ok', details: { source: 'workbench', phase: 'registration' } })
       })
 
     if (stream.id === APPLICATION_EVENTS_STREAM.id) {
@@ -135,7 +137,10 @@ export class TauriApplicationTransport implements ApplicationTransport {
       (cause) => {
         // Keep a failed active subscription as a readiness failure; a successful
         // snapshot must not erase the error and leave a silently frozen view.
-        if (active) onError(cause)
+        if (active) {
+          recordClientDiagnostic({ activity: 'application_subscription', outcome: 'failed', details: { source: 'workbench', phase: 'registration', error_category: diagnosticErrorCategory(cause) } })
+          onError(cause)
+        }
       },
     )
 

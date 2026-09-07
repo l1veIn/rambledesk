@@ -28,7 +28,7 @@ pub struct AgentSessionLaunch {
 pub enum AgentSessionEvent {
     ConfigurationChanged,
     ContextUsage(super::SessionContextUsage),
-    PermissionRequested(super::SessionPermission),
+    InteractionRequested(super::SessionInteraction),
     Activity {
         kind: super::SessionActivityKind,
         text: String,
@@ -102,10 +102,10 @@ pub trait AgentSessionConnection: Send + Sync {
         self.prompt(&text).await
     }
     async fn cancel(&self) -> Result<(), AgentDriverError>;
-    async fn respond_permission(
+    async fn respond_interaction(
         &self,
         request_id: &str,
-        option_id: Option<&str>,
+        response: super::SessionInteractionResponse,
     ) -> Result<(), AgentDriverError>;
     async fn stop(&self) -> Result<(), AgentDriverError>;
 }

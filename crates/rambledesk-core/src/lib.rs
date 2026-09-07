@@ -6,6 +6,7 @@
 mod agent_management;
 mod application_changes;
 pub use agent_management::*;
+pub mod agent_operation_trace;
 mod application_commands;
 mod feedback;
 mod process;

@@ -38,9 +38,30 @@ impl Toolchain {
         }
         #[cfg(not(test))]
         {
-            BTreeMap::new()
+            runtime_environment(&self.node, &[])
         }
     }
+}
+
+pub(super) fn runtime_environment(node: &Path, commands: &[PathBuf]) -> BTreeMap<String, String> {
+    let original = std::env::var_os("PATH").unwrap_or_default();
+    let mut directories = std::env::split_paths(&original).collect::<Vec<_>>();
+    let count = directories.len();
+    for command in std::iter::once(node).chain(commands.iter().map(PathBuf::as_path)) {
+        if command.is_file()
+            && let Some(parent) = command.parent().filter(|path| path.is_absolute())
+            && !directories.iter().any(|path| path == parent)
+        {
+            directories.push(parent.to_path_buf());
+        }
+    }
+    if directories.len() != count
+        && let Ok(paths) = std::env::join_paths(directories)
+        && let Some(paths) = paths.to_str()
+    {
+        return BTreeMap::from([("PATH".into(), paths.into())]);
+    }
+    BTreeMap::new()
 }
 
 pub(super) fn managed_launch_environment(id: &str, prefix: &Path) -> BTreeMap<String, String> {
@@ -60,7 +81,112 @@ pub(super) fn managed_launch_environment(id: &str, prefix: &Path) -> BTreeMap<St
     ])
 }
 
+fn node_check(actual: Option<&str>, required: &str) -> AgentCatalogCheck {
+    AgentCatalogCheck {
+        id: "node".into(),
+        status: if actual.is_some_and(|actual| version::meets(actual, required)) {
+            AgentCheckStatus::Pass
+        } else {
+            AgentCheckStatus::Fail
+        },
+        message: format!(
+            "Node.js {} (requires >= {required})",
+            actual.unwrap_or("unavailable or version unknown")
+        ),
+    }
+}
+
+async fn package_beside_command(
+    path: &Path,
+    package: &str,
+    command: &str,
+) -> Option<(String, PathBuf)> {
+    let parent = path.parent()?;
+    let canonical = tokio::fs::canonicalize(path).await.ok()?;
+    let shim = matches!(
+        path.extension().and_then(|extension| extension.to_str()),
+        Some("cmd" | "bat")
+    );
+    // Recognize npm's standard global and local shim layouts without needing
+    // npm to run. A standalone executable with the same name still wins.
+    for prefix in [
+        parent.to_path_buf(),
+        parent.join("../lib"),
+        parent.join("../.."),
+    ] {
+        if let Ok(found) = paths::package_entry(&prefix, package, command).await
+            && (shim || found.1 == canonical)
+        {
+            return Some(found);
+        }
+    }
+    None
+}
+
 impl AgentCatalogService {
+    async fn lookup_agent(
+        &self,
+        id: &str,
+        command: &str,
+        tools: &Toolchain,
+        cancel: &CancellationToken,
+    ) -> Result<Option<PathBuf>, CatalogError> {
+        if let Some(path) = tools.lookup(command) {
+            return Ok(Some(path));
+        }
+        if id != "cursor" {
+            return Ok(None);
+        }
+        let Some(path) = tools.lookup("agent") else {
+            return Ok(None);
+        };
+        let canonical = tokio::fs::canonicalize(&path)
+            .await
+            .unwrap_or_else(|_| path.clone());
+        let cursor_directory = canonical.parent().is_some_and(|parent| {
+            parent.components().any(|part| {
+                matches!(
+                    part.as_os_str()
+                        .to_str()
+                        .map(str::to_ascii_lowercase)
+                        .as_deref(),
+                    Some(".cursor" | "cursor-agent")
+                )
+            })
+        });
+        if cursor_directory {
+            return Ok(Some(path));
+        }
+        let Ok(launch) = paths::launch(&path, &tools.node).await else {
+            return Ok(None);
+        };
+        // `agent` is a generic name. Do not claim an unrelated program merely
+        // because it exists on PATH; require vendor identity from a bounded help probe.
+        match runner::run(
+            &launch,
+            &["--help".into()],
+            &std::env::temp_dir(),
+            &tools.env(),
+            self.probe_timeout,
+            cancel,
+        )
+        .await
+        {
+            Ok(output)
+                if [&output.stdout, &output.stderr].iter().any(|text| {
+                    let text = text.to_ascii_lowercase();
+                    text.contains("cursor agent")
+                        || text.contains("cursor cli")
+                        || text.contains("cursor.com")
+                }) =>
+            {
+                Ok(Some(path))
+            }
+            Err(CatalogError::Cancelled) => Err(CatalogError::Cancelled),
+            _ => Ok(None),
+        }
+    }
+
     pub(super) async fn tools(&self) -> Toolchain {
         #[cfg(test)]
         if let Some(tools) = &self.tools {
@@ -167,56 +293,12 @@ impl AgentCatalogService {
             AgentDistribution::Manual { command, .. } => (command.as_str(), None),
         };
         let mut checks = vec![];
-        if let Some((_, required)) = npm {
-            let node = if tools.node.is_file() {
-                self.probe(
-                    &CommandSpec {
-                        command: tools.node.to_string_lossy().into_owned(),
-                        args: vec![],
-                    },
-                    &tools,
-                    cancel,
-                )
-                .await?
-            } else {
-                None
-            };
-            checks.push(AgentCatalogCheck {
-                id: "node".into(),
-                status: if node
-                    .as_deref()
-                    .is_some_and(|node| version::meets(node, required))
-                {
-                    AgentCheckStatus::Pass
-                } else {
-                    AgentCheckStatus::Fail
-                },
-                message: format!(
-                    "Node.js {} (requires >= {required})",
-                    node.as_deref().unwrap_or("unavailable or version unknown")
-                ),
-            });
-            checks.push(AgentCatalogCheck {
-                id: "npm".into(),
-                status: if tools.npm.is_some() {
-                    AgentCheckStatus::Pass
-                } else {
-                    AgentCheckStatus::Fail
-                },
-                message: if tools.npm.is_some() {
-                    "npm command found"
-                } else {
-                    "Install Node.js with npm to install managed packages"
-                }
-                .into(),
-            });
-        }
         let managed = paths::current(&self.root, id).await;
         let mut installed = None;
         let mut source = AgentInstallSource::Missing;
         let mut installed_prefix = None;
         if let (Ok(Some(prefix)), Some((package, _))) = (&managed, npm) {
-            if let Ok(found) = paths::package(prefix, package, command, &tools.node).await {
+            if let Ok(found) = paths::package_entry(prefix, package, command).await {
                 installed = Some(found);
                 source = AgentInstallSource::Managed;
                 installed_prefix = Some(prefix.clone());
@@ -236,75 +318,69 @@ impl AgentCatalogService {
             });
         }
         if installed.is_none() {
-            let path = tools.lookup(command);
-            let prefix = if npm.is_some() {
+            let path = self.lookup_agent(id, command, &tools, cancel).await?;
+            if let (Some(path), Some((package, _))) = (&path, npm) {
+                installed = package_beside_command(path, package, command).await;
+                if installed.is_some() {
+                    source = AgentInstallSource::System;
+                }
+            }
+            let prefix = if npm.is_some() && installed.is_none() && path.is_none() {
                 self.npm_prefix(&tools, cancel).await?
             } else {
                 None
             };
             if let (Some(prefix), Some((package, _))) = (&prefix, npm) {
-                let bin_dir = if cfg!(windows) {
+                // npm -g uses lib/node_modules on Unix and node_modules on Windows.
+                let package_prefix = if cfg!(windows) {
                     prefix.clone()
                 } else {
-                    prefix.join("bin")
+                    prefix.join("lib")
                 };
-                if path
-                    .as_ref()
-                    .is_none_or(|path| path.parent() == Some(bin_dir.as_path()))
-                {
-                    // npm -g uses lib/node_modules on Unix and node_modules on Windows.
-                    let package_prefix = if cfg!(windows) {
-                        prefix.clone()
-                    } else {
-                        prefix.join("lib")
-                    };
-                    if let Ok(found) =
-                        paths::package(&package_prefix, package, command, &tools.node).await
-                    {
-                        installed = Some(found);
-                        source = AgentInstallSource::System;
-                    }
+                if let Ok(found) = paths::package_entry(&package_prefix, package, command).await {
+                    installed = Some(found);
+                    source = AgentInstallSource::System;
                 }
             }
             if installed.is_none()
                 && let Some(path) = path
             {
-                let launch = paths::launch(&path, &tools.node).await?;
-                let actual = self.probe(&launch, &tools, cancel).await?;
-                installed = Some((actual.unwrap_or_default(), launch));
+                installed = Some((String::new(), path));
                 source = AgentInstallSource::System;
             }
         }
         let mut dependencies = vec![];
-        if installed.is_some()
-            && let Some(check) = checks
-                .iter_mut()
-                .find(|check| check.id == "npm" && check.status == AgentCheckStatus::Fail)
-        {
-            check.status = AgentCheckStatus::Warn;
-            check.message = "npm is unavailable; the installed Agent can run, but managed installation and updates require npm".into();
-        }
+        let mut needs_node = if let Some((_, path)) = &installed {
+            paths::requires_node(path).await?
+        } else {
+            npm.is_some()
+        };
         for dependency in &entry.dependencies {
             let managed =
                 if let (Some(prefix), Some(package)) = (&installed_prefix, &dependency.package) {
-                    paths::package(prefix, package, &dependency.command, &tools.node)
+                    paths::package_entry(prefix, package, &dependency.command)
                         .await
                         .ok()
                 } else {
                     None
                 };
-            let (path, actual) = if let Some((actual, launch)) = managed {
-                (
-                    Some(launch.args.first().cloned().unwrap_or(launch.command)),
-                    Some(actual),
-                )
+            let (path, actual) = if let Some((actual, path)) = managed {
+                (Some(paths::command_path(&path)), Some(actual))
             } else if let Some(path) = tools.lookup(&dependency.command) {
-                let launch = paths::launch(&path, &tools.node).await?;
-                let actual = self.probe(&launch, &tools, cancel).await?;
+                let actual = if let Ok(launch) = paths::launch(&path, &tools.node).await {
+                    self.probe(&launch, &tools, cancel).await?
+                } else {
+                    None
+                };
                 (Some(path.to_string_lossy().into_owned()), actual)
             } else {
                 (None, None)
             };
+            if dependency.required
+                && let Some(path) = &path
+            {
+                needs_node |= paths::requires_node(Path::new(path)).await?;
+            }
             if dependency.required && path.is_none() {
                 checks.push(AgentCatalogCheck {
                     id: format!("dependency_{}", dependency.command),
@@ -319,7 +395,45 @@ impl AgentCatalogService {
                 version: actual,
             });
         }
-        checks.push(AgentCatalogCheck { id: "entry".into(), status: if installed.is_some() { AgentCheckStatus::Pass } else { AgentCheckStatus::Fail }, message: if installed.is_some() { "Agent entry point found; authentication and ACP capabilities still require a connection check" } else { "Agent entry point was not found" }.into() });
+        if needs_node {
+            let required = npm.map(|(_, required)| required).unwrap_or("0.0.0");
+            let actual = if tools.node.is_file() {
+                self.probe(
+                    &CommandSpec {
+                        command: paths::command_path(&tools.node),
+                        args: vec![],
+                    },
+                    &tools,
+                    cancel,
+                )
+                .await?
+            } else {
+                None
+            };
+            checks.push(node_check(actual.as_deref(), required));
+        }
+        if npm.is_some() {
+            checks.push(AgentCatalogCheck {
+                id: "npm".into(),
+                status: if tools.npm.is_some() { AgentCheckStatus::Pass } else if installed.is_some() { AgentCheckStatus::Warn } else { AgentCheckStatus::Fail },
+                message: if tools.npm.is_some() { "npm command found" } else { "npm is unavailable; preparing managed connection components requires Node.js with npm" }.into(),
+            });
+        }
+        let found_entry = installed.is_some();
+        checks.push(AgentCatalogCheck {
+            id: "entry".into(),
+            status: if found_entry {
+                AgentCheckStatus::Pass
+            } else {
+                AgentCheckStatus::Fail
+            },
+            message: if found_entry {
+                "Agent entry point found; check the ACP connection before use"
+            } else {
+                "Agent entry point was not found; install it or specify its location"
+            }
+            .into(),
+        });
         checks.push(AgentCatalogCheck {
             id: "managed_feedback".into(),
             status: if entry.verification.status == AgentVerificationStatus::Unsupported {
@@ -329,24 +443,40 @@ impl AgentCatalogService {
             },
             message: entry.verification.note,
         });
-        let (actual, launch) = installed
-            .map(|(actual, launch)| {
-                (
-                    if actual.is_empty() {
-                        None
-                    } else {
-                        Some(actual)
-                    },
-                    Some(launch),
-                )
-            })
-            .unwrap_or((None, None));
+        let mut launch = None;
+        let mut actual = None;
+        let dependency_commands = dependencies
+            .iter()
+            .filter(|dependency| dependency.required && installed_prefix.is_none())
+            .filter_map(|dependency| dependency.path.as_ref().map(PathBuf::from))
+            .collect::<Vec<_>>();
+        let mut launch_env = runtime_environment(&tools.node, &dependency_commands);
+        if let Some((version, path)) = installed {
+            actual = (!version.is_empty()).then_some(version);
+            match paths::launch(&path, &tools.node).await {
+                Ok(found) => {
+                    if actual.is_none() {
+                        actual = self.probe(&found, &tools, cancel).await?;
+                    }
+                    launch = Some(found);
+                },
+                Err(_) => checks.push(AgentCatalogCheck { id: "launch".into(), status: AgentCheckStatus::Fail, message: "The entry point was found but cannot launch; check its runtime and executable permissions".into() }),
+            }
+        }
+        if let Some(prefix) = &installed_prefix {
+            launch_env.extend(managed_launch_environment(id, prefix));
+        } else if id == "pi-acp"
+            && let Some(path) = dependencies
+                .iter()
+                .find(|dependency| dependency.command == "pi")
+                .and_then(|dependency| dependency.path.as_ref())
+        {
+            launch_env.insert("PI_ACP_PI_COMMAND".into(), path.clone());
+            launch_env.insert("PI_ACP_ENABLE_EMBEDDED_CONTEXT".into(), "true".into());
+        }
         Ok(AgentInspection {
             agent_id: id.into(),
-            env: installed_prefix
-                .as_ref()
-                .map(|prefix| managed_launch_environment(id, prefix))
-                .filter(|env| !env.is_empty()),
+            env: (!launch_env.is_empty()).then_some(launch_env),
             source,
             version: actual,
             command: launch.as_ref().map(|launch| launch.command.clone()),
@@ -358,3 +488,7 @@ impl AgentCatalogService {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "discovery_tests.rs"]
+mod tests;

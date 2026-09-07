@@ -1,20 +1,29 @@
 import { get } from 'svelte/store'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { APPLICATION_EVENTS_STREAM } from '$lib/application/applicationEvents'
 import { TestApplicationTransport } from '$lib/application/testApplicationTransport'
 import type { ManagedSessionSnapshot } from '$lib/generated/feedback'
 import { createManagedSessionController } from './managedSessionController'
+import { configureClientDiagnostics, type ClientDiagnosticEvent } from '$lib/diagnostics/clientDiagnostics'
+
+let stopDiagnostics: (() => void) | undefined
+function captureDiagnostics() {
+  const events: ClientDiagnosticEvent[] = []
+  stopDiagnostics = configureClientDiagnostics(event => { events.push(event) })
+  return events
+}
+afterEach(() => { stopDiagnostics?.(); stopDiagnostics = undefined })
 
 function snapshot(id: string, text = ''): ManagedSessionSnapshot {
   return {
     session: { session_id: id, host_id: 'dsh', host_session_id: `host-${id}`, title: id,
       management: { kind: 'managed', protocol: 'acp', agent_config_id: 'config', cwd: '/repo', remote_session_id: `remote-${id}` },
       created_at: '2026-09-04', updated_at: '2026-09-04' },
-    runtime: { configuration: { options: [], modes: null, models: null }, connection: 'connected', activity: 'idle', instance_id: `instance-${id}`, config_updated_at: null,
+    runtime: { configuration: { options: [] }, connection: 'connected', activity: 'idle', instance_id: `instance-${id}`, config_updated_at: null,
       capabilities: { prompt: { image: false, audio: false, embedded_context: false, resource_links: true }, load_session: true, resume_session: false, http_mcp: true }, last_error: null },
     activities: text ? [{ id: 'message', session_id: id, sequence: 1, turn_id: 'turn',
       kind: 'agent_message', text, tool_call_id: null, created_at: '2026-09-04' }] : [],
-    permissions: [],
+    interactions: [],
     deliveries: [],
     deleting: false,
     recovery: null,
@@ -26,6 +35,49 @@ function historySnapshot(sequences: number[], text = 'old'): ManagedSessionSnaps
   view.activities = sequences.map(sequence => ({ ...view.activities[0], id: `row-${sequence}`, sequence, text }))
   return view
 }
+
+describe('managed session diagnostics', () => {
+  it('records mutation outcomes and deletion gates without including prompt, session, or error data', async () => {
+    const events = captureDiagnostics()
+    const secret = 'private-session-canary'
+    const view = snapshot(secret)
+    const transport = new TestApplicationTransport(undefined, { initiallyReady: true })
+      .resolve('getManagedSession', view)
+      .reject('sendManagedPrompt', new Error('private-error-canary'))
+      .resolve('cancelManagedPrompt', view)
+    const controller = createManagedSessionController(transport, secret)
+    controller.start(); await flush()
+    await expect(controller.prompt('private-prompt-canary')).rejects.toThrow('private-error-canary')
+    await controller.cancel()
+    expect(events.find(event => event.details?.action === 'send' && event.outcome === 'failed')).toMatchObject({ activity: 'session_runtime', durationMs: expect.any(Number) })
+    expect(events.find(event => event.details?.action === 'cancel' && event.outcome === 'ok')).toBeDefined()
+    transport.resolve('getManagedSession', { ...view, deleting: true })
+    controller.refresh(); await flush()
+    await expect(controller.prompt('private-prompt-canary')).rejects.toThrow('being deleted')
+    expect(events.at(-1)).toMatchObject({ outcome: 'blocked', details: { reason: 'deleting', action: 'send' } })
+    expect(JSON.stringify(events)).not.toMatch(/private-session-canary|private-error-canary|private-prompt-canary|\/repo/u)
+    controller.dispose()
+  })
+
+  it('distinguishes automatic connection failure from explicit reconnect success without logging snapshot invalidations', async () => {
+    const events = captureDiagnostics()
+    const view = snapshot('one')
+    const disconnected = { ...view, runtime: { ...view.runtime, connection: 'disconnected' as const, instance_id: null } }
+    const transport = new TestApplicationTransport(undefined, { initiallyReady: true })
+      .resolve('getManagedSession', disconnected).reject('startManagedSession', new Error('private-connection-error'))
+    const controller = createManagedSessionController(transport, 'one')
+    controller.start(); await flush()
+    expect(events.find(event => event.details?.action === 'connect' && event.outcome === 'failed')).toMatchObject({ details: { explicit: false } })
+    const count = events.length
+    for (let index = 0; index < 4; index++) { controller.refresh(); await flush() }
+    expect(events).toHaveLength(count)
+    transport.resolve('startManagedSession', view)
+    await controller.startAgent()
+    expect(events.find(event => event.details?.action === 'connect' && event.outcome === 'ok')).toMatchObject({ details: { explicit: true, status: 'connected' } })
+    expect(JSON.stringify(events)).not.toContain('private-connection-error')
+    controller.dispose()
+  })
+})
 
 describe('managed session history', () => {
   it('makes a failed completion repair retryable even when the entire history is already loaded', async () => {
@@ -198,7 +250,7 @@ describe('managed workspace transport integration', () => {
     controller.start()
     await flush()
     for (const action of [controller.startAgent, controller.cancel,
-      () => controller.prompt('New work'), () => controller.respondPermission('permission', 'allow')]) {
+      () => controller.prompt('New work'), () => controller.respondInteraction('permission', { kind: 'permission', option_id: 'allow' })]) {
       await expect(action()).rejects.toThrow('being deleted')
     }
     expect(transport.calls.map((call) => call.name)).toEqual(['getManagedSession'])
@@ -282,17 +334,21 @@ describe('managed workspace transport integration', () => {
       .resolve('getManagedSession', current)
       .resolve('startManagedSession', current)
       .resolve('cancelManagedPrompt', current)
-      .resolve('respondManagedPermission', current)
+      .resolve('respondManagedInteraction', current)
     const controller = createManagedSessionController(transport, 'one')
     controller.start()
     await flush()
     await controller.startAgent()
     await controller.cancel()
-    await controller.respondPermission('request-one', 'allow-once')
-    await controller.respondPermission('request-two', null)
-    expect(transport.callsFor('respondManagedPermission').map((call) => call.input)).toEqual([
-      { session_id: 'one', request_id: 'request-one', option_id: 'allow-once' },
-      { session_id: 'one', request_id: 'request-two', option_id: null },
+    await controller.respondInteraction('request-one', { kind: 'permission', option_id: 'allow-once' })
+    await controller.respondInteraction('request-two', { kind: 'permission', option_id: null })
+    await controller.respondInteraction('question-one', { kind: 'question', response: { action: 'accept', content: { direction: 'Small change' } } })
+    await controller.respondInteraction('plan-one', { kind: 'plan', response: { action: 'decline', content: null } })
+    expect(transport.callsFor('respondManagedInteraction').map((call) => call.input)).toEqual([
+      { session_id: 'one', request_id: 'request-one', response: { kind: 'permission', option_id: 'allow-once' } },
+      { session_id: 'one', request_id: 'request-two', response: { kind: 'permission', option_id: null } },
+      { session_id: 'one', request_id: 'question-one', response: { kind: 'question', response: { action: 'accept', content: { direction: 'Small change' } } } },
+      { session_id: 'one', request_id: 'plan-one', response: { kind: 'plan', response: { action: 'decline', content: null } } },
     ])
     expect(transport.callsFor('startManagedSession')).toHaveLength(0)
     for (const name of ['cancelManagedPrompt'] as const) {

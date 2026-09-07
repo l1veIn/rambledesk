@@ -45,6 +45,7 @@ export function createTauriHostIntegrationCapability(
     piStatus: () => api.invoke('get_pi_package_status', { checkoutRoot: null }),
     installPi: () => api.invoke('install_pi_package', { checkoutRoot: null }),
     uninstallPi: () => api.invoke('uninstall_pi_package', { checkoutRoot: null }),
+    dshStatus: () => api.invoke('detect_dsh_host'),
     installDsh: () =>
       api.invoke('install_dsh_package', { checkoutRoot: null, profileId: null }),
   }
@@ -123,6 +124,9 @@ export function createTauriDiagnosticsCapability(
   api: TauriCapabilityApi,
 ): DiagnosticsCapability {
   return {
+    readSettings: () => api.invoke('get_diagnostics_settings'),
+    setEnabled: (enabled) => api.invoke('set_diagnostics_enabled', { enabled }),
+    clear: () => api.invoke<void>('clear_diagnostics'),
     export: (scope, path) => api.invoke('export_diagnostics', { scope, path }),
   }
 }

@@ -61,11 +61,11 @@ xattr -dr com.apple.quarantine /Applications/RambleDesk.app
 
 ## 支持的 Coding Agent
 
-反馈适配器目前支持 Claude Code、Cursor、Codex、Gemini CLI、Grok、OpenCode、Reasonix、Antigravity IDE，以及 Pi 和 DeepSeek Harness 原生适配器。
-
-也可以直接在 RambleDesk 创建 **ACP 托管会话**：在「设置 → Agents」配置已安装的 Agent，选择工作目录创建会话，然后发送任务。提交反馈后会自动续接同一个 Agent 会话。每个会话独占一个 ACP 实例，关闭视图不会停止运行。
+推荐通过 **ACP 托管会话**直接在 RambleDesk 中工作：在「设置 → Agents」连接已安装的 Agent，选择项目目录，然后发送任务。RambleDesk 管理对话，提交反馈后会自动续接同一个 Agent 会话。关闭视图不会停止会话运行。
 
 当前源码已实测社区 `deepseek-acp@0.8.0` 和官方 `@deepseek-ai/dsh@0.1.2-rc.1` 的真实反馈闭环；Pi、Codex ACP 预设仍未验收。配置、停止、恢复和投递状态说明见 [托管会话使用指南与支持矩阵](docs/ACP_MANAGED_SESSIONS.md)。
+
+**外部适配器**是沿用现有 Agent 应用或 CLI 的轻量接入方式。Agent 自行管理会话和对话，RambleDesk 负责接收反馈请求并返回你的回复。在「设置 → 外部适配器」中完成接入。反馈适配器目前支持 Claude Code、Cursor、Codex、Gemini CLI、Grok、OpenCode、Reasonix、Antigravity IDE，以及 Pi 和 DeepSeek Harness 原生适配器。
 
 ## 从源码运行
 

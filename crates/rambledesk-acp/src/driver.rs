@@ -71,6 +71,19 @@ async fn start(
     launch: AgentSessionLaunch,
     companion: Option<&Path>,
 ) -> Result<StartedAgentSession, AgentDriverError> {
+    let mut trace = rambledesk_core::agent_operation_trace::AgentOperationTrace::new(
+        "acp.start_session",
+        Some(&launch.session.session_id),
+    );
+    let result = start_inner(launch, companion, &mut trace).await;
+    trace.result(result, |_| "driver")
+}
+
+async fn start_inner(
+    launch: AgentSessionLaunch,
+    companion: Option<&Path>,
+    trace: &mut rambledesk_core::agent_operation_trace::AgentOperationTrace,
+) -> Result<StartedAgentSession, AgentDriverError> {
     let SessionManagement::Managed {
         cwd,
         remote_session_id,
@@ -93,7 +106,7 @@ async fn start(
         remote: Mutex::new(None),
         local_session_id: launch.session.session_id.clone(),
     });
-    let connection = AcpConnection::connect_observed(&options, observer.clone())
+    let connection = AcpConnection::connect_observed(&options, observer.clone(), Some(trace))
         .await
         .map_err(safe_error)?;
     let result = tokio::time::timeout(
@@ -104,6 +117,9 @@ async fn start(
     let info = match result {
         Ok(Ok(info)) => info,
         other => {
+            if other.is_err() {
+                trace.finish("timed_out", "timeout");
+            }
             let _ = connection.shutdown().await;
             return Err(match other {
                 Ok(Err(error)) => safe_error(error),
@@ -139,13 +155,30 @@ async fn check(
     config: &AgentConfig,
     companion: Option<&Path>,
 ) -> Result<AgentSessionCapabilities, AgentDriverError> {
+    let trace = rambledesk_core::agent_operation_trace::AgentOperationTrace::new(
+        "acp.check",
+        Some(&config.id),
+    );
+    let result = check_inner(config, companion, &trace).await;
+    trace.result(result, |_| "driver")
+}
+
+async fn check_inner(
+    config: &AgentConfig,
+    companion: Option<&Path>,
+    trace: &rambledesk_core::agent_operation_trace::AgentOperationTrace,
+) -> Result<AgentSessionCapabilities, AgentDriverError> {
     let cwd = std::env::current_dir()
         .map_err(|_| AgentDriverError::new("Cannot determine the runtime working directory"))?;
     let mut options = options(config, cwd);
     crate::agents::apply_managed_pi_defaults(config, &mut options.env).await;
-    let connection = AcpConnection::connect(&options, Arc::new(|_| {}))
-        .await
-        .map_err(safe_error)?;
+    let connection = AcpConnection::connect_observed(
+        &options,
+        Arc::new(crate::observer::CallbackObserver(Arc::new(|_| {}))),
+        Some(trace),
+    )
+    .await
+    .map_err(safe_error)?;
     let mut capabilities = connection.capabilities();
     let selected = companion
         .map(crate::feedback_transport::validate_companion)
@@ -180,13 +213,13 @@ impl AgentSessionConnection for ManagedConnection {
             ))
             .map_err(|_| AgentDriverError::new("ACP cancellation failed"))
     }
-    async fn respond_permission(
+    async fn respond_interaction(
         &self,
         request_id: &str,
-        option_id: Option<&str>,
+        response: rambledesk_core::SessionInteractionResponse,
     ) -> Result<(), AgentDriverError> {
         self.permissions
-            .respond(request_id, option_id)
+            .respond_interaction(request_id, response)
             .map_err(safe_error)
     }
     async fn prompt(&self, text: &str) -> Result<String, AgentDriverError> {

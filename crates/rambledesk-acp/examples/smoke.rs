@@ -1,7 +1,7 @@
 //! Usage: cargo run -p rambledesk-acp --example smoke -- launch.json [prompt]
 //! Launch JSON: {"command":"deepseek-acp","args":[],"cwd":"C:/project"}.
 //! The optional third argument is an existing remote session ID to load.
-use rambledesk_acp::{AcpConnection, AcpEvent, AcpLaunch};
+use rambledesk_acp::probe::{AcpConnection, AcpEvent, AcpLaunch};
 use std::{sync::Arc, time::Duration};
 
 #[tokio::main]
@@ -25,7 +25,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             AcpEvent::PermissionDeclined => {
                 eprintln!("permission declined (probe has no approval UI)")
             }
-            AcpEvent::PermissionRequested { .. } => {
+            AcpEvent::PermissionRequested { .. } | AcpEvent::InputRequested { .. } => {
                 unreachable!("probe permissions are always declined")
             }
         }),

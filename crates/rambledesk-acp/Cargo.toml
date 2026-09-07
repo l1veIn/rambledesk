@@ -5,13 +5,14 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-agent-client-protocol.workspace = true
+agent-client-protocol = { workspace = true, features = ["unstable_elicitation"] }
 futures.workspace = true
 rambledesk-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+tracing.workspace = true
 tokio-util = { workspace = true, features = ["compat"] }
 async-trait.workspace = true
 uuid.workspace = true
@@ -26,3 +27,4 @@ libc = "0.2"
 [dev-dependencies]
 tempfile.workspace = true
 rambledesk-storage.workspace = true
+tracing-subscriber.workspace = true

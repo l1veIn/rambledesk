@@ -21,7 +21,7 @@ import type {
   SessionActivityState,
   SaveAgentConfigInput,
   SendManagedPromptInput,
-  RespondManagedPermissionInput,
+  RespondManagedInteractionInput,
   ResolveFeedbackDeliveryInput,
 } from '../generated/feedback'
 import {
@@ -45,7 +45,7 @@ describe('application command contracts', () => {
     expectTypeOf<ApplicationCommandInput<'createManagedSession'>>().toEqualTypeOf<CreateManagedSessionInput>()
     expectTypeOf<ApplicationCommandInput<'getManagedSession'>>().toEqualTypeOf<ManagedSessionInput>()
     expectTypeOf<ApplicationCommandInput<'sendManagedPrompt'>>().toEqualTypeOf<SendManagedPromptInput>()
-    expectTypeOf<ApplicationCommandInput<'respondManagedPermission'>>().toEqualTypeOf<RespondManagedPermissionInput>()
+    expectTypeOf<ApplicationCommandInput<'respondManagedInteraction'>>().toEqualTypeOf<RespondManagedInteractionInput>()
     expectTypeOf<ApplicationCommandInput<'resolveFeedbackDelivery'>>().toEqualTypeOf<ResolveFeedbackDeliveryInput>()
     expectTypeOf<ApplicationCommandResult<'resolveFeedbackDelivery'>>().toEqualTypeOf<ManagedSessionSnapshot>()
     expectTypeOf<ApplicationCommandInput<'deleteManagedSession'>>().toEqualTypeOf<ManagedSessionInput>()
@@ -119,7 +119,7 @@ describe('application command contracts', () => {
       'stopManagedSession',
       'cancelManagedPrompt',
       'sendManagedPrompt',
-      'respondManagedPermission',
+      'respondManagedInteraction',
       'resolveFeedbackDelivery',
       'deleteManagedSession',
       'listFeedbackInbox',

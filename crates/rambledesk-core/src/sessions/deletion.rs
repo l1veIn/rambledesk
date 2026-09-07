@@ -59,6 +59,18 @@ impl SessionApplication {
         &self,
         input: ManagedSessionInput,
     ) -> Result<(), SessionError> {
+        let trace = crate::agent_operation_trace::AgentOperationTrace::new(
+            "session.delete",
+            Some(&input.session_id),
+        );
+        let result = self.delete_managed_session_inner(input).await;
+        trace.result(result, SessionError::diagnostic_code)
+    }
+
+    async fn delete_managed_session_inner(
+        &self,
+        input: ManagedSessionInput,
+    ) -> Result<(), SessionError> {
         let repository = self.deletions.as_ref().ok_or(SessionError::InvalidInput)?;
         match self.managed_record(&input.session_id).await {
             Err(SessionError::Repository(SessionRepositoryError::SessionNotFound)) => return Ok(()),
@@ -84,7 +96,7 @@ impl SessionApplication {
             .await?;
         let mut live = entry.live.lock().await;
         live.runtime.connection = SessionConnectionState::Disconnected;
-        live.permissions.clear();
+        live.interactions.clear();
         let connection = live.connection.clone();
         drop(live);
         self.session_changed(&input.session_id);

@@ -327,6 +327,9 @@ describe('Tauri Workbench capabilities', () => {
     await capabilities.webAccessAdministration.implementation.setEnabled(true)
     await capabilities.webAccessAdministration.implementation.setEnabled(false)
     await capabilities.diagnostics.implementation.export('last_24_hours', '/tmp/report.zip')
+    await capabilities.diagnostics.implementation.readSettings()
+    await capabilities.diagnostics.implementation.setEnabled(false)
+    await capabilities.diagnostics.implementation.clear()
     await capabilities.softwareUpdates.implementation.check({ prompt: true, forcePrompt: false })
     await capabilities.softwareUpdates.implementation.install()
 
@@ -354,6 +357,9 @@ describe('Tauri Workbench capabilities', () => {
     expect(api.invokeMock).toHaveBeenCalledWith('export_diagnostics', {
       scope: 'last_24_hours', path: '/tmp/report.zip',
     })
+    expect(api.invokeMock).toHaveBeenCalledWith('get_diagnostics_settings')
+    expect(api.invokeMock).toHaveBeenCalledWith('set_diagnostics_enabled', { enabled: false })
+    expect(api.invokeMock).toHaveBeenCalledWith('clear_diagnostics')
     expect(api.checkForUpdates).toHaveBeenCalledWith({ prompt: true, forcePrompt: false })
     expect(api.installUpdate).toHaveBeenCalledOnce()
   })

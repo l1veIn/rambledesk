@@ -128,6 +128,16 @@ pub(super) async fn package(
     command: &str,
     node: &Path,
 ) -> Result<(String, CommandSpec), CatalogError> {
+    let (version, binary) = package_entry(prefix, name, command).await?;
+    Ok((version, launch(&binary, node).await?))
+}
+
+/// Package discovery is independent of its runtime being installed.
+pub(super) async fn package_entry(
+    prefix: &Path,
+    name: &str,
+    command: &str,
+) -> Result<(String, PathBuf), CatalogError> {
     let root = tokio::fs::canonicalize(prefix)
         .await
         .map_err(|_| CatalogError::InvalidInstall)?;
@@ -156,33 +166,54 @@ pub(super) async fn package(
     if !binary.is_file() {
         return Err(CatalogError::InvalidInstall);
     }
-    Ok((version, launch(&binary, node).await?))
+    Ok((version, binary))
+}
+
+pub(super) async fn requires_node(path: &Path) -> Result<bool, CatalogError> {
+    let mut file = tokio::fs::File::open(path)
+        .await
+        .map_err(|_| CatalogError::CommandUnavailable)?;
+    let mut first = [0u8; 4096];
+    let count = file
+        .read(&mut first)
+        .await
+        .map_err(|_| CatalogError::CommandUnavailable)?;
+    let text = String::from_utf8_lossy(&first[..count]);
+    Ok(matches!(
+        path.extension().and_then(|value| value.to_str()),
+        Some("js" | "mjs" | "cjs")
+    ) || (first.starts_with(b"#!")
+        && text
+            .lines()
+            .next()
+            .is_some_and(|line| line.contains("node")))
+        // npm shims can still be runnable without npm itself. Recognize their
+        // Node runtime even when a package metadata lookup was not possible.
+        || (matches!(path.extension().and_then(|value| value.to_str()), Some("cmd" | "bat"))
+            && (text.contains("node.exe") || text.contains("_prog=node")))
+        || (first.starts_with(b"#!/bin/sh") && text.contains("node") && text.contains("basedir")))
 }
 
 pub(super) async fn launch(path: &Path, node: &Path) -> Result<CommandSpec, CatalogError> {
     let path = tokio::fs::canonicalize(path)
         .await
         .map_err(|_| CatalogError::CommandUnavailable)?;
-    let mut file = tokio::fs::File::open(&path)
+    let script = requires_node(&path).await?;
+    if script && !node.is_file() {
+        return Err(CatalogError::CommandUnavailable);
+    }
+    let mut header = [0u8; 16];
+    tokio::fs::File::open(&path)
+        .await
+        .map_err(|_| CatalogError::CommandUnavailable)?
+        .read(&mut header)
         .await
         .map_err(|_| CatalogError::CommandUnavailable)?;
-    let mut first = [0u8; 160];
-    let count = file
-        .read(&mut first)
-        .await
-        .map_err(|_| CatalogError::CommandUnavailable)?;
-    let script = matches!(
+    let shim = matches!(
         path.extension().and_then(|value| value.to_str()),
-        Some("js" | "mjs" | "cjs")
-    ) || (first.starts_with(b"#!")
-        && String::from_utf8_lossy(&first[..count])
-            .lines()
-            .next()
-            .is_some_and(|line| line.contains("node")));
-    if script {
-        if !node.is_file() {
-            return Err(CatalogError::CommandUnavailable);
-        }
+        Some("cmd" | "bat")
+    ) || (script && header.starts_with(b"#!/bin/sh"));
+    if script && !shim {
         Ok(CommandSpec {
             command: command_path(node),
             args: vec![command_path(&path)],
@@ -191,8 +222,7 @@ pub(super) async fn launch(path: &Path, node: &Path) -> Result<CommandSpec, Cata
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            if file
-                .metadata()
+            if tokio::fs::metadata(&path)
                 .await
                 .map_err(|_| CatalogError::InvalidInstall)?
                 .permissions()

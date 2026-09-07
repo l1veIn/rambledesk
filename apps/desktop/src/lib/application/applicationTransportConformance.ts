@@ -8,7 +8,7 @@ import type {
 } from './contracts'
 
 export const APPLICATION_CONFORMANCE_INPUTS = {
-  setManagedSessionConfig: { session_id: 'local-session-1', change: { type: 'mode', mode_id: 'ask' } },
+  setManagedSessionConfig: { session_id: 'local-session-1', change: { config_id: 'session-mode', value: { type: 'select', value: 'ask' } } },
   sendManagedPromptContent: { session_id: 'local-session-1', text: 'Read this', content: [{ type: 'resource_link', uri: 'file:///project/main.ts', name: 'main.ts', mime_type: 'text/typescript' }] },
   listManagedSessionActivity: { session_id: 'local-session-1', before_sequence: 100, limit: 50 },
   listAvailableAgents: undefined,
@@ -34,7 +34,7 @@ export const APPLICATION_CONFORMANCE_INPUTS = {
   stopManagedSession: { session_id: 'local-session-1' },
   cancelManagedPrompt: { session_id: 'local-session-1' },
   sendManagedPrompt: { session_id: 'local-session-1', text: 'Review this project.' },
-  respondManagedPermission: { session_id: 'local-session-1', request_id: 'permission-1', option_id: null },
+  respondManagedInteraction: { session_id: 'local-session-1', request_id: 'permission-1', response: { kind: 'permission', option_id: null } },
   resolveFeedbackDelivery: { session_id: 'local-session-1', request_id: 'request-1', action: 'acknowledge' },
   deleteManagedSession: { session_id: 'local-session-1' },
   listFeedbackInbox: undefined,

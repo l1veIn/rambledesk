@@ -63,7 +63,7 @@ const MUTATION_OPERATIONS: &[&str] = &[
     "sendManagedPromptContent",
     "setManagedSessionConfig",
     "cancelManagedPrompt",
-    "respondManagedPermission",
+    "respondManagedInteraction",
     "saveFeedbackDraft",
     "addFeedbackAttachment",
     "removeFeedbackAttachment",

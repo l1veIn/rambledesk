@@ -269,8 +269,16 @@ mod tests {
         );
         assert_eq!(prepared.runtime.configuration.options.len(), 2);
         let session_id = prepared.session.session_id;
-        let change = SessionConfigChange::Option {
-            config_id: "effort".into(),
+        let change = SessionConfigChange {
+            config_id: prepared
+                .runtime
+                .configuration
+                .options
+                .iter()
+                .find(|option| option.category.as_deref() == Some("thought_level"))
+                .unwrap()
+                .id
+                .clone(),
             value: SessionConfigValue::Select {
                 value: "high".into(),
             },

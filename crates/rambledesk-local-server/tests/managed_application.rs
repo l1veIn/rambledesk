@@ -39,17 +39,21 @@ impl AgentSessionConnection for Connection {
     async fn prompt(&self, text: &str) -> Result<String, AgentDriverError> {
         if text == "permission" {
             self.observer
-                .observe(AgentSessionEvent::PermissionRequested(SessionPermission {
-                    request_id: "permission-one".into(),
-                    session_id: self.session_id.clone(),
-                    title: "Review fixture access".into(),
-                    details: None,
-                    options: vec![SessionPermissionOption {
-                        option_id: "allow".into(),
-                        name: "Allow once".into(),
-                        kind: "allow_once".into(),
-                    }],
-                }))
+                .observe(AgentSessionEvent::InteractionRequested(
+                    SessionInteraction {
+                        request_id: "permission-one".into(),
+                        session_id: self.session_id.clone(),
+                        title: "Review fixture access".into(),
+                        details: None,
+                        kind: SessionInteractionKind::Permission {
+                            options: vec![SessionPermissionOption {
+                                option_id: "allow".into(),
+                                name: "Allow once".into(),
+                                kind: "allow_once".into(),
+                            }],
+                        },
+                    },
+                ))
                 .await?;
         }
         self.finish.notified().await;
@@ -59,7 +63,11 @@ impl AgentSessionConnection for Connection {
         self.finish.notify_one();
         Ok(())
     }
-    async fn respond_permission(&self, _: &str, _: Option<&str>) -> Result<(), AgentDriverError> {
+    async fn respond_interaction(
+        &self,
+        _: &str,
+        _: SessionInteractionResponse,
+    ) -> Result<(), AgentDriverError> {
         self.finish.notify_one();
         Ok(())
     }
@@ -426,12 +434,12 @@ async fn managed_http_uses_the_facade_for_configuration_session_prompt_and_permi
         .await?;
     assert_eq!(sent["session"]["session_id"], id);
     fixture
-        .wait_for(&id, |snapshot| !snapshot.permissions.is_empty())
+        .wait_for(&id, |snapshot| !snapshot.interactions.is_empty())
         .await?;
     let invalid = fixture
         .request(
-            "respondManagedPermission",
-            json!({"session_id":id,"request_id":"permission-one","option_id":"unknown"}),
+            "respondManagedInteraction",
+            json!({"session_id":id,"request_id":"permission-one","response":{"kind":"permission","option_id":"unknown"}}),
         )
         .header(RUNTIME_GENERATION_HEADER, "managed-test")
         .send()
@@ -440,8 +448,8 @@ async fn managed_http_uses_the_facade_for_configuration_session_prompt_and_permi
     assert_eq!(invalid.json::<Value>().await?["code"], "INVALID_ARGUMENT");
     fixture
         .call(
-            "respondManagedPermission",
-            json!({"session_id":id,"request_id":"permission-one","option_id":"allow"}),
+            "respondManagedInteraction",
+            json!({"session_id":id,"request_id":"permission-one","response":{"kind":"permission","option_id":"allow"}}),
         )
         .await?;
     fixture
@@ -518,7 +526,7 @@ async fn every_managed_mutation_requires_current_runtime_generation_including_co
         "setManagedSessionConfig",
         "sendManagedPromptContent",
         "cancelManagedPrompt",
-        "respondManagedPermission",
+        "respondManagedInteraction",
         "resolveFeedbackDelivery",
         "deleteManagedSession",
     ] {
@@ -583,7 +591,7 @@ fn tauri_managed_commands_match_http_names_and_delegate_to_the_same_facade() {
             "list_managed_session_activity",
         ),
         ("cancelManagedPrompt", "cancel_managed_prompt"),
-        ("respondManagedPermission", "respond_managed_permission"),
+        ("respondManagedInteraction", "respond_managed_interaction"),
         ("resolveFeedbackDelivery", "resolve_feedback_delivery"),
         ("deleteManagedSession", "delete_managed_session"),
     ] {
@@ -664,16 +672,15 @@ async fn uncertain_delivery_decisions_are_scoped_and_return_the_updated_snapshot
                     context_refs: vec![],
                     attachments: vec![],
                     source_hint: None,
-                    allow_finish: false,
-                    final_summary: None,
+                    allow_finish: true,
+                    final_summary: Some("Work is ready for review".into()),
                 },
             )
             .await?;
         fixture
             .feedback
-            .cancel_feedback(CancelFeedbackInput {
+            .approve_feedback(ApproveFeedbackInput {
                 request_id: request.request_id.clone(),
-                reason: "Fixture cancellation".into(),
             })
             .await?;
         let now = "2026-09-04T12:00:00Z";

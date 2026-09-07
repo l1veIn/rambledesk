@@ -38,7 +38,10 @@ export function createWorkspaceTransition<LoadedWorkspace>(
 
   function activate(
     target: WorkspaceTransitionTarget,
+    expectedIntent?: number,
   ): Promise<WorkspaceTransitionOutcome> {
+    // A delayed scope/catalog read cannot supersede a newer user navigation.
+    if (expectedIntent !== undefined && expectedIntent !== latestIntent) return Promise.resolve('stale')
     const intent = ++latestIntent
     adapter.setPendingTarget(target)
 
@@ -77,10 +80,11 @@ export function createWorkspaceTransition<LoadedWorkspace>(
   }
 
   function invalidate() {
-    latestIntent += 1
+    const intent = ++latestIntent
     adapter.restoreCurrent()
     adapter.setPendingTarget(null)
+    return intent
   }
 
-  return { activate, invalidate }
+  return { activate, invalidate, isCurrent: (intent: number) => intent === latestIntent }
 }

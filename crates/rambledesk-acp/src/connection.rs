@@ -37,6 +37,20 @@ pub enum AcpError {
     InvalidPermission,
 }
 
+impl AcpError {
+    pub(crate) fn diagnostic_code(&self) -> &'static str {
+        match self {
+            Self::InvalidLaunch(_) => "invalid_launch",
+            Self::Io(_) => "process_io",
+            Self::Protocol(_) => "protocol",
+            Self::Closed => "closed",
+            Self::Timeout(_) => "timeout",
+            Self::CannotLoad => "cannot_load",
+            Self::InvalidPermission => "invalid_permission",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct AcpSessionInfo {
     pub remote_session_id: String,
@@ -54,6 +68,13 @@ pub struct AcpSessionInfo {
 pub enum AcpEvent {
     Update(Box<SessionNotification>),
     PermissionDeclined,
+    InputRequested {
+        request_id: String,
+        kind: rambledesk_core::SessionInputKind,
+        remote: String,
+        title: String,
+        input: rambledesk_core::SessionInputRequest,
+    },
     PermissionRequested {
         request_id: String,
         request: Box<RequestPermissionRequest>,
@@ -61,6 +82,7 @@ pub enum AcpEvent {
 }
 
 pub struct AcpConnection {
+    diagnostic_id: String,
     connection: ConnectionTo<Agent>,
     child: crate::process::OwnedProcess,
     task: JoinHandle<Result<(), agent_client_protocol::Error>>,
@@ -81,6 +103,7 @@ impl AcpConnection {
         Self::connect_observed(
             launch,
             Arc::new(crate::observer::CallbackObserver(observer)),
+            None,
         )
         .await
     }
@@ -88,24 +111,53 @@ impl AcpConnection {
     pub(crate) async fn connect_observed(
         launch: &AcpLaunch,
         observer: Arc<dyn crate::observer::ProtocolObserver>,
+        parent: Option<&rambledesk_core::agent_operation_trace::AgentOperationTrace>,
     ) -> Result<Self, AcpError> {
-        let mut child = crate::process::spawn_filtered(
+        let id = uuid::Uuid::now_v7().to_string();
+        if let Some(parent) = parent {
+            parent.link("connection", &id);
+        }
+        let trace = rambledesk_core::agent_operation_trace::AgentOperationTrace::new(
+            "acp.connect",
+            Some(&id),
+        );
+        let result = Self::connect_inner(launch, observer, &id).await;
+        trace.result(result, AcpError::diagnostic_code)
+    }
+
+    async fn connect_inner(
+        launch: &AcpLaunch,
+        observer: Arc<dyn crate::observer::ProtocolObserver>,
+        id: &str,
+    ) -> Result<Self, AcpError> {
+        let spawn_trace =
+            rambledesk_core::agent_operation_trace::AgentOperationTrace::new("acp.spawn", Some(id));
+        let child = crate::process::spawn_filtered(
             &launch.command,
             &launch.args,
             &launch.env,
             &launch.cwd,
             &crate::feedback_transport::inherited_private_env_to_remove(&launch.env),
-        )?;
+        );
+        let mut child = spawn_trace.result(child, AcpError::diagnostic_code)?;
         let stdin = child.take_stdin().ok_or(AcpError::Closed)?;
         let stdout = child.take_stdout().ok_or(AcpError::Closed)?;
         let transport_closed = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let stdout = crate::disconnect::DisconnectReader {
             inner: stdout,
             closed: transport_closed.clone(),
+            trace: rambledesk_core::agent_operation_trace::AgentOperationTrace::new(
+                "acp.transport",
+                Some(id),
+            ),
         };
         let stderr = tokio::spawn(crate::process::drain_stderr(
             child.take_stderr().ok_or(AcpError::Closed)?,
         ));
+        let handshake_trace = rambledesk_core::agent_operation_trace::AgentOperationTrace::new(
+            "acp.initialize",
+            Some(id),
+        );
         let (ready_tx, ready_rx) = oneshot::channel();
         let (stop, stopped) = oneshot::channel();
         let notification_observer = observer.clone();
@@ -115,96 +167,108 @@ impl AcpConnection {
         let notification_configuration = configuration.clone();
         let permissions = Arc::new(crate::permissions::PermissionQueue::default());
         let request_permissions = permissions.clone();
-        let task =
-            tokio::spawn(async move {
-                let _permission_guard =
-                    crate::permissions::CancelPermissionsOnDrop(request_permissions.clone());
-                Client
-                    .builder()
-                    .name("rambledesk")
-                    .on_receive_notification(
-                        async move |notification: SessionNotification, _| {
-                            notification_configuration
-                                .lock()
-                                .expect("configuration cache")
-                                .observe(&notification)
-                                .map_err(|_| agent_client_protocol::Error::internal_error())?;
-                            notification_observer
-                                .observe(AcpEvent::Update(Box::new(notification)))
-                                .await
-                                .map_err(|_| agent_client_protocol::Error::internal_error())?;
-                            Ok(())
-                        },
-                        agent_client_protocol::on_receive_notification!(),
-                    )
-                    .on_receive_request(
-                        async move |request: RequestPermissionRequest, responder, _| {
-                            if observer.manages_permissions() {
-                                let request_id = request_permissions.insert(&request, responder);
-                                return observer
-                                    .observe(AcpEvent::PermissionRequested {
-                                        request_id,
-                                        request: Box::new(request),
-                                    })
-                                    .await
-                                    .map_err(|_| agent_client_protocol::Error::internal_error());
-                            }
-                            // Smoke probes never approve operations implicitly.
-                            observer
-                                .observe(AcpEvent::PermissionDeclined)
-                                .await
-                                .map_err(|_| agent_client_protocol::Error::internal_error())?;
-                            responder.respond(RequestPermissionResponse::new(
-                                RequestPermissionOutcome::Cancelled,
-                            ))
-                        },
-                        agent_client_protocol::on_receive_request!(),
-                    )
-                    .connect_with(
-                        ByteStreams::new(stdin.compat_write(), stdout.compat()),
-                        async move |cx| {
-                            let result = cx
-                                .send_request(
-                                    InitializeRequest::new(ProtocolVersion::V1)
-                                        .client_info(Implementation::new(
-                                            "rambledesk",
-                                            env!("CARGO_PKG_VERSION"),
-                                        ))
-                                        .client_capabilities(ClientCapabilities::new().session(
+        let manages_inputs = observer.manages_permissions();
+        let task = tokio::spawn(async move {
+            let _permission_guard =
+                crate::permissions::CancelPermissionsOnDrop(request_permissions.clone());
+            crate::user_input::register(
+                Client.builder(),
+                request_permissions.clone(),
+                observer.clone(),
+            )
+            .name("rambledesk")
+            .on_receive_notification(
+                async move |notification: SessionNotification, _| {
+                    notification_configuration
+                        .lock()
+                        .expect("configuration cache")
+                        .observe(&notification)
+                        .map_err(|_| agent_client_protocol::Error::internal_error())?;
+                    notification_observer
+                        .observe(AcpEvent::Update(Box::new(notification)))
+                        .await
+                        .map_err(|_| agent_client_protocol::Error::internal_error())?;
+                    Ok(())
+                },
+                agent_client_protocol::on_receive_notification!(),
+            )
+            .on_receive_request(
+                async move |request: RequestPermissionRequest, responder, _| {
+                    if observer.manages_permissions() {
+                        let request_id = request_permissions.insert(&request, responder);
+                        let observed = observer
+                            .observe(AcpEvent::PermissionRequested {
+                                request_id: request_id.clone(),
+                                request: Box::new(request),
+                            })
+                            .await
+                            .map_err(|_| agent_client_protocol::Error::internal_error());
+                        if observed.is_err() {
+                            let _ = request_permissions.respond(&request_id, None);
+                        }
+                        return observed;
+                    }
+                    // Smoke probes never approve operations implicitly.
+                    observer
+                        .observe(AcpEvent::PermissionDeclined)
+                        .await
+                        .map_err(|_| agent_client_protocol::Error::internal_error())?;
+                    responder.respond(RequestPermissionResponse::new(
+                        RequestPermissionOutcome::Cancelled,
+                    ))
+                },
+                agent_client_protocol::on_receive_request!(),
+            )
+            .connect_with(
+                ByteStreams::new(stdin.compat_write(), stdout.compat()),
+                async move |cx| {
+                    let result = cx
+                        .send_request(
+                            InitializeRequest::new(ProtocolVersion::V1)
+                                .client_info(Implementation::new(
+                                    "rambledesk",
+                                    env!("CARGO_PKG_VERSION"),
+                                ))
+                                .client_capabilities(
+                                    ClientCapabilities::new()
+                                        .elicitation(manages_inputs.then(|| {
+                                            ElicitationCapabilities::new()
+                                                .form(ElicitationFormCapabilities::new())
+                                        }))
+                                        .session(
                                             ClientSessionCapabilities::new().config_options(
                                                 SessionConfigOptionsCapabilities::new().boolean(
                                                     BooleanConfigOptionCapabilities::default(),
                                                 ),
                                             ),
-                                        )),
-                                )
-                                .block_task()
-                                .await;
-                            match result {
-                                Ok(initialized)
-                                    if initialized.protocol_version == ProtocolVersion::V1 =>
-                                {
-                                    let _ = ready_tx.send(Ok((cx, initialized)));
-                                }
-                                Ok(_) => {
-                                    let _ = ready_tx
-                                        .send(Err(AcpError::Protocol("protocol negotiation")));
-                                    return Ok(());
-                                }
-                                Err(error) => {
-                                    let _ = ready_tx.send(Err(AcpError::Protocol("initialize")));
-                                    return Err(error);
-                                }
-                            }
-                            let _ = stopped.await;
-                            Ok(())
-                        },
-                    )
-                    .await
-            });
+                                        ),
+                                ),
+                        )
+                        .block_task()
+                        .await;
+                    match result {
+                        Ok(initialized) if initialized.protocol_version == ProtocolVersion::V1 => {
+                            let _ = ready_tx.send(Ok((cx, initialized)));
+                        }
+                        Ok(_) => {
+                            let _ = ready_tx.send(Err(AcpError::Protocol("protocol negotiation")));
+                            return Ok(());
+                        }
+                        Err(error) => {
+                            let _ = ready_tx.send(Err(AcpError::Protocol("initialize")));
+                            return Err(error);
+                        }
+                    }
+                    let _ = stopped.await;
+                    Ok(())
+                },
+            )
+            .await
+        });
         let result = tokio::time::timeout(Duration::from_secs(30), ready_rx).await;
-        match result {
+        let result = match result {
             Ok(Ok(Ok((connection, initialized)))) => Ok(Self {
+                diagnostic_id: id.to_owned(),
                 connection,
                 child,
                 task,
@@ -228,7 +292,8 @@ impl AcpConnection {
                     _ => Err(AcpError::Closed),
                 }
             }
-        }
+        };
+        handshake_trace.result(result, AcpError::diagnostic_code)
     }
 
     pub fn process_id(&self) -> Option<u32> {
@@ -272,6 +337,20 @@ impl AcpConnection {
     }
 
     pub async fn open_session(
+        &self,
+        launch: &AcpLaunch,
+        remote: Option<&str>,
+    ) -> Result<AcpSessionInfo, AcpError> {
+        let trace = rambledesk_core::agent_operation_trace::AgentOperationTrace::new(
+            "acp.open_session",
+            Some(&self.diagnostic_id),
+        );
+        trace.checkpoint("mode", if remote.is_some() { "recover" } else { "new" });
+        let result = self.open_session_inner(launch, remote).await;
+        trace.result(result, AcpError::diagnostic_code)
+    }
+
+    async fn open_session_inner(
         &self,
         launch: &AcpLaunch,
         remote: Option<&str>,
@@ -334,7 +413,16 @@ impl AcpConnection {
             .map_err(|_| AcpError::Closed)
     }
 
-    pub async fn shutdown(mut self) -> Result<(), AcpError> {
+    pub async fn shutdown(self) -> Result<(), AcpError> {
+        let trace = rambledesk_core::agent_operation_trace::AgentOperationTrace::new(
+            "acp.shutdown",
+            Some(&self.diagnostic_id),
+        );
+        let result = self.shutdown_inner().await;
+        trace.result(result, AcpError::diagnostic_code)
+    }
+
+    async fn shutdown_inner(mut self) -> Result<(), AcpError> {
         self.permissions.cancel_all();
         let remote = self
             .remote_session_id

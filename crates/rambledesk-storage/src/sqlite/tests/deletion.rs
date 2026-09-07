@@ -46,6 +46,49 @@ async fn setup() -> (TestWorkspace, SqliteFeedbackStore) {
     (workspace, store)
 }
 
+#[tokio::test]
+async fn archived_managed_sessions_cannot_bypass_runtime_cleanup_through_external_deletion() {
+    let (_workspace, store) = setup().await;
+    let original = store
+        .bind_remote_session("one", "remote-one", NOW)
+        .await
+        .unwrap();
+    store.archive_host_session("dsh", "one", NOW).await.unwrap();
+    assert_eq!(
+        store.delete_host_session("dsh", "one").await,
+        Err(RepositoryError::ManagedSessionRequiresRuntimeDeletion)
+    );
+    let failure = store
+        .clone()
+        .into_application()
+        .delete_host_session(HostSessionInput {
+            host_id: "dsh".into(),
+            host_session_id: "one".into(),
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(failure.code(), "INVALID_ARGUMENT");
+    assert!(!failure.retryable());
+    assert_eq!(store.get_session("one").await.unwrap(), original);
+    let archived = store
+        .list_host_sessions(HostSessionQuery {
+            archived: true,
+            search: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(archived.len(), 1);
+    assert_eq!(archived[0].session_id, "one");
+    assert!(
+        store
+            .list_managed_session_deletions()
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(store.get_session("two").await.is_ok());
+}
+
 async fn request(
     workspace: &TestWorkspace,
     store: &SqliteFeedbackStore,

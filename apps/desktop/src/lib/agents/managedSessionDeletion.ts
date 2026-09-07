@@ -20,7 +20,7 @@ export function removeManagedSessionViews(
   }
 }
 
-/** Archive status is an external-session concern; managed deletion owns runtime cleanup. */
+/** Managed deletion owns runtime cleanup, including when a session is archived. */
 export async function deleteSessionRecord(transport: ApplicationTransport, session: HostSessionSummary): Promise<void> {
   if (session.management.kind === 'managed') {
     await transport.call('deleteManagedSession', { session_id: session.session_id })

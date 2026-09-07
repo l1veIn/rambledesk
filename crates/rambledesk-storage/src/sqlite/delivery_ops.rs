@@ -7,7 +7,8 @@ use sqlx::{Row, sqlite::SqliteRow};
 
 use super::{RepositoryError, SqliteFeedbackStore};
 
-/// Called inside the transaction that publishes the terminal request. Replays
+/// Called inside the transaction that publishes the terminal request. Only a
+/// completed review continues the agent; cancellation stays local. Replays
 /// preserve the existing delivery state, including uncertain and discarded sends.
 pub(super) async fn enqueue_terminal_delivery(
     transaction: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
@@ -16,8 +17,8 @@ pub(super) async fn enqueue_terminal_delivery(
     sqlx::query(
         "INSERT INTO feedback_deliveries (request_id, session_id, resolution, created_at, updated_at) \
          SELECT id, managed_session_id, resolution, updated_at, updated_at FROM feedback_requests \
-         WHERE id = ?1 AND managed_session_id IS NOT NULL AND status IN ('completed', 'cancelled') \
-           AND resolution IN ('feedback_submitted', 'approved', 'cancelled') \
+         WHERE id = ?1 AND managed_session_id IS NOT NULL AND status = 'completed' \
+           AND resolution IN ('feedback_submitted', 'approved') \
          ON CONFLICT(request_id) DO NOTHING",
     )
     .bind(request_id).execute(&mut **transaction).await.map_err(super::storage_error)?;
@@ -40,8 +41,12 @@ impl FeedbackDeliveryRepository for SqliteFeedbackStore {
         &self,
     ) -> Result<Vec<FeedbackDelivery>, SessionRepositoryError> {
         let rows = sqlx::query(
-            "SELECT * FROM feedback_deliveries WHERE state = 'pending' ORDER BY created_at, request_id",
-        ).fetch_all(&self.pool).await.map_err(storage_error)?;
+            "SELECT * FROM feedback_deliveries WHERE state = 'pending' \
+             AND resolution IN ('feedback_submitted', 'approved') ORDER BY created_at, request_id",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(storage_error)?;
         rows.iter().map(delivery_from_row).collect()
     }
 
@@ -54,7 +59,8 @@ impl FeedbackDeliveryRepository for SqliteFeedbackStore {
         validate_attempt_time(attempt_id, now)?;
         let row = sqlx::query(
             "UPDATE feedback_deliveries SET state = 'sending', attempt_id = ?2, updated_at = ?3, last_error = NULL \
-             WHERE request_id = ?1 AND state = 'pending' RETURNING *",
+             WHERE request_id = ?1 AND state = 'pending' \
+             AND resolution IN ('feedback_submitted', 'approved') RETURNING *",
         ).bind(request_id).bind(attempt_id).bind(now)
             .fetch_optional(&self.pool).await.map_err(storage_error)?;
         row.as_ref().map(delivery_from_row).transpose()
@@ -84,7 +90,8 @@ impl FeedbackDeliveryRepository for SqliteFeedbackStore {
             .map_err(storage_error)?;
         let row = sqlx::query(
             "UPDATE feedback_deliveries SET state = ?3, last_error = ?4, updated_at = ?5 \
-             WHERE request_id = ?1 AND state = 'sending' AND attempt_id = ?2 RETURNING *",
+             WHERE request_id = ?1 AND state = 'sending' AND attempt_id = ?2 \
+             AND resolution IN ('feedback_submitted', 'approved') RETURNING *",
         )
         .bind(request_id)
         .bind(attempt_id)
@@ -121,10 +128,37 @@ impl FeedbackDeliveryRepository for SqliteFeedbackStore {
         now: &str,
     ) -> Result<u64, SessionRepositoryError> {
         validate_attempt_time("recovery", now)?;
-        Ok(sqlx::query(
+        let mut transaction = self
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(storage_error)?;
+        // Older builds queued cancellations as continuations. Retain their
+        // history, but never replay them or let them block later real feedback.
+        let cancelled = sqlx::query(
+            "UPDATE feedback_deliveries SET state = 'discarded', updated_at = ?1, last_error = NULL \
+             WHERE resolution = 'cancelled' AND state IN ('pending', 'sending', 'uncertain')",
+        ).bind(now).execute(&mut *transaction).await.map_err(storage_error)?.rows_affected();
+        let interrupted = sqlx::query(
             "UPDATE feedback_deliveries SET state = 'uncertain', updated_at = ?1, \
              last_error = 'Application stopped before delivery confirmation.' WHERE state = 'sending'",
-        ).bind(now).execute(&self.pool).await.map_err(storage_error)?.rows_affected())
+        ).bind(now).execute(&mut *transaction).await.map_err(storage_error)?.rows_affected();
+        // A downgraded release can complete a trusted managed request without
+        // knowing about this queue. Preserve that result, but never assume its
+        // continuation was not delivered: the user must choose what to do.
+        let missing = sqlx::query(
+            "INSERT INTO feedback_deliveries
+                (request_id, session_id, resolution, state, created_at, updated_at, last_error)
+             SELECT id, managed_session_id, resolution, 'uncertain', updated_at, ?1,
+                'Feedback was completed without a delivery record. Check the original session before sending again.'
+             FROM feedback_requests
+             WHERE managed_session_id IS NOT NULL AND status = 'completed'
+                AND resolution IN ('feedback_submitted', 'approved')
+                AND NOT EXISTS (SELECT 1 FROM feedback_deliveries d WHERE d.request_id = feedback_requests.id)
+             ON CONFLICT(request_id) DO NOTHING",
+        ).bind(now).execute(&mut *transaction).await.map_err(storage_error)?.rows_affected();
+        transaction.commit().await.map_err(storage_error)?;
+        Ok(cancelled + interrupted + missing)
     }
 
     async fn discard_session_deliveries(
@@ -160,7 +194,8 @@ impl FeedbackDeliveryRepository for SqliteFeedbackStore {
         let row = sqlx::query(
             "UPDATE feedback_deliveries SET state = ?3, updated_at = ?4, last_error = NULL, \
              attempt_id = CASE WHEN ?3 = 'pending' THEN NULL ELSE attempt_id END \
-             WHERE request_id = ?1 AND session_id = ?2 AND state = 'uncertain' RETURNING *",
+             WHERE request_id = ?1 AND session_id = ?2 AND state = 'uncertain' \
+             AND resolution IN ('feedback_submitted', 'approved') RETURNING *",
         )
         .bind(request_id)
         .bind(session_id)

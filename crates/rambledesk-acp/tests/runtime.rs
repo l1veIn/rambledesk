@@ -17,7 +17,7 @@ async fn permissions(
     app: &SessionApplication,
     session: ManagedSessionInput,
 ) -> ManagedSessionSnapshot {
-    wait_for(app, &session, |snapshot| !snapshot.permissions.is_empty()).await
+    wait_for(app, &session, |snapshot| !snapshot.interactions.is_empty()).await
 }
 
 #[tokio::test]
@@ -33,11 +33,11 @@ async fn permission_queue_is_scoped_validated_and_consumed_once() {
     .unwrap();
     // Both independent callbacks must arrive before inspecting the full queue.
     let first = wait_for(&app, &id(&first), |snapshot| {
-        snapshot.permissions.len() == 2
+        snapshot.interactions.len() == 2
     })
     .await;
     let details = first
-        .permissions
+        .interactions
         .iter()
         .find_map(|permission| permission.details.as_deref())
         .unwrap();
@@ -45,23 +45,22 @@ async fn permission_queue_is_scoped_validated_and_consumed_once() {
     assert!(details.contains("C:/fixture-project/Cargo.toml:4"));
     assert_eq!(
         first
-            .permissions
+            .interactions
             .iter()
             .filter(|permission| permission.details.is_none())
             .count(),
         1
     );
-    assert_eq!(
-        first.runtime.activity,
-        SessionActivityState::WaitingPermission
-    );
-    let answer = RespondManagedPermissionInput {
+    assert_eq!(first.runtime.activity, SessionActivityState::WaitingInput);
+    let answer = RespondManagedInteractionInput {
         session_id: first.session.session_id.clone(),
-        request_id: first.permissions[0].request_id.clone(),
-        option_id: Some("allow".into()),
+        request_id: first.interactions[0].request_id.clone(),
+        response: SessionInteractionResponse::Permission {
+            option_id: Some("allow".into()),
+        },
     };
     assert!(
-        app.respond_permission(RespondManagedPermissionInput {
+        app.respond_interaction(RespondManagedInteractionInput {
             session_id: other.session.session_id.clone(),
             ..answer.clone()
         })
@@ -69,28 +68,34 @@ async fn permission_queue_is_scoped_validated_and_consumed_once() {
         .is_err()
     );
     assert!(
-        app.respond_permission(RespondManagedPermissionInput {
-            option_id: Some("invented".into()),
+        app.respond_interaction(RespondManagedInteractionInput {
+            response: SessionInteractionResponse::Permission {
+                option_id: Some("invented".into())
+            },
             ..answer.clone()
         })
         .await
         .is_err()
     );
     assert_eq!(
-        app.get_session(id(&first)).await.unwrap().permissions.len(),
+        app.get_session(id(&first))
+            .await
+            .unwrap()
+            .interactions
+            .len(),
         2
     );
-    let remaining = app.respond_permission(answer.clone()).await.unwrap();
-    assert_eq!(remaining.permissions.len(), 1);
-    assert!(app.respond_permission(answer).await.is_err());
-    app.respond_permission(RespondManagedPermissionInput {
+    let remaining = app.respond_interaction(answer.clone()).await.unwrap();
+    assert_eq!(remaining.interactions.len(), 1);
+    assert!(app.respond_interaction(answer).await.is_err());
+    app.respond_interaction(RespondManagedInteractionInput {
         session_id: first.session.session_id.clone(),
-        request_id: remaining.permissions[0].request_id.clone(),
-        option_id: None,
+        request_id: remaining.interactions[0].request_id.clone(),
+        response: SessionInteractionResponse::Permission { option_id: None },
     })
     .await
     .unwrap();
-    assert!(idle(&app, id(&first)).await.permissions.is_empty());
+    assert!(idle(&app, id(&first)).await.interactions.is_empty());
     assert_eq!(
         app.get_session(id(&other)).await.unwrap().runtime.activity,
         SessionActivityState::Idle
@@ -112,7 +117,7 @@ async fn cancellation_drains_permissions_and_does_not_cancel_a_later_turn() {
     let first = permissions(&app, id(&first)).await;
     app.cancel_prompt(id(&first)).await.unwrap();
     let done = idle(&app, id(&first)).await;
-    assert!(done.permissions.is_empty());
+    assert!(done.interactions.is_empty());
     app.send_prompt(SendManagedPromptInput {
         session_id: first.session.session_id.clone(),
         text: "wait".into(),

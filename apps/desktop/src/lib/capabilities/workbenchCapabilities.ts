@@ -249,6 +249,13 @@ export type DshInstallResult = Readonly<{
   action: 'created' | 'updated' | 'unchanged'
   restartRequired: boolean
 }>
+export type DshHostStatus = Readonly<{
+  id: string
+  name: string
+  installed: boolean
+  profiles: readonly Readonly<{ id: string; profileDir: string; patchPath: string; configured: boolean }>[]
+  restartRequired: boolean
+}>
 export interface HostIntegrationCapability {
   genericMcpConfiguration(): Promise<string>
   detectGenericMcpHosts(): Promise<readonly McpHostView[]>
@@ -256,6 +263,7 @@ export interface HostIntegrationCapability {
   piStatus(): Promise<PiPackageStatus>
   installPi(): Promise<string>
   uninstallPi(): Promise<string>
+  dshStatus(): Promise<DshHostStatus>
   installDsh(): Promise<readonly DshInstallResult[]>
 }
 
@@ -284,7 +292,11 @@ export interface WebAccessAdministrationCapability {
 }
 
 export type DiagnosticScope = 'last_24_hours' | 'last_7_days' | 'all'
+export type DiagnosticsSettings = Readonly<{ enabled: boolean }>
 export interface DiagnosticsCapability {
+  readSettings(): Promise<DiagnosticsSettings>
+  setEnabled(enabled: boolean): Promise<DiagnosticsSettings>
+  clear(): Promise<void>
   export(scope: DiagnosticScope, path: string): Promise<DiagnosticExportResult>
 }
 

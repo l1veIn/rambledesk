@@ -13,7 +13,7 @@ pub(super) fn identifier(value: &str) -> Result<String, AcpError> {
     }
     Ok(value.into())
 }
-fn label(value: &str) -> Result<String, AcpError> {
+pub(super) fn label(value: &str) -> Result<String, AcpError> {
     if value.len() > 4096 || value.contains('\0') {
         return Err(invalid());
     }
@@ -119,20 +119,46 @@ fn add_choices(
     Ok(())
 }
 
-pub(super) fn modes(modes: acp::SessionModeState) -> Result<SessionModeCatalog, AcpError> {
+pub(super) struct Catalog {
+    pub current: String,
+    pub choices: Vec<SessionConfigChoice>,
+}
+
+impl Catalog {
+    pub fn option(&self, category: &str, name: &str) -> SessionConfigOption {
+        SessionConfigOption {
+            id: String::new(),
+            name: name.into(),
+            description: None,
+            category: Some(category.into()),
+            kind: SessionConfigKind::Select {
+                current_value: self.current.clone(),
+                options: self.choices.clone(),
+            },
+        }
+    }
+}
+
+pub(super) fn modes(modes: acp::SessionModeState) -> Result<Catalog, AcpError> {
     if modes.available_modes.len() > MAX_OPTIONS {
         return Err(invalid());
     }
-    Ok(SessionModeCatalog {
-        current_mode_id: identifier(&modes.current_mode_id.to_string())?,
-        available_modes: modes
+    let mut seen = std::collections::HashSet::new();
+    Ok(Catalog {
+        current: identifier(&modes.current_mode_id.to_string())?,
+        choices: modes
             .available_modes
             .into_iter()
             .map(|mode| {
-                Ok(SessionMode {
-                    id: identifier(&mode.id.to_string())?,
+                let value = identifier(&mode.id.to_string())?;
+                if !seen.insert(value.clone()) {
+                    return Err(invalid());
+                }
+                Ok(SessionConfigChoice {
+                    value,
                     name: label(&mode.name)?,
                     description: description(&mode.description)?,
+                    group: None,
                 })
             })
             .collect::<Result<_, AcpError>>()?,
@@ -152,20 +178,26 @@ struct LegacyModel {
     name: String,
     description: Option<String>,
 }
-pub(super) fn models(models: LegacyModels) -> Result<SessionModelCatalog, AcpError> {
+pub(super) fn models(models: LegacyModels) -> Result<Catalog, AcpError> {
     if models.available_models.len() > 512 {
         return Err(invalid());
     }
-    Ok(SessionModelCatalog {
-        current_model_id: identifier(&models.current_model_id)?,
-        available_models: models
+    let mut seen = std::collections::HashSet::new();
+    Ok(Catalog {
+        current: identifier(&models.current_model_id)?,
+        choices: models
             .available_models
             .into_iter()
             .map(|model| {
-                Ok(SessionModel {
-                    model_id: identifier(&model.model_id)?,
+                let value = identifier(&model.model_id)?;
+                if !seen.insert(value.clone()) {
+                    return Err(invalid());
+                }
+                Ok(SessionConfigChoice {
+                    value,
                     name: label(&model.name)?,
                     description: description(&model.description)?,
+                    group: None,
                 })
             })
             .collect::<Result<_, AcpError>>()?,

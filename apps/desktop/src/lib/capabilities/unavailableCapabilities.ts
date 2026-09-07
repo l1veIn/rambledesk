@@ -152,6 +152,7 @@ const UNAVAILABLE_WORKBENCH_CAPABILITIES = createWorkbenchCapabilities({
     piStatus: () => rejected('hostIntegrationAdministration'),
     installPi: () => rejected('hostIntegrationAdministration'),
     uninstallPi: () => rejected('hostIntegrationAdministration'),
+    dshStatus: () => rejected('hostIntegrationAdministration'),
     installDsh: () => rejected('hostIntegrationAdministration'),
   }),
   webAccessAdministration: slot({
@@ -160,7 +161,12 @@ const UNAVAILABLE_WORKBENCH_CAPABILITIES = createWorkbenchCapabilities({
     open: () => rejected('webAccessAdministration'),
     copyToken: () => rejected('webAccessAdministration'),
   }),
-  diagnostics: slot({ export: () => rejected('diagnostics') }),
+  diagnostics: slot({
+    readSettings: () => rejected('diagnostics'),
+    setEnabled: () => rejected('diagnostics'),
+    clear: () => rejected('diagnostics'),
+    export: () => rejected('diagnostics'),
+  }),
 })
 
 export const UNAVAILABLE_CAPABILITY_MANIFEST = UNAVAILABLE_WORKBENCH_CAPABILITIES.manifest

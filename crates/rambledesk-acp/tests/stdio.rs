@@ -1,4 +1,4 @@
-use rambledesk_acp::{AcpConnection, AcpEvent, AcpLaunch};
+use rambledesk_acp::probe::{AcpConnection, AcpEvent, AcpLaunch};
 use std::{
     collections::BTreeMap,
     path::PathBuf,

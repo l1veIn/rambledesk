@@ -1,0 +1,20 @@
+{
+  "activities": ["onboarding", "onboarding_step", "onboarding_action", "agent_catalog_refresh", "agent_detection", "agent_connection", "agent_install", "agent_config", "session_draft", "session_runtime", "session_navigation", "session_archive", "session_delete", "external_adapter_settings", "frontend_error", "application_startup", "application_subscription", "diagnostic_backpressure"],
+  "outcomes": ["started", "ok", "failed", "cancelled", "skipped", "blocked"],
+  "details": {
+    "agent": ["claude-acp", "codex-acp", "gemini", "openclaw-acp", "cline", "codebuddy", "kimi", "pi-acp", "grok", "deepseek-acp", "dsh", "qoder", "opencode", "cursor", "hermes", "antigravity", "custom"],
+    "action": ["refresh", "scan", "inspect", "check", "install", "recheck", "cancel", "save", "delete", "resolve", "prepare", "retry", "promote", "send", "configure", "close", "connect", "permission", "visit", "probe", "open", "complete", "skip", "next", "back", "restart", "download", "select", "enable", "disable", "archive", "unarchive", "start", "stop", "mount", "resume", "capture", "window", "unhandledrejection"],
+    "source": ["catalog", "draft", "runtime", "external_settings", "onboarding", "settings", "sidebar", "workbench", "main", "capture", "scroll-capture", "pinned-capture", "ramble-console", "speech-overlay", "browser", "preview"],
+    "reason": ["mount", "refresh", "ready", "invalidation", "manual", "onboarding", "post_install", "cache_hit", "in_flight", "inactive", "disabled", "installing", "not_ready", "not_detected", "unsupported", "stale", "invalid_selection", "invalid_directory", "empty", "deleting", "missing_configuration", "acknowledgement_lost", "timeout", "cancelled", "permission_denied", "unavailable", "invalid_input", "conflict", "not_found", "unknown", "user", "navigation", "restart_required", "initialization_failed", "activation_failed", "pending_feedback", "dirty", "completed", "unmounted"],
+    "status": ["ready", "connected", "connecting", "disconnected", "failed", "stopped", "preparing", "complete", "cancelled", "missing", "system", "managed", "granted", "denied", "default", "unavailable", "unknown", "installed", "not_installed"],
+    "phase": ["load", "registration", "initialization", "detection", "connection", "installation", "preparation", "promotion", "navigation", "completion", "permissions", "model", "storage", "notifications", "cooking"],
+    "step": ["welcome", "storage", "voice", "permissions", "agents", "notifications", "cooking", "finish"],
+    "next_step": ["welcome", "storage", "voice", "permissions", "agents", "notifications", "cooking", "finish"],
+    "agent_kind": ["native", "bridge", "custom"],
+    "management": ["managed", "external"],
+    "platform": ["Windows", "macOS", "Linux", "unknown"],
+    "error_category": ["timeout", "cancelled", "permission_denied", "unavailable", "invalid_input", "conflict", "not_found", "unknown", "type_error", "reference_error", "range_error", "syntax_error", "resource_error"]
+  },
+  "counts": ["dropped_count", "config_count", "entry_count", "cache_count", "checked_count", "failed_count", "target_count", "step_count", "step_index", "model_count", "permission_count", "line", "column"],
+  "flags": ["cache_hit", "rescan", "explicit", "retry", "available", "entered", "promoted", "has_prepared", "selected", "installed", "restart_required", "enabled", "storage_available", "voice_available", "permissions_available", "notifications_available", "has_pending", "resumed"]
+}

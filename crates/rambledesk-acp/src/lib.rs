@@ -12,6 +12,16 @@ mod permissions;
 mod process;
 mod prompt_content;
 mod session_configuration;
+mod user_input;
 
-pub use connection::{AcpConnection, AcpError, AcpEvent, AcpLaunch, AcpSessionInfo};
+#[cfg(test)]
+mod diagnostic_tests;
+
+/// Low-level protocol access for diagnostics and transport probes.
+/// Application sessions should use the drivers exported at the crate root.
+pub mod probe {
+    pub use crate::connection::{AcpConnection, AcpError, AcpEvent, AcpLaunch, AcpSessionInfo};
+}
+
+pub(crate) use connection::{AcpConnection, AcpError, AcpEvent, AcpLaunch};
 pub use driver::{AcpSessionDriver, ConfiguredAcpSessionDriver};

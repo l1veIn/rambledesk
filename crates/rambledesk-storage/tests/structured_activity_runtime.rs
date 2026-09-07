@@ -10,6 +10,9 @@ use std::{
 };
 use tokio::sync::Notify;
 
+#[path = "structured_activity_runtime/interactions.rs"]
+mod interactions;
+
 #[tokio::test]
 async fn feedback_status_reads_live_execution_and_defaults_to_stopped_without_a_runtime_owner() {
     let (_dir, store, app, driver, ids) = setup().await;
@@ -36,18 +39,20 @@ async fn feedback_status_reads_live_execution_and_defaults_to_stopped_without_a_
     let connection = driver.connections.lock().unwrap()[&ids[0]].clone();
     connection
         .observer
-        .observe(AgentSessionEvent::PermissionRequested(SessionPermission {
-            request_id: "permission".into(),
-            session_id: ids[0].clone(),
-            title: "Approve".into(),
-            details: None,
-            options: vec![],
-        }))
+        .observe(AgentSessionEvent::InteractionRequested(
+            SessionInteraction {
+                request_id: "permission".into(),
+                session_id: ids[0].clone(),
+                title: "Approve".into(),
+                details: None,
+                kind: SessionInteractionKind::Permission { options: vec![] },
+            },
+        ))
         .await
         .unwrap();
     let waiting = app.get_feedback_status(input.clone()).await.unwrap();
     assert_eq!(waiting.connection, SessionConnectionState::Connected);
-    assert_eq!(waiting.activity, SessionActivityState::WaitingPermission);
+    assert_eq!(waiting.activity, SessionActivityState::WaitingInput);
     assert_eq!(
         app.get_feedback_status(ManagedSessionInput {
             session_id: ids[1].clone()
@@ -57,10 +62,10 @@ async fn feedback_status_reads_live_execution_and_defaults_to_stopped_without_a_
         .activity,
         SessionActivityState::Idle
     );
-    app.respond_permission(RespondManagedPermissionInput {
+    app.respond_interaction(RespondManagedInteractionInput {
         session_id: ids[0].clone(),
         request_id: "permission".into(),
-        option_id: None,
+        response: SessionInteractionResponse::Permission { option_id: None },
     })
     .await
     .unwrap();
@@ -252,6 +257,8 @@ struct Connection {
     observer: Arc<dyn AgentSessionObserver>,
     finish: Notify,
     closed: AtomicBool,
+    response_gate: Mutex<Option<(Arc<Notify>, Arc<Notify>)>>,
+    responses: Mutex<Vec<SessionInteractionResponse>>,
 }
 #[async_trait]
 impl AgentSessionConnection for Connection {
@@ -266,7 +273,17 @@ impl AgentSessionConnection for Connection {
         self.finish.notify_one();
         Ok(())
     }
-    async fn respond_permission(&self, _: &str, _: Option<&str>) -> Result<(), AgentDriverError> {
+    async fn respond_interaction(
+        &self,
+        _: &str,
+        response: SessionInteractionResponse,
+    ) -> Result<(), AgentDriverError> {
+        let gate = self.response_gate.lock().unwrap().take();
+        if let Some((entered, release)) = gate {
+            entered.notify_one();
+            release.notified().await;
+        }
+        self.responses.lock().unwrap().push(response);
         Ok(())
     }
     async fn stop(&self) -> Result<(), AgentDriverError> {
@@ -285,6 +302,8 @@ impl AgentSessionDriver for Driver {
             observer: launch.observer,
             finish: Notify::new(),
             closed: AtomicBool::new(false),
+            response_gate: Mutex::new(None),
+            responses: Mutex::new(vec![]),
         });
         self.connections
             .lock()

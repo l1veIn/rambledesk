@@ -8,6 +8,7 @@ import type {
 } from '../feedback'
 import type { ApplicationTransport } from '../application/applicationTransport'
 import { readApplicationSnapshot } from '../application/readApplicationSnapshot'
+import { ApplicationReadTimeoutError, withApplicationReadTimeout } from '../application/applicationReadTimeout'
 import type { WorkbenchCapabilities } from '../capabilities/workbenchCapabilities'
 import { InboxNotificationTracker, playNotificationSound, type NotificationState } from '../notifications'
 import { previewFixtures } from '../previewFixtures'
@@ -44,6 +45,7 @@ export type NavigationState = {
   loadingRequests: boolean
   loadingMoreRequests: boolean
   refreshingPage: boolean
+  initializationFailure: { message: string; timedOut: boolean } | null
 }
 
 type NavigationControllerContext = {
@@ -83,6 +85,7 @@ const initialState: NavigationState = {
   loadingRequests: true,
   loadingMoreRequests: false,
   refreshingPage: false,
+  initializationFailure: null,
 }
 
 export function createNavigationController(context: NavigationControllerContext) {
@@ -93,13 +96,39 @@ export function createNavigationController(context: NavigationControllerContext)
   let displayedRequestQuery: string | null = null
   let scopeSelectionGeneration = 0
   let hostSessionFactsGeneration = 0
+  type FactsRefresh = { generation: number; completion: Promise<boolean>; settle: (ready: boolean) => void }
+  let activeFactsRefresh: FactsRefresh | null = null
+  let lastFactsFailure: NavigationState['initializationFailure'] = null
 
   function patch(next: Partial<NavigationState>) {
     store.update((current) => ({ ...current, ...next }))
   }
 
   function beginHostSessionFactsRefresh() {
-    return ++hostSessionFactsGeneration
+    let settle!: FactsRefresh['settle']
+    const completion = new Promise<boolean>((resolve) => { settle = resolve })
+    const refresh = { generation: ++hostSessionFactsGeneration, completion, settle }
+    activeFactsRefresh = refresh
+    return refresh
+  }
+
+  async function awaitLatestInitializationFacts(): Promise<boolean> {
+    try {
+      const ready = await withApplicationReadTimeout((async () => {
+        for (;;) {
+          const refresh = activeFactsRefresh
+          if (!refresh) return get(store).hostSessionFactsStatus === 'ready'
+          const result = await refresh.completion
+          if (refresh === activeFactsRefresh) return result
+        }
+      })(), 'current navigation refresh')
+      if (!ready) patch({ initializationFailure: lastFactsFailure })
+      return ready
+    } catch (cause) {
+      patch({ initializationFailure: { message: context.messageFrom(cause), timedOut: cause instanceof ApplicationReadTimeoutError } })
+      context.onPageError(context.messageFrom(cause))
+      return false
+    }
   }
 
   function applyHostSessionFacts(
@@ -107,7 +136,11 @@ export function createNavigationController(context: NavigationControllerContext)
     generation?: number,
   ) {
     if (generation !== undefined && generation !== hostSessionFactsGeneration) return false
-    if (generation === undefined) hostSessionFactsGeneration += 1
+    if (generation === undefined) {
+      hostSessionFactsGeneration += 1
+      activeFactsRefresh?.settle(true)
+      activeFactsRefresh = null
+    }
     store.update((current) => ({
       ...current,
       hostSessions,
@@ -148,9 +181,11 @@ export function createNavigationController(context: NavigationControllerContext)
   }
 
   async function initialize(openFirstRequest = true) {
-    const hostSessionFactsIntent = beginHostSessionFactsRefresh()
+    const refresh = beginHostSessionFactsRefresh()
+    const hostSessionFactsIntent = refresh.generation
+    let initialized = false
     context.onPageError('')
-    patch({ loadingNavigation: true, loadingRequests: true })
+    patch({ loadingNavigation: true, loadingRequests: true, initializationFailure: null })
 
     if (context.previewMode) {
       displayedRequestQuery = requestQueryKey()
@@ -165,56 +200,79 @@ export function createNavigationController(context: NavigationControllerContext)
       })
       applyHostSessionFacts(previewFixtures.hostSessions, hostSessionFactsIntent)
       patch({ loadingNavigation: false, loadingRequests: false })
+      refresh.settle(true)
       return true
     }
 
     try {
-      await context.transport.waitUntilReady()
-      const [nextInbox, nextHostSessions, profiles] = await Promise.all([
-        readApplicationSnapshot(context.transport, 'listFeedbackInbox', undefined),
-        readApplicationSnapshot(context.transport, 'listHostSessions', undefined),
+      await withApplicationReadTimeout(context.transport.waitUntilReady(), 'application readiness')
+      const [facts, profiles] = await Promise.all([
+        Promise.all([
+          readApplicationSnapshot(context.transport, 'listFeedbackInbox', undefined),
+          readApplicationSnapshot(context.transport, 'listHostSessions', undefined),
+        ]).then(values => ({ values }), cause => ({ cause })),
         readApplicationSnapshot(context.transport, 'listHostProfiles', undefined),
       ])
-      patch({
-        hostProfiles: Object.fromEntries(profiles.map((profile) => [profile.id, profile])),
-      })
-      if (hostSessionFactsIntent !== hostSessionFactsGeneration) return true
-      applyHostSessionFacts(nextHostSessions, hostSessionFactsIntent)
-      applyInboxSnapshot(nextInbox)
-      await refreshRequests(openFirstRequest)
+      if (hostSessionFactsIntent !== hostSessionFactsGeneration) {
+        if (!await awaitLatestInitializationFacts()) return false
+      } else {
+        if ('cause' in facts) throw facts.cause
+        const [nextInbox, nextHostSessions] = facts.values
+        applyHostSessionFacts(nextHostSessions, hostSessionFactsIntent)
+        applyInboxSnapshot(nextInbox)
+      }
+      patch({ hostProfiles: Object.fromEntries(profiles.map((profile) => [profile.id, profile])) })
+      await refreshRequests(openFirstRequest, true)
+      if (hostSessionFactsIntent !== hostSessionFactsGeneration && !await awaitLatestInitializationFacts()) return false
+      initialized = true
       return true
     } catch (cause) {
-      if (hostSessionFactsIntent !== hostSessionFactsGeneration) return true
       failHostSessionFacts(hostSessionFactsIntent)
+      lastFactsFailure = {
+        message: context.messageFrom(cause),
+        timedOut: cause instanceof ApplicationReadTimeoutError,
+      }
+      patch({ initializationFailure: lastFactsFailure })
       context.onPageError(context.messageFrom(cause))
       return false
     } finally {
-      patch({ loadingNavigation: false, loadingRequests: false })
+      refresh.settle(initialized)
+      if (hostSessionFactsIntent === hostSessionFactsGeneration) {
+        patch({ loadingNavigation: false })
+      }
+      if (pendingRequestRefresh === null) patch({ loadingRequests: false })
     }
   }
 
   async function refreshNavigation(refreshRequestList = false) {
-    const hostSessionFactsIntent = beginHostSessionFactsRefresh()
+    const refresh = beginHostSessionFactsRefresh()
+    const hostSessionFactsIntent = refresh.generation
+    let refreshed = false
     patch({ loadingNavigation: true })
     try {
       const [nextInbox, nextHostSessions] = await Promise.all([loadInbox(), loadHostSessions()])
       if (hostSessionFactsIntent !== hostSessionFactsGeneration) return true
       applyInboxSnapshot(nextInbox)
       applyHostSessionFacts(nextHostSessions, hostSessionFactsIntent)
-      if (refreshRequestList) await refreshRequests(false)
+      if (refreshRequestList) await refreshRequests(false, true)
+      refreshed = true
       return true
     } catch (cause) {
       if (hostSessionFactsIntent !== hostSessionFactsGeneration) return true
       failHostSessionFacts(hostSessionFactsIntent)
+      lastFactsFailure = { message: context.messageFrom(cause), timedOut: cause instanceof ApplicationReadTimeoutError }
       context.onPageError(context.messageFrom(cause))
       return false
     } finally {
-      patch({ loadingNavigation: false })
+      refresh.settle(refreshed)
+      if (hostSessionFactsIntent === hostSessionFactsGeneration) patch({ loadingNavigation: false })
     }
   }
 
   async function refreshPage(minimumLoadingMs = MANUAL_PAGE_REFRESH_MIN_MS) {
-    const hostSessionFactsIntent = beginHostSessionFactsRefresh()
+    const refresh = beginHostSessionFactsRefresh()
+    const hostSessionFactsIntent = refresh.generation
+    let refreshed = false
     const requestGeneration = ++requestRefreshGeneration
     const query = requestQueryKey()
     pendingRequestRefresh = requestGeneration
@@ -238,13 +296,17 @@ export function createNavigationController(context: NavigationControllerContext)
         patch({ requests: result.requests, nextRequestCursor: result.next_cursor })
       }
       applyHostSessionFacts(nextHostSessions, hostSessionFactsIntent)
+      refreshed = true
     } catch (cause) {
       if (hostSessionFactsIntent !== hostSessionFactsGeneration) return
       failHostSessionFacts(hostSessionFactsIntent)
+      lastFactsFailure = { message: context.messageFrom(cause), timedOut: cause instanceof ApplicationReadTimeoutError }
       context.onPageError(context.messageFrom(cause))
     } finally {
+      refresh.settle(refreshed)
       await waitForMinimumDuration(startedAt, minimumLoadingMs)
-      patch({ loadingNavigation: false, refreshingPage: false })
+      if (hostSessionFactsIntent === hostSessionFactsGeneration) patch({ loadingNavigation: false })
+      patch({ refreshingPage: false })
       if (requestGeneration === requestRefreshGeneration) {
         pendingRequestRefresh = null
         patch({ loadingRequests: false })
@@ -383,6 +445,7 @@ export function createNavigationController(context: NavigationControllerContext)
 
   async function refreshRequests(
     openFirst = false,
+    throwOnFailure = false,
   ): Promise<ListFeedbackRequestsOutput | null | undefined> {
     const generation = ++requestRefreshGeneration
     const query = requestQueryKey()
@@ -397,13 +460,15 @@ export function createNavigationController(context: NavigationControllerContext)
       patch({ requests: result.requests, nextRequestCursor: result.next_cursor })
       const currentRequestId = context.getWorkspaceRequestId()
       if (openFirst && result.requests[0]) {
-        await context.openRequest(result.requests[0].request_id, currentRequestId !== undefined)
+        const opened = await context.openRequest(result.requests[0].request_id, currentRequestId !== undefined)
+        if (!opened && throwOnFailure) throw new Error('The initial workspace could not be opened.')
       } else if (openFirst && result.requests.length === 0) {
         if (!context.isDirty() || (await context.saveDraftNow())) context.clearWorkspace()
       }
       return result
     } catch (cause) {
       if (generation !== requestRefreshGeneration) return undefined
+      if (throwOnFailure) throw cause
       context.onPageError(context.messageFrom(cause))
       return null
     } finally {
@@ -540,12 +605,12 @@ export function createNavigationController(context: NavigationControllerContext)
     }
   }
 
-  async function archiveHostSession(session: HostSessionSummary) {
+  async function archiveHostSession(session: HostSessionSummary): Promise<boolean> {
     if (session.pending_count > 0) {
       context.onPageError(context.tr('Finish or cancel open requests before archiving this session.'))
-      return
+      return false
     }
-    if (context.isDirty() && !(await context.saveDraftNow())) return
+    if (context.isDirty() && !(await context.saveDraftNow())) return false
     try {
       if (!context.previewMode) {
         await context.transport.call('archiveHostSession', {
@@ -570,9 +635,10 @@ export function createNavigationController(context: NavigationControllerContext)
           ),
         )
         await refreshRequests(false)
-        return
+        return true
       }
       await refreshNavigation(true)
+      return true
     } catch (cause) {
       context.onPageError(context.messageFrom(cause))
       throw cause

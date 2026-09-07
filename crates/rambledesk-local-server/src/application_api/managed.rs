@@ -1,7 +1,7 @@
 use rambledesk_core::{
     AgentConfigInput, CreateManagedSessionInput, ManagedCommandError, ManagedCommandErrorCode,
     ManagedSessionInput, PrepareManagedSessionInput, ResolveFeedbackDeliveryInput,
-    RespondManagedPermissionInput, SaveAgentConfigInput, SendManagedPromptInput,
+    RespondManagedInteractionInput, SaveAgentConfigInput, SendManagedPromptInput,
 };
 
 use super::*;
@@ -67,8 +67,8 @@ pub(super) fn routes() -> Router<ApplicationApiState> {
             post(cancel_managed_prompt),
         )
         .route(
-            "/application/respondManagedPermission",
-            post(respond_managed_permission),
+            "/application/respondManagedInteraction",
+            post(respond_managed_interaction),
         )
 }
 
@@ -217,11 +217,11 @@ async fn cancel_managed_prompt(
 ) -> Response<Body> {
     managed_result(state.commands.cancel_managed_prompt(input).await)
 }
-async fn respond_managed_permission(
+async fn respond_managed_interaction(
     State(state): State<ApplicationApiState>,
-    ApplicationJson(input): ApplicationJson<RespondManagedPermissionInput>,
+    ApplicationJson(input): ApplicationJson<RespondManagedInteractionInput>,
 ) -> Response<Body> {
-    managed_result(state.commands.respond_managed_permission(input).await)
+    managed_result(state.commands.respond_managed_interaction(input).await)
 }
 
 async fn resolve_feedback_delivery(

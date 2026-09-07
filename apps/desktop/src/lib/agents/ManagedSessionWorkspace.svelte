@@ -2,10 +2,12 @@
   import { ArrowUpRight, Folder, GitBranch, LoaderCircle, RefreshCw, ShieldQuestion } from '@lucide/svelte'
   import { onDestroy } from 'svelte'
   import { Button } from '$lib/components/ui/button'
-  import type { AgentConfig, SessionConfigChange, SessionRecovery } from '$lib/generated/feedback'
+  import type { AgentConfig, SessionConfigChange, SessionRecovery, SessionInteractionResponse } from '$lib/generated/feedback'
+  import SessionInputForm from './SessionInputForm.svelte'
   import SessionRecoveryNotice from './SessionRecoveryNotice.svelte'
   import AgentComposer from './composer/AgentComposer.svelte'
   import AgentIcon from './AgentIcon.svelte'
+  import AgentSetupGuide from './AgentSetupGuide.svelte'
   import SessionTranscript from './chat/SessionTranscript.svelte'
   import { chatText } from './chat/chat-text'
   import SessionConfigurationControls from './configuration/SessionConfigurationControls.svelte'
@@ -15,8 +17,8 @@
   import { agentText } from './agentI18n'
   import {
     managedSessionActions, managedSessionComposerState,
-    permissionsForSession, sessionConfigurationChanged, sessionPromptDrafts,
-    type ManagedSessionViewSnapshot, type SessionActivity, type SessionPermission,
+    interactionsForSession, sessionConfigurationChanged, sessionPromptDrafts,
+    type ManagedSessionViewSnapshot, type SessionActivity, type SessionInteraction,
   } from './managedSessionUi'
 
   export let snapshot: ManagedSessionViewSnapshot
@@ -25,7 +27,7 @@
   export let historyHasMore = false
   export let historyError = ''
   export let onLoadOlder: (() => Promise<void> | void) | undefined = undefined
-  export let permissions: readonly SessionPermission[] = []
+  export let interactions: readonly SessionInteraction[] = []
   export let recovery: SessionRecovery | null = null
   export let config: AgentConfig | null = null
   export let busy = false
@@ -38,7 +40,7 @@
   export let onCancel: () => Promise<void> | void
   export let onStart: () => Promise<void> | void
   export let onRefresh: (() => Promise<void> | void) | undefined = undefined
-  export let onRespondPermission: (requestId: string, optionId: string | null) => Promise<void> | void
+  export let onRespondInteraction: (requestId: string, response: SessionInteractionResponse) => Promise<void> | void
   export let onOpenRamble: (() => Promise<void> | void) | undefined = undefined
 
   let activeSessionId = ''
@@ -47,22 +49,22 @@
   let errors: Record<string, string> = {}
   $: if (snapshot.session.session_id !== activeSessionId) selectSession(snapshot.session.session_id)
   $: if (activeSessionId) sessionPromptDrafts.write(activeSessionId, prompt)
-  $: visiblePermissions = permissionsForSession(snapshot.session.session_id, permissions)
-  $: permission = visiblePermissions[0] ?? null
-  $: actions = managedSessionActions(snapshot, visiblePermissions.length)
+  $: visibleInteractions = interactionsForSession(snapshot.session.session_id, interactions)
+  $: interaction = visibleInteractions[0] ?? null
+  $: actions = managedSessionActions(snapshot, visibleInteractions.length)
   $: configurationChanged = sessionConfigurationChanged(snapshot, config)
   $: envText = Object.entries(config?.env ?? {}).map(([key, value]) => `${key}=${value}`).join('\n')
-  $: permissionDetails = redactAgentMessage(permission?.details ?? '', envText)
+  $: interactionDetails = redactAgentMessage(interaction?.details ?? '', envText)
   $: runtimeConnectionFailed = snapshot.runtime.connection === 'failed' || snapshot.runtime.connection === 'disconnected'
   $: visibleQueryError = redactAgentMessage(error, envText)
   $: visibleConnectionError = redactAgentMessage(connectionError || (runtimeConnectionFailed ? snapshot.runtime.last_error : '') || '', envText)
   $: visibleOperationError = redactAgentMessage(errors[snapshot.session.session_id] || (!runtimeConnectionFailed ? snapshot.runtime.last_error : '') || '', envText)
   $: cwd = snapshot.session.management.kind === 'managed' ? snapshot.session.management.cwd : ''
-  $: permissionPending = permission ? pending.has(`${activeSessionId}:permission:${permission.request_id}`) : false
+  $: interactionPending = interaction ? pending.has(`${activeSessionId}:interaction:${interaction.request_id}`) : false
   $: lifecyclePending = connecting || pending.has(`${activeSessionId}:start`)
   $: sendPending = pending.has(`${activeSessionId}:prompt`)
   $: configurationPending = pending.has(`${activeSessionId}:configuration`)
-  $: composerState = managedSessionComposerState(snapshot, visiblePermissions.length, { busy, lifecycle: lifecyclePending || configurationPending, prompt: sendPending })
+  $: composerState = managedSessionComposerState(snapshot, visibleInteractions.length, { busy, lifecycle: lifecyclePending || configurationPending, prompt: sendPending })
   $: runActive = snapshot.runtime.connection === 'connected' && snapshot.runtime.activity !== 'idle'
 
   function tr(source: string) {
@@ -73,6 +75,7 @@
       'Could not connect to the agent.': '无法连接智能体。',
       'Agent connection ended. Retry to reconnect.': 'Agent 连接已断开，请重试连接。',
       'Reload session': '重新读取会话', 'Retry connection': '重试连接',
+      'Agent setup instructions': '查看智能体配置方法',
     }
     return $locale === 'zh-CN' && zh[source] ? zh[source] : chatText($locale, agentText($locale, source))
   }
@@ -129,10 +132,10 @@
     await run('configuration', () => updateConfiguration(change))
   }
 
-  function respond(requestId: string, optionId: string | null) {
-    if (busy || lifecyclePending || permissionPending || !actions.canCancel) return
-    const respondToPermission = onRespondPermission
-    void run(`permission:${requestId}`, () => respondToPermission(requestId, optionId))
+  async function respondInteraction(requestId: string, response: SessionInteractionResponse) {
+    if (busy || lifecyclePending || interactionPending || !actions.canCancel) return
+    const respond = onRespondInteraction
+    await run(`interaction:${requestId}`, () => respond(requestId, response))
   }
 
   onDestroy(() => {
@@ -164,27 +167,43 @@
   {#if visibleOperationError && visibleOperationError !== visibleQueryError && visibleOperationError !== visibleConnectionError}
     <p role="alert" class="m-0 shrink-0 break-words border-b border-destructive/25 bg-destructive/5 px-5 py-3 text-xs text-destructive">{tr(visibleOperationError)}</p>
   {/if}
+  {#if !snapshot.deleting && (visibleConnectionError || visibleOperationError)}
+    <details class="max-h-64 shrink-0 overflow-y-auto border-b px-5 py-3 text-xs">
+      <summary class="cursor-pointer text-muted-foreground">{tr('Agent setup instructions')}</summary>
+      <div class="mt-3"><AgentSetupGuide catalogId={config?.catalog_id} hostId={snapshot.session.host_id} name={config?.name} {config} compact /></div>
+    </details>
+  {/if}
 
   <SessionTranscript sessionId={snapshot.session.session_id} {activities} {runActive}
     {historyLoading} {historyHasMore} {historyError} {onLoadOlder} {envText} />
 
-  {#if permission}
-    <section class="max-h-72 shrink-0 overflow-y-auto border-t border-amber-500/25 bg-amber-500/5 px-5 py-3" aria-label={tr('Agent permission')}>
+  {#if interaction}
+    <section class="max-h-[45vh] shrink-0 overflow-y-auto border-t border-amber-500/25 bg-amber-500/5 px-5 py-3" aria-label={tr(interaction.kind === 'permission' ? 'Agent permission' : interaction.kind === 'plan' ? 'Review agent plan' : 'Agent question')}>
       <div class="mx-auto w-full max-w-4xl">
-      <div class="flex items-start gap-2"><ShieldQuestion class="mt-0.5 size-4 shrink-0 text-amber-600" /><div class="min-w-0 flex-1"><h3 class="m-0 whitespace-pre-wrap break-words text-xs font-medium">{permission.title}</h3>{#if visiblePermissions.length > 1}<p class="mb-0 mt-1 text-[11px] text-muted-foreground">{tr('More permissions waiting')}: {visiblePermissions.length - 1}</p>{/if}</div></div>
-      {#if permissionDetails.trim()}
-        {#key permission.request_id}
+      <div class="flex items-start gap-2"><ShieldQuestion class="mt-0.5 size-4 shrink-0 text-amber-600" /><div class="min-w-0 flex-1"><h3 class="m-0 whitespace-pre-wrap break-words text-xs font-medium">{redactAgentMessage(tr(interaction.title), envText)}</h3>{#if visibleInteractions.length > 1}<p class="mb-0 mt-1 text-[11px] text-muted-foreground">{tr('More requests waiting')}: {visibleInteractions.length - 1}</p>{/if}</div></div>
+      <p class="mb-0 mt-2 text-xs text-muted-foreground">{tr(interaction.kind === 'permission' ? 'Review the operation before choosing a permission.' : interaction.kind === 'plan' ? 'Review the plan and choose how to continue.' : 'Answer the agent to continue the task.')}</p>
+      {#if interaction.kind !== 'permission'}
+        {@const inputInteraction = interaction}
+        {#key interaction.request_id}
+          <SessionInputForm schema={inputInteraction.input.schema} requestId={inputInteraction.request_id} kind={inputInteraction.kind} {envText}
+            disabled={busy || lifecyclePending || interactionPending || !actions.canCancel}
+            onRespond={response => respondInteraction(inputInteraction.request_id, { kind: inputInteraction.kind, response })} />
+        {/key}
+      {:else}
+      {#if interactionDetails.trim()}
+        {#key interaction.request_id}
           <details open class="mt-3 rounded-md border border-amber-500/25 bg-background/50 px-3 py-2 text-xs">
             <summary class="cursor-pointer select-none font-medium">{tr('Operation details')}</summary>
-            <pre class="mb-0 mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-5">{permissionDetails}</pre>
+            <pre class="mb-0 mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-5">{interactionDetails}</pre>
           </details>
         {/key}
       {/if}
       <div class="mt-3 flex flex-wrap gap-2">
-        {#each permission.options as option (option.option_id)}<Button variant={option.kind.startsWith('reject') ? 'outline' : 'secondary'} size="sm" disabled={busy || lifecyclePending || permissionPending || !actions.canCancel} onclick={() => respond(permission.request_id, option.option_id)}>{option.name}</Button>{/each}
-        <Button variant="ghost" size="sm" disabled={busy || lifecyclePending || permissionPending || !actions.canCancel} onclick={() => respond(permission.request_id, null)}>{tr('Cancel permission')}</Button>
-        {#if permissionPending}<LoaderCircle class="size-4 self-center animate-spin text-muted-foreground" />{/if}
+        {#each interaction.options as option (option.option_id)}<Button variant={option.kind.toLowerCase().startsWith('reject') ? 'outline' : 'secondary'} size="sm" disabled={busy || lifecyclePending || interactionPending || !actions.canCancel} onclick={() => void respondInteraction(interaction.request_id, { kind: 'permission', option_id: option.option_id })}>{redactAgentMessage(option.name, envText)}</Button>{/each}
+        <Button variant="ghost" size="sm" disabled={busy || lifecyclePending || interactionPending || !actions.canCancel} onclick={() => void respondInteraction(interaction.request_id, { kind: 'permission', option_id: null })}>{tr('Cancel permission')}</Button>
+        {#if interactionPending}<LoaderCircle class="size-4 self-center animate-spin text-muted-foreground" />{/if}
       </div>
+      {/if}
       </div>
     </section>
   {/if}

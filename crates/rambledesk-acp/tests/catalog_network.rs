@@ -2,7 +2,10 @@
 //! packages into a new app-owned temporary prefix, never globally. It only sends
 //! ACP initialize: no session, authentication flow, prompt or model request.
 //! Run: cargo test -p rambledesk-acp --test catalog_network -- --ignored --nocapture
-use rambledesk_acp::{AcpConnection, AcpLaunch, agents::AgentCatalogService};
+use rambledesk_acp::{
+    agents::AgentCatalogService,
+    probe::{AcpConnection, AcpLaunch},
+};
 use rambledesk_core::{AgentInstallSource, InstallAgentInput};
 use std::{collections::BTreeMap, sync::Arc};
 use tokio_util::sync::CancellationToken;

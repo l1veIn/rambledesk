@@ -123,10 +123,13 @@ describe('capability architecture', () => {
       'lib/capabilities/tauri/administrationCapabilities.ts': {
         role: 'Native Administration Capability implementations',
         commands: [
+          'clear_diagnostics',
           'copy_web_access_token',
           'detect_generic_mcp_hosts',
+          'detect_dsh_host',
           'export_diagnostics',
           'get_data_storage_settings',
+          'get_diagnostics_settings',
           'get_generic_mcp_configuration',
           'get_pi_package_status',
           'install_dsh_package',
@@ -137,6 +140,7 @@ describe('capability architecture', () => {
           'open_web_access',
           'request_macos_permission',
           'set_data_storage_path',
+          'set_diagnostics_enabled',
           'uninstall_pi_package',
         ],
       },
@@ -209,7 +213,7 @@ describe('capability architecture', () => {
       },
       'lib/desktop-shell/instrumentation.ts': {
         role: 'Desktop Shell instrumentation and DevTools implementation',
-        commands: ['log_frontend_error', 'open_main_devtools'],
+        commands: ['log_frontend_error', 'open_main_devtools', 'record_client_diagnostic'],
       },
     }
     const literalInvoke =

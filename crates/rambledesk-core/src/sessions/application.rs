@@ -33,10 +33,34 @@ pub enum SessionError {
     InvalidInput,
 }
 
+impl SessionError {
+    pub(super) fn diagnostic_code(&self) -> &'static str {
+        match self {
+            Self::Repository(error) => match error {
+                SessionRepositoryError::SessionNotFound => "session_not_found",
+                SessionRepositoryError::AgentConfigNotFound => "config_not_found",
+                SessionRepositoryError::AgentConfigInUse => "config_in_use",
+                SessionRepositoryError::AgentConfigDisabled => "config_disabled",
+                SessionRepositoryError::InvalidInput => "invalid_input",
+                SessionRepositoryError::Conflict => "conflict",
+                SessionRepositoryError::CorruptData => "corrupt_data",
+                SessionRepositoryError::Storage => "storage",
+            },
+            Self::Driver(_) => "driver",
+            Self::Busy => "busy",
+            Self::NotConnected => "not_connected",
+            Self::Interrupted => "interrupted",
+            Self::ShuttingDown => "shutting_down",
+            Self::NotManaged => "not_managed",
+            Self::InvalidInput => "invalid_input",
+        }
+    }
+}
+
 pub(super) struct LiveSession {
     pub runtime: SessionRuntime,
     pub connection: Option<Arc<dyn AgentSessionConnection>>,
-    pub permissions: Vec<SessionPermission>,
+    pub interactions: Vec<SessionInteraction>,
     pub cancelling: bool,
 }
 
@@ -53,7 +77,7 @@ impl Default for SessionEntry {
             live: Mutex::new(LiveSession {
                 runtime: SessionRuntime::default(),
                 connection: None,
-                permissions: vec![],
+                interactions: vec![],
                 cancelling: false,
             }),
             lifecycle: Mutex::new(()),
@@ -203,6 +227,7 @@ impl SessionApplication {
         &self,
         input: CreateManagedSessionInput,
     ) -> Result<ManagedSessionSnapshot, SessionError> {
+        validate_new_session_cwd(&input.cwd)?;
         self.recover_runtime().await?;
         if self.closing.load(Ordering::SeqCst) {
             return Err(SessionError::ShuttingDown);
@@ -234,6 +259,30 @@ impl SessionApplication {
         &self,
         input: PrepareManagedSessionInput,
     ) -> Result<ManagedSessionSnapshot, SessionError> {
+        let trace = crate::agent_operation_trace::AgentOperationTrace::new(
+            "session.prepare",
+            Some(&input.agent_config_id),
+        );
+        let result = self.prepare_session_inner(input).await;
+        if let Ok(snapshot) = &result {
+            trace.link("session", &snapshot.session.session_id);
+            trace.checkpoint(
+                "connection",
+                if snapshot.runtime.connection == SessionConnectionState::Connected {
+                    "connected"
+                } else {
+                    "failed"
+                },
+            );
+        }
+        trace.result(result, SessionError::diagnostic_code)
+    }
+
+    async fn prepare_session_inner(
+        &self,
+        input: PrepareManagedSessionInput,
+    ) -> Result<ManagedSessionSnapshot, SessionError> {
+        validate_new_session_cwd(&input.cwd)?;
         self.recover_runtime().await?;
         if self.closing.load(Ordering::SeqCst) {
             return Err(SessionError::ShuttingDown);
@@ -258,6 +307,18 @@ impl SessionApplication {
     }
 
     pub async fn discard_prepared_session(
+        &self,
+        input: ManagedSessionInput,
+    ) -> Result<(), SessionError> {
+        let trace = crate::agent_operation_trace::AgentOperationTrace::new(
+            "session.discard_prepared",
+            Some(&input.session_id),
+        );
+        let result = self.discard_prepared_session_inner(input).await;
+        trace.result(result, SessionError::diagnostic_code)
+    }
+
+    async fn discard_prepared_session_inner(
         &self,
         input: ManagedSessionInput,
     ) -> Result<(), SessionError> {
@@ -308,7 +369,7 @@ impl SessionApplication {
             .as_ref()
             .map(|connection| connection.configuration())
             .unwrap_or_default();
-        let permissions = live.permissions.clone();
+        let interactions = live.interactions.clone();
         drop(live);
         let activities = self
             .activities
@@ -339,13 +400,30 @@ impl SessionApplication {
             session,
             runtime,
             activities,
-            permissions,
+            interactions,
             deliveries,
             deleting,
         })
     }
 
     pub async fn start_session(
+        &self,
+        input: ManagedSessionInput,
+    ) -> Result<ManagedSessionSnapshot, SessionError> {
+        let trace = crate::agent_operation_trace::AgentOperationTrace::new(
+            "session.start",
+            Some(&input.session_id),
+        );
+        let result = self.start_session_inner(input).await;
+        if let Ok(snapshot) = &result
+            && let Some(instance) = &snapshot.runtime.instance_id
+        {
+            trace.link("instance", instance);
+        }
+        trace.result(result, SessionError::diagnostic_code)
+    }
+
+    async fn start_session_inner(
         &self,
         input: ManagedSessionInput,
     ) -> Result<ManagedSessionSnapshot, SessionError> {
@@ -488,6 +566,18 @@ impl SessionApplication {
         &self,
         input: ManagedSessionInput,
     ) -> Result<ManagedSessionSnapshot, SessionError> {
+        let trace = crate::agent_operation_trace::AgentOperationTrace::new(
+            "session.stop",
+            Some(&input.session_id),
+        );
+        let result = self.stop_session_inner(input).await;
+        trace.result(result, SessionError::diagnostic_code)
+    }
+
+    async fn stop_session_inner(
+        &self,
+        input: ManagedSessionInput,
+    ) -> Result<ManagedSessionSnapshot, SessionError> {
         self.managed_record(&input.session_id).await?;
         let entry = self.entry(&input.session_id).await;
         entry
@@ -556,4 +646,11 @@ impl SessionApplication {
             session_id: session_id.into(),
         }]);
     }
+}
+
+fn validate_new_session_cwd(cwd: &str) -> Result<(), SessionError> {
+    if cwd.trim().is_empty() || cwd.contains('\0') || !std::path::Path::new(cwd).is_absolute() {
+        return Err(SessionError::InvalidInput);
+    }
+    Ok(())
 }

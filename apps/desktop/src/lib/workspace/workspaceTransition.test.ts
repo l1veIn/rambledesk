@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import {
+  agentDraftViewDescriptor,
+  agentSessionViewDescriptor,
   sessionViewDescriptor,
   settingsViewDescriptor,
   workspaceViewKey,
@@ -69,6 +71,39 @@ function harness(overrides: Partial<WorkspaceTransitionAdapter<Loaded>> = {}) {
 }
 
 describe('workspaceTransition', () => {
+  it('keeps a newly opened draft when an older managed-session scope read finishes later', async () => {
+    let resolveScope!: () => void
+    const scopeRead = new Promise<void>(resolve => { resolveScope = resolve })
+    const run = harness()
+    const oldIntent = run.transition.invalidate()
+    const oldTarget = target(agentSessionViewDescriptor('old-session'), null)
+    const delayedSelection = scopeRead.then(() => run.transition.activate(oldTarget, oldIntent))
+    const draft = target(agentDraftViewDescriptor('new-draft'), null)
+    run.transition.invalidate()
+    await expect(run.transition.activate(draft)).resolves.toBe('activated')
+    expect(run.transition.isCurrent(oldIntent)).toBe(false)
+    const callsBeforeOldRead = vi.mocked(run.adapter.setPendingTarget).mock.calls.length
+
+    resolveScope()
+    await expect(delayedSelection).resolves.toBe('stale')
+    expect(run.adapter.commitTarget).toHaveBeenCalledExactlyOnceWith(draft, null)
+    expect(run.adapter.setPendingTarget).toHaveBeenCalledTimes(callsBeforeOldRead)
+    expect(run.adapter.saveCurrent).toHaveBeenCalledTimes(1)
+  })
+
+  it('invalidates pending scope reads even when a newer navigation is cancelled before activation', async () => {
+    const run = harness()
+    const oldIntent = run.transition.invalidate()
+    const currentIntent = run.transition.invalidate()
+    expect(run.transition.isCurrent(oldIntent)).toBe(false)
+    expect(run.transition.isCurrent(currentIntent)).toBe(true)
+    await expect(run.transition.activate(target(), oldIntent)).resolves.toBe('stale')
+    expect(run.adapter.saveCurrent).not.toHaveBeenCalled()
+    expect(run.adapter.commitTarget).not.toHaveBeenCalled()
+    await expect(run.transition.activate(target(), currentIntent)).resolves.toBe('activated')
+    expect(run.transition.isCurrent(currentIntent)).toBe(false)
+  })
+
   it('saves, unmounts, loads, and commits in order with at most one editor mounted', async () => {
     const run = harness()
 

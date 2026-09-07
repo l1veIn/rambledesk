@@ -1,10 +1,12 @@
 <script lang="ts">
-  import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CircleAlert, GripHorizontal, LoaderCircle, Mic, Pause, RotateCcw, X } from '@lucide/svelte'
+  import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CircleAlert, GripHorizontal, LoaderCircle, Mic, Pause, Pencil, RotateCcw, Sparkles, X } from '@lucide/svelte'
+  import { tick } from 'svelte'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
   import type { RambleConsoleCommand } from './rambleConsole'
   import { selectedSpeechGroup, speechOverlayVisible, type SpeechOverlayState } from './speechOverlay'
   import { speechOverlayDrag } from './speechOverlayDrag'
+  import { synchronizeSpeechEditBuffer, type SpeechEditBuffer } from './speechOverlayEditBuffer'
 
   export let state: SpeechOverlayState
   export let embedded = false
@@ -13,15 +15,20 @@
   export let onCommand: (command: RambleConsoleCommand) => void = () => {}
 
   let expanded = false
+  let editBuffer: SpeechEditBuffer | null = null
   const wavePattern = [0.3, 0.45, 0.7, 0.5, 0.85, 0.65, 1, 0.6, 0.85, 0.5, 0.72, 0.9, 0.55, 0.7, 0.45, 0.3]
   $: group = selectedSpeechGroup(state)
   $: groupIndex = group ? state.groups.indexOf(group) : 0
+  $: editBuffer = synchronizeSpeechEditBuffer(editBuffer, state.edit)
+  $: editKey = JSON.stringify(editBuffer?.ids ?? [])
   $: recording = state.phase === 'listening' || state.phase === 'processing'
   $: busy = state.phase === 'starting' || state.phase === 'stopping'
   $: target = group ?? state.receipt ?? state.target
   $: text = group?.text || state.receipt?.text || state.partial
-  $: error = group?.error || state.error
-  $: status = group?.error ? tr('Could not write speech')
+  $: error = tr(group?.error || state.error)
+  $: status = group?.error ? (group.editable === false ? tr('Could not write speech') : tr('Speech review needs attention'))
+    : editBuffer ? tr('Editing speech')
+    : group?.tidying ? tr('Tidying…')
     : group?.busy ? tr('Writing to feedback…')
     : group ? tr('Waiting for your confirmation')
     : state.receipt ? tr('Written to feedback')
@@ -32,6 +39,15 @@
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
+  }
+
+  function focusEditor(node: HTMLTextAreaElement) {
+    void tick().then(() => { if (node.isConnected) node.focus() })
+  }
+
+  function saveEdit() {
+    if (!editBuffer?.text.trim()) return
+    onCommand({ type: 'save-speech-edit', ids: [...editBuffer.ids], text: editBuffer.text })
   }
 </script>
 
@@ -56,10 +72,14 @@
         {#if state.phase === 'error' && group && state.target}
           <button class="icon-button" onclick={() => onCommand({ type: 'retry-recording' })} title={tr('Retry recording')} aria-label={tr('Retry recording')}><RotateCcw size={15} /></button>
         {/if}
-        {#if text}<button class="icon-button" aria-expanded={expanded} onclick={() => expanded = !expanded} title={expanded ? tr('Collapse transcript') : tr('Expand transcript')} aria-label={expanded ? tr('Collapse transcript') : tr('Expand transcript')}>{#if expanded}<ChevronDown size={16} />{:else}<ChevronUp size={16} />{/if}</button>{/if}
+        {#if text && !editBuffer}<button class="icon-button" aria-expanded={expanded} onclick={() => expanded = !expanded} title={expanded ? tr('Collapse transcript') : tr('Expand transcript')} aria-label={expanded ? tr('Collapse transcript') : tr('Expand transcript')}>{#if expanded}<ChevronDown size={16} />{:else}<ChevronUp size={16} />{/if}</button>{/if}
       </header>
 
-      {#if text}
+      {#if editBuffer}
+        {#key editKey}
+          <textarea class="speech-editor" aria-label={tr('Edit speech')} rows="5" bind:value={editBuffer.text} use:focusEditor></textarea>
+        {/key}
+      {:else if text}
         <div class="transcript" class:expanded><p>{expanded ? text : text.slice(-240)}</p></div>
       {:else}
         <div class="waveform" aria-label={tr('Microphone level')}>
@@ -75,22 +95,31 @@
       {#if error}<p class="error-message" role="alert">{error}</p>{/if}
 
       {#if target}
-        <button class="destination" onclick={() => onCommand({ type: 'open-speech-target', requestId: target.requestId, segmentId: group ? undefined : state.receipt?.id })} title={`${tr('Open feedback document')} · ${target.requestTitle}${target.action ? ` · ${target.action.title}` : ''}`}>
+        <button class="destination" disabled={!!editBuffer} onclick={() => onCommand({ type: 'open-speech-target', requestId: target.requestId, segmentId: group ? undefined : state.receipt?.id })} title={`${tr('Open feedback document')} · ${target.requestTitle}${target.action ? ` · ${target.action.title}` : ''}`}>
           <span>{target.requestTitle}{target.action ? ` · ${target.action.title}` : ''}</span><ChevronRight size={13} />
         </button>
       {/if}
 
-      {#if group}
-        <footer>
+      {#if group || editBuffer}
+        <div class="review-navigation">
           {#if state.groups.length > 1}
             <nav aria-label={tr('Pending speech groups')}>
-              <button class="icon-button" disabled={groupIndex === 0} onclick={() => onCommand({ type: 'select-speech-group', id: state.groups[groupIndex - 1].ids[0] })} aria-label={tr('Previous group')}><ChevronLeft size={15} /></button>
+              <button class="icon-button" disabled={!!editBuffer || groupIndex === 0} onclick={() => onCommand({ type: 'select-speech-group', id: state.groups[groupIndex - 1].ids[0] })} aria-label={tr('Previous group')}><ChevronLeft size={15} /></button>
               <span>{groupIndex + 1} / {state.groups.length}</span>
-              <button class="icon-button" disabled={groupIndex === state.groups.length - 1} onclick={() => onCommand({ type: 'select-speech-group', id: state.groups[groupIndex + 1].ids[0] })} aria-label={tr('Next group')}><ChevronRight size={15} /></button>
+              <button class="icon-button" disabled={!!editBuffer || groupIndex === state.groups.length - 1} onclick={() => onCommand({ type: 'select-speech-group', id: state.groups[groupIndex + 1].ids[0] })} aria-label={tr('Next group')}><ChevronRight size={15} /></button>
             </nav>
           {:else}<span class="draft-note">{tr('Feedback draft')}</span>{/if}
-          <button class="text-button discard" disabled={group.busy} title={`${tr('Discard')} · ${state.shortcuts.speechDiscard}`} onclick={() => onCommand({ type: 'discard-speech', ids: [...group.ids] })}>{tr('Discard')}</button>
-          <button class="text-button primary" disabled={group.busy} title={`${tr('Write to feedback')} · ${state.shortcuts.speechAccept}`} onclick={() => onCommand({ type: 'accept-speech', ids: [...group.ids] })}>{#if group.busy}<LoaderCircle size={14} class="spin" />{:else}<Check size={14} />{/if}{group.error ? tr('Retry writing') : tr('Write to feedback')}</button>
+        </div>
+        <footer>
+          {#if editBuffer}
+            <button class="text-button discard" onclick={() => editBuffer && onCommand({ type: 'cancel-speech-edit', ids: [...editBuffer.ids] })}>{tr('Cancel editing')}</button>
+            <button class="text-button primary" disabled={!editBuffer.text.trim()} onclick={saveEdit}><Check size={14} />{tr('Save changes')}</button>
+          {:else if group}
+            <button class="text-button discard" disabled={group.busy || group.editing || group.editable === false} onclick={() => onCommand({ type: 'tidy-speech', ids: [...group.ids] })}>{#if group.tidying}<LoaderCircle size={14} class="spin" />{:else}<Sparkles size={14} />{/if}{tr('Tidy')}</button>
+            <button class="text-button discard" disabled={group.busy || group.editing || group.editable === false} onclick={() => onCommand({ type: 'edit-speech', ids: [...group.ids] })}><Pencil size={14} />{tr('Edit')}</button>
+            <button class="text-button discard" disabled={(group.busy && !group.tidying) || group.editing} title={`${tr('Discard')} · ${state.shortcuts.speechDiscard}`} onclick={() => onCommand({ type: 'discard-speech', ids: [...group.ids] })}>{tr('Discard')}</button>
+            <button class="text-button primary" disabled={group.busy || group.editing} title={`${tr('Write to feedback')} · ${state.shortcuts.speechAccept}`} onclick={() => onCommand({ type: 'accept-speech', ids: [...group.ids] })}>{#if group.busy && !group.tidying}<LoaderCircle size={14} class="spin" />{:else}<Check size={14} />{/if}{group.error && group.editable === false ? tr('Retry writing') : tr('Write to feedback')}</button>
+          {/if}
         </footer>
       {:else if state.phase === 'error'}
         <footer>
@@ -105,7 +134,7 @@
 <style>
   .speech-capsule-host { position: fixed; bottom: 24px; left: 50%; z-index: 80; width: min(420px, calc(100vw - 32px)); transform: translateX(-50%); pointer-events: none; }
   .speech-capsule-host.embedded { position: relative; bottom: auto; left: auto; width: 100%; transform: none; padding: 8px; }
-  .speech-capsule { position: relative; isolation: isolate; pointer-events: auto; padding: 12px 14px 10px; border: 1px solid var(--border); border-radius: 22px; background: transparent; color: var(--foreground); box-shadow: 0 6px 22px #0002; font-size: 12px; }
+  .speech-capsule { position: relative; isolation: isolate; pointer-events: auto; max-height: 464px; overflow-y: auto; padding: 12px 14px 10px; border: 1px solid var(--border); border-radius: 22px; background: transparent; color: var(--foreground); box-shadow: 0 6px 22px #0002; font-size: 12px; }
   .speech-capsule::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--card); backdrop-filter: blur(calc(var(--speech-overlay-opacity, 95) * 0.18px)); opacity: calc(var(--speech-overlay-opacity, 95) / 100); }
   .speech-capsule.has-error { border-color: color-mix(in srgb, var(--destructive) 55%, var(--border)); }
   header, footer, nav, .destination, .text-button { display: flex; align-items: center; gap: 8px; }
@@ -117,7 +146,7 @@
   .recording-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--destructive); }
   button { cursor: pointer; font: inherit; }
   button:disabled { opacity: .45; cursor: default; }
-  button:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+  button:focus-visible, .speech-editor:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
   .icon-button { display: grid; place-items: center; width: 25px; height: 25px; border: 0; border-radius: 8px; background: transparent; color: var(--muted-foreground); }
   .icon-button:hover:not(:disabled), .discard:hover:not(:disabled) { background: var(--muted); color: var(--foreground); }
   .drag-handle { cursor: grab; touch-action: none; user-select: none; }
@@ -126,6 +155,7 @@
   .transcript p { flex-shrink: 0; margin: 0; }
   .transcript.expanded { display: block; height: auto; min-height: 40px; max-height: min(230px, 40vh); overflow-y: auto; }
   .embedded .transcript.expanded { max-height: 230px; }
+  .speech-editor { display: block; box-sizing: border-box; width: 100%; min-height: 80px; max-height: 160px; resize: vertical; margin: 8px 0; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--background); color: var(--foreground); font: inherit; font-size: 13px; line-height: 20px; }
   .waveform { display: flex; gap: 3px; height: 40px; align-items: center; justify-content: center; margin: 7px 0; }
   .waveform span { width: 3px; border-radius: 4px; background: var(--primary); transition: height 90ms ease-out; }
   .destination { width: 100%; padding: 4px 0; border: 0; background: transparent; color: var(--muted-foreground); text-align: left; font-size: 10px; }
@@ -135,10 +165,11 @@
   .live-tail, .error-message { margin: 6px 0; font-size: 11px; line-height: 16px; }
   .live-tail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted-foreground); }
   .error-message { color: var(--destructive); max-height: 64px; overflow-y: auto; overflow-wrap: anywhere; }
-  footer { margin-top: 8px; gap: 6px; }
+  .review-navigation { display: flex; min-height: 18px; margin-top: 6px; }
+  footer { flex-wrap: wrap; justify-content: flex-end; margin-top: 6px; gap: 4px; }
   nav, .draft-note { margin-right: auto; font-size: 10px; color: var(--muted-foreground); }
   nav { gap: 2px; }
-  .text-button { justify-content: center; min-height: 30px; padding: 5px 10px; border: 0; border-radius: 10px; font-size: 11px; }
+  .text-button { justify-content: center; min-height: 30px; padding: 5px 8px; border: 0; border-radius: 10px; font-size: 11px; white-space: nowrap; }
   .discard { background: transparent; color: var(--muted-foreground); }
   .primary { background: var(--primary); color: var(--primary-foreground); }
   .primary:hover:not(:disabled) { filter: brightness(1.1); }

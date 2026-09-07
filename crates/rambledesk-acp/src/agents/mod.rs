@@ -163,7 +163,54 @@ impl AgentCatalogService {
         id: &str,
         cancel: &CancellationToken,
     ) -> Result<AgentInspection, CatalogError> {
-        self.inspect_inner(id, cancel).await
+        let trace = rambledesk_core::agent_operation_trace::AgentOperationTrace::new(
+            "agent.inspect",
+            Some(id),
+        );
+        let result = self.inspect_inner(id, cancel).await;
+        if let Ok(inspection) = &result {
+            trace.checkpoint(
+                "source",
+                match inspection.source {
+                    AgentInstallSource::Managed => "managed",
+                    AgentInstallSource::System => "system",
+                    AgentInstallSource::Missing => "missing",
+                },
+            );
+            trace.checkpoint(
+                "availability",
+                if inspection.command.is_some()
+                    && !inspection
+                        .checks
+                        .iter()
+                        .any(|check| check.status == AgentCheckStatus::Fail)
+                {
+                    "ready"
+                } else {
+                    "needs_attention"
+                },
+            );
+            for check in &inspection.checks {
+                let phase = match check.id.as_str() {
+                    "node" => "runtime_node",
+                    "npm" => "installer_npm",
+                    "entry" => "entry",
+                    "managed_integrity" => "managed_integrity",
+                    "managed_feedback" => "managed_feedback",
+                    "launch" => "launch",
+                    _ => "dependency",
+                };
+                trace.checkpoint(
+                    phase,
+                    match check.status {
+                        AgentCheckStatus::Pass => "passed",
+                        AgentCheckStatus::Warn => "warning",
+                        AgentCheckStatus::Fail => "failed",
+                    },
+                );
+            }
+        }
+        trace.result(result, CatalogError::diagnostic_code)
     }
     pub async fn install_with_cancel(
         &self,
@@ -171,11 +218,30 @@ impl AgentCatalogService {
         cancel: CancellationToken,
         observer: AgentInstallObserver,
     ) -> Result<InstalledAgent, CatalogError> {
+        let trace = rambledesk_core::agent_operation_trace::AgentOperationTrace::new(
+            "agent.install",
+            Some(&input.agent_id),
+        );
+        let operation_id = trace.id().to_owned();
+        let original_observer = observer;
+        let observer: AgentInstallObserver = Arc::new(move |event| {
+            let phase = match event.phase {
+                AgentInstallPhase::Preparing => "preparing",
+                AgentInstallPhase::Installing => "installing",
+                AgentInstallPhase::Verifying => "verifying",
+                AgentInstallPhase::Complete => "complete",
+                AgentInstallPhase::Failed => "failed",
+                AgentInstallPhase::Cancelled => "cancelled",
+            };
+            tracing::info!(target: "rambledesk::agents", operation = "agent.install", %operation_id,
+                phase, "agent installation progress");
+            original_observer(event);
+        });
         let id = input.agent_id.clone();
         {
             let mut active = self.active.lock().await;
             if active.contains_key(&id) {
-                return Err(CatalogError::Busy);
+                return trace.result(Err(CatalogError::Busy), CatalogError::diagnostic_code);
             }
             active.insert(id.clone(), cancel.clone());
         }
@@ -192,7 +258,7 @@ impl AgentCatalogService {
             });
         }
         registration.remove().await;
-        result
+        trace.result(result, CatalogError::diagnostic_code)
     }
 }
 
@@ -216,8 +282,15 @@ impl AgentCatalogProvider for AgentCatalogService {
             .map_err(|error| AgentDriverError::new(error.to_string()))
     }
     async fn cancel_install(&self, id: &str) -> Result<(), AgentDriverError> {
-        if let Some(token) = self.active.lock().await.get(id) {
+        if let Some(token) = self.active.lock().await.get(id)
+            && !token.is_cancelled()
+        {
+            let mut trace = rambledesk_core::agent_operation_trace::AgentOperationTrace::new(
+                "agent.install_cancel",
+                Some(id),
+            );
             token.cancel();
+            trace.finish("requested", "");
         }
         Ok(())
     }
@@ -225,3 +298,25 @@ impl AgentCatalogProvider for AgentCatalogService {
 
 #[cfg(test)]
 mod tests;
+
+impl CatalogError {
+    pub(crate) fn diagnostic_code(&self) -> &'static str {
+        match self {
+            Self::UnknownAgent => "unknown_agent",
+            Self::ManualInstall => "manual_install",
+            Self::InvalidVersion => "invalid_version",
+            Self::Cancelled => "cancelled",
+            Self::Busy => "busy",
+            Self::CommandUnavailable => "command_unavailable",
+            Self::NodeVersion => "node_version",
+            Self::CommandFailed => "command_failed",
+            Self::Timeout => "timeout",
+            Self::PermissionDenied => "permission_denied",
+            Self::VersionUnavailable => "version_unavailable",
+            Self::InvalidProxy => "invalid_proxy",
+            Self::InvalidInstall => "invalid_install",
+            Self::InvalidRoot => "invalid_root",
+            Self::Storage => "storage",
+        }
+    }
+}

@@ -17,6 +17,7 @@ pub struct SendManagedPromptInput {
 #[derive(Default)]
 pub(super) struct StreamState {
     pub turn_id: Option<String>,
+    trace: Option<crate::agent_operation_trace::AgentOperationTrace>,
     last: Option<SessionActivity>,
     tools: HashMap<String, SessionActivity>,
 }
@@ -27,6 +28,9 @@ impl StreamState {
         // failed completion/stop waits for recovery; release allocation capacity.
         self.last = None;
         self.tools = HashMap::new();
+        if let Some(mut trace) = self.trace.take() {
+            trace.finish("interrupted", "runtime_retired");
+        }
     }
 }
 
@@ -82,6 +86,20 @@ impl SessionApplication {
     }
 
     async fn dispatch_prompt_inner(
+        &self,
+        input: SendManagedPromptInput,
+        delivery: Option<FeedbackDelivery>,
+        content: Option<Vec<SessionPromptContent>>,
+    ) -> Result<ManagedSessionSnapshot, SessionError> {
+        let trace = crate::agent_operation_trace::AgentOperationTrace::new(
+            "session.send",
+            Some(&input.session_id),
+        );
+        let result = self.dispatch_prompt_traced(input, delivery, content).await;
+        trace.result(result, SessionError::diagnostic_code)
+    }
+
+    async fn dispatch_prompt_traced(
         &self,
         input: SendManagedPromptInput,
         delivery: Option<FeedbackDelivery>,
@@ -158,8 +176,13 @@ impl SessionApplication {
         live.runtime.last_error = None;
         drop(live);
         let turn_id = self.ids.new_id();
+        let turn_trace =
+            crate::agent_operation_trace::AgentOperationTrace::new("session.turn", Some(&turn_id));
+        turn_trace.link("session", &input.session_id);
+        turn_trace.link("instance", &instance);
         *entry.events.lock().await = StreamState {
             turn_id: Some(turn_id.clone()),
+            trace: Some(turn_trace),
             ..Default::default()
         };
         let saved = async {
@@ -291,6 +314,31 @@ impl SessionApplication {
             Ok(())
         };
         let interrupted = persisted.is_err() || checkpoint.is_err() || connection_closed;
+        if let Some(trace) = &mut events.trace {
+            let error_code = if persisted.is_err() {
+                "activity_storage"
+            } else if checkpoint.is_err() {
+                "checkpoint_storage"
+            } else if connection_closed {
+                "closed"
+            } else if result.is_err() {
+                "driver"
+            } else if delivered.is_err() {
+                "feedback_delivery"
+            } else {
+                ""
+            };
+            trace.finish(
+                if !error_code.is_empty() {
+                    "failed"
+                } else if live.cancelling {
+                    "cancelled"
+                } else {
+                    "succeeded"
+                },
+                error_code,
+            );
+        }
         if !interrupted {
             events.turn_id = None;
         } else {
@@ -300,7 +348,8 @@ impl SessionApplication {
         }
         events.release_content();
         live.runtime.activity = SessionActivityState::Idle;
-        live.permissions.clear();
+        let pending = std::mem::take(&mut live.interactions);
+        let pending_connection = live.connection.clone();
         live.cancelling = false;
         if let Err(error) = result {
             live.runtime.last_error = Some(error.to_string());
@@ -315,6 +364,16 @@ impl SessionApplication {
             live.runtime.last_error = Some(error.to_string());
         }
         drop(live);
+        // Retire requests accepted after the driver's prompt response but before
+        // this durable completion. Keep the event/turn gate until replies are
+        // released so a later turn cannot reuse a request ID during this drain.
+        if let Some(connection) = pending_connection {
+            for interaction in pending {
+                let _ = connection
+                    .respond_interaction(&interaction.request_id, interaction.cancel_response())
+                    .await;
+            }
+        }
         drop(events);
         if interrupted && let Ok(_lifecycle) = entry.lifecycle.try_lock() {
             let current = entry.live.lock().await.runtime.instance_id.as_deref() == Some(instance);
@@ -345,7 +404,11 @@ impl SessionApplication {
         event: AgentSessionEvent,
     ) -> Result<(), SessionError> {
         let Some(entry) = self.entries.lock().await.get(session_id).cloned() else {
-            return Ok(());
+            return if matches!(event, AgentSessionEvent::InteractionRequested(_)) {
+                Err(SessionError::InvalidInput)
+            } else {
+                Ok(())
+            };
         };
         if let AgentSessionEvent::ContextUsage(usage) = event {
             let mut live = entry.live.lock().await;
@@ -383,9 +446,18 @@ impl SessionApplication {
             || live.runtime.connection != SessionConnectionState::Connected
             || stream.turn_id.is_none()
         {
-            return Ok(());
+            // Blocked requests must be rejected by the owning adapter; success
+            // would leave a responder parked without a visible card.
+            return if matches!(event, AgentSessionEvent::InteractionRequested(_)) {
+                Err(SessionError::InvalidInput)
+            } else {
+                Ok(())
+            };
         }
         drop(live);
+        if let Some(trace) = &mut stream.trace {
+            trace.response();
+        }
         let (kind, text, tool_call_id, append) = match event {
             AgentSessionEvent::ConfigurationChanged => {
                 unreachable!("handled before turn attribution")
@@ -416,7 +488,7 @@ impl SessionApplication {
                 tool_call_id,
                 append,
             } => (kind, text, tool_call_id, append),
-            AgentSessionEvent::PermissionRequested(permission) => {
+            AgentSessionEvent::InteractionRequested(permission) => {
                 if permission.session_id != session_id {
                     return Err(SessionError::InvalidInput);
                 }
@@ -426,25 +498,36 @@ impl SessionApplication {
                     drop(live);
                     if let Some(connection) = connection {
                         let _ = connection
-                            .respond_permission(&permission.request_id, None)
+                            .respond_interaction(
+                                &permission.request_id,
+                                permission.cancel_response(),
+                            )
                             .await;
                     }
                     return Ok(());
                 }
                 if !live
-                    .permissions
+                    .interactions
                     .iter()
                     .any(|pending| pending.request_id == permission.request_id)
                 {
-                    live.permissions.push(permission.clone());
+                    live.interactions.push(permission.clone());
                 }
-                live.runtime.activity = SessionActivityState::WaitingPermission;
+                live.runtime.activity = SessionActivityState::WaitingInput;
                 drop(live);
                 self.append_activity(
                     session_id,
                     stream.turn_id.as_deref(),
                     SessionActivityKind::Status,
-                    format!("Permission required: {}", permission.title),
+                    format!(
+                        "{}: {}",
+                        match permission.kind {
+                            SessionInteractionKind::Permission { .. } => "Permission required",
+                            SessionInteractionKind::Question { .. } => "Answer required",
+                            SessionInteractionKind::Plan { .. } => "Plan review required",
+                        },
+                        permission.title
+                    ),
                     None,
                 )
                 .await?;

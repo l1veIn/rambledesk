@@ -1,9 +1,34 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { TestApplicationTransport } from './testApplicationTransport'
 import { StaleHttpApplicationLeaseError, StaleHttpApplicationResponseError } from './httpApplicationTransport'
 import { readApplicationSnapshot, type ApplicationSnapshotQuery } from './readApplicationSnapshot'
+import { APPLICATION_READ_TIMEOUT_MS, ApplicationReadTimeoutError, withApplicationReadTimeout } from './applicationReadTimeout'
 
 describe('application snapshot reads', () => {
+  afterEach(() => vi.useRealTimers())
+
+  it('ends a stalled read and does not retry when its late response is invalidated', async () => {
+    vi.useFakeTimers()
+    let rejectLate!: (cause: unknown) => void
+    const stalled = new Promise<never>((_, reject) => { rejectLate = reject })
+    const transport = new TestApplicationTransport().handle('listHostSessions', () => stalled)
+    const result = readApplicationSnapshot(transport, 'listHostSessions', undefined)
+    const failure = expect(result).rejects.toBeInstanceOf(ApplicationReadTimeoutError)
+    await vi.advanceTimersByTimeAsync(APPLICATION_READ_TIMEOUT_MS)
+    await failure
+    rejectLate(new StaleHttpApplicationResponseError())
+    await Promise.resolve()
+    expect(transport.calls).toHaveLength(1)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('clears deadlines on success and preserves the original immediate failure', async () => {
+    vi.useFakeTimers()
+    const failure = { code: 'storage_error', message: 'Database schema is newer than this version supports.' }
+    await expect(withApplicationReadTimeout(Promise.reject(failure), 'application readiness')).rejects.toBe(failure)
+    await expect(withApplicationReadTimeout(Promise.resolve('ready'), 'application readiness')).resolves.toBe('ready')
+    expect(vi.getTimerCount()).toBe(0)
+  })
   it('re-reads a projection invalidated by an event or unstable server snapshot', async () => {
     let reads = 0
     const transport = new TestApplicationTransport().handle('readPublishedFeedback', () => {

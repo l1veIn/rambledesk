@@ -1,17 +1,19 @@
-import { mount } from 'svelte'
-
-import { initializePreferences } from './lib/preferences'
-import { createWorkbenchComposition } from './lib/application/workbenchComposition'
 import { selectWorkbenchEntry } from './lib/workbenchEntry'
+import { configureClientDiagnostics, diagnosticErrorCategory, recordClientDiagnostic, startClientDiagnostic } from './lib/diagnostics/clientDiagnostics'
+import { runFrontendBootstrap, showStartupFailure } from './lib/startupFallback'
 import './app.css'
 
-function reportFrontendError(context: string, message: string) {
-  if (!('__TAURI_INTERNALS__' in window)) return
-  void import('./lib/desktop-shell/instrumentation')
-    .then(({ TAURI_DESKTOP_SHELL_INSTRUMENTATION }) =>
-      TAURI_DESKTOP_SHELL_INSTRUMENTATION.reportFrontendError(context, message),
-    )
-    .catch(() => undefined)
+if ('__TAURI_INTERNALS__' in window) {
+  const instrumentation = import('./lib/desktop-shell/instrumentation')
+  configureClientDiagnostics(event => instrumentation.then(module => module.TAURI_DESKTOP_SHELL_INSTRUMENTATION.recordClientDiagnostic(event)))
+}
+
+function frontendErrorCategory(cause: unknown): string {
+  if (cause instanceof TypeError) return 'type_error'
+  if (cause instanceof ReferenceError) return 'reference_error'
+  if (cause instanceof RangeError) return 'range_error'
+  if (cause instanceof SyntaxError) return 'syntax_error'
+  return diagnosticErrorCategory(cause)
 }
 
 function configureContextMenuAndDevtools() {
@@ -55,19 +57,16 @@ function configureContextMenuAndDevtools() {
 }
 
 window.addEventListener('error', (event) => {
-  reportFrontendError('window', event.message || 'unknown window error')
+  recordClientDiagnostic({ activity: 'frontend_error', outcome: 'failed', details: {
+    source: 'main', action: 'window', error_category: frontendErrorCategory(event.error), line: event.lineno, column: event.colno,
+  } })
 })
 
 window.addEventListener('unhandledrejection', (event) => {
-  const reason = event.reason
-  reportFrontendError(
-    'unhandledrejection',
-    reason instanceof Error ? `${reason.name}: ${reason.message}` : String(reason),
-  )
+  recordClientDiagnostic({ activity: 'frontend_error', outcome: 'failed', details: {
+    source: 'main', action: 'unhandledrejection', error_category: frontendErrorCategory(event.reason),
+  } })
 })
-
-initializePreferences()
-configureContextMenuAndDevtools()
 
 const isTauri = '__TAURI_INTERNALS__' in window
 const previewMode =
@@ -91,29 +90,45 @@ if (entry === 'capture' || entry === 'scroll-capture' || entry === 'pinned-captu
 
 const target = document.getElementById('app')!
 
+const finishStartup = startClientDiagnostic('application_startup', { source: entry === 'desktop' ? 'main' : entry })
+await runFrontendBootstrap(async (signal) => {
+  // Imports can fail before a Svelte component exists (including preferences
+  // accessing unavailable browser storage). Keep them inside the recovery guard.
+  const { mount } = await import('svelte')
+  const { initializePreferences } = await import('./lib/preferences')
+  signal.throwIfAborted()
+  initializePreferences()
+  configureContextMenuAndDevtools()
 if (entry === 'browser') {
   const { default: BrowserWorkbenchRoot } = await import('./BrowserWorkbenchRoot.svelte')
+  signal.throwIfAborted()
   mount(BrowserWorkbenchRoot, { target })
 } else if (entry === 'capture') {
   await import('./lib/screen-capture/screenshot-overlay.css')
   const { default: ScreenshotOverlay } = await import('./ScreenshotOverlay.svelte')
+  signal.throwIfAborted()
   mount(ScreenshotOverlay, { target })
 } else if (entry === 'scroll-capture') {
   await import('./lib/screen-capture/screenshot-overlay.css')
   const { default: ScrollCaptureController } = await import('./ScrollCaptureController.svelte')
+  signal.throwIfAborted()
   mount(ScrollCaptureController, { target })
 } else if (entry === 'pinned-capture') {
   await import('./lib/screen-capture/screenshot-overlay.css')
   const { default: PinnedCapture } = await import('./PinnedCapture.svelte')
+  signal.throwIfAborted()
   mount(PinnedCapture, { target })
 } else if (entry === 'ramble-console') {
   await import('./lib/ramble-console.css')
   const { default: RambleConsole } = await import('./RambleConsole.svelte')
+  signal.throwIfAborted()
   mount(RambleConsole, { target })
 } else if (entry === 'speech-overlay') {
   const { default: SpeechOverlay } = await import('./SpeechOverlay.svelte')
+  signal.throwIfAborted()
   mount(SpeechOverlay, { target })
 } else {
+  const { createWorkbenchComposition } = await import('./lib/application/workbenchComposition')
   const { default: App } = await import('./App.svelte')
   const tauriCapabilities = isTauri
     ? await import('./lib/capabilities/tauri')
@@ -138,5 +153,11 @@ if (entry === 'browser') {
     : (await import('./lib/publishedFeedbackAction')).createBrowserPublishedFeedbackAction(
         composition.applicationTransport,
       )
+  signal.throwIfAborted()
   mount(App, { target, props: { ...composition, publishedFeedbackAction } })
 }
+  finishStartup('ok')
+}, (failure) => {
+  finishStartup('failed', { error_category: failure.category })
+  showStartupFailure(target, failure)
+})

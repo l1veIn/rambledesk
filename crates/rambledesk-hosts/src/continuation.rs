@@ -23,8 +23,9 @@ impl ContinuationReason {
     pub fn from_status(status: FeedbackStatus) -> Option<Self> {
         match status {
             FeedbackStatus::Completed => Some(Self::Completed),
-            FeedbackStatus::Cancelled => Some(Self::Cancelled),
-            FeedbackStatus::Waiting | FeedbackStatus::InProgress => None,
+            FeedbackStatus::Waiting | FeedbackStatus::InProgress | FeedbackStatus::Cancelled => {
+                None
+            }
         }
     }
 
@@ -288,6 +289,21 @@ mod tests {
             host_session_id: "session".to_owned(),
             source_hint: None,
             reason: ContinuationReason::Completed,
+        }
+    }
+
+    #[test]
+    fn only_completed_feedback_triggers_host_continuation() {
+        assert_eq!(
+            ContinuationReason::from_status(FeedbackStatus::Completed),
+            Some(ContinuationReason::Completed)
+        );
+        for status in [
+            FeedbackStatus::Waiting,
+            FeedbackStatus::InProgress,
+            FeedbackStatus::Cancelled,
+        ] {
+            assert_eq!(ContinuationReason::from_status(status), None);
         }
     }
 

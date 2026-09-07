@@ -124,8 +124,8 @@
     try {
       const result = await onCheck(draft.id)
       checkResult = {
-        ok: result?.ok ?? true,
-        message: redactAgentMessage(result?.message ?? 'Check completed.', draft.envText),
+        ok: result?.ok ?? false,
+        message: redactAgentMessage(result?.message ?? ($locale === 'zh-CN' ? '连接检查未完成，请重试。' : 'The connection check did not complete. Retry.'), draft.envText),
         details: (result?.details ?? []).map((detail) => redactAgentMessage(detail, draft.envText)),
       }
     } catch (cause) {

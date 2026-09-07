@@ -4,6 +4,7 @@ import { APPLICATION_EVENTS_STREAM } from '$lib/application/applicationEvents'
 import { TestApplicationTransport } from '$lib/application/testApplicationTransport'
 import type { ManagedSessionSnapshot, SessionConnectionState } from '$lib/generated/feedback'
 import { createManagedSessionController } from './managedSessionController'
+import { createManagedFeedbackStatusController } from './managedFeedbackStatusController'
 
 function snapshot(connection: SessionConnectionState = 'stopped'): ManagedSessionSnapshot {
   return {
@@ -13,8 +14,8 @@ function snapshot(connection: SessionConnectionState = 'stopped'): ManagedSessio
     runtime: { connection, activity: 'idle', instance_id: connection === 'connected' ? 'instance' : null,
       capabilities: { load_session: true, resume_session: false, http_mcp: false,
         prompt: { image: false, audio: false, embedded_context: false, resource_links: false } },
-      configuration: { options: [], modes: null, models: null }, config_updated_at: null, last_error: null },
-    activities: [], permissions: [], deliveries: [], deleting: false, recovery: null,
+      configuration: { options: [] }, config_updated_at: null, last_error: null },
+    activities: [], interactions: [], deliveries: [], deleting: false, recovery: null,
   }
 }
 function recovery(status: 'interrupted' | 'unclosed'): NonNullable<ManagedSessionSnapshot['recovery']> {
@@ -35,6 +36,45 @@ function ready(transport: TestApplicationTransport, runtime_generation = 'runtim
 }
 
 describe('opening an Agent workspace', () => {
+  it('leaves cancelled feedback dormant until its Agent workspace opens, then sends only the user message', async () => {
+    const current = snapshot()
+    current.deliveries = [{ request_id: 'cancelled-feedback', session_id: 'one', resolution: 'cancelled', state: 'discarded',
+      attempt_id: null, created_at: '2026-09-05', updated_at: '2026-09-05', last_error: null }]
+    const connected = { ...current, runtime: snapshot('connected').runtime }
+    const transport = new TestApplicationTransport(undefined, { initiallyReady: true })
+      .resolve('getManagedFeedbackStatus', { session_id: 'one', deleting: false, connection: 'stopped', activity: 'idle', deliveries: current.deliveries })
+      .resolve('getManagedSession', current)
+      .handle('startManagedSession', () => {
+        transport.resolve('getManagedSession', connected)
+        return connected
+      })
+      .resolve('sendManagedPrompt', connected)
+
+    const feedback = createManagedFeedbackStatusController(transport, 'one', 'cancelled-feedback')
+    feedback.start()
+    await flush()
+    invalidate(transport)
+    ready(transport, 'restarted')
+    await flush()
+    expect(get(feedback).status?.deliveries).toEqual(current.deliveries)
+    expect(transport.calls.every(call => call.name === 'getManagedFeedbackStatus')).toBe(true)
+    feedback.dispose()
+
+    const agent = createManagedSessionController(transport, 'one')
+    agent.start()
+    await flush()
+    expect(transport.callsFor('startManagedSession')).toHaveLength(1)
+    expect(transport.callsFor('sendManagedPrompt')).toHaveLength(0)
+    expect(get(agent).snapshot?.deliveries).toEqual(current.deliveries)
+    await agent.prompt('Continue with a new task')
+    await flush()
+    expect(transport.callsFor('sendManagedPrompt')).toEqual([
+      { name: 'sendManagedPrompt', input: { session_id: 'one', text: 'Continue with a new task' } },
+    ])
+    expect(transport.callsFor('resolveFeedbackDelivery')).toHaveLength(0)
+    agent.dispose()
+  })
+
   it('connects a stopped session once and only reads the current projection afterward', async () => {
     const transport = new TestApplicationTransport(undefined, { initiallyReady: true })
       .resolve('getManagedSession', snapshot())

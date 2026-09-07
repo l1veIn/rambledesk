@@ -15,21 +15,71 @@ fn prompt(snapshot: &ManagedSessionSnapshot) -> SendManagedPromptInput {
 }
 
 #[tokio::test]
+async fn new_sessions_require_an_explicit_directory_before_any_recovery_or_launch() {
+    let (dir, store, driver, app, config) = setup().await;
+    // Invalid new-session input must not even reconcile another draft on disk.
+    store
+        .create_prepared_session(NewManagedSession {
+            session_id: "existing-draft".into(),
+            agent_config_id: config.clone(),
+            cwd: dir.path().to_string_lossy().into_owned(),
+            title: String::new(),
+            created_at: "2026-09-06T00:00:00Z".into(),
+        })
+        .await
+        .unwrap();
+    for cwd in ["", " \t\n", "relative/project", "invalid\0directory"] {
+        let prepared = app
+            .prepare_session(PrepareManagedSessionInput {
+                agent_config_id: config.clone(),
+                cwd: cwd.into(),
+            })
+            .await;
+        assert!(matches!(prepared, Err(SessionError::InvalidInput)));
+        let created = app
+            .create_session(CreateManagedSessionInput {
+                agent_config_id: config.clone(),
+                cwd: cwd.into(),
+                title: "A new session".into(),
+            })
+            .await;
+        assert!(matches!(created, Err(SessionError::InvalidInput)));
+    }
+    assert!(driver.starts.lock().unwrap().is_empty());
+    assert!(store.list_managed_sessions().await.unwrap().is_empty());
+    assert!(
+        store
+            .get_session("existing-draft")
+            .await
+            .unwrap()
+            .is_prepared()
+    );
+    let ready = app.prepare_session(prepare(&dir, &config)).await.unwrap();
+    assert_eq!(ready.runtime.connection, SessionConnectionState::Connected);
+    assert_eq!(driver.starts.lock().unwrap().len(), 1);
+    app.shutdown().await.unwrap();
+    store.close().await;
+}
+
+#[test]
+fn new_session_contracts_reject_an_omitted_directory() {
+    let input = serde_json::json!({ "agent_config_id": "config", "title": "A session" });
+    assert!(serde_json::from_value::<PrepareManagedSessionInput>(input.clone()).is_err());
+    assert!(serde_json::from_value::<CreateManagedSessionInput>(input).is_err());
+}
+
+#[tokio::test]
 async fn prepared_connection_is_hidden_until_first_prompt_and_reuses_remote_context() {
     let (dir, store, driver, app, config) = setup().await;
     let ready = app.prepare_session(prepare(&dir, &config)).await.unwrap();
     assert!(ready.session.is_prepared());
     assert_eq!(ready.runtime.connection, SessionConnectionState::Connected);
-    assert_eq!(
-        ready
-            .runtime
-            .configuration
-            .models
-            .as_ref()
-            .unwrap()
-            .current_model_id,
-        "fixture-model"
-    );
+    assert!(ready.runtime.configuration.confirms(&SessionConfigChange {
+        config_id: "model-control".into(),
+        value: SessionConfigValue::Select {
+            value: "fixture-model".into()
+        }
+    }));
     assert!(ready.activities.is_empty());
     assert!(store.list_managed_sessions().await.unwrap().is_empty());
     assert!(

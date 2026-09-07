@@ -1,497 +1,255 @@
 <script lang="ts">
-  import {
-    BellRing,
-    Check,
-    ChefHat,
-    ChevronDown,
-    ChevronLeft,
-    ChevronRight,
-    Clipboard,
-    Download,
-    FolderCog,
-    HardDrive,
-    LoaderCircle,
-    Mic,
-    PlugZap,
-    Rocket,
-    ShieldCheck,
-    Sparkles,
-  } from '@lucide/svelte'
   import { onMount } from 'svelte'
-
+  import { BellRing, Check, ChefHat, ChevronLeft, ChevronRight, Download, FolderCog, HardDrive, LoaderCircle, MessageSquare, Mic, Rocket, ShieldCheck, Sparkles } from '@lucide/svelte'
   import MacPermissions from '$lib/MacPermissions.svelte'
+  import AgentCatalog from '$lib/agents/AgentCatalog.svelte'
+  import type { ApplicationTransport } from '$lib/application/applicationTransport'
+  import type { AgentConfig } from '$lib/generated/feedback'
   import { createUnavailableWorkbenchCapabilities } from '$lib/capabilities/unavailableCapabilities'
-  import type { WorkbenchCapabilities } from '$lib/capabilities/workbenchCapabilities'
+  import type { SpeechModelInfo, SpeechModelProgress, WorkbenchCapabilities } from '$lib/capabilities/workbenchCapabilities'
+  import { resolveSupportedSpeechModelId } from '$lib/capabilities/speechModelSelection'
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
   import * as Dialog from '$lib/components/ui/dialog'
-  import { toast } from '$lib/components/ui/sonner'
   import { t } from '$lib/i18n'
+  import { diagnosticErrorCategory, recordClientDiagnostic, startClientDiagnostic } from '$lib/diagnostics/clientDiagnostics'
+  import { speechModelDescription, speechModelDisplayName } from '$lib/speechModelLabels'
+  import { onboardingSteps, onboardingRestartStep, reconcileOnboardingStep, resumeOnboardingStep, type OnboardingStep } from '$lib/onboardingSteps'
   import {
-    speechModelDescription,
-    speechModelDisplayName,
-  } from '$lib/speechModelLabels'
-  import piLogoSvg from '../assets/pi-logo.svg?raw'
-  import dshLogoSvg from '../assets/dsh-logo.svg?raw'
-  import {
-    DEFAULT_SPEECH_MODEL_ID,
-    cookingApiKey,
-    cookingBaseUrl,
-    cookingEnabled,
-    cookingModel,
-    cookingProvider,
-    cookingReasoningEffort,
-    finishOnboarding,
-    locale,
-    notificationPopupEnabled,
-    notificationSoundEnabled,
-    onboardingStep,
-    setCookingApiKey,
-    setCookingBaseUrl,
-    setCookingEnabled,
-    setCookingModel,
-    setCookingProvider,
-    setCookingReasoningEffort,
-    setNotificationPopupEnabled,
-    setNotificationSoundEnabled,
-    setLocale,
-    setOnboardingStep,
-    setSpeechModelId,
-    speechModelId,
-    type CookingProvider,
-    type CookingReasoningEffort,
-    type SpeechModelId,
+    DEFAULT_SPEECH_MODEL_ID, cookingApiKey, cookingBaseUrl, cookingEnabled, cookingModel, cookingProvider, cookingReasoningEffort,
+    finishOnboarding, locale, notificationPopupEnabled, notificationSoundEnabled, onboardingStep,
+    setCookingApiKey, setCookingBaseUrl, setCookingEnabled, setCookingModel, setCookingProvider, setCookingReasoningEffort,
+    setLocale, setNotificationPopupEnabled, setNotificationSoundEnabled, setOnboardingStep, setSpeechModelId, speechModelId,
+    type CookingProvider, type CookingReasoningEffort, type SpeechModelId,
   } from '$lib/preferences'
-  import { resolveSupportedSpeechModelId } from '$lib/capabilities/speechModelSelection'
 
   export let openWizard = false
   export let onClose: () => void = () => {}
-  const unavailableCapabilities = createUnavailableWorkbenchCapabilities()
-  export let capabilities: WorkbenchCapabilities = unavailableCapabilities
-
-  type StorageView = { active_path: string; selected_path: string; restart_required: boolean }
-  type SpeechModel = {
-    id: SpeechModelId
-    display_name: string
-    description: string
-    size_bytes: number
-    installed: boolean
-    streaming: boolean
-    languages: readonly string[]
-  }
-  type ModelProgress = { model_id: string; downloaded: number; total: number }
-  type McpHost = { id: string; name: string; installed: boolean; configured: boolean }
-  type McpInstallResult = { action: 'created' | 'updated' | 'unchanged' }
-  type PiPackageStatus = {
-    cliAvailable: boolean
-    installed: boolean
-    sourceCount: number
-    restartRequired: boolean
-  }
-
-  const platform = capabilities.windowControls.implementation.platform()
-  const storageAvailable =
-    capabilities.dataStorageAdministration.status.availability !== 'unavailable' &&
-    capabilities.serverPaths.status.availability !== 'unavailable'
+  export let onStartSession: (configId?: string) => Promise<void> = async () => {}
+  export let transport: ApplicationTransport
+  export let capabilities: WorkbenchCapabilities = createUnavailableWorkbenchCapabilities()
+  const storageAvailable = capabilities.dataStorageAdministration.status.availability !== 'unavailable'
+    && capabilities.serverPaths.status.availability !== 'unavailable'
   const voiceAvailable = capabilities.speech.status.availability !== 'unavailable'
-  const permissionsAvailable =
-    platform === 'macOS' &&
-    capabilities.systemPermissions.status.availability !== 'unavailable'
-  const adaptersAvailable =
-    capabilities.hostIntegrationAdministration.status.availability !== 'unavailable'
+  const platform = capabilities.windowControls.implementation.platform()
+  const permissionsAvailable = platform === 'macOS' && capabilities.systemPermissions.status.availability !== 'unavailable'
   const notificationsAvailable = capabilities.notifications.status.availability !== 'unavailable'
   const windowControlsAvailable = capabilities.windowControls.status.availability !== 'unavailable'
-  let showMacPermissionStep = false
-  let steps = onboardingSteps(showMacPermissionStep)
   const isWindows = platform === 'Windows'
-  let step = 0
-  let wasOpen = false
-  let closing = false
-  let storage: StorageView | null = null
+  // Include the potential Mac step before restoring numeric progress; the query
+  // below can remove it while preserving the current step by its stable name.
+  let steps = onboardingSteps({ storage: storageAvailable, voice: voiceAvailable, permissions: permissionsAvailable, notifications: notificationsAvailable })
+  let step = resumeOnboardingStep(steps, onboardingStep())
+  let selectedConfig: AgentConfig | null = null
+  let visitedAgents = false
+  let detectOnEntry = false
+  let storage: { selected_path: string; restart_required: boolean } | null = null
   let storageBusy = false
-  let storageRestartRequired = false
+  let restarting = false
   let permissionRestartRequired = false
-  let models: SpeechModel[] = []
+  let models: SpeechModelInfo[] = []
+  let modelsLoading = false
   let modelBusy = false
-  let modelProgress: ModelProgress | null = null
-  let hosts: McpHost[] = []
-  let hostsLoading = false
-  let hostSelections = new Set<string>()
-  let adapterBusy = false
-  let piBusy = false
-  let piStatus: PiPackageStatus | null = null
-  let piStatusLoading = adaptersAvailable
-  let dshBusy = false
-  let promptCopyState: 'idle' | 'copied' | 'error' = 'idle'
-  let copyCelebrationKey = 0
+  let modelProgress: SpeechModelProgress | null = null
   let notificationBusy = false
-  let unlistenModelProgress: (() => void) | undefined
-
-  const copyCelebrationParticles = [
-    { x: -74, y: -38, color: '#67e8f9', delay: 0 },
-    { x: -58, y: -64, color: '#60a5fa', delay: 20 },
-    { x: -26, y: -72, color: '#c084fc', delay: 45 },
-    { x: 12, y: -76, color: '#fbbf24', delay: 10 },
-    { x: 48, y: -62, color: '#fb7185', delay: 35 },
-    { x: 76, y: -34, color: '#67e8f9', delay: 60 },
-    { x: 82, y: 8, color: '#a78bfa', delay: 25 },
-    { x: 60, y: 36, color: '#fbbf24', delay: 50 },
-    { x: 24, y: 48, color: '#34d399', delay: 15 },
-    { x: -18, y: 50, color: '#60a5fa', delay: 55 },
-    { x: -56, y: 34, color: '#fb7185', delay: 30 },
-    { x: -82, y: 4, color: '#fbbf24', delay: 65 },
-  ]
-
-  $: selectedModel = models.find((model) => model.id === $speechModelId) ?? models[0]
-  $: selectedHosts = [...hostSelections]
-  $: modelProgressPercent = modelProgress
-    ? Math.min(100, Math.round((modelProgress.downloaded / Math.max(1, modelProgress.total)) * 100))
-    : 0
+  let mounted = false
+  let starting = false
+  let error = ''
+  let finishFlow = startClientDiagnostic('onboarding', { source: 'onboarding', platform, resumed: step > 0, step_count: steps.length,
+    storage_available: storageAvailable, voice_available: voiceAvailable, permissions_available: permissionsAvailable, notifications_available: notificationsAvailable })
+  let finishStep: ReturnType<typeof startClientDiagnostic> | undefined
+  let recordedStep: OnboardingStep | undefined
+  $: if (mounted) observeStep(steps[step])
   $: isFinalStep = step === steps.length - 1
-  $: if (openWizard && !wasOpen) {
-    wasOpen = true
-    closing = false
-    promptCopyState = 'idle'
-    step = Math.min(steps.length - 1, onboardingStep())
+  $: selectedModel = models.find(model => model.id === $speechModelId) ?? models[0]
+  $: modelProgressPercent = modelProgress ? Math.min(100, Math.round(modelProgress.downloaded / Math.max(1, modelProgress.total) * 100)) : 0
+  $: if (steps[step] === 'agents' && !visitedAgents) { visitedAgents = true; detectOnEntry = true }
+  $: if (steps[step] !== 'agents') detectOnEntry = false
+  function localizedText(language: string) {
+    return (zh: string, en: string) => language === 'zh-CN' ? zh : en
   }
-  $: if (!openWizard && wasOpen) {
-    wasOpen = false
-    if (!closing) complete(false)
+  $: tr = localizedText($locale)
+  $: translate = t.bind(null, $locale)
+  function stepLabel(current: OnboardingStep, language: string) {
+    const labels = { welcome: ['欢迎', 'Welcome'], storage: ['数据位置', 'Data storage'], voice: ['语音输入', 'Voice input'],
+      permissions: ['系统权限', 'Permissions'], agents: ['连接智能体', 'Connect an agent'], notifications: ['通知', 'Notifications'],
+      cooking: ['Cooking', 'Cooking'], finish: ['新建会话', 'New session'] }
+    return labels[current][language === 'zh-CN' ? 0 : 1]
   }
-
+  function mb(bytes: number) { return `${Math.round(bytes / 1024 / 1024)} MB` }
+  function message(cause: unknown) { return cause instanceof Error ? cause.message : String(cause) }
+  function observeStep(current: OnboardingStep) {
+    if (recordedStep === current) return
+    finishStep?.('ok', { reason: 'navigation' })
+    recordedStep = current
+    finishStep = startClientDiagnostic('onboarding_step', { source: 'onboarding', step: current, step_index: step, step_count: steps.length })
+  }
+  function actionDiagnostic(action: string, phase: string) {
+    return startClientDiagnostic('onboarding_action', { source: 'onboarding', action, phase, step: steps[step] })
+  }
+  function move(next: number) {
+    if (starting || storageBusy || modelBusy || storage?.restart_required || permissionRestartRequired) return
+    recordClientDiagnostic({ activity: 'onboarding_action', outcome: 'ok', details: { source: 'onboarding', step: steps[step], next_step: steps[Math.max(0, Math.min(steps.length - 1, next))],
+      action: next < step ? 'back' : 'next', selected: !!selectedConfig, installed: !!selectedModel?.installed } })
+    step = Math.max(0, Math.min(steps.length - 1, next)); setOnboardingStep(step); error = ''
+  }
   onMount(() => {
+    mounted = true
     if (storageAvailable) void loadStorage()
+    let unsubscribeProgress: (() => void) | undefined
     if (voiceAvailable) {
       void loadModels()
-      unlistenModelProgress = capabilities.speech.implementation.onModelProgress(
-        (progress) => (modelProgress = { ...progress }),
-        () => undefined,
-      )
+      unsubscribeProgress = capabilities.speech.implementation.onModelProgress(progress => {
+        if (mounted && modelProgress?.model_id === progress.model_id) modelProgress = { ...progress }
+      }, cause => { if (mounted) error = message(cause) })
     }
-    if (adaptersAvailable) {
-      void loadHosts()
-      void loadPiStatus()
-    }
-    if (permissionsAvailable) void loadMacPermissionStep()
-    return () => unlistenModelProgress?.()
+    if (permissionsAvailable) void loadPermissions()
+    return () => { mounted = false; unsubscribeProgress?.(); finishStep?.('cancelled', { reason: 'unmounted' }); finishFlow('cancelled', { reason: 'unmounted' }) }
   })
-
-  function onboardingSteps(includePermissions: boolean) {
-    return [
-      'Welcome',
-      ...(storageAvailable ? ['Storage'] : []),
-      ...(voiceAvailable ? ['Voice input'] : []),
-      ...(includePermissions ? ['Permissions'] : []),
-      ...(adaptersAvailable ? ['Adapters'] : []),
-      ...(notificationsAvailable ? ['Notifications'] : []),
-      'Cooking',
-      'Finish',
-    ]
-  }
-
-  function tr(source: string, values: Record<string, string | number> = {}) {
-    return t($locale, source, values)
-  }
-
-  function move(next: number) {
-    step = Math.max(0, Math.min(steps.length - 1, next))
+  async function loadPermissions() {
+    const finish = actionDiagnostic('probe', 'permissions')
+    let includePermissions = false
+    try { const permissions = await capabilities.systemPermissions.implementation.list(); includePermissions = permissions.length > 0; finish('ok', { permission_count: permissions.length, available: includePermissions }) }
+    catch (cause) { finish('failed', { error_category: diagnosticErrorCategory(cause) }) /* Unsupported APIs do not block onboarding. */ }
+    if (!mounted || restarting) return
+    const next = onboardingSteps({ storage: storageAvailable, voice: voiceAvailable, permissions: includePermissions, notifications: notificationsAvailable })
+    step = reconcileOnboardingStep(steps, next, step)
+    steps = next
     setOnboardingStep(step)
   }
-
-  async function loadMacPermissionStep() {
-    try {
-      const permissions = await capabilities.systemPermissions.implementation.list()
-      showMacPermissionStep = permissions.length > 0
-      steps = onboardingSteps(showMacPermissionStep)
-      step = Math.max(0, Math.min(steps.length - 1, step))
-    } catch {
-      showMacPermissionStep = false
-      steps = onboardingSteps(false)
-      step = Math.max(0, Math.min(steps.length - 1, step))
-    }
-  }
-
-  function complete(showToast = true) {
-    closing = true
-    finishOnboarding()
-    openWizard = false
-    onClose()
-    if (showToast) toast.success(tr('RambleDesk is ready'))
-  }
-
-  function messageFrom(cause: unknown) {
-    if (cause instanceof Error) return cause.message
-    if (cause && typeof cause === 'object' && 'message' in cause) {
-      return String((cause as { message: unknown }).message)
-    }
-    return String(cause)
-  }
-
-  function mb(bytes: number) {
-    return `${Math.round(bytes / 1024 / 1024)} MB`
-  }
-
-  async function loadStorage() {
-    try {
-      storage = await capabilities.dataStorageAdministration.implementation.read()
-    } catch (cause) {
-      toast.error(tr('Could not read the data storage location'), { description: messageFrom(cause) })
-    }
-  }
-
-  async function chooseStorage() {
-    if (!storageAvailable || storageBusy) return
-    const path = await capabilities.serverPaths.implementation.chooseDirectory()
-    if (!path) return
-    storageBusy = true
-    try {
-      storage = await capabilities.dataStorageAdministration.implementation.select(path)
-      storageRestartRequired = storage.restart_required
-      toast.success(tr('Data storage location saved'))
-    } catch (cause) {
-      toast.error(tr('Could not change the data storage location'), { description: messageFrom(cause) })
-    } finally {
-      storageBusy = false
-    }
-  }
-
-  async function restartForStorage() {
-    if (!windowControlsAvailable) return
-    setOnboardingStep(2)
-    try {
-      await capabilities.windowControls.implementation.restart()
-    } catch (cause) {
-      toast.error(tr('Could not restart RambleDesk'), { description: messageFrom(cause) })
-    }
-  }
-
-  async function restartForPermissions() {
-    if (!windowControlsAvailable) return
-    setOnboardingStep(step)
-    try {
-      await capabilities.windowControls.implementation.restart()
-    } catch (cause) {
-      toast.error(tr('Could not restart RambleDesk'), { description: messageFrom(cause) })
-    }
-  }
-
   async function loadModels() {
+    const finish = actionDiagnostic('refresh', 'model')
+    modelsLoading = true
     try {
-      models = [...await capabilities.speech.implementation.listModels()]
-      const supportedModelId = resolveSupportedSpeechModelId($speechModelId, models)
-      if (supportedModelId && supportedModelId !== $speechModelId) setSpeechModelId(supportedModelId)
-    } catch (cause) {
-      toast.error(tr('Could not read voice models'), { description: messageFrom(cause) })
-    }
+      const listed = await capabilities.speech.implementation.listModels()
+      finish('ok', { model_count: listed.length })
+      if (!mounted) return
+      models = [...listed]
+      const supported = resolveSupportedSpeechModelId($speechModelId, models)
+      if (supported && supported !== $speechModelId) setSpeechModelId(supported)
+    } catch (cause) { finish('failed', { error_category: diagnosticErrorCategory(cause) }); if (mounted) error = message(cause) }
+    finally { if (mounted) modelsLoading = false }
   }
-
   async function downloadModel() {
     if (!selectedModel || selectedModel.installed || modelBusy) return
-    modelBusy = true
-    modelProgress = { model_id: selectedModel.id, downloaded: 0, total: selectedModel.size_bytes }
-    try {
-      await capabilities.speech.implementation.downloadModel(selectedModel.id)
-      await loadModels()
-      toast.success(tr('Voice model installed'))
-    } catch (cause) {
-      toast.error(tr('Voice model download failed'), { description: messageFrom(cause) })
-    } finally {
-      modelBusy = false
-    }
+    const model = selectedModel
+    const finish = actionDiagnostic('download', 'model')
+    modelBusy = true; error = ''
+    modelProgress = { model_id: model.id, downloaded: 0, total: model.size_bytes }
+    try { await capabilities.speech.implementation.downloadModel(model.id); finish('ok', { installed: true }); if (mounted) await loadModels() }
+    catch (cause) { finish('failed', { error_category: diagnosticErrorCategory(cause) }); if (mounted) error = message(cause) }
+    finally { if (mounted) modelBusy = false }
   }
-
-  async function loadHosts() {
-    hostsLoading = true
-    try {
-      hosts = [...await capabilities.hostIntegrationAdministration.implementation.detectGenericMcpHosts()]
-      hostSelections = new Set(hosts.filter((host) => host.installed && !host.configured).map((host) => host.id))
-    } catch (cause) {
-      toast.error(tr('Could not detect adapter hosts'), { description: messageFrom(cause) })
-    } finally {
-      hostsLoading = false
-    }
-  }
-
-  function toggleHost(id: string) {
-    const next = new Set(hostSelections)
-    if (next.has(id)) next.delete(id)
-    else next.add(id)
-    hostSelections = next
-  }
-
-  async function installSelectedHosts() {
-    if (!selectedHosts.length || adapterBusy) return
-    adapterBusy = true
-    try {
-      const results = await capabilities.hostIntegrationAdministration.implementation.installGenericMcpHosts(selectedHosts)
-      const changed = results.filter((result) => result.action !== 'unchanged').length
-      toast.success(tr('Adapters configured'), { description: tr('Restart {count} host(s) before using them.', { count: changed }) })
-      await loadHosts()
-    } catch (cause) {
-      toast.error(tr('Adapter installation failed'), { description: messageFrom(cause) })
-    } finally {
-      adapterBusy = false
-    }
-  }
-
-  async function loadPiStatus() {
-    piStatusLoading = true
-    try {
-      piStatus = await capabilities.hostIntegrationAdministration.implementation.piStatus()
-    } catch {
-      piStatus = null
-    } finally {
-      piStatusLoading = false
-    }
-  }
-
-  async function installPi() {
-    if (piBusy) return
-    piBusy = true
-    try {
-      await capabilities.hostIntegrationAdministration.implementation.installPi()
-      await loadPiStatus()
-      toast.success(tr('Pi native adapter installed'))
-    } catch (cause) {
-      toast.error(tr('Pi adapter installation failed'), { description: messageFrom(cause) })
-    } finally {
-      piBusy = false
-    }
-  }
-
-  async function installDsh() {
-    if (dshBusy) return
-    dshBusy = true
-    try {
-      await capabilities.hostIntegrationAdministration.implementation.installDsh()
-      toast.success(tr('DSH native adapter installed'))
-    } catch (cause) {
-      toast.error(tr('DSH adapter installation failed'), { description: messageFrom(cause) })
-    } finally {
-      dshBusy = false
-    }
-  }
-
-  $: starterPrompt = t($locale, '/ramble Let\'s work on something together')
-
-  async function copyStarterPrompt() {
-    try {
-      await navigator.clipboard.writeText(starterPrompt)
-      promptCopyState = 'copied'
-      copyCelebrationKey += 1
-    } catch {
-      promptCopyState = 'error'
-    }
-  }
-
   async function enableNotifications() {
     if (!notificationsAvailable || notificationBusy || isWindows) return
-    notificationBusy = true
+    const finish = actionDiagnostic('permission', 'notifications')
+    notificationBusy = true; error = ''
     try {
-      const currentPermission = await capabilities.notifications.implementation.permission()
-      const permission = currentPermission === 'granted'
-        ? 'granted'
-        : await capabilities.notifications.implementation.requestPermission()
-      if (permission !== 'granted') throw new Error(tr('The operating system did not grant notification permission.'))
+      const current = await capabilities.notifications.implementation.permission()
+      const permission = current === 'granted' ? current : await capabilities.notifications.implementation.requestPermission()
+      if (permission !== 'granted') { finish('failed', { reason: 'permission_denied' }); throw new Error(translate('The operating system did not grant notification permission.')) }
       setNotificationPopupEnabled(true)
-      toast.success(tr('System notifications enabled'))
-    } catch (cause) {
-      setNotificationPopupEnabled(false)
-      toast.error(tr('Could not enable system notifications'), { description: messageFrom(cause) })
-    } finally {
-      notificationBusy = false
-    }
+      finish('ok', { enabled: true })
+    } catch (cause) { finish('failed', { error_category: diagnosticErrorCategory(cause) }); setNotificationPopupEnabled(false); if (mounted) error = message(cause) }
+    finally { if (mounted) notificationBusy = false }
   }
-
   function chooseCookingProvider(provider: CookingProvider) {
+    recordClientDiagnostic({ activity: 'onboarding_action', outcome: 'ok', details: { source: 'onboarding', step: 'cooking', action: 'configure' } })
     setCookingProvider(provider)
-    if (provider === 'deepseek') {
-      setCookingBaseUrl('https://api.deepseek.com/v1')
-      setCookingModel('deepseek-v4-flash')
-    } else if (provider === 'openai') {
-      setCookingBaseUrl('https://api.openai.com/v1')
-      setCookingModel('gpt-4.1-mini')
-    }
+    if (provider === 'deepseek') { setCookingBaseUrl('https://api.deepseek.com/v1'); setCookingModel('deepseek-v4-flash') }
+    else if (provider === 'openai') { setCookingBaseUrl('https://api.openai.com/v1'); setCookingModel('gpt-4.1-mini') }
+  }
+  function toggleCooking() {
+    const enabled = !$cookingEnabled
+    recordClientDiagnostic({ activity: 'onboarding_action', outcome: 'ok', details: { source: 'onboarding', step: 'cooking', action: 'configure', enabled } })
+    setCookingEnabled(enabled)
+  }
+  function toggleSound() {
+    const enabled = !$notificationSoundEnabled
+    recordClientDiagnostic({ activity: 'onboarding_action', outcome: 'ok', details: { source: 'onboarding', step: 'notifications', action: 'configure', enabled } })
+    setNotificationSoundEnabled(enabled)
+  }
+  async function loadStorage() {
+    const finish = actionDiagnostic('refresh', 'storage')
+    try { storage = await capabilities.dataStorageAdministration.implementation.read(); finish('ok', { restart_required: storage.restart_required }) }
+    catch (cause) { finish('failed', { error_category: diagnosticErrorCategory(cause) }); error = message(cause) }
+  }
+  async function chooseStorage() {
+    if (storageBusy || starting) return
+    const finish = actionDiagnostic('select', 'storage')
+    storageBusy = true; error = ''
+    try {
+      const path = await capabilities.serverPaths.implementation.chooseDirectory()
+      if (path) storage = await capabilities.dataStorageAdministration.implementation.select(path)
+      finish(path ? 'ok' : 'cancelled', { restart_required: !!storage?.restart_required })
+    } catch (cause) { finish('failed', { error_category: diagnosticErrorCategory(cause) }); error = message(cause) }
+    finally { storageBusy = false }
+  }
+  async function restart(reason: 'storage' | 'permissions') {
+    if (!windowControlsAvailable) return
+    const finish = startClientDiagnostic('onboarding_action', { source: 'onboarding', action: 'restart', phase: reason, step: steps[step], next_step: steps[onboardingRestartStep(steps, reason)] })
+    restarting = true; storageBusy = true; error = ''; setOnboardingStep(onboardingRestartStep(steps, reason))
+    try { await capabilities.windowControls.implementation.restart(); finish('ok') }
+    catch (cause) { finish('failed', { error_category: diagnosticErrorCategory(cause) }); error = message(cause); storageBusy = false; restarting = false }
+  }
+  async function complete() {
+    if (starting || storageBusy || modelBusy || storage?.restart_required || permissionRestartRequired) return
+    const finish = actionDiagnostic('open', 'completion')
+    starting = true; error = ''
+    try {
+      await onStartSession(selectedConfig?.id)
+      finishOnboarding(); openWizard = false; onClose()
+      finish('ok', { selected: !!selectedConfig })
+      finishStep?.(isFinalStep ? 'ok' : 'skipped', { reason: 'completed' })
+      finishFlow(isFinalStep ? 'ok' : 'skipped', { step: steps[step], selected: !!selectedConfig })
+    } catch (cause) { finish('failed', { error_category: diagnosticErrorCategory(cause) }); error = message(cause); starting = false }
   }
 </script>
 
 <Dialog.Root bind:open={openWizard}>
-  <Dialog.Content
-    showCloseButton={false}
-    interactOutsideBehavior="ignore"
-    escapeKeydownBehavior="ignore"
-    class="flex max-h-[calc(100vh-2rem)] w-[min(760px,calc(100vw-2rem))] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none"
-    aria-describedby={isFinalStep ? undefined : 'onboarding-description'}
-  >
-    {#if !isFinalStep}
-      <Dialog.Header class="shrink-0 border-b bg-muted/25 px-7 py-6">
-        <div class="flex items-center gap-3">
-          <span class="grid size-10 place-items-center rounded-xl bg-primary text-primary-foreground">
-            <Sparkles class="size-5" />
-          </span>
-          <div>
-            <Dialog.Title>{tr('Welcome to RambleDesk')}</Dialog.Title>
-            <Dialog.Description id="onboarding-description" class="mt-1 text-xs">
-              {tr('Finish common setup in a few steps. Every option can be changed later in Settings.')}
-            </Dialog.Description>
-          </div>
-        </div>
-        <div class="mt-5 flex gap-1.5" aria-label={tr('Setup progress')}>
-          {#each steps as label, index}
-            <span
-              class={[
-                'h-1 flex-1 rounded-full transition-colors',
-                index <= step ? 'bg-primary' : 'bg-muted',
-              ]}
-              title={`${index + 1}. ${tr(label)}`}
-            ></span>
-          {/each}
-        </div>
-        <p class="m-0 mt-2 text-[10px] text-muted-foreground">{step + 1} / {steps.length} · {tr(steps[step])}</p>
-      </Dialog.Header>
-    {/if}
-
-    <div class="min-h-0 flex-1 overflow-y-auto px-7 py-7">
-      {#if steps[step] === 'Welcome'}
-        <div class="mx-auto flex max-w-lg flex-col items-center text-center">
-          <span class="grid size-16 place-items-center rounded-2xl bg-primary/10 text-primary"><Rocket class="size-8" /></span>
-          <h2 class="mb-0 mt-5 text-xl font-semibold">{tr('Turn thoughts from an experience into useful feedback while they are fresh.')}</h2>
-          <p class="mb-0 mt-3 text-sm leading-6 text-muted-foreground">
-            {tr('RambleDesk captures text, voice, and screenshot feedback for your coding tools. Cooking can turn a raw Ramble into formal feedback.')}
-          </p>
-          <div class="mt-5 flex items-center gap-2 text-xs">
-            <span class="text-muted-foreground">{tr('Interface language')}</span>
-            <Button size="sm" variant={$locale === 'zh-CN' ? 'default' : 'outline'} onclick={() => setLocale('zh-CN')}>简体中文</Button>
-            <Button size="sm" variant={$locale === 'en' ? 'default' : 'outline'} onclick={() => setLocale('en')}>English</Button>
-          </div>
-          <div class="mt-5 grid w-full grid-cols-3 gap-3 text-left text-xs">
-            <div class="rounded-lg border bg-muted/20 p-3"><Mic class="mb-2 size-4 text-primary" />{tr('Local voice transcription')}</div>
-            <div class="rounded-lg border bg-muted/20 p-3"><PlugZap class="mb-2 size-4 text-primary" />{tr('Coding-tool adapters')}</div>
-            <div class="rounded-lg border bg-muted/20 p-3"><ChefHat class="mb-2 size-4 text-primary" />{tr('Optional AI Cooking')}</div>
-          </div>
-        </div>
-      {:else if steps[step] === 'Storage'}
-        <section class="mx-auto max-w-xl">
-          <div class="flex gap-3"><HardDrive class="mt-0.5 size-6 text-primary" /><div><h2 class="m-0 text-lg font-semibold">{tr('Choose where data lives first')}</h2><p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{tr('Feedback attachments, published packages, and voice models live in this folder. Set it first so later downloads and feedback go to the right place.')}</p></div></div>
-          <div class="mt-6 rounded-lg border bg-muted/20 p-4"><p class="m-0 text-[10px] font-medium uppercase text-muted-foreground">{tr('Current folder')}</p><p class="mb-0 mt-2 break-all font-mono text-xs">{storage?.selected_path ?? tr('Loading data storage location…')}</p></div>
-          <div class="mt-4 flex items-center justify-between gap-4"><p class="m-0 text-xs text-muted-foreground">{tr('The database and local credentials remain in the system app directory.')}</p><Button variant="outline" disabled={capabilities.serverPaths.status.availability === 'unavailable' || storageBusy} onclick={() => void chooseStorage()}>{#if storageBusy}<LoaderCircle class="animate-spin" data-icon="inline-start" />{:else}<FolderCog data-icon="inline-start" />{/if}{tr('Choose another location…')}</Button></div>
-          {#if storageRestartRequired}<div class="mt-5 rounded-lg border border-primary/30 bg-primary/5 p-4 text-xs leading-5 text-primary">{tr('The data location has been saved. Restart RambleDesk so the remaining setup uses it directly.')}</div>{/if}
+  <Dialog.Content showCloseButton={false} interactOutsideBehavior="ignore" escapeKeydownBehavior="ignore"
+    class="flex max-h-[calc(100vh-2rem)] w-[min(1020px,calc(100vw-2rem))] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none">
+    <Dialog.Header class="shrink-0 border-b bg-muted/25 px-7 py-5">
+      <div class="flex items-center gap-3">
+        <span class="grid size-10 place-items-center rounded-xl bg-primary text-primary-foreground"><Sparkles class="size-5" /></span>
+        <div><Dialog.Title>{tr('开始使用 RambleDesk', 'Get started with RambleDesk')}</Dialog.Title>
+          <Dialog.Description class="mt-1 text-xs">{tr('连接设备上的智能体，在这里开始会话、交流和反馈。', 'Connect an agent on your device, then start a conversation and share feedback here.')}</Dialog.Description></div>
+      </div>
+      <div class="mt-4 flex gap-1.5" aria-label={tr('设置进度', 'Setup progress')}>{#each steps as _, index}<span class={['h-1 flex-1 rounded-full', index <= step ? 'bg-primary' : 'bg-muted']}></span>{/each}</div>
+      <p class="m-0 mt-2 text-[10px] text-muted-foreground">{step + 1} / {steps.length} · {stepLabel(steps[step], $locale)}</p>
+    </Dialog.Header>
+    <div class="min-h-0 flex-1 overflow-y-auto px-7 py-6">
+      {#if steps[step] === 'welcome'}
+        <section class="mx-auto flex max-w-xl flex-col items-center py-7 text-center">
+          <span class="grid size-16 place-items-center rounded-2xl bg-primary/10 text-primary"><MessageSquare class="size-8" /></span>
+          <h2 class="mb-0 mt-5 text-xl font-semibold">{tr('从一个会话开始', 'Start with a conversation')}</h2>
+          <p class="mb-0 mt-3 text-sm leading-6 text-muted-foreground">{tr('RambleDesk 通过 ACP 连接你设备上的智能体。选择项目、描述任务，再用文字、语音或截图提供反馈。', 'RambleDesk connects to agents on your device through ACP. Choose a project, describe your task, and provide feedback with text, voice, or screenshots.')}</p>
+          <ol class="mt-6 grid w-full gap-3 text-left text-sm sm:grid-cols-3"><li class="rounded-lg border p-4">1. {tr('检测与连接智能体', 'Find and connect an agent')}</li><li class="rounded-lg border p-4">2. {tr('选择项目目录', 'Choose a project folder')}</li><li class="rounded-lg border p-4">3. {tr('开始会话', 'Start a conversation')}</li></ol>
+          <p class="mb-0 mt-4 text-xs leading-5 text-muted-foreground">{tr('引导会依次设置数据位置、语音、系统权限、智能体连接、通知和可选的 Cooking。所有选项之后都可在设置中调整。', 'This guide covers data storage, voice, system permissions, agent connections, notifications, and optional Cooking. Every option can be changed later in Settings.')}</p>
+          <div class="mt-6 flex items-center gap-2"><span class="text-xs text-muted-foreground">{tr('界面语言', 'Interface language')}</span><Button size="sm" variant={$locale === 'zh-CN' ? 'default' : 'outline'} onclick={() => setLocale('zh-CN')}>简体中文</Button><Button size="sm" variant={$locale === 'en' ? 'default' : 'outline'} onclick={() => setLocale('en')}>English</Button></div>
         </section>
-      {:else if steps[step] === 'Voice input'}
+      {:else if steps[step] === 'storage'}
+        <section class="mx-auto max-w-xl py-5">
+          <div class="flex gap-3"><HardDrive class="mt-0.5 size-6 text-primary" /><div><h2 class="m-0 text-lg font-semibold">{tr('选择数据保存位置', 'Choose where data is stored')}</h2><p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{tr('附件、反馈文件和语音模型会保存在这里。可以使用默认位置，也可以在开始前更改。', 'Attachments, feedback files, and voice models are stored here. Keep the default location or choose another before starting.')}</p></div></div>
+          <p class="mt-6 break-all rounded-lg border bg-muted/20 p-4 font-mono text-xs">{storage?.selected_path ?? tr('正在读取…', 'Loading…')}</p>
+          <div class="flex flex-wrap items-center justify-between gap-3"><p class="m-0 text-xs text-muted-foreground">{tr('数据库和本地凭据仍保存在系统应用目录。', 'The database and local credentials stay in the system app directory.')}</p><Button variant="outline" disabled={storageBusy} onclick={() => void chooseStorage()}><FolderCog class="size-4" />{tr('更改位置', 'Change location')}</Button></div>
+          {#if storage?.restart_required}<p class="mt-4 text-xs leading-5">{tr('需要重启以启用新位置，重启后会继续剩余设置。', 'Restart to use the new location, then continue the remaining setup.')}</p>{/if}
+        </section>
+      {:else if steps[step] === 'voice'}
         <section class="mx-auto max-w-xl">
-          <div class="flex gap-3"><Mic class="mt-0.5 size-6 text-primary" /><div><h2 class="m-0 text-lg font-semibold">{tr('Ramble quickly with voice')}</h2><p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{tr('SenseVoice is the recommended default for reliable multilingual transcription. Audio stays on this device and is never uploaded. You can skip this and choose another model, microphone, or VAD settings later.')}</p></div></div>
+          <div class="flex gap-3"><Mic class="mt-0.5 size-6 text-primary" /><div><h2 class="m-0 text-lg font-semibold">{translate('Ramble quickly with voice')}</h2><p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{translate('SenseVoice is the recommended default for reliable multilingual transcription. Audio stays on this device and is never uploaded. You can skip this and choose another model, microphone, or VAD settings later.')}</p></div></div>
           <div class="mt-6 rounded-lg border bg-muted/20 p-4">
-            <label for="onboarding-model" class="text-xs font-medium">{tr('Transcription model')}</label>
-            <select id="onboarding-model" class="mt-2 h-9 w-full rounded-md border bg-background px-3 text-xs" value={$speechModelId} onchange={(event) => setSpeechModelId((event.currentTarget as HTMLSelectElement).value as SpeechModelId)}>
-              {#each models as model (model.id)}<option value={model.id}>{speechModelDisplayName($locale, model.id, model.display_name)}{model.id === DEFAULT_SPEECH_MODEL_ID ? ` · ${tr('Recommended')}` : ''}{model.installed ? ` · ${tr('Installed')}` : ''}</option>{/each}
+            <label for="onboarding-model" class="text-xs font-medium">{translate('Transcription model')}</label>
+            <select id="onboarding-model" disabled={modelBusy || modelsLoading} class="mt-2 h-9 w-full rounded-md border bg-background px-3 text-xs" value={$speechModelId} onchange={(event) => setSpeechModelId((event.currentTarget as HTMLSelectElement).value as SpeechModelId)}>
+              {#each models as model (model.id)}<option value={model.id}>{speechModelDisplayName($locale, model.id, model.display_name)}{model.id === DEFAULT_SPEECH_MODEL_ID ? ` · ${translate('Recommended')}` : ''}{model.installed ? ` · ${translate('Installed')}` : ''}</option>{/each}
             </select>
-            {#if selectedModel}<div class="mt-4 flex items-start justify-between gap-4"><div><div class="flex flex-wrap gap-2">{#if selectedModel.id === DEFAULT_SPEECH_MODEL_ID}<Badge variant="secondary">{tr('Recommended')}</Badge>{/if}<Badge variant={selectedModel.installed ? 'secondary' : 'outline'}>{selectedModel.installed ? tr('Installed') : mb(selectedModel.size_bytes)}</Badge><Badge variant="outline">{selectedModel.streaming ? tr('Live streaming') : tr('VAD segmented')}</Badge></div><p class="mb-0 mt-2 text-xs leading-5 text-muted-foreground">{speechModelDescription($locale, selectedModel.id, selectedModel.description)}</p></div>{#if !selectedModel.installed}<Button disabled={modelBusy} onclick={() => void downloadModel()}>{#if modelBusy}<LoaderCircle class="animate-spin" data-icon="inline-start" />{:else}<Download data-icon="inline-start" />{/if}{modelBusy ? `${modelProgressPercent}%` : selectedModel.id === DEFAULT_SPEECH_MODEL_ID ? tr('Download recommended model') : tr('Download model')}</Button>{/if}</div>{/if}
+            {#if selectedModel}<div class="mt-4 flex items-start justify-between gap-4"><div><div class="flex flex-wrap gap-2">{#if selectedModel.id === DEFAULT_SPEECH_MODEL_ID}<Badge variant="secondary">{translate('Recommended')}</Badge>{/if}<Badge variant={selectedModel.installed ? 'secondary' : 'outline'}>{selectedModel.installed ? translate('Installed') : mb(selectedModel.size_bytes)}</Badge><Badge variant="outline">{selectedModel.streaming ? translate('Live streaming') : translate('VAD segmented')}</Badge></div><p class="mb-0 mt-2 text-xs leading-5 text-muted-foreground">{speechModelDescription($locale, selectedModel.id, selectedModel.description)}</p></div>{#if !selectedModel.installed}<Button disabled={modelBusy} onclick={() => void downloadModel()}>{#if modelBusy}<LoaderCircle class="animate-spin" data-icon="inline-start" />{:else}<Download data-icon="inline-start" />{/if}{modelBusy ? `${modelProgressPercent}%` : selectedModel.id === DEFAULT_SPEECH_MODEL_ID ? translate('Download recommended model') : translate('Download model')}</Button>{/if}</div>{/if}
             {#if modelBusy}<div class="mt-4 h-1.5 overflow-hidden rounded bg-muted"><div class="h-full bg-primary transition-[width]" style={`width: ${modelProgressPercent}%`}></div></div>{/if}
           </div>
         </section>
-        {:else if steps[step] === 'Permissions'}
+        {:else if steps[step] === 'permissions'}
           <section class="mx-auto max-w-xl">
-            <div class="flex gap-3"><ShieldCheck class="mt-0.5 size-6 text-primary" /><div><h2 class="m-0 text-lg font-semibold">{tr('Grant Mac permissions')}</h2><p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{tr('Screen capture and voice transcription require macOS permissions. Grant them now or later in Settings → Permissions.')}</p></div></div>
+            <div class="flex gap-3"><ShieldCheck class="mt-0.5 size-6 text-primary" /><div><h2 class="m-0 text-lg font-semibold">{translate('Grant Mac permissions')}</h2><p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{translate('Screen capture and voice transcription require macOS permissions. Grant them now or later in Settings → Permissions.')}</p></div></div>
             <div class="mt-6">
               <MacPermissions
                 bind:restartRequired={permissionRestartRequired}
@@ -501,269 +259,50 @@
               />
             </div>
           </section>
-      {:else if steps[step] === 'Adapters'}
+      {:else if steps[step] === 'agents'}
+        <div class="mb-5 rounded-lg bg-primary/5 px-4 py-3 text-xs leading-5">{tr('首次检测会查找本机程序并检查 ACP 连接，可能需要一些时间。之后打开设置不会重复检测，你可以按需手动触发。', 'The first scan finds local programs and checks ACP connections, which may take a little time. Opening Settings later will reuse results; further scans are manual.')}</div>
+        <AgentCatalog {transport} autoDetect={detectOnEntry} initialConfigId={selectedConfig?.id} onReady={(config) => selectedConfig = config} />
+      {:else if steps[step] === 'notifications'}
         <section class="mx-auto max-w-xl">
-          <div class="flex gap-3">
-            <PlugZap class="mt-0.5 size-6 text-primary" />
-            <div>
-              <h2 class="m-0 text-lg font-semibold">{tr('Connect your coding tools')}</h2>
-              <p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{tr('We recommend the Pi and DeepSeek Harness native adapters. You can also configure generic MCP hosts as needed.')}</p>
-            </div>
-          </div>
-
-          <div class="mt-6 space-y-3">
-            <div class="flex items-start gap-3 rounded-lg border bg-muted/20 p-3">
-              <span class="grid size-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground [&_svg]:size-5">
-                {@html piLogoSvg}
-              </span>
-              <div class="min-w-0 flex-1">
-                <div class="flex flex-wrap items-center gap-2">
-                  <h3 class="m-0 text-sm font-semibold">{tr('Pi native adapter')}</h3>
-                  <Badge variant="secondary">{tr('Recommended')}</Badge>
-                </div>
-                <p class="mb-0 mt-1 text-xs leading-5 text-muted-foreground">{tr('Pi waits for feedback in the same tool call, then automatically continues the current session. No copied or manually sent resume prompt is needed.')}</p>
-              </div>
-              <Button
-                size="sm"
-                class="shrink-0"
-                disabled={piBusy || piStatusLoading || piStatus?.installed || capabilities.hostIntegrationAdministration.status.availability === 'unavailable' || piStatus?.cliAvailable === false}
-                onclick={() => void installPi()}
-              >
-                {#if piBusy}
-                  <LoaderCircle class="animate-spin" data-icon="inline-start" />
-                  {tr('Installing…')}
-                {:else if piStatusLoading}
-                  <LoaderCircle class="animate-spin" data-icon="inline-start" />
-                  {tr('Checking…')}
-                {:else if piStatus?.installed}
-                  <Check data-icon="inline-start" />
-                  {tr('Installed')}
-                {:else if piStatus && !piStatus.cliAvailable}
-                  {tr('Pi CLI not detected')}
-                {:else}
-                  <Download data-icon="inline-start" />
-                  {tr('Install Pi adapter')}
-                {/if}
-              </Button>
-            </div>
-            <div class="flex items-start gap-3 rounded-lg border bg-muted/20 p-3">
-              <span class="grid size-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground [&_svg]:size-5">
-                {@html dshLogoSvg}
-              </span>
-              <div class="min-w-0 flex-1">
-                <div class="flex flex-wrap items-center gap-2">
-                  <h3 class="m-0 text-sm font-semibold">{tr('DSH native adapter')}</h3>
-                  <Badge variant="secondary">{tr('Native wait')}</Badge>
-                </div>
-                <p class="mb-0 mt-1 text-xs leading-5 text-muted-foreground">{tr('DeepSeek Harness waits for feedback in the same tool call, then automatically continues.')}</p>
-              </div>
-              <Button size="sm" class="shrink-0" disabled={dshBusy || capabilities.hostIntegrationAdministration.status.availability === 'unavailable'} onclick={() => void installDsh()}>
-                {#if dshBusy}<LoaderCircle class="animate-spin" data-icon="inline-start" />{:else}<Download data-icon="inline-start" />{/if}
-                {dshBusy ? tr('Installing…') : tr('Install DSH adapter')}
-              </Button>
-            </div>
-
-          <details class="group rounded-lg border bg-muted/20">
-            <summary class="flex cursor-pointer list-none items-center gap-3 p-3 text-xs outline-none [&::-webkit-details-marker]:hidden">
-              <span class="grid size-8 shrink-0 place-items-center rounded-lg bg-muted">
-                <PlugZap class="size-4 text-muted-foreground" />
-              </span>
-              <div class="min-w-0 flex-1">
-                <div class="flex flex-wrap items-center gap-2">
-                  <span class="text-sm font-semibold">{tr('Generic MCP hosts')}</span>
-                  <Badge variant="outline" title={tr('After submitting or cancelling, return to the host and continue the session manually.')}>{tr('Manual continuation')}</Badge>
-                </div>
-                <p class="mb-0 mt-1 text-xs leading-5 text-muted-foreground">{tr('After submitting or cancelling, MCP hosts require you to return to the coding tool and continue with its resume prompt. RambleDesk only writes its own MCP entry and never overwrites other servers.')}</p>
-              </div>
-              <span class="ml-auto shrink-0 text-[10px] text-muted-foreground">{tr('Configure as needed')}</span>
-              <ChevronDown class="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
-            </summary>
-            <div class="border-t p-4">
-              {#if hostsLoading}
-                <p class="mb-0 mt-4 flex items-center gap-2 text-xs text-muted-foreground"><LoaderCircle class="size-4 animate-spin" />{tr('Detecting coding tools…')}</p>
-              {:else if hosts.length === 0}
-                <p class="mb-0 mt-4 text-xs leading-5 text-muted-foreground">{tr('No supported tools were detected. You can skip this step and install adapters later in Settings → Adapters.')}</p>
-              {:else}
-                <div class="mt-4 space-y-1">
-                  {#each hosts as host (host.id)}
-                    <label class={['flex items-center gap-3 rounded-md px-2 py-2 text-xs', host.installed ? 'cursor-pointer hover:bg-muted' : 'cursor-not-allowed opacity-55']}>
-                      <input type="checkbox" class="size-3.5 accent-primary" checked={hostSelections.has(host.id)} disabled={!host.installed || adapterBusy} onchange={() => toggleHost(host.id)} />
-                      <span class="flex-1 font-medium">{host.name}</span>
-                      <Badge variant={host.configured ? 'secondary' : 'outline'}>{host.configured ? tr('Configured') : host.installed ? tr('Detected') : tr('Not detected')}</Badge>
-                    </label>
-                  {/each}
-                </div>
-                <Button class="mt-4" disabled={adapterBusy || selectedHosts.length === 0} onclick={() => void installSelectedHosts()}>
-                  {#if adapterBusy}<LoaderCircle class="animate-spin" data-icon="inline-start" />{:else}<PlugZap data-icon="inline-start" />{/if}
-                  {tr('Install selected MCP adapters')}
-                </Button>
-              {/if}
-            </div>
-          </details>
-          </div>
-        </section>
-      {:else if steps[step] === 'Notifications'}
-        <section class="mx-auto max-w-xl">
-          <div class="flex gap-3"><BellRing class="mt-0.5 size-6 text-primary" /><div><h2 class="m-0 text-lg font-semibold">{tr('Would you like notifications?')}</h2><p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{#if isWindows}{tr('Current unsigned Windows builds cannot show system banners. RambleDesk will not try to send them. Watch the inbox badge and use sound alerts instead.')}{:else}{tr('When a coding tool requests feedback, RambleDesk can show a system notification and play a sound.')}{/if}</p></div></div>
+          <div class="flex gap-3"><BellRing class="mt-0.5 size-6 text-primary" /><div><h2 class="m-0 text-lg font-semibold">{translate('Would you like notifications?')}</h2><p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{#if isWindows}{translate('Current unsigned Windows builds cannot show system banners. RambleDesk will not try to send them. Watch the inbox badge and use sound alerts instead.')}{:else}{translate('When a coding tool requests feedback, RambleDesk can show a system notification and play a sound.')}{/if}</p></div></div>
           <div class="mt-6 space-y-3 rounded-lg border bg-muted/20 p-4">
             <div class="flex items-center justify-between gap-4">
-              <div><strong class="text-xs">{tr('System notifications')}</strong><p class="mb-0 mt-1 text-[10px] text-muted-foreground">{#if isWindows}{tr('System banners are not available on this Windows build.')}{:else}{tr('Show new feedback requests in the system notification center.')}{/if}</p></div>
-              {#if isWindows}<Badge variant="secondary">{tr('Unavailable')}</Badge>{:else if $notificationPopupEnabled}<Badge variant="secondary">{tr('Enabled')}</Badge>{:else}<Button size="sm" disabled={notificationBusy || capabilities.notifications.status.availability === 'unavailable'} onclick={() => void enableNotifications()}>{#if notificationBusy}<LoaderCircle class="animate-spin" data-icon="inline-start" />{/if}{tr('Allow notifications')}</Button>{/if}
+              <div><strong class="text-xs">{translate('System notifications')}</strong><p class="mb-0 mt-1 text-[10px] text-muted-foreground">{#if isWindows}{translate('System banners are not available on this Windows build.')}{:else}{translate('Show new feedback requests in the system notification center.')}{/if}</p></div>
+              {#if isWindows}<Badge variant="secondary">{translate('Unavailable')}</Badge>{:else if $notificationPopupEnabled}<Badge variant="secondary">{translate('Enabled')}</Badge>{:else}<Button size="sm" disabled={notificationBusy || capabilities.notifications.status.availability === 'unavailable'} onclick={() => void enableNotifications()}>{#if notificationBusy}<LoaderCircle class="animate-spin" data-icon="inline-start" />{/if}{translate('Allow notifications')}</Button>{/if}
             </div>
             <div class="flex items-center justify-between gap-4 border-t pt-3">
-              <div><strong class="text-xs">{tr('Sound alerts')}</strong><p class="mb-0 mt-1 text-[10px] text-muted-foreground">{tr('Play a sound when a notification arrives.')}</p></div>
-              <button type="button" role="switch" aria-label={tr('Sound alerts')} aria-checked={$notificationSoundEnabled} class={['relative h-[22px] w-10 rounded-full transition-colors', $notificationSoundEnabled ? 'bg-primary' : 'bg-input']} onclick={() => setNotificationSoundEnabled(!$notificationSoundEnabled)}><span class={['absolute left-0.5 top-0.5 size-4 rounded-full bg-background shadow transition-transform', $notificationSoundEnabled ? 'translate-x-5' : '']}></span></button>
+              <div><strong class="text-xs">{translate('Sound alerts')}</strong><p class="mb-0 mt-1 text-[10px] text-muted-foreground">{translate('Play a sound when a notification arrives.')}</p></div>
+              <button type="button" role="switch" aria-label={translate('Sound alerts')} aria-checked={$notificationSoundEnabled} class={['relative h-[22px] w-10 rounded-full transition-colors', $notificationSoundEnabled ? 'bg-primary' : 'bg-input']} onclick={toggleSound}><span class={['absolute left-0.5 top-0.5 size-4 rounded-full bg-background shadow transition-transform', $notificationSoundEnabled ? 'translate-x-5' : '']}></span></button>
             </div>
-            <p class="m-0 border-t pt-3 text-[10px] leading-4 text-muted-foreground">{tr('Sound, volume, and other advanced notification options can be adjusted anytime in Settings → Notifications.')}</p>
+            <p class="m-0 border-t pt-3 text-[10px] leading-4 text-muted-foreground">{translate('Sound, volume, and other advanced notification options can be adjusted anytime in Settings → Notifications.')}</p>
           </div>
         </section>
-      {:else if steps[step] === 'Cooking'}
+      {:else if steps[step] === 'cooking'}
         <section class="mx-auto max-w-xl">
-          <div class="flex gap-3"><ChefHat class="mt-0.5 size-6 text-primary" /><div><h2 class="m-0 text-lg font-semibold">{tr('Enable Feedback Cooking?')}</h2><p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{tr('Optional: use your own model service to turn a raw Ramble into formal feedback before submitting. The uncooked source is always preserved.')}</p></div></div>
-          <div class="mt-6 rounded-lg border bg-muted/20 p-4"><div class="flex items-center justify-between gap-4"><div><strong class="text-xs">Cooking</strong><p class="mb-0 mt-1 text-[10px] text-muted-foreground">{tr('An API key is required and the feedback body is sent to your selected service.')}</p></div><button type="button" role="switch" aria-label="Cooking" aria-checked={$cookingEnabled} class={['relative h-[22px] w-10 rounded-full transition-colors', $cookingEnabled ? 'bg-primary' : 'bg-input']} onclick={() => setCookingEnabled(!$cookingEnabled)}><span class={['absolute left-0.5 top-0.5 size-4 rounded-full bg-background shadow transition-transform', $cookingEnabled ? 'translate-x-5' : '']}></span></button></div>
-            {#if $cookingEnabled}<div class="mt-5 grid gap-3 border-t pt-4"><label class="text-xs font-medium">{tr('Model provider')}<select class="mt-1.5 h-9 w-full rounded-md border bg-background px-3 text-xs" value={$cookingProvider} onchange={(event) => chooseCookingProvider((event.currentTarget as HTMLSelectElement).value as CookingProvider)}><option value="deepseek">DeepSeek</option><option value="openai">OpenAI</option><option value="compatible">{tr('OpenAI-compatible service')}</option></select></label><label class="text-xs font-medium">Base URL<input class="mt-1.5 h-9 w-full rounded-md border bg-background px-3 text-xs" type="url" value={$cookingBaseUrl} oninput={(event) => setCookingBaseUrl((event.currentTarget as HTMLInputElement).value)} /></label><div class="grid grid-cols-2 gap-3"><label class="text-xs font-medium">{tr('Model name')}<input class="mt-1.5 h-9 w-full rounded-md border bg-background px-3 text-xs" value={$cookingModel} oninput={(event) => setCookingModel((event.currentTarget as HTMLInputElement).value)} /></label><label class="text-xs font-medium">{tr('Reasoning effort')}<select class="mt-1.5 h-9 w-full rounded-md border bg-background px-3 text-xs" value={$cookingReasoningEffort} onchange={(event) => setCookingReasoningEffort((event.currentTarget as HTMLSelectElement).value as CookingReasoningEffort)}><option value="none">{tr('None')}</option><option value="minimal">minimal</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option><option value="xhigh">xhigh</option><option value="max">max</option></select></label></div><label class="text-xs font-medium">API Key<input class="mt-1.5 h-9 w-full rounded-md border bg-background px-3 text-xs" type="password" autocomplete="off" value={$cookingApiKey} placeholder="sk-…" oninput={(event) => setCookingApiKey((event.currentTarget as HTMLInputElement).value)} /></label></div>{/if}
+          <div class="flex gap-3"><ChefHat class="mt-0.5 size-6 text-primary" /><div><h2 class="m-0 text-lg font-semibold">{translate('Enable Feedback Cooking?')}</h2><p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{translate('Optional: use your own model service to turn a raw Ramble into formal feedback before submitting. The uncooked source is always preserved.')}</p></div></div>
+          <div class="mt-6 rounded-lg border bg-muted/20 p-4"><div class="flex items-center justify-between gap-4"><div><strong class="text-xs">Cooking</strong><p class="mb-0 mt-1 text-[10px] text-muted-foreground">{translate('An API key is required and the feedback body is sent to your selected service.')}</p></div><button type="button" role="switch" aria-label="Cooking" aria-checked={$cookingEnabled} class={['relative h-[22px] w-10 rounded-full transition-colors', $cookingEnabled ? 'bg-primary' : 'bg-input']} onclick={toggleCooking}><span class={['absolute left-0.5 top-0.5 size-4 rounded-full bg-background shadow transition-transform', $cookingEnabled ? 'translate-x-5' : '']}></span></button></div>
+            {#if $cookingEnabled}<div class="mt-5 grid gap-3 border-t pt-4"><label class="text-xs font-medium">{translate('Model provider')}<select class="mt-1.5 h-9 w-full rounded-md border bg-background px-3 text-xs" value={$cookingProvider} onchange={(event) => chooseCookingProvider((event.currentTarget as HTMLSelectElement).value as CookingProvider)}><option value="deepseek">DeepSeek</option><option value="openai">OpenAI</option><option value="compatible">{translate('OpenAI-compatible service')}</option></select></label><label class="text-xs font-medium">Base URL<input class="mt-1.5 h-9 w-full rounded-md border bg-background px-3 text-xs" type="url" value={$cookingBaseUrl} oninput={(event) => setCookingBaseUrl((event.currentTarget as HTMLInputElement).value)} /></label><div class="grid grid-cols-2 gap-3"><label class="text-xs font-medium">{translate('Model name')}<input class="mt-1.5 h-9 w-full rounded-md border bg-background px-3 text-xs" value={$cookingModel} oninput={(event) => setCookingModel((event.currentTarget as HTMLInputElement).value)} /></label><label class="text-xs font-medium">{translate('Reasoning effort')}<select class="mt-1.5 h-9 w-full rounded-md border bg-background px-3 text-xs" value={$cookingReasoningEffort} onchange={(event) => setCookingReasoningEffort((event.currentTarget as HTMLSelectElement).value as CookingReasoningEffort)}><option value="none">{translate('None')}</option><option value="minimal">minimal</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option><option value="xhigh">xhigh</option><option value="max">max</option></select></label></div><label class="text-xs font-medium">API Key<input class="mt-1.5 h-9 w-full rounded-md border bg-background px-3 text-xs" type="password" autocomplete="off" value={$cookingApiKey} placeholder="sk-…" oninput={(event) => setCookingApiKey((event.currentTarget as HTMLInputElement).value)} /></label></div>{/if}
           </div>
         </section>
       {:else}
-        <div class="mx-auto flex max-w-xl flex-col items-center py-5 text-center">
-          <span class="grid size-14 place-items-center rounded-2xl bg-success/10 text-success ring-1 ring-success/20"><Check class="size-7" /></span>
-          <Dialog.Title class="mb-0 mt-5 text-2xl font-semibold">{tr('You are all set')}</Dialog.Title>
-
-          <section class="mt-8 w-full rounded-2xl border-2 border-primary/50 bg-primary/[0.06] p-6 text-left shadow-[0_18px_50px_-32px_hsl(var(--primary))] ring-4 ring-primary/5" aria-labelledby="starter-prompt-title">
-            <div class="text-center">
-              <h3 id="starter-prompt-title" class="m-0 text-lg font-semibold text-foreground">{tr('Copy this prompt, then start')}</h3>
-              <p class="mb-0 mt-2 text-sm leading-6 text-muted-foreground">{tr('Paste it into your coding agent and send it to start your first Ramble.')}</p>
-            </div>
-
-            <code class="mt-5 block select-all rounded-xl border bg-background px-4 py-4 text-center text-sm font-medium text-foreground shadow-sm">{starterPrompt}</code>
-
-            <div class="mt-4 grid gap-3 sm:grid-cols-2">
-              <div class="relative">
-                <Button
-                  size="lg"
-                  variant={promptCopyState === 'copied' ? 'outline' : 'default'}
-                  class="h-11 w-full"
-                  onclick={() => void copyStarterPrompt()}
-                >
-                  {#if promptCopyState === 'copied'}<Check data-icon="inline-start" />{:else}<Clipboard data-icon="inline-start" />{/if}
-                  {promptCopyState === 'copied' ? tr('Copied — ready to start') : promptCopyState === 'error' ? tr('Copy failed — try again') : tr('Copy starter prompt')}
-                </Button>
-                {#key copyCelebrationKey}
-                  {#if promptCopyState === 'copied'}
-                    <span class="copy-celebration" aria-hidden="true">
-                      {#each copyCelebrationParticles as particle}
-                        <i
-                          class="copy-celebration__spark"
-                          style={`--spark-x:${particle.x}px;--spark-y:${particle.y}px;--spark-color:${particle.color};--spark-delay:${particle.delay}ms`}
-                        ></i>
-                      {/each}
-                    </span>
-                  {/if}
-                {/key}
-              </div>
-              <Button
-                size="lg"
-                variant={promptCopyState === 'copied' ? 'default' : 'secondary'}
-                class="h-11 w-full"
-                disabled={promptCopyState !== 'copied'}
-                title={promptCopyState === 'copied' ? undefined : tr('Copy the prompt to continue')}
-                onclick={() => complete()}
-              >
-                <Check data-icon="inline-start" />
-                {tr('Start using RambleDesk')}
-              </Button>
-            </div>
-          </section>
-        </div>
+        <section class="mx-auto flex max-w-xl flex-col items-center py-8 text-center">
+          <span class="grid size-14 place-items-center rounded-2xl bg-primary/10 text-primary">{#if selectedConfig}<Check class="size-7" />{:else}<MessageSquare class="size-7" />{/if}</span>
+          <h2 class="mb-0 mt-5 text-xl font-semibold">{tr('开始你的第一个会话', 'Start your first session')}</h2>
+          <p class="mb-0 mt-3 text-sm leading-6 text-muted-foreground">{selectedConfig ? tr('已选择 ' + selectedConfig.name + '。接下来选择项目目录，输入任务即可开始。', selectedConfig.name + ' is selected. Next, choose a project folder and enter your task.') : tr('接下来会打开新建会话页。你可以在那里选择智能体、继续完成连接，再开始任务。', 'The new-session page will open next. Choose an agent there, finish connecting it, and start your task.')}</p>
+          <p class="mb-0 mt-3 text-xs leading-5 text-muted-foreground">{tr('登录或模型访问遇到问题时，按照智能体的配置指引处理后重试。', 'If sign-in or model access needs attention, follow the agent’s setup instructions and retry.')}</p>
+        </section>
       {/if}
+      {#if error}<p role="alert" class="mt-4 break-words rounded-lg border border-destructive/30 p-3 text-xs">{error}</p>{/if}
     </div>
-
-    {#if !isFinalStep}
-      <footer class="flex shrink-0 items-center justify-between border-t bg-muted/15 px-7 py-4">
-        <Button variant="ghost" size="sm" onclick={() => complete(false)}>{tr('Set up later')}</Button>
-        <div class="flex items-center gap-2">
-          {#if step > 0 && !storageRestartRequired && !permissionRestartRequired}<Button variant="outline" size="sm" onclick={() => move(step - 1)}><ChevronLeft data-icon="inline-start" />{tr('Back')}</Button>{/if}
-          {#if storageRestartRequired}<Button disabled={storageBusy} onclick={() => void restartForStorage()}><Rocket data-icon="inline-start" />{tr('Restart and continue')}</Button>
-          {:else if permissionRestartRequired}<Button onclick={() => void restartForPermissions()}><Rocket data-icon="inline-start" />{tr('Restart and continue')}</Button>
-          {:else}<Button disabled={storageBusy || modelBusy} onclick={() => move(step + 1)}>{steps[step] === 'Voice input' && !selectedModel?.installed ? tr('Skip voice setup') : tr('Continue')}<ChevronRight data-icon="inline-end" /></Button>{/if}
-        </div>
-      </footer>
-    {/if}
+    <footer class="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t bg-muted/15 px-7 py-4">
+      {#if !isFinalStep}<Button variant="ghost" size="sm" disabled={starting || storageBusy || modelBusy || storage?.restart_required || permissionRestartRequired} onclick={() => void complete()}>{tr('稍后设置', 'Set up later')}</Button>{:else}<span></span>{/if}
+      <div class="flex items-center gap-2">
+        {#if step > 0}<Button variant="outline" size="sm" disabled={starting || storageBusy || modelBusy || storage?.restart_required || permissionRestartRequired} onclick={() => move(step - 1)}><ChevronLeft class="size-4" />{tr('上一步', 'Back')}</Button>{/if}
+        {#if storage?.restart_required}<Button disabled={storageBusy || !windowControlsAvailable} onclick={() => void restart('storage')}><Rocket class="size-4" />{tr('重启并继续', 'Restart and continue')}</Button>
+        {:else if permissionRestartRequired}<Button disabled={storageBusy || !windowControlsAvailable} onclick={() => void restart('permissions')}><Rocket class="size-4" />{tr('重启并继续', 'Restart and continue')}</Button>
+        {:else if isFinalStep}<Button disabled={starting} onclick={() => void complete()}>{#if starting}<LoaderCircle class="size-4 animate-spin" />{:else}<MessageSquare class="size-4" />{/if}{tr(starting ? '正在打开…' : '新建会话', starting ? 'Opening…' : 'New session')}</Button>
+        {:else}<Button disabled={starting || storageBusy || modelBusy} onclick={() => move(step + 1)}>{steps[step] === 'agents' && !selectedConfig ? tr('稍后连接', 'Connect later') : steps[step] === 'voice' && !selectedModel?.installed ? translate('Skip voice setup') : tr('继续', 'Continue')}<ChevronRight class="size-4" /></Button>{/if}
+      </div>
+    </footer>
   </Dialog.Content>
 </Dialog.Root>
-
-<style>
-  .copy-celebration {
-    position: absolute;
-    inset: 0;
-    z-index: 10;
-    pointer-events: none;
-  }
-
-  .copy-celebration::before,
-  .copy-celebration::after {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    width: 18px;
-    height: 18px;
-    border: 2px solid rgb(103 232 249 / 75%);
-    border-radius: 999px;
-    content: '';
-    animation: copy-celebration-ring 620ms ease-out both;
-  }
-
-  .copy-celebration::after {
-    border-color: rgb(251 191 36 / 75%);
-    animation-delay: 90ms;
-  }
-
-  .copy-celebration__spark {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    width: 8px;
-    height: 8px;
-    border-radius: 999px;
-    background: var(--spark-color);
-    box-shadow: 0 0 9px var(--spark-color);
-    opacity: 0;
-    animation: copy-celebration-spark 900ms cubic-bezier(0.16, 0.8, 0.3, 1) var(--spark-delay) both;
-  }
-
-  @keyframes copy-celebration-ring {
-    0% {
-      opacity: 0.9;
-      transform: translate(-50%, -50%) scale(0.25);
-    }
-    100% {
-      opacity: 0;
-      transform: translate(-50%, -50%) scale(4.8);
-    }
-  }
-
-  @keyframes copy-celebration-spark {
-    0% {
-      opacity: 0;
-      transform: translate(-50%, -50%) rotate(0deg) scale(0.25);
-    }
-    14% {
-      opacity: 1;
-      transform: translate(-50%, -50%) rotate(35deg) scale(1.15);
-    }
-    72% {
-      opacity: 1;
-      transform: translate(calc(-50% + var(--spark-x)), calc(-50% + var(--spark-y))) rotate(135deg) scale(1);
-    }
-    100% {
-      opacity: 0;
-      transform: translate(calc(-50% + var(--spark-x)), calc(-50% + var(--spark-y))) rotate(180deg) scale(0.2);
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .copy-celebration {
-      display: none;
-    }
-  }
-</style>

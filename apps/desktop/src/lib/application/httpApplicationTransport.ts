@@ -54,7 +54,7 @@ export const HTTP_APPLICATION_OPERATIONS = {
   listManagedSessionActivity: 'listManagedSessionActivity',
   sendManagedPromptContent: 'sendManagedPromptContent',
   setManagedSessionConfig: 'setManagedSessionConfig',
-  respondManagedPermission: 'respondManagedPermission',
+  respondManagedInteraction: 'respondManagedInteraction',
   resolveFeedbackDelivery: 'resolveFeedbackDelivery',
   deleteManagedSession: 'deleteManagedSession',
   listFeedbackInbox: 'listFeedbackInbox',
@@ -123,7 +123,7 @@ const MUTATION_COMMANDS: ReadonlySet<ApplicationCommandName> = new Set([
   'sendManagedPrompt',
   'sendManagedPromptContent',
   'setManagedSessionConfig',
-  'respondManagedPermission',
+  'respondManagedInteraction',
   'resolveFeedbackDelivery',
   'deleteManagedSession',
   'saveFeedbackDraft',
@@ -861,7 +861,7 @@ export function applicationCommandResponseResources<Name extends ApplicationComm
     case 'sendManagedPrompt':
     case 'sendManagedPromptContent':
     case 'setManagedSessionConfig':
-    case 'respondManagedPermission':
+    case 'respondManagedInteraction':
     case 'resolveFeedbackDelivery':
     case 'deleteManagedSession':
     case 'discardPreparedSession':
@@ -955,7 +955,7 @@ export function applicationCommandProjectionKey<Name extends ApplicationCommandN
     case 'sendManagedPrompt':
     case 'sendManagedPromptContent':
     case 'setManagedSessionConfig':
-    case 'respondManagedPermission':
+    case 'respondManagedInteraction':
     case 'resolveFeedbackDelivery':
     case 'deleteManagedSession':
     case 'discardPreparedSession':
