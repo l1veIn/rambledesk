@@ -57,14 +57,22 @@ async fn native_inputs_are_pending_validated_and_answered_on_the_original_wire()
         };
         assert_eq!(serde_json::to_value(request).unwrap()["kind"], input_kind);
         assert_eq!(pending.runtime.activity, SessionActivityState::WaitingInput);
-        assert!(serde_json::to_value(request).unwrap()["input"]["schema"].is_object());
+        assert!(
+            serde_json::from_str::<Value>(
+                serde_json::to_value(request).unwrap()["input"]["schema_json"]
+                    .as_str()
+                    .unwrap()
+            )
+            .unwrap()
+            .is_object()
+        );
         let answer = |content: Value| {
-            serde_json::from_value::<RespondManagedInteractionInput>(json!({"session_id":session.session.session_id,"request_id":request.request_id,"response":{"kind":input_kind,"response":{"action":"accept","content":content}}})).unwrap()
+            serde_json::from_value::<RespondManagedInteractionInput>(json!({"session_id":session.session.session_id,"request_id":request.request_id,"response":{"kind":input_kind,"response":{"action":"accept","content_json":content.to_string()}}})).unwrap()
         };
         let mut wrong_kind = answer(content.clone());
         let valid_input = SessionInputResponse {
             action: SessionInputAction::Accept,
-            content: Some(content.clone()),
+            content_json: Some(content.to_string()),
         };
         wrong_kind.response = if input_kind == "plan" {
             SessionInteractionResponse::Question {
@@ -137,7 +145,12 @@ async fn unsupported_forms_stay_visible_and_can_be_declined_without_weakening_co
         "unsupported form must remain actionable"
     );
     assert_eq!(
-        serde_json::to_value(&pending.interactions[0]).unwrap()["input"]["schema"]["x-rambledesk-unsupported"],
+        serde_json::from_str::<Value>(
+            serde_json::to_value(&pending.interactions[0]).unwrap()["input"]["schema_json"]
+                .as_str()
+                .unwrap()
+        )
+        .unwrap()["x-rambledesk-unsupported"],
         true
     );
     let mut response = RespondManagedInteractionInput {
@@ -146,7 +159,7 @@ async fn unsupported_forms_stay_visible_and_can_be_declined_without_weakening_co
         response: SessionInteractionResponse::Question {
             response: SessionInputResponse {
                 action: SessionInputAction::Accept,
-                content: Some(json!({"secret":"trusted"})),
+                content_json: Some(json!({"secret":"trusted"}).to_string()),
             },
         },
     };
@@ -154,7 +167,7 @@ async fn unsupported_forms_stay_visible_and_can_be_declined_without_weakening_co
     response.response = SessionInteractionResponse::Question {
         response: SessionInputResponse {
             action: SessionInputAction::Decline,
-            content: None,
+            content_json: None,
         },
     };
     app.respond_interaction(response).await.unwrap();

@@ -12,7 +12,7 @@ vi.mock('$lib/preferences', async () => {
 describe('Managed session rendering', () => {
   it('keeps unsupported questions visible and cancellable with answer submission disabled', () => {
     const { body } = render(SessionInputForm, { props: {
-      requestId: 'unsupported', schema: { type: 'object', 'x-rambledesk-unsupported': true, properties: {} }, onRespond: vi.fn(),
+      requestId: 'unsupported', schemaJson: JSON.stringify({ type: 'object', 'x-rambledesk-unsupported': true, properties: {} }), onRespond: vi.fn(),
     } })
     const buttons = [...body.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)]
     expect(body).toContain('This question format is not supported.')
@@ -27,10 +27,10 @@ describe('Managed session rendering', () => {
     const { body } = render(ManagedSessionWorkspace, { props: {
       snapshot, onPrompt: action, onCancel: action, onStart: action, onRespondInteraction: action,
       interactions: [{ request_id: 'question', session_id: 'compact-ui', title: 'Choose the next step', details: null, kind: 'question',
-        input: { schema: { type: 'object', required: ['direction'], properties: {
+        input: { schema_json: JSON.stringify({ type: 'object', required: ['direction'], properties: {
           direction: { type: 'string', title: 'Which approach?', oneOf: [{ const: 'small', title: 'Small change' }, { const: 'full', title: 'Full rewrite' }] },
           notes: { type: 'string', title: 'Additional context' },
-        } } },
+        } }) },
       }],
     } })
     expect(body).toContain('Agent question')
@@ -49,9 +49,9 @@ describe('Managed session rendering', () => {
     const { body } = render(ManagedSessionWorkspace, { props: {
       snapshot, onPrompt: action, onCancel: action, onStart: action, onRespondInteraction: action,
       interactions: [{ kind: 'plan', request_id: 'plan', session_id: 'compact-ui', title: 'Implementation plan', details: null,
-        input: { schema: { type: 'object', description: 'First update the contract, then test the callers.', required: ['decision'], properties: {
+        input: { schema_json: JSON.stringify({ type: 'object', description: 'First update the contract, then test the callers.', required: ['decision'], properties: {
           decision: { type: 'string', title: 'Next step', oneOf: [{ const: 'approved', title: 'Approve plan' }, { const: 'keep_planning', title: 'Keep planning' }] },
-        } } },
+        } }) },
       }],
     } })
     expect(body).toContain('Review agent plan')

@@ -11,8 +11,49 @@ fn form(schema: Value) -> Result<InputSpec, AcpError> {
 fn accept(content: Value) -> SessionInputResponse {
     SessionInputResponse {
         action: SessionInputAction::Accept,
-        content: Some(content),
+        content_json: Some(content.to_string()),
     }
+}
+
+#[test]
+fn application_input_payload_is_bounded_and_decoded_at_the_driver_boundary() {
+    let spec = form(json!({"type":"object","properties":{}})).unwrap();
+    for raw in ["{".to_owned(), "null".to_owned(), " ".repeat(262145)] {
+        assert!(
+            spec.answer(&SessionInputResponse {
+                action: SessionInputAction::Accept,
+                content_json: Some(raw),
+            })
+            .is_err()
+        );
+    }
+    assert!(spec.answer(&accept(json!({}))).is_ok());
+}
+
+#[test]
+fn interaction_contract_has_one_tagged_payload_and_rejects_mixed_responses() {
+    let value = serde_json::to_value(rambledesk_core::SessionInteraction {
+        request_id: "request".into(),
+        session_id: "session".into(),
+        title: "Plan".into(),
+        details: None,
+        kind: rambledesk_core::SessionInteractionKind::Plan {
+            input: SessionInputRequest {
+                schema_json: json!({"type":"object","properties":{}}).to_string(),
+            },
+        },
+    })
+    .unwrap();
+    assert_eq!(value["kind"], "plan");
+    assert!(value["input"]["schema_json"].is_string());
+    assert!(value.get("options").is_none());
+    assert!(
+        serde_json::from_value::<rambledesk_core::SessionInteractionResponse>(json!({
+            "kind":"permission", "option_id":null,
+            "response":{"action":"accept","content_json":"{}"}
+        }))
+        .is_err()
+    );
 }
 
 #[test]

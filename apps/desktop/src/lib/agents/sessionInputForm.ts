@@ -15,6 +15,10 @@ function object(value: unknown): JsonObject {
   return value as JsonObject
 }
 function text(value: unknown, fallback = '') { return typeof value === 'string' ? value : fallback }
+export function inputSchema(raw: string): JsonObject {
+  try { return object(JSON.parse(raw)) }
+  catch { throw new Error('This question format is not supported.') }
+}
 function choices(schema: JsonObject): InputChoice[] {
   const titled = schema.oneOf ?? schema.anyOf
   if (Array.isArray(titled)) return titled.map(item => {
@@ -73,5 +77,5 @@ export function inputResponse(fields: InputField[], values: JsonObject): Session
     }
     content[field.id] = value
   }
-  return { action: 'accept', content }
+  return { action: 'accept', content_json: JSON.stringify(content) }
 }

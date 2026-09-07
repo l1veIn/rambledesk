@@ -102,7 +102,7 @@ async fn finishing_a_turn_cancels_each_visible_pending_request_with_its_kind() {
         id,
         SessionInteractionKind::Plan {
             input: SessionInputRequest {
-                schema: serde_json::json!({"type":"object","properties":{}}),
+                schema_json: serde_json::json!({"type":"object","properties":{}}).to_string(),
             },
         },
     );

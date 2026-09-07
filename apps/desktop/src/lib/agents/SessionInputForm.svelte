@@ -4,9 +4,9 @@
   import { locale } from '$lib/preferences'
   import { agentText } from './agentI18n'
   import { redactAgentMessage } from './agentConfigForm'
-  import { inputFields, inputResponse, type InputField } from './sessionInputForm'
+  import { inputFields, inputResponse, inputSchema, type InputField } from './sessionInputForm'
 
-  export let schema: Record<string, unknown>
+  export let schemaJson: string
   export let requestId: string
   export let kind: 'question' | 'plan' = 'question'
   export let disabled = false
@@ -17,7 +17,8 @@
   let error = ''
   let fields: InputField[] = []
   let schemaError = ''
-  $: { try { fields = inputFields(schema); schemaError = '' } catch (cause) { fields = []; schemaError = String((cause as Error).message) } }
+  let schema: Record<string, unknown> = {}
+  $: { try { schema = inputSchema(schemaJson); fields = inputFields(schema); schemaError = '' } catch (cause) { schema = {}; fields = []; schemaError = String((cause as Error).message) } }
   function tr(value: string) { return agentText($locale, value) }
   function display(value: unknown) { return redactAgentMessage(typeof value === 'string' ? tr(value) : '', envText) }
   function set(id: string, value: unknown) { values = { ...values, [id]: value }; error = '' }
@@ -84,7 +85,7 @@
   {#if error}<p role="alert" class="text-xs text-destructive">{display(tr(error))}</p>{/if}
   <div class="sticky bottom-0 flex flex-wrap gap-2 bg-background/95 py-2">
     <Button type="submit" size="sm" disabled={disabled || !!schemaError}>{tr(kind === 'plan' ? 'Submit decision' : 'Submit answer')}</Button>
-    <Button type="button" variant="outline" size="sm" {disabled} onclick={() => onRespond({ action: 'decline', content: null })}>{tr(kind === 'plan' ? 'Decline plan' : 'Decline question')}</Button>
-    <Button type="button" variant="ghost" size="sm" {disabled} onclick={() => onRespond({ action: 'cancel', content: null })}>{tr(kind === 'plan' ? 'Cancel review' : 'Cancel question')}</Button>
+    <Button type="button" variant="outline" size="sm" {disabled} onclick={() => onRespond({ action: 'decline', content_json: null })}>{tr(kind === 'plan' ? 'Decline plan' : 'Decline question')}</Button>
+    <Button type="button" variant="ghost" size="sm" {disabled} onclick={() => onRespond({ action: 'cancel', content_json: null })}>{tr(kind === 'plan' ? 'Cancel review' : 'Cancel question')}</Button>
   </div>
 </form>

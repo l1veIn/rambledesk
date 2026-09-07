@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { inputFields, inputResponse } from './sessionInputForm'
+import { inputFields, inputResponse, inputSchema } from './sessionInputForm'
 
 describe('Agent input forms', () => {
+  it('decodes schemas at the client boundary and rejects malformed payloads', () => {
+    expect(inputSchema('{"type":"object","properties":{}}')).toEqual({ type: 'object', properties: {} })
+    for (const raw of ['{', 'null', '[]', '"text"']) expect(() => inputSchema(raw)).toThrow('This question format is not supported.')
+  })
   const schema = { type: 'object', required: ['approach', 'checks', 'ready', 'count'], properties: {
     approach: { type: 'string', title: 'Choose approach', oneOf: [{ const: 'small', title: 'Small change' }, { const: 'full', title: 'Full rewrite' }] },
     checks: { type: 'array', items: { type: 'string', enum: ['unit', 'browser'] }, minItems: 1 },
@@ -12,7 +16,7 @@ describe('Agent input forms', () => {
     const fields = inputFields(schema)
     expect(fields[0].choices).toEqual([{ value: 'small', label: 'Small change', description: '' }, { value: 'full', label: 'Full rewrite', description: '' }])
     expect(inputResponse(fields, { approach: 'small', checks: ['browser'], ready: false, count: '2', notes: '' })).toEqual({
-      action: 'accept', content: { approach: 'small', checks: ['browser'], ready: false, count: 2 },
+      action: 'accept', content_json: JSON.stringify({ approach: 'small', checks: ['browser'], ready: false, count: 2 }),
     })
   })
 
@@ -28,7 +32,7 @@ describe('Agent input forms', () => {
     const fields = inputFields({ type: 'object', required: ['direction'], properties: {
       direction: { type: 'string', enum: ['Left', 'Right'], 'x-rambledesk-allow-other': true },
     } })
-    expect(inputResponse(fields, { direction: 'Go straight' }).content).toEqual({ direction: 'Go straight' })
+    expect(JSON.parse(inputResponse(fields, { direction: 'Go straight' }).content_json!)).toEqual({ direction: 'Go straight' })
   })
 
   it('renders the titled multiselect schema emitted by Claude and Kimi without an items type', () => {
@@ -36,7 +40,7 @@ describe('Agent input forms', () => {
       targets: { type: 'array', items: { anyOf: [{ const: 'web', title: 'Web app' }, { const: 'desktop', title: 'Desktop app' }] }, minItems: 1 },
     } })
     expect(fields[0].choices.map(choice => choice.label)).toEqual(['Web app', 'Desktop app'])
-    expect(inputResponse(fields, { targets: ['web', 'desktop'] }).content).toEqual({ targets: ['web', 'desktop'] })
+    expect(JSON.parse(inputResponse(fields, { targets: ['web', 'desktop'] }).content_json!)).toEqual({ targets: ['web', 'desktop'] })
   })
 
   it('does not silently submit a partially understood form or a prototype property', () => {
@@ -45,6 +49,6 @@ describe('Agent input forms', () => {
     expect(() => inputFields({ type: 'object', required: ['missing'], properties: {} })).toThrow()
     const fields = inputFields(JSON.parse('{"type":"object","required":["__proto__"],"properties":{"__proto__":{"type":"string"}}}'))
     expect(() => inputResponse(fields, {})).toThrow()
-    expect(inputResponse(fields, JSON.parse('{"__proto__":"answer"}')).content).toEqual(JSON.parse('{"__proto__":"answer"}'))
+    expect(JSON.parse(inputResponse(fields, JSON.parse('{"__proto__":"answer"}')).content_json!)).toEqual(JSON.parse('{"__proto__":"answer"}'))
   })
 })

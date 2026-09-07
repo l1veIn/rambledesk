@@ -48,11 +48,9 @@ pub enum SessionInputKind {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 pub struct SessionInputRequest {
-    /// Application form schema: a flat object of text, choice, boolean, numeric
-    /// or choice-array fields. ACP validates its supported subset before accept;
-    /// unknown constraints remain visible but cannot be silently weakened.
-    #[ts(type = "Record<string, unknown>")]
-    pub schema: serde_json::Value,
+    /// Opaque form schema encoded by the driver and interpreted by the client.
+    /// The driver validates every accepted answer; core only routes the payload.
+    pub schema_json: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
@@ -66,8 +64,8 @@ pub enum SessionInputAction {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 pub struct SessionInputResponse {
     pub action: SessionInputAction,
-    #[ts(type = "Record<string, unknown> | null")]
-    pub content: Option<serde_json::Value>,
+    /// Opaque answer encoded by the client and validated by the driver.
+    pub content_json: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
@@ -108,7 +106,7 @@ impl SessionInteraction {
     pub fn cancel_response(&self) -> SessionInteractionResponse {
         let response = SessionInputResponse {
             action: SessionInputAction::Cancel,
-            content: None,
+            content_json: None,
         };
         match self.kind {
             SessionInteractionKind::Permission { .. } => {

@@ -272,13 +272,13 @@ describe('HttpApplicationTransport', () => {
     const transport = new HttpApplicationTransport(authenticatedSession(fetchImplementation).lease())
     await transport.call('respondManagedInteraction', {
       session_id: 'local-session-one', request_id: 'question-one',
-      response: { kind: 'question', response: { action: 'accept', content: { platforms: ['desktop', 'web'], confirmed: false, count: 2 } } },
+      response: { kind: 'question', response: { action: 'accept', content_json: JSON.stringify({ platforms: ['desktop', 'web'], confirmed: false, count: 2 }) } },
     })
     const [url, init] = fetchImplementation.mock.calls[0]!
     expect(String(url)).toBe('https://workbench.example/api/application/respondManagedInteraction')
     expect(JSON.parse(String(init?.body))).toEqual({
       session_id: 'local-session-one', request_id: 'question-one',
-      response: { kind: 'question', response: { action: 'accept', content: { platforms: ['desktop', 'web'], confirmed: false, count: 2 } } },
+      response: { kind: 'question', response: { action: 'accept', content_json: JSON.stringify({ platforms: ['desktop', 'web'], confirmed: false, count: 2 }) } },
     })
     expect(new Headers(init?.headers).get(RUNTIME_GENERATION_HEADER)).toBe(TEST_RUNTIME_GENERATION)
   })

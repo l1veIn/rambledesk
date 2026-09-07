@@ -61,12 +61,15 @@ export type ResolveFeedbackDeliveryInput = { session_id: string, request_id: str
 export type SessionPermissionOption = { option_id: string, name: string, kind: string, };
 export type SessionInputRequest = {
 /**
- * Application form schema: a flat object of text, choice, boolean, numeric
- * or choice-array fields. ACP validates its supported subset before accept;
- * unknown constraints remain visible but cannot be silently weakened.
+ * Opaque form schema encoded by the driver and interpreted by the client.
+ * The driver validates every accepted answer; core only routes the payload.
  */
-schema: Record<string, unknown>, };
-export type SessionInputResponse = { action: SessionInputAction, content: Record<string, unknown> | null, };
+schema_json: string, };
+export type SessionInputResponse = { action: SessionInputAction,
+/**
+ * Opaque answer encoded by the client and validated by the driver.
+ */
+content_json: string | null, };
 export type SessionInputAction = "accept" | "decline" | "cancel";
 export type SessionInteraction = { request_id: string, session_id: string, title: string, details: string | null, } & ({ "kind": "permission", options: Array<SessionPermissionOption>, } | { "kind": "question", input: SessionInputRequest, } | { "kind": "plan", input: SessionInputRequest, });
 export type SessionInteractionKind = { "kind": "permission", options: Array<SessionPermissionOption>, } | { "kind": "question", input: SessionInputRequest, } | { "kind": "plan", input: SessionInputRequest, };

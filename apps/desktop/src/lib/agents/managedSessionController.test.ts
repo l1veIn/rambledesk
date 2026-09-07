@@ -342,13 +342,13 @@ describe('managed workspace transport integration', () => {
     await controller.cancel()
     await controller.respondInteraction('request-one', { kind: 'permission', option_id: 'allow-once' })
     await controller.respondInteraction('request-two', { kind: 'permission', option_id: null })
-    await controller.respondInteraction('question-one', { kind: 'question', response: { action: 'accept', content: { direction: 'Small change' } } })
-    await controller.respondInteraction('plan-one', { kind: 'plan', response: { action: 'decline', content: null } })
+    await controller.respondInteraction('question-one', { kind: 'question', response: { action: 'accept', content_json: JSON.stringify({ direction: 'Small change' }) } })
+    await controller.respondInteraction('plan-one', { kind: 'plan', response: { action: 'decline', content_json: null } })
     expect(transport.callsFor('respondManagedInteraction').map((call) => call.input)).toEqual([
       { session_id: 'one', request_id: 'request-one', response: { kind: 'permission', option_id: 'allow-once' } },
       { session_id: 'one', request_id: 'request-two', response: { kind: 'permission', option_id: null } },
-      { session_id: 'one', request_id: 'question-one', response: { kind: 'question', response: { action: 'accept', content: { direction: 'Small change' } } } },
-      { session_id: 'one', request_id: 'plan-one', response: { kind: 'plan', response: { action: 'decline', content: null } } },
+      { session_id: 'one', request_id: 'question-one', response: { kind: 'question', response: { action: 'accept', content_json: JSON.stringify({ direction: 'Small change' }) } } },
+      { session_id: 'one', request_id: 'plan-one', response: { kind: 'plan', response: { action: 'decline', content_json: null } } },
     ])
     expect(transport.callsFor('startManagedSession')).toHaveLength(0)
     for (const name of ['cancelManagedPrompt'] as const) {

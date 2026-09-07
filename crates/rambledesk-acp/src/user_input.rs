@@ -65,19 +65,23 @@ impl InputSpec {
     }
 
     pub fn answer(&self, response: &SessionInputResponse) -> Result<Value, AcpError> {
+        let content = response
+            .content_json
+            .as_deref()
+            .map(|raw| {
+                if raw.len() > 262144 {
+                    return Err(AcpError::InvalidPermission);
+                }
+                serde_json::from_str::<Value>(raw).map_err(|_| AcpError::InvalidPermission)
+            })
+            .transpose()?;
         if response.action != SessionInputAction::Accept {
-            if response.content.as_ref().is_some_and(|v| !v.is_null()) {
+            if content.as_ref().is_some_and(|v| !v.is_null()) {
                 return Err(AcpError::InvalidPermission);
             }
             return Ok(self.cancel(response.action));
         }
-        let content = response
-            .content
-            .as_ref()
-            .ok_or(AcpError::InvalidPermission)?;
-        if content.to_string().len() > 262144 {
-            return Err(AcpError::InvalidPermission);
-        }
+        let content = content.as_ref().ok_or(AcpError::InvalidPermission)?;
         check_schema(&self.schema, 0)?;
         validate(&self.schema, content)?;
         (self.protocol.accept)(content)
@@ -123,7 +127,7 @@ async fn receive(
         visible_schema["x-rambledesk-unsupported"] = Value::Bool(true);
     }
     let input = SessionInputRequest {
-        schema: visible_schema,
+        schema_json: visible_schema.to_string(),
     };
     let request_id = queue.insert_input(spec, responder);
     if observer

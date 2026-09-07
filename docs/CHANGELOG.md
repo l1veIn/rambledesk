@@ -16,6 +16,41 @@
 
 ---
 
+## v0.4.0-rc.1
+
+What's new in RambleDesk 0.4.0-rc.1
+
+ACP Agent sessions
+- Start and resume Agent conversations inside RambleDesk, with a shared ACP layer for connection capabilities, model and mode selection, tool activity, permissions, and supported user questions.
+- A unified Agents page discovers installed programs, checks real ACP connections, caches connection results, and manages supported connection components. Sign-in and API-key setup remain in each Agent's own tools.
+- Managed Agents use the built-in feedback command. Submitted feedback is stored durably and queued for continuation in the original Agent session; interrupted deliveries expose recovery actions.
+- External adapters remain available for users who run their Agent independently of RambleDesk's managed ACP client.
+
+Conversation and workspace
+- Separate Agent and Ramble views, compact tool-call rows with expandable scrollable details, paged history, supported attachments, and live session configuration and context usage.
+- Resizable session and request columns remember their widths and collapse at their minimum size. Larger desktop minimum dimensions preserve workspace room, and sidebar scrolling keeps Settings accessible.
+- Sessions retain creation-time order within projects, with pinned sessions first. New sessions highlight the required project selection.
+- New Appearance settings add theme colors, interface scaling, fonts, and workspace backgrounds alongside light and dark modes.
+
+Speech and diagnostics
+- Review speech before writing with confirm, cancel, Tidy, and inline edit actions. Optional automatic Tidy includes guidance about the existing automatic Tidy threshold.
+- Automatic preview of waiting requests is off by default. Diagnostics can be cleared and recording can be disabled.
+
+Release candidate notes
+- Interrupted continuation turns can remain in an unknown delivery state and block later feedback until reviewed. Confirm an already-read delivery or retry it from its status details.
+- Saved launch profiles are preserved when scanning installations. If a saved executable path is stale, specify the installed program's location and check the connection again.
+- This prerelease includes Windows x64 NSIS and Apple Silicon macOS installers. Windows MSI is reserved for stable releases.
+
+中文摘要
+- 新增应用内 ACP 智能体会话，统一连接、模型与模式选择、工具活动、授权及受支持的用户问答；智能体页面提供程序发现、真实连接检查、状态缓存与连接组件管理。
+- 托管智能体通过内置反馈命令完成 Ramble 流程，反馈持久保存后排队续接原会话；外部适配器继续支持独立运行的智能体，登录及 API Key 配置由智能体自身处理。
+- 会话界面更简洁：工具调用按行收起，展开详情限制高度并可滚动，支持历史分页、附件和实时配置；侧边栏及请求列可拖动、收起并记住宽度，会话按创建时间排序，新会话突出工作目录必选提示。
+- 新增外观页，提供主题配色、窗口缩放、字体与工作区背景；语音确认悬浮窗增加整理、编辑及可选自动整理，自动预览默认关闭，诊断记录可清除及停用。
+- 已知限制：中断后送达状态未知的旧反馈需要先确认或重试，才会继续投递后续反馈；重新检测保留已有启动配置，失效的程序路径需手动更新。
+- 本候选版提供 Windows x64 NSIS 与 Apple Silicon macOS 安装包。
+
+Full changelog: https://github.com/l1veIn/rambledesk/compare/v0.3.4...v0.4.0-rc.1
+
 ## v0.3.4
 
 What's new in RambleDesk 0.3.4

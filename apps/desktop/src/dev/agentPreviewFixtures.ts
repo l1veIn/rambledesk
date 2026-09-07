@@ -96,11 +96,11 @@ const snapshot: ManagedSessionSnapshot = {
 if (new URLSearchParams(location.search).has('question')) {
   snapshot.runtime.activity = 'waiting_input'
   snapshot.interactions = [{ request_id: 'preview-question', session_id: 'preview', title: '继续之前，需要你确认实现方向', details: null, kind: 'question', input: {
-    schema: { type: 'object', required: ['direction', 'checks'], properties: {
+    schema_json: JSON.stringify({ type: 'object', required: ['direction', 'checks'], properties: {
       direction: { type: 'string', title: '这次先解决哪个问题？', oneOf: [{ const: 'cache', title: '连接状态缓存', description: '保留检测结果，切换页面后直接查看。' }, { const: 'questions', title: '会话授权与问答', description: '在当前会话处理需要你参与的请求。' }], 'x-rambledesk-allow-other': true },
       checks: { type: 'array', title: '需要验证哪些场景？', items: { type: 'string', enum: ['切换会话', '取消请求', '多选回答'] }, minItems: 1 },
       notes: { type: 'string', title: '补充说明（可选）' },
-    } },
+    } }),
   } }]
 }
 for (const row of get(previewSessions)) {
@@ -174,7 +174,7 @@ transport.handle('listAvailableAgents', () => entries).handle('listAgentConfigs'
     if (request.kind !== response.kind) throw new Error('Response does not match the request')
     target.interactions = target.interactions.filter(item => item.request_id !== request_id)
     target.runtime.activity = target.interactions.length ? 'waiting_input' : 'idle'
-    activity('agent_message', response.kind === 'permission' ? `请求已处理：${response.option_id ?? 'cancel'}` : response.response.action === 'accept' ? `已收到你的回答：${JSON.stringify(response.response.content)}` : `请求已处理：${response.response.action}`)
+    activity('agent_message', response.kind === 'permission' ? `请求已处理：${response.option_id ?? 'cancel'}` : response.response.action === 'accept' ? `已收到你的回答：${response.response.content_json}` : `请求已处理：${response.response.action}`)
     changed()
     return structuredClone(target)
   })

@@ -56,7 +56,7 @@ describe('managed session views', () => {
   })
 
   it('keeps mixed interactions in backend FIFO order and excludes other sessions and duplicate requests', () => {
-    const question: SessionInteraction = { kind: 'question', request_id: 'question', session_id: 'local-one', title: 'Choose a target', details: null, input: { schema: {} } }
+    const question: SessionInteraction = { kind: 'question', request_id: 'question', session_id: 'local-one', title: 'Choose a target', details: null, input: { schema_json: '{}' } }
     const plan: SessionInteraction = { ...question, kind: 'plan', request_id: 'plan' }
     expect(interactionsForSession('local-one', [
       permission('one'), permission('foreign', 'local-two'), question, plan, permission('two'), permission('one'), question,

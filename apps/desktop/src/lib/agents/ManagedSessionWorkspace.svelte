@@ -185,7 +185,7 @@
       {#if interaction.kind !== 'permission'}
         {@const inputInteraction = interaction}
         {#key interaction.request_id}
-          <SessionInputForm schema={inputInteraction.input.schema} requestId={inputInteraction.request_id} kind={inputInteraction.kind} {envText}
+          <SessionInputForm schemaJson={inputInteraction.input.schema_json} requestId={inputInteraction.request_id} kind={inputInteraction.kind} {envText}
             disabled={busy || lifecyclePending || interactionPending || !actions.canCancel}
             onRespond={response => respondInteraction(inputInteraction.request_id, { kind: inputInteraction.kind, response })} />
         {/key}
