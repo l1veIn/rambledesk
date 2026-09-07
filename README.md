@@ -107,7 +107,7 @@ RambleDesk does not ask you to organize the thought before you say it. You rambl
 
 ## Thanks
 
-- [Codeg](https://github.com/xintaofei/codeg), a major reference and source for this release's ACP integration, Agent conversation UI, settings, and appearance system. Thank you to its authors and contributors for sharing this work. Adapted modules and their changes are documented in the [Codeg porting notes](docs/CODEG_PORTS.md).
+- [Codeg](https://github.com/xintaofei/codeg), for ACP integration, Agent conversations, settings, and appearance references
 - [Snow Shot](https://github.com/mg-chao/snow-shot), for the screenshot stack
 - [RepoChan](https://github.com/l1veIn/repochan-mono), for brand and character assets
 - [Kotone](https://github.com/l1veIn), for the local speech stack this workbench grew from

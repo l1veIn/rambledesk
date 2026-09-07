@@ -107,7 +107,7 @@ RambleDesk 不要求你先想清楚再开口。你只管表达，它负责整理
 
 ## 致谢
 
-- [Codeg](https://github.com/xintaofei/codeg)，本次升级中 ACP 接入、Agent 对话界面、设置与外观系统的重要参考和代码来源。感谢作者与贡献者公开分享这些工作；改写的模块、来源和变更记录见 [Codeg 移植记录](docs/CODEG_PORTS.md)。
+- [Codeg](https://github.com/xintaofei/codeg)，ACP 接入、Agent 对话、设置与外观设计参考
 - [Snow Shot](https://github.com/mg-chao/snow-shot)，截图能力
 - [RepoChan](https://github.com/l1veIn/repochan-mono)，品牌与角色资产
 - [Kotone](https://github.com/l1veIn)，本地语音转写的实现基础
