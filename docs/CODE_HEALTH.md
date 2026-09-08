@@ -114,6 +114,12 @@ lib/capture/overlay/
 注意：`ScreenshotOverlay` 只在 Desktop Client 存在（Web Access 明确不支持系统截图），
 所以拆分不得把它变成浏览器能力。
 
+**已完成**：落地为 `lib/screen-capture/` 下的四个模块——`annotationModel.ts`（标注创建、撤销重做、
+增删与样式，9 个测试）、`pointerInteraction.ts`（指针状态机：选区与标注的移动/缩放/绘制，7 个测试）、
+`captureToolbarPlacement.ts`（位置计算、拖拽、窗口监听，5 个测试）、`captureActions.ts`
+（完成/固定/滚动/取消编排，6 个测试）；组件 1045 → 587 行，只剩渲染与事件转发。
+字面 `invoke('…')` 调用保留在组件里，`capabilityArchitecture.test.ts` 的平台命令归属不变。
+
 ### 5. `navigationController.ts`（702 行）— P1
 
 **症状**：`createNavigationController` 一个工厂 702 行、内部 28 个函数，混合 inbox 投影、Host 会话事实
@@ -271,12 +277,11 @@ message 全部由它持有，组件只做事件转发与 store 镜像，705 → 
 | 4 | `SettingsPanel.svelte` 按域拆分 | 已完成：1941 → 623 行，抽出 `settings/` 下 Web Access、Adapters、Voice、Notifications 四个 section |
 | 5 | `httpApplicationTransport.ts` 三刀 + 测试拆分 | 已完成：1116 → `httpApplicationOperations.ts` 402 + `httpApplicationSession.ts` 623 + `httpApplicationTransport.ts` 131；测试拆成投影 / 水位 / 流三个文件 + 共享 harness |
 | 6 | C 类 facade 腾挪 | 已完成：`feedback.rs` 799 → 564（错误码移到 `feedback/error.rs`）、`sqlite.rs` 701 → 581（row mapping 移入已有 `sqlite/row_mapping.rs`）、`diagnostics.rs` 703 → 599（打包移到 `diagnostics/package.rs`） |
-| 7 | 接入前端行数门禁 + 豁免清单 | 已完成：`scripts/check-frontend-module-size.mjs`（上限 700，9 个只减不增的豁免，`i18n.ts` 白名单），已进 CI 三个 job 与 release validate |
+| 7 | 接入前端行数门禁 + 豁免清单 | 已完成：`scripts/check-frontend-module-size.mjs`（上限 700，初始 9 个只减不增的豁免，现已清到只剩 `App.svelte`；`i18n.ts` 白名单），已进 CI 三个 job 与 release validate |
 | 8 | D 类测试文件拆分、观察名单清理 | 已完成：`navigationController.test.ts`（896）拆成 4 个文件、`attachmentController.test.ts`（831）拆成 3 个、`draftManagedSessionController.test.ts`（717）拆成 3 个，各自带共享 harness |
 
-剩余工作：`ScreenshotOverlay.svelte`（1045）。阶段 8 与 `RambleSessionController.svelte`、
-`ArchivedSessionsWorkspaceView.svelte` 已完成，前端门禁会阻止豁免文件在拆分期间继续变大。
-豁免清单只剩 `App.svelte`（1388）与 `ScreenshotOverlay.svelte`。
+剩余工作：无。A 类文件全部拆完，豁免清单只剩 `App.svelte`（1388 行，只减不增）；
+`i18n.ts` 仍是白名单数据文件。
 
 ### `App.svelte` 的状态边界（进行中）
 

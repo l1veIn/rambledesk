@@ -7,72 +7,47 @@
   import { locale } from './lib/preferences'
   import CaptureToolbar from './lib/screen-capture/CaptureToolbar.svelte'
   import {
-    clampCaptureRectangle,
-    distance,
     getAnnotationBounds,
-    hitTestAnnotation,
-    normalizeCaptureRectangle,
-    pointInRectangle,
-    resizeAnnotation,
-    resizeCaptureRectangle,
-    translateAnnotation,
     type AnnotationTool,
     type CaptureAnnotation,
-    type CapturePoint,
     type CaptureRectangle,
     type CaptureTarget,
     type ResizeHandle,
     type ScreenCaptureView,
   } from './lib/screenCapture'
-  import { exportAnnotatedCapture, renderCaptureAnnotations } from './lib/screenshotRenderer'
+  import { renderCaptureAnnotations } from './lib/screenshotRenderer'
   import {
-    annotationHasSize,
-    captureTargetRectangle,
-    clampPointToSelection,
+    cloneAnnotations,
+    commitAnnotations,
+    counterAnnotation,
+    createDraftAnnotation,
+    deleteAnnotation,
+    emptyAnnotationHistory,
+    nextCounterNumber,
+    pushUndoSnapshot,
+    redoAnnotations,
+    replaceAnnotations,
+    textAnnotation,
+    undoAnnotations,
+    updateAnnotationAppearance,
+    type AnnotationHistory,
+  } from './lib/screen-capture/annotationModel'
+  import { createCaptureActions } from './lib/screen-capture/captureActions'
+  import {
+    createPointerInteraction,
+    type TextDraft,
+  } from './lib/screen-capture/pointerInteraction'
+  import { createCaptureToolbarPlacement } from './lib/screen-capture/captureToolbarPlacement'
+  import {
     cssRectangle,
     fitImage,
-    findCaptureTarget,
     fullScreenSelection,
     imageLayerStyle,
     imagePoint,
-    sourceTolerance,
     textDraftStyle as computeTextDraftStyle,
-    captureToolbarPosition as computeToolbarPosition,
-    toolbarPopoverOpensDownward as toolbarPopoverDown,
   } from './lib/screen-capture/overlayGeometry'
 
   type DisplayRectangle = CaptureRectangle
-  type GestureKind =
-    | 'new-selection'
-    | 'move-selection'
-    | 'resize-selection'
-    | 'draw'
-    | 'move-annotation'
-    | 'resize-annotation'
-
-  type Gesture = {
-    kind: GestureKind
-    start: CapturePoint
-    handle?: ResizeHandle
-    target?: CaptureTarget
-    originalSelection?: CaptureRectangle
-    originalAnnotation?: CaptureAnnotation
-    annotationsSnapshot?: CaptureAnnotation[]
-  }
-
-  type TextDraft = {
-    point: CapturePoint
-    value: string
-  }
-
-  type ToolbarDrag = {
-    pointerId: number
-    startX: number
-    startY: number
-    originX: number
-    originY: number
-  }
-
   const colors = ['#ff4d5d', '#ffb020', '#37c878', '#3ca7ff', '#ffffff', '#15191f']
   const strokeWidths = [2, 4, 8]
 
@@ -89,28 +64,106 @@
   let toolbarHeight = 0
   let selection: CaptureRectangle | null = null
   let hoveredTarget: CaptureTarget | null = null
-  let annotations: CaptureAnnotation[] = []
+  let history: AnnotationHistory = emptyAnnotationHistory
+  $: annotations = history.annotations
   let draftAnnotation: CaptureAnnotation | null = null
   let activeTool: AnnotationTool = 'select'
   let selectedAnnotationId: string | null = null
   let currentColor = colors[0]!
   let currentStrokeWidth = 4
-  let gesture: Gesture | null = null
-  let undoStack: CaptureAnnotation[][] = []
-  let redoStack: CaptureAnnotation[][] = []
   let textDraft: TextDraft | null = null
   let loading = true
   let completing = false
   let errorMessage = ''
   let initializingSessionId: string | null = null
-  let toolbarManualX: number | null = null
-  let toolbarManualY: number | null = null
-  let toolbarDrag: ToolbarDrag | null = null
-  let toolbarDragListening = false
   let toolbarHost: HTMLDivElement | null = null
   let toolbarStyle = ''
   let stylePanelOpen = false
   let overflowPanelOpen = false
+
+  const toolbarPlacement = createCaptureToolbarPlacement({
+    getPlacement: () => ({ selection, toolbarWidth, toolbarHeight }),
+    getGeometry: () => geometry,
+    getHost: () => toolbarHost,
+    onChange: (style) => {
+      toolbarStyle = style
+    },
+    onDragStart: () => {
+      stylePanelOpen = false
+      overflowPanelOpen = false
+    },
+  })
+
+  const captureActions = createCaptureActions({
+    complete: (input) => invoke('complete_screen_capture', { input }),
+    pin: (input) => invoke('pin_screen_capture', { input }),
+    startScrolling: (input) => invoke('begin_scrolling_capture', { input }),
+    cancel: () => invoke('cancel_screen_capture'),
+    tr: (source) => t($locale, source),
+    messageFrom,
+    getCapture: () => capture,
+    getSourceImage: () => sourceImage,
+    getSelection: () => selection,
+    getAnnotations: () => annotations,
+    isCompleting: () => completing,
+    commitText: () => commitText(),
+    setCompleting: (value) => {
+      completing = value
+    },
+    setError: (message) => {
+      errorMessage = message
+    },
+  })
+
+  const pointerInteraction = createPointerInteraction({
+    getGeometry: () => geometry,
+    toImagePoint: (event) => imagePoint(event, shell.getBoundingClientRect(), geometry),
+    getState: () => ({
+      capture,
+      completing,
+      selection,
+      hoveredTarget,
+      activeTool,
+      annotations,
+      draftAnnotation,
+      selectedAnnotationId,
+      textDraft,
+      style: style(),
+    }),
+    patch: (next) => {
+      if ('selection' in next) selection = next.selection ?? null
+      if ('hoveredTarget' in next) hoveredTarget = next.hoveredTarget ?? null
+      if ('selectedAnnotationId' in next) selectedAnnotationId = next.selectedAnnotationId ?? null
+      if ('draftAnnotation' in next) draftAnnotation = next.draftAnnotation ?? null
+      if ('textDraft' in next) textDraft = next.textDraft ?? null
+      if (next.annotations) history = replaceAnnotations(history, next.annotations)
+    },
+    commit,
+    pushUndoSnapshot: (snapshot) => {
+      history = pushUndoSnapshot(history, snapshot)
+    },
+    closePanels: () => {
+      stylePanelOpen = false
+      overflowPanelOpen = false
+    },
+    clearError: () => {
+      errorMessage = ''
+    },
+    focusTextInput: () => {
+      void tick().then(() => textInput?.focus())
+    },
+    scheduleToolbarLayout: () => {
+      void scheduleToolbarLayout()
+    },
+  })
+
+  function commit(next: CaptureAnnotation[]) {
+    history = commitAnnotations(history, next)
+  }
+
+  function style() {
+    return { color: currentColor, strokeWidth: currentStrokeWidth }
+  }
 
   $: displayRectangle = capture
     ? fitImage(capture.image_width, capture.image_height, viewportWidth, viewportHeight)
@@ -158,7 +211,7 @@
       window.removeEventListener('resize', resize)
       window.removeEventListener('keydown', keydown)
       document.removeEventListener('selectstart', preventSelection)
-      unbindToolbarDragListeners()
+      toolbarPlacement.dispose()
     }
   })
 
@@ -177,26 +230,17 @@
     sourceReady = false
     selection = null
     hoveredTarget = null
-    annotations = []
+    history = emptyAnnotationHistory
     draftAnnotation = null
     activeTool = 'select'
     selectedAnnotationId = null
-    gesture = null
-    undoStack = []
-    redoStack = []
+    pointerInteraction.reset()
     textDraft = null
     loading = true
     completing = false
     errorMessage = ''
-    toolbarManualX = null
-    toolbarManualY = null
-    toolbarDrag = null
     toolbarStyle = ''
-    if (toolbarHost) {
-      toolbarHost.style.left = ''
-      toolbarHost.style.top = ''
-    }
-    unbindToolbarDragListeners()
+    toolbarPlacement.reset()
     stylePanelOpen = false
     overflowPanelOpen = false
   }
@@ -255,302 +299,28 @@
     sourceImage = sourceCanvas
   }
 
-  function beginPointer(event: PointerEvent) {
-    if (!capture || completing || event.button !== 0 || toolbarDrag) return
-    const target = event.target
-    if (target instanceof Element && target.closest('[data-capture-ui]')) return
-    stylePanelOpen = false
-    overflowPanelOpen = false
-    event.preventDefault()
-    window.getSelection()?.removeAllRanges()
-    const point = imagePoint(event, shell.getBoundingClientRect(), geometry)
-    if (!point) return
-    ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
-    errorMessage = ''
-
-    if (!selection) {
-      gesture = { kind: 'new-selection', start: point, target: hoveredTarget ?? undefined }
-      return
-    }
-
-    if (activeTool === 'select') {
-      const tolerance = sourceTolerance(8, geometry)
-      const hit = [...annotations]
-        .reverse()
-        .find((annotation) => hitTestAnnotation(annotation, point, tolerance))
-      if (hit) {
-        selectedAnnotationId = hit.id
-        gesture = {
-          kind: 'move-annotation',
-          start: point,
-          originalAnnotation: hit,
-          annotationsSnapshot: cloneAnnotations(annotations),
-        }
-        return
-      }
-      selectedAnnotationId = null
-      if (pointInRectangle(point, selection)) {
-        gesture = {
-          kind: 'move-selection',
-          start: point,
-          originalSelection: { ...selection },
-        }
-      }
-      return
-    }
-
-    if (!pointInRectangle(point, selection)) return
-    const clamped = clampPointToSelection(point, selection)
-    if (activeTool === 'text') {
-      event.preventDefault()
-      textDraft = { point: clamped, value: '' }
-      void tick().then(() => textInput?.focus())
-      return
-    }
-    if (activeTool === 'counter') {
-      const nextNumber =
-        Math.max(
-          0,
-          ...annotations
-            .filter((annotation) => annotation.type === 'counter')
-            .map((annotation) => (annotation.type === 'counter' ? annotation.number : 0)),
-        ) + 1
-      commitAnnotations([
-        ...annotations,
-        {
-          id: newId(),
-          type: 'counter',
-          point: clamped,
-          number: nextNumber,
-          radius: Math.max(12, currentStrokeWidth * 3.5),
-          color: currentColor,
-          strokeWidth: currentStrokeWidth,
-        },
-      ])
-      return
-    }
-    gesture = { kind: 'draw', start: clamped }
-    draftAnnotation = createDraftAnnotation(activeTool, clamped, clamped)
-  }
-
-  function movePointer(event: PointerEvent) {
-    if (toolbarDrag) return
-    const point = imagePoint(event, shell.getBoundingClientRect(), geometry)
-    if (!point || !capture) {
-      if (!gesture && !selection) hoveredTarget = null
-      return
-    }
-    if (!gesture) {
-      if (!selection) hoveredTarget = findCaptureTarget(point, capture?.targets ?? [])
-      return
-    }
-
-    switch (gesture.kind) {
-      case 'new-selection':
-        if (distance(gesture.start, point) > sourceTolerance(5, geometry)) {
-          hoveredTarget = null
-          selection = clampCaptureRectangle(
-            normalizeCaptureRectangle(gesture.start, point),
-            capture.image_width,
-            capture.image_height,
-          )
-        }
-        break
-      case 'move-selection':
-        if (gesture.originalSelection) {
-          selection = clampCaptureRectangle(
-            {
-              ...gesture.originalSelection,
-              x: gesture.originalSelection.x + point.x - gesture.start.x,
-              y: gesture.originalSelection.y + point.y - gesture.start.y,
-            },
-            capture.image_width,
-            capture.image_height,
-          )
-        }
-        break
-      case 'resize-selection':
-        if (gesture.originalSelection && gesture.handle) {
-          selection = resizeCaptureRectangle(
-            gesture.originalSelection,
-            gesture.handle,
-            point,
-            capture.image_width,
-            capture.image_height,
-            sourceTolerance(12, geometry),
-          )
-        }
-        break
-      case 'draw': {
-        const clamped = clampPointToSelection(point, selection)
-        if (draftAnnotation?.type === 'pen') {
-          const last = draftAnnotation.points.at(-1)
-          if (!last || distance(last, clamped) >= sourceTolerance(1.5, geometry)) {
-            draftAnnotation = { ...draftAnnotation, points: [...draftAnnotation.points, clamped] }
-          }
-        } else {
-          draftAnnotation = createDraftAnnotation(activeTool, gesture.start, clamped)
-        }
-        break
-      }
-      case 'move-annotation':
-        if (gesture.originalAnnotation && gesture.annotationsSnapshot) {
-          const moved = translateAnnotation(gesture.originalAnnotation, {
-            x: point.x - gesture.start.x,
-            y: point.y - gesture.start.y,
-          })
-          annotations = gesture.annotationsSnapshot.map((annotation) =>
-            annotation.id === moved.id ? moved : annotation,
-          )
-        }
-        break
-      case 'resize-annotation':
-        if (gesture.originalAnnotation && gesture.annotationsSnapshot && gesture.handle) {
-          const originalBounds = getAnnotationBounds(gesture.originalAnnotation)
-          const nextBounds = resizeCaptureRectangle(
-            originalBounds,
-            gesture.handle,
-            point,
-            capture.image_width,
-            capture.image_height,
-            sourceTolerance(8, geometry),
-          )
-          const resized = resizeAnnotation(gesture.originalAnnotation, originalBounds, nextBounds)
-          annotations = gesture.annotationsSnapshot.map((annotation) =>
-            annotation.id === resized.id ? resized : annotation,
-          )
-        }
-        break
-    }
-  }
-
-  function endPointer(event: PointerEvent) {
-    if (toolbarDrag || !gesture || !capture) return
-    const point = imagePoint(event, shell.getBoundingClientRect(), geometry) ?? gesture.start
-    const completedGesture = gesture
-    gesture = null
-
-    if (completedGesture.kind === 'new-selection') {
-      if (distance(completedGesture.start, point) <= sourceTolerance(5, geometry) && completedGesture.target) {
-        selection = captureTargetRectangle(completedGesture.target)
-      } else if (selection && (selection.width < sourceTolerance(6, geometry) || selection.height < sourceTolerance(6, geometry))) {
-        selection = null
-      }
-      hoveredTarget = null
-      if (selection) void scheduleToolbarLayout()
-      return
-    }
-    if (completedGesture.kind === 'draw') {
-      const draft = draftAnnotation
-      draftAnnotation = null
-      if (draft && annotationHasSize(draft, getAnnotationBounds(draft), sourceTolerance(3, geometry))) commitAnnotations([...annotations, draft])
-      return
-    }
-    if (
-      (completedGesture.kind === 'move-annotation' || completedGesture.kind === 'resize-annotation') &&
-      completedGesture.annotationsSnapshot &&
-      JSON.stringify(completedGesture.annotationsSnapshot) !== JSON.stringify(annotations)
-    ) {
-      undoStack = [...undoStack, completedGesture.annotationsSnapshot]
-      redoStack = []
-    }
-  }
-
-  function beginSelectionResize(event: PointerEvent, handle: ResizeHandle) {
-    if (!selection || !capture || completing) return
-    event.stopPropagation()
-    ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
-    const point = imagePoint(event, shell.getBoundingClientRect(), geometry)
-    if (!point) return
-    gesture = {
-      kind: 'resize-selection',
-      start: point,
-      handle,
-      originalSelection: { ...selection },
-    }
-  }
-
-  function beginAnnotationResize(event: PointerEvent, handle: ResizeHandle) {
-    if (!selectedAnnotation || !capture || completing) return
-    event.stopPropagation()
-    ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
-    const point = imagePoint(event, shell.getBoundingClientRect(), geometry)
-    if (!point) return
-    gesture = {
-      kind: 'resize-annotation',
-      start: point,
-      handle,
-      originalAnnotation: structuredClone(selectedAnnotation),
-      annotationsSnapshot: cloneAnnotations(annotations),
-    }
-  }
-
-  function createDraftAnnotation(
-    tool: AnnotationTool,
-    start: CapturePoint,
-    end: CapturePoint,
-  ): CaptureAnnotation | null {
-    const base = { id: newId(), color: currentColor, strokeWidth: currentStrokeWidth }
-    if (tool === 'arrow' || tool === 'line') return { ...base, type: tool, start, end }
-    if (tool === 'pen') return { ...base, type: 'pen', points: [start, end] }
-    if (tool === 'rectangle' || tool === 'ellipse' || tool === 'highlight' || tool === 'mosaic') {
-      return {
-        ...base,
-        type: tool,
-        rect: normalizeCaptureRectangle(start, end),
-        ...(tool === 'mosaic' ? { pixelSize: Math.max(8, currentStrokeWidth * 3) } : {}),
-      }
-    }
-    return null
-  }
-
   function commitText() {
     if (!textDraft) return
     const value = textDraft.value.trim()
     if (value) {
-      commitAnnotations([
-        ...annotations,
-        {
-          id: newId(),
-          type: 'text',
-          point: textDraft.point,
-          text: value,
-          fontSize: Math.max(18, currentStrokeWidth * 5),
-          color: currentColor,
-          strokeWidth: currentStrokeWidth,
-        },
-      ])
+      commit([...annotations, textAnnotation(textDraft.point, value, style())])
     }
     textDraft = null
   }
 
-  function commitAnnotations(next: CaptureAnnotation[]) {
-    undoStack = [...undoStack, cloneAnnotations(annotations)]
-    redoStack = []
-    annotations = next
-  }
-
   function undo() {
-    const previous = undoStack.at(-1)
-    if (!previous) return
-    undoStack = undoStack.slice(0, -1)
-    redoStack = [cloneAnnotations(annotations), ...redoStack]
-    annotations = previous
+    history = undoAnnotations(history)
     selectedAnnotationId = null
   }
 
   function redo() {
-    const next = redoStack[0]
-    if (!next) return
-    redoStack = redoStack.slice(1)
-    undoStack = [...undoStack, cloneAnnotations(annotations)]
-    annotations = next
+    history = redoAnnotations(history)
     selectedAnnotationId = null
   }
 
   function deleteSelected() {
     if (!selectedAnnotationId) return
-    commitAnnotations(annotations.filter((annotation) => annotation.id !== selectedAnnotationId))
+    history = deleteAnnotation(history, selectedAnnotationId)
     selectedAnnotationId = null
   }
 
@@ -584,99 +354,7 @@
 
   function updateSelectedAppearance(patch: { color?: string; strokeWidth?: number }) {
     if (!selectedAnnotationId) return
-    commitAnnotations(
-      annotations.map((annotation) =>
-        annotation.id === selectedAnnotationId ? ({ ...annotation, ...patch } as CaptureAnnotation) : annotation,
-      ),
-    )
-  }
-
-  async function finalize(copyToClipboard: boolean) {
-    if (!capture || !sourceImage || !selection || completing) return
-    commitText()
-    completing = true
-    errorMessage = ''
-    try {
-      await invoke('complete_screen_capture', {
-        input: {
-          capture_session_id: capture.capture_session_id,
-          selection: roundedRectangle(selection),
-          png_base64:
-            annotations.length > 0
-              ? exportAnnotatedCapture(
-                  sourceImage,
-                  selection,
-                  annotations,
-                  t($locale, 'Could not create the capture export canvas'),
-                )
-              : null,
-          copy_to_clipboard: copyToClipboard,
-        },
-      })
-    } catch (cause) {
-      errorMessage = messageFrom(cause)
-      completing = false
-    }
-  }
-
-  async function pinCapture() {
-    if (!capture || !sourceImage || !selection || completing) return
-    commitText()
-    completing = true
-    errorMessage = ''
-    try {
-      await invoke('pin_screen_capture', {
-        input: {
-          capture_session_id: capture.capture_session_id,
-          selection: roundedRectangle(selection),
-          png_base64:
-            annotations.length > 0
-              ? exportAnnotatedCapture(
-                  sourceImage,
-                  selection,
-                  annotations,
-                  t($locale, 'Could not create the capture export canvas'),
-                )
-              : null,
-          copy_to_clipboard: false,
-        },
-      })
-    } catch (cause) {
-      errorMessage = messageFrom(cause)
-      completing = false
-    }
-  }
-
-  async function beginScrolling() {
-    if (!capture || !selection || completing) return
-    if (annotations.length > 0) {
-      errorMessage = t($locale, 'Start scrolling capture before annotating the stitched image.')
-      return
-    }
-    completing = true
-    errorMessage = ''
-    try {
-      await invoke('begin_scrolling_capture', {
-        input: {
-          capture_session_id: capture.capture_session_id,
-          selection: roundedRectangle(selection),
-        },
-      })
-    } catch (cause) {
-      errorMessage = messageFrom(cause)
-      completing = false
-    }
-  }
-
-  async function cancelCapture() {
-    if (completing) return
-    completing = true
-    try {
-      await invoke('cancel_screen_capture')
-    } catch (cause) {
-      errorMessage = messageFrom(cause)
-      completing = false
-    }
+    history = updateAnnotationAppearance(history, selectedAnnotationId, patch)
   }
 
   async function handleKeydown(event: KeyboardEvent) {
@@ -707,14 +385,14 @@
         overflowPanelOpen = false
       } else if (draftAnnotation) {
         draftAnnotation = null
-        gesture = null
+        pointerInteraction.reset()
       } else if (selectedAnnotationId) selectedAnnotationId = null
-      else await cancelCapture()
+      else await captureActions.cancelCapture()
       return
     }
     if (event.key === 'Enter' && selection) {
       event.preventDefault()
-      await finalize(false)
+      await captureActions.finalize(false)
       return
     }
     if (!event.metaKey && !event.ctrlKey && !event.altKey) {
@@ -742,24 +420,10 @@
     )
   }
 
-  function captureToolbarPosition() {
-    return computeToolbarPosition(
-      { selection, toolbarWidth, toolbarHeight, toolbarManualX, toolbarManualY },
-      geometry,
-    )
-  }
-
-  function captureToolbarStyle() {
-    const position = captureToolbarPosition()
-    return position ? `left:${position.left}px;top:${position.top}px` : ''
-  }
-
-  $: toolbarStyle = captureToolbarStyle()
+  $: toolbarStyle = toolbarPlacement.style()
   $: if (selection && viewportWidth > 64 && toolbarWidth > 0) {
-    toolbarManualX
-    toolbarManualY
     geometry
-    applyToolbarPosition()
+    toolbarPlacement.apply()
   }
 
   function resizeViewport() {
@@ -772,129 +436,7 @@
   async function scheduleToolbarLayout() {
     resizeViewport()
     await tick()
-    applyToolbarPosition()
-  }
-
-  function applyToolbarPosition() {
-    const position = captureToolbarPosition()
-    if (!position) return
-    toolbarStyle = `left:${position.left}px;top:${position.top}px`
-    if (toolbarHost) {
-      toolbarHost.style.left = `${position.left}px`
-      toolbarHost.style.top = `${position.top}px`
-    }
-  }
-
-  function toolbarPopoverOpensDownward() {
-    return toolbarPopoverDown(captureToolbarPosition())
-  }
-
-  function bindToolbarDragListeners() {
-    if (toolbarDragListening) return
-    toolbarDragListening = true
-    window.addEventListener('pointermove', moveToolbarDrag, true)
-    window.addEventListener('pointerup', endToolbarDrag, true)
-    window.addEventListener('pointercancel', endToolbarDrag, true)
-    window.addEventListener('mousemove', moveToolbarDragFromMouse, true)
-    window.addEventListener('mouseup', endToolbarDragFromMouse, true)
-  }
-
-  function unbindToolbarDragListeners() {
-    if (!toolbarDragListening) return
-    toolbarDragListening = false
-    window.removeEventListener('pointermove', moveToolbarDrag, true)
-    window.removeEventListener('pointerup', endToolbarDrag, true)
-    window.removeEventListener('pointercancel', endToolbarDrag, true)
-    window.removeEventListener('mousemove', moveToolbarDragFromMouse, true)
-    window.removeEventListener('mouseup', endToolbarDragFromMouse, true)
-  }
-
-  function isToolbarDragSource(event: PointerEvent) {
-    const target = event.target
-    if (!(target instanceof Element)) return false
-    if (target.closest('.toolbar-popover, textarea, input')) return false
-    const button = target.closest('button')
-    return !button || button.classList.contains('toolbar-drag')
-  }
-
-  function beginToolbarDrag(event: PointerEvent) {
-    if (event.button !== 0 || !event.isPrimary) return
-    if (!isToolbarDragSource(event)) return
-    event.preventDefault()
-    event.stopPropagation()
-    stylePanelOpen = false
-    overflowPanelOpen = false
-    const position = captureToolbarPosition()
-    if (!position) return
-    toolbarDrag = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      originX: position.left,
-      originY: position.top,
-    }
-    applyToolbarPosition()
-    bindToolbarDragListeners()
-  }
-
-  function moveToolbarDrag(event: PointerEvent) {
-    if (!toolbarDrag || (event.pointerId !== toolbarDrag.pointerId && event.pointerId !== 0)) return
-    if (event.buttons === 0) {
-      endToolbarDrag(event)
-      return
-    }
-    event.preventDefault()
-    event.stopPropagation()
-    toolbarManualX = toolbarDrag.originX + event.clientX - toolbarDrag.startX
-    toolbarManualY = toolbarDrag.originY + event.clientY - toolbarDrag.startY
-    applyToolbarPosition()
-  }
-
-  function moveToolbarDragFromMouse(event: MouseEvent) {
-    if (!toolbarDrag) return
-    if (event.buttons === 0) {
-      endToolbarDragFromMouse(event)
-      return
-    }
-    event.preventDefault()
-    event.stopPropagation()
-    toolbarManualX = toolbarDrag.originX + event.clientX - toolbarDrag.startX
-    toolbarManualY = toolbarDrag.originY + event.clientY - toolbarDrag.startY
-    applyToolbarPosition()
-  }
-
-  function endToolbarDrag(event: PointerEvent) {
-    if (!toolbarDrag) return
-    if (event.pointerId !== toolbarDrag.pointerId && event.pointerId !== 0) return
-    event.preventDefault()
-    event.stopPropagation()
-    toolbarDrag = null
-    unbindToolbarDragListeners()
-  }
-
-  function endToolbarDragFromMouse(event: MouseEvent) {
-    if (!toolbarDrag) return
-    event.preventDefault()
-    event.stopPropagation()
-    toolbarDrag = null
-    unbindToolbarDragListeners()
-  }
-
-  function roundedRectangle(rectangle: CaptureRectangle): CaptureRectangle {
-    return {
-      x: Math.max(0, Math.round(rectangle.x)),
-      y: Math.max(0, Math.round(rectangle.y)),
-      width: Math.max(1, Math.round(rectangle.width)),
-      height: Math.max(1, Math.round(rectangle.height)),
-    }
-  }
-
-  function cloneAnnotations(value: CaptureAnnotation[]) {
-    return structuredClone(value)
-  }
-
-  function newId() {
-    return crypto.randomUUID()
+    toolbarPlacement.apply()
   }
 
   function messageFrom(cause: unknown) {
@@ -907,10 +449,10 @@
   class:has-selection={selection}
   class:completing
   class="capture-editor"
-  onpointerdown={beginPointer}
-  onpointermove={movePointer}
-  onpointerup={endPointer}
-  onpointercancel={endPointer}
+  onpointerdown={pointerInteraction.begin}
+  onpointermove={pointerInteraction.move}
+  onpointerup={pointerInteraction.end}
+  onpointercancel={pointerInteraction.end}
   ondblclick={() => {
     if (!selection) useFullScreenSelection()
   }}
@@ -918,9 +460,9 @@
     event.preventDefault()
     if (draftAnnotation) {
       draftAnnotation = null
-      gesture = null
+      pointerInteraction.reset()
     } else if (selectedAnnotationId) selectedAnnotationId = null
-    else void cancelCapture()
+    else void captureActions.cancelCapture()
   }}
 >
   {#if sourceReady && displayRectangle}
@@ -958,7 +500,7 @@
           data-capture-ui
           class={`resize-handle ${handle}`}
           aria-label={t($locale, 'Resize selection: {handle}', { handle })}
-          onpointerdown={(event) => beginSelectionResize(event, handle as ResizeHandle)}
+          onpointerdown={(event) => pointerInteraction.beginSelectionResize(event, handle as ResizeHandle)}
         ></button>
       {/each}
     </div>
@@ -971,7 +513,7 @@
           data-capture-ui
           class={`annotation-handle ${handle}`}
           aria-label={t($locale, 'Resize annotation: {handle}', { handle })}
-          onpointerdown={(event) => beginAnnotationResize(event, handle as ResizeHandle)}
+          onpointerdown={(event) => pointerInteraction.beginAnnotationResize(event, handle as ResizeHandle)}
         ></button>
       {/each}
     </div>
@@ -1006,7 +548,7 @@
       bind:toolbarWidth
       bind:toolbarHeight
       {toolbarStyle}
-      popoverDown={toolbarPopoverOpensDownward()}
+      popoverDown={toolbarPlacement.popoverOpensDownward()}
       {activeTool}
       {stylePanelOpen}
       {overflowPanelOpen}
@@ -1014,10 +556,10 @@
       {currentStrokeWidth}
       {colors}
       {strokeWidths}
-      canUndo={undoStack.length > 0}
-      canRedo={redoStack.length > 0}
+      canUndo={history.undoStack.length > 0}
+      canRedo={history.redoStack.length > 0}
       canDelete={selectedAnnotationId !== null}
-      onBeginDrag={beginToolbarDrag}
+      onBeginDrag={toolbarPlacement.beginDrag}
       onSetTool={setTool}
       onToggleStylePanel={toggleStylePanel}
       onToggleOverflowPanel={toggleOverflowPanel}
@@ -1026,8 +568,8 @@
       onUndo={undo}
       onRedo={redo}
       onDelete={deleteSelected}
-      onFinalize={(copyToClipboard) => void finalize(copyToClipboard)}
-      onCancel={() => void cancelCapture()}
+      onFinalize={(copyToClipboard) => void captureActions.finalize(copyToClipboard)}
+      onCancel={() => void captureActions.cancelCapture()}
     />
   {/if}
 
