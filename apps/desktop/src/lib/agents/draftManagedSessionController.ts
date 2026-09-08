@@ -4,10 +4,12 @@ import { APPLICATION_EVENTS_STREAM } from '$lib/application/applicationEvents'
 import { diagnosticAgentId, diagnosticErrorCategory, recordClientDiagnostic, startClientDiagnostic } from '$lib/diagnostics/clientDiagnostics'
 import { readApplicationSnapshot } from '$lib/application/readApplicationSnapshot'
 import { applicationResourcesAffectAgentConfigurations, applicationResourcesAffectManagedSession } from '$lib/application/applicationSnapshotRefetch'
-import type { AgentCatalogEntry, AgentConfig, AgentInspection, AgentInstallJob, ManagedSessionSnapshot, SessionConfigChange } from '$lib/generated/feedback'
+import type { AgentCatalogEntry, AgentConfig, AgentFailure, AgentInspection, AgentInstallJob, ManagedSessionSnapshot, SessionConfigChange } from '$lib/generated/feedback'
 import { isAbsoluteAgentDirectory, redactAgentMessage } from './agentConfigForm'
 import { connectionPreparationAvailable } from './agentCatalogController'
 import { beginAgentInspection, observeAgentRuntime, readAgentDetectionCache } from './agentDetectionCache'
+import { agentFailureFrom } from './agentFailure'
+import { promptRejectionConfirmed } from './promptAdmission'
 import { sessionPromptDrafts } from './managedSessionUi'
 import type { ManagedSessionDraftStorage } from './managedSessionDrafts'
 
@@ -43,7 +45,7 @@ export type DraftManagedSessionState = Readonly<{
   choices: readonly DraftAgentChoice[]; loadingChoices: boolean; choicesError: string
   awaitingAcknowledgement: boolean
   phase: 'idle' | 'preparing' | 'ready' | 'failed' | 'sending' | 'closing' | 'promoted'
-  snapshot: ManagedSessionSnapshot | null; error: string
+  snapshot: ManagedSessionSnapshot | null; error: string; failure?: AgentFailure | null
   preparingConnection: boolean; installationJob: AgentInstallJob | null
 }>
 
@@ -54,7 +56,7 @@ export function createDraftManagedSessionController(
   onPromoted: (snapshot: ManagedSessionSnapshot) => Promise<void> | void,
 ) {
   const initial = storage.load(draftId)
-  const state = writable<DraftManagedSessionState>({ ...initial, choices: [], loadingChoices: true, choicesError: '', awaitingAcknowledgement: false, phase: 'idle', snapshot: null, error: '', preparingConnection: false, installationJob: null })
+  const state = writable<DraftManagedSessionState>({ ...initial, choices: [], loadingChoices: true, choicesError: '', awaitingAcknowledgement: false, phase: 'idle', snapshot: null, error: '', failure: null, preparingConnection: false, installationJob: null })
   let started = false
   let closed = false
   let closing = false
@@ -65,6 +67,7 @@ export function createDraftManagedSessionController(
   let draftEditRevision = 0
   let prepared: ManagedSessionSnapshot | null = null
   let preparedRevision = -1
+  let preparedEnvironment = ''
   let operations: Promise<void> = Promise.resolve()
   let unsubscribe: (() => void) | null = null
   let preparationTimer: ReturnType<typeof setTimeout> | null = null
@@ -77,10 +80,21 @@ export function createDraftManagedSessionController(
 
   function patch(next: Partial<DraftManagedSessionState>) { state.update((value) => ({ ...value, ...next })) }
   function persist() { const { choice, cwd, text } = get(state); storage.save(draftId, { choice, cwd, text }) }
-  function message(cause: unknown) {
+  function environmentText() {
+    return get(state).choices.flatMap(choice => Object.entries(choice.config?.env ?? {}).map(([key, value]) => key + '=' + value)).join('\n')
+  }
+  function message(cause: unknown, env = environmentText()) {
     const text = cause instanceof Error ? cause.message : typeof cause === 'object' && cause && 'message' in cause ? String(cause.message) : 'Could not connect to the agent.'
-    const env = get(state).choices.flatMap((choice) => Object.entries(choice.config?.env ?? {}).map(([key, value]) => `${key}=${value}`)).join('\n')
     return redactAgentMessage(text, env)
+  }
+  function safeFailure(cause: unknown, stage: AgentFailure['stage'], env = environmentText()): AgentFailure {
+    return agentFailureFrom(cause, stage, env)
+  }
+  function safeSnapshot(snapshot: ManagedSessionSnapshot, env: string): ManagedSessionSnapshot {
+    return { ...snapshot, runtime: { ...snapshot.runtime,
+      last_error: snapshot.runtime.last_error ? redactAgentMessage(snapshot.runtime.last_error, env) : null,
+      ...(snapshot.runtime.failure ? { failure: safeFailure(snapshot.runtime.failure, snapshot.runtime.failure.stage, env) } : {}),
+    } }
   }
   function enqueue(operation: () => Promise<void>) {
     const pending = operations.then(operation)
@@ -119,7 +133,7 @@ export function createDraftManagedSessionController(
     } catch (cause) { finish('failed', { error_category: diagnosticErrorCategory(cause) }); throw cause }
   }
 
-  let sent: { text: string; editRevision: number } | null = null
+  let sent: { text: string; editRevision: number; rejected: boolean } | null = null
   function restoreRejectedSubmission() {
     if (!sent) return
     if (draftEditRevision === sent.editRevision) { patch({ text: sent.text }); persist() }
@@ -133,16 +147,17 @@ export function createDraftManagedSessionController(
     const intent = revision
     const read = ++readRevision
     try {
-      const snapshot = await readApplicationSnapshot(transport, 'getManagedSession', { session_id: target.session.session_id })
+      const snapshot = safeSnapshot(await readApplicationSnapshot(transport, 'getManagedSession', { session_id: target.session.session_id }), preparedEnvironment)
       assertSession(snapshot, target.session.session_id)
       if (read !== readRevision || prepared?.session.session_id !== target.session.session_id || revision !== intent || closed || promoted) return false
       prepared = snapshot
       if (sent && snapshot.session.lifecycle !== 'prepared') await acceptPromotion(snapshot)
       else {
-        if (sent && !sendPending) restoreRejectedSubmission()
+        if (sent && !sendPending && sent.rejected) restoreRejectedSubmission()
         if (!closing) patch({ snapshot, ...(sendPending ? {} : {
           phase: ready(snapshot) ? 'ready' : snapshot.runtime.connection === 'connecting' ? 'preparing' : 'failed',
           error: snapshot.runtime.last_error ? message(new Error(snapshot.runtime.last_error)) : '',
+          failure: snapshot.runtime.failure ?? null,
         }) })
       }
       return true
@@ -154,6 +169,7 @@ export function createDraftManagedSessionController(
     if (sent) {
       if (!await refreshPrepared() && !promoted) throw new Error('Could not confirm whether the first message was accepted. Retry to check the session.')
       if (promoted) return
+      if (sent) throw new Error('Could not confirm whether the first message was accepted. Retry to check the session.')
     }
     // A failed discard keeps ownership here. A later retry cannot silently orphan it.
     if (prepared && (closed || closing || preparedRevision !== revision)) {
@@ -169,7 +185,8 @@ export function createDraftManagedSessionController(
     if (!choice || agentNeedsPreparation(choice)
       || value.preparingConnection) { patch({ phase: 'idle' }); return }
     if (prepared && !retry) return
-    patch({ phase: 'preparing', error: '' })
+    patch({ phase: 'preparing', error: '', failure: null })
+    let operationEnvironment = prepared ? preparedEnvironment : environmentText()
     const finish = startClientDiagnostic('session_draft', { action: 'prepare', source: 'draft', retry, agent: diagnosticAgentId(choice.config?.catalog_id ?? choice.catalogId),
       agent_kind: choice.entry?.connection_kind === 'native' ? 'native' : choice.entry?.connection_kind === 'bridge' ? 'bridge' : 'custom' })
     try {
@@ -195,9 +212,12 @@ export function createDraftManagedSessionController(
           patch({ choice: resolved.key, choices: [...get(state).choices.filter((item) => item.key !== choice.key && item.key !== resolved.key), resolved], loadingChoices: false })
           persist()
         }
+        operationEnvironment += '\n' + Object.entries(config.env).map(([key, value]) => key + '=' + value).join('\n')
         snapshot = await transport.call('prepareManagedSession', { agent_config_id: config.id, cwd: value.cwd.trim() })
       }
+      snapshot = safeSnapshot(snapshot, operationEnvironment)
       prepared = snapshot
+      preparedEnvironment = operationEnvironment
       preparedRevision = intent
       if (!current(intent)) {
         await transport.call('discardPreparedSession', { session_id: snapshot.session.session_id })
@@ -205,18 +225,18 @@ export function createDraftManagedSessionController(
         finish('cancelled', { reason: 'stale' })
         return
       }
-      patch({ snapshot, phase: ready(snapshot) ? 'ready' : 'failed', error: snapshot.runtime.last_error ? message(new Error(snapshot.runtime.last_error)) : '' })
+      patch({ snapshot, phase: ready(snapshot) ? 'ready' : 'failed', error: snapshot.runtime.last_error ? message(new Error(snapshot.runtime.last_error)) : '', failure: snapshot.runtime.failure ?? null })
       finish(ready(snapshot) ? 'ok' : 'failed', { status: snapshot.runtime.connection })
     } catch (cause) {
       finish(current(intent) ? 'failed' : 'cancelled', { error_category: diagnosticErrorCategory(cause) })
-      if (current(intent)) patch({ phase: 'failed', error: message(cause) })
+      if (current(intent)) patch({ phase: 'failed', error: message(cause, operationEnvironment), failure: safeFailure(cause, 'session', operationEnvironment) })
       throw cause
     }
   }
   function schedule(retry = false) {
     const intent = revision
     return enqueue(() => reconcile(intent, retry)).catch((cause) => {
-      if (!closed && !promoted) patch({ phase: closing ? 'closing' : 'failed', error: message(cause) })
+      if (!closed && !promoted) patch({ phase: closing ? 'closing' : 'failed', error: message(cause, preparedEnvironment + '\n' + environmentText()) })
     })
   }
 
@@ -230,7 +250,7 @@ export function createDraftManagedSessionController(
     if (selectionChanged && !sent) {
       revision += 1
       readRevision += 1
-      patch({ snapshot: null, phase: 'idle', error: '' })
+      patch({ snapshot: null, phase: 'idle', error: '', failure: null })
     }
     // Discovery never selects or materializes an installed catalog entry.
     const materialized = previousChoice?.catalogId && !previousProfile && !choices.some(item => item.key === value.choice)
@@ -335,7 +355,7 @@ export function createDraftManagedSessionController(
     if (choice === value.choice && cwd === value.cwd) return
     revision += 1
     readRevision += 1
-    patch({ choice, cwd, snapshot: null, phase: 'idle', error: '' })
+    patch({ choice, cwd, snapshot: null, phase: 'idle', error: '', failure: null })
     persist()
     if (preparationTimer) clearTimeout(preparationTimer)
     if (delayMs > 0) preparationTimer = setTimeout(() => { preparationTimer = null; void schedule() }, delayMs)
@@ -430,14 +450,14 @@ export function createDraftManagedSessionController(
     const finish = startClientDiagnostic('session_draft', { action: 'send', source: 'draft', agent: selectedDiagnosticAgent() })
     const target = prepared.session.session_id
     const intent = revision
-    sent = { text, editRevision: draftEditRevision }
+    sent = { text, editRevision: draftEditRevision, rejected: false }
     sendPending = true
     // The submission stays recoverable until accepted; the composer is available
     // for the next draft while the first message is being accepted.
     patch({ phase: 'sending', text: '', awaitingAcknowledgement: true, error: '' })
     await enqueue(async () => {
       try {
-        const snapshot = await transport.call('sendManagedPrompt', { session_id: target, text: trimmed })
+        const snapshot = safeSnapshot(await transport.call('sendManagedPrompt', { session_id: target, text: trimmed }), preparedEnvironment)
         assertSession(snapshot, target)
         await acceptPromotion(snapshot)
         if (!promoted && current(intent)) { prepared = snapshot; restoreRejectedSubmission(); patch({ snapshot, phase: ready(snapshot) ? 'ready' : 'failed' }) }
@@ -445,6 +465,8 @@ export function createDraftManagedSessionController(
       } catch (cause) {
         // A lost acknowledgement may still have persisted the real user message.
         sendPending = false
+        if (sent) sent.rejected = promptRejectionConfirmed(cause)
+        if (sent?.rejected && !promoted) restoreRejectedSubmission()
         await refreshPrepared()
         finish(promoted ? 'ok' : 'failed', { promoted, reason: 'acknowledgement_lost', ...(!promoted ? { error_category: diagnosticErrorCategory(cause) } : {}) })
         if (!promoted && !closed) patch({ phase: closing ? 'closing' : 'failed', error: message(cause) })
@@ -463,7 +485,14 @@ export function createDraftManagedSessionController(
         await transport.call('setManagedSessionConfig', { session_id: target.session.session_id, change })
         finish('ok')
         if (current(intent)) await refreshPrepared()
-      } catch (cause) { finish('failed', { error_category: diagnosticErrorCategory(cause) }); throw cause }
+      } catch (cause) {
+        finish('failed', { error_category: diagnosticErrorCategory(cause) })
+        if (current(intent)) {
+          await refreshPrepared()
+          patch({ error: message(cause, preparedEnvironment), failure: get(state).snapshot?.runtime.failure ?? safeFailure(cause, 'configuration', preparedEnvironment) })
+        }
+        throw cause
+      }
     })
   }
   async function close(): Promise<string | null> {
@@ -475,7 +504,10 @@ export function createDraftManagedSessionController(
     patch({ phase: promoted ? 'promoted' : 'closing' })
     try {
       await enqueue(async () => {
-        if (sent && !promoted && !await refreshPrepared() && !promoted) throw new Error('Could not confirm whether the first message was accepted. Retry to check the session.')
+        if (sent && !promoted) {
+          await refreshPrepared()
+          if (sent && !promoted) throw new Error('Could not confirm whether the first message was accepted. Retry to check the session.')
+        }
         if (!promoted && prepared) {
           await transport.call('discardPreparedSession', { session_id: prepared.session.session_id })
           prepared = null

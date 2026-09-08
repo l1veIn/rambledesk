@@ -78,6 +78,9 @@ pub struct SessionRuntime {
     #[ts(optional)]
     pub context_usage: Option<SessionContextUsage>,
     pub last_error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub failure: Option<super::AgentFailure>,
 }
 
 impl Default for SessionRuntime {
@@ -91,6 +94,7 @@ impl Default for SessionRuntime {
             configuration: super::SessionConfiguration::default(),
             context_usage: None,
             last_error: None,
+            failure: None,
         }
     }
 }
@@ -104,11 +108,4 @@ pub struct ManagedSessionSnapshot {
     pub interactions: Vec<super::SessionInteraction>,
     pub deliveries: Vec<super::FeedbackDelivery>,
     pub deleting: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
-pub struct AgentConnectionCheck {
-    pub ok: bool,
-    pub message: String,
-    pub details: Vec<String>,
 }

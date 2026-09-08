@@ -5,7 +5,7 @@ import { APPLICATION_EVENTS_STREAM } from '$lib/application/applicationEvents'
 import { readAgentDetectionCache } from './agentDetectionCache'
 import { configureClientDiagnostics, type ClientDiagnosticEvent } from '$lib/diagnostics/clientDiagnostics'
 import type { AgentCatalogEntry, AgentConfig, AgentConnectionCheck, AgentInspection, AgentInstallJob } from '$lib/generated/feedback'
-import { agentConnectionResult, agentListItems, agentStatus, catalogConfiguration, configurationsForAgent, connectionPreparationAvailable, createAgentCatalogController, manualAgentConfiguration } from './agentCatalogController'
+import { agentConnectionResult, agentDiagnosis, agentListItems, agentStatus, catalogConfiguration, configurationsForAgent, connectionPreparationAvailable, createAgentCatalogController, manualAgentConfiguration } from './agentCatalogController'
 
 const entry: AgentCatalogEntry = {
   id: 'deepseek-acp', name: 'DeepSeek ACP', host_id: 'dsh', description: '', connection_kind: 'bridge',
@@ -49,6 +49,171 @@ function captureDiagnostics() {
 afterEach(() => { vi.useRealTimers(); stopDiagnostics?.(); stopDiagnostics = undefined })
 
 describe('Simplified agent management', () => {
+  it('connects through the newly installed ACP entry instead of a saved vendor CLI', async () => {
+    const previous = { ...config, command: 'claude', args: ['--interactive'], env: { API_KEY: 'preserved-key', PATH: '/old-runtime' } }
+    const { controller, transport } = harness({ configs: [previous], inspection: { ...inspection, env: { PATH: '/new-runtime' } } })
+    transport.resolve('installAgent', { ...job, phase: 'complete' })
+    controller.start(); await controller.refresh(); await controller.connect(entry.id, previous.id)
+    const saved = get(controller).configs.find(config => config.id === previous.id)!
+    expect(saved).toMatchObject({ command: inspection.command, args: inspection.args, env: { API_KEY: 'preserved-key', PATH: '/new-runtime' } })
+    expect(transport.callsFor('checkAgentConfig').map(call => call.input)).toEqual([{ agent_config_id: previous.id }])
+    expect(transport.callsFor('prepareManagedSession')).toHaveLength(0)
+    expect(transport.callsFor('sendManagedPrompt')).toHaveLength(0)
+    controller.dispose()
+  })
+
+  it('keeps custom launch settings when only repairing the connection package', async () => {
+    const previous = { ...config, command: '/custom-wrapper', args: ['--custom'], env: { CUSTOM: 'keep' } }
+    const { controller, transport } = harness({ configs: [previous] })
+    transport.resolve('installAgent', { ...job, phase: 'complete' })
+    controller.start(); await controller.refresh(); await controller.install(entry.id)
+    expect(transport.callsFor('saveAgentConfig')).toHaveLength(0)
+    expect(get(controller).configs).toEqual([previous])
+    controller.dispose()
+  })
+
+  it('does not overwrite a launch edited while one-click installation was in progress', async () => {
+    vi.useFakeTimers()
+    const { controller, transport } = harness({ configs: [config] })
+    transport.resolve('installAgent', job)
+    controller.start(); await controller.refresh(); await controller.connect(entry.id, config.id)
+    await controller.save({ ...config, command: '/new-user-choice' })
+    transport.resolve('listAgentInstallJobs', [{ ...job, phase: 'complete' }])
+    await vi.advanceTimersByTimeAsync(500)
+    expect(get(controller).configs[0].command).toBe('/new-user-choice')
+    expect(get(controller).error).toContain('changed during installation')
+    expect(transport.callsFor('checkAgentConfig')).toHaveLength(0)
+    controller.dispose()
+  })
+
+  it('finishes one-click connection after settings close and reopens without repeating the repair', async () => {
+    vi.useFakeTimers()
+    const other = { ...config, id: 'other', command: '/other-account', env: { TOKEN: 'other-secret' } }
+    const selected = { ...config, command: 'claude', env: { TOKEN: 'selected-secret' } }
+    const { controller, transport } = harness({ configs: [other, selected] })
+    transport.resolve('installAgent', job)
+    controller.start(); await controller.refresh(); await controller.connect(entry.id, selected.id)
+    controller.dispose()
+    transport.resolve('listAgentInstallJobs', [{ ...job, phase: 'complete' }])
+    await vi.advanceTimersByTimeAsync(500)
+    expect(transport.callsFor('saveAgentConfig')).toHaveLength(1)
+    expect(transport.callsFor('saveAgentConfig')[0].input).toMatchObject({ id: selected.id, command: inspection.command, env: selected.env })
+    expect(transport.callsFor('checkAgentConfig').map(call => call.input.agent_config_id)).toEqual([selected.id])
+    const reopened = createAgentCatalogController(transport)
+    reopened.start(); await reopened.refresh()
+    expect(get(reopened).configs.find(item => item.id === other.id)).toEqual(other)
+    expect(agentConnectionResult(get(reopened).configs.find(item => item.id === selected.id), get(reopened))?.ok).toBe(true)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(transport.callsFor('saveAgentConfig')).toHaveLength(1)
+    expect(transport.callsFor('checkAgentConfig')).toHaveLength(1)
+    reopened.dispose()
+  })
+
+  it('retains a requested connection when settings close before installation acknowledges it', async () => {
+    vi.useFakeTimers()
+    const { controller, transport } = harness({ configs: [config] })
+    let installed!: (job: AgentInstallJob) => void
+    transport.handle('installAgent', () => new Promise(resolve => { installed = resolve }))
+    controller.start(); await controller.refresh()
+    const connecting = controller.connect(entry.id, config.id)
+    controller.dispose()
+    const reopened = createAgentCatalogController(transport)
+    reopened.start(); await reopened.refresh()
+    expect(get(reopened).checking).toContain(entry.id)
+    installed(job); await connecting
+    expect(get(reopened).jobs[0].phase).toBe('installing')
+    transport.resolve('listAgentInstallJobs', [{ ...job, phase: 'complete' }])
+    await vi.advanceTimersByTimeAsync(500)
+    expect(get(reopened).checking).not.toContain(entry.id)
+    expect(transport.callsFor('checkAgentConfig')).toHaveLength(1)
+    reopened.dispose()
+  })
+
+  it('keeps the original profile guard when another settings view edits it during discovery', async () => {
+    vi.useFakeTimers()
+    const { controller, transport } = harness({ configs: [config] })
+    let inspected!: (inspection: AgentInspection) => void
+    transport.resolve('installAgent', job).handle('inspectAgentInstallation', () => new Promise(resolve => { inspected = resolve }))
+    controller.start(); await controller.refresh(); await controller.connect(entry.id, config.id)
+    controller.dispose()
+    transport.resolve('listAgentInstallJobs', [{ ...job, phase: 'complete' }])
+    await vi.advanceTimersByTimeAsync(500)
+    const reopened = createAgentCatalogController(transport)
+    reopened.start(); await reopened.refresh()
+    await reopened.save({ ...config, command: '/new-user-choice' })
+    inspected(inspection); await flush()
+    expect(get(reopened).configs[0].command).toBe('/new-user-choice')
+    expect(get(reopened).error).toContain('changed during installation')
+    expect(transport.callsFor('saveAgentConfig')).toHaveLength(1)
+    expect(transport.callsFor('checkAgentConfig')).toHaveLength(0)
+    reopened.dispose()
+  })
+
+  it('shares a pending one-click connection across settings views without starting another installation', async () => {
+    vi.useFakeTimers()
+    const { controller, transport } = harness({ configs: [config] })
+    transport.resolve('installAgent', job)
+    controller.start(); await controller.refresh(); await controller.connect(entry.id, config.id)
+    const reopened = createAgentCatalogController(transport)
+    reopened.start(); await reopened.refresh(); await reopened.connect(entry.id, config.id)
+    expect(transport.callsFor('installAgent')).toHaveLength(1)
+    controller.dispose()
+    transport.resolve('listAgentInstallJobs', [{ ...job, phase: 'complete' }])
+    await vi.advanceTimersByTimeAsync(500)
+    expect(transport.callsFor('saveAgentConfig')).toHaveLength(1)
+    expect(transport.callsFor('checkAgentConfig')).toHaveLength(1)
+    reopened.dispose()
+  })
+
+  it('reports a background profile conflict after reopening instead of creating a duplicate configuration', async () => {
+    vi.useFakeTimers()
+    const { controller, transport } = harness()
+    transport.resolve('installAgent', job)
+    controller.start(); await controller.refresh(); await controller.connect(entry.id)
+    controller.dispose()
+    await transport.call('saveAgentConfig', { ...config, command: '/configured-elsewhere' })
+    transport.resolve('listAgentInstallJobs', [{ ...job, phase: 'complete' }])
+    await vi.advanceTimersByTimeAsync(500)
+    const reopened = createAgentCatalogController(transport)
+    reopened.start(); await reopened.refresh(); await flush()
+    expect(get(reopened).configs).toHaveLength(1)
+    expect(get(reopened).configs[0].command).toBe('/configured-elsewhere')
+    expect(get(reopened).error).toContain('changed during installation')
+    expect(transport.callsFor('saveAgentConfig')).toHaveLength(1)
+    expect(transport.callsFor('checkAgentConfig')).toHaveLength(0)
+    reopened.dispose()
+  })
+
+  it('identifies a missing bridge independently of native CLI login and stale saved launch failures', async () => {
+    const { controller } = harness({ configs: [config], inspection: { ...missing,
+      dependencies: [{ command: 'claude', required: false, path: '/usr/local/bin/claude', version: null }],
+    } })
+    controller.start(); await controller.detectAll()
+    const state = get(controller)
+    state.connections = { [config.id]: { signature: JSON.stringify([]), result: { ok: false, message: 'Failed', details: [] } } }
+    expect(agentDiagnosis(agentListItems(state.entries, state.configs)[0], state)).toMatchObject({
+      connection: 'prepare', reason: 'bridge_missing', canInstall: true,
+    })
+    controller.dispose()
+  })
+
+  it('does not infer authentication from arbitrary error text or a missing runtime', async () => {
+    const { controller, transport } = harness({ inspection: { ...missing,
+      checks: [...missing.checks, { id: 'node', status: 'fail', message: 'Node.js is missing' }],
+    } })
+    controller.start(); await controller.detectAll()
+    let state = get(controller)
+    expect(agentDiagnosis(agentListItems(state.entries, state.configs)[0], state)).toMatchObject({
+      connection: 'failed', reason: 'runtime', canInstall: false,
+    })
+    await controller.save(config)
+    transport.resolve('checkAgentConfig', { ok: false, message: 'Authentication or something else', details: [] })
+    await controller.check(config.id)
+    state = get(controller)
+    expect(agentDiagnosis(agentListItems(state.entries, state.configs)[0], state).reason).not.toBe('authentication')
+    controller.dispose()
+  })
+
   it('records explicit scans and cache reuse without logging configurations or repeated cheap invalidations', async () => {
     const events = captureDiagnostics()
     const secret = 'private-agent-canary'

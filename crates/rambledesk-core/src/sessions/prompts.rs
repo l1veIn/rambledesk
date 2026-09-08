@@ -174,6 +174,7 @@ impl SessionApplication {
         live.runtime.activity = SessionActivityState::Running;
         live.cancelling = false;
         live.runtime.last_error = None;
+        live.runtime.failure = None;
         drop(live);
         let turn_id = self.ids.new_id();
         let turn_trace =
@@ -353,6 +354,7 @@ impl SessionApplication {
         live.cancelling = false;
         if let Err(error) = result {
             live.runtime.last_error = Some(error.to_string());
+            live.runtime.failure = Some(error.failure_at(AgentFailureStage::Prompt));
         }
         if let Err(error) = persisted {
             live.runtime.last_error = Some(error.to_string());

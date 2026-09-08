@@ -70,7 +70,7 @@ pub(crate) async fn open(
         .send_request_to(Agent, request)
         .block_task()
         .await
-        .map_err(|_| AcpError::Protocol(method))?;
+        .map_err(|error| AcpError::protocol(method, error))?;
     let response: OpenResponse = serde_json::from_value(raw.clone())
         .map_err(|_| AcpError::Protocol("session configuration"))?;
     let id = remote
@@ -101,7 +101,7 @@ pub(crate) async fn set(
     cache: &SharedConfiguration,
     change: SessionConfigChange,
 ) -> Result<(), AgentDriverError> {
-    let (route, mode_revision, extension_request) = {
+    let (route, mode_revision, extension_request, model) = {
         let cache = cache.lock().expect("configuration cache");
         if !cache.state.allows(&change) {
             return Err(AgentDriverError::new(
@@ -126,7 +126,10 @@ pub(crate) async fn set(
         } else {
             None
         };
-        (route, cache.mode_revision, request)
+        let model = cache.state.options.iter().any(|option| {
+            option.id == change.config_id && option.category.as_deref() == Some("model")
+        });
+        (route, cache.mode_revision, request, model)
     };
     match route {
         Route::Standard(config_id) => {
@@ -146,7 +149,9 @@ pub(crate) async fn set(
                 ))
                 .block_task()
                 .await
-                .map_err(|_| AgentDriverError::new("Agent rejected the configuration change"))?;
+                .map_err(|error| {
+                    crate::failure::protocol(AgentFailureStage::Configuration, error, model)
+                })?;
             let options = mapping::options(&response.config_options).map_err(|_| {
                 AgentDriverError::new("Agent returned invalid configuration options")
             })?;
@@ -166,7 +171,9 @@ pub(crate) async fn set(
                     ))
                     .block_task()
                     .await
-                    .map_err(|_| AgentDriverError::new("Agent rejected the mode change"))?;
+                    .map_err(|error| {
+                        crate::failure::protocol(AgentFailureStage::Configuration, error, false)
+                    })?;
                 let mut cache = cache.lock().expect("configuration cache");
                 // Empty ACK confirms the request unless a notification gave a more precise result.
                 if cache.mode_revision == mode_revision {
@@ -183,7 +190,9 @@ pub(crate) async fn set(
                     .send_request_to(Agent, request)
                     .block_task()
                     .await
-                    .map_err(|_| AgentDriverError::new("Agent rejected the model change"))?;
+                    .map_err(|error| {
+                        crate::failure::protocol(AgentFailureStage::Configuration, error, true)
+                    })?;
                 let mut cache = cache.lock().expect("configuration cache");
                 if let Some(models) = &mut cache.initial.models {
                     models.current = value.clone();
@@ -199,7 +208,9 @@ pub(crate) async fn set(
                 .send_request_to(Agent, request)
                 .block_task()
                 .await
-                .map_err(|_| AgentDriverError::new("Agent rejected the configuration change"))?;
+                .map_err(|error| {
+                    crate::failure::protocol(AgentFailureStage::Configuration, error, model)
+                })?;
             let mut cache = cache.lock().expect("configuration cache");
             if let Some(extension) = &mut cache.initial.extension {
                 extension.confirmed(&id, &change.value);
@@ -213,7 +224,13 @@ pub(crate) async fn set(
         .state
         .confirms(&change)
     {
-        return Err(AgentDriverError::new(
+        return Err(AgentDriverError::classified(
+            AgentFailureStage::Configuration,
+            if model {
+                AgentFailureReason::Model
+            } else {
+                AgentFailureReason::Configuration
+            },
             "Agent confirmed a different configuration value",
         ));
     }

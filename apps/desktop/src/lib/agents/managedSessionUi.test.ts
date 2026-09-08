@@ -30,6 +30,32 @@ const permission = (requestId: string, sessionId = 'local-one'): SessionInteract
 })
 
 describe('managed session views', () => {
+  it('retains an explicit failed-message restore action after authentication reconnects, without replacing a newer draft', () => {
+    const drafts = new SessionPromptDrafts()
+    const message = { ...activity('failed-message', 'one', 'Original task'), kind: 'user_message' as const }
+    expect(drafts.failedMessage('one', message, true)?.text).toBe('Original task')
+    expect(drafts.failedMessage('one', message, false)?.text).toBe('Original task')
+    drafts.write('one', 'New draft')
+    expect(drafts.restoreFailedMessage('one')).toBe(false)
+    expect(drafts.read('one')).toBe('New draft')
+    drafts.write('one', '')
+    expect(drafts.restoreFailedMessage('one')).toBe(true)
+    expect(drafts.read('one')).toBe('Original task')
+    expect(drafts.failedMessage('one', message, true)).toBeUndefined()
+  })
+
+  it('restores a confirmed rejected submission only if its cleared composer has not been edited', () => {
+    const drafts = new SessionPromptDrafts()
+    const submission = drafts.beginSubmission('one', 'Original task')
+    drafts.awaitAcknowledgement(submission)
+    drafts.write('one', 'Next task')
+    expect(drafts.resolveAcknowledgement('one', false)).toBe(false)
+    expect(drafts.read('one')).toBe('Next task')
+    const next = drafts.beginSubmission('one', 'Next task')
+    drafts.awaitAcknowledgement(next)
+    expect(drafts.resolveAcknowledgement('one', false)).toBe(true)
+    expect(drafts.read('one')).toBe('Next task')
+  })
   it('keeps draft editing available offline and during a turn while independently gating send and cancel', () => {
     const view = snapshot()
     const pending = { busy: false, lifecycle: false, prompt: false }

@@ -8,6 +8,7 @@ import type { HostProfile } from '$lib/workbench/types'
 const names = [['deepseek-acp', 'DeepSeek ACP', 'dsh'], ['dsh', 'DeepSeek Harness', 'dsh'], ['claude-acp', 'Claude Code', 'claude'], ['codex-acp', 'Codex CLI', 'codex'], ['gemini', 'Gemini CLI', 'gemini'], ['pi-acp', 'Pi', 'pi']]
 const entries: AgentCatalogEntry[] = names.map(([id, name, host_id]) => ({ id, name, host_id, description: '', connection_kind: ['dsh', 'gemini'].includes(id) ? 'native' : 'bridge', distribution: { kind: 'npm', package: id, pinned_version: '0.8.0', command: id === 'claude-acp' ? 'claude-agent-acp' : id, node_required: '22.0.0' }, args: id === 'dsh' ? ['--profile', 'acp'] : id === 'gemini' ? ['--acp'] : [], dependencies: [], verification: { status: 'unverified', versions: [], note: 'Fixture' } }))
 const setupPreview = new URLSearchParams(location.search).has('setup')
+const failureScenario = new URLSearchParams(location.search).get('failure')
 export const projectsPreview = new URLSearchParams(location.search).has('projects')
 export const previewProjectDirectory = 'C:/Projects/rambledesk'
 const missingAgents = new Set(setupPreview ? ['claude-acp', 'gemini'] : [])
@@ -128,7 +129,13 @@ transport.handle('listAvailableAgents', () => entries).handle('listAgentConfigs'
     configs.push(config); changed(); return config
   })
   .handle('saveAgentConfig', input => { const config = { ...input, id: input.id ?? crypto.randomUUID(), created_at: '', updated_at: '' }; configs = [...configs.filter(item => item.id !== config.id), config]; changed(); return config })
-  .handle('checkAgentConfig', async ({ agent_config_id }) => { previewProbeCounts.update(count => ({ ...count, connection: count.connection + 1 })); await delay(100); const failed = setupPreview && configs.find(config => config.id === agent_config_id)?.catalog_id === 'pi-acp'; return { ok: !failed, message: failed ? 'Agent could not start. Review its configuration and retry.' : 'ACP connection check passed.', details: [] } })
+  .handle('checkAgentConfig', async ({ agent_config_id }) => {
+    previewProbeCounts.update(count => ({ ...count, connection: count.connection + 1 })); await delay(100)
+    const id = configs.find(config => config.id === agent_config_id)?.catalog_id
+    const message = 'Agent could not start. Check the ACP executable and runtime.'
+    if (setupPreview && id === 'pi-acp') return { ok: false, connection: 'failed', failure: { stage: 'launch', reason: 'configuration', message }, message, details: [] }
+    return { ok: true, connection: 'connected', message: 'ACP connection check passed.', details: [] }
+  })
   .handle('deleteAgentConfig', ({ agent_config_id }) => { configs = configs.filter(config => config.id !== agent_config_id); changed() })
   .handle('installAgent', ({ agent_id }) => { const job: AgentInstallJob = { id: crypto.randomUUID(), agent_id, phase: 'installing', messages: ['正在下载连接组件…'], result: null, cancel_requested: false }; jobs.push(job); setTimeout(() => { if (!job.cancel_requested) { job.phase = 'complete'; missingAgents.delete(agent_id); job.messages.push('连接组件安装完成。'); changed() } }, 1600); return structuredClone(job) })
   .handle('cancelAgentInstall', ({ job_id }) => { const job = jobs.find(job => job.id === job_id); if (job) { job.cancel_requested = true; job.phase = 'cancelled'; changed() } })
@@ -141,11 +148,16 @@ transport.handle('listAvailableAgents', () => entries).handle('listAgentConfigs'
       session: { ...snapshot.session, session_id: id, host_id: config.host_id, host_session_id: id, lifecycle: 'prepared', management: { kind: 'managed', protocol: 'acp', agent_config_id, cwd, remote_session_id: `remote-${id}` } },
       activities: [], runtime: { ...snapshot.runtime, connection: setupPreview && config.catalog_id === 'pi-acp' ? 'failed' : 'connected', last_error: setupPreview && config.catalog_id === 'pi-acp' ? 'Agent could not start. Review its configuration and retry.' : null },
     })
+    if (failureScenario === 'authentication' && !config.env.OPENAI_API_KEY) {
+      prepared.runtime.connection = 'failed'
+      prepared.runtime.last_error = 'Authentication is required to create this session.'
+      prepared.runtime.failure = { stage: 'session', reason: 'authentication', message: prepared.runtime.last_error }
+    }
     preparedSnapshots.set(id, prepared)
     return structuredClone(prepared)
   })
   .handle('discardPreparedSession', ({ session_id }) => { preparedSnapshots.delete(session_id) })
-  .handle('startManagedSession', ({ session_id }) => { const prepared = preparedSnapshots.get(session_id)!; prepared.runtime.connection = 'connected'; prepared.runtime.last_error = null; return structuredClone(prepared) })
+  .handle('startManagedSession', ({ session_id }) => { const prepared = preparedSnapshots.get(session_id)!; prepared.runtime.connection = 'connected'; prepared.runtime.last_error = null; prepared.runtime.failure = undefined; return structuredClone(prepared) })
   .handle('getManagedSession', ({ session_id }) => structuredClone(preparedSnapshots.get(session_id) ?? { ...snapshot, activities: snapshot.activities.slice(-100) }))
   .handle('listManagedSessionActivity', async ({ before_sequence, limit, turn_limit }) => {
     await delay(180)
@@ -155,7 +167,7 @@ transport.handle('listAvailableAgents', () => entries).handle('listAgentConfigs'
     const page = older.filter(row => row.sequence >= start).slice(-(limit ?? 100))
     return { activities: structuredClone(page), has_more: (page[0]?.sequence ?? 1) > 1 }
   })
-  .handle('setManagedSessionConfig', async ({ session_id, change }) => { await delay(350); const target = preparedSnapshots.get(session_id) ?? snapshot; const option = target.runtime.configuration.options.find(option => option.id === change.config_id); if (option?.kind.type === 'select' && change.value.type === 'select') option.kind.current_value = change.value.value; changed(); return structuredClone(target) })
+  .handle('setManagedSessionConfig', async ({ session_id, change }) => { await delay(350); const target = preparedSnapshots.get(session_id) ?? snapshot; if (failureScenario === 'model') { target.runtime.failure = { stage: 'configuration', reason: 'model', message: 'The selected model is unavailable for this connection.' }; target.runtime.last_error = target.runtime.failure.message; changed(); throw { message: target.runtime.last_error, failure: target.runtime.failure } }; const option = target.runtime.configuration.options.find(option => option.id === change.config_id); if (option?.kind.type === 'select' && change.value.type === 'select') option.kind.current_value = change.value.value; changed(); return structuredClone(target) })
   .handle('sendManagedPrompt', ({ session_id, text }) => {
     const prepared = preparedSnapshots.get(session_id)
     if (!prepared) return send(text)
@@ -163,6 +175,23 @@ transport.handle('listAvailableAgents', () => entries).handle('listAgentConfigs'
     prepared.session.title = text
     prepared.session.updated_at = new Date().toISOString()
     prepared.activities.push({ id: crypto.randomUUID(), session_id, sequence: prepared.activities.length + 1, turn_id: null, kind: 'user_message', text, tool_call_id: null, created_at: new Date().toISOString() })
+    const turn = 'preview-' + prepared.activities.length
+    prepared.activities.at(-1)!.turn_id = turn
+    prepared.runtime.activity = 'running'
+    prepared.runtime.failure = undefined
+    prepared.runtime.last_error = null
+    setTimeout(() => {
+      prepared.runtime.activity = 'idle'
+      if (failureScenario === 'prompt') {
+        prepared.runtime.failure = { stage: 'prompt', reason: 'authentication', message: 'The Agent requires authentication to reply.' }
+        prepared.runtime.last_error = prepared.runtime.failure.message
+        prepared.activities.push({ id: crypto.randomUUID(), session_id, sequence: prepared.activities.length + 1, turn_id: turn, kind: 'error', text: prepared.runtime.last_error, tool_call_id: null, created_at: new Date().toISOString() })
+      } else {
+        prepared.activities.push({ id: crypto.randomUUID(), session_id, sequence: prepared.activities.length + 1, turn_id: turn, kind: 'agent_message', text: '收到你的任务。这是隔离预览中的第一条回复，可以继续对话。', tool_call_id: null, created_at: new Date().toISOString() })
+        prepared.activities.push({ id: crypto.randomUUID(), session_id, sequence: prepared.activities.length + 1, turn_id: turn, kind: 'status', text: 'Turn finished: EndTurn', tool_call_id: null, created_at: new Date().toISOString() })
+      }
+      changed()
+    }, 400)
     publishPreviewSession(prepared)
     return structuredClone(prepared)
   })

@@ -273,6 +273,8 @@
   let activeRecoveryTransition: object | null = null
   let settingsSection: SettingsSection = 'general'
   let settingsSectionSelectionEpoch = 0
+  let settingsAgentConfigId: string | undefined = undefined
+  let settingsAgentAdvanced = false
   let lastAutoOpenedTaskRequestId = ''
   let onboardingOpen = false
   let launchUpdateCheckDue = false
@@ -1822,12 +1824,14 @@
     void routeDraftOperation(requestId, { kind: 'startActionGroup', action }).catch(() => {})
   }
 
-  async function openSettings(section: SettingsSection) {
+  async function openSettings(section: SettingsSection, agentConfigId?: string, agentAdvanced = false) {
     if (workbenchStartup === 'failed') {
       startupSettingsOpen = true
       return
     }
     settingsSection = section
+    settingsAgentConfigId = agentConfigId
+    settingsAgentAdvanced = agentAdvanced
     settingsSectionSelectionEpoch += 1
     const view = settingsViewDescriptor()
     const viewKey = workspaceViewKey(view)
@@ -2279,6 +2283,8 @@
                 {capabilities}
                 section={settingsSection}
                 sectionSelectionEpoch={settingsSectionSelectionEpoch}
+                agentConfigId={settingsAgentConfigId}
+                agentAdvanced={settingsAgentAdvanced}
                 {updateInstallBlocked}
                 onRestartOnboarding={restartOnboarding}
                 onOpenArchived={() => void openArchivedSessions()}
@@ -2316,6 +2322,7 @@
               {#key renderedAgentDraftView.draftId}
                 <DraftManagedSessionWorkspace transport={applicationTransport} controller={renderedAgentDraftController} draftId={renderedAgentDraftView.draftId}
                   onConfigure={() => void openSettings('agents')}
+                  onConfigureAgent={(configId, advanced) => void openSettings('agents', configId, advanced)}
                   onChooseDirectory={capabilities.serverPaths.status.availability === 'unavailable' ? undefined : () => capabilities.serverPaths.implementation.chooseDirectory()} />
               {/key}
               {/if}
@@ -2327,6 +2334,7 @@
                   sessionId={renderedAgentSessionView.sessionId}
                   deletionPending={deletingSessionCommands.has(renderedAgentSessionView.sessionId)}
                   onDeletingChange={observeManagedDeletion}
+                  onConfigureAgent={(configId, advanced) => void openSettings('agents', configId, advanced)}
                   onOpenRamble={renderedManagedSession ? async () => {
                     if (renderedManagedSession) await selectRailScope(renderedManagedSession.host_id, renderedManagedSession.host_session_id)
                   } : undefined}

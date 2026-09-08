@@ -13,8 +13,8 @@ type SetupMetadata = {
 
 /** User-facing entry points, never ACP transport arguments or account settings. */
 export const AGENT_SETUP: Readonly<Record<string, SetupMetadata>> = {
-  'claude-acp': { name: 'Claude Code', guide: 'https://code.claude.com/docs/en/setup', note: ['在 Claude Code 中完成设置。ACP 连接组件和 Claude Code 命令是不同程序；仅有连接组件时，请先按说明准备 Claude Code。', 'Complete setup in Claude Code. Its ACP connector and the Claude Code command are separate programs; follow the guide to prepare Claude Code if only the connector is installed.'] },
-  'codex-acp': { name: 'Codex CLI', guide: 'https://developers.openai.com/codex/cli/', note: ['在 Codex CLI 中完成设置。ACP 连接组件不代表系统中已有可直接打开的 Codex 命令。', 'Complete setup in Codex CLI. An installed ACP connector does not mean the interactive Codex command is available on your system.'] },
+  'claude-acp': { name: 'Claude Code', guide: 'https://code.claude.com/docs/en/setup', note: ['在本机当前用户的 Claude Code 中登录，或为当前连接配置 API key。若修改过配置目录，请确认认证信息保存在当前连接使用的目录中。', 'Sign in through Claude Code on the same machine and user account, or configure an API key for this connection. If you changed the configuration directory, make sure the credentials are stored in the directory used by this connection.'] },
+  'codex-acp': { name: 'Codex CLI', guide: 'https://developers.openai.com/codex/cli/', note: ['在本机当前用户的 Codex CLI 中登录，或为当前连接配置 API key。若修改过配置目录，请确认认证信息保存在当前连接使用的目录中。', 'Sign in through Codex CLI on the same machine and user account, or configure an API key for this connection. If you changed the configuration directory, make sure the credentials are stored in the directory used by this connection.'] },
   gemini: { name: 'Gemini CLI', command: 'gemini', package: '@google/gemini-cli', guide: 'https://geminicli.com/docs/get-started/authentication/' },
   'openclaw-acp': { name: 'OpenClaw', guide: 'https://docs.openclaw.ai/', note: ['按 OpenClaw 的说明配置其网关和智能体，再回来检查连接。', 'Follow the OpenClaw guide to configure its gateway and agent, then return to check the connection.'] },
   cline: { name: 'Cline', command: 'cline', package: 'cline', guide: 'https://www.npmjs.com/package/cline' },

@@ -1,8 +1,9 @@
 use crate::{AcpConnection, AcpLaunch};
 use async_trait::async_trait;
 use rambledesk_core::{
-    AgentConfig, AgentDriverError, AgentSessionCapabilities, AgentSessionConnection,
-    AgentSessionDriver, AgentSessionLaunch, SessionManagement, StartedAgentSession,
+    AgentConfig, AgentDriverError, AgentFailureReason, AgentFailureStage, AgentSessionCapabilities,
+    AgentSessionConnection, AgentSessionDriver, AgentSessionLaunch, SessionManagement,
+    StartedAgentSession,
 };
 use std::{
     path::{Path, PathBuf},
@@ -50,6 +51,12 @@ impl AgentSessionDriver for AcpSessionDriver {
     ) -> Result<AgentSessionCapabilities, AgentDriverError> {
         check(config, None).await
     }
+    async fn check_connection(
+        &self,
+        config: &AgentConfig,
+    ) -> rambledesk_core::AgentConnectionCheck {
+        crate::connection_check::check(config, None).await
+    }
 }
 #[async_trait]
 impl AgentSessionDriver for ConfiguredAcpSessionDriver {
@@ -64,6 +71,12 @@ impl AgentSessionDriver for ConfiguredAcpSessionDriver {
         config: &AgentConfig,
     ) -> Result<AgentSessionCapabilities, AgentDriverError> {
         check(config, Some(&self.companion)).await
+    }
+    async fn check_connection(
+        &self,
+        config: &AgentConfig,
+    ) -> rambledesk_core::AgentConnectionCheck {
+        crate::connection_check::check(config, Some(&self.companion)).await
     }
 }
 
@@ -97,7 +110,14 @@ async fn start_inner(
     let feedback_workflow = launch
         .feedback
         .map(|endpoint| crate::feedback_workflow::inject(&mut options, endpoint, companion))
-        .transpose()?;
+        .transpose()
+        .map_err(|error| {
+            AgentDriverError::classified(
+                AgentFailureStage::Launch,
+                AgentFailureReason::Configuration,
+                error.message,
+            )
+        })?;
     let feedback_transport = feedback_workflow
         .as_ref()
         .map(|_| rambledesk_core::FeedbackTransport::Command);
@@ -108,7 +128,7 @@ async fn start_inner(
     });
     let connection = AcpConnection::connect_observed(&options, observer.clone(), Some(trace))
         .await
-        .map_err(safe_error)?;
+        .map_err(|error| crate::failure::transport(error, AgentFailureStage::Initialize))?;
     let result = tokio::time::timeout(
         Duration::from_secs(60),
         connection.open_session(&options, remote_session_id.as_deref()),
@@ -122,8 +142,12 @@ async fn start_inner(
             }
             let _ = connection.shutdown().await;
             return Err(match other {
-                Ok(Err(error)) => safe_error(error),
-                _ => AgentDriverError::new("ACP session creation or recovery timed out"),
+                Ok(Err(error)) => crate::failure::transport(error, AgentFailureStage::Session),
+                _ => AgentDriverError::classified(
+                    AgentFailureStage::Session,
+                    AgentFailureReason::Connection,
+                    "ACP session creation or recovery timed out",
+                ),
             });
         }
     };
@@ -204,6 +228,17 @@ impl AgentSessionConnection for ManagedConnection {
     ) -> Result<(), AgentDriverError> {
         crate::session_configuration::set(&self.sender, &self.remote, &self.configuration, change)
             .await
+            .map_err(|error| {
+                if error.failure.is_some() {
+                    error
+                } else {
+                    AgentDriverError::classified(
+                        AgentFailureStage::Configuration,
+                        AgentFailureReason::Configuration,
+                        error.message,
+                    )
+                }
+            })
     }
     async fn cancel(&self) -> Result<(), AgentDriverError> {
         self.permissions.cancel_all();
@@ -280,15 +315,11 @@ impl ManagedConnection {
         self.permissions.cancel_all();
         result
             .map(|response| format!("{:?}", response.stop_reason))
-            .map_err(|_| {
-                AgentDriverError::new(
-                    "ACP prompt failed; reconnect to the original session before continuing",
-                )
-            })
+            .map_err(|error| crate::failure::protocol(AgentFailureStage::Prompt, error, false))
     }
 }
 
-fn options(config: &AgentConfig, cwd: std::path::PathBuf) -> AcpLaunch {
+pub(crate) fn options(config: &AgentConfig, cwd: std::path::PathBuf) -> AcpLaunch {
     AcpLaunch {
         command: config.command.clone(),
         args: config.args.clone(),

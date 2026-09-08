@@ -4,8 +4,10 @@ import type { AgentCatalogEntry, AgentInspection, AgentInstallJob, AgentConfig, 
 import { APPLICATION_EVENTS_STREAM } from '$lib/application/applicationEvents'
 import { diagnosticAgentId, diagnosticErrorCategory, recordClientDiagnostic, startClientDiagnostic } from '$lib/diagnostics/clientDiagnostics'
 import { isAbsoluteAgentDirectory, redactAgentMessage } from './agentConfigForm'
-import { agentLaunchSignature as launchSignature, beginAgentConnection, beginAgentInspection, forgetAgentConnection, observeAgentRuntime, readAgentDetectionCache, reconcileAgentConnections, subscribeAgentDetectionCache } from './agentDetectionCache'
+import { agentLaunchSignature as launchSignature, beginAgentConnection, beginAgentInspection, forgetAgentConnection, observeAgentRuntime, readAgentDetectionCache, reconcileAgentConnections, redactAgentConnection, subscribeAgentDetectionCache } from './agentDetectionCache'
 export { agentLaunchSignature as launchSignature } from './agentDetectionCache'
+import { agentDiagnosis } from './agentDiagnosis'
+export { agentDiagnosis, connectionPreparationAvailable } from './agentDiagnosis'
 
 type ConnectionResult = { signature: string; result: AgentConnectionCheck }
 export type AgentCatalogState = {
@@ -18,6 +20,12 @@ export function catalogConfiguration(entry: AgentCatalogEntry, inspection: Agent
   if (!inspection.command) throw new Error('Install this agent before using it.')
   if (inspection.checks.some(check => check.status === 'fail')) throw new Error('Resolve the failed checks before using this agent.')
   return { id: null, catalog_id: entry.id, name: entry.name, host_id: entry.host_id, protocol: 'acp' as const, enabled: true, command: inspection.command, args: inspection.args, env: inspection.env ?? {} }
+}
+/** Explicitly use the detected ACP launch while retaining this profile's account settings. */
+export function detectedAgentConfiguration(entry: AgentCatalogEntry, inspection: AgentInspection, previous?: AgentConfig): SaveAgentConfigInput {
+  const defaults = catalogConfiguration(entry, inspection)
+  return { ...defaults, id: previous?.id ?? null, name: previous?.name ?? defaults.name,
+    env: { ...previous?.env, ...defaults.env } }
 }
 export function configurationsForAgent(entry: AgentCatalogEntry, configs: readonly AgentConfig[]): AgentConfig[] {
   return configs.filter(config => config.catalog_id === entry.id)
@@ -38,24 +46,10 @@ export function agentConnectionResult(config: AgentConfig | undefined, state: Ag
 }
 export type AgentStatus = 'unchecked' | 'missing' | 'prepare' | 'checking' | 'connected' | 'attention'
 export function agentStatus(row: AgentListItem, state: AgentCatalogState): AgentStatus {
-  if (state.connecting.includes(row.key) || (row.config && state.connecting.includes(`config:${row.config.id}`))) return 'checking'
-  // Saved launch paths take precedence over catalog discovery.
-  if (row.config) {
-    const result = agentConnectionResult(row.config, state)
-    return result ? (result.ok ? 'connected' : 'attention') : 'unchecked'
-  }
-  if (!row.entry) return 'unchecked'
-  if (state.checking.includes(row.entry.id)) return 'checking'
-  const inspection = state.inspections[row.entry.id]
-  if (!inspection) return 'unchecked'
-  if (row.entry.verification.status === 'unsupported') return 'attention'
-  if (inspection.source === 'missing' && row.entry.connection_kind === 'native') return 'missing'
-  const repairableDependencies = row.entry.dependencies.filter(dependency => dependency.package && dependency.pinned_version)
-  if (inspection.checks.some(check => check.status === 'fail' && !['agent', 'entry'].includes(check.id)
-    && !repairableDependencies.some(dependency => check.id === `dependency_${dependency.command}`))) return 'attention'
-  if (connectionPreparationAvailable(row.entry, inspection) && (!inspection.command || inspection.dependencies.some(dependency => dependency.required && !dependency.path))) return 'prepare'
-  if (!inspection.command) return inspection.source === 'missing' ? 'missing' : 'attention'
-  return 'unchecked'
+  const diagnosis = agentDiagnosis(row, state)
+  if (diagnosis.connection === 'failed') return 'attention'
+  if (diagnosis.connection === 'connected' && diagnosis.reason !== 'none') return 'attention'
+  return diagnosis.connection
 }
 export function manualAgentConfiguration(entry: AgentCatalogEntry, path: string, previous?: AgentConfig): SaveAgentConfigInput {
   const command = path.trim().replace(/^"(.*)"$/u, '$1')
@@ -65,11 +59,99 @@ export function manualAgentConfiguration(entry: AgentCatalogEntry, path: string,
     host_id: previous?.host_id ?? entry.host_id, protocol: 'acp', enabled: true,
     command, args: [...entry.args], env: { ...previous?.env } }
 }
-export function connectionPreparationAvailable(entry: AgentCatalogEntry | undefined, inspection: AgentInspection | undefined) {
-  return entry?.connection_kind === 'bridge' && entry.distribution.kind === 'npm' && !!inspection
-    && !inspection.checks.some(check => (check.id === 'node' && check.status === 'fail') || (check.id === 'npm' && check.status !== 'pass'))
-    && !inspection.dependencies.some(dependency => dependency.required && !dependency.path
-      && !entry.dependencies.some(item => item.command === dependency.command && item.package && item.pinned_version))
+
+type ConnectionIntent = { configId?: string; signature?: string }
+type ConnectionPreparation = { intent: ConnectionIntent; started: Promise<void> }
+type ConnectionPreparations = {
+  pending: Map<string, ConnectionPreparation>
+  jobs: Map<string, AgentInstallJob>
+  error: string
+  listeners: Set<(saved?: AgentConfig) => void>
+}
+// A requested connection belongs to the application connection, not its settings view.
+// Only connect() registers work here; historical installation jobs remain read-only.
+const connectionPreparations = new WeakMap<ApplicationTransport, ConnectionPreparations>()
+function preparationsFor(transport: ApplicationTransport): ConnectionPreparations {
+  let shared = connectionPreparations.get(transport)
+  if (!shared) {
+    shared = { pending: new Map(), jobs: new Map(), error: '', listeners: new Set() }
+    connectionPreparations.set(transport, shared)
+  }
+  return shared
+}
+function prepareConnection(transport: ApplicationTransport, entry: AgentCatalogEntry, intent: ConnectionIntent, knownConfigs: AgentConfig[]): Promise<void> {
+  const shared = preparationsFor(transport)
+  const existing = shared.pending.get(entry.id)
+  if (existing) return existing.started
+  let releaseStart!: () => void
+  const preparation: ConnectionPreparation = { intent, started: new Promise(resolve => { releaseStart = resolve }) }
+  shared.pending.set(entry.id, preparation)
+  shared.error = ''
+  const publish = (saved?: AgentConfig) => { for (const listener of shared.listeners) listener(saved) }
+  publish()
+  const details = { source: 'catalog', agent_kind: entry.connection_kind, agent: diagnosticAgentId(entry.id) }
+  const finishInstall = startClientDiagnostic('agent_install', { ...details, action: 'install' })
+  let finishRecheck: ReturnType<typeof startClientDiagnostic> | undefined
+  let environments = knownConfigs
+  void (async () => {
+    try {
+      let job = await transport.call('installAgent', { agent_id: entry.id, version: null })
+      shared.jobs.set(entry.id, job)
+      publish()
+      if (installIsActive(job)) releaseStart()
+      while (installIsActive(job)) {
+        await new Promise(resolve => setTimeout(resolve, 500))
+        const jobs = await transport.call('listAgentInstallJobs', undefined)
+        const updated = jobs.find(candidate => candidate.id === job.id)
+        if (!updated) throw new Error('Connection preparation status is unavailable. Check Agents and retry.')
+        job = updated
+        shared.jobs.set(entry.id, job)
+        publish()
+      }
+      finishInstall(job.phase === 'complete' ? 'ok' : job.phase === 'cancelled' ? 'cancelled' : 'failed', { status: job.phase })
+      if (job.phase === 'cancelled') return
+      if (job.phase !== 'complete') throw new Error('Could not prepare the connection. See the installation details and retry.')
+      finishRecheck = startClientDiagnostic('agent_install', { ...details, action: 'recheck', reason: 'post_install', target_count: 1 })
+      const rememberInspection = beginAgentInspection(transport, entry.id)
+      const found = await transport.call('inspectAgentInstallation', { agent_id: entry.id })
+      rememberInspection(found)
+      // Re-read after discovery so edits made while the view was closed remain authoritative.
+      const configs = await transport.call('listAgentConfigs', undefined)
+      environments = configs
+      const previous = configs.find(config => config.id === intent.configId)
+      if (intent.configId ? !previous || previous.catalog_id !== entry.id || launchSignature(previous) !== intent.signature
+        : configs.some(config => config.catalog_id === entry.id)) {
+        throw new Error('The configuration changed during installation. Check the saved connection before continuing.')
+      }
+      const saved = await transport.call('saveAgentConfig', detectedAgentConfiguration(entry, found, previous))
+      environments = [...configs, saved]
+      for (const config of configs.filter(config => config.catalog_id === entry.id)) forgetAgentConnection(transport, config.id)
+      publish(saved)
+      const rememberConnection = beginAgentConnection(transport, saved)
+      let checked: AgentConnectionCheck
+      try { checked = await transport.call('checkAgentConfig', { agent_config_id: saved.id }) }
+      catch (error) {
+        const message = typeof error === 'object' && error && 'message' in error ? String(error.message) : String(error)
+        checked = { ok: false, message, details: [] }
+      }
+      checked = redactAgentConnection(saved, checked)
+      rememberConnection(checked)
+      finishRecheck(checked.ok ? 'ok' : 'failed', { checked_count: 1 })
+    } catch (error) {
+      finishInstall('failed', { error_category: diagnosticErrorCategory(error) })
+      finishRecheck?.('failed', { error_category: diagnosticErrorCategory(error) })
+      const message = typeof error === 'object' && error && 'message' in error ? String(error.message) : String(error)
+      shared.error = redactAgentMessage(message, environments.flatMap(config => Object.entries(config.env).map(([key, value]) => `${key}=${value}`)).join('\n'))
+    } finally {
+      if (shared.pending.get(entry.id) === preparation) {
+        shared.pending.delete(entry.id)
+        shared.jobs.delete(entry.id)
+      }
+      publish()
+      releaseStart()
+    }
+  })()
+  return preparation.started
 }
 
 export function createAgentCatalogController(transport: ApplicationTransport) {
@@ -78,6 +160,9 @@ export function createAgentCatalogController(transport: ApplicationTransport) {
   let timer: ReturnType<typeof setTimeout> | undefined
   let unsubscribe: (() => void) | undefined
   let unsubscribeCache: (() => void) | undefined
+  let unsubscribePreparations: (() => void) | undefined
+  let preparingAgents: string[] = []
+  const preparations = preparationsFor(transport)
   let fetchingJobs = false
   let refreshing: Promise<void> | undefined
   let detecting: Promise<void> | undefined
@@ -109,6 +194,7 @@ export function createAgentCatalogController(transport: ApplicationTransport) {
   }
   async function inspect(agentId: string, reason: 'manual' | 'onboarding' | 'post_install' = 'manual'): Promise<AgentInspection | undefined> {
     if (!active) return
+    if (reason === 'manual') preparations.error = ''
     if (checks.has(agentId)) return checks.get(agentId)
     const finish = startClientDiagnostic('agent_detection', { action: 'inspect', source: 'catalog', reason, ...agentDiagnosticDetails(agentId) })
     const rememberInspection = beginAgentInspection(transport, agentId)
@@ -143,6 +229,7 @@ export function createAgentCatalogController(transport: ApplicationTransport) {
   }
   async function save(input: SaveAgentConfigInput) {
     if (!active) throw new Error('Agent settings are no longer open.')
+    preparations.error = ''
     const finish = startClientDiagnostic('agent_config', { action: 'save', source: 'catalog', ...agentDiagnosticDetails(input.catalog_id) })
     configGeneration += 1
     try {
@@ -219,7 +306,7 @@ export function createAgentCatalogController(transport: ApplicationTransport) {
         try {
           const checked = await transport.call('checkAgentConfig', { agent_config_id: config.id })
           finish(checked.ok ? 'ok' : 'failed')
-          return { ...checked, message: message(checked.message, [config]), details: checked.details.map(detail => message(detail, [config])) }
+          return redactAgentConnection(config, checked)
         } catch (error) { finish('failed', { error_category: diagnosticErrorCategory(error) }); return { ok: false, message: message(error, [config]), details: [] } }
       })()
       handshakes.set(signature, handshake)
@@ -233,6 +320,7 @@ export function createAgentCatalogController(transport: ApplicationTransport) {
       recordClientDiagnostic({ activity: 'agent_connection', outcome: 'skipped', details: { action: 'check', source: 'catalog', reason: active ? 'disabled' : 'inactive', explicit, agent: diagnosticAgentId(config.catalog_id) } })
       return
     }
+    if (explicit) preparations.error = ''
     if (get(state).jobs.some(job => job.agent_id === config.catalog_id && installIsActive(job))) return
     if (!explicit && agentConnectionResult(config, get(state))) {
       recordClientDiagnostic({ activity: 'agent_connection', outcome: 'skipped', details: { action: 'check', source: 'catalog', reason: 'cache_hit', cache_hit: true, agent: diagnosticAgentId(config.catalog_id) } })
@@ -297,7 +385,7 @@ export function createAgentCatalogController(transport: ApplicationTransport) {
     } catch (error) { failure(error) }
     finally {
       fetchingJobs = false
-      if (active && get(state).jobs.some(installIsActive)) {
+      if (active && get(state).jobs.some(job => installIsActive(job) && !preparations.pending.has(job.agent_id))) {
         clearTimeout(timer)
         timer = setTimeout(() => void refreshJobs(), 500)
       }
@@ -355,6 +443,7 @@ export function createAgentCatalogController(transport: ApplicationTransport) {
   }
   async function install(agentId: string) {
     if (!active) return
+    preparations.error = ''
     patch({ error: '' })
     const finish = startClientDiagnostic('agent_install', { action: 'install', source: 'catalog', ...agentDiagnosticDetails(agentId) })
     try {
@@ -373,6 +462,14 @@ export function createAgentCatalogController(transport: ApplicationTransport) {
       void refreshJobs()
     } catch (error) { finish('failed', { error_category: diagnosticErrorCategory(error) }); failure(error) }
   }
+  async function connect(agentId: string, configId?: string) {
+    if (!active) return
+    const entry = get(state).entries.find(entry => entry.id === agentId)
+    if (!entry) return
+    const config = get(state).configs.find(config => config.id === configId)
+    if (configId && (!config || config.catalog_id !== agentId)) return
+    await prepareConnection(transport, entry, { configId, signature: config && launchSignature(config) }, get(state).configs)
+  }
   async function cancel(jobId: string) {
     if (!active) return
     const finish = startClientDiagnostic('agent_install', { action: 'cancel', source: 'catalog' })
@@ -382,7 +479,21 @@ export function createAgentCatalogController(transport: ApplicationTransport) {
   function start() {
     if (active) return dispose
     active = true
+    const backgroundPreparationError = preparations.error
     unsubscribeCache = subscribeAgentDetectionCache(transport, patch)
+    const observePreparations = (saved?: AgentConfig) => {
+      if (saved) remember(saved)
+      const pending = [...preparations.pending.keys()]
+      patch({
+        jobs: [...get(state).jobs.filter(job => !preparations.jobs.has(job.agent_id)), ...preparations.jobs.values()],
+        checking: [...get(state).checking.filter(id => !preparingAgents.includes(id)), ...pending],
+        ...(preparations.error ? { error: preparations.error } : {}),
+      })
+      preparingAgents = pending
+    }
+    preparations.listeners.add(observePreparations)
+    unsubscribePreparations = () => preparations.listeners.delete(observePreparations)
+    observePreparations()
     unsubscribe = transport.subscribe(APPLICATION_EVENTS_STREAM, event => {
       observeAgentRuntime(transport, event.runtime_generation)
       if (event.type === 'ready' || event.resources.some(resource => ['all', 'agent_configurations'].includes(resource.kind))) {
@@ -402,13 +513,15 @@ export function createAgentCatalogController(transport: ApplicationTransport) {
           details: { ...details, error_category: diagnosticErrorCategory(error) } }); failure(error) })
       }
     }, failure)
-    void refresh('mount')
+    void refresh('mount').then(() => {
+      if (backgroundPreparationError && preparations.error === backgroundPreparationError && !get(state).error) patch({ error: backgroundPreparationError })
+    })
     return dispose
   }
   function dispose() {
-    active = false; clearTimeout(timer); unsubscribe?.(); unsubscribeCache?.()
+    active = false; clearTimeout(timer); unsubscribe?.(); unsubscribeCache?.(); unsubscribePreparations?.()
     for (const finish of installationDiagnostics.values()) finish('cancelled', { reason: 'inactive' })
     installationDiagnostics.clear()
   }
-  return { subscribe: state.subscribe, start, dispose, refresh, detectAll, inspect, inspectAll, install, cancel, save, remove, resolve, check, checkAgent }
+  return { subscribe: state.subscribe, start, dispose, refresh, detectAll, inspect, inspectAll, install, connect, cancel, save, remove, resolve, check, checkAgent }
 }

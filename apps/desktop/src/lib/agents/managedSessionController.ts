@@ -7,6 +7,7 @@ import type { ManagedSessionSnapshot, SessionActivity, SessionConfigChange, Sess
 import { HISTORY_ACTIVITY_LIMIT, HISTORY_TURN_COUNT, completedHistoryRanges, mergeActivityWindows, retainActivityIdentity, validateActivityPage, type CompletedHistoryRange } from './activityHistory'
 import { readApplicationSnapshot } from '$lib/application/readApplicationSnapshot'
 import { automaticConnectionIssue, startManagedSessionOnce } from './managedSessionConnection'
+import { promptRejectionConfirmed } from './promptAdmission'
 
 export type ManagedSessionState = Readonly<{
   snapshot: ManagedSessionSnapshot | null
@@ -17,12 +18,23 @@ export type ManagedSessionState = Readonly<{
   historyLoading: boolean
   historyHasMore: boolean
   historyError: string
+  awaitingAcknowledgement: boolean
 }>
+
+type PendingPrompt = { text: string; beforeSequence: number; inFlight: boolean; rejected: boolean }
+const pendingPrompts = new WeakMap<ApplicationTransport, Map<string, PendingPrompt>>()
+export class PromptAcknowledgementUnknown extends Error {
+  constructor() { super('Message acceptance is unknown. Check the result before sending again.') }
+}
+export type PromptAcceptance = 'accepted' | 'rejected' | 'unknown'
 
 /** One mounted workspace owns one local session ID, never the current navigation selection. */
 export function createManagedSessionController(transport: ApplicationTransport, sessionId: string,
   options: Readonly<{ autoConnectBlocked?: () => boolean }> = {}) {
-  const state = writable<ManagedSessionState>({ snapshot: null, loading: true, error: '', connecting: false, connectionError: '', historyLoading: false, historyHasMore: false, historyError: '' })
+  let submissions = pendingPrompts.get(transport)
+  if (!submissions) { submissions = new Map(); pendingPrompts.set(transport, submissions) }
+  const promptSubmissions = submissions
+  const state = writable<ManagedSessionState>({ snapshot: null, loading: true, error: '', connecting: false, connectionError: '', historyLoading: false, historyHasMore: false, historyError: '', awaitingAcknowledgement: promptSubmissions.has(sessionId) })
   let older: SessionActivity[] = []
   let latest: ManagedSessionSnapshot | null = null
   let historyExhausted = false
@@ -68,7 +80,7 @@ export function createManagedSessionController(transport: ApplicationTransport, 
         latest = { ...snapshot, activities: retainActivityIdentity(get(state).snapshot?.activities ?? [], snapshot.activities) }
         snapshotCurrent = true
         projectHistory()
-        patch({ loading: false, error: '' })
+        patch({ loading: false, error: '', awaitingAcknowledgement: promptSubmissions.has(sessionId) })
         if (snapshot.runtime.connection === 'connected') patch({ connectionError: '' })
         ensureConnection()
         if (completed.length) void refreshCompletedHistory(completed)
@@ -276,12 +288,64 @@ export function createManagedSessionController(transport: ApplicationTransport, 
     // Closing a view never changes the runtime lifetime.
   }
 
+  async function checkPromptAcceptance(): Promise<PromptAcceptance> {
+    const pending = promptSubmissions.get(sessionId)
+    if (!pending) { patch({ awaitingAcknowledgement: false }); return 'accepted' }
+    try {
+      const snapshot = validate(await readApplicationSnapshot(transport, 'getManagedSession', { session_id: sessionId }))
+      const after = snapshot.activities.filter(item => item.sequence > pending.beforeSequence)
+      const accepted = after.some(item => item.kind === 'user_message' && item.text.trim() === pending.text.trim())
+      if (promptSubmissions.get(sessionId) !== pending) return 'unknown'
+      const rejected = !pending.inFlight && pending.rejected
+      const outcome = accepted ? 'accepted' : rejected ? 'rejected' : 'unknown'
+      if (outcome !== 'unknown') promptSubmissions.delete(sessionId)
+      patch({ awaitingAcknowledgement: outcome === 'unknown' })
+      refresh()
+      return outcome
+    } catch {
+      if (promptSubmissions.get(sessionId) === pending) patch({ awaitingAcknowledgement: true })
+      return 'unknown'
+    }
+  }
+
+  async function prompt(text: string): Promise<void> {
+    if (!active || get(state).snapshot?.deleting) {
+      return run('send', () => transport.call('sendManagedPrompt', { session_id: sessionId, text }))
+    }
+    if (promptSubmissions.has(sessionId)) throw new PromptAcknowledgementUnknown()
+    const pending: PendingPrompt = { text, beforeSequence: latest?.activities.at(-1)?.sequence ?? 0, inFlight: true, rejected: false }
+    promptSubmissions.set(sessionId, pending)
+    try {
+      await run('send', () => transport.call('sendManagedPrompt', { session_id: sessionId, text }))
+      pending.inFlight = false
+      if (promptSubmissions.get(sessionId) === pending) {
+        promptSubmissions.delete(sessionId)
+        patch({ awaitingAcknowledgement: false })
+      }
+    } catch (cause) {
+      pending.inFlight = false
+      pending.rejected = promptRejectionConfirmed(cause)
+      // A read may already have confirmed this request while a newer request
+      // acquired the session. The older completion must not clear its owner.
+      if (promptSubmissions.get(sessionId) !== pending) return
+      if (pending.rejected) {
+        promptSubmissions.delete(sessionId)
+        patch({ awaitingAcknowledgement: false })
+        throw cause
+      }
+      const acceptance = await checkPromptAcceptance()
+      if (acceptance === 'accepted') return
+      if (acceptance === 'unknown') throw new PromptAcknowledgementUnknown()
+      throw cause
+    }
+  }
+
   return {
-    subscribe: state.subscribe, start, refresh, dispose, loadOlder,
+    subscribe: state.subscribe, start, refresh, dispose, loadOlder, checkPromptAcceptance,
     setConfiguration: (change: SessionConfigChange) => run('configure', () => transport.call('setManagedSessionConfig', { session_id: sessionId, change })),
     startAgent: () => connectAgent(),
     cancel: () => run('cancel', () => transport.call('cancelManagedPrompt', { session_id: sessionId })),
-    prompt: (text: string) => run('send', () => transport.call('sendManagedPrompt', { session_id: sessionId, text })),
+    prompt,
     respondInteraction: (requestId: string, response: SessionInteractionResponse) => run('permission', () => transport.call('respondManagedInteraction', {
       session_id: sessionId, request_id: requestId, response,
     })),

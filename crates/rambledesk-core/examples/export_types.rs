@@ -37,7 +37,8 @@ use rambledesk_core::{
     SubmitFeedbackInput,
 };
 use rambledesk_core::{
-    AgentConnectionCheck, AgentSessionCapabilities, ManagedSessionSnapshot, SessionActivityState,
+    AgentCheckConnection, AgentConnectionCheck, AgentFailure, AgentFailureReason,
+    AgentFailureStage, AgentSessionCapabilities, ManagedSessionSnapshot, SessionActivityState,
     SessionConnectionState, SessionRuntime,
 };
 use rambledesk_core::{
@@ -152,6 +153,10 @@ fn main() -> std::io::Result<()> {
         exported::<ManagedFeedbackStatus>(),
         exported::<ManagedWorkspaceInfo>(),
         exported::<AgentConnectionCheck>(),
+        exported::<AgentCheckConnection>(),
+        exported::<AgentFailure>(),
+        exported::<AgentFailureStage>(),
+        exported::<AgentFailureReason>(),
         exported::<SessionProtocol>(),
         exported::<SessionManagement>(),
         exported::<AgentConfig>(),

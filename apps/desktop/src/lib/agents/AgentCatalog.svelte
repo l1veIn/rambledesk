@@ -1,21 +1,24 @@
 <!-- Installation detail flow adapted from Codeg 3ebdfed acp-agent-settings.tsx (Apache-2.0). -->
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { CheckCircle2, ChevronRight, Download, LoaderCircle, Plus, RefreshCw, Settings2, XCircle } from '@lucide/svelte'
+  import { CheckCircle2, ChevronRight, Download, ExternalLink, LoaderCircle, Plus, RefreshCw, Settings2, XCircle } from '@lucide/svelte'
   import { Button } from '$lib/components/ui/button'
   import type { ApplicationTransport } from '$lib/application/applicationTransport'
-  import type { AgentConfig, SaveAgentConfigInput } from '$lib/generated/feedback'
+  import type { AgentConfig, AgentInspection, SaveAgentConfigInput } from '$lib/generated/feedback'
+  import type { AgentDiagnosis } from './agentDiagnosis'
   import { locale } from '$lib/preferences'
-  import { agentConnectionResult, agentListItems, agentStatus, connectionPreparationAvailable, createAgentCatalogController, installIsActive, manualAgentConfiguration, type AgentStatus } from './agentCatalogController'
+  import { agentConnectionResult, agentDiagnosis, agentListItems, agentStatus, connectionPreparationAvailable, createAgentCatalogController, installIsActive, manualAgentConfiguration, type AgentStatus } from './agentCatalogController'
   import AgentSettings from './AgentSettings.svelte'
   import AgentSetupGuide from './AgentSetupGuide.svelte'
   import AgentIcon from './AgentIcon.svelte'
+  import { agentSetupGuidance } from './agentOnboarding'
   import { AgentDraftCache, redactAgentMessage } from './agentConfigForm'
 
   export let transport: ApplicationTransport
   export let autoDetect = false
   export let onReady: ((config: AgentConfig | null) => void) | undefined = undefined
   export let initialConfigId: string | undefined = undefined
+  export let initialAdvanced = false
   // Capture the initial value once. Parent onReady updates must not steer later selection.
   const initialSelection = initialConfigId
   let selectingInitial = Boolean(initialSelection)
@@ -28,6 +31,7 @@
   let saving = false
   let localError = ''
   let notice = ''
+  let advancedOpen = initialAdvanced
   let lastReady: string | null | undefined = undefined
   let manualPaths: Record<string, string> = {}
   $: items = agentListItems($catalog.entries, $catalog.configs)
@@ -37,6 +41,9 @@
   $: inspection = entry ? $catalog.inspections[entry.id] : undefined
   $: status = item ? agentStatus({ ...item, config: profile }, $catalog) : 'attention'
   $: checked = agentConnectionResult(profile, $catalog)
+  $: diagnosis = item ? agentDiagnosis({ ...item, config: profile }, $catalog) : undefined
+  $: nativeFound = inspection?.dependencies.some(dependency => dependency.path && dependency.command === (profile?.host_id ?? entry?.host_id)) ?? false
+  $: setupGuide = agentSetupGuidance({ catalogId: entry?.id, hostId: profile?.host_id ?? entry?.host_id, config: profile, inspection }).guide
   $: if (!selectingInitial) {
     if (profile?.enabled && checked?.ok) {
       const ready = `${profile.id}:${profile.updated_at}`
@@ -47,10 +54,11 @@
   $: job = entry ? $catalog.jobs.filter(job => job.agent_id === entry.id).at(-1) : undefined
   $: installing = job ? installIsActive(job) : false
   $: canPrepare = connectionPreparationAvailable(entry, inspection)
+  $: showConnect = diagnosis?.canInstall && (['prepare', 'missing'].includes(diagnosis.connection) || (diagnosis.connection === 'failed' && (!inspection?.command || diagnosis.reason === 'install' || diagnosis.reason === 'dependency')))
   $: canCheck = !!profile || (!!inspection?.command && !inspection.checks.some(check => check.status === 'fail') && entry?.verification.status !== 'unsupported')
   $: safeError = redactAgentMessage(localError || $catalog.error, environmentText())
   $: if ((item?.key ?? 'new') !== selectedBefore) {
-    selectedBefore = item?.key ?? 'new'; selectedProfile = ''; localError = ''; notice = ''
+    selectedBefore = item?.key ?? 'new'; selectedProfile = ''; localError = ''; notice = ''; advancedOpen = selectingInitial && initialAdvanced
   }
   onMount(() => {
     const dispose = catalog.start()
@@ -58,7 +66,7 @@
     if (selectingInitial) void catalog.refresh().then(() => {
       if (!mounted || !selectingInitial) return
       const row = agentListItems($catalog.entries, $catalog.configs).find(row => row.configs.some(config => config.id === initialSelection))
-      if (row) { selected = row.key; selectedBefore = row.key; selectedProfile = initialSelection! }
+      if (row) { selected = row.key; selectedBefore = row.key; selectedProfile = initialSelection!; advancedOpen = initialAdvanced }
       selectingInitial = false
     })
     if (autoDetect) void catalog.detectAll('onboarding')
@@ -104,6 +112,34 @@
       else if (entry) await catalog.checkAgent(entry.id)
     } catch (error) { failure(error) }
   }
+  function connectionText(value: string) {
+    return ({ unchecked: tr('未检测', 'Not checked'), missing: tr('未发现程序', 'Program not found'), prepare: tr('需要连接组件', 'Connection component needed'), checking: tr('正在检测', 'Checking'), connected: tr('已连接', 'Connected'), failed: tr('连接失败', 'Connection failed') } as Record<string, string>)[value] ?? tr('未检测', 'Not checked')
+  }
+  function connectionExplanation(diagnosis: AgentDiagnosis | undefined, installing: boolean, nativeFound: boolean, name: string, inspection: AgentInspection | undefined, language: string) {
+    const tr = (zh: string, en: string) => language === 'zh-CN' ? zh : en
+    if (installing) return tr('RambleDesk 正在安装连接组件，完成后会自动检查 ACP 连接。', 'RambleDesk is installing the connection component and will check the ACP connection when it finishes.')
+    if (diagnosis?.reason === 'authentication') return tr('ACP 程序要求先完成认证。请按当前连接的指引处理后重试。', 'The ACP program requires authentication. Follow the guidance for this connection, then retry.')
+    if (diagnosis?.reason === 'feedback') return tr('ACP 已接通，但智能体未提供 RambleDesk 所需的反馈能力。请查看高级设置中的检测详情。', 'ACP is connected, but the agent did not provide the feedback capability RambleDesk requires. Review the detection details in advanced settings.')
+    if (diagnosis?.connection === 'connected') return tr('已接通 RambleDesk。新建会话并选择项目目录后，即可准备模型选项并发送消息。', 'Connected to RambleDesk. Start a session and choose a project directory to load model options and send a message.')
+    if (diagnosis?.connection === 'checking') return tr('正在查找本机程序并检查 ACP 连接。', 'Finding the local program and checking its ACP connection.')
+    switch (diagnosis?.reason) {
+      case 'bridge_missing': return nativeFound
+        ? tr('已找到 ' + name + '。RambleDesk 会安装 ACP 连接组件，完成后自动检查连接。', 'Found ' + name + '. RambleDesk will install its ACP connection component, then check the connection automatically.')
+        : tr('需要 ACP 连接组件才能接入。RambleDesk 可以安装组件并检查连接。', 'An ACP connection component is needed. RambleDesk can install it and check the connection.')
+      case 'runtime': {
+        const names = inspection?.checks.filter(check => ['node', 'npm'].includes(check.id) && check.status === 'fail').map(check => check.id === 'node' ? 'Node.js' : 'npm').join(' / ') || 'Node.js / npm'
+        return tr('连接组件需要的 ' + names + ' 暂不可用。请安装或更新后重新检测。', names + ' is unavailable for the connection component. Install or update it, then detect again.')
+      }
+      case 'agent_missing': return tr('尚未找到此智能体。安装后重新检测；已有程序可在高级设置中指定位置。', 'This agent was not found. Install it and detect again, or specify an existing program location in advanced settings.')
+      case 'dependency': return diagnosis?.canInstall
+        ? tr('连接所需的配套程序尚未安装。RambleDesk 会一起安装并检查连接。', 'A required companion program is missing. RambleDesk will install it and check the connection.')
+        : tr('缺少连接所需的配套程序。请按安装说明补齐，高级设置中可查看缺失项。', 'A required companion program is missing. Follow the installation guide; advanced settings show what is missing.')
+      case 'launch': return tr('无法启动 ACP 程序。请在高级设置中检查程序位置与启动设置。', 'The ACP program could not start. Check its location and launch settings in advanced settings.')
+      case 'install': return tr('连接组件安装失败。请查看高级设置中的具体原因，处理后重试连接。', 'The connection component could not be installed. Review the reason in advanced settings, then retry connecting.')
+      case 'connection': return tr('ACP 连接未成功。请查看高级设置中的具体原因，检查连接组件或启动设置后重试。', 'The ACP connection failed. Review the reason in advanced settings, check the component or launch settings, then retry.')
+      default: return tr('检测此智能体，确认它能否连接到 RambleDesk。', 'Detect this agent to check whether it can connect to RambleDesk.')
+    }
+  }
   async function usePath() {
     if (!entry || saving) return
     localError = ''; notice = ''
@@ -129,7 +165,7 @@
 
 <section class="space-y-4 @container" aria-label={tr('智能体管理', 'Agent management')}>
   <div class="flex flex-wrap items-start justify-between gap-3">
-    <div><h3 class="m-0 text-sm font-semibold">{tr('智能体', 'Agents')}</h3><p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">{tr('管理设备上的智能体及其连接。登录和模型配置在智能体中完成。', 'Manage agents and their connections on this device. Complete sign-in and model setup in the agent.')}</p></div>
+    <div><h3 class="m-0 text-sm font-semibold">{tr('智能体', 'Agents')}</h3><p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">{tr('查看本机的智能体，一键连接到 RambleDesk。', 'Find agents on this device and connect them to RambleDesk.')}</p></div>
     <Button variant="outline" size="sm" disabled={$catalog.loading || $catalog.checking.length > 0 || $catalog.connecting.length > 0 || saving} onclick={() => void catalog.detectAll()}><RefreshCw class={`size-3.5 ${$catalog.checking.length > 0 || $catalog.connecting.length > 0 ? 'animate-spin' : ''}`} />{tr('检测智能体', 'Detect agents')}</Button>
   </div>
   {#if safeError}<p role="alert" class="break-words rounded-lg border border-destructive/25 bg-destructive/5 px-3 py-2 text-xs">{safeError}</p>{/if}
@@ -155,46 +191,41 @@
         <p class="m-0 text-xs leading-5 text-muted-foreground">{tr('连接已经安装的 ACP 程序。启动参数和环境变量可在这里手动设置。', 'Connect an installed ACP program with custom launch arguments and environment variables.')}</p>
         {#key selected}<AgentSettings {cache} {baselines} busy={saving} onSave={saveProfile} onDelete={removeProfile} onCheck={catalog.check} />{/key}
       {:else if item}
-        <div class="flex items-start gap-3"><div class="flex size-11 shrink-0 items-center justify-center rounded-xl border bg-muted/30"><AgentIcon hostId={profile?.host_id ?? entry?.host_id} class="size-6" /></div><div class="min-w-0 flex-1"><h4 class="m-0 text-base font-semibold">{item.name}</h4><p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">{tr('使用智能体自身的登录和配置环境。', 'Uses the agent’s own sign-in and configuration environment.')}</p></div></div>
-        <section class="space-y-3 rounded-lg border bg-muted/15 p-4" aria-live="polite">
-          <div class="flex items-center gap-2 text-sm font-medium">{#if checking || installing}<LoaderCircle class="size-4 animate-spin" />{:else if status === 'connected'}<CheckCircle2 class="size-4 text-emerald-600" />{:else if status === 'attention'}<XCircle class="size-4 text-amber-600" />{/if}<span>{installing ? tr('正在准备连接', 'Preparing connection') : statusText(status)}</span></div>
-          <p class="m-0 text-xs leading-5 text-muted-foreground">
-            {#if installing}{tr('连接组件准备好后会自动检查。', 'The connection will be checked when setup finishes.')}
-            {:else if status === 'connected'}{tr('可以在新会话中选择此智能体。', 'Select this agent in a new session.')}
-            {:else if status === 'checking'}{tr('正在检查本机程序和 ACP 连接…', 'Checking the local program and ACP connection…')}
-            {:else if status === 'unchecked'}{tr('尚未检查此智能体。需要时点击检测，已有配置也可直接用于新会话。', 'This agent has not been checked. Detect it when needed, or use an existing configuration in a new session.')}
-            {:else if status === 'prepare'}{tr('需要连接组件才能通过 RambleDesk 使用此智能体。', 'A connection component is needed to use this agent in RambleDesk.')}
-            {:else if status === 'missing'}{tr('暂未找到可连接的程序。安装后重新检测，或指定已有程序的位置。', 'No connectable program was found. Check again after installing, or specify an existing program location.')}
-            {:else if profile && !profile.enabled}{tr('此启动配置尚未启用。检查连接后即可继续使用。', 'This launch configuration is disabled. Check the connection to enable it.')}
-            {:else}{tr('连接尚未确认。按照下方指引处理后，回来重试。', 'The connection is not confirmed. Follow the guidance below, then retry.')}{/if}
-          </p>
-          {#if checked && !checked.ok}<p class="m-0 break-words text-xs leading-5 text-amber-700 dark:text-amber-400">{checked.message}</p>{/if}
-          {#if job?.phase === 'failed'}<p role="alert" class="m-0 text-xs leading-5 text-amber-700 dark:text-amber-400">{tr('连接组件准备失败。请查看高级诊断中的日志，处理后重新准备连接。', 'Connection setup failed. Review the log in advanced diagnostics, address the issue, then prepare the connection again.')}</p>{/if}
+        <div class="flex items-start gap-3"><div class="flex size-11 shrink-0 items-center justify-center rounded-xl border bg-muted/30"><AgentIcon hostId={profile?.host_id ?? entry?.host_id} class="size-6" /></div><div class="min-w-0 flex-1"><h4 class="m-0 text-base font-semibold">{item.name}</h4><p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">{tr('管理与 RambleDesk 的连接。', 'Manage its connection to RambleDesk.')}</p></div></div>
+        <section class="space-y-4 rounded-lg border bg-muted/15 p-4" aria-label={tr('检测状态', 'Detection status')} aria-live="polite" data-agent-detection-card>
+          <h5 class="m-0 text-xs font-semibold">{tr('检测状态', 'Detection status')}</h5>
+          <div class="space-y-2">
+            <div class="flex items-center justify-between gap-3 text-xs"><span class="font-medium">{tr('ACP 连接', 'ACP connection')}</span><span class="flex items-center gap-1.5" class:text-emerald-600={diagnosis?.connection === 'connected'} class:text-muted-foreground={diagnosis?.connection !== 'connected'}>{#if installing || diagnosis?.connection === 'checking'}<LoaderCircle class="size-3.5 animate-spin" />{:else if diagnosis?.connection === 'connected'}<CheckCircle2 class="size-3.5" />{/if}{installing ? tr('正在连接', 'Connecting') : connectionText(diagnosis?.connection ?? 'unchecked')}</span></div>
+            <p class="m-0 text-xs leading-5 text-muted-foreground">{connectionExplanation(diagnosis, installing, nativeFound, item.name, inspection, $locale)}</p>
+            {#if diagnosis?.reason === 'authentication'}<AgentSetupGuide catalogId={entry?.id} hostId={profile?.host_id ?? entry?.host_id} name={item.name} config={profile} {inspection} purpose="authentication" onConfigure={() => advancedOpen = true} compact />{/if}
+          </div>
           <div class="flex flex-wrap gap-2">
-            {#if canPrepare && (status === 'prepare' || (status === 'attention' && (!inspection?.command || inspection.dependencies.some(dependency => dependency.required && !dependency.path))))}<Button size="sm" disabled={saving || installing || checking} onclick={() => entry && void catalog.install(entry.id)}><Download class="size-3.5" />{tr('准备连接', 'Prepare connection')}</Button>{/if}
-            <Button variant="outline" size="sm" disabled={saving || checking || installing} onclick={() => void retry()}><RefreshCw class="size-3.5" />{tr(canCheck ? '检查连接' : '重新检测', canCheck ? 'Check connection' : 'Check again')}</Button>
+            {#if showConnect}<Button size="sm" disabled={saving || installing || checking} onclick={() => entry && void catalog.connect(entry.id, profile?.id)}><Download class="size-3.5" />{tr('一键连接', 'Connect in one click')}</Button>{/if}
+            <Button variant="outline" size="sm" disabled={saving || checking || installing} onclick={() => void retry()}><RefreshCw class="size-3.5" />{tr(canCheck ? '检查连接' : '重新检测', canCheck ? 'Check connection' : 'Detect again')}</Button>
+            {#if diagnosis?.reason === 'runtime'}<a class="inline-flex items-center gap-1 px-1 text-xs underline underline-offset-4" href="https://nodejs.org/en/download" target="_blank" rel="noreferrer">{tr('安装 Node.js', 'Install Node.js')}<ExternalLink class="size-3" /></a>
+            {:else if setupGuide && (diagnosis?.reason === 'agent_missing' || diagnosis?.reason === 'dependency') && !diagnosis.canInstall}<a class="inline-flex items-center gap-1 px-1 text-xs underline underline-offset-4" href={setupGuide} target="_blank" rel="noreferrer">{tr('安装说明', 'Installation guide')}<ExternalLink class="size-3" /></a>{/if}
+            {#if diagnosis?.connection === 'failed'}<Button variant="ghost" size="sm" onclick={() => advancedOpen = true}>{tr('查看原因', 'View reason')}</Button>{/if}
             {#if installing && job}<Button variant="ghost" size="sm" disabled={job.cancel_requested} onclick={() => job && void catalog.cancel(job.id)}>{tr(job.cancel_requested ? '正在取消…' : '取消', job.cancel_requested ? 'Cancelling…' : 'Cancel')}</Button>{/if}
           </div>
+          {#if notice}<p role="status" class="m-0 text-xs leading-5">{notice}</p>{/if}
         </section>
-        {#if !installing && (status === 'missing' || status === 'attention')}<AgentSetupGuide catalogId={entry?.id} hostId={profile?.host_id ?? entry?.host_id} name={item.name} config={profile} {inspection} />{/if}
-        {#if entry && status !== 'connected' && status !== 'checking'}
-          <details class="rounded-lg border p-3"><summary class="cursor-pointer text-xs">{tr('已安装？指定程序位置', 'Already installed? Specify its location')}</summary><form class="mt-3 space-y-3" onsubmit={(event) => { event.preventDefault(); void usePath() }}>
-            <p class="m-0 text-xs leading-5 text-muted-foreground">{tr(`选择 ${entry.distribution.command} 的 CLI 或 ACP 可执行文件，而不是桌面应用或安装目录。RambleDesk 会补上此智能体的 ACP 启动参数。`, `Choose the ${entry.distribution.command} CLI or ACP executable, rather than a desktop app or installation folder. RambleDesk adds this agent’s ACP launch arguments.`)}</p>
-            {#if entry.connection_kind === 'bridge'}<p class="m-0 text-xs leading-5 text-muted-foreground">{tr('这里需要 ACP 连接组件的入口；智能体的交互命令不能替代它。', 'This requires the ACP connection component entry point; the agent’s interactive command cannot replace it.')}</p>{/if}
-            <label class="block space-y-1.5 text-xs"><span>{tr('可执行文件完整路径', 'Full executable path')}</span><input required bind:value={manualPaths[entry.id]} placeholder={tr('例如 D:\\agents\\程序.exe 或 /opt/agents/程序', 'For example D:\\agents\\program.exe or /opt/agents/program')} autocomplete="off" spellcheck="false" class="h-9 w-full rounded-md border bg-background px-3 font-mono" /></label>
-            <p class="m-0 text-[11px] leading-5 text-muted-foreground">{tr('JavaScript 脚本需要在高级启动设置中填写运行时与脚本参数。', 'For a JavaScript script, configure the runtime and script arguments in advanced launch settings.')}</p>
-            <Button type="submit" size="sm" disabled={saving || checking || !manualPaths[entry.id]?.trim()}>{tr('保存并检查连接', 'Save and check connection')}</Button>
-          </form></details>
-        {/if}
-        {#if notice}<p role="status" class="m-0 text-xs leading-5">{notice}</p>{/if}
-        {#key item.key}<details open={!entry} class="border-t pt-3"><summary class="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground"><Settings2 class="size-3.5" />{tr('高级与诊断', 'Advanced and diagnostics')}</summary><div class="mt-4 space-y-4">
+        {#key item.key}<details bind:open={advancedOpen} class="border-t pt-3" data-agent-advanced><summary class="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground"><Settings2 class="size-3.5" />{tr('高级设置', 'Advanced settings')}</summary><div class="mt-4 space-y-4">
+          {#if entry}
+            <form class="space-y-3 rounded-lg border p-3" onsubmit={(event) => { event.preventDefault(); void usePath() }}>
+              <h5 class="m-0 text-xs font-medium">{tr('指定程序位置', 'Specify program location')}</h5>
+              <p class="m-0 text-xs leading-5 text-muted-foreground">{entry.connection_kind === 'bridge' ? tr('填写 ACP 连接组件的可执行文件位置；智能体的交互命令不能替代连接组件。', 'Enter the ACP connection component executable location; the agent’s interactive command cannot replace the component.') : tr('填写 CLI 可执行文件位置。RambleDesk 会添加 ACP 启动参数。', 'Enter the CLI executable location. RambleDesk adds its ACP launch arguments.')}</p>
+              <label class="block space-y-1.5 text-xs"><span>{tr('可执行文件完整路径', 'Full executable path')}</span><input required bind:value={manualPaths[entry.id]} autocomplete="off" spellcheck="false" class="h-9 w-full rounded-md border bg-background px-3 font-mono" /></label>
+              <p class="m-0 text-[11px] leading-5 text-muted-foreground">{tr('JavaScript 脚本需要在下方启动设置中填写运行时与脚本参数。', 'For a JavaScript script, configure its runtime and script arguments in the launch settings below.')}</p>
+              <Button type="submit" size="sm" disabled={saving || checking || !manualPaths[entry.id]?.trim()}>{tr('保存并检查连接', 'Save and check connection')}</Button>
+            </form>
+          {/if}
           {#if entry}<div class="flex flex-wrap gap-2 text-[10px]"><span class="rounded-full border px-2 py-1">{entry.connection_kind === 'bridge' ? tr('ACP 连接组件', 'ACP connection component') : tr('原生 ACP', 'Native ACP')}</span><span class="rounded-full border px-2 py-1">{tr('推荐版本', 'Recommended')} {entry.distribution.kind === 'npm' ? entry.distribution.pinned_version : entry.distribution.version}</span>{#if inspection?.version}<span class="rounded-full border px-2 py-1">{tr('发现的版本', 'Discovered version')} {inspection.version}</span>{/if}</div>{/if}
           {#if profile}<div class="space-y-1 text-xs"><p class="m-0 font-medium">{tr('实际启动入口', 'Actual launch entry')}</p><code class="block break-all rounded bg-muted p-2 text-[11px]">{redactAgentMessage([profile.command, ...profile.args].join(' '), environmentText())}</code></div>{/if}
           {#if inspection}<div class="space-y-2"><h5 class="m-0 text-xs font-medium">{tr('自动发现结果', 'Discovery details')}</h5>{#each inspection.checks as check}<div class="flex items-start gap-2 text-xs leading-5">{#if check.status === 'pass'}<CheckCircle2 class="mt-0.5 size-3.5 shrink-0 text-emerald-600" />{:else}<XCircle class="mt-0.5 size-3.5 shrink-0 text-amber-600" />{/if}<span class="break-words">{redactAgentMessage(check.message, environmentText())}</span></div>{/each}</div>{/if}
-          {#if checked?.details.length}<div class="space-y-2"><h5 class="m-0 text-xs font-medium">{tr('连接检查详情', 'Connection check details')}</h5><ul class="m-0 list-disc space-y-1 pl-4 text-xs leading-5 text-muted-foreground">{#each checked.details as detail}<li class="break-words">{detail}</li>{/each}</ul></div>{/if}
+          {#if checked}<div class="space-y-2"><h5 class="m-0 text-xs font-medium">{tr('最近一次检查', 'Latest check')}</h5><p class="m-0 break-words text-xs leading-5 text-muted-foreground">{redactAgentMessage(checked.message, environmentText())}</p></div>{/if}
+          {#if checked?.details.length}<div class="space-y-2"><h5 class="m-0 text-xs font-medium">{tr('连接检查详情', 'Connection check details')}</h5><ul class="m-0 list-disc space-y-1 pl-4 text-xs leading-5 text-muted-foreground">{#each checked.details as detail}<li class="break-words">{redactAgentMessage(detail, environmentText())}</li>{/each}</ul></div>{/if}
           {#if canPrepare}<div class="space-y-2"><Button variant="outline" size="sm" disabled={saving || installing || checking} onclick={() => entry && void catalog.install(entry.id)}><Download class="size-3.5" />{tr('修复连接组件', 'Repair connection component')}</Button><p class="m-0 text-[11px] leading-5 text-muted-foreground">{tr('安装推荐版本的 ACP 连接组件。已有的自定义启动配置会保留。', 'Install the recommended ACP connection component. Existing custom launch configurations are retained.')}</p></div>{/if}
           {#if job}<div class="space-y-2 rounded-lg border bg-muted/20 p-3"><p class="m-0 text-xs">{tr('连接准备日志', 'Connection setup log')}: {job.phase}</p><pre class="m-0 max-h-36 overflow-auto whitespace-pre-wrap break-words font-mono text-[10px] leading-5 text-muted-foreground">{redactAgentMessage(job.messages.join('\n'), environmentText())}</pre></div>{/if}
-          <AgentSetupGuide catalogId={entry?.id} hostId={profile?.host_id ?? entry?.host_id} name={item.name} config={profile} {inspection} compact />
           {#if item.configs.length > 1}<div class="space-y-2"><p class="m-0 text-xs font-medium">{tr('已有启动配置', 'Saved launch configurations')}</p><div class="flex flex-wrap gap-2">{#each item.configs as config}<Button size="sm" variant={config.id === profile?.id ? 'secondary' : 'outline'} disabled={saving} onclick={() => selectedProfile = config.id}>{config.name}</Button>{/each}</div></div>{/if}
           {#if profile}{#key profile.id}<AgentSettings {cache} {baselines} configs={[profile]} busy={saving} onSave={saveProfile} onDelete={removeProfile} onCheck={catalog.check} />{/key}
           {:else if canCheck}<Button variant="outline" size="sm" disabled={saving} onclick={() => void prepareAdvanced()}>{tr('编辑启动设置', 'Edit launch settings')}</Button>

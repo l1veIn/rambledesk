@@ -21,6 +21,10 @@ fn fixture_process() {
             std::thread::sleep(Duration::from_secs(1));
         }
     }
+    if mode == "single" {
+        let _ = std::io::stdin().read_to_end(&mut Vec::new());
+        std::process::exit(0);
+    }
     if mode == "noisy" {
         std::io::stderr()
             .write_all(&vec![b'x'; 512 * 1024])
@@ -101,6 +105,29 @@ async fn tree(mode: &str) -> Running {
 }
 
 #[tokio::test]
+async fn normal_eof_reaps_a_leader_without_descendants() {
+    let cwd = tempfile::tempdir().unwrap();
+    let mut process = spawn(
+        std::env::current_exe().unwrap().to_str().unwrap(),
+        &[
+            "--exact".into(),
+            FIXTURE.into(),
+            "--ignored".into(),
+            "--nocapture".into(),
+        ],
+        &BTreeMap::from([(MODE.into(), "single".into())]),
+        cwd.path(),
+    )
+    .unwrap();
+    let root = Observation::new(process.id().unwrap());
+    process
+        .reap_with_grace(Duration::from_secs(2))
+        .await
+        .unwrap();
+    assert_stopped(&root).await;
+}
+
+#[tokio::test]
 async fn normal_eof_reaps_leader_and_lingering_descendant_while_draining_stderr() {
     let mut running = tree("noisy").await;
     drop(running.process.take_stdin());
@@ -115,6 +142,28 @@ async fn normal_eof_reaps_leader_and_lingering_descendant_while_draining_stderr(
         .await
         .unwrap()
         .unwrap();
+}
+
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn exited_darwin_leader_does_not_hide_a_live_descendant() {
+    let mut running = tree("tree").await;
+    drop(running.process.take_stdin());
+    assert!(
+        running
+            .process
+            .ownership
+            .wait_before_cleanup(&mut running.process.child, Duration::from_secs(2))
+            .await
+            .unwrap()
+    );
+    let group = running.process.id().unwrap() as libc::pid_t;
+    assert!(!super::unix::darwin::no_live_members(group).unwrap());
+    assert!(running.descendant.running());
+    running.process.kill_and_reap().await.unwrap();
+    assert_stopped(&running.root).await;
+    assert_stopped(&running.descendant).await;
+    running.drain.await.unwrap();
 }
 
 #[tokio::test]

@@ -15,7 +15,9 @@ README 必须明确对应的 SmartScreen / Gatekeeper 首次启动步骤。
 - `pnpm check`
 - `pnpm test`
 - `pnpm test:pi`
-- `cargo test --workspace --locked`
+- `pnpm test:dsh`
+- `cargo test --workspace --exclude rambledesk-desktop --locked`
+- `cargo test -p rambledesk-desktop --locked --target-dir target/desktop`
 - `pnpm build:web`
 - `pnpm contracts:check`
 - `pnpm mcp:inspector-smoke`
@@ -49,7 +51,7 @@ GitHub 的 `/releases/latest` 不会选择 Draft 或 GitHub Prerelease。为了�
 RC 的版本号使用 SemVer 预发布后缀，但在 GitHub 中暂时按普通 Release 发布，并在标题与说明中
 清楚标记为测试版本。稳定版发布后可以删除 RC Release 与标签。
 
-1. 构建目标版本的 RC Draft，通过自动门禁后手动发布为测试 Release。
+1. 构建目标版本的 RC Draft，通过自动门禁并核对全部发行资产后，按发布授权发布为测试 Release；随后完成以下安装验收并记录结果。
 2. 在干净 Windows 用户环境中安装，确认首次启动进入新手引导。
 3. 确认重复启动只聚焦已有窗口，不出现第二个本地服务器或数据库实例。
 4. 验证新手引导中的 ACP 检测与连接、新建会话、首条消息、结构化反馈、保存草稿、提交和取消；ACP 集成流程不得触发外部适配器检测。
@@ -72,5 +74,21 @@ RC 的版本号使用 SemVer 预发布后缀，但在 GitHub 中暂时按普通 
 
 ## Publishing
 
-Tag 工作流只创建 Draft Release。自动门禁和人工安装验收全部通过后，再在 GitHub 界面手动
-发布正式版本。当前稳定版本目标使用 `v0.0.2`。
+发行目标以本次授权的版本和根目录 `package.json` 的 `version` 为准，标签为 `v<version>`。
+先运行 `pnpm release:check v<version>`，确认工作区清单、Cargo 元数据和 Tauri 配置一致；
+发布的标签必须指向通过验证、包含本次交付的提交。
+
+Tag 工作流创建 Draft Release：RC 自动设置 `prerelease=true`，Windows 只构建 NSIS；
+稳定版同时构建 NSIS/MSI。两者都必须等待 Apple Silicon DMG 和跨平台 `SHA256SUMS.txt`
+生成完毕。Windows 安装器及其签名、`latest.json` 必须属于同一次构建；macOS 不生成
+updater 签名，`latest.json` 只包含 Windows 平台。
+
+发布动作需要明确授权，可通过 GitHub 界面或 CLI/API 执行。稳定版在自动门禁和安装验收通过后，
+以 `draft=false, prerelease=false` 发布。RC 按上面的测试更新流程发布时，也设置这两个字段为
+`false`，并在标题及说明中明确标注测试版本；发布测试包不代表后续人工安装验收已经通过。
+发布后核对 Release API、公开下载地址、`/releases/latest`、更新清单及重新计算的校验值。
+
+同一 RC 标签的失败构建需要包含新修复时，不能只重跑旧工作流，因为旧 run 仍绑定原提交。
+经明确授权重发尚未公开的 RC 时，先记录原标签指向与 Draft 资产，清除该 Draft 的旧资产或删除
+该 Draft，再将标签更新到最终提交并触发完整双平台构建。不能保留旧 Windows 产物、只补新 macOS
+产物；全部资产及更新清单、校验文件应从同一新提交重新生成。已公开版本优先使用新的版本号。

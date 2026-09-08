@@ -25,8 +25,14 @@ pub enum AcpError {
     InvalidLaunch(String),
     #[error("ACP process I/O failed: {0}")]
     Io(#[from] std::io::Error),
-    #[error("ACP {0} failed; check the agent configuration and credentials")]
+    #[error("ACP {0} failed; review the Agent connection settings")]
     Protocol(&'static str),
+    #[error("ACP {0} failed (error code {1})")]
+    RequestFailure(&'static str, i32),
+    #[error(
+        "The Agent requires authentication before ACP {0}; sign in or configure an API key in the Agent"
+    )]
+    AuthenticationRequired(&'static str),
     #[error("ACP connection closed")]
     Closed,
     #[error("ACP {0} timed out")]
@@ -38,11 +44,23 @@ pub enum AcpError {
 }
 
 impl AcpError {
+    pub(crate) fn protocol(operation: &'static str, error: agent_client_protocol::Error) -> Self {
+        // An advertised login method or free-form diagnostic is not evidence
+        // of an authentication failure. Never expose raw response data.
+        if error.code == agent_client_protocol::ErrorCode::AuthRequired {
+            Self::AuthenticationRequired(operation)
+        } else {
+            Self::RequestFailure(operation, i32::from(error.code))
+        }
+    }
+
     pub(crate) fn diagnostic_code(&self) -> &'static str {
         match self {
             Self::InvalidLaunch(_) => "invalid_launch",
             Self::Io(_) => "process_io",
             Self::Protocol(_) => "protocol",
+            Self::RequestFailure(_, _) => "protocol_request",
+            Self::AuthenticationRequired(_) => "authentication_required",
             Self::Closed => "closed",
             Self::Timeout(_) => "timeout",
             Self::CannotLoad => "cannot_load",
@@ -255,7 +273,8 @@ impl AcpConnection {
                             return Ok(());
                         }
                         Err(error) => {
-                            let _ = ready_tx.send(Err(AcpError::Protocol("initialize")));
+                            let _ =
+                                ready_tx.send(Err(AcpError::protocol("initialize", error.clone())));
                             return Err(error);
                         }
                     }
@@ -402,7 +421,7 @@ impl AcpConnection {
             ))
             .block_task()
             .await
-            .map_err(|_| AcpError::Protocol("session/prompt"))?;
+            .map_err(|error| AcpError::protocol("session/prompt", error))?;
         Ok(format!("{:?}", response.stop_reason))
     }
 

@@ -86,7 +86,7 @@ export type SessionRuntime = { connection: SessionConnectionState, activity: Ses
  * Live instance telemetry. Unknown until this instance reports usage; not
  * persisted across application restarts or inferred from transcript text.
  */
-context_usage?: SessionContextUsage, last_error: string | null, };
+context_usage?: SessionContextUsage, last_error: string | null, failure?: AgentFailure, };
 export type SessionContextUsage = {
 /**
  * Actual tokens currently in context, reported by the Agent.
@@ -103,7 +103,15 @@ export type ManagedWorkspaceInfo = { cwd: string,
  * Current branch, or a short commit id for a detached HEAD.
  */
 branch: string | null, };
-export type AgentConnectionCheck = { ok: boolean, message: string, details: Array<string>, };
+export type AgentConnectionCheck = {
+/**
+ * Retains the managed feedback requirement; use connection for the handshake fact.
+ */
+ok: boolean, connection?: AgentCheckConnection, message: string, details: Array<string>, failure?: AgentFailure, };
+export type AgentCheckConnection = "connected" | "failed";
+export type AgentFailure = { stage: AgentFailureStage, reason: AgentFailureReason, message: string, };
+export type AgentFailureStage = "launch" | "initialize" | "session" | "configuration" | "prompt";
+export type AgentFailureReason = "authentication" | "configuration" | "model" | "rate_limit" | "network" | "connection" | "unknown";
 export type SessionProtocol = "acp";
 export type SessionManagement = { "kind": "external" } | { "kind": "managed", protocol: SessionProtocol, agent_config_id: string, cwd: string, remote_session_id: string | null, };
 export type AgentConfig = { id: string, catalog_id?: string, name: string, host_id: string, protocol: SessionProtocol, enabled: boolean, command: string, args: Array<string>, env: { [key in string]: string }, created_at: string, updated_at: string, };

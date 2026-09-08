@@ -79,6 +79,9 @@ export class SessionPromptDrafts {
   readonly #drafts = new Map<string, string>()
   readonly #revisions = new Map<string, number>()
   readonly #deletedSessions = new Set<string>()
+  readonly #awaitingAcknowledgement = new Map<string, PromptSubmission>()
+  readonly #failedMessages = new Map<string, { id: string; text: string }>()
+  readonly #restoredFailures = new Map<string, string>()
 
   read(sessionId: string): string { return this.#drafts.get(sessionId) ?? '' }
   write(sessionId: string, text: string): void {
@@ -90,7 +93,38 @@ export class SessionPromptDrafts {
     this.write(sessionId, '')
     this.#drafts.delete(sessionId)
   }
-  forgetSession(sessionId: string): void { this.remove(sessionId); this.#deletedSessions.add(sessionId) }
+  forgetSession(sessionId: string): void {
+    this.remove(sessionId)
+    this.#awaitingAcknowledgement.delete(sessionId)
+    this.#failedMessages.delete(sessionId)
+    this.#restoredFailures.delete(sessionId)
+    this.#deletedSessions.add(sessionId)
+  }
+
+  awaitAcknowledgement(submission: PromptSubmission): void { this.#awaitingAcknowledgement.set(submission.sessionId, submission) }
+  resolveAcknowledgement(sessionId: string, accepted: boolean): boolean {
+    const submission = this.#awaitingAcknowledgement.get(sessionId)
+    this.#awaitingAcknowledgement.delete(sessionId)
+    return Boolean(submission && !accepted && this.restoreSubmission(submission))
+  }
+
+  failedMessage(sessionId: string, latestUser: SessionActivity | undefined, reportedFailure: boolean): { id: string; text: string } | undefined {
+    const existing = this.#failedMessages.get(sessionId)
+    if (latestUser && existing && latestUser.id !== existing.id) this.#failedMessages.delete(sessionId)
+    if (reportedFailure && latestUser && latestUser.id !== this.#restoredFailures.get(sessionId)) {
+      this.#failedMessages.set(sessionId, { id: latestUser.id, text: latestUser.text })
+    }
+    return this.#failedMessages.get(sessionId)
+  }
+
+  restoreFailedMessage(sessionId: string): boolean {
+    const failed = this.#failedMessages.get(sessionId)
+    if (!failed || this.read(sessionId).trim()) return false
+    this.write(sessionId, failed.text)
+    this.#restoredFailures.set(sessionId, failed.id)
+    this.#failedMessages.delete(sessionId)
+    return true
+  }
 
   beginSubmission(sessionId: string, text: string): PromptSubmission {
     this.write(sessionId, text)

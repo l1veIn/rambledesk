@@ -1,6 +1,10 @@
 use std::{io, mem::zeroed, time::Duration};
 use tokio::process::{Child, Command};
 
+#[cfg(target_os = "macos")]
+#[path = "darwin.rs"]
+pub(super) mod darwin;
+
 pub(super) struct Ownership {
     group: Option<libc::pid_t>,
 }
@@ -24,6 +28,12 @@ impl Ownership {
             if result != 0 {
                 let error = io::Error::last_os_error();
                 if error.raw_os_error() != Some(libc::ESRCH) {
+                    #[cfg(target_os = "macos")]
+                    if error.raw_os_error() == Some(libc::EPERM) && darwin::no_live_members(group)?
+                    {
+                        self.group = None;
+                        return Ok(());
+                    }
                     return Err(error);
                 }
             }
@@ -42,24 +52,28 @@ impl Ownership {
         };
         let deadline = tokio::time::Instant::now() + grace;
         loop {
-            // WNOWAIT observes exit without reaping. Child::wait/try_wait would
-            // release the PID before the final group signal, permitting PID reuse.
-            let mut status: libc::siginfo_t = unsafe { zeroed() };
-            let result = unsafe {
-                libc::waitid(
-                    libc::P_PID,
-                    group as libc::id_t,
-                    &mut status,
-                    libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
-                )
-            };
-            if result != 0 {
-                let error = io::Error::last_os_error();
-                if error.kind() != io::ErrorKind::Interrupted {
-                    return Err(error);
+            // Keep siginfo_t out of the future's suspended state: on macOS it
+            // contains a raw pointer and is not Send.
+            {
+                // WNOWAIT observes exit without reaping. Child::wait/try_wait would
+                // release the PID before the final group signal, permitting PID reuse.
+                let mut status: libc::siginfo_t = unsafe { zeroed() };
+                let result = unsafe {
+                    libc::waitid(
+                        libc::P_PID,
+                        group as libc::id_t,
+                        &mut status,
+                        libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
+                    )
+                };
+                if result != 0 {
+                    let error = io::Error::last_os_error();
+                    if error.kind() != io::ErrorKind::Interrupted {
+                        return Err(error);
+                    }
+                } else if unsafe { status.si_pid() } != 0 {
+                    return Ok(true);
                 }
-            } else if unsafe { status.si_pid() } != 0 {
-                return Ok(true);
             }
             if tokio::time::Instant::now() >= deadline {
                 return Ok(false);

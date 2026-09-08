@@ -120,10 +120,29 @@ impl SessionApplication {
         drop(live);
         let result = tokio::select! {
             result = tokio::time::timeout(std::time::Duration::from_secs(30), connection.set_configuration(input.change)) => {
-                result.map_err(|_| AgentDriverError::new("Agent configuration change timed out"))?.map_err(SessionError::from)
+                result.map_err(|_| SessionError::from(AgentDriverError::classified(AgentFailureStage::Configuration, AgentFailureReason::Connection, "Agent configuration change timed out"))).and_then(|result| result.map_err(SessionError::from))
             }
             _ = interrupted.changed() => Err(SessionError::Interrupted),
         };
+        let mut live = entry.live.lock().await;
+        match &result {
+            Ok(()) => {
+                if live
+                    .runtime
+                    .failure
+                    .as_ref()
+                    .is_some_and(|failure| failure.stage == AgentFailureStage::Configuration)
+                {
+                    live.runtime.failure = None;
+                    live.runtime.last_error = None;
+                }
+            }
+            Err(error) => {
+                live.runtime.failure = error.agent_failure(AgentFailureStage::Configuration);
+                live.runtime.last_error = Some(error.to_string());
+            }
+        }
+        drop(live);
         drop(lifecycle);
         // Also refresh after a refusal: the Agent may have confirmed a different
         // value or removed an option. The snapshot always reflects its response.

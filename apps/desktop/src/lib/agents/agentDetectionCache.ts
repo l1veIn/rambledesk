@@ -1,6 +1,7 @@
 import type { ApplicationTransport } from '$lib/application/applicationTransport'
 import type { AgentConfig, AgentConnectionCheck, AgentInspection } from '$lib/generated/feedback'
 import { redactAgentMessage } from './agentConfigForm'
+import { agentFailureFrom } from './agentFailure'
 
 export type CachedAgentConnection = { signature: string; result: AgentConnectionCheck }
 type DetectionSnapshot = { inspections: Record<string, AgentInspection>; connections: Record<string, CachedAgentConnection> }
@@ -43,11 +44,15 @@ export function rememberAgentInspection(transport: ApplicationTransport, inspect
   cacheFor(transport).inspections[inspection.agent_id] = inspection
   publish(transport)
 }
-export function rememberAgentConnection(transport: ApplicationTransport, config: AgentConfig, result: AgentConnectionCheck) {
+export function redactAgentConnection(config: AgentConfig, result: AgentConnectionCheck): AgentConnectionCheck {
   const environment = Object.entries(config.env).map(([key, value]) => `${key}=${value}`).join('\n')
-  cacheFor(transport).connections[config.id] = { signature: agentLaunchSignature(config), result: {
+  return {
     ...result, message: redactAgentMessage(result.message, environment), details: result.details.map(detail => redactAgentMessage(detail, environment)),
-  } }
+    ...(result.failure ? { failure: agentFailureFrom(result.failure, result.failure.stage, environment) } : {}),
+  }
+}
+export function rememberAgentConnection(transport: ApplicationTransport, config: AgentConfig, result: AgentConnectionCheck) {
+  cacheFor(transport).connections[config.id] = { signature: agentLaunchSignature(config), result: redactAgentConnection(config, result) }
   publish(transport)
 }
 /** The latest explicit attempt owns its result, even after its settings view closes. */

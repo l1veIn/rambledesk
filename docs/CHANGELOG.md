@@ -22,7 +22,9 @@ What's new in RambleDesk 0.4.0-rc.1
 
 ACP Agent sessions
 - Start and resume Agent conversations inside RambleDesk, with a shared ACP layer for connection capabilities, model and mode selection, tool activity, permissions, and supported user questions.
-- A unified Agents page discovers installed programs, checks real ACP connections, caches connection results, and manages supported connection components. Sign-in and API-key setup remain in each Agent's own tools.
+- Onboarding and Settings share a simpler Agents page with one ACP connection card and advanced settings. One-click connection installs the bridge and uses the detected ACP entry while keeping account settings.
+- Continue from onboarding into the selected Agent's first session. Model options load in the actual project; session, configuration and message failures provide targeted guidance. Only confirmed authentication failures prompt sign-in or API-key setup.
+- Message acknowledgement recovery preserves drafts and avoids resending accepted messages; explicitly failed messages can be returned to the composer for review and retry.
 - Managed Agents use the built-in feedback command. Submitted feedback is stored durably and queued for continuation in the original Agent session; interrupted deliveries expose recovery actions.
 - External adapters remain available for users who run their Agent independently of RambleDesk's managed ACP client.
 
@@ -37,17 +39,20 @@ Speech and diagnostics
 - Automatic preview of waiting requests is off by default. Diagnostics can be cleared and recording can be disabled.
 
 Release candidate notes
+- Fix the macOS release build and prevent normally exited ACP processes from being reported as connection failures during cleanup.
 - Interrupted continuation turns can remain in an unknown delivery state and block later feedback until reviewed. Confirm an already-read delivery or retry it from its status details.
-- Saved launch profiles are preserved when scanning installations. If a saved executable path is stale, specify the installed program's location and check the connection again.
+- Scanning and component-only repairs preserve custom launch profiles. One-click connection adopts the detected ACP entry; advanced settings remain available for custom paths and environments.
 - This prerelease includes Windows x64 NSIS and Apple Silicon macOS installers. Windows MSI is reserved for stable releases.
 
 中文摘要
-- 新增应用内 ACP 智能体会话，统一连接、模型与模式选择、工具活动、授权及受支持的用户问答；智能体页面提供程序发现、真实连接检查、状态缓存与连接组件管理。
+- 新增应用内 ACP 智能体会话，统一连接、模型与模式选择、工具活动、授权及受支持的用户问答；引导和设置共用单张 ACP 连接卡片与高级设置，一键连接安装组件并采用正确入口，同时保留账号配置。
+- 引导直接进入所选智能体的新会话，选好项目后加载真实模型选项；会话准备、配置与消息错误分别提供就地处理，只有明确认证失败才提示登录或配置 API Key。发送确认丢失时先核实是否已接收，避免重复消息；明确失败的消息可放回输入框后重试。
 - 托管智能体通过内置反馈命令完成 Ramble 流程，反馈持久保存后排队续接原会话；外部适配器继续支持独立运行的智能体，登录及 API Key 配置由智能体自身处理。
 - 会话界面更简洁：工具调用按行收起，展开详情限制高度并可滚动，支持历史分页、附件和实时配置；侧边栏及请求列可拖动、收起并记住宽度，会话按创建时间排序，新会话突出工作目录必选提示。
 - 新增外观页，提供主题配色、窗口缩放、字体与工作区背景；语音确认悬浮窗增加整理、编辑及可选自动整理，自动预览默认关闭，诊断记录可清除及停用。
-- 已知限制：中断后送达状态未知的旧反馈需要先确认或重试，才会继续投递后续反馈；重新检测保留已有启动配置，失效的程序路径需手动更新。
+- 已知限制：中断后送达状态未知的旧反馈需要先确认或重试，才会继续投递后续反馈；重新检测与单独修复组件保留自定义配置，一键连接采用检测到的 ACP 入口，特殊路径和环境可在高级设置中调整。
 - 本候选版提供 Windows x64 NSIS 与 Apple Silicon macOS 安装包。
+- 修复 macOS 发布构建，以及 ACP 程序正常退出后被清理过程误报为连接失败的问题。
 
 Full changelog: https://github.com/l1veIn/rambledesk/compare/v0.3.4...v0.4.0-rc.1
 

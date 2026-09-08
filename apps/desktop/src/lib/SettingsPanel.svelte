@@ -130,6 +130,8 @@
   export let mcpConfiguration = ''
   export let initialSection: Section = 'general'
   export let sectionSelectionEpoch = 0
+  export let initialAgentConfigId: string | undefined = undefined
+  export let initialAgentAdvanced = false
   export let onRestartOnboarding: () => void = () => {}
   export let onOpenArchived: () => void = () => {}
   export let onOpenRambelleProfile: () => void = () => {}
@@ -2028,7 +2030,9 @@
 
           <Tabs.Content value="agents" class="m-0 p-6 outline-none">
             {#if activeSection === 'agents'}
-              <AgentSettingsSection {transport} />
+              {#key sectionSelectionEpoch}
+                <AgentSettingsSection {transport} initialConfigId={initialAgentConfigId} initialAdvanced={initialAgentAdvanced} />
+              {/key}
             {/if}
           </Tabs.Content>
 

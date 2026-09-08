@@ -8,6 +8,8 @@
   import AgentComposer from './composer/AgentComposer.svelte'
   import AgentIcon from './AgentIcon.svelte'
   import AgentSetupGuide from './AgentSetupGuide.svelte'
+  import AgentFailureNotice from './AgentFailureNotice.svelte'
+  import { agentFailureFrom } from './agentFailure'
   import SessionConfigurationControls from './configuration/SessionConfigurationControls.svelte'
   import SessionContextUsage from './SessionContextUsage.svelte'
   import { isAbsoluteAgentDirectory, redactAgentMessage } from './agentConfigForm'
@@ -19,6 +21,7 @@
   export let controller: DraftManagedSessionController
   export let draftId: string
   export let onConfigure: () => void
+  export let onConfigureAgent: ((configId: string | undefined, advanced?: boolean) => void) | undefined = undefined
   export let onChooseDirectory: (() => Promise<string | null>) | undefined = undefined
   let localError = ''
   let choosingDirectory = false
@@ -33,6 +36,7 @@
   $: canPrepare = canPrepareAgentConnection(selectedAgent)
   $: installationJob = $controller.installationJob?.agent_id === selectedAgent?.catalogId ? $controller.installationJob : null
   $: installationDetails = redactAgentMessage(installationJob?.messages.join('\n') ?? '', Object.entries(selectedAgent?.config?.env ?? {}).map(([key, value]) => `${key}=${value}`).join('\n'))
+  $: actionFailure = $controller.failure ?? ($controller.error && !$controller.awaitingAcknowledgement && !needsPreparation ? agentFailureFrom(new Error($controller.error), 'session') : null)
   $: directoryValid = isAbsoluteAgentDirectory($controller.cwd.trim())
   $: projectName = $controller.cwd.trim().replace(/[\\/]+$/u, '').split(/[\\/]/u).pop() || $controller.cwd.trim()
 
@@ -65,6 +69,7 @@
     'Choose an agent': '选择智能体', 'Agent': '智能体', 'Project directory': '项目目录',
     'Browse…': '浏览…', 'Could not choose the project directory.': '无法选择项目目录。',
   }
+  function configureCurrentAgent() { if (onConfigureAgent) onConfigureAgent(selectedAgent?.config?.id, true); else onConfigure() }
   function tr(text: string) { return $locale === 'zh-CN' ? zh[text] ?? agentText($locale, text) : text }
 
   onMount(() => {
@@ -184,8 +189,8 @@
           {:else if $controller.phase === 'preparing' || $controller.phase === 'sending' || $controller.phase === 'closing'}
             <LoaderCircle class="size-3.5 animate-spin" /><span>{tr($controller.phase === 'sending' ? 'Sending your first message…' : $controller.phase === 'closing' ? 'Closing the draft…' : 'Connecting…')}</span>
           {:else if $controller.phase === 'ready'}<Check class="size-3.5 text-primary" /><span>{tr('Ready to send')}</span>
-          {:else if $controller.phase === 'failed'}<Button size="sm" variant="outline" onclick={() => void controller.retry()}><RefreshCw class="size-3" />{tr('Retry connection')}</Button>
-          {:else if !needsPreparation}<span>{tr('Choose an agent and directory to connect.')}</span>{/if}
+          {:else if $controller.awaitingAcknowledgement}<Button size="sm" variant="outline" onclick={() => void controller.retry()}><RefreshCw class="size-3" />{tr('Check message acceptance')}</Button>
+          {:else if !needsPreparation && $controller.phase !== 'failed'}<span>{tr('Choose an agent and directory to connect.')}</span>{/if}
           <span class="flex-1"></span><SessionContextUsage usage={$controller.snapshot?.runtime.context_usage} />
         </div>
       </div>
@@ -205,8 +210,11 @@
           {#if installationDetails}<details><summary class="cursor-pointer text-xs text-muted-foreground">{tr('Installation details')}</summary><pre class="mt-2 max-h-36 overflow-auto whitespace-pre-wrap break-words text-[11px]">{installationDetails}</pre></details>{/if}
         </section>
       {/if}
-      {#if $controller.error || $controller.choicesError || localError}<p role="alert" class="m-0 break-words text-xs text-destructive">{tr(localError || $controller.error || $controller.choicesError)}</p>{/if}
-      {#if $controller.phase === 'failed' && selectedAgent && !needsPreparation && !$controller.awaitingAcknowledgement}<AgentSetupGuide catalogId={selectedAgent.catalogId} hostId={selectedAgent.hostId} name={selectedAgent.name} config={selectedAgent.config} inspection={selectedAgent.inspection} compact />{/if}
+      {#if localError || $controller.choicesError || ($controller.error && !actionFailure)}<p role="alert" class="m-0 break-words text-xs text-destructive">{tr(localError || $controller.choicesError || $controller.error)}</p>{/if}
+      {#if actionFailure && selectedAgent && !$controller.awaitingAcknowledgement && !needsPreparation}
+        <AgentFailureNotice failure={actionFailure} config={selectedAgent.config} inspection={selectedAgent.inspection} catalogId={selectedAgent.catalogId} hostId={selectedAgent.hostId} name={selectedAgent.name}
+          onConfigure={configureCurrentAgent} onRetry={$controller.phase === 'failed' ? controller.retry : undefined} busy={locked || $controller.phase === 'preparing'} />
+      {/if}
     </div>
   </div>
 </section>

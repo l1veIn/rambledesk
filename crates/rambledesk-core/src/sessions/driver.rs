@@ -7,6 +7,7 @@ use thiserror::Error;
 #[error("{message}")]
 pub struct AgentDriverError {
     pub message: String,
+    pub failure: Option<super::AgentFailure>,
 }
 
 impl AgentDriverError {
@@ -14,7 +15,30 @@ impl AgentDriverError {
     pub fn new(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
+            failure: None,
         }
+    }
+
+    pub fn classified(
+        stage: super::AgentFailureStage,
+        reason: super::AgentFailureReason,
+        message: impl Into<String>,
+    ) -> Self {
+        let message = message.into();
+        Self {
+            failure: Some(super::AgentFailure::new(stage, reason, message.clone())),
+            message,
+        }
+    }
+
+    pub fn failure_at(&self, stage: super::AgentFailureStage) -> super::AgentFailure {
+        self.failure.clone().unwrap_or_else(|| {
+            super::AgentFailure::new(
+                stage,
+                super::AgentFailureReason::Unknown,
+                self.message.clone(),
+            )
+        })
     }
 }
 
@@ -68,6 +92,16 @@ pub trait AgentSessionDriver: Send + Sync {
         &self,
         config: &AgentConfig,
     ) -> Result<AgentSessionCapabilities, AgentDriverError>;
+
+    /// Returns handshake facts separately from the managed feedback requirement.
+    async fn check_connection(&self, config: &AgentConfig) -> super::AgentConnectionCheck {
+        match self.check(config).await {
+            Ok(caps) => super::AgentConnectionCheck::connected(&caps),
+            Err(error) => super::AgentConnectionCheck::failed(
+                error.failure_at(super::AgentFailureStage::Initialize),
+            ),
+        }
+    }
 }
 
 #[async_trait]

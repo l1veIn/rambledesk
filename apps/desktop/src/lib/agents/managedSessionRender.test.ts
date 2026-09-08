@@ -115,11 +115,34 @@ describe('Managed session rendering', () => {
     const failed = render(ManagedSessionWorkspace, { props: { ...props, snapshot: offline, connectionError: 'Connection timed out' } }).body
     expect(failed).toContain('Connection timed out')
     expect(failed).toContain('Retry')
-    expect(failed).toContain('data-agent-setup-guide')
+    expect(failed).not.toContain('data-agent-setup-guide')
+    expect(failed).toContain('Check the ACP program location')
     expect(failed).not.toContain('not logged in')
     const deleting = render(ManagedSessionWorkspace, { props: { ...props, snapshot: { ...offline, deleting: true }, connectionError: 'Connection timed out' } }).body
     expect(deleting).not.toMatch(/<button[^>]*>[\s\S]*?>Retry</)
     expect(deleting).not.toContain('data-agent-setup-guide')
+    expect(action).not.toHaveBeenCalled()
+  })
+
+  it('places typed session authentication next to the composer and keeps model failures away from login guidance', () => {
+    const base = pageSnapshot()
+    const action = vi.fn()
+    const props = { onPrompt: action, onCancel: action, onStart: action, onRespondInteraction: action, onConfigureAgent: action }
+    const auth = { ...base, session: { ...base.session, session_id: 'auth-flow' }, runtime: { ...base.runtime, connection: 'failed' as const,
+      failure: { stage: 'session' as const, reason: 'authentication' as const, message: 'Agent requires authentication' } } }
+    const authBody = render(ManagedSessionWorkspace, { props: { ...props, snapshot: auth } }).body
+    expect(authBody).toContain('Could not prepare this session')
+    expect(authBody).toContain('data-agent-setup-guide')
+    expect(authBody).toContain('Retry preparing this session')
+    expect(authBody.indexOf('data-agent-failure')).toBeGreaterThan(authBody.indexOf('data-agent-composer'))
+    const model = { ...base, session: { ...base.session, session_id: 'model-flow' }, runtime: { ...base.runtime,
+      failure: { stage: 'prompt' as const, reason: 'model' as const, message: 'Model unavailable' } } }
+    const modelBody = render(ManagedSessionWorkspace, { props: { ...props, snapshot: model, activities: [{
+      id: 'failed-task', session_id: 'model-flow', kind: 'user_message', text: 'Original task', tool_call_id: null, created_at: 'now',
+    }] } }).body
+    expect(modelBody).toContain('Choose another model')
+    expect(modelBody).toContain('Restore failed message to input')
+    expect(modelBody).not.toContain('data-agent-setup-guide')
     expect(action).not.toHaveBeenCalled()
   })
 

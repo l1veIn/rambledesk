@@ -36,11 +36,17 @@ pub struct ManagedCommandError {
     pub code: ManagedCommandErrorCode,
     pub message: &'static str,
     pub retryable: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure: Option<crate::AgentFailure>,
 }
 
 impl From<SessionError> for ManagedCommandError {
     fn from(error: SessionError) -> Self {
         use ManagedCommandErrorCode as Code;
+        let failure = match &error {
+            SessionError::Driver(error) => error.failure.clone(),
+            _ => None,
+        };
         let (code, message, retryable) = match error {
             SessionError::Repository(error) => match error {
                 SessionRepositoryError::SessionNotFound => (
@@ -113,6 +119,7 @@ impl From<SessionError> for ManagedCommandError {
             code,
             message,
             retryable,
+            failure,
         }
     }
 }
@@ -128,6 +135,7 @@ impl ApplicationCommandFacade {
             code: ManagedCommandErrorCode::ManagedRuntimeUnavailable,
             message: "Managed session runtime is unavailable",
             retryable: false,
+            failure: None,
         })
     }
 

@@ -14,6 +14,7 @@
   export let transport: ApplicationTransport
   export let sessionId: string
   export let onOpenRamble: (() => Promise<void> | void) | undefined = undefined
+  export let onConfigureAgent: ((configId: string | undefined, advanced?: boolean) => void) | undefined = undefined
   export let deletionPending = false
   export let onDeletingChange: (sessionId: string, deleting: boolean) => void = () => {}
   let reportedDeleting: boolean | undefined
@@ -73,6 +74,9 @@
     onStart={session.startAgent}
     onRefresh={refresh}
     onRespondInteraction={session.respondInteraction}
+    awaitingAcknowledgement={$session.awaitingAcknowledgement}
+    onCheckAcceptance={session.checkPromptAcceptance}
+    {onConfigureAgent}
     {onOpenRamble}
   />
 {:else}

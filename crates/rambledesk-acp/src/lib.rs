@@ -2,8 +2,10 @@
 mod activity_content;
 pub mod agents;
 mod connection;
+mod connection_check;
 mod disconnect;
 mod driver;
+mod failure;
 mod feedback_transport;
 mod feedback_workflow;
 mod observer;

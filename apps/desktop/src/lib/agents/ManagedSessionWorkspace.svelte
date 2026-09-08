@@ -2,12 +2,14 @@
   import { ArrowUpRight, Folder, GitBranch, LoaderCircle, RefreshCw, ShieldQuestion } from '@lucide/svelte'
   import { onDestroy } from 'svelte'
   import { Button } from '$lib/components/ui/button'
-  import type { AgentConfig, SessionConfigChange, SessionRecovery, SessionInteractionResponse } from '$lib/generated/feedback'
+  import type { AgentConfig, AgentFailure, SessionConfigChange, SessionRecovery, SessionInteractionResponse } from '$lib/generated/feedback'
   import SessionInputForm from './SessionInputForm.svelte'
   import SessionRecoveryNotice from './SessionRecoveryNotice.svelte'
   import AgentComposer from './composer/AgentComposer.svelte'
   import AgentIcon from './AgentIcon.svelte'
-  import AgentSetupGuide from './AgentSetupGuide.svelte'
+  import AgentFailureNotice from './AgentFailureNotice.svelte'
+  import { agentFailureFrom } from './agentFailure'
+  import { PromptAcknowledgementUnknown, type PromptAcceptance } from './managedSessionController'
   import SessionTranscript from './chat/SessionTranscript.svelte'
   import { chatText } from './chat/chat-text'
   import SessionConfigurationControls from './configuration/SessionConfigurationControls.svelte'
@@ -42,11 +44,16 @@
   export let onRefresh: (() => Promise<void> | void) | undefined = undefined
   export let onRespondInteraction: (requestId: string, response: SessionInteractionResponse) => Promise<void> | void
   export let onOpenRamble: (() => Promise<void> | void) | undefined = undefined
+  export let onConfigureAgent: ((configId: string | undefined, advanced?: boolean) => void) | undefined = undefined
+  export let awaitingAcknowledgement = false
+  export let onCheckAcceptance: (() => Promise<PromptAcceptance>) | undefined = undefined
 
   let activeSessionId = ''
   let prompt = ''
   let pending = new Set<string>()
   let errors: Record<string, string> = {}
+  let failures: Record<string, AgentFailure | undefined> = {}
+  const uncertainSubmissions = new Set<string>()
   $: if (snapshot.session.session_id !== activeSessionId) selectSession(snapshot.session.session_id)
   $: if (activeSessionId) sessionPromptDrafts.write(activeSessionId, prompt)
   $: visibleInteractions = interactionsForSession(snapshot.session.session_id, interactions)
@@ -59,6 +66,10 @@
   $: visibleQueryError = redactAgentMessage(error, envText)
   $: visibleConnectionError = redactAgentMessage(connectionError || (runtimeConnectionFailed ? snapshot.runtime.last_error : '') || '', envText)
   $: visibleOperationError = redactAgentMessage(errors[snapshot.session.session_id] || (!runtimeConnectionFailed ? snapshot.runtime.last_error : '') || '', envText)
+  $: actionFailure = snapshot.runtime.failure ?? failures[activeSessionId]
+    ?? ((visibleConnectionError || visibleOperationError) ? agentFailureFrom(new Error(visibleConnectionError || visibleOperationError), runtimeConnectionFailed ? 'initialize' : 'prompt', envText) : null)
+  $: latestUserMessage = [...activities].reverse().find(item => item.session_id === activeSessionId && item.kind === 'user_message')
+  $: failedMessage = sessionPromptDrafts.failedMessage(activeSessionId, latestUserMessage, snapshot.runtime.failure?.stage === 'prompt')
   $: cwd = snapshot.session.management.kind === 'managed' ? snapshot.session.management.cwd : ''
   $: interactionPending = interaction ? pending.has(`${activeSessionId}:interaction:${interaction.request_id}`) : false
   $: lifecyclePending = connecting || pending.has(`${activeSessionId}:start`)
@@ -97,6 +108,7 @@
     const operationEnv = envText
     pending = new Set([...pending, key])
     errors = { ...errors, [id]: '' }
+    failures = { ...failures, [id]: undefined }
     try {
       await operation()
       return true
@@ -105,6 +117,8 @@
         : typeof cause === 'object' && cause !== null && 'message' in cause ? String(cause.message)
           : 'Something went wrong'
       errors = { ...errors, [id]: redactAgentMessage(message, operationEnv) }
+      failures = { ...failures, [id]: agentFailureFrom(cause, name === 'configuration' ? 'configuration' : name === 'prompt' ? 'prompt' : 'session', operationEnv) }
+      if (cause instanceof PromptAcknowledgementUnknown) uncertainSubmissions.add(id)
       return false
     } finally {
       const next = new Set(pending)
@@ -114,15 +128,33 @@
   }
 
   async function send(text: string) {
-    if (busy || lifecyclePending || configurationPending || sendPending || !actions.canPrompt || !text.trim()) return
+    if (busy || awaitingAcknowledgement || lifecyclePending || configurationPending || sendPending || !actions.canPrompt || !text.trim()) return
     const id = activeSessionId
     const submission = sessionPromptDrafts.beginSubmission(id, prompt)
     const sendPrompt = onPrompt
     prompt = ''
     if (!await run('prompt', () => sendPrompt(text))) {
+      if (uncertainSubmissions.delete(id)) { sessionPromptDrafts.awaitAcknowledgement(submission); return }
       if (sessionPromptDrafts.restoreSubmission(submission) && activeSessionId === id) {
         prompt = sessionPromptDrafts.read(id)
       }
+    }
+  }
+
+  async function checkAcceptance() {
+    if (!onCheckAcceptance) return
+    const id = activeSessionId
+    await run('acknowledgement', async () => {
+      const result = await onCheckAcceptance!()
+      if (result === 'unknown') throw new PromptAcknowledgementUnknown()
+      if (sessionPromptDrafts.resolveAcknowledgement(id, result === 'accepted') && activeSessionId === id) prompt = sessionPromptDrafts.read(id)
+    }, id)
+  }
+
+  function restoreFailedMessage() {
+    if (sessionPromptDrafts.restoreFailedMessage(activeSessionId)) {
+      prompt = sessionPromptDrafts.read(activeSessionId)
+      failedMessage = undefined
     }
   }
 
@@ -152,28 +184,12 @@
   <SessionRecoveryNotice {snapshot} {recovery} {envText} />
 
   {#if configurationChanged}<p role="status" class="m-0 border-b border-amber-500/25 bg-amber-500/5 px-5 py-2 text-xs leading-5">{tr('This agent is using an earlier configuration. Saved changes apply on its next start.')}</p>{/if}
-  {#if visibleConnectionError}
-    <div class="flex shrink-0 items-center gap-3 border-b border-destructive/25 bg-destructive/5 px-5 py-2 text-xs">
-      <p role="alert" class="m-0 min-w-0 flex-1 break-words text-destructive">{tr(visibleConnectionError)}</p>
-      {#if actions.canStart}<Button variant="outline" size="sm" aria-label={tr('Retry connection')} disabled={busy || lifecyclePending} onclick={() => void run('start', onStart)}><RefreshCw class="size-3.5" />{tr('Retry')}</Button>{/if}
-    </div>
-  {/if}
   {#if visibleQueryError}
     <div class="flex shrink-0 items-center gap-3 border-b border-destructive/25 bg-destructive/5 px-5 py-2 text-xs">
       <p role="alert" class="m-0 min-w-0 flex-1 break-words text-destructive">{tr(visibleQueryError)}</p>
       {#if onRefresh}<Button variant="outline" size="sm" aria-label={tr('Reload session')} disabled={pending.has(`${activeSessionId}:refresh`)} onclick={() => void run('refresh', onRefresh!)}><RefreshCw class="size-3.5" />{tr('Retry')}</Button>{/if}
     </div>
   {/if}
-  {#if visibleOperationError && visibleOperationError !== visibleQueryError && visibleOperationError !== visibleConnectionError}
-    <p role="alert" class="m-0 shrink-0 break-words border-b border-destructive/25 bg-destructive/5 px-5 py-3 text-xs text-destructive">{tr(visibleOperationError)}</p>
-  {/if}
-  {#if !snapshot.deleting && (visibleConnectionError || visibleOperationError)}
-    <details class="max-h-64 shrink-0 overflow-y-auto border-b px-5 py-3 text-xs">
-      <summary class="cursor-pointer text-muted-foreground">{tr('Agent setup instructions')}</summary>
-      <div class="mt-3"><AgentSetupGuide catalogId={config?.catalog_id} hostId={snapshot.session.host_id} name={config?.name} {config} compact /></div>
-    </details>
-  {/if}
-
   <SessionTranscript sessionId={snapshot.session.session_id} {activities} {runActive}
     {historyLoading} {historyHasMore} {historyError} {onLoadOlder} {envText} />
 
@@ -210,10 +226,22 @@
 
   <div class="shrink-0 px-5 pb-3 pt-2">
     <div class="mx-auto w-full max-w-4xl space-y-2" data-agent-composer>
+    {#if awaitingAcknowledgement}
+      <div class="space-y-2 rounded-lg border border-amber-500/25 bg-amber-500/5 p-3 text-xs">
+        <p role="alert" class="m-0">{tr('Message acceptance is unknown. Check the result before sending again.')}</p>
+        {#if onCheckAcceptance}<Button size="sm" variant="outline" disabled={pending.has(activeSessionId + ':acknowledgement')} onclick={() => void checkAcceptance()}>{tr('Check message acceptance')}</Button>{/if}
+      </div>
+    {:else if actionFailure && !snapshot.deleting}
+      <AgentFailureNotice failure={actionFailure} {config} hostId={snapshot.session.host_id} catalogId={config?.catalog_id}
+        onConfigure={onConfigureAgent ? () => onConfigureAgent?.(config?.id, true) : undefined}
+        onRetry={actions.canStart ? async () => { await run('start', onStart) } : undefined}
+        retryLabel={actionFailure.stage === 'session' ? 'Retry preparing this session' : 'Retry connection'} busy={busy || lifecyclePending} />
+    {/if}
+    {#if failedMessage && !prompt.trim() && !awaitingAcknowledgement && !snapshot.deleting}<Button size="sm" variant="ghost" disabled={busy || lifecyclePending || sendPending} onclick={restoreFailedMessage}>{tr('Restore failed message to input')}</Button>{/if}
     {#key snapshot.session.session_id}
       <AgentComposer value={prompt} draftKey={snapshot.session.session_id}
         onchange={editPrompt} onsubmit={send}
-        disabled={composerState.disabled} busy={composerState.busy} sendDisabled={composerState.sendDisabled}
+        disabled={composerState.disabled} busy={composerState.busy} sendDisabled={composerState.sendDisabled || awaitingAcknowledgement}
         oncancel={composerState.canCancel ? async () => { await run('cancel', onCancel) } : undefined}>
         <svelte:fragment slot="footer">
           <span class="flex min-w-0 max-w-40 items-center gap-1.5 px-1 text-[10px] text-muted-foreground" title={config?.name ?? snapshot.session.host_id}><AgentIcon hostId={snapshot.session.host_id} class="size-3.5" /><span class="truncate">{config?.name ?? snapshot.session.host_id}</span></span>

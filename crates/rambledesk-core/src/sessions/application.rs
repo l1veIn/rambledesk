@@ -195,32 +195,7 @@ impl SessionApplication {
             .repository
             .get_agent_config(&input.agent_config_id)
             .await?;
-        let result = self.driver.check(&config).await;
-        Ok(match result {
-            Ok(caps) => AgentConnectionCheck {
-                ok: caps.feedback_transport.is_some(),
-                message: if caps.feedback_transport.is_some() {
-                    "ACP connection and required feedback capability checks passed"
-                } else {
-                    "ACP connected, but no managed feedback transport is configured for this Agent"
-                }
-                .into(),
-                details: vec![format!(
-                    "Load: {}; resume: {}; HTTP MCP: {}; managed feedback: {}",
-                    caps.load_session,
-                    caps.resume_session,
-                    caps.http_mcp,
-                    caps.feedback_transport
-                        .map(|transport| transport.as_str())
-                        .unwrap_or("unavailable")
-                )],
-            },
-            Err(error) => AgentConnectionCheck {
-                ok: false,
-                message: error.message,
-                details: vec![],
-            },
-        })
+        Ok(self.driver.check_connection(&config).await)
     }
 
     pub async fn create_session(
@@ -476,6 +451,7 @@ impl SessionApplication {
         live.runtime.instance_id = Some(instance_id.clone());
         live.runtime.context_usage = None;
         live.runtime.last_error = None;
+        live.runtime.failure = None;
         drop(live);
         self.session_changed(&input.session_id);
         let version = config.updated_at.clone();
@@ -529,12 +505,14 @@ impl SessionApplication {
                     configuration: started.connection.configuration(),
                     context_usage: live.runtime.context_usage.clone(),
                     last_error: None,
+                    failure: None,
                 };
                 live.connection = Some(started.connection);
             }
             Err(error) => {
                 live.runtime.connection = SessionConnectionState::Failed;
                 live.runtime.last_error = Some(error.to_string());
+                live.runtime.failure = error.agent_failure(AgentFailureStage::Launch);
                 drop(live);
                 if let Some(provider) = &self.feedback {
                     let _ = provider.revoke(&input.session_id).await;

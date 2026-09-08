@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { APPLICATION_EVENTS_STREAM } from '$lib/application/applicationEvents'
 import { TestApplicationTransport } from '$lib/application/testApplicationTransport'
 import type { ManagedSessionSnapshot } from '$lib/generated/feedback'
-import { createManagedSessionController } from './managedSessionController'
+import { createManagedSessionController, PromptAcknowledgementUnknown } from './managedSessionController'
 import { configureClientDiagnostics, type ClientDiagnosticEvent } from '$lib/diagnostics/clientDiagnostics'
 
 let stopDiagnostics: (() => void) | undefined
@@ -37,13 +37,79 @@ function historySnapshot(sequences: number[], text = 'old'): ManagedSessionSnaps
 }
 
 describe('managed session diagnostics', () => {
+  it('never rejects an in-flight send from an earlier empty read or lets its late completion release a newer send', async () => {
+    const firstReply = deferred<ManagedSessionSnapshot>()
+    const secondReply = deferred<ManagedSessionSnapshot>()
+    const empty = snapshot('send-race')
+    const accepted = snapshot('send-race', 'First task')
+    accepted.activities[0].kind = 'user_message'
+    const transport = new TestApplicationTransport(undefined, { initiallyReady: true })
+      .resolve('getManagedSession', empty).handle('sendManagedPrompt', () => firstReply.promise)
+    const first = createManagedSessionController(transport, 'send-race')
+    first.start(); await flush()
+    const firstSend = first.prompt('First task')
+    first.dispose()
+    const second = createManagedSessionController(transport, 'send-race')
+    second.start(); await flush()
+    expect(await second.checkPromptAcceptance()).toBe('unknown')
+    await expect(second.prompt('Duplicate task')).rejects.toBeInstanceOf(PromptAcknowledgementUnknown)
+    transport.resolve('getManagedSession', accepted)
+    expect(await second.checkPromptAcceptance()).toBe('accepted')
+    await flush()
+    transport.handle('sendManagedPrompt', () => secondReply.promise)
+    const secondSend = second.prompt('Second task')
+    firstReply.resolve(accepted); await firstSend
+    expect(await second.checkPromptAcceptance()).toBe('unknown')
+    await expect(second.prompt('Duplicate second task')).rejects.toBeInstanceOf(PromptAcknowledgementUnknown)
+    expect(transport.callsFor('sendManagedPrompt')).toHaveLength(2)
+    secondReply.resolve(accepted); await secondSend
+    second.dispose()
+  })
+  it('recognizes a durable user message after a lost prompt acknowledgement without replaying it', async () => {
+    const before = snapshot('lost-ack')
+    const accepted = snapshot('lost-ack', 'Task')
+    accepted.activities[0].kind = 'user_message'
+    const transport = new TestApplicationTransport(undefined, { initiallyReady: true }).resolve('getManagedSession', before)
+      .handle('sendManagedPrompt', () => { transport.resolve('getManagedSession', accepted); throw new Error('Response lost') })
+    const controller = createManagedSessionController(transport, 'lost-ack')
+    controller.start(); await flush()
+    await controller.prompt('Task')
+    expect(transport.callsFor('sendManagedPrompt')).toHaveLength(1)
+    expect(get(controller).awaitingAcknowledgement).toBe(false)
+    controller.dispose()
+  })
+
+  it('blocks resending an uncertain prompt across view remounts until an explicit acceptance check', async () => {
+    const before = snapshot('unknown-ack')
+    const transport = new TestApplicationTransport(undefined, { initiallyReady: true }).resolve('getManagedSession', before)
+      .handle('sendManagedPrompt', () => { transport.reject('getManagedSession', new Error('Read unavailable')); throw new Error('Response lost') })
+    const controller = createManagedSessionController(transport, 'unknown-ack')
+    controller.start(); await flush()
+    await expect(controller.prompt('Task')).rejects.toBeInstanceOf(PromptAcknowledgementUnknown)
+    expect(get(controller).awaitingAcknowledgement).toBe(true)
+    await expect(controller.prompt('Task')).rejects.toBeInstanceOf(PromptAcknowledgementUnknown)
+    controller.dispose()
+    const remounted = createManagedSessionController(transport, 'unknown-ack')
+    remounted.start(); await flush()
+    expect(get(remounted).awaitingAcknowledgement).toBe(true)
+    await expect(remounted.prompt('Task')).rejects.toBeInstanceOf(PromptAcknowledgementUnknown)
+    transport.resolve('getManagedSession', before)
+    expect(await remounted.checkPromptAcceptance()).toBe('unknown')
+    const accepted = snapshot('unknown-ack', 'Task')
+    accepted.activities[0].kind = 'user_message'
+    transport.resolve('getManagedSession', accepted)
+    expect(await remounted.checkPromptAcceptance()).toBe('accepted')
+    expect(get(remounted).awaitingAcknowledgement).toBe(false)
+    expect(transport.callsFor('sendManagedPrompt')).toHaveLength(1)
+    remounted.dispose()
+  })
   it('records mutation outcomes and deletion gates without including prompt, session, or error data', async () => {
     const events = captureDiagnostics()
     const secret = 'private-session-canary'
     const view = snapshot(secret)
     const transport = new TestApplicationTransport(undefined, { initiallyReady: true })
       .resolve('getManagedSession', view)
-      .reject('sendManagedPrompt', new Error('private-error-canary'))
+      .reject('sendManagedPrompt', Object.assign(new Error('private-error-canary'), { code: 'MANAGED_SESSION_BUSY', retryable: false }))
       .resolve('cancelManagedPrompt', view)
     const controller = createManagedSessionController(transport, secret)
     controller.start(); await flush()
@@ -354,7 +420,7 @@ describe('managed workspace transport integration', () => {
     for (const name of ['cancelManagedPrompt'] as const) {
       expect(transport.callsFor(name).map((call) => call.input)).toEqual([{ session_id: 'one' }])
     }
-    transport.reject('sendManagedPrompt', new Error('Connection ended'))
+    transport.reject('sendManagedPrompt', Object.assign(new Error('Connection ended'), { code: 'MANAGED_SESSION_NOT_CONNECTED', retryable: false }))
     await expect(controller.prompt('Keep my draft')).rejects.toThrow('Connection ended')
     expect(transport.callsFor('sendManagedPrompt')).toHaveLength(1)
     controller.dispose()
