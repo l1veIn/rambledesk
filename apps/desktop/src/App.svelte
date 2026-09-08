@@ -148,6 +148,7 @@
   import { createCookingController } from './lib/workbench/cookingController'
   import { createDraftController } from './lib/workbench/draftController'
   import { createDraftSession } from './lib/workbench/draftSession'
+  import { createSubmissionController } from './lib/workbench/submissionController'
   import { createWorkspaceSession } from './lib/workbench/workspaceSession'
   import { createPublisherController } from './lib/workbench/publisherController'
   import { buildResumePrompt, shouldShowResumePromptButton } from './lib/workbench/resumePrompt'
@@ -1948,64 +1949,28 @@
   })
   const submitFeedback = publisherController.submitFeedback
 
-  async function approveFeedback() {
-    const workspace = $workspaceSession.workspace
-    if (!workspace || !workspace.request.allow_finish || $workspaceSession.approving) return
-    if (!window.confirm(tr('Approve this final summary and end Pi’s Ramble flow?'))) return
-    if (rambleCanExit) await exitRamble()
-    workspaceSession.beginApprove()
-    pageError = ''
-    try {
-      const input: ApproveFeedbackInput = { request_id: workspace.request.request_id }
-      const result = await applicationTransport.call('approveFeedbackRequest', input)
-      workspaceSession.applyMutationResult(result)
-      toast.success(tr('Approved and finished'))
+  const submissionController = createSubmissionController({
+    transport: applicationTransport,
+    session: workspaceSession,
+    draftSession,
+    publishedFeedbackAction,
+    tr,
+    messageFrom,
+    canCancel: () => canCancel,
+    rambleCanExit: () => rambleCanExit,
+    exitRamble,
+    refreshNavigation: async () => {
       await navigation.refreshNavigation(true)
-    } catch (cause) {
-      pageError = messageFrom(cause)
-    } finally {
-      workspaceSession.endApprove()
-    }
-  }
-
-  async function cancelFeedback() {
-    const workspace = $workspaceSession.workspace
-    if (!workspace || !canCancel) return
-    if (rambleCanExit) await exitRamble()
-
-    workspaceSession.beginCancel()
-    pageError = ''
-    try {
-      const input: CancelFeedbackInput = {
-        request_id: workspace.request.request_id,
-        reason: 'Human cancelled from RambleDesk',
-      }
-      const result = await applicationTransport.call('cancelFeedbackRequest', input)
-      workspaceSession.applyMutationResult(result)
-      draftSession.markSaved()
-      toast.success(tr('Request cancelled'))
-      await navigation.refreshNavigation(true)
-    } catch (cause) {
-      pageError = messageFrom(cause)
-    } finally {
-      workspaceSession.endCancel()
-    }
-  }
-
-  async function openFeedbackPackage() {
-    const workspace = $workspaceSession.workspace
-    if (!feedbackResult || !workspace) return
-    try {
-      await publishedFeedbackAction.run(workspace.request.request_id)
-    } catch (cause) {
-      pageError = tr(
-        publishedFeedbackAction.label === 'Open feedback package'
-          ? 'Could not open Feedback Package: {error}'
-          : 'Could not download published feedback: {error}',
-        { error: messageFrom(cause) },
-      )
-    }
-  }
+    },
+    setPageError: (message) => {
+      pageError = message
+    },
+    notifyApproved: () => toast.success(tr('Approved and finished')),
+    notifyCancelled: () => toast.success(tr('Request cancelled')),
+  })
+  const approveFeedback = submissionController.approveFeedback
+  const cancelFeedback = submissionController.cancelFeedback
+  const openFeedbackPackage = submissionController.openFeedbackPackage
 
   async function exitRamble() {
     await rambleController?.exitRamble()
