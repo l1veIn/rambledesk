@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { get } from 'svelte/store'
-  import { onMount, tick } from 'svelte'
+  import { onMount } from 'svelte'
 
   import { clipboardCaptureLabel } from '../clipboardCapture'
   import type { AttachmentCandidate } from '../capabilities/capturePlugin'
@@ -8,7 +7,6 @@
   import type { ActiveAction, DraftOperation } from '../draftOperations'
   import type { FeedbackWorkspaceView } from '../feedback'
   import { t } from '../i18n'
-  import { playRecordArmSound } from '../notifications'
   import RecordingOverlay from '../RecordingOverlay.svelte'
   import { selectedSpeechGroup, speechReviewCommand, type SpeechOverlayState } from '../speechOverlay'
   import { createSpeechDraftQueue, groupSpeechDrafts, type SpeechTarget } from './speechDraftQueue'
@@ -28,19 +26,12 @@
     speechVadSilenceMs,
     speechVadThreshold,
   } from '../preferences'
+  import { createVoiceRambleSession } from './voiceRambleSession'
   import { matchesShortcut, shortcutSettings } from '../shortcutSettings'
   import {
     type RambleConsoleCommand,
     type RambleConsoleState,
   } from '../rambleConsole'
-  import {
-    eventBelongsToSpeechSession,
-    stableSpeechSegmentId,
-    stableTranscript,
-    voiceStartStillLive,
-    type SpeechRecognitionEvent,
-    type SpeechRecognitionSession,
-  } from '../speech'
   import { createSingleFlight } from '../singleFlight'
   import { resolvedRamblePhase } from './rambleSessionState'
   import type { AttachmentCandidateTarget } from './attachmentController'
@@ -81,9 +72,6 @@
   export let getActiveAction: (requestId: string) => ActiveAction = () => null
   export let onOpenSpeechTarget: (requestId: string, segmentId?: string) => Promise<void> = async () => {}
 
-  let voiceRequestId = ''
-  let voiceSessionId = ''
-  let speechSession: SpeechRecognitionSession | null = null
   let rambleSourceLabel = ''
   let clipboardCaptureCount = 0
   let clipboardImageQueue: Promise<void> = Promise.resolve()
@@ -100,10 +88,44 @@
     onStorageError: () => onPageError(t($locale, 'Pending speech could not be saved on this device. Keep this window open until you review it.')),
   })
   const speechTargets = createSpeechTargetTracker(captureSpeechTarget)
+  const voice = createVoiceRambleSession({
+    speech: capabilities.speech,
+    tr: (source, values) => t($locale, source, values),
+    messageFrom,
+    getInputDevice: () => $speechInputDevice,
+    getModelId: () => $speechModelId,
+    getVadThreshold: () => $speechVadThreshold,
+    getVadSilenceMs: () => $speechVadSilenceMs,
+    getHotwords: () => $speechHotwords,
+    getNotificationVolume: () => $notificationVolume,
+    resolveTarget: (event) => speechTargets.observe(event) ?? captureSpeechTarget(),
+    resetTargets: () => speechTargets.reset(),
+    onStable: (segmentId, transcript, target) =>
+      speechDrafts.enqueue(segmentId, transcript, target, $speechConfirmBeforeWrite, $speechAutoTidy),
+    onRecording: markRambleRecording,
+    onMicrophoneStopped: (message) => {
+      if (ramblePhase !== 'active') return
+      ramblePhase = 'error'
+      rambleMessage = message
+    },
+    onMicrophoneError: (message) => {
+      if (ramblePhase !== 'active') return
+      ramblePhase = 'error'
+      rambleMessage = t($locale, 'Microphone error; Ramble is paused: {error}', { error: message })
+    },
+    waitForDrafts: () => speechDrafts.settled(),
+  })
+
+  // The controller owns the microphone; these mirror it into the bound props.
+  $: voicePhase = $voice.phase
+  $: voiceDevice = $voice.device
+  $: voicePartial = $voice.partial
+  $: voiceLevel = $voice.level
+  $: voiceChunkIndex = $voice.chunkIndex
+  $: voiceModelMissing = $voice.modelMissing
   let receiptTimer: ReturnType<typeof setTimeout> | undefined
   let shownReceiptId = ''
   let nativeOverlayFailed = false
-  let voiceMessage = ''
   let selectedGroupId: string | null = null
   let reviewOpen = false
   let shortcutsMounted = false
@@ -122,7 +144,7 @@
     phase: voicePhase,
     level: voiceLevel,
     partial: voicePartial,
-    error: voicePhase === 'error' ? voiceMessage : '',
+    error: voicePhase === 'error' ? $voice.message : '',
     target: rambleRequestId ? captureSpeechTarget() : null,
     groups: pendingSpeechGroups,
     receipt: $speechDrafts.receipt,
@@ -141,12 +163,12 @@
   }
 
   $: voiceActive =
-    voicePhase === 'starting' ||
-    voicePhase === 'listening' ||
-    voicePhase === 'processing' ||
-    voicePhase === 'stopping'
+    $voice.phase === 'starting' ||
+    $voice.phase === 'listening' ||
+    $voice.phase === 'processing' ||
+    $voice.phase === 'stopping'
   $: voiceCanStop =
-    voiceActive || (voicePhase === 'error' && voiceSessionId.length > 0)
+    voiceActive || ($voice.phase === 'error' && $voice.sessionId.length > 0)
   $: visibleRamblePhase = resolvedRamblePhase(ramblePhase, voicePhase)
   $: rambleActive = visibleRamblePhase === 'active'
   $: rambleEngaged = visibleRamblePhase !== 'idle'
@@ -237,7 +259,7 @@
       consoleReadyUnlisten()
       overlayReadyUnlisten()
       clearTimeout(receiptTimer)
-      void speechSession?.cancel().catch(() => {})
+      void voice.cancel()
     }
   })
 
@@ -276,9 +298,9 @@
       if (voiceCanStop) {
         ramblePhase = 'stopping'
         rambleMessage = t($locale, 'Ending Ramble…')
-        if (!(await stopVoiceRamble())) {
+        if (!(await voice.stop())) {
           ramblePhase = 'error'
-          rambleMessage = voiceMessage
+          rambleMessage = $voice.message
           return
         }
       }
@@ -305,16 +327,7 @@
   }
 
   export function resetVoiceUi() {
-    voicePhase = 'idle'
-    voiceRequestId = ''
-    voiceSessionId = ''
-    speechSession = null
-    voiceDevice = ''
-    voicePartial = ''
-    voiceLevel = 0
-    voiceChunkIndex = 0
-    voiceModelMissing = false
-    speechTargets.reset()
+    voice.reset()
   }
 
   export function hasPendingSpeech(requestId: string) {
@@ -326,8 +339,8 @@
   }
 
   function captureSpeechTarget(): SpeechTarget {
-    const action = getActiveAction(voiceRequestId || rambleRequestId)
-    return { requestId: voiceRequestId || rambleRequestId, requestTitle: rambleRequestTitle,
+    const action = getActiveAction($voice.requestId || rambleRequestId)
+    return { requestId: $voice.requestId || rambleRequestId, requestTitle: rambleRequestTitle,
       action: action ? { ...action } : null }
   }
 
@@ -380,10 +393,10 @@
   async function beginVoiceRamble() {
     ramblePhase = 'starting'
     rambleMessage = t($locale, 'Starting the microphone and live transcription…')
-    const voiceStarted = await startVoiceRamble()
-    if (!voiceStarted || !voiceSessionId) {
+    const voiceStarted = await voice.start(rambleRequestId)
+    if (!voiceStarted || !$voice.sessionId) {
       ramblePhase = 'error'
-      rambleMessage = voiceMessage || t($locale, 'Microphone failed to start')
+      rambleMessage = $voice.message || t($locale, 'Microphone failed to start')
       return
     }
 
@@ -397,8 +410,8 @@
     rambleMessage = t($locale, 'Finishing the final speech segment and pausing…')
     let stopError = ''
     if (voiceCanStop) {
-      const voiceStopped = await stopVoiceRamble()
-      if (!voiceStopped && !stopError) stopError = voiceMessage || t($locale, 'Microphone failed to stop')
+      const voiceStopped = await voice.stop()
+      if (!voiceStopped && !stopError) stopError = $voice.message || t($locale, 'Microphone failed to stop')
     }
     if (stopError) {
       ramblePhase = 'error'
@@ -407,90 +420,6 @@
       ramblePhase = 'paused'
       rambleMessage = t($locale, 'Ramble paused; the document is preserved and capture tools remain available')
     }
-  }
-
-  async function startVoiceRamble(): Promise<boolean> {
-    if (!rambleRequestId || voiceActive || speechSession) return false
-    voicePhase = 'starting'
-    voiceRequestId = rambleRequestId
-    voiceSessionId = ''
-    voiceDevice = ''
-    voicePartial = ''
-    voiceMessage = t($locale, 'Connecting the microphone…')
-    voiceLevel = 0
-    voiceModelMissing = false
-    speechTargets.reset()
-    void playRecordArmSound(get(notificationVolume))
-    try {
-      const session = capabilities.speech.implementation.start(
-        {
-          inputDevice: $speechInputDevice || null,
-          modelId: $speechModelId,
-          vadThreshold: $speechVadThreshold,
-          vadSilenceMs: $speechVadSilenceMs,
-          hotwords: $speechHotwords,
-        },
-        {
-          onEvent: handleVoiceEvent,
-          onError: (cause) => {
-            voicePhase = 'error'
-            voiceMessage = t($locale, 'Cannot listen for speech events: {error}', { error: messageFrom(cause) })
-          },
-        },
-      )
-      speechSession = session
-      voiceSessionId = session.id
-      await session.ready
-      if (!voiceStartStillLive(voicePhase)) {
-        await session.cancel().catch(() => {})
-        if (speechSession === session) speechSession = null
-        voiceSessionId = ''
-        return false
-      }
-      if (voicePhase === 'starting') {
-        voicePhase = 'listening'
-        voiceMessage = t($locale, 'VAD is listening · Transcribes automatically after each spoken segment')
-      }
-    } catch (cause) {
-      speechSession = null
-      voiceSessionId = ''
-      const message = messageFrom(cause)
-      voicePhase = 'error'
-      voiceMessage = message
-      voiceModelMissing = /not installed|尚未安装/.test(message)
-      return false
-    }
-    return true
-  }
-
-  async function stopVoiceRamble(): Promise<boolean> {
-    if (!voiceCanStop) return true
-    const session = speechSession
-    if (!session) {
-      resetVoiceUi()
-      return true
-    }
-    voicePhase = 'stopping'
-    voiceMessage = t($locale, 'Finishing the final transcription segment…')
-    try {
-      await session.stop()
-      for (let attempt = 0; attempt < 5 && voicePhase === 'stopping'; attempt += 1) {
-        await new Promise((resolve) => setTimeout(resolve, 20))
-      }
-      await tick()
-      await speechDrafts.settled()
-      if (voicePhase === 'stopping') {
-        voicePhase = 'idle'
-        voiceMessage = t($locale, 'Recording stopped')
-      }
-    } catch (cause) {
-      voicePhase = 'error'
-      voiceMessage = messageFrom(cause)
-      return false
-    } finally {
-      voiceLevel = 0
-    }
-    return (voicePhase as VoicePhase) !== 'error'
   }
 
   function handleClipboardCaptureResult(
@@ -532,86 +461,6 @@
       })
   }
 
-  function handleVoiceEvent(event: SpeechRecognitionEvent) {
-    const currentRequestId = voiceRequestId
-    if (
-      !currentRequestId ||
-      !eventBelongsToSpeechSession(event, voiceSessionId)
-    ) {
-      return
-    }
-    const speechTarget = speechTargets.observe(event)
-    switch (event.type) {
-      case 'started':
-        voicePhase = 'listening'
-        markRambleRecording()
-        voiceDevice = event.inputDevice
-        voiceMessage = t($locale, 'Recording · {device}', { device: event.inputDevice })
-        break
-      case 'partial':
-        voicePartial = event.text
-        if (voicePhase !== 'stopping') voicePhase = 'listening'
-        markRambleRecording()
-        break
-      case 'level':
-        voiceLevel = Math.min(1, Math.max(0, event.rms * 8))
-        markRambleRecording()
-        break
-      case 'speech-started':
-        if (voicePhase !== 'stopping') voicePhase = 'listening'
-        break
-      case 'processing':
-        voiceChunkIndex = event.segmentIndex + 1
-        if (voicePhase !== 'stopping') voicePhase = 'processing'
-        markRambleRecording()
-        voiceMessage = t($locale, 'Transcribing segment {count}…', { count: event.segmentIndex + 1 })
-        break
-      case 'stable': {
-        const transcript = stableTranscript(event)
-        const target = speechTarget ?? captureSpeechTarget()
-        if (transcript) {
-          speechDrafts.enqueue(stableSpeechSegmentId(event), transcript, target, $speechConfirmBeforeWrite, $speechAutoTidy)
-        }
-        voicePartial = ''
-        voiceChunkIndex = event.segmentIndex + 1
-        if (voicePhase !== 'stopping') voicePhase = 'listening'
-        markRambleRecording()
-        voiceMessage = t($locale, 'Listening…')
-        break
-      }
-      case 'warning':
-        voiceMessage = event.message
-        break
-      case 'stopped':
-        if (event.reason === 'unexpected' || voicePhase === 'error') {
-          if (voicePhase !== 'error') voiceMessage = t($locale, 'The microphone stopped unexpectedly; Ramble is paused')
-          voicePhase = 'error'
-        } else {
-          voicePhase = 'idle'
-          voiceMessage = t($locale, 'Recording stopped')
-        }
-        speechSession = null
-        voiceSessionId = ''
-        voiceLevel = 0
-        voicePartial = ''
-        if (ramblePhase === 'active') {
-          ramblePhase = 'error'
-          rambleMessage = t($locale, 'The microphone stopped unexpectedly; Ramble is paused')
-        }
-        break
-      case 'error':
-        voicePhase = 'error'
-        voiceLevel = 0
-        voicePartial = ''
-        voiceMessage = event.message
-        if (ramblePhase === 'active') {
-          ramblePhase = 'error'
-          rambleMessage = t($locale, 'Microphone error; Ramble is paused: {error}', { error: event.message })
-        }
-        break
-    }
-  }
-
   function markRambleRecording() {
     if (voicePhase === 'stopping' || ramblePhase === 'stopping' || ramblePhase === 'active') return
     ramblePhase = 'active'
@@ -630,7 +479,7 @@
       case 'retry-recording':
         await rambleTransition.run(async () => {
           if (interactionLocked || !rambleRequestId) return
-          if (voiceCanStop) await stopVoiceRamble()
+          if (voiceCanStop) await voice.stop()
           await beginVoiceRamble()
         })
         break

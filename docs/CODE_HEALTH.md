@@ -148,6 +148,10 @@ ramble 启动/恢复/语音录制、剪贴板捕获、控制台命令与状态�
 `lib/workbench/rambleSession.ts` 和 `lib/workbench/voiceCapture.ts`，组件退化为挂载点。
 注意它与 `RambleConsole.svelte` 的状态广播耦合，抽取时要保留现有事件时序。
 
+**已完成**：麦克风会话抽成 `lib/workbench/voiceRambleSession.ts`（288 行，8 个测试）：
+`start`/`stop`/`reset`/`handleEvent` 与 phase、device、partial、level、chunkIndex、modelMissing、
+message 全部由它持有，组件只做事件转发与 store 镜像，705 → 554 行。
+
 ## 三、B 类：数据与注册表文件
 
 ### `i18n.ts`（931 行）— P3
@@ -270,9 +274,9 @@ ramble 启动/恢复/语音录制、剪贴板捕获、控制台命令与状态�
 | 7 | 接入前端行数门禁 + 豁免清单 | 已完成：`scripts/check-frontend-module-size.mjs`（上限 700，9 个只减不增的豁免，`i18n.ts` 白名单），已进 CI 三个 job 与 release validate |
 | 8 | D 类测试文件拆分、观察名单清理 | 已完成：`navigationController.test.ts`（896）拆成 4 个文件、`attachmentController.test.ts`（831）拆成 3 个、`draftManagedSessionController.test.ts`（717）拆成 3 个，各自带共享 harness |
 
-剩余工作按优先级：三个大测试文件按场景拆（阶段 8）→ P2 的 `ScreenshotOverlay.svelte`（1046）、
-`RambleSessionController.svelte`（706）、`ArchivedSessionsWorkspaceView.svelte`（721）。
-前端门禁会阻止这些文件在拆分期间继续变大。
+剩余工作：`ScreenshotOverlay.svelte`（1045）。阶段 8 与 `RambleSessionController.svelte`、
+`ArchivedSessionsWorkspaceView.svelte` 已完成，前端门禁会阻止豁免文件在拆分期间继续变大。
+豁免清单只剩 `App.svelte`（1388）与 `ScreenshotOverlay.svelte`。
 
 ### `App.svelte` 的状态边界（进行中）
 
