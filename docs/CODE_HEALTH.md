@@ -260,7 +260,7 @@ ramble 启动/恢复/语音录制、剪贴板捕获、控制台命令与状态�
 | --- | --- | --- |
 | 1 | 抽 `WorkbenchShell.svelte`（复用 `railResize.ts`） | 已完成（第八节） |
 | 2 | 响应式适配（断点体系、窄屏抽屉、触摸目标）落在新 shell 上 | 已完成（[RESPONSIVE_SHELL.md](RESPONSIVE_SHELL.md)） |
-| 3 | `navigationController.ts` 按资源拆分 | 部分完成：抽出 `navigation/navigationTypes.ts`、`navigationInputs.ts`、`hostSessionFacts.ts`，702 → 552 行；`navigationController.test.ts`（896 行）尚未拆分 |
+| 3 | `navigationController.ts` 按资源拆分 | 部分完成：抽出 `navigation/navigationTypes.ts`、`navigationInputs.ts`、`hostSessionFacts.ts`，702 → 552 行；`navigationController.test.ts`（896 行）已按启动 / 请求列表 / 作用域 / 收件箱拆成 4 个文件 + `navigationControllerTestHarness.ts` |
 | 4 | `SettingsPanel.svelte` 按域拆分 | 已完成：1941 → 623 行，抽出 `settings/` 下 Web Access、Adapters、Voice、Notifications 四个 section |
 | 5 | `httpApplicationTransport.ts` 三刀 + 测试拆分 | 已完成：1116 → `httpApplicationOperations.ts` 402 + `httpApplicationSession.ts` 623 + `httpApplicationTransport.ts` 131；测试拆成投影 / 水位 / 流三个文件 + 共享 harness |
 | 6 | C 类 facade 腾挪 | 已完成：`feedback.rs` 799 → 564（错误码移到 `feedback/error.rs`）、`sqlite.rs` 701 → 581（row mapping 移入已有 `sqlite/row_mapping.rs`）、`diagnostics.rs` 703 → 599（打包移到 `diagnostics/package.rs`） |

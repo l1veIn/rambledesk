@@ -1,6 +1,6 @@
 import tailwindcss from '@tailwindcss/vite'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
-import { defineConfig, type Plugin } from 'vite'
+import { defineConfig, type Plugin } from 'vitest/config'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
@@ -34,6 +34,10 @@ function thirdPartyNotices(): Plugin {
 
 export default defineConfig({
   plugins: [thirdPartyNotices(), tailwindcss(), svelte()],
+  test: {
+    // Production modules read `localStorage` and `navigator` at import time.
+    setupFiles: ['./src/testSetup.ts'],
+  },
   build: {
     // Web Access reads this exact output inventory from the Tauri asset bundle.
     // It is the source of truth for immutable caching and missing-asset rejection.
