@@ -83,12 +83,6 @@
   } from './lib/draftOperations'
   import { writeBackgroundDraftOperation } from './lib/backgroundDraftWriter'
   import {
-    decodeFeedbackDraftDocument,
-    restoreFeedbackDraftDocument,
-    snapshotFeedbackDraftDocument,
-    type FeedbackDraftSnapshot,
-  } from './lib/feedbackDraftDocument'
-  import {
     notificationStateForPermission,
     type NotificationState,
   } from './lib/notifications'
@@ -147,18 +141,13 @@
   } from './lib/workspace/draftOperationRouting'
   import { previewFixtures, previewWorkspaceFor } from './lib/previewFixtures'
   import {
-    restorePublishedAttachmentUrls,
     normalizePublishedFeedback,
-    type PublishedAttachmentPath,
     type PublishedFeedbackView,
   } from './lib/publishedFeedback'
-  import {
-    formatTime,
-    messageFrom,
-    operatorFeedbackBody,
-  } from './lib/workbench/feedbackText'
+  import { formatTime, messageFrom } from './lib/workbench/feedbackText'
   import { createCookingController } from './lib/workbench/cookingController'
   import { createDraftController } from './lib/workbench/draftController'
+  import { createDraftSession } from './lib/workbench/draftSession'
   import { createPublisherController } from './lib/workbench/publisherController'
   import { buildResumePrompt, shouldShowResumePromptButton } from './lib/workbench/resumePrompt'
   import {
@@ -235,15 +224,6 @@
   let workbenchMounted = true
   let completedResult: FeedbackRequestView | null = null
   let publishedFeedback: PublishedFeedbackView | null = null
-  let draftBody = ''
-  let savedBody = ''
-  let draftDocumentJson = ''
-  let savedDocumentJson = ''
-  let editorDocument: JSONContent | null = null
-  let editorEpoch = 0
-  let savedRevision = 0
-  let savePhase: SavePhase = 'idle'
-  let saveMessage = ''
   let pageError = ''
   let loadingWorkspace = false
   let submitting = false
@@ -343,6 +323,7 @@
     return t($locale, source, values)
   }
 
+  const draftSession = createDraftSession()
   const draftController = createDraftController({
     transport: applicationTransport,
     messageFrom,
@@ -351,24 +332,7 @@
     isWorkspaceTerminal: () =>
       workspace?.request.status === 'completed' || workspace?.request.status === 'cancelled',
     getWorkspace: () => workspace,
-    getSnapshot: () => currentDraftSnapshot(),
-    setSnapshot: (snapshot) => applyDraftSnapshot(snapshot),
-    getSavedSnapshot: () => savedDraftSnapshot(),
-    setSavedSnapshot: (snapshot) => {
-      savedDocumentJson = snapshot.documentJson
-      savedBody = snapshot.bodyMarkdown
-    },
-    getSavedRevision: () => savedRevision,
-    setSavedRevision: (revision) => {
-      savedRevision = revision
-    },
-    getPhase: () => savePhase,
-    setPhase: (phase) => {
-      savePhase = phase
-    },
-    setMessage: (message) => {
-      saveMessage = message
-    },
+    session: draftSession,
     setWorkspaceDraft: (draft) => {
       if (workspace) workspace = { ...workspace, draft }
     },
@@ -385,7 +349,7 @@
     getEditor: () => sessionWorkbench,
     getRambleRequestId: () => rambleRequestId,
     getInteractionLocked: () => interactionLocked || currentRequestCooking || cookedDraftReady,
-    getSavedRevision: () => savedRevision,
+    getSavedRevision: () => $draftSession.savedRevision,
     getBusy: () => attachmentBusy,
     getCaptureBusy: () => screenCaptureBusy,
     getPreviews: () => attachmentPreviews,
@@ -490,34 +454,6 @@
     applicationSnapshotRefetch.request([{ kind: 'all' }])
   }
 
-  function currentDraftSnapshot(): FeedbackDraftSnapshot {
-    return { documentJson: draftDocumentJson, bodyMarkdown: draftBody }
-  }
-
-  function savedDraftSnapshot(): FeedbackDraftSnapshot {
-    return { documentJson: savedDocumentJson, bodyMarkdown: savedBody }
-  }
-
-  function applyDraftSnapshot(snapshot: FeedbackDraftSnapshot) {
-    draftDocumentJson = snapshot.documentJson
-    draftBody = snapshot.bodyMarkdown
-    editorDocument = decodeFeedbackDraftDocument(snapshot.documentJson)
-  }
-
-  function adoptDraft(draft: DraftView, options: { loadEditor?: boolean } = {}) {
-    const restored = restoreFeedbackDraftDocument(draft.document_json, draft.body_markdown)
-    const snapshot = snapshotFeedbackDraftDocument(restored)
-    applyDraftSnapshot(snapshot)
-    savedDocumentJson = snapshot.documentJson
-    savedBody = snapshot.bodyMarkdown
-    savedRevision = draft.saved_revision
-    if (options.loadEditor !== false) {
-      editorDocument = restored
-      editorEpoch += 1
-    }
-    return snapshot
-  }
-
   $: railAgentSession = agentSessionForView(
     renderedWorkspaceView?.kind === 'agent-session' ? renderedWorkspaceView : null,
     $navigation.hostSessions,
@@ -526,7 +462,7 @@
     workspace !== null &&
     workspace.request.status !== 'completed' &&
     workspace.request.status !== 'cancelled' &&
-    draftDocumentJson !== savedDocumentJson
+    draftSession.isDirty()
   $: {
     if (!pageError) deliveredPageError = ''
     else if (pageError !== deliveredPageError) {
@@ -535,10 +471,10 @@
     }
   }
   $: {
-    if (!saveMessage) deliveredSaveError = ''
-    else if (saveMessage !== deliveredSaveError) {
-      deliveredSaveError = saveMessage
-      toast.error(tr('Save failed'), { description: saveMessage })
+    if (!$draftSession.message) deliveredSaveError = ''
+    else if ($draftSession.message !== deliveredSaveError) {
+      deliveredSaveError = $draftSession.message
+      toast.error(tr('Save failed'), { description: $draftSession.message })
     }
   }
   $: {
@@ -635,7 +571,7 @@
     workspace !== null &&
     workspace.request.status !== 'completed' &&
     workspace.request.status !== 'cancelled' &&
-    draftBody.trim().length > 0 &&
+    $draftSession.body.trim().length > 0 &&
     !currentRequestCooking &&
     !submitting &&
     !cancelling
@@ -756,9 +692,8 @@
       if (previewMode) {
         if (!initialWorkspaceSnapshot) {
           workspace = previewFixtures.workspace
-          adoptDraft(previewFixtures.workspace.draft)
+          draftSession.adopt(previewFixtures.workspace.draft)
           openLoadedWorkspaceView(previewFixtures.workspace)
-          savePhase = 'saved'
         }
         if (new URLSearchParams(window.location.search).get('dialog') === 'resume') {
           resumePrompt = previewFixtures.resumePrompt
@@ -964,6 +899,7 @@
     workspace = null
     completedResult = null
     publishedFeedback = null
+    draftSession.reset()
     attachmentController.releasePreviews()
   }
 
@@ -1525,9 +1461,7 @@
       completedResult = null
       publishedFeedback = loaded.publishedFeedback
       cookedPreview = null
-      adoptDraft(loaded.workspace.draft)
-      savePhase = loaded.workspace.draft.updated_at ? 'saved' : 'idle'
-      saveMessage = ''
+      draftSession.adopt(loaded.workspace.draft)
       attachmentMessage = ''
       const nextRequestIds = new Map(sessionRequestIds)
       nextRequestIds.set(workspaceViewKey(loadedView!), loaded.workspace.request.request_id)
@@ -1539,9 +1473,7 @@
       completedResult = null
       publishedFeedback = null
       cookedPreview = null
-      adoptDraft(loaded.workspace.draft)
-      savePhase = loaded.workspace.draft.updated_at ? 'saved' : 'idle'
-      saveMessage = ''
+      draftSession.adopt(loaded.workspace.draft)
       attachmentMessage = ''
       if (target.shellAction.type === 'close') {
         const nextRequestIds = new Map(sessionRequestIds)
@@ -1806,7 +1738,7 @@
           throw new Error(tr('The current editor is not ready. Try the action again.'))
         }
         if (!(await saveDraftNow())) {
-          throw new Error(saveMessage || tr('The current draft could not be saved.'))
+          throw new Error($draftSession.message || tr('The current draft could not be saved.'))
         }
         return
       }
@@ -1840,9 +1772,7 @@
         workspace
       ) {
         workspace = { ...workspace, draft: savedDraft }
-        adoptDraft(savedDraft)
-        savePhase = savedDraft.updated_at ? 'saved' : 'idle'
-        saveMessage = ''
+        draftSession.adopt(savedDraft)
       }
     })
     try {
@@ -1946,22 +1876,8 @@
   }
 
   function applyWorkspaceMutation(next: FeedbackWorkspaceView) {
-    const localSnapshot = currentDraftSnapshot()
     workspace = next
-    savedRevision = next.draft.saved_revision
-    const remote = snapshotFeedbackDraftDocument(
-      restoreFeedbackDraftDocument(next.draft.document_json, next.draft.body_markdown),
-    )
-    savedDocumentJson = remote.documentJson
-    savedBody = remote.bodyMarkdown
-    if (localSnapshot.documentJson === remote.documentJson) {
-      applyDraftSnapshot(remote)
-      savePhase = 'saved'
-    } else {
-      applyDraftSnapshot(localSnapshot)
-      savePhase = 'unsaved'
-      draftController.scheduleSave()
-    }
+    if (draftSession.reconcile(next.draft) === 'kept-local') draftController.scheduleSave()
   }
 
   function setCookingRequest(requestId: string, cooking: boolean) {
@@ -1975,7 +1891,7 @@
     tr,
     messageFrom,
     getWorkspace: () => workspace,
-    getDraftBody: () => draftBody,
+    getDraftBody: () => $draftSession.body,
     getCookingConfig: () => ({
       provider: $cookingProvider,
       apiKey: $cookingApiKey,
@@ -2019,8 +1935,8 @@
     setPublishedFeedback: (feedback) => {
       publishedFeedback = feedback
     },
-    setSavePhase: (phase) => {
-      savePhase = phase
+    setSavePhase: () => {
+      draftSession.markSaved()
     },
     setPageError: (message) => {
       pageError = message
@@ -2031,8 +1947,8 @@
     getSpeechStopError: () => voicePhase === 'error' ? rambleMessage : '',
     exitRamble,
     saveDraftNow,
-    getDraftBody: () => draftBody,
-    getSavedRevision: () => savedRevision,
+    getDraftBody: () => $draftSession.body,
+    getSavedRevision: () => $draftSession.savedRevision,
     getCookingEnabled: () => $cookingEnabled,
     getPreview: () => cookedPreview,
     setPreview: (preview) => {
@@ -2107,7 +2023,7 @@
           updated_at: result.updated_at,
         },
       }
-      savePhase = 'saved'
+      draftSession.markSaved()
       toast.success(tr('Request cancelled'))
       await navigation.refreshNavigation(true)
     } catch (cause) {
@@ -2349,7 +2265,7 @@
             transport={applicationTransport}
             {capabilities}
             {workspace}
-            {editorDocument}
+            editorDocument={$draftSession.editorDocument}
             activeActionId={workspace
               ? activeActionByRequest.get(workspace.request.request_id)?.actionId ?? null
               : null}
@@ -2419,16 +2335,16 @@
         {loadingWorkspace}
         {workspace}
         {feedbackResult}
-        {draftBody}
-        {editorDocument}
-        {editorEpoch}
+        draftBody={$draftSession.body}
+        editorDocument={$draftSession.editorDocument}
+        editorEpoch={$draftSession.editorEpoch}
         {tidyConfig}
         tidyAutoThreshold={$tidyAutoThreshold}
         activeActionId={workspace
           ? activeActionByRequest.get(workspace.request.request_id)?.actionId ?? null
           : null}
-        {savedRevision}
-        {savePhase}
+        savedRevision={$draftSession.savedRevision}
+        savePhase={$draftSession.phase}
         {attachmentPreviews}
         {dragActive}
         rambelleStatusPortrait={rambleBelongsToWorkspace
