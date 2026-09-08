@@ -265,7 +265,7 @@ ramble 启动/恢复/语音录制、剪贴板捕获、控制台命令与状态�
 | 5 | `httpApplicationTransport.ts` 三刀 + 测试拆分 | 已完成：1116 → `httpApplicationOperations.ts` 402 + `httpApplicationSession.ts` 623 + `httpApplicationTransport.ts` 131；测试拆成投影 / 水位 / 流三个文件 + 共享 harness |
 | 6 | C 类 facade 腾挪 | 已完成：`feedback.rs` 799 → 564（错误码移到 `feedback/error.rs`）、`sqlite.rs` 701 → 581（row mapping 移入已有 `sqlite/row_mapping.rs`）、`diagnostics.rs` 703 → 599（打包移到 `diagnostics/package.rs`） |
 | 7 | 接入前端行数门禁 + 豁免清单 | 已完成：`scripts/check-frontend-module-size.mjs`（上限 700，9 个只减不增的豁免，`i18n.ts` 白名单），已进 CI 三个 job 与 release validate |
-| 8 | D 类测试文件拆分、观察名单清理 | 未完成：`navigationController.test.ts` 896、`attachmentController.test.ts` 831、`draftManagedSessionController.test.ts` 717 仍在豁免清单里 |
+| 8 | D 类测试文件拆分、观察名单清理 | 进行中：`navigationController.test.ts`（896）已拆成 4 个文件 + 共享 harness；`attachmentController.test.ts`（831）已拆成 3 个文件 + 共享 harness；`draftManagedSessionController.test.ts`（717）待拆 |
 
 剩余工作按优先级：三个大测试文件按场景拆（阶段 8）→ P2 的 `ScreenshotOverlay.svelte`（1046）、
 `RambleSessionController.svelte`（706）、`ArchivedSessionsWorkspaceView.svelte`（721）。
