@@ -273,7 +273,7 @@ ramble 启动/恢复/语音录制、剪贴板捕获、控制台命令与状态�
 
 ### `App.svelte` 的状态边界（进行中）
 
-`App.svelte` 从 2525 行降到 2039 行，共享状态已经全部有主：
+`App.svelte` 从 2525 行降到 1463 行，共享状态已经全部有主：
 
 | 模块 | 拥有 | 测试 |
 | --- | --- | --- |
@@ -284,26 +284,19 @@ ramble 启动/恢复/语音录制、剪贴板捕获、控制台命令与状态�
 | `lib/workbench/rambleSession.ts` | Ramble 与语音实时状态 | 4 |
 | `lib/workbench/submissionController.ts` | 批准 / 取消 / 打开反馈包 | 5 |
 | `lib/workbench/startupController.ts` | 启动阶段、挂载标志、失败面、会话视图恢复解析 | 6 |
+| `lib/workbench/workspaceNavigationController.ts` | 视图切换、请求加载/提交、作用域保存/恢复 | 6 |
+| `lib/workbench/managedSessionActions.ts` | 托管会话动作、草稿控制器缓存、删除/归档在途集合 | 6 |
+| `lib/workbench/draftOperationsController.ts` | 文档写入串行队列、前台/后台路由、动作组选中 | 7 |
 
 判据：**服务器事实不复制、跨组件共享才进 store、按领域切不按字段切**。App 只保留装配、
 模板 snippet、组件句柄（`sessionWorkbench`、`rambleController`）和纯 UI 局部状态
 （`resumePrompt`、`onboardingOpen`、`taskBriefOpen`、`projectSearch`、settings/archive 选择态、
 `pageError` 及其去重游标）。
 
-剩下的逻辑块（按耦合度排序）：
+剩下的逻辑块：
 
-1. **`lib/workbench/workspaceNavigationController.ts`** —— `activateWorkspaceTab`、`closeWorkspaceTab`、
-   `loadWorkspaceTarget`、`commitWorkspaceTarget`、`activateRequest`、`openRequest`、作用域保存/恢复，
-   约 370 行。注意它与 `createWorkspaceTransition` 互相依赖：先声明
-   `let workspaceNavigation: WorkspaceNavigationController`，transition 的 `loadTarget`/`commitTarget`
-   用闭包调用它，控制器创建后再赋值（`startupController` 已经用过同样的 late-bound 组合）。
-2. **`lib/workbench/managedSessionActions.ts`** —— `openAgentSession`、`openNewManagedSession`、
-   `managedDraftPromoted`、`archiveSessionFromUi`、`deleteManagedSessionFromUi`，并把
-   `deletingSessionCommands`、`deletingManagedSessionIds`、draft controller 缓存一并收进去。
-3. **`lib/workbench/draftOperationsController.ts`** —— `activeActionFor`、`enqueueDocumentTask`、
-   `routeDraftOperation`、`selectAction` 与 `activeActionByRequest`。
-4. **cooking** —— `cookingRequestIds`、`cookedPreview` 收进 `cookingSession`。
-5. **shell 布局偏好** —— `hostRailPreference`、`requestRailPreference`、`phoneHostRailOpen`、
+1. **cooking** —— `cookingRequestIds`、`cookedPreview` 收进 `cookingSession`。
+2. **shell 布局偏好** —— `hostRailPreference`、`requestRailPreference`、`phoneHostRailOpen`、
    `phoneRequestRailOpen`、`shellMode` 收进 `shellLayoutSession`，让 `WorkbenchShell` 直接订阅。
 
 全部完成后 `App.svelte` 应只剩 props、store/控制器装配、模板与 snippet。

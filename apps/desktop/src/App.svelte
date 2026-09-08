@@ -72,11 +72,6 @@
   } from './lib/feedback'
   import type { HostSessionSummary, ManagedSessionSnapshot } from './lib/generated/feedback'
   import {
-    type ActiveAction,
-    type DraftOperation,
-  } from './lib/draftOperations'
-  import { writeBackgroundDraftOperation } from './lib/backgroundDraftWriter'
-  import {
     notificationStateForPermission,
     type NotificationState,
   } from './lib/notifications'
@@ -111,6 +106,7 @@
   import { formatTime, messageFrom } from './lib/workbench/feedbackText'
   import { createCookingController } from './lib/workbench/cookingController'
   import { createDraftController } from './lib/workbench/draftController'
+  import { createDraftOperationsController } from './lib/workbench/draftOperationsController'
   import { createDraftSession } from './lib/workbench/draftSession'
   import { createSubmissionController } from './lib/workbench/submissionController'
   import { createAttachmentSession } from './lib/workbench/attachmentSession'
@@ -226,7 +222,6 @@
   let hostRailDisplayWidth = 0
   let navigationResizing = false
   let projectSearch = ''
-  let rambleDocumentQueue: Promise<void> = Promise.resolve()
   $: tidyConfig = {
     provider: $tidyProvider,
     apiKey: $tidyApiKey,
@@ -236,7 +231,6 @@
     locale: $locale,
     systemPrompt: $tidySystemPrompt,
   }
-  let activeActionByRequest = new Map<string, NonNullable<ActiveAction>>()
   let inboxTimer: ReturnType<typeof setInterval> | undefined
 
   function tr(source: string, values: Record<string, string | number> = {}) {
@@ -257,6 +251,34 @@
   const updateDraft = draftController.updateDraft
   const saveDraftNow = draftController.saveDraftNow
 
+  const draftOperations = createDraftOperationsController({
+    transport: applicationTransport,
+    tr,
+    messageFrom,
+    isPreviewMode: () => previewMode,
+    getActiveView: () => activeWorkspaceView($workspaceShell.shell),
+    getPendingViewKey: () => $workspaceShell.pendingViewKey,
+    getWorkspace: () => $workspaceSession.workspace,
+    getCurrentRequest: () => currentRequest,
+    getEditor: () => sessionWorkbench,
+    isWorkbenchMounted: () => $startup.mounted,
+    isTransitionLocked: () => workspaceTransitionLocked,
+    getDraftMessage: () => $draftSession.message,
+    saveDraftNow,
+    setWorkspaceDraft: (draft) => workspaceSession.setDraft(draft),
+    adoptDraft: (draft) => draftSession.adopt(draft),
+    setPageError: (message) => {
+      pageError = message
+    },
+  })
+  const {
+    routeDraftOperation,
+    activeActionFor,
+    enqueueDocumentTask,
+    waitForDocumentQueue,
+    selectAction,
+  } = draftOperations
+
   const attachmentController = createAttachmentController({
     capabilities,
     transport: applicationTransport,
@@ -269,7 +291,7 @@
     getSavedRevision: () => $draftSession.savedRevision,
     session: attachmentSession,
     saveDraftNow,
-    waitForRambleMarkdown: () => rambleDocumentQueue.catch(() => {}),
+    waitForRambleMarkdown: waitForDocumentQueue,
     routeDraftOperation,
     activeActionFor,
     applyWorkspaceMutation,
@@ -865,111 +887,6 @@
     }
   }
 
-  function activeActionFor(requestId: string): ActiveAction {
-    return activeActionByRequest.get(requestId) ?? null
-  }
-
-  function enqueueDocumentTask<T>(task: () => Promise<T>): Promise<T> {
-    const run = rambleDocumentQueue.then(task)
-    rambleDocumentQueue = run.then(
-      () => undefined,
-      () => undefined,
-    )
-    return run
-  }
-
-  async function routeDraftOperation(requestId: string, operation: DraftOperation): Promise<void> {
-    if (!requestId) return
-    const run = enqueueDocumentTask(async () => {
-      const foregroundWorkspace = $workspaceSession.workspace
-      if (shouldUseForegroundDraftEditor({
-        activeView: activeWorkspaceView($workspaceShell.shell),
-        workbenchMounted: $startup.mounted,
-        editorReady: sessionWorkbench !== undefined,
-        workspaceRequestId: foregroundWorkspace?.request.request_id ?? null,
-        requestId,
-      }) && foregroundWorkspace) {
-        if (
-          foregroundWorkspace.request.status === 'completed' ||
-          foregroundWorkspace.request.status === 'cancelled'
-        ) {
-          throw new Error(tr('This request is closed. The document is read-only.'))
-        }
-        let applied = sessionWorkbench?.applyDraftOperation(operation) ?? false
-        if (!applied) {
-          await tick()
-          applied = sessionWorkbench?.applyDraftOperation(operation) ?? false
-        }
-        if (!applied) {
-          throw new Error(tr('The current editor is not ready. Try the action again.'))
-        }
-        if (!(await saveDraftNow())) {
-          throw new Error($draftSession.message || tr('The current draft could not be saved.'))
-        }
-        return
-      }
-
-      const savedDraft = await writeBackgroundDraftOperation(requestId, operation, {
-        load: async () => {
-          const target = previewMode
-            ? previewWorkspaceFor(requestId)
-            : await readApplicationSnapshot(applicationTransport, 'getFeedbackWorkspace', {
-                request_id: requestId,
-              })
-          if (!target) throw new Error(tr('This feedback request could not be found.'))
-          return target
-        },
-        save: async (input) =>
-          previewMode
-            ? {
-                document_json: input.document_json,
-                body_markdown: input.body_markdown,
-                saved_revision: input.expected_revision + 1,
-                updated_at: new Date().toISOString(),
-              }
-            : applicationTransport.call('saveFeedbackDraft', input),
-      })
-      if (
-        shouldAdoptTaskBackgroundDraft(
-          activeWorkspaceView($workspaceShell.shell),
-          currentRequest?.request_id ?? null,
-          requestId,
-        ) &&
-        $workspaceSession.workspace
-      ) {
-        workspaceSession.setDraft(savedDraft)
-        draftSession.adopt(savedDraft)
-      }
-    })
-    try {
-      await run
-    } catch (cause) {
-      pageError = tr('Failed to write Ramble content: {error}', { error: messageFrom(cause) })
-      throw cause
-    }
-  }
-
-  function selectAction(actionId: string, actionIndex: number, title: string) {
-    const requestId = currentRequest?.request_id
-    if (
-      !requestId ||
-      workspaceTransitionLocked ||
-      $workspaceShell.pendingViewKey !== null ||
-      currentRequest?.status === 'completed' ||
-      currentRequest?.status === 'cancelled'
-    ) return
-    if (activeActionByRequest.get(requestId)?.actionId === actionId) {
-      activeActionByRequest.delete(requestId)
-      activeActionByRequest = new Map(activeActionByRequest)
-      void routeDraftOperation(requestId, { kind: 'clearActionGroup', actionId }).catch(() => {})
-      return
-    }
-    const action = { actionId, actionIndex, title }
-    activeActionByRequest.set(requestId, action)
-    activeActionByRequest = new Map(activeActionByRequest)
-    void routeDraftOperation(requestId, { kind: 'startActionGroup', action }).catch(() => {})
-  }
-
   async function openSettings(section: SettingsSection, agentConfigId?: string, agentAdvanced = false) {
     if ($startup.phase === 'failed') {
       startup.patch({ settingsOpen: true })
@@ -1155,7 +1072,7 @@
   async function exitRamble() {
     await rambleController?.exitRamble()
     await rambleController?.settleSpeechDrafts()
-    await rambleDocumentQueue.catch(() => {})
+    await waitForDocumentQueue()
   }
 
   async function toggleRamble() {
@@ -1372,7 +1289,7 @@
             workspace={$workspaceSession.workspace}
             editorDocument={$draftSession.editorDocument}
             activeActionId={currentRequest
-              ? activeActionByRequest.get(currentRequest.request_id)?.actionId ?? null
+              ? draftOperations.activeActionId(currentRequest.request_id)
               : null}
             actionsDisabled={managedFeedbackReadOnly || workspaceTransitionLocked || $workspaceShell.pendingViewKey !== null}
             onSelectAction={selectAction}
@@ -1446,7 +1363,7 @@
         {tidyConfig}
         tidyAutoThreshold={$tidyAutoThreshold}
         activeActionId={currentRequest
-          ? activeActionByRequest.get(currentRequest.request_id)?.actionId ?? null
+          ? draftOperations.activeActionId(currentRequest.request_id)
           : null}
         savedRevision={$draftSession.savedRevision}
         savePhase={$draftSession.phase}
