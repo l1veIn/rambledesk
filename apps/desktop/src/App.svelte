@@ -137,13 +137,13 @@
   import { createDraftController } from './lib/workbench/draftController'
   import { createDraftSession } from './lib/workbench/draftSession'
   import { createSubmissionController } from './lib/workbench/submissionController'
+  import { createAttachmentSession } from './lib/workbench/attachmentSession'
   import { createWorkspaceSession } from './lib/workbench/workspaceSession'
   import { createWorkspaceShellSession } from './lib/workbench/workspaceShellSession'
   import { createPublisherController } from './lib/workbench/publisherController'
   import { buildResumePrompt, shouldShowResumePromptButton } from './lib/workbench/resumePrompt'
   import {
     createAttachmentController,
-    type AttachmentMessageTone,
   } from './lib/workbench/attachmentController'
   import { createNavigationController } from './lib/workbench/navigationController'
   import { requestFilterCount } from './lib/workbench/requestFilters'
@@ -196,6 +196,7 @@
   const formatTimeLocal = (value: string | null | undefined) =>
     formatTime(value, $locale, tr('Not saved yet'))
   const workspaceSession = createWorkspaceSession()
+  const attachmentSession = createAttachmentSession()
   /** The open request, projected from the session so field reads stay short. */
   $: currentRequest = $workspaceSession.workspace?.request ?? null
   let taskTabTitles: ReadonlyMap<string, string> = new Map()
@@ -214,15 +215,9 @@
   let cookingRequestIds = new Set<string>()
   /** Preview cooking result for the current workspace, if generated and current. */
   let cookedPreview: { markdown: string; original: string; model: string } | null = null
-  let attachmentBusy = false
-  let screenCaptureBusy = false
-  let attachmentMessage = ''
-  let attachmentMessageTone: AttachmentMessageTone = 'info'
   let deliveredAttachmentMessage = ''
   let deliveredPageError = ''
   let deliveredSaveError = ''
-  let attachmentPreviews: Record<string, string> = {}
-  let dragActive = false
   let sessionWorkbench: FeedbackEditorHandle | undefined
   let managedSessionSection: ManagedSessionSection | undefined
   let rambleController: RambleSessionControllerHandle
@@ -322,17 +317,7 @@
     getRambleRequestId: () => rambleRequestId,
     getInteractionLocked: () => interactionLocked || currentRequestCooking || cookedDraftReady,
     getSavedRevision: () => $draftSession.savedRevision,
-    getBusy: () => attachmentBusy,
-    getCaptureBusy: () => screenCaptureBusy,
-    getPreviews: () => attachmentPreviews,
-    setBusy: (busy) => (attachmentBusy = busy),
-    setCaptureBusy: (busy) => (screenCaptureBusy = busy),
-    setMessage: (message, tone) => {
-      if (tone) attachmentMessageTone = tone
-      attachmentMessage = message
-    },
-    setPreviews: (previews) => (attachmentPreviews = previews),
-    setDragActive: (active) => (dragActive = active),
+    session: attachmentSession,
     saveDraftNow,
     waitForRambleMarkdown: () => rambleDocumentQueue.catch(() => {}),
     routeDraftOperation,
@@ -450,13 +435,13 @@
     }
   }
   $: {
-    if (!attachmentMessage) {
+    if (!$attachmentSession.message) {
       deliveredAttachmentMessage = ''
-    } else if (attachmentMessage !== deliveredAttachmentMessage) {
-      deliveredAttachmentMessage = attachmentMessage
-      const options = { description: attachmentMessage }
-      if (attachmentMessageTone === 'success') toast.success(tr('Attachment action completed'), options)
-      else if (attachmentMessageTone === 'info') toast.info(tr('Attachment status'), options)
+    } else if ($attachmentSession.message !== deliveredAttachmentMessage) {
+      deliveredAttachmentMessage = $attachmentSession.message
+      const options = { description: $attachmentSession.message }
+      if ($attachmentSession.tone === 'success') toast.success(tr('Attachment action completed'), options)
+      else if ($attachmentSession.tone === 'info') toast.info(tr('Attachment status'), options)
       else toast.error(tr('Attachment action failed'), options)
     }
   }
@@ -555,8 +540,8 @@
   $: interactionLocked = workspaceSession.interactionLocked()
   $: workspaceTransitionLocked =
     interactionLocked ||
-    attachmentBusy ||
-    screenCaptureBusy ||
+    $attachmentSession.busy ||
+    $attachmentSession.captureBusy ||
     currentRequestCooking ||
     cookedDraftReady
   $: {
@@ -603,7 +588,7 @@
   $: updateInstallBlocked =
     dirty ||
     rambleEngaged ||
-    attachmentBusy ||
+    $attachmentSession.busy ||
     interactionLocked ||
     currentRequestCooking ||
     currentRequest?.status === 'in_progress'
@@ -1401,7 +1386,7 @@
       workspaceSession.open(loaded.workspace, loaded.publishedFeedback)
       cookedPreview = null
       draftSession.adopt(loaded.workspace.draft)
-      attachmentMessage = ''
+      attachmentSession.setMessage('')
       workspaceShell.bindRequest(workspaceViewKey(loadedView!), loaded.workspace.request.request_id)
       if (target.shellAction.type === 'close') workspaceShell.forgetRequest(target.shellAction.viewKey)
     } else if (loaded?.kind === 'request-task') {
@@ -1409,7 +1394,7 @@
       workspaceSession.open(loaded.workspace)
       cookedPreview = null
       draftSession.adopt(loaded.workspace.draft)
-      attachmentMessage = ''
+      attachmentSession.setMessage('')
       if (target.shellAction.type === 'close') workspaceShell.forgetRequest(target.shellAction.viewKey)
     } else {
       clearWorkspace()
@@ -1954,9 +1939,9 @@
     {capabilities}
     {tidyConfig}
     workspace={$workspaceSession.workspace}
-    bind:attachmentBusy
-    {screenCaptureBusy}
-    bind:attachmentMessage
+    bind:attachmentBusy={$attachmentSession.busy}
+    screenCaptureBusy={$attachmentSession.captureBusy}
+    bind:attachmentMessage={$attachmentSession.message}
     bind:voicePhase
     bind:voiceDevice
     bind:voicePartial
@@ -2129,7 +2114,7 @@
               : null}
             actionsDisabled={managedFeedbackReadOnly || workspaceTransitionLocked || $workspaceShell.pendingViewKey !== null}
             onSelectAction={selectAction}
-            previews={attachmentPreviews}
+            previews={$attachmentSession.previews}
             loading={$workspaceSession.loadingWorkspace}
             formatTime={formatTimeLocal}
             {resolveHostProfile}
@@ -2203,8 +2188,8 @@
           : null}
         savedRevision={$draftSession.savedRevision}
         savePhase={$draftSession.phase}
-        {attachmentPreviews}
-        {dragActive}
+        attachmentPreviews={$attachmentSession.previews}
+        dragActive={$attachmentSession.dragActive}
         rambelleStatusPortrait={rambleBelongsToWorkspace
           ? rambelleStatusPortrait
           : feedbackResult
@@ -2221,7 +2206,7 @@
         voiceLevel={rambleBelongsToWorkspace ? voiceLevel : 0}
         voiceModelMissing={rambleBelongsToWorkspace ? voiceModelMissing : false}
         rambleMessage={rambleBelongsToWorkspace ? rambleMessage : ''}
-        attachmentBusy={rambleBelongsToWorkspace ? attachmentBusy : false}
+        attachmentBusy={rambleBelongsToWorkspace ? $attachmentSession.busy : false}
         {canSubmit}
         cooking={currentRequestCooking}
         cookingEnabled={$cookingEnabled}

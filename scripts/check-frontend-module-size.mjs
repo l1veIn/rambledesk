@@ -12,7 +12,7 @@ const EXTENSIONS = new Set(['.svelte', '.ts'])
  * the file fits under `MAX_LINES`.
  */
 const EXEMPTIONS = new Map([
-  ['apps/desktop/src/App.svelte', 2300],
+  ['apps/desktop/src/App.svelte', 2285],
   ['apps/desktop/src/ScreenshotOverlay.svelte', 1046],
   ['apps/desktop/src/lib/workspace/ArchivedSessionsWorkspaceView.svelte', 721],
   ['apps/desktop/src/lib/workbench/RambleSessionController.svelte', 706],

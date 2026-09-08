@@ -14,8 +14,9 @@ import type {
 } from '../feedback'
 import type { ActiveAction } from '../draftOperations'
 import type { FeedbackEditorHandle } from './types'
+import type { AttachmentSession } from './attachmentSession'
 
-export type AttachmentMessageTone = 'info' | 'success' | 'error'
+export type { AttachmentMessageTone } from './attachmentSession'
 
 type AttachmentControllerContext = {
   capabilities: Pick<WorkbenchCapabilities, 'screenCapture' | 'serverPaths' | 'windowControls'>
@@ -27,14 +28,8 @@ type AttachmentControllerContext = {
   getRambleRequestId: () => string
   getInteractionLocked: () => boolean
   getSavedRevision: () => number
-  getBusy: () => boolean
-  getCaptureBusy: () => boolean
-  getPreviews: () => Record<string, string>
-  setBusy: (busy: boolean) => void
-  setCaptureBusy: (busy: boolean) => void
-  setMessage: (message: string, tone?: AttachmentMessageTone) => void
-  setPreviews: (previews: Record<string, string>) => void
-  setDragActive: (active: boolean) => void
+  /** Runtime capture/import state shared with the workbench view. */
+  session: AttachmentSession
   saveDraftNow: () => Promise<boolean>
   waitForRambleMarkdown: () => Promise<void>
   routeDraftOperation: (requestId: string, operation: import('../draftOperations').DraftOperation) => Promise<void>
@@ -80,7 +75,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
       captureReadyUnlisten = screenCapture.implementation.onCandidate(
         (candidate) => void importScreenCapture(candidate),
         (cause) => {
-          context.setMessage(
+          context.session.setMessage(
             context.tr('Cannot receive the capture result: {error}', { error: context.messageFrom(cause) }),
             'error',
           )
@@ -89,8 +84,8 @@ export function createAttachmentController(context: AttachmentControllerContext)
       captureFinishedUnlisten = screenCapture.implementation.onFinished(
         () => {
           screenCaptureTarget = null
-          context.setCaptureBusy(false)
-          context.setMessage('')
+          context.session.setCaptureBusy(false)
+          context.session.setMessage('')
         },
         () => {
           // A failed cancellation listener does not affect capture or attachment storage.
@@ -102,16 +97,16 @@ export function createAttachmentController(context: AttachmentControllerContext)
     if (serverPaths.status.availability !== 'unavailable') {
       dragUnlisten = serverPaths.implementation.onFileDrop(
         (event) => {
-          context.setDragActive(event.type === 'enter' || event.type === 'over')
+          context.session.setDragActive(event.type === 'enter' || event.type === 'over')
           if (event.type === 'drop') {
-            context.setDragActive(false)
+            context.session.setDragActive(false)
             void importServerAttachmentPaths(event.paths)
           } else if (event.type === 'leave') {
-            context.setDragActive(false)
+            context.session.setDragActive(false)
           }
         },
         () => {
-          context.setMessage(
+          context.session.setMessage(
             context.tr('File drop is unavailable in this window. Use the file picker or paste instead.'),
             'error',
           )
@@ -132,7 +127,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
     return candidates.length > 0
       && !candidateImportPending
       && !context.getInteractionLocked()
-      && !context.getBusy()
+      && !context.session.busy()
       && workspace !== null
       && workspace.request.status !== 'completed'
       && workspace.request.status !== 'cancelled'
@@ -165,7 +160,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
       || workspace.request.status === 'completed'
       || workspace.request.status === 'cancelled'
       || candidates.length === 0
-      || context.getBusy()
+      || context.session.busy()
     ) {
       await disposeCandidates(candidates)
       return
@@ -197,7 +192,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
     if (candidates.length === 0) return Promise.resolve(true)
 
     candidatePersistencePending += 1
-    context.setBusy(true)
+    context.session.setBusy(true)
     const run = candidatePersistenceQueue.then(() => persistCandidateBatch(target, candidates))
     candidatePersistenceQueue = run.then(
       () => undefined,
@@ -205,7 +200,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
     )
     return run.finally(() => {
       candidatePersistencePending -= 1
-      if (candidatePersistencePending === 0) context.setBusy(false)
+      if (candidatePersistencePending === 0) context.session.setBusy(false)
     })
   }
 
@@ -214,7 +209,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
     candidates: readonly AttachmentCandidate[],
   ): Promise<boolean> {
     const { requestId, action } = target
-    context.setMessage('')
+    context.session.setMessage('')
     try {
       const visibleTarget = context.getWorkspace()?.request.request_id === requestId
       if (visibleTarget && !(await context.saveDraftNow())) return false
@@ -258,7 +253,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
       }
       return true
     } catch (cause) {
-      context.setMessage(context.messageFrom(cause), 'error')
+      context.session.setMessage(context.messageFrom(cause), 'error')
       const current = context.getWorkspace()
       if (current?.request.request_id === requestId) await refreshPreviews(current)
       return false
@@ -268,19 +263,19 @@ export function createAttachmentController(context: AttachmentControllerContext)
   }
 
   function reportClientFileError(cause: unknown) {
-    context.setMessage(context.messageFrom(cause), 'error')
+    context.session.setMessage(context.messageFrom(cause), 'error')
   }
 
   async function importServerAttachmentPaths(paths: readonly string[]) {
     const workspace = context.getWorkspace()
     const requestId = context.getRambleRequestId() || workspace?.request.request_id || ''
-    if (context.getInteractionLocked() || !requestId || paths.length === 0 || context.getBusy()) return
+    if (context.getInteractionLocked() || !requestId || paths.length === 0 || context.session.busy()) return
     const visibleTarget = workspace?.request.request_id === requestId
     const action = context.activeActionFor(requestId)
     if (visibleTarget && !(await context.saveDraftNow())) return
     await context.waitForRambleMarkdown()
-    context.setBusy(true)
-    context.setMessage('')
+    context.session.setBusy(true)
+    context.session.setMessage('')
     try {
       let next = await context.transport.call('getFeedbackWorkspace', { request_id: requestId })
       if (!next) throw new Error(context.tr('This feedback request could not be found.'))
@@ -309,11 +304,11 @@ export function createAttachmentController(context: AttachmentControllerContext)
         })
       }
     } catch (cause) {
-      context.setMessage(context.messageFrom(cause), 'error')
+      context.session.setMessage(context.messageFrom(cause), 'error')
       const current = context.getWorkspace()
       if (current?.request.request_id === requestId) await refreshPreviews(current)
     } finally {
-      context.setBusy(false)
+      context.session.setBusy(false)
     }
   }
 
@@ -332,8 +327,8 @@ export function createAttachmentController(context: AttachmentControllerContext)
     if (
       context.getInteractionLocked() ||
       !requestId ||
-      context.getBusy() ||
-      context.getCaptureBusy()
+      context.session.busy() ||
+      context.session.captureBusy()
     ) return
     if (workspace?.request.request_id === requestId && !(await context.saveDraftNow())) return
     await context.waitForRambleMarkdown()
@@ -341,28 +336,28 @@ export function createAttachmentController(context: AttachmentControllerContext)
       requestId,
       action: context.activeActionFor(requestId),
     }
-    context.setCaptureBusy(true)
-    context.setMessage('')
+    context.session.setCaptureBusy(true)
+    context.session.setMessage('')
     try {
       await leaveFullscreenIfNeeded()
       await context.capabilities.screenCapture.implementation.begin()
     } catch (cause) {
       screenCaptureTarget = null
-      context.setCaptureBusy(false)
+      context.session.setCaptureBusy(false)
       const message = context.messageFrom(cause)
       if (message.includes('SCREEN_CAPTURE_PERMISSION_RESTART_REQUIRED')) {
-        context.setMessage(
+        context.session.setMessage(
           context.tr('Permission granted. Restart RambleDesk to enable screen capture.'),
           'info',
         )
         try {
           await context.capabilities.windowControls.implementation.restart()
         } catch (restartCause) {
-          context.setMessage(context.messageFrom(restartCause), 'error')
+          context.session.setMessage(context.messageFrom(restartCause), 'error')
         }
         return
       }
-      context.setMessage(
+      context.session.setMessage(
         message === 'Built-in region capture is currently available only in Windows development builds.'
           ? context.tr(message)
           : message,
@@ -374,36 +369,36 @@ export function createAttachmentController(context: AttachmentControllerContext)
   async function importScreenCapture(candidate: AttachmentCandidate) {
     if (context.getInteractionLocked()) {
       await candidate.dispose().catch(() => {})
-      context.setCaptureBusy(false)
+      context.session.setCaptureBusy(false)
       return
     }
     const target = screenCaptureTarget
     if (!target) {
       await candidate.dispose().catch(() => {})
-      context.setCaptureBusy(false)
+      context.session.setCaptureBusy(false)
       return
     }
-    context.setCaptureBusy(true)
+    context.session.setCaptureBusy(true)
     try {
       const persisted = await persistAttachmentCandidates(target, [candidate])
       if (persisted) {
-        context.setMessage(
+        context.session.setMessage(
           context.tr('Capture inserted at the current document position'),
           'success',
         )
       }
     } finally {
       screenCaptureTarget = null
-      context.setCaptureBusy(false)
+      context.session.setCaptureBusy(false)
     }
   }
 
   async function removeAttachment(attachment: AttachmentView) {
     const workspace = context.getWorkspace()
-    if (context.getInteractionLocked() || !workspace || context.getBusy()) return
+    if (context.getInteractionLocked() || !workspace || context.session.busy()) return
     const requestId = workspace.request.request_id
-    context.setBusy(true)
-    context.setMessage('')
+    context.session.setBusy(true)
+    context.session.setMessage('')
     try {
       context.getEditor()?.removeAttachmentReference(attachment.attachment_id)
       if (!(await context.saveDraftNow())) return
@@ -417,9 +412,9 @@ export function createAttachmentController(context: AttachmentControllerContext)
       context.applyWorkspaceMutation(next)
       await refreshPreviews(next)
     } catch (cause) {
-      context.setMessage(context.messageFrom(cause), 'error')
+      context.session.setMessage(context.messageFrom(cause), 'error')
     } finally {
-      context.setBusy(false)
+      context.session.setBusy(false)
     }
   }
 
@@ -433,18 +428,18 @@ export function createAttachmentController(context: AttachmentControllerContext)
       label: attachment.file_name,
       action,
     }).catch((cause) => {
-      context.setMessage(context.messageFrom(cause), 'error')
+      context.session.setMessage(context.messageFrom(cause), 'error')
     })
   }
 
   async function moveAttachment(index: number, offset: number) {
     const workspace = context.getWorkspace()
-    if (context.getInteractionLocked() || !workspace || context.getBusy()) return
+    if (context.getInteractionLocked() || !workspace || context.session.busy()) return
     const requestId = workspace.request.request_id
     const target = index + offset
     if (target < 0 || target >= workspace.attachments.length) return
-    context.setBusy(true)
-    context.setMessage('')
+    context.session.setBusy(true)
+    context.session.setMessage('')
     try {
       if (!(await context.saveDraftNow())) return
       const attachmentIds = workspace.attachments.map((item) => item.attachment_id)
@@ -459,14 +454,14 @@ export function createAttachmentController(context: AttachmentControllerContext)
       context.applyWorkspaceMutation(next)
       await refreshPreviews(next)
     } catch (cause) {
-      context.setMessage(context.messageFrom(cause), 'error')
+      context.session.setMessage(context.messageFrom(cause), 'error')
     } finally {
-      context.setBusy(false)
+      context.session.setBusy(false)
     }
   }
 
   async function refreshPreviews(next: FeedbackWorkspaceView) {
-    const current = context.getPreviews()
+    const current = context.session.previews()
     const keep = new Set(
       next.attachments
         .filter((attachment) => isImageMediaType(attachment.media_type))
@@ -495,12 +490,12 @@ export function createAttachmentController(context: AttachmentControllerContext)
       for (const url of Object.values(previews)) URL.revokeObjectURL(url)
       return
     }
-    context.setPreviews(previews)
+    context.session.setPreviews(previews)
   }
 
   function releasePreviews() {
-    for (const url of Object.values(context.getPreviews())) URL.revokeObjectURL(url)
-    context.setPreviews({})
+    for (const url of Object.values(context.session.previews())) URL.revokeObjectURL(url)
+    context.session.setPreviews({})
   }
 
   return {

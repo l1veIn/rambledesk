@@ -1,3 +1,4 @@
+import { get } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -11,6 +12,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 import { createAttachmentController } from './attachmentController'
+import { createAttachmentSession } from './attachmentSession'
 import { TestApplicationTransport } from '../application/testApplicationTransport'
 import { defineAttachmentCandidate } from '../capabilities/capturePlugin'
 import { createUnavailableWorkbenchCapabilities } from '../capabilities/unavailableCapabilities'
@@ -61,11 +63,7 @@ function availableCapabilities(): Pick<
 }
 
 function controllerContext() {
-  let captureBusy = false
-  const setBusy = vi.fn()
-  const setCaptureBusy = vi.fn((busy: boolean) => {
-    captureBusy = busy
-  })
+  const session = createAttachmentSession()
   const transport = new TestApplicationTransport(undefined)
     .handle('getFeedbackWorkspace', (input) => mocks.applicationCall('getFeedbackWorkspace', input))
     .handle('addFeedbackAttachment', (input) => mocks.applicationCall('addFeedbackAttachment', input))
@@ -82,14 +80,7 @@ function controllerContext() {
     getRambleRequestId: () => 'request-1',
     getInteractionLocked: () => false,
     getSavedRevision: () => 0,
-    getBusy: () => false,
-    getCaptureBusy: () => captureBusy,
-    getPreviews: () => ({}),
-    setBusy,
-    setCaptureBusy,
-    setMessage: vi.fn(),
-    setPreviews: vi.fn(),
-    setDragActive: vi.fn(),
+    session,
     saveDraftNow: vi.fn(async () => true),
     waitForRambleMarkdown: vi.fn(async () => undefined),
     routeDraftOperation: vi.fn(async () => undefined),
@@ -97,11 +88,7 @@ function controllerContext() {
     applyWorkspaceMutation: vi.fn(),
     recordAttachmentDiagnostic: vi.fn(async () => undefined),
   }
-  return {
-    context,
-    setBusy,
-    setCaptureBusy,
-  }
+  return { context, session }
 }
 
 function screenCandidate() {
@@ -157,7 +144,7 @@ describe('attachmentController screen capture state', () => {
   })
 
   it('never registers a global paste listener', () => {
-    const { context } = controllerContext()
+    const { context, session } = controllerContext()
     const dispose = createAttachmentController(context).mount()
 
     expect(window.addEventListener).not.toHaveBeenCalledWith('paste', expect.any(Function))
@@ -177,7 +164,7 @@ describe('attachmentController screen capture state', () => {
         { attachment_id: 'att-1', file_name: 'notes.txt', media_type: 'text/plain' },
       ],
     }
-    const { context } = controllerContext()
+    const { context, session } = controllerContext()
     context.capabilities = {
       ...context.capabilities,
       screenCapture: unavailableCapabilities.screenCapture,
@@ -211,12 +198,12 @@ describe('attachmentController screen capture state', () => {
     ['locked workspace', 'in_progress', true, false],
     ['busy workspace', 'in_progress', false, true],
   ] as const)('rejects pasted files synchronously for a %s', (_label, status, locked, busy) => {
-    const { context } = controllerContext()
+    const { context, session } = controllerContext()
     context.getWorkspace = () => status === null
       ? null
       : ({ request: { request_id: 'request-1', status }, attachments: [], draft: { saved_revision: 1 } }) as never
     context.getInteractionLocked = () => locked
-    context.getBusy = () => busy
+    context.session.busy = () => busy
     const candidate = fileCandidate({
       fileName: 'screen.png',
       byteLength: 1,
@@ -240,7 +227,7 @@ describe('attachmentController screen capture state', () => {
         { attachment_id: 'att-1', file_name: 'screen.png', media_type: 'application/octet-stream' },
       ],
     }
-    const { context } = controllerContext()
+    const { context, session } = controllerContext()
     context.getWorkspace = () => workspace as never
     mocks.applicationCall.mockImplementation(async (command: string) => {
       if (command === 'getFeedbackWorkspace') return workspace
@@ -289,7 +276,7 @@ describe('attachmentController screen capture state', () => {
         { attachment_id: 'att-1', file_name: 'notes.txt', media_type: 'text/plain' },
       ],
     }
-    const { context } = controllerContext()
+    const { context, session } = controllerContext()
     context.getWorkspace = () => workspace as never
     mocks.applicationCall.mockImplementation(async (command: string) => {
       if (command === 'getFeedbackWorkspace') return workspace
@@ -322,7 +309,7 @@ describe('attachmentController screen capture state', () => {
       attachments: [],
       draft: { saved_revision: 3 },
     }
-    const { context } = controllerContext()
+    const { context, session } = controllerContext()
     context.getWorkspace = () => workspace as never
     context.tr = (source, values) => source.replace('{name}', String(values?.name ?? ''))
     mocks.applicationCall.mockImplementation(async (command: string) => {
@@ -357,26 +344,23 @@ describe('attachmentController screen capture state', () => {
       'addFeedbackAttachment',
       expect.anything(),
     )
-    expect(context.setMessage).toHaveBeenCalledWith(
-      expect.stringContaining('too-large.png exceeds the 20 MiB limit'),
-      'error',
-    )
+    expect(get(session).message).toContain('too-large.png exceeds the 20 MiB limit')
+    expect(get(session).tone).toBe('error')
   })
 
   it('keeps capture busy until the capture finishes and blocks duplicate starts', async () => {
-    const { context, setCaptureBusy } = controllerContext()
+    const { context, session } = controllerContext()
     const controller = createAttachmentController(context)
 
     await controller.startScreenCapture()
     await controller.startScreenCapture()
 
     expect(mocks.beginCapture).toHaveBeenCalledTimes(1)
-    expect(setCaptureBusy).toHaveBeenCalledTimes(1)
-    expect(setCaptureBusy).toHaveBeenLastCalledWith(true)
+    expect(get(session).captureBusy).toBe(true)
   })
 
   it('starts capture before Ramble when the workspace supplies the request id', async () => {
-    const { context } = controllerContext()
+    const { context, session } = controllerContext()
     context.getRambleRequestId = () => ''
     context.getWorkspace = () => ({
       request: { request_id: 'workspace-request' },
@@ -402,7 +386,7 @@ describe('attachmentController screen capture state', () => {
       draft: { saved_revision: 5 },
       attachments: [{ attachment_id: 'att-b', file_name: 'shot.png', media_type: 'image/png' }],
     }
-    const { context } = controllerContext()
+    const { context, session } = controllerContext()
     context.getWorkspace = () => workspace as never
     context.getRambleRequestId = () => 'request-a'
     context.activeActionFor = ((requestId: string) => ({
@@ -457,7 +441,7 @@ describe('attachmentController screen capture state', () => {
         { attachment_id: 'att-2', file_name: 'other.txt', media_type: 'text/plain' },
       ],
     }
-    const { context } = controllerContext()
+    const { context, session } = controllerContext()
     context.getWorkspace = () => workspace as never
     mocks.applicationCall.mockImplementation(async (operation: string) => {
       if (operation === 'getFeedbackWorkspace') return workspace
@@ -487,7 +471,7 @@ describe('attachmentController screen capture state', () => {
   })
 
   it('clears capture busy without changing attachment busy on cancel or pin', async () => {
-    const { context, setBusy, setCaptureBusy } = controllerContext()
+    const { context, session } = controllerContext()
     const controller = createAttachmentController(context)
     const cleanup = controller.mount()
     await vi.waitFor(() => expect(mocks.listeners.has('screen-capture-finished')).toBe(true))
@@ -496,8 +480,8 @@ describe('attachmentController screen capture state', () => {
       candidateId: 'capture-1', outcome: 'cancelled',
     })
 
-    expect(setCaptureBusy).toHaveBeenCalledWith(false)
-    expect(setBusy).not.toHaveBeenCalled()
+    expect(get(session).captureBusy).toBe(false)
+    expect(get(session).busy).toBe(false)
     cleanup()
   })
 
@@ -511,7 +495,7 @@ describe('attachmentController screen capture state', () => {
       ...workspace,
       attachments: [{ attachment_id: 'att-1', file_name: 'shot.png', media_type: 'image/png' }],
     }
-    const { context } = controllerContext()
+    const { context, session } = controllerContext()
     context.getWorkspace = () => workspace as never
     context.getEditor = () => ({ insertAttachments: () => true }) as never
     vi.stubGlobal('URL', {
@@ -532,12 +516,10 @@ describe('attachmentController screen capture state', () => {
     mocks.listeners.get('screen-capture-ready')?.(screenCandidate())
 
     await vi.waitFor(() => {
-      expect(context.setMessage).toHaveBeenCalledWith(
-        'Capture inserted at the current document position',
-        'success',
-      )
+      expect(get(session).message).toBe('Capture inserted at the current document position')
+      expect(get(session).tone).toBe('success')
     })
-    expect(context.setMessage).not.toHaveBeenCalledWith('Inserting capture…', 'info')
+    expect(get(session).message).not.toBe('Inserting capture…')
     cleanup()
   })
 
@@ -553,7 +535,7 @@ describe('attachmentController screen capture state', () => {
       attachments: [{ attachment_id: 'att-1', file_name: 'shot.png', media_type: 'image/png' }],
     }
     let action = { actionId: 'action-a', actionIndex: 0, title: 'First' }
-    const { context } = controllerContext()
+    const { context, session } = controllerContext()
     context.getWorkspace = () => workspace as never
     context.activeActionFor = (() => action) as never
     vi.stubGlobal('URL', {
@@ -607,7 +589,7 @@ describe('attachmentController screen capture state', () => {
       draft: { saved_revision: 2 },
     }
     let visible = target
-    const { context } = controllerContext()
+    const { context, session } = controllerContext()
     context.getWorkspace = () => visible as never
     context.activeActionFor = (() => ({
       actionId: 'action-a',
@@ -652,7 +634,7 @@ describe('attachmentController screen capture state', () => {
       }>,
       draft: { saved_revision: 3 },
     }
-    const { context } = controllerContext()
+    const { context, session } = controllerContext()
     context.getWorkspace = () => current as never
     context.applyWorkspaceMutation = vi.fn((next) => {
       current = next as never
@@ -731,7 +713,7 @@ describe('attachmentController screen capture state', () => {
       attachments: [],
       draft: { saved_revision: 3 },
     }
-    const { context } = controllerContext()
+    const { context, session } = controllerContext()
     context.getWorkspace = () => workspace as never
     mocks.applicationCall.mockImplementation(async (command: string) => {
       if (command === 'getFeedbackWorkspace') return workspace
@@ -771,7 +753,7 @@ describe('attachmentController screen capture state', () => {
     expect(secondRead).not.toHaveBeenCalled()
     expect(firstDispose).toHaveBeenCalledOnce()
     expect(secondDispose).toHaveBeenCalledOnce()
-    expect(context.setMessage).toHaveBeenCalledWith('Error: persistence failed', 'error')
+    expect(get(session).message).toBe('Error: persistence failed')
   })
 
   it.each(['remove', 'reorder'] as const)(
@@ -803,7 +785,7 @@ describe('attachmentController screen capture state', () => {
       let visible = original
       let resolveOperation: ((workspace: typeof result) => void) | undefined
       const operationResult = new Promise<typeof result>((resolve) => (resolveOperation = resolve))
-      const { context } = controllerContext()
+      const { context, session } = controllerContext()
       context.getWorkspace = () => visible as never
       context.getEditor = () => ({ removeAttachmentReference: vi.fn() }) as never
       mocks.applicationCall.mockImplementation(async (command: string) => {
@@ -825,7 +807,7 @@ describe('attachmentController screen capture state', () => {
       await pending
 
       expect(context.applyWorkspaceMutation).not.toHaveBeenCalled()
-      expect(context.setPreviews).not.toHaveBeenCalled()
+      expect(get(session).previews).toEqual({})
     },
   )
 })
