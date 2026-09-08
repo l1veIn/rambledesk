@@ -273,26 +273,40 @@ ramble 启动/恢复/语音录制、剪贴板捕获、控制台命令与状态�
 
 ### `App.svelte` 的状态边界（进行中）
 
-`App.svelte` 的 86 个局部 `let` 里，跨 controller 共享的部分已经按「领域 store + 组合根」拆出：
+`App.svelte` 从 2525 行降到 2039 行，共享状态已经全部有主：
 
-| Store | 拥有 | 状态 |
+| 模块 | 拥有 | 测试 |
 | --- | --- | --- |
-| `lib/workbench/draftSession.ts` | 当前草稿 / 已保存草稿 / save phase / revision / editor 文档 | 完成（7 个测试） |
-| `lib/workbench/workspaceSession.ts` | 打开的请求、终态结果、已发布包、提交/批准/取消标志 | 完成（6 个测试） |
-| `lib/workbench/submissionController.ts` | 批准 / 取消 / 打开反馈包 | 完成（5 个测试） |
+| `lib/workbench/draftSession.ts` | 当前草稿 / 已保存草稿 / save phase / revision / editor 文档 | 7 |
+| `lib/workbench/workspaceSession.ts` | 打开的请求、终态结果、已发布包、提交/批准/取消标志 | 6 |
+| `lib/workbench/workspaceShellSession.ts` | 打开的视图、每个会话视图记住的请求、待激活目标、快照持久化 | 5 |
+| `lib/workbench/attachmentSession.ts` | 采集/导入的忙碌标志、状态行、预览 URL、拖拽态 | 控制器测试 |
+| `lib/workbench/rambleSession.ts` | Ramble 与语音实时状态 | 4 |
+| `lib/workbench/submissionController.ts` | 批准 / 取消 / 打开反馈包 | 5 |
+| `lib/workbench/startupController.ts` | 启动阶段、挂载标志、失败面、会话视图恢复解析 | 6 |
 
-判据是：**服务器事实不复制、跨组件共享才进 store、按领域切不按字段切**。App 只保留装配、
-模板 snippet 和纯 UI 局部状态，`workspace` / `draftBody` 这类共享值统一读 `$workspaceSession.*`
-与 `$draftSession.*`。
+判据：**服务器事实不复制、跨组件共享才进 store、按领域切不按字段切**。App 只保留装配、
+模板 snippet、组件句柄（`sessionWorkbench`、`rambleController`）和纯 UI 局部状态
+（`resumePrompt`、`onboardingOpen`、`taskBriefOpen`、`projectSearch`、settings/archive 选择态、
+`pageError` 及其去重游标）。
 
-下一步（同一模式）：
+剩下的逻辑块（按耦合度排序）：
 
-1. `lib/workbench/workspaceShellSession.ts` —— 打开的工作区视图、`sessionRequestIds`、
-   `pendingWorkspaceViewKey` 与快照持久化（App 里还有 44 处 `workspaceShellState` 直接读写）；
-2. `lib/workbench/startupController.ts` —— `startWorkbench`、`restoreInitialWorkspaceSnapshot`、
-   `refreshSessionViewRecovery`、`applySessionViewResolutions`，依赖上面的 shell session；
-3. `lib/agents/managedSessionActions.ts` —— `openAgentSession`、`openNewManagedSession`、
-   `archiveSessionFromUi`、`deleteManagedSessionFromUi`。
+1. **`lib/workbench/workspaceNavigationController.ts`** —— `activateWorkspaceTab`、`closeWorkspaceTab`、
+   `loadWorkspaceTarget`、`commitWorkspaceTarget`、`activateRequest`、`openRequest`、作用域保存/恢复，
+   约 370 行。注意它与 `createWorkspaceTransition` 互相依赖：先声明
+   `let workspaceNavigation: WorkspaceNavigationController`，transition 的 `loadTarget`/`commitTarget`
+   用闭包调用它，控制器创建后再赋值（`startupController` 已经用过同样的 late-bound 组合）。
+2. **`lib/workbench/managedSessionActions.ts`** —— `openAgentSession`、`openNewManagedSession`、
+   `managedDraftPromoted`、`archiveSessionFromUi`、`deleteManagedSessionFromUi`，并把
+   `deletingSessionCommands`、`deletingManagedSessionIds`、draft controller 缓存一并收进去。
+3. **`lib/workbench/draftOperationsController.ts`** —— `activeActionFor`、`enqueueDocumentTask`、
+   `routeDraftOperation`、`selectAction` 与 `activeActionByRequest`。
+4. **cooking** —— `cookingRequestIds`、`cookedPreview` 收进 `cookingSession`。
+5. **shell 布局偏好** —— `hostRailPreference`、`requestRailPreference`、`phoneHostRailOpen`、
+   `phoneRequestRailOpen`、`shellMode` 收进 `shellLayoutSession`，让 `WorkbenchShell` 直接订阅。
+
+全部完成后 `App.svelte` 应只剩 props、store/控制器装配、模板与 snippet。
 
 ### 为什么不能只靠搬函数
 
