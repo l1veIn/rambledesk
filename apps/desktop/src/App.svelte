@@ -81,21 +81,18 @@
     type NotificationState,
   } from './lib/notifications'
   import {
-    agentSessionViewDescriptor,
     archiveViewDescriptor,
-    inboxViewDescriptor,
     rambelleProfileViewDescriptor,
     requestTaskViewDescriptor,
     sessionViewDescriptor,
     settingsViewDescriptor,
     workspaceViewKey,
-    type AgentSessionViewDescriptor,
     type SessionViewDescriptor,
     type WorkspaceViewDescriptor,
   } from './lib/workspace/viewDescriptors'
-  import { activeWorkspaceView, workspaceShellReducer } from './lib/workspace/workspaceShell'
+  import { activeWorkspaceView } from './lib/workspace/workspaceShell'
   import { updateTaskTabTitles } from './lib/workspace/taskTabTitles'
-  import { agentSessionForView, agentViewForEmptyRamble, agentViewForRequest, arrivingRequestForAgentView } from './lib/workspace/agentViewRouting'
+  import { agentSessionForView, agentViewForEmptyRamble, agentViewForRequest } from './lib/workspace/agentViewRouting'
   import { seedPreviewWorkspaceScenario } from './lib/workspace/previewWorkspaceSnapshot'
   import type { SessionViewResolution } from './lib/workspace/sessionViewRecovery'
   import {
@@ -104,21 +101,13 @@
   } from './lib/workspace/workspaceTabNavigation'
   import WorkspaceTabStrip from './lib/workspace/WorkspaceTabStrip.svelte'
   import { workspaceSurface } from './lib/workspace/workspaceSurface'
-  import {
-    createWorkspaceTransition,
-    type WorkspaceTransitionOutcome,
-    type WorkspaceTransitionTarget,
-  } from './lib/workspace/workspaceTransition'
-  import { leavesSettingsView } from './lib/workspace/workspaceViewLifecycle'
+  import { createWorkspaceTransition } from './lib/workspace/workspaceTransition'
   import {
     shouldAdoptTaskBackgroundDraft,
     shouldUseForegroundDraftEditor,
   } from './lib/workspace/draftOperationRouting'
   import { previewFixtures, previewWorkspaceFor } from './lib/previewFixtures'
-  import {
-    normalizePublishedFeedback,
-    type PublishedFeedbackView,
-  } from './lib/publishedFeedback'
+  import type { PublishedFeedbackView } from './lib/publishedFeedback'
   import { formatTime, messageFrom } from './lib/workbench/feedbackText'
   import { createCookingController } from './lib/workbench/cookingController'
   import { createDraftController } from './lib/workbench/draftController'
@@ -126,6 +115,7 @@
   import { createSubmissionController } from './lib/workbench/submissionController'
   import { createAttachmentSession } from './lib/workbench/attachmentSession'
   import { createManagedSessionActions } from './lib/workbench/managedSessionActions'
+  import { createWorkspaceNavigationController, type WorkspaceNavigationController } from './lib/workbench/workspaceNavigationController'
   import { createStartupController, type StartupController } from './lib/workbench/startupController'
   import { createRambleSession } from './lib/workbench/rambleSession'
   import { createWorkspaceSession } from './lib/workbench/workspaceSession'
@@ -136,7 +126,6 @@
     createAttachmentController,
   } from './lib/workbench/attachmentController'
   import { createNavigationController } from './lib/workbench/navigationController'
-  import { requestFilterCount } from './lib/workbench/requestFilters'
   import { ensureDesktopNavigationPolling } from './lib/workbench/navigationPolling'
   import { resolvedRamblePhase } from './lib/workbench/rambleSessionState'
   import type {
@@ -303,8 +292,9 @@
         workspace: FeedbackWorkspaceView
       }>
 
-  // `startup` is assigned below; these callbacks only run after composition finishes.
+  // These controllers are assigned below; the callbacks only run after composition.
   let startup: StartupController
+  let workspaceNavigation: WorkspaceNavigationController
   const workspaceTransition = createWorkspaceTransition<LoadedWorkspaceTarget>({
     saveCurrent: saveDraftNow,
     unmountCurrent: () => {
@@ -312,8 +302,8 @@
       sessionWorkbench = undefined
       workspaceSession.setLoading(true)
     },
-    loadTarget: loadWorkspaceTarget,
-    commitTarget: commitWorkspaceTarget,
+    loadTarget: (target) => workspaceNavigation.loadWorkspaceTarget(target),
+    commitTarget: (target, loaded) => workspaceNavigation.commitWorkspaceTarget(target, loaded),
     restoreCurrent: () => {
       startup.patch({ mounted: true })
       workspaceSession.setLoading(false)
@@ -337,11 +327,11 @@
     getWorkspaceRequestId: () => workspaceSession.requestId() ?? undefined,
     isDirty: () => dirty,
     saveDraftNow,
-    openRequest,
+    openRequest: (requestId) => workspaceNavigation.openRequest(requestId),
     clearWorkspace,
     onPageError: (message) => (pageError = message),
     canSendOsBanners: () => isMac,
-    onRequestsArrived: (requests) => { void autoOpenArrivingRequest(requests) },
+    onRequestsArrived: (requests) => { void workspaceNavigation.autoOpenArrivingRequest(requests) },
   })
   const resolveHostProfile = navigation.resolveHostProfile
   startup = createStartupController({
@@ -360,8 +350,8 @@
       pageError = message
     },
     clearWorkspace,
-    selectAgentNavigationScope,
-    requestIdForSession,
+    selectAgentNavigationScope: (view) => workspaceNavigation.selectAgentNavigationScope(view),
+    requestIdForSession: (view, requests) => workspaceNavigation.requestIdForSession(view, requests),
     onReady: () => {
       inboxTimer = ensureDesktopNavigationPolling(
         desktopShellAvailable,
@@ -390,10 +380,42 @@
       cookedPreview = preview
     },
     isTransitionLocked: () => workspaceTransitionLocked,
-    selectAgentNavigationScope,
+    selectAgentNavigationScope: (view) => workspaceNavigation.selectAgentNavigationScope(view),
     exitRamble,
     rambleCanExit: () => rambleCanExit,
     openArchivedSessions: (initial) => openArchivedSessions(initial),
+  })
+
+  workspaceNavigation = createWorkspaceNavigationController({
+    navigation,
+    workspaceShell,
+    workspaceSession,
+    draftSession,
+    attachmentSession,
+    startup,
+    managedSessions,
+    transport: applicationTransport,
+    workspaceTransition,
+    previewMode,
+    tr,
+    messageFrom,
+    pageError: () => pageError,
+    setPageError: (message) => {
+      pageError = message
+    },
+    clearWorkspace,
+    refreshNotificationPermission,
+    isTransitionLocked: () => workspaceTransitionLocked,
+    enqueueDocumentTask,
+    canAutoOpenRamble: (sessionId) => managedSessionSection?.canAutoOpenRamble(sessionId) === true,
+    onboardingOpen: () => onboardingOpen,
+    resumePromptOpen: () => resumePrompt !== null,
+    rambleEngaged: () => rambleEngaged,
+    releaseAttachmentPreviews: () => attachmentController.releasePreviews(),
+    refreshAttachmentPreviews: (workspace) => attachmentController.refreshPreviews(workspace),
+    setCookingPreview: (preview) => {
+      cookedPreview = preview
+    },
   })
 
   const applicationSnapshotRefetch = createApplicationSnapshotRefetch({
@@ -629,7 +651,7 @@
         if (!workspaceShell.hasRestoredSnapshot()) {
           workspaceSession.open(previewFixtures.workspace)
           draftSession.adopt(previewFixtures.workspace.draft)
-          openLoadedWorkspaceView(previewFixtures.workspace)
+          workspaceNavigation.openLoadedWorkspaceView(previewFixtures.workspace)
         }
         if (new URLSearchParams(window.location.search).get('dialog') === 'resume') {
           resumePrompt = previewFixtures.resumePrompt
@@ -755,7 +777,7 @@
 
   function restartOnboarding() {
     resetOnboarding()
-    void closeWorkspaceTab(workspaceViewKey(settingsViewDescriptor()))
+    void workspaceNavigation.closeWorkspaceTab(workspaceViewKey(settingsViewDescriptor()))
     onboardingOpen = true
   }
 
@@ -788,22 +810,6 @@
     workspaceSession.close()
     draftSession.reset()
     attachmentController.releasePreviews()
-  }
-
-  function openSessionView(view: SessionViewDescriptor, requestId?: string) {
-    if (requestId) workspaceShell.bindRequest(workspaceViewKey(view), requestId)
-    workspaceShell.dispatch({ type: 'open', view })
-  }
-
-  function reorderWorkspaceTabs(viewKeys: readonly string[]) {
-    workspaceShell.dispatch({ type: 'reorder', viewKeys })
-  }
-
-  function openLoadedWorkspaceView(next: FeedbackWorkspaceView) {
-    openSessionView(
-      sessionViewDescriptor(next.request.host_id, next.request.host_session_id),
-      next.request.request_id,
-    )
   }
 
   async function refetchApplicationSnapshots(
@@ -849,213 +855,6 @@
     if (!intent.isCurrent() || outcome === 'stale') return
   }
 
-  function requestIdForSession(
-    view: SessionViewDescriptor,
-    requests: readonly FeedbackRequestSummary[],
-  ): string | null {
-    const rememberedRequestId = workspaceShell.requestIdFor(view)
-    // List filters may hide an open request; they must not reset its workspace tab.
-    if (rememberedRequestId && (
-      requestFilterCount($navigation.requestFilters) > 0 ||
-      requests.some((request) => request.request_id === rememberedRequestId)
-    )) return rememberedRequestId
-    return requests[0]?.request_id ?? null
-  }
-
-  type NavigationScope = Readonly<{
-    hostId: string | null
-    hostSessionId: string | null
-  }>
-
-  function currentNavigationScope(): NavigationScope {
-    return {
-      hostId: $navigation.selectedHostId,
-      hostSessionId: $navigation.selectedHostSessionId,
-    }
-  }
-
-  async function restoreNavigationScope(
-    scope: NavigationScope,
-    outcome: WorkspaceTransitionOutcome,
-  ) {
-    if (outcome !== 'blocked' && outcome !== 'failed') return
-    await navigation.selectScope(scope.hostId, scope.hostSessionId)
-  }
-
-  async function selectRailScope(hostId: string | null, hostSessionId: string | null) {
-    if (workspaceTransitionLocked) return
-    const priorScope = currentNavigationScope()
-    const intent = workspaceTransition.invalidate()
-    const selection = await navigation.selectScope(hostId, hostSessionId)
-    if (!workspaceTransition.isCurrent(intent) || !selection.selected) return
-    if (workspaceTransitionLocked) { await restoreNavigationScope(priorScope, 'blocked'); return }
-    if (!hostId || !hostSessionId) {
-      const outcome = await workspaceTransition.activate({
-        view: inboxViewDescriptor(),
-        requestId: null,
-        shellAction: { type: 'open' },
-        pendingViewKey: workspaceViewKey(inboxViewDescriptor()),
-      }, intent)
-      await restoreNavigationScope(priorScope, outcome)
-      return
-    }
-    const view = sessionViewDescriptor(hostId, hostSessionId)
-    const viewKey = workspaceViewKey(view)
-    const requestId = requestIdForSession(view, selection.requests)
-    if (requestId) {
-      const outcome = await activateRequest(requestId)
-      await restoreNavigationScope(priorScope, outcome)
-      return
-    }
-    const outcome = await workspaceTransition.activate({
-      view,
-      requestId: null,
-      shellAction: { type: 'open' },
-      pendingViewKey: viewKey,
-    }, intent)
-    await restoreNavigationScope(priorScope, outcome)
-  }
-
-  async function activateWorkspaceTab(viewKey: string) {
-    if (workspaceTransitionLocked || $workspaceShell.shell.activeViewKey === viewKey) return
-    const priorScope = currentNavigationScope()
-    const intent = workspaceTransition.invalidate()
-    const view = $workspaceShell.shell.views.find(
-      (candidate) => workspaceViewKey(candidate) === viewKey,
-    )
-    if (!view) return
-    if (view.kind !== 'session') {
-      if (view.kind === 'inbox') {
-        const selection = await navigation.selectScope(null, null)
-        if (!selection.selected) return
-      }
-      if (view.kind === 'agent-session') {
-        const selection = await selectAgentNavigationScope(view)
-        if (!selection.selected) return
-      }
-      if (!workspaceTransition.isCurrent(intent)) return
-      if (workspaceTransitionLocked) { await restoreNavigationScope(priorScope, 'blocked'); return }
-      const outcome = await workspaceTransition.activate({
-        view,
-        requestId: view.kind === 'request-task' ? view.requestId : null,
-        shellAction: { type: 'open' },
-        pendingViewKey: viewKey,
-      }, intent)
-      if (view.kind === 'inbox' || view.kind === 'agent-session') await restoreNavigationScope(priorScope, outcome)
-      return
-    }
-    const resolution = startup.resolutionFor(viewKey)
-    if (resolution?.kind === 'missing-session') {
-      const outcome = await workspaceTransition.activate({
-        view,
-        requestId: null,
-        shellAction: { type: 'open' },
-        pendingViewKey: viewKey,
-      }, intent)
-      if (outcome === 'activated') await navigation.selectScope(null, null)
-      return
-    }
-
-    const selection = await navigation.selectScope(view.hostId, view.hostSessionId)
-    if (!workspaceTransition.isCurrent(intent) || !selection.selected) return
-    if (workspaceTransitionLocked) {
-      await navigation.selectScope(priorScope.hostId, priorScope.hostSessionId)
-      return
-    }
-    const requestId = requestIdForSession(view, selection.requests)
-    if (requestId) {
-      const outcome = await activateRequest(requestId)
-      await restoreNavigationScope(priorScope, outcome)
-      return
-    }
-    const outcome = await workspaceTransition.activate({
-      view,
-      requestId: null,
-      shellAction: { type: 'open' },
-      pendingViewKey: viewKey,
-    }, intent)
-    await restoreNavigationScope(priorScope, outcome)
-  }
-
-  async function closeWorkspaceTab(viewKey: string) {
-    if (workspaceTransitionLocked || $workspaceShell.pendingViewKey) return
-    const closingView = $workspaceShell.shell.views.find((view) => workspaceViewKey(view) === viewKey)
-    if (closingView?.kind === 'agent-draft') {
-      let closed: Readonly<{ skipped: boolean; promotedSessionId: string | null }>
-      try {
-        closed = await managedSessions.closeDraft(closingView.draftId)
-      } catch (cause) {
-        toast.error(messageFrom(cause))
-        return
-      }
-      if (closed.skipped) return
-      if (closed.promotedSessionId) {
-        viewKey = workspaceViewKey(agentSessionViewDescriptor(closed.promotedSessionId))
-      }
-      // Another tab activation may have started while cleanup awaited the agent.
-      // Its pending target owns the next mount; only remove the closed descriptor.
-      if ($workspaceShell.pendingViewKey) {
-        workspaceShell.dispatch({ type: 'close', viewKey })
-        return
-      }
-    }
-    const closingActive = $workspaceShell.shell.activeViewKey === viewKey
-    if (!closingActive) {
-      workspaceShell.dispatch({ type: 'close', viewKey })
-      workspaceShell.forgetRequest(viewKey)
-      return
-    }
-    const intent = workspaceTransition.invalidate()
-    const priorScope = currentNavigationScope()
-
-    const nextShellState = workspaceShellReducer($workspaceShell.shell, {
-      type: 'close',
-      viewKey,
-    })
-    const fallbackView = activeWorkspaceView(nextShellState)
-    const fallbackResolution = fallbackView?.kind === 'session'
-      ? startup.resolutionFor(workspaceViewKey(fallbackView))
-      : null
-    let fallbackRequestId: string | null = null
-    if (fallbackView?.kind === 'session' && fallbackResolution?.kind !== 'missing-session') {
-      const selection = await navigation.selectScope(
-        fallbackView.hostId,
-        fallbackView.hostSessionId,
-      )
-      if (!workspaceTransition.isCurrent(intent) || !selection.selected) return
-      if (workspaceTransitionLocked) {
-        await navigation.selectScope(priorScope.hostId, priorScope.hostSessionId)
-        return
-      }
-      fallbackRequestId = requestIdForSession(fallbackView, selection.requests)
-    } else if (fallbackView?.kind === 'inbox') {
-      const selection = await navigation.selectScope(null, null)
-      if (!selection.selected) return
-    } else if (fallbackView?.kind === 'request-task') {
-      fallbackRequestId = fallbackView.requestId
-    } else if (fallbackView?.kind === 'agent-session') {
-      const selection = await selectAgentNavigationScope(fallbackView)
-      if (!selection.selected) return
-    }
-
-    if (!workspaceTransition.isCurrent(intent)) return
-    if (workspaceTransitionLocked) { await restoreNavigationScope(priorScope, 'blocked'); return }
-    const outcome = await workspaceTransition.activate({
-      view: fallbackView,
-      requestId: fallbackRequestId,
-      shellAction: { type: 'close', viewKey },
-      pendingViewKey: viewKey,
-    }, intent)
-    if (
-      outcome === 'activated' &&
-      (!fallbackView ||
-        (fallbackView.kind === 'session' && fallbackResolution?.kind === 'missing-session'))
-    ) {
-      await navigation.selectScope(null, null)
-    }
-    await restoreNavigationScope(priorScope, outcome)
-  }
-
   async function refreshNotificationPermission() {
     try {
       const granted = await capabilities.notifications.implementation.permission() === 'granted'
@@ -1064,186 +863,6 @@
     } catch {
       notificationState = 'unavailable'
     }
-  }
-
-  function viewForRequest(requestId: string): SessionViewDescriptor | null {
-    const request = [...$navigation.requests, ...$navigation.pendingRequests].find(
-      (candidate) => candidate.request_id === requestId,
-    )
-    return request
-      ? sessionViewDescriptor(request.host_id, request.host_session_id)
-      : currentRequest?.request_id === requestId
-        ? sessionViewDescriptor(currentRequest.host_id, currentRequest.host_session_id)
-        : null
-  }
-
-  async function loadWorkspaceTarget(
-    target: WorkspaceTransitionTarget,
-  ): Promise<LoadedWorkspaceTarget | null> {
-    if (!target.requestId) return null
-    const requestId = target.requestId
-    return enqueueDocumentTask(async () => {
-      const next = previewMode
-        ? previewWorkspaceFor(requestId)
-        : await readApplicationSnapshot(applicationTransport, 'getFeedbackWorkspace', {
-            request_id: requestId,
-          })
-      if (!next) throw new Error(tr('This feedback request could not be found.'))
-
-      if (target.view?.kind === 'request-task') {
-        if (target.view.requestId !== next.request.request_id) {
-          throw new Error(tr('This feedback request could not be found.'))
-        }
-        return { kind: 'request-task', workspace: next }
-      }
-
-      const loadedView = sessionViewDescriptor(next.request.host_id, next.request.host_session_id)
-      if (
-        target.view?.kind === 'session' &&
-        workspaceViewKey(target.view) !== workspaceViewKey(loadedView)
-      ) {
-        throw new Error(tr('The feedback request no longer belongs to the selected session.'))
-      }
-      if (target.view && target.view.kind !== 'session') {
-        throw new Error(tr('This feedback request could not be found.'))
-      }
-
-      const nextPublishedFeedback =
-        next.request.status === 'completed' && next.feedback
-          ? previewMode
-            ? {
-                markdown: next.draft.body_markdown,
-                uncooked_markdown: next.draft.body_markdown,
-              }
-            : normalizePublishedFeedback(
-                await readApplicationSnapshot(applicationTransport, 'readPublishedFeedback', {
-                  request_id: next.request.request_id,
-                }),
-              )
-          : null
-      return { kind: 'session', workspace: next, publishedFeedback: nextPublishedFeedback }
-    })
-  }
-
-  function commitWorkspaceTarget(
-    target: WorkspaceTransitionTarget,
-    loaded: LoadedWorkspaceTarget | null,
-  ) {
-    const previousActiveView = activeWorkspaceView($workspaceShell.shell)
-    const requestedView = loaded?.kind === 'session'
-      ? sessionViewDescriptor(
-          loaded.workspace.request.host_id,
-          loaded.workspace.request.host_session_id,
-        )
-      : loaded?.kind === 'request-task'
-        ? requestTaskViewDescriptor(loaded.workspace.request.request_id)
-        : target.view
-    const promotedSessionId = requestedView?.kind === 'agent-draft' ? managedSessions.promotedSessionId(requestedView.draftId) : undefined
-    const loadedView = promotedSessionId ? agentSessionViewDescriptor(promotedSessionId) : requestedView
-    if (target.shellAction.type === 'open' && !loadedView) {
-      throw new Error(tr('This feedback request could not be found.'))
-    }
-
-    const nextShellState =
-      target.shellAction.type === 'close'
-        ? workspaceShellReducer($workspaceShell.shell, target.shellAction)
-        : workspaceShellReducer($workspaceShell.shell, { type: 'open', view: loadedView! })
-
-    if (loaded?.kind === 'session') {
-      attachmentController.releasePreviews()
-      workspaceSession.open(loaded.workspace, loaded.publishedFeedback)
-      cookedPreview = null
-      draftSession.adopt(loaded.workspace.draft)
-      attachmentSession.setMessage('')
-      workspaceShell.bindRequest(workspaceViewKey(loadedView!), loaded.workspace.request.request_id)
-      if (target.shellAction.type === 'close') workspaceShell.forgetRequest(target.shellAction.viewKey)
-    } else if (loaded?.kind === 'request-task') {
-      attachmentController.releasePreviews()
-      workspaceSession.open(loaded.workspace)
-      cookedPreview = null
-      draftSession.adopt(loaded.workspace.draft)
-      attachmentSession.setMessage('')
-      if (target.shellAction.type === 'close') workspaceShell.forgetRequest(target.shellAction.viewKey)
-    } else {
-      clearWorkspace()
-      if (target.shellAction.type === 'close') workspaceShell.forgetRequest(target.shellAction.viewKey)
-    }
-
-    workspaceShell.replaceShell(nextShellState)
-    startup.patch({ mounted: true })
-    workspaceSession.setLoading(false)
-    if (leavesSettingsView(previousActiveView, activeWorkspaceView(nextShellState))) {
-      void refreshNotificationPermission()
-    }
-    if (loaded) void attachmentController.refreshPreviews(loaded.workspace)
-  }
-
-  async function autoOpenArrivingRequest(arrivals: readonly FeedbackRequestSummary[]) {
-    const origin = activeWorkspaceView($workspaceShell.shell)
-    if (origin?.kind !== 'agent-session' || $workspaceShell.pendingViewKey) return
-    const intent = workspaceTransition.currentIntent()
-    // Draft promotion can replace the active view in the same update as the first request.
-    await tick()
-    if (!workspaceTransition.isCurrent(intent) || $workspaceShell.pendingViewKey) return
-    const canLeave = () => {
-      const current = activeWorkspaceView($workspaceShell.shell)
-      return current?.kind === 'agent-session' && current.sessionId === origin.sessionId
-        && $startup.phase === 'ready' && !onboardingOpen && !resumePrompt
-        && !workspaceTransitionLocked && !rambleEngaged
-        && managedSessionSection?.canAutoOpenRamble(origin.sessionId) === true
-    }
-    const request = arrivingRequestForAgentView(origin, arrivals, canLeave())
-    if (request) await activateRequest(request.request_id, canLeave)
-  }
-
-  async function activateRequest(
-    requestId: string,
-    canLeaveCurrent: () => boolean = () => true,
-  ): Promise<WorkspaceTransitionOutcome> {
-    if (workspaceTransitionLocked || !canLeaveCurrent()) return 'blocked'
-    const priorScope = currentNavigationScope()
-    const intent = workspaceTransition.invalidate()
-    if (
-      currentRequest?.request_id === requestId &&
-      renderedWorkspaceView?.kind === 'session'
-    ) {
-      openLoadedWorkspaceView($workspaceSession.workspace!)
-      return 'activated'
-    }
-    pageError = ''
-    const view = viewForRequest(requestId)
-    // An exact request can load while its already-selected request list is refreshing.
-    if (view && (view.hostId !== priorScope.hostId || view.hostSessionId !== priorScope.hostSessionId)) {
-      const selection = await navigation.selectScope(view.hostId, view.hostSessionId)
-      if (!workspaceTransition.isCurrent(intent)) return 'stale'
-      if (!selection.selected) return 'failed'
-    }
-    if (workspaceTransitionLocked || !canLeaveCurrent()) { await restoreNavigationScope(priorScope, 'blocked'); return 'blocked' }
-    const outcome = await workspaceTransition.activate({
-      view,
-      requestId,
-      shellAction: { type: 'open' },
-      pendingViewKey: view ? workspaceViewKey(view) : `request:${JSON.stringify(requestId)}`,
-    }, intent, canLeaveCurrent)
-    await restoreNavigationScope(priorScope, outcome)
-    return outcome
-  }
-
-  async function openRequest(requestId: string, _saveCurrent = true): Promise<boolean> {
-    return (await activateRequest(requestId)) === 'activated'
-  }
-
-  async function searchWorkspaceRequests(search: string) {
-    if (workspaceTransitionLocked) return
-    const intent = workspaceTransition.invalidate()
-    await navigation.setRequestSearch(search)
-    if (!workspaceTransition.isCurrent(intent) || workspaceTransitionLocked) return
-    await selectRailScope(null, null)
-  }
-
-  async function selectAgentNavigationScope(view: AgentSessionViewDescriptor) {
-    const session = agentSessionForView(view, $navigation.hostSessions)
-    return navigation.selectScope(session?.host_id ?? null, session?.host_session_id ?? null)
   }
 
   function activeActionFor(requestId: string): ActiveAction {
@@ -1604,7 +1223,7 @@
     onRouteDraftOperation={routeDraftOperation}
     getActiveAction={activeActionFor}
     onOpenSpeechTarget={async (requestId, segmentId) => {
-      if (await openRequest(requestId)) {
+      if (await workspaceNavigation.openRequest(requestId)) {
         await tick()
         if (segmentId) highlightSpeechSegment(document, segmentId, true)
       }
@@ -1627,9 +1246,9 @@
         pendingViewKey={$workspaceShell.pendingViewKey}
         disabled={workspaceTransitionLocked}
         labelForView={workspaceTabLabel}
-        onActivate={(viewKey) => void activateWorkspaceTab(viewKey)}
-        onClose={closeWorkspaceTab}
-        onReorder={reorderWorkspaceTabs}
+        onActivate={(viewKey) => void workspaceNavigation.activateWorkspaceTab(viewKey)}
+        onClose={workspaceNavigation.closeWorkspaceTab}
+        onReorder={workspaceNavigation.reorderWorkspaceTabs}
       />
     {/snippet}
   </AppTitlebar>
@@ -1659,10 +1278,10 @@
         {resolveHostProfile}
         onSelect={(hostId, hostSessionId) => {
           closePhoneDrawers()
-          void selectRailScope(hostId, hostSessionId)
+          void workspaceNavigation.selectRailScope(hostId, hostSessionId)
         }}
         onRequestSearch={(search) => projectSearch = search}
-        onSearchRequests={(search) => void searchWorkspaceRequests(search)}
+        onSearchRequests={(search) => void workspaceNavigation.searchWorkspaceRequests(search)}
         onSetSessionPinned={(session, pinned) => navigation.setHostSessionPinned(session, pinned)}
         onArchiveSession={managedSessions.archiveSessionFromUi}
         onSettings={() => {
@@ -1699,7 +1318,7 @@
         onLoadMore={() => void navigation.loadMoreRequests()}
         onOpenRequest={(requestId) => {
           closePhoneDrawers()
-          void openRequest(requestId)
+          void workspaceNavigation.openRequest(requestId)
         }}
         onFiltersChange={(filters) => void navigation.setRequestFilters(filters)}
         onClearSearch={() => void navigation.setRequestSearch('')}
@@ -1792,7 +1411,7 @@
               onDeletingChange={managedSessions.observeDeletion}
               onConfigureAgent={(configId, advanced) => void openSettings('agents', configId, advanced)}
               onOpenRamble={renderedManagedSession ? async () => {
-                if (renderedManagedSession) await selectRailScope(renderedManagedSession.host_id, renderedManagedSession.host_session_id)
+                if (renderedManagedSession) await workspaceNavigation.selectRailScope(renderedManagedSession.host_id, renderedManagedSession.host_session_id)
               } : undefined}
             />
           {/key}
@@ -1805,7 +1424,7 @@
             label={sessionTabLabel(renderedSessionResolution.session)}
             busy={renderedSessionResolution.reason === 'unresolved' || $workspaceShell.pendingViewKey !== null}
             onRetry={startup.retrySessionViewRecovery}
-            onClose={() => closeWorkspaceTab(workspaceViewKey(renderedSessionResolution!.session))}
+            onClose={() => workspaceNavigation.closeWorkspaceTab(workspaceViewKey(renderedSessionResolution!.session))}
             onOpenArchive={() => void openArchivedSessions(renderedSessionResolution!.session)}
           />
         {:else if $startup.mounted}
