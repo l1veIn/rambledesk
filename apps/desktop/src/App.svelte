@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { diagnosticErrorCategory, startClientDiagnostic } from '$lib/diagnostics/clientDiagnostics'
   import { onMount, tick } from 'svelte'
   import { initializeAppearance } from './lib/appearance/appearanceRuntime'
 
@@ -27,11 +26,7 @@
   import ManagedSessionSection from './lib/agents/ManagedSessionSection.svelte'
   import ManagedFeedbackRequestStatus from './lib/agents/ManagedFeedbackRequestStatus.svelte'
   import DraftManagedSessionWorkspace from './lib/agents/DraftManagedSessionWorkspace.svelte'
-  import { createDraftManagedSessionController, type DraftManagedSessionController } from './lib/agents/draftManagedSessionController'
-  import { createManagedSessionDraftStorage } from './lib/agents/managedSessionDrafts'
-  import { removeArchivedManagedSessionView } from './lib/agents/managedSessionArchive'
   import { agentText } from './lib/agents/agentI18n'
-  import { deleteSessionRecord, removeManagedSessionViews } from './lib/agents/managedSessionDeletion'
   import { Button } from './lib/components/ui/button'
   import type { JSONContent } from '@tiptap/core'
   import {
@@ -86,7 +81,6 @@
     type NotificationState,
   } from './lib/notifications'
   import {
-    agentDraftViewDescriptor,
     agentSessionViewDescriptor,
     archiveViewDescriptor,
     inboxViewDescriptor,
@@ -131,6 +125,7 @@
   import { createDraftSession } from './lib/workbench/draftSession'
   import { createSubmissionController } from './lib/workbench/submissionController'
   import { createAttachmentSession } from './lib/workbench/attachmentSession'
+  import { createManagedSessionActions } from './lib/workbench/managedSessionActions'
   import { createStartupController, type StartupController } from './lib/workbench/startupController'
   import { createRambleSession } from './lib/workbench/rambleSession'
   import { createWorkspaceSession } from './lib/workbench/workspaceSession'
@@ -199,12 +194,6 @@
   let renderedWorkspaceView: WorkspaceViewDescriptor | null = null
   let renderedSessionView: SessionViewDescriptor | null = null
   let renderedSessionResolution: SessionViewResolution | null = null
-  const managedDraftStorage = createManagedSessionDraftStorage(typeof localStorage === 'undefined' ? undefined : localStorage)
-  const managedDraftControllers = new Map<string, DraftManagedSessionController>()
-  const promotedManagedDrafts = new Map<string, string>()
-  const closingManagedDrafts = new Set<string>()
-  let deletingSessionCommands = new Set<string>()
-  let deletingManagedSessionIds = new Set<string>()
   let pageError = ''
   let cookingRequestIds = new Set<string>()
   /** Preview cooking result for the current workspace, if generated and current. */
@@ -383,6 +372,30 @@
     },
   })
 
+  const managedSessions = createManagedSessionActions({
+    transport: applicationTransport,
+    navigation,
+    workspaceShell,
+    workspaceSession,
+    draftSession,
+    workspaceTransition,
+    previewMode,
+    tr,
+    messageFrom,
+    setPageError: (message) => {
+      pageError = message
+    },
+    clearWorkspace,
+    setCookingPreview: (preview) => {
+      cookedPreview = preview
+    },
+    isTransitionLocked: () => workspaceTransitionLocked,
+    selectAgentNavigationScope,
+    exitRamble,
+    rambleCanExit: () => rambleCanExit,
+    openArchivedSessions: (initial) => openArchivedSessions(initial),
+  })
+
   const applicationSnapshotRefetch = createApplicationSnapshotRefetch({
     refetch: refetchApplicationSnapshots,
     reportError: (cause) => {
@@ -443,7 +456,7 @@
   $: renderedSessionResolution = startup.resolutionFor($workspaceShell.shell.activeViewKey)
   $: renderedAgentSessionView = renderedWorkspaceView?.kind === 'agent-session' ? renderedWorkspaceView : null
   $: renderedAgentDraftView = renderedWorkspaceView?.kind === 'agent-draft' ? renderedWorkspaceView : null
-  $: renderedAgentDraftController = renderedAgentDraftView ? managedDraftController(renderedAgentDraftView.draftId) : null
+  $: renderedAgentDraftController = renderedAgentDraftView ? managedSessions.draftController(renderedAgentDraftView.draftId) : null
   $: renderedManagedSession = agentSessionForView(renderedAgentSessionView, $navigation.hostSessions)
   const sessionTabLabel = (view: SessionViewDescriptor) => {
     const session = $navigation.hostSessions.find(
@@ -496,7 +509,7 @@
   )
   $: feedbackManagedSessionId = agentViewForRequest(currentRequest)?.sessionId ?? null
   $: rambleAgentSessionId = feedbackManagedSessionId ?? (currentRequest ? null : agentViewForEmptyRamble(renderedSessionView, $navigation.hostSessions)?.sessionId ?? null)
-  $: managedFeedbackReadOnly = !!feedbackManagedSessionId && (deletingSessionCommands.has(feedbackManagedSessionId) || deletingManagedSessionIds.has(feedbackManagedSessionId))
+  $: managedFeedbackReadOnly = !!feedbackManagedSessionId && ($managedSessions.deletingCommands.has(feedbackManagedSessionId) || $managedSessions.deletingSessions.has(feedbackManagedSessionId))
   $: currentRequestCooking =
     currentRequest !== null && cookingRequestIds.has(currentRequest.request_id)
   $: cookedDraftReady = cookedPreview !== null
@@ -710,8 +723,7 @@
       resumePromptUnlisten()
       if (updateCheckTimer !== undefined) clearTimeout(updateCheckTimer)
       cleanupAttachments()
-      for (const controller of managedDraftControllers.values()) void controller.close().catch(() => {})
-      managedDraftControllers.clear()
+      managedSessions.closeAllDrafts()
     }
   })
 
@@ -719,7 +731,7 @@
     if (!await startup.start()) {
       throw new Error($locale === 'zh-CN' ? '初始化未完成，请检查连接后重试。' : 'Initialization did not finish. Check the connection and retry.')
     }
-    if (!await openNewManagedSession(configId)) {
+    if (!await managedSessions.openNewManagedSession(configId)) {
       throw new Error($locale === 'zh-CN' ? '暂时无法打开新会话，请稍后重试。' : 'Could not open a new session. Please retry.')
     }
   }
@@ -969,16 +981,17 @@
     if (workspaceTransitionLocked || $workspaceShell.pendingViewKey) return
     const closingView = $workspaceShell.shell.views.find((view) => workspaceViewKey(view) === viewKey)
     if (closingView?.kind === 'agent-draft') {
-      if (closingManagedDrafts.has(closingView.draftId)) return
-      closingManagedDrafts.add(closingView.draftId)
+      let closed: Readonly<{ skipped: boolean; promotedSessionId: string | null }>
       try {
-        const promotedSessionId = await managedDraftController(closingView.draftId).close()
-        managedDraftControllers.delete(closingView.draftId)
-        if (promotedSessionId) viewKey = workspaceViewKey(agentSessionViewDescriptor(promotedSessionId))
+        closed = await managedSessions.closeDraft(closingView.draftId)
       } catch (cause) {
         toast.error(messageFrom(cause))
         return
-      } finally { closingManagedDrafts.delete(closingView.draftId) }
+      }
+      if (closed.skipped) return
+      if (closed.promotedSessionId) {
+        viewKey = workspaceViewKey(agentSessionViewDescriptor(closed.promotedSessionId))
+      }
       // Another tab activation may have started while cleanup awaited the agent.
       // Its pending target owns the next mount; only remove the closed descriptor.
       if ($workspaceShell.pendingViewKey) {
@@ -1125,7 +1138,7 @@
       : loaded?.kind === 'request-task'
         ? requestTaskViewDescriptor(loaded.workspace.request.request_id)
         : target.view
-    const promotedSessionId = requestedView?.kind === 'agent-draft' ? promotedManagedDrafts.get(requestedView.draftId) : undefined
+    const promotedSessionId = requestedView?.kind === 'agent-draft' ? managedSessions.promotedSessionId(requestedView.draftId) : undefined
     const loadedView = promotedSessionId ? agentSessionViewDescriptor(promotedSessionId) : requestedView
     if (target.shellAction.type === 'open' && !loadedView) {
       throw new Error(tr('This feedback request could not be found.'))
@@ -1231,131 +1244,6 @@
   async function selectAgentNavigationScope(view: AgentSessionViewDescriptor) {
     const session = agentSessionForView(view, $navigation.hostSessions)
     return navigation.selectScope(session?.host_id ?? null, session?.host_session_id ?? null)
-  }
-
-  async function openAgentSession(sessionId: string) {
-    if (workspaceTransitionLocked) return
-    const view = agentSessionViewDescriptor(sessionId)
-    const priorScope = currentNavigationScope()
-    const intent = workspaceTransition.invalidate()
-    const selection = await selectAgentNavigationScope(view)
-    if (!workspaceTransition.isCurrent(intent) || !selection.selected) return
-    if (workspaceTransitionLocked) { await restoreNavigationScope(priorScope, 'blocked'); return }
-    const outcome = await workspaceTransition.activate({
-      view,
-      requestId: null,
-      shellAction: { type: 'open' },
-      pendingViewKey: workspaceViewKey(view),
-    }, intent)
-    await restoreNavigationScope(priorScope, outcome)
-  }
-
-  async function openNewManagedSession(configId?: string, cwd = ''): Promise<boolean> {
-    const finish = startClientDiagnostic('session_navigation', { action: 'open', source: onboardingOpen ? 'onboarding' : 'workbench', selected: !!configId })
-    if (workspaceTransitionLocked || previewMode) { finish('blocked', { reason: previewMode ? 'unsupported' : 'in_flight' }); return false }
-    try {
-    const view = agentDraftViewDescriptor(crypto.randomUUID())
-    const recent = managedDraftStorage.load(view.draftId)
-    managedDraftStorage.save(view.draftId, {
-      choice: configId ? `config:${configId}` : recent.choice,
-      cwd,
-      text: '',
-    })
-    workspaceTransition.invalidate()
-    const outcome = await workspaceTransition.activate({ view, requestId: null, shellAction: { type: 'open' }, pendingViewKey: workspaceViewKey(view) })
-    if (outcome !== 'activated') managedDraftStorage.remove(view.draftId)
-    finish(outcome === 'activated' ? 'ok' : outcome === 'failed' ? 'failed' : outcome === 'stale' ? 'cancelled' : 'blocked',
-      outcome === 'activated' ? {} : { reason: outcome === 'stale' ? 'stale' : outcome === 'blocked' ? 'in_flight' : 'activation_failed' })
-    return outcome === 'activated'
-    } catch (cause) { finish('failed', { error_category: diagnosticErrorCategory(cause) }); throw cause }
-  }
-
-  function managedDraftController(draftId: string): DraftManagedSessionController {
-    let controller = managedDraftControllers.get(draftId)
-    if (!controller) {
-      controller = createDraftManagedSessionController(applicationTransport, draftId, managedDraftStorage,
-        (snapshot) => managedDraftPromoted(draftId, snapshot))
-      managedDraftControllers.set(draftId, controller)
-    }
-    return controller
-  }
-
-  async function managedDraftPromoted(draftId: string, snapshot: ManagedSessionSnapshot) {
-    promotedManagedDrafts.set(draftId, snapshot.session.session_id)
-    const view = agentSessionViewDescriptor(snapshot.session.session_id)
-    workspaceShell.dispatch({
-      type: 'replace', viewKey: workspaceViewKey(agentDraftViewDescriptor(draftId)), view,
-    })
-    managedDraftControllers.delete(draftId)
-    const intent = workspaceTransition.currentIntent()
-    await navigation.refreshNavigation(true)
-    if (workspaceTransition.isCurrent(intent) && $workspaceShell.shell.activeViewKey === workspaceViewKey(view)) await selectAgentNavigationScope(view)
-  }
-
-  function observeManagedDeletion(sessionId: string, deleting: boolean) {
-    const next = new Set(deletingManagedSessionIds)
-    if (deleting) next.add(sessionId)
-    else next.delete(sessionId)
-    deletingManagedSessionIds = next
-  }
-
-  async function archiveSessionFromUi(session: HostSessionSummary): Promise<void> {
-    const finish = startClientDiagnostic('session_archive', { source: 'workbench', action: 'archive', management: session.management.kind })
-    try {
-    if (!await navigation.archiveHostSession(session)) { finish('blocked', { reason: 'not_ready' }); return }
-    if (session.management.kind !== 'managed') { finish('ok'); return }
-    const key = workspaceViewKey(agentSessionViewDescriptor(session.session_id))
-    const archived = removeArchivedManagedSessionView($workspaceShell.shell, session.session_id, $workspaceShell.pendingViewKey)
-    if (archived.shouldInvalidatePending) workspaceTransition.invalidate()
-    workspaceShell.replaceShell(archived.shell)
-    workspaceShell.forgetRequest(key)
-    if (archived.shouldNavigateToArchive) await openArchivedSessions(sessionViewDescriptor(session.host_id, session.host_session_id))
-    finish('ok')
-    } catch (cause) { finish('failed', { error_category: diagnosticErrorCategory(cause) }); throw cause }
-  }
-
-  async function deleteManagedSessionFromUi(session: HostSessionSummary) {
-    if (session.management.kind !== 'managed' || deletingSessionCommands.has(session.session_id)) return
-    const finish = startClientDiagnostic('session_delete', { source: 'workbench', action: 'delete', management: 'managed' })
-    deletingSessionCommands = new Set([...deletingSessionCommands, session.session_id])
-    try {
-      const ownsFeedback = () => currentRequest?.managed_session_id === session.session_id
-      if (ownsFeedback() && rambleBelongsToWorkspace && rambleCanExit) await exitRamble()
-      await deleteSessionRecord(applicationTransport, session)
-      const viewKey = workspaceViewKey(sessionViewDescriptor(session.host_id, session.host_session_id))
-      const requestId = ownsFeedback() ? currentRequest!.request_id : null
-      const rememberedRequestId = workspaceShell.requestIdFor(viewKey)
-      const knownRequestIds = [...new Set([
-        requestId, rememberedRequestId,
-        ...[...$navigation.requests, ...$navigation.pendingRequests]
-          .filter((request) => request.managed_session_id === session.session_id)
-          .map((request) => request.request_id),
-      ].filter((id): id is string => !!id))]
-      const cleanup = removeManagedSessionViews($workspaceShell.shell, session, knownRequestIds)
-      const closedActive = cleanup.closedActive || ownsFeedback()
-      if ($workspaceShell.pendingViewKey && cleanup.closedViewKeys.includes($workspaceShell.pendingViewKey)) workspaceTransition.invalidate()
-      if (closedActive) {
-        workspaceTransition.invalidate()
-        draftController.cancelPendingSave()
-        clearWorkspace()
-        cookedPreview = null
-      }
-      workspaceShell.replaceShell(cleanup.shell)
-      if (closedActive) workspaceShell.dispatch({ type: 'open', view: inboxViewDescriptor() })
-      workspaceShell.forgetRequest(viewKey)
-      observeManagedDeletion(session.session_id, false)
-      if (closedActive || ($navigation.selectedHostId === session.host_id && $navigation.selectedHostSessionId === session.host_session_id)) await navigation.selectScope(null, null)
-      await navigation.refreshNavigation(true)
-      finish('ok')
-    } catch (cause) {
-      finish('failed', { error_category: diagnosticErrorCategory(cause) })
-      pageError = messageFrom(cause)
-      throw cause
-    } finally {
-      const pending = new Set(deletingSessionCommands)
-      pending.delete(session.session_id)
-      deletingSessionCommands = pending
-    }
   }
 
   function activeActionFor(requestId: string): ActiveAction {
@@ -1666,13 +1554,13 @@
       <ManagedFeedbackRequestStatus transport={applicationTransport} sessionId={feedbackManagedSessionId} requestId={currentRequest.request_id}
         disabled={managedFeedbackReadOnly || workspaceTransitionLocked || $workspaceShell.pendingViewKey !== null}
         navigationDisabled={workspaceTransitionLocked || $workspaceShell.pendingViewKey !== null}
-        onOpenAgent={() => feedbackManagedSessionId && void openAgentSession(feedbackManagedSessionId)}
-        onDeletingChange={observeManagedDeletion} />
+        onOpenAgent={() => feedbackManagedSessionId && void managedSessions.openAgentSession(feedbackManagedSessionId)}
+        onDeletingChange={managedSessions.observeDeletion} />
     {/key}
   {:else if rambleAgentSessionId}
     <div class="flex items-center justify-between gap-2 text-xs">
       <span class="text-muted-foreground">ACP</span>
-      <Button size="sm" variant="ghost" disabled={workspaceTransitionLocked || $workspaceShell.pendingViewKey !== null} onclick={() => rambleAgentSessionId && void openAgentSession(rambleAgentSessionId)}>{$locale === 'zh-CN' ? '查看 Agent' : 'View Agent'}</Button>
+      <Button size="sm" variant="ghost" disabled={workspaceTransitionLocked || $workspaceShell.pendingViewKey !== null} onclick={() => rambleAgentSessionId && void managedSessions.openAgentSession(rambleAgentSessionId)}>{$locale === 'zh-CN' ? '查看 Agent' : 'View Agent'}</Button>
     </div>
   {/if}
 {/snippet}
@@ -1776,14 +1664,14 @@
         onRequestSearch={(search) => projectSearch = search}
         onSearchRequests={(search) => void searchWorkspaceRequests(search)}
         onSetSessionPinned={(session, pinned) => navigation.setHostSessionPinned(session, pinned)}
-        onArchiveSession={archiveSessionFromUi}
+        onArchiveSession={managedSessions.archiveSessionFromUi}
         onSettings={() => {
           closePhoneDrawers()
           void openSettings('general')
         }}
         onNewSession={previewMode ? undefined : (cwd) => {
           closePhoneDrawers()
-          void openNewManagedSession(undefined, cwd)
+          void managedSessions.openNewManagedSession(undefined, cwd)
         }}
       />
     {/snippet}
@@ -1830,7 +1718,7 @@
           : undefined}
       >
         {#if renderedWorkspaceView?.kind === 'inbox'}
-          <InboxWorkspaceView onNewSession={previewMode ? undefined : () => void openNewManagedSession()} />
+          <InboxWorkspaceView onNewSession={previewMode ? undefined : () => void managedSessions.openNewManagedSession()} />
         {:else if renderedWorkspaceView?.kind === 'archive'}
           <ArchivedSessionsWorkspaceView
             transport={applicationTransport}
@@ -1842,7 +1730,7 @@
             selectionEpoch={archivedSelectionEpoch}
             onError={(message) => (pageError = message)}
             onChanged={startup.retrySessionViewRecovery}
-            onDeleteManagedSession={deleteManagedSessionFromUi}
+            onDeleteManagedSession={managedSessions.deleteManagedSessionFromUi}
           />
         {:else if renderedWorkspaceView?.kind === 'settings'}
           <SettingsWorkspaceView
@@ -1900,8 +1788,8 @@
               bind:this={managedSessionSection}
               transport={applicationTransport}
               sessionId={renderedAgentSessionView.sessionId}
-              deletionPending={deletingSessionCommands.has(renderedAgentSessionView.sessionId)}
-              onDeletingChange={observeManagedDeletion}
+              deletionPending={$managedSessions.deletingCommands.has(renderedAgentSessionView.sessionId)}
+              onDeletingChange={managedSessions.observeDeletion}
               onConfigureAgent={(configId, advanced) => void openSettings('agents', configId, advanced)}
               onOpenRamble={renderedManagedSession ? async () => {
                 if (renderedManagedSession) await selectRailScope(renderedManagedSession.host_id, renderedManagedSession.host_session_id)
