@@ -44,7 +44,6 @@
   import type { PublishedFeedbackAction } from './lib/publishedFeedbackAction'
   import { APPLICATION_EVENTS_STREAM } from './lib/application/applicationEvents'
   import { readApplicationSnapshot } from './lib/application/readApplicationSnapshot'
-  import { ApplicationReadTimeoutError } from './lib/application/applicationReadTimeout'
   import {
     applicationResourcesAffectNavigation,
     applicationResourcesAffectWorkspace,
@@ -102,15 +101,9 @@
   } from './lib/workspace/viewDescriptors'
   import { activeWorkspaceView, workspaceShellReducer } from './lib/workspace/workspaceShell'
   import { updateTaskTabTitles } from './lib/workspace/taskTabTitles'
-  import { agentSessionForView, agentViewForEmptyRamble, agentViewForRequest, arrivingRequestForAgentView, cancelledFeedbackRestoreTarget } from './lib/workspace/agentViewRouting'
+  import { agentSessionForView, agentViewForEmptyRamble, agentViewForRequest, arrivingRequestForAgentView } from './lib/workspace/agentViewRouting'
   import { seedPreviewWorkspaceScenario } from './lib/workspace/previewWorkspaceSnapshot'
-  import {
-    createSessionViewRecoveryResolver,
-    preserveLoadedSessionDuringUnconfirmedRecovery,
-    sessionViewResolution,
-    type SessionViewCatalog,
-    type SessionViewResolution,
-  } from './lib/workspace/sessionViewRecovery'
+  import type { SessionViewResolution } from './lib/workspace/sessionViewRecovery'
   import {
     workspaceTabId,
     workspaceTabPanelId,
@@ -138,6 +131,7 @@
   import { createDraftSession } from './lib/workbench/draftSession'
   import { createSubmissionController } from './lib/workbench/submissionController'
   import { createAttachmentSession } from './lib/workbench/attachmentSession'
+  import { createStartupController, type StartupController } from './lib/workbench/startupController'
   import { createRambleSession } from './lib/workbench/rambleSession'
   import { createWorkspaceSession } from './lib/workbench/workspaceSession'
   import { createWorkspaceShellSession } from './lib/workbench/workspaceShellSession'
@@ -205,14 +199,12 @@
   let renderedWorkspaceView: WorkspaceViewDescriptor | null = null
   let renderedSessionView: SessionViewDescriptor | null = null
   let renderedSessionResolution: SessionViewResolution | null = null
-  let sessionViewResolutions: readonly SessionViewResolution[] = []
   const managedDraftStorage = createManagedSessionDraftStorage(typeof localStorage === 'undefined' ? undefined : localStorage)
   const managedDraftControllers = new Map<string, DraftManagedSessionController>()
   const promotedManagedDrafts = new Map<string, string>()
   const closingManagedDrafts = new Set<string>()
   let deletingSessionCommands = new Set<string>()
   let deletingManagedSessionIds = new Set<string>()
-  let workbenchMounted = true
   let pageError = ''
   let cookingRequestIds = new Set<string>()
   /** Preview cooking result for the current workspace, if generated and current. */
@@ -228,8 +220,6 @@
   let notificationState: NotificationState = 'checking'
   let archivedInitialSession: SessionViewDescriptor | null = null
   let archivedSelectionEpoch = 0
-  let lastSessionRecoveryFingerprint = ''
-  let activeRecoveryTransition: object | null = null
   let settingsSection: SettingsSection = 'general'
   let settingsSectionSelectionEpoch = 0
   let settingsAgentConfigId: string | undefined = undefined
@@ -237,12 +227,6 @@
   let lastAutoOpenedTaskRequestId = ''
   let onboardingOpen = false
   let launchUpdateCheckDue = false
-  let workbenchReady: Promise<boolean> | null = null
-  let workbenchStartup: 'idle' | 'loading' | 'failed' | 'ready' = 'idle'
-  let startupFailureMessage = ''
-  let startupFailureTimedOut = false
-  let startupSettingsOpen = false
-  let startupWorkspaceFailure: unknown = null
   const desktopShellAvailable = capabilities.windowControls.status.source === 'native'
   const isMac = capabilities.windowControls.implementation.platform() === 'macOS'
   const notificationsAvailable = capabilities.notifications.status.availability !== 'unavailable'
@@ -254,10 +238,7 @@
       )
     : null
   const workspaceShell = createWorkspaceShellSession({ previewMode })
-  if (workspaceShell.restoredActiveView()) {
-    workbenchMounted = false
-    workspaceSession.setLoading(true)
-  }
+  if (workspaceShell.restoredActiveView()) workspaceSession.setLoading(true)
   let taskBriefOpen = true
   let hostRailPreference = initialHostRailCollapsed()
   let requestRailPreference = initialRequestRailCollapsed()
@@ -333,24 +314,26 @@
         workspace: FeedbackWorkspaceView
       }>
 
+  // `startup` is assigned below; these callbacks only run after composition finishes.
+  let startup: StartupController
   const workspaceTransition = createWorkspaceTransition<LoadedWorkspaceTarget>({
     saveCurrent: saveDraftNow,
     unmountCurrent: () => {
-      workbenchMounted = false
+      startup.patch({ mounted: false })
       sessionWorkbench = undefined
       workspaceSession.setLoading(true)
     },
     loadTarget: loadWorkspaceTarget,
     commitTarget: commitWorkspaceTarget,
     restoreCurrent: () => {
-      workbenchMounted = true
+      startup.patch({ mounted: true })
       workspaceSession.setLoading(false)
     },
     setPendingTarget: (target) => {
       workspaceShell.setPendingViewKey(target?.pendingViewKey ?? null)
     },
     reportFailure: (cause) => {
-      if (workbenchStartup === 'loading') startupWorkspaceFailure = cause
+      if (startup.phase() === 'loading') startup.patch({ workspaceFailure: cause })
       pageError = messageFrom(cause)
     },
   })
@@ -372,25 +355,34 @@
     onRequestsArrived: (requests) => { void autoOpenArrivingRequest(requests) },
   })
   const resolveHostProfile = navigation.resolveHostProfile
-  const sessionViewRecoveryResolver = createSessionViewRecoveryResolver({
-    loadArchived: async () => {
-      const sessions =
-        previewMode
-          ? previewWorkspaceScenario === 'unknown'
-            ? await Promise.reject(new Error('Preview archived catalog unavailable'))
-            : previewFixtures.archivedHostSessions
-          : await applicationTransport.call('listArchivedHostSessions', { search: null })
-      return sessions.map((session) =>
-        sessionViewDescriptor(session.host_id, session.host_session_id),
+  startup = createStartupController({
+    navigation,
+    workspaceShell,
+    workspaceSession,
+    draftSession,
+    transport: applicationTransport,
+    workspaceTransition,
+    previewMode,
+    desktopShellAvailable,
+    tr,
+    messageFrom,
+    pageError: () => pageError,
+    setPageError: (message) => {
+      pageError = message
+    },
+    clearWorkspace,
+    selectAgentNavigationScope,
+    requestIdForSession,
+    onReady: () => {
+      inboxTimer = ensureDesktopNavigationPolling(
+        desktopShellAvailable,
+        inboxTimer,
+        setInterval,
+        () => void navigation.refreshNavigation(true),
       )
     },
-    onInvalidate: () => {
-      if (!activeRecoveryTransition) return
-      activeRecoveryTransition = null
-      workspaceTransition.invalidate()
-    },
-    onUpdate: applySessionViewResolutions,
   })
+
   const applicationSnapshotRefetch = createApplicationSnapshotRefetch({
     refetch: refetchApplicationSnapshots,
     reportError: (cause) => {
@@ -448,10 +440,7 @@
   $: renderedSessionView = renderedWorkspaceView?.kind === 'session'
     ? renderedWorkspaceView
     : null
-  $: renderedSessionResolution = sessionViewResolution(
-    sessionViewResolutions,
-    $workspaceShell.shell.activeViewKey,
-  )
+  $: renderedSessionResolution = startup.resolutionFor($workspaceShell.shell.activeViewKey)
   $: renderedAgentSessionView = renderedWorkspaceView?.kind === 'agent-session' ? renderedWorkspaceView : null
   $: renderedAgentDraftView = renderedWorkspaceView?.kind === 'agent-draft' ? renderedWorkspaceView : null
   $: renderedAgentDraftController = renderedAgentDraftView ? managedDraftController(renderedAgentDraftView.draftId) : null
@@ -535,23 +524,15 @@
     $attachmentSession.captureBusy ||
     currentRequestCooking ||
     cookedDraftReady
-  $: {
-    const recoveryFingerprint = `${$navigation.hostSessionFactsStatus}:${$navigation.hostSessionFactsRevision}:${$workspaceShell.shell.views
-      .map(workspaceViewKey)
-      .join('\u0001')}:${$navigation.hostSessions
-      .map((session) =>
-        workspaceViewKey(sessionViewDescriptor(session.host_id, session.host_session_id)),
-      )
-      .sort()
-      .join('\u0001')}`
-    if (
-      $navigation.hostSessionFactsStatus !== 'pending' &&
-      recoveryFingerprint !== lastSessionRecoveryFingerprint
-    ) {
-      lastSessionRecoveryFingerprint = recoveryFingerprint
-      void refreshSessionViewRecovery()
-    }
-  }
+  $: recoveryFingerprint = `${$navigation.hostSessionFactsStatus}:${$navigation.hostSessionFactsRevision}:${$workspaceShell.shell.views
+    .map(workspaceViewKey)
+    .join('\u0001')}:${$navigation.hostSessions
+    .map((session) =>
+      workspaceViewKey(sessionViewDescriptor(session.host_id, session.host_session_id)),
+    )
+    .sort()
+    .join('\u0001')}`
+  $: if (recoveryFingerprint) void startup.recoverIfChanged(recoveryFingerprint)
   $: voiceActive = $rambleSession.voicePhase === 'starting' ||
     $rambleSession.voicePhase === 'listening' ||
     $rambleSession.voicePhase === 'processing' ||
@@ -629,7 +610,7 @@
       : () => {}
 
     if (!desktopShellAvailable) {
-      if ($onboardingCompleted || !onboardingAvailable) void startWorkbench()
+      if ($onboardingCompleted || !onboardingAvailable) void startup.start()
       else onboardingOpen = true
       if (previewMode) {
         if (!workspaceShell.hasRestoredSnapshot()) {
@@ -654,7 +635,7 @@
         cleanupAttachments()
       }
     }
-    if ($onboardingCompleted || !onboardingAvailable) startWorkbench()
+    if ($onboardingCompleted || !onboardingAvailable) startup.start()
     else onboardingOpen = true
     // Browser server autostart is a desktop preference; the browser client never runs it.
     if (
@@ -734,55 +715,8 @@
     }
   })
 
-  function startWorkbench(): Promise<boolean> {
-    if (workbenchReady) return workbenchReady
-    workbenchStartup = 'loading'
-    startupFailureMessage = ''
-    startupFailureTimedOut = false
-    startupSettingsOpen = false
-    startupWorkspaceFailure = null
-    const finish = startClientDiagnostic('application_startup', { source: 'workbench', phase: 'initialization' })
-    const ready = (async () => {
-      const initialized = await navigation.initialize(!workspaceShell.hasRestoredSnapshot())
-      if (!initialized) {
-        startupFailureMessage = startupWorkspaceFailure ? messageFrom(startupWorkspaceFailure)
-          : $navigation.initializationFailure?.message || pageError || tr('Could not load the workbench.')
-        startupFailureTimedOut = startupWorkspaceFailure instanceof ApplicationReadTimeoutError || ($navigation.initializationFailure?.timedOut ?? false)
-        workbenchStartup = 'failed'
-        finish('failed', { reason: startupFailureTimedOut ? 'timeout' : 'initialization_failed' })
-        return false
-      }
-      await refreshSessionViewRecovery()
-      if (workspaceShell.hasRestoredSnapshot()) await restoreInitialWorkspaceSnapshot(true)
-      else if (previewMode && currentRequest) {
-        await navigation.selectScope(currentRequest.host_id, currentRequest.host_session_id)
-      }
-      workbenchStartup = 'ready'
-      inboxTimer = ensureDesktopNavigationPolling(
-        desktopShellAvailable,
-        inboxTimer,
-        setInterval,
-        () => void navigation.refreshNavigation(true),
-      )
-      finish('ok')
-      return true
-    })().catch((cause) => {
-      finish('failed', { error_category: diagnosticErrorCategory(cause) })
-      startupFailureMessage = messageFrom(cause)
-      startupFailureTimedOut = cause instanceof ApplicationReadTimeoutError
-      workbenchStartup = 'failed'
-      pageError = startupFailureMessage
-      return false
-    })
-    workbenchReady = ready
-    void ready.then((initialized) => {
-      if (!initialized && workbenchReady === ready) workbenchReady = null
-    })
-    return ready
-  }
-
   async function startOnboardingSession(configId?: string) {
-    if (!await startWorkbench()) {
+    if (!await startup.start()) {
       throw new Error($locale === 'zh-CN' ? '初始化未完成，请检查连接后重试。' : 'Initialization did not finish. Check the connection and retry.')
     }
     if (!await openNewManagedSession(configId)) {
@@ -792,7 +726,7 @@
 
   function closeOnboarding() {
     onboardingOpen = false
-    startWorkbench()
+    startup.start()
     if (softwareUpdatesAvailable && launchUpdateCheckDue) {
       void capabilities.softwareUpdates.implementation.check({ prompt: true, forcePrompt: false })
     }
@@ -860,66 +794,6 @@
     )
   }
 
-  async function applySessionViewResolutions(
-    resolutions: readonly SessionViewResolution[],
-  ) {
-    const activeView = activeWorkspaceView($workspaceShell.shell)
-    const workspace = $workspaceSession.workspace
-    const workspaceView = workspace
-      ? sessionViewDescriptor(workspace.request.host_id, workspace.request.host_session_id)
-      : null
-    const safeResolutions = preserveLoadedSessionDuringUnconfirmedRecovery(
-      resolutions,
-      workspaceView,
-    )
-    const nextActive = sessionViewResolution(
-      safeResolutions,
-      $workspaceShell.shell.activeViewKey,
-    )
-    if (
-      activeView?.kind === 'session' &&
-      nextActive?.kind === 'missing-session' &&
-      workspaceView &&
-      workspaceViewKey(workspaceView) === workspaceViewKey(activeView)
-    ) {
-      const recoveryTransition = {}
-      activeRecoveryTransition = recoveryTransition
-      const outcome = await workspaceTransition.activate({
-        view: activeView,
-        requestId: null,
-        shellAction: { type: 'open' },
-        pendingViewKey: workspaceViewKey(activeView),
-      })
-      if (activeRecoveryTransition === recoveryTransition) {
-        activeRecoveryTransition = null
-      }
-      if (outcome !== 'activated') return false
-      await navigation.selectScope(null, null)
-    }
-    sessionViewResolutions = safeResolutions
-    return true
-  }
-
-  function activeSessionCatalog(): SessionViewCatalog {
-    if ($navigation.hostSessionFactsStatus === 'pending') return { status: 'pending' }
-    if ($navigation.hostSessionFactsStatus === 'failed') return { status: 'failed' }
-    return {
-      status: 'ready',
-      views: $navigation.hostSessions.map((session) =>
-        sessionViewDescriptor(session.host_id, session.host_session_id),
-      ),
-    }
-  }
-
-  async function refreshSessionViewRecovery() {
-    return sessionViewRecoveryResolver.refresh(
-      $workspaceShell.shell.views.filter(
-        (view): view is SessionViewDescriptor => view.kind === 'session',
-      ),
-      activeSessionCatalog(),
-    )
-  }
-
   async function refetchApplicationSnapshots(
     intent: ApplicationSnapshotRefetchIntent,
   ): Promise<void> {
@@ -930,7 +804,7 @@
         await navigation.refreshNavigation(true)
       }
       if (!intent.isCurrent()) return
-      await refreshSessionViewRecovery()
+      await startup.refreshSessionViewRecovery()
       if (!intent.isCurrent()) return
     }
 
@@ -963,119 +837,6 @@
     if (!intent.isCurrent() || outcome === 'stale') return
   }
 
-  async function retrySessionViewRecovery() {
-    const retryingMissingView = renderedSessionResolution?.kind === 'missing-session'
-    if (retryingMissingView) {
-      workbenchMounted = false
-      workspaceSession.setLoading(true)
-    }
-    await navigation.refreshNavigation(true)
-    lastSessionRecoveryFingerprint = ''
-    await refreshSessionViewRecovery()
-    const activeResolution = sessionViewResolution(
-      sessionViewResolutions,
-      $workspaceShell.shell.activeViewKey,
-    )
-    if (activeResolution?.kind === 'active' && $workspaceSession.workspace === null) {
-      await restoreInitialWorkspaceSnapshot()
-    } else if (retryingMissingView) {
-      workbenchMounted = true
-      workspaceSession.setLoading(false)
-    }
-  }
-
-  async function restoreInitialWorkspaceSnapshot(throwOnFailure = false) {
-    const view = activeWorkspaceView($workspaceShell.shell)
-    if (!view) {
-      clearWorkspace()
-      workbenchMounted = true
-      workspaceSession.setLoading(false)
-      return
-    }
-    if (view.kind === 'agent-draft') {
-      clearWorkspace()
-      workspaceSession.setLoading(false)
-      workbenchMounted = true
-      return
-    }
-    if (view.kind === 'agent-session') {
-      await selectAgentNavigationScope(view)
-      const session = agentSessionForView(view, $navigation.hostSessions)
-      if (session && session.request_count > 0 && session.pending_count === 0) {
-        // Use an unfiltered local read: a saved search can otherwise conceal the
-        // cancellation and mounting the restored Agent view would launch ACP.
-        const result = await readApplicationSnapshot(applicationTransport, 'listFeedbackRequests', {
-          host_id: session.host_id, host_session_id: session.host_session_id,
-          status: null, archived: null, search: null, limit: 1, cursor: null,
-        })
-        const target = cancelledFeedbackRestoreTarget(session, result.requests)
-        if (target) {
-          const outcome = await workspaceTransition.activate({
-            ...target,
-            shellAction: { type: 'open' },
-            pendingViewKey: workspaceViewKey(target.view),
-          })
-          if (throwOnFailure && outcome === 'failed') throw startupWorkspaceFailure ?? new Error(pageError || tr('The initial workspace could not be opened.'))
-          return
-        }
-      }
-      clearWorkspace()
-      workbenchMounted = true
-      workspaceSession.setLoading(false)
-      return
-    }
-    if (
-      view.kind === 'inbox' ||
-      view.kind === 'archive' ||
-      view.kind === 'settings' ||
-      view.kind === 'rambelle-profile'
-    ) {
-      clearWorkspace()
-      workbenchMounted = true
-      workspaceSession.setLoading(false)
-      if (view.kind === 'inbox') await navigation.selectScope(null, null)
-      return
-    }
-    if (view.kind === 'request-task') {
-      const outcome = await workspaceTransition.activate({
-        view,
-        requestId: view.requestId,
-        shellAction: { type: 'open' },
-        pendingViewKey: workspaceViewKey(view),
-      })
-      if (throwOnFailure && outcome === 'failed') throw startupWorkspaceFailure ?? new Error(pageError || tr('The initial workspace could not be opened.'))
-      return
-    }
-
-    const resolution = sessionViewResolution(sessionViewResolutions, workspaceViewKey(view))
-    if (!resolution || resolution.kind !== 'active') {
-      clearWorkspace()
-      workbenchMounted = true
-      workspaceSession.setLoading(false)
-      return
-    }
-
-    const selection = await navigation.selectScope(view.hostId, view.hostSessionId)
-    if (!selection.selected) {
-      workbenchMounted = true
-      workspaceSession.setLoading(false)
-      if (throwOnFailure) throw new Error(pageError || tr('The initial workspace could not be opened.'))
-      return
-    }
-    const outcome = await workspaceTransition.activate({
-      view,
-      requestId: requestIdForSession(view, selection.requests),
-      shellAction: { type: 'open' },
-      pendingViewKey: workspaceViewKey(view),
-    })
-    if (throwOnFailure && outcome === 'failed') throw startupWorkspaceFailure ?? new Error(pageError || tr('The initial workspace could not be opened.'))
-  }
-
-  type NavigationScope = Readonly<{
-    hostId: string | null
-    hostSessionId: string | null
-  }>
-
   function requestIdForSession(
     view: SessionViewDescriptor,
     requests: readonly FeedbackRequestSummary[],
@@ -1088,6 +849,11 @@
     )) return rememberedRequestId
     return requests[0]?.request_id ?? null
   }
+
+  type NavigationScope = Readonly<{
+    hostId: string | null
+    hostSessionId: string | null
+  }>
 
   function currentNavigationScope(): NavigationScope {
     return {
@@ -1166,7 +932,7 @@
       if (view.kind === 'inbox' || view.kind === 'agent-session') await restoreNavigationScope(priorScope, outcome)
       return
     }
-    const resolution = sessionViewResolution(sessionViewResolutions, viewKey)
+    const resolution = startup.resolutionFor(viewKey)
     if (resolution?.kind === 'missing-session') {
       const outcome = await workspaceTransition.activate({
         view,
@@ -1235,7 +1001,7 @@
     })
     const fallbackView = activeWorkspaceView(nextShellState)
     const fallbackResolution = fallbackView?.kind === 'session'
-      ? sessionViewResolution(sessionViewResolutions, workspaceViewKey(fallbackView))
+      ? startup.resolutionFor(workspaceViewKey(fallbackView))
       : null
     let fallbackRequestId: string | null = null
     if (fallbackView?.kind === 'session' && fallbackResolution?.kind !== 'missing-session') {
@@ -1391,7 +1157,7 @@
     }
 
     workspaceShell.replaceShell(nextShellState)
-    workbenchMounted = true
+    startup.patch({ mounted: true })
     workspaceSession.setLoading(false)
     if (leavesSettingsView(previousActiveView, activeWorkspaceView(nextShellState))) {
       void refreshNotificationPermission()
@@ -1409,7 +1175,7 @@
     const canLeave = () => {
       const current = activeWorkspaceView($workspaceShell.shell)
       return current?.kind === 'agent-session' && current.sessionId === origin.sessionId
-        && workbenchStartup === 'ready' && !onboardingOpen && !resumePrompt
+        && $startup.phase === 'ready' && !onboardingOpen && !resumePrompt
         && !workspaceTransitionLocked && !rambleEngaged
         && managedSessionSection?.canAutoOpenRamble(origin.sessionId) === true
     }
@@ -1611,7 +1377,7 @@
       const foregroundWorkspace = $workspaceSession.workspace
       if (shouldUseForegroundDraftEditor({
         activeView: activeWorkspaceView($workspaceShell.shell),
-        workbenchMounted,
+        workbenchMounted: $startup.mounted,
         editorReady: sessionWorkbench !== undefined,
         workspaceRequestId: foregroundWorkspace?.request.request_id ?? null,
         requestId,
@@ -1698,8 +1464,8 @@
   }
 
   async function openSettings(section: SettingsSection, agentConfigId?: string, agentAdvanced = false) {
-    if (workbenchStartup === 'failed') {
-      startupSettingsOpen = true
+    if ($startup.phase === 'failed') {
+      startup.patch({ settingsOpen: true })
       return
     }
     settingsSection = section
@@ -1985,7 +1751,7 @@
     requestCollapsed={requestRailCollapsed}
     onHostCollapsedChange={setHostRailCollapsed}
     onRequestCollapsedChange={setRequestRailCollapsed}
-    startupFailed={workbenchStartup === 'failed'}
+    startupFailed={$startup.phase === 'failed'}
     requestPaneVisible={renderedWorkspaceSurface !== 'standalone'}
     bind:mode={shellMode}
     bind:hostDisplayWidth={hostRailDisplayWidth}
@@ -2023,7 +1789,7 @@
     {/snippet}
 
     {#snippet startupRecovery()}
-      <StartupRecoveryPanel {capabilities} message={startupFailureMessage} timedOut={startupFailureTimedOut} bind:settingsOpen={startupSettingsOpen} onRetry={() => void startWorkbench()} />
+      <StartupRecoveryPanel {capabilities} message={$startup.failureMessage} timedOut={$startup.failureTimedOut} bind:settingsOpen={$startup.settingsOpen} onRetry={() => void startup.start()} />
     {/snippet}
 
     {#snippet requestPane()}
@@ -2075,7 +1841,7 @@
             initialSession={archivedInitialSession}
             selectionEpoch={archivedSelectionEpoch}
             onError={(message) => (pageError = message)}
-            onChanged={retrySessionViewRecovery}
+            onChanged={startup.retrySessionViewRecovery}
             onDeleteManagedSession={deleteManagedSessionFromUi}
           />
         {:else if renderedWorkspaceView?.kind === 'settings'}
@@ -2119,7 +1885,7 @@
             onSubmitFeedback={() => void submitFeedback()}
           />
         {:else if renderedAgentDraftView && renderedAgentDraftController}
-          {#if workbenchMounted && workbenchStartup === 'ready'}
+          {#if $startup.mounted && $startup.phase === 'ready'}
           {#key renderedAgentDraftView.draftId}
             <DraftManagedSessionWorkspace transport={applicationTransport} controller={renderedAgentDraftController} draftId={renderedAgentDraftView.draftId}
               onConfigure={() => void openSettings('agents')}
@@ -2128,7 +1894,7 @@
           {/key}
           {/if}
         {:else if renderedAgentSessionView}
-          {#if workbenchMounted && workbenchStartup === 'ready'}
+          {#if $startup.mounted && $startup.phase === 'ready'}
           {#key renderedAgentSessionView.sessionId}
             <ManagedSessionSection
               bind:this={managedSessionSection}
@@ -2150,11 +1916,11 @@
             missing={renderedSessionResolution}
             label={sessionTabLabel(renderedSessionResolution.session)}
             busy={renderedSessionResolution.reason === 'unresolved' || $workspaceShell.pendingViewKey !== null}
-            onRetry={retrySessionViewRecovery}
+            onRetry={startup.retrySessionViewRecovery}
             onClose={() => closeWorkspaceTab(workspaceViewKey(renderedSessionResolution!.session))}
             onOpenArchive={() => void openArchivedSessions(renderedSessionResolution!.session)}
           />
-        {:else if workbenchMounted}
+        {:else if $startup.mounted}
           {#key renderedSessionView ? workspaceViewKey(renderedSessionView) : 'workspace:empty'}
           <SessionWorkbench
         agentStatus={rambleAgentSessionId ? requestAgentStatus : undefined}
