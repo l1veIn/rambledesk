@@ -271,7 +271,30 @@ ramble 启动/恢复/语音录制、剪贴板捕获、控制台命令与状态�
 `RambleSessionController.svelte`（706）、`ArchivedSessionsWorkspaceView.svelte`（721）。
 前端门禁会阻止这些文件在拆分期间继续变大。
 
-### `App.svelte` 为什么还不能按同样办法拆
+### `App.svelte` 的状态边界（进行中）
+
+`App.svelte` 的 86 个局部 `let` 里，跨 controller 共享的部分已经按「领域 store + 组合根」拆出：
+
+| Store | 拥有 | 状态 |
+| --- | --- | --- |
+| `lib/workbench/draftSession.ts` | 当前草稿 / 已保存草稿 / save phase / revision / editor 文档 | 完成（7 个测试） |
+| `lib/workbench/workspaceSession.ts` | 打开的请求、终态结果、已发布包、提交/批准/取消标志 | 完成（6 个测试） |
+| `lib/workbench/submissionController.ts` | 批准 / 取消 / 打开反馈包 | 完成（5 个测试） |
+
+判据是：**服务器事实不复制、跨组件共享才进 store、按领域切不按字段切**。App 只保留装配、
+模板 snippet 和纯 UI 局部状态，`workspace` / `draftBody` 这类共享值统一读 `$workspaceSession.*`
+与 `$draftSession.*`。
+
+下一步（同一模式）：
+
+1. `lib/workbench/workspaceShellSession.ts` —— 打开的工作区视图、`sessionRequestIds`、
+   `pendingWorkspaceViewKey` 与快照持久化（App 里还有 44 处 `workspaceShellState` 直接读写）；
+2. `lib/workbench/startupController.ts` —— `startWorkbench`、`restoreInitialWorkspaceSnapshot`、
+   `refreshSessionViewRecovery`、`applySessionViewResolutions`，依赖上面的 shell session；
+3. `lib/agents/managedSessionActions.ts` —— `openAgentSession`、`openNewManagedSession`、
+   `archiveSessionFromUi`、`deleteManagedSessionFromUi`。
+
+### 为什么不能只靠搬函数
 
 `App.svelte`（2526 行）是唯一没有走「搬函数出去」路线的 A 类文件，原因是它的局部状态耦合：
 `restoreInitialWorkspaceSnapshot` 一个函数就依赖 `clearWorkspace`、`workbenchMounted`、`loadingWorkspace`、
