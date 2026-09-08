@@ -136,6 +136,9 @@ lib/capture/overlay/
 **策略**：抽 `workspace/archiveSearch.ts`（匹配、排序、高亮）与 `workspace/archiveActions.ts`
 （加载、解档、删除），视图只负责渲染与选择状态。
 
+**已完成**：`archiveSearch.ts`（116 行）+ `archiveActions.ts`（212 行），视图 720 → 501 行；
+两个模块各有测试（6 + 6）。
+
 ### 7. `RambleSessionController.svelte`（705 行）— P2
 
 **症状**：script 681 行、模板仅 19 行——这是把控制器写进了组件。内容覆盖语音评审快捷键、
