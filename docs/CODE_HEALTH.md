@@ -261,12 +261,36 @@ ramble 启动/恢复/语音录制、剪贴板捕获、控制台命令与状态�
 | 1 | 抽 `WorkbenchShell.svelte`（复用 `railResize.ts`） | 已完成（第八节） |
 | 2 | 响应式适配（断点体系、窄屏抽屉、触摸目标）落在新 shell 上 | 已完成（[RESPONSIVE_SHELL.md](RESPONSIVE_SHELL.md)） |
 | 3 | `navigationController.ts` 按资源拆分 | 部分完成：抽出 `navigation/navigationTypes.ts`、`navigationInputs.ts`、`hostSessionFacts.ts`，702 → 552 行；`navigationController.test.ts`（896 行）尚未拆分 |
-| 4 | `SettingsPanel.svelte` 按域拆分 | 未完成：Web Access 已抽到 `settings/WebAccessSettings.svelte`，其余域仍在 1942 行里 |
+| 4 | `SettingsPanel.svelte` 按域拆分 | 已完成：1941 → 623 行，抽出 `settings/` 下 Web Access、Adapters、Voice、Notifications 四个 section |
 | 5 | `httpApplicationTransport.ts` 三刀 + 测试拆分 | 已完成：1116 → `httpApplicationOperations.ts` 402 + `httpApplicationSession.ts` 623 + `httpApplicationTransport.ts` 131；测试拆成投影 / 水位 / 流三个文件 + 共享 harness |
 | 6 | C 类 facade 腾挪 | 已完成：`feedback.rs` 799 → 564（错误码移到 `feedback/error.rs`）、`sqlite.rs` 701 → 581（row mapping 移入已有 `sqlite/row_mapping.rs`）、`diagnostics.rs` 703 → 599（打包移到 `diagnostics/package.rs`） |
 | 7 | 接入前端行数门禁 + 豁免清单 | 已完成：`scripts/check-frontend-module-size.mjs`（上限 700，9 个只减不增的豁免，`i18n.ts` 白名单），已进 CI 三个 job 与 release validate |
 | 8 | D 类测试文件拆分、观察名单清理 | 未完成：`navigationController.test.ts` 896、`attachmentController.test.ts` 831、`draftManagedSessionController.test.ts` 717 仍在豁免清单里 |
 
-剩余工作按优先级：`SettingsPanel.svelte` 按域拆 section（阶段 4）→ 三个大测试文件按场景拆（阶段 8）→
-P2 的 `ScreenshotOverlay.svelte`（1046）、`RambleSessionController.svelte`（706）、
-`ArchivedSessionsWorkspaceView.svelte`（721）。前端门禁会阻止这些文件在拆分期间继续变大。
+剩余工作按优先级：三个大测试文件按场景拆（阶段 8）→ P2 的 `ScreenshotOverlay.svelte`（1046）、
+`RambleSessionController.svelte`（706）、`ArchivedSessionsWorkspaceView.svelte`（721）。
+前端门禁会阻止这些文件在拆分期间继续变大。
+
+### `App.svelte` 为什么还不能按同样办法拆
+
+`App.svelte`（2526 行）是唯一没有走「搬函数出去」路线的 A 类文件，原因是它的局部状态耦合：
+`restoreInitialWorkspaceSnapshot` 一个函数就依赖 `clearWorkspace`、`workbenchMounted`、`loadingWorkspace`、
+`workspaceTransition`、`sessionViewResolutions`、`startupWorkspaceFailure`、`pageError`、`navigation`、
+`applicationTransport` 等约 12 个 App 局部，`approveFeedback` / `cancelFeedback` 同样依赖
+`workspace`、`completedResult`、`savePhase`、`approving`、`cancelling` 等读写点。
+机械提取需要传入十几个 getter/setter，净减少接近零。
+
+正确的拆法是先建立共享状态边界，再搬逻辑：
+
+1. 把 `workspace`、`completedResult`、`savePhase`、`approving`、`cancelling` 收进一个
+   `workbench/workspaceSession.svelte.ts`（或 store），App 只订阅；
+2. 把启动 / 恢复序列（`startWorkbench`、`restoreInitialWorkspaceSnapshot`、
+   `refreshSessionViewRecovery`、`applySessionViewResolutions`）抽成
+   `workbench/startupController.ts`，依赖上面的状态对象；
+3. 提交动作（`approveFeedback`、`cancelFeedback`、`openFeedbackPackage`）抽成
+   `workbench/submissionController.ts`；
+4. 托管会话动作（`openAgentSession`、`openNewManagedSession`、`archiveSessionFromUi`、
+   `deleteManagedSessionFromUi`）抽成 `agents/managedSessionActions.ts`。
+
+目标是把 `App.svelte` 收敛到 800 行以内的「装配 + snippet 传参」，但这是一次有回归风险的重构，
+需要独立一轮来做，且要先补齐这三块的状态测试。

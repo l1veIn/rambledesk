@@ -13,11 +13,9 @@ const EXTENSIONS = new Set(['.svelte', '.ts'])
  */
 const EXEMPTIONS = new Map([
   ['apps/desktop/src/App.svelte', 2526],
-  ['apps/desktop/src/lib/SettingsPanel.svelte', 1942],
   ['apps/desktop/src/ScreenshotOverlay.svelte', 1046],
   ['apps/desktop/src/lib/workspace/ArchivedSessionsWorkspaceView.svelte', 721],
   ['apps/desktop/src/lib/workbench/RambleSessionController.svelte', 706],
-  ['apps/desktop/src/lib/application/httpApplicationSessionProjection.test.ts', 547],
   ['apps/desktop/src/lib/workbench/navigationController.test.ts', 897],
   ['apps/desktop/src/lib/workbench/attachmentController.test.ts', 832],
   ['apps/desktop/src/lib/agents/draftManagedSessionController.test.ts', 718],
