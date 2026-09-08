@@ -138,6 +138,7 @@
   import { createDraftSession } from './lib/workbench/draftSession'
   import { createSubmissionController } from './lib/workbench/submissionController'
   import { createAttachmentSession } from './lib/workbench/attachmentSession'
+  import { createRambleSession } from './lib/workbench/rambleSession'
   import { createWorkspaceSession } from './lib/workbench/workspaceSession'
   import { createWorkspaceShellSession } from './lib/workbench/workspaceShellSession'
   import { createPublisherController } from './lib/workbench/publisherController'
@@ -197,6 +198,7 @@
     formatTime(value, $locale, tr('Not saved yet'))
   const workspaceSession = createWorkspaceSession()
   const attachmentSession = createAttachmentSession()
+  const rambleSession = createRambleSession()
   /** The open request, projected from the session so field reads stay short. */
   $: currentRequest = $workspaceSession.workspace?.request ?? null
   let taskTabTitles: ReadonlyMap<string, string> = new Map()
@@ -265,17 +267,6 @@
   let hostRailDisplayWidth = 0
   let navigationResizing = false
   let projectSearch = ''
-  let voicePhase: VoicePhase = 'idle'
-  let voiceDevice = ''
-  let voicePartial = ''
-  let voiceLevel = 0
-  let voiceChunkIndex = 0
-  let voiceModelMissing = false
-  let ramblePhase: RamblePhase = 'idle'
-  let rambleStartedOnce = false
-  let rambleRequestId = ''
-  let rambleRequestTitle = ''
-  let rambleMessage = ''
   let rambleDocumentQueue: Promise<void> = Promise.resolve()
   $: tidyConfig = {
     provider: $tidyProvider,
@@ -314,7 +305,7 @@
     messageFrom,
     getWorkspace: () => $workspaceSession.workspace,
     getEditor: () => sessionWorkbench,
-    getRambleRequestId: () => rambleRequestId,
+    getRambleRequestId: () => $rambleSession.requestId,
     getInteractionLocked: () => interactionLocked || currentRequestCooking || cookedDraftReady,
     getSavedRevision: () => $draftSession.savedRevision,
     session: attachmentSession,
@@ -561,18 +552,16 @@
       void refreshSessionViewRecovery()
     }
   }
-  $: voiceActive =
-    voicePhase === 'starting' ||
-    voicePhase === 'listening' ||
-    voicePhase === 'processing' ||
-    voicePhase === 'stopping'
-  $: voiceCanStop =
-    voiceActive || voicePhase === 'error'
-  $: visibleRamblePhase = resolvedRamblePhase(ramblePhase, voicePhase)
+  $: voiceActive = $rambleSession.voicePhase === 'starting' ||
+    $rambleSession.voicePhase === 'listening' ||
+    $rambleSession.voicePhase === 'processing' ||
+    $rambleSession.voicePhase === 'stopping'
+  $: voiceCanStop = voiceActive || $rambleSession.voicePhase === 'error'
+  $: visibleRamblePhase = resolvedRamblePhase($rambleSession.phase, $rambleSession.voicePhase)
   $: rambleActive = visibleRamblePhase === 'active'
   $: rambleEngaged = visibleRamblePhase !== 'idle'
   $: rambleBelongsToWorkspace =
-    !rambleEngaged || currentRequest?.request_id === rambleRequestId
+    !rambleEngaged || currentRequest?.request_id === $rambleSession.requestId
   $: rambelleStatusPortrait = feedbackResult
     ? rambelleArchived
     : currentRequestCooking
@@ -1842,7 +1831,7 @@
     getCanSubmit: () => canSubmit,
     getRambleCanExit: () => rambleCanExit,
     hasPendingSpeech: (requestId) => rambleController?.hasPendingSpeech(requestId) ?? false,
-    getSpeechStopError: () => voicePhase === 'error' ? rambleMessage : '',
+    getSpeechStopError: () => rambleSession.speechStopError(),
     exitRamble,
     saveDraftNow,
     getDraftBody: () => $draftSession.body,
@@ -1942,17 +1931,17 @@
     bind:attachmentBusy={$attachmentSession.busy}
     screenCaptureBusy={$attachmentSession.captureBusy}
     bind:attachmentMessage={$attachmentSession.message}
-    bind:voicePhase
-    bind:voiceDevice
-    bind:voicePartial
-    bind:voiceLevel
-    bind:voiceChunkIndex
-    bind:voiceModelMissing
-    bind:ramblePhase
-    bind:rambleStartedOnce
-    bind:rambleRequestId
-    bind:rambleRequestTitle
-    bind:rambleMessage
+    bind:voicePhase={$rambleSession.voicePhase}
+    bind:voiceDevice={$rambleSession.voiceDevice}
+    bind:voicePartial={$rambleSession.voicePartial}
+    bind:voiceLevel={$rambleSession.voiceLevel}
+    bind:voiceChunkIndex={$rambleSession.voiceChunkIndex}
+    bind:voiceModelMissing={$rambleSession.voiceModelMissing}
+    bind:ramblePhase={$rambleSession.phase}
+    bind:rambleStartedOnce={$rambleSession.startedOnce}
+    bind:rambleRequestId={$rambleSession.requestId}
+    bind:rambleRequestTitle={$rambleSession.requestTitle}
+    bind:rambleMessage={$rambleSession.message}
     interactionLocked={managedFeedbackReadOnly || interactionLocked || currentRequestCooking || cookedDraftReady}
     onPageError={(message) => (pageError = message)}
     onStartScreenCapture={attachmentController.startScreenCapture}
@@ -1974,7 +1963,7 @@
     onToggleSidebar={shellMode === 'phone' ? () => setHostRailCollapsed(!hostSessionRailCollapsed) : undefined}
     pendingCount={$navigation.pendingRequests.length}
     ramblePhase={visibleRamblePhase}
-    {rambleRequestTitle}
+    rambleRequestTitle={$rambleSession.requestTitle}
     onWindowError={(message) => (pageError = tr('Window action failed: {error}', { error: message }))}
   >
     {#snippet workspaceTabs()}
@@ -2120,7 +2109,7 @@
             {resolveHostProfile}
             onToggleRamble={() => void toggleRamble()}
             ramblePhase={rambleBelongsToWorkspace ? visibleRamblePhase : 'idle'}
-            rambleStartedOnce={rambleBelongsToWorkspace ? rambleStartedOnce : false}
+            rambleStartedOnce={rambleBelongsToWorkspace ? $rambleSession.startedOnce : false}
             rambleBusy={rambleBelongsToWorkspace ? rambleBusy : true}
             canSubmit={!managedFeedbackReadOnly}
             cookingEnabled={$cookingEnabled}
@@ -2199,13 +2188,13 @@
         rambleActive={rambleBelongsToWorkspace ? rambleActive : false}
         ramblePhase={rambleBelongsToWorkspace ? visibleRamblePhase : 'idle'}
         rambleBusy={rambleBelongsToWorkspace ? rambleBusy : true}
-        rambleStartedOnce={rambleBelongsToWorkspace ? rambleStartedOnce : false}
-        voiceDevice={rambleBelongsToWorkspace ? voiceDevice : ''}
-        voiceChunkIndex={rambleBelongsToWorkspace ? voiceChunkIndex : 0}
-        voicePartial={rambleBelongsToWorkspace ? voicePartial : ''}
-        voiceLevel={rambleBelongsToWorkspace ? voiceLevel : 0}
-        voiceModelMissing={rambleBelongsToWorkspace ? voiceModelMissing : false}
-        rambleMessage={rambleBelongsToWorkspace ? rambleMessage : ''}
+        rambleStartedOnce={rambleBelongsToWorkspace ? $rambleSession.startedOnce : false}
+        voiceDevice={rambleBelongsToWorkspace ? $rambleSession.voiceDevice : ''}
+        voiceChunkIndex={rambleBelongsToWorkspace ? $rambleSession.voiceChunkIndex : 0}
+        voicePartial={rambleBelongsToWorkspace ? $rambleSession.voicePartial : ''}
+        voiceLevel={rambleBelongsToWorkspace ? $rambleSession.voiceLevel : 0}
+        voiceModelMissing={rambleBelongsToWorkspace ? $rambleSession.voiceModelMissing : false}
+        rambleMessage={rambleBelongsToWorkspace ? $rambleSession.message : ''}
         attachmentBusy={rambleBelongsToWorkspace ? $attachmentSession.busy : false}
         {canSubmit}
         cooking={currentRequestCooking}
