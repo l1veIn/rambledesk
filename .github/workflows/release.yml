@@ -32,6 +32,7 @@ jobs:
       - run: pnpm release:check
       - run: cargo fmt --all --check
       - run: pnpm check:rust-size
+      - run: pnpm check:frontend-size
       - run: pnpm check:terminology
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: pnpm check

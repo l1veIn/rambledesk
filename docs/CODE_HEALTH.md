@@ -254,17 +254,19 @@ ramble 启动/恢复/语音录制、剪贴板捕获、控制台命令与状态�
 现在只有一个落点，且有 `workbenchShellRender.test.ts` 与 `shellMode.test.ts` 覆盖。
 用行数衡量这次拆分是错的指标。
 
-## 九、执行顺序
+## 九、执行顺序与进度
 
-| 阶段 | 内容 | 依赖 |
+| 阶段 | 内容 | 状态 |
 | --- | --- | --- |
-| 1 | 抽 `WorkbenchShell.svelte`（复用 `railResize.ts`） | 无（已完成，见第八节） |
-| 2 | 响应式适配（断点体系、窄屏抽屉、触摸目标）落在新 shell 上 | 阶段 1（已完成，见 [RESPONSIVE_SHELL.md](RESPONSIVE_SHELL.md)） |
-| 3 | `navigationController.ts` + 其测试按资源拆分 | 阶段 2（避免与 shell 状态改动冲突） |
-| 4 | `SettingsPanel.svelte` 按域拆分 | 独立，可并行 |
-| 5 | `httpApplicationTransport.ts` 三刀 + 测试拆分 | 独立，可并行 |
-| 6 | C 类 facade 腾挪（`feedback.rs`、`sqlite.rs`、`diagnostics.rs`） | 下一次触碰这些文件时顺手做 |
-| 7 | 接入前端行数门禁 + 豁免清单 | 阶段 3-5 完成后 |
-| 8 | D 类测试文件拆分、观察名单清理 | 随各自主文件拆分同步 |
+| 1 | 抽 `WorkbenchShell.svelte`（复用 `railResize.ts`） | 已完成（第八节） |
+| 2 | 响应式适配（断点体系、窄屏抽屉、触摸目标）落在新 shell 上 | 已完成（[RESPONSIVE_SHELL.md](RESPONSIVE_SHELL.md)） |
+| 3 | `navigationController.ts` 按资源拆分 | 部分完成：抽出 `navigation/navigationTypes.ts`、`navigationInputs.ts`、`hostSessionFacts.ts`，702 → 552 行；`navigationController.test.ts`（896 行）尚未拆分 |
+| 4 | `SettingsPanel.svelte` 按域拆分 | 未完成：Web Access 已抽到 `settings/WebAccessSettings.svelte`，其余域仍在 1942 行里 |
+| 5 | `httpApplicationTransport.ts` 三刀 + 测试拆分 | 已完成：1116 → `httpApplicationOperations.ts` 402 + `httpApplicationSession.ts` 623 + `httpApplicationTransport.ts` 131；测试拆成投影 / 水位 / 流三个文件 + 共享 harness |
+| 6 | C 类 facade 腾挪 | 已完成：`feedback.rs` 799 → 564（错误码移到 `feedback/error.rs`）、`sqlite.rs` 701 → 581（row mapping 移入已有 `sqlite/row_mapping.rs`）、`diagnostics.rs` 703 → 599（打包移到 `diagnostics/package.rs`） |
+| 7 | 接入前端行数门禁 + 豁免清单 | 已完成：`scripts/check-frontend-module-size.mjs`（上限 700，9 个只减不增的豁免，`i18n.ts` 白名单），已进 CI 三个 job 与 release validate |
+| 8 | D 类测试文件拆分、观察名单清理 | 未完成：`navigationController.test.ts` 896、`attachmentController.test.ts` 831、`draftManagedSessionController.test.ts` 717 仍在豁免清单里 |
 
-阶段 4 与 5 与响应式没有文件重叠，可以在阶段 2 之后并行推进。
+剩余工作按优先级：`SettingsPanel.svelte` 按域拆 section（阶段 4）→ 三个大测试文件按场景拆（阶段 8）→
+P2 的 `ScreenshotOverlay.svelte`（1046）、`RambleSessionController.svelte`（706）、
+`ArchivedSessionsWorkspaceView.svelte`（721）。前端门禁会阻止这些文件在拆分期间继续变大。
