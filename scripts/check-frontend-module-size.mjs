@@ -16,7 +16,6 @@ const EXEMPTIONS = new Map([
   ['apps/desktop/src/ScreenshotOverlay.svelte', 1046],
   ['apps/desktop/src/lib/workspace/ArchivedSessionsWorkspaceView.svelte', 721],
   ['apps/desktop/src/lib/workbench/RambleSessionController.svelte', 706],
-  ['apps/desktop/src/lib/agents/draftManagedSessionController.test.ts', 718],
 ])
 
 /** Data files whose length is content, not logic. */
