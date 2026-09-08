@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { FeedbackRequestSummary, HostSessionSummary } from '$lib/generated/feedback'
-import { agentSessionForView, agentViewForEmptyRamble, agentViewForRequest, cancelledFeedbackRestoreTarget } from './agentViewRouting'
-import { agentSessionViewDescriptor, sessionViewDescriptor, workspaceViewKey } from './viewDescriptors'
+import { agentSessionForView, agentViewForEmptyRamble, agentViewForRequest, arrivingRequestForAgentView, cancelledFeedbackRestoreTarget } from './agentViewRouting'
+import { agentSessionViewDescriptor, sessionViewDescriptor, workspaceViewKey, type WorkspaceViewDescriptor } from './viewDescriptors'
 import { EMPTY_WORKSPACE_SHELL_STATE, workspaceShellReducer } from './workspaceShell'
 
 const managed: HostSessionSummary = {
@@ -16,6 +16,31 @@ describe('Agent view routing', () => {
     source_hint: null, title: 'Cancelled feedback', what_happened: '', status: 'cancelled', resolution: 'cancelled',
     allow_finish: false, final_summary: null, revision: 1, created_at: '2026-09-06T00:00:00Z', updated_at: '2026-09-06T00:00:00Z',
   }
+
+  it('auto-opens arrivals from any provider only on an available Agent page', () => {
+    const agent = agentSessionViewDescriptor(managed.session_id)
+    const request = { ...cancelled, request_id: 'new', status: 'waiting' as const, resolution: null, managed_session_id: undefined }
+    expect(arrivingRequestForAgentView(agent, [request], true)).toBe(request)
+    expect(arrivingRequestForAgentView(agent, [request], false)).toBeNull()
+    expect(arrivingRequestForAgentView(agent, [], true)).toBeNull()
+    expect(arrivingRequestForAgentView(agent, [cancelled], true)).toBeNull()
+  })
+
+  it.each<WorkspaceViewDescriptor | null>([
+    null, { kind: 'inbox' }, { kind: 'archive' }, { kind: 'settings' }, { kind: 'rambelle-profile' },
+    { kind: 'agent-draft', draftId: 'new' }, { kind: 'request-task', requestId: 'task' },
+    sessionViewDescriptor(managed.host_id, managed.host_session_id),
+  ])('never interrupts other pages: %j', view => {
+    expect(arrivingRequestForAgentView(view, [{ ...cancelled, status: 'waiting', resolution: null }], true)).toBeNull()
+  })
+
+  it('chooses one arrival in a batch, preferring the current Agent without changing the batch', () => {
+    const other = { ...cancelled, request_id: 'other', status: 'waiting' as const, managed_session_id: 'other' }
+    const own = { ...cancelled, request_id: 'own', status: 'in_progress' as const }
+    const arrivals = [other, own]
+    expect(arrivingRequestForAgentView(agentSessionViewDescriptor(managed.session_id), arrivals, true)).toBe(own)
+    expect(arrivals).toEqual([other, own])
+  })
 
   it('restores the latest cancelled feedback as details while preserving the Agent tab for explicit navigation', () => {
     const session = { ...managed, pending_count: 0 }

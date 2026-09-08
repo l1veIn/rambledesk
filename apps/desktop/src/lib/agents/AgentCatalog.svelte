@@ -55,7 +55,8 @@
   $: installing = job ? installIsActive(job) : false
   $: canPrepare = connectionPreparationAvailable(entry, inspection)
   $: showConnect = diagnosis?.canInstall && (['prepare', 'missing'].includes(diagnosis.connection) || (diagnosis.connection === 'failed' && (!inspection?.command || diagnosis.reason === 'install' || diagnosis.reason === 'dependency')))
-  $: canCheck = !!profile || (!!inspection?.command && !inspection.checks.some(check => check.status === 'fail') && entry?.verification.status !== 'unsupported')
+  $: canUseDetected = !!inspection?.command && !inspection.checks.some(check => check.status === 'fail') && entry?.verification.status !== 'unsupported'
+  $: canCheck = !!profile || (canUseDetected && diagnosis?.reason !== 'managed_setup')
   $: safeError = redactAgentMessage(localError || $catalog.error, environmentText())
   $: if ((item?.key ?? 'new') !== selectedBefore) {
     selectedBefore = item?.key ?? 'new'; selectedProfile = ''; localError = ''; notice = ''; advancedOpen = selectingInitial && initialAdvanced
@@ -120,9 +121,10 @@
     if (installing) return tr('RambleDesk 正在安装连接组件，完成后会自动检查 ACP 连接。', 'RambleDesk is installing the connection component and will check the ACP connection when it finishes.')
     if (diagnosis?.reason === 'authentication') return tr('ACP 程序要求先完成认证。请按当前连接的指引处理后重试。', 'The ACP program requires authentication. Follow the guidance for this connection, then retry.')
     if (diagnosis?.reason === 'feedback') return tr('ACP 已接通，但智能体未提供 RambleDesk 所需的反馈能力。请查看高级设置中的检测详情。', 'ACP is connected, but the agent did not provide the feedback capability RambleDesk requires. Review the detection details in advanced settings.')
-    if (diagnosis?.connection === 'connected') return tr('已接通 RambleDesk。新建会话并选择项目目录后，即可准备模型选项并发送消息。', 'Connected to RambleDesk. Start a session and choose a project directory to load model options and send a message.')
+    if (diagnosis?.connection === 'connected') return tr('ACP 连接检查通过。模型访问与 Ramble 反馈交接需在实际会话中验证。', 'ACP connection check passed. Model access and Ramble handoff still need verification in an actual session.')
     if (diagnosis?.connection === 'checking') return tr('正在查找本机程序并检查 ACP 连接。', 'Finding the local program and checking its ACP connection.')
     switch (diagnosis?.reason) {
+      case 'managed_setup': return tr('已发现 DeepSeek 连接组件。推荐由 RambleDesk 安装固定版本，无需寻找 dsh 或启动 dsh web；也可在高级设置中使用已发现的入口。', 'A DeepSeek connection component was found. Use the RambleDesk-managed pinned version without locating dsh or starting dsh web, or choose the discovered entry in advanced settings.')
       case 'bridge_missing': return nativeFound
         ? tr('已找到 ' + name + '。RambleDesk 会安装 ACP 连接组件，完成后自动检查连接。', 'Found ' + name + '. RambleDesk will install its ACP connection component, then check the connection automatically.')
         : tr('需要 ACP 连接组件才能接入。RambleDesk 可以安装组件并检查连接。', 'An ACP connection component is needed. RambleDesk can install it and check the connection.')
@@ -130,7 +132,7 @@
         const names = inspection?.checks.filter(check => ['node', 'npm'].includes(check.id) && check.status === 'fail').map(check => check.id === 'node' ? 'Node.js' : 'npm').join(' / ') || 'Node.js / npm'
         return tr('连接组件需要的 ' + names + ' 暂不可用。请安装或更新后重新检测。', names + ' is unavailable for the connection component. Install or update it, then detect again.')
       }
-      case 'agent_missing': return tr('尚未找到此智能体。安装后重新检测；已有程序可在高级设置中指定位置。', 'This agent was not found. Install it and detect again, or specify an existing program location in advanced settings.')
+      case 'agent_missing': return tr('未自动发现可用的 ACP 启动入口，不代表本机一定未安装。已有程序或 npx 启动方式可在高级设置中指定命令与参数。', 'No usable ACP launch entry was discovered; this does not prove the agent is uninstalled. Configure an existing program or npx command and arguments in advanced settings.')
       case 'dependency': return diagnosis?.canInstall
         ? tr('连接所需的配套程序尚未安装。RambleDesk 会一起安装并检查连接。', 'A required companion program is missing. RambleDesk will install it and check the connection.')
         : tr('缺少连接所需的配套程序。请按安装说明补齐，高级设置中可查看缺失项。', 'A required companion program is missing. Follow the installation guide; advanced settings show what is missing.')
@@ -165,13 +167,13 @@
 
 <section class="space-y-4 @container" aria-label={tr('智能体管理', 'Agent management')}>
   <div class="flex flex-wrap items-start justify-between gap-3">
-    <div><h3 class="m-0 text-sm font-semibold">{tr('智能体', 'Agents')}</h3><p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">{tr('查看本机的智能体，一键连接到 RambleDesk。', 'Find agents on this device and connect them to RambleDesk.')}</p></div>
+    <div><h3 class="m-0 text-sm font-semibold">{tr('智能体', 'Agents')}</h3><p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">{tr('选择支持的智能体，检测或准备与 RambleDesk 的连接。', 'Choose a supported agent, then detect or prepare its connection to RambleDesk.')}</p></div>
     <Button variant="outline" size="sm" disabled={$catalog.loading || $catalog.checking.length > 0 || $catalog.connecting.length > 0 || saving} onclick={() => void catalog.detectAll()}><RefreshCw class={`size-3.5 ${$catalog.checking.length > 0 || $catalog.connecting.length > 0 ? 'animate-spin' : ''}`} />{tr('检测智能体', 'Detect agents')}</Button>
   </div>
   {#if safeError}<p role="alert" class="break-words rounded-lg border border-destructive/25 bg-destructive/5 px-3 py-2 text-xs">{safeError}</p>{/if}
   <div class="grid min-w-0 gap-3 @min-[680px]:grid-cols-[210px_minmax(0,1fr)]">
     <nav class="overflow-hidden rounded-xl border bg-card" aria-label={tr('智能体列表', 'Agent list')}>
-      <div class="border-b px-3 py-3 text-[11px] font-medium text-muted-foreground">{tr('此设备上的智能体', 'Agents on this device')} · {items.length}</div>
+      <div class="border-b px-3 py-3 text-[11px] font-medium text-muted-foreground">{tr('可连接的智能体', 'Available agents')} · {items.length}</div>
       <div class="max-h-[560px] space-y-1 overflow-y-auto p-2">
         {#each items as row (row.key)}
           <button type="button" disabled={saving} class={`flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-3 text-left transition-colors disabled:opacity-50 ${item?.key === row.key ? 'border-primary/30 bg-primary/5' : 'border-transparent hover:bg-muted/60'}`} aria-current={item?.key === row.key ? 'page' : undefined} onclick={() => selectRow(row.key)}>
@@ -228,7 +230,7 @@
           {#if job}<div class="space-y-2 rounded-lg border bg-muted/20 p-3"><p class="m-0 text-xs">{tr('连接准备日志', 'Connection setup log')}: {job.phase}</p><pre class="m-0 max-h-36 overflow-auto whitespace-pre-wrap break-words font-mono text-[10px] leading-5 text-muted-foreground">{redactAgentMessage(job.messages.join('\n'), environmentText())}</pre></div>{/if}
           {#if item.configs.length > 1}<div class="space-y-2"><p class="m-0 text-xs font-medium">{tr('已有启动配置', 'Saved launch configurations')}</p><div class="flex flex-wrap gap-2">{#each item.configs as config}<Button size="sm" variant={config.id === profile?.id ? 'secondary' : 'outline'} disabled={saving} onclick={() => selectedProfile = config.id}>{config.name}</Button>{/each}</div></div>{/if}
           {#if profile}{#key profile.id}<AgentSettings {cache} {baselines} configs={[profile]} busy={saving} onSave={saveProfile} onDelete={removeProfile} onCheck={catalog.check} />{/key}
-          {:else if canCheck}<Button variant="outline" size="sm" disabled={saving} onclick={() => void prepareAdvanced()}>{tr('编辑启动设置', 'Edit launch settings')}</Button>
+          {:else if canUseDetected}<Button variant="outline" size="sm" disabled={saving} onclick={() => void prepareAdvanced()}>{tr('使用已发现的入口并编辑', 'Use and edit discovered entry')}</Button>
           {:else}<Button variant="outline" size="sm" disabled={saving} onclick={() => selected = 'new'}>{tr('自定义 ACP 启动设置', 'Custom ACP launch settings')}</Button>{/if}
         </div></details>{/key}
       {/if}

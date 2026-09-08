@@ -6,7 +6,7 @@ import { diagnosticAgentId, diagnosticErrorCategory, recordClientDiagnostic, sta
 import { isAbsoluteAgentDirectory, redactAgentMessage } from './agentConfigForm'
 import { agentLaunchSignature as launchSignature, beginAgentConnection, beginAgentInspection, forgetAgentConnection, observeAgentRuntime, readAgentDetectionCache, reconcileAgentConnections, redactAgentConnection, subscribeAgentDetectionCache } from './agentDetectionCache'
 export { agentLaunchSignature as launchSignature } from './agentDetectionCache'
-import { agentDiagnosis } from './agentDiagnosis'
+import { agentDiagnosis, prefersManagedDeepSeek } from './agentDiagnosis'
 export { agentDiagnosis, connectionPreparationAvailable } from './agentDiagnosis'
 
 type ConnectionResult = { signature: string; result: AgentConnectionCheck }
@@ -340,6 +340,9 @@ export function createAgentCatalogController(transport: ApplicationTransport) {
     if (!row?.entry) return
     if (row.config) return checkConfig(row.config, explicit, reason)
     const inspection = snapshot.inspections[agentId]
+    // Detection is read-only for this recipe until the user chooses managed setup
+    // or explicitly selects the discovered launch through advanced settings.
+    if (prefersManagedDeepSeek(row, inspection)) return
     if (!inspection?.command || inspection.checks.some(check => check.status === 'fail') || row.entry.verification.status === 'unsupported') return
     const attempt = JSON.stringify([agentId, inspection])
     if (!explicit && attemptedCatalogs.has(attempt)) return

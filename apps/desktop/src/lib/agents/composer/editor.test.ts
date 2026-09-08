@@ -4,7 +4,7 @@
 import { Editor } from '@tiptap/core'
 import { afterEach, describe, expect, it } from 'vitest'
 import { buildComposerExtensions } from './editor-config'
-import { replaceComposerText } from './composer-commands'
+import { isComposerEmptyForNavigation, replaceComposerText } from './composer-commands'
 import { decidePastedContent, textToInlineContent, textToSeededDoc } from './plain-text-content'
 import { quoteLineDecorations } from './quote-decoration'
 import { composerLeafText, serializeDocToText } from './to-prompt-blocks'
@@ -19,6 +19,18 @@ function makeEditor(text = '') {
 afterEach(() => { for (const editor of editors.splice(0)) editor.destroy() })
 
 describe('Codeg plain-text composer port', () => {
+  it('allows automatic navigation only from a mounted, empty editor outside IME composition', () => {
+    expect(isComposerEmptyForNavigation(null, false)).toBe(false)
+    const editor = makeEditor()
+    expect(isComposerEmptyForNavigation(editor, false)).toBe(true)
+    expect(isComposerEmptyForNavigation(editor, true)).toBe(false)
+    editor.commands.insertContent(textToInlineContent('正在输入'))
+    expect(isComposerEmptyForNavigation(editor, false)).toBe(false)
+    replaceComposerText(editor, '')
+    expect(isComposerEmptyForNavigation(editor, false)).toBe(true)
+    editor.commands.insertContent({ type: 'reference', attrs: { id: 'file', label: 'a.ts', uri: 'file:///repo/a.ts' } })
+    expect(isComposerEmptyForNavigation(editor, false)).toBe(false)
+  })
   it('registers no Markdown parser, formatting node, mark, or formatting input rule', () => {
     const editor = makeEditor()
     const names = editor.extensionManager.extensions.map((extension) => extension.name)

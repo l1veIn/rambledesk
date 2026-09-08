@@ -8,6 +8,7 @@ rust-version.workspace = true
 agent-client-protocol = { workspace = true, features = ["unstable_elicitation"] }
 futures.workspace = true
 rambledesk-core.workspace = true
+rambledesk-feedback-client.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

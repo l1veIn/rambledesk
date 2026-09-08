@@ -45,6 +45,9 @@ describe('Agent detection cards', () => {
   it('shows only the ACP channel status and hides technical details in advanced settings', () => {
     const body = markup({ check: { ok: true, message: 'ACP connected', details: ['raw handshake detail'] } })
     expect(body).toContain('ACP connection')
+    expect(body).toContain('Model access and Ramble handoff still need verification')
+    expect(body).toContain('Available agents')
+    expect(body).not.toContain('Agents on this device')
     expect(body).not.toContain('Models and conversation')
     const advanced = body.indexOf('data-agent-advanced')
     expect(advanced).toBeGreaterThan(0)

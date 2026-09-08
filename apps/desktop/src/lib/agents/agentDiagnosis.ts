@@ -4,8 +4,14 @@ import { agentLaunchSignature } from './agentDetectionCache'
 
 export type AgentDiagnosis = {
   connection: 'unchecked' | 'missing' | 'prepare' | 'checking' | 'connected' | 'failed'
-  reason: 'none' | 'bridge_missing' | 'agent_missing' | 'runtime' | 'dependency' | 'launch' | 'connection' | 'authentication' | 'session' | 'feedback' | 'install'
+  reason: 'none' | 'bridge_missing' | 'managed_setup' | 'agent_missing' | 'runtime' | 'dependency' | 'launch' | 'connection' | 'authentication' | 'session' | 'feedback' | 'install'
   canInstall: boolean
+}
+
+/** New DeepSeek users get the pinned, app-owned component. Saved/custom launches stay authoritative. */
+export function prefersManagedDeepSeek(row: AgentListItem, inspection: AgentInspection | undefined): boolean {
+  return row.entry?.id === 'deepseek-acp' && !row.config && !!inspection && inspection.source !== 'managed'
+    && connectionPreparationAvailable(row.entry, inspection)
 }
 
 export function connectionPreparationAvailable(entry: AgentCatalogEntry | undefined, inspection: AgentInspection | undefined): boolean {
@@ -41,6 +47,7 @@ export function agentDiagnosis(row: AgentListItem, state: AgentCatalogState): Ag
   const missingDependency = inspection.dependencies.some(dependency => dependency.required && !dependency.path)
   if (canInstall && (!inspection.command || missingDependency)) return { ...result, connection: 'prepare', reason: missingDependency ? 'dependency' : 'bridge_missing' }
   if (missingDependency) return { ...result, connection: 'failed', reason: 'dependency' }
+  if (prefersManagedDeepSeek(row, inspection)) return { ...result, connection: 'prepare', reason: 'managed_setup' }
   if (!inspection.command) return { ...result, connection: 'missing', reason: entry.connection_kind === 'bridge' ? 'bridge_missing' : 'agent_missing' }
   if (inspection.checks.some(check => check.status === 'fail')) return { ...result, connection: 'failed', reason: 'launch' }
   return result

@@ -32,7 +32,7 @@ impl Fixture {
         )
         .await
         .unwrap();
-        // This fixture exercises the scoped HTTP capability and delivery worker.
+        // This fixture exercises the private IPC relay, scoped HTTP and delivery worker.
         // The CLI suite separately runs the real feedback companion binary.
         let driver = AcpSessionDriver::with_feedback_companion(std::env::current_exe().unwrap());
         let app = SessionApplication::new(store.clone(), store.clone(), Arc::new(driver))

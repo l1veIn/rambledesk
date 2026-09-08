@@ -1,6 +1,6 @@
 // Adapted from Codeg 3ebdfed1d7c0b71d71880a3d2e0f8e09545feae1
 // src-tauri/src/acp/registry.rs (Apache-2.0). Changed: RambleDesk verification evidence,
-// official DSH entry, explicit bridge dependencies, manual bootstrap/binary paths.
+// explicit bridge dependencies, manual bootstrap/binary paths.
 use rambledesk_core::*;
 
 pub fn catalog() -> Vec<AgentCatalogEntry> {
@@ -119,7 +119,7 @@ pub fn catalog() -> Vec<AgentCatalogEntry> {
         ),
         npm!(
             "deepseek-acp",
-            "DeepSeek ACP",
+            "DeepSeek (DSH)",
             "dsh",
             "deepseek-acp",
             "0.8.0",
@@ -127,17 +127,6 @@ pub fn catalog() -> Vec<AgentCatalogEntry> {
             "22.0.0",
             true,
             []
-        ),
-        npm!(
-            "dsh",
-            "DeepSeek Harness",
-            "dsh",
-            "@deepseek-ai/dsh",
-            "0.1.2-rc.1",
-            "dsh",
-            "22.0.0",
-            false,
-            ["--profile", "acp"]
         ),
         npm!(
             "qoder",
@@ -202,10 +191,10 @@ pub fn catalog() -> Vec<AgentCatalogEntry> {
     }
     for entry in &mut entries {
         match entry.id.as_str() {
-            "deepseek-acp" | "dsh" => entry.verification = AgentVerification {
+            "deepseek-acp" => entry.verification = AgentVerification {
                 status: AgentVerificationStatus::Unverified,
-                versions: if entry.id == "dsh" { vec!["0.1.2-rc.1".into()] } else { vec!["0.8.0".into()] },
-                note: "Previous Windows testing covered ACP sessions, recovery and deletion isolation. The shared command feedback workflow still requires model-driven verification with this installed version.".into(),
+                versions: vec!["0.8.0".into()],
+                note: "Uses the community deepseek-acp adapter with its own DSH runtime dependencies; no separate dsh CLI installation is needed. Model-driven feedback must be verified in an actual session.".into(),
             },
             "pi-acp" => {
                 entry.dependencies.push(AgentDependency { command: "pi".into(), required: true, package: Some("@earendil-works/pi-coding-agent".into()), pinned_version: Some("0.83.0".into()), instructions: "The bridge launches pi --mode rpc. Its required Pi CLI is installed beside the bridge in the managed prefix.".into() });

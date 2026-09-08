@@ -47,7 +47,7 @@ Backend Runtime
   └─ core::SessionApplication
       ├─ storage: Session / AgentConfig / Activity / Delivery / Recovery / Deletion
       └─ AcpSessionDriver → owned stdio ACP Instance → Agent Backend
-           └─ Agent 自有执行工具 → 应用 feedback command → /agent-feedback/* → feedback application
+           └─ Agent 自有执行工具 → 应用 feedback command → 私有 IPC → /agent-feedback/* → feedback application
 ```
 
 `apps/desktop` 是 CURRENT composition root。每个 desktop 进程创建一份 Backend Runtime/
@@ -65,8 +65,8 @@ MCP，也不能跨会话使用。生产 ACP 启动不再注入 MCP server 或 Pi
 使用原 remote id 的 resume/load。删除先持久化 intent，再停止资源并清理所属数据，失败可重试；文件清理与
 发布共用锁，旧 publication plan 不得重新生成已删除的包。
 
-应用可执行文件内置无界面 `feedback request/get/recover` 分支，由 `rambledesk-feedback-client` 共享命令解析和 HTTP 客户端；
-该分支不启动 UI、不另启后端、不打开业务数据库。ACP 实例通过私有环境取得可执行路径、会话 API 和凭据。
+应用可执行文件内置无界面 `feedback request/get/recover/skip` 分支，由 `rambledesk-feedback-client` 共享命令解析、本地 IPC 和 HTTP 客户端；
+该分支不启动 UI、不另启后端、不打开业务数据库。ACP 实例通过私有环境取得可执行路径与实例本地通道地址，HTTP 凭据仅保存在控制器内存。
 每条用户/续接 prompt 前置工作流上下文，用户活动不保存这些说明；prepare 不发 prompt，用户全局 Skills 不受修改。
 Agent 自有执行工具和 bridge 环境传播仍是实际能力边界，不能把 ACP 握手当作命令可执行性证明。
 
@@ -215,11 +215,13 @@ rambledesk/
 持有官方 ACP SDK、stdio 通信、能力协商、权限回调映射，以及独占实例的启动与进程树清理。实现 core 的
 Agent driver ports，不持有 SQLite、HTTP 路由或 Tauri UI。当前只宣告已实现的 Client capabilities，不承接
 客户端文件/终端执行；有远端绑定时严格 resume/load，失败不回退为新会话。
+依赖 feedback-client 创建和回收实例本地 IPC relay；公共驱动依据真实回执检查交接，缺失时只提醒一次，失败可见。
 
 ### `rambledesk-feedback-client`
 
-共享桌面与 CLI 的无界面反馈命令、输入边界和会话专用 HTTP 客户端。只使用已有运行时的地址与授权，
-不创建 Backend Runtime、不访问业务数据库、不持有 Agent 推理或会话生命周期。路由归属与反馈业务规则仍由 server/core 负责。
+共享桌面与 CLI 的无界面反馈命令、输入边界、本地 IPC relay/client 和会话专用 HTTP 客户端。relay 只使用已有运行时的地址与授权，
+由 ACP 实例持有和回收；命令子进程不接触 HTTP bearer。不创建 Backend Runtime、不访问业务数据库、不持有 Agent 推理或业务会话生命周期。
+路由归属与反馈业务规则仍由 server/core 负责。
 
 ### `rambledesk-storage`
 

@@ -114,7 +114,7 @@
     createWorkspaceSnapshot,
   } from './lib/workspace/workspaceSnapshot'
   import { updateTaskTabTitles } from './lib/workspace/taskTabTitles'
-  import { agentSessionForView, agentViewForEmptyRamble, agentViewForRequest, cancelledFeedbackRestoreTarget } from './lib/workspace/agentViewRouting'
+  import { agentSessionForView, agentViewForEmptyRamble, agentViewForRequest, arrivingRequestForAgentView, cancelledFeedbackRestoreTarget } from './lib/workspace/agentViewRouting'
   import {
     savedPreviewWorkspaceSnapshot,
     savePreviewWorkspaceSnapshot,
@@ -263,6 +263,7 @@
   let attachmentPreviews: Record<string, string> = {}
   let dragActive = false
   let sessionWorkbench: FeedbackEditorHandle | undefined
+  let managedSessionSection: ManagedSessionSection | undefined
   let rambleController: RambleSessionControllerHandle
   let resumePrompt: ResumePrompt | null = null
   let resumeCopyState: 'idle' | 'copied' | 'failed' = 'idle'
@@ -456,6 +457,7 @@
     clearWorkspace,
     onPageError: (message) => (pageError = message),
     canSendOsBanners: () => isMac,
+    onRequestsArrived: (requests) => { void autoOpenArrivingRequest(requests) },
   })
   const resolveHostProfile = navigation.resolveHostProfile
   const sessionViewRecoveryResolver = createSessionViewRecoveryResolver({
@@ -1538,10 +1540,29 @@
     if (loaded) void attachmentController.refreshPreviews(loaded.workspace)
   }
 
+  async function autoOpenArrivingRequest(arrivals: readonly FeedbackRequestSummary[]) {
+    const origin = activeWorkspaceView(workspaceShellState)
+    if (origin?.kind !== 'agent-session' || pendingWorkspaceViewKey) return
+    const intent = workspaceTransition.currentIntent()
+    // Draft promotion can replace the active view in the same update as the first request.
+    await tick()
+    if (!workspaceTransition.isCurrent(intent) || pendingWorkspaceViewKey) return
+    const canLeave = () => {
+      const current = activeWorkspaceView(workspaceShellState)
+      return current?.kind === 'agent-session' && current.sessionId === origin.sessionId
+        && workbenchStartup === 'ready' && !onboardingOpen && !resumePrompt
+        && !workspaceTransitionLocked && !rambleEngaged
+        && managedSessionSection?.canAutoOpenRamble(origin.sessionId) === true
+    }
+    const request = arrivingRequestForAgentView(origin, arrivals, canLeave())
+    if (request) await activateRequest(request.request_id, canLeave)
+  }
+
   async function activateRequest(
     requestId: string,
+    canLeaveCurrent: () => boolean = () => true,
   ): Promise<WorkspaceTransitionOutcome> {
-    if (workspaceTransitionLocked) return 'blocked'
+    if (workspaceTransitionLocked || !canLeaveCurrent()) return 'blocked'
     const priorScope = currentNavigationScope()
     const intent = workspaceTransition.invalidate()
     if (
@@ -1553,18 +1574,19 @@
     }
     pageError = ''
     const view = viewForRequest(requestId)
-    if (view) {
+    // An exact request can load while its already-selected request list is refreshing.
+    if (view && (view.hostId !== priorScope.hostId || view.hostSessionId !== priorScope.hostSessionId)) {
       const selection = await navigation.selectScope(view.hostId, view.hostSessionId)
       if (!workspaceTransition.isCurrent(intent)) return 'stale'
       if (!selection.selected) return 'failed'
     }
-    if (workspaceTransitionLocked) { await restoreNavigationScope(priorScope, 'blocked'); return 'blocked' }
+    if (workspaceTransitionLocked || !canLeaveCurrent()) { await restoreNavigationScope(priorScope, 'blocked'); return 'blocked' }
     const outcome = await workspaceTransition.activate({
       view,
       requestId,
       shellAction: { type: 'open' },
       pendingViewKey: view ? workspaceViewKey(view) : `request:${JSON.stringify(requestId)}`,
-    }, intent)
+    }, intent, canLeaveCurrent)
     await restoreNavigationScope(priorScope, outcome)
     return outcome
   }
@@ -1641,8 +1663,9 @@
     })
     managedDraftControllers.delete(draftId)
     persistCurrentWorkspaceSnapshot()
+    const intent = workspaceTransition.currentIntent()
     await navigation.refreshNavigation(true)
-    if (workspaceShellState.activeViewKey === workspaceViewKey(view)) await selectAgentNavigationScope(view)
+    if (workspaceTransition.isCurrent(intent) && workspaceShellState.activeViewKey === workspaceViewKey(view)) await selectAgentNavigationScope(view)
   }
 
   function observeManagedDeletion(sessionId: string, deleting: boolean) {
@@ -2330,6 +2353,7 @@
               {#if workbenchMounted && workbenchStartup === 'ready'}
               {#key renderedAgentSessionView.sessionId}
                 <ManagedSessionSection
+                  bind:this={managedSessionSection}
                   transport={applicationTransport}
                   sessionId={renderedAgentSessionView.sessionId}
                   deletionPending={deletingSessionCommands.has(renderedAgentSessionView.sessionId)}

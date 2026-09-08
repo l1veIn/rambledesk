@@ -1,7 +1,7 @@
 # ACP 托管会话
 
 > 状态：CURRENT，体验重设计已实现，Windows 自动化与隔离浏览器验收已完成；不表示此前发布的安装包包含这些行为。
-> 更新：2026-09-06。当前验证环境为 Windows；本轮尚未完成统一命令路径的真实 Agent 模型闭环、Linux/macOS 与签名安装包验收。
+> 更新：2026-09-08。新增 macOS 本地 IPC/命令/ACP 自动化回归；尚未完成此次修复的真实 Agent 模型闭环、Windows 命名管道实跑与签名安装包验收。
 > 术语见 [TERMINOLOGY.md](TERMINOLOGY.md)，架构见 [ADR 007](adr/007-acp-managed-sessions.md)，进度见 [体验重设计计划](ACP_EXPERIENCE_REDESIGN_PLAN.md)。
 
 RambleDesk 通过 ACP 管理设备上的外部智能体会话，智能体负责推理、文件读取和工具执行。一个业务会话可以有独立的 **Agent 页面**和 **Ramble 页面**：前者用于对话，后者用于体验、记录和提交反馈。外部客户端仍可通过 Generic MCP、Pi、dsh 等适配器请求反馈；这些外部接入与托管 ACP 会话分别路由。
@@ -29,17 +29,18 @@ tab 切换保留草稿控制器和连接，界面只挂载当前视图。客户�
 
 ## 统一托管反馈命令
 
-生产托管路径使用应用自带的无界面 `feedback` 命令，通过 local-server 的会话专用 HTTP JSON API 工作，不再按 Agent 选择 HTTP MCP、stdio companion 或 Pi 托管扩展。智能体原有 MCP、Skills 与原生插件仍由其自身配置机制加载；它们不决定 RambleDesk 的托管会话身份。
+生产托管路径使用应用自带的无界面 `feedback` 命令，经实例私有本地 IPC 通道访问控制器，由控制器保管凭据并转发至 local-server 的会话专用 HTTP JSON API。不再按 Agent 选择 HTTP MCP、stdio companion 或 Pi 托管扩展。智能体原有 MCP、Skills 与原生插件仍由其自身配置机制加载；它们不决定 RambleDesk 的托管会话身份。
 
 | 运行时环境变量 | 作用 |
 | --- | --- |
 | `RAMBLEDESK_COMMAND` | 应用可执行文件的绝对路径；发布应用自带该命令，不要求用户另装 CLI。 |
 | `RAMBLEDESK_MANAGED_SESSION=1` | 标识托管启动，旧反馈出口不得回退为外部会话。 |
 | `RAMBLEDESK_MANAGED_PI_ACTIVE=1` | 兼容已安装的旧 Pi 插件入口，阻止其注册外部反馈工具；不加载旧扩展。 |
-| `RAMBLEDESK_FEEDBACK_URL` | 当前运行时的 `/agent-feedback` 基地址。 |
-| `RAMBLEDESK_FEEDBACK_TOKEN` | 固定绑定该本地会话的私有凭据。 |
+| `RAMBLEDESK_FEEDBACK_CHANNEL` | 实例独占的 Unix socket / Windows 本地命名管道地址；不是 HTTP 凭据。 |
 
 私有环境只属于运行实例，不写入用户启动配置或会话活动。停止、删除、替换实例时撤销，恢复时重新签发。服务器从凭据确定归属，调用者不能传入另一个宿主会话 ID；缺少或失效的身份不能回退到外部全局 API。
+
+HTTP URL/token 留在控制器内存中，不传入 Agent，也不写入 token 文件。Unix socket 放在权限 0700 的临时目录；Windows 管道拒绝远程客户端，并要求可写连接才能发送请求。通道关闭会取消正在处理的本地客户端。旧版直接 URL/token 命令输入仅作为兼容入口保留；存在通道配置时不允许失败回退。
 
 当前随应用提供的 Pi/dsh 插件识别托管标记并跳过外部反馈注册；旧 Pi 插件通过兼容标记处理。已全局安装的旧 dsh 插件没有环境退出开关，可能仍注册外部工具或附加旧指引。运行时明确要求使用通用命令，但不会擅自升级或修改全局插件，因此不能宣称旧 dsh 工具已被物理禁用；此组合仍需真实模型验收。
 
@@ -47,7 +48,9 @@ tab 切换保留草稿控制器和连接，界面只挂载当前视图。客户�
 
 ACP v1 没有统一 system prompt 或任意工具注册字段。RambleDesk 在每条真实用户 prompt 和反馈续接 prompt 前置运行时上下文文本，说明何时请求体验、如何调用命令、创建请求后结束当前轮次，以及收到续接后读取反馈并继续；这部分不进入用户消息历史。prepare 本身不发送引导 prompt，也不修改用户全局 Skills。
 
-Agent 需要通过自己的执行工具调用该程序，bridge 需要保留运行时环境，进程还须能够访问会话 API。ACP 握手、MCP capability 或安装检测不能独立证明这些条件已满足。RambleDesk 当前不宣告 ACP 客户端文件系统或终端执行能力。
+默认所有用户结果（包括只读分析、解释和总结）均通过 Ramble 交接。公共驱动观察实际反馈命令回执：正常结束且完全未尝试反馈时，只追加一次交接提醒，不重做任务、不新增用户轮次；已尝试失败或提醒后仍缺失则保留回答并显示错误。用户取消不触发补偿。明确绕过 Ramble、完成任务或取消请求时，可分别使用 `feedback skip --reason user_opt_out|task_finished|request_cancelled` 确认本轮例外，不能由模型自行猜测“完成”。读取批准/取消的终态也有效；普通提交反馈后的下一轮仍需交接。
+
+Agent 需要通过自己的执行工具调用该程序，bridge 需要保留命令与通道地址，工具沙箱须允许本地 IPC。清理 KEY/TOKEN/SECRET 环境变量不会再删除通道，但清空所有环境或禁止 IPC 仍会明确失败。ACP 握手、MCP capability 或安装检测不能独立证明这些条件已满足。RambleDesk 当前不宣告 ACP 客户端文件系统或终端执行能力。
 
 ## Agent 页面与能力边界
 
@@ -64,6 +67,10 @@ Agent 需要通过自己的执行工具调用该程序，bridge 需要保留运�
 按需挂载和视图分离已经实现；实际速度或内存改善仍需同环境的性能对照，不能从源码结构直接宣称测量结果。
 
 ## 检测与连接智能体
+
+目录显示的是**可连接的智能体**，不是本机已安装数量。自动发现依次使用应用管理的版本、PATH/常见程序目录、当前 npm 全局前缀；不会扫描 npx 缓存或推断浏览器中运行的服务。未发现仅表示缺少可解析启动入口，已有程序可手动配置。
+
+DeepSeek 默认只保留 **DeepSeek (DSH)**：一键安装固定 `deepseek-acp@0.8.0` 及其 DSH 运行依赖，无需另装 dsh 或先启动 `dsh web`。新用户发现系统版组件时仍推荐应用管理安装；可在高级设置中显式采用已发现入口。已有 community 配置不被覆盖，旧官方 `catalog_id=dsh` 配置作为自定义入口保留，其历史与后端不变。可复用 `~/.dsh` 认证，不代表共享全部 Web 配置/插件/历史；未配置时使用组件自己的 `--setup` 指引。
 
 新手引导和设置页复用 Agent 管理组件，默认只展示 ACP 检测状态卡片和折叠的高级设置。首次接入沿用同一条完整流程：
 
@@ -107,7 +114,11 @@ Agent 需要通过自己的执行工具调用该程序，bridge 需要保留运�
 
 2026-09-04 的社区 DeepSeek ACP 0.8.0、官方 dsh 0.1.2-rc.1 曾完成真实双项目模型反馈闭环、正常重启后的原 ID 恢复和删除隔离。这些报告测试的是当时的 MCP 托管路径。随后 Pi 的离线扩展与 Codex 的安装/握手记录也属于前一阶段证据，**不能据此宣称本轮统一命令路径已经完成真实模型验收**。版本、报告与限制见 [ACP_BACKEND_PROBE.md](ACP_BACKEND_PROBE.md) 和 [Codeg 历史验收](CODEG_ACCEPTANCE.md)。
 
-本轮已完成 Windows 自动化测试与真实 HTTP/ACP 夹具的浏览器操作验收，覆盖命令分派、HTTP 会话隔离与撤销、prepared 生命周期、草稿竞态、视图查询边界、轮次展示和真实 usage 映射；详细结果见[本轮计划](ACP_EXPERIENCE_REDESIGN_PLAN.md)。尚未完成新路径真实 Agent 模型闭环、原生 Desktop 完整人工流程、Linux/macOS 实跑、签名安装包以及性能对照，不将夹具当作这些验收。
+2026-09-06 阶段已完成 Windows 自动化测试与真实 HTTP/ACP 夹具的浏览器操作验收，覆盖命令分派、HTTP 会话隔离与撤销、prepared 生命周期、草稿竞态、视图查询边界、轮次展示和真实 usage 映射；详细结果见[体验重设计计划](ACP_EXPERIENCE_REDESIGN_PLAN.md)。
+
+2026-09-08 修复在 macOS 上增加了 DSH 式环境清理、真实 CLI 与桌面命令分支、本地通道关闭/替换/在途撤销、迟到回执、单次交接补偿、显式跳过、取消与双会话隔离回归。前端 1,000 项测试、桌面 Rust 129 项测试、工作区 Rust 测试、Pi/DSH 外部适配器 50 项测试、类型/合同/边界检查、Clippy 与 Web 构建均通过。
+
+此次修复仍未完成真实 Agent 模型闭环、原生 Desktop 完整人工流程、Windows 命名管道及 Linux 实跑、签名安装包与性能对照；不将上述夹具当作这些验收。现有已安装应用未被替换，需使用包含修复的新构建验证真实会话。
 
 `cargo run -p rambledesk-local-server --example managed_loop` 是需显式授权模型调用的探针入口，配置和历史证据见后端记录。该示例本身也分派共享反馈命令，当前路径重跑不复用历史报告中的 MCP 结论。
 

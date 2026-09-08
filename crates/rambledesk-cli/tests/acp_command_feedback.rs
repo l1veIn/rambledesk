@@ -55,6 +55,10 @@ impl Fixture {
                 ],
                 env: BTreeMap::from([
                     (
+                        "RAMBLEDESK_FEEDBACK_CHANNEL".into(),
+                        "persisted-channel-must-not-be-trusted".into(),
+                    ),
+                    (
                         "RAMBLEDESK_FEEDBACK_TOKEN".into(),
                         "persisted-value-must-not-be-trusted".into(),
                     ),
@@ -184,7 +188,21 @@ async fn configured_driver_runs_real_scoped_companion_chain_and_original_context
         })
         .await
         .unwrap();
-    fixture.settled(two, "REQUEST_NOT_FOUND").await;
+    let failed = fixture.settled(two, "REQUEST_NOT_FOUND").await;
+    assert!(
+        failed
+            .runtime
+            .last_error
+            .as_deref()
+            .unwrap()
+            .contains("without a Ramble handoff")
+    );
+    assert!(
+        !failed
+            .activities
+            .iter()
+            .any(|row| row.text.contains("HANDOFF_RETRY"))
+    );
     let saved = fixture
         .feedback
         .save_feedback_draft(SaveDraftInput {
@@ -282,5 +300,154 @@ async fn mcp_capabilities_do_not_change_workflow_and_missing_command_fails_expli
     assert!(!check.ok);
     let snapshot = fixture.create().await;
     assert_eq!(snapshot.runtime.connection, SessionConnectionState::Failed);
+    fixture.close().await;
+}
+
+#[tokio::test]
+async fn missing_handoff_is_reminded_once_without_repeating_work_or_creating_a_user_turn() {
+    let fixture = Fixture::new(false, PathBuf::from(env!("CARGO_BIN_EXE_rambledesk"))).await;
+    let session = fixture.create().await;
+    let id = &session.session.session_id;
+    let request = "01992658-1250-7000-8000-000000000071";
+    fixture
+        .app
+        .send_prompt(SendManagedPromptInput {
+            session_id: id.clone(),
+            text: format!("ignore:{request}"),
+        })
+        .await
+        .unwrap();
+    let result = fixture.settled(id, "REQUEST").await;
+    assert!(
+        result.runtime.last_error.is_none(),
+        "{:?}",
+        result.runtime.last_error
+    );
+    let transcript = result
+        .activities
+        .iter()
+        .map(|row| row.text.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert_eq!(transcript.matches("ORIGINAL_ANSWER").count(), 1);
+    assert_eq!(transcript.matches("HANDOFF_RETRY").count(), 1);
+    assert_eq!(
+        result
+            .activities
+            .iter()
+            .filter(|row| row.kind == SessionActivityKind::UserMessage)
+            .count(),
+        1
+    );
+    assert_eq!(
+        fixture
+            .store
+            .get_request(request)
+            .await
+            .unwrap()
+            .managed_session_id
+            .as_deref(),
+        Some(id.as_str())
+    );
+    fixture.close().await;
+}
+
+#[tokio::test]
+async fn repeated_omission_is_visible_and_explicit_skip_is_only_valid_for_its_turn() {
+    let fixture = Fixture::new(false, PathBuf::from(env!("CARGO_BIN_EXE_rambledesk"))).await;
+    let session = fixture.create().await;
+    let id = &session.session.session_id;
+    fixture
+        .app
+        .send_prompt(SendManagedPromptInput {
+            session_id: id.clone(),
+            text: "skip:user_opt_out".into(),
+        })
+        .await
+        .unwrap();
+    let skipped = fixture.settled(id, "SKIP skipped").await;
+    assert!(skipped.runtime.last_error.is_none());
+    assert!(
+        !skipped
+            .activities
+            .iter()
+            .any(|row| row.text.contains("HANDOFF_RETRY"))
+    );
+    fixture
+        .app
+        .send_prompt(SendManagedPromptInput {
+            session_id: id.clone(),
+            text: "silent".into(),
+        })
+        .await
+        .unwrap();
+    let failed = fixture.settled(id, "HANDOFF_RETRY").await;
+    assert!(
+        failed
+            .runtime
+            .last_error
+            .as_deref()
+            .unwrap()
+            .contains("without a Ramble handoff")
+    );
+    assert!(
+        failed
+            .activities
+            .iter()
+            .any(|row| row.kind == SessionActivityKind::Error)
+    );
+    assert_eq!(
+        failed
+            .activities
+            .iter()
+            .map(|row| row.text.matches("HANDOFF_RETRY").count())
+            .sum::<usize>(),
+        1
+    );
+    assert_eq!(failed.runtime.connection, SessionConnectionState::Connected);
+    fixture.close().await;
+}
+
+#[tokio::test]
+async fn user_cancellation_does_not_start_a_handoff_retry_even_if_agent_reports_end_turn() {
+    let fixture = Fixture::new(false, PathBuf::from(env!("CARGO_BIN_EXE_rambledesk"))).await;
+    let session = fixture.create().await;
+    let id = &session.session.session_id;
+    fixture
+        .app
+        .send_prompt(SendManagedPromptInput {
+            session_id: id.clone(),
+            text: "cancel".into(),
+        })
+        .await
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !fixture
+            .snapshot(id)
+            .await
+            .activities
+            .iter()
+            .any(|row| row.text.contains("WAIT_CANCEL"))
+        {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    fixture
+        .app
+        .cancel_prompt(ManagedSessionInput {
+            session_id: id.clone(),
+        })
+        .await
+        .unwrap();
+    let cancelled = fixture.settled(id, "CANCELLED").await;
+    assert!(
+        !cancelled
+            .activities
+            .iter()
+            .any(|row| row.text.contains("HANDOFF_RETRY"))
+    );
+    assert!(cancelled.runtime.last_error.is_none());
     fixture.close().await;
 }

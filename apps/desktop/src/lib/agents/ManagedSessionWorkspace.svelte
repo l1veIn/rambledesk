@@ -50,6 +50,7 @@
 
   let activeSessionId = ''
   let prompt = ''
+  let composer: AgentComposer | undefined
   let pending = new Set<string>()
   let errors: Record<string, string> = {}
   let failures: Record<string, AgentFailure | undefined> = {}
@@ -100,6 +101,12 @@
   function editPrompt(text: string) {
     prompt = text
     sessionPromptDrafts.write(activeSessionId, text)
+  }
+
+  export function canAutoOpenRamble(sessionId: string): boolean {
+    return activeSessionId === sessionId && !busy && !snapshot.deleting
+      && visibleInteractions.length === 0 && !prompt.trim()
+      && composer?.isEmptyForNavigation() === true
   }
 
   async function run(name: string, operation: () => Promise<void> | void, id = activeSessionId): Promise<boolean> {
@@ -239,7 +246,7 @@
     {/if}
     {#if failedMessage && !prompt.trim() && !awaitingAcknowledgement && !snapshot.deleting}<Button size="sm" variant="ghost" disabled={busy || lifecyclePending || sendPending} onclick={restoreFailedMessage}>{tr('Restore failed message to input')}</Button>{/if}
     {#key snapshot.session.session_id}
-      <AgentComposer value={prompt} draftKey={snapshot.session.session_id}
+      <AgentComposer bind:this={composer} value={prompt} draftKey={snapshot.session.session_id}
         onchange={editPrompt} onsubmit={send}
         disabled={composerState.disabled} busy={composerState.busy} sendDisabled={composerState.sendDisabled || awaitingAcknowledgement}
         oncancel={composerState.canCancel ? async () => { await run('cancel', onCancel) } : undefined}>

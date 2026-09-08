@@ -429,6 +429,37 @@ describe('navigationController', () => {
     expect(mocks.setPendingCount).toHaveBeenCalledWith(1)
   })
 
+  it('delivers new arrivals once, independent of OS notification permission, without replaying skipped requests', async () => {
+    const old = feedbackRequest('old')
+    const first = feedbackRequest('first')
+    const second = feedbackRequest('second')
+    let inbox = [old]
+    const onRequestsArrived = vi.fn()
+    mocks.applicationCall.mockImplementation(async (command: string) => {
+      if (command === 'listFeedbackInbox') return inbox
+      if (command === 'listHostSessions') return [hostSession()]
+      if (command === 'listHostProfiles') return []
+      if (command === 'listFeedbackRequests') return { requests: inbox, next_cursor: null }
+    })
+    const controller = createController({ onRequestsArrived })
+    await controller.initialize(false)
+    expect(onRequestsArrived).not.toHaveBeenCalled()
+    inbox = [first, old]
+    await controller.refreshNavigation()
+    expect(onRequestsArrived).toHaveBeenCalledExactlyOnceWith([first])
+    await controller.refreshNavigation()
+    inbox = []
+    await controller.refreshNavigation()
+    inbox = [{ ...first, revision: 2 }, old]
+    await controller.initialize(false)
+    expect(onRequestsArrived).toHaveBeenCalledTimes(1)
+    inbox = [second, first]
+    await controller.refreshPage(0)
+    expect(onRequestsArrived).toHaveBeenCalledTimes(2)
+    expect(onRequestsArrived).toHaveBeenLastCalledWith([second])
+    expect(mocks.notificationSend).not.toHaveBeenCalled()
+  })
+
   it('waits for transport readiness before loading application facts', async () => {
     const transport = new TestApplicationTransport(undefined)
       .handle('listFeedbackInbox', (input) => mocks.applicationCall('listFeedbackInbox', input))

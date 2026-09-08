@@ -1,5 +1,17 @@
 import type { FeedbackRequestSummary, HostSessionSummary } from '$lib/generated/feedback'
-import { agentSessionViewDescriptor, sessionViewDescriptor, type AgentSessionViewDescriptor, type SessionViewDescriptor } from './viewDescriptors'
+import { agentSessionViewDescriptor, sessionViewDescriptor, type AgentSessionViewDescriptor, type SessionViewDescriptor, type WorkspaceViewDescriptor } from './viewDescriptors'
+
+/** Only new arrivals may interrupt an empty Agent composer; all other pages stay put. */
+export function arrivingRequestForAgentView(
+  view: WorkspaceViewDescriptor | null,
+  arrivals: readonly FeedbackRequestSummary[],
+  canLeave: boolean,
+): FeedbackRequestSummary | null {
+  if (view?.kind !== 'agent-session' || !canLeave) return null
+  const pending = arrivals.filter(request => request.status === 'waiting' || request.status === 'in_progress')
+  // A batch opens just one request, preferring the Agent the user is already watching.
+  return pending.find(request => request.managed_session_id === view.sessionId) ?? pending[0] ?? null
+}
 
 /** Request ownership comes from the durable binding, never a display host/session pair. */
 export function agentViewForRequest(

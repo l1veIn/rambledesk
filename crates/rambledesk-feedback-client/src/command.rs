@@ -21,6 +21,11 @@ struct Arguments {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Record an explicit exception to Ramble handoff. Never infer task completion.
+    Skip {
+        #[arg(long, value_parser = ["user_opt_out", "task_finished", "request_cancelled"])]
+        reason: String,
+    },
     /// Create a feedback request from JSON. Preserve its request_id for recovery.
     Request {
         /// JSON file, or - for standard input. Fields: what_happened, actions,
@@ -61,6 +66,7 @@ fn read_input(path: &PathBuf) -> Result<ManagedFeedbackRequestInput, ClientError
 
 fn payload(command: Command) -> Result<(&'static str, Value, Option<String>), ClientError> {
     let (operation, value) = match command {
+        Command::Skip { reason } => ("skip", Ok(serde_json::json!({"reason": reason}))),
         Command::Request { input } => {
             let mut input = read_input(&input)?;
             // Allocate before I/O and return this ID even for uncertain failures.
@@ -109,9 +115,23 @@ pub(super) fn run() -> i32 {
     };
     // Validate the environment before touching input files. Never read external
     // token files or initialize desktop services when invoked as a command.
-    let endpoint = match crate::endpoint_from_env() {
-        Ok(endpoint) => endpoint,
-        Err(error) => return output(false, error.json(None)),
+    let channel = match std::env::var_os(crate::CHANNEL_ENV) {
+        Some(value) => match value
+            .to_str()
+            .filter(|address| crate::channel::validate_address(address).is_ok())
+        {
+            Some(address) => Some(address.to_owned()),
+            None => return output(false, ClientError::InvalidCapability.json(None)),
+        },
+        None => None,
+    };
+    let endpoint = if channel.is_some() {
+        None
+    } else {
+        match crate::endpoint_from_env() {
+            Ok(endpoint) => Some(endpoint),
+            Err(error) => return output(false, error.json(None)),
+        }
     };
     let (operation, value, id) = match payload(args.command) {
         Ok(payload) => payload,
@@ -122,7 +142,20 @@ pub(super) fn run() -> i32 {
         .build();
     let result = runtime
         .map_err(|_| ClientError::RuntimeUnavailable)
-        .and_then(|runtime| runtime.block_on(crate::call(&endpoint, operation, &value)));
+        .and_then(|runtime| {
+            runtime.block_on(async {
+                if let Some(channel) = channel {
+                    crate::channel::call(&channel, operation, &value).await
+                } else {
+                    crate::call(
+                        endpoint.as_ref().expect("validated endpoint"),
+                        operation,
+                        &value,
+                    )
+                    .await
+                }
+            })
+        });
     match result {
         Ok((success, mut result)) => {
             if !success && let Some(id) = id {

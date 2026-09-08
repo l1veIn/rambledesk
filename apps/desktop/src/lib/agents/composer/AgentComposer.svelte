@@ -8,7 +8,7 @@
   import { Button } from '$lib/components/ui/button'
   import { locale as appLocale, type Locale } from '$lib/preferences'
   import { buildComposerExtensions } from './editor-config'
-  import { replaceComposerText } from './composer-commands'
+  import { isComposerEmptyForNavigation, replaceComposerText } from './composer-commands'
   import { decidePastedContent, textToSeededDoc } from './plain-text-content'
   import { composerLeafText, serializeDocToText } from './to-prompt-blocks'
   import { decideComposerKey } from './submit-key'
@@ -48,6 +48,11 @@
   $: if (editor) syncEditorOptions(editor, disabled, effectiveLocale, placeholder, ariaLabel)
 
   function tr(text: string) { return composerText(effectiveLocale, text) }
+
+  // Read the live editor, including IME composition, before an automatic navigation.
+  export function isEmptyForNavigation(): boolean {
+    return isComposerEmptyForNavigation(editor, editor?.view.composing ?? false)
+  }
 
   onMount(() => {
     alive = true

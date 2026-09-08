@@ -39,6 +39,7 @@ export function createWorkspaceTransition<LoadedWorkspace>(
   function activate(
     target: WorkspaceTransitionTarget,
     expectedIntent?: number,
+    canLeaveCurrent: () => boolean = () => true,
   ): Promise<WorkspaceTransitionOutcome> {
     // A delayed scope/catalog read cannot supersede a newer user navigation.
     if (expectedIntent !== undefined && expectedIntent !== latestIntent) return Promise.resolve('stale')
@@ -49,9 +50,10 @@ export function createWorkspaceTransition<LoadedWorkspace>(
       if (intent !== latestIntent) return 'stale'
 
       try {
+        if (!canLeaveCurrent()) return 'blocked'
         const saved = await adapter.saveCurrent()
         if (intent !== latestIntent) return 'stale'
-        if (!saved) {
+        if (!saved || !canLeaveCurrent()) {
           adapter.restoreCurrent()
           return 'blocked'
         }
@@ -86,5 +88,5 @@ export function createWorkspaceTransition<LoadedWorkspace>(
     return intent
   }
 
-  return { activate, invalidate, isCurrent: (intent: number) => intent === latestIntent }
+  return { activate, invalidate, currentIntent: () => latestIntent, isCurrent: (intent: number) => intent === latestIntent }
 }

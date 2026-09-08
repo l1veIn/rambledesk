@@ -8,7 +8,7 @@ import type { AgentCatalogEntry, AgentConfig, AgentConnectionCheck, AgentInspect
 import { agentConnectionResult, agentDiagnosis, agentListItems, agentStatus, catalogConfiguration, configurationsForAgent, connectionPreparationAvailable, createAgentCatalogController, manualAgentConfiguration } from './agentCatalogController'
 
 const entry: AgentCatalogEntry = {
-  id: 'deepseek-acp', name: 'DeepSeek ACP', host_id: 'dsh', description: '', connection_kind: 'bridge',
+  id: 'deepseek-acp', name: 'DeepSeek (DSH)', host_id: 'dsh', description: '', connection_kind: 'bridge',
   distribution: { kind: 'npm', package: 'deepseek-acp', pinned_version: '0.8.0', command: 'deepseek-acp', node_required: '22.0.0' },
   args: [], dependencies: [], verification: { status: 'unverified', versions: [], note: '' },
 }
@@ -49,6 +49,32 @@ function captureDiagnostics() {
 afterEach(() => { vi.useRealTimers(); stopDiagnostics?.(); stopDiagnostics = undefined })
 
 describe('Simplified agent management', () => {
+  it('offers managed DeepSeek setup without silently selecting an older system or npx entry', async () => {
+    const { controller, transport } = harness({ inspection: { ...inspection, source: 'system', version: '0.7.0' } })
+    controller.start(); await controller.detectAll()
+    const state = get(controller)
+    expect(agentDiagnosis(agentListItems(state.entries, state.configs)[0], state)).toMatchObject({ connection: 'prepare', reason: 'managed_setup' })
+    expect(transport.callsFor('resolveCatalogAgent')).toHaveLength(0)
+    expect(transport.callsFor('installAgent')).toHaveLength(0)
+    expect(transport.callsFor('checkAgentConfig')).toHaveLength(0)
+    await controller.resolve(entry.id)
+    expect(transport.callsFor('resolveCatalogAgent')).toHaveLength(1)
+    controller.dispose()
+  })
+
+  it('keeps legacy official DSH and existing community launches unchanged during discovery', async () => {
+    const legacy = { ...config, id: 'official', catalog_id: 'dsh', name: 'DeepSeek Harness', command: 'npx', args: ['@deepseek-ai/dsh@0.1.1-rc.2', '--profile', 'acp'] }
+    const existing = { ...config, command: '/custom/deepseek-acp', env: { ACCOUNT: 'keep' } }
+    const { controller, transport } = harness({ configs: [legacy, existing], inspection: { ...inspection, source: 'system', version: '0.7.0' } })
+    controller.start(); await controller.detectAll()
+    expect(get(controller).configs).toEqual([legacy, existing])
+    expect(transport.callsFor('saveAgentConfig')).toHaveLength(0)
+    expect(transport.callsFor('installAgent')).toHaveLength(0)
+    const rows = agentListItems(get(controller).entries, get(controller).configs)
+    expect(rows.find(row => row.key === 'config:official')?.config).toEqual(legacy)
+    expect(rows.find(row => row.key === 'catalog:deepseek-acp')?.config).toEqual(existing)
+    controller.dispose()
+  })
   it('connects through the newly installed ACP entry instead of a saved vendor CLI', async () => {
     const previous = { ...config, command: 'claude', args: ['--interactive'], env: { API_KEY: 'preserved-key', PATH: '/old-runtime' } }
     const { controller, transport } = harness({ configs: [previous], inspection: { ...inspection, env: { PATH: '/new-runtime' } } })

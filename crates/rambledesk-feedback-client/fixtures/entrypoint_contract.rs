@@ -17,6 +17,7 @@ fn command(directory: &std::path::Path, url: &str, token: &str) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_rambledesk"));
     command
         .arg("feedback")
+        .env_remove("RAMBLEDESK_FEEDBACK_CHANNEL")
         .current_dir(directory)
         .env("RAMBLEDESK_FEEDBACK_URL", url)
         .env("RAMBLEDESK_FEEDBACK_TOKEN", token)
@@ -188,4 +189,39 @@ async fn binary_feedback_missing_capability_never_uses_external_credentials() {
     assert!(!success);
     assert_eq!(result["code"], "missing_capability");
     assert!(!directory.path().join("must-not-create.token").exists());
+}
+
+#[tokio::test]
+async fn binary_uses_private_channel_without_tokens_and_never_falls_back_from_it() {
+    use rambledesk_feedback_client::channel::FeedbackChannel;
+    let directory = tempfile::tempdir().unwrap();
+    let channel = FeedbackChannel::start(rambledesk_core::ManagedFeedbackEndpoint {
+        url: "http://127.0.0.1:1/agent-feedback".into(),
+        bearer_token: "ab".repeat(32),
+    })
+    .unwrap();
+    let mut skip = command(directory.path(), "http://127.0.0.1:1/agent-feedback", "ab");
+    skip.env_remove("RAMBLEDESK_FEEDBACK_TOKEN")
+        .env_remove("RAMBLEDESK_FEEDBACK_URL")
+        .env("RAMBLEDESK_FEEDBACK_CHANNEL", channel.address())
+        .args(["skip", "--reason", "user_opt_out"]);
+    assert!(execute(skip, None, "never-printed-secret").await.0);
+    assert!(channel.receipt().handed_off);
+    channel.close().await;
+    for (address, expected) in [
+        ("invalid-address", "invalid_capability"),
+        (channel.address(), "revoked_capability"),
+    ] {
+        let mut invalid = command(
+            directory.path(),
+            "http://127.0.0.1:1/agent-feedback",
+            &"ab".repeat(32),
+        );
+        invalid
+            .env("RAMBLEDESK_FEEDBACK_CHANNEL", address)
+            .args(["recover", "--request-id", ID]);
+        let (success, result) = execute(invalid, None, "never-printed-secret").await;
+        assert!(!success);
+        assert_eq!(result["code"], expected);
+    }
 }

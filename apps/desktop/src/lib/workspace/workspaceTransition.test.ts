@@ -71,6 +71,34 @@ function harness(overrides: Partial<WorkspaceTransitionAdapter<Loaded>> = {}) {
 }
 
 describe('workspaceTransition', () => {
+  it('checks automatic navigation eligibility before saving or unmounting', async () => {
+    const run = harness()
+    await expect(run.transition.activate(target(), undefined, () => false)).resolves.toBe('blocked')
+    expect(run.adapter.saveCurrent).not.toHaveBeenCalled()
+    expect(run.adapter.unmountCurrent).not.toHaveBeenCalled()
+    expect(run.adapter.commitTarget).not.toHaveBeenCalled()
+    expect(run.adapter.setPendingTarget).toHaveBeenLastCalledWith(null)
+  })
+
+  it('keeps the composer mounted if typing starts while automatic navigation waits for a save', async () => {
+    let canLeave = true
+    const run = harness({ saveCurrent: vi.fn(async () => { canLeave = false; return true }) })
+    await expect(run.transition.activate(target(), undefined, () => canLeave)).resolves.toBe('blocked')
+    expect(run.adapter.unmountCurrent).not.toHaveBeenCalled()
+    expect(run.adapter.loadTarget).not.toHaveBeenCalled()
+    expect(run.adapter.commitTarget).not.toHaveBeenCalled()
+    expect(run.adapter.restoreCurrent).toHaveBeenCalledOnce()
+  })
+
+  it('captures an arrival intent without invalidating navigation and yields to a user selection', async () => {
+    const run = harness()
+    const arrivalIntent = run.transition.currentIntent()
+    expect(run.transition.isCurrent(arrivalIntent)).toBe(true)
+    expect(run.adapter.restoreCurrent).not.toHaveBeenCalled()
+    run.transition.invalidate()
+    await expect(run.transition.activate(target(), arrivalIntent, () => true)).resolves.toBe('stale')
+    expect(run.adapter.commitTarget).not.toHaveBeenCalled()
+  })
   it('keeps a newly opened draft when an older managed-session scope read finishes later', async () => {
     let resolveScope!: () => void
     const scopeRead = new Promise<void>(resolve => { resolveScope = resolve })

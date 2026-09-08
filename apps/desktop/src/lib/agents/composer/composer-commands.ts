@@ -4,6 +4,11 @@
 import type { Editor } from '@tiptap/core'
 import { EditorState } from '@tiptap/pm/state'
 import { textToSeededDoc } from './plain-text-content'
+import { serializeDocToText } from './to-prompt-blocks'
+
+export function isComposerEmptyForNavigation(editor: Pick<Editor, 'state'> | null, composing: boolean): boolean {
+  return !!editor && !composing && !serializeDocToText(editor.state.doc).trim()
+}
 
 export function replaceComposerText(editor: Editor, text: string, resetHistory = false): void {
   editor.commands.setContent(textToSeededDoc(text), { emitUpdate: false })

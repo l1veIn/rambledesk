@@ -1,6 +1,14 @@
 use std::{net::IpAddr, path::Path};
 
 use rambledesk_core::{AgentDriverError, ManagedFeedbackEndpoint};
+use rambledesk_feedback_client::channel::FeedbackChannel;
+
+pub(crate) struct FeedbackWorkflow {
+    pub channel: FeedbackChannel,
+}
+
+pub(crate) const INSTRUCTIONS: &str = include_str!("feedback_workflow.md");
+pub(crate) const HANDOFF_REMINDER: &str = "RambleDesk did not receive a feedback handoff for this turn. Do not repeat the task or redo any work. Hand the result or question to the user now using the built-in feedback request command, then end the turn. First recover if a previous delivery was uncertain; never duplicate an existing request. Only if the user explicitly opted out, explicitly finished the task, or cancelled the request, record the matching feedback skip reason instead. A read-only answer, summary, or explanation still requires a Ramble handoff.";
 
 /// Install only instance-local environment. The prompt contains no capability
 /// URL or bearer, and the command resolves neither host nor session identity.
@@ -8,7 +16,7 @@ pub(crate) fn inject(
     options: &mut crate::AcpLaunch,
     endpoint: ManagedFeedbackEndpoint,
     companion: Option<&Path>,
-) -> Result<String, AgentDriverError> {
+) -> Result<FeedbackWorkflow, AgentDriverError> {
     let invalid = || {
         AgentDriverError::new(
             "Managed feedback requires its local session capability and application command",
@@ -34,6 +42,11 @@ pub(crate) fn inject(
         return Err(invalid());
     }
     url.set_path("/agent-feedback");
+    let channel = FeedbackChannel::start(ManagedFeedbackEndpoint {
+        url: url.into(),
+        bearer_token: endpoint.bearer_token,
+    })
+    .map_err(|_| AgentDriverError::new("Could not create the private feedback channel"))?;
     // Persisted values and inherited capabilities from a parent Agent cannot
     // choose the feedback scope, even on case-insensitive Windows environments.
     options.env = crate::feedback_transport::public_environment(&options.env);
@@ -47,10 +60,12 @@ pub(crate) fn inject(
             "RAMBLEDESK_COMMAND".into(),
             companion.to_string_lossy().into_owned(),
         ),
-        ("RAMBLEDESK_FEEDBACK_URL".into(), url.into()),
-        ("RAMBLEDESK_FEEDBACK_TOKEN".into(), endpoint.bearer_token),
+        (
+            "RAMBLEDESK_FEEDBACK_CHANNEL".into(),
+            channel.address().into(),
+        ),
     ]);
-    Ok(include_str!("feedback_workflow.md").into())
+    Ok(FeedbackWorkflow { channel })
 }
 
 #[cfg(test)]
@@ -130,7 +145,13 @@ mod tests {
         assert!(!launch.env.contains_key("rambledesk_feedback_token"));
         assert!(!launch.env.contains_key("RAMBLEDESK_MANAGED_MCP_URL"));
         assert!(!launch.env.contains_key("RAMBLEDESK_MANAGED_MCP_TOKEN"));
-        assert!(!workflow.contains(&"a".repeat(64)));
+        assert!(!INSTRUCTIONS.contains(&"a".repeat(64)));
+        assert!(!launch.env.contains_key("RAMBLEDESK_FEEDBACK_TOKEN"));
+        assert!(!launch.env.contains_key("RAMBLEDESK_FEEDBACK_URL"));
+        assert_eq!(
+            launch.env["RAMBLEDESK_FEEDBACK_CHANNEL"],
+            workflow.channel.address()
+        );
         assert_eq!(legacy_pi_registration(launch.env).await, "suppressed");
     }
 }

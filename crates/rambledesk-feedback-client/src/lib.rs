@@ -1,5 +1,6 @@
 //! A short-lived command client. It never initializes the desktop, owns a
 //! database, selects a session, or falls back to the external feedback API.
+pub mod channel;
 mod command;
 
 use std::{net::IpAddr, time::Duration};
@@ -11,6 +12,7 @@ pub const URL_ENV: &str = "RAMBLEDESK_FEEDBACK_URL";
 pub const TOKEN_ENV: &str = "RAMBLEDESK_FEEDBACK_TOKEN";
 pub const COMMAND_ENV: &str = "RAMBLEDESK_COMMAND";
 pub const MANAGED_ENV: &str = "RAMBLEDESK_MANAGED_SESSION";
+pub const CHANNEL_ENV: &str = "RAMBLEDESK_FEEDBACK_CHANNEL";
 pub const MAX_INPUT_BYTES: usize = 96 * 1024 * 1024;
 const MAX_RESPONSE_BYTES: usize = 128 * 1024 * 1024;
 

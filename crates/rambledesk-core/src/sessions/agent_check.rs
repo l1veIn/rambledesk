@@ -30,7 +30,7 @@ impl AgentConnectionCheck {
             ok: feedback,
             connection: AgentCheckConnection::Connected,
             message: if feedback {
-                "ACP connection and required feedback capability checks passed"
+                "ACP handshake passed and the feedback command is available. Model access and Ramble handoff still require an actual session."
             } else {
                 "ACP connected, but no managed feedback transport is configured for this Agent"
             }

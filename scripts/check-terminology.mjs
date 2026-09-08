@@ -56,7 +56,8 @@ for (const path of coreFiles) {
 const dependencyContracts = new Map([
   ["crates/rambledesk-core/Cargo.toml", []],
   ["crates/rambledesk-feedback-client/Cargo.toml", ["rambledesk-core"]],
-  ["crates/rambledesk-acp/Cargo.toml", ["rambledesk-core"]],
+  // ACP owns the lifetime of feedback-client's private IPC relay, not HTTP routes or storage.
+  ["crates/rambledesk-acp/Cargo.toml", ["rambledesk-core", "rambledesk-feedback-client"]],
   ["crates/rambledesk-storage/Cargo.toml", ["rambledesk-core"]],
   ["crates/rambledesk-mcp/Cargo.toml", ["rambledesk-core", "rambledesk-hosts"]],
   ["crates/rambledesk-local-server/Cargo.toml", ["rambledesk-core", "rambledesk-mcp"]],

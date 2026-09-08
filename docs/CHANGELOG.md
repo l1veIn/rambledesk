@@ -16,6 +16,38 @@
 
 ---
 
+## v0.4.0-rc.2
+
+What's new in RambleDesk 0.4.0-rc.2
+
+ACP feedback reliability
+- Managed ACP Agents receive shared Ramble workflow guidance on every turn. A turn that ends without a feedback handoff gets one bounded reminder; missing or failed handoffs are reported instead of silently ending the workflow.
+- The built-in feedback command uses a private local IPC channel, keeping feedback credentials out of Agent environments and working with bridges that filter token variables. Turn receipts are isolated so an older request cannot satisfy a newer turn.
+- Explicit feedback skip reasons and cancellation handling prevent automatic reminder loops and unwanted continuation after cancellation.
+
+DeepSeek setup
+- New setups use one DeepSeek (DSH) entry with the managed deepseek-acp 0.8.0 bridge. A separate global dsh installation is not required for this path.
+- Existing DeepSeek Harness configurations and sessions remain available as custom configurations; their launch settings and history are preserved.
+- Agent discovery labels distinguish supported Agents from programs actually found on the device, and connection checks no longer imply that model-driven feedback has been verified.
+
+Agent-to-Ramble navigation
+- New feedback requests automatically open from an Agent conversation when its composer is empty. This applies across Agent providers and on later turns, not just the first message.
+- Unsent text, active IME composition, and other workspace pages are not interrupted. Refreshing old requests or returning to an Agent tab does not replay an automatic jump; user navigation takes precedence.
+
+Release candidate notes
+- This test release includes Windows x64 NSIS and Apple Silicon macOS installers. Windows updater artifacts are signed, but Windows Authenticode signing and Apple notarization are not yet enabled.
+- For SmartScreen and Gatekeeper first-launch instructions, see https://github.com/l1veIn/rambledesk/blob/v0.4.0-rc.2/README.md
+- Automated checks do not replace real-model feedback-loop and clean-install acceptance testing.
+
+中文摘要
+- 修复 ACP 首轮及后续轮次未进入 Ramble 的问题：统一逐轮注入反馈流程说明，缺少交接时最多提醒一次，仍失败则明确报错；取消后不继续补发。
+- 内置反馈命令改用私有本地 IPC 通道，不再依赖 Agent 环境中的反馈令牌，兼容会过滤 TOKEN 变量的桥接程序；反馈回执按轮次隔离。
+- DeepSeek 新接入统一为 DeepSeek (DSH)，托管安装 deepseek-acp 0.8.0，无需额外全局安装 dsh；保留旧 Harness 自定义配置和会话历史。
+- 新 Ramble 请求到来时，仅在 Agent 会话页且输入框为空时自动打开；保护未发送文字和中文输入法组合输入，其他页面不动，旧请求刷新不重复跳转。
+- 本版为候选测试版，提供 Windows x64 NSIS 和 Apple Silicon macOS 安装包；尚无 Windows Authenticode 签名及 Apple 公证，首次启动步骤见上述 README。真实模型闭环和干净安装仍需实机验收。
+
+Full changelog: https://github.com/l1veIn/rambledesk/compare/v0.4.0-rc.1...v0.4.0-rc.2
+
 ## v0.4.0-rc.1
 
 What's new in RambleDesk 0.4.0-rc.1

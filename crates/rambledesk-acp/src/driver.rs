@@ -34,7 +34,10 @@ struct ManagedConnection {
     permissions: Arc<crate::permissions::PermissionQueue>,
     configuration: crate::session_configuration::SharedConfiguration,
     prompt_capabilities: rambledesk_core::AgentPromptCapabilities,
-    feedback_workflow: Option<String>,
+    feedback_workflow: Option<crate::feedback_workflow::FeedbackWorkflow>,
+    cancelled: std::sync::atomic::AtomicBool,
+    prompt_dispatch: Mutex<()>,
+    observer: Arc<dyn rambledesk_core::AgentSessionObserver>,
 }
 
 #[async_trait]
@@ -122,7 +125,7 @@ async fn start_inner(
         .as_ref()
         .map(|_| rambledesk_core::FeedbackTransport::Command);
     let observer = Arc::new(crate::observer::ManagedObserver {
-        sink: launch.observer,
+        sink: launch.observer.clone(),
         remote: Mutex::new(None),
         local_session_id: launch.session.session_id.clone(),
     });
@@ -171,6 +174,9 @@ async fn start_inner(
             configuration,
             prompt_capabilities,
             feedback_workflow,
+            cancelled: std::sync::atomic::AtomicBool::new(false),
+            prompt_dispatch: Mutex::new(()),
+            observer: launch.observer,
         }),
     })
 }
@@ -241,6 +247,9 @@ impl AgentSessionConnection for ManagedConnection {
             })
     }
     async fn cancel(&self) -> Result<(), AgentDriverError> {
+        let _dispatch = self.prompt_dispatch.lock().expect("prompt dispatch");
+        self.cancelled
+            .store(true, std::sync::atomic::Ordering::SeqCst);
         self.permissions.cancel_all();
         self.sender
             .send_notification(agent_client_protocol::schema::v1::CancelNotification::new(
@@ -284,6 +293,14 @@ impl AgentSessionConnection for ManagedConnection {
     }
     async fn stop(&self) -> Result<(), AgentDriverError> {
         let _serial = self.shutdown.lock().await;
+        {
+            let _dispatch = self.prompt_dispatch.lock().expect("prompt dispatch");
+            self.cancelled
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+        if let Some(workflow) = &self.feedback_workflow {
+            workflow.channel.close().await;
+        }
         let owned = self.owned.lock().expect("owned ACP instance lock").take();
         if let Some(owned) = owned {
             owned.shutdown().await.map_err(safe_error)?;
@@ -297,21 +314,82 @@ impl ManagedConnection {
         &self,
         mut blocks: Vec<agent_client_protocol::schema::v1::ContentBlock>,
     ) -> Result<String, AgentDriverError> {
-        use agent_client_protocol::schema::v1::{PromptRequest, SessionId};
+        use agent_client_protocol::schema::v1::{ContentBlock, TextContent};
+        self.cancelled
+            .store(false, std::sync::atomic::Ordering::SeqCst);
         // ACP has no standard system-prompt field. Runtime context accompanies
         // the actual prompt, never creates a turn, title, or user history row.
         if let Some(workflow) = &self.feedback_workflow {
-            use agent_client_protocol::schema::v1::{ContentBlock, TextContent};
-            blocks.insert(0, ContentBlock::Text(TextContent::new(workflow)));
+            workflow.channel.begin_turn();
+            blocks.insert(
+                0,
+                ContentBlock::Text(TextContent::new(crate::feedback_workflow::INSTRUCTIONS)),
+            );
         }
-        let result = self
-            .sender
-            .send_request(PromptRequest::new(
-                SessionId::new(self.remote.clone()),
-                blocks,
-            ))
-            .block_task()
-            .await;
+        let mut result = self.send_blocks(blocks, false).await?;
+        if let Some(workflow) = &self.feedback_workflow
+            && result == "EndTurn"
+            && !self.cancelled.load(std::sync::atomic::Ordering::SeqCst)
+            && !workflow.channel.receipt().handed_off
+        {
+            if !workflow.channel.receipt().attempted {
+                self.observer
+                    .observe(rambledesk_core::AgentSessionEvent::Activity {
+                        kind: rambledesk_core::SessionActivityKind::Status,
+                        text:
+                            "Ramble handoff missing; asking the Agent to hand off its result once"
+                                .into(),
+                        tool_call_id: None,
+                        append: false,
+                    })
+                    .await?;
+                if self.cancelled.load(std::sync::atomic::Ordering::SeqCst) {
+                    return Ok("Cancelled".into());
+                }
+                result = self
+                    .send_blocks(
+                        vec![ContentBlock::Text(TextContent::new(
+                            crate::feedback_workflow::HANDOFF_REMINDER,
+                        ))],
+                        true,
+                    )
+                    .await?;
+            }
+            if result == "EndTurn"
+                && !self.cancelled.load(std::sync::atomic::Ordering::SeqCst)
+                && !workflow.channel.receipt().handed_off
+            {
+                return Err(AgentDriverError::classified(
+                    AgentFailureStage::Prompt,
+                    AgentFailureReason::Unknown,
+                    "The Agent ended without a Ramble handoff. Its answer remains in this conversation. Check the feedback command result and recover any existing request before retrying.",
+                ));
+            }
+        }
+        Ok(result)
+    }
+
+    async fn send_blocks(
+        &self,
+        blocks: Vec<agent_client_protocol::schema::v1::ContentBlock>,
+        handoff_retry: bool,
+    ) -> Result<String, AgentDriverError> {
+        use agent_client_protocol::schema::v1::{PromptRequest, SessionId};
+        // Queueing a retry and cancelling share a synchronous gate: cancellation
+        // cannot slip between the last flag check and the protocol send.
+        let pending = {
+            let _dispatch = self.prompt_dispatch.lock().expect("prompt dispatch");
+            if handoff_retry && self.cancelled.load(std::sync::atomic::Ordering::SeqCst) {
+                return Ok("Cancelled".into());
+            }
+            self.sender
+                .send_request(PromptRequest::new(
+                    SessionId::new(self.remote.clone()),
+                    blocks,
+                ))
+                .block_task()
+        };
+        let result = pending.await;
         self.permissions.cancel_all();
         result
             .map(|response| format!("{:?}", response.stop_reason))

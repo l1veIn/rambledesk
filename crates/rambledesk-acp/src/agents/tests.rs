@@ -66,9 +66,9 @@ async fn no_staging(service: &AgentCatalogService, id: &str) {
 }
 
 #[tokio::test]
-async fn five_npm_paths_install_detect_actual_versions_and_generate_launchable_configs() {
+async fn npm_bridges_install_detect_actual_versions_and_generate_launchable_configs() {
     let (_dir, service) = fixture("success");
-    for id in ["deepseek-acp", "dsh", "codex-acp", "claude-acp", "pi-acp"] {
+    for id in ["deepseek-acp", "codex-acp", "claude-acp", "pi-acp"] {
         let installed = install(&service, id, None).await;
         let found = service
             .inspect_with_cancel(id, &CancellationToken::new())
@@ -108,14 +108,6 @@ async fn five_npm_paths_install_detect_actual_versions_and_generate_launchable_c
                 .unwrap()
                 .contains(&serde_json::json!("--force"))
         );
-        if id == "dsh" {
-            assert!(
-                installed
-                    .config
-                    .args
-                    .ends_with(&["--profile".into(), "acp".into()])
-            );
-        }
         if id == "pi-acp" {
             assert!(installed.config.enabled);
             assert_eq!(found.dependencies[0].version.as_deref(), Some("0.83.0"));
@@ -321,7 +313,15 @@ async fn probes_are_bounded_and_manual_or_invalid_requests_do_not_install() {
     .unwrap();
     assert_eq!(output.stdout.len(), 32 * 1024);
     assert_eq!(output.stderr.len(), 32 * 1024);
-    assert_eq!(service.catalog().len(), 16);
+    assert_eq!(service.catalog().len(), 15);
+    let deepseek: Vec<_> = service
+        .catalog()
+        .into_iter()
+        .filter(|entry| entry.host_id == "dsh")
+        .collect();
+    assert_eq!(deepseek.len(), 1);
+    assert_eq!(deepseek[0].id, "deepseek-acp");
+    assert_eq!(deepseek[0].name, "DeepSeek (DSH)");
 }
 
 #[tokio::test]

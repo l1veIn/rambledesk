@@ -2,18 +2,32 @@ import {createInterface} from 'node:readline'
 import {randomUUID} from 'node:crypto'
 import {appendFileSync} from 'node:fs'
 import {isAbsolute} from 'node:path'
+import {createConnection} from 'node:net'
 let promptId
 const send = message => process.stdout.write(JSON.stringify({jsonrpc:'2.0',...message})+'\n')
 const reply = (id,result) => send({id,result})
 const output = text => send({method:'session/update',params:{sessionId:'original',update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text}}}})
 const finish = reason => {const id=promptId;promptId=null;if(id!=null)reply(id,{stopReason:reason})}
 async function feedback(operation,input) {
-  const response=await fetch(`${process.env.RAMBLEDESK_FEEDBACK_URL}/${operation}`,{method:'POST',headers:{
-    'Content-Type':'application/json',
-    'Authorization':`Bearer ${process.env.RAMBLEDESK_FEEDBACK_TOKEN}`,
-  },body:JSON.stringify(input)})
-  if(!response.ok)throw new Error(`Scoped feedback HTTP ${response.status}`)
-  return response.json()
+  // Application/outbox tests exercise the actual relay. The CLI suite separately
+  // exercises the real companion executable with scrubbed subprocess env.
+  return new Promise((resolve,reject)=>{
+    const socket=createConnection(process.env.RAMBLEDESK_FEEDBACK_CHANNEL)
+    const payload=Buffer.from(JSON.stringify({operation,input}))
+    const header=Buffer.alloc(4); header.writeUInt32BE(payload.length)
+    let bytes=Buffer.alloc(0)
+    socket.setTimeout(5000,()=>socket.destroy(new Error('Feedback IPC timeout')))
+    socket.on('connect',()=>socket.write(Buffer.concat([header,payload])))
+    socket.on('error',reject)
+    socket.on('data',chunk=>{
+      bytes=Buffer.concat([bytes,chunk])
+      if(bytes.length<4||bytes.length<4+bytes.readUInt32BE())return
+      const response=JSON.parse(bytes.subarray(4,4+bytes.readUInt32BE()).toString())
+      socket.destroy()
+      if(response.success)resolve(response.value)
+      else reject(new Error(`Feedback IPC ${response.value.code}`))
+    })
+  })
 }
 createInterface({input:process.stdin}).on('line',async line=>{
   const {id,method,params}=JSON.parse(line)
@@ -22,7 +36,7 @@ createInterface({input:process.stdin}).on('line',async line=>{
     if(method==='session/new'||method==='session/load') {
       if(params.mcpServers.length!==0)throw new Error('Feedback must not inject MCP')
       if(process.env.RAMBLEDESK_MANAGED_SESSION!=='1'||!isAbsolute(process.env.RAMBLEDESK_COMMAND??''))throw new Error('Missing common command capability')
-      if(!process.env.RAMBLEDESK_FEEDBACK_URL?.endsWith('/agent-feedback')||!/^[0-9a-f]{64}$/.test(process.env.RAMBLEDESK_FEEDBACK_TOKEN))throw new Error('Missing scoped feedback capability')
+      if(!process.env.RAMBLEDESK_FEEDBACK_CHANNEL||process.env.RAMBLEDESK_FEEDBACK_URL||process.env.RAMBLEDESK_FEEDBACK_TOKEN)throw new Error('Missing private feedback channel or leaked HTTP credential')
       if(method==='session/load'&&params.sessionId!=='original')throw new Error('Original context lost')
       return reply(id,method==='session/new'?{sessionId:'original'}:{})
     }
@@ -42,6 +56,7 @@ createInterface({input:process.stdin}).on('line',async line=>{
       const result=await feedback('get',{request_id:requestId})
       output(`CONTINUED ${requestId} ${result.resolution}`)
       if(process.argv[2]==='fail_continue')process.exit(2)
+      if(result.resolution==='feedback_submitted')await feedback('request',{request_id:randomUUID(),what_happened:'Follow-up result',actions:[{id:'review',instruction:'Review follow-up'}]})
       finish('end_turn')
     }
   } catch(error) { if(process.env.FIXTURE_DIAGNOSTIC)appendFileSync(process.env.FIXTURE_DIAGNOSTIC,String(error)+'\n'); if(id!=null)send({id,error:{code:-32603,message:'Fixture failed'}}) }

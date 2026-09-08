@@ -62,6 +62,7 @@ type NavigationControllerContext = {
   clearWorkspace: () => void
   onPageError: (message: string) => void
   canSendOsBanners: () => boolean
+  onRequestsArrived?: (requests: readonly FeedbackRequestSummary[]) => void
 }
 
 export type ScopeSelectionResult = Readonly<{
@@ -323,6 +324,7 @@ export function createNavigationController(context: NavigationControllerContext)
       })
     }
     if (arrivals.length === 0) return
+    context.onRequestsArrived?.(arrivals)
 
     if (
       get(notificationPopupEnabled) &&

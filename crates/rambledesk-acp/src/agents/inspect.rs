@@ -430,7 +430,7 @@ impl AgentCatalogService {
             message: if found_entry {
                 "Agent entry point found; check the ACP connection before use"
             } else {
-                "Agent entry point was not found; install it or specify its location"
+                "No usable Agent launch entry was discovered; install the connection component or specify a command and arguments"
             }
             .into(),
         });
