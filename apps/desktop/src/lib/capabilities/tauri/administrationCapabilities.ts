@@ -56,18 +56,28 @@ export function createTauriWebAccessAdministrationCapability(
 ): WebAccessAdministrationCapability {
   return {
     status: () => webAccessStatus(api, 'get_web_access_status'),
-    setEnabled: (enabled) =>
-      webAccessStatus(api, enabled ? 'start_web_access' : 'stop_web_access'),
+    setEnabled: (enabled, port) =>
+      webAccessStatus(
+        api,
+        enabled ? 'start_web_access' : 'stop_web_access',
+        enabled && port !== undefined ? { port } : undefined,
+      ),
     open: () => api.invoke<void>('open_web_access'),
     copyToken: () => api.invoke<void>('copy_web_access_token'),
+    rotateToken: () => webAccessStatus(api, 'rotate_web_access_token'),
   }
 }
 
 async function webAccessStatus(
   api: TauriCapabilityApi,
-  command: 'get_web_access_status' | 'start_web_access' | 'stop_web_access',
+  command:
+    | 'get_web_access_status'
+    | 'start_web_access'
+    | 'stop_web_access'
+    | 'rotate_web_access_token',
+  args?: Record<string, unknown>,
 ): Promise<WebAccessStatus> {
-  return parseWebAccessStatus(await api.invoke<unknown>(command))
+  return parseWebAccessStatus(await api.invoke<unknown>(command, args))
 }
 
 export function parseWebAccessStatus(value: unknown): WebAccessStatus {

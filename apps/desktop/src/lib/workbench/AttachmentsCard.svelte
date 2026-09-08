@@ -31,6 +31,7 @@
 </script>
 
 <section class="flex min-h-0 flex-1 flex-col overflow-hidden border-b p-4">
+
   <header class="mb-2 flex shrink-0 items-center gap-2">
     <FileText class="size-4 text-muted-foreground" />
     <strong class="text-xs font-medium">{tr('Attachments')}</strong>
@@ -80,3 +81,12 @@
     </p>
   {/if}
 </section>
+
+<style>
+  /* The stacked mobile command rail scrolls as a page, so this card keeps a usable floor. */
+  @media (max-width: 1180px) {
+    section {
+      min-height: 10rem;
+    }
+  }
+</style>

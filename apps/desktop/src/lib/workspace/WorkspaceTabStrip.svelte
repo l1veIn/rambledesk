@@ -41,6 +41,8 @@
   let viewKeys: string[] = []
   let focusedViewKey: string | null = null
   let tabButtons = new Map<string, HTMLElement>()
+  let tabListElement: HTMLDivElement
+  let scrolledViewKey: string | null = null
 
   $: if (!dragging) {
     dndItems = views.map((view) => ({ id: workspaceViewKey(view), view }))
@@ -51,6 +53,13 @@
   }
   $: if (activeViewKey && viewKeys.includes(activeViewKey)) {
     focusedViewKey = activeViewKey
+  }
+  // The strip scrolls on narrow viewports, so keep the active tab visible.
+  $: if (tabListElement && activeViewKey !== scrolledViewKey) {
+    scrolledViewKey = activeViewKey
+    if (activeViewKey) {
+      tabButtons.get(activeViewKey)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    }
   }
 
   function tr(source: string) {
@@ -156,7 +165,8 @@
         autoAriaDisabled: true,
         delayTouchStart: 500,
       }}
-      class="workspace-tab-list flex h-full min-w-0 flex-[0_1_auto] items-stretch"
+      class="workspace-tab-list flex h-full min-w-0 flex-[0_1_auto] items-stretch overflow-x-auto overflow-y-hidden"
+      bind:this={tabListElement}
       role="tablist"
       aria-label={tr('Workspace tabs')}
       aria-orientation="horizontal"
@@ -170,7 +180,7 @@
         {@const label = labelForView(item.view)}
         <div
           animate:flip={{ duration: FLIP_DURATION_MS }}
-          class="workspace-tab-item relative min-w-0 grow-0 shrink basis-48 cursor-grab active:cursor-grabbing"
+          class="workspace-tab-item relative min-w-0 shrink-0 basis-48 cursor-grab active:cursor-grabbing"
           class:z-10={activeViewKey === viewKey}
           data-workspace-tab-item
           data-workspace-view-key={viewKey}
@@ -202,7 +212,7 @@
           </div>
           <button
             type="button"
-            class="workspace-tab-close absolute bottom-1.5 right-2 top-0 my-auto grid size-4 place-items-center rounded-md text-muted-foreground outline-none transition-opacity hover:bg-foreground/10 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-40"
+            class="workspace-tab-close absolute bottom-1.5 right-2 top-0 my-auto grid size-4 place-items-center rounded-md bg-background text-muted-foreground outline-none transition-opacity hover:bg-foreground/10 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-40"
             class:workspace-tab-close-active={activeViewKey === viewKey}
             aria-label={`${tr('Close workspace tab')}: ${label}`}
             title={tr('Close workspace tab')}
@@ -307,6 +317,28 @@
   .workspace-tab-close:focus-visible {
     opacity: 1;
     pointer-events: auto;
+  }
+
+  /* Touch has no hover: every tab keeps its close affordance reachable, and the label
+     reserves room for it so the chip never sits on top of the title. */
+  @media (pointer: coarse) {
+    .workspace-tab-close {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .workspace-tab-content {
+      padding-right: 1.5rem;
+    }
+  }
+
+  .workspace-tab-list {
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+  }
+
+  .workspace-tab-list::-webkit-scrollbar {
+    display: none;
   }
 
   .workspace-tab-seat {

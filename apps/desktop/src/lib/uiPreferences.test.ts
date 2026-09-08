@@ -186,3 +186,35 @@ describe('navigation rail width preferences', () => {
     expect(preferences.initialRequestRailWidth()).toBe(300)
   })
 })
+
+describe('browser server preferences', () => {
+  it('normalizes the Web Access port and remembers autostart', async () => {
+    const storage = memoryStorage({
+      'rambledesk.ui-state': JSON.stringify({ webAccess: { port: 41234, autostart: true } }),
+    })
+    vi.stubGlobal('localStorage', storage)
+    const preferences = await import('./uiPreferences')
+
+    expect(preferences.initialWebAccessPort()).toBe(41234)
+    expect(preferences.initialWebAccessAutostart()).toBe(true)
+
+    preferences.saveWebAccessPort(70_000)
+    expect(preferences.initialWebAccessPort()).toBe(preferences.DEFAULT_WEB_ACCESS_PORT)
+    preferences.saveWebAccessPort(8080)
+    expect(preferences.initialWebAccessPort()).toBe(8080)
+
+    preferences.saveWebAccessAutostart(false)
+    expect(preferences.initialWebAccessAutostart()).toBe(false)
+  })
+
+  it('rejects ports outside the documented range', async () => {
+    vi.stubGlobal('localStorage', memoryStorage())
+    const preferences = await import('./uiPreferences')
+
+    expect(preferences.normalizeWebAccessPort(80)).toBe(preferences.DEFAULT_WEB_ACCESS_PORT)
+    expect(preferences.normalizeWebAccessPort(1024)).toBe(1024)
+    expect(preferences.normalizeWebAccessPort(65535)).toBe(65535)
+    expect(preferences.normalizeWebAccessPort(65536)).toBe(preferences.DEFAULT_WEB_ACCESS_PORT)
+    expect(preferences.normalizeWebAccessPort('8080')).toBe(preferences.DEFAULT_WEB_ACCESS_PORT)
+  })
+})

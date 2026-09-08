@@ -17,6 +17,24 @@ type UiState = {
     paneLayouts?: Record<string, number[]>
     workspaceSnapshot?: unknown
   }
+  webAccess?: {
+    port?: number
+    autostart?: boolean
+  }
+}
+
+/** The documented Web Access entry; the browser server settings may override it. */
+export const DEFAULT_WEB_ACCESS_PORT = 37643
+export const WEB_ACCESS_PORT_MIN = 1024
+export const WEB_ACCESS_PORT_MAX = 65535
+
+export function normalizeWebAccessPort(value: unknown): number {
+  return typeof value === 'number' &&
+    Number.isInteger(value) &&
+    value >= WEB_ACCESS_PORT_MIN &&
+    value <= WEB_ACCESS_PORT_MAX
+    ? value
+    : DEFAULT_WEB_ACCESS_PORT
 }
 
 const UI_STATE_KEY = 'rambledesk.ui-state'
@@ -103,6 +121,28 @@ export function saveRequestRailWidth(width: number) {
   updateState((state) => {
     state.workbench ??= {}
     state.workbench.requestRailWidth = normalizeRailWidth('request', width)
+  })
+}
+
+export function initialWebAccessPort(): number {
+  return normalizeWebAccessPort(readState().webAccess?.port)
+}
+
+export function saveWebAccessPort(port: number) {
+  updateState((state) => {
+    state.webAccess ??= {}
+    state.webAccess.port = normalizeWebAccessPort(port)
+  })
+}
+
+export function initialWebAccessAutostart(): boolean {
+  return readState().webAccess?.autostart === true
+}
+
+export function saveWebAccessAutostart(autostart: boolean) {
+  updateState((state) => {
+    state.webAccess ??= {}
+    state.webAccess.autostart = autostart
   })
 }
 

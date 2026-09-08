@@ -411,7 +411,9 @@
     }
 
     :global(.command-rail) {
-      min-height: 620px;
+      height: auto;
+      min-height: 0;
+      overflow: visible;
       border-top: 1px solid var(--border);
       border-left: 0;
     }

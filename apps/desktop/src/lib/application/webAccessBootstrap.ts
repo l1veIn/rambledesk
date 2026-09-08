@@ -13,7 +13,8 @@ export class WebAccessConnectionError extends Error {
 }
 
 export type WebAccessBootstrapOptions = Readonly<{
-  token: string
+  /** Omit to resume the browser session the HttpOnly cookie already holds. */
+  token?: string
   pageUrl?: string | URL
   fetch?: typeof globalThis.fetch
 }>
@@ -30,7 +31,7 @@ export async function bootstrapWebAccessSession(
   try {
     response = await (options.fetch ?? globalThis.fetch.bind(globalThis))(bootstrapUrl, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${options.token}` },
+      headers: options.token === undefined ? {} : { Authorization: `Bearer ${options.token}` },
       credentials: 'same-origin',
       redirect: 'error',
     })

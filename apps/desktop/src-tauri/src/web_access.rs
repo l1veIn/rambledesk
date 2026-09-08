@@ -28,6 +28,8 @@ const BROWSER_SPEECH_ASSETS: &[&str] = &[
 
 pub(super) trait WebAccessCredentialStore: Send + Sync {
     fn load_or_create(&self) -> Result<DurableWebAccessToken, String>;
+    /// Replaces the stored durable token; every existing session is revoked afterwards.
+    fn rotate(&self) -> Result<DurableWebAccessToken, String>;
 }
 
 pub(super) struct OsWebAccessCredentialStore;
@@ -35,6 +37,10 @@ pub(super) struct OsWebAccessCredentialStore;
 impl WebAccessCredentialStore for OsWebAccessCredentialStore {
     fn load_or_create(&self) -> Result<DurableWebAccessToken, String> {
         load_or_create_os_credential()
+    }
+
+    fn rotate(&self) -> Result<DurableWebAccessToken, String> {
+        rotate_os_credential()
     }
 }
 
@@ -471,6 +477,16 @@ impl WebAccessLifecycle {
         self.snapshot()
     }
 
+    /// Swaps the durable credential and revokes every browser session it authorized.
+    async fn rotate_token(&mut self, token: DurableWebAccessToken) -> WebAccessStatus {
+        self.reconcile().await;
+        if let WebAccessRuntimeState::Running(active) = &mut self.state {
+            active.durable_token = token.clone();
+            active.sessions.rotate_durable_token(token);
+        }
+        self.snapshot()
+    }
+
     async fn active_token(&mut self) -> Result<DurableWebAccessToken, String> {
         self.reconcile().await;
         match &self.state {
@@ -570,6 +586,7 @@ fn elapsed_ms(started_at: Instant) -> u64 {
 async fn start_runtime(
     app: AppHandle,
     state: &WorkbenchState,
+    port: Option<u16>,
 ) -> Result<ActiveWebAccess, WebAccessFailureCode> {
     let durable_token = state
         .web_access_credential_store
@@ -586,8 +603,12 @@ async fn start_runtime(
         durable_token.clone(),
         state.application_change_hub.metadata().runtime_generation,
     ));
+    let mut config = WebAccessServerConfig::default();
+    if let Some(port) = port {
+        config.port = port;
+    }
     let server = start_web_access_server(
-        WebAccessServerConfig::default(),
+        config,
         state.application_commands.clone(),
         state.application_change_hub.clone(),
         sessions.clone(),
@@ -625,12 +646,28 @@ pub(super) async fn get_web_access_status(
 pub(super) async fn start_web_access(
     app: AppHandle,
     state: tauri::State<'_, WorkbenchState>,
+    port: Option<u16>,
 ) -> Result<WebAccessStatus, String> {
+    // Zero means "let the OS choose", which the settings UI never offers.
+    let requested_port = port.filter(|port| *port != 0);
     Ok(state
         .web_access_lifecycle
         .lock()
         .await
-        .start(|| start_runtime(app, &state))
+        .start(|| start_runtime(app, &state, requested_port))
+        .await)
+}
+
+#[tauri::command]
+pub(super) async fn rotate_web_access_token(
+    state: tauri::State<'_, WorkbenchState>,
+) -> Result<WebAccessStatus, String> {
+    let token = state.web_access_credential_store.rotate()?;
+    Ok(state
+        .web_access_lifecycle
+        .lock()
+        .await
+        .rotate_token(token)
         .await)
 }
 
@@ -686,6 +723,22 @@ fn load_or_create_os_credential() -> Result<DurableWebAccessToken, String> {
 
 #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
 fn load_or_create_os_credential() -> Result<DurableWebAccessToken, String> {
+    Err(secure_storage_error())
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+fn rotate_os_credential() -> Result<DurableWebAccessToken, String> {
+    let entry = keyring::Entry::new(CREDENTIAL_SERVICE, CREDENTIAL_ACCOUNT)
+        .map_err(|_| secure_storage_error())?;
+    let token = DurableWebAccessToken::generate();
+    entry
+        .set_password(token.secret())
+        .map_err(|_| secure_storage_error())?;
+    Ok(token)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+fn rotate_os_credential() -> Result<DurableWebAccessToken, String> {
     Err(secure_storage_error())
 }
 

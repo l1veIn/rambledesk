@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { CircleAlert, Copy, Inbox, LoaderCircle, Mic, Minus, Pause, Square, X } from '@lucide/svelte'
+  import { CircleAlert, Copy, Inbox, LoaderCircle, Menu, Mic, Minus, Pause, Square, X } from '@lucide/svelte'
   import { onMount, type Snippet } from 'svelte'
 
   import appIcon from '../assets/rambledesk-app-icon.webp'
@@ -23,6 +23,8 @@
   export let rambleRequestTitle = ''
   export let windowControls: CapabilitySlot<WindowCapability> = unavailableCapabilities.windowControls
   export let onWindowError: (message: string) => void = () => {}
+  /** Phone drawers replace the brand block with a navigation toggle. */
+  export let onToggleSidebar: (() => void) | undefined = undefined
 
   $: windowControlsAvailable = windowControls.status.availability !== 'unavailable'
   $: isMac = windowControls.implementation.platform() === 'macOS'
@@ -98,7 +100,7 @@
 <!-- svelte-ignore a11y_no_static_element_interactions (the handler delegates native titlebar dragging while preserving interactive descendants) -->
 <header
   class={[
-    'app-titlebar relative z-30 flex h-10 shrink-0 select-none items-stretch overflow-hidden rounded-t-[15px]',
+    'app-titlebar relative z-30 flex h-10 shrink-0 select-none items-stretch overflow-hidden rounded-t-[var(--app-frame-radius-inner)]',
   ]}
   data-titlebar-event-boundary
   onpointerdown={(event) => void handleTitlebarPointerDown(event)}
@@ -141,6 +143,17 @@
         {#if !sidebarCollapsed}
           <strong class="truncate text-xs font-semibold">RambleDesk</strong>
         {/if}
+      </button>
+    {:else if onToggleSidebar}
+      <button
+        type="button"
+        class="titlebar-brand flex h-full min-w-0 flex-1 items-center justify-center border-0 bg-transparent text-sidebar-foreground focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-ring"
+        aria-label={t($locale, sidebarCollapsed ? 'Open sidebar' : 'Collapse sidebar')}
+        title={t($locale, sidebarCollapsed ? 'Open sidebar' : 'Collapse sidebar')}
+        aria-expanded={!sidebarCollapsed}
+        onclick={onToggleSidebar}
+      >
+        <Menu class="size-5" aria-hidden="true" />
       </button>
     {:else}
       <div

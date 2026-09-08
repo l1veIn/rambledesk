@@ -27,11 +27,13 @@
 ## Web Access 运行边界
 
 - Web Access **默认关闭**。用户只能从 Desktop 设置显式启动或停止。
-- 默认且固定入口是 `http://127.0.0.1:37643`；listener 只绑定 IPv4 loopback。
+- 默认入口是 `http://127.0.0.1:37643`，可在浏览器服务设置中改为 1024–65535 的端口；listener 始终只绑定 IPv4 loopback。
 - Web Access 与 Local Integration Server 使用不同 listener、credential、auth domain、route set 和
   lifecycle。停止 Web Access 不停止 Backend Runtime，也不停止 Local Integration Server。
-- 浏览器必须通过 same-origin `POST /api/auth/session` 用 durable credential 换取只存在 JavaScript
-  内存中的短期 session；HTTP 使用 session bearer，WebSocket 使用受约束的 subprotocol credential。
+- 浏览器必须通过 same-origin `POST /api/auth/session` 用 durable credential 换取 scope 受限的 session；
+  该 session token 只存在 JavaScript 内存与 `HttpOnly; SameSite=Strict` 且仅作用于 bootstrap 路径的
+  cookie 中，刷新、新标签页与浏览器重启会凭 cookie 恢复同一个 session，不需要重新粘贴 token。
+  HTTP 使用 session bearer，WebSocket 使用受约束的 subprotocol credential。
 - 自动化覆盖 bootstrap/HTTP/event/session/body 限制、event 连接预算恢复、body 超限无 mutation
   副作用，以及 Web Access 停止后 Local Integration 仍可写。
 
@@ -41,8 +43,8 @@
 | --- | --- | --- |
 | LAN bind / 远程局域网访问 | **Unsupported / out of scope** | 不绑定 `0.0.0.0`；loopback 的 secure-context 例外不能外推到 LAN。 |
 | TLS / HTTPS / WSS | **Unsupported / out of scope** | 当前没有证书、TLS proxy 或远程 credential delivery 产品合同。 |
-| Web Access autostart | **Unsupported / out of scope** | 默认关闭，不随 Desktop 自动启动。 |
-| 用户可配置端口 | **Unsupported / out of scope** | 产品入口固定为 `127.0.0.1:37643`；端口占用时显示失败，不静默改端口。 |
+| Web Access autostart | **Automated** contract；真实启动顺序为 **Manual** | 默认关闭；开启后随 Desktop 启动，启动失败仍只体现在状态与诊断中。 |
+| 用户可配置端口 | **Automated** contract | 默认 `127.0.0.1:37643`，可在 1024–65535 内修改；改动在下次启动 Web Access 时生效，端口占用时显示失败，不静默改端口。 |
 | Headless Backend Runtime 或独立 Web deployment | **Unsupported / out of scope** | 当前 composition root 仍是 Desktop；启动 Web Access 不等于提供 headless server。 |
 
 ## 发布前人工验收

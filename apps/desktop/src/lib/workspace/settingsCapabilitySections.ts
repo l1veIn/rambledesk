@@ -19,6 +19,7 @@ export function settingsSectionAvailability(
     shortcuts: manifest.globalShortcuts.availability !== 'unavailable',
     adapters: manifest.hostIntegrationAdministration.availability !== 'unavailable',
     agents: true,
+    'web-access': manifest.webAccessAdministration.availability !== 'unavailable',
     about: true,
   })
 }

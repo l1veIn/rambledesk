@@ -22,6 +22,8 @@
   export let loadingMore = false
   export let hasMore = false
   export let collapsed = false
+  /** When set, the parent owns collapse state (used by the phone drawer); otherwise `bind:collapsed` applies. */
+  export let onCollapsedChange: ((collapsed: boolean) => void) | undefined = undefined
   export let filters: RequestFilters = DEFAULT_REQUEST_FILTERS
   export let resolveHostProfile: (hostId: string) => HostProfile
   export let formatTime: (value: string | null | undefined) => string
@@ -78,7 +80,7 @@
       aria-label={collapsed ? tr('Expand request list') : tr('Collapse request list')}
       title={collapsed ? tr('Expand request list') : tr('Collapse request list')}
       aria-expanded={!collapsed}
-      onclick={() => (collapsed = !collapsed)}
+      onclick={() => (onCollapsedChange ? onCollapsedChange(!collapsed) : (collapsed = !collapsed))}
     >
       {#if collapsed}<PanelLeftOpen />{:else}<PanelLeftClose />{/if}
     </Button>

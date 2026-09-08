@@ -18,6 +18,7 @@ describe('createWorkbenchComposition', () => {
 
     expect(composition.applicationTransport).toBe(desktopTransport)
     expect(composition.capabilities.manifest).toBe(UNAVAILABLE_CAPABILITY_MANIFEST)
+    expect(composition.environment).toBe('desktop')
   })
 
   it('selects HTTP only for an explicit authenticated browser session', () => {
@@ -34,6 +35,7 @@ describe('createWorkbenchComposition', () => {
 
     expect(composition.applicationTransport).toBeInstanceOf(HttpApplicationTransport)
     expect(composition.applicationTransport.capabilities()).toBe(composition.capabilities.manifest)
+    expect(composition.environment).toBe('browser')
   })
 
   it('reports the same browser manifest through the registry and HTTP transport', () => {

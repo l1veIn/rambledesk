@@ -86,6 +86,8 @@ if (entry === 'capture' || entry === 'scroll-capture' || entry === 'pinned-captu
   document.body.classList.add('ramble-console-mode')
 } else {
   document.body.classList.add('app-mode')
+  // The browser client is a full-bleed page; only the desktop shell draws a window frame.
+  if (entry === 'browser') document.body.classList.add('web-mode')
 }
 
 const target = document.getElementById('app')!

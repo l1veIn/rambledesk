@@ -12,12 +12,12 @@
   import UpdateAvailableDialog from './lib/UpdateAvailableDialog.svelte'
   import HostSessionRail from './lib/components/navigation/HostSessionRail.svelte'
   import RequestListPane from './lib/components/navigation/RequestListPane.svelte'
-  import NavigationResizeHandle from './lib/components/navigation/NavigationResizeHandle.svelte'
-  import { fitNavigationWidths, RAIL_LIMITS } from './lib/components/navigation/railResize'
   import { Sonner, toast } from './lib/components/ui/sonner'
   import ResumePromptDialog from './lib/workbench/ResumePromptDialog.svelte'
   import SessionWorkbench from './lib/workbench/SessionWorkbench.svelte'
   import StartupRecoveryPanel from './lib/workbench/StartupRecoveryPanel.svelte'
+  import WorkbenchShell from './lib/workbench/WorkbenchShell.svelte'
+  import type { ShellMode } from './lib/workbench/shellMode'
   import InboxWorkspaceView from './lib/workspace/InboxWorkspaceView.svelte'
   import MissingSessionView from './lib/workspace/MissingSessionView.svelte'
   import RambelleProfileWorkspaceView from './lib/workspace/RambelleProfileWorkspaceView.svelte'
@@ -57,6 +57,8 @@
   export let capabilities: WorkbenchCapabilities = createUnavailableWorkbenchCapabilities()
   export let publishedFeedbackAction: PublishedFeedbackAction
   export let previewMode = false
+  /** Browser clients are full-bleed pages; the desktop shell owns the rounded window frame. */
+  export let environment: 'desktop' | 'browser' = 'desktop'
 
   provideWorkbenchCapabilities(capabilities)
   onMount(() => initializeAppearance({
@@ -183,12 +185,10 @@
   import {
     initialHostRailCollapsed,
     initialRequestRailCollapsed,
-    initialHostRailWidth,
-    initialRequestRailWidth,
+    initialWebAccessAutostart,
+    initialWebAccessPort,
     saveHostRailCollapsed,
     saveRequestRailCollapsed,
-    saveHostRailWidth,
-    saveRequestRailWidth,
     saveWorkspaceSnapshot,
     savedWorkspaceSnapshot,
   } from './lib/uiPreferences'
@@ -307,13 +307,13 @@
     }
   }
   let taskBriefOpen = true
-  let requestRailCollapsed = initialRequestRailCollapsed()
-  let hostSessionRailCollapsed = initialHostRailCollapsed()
-  let hostRailWidth = initialHostRailWidth()
-  let requestRailWidth = initialRequestRailWidth()
-  let navigationWidth = 1320
-  let resizingHostRail = false
-  let resizingRequestRail = false
+  let hostRailPreference = initialHostRailCollapsed()
+  let requestRailPreference = initialRequestRailCollapsed()
+  let phoneHostRailOpen = false
+  let phoneRequestRailOpen = false
+  let shellMode: ShellMode = 'desktop'
+  let hostRailDisplayWidth = 0
+  let navigationResizing = false
   let projectSearch = ''
   let voicePhase: VoicePhase = 'idle'
   let voiceDevice = ''
@@ -561,16 +561,6 @@
     : undefined
   $: renderedWorkspaceView = activeWorkspaceView(workspaceShellState)
   $: renderedWorkspaceSurface = workspaceSurface(renderedWorkspaceView)
-  $: requestRailVisible = workbenchStartup !== 'failed' && renderedWorkspaceSurface !== 'standalone'
-  $: navigationWidths = fitNavigationWidths({
-    hostWidth: hostRailWidth,
-    requestWidth: requestRailVisible ? requestRailWidth : null,
-    hostCollapsed: hostSessionRailCollapsed,
-    requestCollapsed: requestRailCollapsed,
-    containerWidth: navigationWidth,
-  })
-  $: hostRailMaxWidth = Math.max(RAIL_LIMITS.host.minWidth, Math.min(RAIL_LIMITS.host.maxWidth, navigationWidth - navigationWidths.request - 640))
-  $: requestRailMaxWidth = Math.max(RAIL_LIMITS.request.minWidth, Math.min(RAIL_LIMITS.request.maxWidth, navigationWidth - navigationWidths.host - 640))
   $: renderedSessionView = renderedWorkspaceView?.kind === 'session'
     ? renderedWorkspaceView
     : null
@@ -713,8 +703,36 @@
     approving ||
     currentRequestCooking ||
     workspace?.request.status === 'in_progress'
-  $: saveHostRailCollapsed(hostSessionRailCollapsed)
-  $: saveRequestRailCollapsed(requestRailCollapsed)
+  // Phones turn the rails into drawers: `collapsed` then means "drawer closed" and the
+  // persisted preference is left untouched for when the viewport widens again.
+  $: hostSessionRailCollapsed = shellMode === 'phone' ? !phoneHostRailOpen : hostRailPreference
+  $: requestRailCollapsed = shellMode === 'phone' ? !phoneRequestRailOpen : requestRailPreference
+  $: saveHostRailCollapsed(hostRailPreference)
+  $: saveRequestRailCollapsed(requestRailPreference)
+
+  function setHostRailCollapsed(collapsed: boolean) {
+    if (shellMode === 'phone') {
+      phoneHostRailOpen = !collapsed
+      if (!collapsed) phoneRequestRailOpen = false
+    } else {
+      hostRailPreference = collapsed
+    }
+  }
+
+  function setRequestRailCollapsed(collapsed: boolean) {
+    if (shellMode === 'phone') {
+      phoneRequestRailOpen = !collapsed
+      if (!collapsed) phoneHostRailOpen = false
+    } else {
+      requestRailPreference = collapsed
+    }
+  }
+
+  function closePhoneDrawers() {
+    if (shellMode !== 'phone') return
+    phoneHostRailOpen = false
+    phoneRequestRailOpen = false
+  }
 
   onMount(() => {
     const cleanupAttachments = attachmentController.mount()
@@ -761,6 +779,15 @@
     }
     if ($onboardingCompleted || !onboardingAvailable) startWorkbench()
     else onboardingOpen = true
+    // Browser server autostart is a desktop preference; the browser client never runs it.
+    if (
+      initialWebAccessAutostart() &&
+      capabilities.webAccessAdministration.status.availability !== 'unavailable'
+    ) {
+      void capabilities.webAccessAdministration.implementation
+        .setEnabled(true, initialWebAccessPort())
+        .catch(() => undefined)
+    }
     const updateCheckTimer = softwareUpdatesAvailable
       ? window.setTimeout(() => {
           launchUpdateCheckDue = true
@@ -2141,9 +2168,12 @@
 </svelte:head>
 
 {#key $locale}
-<main class="flex h-full w-full flex-col overflow-hidden rounded-[16px] border bg-background text-foreground shadow-sm"
-  class:navigation-resizing={resizingHostRail || resizingRequestRail}
-  style:--workbench-sidebar-width={`${navigationWidths.host}px`}>
+<main class={[
+  'flex h-full w-full flex-col overflow-hidden rounded-[var(--app-frame-radius)] bg-background text-foreground',
+  environment === 'browser' ? '' : 'border shadow-sm',
+]}
+  class:navigation-resizing={navigationResizing}
+  style:--workbench-sidebar-width={`${hostRailDisplayWidth}px`}>
   <Sonner />
   <RambleSessionController
     bind:this={rambleController}
@@ -2182,6 +2212,7 @@
   <AppTitlebar
     windowControls={capabilities.windowControls}
     sidebarCollapsed={hostSessionRailCollapsed}
+    onToggleSidebar={shellMode === 'phone' ? () => setHostRailCollapsed(!hostSessionRailCollapsed) : undefined}
     pendingCount={$navigation.pendingRequests.length}
     ramblePhase={visibleRamblePhase}
     {rambleRequestTitle}
@@ -2201,287 +2232,283 @@
     {/snippet}
   </AppTitlebar>
 
-  <div class="flex min-h-0 min-w-0 flex-1" bind:clientWidth={navigationWidth}>
-    <div id="host-navigation-pane" data-navigation-pane class="relative flex min-h-0 shrink-0 transition-[width] duration-200 motion-reduce:transition-none" style:width={`${navigationWidths.host}px`}>
-    <HostSessionRail
-      bind:collapsed={hostSessionRailCollapsed}
-      sessions={$navigation.hostSessions}
-      activeHostId={renderedWorkspaceView?.kind === 'session' ? renderedWorkspaceView.hostId : railAgentSession?.host_id ?? null}
-      activeHostSessionId={renderedWorkspaceView?.kind === 'session' ? renderedWorkspaceView.hostSessionId : railAgentSession?.host_session_id ?? null}
-      inboxActive={renderedWorkspaceView?.kind === 'inbox'}
-      requestSearch={projectSearch}
-      loading={$navigation.loadingNavigation}
-      refreshing={$navigation.refreshingPage}
-      {resolveHostProfile}
-      onSelect={(hostId, hostSessionId) =>
-        void selectRailScope(hostId, hostSessionId)}
-      onRequestSearch={(search) => projectSearch = search}
-      onSearchRequests={(search) => void searchWorkspaceRequests(search)}
-      onSetSessionPinned={(session, pinned) => navigation.setHostSessionPinned(session, pinned)}
-      onArchiveSession={archiveSessionFromUi}
-      onSettings={() => void openSettings('general')}
-      onNewSession={previewMode ? undefined : (cwd) => void openNewManagedSession(undefined, cwd)}
-    />
-      <NavigationResizeHandle
-        label={$locale === 'zh-CN' ? '调整侧边栏宽度' : 'Resize sidebar'} controls="host-navigation-pane"
-        expandedWidth={hostRailWidth} displayWidth={navigationWidths.host} collapsed={hostSessionRailCollapsed}
-        minWidth={RAIL_LIMITS.host.minWidth} maxWidth={hostRailMaxWidth}
-        onResize={(next) => { hostRailWidth = next.width; hostSessionRailCollapsed = next.collapsed }}
-        onCommit={() => saveHostRailWidth(hostRailWidth)}
-        onDraggingChange={(active) => resizingHostRail = active}
+  <WorkbenchShell
+    hostCollapsed={hostSessionRailCollapsed}
+    requestCollapsed={requestRailCollapsed}
+    onHostCollapsedChange={setHostRailCollapsed}
+    onRequestCollapsedChange={setRequestRailCollapsed}
+    startupFailed={workbenchStartup === 'failed'}
+    requestPaneVisible={renderedWorkspaceSurface !== 'standalone'}
+    bind:mode={shellMode}
+    bind:hostDisplayWidth={hostRailDisplayWidth}
+    bind:resizing={navigationResizing}
+  >
+    {#snippet hostRail()}
+      <HostSessionRail
+        collapsed={hostSessionRailCollapsed}
+        onCollapsedChange={setHostRailCollapsed}
+        sessions={$navigation.hostSessions}
+        activeHostId={renderedWorkspaceView?.kind === 'session' ? renderedWorkspaceView.hostId : railAgentSession?.host_id ?? null}
+        activeHostSessionId={renderedWorkspaceView?.kind === 'session' ? renderedWorkspaceView.hostSessionId : railAgentSession?.host_session_id ?? null}
+        inboxActive={renderedWorkspaceView?.kind === 'inbox'}
+        requestSearch={projectSearch}
+        loading={$navigation.loadingNavigation}
+        refreshing={$navigation.refreshingPage}
+        {resolveHostProfile}
+        onSelect={(hostId, hostSessionId) => {
+          closePhoneDrawers()
+          void selectRailScope(hostId, hostSessionId)
+        }}
+        onRequestSearch={(search) => projectSearch = search}
+        onSearchRequests={(search) => void searchWorkspaceRequests(search)}
+        onSetSessionPinned={(session, pinned) => navigation.setHostSessionPinned(session, pinned)}
+        onArchiveSession={archiveSessionFromUi}
+        onSettings={() => {
+          closePhoneDrawers()
+          void openSettings('general')
+        }}
+        onNewSession={previewMode ? undefined : (cwd) => {
+          closePhoneDrawers()
+          void openNewManagedSession(undefined, cwd)
+        }}
       />
-    </div>
+    {/snippet}
 
-    <div class="appearance-workspace flex min-h-0 min-w-0 flex-1" id="request-workspace-layout">
-      {#if workbenchStartup === 'failed'}
-        <StartupRecoveryPanel {capabilities} message={startupFailureMessage} timedOut={startupFailureTimedOut} bind:settingsOpen={startupSettingsOpen} onRetry={() => void startWorkbench()} />
-      {:else}
-      {#if renderedWorkspaceSurface !== 'standalone'}
-        <div
-          class="relative shrink-0 border-r transition-[width] duration-200 motion-reduce:transition-none"
-          id="request-list-pane"
-          data-navigation-pane
-          style:width={`${navigationWidths.request}px`}
-        >
-          <RequestListPane
-            bind:collapsed={requestRailCollapsed}
-            requests={$navigation.requests}
-            activeRequestId={workspace?.request.request_id ?? null}
-            cookingRequestIds={cookingRequestIds}
-            scopeLabel={requestScopeLabel}
-            searchQuery={$navigation.requestSearch}
-            loading={$navigation.loadingRequests}
-            refreshing={$navigation.refreshingPage}
-            loadingMore={$navigation.loadingMoreRequests}
-            hasMore={$navigation.nextRequestCursor !== null}
-            filters={$navigation.requestFilters}
+    {#snippet startupRecovery()}
+      <StartupRecoveryPanel {capabilities} message={startupFailureMessage} timedOut={startupFailureTimedOut} bind:settingsOpen={startupSettingsOpen} onRetry={() => void startWorkbench()} />
+    {/snippet}
+
+    {#snippet requestPane()}
+      <RequestListPane
+        collapsed={requestRailCollapsed}
+        onCollapsedChange={setRequestRailCollapsed}
+        requests={$navigation.requests}
+        activeRequestId={workspace?.request.request_id ?? null}
+        cookingRequestIds={cookingRequestIds}
+        scopeLabel={requestScopeLabel}
+        searchQuery={$navigation.requestSearch}
+        loading={$navigation.loadingRequests}
+        refreshing={$navigation.refreshingPage}
+        loadingMore={$navigation.loadingMoreRequests}
+        hasMore={$navigation.nextRequestCursor !== null}
+        filters={$navigation.requestFilters}
+        {resolveHostProfile}
+        formatTime={formatTimeLocal}
+        onLoadMore={() => void navigation.loadMoreRequests()}
+        onOpenRequest={(requestId) => {
+          closePhoneDrawers()
+          void openRequest(requestId)
+        }}
+        onFiltersChange={(filters) => void navigation.setRequestFilters(filters)}
+        onClearSearch={() => void navigation.setRequestSearch('')}
+      />
+    {/snippet}
+
+    {#snippet workspacePane()}
+      <div
+        class="min-h-0 flex-1"
+        role={renderedWorkspaceView ? 'tabpanel' : undefined}
+        id={renderedWorkspaceView
+          ? workspaceTabPanelId(workspaceViewKey(renderedWorkspaceView))
+          : undefined}
+        aria-labelledby={renderedWorkspaceView
+          ? workspaceTabId(workspaceViewKey(renderedWorkspaceView))
+          : undefined}
+      >
+        {#if renderedWorkspaceView?.kind === 'inbox'}
+          <InboxWorkspaceView onNewSession={previewMode ? undefined : () => void openNewManagedSession()} />
+        {:else if renderedWorkspaceView?.kind === 'archive'}
+          <ArchivedSessionsWorkspaceView
+            transport={applicationTransport}
+            {previewMode}
             {resolveHostProfile}
             formatTime={formatTimeLocal}
-            onLoadMore={() => void navigation.loadMoreRequests()}
-            onOpenRequest={(requestId) => void openRequest(requestId)}
-            onFiltersChange={(filters) => void navigation.setRequestFilters(filters)}
-            onClearSearch={() => void navigation.setRequestSearch('')}
+            {messageFrom}
+            initialSession={archivedInitialSession}
+            selectionEpoch={archivedSelectionEpoch}
+            onError={(message) => (pageError = message)}
+            onChanged={retrySessionViewRecovery}
+            onDeleteManagedSession={deleteManagedSessionFromUi}
           />
-          <NavigationResizeHandle
-            label={$locale === 'zh-CN' ? '调整请求列宽度' : 'Resize request list'} controls="request-list-pane"
-            expandedWidth={requestRailWidth} displayWidth={navigationWidths.request} collapsed={requestRailCollapsed}
-            minWidth={RAIL_LIMITS.request.minWidth} maxWidth={requestRailMaxWidth}
-            onResize={(next) => { requestRailWidth = next.width; requestRailCollapsed = next.collapsed }}
-            onCommit={() => saveRequestRailWidth(requestRailWidth)}
-            onDraggingChange={(active) => resizingRequestRail = active}
-          />
-        </div>
-      {/if}
-
-      <div class="min-h-0 min-w-0 flex-1" id="workspace-pane">
-        <div class="flex h-full min-h-0 min-w-0 flex-col">
-          <div
-            class="min-h-0 flex-1"
-            role={renderedWorkspaceView ? 'tabpanel' : undefined}
-            id={renderedWorkspaceView
-              ? workspaceTabPanelId(workspaceViewKey(renderedWorkspaceView))
-              : undefined}
-            aria-labelledby={renderedWorkspaceView
-              ? workspaceTabId(workspaceViewKey(renderedWorkspaceView))
-              : undefined}
-          >
-            {#if renderedWorkspaceView?.kind === 'inbox'}
-              <InboxWorkspaceView onNewSession={previewMode ? undefined : () => void openNewManagedSession()} />
-            {:else if renderedWorkspaceView?.kind === 'archive'}
-              <ArchivedSessionsWorkspaceView
-                transport={applicationTransport}
-                {previewMode}
-                {resolveHostProfile}
-                formatTime={formatTimeLocal}
-                {messageFrom}
-                initialSession={archivedInitialSession}
-                selectionEpoch={archivedSelectionEpoch}
-                onError={(message) => (pageError = message)}
-                onChanged={retrySessionViewRecovery}
-                onDeleteManagedSession={deleteManagedSessionFromUi}
-              />
-            {:else if renderedWorkspaceView?.kind === 'settings'}
-              <SettingsWorkspaceView
-                transport={applicationTransport}
-                {capabilities}
-                section={settingsSection}
-                sectionSelectionEpoch={settingsSectionSelectionEpoch}
-                agentConfigId={settingsAgentConfigId}
-                agentAdvanced={settingsAgentAdvanced}
-                {updateInstallBlocked}
-                onRestartOnboarding={restartOnboarding}
-                onOpenArchived={() => void openArchivedSessions()}
-                onOpenRambelleProfile={() => void openRambelleProfile()}
-              />
-            {:else if renderedWorkspaceView?.kind === 'request-task'}
-              <TaskWorkspaceView
-                agentStatus={rambleAgentSessionId ? requestAgentStatus : undefined}
-                transport={applicationTransport}
-                {capabilities}
-                {workspace}
-                {editorDocument}
-                activeActionId={workspace
-                  ? activeActionByRequest.get(workspace.request.request_id)?.actionId ?? null
-                  : null}
-                actionsDisabled={managedFeedbackReadOnly || workspaceTransitionLocked || pendingWorkspaceViewKey !== null}
-                onSelectAction={selectAction}
-                previews={attachmentPreviews}
-                loading={loadingWorkspace}
-                formatTime={formatTimeLocal}
-                {resolveHostProfile}
-                onToggleRamble={() => void toggleRamble()}
-                ramblePhase={rambleBelongsToWorkspace ? visibleRamblePhase : 'idle'}
-                rambleStartedOnce={rambleBelongsToWorkspace ? rambleStartedOnce : false}
-                rambleBusy={rambleBelongsToWorkspace ? rambleBusy : true}
-                canSubmit={!managedFeedbackReadOnly}
-                cookingEnabled={$cookingEnabled}
-                {cookedDraftReady}
-                cooking={currentRequestCooking}
-                {submitting}
-                onSubmitFeedback={() => void submitFeedback()}
-              />
-            {:else if renderedAgentDraftView && renderedAgentDraftController}
-              {#if workbenchMounted && workbenchStartup === 'ready'}
-              {#key renderedAgentDraftView.draftId}
-                <DraftManagedSessionWorkspace transport={applicationTransport} controller={renderedAgentDraftController} draftId={renderedAgentDraftView.draftId}
-                  onConfigure={() => void openSettings('agents')}
-                  onConfigureAgent={(configId, advanced) => void openSettings('agents', configId, advanced)}
-                  onChooseDirectory={capabilities.serverPaths.status.availability === 'unavailable' ? undefined : () => capabilities.serverPaths.implementation.chooseDirectory()} />
-              {/key}
-              {/if}
-            {:else if renderedAgentSessionView}
-              {#if workbenchMounted && workbenchStartup === 'ready'}
-              {#key renderedAgentSessionView.sessionId}
-                <ManagedSessionSection
-                  bind:this={managedSessionSection}
-                  transport={applicationTransport}
-                  sessionId={renderedAgentSessionView.sessionId}
-                  deletionPending={deletingSessionCommands.has(renderedAgentSessionView.sessionId)}
-                  onDeletingChange={observeManagedDeletion}
-                  onConfigureAgent={(configId, advanced) => void openSettings('agents', configId, advanced)}
-                  onOpenRamble={renderedManagedSession ? async () => {
-                    if (renderedManagedSession) await selectRailScope(renderedManagedSession.host_id, renderedManagedSession.host_session_id)
-                  } : undefined}
-                />
-              {/key}
-              {/if}
-            {:else if renderedWorkspaceView?.kind === 'rambelle-profile'}
-              <RambelleProfileWorkspaceView />
-            {:else if renderedSessionResolution?.kind === 'missing-session'}
-              <MissingSessionView
-                missing={renderedSessionResolution}
-                label={sessionTabLabel(renderedSessionResolution.session)}
-                busy={renderedSessionResolution.reason === 'unresolved' || pendingWorkspaceViewKey !== null}
-                onRetry={retrySessionViewRecovery}
-                onClose={() => closeWorkspaceTab(workspaceViewKey(renderedSessionResolution!.session))}
-                onOpenArchive={() => void openArchivedSessions(renderedSessionResolution!.session)}
-              />
-            {:else if workbenchMounted}
-              {#key renderedSessionView ? workspaceViewKey(renderedSessionView) : 'workspace:empty'}
-              <SessionWorkbench
-            agentStatus={rambleAgentSessionId ? requestAgentStatus : undefined}
-            readOnly={managedFeedbackReadOnly}
+        {:else if renderedWorkspaceView?.kind === 'settings'}
+          <SettingsWorkspaceView
             transport={applicationTransport}
             {capabilities}
-            bind:this={sessionWorkbench}
-            view={renderedSessionView}
-            bind:taskBriefOpen
-            {loadingWorkspace}
+            section={settingsSection}
+            sectionSelectionEpoch={settingsSectionSelectionEpoch}
+            agentConfigId={settingsAgentConfigId}
+            agentAdvanced={settingsAgentAdvanced}
+            {updateInstallBlocked}
+            onRestartOnboarding={restartOnboarding}
+            onOpenArchived={() => void openArchivedSessions()}
+            onOpenRambelleProfile={() => void openRambelleProfile()}
+          />
+        {:else if renderedWorkspaceView?.kind === 'request-task'}
+          <TaskWorkspaceView
+            agentStatus={rambleAgentSessionId ? requestAgentStatus : undefined}
+            transport={applicationTransport}
+            {capabilities}
             {workspace}
-            {feedbackResult}
-            {draftBody}
             {editorDocument}
-            {editorEpoch}
-            {tidyConfig}
-            tidyAutoThreshold={$tidyAutoThreshold}
             activeActionId={workspace
               ? activeActionByRequest.get(workspace.request.request_id)?.actionId ?? null
               : null}
-            {savedRevision}
-            {savePhase}
-            {attachmentPreviews}
-            {dragActive}
-            rambelleStatusPortrait={rambleBelongsToWorkspace
-              ? rambelleStatusPortrait
-              : feedbackResult
-                ? rambelleArchived
-                : rambelleIdle}
-            rambleEngaged={rambleBelongsToWorkspace ? rambleEngaged : false}
-            rambleActive={rambleBelongsToWorkspace ? rambleActive : false}
+            actionsDisabled={managedFeedbackReadOnly || workspaceTransitionLocked || pendingWorkspaceViewKey !== null}
+            onSelectAction={selectAction}
+            previews={attachmentPreviews}
+            loading={loadingWorkspace}
+            formatTime={formatTimeLocal}
+            {resolveHostProfile}
+            onToggleRamble={() => void toggleRamble()}
             ramblePhase={rambleBelongsToWorkspace ? visibleRamblePhase : 'idle'}
-            rambleBusy={rambleBelongsToWorkspace ? rambleBusy : true}
             rambleStartedOnce={rambleBelongsToWorkspace ? rambleStartedOnce : false}
-            voiceDevice={rambleBelongsToWorkspace ? voiceDevice : ''}
-            voiceChunkIndex={rambleBelongsToWorkspace ? voiceChunkIndex : 0}
-            voicePartial={rambleBelongsToWorkspace ? voicePartial : ''}
-            voiceLevel={rambleBelongsToWorkspace ? voiceLevel : 0}
-            voiceModelMissing={rambleBelongsToWorkspace ? voiceModelMissing : false}
-            rambleMessage={rambleBelongsToWorkspace ? rambleMessage : ''}
-            attachmentBusy={rambleBelongsToWorkspace ? attachmentBusy : false}
-            {canSubmit}
-            cooking={currentRequestCooking}
+            rambleBusy={rambleBelongsToWorkspace ? rambleBusy : true}
+            canSubmit={!managedFeedbackReadOnly}
             cookingEnabled={$cookingEnabled}
             {cookedDraftReady}
-            cookedPreviewModel={cookedPreview?.model ?? ''}
-            cookedPreviewMarkdown={cookedPreview?.markdown ?? ''}
-            onCookPreview={() => void cookPreviewOnly()}
-            onRestoreOriginal={restoreOriginalAfterCook}
+            cooking={currentRequestCooking}
             {submitting}
-            {submitStage}
-            {publishedFeedback}
-            {canCancel}
-            {cancelling}
-            {approving}
-            {canOpenResumePrompt}
-            {resolveHostProfile}
-            formatTime={formatTimeLocal}
-            onDraftChange={updateDraft}
-            onTidyError={(message) => (pageError = message)}
-            onOpenTidySettings={() => void openSettings('post-processing')}
-            onSelectAction={selectAction}
-            onToggleRamble={() => void toggleRamble()}
-            onExitRamble={() => void exitRamble()}
-            onOpenVoiceSettings={() => void openSettings('voice')}
-            onOpenTask={(requestId) => void openTaskWorkspace(requestId)}
-            onAutoOpenTask={autoOpenTaskWorkspace}
-            onStartScreenCapture={() => void attachmentController.startScreenCapture()}
-            onImportClipboard={() => void importClipboardNow()}
-            onFileSelection={attachmentController.handleFileSelection}
-            onPasteCandidates={attachmentController.acceptAttachmentCandidates}
-            onPasteError={attachmentController.reportClientFileError}
-            onRemoveAttachment={(attachment) => void attachmentController.removeAttachment(attachment)}
-            onOpenPackage={() => void openFeedbackPackage()}
-            packageActionLabel={tr(publishedFeedbackAction.label)}
-            onOpenResumePrompt={openResumePrompt}
-            onSubmit={() => void submitFeedback()}
-            onCancel={() => void cancelFeedback()}
-            onApprove={() => void approveFeedback()}
-              />
-              {/key}
-            {:else}
-              <div
-                class="grid h-full min-h-0 place-items-center text-sm text-muted-foreground"
-                aria-busy="true"
-                aria-live="polite"
-              >
-                {tr('Loading workspace…')}
-              </div>
-            {/if}
+            onSubmitFeedback={() => void submitFeedback()}
+          />
+        {:else if renderedAgentDraftView && renderedAgentDraftController}
+          {#if workbenchMounted && workbenchStartup === 'ready'}
+          {#key renderedAgentDraftView.draftId}
+            <DraftManagedSessionWorkspace transport={applicationTransport} controller={renderedAgentDraftController} draftId={renderedAgentDraftView.draftId}
+              onConfigure={() => void openSettings('agents')}
+              onConfigureAgent={(configId, advanced) => void openSettings('agents', configId, advanced)}
+              onChooseDirectory={capabilities.serverPaths.status.availability === 'unavailable' ? undefined : () => capabilities.serverPaths.implementation.chooseDirectory()} />
+          {/key}
+          {/if}
+        {:else if renderedAgentSessionView}
+          {#if workbenchMounted && workbenchStartup === 'ready'}
+          {#key renderedAgentSessionView.sessionId}
+            <ManagedSessionSection
+              bind:this={managedSessionSection}
+              transport={applicationTransport}
+              sessionId={renderedAgentSessionView.sessionId}
+              deletionPending={deletingSessionCommands.has(renderedAgentSessionView.sessionId)}
+              onDeletingChange={observeManagedDeletion}
+              onConfigureAgent={(configId, advanced) => void openSettings('agents', configId, advanced)}
+              onOpenRamble={renderedManagedSession ? async () => {
+                if (renderedManagedSession) await selectRailScope(renderedManagedSession.host_id, renderedManagedSession.host_session_id)
+              } : undefined}
+            />
+          {/key}
+          {/if}
+        {:else if renderedWorkspaceView?.kind === 'rambelle-profile'}
+          <RambelleProfileWorkspaceView />
+        {:else if renderedSessionResolution?.kind === 'missing-session'}
+          <MissingSessionView
+            missing={renderedSessionResolution}
+            label={sessionTabLabel(renderedSessionResolution.session)}
+            busy={renderedSessionResolution.reason === 'unresolved' || pendingWorkspaceViewKey !== null}
+            onRetry={retrySessionViewRecovery}
+            onClose={() => closeWorkspaceTab(workspaceViewKey(renderedSessionResolution!.session))}
+            onOpenArchive={() => void openArchivedSessions(renderedSessionResolution!.session)}
+          />
+        {:else if workbenchMounted}
+          {#key renderedSessionView ? workspaceViewKey(renderedSessionView) : 'workspace:empty'}
+          <SessionWorkbench
+        agentStatus={rambleAgentSessionId ? requestAgentStatus : undefined}
+        readOnly={managedFeedbackReadOnly}
+        transport={applicationTransport}
+        {capabilities}
+        bind:this={sessionWorkbench}
+        view={renderedSessionView}
+        bind:taskBriefOpen
+        {loadingWorkspace}
+        {workspace}
+        {feedbackResult}
+        {draftBody}
+        {editorDocument}
+        {editorEpoch}
+        {tidyConfig}
+        tidyAutoThreshold={$tidyAutoThreshold}
+        activeActionId={workspace
+          ? activeActionByRequest.get(workspace.request.request_id)?.actionId ?? null
+          : null}
+        {savedRevision}
+        {savePhase}
+        {attachmentPreviews}
+        {dragActive}
+        rambelleStatusPortrait={rambleBelongsToWorkspace
+          ? rambelleStatusPortrait
+          : feedbackResult
+            ? rambelleArchived
+            : rambelleIdle}
+        rambleEngaged={rambleBelongsToWorkspace ? rambleEngaged : false}
+        rambleActive={rambleBelongsToWorkspace ? rambleActive : false}
+        ramblePhase={rambleBelongsToWorkspace ? visibleRamblePhase : 'idle'}
+        rambleBusy={rambleBelongsToWorkspace ? rambleBusy : true}
+        rambleStartedOnce={rambleBelongsToWorkspace ? rambleStartedOnce : false}
+        voiceDevice={rambleBelongsToWorkspace ? voiceDevice : ''}
+        voiceChunkIndex={rambleBelongsToWorkspace ? voiceChunkIndex : 0}
+        voicePartial={rambleBelongsToWorkspace ? voicePartial : ''}
+        voiceLevel={rambleBelongsToWorkspace ? voiceLevel : 0}
+        voiceModelMissing={rambleBelongsToWorkspace ? voiceModelMissing : false}
+        rambleMessage={rambleBelongsToWorkspace ? rambleMessage : ''}
+        attachmentBusy={rambleBelongsToWorkspace ? attachmentBusy : false}
+        {canSubmit}
+        cooking={currentRequestCooking}
+        cookingEnabled={$cookingEnabled}
+        {cookedDraftReady}
+        cookedPreviewModel={cookedPreview?.model ?? ''}
+        cookedPreviewMarkdown={cookedPreview?.markdown ?? ''}
+        onCookPreview={() => void cookPreviewOnly()}
+        onRestoreOriginal={restoreOriginalAfterCook}
+        {submitting}
+        {submitStage}
+        {publishedFeedback}
+        {canCancel}
+        {cancelling}
+        {approving}
+        {canOpenResumePrompt}
+        {resolveHostProfile}
+        formatTime={formatTimeLocal}
+        onDraftChange={updateDraft}
+        onTidyError={(message) => (pageError = message)}
+        onOpenTidySettings={() => void openSettings('post-processing')}
+        onSelectAction={selectAction}
+        onToggleRamble={() => void toggleRamble()}
+        onExitRamble={() => void exitRamble()}
+        onOpenVoiceSettings={() => void openSettings('voice')}
+        onOpenTask={(requestId) => void openTaskWorkspace(requestId)}
+        onAutoOpenTask={autoOpenTaskWorkspace}
+        onStartScreenCapture={() => void attachmentController.startScreenCapture()}
+        onImportClipboard={() => void importClipboardNow()}
+        onFileSelection={attachmentController.handleFileSelection}
+        onPasteCandidates={attachmentController.acceptAttachmentCandidates}
+        onPasteError={attachmentController.reportClientFileError}
+        onRemoveAttachment={(attachment) => void attachmentController.removeAttachment(attachment)}
+        onOpenPackage={() => void openFeedbackPackage()}
+        packageActionLabel={tr(publishedFeedbackAction.label)}
+        onOpenResumePrompt={openResumePrompt}
+        onSubmit={() => void submitFeedback()}
+        onCancel={() => void cancelFeedback()}
+        onApprove={() => void approveFeedback()}
+          />
+          {/key}
+        {:else}
+          <div
+            class="grid h-full min-h-0 place-items-center text-sm text-muted-foreground"
+            aria-busy="true"
+            aria-live="polite"
+          >
+            {tr('Loading workspace…')}
           </div>
-        </div>
+        {/if}
       </div>
-      {/if}
-    </div>
+    {/snippet}
+  </WorkbenchShell>
 
-    {#if resumePrompt}
-      <ResumePromptDialog
-        prompt={resumePrompt}
-        copyState={resumeCopyState}
-        onCopy={() => void copyResumePrompt()}
-        onDismiss={dismissResumePrompt}
-      />
-    {/if}
-  </div>
+  {#if resumePrompt}
+    <ResumePromptDialog
+      prompt={resumePrompt}
+      copyState={resumeCopyState}
+      onCopy={() => void copyResumePrompt()}
+      onDismiss={dismissResumePrompt}
+    />
+  {/if}
 </main>
 
 {#if onboardingAvailable && onboardingOpen}

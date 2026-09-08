@@ -251,10 +251,10 @@
         disabled={composerState.disabled} busy={composerState.busy} sendDisabled={composerState.sendDisabled || awaitingAcknowledgement}
         oncancel={composerState.canCancel ? async () => { await run('cancel', onCancel) } : undefined}>
         <svelte:fragment slot="footer">
-          <span class="flex min-w-0 max-w-40 items-center gap-1.5 px-1 text-[10px] text-muted-foreground" title={config?.name ?? snapshot.session.host_id}><AgentIcon hostId={snapshot.session.host_id} class="size-3.5" /><span class="truncate">{config?.name ?? snapshot.session.host_id}</span></span>
+          <span class="flex shrink-0 max-w-40 items-center gap-1.5 px-1 text-[10px] text-muted-foreground" title={config?.name ?? snapshot.session.host_id}><AgentIcon hostId={snapshot.session.host_id} class="size-3.5" /><span class="min-w-0 truncate">{config?.name ?? snapshot.session.host_id}</span></span>
           {#if onSetConfiguration}<SessionConfigurationControls configuration={snapshot.runtime.configuration}
             disabled={busy || lifecyclePending || configurationPending || sendPending || !actions.canPrompt} onChange={setConfiguration} />{/if}
-          {#if connecting || snapshot.runtime.connection === 'connecting'}<span class="flex items-center gap-1 text-[10px] text-muted-foreground" role="status"><LoaderCircle class="size-3 animate-spin" />{tr('Connecting…')}</span>{/if}
+          {#if connecting || snapshot.runtime.connection === 'connecting'}<span class="flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground" role="status"><LoaderCircle class="size-3 animate-spin" />{tr('Connecting…')}</span>{/if}
         </svelte:fragment>
       </AgentComposer>
     {/key}

@@ -453,6 +453,7 @@ pub fn run() {
             web_access::get_web_access_status,
             web_access::start_web_access,
             web_access::stop_web_access,
+            web_access::rotate_web_access_token,
             web_access::copy_web_access_token,
             web_access::open_web_access,
             log_frontend_error,

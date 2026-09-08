@@ -19,6 +19,7 @@ export type WorkbenchComposition = Readonly<{
   applicationTransport: ApplicationTransport
   capabilities: WorkbenchCapabilities
   previewMode: boolean
+  environment: 'desktop' | 'browser'
 }>
 
 /** Selects implementations only; credentials and native bindings are composed outside. */
@@ -31,13 +32,19 @@ export function createWorkbenchComposition(
       applicationTransport: new UnavailableApplicationTransport(capabilities.manifest),
       capabilities,
       previewMode: true,
+      environment: input.environment,
     }
   }
   if (input.environment === 'desktop') {
     if (!input.desktopTransport) {
       throw new Error('Desktop composition requires a Tauri ApplicationTransport implementation.')
     }
-    return { applicationTransport: input.desktopTransport, capabilities, previewMode: false }
+    return {
+      applicationTransport: input.desktopTransport,
+      capabilities,
+      previewMode: false,
+      environment: 'desktop',
+    }
   }
   if (input.authenticatedWebSession) {
     return {
@@ -47,11 +54,13 @@ export function createWorkbenchComposition(
       ),
       capabilities,
       previewMode: false,
+      environment: 'browser',
     }
   }
   return {
     applicationTransport: new UnavailableApplicationTransport(capabilities.manifest),
     capabilities,
     previewMode: false,
+    environment: 'browser',
   }
 }

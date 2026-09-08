@@ -22,6 +22,8 @@
   export let loading = false
   export let refreshing = false
   export let collapsed = false
+  /** When set, the parent owns collapse state (used by the phone drawer); otherwise `bind:collapsed` applies. */
+  export let onCollapsedChange: ((collapsed: boolean) => void) | undefined = undefined
   export let resolveHostProfile: (hostId: string) => HostProfile
   export let onSelect: (hostId: string | null, hostSessionId: string | null) => void = () => {}
   export let onRequestSearch: (search: string) => void = () => {}
@@ -78,12 +80,17 @@
     }, 180)
   }
 
+  function setCollapsed(next: boolean) {
+    if (onCollapsedChange) onCollapsedChange(next)
+    else collapsed = next
+  }
+
   function applySearch(requests = false) {
     if (requestSearchTimer) clearTimeout(requestSearchTimer)
     requestSearchTimer = null
     onRequestSearch(searchDraft)
     if (requests) onSearchRequests?.(searchDraft)
-    else collapsed = false
+    else setCollapsed(false)
     searchOpen = false
   }
 
@@ -143,7 +150,7 @@
       {#if totalPending > 0}<span class="absolute right-1 top-1 size-1.5 rounded-full bg-primary" aria-label={`${totalPending}`}></span>{/if}
     </Button>
     {/if}
-    <Button variant="ghost" size="icon-sm" aria-label={collapsed ? tr('Expand sidebar') : tr('Collapse sidebar')} title={collapsed ? tr('Expand sidebar') : tr('Collapse sidebar')} onclick={() => { collapsed = !collapsed }}>
+    <Button variant="ghost" size="icon-sm" aria-label={collapsed ? tr('Expand sidebar') : tr('Collapse sidebar')} title={collapsed ? tr('Expand sidebar') : tr('Collapse sidebar')} onclick={() => setCollapsed(!collapsed)}>
       {#if collapsed}<PanelLeftOpen aria-hidden="true" />{:else}<PanelLeftClose aria-hidden="true" />{/if}
     </Button>
   </div>
@@ -187,10 +194,10 @@
                     {#if expanded}<FolderOpen class="size-4 shrink-0" aria-hidden="true" />{:else}<Folder class="size-4 shrink-0" aria-hidden="true" />{/if}
                     <span class="min-w-0 flex-1 truncate">{name}</span>
                     {#if !expanded && project.pendingCount > 0}<span class="size-1.5 shrink-0 rounded-full bg-primary" aria-label={`${project.pendingCount}`}></span>{/if}
-                    {#if expanded}<ChevronDown class="size-3 shrink-0 opacity-0 group-hover/project:opacity-100 group-focus-within/project:opacity-100" aria-hidden="true" />{:else}<ChevronRight class="size-3 shrink-0" aria-hidden="true" />{/if}
+                    {#if expanded}<ChevronDown class="size-3 shrink-0 opacity-0 group-hover/project:opacity-100 group-focus-within/project:opacity-100 pointer-coarse:opacity-100" aria-hidden="true" />{:else}<ChevronRight class="size-3 shrink-0" aria-hidden="true" />{/if}
                   </button>
                   {#if onNewSession && project.cwd}
-                    <Button variant="ghost" size="icon-xs" class="mr-1 opacity-0 focus-visible:opacity-100 group-hover/project:opacity-100 group-focus-within/project:opacity-100" aria-label={tr('New session in {project}', { project: name })} title={tr('New session in {project}', { project: name })} onclick={() => onNewSession?.(project.cwd!)}><Plus aria-hidden="true" /></Button>
+                    <Button variant="ghost" size="icon-xs" class="mr-1 opacity-0 focus-visible:opacity-100 group-hover/project:opacity-100 group-focus-within/project:opacity-100 pointer-coarse:opacity-100" aria-label={tr('New session in {project}', { project: name })} title={tr('New session in {project}', { project: name })} onclick={() => onNewSession?.(project.cwd!)}><Plus aria-hidden="true" /></Button>
                   {/if}
                 </div>
                 {#if expanded}
@@ -236,4 +243,10 @@
   .session-actions { opacity: 0; pointer-events: none; }
   .session-row:is(:hover, :has(:focus-visible)) .session-actions { opacity: 1; pointer-events: auto; }
   .session-row:is(:hover, :has(:focus-visible)) .session-title { padding-right: 3.5rem; }
+
+  /* Touch has no hover: session actions must stay reachable and keep clear of the title. */
+  @media (pointer: coarse) {
+    .session-actions { opacity: 1; pointer-events: auto; }
+    .session-title { padding-right: 4.5rem; }
+  }
 </style>

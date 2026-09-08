@@ -54,7 +54,7 @@ Backend Runtime
 application facade，由 Tauri state、该进程的 Local Integration Server 与可选 Web Access Server
 共同调用；这不表示跨进程全局单例。Local Integration Server 继续以独立 loopback listener 承载
 `/api`、`/mcp` 与托管会话专用 `/agent-feedback/*`，另保留旧 `/mcp-managed` 的兼容入口；不暴露 Web 静态资源、application routes 或 WebSocket。默认关闭的 Web Access
-使用另一 listener、credential、auth domain、route set 与生命周期，固定绑定 `127.0.0.1:37643`。MCP SSE
+使用另一 listener、credential、auth domain、route set 与生命周期，绑定 `127.0.0.1`，端口默认 `37643`、可由浏览器服务设置修改。MCP SSE
 属于 MCP transport，不是 Web Client 的事件流。
 
 `/agent-feedback/*` 为每次运行绑定单会话凭据，复用相同 listener、Host/Origin policy 和 scope 撤销保护；凭据不能访问 Generic
@@ -476,7 +476,7 @@ waiting → in_progress → completed
 
 ### CURRENT：loopback Web Access
 
-- Web Access 默认关闭，使用独立 listener 且固定绑定 `127.0.0.1:37643`；它拥有与 Local
+- Web Access 默认关闭，使用独立 listener 且绑定 `127.0.0.1`（端口默认 `37643`，可在设置中修改，只影响下一次启动）；它拥有与 Local
   Integration Server 分离的 route set、credential、auth domain 和 lifecycle。
 - 静态资源、HTTP API 与 WebSocket 使用 same-origin 且不开放宽泛 CORS。两类 listener 必须复用
   同一套 security policy/primitives。所有请求严格校验
@@ -492,13 +492,17 @@ waiting → in_progress → completed
   日志、诊断包、自己生成的 backup/export 或 Feedback Package；OS 管理的加密设备/账户备份属于
   平台安全边界，不宣称应用能够绝对排除。
 - 浏览器以 `Authorization: Bearer <durable-web-token>` 调用 same-origin
-  `POST /api/auth/session` 完成 bootstrap；成功后得到 scope 受限、idle TTL 30 分钟、absolute TTL
-  12 小时的 session token。受保护 HTTP 请求或新的 WebSocket 认证会刷新 idle TTL，但不能延长
-  absolute TTL；已连接 WebSocket 到期时主动关闭。停止 Web Access 必须撤销所有 session 并关闭
-  socket；重新生成 durable token 必须同时撤销旧 token 与全部 session。
-- session token 只存在 Web Access 进程内存与浏览器当前 JavaScript 内存；durable/session token
-  都不得进入 `sessionStorage`、`localStorage`、IndexedDB、URL、日志或 Feedback Package。刷新或
-  关闭页面后必须重新 bootstrap。服务端比较
+  `POST /api/auth/session` 完成 bootstrap；成功后得到 scope 受限的 session token，并写入
+  `HttpOnly; SameSite=Strict; Path=/api/auth/session` 的浏览器 cookie。页面刷新、新标签页或重启浏览器时，
+  浏览器只凭该 cookie 调用同一 endpoint 恢复同一个 session，人类不需要重新粘贴 durable token。
+- session 生命周期按签发路径区分：内存会话使用 idle TTL 30 分钟、absolute TTL 12 小时；
+  浏览器会话使用 idle TTL 30 天、absolute TTL 180 天的滑动窗口。受保护 HTTP 请求或新的
+  WebSocket 认证会刷新 idle TTL，但不能延长 absolute TTL；已连接 WebSocket 到期时主动关闭。
+  停止 Web Access 必须撤销所有 session 并关闭 socket；重新生成 durable token 必须同时撤销旧 token
+  与全部 session。
+- session token 只存在 Web Access 进程内存、浏览器当前 JavaScript 内存与上述 HttpOnly cookie；
+  durable/session token 都不得进入 `sessionStorage`、`localStorage`、IndexedDB、URL、日志或
+  Feedback Package。服务端比较
   credential 时使用 constant-time comparison，并对认证 header 和错误上下文做日志脱敏。
 - 浏览器 HTTP 请求使用 `Authorization: Bearer <session-token>`。
 - 浏览器 WebSocket 通过 `Sec-WebSocket-Protocol` 同时提供稳定协议 `rambledesk-events` 与

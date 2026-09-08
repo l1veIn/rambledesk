@@ -12,6 +12,6 @@
 <DialogPrimitive.Overlay
 	bind:ref
 	data-slot="dialog-overlay"
-	class={cn("fixed inset-[1px] isolate z-[110] overflow-hidden rounded-[16px] bg-black/10 duration-100 supports-backdrop-filter:backdrop-blur-xs data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0", className)}
+	class={cn("fixed inset-[var(--app-frame-inset)] isolate z-[110] overflow-hidden rounded-[var(--app-frame-radius)] bg-black/10 duration-100 supports-backdrop-filter:backdrop-blur-xs data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0", className)}
 	{...restProps}
 />

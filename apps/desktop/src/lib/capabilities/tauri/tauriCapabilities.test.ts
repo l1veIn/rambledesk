@@ -58,7 +58,7 @@ function createFakeApi(responses: Record<string, unknown> = {}): FakeApi {
         if (command === 'get_web_access_status' || command === 'stop_web_access') {
           return { state: 'stopped', url: null, failure: null }
         }
-        if (command === 'start_web_access') {
+        if (command === 'start_web_access' || command === 'rotate_web_access_token') {
           return { state: 'running', url: 'http://127.0.0.1:38173', failure: null }
         }
       }
@@ -371,8 +371,8 @@ describe('Tauri Workbench capabilities', () => {
     expect(api.invokeMock).toHaveBeenCalledWith('install_dsh_package', {
       checkoutRoot: null, profileId: null,
     })
-    expect(api.invokeMock).toHaveBeenCalledWith('start_web_access')
-    expect(api.invokeMock).toHaveBeenCalledWith('stop_web_access')
+    expect(api.invokeMock).toHaveBeenCalledWith('start_web_access', undefined)
+    expect(api.invokeMock).toHaveBeenCalledWith('stop_web_access', undefined)
     expect(api.invokeMock).toHaveBeenCalledWith('export_diagnostics', {
       scope: 'last_24_hours', path: '/tmp/report.zip',
     })
@@ -412,6 +412,7 @@ describe('Tauri Workbench capabilities', () => {
     await capabilities.webAccessAdministration.implementation.status()
     await capabilities.webAccessAdministration.implementation.open()
     await capabilities.webAccessAdministration.implementation.copyToken()
+    await capabilities.webAccessAdministration.implementation.rotateToken()
     expect(await capabilities.softwareUpdates.implementation.version()).toBe('1.2.3')
     capabilities.screenCapture.implementation.onFinished(handler, onError)
     capabilities.screenCapture.implementation.onShortcut(handler, onError)
@@ -442,9 +443,10 @@ describe('Tauri Workbench capabilities', () => {
     })
     expect(api.invokeMock).toHaveBeenCalledWith('install_pi_package', { checkoutRoot: null })
     expect(api.invokeMock).toHaveBeenCalledWith('uninstall_pi_package', { checkoutRoot: null })
-    expect(api.invokeMock).toHaveBeenCalledWith('get_web_access_status')
+    expect(api.invokeMock).toHaveBeenCalledWith('get_web_access_status', undefined)
     expect(api.invokeMock).toHaveBeenCalledWith('open_web_access')
     expect(api.invokeMock).toHaveBeenCalledWith('copy_web_access_token')
+    expect(api.invokeMock).toHaveBeenCalledWith('rotate_web_access_token', undefined)
     expect(api.listenMock.mock.calls.map(([event]) => event)).toEqual([
       'screen-capture-finished',
       'screen-capture-shortcut',

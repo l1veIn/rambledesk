@@ -287,9 +287,12 @@ export type WebAccessStatus =
   | Readonly<{ state: 'failed'; url: null; failure: WebAccessFailure }>
 export interface WebAccessAdministrationCapability {
   status(): Promise<WebAccessStatus>
-  setEnabled(enabled: boolean): Promise<WebAccessStatus>
+  /** `port` only applies when enabling; omit it to use the stored default. */
+  setEnabled(enabled: boolean, port?: number): Promise<WebAccessStatus>
   open(): Promise<void>
   copyToken(): Promise<void>
+  /** Issues a new durable token and revokes every existing browser session. */
+  rotateToken(): Promise<WebAccessStatus>
 }
 
 export type DiagnosticScope = 'last_24_hours' | 'last_7_days' | 'all'

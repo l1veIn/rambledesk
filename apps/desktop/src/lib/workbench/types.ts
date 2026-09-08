@@ -17,6 +17,7 @@ export type SettingsSection =
   | 'shortcuts'
   | 'adapters'
   | 'agents'
+  | 'web-access'
   | 'about'
 
 export type ResumePrompt = {

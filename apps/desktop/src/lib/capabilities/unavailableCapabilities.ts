@@ -161,6 +161,7 @@ const UNAVAILABLE_WORKBENCH_CAPABILITIES = createWorkbenchCapabilities({
     setEnabled: () => rejected('webAccessAdministration'),
     open: () => rejected('webAccessAdministration'),
     copyToken: () => rejected('webAccessAdministration'),
+    rotateToken: () => rejected('webAccessAdministration'),
   }),
   diagnostics: slot({
     readSettings: () => rejected('diagnostics'),

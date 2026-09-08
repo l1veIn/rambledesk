@@ -61,7 +61,7 @@ pub use web_access_server::{
 };
 pub use web_session::{
     DurableWebAccessToken, WebSessionAuthorization, WebSessionClock, WebSessionError,
-    WebSessionManager, WebSessionPolicy,
+    WebSessionLifetime, WebSessionManager, WebSessionPolicy,
 };
 pub use workspace_info::LocalWorkspaceInfoProvider;
 

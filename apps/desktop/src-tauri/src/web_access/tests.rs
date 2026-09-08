@@ -260,6 +260,44 @@ async fn the_active_token_remains_the_token_used_by_the_running_session_manager(
 }
 
 #[tokio::test]
+async fn rotating_the_token_revokes_browser_sessions_and_swaps_the_credential() {
+    let token_a = durable_token('a');
+    let token_b = durable_token('b');
+    let (active, sessions) = fake_active(
+        token_a.clone(),
+        Arc::new(FakeListenerControl::default()),
+        false,
+        false,
+    );
+    let session_token = sessions
+        .issue_session(token_a.secret())
+        .expect("issue session before rotation");
+    let authorization = sessions
+        .authorize(&session_token)
+        .expect("authorize session before rotation");
+    let mut lifecycle = test_lifecycle();
+    lifecycle.start(|| async { Ok(active) }).await;
+
+    let rotated = lifecycle.rotate_token(token_b.clone()).await;
+
+    assert_eq!(
+        rotated,
+        WebAccessStatus::running("http://127.0.0.1:37643".to_owned())
+    );
+    assert!(!authorization.is_active());
+    assert!(sessions.issue_session(token_a.secret()).is_none());
+    assert!(sessions.issue_session(token_b.secret()).is_some());
+    assert_eq!(
+        lifecycle
+            .active_token()
+            .await
+            .expect("active token")
+            .secret(),
+        token_b.secret()
+    );
+}
+
+#[tokio::test]
 async fn a_successful_stop_revokes_sessions_and_cannot_report_running() {
     let control = Arc::new(FakeListenerControl::default());
     let token = durable_token('a');

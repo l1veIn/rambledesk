@@ -46,10 +46,11 @@ export function webAccessToggleTarget(status: WebAccessStatus | null): boolean |
 export async function settleWebAccessMutation(
   implementation: WebAccessStatusCapability,
   enabled: boolean,
+  port?: number,
 ): Promise<WebAccessMutationResult> {
   try {
     return {
-      status: await implementation.setEnabled(enabled),
+      status: await implementation.setEnabled(enabled, port),
       operationError: null,
       refreshError: null,
     }

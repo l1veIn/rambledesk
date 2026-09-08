@@ -38,17 +38,17 @@
 </script>
 
 {#if controls.length}
-  <div class="flex min-w-0 max-w-full flex-wrap items-center gap-1" data-session-config-controls>
+  <div class="flex max-w-full flex-wrap items-center gap-1" data-session-config-controls>
     {#each controls as control (control.id)}
       {#if control.type === 'boolean'}
-        <button type="button" class="flex min-w-0 items-center gap-1 rounded-md px-1.5 py-1 text-[11px] hover:bg-muted disabled:opacity-40" disabled={disabled || pending}
+        <button type="button" class="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-[11px] hover:bg-muted disabled:opacity-40" disabled={disabled || pending}
           aria-pressed={control.value} aria-label={`${tr(control.name)}: ${tr(control.value ? 'On' : 'Off')}`} title={control.description ?? control.name}
           onclick={() => void change(control, !control.value)}>
           {#if control.value}<ToggleRight class="size-3.5 shrink-0 text-primary" />{:else}<ToggleLeft class="size-3.5 shrink-0 text-muted-foreground" />{/if}
-          <span class="max-w-32 truncate">{tr(control.name)}</span>
+          <span class="min-w-0 max-w-32 truncate">{tr(control.name)}</span>
         </button>
       {:else}
-        <label class="flex min-w-0 items-center gap-1 rounded-md px-1 py-1 text-[10px] text-muted-foreground" title={control.description ?? control.name}>
+        <label class="flex shrink-0 items-center gap-1 rounded-md px-1 py-1 text-[10px] text-muted-foreground" title={control.description ?? control.name}>
           <span class="sr-only">{tr(control.name)}</span>
           <select value={control.value} disabled={disabled || pending || control.choices.length === 0} aria-label={tr(control.name)}
             class="h-7 max-w-40 truncate rounded-md border-0 bg-transparent px-1 text-[11px] text-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40"
@@ -62,7 +62,7 @@
         </label>
       {/if}
     {/each}
-    {#if pending}<LoaderCircle class="size-3 animate-spin text-muted-foreground" /><span role="status" class="sr-only">{tr('Updating session options…')}</span>{/if}
-    {#if failed}<span role="alert" class="text-[10px] text-destructive">{tr('Could not change this option.')}</span>{/if}
+    {#if pending}<LoaderCircle class="size-3 shrink-0 animate-spin text-muted-foreground" /><span role="status" class="sr-only">{tr('Updating session options…')}</span>{/if}
+    {#if failed}<span role="alert" class="shrink-0 text-[10px] text-destructive">{tr('Could not change this option.')}</span>{/if}
   </div>
 {/if}

@@ -48,6 +48,11 @@
   --workbench-sidebar-width: 240px;
   --workbench-sidebar-collapsed-width: 3.5rem;
 
+  /* Desktop window frame. The browser client zeroes these out (body.web-mode). */
+  --app-frame-inset: 1px;
+  --app-frame-radius: 16px;
+  --app-frame-radius-inner: 15px;
+
   /* RepoChan persona primitives. */
   --brand-silver: #e3e9f0;
   --brand-white: #f7f9fc;
@@ -242,6 +247,23 @@ body.app-mode {
   min-height: 0;
   padding: 1px;
   background: transparent;
+}
+
+/* The browser client fills the page: no desktop window frame and no hairline gap. */
+body.web-mode {
+  padding: 0;
+  --app-frame-inset: 0px;
+  --app-frame-radius: 0px;
+  --app-frame-radius-inner: 0px;
+}
+
+/* Phone browsers: keep the shell clear of notches and the home indicator. */
+@media (max-width: 767.98px) {
+  body,
+  body.app-mode,
+  body.web-mode {
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+  }
 }
 
 /* Keep the divider and titlebar aligned with the pointer during rail resizing. */
