@@ -18,6 +18,7 @@ import {
   workspaceViewKey,
   type AgentSessionViewDescriptor,
   type SessionViewDescriptor,
+  type WorkspaceViewDescriptor,
 } from '../workspace/viewDescriptors'
 import { activeWorkspaceView, workspaceShellReducer } from '../workspace/workspaceShell'
 import type {
@@ -351,6 +352,33 @@ export function createWorkspaceNavigationController(context: WorkspaceNavigation
     await restoreNavigationScope(context.navigation, priorScope, outcome)
   }
 
+  /**
+   * Opens a view that is not backed by a feedback request (settings, archive,
+   * profile, request task). `prepare` runs after the transition guard and before
+   * activation, so view-local selection state never updates for a blocked open.
+   */
+  async function openView(
+    view: WorkspaceViewDescriptor,
+    options: Readonly<{ requestId?: string | null; prepare?: () => void }> = {},
+  ) {
+    if (context.isTransitionLocked() || get(context.workspaceShell).pendingViewKey) {
+      return 'blocked' as const
+    }
+    const viewKey = workspaceViewKey(view)
+    options.prepare?.()
+    if (get(context.workspaceShell).shell.activeViewKey === viewKey) return 'active' as const
+    const intent = context.workspaceTransition.invalidate()
+    return context.workspaceTransition.activate(
+      {
+        view,
+        requestId: options.requestId ?? null,
+        shellAction: { type: 'open' },
+        pendingViewKey: viewKey,
+      },
+      intent,
+    )
+  }
+
   async function activateWorkspaceTab(viewKey: string) {
     if (context.isTransitionLocked() || get(context.workspaceShell).shell.activeViewKey === viewKey) {
       return
@@ -556,6 +584,7 @@ export function createWorkspaceNavigationController(context: WorkspaceNavigation
     openRequest,
     selectRailScope,
     activateWorkspaceTab,
+    openView,
     closeWorkspaceTab,
     searchWorkspaceRequests,
     autoOpenArrivingRequest,

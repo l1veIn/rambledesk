@@ -860,35 +860,18 @@
       startup.patch({ settingsOpen: true })
       return
     }
-    settingsSection = section
-    settingsAgentConfigId = agentConfigId
-    settingsAgentAdvanced = agentAdvanced
-    settingsSectionSelectionEpoch += 1
-    const view = settingsViewDescriptor()
-    const viewKey = workspaceViewKey(view)
-    if (workspaceTransitionLocked || $workspaceShell.pendingViewKey) return
-    if ($workspaceShell.shell.activeViewKey !== viewKey) {
-      workspaceTransition.invalidate()
-      const outcome = await workspaceTransition.activate({
-        view,
-        requestId: null,
-        shellAction: { type: 'open' },
-        pendingViewKey: viewKey,
-      })
-      if (outcome !== 'activated') return
-    }
+    await workspaceNavigation.openView(settingsViewDescriptor(), {
+      prepare: () => {
+        settingsSection = section
+        settingsAgentConfigId = agentConfigId
+        settingsAgentAdvanced = agentAdvanced
+        settingsSectionSelectionEpoch += 1
+      },
+    })
   }
 
   async function openTaskWorkspace(requestId: string) {
-    if (workspaceTransitionLocked || $workspaceShell.pendingViewKey) return
-    const view = requestTaskViewDescriptor(requestId)
-    workspaceTransition.invalidate()
-    await workspaceTransition.activate({
-      view,
-      requestId,
-      shellAction: { type: 'open' },
-      pendingViewKey: workspaceViewKey(view),
-    })
+    await workspaceNavigation.openView(requestTaskViewDescriptor(requestId), { requestId })
   }
 
   function autoOpenTaskWorkspace(requestId: string) {
@@ -898,31 +881,15 @@
   }
 
   async function openRambelleProfile() {
-    if (workspaceTransitionLocked || $workspaceShell.pendingViewKey) return
-    const view = rambelleProfileViewDescriptor()
-    if ($workspaceShell.shell.activeViewKey === workspaceViewKey(view)) return
-    workspaceTransition.invalidate()
-    await workspaceTransition.activate({
-      view,
-      requestId: null,
-      shellAction: { type: 'open' },
-      pendingViewKey: workspaceViewKey(view),
-    })
+    await workspaceNavigation.openView(rambelleProfileViewDescriptor())
   }
 
   async function openArchivedSessions(initialSession: SessionViewDescriptor | null = null) {
-    if (workspaceTransitionLocked || $workspaceShell.pendingViewKey) return
-    archivedInitialSession = initialSession
-    archivedSelectionEpoch += 1
-    const view = archiveViewDescriptor()
-    const viewKey = workspaceViewKey(view)
-    if ($workspaceShell.shell.activeViewKey === viewKey) return
-    workspaceTransition.invalidate()
-    await workspaceTransition.activate({
-      view,
-      requestId: null,
-      shellAction: { type: 'open' },
-      pendingViewKey: viewKey,
+    await workspaceNavigation.openView(archiveViewDescriptor(), {
+      prepare: () => {
+        archivedInitialSession = initialSession
+        archivedSelectionEpoch += 1
+      },
     })
   }
 

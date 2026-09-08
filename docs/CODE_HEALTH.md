@@ -273,7 +273,7 @@ ramble 启动/恢复/语音录制、剪贴板捕获、控制台命令与状态�
 
 ### `App.svelte` 的状态边界（进行中）
 
-`App.svelte` 从 2525 行降到 1421 行，共享状态已经全部有主：
+`App.svelte` 从 2525 行降到 1388 行，共享状态已经全部有主：
 
 | 模块 | 拥有 | 测试 |
 | --- | --- | --- |
@@ -284,7 +284,7 @@ ramble 启动/恢复/语音录制、剪贴板捕获、控制台命令与状态�
 | `lib/workbench/rambleSession.ts` | Ramble 与语音实时状态 | 4 |
 | `lib/workbench/submissionController.ts` | 批准 / 取消 / 打开反馈包 | 5 |
 | `lib/workbench/startupController.ts` | 启动阶段、挂载标志、失败面、会话视图恢复解析 | 6 |
-| `lib/workbench/workspaceNavigationController.ts` | 视图切换、请求加载/提交、作用域保存/恢复 | 6 |
+| `lib/workbench/workspaceNavigationController.ts` | 视图切换、请求加载/提交、作用域保存/恢复、`openView` | 9 |
 | `lib/workbench/managedSessionActions.ts` | 托管会话动作、草稿控制器缓存、删除/归档在途集合 | 6 |
 | `lib/workbench/draftOperationsController.ts` | 文档写入串行队列、前台/后台路由、动作组选中 | 7 |
 | `lib/workbench/cookingSession.ts` | 正在 cooking 的请求集合、待提交的 cooking 预览 | 4 |

@@ -2,7 +2,11 @@ import { get, writable } from 'svelte/store'
 import { describe, expect, it, vi } from 'vitest'
 
 import { previewFixtures } from '../previewFixtures'
-import { sessionViewDescriptor, workspaceViewKey } from '../workspace/viewDescriptors'
+import {
+  sessionViewDescriptor,
+  settingsViewDescriptor,
+  workspaceViewKey,
+} from '../workspace/viewDescriptors'
 vi.mock('../components/ui/sonner', () => ({
   toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() },
 }))
@@ -172,6 +176,42 @@ describe('workspace navigation controller', () => {
     expect(context.workspaceShell.replaceShell).toHaveBeenCalled()
     expect(context.startup.patch).toHaveBeenCalledWith({ mounted: true })
     expect(context.refreshAttachmentPreviews).toHaveBeenCalled()
+  })
+
+  it('opens a plain view after preparing its selection state', async () => {
+    const { controller, context } = harness()
+    const prepare = vi.fn()
+    const view = settingsViewDescriptor()
+
+    await expect(controller.openView(view, { prepare })).resolves.toBe('activated')
+
+    expect(prepare).toHaveBeenCalled()
+    expect(context.workspaceTransition.activate).toHaveBeenCalledWith(
+      expect.objectContaining({ view, requestId: null, pendingViewKey: workspaceViewKey(view) }),
+      1,
+    )
+  })
+
+  it('keeps an already active view without re-activating it', async () => {
+    const { controller, context, shellState } = harness()
+    const view = settingsViewDescriptor()
+    shellState.update((state) => ({
+      ...state,
+      shell: { ...state.shell, activeViewKey: workspaceViewKey(view) },
+    }))
+
+    await expect(controller.openView(view)).resolves.toBe('active')
+    expect(context.workspaceTransition.activate).not.toHaveBeenCalled()
+  })
+
+  it('does not prepare selection state for a blocked open', async () => {
+    const { controller, context, shellState } = harness()
+    shellState.update((state) => ({ ...state, pendingViewKey: 'other' }))
+    const prepare = vi.fn()
+
+    await expect(controller.openView(settingsViewDescriptor(), { prepare })).resolves.toBe('blocked')
+    expect(prepare).not.toHaveBeenCalled()
+    expect(context.workspaceTransition.activate).not.toHaveBeenCalled()
   })
 
   it('routes a rail selection through the transition and restores a blocked scope', async () => {
