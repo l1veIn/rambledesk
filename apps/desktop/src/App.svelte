@@ -148,6 +148,7 @@
   import { createCookingController } from './lib/workbench/cookingController'
   import { createDraftController } from './lib/workbench/draftController'
   import { createDraftSession } from './lib/workbench/draftSession'
+  import { createWorkspaceSession } from './lib/workbench/workspaceSession'
   import { createPublisherController } from './lib/workbench/publisherController'
   import { buildResumePrompt, shouldShowResumePromptButton } from './lib/workbench/resumePrompt'
   import {
@@ -206,7 +207,9 @@
   const RESUME_PROMPT_STREAM = defineApplicationStream<ResumePrompt>('rambledesk://resume-prompt')
   const formatTimeLocal = (value: string | null | undefined) =>
     formatTime(value, $locale, tr('Not saved yet'))
-  let workspace: FeedbackWorkspaceView | null = null
+  const workspaceSession = createWorkspaceSession()
+  /** The open request, projected from the session so field reads stay short. */
+  $: currentRequest = $workspaceSession.workspace?.request ?? null
   let workspaceShellState: WorkspaceShellState = EMPTY_WORKSPACE_SHELL_STATE
   let taskTabTitles: ReadonlyMap<string, string> = new Map()
   let renderedWorkspaceView: WorkspaceViewDescriptor | null = null
@@ -222,17 +225,10 @@
   let deletingManagedSessionIds = new Set<string>()
   let pendingWorkspaceViewKey: string | null = null
   let workbenchMounted = true
-  let completedResult: FeedbackRequestView | null = null
-  let publishedFeedback: PublishedFeedbackView | null = null
   let pageError = ''
-  let loadingWorkspace = false
-  let submitting = false
-  let submitStage: SubmitStage = 'idle'
   let cookingRequestIds = new Set<string>()
   /** Preview cooking result for the current workspace, if generated and current. */
   let cookedPreview: { markdown: string; original: string; model: string } | null = null
-  let cancelling = false
-  let approving = false
   let attachmentBusy = false
   let screenCaptureBusy = false
   let attachmentMessage = ''
@@ -283,7 +279,7 @@
     sessionRequestIds = new Map(initialWorkspaceSnapshot.requestIds)
     if (initialWorkspaceSnapshot.shellState.activeViewKey) {
       workbenchMounted = false
-      loadingWorkspace = true
+      workspaceSession.setLoading(true)
     }
   }
   let taskBriefOpen = true
@@ -329,13 +325,10 @@
     messageFrom,
     isPreviewMode: () => previewMode,
     isInteractionLocked: () => interactionLocked,
-    isWorkspaceTerminal: () =>
-      workspace?.request.status === 'completed' || workspace?.request.status === 'cancelled',
-    getWorkspace: () => workspace,
+    isWorkspaceTerminal: () => workspaceSession.isTerminal(),
+    getWorkspace: () => $workspaceSession.workspace,
     session: draftSession,
-    setWorkspaceDraft: (draft) => {
-      if (workspace) workspace = { ...workspace, draft }
-    },
+    setWorkspaceDraft: (draft) => workspaceSession.setDraft(draft),
   })
   const updateDraft = draftController.updateDraft
   const saveDraftNow = draftController.saveDraftNow
@@ -345,7 +338,7 @@
     transport: applicationTransport,
     tr,
     messageFrom,
-    getWorkspace: () => workspace,
+    getWorkspace: () => $workspaceSession.workspace,
     getEditor: () => sessionWorkbench,
     getRambleRequestId: () => rambleRequestId,
     getInteractionLocked: () => interactionLocked || currentRequestCooking || cookedDraftReady,
@@ -390,13 +383,13 @@
     unmountCurrent: () => {
       workbenchMounted = false
       sessionWorkbench = undefined
-      loadingWorkspace = true
+      workspaceSession.setLoading(true)
     },
     loadTarget: loadWorkspaceTarget,
     commitTarget: commitWorkspaceTarget,
     restoreCurrent: () => {
       workbenchMounted = true
-      loadingWorkspace = false
+      workspaceSession.setLoading(false)
     },
     setPendingTarget: (target) => {
       pendingWorkspaceViewKey = target?.pendingViewKey ?? null
@@ -414,7 +407,7 @@
     tr,
     messageFrom,
     getNotificationState: () => notificationState,
-    getWorkspaceRequestId: () => workspace?.request.request_id,
+    getWorkspaceRequestId: () => workspaceSession.requestId() ?? undefined,
     isDirty: () => dirty,
     saveDraftNow,
     openRequest,
@@ -459,9 +452,9 @@
     $navigation.hostSessions,
   )
   $: dirty =
-    workspace !== null &&
-    workspace.request.status !== 'completed' &&
-    workspace.request.status !== 'cancelled' &&
+    currentRequest !== null &&
+    currentRequest.status !== 'completed' &&
+    currentRequest.status !== 'cancelled' &&
     draftSession.isDirty()
   $: {
     if (!pageError) deliveredPageError = ''
@@ -518,7 +511,7 @@
     return `${session?.title ?? view.hostSessionId} · ${hostLabel}`
   }
   $: taskTabTitles = updateTaskTabTitles(taskTabTitles, workspaceShellState.views, [
-    ...(workspace ? [workspace.request] : []),
+    ...(currentRequest ? [currentRequest] : []),
     ...$navigation.pendingRequests,
     ...$navigation.requests,
   ])
@@ -551,38 +544,36 @@
         resolveHostProfile($navigation.selectedHostId).label
       : resolveHostProfile($navigation.selectedHostId).label
     : tr('All hosts')
-  $: feedbackResult = completedResult?.feedback ?? workspace?.feedback ?? null
+  $: feedbackResult = workspaceSession.feedbackResult()
   $: canOpenResumePrompt = shouldShowResumePromptButton(
     feedbackResult,
-    completedResult?.resolution ?? workspace?.request.resolution,
-    workspace?.request.managed_session_id,
+    $workspaceSession.completedResult?.resolution ?? currentRequest?.resolution,
+    currentRequest?.managed_session_id,
   )
-  $: feedbackManagedSessionId = agentViewForRequest(workspace?.request)?.sessionId ?? null
-  $: rambleAgentSessionId = feedbackManagedSessionId ?? (workspace ? null : agentViewForEmptyRamble(renderedSessionView, $navigation.hostSessions)?.sessionId ?? null)
+  $: feedbackManagedSessionId = agentViewForRequest(currentRequest)?.sessionId ?? null
+  $: rambleAgentSessionId = feedbackManagedSessionId ?? (currentRequest ? null : agentViewForEmptyRamble(renderedSessionView, $navigation.hostSessions)?.sessionId ?? null)
   $: managedFeedbackReadOnly = !!feedbackManagedSessionId && (deletingSessionCommands.has(feedbackManagedSessionId) || deletingManagedSessionIds.has(feedbackManagedSessionId))
   $: currentRequestCooking =
-    workspace !== null && cookingRequestIds.has(workspace.request.request_id)
+    currentRequest !== null && cookingRequestIds.has(currentRequest.request_id)
   $: cookedDraftReady = cookedPreview !== null
   // Turning Cooking off discards any pending cooked preview: submitting then
   // publishes the editor content as-is.
   $: if (!$cookingEnabled) cookedPreview = null
   $: canSubmit =
     !managedFeedbackReadOnly &&
-    workspace !== null &&
-    workspace.request.status !== 'completed' &&
-    workspace.request.status !== 'cancelled' &&
+    currentRequest !== null &&
+    currentRequest.status !== 'completed' &&
+    currentRequest.status !== 'cancelled' &&
     $draftSession.body.trim().length > 0 &&
     !currentRequestCooking &&
-    !submitting &&
-    !cancelling
+    !workspaceSession.interactionLocked()
   $: canCancel =
-    workspace !== null &&
-    workspace.request.status !== 'completed' &&
-    workspace.request.status !== 'cancelled' &&
+    currentRequest !== null &&
+    currentRequest.status !== 'completed' &&
+    currentRequest.status !== 'cancelled' &&
     !currentRequestCooking &&
-    !submitting &&
-    !cancelling
-  $: interactionLocked = submitting || cancelling || approving
+    !workspaceSession.interactionLocked()
+  $: interactionLocked = workspaceSession.interactionLocked()
   $: workspaceTransitionLocked =
     interactionLocked ||
     attachmentBusy ||
@@ -617,7 +608,7 @@
   $: rambleActive = visibleRamblePhase === 'active'
   $: rambleEngaged = visibleRamblePhase !== 'idle'
   $: rambleBelongsToWorkspace =
-    !rambleEngaged || workspace?.request.request_id === rambleRequestId
+    !rambleEngaged || currentRequest?.request_id === rambleRequestId
   $: rambelleStatusPortrait = feedbackResult
     ? rambelleArchived
     : currentRequestCooking
@@ -634,11 +625,9 @@
     dirty ||
     rambleEngaged ||
     attachmentBusy ||
-    submitting ||
-    cancelling ||
-    approving ||
+    interactionLocked ||
     currentRequestCooking ||
-    workspace?.request.status === 'in_progress'
+    currentRequest?.status === 'in_progress'
   // Phones turn the rails into drawers: `collapsed` then means "drawer closed" and the
   // persisted preference is left untouched for when the viewport widens again.
   $: hostSessionRailCollapsed = shellMode === 'phone' ? !phoneHostRailOpen : hostRailPreference
@@ -691,7 +680,7 @@
       else onboardingOpen = true
       if (previewMode) {
         if (!initialWorkspaceSnapshot) {
-          workspace = previewFixtures.workspace
+          workspaceSession.open(previewFixtures.workspace)
           draftSession.adopt(previewFixtures.workspace.draft)
           openLoadedWorkspaceView(previewFixtures.workspace)
         }
@@ -747,7 +736,7 @@
     )
     async function presentExternalResumePrompt(prompt: ResumePrompt, isCurrent: () => boolean) {
       try {
-        const knownRequest = workspace?.request.request_id === prompt.request_id ? workspace.request
+        const knownRequest = currentRequest?.request_id === prompt.request_id ? currentRequest
           : [...$navigation.requests, ...$navigation.pendingRequests].find((request) => request.request_id === prompt.request_id)
         const request = knownRequest ?? (await readApplicationSnapshot(applicationTransport, 'getFeedbackWorkspace', { request_id: prompt.request_id })).request
         if (!isCurrent()) return
@@ -812,8 +801,8 @@
       }
       await refreshSessionViewRecovery()
       if (initialWorkspaceSnapshot) await restoreInitialWorkspaceSnapshot(true)
-      else if (previewMode && workspace) {
-        await navigation.selectScope(workspace.request.host_id, workspace.request.host_session_id)
+      else if (previewMode && currentRequest) {
+        await navigation.selectScope(currentRequest.host_id, currentRequest.host_session_id)
       }
       workbenchStartup = 'ready'
       inboxTimer = ensureDesktopNavigationPolling(
@@ -890,15 +879,14 @@
   }
 
   function openResumePrompt() {
+    const workspace = $workspaceSession.workspace
     if (!workspace || !canOpenResumePrompt) return
     resumePrompt = buildResumePrompt(workspace, resolveHostProfile(workspace.request.host_id), tr)
     resumeCopyState = 'idle'
   }
 
   function clearWorkspace() {
-    workspace = null
-    completedResult = null
-    publishedFeedback = null
+    workspaceSession.close()
     draftSession.reset()
     attachmentController.releasePreviews()
   }
@@ -943,6 +931,7 @@
     resolutions: readonly SessionViewResolution[],
   ) {
     const activeView = activeWorkspaceView(workspaceShellState)
+    const workspace = $workspaceSession.workspace
     const workspaceView = workspace
       ? sessionViewDescriptor(workspace.request.host_id, workspace.request.host_session_id)
       : null
@@ -1018,7 +1007,7 @@
     if (!intent.isCurrent()) return
 
     const activeView = activeWorkspaceView(workspaceShellState)
-    const activeWorkspace = workspace
+    const activeWorkspace = $workspaceSession.workspace
     if (
       !activeView ||
       !activeWorkspace ||
@@ -1045,7 +1034,7 @@
     const retryingMissingView = renderedSessionResolution?.kind === 'missing-session'
     if (retryingMissingView) {
       workbenchMounted = false
-      loadingWorkspace = true
+      workspaceSession.setLoading(true)
     }
     await navigation.refreshNavigation(true)
     lastSessionRecoveryFingerprint = ''
@@ -1054,11 +1043,11 @@
       sessionViewResolutions,
       workspaceShellState.activeViewKey,
     )
-    if (activeResolution?.kind === 'active' && workspace === null) {
+    if (activeResolution?.kind === 'active' && $workspaceSession.workspace === null) {
       await restoreInitialWorkspaceSnapshot()
     } else if (retryingMissingView) {
       workbenchMounted = true
-      loadingWorkspace = false
+      workspaceSession.setLoading(false)
     }
   }
 
@@ -1067,12 +1056,12 @@
     if (!view) {
       clearWorkspace()
       workbenchMounted = true
-      loadingWorkspace = false
+      workspaceSession.setLoading(false)
       return
     }
     if (view.kind === 'agent-draft') {
       clearWorkspace()
-      loadingWorkspace = false
+      workspaceSession.setLoading(false)
       workbenchMounted = true
       return
     }
@@ -1099,7 +1088,7 @@
       }
       clearWorkspace()
       workbenchMounted = true
-      loadingWorkspace = false
+      workspaceSession.setLoading(false)
       return
     }
     if (
@@ -1110,7 +1099,7 @@
     ) {
       clearWorkspace()
       workbenchMounted = true
-      loadingWorkspace = false
+      workspaceSession.setLoading(false)
       if (view.kind === 'inbox') await navigation.selectScope(null, null)
       return
     }
@@ -1129,14 +1118,14 @@
     if (!resolution || resolution.kind !== 'active') {
       clearWorkspace()
       workbenchMounted = true
-      loadingWorkspace = false
+      workspaceSession.setLoading(false)
       return
     }
 
     const selection = await navigation.selectScope(view.hostId, view.hostSessionId)
     if (!selection.selected) {
       workbenchMounted = true
-      loadingWorkspace = false
+      workspaceSession.setLoading(false)
       if (throwOnFailure) throw new Error(pageError || tr('The initial workspace could not be opened.'))
       return
     }
@@ -1378,8 +1367,8 @@
     )
     return request
       ? sessionViewDescriptor(request.host_id, request.host_session_id)
-      : workspace?.request.request_id === requestId
-        ? sessionViewDescriptor(workspace.request.host_id, workspace.request.host_session_id)
+      : currentRequest?.request_id === requestId
+        ? sessionViewDescriptor(currentRequest.host_id, currentRequest.host_session_id)
         : null
   }
 
@@ -1457,9 +1446,7 @@
 
     if (loaded?.kind === 'session') {
       attachmentController.releasePreviews()
-      workspace = loaded.workspace
-      completedResult = null
-      publishedFeedback = loaded.publishedFeedback
+      workspaceSession.open(loaded.workspace, loaded.publishedFeedback)
       cookedPreview = null
       draftSession.adopt(loaded.workspace.draft)
       attachmentMessage = ''
@@ -1469,9 +1456,7 @@
       sessionRequestIds = nextRequestIds
     } else if (loaded?.kind === 'request-task') {
       attachmentController.releasePreviews()
-      workspace = loaded.workspace
-      completedResult = null
-      publishedFeedback = null
+      workspaceSession.open(loaded.workspace)
       cookedPreview = null
       draftSession.adopt(loaded.workspace.draft)
       attachmentMessage = ''
@@ -1492,7 +1477,7 @@
     workspaceShellState = nextShellState
     persistCurrentWorkspaceSnapshot()
     workbenchMounted = true
-    loadingWorkspace = false
+    workspaceSession.setLoading(false)
     if (leavesSettingsView(previousActiveView, activeWorkspaceView(nextShellState))) {
       void refreshNotificationPermission()
     }
@@ -1525,10 +1510,10 @@
     const priorScope = currentNavigationScope()
     const intent = workspaceTransition.invalidate()
     if (
-      workspace?.request.request_id === requestId &&
+      currentRequest?.request_id === requestId &&
       renderedWorkspaceView?.kind === 'session'
     ) {
-      openLoadedWorkspaceView(workspace)
+      openLoadedWorkspaceView($workspaceSession.workspace!)
       return 'activated'
     }
     pageError = ''
@@ -1657,11 +1642,11 @@
     const finish = startClientDiagnostic('session_delete', { source: 'workbench', action: 'delete', management: 'managed' })
     deletingSessionCommands = new Set([...deletingSessionCommands, session.session_id])
     try {
-      const ownsFeedback = () => workspace?.request.managed_session_id === session.session_id
+      const ownsFeedback = () => currentRequest?.managed_session_id === session.session_id
       if (ownsFeedback() && rambleBelongsToWorkspace && rambleCanExit) await exitRamble()
       await deleteSessionRecord(applicationTransport, session)
       const viewKey = workspaceViewKey(sessionViewDescriptor(session.host_id, session.host_session_id))
-      const requestId = ownsFeedback() ? workspace!.request.request_id : null
+      const requestId = ownsFeedback() ? currentRequest!.request_id : null
       const rememberedRequestId = sessionRequestIds.get(viewKey)
       const knownRequestIds = [...new Set([
         requestId, rememberedRequestId,
@@ -1715,7 +1700,7 @@
   async function routeDraftOperation(requestId: string, operation: DraftOperation): Promise<void> {
     if (!requestId) return
     const run = enqueueDocumentTask(async () => {
-      const foregroundWorkspace = workspace
+      const foregroundWorkspace = $workspaceSession.workspace
       if (shouldUseForegroundDraftEditor({
         activeView: activeWorkspaceView(workspaceShellState),
         workbenchMounted,
@@ -1766,12 +1751,12 @@
       if (
         shouldAdoptTaskBackgroundDraft(
           activeWorkspaceView(workspaceShellState),
-          workspace?.request.request_id ?? null,
+          currentRequest?.request_id ?? null,
           requestId,
         ) &&
-        workspace
+        $workspaceSession.workspace
       ) {
-        workspace = { ...workspace, draft: savedDraft }
+        workspaceSession.setDraft(savedDraft)
         draftSession.adopt(savedDraft)
       }
     })
@@ -1784,13 +1769,13 @@
   }
 
   function selectAction(actionId: string, actionIndex: number, title: string) {
-    const requestId = workspace?.request.request_id
+    const requestId = currentRequest?.request_id
     if (
       !requestId ||
       workspaceTransitionLocked ||
       pendingWorkspaceViewKey !== null ||
-      workspace?.request.status === 'completed' ||
-      workspace?.request.status === 'cancelled'
+      currentRequest?.status === 'completed' ||
+      currentRequest?.status === 'cancelled'
     ) return
     if (activeActionByRequest.get(requestId)?.actionId === actionId) {
       activeActionByRequest.delete(requestId)
@@ -1876,7 +1861,7 @@
   }
 
   function applyWorkspaceMutation(next: FeedbackWorkspaceView) {
-    workspace = next
+    workspaceSession.replace(next)
     if (draftSession.reconcile(next.draft) === 'kept-local') draftController.scheduleSave()
   }
 
@@ -1890,7 +1875,7 @@
   const cookingController = createCookingController({
     tr,
     messageFrom,
-    getWorkspace: () => workspace,
+    getWorkspace: () => $workspaceSession.workspace,
     getDraftBody: () => $draftSession.body,
     getCookingConfig: () => ({
       provider: $cookingProvider,
@@ -1925,16 +1910,10 @@
     tr,
     messageFrom,
     isPreviewMode: () => previewMode,
-    getWorkspace: () => workspace,
-    setWorkspace: (next) => {
-      workspace = next
-    },
-    setCompletedResult: (result) => {
-      completedResult = result
-    },
-    setPublishedFeedback: (feedback) => {
-      publishedFeedback = feedback
-    },
+    getWorkspace: () => $workspaceSession.workspace,
+    setWorkspace: (next) => workspaceSession.replace(next),
+    setCompletedResult: (result) => workspaceSession.setCompleted(result),
+    setPublishedFeedback: (feedback) => workspaceSession.setPublished(feedback),
     setSavePhase: () => {
       draftSession.markSaved()
     },
@@ -1956,12 +1935,8 @@
     },
     setCooking: setCookingRequest,
     cookAndPublish: cookingController.cookAndPublish,
-    setSubmitting: (value) => {
-      submitting = value
-    },
-    setSubmitStage: (stage) => {
-      submitStage = stage
-    },
+    setSubmitting: (value) => workspaceSession.setSubmitting(value),
+    setSubmitStage: (stage) => workspaceSession.setSubmitStage(stage),
     refreshNavigation: async (force) => {
       await navigation.refreshNavigation(force)
     },
@@ -1974,38 +1949,31 @@
   const submitFeedback = publisherController.submitFeedback
 
   async function approveFeedback() {
-    if (!workspace || !workspace.request.allow_finish || approving) return
+    const workspace = $workspaceSession.workspace
+    if (!workspace || !workspace.request.allow_finish || $workspaceSession.approving) return
     if (!window.confirm(tr('Approve this final summary and end Pi’s Ramble flow?'))) return
     if (rambleCanExit) await exitRamble()
-    approving = true
+    workspaceSession.beginApprove()
     pageError = ''
     try {
       const input: ApproveFeedbackInput = { request_id: workspace.request.request_id }
       const result = await applicationTransport.call('approveFeedbackRequest', input)
-      completedResult = result
-      workspace = {
-        ...workspace,
-        request: {
-          ...workspace.request,
-          status: result.status,
-          resolution: result.resolution,
-          updated_at: result.updated_at,
-        },
-      }
+      workspaceSession.applyMutationResult(result)
       toast.success(tr('Approved and finished'))
       await navigation.refreshNavigation(true)
     } catch (cause) {
       pageError = messageFrom(cause)
     } finally {
-      approving = false
+      workspaceSession.endApprove()
     }
   }
 
   async function cancelFeedback() {
+    const workspace = $workspaceSession.workspace
     if (!workspace || !canCancel) return
     if (rambleCanExit) await exitRamble()
 
-    cancelling = true
+    workspaceSession.beginCancel()
     pageError = ''
     try {
       const input: CancelFeedbackInput = {
@@ -2013,27 +1981,19 @@
         reason: 'Human cancelled from RambleDesk',
       }
       const result = await applicationTransport.call('cancelFeedbackRequest', input)
-      completedResult = result
-      workspace = {
-        ...workspace,
-        feedback: result.feedback,
-        request: {
-          ...workspace.request,
-          status: result.status,
-          updated_at: result.updated_at,
-        },
-      }
+      workspaceSession.applyMutationResult(result)
       draftSession.markSaved()
       toast.success(tr('Request cancelled'))
       await navigation.refreshNavigation(true)
     } catch (cause) {
       pageError = messageFrom(cause)
     } finally {
-      cancelling = false
+      workspaceSession.endCancel()
     }
   }
 
   async function openFeedbackPackage() {
+    const workspace = $workspaceSession.workspace
     if (!feedbackResult || !workspace) return
     try {
       await publishedFeedbackAction.run(workspace.request.request_id)
@@ -2063,9 +2023,9 @@
 </script>
 
 {#snippet requestAgentStatus()}
-  {#if feedbackManagedSessionId && workspace && !previewMode}
-    {#key `${feedbackManagedSessionId}:${workspace.request.request_id}`}
-      <ManagedFeedbackRequestStatus transport={applicationTransport} sessionId={feedbackManagedSessionId} requestId={workspace.request.request_id}
+  {#if feedbackManagedSessionId && currentRequest && !previewMode}
+    {#key `${feedbackManagedSessionId}:${currentRequest.request_id}`}
+      <ManagedFeedbackRequestStatus transport={applicationTransport} sessionId={feedbackManagedSessionId} requestId={currentRequest.request_id}
         disabled={managedFeedbackReadOnly || workspaceTransitionLocked || pendingWorkspaceViewKey !== null}
         navigationDisabled={workspaceTransitionLocked || pendingWorkspaceViewKey !== null}
         onOpenAgent={() => feedbackManagedSessionId && void openAgentSession(feedbackManagedSessionId)}
@@ -2095,7 +2055,7 @@
     bind:this={rambleController}
     {capabilities}
     {tidyConfig}
-    {workspace}
+    workspace={$workspaceSession.workspace}
     bind:attachmentBusy
     {screenCaptureBusy}
     bind:attachmentMessage
@@ -2199,7 +2159,7 @@
         collapsed={requestRailCollapsed}
         onCollapsedChange={setRequestRailCollapsed}
         requests={$navigation.requests}
-        activeRequestId={workspace?.request.request_id ?? null}
+        activeRequestId={currentRequest?.request_id ?? null}
         cookingRequestIds={cookingRequestIds}
         scopeLabel={requestScopeLabel}
         searchQuery={$navigation.requestSearch}
@@ -2264,15 +2224,15 @@
             agentStatus={rambleAgentSessionId ? requestAgentStatus : undefined}
             transport={applicationTransport}
             {capabilities}
-            {workspace}
+            workspace={$workspaceSession.workspace}
             editorDocument={$draftSession.editorDocument}
-            activeActionId={workspace
-              ? activeActionByRequest.get(workspace.request.request_id)?.actionId ?? null
+            activeActionId={currentRequest
+              ? activeActionByRequest.get(currentRequest.request_id)?.actionId ?? null
               : null}
             actionsDisabled={managedFeedbackReadOnly || workspaceTransitionLocked || pendingWorkspaceViewKey !== null}
             onSelectAction={selectAction}
             previews={attachmentPreviews}
-            loading={loadingWorkspace}
+            loading={$workspaceSession.loadingWorkspace}
             formatTime={formatTimeLocal}
             {resolveHostProfile}
             onToggleRamble={() => void toggleRamble()}
@@ -2283,7 +2243,7 @@
             cookingEnabled={$cookingEnabled}
             {cookedDraftReady}
             cooking={currentRequestCooking}
-            {submitting}
+            submitting={$workspaceSession.submitting}
             onSubmitFeedback={() => void submitFeedback()}
           />
         {:else if renderedAgentDraftView && renderedAgentDraftController}
@@ -2332,16 +2292,16 @@
         bind:this={sessionWorkbench}
         view={renderedSessionView}
         bind:taskBriefOpen
-        {loadingWorkspace}
-        {workspace}
+        loadingWorkspace={$workspaceSession.loadingWorkspace}
+        workspace={$workspaceSession.workspace}
         {feedbackResult}
         draftBody={$draftSession.body}
         editorDocument={$draftSession.editorDocument}
         editorEpoch={$draftSession.editorEpoch}
         {tidyConfig}
         tidyAutoThreshold={$tidyAutoThreshold}
-        activeActionId={workspace
-          ? activeActionByRequest.get(workspace.request.request_id)?.actionId ?? null
+        activeActionId={currentRequest
+          ? activeActionByRequest.get(currentRequest.request_id)?.actionId ?? null
           : null}
         savedRevision={$draftSession.savedRevision}
         savePhase={$draftSession.phase}
@@ -2372,12 +2332,12 @@
         cookedPreviewMarkdown={cookedPreview?.markdown ?? ''}
         onCookPreview={() => void cookPreviewOnly()}
         onRestoreOriginal={restoreOriginalAfterCook}
-        {submitting}
-        {submitStage}
-        {publishedFeedback}
+        submitting={$workspaceSession.submitting}
+        submitStage={$workspaceSession.submitStage}
+        publishedFeedback={$workspaceSession.publishedFeedback}
         {canCancel}
-        {cancelling}
-        {approving}
+        cancelling={$workspaceSession.cancelling}
+        approving={$workspaceSession.approving}
         {canOpenResumePrompt}
         {resolveHostProfile}
         formatTime={formatTimeLocal}
