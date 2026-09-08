@@ -273,7 +273,7 @@ ramble 启动/恢复/语音录制、剪贴板捕获、控制台命令与状态�
 
 ### `App.svelte` 的状态边界（进行中）
 
-`App.svelte` 从 2525 行降到 1463 行，共享状态已经全部有主：
+`App.svelte` 从 2525 行降到 1421 行，共享状态已经全部有主：
 
 | 模块 | 拥有 | 测试 |
 | --- | --- | --- |
@@ -287,19 +287,17 @@ ramble 启动/恢复/语音录制、剪贴板捕获、控制台命令与状态�
 | `lib/workbench/workspaceNavigationController.ts` | 视图切换、请求加载/提交、作用域保存/恢复 | 6 |
 | `lib/workbench/managedSessionActions.ts` | 托管会话动作、草稿控制器缓存、删除/归档在途集合 | 6 |
 | `lib/workbench/draftOperationsController.ts` | 文档写入串行队列、前台/后台路由、动作组选中 | 7 |
+| `lib/workbench/cookingSession.ts` | 正在 cooking 的请求集合、待提交的 cooking 预览 | 4 |
+| `lib/workbench/shellLayoutSession.ts` | 视口档位、两条 rail 的折叠偏好与手机抽屉 | 5 |
 
 判据：**服务器事实不复制、跨组件共享才进 store、按领域切不按字段切**。App 只保留装配、
 模板 snippet、组件句柄（`sessionWorkbench`、`rambleController`）和纯 UI 局部状态
 （`resumePrompt`、`onboardingOpen`、`taskBriefOpen`、`projectSearch`、settings/archive 选择态、
 `pageError` 及其去重游标）。
 
-剩下的逻辑块：
-
-1. **cooking** —— `cookingRequestIds`、`cookedPreview` 收进 `cookingSession`。
-2. **shell 布局偏好** —— `hostRailPreference`、`requestRailPreference`、`phoneHostRailOpen`、
-   `phoneRequestRailOpen`、`shellMode` 收进 `shellLayoutSession`，让 `WorkbenchShell` 直接订阅。
-
-全部完成后 `App.svelte` 应只剩 props、store/控制器装配、模板与 snippet。
+计划中的逻辑块已经全部搬完。`App.svelte` 现在只剩 props、store/控制器装配、模板与 snippet，
+以及组件句柄和纯 UI 局部状态；视口宽度 `hostRailDisplayWidth`、拖动标志 `navigationResizing`
+留在 App，因为它们直接喂给根元素的 CSS 自定义属性。
 
 ### 为什么不能只靠搬函数
 

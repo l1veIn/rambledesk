@@ -96,7 +96,8 @@
     {requestCollapsed}
     onHostCollapsedChange={setHostRailCollapsed}
     onRequestCollapsedChange={setRequestRailCollapsed}
-    bind:mode
+    {mode}
+    onModeChange={(next) => (mode = next)}
     bind:hostDisplayWidth
     bind:resizing
   >

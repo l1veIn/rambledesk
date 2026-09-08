@@ -16,7 +16,6 @@
   import SessionWorkbench from './lib/workbench/SessionWorkbench.svelte'
   import StartupRecoveryPanel from './lib/workbench/StartupRecoveryPanel.svelte'
   import WorkbenchShell from './lib/workbench/WorkbenchShell.svelte'
-  import type { ShellMode } from './lib/workbench/shellMode'
   import InboxWorkspaceView from './lib/workspace/InboxWorkspaceView.svelte'
   import MissingSessionView from './lib/workspace/MissingSessionView.svelte'
   import RambelleProfileWorkspaceView from './lib/workspace/RambelleProfileWorkspaceView.svelte'
@@ -105,6 +104,7 @@
   import type { PublishedFeedbackView } from './lib/publishedFeedback'
   import { formatTime, messageFrom } from './lib/workbench/feedbackText'
   import { createCookingController } from './lib/workbench/cookingController'
+  import { createCookingSession } from './lib/workbench/cookingSession'
   import { createDraftController } from './lib/workbench/draftController'
   import { createDraftOperationsController } from './lib/workbench/draftOperationsController'
   import { createDraftSession } from './lib/workbench/draftSession'
@@ -114,6 +114,7 @@
   import { createWorkspaceNavigationController, type WorkspaceNavigationController } from './lib/workbench/workspaceNavigationController'
   import { createStartupController, type StartupController } from './lib/workbench/startupController'
   import { createRambleSession } from './lib/workbench/rambleSession'
+  import { createShellLayoutSession } from './lib/workbench/shellLayoutSession'
   import { createWorkspaceSession } from './lib/workbench/workspaceSession'
   import { createWorkspaceShellSession } from './lib/workbench/workspaceShellSession'
   import { createPublisherController } from './lib/workbench/publisherController'
@@ -138,12 +139,8 @@
   import { highlightSpeechSegment } from './lib/highlightSpeechSegment'
   import { t } from './lib/i18n'
   import {
-    initialHostRailCollapsed,
-    initialRequestRailCollapsed,
     initialWebAccessAutostart,
     initialWebAccessPort,
-    saveHostRailCollapsed,
-    saveRequestRailCollapsed,
   } from './lib/uiPreferences'
   import {
     cookingApiKey,
@@ -172,6 +169,8 @@
     formatTime(value, $locale, tr('Not saved yet'))
   const workspaceSession = createWorkspaceSession()
   const attachmentSession = createAttachmentSession()
+  const cookingSession = createCookingSession()
+  const shellLayout = createShellLayoutSession()
   const rambleSession = createRambleSession()
   /** The open request, projected from the session so field reads stay short. */
   $: currentRequest = $workspaceSession.workspace?.request ?? null
@@ -180,9 +179,6 @@
   let renderedSessionView: SessionViewDescriptor | null = null
   let renderedSessionResolution: SessionViewResolution | null = null
   let pageError = ''
-  let cookingRequestIds = new Set<string>()
-  /** Preview cooking result for the current workspace, if generated and current. */
-  let cookedPreview: { markdown: string; original: string; model: string } | null = null
   let deliveredAttachmentMessage = ''
   let deliveredPageError = ''
   let deliveredSaveError = ''
@@ -214,11 +210,6 @@
   const workspaceShell = createWorkspaceShellSession({ previewMode })
   if (workspaceShell.restoredActiveView()) workspaceSession.setLoading(true)
   let taskBriefOpen = true
-  let hostRailPreference = initialHostRailCollapsed()
-  let requestRailPreference = initialRequestRailCollapsed()
-  let phoneHostRailOpen = false
-  let phoneRequestRailOpen = false
-  let shellMode: ShellMode = 'desktop'
   let hostRailDisplayWidth = 0
   let navigationResizing = false
   let projectSearch = ''
@@ -398,9 +389,7 @@
       pageError = message
     },
     clearWorkspace,
-    setCookingPreview: (preview) => {
-      cookedPreview = preview
-    },
+    setCookingPreview: (preview) => cookingSession.setPreview(preview),
     isTransitionLocked: () => workspaceTransitionLocked,
     selectAgentNavigationScope: (view) => workspaceNavigation.selectAgentNavigationScope(view),
     exitRamble,
@@ -435,9 +424,7 @@
     rambleEngaged: () => rambleEngaged,
     releaseAttachmentPreviews: () => attachmentController.releasePreviews(),
     refreshAttachmentPreviews: (workspace) => attachmentController.refreshPreviews(workspace),
-    setCookingPreview: (preview) => {
-      cookedPreview = preview
-    },
+    setCookingPreview: (preview) => cookingSession.setPreview(preview),
   })
 
   const applicationSnapshotRefetch = createApplicationSnapshotRefetch({
@@ -555,11 +542,11 @@
   $: rambleAgentSessionId = feedbackManagedSessionId ?? (currentRequest ? null : agentViewForEmptyRamble(renderedSessionView, $navigation.hostSessions)?.sessionId ?? null)
   $: managedFeedbackReadOnly = !!feedbackManagedSessionId && ($managedSessions.deletingCommands.has(feedbackManagedSessionId) || $managedSessions.deletingSessions.has(feedbackManagedSessionId))
   $: currentRequestCooking =
-    currentRequest !== null && cookingRequestIds.has(currentRequest.request_id)
-  $: cookedDraftReady = cookedPreview !== null
+    currentRequest !== null && $cookingSession.cookingRequestIds.has(currentRequest.request_id)
+  $: cookedDraftReady = $cookingSession.preview !== null
   // Turning Cooking off discards any pending cooked preview: submitting then
   // publishes the editor content as-is.
-  $: if (!$cookingEnabled) cookedPreview = null
+  $: if (!$cookingEnabled) cookingSession.setPreview(null)
   $: canSubmit =
     !managedFeedbackReadOnly &&
     currentRequest !== null &&
@@ -619,35 +606,16 @@
     interactionLocked ||
     currentRequestCooking ||
     currentRequest?.status === 'in_progress'
-  // Phones turn the rails into drawers: `collapsed` then means "drawer closed" and the
-  // persisted preference is left untouched for when the viewport widens again.
-  $: hostSessionRailCollapsed = shellMode === 'phone' ? !phoneHostRailOpen : hostRailPreference
-  $: requestRailCollapsed = shellMode === 'phone' ? !phoneRequestRailOpen : requestRailPreference
-  $: saveHostRailCollapsed(hostRailPreference)
-  $: saveRequestRailCollapsed(requestRailPreference)
-
   function setHostRailCollapsed(collapsed: boolean) {
-    if (shellMode === 'phone') {
-      phoneHostRailOpen = !collapsed
-      if (!collapsed) phoneRequestRailOpen = false
-    } else {
-      hostRailPreference = collapsed
-    }
+    shellLayout.setRailCollapsed('host', collapsed)
   }
 
   function setRequestRailCollapsed(collapsed: boolean) {
-    if (shellMode === 'phone') {
-      phoneRequestRailOpen = !collapsed
-      if (!collapsed) phoneHostRailOpen = false
-    } else {
-      requestRailPreference = collapsed
-    }
+    shellLayout.setRailCollapsed('request', collapsed)
   }
 
   function closePhoneDrawers() {
-    if (shellMode !== 'phone') return
-    phoneHostRailOpen = false
-    phoneRequestRailOpen = false
+    shellLayout.closePhoneDrawers()
   }
 
   onMount(() => {
@@ -963,13 +931,6 @@
     if (draftSession.reconcile(next.draft) === 'kept-local') draftController.scheduleSave()
   }
 
-  function setCookingRequest(requestId: string, cooking: boolean) {
-    const next = new Set(cookingRequestIds)
-    if (cooking) next.add(requestId)
-    else next.delete(requestId)
-    cookingRequestIds = next
-  }
-
   const cookingController = createCookingController({
     tr,
     messageFrom,
@@ -993,12 +954,10 @@
     setPageError: (message) => {
       pageError = message
     },
-    setCooking: setCookingRequest,
+    setCooking: cookingSession.setCooking,
     publishCooked: (input, cookedMarkdown, uncookedMarkdown) =>
       publisherController.publishFeedback(input, cookedMarkdown, uncookedMarkdown),
-    setPreview: (preview) => {
-      cookedPreview = preview
-    },
+    setPreview: cookingSession.setPreview,
   })
   const cookPreviewOnly = cookingController.cookPreviewOnly
   const restoreOriginalAfterCook = cookingController.restoreOriginal
@@ -1027,11 +986,9 @@
     getDraftBody: () => $draftSession.body,
     getSavedRevision: () => $draftSession.savedRevision,
     getCookingEnabled: () => $cookingEnabled,
-    getPreview: () => cookedPreview,
-    setPreview: (preview) => {
-      cookedPreview = preview
-    },
-    setCooking: setCookingRequest,
+    getPreview: cookingSession.preview,
+    setPreview: cookingSession.setPreview,
+    setCooking: cookingSession.setCooking,
     cookAndPublish: cookingController.cookAndPublish,
     setSubmitting: (value) => workspaceSession.setSubmitting(value),
     setSubmitStage: (stage) => workspaceSession.setSubmitStage(stage),
@@ -1149,8 +1106,8 @@
 
   <AppTitlebar
     windowControls={capabilities.windowControls}
-    sidebarCollapsed={hostSessionRailCollapsed}
-    onToggleSidebar={shellMode === 'phone' ? () => setHostRailCollapsed(!hostSessionRailCollapsed) : undefined}
+    sidebarCollapsed={$shellLayout.hostCollapsed}
+    onToggleSidebar={$shellLayout.mode === 'phone' ? () => setHostRailCollapsed(!$shellLayout.hostCollapsed) : undefined}
     pendingCount={$navigation.pendingRequests.length}
     ramblePhase={visibleRamblePhase}
     rambleRequestTitle={$rambleSession.requestTitle}
@@ -1171,19 +1128,20 @@
   </AppTitlebar>
 
   <WorkbenchShell
-    hostCollapsed={hostSessionRailCollapsed}
-    requestCollapsed={requestRailCollapsed}
+    hostCollapsed={$shellLayout.hostCollapsed}
+    requestCollapsed={$shellLayout.requestCollapsed}
     onHostCollapsedChange={setHostRailCollapsed}
     onRequestCollapsedChange={setRequestRailCollapsed}
     startupFailed={$startup.phase === 'failed'}
     requestPaneVisible={renderedWorkspaceSurface !== 'standalone'}
-    bind:mode={shellMode}
+    mode={$shellLayout.mode}
+    onModeChange={shellLayout.setMode}
     bind:hostDisplayWidth={hostRailDisplayWidth}
     bind:resizing={navigationResizing}
   >
     {#snippet hostRail()}
       <HostSessionRail
-        collapsed={hostSessionRailCollapsed}
+        collapsed={$shellLayout.hostCollapsed}
         onCollapsedChange={setHostRailCollapsed}
         sessions={$navigation.hostSessions}
         activeHostId={renderedWorkspaceView?.kind === 'session' ? renderedWorkspaceView.hostId : railAgentSession?.host_id ?? null}
@@ -1218,11 +1176,11 @@
 
     {#snippet requestPane()}
       <RequestListPane
-        collapsed={requestRailCollapsed}
+        collapsed={$shellLayout.requestCollapsed}
         onCollapsedChange={setRequestRailCollapsed}
         requests={$navigation.requests}
         activeRequestId={currentRequest?.request_id ?? null}
-        cookingRequestIds={cookingRequestIds}
+        cookingRequestIds={$cookingSession.cookingRequestIds}
         scopeLabel={requestScopeLabel}
         searchQuery={$navigation.requestSearch}
         loading={$navigation.loadingRequests}
@@ -1390,8 +1348,8 @@
         cooking={currentRequestCooking}
         cookingEnabled={$cookingEnabled}
         {cookedDraftReady}
-        cookedPreviewModel={cookedPreview?.model ?? ''}
-        cookedPreviewMarkdown={cookedPreview?.markdown ?? ''}
+        cookedPreviewModel={$cookingSession.preview?.model ?? ''}
+        cookedPreviewMarkdown={$cookingSession.preview?.markdown ?? ''}
         onCookPreview={() => void cookPreviewOnly()}
         onRestoreOriginal={restoreOriginalAfterCook}
         submitting={$workspaceSession.submitting}

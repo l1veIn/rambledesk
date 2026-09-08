@@ -22,8 +22,10 @@
   export let onRequestCollapsedChange: (collapsed: boolean) => void = () => {}
   export let startupFailed = false
   export let requestPaneVisible = true
-  /** Out: viewport class that selects the column or drawer presentation. */
+  /** In: viewport class that selects the column or drawer presentation. */
   export let mode: ShellMode = 'desktop'
+  /** Out: the media query result, reported so the shell owner can publish it. */
+  export let onModeChange: (mode: ShellMode) => void = () => {}
   /** Out: fitted host rail width, published as the `--workbench-sidebar-width` custom property. */
   export let hostDisplayWidth = 0
   /** Out: true while either rail is being dragged. */
@@ -89,9 +91,7 @@
   onMount(() => {
     const phone = window.matchMedia(PHONE_QUERY)
     const tablet = window.matchMedia(TABLET_QUERY)
-    const update = () => {
-      mode = shellModeFor(phone.matches, tablet.matches)
-    }
+    const update = () => onModeChange(shellModeFor(phone.matches, tablet.matches))
     update()
     phone.addEventListener('change', update)
     tablet.addEventListener('change', update)
