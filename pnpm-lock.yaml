@@ -76,6 +76,9 @@ importers:
       ai:
         specifier: ^7.0.48
         version: 7.0.48(zod@4.4.3)
+      marked:
+        specifier: 17.0.6
+        version: 17.0.6
       paneforge:
         specifier: 1.0.2
         version: 1.0.2(svelte@5.56.8)

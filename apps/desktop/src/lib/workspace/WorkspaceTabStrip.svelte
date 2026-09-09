@@ -183,6 +183,7 @@
   }
 
   async function closeAndFocus(viewKey: string) {
+    if (disabled || pendingViewKey !== null) return
     await onClose(viewKey)
     await tick()
     const nextViewKey =
@@ -279,7 +280,7 @@
           </div>
           <button
             type="button"
-            class="workspace-tab-close absolute bottom-1.5 right-2 top-0 my-auto grid size-4 place-items-center rounded-md bg-background text-muted-foreground outline-none transition-opacity hover:bg-foreground/10 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-40"
+            class="workspace-tab-close absolute bottom-1.5 right-1 top-0 my-auto grid size-6 place-items-center rounded-md bg-background text-muted-foreground outline-none transition-opacity hover:bg-foreground/10 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-40 pointer-coarse:size-8"
             class:workspace-tab-close-active={activeViewKey === viewKey}
             aria-label={`${tr('Close workspace tab')}: ${label}`}
             title={tr('Close workspace tab')}
@@ -334,7 +335,7 @@
   }
 
   .workspace-tab-active {
-    padding-right: 1.5rem;
+    padding-right: 2rem;
     color: var(--foreground);
     background: var(--background);
   }
@@ -395,7 +396,7 @@
     }
 
     .workspace-tab-content {
-      padding-right: 1.5rem;
+      padding-right: 2.5rem;
     }
   }
 

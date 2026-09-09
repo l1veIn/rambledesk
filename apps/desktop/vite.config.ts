@@ -42,6 +42,10 @@ export default defineConfig({
     // Web Access reads this exact output inventory from the Tauri asset bundle.
     // It is the source of truth for immutable caching and missing-asset rejection.
     manifest: true,
+    // Explicit acceptance builds only. The shipped application has one entry.
+    ...(process.env.RAMBLEDESK_QUALITY_BENCHMARK === '1' ? {
+      rollupOptions: { input: { app: 'index.html', quality: 'quality-benchmark.html' } },
+    } : {}),
   },
   resolve: {
     alias: {

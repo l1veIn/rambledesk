@@ -1,0 +1,10 @@
+{
+  "request_id": "0195f7e2-5c31-7b5a-8ab7-3c84ea4fc827",
+  "host_id": "acceptance-external",
+  "host_label": "acceptance-external",
+  "title": "Feedback submitted · return to host",
+  "body": "Return to acceptance-external and click the waiting Continue or confirmation option first. Only paste the fallback resume prompt below if the host is not waiting.",
+  "resume_prompt": "RambleDesk feedback request 0195f7e2-5c31-7b5a-8ab7-3c84ea4fc827 is completed.\nCall get_feedback with this request_id, verify the package, and continue the original task.",
+  "reason": "completed",
+  "default_presentation": true
+}

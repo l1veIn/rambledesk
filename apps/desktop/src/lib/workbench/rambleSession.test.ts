@@ -1,64 +1,62 @@
 import { get } from 'svelte/store'
 import { describe, expect, it } from 'vitest'
-
+import { createUnavailableWorkbenchCapabilities } from '../capabilities/unavailableCapabilities'
+import type { SpeechRecognitionListener } from '../speech/speech'
 import { createRambleSession } from './rambleSession'
 
-describe('ramble session', () => {
-  it('folds the voice phase into the visible Ramble phase', () => {
-    const session = createRambleSession()
-    expect(session.visiblePhase()).toBe('idle')
-
-    session.patch({ voicePhase: 'listening' })
-    expect(session.visiblePhase()).toBe('active')
-    expect(session.voiceActive()).toBe(true)
-    expect(session.engaged()).toBe(true)
-    expect(session.active()).toBe(true)
-
-    session.patch({ voicePhase: 'idle', phase: 'paused' })
-    expect(session.visiblePhase()).toBe('paused')
-    expect(session.active()).toBe(false)
-    expect(session.engaged()).toBe(true)
+function harness() {
+  const session = createRambleSession()
+  let listener!: SpeechRecognitionListener
+  const voice = session.connectVoice({
+    speech: {
+      ...createUnavailableWorkbenchCapabilities().speech,
+      implementation: { ...createUnavailableWorkbenchCapabilities().speech.implementation, start: (_options, next) => {
+        listener = next
+        return { id: 'voice-1', ready: Promise.resolve(), stop: async () => {
+          listener.onEvent({ type: 'stopped', sessionId: 'voice-1', reason: 'stopped' })
+        }, cancel: async () => {} }
+      } },
+    },
+    tr: (source) => source, messageFrom: String,
+    getInputDevice: () => '', getModelId: () => '', getHotwords: () => [],
+    getVadThreshold: () => 0.5, getVadSilenceMs: () => 500, getNotificationVolume: () => 0,
+    resolveTarget: () => ({ requestId: get(session).requestId, requestTitle: get(session).requestTitle, action: null }),
+    resetTargets: () => {}, onStable: () => {}, onRecording: () => {},
+    onMicrophoneStopped: () => {}, onMicrophoneError: () => {}, waitForDrafts: async () => {},
   })
+  return { session, voice, emit: (event: Parameters<SpeechRecognitionListener['onEvent']>[0]) => listener.onEvent(event) }
+}
 
-  it('keeps voiceCanStop through errors and reports stop failures', () => {
-    const session = createRambleSession()
-    session.patch({ voicePhase: 'error', message: 'microphone lost' })
-    expect(session.voiceCanStop()).toBe(true)
-    expect(session.speechStopError()).toBe('microphone lost')
-
-    session.patch({ voicePhase: 'idle' })
-    expect(session.voiceCanStop()).toBe(false)
-    expect(session.speechStopError()).toBe('')
-  })
-
-  it('ties the session to the request it was started for', () => {
-    const session = createRambleSession()
-    expect(session.belongsToRequest(null)).toBe(true)
-
-    session.patch({ phase: 'active', requestId: 'request-1', requestTitle: 'Review' })
+describe('ramble session observable contract', () => {
+  it('projects live microphone facts immediately to all readers without UI bindings', async () => {
+    const { session, voice, emit } = harness()
+    session.begin({ request_id: 'request-1', title: 'Review' })
+    session.transition('starting', 'Connecting')
+    const observed: string[] = []
+    const unsubscribe = session.subscribe((state) => observed.push(state.visiblePhase))
+    await voice.start('request-1')
+    emit({ type: 'level', sessionId: 'voice-1', rms: 0.1 })
+    emit({ type: 'partial', sessionId: 'voice-1', text: 'A live observation' })
+    expect(get(session)).toMatchObject({ active: true, voiceActive: true, voiceLevel: 0.8, voicePartial: 'A live observation' })
+    expect(observed.at(-1)).toBe('active')
     expect(session.belongsToRequest('request-1')).toBe(true)
     expect(session.belongsToRequest('request-2')).toBe(false)
-    expect(get(session).requestTitle).toBe('Review')
+    await voice.stop()
+    session.transition('paused', 'Paused')
+    expect(get(session)).toMatchObject({ visiblePhase: 'paused', voiceCanStop: false, engaged: true })
+    unsubscribe()
   })
 
-  it('resets every field', () => {
-    const session = createRambleSession()
-    session.patch({
-      phase: 'active',
-      startedOnce: true,
-      requestId: 'request-1',
-      voicePhase: 'listening',
-      voiceLevel: 0.5,
-    })
-
+  it('reads a stop error from the microphone owner and resets only after it is released', async () => {
+    const { session, voice, emit } = harness()
+    session.begin({ request_id: 'request-1', title: 'Review' })
+    await voice.start('request-1')
+    emit({ type: 'error', sessionId: 'voice-1', code: 'device_lost', message: 'microphone lost' })
+    expect(session.speechStopError()).toBe('microphone lost')
+    expect(get(session).voiceCanStop).toBe(true)
+    await voice.cancel()
     session.reset()
-
-    expect(get(session)).toMatchObject({
-      phase: 'idle',
-      startedOnce: false,
-      requestId: '',
-      voicePhase: 'idle',
-      voiceLevel: 0,
-    })
+    expect(get(session)).toMatchObject({ phase: 'idle', requestId: '', startedOnce: false, voicePhase: 'idle', voiceLevel: 0 })
+    expect(session.belongsToRequest(null)).toBe(true)
   })
 })

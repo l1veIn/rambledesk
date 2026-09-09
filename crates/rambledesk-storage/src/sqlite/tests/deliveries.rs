@@ -12,6 +12,8 @@ use super::*;
 const NOW: &str = "2026-09-04T02:00:00Z";
 const LATER: &str = "2026-09-04T03:00:00Z";
 
+mod publication_replay;
+
 async fn setup() -> (TestWorkspace, SqliteFeedbackStore) {
     let workspace = TestWorkspace::new().await;
     let store = SqliteFeedbackStore::connect(&workspace.database)

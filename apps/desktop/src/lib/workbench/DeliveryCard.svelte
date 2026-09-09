@@ -123,26 +123,30 @@
           {/if}
           {cooking
             ? tr('Cooking…')
-            : submitting || submitStage === 'publishing'
-              ? tr('Publishing…')
-              : cookedDraftReady
-                ? tr('Submit feedback')
-                : tr('Cook')}
+            : submitStage === 'saving'
+              ? tr('Saving…')
+              : submitting
+                ? tr('Publishing…')
+                : cookedDraftReady
+                  ? tr('Submit feedback')
+                  : tr('Cook')}
         </Button>
         {#if !cookedDraftReady}
           <Button class="w-full" disabled={operationLocked || !canSubmit} onclick={onSubmit}>
             <Send data-icon="inline-start" />
-            {cooking || submitting
-              ? cooking || submitStage === 'cooking'
-                ? tr('Cooking…')
-                : tr('Publishing…')
-              : tr('Cook and submit')}
+            {submitStage === 'saving'
+              ? tr('Saving…')
+              : cooking || submitting
+                ? cooking || submitStage === 'cooking'
+                  ? tr('Cooking…')
+                  : tr('Publishing…')
+                : tr('Cook and submit')}
           </Button>
         {/if}
       {:else}
         <Button class="w-full" disabled={operationLocked || !canSubmit} onclick={onSubmit}>
           <Send data-icon="inline-start" />
-          {submitting ? tr('Publishing…') : tr('Submit feedback')}
+          {submitStage === 'saving' ? tr('Saving…') : submitting ? tr('Publishing…') : tr('Submit feedback')}
         </Button>
       {/if}
       {#if allowFinish}

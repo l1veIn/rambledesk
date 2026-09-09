@@ -3,7 +3,6 @@ import { get, writable } from 'svelte/store'
 import { ApplicationReadTimeoutError, withApplicationReadTimeout } from '../application/applicationReadTimeout'
 import { readApplicationSnapshot } from '../application/readApplicationSnapshot'
 import type { ApplicationTransport } from '../application/applicationTransport'
-import type { FeedbackRequestSummary } from '../feedback'
 import { startClientDiagnostic, diagnosticErrorCategory } from '../diagnostics/clientDiagnostics'
 import { agentSessionForView, cancelledFeedbackRestoreTarget } from '../workspace/agentViewRouting'
 import {
@@ -13,17 +12,11 @@ import {
   type SessionViewCatalog,
   type SessionViewResolution,
 } from '../workspace/sessionViewRecovery'
-import type {
-  WorkspaceTransitionOutcome,
-  WorkspaceTransitionTarget,
-} from '../workspace/workspaceTransition'
-import { activeWorkspaceView } from '../workspace/workspaceShell'
 import { sessionViewDescriptor, workspaceViewKey } from '../workspace/viewDescriptors'
-import type { AgentSessionViewDescriptor } from '../workspace/viewDescriptors'
-import type { DraftSession } from './draftSession'
 import type { createNavigationController } from './navigationController'
 import type { WorkspaceSession } from './workspaceSession'
 import type { WorkspaceShellSession } from './workspaceShellSession'
+import type { WorkspaceNavigationController } from './workspaceNavigationController'
 
 /**
  * Workbench startup and session-view recovery.
@@ -39,38 +32,21 @@ export type StartupState = Readonly<{
   failureTimedOut: boolean
   settingsOpen: boolean
   workspaceFailure: unknown
+  resolutions: readonly SessionViewResolution[]
 }>
 
 type NavigationController = ReturnType<typeof createNavigationController>
-
-type Transition = Readonly<{
-  activate: (
-    target: WorkspaceTransitionTarget,
-    intent?: number,
-  ) => Promise<WorkspaceTransitionOutcome>
-  invalidate: () => unknown
-}>
 
 export type StartupControllerContext = {
   navigation: NavigationController
   workspaceShell: WorkspaceShellSession
   workspaceSession: WorkspaceSession
-  draftSession: DraftSession
   transport: ApplicationTransport
-  workspaceTransition: Transition
-  desktopShellAvailable: boolean
+  workspaceNavigation: () => Pick<WorkspaceNavigationController, 'activateView' | 'invalidate' | 'currentIntent' | 'isCurrent' | 'clearWorkspace'>
   tr: (source: string, values?: Record<string, string | number>) => string
   messageFrom: (cause: unknown) => string
   pageError: () => string
   setPageError: (message: string) => void
-  clearWorkspace: () => void
-  selectAgentNavigationScope: (
-    view: AgentSessionViewDescriptor,
-  ) => Promise<Readonly<{ selected: boolean }>>
-  requestIdForSession: (
-    view: Extract<ReturnType<WorkspaceShellSession['activeView']>, { kind: 'session' }>,
-    requests: readonly FeedbackRequestSummary[],
-  ) => string | null
   /** Called once the workbench is ready so the shell can start polling. */
   onReady: () => void
 }
@@ -82,22 +58,24 @@ const initial: StartupState = {
   failureTimedOut: false,
   settingsOpen: false,
   workspaceFailure: null,
+  resolutions: [],
 }
 
 export type StartupController = ReturnType<typeof createStartupController>
 
 export function createStartupController(context: StartupControllerContext) {
+  let disposed = false
   // A restored view mounts only after its workspace loads.
   const store = writable<StartupState>({
     ...initial,
     mounted: !context.workspaceShell.restoredActiveView(),
   })
   let ready: Promise<boolean> | null = null
-  let sessionViewResolutions: readonly SessionViewResolution[] = []
   let lastRecoveryFingerprint = ''
-  let activeRecoveryTransition: object | null = null
+  let activeRecoveryTransition: { intent: number } | null = null
 
   function patch(next: Partial<StartupState>) {
+    if (disposed) return
     store.update((current) => ({ ...current, ...next }))
   }
 
@@ -121,14 +99,16 @@ export function createStartupController(context: StartupControllerContext) {
       )
     },
     onInvalidate: () => {
-      if (!activeRecoveryTransition) return
+      if (disposed || !activeRecoveryTransition) return
+      const recovery = activeRecoveryTransition
       activeRecoveryTransition = null
-      context.workspaceTransition.invalidate()
+      if (context.workspaceNavigation().isCurrent(recovery.intent)) context.workspaceNavigation().invalidate()
     },
     onUpdate: applySessionViewResolutions,
   })
 
   async function refreshSessionViewRecovery() {
+    if (disposed) return 'stale' as const
     return recoveryResolver.refresh(
       context.workspaceShell.views().filter(
         (view): view is Extract<typeof view, { kind: 'session' }> => view.kind === 'session',
@@ -138,7 +118,7 @@ export function createStartupController(context: StartupControllerContext) {
   }
 
   function resolutionFor(viewKey: string | null): SessionViewResolution | null {
-    return sessionViewResolution(sessionViewResolutions, viewKey)
+    return sessionViewResolution(get(store).resolutions, viewKey)
   }
 
   function phase() {
@@ -146,12 +126,13 @@ export function createStartupController(context: StartupControllerContext) {
   }
 
   function resolutions(): readonly SessionViewResolution[] {
-    return sessionViewResolutions
+    return get(store).resolutions
   }
 
   async function applySessionViewResolutions(
     resolutionsToApply: readonly SessionViewResolution[],
   ) {
+    if (disposed) return false
     const activeView = context.workspaceShell.activeView()
     const workspace = get(context.workspaceSession).workspace
     const workspaceView = workspace
@@ -168,23 +149,20 @@ export function createStartupController(context: StartupControllerContext) {
       workspaceView &&
       workspaceViewKey(workspaceView) === workspaceViewKey(activeView)
     ) {
-      const recoveryTransition = {}
+      const recoveryTransition = { intent: context.workspaceNavigation().currentIntent() }
       activeRecoveryTransition = recoveryTransition
-      const outcome = await context.workspaceTransition.activate({
-        view: activeView,
-        requestId: null,
-        shellAction: { type: 'open' },
-        pendingViewKey: workspaceViewKey(activeView),
+      const outcome = await context.workspaceNavigation().activateView(activeView, {
+        requestId: null, missingSession: true, expectedIntent: recoveryTransition.intent,
       })
       if (activeRecoveryTransition === recoveryTransition) activeRecoveryTransition = null
       if (outcome !== 'activated') return false
-      await context.navigation.selectScope(null, null)
     }
-    sessionViewResolutions = safeResolutions
+    patch({ resolutions: safeResolutions })
     return true
   }
 
   function start(): Promise<boolean> {
+    if (disposed) return Promise.resolve(false)
     if (ready) return ready
     patch({ phase: 'loading', failureMessage: '', failureTimedOut: false, settingsOpen: false, workspaceFailure: null })
     const finish = startClientDiagnostic('application_startup', {
@@ -195,6 +173,7 @@ export function createStartupController(context: StartupControllerContext) {
       const initialized = await context.navigation.initialize(
         !context.workspaceShell.hasRestoredSnapshot(),
       )
+      if (disposed) return false
       const navigation = get(context.navigation)
       if (!initialized) {
         const failure = get(store).workspaceFailure
@@ -215,14 +194,17 @@ export function createStartupController(context: StartupControllerContext) {
         return false
       }
       await refreshSessionViewRecovery()
+      if (disposed) return false
       if (context.workspaceShell.hasRestoredSnapshot()) {
         await restoreInitialWorkspaceSnapshot(true)
       }
+      if (disposed) return false
       patch({ phase: 'ready' })
       context.onReady()
       finish('ok')
       return true
     })().catch((cause) => {
+      if (disposed) return false
       finish('failed', { error_category: diagnosticErrorCategory(cause) })
       const message = context.messageFrom(cause)
       patch({
@@ -241,14 +223,18 @@ export function createStartupController(context: StartupControllerContext) {
   }
 
   async function retrySessionViewRecovery() {
+    if (disposed) return
+    const intent = context.workspaceNavigation().currentIntent()
     const retryingMissingView = resolutionFor(context.workspaceShell.activeViewKey())?.kind === 'missing-session'
     if (retryingMissingView) {
       patch({ mounted: false })
       context.workspaceSession.setLoading(true)
     }
     await context.navigation.refreshNavigation(true)
+    if (disposed || !context.workspaceNavigation().isCurrent(intent)) return
     resetRecoveryFingerprint()
     await refreshSessionViewRecovery()
+    if (disposed || !context.workspaceNavigation().isCurrent(intent)) return
     const activeResolution = resolutionFor(context.workspaceShell.activeViewKey())
     if (activeResolution?.kind === 'active' && get(context.workspaceSession).workspace === null) {
       await restoreInitialWorkspaceSnapshot()
@@ -260,6 +246,7 @@ export function createStartupController(context: StartupControllerContext) {
 
   /** Re-runs recovery when the caller's fingerprint of catalog plus open views changed. */
   async function recoverIfChanged(fingerprint: string) {
+    if (disposed) return
     if (get(context.navigation).hostSessionFactsStatus === 'pending') return
     if (fingerprint === lastRecoveryFingerprint) return
     lastRecoveryFingerprint = fingerprint
@@ -271,121 +258,51 @@ export function createStartupController(context: StartupControllerContext) {
   }
 
   async function restoreInitialWorkspaceSnapshot(throwOnFailure = false) {
+    if (disposed) return
+    const navigation = context.workspaceNavigation()
+    const intent = navigation.currentIntent()
     const view = context.workspaceShell.activeView()
     if (!view) {
-      context.clearWorkspace()
+      navigation.clearWorkspace()
       patch({ mounted: true })
       context.workspaceSession.setLoading(false)
       return
     }
-    if (view.kind === 'agent-draft') {
-      context.clearWorkspace()
-      context.workspaceSession.setLoading(false)
-      patch({ mounted: true })
-      return
-    }
+    let target = view
+    let requestId: string | undefined
     if (view.kind === 'agent-session') {
-      await context.selectAgentNavigationScope(view)
-      const navigation = get(context.navigation)
-      const session = agentSessionForView(view, navigation.hostSessions)
+      const session = agentSessionForView(view, get(context.navigation).hostSessions)
       if (session && session.request_count > 0 && session.pending_count === 0) {
-        // Use an unfiltered local read: a saved search can otherwise conceal the
-        // cancellation and mounting the restored Agent view would launch ACP.
+        // Saved filters cannot conceal a cancellation and accidentally launch ACP.
         const result = await readApplicationSnapshot(context.transport, 'listFeedbackRequests', {
-          host_id: session.host_id,
-          host_session_id: session.host_session_id,
-          status: null,
-          archived: null,
-          search: null,
-          limit: 1,
-          cursor: null,
+          host_id: session.host_id, host_session_id: session.host_session_id,
+          status: null, archived: null, search: null, limit: 1, cursor: null,
         })
-        const target = cancelledFeedbackRestoreTarget(session, result.requests)
-        if (target) {
-          const outcome = await context.workspaceTransition.activate({
-            ...target,
-            shellAction: { type: 'open' },
-            pendingViewKey: workspaceViewKey(target.view),
-          })
-          if (throwOnFailure && outcome === 'failed') {
-            throw (
-              get(store).workspaceFailure ??
-              new Error(context.pageError() || context.tr('The initial workspace could not be opened.'))
-            )
-          }
-          return
+        if (disposed || !navigation.isCurrent(intent)) return
+        const cancelled = cancelledFeedbackRestoreTarget(session, result.requests)
+        if (cancelled) {
+          target = cancelled.view
+          requestId = cancelled.requestId
         }
       }
-      context.clearWorkspace()
-      patch({ mounted: true })
-      context.workspaceSession.setLoading(false)
-      return
     }
-    if (
-      view.kind === 'inbox' ||
-      view.kind === 'archive' ||
-      view.kind === 'settings' ||
-      view.kind === 'rambelle-profile'
-    ) {
-      context.clearWorkspace()
-      patch({ mounted: true })
-      context.workspaceSession.setLoading(false)
-      if (view.kind === 'inbox') await context.navigation.selectScope(null, null)
-      return
-    }
-    if (view.kind === 'request-task') {
-      const outcome = await context.workspaceTransition.activate({
-        view,
-        requestId: view.requestId,
-        shellAction: { type: 'open' },
-        pendingViewKey: workspaceViewKey(view),
-      })
-      if (throwOnFailure && outcome === 'failed') {
-        throw (
-          get(store).workspaceFailure ??
-          new Error(context.pageError() || context.tr('The initial workspace could not be opened.'))
-        )
-      }
-      return
-    }
-
-    const resolution = resolutionFor(workspaceViewKey(view))
-    if (!resolution || resolution.kind !== 'active') {
-      context.clearWorkspace()
-      patch({ mounted: true })
-      context.workspaceSession.setLoading(false)
-      return
-    }
-
-    const selection = await context.navigation.selectScope(view.hostId, view.hostSessionId)
-    if (!selection.selected) {
-      patch({ mounted: true })
-      context.workspaceSession.setLoading(false)
-      if (throwOnFailure) {
-        throw new Error(
-          context.pageError() || context.tr('The initial workspace could not be opened.'),
-        )
-      }
-      return
-    }
-    const outcome = await context.workspaceTransition.activate({
-      view,
-      requestId: context.requestIdForSession(view, selection.requests),
-      shellAction: { type: 'open' },
-      pendingViewKey: workspaceViewKey(view),
+    const missingSession = requestId === undefined && target.kind === 'session' && resolutionFor(workspaceViewKey(target))?.kind !== 'active'
+    const outcome = await navigation.activateView(target, {
+      ...(requestId ? { requestId } : {}), expectedIntent: intent, missingSession,
     })
     if (throwOnFailure && outcome === 'failed') {
-      throw (
-        get(store).workspaceFailure ??
-        new Error(context.pageError() || context.tr('The initial workspace could not be opened.'))
-      )
+      throw get(store).workspaceFailure ?? new Error(context.pageError() || context.tr('The initial workspace could not be opened.'))
     }
+  }
+
+  function dispose() {
+    disposed = true
+    recoveryResolver.invalidate()
+    activeRecoveryTransition = null
   }
 
   return {
     subscribe: store.subscribe,
-    /** Svelte `bind:settingsOpen={$startup.settingsOpen}` writes through the store. */
-    set: store.set,
     patch,
     start,
     refreshSessionViewRecovery,
@@ -397,5 +314,6 @@ export function createStartupController(context: StartupControllerContext) {
     resolutionFor,
     resolutions,
     phase,
+    dispose,
   }
 }

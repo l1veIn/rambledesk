@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { createDraftSession } from './draftSession'
 import { createStartupController, type StartupControllerContext } from './startupController'
 import { createWorkspaceSession } from './workspaceSession'
+import { sessionViewDescriptor } from '../workspace/viewDescriptors'
 
 function navigationStore(initial: Record<string, unknown> = {}) {
   return writable({
@@ -51,19 +52,19 @@ function harness(overrides: Partial<StartupControllerContext> = {}) {
     workspaceSession: createWorkspaceSession(),
     draftSession: createDraftSession(),
     transport: { call: vi.fn(async () => []) },
-    workspaceTransition: {
-      activate: vi.fn(async () => 'activated' as const),
-      invalidate: vi.fn(),
-    },
+    workspaceNavigation: () => ({
+      activateView: vi.fn(async () => 'activated' as const),
+      invalidate: vi.fn(() => 1),
+      currentIntent: () => 1,
+      isCurrent: () => true,
+      clearWorkspace: vi.fn(),
+    }),
     previewMode: false,
     desktopShellAvailable: true,
     tr: (source: string) => source,
     messageFrom: (cause: unknown) => String(cause),
     pageError: () => '',
     setPageError: vi.fn(),
-    clearWorkspace: vi.fn(),
-    selectAgentNavigationScope: vi.fn(async () => ({ selected: true })),
-    requestIdForSession: vi.fn(() => null),
     onReady: vi.fn(),
     ...overrides,
   } as unknown as StartupControllerContext
@@ -71,6 +72,32 @@ function harness(overrides: Partial<StartupControllerContext> = {}) {
 }
 
 describe('startup controller', () => {
+  it('does not mount or start polling when initialization finishes after client disposal', async () => {
+    let finishInitialization!: (initialized: boolean) => void
+    const { controller, context } = harness()
+    context.navigation.initialize = () => new Promise(resolve => { finishInitialization = resolve })
+    const starting = controller.start()
+    controller.dispose()
+    finishInitialization(true)
+    await expect(starting).resolves.toBe(false)
+    expect(context.onReady).not.toHaveBeenCalled()
+    expect(get(controller).phase).toBe('loading')
+    await expect(controller.start()).resolves.toBe(false)
+    await expect(controller.refreshSessionViewRecovery()).resolves.toBe('stale')
+  })
+
+  it('publishes recovery changes to subscribers even when the active view key is unchanged', async () => {
+    const { controller } = harness()
+    const session = sessionViewDescriptor('codex', 'alpha')
+    const observed: string[] = []
+    const unsubscribe = controller.subscribe(state => observed.push(state.resolutions[0]?.kind ?? 'none'))
+    await controller.applySessionViewResolutions([{ kind: 'active', session }])
+    await controller.applySessionViewResolutions([{ kind: 'missing-session', session, reason: 'unavailable' }])
+    unsubscribe()
+    expect(observed).toEqual(['none', 'active', 'missing-session'])
+    expect(controller.resolutions()).toEqual(get(controller).resolutions)
+  })
+
   it('mounts immediately when nothing was restored', () => {
     const { controller } = harness()
     expect(get(controller).mounted).toBe(true)

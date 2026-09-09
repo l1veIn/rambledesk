@@ -21,6 +21,7 @@ pub enum ClientError {
     MissingCapability,
     InvalidCapability,
     RevokedCapability,
+    IpcAccessDenied,
     InvalidInput,
     InputUnavailable,
     UpstreamUnavailable,
@@ -44,6 +45,11 @@ impl ClientError {
             Self::RevokedCapability => (
                 "revoked_capability",
                 "This feedback capability was revoked. Reconnect the Agent session and recover the original request_id.",
+                false,
+            ),
+            Self::IpcAccessDenied => (
+                "ipc_access_denied",
+                "The Agent sandbox or operating system blocked access to the local RambleDesk feedback channel. Allow this command to access local IPC before retrying with the same request_id. No request was sent.",
                 false,
             ),
             Self::InvalidInput => (

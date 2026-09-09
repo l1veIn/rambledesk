@@ -284,6 +284,37 @@ async fn initialize_failure_releases_the_newly_owned_tree() {
 }
 
 #[tokio::test]
+async fn cancelled_initialize_reaps_its_tree_and_keeps_neighbor_connection_usable() {
+    let (neighbor, launch, neighbor_root, neighbor_child, _neighbor_cwd) =
+        protocol_tree("protocol-ready").await;
+    let neighbor = neighbor.await.unwrap().unwrap();
+    let (connecting, _, root, descendant, cwd) = protocol_tree("protocol-init-hang").await;
+    let received_initialize = tokio::time::timeout(Duration::from_secs(5), async {
+        while !cwd.path().join("owned-processes.txt.initializing").exists() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await;
+    // Aborting the caller drops connect_inner while it owns the spawned child
+    // and the protocol task is still waiting for an initialize response.
+    connecting.abort();
+    let cancelled = connecting.await;
+    assert!(
+        received_initialize.is_ok(),
+        "fixture never received initialize"
+    );
+    assert!(cancelled.is_err_and(|error| error.is_cancelled()));
+    assert_stopped(&root).await;
+    assert_stopped(&descendant).await;
+    assert!(neighbor_root.running());
+    assert!(neighbor_child.running());
+    neighbor.open_session(&launch, None).await.unwrap();
+    neighbor.shutdown().await.unwrap();
+    assert_stopped(&neighbor_root).await;
+    assert_stopped(&neighbor_child).await;
+}
+
+#[tokio::test]
 async fn close_error_and_unresponsive_close_still_release_owned_resources() {
     for mode in ["protocol-close-error", "protocol-close-hang"] {
         let (connecting, launch, root, descendant, _cwd) = protocol_tree(mode).await;

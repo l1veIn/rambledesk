@@ -12,6 +12,10 @@ const reader = createInterface({ input: process.stdin });
 for await (const line of reader) {
   const request = JSON.parse(line);
   if (request.id === undefined) continue;
+  if (request.method === 'initialize' && mode === 'protocol-init-hang') {
+    writeFileSync(path + '.initializing', 'waiting for cancellation');
+    continue;
+  }
   if (request.method === 'session/close' && mode === 'protocol-close-hang') continue;
   const error = (request.method === 'initialize' && mode === 'protocol-init-error')
     || (request.method === 'session/close' && mode === 'protocol-close-error');

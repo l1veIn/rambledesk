@@ -48,12 +48,13 @@
   let openMessage = ''
   let openError = ''
   let revealBusy = false
+  let openBusy = false
   let loadedKey = ''
   let loadGeneration = 0
 
-  $: requestedKey = open && attachment ? `${requestId}:${attachment.attachment_id}` : ''
+  $: requestedKey = open && attachment ? `${readKind}:${requestId}:${attachment.attachment_id}` : ''
   $: if (requestedKey && requestedKey !== loadedKey) void loadAttachment(requestedKey)
-  $: if (!open && loadedKey) resetPreview()
+  $: if (!requestedKey && loadedKey) resetPreview()
   $: zoomModel = computeImagePreviewZoom({
     naturalWidth: imageNaturalWidth,
     naturalHeight: imageNaturalHeight,
@@ -94,6 +95,8 @@
     unsupported = false
     openMessage = ''
     openError = ''
+    revealBusy = false
+    openBusy = false
     try {
       const raw =
         readKind === 'workspace'
@@ -167,6 +170,7 @@
     openMessage = ''
     openError = ''
     revealBusy = false
+    openBusy = false
     imageNaturalWidth = 0
     imageNaturalHeight = 0
     zoomInitialized = false
@@ -176,6 +180,7 @@
   async function revealAttachmentInFolder() {
     const current = attachment
     if (!current || !requestId || revealBusy) return
+    const generation = loadGeneration
     revealBusy = true
     try {
       const path = await capabilities.serverPaths.implementation.revealAttachment({
@@ -183,19 +188,23 @@
         attachmentId: current.attachment_id,
         kind: readKind,
       })
+      if (generation !== loadGeneration || !open) return
       toast.success(tr('Attachment shown in folder'), { description: path })
     } catch (cause) {
+      if (generation !== loadGeneration || !open) return
       toast.error(tr('Could not show the file in the folder'), {
         description: messageFrom(cause),
       })
     } finally {
-      revealBusy = false
+      if (generation === loadGeneration) revealBusy = false
     }
   }
 
   async function openExternally() {
     const current = attachment
-    if (!current || !requestId) return
+    if (!current || !requestId || openBusy) return
+    const generation = loadGeneration
+    openBusy = true
     openError = ''
     openMessage = ''
     try {
@@ -204,9 +213,12 @@
         attachmentId: current.attachment_id,
         kind: readKind,
       })
+      if (generation !== loadGeneration || !open) return
       openMessage = tr('Opened in the system default app: {path}', { path })
     } catch (cause) {
-      openError = messageFrom(cause)
+      if (generation === loadGeneration && open) openError = messageFrom(cause)
+    } finally {
+      if (generation === loadGeneration) openBusy = false
     }
   }
 
@@ -258,10 +270,13 @@
   }
 
   function releaseMedia() {
-    if (imageUrl) URL.revokeObjectURL(imageUrl)
+    const previous = imageUrl
     imageUrl = ''
     zoom = 1
     zoomInitialized = false
+    // Clear the rendered image before releasing its resource. Pending decoders
+    // retain their separate candidate URL until they settle in loadAttachment.
+    if (previous) void tick().then(() => URL.revokeObjectURL(previous))
   }
 
   onDestroy(() => {
@@ -272,7 +287,7 @@
 
 <Dialog.Root bind:open>
   <Dialog.Content
-    class="grid h-[min(820px,calc(100vh-3rem))] max-w-[min(1040px,calc(100vw-3rem))] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-[min(1040px,calc(100vw-3rem))]"
+    class="attachment-preview-dialog grid h-[min(820px,calc(100dvh-3rem))] max-w-[min(1040px,calc(100vw-3rem))] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-[min(1040px,calc(100vw-3rem))]"
   >
     <Dialog.Header class="border-b px-6 py-4 pr-14">
       <div class="flex min-w-0 items-start gap-3">
@@ -394,7 +409,7 @@
               <p class="m-0 mt-2 break-all text-xs leading-5 text-muted-foreground">{openError}</p>
             {/if}
             {#if capabilities.serverPaths.status.availability !== 'unavailable'}
-              <Button class="mt-4" onclick={() => void openExternally()}>
+              <Button class="mt-4" disabled={openBusy} onclick={() => void openExternally()}>
                 <ExternalLink class="size-4" />
                 {tr('Open with the system default app')}
               </Button>
@@ -405,3 +420,23 @@
     </div>
   </Dialog.Content>
 </Dialog.Root>
+
+<style>
+  @media (max-width: 767px) {
+    :global(.attachment-preview-dialog) {
+      inset: max(0.5rem, env(safe-area-inset-top)) max(0.5rem, env(safe-area-inset-right)) max(0.5rem, env(safe-area-inset-bottom)) max(0.5rem, env(safe-area-inset-left));
+      width: auto;
+      height: auto;
+      max-width: none;
+      translate: none;
+      transform: none;
+    }
+  }
+
+  @media (pointer: coarse) {
+    :global(.attachment-preview-dialog button) {
+      min-width: 2.75rem;
+      min-height: 2.75rem;
+    }
+  }
+</style>

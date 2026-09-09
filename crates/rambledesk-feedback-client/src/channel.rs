@@ -269,7 +269,7 @@ pub async fn call(
     let stream = {
         tokio::net::UnixStream::connect(address)
             .await
-            .map_err(|_| ClientError::RevokedCapability)?
+            .map_err(connection_error)?
     };
     #[cfg(windows)]
     let stream = {
@@ -281,13 +281,23 @@ pub async fn call(
                     tries += 1;
                     tokio::time::sleep(Duration::from_millis(10)).await;
                 }
-                Err(_) => return Err(ClientError::RevokedCapability),
+                Err(error) => return Err(connection_error(error)),
             }
         }
     };
     tokio::time::timeout(Duration::from_secs(70), exchange(stream, operation, input))
         .await
         .map_err(|_| ClientError::UpstreamUnavailable)?
+}
+
+fn connection_error(error: std::io::Error) -> ClientError {
+    // A sandbox can reject a still-live channel. Reconnecting the Agent does
+    // not resolve this permission boundary, and no request reached its owner.
+    if error.kind() == std::io::ErrorKind::PermissionDenied {
+        ClientError::IpcAccessDenied
+    } else {
+        ClientError::RevokedCapability
+    }
 }
 
 pub fn validate_address(address: &str) -> Result<(), ClientError> {

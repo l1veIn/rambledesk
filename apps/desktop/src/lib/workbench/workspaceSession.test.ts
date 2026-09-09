@@ -42,7 +42,7 @@ describe('workspace session', () => {
     expect(session.request()?.status).toBe('completed')
     expect(session.request()?.resolution).toBe('approved')
     expect(session.isTerminal()).toBe(true)
-    expect(session.feedbackResult()).toBe(result.feedback ?? null)
+    expect(get(session).feedbackResult).toBe(result.feedback ?? null)
   })
 
   it('prefers a completed result over the workspace projection', () => {
@@ -52,24 +52,24 @@ describe('workspace session', () => {
 
     session.setCompleted(completed)
 
-    expect(session.feedbackResult()).toBe(completed.feedback)
+    expect(get(session).feedbackResult).toBe(completed.feedback)
   })
 
   it('locks interaction while a submission mutation runs', () => {
     const session = createWorkspaceSession()
     session.open(previewFixtures.workspace)
-    expect(session.interactionLocked()).toBe(false)
+    expect(get(session).interactionLocked).toBe(false)
 
-    session.setSubmitting(true)
-    expect(session.interactionLocked()).toBe(true)
-    session.setSubmitting(false)
+    session.setSubmissionStage('publishing')
+    expect(get(session).interactionLocked).toBe(true)
+    session.setSubmissionStage('idle')
     session.beginCancel()
-    expect(session.interactionLocked()).toBe(true)
+    expect(get(session).interactionLocked).toBe(true)
     session.endCancel()
     session.beginApprove()
-    expect(session.interactionLocked()).toBe(true)
+    expect(get(session).interactionLocked).toBe(true)
     session.endApprove()
-    expect(session.interactionLocked()).toBe(false)
+    expect(get(session).interactionLocked).toBe(false)
   })
 
   it('updates the open draft and ignores it when no request is open', () => {
@@ -88,8 +88,7 @@ describe('workspace session', () => {
     const session = createWorkspaceSession()
     session.open(previewFixtures.workspace, { markdown: 'package' })
     session.setLoading(true)
-    session.setSubmitting(true)
-    session.setSubmitStage('publishing')
+    session.setSubmissionStage('publishing')
 
     session.close()
 

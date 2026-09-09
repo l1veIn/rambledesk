@@ -151,6 +151,7 @@
         aria-label={t($locale, sidebarCollapsed ? 'Open sidebar' : 'Collapse sidebar')}
         title={t($locale, sidebarCollapsed ? 'Open sidebar' : 'Collapse sidebar')}
         aria-expanded={!sidebarCollapsed}
+        aria-controls="host-navigation-pane"
         onclick={onToggleSidebar}
       >
         <Menu class="size-5" aria-hidden="true" />

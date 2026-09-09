@@ -1,10 +1,10 @@
-// Cooking workflow orchestration for the workbench. The controller owns the
-// read-only preview and cook-and-publish flows while
-// reactive state stays in the component: every mutation goes through the
-// context callbacks, so Svelte re-renders exactly as before.
+// Cooking transforms a saved submission into a separate Markdown variant.
+// Publication belongs to the publisher; this module never mutates the draft.
 
-import type { SubmitFeedbackInput, FeedbackWorkspaceView } from '../feedback'
+import type { FeedbackWorkspaceView } from '../feedback'
 import type { CookingConfig } from '../cooking'
+import type { FeedbackPreparation } from '../speech/rambleSessionControllerHandle'
+import type { CookingPreview } from './cookingSession'
 
 export type CookingSubmission = {
   request: FeedbackWorkspaceView['request']
@@ -12,8 +12,6 @@ export type CookingSubmission = {
   body: string
   savedRevision: number
 }
-
-export type CookedPreview = { markdown: string; original: string; model: string }
 
 type CookingControllerContext = {
   tr: (source: string, values?: Record<string, string | number>) => string
@@ -23,21 +21,17 @@ type CookingControllerContext = {
   getCookingConfig: () => CookingConfig
   isCookingEnabled: () => boolean
   isCooking: () => boolean
-  exitRamble: () => Promise<void>
+  prepareFeedback: (requestId: string) => Promise<FeedbackPreparation>
   saveDraftNow: () => Promise<boolean>
   setPageError: (message: string) => void
   setCooking: (requestId: string, cooking: boolean) => void
-  publishCooked: (
-    input: SubmitFeedbackInput,
-    cookedMarkdown: string | undefined,
-    uncookedMarkdown: string,
-  ) => Promise<void>
-  setPreview: (preview: CookedPreview | null) => void
+  setPreview: (preview: CookingPreview | null) => void
 }
 
 export type CookingController = ReturnType<typeof createCookingController>
 
 export function createCookingController(context: CookingControllerContext) {
+  let previewFlight: Promise<void> | null = null
   async function cookBody(input: {
     title: string
     whatHappened: string
@@ -48,40 +42,53 @@ export function createCookingController(context: CookingControllerContext) {
     return cookFeedback(input, context.getCookingConfig())
   }
 
-  /** Cook the current draft into a read-only preview without publishing. */
-  async function cookPreviewOnly() {
+  /** The same input/save boundary as publishing, with a separate read-only variant. */
+  function cookPreviewOnly(): Promise<void> {
+    if (previewFlight) return previewFlight
+    previewFlight = Promise.resolve().then(preparePreview).finally(() => { previewFlight = null })
+    return previewFlight
+  }
+
+  async function preparePreview() {
     const workspace = context.getWorkspace()
-    if (
-      !workspace ||
-      !context.isCookingEnabled() ||
-      context.isCooking() ||
-      workspace.request.status === 'completed' ||
-      workspace.request.status === 'cancelled'
-    ) return
-    await context.exitRamble()
-
-    if (!(await context.saveDraftNow())) return
-    if (context.getWorkspace() === null || context.isCooking()) return
-
+    if (!workspace || !context.isCookingEnabled() || context.isCooking() ||
+      workspace.request.status === 'completed' || workspace.request.status === 'cancelled') return
     const requestId = workspace.request.request_id
-    const original = context.getDraftBody()
-    if (!original.trim()) return
-
-    context.setCooking(requestId, true)
-    context.setPageError('')
+    const stillEditable = () => {
+      const current = context.getWorkspace()?.request
+      return current?.request_id === requestId && current.status !== 'completed' && current.status !== 'cancelled'
+    }
+    let ownsCooking = false
     try {
-      const cooked = await cookBody({
-        title: workspace.request.title,
-        whatHappened: workspace.request.what_happened,
-        actions: workspace.actions,
-        uncookedMarkdown: original,
+      const preparation = await context.prepareFeedback(requestId)
+      if (!stillEditable() || !context.isCookingEnabled() || context.isCooking()) return
+      if (preparation.kind !== 'ready') {
+        context.setPageError(preparation.kind === 'failed' ? preparation.message
+          : context.tr('Review the pending speech in the capsule before submitting feedback.'))
+        return
+      }
+      context.setCooking(requestId, true)
+      ownsCooking = true
+      context.setPageError('')
+      if (!(await context.saveDraftNow()) || !stillEditable()) return
+      const saved = context.getWorkspace()!
+      const original = context.getDraftBody()
+      if (!original.trim()) return
+      const cooked = await cookSubmission({
+        request: saved.request, actions: saved.actions,
+        body: original, savedRevision: saved.draft.saved_revision,
       })
-      if (context.getWorkspace()?.request.request_id !== requestId) return
-      context.setPreview({ markdown: cooked.markdown, original, model: cooked.model })
+      if (!stillEditable() || !context.isCookingEnabled()) return
+      if (context.getWorkspace()!.draft.saved_revision !== cooked.savedRevision ||
+        context.getDraftBody() !== cooked.original) {
+        context.setPageError(context.tr('The draft changed after Cooking. Restore the original and Cook again.'))
+        return
+      }
+      context.setPreview(cooked)
     } catch (cause) {
-      context.setPageError(context.messageFrom(cause))
+      if (context.getWorkspace()?.request.request_id === requestId) context.setPageError(context.messageFrom(cause))
     } finally {
-      context.setCooking(requestId, false)
+      if (ownsCooking) context.setCooking(requestId, false)
     }
   }
 
@@ -91,32 +98,21 @@ export function createCookingController(context: CookingControllerContext) {
     context.setPreview(null)
   }
 
-  /** Cook the submission body and publish it (the one-click path). */
-  async function cookAndPublish(submission: CookingSubmission) {
-    try {
-      const cooked = await cookBody({
-        title: submission.request.title,
-        whatHappened: submission.request.what_happened,
-        actions: submission.actions,
-        uncookedMarkdown: submission.body,
-      })
-      await context.publishCooked(
-        {
-          request_id: submission.request.request_id,
-          expected_revision: submission.savedRevision,
-          cooked_markdown: cooked.markdown,
-          cooking_model: cooked.model,
-          uncooked_markdown: submission.body,
-        },
-        cooked.markdown,
-        submission.body,
-      )
-    } catch (cause) {
-      context.setPageError(context.messageFrom(cause))
-    } finally {
-      context.setCooking(submission.request.request_id, false)
+  /** Return a variant tied to the exact saved source; errors stay with the caller. */
+  async function cookSubmission(submission: CookingSubmission): Promise<CookingPreview> {
+    const cooked = await cookBody({
+      title: submission.request.title,
+      whatHappened: submission.request.what_happened,
+      actions: submission.actions,
+      uncookedMarkdown: submission.body,
+    })
+    return {
+      ...cooked,
+      requestId: submission.request.request_id,
+      savedRevision: submission.savedRevision,
+      original: submission.body,
     }
   }
 
-  return { cookPreviewOnly, restoreOriginal, cookAndPublish }
+  return { cookPreviewOnly, restoreOriginal, cookSubmission }
 }

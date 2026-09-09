@@ -41,14 +41,15 @@ describe('attachmentController attachment writes', () => {
       ],
     }
     const { context, session } = controllerContext()
-    context.getWorkspace = () => workspace as never
+    let stored: typeof inserted = workspace as typeof inserted
+    context.getWorkspace = () => stored as never
     mocks.applicationCall.mockImplementation(async (operation: string) => {
-      if (operation === 'getFeedbackWorkspace') return workspace
+      if (operation === 'getFeedbackWorkspace') return stored
       return undefined
     })
     mocks.importAttachmentPath
-      .mockResolvedValueOnce(inserted)
-      .mockResolvedValueOnce(insertedAgain)
+      .mockImplementationOnce(async () => { stored = inserted; return stored })
+      .mockImplementationOnce(async () => { stored = insertedAgain; return stored })
 
     await createAttachmentController(context).importServerAttachmentPaths([
       '/tmp/notes.txt',

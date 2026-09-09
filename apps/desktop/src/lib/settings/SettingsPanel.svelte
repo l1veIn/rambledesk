@@ -74,6 +74,27 @@
   export let capabilities: WorkbenchCapabilities = unavailableCapabilities
   export let transport: ApplicationTransport
 
+  // The navigation label and page heading describe the same section.
+  const sections = {
+    'general': { title: 'General', description: 'Preferences', icon: MonitorCog },
+    'web-access': { title: 'Web Access', description: 'Local browser server', icon: Globe2 },
+    'agents': { title: 'Agents', description: 'Agent configurations', icon: TerminalSquare },
+    'appearance': { title: 'Appearance', description: 'Preferences', icon: Palette },
+    'adapters': { title: 'External adapters', description: 'Feedback from external agents', icon: PlugZap },
+    'permissions': { title: 'Permissions', description: 'System permissions', icon: ShieldCheck },
+    'notifications': { title: 'Notifications', description: 'Alert methods', icon: BellRing },
+    'voice': { title: 'Voice', description: 'Voice input', icon: Mic },
+    'post-processing': { title: 'Post-processing', description: 'Draft and submission transforms', icon: Sparkles },
+    'shortcuts': { title: 'Shortcuts', description: 'Global shortcut keys', icon: Keyboard },
+    'about': { title: 'About', description: 'Project information', icon: Info },
+  } satisfies Record<Section, { title: string; description: string; icon: typeof MonitorCog }>
+  const sectionOrder = Object.keys(sections) as Section[]
+  $: sectionDetails = sections[activeSection]
+
+  function sectionText(section: Section, text: string) {
+    return section === 'agents' ? agentText($locale, text) : tr(text)
+  }
+
   type DataStorageView = {
     active_path: string
     selected_path: string
@@ -217,7 +238,7 @@
       class="settings-layout grid h-full min-h-0 grid-cols-[184px_minmax(0,1fr)] gap-0"
     >
       <aside class="settings-navigation flex min-h-0 flex-col border-r bg-muted/35 p-3">
-        <div class="flex h-12 items-center gap-2 px-2">
+        <div class="flex h-12 shrink-0 items-center gap-2 px-2">
           <img
             src={appIcon}
             alt=""
@@ -232,64 +253,15 @@
 
         <Tabs.List
           variant="line"
-          class="mt-3 flex w-full flex-col items-stretch gap-1 bg-transparent p-0"
+          class="mt-3 flex min-h-0 w-full flex-1 flex-col items-stretch gap-1 overflow-y-auto bg-transparent p-0"
         >
-          <Tabs.Trigger value="general" class="h-9 w-full justify-start px-2.5">
-            <MonitorCog data-icon="inline-start" />
-            {tr('General')}
-          </Tabs.Trigger>
-          {#if sectionAvailability['web-access']}
-            <Tabs.Trigger value="web-access" class="h-9 w-full justify-start px-2.5">
-              <Globe2 data-icon="inline-start" />
-              {tr('Web Access')}
+          {#each sectionOrder.filter((section) => sectionAvailability[section]) as section (section)}
+            {@const Icon = sections[section].icon}
+            <Tabs.Trigger value={section} title={sectionText(section, sections[section].title)} class="h-9 w-full shrink-0 justify-start px-2.5">
+              <Icon data-icon="inline-start" />
+              {sectionText(section, sections[section].title)}
             </Tabs.Trigger>
-          {/if}
-          <Tabs.Trigger value="agents" class="h-9 w-full justify-start px-2.5">
-            <TerminalSquare data-icon="inline-start" />
-            {agentText($locale, 'Agents')}
-          </Tabs.Trigger>
-          <Tabs.Trigger value="appearance" class="h-9 w-full justify-start px-2.5">
-            <Palette data-icon="inline-start" />
-            {tr('Appearance')}
-          </Tabs.Trigger>
-          {#if sectionAvailability.adapters}
-            <Tabs.Trigger value="adapters" class="h-9 w-full justify-start px-2.5">
-              <PlugZap data-icon="inline-start" />
-              {tr('External adapters')}
-            </Tabs.Trigger>
-          {/if}
-          {#if sectionAvailability.permissions}
-            <Tabs.Trigger value="permissions" class="h-9 w-full justify-start px-2.5">
-              <ShieldCheck data-icon="inline-start" />
-              {tr('Permissions')}
-            </Tabs.Trigger>
-          {/if}
-          {#if sectionAvailability.notifications}
-            <Tabs.Trigger value="notifications" class="h-9 w-full justify-start px-2.5">
-              <BellRing data-icon="inline-start" />
-              {tr('Notifications')}
-            </Tabs.Trigger>
-          {/if}
-          {#if sectionAvailability.voice}
-            <Tabs.Trigger value="voice" class="h-9 w-full justify-start px-2.5">
-              <Mic data-icon="inline-start" />
-              {tr('Voice')}
-            </Tabs.Trigger>
-          {/if}
-          <Tabs.Trigger value="post-processing" class="h-9 w-full justify-start px-2.5">
-            <Sparkles data-icon="inline-start" />
-            {tr('Post-processing')}
-          </Tabs.Trigger>
-          {#if sectionAvailability.shortcuts}
-            <Tabs.Trigger value="shortcuts" class="h-9 w-full justify-start px-2.5">
-              <Keyboard data-icon="inline-start" />
-              {tr('Shortcuts')}
-            </Tabs.Trigger>
-          {/if}
-          <Tabs.Trigger value="about" class="h-9 w-full justify-start px-2.5">
-            <Info data-icon="inline-start" />
-            {tr('About')}
-          </Tabs.Trigger>
+          {/each}
         </Tabs.List>
 
       </aside>
@@ -298,50 +270,10 @@
         <header class="flex h-16 shrink-0 items-center border-b px-6">
           <div>
             <p class="m-0 text-[10px] font-medium uppercase text-muted-foreground">
-              {activeSection === 'general'
-                ? tr('Preferences')
-                : activeSection === 'web-access'
-                  ? tr('Local browser server')
-                : activeSection === 'appearance'
-                  ? tr('Preferences')
-                : activeSection === 'permissions'
-                  ? tr('System permissions')
-                  : activeSection === 'notifications'
-                    ? tr('Alert methods')
-                    : activeSection === 'voice'
-                      ? tr('Voice input')
-                      : activeSection === 'post-processing'
-                        ? tr('Draft and submission transforms')
-                        : activeSection === 'shortcuts'
-                          ? tr('Global shortcut keys')
-                          : activeSection === 'adapters'
-                            ? tr('Feedback from external agents')
-                            : activeSection === 'agents'
-                              ? agentText($locale, 'Agent configurations')
-                              : tr('Project information')}
+              {sectionText(activeSection, sectionDetails.description)}
             </p>
             <h2 class="m-0 mt-0.5 text-base font-semibold">
-              {activeSection === 'general'
-                ? tr('General')
-                : activeSection === 'web-access'
-                  ? tr('Web Access')
-                : activeSection === 'appearance'
-                  ? tr('Appearance')
-                : activeSection === 'permissions'
-                  ? tr('Permissions')
-                  : activeSection === 'notifications'
-                    ? tr('Notifications')
-                    : activeSection === 'voice'
-                      ? tr('Voice')
-                      : activeSection === 'post-processing'
-                        ? tr('Post-processing')
-                        : activeSection === 'shortcuts'
-                          ? tr('Shortcuts')
-                          : activeSection === 'adapters'
-                            ? tr('External adapters')
-                            : activeSection === 'agents'
-                              ? agentText($locale, 'Agents')
-                              : tr('About')}
+              {sectionText(activeSection, sectionDetails.title)}
             </h2>
           </div>
         </header>

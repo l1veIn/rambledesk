@@ -166,7 +166,7 @@
 
   <ScrollArea class="min-h-0 flex-1 overflow-hidden" aria-busy={refreshing}>
     <div class="relative min-h-full">
-      <div class={refreshing ? 'pointer-events-none select-none opacity-40' : undefined}>
+      <div class={refreshing ? 'pointer-events-none select-none opacity-40' : undefined} inert={refreshing}>
         {#if collapsed}
           <nav class="space-y-1 px-2 pb-3" aria-label={tr('Sessions')}>
             {#each visibleProjects as project (project.key)}

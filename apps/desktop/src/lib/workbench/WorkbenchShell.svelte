@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte'
-  import { onMount, tick } from 'svelte'
+  import { onDestroy, onMount, tick } from 'svelte'
   import { List } from '@lucide/svelte'
   import NavigationResizeHandle from '$lib/components/navigation/NavigationResizeHandle.svelte'
   import { COLLAPSED_RAIL_WIDTH, fitNavigationWidths, RAIL_LIMITS } from '$lib/components/navigation/railResize'
@@ -14,8 +14,8 @@
   } from '$lib/uiPreferences'
   import { PHONE_QUERY, shellModeFor, TABLET_QUERY, type ShellMode } from './shellMode'
 
-  // Collapse is owned by App.svelte: on phones it means "drawer closed", otherwise the rail
-  // preference. The titlebar and both rails read the same effective value.
+  // ShellLayoutSession owns collapse; App passes its effective projection here.
+  // On phones it means "drawer closed", otherwise the persisted rail preference.
   export let hostCollapsed = false
   export let requestCollapsed = false
   export let onHostCollapsedChange: (collapsed: boolean) => void = () => {}
@@ -43,7 +43,11 @@
   let resizingRequestRail = false
   let hostPaneElement: HTMLDivElement
   let requestPaneElement: HTMLDivElement
+  let requestOpener: HTMLButtonElement | undefined
+  let drawerBackdrop: HTMLButtonElement | undefined
+  let returnFocusTo: HTMLElement | null = null
   let focusedDrawer: 'host' | 'request' | null = null
+  let disposed = false
 
   $: isPhone = mode === 'phone'
   $: showRequestPane = !startupFailed && requestPaneVisible
@@ -62,15 +66,42 @@
   $: requestDrawerOpen = isPhone && showRequestPane && !requestCollapsed
   $: drawerOpen = hostDrawerOpen || requestDrawerOpen
 
-  // The reopen button disappears when its drawer opens, so move focus into the drawer instead
-  // of letting it fall back to the document body.
+  // Drawers leave titlebar actions available. Restore their opener only when focus still
+  // belongs to the closing drawer; a deliberate move to another action must be preserved.
   $: {
     const next = isPhone ? (hostDrawerOpen ? 'host' : requestDrawerOpen ? 'request' : null) : null
-    if (next !== focusedDrawer) {
-      focusedDrawer = next
-      if (next === 'host') void tick().then(() => hostPaneElement?.focus({ preventScroll: true }))
-      else if (next === 'request') void tick().then(() => requestPaneElement?.focus({ preventScroll: true }))
+    if (next !== focusedDrawer) moveDrawerFocus(next)
+  }
+
+  function moveDrawerFocus(next: 'host' | 'request' | null) {
+    const previous = focusedDrawer
+    const previousPane = previous === 'host' ? hostPaneElement : requestPaneElement
+    const backdrop = drawerBackdrop
+    focusedDrawer = next
+    if (typeof document === 'undefined') return
+    if (!previous && next) {
+      returnFocusTo = document.activeElement instanceof HTMLElement && document.activeElement !== document.body
+        ? document.activeElement : null
     }
+    const focusStillInDrawer = () => document.activeElement === document.body
+      || document.activeElement === backdrop
+      || !!previousPane?.contains(document.activeElement)
+
+    void tick().then(() => {
+      if (disposed || focusedDrawer !== next) return
+      if (next) {
+        const pane = next === 'host' ? hostPaneElement : requestPaneElement
+        pane?.focus({ preventScroll: true })
+      } else if (isPhone && focusStillInDrawer()) {
+        // The request FAB is recreated on close, so its old DOM node cannot receive focus.
+        const opener = previous === 'request' ? requestOpener
+          : document.querySelector<HTMLElement>('[aria-controls="host-navigation-pane"]')
+        const target = returnFocusTo?.isConnected ? returnFocusTo : opener
+        if (target && target !== document.body && !target.closest('[inert]')) {
+          target.focus({ preventScroll: true })
+        }
+      }
+    })
   }
 
   function tr(source: string) {
@@ -83,10 +114,13 @@
   }
 
   function handleKeydown(event: KeyboardEvent) {
-    if (event.key !== 'Escape' || !drawerOpen) return
+    if (event.key !== 'Escape' || !drawerOpen || event.defaultPrevented) return
+    event.preventDefault()
     event.stopPropagation()
     closeDrawers()
   }
+
+  onDestroy(() => { disposed = true })
 
   onMount(() => {
     const phone = window.matchMedia(PHONE_QUERY)
@@ -109,6 +143,7 @@
     <button
       type="button"
       class="shell-drawer-backdrop"
+      bind:this={drawerBackdrop}
       aria-label={tr('Close navigation')}
       onclick={closeDrawers}
     ></button>
@@ -165,7 +200,9 @@
     <button
       type="button"
       class="shell-fab shell-fab-left"
+      bind:this={requestOpener}
       aria-label={tr('Open request list')}
+      aria-controls="request-list-pane"
       onclick={() => onRequestCollapsedChange(false)}
     >
       <List aria-hidden="true" />

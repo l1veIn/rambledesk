@@ -6,4 +6,6 @@ export type ResumePrompt = {
   body: string
   resume_prompt: string
   reason: 'completed' | 'cancelled'
+  /** Only explicit product defaults are localized. Unmarked host content is verbatim. */
+  default_presentation?: boolean
 }

@@ -100,6 +100,23 @@ impl Fixture {
             .await
             .unwrap()
     }
+    async fn wait_for(
+        &self,
+        id: &str,
+        condition: impl Fn(&ManagedSessionSnapshot) -> bool,
+    ) -> ManagedSessionSnapshot {
+        tokio::time::timeout(Duration::from_secs(8), async {
+            loop {
+                let snapshot = self.snapshot(id).await;
+                if condition(&snapshot) {
+                    return snapshot;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .unwrap()
+    }
     async fn request(&self, session: &str, wait: bool) -> String {
         let previous = self
             .snapshot(session)
@@ -348,6 +365,124 @@ async fn direct_delete_stops_a_busy_session_discards_feedback_and_keeps_its_neig
         .delete_managed_session(ManagedSessionInput { session_id: other })
         .await
         .unwrap();
+    fixture.close().await;
+}
+
+#[tokio::test]
+async fn deleting_while_waiting_for_permission_rejects_late_answers_and_keeps_neighbor_usable() {
+    let fixture = Fixture::new("normal").await;
+    let first = fixture.create("Waiting for permission").await;
+    let other = fixture.create("Neighbor permission").await;
+    for session_id in [&first, &other] {
+        fixture
+            .app
+            .send_prompt(SendManagedPromptInput {
+                session_id: session_id.clone(),
+                text: "permission".into(),
+            })
+            .await
+            .unwrap();
+    }
+    // Observe actual ACP permission callbacks from both Node processes before deleting.
+    let waiting = fixture
+        .wait_for(&first, |snapshot| snapshot.interactions.len() == 1)
+        .await;
+    let neighbor = fixture
+        .wait_for(&other, |snapshot| snapshot.interactions.len() == 1)
+        .await;
+    assert_eq!(waiting.runtime.activity, SessionActivityState::WaitingInput);
+    assert_eq!(
+        neighbor.runtime.activity,
+        SessionActivityState::WaitingInput
+    );
+    let late_answer = RespondManagedInteractionInput {
+        session_id: first.clone(),
+        request_id: waiting.interactions[0].request_id.clone(),
+        response: SessionInteractionResponse::Permission {
+            option_id: Some("allow".into()),
+        },
+    };
+    assert_ne!(late_answer.request_id, neighbor.interactions[0].request_id);
+
+    fixture
+        .app
+        .delete_managed_session(ManagedSessionInput {
+            session_id: first.clone(),
+        })
+        .await
+        .unwrap();
+    assert!(matches!(
+        fixture.store.get_session(&first).await,
+        Err(SessionRepositoryError::SessionNotFound)
+    ));
+    assert!(matches!(
+        fixture.app.respond_interaction(late_answer.clone()).await,
+        Err(SessionError::Repository(
+            SessionRepositoryError::SessionNotFound
+        ))
+    ));
+    // Even retargeting the stale UI response cannot consume the neighbor's permission.
+    assert!(matches!(
+        fixture
+            .app
+            .respond_interaction(RespondManagedInteractionInput {
+                session_id: other.clone(),
+                ..late_answer
+            })
+            .await,
+        Err(SessionError::InvalidInput)
+    ));
+    let unchanged = fixture.snapshot(&other).await;
+    assert_eq!(unchanged.interactions, neighbor.interactions);
+    assert_eq!(unchanged.runtime.instance_id, neighbor.runtime.instance_id);
+    assert_eq!(
+        unchanged.runtime.connection,
+        SessionConnectionState::Connected
+    );
+    assert_eq!(
+        unchanged.runtime.activity,
+        SessionActivityState::WaitingInput
+    );
+
+    fixture
+        .app
+        .respond_interaction(RespondManagedInteractionInput {
+            session_id: other.clone(),
+            request_id: neighbor.interactions[0].request_id.clone(),
+            response: SessionInteractionResponse::Permission {
+                option_id: Some("allow".into()),
+            },
+        })
+        .await
+        .unwrap();
+    let idle = fixture
+        .wait_for(&other, |snapshot| {
+            snapshot.runtime.activity == SessionActivityState::Idle
+        })
+        .await;
+    assert!(idle.interactions.is_empty());
+    assert!(
+        idle.activities
+            .iter()
+            .any(|row| row.text == "PERMISSION selected")
+    );
+    assert!(
+        !idle
+            .activities
+            .iter()
+            .any(|row| row.text == "PERMISSION cancelled")
+    );
+    // Verify the surviving process still owns a working feedback scope and continuation.
+    let request = fixture.request(&other, false).await;
+    fixture.submitted(&request).await;
+    let done = fixture
+        .delivered(&other, FeedbackDeliveryState::Delivered)
+        .await;
+    assert!(
+        done.activities
+            .iter()
+            .any(|row| row.text == format!("CONTINUED {request} feedback_submitted"))
+    );
     fixture.close().await;
 }
 

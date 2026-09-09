@@ -24,7 +24,7 @@ describe('cooking session', () => {
 
   it('keeps the same state when the preview is set to its current value', () => {
     const session = createCookingSession()
-    const preview = { markdown: 'cooked', original: 'raw', model: 'test-model' }
+    const preview = { requestId: 'request-1', savedRevision: 1, markdown: 'cooked', original: 'raw', model: 'test-model' }
     session.setPreview(preview)
     const state = get(session)
     session.setPreview(preview)
@@ -34,7 +34,7 @@ describe('cooking session', () => {
 
   it('discards the preview when cleared', () => {
     const session = createCookingSession()
-    session.setPreview({ markdown: 'cooked', original: 'raw', model: 'test-model' })
+    session.setPreview({ requestId: 'request-1', savedRevision: 1, markdown: 'cooked', original: 'raw', model: 'test-model' })
     session.setPreview(null)
     expect(session.preview()).toBeNull()
   })

@@ -129,7 +129,7 @@ describe('workspaceTransition', () => {
     expect(run.adapter.saveCurrent).not.toHaveBeenCalled()
     expect(run.adapter.commitTarget).not.toHaveBeenCalled()
     await expect(run.transition.activate(target(), currentIntent)).resolves.toBe('activated')
-    expect(run.transition.isCurrent(currentIntent)).toBe(false)
+    expect(run.transition.isCurrent(currentIntent)).toBe(true)
   })
 
   it('saves, unmounts, loads, and commits in order with at most one editor mounted', async () => {
@@ -170,6 +170,15 @@ describe('workspaceTransition', () => {
     expect(run.events).toEqual(['save', 'unmount', 'load', 'restore'])
     expect(run.adapter.commitTarget).not.toHaveBeenCalled()
     expect(run.adapter.reportFailure).toHaveBeenCalledWith(failure)
+  })
+
+  it('rechecks automatic eligibility after loading and restores instead of committing', async () => {
+    let canLeave = true
+    const run = harness({ loadTarget: async () => { canLeave = false; return { requestId: 'request-beta' } } })
+    await expect(run.transition.activate(target(), undefined, () => canLeave)).resolves.toBe('blocked')
+    expect(run.adapter.commitTarget).not.toHaveBeenCalled()
+    expect(run.adapter.restoreCurrent).toHaveBeenCalledOnce()
+    expect(run.maximumMountedEditors()).toBe(1)
   })
 
   it('commits only the latest target when an older load finishes late', async () => {

@@ -1,103 +1,67 @@
-import { get, writable } from 'svelte/store'
+import { derived, get, writable } from 'svelte/store'
 
+import type { FeedbackRequestSummary } from '../feedback'
+import type { RamblePhase } from '../domain/sessionPhases'
 import { resolvedRamblePhase } from './rambleSessionState'
-import type {
-  RamblePhase,
-  VoicePhase,
-} from '../domain/sessionPhases'
+import { createVoiceRambleSession, createVoiceRambleState, type VoiceRambleContext } from './voiceRambleSession'
 
-/**
- * Live Ramble and voice state for the workbench. `RambleSessionController` writes it
- * through bindings, the shell reads it for titles, portraits and locked interactions.
- */
-export type RambleSessionState = Readonly<{
-  phase: RamblePhase
-  startedOnce: boolean
-  requestId: string
-  requestTitle: string
-  message: string
-  voicePhase: VoicePhase
-  voiceDevice: string
-  voicePartial: string
-  voiceLevel: number
-  voiceChunkIndex: number
-  voiceModelMissing: boolean
-}>
-
-const initial: RambleSessionState = {
-  phase: 'idle',
+const initial = {
+  phase: 'idle' as RamblePhase,
   startedOnce: false,
   requestId: '',
   requestTitle: '',
   message: '',
-  voicePhase: 'idle',
-  voiceDevice: '',
-  voicePartial: '',
-  voiceLevel: 0,
-  voiceChunkIndex: 0,
-  voiceModelMissing: false,
 }
 
-export type RambleSession = ReturnType<typeof createRambleSession>
-
+/** Ramble owns request identity; the microphone writes its own facts directly. */
 export function createRambleSession() {
-  const store = writable<RambleSessionState>(initial)
+  const facts = writable(initial)
+  const voiceFacts = createVoiceRambleState()
+  let voiceConnected = false
+  const state = derived([facts, voiceFacts], ([ramble, voice]) => {
+    const visiblePhase = resolvedRamblePhase(ramble.phase, voice.phase)
+    const voiceActive = ['starting', 'listening', 'processing', 'stopping'].includes(voice.phase)
+    return {
+      ...ramble,
+      voicePhase: voice.phase,
+      voiceDevice: voice.device,
+      voicePartial: voice.partial,
+      voiceLevel: voice.level,
+      voiceChunkIndex: voice.chunkIndex,
+      voiceModelMissing: voice.modelMissing,
+      visiblePhase,
+      voiceActive,
+      voiceCanStop: voiceActive || (voice.phase === 'error' && !!voice.sessionId),
+      engaged: visiblePhase !== 'idle',
+      active: visiblePhase === 'active',
+      speechStopError: voice.phase === 'error' ? voice.message || ramble.message : '',
+    }
+  })
 
-  /** Applies controller bindings; the workbench only reads. */
-  function patch(next: Partial<RambleSessionState>) {
-    store.update((current) => ({ ...current, ...next }))
+  function begin(request: Pick<FeedbackRequestSummary, 'request_id' | 'title'>) {
+    facts.set({ ...initial, startedOnce: true, requestId: request.request_id, requestTitle: request.title })
   }
 
-  /** The phase shown to the workbench, with voice listening folded in. */
-  function visiblePhase(): RamblePhase {
-    const state = get(store)
-    return resolvedRamblePhase(state.phase, state.voicePhase)
-  }
-
-  function voiceActive(): boolean {
-    const phase = get(store).voicePhase
-    return phase === 'starting' || phase === 'listening' || phase === 'processing' || phase === 'stopping'
-  }
-
-  function voiceCanStop(): boolean {
-    return voiceActive() || get(store).voicePhase === 'error'
-  }
-
-  function engaged(): boolean {
-    return visiblePhase() !== 'idle'
-  }
-
-  function active(): boolean {
-    return visiblePhase() === 'active'
-  }
-
-  /** True when the Ramble session belongs to the request the workbench shows. */
-  function belongsToRequest(requestId: string | null | undefined): boolean {
-    if (!engaged()) return true
-    return requestId === get(store).requestId
-  }
-
-  /** Speech stop failures surface through the Ramble status line. */
-  function speechStopError(): string {
-    return get(store).voicePhase === 'error' ? get(store).message : ''
-  }
-
-  function reset() {
-    store.set(initial)
+  function transition(phase: RamblePhase, message: string) {
+    facts.update((current) => ({ ...current, phase, message }))
   }
 
   return {
-    subscribe: store.subscribe,
-    /** Svelte `bind:` targets a store property, so the session keeps the store contract. */
-    set: store.set,
-    patch,
-    visiblePhase,
-    voiceActive,
-    voiceCanStop,
-    engaged,
-    active,
-    belongsToRequest,
-    speechStopError,
-    reset,
+    subscribe: state.subscribe,
+    // Share the original voice store, never copy its six fields through UI bindings.
+    connectVoice: (context: VoiceRambleContext) => {
+      if (voiceConnected) throw new Error('A Ramble session has one microphone controller for its lifetime.')
+      voiceConnected = true
+      return createVoiceRambleSession(context, voiceFacts)
+    },
+    begin,
+    transition,
+    setMessage: (message: string) => facts.update((current) => ({ ...current, message })),
+    reset: () => facts.set(initial),
+    belongsToRequest: (requestId: string | null | undefined) => !get(state).engaged || requestId === get(state).requestId,
+    speechStopError: () => get(state).speechStopError,
   }
 }
+
+export type RambleSession = ReturnType<typeof createRambleSession>
+export type RambleSessionState = Parameters<Parameters<RambleSession['subscribe']>[0]>[0]

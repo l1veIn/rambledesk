@@ -1,10 +1,12 @@
-/** Contract the Ramble session controller exposes to the composition root. */
+/** The input owner has finished writing, needs human review, or failed to stop. */
+export type FeedbackPreparation =
+  | { kind: 'ready' }
+  | { kind: 'pending-speech' }
+  | { kind: 'failed'; message: string }
+
 export type RambleSessionControllerHandle = {
   toggleRamble(): Promise<void>
   exitRamble(): Promise<void>
   importClipboardNow(): Promise<void>
-  resetVoiceUi(): void
-  resetRambleUi(): void
-  hasPendingSpeech(requestId: string): boolean
-  settleSpeechDrafts(): Promise<void>
+  prepareFeedback(requestId: string): Promise<FeedbackPreparation>
 }

@@ -331,7 +331,9 @@ export class HttpApplicationSession {
     this.#cancelReconnect = null
     const epoch = ++this.#epoch
     this.#ready = false
-    this.#resetReadyBarrier()
+    // The constructor or disconnect already created this barrier. Commands may
+    // join it during reconnect backoff; replacing it here would strand them even
+    // after ready, revocation or another connection failure settles the new one.
     this.#requestAbort.abort()
     this.#requestAbort = new AbortController()
     try {
@@ -620,4 +622,3 @@ export class HttpApplicationSession {
     }
   }
 }
-

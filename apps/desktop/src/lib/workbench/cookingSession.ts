@@ -1,6 +1,12 @@
 import { get, writable } from 'svelte/store'
 
-export type CookingPreview = Readonly<{ markdown: string; original: string; model: string }>
+export type CookingPreview = Readonly<{
+  requestId: string
+  savedRevision: number
+  markdown: string
+  original: string
+  model: string
+}>
 
 /**
  * Cooking progress and the generated preview. Both are keyed to the workspace the

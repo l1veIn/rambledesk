@@ -26,7 +26,6 @@
   import ManagedFeedbackRequestStatus from './lib/agents/ManagedFeedbackRequestStatus.svelte'
   import DraftManagedSessionWorkspace from './lib/agents/DraftManagedSessionWorkspace.svelte'
   import { Button } from './lib/components/ui/button'
-  import type { JSONContent } from '@tiptap/core'
   import type { ApplicationTransport } from './lib/application/applicationTransport'
   import type { WorkbenchCapabilities } from './lib/capabilities/workbenchCapabilities'
   import { provideWorkbenchCapabilities } from './lib/capabilities/capabilityContext'
@@ -34,13 +33,7 @@
   import type { PublishedFeedbackAction } from './lib/publishedFeedbackAction'
   import { APPLICATION_EVENTS_STREAM } from './lib/application/applicationEvents'
   import { readApplicationSnapshot } from './lib/application/readApplicationSnapshot'
-  import {
-    applicationResourcesAffectNavigation,
-    applicationResourcesAffectWorkspace,
-    applicationResourcesRequireFullNavigationSnapshot,
-    createApplicationSnapshotRefetch,
-    type ApplicationSnapshotRefetchIntent,
-  } from './lib/application/applicationSnapshotRefetch'
+
 
   export let applicationTransport: ApplicationTransport
   export let capabilities: WorkbenchCapabilities = createUnavailableWorkbenchCapabilities()
@@ -56,16 +49,7 @@
       : undefined,
   }))
 
-  import type {
-    ApproveFeedbackInput,
-    CancelFeedbackInput,
-    DraftView,
-    FeedbackRequestView,
-    FeedbackRequestSummary,
-    FeedbackWorkspaceView,
-    SubmitFeedbackInput,
-  } from './lib/feedback'
-  import type { HostSessionSummary, ManagedSessionSnapshot } from './lib/generated/feedback'
+  import type { FeedbackWorkspaceView } from './lib/feedback'
   import { createNotificationPermissionController } from './lib/workbench/notificationPermissionController'
   import {
     archiveViewDescriptor,
@@ -85,20 +69,14 @@
     savedPreviewWorkspaceSnapshot,
     seedPreviewWorkspaceScenario,
   } from './lib/workspace/previewWorkspaceSnapshot'
-  import type { SessionViewResolution } from './lib/workspace/sessionViewRecovery'
+  import { sessionViewResolution, type SessionViewResolution } from './lib/workspace/sessionViewRecovery'
   import {
     workspaceTabId,
     workspaceTabPanelId,
   } from './lib/workspace/workspaceTabNavigation'
   import WorkspaceTabStrip from './lib/workspace/WorkspaceTabStrip.svelte'
   import { workspaceSurface } from './lib/workspace/workspaceSurface'
-  import { createWorkspaceTransition } from './lib/workspace/workspaceTransition'
-  import {
-    shouldAdoptTaskBackgroundDraft,
-    shouldUseForegroundDraftEditor,
-  } from './lib/workspace/draftOperationRouting'
   import { previewFixtures } from './lib/preview/previewFixtures'
-  import type { PublishedFeedbackView } from './lib/publishedFeedback'
   import { formatTime, messageFrom } from './lib/workbench/feedbackText'
   import { createCookingController } from './lib/workbench/cookingController'
   import { createCookingSession } from './lib/workbench/cookingSession'
@@ -119,7 +97,6 @@
   import { createResumePromptController } from './lib/workbench/resumePromptController'
   import { createMessageToaster } from './lib/workbench/messageToasts'
   import { createOnboardingController } from './lib/onboarding/onboardingController'
-  import { openReleases } from './lib/updates/releases'
   import {
     sessionTabLabel as sessionTabLabelFor,
     workspaceTabLabel as workspaceTabLabelFor,
@@ -129,15 +106,8 @@
   } from './lib/workbench/attachmentController'
   import { createNavigationController } from './lib/workbench/navigationController'
   import { ensureDesktopNavigationPolling } from './lib/workbench/navigationPolling'
-  import { resolvedRamblePhase } from './lib/workbench/rambleSessionState'
   import type { FeedbackEditorHandle } from './lib/editor/feedbackEditorHandle'
   import type { RambleSessionControllerHandle } from './lib/speech/rambleSessionControllerHandle'
-import type {
-  RamblePhase,
-  SavePhase,
-  SubmitStage,
-  VoicePhase,
-} from './lib/domain/sessionPhases'
 import type { SettingsSection } from './lib/domain/settingsSection'
   import RambleSessionController from './lib/workbench/RambleSessionController.svelte'
   import { highlightSpeechSegment } from './lib/speech/highlightSpeechSegment'
@@ -176,7 +146,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
   const shellLayout = createShellLayoutSession()
   const rambleSession = createRambleSession()
   /** The open request, projected from the session so field reads stay short. */
-  $: currentRequest = $workspaceSession.workspace?.request ?? null
+  $: currentRequest = $workspaceSession.request
   let taskTabTitles: ReadonlyMap<string, string> = new Map()
   let renderedWorkspaceView: WorkspaceViewDescriptor | null = null
   let renderedSessionView: SessionViewDescriptor | null = null
@@ -233,7 +203,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
   const draftController = createDraftController({
     transport: applicationTransport,
     messageFrom,
-    isInteractionLocked: () => interactionLocked,
+    isInteractionLocked: () => $workspaceSession.interactionLocked,
     isWorkspaceTerminal: () => workspaceSession.isTerminal(),
     getWorkspace: () => $workspaceSession.workspace,
     session: draftSession,
@@ -293,41 +263,9 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     },
   })
 
-  type LoadedWorkspaceTarget =
-    | Readonly<{
-        kind: 'session'
-        workspace: FeedbackWorkspaceView
-        publishedFeedback: PublishedFeedbackView | null
-      }>
-    | Readonly<{
-        kind: 'request-task'
-        workspace: FeedbackWorkspaceView
-      }>
-
-  // These controllers are assigned below; the callbacks only run after composition.
+  // Mutual callbacks resolve after all three owners have been composed.
   let startup: StartupController
   let workspaceNavigation: WorkspaceNavigationController
-  const workspaceTransition = createWorkspaceTransition<LoadedWorkspaceTarget>({
-    saveCurrent: saveDraftNow,
-    unmountCurrent: () => {
-      startup.patch({ mounted: false })
-      sessionWorkbench = undefined
-      workspaceSession.setLoading(true)
-    },
-    loadTarget: (target) => workspaceNavigation.loadWorkspaceTarget(target),
-    commitTarget: (target, loaded) => workspaceNavigation.commitWorkspaceTarget(target, loaded),
-    restoreCurrent: () => {
-      startup.patch({ mounted: true })
-      workspaceSession.setLoading(false)
-    },
-    setPendingTarget: (target) => {
-      workspaceShell.setPendingViewKey(target?.pendingViewKey ?? null)
-    },
-    reportFailure: (cause) => {
-      if (startup.phase() === 'loading') startup.patch({ workspaceFailure: cause })
-      pageError = messageFrom(cause)
-    },
-  })
 
   const navigation = createNavigationController({
     capabilities,
@@ -339,7 +277,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     isDirty: () => dirty,
     saveDraftNow,
     openRequest: (requestId) => workspaceNavigation.openRequest(requestId),
-    clearWorkspace,
+    clearWorkspace: () => workspaceNavigation.clearWorkspace(),
     onPageError: (message) => (pageError = message),
     canSendOsBanners: () => isMac,
     onRequestsArrived: (requests) => { void workspaceNavigation.autoOpenArrivingRequest(requests) },
@@ -349,19 +287,14 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     navigation,
     workspaceShell,
     workspaceSession,
-    draftSession,
     transport: applicationTransport,
-    workspaceTransition,
-    desktopShellAvailable,
+    workspaceNavigation: () => workspaceNavigation,
     tr,
     messageFrom,
     pageError: () => pageError,
     setPageError: (message) => {
       pageError = message
     },
-    clearWorkspace,
-    selectAgentNavigationScope: (view) => workspaceNavigation.selectAgentNavigationScope(view),
-    requestIdForSession: (view, requests) => workspaceNavigation.requestIdForSession(view, requests),
     onReady: () => {
       inboxTimer = ensureDesktopNavigationPolling(
         desktopShellAvailable,
@@ -378,17 +311,13 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     navigation,
     workspaceShell,
     workspaceSession,
-    draftSession,
-    workspaceTransition,
+    workspaceNavigation: () => workspaceNavigation,
     tr,
     messageFrom,
     setPageError: (message) => {
       pageError = message
     },
-    clearWorkspace,
-    setCookingPreview: (preview) => cookingSession.setPreview(preview),
     isTransitionLocked: () => workspaceTransitionLocked,
-    selectAgentNavigationScope: (view) => workspaceNavigation.selectAgentNavigationScope(view),
     exitRamble,
     rambleCanExit: () => rambleCanExit,
     openArchivedSessions: (initial) => openArchivedSessions(initial),
@@ -399,18 +328,17 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     workspaceShell,
     workspaceSession,
     draftSession,
+    draftController,
     attachmentSession,
-    startup,
-    managedSessions,
+    attachmentController,
+    cookingSession,
+    startup: () => startup,
+    managedSessions: () => managedSessions,
     transport: applicationTransport,
-    workspaceTransition,
     tr,
     messageFrom,
-    pageError: () => pageError,
-    setPageError: (message) => {
-      pageError = message
-    },
-    clearWorkspace,
+    setPageError: (message) => { pageError = message },
+    releaseEditor: () => { sessionWorkbench = undefined },
     refreshNotificationPermission: () => notificationPermission.refresh(),
     isTransitionLocked: () => workspaceTransitionLocked,
     enqueueDocumentTask,
@@ -418,20 +346,10 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     onboardingOpen: () => $onboarding.open,
     resumePromptOpen: () => $resumePrompts.prompt !== null,
     rambleEngaged: () => rambleEngaged,
-    releaseAttachmentPreviews: () => attachmentController.releasePreviews(),
-    refreshAttachmentPreviews: (workspace) => attachmentController.refreshPreviews(workspace),
-    setCookingPreview: (preview) => cookingSession.setPreview(preview),
-  })
-
-  const applicationSnapshotRefetch = createApplicationSnapshotRefetch({
-    refetch: refetchApplicationSnapshots,
-    reportError: (cause) => {
-      pageError = messageFrom(cause)
-    },
   })
 
   export function refetchAfterTransportReady() {
-    applicationSnapshotRefetch.request([{ kind: 'all' }])
+    workspaceNavigation.refetchAfterTransportReady()
   }
 
   const toaster = createMessageToaster({ tr })
@@ -451,7 +369,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     managedSessions: {
       openNewManagedSession: (configId) => managedSessions.openNewManagedSession(configId),
     },
-    closeSettingsTab: () => workspaceNavigation.closeWorkspaceTab(workspaceViewKey(settingsViewDescriptor())),
+    closeSettingsTab: async () => { await workspaceNavigation.closeWorkspaceTab(workspaceViewKey(settingsViewDescriptor())) },
     updates: {
       available: softwareUpdatesAvailable,
       check: (input) => capabilities.softwareUpdates.implementation.check(input),
@@ -488,7 +406,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     currentRequest !== null &&
     currentRequest.status !== 'completed' &&
     currentRequest.status !== 'cancelled' &&
-    draftSession.isDirty()
+    $draftSession.dirty
   $: toaster.pageError(pageError)
   $: toaster.saveError($draftSession.message)
   $: toaster.attachmentMessage($attachmentSession.message, $attachmentSession.tone)
@@ -504,7 +422,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
   $: renderedSessionView = renderedWorkspaceView?.kind === 'session'
     ? renderedWorkspaceView
     : null
-  $: renderedSessionResolution = startup.resolutionFor($workspaceShell.shell.activeViewKey)
+  $: renderedSessionResolution = sessionViewResolution($startup.resolutions, $workspaceShell.shell.activeViewKey)
   $: renderedAgentSessionView = renderedWorkspaceView?.kind === 'agent-session' ? renderedWorkspaceView : null
   $: renderedAgentDraftView = renderedWorkspaceView?.kind === 'agent-draft' ? renderedWorkspaceView : null
   $: renderedAgentDraftController = renderedAgentDraftView ? managedSessions.draftController(renderedAgentDraftView.draftId) : null
@@ -529,7 +447,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
         resolveHostProfile($navigation.selectedHostId).label
       : resolveHostProfile($navigation.selectedHostId).label
     : tr('All hosts')
-  $: feedbackResult = workspaceSession.feedbackResult()
+  $: feedbackResult = $workspaceSession.feedbackResult
   $: canOpenResumePrompt = shouldShowResumePromptButton(
     feedbackResult,
     $workspaceSession.completedResult?.resolution ?? currentRequest?.resolution,
@@ -551,14 +469,14 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     currentRequest.status !== 'cancelled' &&
     $draftSession.body.trim().length > 0 &&
     !currentRequestCooking &&
-    !workspaceSession.interactionLocked()
+    !$workspaceSession.interactionLocked
   $: canCancel =
     currentRequest !== null &&
     currentRequest.status !== 'completed' &&
     currentRequest.status !== 'cancelled' &&
     !currentRequestCooking &&
-    !workspaceSession.interactionLocked()
-  $: interactionLocked = workspaceSession.interactionLocked()
+    !$workspaceSession.interactionLocked
+  $: interactionLocked = $workspaceSession.interactionLocked
   $: workspaceTransitionLocked =
     interactionLocked ||
     $attachmentSession.busy ||
@@ -574,12 +492,9 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     .sort()
     .join('\u0001')}`
   $: if (recoveryFingerprint) void startup.recoverIfChanged(recoveryFingerprint)
-  $: voiceActive = $rambleSession.voicePhase === 'starting' ||
-    $rambleSession.voicePhase === 'listening' ||
-    $rambleSession.voicePhase === 'processing' ||
-    $rambleSession.voicePhase === 'stopping'
-  $: voiceCanStop = voiceActive || $rambleSession.voicePhase === 'error'
-  $: visibleRamblePhase = resolvedRamblePhase($rambleSession.phase, $rambleSession.voicePhase)
+  $: voiceActive = $rambleSession.voiceActive
+  $: voiceCanStop = $rambleSession.voiceCanStop
+  $: visibleRamblePhase = $rambleSession.visiblePhase
   $: rambleActive = visibleRamblePhase === 'active'
   $: rambleEngaged = visibleRamblePhase !== 'idle'
   $: rambleBelongsToWorkspace =
@@ -616,13 +531,21 @@ import type { SettingsSection } from './lib/domain/settingsSection'
   }
 
   onMount(() => {
+    function guardBrowserLeave(event: BeforeUnloadEvent) {
+      // Undo can make the draft locally clean while an earlier save is still
+      // in flight. Read both owners at the event boundary; never save on unload.
+      if (!draftSession.isDirty() && !draftController.hasPendingSave()) return
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    if (environment === 'browser') window.addEventListener('beforeunload', guardBrowserLeave)
     const cleanupAttachments = attachmentController.mount()
     const unsubscribeApplicationEvents = !desktopShellAvailable && !previewMode
       ? applicationTransport.subscribe(
           APPLICATION_EVENTS_STREAM,
           (event) => {
             if (event.type === 'invalidate') {
-              applicationSnapshotRefetch.request(event.resources)
+              workspaceNavigation.requestRefetch(event.resources)
             }
           },
           (cause) => {
@@ -630,6 +553,21 @@ import type { SettingsSection } from './lib/domain/settingsSection'
           },
         )
       : () => {}
+
+    let resumePromptUnlisten = () => {}
+    function disposeClient() {
+      if (environment === 'browser') window.removeEventListener('beforeunload', guardBrowserLeave)
+      unsubscribeApplicationEvents()
+      startup.dispose()
+      workspaceNavigation.dispose()
+      draftController.cancelPendingSave()
+      if (inboxTimer) clearInterval(inboxTimer)
+      resumePromptUnlisten()
+      resumePrompts.dispose()
+      onboarding.dispose()
+      cleanupAttachments()
+      managedSessions.closeAllDrafts()
+    }
 
     if (!desktopShellAvailable) {
       onboarding.begin()
@@ -646,11 +584,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
       ) {
         void capabilities.softwareUpdates.implementation.check({ prompt: true, forcePrompt: true })
       }
-      return () => {
-        unsubscribeApplicationEvents()
-        applicationSnapshotRefetch.dispose()
-        cleanupAttachments()
-      }
+      return disposeClient
     }
     onboarding.begin()
     // Browser server autostart is a desktop preference; the browser client never runs it.
@@ -665,68 +599,9 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     onboarding.scheduleLaunchCheck()
     if (notificationsAvailable) void notificationPermission.refresh()
     else notificationPermission.markUnavailable()
-    const resumePromptUnlisten = resumePrompts.subscribeStream()
-    return () => {
-      unsubscribeApplicationEvents()
-      applicationSnapshotRefetch.dispose()
-      draftController.cancelPendingSave()
-      if (inboxTimer) clearInterval(inboxTimer)
-      resumePromptUnlisten()
-      resumePrompts.dispose()
-      onboarding.dispose()
-      cleanupAttachments()
-      managedSessions.closeAllDrafts()
-    }
+    resumePromptUnlisten = resumePrompts.subscribeStream()
+    return disposeClient
   })
-
-  function clearWorkspace() {
-    workspaceSession.close()
-    draftSession.reset()
-    attachmentController.releasePreviews()
-  }
-
-  async function refetchApplicationSnapshots(
-    intent: ApplicationSnapshotRefetchIntent,
-  ): Promise<void> {
-    if (applicationResourcesAffectNavigation(intent.resources)) {
-      if (applicationResourcesRequireFullNavigationSnapshot(intent.resources)) {
-        await navigation.initialize(false)
-      } else {
-        await navigation.refreshNavigation(true)
-      }
-      if (!intent.isCurrent()) return
-      await startup.refreshSessionViewRecovery()
-      if (!intent.isCurrent()) return
-    }
-
-    while (workspaceTransitionLocked && intent.isCurrent()) {
-      await new Promise((resolve) => window.setTimeout(resolve, 50))
-    }
-    if (!intent.isCurrent()) return
-
-    const activeView = activeWorkspaceView($workspaceShell.shell)
-    const activeWorkspace = $workspaceSession.workspace
-    if (
-      !activeView ||
-      !activeWorkspace ||
-      (activeView.kind !== 'session' && activeView.kind !== 'request-task') ||
-      !applicationResourcesAffectWorkspace(intent.resources, {
-        requestId: activeWorkspace.request.request_id,
-        hostId: activeWorkspace.request.host_id,
-        hostSessionId: activeWorkspace.request.host_session_id,
-      })
-    ) {
-      return
-    }
-
-    const outcome = await workspaceTransition.activate({
-      view: activeView,
-      requestId: activeWorkspace.request.request_id,
-      shellAction: { type: 'open' },
-      pendingViewKey: workspaceViewKey(activeView),
-    })
-    if (!intent.isCurrent() || outcome === 'stale') return
-  }
 
   async function openSettings(section: SettingsSection, agentConfigId?: string, agentAdvanced = false) {
     if ($startup.phase === 'failed') {
@@ -781,16 +656,12 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     }),
     isCookingEnabled: () => $cookingEnabled,
     isCooking: () => currentRequestCooking,
-    exitRamble: async () => {
-      if (rambleCanExit) await exitRamble()
-    },
+    prepareFeedback: (requestId) => rambleController.prepareFeedback(requestId),
     saveDraftNow,
     setPageError: (message) => {
       pageError = message
     },
     setCooking: cookingSession.setCooking,
-    publishCooked: (input, cookedMarkdown, uncookedMarkdown) =>
-      publisherController.publishFeedback(input, cookedMarkdown, uncookedMarkdown),
     setPreview: cookingSession.setPreview,
   })
   const cookPreviewOnly = cookingController.cookPreviewOnly
@@ -800,31 +671,17 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     transport: applicationTransport,
     tr,
     messageFrom,
-    getWorkspace: () => $workspaceSession.workspace,
-    setWorkspace: (next) => workspaceSession.replace(next),
-    setCompletedResult: (result) => workspaceSession.setCompleted(result),
-    setPublishedFeedback: (feedback) => workspaceSession.setPublished(feedback),
-    setSavePhase: () => {
-      draftSession.markSaved()
-    },
+    session: workspaceSession,
+    draft: draftSession,
+    cooking: cookingSession,
     setPageError: (message) => {
       pageError = message
     },
-    getCanSubmit: () => canSubmit,
-    getRambleCanExit: () => rambleCanExit,
-    hasPendingSpeech: (requestId) => rambleController?.hasPendingSpeech(requestId) ?? false,
-    getSpeechStopError: () => rambleSession.speechStopError(),
-    exitRamble,
+    isReadOnly: () => managedFeedbackReadOnly,
+    prepareFeedback: (requestId) => rambleController.prepareFeedback(requestId),
     saveDraftNow,
-    getDraftBody: () => $draftSession.body,
-    getSavedRevision: () => $draftSession.savedRevision,
     getCookingEnabled: () => $cookingEnabled,
-    getPreview: cookingSession.preview,
-    setPreview: cookingSession.setPreview,
-    setCooking: cookingSession.setCooking,
-    cookAndPublish: cookingController.cookAndPublish,
-    setSubmitting: (value) => workspaceSession.setSubmitting(value),
-    setSubmitStage: (stage) => workspaceSession.setSubmitStage(stage),
+    cookSubmission: cookingController.cookSubmission,
     refreshNavigation: async (force) => {
       await navigation.refreshNavigation(force)
     },
@@ -844,8 +701,8 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     tr,
     messageFrom,
     canCancel: () => canCancel,
-    rambleCanExit: () => rambleCanExit,
-    exitRamble,
+    prepareFeedback: (requestId) => rambleController.prepareFeedback(requestId),
+    saveDraftNow,
     refreshNavigation: async () => {
       await navigation.refreshNavigation(true)
     },
@@ -861,8 +718,6 @@ import type { SettingsSection } from './lib/domain/settingsSection'
 
   async function exitRamble() {
     await rambleController?.exitRamble()
-    await rambleController?.settleSpeechDrafts()
-    await waitForDocumentQueue()
   }
 
   async function toggleRamble() {
@@ -895,39 +750,22 @@ import type { SettingsSection } from './lib/domain/settingsSection'
   <title>RambleDesk · Feedback Inbox</title>
 </svelte:head>
 
-{#key $locale}
-<main class={[
-  'flex h-full w-full flex-col overflow-hidden rounded-[var(--app-frame-radius)] bg-background text-foreground',
-  environment === 'browser' ? '' : 'border shadow-sm',
-]}
-  class:navigation-resizing={navigationResizing}
-  style:--workbench-sidebar-width={`${hostRailDisplayWidth}px`}>
-  <Sonner />
   <RambleSessionController
     bind:this={rambleController}
+    session={rambleSession}
     {capabilities}
     {tidyConfig}
     workspace={$workspaceSession.workspace}
-    bind:attachmentBusy={$attachmentSession.busy}
+    attachmentBusy={$attachmentSession.busy}
     screenCaptureBusy={$attachmentSession.captureBusy}
-    bind:attachmentMessage={$attachmentSession.message}
-    bind:voicePhase={$rambleSession.voicePhase}
-    bind:voiceDevice={$rambleSession.voiceDevice}
-    bind:voicePartial={$rambleSession.voicePartial}
-    bind:voiceLevel={$rambleSession.voiceLevel}
-    bind:voiceChunkIndex={$rambleSession.voiceChunkIndex}
-    bind:voiceModelMissing={$rambleSession.voiceModelMissing}
-    bind:ramblePhase={$rambleSession.phase}
-    bind:rambleStartedOnce={$rambleSession.startedOnce}
-    bind:rambleRequestId={$rambleSession.requestId}
-    bind:rambleRequestTitle={$rambleSession.requestTitle}
-    bind:rambleMessage={$rambleSession.message}
+    onAttachmentMessage={attachmentSession.setMessage}
     interactionLocked={managedFeedbackReadOnly || interactionLocked || currentRequestCooking || cookedDraftReady}
     onPageError={(message) => (pageError = message)}
     onStartScreenCapture={attachmentController.startScreenCapture}
     onImportServerAttachmentPaths={attachmentController.importServerAttachmentPaths}
     onPersistAttachmentCandidates={attachmentController.persistAttachmentCandidates}
     onRouteDraftOperation={routeDraftOperation}
+    waitForDocumentWrites={waitForDocumentQueue}
     getActiveAction={activeActionFor}
     onOpenSpeechTarget={async (requestId, segmentId) => {
       if (await workspaceNavigation.openRequest(requestId)) {
@@ -936,6 +774,16 @@ import type { SettingsSection } from './lib/domain/settingsSection'
       }
     }}
   />
+
+{#key $locale}
+<main class={[
+  'flex h-full w-full flex-col overflow-hidden rounded-[var(--app-frame-radius)] bg-background text-foreground',
+  environment === 'browser' ? '' : 'border shadow-sm',
+]}
+  class:navigation-resizing={navigationResizing}
+  style:--workbench-sidebar-width={`${hostRailDisplayWidth}px`}>
+  <Sonner />
+
 
   <AppTitlebar
     windowControls={capabilities.windowControls}
@@ -954,7 +802,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
         disabled={workspaceTransitionLocked}
         labelForView={workspaceTabLabel}
         onActivate={(viewKey) => void workspaceNavigation.activateWorkspaceTab(viewKey)}
-        onClose={workspaceNavigation.closeWorkspaceTab}
+        onClose={async (viewKey) => { await workspaceNavigation.closeWorkspaceTab(viewKey) }}
         onReorder={workspaceNavigation.reorderWorkspaceTabs}
       />
     {/snippet}
@@ -1004,7 +852,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     {/snippet}
 
     {#snippet startupRecovery()}
-      <StartupRecoveryPanel {capabilities} message={$startup.failureMessage} timedOut={$startup.failureTimedOut} bind:settingsOpen={$startup.settingsOpen} onRetry={() => void startup.start()} />
+      <StartupRecoveryPanel {capabilities} message={$startup.failureMessage} timedOut={$startup.failureTimedOut} settingsOpen={$startup.settingsOpen} onSettingsOpenChange={(settingsOpen) => startup.patch({ settingsOpen })} onRetry={() => void startup.start()} />
     {/snippet}
 
     {#snippet requestPane()}
@@ -1079,7 +927,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
             workspace={$workspaceSession.workspace}
             editorDocument={$draftSession.editorDocument}
             activeActionId={currentRequest
-              ? draftOperations.activeActionId(currentRequest.request_id)
+              ? $draftOperations.get(currentRequest.request_id)?.actionId ?? null
               : null}
             actionsDisabled={managedFeedbackReadOnly || workspaceTransitionLocked || $workspaceShell.pendingViewKey !== null}
             onSelectAction={selectAction}
@@ -1134,7 +982,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
             })}
             busy={renderedSessionResolution.reason === 'unresolved' || $workspaceShell.pendingViewKey !== null}
             onRetry={startup.retrySessionViewRecovery}
-            onClose={() => workspaceNavigation.closeWorkspaceTab(workspaceViewKey(renderedSessionResolution!.session))}
+            onClose={async () => { await workspaceNavigation.closeWorkspaceTab(workspaceViewKey(renderedSessionResolution!.session)) }}
             onOpenArchive={() => void openArchivedSessions(renderedSessionResolution!.session)}
           />
         {:else if $startup.mounted}
@@ -1156,7 +1004,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
         {tidyConfig}
         tidyAutoThreshold={$tidyAutoThreshold}
         activeActionId={currentRequest
-          ? draftOperations.activeActionId(currentRequest.request_id)
+          ? $draftOperations.get(currentRequest.request_id)?.actionId ?? null
           : null}
         savedRevision={$draftSession.savedRevision}
         savePhase={$draftSession.phase}
@@ -1246,7 +1094,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
   <OnboardingWizard
     {capabilities}
     transport={applicationTransport}
-    bind:openWizard={$onboarding.open}
+    openWizard={$onboarding.open}
     onClose={onboarding.close}
     onStartSession={onboarding.startSession}
   />

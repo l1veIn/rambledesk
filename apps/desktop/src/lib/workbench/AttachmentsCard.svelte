@@ -83,6 +83,13 @@
 </section>
 
 <style>
+  @media (pointer: coarse) {
+    section :global(button) {
+      min-width: 2.75rem;
+      min-height: 2.75rem;
+    }
+  }
+
   /* The stacked mobile command rail scrolls as a page, so this card keeps a usable floor. */
   @media (max-width: 1180px) {
     section {

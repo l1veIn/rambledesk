@@ -10,6 +10,9 @@ use std::{
     sync::Arc,
 };
 
+#[path = "managed_preview/quality.rs"]
+mod quality;
+
 struct Assets(PathBuf);
 struct PreviewCatalog;
 
@@ -107,7 +110,13 @@ async fn run_preview() -> anyhow::Result<()> {
         .parent()
         .unwrap()
         .to_path_buf();
-    let assets = Assets(root.join("apps/desktop/dist").canonicalize()?);
+    let dist = std::env::var_os("RAMBLEDESK_MANAGED_PREVIEW_DIST")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| root.join("apps/desktop/dist"))
+        .canonicalize()?;
+    let assets = Assets(dist.clone());
+    let quality_mode = std::env::var("RAMBLEDESK_MANAGED_PREVIEW_QUALITY").as_deref() == Ok("1");
+    let mut quality_seed = None;
     let directory = tempfile::tempdir()?;
     let store = Arc::new(SqliteFeedbackStore::connect(&directory.path().join("db.sqlite")).await?);
     let hub = Arc::new(ApplicationChangeHub::new());
@@ -160,6 +169,10 @@ async fn run_preview() -> anyhow::Result<()> {
             snapshot.runtime.last_error
         );
         if title == "Website project" {
+            if quality_mode {
+                quality_seed =
+                    Some(quality::seed(store.as_ref(), &snapshot.session.session_id, title).await?);
+            }
             feedback.request_managed_feedback(&ManagedFeedbackScope {
                 session_id: snapshot.session.session_id.clone(),
                 host_id: snapshot.session.host_id.clone(),
@@ -209,7 +222,30 @@ async fn run_preview() -> anyhow::Result<()> {
     )
     .await?;
     println!("PREVIEW {}", web.origin());
-    println!("PREVIEW_TOKEN {}", token.secret());
+    if let Some(seed) = quality_seed {
+        let token_file = directory.path().join("quality-token");
+        std::fs::write(&token_file, token.secret())?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&token_file, std::fs::Permissions::from_mode(0o600))?;
+        }
+        let manifest_file = directory.path().join("quality-history.json");
+        let manifest = serde_json::json!({
+            "seed": seed,
+            "origin": web.origin(),
+            "dist": dist,
+            "database": directory.path().join("db.sqlite"),
+            "tokenFile": token_file,
+            "stopFile": directory.path().join("stop-preview"),
+            "cleanup": "Creating stopFile or Ctrl+C shuts down this fixture and deletes its temporary directory; copy this manifest and evidence before stopping",
+        });
+        std::fs::write(&manifest_file, serde_json::to_vec_pretty(&manifest)?)?;
+        println!("PREVIEW_QUALITY_MANIFEST {}", manifest_file.display());
+        println!("PREVIEW_TOKEN_FILE {}", token_file.display());
+    } else {
+        println!("PREVIEW_TOKEN {}", token.secret());
+    }
     println!("PREVIEW_DIRECTORY {}", directory.path().display());
     // Creating this marker also permits graceful shutdown from a non-interactive shell.
     let stop_marker = directory.path().join("stop-preview");
@@ -229,7 +265,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn preview_agent_exposes_configuration_activity_and_usage_without_echoing_host_context() {
+    async fn preview_agent_exposes_configuration_activity_usage_and_quality_history() {
         let directory = tempfile::tempdir().unwrap();
         let store = Arc::new(
             SqliteFeedbackStore::connect(&directory.path().join("db.sqlite"))
@@ -321,7 +357,8 @@ mod tests {
         assert_eq!(
             result.runtime.context_usage,
             Some(SessionContextUsage {
-                used: 4608,
+                // The display fixture does not hand off feedback; the driver sends one reminder.
+                used: 5120,
                 size: 128000
             })
         );
@@ -348,6 +385,63 @@ mod tests {
         assert!(messages.contains("检查预览页面"));
         assert!(!messages.contains("rambledesk_session_context"));
         assert!(!messages.contains("RAMBLEDESK_COMMAND"));
+        let seed = quality::seed(store.as_ref(), &session_id, "Quality history test")
+            .await
+            .unwrap();
+        assert_eq!(seed.seeded_activities, 300);
+        assert_eq!(seed.last_sequence - seed.first_sequence + 1, 300);
+        let recent = app
+            .get_session(ManagedSessionInput {
+                session_id: session_id.clone(),
+            })
+            .await
+            .unwrap();
+        assert_eq!(recent.activities.len(), 100);
+        assert_eq!(
+            recent.activities.last().unwrap().sequence,
+            seed.last_sequence
+        );
+        assert_eq!(recent.runtime.activity, SessionActivityState::Idle);
+        let mut all = recent.activities;
+        loop {
+            let page = app
+                .list_activity_history(ListManagedSessionActivityInput {
+                    session_id: session_id.clone(),
+                    before_sequence: all.first().unwrap().sequence,
+                    limit: Some(1_000),
+                    turn_limit: Some(20),
+                })
+                .await
+                .unwrap();
+            assert!(!page.activities.is_empty());
+            assert!(page.activities.last().unwrap().sequence < all.first().unwrap().sequence);
+            all.splice(0..0, page.activities);
+            if !page.has_more {
+                break;
+            }
+        }
+        let seeded = all
+            .iter()
+            .filter(|row| row.id.starts_with("quality-"))
+            .collect::<Vec<_>>();
+        assert_eq!(seeded.len(), 300);
+        assert_eq!(
+            seeded
+                .iter()
+                .filter(|row| row.kind == SessionActivityKind::ToolCall)
+                .count(),
+            60
+        );
+        assert_eq!(
+            seeded
+                .iter()
+                .filter(|row| row.kind == SessionActivityKind::UserMessage)
+                .count(),
+            60
+        );
+        assert_eq!(seeded.first().unwrap().sequence, seed.first_sequence);
+        assert_eq!(seeded.last().unwrap().sequence, seed.last_sequence);
+        assert_eq!(all.len(), seed.stored_activities);
         app.shutdown().await.unwrap();
         local.shutdown().await.unwrap();
         store.close().await;

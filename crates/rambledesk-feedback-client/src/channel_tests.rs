@@ -91,10 +91,11 @@ async fn stopped_channel_cannot_affect_a_sibling_or_replacement() {
     drop(first);
     let replacement = FeedbackChannel::start(endpoint).unwrap();
     assert_ne!(replacement.address(), old_address);
-    assert!(
+    assert_eq!(
         call(&old_address, "skip", &json!({"reason":"user_opt_out"}))
             .await
-            .is_err()
+            .unwrap_err(),
+        ClientError::RevokedCapability
     );
     assert!(!replacement.receipt().handed_off);
     assert!(
@@ -108,6 +109,23 @@ async fn stopped_channel_cannot_affect_a_sibling_or_replacement() {
     second.close().await;
     replacement.close().await;
     server.abort();
+}
+
+#[test]
+fn denied_ipc_is_actionable_without_changing_the_closed_channel_contract() {
+    let error = connection_error(std::io::ErrorKind::PermissionDenied.into());
+    let result = error.json(Some("original-request"));
+    assert_eq!(result["code"], "ipc_access_denied");
+    assert_eq!(result["request_id"], "original-request");
+    assert_eq!(result["retryable"], false);
+    assert_eq!(
+        connection_error(std::io::ErrorKind::NotFound.into()),
+        ClientError::RevokedCapability
+    );
+    assert_eq!(
+        connection_error(std::io::ErrorKind::ConnectionRefused.into()),
+        ClientError::RevokedCapability
+    );
 }
 
 #[tokio::test]
@@ -178,4 +196,54 @@ async fn oversized_and_truncated_frames_are_rejected_before_parsing() {
         read_frame(&mut reader, MAX_INPUT_BYTES).await.unwrap_err(),
         ClientError::InvalidResponse
     );
+}
+
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn macos_sandbox_child_reports_ipc_access_denied() {
+    let Ok(address) = std::env::var("RAMBLEDESK_TEST_SANDBOX_CHANNEL") else {
+        return;
+    };
+    // Prove the kernel denied this live socket, rather than assuming every
+    // failed connection means the owning Agent instance was stopped.
+    let error = std::os::unix::net::UnixStream::connect(&address).unwrap_err();
+    assert_eq!(error.raw_os_error(), Some(1)); // EPERM from macOS Seatbelt
+    let error = call(&address, "recover", &json!({})).await.unwrap_err();
+    assert_eq!(error.json(None)["code"], "ipc_access_denied");
+}
+
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn macos_sandbox_denial_does_not_claim_a_live_capability_was_revoked() {
+    let (endpoint, server) = server().await;
+    let channel = FeedbackChannel::start(endpoint).unwrap();
+    let input = json!({"reason":"user_opt_out"});
+    assert!(call(channel.address(), "skip", &input).await.unwrap().0);
+    channel.begin_turn();
+
+    let mut command = tokio::process::Command::new("/usr/bin/sandbox-exec");
+    command
+        .args(["-p", "(version 1)(allow default)(deny network*)"])
+        .arg(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "channel::tests::macos_sandbox_child_reports_ipc_access_denied",
+            "--nocapture",
+        ])
+        .env("RAMBLEDESK_TEST_SANDBOX_CHANNEL", channel.address())
+        .kill_on_drop(true);
+    let output = tokio::time::timeout(Duration::from_secs(10), command.output())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "sandbox child failed: {}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!channel.receipt().attempted);
+    assert!(call(channel.address(), "skip", &input).await.unwrap().0);
+    channel.close().await;
+    server.abort();
 }

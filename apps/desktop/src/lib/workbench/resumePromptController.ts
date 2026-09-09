@@ -10,7 +10,7 @@ import type { HostProfile } from '../domain/hostProfile'
 import type { ResumePrompt } from '../domain/resumePrompt'
 import type { FeedbackRequestSummary, FeedbackWorkspaceView } from '../feedback'
 import type { NotificationState } from '../notifications'
-import { buildResumePrompt } from './resumePrompt'
+import { buildResumePrompt, resumePromptPresentation } from './resumePrompt'
 
 export const RESUME_PROMPT_STREAM = defineApplicationStream<ResumePrompt>(
   'rambledesk://resume-prompt',
@@ -87,13 +87,7 @@ export function createResumePromptController(context: ResumePromptControllerCont
         context.notifications.getState() === 'enabled'
       ) {
         void context.notifications
-          .send({
-            title: prompt.title,
-            body: context.tr(
-              'Return to {host} and use the resume prompt to continue the host session.',
-              { host: prompt.host_label },
-            ),
-          })
+          .send(resumePromptPresentation(prompt, context.tr))
           .catch(() => {})
       }
       // The alert sound is reserved for a new request arriving, not for the

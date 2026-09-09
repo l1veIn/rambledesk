@@ -49,26 +49,18 @@ export function createAttachmentSession() {
     patch({ previews })
   }
 
-  function releasePreviews() {
-    patch({ previews: {} })
-  }
-
   function setDragActive(dragActive: boolean) {
     patch({ dragActive })
   }
 
   return {
     subscribe: store.subscribe,
-    /** Svelte `bind:` targets a store property, so the session keeps the store contract. */
-    set: store.set,
     setBusy,
     setCaptureBusy,
     setMessage,
     setPreviews,
-    releasePreviews,
     setDragActive,
     busy: () => get(store).busy,
     captureBusy: () => get(store).captureBusy,
-    previews: () => get(store).previews,
   }
 }

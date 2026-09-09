@@ -1,4 +1,5 @@
 import { tick } from 'svelte'
+import { get, writable } from 'svelte/store'
 
 import { readApplicationSnapshot } from '../application/readApplicationSnapshot'
 import type { ApplicationTransport } from '../application/applicationTransport'
@@ -36,16 +37,16 @@ export type DraftOperationsContext = {
  * operation, and the action-group selection attached to the open request.
  */
 export function createDraftOperationsController(context: DraftOperationsContext) {
-  let activeActionByRequest = new Map<string, NonNullable<ActiveAction>>()
+  const activeActionByRequest = writable<ReadonlyMap<string, NonNullable<ActiveAction>>>(new Map())
   let documentQueue: Promise<void> = Promise.resolve()
 
   function activeActionFor(requestId: string): ActiveAction {
-    return activeActionByRequest.get(requestId) ?? null
+    return get(activeActionByRequest).get(requestId) ?? null
   }
 
   function activeActionId(requestId: string | null): string | null {
     if (!requestId) return null
-    return activeActionByRequest.get(requestId)?.actionId ?? null
+    return get(activeActionByRequest).get(requestId)?.actionId ?? null
   }
 
   function enqueueDocumentTask<T>(task: () => Promise<T>): Promise<T> {
@@ -140,19 +141,22 @@ export function createDraftOperationsController(context: DraftOperationsContext)
       request?.status === 'completed' ||
       request?.status === 'cancelled'
     ) return
-    if (activeActionByRequest.get(requestId)?.actionId === actionId) {
-      activeActionByRequest.delete(requestId)
-      activeActionByRequest = new Map(activeActionByRequest)
+    if (get(activeActionByRequest).get(requestId)?.actionId === actionId) {
+      activeActionByRequest.update((current) => {
+        const next = new Map(current)
+        next.delete(requestId)
+        return next
+      })
       void routeDraftOperation(requestId, { kind: 'clearActionGroup', actionId }).catch(() => {})
       return
     }
     const action = { actionId, actionIndex, title }
-    activeActionByRequest.set(requestId, action)
-    activeActionByRequest = new Map(activeActionByRequest)
+    activeActionByRequest.update((current) => new Map(current).set(requestId, action))
     void routeDraftOperation(requestId, { kind: 'startActionGroup', action }).catch(() => {})
   }
 
   return {
+    subscribe: activeActionByRequest.subscribe,
     activeActionFor,
     activeActionId,
     enqueueDocumentTask,

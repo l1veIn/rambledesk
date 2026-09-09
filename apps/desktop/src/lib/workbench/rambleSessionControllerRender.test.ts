@@ -55,8 +55,6 @@ function controller(extra: Record<string, unknown> = {}) {
     props: {
       capabilities: capabilities(),
       workspace: null,
-      voicePhase: 'idle',
-      ramblePhase: 'idle',
       ...extra,
     },
   }).body
@@ -68,13 +66,13 @@ beforeEach(() => {
 
 describe('Ramble session controller rendering', () => {
   it('renders the native overlay host when the Ramble console is unavailable', () => {
-    const html = controller({ voicePhase: 'listening', voicePartial: 'hello' })
+    const html = controller()
     expect(html).toContain('speech-capsule-host')
     expect(html).toContain('--speech-overlay-opacity')
   })
 
   it('skips the overlay host when the native console is available', () => {
-    const html = controller({ capabilities: capabilities(true), voicePhase: 'listening' })
+    const html = controller({ capabilities: capabilities(true) })
     expect(html).not.toContain('speech-capsule-host')
   })
 

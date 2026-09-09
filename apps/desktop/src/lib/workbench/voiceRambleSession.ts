@@ -59,13 +59,20 @@ const initial: VoiceRambleState = {
   message: '',
 }
 
+export function createVoiceRambleState() {
+  return writable<VoiceRambleState>(initial)
+}
+
 /**
  * The microphone session: starting/stopping speech recognition and turning its
  * events into the live voice state the workbench and the Ramble console read.
  */
-export function createVoiceRambleSession(context: VoiceRambleContext) {
-  const store = writable<VoiceRambleState>(initial)
+export function createVoiceRambleSession(
+  context: VoiceRambleContext,
+  store = createVoiceRambleState(),
+) {
   let speechSession: SpeechRecognitionSession | null = null
+  let generation = 0
 
   function patch(next: Partial<VoiceRambleState>) {
     store.update((current) => ({ ...current, ...next }))
@@ -84,6 +91,7 @@ export function createVoiceRambleSession(context: VoiceRambleContext) {
   const canStop = () => active() || (phase() === 'error' && get(store).sessionId.length > 0)
 
   function reset() {
+    generation += 1
     speechSession = null
     store.set(initial)
     context.resetTargets()
@@ -91,6 +99,7 @@ export function createVoiceRambleSession(context: VoiceRambleContext) {
 
   async function start(requestId: string): Promise<boolean> {
     if (!requestId || active() || speechSession) return false
+    const startedGeneration = ++generation
     patch({
       phase: 'starting',
       requestId,
@@ -113,8 +122,11 @@ export function createVoiceRambleSession(context: VoiceRambleContext) {
           hotwords: context.getHotwords(),
         },
         {
-          onEvent: handleEvent,
+          onEvent: (event) => {
+            if (generation === startedGeneration) handleEvent(event)
+          },
           onError: (cause) => {
+            if (generation !== startedGeneration) return
             patch({
               phase: 'error',
               message: context.tr('Cannot listen for speech events: {error}', {
@@ -127,8 +139,14 @@ export function createVoiceRambleSession(context: VoiceRambleContext) {
       speechSession = session
       patch({ sessionId: session.id })
       await session.ready
+      if (generation !== startedGeneration) {
+        await session.cancel().catch(() => {})
+        return false
+      }
+      if (phase() === 'stopping') return false
       if (!voiceStartStillLive(phase())) {
         await session.cancel().catch(() => {})
+        if (generation !== startedGeneration) return false
         if (speechSession === session) speechSession = null
         patch({ sessionId: '' })
         return false
@@ -140,6 +158,8 @@ export function createVoiceRambleSession(context: VoiceRambleContext) {
         })
       }
     } catch (cause) {
+      if (generation !== startedGeneration) return false
+      if (phase() === 'stopping' || phase() === 'idle') return false
       speechSession = null
       const message = context.messageFrom(cause)
       patch({
@@ -160,32 +180,42 @@ export function createVoiceRambleSession(context: VoiceRambleContext) {
       reset()
       return true
     }
+    const stoppingGeneration = generation
     patch({
       phase: 'stopping',
       message: context.tr('Finishing the final transcription segment…'),
     })
     try {
       await session.stop()
+      if (generation !== stoppingGeneration) return false
       for (let attempt = 0; attempt < 5 && phase() === 'stopping'; attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, 20))
       }
       await tick()
+      if (generation !== stoppingGeneration) return false
       await context.waitForDrafts()
+      if (generation !== stoppingGeneration) return false
       if (phase() === 'stopping') {
         patch({ phase: 'idle', message: context.tr('Recording stopped') })
       }
     } catch (cause) {
-      patch({ phase: 'error', message: context.messageFrom(cause) })
+      if (generation === stoppingGeneration) {
+        patch({ phase: 'error', message: context.messageFrom(cause) })
+      }
       return false
     } finally {
-      patch({ level: 0 })
+      if (generation === stoppingGeneration) patch({ level: 0 })
     }
     return phase() !== 'error'
   }
 
   async function cancel() {
-    await speechSession?.cancel().catch(() => {})
+    const session = speechSession
+    const cancellingGeneration = ++generation
     speechSession = null
+    patch({ phase: 'stopping', sessionId: '', level: 0, partial: '' })
+    await session?.cancel().catch(() => {})
+    if (generation === cancellingGeneration) reset()
   }
 
   function handleEvent(event: SpeechRecognitionEvent) {
@@ -195,7 +225,7 @@ export function createVoiceRambleSession(context: VoiceRambleContext) {
     switch (event.type) {
       case 'started':
         patch({
-          phase: 'listening',
+          phase: phase() === 'stopping' ? 'stopping' : 'listening',
           device: event.inputDevice,
           message: context.tr('Recording · {device}', { device: event.inputDevice }),
         })

@@ -23,6 +23,66 @@ describe('navigationController scope selection', () => {
     vi.useRealTimers()
   })
 
+  it('keeps a queried scope private until the workspace accepts it', async () => {
+    mocks.applicationCall.mockImplementation(async (_command, input) => ({
+      requests: [feedbackRequest(input.host_session_id)], next_cursor: 'next',
+    }))
+    const controller = createController()
+    await controller.selectScope('codex', 'alpha')
+    const candidate = await controller.prepareScope('codex', 'beta')
+    expect(candidate?.requests[0].request_id).toBe('beta')
+    expect(get(controller).selectedHostSessionId).toBe('alpha')
+    expect(get(controller).requests[0].request_id).toBe('alpha')
+    expect(controller.commitScope(candidate!)).toBe(true)
+    expect(get(controller)).toMatchObject({ selectedHostSessionId: 'beta', nextRequestCursor: 'next' })
+    expect(controller.commitScope(candidate!)).toBe(false)
+  })
+
+  it('rejects a prepared scope if the displayed search changed during workspace loading', async () => {
+    mocks.applicationCall.mockImplementation(async (_command, input) => ({
+      requests: [feedbackRequest(input.host_session_id ?? 'all')], next_cursor: null,
+    }))
+    const controller = createController()
+    await controller.selectScope('codex', 'alpha')
+    const candidate = await controller.prepareScope('codex', 'beta')
+    await controller.setRequestSearch('new query')
+    expect(controller.canCommitScope(candidate!)).toBe(false)
+    expect(controller.commitScope(candidate!)).toBe(false)
+    expect(get(controller).selectedHostSessionId).toBe('alpha')
+    expect(get(controller).requestSearch).toBe('new query')
+  })
+
+  it('does not apply a scope selection whose caller became stale while saving', async () => {
+    let finishSave!: (saved: boolean) => void
+    let isCurrent = true
+    const controller = createController({
+      isDirty: () => true,
+      saveDraftNow: () => new Promise(resolve => { finishSave = resolve }),
+    })
+    const selection = controller.selectScope('codex', 'beta', () => isCurrent)
+    isCurrent = false
+    finishSave(true)
+    expect((await selection).selected).toBe(false)
+    expect(get(controller).selectedHostSessionId).toBeNull()
+    expect(mocks.applicationCall).not.toHaveBeenCalled()
+  })
+
+  it('discards a prior-scope poll after a prepared scope commits', async () => {
+    let finishPoll!: (page: ListFeedbackRequestsOutput) => void
+    mocks.applicationCall.mockResolvedValue({ requests: [feedbackRequest('alpha')], next_cursor: null })
+    const controller = createController()
+    await controller.selectScope('codex', 'alpha')
+    mocks.applicationCall.mockImplementationOnce(() => new Promise(resolve => { finishPoll = resolve }))
+    const poll = controller.refreshRequests()
+    mocks.applicationCall.mockResolvedValue({ requests: [feedbackRequest('beta')], next_cursor: null })
+    const candidate = await controller.prepareScope('codex', 'beta')
+    expect(controller.commitScope(candidate!)).toBe(true)
+    finishPoll({ requests: [feedbackRequest('old-alpha')], next_cursor: 'old' })
+    await poll
+    expect(get(controller).selectedHostSessionId).toBe('beta')
+    expect(get(controller).requests[0].request_id).toBe('beta')
+  })
+
   it.each(['external', 'managed'] as const)('returns to the visible host scope after archiving a selected %s session', async (kind) => {
     const selectedSession = hostSession({ pending_count: 0, management: kind === 'external' ? { kind } : {
       kind, protocol: 'acp', agent_config_id: 'config', cwd: '/repo', remote_session_id: 'remote',

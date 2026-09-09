@@ -30,8 +30,14 @@ async function feedback(operation,input) {
   })
 }
 createInterface({input:process.stdin}).on('line',async line=>{
-  const {id,method,params}=JSON.parse(line)
+  const {id,method,params,result}=JSON.parse(line)
   try {
+    if(!method&&id==='permission') {
+      const outcome=result?.outcome?.outcome
+      output(`PERMISSION ${outcome}`)
+      finish(outcome==='selected'?'end_turn':'cancelled')
+      return
+    }
     if(method==='initialize')return reply(id,{protocolVersion:1,agentCapabilities:{loadSession:true,mcpCapabilities:{http:false},sessionCapabilities:{close:{}}}})
     if(method==='session/new'||method==='session/load') {
       if(params.mcpServers.length!==0)throw new Error('Feedback must not inject MCP')
@@ -46,7 +52,11 @@ createInterface({input:process.stdin}).on('line',async line=>{
     promptId=id
     if(!params.prompt[0].text.includes('<rambledesk_session_context>'))throw new Error('Missing built-in workflow')
     const text=params.prompt.slice(1).map(block=>block.text??'').join('\n')
-    if(text.startsWith('request')) {
+    if(text==='permission') {
+      send({id:'permission',method:'session/request_permission',params:{sessionId:'original',
+        toolCall:{toolCallId:'permission-tool',title:'Run fixture command',status:'pending'},
+        options:[{optionId:'allow',name:'Allow once',kind:'allow_once'}]}})
+    } else if(text.startsWith('request')) {
       const requestId=randomUUID()
       await feedback('request',{request_id:requestId,title:'Review fixture',what_happened:'Check this work',actions:[{id:'review',instruction:'Review fixture'}],context_refs:[],allow_finish:true,final_summary:'Done'})
       output(`REQUEST ${requestId}`)

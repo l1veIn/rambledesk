@@ -32,6 +32,7 @@ import {
   initialNavigationState,
   type NavigationState,
 } from './navigation/navigationTypes'
+import type { PreparedNavigationScope } from './navigationScope'
 
 export type { NavigationState } from './navigation/navigationTypes'
 
@@ -65,6 +66,12 @@ export function createNavigationController(context: NavigationControllerContext)
   let pendingRequestRefresh: number | null = null
   let displayedRequestQuery: string | null = null
   let scopeSelectionGeneration = 0
+  // Candidates carry no writable state. Only this controller can accept one,
+  // and only while its query and navigation intent are still current.
+  const preparedScopes = new WeakMap<PreparedNavigationScope, {
+    query: string
+    isCurrent: () => boolean
+  }>()
 
   function patch(next: Partial<NavigationState>) {
     store.update((current) => ({ ...current, ...next }))
@@ -327,45 +334,96 @@ export function createNavigationController(context: NavigationControllerContext)
     }
   }
 
+  async function readScope(
+    hostId: string | null,
+    hostSessionId: string | null,
+    isCurrent: () => boolean,
+  ): Promise<PreparedNavigationScope | null> {
+    if (!isCurrent()) return null
+    const current = get(store)
+    const state = { ...current, selectedHostId: hostId, selectedHostSessionId: hostSessionId }
+    const query = requestQueryKeyFrom(state)
+    try {
+      const result = query === displayedRequestQuery && !current.loadingRequests
+        ? { requests: current.requests, next_cursor: current.nextRequestCursor }
+        : filterRequestPage(
+            await readApplicationSnapshot(context.transport, 'listFeedbackRequests', requestListInputFrom(state)),
+            state.requestFilters.timeRange,
+          )
+      if (!isCurrent()) return null
+      const prepared: PreparedNavigationScope = {
+        scope: { hostId, hostSessionId },
+        requests: result.requests,
+        nextRequestCursor: result.next_cursor,
+      }
+      preparedScopes.set(prepared, { query, isCurrent })
+      return prepared
+    } catch (cause) {
+      if (isCurrent()) context.onPageError(context.messageFrom(cause))
+      return null
+    }
+  }
+
+  function prepareScope(
+    hostId: string | null,
+    hostSessionId: string | null,
+    isCurrent: () => boolean = () => true,
+  ): Promise<PreparedNavigationScope | null> {
+    const generation = ++scopeSelectionGeneration
+    return readScope(hostId, hostSessionId, () => generation === scopeSelectionGeneration && isCurrent())
+  }
+
+  function canCommitScope(prepared: PreparedNavigationScope): boolean {
+    const preparation = preparedScopes.get(prepared)
+    return !!preparation && preparation.isCurrent() && preparation.query === requestQueryKeyFrom({
+      ...get(store),
+      selectedHostId: prepared.scope.hostId,
+      selectedHostSessionId: prepared.scope.hostSessionId,
+    })
+  }
+
+  function commitScope(prepared: PreparedNavigationScope): boolean {
+    if (!canCommitScope(prepared)) return false
+    displayedRequestQuery = preparedScopes.get(prepared)!.query
+    preparedScopes.delete(prepared)
+    // An older poll or pagination response belongs to the previous visible query.
+    requestRefreshGeneration += 1
+    pendingRequestRefresh = null
+    patch({
+      selectedHostId: prepared.scope.hostId,
+      selectedHostSessionId: prepared.scope.hostSessionId,
+      requests: [...prepared.requests],
+      nextRequestCursor: prepared.nextRequestCursor,
+      loadingRequests: false,
+      loadingMoreRequests: false,
+    })
+    return true
+  }
+
   async function selectScope(
     hostId: string | null,
     hostSessionId: string | null,
+    isCurrent: () => boolean = () => true,
   ): Promise<ScopeSelectionResult> {
     const generation = ++scopeSelectionGeneration
+    const current = () => generation === scopeSelectionGeneration && isCurrent()
     const state = get(store)
-    if (state.selectedHostId === hostId && state.selectedHostSessionId === hostSessionId) {
-      return { selected: !state.loadingRequests, requests: state.requests }
+    if (!current()) return { selected: false, requests: state.requests }
+    if (state.selectedHostId === hostId && state.selectedHostSessionId === hostSessionId && !state.loadingRequests) {
+      return { selected: true, requests: state.requests }
     }
     if (context.isDirty() && !(await context.saveDraftNow())) {
-      return { selected: false, requests: state.requests }
-    }
-    if (generation !== scopeSelectionGeneration) {
       return { selected: false, requests: get(store).requests }
     }
-    patch({ selectedHostId: hostId, selectedHostSessionId: hostSessionId })
-    const result = await refreshRequests(false)
-    let current = get(store)
-    if (
-      result === null &&
-      generation === scopeSelectionGeneration &&
-      current.selectedHostId === hostId &&
-      current.selectedHostSessionId === hostSessionId
-    ) {
-      patch({
-        selectedHostId: state.selectedHostId,
-        selectedHostSessionId: state.selectedHostSessionId,
-        requests: state.requests,
-        nextRequestCursor: state.nextRequestCursor,
-      })
-      current = get(store)
+    if (!current()) return { selected: false, requests: get(store).requests }
+    patch({ loadingRequests: true })
+    try {
+      const prepared = await readScope(hostId, hostSessionId, current)
+      const selected = prepared !== null && commitScope(prepared)
+      return { selected, requests: get(store).requests }
+    } finally {
+      if (current()) patch({ loadingRequests: false })
     }
-    const selected =
-      result !== null &&
-      result !== undefined &&
-      generation === scopeSelectionGeneration &&
-      current.selectedHostId === hostId &&
-      current.selectedHostSessionId === hostSessionId
-    return { selected, requests: selected ? result!.requests : current.requests }
   }
 
   async function setRequestSearch(search: string) {
@@ -463,6 +521,9 @@ export function createNavigationController(context: NavigationControllerContext)
     refreshRequests,
     loadMoreRequests,
     selectScope,
+    prepareScope,
+    canCommitScope,
+    commitScope,
     setRequestSearch,
     setRequestFilters,
     renameHostSession,

@@ -9,6 +9,7 @@
   export let message: string
   export let timedOut = false
   export let settingsOpen = false
+  export let onSettingsOpenChange: (open: boolean) => void = (open) => { settingsOpen = open }
   export let onRetry: () => void
   export let onReload: () => void = () => window.location.reload()
 
@@ -35,7 +36,7 @@
           <div class="flex flex-wrap gap-2">
             <Button onclick={onRetry}><RefreshCw class="size-4" />{zh ? '重试加载' : 'Retry loading'}</Button>
             <Button variant="outline" onclick={onReload}><RotateCw class="size-4" />{zh ? '重新加载应用' : 'Reload app'}</Button>
-            <Button variant="outline" onclick={() => settingsOpen = !settingsOpen}>
+            <Button variant="outline" onclick={() => onSettingsOpenChange(!settingsOpen)}>
               <Settings class="size-4" />{zh ? '设置与诊断' : 'Settings and diagnostics'}
             </Button>
           </div>

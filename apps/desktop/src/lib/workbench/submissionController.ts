@@ -1,7 +1,7 @@
 import { get } from 'svelte/store'
 
 import type { ApplicationTransport } from '../application/applicationTransport'
-import type { ApproveFeedbackInput, CancelFeedbackInput } from '../feedback'
+import type { FeedbackPreparation } from '../speech/rambleSessionControllerHandle'
 import type { PublishedFeedbackAction } from '../publishedFeedbackAction'
 import type { DraftSession } from './draftSession'
 import type { WorkspaceSession } from './workspaceSession'
@@ -20,8 +20,9 @@ export type SubmissionControllerContext = {
   tr: (source: string, values?: Record<string, string | number>) => string
   messageFrom: (cause: unknown) => string
   canCancel: () => boolean
-  rambleCanExit: () => boolean
-  exitRamble: () => Promise<void>
+  prepareFeedback: (requestId: string) => Promise<FeedbackPreparation>
+  saveDraftNow: () => Promise<boolean>
+  confirmApproval?: (message: string) => boolean
   refreshNavigation: () => Promise<void>
   setPageError: (message: string) => void
   notifyApproved: () => void
@@ -31,54 +32,91 @@ export type SubmissionControllerContext = {
 export type SubmissionController = ReturnType<typeof createSubmissionController>
 
 export function createSubmissionController(context: SubmissionControllerContext) {
-  async function approveFeedback() {
-    const workspace = get(context.session).workspace
-    if (!workspace || !workspace.request.allow_finish || get(context.session).approving) return
-    if (!window.confirm(context.tr('Approve this final summary and end Pi’s Ramble flow?'))) return
-    if (context.rambleCanExit()) await context.exitRamble()
+  type Intent = 'approve' | 'cancel'
+  let active: { intent: Intent; promise: Promise<void> } | null = null
 
-    context.session.beginApprove()
-    context.setPageError('')
+  function current(requestId: string) {
+    return context.session.requestId() === requestId && !context.session.isTerminal()
+  }
+
+  function reportFor(requestId: string, cause: unknown) {
+    if (context.session.requestId() === requestId) context.setPageError(context.messageFrom(cause))
+  }
+
+  async function finishRequest(intent: Intent, requestId: string) {
+    const state = get(context.session)
+    if (state.request?.request_id !== requestId || state.terminal || state.interactionLocked ||
+      (intent === 'approve' ? !state.request?.allow_finish : !context.canCancel())) return
+    if (intent === 'approve' && !(context.confirmApproval ?? window.confirm.bind(window))(
+      context.tr('Approve this final summary and end Pi’s Ramble flow?'),
+    )) return
+
+    let locked = false
     try {
-      const input: ApproveFeedbackInput = { request_id: workspace.request.request_id }
-      const result = await context.transport.call('approveFeedbackRequest', input)
-      context.session.applyMutationResult(result)
-      context.notifyApproved()
-      await context.refreshNavigation()
+      const preparation = await context.prepareFeedback(requestId)
+      if (!current(requestId) || get(context.session).interactionLocked) return
+      if (preparation.kind === 'failed') {
+        context.setPageError(preparation.message)
+        return
+      }
+      if (preparation.kind === 'pending-speech') {
+        context.setPageError(context.tr('Review the pending speech in the capsule before ending this request.'))
+        return
+      }
+      if (intent === 'approve' ? !context.session.request()?.allow_finish : !context.canCancel()) return
+      // Final speech must enter the editable draft before we freeze it for saving.
+      if (intent === 'approve') context.session.beginApprove()
+      else context.session.beginCancel()
+      locked = true
+      context.setPageError('')
+      if (!(await context.saveDraftNow())) {
+        reportFor(requestId, get(context.draftSession).message || context.tr('The current draft could not be saved.'))
+        return
+      }
+      if (!current(requestId)) return
+      const result = intent === 'approve'
+        ? await context.transport.call('approveFeedbackRequest', { request_id: requestId })
+        : await context.transport.call('cancelFeedbackRequest', {
+          request_id: requestId, reason: 'Human cancelled from RambleDesk',
+        })
+      const visible = context.session.applyMutationResult(result)
+      if (visible) {
+        if (intent === 'approve') context.notifyApproved()
+        else context.notifyCancelled()
+      }
+      // The terminal response is committed independently of this follow-up read.
+      try {
+        await context.refreshNavigation()
+      } catch (cause) {
+        reportFor(requestId, context.tr('The request was updated, but navigation could not be refreshed: {error}', {
+          error: context.messageFrom(cause),
+        }))
+      }
     } catch (cause) {
-      context.setPageError(context.messageFrom(cause))
+      reportFor(requestId, cause)
     } finally {
-      context.session.endApprove()
+      if (locked && context.session.requestId() === requestId) {
+        if (intent === 'approve') context.session.endApprove()
+        else context.session.endCancel()
+      }
     }
   }
 
-  async function cancelFeedback() {
-    const workspace = get(context.session).workspace
-    if (!workspace || !context.canCancel()) return
-    if (context.rambleCanExit()) await context.exitRamble()
-
-    context.session.beginCancel()
-    context.setPageError('')
-    try {
-      const input: CancelFeedbackInput = {
-        request_id: workspace.request.request_id,
-        reason: 'Human cancelled from RambleDesk',
-      }
-      const result = await context.transport.call('cancelFeedbackRequest', input)
-      context.session.applyMutationResult(result)
-      context.draftSession.markSaved()
-      context.notifyCancelled()
-      await context.refreshNavigation()
-    } catch (cause) {
-      context.setPageError(context.messageFrom(cause))
-    } finally {
-      context.session.endCancel()
-    }
+  function requestFinish(intent: Intent): Promise<void> {
+    if (active) return active.intent === intent ? active.promise : Promise.resolve()
+    const requestId = context.session.requestId()
+    if (!requestId) return Promise.resolve()
+    // Reserve before confirmation, input preparation or a store subscriber can re-enter.
+    const promise = Promise.resolve().then(() => finishRequest(intent, requestId)).finally(() => {
+      active = null
+    })
+    active = { intent, promise }
+    return promise
   }
 
   async function openFeedbackPackage() {
     const workspace = get(context.session).workspace
-    if (!context.session.feedbackResult() || !workspace) return
+    if (!get(context.session).feedbackResult || !workspace) return
     try {
       await context.publishedFeedbackAction.run(workspace.request.request_id)
     } catch (cause) {
@@ -91,5 +129,9 @@ export function createSubmissionController(context: SubmissionControllerContext)
     }
   }
 
-  return { approveFeedback, cancelFeedback, openFeedbackPackage }
+  return {
+    approveFeedback: () => requestFinish('approve'),
+    cancelFeedback: () => requestFinish('cancel'),
+    openFeedbackPackage,
+  }
 }

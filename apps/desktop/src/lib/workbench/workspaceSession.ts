@@ -1,4 +1,4 @@
-import { get, writable } from 'svelte/store'
+import { derived, get, writable } from 'svelte/store'
 
 import type {
   FeedbackRequestSummary,
@@ -14,23 +14,42 @@ import type { SubmitStage } from '../domain/sessionPhases'
  * Every controller that reads or writes the current request goes through this store,
  * so `App.svelte` no longer has to thread getters and setters between them.
  */
-export type WorkspaceSessionState = Readonly<{
+type WorkspaceSessionFacts = Readonly<{
   workspace: FeedbackWorkspaceView | null
   completedResult: FeedbackRequestView | null
   publishedFeedback: PublishedFeedbackView | null
   loadingWorkspace: boolean
-  submitting: boolean
   submitStage: SubmitStage
   approving: boolean
   cancelling: boolean
 }>
 
-const initial: WorkspaceSessionState = {
+export type WorkspaceSessionState = WorkspaceSessionFacts & Readonly<{
+  submitting: boolean
+  request: FeedbackRequestSummary | null
+  terminal: boolean
+  feedbackResult: FeedbackRequestView['feedback']
+  interactionLocked: boolean
+}>
+
+function project(facts: WorkspaceSessionFacts): WorkspaceSessionState {
+  const request = facts.workspace?.request ?? null
+  const submitting = facts.submitStage !== 'idle'
+  return {
+    ...facts,
+    submitting,
+    request,
+    terminal: request?.status === 'completed' || request?.status === 'cancelled',
+    feedbackResult: facts.completedResult?.feedback ?? facts.workspace?.feedback ?? null,
+    interactionLocked: submitting || facts.cancelling || facts.approving,
+  }
+}
+
+const initial: WorkspaceSessionFacts = {
   workspace: null,
   completedResult: null,
   publishedFeedback: null,
   loadingWorkspace: false,
-  submitting: false,
   submitStage: 'idle',
   approving: false,
   cancelling: false,
@@ -39,14 +58,17 @@ const initial: WorkspaceSessionState = {
 export type WorkspaceSession = ReturnType<typeof createWorkspaceSession>
 
 export function createWorkspaceSession() {
-  const store = writable<WorkspaceSessionState>(initial)
+  const store = writable<WorkspaceSessionFacts>(initial)
+  // UI and imperative callers observe the same projection. A normal getter that
+  // calls get(store) cannot establish a Svelte component's reactive dependency.
+  const state = derived(store, project)
 
-  function patch(next: Partial<WorkspaceSessionState>) {
+  function patch(next: Partial<WorkspaceSessionFacts>) {
     store.update((current) => ({ ...current, ...next }))
   }
 
   function request(): FeedbackRequestSummary | null {
-    return get(store).workspace?.request ?? null
+    return get(state).request
   }
 
   function requestId(): string | null {
@@ -54,20 +76,7 @@ export function createWorkspaceSession() {
   }
 
   function isTerminal(): boolean {
-    const status = request()?.status
-    return status === 'completed' || status === 'cancelled'
-  }
-
-  /** The submitted or in-progress feedback result shown in the workbench. */
-  function feedbackResult() {
-    const state = get(store)
-    return state.completedResult?.feedback ?? state.workspace?.feedback ?? null
-  }
-
-  /** True while any server mutation against the open request is in flight. */
-  function interactionLocked(): boolean {
-    const state = get(store)
-    return state.submitting || state.cancelling || state.approving
+    return get(state).terminal
   }
 
   function open(
@@ -111,6 +120,8 @@ export function createWorkspaceSession() {
           ...state.workspace.request,
           status: result.status,
           resolution: result.resolution,
+          allow_finish: result.allow_finish,
+          final_summary: result.final_summary,
           updated_at: result.updated_at,
         },
       },
@@ -126,11 +137,8 @@ export function createWorkspaceSession() {
     patch({ publishedFeedback: feedback })
   }
 
-  function setSubmitting(submitting: boolean) {
-    patch({ submitting })
-  }
-
-  function setSubmitStage(submitStage: SubmitStage) {
+  /** Publish the operation and its UI stage together, including preparation. */
+  function setSubmissionStage(submitStage: SubmitStage) {
     patch({ submitStage })
   }
 
@@ -151,12 +159,10 @@ export function createWorkspaceSession() {
   }
 
   return {
-    subscribe: store.subscribe,
+    subscribe: state.subscribe,
     request,
     requestId,
     isTerminal,
-    feedbackResult,
-    interactionLocked,
     open,
     replace,
     setDraft,
@@ -165,8 +171,7 @@ export function createWorkspaceSession() {
     applyMutationResult,
     setCompleted,
     setPublished,
-    setSubmitting,
-    setSubmitStage,
+    setSubmissionStage,
     beginApprove,
     endApprove,
     beginCancel,

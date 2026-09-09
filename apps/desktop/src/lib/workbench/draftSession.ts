@@ -1,4 +1,4 @@
-import { get, writable } from 'svelte/store'
+import { derived, get, writable } from 'svelte/store'
 
 import type { DraftView } from '../feedback'
 import {
@@ -17,7 +17,7 @@ import type { SavePhase } from '../domain/sessionPhases'
  * The workbench, the draft controller and the submission flow all read the same slice,
  * so this module — not the composition root — owns it.
  */
-export type DraftSessionState = Readonly<{
+type DraftSessionFacts = Readonly<{
   body: string
   documentJson: string
   savedBody: string
@@ -29,7 +29,9 @@ export type DraftSessionState = Readonly<{
   editorEpoch: number
 }>
 
-const initial: DraftSessionState = {
+export type DraftSessionState = DraftSessionFacts & Readonly<{ dirty: boolean }>
+
+const initial: DraftSessionFacts = {
   body: '',
   documentJson: '',
   savedBody: '',
@@ -44,9 +46,13 @@ const initial: DraftSessionState = {
 export type DraftSession = ReturnType<typeof createDraftSession>
 
 export function createDraftSession() {
-  const store = writable<DraftSessionState>(initial)
+  const store = writable<DraftSessionFacts>(initial)
+  const state = derived(store, (facts): DraftSessionState => ({
+    ...facts,
+    dirty: facts.documentJson !== facts.savedDocumentJson,
+  }))
 
-  function patch(next: Partial<DraftSessionState>) {
+  function patch(next: Partial<DraftSessionFacts>) {
     store.update((current) => ({ ...current, ...next }))
   }
 
@@ -61,8 +67,7 @@ export function createDraftSession() {
   }
 
   function isDirty(): boolean {
-    const state = get(store)
-    return state.documentJson !== state.savedDocumentJson
+    return get(state).dirty
   }
 
   /** Loads a server draft as both the current and the last accepted document. */
@@ -145,7 +150,7 @@ export function createDraftSession() {
   }
 
   return {
-    subscribe: store.subscribe,
+    subscribe: state.subscribe,
     snapshot,
     savedSnapshot,
     isDirty,

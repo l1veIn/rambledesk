@@ -17,19 +17,13 @@ import {
   inboxViewDescriptor,
   sessionViewDescriptor,
   workspaceViewKey,
-  type AgentSessionViewDescriptor,
 } from '../workspace/viewDescriptors'
-import type { DraftSession } from './draftSession'
 import type { createNavigationController } from './navigationController'
 
 type NavigationController = ReturnType<typeof createNavigationController>
-import { currentNavigationScope, restoreNavigationScope } from './navigationScope'
 import type { WorkspaceSession } from './workspaceSession'
 import type { WorkspaceShellSession } from './workspaceShellSession'
-import type {
-  WorkspaceTransitionOutcome,
-  WorkspaceTransitionTarget,
-} from '../workspace/workspaceTransition'
+import type { WorkspaceNavigationController } from './workspaceNavigationController'
 
 /**
  * Managed Agent sessions: opening a session or draft, promoting a draft into a
@@ -43,34 +37,18 @@ export type ManagedSessionActionsState = Readonly<{
   deletingSessions: ReadonlySet<string>
 }>
 
-type Transition = Readonly<{
-  activate: (
-    target: WorkspaceTransitionTarget,
-    intent?: number,
-  ) => Promise<WorkspaceTransitionOutcome>
-  invalidate: () => number
-  currentIntent: () => number
-  isCurrent: (intent: number) => boolean
-}>
-
 export type ManagedSessionActionsContext = {
   transport: ApplicationTransport
   navigation: NavigationController
   workspaceShell: WorkspaceShellSession
   workspaceSession: WorkspaceSession
-  draftSession: DraftSession
-  workspaceTransition: Transition
+  workspaceNavigation: () => Pick<WorkspaceNavigationController, 'activateView' | 'invalidate' | 'currentIntent' | 'isCurrent' | 'clearWorkspace'>
   tr: (source: string, values?: Record<string, string | number>) => string
   messageFrom: (cause: unknown) => string
   setPageError: (message: string) => void
-  clearWorkspace: () => void
-  setCookingPreview: (preview: null) => void
   isTransitionLocked: () => boolean
   /** Whether this client can host a managed Agent session at all. */
   canOpenManagedSession: () => boolean
-  selectAgentNavigationScope: (
-    view: AgentSessionViewDescriptor,
-  ) => Promise<Readonly<{ selected: boolean }>>
   exitRamble: () => Promise<void>
   rambleCanExit: () => boolean
   openArchivedSessions: (initial: ReturnType<typeof sessionViewDescriptor>) => Promise<void>
@@ -146,37 +124,19 @@ export function createManagedSessionActions(context: ManagedSessionActionsContex
       view,
     })
     draftControllers.delete(draftId)
-    const intent = context.workspaceTransition.currentIntent()
+    const intent = context.workspaceNavigation().currentIntent()
     await context.navigation.refreshNavigation(true)
     if (
-      context.workspaceTransition.isCurrent(intent) &&
+      context.workspaceNavigation().isCurrent(intent) &&
       get(context.workspaceShell).shell.activeViewKey === workspaceViewKey(view)
     ) {
-      await context.selectAgentNavigationScope(view)
+      await context.workspaceNavigation().activateView(view, { expectedIntent: intent })
     }
   }
 
   async function openAgentSession(sessionId: string) {
     if (context.isTransitionLocked()) return
-    const view = agentSessionViewDescriptor(sessionId)
-    const priorScope = currentNavigationScope(context.navigation)
-    const intent = context.workspaceTransition.invalidate()
-    const selection = await context.selectAgentNavigationScope(view)
-    if (!context.workspaceTransition.isCurrent(intent) || !selection.selected) return
-    if (context.isTransitionLocked()) {
-      await restoreNavigationScope(context.navigation, priorScope, 'blocked')
-      return
-    }
-    const outcome = await context.workspaceTransition.activate(
-      {
-        view,
-        requestId: null,
-        shellAction: { type: 'open' },
-        pendingViewKey: workspaceViewKey(view),
-      },
-      intent,
-    )
-    await restoreNavigationScope(context.navigation, priorScope, outcome)
+    await context.workspaceNavigation().activateView(agentSessionViewDescriptor(sessionId))
   }
 
   async function openNewManagedSession(configId?: string, cwd = ''): Promise<boolean> {
@@ -197,13 +157,7 @@ export function createManagedSessionActions(context: ManagedSessionActionsContex
         cwd,
         text: '',
       })
-      context.workspaceTransition.invalidate()
-      const outcome = await context.workspaceTransition.activate({
-        view,
-        requestId: null,
-        shellAction: { type: 'open' },
-        pendingViewKey: workspaceViewKey(view),
-      })
+      const outcome = await context.workspaceNavigation().activateView(view)
       if (outcome !== 'activated') draftStorage.remove(view.draftId)
       finish(
         outcome === 'activated'
@@ -253,7 +207,7 @@ export function createManagedSessionActions(context: ManagedSessionActionsContex
         session.session_id,
         get(context.workspaceShell).pendingViewKey,
       )
-      if (archived.shouldInvalidatePending) context.workspaceTransition.invalidate()
+      if (archived.shouldInvalidatePending) context.workspaceNavigation().invalidate()
       context.workspaceShell.replaceShell(archived.shell)
       context.workspaceShell.forgetRequest(key)
       if (archived.shouldNavigateToArchive) {
@@ -307,12 +261,11 @@ export function createManagedSessionActions(context: ManagedSessionActionsContex
       const closedActive = cleanup.closedActive || ownsFeedback()
       const pendingViewKey = get(context.workspaceShell).pendingViewKey
       if (pendingViewKey && cleanup.closedViewKeys.includes(pendingViewKey)) {
-        context.workspaceTransition.invalidate()
+        context.workspaceNavigation().invalidate()
       }
       if (closedActive) {
-        context.workspaceTransition.invalidate()
-        context.clearWorkspace()
-        context.setCookingPreview(null)
+        context.workspaceNavigation().invalidate()
+        context.workspaceNavigation().clearWorkspace()
       }
       context.workspaceShell.replaceShell(cleanup.shell)
       if (closedActive) context.workspaceShell.dispatch({ type: 'open', view: inboxViewDescriptor() })

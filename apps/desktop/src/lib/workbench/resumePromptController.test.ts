@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ApplicationTransport } from '../application/applicationTransport'
 import type { FeedbackRequestSummary, FeedbackWorkspaceView } from '../feedback'
 import type { ResumePrompt } from '../domain/resumePrompt'
+import defaultPayload from '../../../../../crates/rambledesk-hosts/tests/fixtures/manual_resume_prompt.json'
+import { t } from '../i18n'
 import {
   createResumePromptController,
   RESUME_PROMPT_STREAM,
@@ -108,9 +110,28 @@ describe('resume prompt controller', () => {
     await vi.waitFor(() => expect(get(controller).prompt).toEqual(prompt))
     expect(send).toHaveBeenCalledWith({
       title: 'Return to Codex',
-      body: 'Return to {host} and use the resume prompt to continue the host session.',
+      body: 'The package is ready.',
     })
     unsubscribe()
+  })
+
+  it.each(['en', 'zh-CN'] as const)('localizes only marked default notifications in %s and copies the exact payload', async (language) => {
+    const copyText = vi.fn(async () => undefined)
+    const incoming = defaultPayload as ResumePrompt
+    const { controller, emit, send } = harness({
+      tr: (source, values) => t(language, source, values), copyText,
+      getCurrentRequest: () => request({ request_id: incoming.request_id }),
+    })
+    controller.subscribeStream()
+    emit(incoming)
+    await vi.waitFor(() => expect(get(controller).prompt).toEqual(incoming))
+    expect(send).toHaveBeenCalledWith({
+      title: language === 'en' ? 'Feedback submitted · return to host' : '反馈已提交 · 回到宿主点继续',
+      body: expect.stringContaining(language === 'en' ? 'Return to acceptance-external' : '先回到 acceptance-external 的对话'),
+    })
+    await controller.copy()
+    expect(copyText).toHaveBeenCalledExactlyOnceWith(incoming.resume_prompt)
+    controller.dispose()
   })
 
   it('ignores prompts for managed sessions', async () => {

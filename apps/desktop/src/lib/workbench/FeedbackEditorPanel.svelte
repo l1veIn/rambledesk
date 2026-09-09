@@ -27,7 +27,7 @@
     type SpeechCleanupSegment,
   } from '$lib/speech/speechBlockMetadata'
   import { t } from '$lib/i18n'
-  import { locale } from '$lib/preferences'
+  import { locale, type Locale } from '$lib/preferences'
   import { shouldAutoTidy } from '$lib/tidyAuto'
   import { hasCookedPublishedVariant } from '$lib/publishedFeedback'
   import MarkdownPreview from '../editor/MarkdownPreview.svelte'
@@ -82,11 +82,11 @@
     return t($locale, source, values)
   }
 
-  function saveLabel() {
-    if (savePhase === 'saving') return tr('Saving…')
-    if (savePhase === 'unsaved') return tr('Waiting to autosave')
-    if (savePhase === 'error') return tr('Save failed')
-    return `${tr('Saved')} · r${savedRevision}`
+  function saveLabel(phase: SavePhase, revision: number, language: Locale) {
+    if (phase === 'saving') return t(language, 'Saving…')
+    if (phase === 'unsaved') return t(language, 'Waiting to autosave')
+    if (phase === 'error') return t(language, 'Save failed')
+    return `${t(language, 'Saved')} · r${revision}`
   }
 
   export function applyDraftOperation(operation: DraftOperation): boolean {
@@ -314,7 +314,7 @@
       {:else}
         <Check class="size-3" />
       {/if}
-      {saveLabel()}
+      {saveLabel(savePhase, savedRevision, $locale)}
     </Badge>
     <span>{formatTime(workspace.draft.updated_at)}</span>
   </footer>

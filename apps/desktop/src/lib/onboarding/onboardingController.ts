@@ -86,8 +86,6 @@ export function createOnboardingController(context: OnboardingControllerContext)
 
   return {
     subscribe: store.subscribe,
-    /** Svelte `bind:openWizard={$onboarding.open}` writes through the store. */
-    set: store.set,
     begin,
     scheduleLaunchCheck,
     startSession,

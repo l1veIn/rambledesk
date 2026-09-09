@@ -1,6 +1,7 @@
 import type { Locale } from './preferences'
 
 const chinese: Record<string, string> = {
+  'The draft changed after Cooking. Restore the original and Cook again.': 'Cooking 后草稿已变化。请恢复原稿并重新 Cooking。',
   'Automatically tidy speech': '自动整理语音',
   'Tidy each transcribed segment before you review it. You still choose when to write it to feedback.': '每段语音转写完成后自动使用 Tidy 整理，仍由你确认后写入反馈。',
   'Tidy also has an Auto-tidy threshold under Post-processing → Tidy. Review both settings to avoid tidying the same text twice.': 'Tidy 在「后处理 → Tidy」中另有「自动整理阈值」。请按需配置两处自动整理，避免重复处理；悬浮窗中已整理的内容会保留整理状态。',
@@ -48,6 +49,9 @@ const chinese: Record<string, string> = {
   'Keep transcribed speech pending until you write it to the feedback draft or discard it. Recording can continue while you review. When the overlay is hidden, review pending speech in the main window.': '转录文字先等待确认，由你选择写入反馈草稿或丢弃。确认期间可以继续录音；隐藏悬浮窗后也可在主窗口查看待确认语音。',
   'Pending speech could not be saved on this device. Keep this window open until you review it.': '待确认语音暂时无法保存到本机，请保持窗口打开并处理这些文字。',
   'Review the pending speech in the capsule before submitting feedback.': '请先处理待确认语音，再提交反馈。',
+  'Review the pending speech in the capsule before ending this request.': '请先处理待确认语音，再结束此请求。',
+  'Clipboard import could not be completed. Review the attachment message before continuing.': '剪贴板导入未完成，请先查看附件错误信息再继续。',
+  'The request was updated, but navigation could not be refreshed: {error}': '请求已更新，但导航刷新失败：{error}',
   'Cannot send an empty reply. Write some feedback content first.': '不能发送空的回复，请先写下一些反馈内容。',
   'Speech transcription': '语音转录',
   'Listening…': '正在聆听…',
@@ -397,6 +401,8 @@ const chinese: Record<string, string> = {
   'Open Feedback Package': '打开 Feedback Package',
   'Submission details': '提交信息',
   'Feedback submitted · return to host': '反馈已提交 · 回到宿主点继续',
+  'Feedback cancelled · return to host': '反馈已取消 · 回到宿主点继续',
+  'Return to {host} and click the waiting confirmation to finish. Only paste the fallback prompt below and call get_feedback if the host is not waiting.': '先回到 {host} 的对话，点等待中的确认以收尾。只有宿主没有停下来等时，才需要粘贴下面的备用提示并调用 get_feedback。',
   'Return to {host} and click the waiting Continue or confirmation option first. Only paste the fallback resume prompt below if the host is not waiting.': '先回到 {host} 的对话，点等待中的继续或确认选项。只有宿主没有停下来等时，才需要粘贴下面的恢复提示。',
   'Publishing…': '正在发布…',
   'Submit feedback': '提交反馈',

@@ -54,6 +54,16 @@
 
   let editorHost: HTMLDivElement
   let editor: Editor | null = null
+  // Tiptap owns the document and selection; Svelte observes only this toolbar projection.
+  let toolbar = {
+    canUndo: false,
+    canRedo: false,
+    bold: false,
+    italic: false,
+    heading2: false,
+    bulletList: false,
+    blockquote: false,
+  }
   let applyingExternalChange = false
   let editorMarkdown = ''
   let loadedEpoch = -1
@@ -87,12 +97,14 @@
           return true
         },
       },
-      onCreate: () => {
+      onCreate: ({ editor: createdEditor }) => {
         editorMarkdown = editor?.getMarkdown() ?? markdown
         loadedEpoch = editorEpoch
         insertionPosition = editor?.state.doc.content.size ?? 0
         hydrateAttachmentImages()
+        updateToolbar(createdEditor)
       },
+      onTransaction: ({ editor: updatedEditor }) => updateToolbar(updatedEditor),
       onUpdate: ({ editor: updatedEditor }) => {
         if (applyingExternalChange) return
         emitSnapshot(updatedEditor)
@@ -135,6 +147,18 @@
     const snapshot = snapshotFeedbackDraftDocument(json)
     editorMarkdown = snapshot.bodyMarkdown
     onChange(snapshot)
+  }
+
+  function updateToolbar(source: Editor) {
+    toolbar = {
+      canUndo: source.can().undo(),
+      canRedo: source.can().redo(),
+      bold: source.isActive('bold'),
+      italic: source.isActive('italic'),
+      heading2: source.isActive('heading', { level: 2 }),
+      bulletList: source.isActive('bulletList'),
+      blockquote: source.isActive('blockquote'),
+    }
   }
 
   function trimTrailingEmptyActionGroups(
@@ -183,6 +207,8 @@
         plugins: editor.state.plugins,
       }),
     )
+    // Replacing EditorState does not dispatch a Tiptap transaction.
+    updateToolbar(editor)
   }
 
   function applyDocument(nextDocument: JSONContent) {
@@ -345,50 +371,55 @@
 <div class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border bg-background">
   <div class="flex h-10 shrink-0 items-center gap-1 overflow-x-auto border-b bg-muted/30 px-2" aria-label={t($locale, 'Document formatting')}>
     <Button
-      variant="ghost"
+      variant={toolbar.bold ? 'secondary' : 'ghost'}
       size="icon-sm"
       aria-label={t($locale, 'Bold')}
       title={t($locale, 'Bold')}
+      aria-pressed={toolbar.bold}
       disabled={disabled}
       onclick={() => editor?.chain().focus().toggleBold().run()}
     >
       <Bold />
     </Button>
     <Button
-      variant="ghost"
+      variant={toolbar.italic ? 'secondary' : 'ghost'}
       size="icon-sm"
       aria-label={t($locale, 'Italic')}
       title={t($locale, 'Italic')}
+      aria-pressed={toolbar.italic}
       disabled={disabled}
       onclick={() => editor?.chain().focus().toggleItalic().run()}
     >
       <Italic />
     </Button>
     <Button
-      variant="ghost"
+      variant={toolbar.heading2 ? 'secondary' : 'ghost'}
       size="icon-sm"
       aria-label={t($locale, 'Heading 2')}
       title={t($locale, 'Heading 2')}
+      aria-pressed={toolbar.heading2}
       disabled={disabled}
       onclick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}
     >
       <Heading2 />
     </Button>
     <Button
-      variant="ghost"
+      variant={toolbar.bulletList ? 'secondary' : 'ghost'}
       size="icon-sm"
       aria-label={t($locale, 'Bullet list')}
       title={t($locale, 'Bullet list')}
+      aria-pressed={toolbar.bulletList}
       disabled={disabled}
       onclick={() => editor?.chain().focus().toggleBulletList().run()}
     >
       <List />
     </Button>
     <Button
-      variant="ghost"
+      variant={toolbar.blockquote ? 'secondary' : 'ghost'}
       size="icon-sm"
       aria-label={t($locale, 'Quote')}
       title={t($locale, 'Quote')}
+      aria-pressed={toolbar.blockquote}
       disabled={disabled}
       onclick={() => editor?.chain().focus().toggleBlockquote().run()}
     >
@@ -400,7 +431,7 @@
       size="icon-sm"
       aria-label={t($locale, 'Undo')}
       title={t($locale, 'Undo')}
-      disabled={disabled || !editor?.can().undo()}
+      disabled={disabled || !toolbar.canUndo}
       onclick={() => editor?.chain().focus().undo().run()}
     >
       <Undo2 />
@@ -410,7 +441,7 @@
       size="icon-sm"
       aria-label={t($locale, 'Redo')}
       title={t($locale, 'Redo')}
-      disabled={disabled || !editor?.can().redo()}
+      disabled={disabled || !toolbar.canRedo}
       onclick={() => editor?.chain().focus().redo().run()}
     >
       <Redo2 />
