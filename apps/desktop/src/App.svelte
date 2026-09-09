@@ -25,13 +25,9 @@
   import ManagedSessionSection from './lib/agents/ManagedSessionSection.svelte'
   import ManagedFeedbackRequestStatus from './lib/agents/ManagedFeedbackRequestStatus.svelte'
   import DraftManagedSessionWorkspace from './lib/agents/DraftManagedSessionWorkspace.svelte'
-  import { agentText } from './lib/agents/agentI18n'
   import { Button } from './lib/components/ui/button'
   import type { JSONContent } from '@tiptap/core'
-  import {
-    defineApplicationStream,
-    type ApplicationTransport,
-  } from './lib/application/applicationTransport'
+  import type { ApplicationTransport } from './lib/application/applicationTransport'
   import type { WorkbenchCapabilities } from './lib/capabilities/workbenchCapabilities'
   import { provideWorkbenchCapabilities } from './lib/capabilities/capabilityContext'
   import { createUnavailableWorkbenchCapabilities } from './lib/capabilities/unavailableCapabilities'
@@ -70,10 +66,7 @@
     SubmitFeedbackInput,
   } from './lib/feedback'
   import type { HostSessionSummary, ManagedSessionSnapshot } from './lib/generated/feedback'
-  import {
-    notificationStateForPermission,
-    type NotificationState,
-  } from './lib/notifications'
+  import { createNotificationPermissionController } from './lib/workbench/notificationPermissionController'
   import {
     archiveViewDescriptor,
     rambelleProfileViewDescriptor,
@@ -122,7 +115,15 @@
   import { createWorkspaceSession } from './lib/workbench/workspaceSession'
   import { createWorkspaceShellSession } from './lib/workbench/workspaceShellSession'
   import { createPublisherController } from './lib/workbench/publisherController'
-  import { buildResumePrompt, shouldShowResumePromptButton } from './lib/workbench/resumePrompt'
+  import { shouldShowResumePromptButton } from './lib/workbench/resumePrompt'
+  import { createResumePromptController } from './lib/workbench/resumePromptController'
+  import { createMessageToaster } from './lib/workbench/messageToasts'
+  import { createOnboardingController } from './lib/onboarding/onboardingController'
+  import { openReleases } from './lib/updates/releases'
+  import {
+    sessionTabLabel as sessionTabLabelFor,
+    workspaceTabLabel as workspaceTabLabelFor,
+  } from './lib/workspace/tabLabels'
   import {
     createAttachmentController,
   } from './lib/workbench/attachmentController'
@@ -137,7 +138,6 @@ import type {
   SubmitStage,
   VoicePhase,
 } from './lib/domain/sessionPhases'
-import type { ResumePrompt } from './lib/domain/resumePrompt'
 import type { SettingsSection } from './lib/domain/settingsSection'
   import RambleSessionController from './lib/workbench/RambleSessionController.svelte'
   import { highlightSpeechSegment } from './lib/speech/highlightSpeechSegment'
@@ -168,7 +168,6 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     tidySystemPrompt,
   } from './lib/preferences'
 
-  const RESUME_PROMPT_STREAM = defineApplicationStream<ResumePrompt>('rambledesk://resume-prompt')
   const formatTimeLocal = (value: string | null | undefined) =>
     formatTime(value, $locale, tr('Not saved yet'))
   const workspaceSession = createWorkspaceSession()
@@ -183,24 +182,15 @@ import type { SettingsSection } from './lib/domain/settingsSection'
   let renderedSessionView: SessionViewDescriptor | null = null
   let renderedSessionResolution: SessionViewResolution | null = null
   let pageError = ''
-  let deliveredAttachmentMessage = ''
-  let deliveredPageError = ''
-  let deliveredSaveError = ''
   let sessionWorkbench: FeedbackEditorHandle | undefined
   let managedSessionSection: ManagedSessionSection | undefined
   let rambleController: RambleSessionControllerHandle
-  let resumePrompt: ResumePrompt | null = null
-  let resumeCopyState: 'idle' | 'copied' | 'failed' = 'idle'
-  let notificationState: NotificationState = 'checking'
   let archivedInitialSession: SessionViewDescriptor | null = null
   let archivedSelectionEpoch = 0
   let settingsSection: SettingsSection = 'general'
   let settingsSectionSelectionEpoch = 0
   let settingsAgentConfigId: string | undefined = undefined
   let settingsAgentAdvanced = false
-  let lastAutoOpenedTaskRequestId = ''
-  let onboardingOpen = false
-  let launchUpdateCheckDue = false
   const desktopShellAvailable = capabilities.windowControls.status.source === 'native'
   const isMac = capabilities.windowControls.implementation.platform() === 'macOS'
   const notificationsAvailable = capabilities.notifications.status.availability !== 'unavailable'
@@ -344,7 +334,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     transport: applicationTransport,
     tr,
     messageFrom,
-    getNotificationState: () => notificationState,
+    getNotificationState: () => $notificationPermission,
     getWorkspaceRequestId: () => workspaceSession.requestId() ?? undefined,
     isDirty: () => dirty,
     saveDraftNow,
@@ -421,12 +411,12 @@ import type { SettingsSection } from './lib/domain/settingsSection'
       pageError = message
     },
     clearWorkspace,
-    refreshNotificationPermission,
+    refreshNotificationPermission: () => notificationPermission.refresh(),
     isTransitionLocked: () => workspaceTransitionLocked,
     enqueueDocumentTask,
     canAutoOpenRamble: (sessionId) => managedSessionSection?.canAutoOpenRamble(sessionId) === true,
-    onboardingOpen: () => onboardingOpen,
-    resumePromptOpen: () => resumePrompt !== null,
+    onboardingOpen: () => $onboarding.open,
+    resumePromptOpen: () => $resumePrompts.prompt !== null,
     rambleEngaged: () => rambleEngaged,
     releaseAttachmentPreviews: () => attachmentController.releasePreviews(),
     refreshAttachmentPreviews: (workspace) => attachmentController.refreshPreviews(workspace),
@@ -444,6 +434,52 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     applicationSnapshotRefetch.request([{ kind: 'all' }])
   }
 
+  const toaster = createMessageToaster({ tr })
+
+  const notificationPermission = createNotificationPermissionController({
+    notifications: capabilities.notifications,
+    isMac: () => isMac,
+    getPopupEnabled: () => $notificationPopupEnabled,
+    setPopupEnabled: (enabled) => setNotificationPopupEnabled(enabled),
+  })
+
+  const onboarding = createOnboardingController({
+    locale: () => $locale,
+    isCompleted: () => $onboardingCompleted,
+    isAvailable: () => onboardingAvailable,
+    startup: { start: () => startup.start() },
+    managedSessions: {
+      openNewManagedSession: (configId) => managedSessions.openNewManagedSession(configId),
+    },
+    closeSettingsTab: () => workspaceNavigation.closeWorkspaceTab(workspaceViewKey(settingsViewDescriptor())),
+    updates: {
+      available: softwareUpdatesAvailable,
+      check: (input) => capabilities.softwareUpdates.implementation.check(input),
+    },
+    reset: () => resetOnboarding(),
+  })
+
+  const resumePrompts = createResumePromptController({
+    transport: applicationTransport,
+    tr,
+    messageFrom,
+    getCurrentRequest: () => currentRequest,
+    getKnownRequests: () => [...$navigation.requests, ...$navigation.pendingRequests],
+    getWorkspace: () => $workspaceSession.workspace,
+    resolveHostProfile,
+    canOpenFromWorkspace: () => canOpenResumePrompt,
+    notifications: {
+      available: notificationsAvailable,
+      isMac,
+      getPopupEnabled: () => $notificationPopupEnabled,
+      getState: () => $notificationPermission,
+      send: (input) => capabilities.notifications.implementation.send(input),
+    },
+    setPageError: (message) => {
+      pageError = message
+    },
+  })
+
   $: railAgentSession = agentSessionForView(
     renderedWorkspaceView?.kind === 'agent-session' ? renderedWorkspaceView : null,
     $navigation.hostSessions,
@@ -453,31 +489,9 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     currentRequest.status !== 'completed' &&
     currentRequest.status !== 'cancelled' &&
     draftSession.isDirty()
-  $: {
-    if (!pageError) deliveredPageError = ''
-    else if (pageError !== deliveredPageError) {
-      deliveredPageError = pageError
-      toast.error(tr('Operation failed'), { description: pageError })
-    }
-  }
-  $: {
-    if (!$draftSession.message) deliveredSaveError = ''
-    else if ($draftSession.message !== deliveredSaveError) {
-      deliveredSaveError = $draftSession.message
-      toast.error(tr('Save failed'), { description: $draftSession.message })
-    }
-  }
-  $: {
-    if (!$attachmentSession.message) {
-      deliveredAttachmentMessage = ''
-    } else if ($attachmentSession.message !== deliveredAttachmentMessage) {
-      deliveredAttachmentMessage = $attachmentSession.message
-      const options = { description: $attachmentSession.message }
-      if ($attachmentSession.tone === 'success') toast.success(tr('Attachment action completed'), options)
-      else if ($attachmentSession.tone === 'info') toast.info(tr('Attachment status'), options)
-      else toast.error(tr('Attachment action failed'), options)
-    }
-  }
+  $: toaster.pageError(pageError)
+  $: toaster.saveError($draftSession.message)
+  $: toaster.attachmentMessage($attachmentSession.message, $attachmentSession.tone)
   $: selectedHostSession = $navigation.selectedHostSessionId
     ? $navigation.hostSessions.find(
         (session) =>
@@ -495,42 +509,19 @@ import type { SettingsSection } from './lib/domain/settingsSection'
   $: renderedAgentDraftView = renderedWorkspaceView?.kind === 'agent-draft' ? renderedWorkspaceView : null
   $: renderedAgentDraftController = renderedAgentDraftView ? managedSessions.draftController(renderedAgentDraftView.draftId) : null
   $: renderedManagedSession = agentSessionForView(renderedAgentSessionView, $navigation.hostSessions)
-  const sessionTabLabel = (view: SessionViewDescriptor) => {
-    const session = $navigation.hostSessions.find(
-      (candidate) =>
-        candidate.host_id === view.hostId &&
-        candidate.host_session_id === view.hostSessionId,
-    )
-    const hostLabel = resolveHostProfile(view.hostId).label
-    return `${session?.title ?? view.hostSessionId} · ${hostLabel}`
-  }
   $: taskTabTitles = updateTaskTabTitles(taskTabTitles, $workspaceShell.shell.views, [
     ...(currentRequest ? [currentRequest] : []),
     ...$navigation.pendingRequests,
     ...$navigation.requests,
   ])
-  $: workspaceTabLabel = (view: WorkspaceViewDescriptor) => {
-    switch (view.kind) {
-      case 'agent-draft':
-        return $locale === 'zh-CN' ? '新建会话' : 'New session'
-      case 'inbox':
-        return tr('All requests')
-      case 'archive':
-        return tr('Archived sessions')
-      case 'settings':
-        return tr('Settings')
-      case 'agent-session': {
-        const session = $navigation.hostSessions.find((candidate) => candidate.session_id === view.sessionId)
-        return session ? `${session.title} · Agent` : agentText($locale, 'Agent session')
-      }
-      case 'request-task':
-        return taskTabTitles.get(view.requestId) ?? tr('Task brief')
-      case 'rambelle-profile':
-        return 'Rambelle'
-      case 'session':
-        return sessionTabLabel(view)
-    }
-  }
+  $: workspaceTabLabel = (view: WorkspaceViewDescriptor) =>
+    workspaceTabLabelFor(view, {
+      hostSessions: $navigation.hostSessions,
+      resolveHostProfile,
+      taskTabTitles,
+      locale: $locale,
+      tr,
+    })
   $: requestScopeLabel = $navigation.selectedHostId
     ? $navigation.selectedHostSessionId
       ? selectedHostSession?.source_hint ??
@@ -641,15 +632,14 @@ import type { SettingsSection } from './lib/domain/settingsSection'
       : () => {}
 
     if (!desktopShellAvailable) {
-      if ($onboardingCompleted || !onboardingAvailable) void startup.start()
-      else onboardingOpen = true
+      onboarding.begin()
       if (
         previewMode &&
         new URLSearchParams(window.location.search).get('dialog') === 'resume'
       ) {
-        resumePrompt = previewFixtures.resumePrompt
+        resumePrompts.show(previewFixtures.resumePrompt)
       }
-      notificationState = 'unavailable'
+      notificationPermission.markUnavailable()
       if (
         capabilities.softwareUpdates.status.availability !== 'unavailable' &&
         new URLSearchParams(window.location.search).get('dialog') === 'update'
@@ -662,8 +652,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
         cleanupAttachments()
       }
     }
-    if ($onboardingCompleted || !onboardingAvailable) startup.start()
-    else onboardingOpen = true
+    onboarding.begin()
     // Browser server autostart is a desktop preference; the browser client never runs it.
     if (
       initialWebAccessAutostart() &&
@@ -673,130 +662,22 @@ import type { SettingsSection } from './lib/domain/settingsSection'
         .setEnabled(true, initialWebAccessPort())
         .catch(() => undefined)
     }
-    const updateCheckTimer = softwareUpdatesAvailable
-      ? window.setTimeout(() => {
-          launchUpdateCheckDue = true
-          if (!onboardingOpen) {
-            void capabilities.softwareUpdates.implementation.check({ prompt: true, forcePrompt: false })
-          }
-        }, 4_000)
-      : undefined
-    if (notificationsAvailable) void refreshNotificationPermission()
-    else notificationState = 'unavailable'
-    let resumePromptMounted = true
-    let resumePromptGeneration = 0
-    const resumePromptUnlisten = applicationTransport.subscribe(
-      RESUME_PROMPT_STREAM,
-      (prompt) => {
-        const generation = ++resumePromptGeneration
-        void presentExternalResumePrompt(prompt, () => resumePromptMounted && generation === resumePromptGeneration)
-      },
-      () => {
-        // The manual reopen action remains available for external sessions.
-      },
-    )
-    async function presentExternalResumePrompt(prompt: ResumePrompt, isCurrent: () => boolean) {
-      try {
-        const knownRequest = currentRequest?.request_id === prompt.request_id ? currentRequest
-          : [...$navigation.requests, ...$navigation.pendingRequests].find((request) => request.request_id === prompt.request_id)
-        const request = knownRequest ?? (await readApplicationSnapshot(applicationTransport, 'getFeedbackWorkspace', { request_id: prompt.request_id })).request
-        if (!isCurrent()) return
-        if (request.managed_session_id) return
-        resumePrompt = prompt
-        resumeCopyState = 'idle'
-        if (
-          notificationsAvailable &&
-          isMac &&
-          $notificationPopupEnabled &&
-          notificationState === 'enabled'
-        ) {
-          void capabilities.notifications.implementation
-            .send({
-              title: prompt.title,
-              body: tr(
-                'Return to {host} and use the resume prompt to continue the host session.',
-                { host: prompt.host_label },
-              ),
-            })
-            .catch(() => {})
-        }
-        // The alert sound is reserved for a new request arriving, not for the
-        // resume prompt shown after a submission completes, so it is not played
-        // here.
-      } catch (cause) {
-        if (isCurrent()) pageError = messageFrom(cause)
-      }
-    }
+    onboarding.scheduleLaunchCheck()
+    if (notificationsAvailable) void notificationPermission.refresh()
+    else notificationPermission.markUnavailable()
+    const resumePromptUnlisten = resumePrompts.subscribeStream()
     return () => {
-      resumePromptMounted = false
-      resumePromptGeneration += 1
       unsubscribeApplicationEvents()
       applicationSnapshotRefetch.dispose()
       draftController.cancelPendingSave()
       if (inboxTimer) clearInterval(inboxTimer)
       resumePromptUnlisten()
-      if (updateCheckTimer !== undefined) clearTimeout(updateCheckTimer)
+      resumePrompts.dispose()
+      onboarding.dispose()
       cleanupAttachments()
       managedSessions.closeAllDrafts()
     }
   })
-
-  async function startOnboardingSession(configId?: string) {
-    if (!await startup.start()) {
-      throw new Error($locale === 'zh-CN' ? '初始化未完成，请检查连接后重试。' : 'Initialization did not finish. Check the connection and retry.')
-    }
-    if (!await managedSessions.openNewManagedSession(configId)) {
-      throw new Error($locale === 'zh-CN' ? '暂时无法打开新会话，请稍后重试。' : 'Could not open a new session. Please retry.')
-    }
-  }
-
-  function closeOnboarding() {
-    onboardingOpen = false
-    startup.start()
-    if (softwareUpdatesAvailable && launchUpdateCheckDue) {
-      void capabilities.softwareUpdates.implementation.check({ prompt: true, forcePrompt: false })
-    }
-  }
-
-  async function openGithubReleases() {
-    const releasesUrl = 'https://github.com/l1veIn/rambledesk/releases'
-    try {
-      await capabilities.externalLinks.implementation.open(releasesUrl)
-    } catch (cause) {
-      pageError = messageFrom(cause)
-    }
-  }
-
-  function restartOnboarding() {
-    resetOnboarding()
-    void workspaceNavigation.closeWorkspaceTab(workspaceViewKey(settingsViewDescriptor()))
-    onboardingOpen = true
-  }
-
-  async function copyResumePrompt() {
-    if (!resumePrompt) return
-    try {
-      await navigator.clipboard.writeText(resumePrompt.resume_prompt)
-      resumeCopyState = 'copied'
-      window.setTimeout(() => {
-        if (resumeCopyState === 'copied') resumeCopyState = 'idle'
-      }, 2_000)
-    } catch {
-      resumeCopyState = 'failed'
-    }
-  }
-
-  function dismissResumePrompt() {
-    resumePrompt = null
-    resumeCopyState = 'idle'
-  }
-
-  function openResumePrompt() {
-    const workspace = $workspaceSession.workspace
-    if (!workspace || !canOpenResumePrompt) return
-    resumePrompt = buildResumePrompt(workspace, resolveHostProfile(workspace.request.host_id), tr)
-    resumeCopyState = 'idle'
-  }
 
   function clearWorkspace() {
     workspaceSession.close()
@@ -847,16 +728,6 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     if (!intent.isCurrent() || outcome === 'stale') return
   }
 
-  async function refreshNotificationPermission() {
-    try {
-      const granted = await capabilities.notifications.implementation.permission() === 'granted'
-      if (isMac && !granted && $notificationPopupEnabled) setNotificationPopupEnabled(false)
-      notificationState = notificationStateForPermission(granted, $notificationPopupEnabled)
-    } catch {
-      notificationState = 'unavailable'
-    }
-  }
-
   async function openSettings(section: SettingsSection, agentConfigId?: string, agentAdvanced = false) {
     if ($startup.phase === 'failed') {
       startup.patch({ settingsOpen: true })
@@ -874,12 +745,6 @@ import type { SettingsSection } from './lib/domain/settingsSection'
 
   async function openTaskWorkspace(requestId: string) {
     await workspaceNavigation.openView(requestTaskViewDescriptor(requestId), { requestId })
-  }
-
-  function autoOpenTaskWorkspace(requestId: string) {
-    if (lastAutoOpenedTaskRequestId === requestId) return
-    lastAutoOpenedTaskRequestId = requestId
-    void openTaskWorkspace(requestId)
   }
 
   async function openRambelleProfile() {
@@ -1202,7 +1067,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
             agentConfigId={settingsAgentConfigId}
             agentAdvanced={settingsAgentAdvanced}
             {updateInstallBlocked}
-            onRestartOnboarding={restartOnboarding}
+            onRestartOnboarding={onboarding.restart}
             onOpenArchived={() => void openArchivedSessions()}
             onOpenRambelleProfile={() => void openRambelleProfile()}
           />
@@ -1263,7 +1128,10 @@ import type { SettingsSection } from './lib/domain/settingsSection'
         {:else if renderedSessionResolution?.kind === 'missing-session'}
           <MissingSessionView
             missing={renderedSessionResolution}
-            label={sessionTabLabel(renderedSessionResolution.session)}
+            label={sessionTabLabelFor(renderedSessionResolution.session, {
+              hostSessions: $navigation.hostSessions,
+              resolveHostProfile,
+            })}
             busy={renderedSessionResolution.reason === 'unresolved' || $workspaceShell.pendingViewKey !== null}
             onRetry={startup.retrySessionViewRecovery}
             onClose={() => workspaceNavigation.closeWorkspaceTab(workspaceViewKey(renderedSessionResolution!.session))}
@@ -1336,7 +1204,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
         onExitRamble={() => void exitRamble()}
         onOpenVoiceSettings={() => void openSettings('voice')}
         onOpenTask={(requestId) => void openTaskWorkspace(requestId)}
-        onAutoOpenTask={autoOpenTaskWorkspace}
+        onAutoOpenTask={workspaceNavigation.autoOpenTaskView}
         onStartScreenCapture={() => void attachmentController.startScreenCapture()}
         onImportClipboard={() => void importClipboardNow()}
         onFileSelection={attachmentController.handleFileSelection}
@@ -1345,7 +1213,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
         onRemoveAttachment={(attachment) => void attachmentController.removeAttachment(attachment)}
         onOpenPackage={() => void openFeedbackPackage()}
         packageActionLabel={tr(publishedFeedbackAction.label)}
-        onOpenResumePrompt={openResumePrompt}
+        onOpenResumePrompt={resumePrompts.open}
         onSubmit={() => void submitFeedback()}
         onCancel={() => void cancelFeedback()}
         onApprove={() => void approveFeedback()}
@@ -1364,25 +1232,32 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     {/snippet}
   </WorkbenchShell>
 
-  {#if resumePrompt}
+  {#if $resumePrompts.prompt}
     <ResumePromptDialog
-      prompt={resumePrompt}
-      copyState={resumeCopyState}
-      onCopy={() => void copyResumePrompt()}
-      onDismiss={dismissResumePrompt}
+      prompt={$resumePrompts.prompt}
+      copyState={$resumePrompts.copyState}
+      onCopy={() => void resumePrompts.copy()}
+      onDismiss={resumePrompts.dismiss}
     />
   {/if}
 </main>
 
-{#if onboardingAvailable && onboardingOpen}
-  <OnboardingWizard {capabilities} transport={applicationTransport} bind:openWizard={onboardingOpen} onClose={closeOnboarding} onStartSession={startOnboardingSession} />
+{#if onboardingAvailable && $onboarding.open}
+  <OnboardingWizard
+    {capabilities}
+    transport={applicationTransport}
+    bind:openWizard={$onboarding.open}
+    onClose={onboarding.close}
+    onStartSession={onboarding.startSession}
+  />
 {/if}
 
 {#if softwareUpdatesAvailable}
   <UpdateAvailableDialog
     softwareUpdates={capabilities.softwareUpdates}
     installBlocked={updateInstallBlocked}
-    onOpenReleases={() => void openGithubReleases()}
+    externalLinks={capabilities.externalLinks}
+    onError={(message) => (pageError = message)}
   />
 {/if}
 {/key}

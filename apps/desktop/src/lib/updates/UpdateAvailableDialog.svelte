@@ -4,10 +4,16 @@
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
   import { createUnavailableWorkbenchCapabilities } from '$lib/capabilities/unavailableCapabilities'
-  import type { CapabilitySlot, UpdaterCapability } from '$lib/capabilities/workbenchCapabilities'
+  import type {
+    CapabilitySlot,
+    ExternalLinkCapability,
+    UpdaterCapability,
+  } from '$lib/capabilities/workbenchCapabilities'
   import * as Dialog from '$lib/components/ui/dialog'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
+  import { openReleases } from '$lib/updates/releases'
+  import { messageFrom } from '$lib/domain/messageFrom'
   import {
     canInstallInAppUpdate,
     dismissUpdateDialog,
@@ -16,7 +22,9 @@
   } from '$lib/updates/updater'
 
   export let installBlocked = false
-  export let onOpenReleases: () => void = () => {}
+  export let externalLinks: CapabilitySlot<ExternalLinkCapability> =
+    createUnavailableWorkbenchCapabilities().externalLinks
+  export let onError: (message: string) => void = () => {}
   export let softwareUpdates: CapabilitySlot<UpdaterCapability> =
     createUnavailableWorkbenchCapabilities().softwareUpdates
 
@@ -134,7 +142,7 @@
       {:else}
         <Button
           onclick={() => {
-            onOpenReleases()
+            void openReleases(externalLinks).catch((cause) => onError(messageFrom(cause)))
             dismissUpdateDialog()
           }}
         >

@@ -97,6 +97,7 @@ const ALLOWED_EDGES: readonly string[] = [
   'lib/speech -> lib/settings',
   // updates
   'lib/updates -> lib/(root)',
+  'lib/updates -> lib/domain',
   'lib/updates -> lib/capabilities',
   'lib/updates -> lib/desktop-shell',
   // web access

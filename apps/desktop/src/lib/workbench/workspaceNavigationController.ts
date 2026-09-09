@@ -370,6 +370,15 @@ export function createWorkspaceNavigationController(context: WorkspaceNavigation
     )
   }
 
+  let lastAutoOpenedTaskRequestId = ''
+
+  /** Opens the task brief for a request once; repeated triggers are ignored. */
+  async function autoOpenTaskView(requestId: string) {
+    if (lastAutoOpenedTaskRequestId === requestId) return
+    lastAutoOpenedTaskRequestId = requestId
+    await openView(requestTaskViewDescriptor(requestId), { requestId })
+  }
+
   async function activateWorkspaceTab(viewKey: string) {
     if (context.isTransitionLocked() || get(context.workspaceShell).shell.activeViewKey === viewKey) {
       return
@@ -576,6 +585,7 @@ export function createWorkspaceNavigationController(context: WorkspaceNavigation
     selectRailScope,
     activateWorkspaceTab,
     openView,
+    autoOpenTaskView,
     closeWorkspaceTab,
     searchWorkspaceRequests,
     autoOpenArrivingRequest,

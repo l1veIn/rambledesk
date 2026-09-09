@@ -280,7 +280,7 @@ message 全部由它持有，组件只做事件转发与 store 镜像，705 → 
 | 7 | 接入前端行数门禁 + 豁免清单 | 已完成：`scripts/check-frontend-module-size.mjs`（上限 700，初始 9 个只减不增的豁免，现已清到只剩 `App.svelte`；`i18n.ts` 白名单），已进 CI 三个 job 与 release validate |
 | 8 | D 类测试文件拆分、观察名单清理 | 已完成：`navigationController.test.ts`（896）拆成 4 个文件、`attachmentController.test.ts`（831）拆成 3 个、`draftManagedSessionController.test.ts`（717）拆成 3 个，各自带共享 harness |
 
-剩余工作：无。A 类文件全部拆完，豁免清单只剩 `App.svelte`（1388 行，只减不增）；
+剩余工作：无。A 类文件全部拆完，豁免清单只剩 `App.svelte`（1263 行，只减不增）；
 `i18n.ts` 仍是白名单数据文件。
 
 2026-09-08 追加的结构整理（非行数驱动）：
@@ -292,10 +292,11 @@ message 全部由它持有，组件只做事件转发与 store 镜像，705 → 
 | 依赖方向门禁 | `lib/architecture/frontendBoundaries.test.ts` 冻结跨域 import（只减不增），`lib/workspace` 不再反向依赖 `lib/workbench` |
 | 预览适配器 | `lib/preview/previewApplicationTransport.ts` 承担 fixture 读写，控制器里的 56 处 `previewMode` 分支清零 |
 | 组件测试 | 新增 jsdom 交互测试（截图浮层）与 SSR 渲染测试（Ramble 控制器） |
+| App C 类职责出清 | `resumePromptController.ts`（resume prompt 全流程）、`onboardingController.ts`、`notificationPermissionController.ts`、`messageToasts.ts`（store→toast 去重投递）、`workspace/tabLabels.ts`（tab 标题）、`updates/releases.ts`（发布页链接）、`workspaceNavigation.autoOpenTaskView`；App 1388 → 1263 行，函数 23 → 14 个 |
 
 ### `App.svelte` 的状态边界（进行中）
 
-`App.svelte` 从 2525 行降到 1388 行，共享状态已经全部有主：
+`App.svelte` 从 2525 行降到 1263 行，共享状态已经全部有主：
 
 | 模块 | 拥有 | 测试 |
 | --- | --- | --- |
@@ -311,6 +312,11 @@ message 全部由它持有，组件只做事件转发与 store 镜像，705 → 
 | `lib/workbench/draftOperationsController.ts` | 文档写入串行队列、前台/后台路由、动作组选中 | 7 |
 | `lib/workbench/cookingSession.ts` | 正在 cooking 的请求集合、待提交的 cooking 预览 | 4 |
 | `lib/workbench/shellLayoutSession.ts` | 视口档位、两条 rail 的折叠偏好与手机抽屉 | 5 |
+| `lib/workbench/resumePromptController.ts` | resume prompt 的流订阅、展示、复制与跳过托管会话 | 8 |
+| `lib/workbench/messageToasts.ts` | pageError / 保存失败 / 附件消息到 toast 的去重投递 | 4 |
+| `lib/workbench/notificationPermissionController.ts` | 通知权限状态 | 5 |
+| `lib/onboarding/onboardingController.ts` | 向导开关、启动更新检查时序、首个托管会话交接 | 8 |
+| `lib/workspace/tabLabels.ts` | 工作区 tab 标题（纯函数） | 5 |
 
 判据：**服务器事实不复制、跨组件共享才进 store、按领域切不按字段切**。App 只保留装配、
 模板 snippet、组件句柄（`sessionWorkbench`、`rambleController`）和纯 UI 局部状态

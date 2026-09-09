@@ -211,6 +211,16 @@ describe('workspace navigation controller', () => {
     expect(context.workspaceTransition.activate).not.toHaveBeenCalled()
   })
 
+  it('opens a task view once and ignores repeated triggers', async () => {
+    const { controller, context } = harness()
+
+    await controller.autoOpenTaskView('request-1')
+    await controller.autoOpenTaskView('request-1')
+    await controller.autoOpenTaskView('request-2')
+
+    expect(context.workspaceTransition.activate).toHaveBeenCalledTimes(2)
+  })
+
   it('does not prepare selection state for a blocked open', async () => {
     const { controller, context, shellState } = harness()
     shellState.update((state) => ({ ...state, pendingViewKey: 'other' }))
