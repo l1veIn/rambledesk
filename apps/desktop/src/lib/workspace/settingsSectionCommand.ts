@@ -1,4 +1,4 @@
-import type { SettingsSection } from '$lib/workbench/types'
+import type { SettingsSection } from '../domain/settingsSection'
 
 export type SettingsSectionCommandState = Readonly<{
   activeSection: SettingsSection

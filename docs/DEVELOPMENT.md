@@ -106,6 +106,39 @@ rambledesk/
 - 前端通过 command 查询事实状态，通过 event 获知可能发生了变化；
 - UI store、窗口状态和通知都不是唯一事实来源。
 
+### 前端目录与依赖方向
+
+`apps/desktop/src` 的职责划分：
+
+```text
+src/
+├── App.svelte, BrowserWorkbenchRoot.svelte   # 组合根
+├── PinnedCapture / RambleConsole / ScreenshotOverlay /
+│   ScrollCaptureController / SpeechOverlay   # 平台窗口，唯一可直接 invoke Tauri 的组件
+├── dev/                                      # 预览页（*-preview.html 的入口）
+└── lib/
+    ├── domain/        # 共享词汇：阶段、设置分区、恢复提示、Host Profile、请求过滤器
+    ├── generated/     # ts-rs 产物，只读
+    ├── application/   # application 合同与 transport 实现
+    ├── capabilities/  # 平台能力合同与 Tauri / 浏览器实现
+    ├── components/    # 共享 UI（ui/ 是生成的 shadcn 封装）
+    ├── agents/        # 托管会话与 Agent 目录
+    ├── workbench/     # 会话工作台：控制器、store、工作台卡片
+    ├── workspace/     # 视图层：Inbox、任务、设置、归档
+    ├── editor/        # 反馈编辑器与 Markdown 渲染
+    ├── speech/        # 语音会话、草稿队列、悬浮层
+    ├── screen-capture/# 截图浮层的状态机与几何
+    ├── settings/ onboarding/ updates/ shell/ rambelle/ web-access/ appearance/
+    └── diagnostics/ desktop-shell/
+```
+
+依赖方向由 `lib/architecture/frontendBoundaries.test.ts` 固化：
+
+- `lib/domain` 是词汇内核，只允许依赖 `lib/generated` 和 `lib/feedback` 合同桶；
+- `lib/workspace`（视图层）不得反向依赖 `lib/workbench`；
+- 跨域 import 由测试内的 `ALLOWED_EDGES` 锁定，**只减不增**：新增一条会失败，消失一条必须从清单里删掉；
+- 组合根（`App.svelte`、`dev/`）不受限制，也不允许被 `lib/` 反向 import（`workbenchEntry` 等入口除外，已列入清单）。
+
 ## 依赖方向
 
 ```text

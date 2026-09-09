@@ -24,16 +24,16 @@
     workspaceViewKey,
     type SessionViewDescriptor,
   } from '$lib/workspace/viewDescriptors'
-  import type {
-    FeedbackEditorHandle,
-    HostProfile,
-    RamblePhase,
-    SavePhase,
-    SubmitStage,
-  } from './types'
+  import type { FeedbackEditorHandle } from '../editor/feedbackEditorHandle'
+import type { HostProfile } from '../domain/hostProfile'
+import type {
+  RamblePhase,
+  SavePhase,
+  SubmitStage,
+} from '../domain/sessionPhases'
   import CommandRail from './CommandRail.svelte'
   import FeedbackEditorPanel from './FeedbackEditorPanel.svelte'
-  import RequestAttachmentPreview from './RequestAttachmentPreview.svelte'
+  import RequestAttachmentPreview from '../workspace/RequestAttachmentPreview.svelte'
   import TaskBriefPanel from './TaskBriefPanel.svelte'
   import WorkspaceHeader from './WorkspaceHeader.svelte'
   import { canAcceptImagePaste } from './imagePasteAcceptance'

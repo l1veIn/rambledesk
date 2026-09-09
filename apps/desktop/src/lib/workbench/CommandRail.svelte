@@ -3,7 +3,10 @@
   import { locale } from '$lib/preferences'
   import type { WorkbenchCapabilities } from '$lib/capabilities/workbenchCapabilities'
   import type { AttachmentView, FeedbackResultView, FeedbackWorkspaceView } from '../feedback'
-  import type { RamblePhase, SubmitStage } from './types'
+  import type {
+  RamblePhase,
+  SubmitStage,
+} from '../domain/sessionPhases'
   import AttachmentsCard from './AttachmentsCard.svelte'
   import CaptureToolsCard from './CaptureToolsCard.svelte'
   import DeliveryCard from './DeliveryCard.svelte'
@@ -12,7 +15,7 @@
   import {
     nativeCaptureAvailable as canShowNativeCapture,
     voiceRambleAvailable,
-  } from './workbenchCapabilityUi'
+  } from '../capabilities/capabilityUi'
 
   export let workspace: FeedbackWorkspaceView
   export let workDisabled = false

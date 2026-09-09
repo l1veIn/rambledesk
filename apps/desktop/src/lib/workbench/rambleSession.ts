@@ -1,7 +1,10 @@
 import { get, writable } from 'svelte/store'
 
 import { resolvedRamblePhase } from './rambleSessionState'
-import type { RamblePhase, VoicePhase } from './types'
+import type {
+  RamblePhase,
+  VoicePhase,
+} from '../domain/sessionPhases'
 
 /**
  * Live Ramble and voice state for the workbench. `RambleSessionController` writes it

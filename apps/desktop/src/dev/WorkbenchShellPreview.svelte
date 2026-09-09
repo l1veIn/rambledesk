@@ -6,7 +6,7 @@
   import { previewFixtures } from '$lib/previewFixtures'
   import WorkbenchShell from '$lib/workbench/WorkbenchShell.svelte'
   import type { ShellMode } from '$lib/workbench/shellMode'
-  import type { HostProfile } from '$lib/workbench/types'
+  import type { HostProfile } from '../lib/domain/hostProfile'
   import { initialHostRailCollapsed, initialRequestRailCollapsed, saveHostRailCollapsed, saveRequestRailCollapsed } from '$lib/uiPreferences'
 
   // A long list catches height/scroll regressions that a few fixture rows hide.

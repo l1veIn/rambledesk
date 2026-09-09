@@ -6,7 +6,7 @@ import type {
   FeedbackWorkspaceView,
 } from '../feedback'
 import type { PublishedFeedbackView } from '../publishedFeedback'
-import type { SubmitStage } from './types'
+import type { SubmitStage } from '../domain/sessionPhases'
 
 /**
  * The open feedback request and the server mutations running against it.

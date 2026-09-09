@@ -19,7 +19,7 @@
   import { requestStatusLabel } from '$lib/feedback'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
-  import type { HostProfile } from '$lib/workbench/types'
+  import type { HostProfile } from '../domain/hostProfile'
   import type { SessionViewDescriptor } from '$lib/workspace/viewDescriptors'
   import { createArchiveActions } from './archiveActions'
   import {

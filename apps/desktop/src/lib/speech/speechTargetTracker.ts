@@ -1,4 +1,4 @@
-import type { SpeechRecognitionEvent } from '../speech/speech'
+import type { SpeechRecognitionEvent } from './speech'
 import type { SpeechTarget } from './speechDraftQueue'
 
 /** Non-streaming VAD pins at speech onset; streaming pins at the first

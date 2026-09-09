@@ -19,8 +19,8 @@ import {
   notificationSoundEnabled,
   notificationVolume,
 } from '../preferences'
-import type { HostProfile } from './types'
-import { filterRequestPage, requestFilterStatuses, type RequestFilters } from './requestFilters'
+import type { HostProfile } from '../domain/hostProfile'
+import { filterRequestPage, requestFilterStatuses, type RequestFilters } from '../domain/requestFilters'
 import { createHostSessionFacts, resolveHostProfile as resolveHostProfileFrom } from './navigation/hostSessionFacts'
 import {
   now,

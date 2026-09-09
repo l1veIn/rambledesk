@@ -1,4 +1,4 @@
-import type { RamblePhase } from './types'
+import type { RamblePhase } from '../../domain/sessionPhases'
 
 export type RambleRecordIcon = 'spinner' | 'recording' | 'mic'
 export type RambleRecordLabel = 'starting' | 'stopping' | 'recording' | 'resume' | 'start'

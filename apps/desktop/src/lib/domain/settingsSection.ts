@@ -1,0 +1,12 @@
+export type SettingsSection =
+  | 'general'
+  | 'appearance'
+  | 'permissions'
+  | 'notifications'
+  | 'voice'
+  | 'post-processing'
+  | 'shortcuts'
+  | 'adapters'
+  | 'agents'
+  | 'web-access'
+  | 'about'

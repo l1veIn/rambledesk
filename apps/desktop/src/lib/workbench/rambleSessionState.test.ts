@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { rambleRecordPresentation } from './rambleRecordButton'
+import { rambleRecordPresentation } from '../components/ramble/rambleRecordButton'
 import { resolvedRamblePhase } from './rambleSessionState'
 
 describe('resolvedRamblePhase', () => {

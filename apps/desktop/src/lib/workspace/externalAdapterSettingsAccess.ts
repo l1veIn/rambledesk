@@ -1,4 +1,4 @@
-import type { SettingsSection } from '$lib/workbench/types'
+import type { SettingsSection } from '../domain/settingsSection'
 import { diagnosticErrorCategory, recordClientDiagnostic, startClientDiagnostic } from '$lib/diagnostics/clientDiagnostics'
 
 /** External integration reads belong to an explicit visit to their settings page. */

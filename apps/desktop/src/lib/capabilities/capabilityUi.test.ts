@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { CapabilityStatus } from '$lib/capabilities/capabilityManifest'
-import { nativeCaptureAvailable, voiceRambleAvailable } from './workbenchCapabilityUi'
+import { nativeCaptureAvailable, voiceRambleAvailable } from './capabilityUi'
 
 const available = { availability: 'available', source: 'native' } satisfies CapabilityStatus
 const degraded = {

@@ -13,7 +13,7 @@ import type {
   ReorderAttachmentsInput,
 } from '../feedback'
 import type { ActiveAction } from '../draftOperations'
-import type { FeedbackEditorHandle } from './types'
+import type { FeedbackEditorHandle } from '../editor/feedbackEditorHandle'
 import type { AttachmentSession } from './attachmentSession'
 
 export type { AttachmentMessageTone } from './attachmentSession'

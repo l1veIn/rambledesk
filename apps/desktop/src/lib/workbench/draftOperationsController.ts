@@ -11,7 +11,7 @@ import {
   shouldUseForegroundDraftEditor,
 } from '../workspace/draftOperationRouting'
 import type { WorkspaceViewDescriptor } from '../workspace/viewDescriptors'
-import type { FeedbackEditorHandle } from './types'
+import type { FeedbackEditorHandle } from '../editor/feedbackEditorHandle'
 
 export type DraftOperationsContext = {
   transport: ApplicationTransport

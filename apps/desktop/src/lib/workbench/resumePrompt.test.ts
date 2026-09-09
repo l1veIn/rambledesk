@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { FeedbackWorkspaceView } from '../feedback'
-import type { HostProfile } from './types'
+import type { HostProfile } from '../domain/hostProfile'
 import { buildResumePrompt, shouldShowResumePromptButton } from './resumePrompt'
 
 const workspace = {

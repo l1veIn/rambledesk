@@ -1,6 +1,6 @@
 import type { CapabilityManifest } from '$lib/capabilities/capabilityManifest'
 import type { WindowCapability } from '$lib/capabilities/workbenchCapabilities'
-import type { SettingsSection } from '$lib/workbench/types'
+import type { SettingsSection } from '../domain/settingsSection'
 
 export type SettingsSectionAvailability = Readonly<Record<SettingsSection, boolean>>
 

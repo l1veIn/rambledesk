@@ -1,6 +1,6 @@
 import type { FeedbackRequestSummary, HostSessionSummary } from '../../feedback'
-import { DEFAULT_REQUEST_FILTERS, type RequestFilters } from '../requestFilters'
-import type { HostProfile } from '../types'
+import { DEFAULT_REQUEST_FILTERS, type RequestFilters } from '../../domain/requestFilters'
+import type { HostProfile } from '../../domain/hostProfile'
 
 /** Manual refreshes keep a floor so the spinner never flashes. */
 export const MANUAL_PAGE_REFRESH_MIN_MS = 300

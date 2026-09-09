@@ -30,8 +30,8 @@
   import { locale } from '$lib/preferences'
   import { shouldAutoTidy } from '$lib/tidyAuto'
   import { hasCookedPublishedVariant } from '$lib/publishedFeedback'
-  import MarkdownPreview from './MarkdownPreview.svelte'
-  import type { SavePhase } from './types'
+  import MarkdownPreview from '../editor/MarkdownPreview.svelte'
+  import type { SavePhase } from '../domain/sessionPhases'
 
   export let workspace: FeedbackWorkspaceView
   export let draftBody = ''

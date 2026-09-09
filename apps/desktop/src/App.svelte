@@ -125,16 +125,16 @@
   import { createNavigationController } from './lib/workbench/navigationController'
   import { ensureDesktopNavigationPolling } from './lib/workbench/navigationPolling'
   import { resolvedRamblePhase } from './lib/workbench/rambleSessionState'
-  import type {
-    FeedbackEditorHandle,
-    RamblePhase,
-    RambleSessionControllerHandle,
-    ResumePrompt,
-    SavePhase,
-    SettingsSection,
-    SubmitStage,
-    VoicePhase,
-  } from './lib/workbench/types'
+  import type { FeedbackEditorHandle } from './lib/editor/feedbackEditorHandle'
+  import type { RambleSessionControllerHandle } from './lib/speech/rambleSessionControllerHandle'
+import type {
+  RamblePhase,
+  SavePhase,
+  SubmitStage,
+  VoicePhase,
+} from './lib/domain/sessionPhases'
+import type { ResumePrompt } from './lib/domain/resumePrompt'
+import type { SettingsSection } from './lib/domain/settingsSection'
   import RambleSessionController from './lib/workbench/RambleSessionController.svelte'
   import { highlightSpeechSegment } from './lib/speech/highlightSpeechSegment'
   import { t } from './lib/i18n'

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import MarkdownPreview from '$lib/workbench/MarkdownPreview.svelte'
+  import MarkdownPreview from '$lib/editor/MarkdownPreview.svelte'
   import { activityMarkdownDocument } from './activity-markdown'
   export let text = ''
   let mounted = false

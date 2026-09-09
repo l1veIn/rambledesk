@@ -1,4 +1,7 @@
-import type { RamblePhase, VoicePhase } from './types'
+import type {
+  RamblePhase,
+  VoicePhase,
+} from '../domain/sessionPhases'
 
 /**
  * The microphone session is the source of truth while it is transitioning or

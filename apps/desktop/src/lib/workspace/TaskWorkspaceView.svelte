@@ -7,10 +7,10 @@
   import type { WorkbenchCapabilities } from '$lib/capabilities/workbenchCapabilities'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
-  import RequestAttachmentPreview from '$lib/workbench/RequestAttachmentPreview.svelte'
-  import TaskBriefView from '$lib/workbench/TaskBriefView.svelte'
-  import type { HostProfile } from '$lib/workbench/types'
-  import type { RamblePhase } from '$lib/workbench/types'
+  import RequestAttachmentPreview from '$lib/workspace/RequestAttachmentPreview.svelte'
+  import TaskBriefView from '$lib/workspace/TaskBriefView.svelte'
+  import type { HostProfile } from '../domain/hostProfile'
+  import type { RamblePhase } from '../domain/sessionPhases'
 
   export let workspace: FeedbackWorkspaceView | null = null
   export let transport: ApplicationTransport

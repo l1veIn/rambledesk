@@ -24,7 +24,7 @@
     computeImagePreviewZoom,
     imageDisplaySize,
   } from './imagePreviewZoom'
-  import MarkdownPreview from './MarkdownPreview.svelte'
+  import MarkdownPreview from '../editor/MarkdownPreview.svelte'
 
   export let open = false
   export let transport: ApplicationTransport

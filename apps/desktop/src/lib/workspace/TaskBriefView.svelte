@@ -22,10 +22,11 @@
   import RequestAttachmentPreview from './RequestAttachmentPreview.svelte'
   import ActionFeedbackCard from './ActionFeedbackCard.svelte'
   import { buildTaskBriefText } from './taskBriefCopy'
-  import RecordLed from './RecordLed.svelte'
-  import { rambleRecordPresentation } from './rambleRecordButton'
-  import { voiceRambleAvailable as canStartVoiceRamble } from './workbenchCapabilityUi'
-  import type { HostProfile, RamblePhase } from './types'
+  import RecordLed from '../components/ramble/RecordLed.svelte'
+  import { rambleRecordPresentation } from '../components/ramble/rambleRecordButton'
+  import { voiceRambleAvailable as canStartVoiceRamble } from '../capabilities/capabilityUi'
+  import type { HostProfile } from '../domain/hostProfile'
+import type { RamblePhase } from '../domain/sessionPhases'
 
   export let workspace: FeedbackWorkspaceView | null = null
   export let transport: ApplicationTransport

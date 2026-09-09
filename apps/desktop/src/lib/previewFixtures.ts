@@ -3,7 +3,8 @@ import type {
   FeedbackWorkspaceView,
   HostSessionSummary,
 } from './feedback'
-import type { HostProfile, ResumePrompt } from './workbench/types'
+import type { HostProfile } from './domain/hostProfile'
+import type { ResumePrompt } from './domain/resumePrompt'
 
 const requests: FeedbackRequestSummary[] = [
   {

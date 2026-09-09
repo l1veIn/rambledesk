@@ -12,7 +12,7 @@
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
   import { titlebarPointerIntent } from '$lib/shell/titlebarInteractions'
-  import type { RamblePhase } from '$lib/workbench/types'
+  import type { RamblePhase } from '../domain/sessionPhases'
 
   const unavailableCapabilities = createUnavailableWorkbenchCapabilities()
 

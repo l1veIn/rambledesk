@@ -3,9 +3,9 @@
   import type { RambleConsoleCommand } from '$lib/rambleConsole'
   import type { SpeechOverlayState } from '$lib/speech/speechOverlay'
   import type { DraftOperation } from '$lib/draftOperations'
-  import { handleSpeechDraftCommand } from '$lib/workbench/speechDraftCommands'
-  import { createSpeechDraftQueue, groupSpeechDrafts, type SpeechTarget } from '$lib/workbench/speechDraftQueue'
-  import type { VoicePhase } from '$lib/workbench/types'
+  import { handleSpeechDraftCommand } from '$lib/speech/speechDraftCommands'
+  import { createSpeechDraftQueue, groupSpeechDrafts, type SpeechTarget } from '$lib/speech/speechDraftQueue'
+  import type { VoicePhase } from '../lib/domain/sessionPhases'
 
   const mainTarget: SpeechTarget = {
     requestId: 'preview-feedback', requestTitle: 'Login review',

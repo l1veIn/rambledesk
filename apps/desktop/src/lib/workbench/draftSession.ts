@@ -8,7 +8,7 @@ import {
   type FeedbackDraftSnapshot,
 } from '../feedbackDraftDocument'
 import type { JSONContent } from '@tiptap/core'
-import type { SavePhase } from './types'
+import type { SavePhase } from '../domain/sessionPhases'
 
 /**
  * Editing session for the current request: what the human is typing, what the server

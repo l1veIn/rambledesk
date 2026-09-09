@@ -56,7 +56,7 @@
   } from '$lib/workspace/settingsCapabilitySections'
   import { applySettingsSectionCommand } from '$lib/workspace/settingsSectionCommand'
   import type { DshHostStatus } from '$lib/capabilities/workbenchCapabilities'
-  import type { SettingsSection } from '$lib/workbench/types'
+  import type { SettingsSection } from '../domain/settingsSection'
 
   const unavailableCapabilities = createUnavailableWorkbenchCapabilities()
 

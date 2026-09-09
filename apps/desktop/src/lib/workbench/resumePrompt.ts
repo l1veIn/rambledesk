@@ -1,5 +1,6 @@
 import type { FeedbackResolution, FeedbackResultView, FeedbackWorkspaceView } from '../feedback'
-import type { HostProfile, ResumePrompt } from './types'
+import type { HostProfile } from '../domain/hostProfile'
+import type { ResumePrompt } from '../domain/resumePrompt'
 
 export function shouldShowResumePromptButton(
   feedbackResult: FeedbackResultView | null,

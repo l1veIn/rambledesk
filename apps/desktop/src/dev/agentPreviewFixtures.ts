@@ -3,7 +3,7 @@ import { TestApplicationTransport } from '$lib/application/testApplicationTransp
 import { APPLICATION_EVENTS_STREAM } from '$lib/application/applicationEvents'
 import { get, writable } from 'svelte/store'
 import type { AgentCatalogEntry, AgentConfig, AgentInspection, AgentInstallJob, HostSessionSummary, ManagedSessionSnapshot, SessionActivity, SessionPromptContent, SessionContentBlock } from '$lib/generated/feedback'
-import type { HostProfile } from '$lib/workbench/types'
+import type { HostProfile } from '../lib/domain/hostProfile'
 
 const names = [['deepseek-acp', 'DeepSeek ACP', 'dsh'], ['dsh', 'DeepSeek Harness', 'dsh'], ['claude-acp', 'Claude Code', 'claude'], ['codex-acp', 'Codex CLI', 'codex'], ['gemini', 'Gemini CLI', 'gemini'], ['pi-acp', 'Pi', 'pi']]
 const entries: AgentCatalogEntry[] = names.map(([id, name, host_id]) => ({ id, name, host_id, description: '', connection_kind: ['dsh', 'gemini'].includes(id) ? 'native' : 'bridge', distribution: { kind: 'npm', package: id, pinned_version: '0.8.0', command: id === 'claude-acp' ? 'claude-agent-acp' : id, node_required: '22.0.0' }, args: id === 'dsh' ? ['--profile', 'acp'] : id === 'gemini' ? ['--acp'] : [], dependencies: [], verification: { status: 'unverified', versions: [], note: 'Fixture' } }))

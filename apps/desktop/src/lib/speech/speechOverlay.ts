@@ -1,7 +1,7 @@
-import type { VoicePhase } from '../workbench/types'
+import type { VoicePhase } from '../domain/sessionPhases'
 import type { ShortcutConfig } from '../settings/shortcutSettings'
 import type { RambleConsoleCommand } from '../rambleConsole'
-import type { SpeechDraftGroup, SpeechReceipt, SpeechTarget } from '../workbench/speechDraftQueue'
+import type { SpeechDraftGroup, SpeechReceipt, SpeechTarget } from './speechDraftQueue'
 
 export const SPEECH_OVERLAY_LABEL = 'speech-overlay'
 export const SPEECH_OVERLAY_STATE_EVENT = 'speech-overlay-state'

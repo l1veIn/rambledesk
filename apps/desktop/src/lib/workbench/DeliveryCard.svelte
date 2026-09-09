@@ -16,7 +16,7 @@
   import type { FeedbackResultView } from '$lib/feedback'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
-  import type { SubmitStage } from './types'
+  import type { SubmitStage } from '../domain/sessionPhases'
 
   export let feedbackResult: FeedbackResultView | null = null
   export let cancelled = false

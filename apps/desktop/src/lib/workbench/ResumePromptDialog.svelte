@@ -6,7 +6,7 @@
   import * as Dialog from '$lib/components/ui/dialog'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
-  import type { ResumePrompt } from './types'
+  import type { ResumePrompt } from '../domain/resumePrompt'
 
   export let prompt: ResumePrompt
   export let copyState: 'idle' | 'copied' | 'failed' = 'idle'

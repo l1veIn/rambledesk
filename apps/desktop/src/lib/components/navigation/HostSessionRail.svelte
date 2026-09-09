@@ -10,7 +10,7 @@
   import AgentIcon from '$lib/agents/AgentIcon.svelte'
   import type { HostSessionSummary } from '$lib/feedback'
   import { locale } from '$lib/preferences'
-  import type { HostProfile } from '$lib/workbench/types'
+  import type { HostProfile } from '../../domain/hostProfile'
   import { filterSessionRailProjects, groupSessionRailProjects, hostSessionKey } from './sessionRail'
   import { sessionRailText } from './sessionRailI18n'
 

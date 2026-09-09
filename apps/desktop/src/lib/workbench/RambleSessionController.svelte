@@ -9,10 +9,10 @@
   import { t } from '../i18n'
   import RecordingOverlay from '../speech/RecordingOverlay.svelte'
   import { selectedSpeechGroup, speechReviewCommand, type SpeechOverlayState } from '../speech/speechOverlay'
-  import { createSpeechDraftQueue, groupSpeechDrafts, type SpeechTarget } from './speechDraftQueue'
-  import { handleSpeechDraftCommand } from './speechDraftCommands'
+  import { createSpeechDraftQueue, groupSpeechDrafts, type SpeechTarget } from '../speech/speechDraftQueue'
+  import { handleSpeechDraftCommand } from '../speech/speechDraftCommands'
   import { tidySpeechSegments, type TidyConfig } from '../lightCleanup'
-  import { createSpeechTargetTracker } from './speechTargetTracker'
+  import { createSpeechTargetTracker } from '../speech/speechTargetTracker'
   import {
     locale,
     notificationVolume,
@@ -35,7 +35,10 @@
   import { createSingleFlight } from '../singleFlight'
   import { resolvedRamblePhase } from './rambleSessionState'
   import type { AttachmentCandidateTarget } from './attachmentController'
-  import type { RamblePhase, VoicePhase } from './types'
+  import type {
+  RamblePhase,
+  VoicePhase,
+} from '../domain/sessionPhases'
 
   export let capabilities: Pick<
     WorkbenchCapabilities,

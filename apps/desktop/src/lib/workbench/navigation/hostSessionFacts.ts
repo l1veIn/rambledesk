@@ -2,7 +2,7 @@ import { get, type Writable } from 'svelte/store'
 
 import type { HostSessionSummary } from '../../feedback'
 import { ApplicationReadTimeoutError, withApplicationReadTimeout } from '../../application/applicationReadTimeout'
-import type { HostProfile } from '../types'
+import type { HostProfile } from '../../domain/hostProfile'
 import type { NavigationState } from './navigationTypes'
 
 type FactsRefresh = Readonly<{

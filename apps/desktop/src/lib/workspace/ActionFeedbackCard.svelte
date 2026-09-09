@@ -5,7 +5,7 @@
   import * as Collapsible from '$lib/components/ui/collapsible'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
-  import MarkdownPreview from './MarkdownPreview.svelte'
+  import MarkdownPreview from '../editor/MarkdownPreview.svelte'
 
   export let document: JSONContent
   export let groupCount = 1

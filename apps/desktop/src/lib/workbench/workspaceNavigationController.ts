@@ -8,7 +8,7 @@ import type { FeedbackRequestSummary, FeedbackWorkspaceView } from '../feedback'
 import { normalizePublishedFeedback } from '../publishedFeedback'
 import { previewWorkspaceFor } from '../previewFixtures'
 import { agentSessionForView, arrivingRequestForAgentView } from '../workspace/agentViewRouting'
-import { requestFilterCount } from './requestFilters'
+import { requestFilterCount } from '../domain/requestFilters'
 import { leavesSettingsView } from '../workspace/workspaceViewLifecycle'
 import {
   agentSessionViewDescriptor,

@@ -2,7 +2,7 @@
   import SettingsPanel from '$lib/settings/SettingsPanel.svelte'
   import type { ApplicationTransport } from '$lib/application/applicationTransport'
   import type { WorkbenchCapabilities } from '$lib/capabilities/workbenchCapabilities'
-  import type { SettingsSection } from '$lib/workbench/types'
+  import type { SettingsSection } from '../domain/settingsSection'
 
   export let mcpConfiguration = ''
   export let capabilities: WorkbenchCapabilities

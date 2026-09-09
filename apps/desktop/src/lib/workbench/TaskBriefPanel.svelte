@@ -10,7 +10,7 @@
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
   import LinkifiedText from '$lib/editor/LinkifiedText.svelte'
-  import RequestAttachmentPreview from './RequestAttachmentPreview.svelte'
+  import RequestAttachmentPreview from '../workspace/RequestAttachmentPreview.svelte'
 
   export let workspace: FeedbackWorkspaceView
   export let transport: ApplicationTransport

@@ -11,7 +11,7 @@ import type {
 } from '../feedback'
 import { normalizePublishedFeedback } from '../publishedFeedback'
 import type { CookingSubmission, CookedPreview } from './cookingController'
-import type { SubmitStage } from './types'
+import type { SubmitStage } from '../domain/sessionPhases'
 
 type PublisherControllerContext = {
   transport: ApplicationTransport

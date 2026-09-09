@@ -1,5 +1,5 @@
 import type { FeedbackRequestSummary, ListFeedbackRequestsInput } from '../../feedback'
-import { requestFilterStatuses } from '../requestFilters'
+import { requestFilterStatuses } from '../../domain/requestFilters'
 import type { NavigationState } from './navigationTypes'
 
 /** Snapshot list requests for the current scope, search and filters. */

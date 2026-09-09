@@ -8,8 +8,8 @@
   import { requestStatusLabel } from '$lib/feedback'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
-  import type { HostProfile } from '$lib/workbench/types'
-  import { DEFAULT_REQUEST_FILTERS, requestFilterCount, type RequestFilters } from '$lib/workbench/requestFilters'
+  import type { HostProfile } from '../../domain/hostProfile'
+  import { DEFAULT_REQUEST_FILTERS, requestFilterCount, type RequestFilters } from '$lib/domain/requestFilters'
   import RequestFilterPopover from './RequestFilterPopover.svelte'
 
   export let requests: FeedbackRequestSummary[] = []

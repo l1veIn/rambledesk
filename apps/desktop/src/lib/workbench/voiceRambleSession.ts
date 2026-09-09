@@ -11,8 +11,8 @@ import {
   type SpeechRecognitionSession,
 } from '../speech/speech'
 import type { WorkbenchCapabilities } from '../capabilities/workbenchCapabilities'
-import type { SpeechTarget } from './speechDraftQueue'
-import type { VoicePhase } from './types'
+import type { SpeechTarget } from '../speech/speechDraftQueue'
+import type { VoicePhase } from '../domain/sessionPhases'
 
 export type VoiceRambleState = Readonly<{
   phase: VoicePhase

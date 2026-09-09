@@ -6,7 +6,7 @@
   import NavigationResizeHandle from '$lib/components/navigation/NavigationResizeHandle.svelte'
   import { COLLAPSED_RAIL_WIDTH, RAIL_LIMITS, fitNavigationWidths } from '$lib/components/navigation/railResize'
   import { previewFixtures } from '$lib/previewFixtures'
-  import type { HostProfile } from '$lib/workbench/types'
+  import type { HostProfile } from '../lib/domain/hostProfile'
   import {
     initialHostRailCollapsed, initialRequestRailCollapsed,
     initialHostRailWidth, initialRequestRailWidth,

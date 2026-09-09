@@ -5,7 +5,7 @@
   import { requestStatusLabel } from '$lib/feedback'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
-  import type { HostProfile } from './types'
+  import type { HostProfile } from '../domain/hostProfile'
 
   export let workspace: FeedbackWorkspaceView
   export let resolveHostProfile: (hostId: string) => HostProfile
