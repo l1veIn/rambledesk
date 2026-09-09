@@ -30,12 +30,23 @@
 - 默认入口是 `http://127.0.0.1:37643`，可在浏览器服务设置中改为 1024–65535 的端口；listener 始终只绑定 IPv4 loopback。
 - Web Access 与 Local Integration Server 使用不同 listener、credential、auth domain、route set 和
   lifecycle。停止 Web Access 不停止 Backend Runtime，也不停止 Local Integration Server。
+- Web Access durable token：macOS/Linux 使用 Tauri `app_local_data_dir()/auth/web-access.token`，
+  按应用 identifier 隔离，独立于资料库；Unix `auth` 目录 `0700`、文件 `0600`，原子创建/轮换，
+  自动加载遇到 symlink、损坏内容或私有文件条件不满足时失败。用户显式 Refresh token 并确认后，
+  可重新生成令牌恢复内容损坏的自有普通文件，仍不绕过路径、类型和归属检查。Windows 保留 Credential Manager。
+  token 不进入通用配置、SQLite、日志、诊断或应用生成的备份/导出包；私有文件不等于加密存储。
 - 浏览器必须通过 same-origin `POST /api/auth/session` 用 durable credential 换取 scope 受限的 session；
   该 session token 只存在 JavaScript 内存与 `HttpOnly; SameSite=Strict` 且仅作用于 bootstrap 路径的
   cookie 中，刷新、新标签页与浏览器重启会凭 cookie 恢复同一个 session，不需要重新粘贴 token。
   HTTP 使用 session bearer，WebSocket 使用受约束的 subprotocol credential。
 - 自动化覆盖 bootstrap/HTTP/event/session/body 限制、event 连接预算恢复、body 超限无 mutation
   副作用，以及 Web Access 停止后 Local Integration 仍可写。
+
+2026-09-10 的存储修订不读取、自动迁移或删除旧 macOS Keychain / Linux Secret Service 条目。
+这两个平台升级后首次启用生成新的 Web token，需从 Desktop 设置重新复制到浏览器；Windows
+保持既有凭据存储。之后同一运行中的 Web Access 可继续用有效 cookie 恢复 session；停止服务、
+重启 Runtime 或轮换 token 仍撤销旧 session。新存储选择本身不是重新认证 UI 或平台实测的通过证据，
+实际结果继续在下方质量记录中分项登记。
 
 ## 明确不支持或不在本轮范围
 
@@ -55,3 +66,21 @@
    flush、拒绝/忽略权限、页面隐藏、设备中断和长会话资源释放。
 
 上述人工项未记录通过前，只能说相应代码路径和自动化门禁存在，不能声称目标浏览器或设备已兼容。
+
+## 2026-09-10 质量收敛复验
+
+rc3 之上的未提交候选已在 macOS 原生、Chrome 152 和 Safari 26.3.1 完成部分实际操作：结构化编辑与
+刷新/重启恢复、Native/Chrome 文件选择、Safari Markdown 附件预览、提交，以及两种浏览器的实际
+下载与包哈希核对。Chrome 未保存离页确认也已实际观察；精确版本、构建和逐项边界见
+[原生与浏览器记录](quality/NATIVE_BROWSER_ACCEPTANCE.md)。
+
+build6 的实际 Native Web Access 还完成两端 Stop → 离线编辑 → Start → 重新认证 → 保存与刷新恢复；
+同一草稿交换 Chrome/Safari 先后认证顺序的两轮 CAS 均只保存胜者，输家显示 Save failed 并保留完整原文。
+SQLite 核对两轮胜者及邻居请求未受影响。Native 实际确认轮换 Quality 令牌后，两端 session 均被撤销，
+Safari 的旧 token 被明确拒绝，新 token 两端可用；Chrome 冲突稿保留，Safari 已保存稿保持 r4。
+具体操作与证据见上述记录，未据此宣称所有断线组合均已通过。
+
+这些记录没有把整列 Manual 改为通过：真实图片剪贴板、其他媒体手势、麦克风与录音设备权限／中断、
+Browser local ASR 真机 pilot、完整原生手势、托盘、自启动实际启动顺序、正式安装升级及 Windows
+仍有未验项。手机真机暂不可用，浏览器视口结果单列于
+[响应式验收](quality/RESPONSIVE_ACCEPTANCE.md)。完整收敛状态以 [计划账本](PROJECT_QUALITY_PLAN.md#8-实施账本与交付方式) 为准。

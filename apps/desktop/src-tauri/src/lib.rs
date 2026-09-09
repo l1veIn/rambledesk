@@ -312,7 +312,9 @@ pub fn run() {
                     web_access_lifecycle: tokio::sync::Mutex::new(
                         web_access::WebAccessLifecycle::default(),
                     ),
-                    web_access_credential_store: Arc::new(web_access::OsWebAccessCredentialStore),
+                    web_access_credential_store: web_access::credential_store(
+                        app.path().app_local_data_dir()?,
+                    ),
                     store,
                     generic_mcp_configuration: configuration,
                     pending_count: AtomicU32::new(0),

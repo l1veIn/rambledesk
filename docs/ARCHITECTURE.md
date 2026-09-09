@@ -1,6 +1,6 @@
 # RambleDesk 架构基线
 
-> 状态：v7 当前与目标边界，包含 ACP 体验重设计；实现完成，Windows 自动化与隔离浏览器验收已完成。
+> 状态：v7 当前与目标边界，包含 ACP 体验重设计。该阶段的历史验收不代表后续工作区已经通过全部平台验收；2026-09-10 质量收敛状态见[实施账本](PROJECT_QUALITY_PLAN.md#8-实施账本与交付方式)。
 > 术语源：[TERMINOLOGY.md](TERMINOLOGY.md)。本文若与术语表冲突，以术语表为准。
 
 本文同时记录已经存在的结构与后续平台扩展必须遵守的目标边界：
@@ -10,6 +10,10 @@
 
 Backend Runtime 是运行角色，不是新 crate 的名字。除非另有标记，package 章节描述 CURRENT；
 TARGET 不预设新 crate、Web app 目录或 headless composition root。
+
+当前前端按状态所有者、输入准备、保存、发布、导航和资源释放阅读，具体入口与设计理由见
+[质量收敛代码导读](quality/QUALITY_WALKTHROUGH.md)。示范链路及其真实保存刷新边界见
+[反馈链路导读](FEEDBACK_FLOW_WALKTHROUGH.md)；模块尺寸本身不是拆分依据。
 
 ACP 托管会话的 CURRENT 见 [ADR 007](adr/007-acp-managed-sessions.md)：Backend Runtime 持有
 Agent Session Management，ACP Client 与进程管理实现位于 core application contract 之外。
@@ -478,6 +482,7 @@ waiting → in_progress → completed
 
 - Web Access 默认关闭，使用独立 listener 且绑定 `127.0.0.1`（端口默认 `37643`，可在设置中修改，只影响下一次启动）；它拥有与 Local
   Integration Server 分离的 route set、credential、auth domain 和 lifecycle。
+- Web Access 可选择随 Desktop 启动，默认关闭。自动启动和端口偏好已有实现与合同测试；实际 OS 启动顺序和支持范围按[Web Access 支持矩阵](WEB_ACCESS_SUPPORT_MATRIX.md)分别验收。
 - 静态资源、HTTP API 与 WebSocket 使用 same-origin 且不开放宽泛 CORS。两类 listener 必须复用
   同一套 security policy/primitives。所有请求严格校验
   Host；bootstrap、受保护 API 与 WebSocket handshake 还必须 exact-match Origin，以防 DNS
@@ -486,11 +491,19 @@ waiting → in_progress → completed
   credential 时创建并持久化独立的 256-bit durable token；Backend Runtime/core 不拥有 transport
   credential。durable token 不返回 UI；只有 Desktop 设置界面可以经专用原生 clipboard command
   复制它。
-- durable token 进入 OS credential store（macOS Keychain、Windows Credential Manager、
-  Linux Secret Service）；当前不使用 secret-file fallback，安全存储不可用时 Web Access fail closed。
-  RambleDesk 不得把 token 复制到通用配置、SQLite、
-  日志、诊断包、自己生成的 backup/export 或 Feedback Package；OS 管理的加密设备/账户备份属于
-  平台安全边界，不宣称应用能够绝对排除。
+- durable token 的平台存储选择于 2026-09-10 修订：macOS/Linux 使用应用私有文件，默认位于 Tauri
+  `app_local_data_dir()/auth/web-access.token`，随应用 identifier 隔离；Windows 保留既有 Credential
+  Manager。Unix 的 `auth` 目录为 `0700`、令牌文件为 `0600`，创建与轮换原子完成；拒绝 symlink，
+  自动加载遇到损坏内容或无法满足私有文件要求时明确失败，不静默生成替代凭据。用户显式执行
+  Settings 的 Refresh token / Confirm refresh 可重新生成令牌，恢复内容损坏的自有普通文件；
+  这仍不能绕过 symlink、非普通文件或文件归属检查。
+- Unix 私有文件是当前直接存储选择，不在每次启动时先尝试 Keychain/Secret Service。旧系统凭据条目
+  不读取、不自动迁移、不删除，避免启动再次等待系统凭据交互。macOS/Linux 升级后首次启用会创建新的
+  Web token，浏览器需从设置重新复制认证；Windows 的既有存储选择不变。同一正在运行的 Web Access
+  内，后续有效 cookie 的刷新恢复合同不变；停止服务、重启 Runtime 或轮换 token 仍需重新认证。
+- 令牌路径独立于用户资料库，不进入通用配置、SQLite、日志、诊断包、RambleDesk 自己生成的
+  backup/export 或 Feedback Package。文件权限只限定本机账户访问，不宣称文件内容已加密，
+  也不宣称应用能排除 OS 级设备/账户备份。存储选择不等于真实 UI、Windows 或 Linux 环境验收通过。
 - 浏览器以 `Authorization: Bearer <durable-web-token>` 调用 same-origin
   `POST /api/auth/session` 完成 bootstrap；成功后得到 scope 受限的 session token，并写入
   `HttpOnly; SameSite=Strict; Path=/api/auth/session` 的浏览器 cookie。页面刷新、新标签页或重启浏览器时，
@@ -527,7 +540,7 @@ waiting → in_progress → completed
 - 后续可按 command sensitivity、client/IP 与运维场景继续细分资源预算和审计；Application
   Transport 可达不等于拥有所有 Native Capability 或管理权限。
 - Browser screen capture 延后；平台 API 存在不构成当前产品支持。
-- LAN、TLS、autostart、可配置端口与 headless Backend Runtime 当前均为 unsupported / out of
+- LAN、TLS 与 headless Backend Runtime 当前均为 unsupported / out of
   scope；若未来重新立项，LAN 至少必须使用 HTTPS/WSS 或受信任 TLS proxy，并重新审计 origin、
   credential delivery、设备暴露与文件访问边界。
 

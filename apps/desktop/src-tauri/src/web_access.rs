@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     future::Future,
+    path::PathBuf,
     sync::Arc,
     time::Instant,
 };
@@ -16,8 +17,7 @@ use tauri_plugin_opener::OpenerExt;
 
 use crate::WorkbenchState;
 
-const CREDENTIAL_SERVICE: &str = "com.rambledesk.desktop.web-access";
-const CREDENTIAL_ACCOUNT: &str = "web-access-durable-token";
+mod credential;
 const BROWSER_SPEECH_ASSETS: &[&str] = &[
     "browser-speech/pcm-capture.worklet.js",
     "browser-speech/sherpa.worker.js",
@@ -32,16 +32,8 @@ pub(super) trait WebAccessCredentialStore: Send + Sync {
     fn rotate(&self) -> Result<DurableWebAccessToken, String>;
 }
 
-pub(super) struct OsWebAccessCredentialStore;
-
-impl WebAccessCredentialStore for OsWebAccessCredentialStore {
-    fn load_or_create(&self) -> Result<DurableWebAccessToken, String> {
-        load_or_create_os_credential()
-    }
-
-    fn rotate(&self) -> Result<DurableWebAccessToken, String> {
-        rotate_os_credential()
-    }
+pub(super) fn credential_store(app_data: PathBuf) -> Arc<dyn WebAccessCredentialStore> {
+    credential::platform_store(app_data)
 }
 
 #[async_trait]
@@ -334,7 +326,7 @@ impl WebAccessFailure {
     fn new(code: WebAccessFailureCode) -> Self {
         let message = match code {
             WebAccessFailureCode::CredentialStoreUnavailable => {
-                "Secure credential storage is unavailable. Check the system credential service, then try again."
+                "Web Access credential storage is unavailable. Check its access permissions, then try again."
             }
             WebAccessFailureCode::AssetsUnavailable => {
                 "Web Access files are unavailable. Restart or reinstall RambleDesk, then try again."
@@ -662,13 +654,11 @@ pub(super) async fn start_web_access(
 pub(super) async fn rotate_web_access_token(
     state: tauri::State<'_, WorkbenchState>,
 ) -> Result<WebAccessStatus, String> {
+    // Persist and adopt in the same order as start/stop/copy. Two rotations must
+    // not leave the file holding B while a delayed completion installs A.
+    let mut lifecycle = state.web_access_lifecycle.lock().await;
     let token = state.web_access_credential_store.rotate()?;
-    Ok(state
-        .web_access_lifecycle
-        .lock()
-        .await
-        .rotate_token(token)
-        .await)
+    Ok(lifecycle.rotate_token(token).await)
 }
 
 #[tauri::command]
@@ -702,48 +692,6 @@ pub(super) async fn open_web_access(
     app.opener()
         .open_url(url, None::<&str>)
         .map_err(|_| "Could not open Web Access in the default browser.".to_owned())
-}
-
-#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
-fn load_or_create_os_credential() -> Result<DurableWebAccessToken, String> {
-    let entry = keyring::Entry::new(CREDENTIAL_SERVICE, CREDENTIAL_ACCOUNT)
-        .map_err(|_| secure_storage_error())?;
-    match entry.get_password() {
-        Ok(token) => DurableWebAccessToken::parse(token).map_err(|_| secure_storage_error()),
-        Err(keyring::Error::NoEntry) => {
-            let token = DurableWebAccessToken::generate();
-            entry
-                .set_password(token.secret())
-                .map_err(|_| secure_storage_error())?;
-            Ok(token)
-        }
-        Err(_) => Err(secure_storage_error()),
-    }
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
-fn load_or_create_os_credential() -> Result<DurableWebAccessToken, String> {
-    Err(secure_storage_error())
-}
-
-#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
-fn rotate_os_credential() -> Result<DurableWebAccessToken, String> {
-    let entry = keyring::Entry::new(CREDENTIAL_SERVICE, CREDENTIAL_ACCOUNT)
-        .map_err(|_| secure_storage_error())?;
-    let token = DurableWebAccessToken::generate();
-    entry
-        .set_password(token.secret())
-        .map_err(|_| secure_storage_error())?;
-    Ok(token)
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
-fn rotate_os_credential() -> Result<DurableWebAccessToken, String> {
-    Err(secure_storage_error())
-}
-
-fn secure_storage_error() -> String {
-    "Secure credential storage is unavailable; Web Access was not started.".to_owned()
 }
 
 #[cfg(test)]

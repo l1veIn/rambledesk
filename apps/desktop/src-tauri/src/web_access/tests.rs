@@ -3,6 +3,9 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use super::*;
 
+#[cfg(unix)]
+mod file_lifecycle;
+
 #[derive(Default)]
 struct FakeListenerControl {
     finished: AtomicBool,
@@ -444,7 +447,11 @@ fn server_start_errors_map_to_stable_failure_codes() {
 #[test]
 fn secure_storage_errors_never_include_a_credential() {
     let token = DurableWebAccessToken::generate();
-    assert!(!secure_storage_error().contains(token.secret()));
+    assert!(
+        !WebAccessFailure::new(WebAccessFailureCode::CredentialStoreUnavailable)
+            .message
+            .contains(token.secret())
+    );
     assert!(!format!("{token:?}").contains(token.secret()));
 }
 
