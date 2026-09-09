@@ -47,6 +47,8 @@ export default defineConfig({
     alias: {
       $lib: path.resolve('./src/lib'),
     },
+    // Component tests mount the client build of Svelte, not the server build.
+    conditions: ['browser'],
   },
   clearScreen: false,
   server: {

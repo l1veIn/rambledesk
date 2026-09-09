@@ -60,6 +60,8 @@ describe('capability architecture', () => {
       'PinnedCapture.svelte': 'pinned-capture platform window',
       'RambleConsole.svelte': 'ramble-console platform window',
       'ScreenshotOverlay.svelte': 'screen-capture platform window',
+      'ScreenshotOverlay.interaction.test.ts':
+        'screen-capture overlay interaction harness (mocks the platform window commands)',
       'ScrollCaptureController.svelte': 'scroll-capture platform window',
       'SpeechOverlay.svelte': 'speech-overlay platform window',
       [`lib/application/${['tauri', 'ApplicationTransport.test.ts'].join('')}`]:

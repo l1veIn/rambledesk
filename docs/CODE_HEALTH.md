@@ -283,6 +283,16 @@ message 全部由它持有，组件只做事件转发与 store 镜像，705 → 
 剩余工作：无。A 类文件全部拆完，豁免清单只剩 `App.svelte`（1388 行，只减不增）；
 `i18n.ts` 仍是白名单数据文件。
 
+2026-09-08 追加的结构整理（非行数驱动）：
+
+| 项 | 结果 |
+| --- | --- |
+| `lib/` 根目录归位 | 根目录源文件 60 → 29，组件按域归入 `settings/ onboarding/ updates/ shell/ editor/ speech/ screen-capture/ rambelle/ web-access/` |
+| 共享类型 | `workbench/types.ts` 删除，拆成 `lib/domain/` 下 phases / settingsSection / resumePrompt / hostProfile，组件句柄归 `lib/editor`、`lib/speech` |
+| 依赖方向门禁 | `lib/architecture/frontendBoundaries.test.ts` 冻结跨域 import（只减不增），`lib/workspace` 不再反向依赖 `lib/workbench` |
+| 预览适配器 | `lib/preview/previewApplicationTransport.ts` 承担 fixture 读写，控制器里的 56 处 `previewMode` 分支清零 |
+| 组件测试 | 新增 jsdom 交互测试（截图浮层）与 SSR 渲染测试（Ramble 控制器） |
+
 ### `App.svelte` 的状态边界（进行中）
 
 `App.svelte` 从 2525 行降到 1388 行，共享状态已经全部有主：

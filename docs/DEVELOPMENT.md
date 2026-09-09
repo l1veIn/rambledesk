@@ -139,6 +139,11 @@ src/
 - 跨域 import 由测试内的 `ALLOWED_EDGES` 锁定，**只减不增**：新增一条会失败，消失一条必须从清单里删掉；
 - 组合根（`App.svelte`、`dev/`）不受限制，也不允许被 `lib/` 反向 import（`workbenchEntry` 等入口除外，已列入清单）。
 
+组件测试默认用 `svelte/server` 的 `render`（SSR 渲染契约），需要真实 DOM 交互的文件用
+`// @vitest-environment jsdom` 标注，并 mock `@tauri-apps/api/*`。纯逻辑留在模块测试里，
+组件测试只覆盖渲染与事件接线，例如 `ScreenshotOverlay.interaction.test.ts`（拖选、工具栏、
+Esc 取消、Enter 完成）和 `rambleSessionControllerRender.test.ts`（悬浮层与待确认语音面板）。
+
 预览模式不是散落在控制器里的分支：`?preview=fixtures` 由 `main.ts` 构造
 `lib/preview/previewApplicationTransport.ts`（内存版 Application 合同实现，读写都走 fixture），
 经 `createWorkbenchComposition({ previewTransport })` 注入。控制器只面向 `ApplicationTransport`，

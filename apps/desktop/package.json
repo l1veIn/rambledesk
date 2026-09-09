@@ -49,6 +49,7 @@
     "@tauri-apps/cli": "2.11.4",
     "bits-ui": "^2.18.1",
     "clsx": "^2.1.1",
+    "jsdom": "^30.0.1",
     "svelte": "5.56.8",
     "svelte-check": "4.7.4",
     "tailwind-merge": "^3.6.0",
