@@ -2,12 +2,12 @@ import type { FeedbackWorkspaceView } from '$lib/feedback'
 import type { DiagnosticExportResult } from '$lib/nativePath'
 import type { SpeechModelId } from '$lib/preferences'
 import type { RambleConsoleCommand, RambleConsoleState } from '$lib/rambleConsole'
-import type { SpeechOverlayState } from '$lib/speechOverlay'
-import type { ShortcutAction, ShortcutConfig } from '$lib/shortcutSettings'
+import type { SpeechOverlayState } from '$lib/speech/speechOverlay'
+import type { ShortcutAction, ShortcutConfig } from '$lib/settings/shortcutSettings'
 import type {
   SpeechRecognitionListener,
   SpeechRecognitionSession,
-} from '$lib/speech'
+} from '$lib/speech/speech'
 import type {
   ClipboardCapturePlugin,
   ImagePastePlugin,

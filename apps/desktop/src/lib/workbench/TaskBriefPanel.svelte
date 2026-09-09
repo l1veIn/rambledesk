@@ -9,7 +9,7 @@
   import type { FeedbackWorkspaceView, RequestAttachmentView } from '$lib/feedback'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
-  import LinkifiedText from '$lib/LinkifiedText.svelte'
+  import LinkifiedText from '$lib/editor/LinkifiedText.svelte'
   import RequestAttachmentPreview from './RequestAttachmentPreview.svelte'
 
   export let workspace: FeedbackWorkspaceView

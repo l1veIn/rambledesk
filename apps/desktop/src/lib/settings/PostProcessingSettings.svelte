@@ -4,7 +4,7 @@
   import { Badge } from '$lib/components/ui/badge'
   import { DEFAULT_COOKING_SYSTEM_PROMPT } from '$lib/cooking'
   import { t } from '$lib/i18n'
-  import LlmConfigurationFields from '$lib/LlmConfigurationFields.svelte'
+  import LlmConfigurationFields from '$lib/settings/LlmConfigurationFields.svelte'
   import { DEFAULT_TIDY_SYSTEM_PROMPT } from '$lib/lightCleanup'
   import {
     cookingApiKey,

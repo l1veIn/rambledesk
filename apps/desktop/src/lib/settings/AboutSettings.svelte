@@ -19,11 +19,11 @@
   import { toast } from '$lib/components/ui/sonner'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
-  import { diagnosticExportView } from './nativePath'
+  import { diagnosticExportView } from '../nativePath'
   import {
     openUpdateDialog,
     updateState,
-  } from '$lib/updater'
+  } from '$lib/updates/updater'
 
   const unavailableCapabilities = createUnavailableWorkbenchCapabilities()
 

@@ -8,7 +8,7 @@ import type {
   SpeechRecognitionListener,
   SpeechRecognitionSession,
   SpeechRecognitionStopReason,
-} from '$lib/speech'
+} from '$lib/speech/speech'
 import { subscribeToTauriEvent } from './subscription'
 import type { TauriCapabilityApi, TauriUnlisten } from './tauriCapabilityApi'
 

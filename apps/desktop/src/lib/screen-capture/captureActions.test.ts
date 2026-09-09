@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type { CaptureAnnotation, ScreenCaptureView } from '../screenCapture'
+import type { CaptureAnnotation, ScreenCaptureView } from './screenCapture'
 import { createCaptureActions, roundedRectangle, type CaptureActionsContext } from './captureActions'
 
 const capture = {

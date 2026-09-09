@@ -8,7 +8,7 @@ import StarterKit from '@tiptap/starter-kit'
 
 import { ActionBlockquote } from './actionBlockquote'
 import { attachmentIdFromUrl, attachmentMarkdownUrl } from './attachmentMarkdown'
-import { SpeechBlockMetadata, SpeechTidyingDecorations } from './speechBlockMetadata'
+import { SpeechBlockMetadata, SpeechTidyingDecorations } from './speech/speechBlockMetadata'
 
 const AttachmentImage = Image.extend({
   addAttributes() {

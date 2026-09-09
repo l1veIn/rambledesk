@@ -1,6 +1,6 @@
 <script lang="ts">
   import { useWorkbenchCapabilities } from '$lib/capabilities/capabilityContext'
-  import { isSafeHttpUrl } from '$lib/linkify'
+  import { isSafeHttpUrl } from '$lib/editor/linkify'
   import { locale } from '$lib/preferences'
   import { chatText } from './chat-text'
   export let uri: string

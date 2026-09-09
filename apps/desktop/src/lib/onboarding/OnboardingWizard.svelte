@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { BellRing, Check, ChefHat, ChevronLeft, ChevronRight, Download, FolderCog, HardDrive, LoaderCircle, MessageSquare, Mic, Rocket, ShieldCheck, Sparkles } from '@lucide/svelte'
-  import MacPermissions from '$lib/MacPermissions.svelte'
+  import MacPermissions from '$lib/settings/MacPermissions.svelte'
   import AgentCatalog from '$lib/agents/AgentCatalog.svelte'
   import type { ApplicationTransport } from '$lib/application/applicationTransport'
   import type { AgentConfig } from '$lib/generated/feedback'
@@ -13,8 +13,8 @@
   import * as Dialog from '$lib/components/ui/dialog'
   import { t } from '$lib/i18n'
   import { diagnosticErrorCategory, recordClientDiagnostic, startClientDiagnostic } from '$lib/diagnostics/clientDiagnostics'
-  import { speechModelDescription, speechModelDisplayName } from '$lib/speechModelLabels'
-  import { onboardingSteps, onboardingRestartStep, reconcileOnboardingStep, resumeOnboardingStep, type OnboardingStep } from '$lib/onboardingSteps'
+  import { speechModelDescription, speechModelDisplayName } from '$lib/speech/speechModelLabels'
+  import { onboardingSteps, onboardingRestartStep, reconcileOnboardingStep, resumeOnboardingStep, type OnboardingStep } from '$lib/onboarding/onboardingSteps'
   import {
     DEFAULT_SPEECH_MODEL_ID, cookingApiKey, cookingBaseUrl, cookingEnabled, cookingModel, cookingProvider, cookingReasoningEffort,
     finishOnboarding, locale, notificationPopupEnabled, notificationSoundEnabled, onboardingStep,

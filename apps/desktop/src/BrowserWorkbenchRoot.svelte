@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import App from './App.svelte'
-  import WebAccessAuthGate from './lib/WebAccessAuthGate.svelte'
+  import WebAccessAuthGate from './lib/web-access/WebAccessAuthGate.svelte'
   import { HttpApplicationSession } from './lib/application/httpApplicationTransport'
   import { ReplaceableApplicationTransport } from './lib/application/replaceableApplicationTransport'
   import { replaceReadyApplicationTransport } from './lib/application/browserReauthentication'

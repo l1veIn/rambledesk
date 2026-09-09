@@ -14,7 +14,7 @@
   import { Button } from '$lib/components/ui/button'
   import type { JSONContent } from '@tiptap/core'
 
-  import RichFeedbackEditor from '$lib/RichFeedbackEditor.svelte'
+  import RichFeedbackEditor from '$lib/editor/RichFeedbackEditor.svelte'
   import type { DraftOperation } from '$lib/draftOperations'
   import type { FeedbackWorkspaceView } from '$lib/feedback'
   import {
@@ -25,7 +25,7 @@
   import {
     speechCleanupCandidates,
     type SpeechCleanupSegment,
-  } from '$lib/speechBlockMetadata'
+  } from '$lib/speech/speechBlockMetadata'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
   import { shouldAutoTidy } from '$lib/tidyAuto'

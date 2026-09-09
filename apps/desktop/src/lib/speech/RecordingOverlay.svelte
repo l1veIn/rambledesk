@@ -3,7 +3,7 @@
   import { tick } from 'svelte'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
-  import type { RambleConsoleCommand } from './rambleConsole'
+  import type { RambleConsoleCommand } from '../rambleConsole'
   import { selectedSpeechGroup, speechOverlayVisible, type SpeechOverlayState } from './speechOverlay'
   import { speechOverlayDrag } from './speechOverlayDrag'
   import { synchronizeSpeechEditBuffer, type SpeechEditBuffer } from './speechOverlayEditBuffer'

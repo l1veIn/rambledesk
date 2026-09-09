@@ -1,5 +1,5 @@
 <script lang="ts">
-  import AppTitlebar from '$lib/AppTitlebar.svelte'
+  import AppTitlebar from '$lib/shell/AppTitlebar.svelte'
   import HostSessionRail from '$lib/components/navigation/HostSessionRail.svelte'
   import RequestListPane from '$lib/components/navigation/RequestListPane.svelte'
   import { COLLAPSED_RAIL_WIDTH } from '$lib/components/navigation/railResize'

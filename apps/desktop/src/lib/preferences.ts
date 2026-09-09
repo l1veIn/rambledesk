@@ -1,10 +1,10 @@
 import { get, writable } from 'svelte/store'
 
 import { savedUiTheme, saveUiTheme } from './uiPreferences'
-import { DEFAULT_SPEECH_HOTWORDS, mergeSpeechHotwords } from './speechHotwords'
+import { DEFAULT_SPEECH_HOTWORDS, mergeSpeechHotwords } from './speech/speechHotwords'
 import { normalizeTidyAutoThreshold } from './tidyAuto'
 
-export { DEFAULT_SPEECH_HOTWORDS, mergeSpeechHotwords } from './speechHotwords'
+export { DEFAULT_SPEECH_HOTWORDS, mergeSpeechHotwords } from './speech/speechHotwords'
 
 export type Locale = 'zh-CN' | 'en'
 export type ThemePreference = 'system' | 'light' | 'dark'

@@ -6,7 +6,7 @@
   import { Button } from '$lib/components/ui/button'
   import * as Select from '$lib/components/ui/select'
   import type { WorkbenchCapabilities } from '$lib/capabilities/workbenchCapabilities'
-  import ShortcutSettings from '$lib/ShortcutSettings.svelte'
+  import ShortcutSettings from '$lib/settings/ShortcutSettings.svelte'
   import { t } from '$lib/i18n'
   import {
     DEFAULT_SPEECH_MODEL_ID,
@@ -35,7 +35,7 @@
     speechModelDescription,
     speechModelDisplayName,
     speechModelLanguages,
-  } from '$lib/speechModelLabels'
+  } from '$lib/speech/speechModelLabels'
   import { resolveSupportedSpeechModelId } from '$lib/capabilities/speechModelSelection'
 
   type SpeechModelInfo = Awaited<ReturnType<WorkbenchCapabilities['speech']['implementation']['listModels']>>[number]

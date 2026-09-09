@@ -8,7 +8,7 @@ import {
 } from '$lib/rambleConsole'
 
 import type { RambleConsoleCapability } from '../workbenchCapabilities'
-import { SPEECH_OVERLAY_LABEL, SPEECH_OVERLAY_READY_EVENT, SPEECH_OVERLAY_STATE_EVENT } from '$lib/speechOverlay'
+import { SPEECH_OVERLAY_LABEL, SPEECH_OVERLAY_READY_EVENT, SPEECH_OVERLAY_STATE_EVENT } from '$lib/speech/speechOverlay'
 import { subscribeToTauriEvent } from './subscription'
 import type { TauriCapabilityApi } from './tauriCapabilityApi'
 

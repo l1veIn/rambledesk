@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { getSchema } from '@tiptap/core'
 
-import { feedbackEditorExtensions } from './feedbackEditorExtensions'
+import { feedbackEditorExtensions } from '../feedbackEditorExtensions'
 import {
   ASR_INPUT_SOURCE,
   CLEANUP_STATE_ATTR,

@@ -1,7 +1,7 @@
 import type { JSONContent } from '@tiptap/core'
 
 import type { DraftOperation } from '../draftOperations'
-import type { SpeechCleanupSegment } from '../speechBlockMetadata'
+import type { SpeechCleanupSegment } from '../speech/speechBlockMetadata'
 
 export type SavePhase = 'idle' | 'unsaved' | 'saving' | 'saved' | 'error'
 export type RamblePhase = 'idle' | 'starting' | 'active' | 'paused' | 'stopping' | 'error'

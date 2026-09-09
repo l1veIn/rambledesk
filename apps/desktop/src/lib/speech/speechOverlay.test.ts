@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { selectedSpeechGroup, speechOverlayVisible, speechReviewCommand, type SpeechOverlayState } from './speechOverlay'
-import type { SpeechDraftGroup } from './workbench/speechDraftQueue'
+import type { SpeechDraftGroup } from '../workbench/speechDraftQueue'
 
 const group = (id: string): SpeechDraftGroup => ({ ids: [id], requestId: id, requestTitle: id, action: null, text: `speech for ${id}`, busy: false, error: '' })
 function state(): SpeechOverlayState {

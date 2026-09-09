@@ -1,6 +1,6 @@
 <script lang="ts">
   import { splitTextWithUrls } from './linkify'
-  import { useWorkbenchCapabilities } from './capabilities/capabilityContext'
+  import { useWorkbenchCapabilities } from '../capabilities/capabilityContext'
 
   export let text = ''
   const capabilities = useWorkbenchCapabilities()

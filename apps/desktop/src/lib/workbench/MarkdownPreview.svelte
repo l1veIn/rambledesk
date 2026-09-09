@@ -9,7 +9,7 @@
     feedbackEditorExtensions,
     parseFeedbackMarkdown,
   } from '$lib/feedbackEditorExtensions'
-  import { isSafeHttpUrl } from '$lib/linkify'
+  import { isSafeHttpUrl } from '$lib/editor/linkify'
   import { useWorkbenchCapabilities } from '$lib/capabilities/capabilityContext'
 
   export let markdown = ''

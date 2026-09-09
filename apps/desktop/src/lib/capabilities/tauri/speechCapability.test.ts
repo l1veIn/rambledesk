@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import type { SpeechRecognitionEvent } from '$lib/speech'
+import type { SpeechRecognitionEvent } from '$lib/speech/speech'
 import { createTauriSpeechCapability } from './speechCapability'
 import type {
   TauriCapabilityApi,

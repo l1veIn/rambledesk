@@ -1,7 +1,7 @@
 <script lang="ts">
-  import RecordingOverlay from '$lib/RecordingOverlay.svelte'
+  import RecordingOverlay from '$lib/speech/RecordingOverlay.svelte'
   import type { RambleConsoleCommand } from '$lib/rambleConsole'
-  import type { SpeechOverlayState } from '$lib/speechOverlay'
+  import type { SpeechOverlayState } from '$lib/speech/speechOverlay'
   import type { DraftOperation } from '$lib/draftOperations'
   import { handleSpeechDraftCommand } from '$lib/workbench/speechDraftCommands'
   import { createSpeechDraftQueue, groupSpeechDrafts, type SpeechTarget } from '$lib/workbench/speechDraftQueue'

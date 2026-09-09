@@ -1,6 +1,6 @@
 <script lang="ts">
   import { AlertTriangle, RefreshCw, RotateCw, Settings } from '@lucide/svelte'
-  import AboutSettings from '$lib/AboutSettings.svelte'
+  import AboutSettings from '$lib/settings/AboutSettings.svelte'
   import { Button } from '$lib/components/ui/button'
   import type { WorkbenchCapabilities } from '$lib/capabilities/workbenchCapabilities'
   import { locale } from '$lib/preferences'

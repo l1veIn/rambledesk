@@ -1,4 +1,4 @@
-import type { Locale, SpeechModelId } from './preferences'
+import type { Locale, SpeechModelId } from '../preferences'
 
 type EnglishModelCopy = {
   displayName: string

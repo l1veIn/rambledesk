@@ -11,7 +11,7 @@
   } from '$lib/capabilities/workbenchCapabilities'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
-  import { titlebarPointerIntent } from '$lib/titlebarInteractions'
+  import { titlebarPointerIntent } from '$lib/shell/titlebarInteractions'
   import type { RamblePhase } from '$lib/workbench/types'
 
   const unavailableCapabilities = createUnavailableWorkbenchCapabilities()

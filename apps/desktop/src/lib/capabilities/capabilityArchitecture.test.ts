@@ -71,7 +71,7 @@ describe('capability architecture', () => {
       'lib/cooking.ts': 'desktop HTTP implementation for Cooking',
       'lib/desktop-shell/instrumentation.ts':
         'Desktop Shell instrumentation and DevTools implementation',
-      'lib/updater.ts': 'desktop software-update implementation',
+      'lib/updates/updater.ts': 'desktop software-update implementation',
     }
     const actual: string[] = []
     const tauriImportMarker = ['@tauri', '-apps'].join('')

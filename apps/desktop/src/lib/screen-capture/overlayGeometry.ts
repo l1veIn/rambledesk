@@ -9,7 +9,7 @@ import {
   type CaptureRectangle,
   type CaptureTarget,
   type ScreenCaptureView,
-} from '../screenCapture'
+} from './screenCapture'
 
 export type OverlayGeometry = {
   capture: ScreenCaptureView | null

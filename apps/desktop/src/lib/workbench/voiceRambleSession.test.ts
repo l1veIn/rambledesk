@@ -5,7 +5,7 @@ import type {
   SpeechRecognitionEvent,
   SpeechRecognitionListener,
   SpeechRecognitionSession,
-} from '../speech'
+} from '../speech/speech'
 import type { SpeechRecognitionPlugin } from '../capabilities/workbenchCapabilities'
 import {
   createVoiceRambleSession,

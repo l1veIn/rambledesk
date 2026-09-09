@@ -4,7 +4,7 @@ import {
   type OverlayGeometry,
   type ToolbarPlacement,
 } from './overlayGeometry'
-import type { CaptureRectangle } from '../screenCapture'
+import type { CaptureRectangle } from './screenCapture'
 
 type ToolbarDrag = {
   pointerId: number

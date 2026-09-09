@@ -5,7 +5,7 @@
   import { Button } from '$lib/components/ui/button'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
-  import { shortcutSettings } from '$lib/shortcutSettings'
+  import { shortcutSettings } from '$lib/settings/shortcutSettings'
   import RecordLed from './RecordLed.svelte'
   import { rambleRecordPresentation } from './rambleRecordButton'
   import type { RamblePhase } from './types'

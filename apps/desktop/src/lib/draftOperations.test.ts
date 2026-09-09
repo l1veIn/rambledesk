@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { ACTION_ID_ATTR, ACTION_INDEX_ATTR } from './actionBlockquote'
 import { applyDraftOperation } from './draftOperations'
-import { SPEECH_SEGMENT_ID_ATTR, speechCleanupCandidates } from './speechBlockMetadata'
+import { SPEECH_SEGMENT_ID_ATTR, speechCleanupCandidates } from './speech/speechBlockMetadata'
 
 const actionA = { actionId: 'login', actionIndex: 0, title: '修复登录状态' }
 const actionB = { actionId: 'toast', actionIndex: 1, title: '检查 toast' }

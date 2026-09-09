@@ -16,7 +16,7 @@
   import type { TidyConfig } from '$lib/lightCleanup'
   import type { DraftOperation } from '$lib/draftOperations'
   import type { FeedbackDraftSnapshot } from '$lib/feedbackDraftDocument'
-  import type { SpeechCleanupSegment } from '$lib/speechBlockMetadata'
+  import type { SpeechCleanupSegment } from '$lib/speech/speechBlockMetadata'
   import { t } from '$lib/i18n'
   import { autoOpenTaskBrief, locale } from '$lib/preferences'
   import { savePaneLayout, savedPaneLayout } from '$lib/uiPreferences'

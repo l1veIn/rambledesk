@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type { CaptureRectangle, ScreenCaptureView } from '../screenCapture'
+import type { CaptureRectangle, ScreenCaptureView } from './screenCapture'
 import { captureToolbarPosition, type OverlayGeometry } from './overlayGeometry'
 import { createCaptureToolbarPlacement } from './captureToolbarPlacement'
 

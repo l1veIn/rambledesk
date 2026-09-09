@@ -17,7 +17,7 @@
     isAcceptableCombo,
     shortcutSettings,
     type ShortcutAction,
-  } from '$lib/shortcutSettings'
+  } from '$lib/settings/shortcutSettings'
 
   const unavailableCapabilities = createUnavailableWorkbenchCapabilities()
   export let globalShortcuts: CapabilitySlot<ShortcutCapability> = unavailableCapabilities.globalShortcuts

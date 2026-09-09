@@ -14,7 +14,7 @@ import {
   type CaptureRectangle,
   type CaptureTarget,
   type ResizeHandle,
-} from '../screenCapture'
+} from './screenCapture'
 import {
   annotationHasSize,
   captureTargetRectangle,

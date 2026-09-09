@@ -21,7 +21,7 @@ import {
   CLEANUP_STATE_ATTR,
   INPUT_SOURCE_ATTR,
   SPEECH_SEGMENT_ID_ATTR,
-} from './speechBlockMetadata'
+} from './speech/speechBlockMetadata'
 
 export const FEEDBACK_DRAFT_DOCUMENT_VERSION = 2
 const LEGACY_FEEDBACK_DRAFT_DOCUMENT_VERSION = 1

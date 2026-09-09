@@ -14,8 +14,8 @@
     type CaptureTarget,
     type ResizeHandle,
     type ScreenCaptureView,
-  } from './lib/screenCapture'
-  import { renderCaptureAnnotations } from './lib/screenshotRenderer'
+  } from './lib/screen-capture/screenCapture'
+  import { renderCaptureAnnotations } from './lib/screen-capture/screenshotRenderer'
   import {
     cloneAnnotations,
     commitAnnotations,

@@ -20,7 +20,7 @@ if (import.meta.env.DEV) {
     document.body.classList.add('app-mode')
     target.classList.add('appearance-workspace')
     const [{ default: SettingsPanel }, { createOnboardingPreviewCapabilities }, { transport }, { initializePreferences }] = await Promise.all([
-      import('$lib/SettingsPanel.svelte'),
+      import('$lib/settings/SettingsPanel.svelte'),
       import('./onboardingPreviewCapabilities'),
       import('./agentPreviewFixtures'),
       import('$lib/preferences'),

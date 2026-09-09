@@ -10,7 +10,7 @@ import {
 } from './actionBlockquote'
 import { attachmentMarkdownUrl, isImageMediaType } from './attachmentMarkdown'
 import type { AttachmentView } from './feedback'
-import { asrParagraphAttrs, type CleanupState } from './speechBlockMetadata'
+import { asrParagraphAttrs, type CleanupState } from './speech/speechBlockMetadata'
 
 export type ActiveAction = ActionIdentity | null
 

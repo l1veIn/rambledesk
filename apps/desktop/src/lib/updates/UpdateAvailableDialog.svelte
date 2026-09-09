@@ -13,7 +13,7 @@
     dismissUpdateDialog,
     updateDialogOpen,
     updateState,
-  } from '$lib/updater'
+  } from '$lib/updates/updater'
 
   export let installBlocked = false
   export let onOpenReleases: () => void = () => {}

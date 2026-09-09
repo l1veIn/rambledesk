@@ -1,5 +1,5 @@
 <script lang="ts">
-  import SettingsPanel from '$lib/SettingsPanel.svelte'
+  import SettingsPanel from '$lib/settings/SettingsPanel.svelte'
   import type { ApplicationTransport } from '$lib/application/applicationTransport'
   import type { WorkbenchCapabilities } from '$lib/capabilities/workbenchCapabilities'
   import type { SettingsSection } from '$lib/workbench/types'

@@ -4,7 +4,7 @@ import {
   type AnnotationTool,
   type CaptureAnnotation,
   type CapturePoint,
-} from '../screenCapture'
+} from './screenCapture'
 import { annotationHasSize } from './overlayGeometry'
 
 export type AnnotationStyle = Readonly<{ color: string; strokeWidth: number }>

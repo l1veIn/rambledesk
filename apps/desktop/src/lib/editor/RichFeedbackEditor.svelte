@@ -18,30 +18,30 @@
     actionBlockquoteNode,
     isEmptyActionGroup,
     isEmptyParagraph,
-  } from './actionBlockquote'
+  } from '../actionBlockquote'
   import {
     attachmentIdFromUrl,
-  } from './attachmentMarkdown'
+  } from '../attachmentMarkdown'
   import {
     attachmentNodes,
     clipboardNodes,
     draftOperationAlreadyApplied,
     speechNodes,
     type DraftOperation,
-  } from './draftOperations'
+  } from '../draftOperations'
   import {
     snapshotFeedbackDraftDocument,
     type FeedbackDraftSnapshot,
-  } from './feedbackDraftDocument'
-  import { feedbackEditorExtensions } from './feedbackEditorExtensions'
-  import { t } from './i18n'
-  import { distinguishUntidiedText, locale } from './preferences'
+  } from '../feedbackDraftDocument'
+  import { feedbackEditorExtensions } from '../feedbackEditorExtensions'
+  import { t } from '../i18n'
+  import { distinguishUntidiedText, locale } from '../preferences'
   import {
     applySpeechCleanupResults,
     setTidyingSpeechSegments,
     speechCleanupCandidates,
     type SpeechCleanupSegment,
-  } from './speechBlockMetadata'
+  } from '../speech/speechBlockMetadata'
 
   export let document: JSONContent | null = null
   export let editorEpoch = 0
@@ -289,7 +289,7 @@
     }
     editor.view.dispatch(transaction)
     if (operation.kind === 'appendSpeech') {
-      void import('./highlightSpeechSegment').then(({ highlightSpeechSegment }) => {
+      void import('../speech/highlightSpeechSegment').then(({ highlightSpeechSegment }) => {
         if (editor) highlightSpeechSegment(editor.view.dom, operation.segmentId)
       })
     }

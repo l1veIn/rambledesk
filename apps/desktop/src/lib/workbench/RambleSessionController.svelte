@@ -7,8 +7,8 @@
   import type { ActiveAction, DraftOperation } from '../draftOperations'
   import type { FeedbackWorkspaceView } from '../feedback'
   import { t } from '../i18n'
-  import RecordingOverlay from '../RecordingOverlay.svelte'
-  import { selectedSpeechGroup, speechReviewCommand, type SpeechOverlayState } from '../speechOverlay'
+  import RecordingOverlay from '../speech/RecordingOverlay.svelte'
+  import { selectedSpeechGroup, speechReviewCommand, type SpeechOverlayState } from '../speech/speechOverlay'
   import { createSpeechDraftQueue, groupSpeechDrafts, type SpeechTarget } from './speechDraftQueue'
   import { handleSpeechDraftCommand } from './speechDraftCommands'
   import { tidySpeechSegments, type TidyConfig } from '../lightCleanup'
@@ -27,7 +27,7 @@
     speechVadThreshold,
   } from '../preferences'
   import { createVoiceRambleSession } from './voiceRambleSession'
-  import { matchesShortcut, shortcutSettings } from '../shortcutSettings'
+  import { matchesShortcut, shortcutSettings } from '../settings/shortcutSettings'
   import {
     type RambleConsoleCommand,
     type RambleConsoleState,

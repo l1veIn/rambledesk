@@ -9,7 +9,7 @@ import {
   voiceStartStillLive,
   type SpeechRecognitionEvent,
   type SpeechRecognitionSession,
-} from '../speech'
+} from '../speech/speech'
 import type { WorkbenchCapabilities } from '../capabilities/workbenchCapabilities'
 import type { SpeechTarget } from './speechDraftQueue'
 import type { VoicePhase } from './types'

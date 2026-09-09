@@ -1,6 +1,6 @@
 import type { JSONContent } from '@tiptap/core'
 import { parseFeedbackMarkdown } from '$lib/feedbackEditorExtensions'
-import { isSafeHttpUrl } from '$lib/linkify'
+import { isSafeHttpUrl } from '$lib/editor/linkify'
 
 /** Reuse the existing schema renderer while keeping agent-authored media/attachments inert. */
 export function activityMarkdownDocument(markdown: string): JSONContent {

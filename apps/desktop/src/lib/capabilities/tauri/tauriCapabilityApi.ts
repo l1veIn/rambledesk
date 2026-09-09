@@ -15,7 +15,7 @@ import {
   checkForUpdates,
   downloadAndInstallUpdate,
   restartAfterUpdate,
-} from '$lib/updater'
+} from '$lib/updates/updater'
 
 export type TauriEvent<Event> = Readonly<{ payload: Event }>
 export type TauriUnlisten = () => void

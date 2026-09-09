@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { SpeechRecognitionEvent } from '$lib/speech'
+import type { SpeechRecognitionEvent } from '$lib/speech/speech'
 import { BROWSER_SPEECH_MODEL_ID, browserSpeechModelInfo } from './browserSpeechManifest'
 import {
   createBrowserSpeechCapability,

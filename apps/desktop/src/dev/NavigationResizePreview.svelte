@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import AppTitlebar from '$lib/AppTitlebar.svelte'
+  import AppTitlebar from '$lib/shell/AppTitlebar.svelte'
   import HostSessionRail from '$lib/components/navigation/HostSessionRail.svelte'
   import RequestListPane from '$lib/components/navigation/RequestListPane.svelte'
   import NavigationResizeHandle from '$lib/components/navigation/NavigationResizeHandle.svelte'

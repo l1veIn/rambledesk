@@ -6,9 +6,9 @@
   import rambelleIdle from './assets/rambelle-states/idle.webp'
   import rambelleOrganizing from './assets/rambelle-states/organizing.webp'
   import rambelleRecording from './assets/rambelle-states/recording.webp'
-  import AppTitlebar from './lib/AppTitlebar.svelte'
-  import OnboardingWizard from './lib/OnboardingWizard.svelte'
-  import UpdateAvailableDialog from './lib/UpdateAvailableDialog.svelte'
+  import AppTitlebar from './lib/shell/AppTitlebar.svelte'
+  import OnboardingWizard from './lib/onboarding/OnboardingWizard.svelte'
+  import UpdateAvailableDialog from './lib/updates/UpdateAvailableDialog.svelte'
   import HostSessionRail from './lib/components/navigation/HostSessionRail.svelte'
   import RequestListPane from './lib/components/navigation/RequestListPane.svelte'
   import { Sonner, toast } from './lib/components/ui/sonner'
@@ -136,7 +136,7 @@
     VoicePhase,
   } from './lib/workbench/types'
   import RambleSessionController from './lib/workbench/RambleSessionController.svelte'
-  import { highlightSpeechSegment } from './lib/highlightSpeechSegment'
+  import { highlightSpeechSegment } from './lib/speech/highlightSpeechSegment'
   import { t } from './lib/i18n'
   import {
     initialWebAccessAutostart,

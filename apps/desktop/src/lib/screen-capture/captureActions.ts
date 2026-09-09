@@ -1,9 +1,9 @@
-import { exportAnnotatedCapture } from '../screenshotRenderer'
+import { exportAnnotatedCapture } from './screenshotRenderer'
 import type {
   CaptureAnnotation,
   CaptureRectangle,
   ScreenCaptureView,
-} from '../screenCapture'
+} from './screenCapture'
 
 export type CompleteCapturePayload = {
   capture_session_id: string

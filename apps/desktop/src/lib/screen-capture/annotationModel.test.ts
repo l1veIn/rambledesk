@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { CaptureAnnotation } from '../screenCapture'
+import type { CaptureAnnotation } from './screenCapture'
 import {
   cloneAnnotations,
   commitAnnotations,
