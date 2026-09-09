@@ -31,12 +31,13 @@ describe('workspace tab strip layout', () => {
     expect(body).toContain('tab-session')
   })
 
-  it('shrinks tabs down to a minimum before the strip scrolls', () => {
+  it('uses one measured width per tab and scrolls only when it has to', () => {
     const body = strip()
-    // basis-48 is the preferred width, min-w-28 the floor, and shrink must stay on.
-    expect(body).toMatch(/class="[^"]*basis-48[^"]*"/)
-    expect(body).toMatch(/class="[^"]*min-w-28[^"]*"/)
-    expect(body).not.toMatch(/class="[^"]*shrink-0[^"]*basis-48/)
+    // Tabs share the strip through an inline width; the strip owns the scrolling.
+    expect(body).toMatch(/style="width: \d+px;"/)
+    expect(body).toContain('shrink-0')
     expect(body).toContain('overflow-x-auto')
+    expect(body).toContain('--tab-fade-start')
+    expect(body).toContain('--tab-fade-end')
   })
 })

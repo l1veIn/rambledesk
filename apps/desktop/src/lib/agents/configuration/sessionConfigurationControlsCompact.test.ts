@@ -119,7 +119,12 @@ describe('compact session configuration', () => {
       config_id: 'model-picker',
       value: { type: 'select', value: 'provider/model-b' },
     })
+    // Close the popover before teardown so bits-ui's scroll lock cleans up while
+    // the DOM still exists.
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await settle()
     await unmount(app)
+    await settle()
   })
 
   it('keeps the inline controls on a wide viewport', async () => {
@@ -134,5 +139,6 @@ describe('compact session configuration', () => {
     expect(host.querySelector('[data-session-config-compact]')).toBeNull()
     expect(host.querySelectorAll('select')).toHaveLength(2)
     await unmount(app)
+    await settle()
   })
 })

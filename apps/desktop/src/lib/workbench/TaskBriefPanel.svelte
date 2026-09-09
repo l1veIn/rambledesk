@@ -10,6 +10,7 @@
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
   import LinkifiedText from '$lib/editor/LinkifiedText.svelte'
+  import MarkdownPreview from '$lib/editor/MarkdownPreview.svelte'
   import RequestAttachmentPreview from '../workspace/RequestAttachmentPreview.svelte'
 
   export let workspace: FeedbackWorkspaceView
@@ -113,7 +114,7 @@
         <h2 class="m-0 text-[10px] font-semibold uppercase text-muted-foreground">
           {tr('What happened')}
         </h2>
-        <p class="m-0 mt-2 leading-5"><LinkifiedText text={workspace.request.what_happened} /></p>
+        <div class="mt-2 leading-5"><MarkdownPreview markdown={workspace.request.what_happened} bare /></div>
       </section>
 
       <section>

@@ -18,6 +18,7 @@
   import type { WorkbenchCapabilities } from '$lib/capabilities/workbenchCapabilities'
   import { locale } from '$lib/preferences'
   import LinkifiedText from '$lib/editor/LinkifiedText.svelte'
+  import MarkdownPreview from '$lib/editor/MarkdownPreview.svelte'
   import { isSafeHttpUrl } from '$lib/editor/linkify'
   import RequestAttachmentPreview from './RequestAttachmentPreview.svelte'
   import ActionFeedbackCard from './ActionFeedbackCard.svelte'
@@ -181,9 +182,9 @@ import type { RamblePhase } from '../domain/sessionPhases'
             <h2 class="m-0 border-b border-border pb-2 text-base font-semibold">
               {tr('What happened')}
             </h2>
-            <p class="m-0 mt-4 whitespace-pre-wrap text-[15px] leading-7">
-              <LinkifiedText text={workspace.request.what_happened} />
-            </p>
+            <div class="mt-4 text-[15px] leading-7">
+              <MarkdownPreview markdown={workspace.request.what_happened} bare />
+            </div>
           </section>
 
           <section class="mt-8">

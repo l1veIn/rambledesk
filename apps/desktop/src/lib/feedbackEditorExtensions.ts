@@ -169,8 +169,16 @@ export function feedbackEditorExtensions(): AnyExtension[] {
   ]
 }
 
-export function parseFeedbackMarkdown(source: string): JSONContent {
-  const manager = new MarkdownManager({ extensions: feedbackEditorExtensions() })
+export function parseFeedbackMarkdown(
+  source: string,
+  options: Readonly<{ breaks?: boolean }> = {},
+): JSONContent {
+  const manager = new MarkdownManager({
+    extensions: feedbackEditorExtensions(),
+    // Single newlines become hard breaks when a host renders free-form notes
+    // instead of a canonical draft.
+    ...(options.breaks ? { markedOptions: { breaks: true } } : {}),
+  })
   return manager.parse(source)
 }
 

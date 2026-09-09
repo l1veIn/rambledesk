@@ -17,14 +17,22 @@
   export let previews: Record<string, string> = {}
   export let onOpenAttachment: (attachmentId: string) => void = () => {}
   export let compact = false
+  /** Embed without the card chrome or padding, for prose sections. */
+  export let bare = false
   const capabilities = useWorkbenchCapabilities()
+
+  $: rootClass = bare
+    ? 'min-h-0'
+    : compact
+      ? 'action-feedback-markdown min-h-0 px-4 py-3'
+      : 'h-full min-h-0 overflow-auto rounded-lg border bg-background px-6 py-5'
 
   let editorHost: HTMLDivElement
   let editor: Editor | null = null
   let renderedSource = ''
 
   function previewDocument() {
-    return document ?? hydrateActionBlockquotes(parseFeedbackMarkdown(markdown))
+    return document ?? hydrateActionBlockquotes(parseFeedbackMarkdown(markdown, { breaks: true }))
   }
 
   $: sourceSignature = document
@@ -107,11 +115,7 @@
   }
 </script>
 
-<div
-  class={compact
-    ? 'action-feedback-markdown min-h-0 px-4 py-3'
-    : 'h-full min-h-0 overflow-auto rounded-lg border bg-background px-6 py-5'}
->
+<div class={rootClass}>
   <div bind:this={editorHost}></div>
 </div>
 

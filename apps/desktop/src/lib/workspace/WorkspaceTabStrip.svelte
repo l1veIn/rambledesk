@@ -10,6 +10,7 @@
     workspaceViewKey,
     type WorkspaceViewDescriptor,
   } from './viewDescriptors'
+  import { tabStripLayout } from './tabStripLayout'
   import {
     requestWorkspaceTabActivation,
     workspaceTabId,
@@ -26,6 +27,8 @@
 
   const FLIP_DURATION_MS = 140
   const WORKSPACE_TAB_DND_TYPE = 'rambledesk-workspace-tab'
+  /** Left padding (0.5rem) plus the drag surface (2.5rem) tabs must leave alone. */
+  const STRIP_RESERVED_WIDTH = 48
 
   export let views: readonly WorkspaceViewDescriptor[] = []
   export let activeViewKey: string | null = null
@@ -43,6 +46,20 @@
   let tabButtons = new Map<string, HTMLElement>()
   let tabListElement: HTMLDivElement
   let scrolledViewKey: string | null = null
+  let stripWidth = 0
+  let listClientWidth = 0
+  let listScrollWidth = 0
+  let listScrollLeft = 0
+
+  // One rule for every viewport: tabs share the strip evenly, shrink to a floor,
+  // then the strip scrolls.
+  $: layout = tabStripLayout(Math.max(0, stripWidth - STRIP_RESERVED_WIDTH), dndItems.length)
+  $: canScrollLeft = listScrollLeft > 1
+  $: canScrollRight = listScrollLeft + listClientWidth < listScrollWidth - 1
+  // Tab set or width changed: re-measure so the fade affordances stay accurate.
+  $: if (tabListElement && (viewKeys.join('\u0001') || layout.tabWidth || listClientWidth)) {
+    void tick().then(measureList)
+  }
 
   $: if (!dragging) {
     dndItems = views.map((view) => ({ id: workspaceViewKey(view), view }))
@@ -54,16 +71,32 @@
   $: if (activeViewKey && viewKeys.includes(activeViewKey)) {
     focusedViewKey = activeViewKey
   }
-  // The strip scrolls on narrow viewports, so keep the active tab visible.
+  // The strip scrolls once tabs reach the minimum width, so keep the active tab visible.
   $: if (tabListElement && activeViewKey !== scrolledViewKey) {
     scrolledViewKey = activeViewKey
     if (activeViewKey) {
       tabButtons.get(activeViewKey)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+      void tick().then(measureList)
     }
   }
 
   function tr(source: string) {
     return t($locale, source)
+  }
+
+  function measureList() {
+    if (!tabListElement) return
+    listScrollWidth = tabListElement.scrollWidth
+    listScrollLeft = tabListElement.scrollLeft
+  }
+
+  /** Desktop wheels scroll vertically: translate it while the strip overflows. */
+  function handleWheel(event: WheelEvent) {
+    if (!tabListElement || !layout.overflowing) return
+    if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return
+    const before = tabListElement.scrollLeft
+    tabListElement.scrollLeft = before + event.deltaY
+    if (tabListElement.scrollLeft !== before) event.preventDefault()
   }
 
   function registerTab(node: HTMLElement, viewKey: string) {
@@ -149,7 +182,7 @@
   }
 </script>
 
-<div class="flex h-full min-w-0 items-stretch overflow-hidden pl-2 pt-1.5">
+<div class="flex h-full min-w-0 items-stretch overflow-hidden pl-2 pt-1.5" bind:clientWidth={stripWidth}>
   {#if dndItems.length > 0}
     <div
       use:dndzone={{
@@ -166,7 +199,12 @@
         delayTouchStart: 500,
       }}
       class="workspace-tab-list flex h-full min-w-0 flex-[0_1_auto] items-stretch overflow-x-auto overflow-y-hidden"
+      style:--tab-fade-start={canScrollLeft ? '1.25rem' : '0px'}
+      style:--tab-fade-end={canScrollRight ? '1.25rem' : '0px'}
       bind:this={tabListElement}
+      bind:clientWidth={listClientWidth}
+      onscroll={measureList}
+      onwheel={handleWheel}
       role="tablist"
       aria-label={tr('Workspace tabs')}
       aria-orientation="horizontal"
@@ -180,7 +218,8 @@
         {@const label = labelForView(item.view)}
         <div
           animate:flip={{ duration: FLIP_DURATION_MS }}
-          class="workspace-tab-item relative min-w-28 shrink basis-48 cursor-grab active:cursor-grabbing"
+          class="workspace-tab-item relative shrink-0 cursor-grab active:cursor-grabbing"
+          style:width={`${layout.tabWidth}px`}
           class:z-10={activeViewKey === viewKey}
           data-workspace-tab-item
           data-workspace-view-key={viewKey}
@@ -335,6 +374,20 @@
   .workspace-tab-list {
     scrollbar-width: none;
     overscroll-behavior-x: contain;
+    -webkit-mask-image: linear-gradient(
+      to right,
+      transparent 0,
+      #000 var(--tab-fade-start, 0px),
+      #000 calc(100% - var(--tab-fade-end, 0px)),
+      transparent 100%
+    );
+    mask-image: linear-gradient(
+      to right,
+      transparent 0,
+      #000 var(--tab-fade-start, 0px),
+      #000 calc(100% - var(--tab-fade-end, 0px)),
+      transparent 100%
+    );
   }
 
   .workspace-tab-list::-webkit-scrollbar {

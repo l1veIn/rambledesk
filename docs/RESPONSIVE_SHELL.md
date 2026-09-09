@@ -58,7 +58,7 @@
 | 安全区 | `index.html` 增加 `viewport-fit=cover`、`interactive-widget=resizes-content`；`app.css` 在 < 768px 给 `body` 加 `env(safe-area-inset-*)` 内边距 |
 | 浮动按钮 | 44×44px，位于安全区之内 |
 | 拖动 | 手机上不渲染 `NavigationResizeHandle`（触摸拖动与滚动手势冲突） |
-| Tab 条 | 标签先用 `basis-48` 收缩到 `min-w-28`（7rem），到最小宽度后才横向滚动 |
+| Tab 条 | 标签宽度 = `clamp(112px, 可用宽度 / 标签数, 192px)`，到 112px 后横向滚动；宽屏与手机同一套逻辑 |
 | Agent 输入框配置 | < 768px 时模型/思考强度/访问权限等会话选项收进一个入口按钮，点击弹出完整列表；宽屏保持内联选择器 |
 | 减少动效 | 抽屉过渡遵循 `prefers-reduced-motion` |
 | 浮动按钮 | 44×44px，位于安全区之内；请求列表按钮固定在左下角 |
@@ -77,8 +77,9 @@ Browser Client 是整页 Web 应用，不再复用桌面窗口的外观：
 
 - **tablet 仍是双列**：768px 宽时两条 rail 会按 `fitNavigationWidths` 的预算收窄到约 192 + 200px，
   正文只剩约 376px。手机上因为容器宽度小于最小预算，双列会把正文压到 0，所以必须抽屉化；平板暂不处理。
-- **标题栏 Tab 条**：tab 先收缩（`basis-48` → `min-w-28`）再横向滚动，标题在收缩过程中被遮罩截断；
-  触摸端关闭按钮常显（见第四节）。
+- **标题栏 Tab 条**：宽度由 `lib/workspace/tabStripLayout.ts` 统一计算（可用宽度均分，夹在
+  112–192px 之间），到最小宽度后才滚动。滚动容器隐藏滚动条，用边缘渐隐提示还有内容；桌面端鼠标滚轮
+  会转成横向滚动，触摸端直接滑动。标题在收缩过程中被遮罩截断，触摸端关闭按钮常显（见第四节）。
 - **抽屉没有手势关闭**：只有按钮、背板和 `Escape`。
 - **Web Access 仍只绑定 loopback**：手机接入依赖用户自备的转发方式，本仓库不提供 LAN/TLS 承诺。
 
@@ -91,7 +92,9 @@ Browser Client 是整页 Web 应用，不再复用桌面窗口的外观：
 | `lib/components/navigation/railResize.test.ts` | 既有宽度预算与折叠数学（未改动） |
 | `lib/components/navigation/sessionRailRender.test.ts` | 侧栏渲染（未改动，回归通过） |
 | `lib/mediaQuery.test.ts` | 媒体查询 store 的初始值、变更订阅与无 `matchMedia` 降级 |
-| `lib/workspace/workspaceTabStripRender.test.ts` | tab 的 `basis-48` / `min-w-28` / 可收缩 + 横向滚动容器 |
+| `lib/workspace/tabStripLayout.test.ts` | 均分宽度、最小宽度后转为滚动、未测量时的回退 |
+| `lib/workspace/workspaceTabStripRender.test.ts` | 每个 tab 的测量宽度、滚动容器与边缘渐隐变量 |
+| `lib/editor/MarkdownPreview.test.ts` | what-happened 风格的 markdown 渲染（标题/列表/粗体/代码块）与 bare 变体 |
 | `lib/agents/configuration/sessionConfigurationControlsCompact.test.ts` | 手机端单一入口、弹层选项与选择回调；宽屏保持内联控件 |
 
 ## 八、人工验收
