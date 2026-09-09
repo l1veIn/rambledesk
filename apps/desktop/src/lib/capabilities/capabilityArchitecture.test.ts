@@ -62,6 +62,7 @@ describe('capability architecture', () => {
       'ScreenshotOverlay.svelte': 'screen-capture platform window',
       'ScreenshotOverlay.interaction.test.ts':
         'screen-capture overlay interaction harness (mocks the platform window commands)',
+      'App.mount.test.ts': 'composition-root smoke test (mocks the platform window commands)',
       'ScrollCaptureController.svelte': 'scroll-capture platform window',
       'SpeechOverlay.svelte': 'speech-overlay platform window',
       [`lib/application/${['tauri', 'ApplicationTransport.test.ts'].join('')}`]:

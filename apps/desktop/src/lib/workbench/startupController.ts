@@ -384,6 +384,8 @@ export function createStartupController(context: StartupControllerContext) {
 
   return {
     subscribe: store.subscribe,
+    /** Svelte `bind:settingsOpen={$startup.settingsOpen}` writes through the store. */
+    set: store.set,
     patch,
     start,
     refreshSessionViewRecovery,

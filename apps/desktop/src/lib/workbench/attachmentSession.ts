@@ -59,6 +59,8 @@ export function createAttachmentSession() {
 
   return {
     subscribe: store.subscribe,
+    /** Svelte `bind:` targets a store property, so the session keeps the store contract. */
+    set: store.set,
     setBusy,
     setCaptureBusy,
     setMessage,
