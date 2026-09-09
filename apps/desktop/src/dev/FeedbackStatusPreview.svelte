@@ -6,7 +6,7 @@
   import { APPLICATION_EVENTS_STREAM } from '$lib/application/applicationEvents'
   import type { ManagedFeedbackStatus } from '$lib/generated/feedback'
   import type { FeedbackWorkspaceView } from '$lib/feedback'
-  import { previewFixtures } from '$lib/previewFixtures'
+  import { previewFixtures } from '$lib/preview/previewFixtures'
   import { previewHostProfile, transport as agentTransport } from './agentPreviewFixtures'
 
   type Scenario = 'normal' | 'uncertain' | 'loading' | 'error' | 'deleting' | 'running' | 'permission'

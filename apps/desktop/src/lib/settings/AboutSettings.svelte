@@ -4,7 +4,7 @@
   import { Download, ExternalLink, FileArchive, FolderOpen, GitBranch, LoaderCircle, RefreshCw, RotateCw, ShieldCheck, Sparkles, Trash2 } from '@lucide/svelte'
   import { onMount } from 'svelte'
 
-  import rambelleSticker from '../assets/rambelle-states/idle.webp'
+  import rambelleSticker from '../../assets/rambelle-states/idle.webp'
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
   import { createUnavailableWorkbenchCapabilities } from '$lib/capabilities/unavailableCapabilities'

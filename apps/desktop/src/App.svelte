@@ -87,7 +87,11 @@
   import { activeWorkspaceView } from './lib/workspace/workspaceShell'
   import { updateTaskTabTitles } from './lib/workspace/taskTabTitles'
   import { agentSessionForView, agentViewForEmptyRamble, agentViewForRequest } from './lib/workspace/agentViewRouting'
-  import { seedPreviewWorkspaceScenario } from './lib/workspace/previewWorkspaceSnapshot'
+  import {
+    savePreviewWorkspaceSnapshot,
+    savedPreviewWorkspaceSnapshot,
+    seedPreviewWorkspaceScenario,
+  } from './lib/workspace/previewWorkspaceSnapshot'
   import type { SessionViewResolution } from './lib/workspace/sessionViewRecovery'
   import {
     workspaceTabId,
@@ -100,7 +104,7 @@
     shouldAdoptTaskBackgroundDraft,
     shouldUseForegroundDraftEditor,
   } from './lib/workspace/draftOperationRouting'
-  import { previewFixtures, previewWorkspaceFor } from './lib/previewFixtures'
+  import { previewFixtures } from './lib/preview/previewFixtures'
   import type { PublishedFeedbackView } from './lib/publishedFeedback'
   import { formatTime, messageFrom } from './lib/workbench/feedbackText'
   import { createCookingController } from './lib/workbench/cookingController'
@@ -207,7 +211,14 @@ import type { SettingsSection } from './lib/domain/settingsSection'
         new URLSearchParams(window.location.search).get('workspace'),
       )
     : null
-  const workspaceShell = createWorkspaceShellSession({ previewMode })
+  const workspaceShell = createWorkspaceShellSession({
+    snapshots: previewMode
+      ? {
+          load: savedPreviewWorkspaceSnapshot,
+          save: savePreviewWorkspaceSnapshot,
+        }
+      : undefined,
+  })
   if (workspaceShell.restoredActiveView()) workspaceSession.setLoading(true)
   let taskBriefOpen = true
   let hostRailDisplayWidth = 0
@@ -232,7 +243,6 @@ import type { SettingsSection } from './lib/domain/settingsSection'
   const draftController = createDraftController({
     transport: applicationTransport,
     messageFrom,
-    isPreviewMode: () => previewMode,
     isInteractionLocked: () => interactionLocked,
     isWorkspaceTerminal: () => workspaceSession.isTerminal(),
     getWorkspace: () => $workspaceSession.workspace,
@@ -246,7 +256,6 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     transport: applicationTransport,
     tr,
     messageFrom,
-    isPreviewMode: () => previewMode,
     getActiveView: () => activeWorkspaceView($workspaceShell.shell),
     getPendingViewKey: () => $workspaceShell.pendingViewKey,
     getWorkspace: () => $workspaceSession.workspace,
@@ -332,7 +341,6 @@ import type { SettingsSection } from './lib/domain/settingsSection'
 
   const navigation = createNavigationController({
     capabilities,
-    previewMode,
     transport: applicationTransport,
     tr,
     messageFrom,
@@ -354,7 +362,6 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     draftSession,
     transport: applicationTransport,
     workspaceTransition,
-    previewMode,
     desktopShellAvailable,
     tr,
     messageFrom,
@@ -376,13 +383,13 @@ import type { SettingsSection } from './lib/domain/settingsSection'
   })
 
   const managedSessions = createManagedSessionActions({
+    canOpenManagedSession: () => !previewMode,
     transport: applicationTransport,
     navigation,
     workspaceShell,
     workspaceSession,
     draftSession,
     workspaceTransition,
-    previewMode,
     tr,
     messageFrom,
     setPageError: (message) => {
@@ -407,7 +414,6 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     managedSessions,
     transport: applicationTransport,
     workspaceTransition,
-    previewMode,
     tr,
     messageFrom,
     pageError: () => pageError,
@@ -637,15 +643,11 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     if (!desktopShellAvailable) {
       if ($onboardingCompleted || !onboardingAvailable) void startup.start()
       else onboardingOpen = true
-      if (previewMode) {
-        if (!workspaceShell.hasRestoredSnapshot()) {
-          workspaceSession.open(previewFixtures.workspace)
-          draftSession.adopt(previewFixtures.workspace.draft)
-          workspaceNavigation.openLoadedWorkspaceView(previewFixtures.workspace)
-        }
-        if (new URLSearchParams(window.location.search).get('dialog') === 'resume') {
-          resumePrompt = previewFixtures.resumePrompt
-        }
+      if (
+        previewMode &&
+        new URLSearchParams(window.location.search).get('dialog') === 'resume'
+      ) {
+        resumePrompt = previewFixtures.resumePrompt
       }
       notificationState = 'unavailable'
       if (
@@ -933,7 +935,6 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     transport: applicationTransport,
     tr,
     messageFrom,
-    isPreviewMode: () => previewMode,
     getWorkspace: () => $workspaceSession.workspace,
     setWorkspace: (next) => workspaceSession.replace(next),
     setCompletedResult: (result) => workspaceSession.setCompleted(result),
@@ -1183,7 +1184,6 @@ import type { SettingsSection } from './lib/domain/settingsSection'
         {:else if renderedWorkspaceView?.kind === 'archive'}
           <ArchivedSessionsWorkspaceView
             transport={applicationTransport}
-            {previewMode}
             {resolveHostProfile}
             formatTime={formatTimeLocal}
             {messageFrom}

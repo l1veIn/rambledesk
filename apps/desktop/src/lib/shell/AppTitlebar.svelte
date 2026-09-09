@@ -2,7 +2,7 @@
   import { CircleAlert, Copy, Inbox, LoaderCircle, Menu, Mic, Minus, Pause, Square, X } from '@lucide/svelte'
   import { onMount, type Snippet } from 'svelte'
 
-  import appIcon from '../assets/rambledesk-app-icon.webp'
+  import appIcon from '../../assets/rambledesk-app-icon.webp'
   import { Badge } from '$lib/components/ui/badge'
   import { createUnavailableWorkbenchCapabilities } from '$lib/capabilities/unavailableCapabilities'
   import type {

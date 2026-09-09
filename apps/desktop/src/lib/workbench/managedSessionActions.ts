@@ -60,13 +60,14 @@ export type ManagedSessionActionsContext = {
   workspaceSession: WorkspaceSession
   draftSession: DraftSession
   workspaceTransition: Transition
-  previewMode: boolean
   tr: (source: string, values?: Record<string, string | number>) => string
   messageFrom: (cause: unknown) => string
   setPageError: (message: string) => void
   clearWorkspace: () => void
   setCookingPreview: (preview: null) => void
   isTransitionLocked: () => boolean
+  /** Whether this client can host a managed Agent session at all. */
+  canOpenManagedSession: () => boolean
   selectAgentNavigationScope: (
     view: AgentSessionViewDescriptor,
   ) => Promise<Readonly<{ selected: boolean }>>
@@ -184,8 +185,8 @@ export function createManagedSessionActions(context: ManagedSessionActionsContex
       source: context.tr('workbench'),
       selected: !!configId,
     })
-    if (context.isTransitionLocked() || context.previewMode) {
-      finish('blocked', { reason: context.previewMode ? 'unsupported' : 'in_flight' })
+    if (context.isTransitionLocked() || !context.canOpenManagedSession()) {
+      finish('blocked', { reason: context.canOpenManagedSession() ? 'in_flight' : 'unsupported' })
       return false
     }
     try {

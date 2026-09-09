@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { ApplicationTransport } from '../application/applicationTransport'
 import type { PublishedFeedbackAction } from '../publishedFeedbackAction'
-import { previewFixtures } from '../previewFixtures'
+import { previewFixtures } from '../preview/previewFixtures'
 import { createDraftSession } from './draftSession'
 import { createSubmissionController } from './submissionController'
 import { createWorkspaceSession } from './workspaceSession'

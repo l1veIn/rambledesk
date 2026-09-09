@@ -11,7 +11,6 @@ import { readApplicationSnapshot } from '../application/readApplicationSnapshot'
 import { ApplicationReadTimeoutError, withApplicationReadTimeout } from '../application/applicationReadTimeout'
 import type { WorkbenchCapabilities } from '../capabilities/workbenchCapabilities'
 import { InboxNotificationTracker, playNotificationSound, type NotificationState } from '../notifications'
-import { previewFixtures } from '../previewFixtures'
 import {
   customNotificationSound,
   notificationPopupEnabled,
@@ -25,7 +24,6 @@ import { createHostSessionFacts, resolveHostProfile as resolveHostProfileFrom } 
 import {
   now,
   requestListInput as requestListInputFrom,
-  requestMatchesSearch,
   requestQueryKey as requestQueryKeyFrom,
   waitForMinimumDuration,
 } from './navigation/navigationInputs'
@@ -40,7 +38,6 @@ export type { NavigationState } from './navigation/navigationTypes'
 
 type NavigationControllerContext = {
   capabilities: Pick<WorkbenchCapabilities, 'notifications' | 'tray'>
-  previewMode: boolean
   transport: ApplicationTransport
   tr: (source: string, values?: Record<string, string | number>) => string
   messageFrom: (cause: unknown) => string
@@ -95,23 +92,6 @@ export function createNavigationController(context: NavigationControllerContext)
     let initialized = false
     context.onPageError('')
     patch({ loadingNavigation: true, loadingRequests: true, initializationFailure: null })
-
-    if (context.previewMode) {
-      displayedRequestQuery = requestQueryKey()
-      patch({
-        pendingRequests: previewFixtures.requests.filter(
-          (request) => request.status === 'waiting' || request.status === 'in_progress',
-        ),
-        requests: previewFixtures.requests,
-        hostProfiles: Object.fromEntries(
-          previewFixtures.hostProfiles.map((profile) => [profile.id, profile]),
-        ),
-      })
-      hostSessions.applyFacts(previewFixtures.hostSessions, hostSessionFactsIntent)
-      patch({ loadingNavigation: false, loadingRequests: false })
-      refresh.settle(true)
-      return true
-    }
 
     try {
       await withApplicationReadTimeout(context.transport.waitUntilReady(), 'application readiness')
@@ -265,46 +245,21 @@ export function createNavigationController(context: NavigationControllerContext)
 
 
   function loadInbox(): Promise<FeedbackRequestSummary[]> {
-    if (context.previewMode) {
-      return Promise.resolve(
-        previewFixtures.requests.filter(
-          (request) => request.status === 'waiting' || request.status === 'in_progress',
-        ),
-      )
-    }
     return readApplicationSnapshot(context.transport, 'listFeedbackInbox', undefined)
   }
 
   function loadHostSessions(): Promise<HostSessionSummary[]> {
-    if (context.previewMode) return Promise.resolve(previewFixtures.hostSessions)
     return readApplicationSnapshot(context.transport, 'listHostSessions', undefined)
   }
 
   async function loadRequestList(cursor: string | null = null): Promise<ListFeedbackRequestsOutput> {
     const state = get(store)
-    const { timeRange, status } = state.requestFilters
-    if (context.previewMode) {
-      const statuses = requestFilterStatuses(status)
-      return filterRequestPage(
-        {
-          requests:
-            cursor === null
-              ? previewFixtures.requests.filter(
-                  (request) =>
-                    (!state.selectedHostId || request.host_id === state.selectedHostId) &&
-                    (!state.selectedHostSessionId ||
-                      request.host_session_id === state.selectedHostSessionId) &&
-                    requestMatchesSearch(request, state.requestSearch) &&
-                    statuses.includes(request.status),
-                )
-              : [],
-          next_cursor: null,
-        },
-        timeRange,
-      )
-    }
-    const page = await readApplicationSnapshot(context.transport, 'listFeedbackRequests', requestListInput(cursor))
-    return filterRequestPage(page, timeRange)
+    const page = await readApplicationSnapshot(
+      context.transport,
+      'listFeedbackRequests',
+      requestListInput(cursor),
+    )
+    return filterRequestPage(page, state.requestFilters.timeRange)
   }
 
 
@@ -432,10 +387,6 @@ export function createNavigationController(context: NavigationControllerContext)
     const trimmed = title.trim()
     if (!trimmed || trimmed === session.title) return
     try {
-      if (context.previewMode) {
-        hostSessions.replaceSession({ ...session, title: trimmed })
-        return
-      }
       const renamed = await context.transport.call('renameHostSession', {
         host_id: session.host_id,
         host_session_id: session.host_session_id,
@@ -450,13 +401,6 @@ export function createNavigationController(context: NavigationControllerContext)
 
   async function setHostSessionPinned(session: HostSessionSummary, pinned: boolean) {
     try {
-      if (context.previewMode) {
-        hostSessions.replaceSession({
-          ...session,
-          pinned_at: pinned ? new Date().toISOString() : null,
-        })
-        return
-      }
       const updated = await context.transport.call('setHostSessionPinned', {
         host_id: session.host_id,
         host_session_id: session.host_session_id,
@@ -477,12 +421,10 @@ export function createNavigationController(context: NavigationControllerContext)
     }
     if (context.isDirty() && !(await context.saveDraftNow())) return false
     try {
-      if (!context.previewMode) {
-        await context.transport.call('archiveHostSession', {
-          host_id: session.host_id,
-          host_session_id: session.host_session_id,
-        })
-      }
+      await context.transport.call('archiveHostSession', {
+        host_id: session.host_id,
+        host_session_id: session.host_session_id,
+      })
       const current = get(store)
       if (
         current.selectedHostId === session.host_id &&
@@ -490,17 +432,6 @@ export function createNavigationController(context: NavigationControllerContext)
       ) {
         patch({ selectedHostId: session.host_id, selectedHostSessionId: null })
         context.clearWorkspace()
-      }
-      if (context.previewMode) {
-        hostSessions.applyFacts(
-          get(store).hostSessions.filter(
-            (candidate) =>
-              candidate.host_id !== session.host_id ||
-              candidate.host_session_id !== session.host_session_id,
-          ),
-        )
-        await refreshRequests(false)
-        return true
       }
       await refreshNavigation(true)
       return true
@@ -512,15 +443,6 @@ export function createNavigationController(context: NavigationControllerContext)
 
   async function setHostPinned(hostId: string, pinned: boolean) {
     try {
-      if (context.previewMode) {
-        const pinnedAt = pinned ? new Date().toISOString() : null
-        hostSessions.applyFacts(
-          get(store).hostSessions.map((session) =>
-            session.host_id === hostId ? { ...session, host_pinned_at: pinnedAt } : session,
-          ),
-        )
-        return
-      }
       const nextSessions = await context.transport.call('setHostPinned', {
         host_id: hostId,
         pinned,

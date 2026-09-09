@@ -5,7 +5,7 @@
   import RequestListPane from '$lib/components/navigation/RequestListPane.svelte'
   import NavigationResizeHandle from '$lib/components/navigation/NavigationResizeHandle.svelte'
   import { COLLAPSED_RAIL_WIDTH, RAIL_LIMITS, fitNavigationWidths } from '$lib/components/navigation/railResize'
-  import { previewFixtures } from '$lib/previewFixtures'
+  import { previewFixtures } from '$lib/preview/previewFixtures'
   import type { HostProfile } from '../lib/domain/hostProfile'
   import {
     initialHostRailCollapsed, initialRequestRailCollapsed,

@@ -73,7 +73,7 @@ describe('publisherController', () => {
     const setPublishedFeedback = vi.fn()
     const showSubmittedToast = vi.fn()
     const controller = createPublisherController({
-      transport, tr: (source) => source, messageFrom: String, isPreviewMode: () => false,
+      transport, tr: (source) => source, messageFrom: String,
       getWorkspace: () => workspace, setWorkspace: (next) => { workspace = next }, setCompletedResult: vi.fn(),
       setPublishedFeedback, setSavePhase: vi.fn(), setPageError, getCanSubmit: () => true,
       getRambleCanExit: () => false, exitRamble: async () => {}, saveDraftNow: async () => true,
@@ -97,7 +97,7 @@ describe('publisherController', () => {
     const setPageError = vi.fn()
     const controller = createPublisherController({
       transport, tr: (source) => source, messageFrom: String,
-      isPreviewMode: () => false, getWorkspace: workspaceView,
+      getWorkspace: workspaceView,
       setWorkspace: vi.fn(), setCompletedResult: vi.fn(), setPublishedFeedback: vi.fn(),
       setSavePhase: vi.fn(), setPageError,
       getCanSubmit: () => true, getRambleCanExit: () => true,
@@ -121,7 +121,7 @@ describe('publisherController', () => {
     const setPageError = vi.fn()
     const controller = createPublisherController({
       transport, tr: (source) => source, messageFrom: String,
-      isPreviewMode: () => false, getWorkspace: workspaceView,
+      getWorkspace: workspaceView,
       setWorkspace: vi.fn(), setCompletedResult: vi.fn(), setPublishedFeedback: vi.fn(),
       setSavePhase: vi.fn(), setPageError,
       getCanSubmit: () => true, getRambleCanExit: () => true,
@@ -168,7 +168,6 @@ describe('publisherController', () => {
       transport,
       tr: (source) => source,
       messageFrom: (cause) => String(cause),
-      isPreviewMode: () => false,
       getWorkspace: () => workspace,
       setWorkspace: (next) => {
         workspace = next

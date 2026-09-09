@@ -1,7 +1,7 @@
 <script lang="ts">
   import { KeyRound, LoaderCircle } from '@lucide/svelte'
 
-  import rambledeskIcon from '../assets/rambledesk-app-icon.webp'
+  import rambledeskIcon from '../../assets/rambledesk-app-icon.webp'
   import { Button } from '$lib/components/ui/button'
   import {
     WebAccessTokenRejectedError,

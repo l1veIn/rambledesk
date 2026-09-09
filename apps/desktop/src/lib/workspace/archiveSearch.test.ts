@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { previewFixtures } from '$lib/previewFixtures'
+import { previewFixtures } from '$lib/preview/previewFixtures'
 import {
   archivedRequestsFor,
   archivedSelectionExists,
@@ -9,8 +9,6 @@ import {
   escapeArchiveHtml,
   highlightArchiveMatch,
   matchesArchiveSearch,
-  previewArchivedRequests,
-  previewArchivedSessions,
   requestMatchesSession,
 } from './archiveSearch'
 
@@ -50,19 +48,6 @@ describe('archive search', () => {
     expect(requestMatchesSession(request, archivedSession)).toBe(false)
     expect(matchesArchiveSearch('Workbench', 'work')).toBe(true)
     expect(matchesArchiveSearch(null, 'work')).toBe(false)
-  })
-
-  it('filters preview sessions and requests by the query', () => {
-    expect(previewArchivedSessions('')).toHaveLength(previewFixtures.archivedHostSessions.length)
-    const query = previewFixtures.archivedHostSessions[0].title.slice(0, 6)
-    expect(previewArchivedSessions(query).length).toBeGreaterThan(0)
-    expect(previewArchivedSessions('no-such-archived-session')).toEqual([])
-
-    const session = previewFixtures.archivedHostSessions[0]
-    expect(previewArchivedRequests(session, '')).toEqual(
-      previewFixtures.requests.filter((request) => requestMatchesSession(request, session)),
-    )
-    expect(previewArchivedRequests(session, 'no-such-request')).toEqual([])
   })
 
   it('keeps a selection only while its session and request still exist', () => {

@@ -29,19 +29,6 @@ export function requestQueryKey(state: NavigationState): string {
   ])
 }
 
-export function requestMatchesSearch(request: FeedbackRequestSummary, search: string): boolean {
-  const normalized = search.trim().toLowerCase()
-  if (!normalized) return true
-  return [
-    request.title,
-    request.what_happened,
-    request.source_hint,
-    request.request_id,
-    request.host_id,
-    request.host_session_id,
-  ].some((value) => (value ?? '').toLowerCase().includes(normalized))
-}
-
 export function now(): number {
   return typeof performance === 'undefined' ? Date.now() : performance.now()
 }

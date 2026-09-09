@@ -12,7 +12,6 @@ import type { DraftSession } from './draftSession'
 export type DraftControllerContext = {
   transport: ApplicationTransport
   messageFrom: (cause: unknown) => string
-  isPreviewMode: () => boolean
   isInteractionLocked: () => boolean
   isWorkspaceTerminal: () => boolean
   getWorkspace: () => FeedbackWorkspaceView | null
@@ -71,14 +70,7 @@ export function createDraftController(context: DraftControllerContext) {
           body_markdown: snapshotToSave.bodyMarkdown,
           expected_revision: revisionToSave,
         }
-        const saved: DraftView = context.isPreviewMode()
-          ? {
-              document_json: snapshotToSave.documentJson,
-              body_markdown: snapshotToSave.bodyMarkdown,
-              saved_revision: revisionToSave + 1,
-              updated_at: new Date().toISOString(),
-            }
-          : await context.transport.call('saveFeedbackDraft', input)
+        const saved: DraftView = await context.transport.call('saveFeedbackDraft', input)
         if (context.getWorkspace()?.request.request_id === requestId) {
           context.session.acceptSaved(snapshotToSave, saved.saved_revision)
           context.setWorkspaceDraft(saved)

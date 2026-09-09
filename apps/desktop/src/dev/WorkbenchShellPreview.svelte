@@ -3,7 +3,7 @@
   import HostSessionRail from '$lib/components/navigation/HostSessionRail.svelte'
   import RequestListPane from '$lib/components/navigation/RequestListPane.svelte'
   import { COLLAPSED_RAIL_WIDTH } from '$lib/components/navigation/railResize'
-  import { previewFixtures } from '$lib/previewFixtures'
+  import { previewFixtures } from '$lib/preview/previewFixtures'
   import WorkbenchShell from '$lib/workbench/WorkbenchShell.svelte'
   import type { ShellMode } from '$lib/workbench/shellMode'
   import type { HostProfile } from '../lib/domain/hostProfile'

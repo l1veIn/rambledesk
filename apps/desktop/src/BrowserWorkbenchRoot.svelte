@@ -43,7 +43,6 @@
     })
     const nextComposition = createWorkbenchComposition({
       environment: 'browser',
-      previewMode: false,
       authenticatedWebSession: session,
       capabilities,
     })

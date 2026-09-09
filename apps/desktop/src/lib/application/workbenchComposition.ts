@@ -9,7 +9,8 @@ import { createUnavailableWorkbenchCapabilities } from '../capabilities/unavaila
 
 export type WorkbenchCompositionInput = Readonly<{
   environment: 'desktop' | 'browser'
-  previewMode: boolean
+  /** Fixture-backed transport for the `?preview=fixtures` workbench. */
+  previewTransport?: ApplicationTransport
   desktopTransport?: ApplicationTransport
   authenticatedWebSession?: HttpApplicationSession
   capabilities?: WorkbenchCapabilities
@@ -27,9 +28,9 @@ export function createWorkbenchComposition(
   input: WorkbenchCompositionInput,
 ): WorkbenchComposition {
   const capabilities = input.capabilities ?? createUnavailableWorkbenchCapabilities()
-  if (input.previewMode) {
+  if (input.previewTransport) {
     return {
-      applicationTransport: new UnavailableApplicationTransport(capabilities.manifest),
+      applicationTransport: input.previewTransport,
       capabilities,
       previewMode: true,
       environment: input.environment,

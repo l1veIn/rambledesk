@@ -2,9 +2,9 @@ import type {
   FeedbackRequestSummary,
   FeedbackWorkspaceView,
   HostSessionSummary,
-} from './feedback'
-import type { HostProfile } from './domain/hostProfile'
-import type { ResumePrompt } from './domain/resumePrompt'
+} from '../feedback'
+import type { HostProfile } from '../domain/hostProfile'
+import type { ResumePrompt } from '../domain/resumePrompt'
 
 const requests: FeedbackRequestSummary[] = [
   {

@@ -17,7 +17,6 @@ type PublisherControllerContext = {
   transport: ApplicationTransport
   tr: (source: string, values?: Record<string, string | number>) => string
   messageFrom: (cause: unknown) => string
-  isPreviewMode: () => boolean
   getWorkspace: () => FeedbackWorkspaceView | null
   setWorkspace: (workspace: FeedbackWorkspaceView) => void
   setCompletedResult: (result: FeedbackRequestView | null) => void
@@ -75,14 +74,9 @@ export function createPublisherController(context: PublisherControllerContext) {
   ) {
     if (context.getWorkspace()?.request.request_id !== requestId) return
     try {
-      const next = context.isPreviewMode()
-        ? {
-            markdown: cookedMarkdown ?? uncookedMarkdown,
-            uncooked_markdown: uncookedMarkdown,
-          }
-        : normalizePublishedFeedback(
-            await readApplicationSnapshot(context.transport, 'readPublishedFeedback', { request_id: requestId }),
-          )
+      const next = normalizePublishedFeedback(
+        await readApplicationSnapshot(context.transport, 'readPublishedFeedback', { request_id: requestId }),
+      )
       if (context.getWorkspace()?.request.request_id === requestId) {
         context.setPublishedFeedback(next)
       }

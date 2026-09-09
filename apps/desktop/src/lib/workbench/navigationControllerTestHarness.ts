@@ -90,7 +90,6 @@ export function createController(
     .handle('setHostPinned', (input) => mocks.applicationCall('setHostPinned', input))
   return createNavigationController({
     capabilities: testCapabilities(),
-    previewMode: false,
     transport,
     tr: (source) => source,
     messageFrom: (cause) => String(cause),

@@ -6,7 +6,6 @@ import { readApplicationSnapshot } from '../application/readApplicationSnapshot'
 import type { ApplicationTransport } from '../application/applicationTransport'
 import type { FeedbackRequestSummary, FeedbackWorkspaceView } from '../feedback'
 import { normalizePublishedFeedback } from '../publishedFeedback'
-import { previewWorkspaceFor } from '../previewFixtures'
 import { agentSessionForView, arrivingRequestForAgentView } from '../workspace/agentViewRouting'
 import { requestFilterCount } from '../domain/requestFilters'
 import { leavesSettingsView } from '../workspace/workspaceViewLifecycle'
@@ -71,7 +70,6 @@ export type WorkspaceNavigationContext = {
   managedSessions: ManagedSessionActions
   transport: ApplicationTransport
   workspaceTransition: Transition
-  previewMode: boolean
   tr: (source: string, values?: Record<string, string | number>) => string
   messageFrom: (cause: unknown) => string
   pageError: () => string
@@ -156,11 +154,9 @@ export function createWorkspaceNavigationController(context: WorkspaceNavigation
     if (!target.requestId) return null
     const requestId = target.requestId
     return context.enqueueDocumentTask(async () => {
-      const next = context.previewMode
-        ? previewWorkspaceFor(requestId)
-        : await readApplicationSnapshot(context.transport, 'getFeedbackWorkspace', {
-            request_id: requestId,
-          })
+      const next = await readApplicationSnapshot(context.transport, 'getFeedbackWorkspace', {
+        request_id: requestId,
+      })
       if (!next) throw new Error(context.tr('This feedback request could not be found.'))
 
       if (target.view?.kind === 'request-task') {
@@ -183,16 +179,11 @@ export function createWorkspaceNavigationController(context: WorkspaceNavigation
 
       const nextPublishedFeedback =
         next.request.status === 'completed' && next.feedback
-          ? context.previewMode
-            ? {
-                markdown: next.draft.body_markdown,
-                uncooked_markdown: next.draft.body_markdown,
-              }
-            : normalizePublishedFeedback(
-                await readApplicationSnapshot(context.transport, 'readPublishedFeedback', {
-                  request_id: next.request.request_id,
-                }),
-              )
+          ? normalizePublishedFeedback(
+              await readApplicationSnapshot(context.transport, 'readPublishedFeedback', {
+                request_id: next.request.request_id,
+              }),
+            )
           : null
       return { kind: 'session', workspace: next, publishedFeedback: nextPublishedFeedback }
     })

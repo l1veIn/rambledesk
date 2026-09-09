@@ -1,7 +1,7 @@
 import { get, writable } from 'svelte/store'
 import { describe, expect, it, vi } from 'vitest'
 
-import { previewFixtures } from '../previewFixtures'
+import { previewFixtures, previewWorkspaceFor } from '../preview/previewFixtures'
 import {
   sessionViewDescriptor,
   settingsViewDescriptor,
@@ -70,14 +70,21 @@ function harness(overrides: Record<string, unknown> = {}) {
       closeDraft: vi.fn(async () => ({ skipped: false, promotedSessionId: null })),
       promotedSessionId: () => undefined,
     },
-    transport: { call: vi.fn(async () => []) },
+    transport: {
+      call: vi.fn(async (name: string, input?: { request_id?: string }) => {
+        if (name === 'getFeedbackWorkspace') return previewWorkspaceFor(input?.request_id ?? '')
+        if (name === 'readPublishedFeedback') {
+          return { markdown: '# Published', uncooked_markdown: '# Published' }
+        }
+        return []
+      }),
+    },
     workspaceTransition: {
       activate: vi.fn(async () => 'activated' as const),
       invalidate: vi.fn(() => 1),
       currentIntent: vi.fn(() => 1),
       isCurrent: vi.fn(() => true),
     },
-    previewMode: true,
     tr: (source: string) => source,
     messageFrom: (cause: unknown) => String(cause),
     pageError: () => '',
@@ -136,7 +143,7 @@ describe('workspace navigation controller', () => {
     expect(controller.viewForRequest('missing')).toBeNull()
   })
 
-  it('loads a preview workspace target and rejects unknown requests', async () => {
+  it('loads a workspace target through the transport and rejects unknown requests', async () => {
     const { controller } = harness()
     const request = previewFixtures.requests[0]
     await expect(

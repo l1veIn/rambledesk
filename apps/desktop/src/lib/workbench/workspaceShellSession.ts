@@ -1,17 +1,17 @@
 import { get, writable } from 'svelte/store'
 
 import {
-  savePreviewWorkspaceSnapshot,
-  savedPreviewWorkspaceSnapshot,
-} from '../workspace/previewWorkspaceSnapshot'
-import {
   EMPTY_WORKSPACE_SHELL_STATE,
   activeWorkspaceView,
   workspaceShellReducer,
   type WorkspaceShellAction,
   type WorkspaceShellState,
 } from '../workspace/workspaceShell'
-import { createWorkspaceSnapshot } from '../workspace/workspaceSnapshot'
+import {
+  createWorkspaceSnapshot,
+  type RestoredWorkspaceSnapshot,
+  type WorkspaceSnapshotV2,
+} from '../workspace/workspaceSnapshot'
 import { workspaceViewKey, type WorkspaceViewDescriptor } from '../workspace/viewDescriptors'
 import { saveWorkspaceSnapshot, savedWorkspaceSnapshot } from '../uiPreferences'
 
@@ -25,10 +25,24 @@ export type WorkspaceShellSessionState = Readonly<{
   pendingViewKey: string | null
 }>
 
+/** Where the open-view snapshot is stored; the preview workbench injects its own. */
+export type WorkspaceSnapshotStore = Readonly<{
+  load: () => RestoredWorkspaceSnapshot | null
+  save: (snapshot: WorkspaceSnapshotV2) => void
+}>
+
+const defaultSnapshotStore: WorkspaceSnapshotStore = {
+  load: savedWorkspaceSnapshot,
+  save: saveWorkspaceSnapshot,
+}
+
 export type WorkspaceShellSession = ReturnType<typeof createWorkspaceShellSession>
 
-export function createWorkspaceShellSession(options: { previewMode: boolean }) {
-  const restored = options.previewMode ? savedPreviewWorkspaceSnapshot() : savedWorkspaceSnapshot()
+export function createWorkspaceShellSession(
+  options: { snapshots?: WorkspaceSnapshotStore } = {},
+) {
+  const snapshots = options.snapshots ?? defaultSnapshotStore
+  const restored = snapshots.load()
   const store = writable<WorkspaceShellSessionState>({
     shell: restored?.shellState ?? EMPTY_WORKSPACE_SHELL_STATE,
     requestIds: new Map(restored?.requestIds ?? []),
@@ -43,8 +57,7 @@ export function createWorkspaceShellSession(options: { previewMode: boolean }) {
   function persist() {
     const state = get(store)
     const snapshot = createWorkspaceSnapshot(state.shell, state.requestIds)
-    if (options.previewMode) savePreviewWorkspaceSnapshot(snapshot)
-    else saveWorkspaceSnapshot(snapshot)
+    snapshots.save(snapshot)
   }
 
   /** Applies a shell action; returns whether the open views changed. */

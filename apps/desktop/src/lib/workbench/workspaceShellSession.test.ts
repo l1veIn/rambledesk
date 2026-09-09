@@ -26,7 +26,7 @@ describe('workspace shell session', () => {
   })
 
   it('opens, activates and closes views through the reducer', () => {
-    const shell = createWorkspaceShellSession({ previewMode: false })
+    const shell = createWorkspaceShellSession()
 
     expect(shell.dispatch({ type: 'open', view: sessionView })).toBe(true)
     expect(shell.dispatch({ type: 'open', view: sessionView })).toBe(false)
@@ -43,7 +43,7 @@ describe('workspace shell session', () => {
   })
 
   it('persists after every open, close and reorder', () => {
-    const shell = createWorkspaceShellSession({ previewMode: false })
+    const shell = createWorkspaceShellSession()
     shell.dispatch({ type: 'open', view: sessionView })
     shell.dispatch({ type: 'open', view: taskView })
     shell.dispatch({
@@ -58,7 +58,7 @@ describe('workspace shell session', () => {
   })
 
   it('remembers and forgets the request shown by a session view', () => {
-    const shell = createWorkspaceShellSession({ previewMode: false })
+    const shell = createWorkspaceShellSession()
     shell.dispatch({ type: 'open', view: sessionView })
 
     shell.bindRequest(workspaceViewKey(sessionView), 'request-1')
@@ -69,7 +69,7 @@ describe('workspace shell session', () => {
   })
 
   it('tracks the pending activation target', () => {
-    const shell = createWorkspaceShellSession({ previewMode: false })
+    const shell = createWorkspaceShellSession()
     expect(shell.pendingViewKey()).toBeNull()
     shell.setPendingViewKey(workspaceViewKey(taskView))
     expect(shell.pendingViewKey()).toBe(workspaceViewKey(taskView))
@@ -77,7 +77,7 @@ describe('workspace shell session', () => {
   })
 
   it('reports no restored view when nothing was saved', () => {
-    const shell = createWorkspaceShellSession({ previewMode: false })
+    const shell = createWorkspaceShellSession()
     expect(shell.restoredActiveView()).toBe(false)
     expect(get(shell)).toEqual({
       shell: EMPTY_WORKSPACE_SHELL_STATE,

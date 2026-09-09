@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { TestApplicationTransport } from '$lib/application/testApplicationTransport'
 import type { HostSessionSummary } from '$lib/feedback'
-import { previewFixtures } from '$lib/previewFixtures'
+import { previewFixtures } from '$lib/preview/previewFixtures'
 import { createArchiveActions, type ArchiveActionsContext } from './archiveActions'
 
 const archivedSession = previewFixtures.archivedHostSessions[0]
@@ -31,7 +31,6 @@ function harness(
     .handle('deleteFeedbackRequest', (input) => calls('deleteFeedbackRequest', input))
   const context = {
     transport,
-    isPreviewMode: () => false,
     tr: (source: string) => source,
     messageFrom: (cause: unknown) => String(cause),
     onError: vi.fn(),

@@ -5,7 +5,6 @@ import { readApplicationSnapshot } from '../application/readApplicationSnapshot'
 import type { ApplicationTransport } from '../application/applicationTransport'
 import type { FeedbackRequestSummary } from '../feedback'
 import { startClientDiagnostic, diagnosticErrorCategory } from '../diagnostics/clientDiagnostics'
-import { previewFixtures } from '../previewFixtures'
 import { agentSessionForView, cancelledFeedbackRestoreTarget } from '../workspace/agentViewRouting'
 import {
   createSessionViewRecoveryResolver,
@@ -59,7 +58,6 @@ export type StartupControllerContext = {
   draftSession: DraftSession
   transport: ApplicationTransport
   workspaceTransition: Transition
-  previewMode: boolean
   desktopShellAvailable: boolean
   tr: (source: string, values?: Record<string, string | number>) => string
   messageFrom: (cause: unknown) => string
@@ -117,9 +115,7 @@ export function createStartupController(context: StartupControllerContext) {
 
   const recoveryResolver = createSessionViewRecoveryResolver({
     loadArchived: async () => {
-      const sessions = context.previewMode
-        ? previewFixtures.archivedHostSessions
-        : await context.transport.call('listArchivedHostSessions', { search: null })
+      const sessions = await context.transport.call('listArchivedHostSessions', { search: null })
       return sessions.map((session) =>
         sessionViewDescriptor(session.host_id, session.host_session_id),
       )
@@ -221,9 +217,6 @@ export function createStartupController(context: StartupControllerContext) {
       await refreshSessionViewRecovery()
       if (context.workspaceShell.hasRestoredSnapshot()) {
         await restoreInitialWorkspaceSnapshot(true)
-      } else if (context.previewMode) {
-        const request = get(context.workspaceSession).workspace?.request
-        if (request) await context.navigation.selectScope(request.host_id, request.host_session_id)
       }
       patch({ phase: 'ready' })
       context.onReady()

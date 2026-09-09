@@ -31,7 +31,6 @@
   } from './archiveSearch'
 
   export let transport: ApplicationTransport
-  export let previewMode = false
   export let resolveHostProfile: (hostId: string) => HostProfile
   export let formatTime: (value: string | null | undefined) => string
   export let messageFrom: (cause: unknown) => string
@@ -51,7 +50,6 @@
 
   const archive = createArchiveActions({
     transport,
-    isPreviewMode: () => previewMode,
     tr,
     messageFrom,
     onError,

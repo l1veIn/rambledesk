@@ -38,7 +38,7 @@
   import PostProcessingSettings from '$lib/settings/PostProcessingSettings.svelte'
   import ShortcutSettings from '$lib/settings/ShortcutSettings.svelte'
   import WebAccessSettings from '$lib/settings/WebAccessSettings.svelte'
-  import appIcon from '../assets/rambledesk-app-icon.webp'
+  import appIcon from '../../assets/rambledesk-app-icon.webp'
   import * as Select from '$lib/components/ui/select'
   import * as Tabs from '$lib/components/ui/tabs'
   import { t } from '$lib/i18n'

@@ -1,5 +1,4 @@
 import type { FeedbackRequestSummary, HostSessionSummary } from '$lib/feedback'
-import { previewFixtures } from '$lib/previewFixtures'
 
 export const ALL_ARCHIVE_REQUEST_STATUSES = ['waiting', 'in_progress', 'completed', 'cancelled'] as const
 
@@ -64,42 +63,6 @@ export function requestMatchesSession(
   session: HostSessionSummary,
 ) {
   return request.host_id === session.host_id && request.host_session_id === session.host_session_id
-}
-
-export function previewArchivedSessions(query: string) {
-  const normalized = query.trim().toLowerCase()
-  return previewFixtures.archivedHostSessions.filter((session) => {
-    if (!normalized) return true
-    return (
-      matchesArchiveSearch(session.title, normalized) ||
-      matchesArchiveSearch(session.source_hint, normalized) ||
-      matchesArchiveSearch(session.host_id, normalized) ||
-      matchesArchiveSearch(session.host_session_id, normalized) ||
-      previewFixtures.requests.some(
-        (request) =>
-          requestMatchesSession(request, session) &&
-          (matchesArchiveSearch(request.title, normalized) ||
-            matchesArchiveSearch(request.what_happened, normalized) ||
-            matchesArchiveSearch(request.source_hint, normalized) ||
-            matchesArchiveSearch(request.request_id, normalized)),
-      )
-    )
-  })
-}
-
-export function previewArchivedRequests(session: HostSessionSummary, query: string) {
-  const normalized = query.trim().toLowerCase()
-  return previewFixtures.requests.filter(
-    (request) =>
-      requestMatchesSession(request, session) &&
-      (!normalized ||
-        matchesArchiveSearch(request.title, normalized) ||
-        matchesArchiveSearch(request.what_happened, normalized) ||
-        matchesArchiveSearch(request.source_hint, normalized) ||
-        matchesArchiveSearch(request.request_id, normalized) ||
-        matchesArchiveSearch(request.host_id, normalized) ||
-        matchesArchiveSearch(request.host_session_id, normalized)),
-  )
 }
 
 export function archivedSelectionExists(

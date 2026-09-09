@@ -139,6 +139,13 @@ src/
 - 跨域 import 由测试内的 `ALLOWED_EDGES` 锁定，**只减不增**：新增一条会失败，消失一条必须从清单里删掉；
 - 组合根（`App.svelte`、`dev/`）不受限制，也不允许被 `lib/` 反向 import（`workbenchEntry` 等入口除外，已列入清单）。
 
+预览模式不是散落在控制器里的分支：`?preview=fixtures` 由 `main.ts` 构造
+`lib/preview/previewApplicationTransport.ts`（内存版 Application 合同实现，读写都走 fixture），
+经 `createWorkbenchComposition({ previewTransport })` 注入。控制器只面向 `ApplicationTransport`，
+`previewMode` 仅保留在组合根，用于 onboarding、托管会话入口等 UI 能力判断。
+预览页的 open-view 快照通过 `createWorkspaceShellSession({ snapshots })` 注入，
+不写进真实的 `rambledesk.ui-state`。
+
 ## 依赖方向
 
 ```text

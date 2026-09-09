@@ -186,18 +186,6 @@ describe('navigationController request list', () => {
     expect(get(controller)).toMatchObject({ requests: [completed], nextRequestCursor: null, loadingRequests: false })
   })
 
-  it('applies status and time filters consistently in preview mode', async () => {
-    vi.setSystemTime(new Date('2026-09-03T12:00:00Z'))
-    const controller = createController({ previewMode: true })
-    await controller.initialize(false)
-    await controller.setRequestFilters({ status: 'pending', timeRange: 'all' })
-    expect(get(controller).requests.map((request) => request.status).sort()).toEqual(['in_progress', 'waiting'])
-    await controller.setRequestFilters({ status: 'pending', timeRange: '24h' })
-    expect(get(controller).requests).toEqual([])
-    await controller.setRequestFilters({ status: 'all', timeRange: 'all' })
-    expect(get(controller).requests).toHaveLength(4)
-  })
-
   it('refreshes page navigation and requests with a minimum loading duration', async () => {
     const firstList: ListFeedbackRequestsOutput = { requests: [], next_cursor: null }
     const refreshedRequest = feedbackRequest('request-1')

@@ -5,7 +5,7 @@ vi.mock('../application/readApplicationSnapshot', () => ({
   readApplicationSnapshot: mocks.readApplicationSnapshot,
 }))
 
-import { previewFixtures } from '../previewFixtures'
+import { previewFixtures } from '../preview/previewFixtures'
 import { requestTaskViewDescriptor, sessionViewDescriptor } from '../workspace/viewDescriptors'
 import {
   createDraftOperationsController,

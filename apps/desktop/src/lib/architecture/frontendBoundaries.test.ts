@@ -22,10 +22,8 @@ import { describe, expect, it } from 'vitest'
  */
 const ALLOWED_EDGES: readonly string[] = [
   // lib root modules (cross-cutting helpers and contract barrels)
-  'lib/(root) -> (app)',
   'lib/(root) -> lib/application',
   'lib/(root) -> lib/components',
-  'lib/(root) -> lib/domain',
   'lib/(root) -> lib/speech',
   'lib/(root) -> lib/workbench',
   'lib/(root) -> lib/workspace',
@@ -69,12 +67,16 @@ const ALLOWED_EDGES: readonly string[] = [
   'lib/onboarding -> lib/diagnostics',
   'lib/onboarding -> lib/settings',
   'lib/onboarding -> lib/speech',
+  // preview (fixture transport for ?preview=fixtures)
+  'lib/preview -> lib/(root)',
+  'lib/preview -> lib/application',
+  'lib/preview -> lib/capabilities',
+  'lib/preview -> lib/domain',
   // rambelle
   'lib/rambelle -> lib/(root)',
   // screen capture
   'lib/screen-capture -> lib/(root)',
   // settings
-  'lib/settings -> (app)',
   'lib/settings -> lib/(root)',
   'lib/settings -> lib/agents',
   'lib/settings -> lib/appearance',
@@ -172,7 +174,8 @@ function collectEdges(): Set<string> {
     if (source === null || source === '(app)' || source === 'dev') continue
     for (const match of readFileSync(file, 'utf8').matchAll(importPattern)) {
       const target = resolveImport(match[1]!, file)
-      if (!target) continue
+      // Assets (images, css, fonts) are build inputs, not module dependencies.
+      if (!target || !/\.(ts|svelte)$/u.test(target)) continue
       const targetDomain = domainOf(target)
       if (targetDomain === null || targetDomain === source) continue
       edges.add(`${source} -> ${targetDomain}`)

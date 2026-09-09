@@ -72,7 +72,7 @@ function harness(overrides: Record<string, unknown> = {}) {
       currentIntent: vi.fn(() => 1),
       isCurrent: vi.fn(() => true),
     },
-    previewMode: false,
+    canOpenManagedSession: () => true,
     tr: (source: string) => source,
     messageFrom: (cause: unknown) => String(cause),
     setPageError: vi.fn(),
@@ -97,8 +97,8 @@ const managedSession = {
 } as never
 
 describe('managed session actions', () => {
-  it('refuses to open a draft session in preview mode', async () => {
-    const { actions } = harness({ previewMode: true })
+  it('refuses to open a draft session when the environment cannot host one', async () => {
+    const { actions } = harness({ canOpenManagedSession: () => false })
     await expect(actions.openNewManagedSession()).resolves.toBe(false)
   })
 

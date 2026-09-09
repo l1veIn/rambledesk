@@ -1,4 +1,8 @@
-import type { FeedbackStatus, ListFeedbackRequestsOutput } from '../feedback'
+import type {
+  FeedbackRequestSummary,
+  FeedbackStatus,
+  ListFeedbackRequestsOutput,
+} from '../feedback'
 
 export const REQUEST_STATUS_FILTERS = ['all', 'pending', 'waiting', 'in_progress', 'completed', 'cancelled'] as const
 export const REQUEST_TIME_RANGES = ['all', '24h', '7d', '30d'] as const
@@ -36,4 +40,18 @@ export function filterRequestPage(
     // later pages cannot contain matches; otherwise keep pagination available.
     next_cursor: requests.length === page.requests.length ? page.next_cursor : null,
   }
+}
+
+/** Matches the server-side search: title, body, source hint, and both ids. */
+export function requestMatchesSearch(request: FeedbackRequestSummary, search: string): boolean {
+  const normalized = search.trim().toLowerCase()
+  if (!normalized) return true
+  return [
+    request.title,
+    request.what_happened,
+    request.source_hint,
+    request.request_id,
+    request.host_id,
+    request.host_session_id,
+  ].some((value) => (value ?? '').toLowerCase().includes(normalized))
 }

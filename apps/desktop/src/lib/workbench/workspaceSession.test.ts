@@ -2,7 +2,7 @@ import { get } from 'svelte/store'
 import { describe, expect, it } from 'vitest'
 
 import type { FeedbackRequestView } from '../feedback'
-import { previewFixtures } from '../previewFixtures'
+import { previewFixtures } from '../preview/previewFixtures'
 import { createWorkspaceSession } from './workspaceSession'
 
 function requestView(overrides: Partial<FeedbackRequestView> = {}): FeedbackRequestView {

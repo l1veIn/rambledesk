@@ -12,7 +12,6 @@ describe('createWorkbenchComposition', () => {
     const desktopTransport = new TestApplicationTransport(undefined, { initiallyReady: true })
     const composition = createWorkbenchComposition({
       environment: 'desktop',
-      previewMode: false,
       desktopTransport,
     })
 
@@ -29,7 +28,6 @@ describe('createWorkbenchComposition', () => {
     })
     const composition = createWorkbenchComposition({
       environment: 'browser',
-      previewMode: false,
       authenticatedWebSession: session,
     })
 
@@ -50,7 +48,6 @@ describe('createWorkbenchComposition', () => {
     })
     const composition = createWorkbenchComposition({
       environment: 'browser',
-      previewMode: false,
       authenticatedWebSession: session,
       capabilities,
     })
@@ -63,28 +60,29 @@ describe('createWorkbenchComposition', () => {
     })
   })
 
-  it('keeps preview fixtures offline even if a web session is present', async () => {
+  it('uses the injected preview transport and never a web session', async () => {
     const fetchImplementation = vi.fn<typeof fetch>()
     const session = HttpApplicationSession.authenticated({
       accessToken: 'session-token',
       pageUrl: 'https://workbench.example/app',
       fetch: fetchImplementation,
     })
+    const previewTransport = new TestApplicationTransport(undefined, { initiallyReady: true })
     const composition = createWorkbenchComposition({
       environment: 'browser',
-      previewMode: true,
+      previewTransport,
       authenticatedWebSession: session,
     })
 
-    expect(composition.applicationTransport).toBeInstanceOf(UnavailableApplicationTransport)
-    await expect(composition.applicationTransport.waitUntilReady()).rejects.toThrow('unavailable')
+    expect(composition.applicationTransport).toBe(previewTransport)
+    expect(composition.previewMode).toBe(true)
+    await expect(composition.applicationTransport.waitUntilReady()).resolves.toBeUndefined()
     expect(fetchImplementation).not.toHaveBeenCalled()
   })
 
   it('uses the unavailable implementation for an ordinary browser without a session', () => {
     const composition = createWorkbenchComposition({
       environment: 'browser',
-      previewMode: false,
     })
 
     expect(composition.applicationTransport).toBeInstanceOf(UnavailableApplicationTransport)

@@ -5,7 +5,6 @@ import type { ApplicationTransport } from '../application/applicationTransport'
 import { writeBackgroundDraftOperation } from '../backgroundDraftWriter'
 import type { ActiveAction, DraftOperation } from '../draftOperations'
 import type { DraftView, FeedbackRequestSummary, FeedbackWorkspaceView } from '../feedback'
-import { previewWorkspaceFor } from '../previewFixtures'
 import {
   shouldAdoptTaskBackgroundDraft,
   shouldUseForegroundDraftEditor,
@@ -17,7 +16,6 @@ export type DraftOperationsContext = {
   transport: ApplicationTransport
   tr: (source: string, values?: Record<string, string | number>) => string
   messageFrom: (cause: unknown) => string
-  isPreviewMode: () => boolean
   getActiveView: () => WorkspaceViewDescriptor | null
   getPendingViewKey: () => string | null
   getWorkspace: () => FeedbackWorkspaceView | null
@@ -100,23 +98,15 @@ export function createDraftOperationsController(context: DraftOperationsContext)
 
       const savedDraft = await writeBackgroundDraftOperation(requestId, operation, {
         load: async () => {
-          const target = context.isPreviewMode()
-            ? previewWorkspaceFor(requestId)
-            : await readApplicationSnapshot(context.transport, 'getFeedbackWorkspace', {
-                request_id: requestId,
-              })
+          const target = await readApplicationSnapshot(
+            context.transport,
+            'getFeedbackWorkspace',
+            { request_id: requestId },
+          )
           if (!target) throw new Error(context.tr('This feedback request could not be found.'))
           return target
         },
-        save: async (input) =>
-          context.isPreviewMode()
-            ? {
-                document_json: input.document_json,
-                body_markdown: input.body_markdown,
-                saved_revision: input.expected_revision + 1,
-                updated_at: new Date().toISOString(),
-              }
-            : context.transport.call('saveFeedbackDraft', input),
+        save: async (input) => context.transport.call('saveFeedbackDraft', input),
       })
       if (
         shouldAdoptTaskBackgroundDraft(

@@ -144,9 +144,14 @@ if (entry === 'browser') {
         capabilities.manifest,
       )
     : undefined
+  const previewTransport = previewMode
+    ? new (await import('./lib/preview/previewApplicationTransport')).PreviewApplicationTransport(
+        capabilities.manifest,
+      )
+    : undefined
   const composition = createWorkbenchComposition({
     environment: isTauri ? 'desktop' : 'browser',
-    previewMode,
+    previewTransport,
     desktopTransport,
     capabilities,
   })
