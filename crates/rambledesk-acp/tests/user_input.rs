@@ -3,6 +3,26 @@ use rambledesk_core::*;
 use serde_json::{Value, json};
 use support::{create, id, setup, wait_for};
 
+#[test]
+fn interaction_responses_reject_unknown_fields() {
+    for mut payload in [
+        serde_json::json!({ "kind": "permission", "option_id": null }),
+        serde_json::json!({
+            "kind": "question",
+            "response": { "action": "cancel", "content_json": null }
+        }),
+        serde_json::json!({
+            "kind": "plan",
+            "response": { "action": "cancel", "content_json": null }
+        }),
+    ] {
+        assert!(serde_json::from_value::<SessionInteractionResponse>(payload.clone()).is_ok());
+        payload["unexpected"] = serde_json::json!(true);
+        let error = serde_json::from_value::<SessionInteractionResponse>(payload).unwrap_err();
+        assert!(error.to_string().contains("unknown field `unexpected`"));
+    }
+}
+
 #[tokio::test]
 async fn native_inputs_are_pending_validated_and_answered_on_the_original_wire() {
     for (kind, content, expected) in [

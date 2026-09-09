@@ -14,7 +14,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.4.0-rc.2"
+version = "0.4.0-rc.3"
 edition = "2024"
 rust-version = "1.88"
 repository = "https://github.com/l1veIn/rambledesk"
@@ -58,7 +58,8 @@ tracing = "0.1"
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 tower-service = "0.3"
-ts-rs = "12.0.1"
+# Keep Serde's deny_unknown_fields validation; ts-rs 12 cannot parse it on enums.
+ts-rs = { version = "12.0.1", features = ["no-serde-warnings"] }
 uuid = { version = "1.24.0", features = ["v7"] }
 windows-sys = { version = "0.61.2", features = ["Win32_Storage_FileSystem"] }
 
