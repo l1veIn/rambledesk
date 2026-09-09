@@ -1,0 +1,2610 @@
+{
+  "schema": 1,
+  "harnessRevision": "stable-view-v3-output-control",
+  "outputMode": "final-json",
+  "kind": "resources",
+  "startedAt": "2026-09-09T16:49:37.552Z",
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
+  "viewport": {
+    "width": 1280,
+    "height": 720
+  },
+  "visibility": "visible",
+  "phase": "done",
+  "durationMs": 1800000,
+  "sampleIntervalMs": 60000,
+  "cycleIntervalMs": 5000,
+  "settleMs": 3000,
+  "budgets": {
+    "additionalOutstandingObjectUrls": 0,
+    "additionalWorkersWithoutTerminate": 0,
+    "attachedEditorViewGrowth": 0,
+    "editableFeedbackViews": 1,
+    "appElementGrowth": 0,
+    "appDomNodeGrowth": 0,
+    "heapGrowthInvestigationBytes": 10485760,
+    "heapGrowthInvestigationFraction": 0.1
+  },
+  "scope": "This window only, instrumented before App import. Counts explicit revoke/terminate; Worker self-close, child workers, subscriptions, native processes, ASR, detached editor instances and memory outside this heap are unobserved. DOM switching only; no attachment modal or recording cycle.",
+  "samples": [
+    {
+      "stage": "baseline-ordinary",
+      "elapsedMs": 15.6,
+      "at": "2026-09-09T16:49:40.700Z",
+      "visibility": "visible",
+      "memory": {
+        "usedJSHeapSize": 20437700,
+        "totalJSHeapSize": 32707724,
+        "jsHeapSizeLimit": 4395630592
+      },
+      "appDomNodes": 1417,
+      "appElements": 365,
+      "attachedEditorViews": 2,
+      "editableFeedbackViews": 1,
+      "objectUrls": {
+        "created": 0,
+        "revoked": 0,
+        "outstanding": 0
+      },
+      "workers": {
+        "supported": true,
+        "created": 0,
+        "explicitlyTerminated": 0,
+        "withoutObservedTerminate": 0
+      }
+    },
+    {
+      "stage": "minute-ordinary",
+      "elapsedMs": 60214,
+      "at": "2026-09-09T16:50:40.898Z",
+      "visibility": "visible",
+      "memory": {
+        "usedJSHeapSize": 23573744,
+        "totalJSHeapSize": 32334836,
+        "jsHeapSizeLimit": 4395630592
+      },
+      "appDomNodes": 1417,
+      "appElements": 365,
+      "attachedEditorViews": 2,
+      "editableFeedbackViews": 1,
+      "objectUrls": {
+        "created": 0,
+        "revoked": 0,
+        "outstanding": 0
+      },
+      "workers": {
+        "supported": true,
+        "created": 0,
+        "explicitlyTerminated": 0,
+        "withoutObservedTerminate": 0
+      }
+    },
+    {
+      "stage": "minute-ordinary",
+      "elapsedMs": 120198.4,
+      "at": "2026-09-09T16:51:40.883Z",
+      "visibility": "visible",
+      "memory": {
+        "usedJSHeapSize": 27484328,
+        "totalJSHeapSize": 35612672,
+        "jsHeapSizeLimit": 4395630592
+      },
+      "appDomNodes": 1417,
+      "appElements": 365,
+      "attachedEditorViews": 2,
+      "editableFeedbackViews": 1,
+      "objectUrls": {
+        "created": 0,
+        "revoked": 0,
+        "outstanding": 0
+      },
+      "workers": {
+        "supported": true,
+        "created": 0,
+        "explicitlyTerminated": 0,
+        "withoutObservedTerminate": 0
+      }
+    },
+    {
+      "stage": "minute-ordinary",
+      "elapsedMs": 180115.2,
+      "at": "2026-09-09T16:52:40.800Z",
+      "visibility": "visible",
+      "memory": {
+        "usedJSHeapSize": 27653817,
+        "totalJSHeapSize": 35678217,
+        "jsHeapSizeLimit": 4395630592
+      },
+      "appDomNodes": 1417,
+      "appElements": 365,
+      "attachedEditorViews": 2,
+      "editableFeedbackViews": 1,
+      "objectUrls": {
+        "created": 0,
+        "revoked": 0,
+        "outstanding": 0
+      },
+      "workers": {
+        "supported": true,
+        "created": 0,
+        "explicitlyTerminated": 0,
+        "withoutObservedTerminate": 0
+      }
+    },
+    {
+      "stage": "minute-ordinary",
+      "elapsedMs": 240048.7,
+      "at": "2026-09-09T16:53:40.733Z",
+      "visibility": "visible",
+      "memory": {
+        "usedJSHeapSize": 26564031,
+        "totalJSHeapSize": 35364167,
+        "jsHeapSizeLimit": 4395630592
+      },
+      "appDomNodes": 1417,
+      "appElements": 365,
+      "attachedEditorViews": 2,
+      "editableFeedbackViews": 1,
+      "objectUrls": {
+        "created": 0,
+        "revoked": 0,
+        "outstanding": 0
+      },
+      "workers": {
+        "supported": true,
+        "created": 0,
+        "explicitlyTerminated": 0,
+        "withoutObservedTerminate": 0
+      }
+    },
+    {
+      "stage": "minute-ordinary",
+      "elapsedMs": 300215.6,
+      "at": "2026-09-09T16:54:40.900Z",
+      "visibility": "visible",
+      "memory": {
+        "usedJSHeapSize": 26245727,
+        "totalJSHeapSize": 32824623,
+        "jsHeapSizeLimit": 4395630592
+      },
+      "appDomNodes": 1417,
+      "appElements": 365,
+      "attachedEditorViews": 2,
+      "editableFeedbackViews": 1,
+      "objectUrls": {
+        "created": 0,
+        "revoked": 0,
+        "outstanding": 0
+      },
+      "workers": {
+        "supported": true,
+        "created": 0,
+        "explicitlyTerminated": 0,
+        "withoutObservedTerminate": 0
+      }
+    },
+    {
+      "stage": "minute-ordinary",
+      "elapsedMs": 360116.1,
+      "at": "2026-09-09T16:55:40.800Z",
+      "visibility": "visible",
+      "memory": {
+        "usedJSHeapSize": 26469716,
+        "totalJSHeapSize": 34610580,
+        "jsHeapSizeLimit": 4395630592
+      },
+      "appDomNodes": 1417,
+      "appElements": 365,
+      "attachedEditorViews": 2,
+      "editableFeedbackViews": 1,
+      "objectUrls": {
+        "created": 0,
+        "revoked": 0,
+        "outstanding": 0
+      },
+      "workers": {
+        "supported": true,
+        "created": 0,
+        "explicitlyTerminated": 0,
+        "withoutObservedTerminate": 0
+      }
+    },
+    {
+      "stage": "minute-ordinary",
+      "elapsedMs": 420083.3,
+      "at": "2026-09-09T16:56:40.767Z",
+      "visibility": "visible",
+      "memory": {
+        "usedJSHeapSize": 26641810,
+        "totalJSHeapSize": 51961226,
+        "jsHeapSizeLimit": 4395630592
+      },
+      "appDomNodes": 1417,
+      "appElements": 365,
+      "attachedEditorViews": 2,
+      "editableFeedbackViews": 1,
+      "objectUrls": {
+        "created": 0,
+        "revoked": 0,
+        "outstanding": 0
+      },
+      "workers": {
+        "supported": true,
+        "created": 0,
+        "explicitlyTerminated": 0,
+        "withoutObservedTerminate": 0
+      }
+    },
+    {
+      "stage": "minute-ordinary",
+      "elapsedMs": 480268.7,
+      "at": "2026-09-09T16:57:40.953Z",
+      "visibility": "visible",
+      "memory": {
+        "usedJSHeapSize": 26671726,
+        "totalJSHeapSize": 52223370,
+        "jsHeapSizeLimit": 4395630592
+      },
+      "appDomNodes": 1417,
+      "appElements": 365,
+      "attachedEditorViews": 2,
+      "editableFeedbackViews": 1,
+      "objectUrls": {
+        "created": 0,
+        "revoked": 0,
+        "outstanding": 0
+      },
+      "workers": {
+        "supported": true,
+        "created": 0,
+        "explicitlyTerminated": 0,
+        "withoutObservedTerminate": 0
+      }
+    },
+    {
+      "stage": "minute-ordinary",
+      "elapsedMs": 540218.4,
+      "at": "2026-09-09T16:58:40.903Z",
+      "visibility": "visible",
+      "memory": {
+        "usedJSHeapSize": 26771198,
+        "totalJSHeapSize": 52485490,
+        "jsHeapSizeLimit": 4395630592
+      },
+      "appDomNodes": 1417,
+      "appElements": 365,
+      "attachedEditorViews": 2,
+      "editableFeedbackViews": 1,
+      "objectUrls": {
+        "created": 0,
+        "revoked": 0,
+        "outstanding": 0
+      },
+      "workers": {
+        "supported": true,
+        "created": 0,
+        "explicitlyTerminated": 0,
+        "withoutObservedTerminate": 0
+      }
+    },
+    {
+      "stage": "minute-ordinary",
+      "elapsedMs": 600118.3,
+      "at": "2026-09-09T16:59:40.800Z",
+      "visibility": "visible",
+      "memory": {
+        "usedJSHeapSize": 26796758,
+        "totalJSHeapSize": 52485514,
+        "jsHeapSizeLimit": 4395630592
+      },
+      "appDomNodes": 1417,
+      "appElements": 365,
+      "attachedEditorViews": 2,
+      "editableFeedbackViews": 1,
+      "objectUrls": {
+        "created": 0,
+        "revoked": 0,
+        "outstanding": 0
+      },
+      "workers": {
+        "supported": true,
+        "created": 0,
+        "explicitlyTerminated": 0,
+        "withoutObservedTerminate": 0
+      }
+    },
+    {
+      "stage": "minute-ordinary",
+      "elapsedMs": 660101.4,
+      "at": "2026-09-09T17:00:40.782Z",
+      "visibility": "visible",
+      "memory": {
+        "usedJSHeapSize": 23721438,
+        "totalJSHeapSize": 33118602,
+        "jsHeapSizeLimit": 4395630592
+      },
+      "appDomNodes": 1417,
+      "appElements": 365,
+      "attachedEditorViews": 2,
+      "editableFeedbackViews": 1,
+      "objectUrls": {
+        "created": 0,
+        "revoked": 0,
+        "outstanding": 0
+      },
+      "workers": {
+        "supported": true,
+        "created": 0,
+        "explicitlyTerminated": 0,
+        "withoutObservedTerminate": 0
+      }
+    },
+    {
+      "stage": "minute-ordinary",
+      "elapsedMs": 720085.3,
+      "at": "2026-09-09T17:01:40.766Z",
+      "visibility": "visible",
+      "memory": {
+        "usedJSHeapSize": 27076930,
+        "totalJSHeapSize": 50912654,
+        "jsHeapSizeLimit": 4395630592
+      },
+      "appDomNodes": 1417,
+      "appElements": 365,
+      "attachedEditorViews": 2,
+      "editableFeedbackViews": 1,
+      "objectUrls": {
+        "created": 0,
+        "revoked": 0,
+        "outstanding": 0
+      },
+      "workers": {
+        "supported": true,
+        "created": 0,
+        "explicitlyTerminated": 0,
+        "withoutObservedTerminate": 0
+      }
+    },
+    {
+      "stage": "minute-ordinary",
+      "elapsedMs": 780286.7,
+      "at": "2026-09-09T17:02:40.967Z",
+      "visibility": "visible",
+      "memory": {
+        "usedJSHeapSize": 27331418,
+        "totalJSHeapSize": 52485518,
+        "jsHeapSizeLimit": 4395630592
+      },
+      "appDomNodes": 1417,
+      "appElements": 365,
+      "attachedEditorViews": 2,
+      "editableFeedbackViews": 1,
+      "objectUrls": {
+        "created": 0,
+        "revoked": 0,
+        "outstanding": 0
+      },
+      "workers": {
+        "supported": true,
+        "created": 0,
+        "explicitlyTerminated": 0,
+        "withoutObservedTerminate": 0
+      }
+    },
+    {
+      "stage": "minute-ordinary",
+      "elapsedMs": 840234.5,
+      "at": "2026-09-09T17:03:40.915Z",
+      "visibility": "visible",
+      "memory": {
+        "usedJSHeapSize": 27557150,
+        "totalJSHeapSize": 52747662,
+        "jsHeapSizeLimit": 4395630592
+      },
+      "appDomNodes": 1417,
+      "appElements": 365,
+      "attachedEditorViews": 2,
+      "editableFeedbackViews": 1,
+      "objectUrls": {
+        "created": 0,
+        "revoked": 0,
+        "outstanding": 0
+      },
+      "workers": {
+        "supported": true,
+        "created": 0,
+        "explicitlyTerminated": 0,
+        "withoutObservedTerminate": 0
+      }
+    },
+    {
+      "stage": "minute-ordinary",
+      "elapsedMs": 900286.9,
+      "at": "2026-09-09T17:04:40.968Z",
+      "visibility": "visible",
+      "memory": {
+        "usedJSHeapSize": 27603538,
+        "totalJSHeapSize": 51699086,
+        "jsHeapSizeLimit": 4395630592
+      },
+      "appDomNodes": 1417,
+      "appElements": 365,
+      "attachedEditorViews": 2,
+      "editableFeedbackViews": 1,
+      "objectUrls": {
+        "created": 0,
+        "revoked": 0,
+        "outstanding": 0
+      },
+      "workers": {
+        "supported": true,
+        "created": 0,
+        "explicitlyTerminated": 0,
+        "withoutObservedTerminate": 0
+      }
+    },
+    {
+      "stage": "minute-ordinary",
+      "elapsedMs": 960203.7,
+      "at": "2026-09-09T17:05:40.884Z",
+      "visibility": "visible",
+      "memory": {
+        "usedJSHeapSize": 27431102,
+        "totalJSHeapSize": 51699086,
+        "jsHeapSizeLimit": 4395630592
+      },
+      "appDomNodes": 1417,
+      "appElements": 365,
+      "attachedEditorViews": 2,
+      "editableFeedbackViews": 1,
+      "objectUrls": {
+        "created": 0,
+        "revoked": 0,
+        "outstanding": 0
+      },
+      "workers": {
+        "supported": true,
+        "created": 0,
+        "explicitlyTerminated": 0,
+        "withoutObservedTerminate": 0
+      }
+    },
+    {
+      "stage": "minute-ordinary",
+      "elapsedMs": 1020071,
+      "at": "2026-09-09T17:06:40.751Z",
+      "visibility": "visible",
+      "memory": {
+        "usedJSHeapSize": 27831862,
+        "totalJSHeapSize": 51961230,
+        "jsHeapSizeLimit": 4395630592
+      },
+      "appDomNodes": 1417,
+      "appElements": 365,
+      "attachedEditorViews": 2,
+      "editableFeedbackViews": 1,
+      "objectUrls": {
+        "created": 0,
+        "revoked": 0,
+        "outstanding": 0
+      },
+      "workers": {
+        "supported": true,
+        "created": 0,
+        "explicitlyTerminated": 0,
+        "withoutObservedTerminate": 0
+      }
+    },
+    {
+      "stage": "minute-ordinary",
+      "elapsedMs": 1080188,
+      "at": "2026-09-09T17:07:40.868Z",
+      "visibility": "visible",
+      "memory": {
+        "usedJSHeapSize": 27813622,
+        "totalJSHeapSize": 52223350,
+        "jsHeapSizeLimit": 4395630592
+      },
+      "appDomNodes": 1417,
+      "appElements": 365,
+      "attachedEditorViews": 2,
+      "editableFeedbackViews": 1,
+      "objectUrls": {
+        "created": 0,
+        "revoked": 0,
+        "outstanding": 0
+      },
+      "workers": {
+        "supported": true,
+        "created": 0,
+        "explicitlyTerminated": 0,
+        "withoutObservedTerminate": 0
+      }
+    },
+    {
+      "stage": "minute-ordinary",
+      "elapsedMs": 1140271.5,
+      "at": "2026-09-09T17:08:40.952Z",
+      "visibility": "visible",
+      "memory": {
+        "usedJSHeapSize": 27802782,
+        "totalJSHeapSize": 51961206,
+        "jsHeapSizeLimit": 4395630592
+      },
+      "appDomNodes": 1417,
+      "appElements": 365,
+      "attachedEditorViews": 2,
+      "editableFeedbackViews": 1,
+      "objectUrls": {
+        "created": 0,
+        "revoked": 0,
+        "outstanding": 0
+      },
+      "workers": {
+        "supported": true,
+        "created": 0,
+        "explicitlyTerminated": 0,
+        "withoutObservedTerminate": 0
+      }
+    },
+    {
+      "stage": "minute-ordinary",
+      "elapsedMs": 1200172.2,
+      "at": "2026-09-09T17:09:40.853Z",
+      "visibility": "visible",
+      "memory": {
+        "usedJSHeapSize": 27830642,
+        "totalJSHeapSize": 52485518,
+        "jsHeapSizeLimit": 4395630592
+      },
+      "appDomNodes": 1417,
+      "appElements": 365,
+      "attachedEditorViews": 2,
+      "editableFeedbackViews": 1,
+      "objectUrls": {
+        "created": 0,
+        "revoked": 0,
+        "outstanding": 0
+      },
+      "workers": {
+        "supported": true,
+        "created": 0,
+        "explicitlyTerminated": 0,
+        "withoutObservedTerminate": 0
+      }
+    },
+    {
+      "stage": "minute-ordinary",
+      "elapsedMs": 1260303.3,
+      "at": "2026-09-09T17:10:40.984Z",
+      "visibility": "visible",
+      "memory": {
+        "usedJSHeapSize": 28032112,
+        "totalJSHeapSize": 52747660,
+        "jsHeapSizeLimit": 4395630592
+      },
+      "appDomNodes": 1417,
+      "appElements": 365,
+      "attachedEditorViews": 2,
+      "editableFeedbackViews": 1,
+      "objectUrls": {
+        "created": 0,
+        "revoked": 0,
+        "outstanding": 0
+      },
+      "workers": {
+        "supported": true,
+        "created": 0,
+        "explicitlyTerminated": 0,
+        "withoutObservedTerminate": 0
+      }
+    },
+    {
+      "stage": "minute-ordinary",
+      "elapsedMs": 1320121.1,
+      "at": "2026-09-09T17:11:40.801Z",
+      "visibility": "visible",
+      "memory": {
+        "usedJSHeapSize": 28736829,
+        "totalJSHeapSize": 38345081,
+        "jsHeapSizeLimit": 4395630592
+      },
+      "appDomNodes": 1417,
+      "appElements": 365,
+      "attachedEditorViews": 2,
+      "editableFeedbackViews": 1,
+      "objectUrls": {
+        "created": 0,
+        "revoked": 0,
+        "outstanding": 0
+      },
+      "workers": {
+        "supported": true,
+        "created": 0,
+        "explicitlyTerminated": 0,
+        "withoutObservedTerminate": 0
+      }
+    },
+    {
+      "stage": "minute-ordinary",
+      "elapsedMs": 1380054.8,
+      "at": "2026-09-09T17:12:40.735Z",
+      "visibility": "visible",
+      "memory": {
+        "usedJSHeapSize": 30006821,
+        "totalJSHeapSize": 37543329,
+        "jsHeapSizeLimit": 4395630592
+      },
+      "appDomNodes": 1417,
+      "appElements": 365,
+      "attachedEditorViews": 2,
+      "editableFeedbackViews": 1,
+      "objectUrls": {
+        "created": 0,
+        "revoked": 0,
+        "outstanding": 0
+      },
+      "workers": {
+        "supported": true,
+        "created": 0,
+        "explicitlyTerminated": 0,
+        "withoutObservedTerminate": 0
+      }
+    },
+    {
+      "stage": "minute-ordinary",
+      "elapsedMs": 1440254.2,
+      "at": "2026-09-09T17:13:40.934Z",
+      "visibility": "visible",
+      "memory": {
+        "usedJSHeapSize": 29941990,
+        "totalJSHeapSize": 37771670,
+        "jsHeapSizeLimit": 4395630592
+      },
+      "appDomNodes": 1417,
+      "appElements": 365,
+      "attachedEditorViews": 2,
+      "editableFeedbackViews": 1,
+      "objectUrls": {
+        "created": 0,
+        "revoked": 0,
+        "outstanding": 0
+      },
+      "workers": {
+        "supported": true,
+        "created": 0,
+        "explicitlyTerminated": 0,
+        "withoutObservedTerminate": 0
+      }
+    },
+    {
+      "stage": "minute-ordinary",
+      "elapsedMs": 1500256.3,
+      "at": "2026-09-09T17:14:40.936Z",
+      "visibility": "visible",
+      "memory": {
+        "usedJSHeapSize": 30029847,
+        "totalJSHeapSize": 38051267,
+        "jsHeapSizeLimit": 4395630592
+      },
+      "appDomNodes": 1417,
+      "appElements": 365,
+      "attachedEditorViews": 2,
+      "editableFeedbackViews": 1,
+      "objectUrls": {
+        "created": 0,
+        "revoked": 0,
+        "outstanding": 0
+      },
+      "workers": {
+        "supported": true,
+        "created": 0,
+        "explicitlyTerminated": 0,
+        "withoutObservedTerminate": 0
+      }
+    },
+    {
+      "stage": "minute-ordinary",
+      "elapsedMs": 1560189.1,
+      "at": "2026-09-09T17:15:40.866Z",
+      "visibility": "visible",
+      "memory": {
+        "usedJSHeapSize": 26330715,
+        "totalJSHeapSize": 36952463,
+        "jsHeapSizeLimit": 4395630592
+      },
+      "appDomNodes": 1417,
+      "appElements": 365,
+      "attachedEditorViews": 2,
+      "editableFeedbackViews": 1,
+      "objectUrls": {
+        "created": 0,
+        "revoked": 0,
+        "outstanding": 0
+      },
+      "workers": {
+        "supported": true,
+        "created": 0,
+        "explicitlyTerminated": 0,
+        "withoutObservedTerminate": 0
+      }
+    },
+    {
+      "stage": "minute-ordinary",
+      "elapsedMs": 1620172.4,
+      "at": "2026-09-09T17:16:40.849Z",
+      "visibility": "visible",
+      "memory": {
+        "usedJSHeapSize": 28468680,
+        "totalJSHeapSize": 53534092,
+        "jsHeapSizeLimit": 4395630592
+      },
+      "appDomNodes": 1417,
+      "appElements": 365,
+      "attachedEditorViews": 2,
+      "editableFeedbackViews": 1,
+      "objectUrls": {
+        "created": 0,
+        "revoked": 0,
+        "outstanding": 0
+      },
+      "workers": {
+        "supported": true,
+        "created": 0,
+        "explicitlyTerminated": 0,
+        "withoutObservedTerminate": 0
+      }
+    },
+    {
+      "stage": "minute-ordinary",
+      "elapsedMs": 1680107.6,
+      "at": "2026-09-09T17:17:40.784Z",
+      "visibility": "visible",
+      "memory": {
+        "usedJSHeapSize": 28493250,
+        "totalJSHeapSize": 56679822,
+        "jsHeapSizeLimit": 4395630592
+      },
+      "appDomNodes": 1417,
+      "appElements": 365,
+      "attachedEditorViews": 2,
+      "editableFeedbackViews": 1,
+      "objectUrls": {
+        "created": 0,
+        "revoked": 0,
+        "outstanding": 0
+      },
+      "workers": {
+        "supported": true,
+        "created": 0,
+        "explicitlyTerminated": 0,
+        "withoutObservedTerminate": 0
+      }
+    },
+    {
+      "stage": "minute-ordinary",
+      "elapsedMs": 1740274,
+      "at": "2026-09-09T17:18:40.950Z",
+      "visibility": "visible",
+      "memory": {
+        "usedJSHeapSize": 28508584,
+        "totalJSHeapSize": 56155532,
+        "jsHeapSizeLimit": 4395630592
+      },
+      "appDomNodes": 1417,
+      "appElements": 365,
+      "attachedEditorViews": 2,
+      "editableFeedbackViews": 1,
+      "objectUrls": {
+        "created": 0,
+        "revoked": 0,
+        "outstanding": 0
+      },
+      "workers": {
+        "supported": true,
+        "created": 0,
+        "explicitlyTerminated": 0,
+        "withoutObservedTerminate": 0
+      }
+    },
+    {
+      "stage": "final-settled-ordinary",
+      "elapsedMs": 1803174.6,
+      "at": "2026-09-09T17:19:43.850Z",
+      "visibility": "visible",
+      "memory": {
+        "usedJSHeapSize": 28520562,
+        "totalJSHeapSize": 55369102,
+        "jsHeapSizeLimit": 4395630592
+      },
+      "appDomNodes": 1417,
+      "appElements": 365,
+      "attachedEditorViews": 2,
+      "editableFeedbackViews": 1,
+      "objectUrls": {
+        "created": 0,
+        "revoked": 0,
+        "outstanding": 0
+      },
+      "workers": {
+        "supported": true,
+        "created": 0,
+        "explicitlyTerminated": 0,
+        "withoutObservedTerminate": 0
+      }
+    }
+  ],
+  "cycles": [
+    {
+      "elapsedMs": 5115,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 60.5
+    },
+    {
+      "elapsedMs": 10196.2,
+      "title": "01 · Ordinary feedback",
+      "ms": 58.7
+    },
+    {
+      "elapsedMs": 15264.2,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 43.6
+    },
+    {
+      "elapsedMs": 20330.7,
+      "title": "01 · Ordinary feedback",
+      "ms": 44.5
+    },
+    {
+      "elapsedMs": 25402.1,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 49.2
+    },
+    {
+      "elapsedMs": 30480.5,
+      "title": "01 · Ordinary feedback",
+      "ms": 56.8
+    },
+    {
+      "elapsedMs": 35563.9,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 60.4
+    },
+    {
+      "elapsedMs": 40629.8,
+      "title": "01 · Ordinary feedback",
+      "ms": 45.3
+    },
+    {
+      "elapsedMs": 45714,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 60.5
+    },
+    {
+      "elapsedMs": 50781,
+      "title": "01 · Ordinary feedback",
+      "ms": 45.7
+    },
+    {
+      "elapsedMs": 55864.1,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 61.3
+    },
+    {
+      "elapsedMs": 61030.9,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 62.7
+    },
+    {
+      "elapsedMs": 66114.1,
+      "title": "01 · Ordinary feedback",
+      "ms": 61.3
+    },
+    {
+      "elapsedMs": 71197.5,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 59.2
+    },
+    {
+      "elapsedMs": 76280.6,
+      "title": "01 · Ordinary feedback",
+      "ms": 60.6
+    },
+    {
+      "elapsedMs": 81364.3,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 59.5
+    },
+    {
+      "elapsedMs": 86447.5,
+      "title": "01 · Ordinary feedback",
+      "ms": 61.2
+    },
+    {
+      "elapsedMs": 91530.6,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 60.5
+    },
+    {
+      "elapsedMs": 96597.5,
+      "title": "01 · Ordinary feedback",
+      "ms": 46.3
+    },
+    {
+      "elapsedMs": 101682,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 64.2
+    },
+    {
+      "elapsedMs": 106764.2,
+      "title": "01 · Ordinary feedback",
+      "ms": 61.2
+    },
+    {
+      "elapsedMs": 111833.4,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 53.4
+    },
+    {
+      "elapsedMs": 116897.8,
+      "title": "01 · Ordinary feedback",
+      "ms": 48
+    },
+    {
+      "elapsedMs": 122031.1,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 73.9
+    },
+    {
+      "elapsedMs": 127096.9,
+      "title": "01 · Ordinary feedback",
+      "ms": 45.5
+    },
+    {
+      "elapsedMs": 132165.7,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 48.7
+    },
+    {
+      "elapsedMs": 137231.2,
+      "title": "01 · Ordinary feedback",
+      "ms": 48.5
+    },
+    {
+      "elapsedMs": 142302.3,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 51.3
+    },
+    {
+      "elapsedMs": 147381.3,
+      "title": "01 · Ordinary feedback",
+      "ms": 59.9
+    },
+    {
+      "elapsedMs": 152448.7,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 43.8
+    },
+    {
+      "elapsedMs": 157513.9,
+      "title": "01 · Ordinary feedback",
+      "ms": 44.1
+    },
+    {
+      "elapsedMs": 162598.2,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 60.7
+    },
+    {
+      "elapsedMs": 167681.4,
+      "title": "01 · Ordinary feedback",
+      "ms": 61
+    },
+    {
+      "elapsedMs": 172748,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 44.7
+    },
+    {
+      "elapsedMs": 177815.2,
+      "title": "01 · Ordinary feedback",
+      "ms": 51.6
+    },
+    {
+      "elapsedMs": 182930.5,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 55.3
+    },
+    {
+      "elapsedMs": 188014.6,
+      "title": "01 · Ordinary feedback",
+      "ms": 63.4
+    },
+    {
+      "elapsedMs": 193097.8,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 61.9
+    },
+    {
+      "elapsedMs": 198165.2,
+      "title": "01 · Ordinary feedback",
+      "ms": 42.5
+    },
+    {
+      "elapsedMs": 203235.3,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 49.9
+    },
+    {
+      "elapsedMs": 208315.2,
+      "title": "01 · Ordinary feedback",
+      "ms": 57
+    },
+    {
+      "elapsedMs": 213398.3,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 60.9
+    },
+    {
+      "elapsedMs": 218464.1,
+      "title": "01 · Ordinary feedback",
+      "ms": 44.2
+    },
+    {
+      "elapsedMs": 223531.6,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 45.2
+    },
+    {
+      "elapsedMs": 228598.5,
+      "title": "01 · Ordinary feedback",
+      "ms": 46.1
+    },
+    {
+      "elapsedMs": 233667.3,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 46.8
+    },
+    {
+      "elapsedMs": 238748.6,
+      "title": "01 · Ordinary feedback",
+      "ms": 60.1
+    },
+    {
+      "elapsedMs": 243865.1,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 50.4
+    },
+    {
+      "elapsedMs": 248932.1,
+      "title": "01 · Ordinary feedback",
+      "ms": 48
+    },
+    {
+      "elapsedMs": 254015.3,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 59
+    },
+    {
+      "elapsedMs": 259081.5,
+      "title": "01 · Ordinary feedback",
+      "ms": 45
+    },
+    {
+      "elapsedMs": 264148.6,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 44.5
+    },
+    {
+      "elapsedMs": 269215.4,
+      "title": "01 · Ordinary feedback",
+      "ms": 44.3
+    },
+    {
+      "elapsedMs": 274298.8,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 62.5
+    },
+    {
+      "elapsedMs": 279382.2,
+      "title": "01 · Ordinary feedback",
+      "ms": 61.8
+    },
+    {
+      "elapsedMs": 284449,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 45.6
+    },
+    {
+      "elapsedMs": 289515.5,
+      "title": "01 · Ordinary feedback",
+      "ms": 43.8
+    },
+    {
+      "elapsedMs": 294599.1,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 61.4
+    },
+    {
+      "elapsedMs": 299665.6,
+      "title": "01 · Ordinary feedback",
+      "ms": 44.2
+    },
+    {
+      "elapsedMs": 304782.2,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 48.5
+    },
+    {
+      "elapsedMs": 309849.2,
+      "title": "01 · Ordinary feedback",
+      "ms": 43.2
+    },
+    {
+      "elapsedMs": 314915.9,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 47
+    },
+    {
+      "elapsedMs": 319982.1,
+      "title": "01 · Ordinary feedback",
+      "ms": 44.2
+    },
+    {
+      "elapsedMs": 325064.9,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 62.7
+    },
+    {
+      "elapsedMs": 330131.7,
+      "title": "01 · Ordinary feedback",
+      "ms": 42.7
+    },
+    {
+      "elapsedMs": 335198.6,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 47.4
+    },
+    {
+      "elapsedMs": 340282.5,
+      "title": "01 · Ordinary feedback",
+      "ms": 61.1
+    },
+    {
+      "elapsedMs": 345366,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 60.1
+    },
+    {
+      "elapsedMs": 350432.7,
+      "title": "01 · Ordinary feedback",
+      "ms": 46.6
+    },
+    {
+      "elapsedMs": 355516,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 62
+    },
+    {
+      "elapsedMs": 360666.1,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 46.8
+    },
+    {
+      "elapsedMs": 365732.7,
+      "title": "01 · Ordinary feedback",
+      "ms": 43.8
+    },
+    {
+      "elapsedMs": 370799.8,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 45.5
+    },
+    {
+      "elapsedMs": 375866,
+      "title": "01 · Ordinary feedback",
+      "ms": 46.1
+    },
+    {
+      "elapsedMs": 381001.2,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 113.4
+    },
+    {
+      "elapsedMs": 386066.1,
+      "title": "01 · Ordinary feedback",
+      "ms": 44.2
+    },
+    {
+      "elapsedMs": 391135,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 47.9
+    },
+    {
+      "elapsedMs": 396216.2,
+      "title": "01 · Ordinary feedback",
+      "ms": 59.7
+    },
+    {
+      "elapsedMs": 401298.8,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 59.4
+    },
+    {
+      "elapsedMs": 406366.5,
+      "title": "01 · Ordinary feedback",
+      "ms": 44.7
+    },
+    {
+      "elapsedMs": 411449,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 58
+    },
+    {
+      "elapsedMs": 416516.6,
+      "title": "01 · Ordinary feedback",
+      "ms": 46.4
+    },
+    {
+      "elapsedMs": 421633.3,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 44
+    },
+    {
+      "elapsedMs": 426700.2,
+      "title": "01 · Ordinary feedback",
+      "ms": 46.4
+    },
+    {
+      "elapsedMs": 431782.6,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 58.5
+    },
+    {
+      "elapsedMs": 436866.6,
+      "title": "01 · Ordinary feedback",
+      "ms": 61.2
+    },
+    {
+      "elapsedMs": 441950.2,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 61.8
+    },
+    {
+      "elapsedMs": 447016.9,
+      "title": "01 · Ordinary feedback",
+      "ms": 44.3
+    },
+    {
+      "elapsedMs": 452083.2,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 43.8
+    },
+    {
+      "elapsedMs": 457150.2,
+      "title": "01 · Ordinary feedback",
+      "ms": 46.8
+    },
+    {
+      "elapsedMs": 462216.7,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 44.7
+    },
+    {
+      "elapsedMs": 467300.2,
+      "title": "01 · Ordinary feedback",
+      "ms": 59.8
+    },
+    {
+      "elapsedMs": 472383.6,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 61.9
+    },
+    {
+      "elapsedMs": 477467,
+      "title": "01 · Ordinary feedback",
+      "ms": 62.4
+    },
+    {
+      "elapsedMs": 482583.6,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 54.3
+    },
+    {
+      "elapsedMs": 487667.1,
+      "title": "01 · Ordinary feedback",
+      "ms": 60.8
+    },
+    {
+      "elapsedMs": 492750.3,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 61.6
+    },
+    {
+      "elapsedMs": 497817.5,
+      "title": "01 · Ordinary feedback",
+      "ms": 45.9
+    },
+    {
+      "elapsedMs": 502886.3,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 49.2
+    },
+    {
+      "elapsedMs": 507967.4,
+      "title": "01 · Ordinary feedback",
+      "ms": 57.4
+    },
+    {
+      "elapsedMs": 513050.6,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 58.2
+    },
+    {
+      "elapsedMs": 518117.3,
+      "title": "01 · Ordinary feedback",
+      "ms": 46.9
+    },
+    {
+      "elapsedMs": 523200.6,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 62.5
+    },
+    {
+      "elapsedMs": 528284,
+      "title": "01 · Ordinary feedback",
+      "ms": 62.2
+    },
+    {
+      "elapsedMs": 533350.7,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 47.9
+    },
+    {
+      "elapsedMs": 538417.3,
+      "title": "01 · Ordinary feedback",
+      "ms": 43
+    },
+    {
+      "elapsedMs": 543534.1,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 51.7
+    },
+    {
+      "elapsedMs": 548600.8,
+      "title": "01 · Ordinary feedback",
+      "ms": 45.1
+    },
+    {
+      "elapsedMs": 553684.1,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 63.1
+    },
+    {
+      "elapsedMs": 558750.7,
+      "title": "01 · Ordinary feedback",
+      "ms": 47.3
+    },
+    {
+      "elapsedMs": 563819,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 45.3
+    },
+    {
+      "elapsedMs": 568900.9,
+      "title": "01 · Ordinary feedback",
+      "ms": 59.6
+    },
+    {
+      "elapsedMs": 573967.6,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 46.7
+    },
+    {
+      "elapsedMs": 579033.2,
+      "title": "01 · Ordinary feedback",
+      "ms": 45.2
+    },
+    {
+      "elapsedMs": 584100,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 45.7
+    },
+    {
+      "elapsedMs": 589167.6,
+      "title": "01 · Ordinary feedback",
+      "ms": 47.6
+    },
+    {
+      "elapsedMs": 594234.3,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 46.8
+    },
+    {
+      "elapsedMs": 599317.9,
+      "title": "01 · Ordinary feedback",
+      "ms": 63.3
+    },
+    {
+      "elapsedMs": 604451.2,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 64.2
+    },
+    {
+      "elapsedMs": 609534.4,
+      "title": "01 · Ordinary feedback",
+      "ms": 60.5
+    },
+    {
+      "elapsedMs": 614617.7,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 58.6
+    },
+    {
+      "elapsedMs": 619701.2,
+      "title": "01 · Ordinary feedback",
+      "ms": 61.6
+    },
+    {
+      "elapsedMs": 624767.8,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 46.7
+    },
+    {
+      "elapsedMs": 629851.4,
+      "title": "01 · Ordinary feedback",
+      "ms": 60.6
+    },
+    {
+      "elapsedMs": 634934.5,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 60.5
+    },
+    {
+      "elapsedMs": 640017.7,
+      "title": "01 · Ordinary feedback",
+      "ms": 60.6
+    },
+    {
+      "elapsedMs": 645084.8,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 43.7
+    },
+    {
+      "elapsedMs": 650151.1,
+      "title": "01 · Ordinary feedback",
+      "ms": 42.5
+    },
+    {
+      "elapsedMs": 655233.9,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 58.1
+    },
+    {
+      "elapsedMs": 660401.3,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 49.6
+    },
+    {
+      "elapsedMs": 665484.7,
+      "title": "01 · Ordinary feedback",
+      "ms": 61.8
+    },
+    {
+      "elapsedMs": 670554.3,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 46.2
+    },
+    {
+      "elapsedMs": 675618.1,
+      "title": "01 · Ordinary feedback",
+      "ms": 41.8
+    },
+    {
+      "elapsedMs": 680701.4,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 60
+    },
+    {
+      "elapsedMs": 685785.1,
+      "title": "01 · Ordinary feedback",
+      "ms": 60.7
+    },
+    {
+      "elapsedMs": 690868.2,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 61.8
+    },
+    {
+      "elapsedMs": 695935.1,
+      "title": "01 · Ordinary feedback",
+      "ms": 44.9
+    },
+    {
+      "elapsedMs": 701018.1,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 59.4
+    },
+    {
+      "elapsedMs": 706101.8,
+      "title": "01 · Ordinary feedback",
+      "ms": 61.2
+    },
+    {
+      "elapsedMs": 711185,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 62.5
+    },
+    {
+      "elapsedMs": 716268.5,
+      "title": "01 · Ordinary feedback",
+      "ms": 60.1
+    },
+    {
+      "elapsedMs": 721401.6,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 59.5
+    },
+    {
+      "elapsedMs": 726468.3,
+      "title": "01 · Ordinary feedback",
+      "ms": 46.2
+    },
+    {
+      "elapsedMs": 731534.9,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 43.8
+    },
+    {
+      "elapsedMs": 736618.6,
+      "title": "01 · Ordinary feedback",
+      "ms": 63.3
+    },
+    {
+      "elapsedMs": 741702.1,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 60.6
+    },
+    {
+      "elapsedMs": 746784.1,
+      "title": "01 · Ordinary feedback",
+      "ms": 60.1
+    },
+    {
+      "elapsedMs": 751854.2,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 46.7
+    },
+    {
+      "elapsedMs": 756918.5,
+      "title": "01 · Ordinary feedback",
+      "ms": 42.9
+    },
+    {
+      "elapsedMs": 761985.5,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 45.3
+    },
+    {
+      "elapsedMs": 767067.5,
+      "title": "01 · Ordinary feedback",
+      "ms": 56.9
+    },
+    {
+      "elapsedMs": 772151,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 61.6
+    },
+    {
+      "elapsedMs": 777235.3,
+      "title": "01 · Ordinary feedback",
+      "ms": 59.4
+    },
+    {
+      "elapsedMs": 782352.4,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 57.8
+    },
+    {
+      "elapsedMs": 787418.4,
+      "title": "01 · Ordinary feedback",
+      "ms": 42.7
+    },
+    {
+      "elapsedMs": 792501,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 59.8
+    },
+    {
+      "elapsedMs": 797584.3,
+      "title": "01 · Ordinary feedback",
+      "ms": 60.1
+    },
+    {
+      "elapsedMs": 802668.7,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 61.5
+    },
+    {
+      "elapsedMs": 807735.7,
+      "title": "01 · Ordinary feedback",
+      "ms": 46
+    },
+    {
+      "elapsedMs": 812820.7,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 60.7
+    },
+    {
+      "elapsedMs": 817885.4,
+      "title": "01 · Ordinary feedback",
+      "ms": 43.3
+    },
+    {
+      "elapsedMs": 822967.9,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 61.8
+    },
+    {
+      "elapsedMs": 828034.7,
+      "title": "01 · Ordinary feedback",
+      "ms": 43
+    },
+    {
+      "elapsedMs": 833101.2,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 43.9
+    },
+    {
+      "elapsedMs": 838185.7,
+      "title": "01 · Ordinary feedback",
+      "ms": 61.9
+    },
+    {
+      "elapsedMs": 843302.4,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 54.3
+    },
+    {
+      "elapsedMs": 848385.3,
+      "title": "01 · Ordinary feedback",
+      "ms": 60.9
+    },
+    {
+      "elapsedMs": 853468.9,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 63.2
+    },
+    {
+      "elapsedMs": 858552.1,
+      "title": "01 · Ordinary feedback",
+      "ms": 60.9
+    },
+    {
+      "elapsedMs": 863634.8,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 61.1
+    },
+    {
+      "elapsedMs": 868718.1,
+      "title": "01 · Ordinary feedback",
+      "ms": 60.2
+    },
+    {
+      "elapsedMs": 873802.3,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 63.7
+    },
+    {
+      "elapsedMs": 878886.6,
+      "title": "01 · Ordinary feedback",
+      "ms": 58
+    },
+    {
+      "elapsedMs": 883973.5,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 48.9
+    },
+    {
+      "elapsedMs": 889053.5,
+      "title": "01 · Ordinary feedback",
+      "ms": 47.5
+    },
+    {
+      "elapsedMs": 894153.7,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 60.2
+    },
+    {
+      "elapsedMs": 899234.9,
+      "title": "01 · Ordinary feedback",
+      "ms": 45.5
+    },
+    {
+      "elapsedMs": 904385.1,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 69.2
+    },
+    {
+      "elapsedMs": 909468.2,
+      "title": "01 · Ordinary feedback",
+      "ms": 47.1
+    },
+    {
+      "elapsedMs": 914552.3,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 44.5
+    },
+    {
+      "elapsedMs": 919653.8,
+      "title": "01 · Ordinary feedback",
+      "ms": 62.8
+    },
+    {
+      "elapsedMs": 924751.8,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 62.1
+    },
+    {
+      "elapsedMs": 929853.7,
+      "title": "01 · Ordinary feedback",
+      "ms": 62.7
+    },
+    {
+      "elapsedMs": 934954.5,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 59.5
+    },
+    {
+      "elapsedMs": 940035.1,
+      "title": "01 · Ordinary feedback",
+      "ms": 48.3
+    },
+    {
+      "elapsedMs": 945137,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 62.4
+    },
+    {
+      "elapsedMs": 950220.7,
+      "title": "01 · Ordinary feedback",
+      "ms": 44.4
+    },
+    {
+      "elapsedMs": 955320.7,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 62.7
+    },
+    {
+      "elapsedMs": 960503.9,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 49.2
+    },
+    {
+      "elapsedMs": 965604.1,
+      "title": "01 · Ordinary feedback",
+      "ms": 61.9
+    },
+    {
+      "elapsedMs": 970687.9,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 47.2
+    },
+    {
+      "elapsedMs": 975787.5,
+      "title": "01 · Ordinary feedback",
+      "ms": 62.8
+    },
+    {
+      "elapsedMs": 980887.5,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 65.8
+    },
+    {
+      "elapsedMs": 985971.1,
+      "title": "01 · Ordinary feedback",
+      "ms": 45.3
+    },
+    {
+      "elapsedMs": 991054.2,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 53.1
+    },
+    {
+      "elapsedMs": 996137,
+      "title": "01 · Ordinary feedback",
+      "ms": 50
+    },
+    {
+      "elapsedMs": 1001221.1,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 48.3
+    },
+    {
+      "elapsedMs": 1006304.1,
+      "title": "01 · Ordinary feedback",
+      "ms": 46.4
+    },
+    {
+      "elapsedMs": 1011404.2,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 64.6
+    },
+    {
+      "elapsedMs": 1016504.3,
+      "title": "01 · Ordinary feedback",
+      "ms": 62.1
+    },
+    {
+      "elapsedMs": 1021637.4,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 55.6
+    },
+    {
+      "elapsedMs": 1026720.5,
+      "title": "01 · Ordinary feedback",
+      "ms": 50.1
+    },
+    {
+      "elapsedMs": 1031820.8,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 62.7
+    },
+    {
+      "elapsedMs": 1036904.1,
+      "title": "01 · Ordinary feedback",
+      "ms": 50.6
+    },
+    {
+      "elapsedMs": 1041988,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 48.2
+    },
+    {
+      "elapsedMs": 1047070.4,
+      "title": "01 · Ordinary feedback",
+      "ms": 45.5
+    },
+    {
+      "elapsedMs": 1052170.7,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 64.5
+    },
+    {
+      "elapsedMs": 1057254.6,
+      "title": "01 · Ordinary feedback",
+      "ms": 48.7
+    },
+    {
+      "elapsedMs": 1062354.3,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 58.6
+    },
+    {
+      "elapsedMs": 1067437.8,
+      "title": "01 · Ordinary feedback",
+      "ms": 50.7
+    },
+    {
+      "elapsedMs": 1072535.6,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 58.4
+    },
+    {
+      "elapsedMs": 1077621.2,
+      "title": "01 · Ordinary feedback",
+      "ms": 47.5
+    },
+    {
+      "elapsedMs": 1082753.9,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 45.1
+    },
+    {
+      "elapsedMs": 1087837.7,
+      "title": "01 · Ordinary feedback",
+      "ms": 46
+    },
+    {
+      "elapsedMs": 1092935.8,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 64.6
+    },
+    {
+      "elapsedMs": 1098021.1,
+      "title": "01 · Ordinary feedback",
+      "ms": 52.2
+    },
+    {
+      "elapsedMs": 1103104.9,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 43.7
+    },
+    {
+      "elapsedMs": 1108185.7,
+      "title": "01 · Ordinary feedback",
+      "ms": 44.5
+    },
+    {
+      "elapsedMs": 1113270.3,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 45.3
+    },
+    {
+      "elapsedMs": 1118352.5,
+      "title": "01 · Ordinary feedback",
+      "ms": 47.3
+    },
+    {
+      "elapsedMs": 1123454.5,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 67
+    },
+    {
+      "elapsedMs": 1128552.4,
+      "title": "01 · Ordinary feedback",
+      "ms": 58.2
+    },
+    {
+      "elapsedMs": 1133639,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 51.4
+    },
+    {
+      "elapsedMs": 1138721.3,
+      "title": "01 · Ordinary feedback",
+      "ms": 45.7
+    },
+    {
+      "elapsedMs": 1143855.2,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 54.9
+    },
+    {
+      "elapsedMs": 1148935.8,
+      "title": "01 · Ordinary feedback",
+      "ms": 44.8
+    },
+    {
+      "elapsedMs": 1154019.4,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 42.4
+    },
+    {
+      "elapsedMs": 1159102.9,
+      "title": "01 · Ordinary feedback",
+      "ms": 48.5
+    },
+    {
+      "elapsedMs": 1164204,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 62.9
+    },
+    {
+      "elapsedMs": 1169286.7,
+      "title": "01 · Ordinary feedback",
+      "ms": 48.4
+    },
+    {
+      "elapsedMs": 1174387.9,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 61.8
+    },
+    {
+      "elapsedMs": 1179486.8,
+      "title": "01 · Ordinary feedback",
+      "ms": 61
+    },
+    {
+      "elapsedMs": 1184586.1,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 59.5
+    },
+    {
+      "elapsedMs": 1189671,
+      "title": "01 · Ordinary feedback",
+      "ms": 47.9
+    },
+    {
+      "elapsedMs": 1194769.4,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 61.9
+    },
+    {
+      "elapsedMs": 1199854.2,
+      "title": "01 · Ordinary feedback",
+      "ms": 47.4
+    },
+    {
+      "elapsedMs": 1205005,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 50.5
+    },
+    {
+      "elapsedMs": 1210104.7,
+      "title": "01 · Ordinary feedback",
+      "ms": 59.8
+    },
+    {
+      "elapsedMs": 1215205,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 65.5
+    },
+    {
+      "elapsedMs": 1220304.8,
+      "title": "01 · Ordinary feedback",
+      "ms": 62.9
+    },
+    {
+      "elapsedMs": 1225388.6,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 45.9
+    },
+    {
+      "elapsedMs": 1230488.5,
+      "title": "01 · Ordinary feedback",
+      "ms": 64.2
+    },
+    {
+      "elapsedMs": 1235588.5,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 68
+    },
+    {
+      "elapsedMs": 1240688.5,
+      "title": "01 · Ordinary feedback",
+      "ms": 59.9
+    },
+    {
+      "elapsedMs": 1245772.1,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 43.9
+    },
+    {
+      "elapsedMs": 1250853.8,
+      "title": "01 · Ordinary feedback",
+      "ms": 46.9
+    },
+    {
+      "elapsedMs": 1255937.7,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 44.8
+    },
+    {
+      "elapsedMs": 1261122,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 61.3
+    },
+    {
+      "elapsedMs": 1266205.2,
+      "title": "01 · Ordinary feedback",
+      "ms": 48.8
+    },
+    {
+      "elapsedMs": 1271303.1,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 65
+    },
+    {
+      "elapsedMs": 1276405.3,
+      "title": "01 · Ordinary feedback",
+      "ms": 61.6
+    },
+    {
+      "elapsedMs": 1281490.3,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 47.8
+    },
+    {
+      "elapsedMs": 1286588.7,
+      "title": "01 · Ordinary feedback",
+      "ms": 61.7
+    },
+    {
+      "elapsedMs": 1291688.9,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 62.9
+    },
+    {
+      "elapsedMs": 1296754.3,
+      "title": "01 · Ordinary feedback",
+      "ms": 40.9
+    },
+    {
+      "elapsedMs": 1301837.4,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 61.9
+    },
+    {
+      "elapsedMs": 1306920.7,
+      "title": "01 · Ordinary feedback",
+      "ms": 60.6
+    },
+    {
+      "elapsedMs": 1311989,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 44.4
+    },
+    {
+      "elapsedMs": 1317070.9,
+      "title": "01 · Ordinary feedback",
+      "ms": 61.3
+    },
+    {
+      "elapsedMs": 1322187.8,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 57.1
+    },
+    {
+      "elapsedMs": 1327254.4,
+      "title": "01 · Ordinary feedback",
+      "ms": 46.3
+    },
+    {
+      "elapsedMs": 1332337.5,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 60.1
+    },
+    {
+      "elapsedMs": 1337420.7,
+      "title": "01 · Ordinary feedback",
+      "ms": 61.7
+    },
+    {
+      "elapsedMs": 1342487.7,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 44.8
+    },
+    {
+      "elapsedMs": 1347570.9,
+      "title": "01 · Ordinary feedback",
+      "ms": 59.9
+    },
+    {
+      "elapsedMs": 1352654.3,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 62.7
+    },
+    {
+      "elapsedMs": 1357721.3,
+      "title": "01 · Ordinary feedback",
+      "ms": 46.9
+    },
+    {
+      "elapsedMs": 1362787.6,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 44.4
+    },
+    {
+      "elapsedMs": 1367854.7,
+      "title": "01 · Ordinary feedback",
+      "ms": 44.7
+    },
+    {
+      "elapsedMs": 1372937,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 61.6
+    },
+    {
+      "elapsedMs": 1378003.6,
+      "title": "01 · Ordinary feedback",
+      "ms": 46.5
+    },
+    {
+      "elapsedMs": 1383136.8,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 68.6
+    },
+    {
+      "elapsedMs": 1388204.5,
+      "title": "01 · Ordinary feedback",
+      "ms": 45.5
+    },
+    {
+      "elapsedMs": 1393271.2,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 45.9
+    },
+    {
+      "elapsedMs": 1398354.4,
+      "title": "01 · Ordinary feedback",
+      "ms": 59.8
+    },
+    {
+      "elapsedMs": 1403421.2,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 45.3
+    },
+    {
+      "elapsedMs": 1408504.5,
+      "title": "01 · Ordinary feedback",
+      "ms": 61.9
+    },
+    {
+      "elapsedMs": 1413588,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 62.3
+    },
+    {
+      "elapsedMs": 1418654.5,
+      "title": "01 · Ordinary feedback",
+      "ms": 44.3
+    },
+    {
+      "elapsedMs": 1423738,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 60.5
+    },
+    {
+      "elapsedMs": 1428821.4,
+      "title": "01 · Ordinary feedback",
+      "ms": 62.8
+    },
+    {
+      "elapsedMs": 1433889,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 45.9
+    },
+    {
+      "elapsedMs": 1438954.4,
+      "title": "01 · Ordinary feedback",
+      "ms": 44.2
+    },
+    {
+      "elapsedMs": 1444072.8,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 51.7
+    },
+    {
+      "elapsedMs": 1449154.6,
+      "title": "01 · Ordinary feedback",
+      "ms": 58.3
+    },
+    {
+      "elapsedMs": 1454237.3,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 61
+    },
+    {
+      "elapsedMs": 1459321.5,
+      "title": "01 · Ordinary feedback",
+      "ms": 60
+    },
+    {
+      "elapsedMs": 1464403.9,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 59.3
+    },
+    {
+      "elapsedMs": 1469471.5,
+      "title": "01 · Ordinary feedback",
+      "ms": 49.1
+    },
+    {
+      "elapsedMs": 1474538.6,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 47
+    },
+    {
+      "elapsedMs": 1479621.7,
+      "title": "01 · Ordinary feedback",
+      "ms": 58.8
+    },
+    {
+      "elapsedMs": 1484704.9,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 59.5
+    },
+    {
+      "elapsedMs": 1489788.4,
+      "title": "01 · Ordinary feedback",
+      "ms": 60.7
+    },
+    {
+      "elapsedMs": 1494855.7,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 43.8
+    },
+    {
+      "elapsedMs": 1499938.1,
+      "title": "01 · Ordinary feedback",
+      "ms": 58.1
+    },
+    {
+      "elapsedMs": 1505088.5,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 59.1
+    },
+    {
+      "elapsedMs": 1510155.1,
+      "title": "01 · Ordinary feedback",
+      "ms": 46.3
+    },
+    {
+      "elapsedMs": 1515224,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 47.9
+    },
+    {
+      "elapsedMs": 1520305.1,
+      "title": "01 · Ordinary feedback",
+      "ms": 58.1
+    },
+    {
+      "elapsedMs": 1525374.9,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 52.1
+    },
+    {
+      "elapsedMs": 1530455.3,
+      "title": "01 · Ordinary feedback",
+      "ms": 59.6
+    },
+    {
+      "elapsedMs": 1535525.2,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 47.7
+    },
+    {
+      "elapsedMs": 1540605.3,
+      "title": "01 · Ordinary feedback",
+      "ms": 56
+    },
+    {
+      "elapsedMs": 1545688.7,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 60.5
+    },
+    {
+      "elapsedMs": 1550755.1,
+      "title": "01 · Ordinary feedback",
+      "ms": 44.7
+    },
+    {
+      "elapsedMs": 1555838.8,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 61.8
+    },
+    {
+      "elapsedMs": 1561005.5,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 62.5
+    },
+    {
+      "elapsedMs": 1566089,
+      "title": "01 · Ordinary feedback",
+      "ms": 60.3
+    },
+    {
+      "elapsedMs": 1571172.2,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 61.3
+    },
+    {
+      "elapsedMs": 1576255.8,
+      "title": "01 · Ordinary feedback",
+      "ms": 59.7
+    },
+    {
+      "elapsedMs": 1581322.5,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 42.9
+    },
+    {
+      "elapsedMs": 1586389.3,
+      "title": "01 · Ordinary feedback",
+      "ms": 44.1
+    },
+    {
+      "elapsedMs": 1591474.3,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 62.6
+    },
+    {
+      "elapsedMs": 1596538.1,
+      "title": "01 · Ordinary feedback",
+      "ms": 42.5
+    },
+    {
+      "elapsedMs": 1601622.2,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 64.9
+    },
+    {
+      "elapsedMs": 1606705.7,
+      "title": "01 · Ordinary feedback",
+      "ms": 62.7
+    },
+    {
+      "elapsedMs": 1611789.2,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 62.3
+    },
+    {
+      "elapsedMs": 1616872.7,
+      "title": "01 · Ordinary feedback",
+      "ms": 62.3
+    },
+    {
+      "elapsedMs": 1621989.2,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 58.7
+    },
+    {
+      "elapsedMs": 1627055.9,
+      "title": "01 · Ordinary feedback",
+      "ms": 46.6
+    },
+    {
+      "elapsedMs": 1632140,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 63.1
+    },
+    {
+      "elapsedMs": 1637222.6,
+      "title": "01 · Ordinary feedback",
+      "ms": 61.7
+    },
+    {
+      "elapsedMs": 1642289.5,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 45.8
+    },
+    {
+      "elapsedMs": 1647372.6,
+      "title": "01 · Ordinary feedback",
+      "ms": 60.8
+    },
+    {
+      "elapsedMs": 1652444.1,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 49.2
+    },
+    {
+      "elapsedMs": 1657522.3,
+      "title": "01 · Ordinary feedback",
+      "ms": 56.8
+    },
+    {
+      "elapsedMs": 1662589.5,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 48
+    },
+    {
+      "elapsedMs": 1667672.9,
+      "title": "01 · Ordinary feedback",
+      "ms": 60.7
+    },
+    {
+      "elapsedMs": 1672741.5,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 49.8
+    },
+    {
+      "elapsedMs": 1677806.3,
+      "title": "01 · Ordinary feedback",
+      "ms": 42.5
+    },
+    {
+      "elapsedMs": 1682923.3,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 54.3
+    },
+    {
+      "elapsedMs": 1687989.7,
+      "title": "01 · Ordinary feedback",
+      "ms": 47.2
+    },
+    {
+      "elapsedMs": 1693056.8,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 45.7
+    },
+    {
+      "elapsedMs": 1698122.4,
+      "title": "01 · Ordinary feedback",
+      "ms": 45.8
+    },
+    {
+      "elapsedMs": 1703205.6,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 59.2
+    },
+    {
+      "elapsedMs": 1708273.2,
+      "title": "01 · Ordinary feedback",
+      "ms": 47.6
+    },
+    {
+      "elapsedMs": 1713358.8,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 63.8
+    },
+    {
+      "elapsedMs": 1718440,
+      "title": "01 · Ordinary feedback",
+      "ms": 61.6
+    },
+    {
+      "elapsedMs": 1723523.6,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 62.7
+    },
+    {
+      "elapsedMs": 1728589.8,
+      "title": "01 · Ordinary feedback",
+      "ms": 44.8
+    },
+    {
+      "elapsedMs": 1733657.1,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 45.5
+    },
+    {
+      "elapsedMs": 1738723.6,
+      "title": "01 · Ordinary feedback",
+      "ms": 47.3
+    },
+    {
+      "elapsedMs": 1743840.8,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 52.7
+    },
+    {
+      "elapsedMs": 1748907.1,
+      "title": "01 · Ordinary feedback",
+      "ms": 46.1
+    },
+    {
+      "elapsedMs": 1753973.9,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 49.5
+    },
+    {
+      "elapsedMs": 1759039.3,
+      "title": "01 · Ordinary feedback",
+      "ms": 45.4
+    },
+    {
+      "elapsedMs": 1764110.7,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 49.3
+    },
+    {
+      "elapsedMs": 1769190.6,
+      "title": "01 · Ordinary feedback",
+      "ms": 59.3
+    },
+    {
+      "elapsedMs": 1774274,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 61
+    },
+    {
+      "elapsedMs": 1779356.8,
+      "title": "01 · Ordinary feedback",
+      "ms": 61.4
+    },
+    {
+      "elapsedMs": 1784423.9,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 45.2
+    },
+    {
+      "elapsedMs": 1789507.2,
+      "title": "01 · Ordinary feedback",
+      "ms": 61.9
+    },
+    {
+      "elapsedMs": 1794573.6,
+      "title": "02 · Long structured draft (240 paragraphs)",
+      "ms": 45.3
+    },
+    {
+      "elapsedMs": 1799640.8,
+      "title": "01 · Ordinary feedback",
+      "ms": 47.8
+    }
+  ],
+  "hiddenTransitions": 0
+}

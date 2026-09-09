@@ -1,0 +1,67 @@
+{
+  "schema": 1,
+  "recordedAt": "2026-09-09T19:36:19.383911+00:00",
+  "status": "passed",
+  "build": "native-web-build6-provenance.json",
+  "runtime": {
+    "pid": 37895,
+    "launchedAt": "2026-09-09T19:33:34.208187+00:00",
+    "directory": "/var/folders/4x/vqr6fwmd5hb_1hmdkssm6vsc0000gn/T/rambledesk-feedback-acceptance-s9sGEX",
+    "database": "/var/folders/4x/vqr6fwmd5hb_1hmdkssm6vsc0000gn/T/rambledesk-feedback-acceptance-s9sGEX/validation.sqlite3",
+    "library": "/var/folders/4x/vqr6fwmd5hb_1hmdkssm6vsc0000gn/T/rambledesk-feedback-acceptance-s9sGEX",
+    "localTokenFile": "/var/folders/4x/vqr6fwmd5hb_1hmdkssm6vsc0000gn/T/rambledesk-feedback-acceptance-s9sGEX/native-token.txt",
+    "binary": "/Users/yangchen/Desktop/rambledesk/target/debug/bundle/macos/RambleDesk Quality.app/Contents/MacOS/rambledesk",
+    "binarySha256": "c0a12fb862eac4fd696ddf6deb61270240a82b6c20d24379873da602091777f6",
+    "webTokenFile": "/Users/yangchen/Library/Application Support/io.rambledesk.quality/auth/web-access.token"
+  },
+  "method": "Native UI Stop/Start, Chrome Guest and Safari Private retained pages, real native typing and token reauthentication; read-only SQLite validation",
+  "observations": [
+    "Both drafts were at r2 before disconnect",
+    "Disconnected input settled to Save failed instead of permanent Saving",
+    "Both authentication gates appeared after same-port Web restart",
+    "No page reload during recovery; Connect resumed each draft to Saved r3",
+    "Each unique offline marker and original H2 is persisted; other requests remain independent"
+  ],
+  "sqlite": [
+    {
+      "requestId": "01a0879b-243a-7d92-869d-af0b17275fef",
+      "savedRevision": 3,
+      "hasHeading2": true,
+      "chromeRecoveryMarker": true,
+      "safariRecoveryMarker": false,
+      "nativeNeighborMarker": false,
+      "documentSha256": "ac2cef29adfe78d7a38cf96a278f558ad832ae185402473c3e610658690a294a"
+    },
+    {
+      "requestId": "01a0879b-2440-7472-82f3-0b66d6565e2b",
+      "savedRevision": 1,
+      "hasHeading2": true,
+      "chromeRecoveryMarker": false,
+      "safariRecoveryMarker": false,
+      "nativeNeighborMarker": false,
+      "documentSha256": "f14620887530041142ece2048fbde1a22806f8daa5802e21a8bd65d35f4e54c2"
+    },
+    {
+      "requestId": "01a0879b-2443-76c1-a91b-e61525a52a42",
+      "savedRevision": 5,
+      "hasHeading2": true,
+      "chromeRecoveryMarker": false,
+      "safariRecoveryMarker": false,
+      "nativeNeighborMarker": true,
+      "documentSha256": "33b04c086a162584daa92c5b30256f5272f0e33a4688521290dcf629e374e0c5"
+    },
+    {
+      "requestId": "01a0879b-245e-74e1-bf30-3e8eed152511",
+      "savedRevision": 3,
+      "hasHeading2": true,
+      "chromeRecoveryMarker": false,
+      "safariRecoveryMarker": true,
+      "nativeNeighborMarker": false,
+      "documentSha256": "ae0d552c8375f93a200bc0dbf918aaf742fafe73fe2102603397e759381b812b"
+    }
+  ],
+  "limits": [
+    "Desktop browsers on macOS, not a physical phone",
+    "Ad-hoc debug native bundle, not official install/upgrade"
+  ]
+}

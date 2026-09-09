@@ -1,0 +1,864 @@
+{
+  "schema": 1,
+  "kind": "edit-save",
+  "startedAt": "2026-09-09T16:56:23.474Z",
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
+  "viewport": {
+    "width": 1200,
+    "height": 820
+  },
+  "visibility": "visible",
+  "phase": "done",
+  "budgetsMs": {
+    "ordinaryInputVisibleP95": 100,
+    "longInputVisibleP95": 200,
+    "ordinarySavedVisibleP95": 2000,
+    "longSavedVisibleP95": 3000
+  },
+  "method": "Selection + native browser execCommand(insertText), observed input event and marker, new visible Saved revision, switch away/back and retained marker. Save latency includes the normal autosave debounce, HTTP and UI frames. Requires English Chrome-compatible editing behavior. Appends 30 markers to each draft; use an isolated fixture copy and do not reuse it for unchanged-content baselines.",
+  "ordinary": [
+    {
+      "marker": "quality-mtucbokx-ordinary-1",
+      "beforeRevision": 1,
+      "afterRevision": 2,
+      "inputToVisibleMs": 30.9,
+      "inputToSavedVisibleMs": 747.1,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-ordinary-2",
+      "beforeRevision": 2,
+      "afterRevision": 3,
+      "inputToVisibleMs": 32,
+      "inputToSavedVisibleMs": 749.1,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-ordinary-3",
+      "beforeRevision": 3,
+      "afterRevision": 4,
+      "inputToVisibleMs": 32,
+      "inputToSavedVisibleMs": 748.5,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-ordinary-4",
+      "beforeRevision": 4,
+      "afterRevision": 5,
+      "inputToVisibleMs": 32.2,
+      "inputToSavedVisibleMs": 748.8,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-ordinary-5",
+      "beforeRevision": 5,
+      "afterRevision": 6,
+      "inputToVisibleMs": 31.2,
+      "inputToSavedVisibleMs": 748.8,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-ordinary-6",
+      "beforeRevision": 6,
+      "afterRevision": 7,
+      "inputToVisibleMs": 32,
+      "inputToSavedVisibleMs": 748.7,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-ordinary-7",
+      "beforeRevision": 7,
+      "afterRevision": 8,
+      "inputToVisibleMs": 31.6,
+      "inputToSavedVisibleMs": 748.3,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-ordinary-8",
+      "beforeRevision": 8,
+      "afterRevision": 9,
+      "inputToVisibleMs": 31.3,
+      "inputToSavedVisibleMs": 748.1,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-ordinary-9",
+      "beforeRevision": 9,
+      "afterRevision": 10,
+      "inputToVisibleMs": 31.3,
+      "inputToSavedVisibleMs": 748.2,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-ordinary-10",
+      "beforeRevision": 10,
+      "afterRevision": 11,
+      "inputToVisibleMs": 31.8,
+      "inputToSavedVisibleMs": 748.3,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-ordinary-11",
+      "beforeRevision": 11,
+      "afterRevision": 12,
+      "inputToVisibleMs": 32,
+      "inputToSavedVisibleMs": 748.9,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-ordinary-12",
+      "beforeRevision": 12,
+      "afterRevision": 13,
+      "inputToVisibleMs": 31.8,
+      "inputToSavedVisibleMs": 748.8,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-ordinary-13",
+      "beforeRevision": 13,
+      "afterRevision": 14,
+      "inputToVisibleMs": 31.6,
+      "inputToSavedVisibleMs": 748.4,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-ordinary-14",
+      "beforeRevision": 14,
+      "afterRevision": 15,
+      "inputToVisibleMs": 31.9,
+      "inputToSavedVisibleMs": 748.6,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-ordinary-15",
+      "beforeRevision": 15,
+      "afterRevision": 16,
+      "inputToVisibleMs": 31.9,
+      "inputToSavedVisibleMs": 748.9,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-ordinary-16",
+      "beforeRevision": 16,
+      "afterRevision": 17,
+      "inputToVisibleMs": 32,
+      "inputToSavedVisibleMs": 748.6,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-ordinary-17",
+      "beforeRevision": 17,
+      "afterRevision": 18,
+      "inputToVisibleMs": 31.9,
+      "inputToSavedVisibleMs": 748.8,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-ordinary-18",
+      "beforeRevision": 18,
+      "afterRevision": 19,
+      "inputToVisibleMs": 32.1,
+      "inputToSavedVisibleMs": 749,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-ordinary-19",
+      "beforeRevision": 19,
+      "afterRevision": 20,
+      "inputToVisibleMs": 32.4,
+      "inputToSavedVisibleMs": 749.3,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-ordinary-20",
+      "beforeRevision": 20,
+      "afterRevision": 21,
+      "inputToVisibleMs": 32.8,
+      "inputToSavedVisibleMs": 749.4,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-ordinary-21",
+      "beforeRevision": 21,
+      "afterRevision": 22,
+      "inputToVisibleMs": 32.7,
+      "inputToSavedVisibleMs": 749.6,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-ordinary-22",
+      "beforeRevision": 22,
+      "afterRevision": 23,
+      "inputToVisibleMs": 31.5,
+      "inputToSavedVisibleMs": 748,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-ordinary-23",
+      "beforeRevision": 23,
+      "afterRevision": 24,
+      "inputToVisibleMs": 31.5,
+      "inputToSavedVisibleMs": 748.6,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-ordinary-24",
+      "beforeRevision": 24,
+      "afterRevision": 25,
+      "inputToVisibleMs": 31.4,
+      "inputToSavedVisibleMs": 748.2,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-ordinary-25",
+      "beforeRevision": 25,
+      "afterRevision": 26,
+      "inputToVisibleMs": 31.5,
+      "inputToSavedVisibleMs": 748.2,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-ordinary-26",
+      "beforeRevision": 26,
+      "afterRevision": 27,
+      "inputToVisibleMs": 31.7,
+      "inputToSavedVisibleMs": 748.5,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-ordinary-27",
+      "beforeRevision": 27,
+      "afterRevision": 28,
+      "inputToVisibleMs": 32,
+      "inputToSavedVisibleMs": 748.7,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-ordinary-28",
+      "beforeRevision": 28,
+      "afterRevision": 29,
+      "inputToVisibleMs": 32.3,
+      "inputToSavedVisibleMs": 749.2,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-ordinary-29",
+      "beforeRevision": 29,
+      "afterRevision": 30,
+      "inputToVisibleMs": 30.9,
+      "inputToSavedVisibleMs": 748.2,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-ordinary-30",
+      "beforeRevision": 30,
+      "afterRevision": 31,
+      "inputToVisibleMs": 32.4,
+      "inputToSavedVisibleMs": 749.2,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    }
+  ],
+  "long": [
+    {
+      "marker": "quality-mtucbokx-long-1",
+      "beforeRevision": 1,
+      "afterRevision": 2,
+      "inputToVisibleMs": 30.4,
+      "inputToSavedVisibleMs": 747.1,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-long-2",
+      "beforeRevision": 2,
+      "afterRevision": 3,
+      "inputToVisibleMs": 31.5,
+      "inputToSavedVisibleMs": 748.1,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-long-3",
+      "beforeRevision": 3,
+      "afterRevision": 4,
+      "inputToVisibleMs": 32,
+      "inputToSavedVisibleMs": 765.3,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-long-4",
+      "beforeRevision": 4,
+      "afterRevision": 5,
+      "inputToVisibleMs": 32.9,
+      "inputToSavedVisibleMs": 748.7,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-long-5",
+      "beforeRevision": 5,
+      "afterRevision": 6,
+      "inputToVisibleMs": 30.8,
+      "inputToSavedVisibleMs": 765.3,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-long-6",
+      "beforeRevision": 6,
+      "afterRevision": 7,
+      "inputToVisibleMs": 31.2,
+      "inputToSavedVisibleMs": 747.7,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-long-7",
+      "beforeRevision": 7,
+      "afterRevision": 8,
+      "inputToVisibleMs": 31.1,
+      "inputToSavedVisibleMs": 764.8,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-long-8",
+      "beforeRevision": 8,
+      "afterRevision": 9,
+      "inputToVisibleMs": 31.8,
+      "inputToSavedVisibleMs": 748,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-long-9",
+      "beforeRevision": 9,
+      "afterRevision": 10,
+      "inputToVisibleMs": 31.4,
+      "inputToSavedVisibleMs": 764.7,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-long-10",
+      "beforeRevision": 10,
+      "afterRevision": 11,
+      "inputToVisibleMs": 31.9,
+      "inputToSavedVisibleMs": 748.4,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-long-11",
+      "beforeRevision": 11,
+      "afterRevision": 12,
+      "inputToVisibleMs": 30.8,
+      "inputToSavedVisibleMs": 765,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-long-12",
+      "beforeRevision": 12,
+      "afterRevision": 13,
+      "inputToVisibleMs": 31.9,
+      "inputToSavedVisibleMs": 765.2,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-long-13",
+      "beforeRevision": 13,
+      "afterRevision": 14,
+      "inputToVisibleMs": 31.7,
+      "inputToSavedVisibleMs": 748.3,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-long-14",
+      "beforeRevision": 14,
+      "afterRevision": 15,
+      "inputToVisibleMs": 31.7,
+      "inputToSavedVisibleMs": 765.2,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-long-15",
+      "beforeRevision": 15,
+      "afterRevision": 16,
+      "inputToVisibleMs": 32.7,
+      "inputToSavedVisibleMs": 749.2,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-long-16",
+      "beforeRevision": 16,
+      "afterRevision": 17,
+      "inputToVisibleMs": 31.9,
+      "inputToSavedVisibleMs": 765.2,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-long-17",
+      "beforeRevision": 17,
+      "afterRevision": 18,
+      "inputToVisibleMs": 32.1,
+      "inputToSavedVisibleMs": 765.5,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-long-18",
+      "beforeRevision": 18,
+      "afterRevision": 19,
+      "inputToVisibleMs": 31.6,
+      "inputToSavedVisibleMs": 748.2,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-long-19",
+      "beforeRevision": 19,
+      "afterRevision": 20,
+      "inputToVisibleMs": 31.5,
+      "inputToSavedVisibleMs": 765.1,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-long-20",
+      "beforeRevision": 20,
+      "afterRevision": 21,
+      "inputToVisibleMs": 31.8,
+      "inputToSavedVisibleMs": 748.5,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-long-21",
+      "beforeRevision": 21,
+      "afterRevision": 22,
+      "inputToVisibleMs": 31.1,
+      "inputToSavedVisibleMs": 747.7,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-long-22",
+      "beforeRevision": 22,
+      "afterRevision": 23,
+      "inputToVisibleMs": 31.7,
+      "inputToSavedVisibleMs": 764.7,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-long-23",
+      "beforeRevision": 23,
+      "afterRevision": 24,
+      "inputToVisibleMs": 31,
+      "inputToSavedVisibleMs": 764.3,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-long-24",
+      "beforeRevision": 24,
+      "afterRevision": 25,
+      "inputToVisibleMs": 31.1,
+      "inputToSavedVisibleMs": 764.1,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-long-25",
+      "beforeRevision": 25,
+      "afterRevision": 26,
+      "inputToVisibleMs": 31.5,
+      "inputToSavedVisibleMs": 765,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-long-26",
+      "beforeRevision": 26,
+      "afterRevision": 27,
+      "inputToVisibleMs": 31.3,
+      "inputToSavedVisibleMs": 764.6,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-long-27",
+      "beforeRevision": 27,
+      "afterRevision": 28,
+      "inputToVisibleMs": 31.3,
+      "inputToSavedVisibleMs": 747.8,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-long-28",
+      "beforeRevision": 28,
+      "afterRevision": 29,
+      "inputToVisibleMs": 32.9,
+      "inputToSavedVisibleMs": 749.3,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-long-29",
+      "beforeRevision": 29,
+      "afterRevision": 30,
+      "inputToVisibleMs": 31.1,
+      "inputToSavedVisibleMs": 764.6,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    },
+    {
+      "marker": "quality-mtucbokx-long-30",
+      "beforeRevision": 30,
+      "afterRevision": 31,
+      "inputToVisibleMs": 30.9,
+      "inputToSavedVisibleMs": 747.7,
+      "inputEvents": [
+        {
+          "type": "insertText",
+          "trusted": true
+        }
+      ],
+      "retainedAfterReopen": true
+    }
+  ],
+  "hiddenTransitions": 0
+}

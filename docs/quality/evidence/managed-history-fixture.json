@@ -1,0 +1,39 @@
+{
+  "checkedAt": "2026-09-09T16:05:39.421438+00:00",
+  "scope": "Fixture HTTP/SQLite verification only; no UI performance, model or real tool execution",
+  "manifest": {
+    "seed": {
+      "schema": 1,
+      "fixture": "rambledesk-managed-history-v1",
+      "scope": "Synthetic persisted display history, real SQLite/repository/application HTTP reads; local Node ACP fixture only, no model prompt or actual tool execution",
+      "session_id": "01a086e9-fea5-7e83-a7e9-dfc89d0ec3e1",
+      "session_title": "Website project",
+      "turns": 60,
+      "seeded_activities": 300,
+      "stored_activities": 300,
+      "first_sequence": 1,
+      "last_sequence": 300,
+      "serialized_bytes": 344086,
+      "stored_activity_sha256": "ea77a79230b605d893d89b03d23ef136a4f1d6c5d7f4dfc1ff92d650d27c5a4d"
+    },
+    "origin": "http://127.0.0.1:53678",
+    "dist": "/private/tmp/rambledesk-quality-baseline-dist",
+    "database": "/var/folders/4x/vqr6fwmd5hb_1hmdkssm6vsc0000gn/T/.tmpA59Rk4/db.sqlite",
+    "tokenFile": "/var/folders/4x/vqr6fwmd5hb_1hmdkssm6vsc0000gn/T/.tmpA59Rk4/quality-token",
+    "stopFile": "/var/folders/4x/vqr6fwmd5hb_1hmdkssm6vsc0000gn/T/.tmpA59Rk4/stop-preview",
+    "cleanup": "Creating stopFile or Ctrl+C shuts down this fixture and deletes its temporary directory; copy this manifest and evidence before stopping"
+  },
+  "recentAndHistoryPageSizes": [
+    100,
+    100,
+    100
+  ],
+  "exactSequences": [
+    1,
+    300
+  ],
+  "uniqueActivities": 300,
+  "typedToolCalls": 60,
+  "httpSqliteEveryRowEqual": true,
+  "cleanup": "Graceful stop marker completed; owned temporary directory including SQLite, token and manifest removed"
+}

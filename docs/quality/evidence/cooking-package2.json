@@ -1,0 +1,41 @@
+{
+  "fixture": "rambledesk-feedback-acceptance-v1",
+  "sourceHead": "b7ab9d088aa2a67322e8ee9b1c697efe9075f1ce",
+  "url": "http://127.0.0.1:53026",
+  "requests": [
+    {
+      "purpose": "ordinary",
+      "requestId": "01a086db-261e-78d3-a8b3-95007379c49b",
+      "status": "completed",
+      "savedRevision": 2,
+      "documentSha256": "5d91acdd48a0f791abf9794242c3f49071b5c4aeabdda37afc9894f1a77108d9",
+      "feedbackSha256": "95e4106c9df65117ae9899c05fb24a99ec60abf4e7e598609cfda38202e4f7b1",
+      "manifestSha256": "453072c1363db47ba599830fd90598774996987d74b3cba5559ebfdd5e277e9c",
+      "attachments": 0,
+      "requestAttachments": 0
+    },
+    {
+      "purpose": "long",
+      "requestId": "01a086db-261f-77b2-8f04-27ef5e1a4d3a",
+      "status": "in_progress",
+      "savedRevision": 1,
+      "documentSha256": "f14620887530041142ece2048fbde1a22806f8daa5802e21a8bd65d35f4e54c2"
+    },
+    {
+      "purpose": "attachment",
+      "requestId": "01a086db-2625-7bb1-818f-09a34a98b343",
+      "status": "in_progress",
+      "savedRevision": 2,
+      "documentSha256": "c68351bb87426aaf2d8bd8785b9ebf4a762767dce988a134785b84fd1551596e"
+    },
+    {
+      "purpose": "cancel",
+      "requestId": "01a086db-2648-7ac1-85bc-c0ebb5fc1199",
+      "status": "in_progress",
+      "savedRevision": 1,
+      "documentSha256": "5d1a73303936be10e8f862093324c533d7f6968b7d4d0860da65c58b17895969"
+    }
+  ],
+  "result": "passed",
+  "verifiedAt": "2026-09-09T15:49:16.752011+00:00"
+}

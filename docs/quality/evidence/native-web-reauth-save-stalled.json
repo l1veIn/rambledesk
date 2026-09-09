@@ -1,0 +1,69 @@
+{
+  "schema": 1,
+  "kind": "native-web-reauthentication-stalled-save",
+  "recordedAt": "2026-09-09T19:26:26.084407+00:00",
+  "status": "reproduced",
+  "runtime": {
+    "pid": 33504,
+    "launchedAt": "2026-09-09T19:21:37.130871+00:00",
+    "directory": "/var/folders/4x/vqr6fwmd5hb_1hmdkssm6vsc0000gn/T/rambledesk-feedback-acceptance-s9sGEX",
+    "database": "/var/folders/4x/vqr6fwmd5hb_1hmdkssm6vsc0000gn/T/rambledesk-feedback-acceptance-s9sGEX/validation.sqlite3",
+    "library": "/var/folders/4x/vqr6fwmd5hb_1hmdkssm6vsc0000gn/T/rambledesk-feedback-acceptance-s9sGEX",
+    "localTokenFile": "/var/folders/4x/vqr6fwmd5hb_1hmdkssm6vsc0000gn/T/rambledesk-feedback-acceptance-s9sGEX/native-token.txt",
+    "binary": "/Users/yangchen/Desktop/rambledesk/target/debug/bundle/macos/RambleDesk Quality.app/Contents/MacOS/rambledesk",
+    "binarySha256": "c348f417d64ff8e4257f315c9be0e5dedb3fdaa546ebbeb0aee8c766802f01ba",
+    "webTokenFile": "/Users/yangchen/Library/Application Support/io.rambledesk.quality/auth/web-access.token"
+  },
+  "steps": [
+    "Native UI Start reached Running on 55903 without Keychain prompt",
+    "Chrome Guest and Safari Private token bootstrap succeeded, each independently edited to r2 and reloaded with cookie resume",
+    "Native UI Stop; TCP 55903 refused; both retained browser pages accepted offline marker and displayed Saving",
+    "Native edited third request to r3 while Web was stopped",
+    "Native UI Start same port; both browser token gates appeared",
+    "Both token gates dismissed after explicit Connect; no reload or navigation; offline marker retained in each Editor",
+    "Both remained Saving for over 60 seconds after authentication; SQLite remained at r2"
+  ],
+  "sqlite": [
+    {
+      "requestId": "01a0879b-243a-7d92-869d-af0b17275fef",
+      "revision": 2,
+      "documentSha256": "543c4068d50cdfc45c9fbb5942f1bd4c56c762402cb073ef2273c85253a69ef3",
+      "hasOfflineDraftMarker": false,
+      "hasNativeWhileStoppedMarker": false
+    },
+    {
+      "requestId": "01a0879b-2440-7472-82f3-0b66d6565e2b",
+      "revision": 1,
+      "documentSha256": "f14620887530041142ece2048fbde1a22806f8daa5802e21a8bd65d35f4e54c2",
+      "hasOfflineDraftMarker": false,
+      "hasNativeWhileStoppedMarker": false
+    },
+    {
+      "requestId": "01a0879b-2443-76c1-a91b-e61525a52a42",
+      "revision": 3,
+      "documentSha256": "49978ef61ea72bcf91d0f544b41f6bbf9bf62beb391bcf3415fe6247539f271f",
+      "hasOfflineDraftMarker": false,
+      "hasNativeWhileStoppedMarker": true
+    },
+    {
+      "requestId": "01a0879b-245e-74e1-bf30-3e8eed152511",
+      "revision": 2,
+      "documentSha256": "eed54fe13225a0f25e951e9d4b31d6dc51805f0509205264ea3bf5d3da6cb693",
+      "hasOfflineDraftMarker": false,
+      "hasNativeWhileStoppedMarker": false
+    }
+  ],
+  "note": "No token/cookie values or hashes recorded. This is failed UI recovery evidence, not acceptance.",
+  "preservedPageText": [
+    {
+      "path": "/var/folders/4x/vqr6fwmd5hb_1hmdkssm6vsc0000gn/T/rambledesk-feedback-acceptance-s9sGEX/chrome-stalled-draft.ax.txt",
+      "bytes": 9425,
+      "sha256": "f9ca300a7914dd788bcf31a6f3c753bc4ba463d43e139ae7869192b0efacedbd"
+    },
+    {
+      "path": "/var/folders/4x/vqr6fwmd5hb_1hmdkssm6vsc0000gn/T/rambledesk-feedback-acceptance-s9sGEX/safari-stalled-draft.ax.txt",
+      "bytes": 8692,
+      "sha256": "da31dd3e6b1898e0d894e6b3c68b6876ffc330fb3d5ec503b6d2bc28a5c35fa9"
+    }
+  ]
+}

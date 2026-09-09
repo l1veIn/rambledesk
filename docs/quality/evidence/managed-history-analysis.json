@@ -1,0 +1,114 @@
+{
+  "schema": 1,
+  "recordedAt": "2026-09-09T16:33:14.667435+00:00",
+  "measurement": {
+    "file": "docs/quality/evidence/managed-history-ui.json",
+    "bytes": 703099,
+    "sha256": "05c5210abd64e386fe6a71b4c38c3bf672f4f4a3156a1db1b619c86e51c2c261",
+    "startedAt": "2026-09-09T16:18:23.384Z",
+    "harnessRevision": "managed-history-v1",
+    "viewport": {
+      "width": 1200,
+      "height": 820
+    },
+    "hiddenTransitions": 0
+  },
+  "dist": "/tmp/rambledesk-quality-history-dist",
+  "scope": "Measured frozen intermediate Web build. It excludes later UI/source changes and is not the final desktop or release binary. No post-measurement rebuilding performed.",
+  "artifacts": [
+    {
+      "role": "benchmark HTML entry",
+      "file": "quality-benchmark.html",
+      "bytes": 3189,
+      "sha256": "7fe072f7adf1f7ffb2d2a56db8b3ee62bf89368f63c75b1b257bd4688d61bf1d"
+    },
+    {
+      "role": "bundled benchmark driver, including managed-history-v1",
+      "file": "assets/quality-8zoWdd6r.js",
+      "bytes": 18597,
+      "sha256": "d83b5d9da833c2c46e851648508878d1586e15251c039dedfc297b08bb208dc3"
+    },
+    {
+      "role": "dynamic App import shim",
+      "file": "assets/App-D28UNpPL.js",
+      "bytes": 59,
+      "sha256": "1f66520f6c75bbe60b1a0bbbf0d0eea1143441cd8aa304963f7dec83c51b7102"
+    },
+    {
+      "role": "actual App implementation chunk; imports additional dependencies",
+      "file": "assets/App-Bjox7Vhr.js",
+      "bytes": 1653011,
+      "sha256": "b71e5d9c1ab8a439cf638ac00ca97d7fbfaced1b7599bec3321eaaaa54d8fae7"
+    },
+    {
+      "role": "shared application bootstrap chunk",
+      "file": "assets/main-B8rYi5lK.js",
+      "bytes": 10391,
+      "sha256": "fb6f45abd7ecd680e260b1f56639d6e80c43f747d4b8d6ad5f8324e7f65ab5d8"
+    },
+    {
+      "role": "Vite dependency manifest",
+      "file": ".vite/manifest.json",
+      "bytes": 37323,
+      "sha256": "50129ba59e1b4d2be4958a2da1962de3906885ebcb33902bb167eb2f66898257"
+    }
+  ],
+  "validation": {
+    "allFourMetricsHave30Samples": true,
+    "all30PageWindowsExact041To021": true,
+    "oneSessionThroughout": true,
+    "all30PageHttpStatus200": true,
+    "all30PageTransferBytes": 115072
+  },
+  "metrics": {
+    "entry": {
+      "n": 30,
+      "medianMs": 558.55,
+      "p95Ms": 950.2,
+      "maxMs": 1000.2,
+      "first5MedianMs": 200.9,
+      "last5MedianMs": 639.9,
+      "p95BudgetMs": 500,
+      "meetsBudget": false
+    },
+    "processExpansion": {
+      "n": 30,
+      "medianMs": 50.0,
+      "p95Ms": 50.9,
+      "maxMs": 50.9,
+      "first5MedianMs": 50,
+      "last5MedianMs": 50.1,
+      "p95BudgetMs": 200,
+      "meetsBudget": true
+    },
+    "toolExpansion": {
+      "n": 30,
+      "medianMs": 49.9,
+      "p95Ms": 50.6,
+      "maxMs": 50.7,
+      "first5MedianMs": 50,
+      "last5MedianMs": 49.9,
+      "p95BudgetMs": 200,
+      "meetsBudget": true
+    },
+    "httpPageVisible": {
+      "n": 30,
+      "medianMs": 798.75,
+      "p95Ms": 1403.7,
+      "maxMs": 1515.3,
+      "first5MedianMs": 263,
+      "last5MedianMs": 1360.3,
+      "p95BudgetMs": 750,
+      "meetsBudget": false
+    }
+  },
+  "pageHttpResourceDuration": {
+    "n": 30,
+    "medianMs": 11.05,
+    "p95Ms": 15.4,
+    "maxMs": 16.1,
+    "first5MedianMs": 12.5,
+    "last5MedianMs": 13.8
+  },
+  "conclusion": "Process/tool expansion budgets met; entry and HTTP-page-visible P95 budgets exceeded. Completion is not performance acceptance. Repeated-run slowdown needs isolation and repeat measurement before attribution."
+}

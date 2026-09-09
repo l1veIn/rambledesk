@@ -1,0 +1,107 @@
+{
+  "schema": 1,
+  "recordedAt": "2026-09-09T19:41:09.402079+00:00",
+  "status": "passed",
+  "build": "native-web-build6-provenance.json",
+  "method": "Actual Native Web Stop/Start and Refresh token UI; native Chrome Guest and Safari Private UI, read-only SQLite",
+  "roundA": {
+    "recordedAt": "2026-09-09T19:38:06.449676+00:00",
+    "round": "A",
+    "bothLoadedRevision": 3,
+    "firstAuthenticated": "Chrome",
+    "winnerSavedRevision": 4,
+    "loser": "Safari",
+    "loserUI": "Save failed; complete local marker retained",
+    "sqlite": [
+      {
+        "requestId": "01a0879b-243a-7d92-869d-af0b17275fef",
+        "revision": 4,
+        "winnerA": true,
+        "loserA": false
+      },
+      {
+        "requestId": "01a0879b-2440-7472-82f3-0b66d6565e2b",
+        "revision": 1,
+        "winnerA": false,
+        "loserA": false
+      },
+      {
+        "requestId": "01a0879b-2443-76c1-a91b-e61525a52a42",
+        "revision": 5,
+        "winnerA": false,
+        "loserA": false
+      },
+      {
+        "requestId": "01a0879b-245e-74e1-bf30-3e8eed152511",
+        "revision": 3,
+        "winnerA": false,
+        "loserA": false
+      }
+    ]
+  },
+  "roundB": {
+    "requestId": "01a0879b-245e-74e1-bf30-3e8eed152511",
+    "bothLoadedRevision": 3,
+    "firstAuthenticated": "Safari",
+    "winnerSavedRevision": 4,
+    "loser": "Chrome",
+    "loserUI": "Save failed; complete local marker retained"
+  },
+  "rotation": {
+    "actualSettingsConfirmRefresh": true,
+    "fileTokenChanged": true,
+    "bothExistingSessionsRequiredReauthentication": true,
+    "oldTokenRejectedBySafariUI": true,
+    "oldTokenError": "That Web Access token was not accepted. Check it and try again.",
+    "newTokenAcceptedByBothBrowsers": true,
+    "chromeConflictDraftPreserved": true,
+    "safariCleanDraftRemainedSavedR4": true
+  },
+  "sqliteAfterBothRoundsAndRotation": [
+    {
+      "requestId": "01a0879b-243a-7d92-869d-af0b17275fef",
+      "savedRevision": 4,
+      "documentSha256": "a769602f73f8efa15cca4fe69ed2970e934171870280756ee47f9c0957ed470b",
+      "chromeWinnerA": true,
+      "safariWinnerB": false,
+      "anyLoserMarker": false
+    },
+    {
+      "requestId": "01a0879b-2440-7472-82f3-0b66d6565e2b",
+      "savedRevision": 1,
+      "documentSha256": "f14620887530041142ece2048fbde1a22806f8daa5802e21a8bd65d35f4e54c2",
+      "chromeWinnerA": false,
+      "safariWinnerB": false,
+      "anyLoserMarker": false
+    },
+    {
+      "requestId": "01a0879b-2443-76c1-a91b-e61525a52a42",
+      "savedRevision": 5,
+      "documentSha256": "33b04c086a162584daa92c5b30256f5272f0e33a4688521290dcf629e374e0c5",
+      "chromeWinnerA": false,
+      "safariWinnerB": false,
+      "anyLoserMarker": false
+    },
+    {
+      "requestId": "01a0879b-245e-74e1-bf30-3e8eed152511",
+      "savedRevision": 4,
+      "documentSha256": "148b102cab95f1fe47fe6113d9e0d0ca2e837f8554fb3cd48672f099940be996",
+      "chromeWinnerA": false,
+      "safariWinnerB": true,
+      "anyLoserMarker": false
+    }
+  ],
+  "rawUiText": [
+    {
+      "path": "/var/folders/4x/vqr6fwmd5hb_1hmdkssm6vsc0000gn/T/rambledesk-feedback-acceptance-s9sGEX/safari-cas-loser-a.ax.txt",
+      "bytes": 9052,
+      "sha256": "cfb069088d50a65473b9be372d230cb8ef5cfb355488085f4c44da0410f2c697"
+    },
+    {
+      "path": "/var/folders/4x/vqr6fwmd5hb_1hmdkssm6vsc0000gn/T/rambledesk-feedback-acceptance-s9sGEX/chrome-cas-loser-b.ax.txt",
+      "bytes": 9484,
+      "sha256": "031270c6597dd82f7d8e72d1b73487c314446e856ba3b31385a02bbf5997ec5a"
+    }
+  ],
+  "boundary": "Conflict drafts are retained and writes rejected; no automatic merge or discard is claimed. Only isolated Quality credential was rotated; no old Keychain item was accessed."
+}

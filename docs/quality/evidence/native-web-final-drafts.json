@@ -1,0 +1,37 @@
+{
+  "fixture": "rambledesk-feedback-acceptance-v1",
+  "sourceHead": "b7ab9d088aa2a67322e8ee9b1c697efe9075f1ce",
+  "url": "http://127.0.0.1:57774",
+  "requests": [
+    {
+      "purpose": "ordinary",
+      "requestId": "01a0879b-243a-7d92-869d-af0b17275fef",
+      "status": "in_progress",
+      "savedRevision": 4,
+      "documentSha256": "a769602f73f8efa15cca4fe69ed2970e934171870280756ee47f9c0957ed470b"
+    },
+    {
+      "purpose": "long",
+      "requestId": "01a0879b-2440-7472-82f3-0b66d6565e2b",
+      "status": "in_progress",
+      "savedRevision": 1,
+      "documentSha256": "f14620887530041142ece2048fbde1a22806f8daa5802e21a8bd65d35f4e54c2"
+    },
+    {
+      "purpose": "attachment",
+      "requestId": "01a0879b-2443-76c1-a91b-e61525a52a42",
+      "status": "in_progress",
+      "savedRevision": 5,
+      "documentSha256": "33b04c086a162584daa92c5b30256f5272f0e33a4688521290dcf629e374e0c5"
+    },
+    {
+      "purpose": "cancel",
+      "requestId": "01a0879b-245e-74e1-bf30-3e8eed152511",
+      "status": "in_progress",
+      "savedRevision": 4,
+      "documentSha256": "148b102cab95f1fe47fe6113d9e0d0ca2e837f8554fb3cd48672f099940be996"
+    }
+  ],
+  "result": "passed",
+  "verifiedAt": "2026-09-09T19:42:09.482880+00:00"
+}

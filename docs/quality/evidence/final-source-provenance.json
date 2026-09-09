@@ -1,0 +1,637 @@
+{
+  "schema": 1,
+  "recordedAt": "2026-09-09T17:24:02.430062+00:00",
+  "sourceHead": "b7ab9d088aa2a67322e8ee9b1c697efe9075f1ce",
+  "branch": "codex/acp-managed-sessions",
+  "gitDelivery": "uncommitted; no commit, push, tag or publication performed",
+  "scope": "All changed and untracked non-documentation files in this quality workspace, including tests, fixture scripts, package and lockfile. Documentation/evidence remain separately versioned files. Unchanged files resolve from sourceHead.",
+  "trackedDiffSha256": "fd521abd7ce042756047db6123a5565f1256cce3f3b76d3a1025ae9a950d5d1e",
+  "trackedDiffBoundary": "Snapshot of tracked changes including documentation at recordedAt; later documentation edits may differ. Source inventory includes untracked files that git diff omits.",
+  "afterFinalProductTests": "Only a ShellLayoutSession ownership comment changed in product code after final frontend4/native build4. The edit export harness and launcher safety changes have independent checks as recorded in ENGINEERING_ACCEPTANCE.",
+  "artifactProvenance": [
+    "web-final-provenance.json",
+    "web-edit-export-provenance.json",
+    "native-final-provenance.json"
+  ],
+  "files": [
+    {
+      "file": "apps/desktop/package.json",
+      "bytes": 2038,
+      "sha256": "a8f34ff5d555fa2e8a571423584a13ae2ce0983210ba39baa233fa65283dc90e",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/quality-benchmark.html",
+      "bytes": 3161,
+      "sha256": "029c7a13450909b4fc79f465c688714419e16ce77a7188edf2224eca2553895c",
+      "gitState": "untracked"
+    },
+    {
+      "file": "apps/desktop/src/App.editorRefresh.test.ts",
+      "bytes": 5717,
+      "sha256": "ca3d945ad0cbeed13c6703ab3b2ad5a7b04694df12f3b07b88907d46f6acdf11",
+      "gitState": "untracked"
+    },
+    {
+      "file": "apps/desktop/src/App.feedbackFlow.test.ts",
+      "bytes": 16344,
+      "sha256": "3944bdee27b91235e80100527a73009b33e304319b4a7cedbc3ab7a5b08275b0",
+      "gitState": "untracked"
+    },
+    {
+      "file": "apps/desktop/src/App.managedFlow.test.ts",
+      "bytes": 9903,
+      "sha256": "a3f419df23afe26a1e09070a65a3b30f130a370f196d1f2bec85a2fff72dd8f0",
+      "gitState": "untracked"
+    },
+    {
+      "file": "apps/desktop/src/App.svelte",
+      "bytes": 48196,
+      "sha256": "6331b498fe433bfd8d5445cf3ea19eb6f5cb7ff225a817730fc7d9175ae0e04f",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/dev/WorkbenchShellInteractionHarness.svelte",
+      "bytes": 2122,
+      "sha256": "f9f70a645c76af009114ca7bed88536505381781ffe06a4be8a562e652d9602b",
+      "gitState": "untracked"
+    },
+    {
+      "file": "apps/desktop/src/dev/cookingAcceptance.test.ts",
+      "bytes": 7508,
+      "sha256": "d66bc6baeff7e355598c51b8abac610af97c0ce4f9b30889f4cb5bc1944aaf0e",
+      "gitState": "untracked"
+    },
+    {
+      "file": "apps/desktop/src/dev/qualityBenchmark.ts",
+      "bytes": 4117,
+      "sha256": "2f1d02c0a49e7d4ea8cbe3d0b8f0ee656646aa34c08f90ca6216b8e7cbd841ba",
+      "gitState": "untracked"
+    },
+    {
+      "file": "apps/desktop/src/dev/qualityBenchmarkDom.ts",
+      "bytes": 3390,
+      "sha256": "1dd205fed3d04e6861eaf2c6fbec3c0e11396c71ea446bb14f9f6adbc4afd746",
+      "gitState": "untracked"
+    },
+    {
+      "file": "apps/desktop/src/dev/qualityBenchmarkOutput.ts",
+      "bytes": 1198,
+      "sha256": "b2b0ea52031701ca936e5811e025cde2b236ca82d1d70c53a45c5842d333e47c",
+      "gitState": "untracked"
+    },
+    {
+      "file": "apps/desktop/src/dev/qualityEditBenchmark.ts",
+      "bytes": 5852,
+      "sha256": "9e205927b110d87ecaa04853a3d2500f753d4396e6cb57848c9f279d2b453a81",
+      "gitState": "untracked"
+    },
+    {
+      "file": "apps/desktop/src/dev/qualityManagedHistoryBenchmark.ts",
+      "bytes": 6712,
+      "sha256": "b36bcb3d99bab0bb0fd00251ab9e6776360635051374c47334143b6fdc949ad7",
+      "gitState": "untracked"
+    },
+    {
+      "file": "apps/desktop/src/dev/qualityManagedHistoryDom.ts",
+      "bytes": 5733,
+      "sha256": "d84b14214e9e059228bc152d82a3d9b8ce9c08e02633eeb43fffeb3776945ff5",
+      "gitState": "untracked"
+    },
+    {
+      "file": "apps/desktop/src/dev/qualityResourceBenchmark.ts",
+      "bytes": 6671,
+      "sha256": "588e580327d8ce54d112738059a42b3e15c041445015b490c367d3ff472d5b9a",
+      "gitState": "untracked"
+    },
+    {
+      "file": "apps/desktop/src/dev/qualityResourceTracker.ts",
+      "bytes": 2231,
+      "sha256": "866bf67fc0ecd4d812e7e89f37cde00aa1dc8f8cb22344a5884d8c5dcd08346b",
+      "gitState": "untracked"
+    },
+    {
+      "file": "apps/desktop/src/lib/components/navigation/HostSessionRail.svelte",
+      "bytes": 16248,
+      "sha256": "3f294c9004779d9f24c6c8197fdfa42daca95171c1b362ad6dc83266d4e0aceb",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/domain/resumePrompt.ts",
+      "bytes": 305,
+      "sha256": "e2983a2f0faf3bea3ff42612037a8268cb61b9685b68d57a2d8a4e20cd9a1d59",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/domain/sessionPhases.ts",
+      "bytes": 333,
+      "sha256": "f04259fb98fa520ab9ab1acf77d99edc8ec9a968dc3b93b89614f37cc7ab3316",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/editor/RichFeedbackEditor.svelte",
+      "bytes": 22752,
+      "sha256": "078b261407e88158362029ee99b41979f830e6aece5af5482e55685974efa6c9",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/editor/RichFeedbackEditor.test.ts",
+      "bytes": 6498,
+      "sha256": "505780f0f2c218d78976d4fe61a15f9fe2b90db88d022ae2013c0ef5343b17e4",
+      "gitState": "untracked"
+    },
+    {
+      "file": "apps/desktop/src/lib/feedbackEditorExtensions.lifecycle.test.ts",
+      "bytes": 3107,
+      "sha256": "d2e03d6fc246ce62fdac09d3df0ab87fc4e89831b3e1b71c7be61b9fb502f992",
+      "gitState": "untracked"
+    },
+    {
+      "file": "apps/desktop/src/lib/feedbackEditorExtensions.ts",
+      "bytes": 6750,
+      "sha256": "b15ec8c0b8d13fa5fd8fb31d952487fe06501e7287ade03657851aa782366bbc",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/i18n.ts",
+      "bytes": 72796,
+      "sha256": "ecad2fcab7a379ac807bdba8c40e5b2b5641e305c13ad43968188a762b4c0f5e",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/onboarding/onboardingController.ts",
+      "bytes": 3049,
+      "sha256": "b645bbeb37db7e4baece5335eeb9084a6d1a418d6c1bce58da16f7bd53d7e40a",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/settings/SettingsPanel.svelte",
+      "bytes": 23264,
+      "sha256": "d7bf14c38aa4977019f6c551523a180693dee9cc0f5492e9f385fede23916446",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/shell/AppTitlebar.svelte",
+      "bytes": 10714,
+      "sha256": "bc66b42be34e8ed346be529e9142191dd88c7403d08df64fe6e424f7676a7df9",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/speech/rambleSessionControllerHandle.ts",
+      "bytes": 427,
+      "sha256": "299c129e62b1df95dfe65ebfaa824900becd2e6d83de4a66a68edcf9f3fa40b8",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/AttachmentsCard.svelte",
+      "bytes": 3489,
+      "sha256": "daf44651e27b71199a3335ce9f8d1c55a5d3e3bb15a74d47cc542c96a067bf69",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/DeliveryCard.svelte",
+      "bytes": 6981,
+      "sha256": "b88a03cc66e5dc0ea20861f3117064e018b430e6a073c8f266679b27171fc43c",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/FeedbackEditorPanel.svelte",
+      "bytes": 11960,
+      "sha256": "14400cb891cbebc05e53c9f6837ab439b89c2914c4d3601ec01f099f38b04f26",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/RambleSessionController.svelte",
+      "bytes": 23981,
+      "sha256": "a777df0c6e7742480d43845357804471795599ec58b44e33f59add5b8c8273b9",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/ResumePromptDialog.svelte",
+      "bytes": 3041,
+      "sha256": "23c6feb6cb427d3a27c6aebd814ecb5adb8fc12454a76d7012daa6425ab1343f",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/StartupRecoveryPanel.svelte",
+      "bytes": 3028,
+      "sha256": "b1f8ac17041109f0076aad2817d1732369d194e5b5fb1085544c976e09efe565",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/WorkbenchShell.svelte",
+      "bytes": 10813,
+      "sha256": "4156cb6a62a263144a41d0f07f7586c5d71cf87bfc805b5a6c5d3c4f2c30653e",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/attachmentController.ts",
+      "bytes": 21445,
+      "sha256": "f2371180b5b8c556d8ff3e90dff2ddde719fc64a5f2a480f6906db9a72e816f0",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/attachmentControllerLifecycle.test.ts",
+      "bytes": 10705,
+      "sha256": "88f77fa2d703b88abc1cc234b72974ec8b721fe4baff7f1e9d98ba214c3ee850",
+      "gitState": "untracked"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/attachmentControllerPreviews.test.ts",
+      "bytes": 3282,
+      "sha256": "70feeb575188f175785c8fa0c67db06aead986c06221e694a6b18d0bb4d20c49",
+      "gitState": "untracked"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/attachmentControllerWrites.test.ts",
+      "bytes": 10781,
+      "sha256": "adf6477c6e94e425fdd2b348cad6077d0272d9528024529e963a35c5f635651a",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/attachmentPreviews.ts",
+      "bytes": 2475,
+      "sha256": "bd7f0b76fb41c9bd66d01e34086dfd81e7b66d36692bda360f2c2f0baaa6f707",
+      "gitState": "untracked"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/attachmentSession.ts",
+      "bytes": 1567,
+      "sha256": "d42896616eda925bde29f7c2be2ebbd0566bd347bc3649ac472830705694446c",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/cookingController.test.ts",
+      "bytes": 5918,
+      "sha256": "44e2de0d28cb25081d1878a675f1655082d7c4c382334fe40c85e08ab3ebe9f5",
+      "gitState": "untracked"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/cookingController.ts",
+      "bytes": 4822,
+      "sha256": "6bdf9c5df87850b3b3e046dfa284cfa0e4cb9d19a081771a4f124a6b718298bf",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/cookingSession.test.ts",
+      "bytes": 1628,
+      "sha256": "f24e40f32d06856ee91fd9ed144e62f82a5394edf077488558c0eed5bc16fdde",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/cookingSession.ts",
+      "bytes": 1445,
+      "sha256": "51d5857276b8601b53535147d933d61331a81814ed6f9911b64ccad1586eb1c3",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/draftController.test.ts",
+      "bytes": 10960,
+      "sha256": "2c417fab4986b351ff776e336592fbd0718a5f58bde9246f533dd404124cff37",
+      "gitState": "untracked"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/draftController.ts",
+      "bytes": 4118,
+      "sha256": "20c0586ba8d645a7f05f93e3552755696496256e3cd3d75631ba8af7140531b8",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/draftOperationsController.ts",
+      "bytes": 6306,
+      "sha256": "fcf7db2fd0eaac82ac5ffcfe035e649a24121a892fe67c7b7a347f7ca390b12a",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/draftSession.ts",
+      "bytes": 4794,
+      "sha256": "e0c74f8e2502f23c2cec903d9523c758d17a8ba51d536d85996d1ed2786764c4",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/managedSessionActions.test.ts",
+      "bytes": 5547,
+      "sha256": "56472a08ce5a5a046f10908f0d88f698dac1953559b80d01e212204e716dda81",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/managedSessionActions.ts",
+      "bytes": 11906,
+      "sha256": "274d98546613577de8a49fea02a0d1d88284a2e7a4882e51db8c193ae3c34a57",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/navigationController.ts",
+      "bytes": 20315,
+      "sha256": "0850d93cb6584611ccdf2798a467151dfc110d5ed089d7e8bc865f447b03b344",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/navigationControllerScope.test.ts",
+      "bytes": 12050,
+      "sha256": "58b1f56a27dcc1192bd9c5e9d0dbebd20a862431a4cd51395ee6c0e907f23041",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/navigationScope.ts",
+      "bytes": 395,
+      "sha256": "ea9c54456a3adcf6e7501a0396b401dfae20fb139640db99501cc3e922d892bc",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/publisherController.test.ts",
+      "bytes": 15320,
+      "sha256": "694d38f13ebd190e255afa375582b781314ce0b1c744773e7eb576441986c34e",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/publisherController.ts",
+      "bytes": 6925,
+      "sha256": "0ef5722b05e1749275c3f8b4a4c5edeaf887c55c5293992b201c570b9a31c130",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/rambleInputController.test.ts",
+      "bytes": 9093,
+      "sha256": "572abc4b4a01b08a7e86e315d8471c3f2f94d1da115a8ea9fd1c5c3581e0630d",
+      "gitState": "untracked"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/rambleSession.test.ts",
+      "bytes": 3308,
+      "sha256": "938e5131df58f843c214fd47beac2ebaedabfc149adfb10b234c6a8c7fa36488",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/rambleSession.ts",
+      "bytes": 2699,
+      "sha256": "875f27d06497a02748e23fbbc74cf7cf6d1e54e53b598488927f050eff47aabe",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/rambleSessionControllerRender.test.ts",
+      "bytes": 3279,
+      "sha256": "138c7821ccdb5eb1dff14d5baf94c53fe049ad7b8d161609c6951df8945d289e",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/rambleSessionState.ts",
+      "bytes": 635,
+      "sha256": "e37b775a986d44806ed6c9f77b8c7913b762af59ffda64e86889f8dda43b8cf5",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/resumePrompt.test.ts",
+      "bytes": 2753,
+      "sha256": "18497819c28f380442f0b73674347721fbdd333be512db4e90505c9ae43cc639",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/resumePrompt.ts",
+      "bytes": 2142,
+      "sha256": "8b56689a131ccbb5b5e176c498d73edc5db9d845a8b60e5a82df0e8a6790f959",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/resumePromptController.test.ts",
+      "bytes": 6974,
+      "sha256": "66bb98d166a86ece49c77da5e7e05f15ebf9111b7fa0f2ee65dfd07088900df2",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/resumePromptController.ts",
+      "bytes": 5353,
+      "sha256": "9853715ec48ea61196bef2a98ce39f17b1c4de90b121091a275388ad1527e566",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/resumePromptDialog.test.ts",
+      "bytes": 3000,
+      "sha256": "967494deddbd247ccf61460290ce536b63e11d9842c117a6975ad23ced3a491a",
+      "gitState": "untracked"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/startupController.test.ts",
+      "bytes": 6526,
+      "sha256": "b85e28bc1e201ec400e4d87f87fc0c14d558c7637a2ba225f5328ce1b45d4581",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/startupController.ts",
+      "bytes": 12051,
+      "sha256": "1443a0e32ef7ac9142ca3e56c92db50e16182e959ed007d5ff1a1ce259eb005d",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/submissionController.test.ts",
+      "bytes": 14721,
+      "sha256": "f9f62586982e9ac4bc03757f15a3eef752d908e7994164b25327aadbed6f02a2",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/submissionController.ts",
+      "bytes": 5654,
+      "sha256": "80f9f8e99981f2d99894c31561d1d44e86ec95a2eaac5255a498cfe8fc33315d",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/voiceRambleSession.test.ts",
+      "bytes": 14329,
+      "sha256": "f819f3716c035a5780048307ec9d1e0f9ba42b921f5d4948bc5de70b23ee1e8e",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/voiceRambleSession.ts",
+      "bytes": 9608,
+      "sha256": "cc9db757486e1058c17186886f18e4402411425e285109372c140d8de566b1e1",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/workbenchShellInteraction.test.ts",
+      "bytes": 5365,
+      "sha256": "541b217820bb256f7393b84aef2f18ec530950641447c1099e7a5ea81f8f12c3",
+      "gitState": "untracked"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/workspaceNavigationController.test.ts",
+      "bytes": 19973,
+      "sha256": "f60a2fd10037a85e192e506dac24129714518039ebbbf00421db369ec8d5b034",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/workspaceNavigationController.ts",
+      "bytes": 23491,
+      "sha256": "365f058e533b45b32fdc7ba02d7167976432730dbc38d5c569758170ccce4003",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/workspaceSession.test.ts",
+      "bytes": 3703,
+      "sha256": "d473847aee910bf4a978fa882a60e7f782e9687b53284fb26e776d9727cfd08f",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workbench/workspaceSession.ts",
+      "bytes": 4884,
+      "sha256": "e3add8bae95b93196123eb446f38e307850799869934d9295f736cabcb5d0cb0",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workspace/RequestAttachmentPreview.svelte",
+      "bytes": 15248,
+      "sha256": "b2e9d58a55f40e37b11bb31a53ea0a83078e5b4af969da831689aeb311b3913a",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workspace/RequestAttachmentPreview.test.ts",
+      "bytes": 4944,
+      "sha256": "070d92c02653d69847dd3bd882b98a0274fc48d1be79062d88a5114706d168b8",
+      "gitState": "untracked"
+    },
+    {
+      "file": "apps/desktop/src/lib/workspace/WorkspaceTabStrip.svelte",
+      "bytes": 15683,
+      "sha256": "f98b495f357c0d4f5dafe8f9eb4e2ed4cdc56bb126fb8a0df9aed7d94d593992",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workspace/fixtures/AttachmentPreviewHarness.svelte",
+      "bytes": 919,
+      "sha256": "f2f71c8223dc258db2c060580d3fdf0eb8a7d875cb293ed943d39b7480a4c332",
+      "gitState": "untracked"
+    },
+    {
+      "file": "apps/desktop/src/lib/workspace/workspaceTabStripHarness.svelte",
+      "bytes": 1277,
+      "sha256": "15c0d3fcffcd9c7bdd58157d353bf27e30b2d37f0f5480273f374969d2b150b1",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workspace/workspaceTabStripKeyboard.test.ts",
+      "bytes": 3385,
+      "sha256": "12e1e0d33722521a8e23e58604377d1d26afce26ba6b188049ec9c2e3a78d53a",
+      "gitState": "untracked"
+    },
+    {
+      "file": "apps/desktop/src/lib/workspace/workspaceTransition.test.ts",
+      "bytes": 11203,
+      "sha256": "ef6019e92daaed35dd237e2a0d407ee255f21258fef24dbbc9daf56257bb78e2",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/src/lib/workspace/workspaceTransition.ts",
+      "bytes": 3233,
+      "sha256": "36e11195d4dcff7fb1201303e5fa55bf6171f2ee6312f468abdcbd7e858e4db3",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "apps/desktop/vite.config.ts",
+      "bytes": 2713,
+      "sha256": "1b542e569e5805df6f71d2e9aea9ce5f5d2e3c71dc1643480127b99e747ea33f",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "crates/rambledesk-acp/src/process/fixture.mjs",
+      "bytes": 1679,
+      "sha256": "3d20f38d13a90471b3d7e41e5012b40182ca38444efd9474854541468613ce8e",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "crates/rambledesk-acp/src/process/tests.rs",
+      "bytes": 12518,
+      "sha256": "dd4f1ce3bde3519bb200da04be59c589d1d5730b6df2c28c560fd3805b587b2c",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "crates/rambledesk-feedback-client/src/channel.rs",
+      "bytes": 11113,
+      "sha256": "098f16cc0fac224d90020fc7fea32a463d99094c10e4330051f12138d5870e62",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "crates/rambledesk-feedback-client/src/channel_tests.rs",
+      "bytes": 8950,
+      "sha256": "3c23a171903f754352083d3df4376f8f97184f5e21f9bf63717049db2ba71ca2",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "crates/rambledesk-feedback-client/src/lib.rs",
+      "bytes": 6579,
+      "sha256": "05a34491588c2a41ecdc720c0b136e579569e3edd4fd04b694a924ee9b5f292a",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "crates/rambledesk-hosts/src/continuation.rs",
+      "bytes": 13456,
+      "sha256": "8da278e10ea08105a8aef7bf40446a6dc18d5458dc0c24bedeb91db3b25bea19",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "crates/rambledesk-hosts/tests/fixtures/manual_resume_prompt.json",
+      "bytes": 612,
+      "sha256": "df8cadeb872d00d7fc5ff6c30e85ee565cb94c406a57ac481361f07f4e120ff2",
+      "gitState": "untracked"
+    },
+    {
+      "file": "crates/rambledesk-local-server/examples/feedback_acceptance.rs",
+      "bytes": 10728,
+      "sha256": "009d58cd0e8aa4e3f4087abdade63e23cd344605a86d21a1801a7dc2747e8200",
+      "gitState": "untracked"
+    },
+    {
+      "file": "crates/rambledesk-local-server/examples/managed_preview.rs",
+      "bytes": 16586,
+      "sha256": "a365d49d4ff1296265c8ddf884411af4f9ab567ccca43ab16232a55d97bcc847",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "crates/rambledesk-local-server/examples/managed_preview/quality.rs",
+      "bytes": 5309,
+      "sha256": "350fde62bb670af38d6819d565f99726da9f1b1034e2edb6f4420ab527bbce3d",
+      "gitState": "untracked"
+    },
+    {
+      "file": "crates/rambledesk-local-server/tests/fixtures/managed_agent.mjs",
+      "bytes": 4583,
+      "sha256": "b921d9c9336034a6a0bc647cf3f21e889569e404d95d4d86f2153366838c1091",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "crates/rambledesk-local-server/tests/managed_continuation.rs",
+      "bytes": 17275,
+      "sha256": "c6ca86eaa892208a11ed1ca2c7834f97bf564cd801adad335871883a2da0bb3e",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "crates/rambledesk-storage/src/sqlite/tests/deliveries.rs",
+      "bytes": 25293,
+      "sha256": "6268ac553fc35c99cba8ddd2bb81b3424262e1db2649efaa058501f7ff8dfcfa",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "crates/rambledesk-storage/src/sqlite/tests/deliveries/publication_replay.rs",
+      "bytes": 3696,
+      "sha256": "b5e30c7fcd4e3e6a4d583937221d63c86a2c8bf8defffa361f5744fc629d7265",
+      "gitState": "untracked"
+    },
+    {
+      "file": "pnpm-lock.yaml",
+      "bytes": 338447,
+      "sha256": "600d5e109540f298d47e258c5b081001e9958c9e8314882083f54d694a8ba522",
+      "gitState": "tracked-modified"
+    },
+    {
+      "file": "scripts/feedback-acceptance-test.py",
+      "bytes": 8800,
+      "sha256": "8173a9e40a11b6c2c7781e598e3de858a54f13972bc9820e159189737f55d613",
+      "gitState": "untracked"
+    },
+    {
+      "file": "scripts/feedback-acceptance.py",
+      "bytes": 19249,
+      "sha256": "e629eae119b0a9a86ce726cc2349a1e3692ad5a2e676ca1308eeecf62166db6c",
+      "gitState": "untracked"
+    }
+  ],
+  "fileCount": 103
+}

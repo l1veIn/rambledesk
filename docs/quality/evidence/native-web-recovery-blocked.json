@@ -1,0 +1,98 @@
+{
+  "schema": 1,
+  "recordedAt": "2026-09-09T17:17:11.872996+00:00",
+  "kind": "native-web-access-start-blocked",
+  "status": "incomplete",
+  "artifactScope": {
+    "build": "Native Quality build4",
+    "identifier": "io.rambledesk.quality",
+    "configuration": "macOS arm64 debug; Vite production frontend; ad-hoc signed; not notarized",
+    "provenance": "native-final-provenance.json"
+  },
+  "attempt": {
+    "pid": 16633,
+    "database": "/var/folders/4x/vqr6fwmd5hb_1hmdkssm6vsc0000gn/T/rambledesk-feedback-acceptance-tqXZR0/validation.sqlite3",
+    "library": "/var/folders/4x/vqr6fwmd5hb_1hmdkssm6vsc0000gn/T/rambledesk-feedback-acceptance-tqXZR0/native-library",
+    "localIntegrationRequestedPort": 0,
+    "initialWebAccessState": "Stopped",
+    "configuredWebAccessPort": 55903,
+    "operatorUiObservation": "Start stayed Starting for more than 45 seconds; no in-app error or visible system prompt. SecurityAgent surface unavailable to CUA.",
+    "browserDirtyRecoveryStarted": false
+  },
+  "diagnosis": {
+    "sampledAt": "2026-09-10T01:14:37.867+08:00",
+    "sampleCommand": "sample 16633 1 1 -file /tmp/quality-native-web-recovery-16633.sample.txt",
+    "fullSample": {
+      "path": "/tmp/quality-native-web-recovery-16633.sample.txt",
+      "bytes": 336006,
+      "sha256": "6b62dde9d91e6c46af88442b42e3184bd2cdeab5f6e6f9f36c94db7a42da4a29"
+    },
+    "excerpt": [
+      {
+        "sourceLine": 582,
+        "stack": "260 rambledesk_desktop_lib::web_access::start_web_access::_$u7b$$u7b$closure$u7d$$u7d$::h0c919f1b3173d897  (in rambledesk) + 680  [0x1031df5d4]"
+      },
+      {
+        "sourceLine": 583,
+        "stack": "260 _$LT$rambledesk_desktop_lib..web_access..OsWebAccessCredentialStore$u20$as$u20$rambledesk_desktop_lib..web_access..WebAccessCredentialStore$GT$::load_or_create::hf1bd1ea76cd61d7a  (in rambledesk) + 96  [0x102ecc128]"
+      },
+      {
+        "sourceLine": 584,
+        "stack": "260 keyring::Entry::get_password::ha97fac755b855c1d  (in rambledesk) + 80  [0x1039cd560]"
+      },
+      {
+        "sourceLine": 586,
+        "stack": "260 security_framework::os::macos::passwords::find_generic_password::hd3575070f9264b72  (in rambledesk) + 352  [0x105fecac8]"
+      },
+      {
+        "sourceLine": 587,
+        "stack": "260 SecKeychainFindGenericPassword  (in Security) + 396  [0x19206b750]"
+      },
+      {
+        "sourceLine": 596,
+        "stack": "260 Security::SecurityServer::ClientSession::decrypt(Security::Context const&, unsigned int, Security::CssmData const&, Security::CssmData&, Security::Allocator&)  (in Security) + 776  [0x1920e1e18]"
+      },
+      {
+        "sourceLine": 597,
+        "stack": "260 mach_msg  (in libsystem_kernel.dylib) + 24  [0x18e48cfb4]"
+      },
+      {
+        "sourceLine": 600,
+        "stack": "260 mach_msg2_trap  (in libsystem_kernel.dylib) + 8  [0x18e48cc34]"
+      }
+    ],
+    "blockedThreadSampleCount": 260,
+    "mainThread": "AppKit/CoreFoundation event loop, not blocked in this credential call",
+    "listeningPortsObserved": {
+      "pid16633": [
+        "127.0.0.1:55590"
+      ],
+      "webAccess55903": false
+    },
+    "interpretation": "The start command was waiting for synchronous macOS Keychain SecurityServer IPC inside get_password before creating the HTTP listener. No evidence establishes a visible permission dialog or the precise OS reason for the pending IPC.",
+    "sourceOrder": "src-tauri/src/web_access.rs start_runtime loads the durable OS credential before constructing WebSessionManager and calling start_web_access_server."
+  },
+  "applicationLog": {
+    "path": "/private/var/folders/4x/vqr6fwmd5hb_1hmdkssm6vsc0000gn/T/rambledesk-feedback-acceptance-tqXZR0/native-web-recovery.log",
+    "bytes": 140,
+    "sha256": "cbd625fa0a2e254e58c0bc3063555b7e192990102358d64a0ae97fbe0451712b",
+    "observedLines": [
+      "2026-09-10 01:13:36.248 rambledesk[16633:2911737] TSM AdjustCapsLockLEDForKeyTransitionHandling - _ISSetPhysicalKeyboardCapsLockLED Inhibit"
+    ],
+    "webAccessFailureRecorded": false
+  },
+  "constraintsObserved": {
+    "rotatedToken": false,
+    "credentialExtractedOrPrinted": false,
+    "agentKilledOrSignalledTarget": false,
+    "productOrSecuritySettingsModifiedByDiagnosis": false,
+    "activeFeedbackFixturesChanged": false
+  },
+  "closure": {
+    "operatorAction": "Normal Cmd-Q via native UI",
+    "independentVerification": "ps -p 16633 returned only its header and nonzero exit status; process absent",
+    "processAbsent": true,
+    "exitCodeKnown": false
+  },
+  "acceptanceBoundary": "Web Access listener and browser bootstrap were never reached; dirty draft reauthentication/disconnect recovery remains unverified in real UI. This observed block belongs to the ad-hoc Quality build on this machine. It proves neither failure nor success of the officially signed/notarized product; do not infer browser recovery behavior from this attempt."
+}

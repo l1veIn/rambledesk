@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "recordedAt": "2026-09-09T19:42:09.414896+00:00",
+  "nativePid": 37895,
+  "nativeProcessExited": true,
+  "webPort": 55903,
+  "webPortClosed": true,
+  "chromeGuestPageClosed": true,
+  "safariPrivatePageClosed": true,
+  "iabTestTabClosed": true,
+  "viewportOverrideReset": true,
+  "removedOwnTestCredentialFiles": [
+    "/Users/yangchen/Library/Application Support/io.rambledesk.quality/auth/web-access.token",
+    "/var/folders/4x/vqr6fwmd5hb_1hmdkssm6vsc0000gn/T/rambledesk-feedback-acceptance-s9sGEX/native-token.txt"
+  ],
+  "retainedDirectory": "/var/folders/4x/vqr6fwmd5hb_1hmdkssm6vsc0000gn/T/rambledesk-feedback-acceptance-s9sGEX",
+  "retainedData": "SQLite, attachments and captured unsaved synthetic test text; no daily user data was used"
+}

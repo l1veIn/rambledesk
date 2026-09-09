@@ -1,0 +1,17 @@
+{
+  "at": "2026-09-09T15:48:32.284Z",
+  "method": "Real Cooking controller + Publisher; real fetch model + HTTP/SQLite fixture; Node host, no visual/native claim",
+  "provider": "deepseek",
+  "baseUrl": "https://api.deepseek.com/v1",
+  "model": "deepseek/deepseek-v4-flash",
+  "reasoning": "minimal",
+  "elapsedMs": 6671,
+  "requestId": "01a086db-261e-78d3-a8b3-95007379c49b",
+  "savedRevision": 2,
+  "original": "按钮点击后大约等了两秒才有提示。我不确定是不是网络问题，需要保留这个疑问。建议在等待时显示保存中，失败后保留输入并允许重试。",
+  "cooked": "# 请求标题\n01 · Ordinary feedback\n\n# 任务背景\nIsolated fixture: real application, HTTP and SQLite; no real Agent, continuation, user database or native device.\n\n# 验收动作\n- review: Edit, save, refresh, then submit and inspect the published package.\n\n# Operator Feedback\n\n点击按钮后，大约等待两秒才出现提示。不确定是否为网络问题，此疑问需保留。\n\n改进建议：\n- 等待期间显示“保存中”的加载状态。\n- 若保存失败，应保留用户已输入的内容，并允许重试。",
+  "packageSourceSha256": "a4ac3d73437fb38b241b24acbafb155c603a58c77c6844f6f5029000180eb7d3",
+  "packageCookedSha256": "95e4106c9df65117ae9899c05fb24a99ec60abf4e7e598609cfda38202e4f7b1",
+  "assertions": "canonical structured draft preserved; saved source matches preview provenance; published source, variant and model match",
+  "result": "passed"
+}

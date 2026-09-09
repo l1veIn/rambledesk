@@ -13,8 +13,9 @@
 | `tablet` | 768–1023px | 双列，按容器预算自动收窄 | 有 |
 | `phone` | < 768px | 两个抽屉，正文占满整屏 | 无 |
 
-断点定义只有一处：`apps/desktop/src/lib/workbench/shellMode.ts`（`PHONE_QUERY`、`TABLET_QUERY`、
-`shellModeFor()`）。`WorkbenchShell.svelte` 在 `onMount` 里用 `matchMedia` 订阅变化，SSR 与首次渲染
+断点值统一定义在 [mediaQuery.ts](../apps/desktop/src/lib/mediaQuery.ts)；
+[shellMode.ts](../apps/desktop/src/lib/workbench/shellMode.ts) 重导出 `PHONE_QUERY`、`TABLET_QUERY` 并提供
+`shellModeFor()`。`WorkbenchShell.svelte` 在 `onMount` 里用 `matchMedia` 订阅变化，SSR 与首次渲染
 默认 `desktop`。
 
 ## 二、行为矩阵
@@ -31,7 +32,9 @@
 | 标题栏左块 | 跟随侧栏宽度 | 固定 56px 的导航按钮 |
 | 窗口边框 | 由 `environment` 决定，与视口宽度无关：桌面应用有圆角与描边，Browser Client 无（见第五节） | 同左 |
 
-抽屉互斥由 `App.svelte` 的 `setHostRailCollapsed` / `setRequestRailCollapsed` 保证：打开一个会关闭另一个。
+抽屉互斥由 [ShellLayoutSession](../apps/desktop/src/lib/workbench/shellLayoutSession.ts) 的
+`setRailCollapsed()` 保证：打开一个会关闭另一个。`App.svelte` 的 `setHostRailCollapsed` /
+`setRequestRailCollapsed` 只将对应操作委托给该 owner。
 
 ## 三、状态模型
 
@@ -39,10 +42,11 @@
 
 | 状态 | 归属 | 持久化 | 含义 |
 | --- | --- | --- | --- |
-| `hostRailPreference`、`requestRailPreference` | `App.svelte` | 是（`uiPreferences`） | 桌面/平板下的折叠偏好 |
-| `phoneHostRailOpen`、`phoneRequestRailOpen` | `App.svelte` | 否 | 手机抽屉的临时开合 |
+| 内部 `hostPreference`、`requestPreference` | `ShellLayoutSession` | 是（`uiPreferences`） | 桌面/平板下的折叠偏好 |
+| 内部 `phoneHostOpen`、`phoneRequestOpen` | `ShellLayoutSession` | 否 | 手机抽屉的临时开合 |
 
-有效折叠值 `hostSessionRailCollapsed = shellMode === 'phone' ? !phoneHostRailOpen : hostRailPreference`。
+Session 按当前 mode 投影 `hostCollapsed` / `requestCollapsed`，App、标题栏和两条 rail 读取同一份订阅值。
+例如 `hostCollapsed = mode === 'phone' ? !phoneHostOpen : hostPreference`。
 手机上关闭抽屉**不会**写回偏好，因此回到桌面宽度时侧栏恢复原来的宽度与折叠状态。Rust 侧不参与该状态。
 
 组件契约：`HostSessionRail` 与 `RequestListPane` 新增可选 `onCollapsedChange`。父组件传入时由父组件
@@ -121,3 +125,7 @@ pnpm dev:web
 
 真机（用户手机通过既有方式访问 Web Access）至少确认：抽屉开合、请求切换后抽屉自动关闭、
 虚拟键盘弹出时正文与输入区不被遮挡。
+
+2026-09-10 的质量收敛已补 drawer 焦点归还、内层 Escape、忙碌时页签关闭锁、关闭按钮命中范围，
+并实测 390×844、844×390 和 844×260 浏览器视口。具体范围见 [响应式验收](quality/RESPONSIVE_ACCEPTANCE.md)。
+用户确认当前没有手机真机环境，因此软键盘、触屏、真实旋转与安全区仍保留必验；视口测量不替代这些结果。

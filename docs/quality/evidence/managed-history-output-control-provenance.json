@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "recordedAt": "2026-09-09T16:40:26.082575+00:00",
+  "dist": "/tmp/rambledesk-quality-output-control-dist",
+  "purpose": "Same frozen Web App and same driver for output-mode A/B; default final-json versus query quality-output=live. Product code is unchanged by this diagnostic branch; the current working App may differ from the earlier history snapshot.",
+  "harnessRevision": "managed-history-v3-output-control",
+  "artifacts": [
+    {
+      "file": "quality-benchmark.html",
+      "bytes": 3198,
+      "sha256": "3a536cfb67bea90e43e38f25b42c3732743902d7187119f35e5dd3d20390c2d0"
+    },
+    {
+      "file": ".vite/manifest.json",
+      "bytes": 37323,
+      "sha256": "5ad9d1fef0539a0fc80a71b05bc67cca069cf59326372087dd4c3a04206faf76"
+    },
+    {
+      "file": "assets/quality-BYzi4yRG.js",
+      "bytes": 19869,
+      "sha256": "af7f377d5e3f1f2cd6790ccf9f65ab962ecef1fc448831827989d7a405eb7087"
+    },
+    {
+      "file": "assets/App-BQ7BO79w.js",
+      "bytes": 59,
+      "sha256": "8f0dd6a81daa13e73f1a678976853d98b15e27a6e6db5a09ebfd75a626966045"
+    },
+    {
+      "file": "assets/App-uPGNYCYR.js",
+      "bytes": 1653984,
+      "sha256": "1a50fec65c12057e230694ec5c4fb6181bc0aec15f49ecbc84cc69d6b765e27c"
+    }
+  ],
+  "fixtureManifest": {
+    "seed": {
+      "schema": 1,
+      "fixture": "rambledesk-managed-history-v1",
+      "scope": "Synthetic persisted display history, real SQLite/repository/application HTTP reads; local Node ACP fixture only, no model prompt or actual tool execution",
+      "session_id": "01a08707-f080-7c83-ac89-14d27e906f16",
+      "session_title": "Website project",
+      "turns": 60,
+      "seeded_activities": 300,
+      "stored_activities": 300,
+      "first_sequence": 1,
+      "last_sequence": 300,
+      "serialized_bytes": 344086,
+      "stored_activity_sha256": "45caf1b6e71c8250ea663cc54d09dea0b10cd88533fcb31bbce136705035f47f"
+    },
+    "origin": "http://127.0.0.1:54435",
+    "dist": "/private/tmp/rambledesk-quality-output-control-dist",
+    "database": "/var/folders/4x/vqr6fwmd5hb_1hmdkssm6vsc0000gn/T/.tmpHjVs6U/db.sqlite",
+    "tokenFile": "/var/folders/4x/vqr6fwmd5hb_1hmdkssm6vsc0000gn/T/.tmpHjVs6U/quality-token",
+    "stopFile": "/var/folders/4x/vqr6fwmd5hb_1hmdkssm6vsc0000gn/T/.tmpHjVs6U/stop-preview",
+    "cleanup": "Creating stopFile or Ctrl+C shuts down this fixture and deletes its temporary directory; copy this manifest and evidence before stopping"
+  },
+  "cleanup": {
+    "stopFileRequested": true,
+    "processExitCode": 0,
+    "temporaryDirectoryRemoved": true,
+    "scope": "Only the completed output-control fixture at origin 54435. New final fixtures remain running for acceptance."
+  }
+}

@@ -1,0 +1,121 @@
+{
+  "schema": 1,
+  "recordedAt": "2026-09-09T16:52:58.542756+00:00",
+  "raw": {
+    "file": "docs/quality/evidence/managed-history-parser-fixed.json",
+    "bytes": 307313,
+    "sha256": "b58970dad9d176771cf92511de63dc7ef7cc2a11c55d6d93c83e13a949cbc1c5"
+  },
+  "phase": "done",
+  "hiddenTransitions": 0,
+  "viewport": {
+    "width": 1200,
+    "height": 820
+  },
+  "outputMode": "final-json",
+  "harnessRevision": "managed-history-v3-output-control",
+  "distProvenance": "web-final-provenance.json",
+  "metrics": {
+    "enter": {
+      "after": {
+        "n": 30,
+        "median": 100.4,
+        "p95": 117.9,
+        "max": 118.6,
+        "first5Median": 116.4,
+        "last5Median": 100.1
+      },
+      "beforeFinalOutput": {
+        "n": 30,
+        "median": 358.5,
+        "p95": 567.6,
+        "max": 583.5,
+        "first5Median": 150.7,
+        "last5Median": 550
+      },
+      "p95BudgetMs": 500,
+      "passes": true,
+      "observedP95ReductionPercent": 79.23
+    },
+    "processExpand": {
+      "after": {
+        "n": 30,
+        "median": 50.0,
+        "p95": 50.7,
+        "max": 50.8,
+        "first5Median": 49.9,
+        "last5Median": 50.2
+      },
+      "beforeFinalOutput": {
+        "n": 30,
+        "median": 50.0,
+        "p95": 50.9,
+        "max": 51.2,
+        "first5Median": 50,
+        "last5Median": 50
+      },
+      "p95BudgetMs": 200,
+      "passes": true,
+      "observedP95ReductionPercent": 0.39
+    },
+    "toolExpand": {
+      "after": {
+        "n": 30,
+        "median": 49.85,
+        "p95": 50.2,
+        "max": 50.8,
+        "first5Median": 49.8,
+        "last5Median": 49.7
+      },
+      "beforeFinalOutput": {
+        "n": 30,
+        "median": 50.0,
+        "p95": 51.1,
+        "max": 51.1,
+        "first5Median": 50,
+        "last5Median": 50.9
+      },
+      "p95BudgetMs": 200,
+      "passes": true,
+      "observedP95ReductionPercent": 1.76
+    },
+    "pageVisible": {
+      "after": {
+        "n": 30,
+        "median": 74.65,
+        "p95": 83.2,
+        "max": 84.1,
+        "first5Median": 77.6,
+        "last5Median": 73.5
+      },
+      "beforeFinalOutput": {
+        "n": 30,
+        "median": 328.05,
+        "p95": 546.5,
+        "max": 565.7,
+        "first5Median": 132.5,
+        "last5Median": 540.4
+      },
+      "p95BudgetMs": 750,
+      "passes": true,
+      "observedP95ReductionPercent": 84.78
+    }
+  },
+  "pageHttpMs": {
+    "n": 30,
+    "median": 14.7,
+    "p95": 16.2,
+    "max": 16.5,
+    "first5Median": 8.1,
+    "last5Median": 15.4
+  },
+  "validation": {
+    "allFour30Samples": true,
+    "allHttp200": true,
+    "allTransferred115072Bytes": true,
+    "sameSessionEveryPage": true,
+    "everyBefore041to060": true,
+    "everyAfter021to060": true
+  },
+  "conclusion": "All four foreground Web DOM budgets pass on the frozen candidate. Entry and pagination no longer rise with iteration. Compared runs share final-json output mode, same driver revision, viewport and fixture structure; the new App includes private Marked isolation and same-workspace refresh, so these are observed whole-candidate deltas, not isolated parser CPU timings. Real dependency regressions separately prove removal of accumulating global tokenizer registrations and breaks-option cross-talk. No claim about native, real model throughput, touch devices or 30-minute retained heap."
+}

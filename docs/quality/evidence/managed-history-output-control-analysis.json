@@ -1,0 +1,120 @@
+{
+  "schema": 1,
+  "scope": "Same frozen output-control build, same fixture, fresh foreground Chrome documents. Only output mode differs; sequential uncontrolled runs do not provide an exact isolated causal delta. Neither run includes the later private Marked fix.",
+  "runs": [
+    {
+      "raw": {
+        "file": "docs/quality/evidence/managed-history-final-output.json",
+        "bytes": 307367,
+        "sha256": "b9bbee76000704e3ca8fa32c6a912cd1357e758444baff7975fd9e09920954f8"
+      },
+      "outputMode": "final-json",
+      "phase": "done",
+      "hiddenTransitions": 0,
+      "startedAt": "2026-09-09T16:39:33.252Z",
+      "viewport": {
+        "width": 1200,
+        "height": 820
+      },
+      "entry": {
+        "n": 30,
+        "median": 358.5,
+        "p95": 567.6,
+        "max": 583.5,
+        "first5Median": 150.7,
+        "last5Median": 550
+      },
+      "process": {
+        "n": 30,
+        "median": 50.0,
+        "p95": 50.9,
+        "max": 51.2,
+        "first5Median": 50,
+        "last5Median": 50
+      },
+      "tool": {
+        "n": 30,
+        "median": 50.0,
+        "p95": 51.1,
+        "max": 51.1,
+        "first5Median": 50,
+        "last5Median": 50.9
+      },
+      "pageVisible": {
+        "n": 30,
+        "median": 328.05,
+        "p95": 546.5,
+        "max": 565.7,
+        "first5Median": 132.5,
+        "last5Median": 540.4
+      },
+      "pageHttp": {
+        "n": 30,
+        "median": 14.45,
+        "p95": 16.3,
+        "max": 16.5,
+        "first5Median": 14.5,
+        "last5Median": 15.5
+      },
+      "pageCount": 30,
+      "allHttp200": true
+    },
+    {
+      "raw": {
+        "file": "docs/quality/evidence/managed-history-live-output.json",
+        "bytes": 307319,
+        "sha256": "bc22c6497fc379fccf6fe7ed7709c61e7bdb35781ea78a8835150f974d7c5100"
+      },
+      "outputMode": "live-json",
+      "phase": "done",
+      "hiddenTransitions": 0,
+      "startedAt": "2026-09-09T16:42:02.509Z",
+      "viewport": {
+        "width": 1200,
+        "height": 820
+      },
+      "entry": {
+        "n": 30,
+        "median": 466.65,
+        "p95": 999.7,
+        "max": 1034.8,
+        "first5Median": 184.6,
+        "last5Median": 967.3
+      },
+      "process": {
+        "n": 30,
+        "median": 50.0,
+        "p95": 51.2,
+        "max": 51.2,
+        "first5Median": 50,
+        "last5Median": 49.7
+      },
+      "tool": {
+        "n": 30,
+        "median": 49.9,
+        "p95": 51,
+        "max": 51.2,
+        "first5Median": 49.9,
+        "last5Median": 49.9
+      },
+      "pageVisible": {
+        "n": 30,
+        "median": 459.55,
+        "p95": 963.7,
+        "max": 1010,
+        "first5Median": 135.6,
+        "last5Median": 934
+      },
+      "pageHttp": {
+        "n": 30,
+        "median": 10.600000000000001,
+        "p95": 15.3,
+        "max": 15.5,
+        "first5Median": 10.3,
+        "last5Median": 8.3
+      },
+      "pageCount": 30,
+      "allHttp200": true
+    }
+  ]
+}
