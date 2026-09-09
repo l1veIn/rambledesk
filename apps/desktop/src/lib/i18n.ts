@@ -26,7 +26,7 @@ const chinese: Record<string, string> = {
   'Continue your work there and ask the agent to request RambleDesk feedback when needed.': '继续在外部智能体中工作，需要时让它发起 RambleDesk 反馈请求。',
   'Review and submit the feedback in RambleDesk. Follow a Resume Prompt back to the external agent when one is provided.': '在 RambleDesk 中处理并提交反馈。如果出现恢复提示，按提示回到外部智能体继续。',
   'Paste this example into your external agent:': '把这句示例提示词粘贴到外部智能体中：',
-  'Please request feedback through RambleDesk so I can first describe the goal of this task.': '请通过 RambleDesk 发起反馈请求，让我先说明这个任务的目标。',
+  '/ramble Lets work on something together': '/ramble 一起做点儿什么吧',
   'Could not copy the prompt. Select the text and copy it manually.': '无法复制提示词，请手动选中文本复制。',
   'If your agent supports /ramble, you can also use it to start a feedback request.': '如果智能体支持 /ramble，也可以用它发起反馈请求。',
   'Adds feedback requests to your external Pi session. Pi can wait for your reply while you review the request in RambleDesk.': '为外部 Pi 会话加入反馈请求。你在 RambleDesk 中处理请求期间，Pi 可以等待你的回复。',

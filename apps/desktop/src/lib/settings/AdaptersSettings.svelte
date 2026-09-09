@@ -72,7 +72,7 @@
   let starterPromptCopyState: 'idle' | 'copied' | 'error' = 'idle'
   let genericAdapterOpen = true
   let configurationOpen = false
-  const adapterStarterPrompt = 'Please request feedback through RambleDesk so I can first describe the goal of this task.'
+  const adapterStarterPrompt = '/ramble Lets work on something together'
   const adapterSettingsAccess = createExternalAdapterSettingsAccess([
     refreshHosts, refreshPiStatus, refreshDshStatus, refreshMcpConfiguration,
   ])
