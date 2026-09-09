@@ -79,7 +79,8 @@ Browser Client 是整页 Web 应用，不再复用桌面窗口的外观：
   正文只剩约 376px。手机上因为容器宽度小于最小预算，双列会把正文压到 0，所以必须抽屉化；平板暂不处理。
 - **标题栏 Tab 条**：宽度由 `lib/workspace/tabStripLayout.ts` 统一计算（可用宽度均分，夹在
   112–192px 之间），到最小宽度后才滚动。滚动容器隐藏滚动条，用边缘渐隐提示还有内容；桌面端鼠标滚轮
-  会转成横向滚动，触摸端直接滑动。标题在收缩过程中被遮罩截断，触摸端关闭按钮常显（见第四节）。
+  会转成横向滚动，触摸端直接滑动。新标签加入队列时（数量增长）自动滚到队尾；切换活动标签时只滚动到
+  刚好露出该标签的位置。标题在收缩过程中被遮罩截断，触摸端关闭按钮常显（见第四节）。
 - **抽屉没有手势关闭**：只有按钮、背板和 `Escape`。
 - **Web Access 仍只绑定 loopback**：手机接入依赖用户自备的转发方式，本仓库不提供 LAN/TLS 承诺。
 
@@ -94,6 +95,7 @@ Browser Client 是整页 Web 应用，不再复用桌面窗口的外观：
 | `lib/mediaQuery.test.ts` | 媒体查询 store 的初始值、变更订阅与无 `matchMedia` 降级 |
 | `lib/workspace/tabStripLayout.test.ts` | 均分宽度、最小宽度后转为滚动、未测量时的回退 |
 | `lib/workspace/workspaceTabStripRender.test.ts` | 每个 tab 的测量宽度、滚动容器与边缘渐隐变量 |
+| `lib/workspace/workspaceTabStripScroll.test.ts` | 新标签入队滚到队尾、活动标签滚入视野、关闭标签不滚动 |
 | `lib/editor/MarkdownPreview.test.ts` | what-happened 风格的 markdown 渲染（标题/列表/粗体/代码块）与 bare 变体 |
 | `lib/agents/configuration/sessionConfigurationControlsCompact.test.ts` | 手机端单一入口、弹层选项与选择回调；宽屏保持内联控件 |
 

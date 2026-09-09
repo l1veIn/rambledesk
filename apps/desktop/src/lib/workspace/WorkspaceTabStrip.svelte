@@ -50,6 +50,7 @@
   let listClientWidth = 0
   let listScrollWidth = 0
   let listScrollLeft = 0
+  let previousTabCount = 0
 
   // One rule for every viewport: tabs share the strip evenly, shrink to a floor,
   // then the strip scrolls.
@@ -71,13 +72,20 @@
   $: if (activeViewKey && viewKeys.includes(activeViewKey)) {
     focusedViewKey = activeViewKey
   }
+  // A newly opened tab lands at the end of the queue: follow it so the human sees
+  // where the tab went even when the strip already scrolls.
+  $: if (tabListElement && viewKeys.length !== previousTabCount) {
+    const grew = viewKeys.length > previousTabCount
+    previousTabCount = viewKeys.length
+    if (grew) void tick().then(scrollToEnd)
+  }
+
   // The strip scrolls once tabs reach the minimum width, so keep the active tab visible.
   $: if (tabListElement && activeViewKey !== scrolledViewKey) {
-    scrolledViewKey = activeViewKey
-    if (activeViewKey) {
-      tabButtons.get(activeViewKey)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-      void tick().then(measureList)
-    }
+    const viewKey = activeViewKey
+    scrolledViewKey = viewKey
+    // The tab's element only exists after this flush; scrolling before that is a no-op.
+    if (viewKey) void tick().then(() => revealTab(viewKey))
   }
 
   function tr(source: string) {
@@ -88,6 +96,26 @@
     if (!tabListElement) return
     listScrollWidth = tabListElement.scrollWidth
     listScrollLeft = tabListElement.scrollLeft
+  }
+
+  function scrollToEnd() {
+    if (!tabListElement) return
+    tabListElement.scrollLeft = tabListElement.scrollWidth
+    measureList()
+  }
+
+  /** Scrolls the minimum amount that makes a tab fully visible. */
+  function revealTab(viewKey: string) {
+    if (!tabListElement) return
+    const index = viewKeys.indexOf(viewKey)
+    if (index < 0) return
+    const start = index * layout.tabWidth
+    const end = start + layout.tabWidth
+    const visibleStart = tabListElement.scrollLeft
+    const visibleEnd = visibleStart + tabListElement.clientWidth
+    if (start < visibleStart) tabListElement.scrollLeft = start
+    else if (end > visibleEnd) tabListElement.scrollLeft = end - tabListElement.clientWidth
+    measureList()
   }
 
   /** Desktop wheels scroll vertically: translate it while the strip overflows. */
