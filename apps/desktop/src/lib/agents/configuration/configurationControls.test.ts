@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
 import { render } from 'svelte/server'
 import type { SessionConfiguration } from '$lib/generated/feedback'
-import { changeForControl, choiceGroups, configurationControls } from './configurationControls'
+import {
+  changeForControl,
+  choiceGroups,
+  configurationControls,
+  controlDisplayValue,
+  primaryConfigurationControl,
+} from './configurationControls'
 import SessionConfigurationControls from './SessionConfigurationControls.svelte'
 
 vi.mock('$lib/preferences', async () => {
@@ -57,6 +63,23 @@ describe('Agent-confirmed session controls', () => {
     expect(body).toMatch(/<select[^>]*disabled[^>]*aria-label="Agent model"/)
     expect(body).toContain('aria-pressed="false"')
     expect(body).toContain('aria-label="Mode"')
+  })
+
+  it('picks the model as the compact entry and falls back to the first select', () => {
+    const controls = configurationControls(configuration())
+    expect(primaryConfigurationControl(controls)?.id).toBe('model-picker')
+    expect(primaryConfigurationControl(controls.slice(1))?.id).toBe('opaque-mode')
+    expect(primaryConfigurationControl([])).toBeNull()
+  })
+
+  it('shows the confirmed choice name, falling back to the raw value', () => {
+    const controls = configurationControls(configuration())
+    expect(controlDisplayValue(controls[0])).toBe('A')
+    expect(controlDisplayValue(controls[1])).toBe('Auto approve')
+
+    const config = configuration()
+    config.options[0].kind.current_value = 'retired-model'
+    expect(controlDisplayValue(configurationControls(config)[0])).toBe('retired-model')
   })
 
   it('shows an unknown confirmed value without silently picking a different available choice', () => {

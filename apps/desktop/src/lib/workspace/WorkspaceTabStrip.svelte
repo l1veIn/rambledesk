@@ -180,7 +180,7 @@
         {@const label = labelForView(item.view)}
         <div
           animate:flip={{ duration: FLIP_DURATION_MS }}
-          class="workspace-tab-item relative min-w-0 shrink-0 basis-48 cursor-grab active:cursor-grabbing"
+          class="workspace-tab-item relative min-w-28 shrink basis-48 cursor-grab active:cursor-grabbing"
           class:z-10={activeViewKey === viewKey}
           data-workspace-tab-item
           data-workspace-view-key={viewKey}

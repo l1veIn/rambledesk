@@ -58,6 +58,8 @@
 | 安全区 | `index.html` 增加 `viewport-fit=cover`、`interactive-widget=resizes-content`；`app.css` 在 < 768px 给 `body` 加 `env(safe-area-inset-*)` 内边距 |
 | 浮动按钮 | 44×44px，位于安全区之内 |
 | 拖动 | 手机上不渲染 `NavigationResizeHandle`（触摸拖动与滚动手势冲突） |
+| Tab 条 | 标签先用 `basis-48` 收缩到 `min-w-28`（7rem），到最小宽度后才横向滚动 |
+| Agent 输入框配置 | < 768px 时模型/思考强度/访问权限等会话选项收进一个入口按钮，点击弹出完整列表；宽屏保持内联选择器 |
 | 减少动效 | 抽屉过渡遵循 `prefers-reduced-motion` |
 | 浮动按钮 | 44×44px，位于安全区之内；请求列表按钮固定在左下角 |
 
@@ -75,8 +77,8 @@ Browser Client 是整页 Web 应用，不再复用桌面窗口的外观：
 
 - **tablet 仍是双列**：768px 宽时两条 rail 会按 `fitNavigationWidths` 的预算收窄到约 192 + 200px，
   正文只剩约 376px。手机上因为容器宽度小于最小预算，双列会把正文压到 0，所以必须抽屉化；平板暂不处理。
-- **标题栏 Tab 条在窄屏会压缩**：`WorkspaceTabStrip` 的 tab 使用 `basis-48` + `shrink`，窄屏下会变窄并
-  截断标题，没有横向滚动。触摸端至少可以关闭任意 tab（见第四节）。
+- **标题栏 Tab 条**：tab 先收缩（`basis-48` → `min-w-28`）再横向滚动，标题在收缩过程中被遮罩截断；
+  触摸端关闭按钮常显（见第四节）。
 - **抽屉没有手势关闭**：只有按钮、背板和 `Escape`。
 - **Web Access 仍只绑定 loopback**：手机接入依赖用户自备的转发方式，本仓库不提供 LAN/TLS 承诺。
 
@@ -88,6 +90,9 @@ Browser Client 是整页 Web 应用，不再复用桌面窗口的外观：
 | `lib/workbench/workbenchShellRender.test.ts` | 桌面双列、手机抽屉与背板、浮动按钮的出现条件、启动失败分支 |
 | `lib/components/navigation/railResize.test.ts` | 既有宽度预算与折叠数学（未改动） |
 | `lib/components/navigation/sessionRailRender.test.ts` | 侧栏渲染（未改动，回归通过） |
+| `lib/mediaQuery.test.ts` | 媒体查询 store 的初始值、变更订阅与无 `matchMedia` 降级 |
+| `lib/workspace/workspaceTabStripRender.test.ts` | tab 的 `basis-48` / `min-w-28` / 可收缩 + 横向滚动容器 |
+| `lib/agents/configuration/sessionConfigurationControlsCompact.test.ts` | 手机端单一入口、弹层选项与选择回调；宽屏保持内联控件 |
 
 ## 八、人工验收
 
@@ -106,6 +111,8 @@ pnpm dev:web
 4. 打开一个抽屉时另一个关闭；背板点击、抽屉内折叠按钮、标题栏按钮、`Escape` 都能关闭。
 5. 手机旋转屏幕后模式正确切换，且桌面宽度下的折叠偏好没有被手机操作覆盖。
 6. Browser Client 整页无圆角、无描边；桌面应用仍然保留窗口圆角与描边。
+7. < 768px 打开 Agent 会话：输入框下方只显示一个模型入口，点开后能改模型、思考强度、访问权限；
+   打开多个 tab 时先变窄，缩到最小宽度后才横向滚动。
 
 真机（用户手机通过既有方式访问 Web Access）至少确认：抽屉开合、请求切换后抽屉自动关闭、
 虚拟键盘弹出时正文与输入区不被遮挡。
