@@ -16,6 +16,47 @@
 
 ---
 
+## v0.4.0-rc.3
+
+What's new in RambleDesk 0.4.0-rc.3
+
+Phone and browser access
+- The workbench now adapts to phone screens: both rails become overlay drawers, the titlebar keeps a navigation button, and the request list opens from a floating button.
+- Web Access gained a dedicated settings section for the browser server: port, autostart, and token rotation. Browser sessions resume from a stored cookie instead of asking for the token again on every visit.
+- Agent session options on a phone collapse into a single entry that shows the model name; tapping it opens the full list of model, reasoning effort, and access options instead of crowding the composer.
+
+Workspace tabs
+- The tab strip now behaves the same at every width: tabs share the available width evenly, shrink down to a minimum, and only then scroll horizontally.
+- On desktop the mouse wheel scrolls the strip, both ends fade to show there is more content, and a newly opened tab is brought into view at the end of the queue.
+
+Task brief
+- The "What happened" section renders Markdown, so lists, code blocks, links and emphasis written by the Agent display as intended. Single line breaks are preserved.
+
+Adapter setup
+- The adapter starter prompt is now "/ramble Lets work on something together", matching the /ramble command that starts a feedback request.
+
+Under the hood
+- Workbench state ownership was reorganised: the open request, draft, attachments, Ramble and voice state, startup, workspace navigation, cooking, shell layout and preview fixtures each have a single owning module, and App.svelte is now a composition root.
+- Preview fixtures are served through an Application Transport implementation, so preview mode no longer branches inside workbench logic.
+- A frontend dependency-direction check and module-size gate keep the new boundaries from regressing; frontend coverage grew past 1200 tests, including component tests for the capture overlay, the Ramble controller and the agent composer options.
+
+Release candidate notes
+- This test release includes Windows x64 NSIS and Apple Silicon macOS installers. Windows updater artifacts are signed, but Windows Authenticode signing and Apple notarization are not yet enabled.
+- For SmartScreen and Gatekeeper first-launch instructions, see https://github.com/l1veIn/rambledesk/blob/v0.4.0-rc.3/README.md
+- Automated checks do not replace real-model feedback-loop and clean-install acceptance testing.
+
+中文摘要
+- 工作台适配手机屏幕：两条侧栏改为抽屉，标题栏保留导航按钮，请求列表用左下角浮动按钮打开。
+- Web Access 新增浏览器服务器设置（端口、自动启动、刷新令牌），浏览器会话通过 Cookie 恢复，不再每次访问都要求输入令牌。
+- 手机上 Agent 会话选项收进一个入口，只显示模型名；点开后是完整的模型、思考强度和访问权限列表，不再挤占输入框。
+- 工作区标签在任何宽度下行为一致：先均分宽度收缩到最小值，再横向滚动；桌面端可用滚轮滚动，两端有渐隐提示，新打开的标签会自动滚动到队尾。
+- 任务简报的「发生了什么」按 Markdown 渲染，列表、代码块、链接和强调都能正常显示，单换行也会保留。
+- 适配器示例提示词改为 "/ramble Lets work on something together"。
+- 内部：工作台状态改为每个领域单一所有者，App.svelte 收敛为组合根；预览数据改由 Application Transport 提供；新增前端依赖方向与模块大小门禁，前端测试超过 1200 个。
+- 本版为候选测试版，提供 Windows x64 NSIS 和 Apple Silicon macOS 安装包；尚无 Windows Authenticode 签名及 Apple 公证，首次启动步骤见上述 README。
+
+Full changelog: https://github.com/l1veIn/rambledesk/compare/v0.4.0-rc.2...v0.4.0-rc.3
+
 ## v0.4.0-rc.2
 
 What's new in RambleDesk 0.4.0-rc.2
