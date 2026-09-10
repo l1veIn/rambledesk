@@ -2,70 +2,46 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-## Give the agent a goal. Ramble your way through the rest.
+**In 2026, the most expensive part of vibe coding is human attention.**
 
-RambleDesk brings coding-agent conversations and human feedback into one desktop workspace. Connect a local agent through ACP, choose a project, and give it a goal.
+Working with a general-purpose agent often means doing three things:
 
-When the agent needs your judgment, it opens a Ramble request. Speak, take a screenshot, paste context, or attach a file—whatever gets the idea out fastest. Review your feedback, send it back, and continue in the same agent session. You can also keep using your usual agent app or CLI through an external adapter.
+1. Read a long, scattered account of what the model did.
+2. Figure out what it actually finished—and what it needs from you.
+3. Turn your thoughts into a well-written prompt for the next round.
 
-> This README describes the **0.4 release candidate**, which adds in-app ACP conversations alongside the Ramble feedback workspace. See the [release notes](docs/CHANGELOG.md) for changes and known limitations.
+RambleDesk turns the first two steps into a **review request**, and the third into **say it first, tidy it if you want**.
 
-### How it works
+The agent must explain two things: **what just happened** and **what you should try or confirm**. You speak, take screenshots, and edit directly in a desktop workbench, without writing a prompt first. On submission, your original feedback, an optional refined version, and attachments become an immutable feedback package for the agent to continue from. Keep your attention on hands-on review and decisions.
 
-1. **Give the agent a goal**
-   Start a conversation in RambleDesk with an agent and a project folder. Follow its responses and tool activity in the Agent view.
-
-2. **The agent asks for feedback**
-   When it needs your judgment, explanation, or a hands-on check, it opens a request in the Ramble view.
-
-3. **You respond naturally**
-   Talk it through, capture the screen, paste code, or attach a file. Use whichever medium makes the point best.
-
-4. **The agent continues**
-   Submit the feedback with its context attached. RambleDesk saves it and queues continuation in the original agent session, with delivery status and recovery actions when needed.
+Starting with the **0.4.0 release candidates**, RambleDesk connects to coding agents such as Claude Code, Codex CLI, and Gemini CLI through ACP. Use an agent that already works on your machine, follow the prompts to install any required connection component, and choose a project to begin.
 
 <div align="center">
 
 <img src="https://github.com/l1veIn/rambledesk/releases/download/v0.3.2/rambledesk-demo-10s.gif" alt="RambleDesk product demo" width="960" />
 
-<p><em>The Ramble feedback loop in an earlier release: answer with your voice and on-screen context, then send the feedback back.</em></p>
+<p><em>The feedback loop in an earlier release: the agent asks for a review → you speak and capture → submit feedback.</em></p>
 
 </div>
 
-### When it helps
-
-- You know what you want, but turning it into a precise prompt is slow
-- The agent needs product judgment, visual feedback, or confirmation
-- A screenshot, spoken explanation, or file is clearer than another paragraph
-- You want the agent to continue as soon as it gets your feedback
-
-## One workspace for conversation and feedback
-
-- **Agent conversations:** start and resume sessions, read history, and expand compact tool-call rows when you need command details or output.
-- **Agent-provided controls:** choose the models, modes, and reasoning options exposed by the connected agent. Handle forwarded permission requests and supported questions directly in the conversation.
-- **Ramble feedback:** collect voice, screenshots, clipboard content, and files around a request. Saved feedback has a visible delivery state, including recovery after an interrupted continuation.
-- **Speech review:** confirm, cancel, Tidy, or edit recognized speech in the floating window before writing it. Optional automatic Tidy works alongside the existing Tidy threshold settings.
-- **A workspace that fits:** resize or collapse the session and request columns, with widths remembered. Choose light or dark mode, theme colors, interface scaling, fonts, and workspace backgrounds.
-- **Diagnostics you control:** clear recorded diagnostics or turn recording off. Automatic preview of waiting requests is off by default.
-
 ## Quick start
 
-Download and install RambleDesk from [GitHub Releases](https://github.com/l1veIn/rambledesk/releases), then follow the instructions for your platform below.
+Download a **0.4 release candidate** from [GitHub Releases](https://github.com/l1veIn/rambledesk/releases), available for Windows x64 and macOS Apple Silicon. See the [release notes](docs/CHANGELOG.md) for changes.
 
-<details open>
-<summary><strong>Windows and macOS installation notes</strong></summary>
+1. **Connect an agent.** Make sure it works locally, then open **Settings → Agents** and follow the connection prompts. Sign-in and model access come from the agent itself.
+2. **Give it a task.** Start a new session, choose an agent and project folder, and enter your goal.
+3. **Try it, then respond.** When a Ramble request arrives, follow its review steps and record your feedback with voice, screenshots, or text. Submit it to queue continuation in the original agent session; delivery status and recovery actions stay visible in the workbench.
 
-### Windows
+For voice input, download a local transcription model in **Settings → Voice** and allow microphone access. If you want a model to tidy your wording, configure a model service under **Settings → Post-processing**. This is off by default, and your original feedback is preserved.
 
-Run `x64-setup.exe`. Until Authenticode is added, SmartScreen may block the first launch. Confirm the download came from this repository, then select **More info → Run anyway**.
+<details>
+<summary><strong>First-install notes</strong></summary>
 
-### macOS (Apple Silicon)
+**Windows:** Run `x64-setup.exe`. The installer is not yet Authenticode-signed. If SmartScreen blocks it, confirm it came from this repository, then choose **More info → Run anyway**.
 
-Open the DMG and drag RambleDesk into Applications. The build is ad-hoc signed and not notarized. On first launch, right-click the app and select **Open**.
+**macOS:** Open the DMG and drag RambleDesk into Applications. The build is ad-hoc signed and not notarized. On first launch, right-click and choose **Open**. If it is still blocked, go to **System Settings → Privacy & Security**, find RambleDesk in the **Security** section, choose **Open Anyway**, and confirm **Open**.
 
-If macOS still blocks it, open **System Settings → Privacy & Security**, scroll to **Security**, find RambleDesk, click **Open Anyway**, then confirm **Open**.
-
-If macOS says the app is damaged, first confirm the file came from this repository, then run:
+If macOS reports the app as damaged, confirm the download source first, then run:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/RambleDesk.app
@@ -73,49 +49,34 @@ xattr -dr com.apple.quarantine /Applications/RambleDesk.app
 
 </details>
 
-### Start your first session
+## Keep your agent workflow
 
-1. Open **Settings → Agents**. Detect an installed agent, install a supported connection component, or add a custom ACP entry.
-2. Complete sign-in and API-key setup in the agent's own tools, then check its connection in RambleDesk. If setup blocks the connection, RambleDesk shows guidance for returning to the agent and fixing it.
-3. Choose **New session**, select an agent and a **project folder**, and enter your task. A project folder is required before sending; available model and mode choices load from the connection.
-4. When a Ramble request arrives, open it, record your feedback, and submit. Use **View Agent** to return to the conversation and follow the next step.
+The recommended path is to start conversations directly in RambleDesk through **ACP**. Model options, permissions, and session recovery depend on the connected agent. See the [ACP guide](docs/ACP_MANAGED_SESSIONS.md) for setup and recovery.
 
-## Agent connections
-
-**ACP managed sessions are the recommended path.** RambleDesk manages the conversation and feeds your replies back into the same session. Closing a conversation tab keeps the session running; stopping the agent is a separate action.
-
-The built-in catalog includes entries for Claude Code, Codex CLI, Gemini CLI, Grok, OpenCode, Cursor, Pi, DeepSeek ACP, DeepSeek Harness, and more. A catalog entry or successful connection check does not imply identical capabilities: model selection, permission modes, questions, and session recovery depend on the agent and its ACP implementation. DeepSeek ACP and official DeepSeek Harness are separate entries with different capabilities.
-
-See the [managed session guide](docs/ACP_MANAGED_SESSIONS.md) for setup and recovery, and the [agent capability matrix](docs/research/2026-09-07-acp-agent-capabilities.md) for versioned research and verification limits.
-
-**External adapters** offer a lightweight way to keep working in your usual agent app or CLI. Your agent manages its own sessions and conversations; RambleDesk receives feedback requests and returns your replies. Set them up under **Settings → External adapters**. Feedback adapters support Claude Code, Cursor, Codex, Gemini CLI, Grok, OpenCode, Reasonix, Antigravity IDE, plus native adapters for Pi and DeepSeek Harness.
+You can also stay in your usual agent app or CLI and connect the feedback workbench through **Settings → External adapters**. Continuation varies by adapter; generic MCP requires returning to the agent to continue.
 
 ## From source
+
+With Node.js, pnpm, Rust, and your platform's Tauri build dependencies installed:
 
 ```bash
 pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-Requires Node.js, pnpm, Rust, and the platform's Tauri build dependencies. See the [development guide](docs/DEVELOPMENT.md) for the project structure and checks.
-
-## Stop vibe coding. Rambling is all you need.
-
-Sometimes the hard part is not solving the problem. It is turning what is in your head into a prompt.
-
-RambleDesk does not ask you to organize the thought before you say it. You ramble; it makes the feedback useful.
+See the [development guide](docs/DEVELOPMENT.md) for running and checking the project, or the [documentation index](docs/README.md) for product, integration, and architecture guides.
 
 ## Thanks
 
-- [Codeg](https://github.com/xintaofei/codeg), for ACP integration, Agent conversations, settings, and appearance references
-- [Snow Shot](https://github.com/mg-chao/snow-shot), for the screenshot stack
-- [RepoChan](https://github.com/l1veIn/repochan-mono), for brand and character assets
-- [Kotone](https://github.com/l1veIn), for the local speech stack this workbench grew from
+- [Codeg](https://github.com/xintaofei/codeg): ACP integration, Agent conversations, settings, and appearance references
+- [Snow Shot](https://github.com/mg-chao/snow-shot): the screenshot stack
+- [RepoChan](https://github.com/l1veIn/repochan-mono): brand and character assets
+- [Kotone](https://github.com/l1veIn/kotone): the local speech stack this workbench grew from
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). Adapted code and other third-party components retain their respective licenses; see [third-party notices](THIRD_PARTY_NOTICES.md).
 
-Adapted code and other third-party components retain their respective licenses; see [third-party notices](THIRD_PARTY_NOTICES.md).
-
-![RambleDesk](docs/social/ramble-banner-en-1400x700.webp)
+<p align="center">
+  <img src="docs/social/rambelle-chibi-footer.webp" alt="Rambelle hands over a feedback folio" width="800" />
+</p>

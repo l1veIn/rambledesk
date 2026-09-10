@@ -6,6 +6,9 @@
 - 历史基线：冻结的 `v0.3.2`
 - 替代：0.3.3-rc.1/rc.2 的 FeedbackDraftSession / hidden Editor / 自动 Light cleanup 路线
 
+本文记录 0.3.3 重构时的取舍；后续修订见文末。“完全手动 Tidy”是当时收缩复杂度的范围，
+不再用于否定当前由用户选择开启的 AutoTidy。
+
 ## 背景
 
 0.3.2 只有一个可编辑 `RichFeedbackEditor`。程序性输入按明确的 `requestId` 在当前 Editor transaction 和后台草稿写入之间二选一。
@@ -27,7 +30,7 @@
 7. Tidy 与 Cooking 共用后处理设置页，但使用完全独立的 provider、API key、base URL、model、reasoning effort 与 system prompt。
 8. 全局快捷键只发出 Ramble toggle / screen capture 语义事件；原生配置是唯一真源，前端不提供第二条窗口内 fallback。
 
-## 明确不做
+## 当时明确不做
 
 - hidden Editor、per-request Editor、session 持有 editor handle
 - 自动 Tidy、idle timer、stop/settle cleanup
@@ -41,3 +44,16 @@
 后台 Ramble 不再依赖第二份 Editor 存活。切换 request 时先保存当前草稿，再加载目标 Document。截图或附件在切走后仍按原 `requestId` 写入后台 JSON，而不是误写当前 Editor。
 
 旧 RC 的 v1 `document_json` 在读取时惰性升级为 v2；Markdown-only 草稿在下一次成功保存时生成 v2 JSON。`v0.3.2` 不被改写，后续测试版本从 `0.3.3-rc.3` 连续递增。
+
+## 后续修订：作用域与可选整理
+
+- [ADR 005](005-shared-workbench-transport-capabilities.md) 将“整个应用一个 Editor”收窄为
+  **每个 Workbench Client instance 最多一个可编辑 Editor**。跨客户端仍由 Backend Runtime 的
+  revision/CAS 仲裁；没有 hidden Editor 或共享 Editor handle。
+- 当前支持用户显式配置的自动整理：语音确认队列中的新片段可选 Auto Tidy；当前反馈 Editor 的
+  pending 语音段落可按用户设置的数量阈值触发 Tidy。两项默认均关闭，阈值 `0` 表示不自动触发。
+- 这些触发器使用同一整理流程与片段身份；错误、取消或过期结果不重建已删除片段，也不把结果写到
+  已切换的请求。它们不恢复旧 RC 的 per-request Editor、idle/stop/settle cleanup 所有权模型。
+- Tidy 与 Cooking 仍各自配置，Cooking 不覆盖 canonical Draft。当前配置与术语以
+  [TERMINOLOGY.md](../TERMINOLOGY.md) 为准，行为责任地图见
+  [反馈链路示范](../FEEDBACK_FLOW_WALKTHROUGH.md)。

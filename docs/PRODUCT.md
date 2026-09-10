@@ -1,208 +1,57 @@
 # RambleDesk 产品文档
 
-> 状态：v5 当前基线，包含 ACP 体验重设计；实现完成，Windows 自动化与隔离浏览器验收已完成。
-> 术语源：[TERMINOLOGY.md](TERMINOLOGY.md)。本文若与术语表冲突，以术语表为准。
+本文说明当前产品做什么、用户如何使用。产品取舍见[宪章](CONSTITUTION.md)，所有对象名称以[术语表](TERMINOLOGY.md)为准；实现与验收状态分别见[架构](ARCHITECTURE.md)和[质量与待验清单](quality/README.md)。
 
-## 一句话
+## 产品定位
 
-RambleDesk 是本地人类反馈工作台：宿主智能体通过适配器请求人类真实使用和反馈，人类在桌面工作台中 ramble、截图、批注并提交，宿主智能体读取不可变反馈包后继续。
+RambleDesk 是本地人类反馈工作台。它通过 ACP 托管外部 Agent 会话，也接受外部宿主通过反馈适配器创建请求。人类按请求真实体验产品，自由书写、说话和附上证据；提交后，原宿主取得不可变反馈包继续工作。
 
-## 产品判断
+RambleDesk 持有反馈与会话协作的事实，不实现 Agent 的推理和工具执行引擎，不管理源码 checkout。请求、草稿和结果的正确性不依赖某次 tool call、连接或窗口一直存活。
 
-- 编码智能体能写更多代码，但仍需要人类做真实判断、体验和取舍。
-- 人类反馈不应被淹没在聊天上下文里；它需要请求、待办、草稿、附件、提交和不可变结果。
-- RambleDesk 不内置智能体推理与工具执行引擎，不内置 shell multiplexer，不持有源码 checkout 模型；通过 ACP 托管外部 Agent 会话。
-- 外部客户端通过适配器接入：Generic MCP 是通用路径，Pi/dsh 提供原生路径；RambleDesk 托管的 ACP 会话使用应用内置反馈命令。
-- 反馈正确性不依赖某次 tool call 或连接存活；请求与反馈包必须先落盘。
+## 主要旅程：托管 Agent 会话
 
-## 非目标
+1. 打开应用并完成引导：选择资料库位置，按需配置语音、权限、Agent、通知和 Cooking。资料库迁移需保存并重启后继续使用。
+2. 从 Agent 目录选择或配置现有后端，选择 Backend Runtime 所在机器上的工作目录。程序检测、ACP 连接成功和真实模型可用分别呈现，不能互相替代。
+3. 新建会话先进入草稿 Tab，准备连接并显示后端真实返回的配置选项。准备阶段不发送任务；首条真实用户消息被接受并持久化后，原 Tab 成为正式会话。
+4. 在 Agent 页面交互、查看执行过程和回答权限请求。Agent 需要人类体验时，通过应用内置反馈命令创建归属于原会话的请求。
+5. 在同一会话的 Ramble 页面查看背景、动作和附件，在富文本草稿中记录反馈。草稿自动保存；语音与截图按当前客户端设备能力提供。
+6. 人类直接提交，或先使用可选 Cooking 整理再提交。发布保留原稿、正式正文、附件与哈希；提交失败保留可编辑原稿。
+7. 托管 continuation 在原 Agent Session 可接收输入后投递。结果不明时由人类显式处理；“已投递”不等于整个任务完成。取消请求不会自动续接托管 Agent。
 
-MVP 不做：
+一个会话可以处理多个任务和反馈请求。关闭正式会话 Tab 仅关闭视图；停止运行保留历史；删除会话负责停止并清理所属资源。关闭未发送的草稿会清理准备资源。操作与后端支持范围见 [ACP 托管会话](ACP_MANAGED_SESSIONS.md)。
 
-- 内置完整智能体运行时；
-- 管理源码 checkout 或 workspace；
-- 在外部反馈请求中要求源码 checkout 路径；
-- 云同步、账号体系、多人协作；
-- 移动端完整 App；
-- 独立常驻 MCP 网关；
-- 用 CLI resume 探针伪装宿主原生适配器；
-- 通用系统级听写工具；
-- 多阶段智能体编排流水线（仅提供人类可选的单步 Feedback Cooking）。
+## 外部宿主旅程
 
-## CURRENT：ACP 托管会话
+| 接入 | 请求与等待 | 人类完成后 |
+| --- | --- | --- |
+| Generic MCP | `request_feedback` 返回持久 `request_id`，Agent 结束当前 turn；没有 blocking wait tool。 | 人类按手动继续提示返回宿主，Agent 调用 `get_feedback`。不承诺自动恢复原上下文。 |
+| Pi / dsh 原生适配器 | 通过本地 JSON API 创建请求，在同一个工具调用中等待。 | 终态直接返回原工具调用；中断后按原请求恢复，不创建替代请求。 |
 
-用户新建后直接进入草稿 tab，选择设备上的智能体和工作目录并输入任务；预连接取得真实模型/模式等选项，等待时仍可编辑。
-第一条真实消息被接受后沿用原 ACP session 和 tab 转为正式会话、自动命名并进入侧栏。未发送草稿关闭时清理连接；
-正式会话关闭视图只关闭视图。零反馈请求的正式会话仍出现在列表；删除一次完成停止与清理，不要求先归档。
+外部请求不要求源码 checkout 路径，宿主会话关联也不是认证凭据。字段、幂等和恢复合同集中在[反馈协议](PROTOCOL.md)，不在本产品文档重复定义。
 
-内部 ACP 会话同时具有 Ramble 和 Agent 两种平级视图。Ramble 页面负责请求、体验与反馈，Agent 页面负责对话、
-工作过程与最终回答；通过明确入口互相跳转，浏览请求不加载整段 Agent 历史。上下文占用只显示 Agent 实际上报的
-当前 used/size，不将其当作累计消耗或费用。设置以智能体为同一列表对象，自定义入口进入该列表，移除额外启用步骤。
+## 工作台与输入
 
-生产托管反馈统一使用应用内置 `feedback request/get/recover` 命令和会话专用 HTTP JSON 入口，不依赖 MCP 或 Pi 插件能力。
-现有外部反馈适配器继续可用；同一后端可以同时有外部与托管会话，身份不得因工具选择而相互串入。
+工作台包含会话导航、请求列表、Ramble / Agent 视图、设置及新会话草稿。正式会话在没有反馈请求时也能显示；请求列表同时呈现待处理与终态请求。用户可以从任务预览跳转到所属会话，不把每个任务拆成新会话。
 
-当前已实现配置、创建、交互、权限、托管反馈投递、停止、恢复与直接删除。每个会话独占一个 ACP 实例，
-恢复必须保留原 Agent ID；投递结果不明时由用户显式选择，不盲目重放。`delivered` 表示续接轮次结束或
-用户确认已处理，不代表整个任务完成。设置与版本化支持范围见 [使用指南](ACP_MANAGED_SESSIONS.md)。
+Feedback Draft 的格式、Action 归属、语音段与附件引用可恢复；Markdown 用于输出和历史展示。保存冲突必须保留本地正文并显示错误，不能以后台刷新静默覆盖人类编辑。
 
-术语和边界见 [TERMINOLOGY.md](TERMINOLOGY.md)，交付记录见 [ACP 提交地图](ACP_COMMIT_MAP.md)。
-Agent 设置页参考 Codeg 的列表、详情、检查结果分区，取舍见 [Codeg ACP 调研](CODEG_ACP_RESEARCH.md)。
+文字是基础输入。语音可直接写入或先确认，待确认片段可以编辑、整理、丢弃或写入；确认前自动整理默认关闭。当前编辑器还支持手动 Tidy 和按未整理语音段数量触发的 Auto Tidy。Tidy 与提交前的 Cooking 使用独立配置，后者默认关闭且不得覆盖原始反馈证据。
 
-## 核心对象
+Desktop Client 提供原生录音、截图、快捷键和桌面壳能力。可选 Web Access 复用工作台和业务合同，通过独立 loopback 服务访问；停止 Web Access 不停止 Agent 或本地集成服务。浏览器文件选择属于客户端设备，不是服务器工作目录选择。
 
-| 对象 | 含义 |
-| --- | --- |
-| 反馈请求 | 宿主智能体发给人类的一次体验/检查任务，用 `request_id` 标识。 |
-| 反馈包 | 人类提交后生成的不可变证据，包含 markdown、manifest 和附件。 |
-| 宿主 | 宿主智能体运行环境，例如 Pi、Claude Code、Codex、OpenCode、Reasonix、Grok。 |
-| Agent Session / 宿主会话 | 宿主中的持续对话与执行上下文；同一会话可处理多个任务并产生多次请求。 |
-| 适配器 | 宿主接入 RambleDesk 的完整流程。 |
-| 工作台 | 人类处理反馈请求的桌面 UI。 |
-| Ramble | 以 TipTap Feedback Draft 为核心的自由反馈编辑流程；语音、截图和粘贴是可选的平台输入能力。 |
-| Action Group | 反馈草稿中用 Blockquote 表达的 `@Action` 归属。 |
-| Tidy | 当前 Editor 中手动触发的 ASR 段落整理；使用自己独立的模型配置，不是 Cooking。 |
-| Cooking | 提交前可选的大模型编辑步骤；把 Uncooked Feedback 整理为 Cooked Feedback，同时保留原稿。 |
+窄视口通过抽屉、滚动区域和布局调整承载同一工作流。尺寸适配不等于手机设备验收，也不意味着提供手机到桌面的 LAN 访问。具体范围见[响应式工作台](WEB_ACCESS_SUPPORT_MATRIX.md)和 [Web Access 支持矩阵](WEB_ACCESS_SUPPORT_MATRIX.md)。
 
-## MVP 范围
+## 不丢失与恢复
 
-| 模块 | 内容 |
-| --- | --- |
-| 桌面工作台 | Inbox、Request Workspace、Resume Prompt、Settings / Adapters、Tray。 |
-| 通用 MCP 适配器 | MCP `request_feedback`、`get_feedback`、`cancel_feedback`；终态后手动 continuation。 |
-| Pi 原生适配器 | `packages/pi-rambledesk`；通过本地 JSON API request/get/wait/cancel；Pi tool call 内等待。 |
-| 本地服务 | loopback listener、auth、Host/Origin guard、`/api`、`/mcp` route mounting。 |
-| 存储 | 反馈请求、草稿、附件 metadata、宿主会话关联、不可变反馈包。 |
-| continuation | 通用 MCP 手动继续；Pi 无提交后继续；未来原生 continuation 预留。 |
-| 通知 | 系统通知和工作台提示，均为 best-effort side effect。 |
-| 设置 | 通用偏好、首次使用引导、独立的 Tidy/Cooking 后处理配置、待整理文本视觉区分、语音模型、全局快捷键，以及各适配器的安装结果与配置说明。 |
+- 请求在响应之前持久化；相同 `request_id` 的重试返回同一请求，输入冲突明确失败。
+- SQLite 保存结构化草稿；客户端布局快照不保存另一份正文。已保存内容从后端恢复。
+- 浏览器有未保存草稿或保存仍在进行时，通过标准离页确认提示人类；不承诺在卸载时完成异步保存。人类明确离开后，仍可能失去尚未保存的本地修改。
+- 发布结果不可变，原稿和正式结果可追溯；发布中断由后端对账，不生成第二份结果。
+- 请求终态、反馈包发布和 Agent 续接分别表达。允许直接批准的最终总结可以完成请求而不发布反馈包；它不能替代需要详细意见的反馈请求。
+- 断线、重启、权限拒绝或模型服务失败都有可见状态；连接成功不冒充反馈闭环已完成。
 
-## 主流程
+## 非目标与判断标准
 
-### 安装与待命
+当前不提供自有 Agent 推理/工具执行引擎、源码 checkout 管理、云同步、账号与团队权限、完整移动端 App、LAN/TLS Web 服务、独立 Web 部署、通用系统听写或多阶段 Agent 编排。现有 CLI 诊断入口不扩大这些产品承诺。
 
-1. 安装并打开 RambleDesk；全新安装先进入新手引导。
-2. 在引导第一步选择数据位置；若改动位置，保存并重启后才继续下载模型或产生反馈。
-3. 可在引导中安装 Pi 原生适配器（同一 tool call 内自动继续），或按需配置通用 MCP 适配器（终态后手动继续）。
-4. 工作台保持开启，可以托盘待命。
-
-### 通用 MCP 适配器
-
-1. 宿主智能体调用 `request_feedback`，携带 `host_id`、`host_session_id`、`what_happened`、`actions` 和可选 context hint。
-2. RambleDesk 持久化反馈请求并通知人类。
-3. 宿主智能体结束当前 turn。
-4. 人类在工作台中使用、检查、截图、ramble，形成 Uncooked Feedback。
-5. 若启用 Cooking，工作台调用人类配置的模型服务生成 Cooked Feedback；失败时保留原稿且不发布。
-6. 人类提交，RambleDesk 发布同时包含 `feedback.md` 与 `uncooked.md` 的反馈包。
-7. RambleDesk 显示手动 continuation 提示。
-8. 人类回到宿主。
-9. 宿主智能体调用 `get_feedback(request_id)` 读取 `feedback.md` 并继续。
-
-通用 MCP 适配器不承诺自动恢复原宿主上下文。
-
-### Pi 原生适配器
-
-1. Pi 调用 `request_ramble_feedback`。
-2. Pi package 调用 `/api/feedback/request` 创建请求。
-3. Pi package 在同一 tool call 中调用 `/api/feedback/wait`。
-4. 人类在工作台中提交或取消。
-5. wait 返回终态反馈包。
-6. Pi 在原 tool call 流程中继续。
-
-Pi 原生适配器不需要提交后的 continuation。
-
-### 异常与恢复
-
-- 工作台未开启：适配器连接失败，宿主智能体可稍后复用同一 `request_id`。
-- 连接中断：只结束 transport attempt，不取消反馈请求。
-- 重复请求：相同 `request_id` + 相同不可变输入返回同一请求。
-- 输入冲突：相同 `request_id` + 不同不可变输入返回 conflict。
-- 已完成：返回原反馈包。
-- 已取消：返回取消状态，不隐式重新打开。
-
-## 桌面信息架构
-
-```text
-RambleDesk
-├── Inbox
-│   ├── 宿主 / 会话筛选栏
-│   └── 当前范围内的 requests 列表
-├── Request Workspace
-│   ├── 任务说明
-│   ├── actions 清单
-│   ├── ramble 录音/转写
-│   ├── 截图和附件
-│   ├── Uncooked Feedback 草稿
-│   ├── 可选 Cooking
-│   └── Cook 并提交 / 直接提交 / 取消
-├── Resume Prompt
-│   └── 通用 MCP 手动继续提示
-├── Settings / Adapters
-│   ├── 通用 → 再次启用新手引导
-│   ├── 通用 MCP 适配器
-│   ├── Pi 原生适配器
-│   ├── 通知
-│   ├── 外观和语言
-│   ├── 语音/转写
-│   ├── 后处理（Tidy / Cooking 独立配置）
-│   └── 全局快捷键
-└── Tray
-    ├── 待处理角标
-    └── 打开工作台 / 适配器设置 / 退出
-```
-
-UI 只在通用适配器设置内展示 MCP 配置。终态请求与待处理请求按更新时间出现在同一
-requests 列表中，不按终态拆分独立分页。
-
-## 请求字段原则
-
-必需：
-
-- `host_id`
-- `host_session_id`
-- `what_happened`
-- `actions`
-
-可选：
-
-- `request_id`
-- `title`
-- `context_refs`
-- `source_hint`
-
-原则：
-
-- 请求侧清晰、少发挥：`what_happened` + 可执行 `actions[]`。
-- 回复侧自由：人类可以 ramble、截图、批注，最终产物是 markdown + attachments。
-- `host_id` 与 `host_session_id` 只用于关联和 strategy 选择，不用于认证。
-- RambleDesk 不要求源码 checkout 路径。
-
-## 反馈包
-
-默认写入 RambleDesk 应用数据目录：
-
-```text
-<local-data>/RambleDesk/feedback/<timestamp>-<request-id>/
-  feedback.md       # 宿主默认读取的正式结果
-  uncooked.md       # 人类原始反馈证据
-  manifest.json
-  attachments/
-```
-
-规则：
-
-- 每次 completed 提交对应一份不可变反馈包。
-- `uncooked.md` 始终保留；未启用 Cooking 时允许与 `feedback.md` 内容相同。
-- manifest 记录 Cooking 模型标识与两份 Markdown 的 hash，但绝不记录 API Key。
-- 宿主智能体继续前必须读取反馈包中的 `feedback.md`。
-- 返回路径只保证同机、共享文件系统可见。
-- 适配器提供的路径只能作为 context hint 或未来导出目标，不是协议前提。
-
-## 成功指标
-
-- 完整闭环次数：request → human feedback → package → 宿主智能体继续。
-- 从通知到提交的中位时长。
-- `request_id` 重试/恢复成功率。
-- Pi 原生适配器 wait 成功率。
-- 通用 MCP 手动 continuation 成功率。
-- 因工作台未开启导致的失败率。
+产品改进优先看：真实体验闭环是否完成、请求与草稿是否可恢复、反馈能否回到原会话、失败是否清楚可处理，以及人类记录和提交是否顺畅。自动化、特定构建的真实操作和仍未验证的平台分别登记在[质量与待验清单](quality/README.md)，不以版本标题宣称全部完成。

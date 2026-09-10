@@ -1,6 +1,6 @@
 # 隔离反馈验收入口
 
-> CURRENT：Q02 的可重复 HTTP / SQLite 夹具。它提供测试设施，不增加 headless、LAN 或新的产品启动方式。
+> 可重复的 HTTP / SQLite 夹具。它提供测试设施，不增加 headless、LAN 或新的产品启动方式。
 
 ## 证明范围
 
@@ -107,7 +107,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 scripts/feedback-acceptance-test.py
 两个测试覆盖非空 WAL，以及已 checkpoint 后 WAL 不存在和 0 字节两个子例，均实际调用 verify，并
 断言最新文档/revision 正确、DB/WAL 字节及存在状态不变。非空 WAL 用例把 revision 2 只提交到 WAL；
 旧实现实测返回 revision 1，修复后通过。真实 Native 留存库的旧 seed 读数保留在
-[已作废记录](evidence/native-seed-read-invalidated.json)，以 [WAL 正确读取结果](evidence/native-package.json)
+[历史作废记录](https://github.com/l1veIn/rambledesk/blob/b4273fae2eeae964f427dce87c6c64b6edd863a7/docs/quality/evidence/native-seed-read-invalidated.json)，以 [历史正确读取结果](https://github.com/l1veIn/rambledesk/blob/b4273fae2eeae964f427dce87c6c64b6edd863a7/docs/quality/evidence/native-package.json)
 为准：ordinary 与 cancel 目的的请求均实际完成，revision 4，正文与包哈希核对通过。
 
 ## 核对真实浏览器下载
@@ -134,40 +134,4 @@ binary 哈希和构建方式。未跟踪文件不包含在 tracked diff 哈希�
 
 较长 Agent 历史需要另用 managed preview / Agent 夹具，本入口的外部反馈请求不伪造 ACP 历史。
 真实模型、设备、安装升级与手机真机的验收仍依照
-[支持矩阵](../WEB_ACCESS_SUPPORT_MATRIX.md) 和 [全局质量计划](../PROJECT_QUALITY_PLAN.md)。
-
-## 2026-09-09 本地验证
-
-在 macOS Apple Silicon、Python 3.9、workspace locked Rust build 上完成以下检查：
-
-| 检查 | 结果 |
-| --- | --- |
-| example 编译；独立 tempDB 和随机 loopback 启动 | 通过 |
-| 四条 seed 的真实 HTTP / SQLite 读取及初始内容哈希 | 通过 |
-| HTTP 编辑、CAS 冲突、三条提交及幂等重放、一条取消 | 通过 |
-| 包正文/原稿/manifest/两类附件的持久哈希 | 通过 |
-| 正常停止后离线核对；保留构建来源；删除测试凭证 | 通过 |
-| 默认停止清除本实例目录与 launcher 日志 | 通过 |
-| 故意损坏夹具包正文后检查必须失败 | 通过，检测失败后已恢复测试文件 |
-| 指定独立 dist 的 `quality-benchmark.html` | HTTP 200，响应与该 HTML 文件字节一致 |
-
-这些是夹具及 HTTP/持久化入口的验收结果。浏览器、性能、设备与模型的通过状态分别记在对应记录中。
-
-## 2026-09-10：日志清理路径增量
-
-交付卫生检查发现，原 `stop` 直接使用 manifest 的 `logFile` 删除文件，未像 database/stopFile/tokenFile
-一样约束路径。用测试自行创建的临时 victim 和已停止的隔离 manifest，直接执行真实 `stop`：旧实现接受
-普通无关文件、临时根以外的同名日志、日志符号链接，三个拒绝合同均为红灯；没有对工作区、用户文件或
-正在运行的验收实例执行复现。
-
-现在 `load_manifest` 接受 launcher 原本生成的 `rambledesk-feedback-acceptance-<8 位随机名>.log`，
-同时核对临时目录根和文件类型。macOS `/var` 与 `/private/var` 的系统目录别名仍可用；已经清理的日志
-允许不存在，`--keep` 仍保留合法日志。既有无 `logFile` 的离线 manifest 继续适用于只读验证。
-
-```sh
-PYTHONDONTWRITEBYTECODE=1 python3 scripts/feedback-acceptance-test.py
-```
-
-此次定向结果：**7 tests passed**，日志 `/tmp/quality-launcher-log-green.log`。其中 5 个 launcher 测试
-覆盖错误位置/名称、symlink 拒绝、正常清理、keep 和已清理日志；原 2 个 WAL 验证测试保持通过。
-测试不启动服务或模型，不 signal 任何实例，只删除自身生成的临时日志。
+[支持矩阵](../WEB_ACCESS_SUPPORT_MATRIX.md) 和 [当前待验清单](README.md)。

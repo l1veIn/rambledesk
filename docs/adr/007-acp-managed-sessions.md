@@ -1,12 +1,11 @@
 # ADR 007：ACP 托管会话与反馈适配器分工
 
-- 状态：Accepted / CURRENT，体验重设计已实现，Windows 自动化与隔离浏览器验收已完成
+- 状态：Accepted；记录托管会话的架构决策，实际支持与验收按下列现行文档分项陈述
 - 日期：2026-09-04；2026-09-05 修订统一反馈命令、准备生命周期与视图边界
 - 术语源：[TERMINOLOGY.md](../TERMINOLOGY.md)
-- 调研：[Codeg ACP 接入与设置页](../CODEG_ACP_RESEARCH.md)
-- 交付顺序：[ACP 提交地图](../ACP_COMMIT_MAP.md)
-- 本轮实现：[ACP 体验重设计](../ACP_EXPERIENCE_REDESIGN_PLAN.md)
 - 使用与支持范围：[ACP 托管会话](../ACP_MANAGED_SESSIONS.md)
+- 参考实现与复用边界：[CODEG_PORTS.md](../CODEG_PORTS.md)
+- 当前证据与缺口：[质量与待验清单](../quality/README.md)
 
 ## 背景
 
@@ -115,7 +114,7 @@ Agent tab；Ramble 列表的默认打开语义不变。请求与 Task Preview �
 
 ## 参考取舍与验收
 
-2026-09-08：默认目录只保留 `deepseek-acp`，显示 **DeepSeek (DSH)**，新用户优先一键安装应用管理的固定版本。
+2026-09-08 的目录取舍：默认目录只保留 `deepseek-acp`，显示 **DeepSeek (DSH)**，新用户优先一键安装应用管理的固定版本。
 组件直接依赖 DSH 运行包，不要求检测/安装独立 `dsh` 或启动 `dsh web`；认证可复用 `~/.dsh`，不承诺共享所有 Web 配置、
 插件或历史。不扫描 npx 缓存猜测“已安装”。已有 `catalog_id=dsh` 的官方入口保留为自定义配置及其原有会话，不改 ID、
 命令、环境、远端会话绑定；高级设置仍允许显式使用自己的命令和参数。连接检测只证明启动/握手及反馈命令文件可用，
@@ -133,6 +132,11 @@ Codeg 的启动注册表、后端专属配置和设置页信息组织可参考�
 本轮采用小步、可合并的正式迭代：每步一个完整 commit，合同、migration、生成类型和相关测试同行。
 已实现闭环为：创建会话 → 发送任务 → 固定归属的反馈请求 → 人类提交 → 同一 Agent Session 继续 →
 直接删除并清理。多项目并发不串会话、中断恢复不丢反馈由对应存储、协议和应用测试覆盖；外部适配器持续可用。
+
+以上版本与探针结果保留其发生时的范围；当前 Agent 目录、安装方式和使用路径以
+[ACP 指南](../ACP_MANAGED_SESSIONS.md)为准，参考代码取舍见 [CODEG_PORTS.md](../CODEG_PORTS.md)。
+握手、fixture 或旧 MCP 路径的通过不能替代当前真实模型的完整反馈闭环，最新缺口统一见
+[质量与待验清单](../quality/README.md)。
 
 ## 尚未实现的能力
 

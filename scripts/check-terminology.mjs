@@ -3,7 +3,7 @@ import { extname, join, relative } from "node:path";
 
 const root = process.cwd();
 const includedExtensions = new Set([".md", ".json", ".mjs", ".rs", ".svelte", ".toml", ".ts"]);
-const ignoredDirectories = new Set([".git", ".repochan", "dist", "node_modules", "target"]);
+const ignoredDirectories = new Set([".git", ".repochan", ".local-artifacts", "dist", "node_modules", "target"]);
 
 function repositoryPath(path) {
   return relative(root, path).split("\\").join("/");

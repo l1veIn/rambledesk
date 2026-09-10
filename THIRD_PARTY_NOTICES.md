@@ -1,6 +1,6 @@
 # Third-party notices
 
-RambleDesk Windows MVP 使用下列独立第三方组件。这里记录来源与许可证，
+RambleDesk 使用下列独立第三方组件。这里记录来源与许可证，
 不改变各组件自己的许可证条款。
 
 Codeg 的 Agent 管理、Chat 与外观配色模块按固定 commit `3ebdfed1d7c0b71d71880a3d2e0f8e09545feae1`
@@ -28,7 +28,18 @@ Codeg 的 Agent 管理、Chat 与外观配色模块按固定 commit `3ebdfed1d7c
 模型不提交到 RambleDesk Git 仓库。开发机按 `crates/rambledesk-speech/models/`
 中的模型清单获取并校验。
 
-Sherpa online session 的配置与尾帧策略，以及 SenseVoice、FunASR-Nano、
-Silero VAD 的接线，均由 Kotone 的 MIT 实现改写而来。RambleDesk 改为有界
-音频队列，并使用 VAD 持续切分非流式长录音；未复用 Kotone orchestrator。
-详情见 `docs/KOTONE_REUSE.md`。
+## Kotone 语音实现来源
+
+来源：[l1veIn/Kotone](https://github.com/l1veIn/kotone)；MIT，Copyright (c) 2026 l1veIn。
+上游 [LICENSE](https://github.com/l1veIn/kotone/blob/main/LICENSE) 与本仓库随附的
+`LICENSE` 使用同一 MIT 条款及版权署名。第三方语音运行库、VAD 与模型仍分别遵循上表许可证，
+不会因 Kotone 的代码许可证而改变。
+
+Sherpa online session 的配置与停止尾帧策略，以及 SenseVoice、FunASR-Nano、Silero VAD
+的接线，由 Kotone 的实现改写而来。2026-07-29 复用审计中的参考路径包括
+`crates/kotone-stt/src/online_transducer.rs`、`offline_sherpa.rs`、`xasr.rs`、
+`sensevoice.rs` 与 `funasr_nano.rs`；该历史审计未固定来源 commit，不补造移植版本。
+
+RambleDesk 改为有界音频队列和结构化错误，使用 VAD 持续切分非流式长录音，并保留自己的
+Feedback Draft、模型目录与会话生命周期。未复用 Kotone orchestrator、游戏/热键配置、
+文字注入、窗口界面或数据格式，也没有建立指向 Kotone 仓库的本地路径依赖。

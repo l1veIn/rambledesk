@@ -27,7 +27,7 @@ Transport、设备 Capability 和 listener 生命周期若没有独立边界，�
 
 ### 1. 一个 Backend Runtime，多种 Workbench Client
 
-Backend Runtime 是 Request、Feedback Draft、Package、配置以及未来 Session Runtime / Timeline
+Backend Runtime 是 Request、Feedback Draft、Package、配置以及 Agent Session / Timeline
 的唯一业务事实来源。Desktop Client 和 Web Client 复用同一 Workbench Client，并通过
 同一个 Application Transport Interface 调用同一 application Module。
 
@@ -85,8 +85,9 @@ Editor。多个客户端并发写 Draft 时使用 Backend Runtime revision/CAS�
 last-write-wins。submit/cancel 等终态 operation 必须幂等。
 
 关闭 workspace Tab、关闭或刷新浏览器、Transport 断线都只结束 Client view/projection；这些
-动作不得隐式 submit、cancel、archive Request，也不得停止后台 Active Ramble 或未来 Agent /
-Session Runtime。终态与 runtime lifecycle 只能由可审计的显式 application command 改变。
+动作不得隐式 submit、cancel、archive Request，也不得停止由 Runtime 持有的 Agent Session。
+关闭 Client 时本设备媒体资源按 Platform Plugin 生命周期释放，不改变已持久化的 Draft 或 Request 终态。
+终态与 Agent runtime lifecycle 只能由可审计的显式 application command 改变。
 Client 应持续 autosave；关闭 workspace view 继续使用 save gate，但不得依赖不可靠的 browser
 `unload` 完成唯一一次保存或终态 mutation。重连/重开后从 Backend Runtime refetch 事实。
 
@@ -107,8 +108,9 @@ Local Integration Server 服务 Host Adapter；Web Access 服务浏览器。它�
 内同一套 security policy/primitives，但拥有独立 listener handle、route set、credential、auth
 domain 和启停 lifecycle。关闭 Web Access 不得停止 Backend Runtime 或 Local Integration Server。
 
-Web Access 默认关闭，第一阶段固定绑定 `127.0.0.1:37643`。本决策不指定新 crate、Web app 目录或
-headless composition root。
+Web Access 默认关闭，只绑定 IPv4 loopback。初期固定使用 `127.0.0.1:37643`；后续已支持
+1024–65535 的用户端口配置和可选的 Desktop 启动时自动开启。端口更改在下次启动服务时生效，
+占用或启动失败必须可见，不静默切换端口。本决策不指定 headless composition root。
 
 ### 7. Web Access 使用 bootstrap 后的短期 session credential
 
@@ -182,12 +184,8 @@ Web routes 分别设置 body、upload、rate 与 concurrent-connection 上限。
   constant-time compare；request authorization 是 admission lease，已入场 mutation 不会在提交后被
   revoke 改写成 401。
 - Draft CAS、Tauri/HTTP application parity、ready/refetch 与 session revoke/re-auth 已实现。
-
-### Target / Deferred
-
-- LAN/TLS Web Access 与更完整的 credential 管理 UI。
-- Browser local ASR 的真实浏览器矩阵、性能与长会话产品化；Browser screen capture 延后。
-- Native/Browser Capability 继续位于 Application Transport 外，通过 manifest 呈现差异。
+- ACP 托管会话已由 [ADR 007](007-acp-managed-sessions.md) 加入同一 Backend Runtime，Desktop 与
+  Browser 通过共享 application 调用；握手、模型响应和反馈续接仍分别验收。
 
 LAN、TLS 和 headless Backend Runtime 不属于当前支持面；初始非目标中的 autostart、可配置端口已由
 后续实现加入，但不据此宣称真实启动顺序已验。本 ADR 的其他 Deferred 条目不构成已承诺排期。
@@ -211,14 +209,13 @@ Desktop / Browser 的当前证据边界见
 ## Deferred
 
 - LAN Web Access；启用前必须采用 HTTPS/WSS 或受信任 TLS proxy，并重新安全审计；
-- Web Access autostart 与用户可配置端口（初始阶段非目标，后续实现已加入，见 Current）；
 - headless Backend Runtime / composition root；
 - headless 或独立 Web deployment packaging；
 - 更完整的 credential 管理 UI 尚未立项；当前 Desktop 已有 Refresh token / Confirm refresh，轮换时
   统一撤销旧 durable token 与全部 session，停止 Web Access 也统一撤销 session，不将这些已实现操作列为待开发；
 - sequence replay、ring buffer、multiplex protocol；
 - 浏览器本地 sherpa-onnx WASM 的真实 Chrome/Safari 麦克风、PCM、出字、生产模型矩阵与性能优化；
-- ACP、Router 或全局 client state framework。
+- Router 或全局 client state framework。
 
 ## Consequences
 

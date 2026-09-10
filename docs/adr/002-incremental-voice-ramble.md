@@ -2,7 +2,20 @@
 
 - 状态：Accepted
 - 日期：2026-07-31
-- 参考：`docs/KOTONE_REUSE.md` 与本机 Kotone 语音实现审计
+- 参考：[Kotone 语音来源与复用边界](../../THIRD_PARTY_NOTICES.md#kotone-语音实现来源)
+
+## 后续修订与阅读范围
+
+本文保留 Windows 首期增量语音的决策背景。增量 stable event、有界音频队列、语音与编辑并行的
+原则继续有效；下文中的 MVP 模型、帧长、压力测试时长、尚无模型下载 UI 和 macOS 待补等表述是
+当时的范围，不是当前支持表，也不是已完成的设备验收。
+
+- [ADR 004](004-single-editor-structured-draft.md) 将正文真源改为结构化 TipTap `document_json`，
+  Markdown 仅为同一文档的导出、提交和历史投影；下文的“Markdown 正文”按这一修订理解。
+- [ADR 006](006-edge-media-plugins-and-tiptap-ramble-core.md) 将语音能力收进输入设备本地的
+  Speech Recognition Plugin，Desktop 与 Browser 共享事件合同，不共享音频进程或上传识别通道。
+- 当前模型配置、平台能力与真实设备待验项以
+  [Web Access 支持矩阵](../WEB_ACCESS_SUPPORT_MATRIX.md)和[质量清单](../quality/README.md)为准。
 
 ## 上下文
 
@@ -106,7 +119,7 @@ transducer lookahead 中的句尾 token。
 Kotone 仓库使用 MIT 许可证。RambleDesk 仅改写其 online recognizer 配置与停止尾帧
 经验，不建立 sibling path dependency，也不复用其 orchestrator。
 
-## 实施顺序
+## 首期实施顺序（历史）
 
 1. 建立 `rambledesk-speech` crate、有界队列、重采样和事件 contract；
 2. 实现 Windows `cpal` capture 与 Sherpa X-ASR online 50ms 帧输入；
@@ -115,7 +128,7 @@ Kotone 仓库使用 MIT 许可证。RambleDesk 仅改写其 online recognizer �
 5. 跑 5、10、20 分钟中文与中英混合 ramble 评测；
 6. 依据数据调优端点参数、模型与设备选择。
 
-## 验收门槛
+## 首期验收目标（不代表已通过）
 
 - 录音时仍可连续插入/删除图片、编辑正文和自动保存；
 - 音量和 partial 状态应近实时可见，MVP stable 文本目标为自然停顿后约 1 秒；
@@ -137,5 +150,5 @@ Kotone 仓库使用 MIT 许可证。RambleDesk 仅改写其 online recognizer �
 代价：
 
 - 本地模型需要单独的许可证、约 75 MiB 体积和真实语料评测；
-- 4 秒无重叠分块可能切断跨边界词句，属于 MVP 已知限制；
+- 早期 4 秒无重叠分块可能切断跨边界词句，因此主路径改为上述 streaming provider；
 - Windows 音频设备与权限仍需要真实硬件人工签收。

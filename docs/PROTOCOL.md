@@ -1,131 +1,60 @@
 # RambleDesk 反馈协议
 
-> 状态：v2 当前基线。
-> 术语源：[TERMINOLOGY.md](TERMINOLOGY.md)。本文若与术语表冲突，以术语表为准。
-
-本文定义 RambleDesk 的应用协议。规范词：MUST / SHOULD / MAY 分别表示必须、建议和可选。
+本文维护外部反馈适配器的输入、幂等、状态、结果与传输合同。MUST / SHOULD / MAY 分别表示必须、建议和可选；对象定义以[术语表](TERMINOLOGY.md)为准。
 
 ## 协议边界
 
-RambleDesk 提供两个本机 loopback 入口：
+Local Integration Server 的 `/mcp` 提供 Generic MCP tools，`/api/feedback/*` 提供 Pi、dsh 等原生适配器使用的 JSON API。二者映射到 core application contract，core 不持有 JSON/HTTP/MCP 实现。
 
-- `/mcp`：通用 MCP 适配器 transport；
-- `/api`：本地 JSON API，供 Pi 等原生适配器调用。
+本文不枚举 Workbench 的全部 Application Transport commands，也不把托管 Agent 入口当成外部协议。Web Access HTTP/WS 合同见[架构](ARCHITECTURE.md#application-transport-与恢复合同)；生产 ACP 的内置 feedback 命令和运行时归属见 [ACP 指南](ACP_MANAGED_SESSIONS.md)。
 
-`/mcp` 和 `/api` 都挂载在 `rambledesk-local-server` 上。`rambledesk-core` 只持有 application contract，不持有 JSON、HTTP 或 MCP 细节。
+## 请求输入与身份
 
-协议分三层：
+当前 Rust 输入类型为 `RequestFeedbackInput`。MCP tool input 与之对应，生成 schema 和 Rust DTO 是字段类型来源。
 
-| 层 | 职责 |
-| --- | --- |
-| 应用合同 | 请求、状态、幂等性、反馈包、错误码。 |
-| 本地 JSON API | HTTP JSON 传输层，供原生适配器使用。 |
-| 通用 MCP 适配器 | MCP tool surface，供通用宿主使用。 |
+| 字段 | 必需 / 默认 | 规则 |
+| --- | --- | --- |
+| `request_id` | 可选，由服务端生成 | UUID；创建幂等 key，也是持久读取 key。 |
+| `host_id` | 可选，默认 `generic` | 宿主家族；已安装适配器可通过 `RAMBLEDESK_HOST` / 可信 `X-RambleDesk-Host` 注入或覆盖。 |
+| `host_session_id` | 必需 | 同一外部宿主会话的关联 id，不是认证凭据、MCP transport session 或自动恢复证明。 |
+| `title` | 可选 | 工作台展示的短标题。 |
+| `what_happened` | 必需 | 当前变化、背景或需要检查的事项。 |
+| `actions` | 必需 | 1–20 项有序操作清单；每项为 `id` 与 `instruction`。 |
+| `context_refs` | 可选，空列表 | 每项为 `label` 与 `uri`，仅提供可读上下文。 |
+| `attachments` | 可选，空列表 | 人类需要审阅的 Markdown 或图片，内容规则见下文。 |
+| `source_hint` | 可选 | 来源提示，可含路径或标题，不是身份或认证字段。 |
+| `allow_finish` | 可选，默认 `false` | 仅在需要简单批准/拒绝的最终确认请求中启用。 |
+| `final_summary` | `allow_finish=true` 时必需 | 人类可直接批准的确切结束语草稿；不能脱离 `allow_finish` 单独提供。 |
 
-## 身份字段
+需要审阅、提意见、逐段反馈的请求 MUST 省略 `allow_finish`，不能用直接批准取代详细反馈。`actions[].id` MUST 匹配 `^[a-z0-9][a-z0-9_-]{0,63}$`，同一请求内唯一。
 
-| 字段 | 类型 | 必需 | 说明 |
-| --- | --- | --- | --- |
-| `request_id` | UUID string | 可选 | 幂等 key。省略时服务端生成。 |
-| `host_id` | string | 可选 | 宿主家族 id，例如 `pi`、`claude`、`codex`、`opencode`、`grok`、`generic`。自动注册客户端（`RAMBLEDESK_HOST` / `X-RambleDesk-Host`）由服务端注入；未提供时服务端默认 `generic`。 |
-| `host_session_id` | string | 必需 | 宿主会话关联。同一宿主会话可发起多次 request。 |
-| `title` | string | 可选 | 请求在人类工作台中的短标题。 |
-| `what_happened` | string | 必需 | 宿主智能体对当前变化或需要检查事项的说明。 |
-| `actions` | array | 必需 | 人类应执行的操作清单。 |
-| `context_refs` | array | 可选 | 文件、URL、diff、截图等可读上下文引用。 |
-| `source_hint` | string | 可选 | 来源提示，可包含路径或标题；不是身份字段。 |
-
-规则：
-
-- `request_id` 是唯一持久反馈 lookup key。
-- `host_id` 用于 host profile 匹配、展示和 continuation strategy 选择；省略时默认 `generic`，或被可信适配器头覆盖。
-- `host_session_id` 只用于关联同一宿主会话的多次 request；它不是认证凭据，也不证明可自动继续。
-- RambleDesk MUST NOT 要求源码 checkout 路径。
-- 路径如果作为提示出现，只能出现在 `context_refs` 或 `source_hint` 中。
-- `attachments[].path` 是本机绝对路径：服务端读取该文件作为附件内容，不是提示字段。
-
-## 输入结构
-
-### `FeedbackRequestInput`
+外部反馈 MUST NOT 要求源码 checkout 路径。`context_refs` / `source_hint` 里的路径只是提示，不执行或自动信任引用内容；`attachments[].path` 则明确授权服务端读取该本机文件作为附件内容。托管会话的执行目录不属于此身份合同。
 
 ```json
 {
-  "request_id": "optional UUID",
   "host_id": "pi",
-  "host_session_id": "pi-session-019...",
-  "title": "Settings adapter review",
-  "what_happened": "The adapter settings panel was changed.",
-  "actions": [
-    {
-      "id": "open-settings",
-      "instruction": "Open settings and inspect the adapter tab."
-    }
-  ],
-  "context_refs": [
-    {
-      "label": "Terminology",
-      "uri": "file:///absolute/path/docs/TERMINOLOGY.md"
-    }
-  ],
-  "source_hint": "RambleDesk desktop checkout"
+  "host_session_id": "pi-session-example",
+  "title": "Settings review",
+  "what_happened": "The settings sidebar was changed.",
+  "actions": [{ "id": "open-settings", "instruction": "Open settings and inspect the sidebar." }],
+  "context_refs": [{ "label": "Instructions", "uri": "file:///absolute/path/README.md" }],
+  "attachments": [{ "file_name": "shot.png", "path": "/absolute/path/shot.png" }]
 }
 ```
 
-规则：
+### 附件内容
 
-- `request_id`、`title`、`source_hint`、`context_refs`、`attachments`、`allow_finish`、`final_summary` 均可选。
-- `host_id` 可选：自动注册客户端（`RAMBLEDESK_HOST` / `X-RambleDesk-Host`）由服务端注入；未提供时服务端默认 `generic`。
-- `allow_finish`：**只有**当请求只需要人类做简单批准/拒绝、不需要反馈正文时才设 `true`（例如最终交付确认）；此时 `final_summary`（确切的结束语草稿）MUST 同时提供。需要人类审阅、提意见、逐段反馈的请求（校对、检查、提问等）MUST 省略 `allow_finish`，让人类提交详细反馈而非"直接完成"捷径。
-- 未设置 `allow_finish` 时若提供了 `final_summary`，返回 invalid argument（`final_summary` 依赖 `allow_finish`）。
+`RequestAttachmentInput` 的 `file_name` 与以下三种内容之一组成附件；MUST 恰好提供一种：
 
-### `ActionInput`
+| 字段 | 规则 |
+| --- | --- |
+| `markdown` | 短 Markdown 正文；文件名以 `.md` 或 `.markdown` 结尾。 |
+| `contents_base64` | 无现成文件的小图；必须解码为 PNG / JPEG / GIF / WebP。 |
+| `path` | 本机现存普通文件的绝对路径；Markdown 扩展名按文档读取，其余必须是上述图片类型。 |
 
-```json
-{
-  "id": "open-settings",
-  "instruction": "Open settings and inspect the adapter tab."
-}
-```
+已有本地文件 SHOULD 使用 `path`；MCP/工具调用 MUST NOT 为传递本机已有图片而把整图读进 `contents_base64`。附件路径不是源码 checkout 身份，不授予额外目录管理能力。
 
-规则：
-
-- `actions` MUST contain 1-20 items.
-- `actions[].id` MUST match `^[a-z0-9][a-z0-9_-]{0,63}$`.
-- `actions[].id` MUST be unique within one request.
-
-### `ContextRef`
-
-```json
-{
-  "label": "Build instructions",
-  "uri": "file:///absolute/path/README.md"
-}
-```
-
-规则：
-
-- `context_refs` are saved as readable hints.
-- RambleDesk MUST NOT execute or automatically trust referenced content.
-- Local paths in `context_refs` are optional hints, not required identity.
-
-### `RequestAttachmentInput`
-
-```json
-{
-  "file_name": "shot.png",
-  "path": "C:/absolute/path/shot.png"
-}
-```
-
-规则：
-
-- 每个附件 MUST 恰好提供 `markdown`、`contents_base64`、`path` 之一。
-- 本地已有文件 SHOULD 使用 `path`（绝对路径）。服务端读取该文件；MCP/工具调用 MUST NOT 把整图读进 `contents_base64`。
-- `markdown` 仅用于短 Markdown 正文，且 `file_name` MUST 以 `.md` 或 `.markdown` 结尾。
-- `contents_base64` 仅用于手边没有文件的小图，且 MUST 解码为 PNG / JPEG / GIF / WebP。
-- `path` MUST 指向本机已存在的普通文件。`.md` / `.markdown` 按 Markdown 处理，否则 MUST 是上述图片类型。
-
-## 状态模型
+## 状态与幂等
 
 ```text
 waiting → in_progress → completed
@@ -133,298 +62,104 @@ waiting → in_progress → completed
    └───────────┴──────→ cancelled
 ```
 
-`completed` 和 `cancelled` 是终态。只有终态触发 continuation。
+`completed` 与 `cancelled` 为终态。完成、取消、传输断开和 Agent 续接是不同事实：终态释放 waiter，但不代表所有路径都会续接 Agent；托管取消不入 continuation outbox。直接批准可以完成请求而没有反馈包。
 
-## `request_feedback`
+`request_feedback` 创建或重新关联持久请求。服务端按 `request_id` 判断：
 
-创建或重新关联一个反馈请求。该操作 MUST 是幂等的。
+- 不存在：验证输入并持久化，然后返回。
+- 已存在、不可变输入一致：返回原请求，包括原完成或取消结果，不重新打开。
+- 已存在、不可变输入不同：返回 `REQUEST_CONFLICT`。
 
-### 输入
+不可变输入包括规范化后的 `host_id`、`host_session_id`、`title`、`what_happened`、有序 `actions` / `context_refs` / `attachments`、`source_hint`、`allow_finish` 和 `final_summary`。附件比较使用实际读入的文件名、媒体类型、字节数和内容哈希，不以路径字符串替代内容。旧请求的兼容哈希由存储层保留，不允许客户端自行推导或绕过服务端幂等判断。
 
-MCP tool input 与 `FeedbackRequestInput` 等价。通用 MCP 适配器 MAY 根据安装入口或 `X-RambleDesk-Host` 覆盖调用方传入的 `host_id`。
+## 查询、等待与恢复
 
-### 幂等性
+| Operation | 输入 | 行为 |
+| --- | --- | --- |
+| `get_feedback` | `request_id` | 只读取，不改变状态；未知 id 返回 `REQUEST_NOT_FOUND`。 |
+| `wait_feedback` | `request_id` | 等待终态，多个 waiter 由同一结果释放；属于 application/JSON API，不是 Generic MCP tool。 |
+| `recover_feedback` | 可选 `request_id`、可选 `host_id`、必需 `host_session_id` | 从持久请求恢复，校验所属宿主会话；不新建请求。 |
+| `cancel_feedback` | `request_id`、取消原因 `reason` | 显式取消 waiting/in_progress；completed 返回 `REQUEST_ALREADY_COMPLETED`。重复取消返回原状态和原因。 |
 
-服务端按 `request_id` 执行：
+客户端 SHOULD 保留并提供原 `request_id`。恢复时服务端校验 `(host_id, host_session_id)`，可信适配器头可覆盖 host；缺少 request id 时只有恰好一个候选可恢复，多个候选返回 `RECOVERY_AMBIGUOUS`，不得选最新请求代替。
 
-- 不存在：校验输入并创建请求；
-- 已存在且不可变输入一致：返回现有请求；
-- 已存在但不可变输入不同：返回 `REQUEST_CONFLICT`；
-- 已完成：直接返回原完成结果；
-- 已取消：返回取消结果，不隐式重新打开。
+Transport 断开或取消等待只结束本次 wait attempt，不取消持久请求。客户端 MUST NOT 把固定间隔空轮询作为默认等待路径。Generic MCP 持有 id 后直接 `get_feedback`，不需要单独的恢复工具。
 
-不可变输入包括：
+## 返回结果
 
-- `host_id`
-- `host_session_id`
-- `title`
-- `what_happened`
-- ordered `actions`
-- ordered `context_refs`
-- ordered `attachments`（`file_name` 以及恰好一个内容字段：`markdown`、`contents_base64` 或 `path`；幂等比较使用读入后的文件名、媒体类型和内容哈希）
-- `source_hint`
-
-### 结果
+请求、查询和恢复返回请求状态，包含持久 `request_id`、宿主关联、状态和时间；`execution_mode` 描述 poll/wait 形式。已经发布的结果带 `feedback` 路径元数据。本地 JSON API 还可包含读入的 `feedback_package`：
 
 ```json
 {
-  "request_id": "019...",
-  "host_id": "pi",
-  "host_session_id": "pi-session-019...",
-  "status": "waiting",
-  "execution_mode": "poll",
-  "created_at": "2026-08-02T08:00:00Z",
-  "updated_at": "2026-08-02T08:00:00Z",
-  "feedback": null
-}
-```
-
-完成结果：
-
-```json
-{
-  "request_id": "019...",
-  "host_id": "pi",
-  "host_session_id": "pi-session-019...",
-  "status": "completed",
-  "execution_mode": "poll",
-  "created_at": "2026-08-02T08:00:00Z",
-  "updated_at": "2026-08-02T08:12:00Z",
-  "feedback": {
-    "package_uri": "rambledesk://feedback/019...",
-    "directory_path": "/absolute/app-data/feedback/20260802T081200Z-019...",
-    "markdown_path": "/absolute/app-data/feedback/20260802T081200Z-019.../feedback.md",
-    "manifest_path": "/absolute/app-data/feedback/20260802T081200Z-019.../manifest.json"
-  }
-}
-```
-
-## `get_feedback`
-
-读取当前反馈请求状态，不改变状态。
-
-输入：
-
-```json
-{
-  "request_id": "019..."
-}
-```
-
-规则：
-
-- Unknown `request_id` returns `REQUEST_NOT_FOUND`.
-- Terminal result SHOULD include feedback package metadata.
-- 通用 MCP 适配器使用它进行手动 continuation 和断线恢复。
-- 客户端 MUST NOT 用固定间隔空轮询作为默认等待路径。
-
-## `recover_feedback`
-
-从服务端恢复一个持久化请求，不创建替代请求。该 operation 用于 Pi 等维持原生
-等待状态的 adapter，不属于 Generic MCP 工具面；MCP 持有 `request_id` 后直接调用
-`get_feedback` 即可。
-
-输入：
-
-```json
-{
-  "request_id": "019...",
-  "host_id": "pi",
-  "host_session_id": "pi-session-019..."
-}
-```
-
-规则：
-
-- 客户端 SHOULD 提供原始 `request_id`。
-- Server MUST 校验请求属于给定的 `(host_id, host_session_id)`。
-- 适配器 MAY 用可信的 `X-RambleDesk-Host` 覆盖输入 `host_id`。
-- 缺少 `request_id` 时，只有恰好一个候选请求才可恢复。
-- 多个候选 MUST 返回 `RECOVERY_AMBIGUOUS`，不得擅自选择最新请求。
-- 恢复只读取已有生命周期状态，不得创建新请求。
-
-## `wait_feedback`
-
-等待请求进入终态。该 operation 属于 application contract 和本地 JSON API，不属于通用 MCP 工具面。
-
-输入：
-
-```json
-{
-  "request_id": "019..."
-}
-```
-
-规则：
-
-- 多个 waiter MUST 被同一个终态释放。
-- transport-level disconnect 只结束当前 wait attempt。
-- 取消等待不等于取消反馈请求；取消请求必须显式调用 `cancel_feedback`。
-
-## `cancel_feedback`
-
-显式取消未完成请求。
-
-输入：
-
-```json
-{
-  "request_id": "019...",
-  "reason": "The implementation changed; this request is obsolete."
-}
-```
-
-规则：
-
-- `waiting` 和 `in_progress` MAY become `cancelled`.
-- `completed` returns `REQUEST_ALREADY_COMPLETED`.
-- Repeated cancellation returns the original cancelled state and reason.
-- Cancellation is a business terminal state, not a transport disconnect.
-
-## 本地 JSON API
-
-本地 JSON API 属于 `rambledesk-local-server`。
-
-所有 endpoint：
-
-- MUST listen on loopback only.
-- MUST require bearer token.
-- MUST enforce loopback Host header.
-- MUST reject disallowed Origin.
-- MUST use JSON request/response bodies.
-
-### `POST /api/feedback/request`
-
-输入：`FeedbackRequestInput`。
-
-输出：与 `request_feedback` 相同。
-
-If `X-RambleDesk-Host` is present, the server MAY treat it as authoritative `host_id` for that installed adapter path.
-
-### `POST /api/feedback/get`
-
-Input:
-
-```json
-{ "request_id": "019..." }
-```
-
-输出：与 `get_feedback` 相同；终态输出 MAY 包含 `feedback_package`.
-
-### `POST /api/feedback/wait`
-
-Blocking wait endpoint for native adapters.
-
-Input:
-
-```json
-{ "request_id": "019..." }
-```
-
-终态输出：
-
-```json
-{
-  "request_id": "019...",
+  "request_id": "01900000-0000-7000-8000-000000000001",
   "status": "completed",
   "execution_mode": "wait",
   "feedback": {
-    "directory_path": "/absolute/package/path",
-    "markdown_path": "/absolute/package/path/feedback.md",
-    "manifest_path": "/absolute/package/path/manifest.json"
+    "directory_path": "/absolute/library/feedback/example",
+    "markdown_path": "/absolute/library/feedback/example/feedback.md",
+    "manifest_path": "/absolute/library/feedback/example/manifest.json"
   },
   "feedback_package": {
     "manifest": { "schema_version": 1, "attachments": [] },
     "markdown": "# RambleDesk Feedback\n...",
-    "attachment_paths": ["/absolute/package/path/attachments/example.png"]
+    "attachment_paths": []
   }
 }
 ```
 
-### `POST /api/feedback/recover`
+以上是字段示意，不是完整 DTO。已发布结果 SHOULD 带反馈包元数据；没有包的批准结果不能虚构路径。读取已存在包失败应明确返回错误，不能伪装成尚未完成。
 
-输入和业务规则与 `recover_feedback` 相同；终态输出 MAY 包含反馈包。
+## 本地 JSON API
 
-### `POST /api/feedback/approve`
+全部 endpoint MUST 仅监听 loopback、要求 bearer token、校验 loopback Host 并拒绝不允许的 Origin，使用 JSON 请求/响应。listener、token 和安全预算见[架构](ARCHITECTURE.md#安全边界)。
 
-由 RambleDesk 人类操作界面调用。Agent adapter 不得通过 MCP 或 Pi tool 自行批准
-最终总结。
+| Endpoint | 对应合同 |
+| --- | --- |
+| `POST /api/feedback/request` | `request_feedback` / `RequestFeedbackInput` |
+| `POST /api/feedback/get` | `get_feedback` |
+| `POST /api/feedback/wait` | 同一工具调用内的 `wait_feedback` |
+| `POST /api/feedback/recover` | `recover_feedback` |
+| `POST /api/feedback/cancel` | `cancel_feedback` |
+| `POST /api/feedback/approve` | 人类操作界面的最终总结批准；Agent adapter 不得通过 MCP 或原生工具自行批准。 |
 
-### `POST /api/feedback/cancel`
+原生等待/恢复返回已有终态结果及可用的包内容，业务规则与上文相同。`X-RambleDesk-Host` 只有在受信任的适配器入口上下文中才作为 host 覆盖来源；它本身不是认证凭据。
 
-输入和业务规则与 `cancel_feedback` 相同。
+## 适配器等待方式
 
-## Generic MCP Adapter
+Generic MCP 仅暴露 `request_feedback`、`get_feedback`、`cancel_feedback`：请求返回后 Agent 结束当前 turn，人类完成后按手动继续提示返回宿主，Agent 读取原 request id。MCP 断线后仍读取同一请求；没有 blocking wait tool，也不承诺自动恢复原可见上下文。
 
-工具面：
+宿主如有原生交互确认工具，可以用它等人类返回并确认，然后调用 `get_feedback`。等待发生在宿主通道，受宿主自身能力约束，不增加 RambleDesk 的 MCP 工具；手动继续提示仍保留。
 
-- `request_feedback`
-- `get_feedback`
-- `cancel_feedback`
-
-通用 MCP 适配器没有 blocking wait tool。目标流程是：
-
-1. 宿主智能体调用 `request_feedback`。
-2. 宿主智能体结束当前 turn。
-3. 人类在 RambleDesk 中提交或取消。
-4. RambleDesk 显示手动 continuation 提示。
-5. 人类返回宿主。
-6. 宿主智能体调用 `get_feedback(request_id)`；发生 MCP transport 断线后仍调用
-   同一个 `get_feedback(request_id)`，不需要单独的恢复工具。
-
-可选优化（宿主交互确认工具）：若宿主提供原生交互确认工具（如 `ask`、
-`ask_choice`），宿主智能体可以在步骤 2 用它替代"直接结束 turn"：在工具调用内
-阻塞等待人类完成反馈，人类返回宿主后点击确认，宿主智能体随即调用
-`get_feedback(request_id)`。该等待发生在宿主原生通道，不受 MCP call timeout
-约束，也不消耗模型 token；headless 宿主或不支持交互确认的宿主继续使用默认
-流程。手动 continuation 提示始终保留为兜底。
-
-## Pi 原生适配器
-
-Pi package 流程：
-
-1. Pi 调用 `request_ramble_feedback`。
-2. Pi package 调用 `/api/feedback/request`。
-3. Pi package 在同一个 tool call 内调用 `/api/feedback/wait`。
-4. 人类在 RambleDesk 中提交或取消。
-5. Wait 返回终态反馈包给 Pi。
-
-Pi 原生适配器不需要提交后的 continuation。
+Pi / dsh 原生适配器经 JSON API 创建请求，并在原工具调用中 wait；中断后通过原 request id 恢复或读取。它们不需要提交后的 continuation，不把一次等待失败当作创建新请求的理由。
 
 ## 反馈包
 
-完成的反馈包包含：
-
 ```text
-feedback/<timestamp>-<request-id>/
-├── feedback.md       # canonical Cooked Feedback；未启用 Cooking 时等同原稿
-├── uncooked.md       # 人类直接产生的 Uncooked Feedback
+<library>/feedback/<timestamp>-<request-id>/
+├── feedback.md       # 宿主默认读取的正式结果
+├── uncooked.md       # 人类原始反馈证据
 ├── manifest.json
 └── attachments/
 ```
 
-规则：
-
-- 反馈包发布 MUST 不可变。
-- `feedback.md` 是适配器和宿主默认读取的正式结果。
-- `uncooked.md` MUST 保留，不得被 Cooking 覆盖。
-- manifest MUST 记录两份 Markdown 的 SHA-256；启用 Cooking 时记录 provider/model 标识。
-- API Key、Authorization header 和模型服务响应 metadata MUST NOT 写入反馈包。
-- 反馈包路径 SHOULD 默认位于 RambleDesk 应用数据目录。
-- 适配器 MAY 提供路径提示，但协议正确性 MUST NOT 依赖源码 checkout 根路径。
-- manifest MUST 包含足够 metadata，用于校验附件 hash 并关联 `request_id`。
+- 发布后的包 MUST 不可变；manifest 关联 `request_id` 并包含附件哈希等校验信息。
+- `feedback.md` 是正式结果；`uncooked.md` MUST 保留且不得被 Cooking 覆盖，关闭 Cooking 时二者可相同。
+- manifest MUST 记录两份 Markdown 的 SHA-256；Cooking 使用 provider/model 标识，不保存 API Key、Authorization header 或模型服务响应 metadata。
+- 包默认位于配置的 RambleDesk library，路径只保证同机、共享文件系统可见。适配器路径 hint 不成为协议前提。
+- 发布失败不能形成可见的半成品；已发布但数据库尚未登记的包按原请求对账，不能重复发布。
 
 ## 错误码
 
-稳定错误码：
-
 | 错误码 | 含义 |
 | --- | --- |
-| `INVALID_ARGUMENT` | Invalid input shape, string limit, UUID, or action id. |
-| `REQUEST_NOT_FOUND` | Unknown `request_id`. |
-| `REQUEST_CONFLICT` | Same `request_id`, different immutable input. |
-| `REQUEST_ALREADY_COMPLETED` | Attempted to cancel or mutate completed request. |
-| `REQUEST_TERMINAL` | Attempted to mutate terminal request. |
-| `DRAFT_CONFLICT` | Stale draft revision. |
-| `ATTACHMENT_LIMIT` | Attachment count or bytes exceeded. |
-| `FEEDBACK_PACKAGE_READ_FAILURE` | Terminal package exists but cannot be read. |
+| `INVALID_ARGUMENT` | 输入形状、文本限制、UUID 或 Action id 不合法。 |
+| `REQUEST_NOT_FOUND` | 未知 request id。 |
+| `REQUEST_CONFLICT` | 同一 request id 的不可变输入不同。 |
+| `REQUEST_ALREADY_COMPLETED` | 尝试取消或修改已完成请求。 |
+| `REQUEST_TERMINAL` | 尝试修改终态请求。 |
+| `DRAFT_CONFLICT` | 草稿 revision 过期。 |
+| `ATTACHMENT_LIMIT` | 附件数量或字节数超限。 |
+| `RECOVERY_AMBIGUOUS` | 无明确 request id 且存在多个恢复候选。 |
+| `FEEDBACK_PACKAGE_READ_FAILURE` | 终态包存在但无法读取。 |
+
+详细 DTO 与映射以 core/transport 的生成合同为准。新增字段或错误映射须同步合同与[协议检查](DEVELOPMENT.md#前后端合同)，不能只改文档示例。

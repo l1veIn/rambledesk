@@ -1,84 +1,94 @@
 # RambleDesk ACP client
 
-The ACP implementation depends on `rambledesk-core`, not the database, desktop or
-feedback server. It uses the official Rust SDK 2.0.0 with stable ACP protocol v1.
-No experimental protocol-v2 features are enabled.
+This crate depends on `rambledesk-core`, not SQLite, Tauri or the feedback server.
+It uses the official Rust SDK 2.0.0 and ACP protocol v1, with the SDK's
+`unstable_elicitation` feature enabled for form interactions. It is the ACP
+integration, not a general-purpose agent runtime or plugin framework.
 
 ## Application boundary
 
-Production callers construct `AcpSessionDriver` and use the application-owned
-`AgentSessionDriver` / `AgentSessionConnection` interfaces from core. SDK request
-types and notifications are not part of that interface. Low-level SDK access is
-explicitly under `rambledesk_acp::probe`, for diagnostic examples and protocol
-tests; application integration should not use it.
+Production code constructs `AcpSessionDriver` through core's
+`AgentSessionDriver` / `AgentSessionConnection` contracts. SDK requests and
+notifications stay inside ACP. Raw access under `rambledesk_acp::probe` is for
+protocol tests and diagnostic examples, not application integration. Discovery,
+installation and feedback workflow injection remain separate internal concerns.
 
-Session configuration exposes only an `options` collection and a single
-`{config_id, value}` change. IDs are opaque session-local handles. Standard
-config options, legacy mode/model catalogs and private metadata are normalized
-inside ACP, which retains the original setter route. Neither the UI nor core
-chooses a protocol method. Agent-confirmed values and runtime updates remain
-authoritative; category names do not imply permission or YOLO semantics.
+Session configuration exposes `SessionConfiguration.options` and one
+`{config_id, value}` change. IDs are opaque, connection-local handles: an option
+can disappear and return on the same connection without changing its handle,
+but reconnecting requires fresh negotiation. ACP normalizes standard options,
+legacy model/mode catalogs and private metadata while retaining the original
+setter route. Core and UI do not select wire methods or infer permission/YOLO
+semantics from categories. Agent-confirmed values and runtime updates remain
+authoritative; catalog labels and cached checks are not capability guarantees.
 
-Pending user work uses `SessionInteraction`: `permission`, `question` or `plan`.
-Snapshots expose `interactions`, runtime state is `waiting_input`, and callers
-submit a matching tagged `SessionInteractionResponse` through
-`respondManagedInteraction`. A mismatched response does not consume the request.
-These are live application contracts; stored session IDs, history and database
-formats are unchanged. A frontend and backend from this development branch must
-be upgraded together.
+Pending input is `SessionInteraction`: `permission`, `question` or `plan`.
+Snapshots expose `interactions`, runtime activity becomes `waiting_input`, and
+`respondManagedInteraction` takes a matching tagged response. Wrong types or
+invalid answers do not consume the pending request. Frontend and backend must
+use the same application contract; session identity and history are separate
+from these live interaction/configuration handles.
 
-Private interaction modules own their RPC methods, parsing, response envelopes
-and cancellation semantics. Shared code handles bounded form schemas, attribution,
-pending requests and lifecycle cleanup. Adding a protocol must not introduce
-provider checks into the core session state machine or UI components.
+## Interaction support
 
-This crate remains RambleDesk's ACP integration: installation discovery and
-managed-feedback injection are separate internal responsibilities. It does not
-attempt to replace the official SDK with a general-purpose plugin framework.
+Managed sessions advertise ACP form elicitation and support session-scoped
+`elicitation/create`, Grok `_x.ai/ask_user_question` / `_x.ai/exit_plan_mode`, and
+Cursor `cursor/ask_question` / `cursor/create_plan`. Replies return on the
+original JSON-RPC request, never as chat text or a permission option ID. Cursor
+requests use the owning connection's session binding because their parameters
+omit a session ID.
 
-## Probe and verification
+Forms support flat strings, booleans, numbers and choice arrays. Required fields,
+original choice values, types, bounds and uniqueness are validated before a
+reply is consumed. Unsupported constraints, including patterns and formats,
+keep a visible decline/cancel path but disable acceptance. URL and pre-session
+authentication elicitation are outside this managed-session surface. Grok's
+keep-planning reply cannot carry revision notes: nonempty feedback on a
+non-approval response is rejected, and notes belong in the next message.
+Plan approval always requires an explicit decision.
 
-Run the probe against an installed agent:
+Private modules own method names, parsing, response envelopes and cancellation
+semantics; shared code owns schemas, attribution and pending-request cleanup.
+Cancellation, disconnect, turn completion and late requests release parked
+replies. New provider support must not add provider branches to core or UI.
+No ACP client filesystem or terminal capability is advertised; managed feedback
+uses the Agent's own command execution through the private IPC workflow.
 
-```powershell
-cargo run -p rambledesk-acp --example smoke -- C:/temp/launch.json "Reply with OK"
+## Probes and evidence
+
+From the repository root, `smoke` accepts a launch file, an optional prompt, and
+an optional existing remote session ID after the prompt:
+
+```sh
+cargo run -p rambledesk-acp --example smoke -- /absolute/path/launch.json
+cargo run -p rambledesk-acp --example smoke -- /absolute/path/launch.json "Reply with OK" "existing-remote-id"
 ```
-
-The JSON file contains separate command/arguments, an absolute working directory,
-optional environment overrides, and optional ACP `mcp_servers` declarations:
 
 ```json
-{"command":"deepseek-acp","args":[],"cwd":"C:/projects/example"}
+{"command":"deepseek-acp","args":[],"cwd":"/absolute/project/path"}
 ```
 
-A third argument loads/resumes an existing remote session ID. The probe prints
-negotiated identity/capabilities, assistant text and the stop reason; it does not print raw protocol messages,
-credentials or stderr. Permissions are declined by the probe. No client filesystem
-or terminal capability is advertised. Supported `session/close` is awaited before
-EOF so the agent can flush its conversation. A bounded shutdown wait is followed
-by child termination/reaping if needed.
+Use the installed bridge's actual command and ACP arguments. `cwd` is required
+here, unlike `managed_loop`. Optional `env` and `mcp_servers` are low-level launch
+inputs; keep credentials in existing Agent authentication or inherited
+configuration, not in the JSON. Without a prompt, smoke still launches the Agent
+and creates/restores a session; it does not verify model output. A prompt invokes
+the model and may incur charges, so authorize the run explicitly.
 
-`cargo test -p rambledesk-acp` uses a local Node fixture (no network or API key) to
-verify stdio initialization, message updates, explicit permission cancellation,
-prompt cancellation, original-ID load/resume, unsupported recovery and launch validation.
-Real backend evidence is recorded in `docs/ACP_BACKEND_PROBE.md` in the repository.
+The example prints negotiated session information, assistant text and stop
+reason. It declines permissions and provides no approval UI. Shutdown awaits
+supported `session/close`, then EOF, with bounded termination/reaping if needed.
+It does not exercise the full Ramble feedback application.
 
-Managed sessions advertise ACP form elicitation and route session-scoped
-`elicitation/create`, Grok's `_x.ai/ask_user_question` / `_x.ai/exit_plan_mode`,
-and Cursor's `cursor/ask_question` / `cursor/create_plan` through the same pending
-request lifecycle as permissions. Answers return on the original JSON-RPC request;
-they never become approval option IDs or ordinary chat messages. Cursor extensions
-use the owning connection's session binding because their parameters omit a session ID.
+`cargo test -p rambledesk-acp` uses local Node fixtures without network or API
+keys. Tests cover protocol traffic, configuration handles, recovery and pending
+interaction lifecycles; `tests/user_input.rs` checks provider envelopes, invalid
+and duplicate replies, session isolation and unsupported forms. Fixture success
+is not real backend or model certification.
 
-Supported forms contain flat string, boolean, numeric, or choice-array fields.
-The backend validates required fields, original choice values, types, bounds and
-uniqueness before consuming a reply. Unknown constraints, including string patterns
-and formats, keep a visible card with decline/cancel available; acceptance stays
-disabled. URL and pre-session authentication elicitation are outside this managed
-session surface. Cancellation, disconnect and late requests release parked replies.
-
-Grok's keep-planning reply ignores feedback. The plan card explains that revision
-notes belong in the next message; nonempty feedback on a non-approval answer is
-rejected rather than silently lost. Plan approvals require an explicit decision.
-`tests/user_input.rs` verifies the actual provider response envelopes, invalid and
-duplicate answers, session isolation, unsupported forms and late cancellation.
+Use the [managed backend probe](../../docs/ACP_BACKEND_PROBE.md) for real
+feedback, two-session isolation and original-ID recovery. Current results and
+missing acceptance live in the [quality checklist](../../docs/quality/README.md).
+See the [managed-session guide](../../docs/ACP_MANAGED_SESSIONS.md) for user
+behavior and [CODEG_PORTS.md](../../docs/CODEG_PORTS.md) for source attribution
+and adopted boundaries.

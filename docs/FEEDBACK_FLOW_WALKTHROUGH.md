@@ -89,7 +89,7 @@ rc3 原来的 `$: feedbackResult = workspaceSession.feedbackResult()` 隐藏了 
 核对请求、revision 和结构化文档后，原地协调相同文档，保留当前 Editor、光标和撤销历史；读取期间新增
 的本地输入也不会被保存基线覆盖。真正改变的远端文档继续走原加载流程。
 [真实 App 事件流测试](../apps/desktop/src/App.editorRefresh.test.ts) 验证自动保存后仍能点击 Undo/Redo，
-红绿证据和迟到响应边界见 [导航验收](quality/NAVIGATION_ACCEPTANCE.md)。
+红绿证据和迟到响应边界见[质量清单](quality/README.md)。
 
 **可以欣赏的地方：调用方只需等待一次，复杂的并发顺序集中在一个能独立验证的位置。**
 
@@ -128,7 +128,7 @@ Publisher、Cooking 预览和批准/取消都调用这一动作。App 无需分�
 `exitRamble` 的独立 `exitFlight` 表达“结束并排空”这个意图。若录音仍在启动，先等 start，然后真正停止，
 不会把“启动完成”当成“退出完成”。准备期间新接纳的 clipboard import 也进入同一次排空；它的失败
 必须返回 failed，不能因它比最初的检查晚到就被遗漏。实现与先红后绿证据见
-[输入验收](quality/INPUT_ACCEPTANCE.md) 和 [终态验收](quality/TERMINAL_ACCEPTANCE.md)。
+[质量清单](quality/README.md)与[反馈验收方法](quality/FEEDBACK_ACCEPTANCE.md)。
 
 Cooking 的接口是 `cookSubmission(savedSubmission) → CookingPreview`。
 它返回结果和来源，不回调 Publisher。Publisher 负责发布和错误收尾。
@@ -160,28 +160,9 @@ Cooking 的接口是 `cookSubmission(savedSubmission) → CookingPreview`。
 真实组件测试曾直接发现“后台已保存，但保存标签还停留在旧版本”的问题。
 这说明测试正在验证用户能观察到的行为，能跨过各模块独立测试之间的空隙。
 
-## 首条示范阶段的验证记录
+## 验证边界
 
-以下为 2026-09-09 首条反馈示范完成时的历史快照，测试数量不代表后续全局改动的最终门禁：
-
-- `pnpm test`：191 个文件、1231 条测试通过。
-- `pnpm check`：0 errors、0 warnings。
-- `pnpm build:web`、前端模块大小检查、术语与核心边界检查、`git diff --check` 通过。
-  构建仍提示现有主 bundle 超过 500 kB；本次没有处理首包体积。
-- 使用最新前端构建、实际 HTTP Application Server 与独立 SQLite 数据库进行浏览器操作。
-  测试宿主链接本机现有的 workspace Rust 构建产物，未接入用户数据库或真实 Agent。
-- 普通宽度下输入正文并改成二级标题：保存为 r1，刷新后结构与版本恢复；
-  提交后即时出现反馈包，编辑器只读，下载成功。
-- 390 × 844 视口下，另一份草稿编辑后直接点击提交：保存为 r1 后成功发布，反馈包可见且可下载。
-- 两份下载文件均核对了 SQLite 草稿投影、包内 Markdown、来源 revision、正文与 manifest 的 SHA-256。
-  发布端既有的末尾换行处理纳入了内容比较。
-
-当时的窄屏检查使用浏览器视口，没有覆盖手机真机键盘与安全区；当时没有调用真实 Cooking 模型。
-
-后续全局整理已补充一次真实 Cooking 调用：[模型与发布证据](quality/evidence/cooking-live.json)
-记录 `deepseek/deepseek-v4-flash` 的真实响应、原稿保留、变体来源 revision 与 HTTP/SQLite 发布内容一致。
-它通过真实 Cooking Controller 与 Publisher，在 Node 宿主执行；没有据此声称浏览器 Cooking 点击流程、
-真实麦克风或原生窗口验收通过。真实 Agent 完整反馈闭环仍未通过，见 [Agent 验收](quality/AGENT_ACCEPTANCE.md)。
+这条示范已使用真实 App/TipTap 测试，以及隔离 HTTP/SQLite 夹具中的编辑、保存、刷新、提交与包哈希核对验证。浏览器窄视口不等于手机真机，协议夹具不等于真实 Agent。各阶段结果和剩余验收统一见[质量清单](quality/README.md)，不在教程中维护重复的测试数量和总评分。
 
 ## 如何评价这次整理
 
@@ -192,7 +173,5 @@ Cooking 的接口是 `cookSubmission(savedSubmission) → CookingPreview`。
 - 改变内部实现后，描述用户行为的测试是否仍然有意义？
 
 这条链的示范价值在这些问题上。后续语音状态与导航 owner 已按现有边界收拢，阅读入口与证据见
-[质量阅读地图](quality/QUALITY_WALKTHROUGH.md)。Windows、手机真机及用户交互确认仍按总计划待验，
+[质量阅读地图](quality/QUALITY_WALKTHROUGH.md)。Windows、手机真机及用户交互确认仍按质量清单待验，
 这份示范不代表整个前端已经达到满分，也不代表全计划完成。
-
-全局目标、阶段里程碑、建议 commit 顺序与完成标准见 [全局质量收敛计划](PROJECT_QUALITY_PLAN.md)。

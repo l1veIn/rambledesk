@@ -3,7 +3,7 @@
 - 状态：Accepted
 - 日期：2026-09-01
 - 术语源：[TERMINOLOGY.md](../TERMINOLOGY.md)
-- 调研：[BROWSER_LOCAL_ASR_AND_PLATFORM_PLUGINS_RESEARCH.md](../BROWSER_LOCAL_ASR_AND_PLATFORM_PLUGINS_RESEARCH.md)
+- 当前支持与待验：[Web Access 支持矩阵](../WEB_ACCESS_SUPPORT_MATRIX.md)
 
 ## Decision
 
@@ -20,6 +20,23 @@ Desktop 保留 `rambledesk-speech` 内部的 Audio Source / Speech Engine seam�
 `getUserMedia`、AudioWorklet、dedicated Worker 与 sherpa-onnx WebAssembly；Mobile 未来使用各自
 原生音频 API 与 sherpa-onnx binding。Platform Plugin 首期表示静态装配的 typed 深 Module，不承诺
 任意第三方动态插件系统。
+
+## Browser 实现取舍
+
+- AudioWorklet 只负责实时安全的采集、单声道下混和有界 PCM 传递；识别在 dedicated Worker 内执行。
+  读取真实采样率，使用保留跨块状态的流式重采样，不能假定设备本身以模型所需的 16 kHz 采集。
+- Worker 持有 WASM、模型、recognizer 与识别生命周期。stop 处理尾帧并产出最终 stable event；cancel
+  释放本地设备与 Worker，不把剩余音频提交给 Backend Runtime。
+- 当前 pilot 使用 sherpa-onnx 单线程 SIMD 路径和 Zipformer Small streaming CTC。模型与 runtime
+  分开发行、固定版本和哈希，模型经用户显式安装进入版本化 Cache Storage；模型文件大小不等于峰值内存。
+- Wasm、glue、Worker 与 AudioWorklet 使用同源静态资源；保持 `script-src 'self' 'wasm-unsafe-eval'`
+  与 `worker-src 'self'`，`.wasm` 使用 `application/wasm`。不为动态装载示例引入宽泛 JS eval。
+  当前不启用 Wasm threads；若未来引入共享内存，必须重新评估 COOP/COEP 和真实浏览器条件。
+- 不支持、权限拒绝、模型损坏或资源不足时保留文字与附件路径，不静默回退为服务器上传识别。
+  模型缓存的配额、驱逐、离线重启，以及每个模型的许可证与 notice 都需独立验证。
+
+冷暖启动、真实 PCM/flush、长会话和浏览器安全策略的验收集中维护在
+[支持矩阵](../WEB_ACCESS_SUPPORT_MATRIX.md#browser-local-asr-必验项)，不在历史研究中另建一份通过状态。
 
 ## Current implementation status
 

@@ -1,8 +1,6 @@
 # 全局职责与质量阅读地图
 
-> CURRENT：2026-09-10，阅读对象为 `v0.4.0-rc.3` / `b7ab9d088aa2a67322e8ee9b1c697efe9075f1ce`
-> 之上的本轮实现，代码已提交为 `27b50f1` 与 `5d57526`。本文件解释实际代码如何分工；阶段状态、commit 与结束条件由
-> [全局质量计划](../PROJECT_QUALITY_PLAN.md) 的实施账本负责，不在这里另建一份账本。
+> 本文解释现有代码如何分工；阶段结果与结束条件统一见[质量清单](README.md)。
 
 RambleDesk 的职责是把人的结构化反馈、原始输入与交付结果可靠地接到外部或托管 Agent 的工作流。
 桌面和 Web 共享业务合同，设备能力由各平台提供；RambleDesk 不成为另一个 Agent runtime。
@@ -26,7 +24,7 @@ RambleDesk 的职责是把人的结构化反馈、原始输入与交付结果可
 | 后端事实、发布与恢复 | [Feedback Application](../../crates/rambledesk-core/src/feedback.rs)、[Session Application](../../crates/rambledesk-core/src/sessions/application.rs)、[SQLite](../../crates/rambledesk-storage/src/sqlite)、[Recovery](../../crates/rambledesk-core/src/sessions/recovery_runtime.rs)、[Delivery](../../crates/rambledesk-core/src/sessions/delivery.rs) | 结构化草稿、终态、包与接纳的持久事实；会话恢复、续接投递和删除由后端仲裁 |
 | 设置与响应式界面 | [Settings](../../apps/desktop/src/lib/settings/SettingsPanel.svelte)、[Section 能力规则](../../apps/desktop/src/lib/workspace/settingsCapabilitySections.ts)、[Shell](../../apps/desktop/src/lib/workbench/WorkbenchShell.svelte)、[Tabs](../../apps/desktop/src/lib/workspace/WorkspaceTabStrip.svelte) | 设置定位/标题复用同一元数据；Shell 管呈现与焦点，导航 owner 管接受目标，不让布局组件保存业务草稿 |
 
-## 五处值得保留的设计
+## 六处值得保留的设计
 
 ### 1. 状态入口让正确读取成为常规用法
 
@@ -52,7 +50,7 @@ App 只请求打开或关闭，单 Editor 的保存/卸载/加载顺序继续由
 保存广播回到当前 Client 时，导航 owner 先核对 request、revision 和结构化文档。相同文档只协调服务端
 事实，保留当前 Editor、selection 与 Undo 历史；读取期间新输入仍留在本地。确实改变的远端文档才走
 原有加载流程。[真实 App 事件流测试](../../apps/desktop/src/App.editorRefresh.test.ts) 覆盖保存后 Undo/Redo，
-补上无事件预览 transport 无法证明的窗口，详见 [导航验收](NAVIGATION_ACCEPTANCE.md)。
+补上无事件预览 transport 无法证明的窗口，详见 [质量清单](README.md)。
 
 `prepareFeedback` 则承诺结束录音并完成已接纳的输入写入。独立 exit flight 先等正在启动的麦克风，再停止它，
 同时排空期间新接受的 clipboard import。返回值直接区分 ready、待审语音和失败。Publisher、Cooking 预览、
@@ -97,8 +95,8 @@ Tiptap 声明中的 callable singleton 与实际所用实例方法之间的差�
 
 同一 `managed-history-v3-output-control`、`final-json` 输出模式、1200 × 820 Chrome 场景的 30 轮结果中，
 进入历史的 P95 从 567.6 ms 降至 117.9 ms，HTTP 分页后可见的 P95 从 546.5 ms 降至 83.2 ms。
-原始结果分别见 [修复前](evidence/managed-history-final-output.json) 和
-[修复后](evidence/managed-history-parser-fixed.json)。这是该场景的实测延迟改善；长期 heap 和资源释放
+原始结果分别见[修复前](https://github.com/l1veIn/rambledesk/blob/b4273fae2eeae964f427dce87c6c64b6edd863a7/docs/quality/evidence/managed-history-final-output.json)和
+[修复后](https://github.com/l1veIn/rambledesk/blob/b4273fae2eeae964f427dce87c6c64b6edd863a7/docs/quality/evidence/managed-history-parser-fixed.json)。这是该场景的实测延迟改善；长期 heap 和资源释放
 仍按 [性能验收](PERFORMANCE_ACCEPTANCE.md) 的独立观察判定。
 
 ### 6. 等待也需要明确的所有者
@@ -115,17 +113,6 @@ Tiptap 声明中的 callable singleton 与实际所用实例方法之间的差�
 这与最初反馈链的优雅之处相同：每一个“尚未完成”都有一个能结束它的所有者。
 对象数量更少只是结果；真正的价值是，读者能说清谁在等什么，以及由谁兑现或拒绝这次等待。
 
-## 证据和当前边界
+## 验证边界
 
-| 结论范围 | 当前记录 |
-| --- | --- |
-| 输入、保存、终态与异步归属 | [输入](INPUT_ACCEPTANCE.md)、[终态](TERMINAL_ACCEPTANCE.md)；有先红后绿的真实组件/owner 组合，设备边界受控 |
-| 导航与 prepared 前端组合 | [导航](NAVIGATION_ACCEPTANCE.md)；保存失败、迟到结果、关闭与首发晋升合同通过 |
-| HTTP、SQLite、包与后端生命周期 | [反馈夹具](FEEDBACK_ACCEPTANCE.md)、[后端](BACKEND_ACCEPTANCE.md)；各条结果按实际测试范围解释 |
-| 真实 Cooking | [本轮模型证据](evidence/cooking-live.json) 为 passed；真实模型 + Controller/Publisher + HTTP/SQLite，原稿、变体与发布来源一致；不代替浏览器/原生交互验收 |
-| 真实 Agent | [Agent 验收](AGENT_ACCEPTANCE.md) 记录完整闭环未通过；模型参与、权限/IPC/初始化失败与清理结果分别保留 |
-| 响应式、键盘与焦点 | [响应式](RESPONSIVE_ACCEPTANCE.md) 记录组件合同和浏览器视口实测；Windows、真实手机及用户确认继续按总计划登记 |
-| 性能与资源 | [性能](PERFORMANCE_ACCEPTANCE.md)；基线、测量入口和已经运行的样本分开，没有数据支持的优化不实施 |
-
-这是一份现有职责的阅读地图和局部设计示范，不是完成声明。全计划仍受平台必验项、真实 Agent 闭环、
-手机 dogfooding 与用户交互确认约束；任何测试计数或文档数量都不能替代这些结果。
+职责地图用于定位现行模块，不是整体完工声明。工程、设备、真实 Agent、性能和手机的证明范围统一见[质量与待验清单](README.md)。

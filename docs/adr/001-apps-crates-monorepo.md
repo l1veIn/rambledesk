@@ -4,6 +4,10 @@
 - 日期：2026-07-29
 - 修订：2026-08-02
 
+本文记录当时选择 monorepo 与依赖方向的原因。目录清单是决策时的基线，后续新增的
+`rambledesk-acp`、`rambledesk-feedback-client` 与其他适配器不改变这些边界；当前模块地图见
+[ARCHITECTURE.md](../ARCHITECTURE.md)，托管会话的新增边界见 [ADR 007](007-acp-managed-sessions.md)。
+
 ## 上下文
 
 RambleDesk 同时包含桌面工作台、本地服务、持久化、适配器、反馈包发布、语音能力
@@ -21,7 +25,7 @@ transport、SQLite 和窗口生命周期耦合在一起。
 
 ## 决策
 
-采用：
+最初采用：
 
 ```text
 apps/desktop/src-tauri

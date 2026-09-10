@@ -1,304 +1,99 @@
-# RambleDesk 开发基线
+# RambleDesk 开发指南
 
-> 状态：v2 当前基线。
-> 术语源：[TERMINOLOGY.md](TERMINOLOGY.md)。本文若与术语表冲突，以术语表为准。
+本文维护开发入口、检查和交付方法。职责与依赖见[架构](ARCHITECTURE.md)，词汇见[术语表](TERMINOLOGY.md)，实际验收及未验项见[质量清单](quality/README.md)。
 
-## 技术栈
+## 技术与代码入口
 
-| 领域 | 决定 |
+| 区域 | 技术 / 入口 |
 | --- | --- |
-| 桌面框架 | Tauri 2 |
-| 前端 | Svelte 5 + TypeScript + Vite |
-| UI 系统 | shadcn-svelte + Tailwind CSS |
-| 核心逻辑 | Rust application contract |
-| 异步运行时 | Tokio |
-| 通用适配器传输 | 官方 Rust SDK `rmcp`，Streamable HTTP |
-| 原生适配器传输 | loopback Local JSON API |
-| 持久化 | SQLite + 显式 migrations |
-| 序列化/schema | Serde + Schemars |
-| 日志 | tracing；默认只记录元数据 |
-| ID | UUIDv7 |
-| 时间 | UTC，边界使用 RFC 3339 |
-| 包管理 | pnpm + Cargo |
+| 桌面与共享工作台 | Tauri 2、Svelte 5、TypeScript、Vite；`apps/desktop` |
+| 前端组件 | shadcn-svelte、Tailwind CSS；`apps/desktop/src/lib` |
+| 后端 | Rust、Tokio；`crates/rambledesk-core` 的 application contract |
+| 持久化 | SQLite、显式 [migrations](../crates/rambledesk-storage/migrations/) 与不可变反馈包 |
+| Agent 与外部接入 | ACP SDK、`rambledesk-acp`、`rambledesk-feedback-client`；Generic MCP 的 `rmcp`；Pi/dsh 本地 JSON API |
+| 官网 | Astro；`web/`，与工作台构建分开 |
+| 工具链 | Cargo、pnpm；版本约束以根配置及各 package manifest 为准 |
 
-Svelte 和 Tauri 是实现选择，不是应用协议。Rust application contract、SQLite
-事实状态和反馈包格式不能依赖前端组件或桌面窗口生命周期。
-
-## 目录与职责
-
-```text
-rambledesk/
-├── apps/
-│   └── desktop/
-│       ├── src/                         # Workbench UI
-│       └── src-tauri/                   # Tauri composition root
-├── crates/
-│   ├── rambledesk-core/                 # application contract
-│   ├── rambledesk-storage/              # SQLite + package publication
-│   ├── rambledesk-local-server/         # listener + auth + routes
-│   ├── rambledesk-mcp/                  # Generic MCP Adapter
-│   ├── rambledesk-hosts/                # Host Profiles + continuation
-│   ├── rambledesk-speech/               # local speech capability
-│   └── rambledesk-cli/                  # headless composition root
-├── packages/
-│   ├── pi-rambledesk/                    # Pi Native Adapter
-│   └── dsh-rambledesk/                   # DeepSeek Harness (dsh) Native Adapter
-├── docs/
-└── scripts/
-```
-
-### `rambledesk-core`
-
-- 定义 request/get/wait/cancel/list、draft、attachment、submit use cases；
-- 定义状态机、稳定 DTO、错误码和 ports；
-- 不依赖 HTTP、JSON、MCP、Pi、Tauri、SQLite 或宿主安装逻辑；
-- 不读取环境变量，不推导源码目录。
-
-### `rambledesk-storage`
-
-- 执行 SQLite migrations；
-- 实现 request、draft、attachment metadata 和宿主会话关联；
-- 发布、校验并恢复不可变反馈包；
-- 不认识 transport、适配器安装或 UI。
-
-### `rambledesk-local-server`
-
-- 只绑定 loopback listener；
-- 管理 bearer token、Host/Origin guard 和 route mounting；
-- 暴露 `/api/feedback/request|get|wait|cancel`；
-- 将 Generic MCP Adapter 挂载在 `/mcp`；
-- 不实现领域规则或宿主专用行为。
-
-### `rambledesk-mcp`
-
-- 定义通用 MCP tools、instructions、handlers；
-- 将 MCP 输入映射为 core application calls；
-- 将 core 结果与错误映射为 MCP structured content；
-- 执行宿主检测与配置写入（per-host 知识来自 `rambledesk-hosts` 注册表）；
-- 不持有 listener、token、JSON API、SQLite，也不向全局界面投影 transport 可用性。
-
-### `rambledesk-hosts`
-
-- 持有宿主知识注册表（executable/marker/配置路径/`ConfigFormat`）、Host Profile catalog、标签、图标和适配器提示；
-- 持有 continuation payload、strategy contract 和手动恢复提示；
-- 不实现 MCP、Pi、storage、desktop UI，也不持有适配器安装/写入执行逻辑。
-
-### `packages/pi-rambledesk`
-
-- 注册 Pi 原生反馈工具；
-- 调用 Local JSON API 的 request/get/wait/cancel；
-- 在同一个 Pi tool call 内等待终态；
-- 不依赖 MCP。
-
-### `packages/dsh-rambledesk`
-
-- 注册 dsh（DeepSeek Harness）原生反馈工具（request/resume/get/cancel）；
-- 调用 Local JSON API 的 request/wait/get/recover/cancel；
-- 在同一个 dsh 工具调用内等待终态（不声明 `timeoutMs`，只在执行信号中断时中止）；
-- 在插件旁持久化 request 状态与 `host_session_id`，支持跨重启恢复；
-- 由桌面安装引擎把 `rambledesk-hosts` 中的通用 `ramble` skill 写入 `~/.agents/skills`；该 skill 会自动选择 dsh 原生等待流程；
-- 不依赖 MCP，零 npm 依赖。
-
-### Desktop
-
-- Tauri 负责进程、窗口、tray、通知、权限、文件选择和 crate 装配；
-- Svelte 负责 Inbox、Request Workspace、Resume Prompt、Settings / Adapters；
-- 前端通过 command 查询事实状态，通过 event 获知可能发生了变化；
-- UI store、窗口状态和通知都不是唯一事实来源。
-
-### 前端目录与依赖方向
-
-`apps/desktop/src` 的职责划分：
-
-```text
-src/
-├── App.svelte, BrowserWorkbenchRoot.svelte   # 组合根
-├── PinnedCapture / RambleConsole / ScreenshotOverlay /
-│   ScrollCaptureController / SpeechOverlay   # 平台窗口，唯一可直接 invoke Tauri 的组件
-├── dev/                                      # 预览页（*-preview.html 的入口）
-└── lib/
-    ├── domain/        # 共享词汇：阶段、设置分区、恢复提示、Host Profile、请求过滤器
-    ├── generated/     # ts-rs 产物，只读
-    ├── application/   # application 合同与 transport 实现
-    ├── capabilities/  # 平台能力合同与 Tauri / 浏览器实现
-    ├── components/    # 共享 UI（ui/ 是生成的 shadcn 封装）
-    ├── agents/        # 托管会话与 Agent 目录
-    ├── workbench/     # 会话工作台：控制器、store、工作台卡片
-    ├── workspace/     # 视图层：Inbox、任务、设置、归档
-    ├── editor/        # 反馈编辑器与 Markdown 渲染
-    ├── speech/        # 语音会话、草稿队列、悬浮层
-    ├── screen-capture/# 截图浮层的状态机与几何
-    ├── settings/ onboarding/ updates/ shell/ rambelle/ web-access/ appearance/
-    └── diagnostics/ desktop-shell/
-```
-
-依赖方向由 `lib/architecture/frontendBoundaries.test.ts` 固化：
-
-- `lib/domain` 是词汇内核，只允许依赖 `lib/generated` 和 `lib/feedback` 合同桶；
-- `lib/workspace`（视图层）不得反向依赖 `lib/workbench`；
-- 跨域 import 由测试内的 `ALLOWED_EDGES` 锁定，**只减不增**：新增一条会失败，消失一条必须从清单里删掉；
-- 组合根（`App.svelte`、`dev/`）不受限制，也不允许被 `lib/` 反向 import（`workbenchEntry` 等入口除外，已列入清单）。
-
-组件测试默认用 `svelte/server` 的 `render`（SSR 渲染契约），需要真实 DOM 交互的文件用
-`// @vitest-environment jsdom` 标注，并 mock `@tauri-apps/api/*`。纯逻辑留在模块测试里，
-组件测试只覆盖渲染与事件接线，例如 `ScreenshotOverlay.interaction.test.ts`（拖选、工具栏、
-Esc 取消、Enter 完成）和 `rambleSessionControllerRender.test.ts`（悬浮层与待确认语音面板）。
-
-预览模式不是散落在控制器里的分支：`?preview=fixtures` 由 `main.ts` 构造
-`lib/preview/previewApplicationTransport.ts`（内存版 Application 合同实现，读写都走 fixture），
-经 `createWorkbenchComposition({ previewTransport })` 注入。控制器只面向 `ApplicationTransport`，
-`previewMode` 仅保留在组合根，用于 onboarding、托管会话入口等 UI 能力判断。
-预览页的 open-view 快照通过 `createWorkspaceShellSession({ snapshots })` 注入，
-不写进真实的 `rambledesk.ui-state`。
-
-## 依赖方向
-
-```text
-rambledesk-mcp ───────────┐
-rambledesk-local-server ──┼──→ rambledesk-core
-rambledesk-storage ───────┤
-rambledesk-hosts ─────────┘
-
-rambledesk-cli ─────────────→ core + storage + local-server
-rambledesk-desktop ─────────→ core + storage + local-server + hosts + speech
-```
-
-`rambledesk-local-server` 可以装配 `rambledesk-mcp`，但
-`rambledesk-mcp` 不得反向依赖本地服务。跨适配器编排只在 composition root
-发生。
-
-## 前后端合同
-
-Rust DTO 是事实来源。修改导出类型后必须运行：
-
-```bash
-cargo run -p rambledesk-core --example export_types
-pnpm contracts:check
-```
-
-生成文件位于 `apps/desktop/src/lib/generated/`。前端不得手写第二套 request
-状态枚举或字段别名。
+ID 使用 UUIDv7，时间在边界使用 UTC / RFC 3339。默认日志只记录元数据，不记录正文、token 或附件内容。SQLite schema 以迁移为准，修改需考虑已有数据升级和中断恢复，不在文档维护第二份字段清单。
 
 ## 本地运行
 
-安装依赖：
-
 ```bash
 pnpm install
-```
-
-启动浏览器工作台：
-
-```bash
 pnpm dev:web
 ```
 
-启动桌面应用：
+`dev:web` 启动前端开发入口，不会建立独立 Web Backend Runtime。开发桌面应用使用 `pnpm dev`；浏览器连接真实后端时使用 Desktop 的 Web Access，支持边界见[矩阵](WEB_ACCESS_SUPPORT_MATRIX.md)。
+
+隔离数据库、附件资料库与 Local Integration Server token：
 
 ```bash
-pnpm dev
-```
-
-隔离本地状态：
-
-```bash
-RAMBLEDESK_DATABASE_FILE=/absolute/test/feedback.sqlite3 \
+RAMBLEDESK_DATABASE_FILE=/absolute/test/state/feedback.sqlite3 \
+RAMBLEDESK_LIBRARY_DIR=/absolute/test/library \
 RAMBLEDESK_LOCAL_SERVER_TOKEN_FILE=/absolute/test/local-server.token \
 RAMBLEDESK_LOCAL_SERVER_PORT=0 \
 pnpm dev
 ```
 
-本地服务默认只绑定 loopback。通知、麦克风和屏幕录制权限必须由明确的人类操作触发，
-自动化测试不得主动弹出系统权限框。
+这些变量不隔离所有桌面偏好、模型、应用 identifier 或 Web credential。不要将其当成完整产品验收沙箱；真实 HTTP/SQLite 与浏览器复验使用[隔离反馈夹具](quality/FEEDBACK_ACCEPTANCE.md)。通知、麦克风和屏幕录制权限必须由明确的人类操作触发，自动化测试不得主动弹出系统权限框。
 
-## SQLite 基线
+`cargo run -p rambledesk-cli -- self-test` 使用临时数据库验证 MCP。CLI 也有 `serve` / `smoke` 开发诊断命令；`serve` 组装存储和 Local Integration Server，不提供完整 Desktop/Web/ACP 产品。应用内置的 `feedback request/get/recover/skip` 则调用已有托管运行时，不创建服务器或打开业务数据库。
 
-### `host_sessions`
+## 前端边界与测试
 
-- `id`
-- `host_id`
-- `host_session_id`
-- `created_at`
-- `updated_at`
-- 唯一键：`host_id, host_session_id`
+共享工作台从 `App.svelte` / `BrowserWorkbenchRoot.svelte` 组合，经 `lib/application` 访问后端，经 `lib/capabilities` 访问当前设备。主要责任模块为 `agents`、`workbench`、`workspace`、`editor`、`speech`、`shell`、`settings`；`lib/generated` 是生成合同，只读。
 
-### `feedback_requests`
+[frontendBoundaries.test.ts](../apps/desktop/src/lib/architecture/frontendBoundaries.test.ts) 固化依赖方向：
 
-- `id`
-- `host_session_record_id`
-- `title`
-- `what_happened`
-- `source_hint`
-- `status`
-- `revision`
-- `input_hash`
-- lifecycle timestamps
-- cancellation metadata
+- `lib/domain` 只依赖 `lib/generated` 与 `lib/feedback` 合同桶。
+- 视图层 `lib/workspace` 不反向依赖 `lib/workbench`。
+- 跨域 `ALLOWED_EDGES` 只减不增；新增边失败，消失的边须从清单删除。
+- 组合根和 `dev/` 不能被 `lib/` 反向引用，显式列出的入口除外；共享 UI 不直接操作 Tauri。
 
-### 请求内容
+纯逻辑测试留在 owner 模块。静态呈现可用 `svelte/server`；事件、焦点、异步保存与清理须在需要时用真实挂载的 jsdom 测试（`// @vitest-environment jsdom`），隔离 Tauri API。原生窗口、设备、权限和浏览器手势不能由 DOM 测试代替。
 
-- `request_actions`
-- `request_context_refs`
-- `drafts`
-- `attachments`
+`?preview=fixtures` 在 `main.ts` 构造 [previewApplicationTransport](../apps/desktop/src/lib/preview/previewApplicationTransport.ts)，经 `createWorkbenchComposition({ previewTransport })` 注入；控制器仍只依赖 Application Transport。预览 workspace snapshot 通过 `createWorkspaceShellSession({ snapshots })` 注入，不写真实 `rambledesk.ui-state`。完整 HTTP/SQLite 夹具与内存预览的证据范围不同。
 
-### 交付与恢复
+## 前后端合同
 
-- `feedback_results`
-- `submission_plans`
-
-数据库约束阻止非法终态回退；application transaction 负责跨表不变量。
-
-## 进程与恢复
-
-桌面启动顺序：
-
-1. 打开数据库并执行 migrations；
-2. 对账未完成的反馈包发布；
-3. 构建 application services；
-4. 启动本地服务；
-5. 初始化窗口、tray 和通知桥接；
-6. UI 查询 Inbox 和当前工作区。
-
-非正常退出后，SQLite 与 draft 目录负责恢复。`waiting` 和 `in_progress`
-请求不能因为进程重启而隐式取消。Tauri events 只提示 UI 重新查询。
-
-## 发布与更新说明
-
-- 发布前在 `docs/CHANGELOG.md` **顶部**为本次版本新增条目（`## vX.Y.Z`），
-  纯文本、英文在前中文摘要在后（更新弹窗以 `<pre>` 渲染，不解析 Markdown）。
-- `release.yml` 的 checksums 阶段会自动把该条目写入 GitHub Release 正文和
-  `latest.json` 的 `notes`；没有条目的版本回退到通用说明（会打警告）。
-- 手动生成说明：`node scripts/release-notes.mjs --tag vX.Y.Z`。
-- 修正已发布 release 的说明：先改 CHANGELOG，再手动刷 release 正文和
-  `latest.json`（`scripts/release-notes.mjs` + `scripts/patch-updater-notes.mjs`），
-  避免两处不一致。
-
-## 完成标准
-
-一个改动只有满足以下条件才算完成：
-
-- 实现、协议、术语和 UI 文案一致；
-- 没有字段 alias、fallback 或 deprecated route；
-- 正常、重试、取消、断线和重启路径按风险有测试；
-- 不记录正文、token 或附件内容到默认日志；
-- Rust 格式化、clippy、测试通过；
-- TypeScript/Svelte 检查、测试、构建和合同漂移检查通过；
-- 术语残留扫描通过；
-- 涉及原生窗口、截图、语音、tray 或权限时列出人工验收结果。
-
-建议的完整门禁：
+Rust DTO 是合同源；修改导出类型后运行：
 
 ```bash
-cargo fmt --all --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace --all-targets
+pnpm contracts:generate
+pnpm contracts:check
+```
+
+生成文件位于 `apps/desktop/src/lib/generated/`；不得手写第二套 Request 状态枚举或字段别名。Cargo 依赖由 [check-terminology.mjs](../scripts/check-terminology.mjs) 检查，前端边和文件规模也有门禁；修改实现时修正实际边界，不用放宽清单隐藏新增耦合。
+
+## 验证与完成标准
+
+按改动风险验证正常、重试、取消、断线、重启和资源释放。实现、协议、术语和 UI 文案应一致；不得留下未说明的别名或兼容分支，既有明确兼容合同不能为“零残留”口号而静默删除。
+
+工作台与 Rust 的完整工程门禁：
+
+```bash
+pnpm format:check
+pnpm clippy
+pnpm test:rust
 pnpm check
 pnpm test
 pnpm build:web
 pnpm contracts:check
+pnpm check:terminology
+pnpm check:rust-size
+pnpm check:frontend-size
 pnpm test:pi
 pnpm test:dsh
 pnpm mcp:self-test
 pnpm mcp:inspector-smoke
 ```
+
+`test:rust` 包含独立 `target/desktop` 的桌面测试；`build:web` 是工作台构建。官网修改另运行 `pnpm -C web check` 与 `pnpm -C web build`。涉及打包、平台行为或真实输入时，在相应平台记录构建标识、步骤、实际结果和未验项；本机测试不等于远端 CI 或其他平台通过。
+
+## 发布与更新说明
+
+- 发布前在 [CHANGELOG.md](CHANGELOG.md) 顶部增加 `## vX.Y.Z` 条目。保持纯文本、英文在前中文摘要在后，更新弹窗不解析 Markdown。
+- `release.yml` 的 checksums 阶段将条目写入 GitHub Release 正文与 `latest.json` 的 `notes`；缺少条目会警告并回退到通用说明。
+- 手动生成：`node scripts/release-notes.mjs --tag vX.Y.Z`。
+- 修正已发布说明时，同步更新 CHANGELOG、Release 正文和 updater metadata，使用 `scripts/release-notes.mjs` 与 `scripts/patch-updater-notes.mjs`，避免两处不一致。
+- 版本、产物、平台验收和发布流程见[发布检查](RELEASE_CHECKLIST.md)。Git 合并、发布产物和完成全部产品验收分别判断。
