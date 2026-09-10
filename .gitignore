@@ -26,3 +26,6 @@ reasonix.toml
 
 # local demo video scratch (user machine)
 videos/rambledesk-demo/
+
+# Local design iterations and acceptance captures; curated docs stay in docs/.
+.local-artifacts/

@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import {
+  agentDraftViewDescriptor,
+  agentSessionViewDescriptor,
   sessionViewDescriptor,
   settingsViewDescriptor,
   workspaceViewKey,
@@ -69,6 +71,67 @@ function harness(overrides: Partial<WorkspaceTransitionAdapter<Loaded>> = {}) {
 }
 
 describe('workspaceTransition', () => {
+  it('checks automatic navigation eligibility before saving or unmounting', async () => {
+    const run = harness()
+    await expect(run.transition.activate(target(), undefined, () => false)).resolves.toBe('blocked')
+    expect(run.adapter.saveCurrent).not.toHaveBeenCalled()
+    expect(run.adapter.unmountCurrent).not.toHaveBeenCalled()
+    expect(run.adapter.commitTarget).not.toHaveBeenCalled()
+    expect(run.adapter.setPendingTarget).toHaveBeenLastCalledWith(null)
+  })
+
+  it('keeps the composer mounted if typing starts while automatic navigation waits for a save', async () => {
+    let canLeave = true
+    const run = harness({ saveCurrent: vi.fn(async () => { canLeave = false; return true }) })
+    await expect(run.transition.activate(target(), undefined, () => canLeave)).resolves.toBe('blocked')
+    expect(run.adapter.unmountCurrent).not.toHaveBeenCalled()
+    expect(run.adapter.loadTarget).not.toHaveBeenCalled()
+    expect(run.adapter.commitTarget).not.toHaveBeenCalled()
+    expect(run.adapter.restoreCurrent).toHaveBeenCalledOnce()
+  })
+
+  it('captures an arrival intent without invalidating navigation and yields to a user selection', async () => {
+    const run = harness()
+    const arrivalIntent = run.transition.currentIntent()
+    expect(run.transition.isCurrent(arrivalIntent)).toBe(true)
+    expect(run.adapter.restoreCurrent).not.toHaveBeenCalled()
+    run.transition.invalidate()
+    await expect(run.transition.activate(target(), arrivalIntent, () => true)).resolves.toBe('stale')
+    expect(run.adapter.commitTarget).not.toHaveBeenCalled()
+  })
+  it('keeps a newly opened draft when an older managed-session scope read finishes later', async () => {
+    let resolveScope!: () => void
+    const scopeRead = new Promise<void>(resolve => { resolveScope = resolve })
+    const run = harness()
+    const oldIntent = run.transition.invalidate()
+    const oldTarget = target(agentSessionViewDescriptor('old-session'), null)
+    const delayedSelection = scopeRead.then(() => run.transition.activate(oldTarget, oldIntent))
+    const draft = target(agentDraftViewDescriptor('new-draft'), null)
+    run.transition.invalidate()
+    await expect(run.transition.activate(draft)).resolves.toBe('activated')
+    expect(run.transition.isCurrent(oldIntent)).toBe(false)
+    const callsBeforeOldRead = vi.mocked(run.adapter.setPendingTarget).mock.calls.length
+
+    resolveScope()
+    await expect(delayedSelection).resolves.toBe('stale')
+    expect(run.adapter.commitTarget).toHaveBeenCalledExactlyOnceWith(draft, null)
+    expect(run.adapter.setPendingTarget).toHaveBeenCalledTimes(callsBeforeOldRead)
+    expect(run.adapter.saveCurrent).toHaveBeenCalledTimes(1)
+  })
+
+  it('invalidates pending scope reads even when a newer navigation is cancelled before activation', async () => {
+    const run = harness()
+    const oldIntent = run.transition.invalidate()
+    const currentIntent = run.transition.invalidate()
+    expect(run.transition.isCurrent(oldIntent)).toBe(false)
+    expect(run.transition.isCurrent(currentIntent)).toBe(true)
+    await expect(run.transition.activate(target(), oldIntent)).resolves.toBe('stale')
+    expect(run.adapter.saveCurrent).not.toHaveBeenCalled()
+    expect(run.adapter.commitTarget).not.toHaveBeenCalled()
+    await expect(run.transition.activate(target(), currentIntent)).resolves.toBe('activated')
+    expect(run.transition.isCurrent(currentIntent)).toBe(true)
+  })
+
   it('saves, unmounts, loads, and commits in order with at most one editor mounted', async () => {
     const run = harness()
 
@@ -107,6 +170,15 @@ describe('workspaceTransition', () => {
     expect(run.events).toEqual(['save', 'unmount', 'load', 'restore'])
     expect(run.adapter.commitTarget).not.toHaveBeenCalled()
     expect(run.adapter.reportFailure).toHaveBeenCalledWith(failure)
+  })
+
+  it('rechecks automatic eligibility after loading and restores instead of committing', async () => {
+    let canLeave = true
+    const run = harness({ loadTarget: async () => { canLeave = false; return { requestId: 'request-beta' } } })
+    await expect(run.transition.activate(target(), undefined, () => canLeave)).resolves.toBe('blocked')
+    expect(run.adapter.commitTarget).not.toHaveBeenCalled()
+    expect(run.adapter.restoreCurrent).toHaveBeenCalledOnce()
+    expect(run.maximumMountedEditors()).toBe(1)
   })
 
   it('commits only the latest target when an older load finishes late', async () => {

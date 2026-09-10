@@ -2,8 +2,10 @@
 resolver = "2"
 members = [
   "apps/desktop/src-tauri",
+  "crates/rambledesk-acp",
   "crates/rambledesk-cli",
   "crates/rambledesk-core",
+  "crates/rambledesk-feedback-client",
   "crates/rambledesk-hosts",
   "crates/rambledesk-local-server",
   "crates/rambledesk-mcp",
@@ -12,12 +14,13 @@ members = [
 ]
 
 [workspace.package]
-version = "0.3.4"
+version = "0.4.0-rc.3"
 edition = "2024"
 rust-version = "1.88"
 repository = "https://github.com/l1veIn/rambledesk"
 
 [workspace.dependencies]
+agent-client-protocol = "=2.0.0"
 anyhow = "1"
 async-trait = "0.1.91"
 axum = "0.8.9"
@@ -55,11 +58,14 @@ tracing = "0.1"
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 tower-service = "0.3"
-ts-rs = "12.0.1"
+# Keep Serde's deny_unknown_fields validation; ts-rs 12 cannot parse it on enums.
+ts-rs = { version = "12.0.1", features = ["no-serde-warnings"] }
 uuid = { version = "1.24.0", features = ["v7"] }
 windows-sys = { version = "0.61.2", features = ["Win32_Storage_FileSystem"] }
 
 rambledesk-core = { path = "crates/rambledesk-core" }
+rambledesk-feedback-client = { path = "crates/rambledesk-feedback-client" }
+rambledesk-acp = { path = "crates/rambledesk-acp" }
 rambledesk-hosts = { path = "crates/rambledesk-hosts" }
 rambledesk-local-server = { path = "crates/rambledesk-local-server" }
 rambledesk-mcp = { path = "crates/rambledesk-mcp" }

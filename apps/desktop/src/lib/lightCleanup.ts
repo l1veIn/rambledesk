@@ -3,7 +3,7 @@ import {
   type CookingConfig,
   type ModelTextGenerator,
 } from './cooking'
-import type { SpeechCleanupSegment } from './speechBlockMetadata'
+import type { SpeechCleanupSegment } from './speech/speechBlockMetadata'
 import { acceptCleanupResult, parseLabeledOutput } from './workbench/speechCleanupPolicy'
 
 export type TidyConfig = CookingConfig

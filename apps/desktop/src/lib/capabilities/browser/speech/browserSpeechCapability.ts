@@ -7,7 +7,7 @@ import type {
   SpeechRecognitionListener,
   SpeechRecognitionSession,
   SpeechRecognitionStopReason,
-} from '$lib/speech'
+} from '$lib/speech/speech'
 import { BrowserModelStore, BrowserSpeechError } from './browserModelStore'
 import {
   BROWSER_SPEECH_CACHE_NAME,

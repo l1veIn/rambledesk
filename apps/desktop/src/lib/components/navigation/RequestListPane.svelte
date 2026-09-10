@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ChevronDown, FileText, Inbox, LoaderCircle, PanelLeftClose, PanelLeftOpen } from '@lucide/svelte'
+  import { ChevronDown, FileText, Inbox, LoaderCircle, PanelLeftClose, PanelLeftOpen, Search, X } from '@lucide/svelte'
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
   import { ScrollArea } from '$lib/components/ui/scroll-area'
@@ -8,8 +8,8 @@
   import { requestStatusLabel } from '$lib/feedback'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
-  import type { HostProfile } from '$lib/workbench/types'
-  import { DEFAULT_REQUEST_FILTERS, requestFilterCount, type RequestFilters } from '$lib/workbench/requestFilters'
+  import type { HostProfile } from '../../domain/hostProfile'
+  import { DEFAULT_REQUEST_FILTERS, requestFilterCount, type RequestFilters } from '$lib/domain/requestFilters'
   import RequestFilterPopover from './RequestFilterPopover.svelte'
 
   export let requests: FeedbackRequestSummary[] = []
@@ -22,12 +22,15 @@
   export let loadingMore = false
   export let hasMore = false
   export let collapsed = false
+  /** When set, the parent owns collapse state (used by the phone drawer); otherwise `bind:collapsed` applies. */
+  export let onCollapsedChange: ((collapsed: boolean) => void) | undefined = undefined
   export let filters: RequestFilters = DEFAULT_REQUEST_FILTERS
   export let resolveHostProfile: (hostId: string) => HostProfile
   export let formatTime: (value: string | null | undefined) => string
   export let onLoadMore: () => void = () => {}
   export let onOpenRequest: (requestId: string) => void = () => {}
   export let onFiltersChange: (filters: RequestFilters) => void = () => {}
+  export let onClearSearch: () => void = () => {}
 
   $: filtered = requestFilterCount(filters) > 0
   $: busy = loading || refreshing
@@ -53,7 +56,7 @@
 </script>
 
 <aside
-  class="flex h-full min-h-0 flex-col bg-background"
+  class="appearance-surface flex h-full min-h-0 flex-col bg-background"
   aria-label={tr('Request list')}
 >
   <div class={['flex h-12 shrink-0 items-center gap-1.5 border-b', collapsed ? 'justify-center px-2' : 'px-3']}>
@@ -77,11 +80,21 @@
       aria-label={collapsed ? tr('Expand request list') : tr('Collapse request list')}
       title={collapsed ? tr('Expand request list') : tr('Collapse request list')}
       aria-expanded={!collapsed}
-      onclick={() => (collapsed = !collapsed)}
+      onclick={() => (onCollapsedChange ? onCollapsedChange(!collapsed) : (collapsed = !collapsed))}
     >
       {#if collapsed}<PanelLeftOpen />{:else}<PanelLeftClose />{/if}
     </Button>
   </div>
+
+  {#if searchQuery.trim()}
+    <div class={['flex items-center gap-2 border-b py-2 text-xs text-muted-foreground', collapsed ? 'justify-center px-2' : 'px-3']}>
+      {#if !collapsed}
+        <Search class="size-3.5 shrink-0" aria-hidden="true" />
+        <span class="min-w-0 flex-1 truncate" title={searchQuery}>{searchQuery}</span>
+      {/if}
+      <Button variant="ghost" size="icon-xs" aria-label={tr('Clear search')} title={tr('Clear search')} onclick={onClearSearch}><X aria-hidden="true" /></Button>
+    </div>
+  {/if}
 
   {#if collapsed}
     <div class="flex flex-col items-center gap-2 border-b py-2">

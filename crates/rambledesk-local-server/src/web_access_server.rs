@@ -28,6 +28,9 @@ use crate::{
 
 pub const DEFAULT_WEB_ACCESS_PORT: u16 = 37_643;
 const WEB_ACCESS_LOOPBACK_ADDRESS: Ipv4Addr = Ipv4Addr::LOCALHOST;
+/// Scoped to the bootstrap route so the browser never attaches it to application calls.
+const SESSION_COOKIE_NAME: &str = "rambledesk_web_session";
+const SESSION_COOKIE_PATH: &str = "/api/auth/session";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SpaAsset {
@@ -76,6 +79,8 @@ pub struct WebAccessSecurityLimits {
     pub max_event_connections: usize,
     pub max_json_body_bytes: usize,
     pub max_attachment_upload_body_bytes: usize,
+    /// In-memory session policy. Browser sessions resumed from their cookie use
+    /// `BROWSER_SESSION_LIFETIME` instead.
     pub session_idle_timeout_seconds: u64,
     pub session_absolute_timeout_seconds: u64,
     pub max_sessions: usize,
@@ -281,26 +286,75 @@ async fn bootstrap_session(
     if !has_exact_host_and_origin(&headers, &state.allowed_host, &state.allowed_origin) {
         return StatusCode::FORBIDDEN.into_response();
     }
-    if !state.attempts.admit(Instant::now()) {
+    let durable_token = bearer_credential(headers.get(header::AUTHORIZATION));
+    let cookie_token = session_cookie_credential(&headers);
+    // The limiter exists to slow credential guessing; resuming an already issued session
+    // from its cookie must not consume the reload budget.
+    let resuming = durable_token.is_none() && cookie_token.is_some();
+    if !resuming && !state.attempts.admit(Instant::now()) {
         let mut response = StatusCode::TOO_MANY_REQUESTS.into_response();
         response
             .headers_mut()
             .insert(header::RETRY_AFTER, HeaderValue::from_static("60"));
         return response;
     }
-    let durable_token = bearer_credential(headers.get(header::AUTHORIZATION));
-    let Some(session_token) = durable_token.and_then(|token| state.sessions.issue_session(token))
-    else {
+    let Some(session_token) = issue_or_resume_session(&state, durable_token, cookie_token) else {
         return StatusCode::UNAUTHORIZED.into_response();
     };
-    let mut response = Json(BootstrapSession { session_token }).into_response();
+    let mut response = Json(BootstrapSession {
+        session_token: session_token.clone(),
+    })
+    .into_response();
     response
         .headers_mut()
         .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     response
         .headers_mut()
         .insert(header::PRAGMA, HeaderValue::from_static("no-cache"));
+    if let Ok(cookie) = session_cookie(&session_token, state.sessions.browser_session_lifetime()) {
+        response.headers_mut().insert(header::SET_COOKIE, cookie);
+    }
     response
+}
+
+/// A durable token exchanges for a browser session; a browser cookie resumes the one it
+/// already holds so a reload never asks the human to paste the token again.
+fn issue_or_resume_session(
+    state: &BootstrapState,
+    durable_token: Option<&str>,
+    cookie_token: Option<String>,
+) -> Option<String> {
+    if let Some(durable_token) = durable_token {
+        return state.sessions.issue_browser_session(durable_token);
+    }
+    let cookie_token = cookie_token?;
+    state.sessions.authorize(&cookie_token)?;
+    Some(cookie_token)
+}
+
+fn session_cookie_credential(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get(header::COOKIE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|cookies| {
+            cookies.split(';').find_map(|part| {
+                let (name, value) = part.trim().split_once('=')?;
+                (name == SESSION_COOKIE_NAME).then(|| value.trim().to_owned())
+            })
+        })
+        .filter(|token| !token.is_empty())
+}
+
+fn session_cookie(
+    session_token: &str,
+    lifetime: crate::WebSessionLifetime,
+) -> Result<HeaderValue, axum::http::header::InvalidHeaderValue> {
+    let max_age = lifetime
+        .idle_timeout_seconds
+        .min(lifetime.absolute_timeout_seconds);
+    HeaderValue::from_str(&format!(
+        "{SESSION_COOKIE_NAME}={session_token}; Path={SESSION_COOKIE_PATH}; Max-Age={max_age}; HttpOnly; SameSite=Strict"
+    ))
 }
 
 async fn require_spa_host(

@@ -1,5 +1,12 @@
+import type { ListManagedSessionActivityInput, ManagedSessionActivityPage } from '$lib/generated/feedback'
+import type { SendManagedPromptContentInput } from '$lib/generated/feedback'
+import type { SetManagedSessionConfigInput } from '$lib/generated/feedback'
+import type { AgentCatalogEntry, AgentInspection, CatalogAgentInput, ResolveCatalogAgentInput, AgentInstallJob, InstallAgentInput, AgentInstallJobInput } from '../generated/feedback'
 import {
   APPLICATION_ERROR_CODES,
+  type AgentConfig,
+  type AgentConfigInput,
+  type AgentConnectionCheck,
   type ApplicationFeedbackRequestView,
   type ApplicationFeedbackWorkspaceView,
   type ApplicationHostProfileView,
@@ -8,6 +15,8 @@ import {
   type ApplicationErrorCode,
   type ApproveFeedbackInput,
   type CancelFeedbackInput,
+  type CreateManagedSessionInput,
+  type PrepareManagedSessionInput,
   type DeleteFeedbackRequestInput,
   type DraftView,
   type FeedbackPackageView,
@@ -18,11 +27,19 @@ import {
   type ListFeedbackRequestsInput,
   type ListFeedbackRequestsOutput,
   type ListHostSessionsInput,
+  type ManagedSessionInput,
+  type ManagedSessionSnapshot,
+  type ManagedFeedbackStatus,
+  type ManagedWorkspaceInfo,
   type RemoveAttachmentInput,
   type ReadAttachmentInput,
   type RenameHostSessionInput,
   type ReorderAttachmentsInput,
   type SaveDraftInput,
+  type SaveAgentConfigInput,
+  type SendManagedPromptInput,
+  type RespondManagedInteractionInput,
+  type ResolveFeedbackDeliveryInput,
   type SetHostPinnedInput,
   type SetHostSessionPinnedInput,
   type SubmitFeedbackInput,
@@ -45,6 +62,32 @@ export type ApplicationAddAttachmentInput = Omit<AddAttachmentInput, 'contents'>
  * never a Tauri `{ input }` envelope or camelCase invoke argument object.
  */
 export type ApplicationCommandMap = Readonly<{
+  listAvailableAgents: ApplicationCommandContract<undefined, AgentCatalogEntry[]>
+  inspectAgentInstallation: ApplicationCommandContract<CatalogAgentInput, AgentInspection>
+  resolveCatalogAgent: ApplicationCommandContract<ResolveCatalogAgentInput, AgentConfig>
+  listAgentInstallJobs: ApplicationCommandContract<undefined, AgentInstallJob[]>
+  installAgent: ApplicationCommandContract<InstallAgentInput, AgentInstallJob>
+  cancelAgentInstall: ApplicationCommandContract<AgentInstallJobInput, void>
+  listAgentConfigs: ApplicationCommandContract<undefined, AgentConfig[]>
+  saveAgentConfig: ApplicationCommandContract<SaveAgentConfigInput, AgentConfig>
+  deleteAgentConfig: ApplicationCommandContract<AgentConfigInput, void>
+  checkAgentConfig: ApplicationCommandContract<AgentConfigInput, AgentConnectionCheck>
+  createManagedSession: ApplicationCommandContract<CreateManagedSessionInput, ManagedSessionSnapshot>
+  prepareManagedSession: ApplicationCommandContract<PrepareManagedSessionInput, ManagedSessionSnapshot>
+  discardPreparedSession: ApplicationCommandContract<ManagedSessionInput, void>
+  getManagedSession: ApplicationCommandContract<ManagedSessionInput, ManagedSessionSnapshot>
+  getManagedFeedbackStatus: ApplicationCommandContract<ManagedSessionInput, ManagedFeedbackStatus>
+  getManagedWorkspaceInfo: ApplicationCommandContract<ManagedSessionInput, ManagedWorkspaceInfo>
+  startManagedSession: ApplicationCommandContract<ManagedSessionInput, ManagedSessionSnapshot>
+  stopManagedSession: ApplicationCommandContract<ManagedSessionInput, ManagedSessionSnapshot>
+  cancelManagedPrompt: ApplicationCommandContract<ManagedSessionInput, ManagedSessionSnapshot>
+  setManagedSessionConfig: { input: SetManagedSessionConfigInput; output: ManagedSessionSnapshot }
+  sendManagedPromptContent: { input: SendManagedPromptContentInput; output: ManagedSessionSnapshot }
+  listManagedSessionActivity: { input: ListManagedSessionActivityInput; output: ManagedSessionActivityPage }
+  sendManagedPrompt: ApplicationCommandContract<SendManagedPromptInput, ManagedSessionSnapshot>
+  respondManagedInteraction: ApplicationCommandContract<RespondManagedInteractionInput, ManagedSessionSnapshot>
+  resolveFeedbackDelivery: ApplicationCommandContract<ResolveFeedbackDeliveryInput, ManagedSessionSnapshot>
+  deleteManagedSession: ApplicationCommandContract<ManagedSessionInput, void>
   listFeedbackInbox: ApplicationCommandContract<undefined, FeedbackRequestSummary[]>
   listHostSessions: ApplicationCommandContract<undefined, HostSessionSummary[]>
   listArchivedHostSessions: ApplicationCommandContract<ListHostSessionsInput, HostSessionSummary[]>

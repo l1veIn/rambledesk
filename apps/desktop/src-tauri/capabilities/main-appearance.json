@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main-appearance",
+  "description": "Appearance zoom for the main workbench only",
+  "windows": ["main"],
+  "permissions": ["core:webview:allow-set-webview-zoom"]
+}

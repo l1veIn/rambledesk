@@ -3,23 +3,28 @@ use std::path::{Path, PathBuf};
 use super::*;
 
 const HOST_SESSION_SUMMARY_BY_ID: &str = "\
-    SELECT hs.host_id, hs.host_session_id, \
+    SELECT hs.id AS session_id, hs.created_at, hs.host_id, hs.host_session_id, \
+           ms.protocol, ms.agent_config_id, ms.cwd, ms.remote_session_id, \
            COALESCE(NULLIF(hs.display_title, ''), (SELECT first_request.title \
             FROM feedback_requests first_request \
             WHERE first_request.host_session_record_id = hs.id \
-            ORDER BY first_request.created_at, first_request.id LIMIT 1)) AS title, \
-           (SELECT first_request.source_hint \
+            ORDER BY first_request.created_at, first_request.id LIMIT 1), hs.host_session_id) AS title, \
+           COALESCE((SELECT first_request.source_hint \
             FROM feedback_requests first_request \
             WHERE first_request.host_session_record_id = hs.id \
-            ORDER BY first_request.created_at, first_request.id LIMIT 1) AS source_hint, \
+            ORDER BY first_request.created_at, first_request.id LIMIT 1), ms.cwd) AS source_hint, \
            COUNT(r.id) AS request_count, \
            SUM(CASE WHEN r.status IN ('waiting', 'in_progress') THEN 1 ELSE 0 END) AS pending_count, \
-           MAX(r.updated_at) AS updated_at, \
+           CASE WHEN ms.session_id IS NOT NULL \
+                THEN MAX(hs.updated_at, COALESCE(MAX(r.updated_at), hs.updated_at)) \
+                ELSE MAX(r.updated_at) END AS updated_at, \
            hs.pinned_at, hs.archived_at, hp.pinned_at AS host_pinned_at \
     FROM host_sessions hs \
-    JOIN feedback_requests r ON r.host_session_record_id = hs.id \
+    LEFT JOIN feedback_requests r ON r.host_session_record_id = hs.id \
+    LEFT JOIN managed_sessions ms ON ms.session_id = hs.id \
     LEFT JOIN host_preferences hp ON hp.host_id = hs.host_id \
-    WHERE hs.id = ?1 \
+    WHERE hs.id = ?1 AND (ms.session_id IS NOT NULL OR r.id IS NOT NULL) \
+      AND (ms.lifecycle IS NULL OR ms.lifecycle = 'active') \
     GROUP BY hs.id, hs.host_id, hs.host_session_id";
 
 impl SqliteFeedbackStore {
@@ -187,6 +192,18 @@ impl SqliteFeedbackStore {
             .await
             .map_err(storage_error)?;
         let record_id = host_session_record_id(&mut transaction, host_id, host_session_id).await?;
+        // This repository path cannot stop owned Agent processes or revoke their
+        // feedback access. Archived managed sessions must use SessionApplication.
+        let managed: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM managed_sessions WHERE session_id = ?1)",
+        )
+        .bind(&record_id)
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(storage_error)?;
+        if managed {
+            return Err(RepositoryError::ManagedSessionRequiresRuntimeDeletion);
+        }
         let archived_at: Option<String> =
             sqlx::query_scalar("SELECT archived_at FROM host_sessions WHERE id = ?1")
                 .bind(&record_id)
@@ -278,7 +295,8 @@ impl SqliteFeedbackStore {
         sqlx::query(
             "DELETE FROM host_sessions \
              WHERE id = ?1 \
-               AND NOT EXISTS(SELECT 1 FROM feedback_requests WHERE host_session_record_id = ?1)",
+               AND NOT EXISTS(SELECT 1 FROM feedback_requests WHERE host_session_record_id = ?1) \
+               AND NOT EXISTS(SELECT 1 FROM managed_sessions WHERE session_id = ?1)",
         )
         .bind(&record_id)
         .execute(&mut *transaction)
@@ -383,7 +401,7 @@ fn removable_library_directory(
     }
 }
 
-async fn delete_feedback_request_rows(
+pub(super) async fn delete_feedback_request_rows(
     transaction: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     request_id: &str,
 ) -> Result<(), RepositoryError> {

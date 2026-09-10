@@ -74,11 +74,35 @@ impl WebSessionClock for SystemWebSessionClock {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WebSessionLifetime {
+    pub idle_timeout_seconds: u64,
+    pub absolute_timeout_seconds: u64,
+}
+
+impl WebSessionLifetime {
+    pub const fn from_policy(policy: WebSessionPolicy) -> Self {
+        Self {
+            idle_timeout_seconds: policy.idle_timeout_seconds,
+            absolute_timeout_seconds: policy.absolute_timeout_seconds,
+        }
+    }
+}
+
+/// A browser resumes its session from an HttpOnly cookie instead of re-entering the
+/// durable token, so it slides while the workbench keeps talking to Web Access:
+/// 30 idle days inside a 180-day absolute ceiling. Revocation stays server-side.
+pub const BROWSER_SESSION_LIFETIME: WebSessionLifetime = WebSessionLifetime {
+    idle_timeout_seconds: 30 * 24 * 60 * 60,
+    absolute_timeout_seconds: 180 * 24 * 60 * 60,
+};
+
 #[derive(Debug, Clone)]
 struct SessionRecord {
     issued_at: u64,
     last_seen_at: u64,
     runtime_generation: String,
+    lifetime: WebSessionLifetime,
 }
 
 struct SessionEntry {
@@ -94,6 +118,7 @@ struct WebSessionState {
 
 pub struct WebSessionManager {
     policy: WebSessionPolicy,
+    browser_lifetime: WebSessionLifetime,
     clock: Arc<dyn WebSessionClock>,
     state: Mutex<WebSessionState>,
     revocation: watch::Sender<u64>,
@@ -126,6 +151,34 @@ impl WebSessionManager {
     }
 
     pub fn issue_session(&self, durable_token: &str) -> Option<String> {
+        self.issue_session_with_lifetime(
+            durable_token,
+            WebSessionLifetime::from_policy(self.policy),
+        )
+    }
+
+    /// Issues a session that a browser keeps in its HttpOnly cookie, so it uses the
+    /// longer browser window instead of the single-page-load default.
+    pub fn issue_browser_session(&self, durable_token: &str) -> Option<String> {
+        self.issue_session_with_lifetime(durable_token, self.browser_lifetime)
+    }
+
+    pub fn browser_session_lifetime(&self) -> WebSessionLifetime {
+        self.browser_lifetime
+    }
+
+    pub fn with_browser_lifetime(mut self, lifetime: WebSessionLifetime) -> Self {
+        assert!(lifetime.idle_timeout_seconds > 0);
+        assert!(lifetime.absolute_timeout_seconds > 0);
+        self.browser_lifetime = lifetime;
+        self
+    }
+
+    fn issue_session_with_lifetime(
+        &self,
+        durable_token: &str,
+        lifetime: WebSessionLifetime,
+    ) -> Option<String> {
         let now = self.clock.now_seconds();
         let mut state = self.state.lock().expect("Web Session state poisoned");
         if !crate::web_security::constant_time_bytes_eq(
@@ -134,7 +187,7 @@ impl WebSessionManager {
         ) {
             return None;
         }
-        purge_expired(&mut state, self.policy, now);
+        purge_expired(&mut state, now);
         if state.sessions.len() >= self.policy.max_sessions {
             return None;
         }
@@ -149,6 +202,7 @@ impl WebSessionManager {
                 issued_at: now,
                 last_seen_at: now,
                 runtime_generation,
+                lifetime,
             },
         });
         Some(token)
@@ -161,17 +215,15 @@ impl WebSessionManager {
         let token_hash = hash_token(session_token);
         let index = constant_time_session_index(&state.sessions, &token_hash)?;
         let record = &mut state.sessions[index].record;
-        if session_expired(record, self.policy, now)
-            || record.runtime_generation != runtime_generation
-        {
+        if session_expired(record, now) || record.runtime_generation != runtime_generation {
             state.sessions.remove(index);
             return None;
         }
         record.last_seen_at = now;
         let expires_at = record
             .issued_at
-            .saturating_add(self.policy.absolute_timeout_seconds)
-            .min(now.saturating_add(self.policy.idle_timeout_seconds));
+            .saturating_add(record.lifetime.absolute_timeout_seconds)
+            .min(now.saturating_add(record.lifetime.idle_timeout_seconds));
         let revocation = self.revocation.subscribe();
         let revocation_epoch = *revocation.borrow();
         Some(WebSessionAuthorization {
@@ -226,6 +278,7 @@ impl WebSessionManager {
         let (revocation, _) = watch::channel(0);
         Self {
             policy,
+            browser_lifetime: BROWSER_SESSION_LIFETIME,
             clock,
             state: Mutex::new(WebSessionState {
                 durable_token,
@@ -303,22 +356,22 @@ fn constant_time_session_index(
     matched
 }
 
-fn purge_expired(state: &mut WebSessionState, policy: WebSessionPolicy, now: u64) {
+fn purge_expired(state: &mut WebSessionState, now: u64) {
     let runtime_generation = &state.runtime_generation;
     state.sessions.retain(|session| {
         session.record.runtime_generation == *runtime_generation
-            && !session_expired(&session.record, policy, now)
+            && !session_expired(&session.record, now)
     });
 }
 
-fn session_expired(record: &SessionRecord, policy: WebSessionPolicy, now: u64) -> bool {
+fn session_expired(record: &SessionRecord, now: u64) -> bool {
     now >= record
         .last_seen_at
-        .saturating_add(policy.idle_timeout_seconds)
+        .saturating_add(record.lifetime.idle_timeout_seconds)
         || now
             >= record
                 .issued_at
-                .saturating_add(policy.absolute_timeout_seconds)
+                .saturating_add(record.lifetime.absolute_timeout_seconds)
 }
 
 #[cfg(test)]
@@ -409,6 +462,31 @@ mod tests {
         }
         clock.advance(25);
         assert!(manager.authorize(&absolute).is_none());
+    }
+
+    #[test]
+    fn browser_sessions_slide_on_the_browser_window_instead_of_the_page_policy() {
+        let clock = Arc::new(FakeClock(AtomicU64::new(10)));
+        let manager = manager(clock.clone()).with_browser_lifetime(WebSessionLifetime {
+            idle_timeout_seconds: 300,
+            absolute_timeout_seconds: 400,
+        });
+        let token = manager
+            .issue_browser_session(&"a".repeat(64))
+            .expect("browser session");
+
+        // The page policy drops a session after 30 idle seconds; this one keeps sliding.
+        clock.advance(90);
+        assert!(manager.authorize(&token).is_some());
+        clock.advance(90);
+        assert!(manager.authorize(&token).is_some());
+        clock.advance(90);
+        assert!(manager.authorize(&token).is_some());
+        assert_eq!(manager.browser_session_lifetime().idle_timeout_seconds, 300);
+
+        // The absolute ceiling still ends the window.
+        clock.advance(200);
+        assert!(manager.authorize(&token).is_none());
     }
 
     #[test]

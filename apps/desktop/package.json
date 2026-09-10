@@ -1,7 +1,7 @@
 {
   "name": "rambledesk-desktop",
   "private": true,
-  "version": "0.3.4",
+  "version": "0.4.0-rc.3",
   "type": "module",
   "scripts": {
     "dev": "tauri dev",
@@ -16,6 +16,11 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.27",
+    "@fontsource-variable/fira-code": "^5.3.0",
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/geist-mono": "^5.3.0",
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
     "@tauri-apps/api": "2.11.1",
     "@tauri-apps/plugin-dialog": "^2.7.2",
     "@tauri-apps/plugin-http": "^2.5.9",
@@ -32,6 +37,7 @@
     "@tiptap/pm": "^3.29.2",
     "@tiptap/starter-kit": "^3.29.2",
     "ai": "^7.0.48",
+    "marked": "17.0.6",
     "paneforge": "1.0.2",
     "svelte-dnd-action": "0.9.79",
     "svelte-sonner": "^1.1.1"
@@ -44,6 +50,7 @@
     "@tauri-apps/cli": "2.11.4",
     "bits-ui": "^2.18.1",
     "clsx": "^2.1.1",
+    "jsdom": "^30.0.1",
     "svelte": "5.56.8",
     "svelte-check": "4.7.4",
     "tailwind-merge": "^3.6.0",

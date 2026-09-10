@@ -8,8 +8,8 @@ use rambledesk_core::{
 use rambledesk_local_server::{
     AccessToken, DurableWebAccessToken, MAX_APPLICATION_JSON_BODY_BYTES,
     MAX_ATTACHMENT_UPLOAD_BODY_BYTES, RUNTIME_GENERATION_HEADER, ServerConfig, SpaAsset,
-    SpaAssetCachePolicy, SpaAssetSource, WebAccessServerConfig, WebSessionManager,
-    WebSessionPolicy, start_server, start_web_access_server,
+    SpaAssetCachePolicy, SpaAssetSource, WebAccessServerConfig, WebSessionLifetime,
+    WebSessionManager, WebSessionPolicy, start_server, start_web_access_server,
 };
 use rambledesk_storage::SqliteFeedbackStore;
 use tokio_tungstenite::{
@@ -183,15 +183,22 @@ async fn independent_server_serves_spa_history_and_fingerprinted_assets() -> any
             ),
         ]),
     });
-    let sessions = Arc::new(WebSessionManager::with_policy(
-        DurableWebAccessToken::parse(DURABLE_TOKEN)?,
-        "runtime-a",
-        WebSessionPolicy {
+    let sessions = Arc::new(
+        WebSessionManager::with_policy(
+            DurableWebAccessToken::parse(DURABLE_TOKEN)?,
+            "runtime-a",
+            WebSessionPolicy {
+                idle_timeout_seconds: 1,
+                absolute_timeout_seconds: 1,
+                max_sessions: 4,
+            },
+        )
+        // Bootstrap issues browser sessions, so expiry must come from the browser window.
+        .with_browser_lifetime(WebSessionLifetime {
             idle_timeout_seconds: 1,
             absolute_timeout_seconds: 1,
-            max_sessions: 4,
-        },
-    ));
+        }),
+    );
     let server = start_web_access_server(
         WebAccessServerConfig {
             port: 0,
@@ -438,6 +445,94 @@ fn default_security_limits_are_a_read_only_snapshot_of_runtime_defaults() {
         sessions.absolute_timeout_seconds
     );
     assert_eq!(limits.max_sessions, sessions.max_sessions);
+}
+
+#[tokio::test]
+async fn bootstrap_sets_an_http_only_cookie_and_resumes_the_same_browser_session()
+-> anyhow::Result<()> {
+    let directory = tempfile::tempdir()?;
+    let store = SqliteFeedbackStore::connect(&directory.path().join("bootstrap.sqlite3")).await?;
+    let changes = Arc::new(ApplicationChangeHub::with_runtime_generation(
+        RUNTIME_GENERATION,
+    ));
+    let application = store
+        .into_application()
+        .with_change_observer(changes.clone());
+    // The page policy expires within a second; only the browser window keeps this session.
+    let sessions = Arc::new(WebSessionManager::with_policy(
+        DurableWebAccessToken::parse(DURABLE_TOKEN)?,
+        RUNTIME_GENERATION,
+        WebSessionPolicy {
+            idle_timeout_seconds: 1,
+            absolute_timeout_seconds: 1,
+            max_sessions: 4,
+        },
+    ));
+    let server = start_web_access_server(
+        WebAccessServerConfig {
+            port: 0,
+            max_event_connections: 1,
+            max_http_requests: 8,
+            // One durable exchange only: cookie resumes must not spend this budget.
+            max_bootstrap_attempts_per_minute: 2,
+        },
+        test_commands(application),
+        changes,
+        sessions,
+        test_assets(),
+    )
+    .await?;
+    let client = reqwest::Client::new();
+
+    let bootstrap = client
+        .post(format!("{}/api/auth/session", server.origin()))
+        .header(reqwest::header::ORIGIN, server.origin())
+        .bearer_auth(DURABLE_TOKEN)
+        .send()
+        .await?;
+    assert_eq!(bootstrap.status(), reqwest::StatusCode::OK);
+    let cookie = bootstrap.headers()[reqwest::header::SET_COOKIE]
+        .to_str()?
+        .to_owned();
+    assert!(cookie.starts_with("rambledesk_web_session="), "{cookie}");
+    assert!(cookie.contains("HttpOnly"), "{cookie}");
+    assert!(cookie.contains("SameSite=Strict"), "{cookie}");
+    assert!(cookie.contains("Path=/api/auth/session"), "{cookie}");
+    let session_token = bootstrap.json::<serde_json::Value>().await?["session_token"]
+        .as_str()
+        .expect("session token")
+        .to_owned();
+
+    // Reloads send only the cookie: the same session resumes, without spending the
+    // durable-token bootstrap budget.
+    let cookie_pair = cookie.split(';').next().expect("cookie pair").to_owned();
+    for attempt in 1..=3 {
+        let resumed = client
+            .post(format!("{}/api/auth/session", server.origin()))
+            .header(reqwest::header::ORIGIN, server.origin())
+            .header(reqwest::header::COOKIE, &cookie_pair)
+            .send()
+            .await?;
+        assert_eq!(
+            resumed.status(),
+            reqwest::StatusCode::OK,
+            "resume {attempt}"
+        );
+        assert_eq!(
+            resumed.json::<serde_json::Value>().await?["session_token"].as_str(),
+            Some(session_token.as_str()),
+            "resume {attempt}"
+        );
+    }
+
+    // No credential at all stays unauthorized.
+    let anonymous = reqwest::Client::new()
+        .post(format!("{}/api/auth/session", server.origin()))
+        .header(reqwest::header::ORIGIN, server.origin())
+        .send()
+        .await?;
+    assert_eq!(anonymous.status(), reqwest::StatusCode::UNAUTHORIZED);
+    Ok(())
 }
 
 #[tokio::test]

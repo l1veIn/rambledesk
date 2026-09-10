@@ -18,6 +18,7 @@ impl FeedbackPackagePublisher for SqliteFeedbackStore {
         plan: &SubmissionPlan,
     ) -> Result<PublishedFeedbackPackage, RepositoryError> {
         let _guard = self.publish_lock.lock().await;
+        self.ensure_publication_plan_live(plan).await?;
         publish_package(plan).await
     }
 }

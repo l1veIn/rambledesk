@@ -53,6 +53,23 @@ impl TerminalOperationObserver for DesktopTerminalOperationObserver {
             ),
             TerminalOperation::ApproveFeedback => {}
         }
+        // Keep cancellation diagnostics, but do not resume an external host or
+        // present a manual continuation prompt for a cancelled feedback request.
+        if event.request.status != FeedbackStatus::Completed {
+            return;
+        }
+        match self
+            .application
+            .managed_feedback_session(&event.request.request_id)
+            .await
+        {
+            Ok(Some(_)) => return,
+            Ok(None) => {}
+            Err(error) => {
+                tracing::warn!(%error, "continuation attribution could not be verified");
+                return;
+            }
+        }
         deliver_continuation_after_terminal(
             &self.app,
             &self.router,

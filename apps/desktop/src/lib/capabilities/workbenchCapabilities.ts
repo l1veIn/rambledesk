@@ -2,12 +2,12 @@ import type { FeedbackWorkspaceView } from '$lib/feedback'
 import type { DiagnosticExportResult } from '$lib/nativePath'
 import type { SpeechModelId } from '$lib/preferences'
 import type { RambleConsoleCommand, RambleConsoleState } from '$lib/rambleConsole'
-import type { SpeechOverlayState } from '$lib/speechOverlay'
-import type { ShortcutAction, ShortcutConfig } from '$lib/shortcutSettings'
+import type { SpeechOverlayState } from '$lib/speech/speechOverlay'
+import type { ShortcutAction, ShortcutConfig } from '$lib/settings/shortcutSettings'
 import type {
   SpeechRecognitionListener,
   SpeechRecognitionSession,
-} from '$lib/speech'
+} from '$lib/speech/speech'
 import type {
   ClipboardCapturePlugin,
   ImagePastePlugin,
@@ -52,6 +52,7 @@ export interface WindowCapability {
   close(): Promise<void>
   startDragging(): Promise<void>
   leaveFullscreen(): Promise<void>
+  setZoom(factor: number): Promise<void>
   restart(): Promise<void>
   onResized(handler: () => void, onError: CapabilityErrorHandler): CapabilityUnsubscribe
   onFocusChanged(
@@ -249,6 +250,13 @@ export type DshInstallResult = Readonly<{
   action: 'created' | 'updated' | 'unchanged'
   restartRequired: boolean
 }>
+export type DshHostStatus = Readonly<{
+  id: string
+  name: string
+  installed: boolean
+  profiles: readonly Readonly<{ id: string; profileDir: string; patchPath: string; configured: boolean }>[]
+  restartRequired: boolean
+}>
 export interface HostIntegrationCapability {
   genericMcpConfiguration(): Promise<string>
   detectGenericMcpHosts(): Promise<readonly McpHostView[]>
@@ -256,6 +264,7 @@ export interface HostIntegrationCapability {
   piStatus(): Promise<PiPackageStatus>
   installPi(): Promise<string>
   uninstallPi(): Promise<string>
+  dshStatus(): Promise<DshHostStatus>
   installDsh(): Promise<readonly DshInstallResult[]>
 }
 
@@ -278,13 +287,20 @@ export type WebAccessStatus =
   | Readonly<{ state: 'failed'; url: null; failure: WebAccessFailure }>
 export interface WebAccessAdministrationCapability {
   status(): Promise<WebAccessStatus>
-  setEnabled(enabled: boolean): Promise<WebAccessStatus>
+  /** `port` only applies when enabling; omit it to use the stored default. */
+  setEnabled(enabled: boolean, port?: number): Promise<WebAccessStatus>
   open(): Promise<void>
   copyToken(): Promise<void>
+  /** Issues a new durable token and revokes every existing browser session. */
+  rotateToken(): Promise<WebAccessStatus>
 }
 
 export type DiagnosticScope = 'last_24_hours' | 'last_7_days' | 'all'
+export type DiagnosticsSettings = Readonly<{ enabled: boolean }>
 export interface DiagnosticsCapability {
+  readSettings(): Promise<DiagnosticsSettings>
+  setEnabled(enabled: boolean): Promise<DiagnosticsSettings>
+  clear(): Promise<void>
   export(scope: DiagnosticScope, path: string): Promise<DiagnosticExportResult>
 }
 

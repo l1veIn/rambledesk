@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
+    <title>RambleDesk quality benchmark</title>
+    <style>
+      #quality-controls { position:fixed;bottom:0;right:0;z-index:99999;background:#fff;color:#111;padding:8px;border:1px solid #888;font:12px monospace;max-width:min(480px,100vw);max-height:45vh;overflow:auto }
+      #quality-controls textarea { display:block;width:460px;max-width:100%;height:65px;font:11px monospace }
+      #quality-controls output { display:block;margin:5px 0 }
+      #quality-controls details { margin-top:6px }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <aside id="quality-controls">
+      <details open>
+        <summary>Production App benchmark · isolated fixture only</summary>
+        <button id="quality-run" data-quality-run>Measure fixture: 5 reloads + 60 switches</button>
+        <button id="quality-export">Export reload/switch results</button>
+        <output id="quality-status">Use English, finish onboarding, and show both fixture requests first.</output>
+        <textarea id="quality-results" aria-label="Benchmark results" readonly></textarea>
+        <details>
+          <summary>30-minute resources · explicit start</summary>
+          <button id="quality-resource-run" data-quality-run>Start 30-minute resource observation</button>
+          <button id="quality-resource-stop" disabled>Stop resource observation</button>
+          <button id="quality-resource-export">Export resource results</button>
+          <output id="quality-resource-status">Keep this document foreground. Switching only; no speech or attachment modal cycle.</output>
+          <textarea id="quality-resource-results" aria-label="Resource observation results" readonly></textarea>
+        </details>
+        <details>
+          <summary>Real editing · modifies fixture drafts</summary>
+          <button id="quality-edit-run" data-quality-run>Append + save: 30 ordinary and 30 long edits</button>
+          <button id="quality-edit-export">Export edit results</button>
+          <output id="quality-edit-status">Appends unique markers. Run on an isolated fixture copy after unchanged-content measurements.</output>
+          <textarea id="quality-edit-results" aria-label="Edit and save benchmark results" readonly></textarea>
+        </details>
+        <details>
+          <summary>Managed history · separate quality fixture</summary>
+          <button id="quality-history-run" data-quality-run>Measure 30 Agent entries, expansions and HTTP pages</button>
+          <button id="quality-history-export">Export Agent history results</button>
+          <output id="quality-history-status">Open both project scopes, then View Agent to create the actual Website project and CLI project Agent tabs.</output>
+          <textarea id="quality-history-results" aria-label="Managed history benchmark results" readonly></textarea>
+        </details>
+      </details>
+    </aside>
+    <script type="module" src="/src/dev/qualityBenchmark.ts"></script>
+  </body>
+</html>

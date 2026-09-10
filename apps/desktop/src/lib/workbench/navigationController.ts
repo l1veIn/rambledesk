@@ -7,9 +7,10 @@ import type {
   ListFeedbackRequestsOutput,
 } from '../feedback'
 import type { ApplicationTransport } from '../application/applicationTransport'
+import { readApplicationSnapshot } from '../application/readApplicationSnapshot'
+import { ApplicationReadTimeoutError, withApplicationReadTimeout } from '../application/applicationReadTimeout'
 import type { WorkbenchCapabilities } from '../capabilities/workbenchCapabilities'
 import { InboxNotificationTracker, playNotificationSound, type NotificationState } from '../notifications'
-import { previewFixtures } from '../previewFixtures'
 import {
   customNotificationSound,
   notificationPopupEnabled,
@@ -17,37 +18,27 @@ import {
   notificationSoundEnabled,
   notificationVolume,
 } from '../preferences'
-import type { HostProfile } from './types'
+import type { HostProfile } from '../domain/hostProfile'
+import { filterRequestPage, requestFilterStatuses, type RequestFilters } from '../domain/requestFilters'
+import { createHostSessionFacts, resolveHostProfile as resolveHostProfileFrom } from './navigation/hostSessionFacts'
 import {
-  DEFAULT_REQUEST_FILTERS,
-  filterRequestPage,
-  requestFilterStatuses,
-  type RequestFilters,
-} from './requestFilters'
+  now,
+  requestListInput as requestListInputFrom,
+  requestQueryKey as requestQueryKeyFrom,
+  waitForMinimumDuration,
+} from './navigation/navigationInputs'
+import {
+  MANUAL_PAGE_REFRESH_MIN_MS,
+  initialNavigationState,
+  type NavigationState,
+} from './navigation/navigationTypes'
+import type { PreparedNavigationScope } from './navigationScope'
 
-const MANUAL_PAGE_REFRESH_MIN_MS = 300
+export type { NavigationState } from './navigation/navigationTypes'
 
-export type NavigationState = {
-  pendingRequests: FeedbackRequestSummary[]
-  requests: FeedbackRequestSummary[]
-  hostSessions: HostSessionSummary[]
-  hostSessionFactsStatus: 'pending' | 'ready' | 'failed'
-  hostSessionFactsRevision: number
-  hostProfiles: Record<string, HostProfile>
-  selectedHostId: string | null
-  selectedHostSessionId: string | null
-  requestSearch: string
-  requestFilters: RequestFilters
-  nextRequestCursor: string | null
-  loadingNavigation: boolean
-  loadingRequests: boolean
-  loadingMoreRequests: boolean
-  refreshingPage: boolean
-}
 
 type NavigationControllerContext = {
   capabilities: Pick<WorkbenchCapabilities, 'notifications' | 'tray'>
-  previewMode: boolean
   transport: ApplicationTransport
   tr: (source: string, values?: Record<string, string | number>) => string
   messageFrom: (cause: unknown) => string
@@ -59,6 +50,7 @@ type NavigationControllerContext = {
   clearWorkspace: () => void
   onPageError: (message: string) => void
   canSendOsBanners: () => boolean
+  onRequestsArrived?: (requests: readonly FeedbackRequestSummary[]) => void
 }
 
 export type ScopeSelectionResult = Readonly<{
@@ -66,152 +58,120 @@ export type ScopeSelectionResult = Readonly<{
   requests: readonly FeedbackRequestSummary[]
 }>
 
-const initialState: NavigationState = {
-  pendingRequests: [],
-  requests: [],
-  hostSessions: [],
-  hostSessionFactsStatus: 'pending',
-  hostSessionFactsRevision: 0,
-  hostProfiles: {},
-  selectedHostId: null,
-  selectedHostSessionId: null,
-  requestSearch: '',
-  requestFilters: DEFAULT_REQUEST_FILTERS,
-  nextRequestCursor: null,
-  loadingNavigation: true,
-  loadingRequests: true,
-  loadingMoreRequests: false,
-  refreshingPage: false,
-}
 
 export function createNavigationController(context: NavigationControllerContext) {
-  const store = writable<NavigationState>(initialState)
+  const store = writable<NavigationState>(initialNavigationState)
   const notificationTracker = new InboxNotificationTracker()
   let requestRefreshGeneration = 0
+  let pendingRequestRefresh: number | null = null
+  let displayedRequestQuery: string | null = null
   let scopeSelectionGeneration = 0
-  let hostSessionFactsGeneration = 0
+  // Candidates carry no writable state. Only this controller can accept one,
+  // and only while its query and navigation intent are still current.
+  const preparedScopes = new WeakMap<PreparedNavigationScope, {
+    query: string
+    isCurrent: () => boolean
+  }>()
 
   function patch(next: Partial<NavigationState>) {
     store.update((current) => ({ ...current, ...next }))
   }
 
-  function beginHostSessionFactsRefresh() {
-    return ++hostSessionFactsGeneration
+  const hostSessions = createHostSessionFacts({
+    store,
+    patch,
+    messageFrom: context.messageFrom,
+    onPageError: context.onPageError,
+  })
+
+  function requestListInput(cursor: string | null = null) {
+    return requestListInputFrom(get(store), cursor)
   }
 
-  function applyHostSessionFacts(
-    hostSessions: HostSessionSummary[],
-    generation?: number,
-  ) {
-    if (generation !== undefined && generation !== hostSessionFactsGeneration) return false
-    if (generation === undefined) hostSessionFactsGeneration += 1
-    store.update((current) => ({
-      ...current,
-      hostSessions,
-      hostSessionFactsStatus: 'ready',
-      hostSessionFactsRevision: current.hostSessionFactsRevision + 1,
-    }))
-    return true
+  function requestQueryKey() {
+    return requestQueryKeyFrom(get(store))
   }
 
-  function failHostSessionFacts(generation: number) {
-    if (generation !== hostSessionFactsGeneration) return false
-    store.update((current) => ({
-      ...current,
-      hostSessionFactsStatus: 'failed',
-      hostSessionFactsRevision: current.hostSessionFactsRevision + 1,
-    }))
-    return true
-  }
-
-  function replaceHostSession(summary: HostSessionSummary) {
-    const current = get(store)
-    const nextSessions = current.hostSessions.map((session) =>
-      session.host_id === summary.host_id &&
-      session.host_session_id === summary.host_session_id
-        ? summary
-        : session,
-    )
-    if (
-      !nextSessions.some(
-        (session) =>
-          session.host_id === summary.host_id &&
-          session.host_session_id === summary.host_session_id,
-      )
-    ) {
-      nextSessions.push(summary)
-    }
-    applyHostSessionFacts(nextSessions)
-  }
 
   async function initialize(openFirstRequest = true) {
-    const hostSessionFactsIntent = beginHostSessionFactsRefresh()
+    const refresh = hostSessions.beginRefresh()
+    const hostSessionFactsIntent = refresh.generation
+    let initialized = false
     context.onPageError('')
-    patch({ loadingNavigation: true, loadingRequests: true })
-
-    if (context.previewMode) {
-      patch({
-        pendingRequests: previewFixtures.requests.filter(
-          (request) => request.status === 'waiting' || request.status === 'in_progress',
-        ),
-        requests: previewFixtures.requests,
-        hostProfiles: Object.fromEntries(
-          previewFixtures.hostProfiles.map((profile) => [profile.id, profile]),
-        ),
-      })
-      applyHostSessionFacts(previewFixtures.hostSessions, hostSessionFactsIntent)
-      patch({ loadingNavigation: false, loadingRequests: false })
-      return true
-    }
+    patch({ loadingNavigation: true, loadingRequests: true, initializationFailure: null })
 
     try {
-      await context.transport.waitUntilReady()
-      const [nextInbox, nextHostSessions, profiles] = await Promise.all([
-        context.transport.call('listFeedbackInbox', undefined),
-        context.transport.call('listHostSessions', undefined),
-        context.transport.call('listHostProfiles', undefined),
+      await withApplicationReadTimeout(context.transport.waitUntilReady(), 'application readiness')
+      const [facts, profiles] = await Promise.all([
+        Promise.all([
+          readApplicationSnapshot(context.transport, 'listFeedbackInbox', undefined),
+          readApplicationSnapshot(context.transport, 'listHostSessions', undefined),
+        ]).then(values => ({ values }), cause => ({ cause })),
+        readApplicationSnapshot(context.transport, 'listHostProfiles', undefined),
       ])
-      patch({
-        hostProfiles: Object.fromEntries(profiles.map((profile) => [profile.id, profile])),
-      })
-      if (hostSessionFactsIntent !== hostSessionFactsGeneration) return true
-      applyHostSessionFacts(nextHostSessions, hostSessionFactsIntent)
-      applyInboxSnapshot(nextInbox)
-      await refreshRequests(openFirstRequest)
+      if (!hostSessions.isCurrent(hostSessionFactsIntent)) {
+        if (!await hostSessions.awaitLatest()) return false
+      } else {
+        if ('cause' in facts) throw facts.cause
+        const [nextInbox, nextHostSessions] = facts.values
+        hostSessions.applyFacts(nextHostSessions, hostSessionFactsIntent)
+        applyInboxSnapshot(nextInbox)
+      }
+      patch({ hostProfiles: Object.fromEntries(profiles.map((profile) => [profile.id, profile])) })
+      await refreshRequests(openFirstRequest, true)
+      if (!hostSessions.isCurrent(hostSessionFactsIntent) && !await hostSessions.awaitLatest()) return false
+      initialized = true
       return true
     } catch (cause) {
-      if (hostSessionFactsIntent !== hostSessionFactsGeneration) return true
-      failHostSessionFacts(hostSessionFactsIntent)
+      hostSessions.failFacts(hostSessionFactsIntent)
+      hostSessions.rememberFailure({
+        message: context.messageFrom(cause),
+        timedOut: cause instanceof ApplicationReadTimeoutError,
+      })
+      patch({ initializationFailure: hostSessions.failure() })
       context.onPageError(context.messageFrom(cause))
       return false
     } finally {
-      patch({ loadingNavigation: false, loadingRequests: false })
+      refresh.settle(initialized)
+      if (hostSessions.isCurrent(hostSessionFactsIntent)) {
+        patch({ loadingNavigation: false })
+      }
+      if (pendingRequestRefresh === null) patch({ loadingRequests: false })
     }
   }
 
   async function refreshNavigation(refreshRequestList = false) {
-    const hostSessionFactsIntent = beginHostSessionFactsRefresh()
+    const refresh = hostSessions.beginRefresh()
+    const hostSessionFactsIntent = refresh.generation
+    let refreshed = false
     patch({ loadingNavigation: true })
     try {
       const [nextInbox, nextHostSessions] = await Promise.all([loadInbox(), loadHostSessions()])
-      if (hostSessionFactsIntent !== hostSessionFactsGeneration) return true
+      if (!hostSessions.isCurrent(hostSessionFactsIntent)) return true
       applyInboxSnapshot(nextInbox)
-      applyHostSessionFacts(nextHostSessions, hostSessionFactsIntent)
-      if (refreshRequestList) await refreshRequests(false)
+      hostSessions.applyFacts(nextHostSessions, hostSessionFactsIntent)
+      if (refreshRequestList) await refreshRequests(false, true)
+      refreshed = true
       return true
     } catch (cause) {
-      if (hostSessionFactsIntent !== hostSessionFactsGeneration) return true
-      failHostSessionFacts(hostSessionFactsIntent)
+      if (!hostSessions.isCurrent(hostSessionFactsIntent)) return true
+      hostSessions.failFacts(hostSessionFactsIntent)
+      hostSessions.rememberFailure({ message: context.messageFrom(cause), timedOut: cause instanceof ApplicationReadTimeoutError })
       context.onPageError(context.messageFrom(cause))
       return false
     } finally {
-      patch({ loadingNavigation: false })
+      refresh.settle(refreshed)
+      if (hostSessions.isCurrent(hostSessionFactsIntent)) patch({ loadingNavigation: false })
     }
   }
 
   async function refreshPage(minimumLoadingMs = MANUAL_PAGE_REFRESH_MIN_MS) {
-    const hostSessionFactsIntent = beginHostSessionFactsRefresh()
+    const refresh = hostSessions.beginRefresh()
+    const hostSessionFactsIntent = refresh.generation
+    let refreshed = false
     const requestGeneration = ++requestRefreshGeneration
+    const query = requestQueryKey()
+    pendingRequestRefresh = requestGeneration
     const startedAt = now()
     patch({
       loadingNavigation: true,
@@ -225,20 +185,28 @@ export function createNavigationController(context: NavigationControllerContext)
         loadHostSessions(),
         loadRequestList(),
       ])
-      if (hostSessionFactsIntent !== hostSessionFactsGeneration) return
+      if (!hostSessions.isCurrent(hostSessionFactsIntent)) return
       applyInboxSnapshot(nextInbox)
       if (requestGeneration === requestRefreshGeneration) {
+        displayedRequestQuery = query
         patch({ requests: result.requests, nextRequestCursor: result.next_cursor })
       }
-      applyHostSessionFacts(nextHostSessions, hostSessionFactsIntent)
+      hostSessions.applyFacts(nextHostSessions, hostSessionFactsIntent)
+      refreshed = true
     } catch (cause) {
-      if (hostSessionFactsIntent !== hostSessionFactsGeneration) return
-      failHostSessionFacts(hostSessionFactsIntent)
+      if (!hostSessions.isCurrent(hostSessionFactsIntent)) return
+      hostSessions.failFacts(hostSessionFactsIntent)
+      hostSessions.rememberFailure({ message: context.messageFrom(cause), timedOut: cause instanceof ApplicationReadTimeoutError })
       context.onPageError(context.messageFrom(cause))
     } finally {
+      refresh.settle(refreshed)
       await waitForMinimumDuration(startedAt, minimumLoadingMs)
-      patch({ loadingNavigation: false, refreshingPage: false })
-      if (requestGeneration === requestRefreshGeneration) patch({ loadingRequests: false })
+      if (hostSessions.isCurrent(hostSessionFactsIntent)) patch({ loadingNavigation: false })
+      patch({ refreshingPage: false })
+      if (requestGeneration === requestRefreshGeneration) {
+        pendingRequestRefresh = null
+        patch({ loadingRequests: false })
+      }
     }
   }
 
@@ -251,6 +219,7 @@ export function createNavigationController(context: NavigationControllerContext)
       })
     }
     if (arrivals.length === 0) return
+    context.onRequestsArrived?.(arrivals)
 
     if (
       get(notificationPopupEnabled) &&
@@ -281,113 +250,68 @@ export function createNavigationController(context: NavigationControllerContext)
     }
   }
 
-  function requestListInput(cursor: string | null = null): ListFeedbackRequestsInput {
-    const state = get(store)
-    return {
-      host_id: state.selectedHostId,
-      host_session_id: state.selectedHostSessionId,
-      status: requestFilterStatuses(state.requestFilters.status),
-      archived: null,
-      search: state.requestSearch.trim() || null,
-      limit: 100,
-      cursor,
-    }
-  }
-
-  function requestMatchesSearch(request: FeedbackRequestSummary, search: string) {
-    const normalized = search.trim().toLowerCase()
-    if (!normalized) return true
-    return [
-      request.title,
-      request.what_happened,
-      request.source_hint,
-      request.request_id,
-      request.host_id,
-      request.host_session_id,
-    ].some((value) => (value ?? '').toLowerCase().includes(normalized))
-  }
 
   function loadInbox(): Promise<FeedbackRequestSummary[]> {
-    if (context.previewMode) {
-      return Promise.resolve(
-        previewFixtures.requests.filter(
-          (request) => request.status === 'waiting' || request.status === 'in_progress',
-        ),
-      )
-    }
-    return context.transport.call('listFeedbackInbox', undefined)
+    return readApplicationSnapshot(context.transport, 'listFeedbackInbox', undefined)
   }
 
   function loadHostSessions(): Promise<HostSessionSummary[]> {
-    if (context.previewMode) return Promise.resolve(previewFixtures.hostSessions)
-    return context.transport.call('listHostSessions', undefined)
+    return readApplicationSnapshot(context.transport, 'listHostSessions', undefined)
   }
 
   async function loadRequestList(cursor: string | null = null): Promise<ListFeedbackRequestsOutput> {
     const state = get(store)
-    const { timeRange, status } = state.requestFilters
-    if (context.previewMode) {
-      const statuses = requestFilterStatuses(status)
-      return filterRequestPage(
-        {
-          requests:
-            cursor === null
-              ? previewFixtures.requests.filter(
-                  (request) =>
-                    (!state.selectedHostId || request.host_id === state.selectedHostId) &&
-                    (!state.selectedHostSessionId ||
-                      request.host_session_id === state.selectedHostSessionId) &&
-                    requestMatchesSearch(request, state.requestSearch) &&
-                    statuses.includes(request.status),
-                )
-              : [],
-          next_cursor: null,
-        },
-        timeRange,
-      )
-    }
-    const page = await context.transport.call('listFeedbackRequests', requestListInput(cursor))
-    return filterRequestPage(page, timeRange)
+    const page = await readApplicationSnapshot(
+      context.transport,
+      'listFeedbackRequests',
+      requestListInput(cursor),
+    )
+    return filterRequestPage(page, state.requestFilters.timeRange)
   }
 
-  function now() {
-    return typeof performance === 'undefined' ? Date.now() : performance.now()
-  }
-
-  async function waitForMinimumDuration(startedAt: number, minimumMs: number) {
-    const remainingMs = minimumMs - (now() - startedAt)
-    if (remainingMs <= 0) return
-    await new Promise((resolve) => setTimeout(resolve, remainingMs))
-  }
 
   async function refreshRequests(
     openFirst = false,
+    throwOnFailure = false,
   ): Promise<ListFeedbackRequestsOutput | null | undefined> {
     const generation = ++requestRefreshGeneration
-    patch({ loadingRequests: true, loadingMoreRequests: false })
+    const query = requestQueryKey()
+    pendingRequestRefresh = generation
+    // Polling the displayed query should keep its rows visible and interactive.
+    // Only an initial load or a different scope/search/filter needs the loading UI.
+    patch({ loadingRequests: displayedRequestQuery !== query, loadingMoreRequests: false })
     try {
       const result = await loadRequestList()
       if (generation !== requestRefreshGeneration) return undefined
+      displayedRequestQuery = query
       patch({ requests: result.requests, nextRequestCursor: result.next_cursor })
       const currentRequestId = context.getWorkspaceRequestId()
       if (openFirst && result.requests[0]) {
-        await context.openRequest(result.requests[0].request_id, currentRequestId !== undefined)
+        const opened = await context.openRequest(result.requests[0].request_id, currentRequestId !== undefined)
+        if (!opened && throwOnFailure) throw new Error('The initial workspace could not be opened.')
       } else if (openFirst && result.requests.length === 0) {
         if (!context.isDirty() || (await context.saveDraftNow())) context.clearWorkspace()
       }
       return result
     } catch (cause) {
       if (generation !== requestRefreshGeneration) return undefined
+      if (throwOnFailure) throw cause
       context.onPageError(context.messageFrom(cause))
       return null
     } finally {
-      if (generation === requestRefreshGeneration) patch({ loadingRequests: false })
+      if (generation === requestRefreshGeneration) {
+        pendingRequestRefresh = null
+        patch({ loadingRequests: false })
+      }
     }
   }
 
   async function loadMoreRequests() {
     const state = get(store)
-    if (!state.nextRequestCursor || state.loadingMoreRequests || state.loadingRequests) return
+    if (
+      !state.nextRequestCursor || state.loadingMoreRequests || state.loadingRequests ||
+      pendingRequestRefresh !== null
+    ) return
     const generation = requestRefreshGeneration
     patch({ loadingMoreRequests: true })
     try {
@@ -410,45 +334,96 @@ export function createNavigationController(context: NavigationControllerContext)
     }
   }
 
+  async function readScope(
+    hostId: string | null,
+    hostSessionId: string | null,
+    isCurrent: () => boolean,
+  ): Promise<PreparedNavigationScope | null> {
+    if (!isCurrent()) return null
+    const current = get(store)
+    const state = { ...current, selectedHostId: hostId, selectedHostSessionId: hostSessionId }
+    const query = requestQueryKeyFrom(state)
+    try {
+      const result = query === displayedRequestQuery && !current.loadingRequests
+        ? { requests: current.requests, next_cursor: current.nextRequestCursor }
+        : filterRequestPage(
+            await readApplicationSnapshot(context.transport, 'listFeedbackRequests', requestListInputFrom(state)),
+            state.requestFilters.timeRange,
+          )
+      if (!isCurrent()) return null
+      const prepared: PreparedNavigationScope = {
+        scope: { hostId, hostSessionId },
+        requests: result.requests,
+        nextRequestCursor: result.next_cursor,
+      }
+      preparedScopes.set(prepared, { query, isCurrent })
+      return prepared
+    } catch (cause) {
+      if (isCurrent()) context.onPageError(context.messageFrom(cause))
+      return null
+    }
+  }
+
+  function prepareScope(
+    hostId: string | null,
+    hostSessionId: string | null,
+    isCurrent: () => boolean = () => true,
+  ): Promise<PreparedNavigationScope | null> {
+    const generation = ++scopeSelectionGeneration
+    return readScope(hostId, hostSessionId, () => generation === scopeSelectionGeneration && isCurrent())
+  }
+
+  function canCommitScope(prepared: PreparedNavigationScope): boolean {
+    const preparation = preparedScopes.get(prepared)
+    return !!preparation && preparation.isCurrent() && preparation.query === requestQueryKeyFrom({
+      ...get(store),
+      selectedHostId: prepared.scope.hostId,
+      selectedHostSessionId: prepared.scope.hostSessionId,
+    })
+  }
+
+  function commitScope(prepared: PreparedNavigationScope): boolean {
+    if (!canCommitScope(prepared)) return false
+    displayedRequestQuery = preparedScopes.get(prepared)!.query
+    preparedScopes.delete(prepared)
+    // An older poll or pagination response belongs to the previous visible query.
+    requestRefreshGeneration += 1
+    pendingRequestRefresh = null
+    patch({
+      selectedHostId: prepared.scope.hostId,
+      selectedHostSessionId: prepared.scope.hostSessionId,
+      requests: [...prepared.requests],
+      nextRequestCursor: prepared.nextRequestCursor,
+      loadingRequests: false,
+      loadingMoreRequests: false,
+    })
+    return true
+  }
+
   async function selectScope(
     hostId: string | null,
     hostSessionId: string | null,
+    isCurrent: () => boolean = () => true,
   ): Promise<ScopeSelectionResult> {
     const generation = ++scopeSelectionGeneration
+    const current = () => generation === scopeSelectionGeneration && isCurrent()
     const state = get(store)
-    if (state.selectedHostId === hostId && state.selectedHostSessionId === hostSessionId) {
-      return { selected: !state.loadingRequests, requests: state.requests }
+    if (!current()) return { selected: false, requests: state.requests }
+    if (state.selectedHostId === hostId && state.selectedHostSessionId === hostSessionId && !state.loadingRequests) {
+      return { selected: true, requests: state.requests }
     }
     if (context.isDirty() && !(await context.saveDraftNow())) {
-      return { selected: false, requests: state.requests }
-    }
-    if (generation !== scopeSelectionGeneration) {
       return { selected: false, requests: get(store).requests }
     }
-    patch({ selectedHostId: hostId, selectedHostSessionId: hostSessionId })
-    const result = await refreshRequests(false)
-    let current = get(store)
-    if (
-      result === null &&
-      generation === scopeSelectionGeneration &&
-      current.selectedHostId === hostId &&
-      current.selectedHostSessionId === hostSessionId
-    ) {
-      patch({
-        selectedHostId: state.selectedHostId,
-        selectedHostSessionId: state.selectedHostSessionId,
-        requests: state.requests,
-        nextRequestCursor: state.nextRequestCursor,
-      })
-      current = get(store)
+    if (!current()) return { selected: false, requests: get(store).requests }
+    patch({ loadingRequests: true })
+    try {
+      const prepared = await readScope(hostId, hostSessionId, current)
+      const selected = prepared !== null && commitScope(prepared)
+      return { selected, requests: get(store).requests }
+    } finally {
+      if (current()) patch({ loadingRequests: false })
     }
-    const selected =
-      result !== null &&
-      result !== undefined &&
-      generation === scopeSelectionGeneration &&
-      current.selectedHostId === hostId &&
-      current.selectedHostSessionId === hostSessionId
-    return { selected, requests: selected ? result!.requests : current.requests }
   }
 
   async function setRequestSearch(search: string) {
@@ -461,6 +436,7 @@ export function createNavigationController(context: NavigationControllerContext)
   async function setRequestFilters(filters: RequestFilters) {
     const current = get(store).requestFilters
     if (current.status === filters.status && current.timeRange === filters.timeRange) return
+    displayedRequestQuery = null
     patch({ requestFilters: { ...filters }, requests: [], nextRequestCursor: null })
     await refreshRequests(false)
   }
@@ -469,16 +445,12 @@ export function createNavigationController(context: NavigationControllerContext)
     const trimmed = title.trim()
     if (!trimmed || trimmed === session.title) return
     try {
-      if (context.previewMode) {
-        replaceHostSession({ ...session, title: trimmed })
-        return
-      }
       const renamed = await context.transport.call('renameHostSession', {
         host_id: session.host_id,
         host_session_id: session.host_session_id,
         title: trimmed,
       })
-      replaceHostSession(renamed)
+      hostSessions.replaceSession(renamed)
     } catch (cause) {
       context.onPageError(context.messageFrom(cause))
       throw cause
@@ -487,19 +459,12 @@ export function createNavigationController(context: NavigationControllerContext)
 
   async function setHostSessionPinned(session: HostSessionSummary, pinned: boolean) {
     try {
-      if (context.previewMode) {
-        replaceHostSession({
-          ...session,
-          pinned_at: pinned ? new Date().toISOString() : null,
-        })
-        return
-      }
       const updated = await context.transport.call('setHostSessionPinned', {
         host_id: session.host_id,
         host_session_id: session.host_session_id,
         pinned,
       })
-      replaceHostSession(updated)
+      hostSessions.replaceSession(updated)
       await refreshNavigation(false)
     } catch (cause) {
       context.onPageError(context.messageFrom(cause))
@@ -507,19 +472,17 @@ export function createNavigationController(context: NavigationControllerContext)
     }
   }
 
-  async function archiveHostSession(session: HostSessionSummary) {
+  async function archiveHostSession(session: HostSessionSummary): Promise<boolean> {
     if (session.pending_count > 0) {
       context.onPageError(context.tr('Finish or cancel open requests before archiving this session.'))
-      return
+      return false
     }
-    if (context.isDirty() && !(await context.saveDraftNow())) return
+    if (context.isDirty() && !(await context.saveDraftNow())) return false
     try {
-      if (!context.previewMode) {
-        await context.transport.call('archiveHostSession', {
-          host_id: session.host_id,
-          host_session_id: session.host_session_id,
-        })
-      }
+      await context.transport.call('archiveHostSession', {
+        host_id: session.host_id,
+        host_session_id: session.host_session_id,
+      })
       const current = get(store)
       if (
         current.selectedHostId === session.host_id &&
@@ -528,18 +491,8 @@ export function createNavigationController(context: NavigationControllerContext)
         patch({ selectedHostId: session.host_id, selectedHostSessionId: null })
         context.clearWorkspace()
       }
-      if (context.previewMode) {
-        applyHostSessionFacts(
-          get(store).hostSessions.filter(
-            (candidate) =>
-              candidate.host_id !== session.host_id ||
-              candidate.host_session_id !== session.host_session_id,
-          ),
-        )
-        await refreshRequests(false)
-        return
-      }
       await refreshNavigation(true)
+      return true
     } catch (cause) {
       context.onPageError(context.messageFrom(cause))
       throw cause
@@ -548,39 +501,17 @@ export function createNavigationController(context: NavigationControllerContext)
 
   async function setHostPinned(hostId: string, pinned: boolean) {
     try {
-      if (context.previewMode) {
-        const pinnedAt = pinned ? new Date().toISOString() : null
-        applyHostSessionFacts(
-          get(store).hostSessions.map((session) =>
-            session.host_id === hostId ? { ...session, host_pinned_at: pinnedAt } : session,
-          ),
-        )
-        return
-      }
       const nextSessions = await context.transport.call('setHostPinned', {
         host_id: hostId,
         pinned,
       })
-      applyHostSessionFacts(nextSessions)
+      hostSessions.applyFacts(nextSessions)
     } catch (cause) {
       context.onPageError(context.messageFrom(cause))
       throw cause
     }
   }
 
-  function resolveHostProfile(hostId: string): HostProfile {
-    const normalized = hostId.trim().toLowerCase()
-    const profiles = get(store).hostProfiles
-    const profile = profiles[normalized]
-    if (profile) return profile
-    return {
-      id: normalized || 'generic',
-      label: hostId.trim() || profiles.generic?.label || 'Generic Host',
-      icon_svg: profiles.generic?.icon_svg || '',
-      default_adapter: 'generic_mcp',
-      continuation_mode: 'manual',
-    }
-  }
 
   return {
     subscribe: store.subscribe,
@@ -590,12 +521,15 @@ export function createNavigationController(context: NavigationControllerContext)
     refreshRequests,
     loadMoreRequests,
     selectScope,
+    prepareScope,
+    canCommitScope,
+    commitScope,
     setRequestSearch,
     setRequestFilters,
     renameHostSession,
     setHostSessionPinned,
     archiveHostSession,
     setHostPinned,
-    resolveHostProfile,
+    resolveHostProfile: (hostId: string) => resolveHostProfileFrom(get(store).hostProfiles, hostId),
   }
 }

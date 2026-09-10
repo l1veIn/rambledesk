@@ -3,7 +3,10 @@
   import { locale } from '$lib/preferences'
   import type { WorkbenchCapabilities } from '$lib/capabilities/workbenchCapabilities'
   import type { AttachmentView, FeedbackResultView, FeedbackWorkspaceView } from '../feedback'
-  import type { RamblePhase, SubmitStage } from './types'
+  import type {
+  RamblePhase,
+  SubmitStage,
+} from '../domain/sessionPhases'
   import AttachmentsCard from './AttachmentsCard.svelte'
   import CaptureToolsCard from './CaptureToolsCard.svelte'
   import DeliveryCard from './DeliveryCard.svelte'
@@ -12,9 +15,10 @@
   import {
     nativeCaptureAvailable as canShowNativeCapture,
     voiceRambleAvailable,
-  } from './workbenchCapabilityUi'
+  } from '../capabilities/capabilityUi'
 
   export let workspace: FeedbackWorkspaceView
+  export let workDisabled = false
   export let capabilities: Pick<
     WorkbenchCapabilities,
     'speech' | 'rambleConsole' | 'screenCapture' | 'clipboardCapture'
@@ -60,7 +64,7 @@
   export let onApprove: () => void = () => {}
 
   $: readOnly =
-    workspace.request.status === 'completed' || workspace.request.status === 'cancelled'
+    workDisabled || workspace.request.status === 'completed' || workspace.request.status === 'cancelled'
   $: interactionLocked = cooking || submitting || cancelling || approving
   $: ramblePanelAvailable = voiceRambleAvailable(capabilities.speech.status)
   $: nativeCaptureAvailable = canShowNativeCapture({
@@ -120,18 +124,18 @@
       {feedbackResult}
       cancelled={workspace.request.status === 'cancelled'}
       approved={workspace.request.resolution === 'approved'}
-      {canSubmit}
+      canSubmit={canSubmit && !workDisabled}
       {cooking}
       {cookingEnabled}
       {cookedDraftReady}
       {submitting}
       {submitStage}
-      {canCancel}
+      canCancel={canCancel && !workDisabled}
       {cancelling}
-      allowFinish={workspace.request.allow_finish}
+      allowFinish={workspace.request.allow_finish && !workDisabled}
       finalSummary={workspace.request.final_summary ?? ''}
       {approving}
-      {canOpenResumePrompt}
+      canOpenResumePrompt={canOpenResumePrompt && !workDisabled}
       onOpenPackage={onOpenPackage}
       {packageActionLabel}
       onOpenResumePrompt={onOpenResumePrompt}

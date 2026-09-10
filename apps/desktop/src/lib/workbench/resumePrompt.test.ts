@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
 import type { FeedbackWorkspaceView } from '../feedback'
-import type { HostProfile } from './types'
-import { buildResumePrompt, shouldShowResumePromptButton } from './resumePrompt'
+import type { HostProfile } from '../domain/hostProfile'
+import { buildResumePrompt, resumePromptPresentation, shouldShowResumePromptButton } from './resumePrompt'
+import { t } from '../i18n'
 
 const workspace = {
   request: {
@@ -28,8 +29,21 @@ describe('resumePrompt helpers', () => {
     expect(prompt.request_id).toBe(workspace.request.request_id)
     expect(prompt.host_label).toBe('Codex')
     expect(prompt.reason).toBe('completed')
+    expect(prompt.default_presentation).toBe(true)
     expect(prompt.resume_prompt).toContain(workspace.request.request_id)
     expect(prompt.resume_prompt).toContain('get_feedback')
+  })
+
+  it('localizes a marked cancellation while keeping the host label as data', () => {
+    const prompt = { ...buildResumePrompt(workspace, hostProfile, (source) => source),
+      reason: 'cancelled' as const, host_label: '我的宿主',
+    }
+    expect(resumePromptPresentation(prompt, (source, values) => t('en', source, values))).toEqual({
+      title: 'Feedback cancelled · return to host',
+      body: 'Return to 我的宿主 and click the waiting confirmation to finish. Only paste the fallback prompt below and call get_feedback if the host is not waiting.',
+    })
+    expect(resumePromptPresentation(prompt, (source, values) => t('zh-CN', source, values)).title)
+      .toBe('反馈已取消 · 回到宿主点继续')
   })
 
   it('shows the manual reopen button only for submitted feedback packages', () => {
@@ -41,5 +55,10 @@ describe('resumePrompt helpers', () => {
     expect(shouldShowResumePromptButton(packageResult, 'cancelled')).toBe(false)
     expect(shouldShowResumePromptButton(packageResult, 'approved')).toBe(false)
     expect(shouldShowResumePromptButton(null, 'feedback_submitted')).toBe(false)
+  })
+
+  it('uses the trusted request binding even when the owning Agent is not in navigation', () => {
+    expect(shouldShowResumePromptButton({ available: true }, 'feedback_submitted', 'managed-session')).toBe(false)
+    expect(shouldShowResumePromptButton({ available: true }, 'feedback_submitted', undefined)).toBe(true)
   })
 })

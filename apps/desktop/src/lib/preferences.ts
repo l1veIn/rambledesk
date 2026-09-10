@@ -1,10 +1,10 @@
 import { get, writable } from 'svelte/store'
 
 import { savedUiTheme, saveUiTheme } from './uiPreferences'
-import { DEFAULT_SPEECH_HOTWORDS, mergeSpeechHotwords } from './speechHotwords'
+import { DEFAULT_SPEECH_HOTWORDS, mergeSpeechHotwords } from './speech/speechHotwords'
 import { normalizeTidyAutoThreshold } from './tidyAuto'
 
-export { DEFAULT_SPEECH_HOTWORDS, mergeSpeechHotwords } from './speechHotwords'
+export { DEFAULT_SPEECH_HOTWORDS, mergeSpeechHotwords } from './speech/speechHotwords'
 
 export type Locale = 'zh-CN' | 'en'
 export type ThemePreference = 'system' | 'light' | 'dark'
@@ -40,6 +40,7 @@ const NOTIFICATION_CUSTOM_SOUND_KEY = 'rambledesk.notifications.custom-sound'
 const NOTIFICATION_VOLUME_KEY = 'rambledesk.notifications.volume'
 const SPEECH_INPUT_DEVICE_KEY = 'rambledesk.speech.input-device'
 const SPEECH_CONFIRM_BEFORE_WRITE_KEY = 'rambledesk.speech.confirm-before-write'
+const SPEECH_AUTO_TIDY_KEY = 'rambledesk.speech.auto-tidy'
 const SPEECH_OVERLAY_ENABLED_KEY = 'rambledesk.speech.overlay-enabled'
 const SPEECH_OVERLAY_OPACITY_KEY = 'rambledesk.speech.overlay-opacity'
 const SPEECH_MODEL_KEY = 'rambledesk.speech.model'
@@ -218,7 +219,7 @@ function isCookingReasoningEffort(value: string | null): value is CookingReasoni
 
 export const locale = writable<Locale>(initialLocale())
 export const themePreference = writable<ThemePreference>(initialTheme())
-export const autoOpenTaskBrief = writable(initialBoolean(AUTO_OPEN_TASK_BRIEF_KEY, true))
+export const autoOpenTaskBrief = writable(initialBoolean(AUTO_OPEN_TASK_BRIEF_KEY, false))
 export const notificationPopupEnabled = writable(initialBoolean(NOTIFICATION_POPUP_KEY, true))
 export const notificationSoundEnabled = writable(
   initialBoolean(NOTIFICATION_SOUND_ENABLED_KEY, true),
@@ -230,6 +231,7 @@ export const customNotificationSound = writable<CustomNotificationSound | null>(
 export const notificationVolume = writable(initialNotificationVolume())
 export const speechInputDevice = writable(localStorage.getItem(SPEECH_INPUT_DEVICE_KEY) ?? '')
 export const speechConfirmBeforeWrite = writable(initialBoolean(SPEECH_CONFIRM_BEFORE_WRITE_KEY, false))
+export const speechAutoTidy = writable(initialBoolean(SPEECH_AUTO_TIDY_KEY, false))
 export const speechOverlayEnabled = writable(initialBoolean(SPEECH_OVERLAY_ENABLED_KEY, true))
 export const speechOverlayOpacity = writable(initialNumber(SPEECH_OVERLAY_OPACITY_KEY, 95, 30, 100))
 export const speechModelId = writable<SpeechModelId>(initialSpeechModel())
@@ -320,6 +322,10 @@ export function setSpeechInputDevice(device: string) {
 
 export function setSpeechConfirmBeforeWrite(enabled: boolean) {
   speechConfirmBeforeWrite.set(enabled)
+}
+
+export function setSpeechAutoTidy(enabled: boolean) {
+  speechAutoTidy.set(enabled)
 }
 
 export function setSpeechOverlayEnabled(enabled: boolean) {
@@ -475,6 +481,9 @@ export function initializePreferences() {
   speechConfirmBeforeWrite.subscribe((next) => {
     localStorage.setItem(SPEECH_CONFIRM_BEFORE_WRITE_KEY, String(next))
   })
+  speechAutoTidy.subscribe((next) => {
+    localStorage.setItem(SPEECH_AUTO_TIDY_KEY, String(next))
+  })
   speechOverlayEnabled.subscribe((next) => {
     localStorage.setItem(SPEECH_OVERLAY_ENABLED_KEY, String(next))
   })
@@ -563,7 +572,7 @@ export function initializePreferences() {
       locale.set(event.newValue)
     }
     if (event.key === AUTO_OPEN_TASK_BRIEF_KEY) {
-      autoOpenTaskBrief.set(event.newValue !== 'false')
+      autoOpenTaskBrief.set(event.newValue === 'true')
     }
     if (
       event.key === THEME_KEY &&
@@ -608,6 +617,9 @@ export function initializePreferences() {
     }
     if (event.key === SPEECH_CONFIRM_BEFORE_WRITE_KEY) {
       speechConfirmBeforeWrite.set(event.newValue === 'true')
+    }
+    if (event.key === SPEECH_AUTO_TIDY_KEY) {
+      speechAutoTidy.set(event.newValue === 'true')
     }
     if (event.key === SPEECH_OVERLAY_ENABLED_KEY) {
       speechOverlayEnabled.set(event.newValue !== 'false')

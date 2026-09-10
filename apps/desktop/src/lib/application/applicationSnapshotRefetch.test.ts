@@ -4,6 +4,8 @@ import { sessionViewDescriptor, workspaceViewKey } from '../workspace/viewDescri
 import { createWorkspaceTransition } from '../workspace/workspaceTransition'
 import {
   applicationResourcesAffectNavigation,
+  applicationResourcesAffectAgentConfigurations,
+  applicationResourcesAffectManagedSession,
   applicationResourcesAffectWorkspace,
   applicationResourcesRequireFullNavigationSnapshot,
   createApplicationSnapshotRefetch,
@@ -15,6 +17,22 @@ async function flush(): Promise<void> {
 }
 
 describe('ApplicationSnapshotRefetch', () => {
+  it('refetches only the affected managed session or agent configuration list', () => {
+    const resources = [{ kind: 'managed_session', session_id: 'session-one' }] as const
+    expect(applicationResourcesAffectManagedSession(resources, 'session-one')).toBe(true)
+    expect(applicationResourcesAffectManagedSession(resources, 'session-two')).toBe(false)
+    expect(applicationResourcesAffectAgentConfigurations(resources)).toBe(false)
+    // Streaming agent output must not refresh the unrelated feedback editor or sidebar.
+    expect(applicationResourcesAffectNavigation(resources)).toBe(false)
+    expect(applicationResourcesAffectWorkspace(resources, {
+      hostId: 'dsh', hostSessionId: 'external-one', requestId: 'feedback-one',
+    })).toBe(false)
+    expect(applicationResourcesAffectAgentConfigurations([{ kind: 'agent_configurations' }])).toBe(true)
+    expect(applicationResourcesAffectManagedSession([{ kind: 'agent_configurations' }], 'session-one')).toBe(false)
+    expect(applicationResourcesAffectAgentConfigurations([{ kind: 'all' }])).toBe(true)
+    expect(applicationResourcesAffectManagedSession([{ kind: 'all' }], 'session-one')).toBe(true)
+  })
+
   it('coalesces duplicate invalidations and runs one trailing fetch', async () => {
     let release: (() => void) | undefined
     const first = new Promise<void>((resolve) => { release = resolve })

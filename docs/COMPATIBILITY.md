@@ -1,131 +1,44 @@
-# RambleDesk 适配器验证矩阵
+# 外部反馈适配器兼容性
 
-> 状态：Generic MCP Adapter 与 Pi Native Adapter 当前验证基线。
-> 术语源：[TERMINOLOGY.md](TERMINOLOGY.md)。
+本文说明用户自己运行的 Agent 如何接入 RambleDesk。由工作台启动和管理的 Agent 使用 [ACP 托管会话](ACP_MANAGED_SESSIONS.md)，不套用这里的外部身份与续接方式。术语以 [TERMINOLOGY.md](TERMINOLOGY.md) 为准，当前实测与未验项见[质量清单](quality/README.md)。
 
-Workbench 的 Desktop / Browser 能力、自动化证据、人工待验和明确不支持项由
-[WEB_ACCESS_SUPPORT_MATRIX.md](WEB_ACCESS_SUPPORT_MATRIX.md) 统一记录。适配器兼容不意味着
-Browser Client 自动拥有 Desktop Shell 的截图、全局快捷键、tray、updater 或系统路径能力。
+## 三个适配器、两种传输
 
-## 接入路径
-
-RambleDesk 当前提供两类适配器：
-
-| 适配器 | Transport | 等待模型 | continuation |
+| 适配器 | Transport | 创建与等待 | 提交后的继续方式 |
 | --- | --- | --- | --- |
-| Generic MCP Adapter | Streamable HTTP `/mcp` | 创建请求后立即返回 | 人类提交后复制 Resume Prompt，宿主调用 `get_feedback` |
-| Pi Native Adapter | Local JSON API `/api/feedback/*` | Pi tool call 内调用 `wait` | 不需要额外 continuation |
+| Generic MCP Adapter | Streamable HTTP `/mcp` | `request_feedback` 创建后立即返回 | 将 Resume Prompt 带回原宿主，再调用 `get_feedback` |
+| Pi Native Adapter | Local JSON API `/api/feedback/*` | 原生 tool call 内 request + wait | 同一次调用收到反馈，无额外托管续接 |
+| dsh Native Adapter | Local JSON API `/api/feedback/*` | Cordis 插件的 tool call 内 request + wait | 同一次调用收到反馈，可按原 request ID 恢复 |
 
-两类 transport 都由 `rambledesk-local-server` 挂载，共用 loopback、bearer token、
-Host header 和 Origin guard。MCP 只属于通用适配器，不是全局基础设施。
+两种传输由 `rambledesk-local-server` 的 Local Integration Server 提供，共用 loopback、bearer token、Host 和 Origin guard。Web Access 是另一种客户端接入边界；适配器兼容不代表浏览器拥有系统截图、全局快捷键、托盘、更新器或本地文件路径能力，见 [Web Access 支持矩阵](WEB_ACCESS_SUPPORT_MATRIX.md)。
 
-## 已验证能力
+## 安装与使用
 
-### Generic MCP Adapter
+在「设置 → 外部适配器」检测并安装对应入口。Generic MCP 自动配置写入宿主的 MCP 配置，并安装共享 `ramble` skill；dsh 原生安装也提供该 skill，插件在重启 dsh 后生效。实际目标路径与冲突以安装界面的检查结果为准，不把宿主目录布局当作长期协议。
 
-- MCP Inspector 可以列出并调用 `request_feedback`、`get_feedback`、
-  `cancel_feedback`；
-- Claude Code 可以通过自定义 Authorization header 调用工具；
-- 官方 Rust SDK 集成测试覆盖工具调用、结构化错误和完成结果；
-- 未认证、错误 token、未知 Origin 和非 loopback Host 均被拒绝；
-- 断线不会取消已持久化 request；
-- 终态 `get_feedback` 返回反馈包 metadata、Markdown 和附件路径。
+- **Generic MCP**：适用于 Claude Code、Codex CLI、OpenCode、Reasonix、Grok 等支持相应 HTTP MCP 配置的宿主。可列出并调用 `request_feedback`、`get_feedback`、`cancel_feedback`；终态读取返回反馈包 metadata、Markdown 和附件路径。安装入口存在、工具可列出、真实反馈闭环通过是三种不同结论。
+- **Pi**：使用 [`packages/pi-rambledesk`](../packages/pi-rambledesk/README.md)。原生工具在调用内等待，支持按 request ID 读取、恢复和取消。
+- **dsh**：使用 [`packages/dsh-rambledesk`](../packages/dsh-rambledesk/README.md)。`request_ramble_feedback` 创建并等待，`resume_ramble_feedback` 恢复等待，另有读取和取消工具；共享 `/ramble` 用于当前任务，`/ramble_on`、`/ramble_off` 控制插件的持续模式。
 
-通用适配器不承诺自动恢复某个宿主的原上下文。提交后的标准路径是工作台生成
-Resume Prompt，由人类返回宿主后继续；支持原生交互确认工具（`ask`/`ask_choice`
-类）的宿主可让智能体在工具调用内等待人类完成，点选确认后直接 `get_feedback`
-继续，无需 Resume Prompt（见 PROTOCOL.md 的 Generic MCP Adapter 节）。
+共享 skill 根据当前可用工具选择原生等待或 Generic MCP 手动续接。它帮助 Agent 遵循流程，不保证每个模型都会执行，也不会把 Generic MCP 变成阻塞到人类提交的工具调用。
 
-### Pi Native Adapter
+支持独立交互确认工具的宿主可以在创建请求后，用自己的 ask 类工具等待人类确认，再读取原 request 的反馈；等待由宿主负责。标准后备路径仍是 Resume Prompt。宿主关闭或重启后是否保留原任务上下文由宿主决定，RambleDesk 不承诺一句“继续”即可恢复；合同见 [PROTOCOL.md](PROTOCOL.md)。
 
-- `packages/pi-rambledesk` 调用 request/get/wait/cancel；
-- `X-RambleDesk-Host: pi` 将请求归属到 Pi Host Profile；
-- request 重试复用同一 `request_id`，不会产生重复请求；
-- 服务端黑盒测试覆盖 request → wait → submit → completed package；
-- JavaScript 测试覆盖输入映射、token 读取、重试和取消。
+## 安全与恢复合同
 
-Pi 的正常流程在同一个 tool call 内等待，因此无需提交后的 Resume Prompt。
+- Local Integration Server 只绑定 IPv4 loopback；`/mcp` 与 `/api` 验证 bearer token、允许的 Host 和浏览器 Origin。token 文件使用用户私有权限，默认日志不记录 token、反馈正文或附件内容。
+- `host_id` 和 `X-RambleDesk-Host` 用于来源归属，不是认证凭据。
+- 相同 request ID 与相同不可变输入重试返回已有状态；不同输入返回 `REQUEST_CONFLICT`，不覆盖原请求。
+- HTTP 断线或中断当前等待不自动取消持久请求；取消必须显式调用对应取消工具。读取和恢复使用原 request ID，SQLite 与不可变反馈包是事实来源。
+- 原生等待可重新进入；缺少 request ID 且同一 host session 有多个候选时返回 `RECOVERY_AMBIGUOUS`，不猜测归属。
+- 外部原生等待与托管投递分开路由，一次反馈不会同时走原生返回和 ACP 自动续接。
 
-## 当前客户端矩阵
+## 验证入口与限制
 
-| 宿主 | 适配器 | 状态 | 备注 |
-| --- | --- | --- | --- |
-| Pi 0.83.x | Pi Native Adapter | 自动化基线通过 | 真实长时等待与桌面重启需继续人工回归 |
-| DeepSeek Harness (dsh) | dsh Native Adapter | 自动检测+安装已实现 | `packages/dsh-rambledesk` Cordis 插件；request+wait 在 dsh 工具调用内等待；写入 `cordis.patch.yml` 的 loader insert 并注入共享 `ramble` skill；重启 dsh 后生效 |
-| Claude Code 2.1.x | Generic MCP Adapter | 工具调用通过 | 提交后使用 Resume Prompt；自动配置时向 `.claude/skills` 注入 `ramble` skill |
-| MCP Inspector 2.x | Generic MCP Adapter | smoke 通过 | 用于协议和安全门禁 |
-| Codex CLI | Generic MCP Adapter | 待补完整矩阵 | 按通用适配器合同处理 |
-| OpenCode | Generic MCP Adapter | 待补完整矩阵 | 按通用适配器合同处理 |
-| Reasonix (Go, v1.8+) | Generic MCP Adapter | 自动检测+安装已实现 | 写入 `config.toml` 的 `[[plugins]]` HTTP 条目；持久会话下提交后"继续"即恢复；自动配置时向 `.agents/skills` 注入 `ramble` skill |
-| Grok CLI | Generic MCP Adapter | 自动检测+安装已实现 | 写入 `~/.grok/config.toml`（或 `GROK_HOME`）的 `[mcp_servers.rambledesk]` HTTP 条目；提交后使用 Resume Prompt，或用 `ask_user_question` 等待后再 `get_feedback` |
+协议、安全门禁、幂等和恢复可通过以下代码复验：
 
-版本号仅记录已测环境，不构成 RambleDesk 对第三方版本的长期保证。
+- [HTTP 安全测试](../crates/rambledesk-local-server/tests/http_security.rs)与 [MCP 实现及测试](../crates/rambledesk-mcp/src/lib.rs)。
+- [Pi 测试](../packages/pi-rambledesk/test/)和 [dsh 测试](../packages/dsh-rambledesk/test/)。
+- [MCP Inspector smoke](../scripts/mcp-inspector-smoke.sh)。
 
-## 反馈闭环（skill 注入）
-
-目标场景：打开新会话 → 最小化宿主终端 → 之后所有需要用户参与的交互只出现在
-RambleDesk。
-
-通用 MCP 适配器在「自动配置 MCP」时，除写入 MCP server 配置外，还会把一个遵循
-Agent Skills 开放标准（[agentskills.io](https://agentskills.io)）的共享 `ramble` skill
-复制到各宿主的**全局 skill 目录**（`~/.claude/skills/ramble/SKILL.md` 等），由
-宿主启动时自动发现、按需加载。dsh 原生安装也写入同一份 skill。skill 会按
-可用工具自动选择原生 request+wait+recover 流程，或 Generic MCP 的
-request+手动续接+get 流程；任务级 `/ramble` 与无任务 kickoff 语义保持一致。
-
-| 宿主 | skill 目录（home 相对） |
-| --- | --- |
-| Claude Code | `.claude/skills` |
-| Codex | `.codex/skills` |
-| Cursor | `.cursor/skills` |
-| Gemini CLI | `.gemini/skills` |
-| Antigravity IDE | `.gemini/antigravity/skills` |
-| Grok CLI | `.grok/skills` |
-| OpenCode | `.config/opencode/skills` |
-| Reasonix | `.agents/skills` |
-
-### 恢复与 continuation
-
-- 断线/重启不改变已持久化 request 的生命周期；用相同 `request_id` 调
-  `get_feedback` 即可读到服务端事实。
-- 宿主恢复后「所有交互只走 RambleDesk」是否延续，取决于宿主是否保留会话上下文：
-  - Reasonix 持久会话：提交后"继续"即恢复原上下文。
-  - Claude Code 及其他靠 Resume Prompt 的宿主：恢复后需重新注入上下文。
-
-## 安全基线
-
-- listener MUST 只绑定 IPv4 loopback；
-- 每个 `/mcp` 与 `/api` 请求 MUST 验证 bearer token；
-- Host MUST 是允许的 loopback host；
-- 浏览器来源请求 MUST 通过 Origin allowlist；
-- token 文件 MUST 使用用户私有权限；
-- 默认日志 MUST NOT 记录 token、反馈正文或附件内容；
-- `host_id` 可以由可信安装入口或 `X-RambleDesk-Host` 覆盖，但不能作为认证凭据。
-
-对应自动化位于：
-
-- `crates/rambledesk-local-server/tests/http_security.rs`
-- `crates/rambledesk-mcp/src/lib.rs`
-- `packages/pi-rambledesk/test/`
-- `scripts/mcp-inspector-smoke.sh`
-
-## 失败与恢复
-
-- HTTP 断线只终止当前 transport attempt，不改变 request 生命周期；
-- 相同 `request_id` 和相同不可变输入重新请求会返回现有状态；
-- 相同 `request_id` 和不同不可变输入返回 `REQUEST_CONFLICT`；
-- 取消必须显式调用 `cancel_feedback`；
-- Generic MCP Adapter 不维持长连接状态，断线后直接通过 `get_feedback(request_id)` 读取服务端事实；
-- Pi Native Adapter 通过服务端 recovery contract 恢复原生等待，并可用相同 `request_id` 重新进入 `wait`；
-- Pi 未提供 `request_id` 且同一 host session 存在多个候选时返回 `RECOVERY_AMBIGUOUS`，服务端不会猜测；
-- SQLite 与不可变反馈包是恢复事实来源。
-
-## 仍需人工验收
-
-- Pi 真实 tool call 的长时间等待、取消传播和桌面重启恢复；
-- Generic MCP Adapter 在 Codex CLI 与 OpenCode 中的安装、认证和完整请求闭环；
-- macOS/Windows 安装包中的 token 权限、loopback 防护和 adapter 配置复制；
-- tray 入口、Resume Prompt 复制和宿主返回后的完整人类路径。
-- Desktop / Browser Workbench 与 Browser local ASR 的人工验收以
-  [Web Access 支持矩阵](WEB_ACCESS_SUPPORT_MATRIX.md#发布前人工验收) 为准；自动化 recognizer
-  creation 不代表真实 Chrome/Safari 麦克风、PCM 或稳定出字已经验证。
+这些自动化不等于所有宿主版本和平台均已通过人工闭环。Pi/dsh 的真实长时等待、取消传播和重启恢复，Generic MCP 在各宿主中的安装、认证、请求、提交与返回原任务，以及正式安装包中的 token 权限与配置写入，均按[质量清单](quality/README.md)登记具体构建和结果。既有版本的成功不能外推到下一版本；Desktop/Browser 媒体与设备能力另按支持矩阵验收。

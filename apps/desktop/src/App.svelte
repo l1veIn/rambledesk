@@ -1,76 +1,58 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
+  import { initializeAppearance } from './lib/appearance/appearanceRuntime'
 
   import rambelleArchived from './assets/rambelle-states/archived.webp'
   import rambelleIdle from './assets/rambelle-states/idle.webp'
   import rambelleOrganizing from './assets/rambelle-states/organizing.webp'
   import rambelleRecording from './assets/rambelle-states/recording.webp'
-  import AppTitlebar from './lib/AppTitlebar.svelte'
-  import OnboardingWizard from './lib/OnboardingWizard.svelte'
-  import UpdateAvailableDialog from './lib/UpdateAvailableDialog.svelte'
+  import AppTitlebar from './lib/shell/AppTitlebar.svelte'
+  import OnboardingWizard from './lib/onboarding/OnboardingWizard.svelte'
+  import UpdateAvailableDialog from './lib/updates/UpdateAvailableDialog.svelte'
   import HostSessionRail from './lib/components/navigation/HostSessionRail.svelte'
   import RequestListPane from './lib/components/navigation/RequestListPane.svelte'
   import { Sonner, toast } from './lib/components/ui/sonner'
   import ResumePromptDialog from './lib/workbench/ResumePromptDialog.svelte'
   import SessionWorkbench from './lib/workbench/SessionWorkbench.svelte'
+  import StartupRecoveryPanel from './lib/workbench/StartupRecoveryPanel.svelte'
+  import WorkbenchShell from './lib/workbench/WorkbenchShell.svelte'
   import InboxWorkspaceView from './lib/workspace/InboxWorkspaceView.svelte'
   import MissingSessionView from './lib/workspace/MissingSessionView.svelte'
   import RambelleProfileWorkspaceView from './lib/workspace/RambelleProfileWorkspaceView.svelte'
   import SettingsWorkspaceView from './lib/workspace/SettingsWorkspaceView.svelte'
   import TaskWorkspaceView from './lib/workspace/TaskWorkspaceView.svelte'
   import ArchivedSessionsWorkspaceView from './lib/workspace/ArchivedSessionsWorkspaceView.svelte'
-  import type { JSONContent } from '@tiptap/core'
-  import {
-    defineApplicationStream,
-    type ApplicationTransport,
-  } from './lib/application/applicationTransport'
+  import ManagedSessionSection from './lib/agents/ManagedSessionSection.svelte'
+  import ManagedFeedbackRequestStatus from './lib/agents/ManagedFeedbackRequestStatus.svelte'
+  import DraftManagedSessionWorkspace from './lib/agents/DraftManagedSessionWorkspace.svelte'
+  import { Button } from './lib/components/ui/button'
+  import type { ApplicationTransport } from './lib/application/applicationTransport'
   import type { WorkbenchCapabilities } from './lib/capabilities/workbenchCapabilities'
   import { provideWorkbenchCapabilities } from './lib/capabilities/capabilityContext'
   import { createUnavailableWorkbenchCapabilities } from './lib/capabilities/unavailableCapabilities'
   import type { PublishedFeedbackAction } from './lib/publishedFeedbackAction'
   import { APPLICATION_EVENTS_STREAM } from './lib/application/applicationEvents'
-  import {
-    applicationResourcesAffectNavigation,
-    applicationResourcesAffectWorkspace,
-    applicationResourcesRequireFullNavigationSnapshot,
-    createApplicationSnapshotRefetch,
-    type ApplicationSnapshotRefetchIntent,
-  } from './lib/application/applicationSnapshotRefetch'
+  import { readApplicationSnapshot } from './lib/application/readApplicationSnapshot'
+
 
   export let applicationTransport: ApplicationTransport
   export let capabilities: WorkbenchCapabilities = createUnavailableWorkbenchCapabilities()
   export let publishedFeedbackAction: PublishedFeedbackAction
   export let previewMode = false
+  /** Browser clients are full-bleed pages; the desktop shell owns the rounded window frame. */
+  export let environment: 'desktop' | 'browser' = 'desktop'
 
   provideWorkbenchCapabilities(capabilities)
+  onMount(() => initializeAppearance({
+    setZoom: capabilities.windowControls.status.source === 'native'
+      ? factor => capabilities.windowControls.implementation.setZoom(factor)
+      : undefined,
+  }))
 
-  import type {
-    ApproveFeedbackInput,
-    CancelFeedbackInput,
-    DraftView,
-    FeedbackRequestView,
-    FeedbackRequestSummary,
-    FeedbackWorkspaceView,
-    SubmitFeedbackInput,
-  } from './lib/feedback'
-  import {
-    type ActiveAction,
-    type DraftOperation,
-  } from './lib/draftOperations'
-  import { writeBackgroundDraftOperation } from './lib/backgroundDraftWriter'
-  import {
-    decodeFeedbackDraftDocument,
-    restoreFeedbackDraftDocument,
-    snapshotFeedbackDraftDocument,
-    type FeedbackDraftSnapshot,
-  } from './lib/feedbackDraftDocument'
-  import {
-    notificationStateForPermission,
-    type NotificationState,
-  } from './lib/notifications'
+  import type { FeedbackWorkspaceView } from './lib/feedback'
+  import { createNotificationPermissionController } from './lib/workbench/notificationPermissionController'
   import {
     archiveViewDescriptor,
-    inboxViewDescriptor,
     rambelleProfileViewDescriptor,
     requestTaskViewDescriptor,
     sessionViewDescriptor,
@@ -79,88 +61,60 @@
     type SessionViewDescriptor,
     type WorkspaceViewDescriptor,
   } from './lib/workspace/viewDescriptors'
-  import {
-    activeWorkspaceView,
-    EMPTY_WORKSPACE_SHELL_STATE,
-    workspaceShellReducer,
-    type WorkspaceShellState,
-  } from './lib/workspace/workspaceShell'
-  import {
-    createWorkspaceSnapshot,
-  } from './lib/workspace/workspaceSnapshot'
+  import { activeWorkspaceView } from './lib/workspace/workspaceShell'
   import { updateTaskTabTitles } from './lib/workspace/taskTabTitles'
+  import { agentSessionForView, agentViewForEmptyRamble, agentViewForRequest } from './lib/workspace/agentViewRouting'
   import {
-    savedPreviewWorkspaceSnapshot,
     savePreviewWorkspaceSnapshot,
+    savedPreviewWorkspaceSnapshot,
     seedPreviewWorkspaceScenario,
   } from './lib/workspace/previewWorkspaceSnapshot'
-  import {
-    createSessionViewRecoveryResolver,
-    preserveLoadedSessionDuringUnconfirmedRecovery,
-    sessionViewResolution,
-    type SessionViewCatalog,
-    type SessionViewResolution,
-  } from './lib/workspace/sessionViewRecovery'
+  import { sessionViewResolution, type SessionViewResolution } from './lib/workspace/sessionViewRecovery'
   import {
     workspaceTabId,
     workspaceTabPanelId,
   } from './lib/workspace/workspaceTabNavigation'
   import WorkspaceTabStrip from './lib/workspace/WorkspaceTabStrip.svelte'
   import { workspaceSurface } from './lib/workspace/workspaceSurface'
-  import {
-    createWorkspaceTransition,
-    type WorkspaceTransitionOutcome,
-    type WorkspaceTransitionTarget,
-  } from './lib/workspace/workspaceTransition'
-  import { leavesSettingsView } from './lib/workspace/workspaceViewLifecycle'
-  import {
-    shouldAdoptTaskBackgroundDraft,
-    shouldUseForegroundDraftEditor,
-  } from './lib/workspace/draftOperationRouting'
-  import { previewFixtures, previewWorkspaceFor } from './lib/previewFixtures'
-  import {
-    restorePublishedAttachmentUrls,
-    normalizePublishedFeedback,
-    type PublishedAttachmentPath,
-    type PublishedFeedbackView,
-  } from './lib/publishedFeedback'
-  import {
-    formatTime,
-    messageFrom,
-    operatorFeedbackBody,
-  } from './lib/workbench/feedbackText'
+  import { previewFixtures } from './lib/preview/previewFixtures'
+  import { formatTime, messageFrom } from './lib/workbench/feedbackText'
   import { createCookingController } from './lib/workbench/cookingController'
+  import { createCookingSession } from './lib/workbench/cookingSession'
   import { createDraftController } from './lib/workbench/draftController'
+  import { createDraftOperationsController } from './lib/workbench/draftOperationsController'
+  import { createDraftSession } from './lib/workbench/draftSession'
+  import { createSubmissionController } from './lib/workbench/submissionController'
+  import { createAttachmentSession } from './lib/workbench/attachmentSession'
+  import { createManagedSessionActions } from './lib/workbench/managedSessionActions'
+  import { createWorkspaceNavigationController, type WorkspaceNavigationController } from './lib/workbench/workspaceNavigationController'
+  import { createStartupController, type StartupController } from './lib/workbench/startupController'
+  import { createRambleSession } from './lib/workbench/rambleSession'
+  import { createShellLayoutSession } from './lib/workbench/shellLayoutSession'
+  import { createWorkspaceSession } from './lib/workbench/workspaceSession'
+  import { createWorkspaceShellSession } from './lib/workbench/workspaceShellSession'
   import { createPublisherController } from './lib/workbench/publisherController'
-  import { buildResumePrompt, shouldShowResumePromptButton } from './lib/workbench/resumePrompt'
+  import { shouldShowResumePromptButton } from './lib/workbench/resumePrompt'
+  import { createResumePromptController } from './lib/workbench/resumePromptController'
+  import { createMessageToaster } from './lib/workbench/messageToasts'
+  import { createOnboardingController } from './lib/onboarding/onboardingController'
+  import {
+    sessionTabLabel as sessionTabLabelFor,
+    workspaceTabLabel as workspaceTabLabelFor,
+  } from './lib/workspace/tabLabels'
   import {
     createAttachmentController,
-    type AttachmentMessageTone,
   } from './lib/workbench/attachmentController'
   import { createNavigationController } from './lib/workbench/navigationController'
-  import { requestFilterCount } from './lib/workbench/requestFilters'
   import { ensureDesktopNavigationPolling } from './lib/workbench/navigationPolling'
-  import { resolvedRamblePhase } from './lib/workbench/rambleSessionState'
-  import type {
-    FeedbackEditorHandle,
-    RamblePhase,
-    RambleSessionControllerHandle,
-    ResumePrompt,
-    SavePhase,
-    SettingsSection,
-    SubmitStage,
-    VoicePhase,
-  } from './lib/workbench/types'
+  import type { FeedbackEditorHandle } from './lib/editor/feedbackEditorHandle'
+  import type { RambleSessionControllerHandle } from './lib/speech/rambleSessionControllerHandle'
+import type { SettingsSection } from './lib/domain/settingsSection'
   import RambleSessionController from './lib/workbench/RambleSessionController.svelte'
-  import { highlightSpeechSegment } from './lib/highlightSpeechSegment'
+  import { highlightSpeechSegment } from './lib/speech/highlightSpeechSegment'
   import { t } from './lib/i18n'
   import {
-    initialHostRailCollapsed,
-    initialRequestRailCollapsed,
-    saveHostRailCollapsed,
-    saveRequestRailCollapsed,
-    saveWorkspaceSnapshot,
-    savedWorkspaceSnapshot,
+    initialWebAccessAutostart,
+    initialWebAccessPort,
   } from './lib/uiPreferences'
   import {
     cookingApiKey,
@@ -184,169 +138,120 @@
     tidySystemPrompt,
   } from './lib/preferences'
 
-  const RESUME_PROMPT_STREAM = defineApplicationStream<ResumePrompt>('rambledesk://resume-prompt')
-  const OPEN_ADAPTERS_STREAM = defineApplicationStream<void>('rambledesk://open-adapters')
   const formatTimeLocal = (value: string | null | undefined) =>
     formatTime(value, $locale, tr('Not saved yet'))
-  let workspace: FeedbackWorkspaceView | null = null
-  let workspaceShellState: WorkspaceShellState = EMPTY_WORKSPACE_SHELL_STATE
+  const workspaceSession = createWorkspaceSession()
+  const attachmentSession = createAttachmentSession()
+  const cookingSession = createCookingSession()
+  const shellLayout = createShellLayoutSession()
+  const rambleSession = createRambleSession()
+  /** The open request, projected from the session so field reads stay short. */
+  $: currentRequest = $workspaceSession.request
   let taskTabTitles: ReadonlyMap<string, string> = new Map()
   let renderedWorkspaceView: WorkspaceViewDescriptor | null = null
   let renderedSessionView: SessionViewDescriptor | null = null
   let renderedSessionResolution: SessionViewResolution | null = null
-  let sessionViewResolutions: readonly SessionViewResolution[] = []
-  let sessionRequestIds = new Map<string, string>()
-  let pendingWorkspaceViewKey: string | null = null
-  let workbenchMounted = true
-  let completedResult: FeedbackRequestView | null = null
-  let publishedFeedback: PublishedFeedbackView | null = null
-  let draftBody = ''
-  let savedBody = ''
-  let draftDocumentJson = ''
-  let savedDocumentJson = ''
-  let editorDocument: JSONContent | null = null
-  let editorEpoch = 0
-  let savedRevision = 0
-  let savePhase: SavePhase = 'idle'
-  let saveMessage = ''
   let pageError = ''
-  let loadingWorkspace = false
-  let submitting = false
-  let submitStage: SubmitStage = 'idle'
-  let cookingRequestIds = new Set<string>()
-  /** Preview cooking result for the current workspace, if generated and current. */
-  let cookedPreview: { markdown: string; original: string; model: string } | null = null
-  let cancelling = false
-  let approving = false
-  let attachmentBusy = false
-  let screenCaptureBusy = false
-  let attachmentMessage = ''
-  let attachmentMessageTone: AttachmentMessageTone = 'info'
-  let deliveredAttachmentMessage = ''
-  let deliveredPageError = ''
-  let deliveredSaveError = ''
-  let attachmentPreviews: Record<string, string> = {}
-  let dragActive = false
   let sessionWorkbench: FeedbackEditorHandle | undefined
+  let managedSessionSection: ManagedSessionSection | undefined
   let rambleController: RambleSessionControllerHandle
-  let resumePrompt: ResumePrompt | null = null
-  let resumeCopyState: 'idle' | 'copied' | 'failed' = 'idle'
-  let notificationState: NotificationState = 'checking'
   let archivedInitialSession: SessionViewDescriptor | null = null
   let archivedSelectionEpoch = 0
-  let lastSessionRecoveryFingerprint = ''
-  let activeRecoveryTransition: object | null = null
   let settingsSection: SettingsSection = 'general'
   let settingsSectionSelectionEpoch = 0
-  let lastAutoOpenedTaskRequestId = ''
-  let onboardingOpen = false
-  let launchUpdateCheckDue = false
-  let workbenchInitialized = false
+  let settingsAgentConfigId: string | undefined = undefined
+  let settingsAgentAdvanced = false
   const desktopShellAvailable = capabilities.windowControls.status.source === 'native'
   const isMac = capabilities.windowControls.implementation.platform() === 'macOS'
   const notificationsAvailable = capabilities.notifications.status.availability !== 'unavailable'
   const softwareUpdatesAvailable = capabilities.softwareUpdates.status.availability !== 'unavailable'
-  const onboardingAvailable =
-    capabilities.dataStorageAdministration.status.availability !== 'unavailable' ||
-    capabilities.speech.status.availability !== 'unavailable' ||
-    capabilities.hostIntegrationAdministration.status.availability !== 'unavailable' ||
-    notificationsAvailable ||
-    capabilities.webAccessAdministration.status.availability !== 'unavailable'
+  const onboardingAvailable = !previewMode
   const previewWorkspaceScenario = previewMode
     ? seedPreviewWorkspaceScenario(
         new URLSearchParams(window.location.search).get('workspace'),
       )
     : null
-  const initialWorkspaceSnapshot = previewMode
-    ? savedPreviewWorkspaceSnapshot()
-    : savedWorkspaceSnapshot()
-  if (initialWorkspaceSnapshot) {
-    workspaceShellState = initialWorkspaceSnapshot.shellState
-    sessionRequestIds = new Map(initialWorkspaceSnapshot.requestIds)
-    if (initialWorkspaceSnapshot.shellState.activeViewKey) {
-      workbenchMounted = false
-      loadingWorkspace = true
-    }
-  }
+  const workspaceShell = createWorkspaceShellSession({
+    snapshots: previewMode
+      ? {
+          load: savedPreviewWorkspaceSnapshot,
+          save: savePreviewWorkspaceSnapshot,
+        }
+      : undefined,
+  })
+  if (workspaceShell.restoredActiveView()) workspaceSession.setLoading(true)
   let taskBriefOpen = true
-  let requestRailCollapsed = initialRequestRailCollapsed()
-  let hostSessionRailCollapsed = initialHostRailCollapsed()
-  let genericMcpConfiguration = ''
-  let voicePhase: VoicePhase = 'idle'
-  let voiceDevice = ''
-  let voicePartial = ''
-  let voiceLevel = 0
-  let voiceChunkIndex = 0
-  let voiceModelMissing = false
-  let ramblePhase: RamblePhase = 'idle'
-  let rambleStartedOnce = false
-  let rambleRequestId = ''
-  let rambleRequestTitle = ''
-  let rambleMessage = ''
-  let rambleDocumentQueue: Promise<void> = Promise.resolve()
-  let activeActionByRequest = new Map<string, NonNullable<ActiveAction>>()
+  let hostRailDisplayWidth = 0
+  let navigationResizing = false
+  let projectSearch = ''
+  $: tidyConfig = {
+    provider: $tidyProvider,
+    apiKey: $tidyApiKey,
+    baseUrl: $tidyBaseUrl,
+    model: $tidyModel,
+    reasoningEffort: $tidyReasoningEffort,
+    locale: $locale,
+    systemPrompt: $tidySystemPrompt,
+  }
   let inboxTimer: ReturnType<typeof setInterval> | undefined
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
   }
 
+  const draftSession = createDraftSession()
   const draftController = createDraftController({
     transport: applicationTransport,
     messageFrom,
-    isPreviewMode: () => previewMode,
-    isInteractionLocked: () => interactionLocked,
-    isWorkspaceTerminal: () =>
-      workspace?.request.status === 'completed' || workspace?.request.status === 'cancelled',
-    getWorkspace: () => workspace,
-    getSnapshot: () => currentDraftSnapshot(),
-    setSnapshot: (snapshot) => applyDraftSnapshot(snapshot),
-    getSavedSnapshot: () => savedDraftSnapshot(),
-    setSavedSnapshot: (snapshot) => {
-      savedDocumentJson = snapshot.documentJson
-      savedBody = snapshot.bodyMarkdown
-    },
-    getSavedRevision: () => savedRevision,
-    setSavedRevision: (revision) => {
-      savedRevision = revision
-    },
-    getPhase: () => savePhase,
-    setPhase: (phase) => {
-      savePhase = phase
-    },
-    setMessage: (message) => {
-      saveMessage = message
-    },
-    setWorkspaceDraft: (draft) => {
-      if (workspace) workspace = { ...workspace, draft }
-    },
+    isInteractionLocked: () => $workspaceSession.interactionLocked,
+    isWorkspaceTerminal: () => workspaceSession.isTerminal(),
+    getWorkspace: () => $workspaceSession.workspace,
+    session: draftSession,
+    setWorkspaceDraft: (draft) => workspaceSession.setDraft(draft),
   })
   const updateDraft = draftController.updateDraft
   const saveDraftNow = draftController.saveDraftNow
+
+  const draftOperations = createDraftOperationsController({
+    transport: applicationTransport,
+    tr,
+    messageFrom,
+    getActiveView: () => activeWorkspaceView($workspaceShell.shell),
+    getPendingViewKey: () => $workspaceShell.pendingViewKey,
+    getWorkspace: () => $workspaceSession.workspace,
+    getCurrentRequest: () => currentRequest,
+    getEditor: () => sessionWorkbench,
+    isWorkbenchMounted: () => $startup.mounted,
+    isTransitionLocked: () => workspaceTransitionLocked,
+    getDraftMessage: () => $draftSession.message,
+    saveDraftNow,
+    setWorkspaceDraft: (draft) => workspaceSession.setDraft(draft),
+    adoptDraft: (draft) => draftSession.adopt(draft),
+    setPageError: (message) => {
+      pageError = message
+    },
+  })
+  const {
+    routeDraftOperation,
+    activeActionFor,
+    enqueueDocumentTask,
+    waitForDocumentQueue,
+    selectAction,
+  } = draftOperations
 
   const attachmentController = createAttachmentController({
     capabilities,
     transport: applicationTransport,
     tr,
     messageFrom,
-    getWorkspace: () => workspace,
+    getWorkspace: () => $workspaceSession.workspace,
     getEditor: () => sessionWorkbench,
-    getRambleRequestId: () => rambleRequestId,
+    getRambleRequestId: () => $rambleSession.requestId,
     getInteractionLocked: () => interactionLocked || currentRequestCooking || cookedDraftReady,
-    getSavedRevision: () => savedRevision,
-    getBusy: () => attachmentBusy,
-    getCaptureBusy: () => screenCaptureBusy,
-    getPreviews: () => attachmentPreviews,
-    setBusy: (busy) => (attachmentBusy = busy),
-    setCaptureBusy: (busy) => (screenCaptureBusy = busy),
-    setMessage: (message, tone) => {
-      if (tone) attachmentMessageTone = tone
-      attachmentMessage = message
-    },
-    setPreviews: (previews) => (attachmentPreviews = previews),
-    setDragActive: (active) => (dragActive = active),
+    getSavedRevision: () => $draftSession.savedRevision,
+    session: attachmentSession,
     saveDraftNow,
-    waitForRambleMarkdown: () => rambleDocumentQueue.catch(() => {}),
+    waitForRambleMarkdown: waitForDocumentQueue,
     routeDraftOperation,
     activeActionFor,
     applyWorkspaceMutation,
@@ -358,142 +263,153 @@
     },
   })
 
-  type LoadedWorkspaceTarget =
-    | Readonly<{
-        kind: 'session'
-        workspace: FeedbackWorkspaceView
-        publishedFeedback: PublishedFeedbackView | null
-      }>
-    | Readonly<{
-        kind: 'request-task'
-        workspace: FeedbackWorkspaceView
-      }>
-
-  const workspaceTransition = createWorkspaceTransition<LoadedWorkspaceTarget>({
-    saveCurrent: saveDraftNow,
-    unmountCurrent: () => {
-      workbenchMounted = false
-      sessionWorkbench = undefined
-      loadingWorkspace = true
-    },
-    loadTarget: loadWorkspaceTarget,
-    commitTarget: commitWorkspaceTarget,
-    restoreCurrent: () => {
-      workbenchMounted = true
-      loadingWorkspace = false
-    },
-    setPendingTarget: (target) => {
-      pendingWorkspaceViewKey = target?.pendingViewKey ?? null
-    },
-    reportFailure: (cause) => {
-      pageError = messageFrom(cause)
-    },
-  })
+  // Mutual callbacks resolve after all three owners have been composed.
+  let startup: StartupController
+  let workspaceNavigation: WorkspaceNavigationController
 
   const navigation = createNavigationController({
     capabilities,
-    previewMode,
     transport: applicationTransport,
     tr,
     messageFrom,
-    getNotificationState: () => notificationState,
-    getWorkspaceRequestId: () => workspace?.request.request_id,
+    getNotificationState: () => $notificationPermission,
+    getWorkspaceRequestId: () => workspaceSession.requestId() ?? undefined,
     isDirty: () => dirty,
     saveDraftNow,
-    openRequest,
-    clearWorkspace,
+    openRequest: (requestId) => workspaceNavigation.openRequest(requestId),
+    clearWorkspace: () => workspaceNavigation.clearWorkspace(),
     onPageError: (message) => (pageError = message),
     canSendOsBanners: () => isMac,
+    onRequestsArrived: (requests) => { void workspaceNavigation.autoOpenArrivingRequest(requests) },
   })
   const resolveHostProfile = navigation.resolveHostProfile
-  const sessionViewRecoveryResolver = createSessionViewRecoveryResolver({
-    loadArchived: async () => {
-      const sessions =
-        previewMode
-          ? previewWorkspaceScenario === 'unknown'
-            ? await Promise.reject(new Error('Preview archived catalog unavailable'))
-            : previewFixtures.archivedHostSessions
-          : await applicationTransport.call('listArchivedHostSessions', { search: null })
-      return sessions.map((session) =>
-        sessionViewDescriptor(session.host_id, session.host_session_id),
+  startup = createStartupController({
+    navigation,
+    workspaceShell,
+    workspaceSession,
+    transport: applicationTransport,
+    workspaceNavigation: () => workspaceNavigation,
+    tr,
+    messageFrom,
+    pageError: () => pageError,
+    setPageError: (message) => {
+      pageError = message
+    },
+    onReady: () => {
+      inboxTimer = ensureDesktopNavigationPolling(
+        desktopShellAvailable,
+        inboxTimer,
+        setInterval,
+        () => void navigation.refreshNavigation(true),
       )
     },
-    onInvalidate: () => {
-      if (!activeRecoveryTransition) return
-      activeRecoveryTransition = null
-      workspaceTransition.invalidate()
-    },
-    onUpdate: applySessionViewResolutions,
   })
-  const applicationSnapshotRefetch = createApplicationSnapshotRefetch({
-    refetch: refetchApplicationSnapshots,
-    reportError: (cause) => {
-      pageError = messageFrom(cause)
+
+  const managedSessions = createManagedSessionActions({
+    canOpenManagedSession: () => !previewMode,
+    transport: applicationTransport,
+    navigation,
+    workspaceShell,
+    workspaceSession,
+    workspaceNavigation: () => workspaceNavigation,
+    tr,
+    messageFrom,
+    setPageError: (message) => {
+      pageError = message
     },
+    isTransitionLocked: () => workspaceTransitionLocked,
+    exitRamble,
+    rambleCanExit: () => rambleCanExit,
+    openArchivedSessions: (initial) => openArchivedSessions(initial),
+  })
+
+  workspaceNavigation = createWorkspaceNavigationController({
+    navigation,
+    workspaceShell,
+    workspaceSession,
+    draftSession,
+    draftController,
+    attachmentSession,
+    attachmentController,
+    cookingSession,
+    startup: () => startup,
+    managedSessions: () => managedSessions,
+    transport: applicationTransport,
+    tr,
+    messageFrom,
+    setPageError: (message) => { pageError = message },
+    releaseEditor: () => { sessionWorkbench = undefined },
+    refreshNotificationPermission: () => notificationPermission.refresh(),
+    isTransitionLocked: () => workspaceTransitionLocked,
+    enqueueDocumentTask,
+    canAutoOpenRamble: (sessionId) => managedSessionSection?.canAutoOpenRamble(sessionId) === true,
+    onboardingOpen: () => $onboarding.open,
+    resumePromptOpen: () => $resumePrompts.prompt !== null,
+    rambleEngaged: () => rambleEngaged,
   })
 
   export function refetchAfterTransportReady() {
-    applicationSnapshotRefetch.request([{ kind: 'all' }])
+    workspaceNavigation.refetchAfterTransportReady()
   }
 
-  function currentDraftSnapshot(): FeedbackDraftSnapshot {
-    return { documentJson: draftDocumentJson, bodyMarkdown: draftBody }
-  }
+  const toaster = createMessageToaster({ tr })
 
-  function savedDraftSnapshot(): FeedbackDraftSnapshot {
-    return { documentJson: savedDocumentJson, bodyMarkdown: savedBody }
-  }
+  const notificationPermission = createNotificationPermissionController({
+    notifications: capabilities.notifications,
+    isMac: () => isMac,
+    getPopupEnabled: () => $notificationPopupEnabled,
+    setPopupEnabled: (enabled) => setNotificationPopupEnabled(enabled),
+  })
 
-  function applyDraftSnapshot(snapshot: FeedbackDraftSnapshot) {
-    draftDocumentJson = snapshot.documentJson
-    draftBody = snapshot.bodyMarkdown
-    editorDocument = decodeFeedbackDraftDocument(snapshot.documentJson)
-  }
+  const onboarding = createOnboardingController({
+    locale: () => $locale,
+    isCompleted: () => $onboardingCompleted,
+    isAvailable: () => onboardingAvailable,
+    startup: { start: () => startup.start() },
+    managedSessions: {
+      openNewManagedSession: (configId) => managedSessions.openNewManagedSession(configId),
+    },
+    closeSettingsTab: async () => { await workspaceNavigation.closeWorkspaceTab(workspaceViewKey(settingsViewDescriptor())) },
+    updates: {
+      available: softwareUpdatesAvailable,
+      check: (input) => capabilities.softwareUpdates.implementation.check(input),
+    },
+    reset: () => resetOnboarding(),
+  })
 
-  function adoptDraft(draft: DraftView, options: { loadEditor?: boolean } = {}) {
-    const restored = restoreFeedbackDraftDocument(draft.document_json, draft.body_markdown)
-    const snapshot = snapshotFeedbackDraftDocument(restored)
-    applyDraftSnapshot(snapshot)
-    savedDocumentJson = snapshot.documentJson
-    savedBody = snapshot.bodyMarkdown
-    savedRevision = draft.saved_revision
-    if (options.loadEditor !== false) {
-      editorDocument = restored
-      editorEpoch += 1
-    }
-    return snapshot
-  }
+  const resumePrompts = createResumePromptController({
+    transport: applicationTransport,
+    tr,
+    messageFrom,
+    getCurrentRequest: () => currentRequest,
+    getKnownRequests: () => [...$navigation.requests, ...$navigation.pendingRequests],
+    getWorkspace: () => $workspaceSession.workspace,
+    resolveHostProfile,
+    canOpenFromWorkspace: () => canOpenResumePrompt,
+    notifications: {
+      available: notificationsAvailable,
+      isMac,
+      getPopupEnabled: () => $notificationPopupEnabled,
+      getState: () => $notificationPermission,
+      send: (input) => capabilities.notifications.implementation.send(input),
+    },
+    setPageError: (message) => {
+      pageError = message
+    },
+  })
 
+  $: railAgentSession = agentSessionForView(
+    renderedWorkspaceView?.kind === 'agent-session' ? renderedWorkspaceView : null,
+    $navigation.hostSessions,
+  )
   $: dirty =
-    workspace !== null &&
-    workspace.request.status !== 'completed' &&
-    workspace.request.status !== 'cancelled' &&
-    draftDocumentJson !== savedDocumentJson
-  $: {
-    if (!pageError) deliveredPageError = ''
-    else if (pageError !== deliveredPageError) {
-      deliveredPageError = pageError
-      toast.error(tr('Operation failed'), { description: pageError })
-    }
-  }
-  $: {
-    if (!saveMessage) deliveredSaveError = ''
-    else if (saveMessage !== deliveredSaveError) {
-      deliveredSaveError = saveMessage
-      toast.error(tr('Save failed'), { description: saveMessage })
-    }
-  }
-  $: {
-    if (!attachmentMessage) {
-      deliveredAttachmentMessage = ''
-    } else if (attachmentMessage !== deliveredAttachmentMessage) {
-      deliveredAttachmentMessage = attachmentMessage
-      const options = { description: attachmentMessage }
-      if (attachmentMessageTone === 'success') toast.success(tr('Attachment action completed'), options)
-      else if (attachmentMessageTone === 'info') toast.info(tr('Attachment status'), options)
-      else toast.error(tr('Attachment action failed'), options)
-    }
-  }
+    currentRequest !== null &&
+    currentRequest.status !== 'completed' &&
+    currentRequest.status !== 'cancelled' &&
+    $draftSession.dirty
+  $: toaster.pageError(pageError)
+  $: toaster.saveError($draftSession.message)
+  $: toaster.attachmentMessage($attachmentSession.message, $attachmentSession.tone)
   $: selectedHostSession = $navigation.selectedHostSessionId
     ? $navigation.hostSessions.find(
         (session) =>
@@ -501,45 +417,29 @@
           session.host_session_id === $navigation.selectedHostSessionId,
       )
     : undefined
-  $: renderedWorkspaceView = activeWorkspaceView(workspaceShellState)
+  $: renderedWorkspaceView = activeWorkspaceView($workspaceShell.shell)
   $: renderedWorkspaceSurface = workspaceSurface(renderedWorkspaceView)
   $: renderedSessionView = renderedWorkspaceView?.kind === 'session'
     ? renderedWorkspaceView
     : null
-  $: renderedSessionResolution = sessionViewResolution(
-    sessionViewResolutions,
-    workspaceShellState.activeViewKey,
-  )
-  const sessionTabLabel = (view: SessionViewDescriptor) => {
-    const session = $navigation.hostSessions.find(
-      (candidate) =>
-        candidate.host_id === view.hostId &&
-        candidate.host_session_id === view.hostSessionId,
-    )
-    const hostLabel = resolveHostProfile(view.hostId).label
-    return `${session?.title ?? view.hostSessionId} · ${hostLabel}`
-  }
-  $: taskTabTitles = updateTaskTabTitles(taskTabTitles, workspaceShellState.views, [
-    ...(workspace ? [workspace.request] : []),
+  $: renderedSessionResolution = sessionViewResolution($startup.resolutions, $workspaceShell.shell.activeViewKey)
+  $: renderedAgentSessionView = renderedWorkspaceView?.kind === 'agent-session' ? renderedWorkspaceView : null
+  $: renderedAgentDraftView = renderedWorkspaceView?.kind === 'agent-draft' ? renderedWorkspaceView : null
+  $: renderedAgentDraftController = renderedAgentDraftView ? managedSessions.draftController(renderedAgentDraftView.draftId) : null
+  $: renderedManagedSession = agentSessionForView(renderedAgentSessionView, $navigation.hostSessions)
+  $: taskTabTitles = updateTaskTabTitles(taskTabTitles, $workspaceShell.shell.views, [
+    ...(currentRequest ? [currentRequest] : []),
     ...$navigation.pendingRequests,
     ...$navigation.requests,
   ])
-  $: workspaceTabLabel = (view: WorkspaceViewDescriptor) => {
-    switch (view.kind) {
-      case 'inbox':
-        return tr('All requests')
-      case 'archive':
-        return tr('Archived sessions')
-      case 'settings':
-        return tr('Settings')
-      case 'request-task':
-        return taskTabTitles.get(view.requestId) ?? tr('Task brief')
-      case 'rambelle-profile':
-        return 'Rambelle'
-      case 'session':
-        return sessionTabLabel(view)
-    }
-  }
+  $: workspaceTabLabel = (view: WorkspaceViewDescriptor) =>
+    workspaceTabLabelFor(view, {
+      hostSessions: $navigation.hostSessions,
+      resolveHostProfile,
+      taskTabTitles,
+      locale: $locale,
+      tr,
+    })
   $: requestScopeLabel = $navigation.selectedHostId
     ? $navigation.selectedHostSessionId
       ? selectedHostSession?.source_hint ??
@@ -547,68 +447,58 @@
         resolveHostProfile($navigation.selectedHostId).label
       : resolveHostProfile($navigation.selectedHostId).label
     : tr('All hosts')
-  $: feedbackResult = completedResult?.feedback ?? workspace?.feedback ?? null
+  $: feedbackResult = $workspaceSession.feedbackResult
   $: canOpenResumePrompt = shouldShowResumePromptButton(
     feedbackResult,
-    completedResult?.resolution ?? workspace?.request.resolution,
+    $workspaceSession.completedResult?.resolution ?? currentRequest?.resolution,
+    currentRequest?.managed_session_id,
   )
+  $: feedbackManagedSessionId = agentViewForRequest(currentRequest)?.sessionId ?? null
+  $: rambleAgentSessionId = feedbackManagedSessionId ?? (currentRequest ? null : agentViewForEmptyRamble(renderedSessionView, $navigation.hostSessions)?.sessionId ?? null)
+  $: managedFeedbackReadOnly = !!feedbackManagedSessionId && ($managedSessions.deletingCommands.has(feedbackManagedSessionId) || $managedSessions.deletingSessions.has(feedbackManagedSessionId))
   $: currentRequestCooking =
-    workspace !== null && cookingRequestIds.has(workspace.request.request_id)
-  $: cookedDraftReady = cookedPreview !== null
+    currentRequest !== null && $cookingSession.cookingRequestIds.has(currentRequest.request_id)
+  $: cookedDraftReady = $cookingSession.preview !== null
   // Turning Cooking off discards any pending cooked preview: submitting then
   // publishes the editor content as-is.
-  $: if (!$cookingEnabled) cookedPreview = null
+  $: if (!$cookingEnabled) cookingSession.setPreview(null)
   $: canSubmit =
-    workspace !== null &&
-    workspace.request.status !== 'completed' &&
-    workspace.request.status !== 'cancelled' &&
-    draftBody.trim().length > 0 &&
+    !managedFeedbackReadOnly &&
+    currentRequest !== null &&
+    currentRequest.status !== 'completed' &&
+    currentRequest.status !== 'cancelled' &&
+    $draftSession.body.trim().length > 0 &&
     !currentRequestCooking &&
-    !submitting &&
-    !cancelling
+    !$workspaceSession.interactionLocked
   $: canCancel =
-    workspace !== null &&
-    workspace.request.status !== 'completed' &&
-    workspace.request.status !== 'cancelled' &&
+    currentRequest !== null &&
+    currentRequest.status !== 'completed' &&
+    currentRequest.status !== 'cancelled' &&
     !currentRequestCooking &&
-    !submitting &&
-    !cancelling
-  $: interactionLocked = submitting || cancelling || approving
+    !$workspaceSession.interactionLocked
+  $: interactionLocked = $workspaceSession.interactionLocked
   $: workspaceTransitionLocked =
     interactionLocked ||
-    attachmentBusy ||
-    screenCaptureBusy ||
+    $attachmentSession.busy ||
+    $attachmentSession.captureBusy ||
     currentRequestCooking ||
     cookedDraftReady
-  $: {
-    const recoveryFingerprint = `${$navigation.hostSessionFactsStatus}:${$navigation.hostSessionFactsRevision}:${workspaceShellState.views
-      .map(workspaceViewKey)
-      .join('\u0001')}:${$navigation.hostSessions
-      .map((session) =>
-        workspaceViewKey(sessionViewDescriptor(session.host_id, session.host_session_id)),
-      )
-      .sort()
-      .join('\u0001')}`
-    if (
-      $navigation.hostSessionFactsStatus !== 'pending' &&
-      recoveryFingerprint !== lastSessionRecoveryFingerprint
-    ) {
-      lastSessionRecoveryFingerprint = recoveryFingerprint
-      void refreshSessionViewRecovery()
-    }
-  }
-  $: voiceActive =
-    voicePhase === 'starting' ||
-    voicePhase === 'listening' ||
-    voicePhase === 'processing' ||
-    voicePhase === 'stopping'
-  $: voiceCanStop =
-    voiceActive || voicePhase === 'error'
-  $: visibleRamblePhase = resolvedRamblePhase(ramblePhase, voicePhase)
+  $: recoveryFingerprint = `${$navigation.hostSessionFactsStatus}:${$navigation.hostSessionFactsRevision}:${$workspaceShell.shell.views
+    .map(workspaceViewKey)
+    .join('\u0001')}:${$navigation.hostSessions
+    .map((session) =>
+      workspaceViewKey(sessionViewDescriptor(session.host_id, session.host_session_id)),
+    )
+    .sort()
+    .join('\u0001')}`
+  $: if (recoveryFingerprint) void startup.recoverIfChanged(recoveryFingerprint)
+  $: voiceActive = $rambleSession.voiceActive
+  $: voiceCanStop = $rambleSession.voiceCanStop
+  $: visibleRamblePhase = $rambleSession.visiblePhase
   $: rambleActive = visibleRamblePhase === 'active'
   $: rambleEngaged = visibleRamblePhase !== 'idle'
   $: rambleBelongsToWorkspace =
-    !rambleEngaged || workspace?.request.request_id === rambleRequestId
+    !rambleEngaged || currentRequest?.request_id === $rambleSession.requestId
   $: rambelleStatusPortrait = feedbackResult
     ? rambelleArchived
     : currentRequestCooking
@@ -624,23 +514,38 @@
   $: updateInstallBlocked =
     dirty ||
     rambleEngaged ||
-    attachmentBusy ||
-    submitting ||
-    cancelling ||
-    approving ||
+    $attachmentSession.busy ||
+    interactionLocked ||
     currentRequestCooking ||
-    workspace?.request.status === 'in_progress'
-  $: saveHostRailCollapsed(hostSessionRailCollapsed)
-  $: saveRequestRailCollapsed(requestRailCollapsed)
+    currentRequest?.status === 'in_progress'
+  function setHostRailCollapsed(collapsed: boolean) {
+    shellLayout.setRailCollapsed('host', collapsed)
+  }
+
+  function setRequestRailCollapsed(collapsed: boolean) {
+    shellLayout.setRailCollapsed('request', collapsed)
+  }
+
+  function closePhoneDrawers() {
+    shellLayout.closePhoneDrawers()
+  }
 
   onMount(() => {
+    function guardBrowserLeave(event: BeforeUnloadEvent) {
+      // Undo can make the draft locally clean while an earlier save is still
+      // in flight. Read both owners at the event boundary; never save on unload.
+      if (!draftSession.isDirty() && !draftController.hasPendingSave()) return
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    if (environment === 'browser') window.addEventListener('beforeunload', guardBrowserLeave)
     const cleanupAttachments = attachmentController.mount()
     const unsubscribeApplicationEvents = !desktopShellAvailable && !previewMode
       ? applicationTransport.subscribe(
           APPLICATION_EVENTS_STREAM,
           (event) => {
             if (event.type === 'invalidate') {
-              applicationSnapshotRefetch.request(event.resources)
+              workspaceNavigation.requestRefetch(event.resources)
             }
           },
           (cause) => {
@@ -649,954 +554,97 @@
         )
       : () => {}
 
+    let resumePromptUnlisten = () => {}
+    function disposeClient() {
+      if (environment === 'browser') window.removeEventListener('beforeunload', guardBrowserLeave)
+      unsubscribeApplicationEvents()
+      startup.dispose()
+      workspaceNavigation.dispose()
+      draftController.cancelPendingSave()
+      if (inboxTimer) clearInterval(inboxTimer)
+      resumePromptUnlisten()
+      resumePrompts.dispose()
+      onboarding.dispose()
+      cleanupAttachments()
+      managedSessions.closeAllDrafts()
+    }
+
     if (!desktopShellAvailable) {
-      startWorkbench()
-      if (previewMode) {
-        if (!initialWorkspaceSnapshot) {
-          workspace = previewFixtures.workspace
-          adoptDraft(previewFixtures.workspace.draft)
-          openLoadedWorkspaceView(previewFixtures.workspace)
-          savePhase = 'saved'
-        }
-        if (new URLSearchParams(window.location.search).get('dialog') === 'resume') {
-          resumePrompt = previewFixtures.resumePrompt
-        }
+      onboarding.begin()
+      if (
+        previewMode &&
+        new URLSearchParams(window.location.search).get('dialog') === 'resume'
+      ) {
+        resumePrompts.show(previewFixtures.resumePrompt)
       }
-      notificationState = 'unavailable'
+      notificationPermission.markUnavailable()
       if (
         capabilities.softwareUpdates.status.availability !== 'unavailable' &&
         new URLSearchParams(window.location.search).get('dialog') === 'update'
       ) {
         void capabilities.softwareUpdates.implementation.check({ prompt: true, forcePrompt: true })
       }
-      return () => {
-        unsubscribeApplicationEvents()
-        applicationSnapshotRefetch.dispose()
-        cleanupAttachments()
-      }
+      return disposeClient
     }
-    if ($onboardingCompleted || !onboardingAvailable) startWorkbench()
-    else onboardingOpen = true
-    const updateCheckTimer = softwareUpdatesAvailable
-      ? window.setTimeout(() => {
-          launchUpdateCheckDue = true
-          if (!onboardingOpen) {
-            void capabilities.softwareUpdates.implementation.check({ prompt: true, forcePrompt: false })
-          }
-        }, 4_000)
-      : undefined
-    if (notificationsAvailable) void refreshNotificationPermission()
-    else notificationState = 'unavailable'
-    const openAdaptersUnlisten = applicationTransport.subscribe(
-      OPEN_ADAPTERS_STREAM,
-      () => void openSettings('adapters'),
-      () => {
-        // The tray entry is an optional Desktop Shell affordance.
-      },
-    )
-    const resumePromptUnlisten = applicationTransport.subscribe(
-      RESUME_PROMPT_STREAM,
-      (prompt) => {
-        resumePrompt = prompt
-        resumeCopyState = 'idle'
-        if (
-          notificationsAvailable &&
-          isMac &&
-          $notificationPopupEnabled &&
-          notificationState === 'enabled'
-        ) {
-          void capabilities.notifications.implementation
-            .send({
-              title: prompt.title,
-              body: tr(
-                'Return to {host} and use the resume prompt to continue the host session.',
-                { host: prompt.host_label },
-              ),
-            })
-            .catch(() => {})
-        }
-        // The alert sound is reserved for a new request arriving, not for the
-        // resume prompt shown after a submission completes, so it is not played
-        // here.
-      },
-      () => {
-        // Resume prompt still appears if submit path keeps the main window focused.
-      },
-    )
-    return () => {
-      unsubscribeApplicationEvents()
-      applicationSnapshotRefetch.dispose()
-      draftController.cancelPendingSave()
-      if (inboxTimer) clearInterval(inboxTimer)
-      resumePromptUnlisten()
-      openAdaptersUnlisten()
-      if (updateCheckTimer !== undefined) clearTimeout(updateCheckTimer)
-      cleanupAttachments()
+    onboarding.begin()
+    // Browser server autostart is a desktop preference; the browser client never runs it.
+    if (
+      initialWebAccessAutostart() &&
+      capabilities.webAccessAdministration.status.availability !== 'unavailable'
+    ) {
+      void capabilities.webAccessAdministration.implementation
+        .setEnabled(true, initialWebAccessPort())
+        .catch(() => undefined)
     }
+    onboarding.scheduleLaunchCheck()
+    if (notificationsAvailable) void notificationPermission.refresh()
+    else notificationPermission.markUnavailable()
+    resumePromptUnlisten = resumePrompts.subscribeStream()
+    return disposeClient
   })
 
-  function startWorkbench() {
-    if (workbenchInitialized) return
-    workbenchInitialized = true
-    inboxTimer = ensureDesktopNavigationPolling(
-      desktopShellAvailable,
-      inboxTimer,
-      setInterval,
-      () => void navigation.refreshNavigation(true),
-    )
-    void (async () => {
-      const initialized = await navigation.initialize(initialWorkspaceSnapshot === null)
-      if (!initialized) return
-      await refreshSessionViewRecovery()
-      if (initialWorkspaceSnapshot) await restoreInitialWorkspaceSnapshot()
-      else if (previewMode && workspace) {
-        await navigation.selectScope(workspace.request.host_id, workspace.request.host_session_id)
-      }
-    })()
-  }
-
-  function closeOnboarding() {
-    onboardingOpen = false
-    startWorkbench()
-    if (softwareUpdatesAvailable && launchUpdateCheckDue) {
-      void capabilities.softwareUpdates.implementation.check({ prompt: true, forcePrompt: false })
-    }
-  }
-
-  async function openGithubReleases() {
-    const releasesUrl = 'https://github.com/l1veIn/rambledesk/releases'
-    try {
-      await capabilities.externalLinks.implementation.open(releasesUrl)
-    } catch (cause) {
-      pageError = messageFrom(cause)
-    }
-  }
-
-  function restartOnboarding() {
-    resetOnboarding()
-    void closeWorkspaceTab(workspaceViewKey(settingsViewDescriptor()))
-    onboardingOpen = true
-  }
-
-  async function copyResumePrompt() {
-    if (!resumePrompt) return
-    try {
-      await navigator.clipboard.writeText(resumePrompt.resume_prompt)
-      resumeCopyState = 'copied'
-      window.setTimeout(() => {
-        if (resumeCopyState === 'copied') resumeCopyState = 'idle'
-      }, 2_000)
-    } catch {
-      resumeCopyState = 'failed'
-    }
-  }
-
-  function dismissResumePrompt() {
-    resumePrompt = null
-    resumeCopyState = 'idle'
-  }
-
-  function openResumePrompt() {
-    if (!workspace || !canOpenResumePrompt) return
-    resumePrompt = buildResumePrompt(workspace, resolveHostProfile(workspace.request.host_id), tr)
-    resumeCopyState = 'idle'
-  }
-
-  function clearWorkspace() {
-    workspace = null
-    completedResult = null
-    publishedFeedback = null
-    attachmentController.releasePreviews()
-  }
-
-  function persistCurrentWorkspaceSnapshot() {
-    const snapshot = createWorkspaceSnapshot(workspaceShellState, sessionRequestIds)
-    if (previewMode) {
-      savePreviewWorkspaceSnapshot(snapshot)
+  async function openSettings(section: SettingsSection, agentConfigId?: string, agentAdvanced = false) {
+    if ($startup.phase === 'failed') {
+      startup.patch({ settingsOpen: true })
       return
     }
-    saveWorkspaceSnapshot(snapshot)
-  }
-
-  function openSessionView(view: SessionViewDescriptor, requestId?: string) {
-    if (requestId) {
-      const nextRequestIds = new Map(sessionRequestIds)
-      nextRequestIds.set(workspaceViewKey(view), requestId)
-      sessionRequestIds = nextRequestIds
-    }
-    workspaceShellState = workspaceShellReducer(workspaceShellState, { type: 'open', view })
-    persistCurrentWorkspaceSnapshot()
-  }
-
-  function reorderWorkspaceTabs(viewKeys: readonly string[]) {
-    const nextState = workspaceShellReducer(workspaceShellState, {
-      type: 'reorder',
-      viewKeys,
+    await workspaceNavigation.openView(settingsViewDescriptor(), {
+      prepare: () => {
+        settingsSection = section
+        settingsAgentConfigId = agentConfigId
+        settingsAgentAdvanced = agentAdvanced
+        settingsSectionSelectionEpoch += 1
+      },
     })
-    if (nextState === workspaceShellState) return
-    workspaceShellState = nextState
-    persistCurrentWorkspaceSnapshot()
-  }
-
-  function openLoadedWorkspaceView(next: FeedbackWorkspaceView) {
-    openSessionView(
-      sessionViewDescriptor(next.request.host_id, next.request.host_session_id),
-      next.request.request_id,
-    )
-  }
-
-  async function applySessionViewResolutions(
-    resolutions: readonly SessionViewResolution[],
-  ) {
-    const activeView = activeWorkspaceView(workspaceShellState)
-    const workspaceView = workspace
-      ? sessionViewDescriptor(workspace.request.host_id, workspace.request.host_session_id)
-      : null
-    const safeResolutions = preserveLoadedSessionDuringUnconfirmedRecovery(
-      resolutions,
-      workspaceView,
-    )
-    const nextActive = sessionViewResolution(
-      safeResolutions,
-      workspaceShellState.activeViewKey,
-    )
-    if (
-      activeView?.kind === 'session' &&
-      nextActive?.kind === 'missing-session' &&
-      workspaceView &&
-      workspaceViewKey(workspaceView) === workspaceViewKey(activeView)
-    ) {
-      const recoveryTransition = {}
-      activeRecoveryTransition = recoveryTransition
-      const outcome = await workspaceTransition.activate({
-        view: activeView,
-        requestId: null,
-        shellAction: { type: 'open' },
-        pendingViewKey: workspaceViewKey(activeView),
-      })
-      if (activeRecoveryTransition === recoveryTransition) {
-        activeRecoveryTransition = null
-      }
-      if (outcome !== 'activated') return false
-      await navigation.selectScope(null, null)
-    }
-    sessionViewResolutions = safeResolutions
-    return true
-  }
-
-  function activeSessionCatalog(): SessionViewCatalog {
-    if ($navigation.hostSessionFactsStatus === 'pending') return { status: 'pending' }
-    if ($navigation.hostSessionFactsStatus === 'failed') return { status: 'failed' }
-    return {
-      status: 'ready',
-      views: $navigation.hostSessions.map((session) =>
-        sessionViewDescriptor(session.host_id, session.host_session_id),
-      ),
-    }
-  }
-
-  async function refreshSessionViewRecovery() {
-    return sessionViewRecoveryResolver.refresh(
-      workspaceShellState.views.filter(
-        (view): view is SessionViewDescriptor => view.kind === 'session',
-      ),
-      activeSessionCatalog(),
-    )
-  }
-
-  async function refetchApplicationSnapshots(
-    intent: ApplicationSnapshotRefetchIntent,
-  ): Promise<void> {
-    if (applicationResourcesAffectNavigation(intent.resources)) {
-      if (applicationResourcesRequireFullNavigationSnapshot(intent.resources)) {
-        await navigation.initialize(false)
-      } else {
-        await navigation.refreshNavigation(true)
-      }
-      if (!intent.isCurrent()) return
-      await refreshSessionViewRecovery()
-      if (!intent.isCurrent()) return
-    }
-
-    while (workspaceTransitionLocked && intent.isCurrent()) {
-      await new Promise((resolve) => window.setTimeout(resolve, 50))
-    }
-    if (!intent.isCurrent()) return
-
-    const activeView = activeWorkspaceView(workspaceShellState)
-    const activeWorkspace = workspace
-    if (
-      !activeView ||
-      !activeWorkspace ||
-      (activeView.kind !== 'session' && activeView.kind !== 'request-task') ||
-      !applicationResourcesAffectWorkspace(intent.resources, {
-        requestId: activeWorkspace.request.request_id,
-        hostId: activeWorkspace.request.host_id,
-        hostSessionId: activeWorkspace.request.host_session_id,
-      })
-    ) {
-      return
-    }
-
-    const outcome = await workspaceTransition.activate({
-      view: activeView,
-      requestId: activeWorkspace.request.request_id,
-      shellAction: { type: 'open' },
-      pendingViewKey: workspaceViewKey(activeView),
-    })
-    if (!intent.isCurrent() || outcome === 'stale') return
-  }
-
-  async function retrySessionViewRecovery() {
-    const retryingMissingView = renderedSessionResolution?.kind === 'missing-session'
-    if (retryingMissingView) {
-      workbenchMounted = false
-      loadingWorkspace = true
-    }
-    await navigation.refreshNavigation(true)
-    lastSessionRecoveryFingerprint = ''
-    await refreshSessionViewRecovery()
-    const activeResolution = sessionViewResolution(
-      sessionViewResolutions,
-      workspaceShellState.activeViewKey,
-    )
-    if (activeResolution?.kind === 'active' && workspace === null) {
-      await restoreInitialWorkspaceSnapshot()
-    } else if (retryingMissingView) {
-      workbenchMounted = true
-      loadingWorkspace = false
-    }
-  }
-
-  async function restoreInitialWorkspaceSnapshot() {
-    const view = activeWorkspaceView(workspaceShellState)
-    if (!view) {
-      clearWorkspace()
-      workbenchMounted = true
-      loadingWorkspace = false
-      return
-    }
-    if (
-      view.kind === 'inbox' ||
-      view.kind === 'archive' ||
-      view.kind === 'settings' ||
-      view.kind === 'rambelle-profile'
-    ) {
-      clearWorkspace()
-      workbenchMounted = true
-      loadingWorkspace = false
-      if (view.kind === 'inbox') await navigation.selectScope(null, null)
-      else if (view.kind === 'settings') void refreshGenericMcpConfiguration()
-      return
-    }
-    if (view.kind === 'request-task') {
-      await workspaceTransition.activate({
-        view,
-        requestId: view.requestId,
-        shellAction: { type: 'open' },
-        pendingViewKey: workspaceViewKey(view),
-      })
-      return
-    }
-
-    const resolution = sessionViewResolution(sessionViewResolutions, workspaceViewKey(view))
-    if (!resolution || resolution.kind !== 'active') {
-      clearWorkspace()
-      workbenchMounted = true
-      loadingWorkspace = false
-      return
-    }
-
-    const selection = await navigation.selectScope(view.hostId, view.hostSessionId)
-    if (!selection.selected) {
-      workbenchMounted = true
-      loadingWorkspace = false
-      return
-    }
-    await workspaceTransition.activate({
-      view,
-      requestId: requestIdForSession(view, selection.requests),
-      shellAction: { type: 'open' },
-      pendingViewKey: workspaceViewKey(view),
-    })
-  }
-
-  type NavigationScope = Readonly<{
-    hostId: string | null
-    hostSessionId: string | null
-  }>
-
-  function requestIdForSession(
-    view: SessionViewDescriptor,
-    requests: readonly FeedbackRequestSummary[],
-  ): string | null {
-    const rememberedRequestId = sessionRequestIds.get(workspaceViewKey(view))
-    // List filters may hide an open request; they must not reset its workspace tab.
-    if (rememberedRequestId && (
-      requestFilterCount($navigation.requestFilters) > 0 ||
-      requests.some((request) => request.request_id === rememberedRequestId)
-    )) return rememberedRequestId
-    return requests[0]?.request_id ?? null
-  }
-
-  function currentNavigationScope(): NavigationScope {
-    return {
-      hostId: $navigation.selectedHostId,
-      hostSessionId: $navigation.selectedHostSessionId,
-    }
-  }
-
-  async function restoreNavigationScope(
-    scope: NavigationScope,
-    outcome: WorkspaceTransitionOutcome,
-  ) {
-    if (outcome !== 'blocked' && outcome !== 'failed') return
-    await navigation.selectScope(scope.hostId, scope.hostSessionId)
-  }
-
-  async function selectRailScope(hostId: string | null, hostSessionId: string | null) {
-    if (workspaceTransitionLocked) return
-    const priorScope = currentNavigationScope()
-    workspaceTransition.invalidate()
-    const selection = await navigation.selectScope(hostId, hostSessionId)
-    if (!selection.selected) return
-    if (!hostId || !hostSessionId) {
-      const outcome = await workspaceTransition.activate({
-        view: inboxViewDescriptor(),
-        requestId: null,
-        shellAction: { type: 'open' },
-        pendingViewKey: workspaceViewKey(inboxViewDescriptor()),
-      })
-      await restoreNavigationScope(priorScope, outcome)
-      return
-    }
-    if (workspaceTransitionLocked) {
-      await navigation.selectScope(priorScope.hostId, priorScope.hostSessionId)
-      return
-    }
-
-    const view = sessionViewDescriptor(hostId, hostSessionId)
-    const viewKey = workspaceViewKey(view)
-    const requestId = requestIdForSession(view, selection.requests)
-    if (requestId) {
-      const outcome = await activateRequest(requestId)
-      await restoreNavigationScope(priorScope, outcome)
-      return
-    }
-    const outcome = await workspaceTransition.activate({
-      view,
-      requestId: null,
-      shellAction: { type: 'open' },
-      pendingViewKey: viewKey,
-    })
-    await restoreNavigationScope(priorScope, outcome)
-  }
-
-  async function activateWorkspaceTab(viewKey: string) {
-    if (workspaceTransitionLocked || workspaceShellState.activeViewKey === viewKey) return
-    const priorScope = currentNavigationScope()
-    workspaceTransition.invalidate()
-    const view = workspaceShellState.views.find(
-      (candidate) => workspaceViewKey(candidate) === viewKey,
-    )
-    if (!view) return
-    if (view.kind !== 'session') {
-      if (view.kind === 'inbox') {
-        const selection = await navigation.selectScope(null, null)
-        if (!selection.selected) return
-      }
-      const outcome = await workspaceTransition.activate({
-        view,
-        requestId: view.kind === 'request-task' ? view.requestId : null,
-        shellAction: { type: 'open' },
-        pendingViewKey: viewKey,
-      })
-      if (outcome === 'activated' && view.kind === 'settings') {
-        void refreshGenericMcpConfiguration()
-      }
-      if (view.kind === 'inbox') await restoreNavigationScope(priorScope, outcome)
-      return
-    }
-    const resolution = sessionViewResolution(sessionViewResolutions, viewKey)
-    if (resolution?.kind === 'missing-session') {
-      const outcome = await workspaceTransition.activate({
-        view,
-        requestId: null,
-        shellAction: { type: 'open' },
-        pendingViewKey: viewKey,
-      })
-      if (outcome === 'activated') await navigation.selectScope(null, null)
-      return
-    }
-
-    const selection = await navigation.selectScope(view.hostId, view.hostSessionId)
-    if (!selection.selected) return
-    if (workspaceTransitionLocked) {
-      await navigation.selectScope(priorScope.hostId, priorScope.hostSessionId)
-      return
-    }
-    const requestId = requestIdForSession(view, selection.requests)
-    if (requestId) {
-      const outcome = await activateRequest(requestId)
-      await restoreNavigationScope(priorScope, outcome)
-      return
-    }
-    const outcome = await workspaceTransition.activate({
-      view,
-      requestId: null,
-      shellAction: { type: 'open' },
-      pendingViewKey: viewKey,
-    })
-    await restoreNavigationScope(priorScope, outcome)
-  }
-
-  async function closeWorkspaceTab(viewKey: string) {
-    if (workspaceTransitionLocked || pendingWorkspaceViewKey) return
-    const closingActive = workspaceShellState.activeViewKey === viewKey
-    if (!closingActive) {
-      workspaceShellState = workspaceShellReducer(workspaceShellState, {
-        type: 'close',
-        viewKey,
-      })
-      const nextRequestIds = new Map(sessionRequestIds)
-      nextRequestIds.delete(viewKey)
-      sessionRequestIds = nextRequestIds
-      persistCurrentWorkspaceSnapshot()
-      return
-    }
-    workspaceTransition.invalidate()
-    const priorScope = currentNavigationScope()
-
-    const nextShellState = workspaceShellReducer(workspaceShellState, {
-      type: 'close',
-      viewKey,
-    })
-    const fallbackView = activeWorkspaceView(nextShellState)
-    const fallbackResolution = fallbackView?.kind === 'session'
-      ? sessionViewResolution(sessionViewResolutions, workspaceViewKey(fallbackView))
-      : null
-    let fallbackRequestId: string | null = null
-    if (fallbackView?.kind === 'session' && fallbackResolution?.kind !== 'missing-session') {
-      const selection = await navigation.selectScope(
-        fallbackView.hostId,
-        fallbackView.hostSessionId,
-      )
-      if (!selection.selected) return
-      if (workspaceTransitionLocked) {
-        await navigation.selectScope(priorScope.hostId, priorScope.hostSessionId)
-        return
-      }
-      fallbackRequestId = requestIdForSession(fallbackView, selection.requests)
-    } else if (fallbackView?.kind === 'inbox') {
-      const selection = await navigation.selectScope(null, null)
-      if (!selection.selected) return
-    } else if (fallbackView?.kind === 'request-task') {
-      fallbackRequestId = fallbackView.requestId
-    }
-
-    const outcome = await workspaceTransition.activate({
-      view: fallbackView,
-      requestId: fallbackRequestId,
-      shellAction: { type: 'close', viewKey },
-      pendingViewKey: viewKey,
-    })
-    if (
-      outcome === 'activated' &&
-      (!fallbackView ||
-        (fallbackView.kind === 'session' && fallbackResolution?.kind === 'missing-session'))
-    ) {
-      await navigation.selectScope(null, null)
-    }
-    await restoreNavigationScope(priorScope, outcome)
-  }
-
-  async function refreshNotificationPermission() {
-    try {
-      const granted = await capabilities.notifications.implementation.permission() === 'granted'
-      if (isMac && !granted && $notificationPopupEnabled) setNotificationPopupEnabled(false)
-      notificationState = notificationStateForPermission(granted, $notificationPopupEnabled)
-    } catch {
-      notificationState = 'unavailable'
-    }
-  }
-
-  function viewForRequest(requestId: string): SessionViewDescriptor | null {
-    const request = [...$navigation.requests, ...$navigation.pendingRequests].find(
-      (candidate) => candidate.request_id === requestId,
-    )
-    return request
-      ? sessionViewDescriptor(request.host_id, request.host_session_id)
-      : workspace?.request.request_id === requestId
-        ? sessionViewDescriptor(workspace.request.host_id, workspace.request.host_session_id)
-        : null
-  }
-
-  async function loadWorkspaceTarget(
-    target: WorkspaceTransitionTarget,
-  ): Promise<LoadedWorkspaceTarget | null> {
-    if (!target.requestId) return null
-    const requestId = target.requestId
-    return enqueueDocumentTask(async () => {
-      const next = previewMode
-        ? previewWorkspaceFor(requestId)
-        : await applicationTransport.call('getFeedbackWorkspace', {
-            request_id: requestId,
-          })
-      if (!next) throw new Error(tr('This feedback request could not be found.'))
-
-      if (target.view?.kind === 'request-task') {
-        if (target.view.requestId !== next.request.request_id) {
-          throw new Error(tr('This feedback request could not be found.'))
-        }
-        return { kind: 'request-task', workspace: next }
-      }
-
-      const loadedView = sessionViewDescriptor(next.request.host_id, next.request.host_session_id)
-      if (
-        target.view?.kind === 'session' &&
-        workspaceViewKey(target.view) !== workspaceViewKey(loadedView)
-      ) {
-        throw new Error(tr('The feedback request no longer belongs to the selected session.'))
-      }
-      if (target.view && target.view.kind !== 'session') {
-        throw new Error(tr('This feedback request could not be found.'))
-      }
-
-      const nextPublishedFeedback =
-        next.request.status === 'completed' && next.feedback
-          ? previewMode
-            ? {
-                markdown: next.draft.body_markdown,
-                uncooked_markdown: next.draft.body_markdown,
-              }
-            : normalizePublishedFeedback(
-                await applicationTransport.call('readPublishedFeedback', {
-                  request_id: next.request.request_id,
-                }),
-              )
-          : null
-      return { kind: 'session', workspace: next, publishedFeedback: nextPublishedFeedback }
-    })
-  }
-
-  function commitWorkspaceTarget(
-    target: WorkspaceTransitionTarget,
-    loaded: LoadedWorkspaceTarget | null,
-  ) {
-    const previousActiveView = activeWorkspaceView(workspaceShellState)
-    const loadedView = loaded?.kind === 'session'
-      ? sessionViewDescriptor(
-          loaded.workspace.request.host_id,
-          loaded.workspace.request.host_session_id,
-        )
-      : loaded?.kind === 'request-task'
-        ? requestTaskViewDescriptor(loaded.workspace.request.request_id)
-        : target.view
-    if (target.shellAction.type === 'open' && !loadedView) {
-      throw new Error(tr('This feedback request could not be found.'))
-    }
-
-    const nextShellState =
-      target.shellAction.type === 'close'
-        ? workspaceShellReducer(workspaceShellState, target.shellAction)
-        : workspaceShellReducer(workspaceShellState, { type: 'open', view: loadedView! })
-
-    if (loaded?.kind === 'session') {
-      attachmentController.releasePreviews()
-      workspace = loaded.workspace
-      completedResult = null
-      publishedFeedback = loaded.publishedFeedback
-      cookedPreview = null
-      adoptDraft(loaded.workspace.draft)
-      savePhase = loaded.workspace.draft.updated_at ? 'saved' : 'idle'
-      saveMessage = ''
-      attachmentMessage = ''
-      const nextRequestIds = new Map(sessionRequestIds)
-      nextRequestIds.set(workspaceViewKey(loadedView!), loaded.workspace.request.request_id)
-      if (target.shellAction.type === 'close') nextRequestIds.delete(target.shellAction.viewKey)
-      sessionRequestIds = nextRequestIds
-    } else if (loaded?.kind === 'request-task') {
-      attachmentController.releasePreviews()
-      workspace = loaded.workspace
-      completedResult = null
-      publishedFeedback = null
-      cookedPreview = null
-      adoptDraft(loaded.workspace.draft)
-      savePhase = loaded.workspace.draft.updated_at ? 'saved' : 'idle'
-      saveMessage = ''
-      attachmentMessage = ''
-      if (target.shellAction.type === 'close') {
-        const nextRequestIds = new Map(sessionRequestIds)
-        nextRequestIds.delete(target.shellAction.viewKey)
-        sessionRequestIds = nextRequestIds
-      }
-    } else {
-      clearWorkspace()
-      if (target.shellAction.type === 'close') {
-        const nextRequestIds = new Map(sessionRequestIds)
-        nextRequestIds.delete(target.shellAction.viewKey)
-        sessionRequestIds = nextRequestIds
-      }
-    }
-
-    workspaceShellState = nextShellState
-    persistCurrentWorkspaceSnapshot()
-    workbenchMounted = true
-    loadingWorkspace = false
-    if (leavesSettingsView(previousActiveView, activeWorkspaceView(nextShellState))) {
-      void refreshNotificationPermission()
-    }
-    if (loaded) void attachmentController.refreshPreviews(loaded.workspace)
-  }
-
-  async function activateRequest(
-    requestId: string,
-  ): Promise<WorkspaceTransitionOutcome> {
-    if (workspaceTransitionLocked) return 'blocked'
-    const priorScope = currentNavigationScope()
-    workspaceTransition.invalidate()
-    if (
-      workspace?.request.request_id === requestId &&
-      renderedWorkspaceView?.kind === 'session'
-    ) {
-      openLoadedWorkspaceView(workspace)
-      return 'activated'
-    }
-    pageError = ''
-    const view = viewForRequest(requestId)
-    if (view) {
-      const selection = await navigation.selectScope(view.hostId, view.hostSessionId)
-      if (!selection.selected) return 'failed'
-    }
-    const outcome = await workspaceTransition.activate({
-      view,
-      requestId,
-      shellAction: { type: 'open' },
-      pendingViewKey: view ? workspaceViewKey(view) : `request:${JSON.stringify(requestId)}`,
-    })
-    await restoreNavigationScope(priorScope, outcome)
-    return outcome
-  }
-
-  async function openRequest(requestId: string, _saveCurrent = true): Promise<boolean> {
-    return (await activateRequest(requestId)) === 'activated'
-  }
-
-  function activeActionFor(requestId: string): ActiveAction {
-    return activeActionByRequest.get(requestId) ?? null
-  }
-
-  function enqueueDocumentTask<T>(task: () => Promise<T>): Promise<T> {
-    const run = rambleDocumentQueue.then(task)
-    rambleDocumentQueue = run.then(
-      () => undefined,
-      () => undefined,
-    )
-    return run
-  }
-
-  async function routeDraftOperation(requestId: string, operation: DraftOperation): Promise<void> {
-    if (!requestId) return
-    const run = enqueueDocumentTask(async () => {
-      const foregroundWorkspace = workspace
-      if (shouldUseForegroundDraftEditor({
-        activeView: activeWorkspaceView(workspaceShellState),
-        workbenchMounted,
-        editorReady: sessionWorkbench !== undefined,
-        workspaceRequestId: foregroundWorkspace?.request.request_id ?? null,
-        requestId,
-      }) && foregroundWorkspace) {
-        if (
-          foregroundWorkspace.request.status === 'completed' ||
-          foregroundWorkspace.request.status === 'cancelled'
-        ) {
-          throw new Error(tr('This request is closed. The document is read-only.'))
-        }
-        let applied = sessionWorkbench?.applyDraftOperation(operation) ?? false
-        if (!applied) {
-          await tick()
-          applied = sessionWorkbench?.applyDraftOperation(operation) ?? false
-        }
-        if (!applied) {
-          throw new Error(tr('The current editor is not ready. Try the action again.'))
-        }
-        if (!(await saveDraftNow())) {
-          throw new Error(saveMessage || tr('The current draft could not be saved.'))
-        }
-        return
-      }
-
-      const savedDraft = await writeBackgroundDraftOperation(requestId, operation, {
-        load: async () => {
-          const target = previewMode
-            ? previewWorkspaceFor(requestId)
-            : await applicationTransport.call('getFeedbackWorkspace', {
-                request_id: requestId,
-              })
-          if (!target) throw new Error(tr('This feedback request could not be found.'))
-          return target
-        },
-        save: async (input) =>
-          previewMode
-            ? {
-                document_json: input.document_json,
-                body_markdown: input.body_markdown,
-                saved_revision: input.expected_revision + 1,
-                updated_at: new Date().toISOString(),
-              }
-            : applicationTransport.call('saveFeedbackDraft', input),
-      })
-      if (
-        shouldAdoptTaskBackgroundDraft(
-          activeWorkspaceView(workspaceShellState),
-          workspace?.request.request_id ?? null,
-          requestId,
-        ) &&
-        workspace
-      ) {
-        workspace = { ...workspace, draft: savedDraft }
-        adoptDraft(savedDraft)
-        savePhase = savedDraft.updated_at ? 'saved' : 'idle'
-        saveMessage = ''
-      }
-    })
-    try {
-      await run
-    } catch (cause) {
-      pageError = tr('Failed to write Ramble content: {error}', { error: messageFrom(cause) })
-      throw cause
-    }
-  }
-
-  function selectAction(actionId: string, actionIndex: number, title: string) {
-    const requestId = workspace?.request.request_id
-    if (
-      !requestId ||
-      workspaceTransitionLocked ||
-      pendingWorkspaceViewKey !== null ||
-      workspace?.request.status === 'completed' ||
-      workspace?.request.status === 'cancelled'
-    ) return
-    if (activeActionByRequest.get(requestId)?.actionId === actionId) {
-      activeActionByRequest.delete(requestId)
-      activeActionByRequest = new Map(activeActionByRequest)
-      void routeDraftOperation(requestId, { kind: 'clearActionGroup', actionId }).catch(() => {})
-      return
-    }
-    const action = { actionId, actionIndex, title }
-    activeActionByRequest.set(requestId, action)
-    activeActionByRequest = new Map(activeActionByRequest)
-    void routeDraftOperation(requestId, { kind: 'startActionGroup', action }).catch(() => {})
-  }
-
-  async function refreshGenericMcpConfiguration() {
-    pageError = ''
-    if (capabilities.hostIntegrationAdministration.status.availability === 'unavailable') return
-    try {
-      genericMcpConfiguration = await capabilities.hostIntegrationAdministration.implementation
-        .genericMcpConfiguration()
-    } catch (cause) {
-      pageError = messageFrom(cause)
-    }
-  }
-
-  async function openSettings(section: SettingsSection) {
-    settingsSection = section
-    settingsSectionSelectionEpoch += 1
-    const view = settingsViewDescriptor()
-    const viewKey = workspaceViewKey(view)
-    if (workspaceTransitionLocked || pendingWorkspaceViewKey) return
-    if (workspaceShellState.activeViewKey !== viewKey) {
-      workspaceTransition.invalidate()
-      const outcome = await workspaceTransition.activate({
-        view,
-        requestId: null,
-        shellAction: { type: 'open' },
-        pendingViewKey: viewKey,
-      })
-      if (outcome !== 'activated') return
-    }
-    await refreshGenericMcpConfiguration()
   }
 
   async function openTaskWorkspace(requestId: string) {
-    if (workspaceTransitionLocked || pendingWorkspaceViewKey) return
-    const view = requestTaskViewDescriptor(requestId)
-    workspaceTransition.invalidate()
-    await workspaceTransition.activate({
-      view,
-      requestId,
-      shellAction: { type: 'open' },
-      pendingViewKey: workspaceViewKey(view),
-    })
-  }
-
-  function autoOpenTaskWorkspace(requestId: string) {
-    if (lastAutoOpenedTaskRequestId === requestId) return
-    lastAutoOpenedTaskRequestId = requestId
-    void openTaskWorkspace(requestId)
+    await workspaceNavigation.openView(requestTaskViewDescriptor(requestId), { requestId })
   }
 
   async function openRambelleProfile() {
-    if (workspaceTransitionLocked || pendingWorkspaceViewKey) return
-    const view = rambelleProfileViewDescriptor()
-    if (workspaceShellState.activeViewKey === workspaceViewKey(view)) return
-    workspaceTransition.invalidate()
-    await workspaceTransition.activate({
-      view,
-      requestId: null,
-      shellAction: { type: 'open' },
-      pendingViewKey: workspaceViewKey(view),
-    })
+    await workspaceNavigation.openView(rambelleProfileViewDescriptor())
   }
 
   async function openArchivedSessions(initialSession: SessionViewDescriptor | null = null) {
-    if (workspaceTransitionLocked || pendingWorkspaceViewKey) return
-    archivedInitialSession = initialSession
-    archivedSelectionEpoch += 1
-    const view = archiveViewDescriptor()
-    const viewKey = workspaceViewKey(view)
-    if (workspaceShellState.activeViewKey === viewKey) return
-    workspaceTransition.invalidate()
-    await workspaceTransition.activate({
-      view,
-      requestId: null,
-      shellAction: { type: 'open' },
-      pendingViewKey: viewKey,
+    await workspaceNavigation.openView(archiveViewDescriptor(), {
+      prepare: () => {
+        archivedInitialSession = initialSession
+        archivedSelectionEpoch += 1
+      },
     })
   }
 
   function applyWorkspaceMutation(next: FeedbackWorkspaceView) {
-    const localSnapshot = currentDraftSnapshot()
-    workspace = next
-    savedRevision = next.draft.saved_revision
-    const remote = snapshotFeedbackDraftDocument(
-      restoreFeedbackDraftDocument(next.draft.document_json, next.draft.body_markdown),
-    )
-    savedDocumentJson = remote.documentJson
-    savedBody = remote.bodyMarkdown
-    if (localSnapshot.documentJson === remote.documentJson) {
-      applyDraftSnapshot(remote)
-      savePhase = 'saved'
-    } else {
-      applyDraftSnapshot(localSnapshot)
-      savePhase = 'unsaved'
-      draftController.scheduleSave()
-    }
-  }
-
-  function setCookingRequest(requestId: string, cooking: boolean) {
-    const next = new Set(cookingRequestIds)
-    if (cooking) next.add(requestId)
-    else next.delete(requestId)
-    cookingRequestIds = next
+    workspaceSession.replace(next)
+    if (draftSession.reconcile(next.draft) === 'kept-local') draftController.scheduleSave()
   }
 
   const cookingController = createCookingController({
     tr,
     messageFrom,
-    getWorkspace: () => workspace,
-    getDraftBody: () => draftBody,
+    getWorkspace: () => $workspaceSession.workspace,
+    getDraftBody: () => $draftSession.body,
     getCookingConfig: () => ({
       provider: $cookingProvider,
       apiKey: $cookingApiKey,
@@ -1608,19 +656,13 @@
     }),
     isCookingEnabled: () => $cookingEnabled,
     isCooking: () => currentRequestCooking,
-    exitRamble: async () => {
-      if (rambleCanExit) await exitRamble()
-    },
+    prepareFeedback: (requestId) => rambleController.prepareFeedback(requestId),
     saveDraftNow,
     setPageError: (message) => {
       pageError = message
     },
-    setCooking: setCookingRequest,
-    publishCooked: (input, cookedMarkdown, uncookedMarkdown) =>
-      publisherController.publishFeedback(input, cookedMarkdown, uncookedMarkdown),
-    setPreview: (preview) => {
-      cookedPreview = preview
-    },
+    setCooking: cookingSession.setCooking,
+    setPreview: cookingSession.setPreview,
   })
   const cookPreviewOnly = cookingController.cookPreviewOnly
   const restoreOriginalAfterCook = cookingController.restoreOriginal
@@ -1629,44 +671,17 @@
     transport: applicationTransport,
     tr,
     messageFrom,
-    isPreviewMode: () => previewMode,
-    getWorkspace: () => workspace,
-    setWorkspace: (next) => {
-      workspace = next
-    },
-    setCompletedResult: (result) => {
-      completedResult = result
-    },
-    setPublishedFeedback: (feedback) => {
-      publishedFeedback = feedback
-    },
-    setSavePhase: (phase) => {
-      savePhase = phase
-    },
+    session: workspaceSession,
+    draft: draftSession,
+    cooking: cookingSession,
     setPageError: (message) => {
       pageError = message
     },
-    getCanSubmit: () => canSubmit,
-    getRambleCanExit: () => rambleCanExit,
-    hasPendingSpeech: (requestId) => rambleController?.hasPendingSpeech(requestId) ?? false,
-    getSpeechStopError: () => voicePhase === 'error' ? rambleMessage : '',
-    exitRamble,
+    isReadOnly: () => managedFeedbackReadOnly,
+    prepareFeedback: (requestId) => rambleController.prepareFeedback(requestId),
     saveDraftNow,
-    getDraftBody: () => draftBody,
-    getSavedRevision: () => savedRevision,
     getCookingEnabled: () => $cookingEnabled,
-    getPreview: () => cookedPreview,
-    setPreview: (preview) => {
-      cookedPreview = preview
-    },
-    setCooking: setCookingRequest,
-    cookAndPublish: cookingController.cookAndPublish,
-    setSubmitting: (value) => {
-      submitting = value
-    },
-    setSubmitStage: (stage) => {
-      submitStage = stage
-    },
+    cookSubmission: cookingController.cookSubmission,
     refreshNavigation: async (force) => {
       await navigation.refreshNavigation(force)
     },
@@ -1678,84 +693,31 @@
   })
   const submitFeedback = publisherController.submitFeedback
 
-  async function approveFeedback() {
-    if (!workspace || !workspace.request.allow_finish || approving) return
-    if (!window.confirm(tr('Approve this final summary and end Pi’s Ramble flow?'))) return
-    if (rambleCanExit) await exitRamble()
-    approving = true
-    pageError = ''
-    try {
-      const input: ApproveFeedbackInput = { request_id: workspace.request.request_id }
-      const result = await applicationTransport.call('approveFeedbackRequest', input)
-      completedResult = result
-      workspace = {
-        ...workspace,
-        request: {
-          ...workspace.request,
-          status: result.status,
-          resolution: result.resolution,
-          updated_at: result.updated_at,
-        },
-      }
-      toast.success(tr('Approved and finished'))
+  const submissionController = createSubmissionController({
+    transport: applicationTransport,
+    session: workspaceSession,
+    draftSession,
+    publishedFeedbackAction,
+    tr,
+    messageFrom,
+    canCancel: () => canCancel,
+    prepareFeedback: (requestId) => rambleController.prepareFeedback(requestId),
+    saveDraftNow,
+    refreshNavigation: async () => {
       await navigation.refreshNavigation(true)
-    } catch (cause) {
-      pageError = messageFrom(cause)
-    } finally {
-      approving = false
-    }
-  }
-
-  async function cancelFeedback() {
-    if (!workspace || !canCancel) return
-    if (rambleCanExit) await exitRamble()
-
-    cancelling = true
-    pageError = ''
-    try {
-      const input: CancelFeedbackInput = {
-        request_id: workspace.request.request_id,
-        reason: 'Human cancelled from RambleDesk',
-      }
-      const result = await applicationTransport.call('cancelFeedbackRequest', input)
-      completedResult = result
-      workspace = {
-        ...workspace,
-        feedback: result.feedback,
-        request: {
-          ...workspace.request,
-          status: result.status,
-          updated_at: result.updated_at,
-        },
-      }
-      savePhase = 'saved'
-      toast.success(tr('Request cancelled'))
-      await navigation.refreshNavigation(true)
-    } catch (cause) {
-      pageError = messageFrom(cause)
-    } finally {
-      cancelling = false
-    }
-  }
-
-  async function openFeedbackPackage() {
-    if (!feedbackResult || !workspace) return
-    try {
-      await publishedFeedbackAction.run(workspace.request.request_id)
-    } catch (cause) {
-      pageError = tr(
-        publishedFeedbackAction.label === 'Open feedback package'
-          ? 'Could not open Feedback Package: {error}'
-          : 'Could not download published feedback: {error}',
-        { error: messageFrom(cause) },
-      )
-    }
-  }
+    },
+    setPageError: (message) => {
+      pageError = message
+    },
+    notifyApproved: () => toast.success(tr('Approved and finished')),
+    notifyCancelled: () => toast.success(tr('Request cancelled')),
+  })
+  const approveFeedback = submissionController.approveFeedback
+  const cancelFeedback = submissionController.cancelFeedback
+  const openFeedbackPackage = submissionController.openFeedbackPackage
 
   async function exitRamble() {
     await rambleController?.exitRamble()
-    await rambleController?.settleSpeechDrafts()
-    await rambleDocumentQueue.catch(() => {})
   }
 
   async function toggleRamble() {
@@ -1767,311 +729,383 @@
   }
 </script>
 
+{#snippet requestAgentStatus()}
+  {#if feedbackManagedSessionId && currentRequest && !previewMode}
+    {#key `${feedbackManagedSessionId}:${currentRequest.request_id}`}
+      <ManagedFeedbackRequestStatus transport={applicationTransport} sessionId={feedbackManagedSessionId} requestId={currentRequest.request_id}
+        disabled={managedFeedbackReadOnly || workspaceTransitionLocked || $workspaceShell.pendingViewKey !== null}
+        navigationDisabled={workspaceTransitionLocked || $workspaceShell.pendingViewKey !== null}
+        onOpenAgent={() => feedbackManagedSessionId && void managedSessions.openAgentSession(feedbackManagedSessionId)}
+        onDeletingChange={managedSessions.observeDeletion} />
+    {/key}
+  {:else if rambleAgentSessionId}
+    <div class="flex items-center justify-between gap-2 text-xs">
+      <span class="text-muted-foreground">ACP</span>
+      <Button size="sm" variant="ghost" disabled={workspaceTransitionLocked || $workspaceShell.pendingViewKey !== null} onclick={() => rambleAgentSessionId && void managedSessions.openAgentSession(rambleAgentSessionId)}>{$locale === 'zh-CN' ? '查看 Agent' : 'View Agent'}</Button>
+    </div>
+  {/if}
+{/snippet}
+
 <svelte:head>
   <title>RambleDesk · Feedback Inbox</title>
 </svelte:head>
 
-{#key $locale}
-<main class="h-full w-full overflow-hidden rounded-[16px] border bg-background text-foreground shadow-sm">
-  <Sonner />
   <RambleSessionController
     bind:this={rambleController}
+    session={rambleSession}
     {capabilities}
-    {workspace}
-    bind:attachmentBusy
-    {screenCaptureBusy}
-    bind:attachmentMessage
-    bind:voicePhase
-    bind:voiceDevice
-    bind:voicePartial
-    bind:voiceLevel
-    bind:voiceChunkIndex
-    bind:voiceModelMissing
-    bind:ramblePhase
-    bind:rambleStartedOnce
-    bind:rambleRequestId
-    bind:rambleRequestTitle
-    bind:rambleMessage
-    interactionLocked={interactionLocked || currentRequestCooking || cookedDraftReady}
+    {tidyConfig}
+    workspace={$workspaceSession.workspace}
+    attachmentBusy={$attachmentSession.busy}
+    screenCaptureBusy={$attachmentSession.captureBusy}
+    onAttachmentMessage={attachmentSession.setMessage}
+    interactionLocked={managedFeedbackReadOnly || interactionLocked || currentRequestCooking || cookedDraftReady}
     onPageError={(message) => (pageError = message)}
     onStartScreenCapture={attachmentController.startScreenCapture}
     onImportServerAttachmentPaths={attachmentController.importServerAttachmentPaths}
     onPersistAttachmentCandidates={attachmentController.persistAttachmentCandidates}
     onRouteDraftOperation={routeDraftOperation}
+    waitForDocumentWrites={waitForDocumentQueue}
     getActiveAction={activeActionFor}
     onOpenSpeechTarget={async (requestId, segmentId) => {
-      if (await openRequest(requestId)) {
+      if (await workspaceNavigation.openRequest(requestId)) {
         await tick()
         if (segmentId) highlightSpeechSegment(document, segmentId, true)
       }
     }}
   />
 
+{#key $locale}
+<main class={[
+  'flex h-full w-full flex-col overflow-hidden rounded-[var(--app-frame-radius)] bg-background text-foreground',
+  environment === 'browser' ? '' : 'border shadow-sm',
+]}
+  class:navigation-resizing={navigationResizing}
+  style:--workbench-sidebar-width={`${hostRailDisplayWidth}px`}>
+  <Sonner />
+
+
   <AppTitlebar
     windowControls={capabilities.windowControls}
-    sidebarCollapsed={hostSessionRailCollapsed}
+    sidebarCollapsed={$shellLayout.hostCollapsed}
+    onToggleSidebar={$shellLayout.mode === 'phone' ? () => setHostRailCollapsed(!$shellLayout.hostCollapsed) : undefined}
     pendingCount={$navigation.pendingRequests.length}
     ramblePhase={visibleRamblePhase}
-    {rambleRequestTitle}
+    rambleRequestTitle={$rambleSession.requestTitle}
     onWindowError={(message) => (pageError = tr('Window action failed: {error}', { error: message }))}
   >
     {#snippet workspaceTabs()}
       <WorkspaceTabStrip
-        views={workspaceShellState.views}
-        activeViewKey={workspaceShellState.activeViewKey}
-        pendingViewKey={pendingWorkspaceViewKey}
+        views={$workspaceShell.shell.views}
+        activeViewKey={$workspaceShell.shell.activeViewKey}
+        pendingViewKey={$workspaceShell.pendingViewKey}
         disabled={workspaceTransitionLocked}
         labelForView={workspaceTabLabel}
-        onActivate={(viewKey) => void activateWorkspaceTab(viewKey)}
-        onClose={closeWorkspaceTab}
-        onReorder={reorderWorkspaceTabs}
+        onActivate={(viewKey) => void workspaceNavigation.activateWorkspaceTab(viewKey)}
+        onClose={async (viewKey) => { await workspaceNavigation.closeWorkspaceTab(viewKey) }}
+        onReorder={workspaceNavigation.reorderWorkspaceTabs}
       />
     {/snippet}
   </AppTitlebar>
 
-  <div class="flex h-[calc(100%-40px)] min-h-0 min-w-0">
-    <HostSessionRail
-      bind:collapsed={hostSessionRailCollapsed}
-      sessions={$navigation.hostSessions}
-      activeHostId={$navigation.selectedHostId}
-      activeHostSessionId={$navigation.selectedHostSessionId}
-      requestSearch={$navigation.requestSearch}
-      loading={$navigation.loadingNavigation}
-      refreshing={$navigation.refreshingPage}
-      {resolveHostProfile}
-      onSelect={(hostId, hostSessionId) =>
-        void selectRailScope(hostId, hostSessionId)}
-      onRequestSearch={(search) => void navigation.setRequestSearch(search)}
-      onRenameSession={(session, title) => navigation.renameHostSession(session, title)}
-      onSetSessionPinned={(session, pinned) => navigation.setHostSessionPinned(session, pinned)}
-      onArchiveSession={(session) => navigation.archiveHostSession(session)}
-      onSetHostPinned={(hostId, pinned) => navigation.setHostPinned(hostId, pinned)}
-      onSettings={() => void openSettings('general')}
-    />
+  <WorkbenchShell
+    hostCollapsed={$shellLayout.hostCollapsed}
+    requestCollapsed={$shellLayout.requestCollapsed}
+    onHostCollapsedChange={setHostRailCollapsed}
+    onRequestCollapsedChange={setRequestRailCollapsed}
+    startupFailed={$startup.phase === 'failed'}
+    requestPaneVisible={renderedWorkspaceSurface !== 'standalone'}
+    mode={$shellLayout.mode}
+    onModeChange={shellLayout.setMode}
+    bind:hostDisplayWidth={hostRailDisplayWidth}
+    bind:resizing={navigationResizing}
+  >
+    {#snippet hostRail()}
+      <HostSessionRail
+        collapsed={$shellLayout.hostCollapsed}
+        onCollapsedChange={setHostRailCollapsed}
+        sessions={$navigation.hostSessions}
+        activeHostId={renderedWorkspaceView?.kind === 'session' ? renderedWorkspaceView.hostId : railAgentSession?.host_id ?? null}
+        activeHostSessionId={renderedWorkspaceView?.kind === 'session' ? renderedWorkspaceView.hostSessionId : railAgentSession?.host_session_id ?? null}
+        inboxActive={renderedWorkspaceView?.kind === 'inbox'}
+        requestSearch={projectSearch}
+        loading={$navigation.loadingNavigation}
+        refreshing={$navigation.refreshingPage}
+        {resolveHostProfile}
+        onSelect={(hostId, hostSessionId) => {
+          closePhoneDrawers()
+          void workspaceNavigation.selectRailScope(hostId, hostSessionId)
+        }}
+        onRequestSearch={(search) => projectSearch = search}
+        onSearchRequests={(search) => void workspaceNavigation.searchWorkspaceRequests(search)}
+        onSetSessionPinned={(session, pinned) => navigation.setHostSessionPinned(session, pinned)}
+        onArchiveSession={managedSessions.archiveSessionFromUi}
+        onSettings={() => {
+          closePhoneDrawers()
+          void openSettings('general')
+        }}
+        onNewSession={previewMode ? undefined : (cwd) => {
+          closePhoneDrawers()
+          void managedSessions.openNewManagedSession(undefined, cwd)
+        }}
+      />
+    {/snippet}
 
-    <div class="flex min-h-0 min-w-0 flex-1" id="request-workspace-layout">
-      {#if renderedWorkspaceSurface !== 'standalone'}
-        <div
-          class={['shrink-0 border-r transition-[width] duration-200 motion-reduce:transition-none', requestRailCollapsed ? 'w-14' : 'w-[296px]']}
-          id="request-list-pane"
-        >
-          <RequestListPane
-            bind:collapsed={requestRailCollapsed}
-            requests={$navigation.requests}
-            activeRequestId={workspace?.request.request_id ?? null}
-            cookingRequestIds={cookingRequestIds}
-            scopeLabel={requestScopeLabel}
-            searchQuery={$navigation.requestSearch}
-            loading={$navigation.loadingRequests}
-            refreshing={$navigation.refreshingPage}
-            loadingMore={$navigation.loadingMoreRequests}
-            hasMore={$navigation.nextRequestCursor !== null}
-            filters={$navigation.requestFilters}
+    {#snippet startupRecovery()}
+      <StartupRecoveryPanel {capabilities} message={$startup.failureMessage} timedOut={$startup.failureTimedOut} settingsOpen={$startup.settingsOpen} onSettingsOpenChange={(settingsOpen) => startup.patch({ settingsOpen })} onRetry={() => void startup.start()} />
+    {/snippet}
+
+    {#snippet requestPane()}
+      <RequestListPane
+        collapsed={$shellLayout.requestCollapsed}
+        onCollapsedChange={setRequestRailCollapsed}
+        requests={$navigation.requests}
+        activeRequestId={currentRequest?.request_id ?? null}
+        cookingRequestIds={$cookingSession.cookingRequestIds}
+        scopeLabel={requestScopeLabel}
+        searchQuery={$navigation.requestSearch}
+        loading={$navigation.loadingRequests}
+        refreshing={$navigation.refreshingPage}
+        loadingMore={$navigation.loadingMoreRequests}
+        hasMore={$navigation.nextRequestCursor !== null}
+        filters={$navigation.requestFilters}
+        {resolveHostProfile}
+        formatTime={formatTimeLocal}
+        onLoadMore={() => void navigation.loadMoreRequests()}
+        onOpenRequest={(requestId) => {
+          closePhoneDrawers()
+          void workspaceNavigation.openRequest(requestId)
+        }}
+        onFiltersChange={(filters) => void navigation.setRequestFilters(filters)}
+        onClearSearch={() => void navigation.setRequestSearch('')}
+      />
+    {/snippet}
+
+    {#snippet workspacePane()}
+      <div
+        class="min-h-0 flex-1"
+        role={renderedWorkspaceView ? 'tabpanel' : undefined}
+        id={renderedWorkspaceView
+          ? workspaceTabPanelId(workspaceViewKey(renderedWorkspaceView))
+          : undefined}
+        aria-labelledby={renderedWorkspaceView
+          ? workspaceTabId(workspaceViewKey(renderedWorkspaceView))
+          : undefined}
+      >
+        {#if renderedWorkspaceView?.kind === 'inbox'}
+          <InboxWorkspaceView onNewSession={previewMode ? undefined : () => void managedSessions.openNewManagedSession()} />
+        {:else if renderedWorkspaceView?.kind === 'archive'}
+          <ArchivedSessionsWorkspaceView
+            transport={applicationTransport}
             {resolveHostProfile}
             formatTime={formatTimeLocal}
-            onLoadMore={() => void navigation.loadMoreRequests()}
-            onOpenRequest={(requestId) => void openRequest(requestId)}
-            onFiltersChange={(filters) => void navigation.setRequestFilters(filters)}
+            {messageFrom}
+            initialSession={archivedInitialSession}
+            selectionEpoch={archivedSelectionEpoch}
+            onError={(message) => (pageError = message)}
+            onChanged={startup.retrySessionViewRecovery}
+            onDeleteManagedSession={managedSessions.deleteManagedSessionFromUi}
           />
-        </div>
-      {/if}
-
-      <div class="min-h-0 min-w-0 flex-1" id="workspace-pane">
-        <div class="flex h-full min-h-0 min-w-0 flex-col">
-          <div
-            class="min-h-0 flex-1"
-            role={renderedWorkspaceView ? 'tabpanel' : undefined}
-            id={renderedWorkspaceView
-              ? workspaceTabPanelId(workspaceViewKey(renderedWorkspaceView))
-              : undefined}
-            aria-labelledby={renderedWorkspaceView
-              ? workspaceTabId(workspaceViewKey(renderedWorkspaceView))
-              : undefined}
-          >
-            {#if renderedWorkspaceView?.kind === 'inbox'}
-              <InboxWorkspaceView />
-            {:else if renderedWorkspaceView?.kind === 'archive'}
-              <ArchivedSessionsWorkspaceView
-                transport={applicationTransport}
-                {previewMode}
-                {resolveHostProfile}
-                formatTime={formatTimeLocal}
-                {messageFrom}
-                initialSession={archivedInitialSession}
-                selectionEpoch={archivedSelectionEpoch}
-                onError={(message) => (pageError = message)}
-                onChanged={retrySessionViewRecovery}
-              />
-            {:else if renderedWorkspaceView?.kind === 'settings'}
-              <SettingsWorkspaceView
-                {capabilities}
-                mcpConfiguration={genericMcpConfiguration}
-                section={settingsSection}
-                sectionSelectionEpoch={settingsSectionSelectionEpoch}
-                {updateInstallBlocked}
-                onRestartOnboarding={restartOnboarding}
-                onOpenArchived={() => void openArchivedSessions()}
-                onOpenRambelleProfile={() => void openRambelleProfile()}
-              />
-            {:else if renderedWorkspaceView?.kind === 'request-task'}
-              <TaskWorkspaceView
-                transport={applicationTransport}
-                {capabilities}
-                {workspace}
-                {editorDocument}
-                activeActionId={workspace
-                  ? activeActionByRequest.get(workspace.request.request_id)?.actionId ?? null
-                  : null}
-                actionsDisabled={workspaceTransitionLocked || pendingWorkspaceViewKey !== null}
-                onSelectAction={selectAction}
-                previews={attachmentPreviews}
-                loading={loadingWorkspace}
-                formatTime={formatTimeLocal}
-                {resolveHostProfile}
-                onToggleRamble={() => void toggleRamble()}
-                ramblePhase={rambleBelongsToWorkspace ? visibleRamblePhase : 'idle'}
-                rambleStartedOnce={rambleBelongsToWorkspace ? rambleStartedOnce : false}
-                rambleBusy={rambleBelongsToWorkspace ? rambleBusy : true}
-                canSubmit
-                cookingEnabled={$cookingEnabled}
-                {cookedDraftReady}
-                cooking={currentRequestCooking}
-                {submitting}
-                onSubmitFeedback={() => void submitFeedback()}
-              />
-            {:else if renderedWorkspaceView?.kind === 'rambelle-profile'}
-              <RambelleProfileWorkspaceView />
-            {:else if renderedSessionResolution?.kind === 'missing-session'}
-              <MissingSessionView
-                missing={renderedSessionResolution}
-                label={sessionTabLabel(renderedSessionResolution.session)}
-                busy={renderedSessionResolution.reason === 'unresolved' || pendingWorkspaceViewKey !== null}
-                onRetry={retrySessionViewRecovery}
-                onClose={() => closeWorkspaceTab(workspaceViewKey(renderedSessionResolution!.session))}
-                onOpenArchive={() => void openArchivedSessions(renderedSessionResolution!.session)}
-              />
-            {:else if workbenchMounted}
-              {#key renderedSessionView ? workspaceViewKey(renderedSessionView) : 'workspace:empty'}
-              <SessionWorkbench
+        {:else if renderedWorkspaceView?.kind === 'settings'}
+          <SettingsWorkspaceView
             transport={applicationTransport}
             {capabilities}
-            bind:this={sessionWorkbench}
-            view={renderedSessionView}
-            bind:taskBriefOpen
-            {loadingWorkspace}
-            {workspace}
-            {feedbackResult}
-            {draftBody}
-            {editorDocument}
-            {editorEpoch}
-            tidyConfig={{
-              provider: $tidyProvider,
-              apiKey: $tidyApiKey,
-              baseUrl: $tidyBaseUrl,
-              model: $tidyModel,
-              reasoningEffort: $tidyReasoningEffort,
-              locale: $locale,
-              systemPrompt: $tidySystemPrompt,
-            }}
-            tidyAutoThreshold={$tidyAutoThreshold}
-            activeActionId={workspace
-              ? activeActionByRequest.get(workspace.request.request_id)?.actionId ?? null
+            section={settingsSection}
+            sectionSelectionEpoch={settingsSectionSelectionEpoch}
+            agentConfigId={settingsAgentConfigId}
+            agentAdvanced={settingsAgentAdvanced}
+            {updateInstallBlocked}
+            onRestartOnboarding={onboarding.restart}
+            onOpenArchived={() => void openArchivedSessions()}
+            onOpenRambelleProfile={() => void openRambelleProfile()}
+          />
+        {:else if renderedWorkspaceView?.kind === 'request-task'}
+          <TaskWorkspaceView
+            agentStatus={rambleAgentSessionId ? requestAgentStatus : undefined}
+            transport={applicationTransport}
+            {capabilities}
+            workspace={$workspaceSession.workspace}
+            editorDocument={$draftSession.editorDocument}
+            activeActionId={currentRequest
+              ? $draftOperations.get(currentRequest.request_id)?.actionId ?? null
               : null}
-            {savedRevision}
-            {savePhase}
-            {attachmentPreviews}
-            {dragActive}
-            rambelleStatusPortrait={rambleBelongsToWorkspace
-              ? rambelleStatusPortrait
-              : feedbackResult
-                ? rambelleArchived
-                : rambelleIdle}
-            rambleEngaged={rambleBelongsToWorkspace ? rambleEngaged : false}
-            rambleActive={rambleBelongsToWorkspace ? rambleActive : false}
+            actionsDisabled={managedFeedbackReadOnly || workspaceTransitionLocked || $workspaceShell.pendingViewKey !== null}
+            onSelectAction={selectAction}
+            previews={$attachmentSession.previews}
+            loading={$workspaceSession.loadingWorkspace}
+            formatTime={formatTimeLocal}
+            {resolveHostProfile}
+            onToggleRamble={() => void toggleRamble()}
             ramblePhase={rambleBelongsToWorkspace ? visibleRamblePhase : 'idle'}
+            rambleStartedOnce={rambleBelongsToWorkspace ? $rambleSession.startedOnce : false}
             rambleBusy={rambleBelongsToWorkspace ? rambleBusy : true}
-            rambleStartedOnce={rambleBelongsToWorkspace ? rambleStartedOnce : false}
-            voiceDevice={rambleBelongsToWorkspace ? voiceDevice : ''}
-            voiceChunkIndex={rambleBelongsToWorkspace ? voiceChunkIndex : 0}
-            voicePartial={rambleBelongsToWorkspace ? voicePartial : ''}
-            voiceLevel={rambleBelongsToWorkspace ? voiceLevel : 0}
-            voiceModelMissing={rambleBelongsToWorkspace ? voiceModelMissing : false}
-            rambleMessage={rambleBelongsToWorkspace ? rambleMessage : ''}
-            attachmentBusy={rambleBelongsToWorkspace ? attachmentBusy : false}
-            {canSubmit}
-            cooking={currentRequestCooking}
+            canSubmit={!managedFeedbackReadOnly}
             cookingEnabled={$cookingEnabled}
             {cookedDraftReady}
-            cookedPreviewModel={cookedPreview?.model ?? ''}
-            cookedPreviewMarkdown={cookedPreview?.markdown ?? ''}
-            onCookPreview={() => void cookPreviewOnly()}
-            onRestoreOriginal={restoreOriginalAfterCook}
-            {submitting}
-            {submitStage}
-            {publishedFeedback}
-            {canCancel}
-            {cancelling}
-            {approving}
-            {canOpenResumePrompt}
-            {resolveHostProfile}
-            formatTime={formatTimeLocal}
-            onDraftChange={updateDraft}
-            onTidyError={(message) => (pageError = message)}
-            onOpenTidySettings={() => void openSettings('post-processing')}
-            onSelectAction={selectAction}
-            onToggleRamble={() => void toggleRamble()}
-            onExitRamble={() => void exitRamble()}
-            onOpenVoiceSettings={() => void openSettings('voice')}
-            onOpenTask={(requestId) => void openTaskWorkspace(requestId)}
-            onAutoOpenTask={autoOpenTaskWorkspace}
-            onStartScreenCapture={() => void attachmentController.startScreenCapture()}
-            onImportClipboard={() => void importClipboardNow()}
-            onFileSelection={attachmentController.handleFileSelection}
-            onPasteCandidates={attachmentController.acceptAttachmentCandidates}
-            onPasteError={attachmentController.reportClientFileError}
-            onRemoveAttachment={(attachment) => void attachmentController.removeAttachment(attachment)}
-            onOpenPackage={() => void openFeedbackPackage()}
-            packageActionLabel={tr(publishedFeedbackAction.label)}
-            onOpenResumePrompt={openResumePrompt}
-            onSubmit={() => void submitFeedback()}
-            onCancel={() => void cancelFeedback()}
-            onApprove={() => void approveFeedback()}
-              />
-              {/key}
-            {:else}
-              <div
-                class="grid h-full min-h-0 place-items-center text-sm text-muted-foreground"
-                aria-busy="true"
-                aria-live="polite"
-              >
-                {tr('Loading workspace…')}
-              </div>
-            {/if}
+            cooking={currentRequestCooking}
+            submitting={$workspaceSession.submitting}
+            onSubmitFeedback={() => void submitFeedback()}
+          />
+        {:else if renderedAgentDraftView && renderedAgentDraftController}
+          {#if $startup.mounted && $startup.phase === 'ready'}
+          {#key renderedAgentDraftView.draftId}
+            <DraftManagedSessionWorkspace transport={applicationTransport} controller={renderedAgentDraftController} draftId={renderedAgentDraftView.draftId}
+              onConfigure={() => void openSettings('agents')}
+              onConfigureAgent={(configId, advanced) => void openSettings('agents', configId, advanced)}
+              onChooseDirectory={capabilities.serverPaths.status.availability === 'unavailable' ? undefined : () => capabilities.serverPaths.implementation.chooseDirectory()} />
+          {/key}
+          {/if}
+        {:else if renderedAgentSessionView}
+          {#if $startup.mounted && $startup.phase === 'ready'}
+          {#key renderedAgentSessionView.sessionId}
+            <ManagedSessionSection
+              bind:this={managedSessionSection}
+              transport={applicationTransport}
+              sessionId={renderedAgentSessionView.sessionId}
+              deletionPending={$managedSessions.deletingCommands.has(renderedAgentSessionView.sessionId)}
+              onDeletingChange={managedSessions.observeDeletion}
+              onConfigureAgent={(configId, advanced) => void openSettings('agents', configId, advanced)}
+              onOpenRamble={renderedManagedSession ? async () => {
+                if (renderedManagedSession) await workspaceNavigation.selectRailScope(renderedManagedSession.host_id, renderedManagedSession.host_session_id)
+              } : undefined}
+            />
+          {/key}
+          {/if}
+        {:else if renderedWorkspaceView?.kind === 'rambelle-profile'}
+          <RambelleProfileWorkspaceView />
+        {:else if renderedSessionResolution?.kind === 'missing-session'}
+          <MissingSessionView
+            missing={renderedSessionResolution}
+            label={sessionTabLabelFor(renderedSessionResolution.session, {
+              hostSessions: $navigation.hostSessions,
+              resolveHostProfile,
+            })}
+            busy={renderedSessionResolution.reason === 'unresolved' || $workspaceShell.pendingViewKey !== null}
+            onRetry={startup.retrySessionViewRecovery}
+            onClose={async () => { await workspaceNavigation.closeWorkspaceTab(workspaceViewKey(renderedSessionResolution!.session)) }}
+            onOpenArchive={() => void openArchivedSessions(renderedSessionResolution!.session)}
+          />
+        {:else if $startup.mounted}
+          {#key renderedSessionView ? workspaceViewKey(renderedSessionView) : 'workspace:empty'}
+          <SessionWorkbench
+        agentStatus={rambleAgentSessionId ? requestAgentStatus : undefined}
+        readOnly={managedFeedbackReadOnly}
+        transport={applicationTransport}
+        {capabilities}
+        bind:this={sessionWorkbench}
+        view={renderedSessionView}
+        bind:taskBriefOpen
+        loadingWorkspace={$workspaceSession.loadingWorkspace}
+        workspace={$workspaceSession.workspace}
+        {feedbackResult}
+        draftBody={$draftSession.body}
+        editorDocument={$draftSession.editorDocument}
+        editorEpoch={$draftSession.editorEpoch}
+        {tidyConfig}
+        tidyAutoThreshold={$tidyAutoThreshold}
+        activeActionId={currentRequest
+          ? $draftOperations.get(currentRequest.request_id)?.actionId ?? null
+          : null}
+        savedRevision={$draftSession.savedRevision}
+        savePhase={$draftSession.phase}
+        attachmentPreviews={$attachmentSession.previews}
+        dragActive={$attachmentSession.dragActive}
+        rambelleStatusPortrait={rambleBelongsToWorkspace
+          ? rambelleStatusPortrait
+          : feedbackResult
+            ? rambelleArchived
+            : rambelleIdle}
+        rambleEngaged={rambleBelongsToWorkspace ? rambleEngaged : false}
+        rambleActive={rambleBelongsToWorkspace ? rambleActive : false}
+        ramblePhase={rambleBelongsToWorkspace ? visibleRamblePhase : 'idle'}
+        rambleBusy={rambleBelongsToWorkspace ? rambleBusy : true}
+        rambleStartedOnce={rambleBelongsToWorkspace ? $rambleSession.startedOnce : false}
+        voiceDevice={rambleBelongsToWorkspace ? $rambleSession.voiceDevice : ''}
+        voiceChunkIndex={rambleBelongsToWorkspace ? $rambleSession.voiceChunkIndex : 0}
+        voicePartial={rambleBelongsToWorkspace ? $rambleSession.voicePartial : ''}
+        voiceLevel={rambleBelongsToWorkspace ? $rambleSession.voiceLevel : 0}
+        voiceModelMissing={rambleBelongsToWorkspace ? $rambleSession.voiceModelMissing : false}
+        rambleMessage={rambleBelongsToWorkspace ? $rambleSession.message : ''}
+        attachmentBusy={rambleBelongsToWorkspace ? $attachmentSession.busy : false}
+        {canSubmit}
+        cooking={currentRequestCooking}
+        cookingEnabled={$cookingEnabled}
+        {cookedDraftReady}
+        cookedPreviewModel={$cookingSession.preview?.model ?? ''}
+        cookedPreviewMarkdown={$cookingSession.preview?.markdown ?? ''}
+        onCookPreview={() => void cookPreviewOnly()}
+        onRestoreOriginal={restoreOriginalAfterCook}
+        submitting={$workspaceSession.submitting}
+        submitStage={$workspaceSession.submitStage}
+        publishedFeedback={$workspaceSession.publishedFeedback}
+        {canCancel}
+        cancelling={$workspaceSession.cancelling}
+        approving={$workspaceSession.approving}
+        {canOpenResumePrompt}
+        {resolveHostProfile}
+        formatTime={formatTimeLocal}
+        onDraftChange={updateDraft}
+        onTidyError={(message) => (pageError = message)}
+        onOpenTidySettings={() => void openSettings('post-processing')}
+        onSelectAction={selectAction}
+        onToggleRamble={() => void toggleRamble()}
+        onExitRamble={() => void exitRamble()}
+        onOpenVoiceSettings={() => void openSettings('voice')}
+        onOpenTask={(requestId) => void openTaskWorkspace(requestId)}
+        onAutoOpenTask={workspaceNavigation.autoOpenTaskView}
+        onStartScreenCapture={() => void attachmentController.startScreenCapture()}
+        onImportClipboard={() => void importClipboardNow()}
+        onFileSelection={attachmentController.handleFileSelection}
+        onPasteCandidates={attachmentController.acceptAttachmentCandidates}
+        onPasteError={attachmentController.reportClientFileError}
+        onRemoveAttachment={(attachment) => void attachmentController.removeAttachment(attachment)}
+        onOpenPackage={() => void openFeedbackPackage()}
+        packageActionLabel={tr(publishedFeedbackAction.label)}
+        onOpenResumePrompt={resumePrompts.open}
+        onSubmit={() => void submitFeedback()}
+        onCancel={() => void cancelFeedback()}
+        onApprove={() => void approveFeedback()}
+          />
+          {/key}
+        {:else}
+          <div
+            class="grid h-full min-h-0 place-items-center text-sm text-muted-foreground"
+            aria-busy="true"
+            aria-live="polite"
+          >
+            {tr('Loading workspace…')}
           </div>
-        </div>
+        {/if}
       </div>
-    </div>
+    {/snippet}
+  </WorkbenchShell>
 
-    {#if resumePrompt}
-      <ResumePromptDialog
-        prompt={resumePrompt}
-        copyState={resumeCopyState}
-        onCopy={() => void copyResumePrompt()}
-        onDismiss={dismissResumePrompt}
-      />
-    {/if}
-  </div>
+  {#if $resumePrompts.prompt}
+    <ResumePromptDialog
+      prompt={$resumePrompts.prompt}
+      copyState={$resumePrompts.copyState}
+      onCopy={() => void resumePrompts.copy()}
+      onDismiss={resumePrompts.dismiss}
+    />
+  {/if}
 </main>
 
-{#if onboardingAvailable}
-  <OnboardingWizard {capabilities} bind:openWizard={onboardingOpen} onClose={closeOnboarding} />
+{#if onboardingAvailable && $onboarding.open}
+  <OnboardingWizard
+    {capabilities}
+    transport={applicationTransport}
+    openWizard={$onboarding.open}
+    onClose={onboarding.close}
+    onStartSession={onboarding.startSession}
+  />
 {/if}
 
 {#if softwareUpdatesAvailable}
   <UpdateAvailableDialog
     softwareUpdates={capabilities.softwareUpdates}
     installBlocked={updateInstallBlocked}
-    onOpenReleases={() => void openGithubReleases()}
+    externalLinks={capabilities.externalLinks}
+    onError={(message) => (pageError = message)}
   />
 {/if}
 {/key}

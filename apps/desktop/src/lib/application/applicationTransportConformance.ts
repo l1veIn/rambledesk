@@ -8,6 +8,35 @@ import type {
 } from './contracts'
 
 export const APPLICATION_CONFORMANCE_INPUTS = {
+  setManagedSessionConfig: { session_id: 'local-session-1', change: { config_id: 'session-mode', value: { type: 'select', value: 'ask' } } },
+  sendManagedPromptContent: { session_id: 'local-session-1', text: 'Read this', content: [{ type: 'resource_link', uri: 'file:///project/main.ts', name: 'main.ts', mime_type: 'text/typescript' }] },
+  listManagedSessionActivity: { session_id: 'local-session-1', before_sequence: 100, limit: 50 },
+  listAvailableAgents: undefined,
+  inspectAgentInstallation: { agent_id: 'deepseek' },
+  resolveCatalogAgent: { agent_id: 'deepseek', enable: false },
+  listAgentInstallJobs: undefined,
+  installAgent: { agent_id: 'deepseek', version: null },
+  cancelAgentInstall: { job_id: 'job-1' },
+  listAgentConfigs: undefined,
+  saveAgentConfig: {
+    id: null, name: 'DeepSeek', host_id: 'dsh', protocol: 'acp', enabled: true,
+    command: 'deepseek-acp', args: ['--label', 'project with spaces'], env: { TEST_ENV: 'test-value' },
+  },
+  deleteAgentConfig: { agent_config_id: 'config-1' },
+  checkAgentConfig: { agent_config_id: 'config-1' },
+  createManagedSession: { agent_config_id: 'config-1', cwd: '/project', title: 'Project' },
+  prepareManagedSession: { agent_config_id: 'config-1', cwd: '/project' },
+  discardPreparedSession: { session_id: 'local-session-1' },
+  getManagedSession: { session_id: 'local-session-1' },
+  getManagedFeedbackStatus: { session_id: 'local-session-1' },
+  getManagedWorkspaceInfo: { session_id: 'local-session-1' },
+  startManagedSession: { session_id: 'local-session-1' },
+  stopManagedSession: { session_id: 'local-session-1' },
+  cancelManagedPrompt: { session_id: 'local-session-1' },
+  sendManagedPrompt: { session_id: 'local-session-1', text: 'Review this project.' },
+  respondManagedInteraction: { session_id: 'local-session-1', request_id: 'permission-1', response: { kind: 'permission', option_id: null } },
+  resolveFeedbackDelivery: { session_id: 'local-session-1', request_id: 'request-1', action: 'acknowledge' },
+  deleteManagedSession: { session_id: 'local-session-1' },
   listFeedbackInbox: undefined,
   listHostSessions: undefined,
   listArchivedHostSessions: { search: null },
@@ -83,9 +112,10 @@ export function applicationConformanceResult<Name extends ApplicationCommandName
   let result: unknown
   if (name === 'readFeedbackAttachment' || name === 'readRequestAttachment') {
     result = new Uint8Array([4, 5, 6]).buffer
-  } else if (name === 'deleteHostSession' || name === 'deleteFeedbackRequest') {
+  } else if (name === 'discardPreparedSession' || name === 'cancelAgentInstall' || name === 'deleteHostSession' || name === 'deleteFeedbackRequest' || name === 'deleteAgentConfig' || name === 'deleteManagedSession') {
     result = undefined
   } else if (
+    name === 'listAvailableAgents' || name === 'listAgentInstallJobs' || name === 'listAgentConfigs' ||
     name === 'listFeedbackInbox' ||
     name === 'listHostSessions' ||
     name === 'listArchivedHostSessions' ||
@@ -128,9 +158,9 @@ export function runApplicationTransportConformance(
   createFixture: () => ApplicationTransportConformanceFixture,
 ): void {
   describe(`${implementationName} ApplicationTransport conformance`, () => {
-    it('maps all 23 query mutation multipart binary and void operations', async () => {
+    it('maps all query mutation multipart binary and void operations', async () => {
       const fixture = createFixture()
-      expect(APPLICATION_COMMAND_NAMES).toHaveLength(23)
+      expect(APPLICATION_COMMAND_NAMES).toHaveLength(49)
 
       for (const [index, name] of APPLICATION_COMMAND_NAMES.entries()) {
         const input = APPLICATION_CONFORMANCE_INPUTS[name]

@@ -32,6 +32,7 @@ function fakeWindow() {
 
 function fakeWebview() {
   return {
+    setZoom: vi.fn(async (_factor: number) => undefined),
     onDragDropEvent: vi.fn(
       async (
         _handler: Parameters<ReturnType<TauriCapabilityApi['currentWebview']>['onDragDropEvent']>[0],
@@ -57,7 +58,7 @@ function createFakeApi(responses: Record<string, unknown> = {}): FakeApi {
         if (command === 'get_web_access_status' || command === 'stop_web_access') {
           return { state: 'stopped', url: null, failure: null }
         }
-        if (command === 'start_web_access') {
+        if (command === 'start_web_access' || command === 'rotate_web_access_token') {
           return { state: 'running', url: 'http://127.0.0.1:38173', failure: null }
         }
       }
@@ -91,6 +92,24 @@ function createFakeApi(responses: Record<string, unknown> = {}): FakeApi {
 }
 
 describe('Tauri Workbench capabilities', () => {
+  it('applies bounded zoom to the current webview and forwards native failures', async () => {
+    const api = createFakeApi()
+    const window = createTauriWorkbenchCapabilities(api).windowControls.implementation
+    for (const factor of [0.8, 1, 1.25, 3]) await window.setZoom(factor)
+    expect(api.webview.setZoom.mock.calls).toEqual([[0.8], [1], [1.25], [3]])
+    api.webview.setZoom.mockRejectedValueOnce(new Error('native zoom unavailable'))
+    await expect(window.setZoom(1.5)).rejects.toThrow('native zoom unavailable')
+  })
+
+  it('rejects invalid zoom before reaching native IPC', async () => {
+    const api = createFakeApi()
+    const window = createTauriWorkbenchCapabilities(api).windowControls.implementation
+    for (const factor of [0, -1, 0.79, 3.01, Number.NaN, Number.POSITIVE_INFINITY]) {
+      await expect(window.setZoom(factor)).rejects.toThrow(RangeError)
+    }
+    expect(api.webview.setZoom).not.toHaveBeenCalled()
+  })
+
   it('derives native slots plus the shared browser image-paste slot', () => {
     const capabilities = createTauriWorkbenchCapabilities(createFakeApi())
     expect(Object.keys(capabilities.manifest).sort()).toEqual([...CAPABILITY_NAMES].sort())
@@ -327,6 +346,9 @@ describe('Tauri Workbench capabilities', () => {
     await capabilities.webAccessAdministration.implementation.setEnabled(true)
     await capabilities.webAccessAdministration.implementation.setEnabled(false)
     await capabilities.diagnostics.implementation.export('last_24_hours', '/tmp/report.zip')
+    await capabilities.diagnostics.implementation.readSettings()
+    await capabilities.diagnostics.implementation.setEnabled(false)
+    await capabilities.diagnostics.implementation.clear()
     await capabilities.softwareUpdates.implementation.check({ prompt: true, forcePrompt: false })
     await capabilities.softwareUpdates.implementation.install()
 
@@ -349,11 +371,14 @@ describe('Tauri Workbench capabilities', () => {
     expect(api.invokeMock).toHaveBeenCalledWith('install_dsh_package', {
       checkoutRoot: null, profileId: null,
     })
-    expect(api.invokeMock).toHaveBeenCalledWith('start_web_access')
-    expect(api.invokeMock).toHaveBeenCalledWith('stop_web_access')
+    expect(api.invokeMock).toHaveBeenCalledWith('start_web_access', undefined)
+    expect(api.invokeMock).toHaveBeenCalledWith('stop_web_access', undefined)
     expect(api.invokeMock).toHaveBeenCalledWith('export_diagnostics', {
       scope: 'last_24_hours', path: '/tmp/report.zip',
     })
+    expect(api.invokeMock).toHaveBeenCalledWith('get_diagnostics_settings')
+    expect(api.invokeMock).toHaveBeenCalledWith('set_diagnostics_enabled', { enabled: false })
+    expect(api.invokeMock).toHaveBeenCalledWith('clear_diagnostics')
     expect(api.checkForUpdates).toHaveBeenCalledWith({ prompt: true, forcePrompt: false })
     expect(api.installUpdate).toHaveBeenCalledOnce()
   })
@@ -387,6 +412,7 @@ describe('Tauri Workbench capabilities', () => {
     await capabilities.webAccessAdministration.implementation.status()
     await capabilities.webAccessAdministration.implementation.open()
     await capabilities.webAccessAdministration.implementation.copyToken()
+    await capabilities.webAccessAdministration.implementation.rotateToken()
     expect(await capabilities.softwareUpdates.implementation.version()).toBe('1.2.3')
     capabilities.screenCapture.implementation.onFinished(handler, onError)
     capabilities.screenCapture.implementation.onShortcut(handler, onError)
@@ -417,9 +443,10 @@ describe('Tauri Workbench capabilities', () => {
     })
     expect(api.invokeMock).toHaveBeenCalledWith('install_pi_package', { checkoutRoot: null })
     expect(api.invokeMock).toHaveBeenCalledWith('uninstall_pi_package', { checkoutRoot: null })
-    expect(api.invokeMock).toHaveBeenCalledWith('get_web_access_status')
+    expect(api.invokeMock).toHaveBeenCalledWith('get_web_access_status', undefined)
     expect(api.invokeMock).toHaveBeenCalledWith('open_web_access')
     expect(api.invokeMock).toHaveBeenCalledWith('copy_web_access_token')
+    expect(api.invokeMock).toHaveBeenCalledWith('rotate_web_access_token', undefined)
     expect(api.listenMock.mock.calls.map(([event]) => event)).toEqual([
       'screen-capture-finished',
       'screen-capture-shortcut',

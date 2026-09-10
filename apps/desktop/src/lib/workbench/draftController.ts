@@ -1,28 +1,22 @@
 // Draft persistence state machine for the workbench: debounced autosave with
-// revision-aware conflict handling. All state lives in the component; this
-// controller only owns the save timer and the in-flight save promise.
+// revision-aware conflict handling. The editing state lives in the draft session;
+// this controller owns only the save timer and the in-flight save promise.
+
+import { get } from 'svelte/store'
 
 import type { ApplicationTransport } from '../application/applicationTransport'
 import type { DraftView, FeedbackWorkspaceView, SaveDraftInput } from '../feedback'
 import type { FeedbackDraftSnapshot } from '../feedbackDraftDocument'
-import type { SavePhase } from './types'
+import type { DraftSession } from './draftSession'
 
 export type DraftControllerContext = {
   transport: ApplicationTransport
   messageFrom: (cause: unknown) => string
-  isPreviewMode: () => boolean
   isInteractionLocked: () => boolean
   isWorkspaceTerminal: () => boolean
   getWorkspace: () => FeedbackWorkspaceView | null
-  getSnapshot: () => FeedbackDraftSnapshot
-  setSnapshot: (snapshot: FeedbackDraftSnapshot) => void
-  getSavedSnapshot: () => FeedbackDraftSnapshot
-  setSavedSnapshot: (snapshot: FeedbackDraftSnapshot) => void
-  getSavedRevision: () => number
-  setSavedRevision: (revision: number) => void
-  getPhase: () => SavePhase
-  setPhase: (phase: SavePhase) => void
-  setMessage: (message: string) => void
+  /** Owns the current and last-accepted documents for the open request. */
+  session: DraftSession
   setWorkspaceDraft: (draft: DraftView) => void
 }
 
@@ -31,10 +25,6 @@ export type DraftController = ReturnType<typeof createDraftController>
 export function createDraftController(context: DraftControllerContext) {
   let saveTimer: ReturnType<typeof setTimeout> | undefined
   let activeSave: Promise<boolean> | null = null
-
-  function dirty(): boolean {
-    return context.getSnapshot().documentJson !== context.getSavedSnapshot().documentJson
-  }
 
   function cancelPendingSave() {
     if (saveTimer) {
@@ -54,68 +44,68 @@ export function createDraftController(context: DraftControllerContext) {
       context.getWorkspace() === null ||
       context.isWorkspaceTerminal()
     ) return
-    context.setSnapshot(snapshot)
-    context.setPhase(
-      snapshot.documentJson === context.getSavedSnapshot().documentJson ? 'saved' : 'unsaved',
-    )
-    context.setMessage('')
+    context.session.edit(snapshot)
     scheduleSave()
   }
 
-  async function saveDraftNow(): Promise<boolean> {
+  function saveDraftNow(): Promise<boolean> {
     cancelPendingSave()
-    const workspace = context.getWorkspace()
-    if (!workspace || context.isWorkspaceTerminal() || !dirty()) return true
-    if (activeSave) {
-      await activeSave
-      return dirty() ? saveDraftNow() : context.getPhase() !== 'error'
-    }
+    // Even a locally clean draft must wait: an in-flight save may replace its
+    // saved baseline. Every caller joins the whole drain, including its failure.
+    if (activeSave) return activeSave
 
-    const requestId = workspace.request.request_id
-    const snapshotToSave = context.getSnapshot()
-    const revisionToSave = context.getSavedRevision()
-    context.setPhase('saving')
-    context.setMessage('')
-
-    activeSave = (async () => {
-      try {
-        const input: SaveDraftInput = {
-          request_id: requestId,
-          document_json: snapshotToSave.documentJson,
-          body_markdown: snapshotToSave.bodyMarkdown,
-          expected_revision: revisionToSave,
-        }
-        const saved: DraftView = context.isPreviewMode()
-          ? {
-              document_json: snapshotToSave.documentJson,
-              body_markdown: snapshotToSave.bodyMarkdown,
-              saved_revision: revisionToSave + 1,
-              updated_at: new Date().toISOString(),
-            }
-          : await context.transport.call('saveFeedbackDraft', input)
-        if (context.getWorkspace()?.request.request_id === requestId) {
-          context.setSavedSnapshot(snapshotToSave)
-          context.setSavedRevision(saved.saved_revision)
-          context.setWorkspaceDraft(saved)
-          context.setPhase(
-            context.getSnapshot().documentJson === snapshotToSave.documentJson ? 'saved' : 'unsaved',
-          )
-        }
-        return true
-      } catch (cause) {
-        context.setPhase('error')
-        context.setMessage(context.messageFrom(cause))
-        return false
-      }
-    })()
-
-    const succeeded = await activeSave
-    activeSave = null
-    if (succeeded && context.getWorkspace()?.request.request_id === requestId && dirty()) {
-      return saveDraftNow()
-    }
-    return succeeded
+    // Publish the shared promise before beginSave notifies session subscribers.
+    activeSave = Promise.resolve().then(drainSaves)
+    return activeSave
   }
 
-  return { updateDraft, saveDraftNow, cancelPendingSave, scheduleSave, isDirty: dirty }
+  async function drainSaves(): Promise<boolean> {
+    try {
+      while (true) {
+        const workspace = context.getWorkspace()
+        if (!workspace || context.isWorkspaceTerminal() || !context.session.isDirty()) return true
+
+        const requestId = workspace.request.request_id
+        const snapshotToSave = context.session.snapshot()
+        const revisionToSave = get(context.session).savedRevision
+        context.session.beginSave()
+        try {
+          const input: SaveDraftInput = {
+            request_id: requestId,
+            document_json: snapshotToSave.documentJson,
+            body_markdown: snapshotToSave.bodyMarkdown,
+            expected_revision: revisionToSave,
+          }
+          const saved: DraftView = await context.transport.call('saveFeedbackDraft', input)
+          if (context.getWorkspace()?.request.request_id === requestId) {
+            context.session.acceptSaved(snapshotToSave, saved.saved_revision)
+            context.setWorkspaceDraft(saved)
+          }
+        } catch (cause) {
+          if (context.getWorkspace()?.request.request_id === requestId) {
+            // A debounce created during this save must not silently retry a
+            // failed CAS. Leave another request's autosave schedule untouched.
+            cancelPendingSave()
+            context.session.failSave(context.messageFrom(cause))
+          }
+          return false
+        }
+        // Re-read both the current document and accepted revision after each save,
+        // so edits made while awaiting the server stay inside the same drain.
+      }
+    } finally {
+      // Clear at the final dirty check, before promise settlement gives queued
+      // callers a chance to attach new edits to an already completed drain.
+      activeSave = null
+    }
+  }
+
+  return {
+    updateDraft,
+    saveDraftNow,
+    cancelPendingSave,
+    scheduleSave,
+    isDirty: () => context.session.isDirty(),
+    hasPendingSave: () => activeSave !== null,
+  }
 }

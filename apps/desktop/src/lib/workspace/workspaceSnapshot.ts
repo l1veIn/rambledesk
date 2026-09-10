@@ -1,4 +1,6 @@
 import {
+  agentDraftViewDescriptor,
+  agentSessionViewDescriptor,
   archiveViewDescriptor,
   inboxViewDescriptor,
   rambelleProfileViewDescriptor,
@@ -33,6 +35,13 @@ export type WorkspaceSnapshotV1 = Readonly<{
 
 export type WorkspaceSnapshotSessionViewV2 = WorkspaceSnapshotSessionViewV1
 
+export type WorkspaceSnapshotAgentSessionViewV2 = Readonly<{
+  kind: 'agent-session'
+  sessionId: string
+}>
+
+export type WorkspaceSnapshotAgentDraftViewV2 = Readonly<{ kind: 'agent-draft'; draftId: string }>
+
 export type WorkspaceSnapshotSettingsViewV2 = Readonly<{
   kind: 'settings'
 }>
@@ -56,6 +65,8 @@ export type WorkspaceSnapshotRambelleProfileViewV2 = Readonly<{
 
 export type WorkspaceSnapshotViewV2 =
   | WorkspaceSnapshotSessionViewV2
+  | WorkspaceSnapshotAgentSessionViewV2
+  | WorkspaceSnapshotAgentDraftViewV2
   | WorkspaceSnapshotInboxViewV2
   | WorkspaceSnapshotArchiveViewV2
   | WorkspaceSnapshotSettingsViewV2
@@ -101,11 +112,22 @@ function descriptorForSnapshotView(
   lastRequestId: string | null
 }> | null {
   const session = parseSessionView(value)
+  if (version === WORKSPACE_SNAPSHOT_VERSION && isRecord(value) && value.kind === 'agent-draft' && validId(value.draftId)) {
+    return { view: agentDraftViewDescriptor(value.draftId), lastRequestId: null }
+  }
   if (session) {
     return {
       view: sessionViewDescriptor(session.hostId, session.hostSessionId),
       lastRequestId: session.lastRequestId,
     }
+  }
+  if (
+    version === WORKSPACE_SNAPSHOT_VERSION &&
+    isRecord(value) &&
+    value.kind === 'agent-session' &&
+    validId(value.sessionId)
+  ) {
+    return { view: agentSessionViewDescriptor(value.sessionId), lastRequestId: null }
   }
   if (version === WORKSPACE_SNAPSHOT_VERSION && isRecord(value) && value.kind === 'settings') {
     return { view: settingsViewDescriptor(), lastRequestId: null }
@@ -136,6 +158,10 @@ function descriptorForSnapshotView(
 
 function snapshotViewDescriptor(view: WorkspaceSnapshotViewV2): WorkspaceViewDescriptor {
   switch (view.kind) {
+    case 'agent-draft':
+      return agentDraftViewDescriptor(view.draftId)
+    case 'agent-session':
+      return agentSessionViewDescriptor(view.sessionId)
     case 'session':
       return sessionViewDescriptor(view.hostId, view.hostSessionId)
     case 'inbox':
@@ -159,6 +185,11 @@ export function createWorkspaceSnapshot(
     .slice(0, MAX_WORKSPACE_SNAPSHOT_VIEWS)
     .map((view): WorkspaceSnapshotViewV2 => {
       switch (view.kind) {
+        case 'agent-draft':
+          // Only the local draft identity survives restart, never its prepared session.
+          return { kind: 'agent-draft', draftId: view.draftId }
+        case 'agent-session':
+          return { kind: 'agent-session', sessionId: view.sessionId }
         case 'session':
           return {
             ...view,

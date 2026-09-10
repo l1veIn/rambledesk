@@ -2,6 +2,7 @@
 
 - 状态：Accepted
 - 日期：2026-09-01
+- 修订：2026-09-10，更新 durable token 的平台存储与升级行为，并对齐既有浏览器 cookie 恢复合同。
 - 术语源：[TERMINOLOGY.md](../TERMINOLOGY.md)
 
 ## Context
@@ -26,7 +27,7 @@ Transport、设备 Capability 和 listener 生命周期若没有独立边界，�
 
 ### 1. 一个 Backend Runtime，多种 Workbench Client
 
-Backend Runtime 是 Request、Feedback Draft、Package、配置以及未来 Session Runtime / Timeline
+Backend Runtime 是 Request、Feedback Draft、Package、配置以及 Agent Session / Timeline
 的唯一业务事实来源。Desktop Client 和 Web Client 复用同一 Workbench Client，并通过
 同一个 Application Transport Interface 调用同一 application Module。
 
@@ -84,8 +85,9 @@ Editor。多个客户端并发写 Draft 时使用 Backend Runtime revision/CAS�
 last-write-wins。submit/cancel 等终态 operation 必须幂等。
 
 关闭 workspace Tab、关闭或刷新浏览器、Transport 断线都只结束 Client view/projection；这些
-动作不得隐式 submit、cancel、archive Request，也不得停止后台 Active Ramble 或未来 Agent /
-Session Runtime。终态与 runtime lifecycle 只能由可审计的显式 application command 改变。
+动作不得隐式 submit、cancel、archive Request，也不得停止由 Runtime 持有的 Agent Session。
+关闭 Client 时本设备媒体资源按 Platform Plugin 生命周期释放，不改变已持久化的 Draft 或 Request 终态。
+终态与 Agent runtime lifecycle 只能由可审计的显式 application command 改变。
 Client 应持续 autosave；关闭 workspace view 继续使用 save gate，但不得依赖不可靠的 browser
 `unload` 完成唯一一次保存或终态 mutation。重连/重开后从 Backend Runtime refetch 事实。
 
@@ -106,8 +108,9 @@ Local Integration Server 服务 Host Adapter；Web Access 服务浏览器。它�
 内同一套 security policy/primitives，但拥有独立 listener handle、route set、credential、auth
 domain 和启停 lifecycle。关闭 Web Access 不得停止 Backend Runtime 或 Local Integration Server。
 
-Web Access 默认关闭，第一阶段固定绑定 `127.0.0.1:37643`。本决策不指定新 crate、Web app 目录或
-headless composition root。
+Web Access 默认关闭，只绑定 IPv4 loopback。初期固定使用 `127.0.0.1:37643`；后续已支持
+1024–65535 的用户端口配置和可选的 Desktop 启动时自动开启。端口更改在下次启动服务时生效，
+占用或启动失败必须可见，不静默切换端口。本决策不指定 headless composition root。
 
 ### 7. Web Access 使用 bootstrap 后的短期 session credential
 
@@ -117,20 +120,21 @@ Web Access 使用与 Local Integration Server 不同的 credential：
    credential 时创建并持久化独立的 256-bit durable Web token；Backend Runtime/core 不拥有
    transport credential；durable token 不返回 UI，只有 Desktop 设置界面可经专用原生 clipboard
    command 复制它；
-2. durable token 优先存入 OS credential store（macOS Keychain、Windows Credential Manager、
-   可用时的 Linux Secret Service），并在平台支持时使用 device-local / non-sync 属性。仅允许回退
-   到通用配置和 RambleDesk backup/export roots 之外的专用 secret file：Unix mode `0600`，
-   Windows 使用仅当前用户可读的 DACL，并在平台支持时设置 backup exclusion；当前实现不使用
-   secret-file fallback，无法使用 OS credential store 时 Web Access 必须 fail closed。RambleDesk
-   不得把 token 复制到通用配置、
-   SQLite、日志、诊断包、自己生成的 backup/export 或 Feedback Package；OS 管理的加密设备/账户
-   备份属于平台安全边界，不宣称应用能够绝对排除；
+2. macOS/Linux 的 durable token 直接存入应用私有文件，默认路径为 Tauri
+   `app_local_data_dir()/auth/web-access.token`，按应用 identifier 隔离且不属于用户资料库。
+   Unix `auth` 目录 `0700`、文件 `0600`，创建与轮换原子完成；自动加载遇到 symlink、损坏内容或不满足
+   私有文件条件时明确失败，不静默替换。显式 Refresh token / Confirm refresh 可重新生成令牌，恢复
+   内容损坏的自有普通文件，仍须通过路径、文件类型和归属检查。Windows 保留既有 Credential Manager，
+   不增加 Windows 文件回退。
+   token 不得进入通用配置、SQLite、日志、诊断包、应用生成的 backup/export 或 Feedback Package。
+   私有文件不宣称加密；OS 级设备/账户备份仍属于平台边界，不宣称应用能绝对排除；
 3. 浏览器以 `Authorization: Bearer <durable-web-token>` 调用 same-origin
-   `POST /api/auth/session`；成功后签发 scope 受限、idle TTL 30 分钟、absolute TTL 12 小时的
-   session token；受保护 HTTP 请求或新的 WebSocket 认证可以刷新 idle TTL，但不能延长 absolute
-   TTL，已连接 WebSocket 到期时主动关闭；
-4. session token 只存在 Web Access 进程内存与浏览器当前 JavaScript 内存；页面刷新或关闭后必须
-   重新 bootstrap；
+   `POST /api/auth/session`；成功后签发 scope 受限的 session token。内存会话使用 idle TTL 30 分钟、
+   absolute TTL 12 小时；浏览器会话使用 idle TTL 30 天、absolute TTL 180 天。受保护 HTTP 请求或
+   新的 WebSocket 认证可以刷新 idle TTL，但不能延长 absolute TTL，已连接 WebSocket 到期时主动关闭；
+4. session token 存在 Web Access 进程内存、浏览器当前 JavaScript 内存，以及
+   `HttpOnly; SameSite=Strict; Path=/api/auth/session` cookie。页面刷新、新标签页或浏览器重启后
+   通过同一 endpoint 的 cookie bootstrap 恢复仍有效的同一 session，不要求重复输入 durable token；
 5. durable/session token 禁止进入 `sessionStorage`、`localStorage`、IndexedDB、URL、日志或
    Feedback Package；
 6. 停止 Web Access 必须撤销全部 session；重新生成 durable token 必须撤销旧 durable token 与
@@ -141,6 +145,11 @@ Web Access 使用与 Local Integration Server 不同的 credential：
    `rambledesk-session.<base64url-no-pad-session-token>`，禁止 query token；
 9. 服务端校验两个 protocol 后只选择并回显 `rambledesk-events`，不得回显 credential-bearing
    protocol，也不得把它写入代理日志或诊断输出。
+
+2026-09-10 的存储修订取代初始“优先 OS credential store、当前无文件回退”的选择。macOS/Linux
+不再先读取 Keychain / Secret Service，也不自动迁移或删除旧条目，避免启动重入系统凭据交互。
+升级后首次启用生成新的 Web token，人类需从 Desktop 设置重新复制认证；Windows 保持既有存储。
+此迁移不改变认证 scope、loopback、session 撤销或有效 cookie 恢复规则，不扩大平台支持承诺。
 
 静态资源、HTTP API 与 WebSocket 使用 same-origin，不开放宽泛 CORS。所有请求严格校验 Host；
 bootstrap、受保护 API 与 WebSocket handshake 还必须 exact-match Origin，以防 DNS rebinding。
@@ -159,11 +168,13 @@ Web routes 分别设置 body、upload、rate 与 concurrent-connection 上限。
 - token 文件在 Unix 为 `0600`；非 Unix 当前没有等价 ACL 保证。
 - Host 只接受 `127.0.0.1` 或 `localhost`；Origin 缺失供本地非浏览器客户端，存在时 exact
   allowlist；统一 body limit 为 96 MiB。
-- 默认关闭的独立 Web Access Server 固定绑定 `127.0.0.1:37643`，提供共享 SPA、application HTTP 与
+- 默认关闭的独立 Web Access Server 绑定 `127.0.0.1`，默认端口 `37643`，后续实现已支持设置端口与可选
+  Desktop 启动时自动开启；它提供共享 SPA、application HTTP 与
   readiness/invalidation WebSocket；它与 Local Integration Server 分离 listener、credential、auth
   domain、route set 与 lifecycle。
-- Web Client 复用 Workbench Client，以 OS credential store 中的独立 durable token bootstrap
-  短期、仅内存 session；当前支持 Request/Session、TipTap Draft、附件 file picker、image paste、
+- Web Client 复用 Workbench Client，以 Unix 应用私有文件或 Windows Credential Manager 中的独立
+  durable token bootstrap 受限 session；浏览器通过专用 HttpOnly cookie 恢复有效 session。
+  当前代码支持 Request/Session、TipTap Draft、附件 file picker、image paste、
   提交及安全反馈投影下载。
 - Browser local ASR pilot 当前在输入浏览器内运行；自动化覆盖固定模型下载/hash/cache、
   Wasm/Worker/AudioWorklet 合同与 recognizer creation。真实 Chrome/Safari 麦克风授权、PCM 输入、
@@ -173,15 +184,12 @@ Web routes 分别设置 body、upload、rate 与 concurrent-connection 上限。
   constant-time compare；request authorization 是 admission lease，已入场 mutation 不会在提交后被
   revoke 改写成 401。
 - Draft CAS、Tauri/HTTP application parity、ready/refetch 与 session revoke/re-auth 已实现。
+- ACP 托管会话已由 [ADR 007](007-acp-managed-sessions.md) 加入同一 Backend Runtime，Desktop 与
+  Browser 通过共享 application 调用；握手、模型响应和反馈续接仍分别验收。
 
-### Target / Deferred
-
-- LAN/TLS Web Access 与更完整的 credential 管理 UI。
-- Browser local ASR 的真实浏览器矩阵、性能与长会话产品化；Browser screen capture 延后。
-- Native/Browser Capability 继续位于 Application Transport 外，通过 manifest 呈现差异。
-
-LAN、TLS、autostart、可配置端口和 headless Backend Runtime 不属于当前支持面；本 ADR 的 Deferred
-条目不构成已承诺排期。Desktop / Browser 的当前证据边界见
+LAN、TLS 和 headless Backend Runtime 不属于当前支持面；初始非目标中的 autostart、可配置端口已由
+后续实现加入，但不据此宣称真实启动顺序已验。本 ADR 的其他 Deferred 条目不构成已承诺排期。
+Desktop / Browser 的当前证据边界见
 [Web Access 支持矩阵](../WEB_ACCESS_SUPPORT_MATRIX.md)。
 
 ## Rejected
@@ -201,13 +209,13 @@ LAN、TLS、autostart、可配置端口和 headless Backend Runtime 不属于当
 ## Deferred
 
 - LAN Web Access；启用前必须采用 HTTPS/WSS 或受信任 TLS proxy，并重新安全审计；
-- Web Access autostart 与用户可配置端口；
 - headless Backend Runtime / composition root；
 - headless 或独立 Web deployment packaging；
-- 完整 credential rotation/revocation 管理 UI；
+- 更完整的 credential 管理 UI 尚未立项；当前 Desktop 已有 Refresh token / Confirm refresh，轮换时
+  统一撤销旧 durable token 与全部 session，停止 Web Access 也统一撤销 session，不将这些已实现操作列为待开发；
 - sequence replay、ring buffer、multiplex protocol；
 - 浏览器本地 sherpa-onnx WASM 的真实 Chrome/Safari 麦克风、PCM、出字、生产模型矩阵与性能优化；
-- ACP、Router 或全局 client state framework。
+- Router 或全局 client state framework。
 
 ## Consequences
 

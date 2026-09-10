@@ -10,22 +10,26 @@ import {
 } from './actionBlockquote'
 import { attachmentMarkdownUrl, isImageMediaType } from './attachmentMarkdown'
 import type { AttachmentView } from './feedback'
-import { asrParagraphAttrs } from './speechBlockMetadata'
+import { asrParagraphAttrs, type CleanupState } from './speech/speechBlockMetadata'
 
 export type ActiveAction = ActionIdentity | null
 
 export type DraftOperation =
-  | { kind: 'appendSpeech'; segmentId: string; text: string; action: ActiveAction }
+  | { kind: 'appendSpeech'; segmentId: string; text: string; action: ActiveAction; cleanupState?: CleanupState }
   | { kind: 'appendClipboardText'; text: string; label: string; action: ActiveAction }
   | { kind: 'appendAttachment'; attachment: AttachmentView; label: string; action: ActiveAction }
   | { kind: 'startActionGroup'; action: ActionIdentity }
   | { kind: 'clearActionGroup'; actionId: string }
 
-export function speechNodes(segmentId: string, text: string): JSONContent[] {
+export function speechNodes(
+  segmentId: string,
+  text: string,
+  cleanupState: CleanupState = 'pending',
+): JSONContent[] {
   return [
     {
       type: 'paragraph',
-      attrs: asrParagraphAttrs(segmentId, 'pending'),
+      attrs: asrParagraphAttrs(segmentId, cleanupState),
       content: [{ type: 'text', text }],
     },
   ]
@@ -152,7 +156,11 @@ export function applyDraftOperation(doc: JSONContent, operation: DraftOperation)
   if (draftOperationAlreadyApplied(doc, operation)) return doc
   switch (operation.kind) {
     case 'appendSpeech':
-      return appendNodes(doc, speechNodes(operation.segmentId, operation.text), operation.action)
+      return appendNodes(
+        doc,
+        speechNodes(operation.segmentId, operation.text, operation.cleanupState),
+        operation.action,
+      )
     case 'appendClipboardText':
       return appendNodes(
         doc,

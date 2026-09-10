@@ -1,9 +1,12 @@
-import type { RamblePhase, VoicePhase } from './types'
+import type {
+  RamblePhase,
+  VoicePhase,
+} from '../domain/sessionPhases'
 
 /**
  * The microphone session is the source of truth while it is transitioning or
- * capturing. This keeps presentation state from drifting after a view remount
- * or a delayed bound-property update.
+ * capturing. The shared Ramble projection reads these facts directly, including while
+ * the surrounding presentation changes.
  */
 export function resolvedRamblePhase(
   ramblePhase: RamblePhase,

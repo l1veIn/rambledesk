@@ -5,10 +5,10 @@
   import { Button } from '$lib/components/ui/button'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
-  import { shortcutSettings } from '$lib/shortcutSettings'
-  import RecordLed from './RecordLed.svelte'
-  import { rambleRecordPresentation } from './rambleRecordButton'
-  import type { RamblePhase } from './types'
+  import { shortcutSettings } from '$lib/settings/shortcutSettings'
+  import RecordLed from '../components/ramble/RecordLed.svelte'
+  import { rambleRecordPresentation } from '../components/ramble/rambleRecordButton'
+  import type { RamblePhase } from '../domain/sessionPhases'
 
   export let rambleEngaged = false
   export let rambleActive = false

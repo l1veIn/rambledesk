@@ -27,7 +27,7 @@
 </script>
 
 <section
-  class="grid h-full min-h-0 place-items-center overflow-auto bg-background px-6 py-10"
+  class="appearance-surface grid h-full min-h-0 place-items-center overflow-auto bg-background px-6 py-10"
   aria-labelledby="missing-session-title"
   aria-busy={unresolved || busy}
 >

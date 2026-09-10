@@ -10,6 +10,7 @@
     workspaceViewKey,
     type WorkspaceViewDescriptor,
   } from './viewDescriptors'
+  import { tabStripLayout } from './tabStripLayout'
   import {
     requestWorkspaceTabActivation,
     workspaceTabId,
@@ -26,6 +27,8 @@
 
   const FLIP_DURATION_MS = 140
   const WORKSPACE_TAB_DND_TYPE = 'rambledesk-workspace-tab'
+  /** Left padding (0.5rem) plus the drag surface (2.5rem) tabs must leave alone. */
+  const STRIP_RESERVED_WIDTH = 48
 
   export let views: readonly WorkspaceViewDescriptor[] = []
   export let activeViewKey: string | null = null
@@ -41,6 +44,23 @@
   let viewKeys: string[] = []
   let focusedViewKey: string | null = null
   let tabButtons = new Map<string, HTMLElement>()
+  let tabListElement: HTMLDivElement
+  let scrolledViewKey: string | null = null
+  let stripWidth = 0
+  let listClientWidth = 0
+  let listScrollWidth = 0
+  let listScrollLeft = 0
+  let previousTabCount = 0
+
+  // One rule for every viewport: tabs share the strip evenly, shrink to a floor,
+  // then the strip scrolls.
+  $: layout = tabStripLayout(Math.max(0, stripWidth - STRIP_RESERVED_WIDTH), dndItems.length)
+  $: canScrollLeft = listScrollLeft > 1
+  $: canScrollRight = listScrollLeft + listClientWidth < listScrollWidth - 1
+  // Tab set or width changed: re-measure so the fade affordances stay accurate.
+  $: if (tabListElement && (viewKeys.join('\u0001') || layout.tabWidth || listClientWidth)) {
+    void tick().then(measureList)
+  }
 
   $: if (!dragging) {
     dndItems = views.map((view) => ({ id: workspaceViewKey(view), view }))
@@ -52,9 +72,59 @@
   $: if (activeViewKey && viewKeys.includes(activeViewKey)) {
     focusedViewKey = activeViewKey
   }
+  // A newly opened tab lands at the end of the queue: follow it so the human sees
+  // where the tab went even when the strip already scrolls.
+  $: if (tabListElement && viewKeys.length !== previousTabCount) {
+    const grew = viewKeys.length > previousTabCount
+    previousTabCount = viewKeys.length
+    if (grew) void tick().then(scrollToEnd)
+  }
+
+  // The strip scrolls once tabs reach the minimum width, so keep the active tab visible.
+  $: if (tabListElement && activeViewKey !== scrolledViewKey) {
+    const viewKey = activeViewKey
+    scrolledViewKey = viewKey
+    // The tab's element only exists after this flush; scrolling before that is a no-op.
+    if (viewKey) void tick().then(() => revealTab(viewKey))
+  }
 
   function tr(source: string) {
     return t($locale, source)
+  }
+
+  function measureList() {
+    if (!tabListElement) return
+    listScrollWidth = tabListElement.scrollWidth
+    listScrollLeft = tabListElement.scrollLeft
+  }
+
+  function scrollToEnd() {
+    if (!tabListElement) return
+    tabListElement.scrollLeft = tabListElement.scrollWidth
+    measureList()
+  }
+
+  /** Scrolls the minimum amount that makes a tab fully visible. */
+  function revealTab(viewKey: string) {
+    if (!tabListElement) return
+    const index = viewKeys.indexOf(viewKey)
+    if (index < 0) return
+    const start = index * layout.tabWidth
+    const end = start + layout.tabWidth
+    const visibleStart = tabListElement.scrollLeft
+    const visibleEnd = visibleStart + tabListElement.clientWidth
+    if (start < visibleStart) tabListElement.scrollLeft = start
+    else if (end > visibleEnd) tabListElement.scrollLeft = end - tabListElement.clientWidth
+    measureList()
+  }
+
+  /** Desktop wheels scroll vertically: translate it while the strip overflows. */
+  function handleWheel(event: WheelEvent) {
+    if (!tabListElement || !layout.overflowing) return
+    if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return
+    const before = tabListElement.scrollLeft
+    tabListElement.scrollLeft = before + event.deltaY
+    if (tabListElement.scrollLeft !== before) event.preventDefault()
   }
 
   function registerTab(node: HTMLElement, viewKey: string) {
@@ -113,6 +183,7 @@
   }
 
   async function closeAndFocus(viewKey: string) {
+    if (disabled || pendingViewKey !== null) return
     await onClose(viewKey)
     await tick()
     const nextViewKey =
@@ -140,7 +211,7 @@
   }
 </script>
 
-<div class="flex h-full min-w-0 items-stretch overflow-hidden pl-2 pt-1.5">
+<div class="flex h-full min-w-0 items-stretch overflow-hidden pl-2 pt-1.5" bind:clientWidth={stripWidth}>
   {#if dndItems.length > 0}
     <div
       use:dndzone={{
@@ -156,7 +227,13 @@
         autoAriaDisabled: true,
         delayTouchStart: 500,
       }}
-      class="workspace-tab-list flex h-full min-w-0 flex-[0_1_auto] items-stretch"
+      class="workspace-tab-list flex h-full min-w-0 flex-[0_1_auto] items-stretch overflow-x-auto overflow-y-hidden"
+      style:--tab-fade-start={canScrollLeft ? '1.25rem' : '0px'}
+      style:--tab-fade-end={canScrollRight ? '1.25rem' : '0px'}
+      bind:this={tabListElement}
+      bind:clientWidth={listClientWidth}
+      onscroll={measureList}
+      onwheel={handleWheel}
       role="tablist"
       aria-label={tr('Workspace tabs')}
       aria-orientation="horizontal"
@@ -170,7 +247,8 @@
         {@const label = labelForView(item.view)}
         <div
           animate:flip={{ duration: FLIP_DURATION_MS }}
-          class="workspace-tab-item relative min-w-0 grow-0 shrink basis-48 cursor-grab active:cursor-grabbing"
+          class="workspace-tab-item relative shrink-0 cursor-grab active:cursor-grabbing"
+          style:width={`${layout.tabWidth}px`}
           class:z-10={activeViewKey === viewKey}
           data-workspace-tab-item
           data-workspace-view-key={viewKey}
@@ -202,7 +280,7 @@
           </div>
           <button
             type="button"
-            class="workspace-tab-close absolute bottom-1.5 right-2 top-0 my-auto grid size-4 place-items-center rounded-md text-muted-foreground outline-none transition-opacity hover:bg-foreground/10 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-40"
+            class="workspace-tab-close absolute bottom-1.5 right-1 top-0 my-auto grid size-6 place-items-center rounded-md bg-background text-muted-foreground outline-none transition-opacity hover:bg-foreground/10 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-40 pointer-coarse:size-8"
             class:workspace-tab-close-active={activeViewKey === viewKey}
             aria-label={`${tr('Close workspace tab')}: ${label}`}
             title={tr('Close workspace tab')}
@@ -257,7 +335,7 @@
   }
 
   .workspace-tab-active {
-    padding-right: 1.5rem;
+    padding-right: 2rem;
     color: var(--foreground);
     background: var(--background);
   }
@@ -307,6 +385,42 @@
   .workspace-tab-close:focus-visible {
     opacity: 1;
     pointer-events: auto;
+  }
+
+  /* Touch has no hover: every tab keeps its close affordance reachable, and the label
+     reserves room for it so the chip never sits on top of the title. */
+  @media (pointer: coarse) {
+    .workspace-tab-close {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .workspace-tab-content {
+      padding-right: 2.5rem;
+    }
+  }
+
+  .workspace-tab-list {
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+    -webkit-mask-image: linear-gradient(
+      to right,
+      transparent 0,
+      #000 var(--tab-fade-start, 0px),
+      #000 calc(100% - var(--tab-fade-end, 0px)),
+      transparent 100%
+    );
+    mask-image: linear-gradient(
+      to right,
+      transparent 0,
+      #000 var(--tab-fade-start, 0px),
+      #000 calc(100% - var(--tab-fade-end, 0px)),
+      transparent 100%
+    );
+  }
+
+  .workspace-tab-list::-webkit-scrollbar {
+    display: none;
   }
 
   .workspace-tab-seat {

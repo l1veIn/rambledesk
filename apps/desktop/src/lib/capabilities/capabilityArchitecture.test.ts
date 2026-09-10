@@ -60,6 +60,9 @@ describe('capability architecture', () => {
       'PinnedCapture.svelte': 'pinned-capture platform window',
       'RambleConsole.svelte': 'ramble-console platform window',
       'ScreenshotOverlay.svelte': 'screen-capture platform window',
+      'ScreenshotOverlay.interaction.test.ts':
+        'screen-capture overlay interaction harness (mocks the platform window commands)',
+      'App.mount.test.ts': 'composition-root smoke test (mocks the platform window commands)',
       'ScrollCaptureController.svelte': 'scroll-capture platform window',
       'SpeechOverlay.svelte': 'speech-overlay platform window',
       [`lib/application/${['tauri', 'ApplicationTransport.test.ts'].join('')}`]:
@@ -71,7 +74,7 @@ describe('capability architecture', () => {
       'lib/cooking.ts': 'desktop HTTP implementation for Cooking',
       'lib/desktop-shell/instrumentation.ts':
         'Desktop Shell instrumentation and DevTools implementation',
-      'lib/updater.ts': 'desktop software-update implementation',
+      'lib/updates/updater.ts': 'desktop software-update implementation',
     }
     const actual: string[] = []
     const tauriImportMarker = ['@tauri', '-apps'].join('')
@@ -123,10 +126,13 @@ describe('capability architecture', () => {
       'lib/capabilities/tauri/administrationCapabilities.ts': {
         role: 'Native Administration Capability implementations',
         commands: [
+          'clear_diagnostics',
           'copy_web_access_token',
           'detect_generic_mcp_hosts',
+          'detect_dsh_host',
           'export_diagnostics',
           'get_data_storage_settings',
+          'get_diagnostics_settings',
           'get_generic_mcp_configuration',
           'get_pi_package_status',
           'install_dsh_package',
@@ -137,6 +143,7 @@ describe('capability architecture', () => {
           'open_web_access',
           'request_macos_permission',
           'set_data_storage_path',
+          'set_diagnostics_enabled',
           'uninstall_pi_package',
         ],
       },
@@ -209,7 +216,7 @@ describe('capability architecture', () => {
       },
       'lib/desktop-shell/instrumentation.ts': {
         role: 'Desktop Shell instrumentation and DevTools implementation',
-        commands: ['log_frontend_error', 'open_main_devtools'],
+        commands: ['log_frontend_error', 'open_main_devtools', 'record_client_diagnostic'],
       },
     }
     const literalInvoke =

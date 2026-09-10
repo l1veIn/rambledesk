@@ -46,6 +46,9 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Check web
+        run: pnpm --filter @rambledesk/web check
+
       - name: Build web
         run: pnpm --filter @rambledesk/web build
 

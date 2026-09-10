@@ -52,7 +52,10 @@ export function applicationResourceKeyIdentity(resource: ApplicationResourceKey)
   switch (resource.kind) {
     case 'all':
     case 'navigation':
+    case 'agent_configurations':
       return resource.kind
+    case 'managed_session':
+      return `${resource.kind}:${resource.session_id}`
     case 'host_session_resources':
       return `${resource.kind}:${resource.host_id}:${resource.host_session_id}`
     case 'feedback_workspace':
@@ -78,7 +81,10 @@ function isApplicationResourceKey(value: unknown): boolean {
   switch (value.kind) {
     case 'all':
     case 'navigation':
+    case 'agent_configurations':
       return true
+    case 'managed_session':
+      return isNonEmptyString(value.session_id)
     case 'host_session_resources':
       return isNonEmptyString(value.host_id) && isNonEmptyString(value.host_session_id)
     case 'feedback_workspace':

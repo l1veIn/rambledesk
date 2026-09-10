@@ -62,7 +62,7 @@ describe('Web Access Settings state', () => {
       operationError: null,
       refreshError: null,
     })
-    expect(implementation.setEnabled).toHaveBeenCalledWith(true)
+    expect(implementation.setEnabled).toHaveBeenCalledWith(true, undefined)
     expect(implementation.status).toHaveBeenCalledOnce()
   })
 

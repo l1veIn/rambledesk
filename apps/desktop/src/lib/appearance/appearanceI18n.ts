@@ -1,0 +1,73 @@
+import { t } from '$lib/i18n'
+import type { Locale } from '$lib/preferences'
+
+const chinese: Readonly<Record<string, string>> = {
+  'Default': '默认',
+  'Use Ctrl/⌘ + or − to zoom, and Ctrl/⌘ 0 to reset.': '使用 Ctrl/⌘ 加 + 或 − 缩放，Ctrl/⌘ 加 0 恢复默认。',
+  'Theme and colors': '主题与配色',
+  'Choose a light or dark appearance, or follow the operating system.': '选择浅色、深色，或跟随系统主题。',
+  'Theme mode': '主题模式',
+  'Theme palette': '主题配色',
+  'Colors apply to buttons, highlights, and workspace surfaces.': '配色应用于按钮、高亮和工作区面板。',
+  'Window zoom': '窗口缩放',
+  'Resize the whole interface. Changes take effect immediately.': '整体放大或缩小界面，修改后立即生效。',
+  'Fonts': '字体',
+  'Choose fonts for the interface and code or command details.': '分别设置界面，以及代码和命令详情使用的字体。',
+  'Interface font': '界面字体',
+  'Code and commands': '代码与命令',
+  'System monospace': '系统等宽字体',
+  'Custom': '自定义',
+  'Custom interface font': '自定义界面字体',
+  'Custom code font': '自定义代码字体',
+  'Installed font family, e.g. Microsoft YaHei': '已安装的字体名称，例如 Microsoft YaHei',
+  'Installed font family, e.g. Cascadia Code': '已安装的字体名称，例如 Cascadia Code',
+  'Custom fonts use fonts installed on this device. Unavailable fonts use the system fallback.': '自定义字体使用本机已安装的字体；不可用时使用系统字体。',
+  'Code font size': '代码字号',
+  'Font preview': '字体预览',
+  'Clear words, comfortable reading.': '清晰的文字，舒适的阅读。',
+  'Workspace background': '工作区背景',
+  'Keep the default pattern, use a plain surface, or choose your own image.': '保留默认图案、使用纯色背景，或选择自己的图片。',
+  'Default pattern': '默认图案',
+  'Solid color': '纯色',
+  'Custom image': '自定义图片',
+  'Choose an image': '选择图片',
+  'Replace image': '更换图片',
+  'Remove image': '移除图片',
+  'No background image selected': '尚未选择背景图片',
+  'Loading background image…': '正在读取背景图片…',
+  'PNG, JPEG, WebP, or GIF, up to 16 MiB and 40 million pixels. Animated images can play.': '支持 PNG、JPEG、WebP、GIF，最大 16 MiB、4000 万像素。动图可自动播放。',
+  'Image fit': '填充方式',
+  'Cover': '覆盖',
+  'Contain': '适应',
+  'Center': '居中',
+  'Tile': '平铺',
+  'Mask opacity': '遮罩不透明度',
+  'A stronger mask fades the image toward the theme background and improves text contrast.': '提高遮罩不透明度，让图片更接近主题背景色，文字更清晰。',
+  'Image blur': '图片模糊',
+  'Panel opacity': '面板不透明度',
+  'Lower values let more of the image show through workspace panels.': '数值越低，工作区面板透出的图片越多。',
+  'Restore appearance defaults': '恢复默认外观',
+  'Restores the theme, colors, zoom, fonts, and default pattern. Your uploaded image is kept.': '恢复默认主题、配色、缩放、字体和图案，保留已上传的图片。',
+  'Appearance defaults restored.': '已恢复默认外观。',
+  'Could not save appearance settings.': '无法保存外观设置。',
+  'Could not apply window zoom.': '无法应用窗口缩放。',
+  'Could not update the background image.': '无法更新背景图片。',
+  'The image is too large. Choose an image smaller than 16 MiB.': '图片太大，请选择不超过 16 MiB 的图片。',
+  'Choose a PNG, JPEG, WebP, or GIF image.': '请选择 PNG、JPEG、WebP 或 GIF 图片。',
+  'This image could not be opened. Try another file.': '无法读取这张图片，请选择其他文件。',
+  'The image exceeds 40 million pixels. Choose a smaller image.': '图片超过 4000 万像素，请选择尺寸更小的图片。',
+  'Local background storage is unavailable. Please try again.': '本地背景存储暂不可用，请重试。',
+}
+
+const errors: Readonly<Record<string, string>> = {
+  background_size: 'The image is too large. Choose an image smaller than 16 MiB.',
+  background_format: 'Choose a PNG, JPEG, WebP, or GIF image.',
+  background_decode: 'This image could not be opened. Try another file.',
+  background_dimensions: 'The image exceeds 40 million pixels. Choose a smaller image.',
+  background_storage: 'Local background storage is unavailable. Please try again.',
+}
+
+export function appearanceText(locale: Locale, source: string): string {
+  const text = errors[source] ?? source
+  return locale === 'zh-CN' ? chinese[text] ?? t(locale, text) : t(locale, text)
+}

@@ -88,6 +88,7 @@ fn feedback_package_view_omits_storage_paths() {
 fn application_terminal_projection_omits_feedback_package_locations() {
     let view = ApplicationFeedbackRequestView::from(FeedbackRequestView {
         request_id: "request-1".into(),
+        managed_session_id: Some("local-managed-1".into()),
         host_id: "codex".into(),
         host_session_id: "session-1".into(),
         status: FeedbackStatus::Completed,
@@ -108,6 +109,7 @@ fn application_terminal_projection_omits_feedback_package_locations() {
 
     let json = serde_json::to_value(view).expect("application result should serialize");
     assert_eq!(json["feedback"], serde_json::json!({ "available": true }));
+    assert_eq!(json["managed_session_id"], "local-managed-1");
     let encoded = json.to_string();
     assert!(!encoded.contains("/private/library"));
     assert!(!encoded.contains("file://"));

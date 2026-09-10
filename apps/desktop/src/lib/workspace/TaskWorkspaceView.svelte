@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Snippet } from 'svelte'
   import type { JSONContent } from '@tiptap/core'
 
   import type { AttachmentView, FeedbackWorkspaceView } from '$lib/feedback'
@@ -6,10 +7,10 @@
   import type { WorkbenchCapabilities } from '$lib/capabilities/workbenchCapabilities'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
-  import RequestAttachmentPreview from '$lib/workbench/RequestAttachmentPreview.svelte'
-  import TaskBriefView from '$lib/workbench/TaskBriefView.svelte'
-  import type { HostProfile } from '$lib/workbench/types'
-  import type { RamblePhase } from '$lib/workbench/types'
+  import RequestAttachmentPreview from '$lib/workspace/RequestAttachmentPreview.svelte'
+  import TaskBriefView from '$lib/workspace/TaskBriefView.svelte'
+  import type { HostProfile } from '../domain/hostProfile'
+  import type { RamblePhase } from '../domain/sessionPhases'
 
   export let workspace: FeedbackWorkspaceView | null = null
   export let transport: ApplicationTransport
@@ -18,6 +19,7 @@
     'externalLinks' | 'serverPaths' | 'speech' | 'rambleConsole'
   >
   export let loading = false
+  export let agentStatus: Snippet | undefined = undefined
   export let editorDocument: JSONContent | null = null
   export let activeActionId: string | null = null
   export let actionsDisabled = false
@@ -57,6 +59,7 @@
   </div>
 {:else}
   <TaskBriefView
+    {agentStatus}
     {transport}
     {capabilities}
     {workspace}

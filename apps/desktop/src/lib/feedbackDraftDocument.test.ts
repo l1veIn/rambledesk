@@ -13,7 +13,7 @@ import {
   CLEANUP_STATE_ATTR,
   INPUT_SOURCE_ATTR,
   SPEECH_SEGMENT_ID_ATTR,
-} from './speechBlockMetadata'
+} from './speech/speechBlockMetadata'
 
 describe('persisted feedback draft document', () => {
   it('round-trips Action attrs, ASR attrs, attachments, tables, and task lists', () => {

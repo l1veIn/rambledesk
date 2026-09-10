@@ -5,10 +5,11 @@ import TaskItem from '@tiptap/extension-task-item'
 import TaskList from '@tiptap/extension-task-list'
 import { Markdown, MarkdownManager } from '@tiptap/markdown'
 import StarterKit from '@tiptap/starter-kit'
+import { Marked, type marked } from 'marked'
 
 import { ActionBlockquote } from './actionBlockquote'
 import { attachmentIdFromUrl, attachmentMarkdownUrl } from './attachmentMarkdown'
-import { SpeechBlockMetadata, SpeechTidyingDecorations } from './speechBlockMetadata'
+import { SpeechBlockMetadata, SpeechTidyingDecorations } from './speech/speechBlockMetadata'
 
 const AttachmentImage = Image.extend({
   addAttributes() {
@@ -152,6 +153,14 @@ const AttachmentFile = Node.create({
  * this in step with `workbench/MarkdownPreview.svelte`, which renders the same
  * markdown read-only.
  */
+function privateMarkdownParser(): typeof marked {
+  // TipTap registers tokenizer closures on its supplied parser. Sharing marked's
+  // default singleton retains every past manager/editor and grows parsing work.
+  // Marked implements the instance API TipTap uses; its type currently asks for
+  // the callable singleton as well, which MarkdownManager never invokes.
+  return new Marked() as unknown as typeof marked
+}
+
 export function feedbackEditorExtensions(): AnyExtension[] {
   return [
     StarterKit.configure({
@@ -165,16 +174,28 @@ export function feedbackEditorExtensions(): AnyExtension[] {
     SpeechBlockMetadata,
     SpeechTidyingDecorations,
     ActionBlockquote,
-    Markdown,
+    Markdown.configure({ marked: privateMarkdownParser() }),
   ]
 }
 
-export function parseFeedbackMarkdown(source: string): JSONContent {
-  const manager = new MarkdownManager({ extensions: feedbackEditorExtensions() })
+export function parseFeedbackMarkdown(
+  source: string,
+  options: Readonly<{ breaks?: boolean }> = {},
+): JSONContent {
+  const manager = new MarkdownManager({
+    marked: privateMarkdownParser(),
+    extensions: feedbackEditorExtensions(),
+    // Single newlines become hard breaks when a host renders free-form notes
+    // instead of a canonical draft.
+    ...(options.breaks ? { markedOptions: { breaks: true } } : {}),
+  })
   return manager.parse(source)
 }
 
 export function serializeFeedbackMarkdown(doc: JSONContent): string {
-  const manager = new MarkdownManager({ extensions: feedbackEditorExtensions() })
+  const manager = new MarkdownManager({
+    marked: privateMarkdownParser(),
+    extensions: feedbackEditorExtensions(),
+  })
   return manager.serialize(doc)
 }

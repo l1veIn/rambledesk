@@ -172,7 +172,9 @@ impl SqliteFeedbackStore {
             .begin_with("BEGIN IMMEDIATE")
             .await
             .map_err(storage_error)?;
+        request_scope::validate_request_scope(&mut transaction, &request).await?;
         if let Some(existing) = load_request_row(&mut transaction, &request.request_id).await? {
+            request_scope::validate_existing_request_scope(&existing, &request)?;
             let input_hash = immutable_input_hash(&request)?;
             let stored_hash: String = existing.try_get("input_hash").map_err(storage_error)?;
             return if stored_hash == input_hash {
@@ -210,8 +212,8 @@ impl SqliteFeedbackStore {
 
         let inserted = sqlx::query(
             "INSERT INTO feedback_requests \
-             (id, host_session_record_id, title, what_happened, source_hint, status, input_hash, allow_finish, final_summary, created_at, updated_at) \
-             VALUES (?1, ?2, ?3, ?4, ?5, 'waiting', ?6, ?7, ?8, ?9, ?9) \
+             (id, host_session_record_id, title, what_happened, source_hint, status, input_hash, allow_finish, final_summary, created_at, updated_at, managed_session_id) \
+             VALUES (?1, ?2, ?3, ?4, ?5, 'waiting', ?6, ?7, ?8, ?9, ?9, ?10) \
              ON CONFLICT(id) DO NOTHING",
         )
         .bind(&request.request_id)
@@ -223,6 +225,7 @@ impl SqliteFeedbackStore {
         .bind(request.allow_finish)
         .bind(request.final_summary.as_deref())
         .bind(&request.created_at)
+        .bind(request.managed_session_id.as_deref())
         .execute(&mut *transaction)
         .await
         .map_err(storage_error)?;
@@ -287,6 +290,7 @@ impl SqliteFeedbackStore {
 
         let stored = StoredFeedbackRequest {
             request_id: request.request_id,
+            managed_session_id: request.managed_session_id,
             host_id: request.host_id,
             host_session_id: request.host_session_id,
             status: FeedbackStatus::Waiting,
@@ -395,7 +399,7 @@ impl SqliteFeedbackStore {
         request_id: &str,
     ) -> Result<StoredFeedbackRequest, RepositoryError> {
         let row = sqlx::query(
-            "SELECT r.id, hs.host_id, hs.host_session_id, r.status, r.resolution, r.allow_finish, r.final_summary, \
+            "SELECT r.id, r.managed_session_id, hs.host_id, hs.host_session_id, r.status, r.resolution, r.allow_finish, r.final_summary, \
                     r.created_at, r.updated_at, r.input_hash, fr.package_uri, fr.directory_path, fr.markdown_path, fr.manifest_path \
              FROM feedback_requests r \
              JOIN host_sessions hs ON hs.id = r.host_session_record_id \
@@ -415,6 +419,11 @@ impl SqliteFeedbackStore {
         request_id: &str,
         now: &str,
     ) -> Result<rambledesk_core::MutationOutcome<StoredFeedbackRequest>, RepositoryError> {
+        let mut transaction = self
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(storage_error)?;
         let updated = sqlx::query(
             "UPDATE feedback_requests SET status = 'completed', resolution = 'approved', \
              completed_at = ?2, updated_at = ?2, revision = revision + 1 \
@@ -423,29 +432,34 @@ impl SqliteFeedbackStore {
         )
         .bind(request_id)
         .bind(now)
-        .execute(&self.pool)
+        .execute(&mut *transaction)
         .await
         .map_err(storage_error)?;
+        let stored = load_request_row(&mut transaction, request_id)
+            .await?
+            .ok_or(RepositoryError::RequestNotFound)
+            .and_then(|row| stored_request_from_row(&row))?;
         if updated.rows_affected() != 1 {
-            let existing = self.get_request_impl(request_id).await?;
-            return if existing.status == FeedbackStatus::Completed
-                && existing.resolution == Some(FeedbackResolution::Approved)
+            return if stored.status == FeedbackStatus::Completed
+                && stored.resolution == Some(FeedbackResolution::Approved)
             {
-                Ok(rambledesk_core::MutationOutcome::unchanged(existing))
+                delivery_ops::enqueue_terminal_delivery(&mut transaction, request_id).await?;
+                transaction.commit().await.map_err(storage_error)?;
+                Ok(rambledesk_core::MutationOutcome::unchanged(stored))
             } else {
                 Err(RepositoryError::RequestTerminal)
             };
         }
-        self.get_request_impl(request_id)
-            .await
-            .map(rambledesk_core::MutationOutcome::changed)
+        delivery_ops::enqueue_terminal_delivery(&mut transaction, request_id).await?;
+        transaction.commit().await.map_err(storage_error)?;
+        Ok(rambledesk_core::MutationOutcome::changed(stored))
     }
 
     pub(super) async fn list_open_requests_impl(
         &self,
     ) -> Result<Vec<FeedbackRequestSummary>, RepositoryError> {
         let rows = sqlx::query(
-            "SELECT r.id, hs.host_id, hs.host_session_id, r.source_hint, \
+            "SELECT r.id, r.managed_session_id, hs.host_id, hs.host_session_id, r.source_hint, \
                     r.title, r.what_happened, r.status, r.resolution, r.allow_finish, r.final_summary, \
                     r.revision, r.created_at, r.updated_at \
              FROM feedback_requests r \
@@ -465,7 +479,7 @@ impl SqliteFeedbackStore {
         query: FeedbackRequestQuery,
     ) -> Result<Vec<FeedbackRequestSummary>, RepositoryError> {
         let rows = sqlx::query(
-            "SELECT r.id, hs.host_id, hs.host_session_id, r.source_hint, \
+            "SELECT r.id, r.managed_session_id, hs.host_id, hs.host_session_id, r.source_hint, \
                     r.title, r.what_happened, r.status, r.resolution, r.allow_finish, r.final_summary, \
                     r.revision, r.created_at, r.updated_at \
              FROM feedback_requests r \
@@ -511,23 +525,29 @@ impl SqliteFeedbackStore {
         query: HostSessionQuery,
     ) -> Result<Vec<HostSessionSummary>, RepositoryError> {
         let rows = sqlx::query(
-            "SELECT hs.host_id, hs.host_session_id, \
+            "SELECT hs.id AS session_id, hs.created_at, hs.host_id, hs.host_session_id, \
+                    ms.protocol, ms.agent_config_id, ms.cwd, ms.remote_session_id, \
                     COALESCE(NULLIF(hs.display_title, ''), (SELECT first_request.title \
                      FROM feedback_requests first_request \
                      WHERE first_request.host_session_record_id = hs.id \
-                     ORDER BY first_request.created_at, first_request.id LIMIT 1)) AS title, \
-                    (SELECT first_request.source_hint \
+                     ORDER BY first_request.created_at, first_request.id LIMIT 1), hs.host_session_id) AS title, \
+                    COALESCE((SELECT first_request.source_hint \
                      FROM feedback_requests first_request \
                      WHERE first_request.host_session_record_id = hs.id \
-                     ORDER BY first_request.created_at, first_request.id LIMIT 1) AS source_hint, \
+                     ORDER BY first_request.created_at, first_request.id LIMIT 1), ms.cwd) AS source_hint, \
                     COUNT(r.id) AS request_count, \
                     SUM(CASE WHEN r.status IN ('waiting', 'in_progress') THEN 1 ELSE 0 END) AS pending_count, \
-                    MAX(r.updated_at) AS updated_at, \
+                    CASE WHEN ms.session_id IS NOT NULL \
+                         THEN MAX(hs.updated_at, COALESCE(MAX(r.updated_at), hs.updated_at)) \
+                         ELSE MAX(r.updated_at) END AS updated_at, \
                     hs.pinned_at, hs.archived_at, hp.pinned_at AS host_pinned_at \
              FROM host_sessions hs \
-             JOIN feedback_requests r ON r.host_session_record_id = hs.id \
+             LEFT JOIN feedback_requests r ON r.host_session_record_id = hs.id \
+             LEFT JOIN managed_sessions ms ON ms.session_id = hs.id \
              LEFT JOIN host_preferences hp ON hp.host_id = hs.host_id \
              WHERE (?1 = (hs.archived_at IS NOT NULL)) \
+               AND (ms.session_id IS NOT NULL OR r.id IS NOT NULL) \
+               AND (ms.lifecycle IS NULL OR ms.lifecycle = 'active') \
                AND (?2 IS NULL \
                  OR COALESCE(NULLIF(hs.display_title, ''), '') LIKE ?2 \
                  OR hs.host_id LIKE ?2 \
@@ -563,6 +583,7 @@ mod hash_tests {
     fn request(allow_finish: bool, final_summary: Option<&str>) -> NewFeedbackRequest {
         NewFeedbackRequest {
             request_id: "request-id".to_owned(),
+            managed_session_id: None,
             host_session_record_id: "host-session-record-id".to_owned(),
             host_id: "generic".to_owned(),
             host_session_id: "session-1".to_owned(),

@@ -14,8 +14,36 @@ import type {
 } from './applicationTransport'
 import type { CapabilityManifest } from '../capabilities/capabilityManifest'
 import { UNAVAILABLE_CAPABILITY_MANIFEST } from '../capabilities/unavailableCapabilities'
+import { APPLICATION_EVENTS_STREAM } from './applicationEvents'
+import { diagnosticErrorCategory, recordClientDiagnostic } from '../diagnostics/clientDiagnostics'
 
 export const TAURI_APPLICATION_COMMANDS = {
+  listAvailableAgents: 'list_available_agents',
+  inspectAgentInstallation: 'inspect_agent_installation',
+  resolveCatalogAgent: 'resolve_catalog_agent',
+  listAgentInstallJobs: 'list_agent_install_jobs',
+  installAgent: 'install_agent',
+  cancelAgentInstall: 'cancel_agent_install',
+  listAgentConfigs: 'list_agent_configs',
+  saveAgentConfig: 'save_agent_config',
+  deleteAgentConfig: 'delete_agent_config',
+  checkAgentConfig: 'check_agent_config',
+  createManagedSession: 'create_managed_session',
+  prepareManagedSession: 'prepare_managed_session',
+  discardPreparedSession: 'discard_prepared_session',
+  getManagedSession: 'get_managed_session',
+  getManagedFeedbackStatus: 'get_managed_feedback_status',
+  getManagedWorkspaceInfo: 'get_managed_workspace_info',
+  startManagedSession: 'start_managed_session',
+  stopManagedSession: 'stop_managed_session',
+  cancelManagedPrompt: 'cancel_managed_prompt',
+  sendManagedPrompt: 'send_managed_prompt',
+  listManagedSessionActivity: 'list_managed_session_activity',
+  sendManagedPromptContent: 'send_managed_prompt_content',
+  setManagedSessionConfig: 'set_managed_session_config',
+  respondManagedInteraction: 'respond_managed_interaction',
+  resolveFeedbackDelivery: 'resolve_feedback_delivery',
+  deleteManagedSession: 'delete_managed_session',
   listFeedbackInbox: 'list_feedback_inbox',
   listHostSessions: 'list_host_sessions',
   listArchivedHostSessions: 'list_archived_host_sessions',
@@ -42,6 +70,8 @@ export const TAURI_APPLICATION_COMMANDS = {
 } as const satisfies Record<ApplicationCommandName, string>
 
 const NO_ARGUMENT_COMMANDS: ReadonlySet<ApplicationCommandName> = new Set([
+  'listAvailableAgents', 'listAgentInstallJobs',
+  'listAgentConfigs',
   'listFeedbackInbox',
   'listHostSessions',
   'listHostProfiles',
@@ -65,6 +95,8 @@ function tauriArguments<Name extends ApplicationCommandName>(
 }
 
 export class TauriApplicationTransport implements ApplicationTransport {
+  private readonly pendingApplicationSubscriptions = new Set<Promise<void>>()
+
   constructor(
     private readonly capabilityManifest: CapabilityManifest = UNAVAILABLE_CAPABILITY_MANIFEST,
   ) {}
@@ -88,27 +120,43 @@ export class TauriApplicationTransport implements ApplicationTransport {
     let active = true
     let unlisten: Unsubscribe | null = null
 
-    void listen<Event>(stream.id, ({ payload }) => {
+    const registration = listen<Event>(stream.id, ({ payload }) => {
       if (active) handler(payload)
     })
       .then((nextUnlisten) => {
         if (active) unlisten = nextUnlisten
         else nextUnlisten()
+        if (active && stream.id === APPLICATION_EVENTS_STREAM.id) recordClientDiagnostic({ activity: 'application_subscription', outcome: 'ok', details: { source: 'workbench', phase: 'registration' } })
       })
-      .catch((cause) => {
-        if (active) onError(cause)
-      })
+
+    if (stream.id === APPLICATION_EVENTS_STREAM.id) {
+      this.pendingApplicationSubscriptions.add(registration)
+    }
+    void registration.then(
+      () => this.pendingApplicationSubscriptions.delete(registration),
+      (cause) => {
+        // Keep a failed active subscription as a readiness failure; a successful
+        // snapshot must not erase the error and leave a silently frozen view.
+        if (active) {
+          recordClientDiagnostic({ activity: 'application_subscription', outcome: 'failed', details: { source: 'workbench', phase: 'registration', error_category: diagnosticErrorCategory(cause) } })
+          onError(cause)
+        }
+      },
+    )
 
     return () => {
       if (!active) return
       active = false
+      this.pendingApplicationSubscriptions.delete(registration)
       unlisten?.()
       unlisten = null
     }
   }
 
-  waitUntilReady(): Promise<void> {
-    return Promise.resolve()
+  async waitUntilReady(): Promise<void> {
+    // Native listen registers asynchronously. Read only after registration so
+    // a change between mounting a projection and its first snapshot is covered.
+    await Promise.all(this.pendingApplicationSubscriptions)
   }
 
   capabilities(): CapabilityManifest {

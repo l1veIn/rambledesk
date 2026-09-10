@@ -16,6 +16,119 @@
 
 ---
 
+## v0.4.0-rc.3
+
+What's new in RambleDesk 0.4.0-rc.3
+
+Phone and browser access
+- The workbench now adapts to phone screens: both rails become overlay drawers, the titlebar keeps a navigation button, and the request list opens from a floating button.
+- Web Access gained a dedicated settings section for the browser server: port, autostart, and token rotation. Browser sessions resume from a stored cookie instead of asking for the token again on every visit.
+- Agent session options on a phone collapse into a single entry that shows the model name; tapping it opens the full list of model, reasoning effort, and access options instead of crowding the composer.
+
+Workspace tabs
+- The tab strip now behaves the same at every width: tabs share the available width evenly, shrink down to a minimum, and only then scroll horizontally.
+- On desktop the mouse wheel scrolls the strip, both ends fade to show there is more content, and a newly opened tab is brought into view at the end of the queue.
+
+Task brief
+- The "What happened" section renders Markdown, so lists, code blocks, links and emphasis written by the Agent display as intended. Single line breaks are preserved.
+
+Adapter setup
+- The adapter starter prompt is now "/ramble Lets work on something together", matching the /ramble command that starts a feedback request.
+
+Under the hood
+- Workbench state ownership was reorganised: the open request, draft, attachments, Ramble and voice state, startup, workspace navigation, cooking, shell layout and preview fixtures each have a single owning module, and App.svelte is now a composition root.
+- Preview fixtures are served through an Application Transport implementation, so preview mode no longer branches inside workbench logic.
+- A frontend dependency-direction check and module-size gate keep the new boundaries from regressing; frontend coverage grew past 1200 tests, including component tests for the capture overlay, the Ramble controller and the agent composer options.
+
+Release candidate notes
+- This test release includes Windows x64 NSIS and Apple Silicon macOS installers. Windows updater artifacts are signed, but Windows Authenticode signing and Apple notarization are not yet enabled.
+- For SmartScreen and Gatekeeper first-launch instructions, see https://github.com/l1veIn/rambledesk/blob/v0.4.0-rc.3/README.md
+- Automated checks do not replace real-model feedback-loop and clean-install acceptance testing.
+
+中文摘要
+- 工作台适配手机屏幕：两条侧栏改为抽屉，标题栏保留导航按钮，请求列表用左下角浮动按钮打开。
+- Web Access 新增浏览器服务器设置（端口、自动启动、刷新令牌），浏览器会话通过 Cookie 恢复，不再每次访问都要求输入令牌。
+- 手机上 Agent 会话选项收进一个入口，只显示模型名；点开后是完整的模型、思考强度和访问权限列表，不再挤占输入框。
+- 工作区标签在任何宽度下行为一致：先均分宽度收缩到最小值，再横向滚动；桌面端可用滚轮滚动，两端有渐隐提示，新打开的标签会自动滚动到队尾。
+- 任务简报的「发生了什么」按 Markdown 渲染，列表、代码块、链接和强调都能正常显示，单换行也会保留。
+- 适配器示例提示词改为 "/ramble Lets work on something together"。
+- 内部：工作台状态改为每个领域单一所有者，App.svelte 收敛为组合根；预览数据改由 Application Transport 提供；新增前端依赖方向与模块大小门禁，前端测试超过 1200 个。
+- 本版为候选测试版，提供 Windows x64 NSIS 和 Apple Silicon macOS 安装包；尚无 Windows Authenticode 签名及 Apple 公证，首次启动步骤见上述 README。
+
+Full changelog: https://github.com/l1veIn/rambledesk/compare/v0.4.0-rc.2...v0.4.0-rc.3
+
+## v0.4.0-rc.2
+
+What's new in RambleDesk 0.4.0-rc.2
+
+ACP feedback reliability
+- Managed ACP Agents receive shared Ramble workflow guidance on every turn. A turn that ends without a feedback handoff gets one bounded reminder; missing or failed handoffs are reported instead of silently ending the workflow.
+- The built-in feedback command uses a private local IPC channel, keeping feedback credentials out of Agent environments and working with bridges that filter token variables. Turn receipts are isolated so an older request cannot satisfy a newer turn.
+- Explicit feedback skip reasons and cancellation handling prevent automatic reminder loops and unwanted continuation after cancellation.
+
+DeepSeek setup
+- New setups use one DeepSeek (DSH) entry with the managed deepseek-acp 0.8.0 bridge. A separate global dsh installation is not required for this path.
+- Existing DeepSeek Harness configurations and sessions remain available as custom configurations; their launch settings and history are preserved.
+- Agent discovery labels distinguish supported Agents from programs actually found on the device, and connection checks no longer imply that model-driven feedback has been verified.
+
+Agent-to-Ramble navigation
+- New feedback requests automatically open from an Agent conversation when its composer is empty. This applies across Agent providers and on later turns, not just the first message.
+- Unsent text, active IME composition, and other workspace pages are not interrupted. Refreshing old requests or returning to an Agent tab does not replay an automatic jump; user navigation takes precedence.
+
+Release candidate notes
+- This test release includes Windows x64 NSIS and Apple Silicon macOS installers. Windows updater artifacts are signed, but Windows Authenticode signing and Apple notarization are not yet enabled.
+- For SmartScreen and Gatekeeper first-launch instructions, see https://github.com/l1veIn/rambledesk/blob/v0.4.0-rc.2/README.md
+- Automated checks do not replace real-model feedback-loop and clean-install acceptance testing.
+
+中文摘要
+- 修复 ACP 首轮及后续轮次未进入 Ramble 的问题：统一逐轮注入反馈流程说明，缺少交接时最多提醒一次，仍失败则明确报错；取消后不继续补发。
+- 内置反馈命令改用私有本地 IPC 通道，不再依赖 Agent 环境中的反馈令牌，兼容会过滤 TOKEN 变量的桥接程序；反馈回执按轮次隔离。
+- DeepSeek 新接入统一为 DeepSeek (DSH)，托管安装 deepseek-acp 0.8.0，无需额外全局安装 dsh；保留旧 Harness 自定义配置和会话历史。
+- 新 Ramble 请求到来时，仅在 Agent 会话页且输入框为空时自动打开；保护未发送文字和中文输入法组合输入，其他页面不动，旧请求刷新不重复跳转。
+- 本版为候选测试版，提供 Windows x64 NSIS 和 Apple Silicon macOS 安装包；尚无 Windows Authenticode 签名及 Apple 公证，首次启动步骤见上述 README。真实模型闭环和干净安装仍需实机验收。
+
+Full changelog: https://github.com/l1veIn/rambledesk/compare/v0.4.0-rc.1...v0.4.0-rc.2
+
+## v0.4.0-rc.1
+
+What's new in RambleDesk 0.4.0-rc.1
+
+ACP Agent sessions
+- Start and resume Agent conversations inside RambleDesk, with a shared ACP layer for connection capabilities, model and mode selection, tool activity, permissions, and supported user questions.
+- Onboarding and Settings share a simpler Agents page with one ACP connection card and advanced settings. One-click connection installs the bridge and uses the detected ACP entry while keeping account settings.
+- Continue from onboarding into the selected Agent's first session. Model options load in the actual project; session, configuration and message failures provide targeted guidance. Only confirmed authentication failures prompt sign-in or API-key setup.
+- Message acknowledgement recovery preserves drafts and avoids resending accepted messages; explicitly failed messages can be returned to the composer for review and retry.
+- Managed Agents use the built-in feedback command. Submitted feedback is stored durably and queued for continuation in the original Agent session; interrupted deliveries expose recovery actions.
+- External adapters remain available for users who run their Agent independently of RambleDesk's managed ACP client.
+
+Conversation and workspace
+- Separate Agent and Ramble views, compact tool-call rows with expandable scrollable details, paged history, supported attachments, and live session configuration and context usage.
+- Resizable session and request columns remember their widths and collapse at their minimum size. Larger desktop minimum dimensions preserve workspace room, and sidebar scrolling keeps Settings accessible.
+- Sessions retain creation-time order within projects, with pinned sessions first. New sessions highlight the required project selection.
+- New Appearance settings add theme colors, interface scaling, fonts, and workspace backgrounds alongside light and dark modes.
+
+Speech and diagnostics
+- Review speech before writing with confirm, cancel, Tidy, and inline edit actions. Optional automatic Tidy includes guidance about the existing automatic Tidy threshold.
+- Automatic preview of waiting requests is off by default. Diagnostics can be cleared and recording can be disabled.
+
+Release candidate notes
+- Fix the macOS release build and prevent normally exited ACP processes from being reported as connection failures during cleanup.
+- Interrupted continuation turns can remain in an unknown delivery state and block later feedback until reviewed. Confirm an already-read delivery or retry it from its status details.
+- Scanning and component-only repairs preserve custom launch profiles. One-click connection adopts the detected ACP entry; advanced settings remain available for custom paths and environments.
+- This prerelease includes Windows x64 NSIS and Apple Silicon macOS installers. Windows MSI is reserved for stable releases.
+
+中文摘要
+- 新增应用内 ACP 智能体会话，统一连接、模型与模式选择、工具活动、授权及受支持的用户问答；引导和设置共用单张 ACP 连接卡片与高级设置，一键连接安装组件并采用正确入口，同时保留账号配置。
+- 引导直接进入所选智能体的新会话，选好项目后加载真实模型选项；会话准备、配置与消息错误分别提供就地处理，只有明确认证失败才提示登录或配置 API Key。发送确认丢失时先核实是否已接收，避免重复消息；明确失败的消息可放回输入框后重试。
+- 托管智能体通过内置反馈命令完成 Ramble 流程，反馈持久保存后排队续接原会话；外部适配器继续支持独立运行的智能体，登录及 API Key 配置由智能体自身处理。
+- 会话界面更简洁：工具调用按行收起，展开详情限制高度并可滚动，支持历史分页、附件和实时配置；侧边栏及请求列可拖动、收起并记住宽度，会话按创建时间排序，新会话突出工作目录必选提示。
+- 新增外观页，提供主题配色、窗口缩放、字体与工作区背景；语音确认悬浮窗增加整理、编辑及可选自动整理，自动预览默认关闭，诊断记录可清除及停用。
+- 已知限制：中断后送达状态未知的旧反馈需要先确认或重试，才会继续投递后续反馈；重新检测与单独修复组件保留自定义配置，一键连接采用检测到的 ACP 入口，特殊路径和环境可在高级设置中调整。
+- 本候选版提供 Windows x64 NSIS 与 Apple Silicon macOS 安装包。
+- 修复 macOS 发布构建，以及 ACP 程序正常退出后被清理过程误报为连接失败的问题。
+
+Full changelog: https://github.com/l1veIn/rambledesk/compare/v0.3.4...v0.4.0-rc.1
+
 ## v0.3.4
 
 What's new in RambleDesk 0.3.4

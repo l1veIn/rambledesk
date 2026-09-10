@@ -9,7 +9,8 @@ import { createUnavailableWorkbenchCapabilities } from '../capabilities/unavaila
 
 export type WorkbenchCompositionInput = Readonly<{
   environment: 'desktop' | 'browser'
-  previewMode: boolean
+  /** Fixture-backed transport for the `?preview=fixtures` workbench. */
+  previewTransport?: ApplicationTransport
   desktopTransport?: ApplicationTransport
   authenticatedWebSession?: HttpApplicationSession
   capabilities?: WorkbenchCapabilities
@@ -19,6 +20,7 @@ export type WorkbenchComposition = Readonly<{
   applicationTransport: ApplicationTransport
   capabilities: WorkbenchCapabilities
   previewMode: boolean
+  environment: 'desktop' | 'browser'
 }>
 
 /** Selects implementations only; credentials and native bindings are composed outside. */
@@ -26,18 +28,24 @@ export function createWorkbenchComposition(
   input: WorkbenchCompositionInput,
 ): WorkbenchComposition {
   const capabilities = input.capabilities ?? createUnavailableWorkbenchCapabilities()
-  if (input.previewMode) {
+  if (input.previewTransport) {
     return {
-      applicationTransport: new UnavailableApplicationTransport(capabilities.manifest),
+      applicationTransport: input.previewTransport,
       capabilities,
       previewMode: true,
+      environment: input.environment,
     }
   }
   if (input.environment === 'desktop') {
     if (!input.desktopTransport) {
       throw new Error('Desktop composition requires a Tauri ApplicationTransport implementation.')
     }
-    return { applicationTransport: input.desktopTransport, capabilities, previewMode: false }
+    return {
+      applicationTransport: input.desktopTransport,
+      capabilities,
+      previewMode: false,
+      environment: 'desktop',
+    }
   }
   if (input.authenticatedWebSession) {
     return {
@@ -47,11 +55,13 @@ export function createWorkbenchComposition(
       ),
       capabilities,
       previewMode: false,
+      environment: 'browser',
     }
   }
   return {
     applicationTransport: new UnavailableApplicationTransport(capabilities.manifest),
     capabilities,
     previewMode: false,
+    environment: 'browser',
   }
 }

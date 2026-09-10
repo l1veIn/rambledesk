@@ -1,19 +1,58 @@
 import tailwindcss from '@tailwindcss/vite'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vitest/config'
+import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
+// Keep one source copy in the repository; both shipped clients receive its bytes.
+function thirdPartyNotices(): Plugin {
+  return {
+    name: 'rambledesk-third-party-notices',
+    apply: 'build',
+    buildStart() {
+      for (const fileName of [
+        'THIRD_PARTY_NOTICES.md',
+        'licenses/codeg-APACHE-2.0.txt',
+        'licenses/font-inter-OFL-1.1.txt',
+        'licenses/font-geist-OFL-1.1.txt',
+        'licenses/font-jetbrains-mono-OFL-1.1.txt',
+        'licenses/font-fira-code-OFL-1.1.txt',
+        'licenses/font-geist-mono-OFL-1.1.txt',
+        'docs/CODEG_PORTS.md',
+      ]) {
+        this.emitFile({
+          type: 'asset',
+          name: fileName,
+          fileName,
+          originalFileName: fileName,
+          source: readFileSync(new URL(`../../${fileName}`, import.meta.url)),
+        })
+      }
+    },
+  }
+}
+
 export default defineConfig({
-  plugins: [tailwindcss(), svelte()],
+  plugins: [thirdPartyNotices(), tailwindcss(), svelte()],
+  test: {
+    // Production modules read `localStorage` and `navigator` at import time.
+    setupFiles: ['./src/testSetup.ts'],
+  },
   build: {
     // Web Access reads this exact output inventory from the Tauri asset bundle.
     // It is the source of truth for immutable caching and missing-asset rejection.
     manifest: true,
+    // Explicit acceptance builds only. The shipped application has one entry.
+    ...(process.env.RAMBLEDESK_QUALITY_BENCHMARK === '1' ? {
+      rollupOptions: { input: { app: 'index.html', quality: 'quality-benchmark.html' } },
+    } : {}),
   },
   resolve: {
     alias: {
       $lib: path.resolve('./src/lib'),
     },
+    // Component tests mount the client build of Svelte, not the server build.
+    conditions: ['browser'],
   },
   clearScreen: false,
   server: {

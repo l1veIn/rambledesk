@@ -5,7 +5,7 @@ use ts_rs::TS;
 
 use crate::{
     ActionInput, ContextRef, FeedbackResolution, FeedbackResultView, FeedbackStatus,
-    RepositoryError,
+    RepositoryError, SessionManagement,
 };
 
 pub const MAX_ATTACHMENT_BYTES: usize = 20 * 1024 * 1024;
@@ -102,6 +102,10 @@ impl From<FeedbackPackageContent> for FeedbackPackageView {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 pub struct FeedbackRequestSummary {
     pub request_id: String,
+    /// Trusted local origin; external requests do not have an Agent view.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub managed_session_id: Option<String>,
     pub host_id: String,
     pub host_session_id: String,
     pub source_hint: Option<String>,
@@ -119,10 +123,20 @@ pub struct FeedbackRequestSummary {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 pub struct HostSessionSummary {
+    pub session_id: String,
+    /// Stable local session creation time; absent in older server responses.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub created_at: Option<String>,
+    pub management: SessionManagement,
     pub host_id: String,
     pub host_session_id: String,
     pub title: String,
     pub source_hint: Option<String>,
+    /// Project directory, when known. Legacy external sessions may only have a display hint.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub cwd: Option<String>,
     #[ts(type = "number")]
     pub request_count: u64,
     #[ts(type = "number")]

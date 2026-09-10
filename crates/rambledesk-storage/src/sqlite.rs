@@ -24,11 +24,19 @@ use sqlx::{
 };
 use thiserror::Error;
 
+mod activity_history_ops;
+mod activity_ops;
 mod backup;
+mod deletion_ops;
+mod delivery_ops;
+mod managed_ops;
 mod migration_compat;
+mod migration_extensions;
 mod paths;
 mod publication_paths;
+mod recovery_ops;
 mod request_ops;
+mod request_scope;
 mod resolve_ops;
 mod session_ops;
 mod submission_ops;
@@ -159,10 +167,7 @@ impl SqliteFeedbackStore {
         if applied > supported {
             return Err(StorageOpenError::NewerDatabase { applied, supported });
         }
-        MIGRATOR
-            .run(&pool)
-            .await
-            .map_err(StorageOpenError::Migrate)?;
+        migration_extensions::run(&pool).await?;
         let library_existed = tokio::fs::try_exists(library_root)
             .await
             .map_err(StorageOpenError::CreateDirectory)?;
@@ -553,7 +558,7 @@ async fn load_request_row(
     request_id: &str,
 ) -> Result<Option<SqliteRow>, RepositoryError> {
     sqlx::query(
-        "SELECT r.id, hs.host_id, hs.host_session_id, \
+        "SELECT r.id, r.managed_session_id, hs.host_id, hs.host_session_id, \
                 r.status, r.resolution, r.allow_finish, r.final_summary, \
                 r.created_at, r.updated_at, r.input_hash, \
                 fr.package_uri, fr.directory_path, fr.markdown_path, fr.manifest_path \
@@ -566,111 +571,6 @@ async fn load_request_row(
     .fetch_optional(&mut **transaction)
     .await
     .map_err(storage_error)
-}
-
-fn stored_request_from_row(row: &SqliteRow) -> Result<StoredFeedbackRequest, RepositoryError> {
-    let status = stored_status(row)?;
-    let feedback = feedback_result_from_row(row)?;
-    let resolution = row
-        .try_get::<Option<String>, _>("resolution")
-        .map_err(storage_error)?
-        .map(|value| FeedbackResolution::try_from(value.as_str()))
-        .transpose()?;
-    if status == FeedbackStatus::Completed
-        && resolution != Some(FeedbackResolution::Approved)
-        && feedback.is_none()
-    {
-        return Err(RepositoryError::CorruptData);
-    }
-    Ok(StoredFeedbackRequest {
-        request_id: row.try_get("id").map_err(storage_error)?,
-        host_id: row.try_get("host_id").map_err(storage_error)?,
-        host_session_id: row.try_get("host_session_id").map_err(storage_error)?,
-        status,
-        created_at: row.try_get("created_at").map_err(storage_error)?,
-        updated_at: row.try_get("updated_at").map_err(storage_error)?,
-        feedback,
-        resolution,
-        allow_finish: row.try_get("allow_finish").map_err(storage_error)?,
-        final_summary: row.try_get("final_summary").map_err(storage_error)?,
-    })
-}
-
-fn host_session_summary_from_row(row: &SqliteRow) -> Result<HostSessionSummary, RepositoryError> {
-    let request_count = row
-        .try_get::<i64, _>("request_count")
-        .map_err(storage_error)?;
-    let pending_count = row
-        .try_get::<i64, _>("pending_count")
-        .map_err(storage_error)?;
-    Ok(HostSessionSummary {
-        host_id: row.try_get("host_id").map_err(storage_error)?,
-        host_session_id: row.try_get("host_session_id").map_err(storage_error)?,
-        title: row.try_get("title").map_err(storage_error)?,
-        source_hint: row.try_get("source_hint").map_err(storage_error)?,
-        request_count: u64::try_from(request_count).map_err(|_| RepositoryError::CorruptData)?,
-        pending_count: u64::try_from(pending_count).map_err(|_| RepositoryError::CorruptData)?,
-        updated_at: row.try_get("updated_at").map_err(storage_error)?,
-        pinned_at: row.try_get("pinned_at").map_err(storage_error)?,
-        archived_at: row.try_get("archived_at").map_err(storage_error)?,
-        host_pinned_at: row.try_get("host_pinned_at").map_err(storage_error)?,
-    })
-}
-
-fn feedback_result_from_row(
-    row: &SqliteRow,
-) -> Result<Option<FeedbackResultView>, RepositoryError> {
-    let package_uri: Option<String> = row.try_get("package_uri").map_err(storage_error)?;
-    let feedback = match package_uri {
-        Some(package_uri) => Some(FeedbackResultView {
-            package_uri,
-            directory_path: row
-                .try_get::<Option<String>, _>("directory_path")
-                .map_err(storage_error)?
-                .ok_or(RepositoryError::CorruptData)?,
-            markdown_path: row
-                .try_get::<Option<String>, _>("markdown_path")
-                .map_err(storage_error)?
-                .ok_or(RepositoryError::CorruptData)?,
-            manifest_path: row
-                .try_get::<Option<String>, _>("manifest_path")
-                .map_err(storage_error)?
-                .ok_or(RepositoryError::CorruptData)?,
-        }),
-        None => None,
-    };
-    Ok(feedback)
-}
-
-fn stored_status(row: &SqliteRow) -> Result<FeedbackStatus, RepositoryError> {
-    let status: String = row.try_get("status").map_err(storage_error)?;
-    FeedbackStatus::try_from(status.as_str())
-}
-
-fn storage_error<T>(_error: T) -> RepositoryError {
-    RepositoryError::Storage
-}
-
-fn repository_error_code(error: RepositoryError) -> &'static str {
-    match error {
-        RepositoryError::PackagePublish => "PACKAGE_PUBLISH_FAILURE",
-        RepositoryError::PackageRead => "FEEDBACK_PACKAGE_READ_FAILURE",
-        RepositoryError::DraftConflict => "DRAFT_CONFLICT",
-        RepositoryError::RequestNotFound => "REQUEST_NOT_FOUND",
-        RepositoryError::RequestTerminal | RepositoryError::RequestAlreadyCompleted => {
-            "REQUEST_TERMINAL"
-        }
-        RepositoryError::CorruptData | RepositoryError::Storage => "STORAGE_FAILURE",
-        RepositoryError::AttachmentNotFound | RepositoryError::AttachmentLimit => {
-            "RECOVERY_FAILURE"
-        }
-        RepositoryError::RequestConflict | RepositoryError::DraftEmpty => "RECOVERY_FAILURE",
-        RepositoryError::HostSessionNotFound | RepositoryError::HostSessionHasOpenRequests => {
-            "RECOVERY_FAILURE"
-        }
-        RepositoryError::DeleteRequiresArchivedHostSession
-        | RepositoryError::RequestNotTerminal => "RECOVERY_FAILURE",
-    }
 }
 
 mod security;

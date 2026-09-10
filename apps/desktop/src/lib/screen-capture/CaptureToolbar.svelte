@@ -22,7 +22,7 @@
 
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
-  import type { AnnotationTool } from '../screenCapture'
+  import type { AnnotationTool } from './screenCapture'
 
   export let toolbarWidth = 0
   export let toolbarHeight = 0

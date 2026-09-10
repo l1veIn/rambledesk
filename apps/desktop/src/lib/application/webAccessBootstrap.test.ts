@@ -60,4 +60,21 @@ describe('bootstrapWebAccessSession', () => {
       }),
     ).rejects.toBeInstanceOf(WebAccessConnectionError)
   })
+
+  it('resumes the browser session from its cookie without sending a durable token', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+      new Response(JSON.stringify({ session_token: 'resumed_session-token' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+      }),
+    )
+
+    await expect(
+      bootstrapWebAccessSession({ pageUrl: 'http://127.0.0.1:37643/', fetch }),
+    ).resolves.toBe('resumed_session-token')
+    const [url, init] = fetch.mock.calls[0]!
+    expect(String(url)).toBe('http://127.0.0.1:37643/api/auth/session')
+    expect(init).toMatchObject({ method: 'POST', credentials: 'same-origin', redirect: 'error' })
+    expect(init?.headers).toEqual({})
+  })
 })

@@ -1,5 +1,10 @@
 use std::sync::Arc;
 
+mod agents;
+mod managed;
+pub use agents::AgentManagementError;
+pub use managed::{ManagedCommandError, ManagedCommandErrorCode};
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -32,6 +37,9 @@ pub struct ApplicationFeedbackResultView {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 pub struct ApplicationFeedbackRequestView {
     pub request_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub managed_session_id: Option<String>,
     pub host_id: String,
     pub host_session_id: String,
     pub status: FeedbackStatus,
@@ -51,6 +59,7 @@ impl From<FeedbackRequestView> for ApplicationFeedbackRequestView {
     fn from(value: FeedbackRequestView) -> Self {
         Self {
             request_id: value.request_id,
+            managed_session_id: value.managed_session_id,
             host_id: value.host_id,
             host_session_id: value.host_session_id,
             status: value.status,
@@ -97,6 +106,8 @@ impl From<FeedbackWorkspaceView> for ApplicationFeedbackWorkspaceView {
 
 #[derive(Clone)]
 pub struct ApplicationCommandFacade {
+    agents: Option<crate::AgentManagementApplication>,
+    sessions: Option<crate::SessionApplication>,
     application: FeedbackApplication,
     terminal_operations: WorkbenchTerminalOperations,
     host_profiles: Arc<[ApplicationHostProfileView]>,
@@ -109,6 +120,8 @@ impl ApplicationCommandFacade {
         host_profiles: Vec<ApplicationHostProfileView>,
     ) -> Self {
         Self {
+            agents: None,
+            sessions: None,
             application,
             terminal_operations,
             host_profiles: Arc::from(host_profiles),

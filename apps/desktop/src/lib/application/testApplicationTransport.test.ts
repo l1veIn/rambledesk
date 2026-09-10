@@ -9,6 +9,8 @@ import type { CapabilityManifest } from '../capabilities/capabilityManifest'
 import { UNAVAILABLE_CAPABILITY_MANIFEST } from '../capabilities/unavailableCapabilities'
 
 const hostSession: HostSessionSummary = {
+  session_id: 'local-session-1',
+  management: { kind: 'external' },
   host_id: 'codex',
   host_session_id: 'session-1',
   title: 'First session',

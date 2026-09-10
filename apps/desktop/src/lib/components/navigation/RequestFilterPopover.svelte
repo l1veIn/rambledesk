@@ -12,7 +12,7 @@
     requestFilterCount,
     type RequestFilters,
     type RequestStatusFilter,
-  } from '$lib/workbench/requestFilters'
+  } from '$lib/domain/requestFilters'
 
   export let filters: RequestFilters = DEFAULT_REQUEST_FILTERS
   export let collapsed = false

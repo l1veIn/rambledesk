@@ -21,9 +21,11 @@ versions.set("Cargo.toml [workspace.package]", cargoWorkspace[1]);
 
 const cargoLock = readFileSync("Cargo.lock", "utf8");
 for (const packageName of [
+  "rambledesk-acp",
   "rambledesk-cli",
   "rambledesk-core",
   "rambledesk-desktop",
+  "rambledesk-feedback-client",
   "rambledesk-hosts",
   "rambledesk-local-server",
   "rambledesk-mcp",

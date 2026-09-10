@@ -34,9 +34,12 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: cargo fmt --all --check
       - run: pnpm check:rust-size
+      - run: pnpm check:frontend-size
       - run: pnpm check:terminology
       - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo test --workspace
+      # Separate output roots also protect later CLI smoke tests from stale binaries.
+      - run: cargo test --workspace --exclude rambledesk-desktop
+      - run: cargo test -p rambledesk-desktop --target-dir target/desktop
       - run: pnpm check
       - run: pnpm test
       - run: pnpm test:pi
@@ -67,9 +70,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: cargo fmt --all --check
       - run: pnpm check:rust-size
+      - run: pnpm check:frontend-size
       - run: pnpm check:terminology
       - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo test --workspace --all-targets
+      - run: cargo test --workspace --exclude rambledesk-desktop --all-targets
+      - run: cargo test -p rambledesk-desktop --all-targets --target-dir target/desktop
       - run: pnpm check
       - run: pnpm test
       - run: pnpm build:web
@@ -97,9 +102,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: cargo fmt --all --check
       - run: pnpm check:rust-size
+      - run: pnpm check:frontend-size
       - run: pnpm check:terminology
       - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo test --workspace --all-targets
+      - run: cargo test --workspace --exclude rambledesk-desktop --all-targets
+      - run: cargo test -p rambledesk-desktop --all-targets --target-dir target/desktop
       - run: pnpm check
       - run: pnpm test
       - run: pnpm build:web

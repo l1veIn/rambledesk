@@ -1,23 +1,65 @@
+use rambledesk_core::{
+    AgentCatalogCheck, AgentCatalogEntry, AgentCheckStatus, AgentConnectionKind, AgentDependency,
+    AgentDependencyInspection, AgentDistribution, AgentInspection, AgentInstallJob,
+    AgentInstallJobInput, AgentInstallPhase, AgentInstallProgress, AgentInstallSource,
+    AgentVerification, AgentVerificationStatus, CatalogAgentInput, InstallAgentInput,
+    InstalledAgent, ResolveCatalogAgentInput, SessionActivityContent, SessionContentBlock,
+    SessionToolCall, SessionToolKind, SessionToolLocation, SessionToolStatus,
+};
+use rambledesk_core::{
+    AgentPromptCapabilities, SendManagedPromptContentInput, SessionPromptContent,
+};
+use rambledesk_core::{
+    FeedbackTransport, ManagedFeedbackStatus, ManagedWorkspaceInfo, SessionContextUsage,
+};
+use rambledesk_core::{ListManagedSessionActivityInput, ManagedSessionActivityPage};
+use rambledesk_core::{PrepareManagedSessionInput, SessionLifecycle};
+use rambledesk_core::{
+    SessionConfigChange, SessionConfigChoice, SessionConfigKind, SessionConfigOption,
+    SessionConfigValue, SessionConfiguration, SetManagedSessionConfigInput,
+};
 use std::{fs, path::PathBuf};
 
 use rambledesk_core::{
-    ActionInput, AddAttachmentInput, ApplicationError, ApplicationErrorCode, ApplicationEvent,
-    ApplicationFeedbackRequestView, ApplicationFeedbackResultView,
-    ApplicationFeedbackWorkspaceView, ApplicationHostProfileView, ApplicationResourceKey,
-    ApplicationSnapshotMetadata, ApproveFeedbackInput, AttachmentView, CancelFeedbackInput,
-    ContextRef, DeleteFeedbackRequestInput, DraftView, ExecutionMode, FeedbackPackageAttachment,
-    FeedbackPackageContent, FeedbackPackageManifest, FeedbackPackageView, FeedbackRequestSummary,
-    FeedbackRequestView, FeedbackResolution, FeedbackResultView, FeedbackStatus,
-    FeedbackWorkspaceView, GetFeedbackInput, HostSessionInput, HostSessionSummary,
-    ListFeedbackRequestsInput, ListFeedbackRequestsOutput, ListHostSessionsInput,
-    ReadAttachmentInput, RecoverFeedbackInput, RemoveAttachmentInput, RenameHostSessionInput,
-    ReorderAttachmentsInput, RequestAttachmentView, SaveDraftInput, SetHostPinnedInput,
-    SetHostSessionPinnedInput, SubmitFeedbackInput,
+    ActionInput, AddAttachmentInput, AgentConfig, AgentConfigInput, ApplicationError,
+    ApplicationErrorCode, ApplicationEvent, ApplicationFeedbackRequestView,
+    ApplicationFeedbackResultView, ApplicationFeedbackWorkspaceView, ApplicationHostProfileView,
+    ApplicationResourceKey, ApplicationSnapshotMetadata, ApproveFeedbackInput, AttachmentView,
+    CancelFeedbackInput, ContextRef, CreateManagedSessionInput, DeleteFeedbackRequestInput,
+    DraftView, ExecutionMode, FeedbackPackageAttachment, FeedbackPackageContent,
+    FeedbackPackageManifest, FeedbackPackageView, FeedbackRequestSummary, FeedbackRequestView,
+    FeedbackResolution, FeedbackResultView, FeedbackStatus, FeedbackWorkspaceView,
+    GetFeedbackInput, HostSessionInput, HostSessionSummary, ListFeedbackRequestsInput,
+    ListFeedbackRequestsOutput, ListHostSessionsInput, ManagedSessionInput, ReadAttachmentInput,
+    RecoverFeedbackInput, RemoveAttachmentInput, RenameHostSessionInput, ReorderAttachmentsInput,
+    RequestAttachmentView, SaveAgentConfigInput, SaveDraftInput, SessionManagement,
+    SessionProtocol, SessionRecord, SetHostPinnedInput, SetHostSessionPinnedInput,
+    SubmitFeedbackInput,
 };
+use rambledesk_core::{
+    AgentCheckConnection, AgentConnectionCheck, AgentFailure, AgentFailureReason,
+    AgentFailureStage, AgentSessionCapabilities, ManagedSessionSnapshot, SessionActivityState,
+    SessionConnectionState, SessionRuntime,
+};
+use rambledesk_core::{
+    FeedbackDelivery, FeedbackDeliveryState, ResolveDeliveryAction, ResolveFeedbackDeliveryInput,
+};
+use rambledesk_core::{
+    RespondManagedInteractionInput, SendManagedPromptInput, SessionInputAction,
+    SessionInputRequest, SessionInputResponse, SessionInteraction, SessionInteractionKind,
+    SessionInteractionResponse, SessionPermissionOption,
+};
+use rambledesk_core::{SessionActivity, SessionActivityKind};
+use rambledesk_core::{SessionRecovery, SessionRecoveryStatus};
 use ts_rs::{Config, TS};
 
 fn exported<T: TS>() -> String {
-    T::decl(&Config::default()).replacen("type ", "export type ", 1)
+    T::decl(&Config::default())
+        .replacen("type ", "export type ", 1)
+        .lines()
+        .map(str::trim_end)
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn exported_application_error_codes() -> String {
@@ -47,6 +89,84 @@ fn exported_feedback_package_content() -> String {
 
 fn main() -> std::io::Result<()> {
     let declarations = [
+        exported::<FeedbackTransport>(),
+        exported::<ListManagedSessionActivityInput>(),
+        exported::<ManagedSessionActivityPage>(),
+        exported::<AgentPromptCapabilities>(),
+        exported::<SessionPromptContent>(),
+        exported::<SendManagedPromptContentInput>(),
+        exported::<SessionConfiguration>(),
+        exported::<SessionConfigOption>(),
+        exported::<SessionConfigKind>(),
+        exported::<SessionConfigChoice>(),
+        exported::<SessionConfigValue>(),
+        exported::<SessionConfigChange>(),
+        exported::<SetManagedSessionConfigInput>(),
+        exported::<AgentConnectionKind>(),
+        exported::<AgentDistribution>(),
+        exported::<AgentVerificationStatus>(),
+        exported::<AgentVerification>(),
+        exported::<AgentDependency>(),
+        exported::<AgentCatalogEntry>(),
+        exported::<AgentInstallSource>(),
+        exported::<AgentCheckStatus>(),
+        exported::<AgentCatalogCheck>(),
+        exported::<AgentDependencyInspection>(),
+        exported::<AgentInspection>(),
+        exported::<InstallAgentInput>(),
+        exported::<AgentInstallPhase>(),
+        exported::<AgentInstallProgress>(),
+        exported::<InstalledAgent>(),
+        exported::<CatalogAgentInput>(),
+        exported::<ResolveCatalogAgentInput>(),
+        exported::<AgentInstallJobInput>(),
+        exported::<AgentInstallJob>(),
+        exported::<SessionActivityContent>(),
+        exported::<SessionContentBlock>(),
+        exported::<SessionToolKind>(),
+        exported::<SessionToolStatus>(),
+        exported::<SessionToolLocation>(),
+        exported::<SessionToolCall>(),
+        exported::<SessionRecoveryStatus>(),
+        exported::<SessionRecovery>(),
+        exported::<FeedbackDelivery>(),
+        exported::<FeedbackDeliveryState>(),
+        exported::<ResolveDeliveryAction>(),
+        exported::<ResolveFeedbackDeliveryInput>(),
+        exported::<SessionPermissionOption>(),
+        exported::<SessionInputRequest>(),
+        exported::<SessionInputResponse>(),
+        exported::<SessionInputAction>(),
+        exported::<SessionInteraction>(),
+        exported::<SessionInteractionKind>(),
+        exported::<SessionInteractionResponse>(),
+        exported::<RespondManagedInteractionInput>(),
+        exported::<SendManagedPromptInput>(),
+        exported::<SessionActivityKind>(),
+        exported::<SessionActivity>(),
+        exported::<AgentSessionCapabilities>(),
+        exported::<SessionConnectionState>(),
+        exported::<SessionActivityState>(),
+        exported::<SessionRuntime>(),
+        exported::<SessionContextUsage>(),
+        exported::<ManagedSessionSnapshot>(),
+        exported::<ManagedFeedbackStatus>(),
+        exported::<ManagedWorkspaceInfo>(),
+        exported::<AgentConnectionCheck>(),
+        exported::<AgentCheckConnection>(),
+        exported::<AgentFailure>(),
+        exported::<AgentFailureStage>(),
+        exported::<AgentFailureReason>(),
+        exported::<SessionProtocol>(),
+        exported::<SessionManagement>(),
+        exported::<AgentConfig>(),
+        exported::<SaveAgentConfigInput>(),
+        exported::<AgentConfigInput>(),
+        exported::<SessionRecord>(),
+        exported::<CreateManagedSessionInput>(),
+        exported::<PrepareManagedSessionInput>(),
+        exported::<SessionLifecycle>(),
+        exported::<ManagedSessionInput>(),
         exported::<FeedbackStatus>(),
         exported::<FeedbackResolution>(),
         exported::<ExecutionMode>(),

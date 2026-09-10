@@ -3,6 +3,7 @@ import {
   type RestoredWorkspaceSnapshot,
   type WorkspaceSnapshotV2,
 } from './workspace/workspaceSnapshot'
+import { normalizeRailWidth } from './components/navigation/railResize'
 
 export type UiThemePreference = 'system' | 'light' | 'dark'
 
@@ -11,9 +12,29 @@ type UiState = {
   workbench?: {
     hostRailCollapsed?: boolean
     requestRailCollapsed?: boolean
+    hostRailWidth?: number
+    requestRailWidth?: number
     paneLayouts?: Record<string, number[]>
     workspaceSnapshot?: unknown
   }
+  webAccess?: {
+    port?: number
+    autostart?: boolean
+  }
+}
+
+/** The documented Web Access entry; the browser server settings may override it. */
+export const DEFAULT_WEB_ACCESS_PORT = 37643
+export const WEB_ACCESS_PORT_MIN = 1024
+export const WEB_ACCESS_PORT_MAX = 65535
+
+export function normalizeWebAccessPort(value: unknown): number {
+  return typeof value === 'number' &&
+    Number.isInteger(value) &&
+    value >= WEB_ACCESS_PORT_MIN &&
+    value <= WEB_ACCESS_PORT_MAX
+    ? value
+    : DEFAULT_WEB_ACCESS_PORT
 }
 
 const UI_STATE_KEY = 'rambledesk.ui-state'
@@ -24,7 +45,14 @@ function readState(): UiState {
     const raw = localStorage.getItem(UI_STATE_KEY)
     if (!raw) return {}
     const value: unknown = JSON.parse(raw)
-    return value && typeof value === 'object' ? (value as UiState) : {}
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+    const state = value as UiState
+    if (state.workbench !== undefined && (
+      !state.workbench || typeof state.workbench !== 'object' || Array.isArray(state.workbench)
+    )) {
+      delete state.workbench
+    }
+    return state
   } catch {
     return {}
   }
@@ -71,6 +99,50 @@ export function saveRequestRailCollapsed(collapsed: boolean) {
   updateState((state) => {
     state.workbench ??= {}
     state.workbench.requestRailCollapsed = collapsed
+  })
+}
+
+export function initialHostRailWidth(): number {
+  return normalizeRailWidth('host', readState().workbench?.hostRailWidth)
+}
+
+export function saveHostRailWidth(width: number) {
+  updateState((state) => {
+    state.workbench ??= {}
+    state.workbench.hostRailWidth = normalizeRailWidth('host', width)
+  })
+}
+
+export function initialRequestRailWidth(): number {
+  return normalizeRailWidth('request', readState().workbench?.requestRailWidth)
+}
+
+export function saveRequestRailWidth(width: number) {
+  updateState((state) => {
+    state.workbench ??= {}
+    state.workbench.requestRailWidth = normalizeRailWidth('request', width)
+  })
+}
+
+export function initialWebAccessPort(): number {
+  return normalizeWebAccessPort(readState().webAccess?.port)
+}
+
+export function saveWebAccessPort(port: number) {
+  updateState((state) => {
+    state.webAccess ??= {}
+    state.webAccess.port = normalizeWebAccessPort(port)
+  })
+}
+
+export function initialWebAccessAutostart(): boolean {
+  return readState().webAccess?.autostart === true
+}
+
+export function saveWebAccessAutostart(autostart: boolean) {
+  updateState((state) => {
+    state.webAccess ??= {}
+    state.webAccess.autostart = autostart
   })
 }
 

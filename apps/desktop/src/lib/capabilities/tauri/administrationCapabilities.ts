@@ -45,6 +45,7 @@ export function createTauriHostIntegrationCapability(
     piStatus: () => api.invoke('get_pi_package_status', { checkoutRoot: null }),
     installPi: () => api.invoke('install_pi_package', { checkoutRoot: null }),
     uninstallPi: () => api.invoke('uninstall_pi_package', { checkoutRoot: null }),
+    dshStatus: () => api.invoke('detect_dsh_host'),
     installDsh: () =>
       api.invoke('install_dsh_package', { checkoutRoot: null, profileId: null }),
   }
@@ -55,18 +56,28 @@ export function createTauriWebAccessAdministrationCapability(
 ): WebAccessAdministrationCapability {
   return {
     status: () => webAccessStatus(api, 'get_web_access_status'),
-    setEnabled: (enabled) =>
-      webAccessStatus(api, enabled ? 'start_web_access' : 'stop_web_access'),
+    setEnabled: (enabled, port) =>
+      webAccessStatus(
+        api,
+        enabled ? 'start_web_access' : 'stop_web_access',
+        enabled && port !== undefined ? { port } : undefined,
+      ),
     open: () => api.invoke<void>('open_web_access'),
     copyToken: () => api.invoke<void>('copy_web_access_token'),
+    rotateToken: () => webAccessStatus(api, 'rotate_web_access_token'),
   }
 }
 
 async function webAccessStatus(
   api: TauriCapabilityApi,
-  command: 'get_web_access_status' | 'start_web_access' | 'stop_web_access',
+  command:
+    | 'get_web_access_status'
+    | 'start_web_access'
+    | 'stop_web_access'
+    | 'rotate_web_access_token',
+  args?: Record<string, unknown>,
 ): Promise<WebAccessStatus> {
-  return parseWebAccessStatus(await api.invoke<unknown>(command))
+  return parseWebAccessStatus(await api.invoke<unknown>(command, args))
 }
 
 export function parseWebAccessStatus(value: unknown): WebAccessStatus {
@@ -123,6 +134,9 @@ export function createTauriDiagnosticsCapability(
   api: TauriCapabilityApi,
 ): DiagnosticsCapability {
   return {
+    readSettings: () => api.invoke('get_diagnostics_settings'),
+    setEnabled: (enabled) => api.invoke('set_diagnostics_enabled', { enabled }),
+    clear: () => api.invoke<void>('clear_diagnostics'),
     export: (scope, path) => api.invoke('export_diagnostics', { scope, path }),
   }
 }

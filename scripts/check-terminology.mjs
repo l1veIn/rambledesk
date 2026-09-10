@@ -3,7 +3,7 @@ import { extname, join, relative } from "node:path";
 
 const root = process.cwd();
 const includedExtensions = new Set([".md", ".json", ".mjs", ".rs", ".svelte", ".toml", ".ts"]);
-const ignoredDirectories = new Set([".git", ".repochan", "dist", "node_modules", "target"]);
+const ignoredDirectories = new Set([".git", ".repochan", ".local-artifacts", "dist", "node_modules", "target"]);
 
 function repositoryPath(path) {
   return relative(root, path).split("\\").join("/");
@@ -42,7 +42,7 @@ for (const path of sourceFiles(root)) {
 }
 
 const coreFiles = sourceFiles(join(root, "crates/rambledesk-core"));
-const forbiddenCoreTerms = [/\baxum\b/, /\brmcp\b/, /\bserde_json\b/, /\btauri\b/, /rambledesk_(?:hosts|local_server|mcp|storage)/];
+const forbiddenCoreTerms = [/\baxum\b/, /\brmcp\b/, /\bserde_json\b/, /\btauri\b/, /rambledesk_(?:acp|hosts|local_server|mcp|storage)/];
 for (const path of coreFiles) {
   const displayPath = repositoryPath(path);
   const lines = readFileSync(path, "utf8").split(/\r?\n/);
@@ -55,21 +55,25 @@ for (const path of coreFiles) {
 
 const dependencyContracts = new Map([
   ["crates/rambledesk-core/Cargo.toml", []],
+  ["crates/rambledesk-feedback-client/Cargo.toml", ["rambledesk-core"]],
+  // ACP owns the lifetime of feedback-client's private IPC relay, not HTTP routes or storage.
+  ["crates/rambledesk-acp/Cargo.toml", ["rambledesk-core", "rambledesk-feedback-client"]],
   ["crates/rambledesk-storage/Cargo.toml", ["rambledesk-core"]],
   ["crates/rambledesk-mcp/Cargo.toml", ["rambledesk-core", "rambledesk-hosts"]],
   ["crates/rambledesk-local-server/Cargo.toml", ["rambledesk-core", "rambledesk-mcp"]],
   ["crates/rambledesk-hosts/Cargo.toml", ["rambledesk-core"]],
   ["crates/rambledesk-speech/Cargo.toml", []],
-  ["crates/rambledesk-cli/Cargo.toml", ["rambledesk-core", "rambledesk-local-server", "rambledesk-storage"]],
+  ["crates/rambledesk-cli/Cargo.toml", ["rambledesk-acp", "rambledesk-core", "rambledesk-feedback-client", "rambledesk-local-server", "rambledesk-mcp", "rambledesk-storage"]],
   [
     "apps/desktop/src-tauri/Cargo.toml",
-    ["rambledesk-core", "rambledesk-hosts", "rambledesk-local-server", "rambledesk-mcp", "rambledesk-speech", "rambledesk-storage"],
+    ["rambledesk-acp", "rambledesk-core", "rambledesk-feedback-client", "rambledesk-hosts", "rambledesk-local-server", "rambledesk-mcp", "rambledesk-speech", "rambledesk-storage"],
   ],
 ]);
 for (const [manifest, expected] of dependencyContracts) {
   const contents = readFileSync(join(root, manifest), "utf8");
   const dependencies = contents.split(/\[dependencies\]\r?\n/, 2)[1]?.split(/\r?\n\[/, 1)[0] ?? "";
-  const actual = [...dependencies.matchAll(/^(rambledesk-[a-z-]+)\.workspace\s*=\s*true$/gm)]
+  // Include inline workspace declarations with feature flags as dependency edges.
+  const actual = [...dependencies.matchAll(/^(rambledesk-[a-z-]+)(?:\.workspace\s*=\s*true\s*$|\s*=\s*\{[^}]*\bworkspace\s*=\s*true\b[^}]*\})/gm)]
     .map((match) => match[1])
     .sort();
   if (actual.join("\0") !== [...expected].sort().join("\0")) {

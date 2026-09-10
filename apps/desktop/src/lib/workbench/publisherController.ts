@@ -1,203 +1,169 @@
-// Feedback submission and publication orchestration. Keeps the submit flow
-// (preview reuse, auto-cook, direct publish) out of the App.svelte shell;
-// reactive state stays in the component via the context callbacks.
+import { get } from 'svelte/store'
 
 import type { ApplicationTransport } from '../application/applicationTransport'
-import type {
-  FeedbackRequestView,
-  FeedbackWorkspaceView,
-  SubmitFeedbackInput,
-} from '../feedback'
+import { readApplicationSnapshot } from '../application/readApplicationSnapshot'
+import type { FeedbackPreparation } from '../speech/rambleSessionControllerHandle'
+import type { SubmitFeedbackInput } from '../feedback'
 import { normalizePublishedFeedback } from '../publishedFeedback'
-import type { CookingSubmission, CookedPreview } from './cookingController'
-import type { SubmitStage } from './types'
+import type { CookingSubmission } from './cookingController'
+import type { CookingPreview, CookingSession } from './cookingSession'
+import type { DraftSession } from './draftSession'
+import type { WorkspaceSession } from './workspaceSession'
 
 type PublisherControllerContext = {
   transport: ApplicationTransport
+  session: WorkspaceSession
+  draft: DraftSession
+  cooking: CookingSession
   tr: (source: string, values?: Record<string, string | number>) => string
   messageFrom: (cause: unknown) => string
-  isPreviewMode: () => boolean
-  getWorkspace: () => FeedbackWorkspaceView | null
-  setWorkspace: (workspace: FeedbackWorkspaceView) => void
-  setCompletedResult: (result: FeedbackRequestView | null) => void
-  setPublishedFeedback: (
-    feedback: { markdown: string; uncooked_markdown?: string } | null,
-  ) => void
-  setSavePhase: (phase: 'saved') => void
   setPageError: (message: string) => void
-  getCanSubmit: () => boolean
-  getRambleCanExit: () => boolean
-  exitRamble: () => Promise<void>
-  hasPendingSpeech?: (requestId: string) => boolean
-  getSpeechStopError?: () => string
+  /** External policy, such as a managed session being deleted. */
+  isReadOnly: () => boolean
+  prepareFeedback: (requestId: string) => Promise<FeedbackPreparation>
   saveDraftNow: () => Promise<boolean>
-  getDraftBody: () => string
-  getSavedRevision: () => number
   getCookingEnabled: () => boolean
-  getPreview: () => CookedPreview | null
-  setPreview: (preview: CookedPreview | null) => void
-  setCooking: (requestId: string, cooking: boolean) => void
-  cookAndPublish: (submission: CookingSubmission) => Promise<void>
-  setSubmitting: (submitting: boolean) => void
-  setSubmitStage: (stage: SubmitStage) => void
+  cookSubmission: (submission: CookingSubmission) => Promise<CookingPreview>
   refreshNavigation: (force: boolean) => Promise<void>
   showSubmittedToast: (cooked: boolean) => void
 }
 
 export type PublisherController = ReturnType<typeof createPublisherController>
 
+/**
+ * One submission owns the whole sequence: finish speech, drain saves, freeze the
+ * accepted revision, optionally cook, then publish. Callers supply intent, not
+ * setters for each intermediate state. The backend remains the publication authority.
+ */
 export function createPublisherController(context: PublisherControllerContext) {
-  function applyVisibleSubmissionResult(result: FeedbackRequestView): boolean {
-    const workspace = context.getWorkspace()
-    if (workspace?.request.request_id !== result.request_id) return false
-    context.setCompletedResult(result)
-    context.setWorkspace({
-      ...workspace,
-      feedback: result.feedback,
-      request: {
-        ...workspace.request,
-        status: result.status,
-        resolution: result.resolution,
-        allow_finish: result.allow_finish,
-        final_summary: result.final_summary,
-        updated_at: result.updated_at,
-      },
-    })
-    context.setSavePhase('saved')
-    return true
+  let activeSubmission: Promise<void> | null = null
+
+  function stillEditable(requestId: string) {
+    const state = get(context.session)
+    return state.request?.request_id === requestId && !state.terminal && !context.isReadOnly()
   }
 
-  async function loadVisiblePublishedFeedback(
-    requestId: string,
-    cookedMarkdown: string | undefined,
-    uncookedMarkdown: string,
-  ) {
-    if (context.getWorkspace()?.request.request_id !== requestId) return
-    try {
-      const next = context.isPreviewMode()
-        ? {
-            markdown: cookedMarkdown ?? uncookedMarkdown,
-            uncooked_markdown: uncookedMarkdown,
-          }
-        : normalizePublishedFeedback(
-            await context.transport.call('readPublishedFeedback', { request_id: requestId }),
-          )
-      if (context.getWorkspace()?.request.request_id === requestId) {
-        context.setPublishedFeedback(next)
-      }
-    } catch (cause) {
+  function reportFor(requestId: string, cause: unknown) {
+    if (context.session.requestId() === requestId) {
       context.setPageError(context.messageFrom(cause))
     }
   }
 
-  async function publishFeedback(
-    input: SubmitFeedbackInput,
-    cookedMarkdown: string | undefined,
-    uncookedMarkdown: string,
-  ) {
+  async function publish(input: SubmitFeedbackInput) {
     const result = await context.transport.call('submitFeedback', input)
-    const visible = applyVisibleSubmissionResult(result)
-    context.showSubmittedToast(cookedMarkdown !== undefined)
+    const visible = context.session.applyMutationResult(result)
+    if (visible) context.draft.markSaved()
+    context.showSubmittedToast(input.cooked_markdown !== undefined)
+
+    // Publication is already committed. A failed read must not undo that fact
+    // or make the next click send the same feedback again.
     if (visible) {
-      await loadVisiblePublishedFeedback(result.request_id, cookedMarkdown, uncookedMarkdown)
+      try {
+        const published = await readApplicationSnapshot(context.transport, 'readPublishedFeedback', {
+          request_id: result.request_id,
+        })
+        if (context.session.requestId() === result.request_id) {
+          context.session.setPublished(normalizePublishedFeedback(published))
+        }
+      } catch (cause) {
+        reportFor(result.request_id, cause)
+      }
     }
-    await context.refreshNavigation(true)
+    try {
+      await context.refreshNavigation(true)
+    } catch (cause) {
+      reportFor(result.request_id, cause)
+    }
   }
 
-  async function submitFeedback() {
-    const workspace = context.getWorkspace()
-    if (!workspace) return
-    if (
-      workspace.request.status === 'completed' ||
-      workspace.request.status === 'cancelled'
-    ) {
-      return
-    }
-    // Never publish an empty reply — whitespace-only bodies count as empty.
-    // Guards the submit path even when the UI gate failed to disable the
-    // button (empty drafts should not reach the host from any view).
-    if (context.getDraftBody().trim().length === 0) {
+  async function runSubmission() {
+    const initial = get(context.session)
+    const requestId = initial.request?.request_id
+    if (!requestId || initial.terminal || initial.interactionLocked || context.isReadOnly() ||
+      context.cooking.isCooking(requestId)) return
+    if (!get(context.draft).body.trim()) {
       context.setPageError(context.tr('Cannot send an empty reply. Write some feedback content first.'))
       return
     }
-    if (!context.getCanSubmit()) return
-    if (context.getRambleCanExit()) await context.exitRamble()
-    const speechError = context.getSpeechStopError?.()
-    if (speechError) {
-      context.setPageError(speechError)
-      return
-    }
-    const requestId = workspace.request.request_id
-    if (context.hasPendingSpeech?.(requestId)) {
-      context.setPageError(context.tr('Review the pending speech in the capsule before submitting feedback.'))
-      return
-    }
-    if (!(await context.saveDraftNow())) return
-    if (
-      context.getWorkspace()?.request.request_id !== requestId ||
-      !context.getCanSubmit()
-    ) return
 
-    const submission: CookingSubmission = {
-      request: context.getWorkspace()!.request,
-      actions: context.getWorkspace()!.actions,
-      body: context.getDraftBody(),
-      savedRevision: context.getSavedRevision(),
-    }
-    context.setPageError('')
-
-    // A generated cooked preview is published directly without ever replacing
-    // the canonical draft or making a second model call.
-    if (context.getCookingEnabled() && context.getPreview()) {
-      const preview = context.getPreview()!
-      context.setSubmitting(true)
-      context.setSubmitStage('publishing')
-      try {
-        await publishFeedback(
-          {
-            request_id: submission.request.request_id,
-            expected_revision: submission.savedRevision,
-            cooked_markdown: preview.markdown,
-            cooking_model: preview.model,
-            uncooked_markdown: preview.original,
-          },
-          preview.markdown,
-          preview.original,
-        )
-        context.setPreview(null)
-      } catch (cause) {
-        context.setPageError(context.messageFrom(cause))
-      } finally {
-        context.setSubmitting(false)
-        context.setSubmitStage('idle')
-      }
-      return
-    }
-
-    if (context.getCookingEnabled()) {
-      context.setCooking(requestId, true)
-      void context.cookAndPublish(submission)
-      return
-    }
-
-    context.setSubmitting(true)
-    context.setSubmitStage('publishing')
+    let ownsSubmission = false
+    let ownsCooking = false
     try {
-      await publishFeedback(
-        {
-          request_id: submission.request.request_id,
-          expected_revision: submission.savedRevision,
-        },
-        undefined,
-        submission.body,
-      )
+      // Final speech still has to enter the editable draft. The single flight
+      // prevents repeated submissions while this existing queue is draining.
+      const preparation = await context.prepareFeedback(requestId)
+      if (!stillEditable(requestId) || get(context.session).interactionLocked || context.cooking.isCooking(requestId)) return
+      if (preparation.kind === 'failed') {
+        context.setPageError(preparation.message)
+        return
+      }
+      if (preparation.kind === 'pending-speech') {
+        context.setPageError(context.tr('Review the pending speech in the capsule before submitting feedback.'))
+        return
+      }
+
+      // Lock before saving, not after it: the confirmed document and revision
+      // must stay together until the backend accepts or rejects this submission.
+      context.session.setSubmissionStage('saving')
+      ownsSubmission = true
+      context.setPageError('')
+      if (!(await context.saveDraftNow()) || !stillEditable(requestId)) return
+      const draft = get(context.draft)
+      const workspace = get(context.session).workspace!
+      if (!draft.body.trim()) {
+        context.setPageError(context.tr('Cannot send an empty reply. Write some feedback content first.'))
+        return
+      }
+      const submission: CookingSubmission = {
+        request: workspace.request,
+        actions: workspace.actions,
+        body: draft.body,
+        savedRevision: draft.savedRevision,
+      }
+
+      let cooked: CookingPreview | null = null
+      if (context.getCookingEnabled()) {
+        cooked = context.cooking.preview()
+        if (cooked && (cooked.requestId !== requestId ||
+          cooked.savedRevision !== submission.savedRevision || cooked.original !== submission.body)) {
+          context.setPageError(context.tr('The draft changed after Cooking. Restore the original and Cook again.'))
+          return
+        }
+        if (!cooked) {
+          context.session.setSubmissionStage('cooking')
+          context.cooking.setCooking(requestId, true)
+          ownsCooking = true
+          cooked = await context.cookSubmission(submission)
+        }
+      }
+      if (!stillEditable(requestId)) return
+      context.session.setSubmissionStage('publishing')
+      await publish({
+        request_id: requestId,
+        expected_revision: submission.savedRevision,
+        ...(cooked ? {
+          cooked_markdown: cooked.markdown,
+          cooking_model: cooked.model,
+          uncooked_markdown: cooked.original,
+        } : {}),
+      })
+      if (context.session.requestId() === requestId) context.cooking.setPreview(null)
     } catch (cause) {
-      context.setPageError(context.messageFrom(cause))
+      reportFor(requestId, cause)
     } finally {
-      context.setSubmitting(false)
-      context.setSubmitStage('idle')
+      if (ownsCooking) context.cooking.setCooking(requestId, false)
+      if (ownsSubmission && context.session.requestId() === requestId) context.session.setSubmissionStage('idle')
     }
   }
 
-  return { submitFeedback, publishFeedback, applyVisibleSubmissionResult }
+  function submitFeedback(): Promise<void> {
+    if (activeSubmission) return activeSubmission
+    // Reserve the flight before any preparation can yield or call back into us.
+    activeSubmission = Promise.resolve().then(runSubmission).finally(() => {
+      activeSubmission = null
+    })
+    return activeSubmission
+  }
+
+  return { submitFeedback }
 }

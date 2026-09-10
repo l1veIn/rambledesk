@@ -1,10 +1,12 @@
 <script lang="ts">
+  import { onMount } from 'svelte'
   import App from './App.svelte'
-  import WebAccessAuthGate from './lib/WebAccessAuthGate.svelte'
+  import WebAccessAuthGate from './lib/web-access/WebAccessAuthGate.svelte'
   import { HttpApplicationSession } from './lib/application/httpApplicationTransport'
   import { ReplaceableApplicationTransport } from './lib/application/replaceableApplicationTransport'
   import { replaceReadyApplicationTransport } from './lib/application/browserReauthentication'
   import { createWorkbenchComposition } from './lib/application/workbenchComposition'
+  import { bootstrapWebAccessSession } from './lib/application/webAccessBootstrap'
   import { createBrowserWorkbenchCapabilities } from './lib/capabilities/browser/browserCapabilities'
   import { createBrowserPublishedFeedbackAction } from './lib/publishedFeedbackAction'
 
@@ -13,6 +15,23 @@
   let app: App
   let authenticationRequired = true
   let authenticationEpoch = 0
+  /** Hold the token gate back until the cookie resume settles, so it never flashes. */
+  let resumeSettled = false
+
+  onMount(() => {
+    void resumeBrowserSession()
+  })
+
+  async function resumeBrowserSession() {
+    try {
+      const sessionToken = await bootstrapWebAccessSession({})
+      await authenticate(sessionToken)
+    } catch {
+      // No usable browser session: the token gate below takes over.
+    } finally {
+      resumeSettled = true
+    }
+  }
 
   async function authenticate(sessionToken: string) {
     const epoch = ++authenticationEpoch
@@ -24,7 +43,6 @@
     })
     const nextComposition = createWorkbenchComposition({
       environment: 'browser',
-      previewMode: false,
       authenticatedWebSession: session,
       capabilities,
     })
@@ -47,11 +65,12 @@
     bind:this={app}
     {applicationTransport}
     {capabilities}
+    environment="browser"
     publishedFeedbackAction={createBrowserPublishedFeedbackAction(applicationTransport)}
     previewMode={false}
   />
 {/if}
 
-{#if authenticationRequired}
+{#if authenticationRequired && resumeSettled}
   <WebAccessAuthGate onAuthenticated={authenticate} />
 {/if}

@@ -4,10 +4,10 @@
   import { onMount, tick } from 'svelte'
   import { getCurrentWindow } from '@tauri-apps/api/window'
   import { PhysicalPosition } from '@tauri-apps/api/dpi'
-  import { shortcutSettings } from './lib/shortcutSettings'
-  import RecordingOverlay from './lib/RecordingOverlay.svelte'
+  import { shortcutSettings } from './lib/settings/shortcutSettings'
+  import RecordingOverlay from './lib/speech/RecordingOverlay.svelte'
   import { RAMBLE_CONSOLE_COMMAND_EVENT, type RambleConsoleCommand } from './lib/rambleConsole'
-  import { SPEECH_OVERLAY_READY_EVENT, SPEECH_OVERLAY_STATE_EVENT, speechOverlayVisible, type SpeechOverlayState } from './lib/speechOverlay'
+  import { SPEECH_OVERLAY_READY_EVENT, SPEECH_OVERLAY_STATE_EVENT, speechOverlayVisible, type SpeechOverlayState } from './lib/speech/speechOverlay'
 
   let state: SpeechOverlayState = { enabled: true, opacity: 95, selectedGroupId: null, shortcuts: $shortcutSettings, phase: 'idle', level: 0, partial: '', error: '', target: null, groups: [], receipt: null }
   let content: HTMLDivElement

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte'
+  import { onMount, tick, type Snippet } from 'svelte'
   import { Inbox } from '@lucide/svelte'
   import { Pane, PaneGroup, PaneResizer } from 'paneforge'
   import { Skeleton } from '$lib/components/ui/skeleton'
@@ -16,7 +16,7 @@
   import type { TidyConfig } from '$lib/lightCleanup'
   import type { DraftOperation } from '$lib/draftOperations'
   import type { FeedbackDraftSnapshot } from '$lib/feedbackDraftDocument'
-  import type { SpeechCleanupSegment } from '$lib/speechBlockMetadata'
+  import type { SpeechCleanupSegment } from '$lib/speech/speechBlockMetadata'
   import { t } from '$lib/i18n'
   import { autoOpenTaskBrief, locale } from '$lib/preferences'
   import { savePaneLayout, savedPaneLayout } from '$lib/uiPreferences'
@@ -24,21 +24,23 @@
     workspaceViewKey,
     type SessionViewDescriptor,
   } from '$lib/workspace/viewDescriptors'
-  import type {
-    FeedbackEditorHandle,
-    HostProfile,
-    RamblePhase,
-    SavePhase,
-    SubmitStage,
-  } from './types'
+  import type { FeedbackEditorHandle } from '../editor/feedbackEditorHandle'
+import type { HostProfile } from '../domain/hostProfile'
+import type {
+  RamblePhase,
+  SavePhase,
+  SubmitStage,
+} from '../domain/sessionPhases'
   import CommandRail from './CommandRail.svelte'
   import FeedbackEditorPanel from './FeedbackEditorPanel.svelte'
-  import RequestAttachmentPreview from './RequestAttachmentPreview.svelte'
+  import RequestAttachmentPreview from '../workspace/RequestAttachmentPreview.svelte'
   import TaskBriefPanel from './TaskBriefPanel.svelte'
   import WorkspaceHeader from './WorkspaceHeader.svelte'
   import { canAcceptImagePaste } from './imagePasteAcceptance'
 
   export let loadingWorkspace = false
+  export let readOnly = false
+  export let agentStatus: Snippet | undefined = undefined
   export let transport: ApplicationTransport
   export let capabilities: Pick<
     WorkbenchCapabilities,
@@ -142,6 +144,7 @@
   // same route as the explicit preview action.
   $: if (
     $autoOpenTaskBrief &&
+    !readOnly &&
     workspace &&
     workspace.request.status === 'waiting' &&
     workspace.request.request_id !== autoOpenedTaskRequestId
@@ -149,7 +152,7 @@
     autoOpenedTaskRequestId = workspace.request.request_id
     onAutoOpenTask(workspace.request.request_id)
   }
-  $: interactionLocked = cooking || cookedDraftReady || submitting || cancelling || approving
+  $: interactionLocked = readOnly || cooking || cookedDraftReady || submitting || cancelling || approving
 
   function saveDocumentLayout(layout: number[]) {
     if (documentLayoutReady) savePaneLayout(WORKSPACE_DOCUMENT_LAYOUT_KEY, layout)
@@ -235,7 +238,7 @@
       </div>
     </div>
   {:else if workspace}
-    <WorkspaceHeader {workspace} {resolveHostProfile} {cooking} />
+    <WorkspaceHeader {workspace} {resolveHostProfile} {cooking} {agentStatus} />
 
     <div class="workspace-columns min-h-0 flex-1">
       <div class="document-column min-h-0 min-w-0 overflow-hidden @container">
@@ -263,7 +266,7 @@
               bind:open={taskBriefOpen}
               {workspace}
               {activeActionId}
-              onSelectAction={onSelectAction}
+              onSelectAction={(id, index, title) => { if (!readOnly) onSelectAction(id, index, title) }}
               onOpenPreview={() => onOpenTask(workspace!.request.request_id)}
             />
           </Pane>
@@ -305,6 +308,7 @@
       </div>
 
       <CommandRail
+        workDisabled={readOnly}
         {capabilities}
         {workspace}
         {feedbackResult}
@@ -376,6 +380,7 @@
         <p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">
           {tr('Choose a host, session, and request from the left to open its workspace.')}
         </p>
+        {#if agentStatus}<div class="mt-4 text-left">{@render agentStatus()}</div>{/if}
       </div>
     </div>
   {/if}
@@ -383,9 +388,10 @@
 </section>
 
 <style>
+  .workspace-panel { --workspace-rail-width: 288px; }
   .workspace-columns {
     display: grid;
-    grid-template-columns: minmax(360px, 1fr) 288px;
+    grid-template-columns: minmax(0, 1fr) var(--workspace-rail-width);
     overflow: hidden;
   }
 
@@ -405,7 +411,9 @@
     }
 
     :global(.command-rail) {
-      min-height: 620px;
+      height: auto;
+      min-height: 0;
+      overflow: visible;
       border-top: 1px solid var(--border);
       border-left: 0;
     }

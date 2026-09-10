@@ -35,19 +35,7 @@ export function formatTime(
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString(locale)
 }
 
-/** Extract a human-readable message from an unknown thrown value. */
-export function messageFrom(cause: unknown): string {
-  if (cause instanceof Error) return cause.message
-  if (
-    cause &&
-    typeof cause === 'object' &&
-    'message' in cause &&
-    typeof (cause as CommandError).message === 'string'
-  ) {
-    return (cause as CommandError).message
-  }
-  return String(cause)
-}
+export { messageFrom } from '../domain/messageFrom'
 
 export function commandErrorCode(cause: unknown): string | null {
   if (

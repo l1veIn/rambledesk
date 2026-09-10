@@ -1,7 +1,7 @@
 import { get } from 'svelte/store'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { DEFAULT_SPEECH_HOTWORDS, mergeSpeechHotwords } from './speechHotwords'
+import { DEFAULT_SPEECH_HOTWORDS, mergeSpeechHotwords } from './speech/speechHotwords'
 
 const xAsr = 'x-asr-480ms-streaming-zh-en-punct-int8-2026-06-05'
 const senseVoice = 'sense-voice-zh-en-ja-ko-yue-2024-07-17'

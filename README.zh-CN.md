@@ -2,56 +2,46 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-## 给 Agent 一个目标，想到哪说到哪
+**2026 年，Vibe Coding 里最昂贵的东西，是人的注意力。**
 
-现在的 coding harness，大多在给 Agent 配工具。RambleDesk 反过来，给「人」配工具。
+跟通用 Agent 聊天时，我们常常要做三件事：
 
-当 Agent 需要你的判断时，它会把问题送到桌面。你可以直接说话、截图、粘贴内容或拖入文件——不用组织成一段完美的 prompt，想到哪说到哪。RambleDesk 会自动整理成结构化反馈，再交还给 Agent，让它继续工作。
+1. 读完一段又长又散的模型自述。
+2. 自己判断「它到底做完了什么、要我干什么」。
+3. 再把想法写成一段像样的下一轮 prompt。
 
-### 它是怎么工作的？
+RambleDesk 把前两步变成一张**体验单**，把第三步改成**先说出来，再可选整理**。
 
-1. **Agent 发起请求**
-   遇到需要人来判断、解释或确认的问题时，Agent 会唤起 RambleDesk。
+Agent 必须先写清楚两件事：**刚才发生了什么**，以及**请你体验或确认什么**。你在桌面工作台里说话、截图、直接编辑，不用先写 prompt。提交后，原始反馈、可选整理稿和附件保存为不可变反馈包，交还 Agent 继续工作。把注意力留给体验和判断。
 
-2. **你自由表达**
-   用语音讲、截张图、粘贴代码，或者直接拖入文件。哪种方式最快，就用哪种。
-
-3. **Agent 继续工作**
-   RambleDesk 将这些内容整理成清晰的反馈，连同上下文一起返回给 Agent。
+从 **0.4.0 候选版**起，RambleDesk 支持通过 ACP 连接 Claude Code、Codex CLI、Gemini CLI 等 Coding Agent。沿用你本地已经能正常工作的 Agent，按提示安装必要的连接组件，选择项目就能开始。
 
 <div align="center">
 
 <img src="https://github.com/l1veIn/rambledesk/releases/download/v0.3.2/rambledesk-demo-10s.gif" alt="RambleDesk 产品演示" width="960" />
 
-<p><em>Agent 请求补充信息；你通过语音和屏幕内容作出回应，RambleDesk 会将整理后的反馈发送回去。</em></p>
+<p><em>早期版本的反馈流程：Agent 请求体验 → 你说话、截图 → 提交反馈。</em></p>
 
 </div>
 
-### 什么时候适合用？
-
-- 你知道想要什么，但一时很难写成准确的 prompt
-- Agent 需要产品判断、视觉反馈或操作确认
-- 一张截图、一段口述或一个文件，比文字解释更直接
-- 你希望 Agent 获得反馈后继续工作，而不是停在那里等你整理上下文
-
 ## 快速开始
 
-从 [GitHub Releases](https://github.com/l1veIn/rambledesk/releases) 下载并安装 RambleDesk，然后按照下方对应平台的说明完成安装。
+从 [GitHub Releases](https://github.com/l1veIn/rambledesk/releases) 下载 **0.4 候选版**，支持 Windows x64 和 macOS Apple Silicon。版本变化见[发布说明](docs/CHANGELOG.md)。
 
-<details open>
-<summary><strong>Windows 和 macOS 安装说明</strong></summary>
+1. **连接 Agent。** 先确认它在本机能正常使用，再打开「设置 → Agents」，按提示完成连接。登录与模型访问由 Agent 自身提供。
+2. **给它一个任务。** 新建会话，选择 Agent 和项目目录，输入目标。
+3. **体验，再反馈。** 收到 Ramble 请求后，按体验单操作，用语音、截图或文字记录感受。提交后，RambleDesk 将反馈续接到原 Agent 会话；送达状态和恢复入口都在工作台里。
 
-### Windows
+使用语音前，在「设置 → 语音」下载本地转写模型，并允许麦克风访问。需要模型帮你整理表达时，再到「设置 → 后处理」配置模型服务；整理默认关闭，原始反馈会保留。
 
-运行 `x64-setup.exe`。未加入 Authenticode 签名时，SmartScreen 可能会拦截首次启动。确认安装包来自本仓库，然后选择 **更多信息 → 仍要运行**。
+<details>
+<summary><strong>首次安装提示</strong></summary>
 
-### macOS（Apple Silicon）
+**Windows：**运行 `x64-setup.exe`。当前安装包未做 Authenticode 签名；若 SmartScreen 拦截，确认来源是本仓库后，选择「更多信息 → 仍要运行」。
 
-打开 DMG，将 RambleDesk 拖入“应用程序”。当前版本采用 ad-hoc 签名且尚未公证。首次启动时，请右键点击应用并选择“打开”。
+**macOS：**打开 DMG，将 RambleDesk 拖入「应用程序」。当前版本采用 ad-hoc 签名，尚未公证。首次启动可右键选择「打开」；若仍被阻止，前往「系统设置 → 隐私与安全性」，在「安全性」区域点击 RambleDesk 对应的「仍要打开」，再确认「打开」。
 
-如果系统仍然阻止启动，请前往 **系统设置 → 隐私与安全性**，在“安全性”区域找到 RambleDesk，点击 **仍要打开**，然后确认“打开”。
-
-如果 macOS 提示应用已损坏，请先确认文件来自本仓库，然后运行：
+若提示应用已损坏，先确认下载来源，再运行：
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/RambleDesk.app
@@ -59,31 +49,34 @@ xattr -dr com.apple.quarantine /Applications/RambleDesk.app
 
 </details>
 
-## 支持的 Coding Agent
+## 沿用自己的 Agent 工作方式
 
-目前支持 Claude Code、Cursor、Codex、Gemini CLI、Grok、OpenCode、Reasonix、Antigravity IDE，以及 Pi 和 DeepSeek Harness。
+推荐直接在 RambleDesk 中通过 **ACP** 开始对话。模型选项、权限和会话恢复能力取决于所连接的 Agent，配置与恢复方法见 [ACP 使用指南](docs/ACP_MANAGED_SESSIONS.md)。
+
+也可以继续使用原来的 Agent 应用或 CLI，在「设置 → 外部适配器」接入反馈工作台。续接方式因适配器而异；通用 MCP 需要回到 Agent 继续。
 
 ## 从源码运行
+
+准备 Node.js、pnpm、Rust 和对应平台的 Tauri 构建依赖后：
 
 ```bash
 pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-## 不要再 vibe coding 了，你只需要 Ramble。
-
-有时候，难的不是解决问题，而是把脑子里的想法整理成 prompt。
-
-RambleDesk 不要求你先想清楚再开口。你只管表达，它负责整理。
+运行与检查方式见[开发指南](docs/DEVELOPMENT.md)，使用、接入与架构说明从[文档索引](docs/README.md)进入。
 
 ## 致谢
 
-- [Snow Shot](https://github.com/mg-chao/snow-shot)，截图能力
-- [RepoChan](https://github.com/l1veIn/repochan-mono)，品牌与角色资产
-- [Kotone](https://github.com/l1veIn)，本地语音转写的实现基础
+- [Codeg](https://github.com/xintaofei/codeg)：ACP 接入、Agent 对话、设置与外观设计参考
+- [Snow Shot](https://github.com/mg-chao/snow-shot)：截图能力
+- [RepoChan](https://github.com/l1veIn/repochan-mono)：品牌与角色资产
+- [Kotone](https://github.com/l1veIn/kotone)：本地语音转写的实现基础
 
 ## 许可证
 
-[MIT](LICENSE)
+[MIT](LICENSE)。改写代码及其他第三方组件保留各自许可证，详见[第三方声明](THIRD_PARTY_NOTICES.md)。
 
-![RambleDesk](docs/social/ramble-banner-text2-1400x700.webp)
+<p align="center">
+  <img src="docs/social/rambelle-chibi-footer.webp" alt="Q 版 Rambelle 递交反馈档案包" width="800" />
+</p>

@@ -6,6 +6,7 @@ rust-version.workspace = true
 repository.workspace = true
 
 [dependencies]
+async-trait.workspace = true
 axum = { workspace = true, features = ["multipart", "ws"] }
 base64.workspace = true
 dirs.workspace = true
@@ -27,8 +28,10 @@ tower-service.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+rambledesk-feedback-client.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
+rambledesk-acp.workspace = true
 anyhow.workspace = true
-async-trait.workspace = true
 reqwest = { version = "0.13", default-features = false, features = ["json", "multipart", "rustls"] }
 rmcp = { workspace = true, features = [
   "client",

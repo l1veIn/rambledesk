@@ -24,6 +24,8 @@ pub enum RepositoryError {
     HostSessionHasOpenRequests,
     #[error("deletion requires an archived host session")]
     DeleteRequiresArchivedHostSession,
+    #[error("managed session deletion requires runtime cleanup")]
+    ManagedSessionRequiresRuntimeDeletion,
     #[error("feedback request is not terminal")]
     RequestNotTerminal,
     #[error("feedback package publication failed")]

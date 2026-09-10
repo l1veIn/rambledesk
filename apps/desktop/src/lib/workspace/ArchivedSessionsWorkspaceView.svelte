@@ -15,31 +15,22 @@
   import type { ApplicationTransport } from '$lib/application/applicationTransport'
   import { Button } from '$lib/components/ui/button'
   import { ScrollArea } from '$lib/components/ui/scroll-area'
-  import type { FeedbackRequestSummary, FeedbackWorkspaceView, HostSessionSummary } from '$lib/feedback'
+  import type { FeedbackRequestSummary, HostSessionSummary } from '$lib/feedback'
   import { requestStatusLabel } from '$lib/feedback'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
-  import {
-    normalizePublishedFeedback,
-    type PublishedFeedbackView,
-  } from '$lib/publishedFeedback'
-  import { previewFixtures, previewWorkspaceFor } from '$lib/previewFixtures'
-  import type { HostProfile } from '$lib/workbench/types'
+  import type { HostProfile } from '../domain/hostProfile'
   import type { SessionViewDescriptor } from '$lib/workspace/viewDescriptors'
-
-  const ALL_REQUEST_STATUSES = ['waiting', 'in_progress', 'completed', 'cancelled'] as const
-
-  type SelectedArchivedItem =
-    | { kind: 'session'; sessionKey: string }
-    | { kind: 'request'; sessionKey: string; requestId: string }
-
-  type ArchivedRequestDetails = {
-    workspace: FeedbackWorkspaceView
-    publishedFeedback: PublishedFeedbackView | null
-  }
+  import { createArchiveActions } from './archiveActions'
+  import {
+    archivedRequestsFor,
+    archivedSelectionExists,
+    archivedSessionFor,
+    archivedSessionKey,
+    highlightArchiveMatch,
+  } from './archiveSearch'
 
   export let transport: ApplicationTransport
-  export let previewMode = false
   export let resolveHostProfile: (hostId: string) => HostProfile
   export let formatTime: (value: string | null | undefined) => string
   export let messageFrom: (cause: unknown) => string
@@ -47,29 +38,34 @@
   export let selectionEpoch = 0
   export let onError: (message: string) => void = () => {}
   export let onChanged: () => Promise<void> | void = () => {}
+  export let onDeleteManagedSession: ((session: HostSessionSummary) => Promise<void> | void) | undefined = undefined
 
   let search = ''
-  let loading = false
-  let busyKey: string | null = null
-  let sessions: HostSessionSummary[] = []
-  let requestsBySession: Record<string, FeedbackRequestSummary[]> = {}
-  let requestDetailsById: Record<string, ArchivedRequestDetails> = {}
   let expandedSessions = new Set<string>()
-  let selected: SelectedArchivedItem | null = null
-  let detailLoadingRequestId: string | null = null
+  let selected: { kind: 'session'; sessionKey: string } | { kind: 'request'; sessionKey: string; requestId: string } | null = null
   let mounted = false
   let appliedSelectionEpoch = -1
   let applyInitialSession = false
   let searchTimer: ReturnType<typeof setTimeout> | null = null
 
-  $: activeSession = selected ? sessionForKey(selected.sessionKey) : null
-  $: activeRequests = activeSession ? requestsFor(activeSession) : []
+  const archive = createArchiveActions({
+    transport,
+    tr,
+    messageFrom,
+    onError,
+    onChanged,
+    onDeleteManagedSession,
+    reload: () => loadArchive(),
+  })
+
+  $: activeSession = selected ? archivedSessionFor($archive.sessions, selected.sessionKey) : null
+  $: activeRequests = activeSession ? archivedRequestsFor($archive.requestsBySession, activeSession) : []
   $: selectedRequestId = selected?.kind === 'request' ? selected.requestId : null
   $: activeRequest = selectedRequestId
     ? activeRequests.find((request) => request.request_id === selectedRequestId) ?? null
     : null
   $: activeRequestDetails = activeRequest
-    ? requestDetailsById[activeRequest.request_id] ?? null
+    ? $archive.requestDetailsById[activeRequest.request_id] ?? null
     : null
   $: activePublishedFeedback = activeRequestDetails?.publishedFeedback ?? null
   $: activeUncookedMarkdown =
@@ -96,18 +92,6 @@
     return t($locale, source, values)
   }
 
-  function sessionKey(session: HostSessionSummary) {
-    return `${session.host_id}\u0000${session.host_session_id}`
-  }
-
-  function sessionForKey(key: string) {
-    return sessions.find((session) => sessionKey(session) === key) ?? null
-  }
-
-  function requestsFor(session: HostSessionSummary) {
-    return requestsBySession[sessionKey(session)] ?? []
-  }
-
   function statusClass(status: FeedbackRequestSummary['status']) {
     switch (status) {
       case 'waiting':
@@ -121,165 +105,45 @@
     }
   }
 
-  function matchesSearch(value: string | null | undefined, query: string) {
-    return (value ?? '').toLowerCase().includes(query)
-  }
-
-  function escapeHtml(value: string) {
-    return value
-      .replaceAll('&', '&amp;')
-      .replaceAll('<', '&lt;')
-      .replaceAll('>', '&gt;')
-      .replaceAll('"', '&quot;')
-      .replaceAll("'", '&#39;')
-  }
-
-  function highlighted(value: string | null | undefined) {
-    const text = value ?? ''
-    const query = search.trim()
-    if (!query) return escapeHtml(text)
-    const lowerText = text.toLowerCase()
-    const lowerQuery = query.toLowerCase()
-    let cursor = 0
-    let output = ''
-    while (cursor < text.length) {
-      const index = lowerText.indexOf(lowerQuery, cursor)
-      if (index === -1) {
-        output += escapeHtml(text.slice(cursor))
-        break
-      }
-      output += escapeHtml(text.slice(cursor, index))
-      output += `<mark class="rounded-sm bg-primary/25 px-0.5 text-inherit">${escapeHtml(
-        text.slice(index, index + query.length),
-      )}</mark>`
-      cursor = index + query.length
-    }
-    return output
-  }
-
-  function requestMatchesSession(request: FeedbackRequestSummary, session: HostSessionSummary) {
-    return request.host_id === session.host_id && request.host_session_id === session.host_session_id
-  }
-
-  function previewArchivedSessions(query: string) {
-    const normalized = query.trim().toLowerCase()
-    return previewFixtures.archivedHostSessions.filter((session) => {
-      if (!normalized) return true
-      return (
-        matchesSearch(session.title, normalized) ||
-        matchesSearch(session.source_hint, normalized) ||
-        matchesSearch(session.host_id, normalized) ||
-        matchesSearch(session.host_session_id, normalized) ||
-        previewFixtures.requests.some(
-          (request) =>
-            requestMatchesSession(request, session) &&
-            (matchesSearch(request.title, normalized) ||
-              matchesSearch(request.what_happened, normalized) ||
-              matchesSearch(request.source_hint, normalized) ||
-              matchesSearch(request.request_id, normalized)),
-        )
-      )
-    })
-  }
-
-  function previewArchivedRequests(session: HostSessionSummary, query: string) {
-    const normalized = query.trim().toLowerCase()
-    return previewFixtures.requests.filter(
-      (request) =>
-        requestMatchesSession(request, session) &&
-        (!normalized ||
-          matchesSearch(request.title, normalized) ||
-          matchesSearch(request.what_happened, normalized) ||
-          matchesSearch(request.source_hint, normalized) ||
-          matchesSearch(request.request_id, normalized) ||
-          matchesSearch(request.host_id, normalized) ||
-          matchesSearch(request.host_session_id, normalized)),
-    )
-  }
-
-  function selectionExists(
-    item: SelectedArchivedItem | null,
-    nextSessions: HostSessionSummary[],
-    nextRequests: Record<string, FeedbackRequestSummary[]>,
-  ) {
-    if (!item) return false
-    if (!nextSessions.some((session) => sessionKey(session) === item.sessionKey)) return false
-    if (item.kind === 'session') return true
-    return (nextRequests[item.sessionKey] ?? []).some(
-      (request) => request.request_id === item.requestId,
-    )
-  }
-
   function scheduleSearch() {
     if (searchTimer) clearTimeout(searchTimer)
     searchTimer = setTimeout(() => void loadArchive(), 220)
   }
 
-  async function fetchSessionRequests(session: HostSessionSummary) {
-    if (previewMode) return previewArchivedRequests(session, search)
-    return (
-      await transport.call('listFeedbackRequests', {
-        host_id: session.host_id,
-        host_session_id: session.host_session_id,
-        status: [...ALL_REQUEST_STATUSES],
-        archived: true,
-        search: search.trim() || null,
-        limit: 100,
-        cursor: null,
-      })
-    ).requests
-  }
-
   async function loadArchive() {
-    loading = true
-    try {
-      const nextSessions =
-        previewMode
-          ? previewArchivedSessions(search)
-          : await transport.call('listArchivedHostSessions', {
-              search: search.trim() || null,
-            })
-      const entries = await Promise.all(
-        nextSessions.map(
-          async (session) => [sessionKey(session), await fetchSessionRequests(session)] as const,
-        ),
-      )
-      const nextRequests = Object.fromEntries(entries)
-      sessions = nextSessions
-      requestsBySession = nextRequests
+    const loaded = await archive.load(search)
+    if (!loaded) return
+    const { sessions: nextSessions, requestsBySession: nextRequests } = loaded
 
-      const nextExpanded = search.trim() ? new Set(nextSessions.map(sessionKey)) : new Set(expandedSessions)
-      const requestedSession = applyInitialSession && initialSession
-        ? nextSessions.find(
-            (session) =>
-              session.host_id === initialSession?.hostId &&
-              session.host_session_id === initialSession?.hostSessionId,
-          )
-        : null
-      applyInitialSession = false
-      if (requestedSession) {
-        const requestedKey = sessionKey(requestedSession)
-        selected = { kind: 'session', sessionKey: requestedKey }
-        expandedSessions = nextExpanded.add(requestedKey)
-      } else if (selectionExists(selected, nextSessions, nextRequests)) {
-        expandedSessions = nextExpanded.add(selected!.sessionKey)
-      } else if (nextSessions[0]) {
-        const firstKey = sessionKey(nextSessions[0])
-        selected = { kind: 'session', sessionKey: firstKey }
-        expandedSessions = nextExpanded.add(firstKey)
-      } else {
-        selected = null
-        expandedSessions = nextExpanded
-      }
-    } catch (cause) {
-      onError(messageFrom(cause))
-    } finally {
-      loading = false
+    const nextExpanded = search.trim()
+      ? new Set(nextSessions.map(archivedSessionKey))
+      : new Set(expandedSessions)
+    const requestedSession = applyInitialSession && initialSession
+      ? nextSessions.find(
+          (session) =>
+            session.host_id === initialSession?.hostId &&
+            session.host_session_id === initialSession?.hostSessionId,
+        )
+      : null
+    applyInitialSession = false
+    if (requestedSession) {
+      const requestedKey = archivedSessionKey(requestedSession)
+      selected = { kind: 'session', sessionKey: requestedKey }
+      expandedSessions = nextExpanded.add(requestedKey)
+    } else if (archivedSelectionExists(selected, nextSessions, nextRequests)) {
+      expandedSessions = nextExpanded.add(selected!.sessionKey)
+    } else if (nextSessions[0]) {
+      const firstKey = archivedSessionKey(nextSessions[0])
+      selected = { kind: 'session', sessionKey: firstKey }
+      expandedSessions = nextExpanded.add(firstKey)
+    } else {
+      selected = null
+      expandedSessions = nextExpanded
     }
   }
 
   function toggleSession(session: HostSessionSummary) {
-    const key = sessionKey(session)
+    const key = archivedSessionKey(session)
     const next = new Set(expandedSessions)
     if (next.has(key)) next.delete(key)
     else next.add(key)
@@ -287,101 +151,20 @@
   }
 
   function selectSession(session: HostSessionSummary) {
-    const key = sessionKey(session)
+    const key = archivedSessionKey(session)
     selected = { kind: 'session', sessionKey: key }
     expandedSessions = new Set(expandedSessions).add(key)
   }
 
   function selectRequest(session: HostSessionSummary, request: FeedbackRequestSummary) {
-    const key = sessionKey(session)
+    const key = archivedSessionKey(session)
     selected = { kind: 'request', sessionKey: key, requestId: request.request_id }
     expandedSessions = new Set(expandedSessions).add(key)
-    void loadRequestDetails(request)
-  }
-
-  async function loadRequestDetails(request: FeedbackRequestSummary) {
-    if (requestDetailsById[request.request_id] || detailLoadingRequestId === request.request_id) return
-    detailLoadingRequestId = request.request_id
-    try {
-      const workspace =
-        previewMode
-          ? previewWorkspaceFor(request.request_id)
-          : await transport.call('getFeedbackWorkspace', {
-              request_id: request.request_id,
-            })
-      if (!workspace) throw new Error(tr('This feedback request could not be found.'))
-      const publishedFeedback =
-        workspace.request.status === 'completed' && workspace.feedback
-          ? previewMode
-            ? {
-                markdown: workspace.draft.body_markdown,
-                uncooked_markdown: workspace.draft.body_markdown,
-              }
-            : normalizePublishedFeedback(
-                await transport.call('readPublishedFeedback', {
-                  request_id: request.request_id,
-                }),
-              )
-          : null
-      requestDetailsById = {
-        ...requestDetailsById,
-        [request.request_id]: { workspace, publishedFeedback },
-      }
-    } catch (cause) {
-      onError(messageFrom(cause))
-    } finally {
-      if (detailLoadingRequestId === request.request_id) detailLoadingRequestId = null
-    }
-  }
-
-  async function runAction(key: string, action: () => Promise<void> | void) {
-    if (busyKey) return
-    busyKey = key
-    try {
-      await action()
-      await onChanged()
-      await loadArchive()
-    } catch (cause) {
-      onError(messageFrom(cause))
-    } finally {
-      busyKey = null
-    }
-  }
-
-  async function unarchiveSession(session: HostSessionSummary) {
-    await runAction(`unarchive:${session.host_id}:${session.host_session_id}`, async () => {
-      if (!previewMode) {
-        await transport.call('unarchiveHostSession', {
-          host_id: session.host_id,
-          host_session_id: session.host_session_id,
-        })
-      }
-    })
-  }
-
-  async function deleteSession(session: HostSessionSummary) {
-    if (!confirm(tr('Delete this archived session permanently?'))) return
-    await runAction(`delete-session:${session.host_id}:${session.host_session_id}`, async () => {
-      if (!previewMode) {
-        await transport.call('deleteHostSession', {
-          host_id: session.host_id,
-          host_session_id: session.host_session_id,
-        })
-      }
-    })
-  }
-
-  async function deleteRequest(request: FeedbackRequestSummary) {
-    if (!confirm(tr('Delete this archived request permanently?'))) return
-    await runAction(`delete-request:${request.request_id}`, async () => {
-      if (!previewMode) {
-        await transport.call('deleteFeedbackRequest', { request_id: request.request_id })
-      }
-    })
+    void archive.loadRequestDetails(request)
   }
 </script>
 
-<section class="grid h-full min-h-0 min-w-0 grid-rows-[48px_minmax(0,1fr)] overflow-hidden bg-background">
+<section class="appearance-surface grid h-full min-h-0 min-w-0 grid-rows-[48px_minmax(0,1fr)] overflow-hidden bg-background">
     <header class="flex min-h-0 items-center gap-2 border-b px-4">
       <h1 class="min-w-0 flex-1 text-sm font-semibold">
         {tr('Archived sessions')}
@@ -389,12 +172,12 @@
       <Button
         variant="ghost"
         size="icon-sm"
-        disabled={loading}
+        disabled={$archive.loading}
         aria-label={tr('Refresh archived sessions')}
         title={tr('Refresh archived sessions')}
         onclick={() => void loadArchive()}
       >
-        <RefreshCw class={loading ? 'animate-spin' : ''} />
+        <RefreshCw class={$archive.loading ? 'animate-spin' : ''} />
       </Button>
     </header>
 
@@ -413,11 +196,11 @@
         </div>
 
         <ScrollArea class="min-h-0 min-w-0 overflow-hidden">
-          {#if loading && sessions.length === 0}
+          {#if $archive.loading && $archive.sessions.length === 0}
             <div class="grid h-40 place-items-center text-muted-foreground">
               <LoaderCircle class="size-5 animate-spin" />
             </div>
-          {:else if sessions.length === 0}
+          {:else if $archive.sessions.length === 0}
             <div class="grid place-items-center gap-2 px-6 py-16 text-center">
               <div class="grid size-9 place-items-center rounded-md bg-muted text-muted-foreground">
                 <Inbox class="size-4" />
@@ -426,10 +209,10 @@
             </div>
           {:else}
             <nav class="min-w-0 space-y-1 overflow-hidden p-2" aria-label={tr('Archived sessions')}>
-              {#each sessions as session (sessionKey(session))}
-                {@const key = sessionKey(session)}
+              {#each $archive.sessions as session (archivedSessionKey(session))}
+                {@const key = archivedSessionKey(session)}
                 {@const profile = resolveHostProfile(session.host_id)}
-                {@const sessionRequests = requestsFor(session)}
+                {@const sessionRequests = $archive.requestsBySession[key] ?? []}
                 <div class="min-w-0 overflow-hidden">
                   <div class="flex min-w-0 items-start gap-1">
                     <button
@@ -460,14 +243,15 @@
                           {@html profile.icon_svg}
                         </span>
                         <strong class="min-w-0 flex-1 truncate font-medium">
-                          {@html highlighted(session.title)}
+                          {@html highlightArchiveMatch(session.title, search)}
                         </strong>
+                        {#if session.management.kind === 'external'}<span class="shrink-0 text-[8px] font-medium text-muted-foreground" title={tr('External session')}>{tr('External')}</span>{/if}
                         <span class="shrink-0 text-[10px] tabular-nums text-muted-foreground">
                           {session.request_count}
                         </span>
                       </span>
                       <span class="max-w-full truncate text-[10px] text-muted-foreground">
-                        {@html highlighted(session.source_hint ?? session.host_session_id)}
+                        {@html highlightArchiveMatch(session.source_hint ?? session.host_session_id, search)}
                       </span>
                     </button>
                   </div>
@@ -488,7 +272,7 @@
                           <span class="flex min-w-0 items-center gap-2">
                             <MessageSquareText class="size-3.5 shrink-0" />
                             <span class="min-w-0 flex-1 truncate font-medium">
-                              {@html highlighted(request.title)}
+                              {@html highlightArchiveMatch(request.title, search)}
                             </span>
                             <Badge
                               variant="secondary"
@@ -498,7 +282,7 @@
                             </Badge>
                           </span>
                           <span class="line-clamp-2 max-w-full leading-4">
-                            {@html highlighted(request.what_happened)}
+                            {@html highlightArchiveMatch(request.what_happened, search)}
                           </span>
                         </button>
                       {:else}
@@ -533,8 +317,8 @@
             <Button
               variant="destructive"
               size="sm"
-              disabled={busyKey !== null}
-              onclick={() => void deleteRequest(activeRequest)}
+              disabled={$archive.busyKey !== null}
+              onclick={() => void archive.deleteRequest(activeRequest)}
             >
               <Trash2 data-icon="inline-start" />
               {tr('Delete request')}
@@ -580,7 +364,7 @@
                   <p class="m-0 mt-2 whitespace-pre-wrap break-words rounded-md border bg-muted/20 p-3 text-sm leading-6 text-muted-foreground">
                     {activeRequest.final_summary}
                   </p>
-                {:else if detailLoadingRequestId === activeRequest.request_id && !activeRequestDetails}
+                {:else if $archive.detailLoadingRequestId === activeRequest.request_id && !activeRequestDetails}
                   <div class="mt-2 flex items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
                     <LoaderCircle class="size-3.5 animate-spin" />
                     {tr('Loading request details…')}
@@ -632,8 +416,8 @@
             <Button
               variant="outline"
               size="sm"
-              disabled={busyKey !== null}
-              onclick={() => void unarchiveSession(activeSession)}
+              disabled={$archive.busyKey !== null}
+              onclick={() => void archive.unarchiveSession(activeSession)}
             >
               <ArchiveRestore data-icon="inline-start" />
               {tr('Unarchive')}
@@ -641,8 +425,8 @@
             <Button
               variant="destructive"
               size="sm"
-              disabled={busyKey !== null}
-              onclick={() => void deleteSession(activeSession)}
+              disabled={$archive.busyKey !== null}
+              onclick={() => void archive.deleteSession(activeSession)}
             >
               <Trash2 data-icon="inline-start" />
               {tr('Delete')}

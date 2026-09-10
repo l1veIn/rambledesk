@@ -6,7 +6,8 @@
   import * as Dialog from '$lib/components/ui/dialog'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
-  import type { ResumePrompt } from './types'
+  import type { ResumePrompt } from '../domain/resumePrompt'
+  import { resumePromptPresentation } from './resumePrompt'
 
   export let prompt: ResumePrompt
   export let copyState: 'idle' | 'copied' | 'failed' = 'idle'
@@ -14,6 +15,7 @@
   export let onDismiss: () => void = () => {}
 
   const displayedPrompt = { ...prompt }
+  $: presentation = resumePromptPresentation(displayedPrompt, (source, values) => t($locale, source, values))
   let dialogOpen = true
   let closeDelivered = false
 
@@ -38,8 +40,8 @@
         <Badge variant="outline">Continuation</Badge>
         <Badge variant="secondary">{tr('Click Continue first')}</Badge>
       </div>
-      <Dialog.Title>{displayedPrompt.title}</Dialog.Title>
-      <Dialog.Description class="leading-5">{displayedPrompt.body}</Dialog.Description>
+      <Dialog.Title>{presentation.title}</Dialog.Title>
+      <Dialog.Description class="leading-5">{presentation.body}</Dialog.Description>
     </Dialog.Header>
 
     <dl class="grid grid-cols-[88px_minmax(0,1fr)] gap-x-3 gap-y-2 border-y py-3 text-xs">

@@ -23,8 +23,9 @@ impl ContinuationReason {
     pub fn from_status(status: FeedbackStatus) -> Option<Self> {
         match status {
             FeedbackStatus::Completed => Some(Self::Completed),
-            FeedbackStatus::Cancelled => Some(Self::Cancelled),
-            FeedbackStatus::Waiting | FeedbackStatus::InProgress => None,
+            FeedbackStatus::Waiting | FeedbackStatus::InProgress | FeedbackStatus::Cancelled => {
+                None
+            }
         }
     }
 
@@ -96,6 +97,9 @@ pub struct ResumePrompt {
     pub body: String,
     pub resume_prompt: String,
     pub reason: ContinuationReason,
+    /// Only product-generated guidance is localized by the Client. Host text stays verbatim.
+    #[serde(default)]
+    pub default_presentation: bool,
 }
 
 pub trait ContinuationStrategy: Send + Sync {
@@ -127,15 +131,15 @@ impl ManualContinuationStrategy {
         let resume_prompt = payload.resume_prompt();
         let (title, body) = match payload.reason {
             ContinuationReason::Completed => (
-                "反馈已提交 · 回到宿主点继续".to_owned(),
+                "Feedback submitted · return to host".to_owned(),
                 format!(
-                    "先回到 {host_label} 的对话，点等待中的「继续」或确认选项。现在的 skill 会用 ask / ask_user_question 卡住等你。只有宿主没有停下来等时，才需要粘贴下面的恢复提示。",
+                    "Return to {host_label} and click the waiting Continue or confirmation option first. Only paste the fallback resume prompt below if the host is not waiting.",
                 ),
             ),
             ContinuationReason::Cancelled => (
-                "反馈已取消 · 回到宿主点继续".to_owned(),
+                "Feedback cancelled · return to host".to_owned(),
                 format!(
-                    "先回到 {host_label} 的对话，点等待中的确认以收尾。只有宿主没有停下来等时，才需要粘贴下面的提示并调用 get_feedback。",
+                    "Return to {host_label} and click the waiting confirmation to finish. Only paste the fallback prompt below and call get_feedback if the host is not waiting.",
                 ),
             ),
         };
@@ -147,6 +151,7 @@ impl ManualContinuationStrategy {
             body,
             resume_prompt,
             reason: payload.reason,
+            default_presentation: true,
         }
     }
 }
@@ -292,6 +297,21 @@ mod tests {
     }
 
     #[test]
+    fn only_completed_feedback_triggers_host_continuation() {
+        assert_eq!(
+            ContinuationReason::from_status(FeedbackStatus::Completed),
+            Some(ContinuationReason::Completed)
+        );
+        for status in [
+            FeedbackStatus::Waiting,
+            FeedbackStatus::InProgress,
+            FeedbackStatus::Cancelled,
+        ] {
+            assert_eq!(ContinuationReason::from_status(status), None);
+        }
+    }
+
+    #[test]
     fn missing_or_unknown_host_uses_generic_prompt() {
         let router = ContinuationRouter::new(vec![Arc::new(StubStrategy)]);
         for host in ["", "  ", "unknown", "codex"] {
@@ -328,7 +348,35 @@ mod tests {
         let prompt = ManualContinuationStrategy::build_prompt(&payload("codex"));
         assert_eq!(prompt.host_label, "Codex");
         assert_eq!(prompt.host_id, "codex");
-        assert!(prompt.title.contains("继续"));
+        assert!(prompt.default_presentation);
+        assert_eq!(prompt.title, "Feedback submitted · return to host");
+    }
+
+    #[test]
+    fn default_ui_prompt_matches_the_client_contract_fixture() {
+        let prompt = ManualContinuationStrategy::build_prompt(&payload("acceptance-external"));
+        let expected: serde_json::Value =
+            serde_json::from_str(include_str!("../tests/fixtures/manual_resume_prompt.json"))
+                .unwrap();
+        assert_eq!(serde_json::to_value(prompt).unwrap(), expected);
+    }
+
+    #[test]
+    fn an_unmarked_host_prompt_keeps_its_own_presentation() {
+        let mut value =
+            serde_json::to_value(ManualContinuationStrategy::build_prompt(&payload("codex")))
+                .unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .remove("default_presentation");
+        value["title"] = "宿主自定义标题".into();
+        value["body"] = "请遵守宿主自己的恢复步骤。".into();
+        let prompt: ResumePrompt = serde_json::from_value(value).unwrap();
+        assert!(!prompt.default_presentation);
+        assert_eq!(prompt.title, "宿主自定义标题");
+        assert_eq!(prompt.body, "请遵守宿主自己的恢复步骤。");
+        assert_eq!(prompt.resume_prompt, payload("codex").resume_prompt());
     }
 
     #[test]

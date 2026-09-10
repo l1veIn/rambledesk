@@ -22,6 +22,8 @@ struct Arguments {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Request, read, or recover feedback in the current managed Agent session.
+    Feedback,
     /// Run the authenticated loopback local server without Tauri.
     Serve {
         #[arg(long, default_value_t = DEFAULT_PORT)]
@@ -46,8 +48,16 @@ enum Command {
     SelfTest,
 }
 
+fn main() -> anyhow::Result<()> {
+    if rambledesk_feedback_client::process_requested() {
+        std::process::exit(rambledesk_feedback_client::run_process());
+    }
+    run_cli()
+}
+
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn run_cli() -> anyhow::Result<()> {
+    let arguments = Arguments::parse();
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
         .with_env_filter(
@@ -57,7 +67,8 @@ async fn main() -> anyhow::Result<()> {
         .with_target(false)
         .init();
 
-    match Arguments::parse().command {
+    match arguments.command {
+        Command::Feedback => unreachable!("handled before logging initialization"),
         Command::Serve {
             port,
             token_file,

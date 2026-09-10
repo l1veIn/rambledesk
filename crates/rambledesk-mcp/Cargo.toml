@@ -13,6 +13,7 @@ rambledesk-hosts.workspace = true
 rmcp.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+schemars.workspace = true
 tokio.workspace = true
 toml_edit = "0.23"
 

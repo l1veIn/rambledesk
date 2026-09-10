@@ -14,8 +14,11 @@ path = "src/main.rs"
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
+rambledesk-acp.workspace = true
 rambledesk-core.workspace = true
+rambledesk-feedback-client.workspace = true
 rambledesk-local-server.workspace = true
+rambledesk-mcp.workspace = true
 rambledesk-storage.workspace = true
 rmcp = { workspace = true, features = [
   "client",
