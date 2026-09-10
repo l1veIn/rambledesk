@@ -1,408 +1,283 @@
-export const releaseUrl = 'https://github.com/l1veIn/rambledesk/releases'
-export const repoUrl = 'https://github.com/l1veIn/rambledesk'
+import { feedbackExamples } from "./feedback-example";
+
+export const repoUrl = "https://github.com/l1veIn/rambledesk";
+export const release = {
+  version: "0.4.0-rc.3",
+  url: `${repoUrl}/releases/tag/v0.4.0-rc.3`,
+  mac: `${repoUrl}/releases/download/v0.4.0-rc.3/RambleDesk_0.4.0-rc.3_aarch64.dmg`,
+  windows: `${repoUrl}/releases/download/v0.4.0-rc.3/RambleDesk_0.4.0-rc.3_x64-setup.exe`,
+};
+const docsRef = "v0.4.0-rc.3";
+export const links = {
+  acp: `${repoUrl}/blob/${docsRef}/docs/ACP_MANAGED_SESSIONS.md`,
+  adapters: `${repoUrl}/blob/${docsRef}/docs/COMPATIBILITY.md`,
+  docs: `${repoUrl}/blob/${docsRef}/README.md`,
+  license: `${repoUrl}/blob/${docsRef}/LICENSE`,
+  earlyDemo: `${repoUrl}/releases/download/v0.3.2/rambledesk-demo-10s.gif`,
+};
+
+interface Content {
+  lang: string;
+  path: string;
+  alternatePath: string;
+  alternateLabel: string;
+  title: string;
+  description: string;
+  skip: string;
+  nav: {
+    label: string;
+    workflow: string;
+    start: string;
+    download: string;
+    menu: string;
+    language: string;
+  };
+  hero: {
+    eyebrow: string;
+    lines: string[];
+    body: string;
+    download: string;
+    watch: string;
+    platforms: string;
+    footnote: string;
+  };
+  request: {
+    label: string;
+    title: string;
+    body: string;
+    example: string;
+    status: string;
+    subject: string;
+    happened: string;
+    progress: string;
+    ask: string;
+    action: string;
+    note: string;
+  };
+  demo: {
+    label: string;
+    title: string;
+    body: string;
+    recording: string;
+    recordingNote: string;
+  };
+  start: {
+    label: string;
+    title: string;
+    body: string;
+    steps: { title: string; body: string }[];
+    acp: string;
+    adapters: string;
+    voice: string;
+  };
+  download: {
+    label: string;
+    title: string;
+    privacy: string;
+    candidate: string;
+    mac: string;
+    windows: string;
+    releaseNotes: string;
+    installation: string;
+    macNote: string;
+    windowsNote: string;
+    voiceTitle: string;
+    voiceNote: string;
+    organizeTitle: string;
+    organizeNote: string;
+  };
+  footer: { signature: string; docs: string; license: string };
+}
 
 export const locales = {
   en: {
-    lang: 'en',
-    path: '/',
-    alternatePath: '/zh/',
-    alternateLabel: '简体中文',
-    title: 'RambleDesk',
+    lang: "en",
+    path: "/",
+    alternatePath: "/zh/",
+    alternateLabel: "中文",
+    title: "RambleDesk — Your attention. For what matters.",
     description:
-      'A local human-feedback workbench for coding agents. Receive structured requests, ramble with voice, screenshots, notes, and files, then return an immutable feedback package.',
+      "A local feedback workbench for coding agents. Get a clear request, speak and capture what you see, then return a lasting feedback package. Connect your own agent with ACP.",
+    skip: "Skip to content",
     nav: {
-      product: 'Product',
-      loop: 'Loop',
-      adapters: 'Adapters',
-      download: 'Download',
+      label: "Main navigation",
+      workflow: "How it works",
+      start: "Get started",
+      download: "Download",
+      menu: "Menu",
+      language: "Read in Chinese",
     },
     hero: {
-      eyebrow: 'Local-first human feedback for coding agents',
-      headline: 'Rambling is all you need.',
-      subhead:
-        'RambleDesk turns messy human experience into durable feedback packages your agent can read, cite, and continue from.',
-      primaryCta: 'Download RambleDesk',
-      secondaryCta: 'Watch the loop',
-      liveBadge: 'Local archive online',
-      requestTitle: 'Homepage motion review',
-      requestBody: 'Test the opening animation, capture issues, and ramble freely.',
-      packageTitle: 'Feedback Package',
-      packageBody: 'feedback.md + manifest.json + attachments',
+      eyebrow: "A local feedback workbench for coding agents",
+      lines: ["Your attention.", "For what matters."],
+      body: "Your agent writes a clear request. You speak, capture, and edit. Send your feedback so it can continue.",
+      download: "Get RambleDesk",
+      watch: "Explore the workflow",
+      platforms: "macOS Apple Silicon · Windows x64",
+      footnote: "Less prompt-writing. More judgment.",
     },
-    workflowKicker: 'The loop',
-    workflowTitle: 'From human ramble to agent continuation.',
-    workflowIntro:
-      'The site animation follows the product contract: requests persist first, humans answer freely, and the final artifact is a portable package instead of another chat message.',
-    workflowCode: '02 / Human loop',
-    workflow: [
-      {
-        label: 'Request',
-        title: 'Agent asks clearly',
-        body: 'The host sends context, actions, and evidence needs as a persistent Feedback Request.',
-      },
-      {
-        label: 'Ramble',
-        title: 'Human answers freely',
-        body: 'Speak, type, paste, attach files, and capture annotated screenshots without reshaping your thought process first.',
-      },
-      {
-        label: 'Package',
-        title: 'Evidence gets sealed',
-        body: 'RambleDesk publishes feedback.md, uncooked.md, manifest.json, attachments, hashes, and paths as one immutable package.',
-      },
-      {
-        label: 'Continue',
-        title: 'Agent resumes work',
-        body: 'The original host reads the package and continues iteration with concrete human evidence.',
-      },
-    ],
-    posture: {
-      eyebrow: 'RDD · ramble-driven development',
-      headline: 'Ramble-driven development.',
-      sub: 'Prompts are overrated. Ramble.',
+    request: {
+      label: "01 / A clear request",
+      title: "Know what needs\nyour eyes.",
+      body: "Your agent explains what changed and what to try. Open the workbench and know where to begin.",
+      example: "Example request",
+      status: "Ready for your review",
+      subject: feedbackExamples.en.caseTitle,
+      happened: feedbackExamples.en.happened,
+      progress: feedbackExamples.en.happenedBody,
+      ask: feedbackExamples.en.experience,
+      action: feedbackExamples.en.experienceBody,
+      note: "Two clear fields. One place to begin.",
+    },
+    demo: {
+      label: "02 / Your experience, in your words",
+      title: "See it. Say it.",
+      body: "Speak, take screenshots, or edit directly. Tidy it up if you want. Your original feedback stays.",
+      recording: "Watch an earlier workflow demo ↗",
+      recordingNote:
+        "v0.3.2 · 10-second GIF · earlier interface; opens an animation",
+    },
+    start: {
+      label: "03 / Your agent, connected",
+      title: "Keep the agent\nyou already use.",
+      body: "Connect a local agent through ACP. Your agent provides its own login and model access.",
       steps: [
-        { n: '01', title: 'Give the agent a goal.', body: 'A clear brief. It owns the execution.' },
-        { n: '02', title: 'Go do something else.', body: 'No screen-watching, no polling, no guilt.' },
         {
-          n: '03',
-          title: 'Ramble.',
-          body: 'When the agent calls you back, ramble: no prompt — voice, shots, files, whatever you feel, straight into the draft. Nothing like typing a prompt.',
-        },
-        { n: '04', title: 'Repeat.', body: 'Every loop ends sealed on your machine.' },
-      ],
-    },
-    lens2: {
-      tagline: 'The loop, in one take',
-      shots: [
-        {
-          id: 'ask',
-          tag: 'ASK',
-          title: 'You type, the agent takes it from there.',
-          sub: 'One line in its own CLI — then it syncs, thinks, and knocks.',
-          prompt: '/ramble We need to optimize the web page — make it cinematic, nonlinear',
-          logs: [
-            '* Sprouting… (6s · thinking)',
-            '✓ workspace synced — 3 sections below hero scanned',
-            '✓ proposal drafted: cinematic nonlinear scroll',
-            '→ human judgment required',
-          ],
-          tool: 'request ramble feedback',
-          toolOut: 'waking RambleDesk…',
+          title: "Connect your agent",
+          body: "Check that it works on your machine. Open Settings → Agents and install a connection component if prompted.",
         },
         {
-          id: 'ramble',
-          tag: 'RAMBLE',
-          title: 'You ramble, it keeps everything.',
-          sub: 'Voice, shots, files — straight into the same draft, no prompt rewriting.',
-          session: 'DeepSeek Harness · dsh-session-dc2…',
-          requestTitle: 'Needs your eyes:',
-          requestBody: 'Refresh the homepage and scroll below the hero — the loop pacing is off.',
-          draftTitle: 'Feedback document',
-          voiceTitle: 'Ramble',
-          voiceState: 'Recording',
-          pauseLabel: 'Pause recording',
-          voiceDevice: 'EDIFIER M30 Plus · 30 clips',
-          voiceNote: 'Listening:',
-          voicePartial: '“this block reads wrong…”',
-          addContextLabel: 'Add context',
-          addContext: ['Snapshot', 'Clipboard', 'Files'],
-          cancelLabel: 'Cancel feedback',
-          feed: [
-            { kind: 'text', text: 'Pacing: the first scene types too slow…' },
-            { kind: 'text', text: 'The CLI window reads right now.' },
-            { kind: 'shot', note: 'this block reads wrong', label: 'annotate' },
-            { kind: 'text', text: 'I circled it here.' },
-            { kind: 'file', name: 'notes.md' },
-          ],
-          sendLabel: 'Submit feedback',
-          sealTitle: 'Sealing feedback package',
-          sealFiles: ['feedback.md', 'uncooked.md', 'manifest.json', 'attachments/'],
-          sealHash: 'sha256:7c1f4e…3a9ae2',
+          title: "Give it a task",
+          body: "Choose your agent and project. Tell it what you want to achieve.",
         },
         {
-          id: 'continue',
-          tag: 'CONTINUE',
-          title: 'The agent reads it — and keeps going.',
-          sub: 'One hash, zero bytes leaving your machine.',
-          prompt2: 'get ramble feedback',
-          tool2: 'get ramble feedback',
-          lines: ['✓ feedback package received', '✓ resuming implementation with human evidence…'],
+          title: "Try it. Send feedback.",
+          body: "Follow the request, speak or capture what you see, then submit and check delivery in the workbench.",
         },
       ],
+      acp: "ACP setup guide",
+      adapters: "Use an external agent",
+      voice:
+        "Voice input needs a local transcription model. Download it once in Settings → Voice.",
     },
-    proofKicker: 'Built for serious local work',
-    proofTitle: 'It feels cinematic because the contract is concrete.',
-    surfaceIntro:
-      'The page treats RambleDesk like a local operations deck: the request enters on the left, evidence is captured in the center, and a sealed package leaves through a verified rail.',
-    surface: {
-      sectionCode: '01 / Local contract',
-      deckTitle: 'Feedback OS',
-      deckStatus: 'vault synced',
-      deckMeta: ['loopback', 'token guard', 'SQLite'],
-      captureTitle: 'Capture stream',
-      captureItems: ['voice', 'annotation', 'files'],
-      vaultTitle: 'Evidence vault',
-      vaultFiles: ['feedback.md', 'uncooked.md', 'manifest.json', 'attachments/'],
+    download: {
+      label: "Made for the human in the loop",
+      title: "Your next piece of feedback?\nJust say it.",
+      privacy:
+        "Feedback is stored locally. Submitting and optional tidying share the relevant content with your connected agent or model service.",
+      candidate: "Release candidate",
+      mac: "Get it for macOS",
+      windows: "Get it for Windows",
+      releaseNotes: "Release notes",
+      installation: "Before your first launch",
+      macNote:
+        "Open the DMG and drag RambleDesk into Applications. This build is ad-hoc signed and not notarized. After verifying the download source, use System Settings → Privacy & Security → Open Anyway if macOS blocks it.",
+      windowsNote:
+        "Run the x64 installer. It is not Authenticode signed. If SmartScreen blocks it, verify the source, then choose More info → Run anyway.",
+      voiceTitle: "Voice, ready when you are",
+      voiceNote:
+        "Download a local transcription model in Settings → Voice and allow microphone access.",
+      organizeTitle: "Tidying is optional",
+      organizeNote:
+        "It is off by default. Configure a model service in Settings → Post-processing to use it. Your original feedback is preserved.",
     },
-    proof: [
-      {
-        value: 'local',
-        label: 'Loopback listener, token guard, SQLite, and package files stay on your machine.',
-      },
-      {
-        value: 'multimodal',
-        label: 'Voice, screenshots, annotations, pasted context, and ordinary files all enter the same draft.',
-      },
-      {
-        value: 'host-neutral',
-        label: 'Generic MCP plus native adapters let Codex, Claude, Pi, OpenCode, and others call the same workbench.',
-      },
-    ],
-    featureKicker: 'Workbench anatomy',
-    featureTitle: 'A workbench for the messy middle.',
-    features: [
-      'Structured task brief with executable actions',
-      'Ramble mode with local speech capture',
-      'Screenshot capture and annotation workflow',
-      'Feedback Cooking with original evidence preserved',
-      'Immutable package output for agent continuation',
-      'Adapter setup for common coding hosts',
-    ],
-    archive: {
-      kicker: 'The vault',
-      title: 'Every ramble stays on your machine.',
-      sub: 'Every sealed package from each ramble lines up here — raw evidence never leaves.',
-      packages: [
-        { hash: 'sha256:7c1f4e…', title: 'Homepage lens-2 review', date: '2026-08-23', state: 'sealed' },
-        { hash: 'sha256:9a2d70…', title: 'Ramble flow & workbench polish', date: '2026-08-21', state: 'sealed' },
-        { hash: 'sha256:44be91…', title: 'Hero cinema plate check', date: '2026-08-18', state: 'sealed' },
-        { hash: 'sha256:11f0a3…', title: 'Voice capture diagnostics', date: '2026-08-15', state: 'sealed' },
-      ],
-      adapterNote: 'Installed wherever your coding agent already works.',
-    },
-    adaptersKicker: 'Host adapters',
-    adaptersCode: '04 / Adapter dock',
-    adaptersTitle: 'Installed where coding agents already work.',
-    adapters: ['Codex', 'Claude Code', 'Cursor', 'Gemini CLI', 'Grok', 'OpenCode', 'Reasonix', 'Pi', 'DeepSeek Harness'],
-    vision: {
-      kicker: 'The human attention router',
-      headline: 'The next architecture for human–AI collaboration.',
-      before: 'Agent → Human Feedback',
-      beforeLabel: 'Today',
-      after: 'Agents → Human Attention Router',
-      afterLabel: 'Next',
-      philosophy:
-        "RambleDesk isn't about chatting with AI more — it's about not having to. The agent finds you when it matters.",
-      slogan: 'Stop vibe coding. Start rambling.',
-      ctaLabel: 'Get RambleDesk',
-      meta: 'macOS · Homebrew · GitHub Releases',
+    footer: {
+      signature: "Rambling is all you need.",
+      docs: "Documentation",
+      license: "MIT license",
     },
   },
   zh: {
-    lang: 'zh-CN',
-    path: '/zh/',
-    alternatePath: '/',
-    alternateLabel: 'English',
-    title: 'RambleDesk',
+    lang: "zh-CN",
+    path: "/zh/",
+    alternatePath: "/",
+    alternateLabel: "EN",
+    title: "RambleDesk — 把注意力，留给判断。",
     description:
-      'RambleDesk 是面向 coding agent 的本地人类反馈工作台：接收结构化请求，用语音、截图、文字和文件自由 ramble，再交回不可变反馈包。',
+      "面向 Coding Agent 的本地反馈工作台。Agent 写清体验单，你说话、截图、直接编辑，提交不可变反馈包。通过 ACP 沿用你本机的 Agent。",
+    skip: "跳到正文",
     nav: {
-      product: '产品',
-      loop: '闭环',
-      adapters: '适配器',
-      download: '下载',
+      label: "主导航",
+      workflow: "工作流程",
+      start: "开始使用",
+      download: "下载",
+      menu: "菜单",
+      language: "切换到英文",
     },
     hero: {
-      eyebrow: '面向 Coding Agent 的本地人类反馈工作台',
-      headline: 'Rambling is all you need.',
-      subhead:
-        'RambleDesk 把人类真实体验、截图、语音和胡言乱语封存成 agent 能读取、引用并继续工作的反馈包。',
-      primaryCta: '下载 RambleDesk',
-      secondaryCta: '观看闭环',
-      liveBadge: '本地档案库在线',
-      requestTitle: '主页动效验收',
-      requestBody: '测试开屏动画，截图标注问题，然后自由 ramble。',
-      packageTitle: 'Feedback Package',
-      packageBody: 'feedback.md + manifest.json + attachments',
+      eyebrow: "面向 Coding Agent 的本地反馈工作台",
+      lines: ["把注意力，", "留给判断。"],
+      body: "Agent 写清体验单。你说话、截图、直接编辑，提交反馈，让它继续。",
+      download: "下载 RambleDesk",
+      watch: "了解反馈流程",
+      platforms: "macOS Apple Silicon · Windows x64",
+      footnote: "少一点组织 prompt，多一点体验和判断。",
     },
-    workflowKicker: '核心闭环',
-    workflowTitle: '从人类 ramble 到 agent 继续迭代。',
-    workflowIntro:
-      '主页动效遵循产品合同：请求先持久化，人类自由表达，最终产物是可携带的反馈包，而不是又一段聊天记录。',
-    workflowCode: '02 / 人类闭环',
-    workflow: [
-      {
-        label: 'Request',
-        title: 'Agent 清楚发问',
-        body: '宿主发送背景、动作清单和证据要求，形成持久化 Feedback Request。',
-      },
-      {
-        label: 'Ramble',
-        title: '人类自由回答',
-        body: '语音、文字、粘贴、文件、截图批注都进入同一个草稿，不需要先整理成提示词。',
-      },
-      {
-        label: 'Package',
-        title: '证据被封存',
-        body: 'RambleDesk 发布 feedback.md、uncooked.md、manifest.json、附件、hash 和路径。',
-      },
-      {
-        label: 'Continue',
-        title: 'Agent 继续工作',
-        body: '原宿主读取反馈包，用真实人类证据继续实现和修正。',
-      },
-    ],
-    posture: {
-      eyebrow: 'RDD · ramble-driven development',
-      headline: 'Ramble 驱动的开发。',
-      sub: '提示词已经过时了。开始 ramble 吧。',
+    request: {
+      label: "01 / 体验单",
+      title: "先把需要你看的，\n写清楚。",
+      body: "Agent 先交代进展，再提出体验请求。你打开工作台，就知道从哪里开始。",
+      example: "体验单示例",
+      status: "待体验",
+      subject: feedbackExamples.zh.caseTitle,
+      happened: feedbackExamples.zh.happened,
+      progress: feedbackExamples.zh.happenedBody,
+      ask: feedbackExamples.zh.experience,
+      action: feedbackExamples.zh.experienceBody,
+      note: "两件事写清楚，体验就有了起点。",
+    },
+    demo: {
+      label: "02 / 直接表达",
+      title: "看到什么，就说什么。",
+      body: "说话、截图、直接编辑。需要时再整理，原始反馈会保留。",
+      recording: "观看早期版本流程演示 ↗",
+      recordingNote: "v0.3.2 · 10 秒 GIF · 界面为早期版本，打开后播放动画",
+    },
+    start: {
+      label: "03 / 开始使用",
+      title: "沿用你已经在用的 Agent。",
+      body: "通过 ACP 连接本机 Agent，登录与模型访问由 Agent 自身提供。",
       steps: [
-        { n: '01', title: '把目标交给 agent。', body: '需求讲清楚，执行是它的事。' },
-        { n: '02', title: '去做你自己的事。', body: '不用盯着屏幕，也不用刷进度。' },
         {
-          n: '03',
-          title: '开始 ramble。',
-          body: '等 agent 叫你回来，开始 ramble：没有提示词，语音、截图、文件，想到什么就说什么，直接进草稿——跟打字写 prompt 完全是两回事。',
+          title: "连接 Agent",
+          body: "确认本机可用，在「设置 → Agents」按提示连接，必要时安装连接组件。",
         },
-        { n: '04', title: '如此往复。', body: '每一轮循环，都被封存在你的机器上。' },
-      ],
-    },
-    lens2: {
-      tagline: '一次镜头，完整闭环',
-      shots: [
+        { title: "开始任务", body: "选择 Agent 和项目，告诉它你的目标。" },
         {
-          id: 'ask',
-          tag: 'ASK',
-          title: '你直接说需求。',
-          sub: '在 agent 的命令行里说一句，剩下的交给它。',
-          prompt: '/ramble 我们需要优化一下 web 页面，做成电影感的非线性滚动',
-          logs: [
-            '* Sprouting… (6s · thinking)',
-            '✓ 工作区已同步 — 扫描 Hero 以下 3 处片段',
-            '✓ 方案已成稿：电影感非线性滚动',
-            '→ 需要人类判断',
-          ],
-          tool: 'request ramble feedback',
-          toolOut: '正在打开 RambleDesk…',
-        },
-        {
-          id: 'ramble',
-          tag: 'RAMBLE',
-          title: '你自由发挥，它全收下。',
-          sub: '语音、截图、文件，不用整理措辞，直接进草稿。',
-          session: 'DeepSeek Harness · dsh-session-dc2…',
-          requestTitle: '需要体验：',
-          requestBody: '刷新主页，滚过 Hero 看第二幕，节奏还需要调整。',
-          draftTitle: '反馈正文',
-          voiceTitle: 'Ramble',
-          voiceState: '正在记录',
-          pauseLabel: '暂停记录',
-          voiceDevice: 'EDIFIER M30 Plus · 30 段',
-          voiceNote: '正在听：',
-          voicePartial: '“这一块读起来不对……”',
-          addContextLabel: '添加上下文',
-          addContext: ['截图', '剪贴板', '文件'],
-          cancelLabel: '取消反馈',
-          feed: [
-            { kind: 'text', text: '节奏：第一幕打字太慢…' },
-            { kind: 'text', text: 'CLI 窗口现在对了。' },
-            { kind: 'shot', note: '这一块读起来不对', label: '批注' },
-            { kind: 'text', text: '我圈了一下这里。' },
-            { kind: 'file', name: 'notes.md' },
-          ],
-          sendLabel: '提交反馈',
-          sealTitle: '封存反馈包',
-          sealFiles: ['feedback.md', 'uncooked.md', 'manifest.json', 'attachments/'],
-          sealHash: 'sha256:7c1f4e…3a9ae2',
-        },
-        {
-          id: 'continue',
-          tag: 'CONTINUE',
-          title: 'agent 读完，接着干。',
-          sub: '包已封存，数据不会离开你的电脑。',
-          prompt2: 'get ramble feedback',
-          tool2: 'get ramble feedback',
-          lines: ['✓ 已收到反馈包', '✓ 带着人类证据继续实现…'],
+          title: "体验并反馈",
+          body: "收到体验单，说话、截图或编辑，提交后在工作台查看送达状态。",
         },
       ],
+      acp: "ACP 使用指南",
+      adapters: "沿用外部 Agent",
+      voice: "第一次使用语音，需要在「设置 → 语音」下载本地转写模型。",
     },
-    proofKicker: '认真服务本地工作',
-    proofTitle: '画面可以电影化，因为产品合同很具体。',
-    surfaceIntro:
-      '页面把 RambleDesk 当成一张本地操作台来设计：请求从左侧进入，中间采集真实证据，最终沿着可验证轨道输出封存包。',
-    surface: {
-      sectionCode: '01 / 本地合同',
-      deckTitle: 'Feedback OS',
-      deckStatus: '档案库已同步',
-      deckMeta: ['loopback', 'token guard', 'SQLite'],
-      captureTitle: '采集流',
-      captureItems: ['语音', '批注', '文件'],
-      vaultTitle: '证据库',
-      vaultFiles: ['feedback.md', 'uncooked.md', 'manifest.json', 'attachments/'],
+    download: {
+      label: "把人的注意力放在心上",
+      title: "下一次反馈，\n直接说出来。",
+      privacy:
+        "反馈保存在本机；提交和可选整理会把相应内容交给你连接的 Agent 或模型服务。",
+      candidate: "候选版",
+      mac: "下载 macOS 版",
+      windows: "下载 Windows 版",
+      releaseNotes: "发布说明",
+      installation: "首次安装与使用说明",
+      macNote:
+        "打开 DMG，将 RambleDesk 拖入「应用程序」。当前版本采用 ad-hoc 签名，尚未公证。确认下载来源后，若 macOS 阻止启动，可在「系统设置 → 隐私与安全性」选择「仍要打开」。",
+      windowsNote:
+        "运行 x64 安装程序。当前安装包未做 Authenticode 签名；若 SmartScreen 拦截，确认来源后，选择「更多信息 → 仍要运行」。",
+      voiceTitle: "第一次说话之前",
+      voiceNote: "在「设置 → 语音」下载本地转写模型，并允许麦克风访问。",
+      organizeTitle: "需要时，再整理",
+      organizeNote:
+        "整理默认关闭。需要时在「设置 → 后处理」配置模型服务，原始反馈会保留。",
     },
-    proof: [
-      {
-        value: 'local',
-        label: 'Loopback、token guard、SQLite 和反馈包文件都留在本机。',
-      },
-      {
-        value: 'multimodal',
-        label: '语音、截图批注、粘贴上下文和普通文件进入同一个反馈草稿。',
-      },
-      {
-        value: 'host-neutral',
-        label: 'Generic MCP 和原生适配器让 Codex、Claude、Pi、OpenCode 等宿主接入同一工作台。',
-      },
-    ],
-    featureKicker: '工作台解剖',
-    featureTitle: '为最混乱的体验过程而生。',
-    features: [
-      '带可执行动作的结构化任务说明',
-      '本地语音采集的 Ramble 模式',
-      '截图、批注、附件和粘贴上下文',
-      '保留原始证据的 Feedback Cooking',
-      '供 agent 继续工作的不可变反馈包',
-      '常见 coding host 的适配器安装流程',
-    ],
-    archive: {
-      kicker: '档案库',
-      title: '每一次 ramble，都留在你的机器上。',
-      sub: '每一次 ramble 的封存包都排在这里，原始证据不会外流。',
-      packages: [
-        { hash: 'sha256:7c1f4e…', title: '主页镜头 2 验收', date: '2026-08-23', state: 'sealed' },
-        { hash: 'sha256:9a2d70…', title: 'Ramble 流程与工作台打磨', date: '2026-08-21', state: 'sealed' },
-        { hash: 'sha256:44be91…', title: 'Hero 电影场景校验', date: '2026-08-18', state: 'sealed' },
-        { hash: 'sha256:11f0a3…', title: '语音采集诊断', date: '2026-08-15', state: 'sealed' },
-      ],
-      adapterNote: '装在你 coding agent 已工作的地方。',
-    },
-    adaptersKicker: '宿主适配器',
-    adaptersCode: '04 / 适配器船坞',
-    adaptersTitle: '安装在 coding agent 已经工作的地方。',
-    adapters: ['Codex', 'Claude Code', 'Cursor', 'Gemini CLI', 'Grok', 'OpenCode', 'Reasonix', 'Pi', 'DeepSeek Harness'],
-    vision: {
-      kicker: '人类注意力路由器',
-      headline: '人机协作的下一代架构。',
-      before: 'Agent → Human Feedback',
-      beforeLabel: '今天',
-      after: 'Agents → Human Attention Router',
-      afterLabel: '下一步',
-      philosophy:
-        'RambleDesk 不是为了让你更方便地和 AI 聊天，而是让你根本不用一直和 AI 聊天——需要你时，agent 会主动来找你。',
-      slogan: 'Stop vibe coding. Start rambling.',
-      ctaLabel: '获取 RambleDesk',
-      meta: 'macOS · Homebrew · GitHub Releases',
+    footer: {
+      signature: "Rambling is all you need.",
+      docs: "文档",
+      license: "MIT 许可",
     },
   },
-} as const
+} satisfies Record<string, Content>;
 
-export type LocaleKey = keyof typeof locales
-export type SiteContent = (typeof locales)[LocaleKey]
-
-export const assets = {
-  heroFallback: '/assets/hero-workbench-cinema.webp',
-  sceneArchive: '/assets/scene-archive.webp',
-  sceneCryo: '/assets/scene-cryo.webp',
-  sceneGate: '/assets/scene-gate.webp',
-  pattern: '/assets/rambelle-vault-pattern.webp',
-}
+export type SiteContent = Content;

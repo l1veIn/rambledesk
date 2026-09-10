@@ -1,85 +1,161 @@
 ---
-import HeroStage from './HeroStage.svelte'
-import HappyPathStage from './lens2/HappyPathStage.svelte'
-import ArchiveSection from './ArchiveSection.astro'
-import PostureSection from './PostureSection.astro'
-import { assets, releaseUrl, repoUrl, type SiteContent } from '../content/site'
-
-interface Props {
-  content: SiteContent
-}
-
-const { content } = Astro.props
+import FeedbackWalkthrough from './FeedbackWalkthrough.svelte'
+import { links, release, repoUrl, type SiteContent } from '../content/site'
+interface Props { content: SiteContent }
+const { content: c } = Astro.props
 ---
-
-<div class="site-shell">
-  <div class="global-field" aria-hidden="true">
-    <span class="global-grid"></span>
-    <span class="global-spine"></span>
-    <span class="global-scan"></span>
-  </div>
-
-  <header class="site-nav">
-    <a class="brand-lockup" href={content.path} aria-label="RambleDesk home">
-      <img src="/assets/rambledesk-app-icon.webp" alt="" />
+<a class="skip-link" href="#main">{c.skip}</a>
+<header class="site-nav">
+  <div class="nav-inner container">
+    <a class="brand" href={c.path} aria-label="RambleDesk">
+      <img src="/assets/refresh/rambledesk-mark.svg" width="36" height="36" alt="" />
       <span>RambleDesk</span>
     </a>
-    <nav aria-label="Main navigation">
-      <a href="#product">{content.nav.product}</a>
-      <a href="#loop">{content.nav.loop}</a>
-      <a href="#adapters">{content.nav.adapters}</a>
-      <a href={content.alternatePath}>{content.alternateLabel}</a>
+    <nav class="desktop-nav" aria-label={c.nav.label}>
+      <a href="#workflow">{c.nav.workflow}</a>
+      <a href="#start">{c.nav.start}</a>
+      <a href={repoUrl}>GitHub <span aria-hidden="true">↗</span></a>
     </nav>
-    <a class="nav-download" href={repoUrl} aria-label="GitHub">
-      <svg class="gh-mark" viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">
-        <path
-          d="M10.226 17.284c-2.965-.36-5.054-2.493-5.054-5.256 0-1.123.404-2.336 1.078-3.144-.292-.741-.247-2.314.09-2.965.898-.112 2.111.36 2.83 1.01.853-.269 1.752-.404 2.853-.404 1.1 0 1.999.135 2.807.382.696-.629 1.932-1.1 2.83-.988.315.606.36 2.179.067 2.942.72.854 1.101 2 1.101 3.167 0 2.763-2.089 4.852-5.098 5.234.763.494 1.28 1.572 1.28 2.807v2.336c0 .674.561 1.056 1.235.786 4.066-1.55 7.255-5.615 7.255-10.646C23.5 6.188 18.334 1 11.978 1 5.62 1 .5 6.188.5 12.545c0 4.986 3.167 9.12 7.435 10.669.606.225 1.19-.18 1.19-.786V20.63a2.9 2.9 0 0 1-1.078.224c-1.483 0-2.359-.808-2.987-2.313-.247-.607-.517-.966-1.034-1.033-.27-.023-.359-.135-.359-.27 0-.27.45-.471.898-.471.652 0 1.213.404 1.797 1.235.45.651.921.943 1.483.943.561 0 .92-.202 1.437-.719.382-.381.674-.718.944-.943"
-        ></path>
-      </svg>
-      <span>GitHub</span>
-    </a>
-  </header>
-
-  <main>
-    <HeroStage hero={content.hero} assets={assets} releaseUrl={releaseUrl} />
-
-    <PostureSection content={content} />
-
-    <HappyPathStage client:load content={content.lens2} />
-
-    <ArchiveSection content={content} />
-
-    <section class="final-cta">
-      <div class="cta-bg" style={`background-image: url(${assets.sceneGate})`}></div>
-      <div class="cta-content">
-        <span class="section-kicker">{content.vision.kicker}</span>
-        <h2>{content.vision.headline}</h2>
-        <div class="vision-slogan">{content.vision.slogan}</div>
-        <div class="vision-evolution">
-          <div class="vision-row vision-before">
-            <span class="vision-label">{content.vision.beforeLabel}</span>
-            <strong>{content.vision.before}</strong>
-          </div>
-          <div class="vision-row vision-after">
-            <span class="vision-label">{content.vision.afterLabel}</span>
-            <strong>{content.vision.after}</strong>
-          </div>
+    <div class="nav-actions">
+      <a class="language-link" href={c.alternatePath} hreflang={c.lang === 'en' ? 'zh-CN' : 'en'} aria-label={c.nav.language}>{c.alternateLabel}</a>
+      <a class="button button-small nav-cta" href="#download">{c.nav.download}<span aria-hidden="true">↓</span></a>
+      <details class="mobile-menu">
+        <summary aria-label={c.nav.menu}><span></span><span></span></summary>
+        <nav aria-label={c.nav.label}>
+          <a href="#workflow">{c.nav.workflow}</a><a href="#start">{c.nav.start}</a>
+          <a href="#download">{c.nav.download}</a><a href={repoUrl}>GitHub ↗</a>
+        </nav>
+      </details>
+    </div>
+  </div>
+</header>
+<main id="main">
+  <section class="hero" aria-labelledby="hero-title">
+    <picture class="hero-art">
+      <source media="(max-width: 960px)" srcset="/assets/refresh/hero-mobile.webp" width="1024" height="1024" />
+      <img src="/assets/refresh/hero-desktop.webp" width="2560" height="1600" alt="" fetchpriority="high" decoding="async" />
+    </picture>
+    <div class="hero-inner container">
+      <div class="hero-copy">
+        <p class="eyebrow"><span class="tiny-hex" aria-hidden="true"></span>{c.hero.eyebrow}</p>
+        <h1 id="hero-title">{c.hero.lines.map(line => <span>{line}</span>)}</h1>
+        <p class="hero-body">{c.hero.body}</p>
+        <div class="hero-actions">
+          <a class="button" href="#download">{c.hero.download}<span aria-hidden="true">↓</span></a>
+          <a class="button button-outline" href="#demo"><span class="play-icon" aria-hidden="true">▷</span>{c.hero.watch}</a>
         </div>
-        <p class="vision-philosophy">{content.vision.philosophy}</p>
-        <a class="primary-action" href={releaseUrl}>
-          {content.vision.ctaLabel}
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M5 12h14M13 5l7 7-7 7"></path>
-          </svg>
-        </a>
-        <small class="vision-meta">{content.vision.meta}</small>
+        <p class="platform-note">{c.hero.platforms}</p>
       </div>
-    </section>
-  </main>
+      <div class="hero-footnote" aria-hidden="true"><span>RAMBLEDESK / 01</span><span>{c.hero.footnote}</span><span>↓</span></div>
+    </div>
+  </section>
 
-  <footer class="site-footer">
-    <span>RambleDesk</span>
-    <a href={repoUrl}>GitHub</a>
-    <a href={content.alternatePath}>{content.alternateLabel}</a>
-  </footer>
-</div>
+  <section class="request-section section-space" id="workflow" aria-labelledby="request-title">
+    <div class="request-grid container">
+      <div class="section-copy">
+        <p class="section-label">{c.request.label}</p>
+        <h2 id="request-title">{c.request.title}</h2>
+        <p>{c.request.body}</p>
+        <div class="editorial-rule" aria-hidden="true"><span></span><i></i></div>
+        <small>{c.request.note}</small>
+      </div>
+      <article class="request-card" aria-label={c.request.example} data-reveal>
+        <div class="request-topline"><span class="status"><i></i>{c.request.status}</span><span class="example-label">{c.request.example}</span></div>
+        <h3>{c.request.subject}</h3>
+        <dl>
+          <div><dt>{c.request.happened}</dt><dd>{c.request.progress}</dd></div>
+          <div><dt>{c.request.ask}</dt><dd>{c.request.action}</dd></div>
+        </dl>
+        <div class="card-signature" aria-hidden="true"><span class="tiny-hex"></span><span>RambleDesk</span><span>01</span></div>
+      </article>
+    </div>
+  </section>
+
+  <section class="demo-section section-space" id="demo" aria-labelledby="demo-title">
+    <div class="container">
+      <div class="demo-heading">
+        <p class="section-label">{c.demo.label}</p>
+        <h2 id="demo-title">{c.demo.title}</h2><p>{c.demo.body}</p>
+      </div>
+      <FeedbackWalkthrough client:visible lang={c.lang} />
+      <div class="recording-link"><a href={links.earlyDemo}>{c.demo.recording}</a><small>{c.demo.recordingNote}</small></div>
+    </div>
+  </section>
+
+  <section class="start-section section-space" id="start" aria-labelledby="start-title">
+    <div class="container">
+      <p class="section-label">{c.start.label}</p>
+      <h2 id="start-title">{c.start.title}</h2><p class="start-intro">{c.start.body}</p>
+      <ul class="agent-names" aria-label="Agents"><li>Claude Code</li><li>Codex CLI</li><li>Gemini CLI</li></ul>
+      <ol class="start-steps">
+        {c.start.steps.map((step, i) => <li><span class="step-index">0{i + 1}</span><div><h3>{step.title}</h3><p>{step.body}</p></div></li>)}
+      </ol>
+      <div class="start-resources"><div class="resource-links"><a href={links.acp}>{c.start.acp}<span aria-hidden="true">↗</span></a><a href={links.adapters}>{c.start.adapters}<span aria-hidden="true">↗</span></a></div><p>{c.start.voice}</p></div>
+    </div>
+  </section>
+
+  <section class="download-section" id="download" aria-labelledby="download-title">
+    <img class="closing-art" src="/assets/refresh/closing.webp" width="1536" height="1024" loading="lazy" decoding="async" alt="" />
+    <div class="container download-inner">
+      <div class="download-copy">
+        <p class="section-label">{c.download.label}</p>
+        <h2 id="download-title">{c.download.title}</h2>
+        <p class="privacy-copy">{c.download.privacy}</p>
+        <div class="download-buttons">
+          <a class="button platform-button" href={release.mac}><span>{c.download.mac}<small>Apple Silicon · .dmg</small></span><span aria-hidden="true">↓</span></a>
+          <a class="button button-outline platform-button" href={release.windows}><span>{c.download.windows}<small>x64 · .exe</small></span><span aria-hidden="true">↓</span></a>
+        </div>
+        <p class="release-meta"><span>v{release.version} · {c.download.candidate}</span><a href={release.url}>{c.download.releaseNotes} ↗</a></p>
+      </div>
+    </div>
+  </section>
+  <div class="installation-section">
+    <div class="container">
+      <details class="installation-details">
+        <summary>{c.download.installation}<span aria-hidden="true">+</span></summary>
+        <div class="installation-grid">
+          <div><h3>macOS</h3><p>{c.download.macNote}</p></div>
+          <div><h3>Windows</h3><p>{c.download.windowsNote}</p></div>
+          <div><h3>{c.download.voiceTitle}</h3><p>{c.download.voiceNote}</p></div>
+          <div><h3>{c.download.organizeTitle}</h3><p>{c.download.organizeNote}</p></div>
+        </div>
+      </details>
+    </div>
+  </div>
+</main>
+<footer class="site-footer">
+  <div class="footer-inner container">
+    <a class="brand" href={c.path}><img src="/assets/refresh/rambledesk-mark.svg" width="30" height="30" alt=""/><span>RambleDesk</span></a>
+    <span class="footer-signature">{c.footer.signature}</span>
+    <nav aria-label={c.lang === 'en' ? 'Footer' : '页脚'}><a href={repoUrl}>GitHub</a><a href={c.lang === 'zh-CN' ? links.docs.replace('README.md', 'README.zh-CN.md') : links.docs}>{c.footer.docs}</a><a href={links.license}>{c.footer.license}</a><a href={c.alternatePath}>{c.alternateLabel}</a></nav>
+  </div>
+</footer>
+<script>
+  const header = document.querySelector<HTMLElement>('.site-nav')
+  const hero = document.querySelector('.hero')
+  if (header && hero) {
+    new IntersectionObserver(([entry]) => {
+      header.classList.toggle('scrolled', !entry.isIntersecting)
+    }, { rootMargin: '-72px 0px 0px 0px' }).observe(hero)
+  }
+  const menu = document.querySelector<HTMLDetailsElement>('.mobile-menu')
+  menu?.querySelectorAll('a').forEach(link => link.addEventListener('click', () => { menu.open = false }))
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && menu?.open) { menu.open = false; menu.querySelector('summary')?.focus() }
+  })
+  document.addEventListener('click', event => {
+    if (menu?.open && event.target instanceof Node && !menu.contains(event.target)) menu.open = false
+  })
+  const motion = window.matchMedia('(prefers-reduced-motion: reduce)')
+  if (!motion.matches) {
+    const observer = new IntersectionObserver(entries => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue
+        if (motion.matches) { observer.unobserve(entry.target); continue }
+        entry.target.animate([{ transform: 'translateY(10px)' }, { transform: 'translateY(0)' }], { duration: 280, easing: 'ease-out' })
+        observer.unobserve(entry.target)
+      }
+    }, { threshold: 0.15 })
+    document.querySelectorAll('[data-reveal]').forEach(element => observer.observe(element))
+  }
+</script>
