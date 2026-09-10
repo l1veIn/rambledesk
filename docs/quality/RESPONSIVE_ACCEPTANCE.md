@@ -106,3 +106,36 @@ pnpm --dir apps/desktop test \
 定向修复后的 build6 已完成两端离线草稿保存恢复、交换顺序的同一草稿 CAS 和 token 轮换实测，
 具体操作与边界见 [原生与浏览器记录](NATIVE_BROWSER_ACCEPTANCE.md)。这些独立浏览器结果与本节
 IAB 尺寸结果分开登记，物理手机的软键盘、触控、旋转和安全区仍待验。
+
+## 2026-09-10 设置侧栏排版回归修复
+
+用户在本轮提交后报告侧栏排版异常及底部横向滚动条。此前“整页无横向溢出”和“About 可达”
+没有检查导航列表内部的溢出、固定行高及首项可达，不能证明设置侧栏布局通过；本次补足这些检查。
+
+复现入口：`pnpm -C apps/desktop exec vite dev --port 1421`，打开
+`/speech-review-preview.html?settings&locale=zh-CN`。这是实际 SettingsPanel、Tabs 和应用 CSS，
+仅设备能力、数据与偏好使用已有内存预览；不调用系统权限、不改日常配置，也不等同原生制品验收。
+修复前在 931×865 视口，8 个栏目均被拉到 **92.5px**，tablist 的 `clientWidth=159`、
+`scrollWidth=162`，底部横向滚动条可见，与用户报告一致。
+
+逐项实验确认三个原因：
+
+- 列表占满剩余高度后，栏目继承的 `flex-1` 把剩余空间等分。改为 `flex-none` 后行高恢复 36px，横向溢出仍存在。
+- 列表继承 `justify-center`；固定行高后，在 844×260 下首项顶部为 -3.5px，列表顶部为 73px。改为 `justify-start` 后首项回到 73px。
+- 垂直 Tabs 的指示条 `right:-4px` 伸出边界；新增纵向滚动使横轴也计算成 auto。改为同优先级的 `right:0` 后，横向溢出从 3px 变为 0，再显式设置 `overflow-x-hidden` 保持仅纵向滚动。
+
+最终只修改 SettingsPanel 的两行布局 class，共享 Tabs、栏目元数据和切换语义保持原合同。
+在 Chromium 中实际执行中英文各四种视口，共 **8 组通过**：
+
+| 视口 | tablist clientWidth / scrollWidth | 行高 | Home / End |
+| --- | --- | --- | --- |
+| 1200×800 | 159 / 159 | 36px | 首末项完整可见，正确选中 |
+| 844×260 | 148 / 148 | 36px | 首项回顶部，末项滚动 142px 后完整可见 |
+| 390×844 | 39 / 39 | 36px | 图标导航首末项完整可见，正确选中 |
+| 390×260 | 28 / 28 | 36px | 首项回顶部，末项滚动 128px 后完整可见 |
+
+检查对象是 `.settings-navigation [role=tablist]` 自身的 `clientWidth` / `scrollWidth`，
+以及各 `[role=tab]` 的实际 `getBoundingClientRect()`；分别在 Home 和 End 后核对首末项边界及
+`aria-selected`。正常高度、短窗口及窄屏均做了截图检查。没有用 jsdom 或 CSS class 字符串断言代替布局。
+相关设置能力、栏目命令、外部适配器访问与 Agent 设置渲染 **4 文件 / 12 测试通过**；
+`pnpm -C apps/desktop check` 为 **0 errors / 0 warnings**，`git diff --check` 通过。

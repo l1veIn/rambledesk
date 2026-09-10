@@ -253,11 +253,11 @@
 
         <Tabs.List
           variant="line"
-          class="mt-3 flex min-h-0 w-full flex-1 flex-col items-stretch gap-1 overflow-y-auto bg-transparent p-0"
+          class="mt-3 flex min-h-0 w-full flex-1 flex-col items-stretch justify-start gap-1 overflow-x-hidden overflow-y-auto bg-transparent p-0"
         >
           {#each sectionOrder.filter((section) => sectionAvailability[section]) as section (section)}
             {@const Icon = sections[section].icon}
-            <Tabs.Trigger value={section} title={sectionText(section, sections[section].title)} class="h-9 w-full shrink-0 justify-start px-2.5">
+            <Tabs.Trigger value={section} title={sectionText(section, sections[section].title)} class="h-9 w-full flex-none justify-start px-2.5 group-data-[orientation=vertical]/tabs:after:right-0">
               <Icon data-icon="inline-start" />
               {sectionText(section, sections[section].title)}
             </Tabs.Trigger>
