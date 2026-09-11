@@ -320,6 +320,7 @@ async fn later_submitted_feedback_is_sent_after_an_earlier_continuation_exits() 
     let session = fixture.create("One").await;
     let first = fixture.request(&session, false).await;
     fixture.submitted(&first).await;
+    fixture.continued(&session, &first).await;
     fixture
         .delivered(&session, FeedbackDeliveryState::Delivered)
         .await;
@@ -330,6 +331,11 @@ async fn later_submitted_feedback_is_sent_after_an_earlier_continuation_exits() 
         })
         .await
         .unwrap();
+    fixture
+        .wait_for(&session, |snapshot| {
+            snapshot.runtime.connection == SessionConnectionState::Connected
+        })
+        .await;
     let next = fixture.request(&session, false).await;
     fixture.submitted(&next).await;
     tokio::time::timeout(Duration::from_secs(8), async {
