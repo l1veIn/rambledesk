@@ -73,18 +73,16 @@ impl SessionApplication {
             if delivery.resolution == crate::FeedbackResolution::Cancelled {
                 continue;
             }
-            // A finished prompt may still be retrying its durable completion.
-            // Do not cross either that sending attempt or an uncertain outcome.
+            // One in-flight send per session. An earlier uncertain outcome stays
+            // on that request until the user retries or acknowledges it; it must
+            // not hold later submitted feedback.
             if repository
                 .list_session_deliveries(&delivery.session_id)
                 .await?
                 .iter()
                 .any(|item| {
                     item.resolution != crate::FeedbackResolution::Cancelled
-                        && matches!(
-                            item.state,
-                            FeedbackDeliveryState::Sending | FeedbackDeliveryState::Uncertain
-                        )
+                        && item.state == FeedbackDeliveryState::Sending
                 })
             {
                 continue;

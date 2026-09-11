@@ -326,6 +326,67 @@ async fn disconnect_after_feedback_read_is_uncertain_and_never_blindly_replayed(
 }
 
 #[tokio::test]
+async fn later_submitted_feedback_is_sent_while_an_earlier_delivery_is_uncertain() {
+    let fixture = Fixture::new("fail_continue").await;
+    let session = fixture.create("One").await;
+    let first = fixture.request(&session, false).await;
+    fixture.submitted(&first).await;
+    fixture
+        .delivered(&session, FeedbackDeliveryState::Uncertain)
+        .await;
+    fixture
+        .app
+        .start_session(ManagedSessionInput {
+            session_id: session.clone(),
+        })
+        .await
+        .unwrap();
+    let next = fixture.request(&session, false).await;
+    fixture.submitted(&next).await;
+    tokio::time::timeout(Duration::from_secs(8), async {
+        loop {
+            let snapshot = fixture.snapshot(&session).await;
+            let first_state = snapshot
+                .deliveries
+                .iter()
+                .find(|item| item.request_id == first)
+                .map(|item| item.state);
+            let next_state = snapshot
+                .deliveries
+                .iter()
+                .find(|item| item.request_id == next)
+                .map(|item| item.state);
+            if first_state == Some(FeedbackDeliveryState::Uncertain)
+                && next_state.is_some()
+                && next_state != Some(FeedbackDeliveryState::Pending)
+            {
+                assert!(
+                    snapshot
+                        .activities
+                        .iter()
+                        .filter(|row| row.kind == SessionActivityKind::UserMessage
+                            && row.text.contains("human feedback is ready"))
+                        .count()
+                        >= 2
+                );
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap();
+    fixture
+        .app
+        .start_session(ManagedSessionInput {
+            session_id: session,
+        })
+        .await
+        .unwrap();
+    fixture.close().await;
+}
+
+#[tokio::test]
 async fn direct_delete_stops_a_busy_session_discards_feedback_and_keeps_its_neighbor() {
     let fixture = Fixture::new("normal").await;
     let first = fixture.create("Busy").await;
