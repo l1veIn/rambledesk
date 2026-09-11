@@ -95,6 +95,7 @@ function tauriArguments<Name extends ApplicationCommandName>(
 }
 
 export class TauriApplicationTransport implements ApplicationTransport {
+  readonly persistenceScope = 'desktop'
   private readonly pendingApplicationSubscriptions = new Set<Promise<void>>()
 
   constructor(

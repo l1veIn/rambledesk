@@ -109,7 +109,7 @@
   </div>
 
   <Collapsible.Content class="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-    <div class="grid gap-5 bg-muted/25 px-5 py-4 text-xs @min-[700px]:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+    <div class="grid gap-5 bg-muted/25 px-5 py-4 text-xs @min-[700px]:grid-cols-2">
       <section>
         <h2 class="m-0 text-[10px] font-semibold uppercase text-muted-foreground">
           {tr('What happened')}

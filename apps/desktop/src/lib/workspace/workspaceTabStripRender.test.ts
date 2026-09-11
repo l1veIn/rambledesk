@@ -36,7 +36,10 @@ describe('workspace tab strip layout', () => {
     // Tabs share the strip through an inline width; the strip owns the scrolling.
     expect(body).toMatch(/style="width: \d+px;"/)
     expect(body).toContain('shrink-0')
-    expect(body).toContain('overflow-x-auto')
+    // Unmeasured strip is not overflowing: overflow-x-auto would make a one-tab
+    // strip autoscroll on middle-click, so it is applied only after layout says so.
+    expect(body).toContain('data-overflowing="false"')
+    expect(body).not.toMatch(/workspace-tab-list[^>]*overflow-x-auto/)
     expect(body).toContain('--tab-fade-start')
     expect(body).toContain('--tab-fade-end')
   })

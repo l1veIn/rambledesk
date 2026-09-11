@@ -50,8 +50,10 @@
   function tr(text: string) { return composerText(effectiveLocale, text) }
 
   // Read the live editor, including IME composition, before an automatic navigation.
+  // An unmounted editor is not "busy typing": fall back to the controlled draft.
   export function isEmptyForNavigation(): boolean {
-    return isComposerEmptyForNavigation(editor, editor?.view.composing ?? false)
+    if (!editor) return !value.trim()
+    return isComposerEmptyForNavigation(editor, editor.view.composing)
   }
 
   onMount(() => {

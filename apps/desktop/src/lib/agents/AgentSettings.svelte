@@ -61,6 +61,10 @@
   }
 
   function failure(cause: unknown) {
+    if (pending === 'delete' && typeof cause === 'object' && cause && 'code' in cause && cause.code === 'AGENT_CONFIG_IN_USE') {
+      localError = tr('This configuration is used by existing sessions. Turn off Enable configuration and save to retire it, or delete those sessions before deleting the configuration.')
+      return
+    }
     const message = cause instanceof Error ? cause.message
       : typeof cause === 'object' && cause !== null && 'message' in cause ? String(cause.message)
         : tr('Something went wrong')
@@ -162,8 +166,9 @@
         </div>
       {/if}
       <div class="flex flex-wrap items-center gap-2 border-t pt-4">
+        {#if draft.id}<label class="flex items-center gap-2 text-xs"><input type="checkbox" bind:checked={draft.enabled} disabled={locked} />{tr('Enable configuration')}</label>{/if}
         <Button type="submit" size="sm" disabled={locked || !dirty}>{#if pending === 'save'}<LoaderCircle class="size-3.5 animate-spin" />{:else}<Save class="size-3.5" />{/if}{tr('Save configuration')}</Button>
-        {#if draft.id}<Button type="button" variant="outline" size="sm" disabled={locked || dirty} title={dirty ? tr('Save changes before checking this configuration.') : undefined} onclick={() => void check()}>{#if pending === 'check'}<LoaderCircle class="size-3.5 animate-spin" />{/if}{tr(pending === 'check' ? 'Checking…' : 'Check connection')}</Button><Button type="button" variant="ghost" size="icon-sm" class="ml-auto text-muted-foreground hover:text-destructive" disabled={locked} aria-label={tr('Delete configuration')} onclick={() => void remove()}><Trash2 class="size-3.5" /></Button>{:else}<Badge variant="outline">{tr('Needs checking')}</Badge>{/if}
+        {#if draft.id}<Button type="button" variant="outline" size="sm" disabled={locked || dirty} title={dirty ? tr('Save changes before checking this configuration.') : undefined} onclick={() => void check()}>{#if pending === 'check'}<LoaderCircle class="size-3.5 animate-spin" />{/if}{tr(pending === 'check' ? 'Checking…' : 'Check connection')}</Button><Button type="button" variant="ghost" size="sm" class="ml-auto text-muted-foreground hover:text-destructive" disabled={locked} onclick={() => void remove()}><Trash2 class="size-3.5" />{tr('Delete configuration')}</Button>{:else}<Badge variant="outline">{tr('Needs checking')}</Badge>{/if}
       </div>
       <p class="m-0 text-[11px] leading-5 text-muted-foreground">{tr('Saved changes apply when an agent instance next starts.')}</p>
       <p class="m-0 text-[11px] leading-5 text-muted-foreground">{tr('Checks verify the ACP handshake and feedback command availability, not a model-driven Ramble handoff. Use a real session to verify authentication, model access and feedback.')}</p>

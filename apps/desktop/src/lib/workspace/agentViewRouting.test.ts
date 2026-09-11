@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { FeedbackRequestSummary, HostSessionSummary } from '$lib/generated/feedback'
-import { agentSessionForView, agentViewForEmptyRamble, agentViewForRequest, arrivingRequestForAgentView, cancelledFeedbackRestoreTarget } from './agentViewRouting'
+import { agentSessionForView, agentViewForEmptyRamble, agentViewForRequest, arrivingRequestForAgentView, cancelledFeedbackRestoreTarget, latestPendingRequestForSession } from './agentViewRouting'
 import { agentSessionViewDescriptor, sessionViewDescriptor, workspaceViewKey, type WorkspaceViewDescriptor } from './viewDescriptors'
 import { EMPTY_WORKSPACE_SHELL_STATE, workspaceShellReducer } from './workspaceShell'
 
@@ -17,7 +17,7 @@ describe('Agent view routing', () => {
     allow_finish: false, final_summary: null, revision: 1, created_at: '2026-09-06T00:00:00Z', updated_at: '2026-09-06T00:00:00Z',
   }
 
-  it('auto-opens arrivals from any provider only on an available Agent page', () => {
+  it('auto-opens arrivals from any provider only while watching an Agent page', () => {
     const agent = agentSessionViewDescriptor(managed.session_id)
     const request = { ...cancelled, request_id: 'new', status: 'waiting' as const, resolution: null, managed_session_id: undefined }
     expect(arrivingRequestForAgentView(agent, [request], true)).toBe(request)
@@ -28,10 +28,20 @@ describe('Agent view routing', () => {
 
   it.each<WorkspaceViewDescriptor | null>([
     null, { kind: 'inbox' }, { kind: 'archive' }, { kind: 'settings' }, { kind: 'rambelle-profile' },
-    { kind: 'agent-draft', draftId: 'new' }, { kind: 'request-task', requestId: 'task' },
-    sessionViewDescriptor(managed.host_id, managed.host_session_id),
+    { kind: 'agent-draft', draftId: 'new' },
   ])('never interrupts other pages: %j', view => {
     expect(arrivingRequestForAgentView(view, [{ ...cancelled, status: 'waiting', resolution: null }], true)).toBeNull()
+  })
+
+  it('switches a Ramble session page to the newest pending request for that session only', () => {
+    const session = sessionViewDescriptor(managed.host_id, managed.host_session_id)
+    const other = { ...cancelled, request_id: 'other', status: 'waiting' as const, resolution: null, host_session_id: 'other-session', updated_at: '2026-09-06T02:00:00Z' }
+    const older = { ...cancelled, request_id: 'older', status: 'waiting' as const, resolution: null, updated_at: '2026-09-06T00:00:00Z' }
+    const newer = { ...cancelled, request_id: 'newer', status: 'waiting' as const, resolution: null, updated_at: '2026-09-06T01:00:00Z' }
+    expect(arrivingRequestForAgentView(session, [other, older, newer], true)).toBe(newer)
+    expect(arrivingRequestForAgentView(session, [other], true)).toBeNull()
+    expect(arrivingRequestForAgentView({ kind: 'request-task', requestId: 'task' }, [newer], true, newer)).toBe(newer)
+    expect(arrivingRequestForAgentView({ kind: 'request-task', requestId: 'task' }, [newer], true)).toBeNull()
   })
 
   it('chooses one arrival in a batch, preferring the current Agent without changing the batch', () => {
@@ -40,6 +50,13 @@ describe('Agent view routing', () => {
     const arrivals = [other, own]
     expect(arrivingRequestForAgentView(agentSessionViewDescriptor(managed.session_id), arrivals, true)).toBe(own)
     expect(arrivals).toEqual([other, own])
+  })
+
+  it('opens the newest pending Ramble for the Agent being watched', () => {
+    const older = { ...cancelled, request_id: 'older', status: 'waiting' as const, updated_at: '2026-09-06T00:00:00Z' }
+    const newer = { ...cancelled, request_id: 'newer', status: 'waiting' as const, updated_at: '2026-09-06T01:00:00Z' }
+    expect(arrivingRequestForAgentView(agentSessionViewDescriptor(managed.session_id), [older, newer], true)).toBe(newer)
+    expect(latestPendingRequestForSession(newer, [cancelled, older, newer])).toBe(newer)
   })
 
   it('restores the latest cancelled feedback as details while preserving the Agent tab for explicit navigation', () => {

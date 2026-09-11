@@ -9,6 +9,7 @@ import { createUnavailableWorkbenchCapabilities, UNAVAILABLE_CAPABILITY_MANIFEST
 import type { HostSessionSummary, ManagedSessionSnapshot, SendManagedPromptInput } from './lib/generated/feedback'
 import { config, snapshot } from './lib/agents/draftManagedSessionControllerTestHarness'
 import { createManagedSessionDraftStorage } from './lib/agents/managedSessionDrafts'
+import { rememberAgentConnection } from './lib/agents/agentDetectionCache'
 import { sessionPromptDrafts } from './lib/agents/managedSessionUi'
 import { autoOpenTaskBrief, cookingEnabled, locale, onboardingCompleted } from './lib/preferences'
 import { PreviewApplicationTransport } from './lib/preview/previewApplicationTransport'
@@ -127,6 +128,7 @@ async function typeNextMessage() {
 describe('managed first-message recovery through the real App', () => {
   it('keeps uncertain input recoverable, checks before closing, promotes once, and only releases the accepted view', async () => {
     const transport = new ManagedFlowTransport()
+    rememberAgentConnection(transport, config, { ok: true, message: 'ACP connected', details: [] })
     app = mount(App, { target: host, props: {
       applicationTransport: transport, capabilities: createUnavailableWorkbenchCapabilities(), environment: 'browser',
       publishedFeedbackAction: { label: 'Open feedback package', run: async () => {} },

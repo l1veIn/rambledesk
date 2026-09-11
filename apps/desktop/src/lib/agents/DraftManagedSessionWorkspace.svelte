@@ -7,14 +7,13 @@
   import { locale } from '$lib/preferences'
   import AgentComposer from './composer/AgentComposer.svelte'
   import AgentIcon from './AgentIcon.svelte'
-  import AgentSetupGuide from './AgentSetupGuide.svelte'
   import AgentFailureNotice from './AgentFailureNotice.svelte'
   import { agentFailureFrom } from './agentFailure'
   import SessionConfigurationControls from './configuration/SessionConfigurationControls.svelte'
   import SessionContextUsage from './SessionContextUsage.svelte'
   import { isAbsoluteAgentDirectory, redactAgentMessage } from './agentConfigForm'
   import { agentText } from './agentI18n'
-  import { agentNeedsPreparation, canPrepareAgentConnection, type DraftManagedSessionController } from './draftManagedSessionController'
+  import type { DraftManagedSessionController } from './draftManagedSessionController'
   import { createManagedWorkspaceInfoController } from './managedWorkspaceInfoController'
 
   export let transport: ApplicationTransport
@@ -30,13 +29,9 @@
   let mounted = false
   const workspaceInfo = createManagedWorkspaceInfoController(transport)
   $: workspaceInfo.setSessionId($controller.snapshot?.session.session_id ?? null)
-  $: locked = $controller.awaitingAcknowledgement || $controller.preparingConnection || $controller.phase === 'closing' || $controller.phase === 'promoted'
+  $: locked = $controller.awaitingAcknowledgement || $controller.phase === 'closing' || $controller.phase === 'promoted'
   $: selectedAgent = $controller.choices.find(choice => choice.key === $controller.choice)
-  $: needsPreparation = agentNeedsPreparation(selectedAgent)
-  $: canPrepare = canPrepareAgentConnection(selectedAgent)
-  $: installationJob = $controller.installationJob?.agent_id === selectedAgent?.catalogId ? $controller.installationJob : null
-  $: installationDetails = redactAgentMessage(installationJob?.messages.join('\n') ?? '', Object.entries(selectedAgent?.config?.env ?? {}).map(([key, value]) => `${key}=${value}`).join('\n'))
-  $: actionFailure = $controller.failure ?? ($controller.error && !$controller.awaitingAcknowledgement && !needsPreparation ? agentFailureFrom(new Error($controller.error), 'session') : null)
+  $: actionFailure = $controller.failure ?? ($controller.error && !$controller.awaitingAcknowledgement ? agentFailureFrom(new Error($controller.error), 'session') : null)
   $: directoryValid = isAbsoluteAgentDirectory($controller.cwd.trim())
   $: projectName = $controller.cwd.trim().replace(/[\\/]+$/u, '').split(/[\\/]/u).pop() || $controller.cwd.trim()
 
@@ -48,21 +43,12 @@
     'Choose an agent and directory to connect.': '选择智能体和目录后即可连接。',
     'Connecting will load the agent’s session options.': '连接后会显示智能体提供的会话选项。',
     'Your session appears in the sidebar after the first message.': '发送第一条消息后，会话会出现在侧栏。',
-    'No saved or previously detected agents. Detect agents or open Agents for setup guidance.': '暂无已保存或已检测到的智能体。可手动检测，或前往智能体页面查看设置指引。',
+    'No agents have passed the connection check. Detect agents or open Agents to set one up.': '暂无通过连接检查的智能体。请检测智能体，或前往智能体页面完成设置。',
     'Loading agents…': '正在读取智能体…', 'Selected agent is unavailable': '所选智能体不可用',
     'Refresh agents': '刷新智能体', 'Retry connection': '重试连接',
+    'Launch configuration': '启动配置',
     'Enter an absolute project directory.': '请输入项目目录的绝对路径。',
     'Could not confirm whether the first message was accepted. Retry to check the session.': '暂时无法确认第一条消息是否已接纳。请重试以检查会话。',
-    'Other launch profiles': '其他启动配置', 'Needs connection preparation': '需要准备连接', 'Not found': '未发现',
-    'Prepare connection': '准备连接', 'Preparing connection…': '正在准备连接…',
-    'RambleDesk will install the connection components for this agent and check the connection.': 'RambleDesk 将安装此智能体所需的连接组件并检查连接。',
-    'Complete the installation or setup below, then check again.': '请按照下方指引完成安装或设置，然后重新检测。',
-    'Installed elsewhere? Specify its program location in Agents.': '安装在其他位置？可在智能体页面指定程序位置。',
-    'Check again': '重新检测', 'Installation details': '安装详情', 'Cancel preparation': '取消准备', 'Cancelling…': '正在取消…',
-    'Connection preparation was cancelled.': '已取消连接准备。',
-    'Could not prepare the connection. See the installation details and retry.': '无法准备连接，请查看安装详情后重试。',
-    'Connection preparation status is unavailable. Check Agents and retry.': '暂时无法读取连接准备状态，请前往智能体页面检查后重试。',
-    'Install the required runtime': '安装所需运行环境', 'Needs attention': '需要处理',
     'Choose a project': '选择项目', 'Choose a project folder to start.': '请先选择项目文件夹。',
     'Choose a project directory before connecting.': '请先选择项目目录，再连接智能体。',
     'Project directory is required.': '项目目录为必填项。', 'Use this directory': '使用此目录',
@@ -79,7 +65,7 @@
     return () => { mounted = false; stopWorkspaceInfo() }
   })
   function refreshOnReturn() {
-    if (mounted && document.visibilityState === 'visible' && !$controller.preparingConnection) void controller.refreshChoices(false)
+    if (mounted && document.visibilityState === 'visible') void controller.refreshChoices(false)
   }
   async function chooseDirectory() {
     if (!onChooseDirectory || locked || choosingDirectory) return
@@ -160,19 +146,27 @@
                     class="z-[130] w-72 max-w-[calc(100vw-2rem)] rounded-xl border bg-popover p-1.5 text-popover-foreground shadow-lg outline-none">
                     <p class="m-0 px-2 py-2 text-xs font-medium text-muted-foreground">{tr('Choose an agent')}</p>
                     <div class="max-h-72 space-y-0.5 overflow-y-auto">
-                      {#each [false, true] as advanced}
-                        {#if advanced && $controller.choices.some(choice => choice.advanced)}<p class="mb-1 mt-2 border-t px-2 pt-2 text-[11px] text-muted-foreground">{tr('Other launch profiles')}</p>{/if}
-                        {#each $controller.choices.filter(choice => Boolean(choice.advanced) === advanced) as choice (choice.key)}
+                      {#each $controller.choices as choice (choice.key)}
                           <button type="button" class="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50" disabled={locked}
                             aria-pressed={choice.key === $controller.choice} onclick={() => { controller.select(choice.key, $controller.cwd); agentPickerOpen = false }}>
                             <AgentIcon hostId={choice.hostId} class="size-4 shrink-0" /><span class="min-w-0 flex-1"><span class="block truncate">{choice.name}</span>
-                            {#if agentNeedsPreparation(choice)}<span class="mt-0.5 block text-[10px] text-muted-foreground">{tr(canPrepareAgentConnection(choice) ? 'Needs connection preparation' : choice.inspection?.source === 'missing' ? 'Not found' : 'Needs attention')}</span>{/if}</span>
+                            </span>
                             {#if choice.key === $controller.choice}<Check class="size-3.5 shrink-0" />{/if}
                           </button>
-                        {/each}
                       {/each}
+                      {#if selectedAgent && selectedAgent.profiles.length > 1}
+                        <details class="border-t px-2 py-2">
+                          <summary class="cursor-pointer text-[11px] text-muted-foreground">{selectedAgent.name} · {tr('Launch configuration')}</summary>
+                          {#each selectedAgent.profiles as profile (profile.id)}
+                            <button type="button" class="mt-1 flex w-full items-center justify-between rounded-md px-2 py-2 text-left text-xs hover:bg-muted disabled:opacity-50" disabled={locked}
+                              aria-pressed={`config:${profile.id}` === $controller.choice} onclick={() => { controller.select(`config:${profile.id}`, $controller.cwd); agentPickerOpen = false }}>
+                              <span class="truncate">{profile.name}</span>{#if `config:${profile.id}` === $controller.choice}<Check class="size-3.5 shrink-0" />{/if}
+                            </button>
+                          {/each}
+                        </details>
+                      {/if}
                       {#if $controller.choice && !selectedAgent}<p class="m-0 px-2 py-2 text-xs text-destructive">{tr('Selected agent is unavailable')}</p>{/if}
-                      {#if !$controller.loadingChoices && $controller.choices.length === 0}<p class="m-0 px-2 py-2 text-xs leading-5 text-muted-foreground">{tr('No saved or previously detected agents. Detect agents or open Agents for setup guidance.')}</p>{/if}
+                      {#if !$controller.loadingChoices && $controller.choices.length === 0}<p class="m-0 px-2 py-2 text-xs leading-5 text-muted-foreground">{tr('No agents have passed the connection check. Detect agents or open Agents to set one up.')}</p>{/if}
                     </div>
                     <div class="mt-1.5 flex items-center justify-between border-t pt-1.5">
                       <Button size="sm" variant="ghost" disabled={locked || $controller.loadingChoices} onclick={() => void controller.refreshChoices(true)}><RefreshCw class="size-3.5" />{tr('Refresh agents')}</Button>
@@ -190,28 +184,11 @@
             <LoaderCircle class="size-3.5 animate-spin" /><span>{tr($controller.phase === 'sending' ? 'Sending your first message…' : $controller.phase === 'closing' ? 'Closing the draft…' : 'Connecting…')}</span>
           {:else if $controller.phase === 'ready'}<Check class="size-3.5 text-primary" /><span>{tr('Ready to send')}</span>
           {:else if $controller.awaitingAcknowledgement}<Button size="sm" variant="outline" onclick={() => void controller.retry()}><RefreshCw class="size-3" />{tr('Check message acceptance')}</Button>
-          {:else if !needsPreparation && $controller.phase !== 'failed'}<span>{tr('Choose an agent and directory to connect.')}</span>{/if}
+          {:else if $controller.phase !== 'failed'}<span>{tr('Choose an agent and directory to connect.')}</span>{/if}
           <span class="flex-1"></span><SessionContextUsage usage={$controller.snapshot?.runtime.context_usage} />
         </div>
       </div>
-      {#if selectedAgent && (needsPreparation || $controller.preparingConnection)}
-        <section class="space-y-3 rounded-lg border bg-muted/15 p-4" aria-label={tr('Prepare connection')}>
-          <p class="m-0 text-xs leading-5">{tr(canPrepare ? 'RambleDesk will install the connection components for this agent and check the connection.' : 'Complete the installation or setup below, then check again.')}</p>
-          {#if selectedAgent.inspection?.checks.some(check => ['node', 'npm'].includes(check.id) && check.status === 'fail')}
-            <div class="space-y-1 text-xs leading-5">{#each selectedAgent.inspection.checks.filter(check => ['node', 'npm'].includes(check.id) && check.status === 'fail') as check}<p class="m-0 break-words">{check.message}</p>{/each}<a class="inline-block underline underline-offset-2" href="https://nodejs.org/en/download" target="_blank" rel="noreferrer">{tr('Install the required runtime')}</a></div>
-          {/if}
-          {#if canPrepare || $controller.preparingConnection}<Button size="sm" disabled={locked} onclick={() => void controller.prepareConnection()}>{#if $controller.preparingConnection}<LoaderCircle class="size-3.5 animate-spin" />{/if}{tr($controller.preparingConnection ? 'Preparing connection…' : 'Prepare connection')}</Button>{/if}
-          {#if $controller.preparingConnection && installationJob}<Button size="sm" variant="ghost" disabled={installationJob.cancel_requested} onclick={() => void controller.cancelPreparation()}>{tr(installationJob.cancel_requested ? 'Cancelling…' : 'Cancel preparation')}</Button>{/if}
-          {#if !$controller.preparingConnection}
-            {#if !canPrepare}<AgentSetupGuide catalogId={selectedAgent.catalogId} hostId={selectedAgent.hostId} name={selectedAgent.name} config={selectedAgent.config} inspection={selectedAgent.inspection} compact />{/if}
-            <div class="flex flex-wrap items-center gap-2"><Button size="sm" variant="outline" disabled={$controller.loadingChoices} onclick={() => void controller.refreshChoices(true)}><RefreshCw class="size-3" />{tr('Check again')}</Button><Button size="sm" variant="ghost" onclick={onConfigure}>{tr('Manage agents')}</Button></div>
-            <p class="m-0 text-[11px] leading-5 text-muted-foreground">{tr('Installed elsewhere? Specify its program location in Agents.')}</p>
-          {/if}
-          {#if installationDetails}<details><summary class="cursor-pointer text-xs text-muted-foreground">{tr('Installation details')}</summary><pre class="mt-2 max-h-36 overflow-auto whitespace-pre-wrap break-words text-[11px]">{installationDetails}</pre></details>{/if}
-        </section>
-      {/if}
-      {#if localError || $controller.choicesError || ($controller.error && !actionFailure)}<p role="alert" class="m-0 break-words text-xs text-destructive">{tr(localError || $controller.choicesError || $controller.error)}</p>{/if}
-      {#if actionFailure && selectedAgent && !$controller.awaitingAcknowledgement && !needsPreparation}
+      {#if actionFailure && selectedAgent && !$controller.awaitingAcknowledgement}
         <AgentFailureNotice failure={actionFailure} config={selectedAgent.config} inspection={selectedAgent.inspection} catalogId={selectedAgent.catalogId} hostId={selectedAgent.hostId} name={selectedAgent.name}
           onConfigure={configureCurrentAgent} onRetry={$controller.phase === 'failed' ? controller.retry : undefined} busy={locked || $controller.phase === 'preparing'} />
       {/if}

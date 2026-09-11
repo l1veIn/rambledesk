@@ -49,6 +49,41 @@ function captureDiagnostics() {
 afterEach(() => { vi.useRealTimers(); stopDiagnostics?.(); stopDiagnostics = undefined })
 
 describe('Simplified agent management', () => {
+  it('clears saved configurations and detection cache then scans again', async () => {
+    const { controller, transport } = harness({ configs: [config] })
+    controller.start(); await controller.detectAll()
+    expect(get(controller).configs).toHaveLength(1)
+    expect(readAgentDetectionCache(transport).inspections[entry.id]).toEqual(inspection)
+    const inspectionsBefore = transport.callsFor('inspectAgentInstallation').length
+    await controller.resetAndDetect()
+    expect(transport.callsFor('deleteAgentConfig').map(call => call.input.agent_config_id)).toEqual([config.id])
+    expect(get(controller).configs.some(item => item.id === config.id)).toBe(false)
+    expect(transport.callsFor('inspectAgentInstallation').length).toBeGreaterThan(inspectionsBefore)
+    expect(readAgentDetectionCache(transport).inspections[entry.id]).toEqual(inspection)
+    controller.dispose()
+  })
+
+  it('disables configurations that sessions still use instead of deleting them', async () => {
+    const inUse = Object.assign(new Error('Configuration is in use'), { code: 'AGENT_CONFIG_IN_USE' })
+    const { controller, transport } = harness({ configs: [config] })
+    transport.handle('deleteAgentConfig', () => { throw inUse })
+    controller.start(); await controller.refresh()
+    await controller.resetAndDetect()
+    expect(get(controller).configs).toEqual([expect.objectContaining({ id: config.id, enabled: false })])
+    expect(transport.callsFor('saveAgentConfig').some(call => call.input.id === config.id && call.input.enabled === false)).toBe(true)
+    controller.dispose()
+  })
+
+  it('retires an old profile without re-enabling it on a full detection', async () => {
+    const { controller, transport } = harness({ configs: [config] })
+    controller.start(); await controller.detectAll()
+    await controller.save({ ...config, enabled: false })
+    expect(readAgentDetectionCache(transport).connections).toEqual({})
+    await controller.detectAll()
+    expect(get(controller).configs[0].enabled).toBe(false)
+    expect(transport.callsFor('checkAgentConfig')).toHaveLength(1)
+    controller.dispose()
+  })
   it('offers managed DeepSeek setup without silently selecting an older system or npx entry', async () => {
     const { controller, transport } = harness({ inspection: { ...inspection, source: 'system', version: '0.7.0' } })
     controller.start(); await controller.detectAll()
@@ -72,6 +107,8 @@ describe('Simplified agent management', () => {
     expect(transport.callsFor('installAgent')).toHaveLength(0)
     const rows = agentListItems(get(controller).entries, get(controller).configs)
     expect(rows.find(row => row.key === 'config:official')?.config).toEqual(legacy)
+    expect(rows.find(row => row.key === 'config:official')?.legacy).toBe(true)
+    expect(transport.callsFor('checkAgentConfig').map(call => call.input.agent_config_id)).toEqual([existing.id])
     expect(rows.find(row => row.key === 'catalog:deepseek-acp')?.config).toEqual(existing)
     controller.dispose()
   })
@@ -409,15 +446,15 @@ describe('Simplified agent management', () => {
     controller.dispose()
   })
 
-  it('clears cached results on runtime changes without launching a fresh scan', async () => {
+  it('retains completed checks on runtime changes without launching a fresh scan', async () => {
     const { controller, transport } = harness()
     controller.start(); await controller.detectAll()
     transport.emit(APPLICATION_EVENTS_STREAM, { type: 'invalidate', runtime_generation: 'first', revision: '1', resources: [{ kind: 'agent_configurations' }] })
     await flush()
     transport.emit(APPLICATION_EVENTS_STREAM, { type: 'invalidate', runtime_generation: 'replacement', revision: '1', resources: [{ kind: 'agent_configurations' }] })
     await flush()
-    expect(get(controller).inspections).toEqual({})
-    expect(get(controller).connections).toEqual({})
+    expect(get(controller).inspections[entry.id]).toEqual(inspection)
+    expect(Object.values(get(controller).connections).map(check => check.result)).toEqual([connected])
     expect(transport.callsFor('inspectAgentInstallation')).toHaveLength(1)
     expect(transport.callsFor('checkAgentConfig')).toHaveLength(1)
     const unrelated = harness()

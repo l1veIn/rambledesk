@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ArrowUpRight, Folder, GitBranch, LoaderCircle, RefreshCw, ShieldQuestion } from '@lucide/svelte'
+  import { ArrowUpRight, Folder, GitBranch, LoaderCircle, RefreshCw, ShieldQuestion, Square } from '@lucide/svelte'
   import { onDestroy } from 'svelte'
   import { Button } from '$lib/components/ui/button'
   import type { AgentConfig, AgentFailure, SessionConfigChange, SessionRecovery, SessionInteractionResponse } from '$lib/generated/feedback'
@@ -50,7 +50,7 @@
 
   let activeSessionId = ''
   let prompt = ''
-  let composer: AgentComposer | undefined
+  let composerRevealed = false
   let pending = new Set<string>()
   let errors: Record<string, string> = {}
   let failures: Record<string, AgentFailure | undefined> = {}
@@ -78,6 +78,7 @@
   $: configurationPending = pending.has(`${activeSessionId}:configuration`)
   $: composerState = managedSessionComposerState(snapshot, visibleInteractions.length, { busy, lifecycle: lifecyclePending || configurationPending, prompt: sendPending })
   $: runActive = snapshot.runtime.connection === 'connected' && snapshot.runtime.activity !== 'idle'
+  $: composerExpanded = composerRevealed || !!prompt.trim() || awaitingAcknowledgement
 
   function tr(source: string) {
     const zh: Record<string, string> = {
@@ -88,6 +89,8 @@
       'Agent connection ended. Retry to reconnect.': 'Agent 连接已断开，请重试连接。',
       'Reload session': '重新读取会话', 'Retry connection': '重试连接',
       'Agent setup instructions': '查看智能体配置方法',
+      'Message the agent': '给智能体发消息',
+      'Cancel current turn': '取消当前回合',
     }
     return $locale === 'zh-CN' && zh[source] ? zh[source] : chatText($locale, agentText($locale, source))
   }
@@ -96,17 +99,12 @@
     if (activeSessionId) sessionPromptDrafts.write(activeSessionId, prompt)
     activeSessionId = id
     prompt = sessionPromptDrafts.read(id)
+    composerRevealed = false
   }
 
   function editPrompt(text: string) {
     prompt = text
     sessionPromptDrafts.write(activeSessionId, text)
-  }
-
-  export function canAutoOpenRamble(sessionId: string): boolean {
-    return activeSessionId === sessionId && !busy && !snapshot.deleting
-      && visibleInteractions.length === 0 && !prompt.trim()
-      && composer?.isEmptyForNavigation() === true
   }
 
   async function run(name: string, operation: () => Promise<void> | void, id = activeSessionId): Promise<boolean> {
@@ -161,6 +159,7 @@
   function restoreFailedMessage() {
     if (sessionPromptDrafts.restoreFailedMessage(activeSessionId)) {
       prompt = sessionPromptDrafts.read(activeSessionId)
+      composerRevealed = true
       failedMessage = undefined
     }
   }
@@ -245,19 +244,37 @@
         retryLabel={actionFailure.stage === 'session' ? 'Retry preparing this session' : 'Retry connection'} busy={busy || lifecyclePending} />
     {/if}
     {#if failedMessage && !prompt.trim() && !awaitingAcknowledgement && !snapshot.deleting}<Button size="sm" variant="ghost" disabled={busy || lifecyclePending || sendPending} onclick={restoreFailedMessage}>{tr('Restore failed message to input')}</Button>{/if}
-    {#key snapshot.session.session_id}
-      <AgentComposer bind:this={composer} value={prompt} draftKey={snapshot.session.session_id}
-        onchange={editPrompt} onsubmit={send}
-        disabled={composerState.disabled} busy={composerState.busy} sendDisabled={composerState.sendDisabled || awaitingAcknowledgement}
-        oncancel={composerState.canCancel ? async () => { await run('cancel', onCancel) } : undefined}>
-        <svelte:fragment slot="footer">
-          <span class="flex shrink-0 max-w-40 items-center gap-1.5 px-1 text-[10px] text-muted-foreground" title={config?.name ?? snapshot.session.host_id}><AgentIcon hostId={snapshot.session.host_id} class="size-3.5" /><span class="min-w-0 truncate">{config?.name ?? snapshot.session.host_id}</span></span>
-          {#if onSetConfiguration}<SessionConfigurationControls configuration={snapshot.runtime.configuration}
-            disabled={busy || lifecyclePending || configurationPending || sendPending || !actions.canPrompt} onChange={setConfiguration} />{/if}
-          {#if connecting || snapshot.runtime.connection === 'connecting'}<span class="flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground" role="status"><LoaderCircle class="size-3 animate-spin" />{tr('Connecting…')}</span>{/if}
-        </svelte:fragment>
-      </AgentComposer>
-    {/key}
+    {#if composerExpanded}
+      {#key snapshot.session.session_id}
+        <AgentComposer value={prompt} draftKey={snapshot.session.session_id}
+          onchange={editPrompt} onsubmit={send}
+          disabled={composerState.disabled} busy={composerState.busy} sendDisabled={composerState.sendDisabled || awaitingAcknowledgement}
+          oncancel={composerState.canCancel ? async () => { await run('cancel', onCancel) } : undefined}>
+          <svelte:fragment slot="footer">
+            <span class="flex shrink-0 max-w-40 items-center gap-1.5 px-1 text-[10px] text-muted-foreground" title={config?.name ?? snapshot.session.host_id}><AgentIcon hostId={snapshot.session.host_id} class="size-3.5" /><span class="min-w-0 truncate">{config?.name ?? snapshot.session.host_id}</span></span>
+            {#if onSetConfiguration}<SessionConfigurationControls configuration={snapshot.runtime.configuration}
+              disabled={busy || lifecyclePending || configurationPending || sendPending || !actions.canPrompt} onChange={setConfiguration} />{/if}
+            {#if connecting || snapshot.runtime.connection === 'connecting'}<span class="flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground" role="status"><LoaderCircle class="size-3 animate-spin" />{tr('Connecting…')}</span>{/if}
+          </svelte:fragment>
+        </AgentComposer>
+      {/key}
+    {:else}
+      <div class="flex items-center gap-1.5 rounded-2xl border bg-background px-2.5 py-2">
+        <button type="button" class="min-w-0 flex-1 truncate px-1.5 text-left text-sm text-muted-foreground disabled:opacity-60" disabled={composerState.disabled} onclick={() => (composerRevealed = true)}>
+          {tr('Message the agent')}
+        </button>
+        <span class="flex shrink-0 max-w-40 items-center gap-1.5 px-1 text-[10px] text-muted-foreground" title={config?.name ?? snapshot.session.host_id}><AgentIcon hostId={snapshot.session.host_id} class="size-3.5" /><span class="min-w-0 truncate">{config?.name ?? snapshot.session.host_id}</span></span>
+        {#if onSetConfiguration}<SessionConfigurationControls configuration={snapshot.runtime.configuration}
+          disabled={busy || lifecyclePending || configurationPending || sendPending || !actions.canPrompt} onChange={setConfiguration} />{/if}
+        {#if connecting || snapshot.runtime.connection === 'connecting'}<span class="flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground" role="status"><LoaderCircle class="size-3 animate-spin" />{tr('Connecting…')}</span>{/if}
+        {#if composerState.canCancel}
+          <Button variant="secondary" size="icon" class="size-8 shrink-0 rounded-xl" aria-label={tr('Cancel current turn')} title={tr('Cancel current turn')}
+            disabled={busy || lifecyclePending} onclick={() => void run('cancel', onCancel)}>
+            <Square class="size-3.5 fill-current" />
+          </Button>
+        {/if}
+      </div>
+    {/if}
     <div class="flex min-w-0 items-center gap-3 px-1 text-[10px] text-muted-foreground" data-workspace-metadata>
       {#if cwd}<span class="flex min-w-0 items-center gap-1.5" title={cwd}><Folder class="size-3 shrink-0" /><span class="truncate">{cwd}</span></span>{/if}
       {#if branch}<span class="flex min-w-0 max-w-[35%] items-center gap-1.5" title={branch}><GitBranch class="size-3 shrink-0" /><span class="truncate">{branch}</span></span>{/if}

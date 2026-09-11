@@ -382,6 +382,18 @@ export function createNavigationController(context: NavigationControllerContext)
     })
   }
 
+  /** Show a request in the current list immediately, without waiting for the next poll. */
+  function revealRequest(request: FeedbackRequestSummary): void {
+    const state = get(store)
+    const inScope = state.selectedHostId === null
+      || (state.selectedHostId === request.host_id
+        && (state.selectedHostSessionId === null || state.selectedHostSessionId === request.host_session_id))
+    if (!inScope) return
+    const rest = state.requests.filter(item => item.request_id !== request.request_id)
+    if (state.requests[0]?.request_id === request.request_id && rest.length === state.requests.length - 1) return
+    patch({ requests: [request, ...rest] })
+  }
+
   function commitScope(prepared: PreparedNavigationScope): boolean {
     if (!canCommitScope(prepared)) return false
     displayedRequestQuery = preparedScopes.get(prepared)!.query
@@ -524,6 +536,7 @@ export function createNavigationController(context: NavigationControllerContext)
     prepareScope,
     canCommitScope,
     commitScope,
+    revealRequest,
     setRequestSearch,
     setRequestFilters,
     renameHostSession,

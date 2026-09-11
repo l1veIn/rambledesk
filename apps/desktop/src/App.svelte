@@ -153,7 +153,6 @@ import type { SettingsSection } from './lib/domain/settingsSection'
   let renderedSessionResolution: SessionViewResolution | null = null
   let pageError = ''
   let sessionWorkbench: FeedbackEditorHandle | undefined
-  let managedSessionSection: ManagedSessionSection | undefined
   let rambleController: RambleSessionControllerHandle
   let archivedInitialSession: SessionViewDescriptor | null = null
   let archivedSelectionEpoch = 0
@@ -342,10 +341,8 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     refreshNotificationPermission: () => notificationPermission.refresh(),
     isTransitionLocked: () => workspaceTransitionLocked,
     enqueueDocumentTask,
-    canAutoOpenRamble: (sessionId) => managedSessionSection?.canAutoOpenRamble(sessionId) === true,
     onboardingOpen: () => $onboarding.open,
     resumePromptOpen: () => $resumePrompts.prompt !== null,
-    rambleEngaged: () => rambleEngaged,
   })
 
   export function refetchAfterTransportReady() {
@@ -959,7 +956,6 @@ import type { SettingsSection } from './lib/domain/settingsSection'
           {#if $startup.mounted && $startup.phase === 'ready'}
           {#key renderedAgentSessionView.sessionId}
             <ManagedSessionSection
-              bind:this={managedSessionSection}
               transport={applicationTransport}
               sessionId={renderedAgentSessionView.sessionId}
               deletionPending={$managedSessions.deletingCommands.has(renderedAgentSessionView.sessionId)}

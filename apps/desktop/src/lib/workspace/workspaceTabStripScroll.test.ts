@@ -76,6 +76,7 @@ describe('workspace tab strip scrolling', () => {
     await settle()
 
     expect(scrollLeft).toBe(SCROLL_WIDTH)
+    expect(host.querySelector('[data-workspace-tab-list]')?.classList.contains('overflow-x-auto')).toBe(true)
     await unmount(app as never)
   })
 
@@ -96,6 +97,15 @@ describe('workspace tab strip scrolling', () => {
     await settle()
 
     expect(scrollLeft).toBe(0)
+    await unmount(app as never)
+  })
+
+  it('does not make a fitting strip a scroll container', async () => {
+    const app = harness()
+    await settle()
+    const list = host.querySelector('[data-workspace-tab-list]')
+    expect(list?.getAttribute('data-overflowing')).toBe('false')
+    expect(list?.classList.contains('overflow-x-auto')).toBe(false)
     await unmount(app as never)
   })
 

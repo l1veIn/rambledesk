@@ -127,6 +127,11 @@
     if (tabListElement.scrollLeft !== before) event.preventDefault()
   }
 
+  /** Chromium autoscrolls overflow:auto on middle-mousedown; stop that so the click can close. */
+  function suppressMiddleAutoscroll(event: MouseEvent) {
+    if (event.button === 1) event.preventDefault()
+  }
+
   function registerTab(node: HTMLElement, viewKey: string) {
     tabButtons.set(viewKey, node)
     return {
@@ -196,6 +201,7 @@
   function handleMiddleClick(event: MouseEvent, viewKey: string) {
     if (event.button !== 1) return
     event.preventDefault()
+    event.stopPropagation()
     void closeAndFocus(viewKey)
   }
 
@@ -227,13 +233,17 @@
         autoAriaDisabled: true,
         delayTouchStart: 500,
       }}
-      class="workspace-tab-list flex h-full min-w-0 flex-[0_1_auto] items-stretch overflow-x-auto overflow-y-hidden"
+      class="workspace-tab-list flex h-full min-w-0 flex-[0_1_auto] items-stretch"
+      class:overflow-x-auto={layout.overflowing}
+      class:overflow-y-hidden={layout.overflowing}
       style:--tab-fade-start={canScrollLeft ? '1.25rem' : '0px'}
       style:--tab-fade-end={canScrollRight ? '1.25rem' : '0px'}
       bind:this={tabListElement}
       bind:clientWidth={listClientWidth}
+      data-overflowing={layout.overflowing ? 'true' : 'false'}
       onscroll={measureList}
       onwheel={handleWheel}
+      onmousedown={suppressMiddleAutoscroll}
       role="tablist"
       aria-label={tr('Workspace tabs')}
       aria-orientation="horizontal"
@@ -250,9 +260,11 @@
           class="workspace-tab-item relative shrink-0 cursor-grab active:cursor-grabbing"
           style:width={`${layout.tabWidth}px`}
           class:z-10={activeViewKey === viewKey}
+          role="none"
           data-workspace-tab-item
           data-workspace-view-key={viewKey}
           data-active={activeViewKey === viewKey ? 'true' : 'false'}
+          onmousedown={(event) => handleMiddleClick(event, viewKey)}
         >
           <span class="workspace-tab-seat" aria-hidden="true"></span>
           <!-- svelte-ignore a11y_click_events_have_key_events (the native keyboard action above preserves Tab semantics before DnD sees the event) -->
@@ -272,7 +284,6 @@
             class:workspace-tab-inactive={activeViewKey !== viewKey}
             title={label}
             onclick={() => activateTab(viewKey)}
-            onauxclick={(event) => handleMiddleClick(event, viewKey)}
           >
             <span class="workspace-tab-label pointer-events-none min-w-0 flex-1 overflow-hidden whitespace-nowrap">
               {label}

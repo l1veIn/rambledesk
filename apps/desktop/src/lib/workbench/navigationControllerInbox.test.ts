@@ -73,4 +73,22 @@ describe('navigationController inbox arrivals', () => {
     expect(onRequestsArrived).toHaveBeenLastCalledWith([second])
     expect(mocks.notificationSend).not.toHaveBeenCalled()
   })
+
+  it('reveals an in-scope request at the front of the list without waiting for a poll', async () => {
+    const older = feedbackRequest('older')
+    const arrived = { ...feedbackRequest('arrived'), host_id: older.host_id, host_session_id: older.host_session_id }
+    mocks.applicationCall.mockImplementation(async (command: string) => {
+      if (command === 'listFeedbackInbox') return [older]
+      if (command === 'listHostSessions') return [hostSession()]
+      if (command === 'listHostProfiles') return []
+      if (command === 'listFeedbackRequests') return { requests: [older], next_cursor: null }
+    })
+    const controller = createController()
+    await controller.initialize(false)
+    await controller.selectScope(older.host_id, older.host_session_id)
+    controller.revealRequest(arrived)
+    expect(get(controller).requests.map(request => request.request_id)).toEqual(['arrived', 'older'])
+    controller.revealRequest(arrived)
+    expect(get(controller).requests.map(request => request.request_id)).toEqual(['arrived', 'older'])
+  })
 })

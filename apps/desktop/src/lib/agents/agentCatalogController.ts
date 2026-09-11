@@ -4,7 +4,7 @@ import type { AgentCatalogEntry, AgentInspection, AgentInstallJob, AgentConfig, 
 import { APPLICATION_EVENTS_STREAM } from '$lib/application/applicationEvents'
 import { diagnosticAgentId, diagnosticErrorCategory, recordClientDiagnostic, startClientDiagnostic } from '$lib/diagnostics/clientDiagnostics'
 import { isAbsoluteAgentDirectory, redactAgentMessage } from './agentConfigForm'
-import { agentLaunchSignature as launchSignature, beginAgentConnection, beginAgentInspection, forgetAgentConnection, observeAgentRuntime, readAgentDetectionCache, reconcileAgentConnections, redactAgentConnection, subscribeAgentDetectionCache } from './agentDetectionCache'
+import { agentLaunchSignature as launchSignature, beginAgentConnection, beginAgentInspection, forgetAgentConnection, observeAgentRuntime, readAgentDetectionCache, reconcileAgentConnections, redactAgentConnection, resetAgentDetectionCache, subscribeAgentDetectionCache } from './agentDetectionCache'
 export { agentLaunchSignature as launchSignature } from './agentDetectionCache'
 import { agentDiagnosis, prefersManagedDeepSeek } from './agentDiagnosis'
 export { agentDiagnosis, connectionPreparationAvailable } from './agentDiagnosis'
@@ -30,14 +30,15 @@ export function detectedAgentConfiguration(entry: AgentCatalogEntry, inspection:
 export function configurationsForAgent(entry: AgentCatalogEntry, configs: readonly AgentConfig[]): AgentConfig[] {
   return configs.filter(config => config.catalog_id === entry.id)
 }
-export type AgentListItem = { key: string; name: string; entry?: AgentCatalogEntry; config?: AgentConfig; configs: AgentConfig[] }
+export type AgentListItem = { key: string; name: string; entry?: AgentCatalogEntry; config?: AgentConfig; configs: AgentConfig[]; legacy?: boolean }
 /** One row per known Agent. Every saved profile remains accessible in advanced settings. */
-export function agentListItems(entries: readonly AgentCatalogEntry[], configs: readonly AgentConfig[]): AgentListItem[] {
+export function agentListItems(entries: readonly AgentCatalogEntry[], configs: readonly AgentConfig[], connections: AgentCatalogState['connections'] = {}): AgentListItem[] {
   return [...entries.map(entry => {
     const profiles = configurationsForAgent(entry, configs)
-    return { key: `catalog:${entry.id}`, name: entry.name, entry, config: profiles.find(config => config.enabled) ?? profiles[0], configs: profiles }
+    const checked = profiles.find(config => config.enabled && connections[config.id]?.result.ok && connections[config.id].signature === launchSignature(config))
+    return { key: `catalog:${entry.id}`, name: entry.name, entry, config: checked ?? profiles.find(config => config.enabled) ?? profiles[0], configs: profiles }
   }), ...configs.filter(config => !entries.some(entry => entry.id === config.catalog_id))
-    .map(config => ({ key: `config:${config.id}`, name: config.name, config, configs: [config] }))]
+    .map(config => ({ key: `config:${config.id}`, name: config.name, config, configs: [config], legacy: Boolean(config.catalog_id) }))]
 }
 export function agentConnectionResult(config: AgentConfig | undefined, state: AgentCatalogState): AgentConnectionCheck | undefined {
   if (!config) return
@@ -353,7 +354,7 @@ export function createAgentCatalogController(transport: ApplicationTransport) {
     if (!active) return
     const snapshot = get(state)
     await Promise.all([
-      ...snapshot.configs.filter(config => config.enabled).map(config => checkConfig(config, false, reason)),
+      ...snapshot.configs.filter(config => config.enabled && (!config.catalog_id || snapshot.entries.some(entry => entry.id === config.catalog_id))).map(config => checkConfig(config, false, reason)),
       ...snapshot.entries.filter(entry => !snapshot.configs.some(config => config.catalog_id === entry.id)).map(entry => checkAgent(entry.id, false, reason)),
     ])
   }
@@ -435,8 +436,9 @@ export function createAgentCatalogController(transport: ApplicationTransport) {
       const refreshFailed = Boolean(get(state).error)
       const inspectionFailures = await inspectAll(reason)
       attemptedCatalogs.clear()
-      for (const config of get(state).configs) forgetAgentConnection(transport, config.id)
-      patch({ connections: {} })
+      const snapshotBeforeChecks = get(state)
+      for (const config of snapshotBeforeChecks.configs.filter(config => !config.catalog_id || snapshotBeforeChecks.entries.some(entry => entry.id === config.catalog_id))) forgetAgentConnection(transport, config.id)
+      patch({ connections: readAgentDetectionCache(transport).connections })
       await checkAll(reason)
       const snapshot = get(state)
       const failedCount = inspectionFailures + Object.values(snapshot.connections).filter(check => !check.result.ok).length
@@ -521,10 +523,41 @@ export function createAgentCatalogController(transport: ApplicationTransport) {
     })
     return dispose
   }
+  function isAgentConfigInUse(error: unknown): boolean {
+    return typeof error === 'object' && error !== null && 'code' in error && error.code === 'AGENT_CONFIG_IN_USE'
+  }
+  async function resetAndDetect(): Promise<void> {
+    if (!active) return
+    if (detecting) await detecting
+    if (!active) return
+    const finish = startClientDiagnostic('agent_config', { action: 'delete', source: 'catalog', reason: 'manual' })
+    try {
+      patch({ error: '' })
+      resetAgentDetectionCache(transport)
+      for (const config of [...get(state).configs]) {
+        try {
+          await remove(config.id)
+        } catch (error) {
+          if (!isAgentConfigInUse(error)) throw error
+          await save({
+            id: config.id, catalog_id: config.catalog_id, name: config.name, host_id: config.host_id,
+            protocol: config.protocol, enabled: false, command: config.command, args: config.args, env: config.env,
+          })
+          forgetAgentConnection(transport, config.id)
+        }
+      }
+      finish('ok', { config_count: get(state).configs.length })
+    } catch (error) {
+      finish('failed', { error_category: diagnosticErrorCategory(error) })
+      failure(error)
+      return
+    }
+    await detectAll('manual')
+  }
   function dispose() {
     active = false; clearTimeout(timer); unsubscribe?.(); unsubscribeCache?.(); unsubscribePreparations?.()
     for (const finish of installationDiagnostics.values()) finish('cancelled', { reason: 'inactive' })
     installationDiagnostics.clear()
   }
-  return { subscribe: state.subscribe, start, dispose, refresh, detectAll, inspect, inspectAll, install, connect, cancel, save, remove, resolve, check, checkAgent }
+  return { subscribe: state.subscribe, start, dispose, refresh, detectAll, resetAndDetect, inspect, inspectAll, install, connect, cancel, save, remove, resolve, check, checkAgent }
 }

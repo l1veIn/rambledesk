@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { get, type Writable } from 'svelte/store'
 import { DEFAULT_APPEARANCE, type AppearanceSettings } from './appearanceSettings'
 import { appearancePreferences, initializeAppearancePreferences, updateAppearance } from './appearancePreferences'
-import { appearanceRuntimeError, initializeAppearance } from './appearanceRuntime'
+import { appearanceRuntimeError, initializeAppearance, initializeAppearanceStyles } from './appearanceRuntime'
 
 vi.mock('./appearancePreferences', async () => {
   const { writable } = await import('svelte/store')
@@ -174,5 +174,18 @@ describe('appearance zoom runtime', () => {
     expect(get(appearanceRuntimeError)).toBeNull()
     secondDispose()
     expect(removeEventListener).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('appearance overlay styles', () => {
+  it('applies palette tokens without installing zoom or wallpaper listeners', () => {
+    const dispose = initializeAppearanceStyles()
+    disposers.push(dispose)
+    expect(root.dataset.appearance).toBe('enabled')
+    expect(root.dataset.palette).toBe('classic')
+    expect(addEventListener).not.toHaveBeenCalled()
+    updateAppearance({ palette: 'rose' })
+    expect(root.dataset.palette).toBe('rose')
+    expect(root.style.setProperty).toHaveBeenCalled()
   })
 })

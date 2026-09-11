@@ -27,6 +27,9 @@ export function defineApplicationStream<Event>(id: string): ApplicationStream<Ev
 }
 
 export interface ApplicationTransport {
+  /** Stable client scope in origin-local storage; omitted for ephemeral transports. */
+  readonly persistenceScope?: string
+
   call<Name extends ApplicationCommandName>(
     name: Name,
     input: ApplicationCommandInput<Name>,

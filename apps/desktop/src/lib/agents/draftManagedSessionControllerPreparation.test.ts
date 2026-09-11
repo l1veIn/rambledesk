@@ -1,3 +1,4 @@
+import { rememberAgentConnection } from './agentDetectionCache'
 import { get } from 'svelte/store'
 import { afterEach, describe, expect, it } from 'vitest'
 
@@ -25,6 +26,7 @@ describe('managed draft lifecycle: preparation, restore, diagnostics', () => {
     const failed = snapshot('one', 'prepared', 'failed')
     failed.runtime.last_error = 'Rejected old-secret-value'
     failed.runtime.failure = { stage: 'session', reason: 'authentication', message: 'Rejected old-secret-value' }
+    rememberAgentConnection(transport, { ...config, env: { API_KEY: 'old-secret-value' } }, { ok: true, message: 'Connected', details: [] })
     transport.resolve('listAgentConfigs', [{ ...config, env: { API_KEY: 'old-secret-value' } }]).resolve('prepareManagedSession', failed)
     controller.start(); await flush()
     expect(get(controller).error).not.toContain('old-secret-value')
@@ -91,6 +93,7 @@ describe('managed draft lifecycle: preparation, restore, diagnostics', () => {
   it('discards an in-flight connection when changing agent and clearing the directory, preserving the typed draft', async () => {
     const { controller, transport, storage } = setup()
     const pending = deferred<ManagedSessionSnapshot>()
+    rememberAgentConnection(transport, { ...config, id: 'another', name: 'Another agent' }, { ok: true, message: 'Connected', details: [] })
     transport.resolve('listAgentConfigs', [config, { ...config, id: 'another', name: 'Another agent' }])
       .handle('prepareManagedSession', () => pending.promise)
     controller.start(); await flush()
@@ -114,6 +117,7 @@ describe('managed draft lifecycle: preparation, restore, diagnostics', () => {
     const events = captureDiagnostics()
     const { controller, transport } = setup()
     const selected = { ...config, catalog_id: catalogId }
+    transport.resolve('listAvailableAgents', [{ ...catalog, id: catalogId }])
     transport.resolve('listAgentConfigs', [selected]).resolve('resolveCatalogAgent', selected).resolve('sendManagedPrompt', snapshot('one', 'active'))
     controller.start(); await flush()
     await controller.send('private-prompt-canary')
@@ -220,13 +224,14 @@ describe('managed draft lifecycle: preparation, restore, diagnostics', () => {
     await controller.close()
   })
 
-  it('rebuilds an unsent connection after its selected profile changes in settings', async () => {
+  it('discards an unsent connection and requires a new check after its profile changes', async () => {
     const { controller, transport } = setup()
     controller.start(); await flush()
     transport.resolve('listAgentConfigs', [{ ...config, updated_at: 'later', env: { MODEL: 'new' } }]).resolve('prepareManagedSession', snapshot('two'))
     await controller.refreshChoices(); await flush()
     expect(transport.callsFor('discardPreparedSession').map((call) => call.input)).toEqual([{ session_id: 'one' }])
-    expect(get(controller).snapshot?.session.session_id).toBe('two')
+    expect(get(controller)).toMatchObject({ snapshot: null, choices: [], choice: '', phase: 'idle' })
+    expect(transport.callsFor('prepareManagedSession')).toHaveLength(1)
     expect(get(controller).text).toBe('Draft task')
     await controller.close()
   })

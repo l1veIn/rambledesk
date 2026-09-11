@@ -24,6 +24,8 @@ export class ReplaceableApplicationTransport implements ApplicationTransport {
 
   constructor(private current: ApplicationTransport) {}
 
+  get persistenceScope() { return this.current.persistenceScope }
+
   replace(next: ApplicationTransport): void {
     if (next === this.current) return
     for (const subscription of this.#subscriptions) subscription.unsubscribe()

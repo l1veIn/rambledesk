@@ -10,6 +10,7 @@ import type {
 import { configureClientDiagnostics, type ClientDiagnosticEvent } from '$lib/diagnostics/clientDiagnostics'
 import { createDraftManagedSessionController } from './draftManagedSessionController'
 import { createManagedSessionDraftStorage } from './managedSessionDrafts'
+import { rememberAgentConnection } from './agentDetectionCache'
 
 export const config: AgentConfig = { id: 'config', name: 'Pi', host_id: 'pi', protocol: 'acp', enabled: true, command: 'pi-acp', args: [], env: {}, created_at: '', updated_at: '' }
 export const catalog: AgentCatalogEntry = { id: 'pi', name: 'Pi', host_id: 'pi', description: '', connection_kind: 'bridge', distribution: { kind: 'npm', package: 'pi-acp', command: 'pi-acp', pinned_version: '1.0.0', node_required: '22.0.0' }, args: [], dependencies: [], verification: { status: 'unverified', versions: [], note: '' } }
@@ -35,6 +36,7 @@ export function setup() {
     .resolve('listAgentConfigs', [config]).resolve('listAvailableAgents', []).resolve('discardPreparedSession', undefined)
     .resolve('prepareManagedSession', snapshot('one')).resolve('getManagedSession', snapshot('one'))
   const promoted = vi.fn()
+  rememberAgentConnection(transport, config, { ok: true, message: 'ACP connected', details: [] })
   const controller = createDraftManagedSessionController(transport, 'draft', storage, promoted)
   return { transport, controller, promoted, storage, data }
 }

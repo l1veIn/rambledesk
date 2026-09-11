@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { selectWorkbenchEntry, type WorkbenchEntry } from './workbenchEntry'
+import { entryAppliesOverlayAppearance, selectWorkbenchEntry, type WorkbenchEntry } from './workbenchEntry'
 
 const nativeRoutes: ReadonlyArray<
   readonly [pathname: string, hash: string, expected: WorkbenchEntry]
@@ -44,5 +44,12 @@ describe('selectWorkbenchEntry', () => {
     expect(
       selectWorkbenchEntry({ isTauri: false, previewMode: true, pathname: '/', hash: '#capture' }),
     ).toBe('preview')
+  })
+
+  it('applies palette tokens to the ramble overlay windows without treating capture as one', () => {
+    expect(entryAppliesOverlayAppearance('ramble-console')).toBe(true)
+    expect(entryAppliesOverlayAppearance('speech-overlay')).toBe(true)
+    expect(entryAppliesOverlayAppearance('desktop')).toBe(false)
+    expect(entryAppliesOverlayAppearance('capture')).toBe(false)
   })
 })

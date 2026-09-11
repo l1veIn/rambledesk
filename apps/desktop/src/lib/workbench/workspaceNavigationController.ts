@@ -15,7 +15,7 @@ import type { ApplicationResourceKey } from '../generated/feedback'
 import type { FeedbackRequestSummary, FeedbackWorkspaceView } from '../feedback'
 import { restoreFeedbackDraftDocument, snapshotFeedbackDraftDocument } from '../feedbackDraftDocument'
 import { normalizePublishedFeedback } from '../publishedFeedback'
-import { agentSessionForView, arrivingRequestForAgentView } from '../workspace/agentViewRouting'
+import { agentSessionForView, arrivingRequestForAgentView, latestPendingRequestForSession } from '../workspace/agentViewRouting'
 import { requestFilterCount } from '../domain/requestFilters'
 import { leavesSettingsView } from '../workspace/workspaceViewLifecycle'
 import {
@@ -71,6 +71,7 @@ type NavigationOptions = ActivationOptions & Readonly<{
   scope?: NavigationScope
   shellAction?: WorkspaceShellIntent
   prepare?: () => void
+  ignoreTransitionLock?: boolean
 }>
 
 /**
@@ -99,10 +100,8 @@ export type WorkspaceNavigationContext = {
   refreshNotificationPermission: () => void
   isTransitionLocked: () => boolean
   enqueueDocumentTask: <T>(task: () => Promise<T>) => Promise<T>
-  canAutoOpenRamble: (sessionId: string) => boolean
   onboardingOpen: () => boolean
   resumePromptOpen: () => boolean
-  rambleEngaged: () => boolean
 }
 
 export type WorkspaceNavigationController = ReturnType<typeof createWorkspaceNavigationController>
@@ -233,7 +232,7 @@ export function createWorkspaceNavigationController(context: WorkspaceNavigation
   async function navigate(view: WorkspaceViewDescriptor | null, options: NavigationOptions = {}): Promise<WorkspaceTransitionOutcome> {
     if (disposed) return 'stale'
     if (options.expectedIntent !== undefined && !transition.isCurrent(options.expectedIntent)) return 'stale'
-    const canLeave = () => !disposed && !context.isTransitionLocked() && (options.canLeave?.() ?? true)
+    const canLeave = () => !disposed && (options.ignoreTransitionLock || !context.isTransitionLocked()) && (options.canLeave?.() ?? true)
     if (!canLeave()) return 'blocked'
     const intent = options.expectedIntent ?? transition.invalidate()
     const isCurrent = () => !disposed && transition.isCurrent(intent)
@@ -363,18 +362,40 @@ export function createWorkspaceNavigationController(context: WorkspaceNavigation
 
   async function autoOpenArrivingRequest(arrivals: readonly FeedbackRequestSummary[]) {
     const origin = activeView()
-    if (disposed || origin?.kind !== 'agent-session' || context.workspaceShell.pendingViewKey()) return
-    const intent = transition.currentIntent()
+    if (disposed || context.workspaceShell.pendingViewKey()) return
+    if (origin?.kind !== 'agent-session' && origin?.kind !== 'session' && origin?.kind !== 'request-task') return
+    // Inbox refresh also updates host-session facts; that must not cancel this jump.
     await tick()
-    if (disposed || !transition.isCurrent(intent) || context.workspaceShell.pendingViewKey()) return
-    const canLeave = () => {
+    if (disposed || context.workspaceShell.pendingViewKey()) return
+    const stillWatching = () => {
       const current = activeView()
-      return current?.kind === 'agent-session' && current.sessionId === origin.sessionId &&
-        context.startup().phase() === 'ready' && !context.onboardingOpen() && !context.resumePromptOpen() &&
-        !context.isTransitionLocked() && !context.rambleEngaged() && context.canAutoOpenRamble(origin.sessionId)
+      if (context.startup().phase() !== 'ready' || context.onboardingOpen() || context.resumePromptOpen()) return false
+      if (origin.kind === 'agent-session') {
+        return current?.kind === 'agent-session' && current.sessionId === origin.sessionId
+      }
+      if (origin.kind === 'session') {
+        return current?.kind === 'session' && current.hostId === origin.hostId && current.hostSessionId === origin.hostSessionId
+      }
+      return current?.kind === 'request-task' && current.requestId === origin.requestId
     }
-    const request = arrivingRequestForAgentView(origin, arrivals, canLeave())
-    if (request) await activateRequest(request.request_id, canLeave)
+    const fromAgent = origin.kind === 'agent-session'
+    const request = arrivingRequestForAgentView(origin, arrivals, stillWatching(), context.workspaceSession.request())
+    if (!request) return
+    context.navigation.revealRequest(request)
+    if (context.workspaceSession.requestId() === request.request_id && activeView()?.kind === 'session') return
+    await navigate(sessionViewDescriptor(request.host_id, request.host_session_id), {
+      requestId: request.request_id,
+      canLeave: stillWatching,
+      ignoreTransitionLock: fromAgent,
+    })
+    if (disposed || activeView()?.kind !== 'session') return
+    const latest = latestPendingRequestForSession(request, get(context.navigation).requests) ?? request
+    context.navigation.revealRequest(latest)
+    if (latest.request_id === context.workspaceSession.requestId()) return
+    await navigate(sessionViewDescriptor(latest.host_id, latest.host_session_id), {
+      requestId: latest.request_id,
+      ignoreTransitionLock: fromAgent,
+    })
   }
 
   async function refetchApplicationSnapshots(refetch: ApplicationSnapshotRefetchIntent): Promise<void> {

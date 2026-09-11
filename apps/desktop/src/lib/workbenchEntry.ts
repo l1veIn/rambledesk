@@ -30,3 +30,8 @@ export function selectWorkbenchEntry(input: WorkbenchEntryInput): WorkbenchEntry
   }
   return 'desktop'
 }
+
+/** Isolated overlay windows share palette tokens but must not inherit workbench zoom. */
+export function entryAppliesOverlayAppearance(entry: WorkbenchEntry): boolean {
+  return entry === 'ramble-console' || entry === 'speech-overlay'
+}

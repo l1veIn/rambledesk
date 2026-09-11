@@ -97,8 +97,8 @@ async function harness() {
     managedSessions: () => managed,
     transport, tr: source => source, messageFrom: String, setPageError: message => errors.push(message),
     releaseEditor, refreshNotificationPermission: vi.fn(), isTransitionLocked: () => locked,
-    enqueueDocumentTask: task => task(), canAutoOpenRamble: () => true,
-    onboardingOpen: () => false, resumePromptOpen: () => false, rambleEngaged: () => false,
+    enqueueDocumentTask: task => task(),
+    onboardingOpen: () => false, resumePromptOpen: () => false,
   })
   await navigation.initialize(false)
   const alpha = workspaces.get('alpha')!
@@ -335,6 +335,42 @@ describe('workspace navigation through real sessions and transport', () => {
     expect(run.draftSession.snapshot().bodyMarkdown).toBe('beta draft')
     expect(run.scope()).toBe('beta')
     expect(run.releaseEditor).toHaveBeenCalledOnce()
+  })
+
+  it('switches a Ramble page to the newest arriving request for that session', async () => {
+    const run = await harness()
+    const arrival = {
+      ...run.workspaces.get('alpha')!.request,
+      request_id: 'arrived',
+      status: 'waiting' as const,
+      updated_at: '2026-09-09T02:00:00Z',
+    }
+    run.workspaces.set('arrived', { ...run.workspaces.get('alpha')!, request: arrival })
+    await run.controller.autoOpenArrivingRequest([arrival])
+    expect(run.workspaceSession.requestId()).toBe('arrived')
+    expect(get(run.navigation).requests[0]?.request_id).toBe('arrived')
+  })
+
+  it('opens an arriving Ramble from the Agent page being watched even if a background refresh invalidated navigation', async () => {
+    const run = await harness()
+    const arrival = {
+      ...run.workspaces.get('alpha')!.request,
+      request_id: 'arrived',
+      status: 'waiting' as const,
+      managed_session_id: 'agent-one',
+    }
+    run.workspaces.set('arrived', { ...run.workspaces.get('alpha')!, request: arrival })
+    run.transport.resolve('listFeedbackInbox', [arrival])
+    await run.navigation.refreshNavigation()
+    await run.controller.openView(agentSessionViewDescriptor('agent-one'))
+    expect(run.workspaceShell.activeView()).toEqual(agentSessionViewDescriptor('agent-one'))
+    run.controller.invalidate()
+    run.lock(true)
+    await run.controller.autoOpenArrivingRequest([arrival])
+    expect(run.workspaceSession.requestId()).toBe('arrived')
+    expect(run.workspaceShell.activeView()).toEqual(sessionViewDescriptor('codex', 'alpha'))
+    expect(run.workspaceShell.requestIdFor(sessionViewDescriptor('codex', 'alpha'))).toBe('arrived')
+    expect(get(run.navigation).requests[0]?.request_id).toBe('arrived')
   })
 
   it('retries a blocked automatic task open and ignores asynchronous workspace results after disposal', async () => {

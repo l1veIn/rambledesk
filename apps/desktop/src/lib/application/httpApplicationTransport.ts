@@ -34,6 +34,8 @@ export * from './httpApplicationOperations'
 export * from './httpApplicationSession'
 
 export class HttpApplicationTransport implements ApplicationTransport {
+  // HTTP application sessions are restricted to the Workbench page's origin.
+  readonly persistenceScope = 'web'
   constructor(
     private readonly lease: HttpApplicationLease,
     private readonly capabilityManifest: CapabilityManifest = UNAVAILABLE_CAPABILITY_MANIFEST,

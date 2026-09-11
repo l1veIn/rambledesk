@@ -21,10 +21,29 @@ export function applyAppearanceStyles(root: HTMLElement, settings: AppearanceSet
   root.style.setProperty('--workspace-background-repeat', settings.backgroundFit === 'tile' ? 'repeat' : 'no-repeat')
 }
 
-/** Mount only in the main workbench: capture and speech overlay geometry is independent. */
+/**
+ * Palette and font tokens for isolated windows (speech overlay, ramble console).
+ * Does not apply zoom or workspace wallpaper: those windows size themselves in
+ * physical pixels and sit above other apps.
+ */
+export function initializeAppearanceStyles(
+  root: HTMLElement = document.documentElement,
+  onSettings?: (settings: AppearanceSettings) => void,
+): () => void {
+  const releasePreferences = initializeAppearancePreferences()
+  const unsubscribe = appearancePreferences.subscribe(settings => {
+    applyAppearanceStyles(root, settings)
+    onSettings?.(settings)
+  })
+  return () => {
+    unsubscribe()
+    releasePreferences()
+  }
+}
+
+/** Main workbench only: styles plus zoom and wallpaper. Overlay windows use initializeAppearanceStyles. */
 export function initializeAppearance(options: { setZoom?: (factor: number) => Promise<void> } = {}): () => void {
   const root = document.documentElement
-  const releasePreferences = initializeAppearancePreferences()
   const browserZoom = options.setZoom ? null : createBrowserZoomCapability(root)
   const setZoom = options.setZoom ?? browserZoom!.setZoom
   let active = true
@@ -53,8 +72,7 @@ export function initializeAppearance(options: { setZoom?: (factor: number) => Pr
     }
   }
 
-  const unsubscribe = appearancePreferences.subscribe(settings => {
-    applyAppearanceStyles(root, settings)
+  const releaseStyles = initializeAppearanceStyles(root, settings => {
     desiredZoom = settings.zoom
     void applyZoom()
   })
@@ -79,9 +97,8 @@ export function initializeAppearance(options: { setZoom?: (factor: number) => Pr
   return () => {
     if (!active) return
     active = false
-    unsubscribe()
     unsubscribeBackground()
-    releasePreferences()
+    releaseStyles()
     window.removeEventListener('keydown', onKeyDown)
     if (browserZoom) void browserZoom.setZoom(1)
   }

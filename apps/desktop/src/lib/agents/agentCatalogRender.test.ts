@@ -34,6 +34,25 @@ function markup(options: { check?: AgentConnectionCheck; inspection?: AgentInspe
 }
 
 describe('Agent detection cards', () => {
+  it('shows the checked duplicate under the canonical agent and keeps old profile names in advanced settings', () => {
+    const unchecked = { ...profile, name: 'Claude Code' }
+    const duplicate = { ...profile, id: 'claude-2', name: 'Claude Code (2)' }
+    const body = markup({ profiles: [unchecked, duplicate], state: {
+      connections: { [duplicate.id]: { signature: launchSignature(duplicate), result: { ok: true, message: 'ACP connected', details: [] } } },
+    } })
+    const advanced = body.indexOf('data-agent-advanced')
+    expect(body.slice(0, advanced)).toContain('Claude Code')
+    expect(body.slice(0, advanced)).toContain('Connected')
+    expect(body.slice(0, advanced)).not.toContain('Not checked')
+    expect(body.slice(0, advanced)).not.toContain('Claude Code (2)')
+    expect(body.slice(advanced)).toContain('Claude Code (2)')
+  })
+  it('offers a confirmed factory reset of saved agent configurations', () => {
+    const body = markup()
+    expect(body).toContain('data-agent-reset-configs')
+    expect(body).toContain('Clear all configurations and detect again')
+  })
+
   it('offers connection component installation for a detected native CLI without login guidance', () => {
     const body = markup()
     expect(body).toContain('Connect in one click')

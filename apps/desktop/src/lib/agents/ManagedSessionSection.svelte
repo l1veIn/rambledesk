@@ -19,12 +19,6 @@
   export let onDeletingChange: (sessionId: string, deleting: boolean) => void = () => {}
   let reportedDeleting: boolean | undefined
   let wasDeletionPending = false
-  let sessionWorkspace: ManagedSessionWorkspace | undefined
-
-  export function canAutoOpenRamble(expectedSessionId: string): boolean {
-    return sessionId === expectedSessionId && !deletionPending
-      && sessionWorkspace?.canAutoOpenRamble(expectedSessionId) === true
-  }
 
   // The parent keys this component by local session ID; handlers never follow another tab's selection.
   const session = createManagedSessionController(transport, sessionId, { autoConnectBlocked: () => deletionPending })
@@ -60,7 +54,6 @@
 
 {#if $session.snapshot}
   <ManagedSessionWorkspace
-    bind:this={sessionWorkspace}
     snapshot={$session.snapshot}
     activities={$session.snapshot.activities}
     historyLoading={$session.historyLoading}

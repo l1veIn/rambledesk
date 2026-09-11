@@ -32,5 +32,7 @@ describe('Agent settings rendering', () => {
     expect(body).not.toContain('secret-never-rendered')
     expect(body).not.toContain('DEEPSEEK_API_KEY')
     expect(body).toContain('deepseek-acp')
+    expect(body).toContain('Enable configuration')
+    expect(body).toContain('Delete configuration')
   })
 })

@@ -4,10 +4,10 @@ import { APPLICATION_EVENTS_STREAM } from '$lib/application/applicationEvents'
 import { diagnosticAgentId, diagnosticErrorCategory, recordClientDiagnostic, startClientDiagnostic } from '$lib/diagnostics/clientDiagnostics'
 import { readApplicationSnapshot } from '$lib/application/readApplicationSnapshot'
 import { applicationResourcesAffectAgentConfigurations, applicationResourcesAffectManagedSession } from '$lib/application/applicationSnapshotRefetch'
-import type { AgentCatalogEntry, AgentConfig, AgentFailure, AgentInspection, AgentInstallJob, ManagedSessionSnapshot, SessionConfigChange } from '$lib/generated/feedback'
+import type { AgentCatalogEntry, AgentConfig, AgentFailure, AgentInspection, ManagedSessionSnapshot, SessionConfigChange } from '$lib/generated/feedback'
 import { isAbsoluteAgentDirectory, redactAgentMessage } from './agentConfigForm'
-import { connectionPreparationAvailable } from './agentCatalogController'
-import { beginAgentInspection, observeAgentRuntime, readAgentDetectionCache } from './agentDetectionCache'
+import { agentListItems, createAgentCatalogController } from './agentCatalogController'
+import { agentLaunchSignature, observeAgentRuntime, readAgentDetectionCache, reconcileAgentConnections, subscribeAgentDetectionCache, type CachedAgentConnection } from './agentDetectionCache'
 import { agentFailureFrom } from './agentFailure'
 import { promptRejectionConfirmed } from './promptAdmission'
 import { sessionPromptDrafts } from './managedSessionUi'
@@ -15,29 +15,22 @@ import type { ManagedSessionDraftStorage } from './managedSessionDrafts'
 
 export type DraftAgentChoice = Readonly<{
   key: string; name: string; hostId: string; config?: AgentConfig; catalogId?: string
-  entry?: AgentCatalogEntry; inspection?: AgentInspection; advanced?: boolean
+  entry?: AgentCatalogEntry; inspection?: AgentInspection; profiles: readonly AgentConfig[]
 }>
-export function agentNeedsPreparation(choice: DraftAgentChoice | undefined): boolean {
-  return Boolean(choice?.entry && !choice.config && (!choice.inspection?.command
-    || choice.inspection.checks.some(check => check.status === 'fail')
-    || choice.entry.verification.status === 'unsupported'))
-}
-export function canPrepareAgentConnection(choice: DraftAgentChoice | undefined): boolean {
-  return Boolean(agentNeedsPreparation(choice) && choice?.entry?.verification.status !== 'unsupported'
-    && connectionPreparationAvailable(choice?.entry, choice?.inspection))
-}
-export function draftAgentChoices(configs: readonly AgentConfig[], catalog: readonly AgentCatalogEntry[], inspections: readonly AgentInspection[]): DraftAgentChoice[] {
-  const profiles = configs.map((config) => ({ key: `config:${config.id}`, name: config.name, hostId: config.host_id, config,
-    catalogId: config.catalog_id, entry: catalog.find(entry => entry.id === config.catalog_id),
-    inspection: inspections.find(inspection => inspection.agent_id === config.catalog_id),
-    advanced: Boolean(config.catalog_id && (configs.find(item => item.catalog_id === config.catalog_id && item.enabled)
-      ?? configs.find(item => item.catalog_id === config.catalog_id))?.id !== config.id),
-  }))
-  const installed = catalog.filter((entry) => !configs.some((config) => config.catalog_id === entry.id)
-    && inspections.some((inspection) => inspection.agent_id === entry.id))
-    .map((entry) => ({ key: `catalog:${entry.id}`, name: entry.name, hostId: entry.host_id, catalogId: entry.id,
-      entry, inspection: inspections.find(inspection => inspection.agent_id === entry.id) }))
-  return [...profiles, ...installed]
+export function draftAgentChoices(configs: readonly AgentConfig[], catalog: readonly AgentCatalogEntry[], inspections: readonly AgentInspection[], connections: Record<string, CachedAgentConnection> = {}, selectedChoice = ''): DraftAgentChoice[] {
+  const checked = configs.filter(config => config.enabled && connections[config.id]?.result.ok
+    && connections[config.id].signature === agentLaunchSignature(config))
+  // Use the same agent identities and names as Settings. Historical aliases and
+  // additional launch profiles belong to that agent's advanced settings.
+  return agentListItems(catalog, checked, connections)
+    .filter(row => row.config && (row.entry || !row.config.catalog_id))
+    .map(row => {
+      // A restored draft keeps its explicitly selected account/launch profile.
+      const config = row.configs.find(config => `config:${config.id}` === selectedChoice) ?? row.config!
+      return { key: `config:${config.id}`, name: row.name, hostId: config.host_id, config,
+        catalogId: config.catalog_id, entry: row.entry, profiles: row.configs,
+        inspection: inspections.find(inspection => inspection.agent_id === config.catalog_id) }
+    })
 }
 
 export type DraftManagedSessionState = Readonly<{
@@ -46,7 +39,6 @@ export type DraftManagedSessionState = Readonly<{
   awaitingAcknowledgement: boolean
   phase: 'idle' | 'preparing' | 'ready' | 'failed' | 'sending' | 'closing' | 'promoted'
   snapshot: ManagedSessionSnapshot | null; error: string; failure?: AgentFailure | null
-  preparingConnection: boolean; installationJob: AgentInstallJob | null
 }>
 
 export function createDraftManagedSessionController(
@@ -56,7 +48,7 @@ export function createDraftManagedSessionController(
   onPromoted: (snapshot: ManagedSessionSnapshot) => Promise<void> | void,
 ) {
   const initial = storage.load(draftId)
-  const state = writable<DraftManagedSessionState>({ ...initial, choices: [], loadingChoices: true, choicesError: '', awaitingAcknowledgement: false, phase: 'idle', snapshot: null, error: '', failure: null, preparingConnection: false, installationJob: null })
+  const state = writable<DraftManagedSessionState>({ ...initial, choices: [], loadingChoices: true, choicesError: '', awaitingAcknowledgement: false, phase: 'idle', snapshot: null, error: '', failure: null })
   let started = false
   let closed = false
   let closing = false
@@ -70,13 +62,16 @@ export function createDraftManagedSessionController(
   let preparedEnvironment = ''
   let operations: Promise<void> = Promise.resolve()
   let unsubscribe: (() => void) | null = null
+  let unsubscribeCache: (() => void) | null = null
   let preparationTimer: ReturnType<typeof setTimeout> | null = null
   let choicesTask: Promise<void> | null = null
+  let refreshAfterChoices = false
   let scanningChoices = false
   let lastChoicesDiagnosticSummary = ''
   let catalogEntries: AgentCatalogEntry[] = []
+  let catalogLoaded = false
+  let savedConfigs: AgentConfig[] = []
   const inspections = new Map<string, AgentInspection>(Object.entries(readAgentDetectionCache(transport).inspections))
-  let installationTask: Promise<void> | null = null
 
   function patch(next: Partial<DraftManagedSessionState>) { state.update((value) => ({ ...value, ...next })) }
   function persist() { const { choice, cwd, text } = get(state); storage.save(draftId, { choice, cwd, text }) }
@@ -128,6 +123,7 @@ export function createDraftManagedSessionController(
       patch({ phase: 'promoted', snapshot, text: remainingText, awaitingAcknowledgement: false, error: '' })
       storage.remove(draftId)
       unsubscribe?.(); unsubscribe = null
+      unsubscribeCache?.(); unsubscribeCache = null
       await onPromoted(snapshot)
       finish('ok')
     } catch (cause) { finish('failed', { error_category: diagnosticErrorCategory(cause) }); throw cause }
@@ -182,8 +178,7 @@ export function createDraftManagedSessionController(
     const choice = value.choices.find((item) => item.key === value.choice)
     const invalidDirectory = directoryError(value.cwd)
     if (invalidDirectory) { patch({ phase: 'idle', ...(retry ? { error: invalidDirectory } : {}) }); return }
-    if (!choice || agentNeedsPreparation(choice)
-      || value.preparingConnection) { patch({ phase: 'idle' }); return }
+    if (!choice) { patch({ phase: 'idle' }); return }
     if (prepared && !retry) return
     patch({ phase: 'preparing', error: '', failure: null })
     let operationEnvironment = prepared ? preparedEnvironment : environmentText()
@@ -195,23 +190,7 @@ export function createDraftManagedSessionController(
         snapshot = await transport.call('startManagedSession', { session_id: prepared.session.session_id })
         assertSession(snapshot, prepared.session.session_id)
       } else {
-        const previous = choice.config
-        const catalogId = previous?.catalog_id ?? choice.catalogId
-        // Selecting an agent is the launch intent. Legacy disabled profiles are
-        // enabled in this same step while all customized launch fields survive.
-        const config = catalogId
-          ? await transport.call('resolveCatalogAgent', { agent_id: catalogId, ...(previous ? { agent_config_id: previous.id } : {}), enable: true })
-          : previous!.enabled ? previous! : await transport.call('saveAgentConfig', {
-            id: previous!.id, name: previous!.name, host_id: previous!.host_id, protocol: previous!.protocol,
-            command: previous!.command, args: previous!.args, env: previous!.env, enabled: true,
-          })
-        if (!current(intent)) { finish('cancelled', { reason: 'stale' }); return }
-        if (config !== previous) {
-          const resolved = { ...choice, key: `config:${config.id}`, name: config.name, hostId: config.host_id, config }
-          choicesRevision += 1
-          patch({ choice: resolved.key, choices: [...get(state).choices.filter((item) => item.key !== choice.key && item.key !== resolved.key), resolved], loadingChoices: false })
-          persist()
-        }
+        const config = choice.config!
         operationEnvironment += '\n' + Object.entries(config.env).map(([key, value]) => key + '=' + value).join('\n')
         snapshot = await transport.call('prepareManagedSession', { agent_config_id: config.id, cwd: value.cwd.trim() })
       }
@@ -241,8 +220,8 @@ export function createDraftManagedSessionController(
   }
 
   function publishChoices(configs: readonly AgentConfig[], catalog: readonly AgentCatalogEntry[]) {
-    const choices = draftAgentChoices(configs, catalog, [...inspections.values()])
     const value = get(state)
+    const choices = draftAgentChoices(configs, catalog, [...inspections.values()], readAgentDetectionCache(transport).connections, value.choice)
     const previousChoice = value.choices.find((item) => item.key === value.choice)
     const previousProfile = previousChoice?.config
     const selectedProfile = choices.find((item) => item.key === value.choice)?.config
@@ -252,17 +231,17 @@ export function createDraftManagedSessionController(
       readRevision += 1
       patch({ snapshot: null, phase: 'idle', error: '', failure: null })
     }
-    // Discovery never selects or materializes an installed catalog entry.
-    const materialized = previousChoice?.catalogId && !previousProfile && !choices.some(item => item.key === value.choice)
-      ? choices.find(item => item.catalogId === previousChoice.catalogId && !item.advanced)?.key : undefined
-    const choice = materialized ?? (value.choice || choices.find((item) => item.config?.enabled)?.key || '')
+    const choice = !catalogLoaded || choices.some(item => item.key === value.choice) ? value.choice : ''
     patch({ choices, choice, loadingChoices: false })
     persist()
     if ((!prepared || selectionChanged) && !sent) void schedule()
   }
   function refreshChoices(rescan = false, reason: 'mount' | 'refresh' | 'ready' | 'invalidation' | 'manual' | 'post_install' = rescan ? 'manual' : 'refresh'): Promise<void> {
     if (closed || closing || promoted) return Promise.resolve()
-    if (choicesTask) return rescan && !scanningChoices ? choicesTask.then(() => refreshChoices(true, reason)) : choicesTask
+    if (choicesTask) {
+      if (reason === 'ready' || reason === 'invalidation') { refreshAfterChoices = true; choicesRevision += 1 }
+      return rescan && !scanningChoices ? choicesTask.then(() => refreshChoices(true, reason)) : choicesTask
+    }
     scanningChoices = rescan
     const diagnosticActivity = rescan ? 'agent_detection' : 'agent_catalog_refresh'
     const diagnosticDetails = { action: rescan ? 'scan' : 'refresh', source: 'draft', reason, rescan }
@@ -279,42 +258,32 @@ export function createDraftManagedSessionController(
       try {
         await transport.waitUntilReady()
         if (closed || closing || promoted) return
+        if (rescan) {
+          // Use the same explicit discovery + ACP checks as Agents settings.
+          const detector = createAgentCatalogController(transport)
+          const dispose = detector.start()
+          try {
+            await detector.detectAll()
+            const detected = get(detector)
+            checkedCount = Object.keys(detected.connections).length
+            failedCount = Object.values(detected.connections).filter(check => !check.result.ok).length
+            if (detected.error) patch({ choicesError: detected.error })
+          } finally { dispose() }
+          if (closed || closing || promoted) return
+        }
         const configs = await transport.call('listAgentConfigs', undefined)
         if (intent !== choicesRevision || closed || closing || promoted) return
+        savedConfigs = configs
+        reconcileAgentConnections(transport, configs)
         inspections.clear()
         for (const [id, inspection] of Object.entries(readAgentDetectionCache(transport).inspections)) inspections.set(id, inspection)
-        // Configured agents connect immediately, independent of slow version probes.
+        // Previously checked profiles are available without launching new probes.
         publishChoices(configs, catalogEntries)
         const catalog = await transport.call('listAvailableAgents', undefined)
-        if (closed || closing || promoted) return
+        if (intent !== choicesRevision || closed || closing || promoted) return
         catalogEntries = catalog
-        publishChoices(get(state).choices.flatMap(choice => choice.config ? [choice.config] : []), catalog)
-        if (!rescan) { successful = true; return }
-        let next = 0
-        let failed = false
-        async function inspectNext() {
-          while (!closed && !closing && !promoted && next < catalog.length) {
-            const entry = catalog[next++]
-            const rememberInspection = beginAgentInspection(transport, entry.id)
-            try {
-              const inspection = await transport.call('inspectAgentInstallation', { agent_id: entry.id })
-              checkedCount += 1
-              if (!rememberInspection(inspection)) return
-              if (closed || closing || promoted) return
-              inspections.set(entry.id, inspection)
-            } catch {
-              failedCount += 1
-              if (closed || closing || promoted) return
-              inspections.delete(entry.id)
-              failed = true
-            }
-            // Resolution and user selection can change during a probe. Retain the
-            // current saved profiles instead of restoring the scan's older list.
-            publishChoices(get(state).choices.flatMap(choice => choice.config ? [choice.config] : []), catalog)
-            patch({ choicesError: failed ? 'Some installed agents could not be checked.' : '' })
-          }
-        }
-        await Promise.all(Array.from({ length: Math.min(3, catalog.length) }, inspectNext))
+        catalogLoaded = true
+        publishChoices(savedConfigs, catalog)
         successful = true
       } catch (cause) {
         failureCategory = diagnosticErrorCategory(cause)
@@ -332,6 +301,7 @@ export function createDraftManagedSessionController(
         }
         lastChoicesDiagnosticSummary = summaryKey
         choicesTask = null; scanningChoices = false
+        if (refreshAfterChoices) { refreshAfterChoices = false; void refreshChoices(false, 'invalidation') }
       }
     })()
     return choicesTask
@@ -340,6 +310,11 @@ export function createDraftManagedSessionController(
     if (closed || promoted) return
     if (started) { void refreshChoices(false); return }
     started = true
+    unsubscribeCache = subscribeAgentDetectionCache(transport, snapshot => {
+      inspections.clear()
+      for (const [id, inspection] of Object.entries(snapshot.inspections)) inspections.set(id, inspection)
+      if (savedConfigs.length && !closed && !closing && !promoted) publishChoices(savedConfigs, catalogEntries)
+    })
     unsubscribe = transport.subscribe(APPLICATION_EVENTS_STREAM, (event) => {
       observeAgentRuntime(transport, event.runtime_generation)
       if (event.type === 'ready') { void refreshChoices(false, 'ready'); if (prepared) void refreshPrepared(); return }
@@ -350,89 +325,20 @@ export function createDraftManagedSessionController(
     void refreshChoices(false, 'mount')
   }
   function select(choice: string, cwd: string, delayMs = 0) {
-    if (closed || closing || promoted || sent || get(state).preparingConnection) return
+    if (closed || closing || promoted || sent) return
     const value = get(state)
     if (choice === value.choice && cwd === value.cwd) return
+    const choices = started ? draftAgentChoices(savedConfigs, catalogEntries, [...inspections.values()], readAgentDetectionCache(transport).connections, choice) : value.choices
+    if (started && choice && choice !== value.choice && !choices.some(item => item.key === choice)) return
     revision += 1
     readRevision += 1
-    patch({ choice, cwd, snapshot: null, phase: 'idle', error: '', failure: null })
+    patch({ choice, choices, cwd, snapshot: null, phase: 'idle', error: '', failure: null })
     persist()
     if (preparationTimer) clearTimeout(preparationTimer)
     if (delayMs > 0) preparationTimer = setTimeout(() => { preparationTimer = null; void schedule() }, delayMs)
     else void schedule()
   }
   function edit(text: string) { if (!closed && !closing && !promoted) { draftEditRevision += 1; patch({ text }); persist() } }
-
-  function prepareConnection(): Promise<void> {
-    if (installationTask) return installationTask
-    const choice = get(state).choices.find(choice => choice.key === get(state).choice)
-    if (closed || closing || promoted || sent || !canPrepareAgentConnection(choice)) return Promise.resolve()
-    const agentId = choice!.entry!.id
-    const finish = startClientDiagnostic('agent_install', { action: 'install', source: 'draft', agent_kind: 'bridge', agent: diagnosticAgentId(agentId) })
-    patch({ preparingConnection: true, installationJob: null, error: '' })
-    installationTask = (async () => {
-      try {
-        let job = await transport.call('installAgent', { agent_id: agentId, version: null })
-        while (!closed && !closing && !promoted) {
-          patch({ installationJob: job })
-          if (job.phase === 'complete') {
-            finish('ok', { status: 'complete' })
-            inspections.delete(agentId)
-            // Explicit preparation checks only the Agent whose components changed.
-            if (choicesTask) await choicesTask
-            if (closed || closing || promoted) return
-            const finishRecheck = startClientDiagnostic('agent_install', { action: 'recheck', source: 'draft', reason: 'post_install', target_count: 1, agent: diagnosticAgentId(agentId) })
-            const rememberInspection = beginAgentInspection(transport, agentId)
-            let inspection: AgentInspection
-            try {
-              inspection = await transport.call('inspectAgentInstallation', { agent_id: agentId })
-              const accepted = rememberInspection(inspection)
-              finishRecheck(accepted ? 'ok' : 'cancelled', { checked_count: 1, status: inspection.source })
-              if (!accepted) return
-            } catch (cause) { finishRecheck('failed', { error_category: diagnosticErrorCategory(cause) }); throw cause }
-            if (closed || closing || promoted) return
-            await refreshChoices(false, 'post_install')
-            if (!closed && !closing && !promoted) {
-              patch({ preparingConnection: false })
-              await schedule()
-            }
-            return
-          }
-          if (job.phase === 'failed' || job.phase === 'cancelled') {
-            finish(job.phase === 'cancelled' ? 'cancelled' : 'failed', { status: job.phase })
-            throw new Error(job.phase === 'cancelled' ? 'Connection preparation was cancelled.' : 'Could not prepare the connection. See the installation details and retry.')
-          }
-          await new Promise(resolve => setTimeout(resolve, 500))
-          if (closed || closing || promoted) return
-          const jobs = await transport.call('listAgentInstallJobs', undefined)
-          const updated = jobs.find(item => item.id === job.id)
-          if (!updated) throw new Error('Connection preparation status is unavailable. Check Agents and retry.')
-          job = updated
-        }
-      } catch (cause) {
-        finish('failed', { error_category: diagnosticErrorCategory(cause) })
-        if (!closed && !closing && !promoted) patch({ error: message(cause) })
-      } finally {
-        finish('cancelled', { reason: 'inactive' })
-        installationTask = null
-        // Closing can fail while discarding a previous prepared session. Release
-        // the installation UI lock even then so that the retained draft can retry.
-        if (!closed && !promoted) patch({ preparingConnection: false })
-      }
-    })()
-    return installationTask
-  }
-
-  async function cancelPreparation() {
-    const job = get(state).installationJob
-    if (!job || !get(state).preparingConnection || job.cancel_requested) return
-    const finish = startClientDiagnostic('agent_install', { action: 'cancel', source: 'draft', agent: diagnosticAgentId(job.agent_id) })
-    try {
-      await transport.call('cancelAgentInstall', { job_id: job.id })
-      finish('ok')
-      if (get(state).installationJob?.id === job.id) patch({ installationJob: { ...job, cancel_requested: true } })
-    } catch (cause) { finish('failed', { error_category: diagnosticErrorCategory(cause) }); if (!closed && !closing && !promoted) patch({ error: message(cause) }) }
-  }
 
   async function send(text: string) {
     const value = get(state)
@@ -516,6 +422,7 @@ export function createDraftManagedSessionController(
       closed = true
       choicesRevision += 1
       unsubscribe?.(); unsubscribe = null
+      unsubscribeCache?.(); unsubscribeCache = null
       finish('ok', { promoted })
       return promoted ? prepared?.session.session_id ?? null : null
     } catch (cause) {
@@ -525,7 +432,7 @@ export function createDraftManagedSessionController(
       throw cause
     }
   }
-  return { subscribe: state.subscribe, start, select, edit, send, configure, close, refreshChoices, prepareConnection, cancelPreparation,
+  return { subscribe: state.subscribe, start, select, edit, send, configure, close, refreshChoices,
     retry: () => schedule(true),
   }
 }

@@ -1,4 +1,4 @@
-import { selectWorkbenchEntry } from './lib/workbenchEntry'
+import { entryAppliesOverlayAppearance, selectWorkbenchEntry } from './lib/workbenchEntry'
 import { configureClientDiagnostics, diagnosticErrorCategory, recordClientDiagnostic, startClientDiagnostic } from './lib/diagnostics/clientDiagnostics'
 import { runFrontendBootstrap, showStartupFailure } from './lib/startupFallback'
 import './app.css'
@@ -101,6 +101,11 @@ await runFrontendBootstrap(async (signal) => {
   signal.throwIfAborted()
   initializePreferences()
   configureContextMenuAndDevtools()
+  if (entryAppliesOverlayAppearance(entry)) {
+    const { initializeAppearanceStyles } = await import('./lib/appearance/appearanceRuntime')
+    signal.throwIfAborted()
+    initializeAppearanceStyles()
+  }
 if (entry === 'browser') {
   const { default: BrowserWorkbenchRoot } = await import('./BrowserWorkbenchRoot.svelte')
   signal.throwIfAborted()

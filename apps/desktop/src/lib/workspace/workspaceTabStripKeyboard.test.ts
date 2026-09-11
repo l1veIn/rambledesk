@@ -85,11 +85,25 @@ describe('workspace tab strip keyboard interaction', () => {
     expect(document.activeElement).toBe(tab(1))
     key(tab(1), 'Enter')
     key(tab(1), 'Delete')
-    tab(1).dispatchEvent(new MouseEvent('auxclick', { button: 1, bubbles: true, cancelable: true }))
+    tab(1).dispatchEvent(new MouseEvent('mousedown', { button: 1, bubbles: true, cancelable: true }))
     await settle()
 
     expect(onActivate).not.toHaveBeenCalled()
     expect(onClose).not.toHaveBeenCalled()
     expect(host.querySelectorAll('[role="tab"]')).toHaveLength(3)
+  })
+
+  it('closes a tab on middle-mousedown and cancels the browser autoscroll', async () => {
+    const onClose = vi.fn()
+    app = mount(WorkspaceTabStripHarness, { target: host, props: { views, onClose } })
+    await settle()
+    const target = tab(1)
+    const down = new MouseEvent('mousedown', { button: 1, bubbles: true, cancelable: true })
+    target.dispatchEvent(down)
+    await settle()
+
+    expect(down.defaultPrevented).toBe(true)
+    expect(onClose).toHaveBeenCalledExactlyOnceWith(workspaceViewKey(views[1]))
+    expect(host.querySelectorAll('[role="tab"]')).toHaveLength(2)
   })
 })

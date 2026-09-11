@@ -29,6 +29,8 @@ const chinese: Readonly<Record<string, string>> = {
   'Browse…': '浏览…',
   'Could not choose the project directory.': '无法选择项目目录。',
   'Agents': 'Agents',
+  'Enable configuration': '启用配置',
+  'This configuration is used by existing sessions. Turn off Enable configuration and save to retire it, or delete those sessions before deleting the configuration.': '已有会话正在使用此配置。可取消“启用配置”并保存以停用，或删除关联会话后再删除配置。',
   'Could not load agent configurations.': '无法加载 Agent 配置。',
   'Agent settings are no longer open.': 'Agent 设置页面已经关闭。',
   'Agent configurations': 'Agent 配置',

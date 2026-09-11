@@ -1,8 +1,9 @@
 <!-- Installation detail flow adapted from Codeg 3ebdfed acp-agent-settings.tsx (Apache-2.0). -->
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { CheckCircle2, ChevronRight, Download, ExternalLink, LoaderCircle, Plus, RefreshCw, Settings2, XCircle } from '@lucide/svelte'
+  import { CheckCircle2, ChevronRight, Download, ExternalLink, LoaderCircle, Plus, RefreshCw, RotateCcw, Settings2, XCircle } from '@lucide/svelte'
   import { Button } from '$lib/components/ui/button'
+  import * as Dialog from '$lib/components/ui/dialog'
   import type { ApplicationTransport } from '$lib/application/applicationTransport'
   import type { AgentConfig, AgentInspection, SaveAgentConfigInput } from '$lib/generated/feedback'
   import type { AgentDiagnosis } from './agentDiagnosis'
@@ -32,9 +33,11 @@
   let localError = ''
   let notice = ''
   let advancedOpen = initialAdvanced
+  let confirmingReset = false
+  let resetting = false
   let lastReady: string | null | undefined = undefined
   let manualPaths: Record<string, string> = {}
-  $: items = agentListItems($catalog.entries, $catalog.configs)
+  $: items = agentListItems($catalog.entries, $catalog.configs, $catalog.connections)
   $: item = selected === 'new' ? undefined : items.find(row => row.key === selected) ?? items[0]
   $: entry = item?.entry
   $: profile = item?.configs.find(config => config.id === selectedProfile) ?? item?.config
@@ -121,7 +124,7 @@
     if (installing) return tr('RambleDesk 正在安装连接组件，完成后会自动检查 ACP 连接。', 'RambleDesk is installing the connection component and will check the ACP connection when it finishes.')
     if (diagnosis?.reason === 'authentication') return tr('ACP 程序要求先完成认证。请按当前连接的指引处理后重试。', 'The ACP program requires authentication. Follow the guidance for this connection, then retry.')
     if (diagnosis?.reason === 'feedback') return tr('ACP 已接通，但智能体未提供 RambleDesk 所需的反馈能力。请查看高级设置中的检测详情。', 'ACP is connected, but the agent did not provide the feedback capability RambleDesk requires. Review the detection details in advanced settings.')
-    if (diagnosis?.connection === 'connected') return tr('ACP 连接检查通过。模型访问与 Ramble 反馈交接需在实际会话中验证。', 'ACP connection check passed. Model access and Ramble handoff still need verification in an actual session.')
+    if (diagnosis?.connection === 'connected') return tr('上次 ACP 连接检查通过。模型访问与 Ramble 反馈交接需在实际会话中验证。', 'The last ACP connection check passed. Model access and Ramble handoff still need verification in an actual session.')
     if (diagnosis?.connection === 'checking') return tr('正在查找本机程序并检查 ACP 连接。', 'Finding the local program and checking its ACP connection.')
     switch (diagnosis?.reason) {
       case 'managed_setup': return tr('已发现 DeepSeek 连接组件。推荐由 RambleDesk 安装固定版本，无需寻找 dsh 或启动 dsh web；也可在高级设置中使用已发现的入口。', 'A DeepSeek connection component was found. Use the RambleDesk-managed pinned version without locating dsh or starting dsh web, or choose the discovered entry in advanced settings.')
@@ -163,19 +166,40 @@
     catch (error) { failure(error) }
     finally { saving = false }
   }
+  async function confirmReset() {
+    if (resetting || saving || checking) return
+    confirmingReset = false
+    resetting = true
+    localError = ''
+    notice = ''
+    try {
+      await catalog.resetAndDetect()
+      cache.clear()
+      baselines.clear()
+      selected = ''
+      selectedProfile = ''
+      advancedOpen = false
+    } catch (error) { failure(error) }
+    finally { resetting = false }
+  }
 </script>
 
 <section class="space-y-4 @container" aria-label={tr('智能体管理', 'Agent management')}>
   <div class="flex flex-wrap items-start justify-between gap-3">
     <div><h3 class="m-0 text-sm font-semibold">{tr('智能体', 'Agents')}</h3><p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">{tr('选择支持的智能体，检测或准备与 RambleDesk 的连接。', 'Choose a supported agent, then detect or prepare its connection to RambleDesk.')}</p></div>
-    <Button variant="outline" size="sm" disabled={$catalog.loading || $catalog.checking.length > 0 || $catalog.connecting.length > 0 || saving} onclick={() => void catalog.detectAll()}><RefreshCw class={`size-3.5 ${$catalog.checking.length > 0 || $catalog.connecting.length > 0 ? 'animate-spin' : ''}`} />{tr('检测智能体', 'Detect agents')}</Button>
+    <div class="flex flex-wrap items-center gap-2">
+      <Button variant="outline" size="sm" disabled={$catalog.loading || $catalog.checking.length > 0 || $catalog.connecting.length > 0 || saving || resetting} onclick={() => void catalog.detectAll()}><RefreshCw class={`size-3.5 ${$catalog.checking.length > 0 || $catalog.connecting.length > 0 || resetting ? 'animate-spin' : ''}`} />{tr('检测智能体', 'Detect agents')}</Button>
+      <Button variant="destructive" size="sm" data-agent-reset-configs disabled={$catalog.loading || $catalog.checking.length > 0 || $catalog.connecting.length > 0 || saving || resetting} onclick={() => (confirmingReset = true)}>
+        {#if resetting}<LoaderCircle class="size-3.5 animate-spin" />{:else}<RotateCcw class="size-3.5" />{/if}{tr('清除所有配置并重新检测', 'Clear all configurations and detect again')}
+      </Button>
+    </div>
   </div>
   {#if safeError}<p role="alert" class="break-words rounded-lg border border-destructive/25 bg-destructive/5 px-3 py-2 text-xs">{safeError}</p>{/if}
   <div class="grid min-w-0 gap-3 @min-[680px]:grid-cols-[210px_minmax(0,1fr)]">
     <nav class="overflow-hidden rounded-xl border bg-card" aria-label={tr('智能体列表', 'Agent list')}>
-      <div class="border-b px-3 py-3 text-[11px] font-medium text-muted-foreground">{tr('可连接的智能体', 'Available agents')} · {items.length}</div>
+      <div class="border-b px-3 py-3 text-[11px] font-medium text-muted-foreground">{tr('可连接的智能体', 'Available agents')} · {items.filter(row => !row.legacy).length}</div>
       <div class="max-h-[560px] space-y-1 overflow-y-auto p-2">
-        {#each items as row (row.key)}
+        {#each items.filter(row => !row.legacy) as row (row.key)}
           <button type="button" disabled={saving} class={`flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-3 text-left transition-colors disabled:opacity-50 ${item?.key === row.key ? 'border-primary/30 bg-primary/5' : 'border-transparent hover:bg-muted/60'}`} aria-current={item?.key === row.key ? 'page' : undefined} onclick={() => selectRow(row.key)}>
             <span class="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-background"><AgentIcon hostId={row.config?.host_id ?? row.entry?.host_id} class="size-4" /></span>
             <span class="min-w-0 flex-1"><strong class="block truncate text-xs font-medium">{row.name}</strong><span class={`mt-1 block text-[10px] ${agentStatus(row, $catalog) === 'connected' ? 'text-emerald-600' : 'text-muted-foreground'}`}>{statusText(agentStatus(row, $catalog))}</span></span>
@@ -185,7 +209,16 @@
         {#if selected === 'new'}<div aria-current="page" class="rounded-lg border border-dashed px-3 py-3 text-xs">{tr('自定义 ACP', 'Custom ACP')}</div>{/if}
         {#if $catalog.loading && !items.length}<div class="flex justify-center py-5"><LoaderCircle class="size-5 animate-spin text-muted-foreground" /></div>{/if}
       </div>
-      <details class="border-t px-3 py-3"><summary class="cursor-pointer text-[11px] text-muted-foreground">{tr('高级', 'Advanced')}</summary><Button class="mt-2" variant="ghost" size="sm" disabled={saving} onclick={() => selected = 'new'}><Plus class="size-3.5" />{tr('自定义 ACP 智能体', 'Custom ACP agent')}</Button></details>
+      <details class="border-t px-3 py-3" open={Boolean(item?.legacy)}>
+        <summary class="cursor-pointer text-[11px] text-muted-foreground">{tr('高级', 'Advanced')}</summary>
+        <Button class="mt-2" variant="ghost" size="sm" disabled={saving} onclick={() => selected = 'new'}><Plus class="size-3.5" />{tr('自定义 ACP 智能体', 'Custom ACP agent')}</Button>
+        {#if items.some(row => row.legacy)}
+          <p class="mb-1 mt-3 text-[11px] text-muted-foreground">{tr('旧版启动配置', 'Legacy launch configurations')}</p>
+          {#each items.filter(row => row.legacy) as row (row.key)}
+            <button type="button" class="block w-full truncate rounded-md px-2 py-2 text-left text-xs hover:bg-muted disabled:opacity-50" disabled={saving} aria-current={item?.key === row.key ? 'page' : undefined} onclick={() => selectRow(row.key)}>{row.name}</button>
+          {/each}
+        {/if}
+      </details>
     </nav>
     <div class="min-w-0 space-y-4 rounded-xl border bg-card p-5">
       {#if selected === 'new'}
@@ -229,6 +262,7 @@
           {#if canPrepare}<div class="space-y-2"><Button variant="outline" size="sm" disabled={saving || installing || checking} onclick={() => entry && void catalog.install(entry.id)}><Download class="size-3.5" />{tr('修复连接组件', 'Repair connection component')}</Button><p class="m-0 text-[11px] leading-5 text-muted-foreground">{tr('安装推荐版本的 ACP 连接组件。已有的自定义启动配置会保留。', 'Install the recommended ACP connection component. Existing custom launch configurations are retained.')}</p></div>{/if}
           {#if job}<div class="space-y-2 rounded-lg border bg-muted/20 p-3"><p class="m-0 text-xs">{tr('连接准备日志', 'Connection setup log')}: {job.phase}</p><pre class="m-0 max-h-36 overflow-auto whitespace-pre-wrap break-words font-mono text-[10px] leading-5 text-muted-foreground">{redactAgentMessage(job.messages.join('\n'), environmentText())}</pre></div>{/if}
           {#if item.configs.length > 1}<div class="space-y-2"><p class="m-0 text-xs font-medium">{tr('已有启动配置', 'Saved launch configurations')}</p><div class="flex flex-wrap gap-2">{#each item.configs as config}<Button size="sm" variant={config.id === profile?.id ? 'secondary' : 'outline'} disabled={saving} onclick={() => selectedProfile = config.id}>{config.name}</Button>{/each}</div></div>{/if}
+          {#if profile}<p class="m-0 text-xs leading-5 text-muted-foreground">{tr('升级会保留已有启动配置。旧配置可在下方删除；如需保留会话记录，可取消“启用配置”后保存。', 'Upgrades retain saved launch configurations. Delete an old configuration below, or turn off Enable configuration and save to keep its session history.')}</p>{/if}
           {#if profile}{#key profile.id}<AgentSettings {cache} {baselines} configs={[profile]} busy={saving} onSave={saveProfile} onDelete={removeProfile} onCheck={catalog.check} />{/key}
           {:else if canUseDetected}<Button variant="outline" size="sm" disabled={saving} onclick={() => void prepareAdvanced()}>{tr('使用已发现的入口并编辑', 'Use and edit discovered entry')}</Button>
           {:else}<Button variant="outline" size="sm" disabled={saving} onclick={() => selected = 'new'}>{tr('自定义 ACP 启动设置', 'Custom ACP launch settings')}</Button>{/if}
@@ -237,3 +271,16 @@
     </div>
   </div>
 </section>
+
+<Dialog.Root bind:open={confirmingReset}>
+  <Dialog.Content>
+    <Dialog.Header>
+      <Dialog.Title>{tr('清除所有配置并重新检测？', 'Clear all configurations and detect again?')}</Dialog.Title>
+      <Dialog.Description>{tr('将删除已保存的启动命令、参数和环境变量，并重新扫描本机上的智能体。正在使用中的配置无法删除，会被停用。此操作不可撤销。', 'This deletes saved launch commands, arguments, and environment variables, then scans this computer again. Configurations still used by sessions cannot be deleted and will be disabled. This cannot be undone.')}</Dialog.Description>
+    </Dialog.Header>
+    <Dialog.Footer>
+      <Button type="button" variant="outline" size="sm" onclick={() => (confirmingReset = false)}>{tr('取消', 'Cancel')}</Button>
+      <Button type="button" variant="destructive" size="sm" data-agent-reset-confirm onclick={() => void confirmReset()}>{tr('清除并重新检测', 'Clear and detect again')}</Button>
+    </Dialog.Footer>
+  </Dialog.Content>
+</Dialog.Root>

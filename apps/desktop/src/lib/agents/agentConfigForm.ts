@@ -114,4 +114,9 @@ export class AgentDraftCache {
     this.#drafts.delete(id ?? 'new')
     this.#saved.delete(id ?? 'new')
   }
+
+  clear(): void {
+    this.#drafts.clear()
+    this.#saved.clear()
+  }
 }
