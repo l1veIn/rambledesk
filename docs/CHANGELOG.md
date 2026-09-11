@@ -30,7 +30,7 @@ ACP Agent sessions
 Ramble handoff
 - Watching an Agent session or an already-open Ramble page opens the latest request for that conversation as soon as it arrives, and the request list shows it immediately.
 - Existing sessions keep the composer collapsed until you need it; new-session drafts keep a full composer. Unsaved Ramble drafts still block automatic switching.
-- Submitting feedback always sends a continuation for that request. An earlier unknown delivery stays on that request until you retry or mark it delivered; it does not hold later submissions.
+- Submitting feedback always sends a continuation for that request. Delivery succeeds when that continuation is sent to the agent, not when the turn later ends. An earlier unknown delivery stays on that request until you retry or mark it delivered; it does not hold later submissions.
 - A turn that ends without a feedback handoff gets one bounded reminder. The built-in feedback command uses a private local IPC channel.
 
 Workspace
@@ -54,7 +54,7 @@ Release notes
 - 新增应用内 ACP 智能体会话：统一连接、模型与模式、工具活动、授权和受支持的用户问答；引导和设置共用 Agents 页，一键连接安装组件并采用检测到的 ACP 入口。
 - 托管智能体通过内置反馈命令完成 Ramble 流程；新接入 DeepSeek 统一为 DeepSeek (DSH)，旧 Harness 配置仍可作为自定义配置保留。
 - 正在查看该 Agent 会话或已打开的 Ramble 页时，新请求会立刻打开最新一条，并马上出现在请求列表中；已有会话的输入框默认收起，未保存的 Ramble 草稿仍会挡住自动切换。
-- 提交反馈就会为该请求发送续接；更早一条投递状态未知时，只留在那一条上处理，不会卡住后面新提交的反馈。
+- 提交反馈就会为该请求发送续接；投递成功以续接消息已发给 Agent 为准，不要求这一轮正常结束。更早一条投递状态未知时，只留在那一条上处理，不会卡住后面新提交的反馈。
 - 工作区标签先均分宽度再滚动，中键关闭标签时不再触发浏览器自动滚动；任务简报的「发生了什么」按 Markdown 渲染，宽屏下与「需要体验」等宽；外观配色同时作用于语音悬浮窗和 Ramble 控制台。
 - 手机端侧栏改为抽屉；Web Access 可设置端口、自动启动和令牌，浏览器会话用 Cookie 恢复。
 - 设置里可清除未使用的 Agent 配置并重新检测，相当于清空后重新安装；仍被会话使用的配置不会删除。

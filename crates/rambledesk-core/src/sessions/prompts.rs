@@ -251,6 +251,9 @@ impl SessionApplication {
             self.session_changed(&input.session_id);
             return Err(error);
         }
+        // The continuation is in the session transcript and about to be sent.
+        // Later turn outcomes (EndTurn, quota, disconnect) are not delivery.
+        let _ = self.finish_feedback_delivery(delivery.clone()).await;
         let application = self.clone();
         let session_id = input.session_id.clone();
         tokio::spawn(async move {
@@ -290,7 +293,7 @@ impl SessionApplication {
         let mut live = entry.live.lock().await;
         let same_instance = live.runtime.instance_id.as_deref() == Some(instance);
         // Persist the attempt outcome even if stop/restart replaced the live entry.
-        let delivered = self.finish_feedback_delivery(delivery, &result).await;
+        let delivered = self.finish_feedback_delivery(delivery).await;
         if !same_instance || live.runtime.connection != SessionConnectionState::Connected {
             return;
         }

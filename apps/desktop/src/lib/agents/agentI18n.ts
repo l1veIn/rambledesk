@@ -102,7 +102,7 @@ const chinese: Readonly<Record<string, string>> = {
   'Delivery discarded': '投递已撤销',
   'Feedback is saved. It will continue this session when the agent can receive input.': '反馈已保存，Agent 可接收输入时将在此会话中继续。',
   'The agent is continuing with this feedback.': 'Agent 正在根据此次反馈继续工作。',
-  'The continuation turn completed and the feedback was sent.': '续接轮次已完成，反馈已发送。',
+  'The continuation was sent to the agent.': '续接消息已发给 Agent。',
   'The agent may already have received this feedback. Sending again may repeat work. Review its activity before choosing.': 'Agent 可能已经收到了反馈。再次发送可能重复执行，请查看活动记录后选择。',
   'This feedback will not be sent to the agent.': '此次反馈不会再发送给 Agent。',
   'Send again': '再次发送',

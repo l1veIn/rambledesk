@@ -182,17 +182,17 @@ impl Fixture {
         session: &str,
         state: FeedbackDeliveryState,
     ) -> ManagedSessionSnapshot {
-        tokio::time::timeout(Duration::from_secs(8), async {
-            loop {
-                let snapshot = self.snapshot(session).await;
-                if snapshot.deliveries.iter().any(|item| item.state == state) {
-                    return snapshot;
-                }
-                tokio::time::sleep(Duration::from_millis(20)).await;
-            }
+        self.wait_for(session, |snapshot| {
+            snapshot.deliveries.iter().any(|item| item.state == state)
         })
         .await
-        .unwrap()
+    }
+    async fn continued(&self, session: &str, request: &str) -> ManagedSessionSnapshot {
+        let expected = format!("CONTINUED {request} feedback_submitted");
+        self.wait_for(session, move |snapshot| {
+            snapshot.activities.iter().any(|row| row.text == expected)
+        })
+        .await
     }
     async fn close(self) {
         self.app.shutdown().await.unwrap();
@@ -221,13 +221,10 @@ async fn scoped_command_capability_waits_for_idle_then_continues_the_original_se
         })
         .await
         .unwrap();
-    let done = fixture
-        .delivered(&first, FeedbackDeliveryState::Delivered)
-        .await;
-    assert!(
-        done.activities
-            .iter()
-            .any(|item| item.text == format!("CONTINUED {request} feedback_submitted"))
+    let done = fixture.continued(&first, &request).await;
+    assert_eq!(
+        done.deliveries[0].state,
+        FeedbackDeliveryState::Delivered
     );
     assert!(
         matches!(done.session.management,SessionManagement::Managed{remote_session_id:Some(ref id),..} if id=="original")
@@ -283,19 +280,15 @@ async fn scoped_command_capability_waits_for_idle_then_continues_the_original_se
 }
 
 #[tokio::test]
-async fn disconnect_after_feedback_read_is_uncertain_and_never_blindly_replayed() {
+async fn disconnect_after_feedback_read_is_delivered_and_never_blindly_replayed() {
     let fixture = Fixture::new("fail_continue").await;
     let session = fixture.create("One").await;
     let request = fixture.request(&session, false).await;
     fixture.submitted(&request).await;
-    let uncertain = fixture
-        .delivered(&session, FeedbackDeliveryState::Uncertain)
-        .await;
-    assert!(
-        uncertain
-            .activities
-            .iter()
-            .any(|row| row.text.starts_with("CONTINUED"))
+    let delivered = fixture.continued(&session, &request).await;
+    assert_eq!(
+        delivered.deliveries[0].state,
+        FeedbackDeliveryState::Delivered
     );
     fixture
         .app
@@ -307,32 +300,31 @@ async fn disconnect_after_feedback_read_is_uncertain_and_never_blindly_replayed(
     tokio::time::sleep(Duration::from_millis(600)).await;
     assert_eq!(
         fixture.snapshot(&session).await.deliveries[0].state,
-        FeedbackDeliveryState::Uncertain
-    );
-    fixture
-        .app
-        .resolve_feedback_delivery(ResolveFeedbackDeliveryInput {
-            session_id: session.clone(),
-            request_id: request,
-            action: ResolveDeliveryAction::Acknowledge,
-        })
-        .await
-        .unwrap();
-    assert_eq!(
-        fixture.snapshot(&session).await.deliveries[0].state,
         FeedbackDeliveryState::Delivered
     );
+    assert_eq!(
+        fixture
+            .snapshot(&session)
+            .await
+            .activities
+            .iter()
+            .filter(|row| row.kind == SessionActivityKind::UserMessage
+                && row.text.contains("human feedback is ready"))
+            .count(),
+        1
+    );
+    let _ = request;
     fixture.close().await;
 }
 
 #[tokio::test]
-async fn later_submitted_feedback_is_sent_while_an_earlier_delivery_is_uncertain() {
+async fn later_submitted_feedback_is_sent_after_an_earlier_continuation_exits() {
     let fixture = Fixture::new("fail_continue").await;
     let session = fixture.create("One").await;
     let first = fixture.request(&session, false).await;
     fixture.submitted(&first).await;
     fixture
-        .delivered(&session, FeedbackDeliveryState::Uncertain)
+        .delivered(&session, FeedbackDeliveryState::Delivered)
         .await;
     fixture
         .app
@@ -356,19 +348,18 @@ async fn later_submitted_feedback_is_sent_while_an_earlier_delivery_is_uncertain
                 .iter()
                 .find(|item| item.request_id == next)
                 .map(|item| item.state);
-            if first_state == Some(FeedbackDeliveryState::Uncertain)
-                && next_state.is_some()
-                && next_state != Some(FeedbackDeliveryState::Pending)
+            let continuations = snapshot
+                .activities
+                .iter()
+                .filter(|row| {
+                    row.kind == SessionActivityKind::UserMessage
+                        && row.text.contains("human feedback is ready")
+                })
+                .count();
+            if first_state == Some(FeedbackDeliveryState::Delivered)
+                && next_state == Some(FeedbackDeliveryState::Delivered)
+                && continuations >= 2
             {
-                assert!(
-                    snapshot
-                        .activities
-                        .iter()
-                        .filter(|row| row.kind == SessionActivityKind::UserMessage
-                            && row.text.contains("human feedback is ready"))
-                        .count()
-                        >= 2
-                );
                 return;
             }
             tokio::time::sleep(Duration::from_millis(20)).await;
@@ -536,13 +527,10 @@ async fn deleting_while_waiting_for_permission_rejects_late_answers_and_keeps_ne
     // Verify the surviving process still owns a working feedback scope and continuation.
     let request = fixture.request(&other, false).await;
     fixture.submitted(&request).await;
-    let done = fixture
-        .delivered(&other, FeedbackDeliveryState::Delivered)
-        .await;
-    assert!(
-        done.activities
-            .iter()
-            .any(|row| row.text == format!("CONTINUED {request} feedback_submitted"))
+    let done = fixture.continued(&other, &request).await;
+    assert_eq!(
+        done.deliveries[0].state,
+        FeedbackDeliveryState::Delivered
     );
     fixture.close().await;
 }

@@ -95,8 +95,8 @@ ACP v1 没有统一 system prompt 或任意工具注册字段。每条真实用�
 Agent 通过统一命令取得持久结果。外部原生适配器在 tool call 内等待时，不再额外发送一次 continuation。
 
 反馈终态与 outbox 入队在同一事务完成，文件发布中断由既有 publication plan 恢复对账。投递按 attempt id
-领取和完成，旧 attempt 不能覆盖新发送。`delivered` 表示续接轮次成功结束或用户确认已处理，不表示任务
-完成；`uncertain` 只允许用户对该条显式重试或确认，不冻结同一会话后续已提交反馈。重启后 sending 转为 uncertain，不能凭旧 connected 字段
+领取和完成，旧 attempt 不能覆盖新发送。`delivered` 表示续接消息已发给 Agent 或用户确认已处理，不表示这一轮或任务
+完成；`uncertain` 只允许用户对该条显式重试或确认，不冻结同一会话后续已提交反馈。重启后尚未完成发送的 sending 转为 uncertain，不能凭旧 connected 字段
 或 in-memory 去重集合宣称成功。
 
 运行恢复使用独立 run/turn 检查点。退出或重启发现未完成轮次时，原子写入可见的中断活动；只有用户显式

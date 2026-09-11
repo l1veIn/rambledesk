@@ -249,22 +249,28 @@ async fn transient_completion_write_retries_same_attempt_before_next_queued_prom
 }
 
 #[tokio::test]
-async fn uncertain_completion_is_saved_after_storage_recovers_without_resending() {
+async fn prompt_error_is_saved_as_delivered_after_storage_recovers_without_resending() {
     let fixture = Fixture::new(true).await;
     fixture.wait_for_failed_completion().await;
     let attempt = fixture.deliveries().await[0].attempt_id.clone();
     fixture.repair_storage().await;
     eventually(|| async {
-        fixture.deliveries().await[0].state == FeedbackDeliveryState::Uncertain
+        fixture
+            .deliveries()
+            .await
+            .iter()
+            .all(|item| item.state == FeedbackDeliveryState::Delivered)
     })
     .await;
-    tokio::time::sleep(Duration::from_millis(350)).await;
     assert_eq!(fixture.deliveries().await[0].attempt_id, attempt);
-    assert_eq!(
-        fixture.deliveries().await[1].state,
-        FeedbackDeliveryState::Pending
-    );
-    assert_eq!(fixture.connection.prompts.lock().unwrap().len(), 1);
+    let prompts = fixture.connection.prompts.lock().unwrap().clone();
+    assert_eq!(prompts.len(), 2);
+    for request in &fixture.requests {
+        assert_eq!(
+            prompts.iter().filter(|text| text.contains(request)).count(),
+            1
+        );
+    }
     fixture.close().await;
 }
 

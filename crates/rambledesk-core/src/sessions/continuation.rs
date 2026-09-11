@@ -131,27 +131,25 @@ impl SessionApplication {
     pub(super) async fn finish_feedback_delivery(
         &self,
         delivery: Option<(String, String)>,
-        result: &Result<String, AgentDriverError>,
     ) -> Result<(), SessionError> {
         if let (Some(repository), Some((request, attempt))) = (&self.deliveries, delivery) {
-            let (state, error) = match result {
-                Ok(reason) if reason == "EndTurn" => (FeedbackDeliveryState::Delivered, None),
-                _ => (
-                    FeedbackDeliveryState::Uncertain,
-                    Some(
-                        "Continuation did not finish normally; inspect the original session before choosing to send again",
-                    ),
-                ),
-            };
+            // Delivery is the continuation prompt being sent, not the later turn
+            // ending. Quota, disconnects and process exits are session problems.
             let completed = repository
-                .finish_delivery(&request, &attempt, state, error, &self.clock.now_rfc3339())
+                .finish_delivery(
+                    &request,
+                    &attempt,
+                    FeedbackDeliveryState::Delivered,
+                    None,
+                    &self.clock.now_rfc3339(),
+                )
                 .await;
             if matches!(completed, Err(SessionRepositoryError::Storage)) {
                 let app = self.clone();
                 let repository = repository.clone();
                 tokio::spawn(async move {
-                    // Retry only the known result of this exact attempt. No prompt
-                    // is sent again, and a discarded/replaced attempt ends the loop.
+                    // Retry only this attempt's delivered write. No prompt is sent
+                    // again, and a discarded/replaced attempt ends the loop.
                     while !app.closing.load(Ordering::SeqCst) {
                         tokio::time::sleep(Duration::from_millis(250)).await;
                         if app.closing.load(Ordering::SeqCst) {
@@ -161,8 +159,8 @@ impl SessionApplication {
                             .finish_delivery(
                                 &request,
                                 &attempt,
-                                state,
-                                error,
+                                FeedbackDeliveryState::Delivered,
+                                None,
                                 &app.clock.now_rfc3339(),
                             )
                             .await
