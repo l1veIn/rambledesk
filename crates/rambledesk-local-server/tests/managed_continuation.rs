@@ -222,10 +222,7 @@ async fn scoped_command_capability_waits_for_idle_then_continues_the_original_se
         .await
         .unwrap();
     let done = fixture.continued(&first, &request).await;
-    assert_eq!(
-        done.deliveries[0].state,
-        FeedbackDeliveryState::Delivered
-    );
+    assert_eq!(done.deliveries[0].state, FeedbackDeliveryState::Delivered);
     assert!(
         matches!(done.session.management,SessionManagement::Managed{remote_session_id:Some(ref id),..} if id=="original")
     );
@@ -528,10 +525,7 @@ async fn deleting_while_waiting_for_permission_rejects_late_answers_and_keeps_ne
     let request = fixture.request(&other, false).await;
     fixture.submitted(&request).await;
     let done = fixture.continued(&other, &request).await;
-    assert_eq!(
-        done.deliveries[0].state,
-        FeedbackDeliveryState::Delivered
-    );
+    assert_eq!(done.deliveries[0].state, FeedbackDeliveryState::Delivered);
     fixture.close().await;
 }
 
