@@ -14,7 +14,7 @@ RambleDesk turns the first two steps into a **review request**, and the third in
 
 The agent must explain two things: **what just happened** and **what you should try or confirm**. You speak, take screenshots, and edit directly in a desktop workbench, without writing a prompt first. On submission, your original feedback, an optional refined version, and attachments become an immutable feedback package for the agent to continue from. Keep your attention on hands-on review and decisions.
 
-Starting with the **0.4.0 release candidates**, RambleDesk connects to coding agents such as Claude Code, Codex CLI, and Gemini CLI through ACP. Use an agent that already works on your machine, follow the prompts to install any required connection component, and choose a project to begin.
+Starting with **0.4.0**, RambleDesk connects to coding agents such as Claude Code, Codex CLI, and Gemini CLI through ACP. Use an agent that already works on your machine, follow the prompts to install any required connection component, and choose a project to begin.
 
 <div align="center">
 
@@ -26,7 +26,7 @@ Starting with the **0.4.0 release candidates**, RambleDesk connects to coding ag
 
 ## Quick start
 
-Download a **0.4 release candidate** from [GitHub Releases](https://github.com/l1veIn/rambledesk/releases), available for Windows x64 and macOS Apple Silicon. See the [release notes](docs/CHANGELOG.md) for changes.
+Download **0.4.0** from [GitHub Releases](https://github.com/l1veIn/rambledesk/releases), available for Windows x64 and macOS Apple Silicon. See the [release notes](docs/CHANGELOG.md) for changes.
 
 1. **Connect an agent.** Make sure it works locally, then open **Settings → Agents** and follow the connection prompts. Sign-in and model access come from the agent itself.
 2. **Give it a task.** Start a new session, choose an agent and project folder, and enter your goal.

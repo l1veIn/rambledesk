@@ -2,12 +2,12 @@ import { feedbackExamples } from "./feedback-example";
 
 export const repoUrl = "https://github.com/l1veIn/rambledesk";
 export const release = {
-  version: "0.4.0-rc.3",
-  url: `${repoUrl}/releases/tag/v0.4.0-rc.3`,
-  mac: `${repoUrl}/releases/download/v0.4.0-rc.3/RambleDesk_0.4.0-rc.3_aarch64.dmg`,
-  windows: `${repoUrl}/releases/download/v0.4.0-rc.3/RambleDesk_0.4.0-rc.3_x64-setup.exe`,
+  version: "0.4.0",
+  url: `${repoUrl}/releases/tag/v0.4.0`,
+  mac: `${repoUrl}/releases/download/v0.4.0/RambleDesk_0.4.0_aarch64.dmg`,
+  windows: `${repoUrl}/releases/download/v0.4.0/RambleDesk_0.4.0_x64-setup.exe`,
 };
-const docsRef = "v0.4.0-rc.3";
+const docsRef = "v0.4.0";
 export const links = {
   acp: `${repoUrl}/blob/${docsRef}/docs/ACP_MANAGED_SESSIONS.md`,
   adapters: `${repoUrl}/blob/${docsRef}/docs/COMPATIBILITY.md`,
@@ -165,7 +165,7 @@ export const locales = {
       title: "Your next piece of feedback?\nJust say it.",
       privacy:
         "Feedback is stored locally. Submitting and optional tidying share the relevant content with your connected agent or model service.",
-      candidate: "Release candidate",
+      candidate: "Stable",
       mac: "Get it for macOS",
       windows: "Get it for Windows",
       releaseNotes: "Release notes",
@@ -257,7 +257,7 @@ export const locales = {
       title: "下一次反馈，\n直接说出来。",
       privacy:
         "反馈保存在本机；提交和可选整理会把相应内容交给你连接的 Agent 或模型服务。",
-      candidate: "候选版",
+      candidate: "正式版",
       mac: "下载 macOS 版",
       windows: "下载 Windows 版",
       releaseNotes: "发布说明",

@@ -16,6 +16,50 @@
 
 ---
 
+## v0.4.0
+
+What's new in RambleDesk 0.4.0
+
+ACP Agent sessions
+- Start and resume Agent conversations inside RambleDesk through a shared ACP layer: connection, models, modes, tool activity, permissions, and supported user questions.
+- Settings and onboarding share one Agents page. One-click connection installs the needed bridge and uses the detected ACP entry while keeping account settings.
+- New sessions continue from onboarding into the selected Agent. Model options load in the actual project; failures give targeted guidance instead of a generic retry.
+- Managed Agents use the built-in feedback command. Submitted feedback is stored durably and queued for continuation in the original session.
+- New setups use one DeepSeek (DSH) entry with the managed deepseek-acp bridge. Existing DeepSeek Harness configurations remain available as custom configurations.
+
+Ramble handoff
+- Watching an Agent session or an already-open Ramble page opens the latest request for that conversation as soon as it arrives, and the request list shows it immediately.
+- Existing sessions keep the composer collapsed until you need it; new-session drafts keep a full composer. Unsaved Ramble drafts still block automatic switching.
+- A turn that ends without a feedback handoff gets one bounded reminder. The built-in feedback command uses a private local IPC channel.
+
+Workspace
+- Sessions, archives, settings, and task briefs open as workspace tabs. Tabs share the available width, shrink to a minimum, then scroll; middle-click closes a tab without starting browser autoscroll.
+- The task brief renders Markdown in "What happened". On a wide layout, "What happened" and the actions sit in equal columns.
+- New Appearance settings add theme colors, interface scaling, fonts, and workspace backgrounds. The selected palette also applies to the speech overlay and ramble console.
+
+Phone and Web Access
+- On a phone, both rails become overlay drawers, the titlebar keeps a navigation button, and the request list opens from a floating button.
+- Web Access has a settings section for the browser server: port, autostart, and token rotation. Browser sessions resume from a stored cookie.
+
+Agent setup
+- Settings can clear unused Agent configurations and detect them again, as on a fresh install. Configurations still used by sessions stay and cannot be deleted.
+
+Release notes
+- This stable release includes Windows x64 NSIS and MSI installers and an Apple Silicon macOS DMG. Windows updater artifacts are signed, but Windows Authenticode signing and Apple notarization are not yet enabled.
+- For SmartScreen and Gatekeeper first-launch instructions, see https://github.com/l1veIn/rambledesk/blob/v0.4.0/README.md
+- Automated checks do not replace real-model feedback-loop and clean-install acceptance testing.
+
+中文摘要
+- 新增应用内 ACP 智能体会话：统一连接、模型与模式、工具活动、授权和受支持的用户问答；引导和设置共用 Agents 页，一键连接安装组件并采用检测到的 ACP 入口。
+- 托管智能体通过内置反馈命令完成 Ramble 流程；新接入 DeepSeek 统一为 DeepSeek (DSH)，旧 Harness 配置仍可作为自定义配置保留。
+- 正在查看该 Agent 会话或已打开的 Ramble 页时，新请求会立刻打开最新一条，并马上出现在请求列表中；已有会话的输入框默认收起，未保存的 Ramble 草稿仍会挡住自动切换。
+- 工作区标签先均分宽度再滚动，中键关闭标签时不再触发浏览器自动滚动；任务简报的「发生了什么」按 Markdown 渲染，宽屏下与「需要体验」等宽；外观配色同时作用于语音悬浮窗和 Ramble 控制台。
+- 手机端侧栏改为抽屉；Web Access 可设置端口、自动启动和令牌，浏览器会话用 Cookie 恢复。
+- 设置里可清除未使用的 Agent 配置并重新检测，相当于清空后重新安装；仍被会话使用的配置不会删除。
+- 本版为 0.4.0 正式版，提供 Windows x64 NSIS/MSI 与 Apple Silicon macOS 安装包；尚无 Windows Authenticode 签名及 Apple 公证，首次启动步骤见上述 README。
+
+Full changelog: https://github.com/l1veIn/rambledesk/compare/v0.3.4...v0.4.0
+
 ## v0.4.0-rc.3
 
 What's new in RambleDesk 0.4.0-rc.3

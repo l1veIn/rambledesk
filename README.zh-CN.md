@@ -14,7 +14,7 @@ RambleDesk 把前两步变成一张**体验单**，把第三步改成**先说出
 
 Agent 必须先写清楚两件事：**刚才发生了什么**，以及**请你体验或确认什么**。你在桌面工作台里说话、截图、直接编辑，不用先写 prompt。提交后，原始反馈、可选整理稿和附件保存为不可变反馈包，交还 Agent 继续工作。把注意力留给体验和判断。
 
-从 **0.4.0 候选版**起，RambleDesk 支持通过 ACP 连接 Claude Code、Codex CLI、Gemini CLI 等 Coding Agent。沿用你本地已经能正常工作的 Agent，按提示安装必要的连接组件，选择项目就能开始。
+从 **0.4.0** 起，RambleDesk 支持通过 ACP 连接 Claude Code、Codex CLI、Gemini CLI 等 Coding Agent。沿用你本地已经能正常工作的 Agent，按提示安装必要的连接组件，选择项目就能开始。
 
 <div align="center">
 
@@ -26,7 +26,7 @@ Agent 必须先写清楚两件事：**刚才发生了什么**，以及**请你�
 
 ## 快速开始
 
-从 [GitHub Releases](https://github.com/l1veIn/rambledesk/releases) 下载 **0.4 候选版**，支持 Windows x64 和 macOS Apple Silicon。版本变化见[发布说明](docs/CHANGELOG.md)。
+从 [GitHub Releases](https://github.com/l1veIn/rambledesk/releases) 下载 **0.4.0**，支持 Windows x64 和 macOS Apple Silicon。版本变化见[发布说明](docs/CHANGELOG.md)。
 
 1. **连接 Agent。** 先确认它在本机能正常使用，再打开「设置 → Agents」，按提示完成连接。登录与模型访问由 Agent 自身提供。
 2. **给它一个任务。** 新建会话，选择 Agent 和项目目录，输入目标。
