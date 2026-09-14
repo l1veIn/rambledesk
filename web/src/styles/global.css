@@ -487,7 +487,7 @@ h1 span {
   font-family: ui-monospace, monospace;
 }
 .demo-section {
-  --feedback-width: 1080px;
+  --feedback-width: 1320px;
   overflow-anchor: none;
   color: #f5f9fc;
   background: radial-gradient(ellipse at 50% 0%, #264a67 0%, #182b3b 66%);

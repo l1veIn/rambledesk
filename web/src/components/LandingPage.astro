@@ -1,5 +1,5 @@
 ---
-import FeedbackWalkthrough from './FeedbackWalkthrough.svelte'
+import ProductMock from './ProductMock.svelte'
 import { links, release, repoUrl, type SiteContent } from '../content/site'
 interface Props { content: SiteContent }
 const { content: c } = Astro.props
@@ -77,7 +77,7 @@ const { content: c } = Astro.props
         <p class="section-label">{c.demo.label}</p>
         <h2 id="demo-title">{c.demo.title}</h2><p>{c.demo.body}</p>
       </div>
-      <FeedbackWalkthrough client:visible lang={c.lang} />
+      <ProductMock client:visible lang={c.lang} />
       <div class="recording-link"><a href={links.earlyDemo}>{c.demo.recording}</a><small>{c.demo.recordingNote}</small></div>
     </div>
   </section>

@@ -132,7 +132,7 @@ export const locales = {
     demo: {
       label: "02 / Your experience, in your words",
       title: "See it. Say it.",
-      body: "Speak, take screenshots, or edit directly. Tidy it up if you want. Your original feedback stays.",
+      body: "Click through the workbench below: pick a session, read the task brief, write or dictate your answer, then submit. Speak, capture a screenshot, or edit the text directly — your original words stay.",
       recording: "Watch an earlier workflow demo ↗",
       recordingNote:
         "v0.3.2 · 10-second GIF · earlier interface; opens an animation",
@@ -229,7 +229,7 @@ export const locales = {
     demo: {
       label: "02 / 直接表达",
       title: "看到什么，就说什么。",
-      body: "说话、截图、直接编辑。需要时再整理，原始反馈会保留。",
+      body: "下面这份工作台可以点开看：选会话、读任务简报、写或口述你的判断，然后提交。说话、截图、直接编辑都行，原始反馈会保留。",
       recording: "观看早期版本流程演示 ↗",
       recordingNote: "v0.3.2 · 10 秒 GIF · 界面为早期版本，打开后播放动画",
     },
