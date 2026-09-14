@@ -79,6 +79,12 @@ impl ManagedFeedbackLease<'_> {
 pub struct ManagedFeedbackRequestInput {
     pub request_id: Option<String>,
     pub title: Option<String>,
+    /// Short summary (at most 200 characters) of what changed and what feedback
+    /// is needed; longer material belongs in a Markdown attachment.
+    #[schemars(
+        length(min = 1, max = crate::MAX_WHAT_HAPPENED_CHARS),
+        description = "Short summary (at most 200 characters) of what changed and what feedback is needed. The human reads this first to understand the situation in seconds; put the full explanation, evidence, or detail in a Markdown attachment instead of growing this field. Longer text is rejected."
+    )]
     pub what_happened: String,
     pub actions: Vec<ActionInput>,
     #[serde(default)]

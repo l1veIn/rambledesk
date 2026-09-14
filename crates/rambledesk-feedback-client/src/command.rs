@@ -28,7 +28,8 @@ enum Command {
     },
     /// Create a feedback request from JSON. Preserve its request_id for recovery.
     Request {
-        /// JSON file, or - for standard input. Fields: what_happened, actions,
+        /// JSON file, or - for standard input. Fields: what_happened (at most 200
+        /// characters; put longer detail in a Markdown attachment), actions,
         /// optional request_id (UUID), title, context_refs, attachments, allow_finish, final_summary.
         #[arg(long, default_value = "-")]
         input: PathBuf,

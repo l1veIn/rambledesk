@@ -1,9 +1,8 @@
 use super::validation::{valid_action_id, validate_request_input};
 use super::*;
 
-#[test]
-fn rejects_attachments_without_exactly_one_source() {
-    let mut input = RequestFeedbackInput {
+fn minimal_request() -> RequestFeedbackInput {
+    RequestFeedbackInput {
         request_id: None,
         host_id: Some("generic".to_owned()),
         host_session_id: "session".to_owned(),
@@ -14,22 +13,66 @@ fn rejects_attachments_without_exactly_one_source() {
             instruction: "Look at the screenshot.".to_owned(),
         }],
         context_refs: Vec::new(),
-        attachments: vec![RequestAttachmentInput {
-            file_name: "shot.png".to_owned(),
-            markdown: None,
-            contents_base64: None,
-            path: None,
-        }],
+        attachments: Vec::new(),
         source_hint: None,
         allow_finish: false,
         final_summary: None,
-    };
+    }
+}
+
+#[test]
+fn rejects_attachments_without_exactly_one_source() {
+    let mut input = minimal_request();
+    input.attachments.push(RequestAttachmentInput {
+        file_name: "shot.png".to_owned(),
+        markdown: None,
+        contents_base64: None,
+        path: None,
+    });
     assert!(validate_request_input(&input).is_err());
     input.attachments[0].path = Some("/tmp/shot.png".to_owned());
     input.attachments[0].contents_base64 = Some("aaaa".to_owned());
     assert!(validate_request_input(&input).is_err());
     input.attachments[0].contents_base64 = None;
     assert!(validate_request_input(&input).is_ok());
+}
+
+#[test]
+fn what_happened_is_a_scannable_summary_with_a_hard_limit() {
+    let mut input = minimal_request();
+    input.what_happened = "汉".repeat(MAX_WHAT_HAPPENED_CHARS);
+    assert!(validate_request_input(&input).is_ok());
+
+    input.what_happened = "汉".repeat(MAX_WHAT_HAPPENED_CHARS + 1);
+    let error = validate_request_input(&input).expect_err("over-limit summary");
+    assert_eq!(error.code(), "INVALID_ARGUMENT");
+    assert!(error.message().contains("200"));
+    assert!(error.message().contains("Markdown attachment"));
+
+    input.what_happened = String::new();
+    assert_eq!(
+        validate_request_input(&input)
+            .expect_err("empty summary")
+            .code(),
+        "INVALID_ARGUMENT"
+    );
+}
+
+#[test]
+fn what_happened_limit_matches_the_published_json_schema() {
+    let schema = schemars::schema_for!(RequestFeedbackInput);
+    assert_eq!(
+        schema
+            .pointer("/properties/what_happened/maxLength")
+            .and_then(|value| value.as_u64()),
+        Some(MAX_WHAT_HAPPENED_CHARS as u64)
+    );
+    assert_eq!(
+        schema
+            .pointer("/properties/what_happened/minLength")
+            .and_then(|value| value.as_u64()),
+        Some(1)
+    );
 }
 
 #[test]

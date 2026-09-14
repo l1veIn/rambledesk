@@ -154,6 +154,32 @@ async fn json_rejects_malformed_oversized_and_non_json_bodies() {
 }
 
 #[tokio::test]
+async fn agent_feedback_rejects_a_summary_longer_than_the_scannable_limit() {
+    let (_directory, store, provider, endpoint) = provider().await;
+    let mut router = managed_router(provider.clone());
+    let body = json!({
+        "request_id": "0195f7e2-5c31-7b5a-8ab7-3c84ea4fc827",
+        "title": "Review fixture",
+        "what_happened": "汉".repeat(rambledesk_core::MAX_WHAT_HAPPENED_CHARS + 1),
+        "actions": [{ "id": "review", "instruction": "Review the fixture" }],
+    });
+    let mut request = request(&endpoint, Body::from(body.to_string()), None);
+    *request.uri_mut() = "/agent-feedback/request".parse().unwrap();
+    let response = router.call(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let bytes = axum::body::to_bytes(response.into_body(), 4096)
+        .await
+        .unwrap();
+    let error: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(error["code"], "INVALID_ARGUMENT");
+    let message = error["message"].as_str().unwrap();
+    assert!(message.contains("200"), "{message}");
+    assert!(message.contains("Markdown attachment"), "{message}");
+    provider.shutdown().await;
+    store.close().await;
+}
+
+#[tokio::test]
 async fn revoke_releases_initialized_workers_instead_of_leaving_the_manager_alive() {
     let (_directory, store, provider, endpoint) = provider().await;
     let binding = provider.bindings.read().await["managed-a"].clone();

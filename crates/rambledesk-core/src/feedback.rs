@@ -25,6 +25,7 @@ pub use error::{ApplicationError, ApplicationErrorCode};
 pub use model::*;
 pub use path_resolver::AttachmentPathResolver;
 pub use repository_error::RepositoryError;
+pub use validation::MAX_WHAT_HAPPENED_CHARS;
 use validation::validate_request_input;
 pub(crate) use validation::{canonical_uuid, validate_text};
 use waiters::FeedbackWaiters;

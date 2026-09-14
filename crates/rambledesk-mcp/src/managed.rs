@@ -36,7 +36,7 @@ fn revoked() -> CallToolResult {
 impl ManagedRambleDeskMcp {
     #[tool(
         name = "request_feedback",
-        description = "Create a durable feedback request for this managed session and return immediately. Session identity is fixed by RambleDesk; do not supply host or session IDs. Attach existing local files using attachments[].path. After creating the request, END THE CURRENT TURN. RambleDesk automatically continues this same Agent session after human feedback. Do not poll, wait on another tool, or ask for external confirmation. Reuse request_id for identical retries; a transport disconnect does not require a new feedback request. allow_finish is only for a final approval with final_summary, not for substantive feedback."
+        description = "Create a durable feedback request for this managed session and return immediately. Session identity is fixed by RambleDesk; do not supply host or session IDs. Keep what_happened within 200 characters: it is the summary the human scans, and longer text is rejected; put the full explanation in a Markdown attachment. Attach existing local files using attachments[].path. After creating the request, END THE CURRENT TURN. RambleDesk automatically continues this same Agent session after human feedback. Do not poll, wait on another tool, or ask for external confirmation. Reuse request_id for identical retries; a transport disconnect does not require a new feedback request. allow_finish is only for a final approval with final_summary, not for substantive feedback."
     )]
     async fn request_feedback(
         &self,

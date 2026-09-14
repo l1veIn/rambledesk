@@ -90,8 +90,10 @@ capability before deciding that no request tool exists.
 ## Build every request
 
 - Use a short, specific `title` that the human can scan in the Inbox.
-- Explain in `what_happened` what the agent understands, why feedback is needed,
-  and what perspective the human should bring.
+- Keep `what_happened` within 200 characters. State what happened, why feedback
+  is needed, and what perspective the human should bring; the server rejects
+  longer text. Move the full explanation, evidence, or detail into a Markdown
+  attachment below the summary instead of growing the summary itself.
 - Provide an ordered, executable `actions` checklist with one action per item.
 - Attach files only when the human needs to review them. Prefer an absolute
   local `attachments[].path` for existing images and Markdown. Use inline

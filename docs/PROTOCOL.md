@@ -18,13 +18,15 @@ Local Integration Server 的 `/mcp` 提供 Generic MCP tools，`/api/feedback/*`
 | `host_id` | 可选，默认 `generic` | 宿主家族；已安装适配器可通过 `RAMBLEDESK_HOST` / 可信 `X-RambleDesk-Host` 注入或覆盖。 |
 | `host_session_id` | 必需 | 同一外部宿主会话的关联 id，不是认证凭据、MCP transport session 或自动恢复证明。 |
 | `title` | 可选 | 工作台展示的短标题。 |
-| `what_happened` | 必需 | 当前变化、背景或需要检查的事项。 |
+| `what_happened` | 必需 | 1–200 字符的现状摘要；人类先读它，在数秒内理解发生了什么。 |
 | `actions` | 必需 | 1–20 项有序操作清单；每项为 `id` 与 `instruction`。 |
 | `context_refs` | 可选，空列表 | 每项为 `label` 与 `uri`，仅提供可读上下文。 |
 | `attachments` | 可选，空列表 | 人类需要审阅的 Markdown 或图片，内容规则见下文。 |
 | `source_hint` | 可选 | 来源提示，可含路径或标题，不是身份或认证字段。 |
 | `allow_finish` | 可选，默认 `false` | 仅在需要简单批准/拒绝的最终确认请求中启用。 |
 | `final_summary` | `allow_finish=true` 时必需 | 人类可直接批准的确切结束语草稿；不能脱离 `allow_finish` 单独提供。 |
+
+`what_happened` MUST 是一段人类可扫读的摘要：200 字符内讲清发生了什么、为什么需要反馈。讲不清的部分 MUST 作为附件（Markdown 文档）排在摘要之后，而不是继续加长本字段；超过 200 字符的请求按 `INVALID_ARGUMENT` 拒绝，服务端不截断也不静默接受。字数按 Unicode 字符计，中英文同权。
 
 需要审阅、提意见、逐段反馈的请求 MUST 省略 `allow_finish`，不能用直接批准取代详细反馈。`actions[].id` MUST 匹配 `^[a-z0-9][a-z0-9_-]{0,63}$`，同一请求内唯一。
 

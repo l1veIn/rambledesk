@@ -40,10 +40,10 @@ pub use feedback::{
     ActionInput, ApplicationError, ApplicationErrorCode, ApproveFeedbackInput,
     AttachmentPathResolver, CancelFeedbackInput, Clock, ContextRef, ExecutionMode,
     FeedbackApplication, FeedbackRepository, FeedbackRequestView, FeedbackResolution,
-    FeedbackResultView, FeedbackStatus, GetFeedbackInput, IdGenerator, MutationOutcome,
-    NewFeedbackRequest, NewRequestAttachment, RecoverFeedbackInput, RepositoryError,
-    RequestAttachmentInput, RequestFeedbackInput, StoredFeedbackRequest, SubmissionPlanInput,
-    SystemClock, UuidV7Generator,
+    FeedbackResultView, FeedbackStatus, GetFeedbackInput, IdGenerator, MAX_WHAT_HAPPENED_CHARS,
+    MutationOutcome, NewFeedbackRequest, NewRequestAttachment, RecoverFeedbackInput,
+    RepositoryError, RequestAttachmentInput, RequestFeedbackInput, StoredFeedbackRequest,
+    SubmissionPlanInput, SystemClock, UuidV7Generator,
 };
 pub use workspace::{
     AddAttachmentInput, AttachmentView, DeleteFeedbackRequestInput, DraftView,

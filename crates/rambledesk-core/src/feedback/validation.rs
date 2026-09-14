@@ -4,6 +4,14 @@ use uuid::Uuid;
 
 use super::{ApplicationError, RequestFeedbackInput};
 
+/// Upper bound for the agent's `what_happened` summary. The human must be able
+/// to understand the situation by scanning this text for a few seconds; longer
+/// material belongs in a review attachment below it.
+pub const MAX_WHAT_HAPPENED_CHARS: usize = 200;
+
+const WHAT_HAPPENED_OVERFLOW_GUIDANCE: &str = "keep what_happened a scannable summary and move the full explanation \
+     into a Markdown attachment";
+
 pub(super) fn validate_request_input(input: &RequestFeedbackInput) -> Result<(), ApplicationError> {
     let host_id = input.host_id.as_deref().unwrap_or("generic");
     validate_text("host_id", host_id, 1, 64)?;
@@ -16,7 +24,7 @@ pub(super) fn validate_request_input(input: &RequestFeedbackInput) -> Result<(),
             ));
         }
     }
-    validate_text("what_happened", &input.what_happened, 1, 12_000)?;
+    validate_what_happened(&input.what_happened)?;
     match (input.allow_finish, input.final_summary.as_deref()) {
         (true, Some(summary)) => validate_text("final_summary", summary, 1, 12_000)?,
         (true, None) => {
@@ -94,6 +102,30 @@ pub(super) fn validate_request_input(input: &RequestFeedbackInput) -> Result<(),
         }
     }
 
+    Ok(())
+}
+
+/// A short, human-scannable summary is the point of this field, so the limit is
+/// a product rule rather than a transport budget: rejected requests must move the
+/// overflow into an attachment instead of growing the text.
+fn validate_what_happened(value: &str) -> Result<(), ApplicationError> {
+    let length = value.chars().count();
+    if length == 0 {
+        return Err(ApplicationError::invalid_argument(
+            "what_happened must contain at least 1 character",
+        ));
+    }
+    if value.contains('\0') {
+        return Err(ApplicationError::invalid_argument(
+            "what_happened cannot contain NUL",
+        ));
+    }
+    if length > MAX_WHAT_HAPPENED_CHARS {
+        return Err(ApplicationError::invalid_argument(format!(
+            "what_happened must contain at most {MAX_WHAT_HAPPENED_CHARS} characters (received {length}); \
+             {WHAT_HAPPENED_OVERFLOW_GUIDANCE}"
+        )));
+    }
     Ok(())
 }
 

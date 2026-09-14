@@ -10,6 +10,7 @@ The same command accepts `feedback get --request-id <id>` and `feedback recover 
 
 Request JSON example:
 {"title":"Review the result","what_happened":"Describe the concrete work and what feedback is needed.","actions":[{"id":"review","instruction":"Check the result and tell me what to change."}]}
+what_happened must stay within 200 characters: it is the single text the user scans to understand what happened in seconds, and a longer request is rejected. Write the full explanation, evidence, or detail into a Markdown attachment and let the short summary point at what feedback you need.
 Optional fields: request_id (UUID, reuse for retries), context_refs [{label,uri}], attachments [{file_name,path}] for existing absolute local images or Markdown, allow_finish, final_summary. Set allow_finish:true and final_summary when the user can confirm the overall task is complete. Use the user's language and provide enough context to review the result.
 
 The command prints one JSON result and exits. Retain its request_id. Once the request is saved, end your current Agent turn immediately. Do not poll, sleep, wait for a host confirmation, or call any tool that blocks on human input. The user responds in the Ramble page; RambleDesk automatically continues this same Agent context. On continuation, run `feedback get` with the original ID and read the returned feedback_package, including feedback and attachment references. If the request was cancelled, respect that result. If the user finishes the task, do not create another confirmation request.

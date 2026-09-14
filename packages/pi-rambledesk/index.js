@@ -70,7 +70,10 @@ export const RequestRambleFeedbackSchema = Type.Object({
     }),
   ),
   title: Type.String({ description: "Short title shown in the RambleDesk inbox." }),
-  what_happened: Type.String({ description: "What changed or what needs feedback." }),
+  what_happened: Type.String({
+    description:
+      "Short summary (at most 200 characters) of what changed and what needs feedback. The user scans this to understand the situation; put the full explanation in a Markdown attachment, because longer text is rejected.",
+  }),
   actions: Type.Array(ActionSchema, {
     minItems: 1,
     description: "Ordered checklist for the human tester.",
@@ -180,6 +183,7 @@ export function registerRambleDeskPiTools(pi) {
     label: "Request RambleDesk Feedback",
     description: `Create a RambleDesk feedback request for the human and wait for the result in this Pi tool call.
 Use this instead of MCP when running in Pi. After the tool returns completed, continue the original task using the feedback markdown and attachment paths included in the tool content.
+Keep what_happened within 200 characters: it is the summary the human scans to understand the situation, and longer text is rejected. Move the full explanation, evidence, or detail into a Markdown attachment below the summary.
 Optional attachments: prefer attachments[].path (absolute local file) for images and Markdown already on disk. Use attachments[].markdown for short inline Markdown. Use attachments[].contents_base64 only for small images with no file. Do not read an image into the tool call.
 Do not call this tool repeatedly for the same request unless you reuse the same request_id.`,
     parameters: RequestRambleFeedbackSchema,

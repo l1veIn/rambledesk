@@ -80,7 +80,7 @@ const requestParamsSchema = {
     request_id: stringField("Optional UUID. Reuse the same id for idempotent retries."),
     host_session_id: stringField("Optional dsh host session id. If omitted, the plugin derives it from the current dsh session: requests from the same session share one id, and concurrent sessions get distinct ids."),
     title: stringField("Short title shown in the RambleDesk inbox."),
-    what_happened: stringField("What changed or what needs feedback."),
+    what_happened: stringField("Short summary (at most 200 characters) of what changed and what needs feedback. The user scans this to understand the situation; put the full explanation in a Markdown attachment, because longer text is rejected."),
     actions: {
       type: "array",
       minItems: 1,
@@ -482,6 +482,7 @@ export function registerRambleDshTools(tools, options = {}) {
     name: "request_ramble_feedback",
     description: `Create a RambleDesk feedback request for the human and wait for the result inside this dsh tool call.
 Use this instead of an MCP bridge when running in dsh. After the tool returns completed, continue the original task using the feedback markdown and attachment paths included in the tool content.
+Keep what_happened within 200 characters: it is the summary the human scans to understand the situation, and longer text is rejected. Move the full explanation, evidence, or detail into a Markdown attachment below the summary.
 Optional attachments: prefer attachments[].path (absolute local file) for images and Markdown already on disk. Use attachments[].markdown for short inline Markdown. Use attachments[].contents_base64 only for small images with no file. Do not read an image into the tool call.
 Do not call this tool repeatedly for the same request unless you reuse the same request_id.`,
     parameters: requestParamsSchema,
