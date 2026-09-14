@@ -3,6 +3,7 @@ import { get, writable } from 'svelte/store'
 import { savedUiTheme, saveUiTheme } from './uiPreferences'
 import { DEFAULT_SPEECH_HOTWORDS, mergeSpeechHotwords } from './speech/speechHotwords'
 import { normalizeTidyAutoThreshold } from './tidyAuto'
+import { createPreferencePersistence } from './preferencePersistence'
 
 export { DEFAULT_SPEECH_HOTWORDS, mergeSpeechHotwords } from './speech/speechHotwords'
 
@@ -446,128 +447,128 @@ export function setNotificationVolume(volume: number) {
 export function initializePreferences() {
   if (initialized) return
   initialized = true
+  const persistence = createPreferencePersistence(localStorage)
 
   locale.subscribe((next) => {
-    localStorage.setItem(LOCALE_KEY, next)
+    persistence.write(LOCALE_KEY, next)
     document.documentElement.lang = next
   })
   themePreference.subscribe((next) => {
-    localStorage.setItem(THEME_KEY, next)
-    saveUiTheme(next)
+    persistence.write(THEME_KEY, next)
+    if (!persistence.receiving) saveUiTheme(next)
     applyTheme(next)
   })
   autoOpenTaskBrief.subscribe((next) => {
-    localStorage.setItem(AUTO_OPEN_TASK_BRIEF_KEY, String(next))
+    persistence.write(AUTO_OPEN_TASK_BRIEF_KEY, String(next))
   })
   notificationPopupEnabled.subscribe((next) => {
-    localStorage.setItem(NOTIFICATION_POPUP_KEY, String(next))
+    persistence.write(NOTIFICATION_POPUP_KEY, String(next))
   })
   notificationSoundEnabled.subscribe((next) => {
-    localStorage.setItem(NOTIFICATION_SOUND_ENABLED_KEY, String(next))
+    persistence.write(NOTIFICATION_SOUND_ENABLED_KEY, String(next))
   })
   notificationSound.subscribe((next) => {
-    localStorage.setItem(NOTIFICATION_SOUND_KEY, next)
+    persistence.write(NOTIFICATION_SOUND_KEY, next)
   })
   customNotificationSound.subscribe((next) => {
-    if (next === null) localStorage.removeItem(NOTIFICATION_CUSTOM_SOUND_KEY)
-    else localStorage.setItem(NOTIFICATION_CUSTOM_SOUND_KEY, JSON.stringify(next))
+    persistence.write(NOTIFICATION_CUSTOM_SOUND_KEY, next === null ? null : JSON.stringify(next))
   })
   notificationVolume.subscribe((next) => {
-    localStorage.setItem(NOTIFICATION_VOLUME_KEY, String(next))
+    persistence.write(NOTIFICATION_VOLUME_KEY, String(next))
   })
   speechInputDevice.subscribe((next) => {
-    localStorage.setItem(SPEECH_INPUT_DEVICE_KEY, next)
+    persistence.write(SPEECH_INPUT_DEVICE_KEY, next)
   })
   speechConfirmBeforeWrite.subscribe((next) => {
-    localStorage.setItem(SPEECH_CONFIRM_BEFORE_WRITE_KEY, String(next))
+    persistence.write(SPEECH_CONFIRM_BEFORE_WRITE_KEY, String(next))
   })
   speechAutoTidy.subscribe((next) => {
-    localStorage.setItem(SPEECH_AUTO_TIDY_KEY, String(next))
+    persistence.write(SPEECH_AUTO_TIDY_KEY, String(next))
   })
   speechOverlayEnabled.subscribe((next) => {
-    localStorage.setItem(SPEECH_OVERLAY_ENABLED_KEY, String(next))
+    persistence.write(SPEECH_OVERLAY_ENABLED_KEY, String(next))
   })
   speechOverlayOpacity.subscribe((next) => {
-    localStorage.setItem(SPEECH_OVERLAY_OPACITY_KEY, String(next))
+    persistence.write(SPEECH_OVERLAY_OPACITY_KEY, String(next))
   })
   speechModelId.subscribe((next) => {
-    localStorage.setItem(SPEECH_MODEL_KEY, next)
+    persistence.write(SPEECH_MODEL_KEY, next)
   })
   if (
     Number(localStorage.getItem(SPEECH_MODEL_DEFAULT_REVISION_KEY) ?? '0') <
     SPEECH_MODEL_DEFAULT_REVISION
   ) {
-    localStorage.setItem(
+    persistence.write(
       SPEECH_MODEL_DEFAULT_REVISION_KEY,
       String(SPEECH_MODEL_DEFAULT_REVISION),
     )
   }
   speechVadThreshold.subscribe((next) => {
-    localStorage.setItem(SPEECH_VAD_THRESHOLD_KEY, String(next))
+    persistence.write(SPEECH_VAD_THRESHOLD_KEY, String(next))
   })
   speechVadSilenceMs.subscribe((next) => {
-    localStorage.setItem(SPEECH_VAD_SILENCE_MS_KEY, String(next))
+    persistence.write(SPEECH_VAD_SILENCE_MS_KEY, String(next))
   })
   speechHotwords.subscribe((next) => {
-    localStorage.setItem(SPEECH_HOTWORDS_KEY, JSON.stringify(next))
+    persistence.write(SPEECH_HOTWORDS_KEY, JSON.stringify(next))
   })
   if (Number(localStorage.getItem(SPEECH_HOTWORDS_REVISION_KEY) ?? '0') < SPEECH_HOTWORDS_REVISION) {
-    localStorage.setItem(SPEECH_HOTWORDS_REVISION_KEY, String(SPEECH_HOTWORDS_REVISION))
+    persistence.write(SPEECH_HOTWORDS_REVISION_KEY, String(SPEECH_HOTWORDS_REVISION))
   }
   onboardingCompleted.subscribe((next) => {
-    localStorage.setItem(ONBOARDING_COMPLETED_KEY, String(next))
+    persistence.write(ONBOARDING_COMPLETED_KEY, String(next))
   })
   cookingEnabled.subscribe((next) => {
-    localStorage.setItem(COOKING_ENABLED_KEY, String(next))
+    persistence.write(COOKING_ENABLED_KEY, String(next))
   })
   cookingProvider.subscribe((next) => {
-    localStorage.setItem(COOKING_PROVIDER_KEY, next)
+    persistence.write(COOKING_PROVIDER_KEY, next)
   })
   cookingApiKey.subscribe((next) => {
-    localStorage.setItem(COOKING_API_KEY_KEY, next)
+    persistence.write(COOKING_API_KEY_KEY, next)
   })
   cookingBaseUrl.subscribe((next) => {
-    localStorage.setItem(COOKING_BASE_URL_KEY, next)
+    persistence.write(COOKING_BASE_URL_KEY, next)
   })
   cookingModel.subscribe((next) => {
-    localStorage.setItem(COOKING_MODEL_KEY, next)
+    persistence.write(COOKING_MODEL_KEY, next)
   })
   cookingReasoningEffort.subscribe((next) => {
-    localStorage.setItem(COOKING_REASONING_EFFORT_KEY, next)
+    persistence.write(COOKING_REASONING_EFFORT_KEY, next)
   })
   cookingSystemPrompt.subscribe((next) => {
-    localStorage.setItem(COOKING_SYSTEM_PROMPT_KEY, next)
+    persistence.write(COOKING_SYSTEM_PROMPT_KEY, next)
   })
   tidyProvider.subscribe((next) => {
-    localStorage.setItem(TIDY_PROVIDER_KEY, next)
+    persistence.write(TIDY_PROVIDER_KEY, next)
   })
   tidyApiKey.subscribe((next) => {
-    localStorage.setItem(TIDY_API_KEY_KEY, next)
+    persistence.write(TIDY_API_KEY_KEY, next)
   })
   tidyBaseUrl.subscribe((next) => {
-    localStorage.setItem(TIDY_BASE_URL_KEY, next)
+    persistence.write(TIDY_BASE_URL_KEY, next)
   })
   tidyModel.subscribe((next) => {
-    localStorage.setItem(TIDY_MODEL_KEY, next)
+    persistence.write(TIDY_MODEL_KEY, next)
   })
   tidyReasoningEffort.subscribe((next) => {
-    localStorage.setItem(TIDY_REASONING_EFFORT_KEY, next)
+    persistence.write(TIDY_REASONING_EFFORT_KEY, next)
   })
   tidySystemPrompt.subscribe((next) => {
-    localStorage.setItem(TIDY_SYSTEM_PROMPT_KEY, next)
+    persistence.write(TIDY_SYSTEM_PROMPT_KEY, next)
   })
   distinguishUntidiedText.subscribe((next) => {
-    localStorage.setItem(DISTINGUISH_UNTIDIED_TEXT_KEY, String(next))
+    persistence.write(DISTINGUISH_UNTIDIED_TEXT_KEY, String(next))
   })
   tidyAutoThreshold.subscribe((next) => {
-    localStorage.setItem(TIDY_AUTO_THRESHOLD_KEY, String(next))
+    persistence.write(TIDY_AUTO_THRESHOLD_KEY, String(next))
   })
 
   mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
   mediaQuery.addEventListener('change', () => {
     if (get(themePreference) === 'system') applyTheme('system')
   })
-  window.addEventListener('storage', (event) => {
+  window.addEventListener('storage', (event) => persistence.receive(event, () => {
     if (event.key === LOCALE_KEY && (event.newValue === 'zh-CN' || event.newValue === 'en')) {
       locale.set(event.newValue)
     }
@@ -680,5 +681,5 @@ export function initializePreferences() {
     if (event.key === TIDY_AUTO_THRESHOLD_KEY) {
       setTidyAutoThreshold(Number(event.newValue ?? '0'))
     }
-  })
+  }))
 }
