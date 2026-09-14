@@ -245,6 +245,7 @@
       onwheel={handleWheel}
       onmousedown={suppressMiddleAutoscroll}
       role="tablist"
+      tabindex="-1"
       aria-label={tr('Workspace tabs')}
       aria-orientation="horizontal"
       aria-busy={pendingViewKey !== null}
