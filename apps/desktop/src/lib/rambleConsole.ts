@@ -19,6 +19,8 @@ export type RambleConsoleState = {
   recording: boolean
   busy: boolean
   captureBusy: boolean
+  /** The main window can accept the feedback right now. */
+  canSubmit: boolean
   voiceLevel: number
   partialTranscript: string
   message: string
@@ -38,4 +40,5 @@ export type RambleConsoleCommand =
   | { type: 'capture-screen' }
   | { type: 'import-clipboard' }
   | { type: 'import-server-paths'; serverPaths: string[] }
+  | { type: 'submit' }
   | { type: 'exit' }

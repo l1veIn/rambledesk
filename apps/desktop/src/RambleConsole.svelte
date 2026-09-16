@@ -11,6 +11,7 @@
     LogOut,
     Mic,
     ScanLine,
+    Send,
   } from '@lucide/svelte'
   import { onMount } from 'svelte'
 
@@ -217,6 +218,15 @@
       aria-label={t($locale, 'Choose files')}
     >
       <FilePlus2 size={20} strokeWidth={1.75} />
+    </button>
+    <button
+      class="console-tool submit-tool"
+      disabled={busy || !state?.canSubmit}
+      onclick={() => send({ type: 'submit' })}
+      title={t($locale, 'Submit feedback')}
+      aria-label={t($locale, 'Submit feedback')}
+    >
+      <Send size={20} strokeWidth={1.75} />
     </button>
     <button
       class="console-tool exit-tool"

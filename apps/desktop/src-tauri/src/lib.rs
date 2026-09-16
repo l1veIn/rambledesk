@@ -43,7 +43,8 @@ use tauri::{
 const TRAY_ID: &str = "rambledesk-main";
 const RAMBLE_CONSOLE_LABEL: &str = "ramble-console";
 const RAMBLE_CONSOLE_WIDTH: f64 = 58.0;
-const RAMBLE_CONSOLE_HEIGHT: f64 = 304.0;
+// Fits the console's tool column: record, capture, clipboard, files, submit, exit.
+const RAMBLE_CONSOLE_HEIGHT: f64 = 352.0;
 const RAMBLE_CONSOLE_EDGE_GAP: f64 = 10.0;
 const RESUME_PROMPT_EVENT: &str = "rambledesk://resume-prompt";
 const BASE_TRAY_ICON: Image<'static> = tauri::include_image!("./icons/32x32.png");

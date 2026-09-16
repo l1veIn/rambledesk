@@ -61,6 +61,9 @@
   export let waitForDocumentWrites: () => Promise<void> = async () => {}
   export let getActiveAction: (requestId: string) => ActiveAction = () => null
   export let onOpenSpeechTarget: (requestId: string, segmentId?: string) => Promise<void> = async () => {}
+  /** The floating console's submit button routes back to the feedback submission. */
+  export let canSubmit = false
+  export let onSubmitFeedback: () => Promise<void> | void = () => {}
 
   let rambleSourceLabel = ''
   let disposed = false
@@ -501,6 +504,9 @@
           await onImportServerAttachmentPaths(command.serverPaths)
         }
         break
+      case 'submit':
+        if (canSubmit && !interactionLocked) await onSubmitFeedback()
+        break
       case 'exit':
         await exitRamble()
         break
@@ -521,6 +527,7 @@
       recording: visibleRamblePhase === 'active',
       busy: rambleBusy,
       captureBusy: screenCaptureBusy,
+      canSubmit: canSubmit && !interactionLocked,
       voiceLevel: $voice.level,
       partialTranscript: $voice.partial,
       message: $session.message,

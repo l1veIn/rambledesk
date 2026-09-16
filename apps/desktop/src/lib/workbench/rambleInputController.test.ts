@@ -7,6 +7,7 @@ import type { ClipboardCaptureResult } from '../capabilities/capturePlugin'
 import { locale, speechConfirmBeforeWrite } from '../preferences'
 import type { SpeechRecognitionListener } from '../speech/speech'
 import { previewFixtures } from '../preview/previewFixtures'
+import type { RambleConsoleCommand, RambleConsoleState } from '../rambleConsole'
 import RambleSessionController from './RambleSessionController.svelte'
 import { createRambleSession } from './rambleSession'
 
@@ -190,5 +191,55 @@ describe('Ramble input preparation through the mounted controller', () => {
     await imported
     expect(dispose).toHaveBeenCalledOnce()
     expect(h.onPersistAttachmentCandidates).not.toHaveBeenCalled()
+  })
+})
+
+describe('the floating console submit button', () => {
+  function consoleHarness(props: Record<string, unknown> = {}) {
+    const unavailable = createUnavailableWorkbenchCapabilities()
+    const states: Array<{ canSubmit: boolean }> = []
+    let handler: ((command: RambleConsoleCommand) => void) | undefined
+    const session = createRambleSession()
+    session.begin(request)
+    session.transition('active', 'Recording')
+    const view = mount(RambleSessionController, { target: document.body, props: {
+      capabilities: { ...unavailable, rambleConsole: {
+        status: { availability: 'available', source: 'native' },
+        implementation: { ...unavailable.rambleConsole.implementation,
+          onCommand: (next: (command: RambleConsoleCommand) => void) => { handler = next; return () => {} },
+          publish: async (state: RambleConsoleState) => { states.push({ canSubmit: state.canSubmit }) } },
+      } },
+      workspace: previewFixtures.workspace,
+      session,
+      ...props,
+    } })
+    views.push(view)
+    return { command: () => handler, states }
+  }
+
+  it('submits the feedback from the console only while the request can be submitted', async () => {
+    const onSubmitFeedback = vi.fn(async () => {})
+    const allowed = consoleHarness({ canSubmit: true, onSubmitFeedback })
+    await vi.waitFor(() => expect(allowed.command()).toBeDefined())
+    // The subscription dispatches without awaiting the handler.
+    allowed.command()!({ type: 'submit' })
+    await vi.waitFor(() => expect(onSubmitFeedback).toHaveBeenCalledOnce())
+
+    const blocked = vi.fn(async () => {})
+    const denied = consoleHarness({ canSubmit: false, onSubmitFeedback: blocked })
+    await vi.waitFor(() => expect(denied.command()).toBeDefined())
+    denied.command()!({ type: 'submit' })
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(blocked).not.toHaveBeenCalled()
+  })
+
+  it('publishes whether the console may submit, including while the feedback is locked', async () => {
+    const open = consoleHarness({ canSubmit: true })
+    await vi.waitFor(() => expect(open.states.length).toBeGreaterThan(0))
+    expect(open.states.at(-1)!.canSubmit).toBe(true)
+
+    const locked = consoleHarness({ canSubmit: true, interactionLocked: true })
+    await vi.waitFor(() => expect(locked.states.length).toBeGreaterThan(0))
+    expect(locked.states.at(-1)!.canSubmit).toBe(false)
   })
 })

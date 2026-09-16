@@ -781,6 +781,8 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     onRouteDraftOperation={routeDraftOperation}
     waitForDocumentWrites={waitForDocumentQueue}
     getActiveAction={activeActionFor}
+    canSubmit={canSubmit && !managedFeedbackReadOnly}
+    onSubmitFeedback={() => void submitFeedback()}
     onOpenSpeechTarget={async (requestId, segmentId) => {
       if (await workspaceNavigation.openRequest(requestId)) {
         await tick()
