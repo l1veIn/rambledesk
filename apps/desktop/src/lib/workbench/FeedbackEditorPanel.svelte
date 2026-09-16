@@ -6,18 +6,21 @@
     CloudCog,
     FileText,
     LoaderCircle,
+    Paperclip,
     Sparkles,
     Undo2,
   } from '@lucide/svelte'
+  import { Popover } from 'bits-ui'
 
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
+  import type { AttachmentView, FeedbackWorkspaceView } from '$lib/feedback'
   import type { JSONContent } from '@tiptap/core'
   import type { Snippet } from 'svelte'
 
+  import AttachmentsCard from './AttachmentsCard.svelte'
   import RichFeedbackEditor from '$lib/editor/RichFeedbackEditor.svelte'
   import type { DraftOperation } from '$lib/draftOperations'
-  import type { FeedbackWorkspaceView } from '$lib/feedback'
   import {
     decodeFeedbackDraftDocument,
     type FeedbackDraftSnapshot,
@@ -58,6 +61,11 @@
   export let onTidyError: (message: string) => void = () => {}
   export let onOpenTidySettings: () => void = () => {}
   export let inputTools: Snippet | undefined = undefined
+  export let headerActions: Snippet | undefined = undefined
+  export let attachmentCount = 0
+  export let attachmentBusy = false
+  export let onRemoveAttachment: (attachment: AttachmentView) => void = () => {}
+  export let onPreviewAttachment: (attachment: AttachmentView) => void = () => {}
 
   let tidyBusy = false
   let pendingCount = 0
@@ -188,7 +196,7 @@
       </p>
     </div>
     {#if hasCookedVariant}
-      <div class="ml-auto flex items-center gap-1 rounded-md border bg-muted/30 p-0.5">
+      <div class="flex shrink-0 items-center gap-1 rounded-md border bg-muted/30 p-0.5">
         <Button
           variant={publishedView === 'cooked' ? 'secondary' : 'ghost'}
           size="sm"
@@ -212,6 +220,11 @@
           {#if publishedView === 'uncooked'}Uncooked{/if}
         </Button>
       </div>
+    {/if}
+    <!-- Submit and cancel sit on the document title row so they stay reachable
+         without scrolling to the end of the feedback. -->
+    {#if headerActions}
+      <div class="flex shrink-0 items-center gap-2" data-feedback-actions>{@render headerActions()}</div>
     {/if}
   </header>
 
@@ -308,6 +321,37 @@
   <footer class="mt-2 flex items-center gap-3 text-[9px] text-muted-foreground">
     <span>{tr('{count} characters', { count: draftBody.length.toLocaleString($locale) })}</span>
     <span>Markdown</span>
+    <!-- The attachments themselves live in the document as chips and images, so
+         the footer only carries their count and the management popover. -->
+    <Popover.Root>
+      <Popover.Trigger>
+        {#snippet child({ props })}
+          <button
+            {...props}
+            type="button"
+            class="flex items-center gap-1 rounded px-1 py-0.5 hover:bg-muted hover:text-foreground"
+            aria-label={tr('{count} attachments', { count: attachmentCount })}
+            title={tr('Attachments')}
+            disabled={attachmentCount === 0}
+          >
+            <Paperclip class="size-3" />
+            <span class="tabular-nums">{attachmentCount}</span>
+          </button>
+        {/snippet}
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content side="top" align="end" sideOffset={6}
+          class="z-[130] max-h-72 w-72 overflow-y-auto rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg outline-none">
+          <AttachmentsCard
+            attachments={workspace.attachments}
+            {attachmentBusy}
+            readOnly={editingDisabled}
+            onRemove={onRemoveAttachment}
+            onPreview={onPreviewAttachment}
+          />
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
     <Badge
       variant={savePhase === 'error' ? 'destructive' : 'secondary'}
       class="ml-auto h-6 gap-1 px-2 text-[9px]"

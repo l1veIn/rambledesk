@@ -66,7 +66,13 @@
     {#each options as option}<button class="rounded border px-2 py-1 text-xs aria-pressed:bg-primary aria-pressed:text-primary-foreground" aria-pressed={scenario === option.value} onclick={() => changeScenario(option.value)}>{option.label}</button>{/each}
     <span class="ml-auto text-[10px] text-muted-foreground">读取 {reads} · 处理 {resolves} · 查看 Agent {opened}</span>
   </div>
-  <WorkspaceHeader {workspace} resolveHostProfile={previewHostProfile} {agentStatus} />
+  <WorkspaceHeader {workspace} resolveHostProfile={previewHostProfile} />
+  <div class="h-px shrink-0 bg-primary" data-status-layout-anchor></div>
+  <!-- The Agent status lives in the feedback column now, so the preview shows it
+       the same way the workbench does. -->
+  <div class="shrink-0 border-b bg-muted/15 px-4 py-2" data-feedback-agent-status>
+    {@render agentStatus()}
+  </div>
   <div class="h-px shrink-0 bg-primary" data-status-layout-anchor></div>
   <div class="min-h-0 flex-1 bg-background p-6">
     <h2 class="m-0 text-lg font-medium">反馈工作区内容</h2>

@@ -1,5 +1,4 @@
 <script lang="ts">
-  import type { Snippet } from 'svelte'
   import { Badge } from '$lib/components/ui/badge'
   import type { FeedbackWorkspaceView } from '$lib/feedback'
   import { requestStatusLabel } from '$lib/feedback'
@@ -10,7 +9,6 @@
   export let workspace: FeedbackWorkspaceView
   export let resolveHostProfile: (hostId: string) => HostProfile
   export let cooking = false
-  export let agentStatus: Snippet | undefined = undefined
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
@@ -31,7 +29,10 @@
   }
 </script>
 
-<header class="workspace-header shrink-0 border-b" class:has-agent-status={!!agentStatus}>
+<!-- Request identity for the workbench column: the same content the header
+     carried before it moved here, minus the Agent/ACP status, which belongs to
+     the feedback column. -->
+<header class="workspace-header shrink-0 border-b">
   <div class="flex min-h-14 min-w-0 flex-col justify-center px-4 py-2">
     <div class="flex min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap text-[10px] text-muted-foreground">
       <span class="flex min-w-0 items-center gap-1.5">
@@ -56,20 +57,10 @@
       </h1>
     </div>
   </div>
-  {#if agentStatus}
-    <div class="agent-status-column min-w-0 border-l bg-muted/15 px-4 py-2">
-      {@render agentStatus()}
-    </div>
-  {/if}
 </header>
 
 <style>
-  .workspace-header.has-agent-status {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) var(--workspace-rail-width, 288px);
-  }
-  @media (max-width: 1180px) {
-    .workspace-header.has-agent-status { grid-template-columns: minmax(0, 1fr); }
-    .agent-status-column { border-left: 0; border-top: 1px solid var(--border); }
+  .workspace-header {
+    background: var(--background);
   }
 </style>

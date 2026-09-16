@@ -5,6 +5,7 @@
     CheckCircle2,
     Download,
     FolderOpen,
+    LoaderCircle,
     MessageSquareReply,
     Send,
     ThumbsUp,
@@ -30,7 +31,6 @@
   export let canCancel = false
   export let cancelling = false
   export let allowFinish = false
-  export let finalSummary = ''
   export let approving = false
   export let canOpenResumePrompt = false
   export let onOpenPackage: () => void = () => {}
@@ -57,15 +57,13 @@
 </script>
 
 {#if published && feedbackResult}
-  <section class="p-4">
-    <header class="mb-3 flex items-center gap-2">
-      <strong class="text-xs font-medium">{tr('Feedback Package')}</strong>
-      <Badge class="ml-auto bg-success text-white">
-        <CheckCircle2 class="size-3" />
-        {tr('Published')}
-      </Badge>
-    </header>
-    <Button class="mt-3 w-full" variant="outline" onclick={onOpenPackage}>
+  <div class="flex flex-wrap items-center gap-2">
+    <strong class="text-xs font-medium">{tr('Feedback Package')}</strong>
+    <Badge class="bg-success text-white">
+      <CheckCircle2 class="size-3" />
+      {tr('Published')}
+    </Badge>
+    <Button size="sm" variant="outline" onclick={onOpenPackage}>
       {#if packageActionLabel === 'Open feedback package'}
         <FolderOpen data-icon="inline-start" />
       {:else}
@@ -74,98 +72,87 @@
       {tr(packageActionLabel)}
     </Button>
     {#if canOpenResumePrompt}
-      <Button class="mt-2 w-full" onclick={onOpenResumePrompt}>
-        <MessageSquareReply data-icon="inline-start" />
-        {tr('Submission details')}
+      <Button size="sm" variant="ghost" aria-label={tr('Submission details')} title={tr('Submission details')} onclick={onOpenResumePrompt}>
+        <MessageSquareReply />
       </Button>
     {/if}
-  </section>
+  </div>
 {:else if approved}
-  <section class="p-4">
+  <div class="flex items-center gap-2">
     <Badge class="bg-success text-white"><CheckCircle2 class="size-3" />{tr('Approved')}</Badge>
-    <p class="m-0 mt-3 text-[10px] leading-4 text-muted-foreground">
-      {tr('The user approved the Agent’s final summary. The Ramble flow has ended.')}
-    </p>
-  </section>
+    <span class="text-[10px] text-muted-foreground">{tr('The Ramble flow has ended.')}</span>
+  </div>
 {:else if cancelled}
-  <section class="p-4">
-    <Badge variant="destructive">{tr('Cancelled')}</Badge>
-    <p class="m-0 mt-3 text-[10px] leading-4 text-muted-foreground">
-      {tr('Feedback is cancelled. No continuation message is sent. You can open the Agent conversation whenever you want to continue.')}
-    </p>
+  <div class="flex flex-wrap items-center gap-2">
+    <Badge variant="destructive" title={tr('Feedback is cancelled. No continuation message is sent.')}>{tr('Cancelled')}</Badge>
     {#if feedbackResult}
-      <Button class="mt-3 w-full" variant="outline" onclick={onOpenPackage}>
+      <Button size="sm" variant="outline" onclick={onOpenPackage}>
         {#if packageActionLabel === 'Open feedback package'}<FolderOpen data-icon="inline-start" />{:else}<Download data-icon="inline-start" />{/if}
         {tr(packageActionLabel)}
       </Button>
     {/if}
-  </section>
+  </div>
 {:else}
-  <section class="p-4">
-    {#if allowFinish && finalSummary}
-      <div class="mb-3 rounded-md border border-primary/25 bg-primary/5 p-3">
-        <strong class="block text-[10px] font-medium">{tr('Agent final summary')}</strong>
-        <p class="m-0 mt-1 whitespace-pre-wrap text-[10px] leading-4 text-muted-foreground">{finalSummary}</p>
-      </div>
-    {/if}
-    <div class="grid gap-2">
-      {#if cookingEnabled}
-        <Button
-          class="w-full"
-          variant={cookedDraftReady ? 'default' : 'secondary'}
-          disabled={operationLocked || !canSubmit}
-          onclick={cookedDraftReady ? onSubmit : onCookPreview}
-        >
-          {#if cookedDraftReady}
-            <Send data-icon="inline-start" />
-          {:else}
-            <ChefHat data-icon="inline-start" />
-          {/if}
-          {cooking
-            ? tr('Cooking…')
-            : submitStage === 'saving'
-              ? tr('Saving…')
-              : submitting
-                ? tr('Publishing…')
-                : cookedDraftReady
-                  ? tr('Submit feedback')
-                  : tr('Cook')}
-        </Button>
-        {#if !cookedDraftReady}
-          <Button class="w-full" disabled={operationLocked || !canSubmit} onclick={onSubmit}>
-            <Send data-icon="inline-start" />
-            {submitStage === 'saving'
-              ? tr('Saving…')
-              : cooking || submitting
-                ? cooking || submitStage === 'cooking'
-                  ? tr('Cooking…')
-                  : tr('Publishing…')
-                : tr('Cook and submit')}
-          </Button>
-        {/if}
-      {:else}
-        <Button class="w-full" disabled={operationLocked || !canSubmit} onclick={onSubmit}>
-          <Send data-icon="inline-start" />
-          {submitStage === 'saving' ? tr('Saving…') : submitting ? tr('Publishing…') : tr('Submit feedback')}
-        </Button>
-      {/if}
-      {#if allowFinish}
-        <Button class="w-full" variant="secondary" disabled={operationLocked} onclick={onApprove}>
-          <ThumbsUp data-icon="inline-start" />
-          {approving ? tr('Finishing…') : tr('Approve and finish')}
-        </Button>
-      {/if}
+  <!-- The column's only permanent action line, kept next to the document title so
+       it is reachable without scrolling to the end of the feedback. -->
+  <div class="flex items-center gap-2">
+    <Button
+      size="icon-sm"
+      class="size-8 bg-destructive text-white hover:bg-destructive/90"
+      aria-label={tr('Cancel feedback')}
+      title={tr('Cancel feedback')}
+      disabled={operationLocked || !canCancel}
+      onclick={() => (cancelConfirmOpen = true)}
+    >
+      {#if cancelling}<LoaderCircle class="size-3.5 animate-spin" />{:else}<Ban class="size-3.5" />{/if}
+    </Button>
+    {#if cookingEnabled}
       <Button
-        class="w-full"
-        variant="destructive"
-        disabled={operationLocked || !canCancel}
-        onclick={() => (cancelConfirmOpen = true)}
+        size="sm"
+        variant={cookedDraftReady ? 'default' : 'secondary'}
+        disabled={operationLocked || !canSubmit}
+        onclick={cookedDraftReady ? onSubmit : onCookPreview}
       >
-        <Ban data-icon="inline-start" />
-        {cancelling ? tr('Cancelling…') : tr('Cancel feedback')}
+        {#if cookedDraftReady}
+          <Send data-icon="inline-start" />
+        {:else}
+          <ChefHat data-icon="inline-start" />
+        {/if}
+        {cooking
+          ? tr('Cooking…')
+          : submitStage === 'saving'
+            ? tr('Saving…')
+            : submitting
+              ? tr('Publishing…')
+              : cookedDraftReady
+                ? tr('Submit feedback')
+                : tr('Cook')}
       </Button>
-    </div>
-  </section>
+      {#if !cookedDraftReady}
+        <Button size="sm" disabled={operationLocked || !canSubmit} onclick={onSubmit}>
+          <Send data-icon="inline-start" />
+          {submitStage === 'saving'
+            ? tr('Saving…')
+            : cooking || submitting
+              ? cooking || submitStage === 'cooking'
+                ? tr('Cooking…')
+                : tr('Publishing…')
+              : tr('Cook and submit')}
+        </Button>
+      {/if}
+    {:else}
+      <Button size="sm" disabled={operationLocked || !canSubmit} onclick={onSubmit}>
+        <Send data-icon="inline-start" />
+        {submitStage === 'saving' ? tr('Saving…') : submitting ? tr('Publishing…') : tr('Submit feedback')}
+      </Button>
+    {/if}
+    {#if allowFinish}
+      <Button size="sm" variant="secondary" disabled={operationLocked} onclick={onApprove}>
+        <ThumbsUp data-icon="inline-start" />
+        {approving ? tr('Finishing…') : tr('Approve and finish')}
+      </Button>
+    {/if}
+  </div>
 {/if}
 
 <Dialog.Root bind:open={cancelConfirmOpen}>

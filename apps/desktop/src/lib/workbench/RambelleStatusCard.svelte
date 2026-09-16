@@ -24,34 +24,13 @@
 </script>
 
 <section
-  class="flex min-h-[136px] shrink-0 items-start gap-2 border-t bg-muted/25 px-3 pb-2 pt-2"
+  class="flex shrink-0 items-center gap-2 border-t bg-muted/25 px-3 py-1.5"
   aria-label={tr('Rambelle status')}
 >
   {#if portrait}
-    <img src={portrait} alt="Rambelle" class="size-[120px] shrink-0 self-start object-contain object-top" />
+    <img src={portrait} alt="Rambelle" class="size-6 shrink-0 object-contain" />
   {/if}
-  <div class="rambelle-bubble relative mt-3 min-w-0 flex-1 self-start rounded-2xl border bg-background px-3 py-2">
-    <strong class="block text-[10px] font-semibold">Rambelle</strong>
-    <p class="m-0 mt-1 text-[11px] leading-4">{line}</p>
-  </div>
+  <strong class="shrink-0 text-[10px] font-semibold">Rambelle</strong>
+  <p class="m-0 min-w-0 flex-1 truncate text-[11px] text-muted-foreground" title={line}>{line}</p>
 </section>
-
-<style>
-  .rambelle-bubble {
-    filter: drop-shadow(0 1px 2px rgb(15 35 55 / 12%));
-  }
-
-  .rambelle-bubble::before {
-    content: '';
-    position: absolute;
-    left: -7px;
-    bottom: 15px;
-    width: 12px;
-    height: 12px;
-    border-bottom: 1px solid var(--border);
-    border-left: 1px solid var(--border);
-    background: var(--background);
-    transform: rotate(45deg);
-  }
-</style>
 

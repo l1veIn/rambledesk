@@ -24,18 +24,23 @@
     workspaceViewKey,
     type SessionViewDescriptor,
   } from '$lib/workspace/viewDescriptors'
-  import type { FeedbackEditorHandle } from '../editor/feedbackEditorHandle'
-import type { HostProfile } from '../domain/hostProfile'
+  import type { HostProfile } from '../domain/hostProfile'
 import type {
   RamblePhase,
   SavePhase,
   SubmitStage,
 } from '../domain/sessionPhases'
-  import CommandRail from './CommandRail.svelte'
+  import { mediaQuery } from '../mediaQuery'
   import CaptureToolsCard from './CaptureToolsCard.svelte'
   import RamblePanel from './RamblePanel.svelte'
   import { nativeCaptureAvailable, voiceRambleAvailable } from '../capabilities/capabilityUi'
-  import FeedbackEditorPanel from './FeedbackEditorPanel.svelte'
+  import FeedbackColumn from './FeedbackColumn.svelte'
+  import {
+    FEEDBACK_PANE_MIN_PERCENT,
+    TASK_BRIEF_PANE,
+    feedbackColumnLayout,
+    feedbackWidthFromLayout,
+  } from './feedbackColumnLayout'
   import RequestAttachmentPreview from '../workspace/RequestAttachmentPreview.svelte'
   import TaskBriefPanel from './TaskBriefPanel.svelte'
   import WorkspaceHeader from './WorkspaceHeader.svelte'
@@ -120,13 +125,28 @@ import type {
   export let onCancel: () => void = () => {}
   export let onApprove: () => void = () => {}
 
-  const TASK_BRIEF_DEFAULT_SIZE = 30
-  const TASK_BRIEF_MIN_SIZE = 8
-  const TASK_BRIEF_MAX_SIZE = 40
-  const WORKSPACE_DOCUMENT_LAYOUT_KEY = 'workspace-document-layout'
-  const savedDocumentLayout = savedPaneLayout(WORKSPACE_DOCUMENT_LAYOUT_KEY)
+  const TASK_BRIEF_DEFAULT_SIZE = TASK_BRIEF_PANE.defaultPercent
+  const TASK_BRIEF_MIN_SIZE = TASK_BRIEF_PANE.minPercent
+  const TASK_BRIEF_MAX_SIZE = TASK_BRIEF_PANE.maxPercent
+  const WORKSPACE_DOCUMENT_LAYOUT_KEY = 'workspace-feedback-column'
 
-  let feedbackEditor: FeedbackEditorHandle | undefined
+  /**
+   * Above this width the task brief and the feedback column sit side by side;
+   * below it they stack, and the feedback column keeps the whole width.
+   */
+  const WIDE_COLUMNS_QUERY = '(min-width: 1180px)'
+  const wideColumns = mediaQuery(WIDE_COLUMNS_QUERY)
+  const savedFeedbackWidth = savedPaneLayout(WORKSPACE_DOCUMENT_LAYOUT_KEY)?.[0] ?? null
+
+  let columnsWidth = 0
+  $: columnsLayout = feedbackColumnLayout({
+    containerPx: columnsWidth,
+    savedPx: savedFeedbackWidth,
+  })
+  $: briefPanePercent = columnsLayout.brief
+  $: feedbackPanePercent = columnsLayout.feedback
+
+  let feedbackEditor: FeedbackColumn | undefined
   let taskBriefPane:
     | {
         collapse: () => void
@@ -134,8 +154,8 @@ import type {
         isCollapsed: () => boolean
       }
     | undefined
-  let documentPaneGroup: { setLayout: (layout: number[]) => void } | undefined
-  let documentLayoutReady = false
+  let columnsPaneGroup: { setLayout: (layout: number[]) => void } | undefined
+  let columnsLayoutReady = false
   let autoOpenedTaskRequestId = ''
   let workspaceRoot: HTMLElement
 
@@ -157,8 +177,10 @@ import type {
   }
   $: interactionLocked = readOnly || cooking || cookedDraftReady || submitting || cancelling || approving
 
-  function saveDocumentLayout(layout: number[]) {
-    if (documentLayoutReady) savePaneLayout(WORKSPACE_DOCUMENT_LAYOUT_KEY, layout)
+  function saveColumnsLayout(layout: number[]) {
+    if (!columnsLayoutReady || !$wideColumns) return
+    const width = feedbackWidthFromLayout(layout, columnsWidth)
+    if (width !== null) savePaneLayout(WORKSPACE_DOCUMENT_LAYOUT_KEY, [width])
   }
 
   onMount(() => {
@@ -179,9 +201,7 @@ import type {
           onPasteError,
         )
     void tick().then(() => {
-      if (!documentPaneGroup) return
-      documentLayoutReady = true
-      if (savedDocumentLayout) documentPaneGroup.setLayout(savedDocumentLayout)
+      columnsLayoutReady = true
     })
     return () => unsubscribePaste?.()
   })
@@ -228,6 +248,7 @@ import type {
   bind:this={workspaceRoot}
   class="workspace-panel relative flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background"
   data-workspace-view-key={view ? workspaceViewKey(view) : undefined}
+  style:--workspace-feedback-width={$wideColumns ? `${columnsLayout.feedback}%` : null}
 >
   {#if loadingWorkspace}
     <div class="grid h-full min-h-0 grid-rows-[64px_1fr]">
@@ -241,136 +262,133 @@ import type {
       </div>
     </div>
   {:else if workspace}
-    <WorkspaceHeader {workspace} {resolveHostProfile} {cooking} {agentStatus} />
-
-    <div class="workspace-columns min-h-0 flex-1">
-      <div class="document-column min-h-0 min-w-0 overflow-hidden @container">
-        <PaneGroup
-          bind:this={documentPaneGroup}
-          direction="vertical"
-          class="h-full"
-          id="workspace-document-split"
-          onLayoutChange={saveDocumentLayout}
+    <div class="workspace-columns min-h-0 flex-1" bind:clientWidth={columnsWidth}>
+      <PaneGroup
+        bind:this={columnsPaneGroup}
+        direction={$wideColumns ? 'horizontal' : 'vertical'}
+        class="h-full"
+        id="workspace-columns-split"
+        onLayoutChange={saveColumnsLayout}
+      >
+        <Pane
+          bind:this={taskBriefPane}
+          id="task-brief-pane"
+          class="min-h-0 min-w-0 @container"
+          collapsible={!$wideColumns}
+          collapsedSize={TASK_BRIEF_MIN_SIZE}
+          defaultSize={$wideColumns ? briefPanePercent : TASK_BRIEF_DEFAULT_SIZE}
+          minSize={TASK_BRIEF_MIN_SIZE}
+          maxSize={$wideColumns ? 100 - FEEDBACK_PANE_MIN_PERCENT : TASK_BRIEF_MAX_SIZE}
+          onCollapse={() => (taskBriefOpen = false)}
+          onExpand={() => (taskBriefOpen = true)}
         >
-          <Pane
-            bind:this={taskBriefPane}
-            id="task-brief-pane"
-            collapsible={true}
-            collapsedSize={TASK_BRIEF_MIN_SIZE}
-            defaultSize={TASK_BRIEF_DEFAULT_SIZE}
-            minSize={TASK_BRIEF_MIN_SIZE}
-            maxSize={TASK_BRIEF_MAX_SIZE}
-            onCollapse={() => (taskBriefOpen = false)}
-            onExpand={() => (taskBriefOpen = true)}
-          >
-            <TaskBriefPanel
-              {transport}
-              {capabilities}
-              bind:open={taskBriefOpen}
-              {workspace}
-              {activeActionId}
-              onSelectAction={(id, index, title) => { if (!readOnly) onSelectAction(id, index, title) }}
-              onOpenPreview={() => onOpenTask(workspace!.request.request_id)}
-            />
-          </Pane>
-
-          <PaneResizer
-            class="workbench-pane-resizer workbench-pane-resizer--horizontal"
-            aria-label={tr('Resize task brief')}
+          <WorkspaceHeader {workspace} {resolveHostProfile} {cooking} />
+          <TaskBriefPanel
+            {transport}
+            {capabilities}
+            bind:open={taskBriefOpen}
+            {workspace}
+            {activeActionId}
+            onSelectAction={(id, index, title) => { if (!readOnly) onSelectAction(id, index, title) }}
+            onOpenPreview={() => onOpenTask(workspace!.request.request_id)}
           />
+        </Pane>
 
-          <Pane id="feedback-editor-pane" minSize={100 - TASK_BRIEF_MAX_SIZE}>
-            <FeedbackEditorPanel
-              bind:this={feedbackEditor}
-              {workspace}
-              {draftBody}
-              {editorDocument}
-              {editorEpoch}
-              {savedRevision}
-              {savePhase}
-              {attachmentPreviews}
-              {dragActive}
-              {formatTime}
-              {cooking}
-              {cookedDraftReady}
-              {cookedPreviewModel}
-              {cookedPreviewMarkdown}
-              locked={interactionLocked}
-              cookedMarkdown={publishedFeedback?.markdown ?? ''}
-              uncookedMarkdown={publishedFeedback?.uncooked_markdown ?? draftBody}
-              onChange={onDraftChange}
-              {tidyConfig}
-              {tidyAutoThreshold}
-              onTidyError={onTidyError}
-              onOpenTidySettings={onOpenTidySettings}
-              onRestoreOriginal={onRestoreOriginal}
-              onOpenAttachment={openAttachmentPreviewById}
-            >
-              {#snippet inputTools()}
-                {#if voiceRambleAvailable(capabilities.speech.status)}
-                  <RamblePanel
-                    {rambleEngaged}
-                    {rambleActive}
-                    {ramblePhase}
-                    {rambleBusy}
-                    {rambleStartedOnce}
-                    readOnly={interactionLocked}
-                    {voiceDevice}
-                    {voiceChunkIndex}
-                    {voicePartial}
-                    {voiceLevel}
-                    modelMissing={voiceModelMissing}
-                    message={rambleMessage}
-                    onToggle={onToggleRamble}
-                    onExit={onExitRamble}
-                    onOpenVoiceSettings={onOpenVoiceSettings}
-                  />
-                {/if}
-                <CaptureToolsCard
-                  {attachmentBusy}
+        <PaneResizer
+          class="workbench-pane-resizer workbench-pane-resizer--vertical"
+          aria-label={tr('Resize task brief')}
+        />
+
+        <Pane
+          id="feedback-column-pane"
+          class="min-h-0 min-w-0"
+          minSize={FEEDBACK_PANE_MIN_PERCENT}
+          defaultSize={$wideColumns ? feedbackPanePercent : 100 - TASK_BRIEF_DEFAULT_SIZE}
+        >
+          <FeedbackColumn
+            bind:this={feedbackEditor}
+            {workspace}
+            {draftBody}
+            {editorDocument}
+            {editorEpoch}
+            {savedRevision}
+            {savePhase}
+            {attachmentPreviews}
+            {dragActive}
+            {formatTime}
+            {cooking}
+            {cookedDraftReady}
+            {cookedPreviewModel}
+            {cookedPreviewMarkdown}
+            locked={interactionLocked}
+            cookedMarkdown={publishedFeedback?.markdown ?? ''}
+            uncookedMarkdown={publishedFeedback?.uncooked_markdown ?? draftBody}
+            {feedbackResult}
+            canSubmit={canSubmit && !readOnly}
+            {cookingEnabled}
+            {submitting}
+            {submitStage}
+            canCancel={canCancel && !readOnly}
+            {cancelling}
+            {approving}
+            canOpenResumePrompt={canOpenResumePrompt && !readOnly}
+            {rambelleStatusPortrait}
+            {rambleEngaged}
+            {rambleActive}
+            {attachmentBusy}
+            onChange={onDraftChange}
+            {tidyConfig}
+            {tidyAutoThreshold}
+            onTidyError={onTidyError}
+            onOpenTidySettings={onOpenTidySettings}
+            onRestoreOriginal={onRestoreOriginal}
+            onOpenAttachment={openAttachmentPreviewById}
+            {onRemoveAttachment}
+            onPreviewAttachment={openAttachmentPreview}
+            {agentStatus}
+            {onOpenPackage}
+            {packageActionLabel}
+            {onOpenResumePrompt}
+            {onCookPreview}
+            {onSubmit}
+            {onCancel}
+            {onApprove}
+          >
+            {#snippet inputTools()}
+              {#if voiceRambleAvailable(capabilities.speech.status)}
+                <RamblePanel
+                  {rambleEngaged}
+                  {rambleActive}
+                  {ramblePhase}
+                  {rambleBusy}
+                  {rambleStartedOnce}
                   readOnly={interactionLocked}
-                  nativeCaptureAvailable={nativeCaptureAvailable({
-                    screenCapture: capabilities.screenCapture.status,
-                    clipboardCapture: capabilities.clipboardCapture.status,
-                  })}
-                  onScreenCapture={onStartScreenCapture}
-                  onImportClipboard={onImportClipboard}
-                  {onFileSelection}
+                  {voiceDevice}
+                  {voiceChunkIndex}
+                  {voicePartial}
+                  {voiceLevel}
+                  modelMissing={voiceModelMissing}
+                  message={rambleMessage}
+                  onToggle={onToggleRamble}
+                  onExit={onExitRamble}
+                  onOpenVoiceSettings={onOpenVoiceSettings}
                 />
-              {/snippet}
-            </FeedbackEditorPanel>
-          </Pane>
-        </PaneGroup>
-      </div>
-
-      <CommandRail
-        workDisabled={readOnly}
-        {workspace}
-        {feedbackResult}
-        {rambelleStatusPortrait}
-        {rambleEngaged}
-        {rambleActive}
-        {attachmentBusy}
-        {canSubmit}
-        {cooking}
-        {cookingEnabled}
-        {cookedDraftReady}
-        {submitting}
-        {submitStage}
-        {canCancel}
-        {cancelling}
-        {approving}
-        {canOpenResumePrompt}
-        {onRemoveAttachment}
-        onPreviewAttachment={openAttachmentPreview}
-        {onOpenPackage}
-        {packageActionLabel}
-        {onOpenResumePrompt}
-        {onCookPreview}
-        {onSubmit}
-        {onCancel}
-        {onApprove}
-      />
+              {/if}
+              <CaptureToolsCard
+                {attachmentBusy}
+                readOnly={interactionLocked}
+                nativeCaptureAvailable={nativeCaptureAvailable({
+                  screenCapture: capabilities.screenCapture.status,
+                  clipboardCapture: capabilities.clipboardCapture.status,
+                })}
+                onScreenCapture={onStartScreenCapture}
+                onImportClipboard={onImportClipboard}
+                {onFileSelection}
+              />
+            {/snippet}
+          </FeedbackColumn>
+        </Pane>
+      </PaneGroup>
     </div>
 
     <RequestAttachmentPreview
@@ -408,34 +426,10 @@ import type {
 </section>
 
 <style>
-  .workspace-panel { --workspace-rail-width: 288px; }
+  /* The task brief and the feedback column share one split; PaneForge owns the
+     sizes, so this only has to keep the group bounded. */
   .workspace-columns {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) var(--workspace-rail-width);
+    display: flex;
     overflow: hidden;
-  }
-
-  .document-column {
-    height: 100%;
-  }
-
-  @media (max-width: 1180px) {
-    .workspace-columns {
-      grid-template-columns: minmax(0, 1fr);
-      overflow: auto;
-    }
-
-    .document-column {
-      height: 680px;
-      min-height: 680px;
-    }
-
-    :global(.command-rail) {
-      height: auto;
-      min-height: 0;
-      overflow: visible;
-      border-top: 1px solid var(--border);
-      border-left: 0;
-    }
   }
 </style>
