@@ -21,6 +21,7 @@
 | 产品使命、主要旅程与范围 | [产品说明](PRODUCT.md)与[产品原则](CONSTITUTION.md) |
 | 唯一术语及身份边界 | [术语表](TERMINOLOGY.md) |
 | 模块所有权、持久化与客户端生命周期 | [架构](ARCHITECTURE.md) |
+| 从固定反馈界面逐步扩展到可注册工作台 | [工作台演进路线](WORKBENCH_EVOLUTION.md)；含已完成起点与后续阶段，未实现部分不代表当前支持 |
 | 外部反馈请求、幂等与交付协议 | [协议](PROTOCOL.md) |
 | 如何欣赏和沿着代码阅读 | [反馈链路示范](FEEDBACK_FLOW_WALKTHROUGH.md)与[全局职责地图](quality/QUALITY_WALKTHROUGH.md) |
 | 为什么作出这些架构选择 | [架构决策 ADR](adr/)；当前实现以架构为准 |
