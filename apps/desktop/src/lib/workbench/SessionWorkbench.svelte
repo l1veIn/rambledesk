@@ -32,6 +32,9 @@ import type {
   SubmitStage,
 } from '../domain/sessionPhases'
   import CommandRail from './CommandRail.svelte'
+  import CaptureToolsCard from './CaptureToolsCard.svelte'
+  import RamblePanel from './RamblePanel.svelte'
+  import { nativeCaptureAvailable, voiceRambleAvailable } from '../capabilities/capabilityUi'
   import FeedbackEditorPanel from './FeedbackEditorPanel.svelte'
   import RequestAttachmentPreview from '../workspace/RequestAttachmentPreview.svelte'
   import TaskBriefPanel from './TaskBriefPanel.svelte'
@@ -302,28 +305,51 @@ import type {
               onOpenTidySettings={onOpenTidySettings}
               onRestoreOriginal={onRestoreOriginal}
               onOpenAttachment={openAttachmentPreviewById}
-            />
+            >
+              {#snippet inputTools()}
+                {#if voiceRambleAvailable(capabilities.speech.status)}
+                  <RamblePanel
+                    {rambleEngaged}
+                    {rambleActive}
+                    {ramblePhase}
+                    {rambleBusy}
+                    {rambleStartedOnce}
+                    readOnly={interactionLocked}
+                    {voiceDevice}
+                    {voiceChunkIndex}
+                    {voicePartial}
+                    {voiceLevel}
+                    modelMissing={voiceModelMissing}
+                    message={rambleMessage}
+                    onToggle={onToggleRamble}
+                    onExit={onExitRamble}
+                    onOpenVoiceSettings={onOpenVoiceSettings}
+                  />
+                {/if}
+                <CaptureToolsCard
+                  {attachmentBusy}
+                  readOnly={interactionLocked}
+                  nativeCaptureAvailable={nativeCaptureAvailable({
+                    screenCapture: capabilities.screenCapture.status,
+                    clipboardCapture: capabilities.clipboardCapture.status,
+                  })}
+                  onScreenCapture={onStartScreenCapture}
+                  onImportClipboard={onImportClipboard}
+                  {onFileSelection}
+                />
+              {/snippet}
+            </FeedbackEditorPanel>
           </Pane>
         </PaneGroup>
       </div>
 
       <CommandRail
         workDisabled={readOnly}
-        {capabilities}
         {workspace}
         {feedbackResult}
         {rambelleStatusPortrait}
         {rambleEngaged}
         {rambleActive}
-        {ramblePhase}
-        {rambleBusy}
-        {rambleStartedOnce}
-        {voiceDevice}
-        {voiceChunkIndex}
-        {voicePartial}
-        {voiceLevel}
-        {voiceModelMissing}
-        {rambleMessage}
         {attachmentBusy}
         {canSubmit}
         {cooking}
@@ -335,12 +361,6 @@ import type {
         {cancelling}
         {approving}
         {canOpenResumePrompt}
-        {onToggleRamble}
-        {onExitRamble}
-        {onOpenVoiceSettings}
-        {onStartScreenCapture}
-        {onImportClipboard}
-        {onFileSelection}
         {onRemoveAttachment}
         onPreviewAttachment={openAttachmentPreview}
         {onOpenPackage}

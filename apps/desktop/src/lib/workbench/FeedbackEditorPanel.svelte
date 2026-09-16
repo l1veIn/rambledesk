@@ -13,6 +13,7 @@
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
   import type { JSONContent } from '@tiptap/core'
+  import type { Snippet } from 'svelte'
 
   import RichFeedbackEditor from '$lib/editor/RichFeedbackEditor.svelte'
   import type { DraftOperation } from '$lib/draftOperations'
@@ -56,6 +57,7 @@
   export let tidyAutoThreshold = 0
   export let onTidyError: (message: string) => void = () => {}
   export let onOpenTidySettings: () => void = () => {}
+  export let inputTools: Snippet | undefined = undefined
 
   let tidyBusy = false
   let pendingCount = 0
@@ -210,11 +212,16 @@
           {#if publishedView === 'uncooked'}Uncooked{/if}
         </Button>
       </div>
-    {:else if !cookedDraftReady && !readOnly}
+    {/if}
+  </header>
+
+  {#snippet feedbackTools()}
+    {#if !readOnly}
+      {@render inputTools?.()}
       <Button
         variant={pendingCount > 0 ? 'secondary' : 'ghost'}
         size="sm"
-        class="ml-auto h-7 shrink-0 gap-1 px-2 text-[10px]"
+        class="h-8 shrink-0 gap-1.5 px-2 text-xs"
         aria-label={tr('Tidy')}
         title={pendingCount > 0
           ? tr('Tidy {count} pending speech segments', { count: pendingCount })
@@ -233,7 +240,7 @@
         {/if}
       </Button>
     {/if}
-  </header>
+  {/snippet}
 
   {#if cookedDraftReady}
     <div
@@ -269,6 +276,7 @@
         disabled={editingDisabled}
         {onOpenAttachment}
         {tidyingSegmentIds}
+        toolbarActions={feedbackTools}
         onChange={(snapshot) => {
           const doc = decodeFeedbackDraftDocument(snapshot.documentJson)
           pendingCount = doc ? speechCleanupCandidates(doc).length : 0

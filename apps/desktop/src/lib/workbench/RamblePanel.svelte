@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { LoaderCircle, Mic, X } from '@lucide/svelte'
+  import { ChevronDown, LoaderCircle, Mic, X } from '@lucide/svelte'
+  import { Popover } from 'bits-ui'
 
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
@@ -43,77 +44,71 @@
             : tr('Start recording')
 </script>
 
-<section class="border-b p-4">
-  <header class="mb-3 flex items-center gap-2">
-    <Mic class="size-5 text-muted-foreground" />
-    <strong class="text-xs font-medium">Ramble</strong>
-    <Badge
-      variant={ramblePhase === 'error' ? 'destructive' : rambleActive ? 'default' : 'secondary'}
-      class="ml-auto h-5 px-1.5 text-[9px]"
-    >
-      {rambleActive ? tr('Recording') : rambleEngaged ? tr('Paused') : tr('Standby')}
-    </Badge>
-  </header>
-
-  <div class="flex gap-2">
-    <Button
-      class="flex-1"
-      variant={record.variant}
-      disabled={rambleBusy || readOnly}
-      onclick={onToggle}
-      aria-pressed={record.pressed}
-      title={tr('Global shortcut {shortcut}', { shortcut: $shortcutSettings.rambleToggle })}
-    >
-      {#if record.icon === 'spinner'}
-        <LoaderCircle class="animate-spin" data-icon="inline-start" />
-      {:else}
-        {#if record.icon === 'recording'}
-          <RecordLed />
-        {/if}
-        <Mic data-icon="inline-start" />
+<div class="flex shrink-0 items-center gap-0.5">
+  <Button
+    class="h-8 gap-1.5 px-2 text-xs"
+    size="sm"
+    variant={record.pressed ? 'destructive' : 'ghost'}
+    disabled={rambleBusy || readOnly}
+    onclick={onToggle}
+    aria-pressed={record.pressed}
+    title={tr('Global shortcut {shortcut}', { shortcut: $shortcutSettings.rambleToggle })}
+  >
+    {#if record.icon === 'spinner'}
+      <LoaderCircle class="animate-spin" data-icon="inline-start" />
+    {:else}
+      {#if record.icon === 'recording'}
+        <RecordLed />
       {/if}
-      {primaryLabel}
-    </Button>
-    {#if rambleEngaged}
-      <Button
-        variant="outline"
-        size="icon"
-        disabled={rambleBusy}
-        onclick={onExit}
-        aria-label={tr('Exit Ramble console')}
-        title={tr('Exit Ramble console')}
-      >
-        <X />
-      </Button>
+      <Mic data-icon="inline-start" />
     {/if}
-  </div>
-
-  <div class="mt-3 text-[10px] leading-4 text-muted-foreground">
-    <div class="flex items-center gap-1.5">
-      <span
-        class={rambleActive ? 'record-led' : 'inline-block size-1.5 shrink-0 rounded-full bg-muted-foreground/40'}
-      ></span>
-      <span class="min-w-0 flex-1 truncate">{voiceDevice || tr('Default microphone')}</span>
-      {#if voiceChunkIndex > 0}
-        <span class="tabular-nums">{tr('{count} segments', { count: voiceChunkIndex })}</span>
-      {/if}
-    </div>
-    <p class="m-0 mt-1">{message || tr('Audio is transcribed locally into the document.')}</p>
-    {#if modelMissing}
-      <Button variant="outline" size="sm" class="mt-2 w-full" onclick={onOpenVoiceSettings}>
-        {tr('Download speech model')}
-      </Button>
-    {/if}
-    {#if voicePartial}
-      <p class="m-0 mt-1 truncate text-foreground">
-        {tr('Listening: {text}', { text: voicePartial })}
-      </p>
-    {/if}
-    <div class="mt-2 h-1 overflow-hidden rounded-full bg-muted" aria-label={tr('Microphone level')}>
-      <span
-        class="block h-full bg-primary transition-[width]"
-        style={`width: ${voiceLevel * 100}%`}
-      ></span>
-    </div>
-  </div>
-</section>
+    {primaryLabel}
+  </Button>
+  <Popover.Root>
+    <Popover.Trigger>
+      {#snippet child({ props })}
+        <Button {...props} variant="ghost" size="icon-sm"
+          class={modelMissing || ramblePhase === 'error' ? 'text-destructive' : 'text-muted-foreground'}
+          aria-label={tr('Ramble console')} title={tr('Ramble console')}>
+          <ChevronDown />
+        </Button>
+      {/snippet}
+    </Popover.Trigger>
+    <Popover.Portal>
+      <Popover.Content side="top" align="start" sideOffset={8}
+        class="z-[130] w-72 max-w-[calc(100vw-2rem)] rounded-lg border bg-popover p-4 text-popover-foreground shadow-lg outline-none">
+        <header class="mb-3 flex items-center gap-2">
+          <Mic class="size-4 text-muted-foreground" />
+          <strong class="text-xs font-medium">{tr('Ramble console')}</strong>
+          <Badge variant={ramblePhase === 'error' ? 'destructive' : rambleActive ? 'default' : 'secondary'} class="ml-auto text-[10px]">
+            {rambleActive ? tr('Recording') : rambleEngaged ? tr('Paused') : tr('Standby')}
+          </Badge>
+        </header>
+        <div class="space-y-2 text-xs leading-5 text-muted-foreground">
+          <div class="flex items-center gap-1.5">
+            <span class={rambleActive ? 'record-led' : 'inline-block size-1.5 shrink-0 rounded-full bg-muted-foreground/40'}></span>
+            <span class="min-w-0 flex-1 truncate">{voiceDevice || tr('Default microphone')}</span>
+            {#if voiceChunkIndex > 0}<span class="tabular-nums">{tr('{count} segments', { count: voiceChunkIndex })}</span>{/if}
+          </div>
+          <p class="m-0">{message || tr('Audio is transcribed locally into the document.')}</p>
+          {#if modelMissing}
+            <Button variant="outline" size="sm" class="w-full" onclick={onOpenVoiceSettings}>
+              {tr('Download speech model')}
+            </Button>
+          {/if}
+          {#if voicePartial}
+            <p class="m-0 max-h-24 overflow-y-auto break-words text-foreground">{tr('Listening: {text}', { text: voicePartial })}</p>
+          {/if}
+          <div class="h-1 overflow-hidden rounded-full bg-muted" aria-label={tr('Microphone level')}>
+            <span class="block h-full bg-primary transition-[width]" style={`width: ${voiceLevel * 100}%`}></span>
+          </div>
+          {#if rambleEngaged}
+            <Button variant="outline" size="sm" class="w-full" disabled={rambleBusy || readOnly} onclick={onExit}>
+              <X />{tr('Exit Ramble console')}
+            </Button>
+          {/if}
+        </div>
+      </Popover.Content>
+    </Popover.Portal>
+  </Popover.Root>
+</div>

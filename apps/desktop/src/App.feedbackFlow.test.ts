@@ -175,6 +175,8 @@ describe('feedback flow through the real App and editor', () => {
     await openWorkbench(transport)
     expect(requestsLeaveConfirmation()).toBe(false)
     try {
+      host.querySelector<HTMLButtonElement>('button[aria-label="Document formatting"]')!.click()
+      await tick()
       host.querySelector<HTMLButtonElement>('button[aria-label="Heading 2"]')!.click()
       await tick()
       expect(host.querySelector(`${editorSelector} h2`)).not.toBeNull()
@@ -195,6 +197,8 @@ describe('feedback flow through the real App and editor', () => {
     await openWorkbench(transport)
     const original = (await transport.call('getFeedbackWorkspace', { request_id: request.request_id }))!.draft
     try {
+      host.querySelector<HTMLButtonElement>('button[aria-label="Document formatting"]')!.click()
+      await tick()
       host.querySelector<HTMLButtonElement>('button[aria-label="Heading 2"]')!.click()
       await vi.waitFor(() => expect(transport.saves()).toHaveLength(1), { timeout: 2_000 })
       // jsdom reports a non-Mac platform, so Mod-z is Control-z here.

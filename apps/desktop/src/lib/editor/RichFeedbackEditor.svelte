@@ -1,19 +1,10 @@
 <script lang="ts">
   import { Editor, type JSONContent } from '@tiptap/core'
-  import {
-    Bold,
-    Heading2,
-    Italic,
-    List,
-    Quote,
-    Redo2,
-    Undo2,
-  } from '@lucide/svelte'
   import { Fragment } from '@tiptap/pm/model'
   import { EditorState, type Transaction } from '@tiptap/pm/state'
-  import { onMount } from 'svelte'
+  import { onMount, type Snippet } from 'svelte'
 
-  import { Button } from '$lib/components/ui/button'
+  import FeedbackEditorToolbar from './FeedbackEditorToolbar.svelte'
   import {
     actionBlockquoteNode,
     isEmptyActionGroup,
@@ -51,6 +42,7 @@
   export let onOpenAttachment: (attachmentId: string) => void = () => {}
   export let onChange: (snapshot: FeedbackDraftSnapshot) => void = () => {}
   export let tidyingSegmentIds: string[] = []
+  export let toolbarActions: Snippet | undefined = undefined
 
   let editorHost: HTMLDivElement
   let editor: Editor | null = null
@@ -369,84 +361,7 @@
 </script>
 
 <div class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border bg-background">
-  <div class="flex h-10 shrink-0 items-center gap-1 overflow-x-auto border-b bg-muted/30 px-2" aria-label={t($locale, 'Document formatting')}>
-    <Button
-      variant={toolbar.bold ? 'secondary' : 'ghost'}
-      size="icon-sm"
-      aria-label={t($locale, 'Bold')}
-      title={t($locale, 'Bold')}
-      aria-pressed={toolbar.bold}
-      disabled={disabled}
-      onclick={() => editor?.chain().focus().toggleBold().run()}
-    >
-      <Bold />
-    </Button>
-    <Button
-      variant={toolbar.italic ? 'secondary' : 'ghost'}
-      size="icon-sm"
-      aria-label={t($locale, 'Italic')}
-      title={t($locale, 'Italic')}
-      aria-pressed={toolbar.italic}
-      disabled={disabled}
-      onclick={() => editor?.chain().focus().toggleItalic().run()}
-    >
-      <Italic />
-    </Button>
-    <Button
-      variant={toolbar.heading2 ? 'secondary' : 'ghost'}
-      size="icon-sm"
-      aria-label={t($locale, 'Heading 2')}
-      title={t($locale, 'Heading 2')}
-      aria-pressed={toolbar.heading2}
-      disabled={disabled}
-      onclick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}
-    >
-      <Heading2 />
-    </Button>
-    <Button
-      variant={toolbar.bulletList ? 'secondary' : 'ghost'}
-      size="icon-sm"
-      aria-label={t($locale, 'Bullet list')}
-      title={t($locale, 'Bullet list')}
-      aria-pressed={toolbar.bulletList}
-      disabled={disabled}
-      onclick={() => editor?.chain().focus().toggleBulletList().run()}
-    >
-      <List />
-    </Button>
-    <Button
-      variant={toolbar.blockquote ? 'secondary' : 'ghost'}
-      size="icon-sm"
-      aria-label={t($locale, 'Quote')}
-      title={t($locale, 'Quote')}
-      aria-pressed={toolbar.blockquote}
-      disabled={disabled}
-      onclick={() => editor?.chain().focus().toggleBlockquote().run()}
-    >
-      <Quote />
-    </Button>
-    <span class="flex-1"></span>
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      aria-label={t($locale, 'Undo')}
-      title={t($locale, 'Undo')}
-      disabled={disabled || !toolbar.canUndo}
-      onclick={() => editor?.chain().focus().undo().run()}
-    >
-      <Undo2 />
-    </Button>
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      aria-label={t($locale, 'Redo')}
-      title={t($locale, 'Redo')}
-      disabled={disabled || !toolbar.canRedo}
-      onclick={() => editor?.chain().focus().redo().run()}
-    >
-      <Redo2 />
-    </Button>
-  </div>
+  <FeedbackEditorToolbar {editor} {disabled} state={toolbar} actions={toolbarActions} />
   <div
     class="editor-host min-h-0 flex-1 overflow-y-auto overscroll-contain"
     class:distinguish-untidied={$distinguishUntidiedText}

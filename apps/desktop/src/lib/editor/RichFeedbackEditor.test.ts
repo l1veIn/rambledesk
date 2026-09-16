@@ -97,6 +97,8 @@ describe('the real feedback editor toolbar', () => {
       { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'Marked heading', marks: [{ type: 'bold' }] }] },
       { type: 'paragraph', content: [{ type: 'text', text: 'Plain paragraph' }] },
     ] })
+    button('Document formatting').click()
+    await tick()
     onChange.mockClear()
     await moveCaret(editor, editor.querySelector('h2 strong')!.firstChild!)
     await vi.waitFor(() => expect(button('Bold').getAttribute('aria-pressed')).toBe('true'))
@@ -121,6 +123,8 @@ describe('the real feedback editor toolbar', () => {
 
   it('clears history availability when a new document epoch resets editor state', async () => {
     const { editor, state, onChange } = await openEditor()
+    button('Document formatting').click()
+    await tick()
     await typeText(editor, 'Previous request')
     await vi.waitFor(() => expect(onChange).toHaveBeenCalled())
     expect(button('Undo').disabled).toBe(false)
