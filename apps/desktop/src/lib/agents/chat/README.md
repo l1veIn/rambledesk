@@ -38,6 +38,10 @@ Source: <https://github.com/xintaofei/codeg>, commit
 - `src/components/message/plain-text-with-badges.tsx` and the shared
   `src/lib/message-quote.ts`: user text/quote semantics in Svelte. Reference badges
   are intentionally not fabricated for plain strings lacking resource metadata.
+- `src/components/message/reply-artifacts.tsx` and `src/lib/session-files.ts`: the idea
+  of a per-reply changed-files card. `changed-files.ts` reads RambleDesk's durable ACP
+  tool content (`diff` blocks, tool kind, locations) instead of parsing raw tool-input
+  previews, and a file opens as a workspace diff tab rather than a Monaco preview.
 
 RambleDesk's structured content adapters, safe Markdown bridge, resource handling,
 line-number renderer and snapshot-isolation tests are new code. No React dependency

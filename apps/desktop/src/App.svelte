@@ -53,6 +53,7 @@
   import { createNotificationPermissionController } from './lib/workbench/notificationPermissionController'
   import {
     archiveViewDescriptor,
+    fileDiffViewDescriptor,
     rambelleProfileViewDescriptor,
     requestTaskViewDescriptor,
     sessionViewDescriptor,
@@ -75,6 +76,8 @@
     workspaceTabPanelId,
   } from './lib/workspace/workspaceTabNavigation'
   import WorkspaceTabStrip from './lib/workspace/WorkspaceTabStrip.svelte'
+  import FileDiffView from './lib/workspace/FileDiffView.svelte'
+  import type { ChangedFile } from './lib/agents/chat/changed-files'
   import { workspaceSurface } from './lib/workspace/workspaceSurface'
   import { previewFixtures } from './lib/preview/previewFixtures'
   import { formatTime, messageFrom } from './lib/workbench/feedbackText'
@@ -623,6 +626,20 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     await workspaceNavigation.openView(rambelleProfileViewDescriptor())
   }
 
+  /**
+   * A diff tab is keyed by session + turn + path so the same file changed by two
+   * turns opens as two tabs. Diff tabs are not persisted (see workspaceSnapshot).
+   */
+  async function openFileDiff(sessionId: string, file: ChangedFile, turnId: string) {
+    await workspaceNavigation.openView(
+      fileDiffViewDescriptor({
+        id: `${sessionId}:${turnId}:${file.path}`,
+        path: file.path,
+        diff: file.diff,
+      }),
+    )
+  }
+
   async function openArchivedSessions(initialSession: SessionViewDescriptor | null = null) {
     await workspaceNavigation.openView(archiveViewDescriptor(), {
       prepare: () => {
@@ -961,6 +978,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
               deletionPending={$managedSessions.deletingCommands.has(renderedAgentSessionView.sessionId)}
               onDeletingChange={managedSessions.observeDeletion}
               onConfigureAgent={(configId, advanced) => void openSettings('agents', configId, advanced)}
+              onOpenDiff={(sessionId, file, turnId) => void openFileDiff(sessionId, file, turnId)}
               onOpenRamble={renderedManagedSession ? async () => {
                 if (renderedManagedSession) await workspaceNavigation.selectRailScope(renderedManagedSession.host_id, renderedManagedSession.host_session_id)
               } : undefined}
@@ -969,6 +987,10 @@ import type { SettingsSection } from './lib/domain/settingsSection'
           {/if}
         {:else if renderedWorkspaceView?.kind === 'rambelle-profile'}
           <RambelleProfileWorkspaceView />
+        {:else if renderedWorkspaceView?.kind === 'file-diff'}
+          {#key workspaceViewKey(renderedWorkspaceView)}
+            <FileDiffView path={renderedWorkspaceView.path} diff={renderedWorkspaceView.diff} />
+          {/key}
         {:else if renderedSessionResolution?.kind === 'missing-session'}
           <MissingSessionView
             missing={renderedSessionResolution}

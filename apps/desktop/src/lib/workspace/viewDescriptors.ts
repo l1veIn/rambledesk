@@ -35,6 +35,19 @@ export type RambelleProfileViewDescriptor = Readonly<{
   kind: 'rambelle-profile'
 }>
 
+/**
+ * A file's unified diff, opened from an agent turn's changed-files card.
+ * `id` identifies the tab (session + turn + path), so two turns that touched the
+ * same file keep separate tabs. The diff text is the render payload; this view
+ * is transient and is not written into the durable workspace snapshot.
+ */
+export type FileDiffViewDescriptor = Readonly<{
+  kind: 'file-diff'
+  id: string
+  path: string
+  diff: string
+}>
+
 export type WorkspaceViewDescriptor =
   | SessionViewDescriptor
   | AgentSessionViewDescriptor
@@ -44,6 +57,7 @@ export type WorkspaceViewDescriptor =
   | SettingsViewDescriptor
   | RequestTaskViewDescriptor
   | RambelleProfileViewDescriptor
+  | FileDiffViewDescriptor
 
 export function sessionViewDescriptor(
   hostId: string,
@@ -80,6 +94,14 @@ export function rambelleProfileViewDescriptor(): RambelleProfileViewDescriptor {
   return { kind: 'rambelle-profile' }
 }
 
+export function fileDiffViewDescriptor(input: Readonly<{
+  id: string
+  path: string
+  diff: string
+}>): FileDiffViewDescriptor {
+  return { kind: 'file-diff', id: input.id, path: input.path, diff: input.diff }
+}
+
 export function workspaceViewKey(view: WorkspaceViewDescriptor): string {
   switch (view.kind) {
     case 'agent-draft':
@@ -96,6 +118,8 @@ export function workspaceViewKey(view: WorkspaceViewDescriptor): string {
       return `${view.kind}:${JSON.stringify(view.requestId)}`
     case 'rambelle-profile':
       return 'rambelle-profile:singleton'
+    case 'file-diff':
+      return `${view.kind}:${JSON.stringify(view.id)}`
     case 'session':
       return `${view.kind}:${JSON.stringify([view.hostId, view.hostSessionId])}`
   }

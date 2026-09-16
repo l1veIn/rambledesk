@@ -20,6 +20,10 @@ const zh: Record<string, string> = {
   'Turn cancelled': '本轮已取消', 'Turn interrupted': '本轮已中断', 'Work stopped': '工作已停止',
   'Copy reply': '复制回复', 'Copied': '已复制', 'Completed at': '完成于',
   'Could not copy the reply.': '无法复制回复。',
+  'Changed files': '改动文件', 'files': '个文件', 'View changes': '查看改动',
+  'Reveal in file manager': '在文件管理器中显示', 'Removed': '已删除',
+  'Could not reveal the file.': '无法在文件管理器中显示该文件。',
+  'No diff was reported for this file.': 'Agent 没有为这个文件提供改动内容。',
   'Earlier activity for this turn is not loaded.': '本轮更早的活动尚未加载。',
 }
 

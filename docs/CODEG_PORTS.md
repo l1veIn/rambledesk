@@ -21,6 +21,7 @@ Vite 构建与 Tauri 资源映射直接读取仓库中的原文件，不维护�
 | Grok 会话配置扩展（2026-09-07） | `src-tauri/src/acp/connection.rs` 中 `x.ai/sessionConfig` 与模型 metadata 映射 | 改为 RambleDesk 的 Model / Reasoning effort 配置项，标准 options 优先；按模型更新思考选项，通过 `session/set_model` 回传。权限模式不从 effort 推断。 |
 | Grok 问答与计划审批（2026-09-07） | `src-tauri/src/acp/question.rs`、`plan_approval.rs`、`connection.rs` | 参考请求与响应映射，重写为原生 ACP pending queue、类型化输入响应与 Svelte 表单；共享现有会话生命周期。Grok 的问题答案以题目文本为键，取消使用其原生 outcome。 |
 | Chat 时间线与工具卡片 | `src/components/message/*`、`ai-elements/reasoning.tsx`、`src/lib/{line-diff,unified-diff-generator}.ts` | Svelte 消息/思考/工具/差异卡片、安全 Markdown、引用输入器；渲染与补丁/差异测试、历史游标与滚动锚点回归通过；隔离浏览器验证实际卡片与 60→120 条展开。 |
+| 按轮次的改动文件卡片（2026-09-16） | `src/components/message/reply-artifacts.tsx`、`src/lib/session-files.ts`（仅参考判定思路，未移植其输入解析） | 每轮结束后汇总改动文件、新增/修改/删除分类与 +/- 统计；点击在 RambleDesk 工作区打开差异页签（而非上游的文件预览页签），桌面端可调起系统文件管理器定位。数据来自自身持久化的 ACP 工具内容与 locations，不解析 raw input 全文；未采用上游的补丁文本猜测、Monaco 预览与 input preview 解析。 |
 | 托管 stdio 反馈 companion（历史通道） | `src-tauri/src/delegation/companion.rs`、`acp/connection.rs` | 曾改写实例私有 HTTP 归属、撤销、环境授权与三工具转发，并完成 CLI/两 scope/SQLite/HTTP 等测试。现已退出生产 ACP 启动选择；保留来源声明，不把旧测试视为统一 command 的模型验收。 |
 | 按轮次的过程折叠、最终回答与页脚 | `src/components/message/completed-turn-content.tsx`、`turn-stats.tsx`、`live-turn-stats.tsx` | Svelte 适配真实 turn ID 和持久起止标记；运行中默认展开、结束自动收起，手动选择优先；最终回答独立、复制和完成时间、未知耗时隐藏、跨页轮次与延迟挂载。 |
 | 输入器上下文占用 | `src/components/chat/composer-context-usage.tsx` | 参考上下文占用呈现，接入 ACP 实际 `usage_update` 的 used/size；无上报隐藏，实例更换后等待新值。不推算累计 token、费用或任务消耗。 |

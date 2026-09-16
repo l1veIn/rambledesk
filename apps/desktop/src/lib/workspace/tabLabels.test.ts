@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import type { HostSessionSummary } from '$lib/feedback'
-import { settingsViewDescriptor, inboxViewDescriptor, sessionViewDescriptor, requestTaskViewDescriptor } from './viewDescriptors'
+import { settingsViewDescriptor, inboxViewDescriptor, sessionViewDescriptor, requestTaskViewDescriptor, fileDiffViewDescriptor } from './viewDescriptors'
 import { sessionTabLabel, workspaceTabLabel, type TabLabelContext } from './tabLabels'
 
 const session: HostSessionSummary = {
@@ -46,6 +46,15 @@ describe('tab labels', () => {
     expect(workspaceTabLabel(sessionViewDescriptor('codex', 'alpha'), context())).toBe(
       'Review shell · Codex',
     )
+  })
+
+  it('labels a file diff tab with the file name', () => {
+    expect(
+      workspaceTabLabel(
+        fileDiffViewDescriptor({ id: 'session:turn:/repo/src/main.ts', path: '/repo/src/main.ts', diff: '' }),
+        context(),
+      ),
+    ).toBe('main.ts')
   })
 
   it('uses the task title map before the fallback', () => {

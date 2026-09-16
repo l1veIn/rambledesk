@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   agentSessionViewDescriptor,
   archiveViewDescriptor,
+  fileDiffViewDescriptor,
   inboxViewDescriptor,
   rambelleProfileViewDescriptor,
   requestTaskViewDescriptor,
@@ -75,6 +76,18 @@ describe('workspace view descriptors', () => {
     )
     expect(workspaceViewKey(rambelleProfileViewDescriptor())).toBe(
       'rambelle-profile:singleton',
+    )
+  })
+
+  it('keys a file diff by its session, turn and path so turns never share a tab', () => {
+    const first = fileDiffViewDescriptor({ id: 'session:turn-a:/repo/main.ts', path: '/repo/main.ts', diff: '--- a\n+++ b' })
+    const second = fileDiffViewDescriptor({ id: 'session:turn-b:/repo/main.ts', path: '/repo/main.ts', diff: '--- a\n+++ b' })
+
+    expect(first).toMatchObject({ kind: 'file-diff', path: '/repo/main.ts' })
+    expect(workspaceViewKey(first)).toBe('file-diff:"session:turn-a:/repo/main.ts"')
+    expect(workspaceViewKey(second)).not.toBe(workspaceViewKey(first))
+    expect(workspaceViewKey(first)).toBe(
+      workspaceViewKey(fileDiffViewDescriptor({ id: first.id, path: first.path, diff: first.diff })),
     )
   })
 })

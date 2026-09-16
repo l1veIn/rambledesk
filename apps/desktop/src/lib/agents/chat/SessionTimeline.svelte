@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { SessionActivity } from '../managedSessionUi'
   import { activityInRunningTurn, latestStreamingActivity } from './activity-presentation'
+  import type { ChangedFile } from './changed-files'
   import { groupTimeline, sessionTurnFolds, type TimelineItem } from './turn-presentation'
   import SessionActivityRow from './SessionActivityRow.svelte'
   import AgentTurn from './AgentTurn.svelte'
@@ -8,6 +9,8 @@
   export let activities: readonly SessionActivity[]
   export let runActive = false
   export let onResize: () => void = () => {}
+  export let cwd = ''
+  export let onOpenDiff: (file: ChangedFile, turnId: string) => void = () => {}
   let foldRevision = 0
   let openTurns = new Map<string, boolean>()
   let previousItems: TimelineItem[] = []
@@ -35,7 +38,7 @@
   <div class="mx-auto w-full max-w-4xl space-y-5" data-agent-timeline use:observeSize>
     {#each items as item (item.id)}
       {#if item.type === 'turn'}
-        <AgentTurn turn={item.turn} open={openTurns.get(item.id) ?? false} onOpenChange={(open) => toggle(item.turn.id, open)} {streamingId} />
+        <AgentTurn turn={item.turn} open={openTurns.get(item.id) ?? false} onOpenChange={(open) => toggle(item.turn.id, open)} {streamingId} {cwd} {onOpenDiff} />
       {:else}<SessionActivityRow activity={item.activity} runActive={activityInRunningTurn(item.activity, activities, runActive)} streaming={streamingId === item.activity.id} />{/if}
     {/each}
   </div>

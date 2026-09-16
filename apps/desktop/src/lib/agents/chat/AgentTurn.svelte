@@ -5,13 +5,17 @@
   import { locale } from '$lib/preferences'
   import { chatText } from './chat-text'
   import { activityTool } from './activity-presentation'
+  import { turnChangedFiles, type ChangedFile } from './changed-files'
   import { turnCopyText, turnDurationLabel, type AgentTurn } from './turn-presentation'
+  import ChangedFilesCard from './ChangedFilesCard.svelte'
   import SessionActivityRow from './SessionActivityRow.svelte'
   import TurnFooter from './TurnFooter.svelte'
   export let turn: AgentTurn
   export let open = false
   export let onOpenChange: (open: boolean) => void
   export let streamingId: string | null = null
+  export let cwd = ''
+  export let onOpenDiff: (file: ChangedFile, turnId: string) => void = () => {}
   let processLimit = 60
   let processTurnId = turn.id
   $: if (processTurnId !== turn.id) {
@@ -29,6 +33,8 @@
   $: heading = elapsed && turn.outcome === 'finished'
     ? `${chatText($locale, 'Worked for')} ${elapsed}` : `${chatText($locale, label)}${elapsed ? ` · ${elapsed}` : ''}`
   $: copyText = turnCopyText(turn)
+  // Parse only settled turns: the streaming hot path never builds diffs.
+  $: changedFiles = turn.active ? [] : turnChangedFiles(turn.activities)
   $: latestWork = turn.process.at(-1)
   $: currentWork = turn.answer.length ? chatText($locale, 'Writing reply') : latestWork
     ? latestWork.kind === 'agent_thought' ? chatText($locale, 'Thinking')
@@ -58,5 +64,6 @@
   {/if}
   {#each turn.answer as activity (activity.id)}<SessionActivityRow {activity} runActive={turn.active} streaming={streamingId === activity.id} />{/each}
   {#each turn.notices as activity (activity.id)}<SessionActivityRow {activity} />{/each}
+  <ChangedFilesCard files={changedFiles} {cwd} onOpenDiff={(file) => onOpenDiff(file, turn.id)} />
   {#if !turn.active}<TurnFooter {copyText} completedAt={turn.completedAt} />{/if}
 </section>

@@ -10,11 +10,13 @@
   import { createManagedSessionController } from './managedSessionController'
   import { createManagedWorkspaceInfoController } from './managedWorkspaceInfoController'
   import ManagedSessionWorkspace from './ManagedSessionWorkspace.svelte'
+  import type { ChangedFile } from './chat/changed-files'
 
   export let transport: ApplicationTransport
   export let sessionId: string
   export let onOpenRamble: (() => Promise<void> | void) | undefined = undefined
   export let onConfigureAgent: ((configId: string | undefined, advanced?: boolean) => void) | undefined = undefined
+  export let onOpenDiff: (sessionId: string, file: ChangedFile, turnId: string) => void = () => {}
   export let deletionPending = false
   export let onDeletingChange: (sessionId: string, deleting: boolean) => void = () => {}
   let reportedDeleting: boolean | undefined
@@ -78,6 +80,7 @@
     onCheckAcceptance={session.checkPromptAcceptance}
     {onConfigureAgent}
     {onOpenRamble}
+    onOpenDiff={(file, turnId) => onOpenDiff(sessionId, file, turnId)}
   />
 {:else}
   <div class="flex h-full flex-col items-center justify-center gap-4 p-6 text-sm text-muted-foreground">

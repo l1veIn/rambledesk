@@ -8,6 +8,7 @@
   import { agentText } from '../agentI18n'
   import { redactAgentMessage } from '../agentConfigForm'
   import { activitiesForSession, type SessionActivity } from '../managedSessionUi'
+  import type { ChangedFile } from './changed-files'
   import { TimelineWindow, crossedHistoryThreshold } from './timeline-window'
   import { captureActivityAnchor, restoreActivityAnchor } from './scroll-anchor'
   import { chatText } from './chat-text'
@@ -21,6 +22,8 @@
   export let historyError = ''
   export let onLoadOlder: (() => Promise<void> | void) | undefined = undefined
   export let envText = ''
+  export let cwd = ''
+  export let onOpenDiff: (file: ChangedFile, turnId: string) => void = () => {}
 
   const timelineWindow = new TimelineWindow()
   let viewport: HTMLDivElement | undefined
@@ -109,7 +112,7 @@
       {#if visibleError}<p class="m-0 text-xs text-destructive" role="alert">{visibleError}</p>{/if}
     </div>
   {/if}
-  <SessionTimeline {sessionId} activities={renderedActivities} {runActive} onResize={() => void followActivity(visibleActivities)} />
+  <SessionTimeline {sessionId} activities={renderedActivities} {runActive} {cwd} {onOpenDiff} onResize={() => void followActivity(visibleActivities)} />
   {#if visibleActivities.length === 0}
     <div class="mx-auto flex min-h-48 max-w-md flex-col items-center justify-center text-center"><MessageSquare class="mb-3 size-6 text-muted-foreground/50" /><strong class="text-sm font-medium">{tr('No messages yet')}</strong><p class="mb-0 mt-2 text-xs leading-5 text-muted-foreground">{tr('Describe what you want to work on.')}</p></div>
   {/if}

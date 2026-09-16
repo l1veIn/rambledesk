@@ -4,6 +4,7 @@ import {
   agentDraftViewDescriptor,
   agentSessionViewDescriptor,
   archiveViewDescriptor,
+  fileDiffViewDescriptor,
   inboxViewDescriptor,
   rambelleProfileViewDescriptor,
   requestTaskViewDescriptor,
@@ -39,6 +40,20 @@ describe('workspace snapshots', () => {
     expect(restoreWorkspaceSnapshot(snapshot)).toEqual({ shellState: state, requestIds: new Map() })
     const malformed = restoreWorkspaceSnapshot({ version: 2, views: [{ kind: 'agent-session', sessionId: '' }, agent, agent], activeViewKey: workspaceViewKey(agent) })
     expect(malformed?.shellState.views).toEqual([agent])
+  })
+  it('keeps a transient file diff out of the durable snapshot and falls back to a durable tab', () => {
+    const diff = fileDiffViewDescriptor({ id: 'session:turn:/repo/main.ts', path: '/repo/main.ts', diff: '--- a/main.ts\n+++ b/main.ts' })
+    const state = workspaceShellReducer(
+      workspaceShellReducer(EMPTY_WORKSPACE_SHELL_STATE, { type: 'open', view: alpha }),
+      { type: 'open', view: diff },
+    )
+
+    const snapshot = createWorkspaceSnapshot(state, new Map())
+    expect(snapshot.views).toEqual([{ ...alpha, lastRequestId: null }])
+    expect(snapshot.activeViewKey).toBe(workspaceViewKey(alpha))
+    // A stored diff tab from an older build is not restored either.
+    expect(restoreWorkspaceSnapshot({ version: 2, views: [diff], activeViewKey: workspaceViewKey(diff) }))
+      .toEqual({ shellState: EMPTY_WORKSPACE_SHELL_STATE, requestIds: new Map() })
   })
   it('round-trips view order, active identity, and request hints', () => {
     const openedAlpha = workspaceShellReducer(EMPTY_WORKSPACE_SHELL_STATE, {

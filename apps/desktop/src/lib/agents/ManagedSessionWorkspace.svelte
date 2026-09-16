@@ -11,6 +11,7 @@
   import { agentFailureFrom } from './agentFailure'
   import { PromptAcknowledgementUnknown, type PromptAcceptance } from './managedSessionController'
   import SessionTranscript from './chat/SessionTranscript.svelte'
+  import type { ChangedFile } from './chat/changed-files'
   import { chatText } from './chat/chat-text'
   import SessionConfigurationControls from './configuration/SessionConfigurationControls.svelte'
   import SessionContextUsage from './SessionContextUsage.svelte'
@@ -47,6 +48,7 @@
   export let onConfigureAgent: ((configId: string | undefined, advanced?: boolean) => void) | undefined = undefined
   export let awaitingAcknowledgement = false
   export let onCheckAcceptance: (() => Promise<PromptAcceptance>) | undefined = undefined
+  export let onOpenDiff: (file: ChangedFile, turnId: string) => void = () => {}
 
   let activeSessionId = ''
   let prompt = ''
@@ -196,7 +198,7 @@
       {#if onRefresh}<Button variant="outline" size="sm" aria-label={tr('Reload session')} disabled={pending.has(`${activeSessionId}:refresh`)} onclick={() => void run('refresh', onRefresh!)}><RefreshCw class="size-3.5" />{tr('Retry')}</Button>{/if}
     </div>
   {/if}
-  <SessionTranscript sessionId={snapshot.session.session_id} {activities} {runActive}
+  <SessionTranscript sessionId={snapshot.session.session_id} {activities} {runActive} {cwd} {onOpenDiff}
     {historyLoading} {historyHasMore} {historyError} {onLoadOlder} {envText} />
 
   {#if interaction}

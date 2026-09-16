@@ -99,6 +99,31 @@ describe('structured timeline rendering', () => {
     expect(unknown).toContain('Copy reply')
   })
 
+  it('summarizes a settled turn as one changed-files card and hides it while the turn is running', () => {
+    const added = activity('add', 1, { content: [{ type: 'diff', path: '/repo/src/new.ts', old_text: null, new_text: 'first\nsecond\n' }] })
+    const edited = activity('edit', 2, { content: [{ type: 'diff', path: '/repo/src/main.ts', old_text: 'old content\n', new_text: 'new content\n' }] })
+    const settled = [added, edited]
+    const item = groupTimeline(settled, false)[0]
+    if (item.type !== 'turn') throw new Error('missing turn')
+    const expanded = render(AgentTurn, { props: { turn: item.turn, open: true, onOpenChange: vi.fn(), cwd: '/repo' } }).body
+
+    expect(expanded).toContain('data-turn-changed-files')
+    expect(expanded).toContain('Changed files')
+    expect(expanded).toContain('2 files')
+    expect(expanded).toContain('new.ts')
+    expect(expanded).toContain('src')
+    expect(expanded).toContain('+3')
+    expect(expanded).toContain('−1')
+    // Reveal needs a desktop capability; it is covered by changedFilesCard.test.ts.
+    expect(expanded).not.toContain('Reveal in file manager')
+
+    // The streaming turn builds no diff summary.
+    const running = groupTimeline(settled, true)[0]
+    if (running.type !== 'turn') throw new Error('missing running turn')
+    expect(render(AgentTurn, { props: { turn: running.turn, open: true, onOpenChange: vi.fn() } }).body)
+      .not.toContain('data-turn-changed-files')
+  })
+
   it('keeps typed Markdown literal while rendering composer quote structure', () => {
     const { body } = render(UserMessageText, { props: { text: '> quoted code\n>\n> another line\n\n**literal question**\n<script>unsafe()</script>' } })
     expect(body).toContain('<blockquote')

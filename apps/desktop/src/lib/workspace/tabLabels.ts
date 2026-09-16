@@ -1,4 +1,5 @@
 import { agentText } from '$lib/agents/agentI18n'
+import { fileNameOf } from '$lib/agents/chat/changed-files'
 import type { HostProfile } from '$lib/domain/hostProfile'
 import type { HostSessionSummary } from '$lib/feedback'
 import type { Locale } from '$lib/preferences'
@@ -49,6 +50,8 @@ export function workspaceTabLabel(
       return context.taskTabTitles.get(view.requestId) ?? context.tr('Task brief')
     case 'rambelle-profile':
       return 'Rambelle'
+    case 'file-diff':
+      return fileNameOf(view.path)
     case 'session':
       return sessionTabLabel(view, context)
   }

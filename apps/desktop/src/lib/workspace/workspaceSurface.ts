@@ -20,6 +20,7 @@ export function workspaceSurface(view: WorkspaceViewDescriptor | null): Workspac
     case 'archive':
     case 'request-task':
     case 'rambelle-profile':
+    case 'file-diff':
       return 'standalone'
   }
 }
