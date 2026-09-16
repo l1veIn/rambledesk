@@ -22,13 +22,19 @@
   let formattingOpen = false
 </script>
 
-<div class="shrink-0 border-b bg-muted/30">
-  <div class="flex min-h-10 flex-wrap items-center gap-1 px-2 py-1">
-    {@render actions?.()}
-    <div class="ml-auto flex items-center gap-0.5">
+<!-- The tools row is its own query container: `@min-[640px]` below is where the
+     longest locale (English) still fits with every tool label, so narrower panes
+     drop the labels instead of wrapping the row. -->
+<div class="shrink-0 border-b bg-muted/30 @container">
+  <div class="flex min-h-11 items-center gap-1 px-2 py-1.5">
+    <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+      {@render actions?.()}
+    </div>
+    <div class="flex shrink-0 items-center gap-0.5">
       <Button
         variant={formattingOpen ? 'secondary' : 'ghost'}
         size="icon-sm"
+        class="size-8"
         aria-label={t($locale, 'Document formatting')}
         title={t($locale, 'Document formatting')}
         aria-expanded={formattingOpen}
@@ -40,6 +46,7 @@
       <Button
         variant="ghost"
         size="icon-sm"
+        class="size-8"
         aria-label={t($locale, 'Undo')}
         title={t($locale, 'Undo')}
         disabled={disabled || !state.canUndo}
@@ -50,6 +57,7 @@
       <Button
         variant="ghost"
         size="icon-sm"
+        class="size-8"
         aria-label={t($locale, 'Redo')}
         title={t($locale, 'Redo')}
         disabled={disabled || !state.canRedo}

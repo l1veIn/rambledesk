@@ -27,10 +27,11 @@
       class="h-8 gap-1.5 px-2 text-xs"
       disabled={attachmentBusy || readOnly}
       onclick={onScreenCapture}
+      aria-label={tr('Capture')}
       title={tr('Capture')}
     >
       <Camera class="size-4" />
-      {tr('Capture')}
+      <span class="hidden @min-[640px]:inline">{tr('Capture')}</span>
     </Button>
     <Button
       variant="ghost"
@@ -38,10 +39,11 @@
       class="h-8 gap-1.5 px-2 text-xs"
       disabled={attachmentBusy || readOnly}
       onclick={onImportClipboard}
+      aria-label={tr('Clipboard')}
       title={tr('The clipboard is read once only when you click import.')}
     >
       <ClipboardPaste class="size-4" />
-      {tr('Clipboard')}
+      <span class="hidden @min-[640px]:inline">{tr('Clipboard')}</span>
     </Button>
   {/if}
   <Button
@@ -50,10 +52,11 @@
     class="h-8 gap-1.5 px-2 text-xs"
     disabled={attachmentBusy || readOnly}
     onclick={() => attachmentInput.click()}
+    aria-label={tr('Choose files')}
     title={tr('Choose files')}
   >
     <Paperclip class="size-4" />
-    {tr('Files')}
+    <span class="hidden @min-[640px]:inline">{tr('Files')}</span>
   </Button>
 </div>
 <input

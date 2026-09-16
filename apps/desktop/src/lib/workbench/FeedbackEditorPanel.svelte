@@ -234,7 +234,7 @@
         {:else}
           <Sparkles class="size-3.5" />
         {/if}
-        {tidyBusy ? tr('Tidying…') : tr('Tidy')}
+        <span class="hidden @min-[640px]:inline">{tidyBusy ? tr('Tidying…') : tr('Tidy')}</span>
         {#if pendingCount > 0}
           <Badge variant="secondary" class="h-4 px-1 text-[9px]">{pendingCount}</Badge>
         {/if}

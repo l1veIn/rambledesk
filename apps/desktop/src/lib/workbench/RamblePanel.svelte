@@ -52,6 +52,7 @@
     disabled={rambleBusy || readOnly}
     onclick={onToggle}
     aria-pressed={record.pressed}
+    aria-label={primaryLabel}
     title={tr('Global shortcut {shortcut}', { shortcut: $shortcutSettings.rambleToggle })}
   >
     {#if record.icon === 'spinner'}
@@ -62,13 +63,13 @@
       {/if}
       <Mic data-icon="inline-start" />
     {/if}
-    {primaryLabel}
+    <span class="hidden @min-[640px]:inline">{primaryLabel}</span>
   </Button>
   <Popover.Root>
     <Popover.Trigger>
       {#snippet child({ props })}
         <Button {...props} variant="ghost" size="icon-sm"
-          class={modelMissing || ramblePhase === 'error' ? 'text-destructive' : 'text-muted-foreground'}
+          class="size-8 {modelMissing || ramblePhase === 'error' ? 'text-destructive' : 'text-muted-foreground'}"
           aria-label={tr('Ramble console')} title={tr('Ramble console')}>
           <ChevronDown />
         </Button>
