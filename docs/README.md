@@ -22,6 +22,7 @@
 | 唯一术语及身份边界 | [术语表](TERMINOLOGY.md) |
 | 模块所有权、持久化与客户端生命周期 | [架构](ARCHITECTURE.md) |
 | 从固定反馈界面逐步扩展到可注册工作台 | [工作台演进路线](WORKBENCH_EVOLUTION.md)；含已完成起点与后续阶段，未实现部分不代表当前支持 |
+| 多工作台重构的先导讨论（接口、注册项、Agent 视角、开放问题） | [工作台先导文档](workbench/README.md)；讨论稿，未实现 |
 | 外部反馈请求、幂等与交付协议 | [协议](PROTOCOL.md) |
 | 如何欣赏和沿着代码阅读 | [反馈链路示范](FEEDBACK_FLOW_WALKTHROUGH.md)与[全局职责地图](quality/QUALITY_WALKTHROUGH.md) |
 | 为什么作出这些架构选择 | [架构决策 ADR](adr/)；当前实现以架构为准 |
