@@ -1,6 +1,6 @@
 # 从固定反馈界面到可注册工作台
 
-状态：后续迭代路线；除阶段 0、1 外均未实现。更新日期：2026-09-16。
+状态：后续迭代路线；阶段 0、1 已完成，阶段 2 进行中，其余未实现。更新日期：2026-09-16。
 
 本文记录产品讨论中确定的方向、当前代码起点和逐步迁移顺序，供后续按阶段实施。当前运行合同仍以[架构](ARCHITECTURE.md)、[协议](PROTOCOL.md)和[术语表](TERMINOLOGY.md)为准。文中的组件名、注册字段和新协议形状均为建议，不代表现有 API。
 
@@ -85,7 +85,8 @@ Agent 无法完整预测人类的表达方式，所以每种工作台都携带�
 
 ### 阶段 1：调整现有 Ramble 的布局 —— 已完成
 
-改动：`refactor(desktop): move the feedback column to the right of the workbench`。
+改动：`e35ddde`（`refactor(desktop): give Ramble a workbench column and a feedback column`）；
+窗口尺寸与悬浮窗提交按钮分别为 `34ea6fe`、`e6eeff1`。
 
 - 反馈列（工具栏、TipTap、保存页脚、Cooked 预览、提交条、Rambelle 状态条）移到任务简报右侧；
   任务简报、体验动作与 Agent 材料留在左侧工作台列。
@@ -96,7 +97,7 @@ Agent 无法完整预测人类的表达方式，所以每种工作台都携带�
   Rambelle 状态卡压成底部一条。
 - Agent/ACP 状态从工作台标题行移到反馈列顶部；工作台标题行只保留 Host/会话与请求状态，
   不再重复标题页签已有的请求标题。
-- 桌面窗口最小宽度提高到 1600×840（`tauri.conf.json`），单列与窄屏回退仍保留给浏览器客户端。
+- 桌面窗口默认与最小尺寸提高到 1600×900（`tauri.conf.json`），单列与窄屏回退仍保留给浏览器客户端。
 
 已有证据：`feedbackColumnLayout.test.ts` 覆盖像素策略（700/560–900/420 与拖动夹取）、
 `workspaceColumnRender.test.ts` 覆盖标题归属与 ACP 位置、`rambleInputController.test.ts` 覆盖悬浮窗提交按钮；
@@ -115,7 +116,21 @@ Agent 无法完整预测人类的表达方式，所以每种工作台都携带�
 
 **本阶段止于：** 现有 Ramble 布局可用。无需引入注册表、AskQuestion 或新协议。
 
-### 阶段 2：提取公共容器和通用反馈列
+### 阶段 2：提取公共容器和通用反馈列 —— 进行中
+
+已落地（未提交）：
+
+- 新增 `WorkbenchContainer.svelte`：工作区面板外壳与加载态、分栏与像素宽度策略、通用反馈列、
+  提交协调、附件预览对话框、粘贴订阅。它不认识"哪种工作台"，工作台以 snippet 传入。
+- 新增 `RambleWorkbench.svelte`：只渲染请求身份行与任务简报（what_happened / 体验动作 / 材料）
+  以及动作选择；不再持有正文、提交或宿主协议。
+- `SessionWorkbench.svelte` 变成"容器 + 工作台"的组合，对外 prop 与导出的编辑句柄不变，
+  App 无需改动；`FeedbackColumn` 仍是唯一的编辑与提交列。
+- 契约：容器 → 工作台 `{workspace, readOnly/locked, activeActionId, onSelectAction}`；
+  工作台 → 容器内容；提交/保存/输入路由仍只有 controller 一套实现。
+
+待完成：全屏「任务简报」视图（`TaskWorkspaceView` → `TaskBriefView`）仍是阶段 1 之前的老实现，
+不复用简报与反馈列组件，尚未并轨；注册表留待阶段 3。
 
 **目标：** 通用输入成为可被不同工作台携带的完整组件。
 

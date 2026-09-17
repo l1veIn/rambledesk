@@ -5,6 +5,7 @@ import { render } from 'svelte/server'
 import type { HostProfile } from '$lib/domain/hostProfile'
 import { previewFixtures } from '$lib/preview/previewFixtures'
 import FeedbackColumn from './FeedbackColumn.svelte'
+import WorkbenchContainer from './WorkbenchContainer.svelte'
 import WorkspaceHeader from './WorkspaceHeader.svelte'
 
 vi.mock('$lib/preferences', async () => {
@@ -61,5 +62,35 @@ describe('feedback column identity', () => {
     const body = render(FeedbackColumn, { props: { workspace, formatTime: () => '10:00' } }).body
     expect(body).not.toContain('data-feedback-agent-status')
     expect(body).toContain('Submit feedback')
+  })
+})
+
+describe('workbench container composition', () => {
+  const workbench = createRawSnippet(() => ({ render: () => '<div data-workbench="stub">Brief</div>' }))
+  const unavailable = {
+    serverPaths: { status: { availability: 'unavailable', source: 'none' }, implementation: {} },
+    imagePaste: { status: { availability: 'unavailable', source: 'none' }, implementation: {} },
+  } as never
+
+  it('keeps the Agent status inside the feedback column, never above the workbench', () => {
+    const body = render(WorkbenchContainer, { props: {
+      workspace,
+      transport: {} as never,
+      capabilities: unavailable,
+      formatTime: () => '10:00',
+      workbench,
+      agentStatus,
+    } }).body
+
+    const feedbackPane = body.indexOf('data-pane-id="feedback-column-pane"')
+    const workbenchPane = body.indexOf('data-pane-id="workbench-pane"')
+    const status = body.indexOf('data-feedback-agent-status')
+
+    expect(workbenchPane).toBeGreaterThan(-1)
+    expect(feedbackPane).toBeGreaterThan(workbenchPane)
+    // The status row belongs to the feedback pane that follows the workbench pane.
+    expect(status).toBeGreaterThan(feedbackPane)
+    expect(body).toContain('data-workbench="stub"')
+    expect(body.indexOf('data-workbench="stub"')).toBeLessThan(status)
   })
 })
