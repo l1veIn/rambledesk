@@ -81,6 +81,10 @@
         {workspace.request_attachments.length}
       </Badge>
     {/if}
+    <!-- The full-screen preview is hidden for now: the brief already resizes and
+         scrolls in its own column. `onOpenPreview` and the `request-task` view
+         stay in place so this can come back as one line. -->
+    {#if false}
     <Button
       bind:ref={previewButton}
       variant="ghost"
@@ -93,6 +97,7 @@
         <Maximize2 class={pulseNonce > 0 ? 'brief-pulse-icon' : ''} />
       {/key}
     </Button>
+    {/if}
     <Collapsible.Trigger>
       {#snippet child({ props })}
         <Button

@@ -307,6 +307,10 @@
               </Select.Root>
             </section>
 
+            <!-- Hidden with the full-screen task view it drives: the toggle would
+                 otherwise promise something that no longer happens. The
+                 preference, setter and copy stay for when that view returns. -->
+            {#if false}
             <section class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-8 border-b pb-8">
               <div class="flex gap-3">
                 <span class="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
@@ -331,6 +335,7 @@
                 <span class={`absolute top-0.5 left-0.5 size-5 rounded-full bg-background shadow-sm transition-transform ${$autoOpenTaskBrief ? 'translate-x-5' : ''}`}></span>
               </button>
             </section>
+            {/if}
 
             {#if onboardingAvailable}
             <section class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-8 border-b pb-8" aria-live="polite">

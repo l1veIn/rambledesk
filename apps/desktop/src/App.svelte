@@ -1072,7 +1072,6 @@ import type { SettingsSection } from './lib/domain/settingsSection'
         onExitRamble={() => void exitRamble()}
         onOpenVoiceSettings={() => void openSettings('voice')}
         onOpenTask={(requestId) => void openTaskWorkspace(requestId)}
-        onAutoOpenTask={workspaceNavigation.autoOpenTaskView}
         onStartScreenCapture={() => void attachmentController.startScreenCapture()}
         onImportClipboard={() => void importClipboardNow()}
         onFileSelection={attachmentController.handleFileSelection}
