@@ -25,7 +25,9 @@
 | 人类 | 使用 RambleDesk 产生真实反馈的人。 | 拥有产品判断；不拥有协议状态。 |
 | 智能体 | 发起反馈请求并读取反馈包继续工作的 LLM coding actor。 | 拥有任务推理；不拥有 RambleDesk 持久状态。 |
 | 宿主 | 智能体运行所在的 runtime/container，例如 Pi、Claude Code、Codex、OpenCode。 | 拥有自己的 session、tool、plugin API；不定义 RambleDesk 存储合同。 |
-| 工作台 | RambleDesk 的人类反馈工作界面；同一套工作台可以由不同 Workbench Client 呈现。 | 拥有人类反馈工作流；不实现宿主协议，不限定为桌面窗口。 |
+| 工作台 | RambleDesk 的人类反馈工作界面；同一套工作台可以由不同 Workbench Client 呈现。 | 拥有人类反馈工作流；不实现宿主协议，不限定为桌面窗口。默认工作台是当前的自由反馈流程（Ramble）：未指定工作台类型的请求都进这里。 |
+| 工作台容器 | 承载工作台共享部分的容器：分栏、反馈列、提交与附件预览。 | 不拥有某个工作台特有的内容与数据；具体交互形态仍待定。 |
+| 反馈列 | 承载自由反馈的右列：输入工具（语音、截图、剪贴板、文件、Tidy）、TipTap 正文、保存状态、提交行与 Rambelle 状态条。 | 一个客户端同时只有一个可编辑反馈列。 |
 | Workbench Client（工作台客户端） | 承载共享工作台 UI 的客户端角色；当前由 `apps/desktop` 中的 Svelte UI 实现，并由 Desktop Client 与 loopback Web Client 复用。 | 只持有 UI 投影和 client-local workspace snapshot；不拥有 Request、Feedback Draft 或 Package 的 canonical 事实。 |
 | Desktop Client（桌面客户端） | 在 Desktop Shell 内运行的 Workbench Client，通过 Tauri IPC 的 Application Transport Implementation 访问 Backend Runtime。 | 是当前已实现的客户端；不把 Tauri API 暴露为共享 UI 的业务合同。 |
 | Web Client（Web 客户端） | 在浏览器中运行的 Workbench Client，通过 Web Access 的 HTTP + WebSocket Application Transport Implementation 访问 Backend Runtime。 | 浏览器能力受当前设备、权限和手势约束；支持面与待验项由 Web Access 矩阵维护，不能外推为原生或 LAN 能力。 |
@@ -40,6 +42,8 @@
 | Speech Recognition Plugin（语音识别插件） | 在当前客户端设备内组合 Audio Source、重采样、VAD、Speech Engine 与模型管理，并产生统一 SpeechEvent 的 Platform Plugin。 | 原始音频、识别 session 和模型不进入 Application Transport；平台共享事件语义，不共享同一个引擎进程。 |
 | Capture Plugin（采集插件） | 在当前客户端设备上取得截图、相机、粘贴或文件输入，并返回 Attachment Candidate 的 Platform Plugin。 | 不直接编辑 TipTap，不写最终附件路径；平台可以有不同 acquisition UX。 |
 | Attachment Candidate（附件候选） | Platform Plugin 交给共享 Draft 流程验证和持久化的客户端本地 bytes/Blob、MIME 与来源 metadata。 | 不是已持久化附件，也不是服务器路径；只有 application mutation 成功后才能成为 Feedback Draft 附件引用。 |
+| 请求材料 | Agent 随请求提供的附件与上下文材料（`request_attachments`）。 | 不是人类的反馈附件，也不是 Attachment Candidate；只读展示与预览。 |
+| 反馈附件 | 人类在反馈中采集或导入并持久化后的附件（`workspace.attachments`）。 | 必须先成为 Attachment Candidate 且持久化成功；与请求材料分开计数与展示。 |
 | Audio Source（音频源） | Speech Recognition Plugin 内负责取得有明确 sample rate 的本地单声道 PCM 的 Interface/Implementation。 | 不执行语音识别、不传输到 Backend Runtime、不拥有 Feedback Draft。 |
 | Speech Engine（语音识别引擎） | Speech Recognition Plugin 内消费本地 PCM 并产生 SpeechEvent 的识别 Implementation。 | Desktop、Browser 与 Mobile 各自在本设备运行；统一点是事件合同，不是进程、模型或 transport。 |
 | 反馈请求 | 由适配器创建、由人类处理的持久单位，用 `request_id` 标识。 | RambleDesk 的核心输入事实。 |
@@ -49,13 +53,19 @@
 | Agent Backend（智能体后端，现有文档称宿主 / Host） | 提供智能体推理、工具和会话能力的外部软件，例如 Pi、dsh、Codex。 | 不等于 RambleDesk 的 Backend Runtime，也不等于某一个 OS 进程。 |
 | Agent Session（智能体会话，现有文档称宿主会话） | Agent Backend 中持续关联的一段对话与执行上下文。 | 可处理多个任务、产生多次反馈请求；任务切换不自动创建新会话。 |
 | context hint | 适配器可选提供的展示/定位信息，例如标题、路径、URL、文件引用。 | 不参与认证，不是必需身份字段，不保证可恢复。 |
-| Ramble | 以 TipTap Feedback Draft 为中心的自由反馈编辑流程；文字是基础输入，语音、截图等 Platform Plugin 可向同一文档贡献结构化内容。 | 不等同于录音 session，不拥有平台设备能力，也不属于适配器协议。 |
+| Ramble | 以 TipTap Feedback Draft 为中心的自由反馈编辑流程；文字是基础输入，语音、截图等 Platform Plugin 可向同一文档贡献结构化内容。 | 不等同于录音 session，不拥有平台设备能力，也不属于适配器协议。它是默认工作台，其他工作台形态仍待定。 |
 | Uncooked Feedback | 人类通过 Ramble、文字、截图形成的原始反馈正文；允许保留口语、重复和自我修正。 | 是人类原始证据，Cooking 不得覆盖；提交后保存为反馈包中的 `uncooked.md`。 |
 | Feedback Draft | 当前未提交请求的可编辑正文。canonical 真源是版本化 TipTap `document_json`，`body_markdown` 是同一份文档的派生投影。 | 不得把 Markdown 当作第二真源独立维护。 |
 | Action Group | 用标准 Blockquote 表达的 `@Action` 归属容器。 | 同一 Action 再次打开时创建新容器，不与旧区间合并。 |
 | Tidy | 对尚未整理的语音文本进行表达整理，可由人类手动触发或按已启用的规则自动触发。 | 处理确认前的待写入语音，或当前 Editor 的 pending 语音段；不自动提交，不是 Cooking，不扫描后台文档。 |
 | Cooking | 提交前可选的大模型编辑步骤，把 Uncooked Feedback 整理为正式 Markdown。 | 只做表达整理，不得编造事实、测试结果或删除负面判断；不开启时不调用模型服务。 |
 | Cooked Feedback | Cooking 生成并经人类选择提交的正式反馈正文。 | 保存为反馈包中的 `feedback.md`，是宿主默认读取的反馈结果；其来源必须可追溯到 `uncooked.md`。 |
+
+工作台与反馈列的关系约束：
+
+- CURRENT：一个请求在一个客户端上只有一个可编辑反馈列；编辑器、采集、草稿与提交只有一份实现，工作台特有的内容不复制它们。
+- CURRENT：请求材料与反馈附件是两份不同的集合，分别计数、分别展示，不互相代替。
+- TARGET：其他工作台形态与注册方式仍待定；类型未知时保留请求材料与自由反馈，不把未解析数据当成已完成的结果。
 
 ## 会话与 ACP 术语
 
@@ -167,5 +177,6 @@ UI 文案避免：
 - 把 Ramble 描述成录音 session，或把 Speech Engine 描述成 Backend Runtime 的跨客户端共享服务。
 - 把 Agent 配置称为“ACP Client 配置”而混淆协议角色，或把 ACP Bridge 称为 RambleDesk 的反馈适配器。
 - 把会话、任务、执行轮次、反馈请求、Tab 和 ACP 实例混为同一个对象。
+- 把请求材料说成反馈附件（或反之），或把人类的反馈附件描述成 Agent 提供的材料。
 
 代码命名遵守同一边界：宿主反馈接入称 Adapter；应用访问称 Application Transport Interface / Implementation；设备访问称 Capability Implementation；设备流程组合称 Platform Plugin。Backend Runtime 是业务运行角色，Web Access 是可独立启停的访问能力，二者不互换。
