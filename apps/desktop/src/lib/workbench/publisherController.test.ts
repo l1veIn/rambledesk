@@ -1,3 +1,5 @@
+import { withWorkbenchState } from '../workbenchState'
+import { workbenchExamples } from '../../dev/workbenchPreviewFixtures'
 import { get } from 'svelte/store'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -120,6 +122,30 @@ function harness(options: Partial<PublisherContext> = {}) {
 }
 
 describe('publisherController', () => {
+  it('publishes a saved choice with empty notes and bypasses Cooking for the empty body', async () => {
+    const h = harness({ getCookingEnabled: () => true })
+    const workspace = workspaceView('choice-request', '')
+    workspace.workbench = workbenchExamples[2]
+    h.session.open(workspace)
+    h.draft.adopt(workspace.draft)
+    h.drafts.updateDraft(withWorkbenchState(h.draft.snapshot(), { type: 'single_choice', selected_option_id: 'compact' }))
+    await h.publisher.submitFeedback()
+    expect(h.transport.callsFor('saveFeedbackDraft')).toHaveLength(1)
+    expect(h.transport.callsFor('saveFeedbackDraft')[0].input.body_markdown).toBe('')
+    expect(h.transport.callsFor('submitFeedback')).toHaveLength(1)
+    expect(h.cookSubmission).not.toHaveBeenCalled()
+  })
+
+  it('does not accept notes in place of unanswered workbench questions', async () => {
+    const h = harness()
+    const workspace = workspaceView()
+    workspace.workbench = workbenchExamples[1]
+    h.session.open(workspace)
+    await h.publisher.submitFeedback()
+    expect(h.transport.callsFor('submitFeedback')).toHaveLength(0)
+    expect(h.setPageError).toHaveBeenCalledWith('Answer every question or choose an option before submitting. Notes are optional.')
+  })
+
   it('re-reads after an invalidation race without resubmitting or reporting failure', async () => {
     const h = harness()
     let reads = 0
@@ -141,7 +167,7 @@ describe('publisherController', () => {
     const h = harness({ prepareFeedback })
     h.edit(body)
     await h.publisher.submitFeedback()
-    expect(h.setPageError).toHaveBeenCalledWith('Cannot send an empty reply. Write some feedback content first.')
+    expect(h.setPageError).toHaveBeenCalledWith('Provide workbench input or write feedback before submitting.')
     expect(prepareFeedback).not.toHaveBeenCalled()
     expect(h.saveDraftNow).not.toHaveBeenCalled()
     expect(h.transport.callsFor('submitFeedback')).toEqual([])

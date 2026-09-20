@@ -190,7 +190,7 @@
 >
   <header class="mb-3 flex items-center gap-3">
     <div class="min-w-0 flex-1">
-      <h2 class="m-0 text-xs font-medium">{tr('Feedback document')}</h2>
+      <h2 class="m-0 text-xs font-medium">{tr(workspace.workbench && workspace.workbench.type !== 'ramble' ? 'Additional notes (optional)' : 'Feedback document')}</h2>
       <p class="m-0 mt-0.5 text-[10px] text-muted-foreground">
         {readOnly ? tr('This request is closed. The document is read-only.') : tr('Record observations, problems, and suggestions.')}
       </p>

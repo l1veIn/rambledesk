@@ -70,8 +70,30 @@ fn apply_request_host(mut input: RequestFeedbackInput) -> RequestFeedbackInput {
 #[tool_router]
 impl RambleDeskMcp {
     #[tool(
+        name = "list_workbenches",
+        description = "Browse available capabilities without guessing search terms. Call with {} to see all three: ramble (free feedback), questions (one-by-one choices/custom answers), single_choice (choose one option). Returns purpose and result summaries; describe_workbench loads a selected schema. Optional offset/limit paginate."
+    )]
+    async fn list_workbenches(
+        &self,
+        Parameters(input): Parameters<rambledesk_core::ListWorkbenchesInput>,
+    ) -> CallToolResult {
+        crate::result::discovery_result(rambledesk_core::list_workbenches(&input))
+    }
+
+    #[tool(
+        name = "describe_workbench",
+        description = "Read one workbench type/version: input schema for workbench.data, example and result contract. Then call request_feedback with workbench and shared request materials; omit legacy actions when workbench is present."
+    )]
+    async fn describe_workbench(
+        &self,
+        Parameters(input): Parameters<rambledesk_core::DescribeWorkbenchInput>,
+    ) -> CallToolResult {
+        crate::result::discovery_result(rambledesk_core::describe_workbench(&input))
+    }
+
+    #[tool(
         name = "request_feedback",
-        description = "Persist a feedback request and return immediately with a durable handle (request_id). Keep what_happened within 200 characters: it is the summary the human scans to understand the situation, and longer text is rejected; put the full explanation, evidence, or detail in a Markdown attachment instead. Optional attachments: prefer attachments[].path (absolute local file) for images and Markdown already on disk; use attachments[].markdown for short inline Markdown; use attachments[].contents_base64 only for small images with no file. Do not read an image into the tool call. After creating, you MUST wait for the human to finish: call this host's interactive confirmation tool (ask_question on Claude-family hosts, ask on Gemini CLI / Antigravity, ask_user_question on dsh) immediately after request_feedback, tell the human in that call that they should complete the request in RambleDesk, and keep the turn blocked in the confirmation call. When the human answers, call get_feedback with the same request_id and continue. Never end the turn while a confirmation tool exists, and do not poll. Only if the host has NO interactive confirmation tool may you end the turn instead. Reusing request_id with identical input is idempotent. host_id is optional: auto-registered clients (RAMBLEDESK_HOST / X-RambleDesk-Host) have it injected by the server, otherwise pass your host family id (e.g. reasonix, claude, codex, opencode, grok) or generic. host_session_id is only an application correlation id, not an MCP transport session. allow_finish: set true ONLY when the request needs a simple final approval or rejection from the human and no feedback body is expected; in that case final_summary (the exact closing statement) is required. For requests that gather feedback, review, or opinions (proofreading, checking work, answering questions), omit allow_finish so the human submits detailed feedback instead of a shortcut finish."
+        description = "Use list_workbenches and describe_workbench to choose a type; pass workbench with its data, or omit it for legacy Ramble actions. Persist a feedback request and return immediately with a durable handle (request_id). Keep what_happened within 200 characters: it is the summary the human scans to understand the situation, and longer text is rejected; put the full explanation, evidence, or detail in a Markdown attachment instead. Optional attachments: prefer attachments[].path (absolute local file) for images and Markdown already on disk; use attachments[].markdown for short inline Markdown; use attachments[].contents_base64 only for small images with no file. Do not read an image into the tool call. After creating, you MUST wait for the human to finish: call this host's interactive confirmation tool (ask_question on Claude-family hosts, ask on Gemini CLI / Antigravity, ask_user_question on dsh) immediately after request_feedback, tell the human in that call that they should complete the request in RambleDesk, and keep the turn blocked in the confirmation call. When the human answers, call get_feedback with the same request_id and continue. Never end the turn while a confirmation tool exists, and do not poll. Only if the host has NO interactive confirmation tool may you end the turn instead. Reusing request_id with identical input is idempotent. host_id is optional: auto-registered clients (RAMBLEDESK_HOST / X-RambleDesk-Host) have it injected by the server, otherwise pass your host family id (e.g. reasonix, claude, codex, opencode, grok) or generic. host_session_id is only an application correlation id, not an MCP transport session. allow_finish: set true ONLY when the request needs a simple final approval or rejection from the human and no feedback body is expected; in that case final_summary (the exact closing statement) is required. For requests that gather feedback, review, or opinions (proofreading, checking work, answering questions), omit allow_finish so the human submits detailed feedback instead of a shortcut finish."
     )]
     async fn request_feedback(
         &self,
@@ -146,7 +168,7 @@ impl ServerHandler for RambleDeskMcp {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new("rambledesk", env!("CARGO_PKG_VERSION")))
             .with_instructions(
-                "RambleDesk tools: request_feedback, get_feedback, cancel_feedback. \
+                "RambleDesk tools: list_workbenches, describe_workbench, request_feedback, get_feedback, cancel_feedback. Browse the capability catalog, describe only the chosen type, then send workbench: {type, version, data}; omit legacy actions for typed requests. Structured results are in feedback_package.manifest.workbench.result. \
 Create a durable request with request_feedback; it returns immediately with a request_id. \
 After creating the request, you MUST wait for the human to finish in RambleDesk by calling this host's interactive confirmation tool (ask_question / ask / ask_user_question): call it immediately after request_feedback, tell the human to complete the request in RambleDesk, and keep the turn blocked in that confirmation call until the human answers; then call get_feedback(request_id). \
 Only if the host has NO interactive confirmation tool may you end the turn instead — do not poll and do not wait on a long MCP tool call. \

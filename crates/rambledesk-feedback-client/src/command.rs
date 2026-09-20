@@ -21,6 +21,20 @@ struct Arguments {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Browse capability summaries without search terms (no full schemas).
+    ListWorkbenches {
+        #[arg(long, default_value_t = 0)]
+        offset: usize,
+        #[arg(long, default_value_t = 5)]
+        limit: usize,
+    },
+    /// Read one workbench input schema, example and result contract.
+    DescribeWorkbench {
+        #[arg(long = "type")]
+        kind: String,
+        #[arg(long)]
+        version: Option<u32>,
+    },
     /// Record an explicit exception to Ramble handoff. Never infer task completion.
     Skip {
         #[arg(long, value_parser = ["user_opt_out", "task_finished", "request_cancelled"])]
@@ -31,6 +45,7 @@ enum Command {
         /// JSON file, or - for standard input. Fields: what_happened (at most 200
         /// characters; put longer detail in a Markdown attachment), actions,
         /// optional request_id (UUID), title, context_refs, attachments, allow_finish, final_summary.
+        /// Alternatively pass workbench {type, version, data} and omit actions; use describe-workbench first.
         #[arg(long, default_value = "-")]
         input: PathBuf,
     },
@@ -67,6 +82,17 @@ fn read_input(path: &PathBuf) -> Result<ManagedFeedbackRequestInput, ClientError
 
 fn payload(command: Command) -> Result<(&'static str, Value, Option<String>), ClientError> {
     let (operation, value) = match command {
+        Command::ListWorkbenches { offset, limit } => (
+            "list_workbenches",
+            serde_json::to_value(rambledesk_core::ListWorkbenchesInput {
+                offset,
+                limit: Some(limit),
+            }),
+        ),
+        Command::DescribeWorkbench { kind, version } => (
+            "describe_workbench",
+            serde_json::to_value(rambledesk_core::DescribeWorkbenchInput { kind, version }),
+        ),
         Command::Skip { reason } => ("skip", Ok(serde_json::json!({"reason": reason}))),
         Command::Request { input } => {
             let mut input = read_input(&input)?;

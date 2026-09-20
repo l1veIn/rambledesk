@@ -660,6 +660,7 @@ async fn uncertain_delivery_decisions_are_scoped_and_return_the_updated_snapshot
             .request_managed_feedback(
                 &scope,
                 RequestFeedbackInput {
+                    workbench: None,
                     request_id: None,
                     host_id: None,
                     host_session_id: String::new(),

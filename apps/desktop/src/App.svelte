@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { canSubmitWorkbench, readWorkbenchState } from './lib/workbenchState'
   import { onMount, tick } from 'svelte'
   import { initializeAppearance } from './lib/appearance/appearanceRuntime'
 
@@ -467,7 +468,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     currentRequest !== null &&
     currentRequest.status !== 'completed' &&
     currentRequest.status !== 'cancelled' &&
-    $draftSession.body.trim().length > 0 &&
+    canSubmitWorkbench($workspaceSession.workspace?.workbench, readWorkbenchState($draftSession.documentJson), $draftSession.body) &&
     !currentRequestCooking &&
     !$workspaceSession.interactionLocked
   $: canCancel =
@@ -1019,6 +1020,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
         workspace={$workspaceSession.workspace}
         {feedbackResult}
         draftBody={$draftSession.body}
+        draftDocumentJson={$draftSession.documentJson}
         editorDocument={$draftSession.editorDocument}
         editorEpoch={$draftSession.editorEpoch}
         {tidyConfig}

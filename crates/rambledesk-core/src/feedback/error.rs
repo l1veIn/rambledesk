@@ -178,9 +178,14 @@ impl From<RepositoryError> for ApplicationError {
                 "draft revision changed; reload before saving or submitting",
                 false,
             ),
+            RepositoryError::WorkbenchIncomplete => (
+                ApplicationErrorCode::InvalidArgument,
+                "Complete the workbench questions or selection before submitting; notes are optional",
+                false,
+            ),
             RepositoryError::DraftEmpty => (
                 ApplicationErrorCode::InvalidArgument,
-                "feedback draft cannot be empty when submitting",
+                "Provide workbench input or write feedback before submitting",
                 false,
             ),
             RepositoryError::AttachmentNotFound => (

@@ -1,3 +1,4 @@
+import { workbenchSubmissionIssue, readWorkbenchState } from '../workbenchState'
 import { get } from 'svelte/store'
 
 import type { ApplicationTransport } from '../application/applicationTransport'
@@ -49,6 +50,15 @@ export function createPublisherController(context: PublisherControllerContext) {
     }
   }
 
+  function validateSubmission() {
+    const draft = get(context.draft)
+    const issue = workbenchSubmissionIssue(get(context.session).workspace?.workbench, readWorkbenchState(draft.documentJson), draft.body)
+    if (issue) context.setPageError(context.tr(issue === 'empty'
+      ? 'Provide workbench input or write feedback before submitting.'
+      : 'Answer every question or choose an option before submitting. Notes are optional.'))
+    return issue === null
+  }
+
   async function publish(input: SubmitFeedbackInput) {
     const result = await context.transport.call('submitFeedback', input)
     const visible = context.session.applyMutationResult(result)
@@ -81,10 +91,7 @@ export function createPublisherController(context: PublisherControllerContext) {
     const requestId = initial.request?.request_id
     if (!requestId || initial.terminal || initial.interactionLocked || context.isReadOnly() ||
       context.cooking.isCooking(requestId)) return
-    if (!get(context.draft).body.trim()) {
-      context.setPageError(context.tr('Cannot send an empty reply. Write some feedback content first.'))
-      return
-    }
+    if (!validateSubmission()) return
 
     let ownsSubmission = false
     let ownsCooking = false
@@ -110,10 +117,7 @@ export function createPublisherController(context: PublisherControllerContext) {
       if (!(await context.saveDraftNow()) || !stillEditable(requestId)) return
       const draft = get(context.draft)
       const workspace = get(context.session).workspace!
-      if (!draft.body.trim()) {
-        context.setPageError(context.tr('Cannot send an empty reply. Write some feedback content first.'))
-        return
-      }
+      if (!validateSubmission()) return
       const submission: CookingSubmission = {
         request: workspace.request,
         actions: workspace.actions,
@@ -122,7 +126,7 @@ export function createPublisherController(context: PublisherControllerContext) {
       }
 
       let cooked: CookingPreview | null = null
-      if (context.getCookingEnabled()) {
+      if (context.getCookingEnabled() && draft.body.trim()) {
         cooked = context.cooking.preview()
         if (cooked && (cooked.requestId !== requestId ||
           cooked.savedRevision !== submission.savedRevision || cooked.original !== submission.body)) {

@@ -309,9 +309,22 @@ impl FeedbackApplication {
 
     async fn request_feedback_with_scope(
         &self,
-        input: RequestFeedbackInput,
+        mut input: RequestFeedbackInput,
         managed_session_id: Option<&str>,
     ) -> Result<FeedbackRequestView, ApplicationError> {
+        if let Some(spec) = &input.workbench {
+            if !input.actions.is_empty() {
+                return Err(ApplicationError::invalid_argument(
+                    "Provide workbench.data or legacy actions, not both",
+                ));
+            }
+            if input.allow_finish && spec.kind != "ramble" {
+                return Err(ApplicationError::invalid_argument(
+                    "allow_finish is only supported by Ramble",
+                ));
+            }
+            input.actions = crate::workbench_actions(spec)?;
+        }
         validate_request_input(&input)?;
         let host_id = input.host_id.as_deref().unwrap_or("generic").to_owned();
         let title = input
@@ -361,6 +374,7 @@ impl FeedbackApplication {
         let outcome = self
             .repository
             .create_or_get_request(NewFeedbackRequest {
+                workbench: input.workbench,
                 request_id,
                 managed_session_id: managed_session_id.map(ToOwned::to_owned),
                 host_session_record_id: managed_session_id

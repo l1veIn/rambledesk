@@ -43,6 +43,7 @@ async fn setup() -> (TestWorkspace, SqliteFeedbackStore) {
 fn request(request_id: &str, managed_session_id: Option<&str>) -> NewFeedbackRequest {
     let session_id = managed_session_id.unwrap_or("external-session");
     NewFeedbackRequest {
+        workbench: None,
         request_id: request_id.into(),
         host_session_record_id: session_id.into(),
         managed_session_id: managed_session_id.map(str::to_owned),

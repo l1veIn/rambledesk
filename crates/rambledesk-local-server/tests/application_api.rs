@@ -98,6 +98,7 @@ async fn seed_request(application: &rambledesk_core::FeedbackApplication) -> Str
     let request_id = uuid::Uuid::now_v7().to_string();
     application
         .request_feedback(RequestFeedbackInput {
+            workbench: None,
             request_id: Some(request_id.clone()),
             host_id: Some("codex".into()),
             host_session_id: "application-api-session".into(),
@@ -130,6 +131,7 @@ async fn seed_final_summary_request(
     let request_id = uuid::Uuid::now_v7().to_string();
     application
         .request_feedback(RequestFeedbackInput {
+            workbench: None,
             request_id: Some(request_id.clone()),
             host_id: Some("codex".into()),
             host_session_id: host_session_id.into(),

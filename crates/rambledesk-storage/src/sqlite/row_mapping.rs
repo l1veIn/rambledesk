@@ -98,7 +98,7 @@ pub(super) async fn load_workspace_from_pool(
 ) -> Result<StoredFeedbackWorkspace, RepositoryError> {
     let row = sqlx::query(
         "SELECT r.id, r.managed_session_id, hs.host_id, hs.host_session_id, r.source_hint, \
-                r.title, r.what_happened, r.status, r.resolution, r.allow_finish, r.final_summary, \
+                r.title, r.what_happened, r.workbench_json, r.status, r.resolution, r.allow_finish, r.final_summary, \
                 r.revision, r.created_at, r.updated_at, \
                 fr.package_uri, fr.directory_path, fr.markdown_path, fr.manifest_path \
          FROM feedback_requests r \
@@ -191,6 +191,7 @@ pub(super) async fn load_workspace_from_pool(
         .map(attachment_view_from_row)
         .collect::<Result<Vec<_>, _>>()?;
     Ok(StoredFeedbackWorkspace {
+        workbench: workbench_spec_from_row(&row)?,
         request: summary_from_row(&row)?,
         actions,
         context_refs,
@@ -231,9 +232,9 @@ pub(super) async fn load_submission_row(
 ) -> Result<Option<SqliteRow>, RepositoryError> {
     sqlx::query(
         "SELECT r.id, r.status, r.revision AS request_revision, r.title, r.what_happened, \
-                r.cancel_reason AS request_cancel_reason, \
+                r.workbench_json, r.cancel_reason AS request_cancel_reason, \
                 r.source_hint, hs.host_id, hs.host_session_id, \
-                d.body_markdown, d.revision AS draft_revision, \
+                d.body_markdown, d.document_json, d.revision AS draft_revision, \
                 sp.publication_id, sp.source_revision, sp.body_sha256, sp.cooked_markdown, \
                 sp.cooking_model, sp.uncooked_markdown AS plan_uncooked_markdown, \
                 sp.terminal_resolution, sp.cancel_reason AS plan_cancel_reason, \
@@ -349,6 +350,10 @@ pub(super) fn submission_plan_from_row(
     let resolution_value: String = row.try_get("terminal_resolution").map_err(storage_error)?;
     let resolution = FeedbackResolution::try_from(resolution_value.as_str())?;
     Ok(SubmissionPlan {
+        workbench: workbench_package_from_row(
+            row,
+            resolution == FeedbackResolution::FeedbackSubmitted,
+        )?,
         request_id: row.try_get("id").map_err(storage_error)?,
         host_id: row.try_get("host_id").map_err(storage_error)?,
         host_session_id: row.try_get("host_session_id").map_err(storage_error)?,
@@ -497,7 +502,9 @@ pub(super) fn repository_error_code(error: RepositoryError) -> &'static str {
         RepositoryError::AttachmentNotFound | RepositoryError::AttachmentLimit => {
             "RECOVERY_FAILURE"
         }
-        RepositoryError::RequestConflict | RepositoryError::DraftEmpty => "RECOVERY_FAILURE",
+        RepositoryError::RequestConflict
+        | RepositoryError::DraftEmpty
+        | RepositoryError::WorkbenchIncomplete => "RECOVERY_FAILURE",
         RepositoryError::HostSessionNotFound | RepositoryError::HostSessionHasOpenRequests => {
             "RECOVERY_FAILURE"
         }
@@ -505,4 +512,23 @@ pub(super) fn repository_error_code(error: RepositoryError) -> &'static str {
         | RepositoryError::ManagedSessionRequiresRuntimeDeletion
         | RepositoryError::RequestNotTerminal => "RECOVERY_FAILURE",
     }
+}
+
+fn workbench_spec_from_row(
+    row: &SqliteRow,
+) -> Result<Option<rambledesk_core::WorkbenchSpec>, RepositoryError> {
+    row.try_get::<Option<String>, _>("workbench_json")
+        .map_err(storage_error)?
+        .map(|value| serde_json::from_str(&value).map_err(|_| RepositoryError::CorruptData))
+        .transpose()
+}
+
+pub(super) fn workbench_package_from_row(
+    row: &SqliteRow,
+    submitted: bool,
+) -> Result<Option<rambledesk_core::WorkbenchPackage>, RepositoryError> {
+    let document: Option<String> = row.try_get("document_json").map_err(storage_error)?;
+    Ok(workbench_spec_from_row(row)?.map(|spec| {
+        crate::workbench_result::workbench_package(&spec, document.as_deref(), submitted)
+    }))
 }

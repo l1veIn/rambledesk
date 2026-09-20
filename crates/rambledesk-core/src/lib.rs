@@ -12,7 +12,9 @@ mod feedback;
 mod process;
 mod sessions;
 mod terminal_operations;
+mod workbenches;
 mod workspace;
+pub use workbenches::*;
 
 /// Install-time / client-config host identity environment key.
 pub const HOST_ENV_KEY: &str = "RAMBLEDESK_HOST";

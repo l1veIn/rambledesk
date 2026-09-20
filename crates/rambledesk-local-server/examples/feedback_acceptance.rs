@@ -75,6 +75,7 @@ async fn seed(application: &FeedbackApplication) -> anyhow::Result<Vec<Value>> {
     ] {
         let request_id = Uuid::now_v7().to_string();
         application.request_feedback(RequestFeedbackInput {
+            workbench: None,
             request_id: Some(request_id.clone()),
             host_id: Some("acceptance-external".into()),
             host_session_id: format!("acceptance-{purpose}"),

@@ -79,6 +79,9 @@ impl From<FeedbackRequestView> for ApplicationFeedbackRequestView {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 pub struct ApplicationFeedbackWorkspaceView {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub workbench: Option<crate::WorkbenchSpec>,
     pub request: FeedbackRequestSummary,
     pub actions: Vec<ActionInput>,
     pub context_refs: Vec<ContextRef>,
@@ -91,6 +94,7 @@ pub struct ApplicationFeedbackWorkspaceView {
 impl From<FeedbackWorkspaceView> for ApplicationFeedbackWorkspaceView {
     fn from(value: FeedbackWorkspaceView) -> Self {
         Self {
+            workbench: value.workbench,
             request: value.request,
             actions: value.actions,
             context_refs: value.context_refs,

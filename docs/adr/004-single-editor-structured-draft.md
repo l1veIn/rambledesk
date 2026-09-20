@@ -57,3 +57,13 @@
 - Tidy 与 Cooking 仍各自配置，Cooking 不覆盖 canonical Draft。当前配置与术语以
   [TERMINOLOGY.md](../TERMINOLOGY.md) 为准，行为责任地图见
   [反馈链路示范](../FEEDBACK_FLOW_WALKTHROUGH.md)。
+
+## 实验修订：工作台交互状态不等于编辑器正文
+
+`codex/workbench-three-types` 实验将单 Editor 约束限定在**自由反馈正文**。
+问答选项、单选等交互可以拥有独立的结构化状态，不要求向右侧正文插入操作记录。
+草稿载体在 `doc` 之外增加 `workbenchState`；两者共享 revision/CAS 和原子提交，
+`body_markdown` 仍只从 `doc` 派生。正文的编辑、撤销和 Cooking 不修改工作台答案。
+通用提交门槛改为“工作台有效输入与反馈正文不能同时为空”；满足非空门槛后，
+仍需通过工作台自己的完整性校验。问答和单选完成时可以不填写正文。
+这不引入 hidden Editor 或第二个富文本 Editor。详情见[实验契约](../workbench/experiment.md)。

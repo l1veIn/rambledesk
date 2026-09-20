@@ -218,7 +218,7 @@ async fn serve<S: AsyncRead + AsyncWrite + Unpin>(
             .map_err(|_| ClientError::InvalidInput)?;
     if !matches!(
         request.operation.as_str(),
-        "request" | "get" | "recover" | "skip"
+        "request" | "get" | "recover" | "skip" | "list_workbenches" | "describe_workbench"
     ) {
         return Err(ClientError::InvalidInput);
     }

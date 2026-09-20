@@ -7,6 +7,7 @@ mod web_access;
 mod web_access_server;
 mod web_security;
 mod web_session;
+mod workbench_discovery;
 mod workspace_info;
 
 use std::{
@@ -600,6 +601,7 @@ pub async fn start_server_with_managed(
 
     let auth = AuthState::new(&config.access_token, allowed_origins);
     let api = Router::new()
+        .merge(workbench_discovery::router())
         .route("/health", get(api_health))
         .route(
             "/feedback/request",

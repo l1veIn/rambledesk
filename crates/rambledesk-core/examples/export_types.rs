@@ -89,6 +89,19 @@ fn exported_feedback_package_content() -> String {
 
 fn main() -> std::io::Result<()> {
     let declarations = [
+        exported::<rambledesk_core::WorkbenchSpec>(),
+        exported::<rambledesk_core::WorkbenchData>(),
+        exported::<rambledesk_core::RambleData>(),
+        exported::<rambledesk_core::QuestionsData>(),
+        exported::<rambledesk_core::Question>(),
+        exported::<rambledesk_core::QuestionOption>(),
+        exported::<rambledesk_core::WorkbenchState>(),
+        exported::<rambledesk_core::SingleChoiceData>(),
+        exported::<rambledesk_core::ChoiceOption>(),
+        exported::<rambledesk_core::WorkbenchPackage>(),
+        exported::<rambledesk_core::WorkbenchResult>(),
+        exported::<rambledesk_core::QuestionAnswer>(),
+        exported::<rambledesk_core::AnswerStatus>(),
         exported::<FeedbackTransport>(),
         exported::<ListManagedSessionActivityInput>(),
         exported::<ManagedSessionActivityPage>(),

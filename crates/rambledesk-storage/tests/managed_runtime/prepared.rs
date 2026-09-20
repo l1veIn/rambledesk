@@ -98,6 +98,7 @@ async fn prepared_connection_is_hidden_until_first_prompt_and_reuses_remote_cont
         .request_managed_feedback(
             &scope,
             RequestFeedbackInput {
+                workbench: None,
                 request_id: None,
                 host_id: None,
                 host_session_id: String::new(),

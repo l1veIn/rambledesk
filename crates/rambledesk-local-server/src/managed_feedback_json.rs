@@ -16,6 +16,8 @@ use crate::{MAX_ATTACHMENT_REQUEST_BODY_BYTES, api_error_payload, api_managed_fe
 
 pub(super) fn router(provider: Arc<LocalManagedFeedbackProvider>) -> Router {
     Router::new()
+        .route("/list_workbenches", post(list_workbenches))
+        .route("/describe_workbench", post(describe_workbench))
         .route("/request", post(request_feedback))
         .route("/get", post(get_feedback))
         .route("/recover", post(recover_feedback))
@@ -24,12 +26,16 @@ pub(super) fn router(provider: Arc<LocalManagedFeedbackProvider>) -> Router {
 }
 
 enum Command {
+    List,
+    Describe,
     Request,
     Get,
     Recover,
 }
 
 enum Operation {
+    List(rambledesk_core::ListWorkbenchesInput),
+    Describe(rambledesk_core::DescribeWorkbenchInput),
     Request(ManagedFeedbackRequestInput),
     Get(GetFeedbackInput),
     Recover(ManagedFeedbackRecoverInput),
@@ -38,10 +44,38 @@ enum Operation {
 impl Command {
     fn parse(self, value: Value) -> Result<Operation, serde_json::Error> {
         match self {
+            Self::List => serde_json::from_value(value).map(Operation::List),
+            Self::Describe => serde_json::from_value(value).map(Operation::Describe),
             Self::Request => serde_json::from_value(value).map(Operation::Request),
             Self::Get => serde_json::from_value(value).map(Operation::Get),
             Self::Recover => serde_json::from_value(value).map(Operation::Recover),
         }
+    }
+}
+
+async fn list_workbenches(
+    State(provider): State<Arc<LocalManagedFeedbackProvider>>,
+    request: Request<Body>,
+) -> Response {
+    handle_request(provider, request, Command::List).await
+}
+async fn describe_workbench(
+    State(provider): State<Arc<LocalManagedFeedbackProvider>>,
+    request: Request<Body>,
+) -> Response {
+    handle_request(provider, request, Command::Describe).await
+}
+fn discovery_response<T: serde::Serialize>(
+    result: Result<T, rambledesk_core::ApplicationError>,
+) -> Response {
+    match result {
+        Ok(value) => Json(value).into_response(),
+        Err(error) => api_error_payload(
+            StatusCode::BAD_REQUEST,
+            error.code(),
+            error.message(),
+            error.retryable(),
+        ),
     }
 }
 
@@ -115,6 +149,12 @@ async fn handle_request(
     // revocation starts. Both HTTP and MCP share this same scope lease boundary.
     let application = &provider.application;
     let (result, include_package) = match operation {
+        Operation::List(input) => {
+            return discovery_response(rambledesk_core::list_workbenches(&input));
+        }
+        Operation::Describe(input) => {
+            return discovery_response(rambledesk_core::describe_workbench(&input));
+        }
         Operation::Request(input) => (
             application
                 .request_managed_feedback(lease.scope(), input.into())

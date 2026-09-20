@@ -124,6 +124,7 @@ impl Fixture {
             let request_id = uuid::Uuid::now_v7().to_string();
             store
                 .create_or_get_request(NewFeedbackRequest {
+                    workbench: None,
                     request_id: request_id.clone(),
                     host_session_record_id: session_id.clone(),
                     managed_session_id: Some(session_id.clone()),

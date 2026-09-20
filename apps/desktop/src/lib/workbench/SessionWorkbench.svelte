@@ -32,7 +32,10 @@
   import CaptureToolsCard from './CaptureToolsCard.svelte'
   import RamblePanel from './RamblePanel.svelte'
   import { nativeCaptureAvailable, voiceRambleAvailable } from '../capabilities/capabilityUi'
-  import RambleWorkbench from './RambleWorkbench.svelte'
+  import RegisteredWorkbench from './RegisteredWorkbench.svelte'
+  import type { WorkbenchState } from '../generated/feedback'
+  import { readWorkbenchState, withWorkbenchState } from '../workbenchState'
+  import { snapshotFeedbackDraftDocument } from '../feedbackDraftDocument'
   import WorkbenchContainer from './WorkbenchContainer.svelte'
 
   export let loadingWorkspace = false
@@ -53,6 +56,7 @@
   export let feedbackResult: FeedbackResultView | null = null
   export let taskBriefOpen = true
   export let draftBody = ''
+  export let draftDocumentJson: string | undefined = undefined
   export let editorDocument: JSONContent | null = null
   export let editorEpoch = 0
   export let savedRevision = 0
@@ -116,6 +120,24 @@
   $: interactionLocked = readOnly || cooking || cookedDraftReady || submitting || cancelling || approving
 
   let container: WorkbenchContainer
+  let interactionState: WorkbenchState | null = null
+  let currentSnapshot: FeedbackDraftSnapshot = { documentJson: '{"schemaVersion":2,"doc":{"type":"doc","content":[]}}', bodyMarkdown: '' }
+  $: loadDraft(workspace?.request.request_id, draftDocumentJson ?? workspace?.draft.document_json, editorEpoch)
+  function loadDraft(_requestId: string | undefined, documentJson: string | null | undefined, _epoch: number) {
+    interactionState = readWorkbenchState(documentJson)
+    currentSnapshot = documentJson ? { documentJson, bodyMarkdown: draftBody }
+      : snapshotFeedbackDraftDocument(editorDocument ?? { type: 'doc', content: [{ type: 'paragraph' }] })
+  }
+  function draftChanged(snapshot: FeedbackDraftSnapshot) {
+    currentSnapshot = withWorkbenchState(snapshot, interactionState)
+    onDraftChange(currentSnapshot)
+  }
+  function interactionChanged(state: WorkbenchState) {
+    if (interactionLocked || workspace?.request.status === 'completed' || workspace?.request.status === 'cancelled') return
+    interactionState = state
+    currentSnapshot = withWorkbenchState(currentSnapshot, state)
+    onDraftChange(currentSnapshot)
+  }
 
   // The full-screen task view is hidden for now (see TaskBriefPanel): nothing
   // opens it automatically. `workspaceNavigation.autoOpenTaskView`, the
@@ -178,7 +200,7 @@
     {rambleEngaged}
     {rambleActive}
     {agentStatus}
-    onDraftChange={onDraftChange}
+    onDraftChange={draftChanged}
     {onTidyError}
     {onOpenTidySettings}
     {onRestoreOriginal}
@@ -195,12 +217,14 @@
   >
     {#snippet workbench()}
       {#if workspace}
-        <RambleWorkbench
+        <RegisteredWorkbench
           {workspace}
           {transport}
           {capabilities}
           {resolveHostProfile}
-          {readOnly}
+          readOnly={interactionLocked}
+          state={interactionState}
+          onStateChange={interactionChanged}
           {cooking}
           {activeActionId}
           bind:open={taskBriefOpen}

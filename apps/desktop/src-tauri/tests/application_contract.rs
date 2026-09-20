@@ -52,6 +52,7 @@ fn application_error_json_shape_matches_the_transport_contract() {
 fn feedback_package_view_omits_storage_paths() {
     let view = FeedbackPackageView::from(FeedbackPackageContent {
         manifest: FeedbackPackageManifest {
+            workbench: None,
             schema_version: 1,
             request_id: "request-1".into(),
             title: "Review".into(),

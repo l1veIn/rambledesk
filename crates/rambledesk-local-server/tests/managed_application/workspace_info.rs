@@ -96,6 +96,7 @@ async fn workspace_query_does_not_accept_external_session_source_hints() -> anyh
     fixture
         .feedback
         .request_feedback(RequestFeedbackInput {
+            workbench: None,
             request_id: None,
             host_id: Some("generic".into()),
             host_session_id: "external-conversation".into(),

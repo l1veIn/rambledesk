@@ -126,7 +126,10 @@ pub async fn call(
     operation: &str,
     input: &Value,
 ) -> Result<(bool, Value), ClientError> {
-    if !matches!(operation, "request" | "get" | "recover") {
+    if !matches!(
+        operation,
+        "request" | "get" | "recover" | "list_workbenches" | "describe_workbench"
+    ) {
         return Err(ClientError::InvalidInput);
     }
     let mut url = validate_endpoint(endpoint)?;

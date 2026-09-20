@@ -101,6 +101,10 @@ fn immutable_input_hash(request: &NewFeedbackRequest) -> Result<String, Reposito
         })
     }
     .map_err(|_| RepositoryError::Storage)?;
+    let bytes = match &request.workbench {
+        Some(spec) => serde_json::to_vec(&(bytes, spec)).map_err(|_| RepositoryError::Storage)?,
+        None => bytes,
+    };
     Ok(hex::encode(Sha256::digest(bytes)))
 }
 
@@ -212,8 +216,8 @@ impl SqliteFeedbackStore {
 
         let inserted = sqlx::query(
             "INSERT INTO feedback_requests \
-             (id, host_session_record_id, title, what_happened, source_hint, status, input_hash, allow_finish, final_summary, created_at, updated_at, managed_session_id) \
-             VALUES (?1, ?2, ?3, ?4, ?5, 'waiting', ?6, ?7, ?8, ?9, ?9, ?10) \
+             (id, host_session_record_id, title, what_happened, source_hint, status, input_hash, allow_finish, final_summary, created_at, updated_at, managed_session_id, workbench_json) \
+             VALUES (?1, ?2, ?3, ?4, ?5, 'waiting', ?6, ?7, ?8, ?9, ?9, ?10, ?11) \
              ON CONFLICT(id) DO NOTHING",
         )
         .bind(&request.request_id)
@@ -226,6 +230,7 @@ impl SqliteFeedbackStore {
         .bind(request.final_summary.as_deref())
         .bind(&request.created_at)
         .bind(request.managed_session_id.as_deref())
+        .bind(request.workbench.as_ref().map(serde_json::to_string).transpose().map_err(|_| RepositoryError::Storage)?)
         .execute(&mut *transaction)
         .await
         .map_err(storage_error)?;
@@ -582,6 +587,7 @@ mod hash_tests {
 
     fn request(allow_finish: bool, final_summary: Option<&str>) -> NewFeedbackRequest {
         NewFeedbackRequest {
+            workbench: None,
             request_id: "request-id".to_owned(),
             managed_session_id: None,
             host_session_record_id: "host-session-record-id".to_owned(),

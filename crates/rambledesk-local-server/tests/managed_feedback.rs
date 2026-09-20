@@ -175,6 +175,9 @@ fn request_input(request_id: &str) -> Value {
     json!({"request_id":request_id,"what_happened":"Please review this fixture", "actions":[{"id":"review","instruction":"Review the fixture"}]})
 }
 
+#[path = "managed_feedback/workbenches.rs"]
+mod workbenches;
+
 #[tokio::test]
 async fn json_commands_fix_scope_replay_requests_and_return_terminal_packages() -> anyhow::Result<()>
 {
@@ -479,7 +482,13 @@ async fn managed_tools_fix_identity_and_reject_cross_scope_reads_and_external_sp
     names.sort_unstable();
     assert_eq!(
         names,
-        ["get_feedback", "recover_feedback", "request_feedback"]
+        [
+            "describe_workbench",
+            "get_feedback",
+            "list_workbenches",
+            "recover_feedback",
+            "request_feedback"
+        ]
     );
     let properties = &tools
         .iter()

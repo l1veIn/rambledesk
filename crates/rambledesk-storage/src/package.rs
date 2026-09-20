@@ -321,6 +321,9 @@ fn render_manifest(
                 serde_json::Value::Array(request_attachments),
             );
     }
+    if let Some(workbench) = &plan.workbench {
+        value["workbench"] = json!(workbench);
+    }
     let mut rendered = serde_json::to_string_pretty(&value).map_err(package_error)?;
     rendered.push('\n');
     Ok(rendered)

@@ -57,6 +57,7 @@ fn test_assets() -> Arc<TestAssets> {
 
 fn test_request(request_id: String, host_session_id: &str) -> RequestFeedbackInput {
     RequestFeedbackInput {
+        workbench: None,
         request_id: Some(request_id),
         host_id: Some("codex".into()),
         host_session_id: host_session_id.into(),

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Snippet } from 'svelte'
   import { ChevronDown, Eye, FileImage, FileText, ListChecks, Maximize2, Paperclip } from '@lucide/svelte'
 
   import { Badge } from '$lib/components/ui/badge'
@@ -16,6 +17,10 @@
   export let workspace: FeedbackWorkspaceView
   export let transport: ApplicationTransport
   export let capabilities: Pick<WorkbenchCapabilities, 'serverPaths'>
+  export let interaction: Snippet | undefined = undefined
+  export let actionHeading = 'Actions to experience'
+  export let hint = ''
+  export let locked = false
   export let open = true
   export let pulseNonce = 0
   export let activeActionId: string | null = null
@@ -27,7 +32,7 @@
   let previewButton: HTMLElement | null = null
 
   $: readOnly =
-    workspace.request.status === 'completed' || workspace.request.status === 'cancelled'
+    locked || workspace.request.status === 'completed' || workspace.request.status === 'cancelled'
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
@@ -63,7 +68,7 @@
     <div class="min-w-0 flex-1">
       {#if open}
         <strong class="block text-xs font-medium">
-          {tr('What happened')} · {tr('Actions to experience')}
+          {tr('What happened')} · {tr(actionHeading)}
         </strong>
       {:else}
         <strong class="block text-xs font-medium">{tr('Task brief')}</strong>
@@ -73,7 +78,7 @@
       {/if}
     </div>
     <Badge variant="secondary" class="h-5 px-1.5 text-[9px]">
-      {tr('{count} steps', { count: workspace.actions.length })}
+      {tr(actionHeading === 'Actions to experience' ? '{count} steps' : '{count} items', { count: workspace.actions.length })}
     </Badge>
     {#if workspace.request_attachments.length > 0}
       <Badge variant="outline" class="h-5 gap-1 px-1.5 text-[9px]">
@@ -124,8 +129,12 @@
 
       <section>
         <h2 class="m-0 text-[10px] font-semibold uppercase text-muted-foreground">
-          {tr('Actions to experience')}
+          {tr(actionHeading)}
         </h2>
+        {#if hint}<p class="mt-2 text-xs text-muted-foreground">{tr(hint)}</p>{/if}
+        {#if interaction}
+          <div class="mt-3">{@render interaction()}</div>
+        {:else}
         <ol class="m-0 mt-2 grid list-none gap-2 p-0">
           {#each workspace.actions as action, index (action.id)}
             <li>
@@ -144,6 +153,7 @@
             </li>
           {/each}
         </ol>
+        {/if}
       </section>
 
       {#if workspace.request_attachments.length > 0}

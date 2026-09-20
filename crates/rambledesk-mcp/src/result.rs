@@ -61,6 +61,7 @@ async fn feedback_result(
                     "\n\nThe human submitted a feedback package. The full feedback is NOT inlined in this text (attachments can be binary); read the files below. The complete package is also available in structured_content.feedback_package for clients that support it.\n",
                 );
                 if let Some(feedback) = value.feedback.as_ref() {
+                    summary.push_str(&format!("- Package manifest: {}\n", feedback.manifest_path));
                     summary.push_str(&format!(
                         "- Feedback markdown: {}\n",
                         feedback.markdown_path
@@ -78,6 +79,22 @@ async fn feedback_result(
                         ));
                     }
                 }
+                if let Some(workbench) = package.manifest.workbench.as_ref()
+                    && workbench.input.kind != "ramble"
+                {
+                    summary.push_str(&format!(
+                        "\nWorkbench: {} (version {}). Read manifest.json: workbench.data contains the original input, and workbench.result contains the submitted structured answers. These answers are also available at structured_content.feedback_package.manifest.workbench.result. Feedback markdown contains optional supplemental notes and may be empty.\n",
+                        workbench.input.kind, workbench.input.version
+                    ));
+                    let result = serde_json::to_string_pretty(&workbench.result)
+                        .expect("workbench result must serialize");
+                    summary.push_str("\nPreview of structured workbench result:\n");
+                    summary.extend(result.chars().take(1600));
+                    summary.push('\n');
+                    if result.chars().count() > 1600 {
+                        summary.push_str("… (preview truncated — read workbench.result in the manifest for the complete answers)\n");
+                    }
+                }
                 if !package.attachment_paths.is_empty() {
                     summary.push_str("\nAttachments (read with read_file):\n");
                     for path in &package.attachment_paths {
@@ -90,13 +107,17 @@ async fn feedback_result(
                         summary.push_str(&format!("- {path}\n"));
                     }
                 }
-                let preview: String = package.markdown.chars().take(800).collect();
-                summary.push_str("\nPreview of feedback markdown:\n");
-                summary.push_str(&preview);
-                if package.markdown.chars().count() > 800 {
-                    summary.push_str(
-                        "\n… (preview truncated — read the markdown file for the full feedback)\n",
-                    );
+                if package.markdown.trim().is_empty() {
+                    summary.push_str("\nNo supplemental notes were submitted.\n");
+                } else {
+                    let preview: String = package.markdown.chars().take(800).collect();
+                    summary.push_str("\nPreview of feedback markdown:\n");
+                    summary.push_str(&preview);
+                    if package.markdown.chars().count() > 800 {
+                        summary.push_str(
+                            "\n… (preview truncated — read the markdown file for the full feedback)\n",
+                        );
+                    }
                 }
             }
             summary
@@ -150,4 +171,16 @@ pub(super) fn structured_error_result(
         code, message
     ))];
     result
+}
+
+/// Discovery includes JSON text as well as structured content for text-only hosts.
+pub(super) fn discovery_result<T: serde::Serialize>(
+    result: Result<T, ApplicationError>,
+) -> CallToolResult {
+    match result {
+        Ok(value) => {
+            CallToolResult::structured(serde_json::to_value(value).expect("catalog serializes"))
+        }
+        Err(error) => application_error_result(error),
+    }
 }

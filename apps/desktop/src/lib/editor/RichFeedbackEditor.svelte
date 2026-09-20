@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Editor, type JSONContent } from '@tiptap/core'
   import { Fragment } from '@tiptap/pm/model'
-  import { EditorState, type Transaction } from '@tiptap/pm/state'
+  import { EditorState, TextSelection, type Transaction } from '@tiptap/pm/state'
   import { onMount, type Snippet } from 'svelte'
 
   import FeedbackEditorToolbar from './FeedbackEditorToolbar.svelte'
@@ -271,15 +271,22 @@
         last?.node.type.name === 'blockquote' &&
         last.node.attrs.actionId === operation.action.actionId
       ) {
-        if (transaction.docChanged) editor.view.dispatch(transaction)
+        if (last.node.childCount === 1) transaction = insertJsonContent(transaction, last.pos + last.node.nodeSize - 1, [{ type: 'paragraph' }])
+        const group = lastMeaningfulChild(transaction.doc)!
+        transaction = transaction.setSelection(TextSelection.near(transaction.doc.resolve(group.pos + group.node.nodeSize - 1), -1))
+        editor.view.dispatch(transaction)
+        editor.view.focus()
         return true
       }
       transaction = insertJsonContent(
         transaction,
         transaction.doc.content.size,
-        [actionBlockquoteNode(operation.action)],
+        [actionBlockquoteNode(operation.action, [{ type: 'paragraph' }])],
       )
+      const group = lastMeaningfulChild(transaction.doc)!
+      transaction = transaction.setSelection(TextSelection.near(transaction.doc.resolve(group.pos + group.node.nodeSize - 1), -1))
       editor.view.dispatch(transaction)
+      editor.view.focus()
       return true
     }
     const nodes =

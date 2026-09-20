@@ -138,8 +138,14 @@ async fn official_client_exercises_feedback_lifecycle_and_errors() -> anyhow::Re
         .iter()
         .map(|tool| tool.name.as_ref().to_owned())
         .collect();
-    assert_eq!(tool_names.len(), 3);
-    for expected in ["request_feedback", "get_feedback", "cancel_feedback"] {
+    assert_eq!(tool_names.len(), 5);
+    for expected in [
+        "request_feedback",
+        "get_feedback",
+        "cancel_feedback",
+        "list_workbenches",
+        "describe_workbench",
+    ] {
         assert!(
             tool_names.iter().any(|name| name == expected),
             "missing {expected} in {tool_names:?}"
@@ -164,6 +170,7 @@ async fn official_client_exercises_feedback_lifecycle_and_errors() -> anyhow::Re
     let request_id = uuid::Uuid::now_v7().to_string();
     let review_markdown = format!("# Review artifact\n\n{}", "x".repeat(300 * 1024));
     let request = RequestFeedbackInput {
+        workbench: None,
         request_id: Some(request_id.clone()),
         host_id: Some("official-rust-sdk".to_owned()),
         host_session_id: "http-security-test".to_owned(),
@@ -335,6 +342,7 @@ async fn official_client_exercises_feedback_lifecycle_and_errors() -> anyhow::Re
 
     let final_request_id = uuid::Uuid::now_v7().to_string();
     let final_arguments = serde_json::to_value(RequestFeedbackInput {
+        workbench: None,
         request_id: Some(final_request_id.clone()),
         host_id: Some("official-rust-sdk".to_owned()),
         host_session_id: "final-approval-session".to_owned(),
@@ -421,6 +429,7 @@ async fn local_api_supports_pi_request_and_blocking_wait() -> anyhow::Result<()>
     let request_id = uuid::Uuid::now_v7().to_string();
 
     let request = RequestFeedbackInput {
+        workbench: None,
         request_id: Some(request_id.clone()),
         host_id: Some("model-filled-host".to_owned()),
         host_session_id: "pi-tool-call".to_owned(),

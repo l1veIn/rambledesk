@@ -1,3 +1,4 @@
+import { preserveWorkbenchState } from './workbenchState'
 import type { JSONContent } from '@tiptap/core'
 
 import {
@@ -317,5 +318,5 @@ export function updateFeedbackDraftDocument(
   snapshot: FeedbackDraftSnapshot,
   update: (doc: JSONContent) => JSONContent,
 ): FeedbackDraftSnapshot {
-  return snapshotFeedbackDraftDocument(update(restoreFeedbackDraftDocument(snapshot.documentJson, snapshot.bodyMarkdown)))
+  return preserveWorkbenchState(snapshotFeedbackDraftDocument(update(restoreFeedbackDraftDocument(snapshot.documentJson, snapshot.bodyMarkdown))), snapshot.documentJson)
 }

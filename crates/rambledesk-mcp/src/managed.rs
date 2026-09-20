@@ -35,8 +35,36 @@ fn revoked() -> CallToolResult {
 #[tool_router]
 impl ManagedRambleDeskMcp {
     #[tool(
+        name = "list_workbenches",
+        description = "Browse available capabilities without guessing search terms. Call with {} to see all three: ramble (free feedback), questions (one-by-one choices/custom answers), single_choice (choose one option). Returns purpose and result summaries; describe_workbench loads a selected schema. Optional offset/limit paginate."
+    )]
+    async fn list_workbenches(
+        &self,
+        Parameters(input): Parameters<rambledesk_core::ListWorkbenchesInput>,
+    ) -> CallToolResult {
+        let Some(_lease) = self.scope.lease().await else {
+            return revoked();
+        };
+        crate::result::discovery_result(rambledesk_core::list_workbenches(&input))
+    }
+
+    #[tool(
+        name = "describe_workbench",
+        description = "Read one workbench type/version: input schema for workbench.data, example and result contract. Then call request_feedback with workbench and shared request materials; omit legacy actions when workbench is present."
+    )]
+    async fn describe_workbench(
+        &self,
+        Parameters(input): Parameters<rambledesk_core::DescribeWorkbenchInput>,
+    ) -> CallToolResult {
+        let Some(_lease) = self.scope.lease().await else {
+            return revoked();
+        };
+        crate::result::discovery_result(rambledesk_core::describe_workbench(&input))
+    }
+
+    #[tool(
         name = "request_feedback",
-        description = "Create a durable feedback request for this managed session and return immediately. Session identity is fixed by RambleDesk; do not supply host or session IDs. Keep what_happened within 200 characters: it is the summary the human scans, and longer text is rejected; put the full explanation in a Markdown attachment. Attach existing local files using attachments[].path. After creating the request, END THE CURRENT TURN. RambleDesk automatically continues this same Agent session after human feedback. Do not poll, wait on another tool, or ask for external confirmation. Reuse request_id for identical retries; a transport disconnect does not require a new feedback request. allow_finish is only for a final approval with final_summary, not for substantive feedback."
+        description = "Use list_workbenches and describe_workbench to choose a type; pass workbench with its data, or omit it for legacy Ramble actions. Create a durable feedback request for this managed session and return immediately. Session identity is fixed by RambleDesk; do not supply host or session IDs. Keep what_happened within 200 characters: it is the summary the human scans, and longer text is rejected; put the full explanation in a Markdown attachment. Attach existing local files using attachments[].path. After creating the request, END THE CURRENT TURN. RambleDesk automatically continues this same Agent session after human feedback. Do not poll, wait on another tool, or ask for external confirmation. Reuse request_id for identical retries; a transport disconnect does not require a new feedback request. allow_finish is only for a final approval with final_summary, not for substantive feedback."
     )]
     async fn request_feedback(
         &self,
@@ -124,6 +152,6 @@ impl ServerHandler for ManagedRambleDeskMcp {
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new("rambledesk-managed", env!("CARGO_PKG_VERSION")))
-            .with_instructions("This feedback endpoint belongs to one RambleDesk managed session. Use request_feedback, get_feedback and recover_feedback only. After request_feedback, end the current Agent turn immediately. RambleDesk will automatically continue this same Agent context when human feedback is ready; then read the original request_id. Do not poll, use a blocking wait tool, ask for external confirmation, or create replacement requests after reconnects. Session identity is controller-owned. Cancellation and approval belong to the human in RambleDesk.")
+            .with_instructions("This feedback endpoint belongs to one RambleDesk managed session. Use list_workbenches and describe_workbench to discover a type and its schema; create with request_feedback, read with get_feedback, recover with recover_feedback. Typed requests carry workbench: {type, version, data} and omit legacy actions. Structured results are in feedback_package.manifest.workbench.result. After request_feedback, end the current Agent turn immediately. RambleDesk will automatically continue this same Agent context when human feedback is ready; then read the original request_id. Do not poll, use a blocking wait tool, ask for external confirmation, or create replacement requests after reconnects. Session identity is controller-owned. Cancellation and approval belong to the human in RambleDesk.")
     }
 }
