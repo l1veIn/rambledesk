@@ -10,6 +10,8 @@
 | 发现目录、请求、幂等与结构化返回 | [反馈协议](../PROTOCOL.md) |
 | 实施阶段、待完成内容与验收要求 | [工作台演进路线](../WORKBENCH_EVOLUTION.md) |
 | 文稿审阅 v1 输入、锚点、批注和结果 | [文稿审阅](document-review.md) |
+| 正文与业务字段共享语音、字幕、工具台和输入检查 | [请求级共享输入](shared-input.md) |
+| Rambelle 首次使用引导、重看和本地状态 | [工作台使用引导](onboarding.md) |
 | 打开目录，用一句提示词体验全部现有类型 | [工作台 Playground](../../playground/workbenches/README.md) |
 | 三种类型实验的起点与试用背景 | [三种工作台实验记录](experiment.md) |
 

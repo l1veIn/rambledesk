@@ -64,18 +64,18 @@
 | Workbench Result（工作台结果） | 提交时根据不可变请求输入解析、校验 Interaction State 后生成的结构化人类回答。 | 保存于反馈包 `manifest.workbench.result`；发布后不可变。其展示文字和锚点由服务端校验，不能从自由正文猜测。 |
 | Request Outcome（请求处理结果） | 请求被提交、取消或在允许时直接批准的业务含义，与请求状态和包记录共同表达。 | 是概念边界，不新增同名 wire 字段；取消不产生结构化回答，直接批准不保证有反馈包，不能从 `completed` 推断作答内容。 |
 | Action（体验动作） | Ramble 请求中希望人类执行或观察的一个动作，以 `id` 和 `instruction` 表达。 | 不泛指问答题、选择项或文稿段落；旧数据路径中出现的投影属于兼容实现，不改变这些对象的业务含义。 |
-| Feedback Target（反馈目标） | 自由反馈输入所归属的确定请求及其中的业务对象。 | 目标关联不代表作答完成；采集须固定 owner，不能把当下焦点或正文锚点当作持久回答。各类型无须通过 Action 表达全部对象。 |
+| Input Target（输入目标） | 一次文字、语音或附件输入所归属的请求及具体正文、答案或批注字段，代码中为 `InputTarget`。 | 下一次输入的位置可以切换，已经开始的采集固定原目标。`SpeechTarget` 是语音侧别名；目标关联不代表作答完成，各类型无须通过 Action 表达全部对象。 |
 | Review Source（审阅原稿） | `document_review` 请求中以 `source_version` 标注来源版本、由稳定段落 id 组成的不可变材料。 | 不属于人类 Draft，不可在当前请求中编辑；换稿建立新请求。 |
-| Review Annotation（审阅批注） | 指向原稿整段或单段文字范围的意见或改写建议，具有稳定 id 和 `open` / `resolved` 状态。 | 属于 Interaction State；`resolved` 只表明意见状态，不证明原稿已修改。 |
+| Review Annotation（审阅批注） | 指向原稿整段或单段文字范围的意见或改写建议，具有稳定 id，不设解决状态。 | 属于 Interaction State；人类编辑和提交意见，Agent 在提交后处理原稿，批注本身不表示已改稿。 |
 | Review Verdict（审阅判断） | 人类对整稿显式作出的 `ready` 或 `changes_requested` 判断。 | 是类型结果，不是请求状态或执行权限；仍须经统一提交发布。 |
 | Action Group | 用标准 Blockquote 表达的 `@Action` 归属容器。 | 同一 Action 再次打开时创建新容器，不与旧区间合并。 |
-| Tidy | 对尚未整理的语音文本进行表达整理，可由人类手动触发或按已启用的规则自动触发。 | 处理确认前的待写入语音，或当前 Editor 的 pending 语音段；不自动提交，不是 Cooking，不扫描后台文档。 |
+| Tidy | 对尚未整理的语音文本进行表达整理，可由人类手动触发或按已启用的规则自动触发。 | 处理确认前的待写入语音，或当前请求正文、答案和批注中的 pending 语音段；不处理普通键入或粘贴，不自动提交，不是 Cooking。 |
 | Cooking | 提交前可选的大模型编辑步骤，把 Uncooked Feedback 整理为正式 Markdown。 | 只做表达整理，不得编造事实、测试结果或删除负面判断；不开启时不调用模型服务。 |
 | Cooked Feedback | Cooking 生成并经人类选择提交的正式反馈正文。 | 保存为反馈包中的 `feedback.md`；其来源必须可追溯到 `uncooked.md`。类型专属答案以 manifest 中的 Workbench Result 为准，不由 Cooking 或正文推断。 |
 
 工作台与反馈列的关系约束：
 
-- CURRENT：一个请求在一个客户端上只有一个可编辑反馈列；编辑器、采集、草稿与提交只有一份实现，工作台特有的内容不复制它们。
+- CURRENT：一个请求在一个客户端上只有一个可编辑反馈列和一份完整草稿。正文、回答与批注共用 TipTap 编辑基础，各可见字段有自己的选区与撤销历史；工作台不复制采集、保存和提交实现，不保留后台隐藏 Editor。
 - CURRENT：请求材料与反馈附件是两份不同的集合，分别计数、分别展示，不互相代替。
 - CURRENT：工作台类型通过共享请求、草稿和反馈包合同进入同一生命周期。目录中的 `purpose` / `returns` 描述用途，`interaction` 是分类元数据，不承诺可替换的通用渲染器协议。
 - CURRENT：`document_json` 是版本化 Draft envelope，包含 TipTap `doc` 与可选 `workbenchState`；字段名不意味着整份草稿都是 TipTap 节点。`body_markdown` 仅由 `doc` 派生。
@@ -120,9 +120,9 @@
 
 - 两者各自持有 provider、API Key、base URL、model、reasoning effort 和 system prompt；不得回退使用另一套配置。API Key 是本机凭证，不属于请求、反馈包、默认日志或宿主协议。
 - **确认前整理**：开启“语音写入前确认”后，人类可以再开启“自动整理语音”（默认关闭）。每段转录先整理，再由人类选择何时写入；关闭确认时直接写入，不执行这个确认前 Auto Tidy。
-- **编辑器整理**：当前可编辑 Editor 支持手动 Tidy，也支持未整理语音段数量达到阈值时 Auto Tidy；阈值默认 `0`，表示关闭。无配置、只读、编辑锁定或已有整理操作时不触发；不建立后台 Editor 或 idle timer。
+- **请求级整理**：当前可编辑请求的正文、答案和批注共同统计 pending 语音段，由 Rambelle 状态区手动 Tidy，或达到数量阈值时 Auto Tidy；阈值默认 `0`，表示关闭。无配置、只读、编辑锁定或已有整理操作时不触发；不建立后台 Editor 或 idle timer。
 - 待确认语音在编辑、整理、写入时有独立占用状态。编辑中的文本不能被并发确认或整理；写入失败保留可重试原文。整理结果必须仍对应原 owner/段落快照，丢弃或切换后不得复活旧片段。
-- 语音段保留稳定身份和 `pending` / `cleaned` metadata；确认前已整理的内容写入 Editor 时传递 `cleaned`，避免再按 pending 段处理。人工修改待确认正文后重新标为 pending。
+- 语音段保留稳定身份和 `pending` / `cleaned` metadata；确认前已整理的内容写入正文或字段时传递 `cleaned`，避免再次整理。人工修改待确认转写后重新标为 pending；已写入字段中的语音被人工改动后退出待整理统计，避免覆盖人类编辑。
 - Cooking 默认关闭，由人类显式配置并启用。它整理提交前的 Uncooked Feedback，不是转录、Tidy、反馈包发布或 Agent 续接。
 - Cooking 不得编造事实、测试结果或删除负面判断；原稿始终保留。提交的 `uncooked.md` 与 `feedback.md` 同时进入不可变包，关闭 Cooking 时两者可相同。失败不得丢失或锁死原稿，也不得发布半成品。
 
@@ -170,6 +170,13 @@ Feedback Adapter 服务宿主反馈流程；Host Profile 提供宿主家族的�
 托管反馈归属由运行时凭据固定；缺少凭据不能回退成外部会话。Agent 自带 MCP、Skills 或插件不决定 RambleDesk 会话身份。协议细节见[反馈协议](PROTOCOL.md)，托管命令见 [ACP 指南](ACP_MANAGED_SESSIONS.md)。
 
 ## 命名规则
+
+### 反馈输入
+
+- **Request Input Session / 请求输入会话**：客户端为一个反馈请求协调录音、待确认转写、字幕、工具台及输入完成检查的生命周期；不表示新的 Agent 会话或后端请求。
+- **Input Target / 输入目标**：具有请求身份的业务写入位置，例如正文的 Action 分组、指定来源版本的一条批注意见或建议措辞；不能用临时 DOM 焦点代替。
+- **Selected Target / 所选目标**：下一段语音使用的位置。正在说的段固定使用开始时捕获的目标，迟到的识别结果不跟随此选择变化。
+- **Input Preparation / 输入准备检查**：结束或排空已接收输入并检查未处理内容的提交前边界；隐藏组件、关闭字幕或结束截图窗口均不代表内容已经保存。
 
 ### Agent 目录与对话
 

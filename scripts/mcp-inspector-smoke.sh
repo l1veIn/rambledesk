@@ -153,17 +153,20 @@ const fetchedRequest = fetched.result?.structuredContent
 const cancelledRequest = cancelled.result?.structuredContent
 const recoveredCancelledRequest = recoveredCancelled.result?.structuredContent
 
-for (const expected of [
+const expectedTools = [
+  'list_workbenches',
+  'describe_workbench',
   'request_feedback',
   'get_feedback',
   'cancel_feedback',
-]) {
+]
+for (const expected of expectedTools) {
   if (!tools.some((tool) => tool.name === expected)) {
     throw new Error(`Inspector did not list ${expected}`)
   }
 }
-if (tools.length !== 3) {
-  throw new Error(`Expected exactly 3 tools, got ${tools.map((t) => t.name).join(',')}`)
+if (tools.length !== expectedTools.length) {
+  throw new Error(`Expected exactly ${expectedTools.length} tools, got ${tools.map((t) => t.name).join(',')}`)
 }
 if (
   createdRequest?.status !== 'waiting' ||

@@ -5,6 +5,7 @@
 -->
 <script lang="ts">
   import type { Snippet } from 'svelte'
+  import { writable } from 'svelte/store'
   import type { JSONContent } from '@tiptap/core'
   import type { ApplicationTransport } from '$lib/application/applicationTransport'
   import type { AttachmentCandidate } from '$lib/capabilities/capturePlugin'
@@ -15,23 +16,23 @@
     FeedbackResultView,
     FeedbackWorkspaceView,
   } from '$lib/feedback'
-  import type { TidyConfig } from '$lib/lightCleanup'
   import type { DraftOperation } from '$lib/draftOperations'
   import type { FeedbackDraftSnapshot } from '$lib/feedbackDraftDocument'
   import type { SpeechCleanupSegment } from '$lib/speech/speechBlockMetadata'
+  import { reconcileFieldSpeechSegments } from '$lib/speech/fieldSpeechSegments'
   import {
     workspaceViewKey,
     type SessionViewDescriptor,
   } from '$lib/workspace/viewDescriptors'
   import type { HostProfile } from '../domain/hostProfile'
   import type {
-    RamblePhase,
     SavePhase,
     SubmitStage,
   } from '../domain/sessionPhases'
-  import CaptureToolsCard from './CaptureToolsCard.svelte'
-  import RamblePanel from './RamblePanel.svelte'
-  import { nativeCaptureAvailable, voiceRambleAvailable } from '../capabilities/capabilityUi'
+  import { provideInputTools, type InputToolsState } from '../input/inputToolsContext'
+  import { removeWorkbenchAttachmentReferences } from '../input/fieldAttachmentText'
+  import type { InputTarget } from '../domain/inputTarget'
+  import RequestAttachmentPreview from '../workspace/RequestAttachmentPreview.svelte'
   import RegisteredWorkbench from './RegisteredWorkbench.svelte'
   import type { WorkbenchState } from '../generated/feedback'
   import { readWorkbenchState, withWorkbenchState } from '../workbenchState'
@@ -42,6 +43,7 @@
   export let loadingWorkspace = false
   export let readOnly = false
   export let agentStatus: Snippet | undefined = undefined
+  export let inputActions: Snippet | undefined = undefined
   export let transport: ApplicationTransport
   export let capabilities: Pick<
     WorkbenchCapabilities,
@@ -66,15 +68,6 @@
   export let rambelleStatusPortrait = ''
   export let rambleEngaged = false
   export let rambleActive = false
-  export let ramblePhase: RamblePhase = 'idle'
-  export let rambleBusy = false
-  export let rambleStartedOnce = false
-  export let voiceDevice = ''
-  export let voiceChunkIndex = 0
-  export let voicePartial = ''
-  export let voiceLevel = 0
-  export let voiceModelMissing = false
-  export let rambleMessage = ''
   export let attachmentBusy = false
   export let canSubmit = false
   export let cooking = false
@@ -82,8 +75,6 @@
   export let cookedDraftReady = false
   export let cookedPreviewModel = ''
   export let cookedPreviewMarkdown = ''
-  export let tidyConfig: TidyConfig | null = null
-  export let tidyAutoThreshold = 0
   export let activeActionId: string | null = null
   export let submitting = false
   export let submitStage: SubmitStage = 'idle'
@@ -95,17 +86,12 @@
   export let resolveHostProfile: (hostId: string) => HostProfile
   export let formatTime: (value: string | null | undefined) => string
   export let onDraftChange: (snapshot: FeedbackDraftSnapshot) => void = () => {}
-  export let onTidyError: (message: string) => void = () => {}
-  export let onOpenTidySettings: () => void = () => {}
   export let onSelectAction: (actionId: string, actionIndex: number, title: string) => void = () => {}
   export let onCookPreview: () => void = () => {}
   export let onRestoreOriginal: () => void = () => {}
-  export let onToggleRamble: () => void = () => {}
-  export let onExitRamble: () => void = () => {}
-  export let onOpenVoiceSettings: () => void = () => {}
-  export let onStartScreenCapture: () => void = () => {}
-  export let onImportClipboard: () => void = () => {}
-  export let onFileSelection: (event: Event) => void = () => {}
+  export let onStartScreenCapture: (target?: InputTarget) => void | Promise<void> = () => {}
+  export let onImportClipboard: (target?: InputTarget) => void | Promise<void> = () => {}
+  export let onFiles: (files: readonly File[], target?: InputTarget) => void | Promise<void> = () => {}
   export let onPasteCandidates: (candidates: readonly AttachmentCandidate[]) => boolean = () => false
   export let onPasteError: (cause: unknown) => void = () => {}
   export let onRemoveAttachment: (attachment: AttachmentView) => void = () => {}
@@ -119,6 +105,26 @@
   $: unsupported = workbenchIsReadOnly(workspace?.workbench)
   $: feedbackReadOnly = readOnly || unsupported
   $: interactionLocked = feedbackReadOnly || cooking || cookedDraftReady || submitting || cancelling || approving
+
+  let inputAttachmentOpen = false
+  let inputAttachment: AttachmentView | null = null
+  const inputToolsState = writable<InputToolsState>({ requestId: '', disabled: true, busy: false, canCapture: false, canPaste: false, attachments: [] })
+  provideInputTools({
+    state: inputToolsState,
+    capture: (target) => onStartScreenCapture(target),
+    paste: (target) => onImportClipboard(target),
+    files: (target, files) => onFiles(files, target),
+    preview: (id) => {
+      inputAttachment = workspace?.attachments.find((item) => item.attachment_id === id) ?? null
+      inputAttachmentOpen = !!inputAttachment
+    },
+    reportError: (cause) => onPasteError(cause),
+  })
+  $: inputToolsState.set({
+    requestId: workspace?.request.request_id ?? '', disabled: interactionLocked || workspace?.request.status === 'completed' || workspace?.request.status === 'cancelled',
+    busy: attachmentBusy, canCapture: capabilities.screenCapture.status.availability !== 'unavailable',
+    canPaste: capabilities.clipboardCapture.status.availability !== 'unavailable', attachments: workspace?.attachments ?? [],
+  })
 
   let container: WorkbenchContainer
   let interactionState: WorkbenchState | null = null
@@ -137,7 +143,7 @@
   function interactionChanged(state: WorkbenchState) {
     if (interactionLocked || workspace?.request.status === 'completed' || workspace?.request.status === 'cancelled') return
     interactionState = state
-    currentSnapshot = withWorkbenchState(currentSnapshot, state)
+    currentSnapshot = reconcileFieldSpeechSegments(currentSnapshot, withWorkbenchState(currentSnapshot, state))
     onDraftChange(currentSnapshot)
   }
 
@@ -157,6 +163,12 @@
 
   export function removeAttachmentReference(attachmentId: string) {
     container?.removeAttachmentReference(attachmentId)
+    const next = removeWorkbenchAttachmentReferences(currentSnapshot, attachmentId)
+    if (next !== currentSnapshot) {
+      const reconciled = reconcileFieldSpeechSegments(currentSnapshot, next)
+      interactionState = readWorkbenchState(reconciled.documentJson)
+      draftChanged(reconciled)
+    }
   }
 </script>
 
@@ -192,15 +204,12 @@
     {cancelling}
     {approving}
     canOpenResumePrompt={canOpenResumePrompt && !readOnly}
-    {tidyConfig}
-    {tidyAutoThreshold}
     {rambelleStatusPortrait}
     {rambleEngaged}
     {rambleActive}
     {agentStatus}
+    {inputActions}
     onDraftChange={draftChanged}
-    {onTidyError}
-    {onOpenTidySettings}
     {onRestoreOriginal}
     {onRemoveAttachment}
     {onPasteCandidates}
@@ -230,37 +239,10 @@
       {/if}
     {/snippet}
 
-    {#snippet inputTools()}
-      {#if voiceRambleAvailable(capabilities.speech.status)}
-        <RamblePanel
-          {rambleEngaged}
-          {rambleActive}
-          {ramblePhase}
-          {rambleBusy}
-          {rambleStartedOnce}
-          readOnly={interactionLocked}
-          {voiceDevice}
-          {voiceChunkIndex}
-          {voicePartial}
-          {voiceLevel}
-          modelMissing={voiceModelMissing}
-          message={rambleMessage}
-          onToggle={onToggleRamble}
-          onExit={onExitRamble}
-          onOpenVoiceSettings={onOpenVoiceSettings}
-        />
-      {/if}
-      <CaptureToolsCard
-        {attachmentBusy}
-        readOnly={interactionLocked}
-        nativeCaptureAvailable={nativeCaptureAvailable({
-          screenCapture: capabilities.screenCapture.status,
-          clipboardCapture: capabilities.clipboardCapture.status,
-        })}
-        onScreenCapture={onStartScreenCapture}
-        onImportClipboard={onImportClipboard}
-        {onFileSelection}
-      />
-    {/snippet}
   </WorkbenchContainer>
 </div>
+
+{#if workspace}
+  <RequestAttachmentPreview {transport} {capabilities} bind:open={inputAttachmentOpen}
+    requestId={workspace.request.request_id} attachment={inputAttachment} readKind="workspace" />
+{/if}

@@ -49,6 +49,10 @@
 
   function tr(text: string) { return composerText(effectiveLocale, text) }
 
+  export function focus() {
+    if (alive && !disabled) editor?.commands.focus('end')
+  }
+
   // Read the live editor, including IME composition, before an automatic navigation.
   // An unmounted editor is not "busy typing": fall back to the controlled draft.
   export function isEmptyForNavigation(): boolean {

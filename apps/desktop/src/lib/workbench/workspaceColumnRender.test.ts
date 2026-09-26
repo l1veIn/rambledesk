@@ -93,4 +93,20 @@ describe('workbench container composition', () => {
     expect(body).toContain('data-workbench="stub"')
     expect(body.indexOf('data-workbench="stub"')).toBeLessThan(status)
   })
+
+  it('places one Rambelle footer with global speech tidy below the feedback editor', () => {
+    const inputActions = createRawSnippet(() => ({ render: () => '<button data-shared-tidy>Tidy 3 speech segments</button>' }))
+    const body = render(WorkbenchContainer, { props: {
+      workspace, transport: {} as never, capabilities: unavailable, formatTime: () => '10:00',
+      workbench, inputActions,
+    } }).body
+    const consolePosition = body.indexOf('data-request-input-console')
+    expect(body.indexOf('data-feedback-region')).toBeGreaterThan(body.indexOf('data-pane-id="feedback-column-pane"'))
+    expect(consolePosition).toBeGreaterThan(body.indexOf('data-feedback-region'))
+    expect(consolePosition).toBeGreaterThan(body.indexOf('editor-host'))
+    expect(body.indexOf('data-shared-tidy')).toBeGreaterThan(consolePosition)
+    expect(body.match(/data-rambelle-status/g)).toHaveLength(1)
+    expect(body.match(/data-shared-tidy/g)).toHaveLength(1)
+    expect(body).not.toContain('aria-label="Tidy"')
+  })
 })

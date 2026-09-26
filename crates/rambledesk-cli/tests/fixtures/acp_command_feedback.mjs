@@ -1,6 +1,7 @@
 import { createInterface } from 'node:readline'
 import { spawn } from 'node:child_process'
 import { isAbsolute } from 'node:path'
+import { writeFileSync } from 'node:fs'
 const send = value => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...value }) + '\n')
 const reply = (id, result) => send({ id, result })
 const http = process.argv[2] === 'http'
@@ -55,7 +56,11 @@ async function handle({ id, method, params }) {
       }
       if (!params.prompt[0].text.includes('<rambledesk_session_context>') || !params.prompt[0].text.includes('RAMBLEDESK_COMMAND')) throw new Error('Missing built-in workflow')
       const prompt = params.prompt.slice(1).map(block => block.text ?? '').join('\n')
-      if (prompt.startsWith('ignore:') || prompt === 'silent') {
+      if (prompt === 'inspect-runtime-context') {
+        writeFileSync('runtime-context.json', JSON.stringify(params.prompt))
+        await command('skip', { reason: 'user_opt_out' })
+        text('INSPECTED_CONTEXT')
+      } else if (prompt.startsWith('ignore:') || prompt === 'silent') {
         missedPrompt = prompt
         text('ORIGINAL_ANSWER')
       } else if (prompt === 'cancel') {

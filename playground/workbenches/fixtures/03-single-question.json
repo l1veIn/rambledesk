@@ -1,0 +1,38 @@
+{
+  "title": "3/4 · 逐项问答 · 单题选择",
+  "what_happened": "先选择一个方案，再切换到另一个。保持补充正文为空并提交，检查结构化选择能否独立完成反馈。",
+  "workbench": {
+    "type": "questions",
+    "version": 1,
+    "data": {
+      "questions": [
+        {
+          "id": "opening",
+          "label": "开场",
+          "allowOther": false,
+          "prompt": "哪一个开场最适合这段产品介绍？先选择，再返回题目切换一次选项，最后提交。",
+          "options": [
+            {
+              "value": "moment",
+              "label": "从具体时刻开始：刚体验完一个功能，却忘了想说的话。"
+            },
+            {
+              "value": "question",
+              "label": "从一个问题开始：怎样把真实体验完整地交给 Agent？"
+            },
+            {
+              "value": "demo",
+              "label": "从操作演示开始：选中文字，留下一条精确的修改意见。"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "attachments": [
+    {
+      "file_name": "单题选择体验.md",
+      "path": "materials/03-single-question.md"
+    }
+  ]
+}

@@ -110,6 +110,7 @@ impl From<FeedbackWorkspaceView> for ApplicationFeedbackWorkspaceView {
 
 #[derive(Clone)]
 pub struct ApplicationCommandFacade {
+    pub(crate) project_directories: Option<Arc<dyn crate::ProjectDirectoryBrowser>>,
     agents: Option<crate::AgentManagementApplication>,
     sessions: Option<crate::SessionApplication>,
     application: FeedbackApplication,
@@ -124,6 +125,7 @@ impl ApplicationCommandFacade {
         host_profiles: Vec<ApplicationHostProfileView>,
     ) -> Self {
         Self {
+            project_directories: None,
             agents: None,
             sessions: None,
             application,

@@ -1,6 +1,7 @@
 import type { DocumentReviewData, Question, QuestionAnswer, QuestionsData, SingleChoiceData, WorkbenchSpec, WorkbenchState } from './generated/feedback'
 import { hasReviewInput, validateReviewState } from './workbench/document-review/reviewModel'
 import { validDocumentReviewInput, validQuestionsInput, validRambleInput, validSingleChoiceInput } from './workbenchInputValidation'
+import { readDocumentReviewState, readQuestionsState, readSingleChoiceState } from './workbenchStateDecoders'
 
 export type WorkbenchType = 'ramble' | 'questions' | 'single_choice' | 'document_review'
 type Policy = {
@@ -28,9 +29,7 @@ const policies: Record<WorkbenchType, Policy> = {
   },
   questions: {
     type: 'questions', accepts: validQuestionsInput,
-    readState: (value) => record(value) && value.type === 'questions' && Array.isArray(value.answers) && value.answers.every((answer) =>
-      record(answer) && text(answer.id) && text(answer.value) && text(answer.label) && typeof answer.wasCustom === 'boolean')
-      ? value as WorkbenchState : null,
+    readState: readQuestionsState,
     hasInput: (spec, state) => state?.type === 'questions' && (spec.data as QuestionsData).questions.some((question) =>
       state.answers.some((answer) => answer.id === question.id && validAnswer(question, answer))),
     complete: (spec, state) => state?.type === 'questions' && state.answers.length === (spec.data as QuestionsData).questions.length &&
@@ -40,20 +39,15 @@ const policies: Record<WorkbenchType, Policy> = {
       }),
   },
   single_choice: {
+    // Compatibility only: new requests use questions, including one-question forms.
     type: 'single_choice', accepts: validSingleChoiceInput,
-    readState: (value) => record(value) && value.type === 'single_choice' && (value.selected_option_id === null || text(value.selected_option_id)) ? value as WorkbenchState : null,
+    readState: readSingleChoiceState,
     hasInput: (spec, state) => state?.type === 'single_choice' && (spec.data as SingleChoiceData).options.some((option) => option.id === state.selected_option_id),
     complete: (spec, state) => policies.single_choice.hasInput(spec, state),
   },
   document_review: {
     type: 'document_review', accepts: validDocumentReviewInput,
-    readState: (value) => record(value) && value.type === 'document_review' &&
-      (value.verdict === null || value.verdict === 'ready' || value.verdict === 'changes_requested') &&
-      Array.isArray(value.annotations) && value.annotations.every((item) => record(item) && text(item.id) && text(item.paragraph_id) && text(item.body) &&
-        (item.kind === 'comment' || item.kind === 'suggestion') && (item.status === 'open' || item.status === 'resolved') &&
-        (item.start === null || Number.isInteger(item.start)) && (item.end === null || Number.isInteger(item.end)) &&
-        (item.quote === null || text(item.quote)) && (item.replacement === null || text(item.replacement))) &&
-      Array.isArray(value.paragraph_marks) && value.paragraph_marks.every((item) => record(item) && text(item.paragraph_id) && ['keep', 'revise', 'remove'].includes(String(item.decision))) ? value as WorkbenchState : null,
+    readState: readDocumentReviewState,
     hasInput: (spec, state) => hasReviewInput(spec.data as DocumentReviewData, state?.type === 'document_review' ? state : null),
     complete: (spec, state) => validateReviewState(spec.data as DocumentReviewData, state?.type === 'document_review' ? state : null) === null,
     submissionMessage: (spec, state) => validateReviewState(spec.data as DocumentReviewData, state?.type === 'document_review' ? state : null),

@@ -3,6 +3,8 @@ mod catalog;
 mod document_review;
 mod draft;
 mod state;
+#[cfg(test)]
+mod tests;
 mod validation;
 pub use document_review::*;
 pub use draft::*;

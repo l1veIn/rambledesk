@@ -9,6 +9,7 @@ import {
 type CatalogInput = { agent_id: string }
 
 export const HTTP_APPLICATION_OPERATIONS = {
+  browseProjectDirectories: 'browseProjectDirectories',
   listAvailableAgents: 'listAvailableAgents',
   inspectAgentInstallation: 'inspectAgentInstallation',
   resolveCatalogAgent: 'resolveCatalogAgent',
@@ -219,6 +220,8 @@ export function applicationCommandResponseResources<Name extends ApplicationComm
   input: ApplicationCommandInput<Name>,
 ): readonly ApplicationResourceKey[] {
   switch (name) {
+    case 'browseProjectDirectories':
+      return []
     case 'listAvailableAgents':
     case 'inspectAgentInstallation':
     case 'resolveCatalogAgent':
@@ -301,6 +304,8 @@ export function applicationCommandProjectionKey<Name extends ApplicationCommandN
   input: ApplicationCommandInput<Name>,
 ): string {
   switch (name) {
+    case 'browseProjectDirectories':
+      return projectionKey(name, (input as ApplicationCommandInput<'browseProjectDirectories'>).path)
     case 'listManagedSessionActivity': {
       const page = input as ApplicationCommandInput<'listManagedSessionActivity'>
       return projectionKey(name, page.session_id, String(page.before_sequence), String(page.limit ?? 100))

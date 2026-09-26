@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Snippet } from 'svelte'
   import { Badge } from '$lib/components/ui/badge'
   import type { FeedbackWorkspaceView } from '$lib/feedback'
   import { requestStatusLabel } from '$lib/feedback'
@@ -9,6 +10,7 @@
   export let workspace: FeedbackWorkspaceView
   export let resolveHostProfile: (hostId: string) => HostProfile
   export let cooking = false
+  export let actions: Snippet | undefined = undefined
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
@@ -32,8 +34,8 @@
 <!-- Request identity for the workbench column: the same content the header
      carried before it moved here, minus the Agent/ACP status, which belongs to
      the feedback column. -->
-<header class="workspace-header shrink-0 border-b">
-  <div class="flex min-h-14 min-w-0 flex-col justify-center px-4 py-2">
+<header class="workspace-header flex shrink-0 items-center gap-2 border-b pr-3">
+  <div class="flex min-h-14 min-w-0 flex-1 flex-col justify-center px-4 py-2">
     <div class="flex min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap text-[10px] text-muted-foreground">
       <span class="flex min-w-0 items-center gap-1.5">
         <span class="grid size-4 shrink-0 place-items-center [&_svg]:size-3.5">
@@ -57,6 +59,7 @@
       </h1>
     </div>
   </div>
+  {@render actions?.()}
 </header>
 
 <style>

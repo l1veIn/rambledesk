@@ -200,6 +200,9 @@ async fn run_preview() -> anyhow::Result<()> {
             WorkbenchTerminalOperations::without_observer(feedback),
             vec![],
         )
+        .with_project_directory_browser(Arc::new(
+            rambledesk_local_server::LocalProjectDirectoryBrowser,
+        ))
         .with_sessions(sessions.clone())
         .with_agent_management(AgentManagementApplication::new(
             Arc::new(PreviewCatalog),

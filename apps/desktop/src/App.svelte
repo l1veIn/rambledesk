@@ -2,6 +2,11 @@
   import { canSubmitWorkbench, readWorkbenchState } from './lib/workbenchState'
   import { workbenchIsReadOnly } from './lib/workbenchPolicy'
   import { onMount, tick } from 'svelte'
+  import { createRequestInputComposition } from './lib/workbench/requestInputComposition'
+  import RequestSpeechTools from './lib/speech/RequestSpeechTools.svelte'
+  import { createRequestInputTargets, resolveRequestInputTarget } from './lib/input/requestInputTargets'
+  import type { SpeechTarget } from './lib/speech/speechTargets'
+  import { createRequestInputPreparation } from './lib/workbench/requestInputPreparation'
   import { initializeAppearance } from './lib/appearance/appearanceRuntime'
 
   import rambelleArchived from './assets/rambelle-states/archived.webp'
@@ -159,6 +164,9 @@ import type { SettingsSection } from './lib/domain/settingsSection'
   let pageError = ''
   let sessionWorkbench: FeedbackEditorHandle | undefined
   let rambleController: RambleSessionControllerHandle
+  const inputTargets = createRequestInputTargets()
+  let revealTarget: SpeechTarget | null = null
+  let revealSequence = 0
   let archivedInitialSession: SessionViewDescriptor | null = null
   let archivedSelectionEpoch = 0
   let settingsSection: SettingsSection = 'general'
@@ -214,6 +222,17 @@ import type { SettingsSection } from './lib/domain/settingsSection'
   })
   const updateDraft = draftController.updateDraft
   const saveDraftNow = draftController.saveDraftNow
+  const inputComposition = createRequestInputComposition({
+    getWorkspace: () => $workspaceSession.workspace, draft: draftSession, draftController,
+    getConfig: () => tidyConfig, isLocked: () => feedbackReadOnly || workspaceTransitionLocked,
+    onConfigure: () => void openSettings('post-processing'),
+    voice: {
+      selectTarget: selectInputTarget,
+      start: async (target) => { if (selectInputTarget(target)) await rambleController.startInput() },
+      stop: () => rambleController.pauseInput(),
+    },
+  })
+  const voiceInputState = inputComposition.voiceState
 
   const draftOperations = createDraftOperationsController({
     transport: applicationTransport,
@@ -226,7 +245,10 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     getEditor: () => sessionWorkbench,
     isWorkbenchMounted: () => $startup.mounted,
     isTransitionLocked: () => workspaceTransitionLocked,
+    isInputLocked: () => feedbackReadOnly || interactionLocked || currentRequestCooking || cookedDraftReady,
     getDraftMessage: () => $draftSession.message,
+    getDraftSnapshot: draftSession.snapshot,
+    updateDraft,
     saveDraftNow,
     setWorkspaceDraft: (draft) => workspaceSession.setDraft(draft),
     adoptDraft: (draft) => draftSession.adopt(draft),
@@ -236,11 +258,31 @@ import type { SettingsSection } from './lib/domain/settingsSection'
   })
   const {
     routeDraftOperation,
+    routeSpeech,
+    routeInputText,
     activeActionFor,
     enqueueDocumentTask,
     waitForDocumentQueue,
-    selectAction,
   } = draftOperations
+
+  function documentInputTarget(requestId: string): SpeechTarget {
+    return {
+      requestId,
+      requestTitle: currentRequest?.request_id === requestId ? currentRequest.title : $rambleSession.requestTitle,
+      destination: { kind: 'document', action: activeActionFor(requestId) },
+    }
+  }
+
+  function selectInputTarget(target: SpeechTarget): boolean {
+    if (target.requestId !== currentRequest?.request_id || voiceInputDisabled) return false
+    inputTargets.select(target)
+    return true
+  }
+
+  function selectAction(actionId: string, actionIndex: number, title: string) {
+    draftOperations.selectAction(actionId, actionIndex, title)
+    if (currentRequest && !workspaceTransitionLocked) inputTargets.select(documentInputTarget(currentRequest.request_id))
+  }
 
   const attachmentController = createAttachmentController({
     capabilities,
@@ -257,6 +299,8 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     waitForRambleMarkdown: waitForDocumentQueue,
     routeDraftOperation,
     activeActionFor,
+    getInputTarget: (requestId) => inputTargets.forRequest(documentInputTarget(requestId)),
+    routeInputText,
     applyWorkspaceMutation,
     recordAttachmentDiagnostic: async (activity, requestId) => {
       if (capabilities.rambleConsole.status.availability === 'unavailable') return
@@ -264,6 +308,12 @@ import type { SettingsSection } from './lib/domain/settingsSection'
         .recordDiagnostic(activity, requestId)
         .catch(() => {})
     },
+  })
+
+  const { prepareFeedback: prepareRequestInput } = createRequestInputPreparation({
+    prepareSpeech: (requestId) => rambleController.prepareFeedback(requestId),
+    prepareAttachments: attachmentController.prepareFeedback,
+    tr,
   })
 
   // Mutual callbacks resolve after all three owners have been composed.
@@ -502,6 +552,22 @@ import type { SettingsSection } from './lib/domain/settingsSection'
   $: rambleEngaged = visibleRamblePhase !== 'idle'
   $: rambleBelongsToWorkspace =
     !rambleEngaged || currentRequest?.request_id === $rambleSession.requestId
+  $: voiceInputDisabled = feedbackReadOnly || interactionLocked || currentRequestCooking || cookedDraftReady || !rambleBelongsToWorkspace
+    || capabilities.speech.status.availability === 'unavailable' || !currentRequest || workspaceSession.isTerminal()
+  $: documentVoiceTarget = currentRequest ? {
+    requestId: currentRequest.request_id, requestTitle: currentRequest.title,
+    destination: { kind: 'document' as const, action: $draftOperations.get(currentRequest.request_id) ?? null },
+  } : null
+  $: nextVoiceTarget = documentVoiceTarget
+    ? resolveRequestInputTarget(documentVoiceTarget, $inputTargets.get(documentVoiceTarget.requestId))
+    : null
+  $: voiceInputState.set({
+    requestId: currentRequest?.request_id ?? '', documentTarget: documentVoiceTarget,
+    nextTarget: nextVoiceTarget, recording: rambleBelongsToWorkspace && voiceActive,
+    disabled: voiceInputDisabled, revealTarget, revealSequence,
+    draftSnapshot: { documentJson: $draftSession.documentJson, bodyMarkdown: $draftSession.body },
+  })
+  $: { $workspaceSession; $draftSession; workspaceTransitionLocked; feedbackReadOnly; tidyConfig; inputComposition.tidy.refresh(inputComposition.workspace(), $tidyAutoThreshold) }
   $: rambelleStatusPortrait = feedbackResult
     ? rambelleArchived
     : currentRequestCooking
@@ -673,7 +739,8 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     }),
     isCookingEnabled: () => $cookingEnabled,
     isCooking: () => currentRequestCooking,
-    prepareFeedback: (requestId) => rambleController.prepareFeedback(requestId),
+    prepareFeedback: prepareRequestInput,
+    isInputBusy: () => $attachmentSession.mediaBusy || rambleController.inputBusy(),
     saveDraftNow,
     setPageError: (message) => {
       pageError = message
@@ -695,7 +762,8 @@ import type { SettingsSection } from './lib/domain/settingsSection'
       pageError = message
     },
     isReadOnly: () => feedbackReadOnly,
-    prepareFeedback: (requestId) => rambleController.prepareFeedback(requestId),
+    prepareFeedback: prepareRequestInput,
+    isInputBusy: () => $attachmentSession.mediaBusy || rambleController.inputBusy(),
     saveDraftNow,
     getCookingEnabled: () => $cookingEnabled,
     cookSubmission: cookingController.cookSubmission,
@@ -719,7 +787,8 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     messageFrom,
     canCancel: () => canCancel,
     canApprove: () => !feedbackReadOnly && !currentRequestCooking && !cookedDraftReady,
-    prepareFeedback: (requestId) => rambleController.prepareFeedback(requestId),
+    prepareFeedback: prepareRequestInput,
+    isInputBusy: () => $attachmentSession.mediaBusy || rambleController.inputBusy(),
     saveDraftNow,
     refreshNavigation: async () => {
       await navigation.refreshNavigation(true)
@@ -742,10 +811,12 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     await rambleController?.toggleRamble()
   }
 
-  async function importClipboardNow() {
-    await rambleController?.importClipboardNow()
+  async function importClipboardNow(target?: SpeechTarget) {
+    await rambleController?.importClipboardNow(target)
   }
 </script>
+
+{#snippet requestInputActions()}<RequestSpeechTools />{/snippet}
 
 {#snippet requestAgentStatus()}
   {#if feedbackManagedSessionId && currentRequest && !previewMode}
@@ -783,14 +854,22 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     onImportServerAttachmentPaths={attachmentController.importServerAttachmentPaths}
     onPersistAttachmentCandidates={attachmentController.persistAttachmentCandidates}
     onRouteDraftOperation={routeDraftOperation}
+    onInputText={routeInputText}
+    onWriteSpeech={routeSpeech}
+    nextTarget={nextVoiceTarget}
+    embeddedConsole={!!currentRequest}
+    getNextSpeechTarget={(requestId) => inputTargets.forRequest(documentInputTarget(requestId))}
     waitForDocumentWrites={waitForDocumentQueue}
     getActiveAction={activeActionFor}
-    canSubmit={canSubmit && !managedFeedbackReadOnly}
+    canSubmit={canSubmit && !managedFeedbackReadOnly && !$attachmentSession.mediaBusy && rambleBelongsToWorkspace}
     onSubmitFeedback={() => void submitFeedback()}
-    onOpenSpeechTarget={async (requestId, segmentId) => {
+    onOpenSpeechTarget={async (requestId, segmentId, target) => {
       if (await workspaceNavigation.openRequest(requestId)) {
         await tick()
-        if (segmentId) highlightSpeechSegment(document, segmentId, true)
+        if (target && target.destination.kind !== 'document') {
+          revealTarget = target
+          revealSequence += 1
+        } else if (segmentId) highlightSpeechSegment(document, segmentId, true)
       }
     }}
   />
@@ -912,7 +991,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
           ? workspaceTabId(workspaceViewKey(renderedWorkspaceView))
           : undefined}
       >
-        {#if renderedWorkspaceView?.kind === 'inbox'}
+        {#if !renderedWorkspaceView || renderedWorkspaceView.kind === 'inbox'}
           <InboxWorkspaceView onNewSession={previewMode ? undefined : () => void managedSessions.openNewManagedSession()} />
         {:else if renderedWorkspaceView?.kind === 'archive'}
           <ArchivedSessionsWorkspaceView
@@ -971,8 +1050,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
           {#key renderedAgentDraftView.draftId}
             <DraftManagedSessionWorkspace transport={applicationTransport} controller={renderedAgentDraftController} draftId={renderedAgentDraftView.draftId}
               onConfigure={() => void openSettings('agents')}
-              onConfigureAgent={(configId, advanced) => void openSettings('agents', configId, advanced)}
-              onChooseDirectory={capabilities.serverPaths.status.availability === 'unavailable' ? undefined : () => capabilities.serverPaths.implementation.chooseDirectory()} />
+              onConfigureAgent={(configId, advanced) => void openSettings('agents', configId, advanced)} />
           {/key}
           {/if}
         {:else if renderedAgentSessionView}
@@ -1025,8 +1103,6 @@ import type { SettingsSection } from './lib/domain/settingsSection'
         draftDocumentJson={$draftSession.documentJson}
         editorDocument={$draftSession.editorDocument}
         editorEpoch={$draftSession.editorEpoch}
-        {tidyConfig}
-        tidyAutoThreshold={$tidyAutoThreshold}
         activeActionId={currentRequest
           ? $draftOperations.get(currentRequest.request_id)?.actionId ?? null
           : null}
@@ -1041,15 +1117,6 @@ import type { SettingsSection } from './lib/domain/settingsSection'
             : rambelleIdle}
         rambleEngaged={rambleBelongsToWorkspace ? rambleEngaged : false}
         rambleActive={rambleBelongsToWorkspace ? rambleActive : false}
-        ramblePhase={rambleBelongsToWorkspace ? visibleRamblePhase : 'idle'}
-        rambleBusy={rambleBelongsToWorkspace ? rambleBusy : true}
-        rambleStartedOnce={rambleBelongsToWorkspace ? $rambleSession.startedOnce : false}
-        voiceDevice={rambleBelongsToWorkspace ? $rambleSession.voiceDevice : ''}
-        voiceChunkIndex={rambleBelongsToWorkspace ? $rambleSession.voiceChunkIndex : 0}
-        voicePartial={rambleBelongsToWorkspace ? $rambleSession.voicePartial : ''}
-        voiceLevel={rambleBelongsToWorkspace ? $rambleSession.voiceLevel : 0}
-        voiceModelMissing={rambleBelongsToWorkspace ? $rambleSession.voiceModelMissing : false}
-        rambleMessage={rambleBelongsToWorkspace ? $rambleSession.message : ''}
         attachmentBusy={rambleBelongsToWorkspace ? $attachmentSession.busy : false}
         {canSubmit}
         cooking={currentRequestCooking}
@@ -1069,15 +1136,11 @@ import type { SettingsSection } from './lib/domain/settingsSection'
         {resolveHostProfile}
         formatTime={formatTimeLocal}
         onDraftChange={updateDraft}
-        onTidyError={(message) => (pageError = message)}
-        onOpenTidySettings={() => void openSettings('post-processing')}
+        inputActions={requestInputActions}
         onSelectAction={selectAction}
-        onToggleRamble={() => void toggleRamble()}
-        onExitRamble={() => void exitRamble()}
-        onOpenVoiceSettings={() => void openSettings('voice')}
-        onStartScreenCapture={() => void attachmentController.startScreenCapture()}
-        onImportClipboard={() => void importClipboardNow()}
-        onFileSelection={attachmentController.handleFileSelection}
+        onStartScreenCapture={attachmentController.startScreenCapture}
+        onImportClipboard={importClipboardNow}
+        onFiles={(files, target) => { attachmentController.handleFiles(files, target) }}
         onPasteCandidates={attachmentController.acceptAttachmentCandidates}
         onPasteError={attachmentController.reportClientFileError}
         onRemoveAttachment={(attachment) => void attachmentController.removeAttachment(attachment)}

@@ -1,3 +1,5 @@
+import type { SpeechTarget } from './speech/speechDraftQueue'
+
 export const RAMBLE_CONSOLE_LABEL = 'ramble-console'
 export const RAMBLE_CONSOLE_COMMAND_EVENT = 'ramble-console-command'
 export const RAMBLE_CONSOLE_READY_EVENT = 'ramble-console-ready'
@@ -24,6 +26,8 @@ export type RambleConsoleState = {
   voiceLevel: number
   partialTranscript: string
   message: string
+  target?: SpeechTarget | null
+  nextTarget?: SpeechTarget | null
 }
 
 export type RambleConsoleCommand =
@@ -34,7 +38,7 @@ export type RambleConsoleCommand =
   | { type: 'edit-speech'; ids: string[] }
   | { type: 'save-speech-edit'; ids: string[]; text: string }
   | { type: 'cancel-speech-edit'; ids: string[] }
-  | { type: 'open-speech-target'; requestId: string; segmentId?: string }
+  | { type: 'open-speech-target'; requestId: string; segmentId?: string; target?: SpeechTarget }
   | { type: 'retry-recording' }
   | { type: 'toggle-recording' }
   | { type: 'capture-screen' }

@@ -204,3 +204,14 @@ pub(crate) async fn list_managed_session_activity(
         .list_managed_session_activity(input)
         .await
 }
+
+#[tauri::command]
+pub(crate) async fn browse_project_directories(
+    state: tauri::State<'_, WorkbenchState>,
+    input: rambledesk_core::BrowseProjectDirectoriesInput,
+) -> Result<rambledesk_core::ProjectDirectoryListing, rambledesk_core::ProjectDirectoryError> {
+    state
+        .application_commands
+        .browse_project_directories(input)
+        .await
+}

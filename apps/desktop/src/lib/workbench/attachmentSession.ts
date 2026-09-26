@@ -9,6 +9,7 @@ export type AttachmentMessageTone = 'info' | 'success' | 'error'
 export type AttachmentSessionState = Readonly<{
   busy: boolean
   captureBusy: boolean
+  mediaBusy: boolean
   message: string
   tone: AttachmentMessageTone
   previews: Record<string, string>
@@ -18,6 +19,7 @@ export type AttachmentSessionState = Readonly<{
 const initial: AttachmentSessionState = {
   busy: false,
   captureBusy: false,
+  mediaBusy: false,
   message: '',
   tone: 'info',
   previews: {},
@@ -30,7 +32,10 @@ export function createAttachmentSession() {
   const store = writable<AttachmentSessionState>(initial)
 
   function patch(next: Partial<AttachmentSessionState>) {
-    store.update((current) => ({ ...current, ...next }))
+    store.update((current) => {
+      const state = { ...current, ...next }
+      return { ...state, mediaBusy: state.busy || state.captureBusy }
+    })
   }
 
   function setBusy(busy: boolean) {
@@ -62,5 +67,7 @@ export function createAttachmentSession() {
     setDragActive,
     busy: () => get(store).busy,
     captureBusy: () => get(store).captureBusy,
+    mediaBusy: () => get(store).mediaBusy,
+    message: () => get(store).message,
   }
 }

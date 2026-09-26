@@ -57,7 +57,7 @@ impl WorkbenchKind {
             ),
             Self::Questions => (
                 "Questions / 逐项问答",
-                "Ask one or more questions with options and optional custom answers, one at a time. 选项问答、需求澄清。",
+                "Ask one or more questions with options and optional custom answers. Use one question with allowOther:false for a single choice. 单选、多题问答、需求澄清。",
                 "Answers associated with question id: value, label, wasCustom, index",
                 "questionnaire",
             ),
@@ -86,10 +86,15 @@ impl WorkbenchKind {
 }
 
 fn catalog() -> Vec<WorkbenchSummary> {
-    WorkbenchKind::ALL
-        .iter()
-        .map(|kind| kind.summary())
-        .collect()
+    // Compatibility contracts remain resolvable but are not offered for new work.
+    [
+        WorkbenchKind::Ramble,
+        WorkbenchKind::Questions,
+        WorkbenchKind::DocumentReview,
+    ]
+    .into_iter()
+    .map(WorkbenchKind::summary)
+    .collect()
 }
 
 pub fn list_workbenches(
@@ -130,65 +135,32 @@ pub fn describe_workbench(
             schemars::schema_for!(QuestionsData),
             json_schema!({"type":"object","properties":{"answers":{"type":"array","items": schemars::schema_for!(QuestionAnswer)},"cancelled":{"const":false}},"required":["answers","cancelled"]}),
             WorkbenchData::Questions(QuestionsData {
-                questions: vec![
-                    Question {
-                        id: "audience".into(),
-                        prompt: "Who is the main audience?".into(),
-                        label: Some("Audience".into()),
-                        allow_other: true,
-                        options: vec![
-                            QuestionOption {
-                                value: "individuals".into(),
-                                label: "Individuals".into(),
-                                description: Some("Optimize for one person's workflow.".into()),
-                            },
-                            QuestionOption {
-                                value: "teams".into(),
-                                label: "Teams".into(),
-                                description: Some("Prioritize collaboration.".into()),
-                            },
-                        ],
-                    },
-                    Question {
-                        id: "scope".into(),
-                        prompt: "What should we build first?".into(),
-                        label: Some("Scope".into()),
-                        allow_other: true,
-                        options: vec![
-                            QuestionOption {
-                                value: "feedback".into(),
-                                label: "Feedback".into(),
-                                description: None,
-                            },
-                            QuestionOption {
-                                value: "review".into(),
-                                label: "Review".into(),
-                                description: None,
-                            },
-                        ],
-                    },
-                ],
+                questions: vec![Question {
+                    id: "audience".into(),
+                    prompt: "Who is the main audience?".into(),
+                    label: Some("Audience".into()),
+                    allow_other: false,
+                    options: vec![
+                        QuestionOption {
+                            value: "individuals".into(),
+                            label: "Individuals".into(),
+                            description: Some("Optimize for one person's workflow.".into()),
+                        },
+                        QuestionOption {
+                            value: "teams".into(),
+                            label: "Teams".into(),
+                            description: Some("Prioritize collaboration.".into()),
+                        },
+                    ],
+                }],
             }),
-            "Pi-style questionnaire: choose one option per question or write a custom answer when allowOther is true. Review all answers before submitting. Every question needs an answer; cancelling produces no result. Answers are independent of optional feedback notes.",
+            "Use one question with allowOther:false for a single-choice decision, or multiple questions for a questionnaire. Choose one option per question; allowOther:true also permits a custom answer. Read the selected option value from result.answers for that question id. Review all answers before submitting. Every question needs an answer; cancelling produces no result. Answers are independent of optional feedback notes.",
         ),
-        WorkbenchKind::SingleChoice => (
-            schemars::schema_for!(SingleChoiceData),
-            json_schema!({"type":"object","properties":{"status":{"enum":["answered","unanswered"]},"selected_option_id":{"type":["string","null"]}},"required":["status","selected_option_id"]}),
-            WorkbenchData::SingleChoice(SingleChoiceData {
-                prompt: "Which layout should we use?".into(),
-                options: vec![
-                    ChoiceOption {
-                        id: "compact".into(),
-                        label: "Compact layout".into(),
-                    },
-                    ChoiceOption {
-                        id: "spacious".into(),
-                        label: "Spacious layout".into(),
-                    },
-                ],
-            }),
-            "Choose one option. Selection is saved independently from optional feedback notes. A selection is required to submit; free text never implies a selection.",
-        ),
+        WorkbenchKind::SingleChoice => {
+            return Err(ApplicationError::invalid_argument(
+                "single_choice is a compatibility contract. For new requests, describe questions and use one question with allowOther:false. Existing single_choice requests keep their original input and result contract.",
+            ));
+        }
         WorkbenchKind::DocumentReview => (
             schemars::schema_for!(DocumentReviewData),
             schemars::schema_for!(DocumentReviewResult),

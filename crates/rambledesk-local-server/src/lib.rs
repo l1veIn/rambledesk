@@ -65,6 +65,8 @@ pub use web_session::{
     WebSessionLifetime, WebSessionManager, WebSessionPolicy,
 };
 pub use workspace_info::LocalWorkspaceInfoProvider;
+mod project_directories;
+pub use project_directories::LocalProjectDirectoryBrowser;
 
 pub use rambledesk_core::{HOST_ENV_KEY, HOST_HEADER};
 

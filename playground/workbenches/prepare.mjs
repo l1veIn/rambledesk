@@ -8,7 +8,7 @@ const root = dirname(fileURLToPath(import.meta.url))
 const cases = [
   ['01-ramble.json', 'ramble'],
   ['02-questions.json', 'questions'],
-  ['03-single-choice.json', 'single_choice'],
+  ['03-single-question.json', 'questions'],
   ['04-document-review.json', 'document_review'],
 ]
 const readJson = (path) => JSON.parse(readFileSync(path, 'utf8').replace(/^\uFEFF/, ''))

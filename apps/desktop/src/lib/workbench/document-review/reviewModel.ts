@@ -28,7 +28,6 @@ export function validateReviewState(data: DocumentReviewData, state: DocumentRev
     const paragraph = paragraphs.get(annotation.paragraph_id)
     if (!paragraph) return 'A comment refers to an unavailable paragraph.'
     if (!textWithin(annotation.body, 4000, true)) return 'Finish or remove empty comments.'
-    if (!['open', 'resolved'].includes(annotation.status)) return 'Invalid comment status.'
     if (annotation.kind === 'suggestion') {
       if (!textWithin(annotation.replacement, 8000)) return 'Enter the suggested wording.'
     } else if (annotation.kind !== 'comment' || annotation.replacement !== null) return 'Invalid comment kind.'
@@ -55,7 +54,48 @@ export function changeParagraphMark(state: DocumentReviewState, paragraphId: str
   ] }
 }
 
-export interface ReviewTextSegment { text: string; annotationIds: string[]; open: boolean }
+export function toggleParagraphRemoval(state: DocumentReviewState, paragraphId: string): DocumentReviewState {
+  const removed = state.paragraph_marks.some((mark) => mark.paragraph_id === paragraphId && mark.decision === 'remove')
+  return changeParagraphMark(state, paragraphId, removed ? '' : 'remove')
+}
+
+/** Existing drafts may have several notes; preserve them and continue the user's selected note. */
+export function findParagraphAnnotation(annotations: ReviewAnnotation[], paragraphId: string, preferredId?: string | null): ReviewAnnotation | undefined {
+  const paragraphAnnotations = annotations.filter((annotation) => annotation.paragraph_id === paragraphId)
+  return paragraphAnnotations.find((annotation) => annotation.id === preferredId)
+    ?? paragraphAnnotations[0]
+}
+
+/** Every comment entry point continues the paragraph's note without changing its original anchor. */
+export function prepareParagraphAnnotation(
+  data: DocumentReviewData,
+  state: DocumentReviewState,
+  anchor: ReviewAnchor,
+  kind: ReviewAnnotation['kind'],
+  idFactory: () => string,
+  preferredId?: string | null,
+): { annotation: ReviewAnnotation; state: DocumentReviewState; created: boolean } | null {
+  const existing = findParagraphAnnotation(state.annotations, anchor.paragraph_id, preferredId)
+  if (!existing && state.annotations.length >= 500) return null
+  const source = existing ?? anchor
+  const suggestion = kind === 'suggestion' && existing?.kind !== 'suggestion'
+  if (existing && !suggestion) return { annotation: existing, state, created: false }
+  const replacement = suggestion
+    ? source.quote ?? data.paragraphs.find((paragraph) => paragraph.id === source.paragraph_id)?.text ?? ''
+    : existing?.replacement ?? null
+  const annotation: ReviewAnnotation = existing
+    ? { ...existing, kind: 'suggestion', replacement }
+    : { ...anchor, id: idFactory(), kind, body: '', replacement }
+  return {
+    annotation,
+    state: { ...state, annotations: existing
+      ? state.annotations.map((item) => item.id === existing.id ? annotation : item)
+      : [...state.annotations, annotation] },
+    created: !existing,
+  }
+}
+
+export interface ReviewTextSegment { text: string; annotationIds: string[] }
 
 /** Split at all boundaries so overlapping comments never duplicate source text. */
 export function annotatedSegments(text: string, annotations: ReviewAnnotation[]): ReviewTextSegment[] {
@@ -67,6 +107,6 @@ export function annotatedSegments(text: string, annotations: ReviewAnnotation[])
   return boundaries.slice(0, -1).map((start, index) => {
     const end = boundaries[index + 1]
     const covering = ranges.filter((item) => item.start! <= start && item.end! >= end)
-    return { text: characters.slice(start, end).join(''), annotationIds: covering.map((item) => item.id), open: covering.some((item) => item.status === 'open') }
+    return { text: characters.slice(start, end).join(''), annotationIds: covering.map((item) => item.id) }
   })
 }

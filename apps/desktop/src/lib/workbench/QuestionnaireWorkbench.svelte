@@ -3,6 +3,12 @@
   import type { QuestionsData, QuestionAnswer } from '../generated/feedback'
   import { t } from '../i18n'
   import { locale } from '../preferences'
+  import WorkbenchTextField from '../input/WorkbenchTextField.svelte'
+  import { questionAnswerVoiceTarget, unavailableVoiceInputState, useVoiceInput } from '../speech/voiceInputContext'
+  import type { SpeechTarget } from '../speech/speechDraftQueue'
+  import FieldAttachments from '../input/FieldAttachments.svelte'
+  import { fieldAttachmentText } from '../input/fieldAttachmentText'
+  import { unavailableInputToolsState, useInputTools } from '../input/inputToolsContext'
 
   export let data: QuestionsData
   export let answers: QuestionAnswer[] = []
@@ -10,6 +16,11 @@
   export let onChange: (answers: QuestionAnswer[]) => void
   let step = 0
   let root: HTMLElement
+  let revealedSequence: number | undefined
+  const voice = useVoiceInput()
+  const voiceState = voice?.state ?? unavailableVoiceInputState
+  const tools = useInputTools()
+  const toolsState = tools?.state ?? unavailableInputToolsState
   async function navigate(next: number) {
     step = next
     await tick()
@@ -19,13 +30,31 @@
   $: question = data.questions[step]
   $: current = question ? answers.find((answer) => answer.id === question.id) : undefined
   $: answeredCount = data.questions.filter((question) => answers.some((answer) => answer.id === question.id && answer.value.trim())).length
+  $: voiceTarget = question?.allowOther && current?.wasCustom ? questionAnswerVoiceTarget($voiceState, question.id, question.label || question.prompt) : null
+  $: void revealVoiceTarget($voiceState.revealSequence, $voiceState.revealTarget, answers)
   function tr(source: string, values: Record<string, string | number> = {}) { return t($locale, source, values) }
   function save(answer: QuestionAnswer, advance = false) {
     if (disabled) return
-    onChange([...answers.filter((existing) => existing.id !== answer.id), answer])
+    answers = [...answers.filter((existing) => existing.id !== answer.id), answer]
+    onChange(answers)
     if (advance) void navigate(Math.min(step + 1, data.questions.length))
   }
-  function clear(id: string) { if (!disabled) onChange(answers.filter((answer) => answer.id !== id)) }
+  function clear(id: string) { if (!disabled) { answers = answers.filter((answer) => answer.id !== id); onChange(answers) } }
+  function saveCustom(value: string) {
+    if (!question) return
+    save({ id: question.id, value, label: value, wasCustom: true })
+  }
+  async function revealVoiceTarget(sequence: number | undefined, target: SpeechTarget | null | undefined, currentAnswers: QuestionAnswer[]) {
+    if (sequence === undefined || sequence === revealedSequence || target?.requestId !== $voiceState.requestId || target?.destination.kind !== 'question_answer') return
+    const destination = target.destination
+    const index = data.questions.findIndex((item) => item.id === destination.questionId)
+    if (index < 0) return
+    revealedSequence = sequence
+    await navigate(index)
+    if (data.questions[index].allowOther && currentAnswers.some((answer) => answer.id === destination.questionId && answer.wasCustom)) {
+      root?.querySelector<HTMLElement>('[data-question-answer]')?.focus({ preventScroll: true })
+    }
+  }
 </script>
 
 <section bind:this={root} aria-label={tr('Questionnaire')} class="grid gap-4">
@@ -59,12 +88,11 @@
       {/if}
     </div>
     {#if current?.wasCustom}
-      <label class="grid gap-2 text-xs">
-        <span>{tr('Your answer')}</span>
-        <textarea value={current.value} disabled={disabled} maxlength={4000} rows="3"
-          oninput={(event) => save({ id: question.id, value: event.currentTarget.value, label: event.currentTarget.value, wasCustom: true })}
-          class="w-full resize-y rounded-lg border bg-background p-3 text-sm focus-visible:outline-ring"></textarea>
-      </label>
+      {#key question.id}
+      <WorkbenchTextField value={current.value} target={voiceTarget} {disabled} maxLength={4000}
+        label={tr('Your answer')} voiceLabel="Speak answer" editorClass="p-3"
+        data-question-answer={question.id} onChange={saveCustom} />
+      {/key}
     {/if}
     <div class="flex items-center gap-3">
       <button type="button" onclick={() => void navigate(step - 1)} disabled={step === 0} class="rounded-md border px-3 py-2 text-xs disabled:opacity-40">{tr('Previous question')}</button>
@@ -77,10 +105,13 @@
     <div class="grid gap-2">
       {#each data.questions as item, index (item.id)}
         {@const answer = answers.find((answer) => answer.id === item.id)}
-        <button type="button" onclick={() => void navigate(index)} class="grid gap-1 rounded-lg border bg-background p-3 text-left">
-          <span class="text-xs text-muted-foreground">{item.prompt}</span>
-          <span class={`text-sm ${answer?.value.trim() ? '' : 'text-amber-600'}`}>{answer?.value.trim() ? answer.label : tr('Unanswered')}</span>
-        </button>
+        <div class="overflow-hidden rounded-lg border bg-background">
+          <button type="button" onclick={() => void navigate(index)} class="grid w-full gap-1 p-3 text-left">
+            <span class="text-xs text-muted-foreground">{item.prompt}</span>
+            <span class={`text-sm ${answer?.value.trim() ? '' : 'text-amber-600'}`}>{answer?.value.trim() ? fieldAttachmentText(answer.label, $toolsState.attachments).text || tr('Attachments') : tr('Unanswered')}</span>
+          </button>
+          {#if answer?.wasCustom}<FieldAttachments value={answer.value} {disabled} onChange={(value) => save({ ...answer, value, label: value })} />{/if}
+        </div>
       {/each}
     </div>
     <p class="m-0 text-xs leading-5 text-muted-foreground">{answeredCount === data.questions.length ? tr('All answers are ready. Submit when you have finished reviewing.') : tr('Answer every question before submitting. Notes are optional.')}</p>

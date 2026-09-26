@@ -10,6 +10,8 @@ pub mod agent_operation_trace;
 mod application_commands;
 mod feedback;
 mod process;
+mod project_directories;
+pub use project_directories::*;
 mod sessions;
 mod terminal_operations;
 mod workbenches;

@@ -32,26 +32,64 @@ async fn workbench_discovery_and_typed_requests_share_mcp_and_managed_command_co
         .error_for_status()?
         .json()
         .await?;
-    assert_eq!(generic["workbenches"][1]["type"], "questions");
+    assert_eq!(
+        generic["workbenches"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|entry| entry["type"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        ["ramble", "questions", "document_review"]
+    );
+    let legacy_description = fixture
+        .command(
+            &endpoint,
+            "describe_workbench",
+            json!({"type":"single_choice"}),
+        )
+        .send()
+        .await?;
+    assert_eq!(
+        legacy_description.status(),
+        reqwest::StatusCode::BAD_REQUEST
+    );
     for kind in ["ramble", "questions", "single_choice", "document_review"] {
-        let description: Value = fixture
-            .command(&endpoint, "describe_workbench", json!({"type":kind}))
-            .send()
-            .await?
-            .error_for_status()?
-            .json()
-            .await?;
-        let mcp_description = fixture
-            .call(
-                &endpoint,
-                &session,
-                "describe_workbench",
-                json!({"type":kind}),
-            )
-            .await?;
-        assert_eq!(description, mcp_description["structuredContent"]);
+        let mut workbench = if kind == "single_choice" {
+            // Already integrated clients keep their original request/result contract.
+            json!({"type":"single_choice","version":1,"data":{
+                "prompt":"Which layout should we use?","options":[
+                    {"id":"compact","label":"Compact layout"},
+                    {"id":"spacious","label":"Spacious layout"}
+                ]
+            }})
+        } else {
+            let description: Value = fixture
+                .command(&endpoint, "describe_workbench", json!({"type":kind}))
+                .send()
+                .await?
+                .error_for_status()?
+                .json()
+                .await?;
+            let mcp_description = fixture
+                .call(
+                    &endpoint,
+                    &session,
+                    "describe_workbench",
+                    json!({"type":kind}),
+                )
+                .await?;
+            assert_eq!(description, mcp_description["structuredContent"]);
+            description["example"].clone()
+        };
+        if kind == "questions" {
+            // Extend the single-choice discovery example to cover long custom answers too.
+            workbench["data"]["questions"].as_array_mut().unwrap().push(json!({
+                "id":"scope","prompt":"What should we build first?","allowOther":true,
+                "options":[{"value":"feedback","label":"Feedback"},{"value":"review","label":"Review"}]
+            }));
+        }
         let request_id = uuid::Uuid::now_v7().to_string();
-        let input = json!({"request_id":request_id,"what_happened":"Review this example", "workbench":description["example"]});
+        let input = json!({"request_id":request_id,"what_happened":"Review this example", "workbench":workbench});
         let request = fixture
             .call(&endpoint, &session, "request_feedback", input.clone())
             .await?;

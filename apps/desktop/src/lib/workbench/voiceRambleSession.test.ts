@@ -46,7 +46,7 @@ function harness(overrides: Partial<VoiceRambleContext> = {}) {
     getVadSilenceMs: () => 500,
     getHotwords: () => ['ramble'],
     getNotificationVolume: () => 0,
-    resolveTarget: () => ({ requestId: 'request-1', requestTitle: 'Task', action: null }),
+    resolveTarget: () => ({ requestId: 'request-1', requestTitle: 'Task', destination: { kind: 'document', action: null } }),
     resetTargets: vi.fn(),
     onStable: vi.fn(),
     onRecording: vi.fn(),
@@ -81,14 +81,14 @@ function deferred() {
 }
 
 function lifecycleHarness() {
-  let target: SpeechTarget = { requestId: 'request-1', requestTitle: 'First', action: null }
+  let target: SpeechTarget = { requestId: 'request-1', requestTitle: 'First', destination: { kind: 'document', action: null } }
   const tracker = createSpeechTargetTracker(() => target)
   const committed: { requestId: string; text: string }[] = []
   let writeBarrier: Promise<void> = Promise.resolve()
   const queue = createSpeechDraftQueue({
-    write: async (requestId, operation) => {
+    writeSpeech: async (input) => {
       await writeBarrier
-      if (operation.kind === 'appendSpeech') committed.push({ requestId, text: operation.text })
+      committed.push({ requestId: input.requestId, text: input.text })
     },
   })
   const sessions: {
@@ -134,6 +134,64 @@ function lifecycleHarness() {
 }
 
 describe('voice ramble session', () => {
+  it.each(['streaming', 'vad'] as const)('keeps %s partials paired with their pinned target across late stable results', async (mode) => {
+    const first: SpeechTarget = { requestId: 'request-1', requestTitle: 'Review', destination: {
+      kind: 'review_annotation', annotationId: 'first', field: 'body', sourceVersion: 'v1', paragraphLabel: 'Opening',
+    } }
+    const second: SpeechTarget = { ...first, destination: { ...first.destination, annotationId: 'second' } } as SpeechTarget
+    let next = first
+    const tracker = createSpeechTargetTracker(() => next)
+    const { voice, context, emit } = harness({ resolveTarget: (value) => tracker.observe(value) ?? next, resetTargets: () => tracker.reset() })
+    await voice.start('request-1')
+    if (mode === 'vad') emit(event({ type: 'speech-started', segmentIndex: 0 }))
+    emit(event({ type: 'partial', text: 'First comment in progress' }))
+    next = second
+    expect(get(voice).partial).toBe('First comment in progress')
+    expect(tracker.activeTarget()).toEqual(first)
+    emit(event({ type: 'processing', segmentIndex: 0 }))
+    expect(get(voice).partial).toBe('')
+    expect(tracker.activeTarget()).toBeNull()
+    if (mode === 'vad') emit(event({ type: 'speech-started', segmentIndex: 1 }))
+    emit(event({ type: 'partial', text: 'Second comment in progress' }))
+    emit(event({ type: 'stable', segmentIndex: 0, text: 'First comment complete' }))
+    expect(get(voice).partial).toBe('Second comment in progress')
+    expect(tracker.activeTarget()).toEqual(second)
+    expect(context.onStable).toHaveBeenCalledWith('asr-voice-1-0', 'First comment complete', first)
+    emit(event({ type: 'stable', segmentIndex: 0, text: 'Repeated earlier result' }))
+    expect(get(voice).partial).toBe('Second comment in progress')
+    expect(tracker.activeTarget()).toEqual(second)
+    expect(context.onStable).toHaveBeenCalledTimes(1)
+    emit(event({ type: 'stable', segmentIndex: 1, text: 'Second comment complete' }))
+    expect(get(voice).partial).toBe('')
+    expect(tracker.activeTarget()).toBeNull()
+    expect(context.onStable).toHaveBeenCalledWith('asr-voice-1-1', 'Second comment complete', second)
+  })
+
+  it('clears the previous partial at a new VAD onset and ignores an earlier result for that subtitle', async () => {
+    const { voice, emit } = harness()
+    await voice.start('request-1')
+    emit(event({ type: 'speech-started', segmentIndex: 0 }))
+    emit(event({ type: 'partial', text: 'Earlier words' }))
+    emit(event({ type: 'speech-started', segmentIndex: 1 }))
+    expect(get(voice).partial).toBe('')
+    emit(event({ type: 'partial', text: 'Current words' }))
+    emit(event({ type: 'stable', segmentIndex: 0, text: 'Earlier complete' }))
+    expect(get(voice).partial).toBe('Current words')
+    emit(event({ type: 'stable', segmentIndex: 1, text: 'Current complete' }))
+    expect(get(voice).partial).toBe('')
+  })
+
+  it('does not regress the processing state when an earlier segment completes out of order', async () => {
+    const { voice, emit } = harness()
+    await voice.start('request-1')
+    emit(event({ type: 'processing', segmentIndex: 0 }))
+    emit(event({ type: 'processing', segmentIndex: 1 }))
+    emit(event({ type: 'stable', segmentIndex: 0, text: 'Earlier complete' }))
+    expect(get(voice)).toMatchObject({ phase: 'processing', chunkIndex: 2 })
+    emit(event({ type: 'stable', segmentIndex: 1, text: 'Current complete' }))
+    expect(get(voice)).toMatchObject({ phase: 'listening', chunkIndex: 2 })
+  })
+
   it('keeps a reset-and-restarted microphone when old cancellation finishes', async () => {
     const { voice, sessions } = lifecycleHarness()
     const first = voice.start('request-1')
@@ -156,7 +214,7 @@ describe('voice ramble session', () => {
     await starting
     const session = sessions[0]
     session.listener.onEvent({ type: 'speech-started', sessionId: session.id, segmentIndex: 0 })
-    target({ requestId: 'request-2', requestTitle: 'Second', action: null })
+    target({ requestId: 'request-2', requestTitle: 'Second', destination: { kind: 'document', action: null } })
     const releaseWrite = blockWrites()
     let finished = false
     const stopping = voice.stop().then((result) => { finished = true; return result })
@@ -331,7 +389,7 @@ describe('voice ramble session', () => {
     expect(context.onStable).toHaveBeenCalledWith('asr-voice-1-0', 'Hello world', {
       requestId: 'request-1',
       requestTitle: 'Task',
-      action: null,
+      destination: { kind: 'document', action: null },
     })
     expect(get(voice).partial).toBe('')
     expect(get(voice).message).toContain('Listening…')

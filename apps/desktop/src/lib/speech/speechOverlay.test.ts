@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { selectedSpeechGroup, speechOverlayVisible, speechReviewCommand, type SpeechOverlayState } from './speechOverlay'
 import type { SpeechDraftGroup } from './speechDraftQueue'
 
-const group = (id: string): SpeechDraftGroup => ({ ids: [id], requestId: id, requestTitle: id, action: null, text: `speech for ${id}`, busy: false, error: '' })
+const group = (id: string): SpeechDraftGroup => ({ ids: [id], requestId: id, requestTitle: id, destination: { kind: 'document', action: null }, text: `speech for ${id}`, busy: false, error: '' })
 function state(): SpeechOverlayState {
   return { enabled: true, opacity: 97, selectedGroupId: 'B', shortcuts: { speechAccept: 'Ctrl+Shift+Enter', speechDiscard: 'Ctrl+Shift+Backspace' }, phase: 'idle', level: 0, partial: '', error: '', target: null, groups: [group('A'), group('B')], receipt: null }
 }

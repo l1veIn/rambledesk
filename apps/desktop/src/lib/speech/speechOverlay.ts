@@ -17,6 +17,8 @@ export type SpeechOverlayState = {
   partial: string
   error: string
   target: SpeechTarget | null
+  /** Selection for the next segment; target remains pinned to the current one. */
+  nextTarget?: SpeechTarget | null
   groups: SpeechDraftGroup[]
   receipt: SpeechReceipt | null
   edit?: { ids: string[]; text: string } | null

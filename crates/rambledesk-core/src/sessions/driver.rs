@@ -106,6 +106,11 @@ pub trait AgentSessionDriver: Send + Sync {
 
 #[async_trait]
 pub trait AgentSessionConnection: Send + Sync {
+    /// Public runtime instructions actually attached by this connection's driver.
+    /// These are inspectable context, not a persisted conversation message.
+    fn builtin_instructions(&self) -> Option<String> {
+        None
+    }
     fn configuration(&self) -> super::SessionConfiguration {
         super::SessionConfiguration::default()
     }

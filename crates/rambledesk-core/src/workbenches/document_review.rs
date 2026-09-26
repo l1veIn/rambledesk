@@ -42,20 +42,13 @@ pub enum ReviewAnnotationKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 #[serde(rename_all = "snake_case")]
-pub enum ReviewAnnotationStatus {
-    Open,
-    Resolved,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
-#[serde(rename_all = "snake_case")]
 pub enum ParagraphDecision {
     Keep,
     Revise,
     Remove,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema, TS)]
 #[serde(deny_unknown_fields)]
 pub struct ReviewAnnotation {
     #[schemars(regex(pattern = "^[a-z0-9][a-z0-9_-]{0,63}$"))]
@@ -72,7 +65,38 @@ pub struct ReviewAnnotation {
     /// Required for suggestions, null for comments; empty means proposed deletion.
     #[schemars(length(max = 8000))]
     pub replacement: Option<String>,
-    pub status: ReviewAnnotationStatus,
+}
+
+impl<'de> Deserialize<'de> for ReviewAnnotation {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        // Accept the retired field only while decoding older data. The live
+        // model and new results have no status; all other unknown fields fail.
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct WireAnnotation {
+            id: String,
+            paragraph_id: String,
+            start: Option<u32>,
+            end: Option<u32>,
+            quote: Option<String>,
+            kind: ReviewAnnotationKind,
+            body: String,
+            replacement: Option<String>,
+            #[serde(default, rename = "status")]
+            _legacy_status: Option<serde::de::IgnoredAny>,
+        }
+        let wire = WireAnnotation::deserialize(deserializer)?;
+        Ok(Self {
+            id: wire.id,
+            paragraph_id: wire.paragraph_id,
+            start: wire.start,
+            end: wire.end,
+            quote: wire.quote,
+            kind: wire.kind,
+            body: wire.body,
+            replacement: wire.replacement,
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
@@ -150,90 +174,4 @@ pub(super) fn review_annotations_valid(
                 .iter()
                 .any(|paragraph| paragraph.id == mark.paragraph_id)
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn fixture() -> (WorkbenchSpec, FeedbackDraft) {
-        let spec = WorkbenchSpec {
-            kind: "document_review".into(),
-            version: 1,
-            data: WorkbenchData::DocumentReview(DocumentReviewData {
-                title: "Speech".into(),
-                source_version: "draft-1".into(),
-                paragraphs: vec![ReviewParagraph {
-                    id: "opening".into(),
-                    label: None,
-                    text: "你好😀 world".into(),
-                }],
-            }),
-        };
-        let draft = FeedbackDraft {
-            workbench_state: Some(WorkbenchState::DocumentReview {
-                verdict: Some(ReviewVerdict::ChangesRequested),
-                annotations: vec![ReviewAnnotation {
-                    id: "note-1".into(),
-                    paragraph_id: "opening".into(),
-                    start: Some(2),
-                    end: Some(3),
-                    quote: Some("😀".into()),
-                    kind: ReviewAnnotationKind::Suggestion,
-                    body: "Remove emoji".into(),
-                    replacement: Some(String::new()),
-                    status: ReviewAnnotationStatus::Open,
-                }],
-                paragraph_marks: vec![],
-            }),
-        };
-        (spec, draft)
-    }
-
-    #[test]
-    fn domain_review_preserves_source_anchor_and_allows_proposed_deletion() {
-        let (spec, draft) = fixture();
-        let package = prepare_feedback_submission(Some(&spec), Some(&draft), "")
-            .unwrap()
-            .unwrap();
-        let Some(WorkbenchResult::DocumentReview(result)) = package.result else {
-            panic!("expected review")
-        };
-        assert_eq!(result.source_version, "draft-1");
-        assert_eq!(result.annotations[0].quote.as_deref(), Some("😀"));
-        assert_eq!(result.annotations[0].replacement.as_deref(), Some(""));
-        assert!(
-            workbench_package(&spec, Some(&draft), false)
-                .result
-                .is_none()
-        );
-    }
-
-    #[test]
-    fn domain_review_rejects_forged_anchor_and_notes_cannot_replace_verdict() {
-        let (spec, mut draft) = fixture();
-        let Some(WorkbenchState::DocumentReview { verdict, .. }) = &mut draft.workbench_state
-        else {
-            unreachable!()
-        };
-        *verdict = None;
-        assert!(matches!(
-            prepare_feedback_submission(Some(&spec), Some(&draft), "Go ahead"),
-            Err(WorkbenchSubmissionError::Incomplete)
-        ));
-        let Some(WorkbenchState::DocumentReview {
-            verdict,
-            annotations,
-            ..
-        }) = &mut draft.workbench_state
-        else {
-            unreachable!()
-        };
-        *verdict = Some(ReviewVerdict::Ready);
-        annotations[0].end = Some(4);
-        assert!(matches!(
-            prepare_feedback_submission(Some(&spec), Some(&draft), "Go ahead"),
-            Err(WorkbenchSubmissionError::Incomplete)
-        ));
-    }
 }

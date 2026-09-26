@@ -23,6 +23,7 @@ export type SubmissionControllerContext = {
   canCancel: () => boolean
   canApprove?: () => boolean
   prepareFeedback: (requestId: string) => Promise<FeedbackPreparation>
+  isInputBusy?: () => boolean
   saveDraftNow: () => Promise<boolean>
   confirmApproval?: (message: string) => boolean
   refreshNavigation: () => Promise<void>
@@ -72,6 +73,10 @@ export function createSubmissionController(context: SubmissionControllerContext)
         }
         if (preparation.kind === 'pending-speech') {
           context.setPageError(context.tr('Review the pending speech in the capsule before ending this request.'))
+          return
+        }
+        if (context.isInputBusy?.()) {
+          context.setPageError(context.tr('Input is still being received. Finish the current input and try again.'))
           return
         }
       }

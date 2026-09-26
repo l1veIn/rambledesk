@@ -8,6 +8,7 @@ import type {
 } from './contracts'
 
 export const APPLICATION_CONFORMANCE_INPUTS = {
+  browseProjectDirectories: { path: '/project' },
   setManagedSessionConfig: { session_id: 'local-session-1', change: { config_id: 'session-mode', value: { type: 'select', value: 'ask' } } },
   sendManagedPromptContent: { session_id: 'local-session-1', text: 'Read this', content: [{ type: 'resource_link', uri: 'file:///project/main.ts', name: 'main.ts', mime_type: 'text/typescript' }] },
   listManagedSessionActivity: { session_id: 'local-session-1', before_sequence: 100, limit: 50 },
@@ -160,7 +161,7 @@ export function runApplicationTransportConformance(
   describe(`${implementationName} ApplicationTransport conformance`, () => {
     it('maps all query mutation multipart binary and void operations', async () => {
       const fixture = createFixture()
-      expect(APPLICATION_COMMAND_NAMES).toHaveLength(49)
+      expect(APPLICATION_COMMAND_NAMES).toHaveLength(50)
 
       for (const [index, name] of APPLICATION_COMMAND_NAMES.entries()) {
         const input = APPLICATION_CONFORMANCE_INPUTS[name]
@@ -188,6 +189,13 @@ export function runApplicationTransportConformance(
       )
       expect(terminal).toEqual(SAFE_TERMINAL_PROJECTION)
       assertNoServerStorageLocations(terminal)
+    })
+
+    it('preserves directory permission errors for inline recovery', async () => {
+      const fixture = createFixture()
+      const denied = { code: 'DIRECTORY_ACCESS_DENIED', message: 'This directory cannot be accessed.', retryable: false }
+      fixture.rejectNext(denied)
+      await expect(fixture.transport.call('browseProjectDirectories', { path: '/restricted' })).rejects.toEqual(denied)
     })
 
     it('provides readiness and a synchronous idempotent unsubscribe', async () => {

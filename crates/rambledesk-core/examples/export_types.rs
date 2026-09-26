@@ -89,6 +89,11 @@ fn exported_feedback_package_content() -> String {
 
 fn main() -> std::io::Result<()> {
     let declarations = [
+        exported::<rambledesk_core::BrowseProjectDirectoriesInput>(),
+        exported::<rambledesk_core::ProjectDirectoryEntry>(),
+        exported::<rambledesk_core::ProjectDirectoryListing>(),
+        exported::<rambledesk_core::ProjectDirectoryErrorCode>(),
+        exported::<rambledesk_core::ProjectDirectoryError>(),
         exported::<rambledesk_core::WorkbenchSpec>(),
         exported::<rambledesk_core::WorkbenchData>(),
         exported::<rambledesk_core::RambleData>(),
@@ -102,7 +107,6 @@ fn main() -> std::io::Result<()> {
         exported::<rambledesk_core::ReviewParagraph>(),
         exported::<rambledesk_core::ReviewAnnotation>(),
         exported::<rambledesk_core::ReviewAnnotationKind>(),
-        exported::<rambledesk_core::ReviewAnnotationStatus>(),
         exported::<rambledesk_core::ParagraphMark>(),
         exported::<rambledesk_core::ParagraphDecision>(),
         exported::<rambledesk_core::ReviewVerdict>(),

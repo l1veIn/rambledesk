@@ -88,12 +88,13 @@ export function createDraftSession() {
   }
 
   /** Applies an editor snapshot as the current draft without touching the saved one. */
-  function edit(next: FeedbackDraftSnapshot) {
+  function edit(next: FeedbackDraftSnapshot, options: { loadEditor?: boolean } = {}) {
     next = applyFeedbackDraftSnapshot(snapshot(), next)
     patch({
       body: next.bodyMarkdown,
       documentJson: next.documentJson,
       editorDocument: decodeFeedbackDraftDocument(next.documentJson),
+      ...(options.loadEditor ? { editorEpoch: get(store).editorEpoch + 1 } : {}),
       phase: next.documentJson === get(store).savedDocumentJson ? 'saved' : 'unsaved',
       message: '',
     })

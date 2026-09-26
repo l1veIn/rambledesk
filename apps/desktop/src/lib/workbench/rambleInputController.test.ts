@@ -10,6 +10,7 @@ import { previewFixtures } from '../preview/previewFixtures'
 import type { RambleConsoleCommand, RambleConsoleState } from '../rambleConsole'
 import RambleSessionController from './RambleSessionController.svelte'
 import { createRambleSession } from './rambleSession'
+import type { SpeechTarget } from '../speech/speechTargets'
 
 const request = previewFixtures.workspace.request
 const views: Array<ReturnType<typeof mount>> = []
@@ -29,7 +30,7 @@ function deferred<T>() {
   const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail })
   return { promise, resolve, reject }
 }
-function harness(extra: { waitForDocumentWrites?: () => Promise<void> } = {}) {
+function harness(extra: { waitForDocumentWrites?: () => Promise<void>; onInputText?: (target: SpeechTarget, text: string, id?: string) => Promise<void>; onWriteSpeech?: () => Promise<void> } = {}) {
   const capture = deferred<ClipboardCaptureResult>()
   const write = deferred<void>()
   const unavailable = createUnavailableWorkbenchCapabilities()
@@ -53,6 +54,30 @@ function harness(extra: { waitForDocumentWrites?: () => Promise<void> } = {}) {
 const text = { kind: 'text', text: 'Clipboard feedback', capturedAtMs: 1, truncated: false } as const
 
 describe('Ramble input preparation through the mounted controller', () => {
+  it('pins explicit clipboard text to its input before acquisition without marking it as speech', async () => {
+    const onInputText = vi.fn(async () => {}), onWriteSpeech = vi.fn(async () => {})
+    const h = harness({ onInputText, onWriteSpeech })
+    const target: SpeechTarget = { requestId: request.request_id, requestTitle: 'Questions', destination: { kind: 'question_answer', questionId: 'one', questionLabel: 'First' } }
+    const imported = h.view.importClipboardNow(target)
+    target.destination = { kind: 'document', action: null }
+    h.capture.resolve(text)
+    await imported
+    expect(onInputText).toHaveBeenCalledWith(expect.objectContaining({ destination: { kind: 'question_answer', questionId: 'one', questionLabel: 'First' } }), text.text, expect.any(String))
+    expect(onWriteSpeech).not.toHaveBeenCalled()
+    expect(h.onRouteDraftOperation).not.toHaveBeenCalled()
+  })
+
+  it('passes the pinned field to clipboard image persistence', async () => {
+    const h = harness()
+    const target: SpeechTarget = { requestId: request.request_id, requestTitle: 'Review', destination: { kind: 'review_annotation', annotationId: 'note-1', field: 'body', sourceVersion: 'v1', paragraphLabel: 'Opening' } }
+    const imported = h.view.importClipboardNow(target)
+    const candidate = { id: 'capture-1', source: 'clipboard-image' as const, fileName: 'capture.png', mediaType: 'image/png', byteLength: 4, readBytes: async () => new ArrayBuffer(4), dispose: vi.fn(async () => {}) }
+    target.destination = { kind: 'document', action: null }
+    h.capture.resolve({ kind: 'attachment', capturedAtMs: 1, candidate })
+    await imported
+    expect(h.onPersistAttachmentCandidates).toHaveBeenCalledWith(expect.objectContaining({ inputTarget: expect.objectContaining({ destination: expect.objectContaining({ kind: 'review_annotation', annotationId: 'note-1', field: 'body' }) }) }), [candidate])
+  })
+
   it('stops a microphone whose start was pending before preparation, then drains its final words', async () => {
     const ready = deferred<void>()
     const write = deferred<void>()
@@ -67,14 +92,15 @@ describe('Ramble input preparation through the mounted controller', () => {
       listener = next
       return { id: 'delayed-start', ready: ready.promise, stop, cancel: async () => {} }
     })
-    const onRouteDraftOperation = vi.fn(() => write.promise)
+    const onWriteSpeech = vi.fn(() => write.promise)
+    const onRouteDraftOperation = vi.fn(async () => {})
     const previousConfirmation = get(speechConfirmBeforeWrite)
     speechConfirmBeforeWrite.set(false)
     const view = mount(RambleSessionController, { target: document.body, props: {
       capabilities: { ...unavailable, speech: {
         status: { availability: 'available', source: 'browser' },
         implementation: { ...unavailable.speech.implementation, start },
-      } }, workspace: previewFixtures.workspace, session, onRouteDraftOperation,
+      } }, workspace: previewFixtures.workspace, session, onWriteSpeech, onRouteDraftOperation,
     } })
     views.push(view)
     try {
@@ -87,10 +113,14 @@ describe('Ramble input preparation through the mounted controller', () => {
       await starting
 
       await vi.waitFor(() => expect(stop).toHaveBeenCalledOnce())
+      await vi.waitFor(() => expect(onWriteSpeech).toHaveBeenCalledOnce())
       expect(prepared).toBe(false)
-      expect(onRouteDraftOperation).toHaveBeenCalledWith(request.request_id, expect.objectContaining({
-        kind: 'appendSpeech', text: 'The final observation',
+      expect(onWriteSpeech).toHaveBeenCalledWith(expect.objectContaining({
+        requestId: request.request_id,
+        id: expect.any(String), text: 'The final observation',
+        destination: { kind: 'document', action: null },
       }))
+      expect(onRouteDraftOperation).not.toHaveBeenCalled()
       write.resolve()
       await expect(preparation).resolves.toEqual({ kind: 'ready' })
       expect(get(session)).toMatchObject({ requestId: '', voicePhase: 'idle', voiceActive: false })

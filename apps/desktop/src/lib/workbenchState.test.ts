@@ -8,7 +8,8 @@ import { workbenchExamples, workbenchPreviewWorkspace } from '../dev/workbenchPr
 import type { QuestionsData, WorkbenchState } from './generated/feedback'
 import { resolveWorkbenchPolicy } from './workbenchPolicy'
 
-const state = { type: 'single_choice' as const, selected_option_id: 'compact' }
+const choice = (value: string) => ({ type: 'questions' as const, answers: [{ id: 'layout', value, label: value, wasCustom: false }] })
+const state = choice('compact')
 const snapshot = () => withWorkbenchState(snapshotFeedbackDraftMarkdown(''), state)
 
 describe('workbench submission rules', () => {
@@ -21,7 +22,7 @@ describe('workbench submission rules', () => {
     expect(canSubmitWorkbench(workbenchExamples[0], null, 'Feedback')).toBe(true)
     expect(canSubmitWorkbench(undefined, null, 'Legacy feedback')).toBe(true)
     expect(canSubmitWorkbench(workbenchExamples[2], state, '')).toBe(true)
-    expect(workbenchSubmissionIssue(workbenchExamples[2], { type: 'single_choice', selected_option_id: null }, '')).toBe('empty')
+    expect(workbenchSubmissionIssue(workbenchExamples[2], { type: 'questions', answers: [] }, '')).toBe('empty')
     expect(workbenchSubmissionIssue(workbenchExamples[2], null, 'Notes')).toBe('incomplete')
   })
 
@@ -59,10 +60,10 @@ describe('workbench answer persistence', () => {
     session.edit(snapshotFeedbackDraftMarkdown('Notes only'))
     const saving = session.snapshot()
     expect(readWorkbenchState(saving.documentJson)).toEqual(state)
-    session.edit(withWorkbenchState(saving, { type: 'single_choice', selected_option_id: 'spacious' }))
+    session.edit(withWorkbenchState(saving, choice('spacious')))
     session.acceptSaved(saving, 2)
     expect(get(session).dirty).toBe(true)
-    expect(readWorkbenchState(session.snapshot().documentJson)).toEqual({ type: 'single_choice', selected_option_id: 'spacious' })
+    expect(readWorkbenchState(session.snapshot().documentJson)).toEqual(choice('spacious'))
     session.adopt({ document_json: null, body_markdown: 'Another request', saved_revision: 0, updated_at: null })
     expect(readWorkbenchState(session.snapshot().documentJson)).toBeNull()
   })

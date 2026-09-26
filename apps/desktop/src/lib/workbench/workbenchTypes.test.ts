@@ -11,9 +11,16 @@ import { locale } from '../preferences'
 import SessionWorkbench from './SessionWorkbench.svelte'
 import type { WorkbenchSpec } from '../generated/feedback'
 import { snapshotFeedbackDraftMarkdown, updateFeedbackDraftState } from '../feedbackDraftDocument'
+import { writable } from 'svelte/store'
+import { VOICE_INPUT_CONTEXT, type VoiceInputContext, type VoiceInputState } from '../speech/voiceInputContext'
+import type { SpeechTarget } from '../speech/speechDraftQueue'
+import { replaceInputText } from '../../test/tiptap'
 
 let view: ReturnType<typeof mount> | undefined
 const snapshots: FeedbackDraftSnapshot[] = []
+const legacyChoice: WorkbenchSpec = { type: 'single_choice', version: 1, data: {
+  prompt: 'Choose a layout', options: [{ id: 'compact', label: 'Compact layout' }, { id: 'roomy', label: 'Roomy layout' }],
+} }
 beforeEach(() => {
   locale.set('en'); snapshots.length = 0
   vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} })
@@ -22,11 +29,11 @@ beforeEach(() => {
 })
 afterEach(async () => { if (view) await unmount(view); view = undefined; document.body.replaceChildren(); vi.unstubAllGlobals() })
 
-function open(index: number, readOnly = false, documentJson?: string, spec?: WorkbenchSpec, extra: Partial<ComponentProps<typeof SessionWorkbench>> = {}) {
+function open(index: number, readOnly = false, documentJson?: string, spec?: WorkbenchSpec, extra: Partial<ComponentProps<typeof SessionWorkbench>> = {}, voice?: VoiceInputContext) {
   const workspace = workbenchPreviewWorkspace(index)
   if (spec) workspace.workbench = spec
   workspace.draft.document_json = documentJson ?? null
-  view = mount(SessionWorkbench, { target: document.body, props: {
+  view = mount(SessionWorkbench, { target: document.body, context: voice ? new Map([[VOICE_INPUT_CONTEXT, voice]]) : undefined, props: {
     workspace, readOnly, draftDocumentJson: documentJson,
     transport: new TestApplicationTransport(undefined, { initiallyReady: true }),
     capabilities: createUnavailableWorkbenchCapabilities(), resolveHostProfile: previewHostProfile,
@@ -39,26 +46,41 @@ const button = (text: string) => Array.from(document.querySelectorAll('button'))
 const latest = () => readWorkbenchState(snapshots.at(-1)?.documentJson)
 
 describe('workbench interaction state is independent of feedback notes', () => {
+  it('selects the shared document voice destination on editor focus without starting the microphone', async () => {
+    const workspace = workbenchPreviewWorkspace(0)
+    const target: SpeechTarget = { requestId: workspace.request.request_id, requestTitle: workspace.request.title,
+      destination: { kind: 'document', action: { actionId: 'opening', actionIndex: 0, title: 'Opening' } } }
+    const state = writable<VoiceInputState>({ requestId: target.requestId, documentTarget: target, nextTarget: null, recording: false, disabled: false })
+    const voice = { state, start: vi.fn(), stop: vi.fn(), selectTarget: vi.fn() }
+    open(0, false, undefined, undefined, { workspace }, voice)
+    await vi.waitFor(() => expect(document.querySelector('.feedback-prose[contenteditable="true"]')).not.toBeNull())
+    document.querySelector('.feedback-prose[contenteditable="true"]')!.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+    expect(voice.selectTarget).toHaveBeenLastCalledWith(target)
+    expect(voice.start).not.toHaveBeenCalled()
+    document.querySelector<HTMLButtonElement>('button[aria-label="Speak feedback"]')!.click()
+    expect(voice.start).toHaveBeenCalledWith(target)
+  })
+
   it('selects, saves and restores without inserting anything into the editor', async () => {
-    open(2)
+    open(2, false, undefined, legacyChoice)
     await vi.waitFor(() => expect(document.querySelectorAll('.feedback-prose[contenteditable="true"]')).toHaveLength(1))
-    document.querySelector<HTMLInputElement>('input[value="compact"]')!.click()
+    button('Compact layout').click()
     await vi.waitFor(() => expect(latest()).toEqual({ type: 'single_choice', selected_option_id: 'compact' }))
     expect(snapshots.at(-1)!.bodyMarkdown).toBe('')
     expect(JSON.stringify(decodeFeedbackDraftDocument(snapshots.at(-1)!.documentJson))).not.toContain('compact')
-    expect(canSubmitWorkbench(workbenchPreviewWorkspace(2).workbench, latest(), '')).toBe(true)
+    expect(canSubmitWorkbench(legacyChoice, latest(), '')).toBe(true)
     const saved = snapshots.at(-1)!.documentJson
     await unmount(view!); view = undefined; document.body.replaceChildren()
-    open(2, false, saved)
-    await vi.waitFor(() => expect(document.querySelector<HTMLInputElement>('input[value="compact"]')!.checked).toBe(true))
-    button('Clear selection').click()
+    open(2, false, saved, legacyChoice)
+    await vi.waitFor(() => expect(button('Compact layout').getAttribute('aria-pressed')).toBe('true'))
+    button('Clear answer').click()
     await vi.waitFor(() => expect(latest()).toEqual({ type: 'single_choice', selected_option_id: null }))
   })
 
   it('keeps answers when notes change and when editor undo removes the notes', async () => {
-    open(2)
+    open(2, false, undefined, legacyChoice)
     await vi.waitFor(() => expect(document.querySelector('.feedback-prose[contenteditable="true"]')).not.toBeNull())
-    document.querySelector<HTMLInputElement>('input[value="compact"]')!.click()
+    button('Compact layout').click()
     await vi.waitFor(() => expect(latest()?.type).toBe('single_choice'))
     view!.applyDraftOperation({ kind: 'appendClipboardText', text: 'Optional explanation', label: 'Clipboard', action: null })
     await vi.waitFor(() => expect(snapshots.at(-1)?.bodyMarkdown).toContain('Optional explanation'))
@@ -77,10 +99,8 @@ describe('workbench interaction state is independent of feedback notes', () => {
     button('快速反馈').click()
     await vi.waitFor(() => expect(button('Other — write your answer')).toBeDefined())
     button('Other — write your answer').click()
-    await vi.waitFor(() => expect(document.querySelector('textarea')).not.toBeNull())
-    const input = document.querySelector('textarea')!
-    input.value = '希望手机上也能使用'
-    input.dispatchEvent(new Event('input', { bubbles: true }))
+    await vi.waitFor(() => expect(document.querySelector('[data-question-answer]')).not.toBeNull())
+    replaceInputText(document.querySelector('[data-question-answer]'), '希望手机上也能使用')
     await vi.waitFor(() => expect(latest()).toMatchObject({ answers: expect.arrayContaining([expect.objectContaining({ id: 'concern', wasCustom: true, value: '希望手机上也能使用' })]) }))
     button('Review answers').click()
     await vi.waitFor(() => expect(document.body.textContent).toContain('All answers are ready'))
@@ -94,9 +114,9 @@ describe('workbench interaction state is independent of feedback notes', () => {
   })
 
   it('locks answer controls for closed requests', async () => {
-    open(2, true)
-    await vi.waitFor(() => expect(document.querySelector('fieldset')?.disabled).toBe(true))
-    document.querySelector<HTMLInputElement>('input[value="compact"]')!.click()
+    open(2, true, undefined, legacyChoice)
+    await vi.waitFor(() => expect(button('Compact layout').disabled).toBe(true))
+    button('Compact layout').click()
     expect(snapshots).toHaveLength(0)
   })
 
@@ -110,9 +130,9 @@ describe('workbench interaction state is independent of feedback notes', () => {
   })
 
   it.each([
-    { ...workbenchPreviewWorkspace(2).workbench!, type: 'future_workbench' },
-    { ...workbenchPreviewWorkspace(2).workbench!, version: 99 },
-    { ...workbenchPreviewWorkspace(2).workbench!, data: { ...workbenchPreviewWorkspace(2).workbench!.data, future: true } },
+    { ...legacyChoice, type: 'future_workbench' },
+    { ...legacyChoice, version: 99 },
+    { ...legacyChoice, data: { ...legacyChoice.data, future: true } },
   ])('preserves unknown workbenches as read-only instead of offering an unusable feedback fallback', async (spec) => {
     const saved = updateFeedbackDraftState(snapshotFeedbackDraftMarkdown('Saved notes must remain visible'), { type: 'future_workbench', value: 'opaque' })
     open(2, false, saved.documentJson, spec)

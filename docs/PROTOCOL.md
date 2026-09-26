@@ -68,11 +68,14 @@ Local Integration Server 的 `/mcp` 提供 Generic MCP tools，`/api/feedback/*`
 | 类型 | 人类输入与完成条件 | 结构化提交结果 |
 | --- | --- | --- |
 | `ramble` v1 | `data.actions` 给出体验动作；反馈正文提供人类输入。 | `kind: "free_feedback"`；实际正文与附件在包的公共位置。 |
-| `questions` v1 | 逐题选择稳定 `value`，允许时可自定义；每题都需回答。 | `answers: [{id,value,label,wasCustom,index?}], cancelled: false`。 |
-| `single_choice` v1 | 选择一个稳定 option id；补充正文不能替代选择。 | `status: "answered", selected_option_id`。 |
+| `questions` v1 | 一个或多个问题，逐题选择稳定 `value`，允许时可键入或口述自定义回答；每题都需回答。单题且 `allowOther:false` 覆盖严格单选。 | `answers: [{id,value,label,wasCustom,index?}], cancelled: false`。 |
 | `document_review` v1 | 审阅不可变原稿，可作段落标记、批注与改写建议；必须显式给出整稿判断。 | `source_version, verdict, annotations, paragraph_marks`；详见[文稿审阅合同](workbench/document-review.md)。 |
 
-既有三种类型的 wire 形状保持兼容：问答的 `cancelled` 在成功结果中仍为 `false`，真实取消的 `workbench.result` 为 `null`；单选结果 schema 中保留 `unanswered` 与可空选项，但未回答状态不满足成功提交条件。它们不是新增的请求状态，不应据此推断请求是否取消或完成。
+发现目录只提供上述三种类型。新方案选择请求使用 `questions`，不再创建独立 `single_choice` 工作台。`describe_workbench(single_choice)` 提示改用单题问答。
+
+旧 `single_choice` v1 合同保留兼容：已知旧客户端仍可原样创建/重试，已有请求、草稿和结果保持 `selected_option_id` 及 `status`，不静默重写为 `answers[]`，以免改变请求幂等比较或结果含义。客户端使用同一个问答视图承载旧单选，兼容层转换展示和交互状态，不迁移持久输入。未回答状态仍不能成功提交。
+
+问答的 `cancelled` 在成功结果中仍为 `false`，真实取消的 `workbench.result` 为 `null`。旧单选结果的 `unanswered` 不是新增请求状态，不应据此推断请求是否取消或完成。
 
 未知类型/版本的已有请求在不支持该合同的客户端 MUST 只读保留材料、正文和交互数据，不覆盖保存、不提交、不通过直接批准绕过合同。该只读状态不改变请求生命周期；显式取消仍按通用请求操作处理。
 

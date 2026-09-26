@@ -20,7 +20,7 @@ function harness() {
     tr: (source) => source, messageFrom: String,
     getInputDevice: () => '', getModelId: () => '', getHotwords: () => [],
     getVadThreshold: () => 0.5, getVadSilenceMs: () => 500, getNotificationVolume: () => 0,
-    resolveTarget: () => ({ requestId: get(session).requestId, requestTitle: get(session).requestTitle, action: null }),
+    resolveTarget: () => ({ requestId: get(session).requestId, requestTitle: get(session).requestTitle, destination: { kind: 'document', action: null } }),
     resetTargets: () => {}, onStable: () => {}, onRecording: () => {},
     onMicrophoneStopped: () => {}, onMicrophoneError: () => {}, waitForDrafts: async () => {},
   })

@@ -73,6 +73,15 @@ export function createVoiceRambleSession(
 ) {
   let speechSession: SpeechRecognitionSession | null = null
   let generation = 0
+  let liveSegmentIndex: number | null = null
+  const processingSegments = new Set<number>()
+  const completedSegments = new Set<number>()
+
+  function resetTranscriptTracking() {
+    liveSegmentIndex = null
+    processingSegments.clear()
+    completedSegments.clear()
+  }
 
   function patch(next: Partial<VoiceRambleState>) {
     store.update((current) => ({ ...current, ...next }))
@@ -93,6 +102,7 @@ export function createVoiceRambleSession(
   function reset() {
     generation += 1
     speechSession = null
+    resetTranscriptTracking()
     store.set(initial)
     context.resetTargets()
   }
@@ -100,6 +110,7 @@ export function createVoiceRambleSession(
   async function start(requestId: string): Promise<boolean> {
     if (!requestId || active() || speechSession) return false
     const startedGeneration = ++generation
+    resetTranscriptTracking()
     patch({
       phase: 'starting',
       requestId,
@@ -221,6 +232,7 @@ export function createVoiceRambleSession(
   function handleEvent(event: SpeechRecognitionEvent) {
     const current = get(store)
     if (!current.requestId || !eventBelongsToSpeechSession(event, current.sessionId)) return
+    if (event.type === 'stable' && completedSegments.has(event.segmentIndex)) return
     const target = context.resolveTarget(event)
     switch (event.type) {
       case 'started':
@@ -242,27 +254,43 @@ export function createVoiceRambleSession(
         patch({ level: Math.min(1, Math.max(0, event.rms * 8)) })
         context.onRecording()
         break
-      case 'speech-started':
-        if (phase() !== 'stopping') patch({ phase: 'listening' })
+      case 'speech-started': {
+        const changed = liveSegmentIndex !== event.segmentIndex
+        liveSegmentIndex = event.segmentIndex
+        patch({ ...(changed ? { partial: '' } : {}), phase: phase() !== 'stopping' ? 'listening' : phase() })
         break
-      case 'processing':
+      }
+      case 'processing': {
+        processingSegments.add(event.segmentIndex)
+        const finishesLiveSegment = liveSegmentIndex === null || liveSegmentIndex === event.segmentIndex
+        if (finishesLiveSegment) liveSegmentIndex = null
         patch({
-          chunkIndex: event.segmentIndex + 1,
-          phase: phase() !== 'stopping' ? 'processing' : phase(),
+          // Streaming partial events have no index. Processing is their boundary;
+          // do not leave their text beside the next segment's destination label.
+          ...(finishesLiveSegment ? { partial: '' } : {}),
+          chunkIndex: Math.max(current.chunkIndex, event.segmentIndex + 1),
+          phase: phase() !== 'stopping' && finishesLiveSegment ? 'processing' : phase(),
           message: context.tr('Transcribing segment {count}…', { count: event.segmentIndex + 1 }),
         })
         context.onRecording()
         break
+      }
       case 'stable': {
+        completedSegments.add(event.segmentIndex)
+        const wasProcessing = processingSegments.delete(event.segmentIndex)
+        // An earlier result can arrive while a new index-less streaming partial
+        // is already visible. Only the live segment may consume that subtitle.
+        const finishesLiveSegment = liveSegmentIndex === event.segmentIndex || (liveSegmentIndex === null && !wasProcessing)
+        if (finishesLiveSegment) liveSegmentIndex = null
         const transcript = stableTranscript(event)
         if (transcript) {
           context.onStable(stableSpeechSegmentId(event), transcript, target)
         }
         patch({
-          partial: '',
-          chunkIndex: event.segmentIndex + 1,
-          phase: phase() !== 'stopping' ? 'listening' : phase(),
-          message: context.tr('Listening…'),
+          ...(finishesLiveSegment ? { partial: '' } : {}),
+          chunkIndex: Math.max(current.chunkIndex, event.segmentIndex + 1),
+          phase: phase() !== 'stopping' && (finishesLiveSegment || processingSegments.size === 0) ? 'listening' : phase(),
+          ...(processingSegments.size === 0 ? { message: context.tr('Listening…') } : {}),
         })
         context.onRecording()
         break
@@ -271,6 +299,7 @@ export function createVoiceRambleSession(
         patch({ message: event.message })
         break
       case 'stopped': {
+        resetTranscriptTracking()
         const unexpected = event.reason === 'unexpected' || phase() === 'error'
         patch({
           phase: unexpected ? 'error' : 'idle',
@@ -290,6 +319,7 @@ export function createVoiceRambleSession(
         break
       }
       case 'error':
+        resetTranscriptTracking()
         patch({
           phase: 'error',
           level: 0,

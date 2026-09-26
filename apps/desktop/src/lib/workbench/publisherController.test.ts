@@ -122,13 +122,37 @@ function harness(options: Partial<PublisherContext> = {}) {
 }
 
 describe('publisherController', () => {
+  it('does not freeze or publish when new input arrives after preparation resolves', async () => {
+    const ready = deferred<{ kind: 'ready' }>()
+    let busy = false
+    const prepareFeedback = vi.fn(() => ready.promise)
+    const h = harness({ prepareFeedback, isInputBusy: () => busy })
+    h.edit('Keep this unsaved feedback')
+    const stage = vi.spyOn(h.session, 'setSubmissionStage')
+    const publishing = h.publisher.submitFeedback()
+    await vi.waitFor(() => expect(prepareFeedback).toHaveBeenCalledOnce())
+
+    ready.resolve({ kind: 'ready' })
+    busy = true
+    await publishing
+    expect(stage).not.toHaveBeenCalled()
+    expect(h.saveDraftNow).not.toHaveBeenCalled()
+    expect(h.transport.callsFor('submitFeedback')).toHaveLength(0)
+    expect(get(h.draft)).toMatchObject({ body: 'Keep this unsaved feedback', dirty: true })
+    expect(h.setPageError).toHaveBeenLastCalledWith('Input is still being received. Finish the current input and try again.')
+
+    busy = false
+    await h.publisher.submitFeedback()
+    expect(h.transport.callsFor('submitFeedback')).toHaveLength(1)
+  })
+
   it('publishes a saved choice with empty notes and bypasses Cooking for the empty body', async () => {
     const h = harness({ getCookingEnabled: () => true })
     const workspace = workspaceView('choice-request', '')
     workspace.workbench = workbenchExamples[2]
     h.session.open(workspace)
     h.draft.adopt(workspace.draft)
-    h.drafts.updateDraft(withWorkbenchState(h.draft.snapshot(), { type: 'single_choice', selected_option_id: 'compact' }))
+    h.drafts.updateDraft(withWorkbenchState(h.draft.snapshot(), { type: 'questions', answers: [{ id: 'layout', value: 'compact', label: 'Compact', wasCustom: false }] }))
     await h.publisher.submitFeedback()
     expect(h.transport.callsFor('saveFeedbackDraft')).toHaveLength(1)
     expect(h.transport.callsFor('saveFeedbackDraft')[0].input.body_markdown).toBe('')

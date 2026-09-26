@@ -16,26 +16,21 @@
   import { Button } from '$lib/components/ui/button'
   import type { AttachmentView, FeedbackWorkspaceView } from '$lib/feedback'
   import type { JSONContent } from '@tiptap/core'
-  import type { Snippet } from 'svelte'
+  import { tick, type Snippet } from 'svelte'
 
   import AttachmentsCard from './AttachmentsCard.svelte'
   import RichFeedbackEditor from '$lib/editor/RichFeedbackEditor.svelte'
   import type { DraftOperation } from '$lib/draftOperations'
-  import {
-    decodeFeedbackDraftDocument,
-    type FeedbackDraftSnapshot,
-  } from '$lib/feedbackDraftDocument'
-  import { tidySpeechSegments, type TidyConfig } from '$lib/lightCleanup'
-  import {
-    speechCleanupCandidates,
-    type SpeechCleanupSegment,
-  } from '$lib/speech/speechBlockMetadata'
+  import type { FeedbackDraftSnapshot } from '$lib/feedbackDraftDocument'
+  import type { SpeechCleanupSegment } from '$lib/speech/speechBlockMetadata'
   import { t } from '$lib/i18n'
   import { locale, type Locale } from '$lib/preferences'
-  import { shouldAutoTidy } from '$lib/tidyAuto'
   import { hasCookedPublishedVariant } from '$lib/publishedFeedback'
   import MarkdownPreview from '../editor/MarkdownPreview.svelte'
   import type { SavePhase } from '../domain/sessionPhases'
+  import InputToolbar from '../input/InputToolbar.svelte'
+  import { unavailableVoiceInputState, useVoiceInput } from '../speech/voiceInputContext'
+  import type { SpeechTarget } from '../speech/speechTargets'
 
   export let workspace: FeedbackWorkspaceView
   export let draftBody = ''
@@ -56,24 +51,29 @@
   export let onChange: (snapshot: FeedbackDraftSnapshot) => void = () => {}
   export let onRestoreOriginal: () => void = () => {}
   export let onOpenAttachment: (attachmentId: string) => void = () => {}
-  export let tidyConfig: TidyConfig | null = null
-  export let tidyAutoThreshold = 0
-  export let onTidyError: (message: string) => void = () => {}
-  export let onOpenTidySettings: () => void = () => {}
-  export let inputTools: Snippet | undefined = undefined
   export let headerActions: Snippet | undefined = undefined
   export let attachmentCount = 0
   export let attachmentBusy = false
   export let onRemoveAttachment: (attachment: AttachmentView) => void = () => {}
   export let onPreviewAttachment: (attachment: AttachmentView) => void = () => {}
 
-  let tidyBusy = false
-  let pendingCount = 0
-  let tidyingSegmentIds: string[] = []
-  let lastAutoTidyAttempt = ''
-
   let richEditor: RichFeedbackEditor
+  let root: HTMLElement
+  let revealedSequence: number | undefined
   let publishedView: 'cooked' | 'uncooked' = 'cooked'
+  const voice = useVoiceInput()
+  const voiceState = voice?.state ?? unavailableVoiceInputState
+  $: documentVoiceTarget = $voiceState.documentTarget?.requestId === workspace.request.request_id ? $voiceState.documentTarget : null
+  $: void revealDocument($voiceState.revealSequence, $voiceState.revealTarget)
+  async function revealDocument(sequence: number | undefined, target: SpeechTarget | null | undefined) {
+    if (sequence === undefined || sequence === revealedSequence || target?.requestId !== workspace.request.request_id || target.destination.kind !== 'document') return
+    revealedSequence = sequence
+    await tick()
+    root?.querySelector<HTMLElement>('[contenteditable="true"]')?.focus({ preventScroll: true })
+  }
+  function selectDocumentVoice(event: Event) {
+    if (!editingDisabled && !$voiceState.disabled && documentVoiceTarget && (event.target as HTMLElement)?.closest('[contenteditable="true"]')) voice?.selectTarget(documentVoiceTarget)
+  }
 
   $: readOnly =
     workspace.request.status === 'completed' || workspace.request.status === 'cancelled'
@@ -113,88 +113,23 @@
     return richEditor?.replaceSpeechSegments(replacements) ?? false
   }
 
-  $: tidyReady = Boolean(tidyConfig?.apiKey.trim() && tidyConfig.model.trim())
-  $: {
-    editorEpoch
-    editorDocument
-    const candidates = richEditor?.pendingSpeechSegments() ??
-      (editorDocument ? speechCleanupCandidates(editorDocument) : [])
-    pendingCount = candidates.length
-    const shouldRun = shouldAutoTidy(pendingCount, tidyAutoThreshold)
-    if (!shouldRun) {
-      lastAutoTidyAttempt = ''
-    } else if (richEditor && tidyReady && !tidyBusy && !editingDisabled) {
-      const attempt = autoTidyAttemptKey(candidates)
-      if (attempt !== lastAutoTidyAttempt) {
-        lastAutoTidyAttempt = attempt
-        void tidyNow(true)
-      }
-    }
-  }
-
-  function autoTidyAttemptKey(candidates: SpeechCleanupSegment[]): string {
-    return [
-      workspace.request.request_id,
-      String(tidyAutoThreshold),
-      ...candidates.map((segment) => segment.segmentId),
-    ].join('\u0000')
-  }
-
-  async function tidyNow(automatic = false) {
-    if (tidyBusy || editingDisabled || !tidyConfig || !tidyReady) {
-      if (!automatic && (!tidyConfig || !tidyReady)) {
-        onTidyError(tr('Configure Tidy in Settings → Post-processing → Tidy first.'))
-        onOpenTidySettings()
-      }
-      return
-    }
-    const requestId = workspace.request.request_id
-    const epoch = editorEpoch
-    const candidates = richEditor?.pendingSpeechSegments() ?? []
-    if (candidates.length === 0) return
-    lastAutoTidyAttempt = autoTidyAttemptKey(candidates)
-    tidyingSegmentIds = candidates.map((segment) => segment.segmentId)
-    tidyBusy = true
-    try {
-      const result = await tidySpeechSegments(candidates, tidyConfig)
-      if (workspace.request.request_id !== requestId || editorEpoch !== epoch) return
-      if (!result) {
-        onTidyError(tr('Tidy did not write back because the model output did not match the original segments.'))
-        return
-      }
-      richEditor?.replaceSpeechSegments(
-        candidates.map((segment, index) => ({
-          segmentId: segment.segmentId,
-          originalText: segment.text,
-          nextText: result[index] ?? segment.text,
-        })),
-      )
-    } catch (cause) {
-      onTidyError(cause instanceof Error ? cause.message : String(cause))
-    } finally {
-      tidyingSegmentIds = []
-      tidyBusy = false
-    }
-  }
-
   export function removeAttachmentReference(attachmentId: string) {
     richEditor?.removeAttachmentReference(attachmentId)
   }
 </script>
 
 <section
+  bind:this={root}
   class={[
     'flex h-full min-h-0 flex-1 flex-col p-5 transition-colors',
     dragActive ? 'bg-primary/5 ring-2 ring-inset ring-primary/30' : '',
   ]}
 >
-  <header class="mb-3 flex items-center gap-3">
-    <div class="min-w-0 flex-1">
-      <h2 class="m-0 text-xs font-medium">{tr(workspace.workbench && workspace.workbench.type !== 'ramble' ? 'Additional notes (optional)' : 'Feedback document')}</h2>
-      <p class="m-0 mt-0.5 text-[10px] text-muted-foreground">
-        {readOnly ? tr('This request is closed. The document is read-only.') : tr('Record observations, problems, and suggestions.')}
-      </p>
-    </div>
+  <header class="mb-3 flex flex-wrap items-center gap-2">
+    <h2 class="m-0 min-w-24 flex-1 truncate text-xs font-medium"
+      title={readOnly ? tr('This request is closed. The document is read-only.') : tr('Record observations, problems, and suggestions.')}>
+      {tr(workspace.workbench && workspace.workbench.type !== 'ramble' ? 'Additional notes (optional)' : 'Feedback document')}
+    </h2>
     {#if hasCookedVariant}
       <div class="flex shrink-0 items-center gap-1 rounded-md border bg-muted/30 p-0.5">
         <Button
@@ -224,36 +159,9 @@
     <!-- Submit and cancel sit on the document title row so they stay reachable
          without scrolling to the end of the feedback. -->
     {#if headerActions}
-      <div class="flex shrink-0 items-center gap-2" data-feedback-actions>{@render headerActions()}</div>
+      <div class="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2" data-feedback-actions>{@render headerActions()}</div>
     {/if}
   </header>
-
-  {#snippet feedbackTools()}
-    {#if !readOnly}
-      {@render inputTools?.()}
-      <Button
-        variant={pendingCount > 0 ? 'secondary' : 'ghost'}
-        size="sm"
-        class="h-8 shrink-0 gap-1.5 px-2 text-xs"
-        aria-label={tr('Tidy')}
-        title={pendingCount > 0
-          ? tr('Tidy {count} pending speech segments', { count: pendingCount })
-          : tr('Tidy pending speech segments. It appears here after Ramble writes a transcript.')}
-        disabled={editingDisabled || cooking || tidyBusy || pendingCount === 0}
-        onclick={() => void tidyNow()}
-      >
-        {#if tidyBusy}
-          <LoaderCircle class="size-3.5 animate-spin" />
-        {:else}
-          <Sparkles class="size-3.5" />
-        {/if}
-        <span class="hidden @min-[640px]:inline">{tidyBusy ? tr('Tidying…') : tr('Tidy')}</span>
-        {#if pendingCount > 0}
-          <Badge variant="secondary" class="h-4 px-1 text-[9px]">{pendingCount}</Badge>
-        {/if}
-      </Button>
-    {/if}
-  {/snippet}
 
   {#if cookedDraftReady}
     <div
@@ -276,7 +184,7 @@
     </div>
   {/if}
 
-  <div class="relative flex min-h-0 flex-1">
+  <div data-tour="feedback-input" class="relative flex min-h-0 flex-1" role="group" aria-label={tr('Feedback document')} onfocusin={selectDocumentVoice} onpointerdown={selectDocumentVoice}>
     {#if cookedDraftReady || hasCookedVariant}
       <MarkdownPreview markdown={displayedMarkdown} previews={attachmentPreviews} {onOpenAttachment} />
     {:else}
@@ -288,14 +196,14 @@
         previews={attachmentPreviews}
         disabled={editingDisabled}
         {onOpenAttachment}
-        {tidyingSegmentIds}
-        toolbarActions={feedbackTools}
         onChange={(snapshot) => {
-          const doc = decodeFeedbackDraftDocument(snapshot.documentJson)
-          pendingCount = doc ? speechCleanupCandidates(doc).length : 0
           if (!editingDisabled) onChange(snapshot)
         }}
-      />
+      >
+        {#snippet toolbarActions()}
+          <InputToolbar target={documentVoiceTarget} disabled={editingDisabled || cooking || cookedDraftReady} label="Speak feedback" />
+        {/snippet}
+      </RichFeedbackEditor>
     {/if}
 
     {#if cooking}

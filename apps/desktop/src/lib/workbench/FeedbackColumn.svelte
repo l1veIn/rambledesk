@@ -1,11 +1,8 @@
-<!-- The right-hand feedback column: the one place a person writes, captures and
-     submits feedback. It combines what used to be split between the lower half
-     of the document column and the old command rail. -->
+<!-- The right-hand default input and feedback delivery column. -->
 <script lang="ts">
   import type { JSONContent } from '@tiptap/core'
   import type { Snippet } from 'svelte'
   import type { AttachmentView, FeedbackResultView, FeedbackWorkspaceView } from '$lib/feedback'
-  import type { TidyConfig } from '$lib/lightCleanup'
   import type { DraftOperation } from '$lib/draftOperations'
   import type { FeedbackDraftSnapshot } from '$lib/feedbackDraftDocument'
   import type { SpeechCleanupSegment } from '$lib/speech/speechBlockMetadata'
@@ -14,7 +11,6 @@
   import { locale } from '../preferences'
   import DeliveryCard from './DeliveryCard.svelte'
   import FeedbackEditorPanel from './FeedbackEditorPanel.svelte'
-  import RambelleStatusCard from './RambelleStatusCard.svelte'
   import { workbenchSupportsApproval } from '../workbenchPolicy'
 
   export let workspace: FeedbackWorkspaceView
@@ -32,8 +28,6 @@
   export let cookedPreviewMarkdown = ''
   export let cookedMarkdown = ''
   export let uncookedMarkdown = ''
-  export let tidyConfig: TidyConfig | null = null
-  export let tidyAutoThreshold = 0
   export let feedbackResult: FeedbackResultView | null = null
   export let canSubmit = false
   export let cookingEnabled = false
@@ -43,10 +37,6 @@
   export let cancelling = false
   export let approving = false
   export let canOpenResumePrompt = false
-  export let rambelleStatusPortrait = ''
-  export let rambleEngaged = false
-  export let rambleActive = false
-  export let inputTools: Snippet | undefined = undefined
   export let agentStatus: Snippet | undefined = undefined
   export let attachmentBusy = false
   export let formatTime: (value: string | null | undefined) => string
@@ -55,8 +45,6 @@
   export let onOpenAttachment: (attachmentId: string) => void = () => {}
   export let onRemoveAttachment: (attachment: AttachmentView) => void = () => {}
   export let onPreviewAttachment: (attachment: AttachmentView) => void = () => {}
-  export let onTidyError: (message: string) => void = () => {}
-  export let onOpenTidySettings: () => void = () => {}
   export let onOpenPackage: () => void = () => {}
   export let packageActionLabel = 'Open feedback package'
   export let onOpenResumePrompt: () => void = () => {}
@@ -93,7 +81,7 @@
 <!-- The column divider is the pane resizer itself; a border here would draw a
      second line next to it. -->
 <section
-  class="feedback-column flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background"
+  class="feedback-column @container flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background"
   aria-label={workspace.request.title}
 >
   <!-- The Agent/ACP status belongs to the feedback column, not the workbench header. -->
@@ -124,16 +112,11 @@
     {cookedPreviewMarkdown}
     {cookedMarkdown}
     {uncookedMarkdown}
-    {tidyConfig}
-    {tidyAutoThreshold}
     {formatTime}
-    {inputTools}
     {headerActions}
     {onChange}
     {onRestoreOriginal}
     {onOpenAttachment}
-    {onTidyError}
-    {onOpenTidySettings}
   />
 
   {#snippet headerActions()}
@@ -170,11 +153,4 @@
     </section>
   {/if}
 
-  <RambelleStatusCard
-    portrait={rambelleStatusPortrait}
-    feedbackDone={feedbackResult !== null}
-    {cooking}
-    {rambleEngaged}
-    {rambleActive}
-  />
 </section>

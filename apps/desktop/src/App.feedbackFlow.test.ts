@@ -266,7 +266,7 @@ describe('feedback flow through the real App and editor', () => {
       ...unavailable,
       speech: { status: { availability: 'available', source: 'browser' }, implementation: { ...unavailable.speech.implementation, start } },
     }))
-    const record = button('Start recording')
+    const record = host.querySelector<HTMLButtonElement>('[aria-label="Speak feedback"]')
     expect(record).not.toBeNull()
     record!.click()
     await vi.waitFor(() => expect(start).toHaveBeenCalledOnce())
@@ -275,7 +275,9 @@ describe('feedback flow through the real App and editor', () => {
     expect(cancel).not.toHaveBeenCalled()
     listener.onEvent({ type: 'partial', sessionId: 'language-test', text: 'Still recording after the language change' })
     await tick()
-    expect(document.body.textContent).toContain('Still recording after the language change')
+    expect(document.body.textContent).not.toContain('Still recording after the language change')
+    listener.onEvent({ type: 'stable', sessionId: 'language-test', segmentIndex: 0, text: 'Still recording after the language change' })
+    await vi.waitFor(() => expect(host.querySelector('.feedback-prose[contenteditable="true"]')?.textContent).toContain('Still recording after the language change'))
     await unmount(app!)
     app = undefined
     await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce())

@@ -91,7 +91,7 @@
             <span class="min-w-0 flex-1 truncate">{voiceDevice || tr('Default microphone')}</span>
             {#if voiceChunkIndex > 0}<span class="tabular-nums">{tr('{count} segments', { count: voiceChunkIndex })}</span>{/if}
           </div>
-          <p class="m-0">{message || tr('Audio is transcribed locally into the document.')}</p>
+          <p class="m-0">{message || tr('Audio is transcribed locally into the selected input.')}</p>
           {#if modelMissing}
             <Button variant="outline" size="sm" class="w-full" onclick={onOpenVoiceSettings}>
               {tr('Download speech model')}

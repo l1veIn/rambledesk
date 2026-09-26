@@ -1,4 +1,4 @@
-import type { WorkbenchSpec, RambleData, QuestionsData, SingleChoiceData } from '$lib/generated/feedback'
+import type { WorkbenchSpec, RambleData, QuestionsData } from '$lib/generated/feedback'
 import type { FeedbackWorkspaceView } from '$lib/feedback'
 import { previewFixtures } from '$lib/preview/previewFixtures'
 
@@ -11,13 +11,13 @@ export const workbenchExamples: WorkbenchSpec[] = [
     { id: 'priority', label: '重点', prompt: '第一版最重要的能力是什么？', allowOther: true, options: [{ value: 'feedback', label: '快速反馈', description: '用最少操作把体验和意见交给 Agent。' }, { value: 'decisions', label: '结构化决策', description: '把问答、方案选择做得清楚可追踪。' }] },
     { id: 'concern', label: '顾虑', prompt: '你最担心什么问题？', allowOther: true, options: [{ value: 'complexity', label: '操作太复杂', description: '希望打开之后能立即理解怎么操作。' }, { value: 'loss', label: '答案丢失或关联错误', description: '切换页面、重新打开后仍应保留准确的回答。' }] },
   ] } },
-  { type: 'single_choice', version: 1, data: {
-    prompt: '你更倾向哪一种布局？', options: [
-      { id: 'compact', label: '紧凑布局：同屏展示更多信息' },
-      { id: 'spacious', label: '宽松布局：留出更多阅读和输入空间' },
-      { id: 'adaptive', label: '自适应布局：根据内容和窗口自动调整' },
+  { type: 'questions', version: 1, data: { questions: [{
+    id: 'layout', label: '布局', prompt: '你更倾向哪一种布局？', allowOther: false, options: [
+      { value: 'compact', label: '紧凑布局：同屏展示更多信息' },
+      { value: 'spacious', label: '宽松布局：留出更多阅读和输入空间' },
+      { value: 'adaptive', label: '自适应布局：根据内容和窗口自动调整' },
     ],
-  } },
+  }] } },
   { type: 'document_review', version: 1, data: {
     title: '把灵感留在现场', source_version: '视频脚本 · v0.3 · 约 90 秒',
     paragraphs: [
@@ -30,7 +30,20 @@ export const workbenchExamples: WorkbenchSpec[] = [
   } },
 ]
 
-export const workbenchPreviewLabels = ['Ramble 自由反馈', '逐项问答', '方案单选', '文稿审阅']
+export const workbenchPreviewLabels = ['Ramble 自由反馈', '逐项问答', '逐项问答 · 单题选择', '文稿审阅']
+
+export const workbenchPreviewAttachments = [
+  {
+    attachment_id: 'review-brief',
+    file_name: '审阅要点.md',
+    markdown: '# 审阅要点\n\n请结合视频脚本留下批注和建议改写。\n\n- 面向首次了解 RambleDesk 的独立开发者。\n- 重点检查产品能力描述，避免承诺工具会替用户做决定。\n- 口播应自然，保留具体的使用场景。',
+  },
+  {
+    attachment_id: 'product-reference',
+    file_name: 'RambleDesk 视频脚本产品能力与口播风格参考说明（2026 年 9 月修订版）.md',
+    markdown: '# 产品能力与口播风格参考\n\n## 产品边界\n\nRambleDesk 帮助用户记录文字、语音和截图，将整理后的反馈交给 Agent。用户可以在提交前检查和修改内容。\n\n## 表达建议\n\n用真实操作说明价值，例如「哪里卡住了，截一张图」。避免使用「自动理解所有意图」或「替你做出最好的决定」等绝对表述。\n\n## 视频节奏\n\n开场提出一个熟悉的问题，中段演示记录过程，结尾邀请观众保留真实体验。整体时长约 90 秒。',
+  },
+]
 
 export function workbenchPreviewWorkspace(index: number): FeedbackWorkspaceView {
   const workspace = structuredClone(previewFixtures.workspace)
@@ -39,8 +52,13 @@ export function workbenchPreviewWorkspace(index: number): FeedbackWorkspaceView 
   workspace.request = { ...workspace.request, request_id: `workbench-preview-${index}`, title: workbenchPreviewLabels[index], what_happened: index === 3 ? '请审阅这份视频脚本，重点检查产品表述是否准确、口播是否自然，并留下修改建议。' : '体验不同反馈形式，看看哪种更适合当前任务。', status: 'in_progress', resolution: null, allow_finish: false, final_summary: null }
   workspace.actions = spec.type === 'ramble' ? (spec.data as RambleData).actions : spec.type === 'questions'
     ? (spec.data as QuestionsData).questions.map((item) => ({ id: item.id, instruction: item.prompt }))
-    : spec.type === 'single_choice' ? (spec.data as SingleChoiceData).options.map((item) => ({ id: item.id, instruction: item.label })) : []
-  workspace.request_attachments = []
+    : []
+  workspace.request_attachments = spec.type === 'document_review'
+    ? workbenchPreviewAttachments.map(({ markdown, ...attachment }, position) => ({
+      ...attachment, media_type: 'text/markdown', byte_size: new TextEncoder().encode(markdown).byteLength,
+      sha256: `preview-${attachment.attachment_id}`, position,
+    }))
+    : []
   workspace.attachments = []
   workspace.draft = { document_json: null, body_markdown: '', saved_revision: 0, updated_at: null }
   workspace.feedback = null

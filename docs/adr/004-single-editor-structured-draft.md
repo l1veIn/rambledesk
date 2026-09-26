@@ -66,4 +66,14 @@
 `body_markdown` 仍只从 `doc` 派生。正文的编辑、撤销和 Cooking 不修改工作台答案。
 通用提交门槛改为“工作台有效输入与反馈正文不能同时为空”；满足非空门槛后，
 仍需通过工作台自己的完整性校验。问答和单选完成时可以不填写正文。
-这不引入 hidden Editor 或第二个富文本 Editor。详情见[实验契约](../workbench/experiment.md)。
+这不引入 hidden Editor 或第二份反馈正文。详情见[实验契约](../workbench/experiment.md)。
+
+## 后续修订：可见字段复用 TipTap 输入基础
+
+自定义回答、批注意见和建议措辞通过与正文相同的 `TiptapInput` 组件编辑，避免 textarea 与
+富文本编辑器各自实现输入体验和语音来源呈现。这些可见字段各有轻量 Editor、选区与撤销历史，
+保存时仍写回 `workbenchState` 中既有字符串字段；它们不是另一份反馈正文或独立 Draft。
+因此单 Editor 所有权约束指单一正文所有者，不限制屏幕上可见字段的编辑视图数量。
+隐藏字段不保留 Editor，录音、整理、保存与提交继续属于请求级共享流程；后台写入仍使用
+草稿变换与 revision/CAS，不引入旧 RC 的 per-request/hidden Editor。
+实现边界见[共享输入](../workbench/shared-input.md)。

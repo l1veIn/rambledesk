@@ -6,9 +6,10 @@ import { describe, expect, it } from 'vitest'
 /**
  * Frontend dependency direction.
  *
- * The list below is a lockfile of the cross-domain imports that exist today. It
- * may only shrink: adding an import that crosses domains fails this test, and an
- * entry whose last import disappears must be deleted. `(app)` and `dev` are
+ * The list below freezes existing cross-domain imports. A new domain must
+ * document each necessary direction here and in ARCHITECTURE.md; incidental
+ * imports must not grow the list. An entry whose last import disappears must
+ * be deleted. `(app)` and `dev` are
  * composition roots, so they may import anything and are not scanned.
  *
  * Notable entries and why they exist:
@@ -19,11 +20,16 @@ import { describe, expect, it } from 'vitest'
  * - `lib/capabilities` owns the platform contracts, so it may read the
  *   `lib/speech`, `lib/settings` and `lib/updates` types it exposes.
  * - `lib/components` is shared UI; it must not reach feature controllers.
+ * - `lib/input` composes acquisition UI and request-scoped input selection.
+ *   It may use speech contracts/controls; speech must not import input.
+ *   Its root imports are shared contracts/codecs/i18n, not root controllers.
  */
 const ALLOWED_EDGES: readonly string[] = [
   // lib root modules (cross-cutting helpers and contract barrels)
   'lib/(root) -> lib/application',
   'lib/(root) -> lib/components',
+  // Draft transforms share neutral input identities, never input UI/controllers.
+  'lib/(root) -> lib/domain',
   'lib/(root) -> lib/speech',
   'lib/(root) -> lib/workbench',
   'lib/(root) -> lib/workspace',
@@ -59,6 +65,13 @@ const ALLOWED_EDGES: readonly string[] = [
   'lib/editor -> lib/(root)',
   'lib/editor -> lib/capabilities',
   'lib/editor -> lib/speech',
+  // input composes shared voice controls/target guards with non-speech input.
+  // Visible fields reuse the same TipTap lifecycle; they do not own draft/session controllers.
+  'lib/input -> lib/editor',
+  'lib/input -> lib/speech',
+  'lib/input -> lib/domain',
+  // Existing contract barrels, draft codecs, attachment URLs and UI preferences.
+  'lib/input -> lib/(root)',
   // onboarding
   'lib/onboarding -> lib/(root)',
   'lib/onboarding -> lib/agents',
@@ -112,6 +125,8 @@ const ALLOWED_EDGES: readonly string[] = [
   'lib/workbench -> lib/diagnostics',
   'lib/workbench -> lib/domain',
   'lib/workbench -> lib/editor',
+  // Workbench fields consume common input tools, attachment views and writeback.
+  'lib/workbench -> lib/input',
   'lib/workbench -> lib/settings',
   'lib/workbench -> lib/speech',
   'lib/workbench -> lib/workspace',

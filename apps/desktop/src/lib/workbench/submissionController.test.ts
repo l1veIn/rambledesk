@@ -94,6 +94,29 @@ function harness(options: Partial<SubmissionControllerContext> = {}) {
 }
 
 describe('submission controller', () => {
+  it.each(['approve', 'cancel'] as const)('does not freeze or %s when input arrives after preparation resolves', async (intent) => {
+    const ready = deferred<{ kind: 'ready' }>()
+    let busy = false
+    const prepareFeedback = vi.fn(() => ready.promise)
+    const h = harness({ prepareFeedback, isInputBusy: () => busy })
+    h.edit('Preserve the current feedback')
+    const lock = vi.spyOn(h.session, intent === 'approve' ? 'beginApprove' : 'beginCancel')
+    const finishing = h.run(intent)
+    await vi.waitFor(() => expect(prepareFeedback).toHaveBeenCalledOnce())
+
+    ready.resolve({ kind: 'ready' })
+    busy = true
+    await finishing
+    expect(lock).not.toHaveBeenCalled()
+    expect(h.transport.calls).toHaveLength(0)
+    expect(get(h.draftSession)).toMatchObject({ body: 'Preserve the current feedback', dirty: true })
+    expect(h.setPageError).toHaveBeenLastCalledWith('Input is still being received. Finish the current input and try again.')
+
+    busy = false
+    await h.run(intent)
+    expect(h.transport.callsFor(commandFor(intent))).toHaveLength(1)
+  })
+
   it.each([0, 1, 2, 3])('only approves valid Ramble despite a historical allow_finish flag (type %s)', async (index) => {
     const h = harness()
     h.session.replace({ ...workspace(), workbench: workbenchPreviewWorkspace(index).workbench })

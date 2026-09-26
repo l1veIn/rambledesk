@@ -22,6 +22,7 @@ type CookingControllerContext = {
   isCookingEnabled: () => boolean
   isCooking: () => boolean
   prepareFeedback: (requestId: string) => Promise<FeedbackPreparation>
+  isInputBusy?: () => boolean
   saveDraftNow: () => Promise<boolean>
   setPageError: (message: string) => void
   setCooking: (requestId: string, cooking: boolean) => void
@@ -65,6 +66,10 @@ export function createCookingController(context: CookingControllerContext) {
       if (preparation.kind !== 'ready') {
         context.setPageError(preparation.kind === 'failed' ? preparation.message
           : context.tr('Review the pending speech in the capsule before submitting feedback.'))
+        return
+      }
+      if (context.isInputBusy?.()) {
+        context.setPageError(context.tr('Input is still being received. Finish the current input and try again.'))
         return
       }
       context.setCooking(requestId, true)

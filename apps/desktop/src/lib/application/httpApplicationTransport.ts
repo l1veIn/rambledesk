@@ -3,7 +3,7 @@ import type {
   ApplicationCommandName,
   ApplicationCommandResult,
 } from './contracts'
-import { isApplicationError } from './contracts'
+import { isApplicationError, isProjectDirectoryError } from './contracts'
 import type {
   ApplicationStream,
   ApplicationTransport,
@@ -109,6 +109,7 @@ async function applicationFailure(
   }
   if (
     isApplicationError(payload) ||
+    isProjectDirectoryError(payload) ||
     isRuntimeGenerationStaleError(payload) ||
     isSnapshotUnstableError(payload)
   ) {

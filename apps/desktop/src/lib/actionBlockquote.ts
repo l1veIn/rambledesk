@@ -3,11 +3,8 @@ import { Extension, type JSONContent } from '@tiptap/core'
 export const ACTION_ID_ATTR = 'actionId'
 export const ACTION_INDEX_ATTR = 'actionIndex'
 
-export type ActionIdentity = {
-  actionId: string
-  actionIndex: number
-  title: string
-}
+import type { ActionIdentity } from './domain/inputTarget'
+export type { ActionIdentity } from './domain/inputTarget'
 
 function paragraphText(node: JSONContent): string {
   return (node.content ?? []).map((child) => child.text ?? '').join('').trim()

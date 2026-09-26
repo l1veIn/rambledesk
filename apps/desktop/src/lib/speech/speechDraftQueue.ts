@@ -1,8 +1,9 @@
 import { get, writable } from 'svelte/store'
 
-import type { ActiveAction, DraftOperation } from '../draftOperations'
+import { normalizeSpeechTarget, sameSpeechTarget, snapshotSpeechTarget, type SpeechTarget } from './speechTargets'
+import type { SpeechWriteInput } from './speechWriteback'
 
-export type SpeechTarget = { requestId: string; requestTitle: string; action: ActiveAction }
+export type { SpeechTarget } from './speechTargets'
 export type SpeechDraft = SpeechTarget & {
   id: string
   text: string
@@ -23,30 +24,25 @@ function restore(storage?: Storage): SpeechDraft[] {
   try {
     const value: unknown = JSON.parse(storage?.getItem(PENDING_SPEECH_KEY) ?? '[]')
     if (!Array.isArray(value)) return []
-    return value.filter((item) =>
-      item && typeof item.id === 'string' && typeof item.requestId === 'string' &&
-      typeof item.requestTitle === 'string' && typeof item.text === 'string' && item.text.trim() &&
-      (item.action === null || (typeof item.action?.actionId === 'string' &&
-        typeof item.action?.actionIndex === 'number' && typeof item.action?.title === 'string')),
-    ).map((item) => ({
-      ...item, status: 'pending', error: '',
-      cleanupState: item.cleanupState === 'cleaned' ? 'cleaned' : 'pending',
-      // A failed/lost acknowledgement can still mean the server committed the
-      // segment. Its idempotent retry must retain the original payload.
-      writeAttempted: item.writeAttempted === true || item.status === 'writing' || item.status === 'failed',
-      mergedIds: Array.isArray(item.mergedIds) ? item.mergedIds.filter((id: unknown) => typeof id === 'string') : [],
-    }))
+    return value.flatMap((item): SpeechDraft[] => {
+      const target = normalizeSpeechTarget(item)
+      if (!target || typeof item.id !== 'string' || typeof item.text !== 'string' || !item.text.trim()) return []
+      return [{
+        ...item, ...target, status: target.destination.kind === 'unknown' ? 'failed' : 'pending',
+        error: target.destination.kind === 'unknown' ? 'This speech destination is not supported. Your words have been preserved.' : '',
+        cleanupState: item.cleanupState === 'cleaned' ? 'cleaned' : 'pending',
+        // A lost acknowledgement may mean the write committed. Freeze its retry payload.
+        writeAttempted: item.writeAttempted === true || item.status === 'writing' || item.status === 'failed',
+        mergedIds: Array.isArray(item.mergedIds) ? item.mergedIds.filter((id: unknown) => typeof id === 'string') : [],
+      }]
+    })
   } catch {
     return []
   }
 }
 
-function sameTarget(first: SpeechTarget, second: SpeechTarget): boolean {
-  return first.requestId === second.requestId && first.action?.actionId === second.action?.actionId
-}
-
 function editable(draft: SpeechDraft): boolean {
-  return draft.status === 'pending' && !draft.writeAttempted
+  return draft.status === 'pending' && !draft.writeAttempted && draft.destination.kind !== 'unknown'
 }
 
 function sameIds(first: readonly string[], second: readonly string[]): boolean {
@@ -61,7 +57,7 @@ function editableSelection(drafts: readonly SpeechDraft[], ids: readonly string[
   if (start < 0) return []
   const selected = drafts.slice(start, start + ids.length)
   return selected.length === ids.length && selected.every((draft, index) =>
-    draft.id === ids[index] && editable(draft) && sameTarget(draft, selected[0]),
+    draft.id === ids[index] && editable(draft) && sameSpeechTarget(draft, selected[0]),
   ) ? selected : []
 }
 
@@ -78,7 +74,7 @@ function mergeSelection(drafts: readonly SpeechDraft[], selected: readonly Speec
 /** Only this queue owns uncommitted speech. Views send explicit segment IDs,
  * so delayed clicks cannot accept or discard words that arrived afterward. */
 export function createSpeechDraftQueue(options: {
-  write: (requestId: string, operation: DraftOperation) => Promise<void>
+  writeSpeech: (input: SpeechWriteInput) => Promise<void>
   storage?: Storage
   onStorageError?: (cause: unknown) => void
   tidy?: (text: string) => Promise<string>
@@ -109,9 +105,11 @@ export function createSpeechDraftQueue(options: {
     const run = writes.then(async () => {
       for (const draft of drafts) {
         try {
-          await options.write(draft.requestId, {
-            kind: 'appendSpeech', segmentId: draft.id, text: draft.text, action: draft.action,
+          if (draft.destination.kind === 'unknown') throw new Error('This speech destination is not supported. Your words have been preserved.')
+          await options.writeSpeech({
+            ...snapshotSpeechTarget(draft), id: draft.id, text: draft.text,
             ...(draft.cleanupState === 'cleaned' ? { cleanupState: 'cleaned' } : {}),
+            ...(draft.mergedIds?.length ? { mergedIds: [...draft.mergedIds] } : {}),
           })
           update((current) => ({
             ...current,
@@ -196,7 +194,7 @@ export function createSpeechDraftQueue(options: {
     if (!text.trim() || seen.has(id)) return
     seen.add(id)
     const draft: SpeechDraft = {
-      ...target, action: target.action ? { ...target.action } : null,
+      ...snapshotSpeechTarget(target),
       id, text: text.trim(), status: 'pending', error: '', cleanupState: 'pending',
     }
     update((current) => ({ ...current, drafts: [...current.drafts, draft] }))
@@ -246,7 +244,7 @@ export function groupSpeechDrafts(drafts: readonly SpeechDraft[]): SpeechDraftGr
   for (const [index, draft] of drafts.entries()) {
     let group = groups.at(-1)
     const previous = drafts[index - 1]
-    if (!group || !sameTarget(group, draft) || previous?.status !== draft.status || !!previous?.writeAttempted !== !!draft.writeAttempted) {
+    if (!group || !sameSpeechTarget(group, draft) || previous?.status !== draft.status || !!previous?.writeAttempted !== !!draft.writeAttempted) {
       group = { ...draft, ids: [], text: '', busy: false, error: '', editing: draft.status === 'editing', tidying: draft.status === 'tidying', editable: editable(draft), cleanupState: draft.cleanupState ?? 'pending' }
       groups.push(group)
     }

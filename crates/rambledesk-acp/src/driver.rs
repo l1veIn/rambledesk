@@ -221,6 +221,11 @@ async fn check_inner(
 
 #[async_trait]
 impl AgentSessionConnection for ManagedConnection {
+    fn builtin_instructions(&self) -> Option<String> {
+        self.feedback_workflow
+            .as_ref()
+            .map(|_| crate::feedback_workflow::INSTRUCTIONS.to_owned())
+    }
     fn configuration(&self) -> rambledesk_core::SessionConfiguration {
         self.configuration
             .lock()

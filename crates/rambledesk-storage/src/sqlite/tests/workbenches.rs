@@ -5,8 +5,54 @@ use rambledesk_core::{
 };
 use serde_json::{Value, json};
 
+mod attachments;
+
+// Compatibility fixtures must not rely on the catalog for new requests.
+fn original_workbench_example(kind: &str) -> WorkbenchSpec {
+    if kind == "single_choice" {
+        return serde_json::from_value(json!({
+            "type":"single_choice", "version":1,
+            "data":{"prompt":"Which layout should we use?", "options":[
+                {"id":"compact","label":"Compact layout"},
+                {"id":"spacious","label":"Spacious layout"}
+            ]}
+        }))
+        .unwrap();
+    }
+    let mut example = describe_workbench(&DescribeWorkbenchInput {
+        kind: kind.into(),
+        version: None,
+    })
+    .unwrap()
+    .example;
+    if let WorkbenchData::Questions(data) = &mut example.data {
+        data.questions[0].allow_other = true;
+        data.questions.push(
+            serde_json::from_value(json!({
+                "id":"scope", "prompt":"What should we build first?", "label":"Scope",
+                "allowOther":true, "options":[
+                    {"value":"feedback","label":"Feedback"},
+                    {"value":"review","label":"Review"}
+                ]
+            }))
+            .unwrap(),
+        );
+    }
+    example
+}
+
 #[test]
 fn discovery_is_paged_and_request_schema_does_not_embed_each_type() {
+    let catalog = list_workbenches(&ListWorkbenchesInput::default()).unwrap();
+    assert_eq!(
+        catalog
+            .workbenches
+            .iter()
+            .map(|entry| entry.kind)
+            .collect::<Vec<_>>(),
+        ["ramble", "questions", "document_review"]
+    );
+    assert_eq!(catalog.next_offset, None);
     let page = list_workbenches(&ListWorkbenchesInput {
         limit: Some(1),
         ..Default::default()
@@ -24,7 +70,8 @@ fn discovery_is_paged_and_request_schema_does_not_embed_each_type() {
         ..Default::default()
     })
     .unwrap();
-    assert_eq!(page.workbenches[0].kind, "single_choice");
+    assert_eq!(page.workbenches[0].kind, "document_review");
+    assert_eq!(page.next_offset, None);
     assert!(
         list_workbenches(&ListWorkbenchesInput {
             limit: Some(21),
@@ -42,7 +89,18 @@ fn discovery_is_paged_and_request_schema_does_not_embed_each_type() {
     let schema = serde_json::to_string(&schemars::schema_for!(RequestFeedbackInput)).unwrap();
     assert!(!schema.contains("QuestionsData"));
     assert!(!schema.contains("SingleChoiceData"));
-    for kind in ["ramble", "questions", "single_choice", "document_review"] {
+    let legacy_description = describe_workbench(&DescribeWorkbenchInput {
+        kind: "single_choice".into(),
+        version: Some(1),
+    })
+    .unwrap_err();
+    assert_eq!(legacy_description.code(), "INVALID_ARGUMENT");
+    assert!(
+        legacy_description
+            .message()
+            .contains("one question with allowOther:false")
+    );
+    for kind in ["ramble", "questions", "document_review"] {
         let description = describe_workbench(&DescribeWorkbenchInput {
             kind: kind.into(),
             version: None,
@@ -51,6 +109,10 @@ fn discovery_is_paged_and_request_schema_does_not_embed_each_type() {
         let roundtrip: WorkbenchSpec =
             serde_json::from_value(serde_json::to_value(&description.example).unwrap()).unwrap();
         assert_eq!(roundtrip, description.example);
+        if let WorkbenchData::Questions(data) = &roundtrip.data {
+            assert_eq!(data.questions.len(), 1);
+            assert!(!data.questions[0].allow_other);
+        }
         assert!(rambledesk_core::validate_workbench(&roundtrip).is_ok());
         assert_eq!(
             rambledesk_core::workbench_actions(&roundtrip)
@@ -59,6 +121,75 @@ fn discovery_is_paged_and_request_schema_does_not_embed_each_type() {
             kind == "document_review"
         );
     }
+}
+
+#[tokio::test]
+async fn single_question_discovery_example_publishes_a_strict_choice_as_questions() {
+    let workspace = TestWorkspace::new().await;
+    let store = SqliteFeedbackStore::connect(&workspace.database)
+        .await
+        .unwrap();
+    let app = store.clone().into_application();
+    let mut input = workspace.request(Uuid::now_v7().to_string());
+    input.actions.clear();
+    input.workbench = Some(
+        describe_workbench(&DescribeWorkbenchInput {
+            kind: "questions".into(),
+            version: None,
+        })
+        .unwrap()
+        .example,
+    );
+    let created = app.request_feedback(input).await.unwrap();
+    let mut revision = 0;
+    for custom in [true, false] {
+        let document = json!({"schemaVersion":2,"doc":{"type":"doc","content":[]},
+            "workbenchState":{"type":"questions","answers":[{
+                "id":"audience","value":"individuals","label":"Human-supplied label",
+                "wasCustom":custom
+            }]}
+        });
+        let saved = app
+            .save_feedback_draft(SaveDraftInput {
+                request_id: created.request_id.clone(),
+                document_json: document.to_string(),
+                body_markdown: String::new(),
+                expected_revision: revision,
+            })
+            .await
+            .unwrap();
+        revision = saved.saved_revision;
+        let result = app
+            .submit_feedback(SubmitFeedbackInput {
+                request_id: created.request_id.clone(),
+                expected_revision: revision,
+                cooked_markdown: None,
+                cooking_model: None,
+                uncooked_markdown: None,
+            })
+            .await;
+        if custom {
+            assert_eq!(result.unwrap_err().code(), "INVALID_ARGUMENT");
+        } else {
+            let package = app
+                .read_feedback_package(&result.unwrap())
+                .await
+                .unwrap()
+                .unwrap();
+            let workbench = serde_json::to_value(package.manifest.workbench.unwrap()).unwrap();
+            assert_eq!(workbench["type"], "questions");
+            assert_eq!(
+                workbench["result"]["answers"],
+                json!([{
+                    "id":"audience","value":"individuals","label":"Individuals",
+                    "wasCustom":false,"index":1
+                }])
+            );
+            assert_eq!(workbench["result"]["cancelled"], false);
+            assert!(workbench["result"].get("selected_option_id").is_none());
+        }
+    }
+    store.close().await;
 }
 
 #[tokio::test]
@@ -71,14 +202,7 @@ async fn typed_requests_preserve_identity_and_publish_answers_without_notes() {
     for kind in ["ramble", "questions", "single_choice"] {
         let mut input = workspace.request(Uuid::now_v7().to_string());
         input.actions.clear();
-        input.workbench = Some(
-            describe_workbench(&DescribeWorkbenchInput {
-                kind: kind.into(),
-                version: None,
-            })
-            .unwrap()
-            .example,
-        );
+        input.workbench = Some(original_workbench_example(kind));
         let created = app.request_feedback(input.clone()).await.unwrap();
         assert_eq!(
             app.request_feedback(input.clone())
@@ -164,12 +288,7 @@ async fn invalid_types_versions_and_data_fail_before_persistence_and_cancel_has_
         .await
         .unwrap();
     let app = store.clone().into_application();
-    let example = describe_workbench(&DescribeWorkbenchInput {
-        kind: "single_choice".into(),
-        version: None,
-    })
-    .unwrap()
-    .example;
+    let example = original_workbench_example("single_choice");
     for (kind, version) in [("missing", 1), ("single_choice", 2), ("questions", 1)] {
         let mut input = workspace.request(Uuid::now_v7().to_string());
         input.actions.clear();
@@ -216,14 +335,7 @@ async fn submission_distinguishes_no_human_input_from_incomplete_workbench() {
     for kind in ["ramble", "questions", "single_choice"] {
         let mut input = workspace.request(Uuid::now_v7().to_string());
         input.actions.clear();
-        input.workbench = Some(
-            describe_workbench(&DescribeWorkbenchInput {
-                kind: kind.into(),
-                version: None,
-            })
-            .unwrap()
-            .example,
-        );
+        input.workbench = Some(original_workbench_example(kind));
         let created = app.request_feedback(input).await.unwrap();
         let state = match kind {
             "questions" => {
@@ -284,14 +396,7 @@ async fn workbench_submission_requires_valid_answers_and_cas_keeps_notes_and_ans
     let app = store.clone().into_application();
     let mut input = workspace.request(Uuid::now_v7().to_string());
     input.actions.clear();
-    input.workbench = Some(
-        describe_workbench(&DescribeWorkbenchInput {
-            kind: "questions".into(),
-            version: None,
-        })
-        .unwrap()
-        .example,
-    );
+    input.workbench = Some(original_workbench_example("questions"));
     let created = app.request_feedback(input).await.unwrap();
     let answer =
         json!({"id":"audience","value":"individuals","label":"Individuals","wasCustom":false});
@@ -466,6 +571,11 @@ async fn document_review_roundtrips_restarts_and_publishes_immutable_anchors() {
     assert_eq!(workbench["result"]["source_version"], "draft-1");
     assert_eq!(workbench["result"]["annotations"][0]["quote"], "😀");
     assert_eq!(workbench["result"]["annotations"][0]["replacement"], "");
+    assert!(
+        workbench["result"]["annotations"][0]
+            .get("status")
+            .is_none()
+    );
     input.request_id = Some(Uuid::now_v7().to_string());
     let created = app.request_feedback(input).await.unwrap();
     let cancelled = app

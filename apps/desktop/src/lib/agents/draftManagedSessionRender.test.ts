@@ -18,8 +18,7 @@ describe('compact new session workspace', () => {
     storage.save('draft', { choice: '', cwd: '', text: 'Preserved task' })
     const controller = createDraftManagedSessionController(transport, 'draft', storage, vi.fn())
     const onConfigure = vi.fn()
-    const onChooseDirectory = vi.fn()
-    const body = render(DraftManagedSessionWorkspace, { props: { transport, controller, draftId: 'draft', onConfigure, onChooseDirectory } }).body
+    const body = render(DraftManagedSessionWorkspace, { props: { transport, controller, draftId: 'draft', onConfigure } }).body
     expect(body).toContain('Choose a project folder to start.')
     expect(body).toContain('aria-label="Project directory: Choose a project"')
     expect(body).toContain('aria-label="Choose an agent: Choose an agent"')
@@ -31,6 +30,6 @@ describe('compact new session workspace', () => {
     expect(body).not.toContain('<select')
     expect(transport.calls).toHaveLength(0)
     expect(onConfigure).not.toHaveBeenCalled()
-    expect(onChooseDirectory).not.toHaveBeenCalled()
+    expect(body).not.toContain('data-session-starters')
   })
 })

@@ -21,6 +21,19 @@ async fn permissions(
 }
 
 #[tokio::test]
+async fn sessions_without_feedback_workflow_have_no_builtin_instructions() {
+    let (dir, store, app, config) = setup("agent", "load").await;
+    let session = create(&app, &dir, &config, "No built-in feedback").await;
+    assert_eq!(
+        session.runtime.connection,
+        SessionConnectionState::Connected
+    );
+    assert!(session.runtime.builtin_instructions.is_none());
+    app.shutdown().await.unwrap();
+    store.close().await;
+}
+
+#[tokio::test]
 async fn permission_queue_is_scoped_validated_and_consumed_once() {
     let (dir, store, app, config) = setup("agent", "load").await;
     let first = create(&app, &dir, &config, "One").await;

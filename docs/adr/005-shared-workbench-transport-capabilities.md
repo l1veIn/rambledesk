@@ -84,6 +84,9 @@ workspace snapshot；snapshot 不缓存 canonical Draft 正文。
 Editor。多个客户端并发写 Draft 时使用 Backend Runtime revision/CAS，冲突必须显式显示而不是
 last-write-wins。submit/cancel 等终态 operation 必须幂等。
 
+后续共享输入修订允许可见的答案与批注字段复用 TipTap 编辑视图；它们仍是同一 Draft 中业务字段的
+投影，不是第二份反馈正文、保存队列或录音会话。详见 [ADR 004 后续修订](004-single-editor-structured-draft.md#后续修订可见字段复用-tiptap-输入基础)。
+
 关闭 workspace Tab、关闭或刷新浏览器、Transport 断线都只结束 Client view/projection；这些
 动作不得隐式 submit、cancel、archive Request，也不得停止由 Runtime 持有的 Agent Session。
 关闭 Client 时本设备媒体资源按 Platform Plugin 生命周期释放，不改变已持久化的 Draft 或 Request 终态。

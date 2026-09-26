@@ -1,8 +1,8 @@
 use super::*;
 use std::collections::HashSet;
 
-/// The small, static first-party catalog. Wire strings become this type before
-/// domain operations; unknown contracts remain readable but cannot be edited.
+/// Supported wire contracts, including compatibility-only types omitted from
+/// discovery. Unknown contracts remain readable but cannot be edited.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorkbenchKind {
     Ramble,

@@ -14,6 +14,8 @@
   import { handleSpeechDraftCommand } from '../speech/speechDraftCommands'
   import { tidySpeechSegments, type TidyConfig } from '../lightCleanup'
   import { createSpeechTargetTracker } from '../speech/speechTargetTracker'
+  import { snapshotSpeechTarget } from '../speech/speechTargets'
+  import type { SpeechWriteInput } from '../speech/speechWriteback'
   import {
     locale,
     notificationVolume,
@@ -58,9 +60,15 @@
     return false
   }
   export let onRouteDraftOperation: (requestId: string, operation: DraftOperation) => Promise<void> = async () => {}
+  export let onWriteSpeech: (input: SpeechWriteInput) => Promise<void> = async () => {}
+  export let onInputText: (target: SpeechTarget, text: string, id?: string) => Promise<void> = async () => {}
+  export let nextTarget: SpeechTarget | null = null
+  export let embeddedConsole = false
+  export let speechDraftStorage: Pick<Storage, 'getItem' | 'setItem'> = localStorage
+  export let getNextSpeechTarget: (requestId: string) => SpeechTarget | null = () => null
   export let waitForDocumentWrites: () => Promise<void> = async () => {}
   export let getActiveAction: (requestId: string) => ActiveAction = () => null
-  export let onOpenSpeechTarget: (requestId: string, segmentId?: string) => Promise<void> = async () => {}
+  export let onOpenSpeechTarget: (requestId: string, segmentId?: string, target?: SpeechTarget) => Promise<void> = async () => {}
   /** The floating console's submit button routes back to the feedback submission. */
   export let canSubmit = false
   export let onSubmitFeedback: () => Promise<void> | void = () => {}
@@ -76,17 +84,18 @@
   const rambleTransition = createSingleFlight()
   let exitFlight: Promise<void> | null = null
   const speechDrafts = createSpeechDraftQueue({
-    write: (requestId, operation) => onRouteDraftOperation(requestId, operation),
+    writeSpeech: (input) => onWriteSpeech(input),
     tidy: async (text) => {
       if (!tidyConfig) throw new Error(t($locale, 'Configure Tidy in Post-processing settings before tidying speech.'))
       const result = await tidySpeechSegments([{ segmentId: 'speech-review', text }], tidyConfig)
       if (!result?.[0]?.trim()) throw new Error(t($locale, 'Tidy returned no usable text. Your original transcript has been kept.'))
       return result[0]
     },
-    storage: localStorage,
+    storage: speechDraftStorage,
     onStorageError: () => onPageError(t($locale, 'Pending speech could not be saved on this device. Keep this window open until you review it.')),
   })
   const speechTargets = createSpeechTargetTracker(captureSpeechTarget)
+  let speakingTarget: SpeechTarget | null = null
   const voice = session.connectVoice({
     speech: capabilities.speech,
     tr: (source, values) => t($locale, source, values),
@@ -97,8 +106,12 @@
     getVadSilenceMs: () => $speechVadSilenceMs,
     getHotwords: () => $speechHotwords,
     getNotificationVolume: () => $notificationVolume,
-    resolveTarget: (event) => speechTargets.observe(event) ?? captureSpeechTarget(),
-    resetTargets: () => speechTargets.reset(),
+    resolveTarget: (event) => {
+      const target = speechTargets.observe(event) ?? captureSpeechTarget()
+      speakingTarget = speechTargets.activeTarget()
+      return target
+    },
+    resetTargets: () => { speechTargets.reset(); speakingTarget = null },
     onStable: (segmentId, transcript, target) =>
       speechDrafts.enqueue(segmentId, transcript, target, $speechConfirmBeforeWrite, $speechAutoTidy),
     onRecording: markRambleRecording,
@@ -135,7 +148,8 @@
     level: $voice.level,
     partial: $voice.partial,
     error: $voice.phase === 'error' ? $voice.message : '',
-    target: $session.requestId ? captureSpeechTarget() : null,
+    target: speakingTarget ?? ($session.requestId ? nextSessionTarget : null),
+    nextTarget: nextSessionTarget,
     groups: pendingSpeechGroups,
     receipt: $speechDrafts.receipt,
     edit: $speechDrafts.edit,
@@ -160,6 +174,8 @@
   $: rambleBusy = visibleRamblePhase === 'starting' || visibleRamblePhase === 'stopping'
   $: rambleCanStop = rambleActive || voiceCanStop
   $: rambleCanExit = rambleEngaged || voiceCanStop
+  $: nextSessionTarget = nextTarget?.requestId === $session.requestId ? nextTarget
+    : $session.requestId ? captureSpeechTarget() : null
   $: if (rambleEngaged && workspace) {
     attachmentBusy
     screenCaptureBusy
@@ -169,6 +185,9 @@
     $session.message
     $voice.level
     $voice.partial
+    speakingTarget
+    nextSessionTarget
+    canSubmit
     broadcastRambleConsoleState()
   }
 
@@ -273,6 +292,25 @@
     })
   }
 
+  /** Selecting a different field never toggles off an existing recording. */
+  export function startInput(): Promise<void> {
+    if (exitFlight) return exitFlight
+    return rambleTransition.run(async () => {
+      if (interactionLocked || rambleBusy || rambleActive || voiceActive) return
+      if (rambleEngaged) await resumeRamble()
+      else await startRamble()
+    })
+  }
+
+  export function pauseInput(): Promise<void> {
+    if (exitFlight) return exitFlight
+    return rambleTransition.run(stopRamble)
+  }
+
+  export function inputBusy(): boolean {
+    return !!clipboardCapture || voiceActive || rambleBusy || $speechDrafts.drafts.some((draft) => draft.status === 'writing')
+  }
+
   export function exitRamble(): Promise<void> {
     if (exitFlight) return exitFlight
     exitFlight = Promise.resolve().then(finishRamble).finally(() => { exitFlight = null })
@@ -311,28 +349,31 @@
     } while (clipboardCapture)
   }
 
-  export function importClipboardNow(): Promise<void> {
+  export function importClipboardNow(inputTarget?: SpeechTarget): Promise<void> {
     if (clipboardCapture) return clipboardCapture
     clipboardFailure = ''
     const captureId = ++clipboardCaptureId
-    clipboardCapture = Promise.resolve().then(captureClipboard).finally(() => {
+    const requestId = inputTarget?.requestId || $session.requestId || workspace?.request.request_id || ''
+    const selected = inputTarget ?? getNextSpeechTarget(requestId)
+    const destination = selected ? snapshotSpeechTarget(selected) : null
+    clipboardCapture = Promise.resolve().then(() => captureClipboard(destination, requestId)).finally(() => {
       if (clipboardFailure) lastClipboardFailure = { captureId, message: clipboardFailure }
       clipboardCapture = null
     })
     return clipboardCapture
   }
 
-  async function captureClipboard() {
-    const requestId = workspace?.request.request_id || $session.requestId || ''
+  async function captureClipboard(textTarget: SpeechTarget | null, requestId: string) {
     if (disposed || interactionLocked || !requestId || attachmentBusy) return
     const target: AttachmentCandidateTarget = {
       requestId,
-      action: getActiveAction(requestId),
+      action: textTarget?.destination.kind === 'document' ? textTarget.destination.action : getActiveAction(requestId),
+      inputTarget: textTarget ?? undefined,
     }
     onAttachmentMessage('')
     try {
       const result = await capabilities.clipboardCapture.implementation.captureOnce()
-      await handleClipboardCaptureResult(result, target)
+      await handleClipboardCaptureResult(result, target, textTarget)
     } catch (cause) {
       clipboardFailure = t($locale, 'Could not import clipboard: {error}', { error: messageFrom(cause) })
       if (!disposed) onAttachmentMessage(clipboardFailure)
@@ -355,9 +396,12 @@
   }
 
   function captureSpeechTarget(): SpeechTarget {
-    const action = getActiveAction($voice.requestId || $session.requestId)
-    return { requestId: $voice.requestId || $session.requestId, requestTitle: $session.requestTitle,
-      action: action ? { ...action } : null }
+    const requestId = $voice.requestId || $session.requestId
+    const selected = getNextSpeechTarget(requestId)
+    if (selected?.requestId === requestId) return snapshotSpeechTarget(selected)
+    const action = getActiveAction(requestId)
+    return { requestId, requestTitle: $session.requestTitle,
+      destination: { kind: 'document', action: action ? { ...action } : null } }
   }
 
   function resetRambleUi() {
@@ -429,6 +473,7 @@
   async function handleClipboardCaptureResult(
     result: Awaited<ReturnType<WorkbenchCapabilities['clipboardCapture']['implementation']['captureOnce']>>,
     target: AttachmentCandidateTarget,
+    textTarget: SpeechTarget | null,
   ) {
     if (disposed || interactionLocked || !target.requestId) {
       if (result.kind === 'attachment') await result.candidate.dispose().catch(() => {})
@@ -437,9 +482,13 @@
 
     const label = clipboardCaptureLabel(result.capturedAtMs, result.kind === 'text' && result.truncated, $locale)
     if (result.kind === 'text') {
-      await onRouteDraftOperation(target.requestId, {
-        kind: 'appendClipboardText', text: result.text, label, action: target.action,
-      })
+      if (textTarget && textTarget.destination.kind !== 'document') {
+        await onInputText(textTarget, result.text, `clipboard:${crypto.randomUUID()}`)
+      } else {
+        await onRouteDraftOperation(target.requestId, {
+          kind: 'appendClipboardText', text: result.text, label, action: target.action,
+        })
+      }
       if (!disposed && $session.requestId === target.requestId) {
         clipboardCaptureCount += 1
         session.setMessage(t($locale, 'Ramble active · {count} clipboard items captured', { count: clipboardCaptureCount }))
@@ -475,12 +524,17 @@
 
   async function handleRambleConsoleCommand(command: RambleConsoleCommand) {
     if (await handleSpeechDraftCommand(speechDrafts, command, interactionLocked)) return
+    if ((command.type === 'capture-screen' || command.type === 'import-server-paths') &&
+      $session.requestId && workspace?.request.request_id !== $session.requestId) {
+      onPageError(t($locale, 'Return to the recording request before adding screenshots or files from the console.'))
+      return
+    }
     switch (command.type) {
       case 'select-speech-group':
         if (!$speechDrafts.edit && pendingSpeechGroups.some((group) => group.ids.includes(command.id))) selectedGroupId = command.id
         break
       case 'open-speech-target':
-        await onOpenSpeechTarget(command.requestId, command.segmentId)
+        await onOpenSpeechTarget(command.requestId, command.segmentId, command.target)
         break
       case 'retry-recording':
         if (exitFlight) { await exitFlight; break }
@@ -531,6 +585,8 @@
       voiceLevel: $voice.level,
       partialTranscript: $voice.partial,
       message: $session.message,
+      target: speakingTarget ?? nextSessionTarget,
+      nextTarget: nextSessionTarget,
     }
     void capabilities.rambleConsole.implementation.publish(state).catch(() => {})
   }
@@ -540,11 +596,18 @@
   }
 </script>
 
-{#if capabilities.rambleConsole.status.availability === 'unavailable' || nativeOverlayFailed}
+{#if embeddedConsole && (speechReviewNeeded || $speechDrafts.edit)}
+  <RecordingOverlay
+    state={{ ...speechOverlayState, enabled: true, opacity: 100, phase: 'idle', partial: '', error: '', target: null, nextTarget: null, receipt: null }}
+    onCommand={(command) => void handleRambleConsoleCommand(command)}
+  />
+{/if}
+
+{#if !embeddedConsole && (capabilities.rambleConsole.status.availability === 'unavailable' || nativeOverlayFailed)}
   <RecordingOverlay state={speechOverlayState} onCommand={(command) => void handleRambleConsoleCommand(command)} />
 {/if}
 
-{#if !$speechOverlayEnabled && pendingSpeechGroups.length > 0 && (speechReviewNeeded || reviewOpen || $speechDrafts.edit)}
+{#if !embeddedConsole && !$speechOverlayEnabled && pendingSpeechGroups.length > 0 && (speechReviewNeeded || reviewOpen || $speechDrafts.edit)}
   <aside class="speech-review-dock" aria-label={t($locale, 'Pending speech groups')}>
     {#if reviewOpen || $speechDrafts.edit}
       <div id="pending-speech-review">

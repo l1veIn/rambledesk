@@ -2,16 +2,16 @@
   import RecordingOverlay from '$lib/speech/RecordingOverlay.svelte'
   import type { RambleConsoleCommand } from '$lib/rambleConsole'
   import type { SpeechOverlayState } from '$lib/speech/speechOverlay'
-  import type { DraftOperation } from '$lib/draftOperations'
+  import type { SpeechWriteInput } from '$lib/speech/speechWriteback'
   import { handleSpeechDraftCommand } from '$lib/speech/speechDraftCommands'
   import { createSpeechDraftQueue, groupSpeechDrafts, type SpeechTarget } from '$lib/speech/speechDraftQueue'
   import type { VoicePhase } from '../lib/domain/sessionPhases'
 
   const mainTarget: SpeechTarget = {
     requestId: 'preview-feedback', requestTitle: 'Login review',
-    action: { actionId: 'login', actionIndex: 0, title: 'Check login behavior' },
+    destination: { kind: 'document', action: { actionId: 'login', actionIndex: 0, title: 'Check login behavior' } },
   }
-  const otherTarget: SpeechTarget = { requestId: 'preview-other-feedback', requestTitle: 'Navigation review', action: null }
+  const otherTarget: SpeechTarget = { requestId: 'preview-feedback', requestTitle: 'Login review', destination: { kind: 'review_annotation', annotationId: 'note-1', field: 'body', sourceVersion: 'v1', paragraphLabel: 'Opening' } }
   let nextId = 1
   let selectedGroupId: string | null = null
   let phase: VoicePhase = 'listening'
@@ -21,9 +21,9 @@
   let partial = ''
   let notice = ''
   let tidyCalls = 0
-  let writes: Array<{ requestId: string; operation: DraftOperation }> = []
+  let writes: SpeechWriteInput[] = []
   const queue = createSpeechDraftQueue({
-    write: async (requestId, operation) => { writes = [...writes, { requestId, operation }] },
+    writeSpeech: async (input) => { writes = [...writes, input] },
     tidy: async (text) => {
       tidyCalls += 1
       const fail = failNextTidy
@@ -39,7 +39,7 @@
   $: state = {
     enabled: true, opacity: 100, selectedGroupId,
     shortcuts: { speechAccept: 'Ctrl+Shift+Enter', speechDiscard: 'Ctrl+Shift+Backspace' },
-    phase, level: phase === 'listening' ? 0.6 : 0, partial, error: '', target: mainTarget,
+    phase, level: phase === 'listening' ? 0.6 : 0, partial, error: '', target: mainTarget, nextTarget: otherTarget,
     groups, receipt: $queue.receipt, edit: $queue.edit,
   } satisfies SpeechOverlayState
 
@@ -104,10 +104,8 @@
       {#each writes as entry, index (index)}
         <div class="draft-row">
           <strong>{entry.requestId}</strong>
-          {#if entry.operation.kind === 'appendSpeech'}
-            <small>{entry.operation.segmentId} · {entry.operation.cleanupState ?? 'pending'}</small>
-            <p>{entry.operation.text}</p>
-          {/if}
+          <small>{entry.id} · {entry.cleanupState ?? 'pending'}</small>
+          <p>{entry.text}</p>
         </div>
       {:else}<p class="muted">Confirm speech to see the accepted text here.</p>{/each}
       {#if notice}<p role="status">{notice}</p>{/if}
