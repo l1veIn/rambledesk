@@ -30,7 +30,7 @@ pub(super) async fn ensure_attachment_mutable(
     expected_revision: u64,
 ) -> Result<i64, RepositoryError> {
     let row = sqlx::query(
-        "SELECT status, revision, \
+        "SELECT status, revision, workbench_json, \
                 EXISTS(SELECT 1 FROM submission_plans WHERE request_id = ?1) AS planned \
          FROM feedback_requests WHERE id = ?1",
     )
@@ -39,6 +39,7 @@ pub(super) async fn ensure_attachment_mutable(
     .await
     .map_err(storage_error)?
     .ok_or(RepositoryError::RequestNotFound)?;
+    ensure_workbench_editable(&row)?;
     let status: String = row.try_get("status").map_err(storage_error)?;
     if matches!(
         FeedbackStatus::try_from(status.as_str())?,
@@ -504,7 +505,8 @@ pub(super) fn repository_error_code(error: RepositoryError) -> &'static str {
         }
         RepositoryError::RequestConflict
         | RepositoryError::DraftEmpty
-        | RepositoryError::WorkbenchIncomplete => "RECOVERY_FAILURE",
+        | RepositoryError::WorkbenchIncomplete
+        | RepositoryError::WorkbenchUnsupported => "RECOVERY_FAILURE",
         RepositoryError::HostSessionNotFound | RepositoryError::HostSessionHasOpenRequests => {
             "RECOVERY_FAILURE"
         }
@@ -514,13 +516,21 @@ pub(super) fn repository_error_code(error: RepositoryError) -> &'static str {
     }
 }
 
-fn workbench_spec_from_row(
+pub(super) fn workbench_spec_from_row(
     row: &SqliteRow,
 ) -> Result<Option<rambledesk_core::WorkbenchSpec>, RepositoryError> {
     row.try_get::<Option<String>, _>("workbench_json")
         .map_err(storage_error)?
         .map(|value| serde_json::from_str(&value).map_err(|_| RepositoryError::CorruptData))
         .transpose()
+}
+
+pub(super) fn ensure_workbench_editable(row: &SqliteRow) -> Result<(), RepositoryError> {
+    if let Some(spec) = workbench_spec_from_row(row)? {
+        rambledesk_core::validate_workbench(&spec)
+            .map_err(|_| RepositoryError::WorkbenchUnsupported)?;
+    }
+    Ok(())
 }
 
 pub(super) fn workbench_package_from_row(

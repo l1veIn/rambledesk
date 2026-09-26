@@ -4,7 +4,9 @@
   import type { FeedbackWorkspaceView } from '$lib/feedback'
   import type { HostProfile } from '$lib/domain/hostProfile'
   import QuestionnaireWorkbench from './QuestionnaireWorkbench.svelte'
-  import type { SingleChoiceData, QuestionsData, WorkbenchState } from '$lib/generated/feedback'
+  import type { DocumentReviewData, SingleChoiceData, QuestionsData, WorkbenchState } from '$lib/generated/feedback'
+  import { resolveWorkbenchPolicy } from '../workbenchPolicy'
+  import DocumentReviewWorkbench from './document-review/DocumentReviewWorkbench.svelte'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
   import RambleWorkbench from './RambleWorkbench.svelte'
@@ -19,17 +21,16 @@
   export let cooking = false
   export let activeActionId: string | null = null
   export let state: WorkbenchState | null = null
-  export let open = true
-  export let onOpenFullView: () => void = () => {}
   export let onSelectAction: (id: string, index: number, title: string) => void = () => {}
   export let onStateChange: (state: WorkbenchState) => void = () => {}
 
   $: spec = workspace.workbench
-  $: kind = !spec ? 'ramble' : spec.version === 1 && ['ramble', 'questions', 'single_choice'].includes(spec.type) ? spec.type : 'unsupported'
-  $: choice = kind === 'single_choice' && spec && 'options' in spec.data ? spec.data as SingleChoiceData : null
-  $: questions = kind === 'questions' && spec && 'questions' in spec.data ? spec.data as QuestionsData : null
+  $: kind = resolveWorkbenchPolicy(spec)?.type ?? 'unsupported'
+  $: choice = kind === 'single_choice' && spec ? spec.data as SingleChoiceData : null
+  $: questions = kind === 'questions' && spec ? spec.data as QuestionsData : null
+  $: review = kind === 'document_review' && spec ? spec.data as DocumentReviewData : null
   $: selectedOptionId = state?.type === 'single_choice' ? state.selected_option_id : null
-  $: closed = readOnly || workspace.request.status === 'completed' || workspace.request.status === 'cancelled'
+  $: closed = readOnly || kind === 'unsupported' || workspace.request.status === 'completed' || workspace.request.status === 'cancelled'
   const tr = (source: string) => t($locale, source)
   function select(id: string | null) {
     if (closed) return
@@ -38,18 +39,24 @@
 </script>
 
 {#if kind === 'ramble'}
-  <RambleWorkbench {workspace} {transport} {capabilities} {resolveHostProfile} readOnly={closed} {cooking} {activeActionId} bind:open {onOpenFullView} {onSelectAction} />
+  <RambleWorkbench {workspace} {transport} {capabilities} {resolveHostProfile} readOnly={closed} {cooking} {activeActionId} {onSelectAction} />
 {:else}
   <div class="flex h-full min-h-0 min-w-0 flex-col" data-workbench={kind}>
     <WorkspaceHeader {workspace} {resolveHostProfile} {cooking} />
-    <TaskBriefPanel
-      {workspace} {transport} {capabilities} bind:open {activeActionId}
-      locked={closed || kind === 'unsupported'}
-      actionHeading={kind === 'questions' ? 'Questions' : kind === 'single_choice' ? 'Choose one option' : 'Request materials'}
-      hint={kind === 'unsupported' ? 'This workbench is unavailable. You can review the materials and send free feedback; no structured answer will be inferred.' : ''}
-      onSelectAction={(id, index, title) => { if (!closed) onSelectAction(id, index, title) }}
-      interaction={questions ? questionnaire : choice ? choices : undefined}
-    />
+    <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain p-5" data-workbench-content>
+      {#if questions}
+        {@render questionnaire()}
+      {:else if choice}
+        {@render choices()}
+      {:else if review}
+        {#key workspace.request.request_id}
+          <DocumentReviewWorkbench data={review} state={state?.type === 'document_review' ? state : { type: 'document_review', verdict: null, annotations: [], paragraph_marks: [] }} disabled={closed} onChange={onStateChange} />
+        {/key}
+      {:else}
+        <p class="m-0 text-sm leading-6 text-muted-foreground" role="status">{tr('This workbench is unavailable. Your draft and materials are preserved in read-only mode. Open this request in a compatible client to continue.')}</p>
+      {/if}
+    </div>
+    <TaskBriefPanel {workspace} {transport} {capabilities} />
   </div>
 {/if}
 

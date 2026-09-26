@@ -16,6 +16,8 @@ pub enum RepositoryError {
     DraftEmpty,
     #[error("workbench answers are incomplete or invalid")]
     WorkbenchIncomplete,
+    #[error("workbench contract is unsupported and read-only")]
+    WorkbenchUnsupported,
     #[error("attachment was not found")]
     AttachmentNotFound,
     #[error("attachment limit was reached")]

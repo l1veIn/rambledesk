@@ -42,7 +42,7 @@ fn discovery_is_paged_and_request_schema_does_not_embed_each_type() {
     let schema = serde_json::to_string(&schemars::schema_for!(RequestFeedbackInput)).unwrap();
     assert!(!schema.contains("QuestionsData"));
     assert!(!schema.contains("SingleChoiceData"));
-    for kind in ["ramble", "questions", "single_choice"] {
+    for kind in ["ramble", "questions", "single_choice", "document_review"] {
         let description = describe_workbench(&DescribeWorkbenchInput {
             kind: kind.into(),
             version: None,
@@ -51,10 +51,12 @@ fn discovery_is_paged_and_request_schema_does_not_embed_each_type() {
         let roundtrip: WorkbenchSpec =
             serde_json::from_value(serde_json::to_value(&description.example).unwrap()).unwrap();
         assert_eq!(roundtrip, description.example);
-        assert!(
-            !rambledesk_core::workbench_actions(&roundtrip)
+        assert!(rambledesk_core::validate_workbench(&roundtrip).is_ok());
+        assert_eq!(
+            rambledesk_core::workbench_actions(&roundtrip)
                 .unwrap()
-                .is_empty()
+                .is_empty(),
+            kind == "document_review"
         );
     }
 }
@@ -95,6 +97,7 @@ async fn typed_requests_preserve_identity_and_publish_answers_without_notes() {
             WorkbenchData::Ramble(data) => data.actions[0].instruction.push('!'),
             WorkbenchData::Questions(data) => data.questions[0].prompt.push('!'),
             WorkbenchData::SingleChoice(data) => data.prompt.push('!'),
+            _ => unreachable!("this regression fixture covers the original contracts"),
         }
         assert_eq!(
             app.request_feedback(changed).await.unwrap_err().code(),
@@ -361,4 +364,266 @@ async fn workbench_submission_requires_valid_answers_and_cas_keeps_notes_and_ans
             .contains("workbenchState")
     );
     reopened.close().await;
+}
+
+#[tokio::test]
+async fn document_review_roundtrips_restarts_and_publishes_immutable_anchors() {
+    let workspace = TestWorkspace::new().await;
+    let store = SqliteFeedbackStore::connect(&workspace.database)
+        .await
+        .unwrap();
+    let app = store.clone().into_application();
+    let mut input = workspace.request(Uuid::now_v7().to_string());
+    input.actions.clear();
+    input.workbench = Some(serde_json::from_value(json!({"type":"document_review","version":1,"data":{
+        "title":"Speech", "source_version":"draft-1", "paragraphs":[{"id":"opening","text":"你好😀 world"}]
+    }})).unwrap());
+    let mut approval = input.clone();
+    approval.allow_finish = true;
+    approval.final_summary = Some("Execute all changes".into());
+    assert_eq!(
+        app.request_feedback(approval).await.unwrap_err().code(),
+        "INVALID_ARGUMENT"
+    );
+    let created = app.request_feedback(input.clone()).await.unwrap();
+    assert_eq!(
+        app.request_feedback(input.clone())
+            .await
+            .unwrap()
+            .request_id,
+        created.request_id
+    );
+    let mut changed = input.clone();
+    let WorkbenchData::DocumentReview(data) = &mut changed.workbench.as_mut().unwrap().data else {
+        unreachable!()
+    };
+    data.paragraphs[0].text.push('!');
+    assert_eq!(
+        app.request_feedback(changed).await.unwrap_err().code(),
+        "REQUEST_CONFLICT"
+    );
+    let document = json!({"schemaVersion":2,"doc":{"type":"doc","content":[]},"workbenchState":{
+        "type":"document_review","verdict":"changes_requested","annotations":[{
+            "id":"note-1","paragraph_id":"opening","start":2,"end":3,"quote":"😀",
+            "kind":"suggestion","body":"Remove emoji","replacement":"","status":"open"
+        }],"paragraph_marks":[{"paragraph_id":"opening","decision":"revise"}]
+    }})
+    .to_string();
+    let saved = app
+        .save_feedback_draft(SaveDraftInput {
+            request_id: created.request_id.clone(),
+            document_json: document.clone(),
+            body_markdown: String::new(),
+            expected_revision: 0,
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        app.save_feedback_draft(SaveDraftInput {
+            request_id: created.request_id.clone(),
+            document_json: "{}".into(),
+            body_markdown: "Stale".into(),
+            expected_revision: 0
+        })
+        .await
+        .unwrap_err()
+        .code(),
+        "DRAFT_CONFLICT"
+    );
+    store.close().await;
+    let store = SqliteFeedbackStore::connect(&workspace.database)
+        .await
+        .unwrap();
+    let app = store.clone().into_application();
+    let loaded = app
+        .get_feedback_workspace(created.request_id.clone())
+        .await
+        .unwrap();
+    assert_eq!(loaded.workbench, input.workbench);
+    assert!(loaded.actions.is_empty());
+    assert_eq!(
+        loaded.draft.document_json.as_deref(),
+        Some(document.as_str())
+    );
+    let submitted = app
+        .submit_feedback(SubmitFeedbackInput {
+            request_id: created.request_id.clone(),
+            expected_revision: saved.saved_revision,
+            cooked_markdown: None,
+            cooking_model: None,
+            uncooked_markdown: None,
+        })
+        .await
+        .unwrap();
+    let package = app
+        .read_feedback_package(&submitted)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(package.markdown.trim().is_empty());
+    let workbench = serde_json::to_value(package.manifest.workbench.unwrap()).unwrap();
+    assert_eq!(workbench["data"]["paragraphs"][0]["text"], "你好😀 world");
+    assert_eq!(workbench["result"]["source_version"], "draft-1");
+    assert_eq!(workbench["result"]["annotations"][0]["quote"], "😀");
+    assert_eq!(workbench["result"]["annotations"][0]["replacement"], "");
+    input.request_id = Some(Uuid::now_v7().to_string());
+    let created = app.request_feedback(input).await.unwrap();
+    let cancelled = app
+        .cancel_feedback(CancelFeedbackInput {
+            request_id: created.request_id,
+            reason: "Skip this review".into(),
+        })
+        .await
+        .unwrap();
+    assert!(
+        app.read_feedback_package(&cancelled)
+            .await
+            .unwrap()
+            .unwrap()
+            .manifest
+            .workbench
+            .unwrap()
+            .result
+            .is_none()
+    );
+    store.close().await;
+}
+
+#[tokio::test]
+async fn future_workbench_requests_are_readable_but_reject_mutation_and_submission() {
+    let workspace = TestWorkspace::new().await;
+    let store = SqliteFeedbackStore::connect(&workspace.database)
+        .await
+        .unwrap();
+    let app = store.clone().into_application();
+    let input = workspace.request(Uuid::now_v7().to_string());
+    let created = app.request_feedback(input).await.unwrap();
+    let saved = app
+        .save_feedback_draft(SaveDraftInput {
+            request_id: created.request_id.clone(),
+            document_json: "{}".into(),
+            body_markdown: "Text cannot bypass an unsupported contract".into(),
+            expected_revision: 0,
+        })
+        .await
+        .unwrap();
+    let future = json!({"type":"future_canvas","version":7,"data":{"shapes":[{"kind":"circle"}]}});
+    sqlx::query("UPDATE feedback_requests SET workbench_json = ?2 WHERE id = ?1")
+        .bind(&created.request_id)
+        .bind(future.to_string())
+        .execute(&store.pool)
+        .await
+        .unwrap();
+    let loaded = app
+        .get_feedback_workspace(created.request_id.clone())
+        .await
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(loaded.workbench.unwrap()).unwrap(),
+        future
+    );
+    let error = app
+        .save_feedback_draft(SaveDraftInput {
+            request_id: created.request_id.clone(),
+            document_json: "{}".into(),
+            body_markdown: "Overwrite".into(),
+            expected_revision: saved.saved_revision,
+        })
+        .await
+        .unwrap_err();
+    assert!(error.message().contains("read-only"));
+    let error = app
+        .submit_feedback(SubmitFeedbackInput {
+            request_id: created.request_id.clone(),
+            expected_revision: saved.saved_revision,
+            cooked_markdown: None,
+            cooking_model: None,
+            uncooked_markdown: None,
+        })
+        .await
+        .unwrap_err();
+    assert!(error.message().contains("read-only"));
+    let error = app
+        .reorder_feedback_attachments(ReorderAttachmentsInput {
+            request_id: created.request_id.clone(),
+            attachment_ids: vec![],
+            expected_revision: saved.saved_revision,
+        })
+        .await
+        .unwrap_err();
+    assert!(error.message().contains("read-only"));
+    let error = app
+        .approve_feedback(ApproveFeedbackInput {
+            request_id: created.request_id.clone(),
+        })
+        .await
+        .unwrap_err();
+    assert!(error.message().contains("read-only"));
+    let loaded = app
+        .get_feedback_workspace(created.request_id.clone())
+        .await
+        .unwrap();
+    assert_eq!(loaded.draft.saved_revision, saved.saved_revision);
+    let cancelled = app
+        .cancel_feedback(CancelFeedbackInput {
+            request_id: created.request_id,
+            reason: "Use a compatible app later".into(),
+        })
+        .await
+        .unwrap();
+    let package = app
+        .read_feedback_package(&cancelled)
+        .await
+        .unwrap()
+        .unwrap();
+    let workbench = package.manifest.workbench.unwrap();
+    assert_eq!(serde_json::to_value(workbench.input).unwrap(), future);
+    assert!(workbench.result.is_none());
+    store.close().await;
+}
+
+#[tokio::test]
+async fn structured_contract_cannot_use_a_legacy_approval_flag_to_skip_answers() {
+    let workspace = TestWorkspace::new().await;
+    let store = SqliteFeedbackStore::connect(&workspace.database)
+        .await
+        .unwrap();
+    let app = store.clone().into_application();
+    let mut input = workspace.request(Uuid::now_v7().to_string());
+    input.actions.clear();
+    input.workbench = Some(
+        describe_workbench(&DescribeWorkbenchInput {
+            kind: "document_review".into(),
+            version: Some(1),
+        })
+        .unwrap()
+        .example,
+    );
+    let created = app.request_feedback(input).await.unwrap();
+    // A historical/imported approval flag cannot weaken the active contract.
+    sqlx::query(
+        "UPDATE feedback_requests SET allow_finish = 1, final_summary = 'Done' WHERE id = ?1",
+    )
+    .bind(&created.request_id)
+    .execute(&store.pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        app.approve_feedback(ApproveFeedbackInput {
+            request_id: created.request_id.clone()
+        })
+        .await
+        .unwrap_err()
+        .code(),
+        "REQUEST_TERMINAL"
+    );
+    assert_eq!(
+        app.get_feedback_workspace(created.request_id)
+            .await
+            .unwrap()
+            .request
+            .status,
+        FeedbackStatus::Waiting
+    );
+    store.close().await;
 }

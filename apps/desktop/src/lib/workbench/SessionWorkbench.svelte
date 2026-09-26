@@ -35,7 +35,8 @@
   import RegisteredWorkbench from './RegisteredWorkbench.svelte'
   import type { WorkbenchState } from '../generated/feedback'
   import { readWorkbenchState, withWorkbenchState } from '../workbenchState'
-  import { snapshotFeedbackDraftDocument } from '../feedbackDraftDocument'
+  import { applyFeedbackDraftSnapshot, snapshotFeedbackDraftDocument } from '../feedbackDraftDocument'
+  import { workbenchIsReadOnly } from '../workbenchPolicy'
   import WorkbenchContainer from './WorkbenchContainer.svelte'
 
   export let loadingWorkspace = false
@@ -54,7 +55,6 @@
   export let view: SessionViewDescriptor | null = null
   export let workspace: FeedbackWorkspaceView | null = null
   export let feedbackResult: FeedbackResultView | null = null
-  export let taskBriefOpen = true
   export let draftBody = ''
   export let draftDocumentJson: string | undefined = undefined
   export let editorDocument: JSONContent | null = null
@@ -103,7 +103,6 @@
   export let onToggleRamble: () => void = () => {}
   export let onExitRamble: () => void = () => {}
   export let onOpenVoiceSettings: () => void = () => {}
-  export let onOpenTask: (requestId: string) => void = () => {}
   export let onStartScreenCapture: () => void = () => {}
   export let onImportClipboard: () => void = () => {}
   export let onFileSelection: (event: Event) => void = () => {}
@@ -117,7 +116,9 @@
   export let onCancel: () => void = () => {}
   export let onApprove: () => void = () => {}
 
-  $: interactionLocked = readOnly || cooking || cookedDraftReady || submitting || cancelling || approving
+  $: unsupported = workbenchIsReadOnly(workspace?.workbench)
+  $: feedbackReadOnly = readOnly || unsupported
+  $: interactionLocked = feedbackReadOnly || cooking || cookedDraftReady || submitting || cancelling || approving
 
   let container: WorkbenchContainer
   let interactionState: WorkbenchState | null = null
@@ -129,7 +130,8 @@
       : snapshotFeedbackDraftDocument(editorDocument ?? { type: 'doc', content: [{ type: 'paragraph' }] })
   }
   function draftChanged(snapshot: FeedbackDraftSnapshot) {
-    currentSnapshot = withWorkbenchState(snapshot, interactionState)
+    if (interactionLocked) return
+    currentSnapshot = applyFeedbackDraftSnapshot(currentSnapshot, snapshot)
     onDraftChange(currentSnapshot)
   }
   function interactionChanged(state: WorkbenchState) {
@@ -138,10 +140,6 @@
     currentSnapshot = withWorkbenchState(currentSnapshot, state)
     onDraftChange(currentSnapshot)
   }
-
-  // The full-screen task view is hidden for now (see TaskBriefPanel): nothing
-  // opens it automatically. `workspaceNavigation.autoOpenTaskView`, the
-  // preference and its Settings toggle stay for when it returns.
 
   export function applyDraftOperation(operation: DraftOperation): boolean {
     return container?.applyDraftOperation(operation) ?? false
@@ -169,7 +167,7 @@
     {transport}
     {capabilities}
     {loadingWorkspace}
-    {readOnly}
+    readOnly={feedbackReadOnly}
     locked={interactionLocked}
     {attachmentBusy}
     {draftBody}
@@ -187,7 +185,7 @@
     {cookedPreviewModel}
     {cookedPreviewMarkdown}
     {publishedFeedback}
-    canSubmit={canSubmit && !readOnly}
+    canSubmit={canSubmit && !feedbackReadOnly}
     {submitting}
     {submitStage}
     canCancel={canCancel && !readOnly}
@@ -227,8 +225,6 @@
           onStateChange={interactionChanged}
           {cooking}
           {activeActionId}
-          bind:open={taskBriefOpen}
-          onOpenFullView={() => onOpenTask(workspace!.request.request_id)}
           {onSelectAction}
         />
       {/if}

@@ -1,0 +1,76 @@
+{
+  "title": "2/4 · 逐项问答",
+  "what_happened": "请完成三道问题，至少试一次自定义回答，再返回修改一道答案。补充正文可留空；提交后进入方案单选。",
+  "workbench": {
+    "type": "questions",
+    "version": 1,
+    "data": {
+      "questions": [
+        {
+          "id": "audience",
+          "label": "目标用户",
+          "prompt": "这段介绍最应该面向谁？请试用自定义回答，写出更具体的人群。",
+          "allowOther": true,
+          "options": [
+            {
+              "value": "creators",
+              "label": "内容创作者",
+              "description": "经常审阅视频脚本或发言稿的人。"
+            },
+            {
+              "value": "teams",
+              "label": "产品团队",
+              "description": "需要收集体验反馈的协作团队。"
+            }
+          ]
+        },
+        {
+          "id": "tone",
+          "label": "表达风格",
+          "prompt": "请选择表达风格。此题不提供自定义回答。",
+          "allowOther": false,
+          "options": [
+            {
+              "value": "direct",
+              "label": "直接清楚"
+            },
+            {
+              "value": "warm",
+              "label": "轻松亲切"
+            },
+            {
+              "value": "formal",
+              "label": "正式克制"
+            }
+          ]
+        },
+        {
+          "id": "priority",
+          "label": "重点",
+          "prompt": "最需要突出哪一项？提交前返回前题修改一次，确认答案还在。",
+          "allowOther": true,
+          "options": [
+            {
+              "value": "capture",
+              "label": "随手记录"
+            },
+            {
+              "value": "review",
+              "label": "精确审阅"
+            },
+            {
+              "value": "handoff",
+              "label": "提交后继续工作"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "attachments": [
+    {
+      "file_name": "问答体验.md",
+      "path": "materials/02-questions.md"
+    }
+  ]
+}

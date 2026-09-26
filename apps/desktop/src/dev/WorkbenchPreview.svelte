@@ -3,11 +3,11 @@
   import SessionWorkbench from '$lib/workbench/SessionWorkbench.svelte'
   import { TestApplicationTransport } from '$lib/application/testApplicationTransport'
   import { createUnavailableWorkbenchCapabilities } from '$lib/capabilities/unavailableCapabilities'
-  import { decodeFeedbackDraftDocument, type FeedbackDraftSnapshot } from '$lib/feedbackDraftDocument'
+  import type { FeedbackDraftSnapshot } from '$lib/feedbackDraftDocument'
   import { previewHostProfile } from './agentPreviewFixtures'
-  import { workbenchExamples, workbenchPreviewWorkspace } from './workbenchPreviewFixtures'
+  import { workbenchExamples, workbenchPreviewLabels, workbenchPreviewWorkspace } from './workbenchPreviewFixtures'
 
-  let index = 0
+  let index = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('type') === 'document_review' ? 3 : 0
   let workspace = workbenchPreviewWorkspace(index)
   let view: SessionWorkbench
   let activeActionId: string | null = null
@@ -33,7 +33,7 @@
 <main class="flex h-screen flex-col bg-background text-foreground">
   <nav class="flex shrink-0 flex-wrap items-center gap-3 border-b px-5 py-3" aria-label="工作台实验">
     {#each workbenchExamples as example, i}
-      <button type="button" aria-pressed={index === i} onclick={() => choose(i)} class="rounded-md border px-4 py-2 text-sm aria-pressed:bg-primary aria-pressed:text-primary-foreground">{['Ramble 自由反馈', '逐项问答', '方案单选'][i]}</button>
+      <button type="button" aria-pressed={index === i} onclick={() => choose(i)} class="rounded-md border px-4 py-2 text-sm aria-pressed:bg-primary aria-pressed:text-primary-foreground">{workbenchPreviewLabels[i]}</button>
     {/each}
     <span class="ml-auto text-xs text-muted-foreground">交互预览 · 内容只保存在本页内存中</span>
   </nav>

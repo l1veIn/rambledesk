@@ -31,8 +31,8 @@ CLI 的 `serve` 仍可组装 SQLite 与 Local Integration Server，供开发诊�
 
 | 位置 | 当前职责与边界 |
 | --- | --- |
-| `crates/rambledesk-core` | Feedback、workspace、Agent Session、Activity、Delivery、Recovery、Deletion 的 DTO、application use cases 与 ports。不依赖 HTTP/JSON/MCP/ACP SDK、Tauri、SQLite、宿主安装或文件路径推断。 |
-| `crates/rambledesk-storage` | SQLite、migrations、草稿与附件元数据、会话事实、发布对账及所属文件清理；依赖 core，不持有宿主协议。 |
+| `crates/rambledesk-core` | Feedback、工作台类型与结果、workspace、Agent Session、Activity、Delivery、Recovery、Deletion 的 DTO、application use cases 与 ports；工作台提交规则仅处理类型化领域值。不依赖 HTTP/JSON/MCP/ACP SDK、Tauri、SQLite、宿主安装或文件路径推断。 |
+| `crates/rambledesk-storage` | SQLite、migrations、草稿 JSON envelope 编解码、附件元数据、会话事实、发布对账及所属文件清理；依赖 core，不持有宿主协议或另一套提交领域规则。 |
 | `crates/rambledesk-acp` | 官方 ACP SDK、stdio driver、能力协商、权限回调、实例与进程树生命周期。依赖 core 和 feedback-client；不持有 SQLite、HTTP 路由或 Tauri UI，也不承接客户端文件/终端执行能力。 |
 | `crates/rambledesk-feedback-client` | 桌面/CLI 共用的反馈命令、输入验证、本地 IPC relay/client 和 scoped HTTP 客户端；依赖 core。relay 由 ACP 实例拥有，不拥有产品会话或推理。 |
 | `crates/rambledesk-local-server` | Local Integration 与独立 Web Access 的 listener、路由、认证、安全策略、静态资源与事件服务；依赖 core、mcp，不实现领域规则。 |
@@ -51,11 +51,11 @@ Cargo 依赖的精确清单由 [check-terminology.mjs](../scripts/check-terminol
 
 | 事实 | 所有者 |
 | --- | --- |
-| Request、结构化 Draft、revision、附件元数据 | Backend Runtime / SQLite |
+| 不可变 Request 输入、Draft 的正文与交互状态、revision、附件元数据 | Backend Runtime / SQLite |
 | 不可变反馈包 | 发布目录与 SQLite 结果记录共同对账 |
 | Session、AgentConfig、Activity、Delivery、Recovery、Deletion intent | Backend Runtime；持久事实与实时连接投影分开 |
 | 当前连接、执行状态、上下文 `used/size` | 当前运行实例；不把历史 connected 或累计 token 当作当前事实 |
-| 打开的 view、顺序、active view、pane 尺寸 | 每个客户端的 workspace snapshot，不保存第二份 Draft 正文 |
+| 打开的 view、顺序、active view、pane 尺寸 | 每个客户端的 workspace snapshot，不保存第二份 Draft 正文或答案 |
 | phone/tablet/desktop mode、抽屉和 rail 布局 | 客户端 shell layout owner；布局不创造后端业务状态 |
 | Editor selection、未保存编辑、当前设备录音与预览资源 | 当前 Workbench Client 的对应 owner |
 
@@ -76,11 +76,29 @@ Web Transport 保留以下顺序与失效合同：
 
 ## Feedback Draft 与输入所有权
 
-每个 Workbench Client instance 最多一个可编辑 `RichFeedbackEditor`；不建立 per-request/hidden Editor，也不让 session 持有 Editor handle。SQLite 中版本化 TipTap `document_json` 是保存真源；`body_markdown` 是同一次保存从该文档生成的投影。历史 Markdown 迁移、导出和展示不能成为第二套正文状态。见 [ADR 004](adr/004-single-editor-structured-draft.md)与修订其客户端作用域的 [ADR 005](adr/005-shared-workbench-transport-capabilities.md)。
+每个 Workbench Client instance 最多一个可编辑 `RichFeedbackEditor`；不建立 per-request/hidden Editor，也不让 session 持有 Editor handle。SQLite 中版本化 `document_json` 保存整个 Draft envelope，其中 TipTap `doc` 与可选 `workbenchState` 是不同字段。`body_markdown` 是同一次保存从 `doc` 生成的投影，不包含结构化答案。历史 Markdown 迁移、导出和展示不能成为第二套正文状态。见 [ADR 004](adr/004-single-editor-structured-draft.md)、修订其客户端作用域的 [ADR 005](adr/005-shared-workbench-transport-capabilities.md)与扩展草稿聚合边界的 [ADR 008](adr/008-typed-human-feedback-workbenches.md)。
 
-当前请求通过 Editor transaction 修改，后台 Active Ramble 对固定 request owner 使用 JSON transformation、串行队列与 CAS。Draft controller 合并并发保存等待，等待中的调用共享成功/失败结果；成功后排空保存期间的新编辑，失败不自动重复提交。发布前等待最新 snapshot/revision，旧请求结果不能污染新请求。
+当前正文通过 Editor transaction 修改；工作台视图通过类型合同修改 Interaction State，两者由同一草稿队列以同一 revision/CAS 保存。后台 Active Ramble 对固定 request owner 使用 JSON transformation，并保留 `workbenchState`。Draft controller 合并并发保存等待，等待中的调用共享成功/失败结果；成功后排空保存期间的新编辑，失败不自动重复提交。发布前等待包含最新正文与答案的 snapshot/revision，旧请求结果不能污染新请求。
 
 多个客户端可以编辑同一 Draft，但只能由 Backend Runtime revision/CAS 仲裁。跨客户端 refetch、自动保存回执和导航不得静默清空未保存编辑；冲突保留正文和可见错误。接受当前保存的投影也不能无故重置编辑器 Undo 历史。
+
+## 第一方工作台组合
+
+工作台专用区域与通用反馈列是同一个请求的两个输入区域。Ramble、逐题问答、方案单选与文稿审阅各自提供独立视图，不把新交互塞入 Ramble 的任务简报组件。共享容器负责布局、加载、锁定、反馈列和提交协调；类型视图负责自身业务对象与交互，不直接调用 Application Transport、设备采集或发布入口。
+
+Backend Runtime 的类型目录提供发现、schema、输入验证和结果解释；客户端静态注册项选择相应视图与状态规则。它们共享稳定的 `type/version` 合同，分属服务端领域规则与客户端呈现职责。注册表随应用构建，不是动态插件框架；目录 `interaction` 字符串只描述交互分类，不参与宿主协议或权限。
+
+客户端类型规则集中在 `apps/desktop/src/lib/workbenchPolicy.ts`，`workbenchInputValidation.ts` 按同一版本合同识别能安全编辑的输入，最终提交仍由服务端校验。视图由 `RegisteredWorkbench.svelte` 静态组合；文稿审阅的控件与锚点模型位于 `lib/workbench/document-review/`，服务端领域规则位于 `crates/rambledesk-core/src/workbenches/document_review.rs`。这些模块不分别持有保存队列或 publication state。
+
+持久草稿的 JSON envelope 由 `crates/rambledesk-storage/src/workbench_result.rs` 解码；repository 在同一事务快照中取出正文与交互状态，再调用 `core/workbenches/draft.rs` 的纯提交策略。core 接收已解析的类型化交互状态与正文投影，不读取 `document_json`、解释 TipTap JSON 或拥有存储 codec；Backend Runtime 对整个 Draft 的业务所有权不因编解码所在模块而改变。
+
+`WorkbenchSpec` 与 `WorkbenchPackage` 先根据外层 `type/version` 决定是否解释数据。未知合同的输入和已发布结果使用格式无关的 `serde-value` 保留，不能因形状类似当前类型而丢掉嵌套字段或补入当前默认值。JSON 解析和 wire 回归位于 storage/transport 边界；保留未知值只服务历史读取，不放宽创建、编辑或提交验证。
+
+创建未知类型或不支持的版本时由服务端拒绝。已有请求在客户端无法安全解释时进入只读：保留原请求、Draft 与已发布结果，禁止覆盖保存、提交和批准，不把未知数据降成空状态。该兼容状态与终态、提交中锁定分别表达；取消仍是显式请求操作。省略 `workbench` 的旧请求继续使用完整可编辑的 Ramble 路径。
+
+提交冻结整份草稿，再由服务端根据不可变输入校验完整性、解析稳定 id 与文稿锚点，形成 Workbench Result。自由正文可以为空，但不能代替类型必填判断。Cooking 只处理正文，结构化状态不交给模型改写。文稿审阅的原稿属于请求输入；批注、段落标记与改写建议属于 Draft，提交后由 Agent 据此修改原稿。具体合同见[文稿审阅](workbench/document-review.md)。
+
+Action 仍表示 Ramble 体验动作。旧路径将部分问答或方案数据投影成 Action 的做法是兼容桥接，不是新类型必备的领域实体；文稿段落、批注与文本锚点各自保持业务含义。
 
 设备输入位于 Application Transport 之外。Platform Plugin 组合本地能力、权限与资源，只返回 `SpeechEvent` 或 `AttachmentCandidate`；实时 PCM、识别 session、模型与权限不进入后端 Transport。浏览器选文件是读取客户端文件，不是选择服务器 `cwd`；不可用能力明确禁用。Browser ASR 当前是本地 pilot，浏览器屏幕采集尚未交付，具体设备支持见[矩阵](WEB_ACCESS_SUPPORT_MATRIX.md)。
 

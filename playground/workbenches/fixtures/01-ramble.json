@@ -1,0 +1,26 @@
+{
+  "title": "1/4 · 自由反馈",
+  "what_happened": "请按附件体验自由反馈：写几句意见，试着修改和撤销；语音、截图与附件可选。完成后提交，Agent 会接着发起问答。",
+  "workbench": {
+    "type": "ramble",
+    "version": 1,
+    "data": {
+      "actions": [
+        {
+          "id": "read",
+          "instruction": "打开随附的《自由反馈体验》，用文字记录你的观察。"
+        },
+        {
+          "id": "capture",
+          "instruction": "修改正文并试一次撤销；可选试用语音、截图或添加文件，然后提交反馈。"
+        }
+      ]
+    }
+  },
+  "attachments": [
+    {
+      "file_name": "自由反馈体验.md",
+      "path": "materials/01-ramble.md"
+    }
+  ]
+}

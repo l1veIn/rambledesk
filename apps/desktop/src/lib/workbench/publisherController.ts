@@ -1,4 +1,4 @@
-import { workbenchSubmissionIssue, readWorkbenchState } from '../workbenchState'
+import { workbenchSubmissionMessage, readWorkbenchState } from '../workbenchState'
 import { get } from 'svelte/store'
 
 import type { ApplicationTransport } from '../application/applicationTransport'
@@ -52,11 +52,9 @@ export function createPublisherController(context: PublisherControllerContext) {
 
   function validateSubmission() {
     const draft = get(context.draft)
-    const issue = workbenchSubmissionIssue(get(context.session).workspace?.workbench, readWorkbenchState(draft.documentJson), draft.body)
-    if (issue) context.setPageError(context.tr(issue === 'empty'
-      ? 'Provide workbench input or write feedback before submitting.'
-      : 'Answer every question or choose an option before submitting. Notes are optional.'))
-    return issue === null
+    const message = workbenchSubmissionMessage(get(context.session).workspace?.workbench, readWorkbenchState(draft.documentJson), draft.body)
+    if (message) context.setPageError(context.tr(message))
+    return message === null
   }
 
   async function publish(input: SubmitFeedbackInput) {

@@ -5,7 +5,8 @@ import { snapshotFeedbackDraftMarkdown, updateFeedbackDraftDocument } from './fe
 import { canSubmitWorkbench, readWorkbenchState, withWorkbenchState, workbenchSubmissionIssue } from './workbenchState'
 import { writeBackgroundDraftOperation } from './backgroundDraftWriter'
 import { workbenchExamples, workbenchPreviewWorkspace } from '../dev/workbenchPreviewFixtures'
-import type { WorkbenchState } from './generated/feedback'
+import type { QuestionsData, WorkbenchState } from './generated/feedback'
+import { resolveWorkbenchPolicy } from './workbenchPolicy'
 
 const state = { type: 'single_choice' as const, selected_option_id: 'compact' }
 const snapshot = () => withWorkbenchState(snapshotFeedbackDraftMarkdown(''), state)
@@ -26,14 +27,25 @@ describe('workbench submission rules', () => {
 
   it('distinguishes empty, incomplete and complete questionnaires without treating blank custom text as input', () => {
     const spec = workbenchExamples[1]
-    if (!('questions' in spec.data)) throw new Error('Expected questionnaire')
-    const answers: WorkbenchState = { type: 'questions', answers: spec.data.questions.map((question) => ({ id: question.id, value: question.options[0].value, label: question.options[0].label, wasCustom: false })) }
+    const data = spec.data as QuestionsData
+    const answers: WorkbenchState = { type: 'questions', answers: data.questions.map((question) => ({ id: question.id, value: question.options[0].value, label: question.options[0].label, wasCustom: false })) }
     expect(canSubmitWorkbench(spec, answers, '')).toBe(true)
     expect(workbenchSubmissionIssue(spec, { ...answers, answers: answers.answers.slice(0, 1) }, '')).toBe('incomplete')
     expect(workbenchSubmissionIssue(spec, null, 'Notes')).toBe('incomplete')
     const blank: WorkbenchState = { type: 'questions', answers: [{ id: 'audience', value: ' \n ', label: '', wasCustom: true }] }
     expect(workbenchSubmissionIssue(spec, blank, '')).toBe('empty')
     expect(workbenchSubmissionIssue(spec, { ...answers, answers: [...answers.answers, answers.answers[0]] }, 'Notes')).toBe('incomplete')
+  })
+
+  it('uses the same unsupported decision for rendering and submission, including future Ramble versions', () => {
+    for (const spec of [
+      { ...workbenchExamples[0], version: 99 },
+      { ...workbenchExamples[2], type: 'future_workbench' },
+      { ...workbenchExamples[2], data: { options: null } },
+    ]) {
+      expect(resolveWorkbenchPolicy(spec)).toBeNull()
+      expect(workbenchSubmissionIssue(spec, state, 'Notes')).toBe('unsupported')
+    }
   })
 })
 

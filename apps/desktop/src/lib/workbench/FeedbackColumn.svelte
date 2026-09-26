@@ -15,6 +15,7 @@
   import DeliveryCard from './DeliveryCard.svelte'
   import FeedbackEditorPanel from './FeedbackEditorPanel.svelte'
   import RambelleStatusCard from './RambelleStatusCard.svelte'
+  import { workbenchSupportsApproval } from '../workbenchPolicy'
 
   export let workspace: FeedbackWorkspaceView
   export let draftBody = ''
@@ -148,7 +149,8 @@
       {submitStage}
       {canCancel}
       {cancelling}
-      allowFinish={workspace.request.allow_finish}
+      allowFinish={workspace.request.allow_finish && workbenchSupportsApproval(workspace.workbench)}
+      canApprove={!locked}
       {approving}
       {canOpenResumePrompt}
       {onOpenPackage}

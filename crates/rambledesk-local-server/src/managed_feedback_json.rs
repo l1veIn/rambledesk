@@ -36,7 +36,7 @@ enum Command {
 enum Operation {
     List(rambledesk_core::ListWorkbenchesInput),
     Describe(rambledesk_core::DescribeWorkbenchInput),
-    Request(ManagedFeedbackRequestInput),
+    Request(Box<ManagedFeedbackRequestInput>),
     Get(GetFeedbackInput),
     Recover(ManagedFeedbackRecoverInput),
 }
@@ -157,7 +157,7 @@ async fn handle_request(
         }
         Operation::Request(input) => (
             application
-                .request_managed_feedback(lease.scope(), input.into())
+                .request_managed_feedback(lease.scope(), (*input).into())
                 .await,
             false,
         ),

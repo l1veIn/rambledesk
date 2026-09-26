@@ -1,5 +1,6 @@
 <script lang="ts">
   import { canSubmitWorkbench, readWorkbenchState } from './lib/workbenchState'
+  import { workbenchIsReadOnly } from './lib/workbenchPolicy'
   import { onMount, tick } from 'svelte'
   import { initializeAppearance } from './lib/appearance/appearanceRuntime'
 
@@ -183,7 +184,6 @@ import type { SettingsSection } from './lib/domain/settingsSection'
       : undefined,
   })
   if (workspaceShell.restoredActiveView()) workspaceSession.setLoading(true)
-  let taskBriefOpen = true
   let hostRailDisplayWidth = 0
   let navigationResizing = false
   let projectSearch = ''
@@ -206,7 +206,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
   const draftController = createDraftController({
     transport: applicationTransport,
     messageFrom,
-    isInteractionLocked: () => $workspaceSession.interactionLocked,
+    isInteractionLocked: () => $workspaceSession.interactionLocked || feedbackReadOnly,
     isWorkspaceTerminal: () => workspaceSession.isTerminal(),
     getWorkspace: () => $workspaceSession.workspace,
     session: draftSession,
@@ -250,7 +250,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     getWorkspace: () => $workspaceSession.workspace,
     getEditor: () => sessionWorkbench,
     getRambleRequestId: () => $rambleSession.requestId,
-    getInteractionLocked: () => interactionLocked || currentRequestCooking || cookedDraftReady,
+    getInteractionLocked: () => feedbackReadOnly || interactionLocked || currentRequestCooking || cookedDraftReady,
     getSavedRevision: () => $draftSession.savedRevision,
     session: attachmentSession,
     saveDraftNow,
@@ -457,6 +457,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
   $: feedbackManagedSessionId = agentViewForRequest(currentRequest)?.sessionId ?? null
   $: rambleAgentSessionId = feedbackManagedSessionId ?? (currentRequest ? null : agentViewForEmptyRamble(renderedSessionView, $navigation.hostSessions)?.sessionId ?? null)
   $: managedFeedbackReadOnly = !!feedbackManagedSessionId && ($managedSessions.deletingCommands.has(feedbackManagedSessionId) || $managedSessions.deletingSessions.has(feedbackManagedSessionId))
+  $: feedbackReadOnly = managedFeedbackReadOnly || workbenchIsReadOnly($workspaceSession.workspace?.workbench)
   $: currentRequestCooking =
     currentRequest !== null && $cookingSession.cookingRequestIds.has(currentRequest.request_id)
   $: cookedDraftReady = $cookingSession.preview !== null
@@ -472,6 +473,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     !currentRequestCooking &&
     !$workspaceSession.interactionLocked
   $: canCancel =
+    !managedFeedbackReadOnly &&
     currentRequest !== null &&
     currentRequest.status !== 'completed' &&
     currentRequest.status !== 'cancelled' &&
@@ -692,7 +694,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     setPageError: (message) => {
       pageError = message
     },
-    isReadOnly: () => managedFeedbackReadOnly,
+    isReadOnly: () => feedbackReadOnly,
     prepareFeedback: (requestId) => rambleController.prepareFeedback(requestId),
     saveDraftNow,
     getCookingEnabled: () => $cookingEnabled,
@@ -716,6 +718,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     tr,
     messageFrom,
     canCancel: () => canCancel,
+    canApprove: () => !feedbackReadOnly && !currentRequestCooking && !cookedDraftReady,
     prepareFeedback: (requestId) => rambleController.prepareFeedback(requestId),
     saveDraftNow,
     refreshNavigation: async () => {
@@ -774,7 +777,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     attachmentBusy={$attachmentSession.busy}
     screenCaptureBusy={$attachmentSession.captureBusy}
     onAttachmentMessage={attachmentSession.setMessage}
-    interactionLocked={managedFeedbackReadOnly || interactionLocked || currentRequestCooking || cookedDraftReady}
+    interactionLocked={feedbackReadOnly || interactionLocked || currentRequestCooking || cookedDraftReady}
     onPageError={(message) => (pageError = message)}
     onStartScreenCapture={attachmentController.startScreenCapture}
     onImportServerAttachmentPaths={attachmentController.importServerAttachmentPaths}
@@ -1015,7 +1018,6 @@ import type { SettingsSection } from './lib/domain/settingsSection'
         {capabilities}
         bind:this={sessionWorkbench}
         view={renderedSessionView}
-        bind:taskBriefOpen
         loadingWorkspace={$workspaceSession.loadingWorkspace}
         workspace={$workspaceSession.workspace}
         {feedbackResult}
@@ -1073,7 +1075,6 @@ import type { SettingsSection } from './lib/domain/settingsSection'
         onToggleRamble={() => void toggleRamble()}
         onExitRamble={() => void exitRamble()}
         onOpenVoiceSettings={() => void openSettings('voice')}
-        onOpenTask={(requestId) => void openTaskWorkspace(requestId)}
         onStartScreenCapture={() => void attachmentController.startScreenCapture()}
         onImportClipboard={() => void importClipboardNow()}
         onFileSelection={attachmentController.handleFileSelection}

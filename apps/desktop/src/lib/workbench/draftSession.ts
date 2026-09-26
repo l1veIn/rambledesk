@@ -1,11 +1,10 @@
-import { preserveWorkbenchState } from '../workbenchState'
 import { derived, get, writable } from 'svelte/store'
 
 import type { DraftView } from '../feedback'
 import {
   decodeFeedbackDraftDocument,
-  restoreFeedbackDraftDocument,
-  snapshotFeedbackDraftDocument,
+  restoreFeedbackDraftSnapshot,
+  applyFeedbackDraftSnapshot,
   type FeedbackDraftSnapshot,
 } from '../feedbackDraftDocument'
 import type { JSONContent } from '@tiptap/core'
@@ -73,8 +72,8 @@ export function createDraftSession() {
 
   /** Loads a server draft as both the current and the last accepted document. */
   function adopt(draft: DraftView, options: { loadEditor?: boolean } = {}): FeedbackDraftSnapshot {
-    const restored = restoreFeedbackDraftDocument(draft.document_json, draft.body_markdown)
-    const next = preserveWorkbenchState(snapshotFeedbackDraftDocument(restored), draft.document_json)
+    const next = restoreFeedbackDraftSnapshot(draft.document_json, draft.body_markdown)
+    const restored = decodeFeedbackDraftDocument(next.documentJson)
     patch({
       body: next.bodyMarkdown,
       documentJson: next.documentJson,
@@ -90,7 +89,7 @@ export function createDraftSession() {
 
   /** Applies an editor snapshot as the current draft without touching the saved one. */
   function edit(next: FeedbackDraftSnapshot) {
-    next = preserveWorkbenchState(next, get(store).documentJson)
+    next = applyFeedbackDraftSnapshot(snapshot(), next)
     patch({
       body: next.bodyMarkdown,
       documentJson: next.documentJson,
@@ -122,9 +121,7 @@ export function createDraftSession() {
    * what the server just accepted, otherwise adopt the server document.
    */
   function reconcile(draft: DraftView): 'adopted' | 'kept-local' {
-    const remote = preserveWorkbenchState(snapshotFeedbackDraftDocument(
-      restoreFeedbackDraftDocument(draft.document_json, draft.body_markdown),
-    ), draft.document_json)
+    const remote = restoreFeedbackDraftSnapshot(draft.document_json, draft.body_markdown)
     const local = snapshot()
     patch({
       savedBody: remote.bodyMarkdown,

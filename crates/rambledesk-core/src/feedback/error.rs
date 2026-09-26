@@ -178,6 +178,11 @@ impl From<RepositoryError> for ApplicationError {
                 "draft revision changed; reload before saving or submitting",
                 false,
             ),
+            RepositoryError::WorkbenchUnsupported => (
+                ApplicationErrorCode::InvalidArgument,
+                "This workbench type, version or data is unsupported and read-only; use a compatible app",
+                false,
+            ),
             RepositoryError::WorkbenchIncomplete => (
                 ApplicationErrorCode::InvalidArgument,
                 "Complete the workbench questions or selection before submitting; notes are optional",

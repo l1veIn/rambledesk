@@ -5,14 +5,36 @@ export type WorkbenchSpec = { type: string, version: number,
  * Get this type's data schema with describe_workbench before creating a request.
  */
 data: WorkbenchData, };
-export type WorkbenchData = RambleData | QuestionsData | SingleChoiceData;
+export type WorkbenchData = RambleData | QuestionsData | SingleChoiceData | DocumentReviewData | Record<string, unknown>;
 export type RambleData = { actions: Array<ActionInput>, };
 export type QuestionsData = { questions: Array<Question>, };
 export type Question = { id: string, prompt: string, label?: string, options: Array<QuestionOption>, allowOther: boolean, };
 export type QuestionOption = { value: string, label: string, description?: string, };
-export type WorkbenchState = { "type": "questions", answers: Array<QuestionAnswer>, } | { "type": "single_choice", selected_option_id: string | null, };
+export type WorkbenchState = { "type": "questions", answers: Array<QuestionAnswer>, } | { "type": "single_choice", selected_option_id: string | null, } | { "type": "document_review", verdict: ReviewVerdict | null, annotations: Array<ReviewAnnotation>, paragraph_marks: Array<ParagraphMark>, };
 export type SingleChoiceData = { prompt: string, options: Array<ChoiceOption>, };
 export type ChoiceOption = { id: string, label: string, };
+export type DocumentReviewData = { title: string, source_version: string,
+/**
+ * Immutable source paragraphs; at most 120000 Unicode scalar values in total.
+ */
+paragraphs: Array<ReviewParagraph>, };
+export type ReviewParagraph = { id: string, label?: string, text: string, };
+export type ReviewAnnotation = { id: string, paragraph_id: string,
+/**
+ * Half-open Unicode scalar offsets (not UTF-16). All three anchor fields
+ * must be null for a whole-paragraph annotation, or present and exact.
+ */
+start: number | null, end: number | null, quote: string | null, kind: ReviewAnnotationKind, body: string,
+/**
+ * Required for suggestions, null for comments; empty means proposed deletion.
+ */
+replacement: string | null, status: ReviewAnnotationStatus, };
+export type ReviewAnnotationKind = "comment" | "suggestion";
+export type ReviewAnnotationStatus = "open" | "resolved";
+export type ParagraphMark = { paragraph_id: string, decision: ParagraphDecision, };
+export type ParagraphDecision = "keep" | "revise" | "remove";
+export type ReviewVerdict = "ready" | "changes_requested";
+export type DocumentReviewResult = { source_version: string, verdict: ReviewVerdict, annotations: Array<ReviewAnnotation>, paragraph_marks: Array<ParagraphMark>, };
 export type WorkbenchPackage = {
 /**
  * None for cancellation or an unavailable structured document.
@@ -22,7 +44,7 @@ result: WorkbenchResult | null, type: string, version: number,
  * Get this type's data schema with describe_workbench before creating a request.
  */
 data: WorkbenchData, };
-export type WorkbenchResult = { kind: string, } | { answers: Array<QuestionAnswer>, cancelled: boolean, } | { status: AnswerStatus, selected_option_id: string | null, };
+export type WorkbenchResult = { kind: string, } | { answers: Array<QuestionAnswer>, cancelled: boolean, } | { status: AnswerStatus, selected_option_id: string | null, } | DocumentReviewResult | Record<string, unknown>;
 export type QuestionAnswer = { id: string, value: string, label: string, wasCustom: boolean,
 /**
  * One-based option index. Absent for custom input.

@@ -20,8 +20,17 @@ pub struct QuestionAnswer {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WorkbenchState {
-    Questions { answers: Vec<QuestionAnswer> },
-    SingleChoice { selected_option_id: Option<String> },
+    Questions {
+        answers: Vec<QuestionAnswer>,
+    },
+    SingleChoice {
+        selected_option_id: Option<String>,
+    },
+    DocumentReview {
+        verdict: Option<ReviewVerdict>,
+        annotations: Vec<ReviewAnnotation>,
+        paragraph_marks: Vec<ParagraphMark>,
+    },
 }
 
 /// Resolve values against immutable request data; never trust client display labels.
@@ -29,18 +38,11 @@ pub fn workbench_result(
     spec: &WorkbenchSpec,
     state: Option<&WorkbenchState>,
 ) -> Option<WorkbenchResult> {
-    if spec.version != 1 {
-        return None;
-    }
-    match (spec.kind.as_str(), &spec.data, state) {
-        ("ramble", WorkbenchData::Ramble(_), _) => Some(WorkbenchResult::Ramble {
+    match (validate_workbench(spec).ok()?, state) {
+        (ValidatedWorkbench::Ramble(_), _) => Some(WorkbenchResult::Ramble {
             kind: "free_feedback".into(),
         }),
-        (
-            "questions",
-            WorkbenchData::Questions(data),
-            Some(WorkbenchState::Questions { answers }),
-        ) => {
+        (ValidatedWorkbench::Questions(data), Some(WorkbenchState::Questions { answers })) => {
             if answers.len() > data.questions.len() {
                 return None;
             }
@@ -97,8 +99,7 @@ pub fn workbench_result(
             })
         }
         (
-            "single_choice",
-            WorkbenchData::SingleChoice(data),
+            ValidatedWorkbench::SingleChoice(data),
             Some(WorkbenchState::SingleChoice { selected_option_id }),
         ) => {
             if selected_option_id
@@ -116,6 +117,26 @@ pub fn workbench_result(
                 selected_option_id: selected_option_id.clone(),
             })
         }
+        (
+            ValidatedWorkbench::DocumentReview(data),
+            Some(WorkbenchState::DocumentReview {
+                verdict: Some(verdict),
+                annotations,
+                paragraph_marks,
+            }),
+        ) if super::document_review::review_annotations_valid(
+            data,
+            annotations,
+            paragraph_marks,
+        ) =>
+        {
+            Some(WorkbenchResult::DocumentReview(DocumentReviewResult {
+                source_version: data.source_version.clone(),
+                verdict: *verdict,
+                annotations: annotations.clone(),
+                paragraph_marks: paragraph_marks.clone(),
+            }))
+        }
         _ => None,
     }
 }
@@ -128,6 +149,7 @@ pub fn workbench_result_has_input(package: &WorkbenchPackage) -> bool {
         Some(WorkbenchResult::SingleChoice {
             selected_option_id, ..
         }) => selected_option_id.is_some(),
+        Some(WorkbenchResult::DocumentReview(_)) => true,
         _ => false,
     }
 }
@@ -144,6 +166,7 @@ pub fn workbench_result_complete(package: &WorkbenchPackage) -> bool {
                 ..
             }),
         ) => true,
+        (WorkbenchData::DocumentReview(_), Some(WorkbenchResult::DocumentReview(_))) => true,
         _ => false,
     }
 }

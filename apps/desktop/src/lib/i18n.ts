@@ -1,6 +1,18 @@
 import type { Locale } from './preferences'
 
 const chinese: Record<string, string> = {
+  'This workbench is unavailable. Your draft and materials are preserved in read-only mode. Open this request in a compatible client to continue.': '当前客户端不支持此工作台。草稿和材料已保留，并以只读方式显示。请使用兼容的客户端打开此请求以继续。',
+  'This workbench is unavailable. Open this request in a compatible client to continue.': '当前客户端不支持此工作台。请使用兼容的客户端打开此请求以继续。',
+  'Choose a review decision.': '请选择审阅结论。',
+  'Invalid review state.': '审阅草稿格式无效，请重新打开请求后检查批注。',
+  'Invalid or duplicate comment id.': '存在无效或重复的批注，请删除对应批注并重新添加。',
+  'A comment refers to an unavailable paragraph.': '有批注对应的段落已不可用，请检查并删除该批注。',
+  'Finish or remove empty comments.': '请补全空白批注，或删除它。',
+  'Invalid comment status.': '批注状态无效，请重新检查该批注。',
+  'Enter the suggested wording.': '请检查建议措辞，确保不超过 8000 字且不包含无效字符；留空表示建议删除。',
+  'Invalid comment kind.': '批注类型或建议措辞格式无效，请删除该批注并重新添加。',
+  'A comment no longer matches the original text.': '有批注与原文不再匹配，请重新选择对应文字并添加批注。',
+  'Invalid paragraph mark.': '存在无效或重复的段落标记，请检查后重新标记。',
   'Unanswered': '未回答',
   'Answer every question or choose an option before submitting. Notes are optional.': '请先完成题目或方案选择。补充说明为可选项。',
   'Additional notes (optional)': '补充说明（可选）',

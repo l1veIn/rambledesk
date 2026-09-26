@@ -146,6 +146,16 @@ describe('publisherController', () => {
     expect(h.setPageError).toHaveBeenCalledWith('Answer every question or choose an option before submitting. Notes are optional.')
   })
 
+  it('reports the document review requirement instead of asking the reader to answer questionnaire options', async () => {
+    const h = harness()
+    const workspace = workspaceView()
+    workspace.workbench = workbenchExamples[3]
+    h.session.open(workspace)
+    await h.publisher.submitFeedback()
+    expect(h.transport.callsFor('submitFeedback')).toHaveLength(0)
+    expect(h.setPageError).toHaveBeenCalledWith('Choose a review decision.')
+  })
+
   it('re-reads after an invalidation race without resubmitting or reporting failure', async () => {
     const h = harness()
     let reads = 0

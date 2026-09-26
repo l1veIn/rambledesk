@@ -22,13 +22,15 @@ impl SqliteFeedbackStore {
             .begin_with("BEGIN IMMEDIATE")
             .await
             .map_err(storage_error)?;
-        let request_row =
-            sqlx::query("SELECT status, revision FROM feedback_requests WHERE id = ?1")
-                .bind(request_id)
-                .fetch_optional(&mut *transaction)
-                .await
-                .map_err(storage_error)?
-                .ok_or(RepositoryError::RequestNotFound)?;
+        let request_row = sqlx::query(
+            "SELECT status, revision, workbench_json FROM feedback_requests WHERE id = ?1",
+        )
+        .bind(request_id)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(storage_error)?
+        .ok_or(RepositoryError::RequestNotFound)?;
+        ensure_workbench_editable(&request_row)?;
         let status: String = request_row.try_get("status").map_err(storage_error)?;
         if matches!(
             FeedbackStatus::try_from(status.as_str())?,

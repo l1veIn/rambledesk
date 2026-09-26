@@ -1,9 +1,8 @@
-import { preserveWorkbenchState } from './workbenchState'
 import type { DraftView, FeedbackWorkspaceView, SaveDraftInput } from './feedback'
 import { applyDraftOperation, type DraftOperation } from './draftOperations'
 import {
-  restoreFeedbackDraftDocument,
-  snapshotFeedbackDraftDocument,
+  restoreFeedbackDraftSnapshot,
+  updateFeedbackDraftDocument,
 } from './feedbackDraftDocument'
 import { commandErrorCode } from './workbench/feedbackText'
 
@@ -24,15 +23,10 @@ export async function writeBackgroundDraftOperation(
     if (workspace.request.request_id !== requestId) {
       throw new Error(`loaded workspace ${workspace.request.request_id} for ${requestId}`)
     }
-    const next = preserveWorkbenchState(snapshotFeedbackDraftDocument(
-      applyDraftOperation(
-        restoreFeedbackDraftDocument(
-          workspace.draft.document_json,
-          workspace.draft.body_markdown,
-        ),
-        operation,
-      ),
-    ), workspace.draft.document_json)
+    const next = updateFeedbackDraftDocument(
+      restoreFeedbackDraftSnapshot(workspace.draft.document_json, workspace.draft.body_markdown),
+      (doc) => applyDraftOperation(doc, operation),
+    )
     if (
       workspace.draft.document_json === next.documentJson &&
       workspace.draft.body_markdown === next.bodyMarkdown

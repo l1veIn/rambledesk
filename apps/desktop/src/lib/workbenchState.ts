@@ -1,66 +1,37 @@
-import type { FeedbackDraftSnapshot } from './feedbackDraftDocument'
-import type { Question, QuestionAnswer, WorkbenchSpec, WorkbenchState } from './generated/feedback'
+import { decodeFeedbackDraftEnvelope, updateFeedbackDraftState, type FeedbackDraftSnapshot } from './feedbackDraftDocument'
+import type { WorkbenchSpec, WorkbenchState } from './generated/feedback'
+import { decodeWorkbenchState, resolveWorkbenchPolicy } from './workbenchPolicy'
 
 export function readWorkbenchState(documentJson: string | null | undefined): WorkbenchState | null {
-  if (!documentJson) return null
-  try {
-    const envelope = JSON.parse(documentJson)
-    const value = envelope.schemaVersion === 2 ? envelope.workbenchState : null
-    if (value?.type === 'questions' && Array.isArray(value.answers)) return value
-    if (value?.type === 'single_choice' && (value.selected_option_id === null || typeof value.selected_option_id === 'string')) return value
-  } catch { /* Legacy Markdown-only drafts have no interaction state. */ }
-  return null
+  return decodeWorkbenchState(decodeFeedbackDraftEnvelope(documentJson)?.workbenchState)
 }
 
 export function withWorkbenchState(snapshot: FeedbackDraftSnapshot, state: WorkbenchState | null): FeedbackDraftSnapshot {
-  if (!state) return snapshot
-  return { ...snapshot, documentJson: JSON.stringify({ ...JSON.parse(snapshot.documentJson), workbenchState: state }) }
-}
-
-export function preserveWorkbenchState(snapshot: FeedbackDraftSnapshot, previous: string | null | undefined): FeedbackDraftSnapshot {
-  return withWorkbenchState(snapshot, readWorkbenchState(snapshot.documentJson) ?? readWorkbenchState(previous))
-}
-
-function validAnswer(question: Question, answer: QuestionAnswer): boolean {
-  if (!answer || typeof answer.value !== 'string') return false
-  return answer.wasCustom === true
-    ? question.allowOther && answer.value.trim().length > 0 && [...answer.value].length <= 4000 && !answer.value.includes('\0')
-    : answer.wasCustom === false && question.options.some((option) => option.value === answer.value)
+  return state === null ? snapshot : updateFeedbackDraftState(snapshot, state)
 }
 
 export function hasWorkbenchInput(spec: WorkbenchSpec | null | undefined, state: WorkbenchState | null): boolean {
-  if (!spec || spec.version !== 1) return false
-  if (spec.type === 'single_choice' && 'options' in spec.data && state?.type === 'single_choice') {
-    return spec.data.options.some((option) => option.id === state.selected_option_id)
-  }
-  if (spec.type === 'questions' && 'questions' in spec.data && state?.type === 'questions') {
-    return spec.data.questions.some((question) => state.answers.some((answer) => answer?.id === question.id && validAnswer(question, answer)))
-  }
-  return false
+  return !!spec && (resolveWorkbenchPolicy(spec)?.hasInput(spec, state) ?? false)
 }
 
-function workbenchComplete(spec: WorkbenchSpec | null | undefined, state: WorkbenchState | null): boolean {
-  if (!spec || spec.type === 'ramble') return true
-  if (spec.version !== 1) return false
-  if (spec.type === 'single_choice' && 'options' in spec.data && state?.type === 'single_choice') {
-    return spec.data.options.some((option) => option.id === state.selected_option_id)
-  }
-  if (spec.type === 'questions' && 'questions' in spec.data && state?.type === 'questions') {
-    if (state.answers.length !== spec.data.questions.length) return false
-    return spec.data.questions.every((question) => {
-      const answers = state.answers.filter((answer) => answer?.id === question.id)
-      if (answers.length !== 1) return false
-      return validAnswer(question, answers[0])
-    })
-  }
-  return false
-}
-
-export function workbenchSubmissionIssue(spec: WorkbenchSpec | null | undefined, state: WorkbenchState | null, notes: string): 'empty' | 'incomplete' | null {
-  if (!notes.trim() && !hasWorkbenchInput(spec, state)) return 'empty'
-  return workbenchComplete(spec, state) ? null : 'incomplete'
+export function workbenchSubmissionIssue(spec: WorkbenchSpec | null | undefined, state: WorkbenchState | null, notes: string): 'unsupported' | 'empty' | 'incomplete' | null {
+  const policy = resolveWorkbenchPolicy(spec)
+  if (!policy) return 'unsupported'
+  if (!notes.trim() && !(spec && policy.hasInput(spec, state))) return 'empty'
+  return !spec || policy.complete(spec, state) ? null : 'incomplete'
 }
 
 export function canSubmitWorkbench(spec: WorkbenchSpec | null | undefined, state: WorkbenchState | null, notes: string): boolean {
   return workbenchSubmissionIssue(spec, state, notes) === null
+}
+
+/** User-facing validation follows the same policy as the submit button. */
+export function workbenchSubmissionMessage(spec: WorkbenchSpec | null | undefined, state: WorkbenchState | null, notes: string): string | null {
+  const issue = workbenchSubmissionIssue(spec, state, notes)
+  if (!issue) return null
+  if (issue === 'unsupported') return 'This workbench is unavailable. Open this request in a compatible client to continue.'
+  const detail = spec && resolveWorkbenchPolicy(spec)?.submissionMessage?.(spec, state)
+  if (detail) return detail
+  return issue === 'empty' ? 'Provide workbench input or write feedback before submitting.'
+    : 'Answer every question or choose an option before submitting. Notes are optional.'
 }

@@ -31,6 +31,7 @@
   export let canCancel = false
   export let cancelling = false
   export let allowFinish = false
+  export let canApprove = true
   export let approving = false
   export let canOpenResumePrompt = false
   export let onOpenPackage: () => void = () => {}
@@ -147,7 +148,7 @@
       </Button>
     {/if}
     {#if allowFinish}
-      <Button size="sm" variant="secondary" disabled={operationLocked} onclick={onApprove}>
+      <Button size="sm" variant="secondary" disabled={operationLocked || !canApprove} onclick={onApprove}>
         <ThumbsUp data-icon="inline-start" />
         {approving ? tr('Finishing…') : tr('Approve and finish')}
       </Button>

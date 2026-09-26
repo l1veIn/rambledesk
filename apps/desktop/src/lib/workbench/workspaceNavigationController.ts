@@ -1,4 +1,3 @@
-import { preserveWorkbenchState } from '../workbenchState'
 import { tick } from 'svelte'
 import { get } from 'svelte/store'
 
@@ -14,7 +13,7 @@ import {
 import type { ApplicationTransport } from '../application/applicationTransport'
 import type { ApplicationResourceKey } from '../generated/feedback'
 import type { FeedbackRequestSummary, FeedbackWorkspaceView } from '../feedback'
-import { restoreFeedbackDraftDocument, snapshotFeedbackDraftDocument } from '../feedbackDraftDocument'
+import { restoreFeedbackDraftSnapshot } from '../feedbackDraftDocument'
 import { normalizePublishedFeedback } from '../publishedFeedback'
 import { agentSessionForView, arrivingRequestForAgentView, latestPendingRequestForSession } from '../workspace/agentViewRouting'
 import { requestFilterCount } from '../domain/requestFilters'
@@ -435,7 +434,7 @@ export function createWorkspaceNavigationController(context: WorkspaceNavigation
       refreshed.request.status === currentRequest?.status && refreshed.request.resolution === currentRequest.resolution &&
       !context.workspaceSession.isTerminal() && !context.isTransitionLocked() && !context.workspaceShell.pendingViewKey() &&
       refreshed.draft.saved_revision >= draft.savedRevision) {
-      const remote = preserveWorkbenchState(snapshotFeedbackDraftDocument(restoreFeedbackDraftDocument(refreshed.draft.document_json, refreshed.draft.body_markdown)), refreshed.draft.document_json)
+      const remote = restoreFeedbackDraftSnapshot(refreshed.draft.document_json, refreshed.draft.body_markdown)
       // Input may arrive during the read. A known saved baseline can refresh
       // metadata without replacing those newer local edits either.
       if (remote.documentJson === draft.documentJson ||

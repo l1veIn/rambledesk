@@ -33,7 +33,7 @@ async fn workbench_discovery_and_typed_requests_share_mcp_and_managed_command_co
         .json()
         .await?;
     assert_eq!(generic["workbenches"][1]["type"], "questions");
-    for kind in ["ramble", "questions", "single_choice"] {
+    for kind in ["ramble", "questions", "single_choice", "document_review"] {
         let description: Value = fixture
             .command(&endpoint, "describe_workbench", json!({"type":kind}))
             .send()
@@ -71,6 +71,9 @@ async fn workbench_discovery_and_typed_requests_share_mcp_and_managed_command_co
                 {"id":"scope","value":"自定义回答".repeat(400),"label":"自定义回答".repeat(400),"wasCustom":true}
             ]}),
             "single_choice" => json!({"type":"single_choice","selected_option_id":"compact"}),
+            "document_review" => {
+                json!({"type":"document_review","verdict":"ready","annotations":[],"paragraph_marks":[]})
+            }
             _ => Value::Null,
         };
         let doc =
@@ -121,6 +124,8 @@ async fn workbench_discovery_and_typed_requests_share_mcp_and_managed_command_co
             assert!(!text.contains("Preview of feedback markdown:"));
             assert!(text.contains(if kind == "questions" {
                 "individuals"
+            } else if kind == "document_review" {
+                "draft-1"
             } else {
                 "compact"
             }));
