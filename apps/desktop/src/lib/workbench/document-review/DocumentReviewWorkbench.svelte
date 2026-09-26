@@ -22,6 +22,7 @@
   const inputToolsState = useInputTools()?.state ?? unavailableInputToolsState
   let root: HTMLElement
   let selectedId: string | null = null
+  let selectedComment: ReviewCommentCard | undefined
   let selectedText: ReviewAnchor | null = null
   let selectionMessage = ''
   let revealedSequence: number | undefined
@@ -70,15 +71,9 @@
   }
   async function openComment(annotation: ReviewAnnotation) {
     await showInlineComment(annotation)
-    if (disabled) return
-    const input = root?.querySelector<HTMLElement>(`[data-comment-id="${annotation.id}"] [data-review-field="body"]`)
-    if (!input) return
-    input.focus({ preventScroll: true })
-    // Continue the existing note at its end, without selecting or replacing its text.
-    const range = document.createRange()
-    range.selectNodeContents(input); range.collapse(false)
-    const selection = document.getSelection()
-    selection?.removeAllRanges(); selection?.addRange(range)
+    if (disabled || selectedId !== annotation.id) return
+    // Update the editor's selection as well as the DOM caret before continuing.
+    selectedComment?.focusComment()
   }
   function commentPreview(annotation: ReviewAnnotation) {
     const projection = fieldAttachmentText(annotation.body, $inputToolsState.attachments)
@@ -177,7 +172,7 @@
           {/if}
           {#if selected}
             {#key selected.id}
-            <div class="mt-3"><ReviewCommentCard annotation={selected} paragraphLabel={paragraphLabel(paragraph.id)} sourceVersion={data.source_version} {disabled} onUpdate={changeComment} onDelete={() => void deleteComment(selected.id)} onCollapse={() => selectedId = null} /></div>
+            <div class="mt-3"><ReviewCommentCard bind:this={selectedComment} annotation={selected} paragraphLabel={paragraphLabel(paragraph.id)} sourceVersion={data.source_version} {disabled} onUpdate={changeComment} onDelete={() => void deleteComment(selected.id)} onCollapse={() => selectedId = null} /></div>
             {/key}
           {/if}
         </article>

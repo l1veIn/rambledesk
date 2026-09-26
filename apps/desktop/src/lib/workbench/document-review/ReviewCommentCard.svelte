@@ -18,12 +18,17 @@
   let deleteConfirmOpen = false
   let deleteButton: HTMLButtonElement
   let cancelButton: HTMLElement | null = null
+  let bodyField: WorkbenchTextField | undefined
   const tr = (text: string) => reviewText($locale, text)
   const voiceState = useVoiceInput()?.state ?? unavailableVoiceInputState
   $: bodyTarget = reviewAnnotationVoiceTarget($voiceState, annotation.id, 'body', sourceVersion, paragraphLabel)
   $: replacementTarget = reviewAnnotationVoiceTarget($voiceState, annotation.id, 'replacement', sourceVersion, paragraphLabel)
   $: if (disabled) deleteConfirmOpen = false
   const update = (patch: Partial<ReviewAnnotation>) => { if (!disabled) onUpdate({ ...annotation, ...patch }) }
+
+  export function focusComment() {
+    if (!disabled) bodyField?.focusAtEnd()
+  }
 
   function requestDelete() {
     if (disabled) return
@@ -49,7 +54,7 @@
   {#if annotation.quote}<blockquote class="m-0 mb-3 max-h-24 overflow-auto border-l-2 border-primary/40 pl-3 text-xs leading-5 text-muted-foreground">{annotation.quote}</blockquote>
   {:else}<p class="mb-3 text-xs text-muted-foreground">{tr('Whole paragraph')}</p>{/if}
   <div>
-    <WorkbenchTextField value={annotation.body} target={bodyTarget} {disabled} maxLength={4000}
+    <WorkbenchTextField bind:this={bodyField} value={annotation.body} target={bodyTarget} {disabled} maxLength={4000}
       label={tr('Your comment')} voiceLabel="Speak comment" focusOnMount={!annotation.body}
       placeholder={tr('Explain what to change and why…')} data-review-field="body"
       onChange={(body) => update({ body })} />

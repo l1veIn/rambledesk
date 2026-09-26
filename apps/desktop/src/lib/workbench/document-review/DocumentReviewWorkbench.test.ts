@@ -157,7 +157,11 @@ describe('document review interaction', () => {
     preview.click()
     await vi.waitFor(() => expect(inputText(byLabel('Your comment'))).toBe('Start with the benefit.'))
     byLabel<HTMLButtonElement>('Comment on paragraph 1').click()
-    await vi.waitFor(() => expect(document.activeElement).toBe(byLabel('Your comment')))
+    await vi.waitFor(() => {
+      expect(document.activeElement).toBe(byLabel('Your comment'))
+      const editor = tiptapEditor(byLabel('Your comment'))
+      expect(editor.state.selection.from).toBe(editor.state.doc.content.size - 1)
+    })
     expect(latest.annotations).toHaveLength(1)
     expect(latest.annotations[0].id).toBe(id)
     tiptapEditor(byLabel('Your comment')).commands.insertContent(' Explain it plainly.')
@@ -220,6 +224,44 @@ describe('document review interaction', () => {
     expect(latest.annotations).toEqual([])
     expect(latest.paragraph_marks).toEqual(saved.paragraph_marks)
     await vi.waitFor(() => expect(document.activeElement).toBe(byLabel('Comment on paragraph 2')))
+  })
+
+  it('continues a restored comment at the model selection end before DOM selectionchange arrives', async () => {
+    // Browsers deliver selectionchange asynchronously. Commands must see the new
+    // editor selection even when that DOM notification has not arrived yet.
+    const holdSelectionChange = (event: Event) => event.stopImmediatePropagation()
+    document.addEventListener('selectionchange', holdSelectionChange, true)
+    try {
+      const annotation: ReviewAnnotation = { id: 'restored-note', paragraph_id: 'opening', start: null, end: null,
+        quote: null, kind: 'comment', body: 'Existing feedback.', replacement: null }
+      open({ ...emptyReviewState(), annotations: [annotation] })
+      byLabel<HTMLButtonElement>('Comment on paragraph 1').click()
+      await vi.waitFor(() => expect(document.activeElement).toBe(byLabel('Your comment')))
+      const editor = tiptapEditor(byLabel('Your comment'))
+      expect(editor.state.selection.from).toBe(editor.state.doc.content.size - 1)
+      editor.commands.setTextSelection(1)
+      byLabel<HTMLButtonElement>('Comment on paragraph 1').click()
+      await vi.waitFor(() => expect(editor.state.selection.from).toBe(editor.state.doc.content.size - 1))
+      editor.commands.insertContent(' More feedback.')
+      await vi.waitFor(() => expect(latest.annotations[0].body).toBe('Existing feedback. More feedback.'))
+    } finally {
+      document.removeEventListener('selectionchange', holdSelectionChange, true)
+    }
+  })
+
+  it('focuses only the latest comment when paragraph comments are opened in quick succession', async () => {
+    const note = (id: string, paragraph_id: string): ReviewAnnotation => ({ id, paragraph_id, start: null, end: null,
+      quote: null, kind: 'comment', body: `${id} feedback.`, replacement: null })
+    open({ ...emptyReviewState(), annotations: [note('first', 'opening'), note('second', 'closing')] })
+    byLabel<HTMLButtonElement>('Comment on paragraph 1').click()
+    byLabel<HTMLButtonElement>('Comment on paragraph 2').click()
+    await vi.waitFor(() => {
+      expect(document.activeElement?.closest('[data-comment-id]')?.getAttribute('data-comment-id')).toBe('second')
+      const editor = tiptapEditor(byLabel('Your comment'))
+      expect(editor.state.selection.from).toBe(editor.state.doc.content.size - 1)
+    })
+    expect(document.querySelector('[data-comment-id="first"]')).toBeNull()
+    expect(inputText(byLabel('Your comment'))).toBe('second feedback.')
   })
 
   it('removes an empty ordinary comment without opening a confirmation', async () => {

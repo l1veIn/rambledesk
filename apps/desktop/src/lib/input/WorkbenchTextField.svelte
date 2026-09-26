@@ -63,6 +63,10 @@
   $: if (editor) { value; target; $voiceState; $toolsState.attachments; syncSpeech() }
   onDestroy(() => clearTimeout(compositionTimer))
 
+  export function focusAtEnd() {
+    if (!disabled && editor && !editor.isDestroyed) editor.commands.focus('end', { scrollIntoView: false })
+  }
+
   function selectTarget() {
     // Focusing also routes pasted images; recording availability must not gate it.
     if (!disabled && target) voice?.selectTarget(target)
