@@ -10,9 +10,13 @@ pub mod agent_operation_trace;
 mod application_commands;
 mod feedback;
 mod process;
+mod project_directories;
+pub use project_directories::*;
 mod sessions;
 mod terminal_operations;
+mod workbenches;
 mod workspace;
+pub use workbenches::*;
 
 /// Install-time / client-config host identity environment key.
 pub const HOST_ENV_KEY: &str = "RAMBLEDESK_HOST";

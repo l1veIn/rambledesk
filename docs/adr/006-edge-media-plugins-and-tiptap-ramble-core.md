@@ -5,6 +5,10 @@
 - 术语源：[TERMINOLOGY.md](../TERMINOLOGY.md)
 - 当前支持与待验：[Web Access 支持矩阵](../WEB_ACCESS_SUPPORT_MATRIX.md)
 
+本文记录设备本地媒体处理的决策。后续 [ADR 008](008-typed-human-feedback-workbenches.md) 将草稿扩展为正文与工作台交互状态；
+共享输入现在可以把语音和反馈附件写入答案、批注等字段，不再限定为 TipTap 正文。
+设备插件与草稿写入的所有权仍按本文分离，当前写入合同见[共享输入](../workbench/shared-input.md)。
+
 ## Decision
 
 Ramble 是以 TipTap Feedback Draft 为中心的编辑流程，不是录音 session。语音识别、截图和未来相机
@@ -60,5 +64,5 @@ Desktop 保留 `rambledesk-speech` 内部的 Audio Source / Speech Engine seam�
 ## Consequences
 
 Browser 必须承担 WASM 与模型的版本、下载、校验、缓存、许可证、内存和真实设备性能验收。作为回报，
-原始音频留在输入设备，Desktop / Browser / Mobile 可以独立运行，Web Access 不增加 speech route 或
-音频流协议，Ramble 的唯一持久输入面仍是版本化 TipTap `document_json`。
+原始音频留在输入设备，各平台实现可以独立管理媒体资源；Mobile 仍是未来方向。Web Access 不增加 speech route 或
+音频流协议，反馈仍统一写入版本化 `document_json` 草稿 envelope；正文为 TipTap `doc`，业务字段位于 `workbenchState`。

@@ -72,6 +72,11 @@ pub struct SessionRuntime {
     pub capabilities: AgentSessionCapabilities,
     #[serde(default)]
     pub configuration: super::SessionConfiguration,
+    /// Instructions from the current or most recent successful connection in
+    /// this application process. Not a historical snapshot of earlier turns.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub builtin_instructions: Option<String>,
     /// Live instance telemetry. Unknown until this instance reports usage; not
     /// persisted across application restarts or inferred from transcript text.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -92,6 +97,7 @@ impl Default for SessionRuntime {
             config_updated_at: None,
             capabilities: AgentSessionCapabilities::default(),
             configuration: super::SessionConfiguration::default(),
+            builtin_instructions: None,
             context_usage: None,
             last_error: None,
             failure: None,

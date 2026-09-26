@@ -3,6 +3,7 @@ use super::*;
 
 fn minimal_request() -> RequestFeedbackInput {
     RequestFeedbackInput {
+        workbench: None,
         request_id: None,
         host_id: Some("generic".to_owned()),
         host_session_id: "session".to_owned(),

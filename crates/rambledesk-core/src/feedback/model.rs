@@ -8,7 +8,9 @@ const DEFAULT_POLL_AFTER_MS: u64 = 30_000;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 pub struct ActionInput {
+    #[schemars(regex(pattern = "^[a-z0-9][a-z0-9_-]{0,63}$"))]
     pub id: String,
+    #[schemars(length(min = 1, max = 2000))]
     pub instruction: String,
 }
 
@@ -45,6 +47,8 @@ pub struct RequestAttachmentInput {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct RequestFeedbackInput {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workbench: Option<crate::WorkbenchSpec>,
     pub request_id: Option<String>,
     /// Optional host family id (e.g. `pi`, `claude`, `codex`, `opencode`, `generic`).
     /// Auto-registered adapters inject it via `RAMBLEDESK_HOST` / `X-RambleDesk-Host`;
@@ -62,6 +66,7 @@ pub struct RequestFeedbackInput {
         description = "Short summary (at most 200 characters) of what changed and what feedback is needed. The human reads this first to understand the situation in seconds; put the full explanation, evidence, or detail in a Markdown attachment instead of growing this field. Longer text is rejected."
     )]
     pub what_happened: String,
+    #[serde(default)]
     pub actions: Vec<ActionInput>,
     #[serde(default)]
     pub context_refs: Vec<ContextRef>,
@@ -210,6 +215,7 @@ pub struct FeedbackRequestView {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewFeedbackRequest {
+    pub workbench: Option<crate::WorkbenchSpec>,
     pub request_id: String,
     /// Present only when injected by the managed-session application entry point.
     pub managed_session_id: Option<String>,

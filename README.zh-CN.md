@@ -66,6 +66,8 @@ pnpm dev
 
 运行与检查方式见[开发指南](docs/DEVELOPMENT.md)，使用、接入与架构说明从[文档索引](docs/README.md)进入。
 
+当前源码提供自由反馈、逐项问答和文稿审阅工作台，共用语音与附件输入。可用[工作台 Playground](playground/workbenches/README.md) 完整体验 Agent 流程；实现与兼容边界从[工作台文档](docs/workbench/README.md)进入。
+
 ## 致谢
 
 - [Codeg](https://github.com/xintaofei/codeg)：ACP 接入、Agent 对话、设置与外观设计参考

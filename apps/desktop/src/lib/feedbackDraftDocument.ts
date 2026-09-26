@@ -26,9 +26,12 @@ import {
 export const FEEDBACK_DRAFT_DOCUMENT_VERSION = 2
 const LEGACY_FEEDBACK_DRAFT_DOCUMENT_VERSION = 1
 
-type PersistedFeedbackDraftDocument = {
+export type FeedbackDraftEnvelope = {
   schemaVersion: number
   doc: JSONContent
+  /** Opaque to the editor: only the owning workbench interprets this state. */
+  workbenchState?: unknown
+  [field: string]: unknown
 }
 
 export type FeedbackDraftSnapshot = {
@@ -255,12 +258,13 @@ function canonicalizeNode(node: JSONContent): JSONContent {
   }
 }
 
-export function decodeFeedbackDraftDocument(
+export function decodeFeedbackDraftEnvelope(
   source: string | null | undefined,
-): JSONContent | null {
+): FeedbackDraftEnvelope | null {
   if (!source) return null
   try {
-    const parsed = JSON.parse(source) as Partial<PersistedFeedbackDraftDocument>
+    const parsed = JSON.parse(source) as Partial<FeedbackDraftEnvelope> | null
+    if (!parsed || typeof parsed !== 'object') return null
     if (!isDocument(parsed.doc)) return null
     if (
       parsed.schemaVersion !== FEEDBACK_DRAFT_DOCUMENT_VERSION &&
@@ -268,24 +272,52 @@ export function decodeFeedbackDraftDocument(
     ) {
       return null
     }
-    return migrateFeedbackDraftDocument(
-      parsed.doc,
-      parsed.schemaVersion === LEGACY_FEEDBACK_DRAFT_DOCUMENT_VERSION,
-    )
+    return {
+      ...parsed,
+      schemaVersion: parsed.schemaVersion,
+      doc: parsed.doc,
+    }
   } catch {
     return null
   }
 }
 
-export function snapshotFeedbackDraftDocument(doc: JSONContent): FeedbackDraftSnapshot {
+export function decodeFeedbackDraftDocument(source: string | null | undefined): JSONContent | null {
+  const envelope = decodeFeedbackDraftEnvelope(source)
+  return envelope ? migrateFeedbackDraftDocument(envelope.doc, envelope.schemaVersion === LEGACY_FEEDBACK_DRAFT_DOCUMENT_VERSION) : null
+}
+
+/** Serializes a complete envelope. Replacing its document retains all opaque fields. */
+export function snapshotFeedbackDraftDocument(doc: JSONContent, previousDocumentJson?: string | null): FeedbackDraftSnapshot {
   const canonical = canonicalizeNode(migrateFeedbackDraftDocument(doc))
   return {
     documentJson: JSON.stringify({
+      ...decodeFeedbackDraftEnvelope(previousDocumentJson),
       schemaVersion: FEEDBACK_DRAFT_DOCUMENT_VERSION,
       doc: canonical,
-    } satisfies PersistedFeedbackDraftDocument),
+    } satisfies FeedbackDraftEnvelope),
     bodyMarkdown: serializeFeedbackMarkdown(canonical),
   }
+}
+
+export function restoreFeedbackDraftSnapshot(documentJson: string | null | undefined, bodyMarkdown: string): FeedbackDraftSnapshot {
+  return snapshotFeedbackDraftDocument(restoreFeedbackDraftDocument(documentJson, bodyMarkdown), documentJson)
+}
+
+/** Accepts editor document snapshots or complete workbench snapshots at the draft boundary. */
+export function applyFeedbackDraftSnapshot(previous: FeedbackDraftSnapshot, next: FeedbackDraftSnapshot): FeedbackDraftSnapshot {
+  const envelope = decodeFeedbackDraftEnvelope(next.documentJson)
+  return snapshotFeedbackDraftDocument(
+    envelope ? migrateFeedbackDraftDocument(envelope.doc, envelope.schemaVersion === LEGACY_FEEDBACK_DRAFT_DOCUMENT_VERSION)
+      : restoreFeedbackDraftDocument(next.documentJson, next.bodyMarkdown),
+    JSON.stringify({ ...decodeFeedbackDraftEnvelope(previous.documentJson), ...envelope }),
+  )
+}
+
+export function updateFeedbackDraftState(snapshot: FeedbackDraftSnapshot, state: unknown): FeedbackDraftSnapshot {
+  const envelope = decodeFeedbackDraftEnvelope(snapshot.documentJson)
+  if (!envelope) throw new Error('Cannot update state in an invalid feedback draft envelope')
+  return { ...snapshot, documentJson: JSON.stringify({ ...envelope, workbenchState: state }) }
 }
 
 export function restoreFeedbackDraftDocument(
@@ -317,5 +349,5 @@ export function updateFeedbackDraftDocument(
   snapshot: FeedbackDraftSnapshot,
   update: (doc: JSONContent) => JSONContent,
 ): FeedbackDraftSnapshot {
-  return snapshotFeedbackDraftDocument(update(restoreFeedbackDraftDocument(snapshot.documentJson, snapshot.bodyMarkdown)))
+  return snapshotFeedbackDraftDocument(update(restoreFeedbackDraftDocument(snapshot.documentJson, snapshot.bodyMarkdown)), snapshot.documentJson)
 }

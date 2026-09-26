@@ -16,7 +16,7 @@ use super::{MIGRATOR, StorageOpenError};
 pub(super) const LEGACY_VERSION: i64 = 10;
 // Explicitly audited migrations; a new migration must choose its compatibility
 // policy and update the round-trip tests rather than silently joining this list.
-const LAST_EXTENSION: i64 = 20;
+const LAST_EXTENSION: i64 = 21;
 
 type Applied = (i64, bool, Vec<u8>);
 

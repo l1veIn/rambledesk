@@ -62,9 +62,22 @@ impl SqliteFeedbackStore {
             .try_get::<Option<String>, _>("body_markdown")
             .map_err(storage_error)?
             .ok_or(RepositoryError::DraftEmpty)?;
-        if body_markdown.trim().is_empty() {
-            return Err(RepositoryError::DraftEmpty);
-        }
+        let spec = workbench_spec_from_row(&row)?;
+        let document: Option<String> = row.try_get("document_json").map_err(storage_error)?;
+        let workbench = crate::workbench_result::prepare_feedback_submission(
+            spec.as_ref(),
+            document.as_deref(),
+            &body_markdown,
+        )
+        .map_err(|error| match error {
+            rambledesk_core::WorkbenchSubmissionError::Empty => RepositoryError::DraftEmpty,
+            rambledesk_core::WorkbenchSubmissionError::Incomplete => {
+                RepositoryError::WorkbenchIncomplete
+            }
+            rambledesk_core::WorkbenchSubmissionError::Unsupported => {
+                RepositoryError::WorkbenchUnsupported
+            }
+        })?;
         let aggregate_revision: i64 = row.try_get("request_revision").map_err(storage_error)?;
         let saved_revision: i64 = row
             .try_get::<Option<i64>, _>("draft_revision")
@@ -144,6 +157,7 @@ impl SqliteFeedbackStore {
         .map_err(storage_error)?;
 
         let plan = SubmissionPlan {
+            workbench,
             request_id: request_id.to_owned(),
             host_id: row.try_get("host_id").map_err(storage_error)?,
             host_session_id: row.try_get("host_session_id").map_err(storage_error)?,
@@ -349,6 +363,7 @@ impl SqliteFeedbackStore {
         .map_err(storage_error)?;
 
         let plan = SubmissionPlan {
+            workbench: workbench_package_from_row(&row, false)?,
             request_id: request_id.to_owned(),
             host_id: row.try_get("host_id").map_err(storage_error)?,
             host_session_id: row.try_get("host_session_id").map_err(storage_error)?,

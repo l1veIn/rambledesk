@@ -309,10 +309,13 @@ impl FeedbackApplication {
 
     async fn request_feedback_with_scope(
         &self,
-        input: RequestFeedbackInput,
+        mut input: RequestFeedbackInput,
         managed_session_id: Option<&str>,
     ) -> Result<FeedbackRequestView, ApplicationError> {
         validate_request_input(&input)?;
+        if let Some(spec) = &input.workbench {
+            input.actions = crate::workbench_actions(spec)?;
+        }
         let host_id = input.host_id.as_deref().unwrap_or("generic").to_owned();
         let title = input
             .title
@@ -361,6 +364,7 @@ impl FeedbackApplication {
         let outcome = self
             .repository
             .create_or_get_request(NewFeedbackRequest {
+                workbench: input.workbench,
                 request_id,
                 managed_session_id: managed_session_id.map(ToOwned::to_owned),
                 host_session_record_id: managed_session_id

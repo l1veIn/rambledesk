@@ -1,9 +1,11 @@
 // Isolated UI fixture. No native invocation, external credentials or real agents.
+import { browsePreviewDirectories } from './agentDirectoryPreview'
 import { TestApplicationTransport } from '$lib/application/testApplicationTransport'
 import { APPLICATION_EVENTS_STREAM } from '$lib/application/applicationEvents'
 import { get, writable } from 'svelte/store'
 import type { AgentCatalogEntry, AgentConfig, AgentInspection, AgentInstallJob, HostSessionSummary, ManagedSessionSnapshot, SessionActivity, SessionPromptContent, SessionContentBlock } from '$lib/generated/feedback'
 import type { HostProfile } from '../lib/domain/hostProfile'
+import previewBuiltinInstructions from '../../../../crates/rambledesk-acp/src/feedback_workflow.md?raw'
 
 const names = [['deepseek-acp', 'DeepSeek ACP', 'dsh'], ['dsh', 'DeepSeek Harness', 'dsh'], ['claude-acp', 'Claude Code', 'claude'], ['codex-acp', 'Codex CLI', 'codex'], ['gemini', 'Gemini CLI', 'gemini'], ['pi-acp', 'Pi', 'pi']]
 const entries: AgentCatalogEntry[] = names.map(([id, name, host_id]) => ({ id, name, host_id, description: '', connection_kind: ['dsh', 'gemini'].includes(id) ? 'native' : 'bridge', distribution: { kind: 'npm', package: id, pinned_version: '0.8.0', command: id === 'claude-acp' ? 'claude-agent-acp' : id, node_required: '22.0.0' }, args: id === 'dsh' ? ['--profile', 'acp'] : id === 'gemini' ? ['--acp'] : [], dependencies: [], verification: { status: 'unverified', versions: [], note: 'Fixture' } }))
@@ -94,6 +96,7 @@ const snapshot: ManagedSessionSnapshot = {
   session: { session_id: 'preview', host_id: 'dsh', host_session_id: 'preview', title: '项目欢迎页面', created_at: '', updated_at: '', management: { kind: 'managed', protocol: 'acp', agent_config_id: 'preview-config', cwd: 'C:/Projects/welcome', remote_session_id: 'remote-preview' } },
   runtime: { connection: 'connected', activity: 'idle', instance_id: 'preview-instance', config_updated_at: null, capabilities: { prompt: { image: true, audio: false, embedded_context: true, resource_links: true }, load_session: true, resume_session: true, http_mcp: true }, last_error: null, configuration: { options: [{ id: 'model', name: '模型', description: null, category: 'model', kind: { type: 'select', current_value: 'deepseek-chat', options: [{ value: 'deepseek-chat', name: 'DeepSeek Chat', description: null, group: null }, { value: 'deepseek-reasoner', name: 'DeepSeek Reasoner', description: null, group: null }] } }] } }, activities, interactions: [], deliveries: [], recovery: null, deleting: false,
 }
+snapshot.runtime.builtin_instructions = previewBuiltinInstructions
 if (new URLSearchParams(location.search).has('question')) {
   snapshot.runtime.activity = 'waiting_input'
   snapshot.interactions = [{ request_id: 'preview-question', session_id: 'preview', title: '继续之前，需要你确认实现方向', details: null, kind: 'question', input: {
@@ -111,7 +114,7 @@ for (const row of get(previewSessions)) {
     interactions: snapshot.interactions.map(interaction => ({ ...interaction, session_id: row.session_id })),
   }))
 }
-transport.handle('listAvailableAgents', () => entries).handle('listAgentConfigs', () => configs)
+transport.handle('browseProjectDirectories', browsePreviewDirectories).handle('listAvailableAgents', () => entries).handle('listAgentConfigs', () => configs)
   .handle('getManagedWorkspaceInfo', ({ session_id }) => { const record = (preparedSnapshots.get(session_id) ?? snapshot).session; return { cwd: record.management.kind === 'managed' ? record.management.cwd : '', branch: 'codex/project-sessions' } })
   .handle('listAgentInstallJobs', () => structuredClone(jobs))
   .handle('inspectAgentInstallation', async ({ agent_id }): Promise<AgentInspection> => { previewProbeCounts.update(count => ({ ...count, discovery: count.discovery + 1 })); await delay(150); const missing = missingAgents.has(agent_id); const entry = entries.find(entry => entry.id === agent_id)!; return { agent_id, source: missing ? 'missing' : 'managed', version: missing ? null : '0.8.0', command: missing ? null : `C:/Agents/${entry.distribution.command}.cmd`, args: entry.args, dependencies: agent_id === 'claude-acp' ? [{ command: 'claude', required: false, path: 'C:/Agents/claude.cmd', version: '2.0.0' }] : [], checks: [{ id: 'node', status: 'pass', message: 'Node.js 22.23.0' }, { id: 'npm', status: 'pass', message: 'npm command found' }, { id: 'entry', status: missing ? 'fail' : 'pass', message: missing ? 'Agent entry point was not found' : 'Agent entry point found' }] } })

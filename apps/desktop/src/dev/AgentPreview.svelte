@@ -5,6 +5,7 @@
   import AgentCatalog from '$lib/agents/AgentCatalog.svelte'
   import ManagedSessionSection from '$lib/agents/ManagedSessionSection.svelte'
   import DraftManagedSessionWorkspace from '$lib/agents/DraftManagedSessionWorkspace.svelte'
+  import InboxWorkspaceView from '$lib/workspace/InboxWorkspaceView.svelte'
   import OnboardingWizard from '$lib/onboarding/OnboardingWizard.svelte'
   import SettingsPanel from '$lib/settings/SettingsPanel.svelte'
   import HostSessionRail from '$lib/components/navigation/HostSessionRail.svelte'
@@ -15,10 +16,10 @@
   import { createDraftManagedSessionController } from '$lib/agents/draftManagedSessionController'
   import { createManagedSessionDraftStorage } from '$lib/agents/managedSessionDrafts'
   import { setLocale, setOnboardingStep } from '$lib/preferences'
-  import { transport, previewProbeCounts, projectsPreview, previewSessions, previewArchivedSessions, restorePreviewSession, previewProjectDirectory, previewHostProfile, pinPreviewSession, archivePreviewSession } from './agentPreviewFixtures'
+  import { transport, previewProbeCounts, projectsPreview, previewSessions, previewArchivedSessions, restorePreviewSession, previewHostProfile, pinPreviewSession, archivePreviewSession } from './agentPreviewFixtures'
   const diagnosticEvents = writable<ClientDiagnosticEvent[]>([])
   onDestroy(configureClientDiagnostics(event => diagnosticEvents.update(events => [...events.slice(-199), event])))
-  let page = new URLSearchParams(location.search).has('feedback-status') ? 'feedback-status' : new URLSearchParams(location.search).has('draft') ? 'draft' : 'agents'
+  let page = new URLSearchParams(location.search).has('empty') ? 'empty' : new URLSearchParams(location.search).has('feedback-status') ? 'feedback-status' : new URLSearchParams(location.search).has('draft') ? 'draft' : 'agents'
   let sessionId = 'preview'
   let activeHostId: string | null = null
   let requestSearch = ''
@@ -81,8 +82,9 @@
   <div class="flex min-h-0 flex-1">
   {#if projectsPreview}<HostSessionRail sessions={$previewSessions} activeHostId={page === 'chat' || page === 'requests' ? activeHostId : null} activeHostSessionId={page === 'chat' || page === 'requests' ? sessionId || null : null} inboxActive={page === 'requests' && activeHostId === null} {requestSearch} resolveHostProfile={previewHostProfile} onSelect={openSession} onRequestSearch={search => requestSearch = search} onSearchRequests={search => { activeHostId = null; sessionId = ''; notice = `请求搜索：${search}`; page = 'requests' }} onSettings={() => page = 'settings'} onNewSession={cwd => void openNewDraft(cwd)} onSetSessionPinned={pinPreviewSession} onArchiveSession={archiveSession} />{/if}
   {#if page === 'agents'}<main class="mx-auto w-full max-w-5xl flex-1 overflow-auto p-6"><AgentCatalog {transport} initialConfigId={agentConfigId} initialAdvanced={agentAdvanced} /></main>
+  {:else if page === 'empty'}<main class="min-w-0 flex-1"><InboxWorkspaceView onNewSession={() => void openNewDraft()} /></main>
   {:else if page === 'feedback-status'}<FeedbackStatusPreview />
-  {:else if page === 'draft'}<main class="mx-auto flex min-h-0 min-w-0 w-full flex-1 flex-col">{#key draftId}<DraftManagedSessionWorkspace {transport} controller={draft} {draftId} onConfigure={() => configureAgent()} onConfigureAgent={configureAgent} onChooseDirectory={async () => previewProjectDirectory} />{/key}</main>
+  {:else if page === 'draft'}<main class="mx-auto flex min-h-0 min-w-0 w-full flex-1 flex-col">{#key draftId}<DraftManagedSessionWorkspace {transport} controller={draft} {draftId} onConfigure={() => configureAgent()} onConfigureAgent={configureAgent} />{/key}</main>
   {:else if page === 'settings'}<main class="min-h-0 flex-1"><SettingsPanel {transport} capabilities={adapterPreviewCapabilities} /></main>
   {:else if page === 'requests'}<main class="grid min-w-0 flex-1 place-items-center p-8"><div class="space-y-3 text-center"><h2 class="text-lg font-medium">{notice}</h2><p class="text-sm text-muted-foreground">此预览仅演示侧栏导航，所有数据与操作均保存在内存。</p>{#if selectedSession?.management.kind === 'managed'}<button class="rounded-md border px-3 py-2 text-sm" onclick={() => page = 'chat'}>查看 Agent</button>{/if}</div></main>
   {:else}<main class="mx-auto flex min-h-0 min-w-0 w-full max-w-5xl flex-1 flex-col border-x">{#key sessionId}<ManagedSessionSection {transport} {sessionId} onConfigureAgent={configureAgent} />{/key}</main>{/if}

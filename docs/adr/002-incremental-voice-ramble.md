@@ -1,6 +1,6 @@
 # ADR 002：语音 Ramble 采用增量转写与独立文档流
 
-- 状态：Accepted
+- 状态：Accepted；模型、正文表示与输入边界已由后续决策修订，见下节
 - 日期：2026-07-31
 - 参考：[Kotone 语音来源与复用边界](../../THIRD_PARTY_NOTICES.md#kotone-语音实现来源)
 
@@ -14,6 +14,8 @@
   Markdown 仅为同一文档的导出、提交和历史投影；下文的“Markdown 正文”按这一修订理解。
 - [ADR 006](006-edge-media-plugins-and-tiptap-ramble-core.md) 将语音能力收进输入设备本地的
   Speech Recognition Plugin，Desktop 与 Browser 共享事件合同，不共享音频进程或上传识别通道。
+- [ADR 008](008-typed-human-feedback-workbenches.md) 与[共享输入合同](../workbench/shared-input.md)
+  将语音写入目标扩展到答案与批注；下文只向正文追加的流程图是历史范围。
 - 当前模型配置、平台能力与真实设备待验项以
   [Web Access 支持矩阵](../WEB_ACCESS_SUPPORT_MATRIX.md)和[质量清单](../quality/README.md)为准。
 

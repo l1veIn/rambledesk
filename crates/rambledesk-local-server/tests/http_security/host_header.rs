@@ -20,6 +20,7 @@ async fn host_header_stamps_host_id_on_request_feedback() -> anyhow::Result<()> 
 
     let request_id = uuid::Uuid::now_v7().to_string();
     let request = RequestFeedbackInput {
+        workbench: None,
         request_id: Some(request_id.clone()),
         host_id: Some("should-be-kept-without-header".to_owned()),
         host_session_id: "host-header-test".to_owned(),

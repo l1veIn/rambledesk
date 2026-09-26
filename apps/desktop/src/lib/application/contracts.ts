@@ -1,3 +1,4 @@
+import type { BrowseProjectDirectoriesInput, ProjectDirectoryListing, ProjectDirectoryError } from '$lib/generated/feedback'
 import type { ListManagedSessionActivityInput, ManagedSessionActivityPage } from '$lib/generated/feedback'
 import type { SendManagedPromptContentInput } from '$lib/generated/feedback'
 import type { SetManagedSessionConfigInput } from '$lib/generated/feedback'
@@ -62,6 +63,7 @@ export type ApplicationAddAttachmentInput = Omit<AddAttachmentInput, 'contents'>
  * never a Tauri `{ input }` envelope or camelCase invoke argument object.
  */
 export type ApplicationCommandMap = Readonly<{
+  browseProjectDirectories: ApplicationCommandContract<BrowseProjectDirectoriesInput, ProjectDirectoryListing>
   listAvailableAgents: ApplicationCommandContract<undefined, AgentCatalogEntry[]>
   inspectAgentInstallation: ApplicationCommandContract<CatalogAgentInput, AgentInspection>
   resolveCatalogAgent: ApplicationCommandContract<ResolveCatalogAgentInput, AgentConfig>
@@ -133,4 +135,12 @@ export function isApplicationError(value: unknown): value is ApplicationError {
     typeof candidate.message === 'string' &&
     typeof candidate.retryable === 'boolean'
   )
+}
+
+export function isProjectDirectoryError(value: unknown): value is ProjectDirectoryError {
+  if (value === null || typeof value !== 'object') return false
+  const error = value as Record<string, unknown>
+  return typeof error.code === 'string' &&
+    ['INVALID_DIRECTORY_PATH', 'DIRECTORY_NOT_FOUND', 'DIRECTORY_ACCESS_DENIED', 'DIRECTORY_UNAVAILABLE'].includes(error.code) &&
+    typeof error.message === 'string' && typeof error.retryable === 'boolean'
 }

@@ -3,8 +3,8 @@ import { derived, get, writable } from 'svelte/store'
 import type { DraftView } from '../feedback'
 import {
   decodeFeedbackDraftDocument,
-  restoreFeedbackDraftDocument,
-  snapshotFeedbackDraftDocument,
+  restoreFeedbackDraftSnapshot,
+  applyFeedbackDraftSnapshot,
   type FeedbackDraftSnapshot,
 } from '../feedbackDraftDocument'
 import type { JSONContent } from '@tiptap/core'
@@ -72,8 +72,8 @@ export function createDraftSession() {
 
   /** Loads a server draft as both the current and the last accepted document. */
   function adopt(draft: DraftView, options: { loadEditor?: boolean } = {}): FeedbackDraftSnapshot {
-    const restored = restoreFeedbackDraftDocument(draft.document_json, draft.body_markdown)
-    const next = snapshotFeedbackDraftDocument(restored)
+    const next = restoreFeedbackDraftSnapshot(draft.document_json, draft.body_markdown)
+    const restored = decodeFeedbackDraftDocument(next.documentJson)
     patch({
       body: next.bodyMarkdown,
       documentJson: next.documentJson,
@@ -88,11 +88,13 @@ export function createDraftSession() {
   }
 
   /** Applies an editor snapshot as the current draft without touching the saved one. */
-  function edit(next: FeedbackDraftSnapshot) {
+  function edit(next: FeedbackDraftSnapshot, options: { loadEditor?: boolean } = {}) {
+    next = applyFeedbackDraftSnapshot(snapshot(), next)
     patch({
       body: next.bodyMarkdown,
       documentJson: next.documentJson,
       editorDocument: decodeFeedbackDraftDocument(next.documentJson),
+      ...(options.loadEditor ? { editorEpoch: get(store).editorEpoch + 1 } : {}),
       phase: next.documentJson === get(store).savedDocumentJson ? 'saved' : 'unsaved',
       message: '',
     })
@@ -120,9 +122,7 @@ export function createDraftSession() {
    * what the server just accepted, otherwise adopt the server document.
    */
   function reconcile(draft: DraftView): 'adopted' | 'kept-local' {
-    const remote = snapshotFeedbackDraftDocument(
-      restoreFeedbackDraftDocument(draft.document_json, draft.body_markdown),
-    )
+    const remote = restoreFeedbackDraftSnapshot(draft.document_json, draft.body_markdown)
     const local = snapshot()
     patch({
       savedBody: remote.bodyMarkdown,

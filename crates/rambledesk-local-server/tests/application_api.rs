@@ -9,6 +9,8 @@ use rambledesk_core::{
 use rambledesk_local_server::{AccessToken, ServerConfig, start_server};
 
 mod application_api_support;
+#[path = "application_api/project_directories.rs"]
+mod project_directories;
 use application_api_support::start_application_server;
 
 const TEST_TOKEN: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -98,6 +100,7 @@ async fn seed_request(application: &rambledesk_core::FeedbackApplication) -> Str
     let request_id = uuid::Uuid::now_v7().to_string();
     application
         .request_feedback(RequestFeedbackInput {
+            workbench: None,
             request_id: Some(request_id.clone()),
             host_id: Some("codex".into()),
             host_session_id: "application-api-session".into(),
@@ -130,6 +133,7 @@ async fn seed_final_summary_request(
     let request_id = uuid::Uuid::now_v7().to_string();
     application
         .request_feedback(RequestFeedbackInput {
+            workbench: None,
             request_id: Some(request_id.clone()),
             host_id: Some("codex".into()),
             host_session_id: host_session_id.into(),

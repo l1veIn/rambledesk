@@ -47,11 +47,16 @@ pub async fn start_application_server(
         .nest(
             API_PATH,
             application_router(
-                Arc::new(ApplicationCommandFacade::new(
-                    application,
-                    terminal_operations,
-                    test_host_profiles(),
-                )),
+                Arc::new(
+                    ApplicationCommandFacade::new(
+                        application,
+                        terminal_operations,
+                        test_host_profiles(),
+                    )
+                    .with_project_directory_browser(Arc::new(
+                        rambledesk_local_server::LocalProjectDirectoryBrowser,
+                    )),
+                ),
                 Arc::new(ApplicationChangeHub::with_runtime_generation(
                     "test-runtime",
                 )),

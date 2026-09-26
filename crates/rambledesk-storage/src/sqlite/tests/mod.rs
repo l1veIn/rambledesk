@@ -27,6 +27,7 @@ impl TestWorkspace {
 
     fn request(&self, request_id: String) -> RequestFeedbackInput {
         RequestFeedbackInput {
+            workbench: None,
             request_id: Some(request_id),
             host_id: Some("test-host".to_owned()),
             host_session_id: "test-session".to_owned(),
@@ -215,3 +216,5 @@ mod publication;
 mod recovery;
 mod requests;
 mod workspace;
+
+mod workbenches;

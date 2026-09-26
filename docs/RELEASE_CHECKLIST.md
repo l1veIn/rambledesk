@@ -13,6 +13,7 @@ README 必须明确对应的 SmartScreen / Gatekeeper 首次启动步骤。
 - `pnpm release:check v<version>`
 - `cargo fmt --all --check`
 - `pnpm check:rust-size`
+- `pnpm check:frontend-size`
 - `pnpm check:terminology`
 - `cargo clippy --workspace --all-targets --locked -- -D warnings`
 - `pnpm check`
@@ -99,8 +100,10 @@ RC 保留 SemVer 预发布后缀，在 GitHub 中保持 `prerelease=true`，发�
 14. 核对 `SHA256SUMS.txt` 同时包含 Windows 安装器和 macOS DMG，并分别重新计算 SHA-256。
 15. 按 [诊断包与问题反馈](RC_FIELD_FEEDBACK.md) 导出诊断 ZIP，核对新引导、ACP 连接、首响应、取消和会话管理的开始/结局与耗时；确认包中包含结构化事件、摘要和覆盖范围。
 16. 将外部适配器作为保留用户原有 Agent 应用或 CLI 工作方式的轻量接入路径独立回归，RambleDesk 负责接收反馈请求并返回回复；只有显式进入设置页才执行其检测，不作为推荐的 ACP 集成流程的新用户验收前置条件。
-17. 按 [数据兼容说明](DATA_COMPATIBILITY.md) 验证“0.3.3 → 新版 → 0.3.3 → 新版”：旧版反馈读写可用，ACP 数据保留；模拟未知数据库版本与读取超时，确认显示错误、恢复入口可用且不会无限加载。
+17. 按 [数据兼容说明](DATA_COMPATIBILITY.md) 验证“0.3.3 → 新版 → 0.3.3 → 新版”：旧式反馈读写可用，ACP 与工作台数据保留。0.3.3 不理解新类型工作台的只读保护，不用旧版编辑或提交这些请求。另模拟未知数据库版本与读取超时，确认显示错误、恢复入口可用且不会无限加载。
 18. 验证项目侧栏：同目录不同 Agent 的会话归入同一项目，同名不同路径分开；旧会话无目录时仍可打开。从项目中新建会话带入目录，全局新建要求选择目录；切换 Agent 保留文字和目录。检查置顶、归档、搜索及清除搜索，并在慢连接时快速切换到新建会话，确认旧加载结果不会覆盖当前页面。
+19. 用 [工作台 Playground](../playground/workbenches/README.md) 完成自由反馈、逐项问答（含单题选择）和文稿审阅；检查字段间语音切换、语音标识、集中整理与附件归属、批注续写及收起、段落删除线、保存恢复和提交结果。兼容旧请求另行验证，不作为新请求模板。
+20. 在桌面与 Web 验证目录浏览、起步卡片只填入不发送、关闭全部 tab 的空白页，以及内置会话指令的可见性；目录应属于 Backend Runtime 所在机器。
 
 ## Publishing
 

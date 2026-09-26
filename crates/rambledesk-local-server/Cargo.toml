@@ -27,6 +27,9 @@ tokio-util.workspace = true
 tower-service.workspace = true
 tracing.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true
+
 [dev-dependencies]
 rambledesk-feedback-client.workspace = true
 tokio = { workspace = true, features = ["test-util"] }

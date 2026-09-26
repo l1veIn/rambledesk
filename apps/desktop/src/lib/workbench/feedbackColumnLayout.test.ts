@@ -12,20 +12,21 @@ describe('workspace column width policy', () => {
     return (feedbackColumnLayout({ containerPx, savedPx }).feedback / 100) * containerPx
   }
 
-  it('gives the feedback column its preferred width while the brief keeps its floor', () => {
-    expect(feedbackPx(1600)).toBeCloseTo(700, 5)
-    expect(feedbackPx(1440)).toBeCloseTo(700, 5)
-    // 1600 - 700 leaves the brief more than its 420 floor.
-    expect(1600 - feedbackPx(1600)).toBeGreaterThanOrEqual(420)
+  it('gives the workbench most of the workspace and feedback a compact preferred width', () => {
+    expect(feedbackPx(1200)).toBeCloseTo(400, 5)
+    expect(feedbackPx(1440)).toBeCloseTo(400, 5)
+    expect(feedbackPx(960)).toBeCloseTo(320, 5)
+    expect(feedbackColumnLayout({ containerPx: 1200 }).brief).toBeCloseTo(200 / 3, 5)
+    expect(1200 - feedbackPx(1200)).toBeGreaterThanOrEqual(520)
   })
 
-  it('never takes the brief below its floor when the container is smaller', () => {
-    // 1100 - 420 leaves 680 for feedback: the 700 target gives way, the 560 floor stays.
-    expect(feedbackPx(1100)).toBeCloseTo(680, 5)
-    // 900 cannot hold both floors, so the brief's floor wins and feedback takes the rest.
+  it('never takes the workbench below its floor when the container is smaller', () => {
+    // Feedback stops narrowing at 320 when both columns can still keep their floors.
+    expect(feedbackPx(900)).toBeCloseTo(320, 5)
+    // 800 cannot hold both floors, so the workbench's floor wins and feedback takes the rest.
     // (Below the wide breakpoint the columns stack instead, so this stays a corner case.)
-    expect(feedbackPx(900)).toBeCloseTo(480, 5)
-    expect(900 - feedbackPx(900)).toBeCloseTo(420, 5)
+    expect(feedbackPx(800)).toBeCloseTo(280, 5)
+    expect(800 - feedbackPx(800)).toBeCloseTo(520, 5)
   })
 
   it('falls back to a share of tiny containers instead of overflowing', () => {
@@ -37,7 +38,7 @@ describe('workspace column width policy', () => {
   it('clamps a dragged width to the policy range', () => {
     expect(feedbackPx(2000, 200)).toBeCloseTo(FEEDBACK_COLUMN.min, 5)
     expect(feedbackPx(2000, 5000)).toBeCloseTo(FEEDBACK_COLUMN.max, 5)
-    expect(feedbackPx(2000, 820)).toBeCloseTo(820, 5)
+    expect(feedbackPx(2000, 480)).toBeCloseTo(480, 5)
   })
 
   it('keeps a usable layout before the container is measured', () => {

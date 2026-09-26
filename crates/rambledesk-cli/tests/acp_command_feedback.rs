@@ -138,6 +138,103 @@ impl Fixture {
     }
 }
 
+#[test]
+fn builtin_instructions_are_optional_for_older_runtime_snapshots() {
+    let mut value = serde_json::to_value(SessionRuntime::default()).unwrap();
+    assert!(value.get("builtin_instructions").is_none());
+    let restored: SessionRuntime = serde_json::from_value(value.clone()).unwrap();
+    assert!(restored.builtin_instructions.is_none());
+
+    value["builtin_instructions"] = "Current connection instructions".into();
+    let restored: SessionRuntime = serde_json::from_value(value.clone()).unwrap();
+    assert_eq!(
+        restored.builtin_instructions.as_deref(),
+        Some("Current connection instructions")
+    );
+    assert_eq!(serde_json::to_value(restored).unwrap(), value);
+}
+
+#[tokio::test]
+async fn builtin_instructions_match_sent_context_without_becoming_conversation_history() {
+    let fixture = Fixture::new(false, PathBuf::from(env!("CARGO_BIN_EXE_rambledesk"))).await;
+    let session = fixture.create().await;
+    let id = &session.session.session_id;
+    let instructions = session.runtime.builtin_instructions.as_deref().unwrap();
+    assert_eq!(
+        instructions,
+        include_str!("../../rambledesk-acp/src/feedback_workflow.md")
+    );
+    assert!(
+        !session
+            .activities
+            .iter()
+            .any(|row| row.text.contains(instructions))
+    );
+
+    fixture
+        .app
+        .send_prompt(SendManagedPromptInput {
+            session_id: id.clone(),
+            text: "inspect-runtime-context".into(),
+        })
+        .await
+        .unwrap();
+    let result = fixture.settled(id, "INSPECTED_CONTEXT").await;
+    assert!(result.runtime.last_error.is_none());
+    let sent: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(fixture.dir.path().join("runtime-context.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(sent.as_array().unwrap().len(), 2);
+    assert_eq!(sent[0]["text"], instructions);
+    assert_eq!(sent[1]["text"], "inspect-runtime-context");
+    assert!(
+        !result
+            .activities
+            .iter()
+            .any(|row| row.text.contains(instructions))
+    );
+    assert_eq!(
+        result
+            .activities
+            .iter()
+            .filter(|row| row.kind == SessionActivityKind::UserMessage)
+            .map(|row| row.text.as_str())
+            .collect::<Vec<_>>(),
+        ["inspect-runtime-context"]
+    );
+
+    let stopped = fixture
+        .app
+        .stop_session(ManagedSessionInput {
+            session_id: id.clone(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(stopped.runtime.connection, SessionConnectionState::Stopped);
+    assert_eq!(
+        stopped.runtime.builtin_instructions.as_deref(),
+        Some(instructions)
+    );
+
+    // A fresh runtime must not label today's bundled instructions as an old
+    // conversation's instructions when no connection has supplied them.
+    let restarted = SessionApplication::new(
+        fixture.store.clone(),
+        fixture.store.clone(),
+        Arc::new(AcpSessionDriver),
+    );
+    let snapshot = restarted
+        .get_session(ManagedSessionInput {
+            session_id: id.clone(),
+        })
+        .await
+        .unwrap();
+    assert!(snapshot.runtime.builtin_instructions.is_none());
+    restarted.shutdown().await.unwrap();
+    fixture.close().await;
+}
+
 #[tokio::test]
 async fn configured_driver_runs_real_scoped_companion_chain_and_original_context() {
     let fixture = Fixture::new(false, PathBuf::from(env!("CARGO_BIN_EXE_rambledesk"))).await;

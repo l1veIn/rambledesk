@@ -47,24 +47,38 @@ pub(super) fn validate_request_input(input: &RequestFeedbackInput) -> Result<(),
         validate_text("source_hint", source_hint, 1, 4_096)?;
     }
 
-    if !(1..=20).contains(&input.actions.len()) {
-        return Err(ApplicationError::invalid_argument(
-            "actions must contain between 1 and 20 items",
-        ));
-    }
-    let mut action_ids = HashSet::with_capacity(input.actions.len());
-    for action in &input.actions {
-        if !valid_action_id(&action.id) {
+    if let Some(spec) = &input.workbench {
+        if !input.actions.is_empty() {
             return Err(ApplicationError::invalid_argument(
-                "action id must match ^[a-z0-9][a-z0-9_-]{0,63}$",
+                "Provide workbench.data or legacy actions, not both",
             ));
         }
-        if !action_ids.insert(action.id.as_str()) {
+        let workbench = crate::validate_workbench(spec)?;
+        if input.allow_finish && !workbench.kind().supports_approval() {
             return Err(ApplicationError::invalid_argument(
-                "action ids must be unique within a request",
+                "allow_finish is only supported by Ramble",
             ));
         }
-        validate_text("action.instruction", &action.instruction, 1, 2_000)?;
+    } else {
+        if !(1..=20).contains(&input.actions.len()) {
+            return Err(ApplicationError::invalid_argument(
+                "actions must contain between 1 and 20 items",
+            ));
+        }
+        let mut action_ids = HashSet::with_capacity(input.actions.len());
+        for action in &input.actions {
+            if !valid_action_id(&action.id) {
+                return Err(ApplicationError::invalid_argument(
+                    "action id must match ^[a-z0-9][a-z0-9_-]{0,63}$",
+                ));
+            }
+            if !action_ids.insert(action.id.as_str()) {
+                return Err(ApplicationError::invalid_argument(
+                    "action ids must be unique within a request",
+                ));
+            }
+            validate_text("action.instruction", &action.instruction, 1, 2_000)?;
+        }
     }
 
     if input.context_refs.len() > 20 {

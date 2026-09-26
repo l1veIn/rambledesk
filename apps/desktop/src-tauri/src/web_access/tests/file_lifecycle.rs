@@ -116,6 +116,7 @@ async fn file_credential_survives_listener_restart_and_rotation_preserves_the_sa
     let request_id = uuid::Uuid::now_v7().to_string();
     application
         .request_feedback(RequestFeedbackInput {
+            workbench: None,
             request_id: Some(request_id.clone()),
             host_id: Some("test".into()),
             host_session_id: "file-credential-lifecycle".into(),

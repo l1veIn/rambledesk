@@ -3,6 +3,7 @@
 - 状态：Accepted
 - 日期：2026-09-01
 - 修订：2026-09-10，更新 durable token 的平台存储与升级行为，并对齐既有浏览器 cookie 恢复合同。
+- 修订：2026-09-26，由 ADR 008 扩展结构化草稿与可见字段，单 Editor 约束仅指反馈正文。
 - 术语源：[TERMINOLOGY.md](../TERMINOLOGY.md)
 
 ## Context
@@ -83,6 +84,9 @@ workspace snapshot；snapshot 不缓存 canonical Draft 正文。
 每个 Workbench Client instance 最多挂载一个可编辑 `RichFeedbackEditor`，继续禁止 per-request 与 hidden
 Editor。多个客户端并发写 Draft 时使用 Backend Runtime revision/CAS，冲突必须显式显示而不是
 last-write-wins。submit/cancel 等终态 operation 必须幂等。
+
+后续共享输入修订允许可见的答案与批注字段复用 TipTap 编辑视图；它们仍是同一 Draft 中业务字段的
+投影，不是第二份反馈正文、保存队列或录音会话。详见 [ADR 004 后续修订](004-single-editor-structured-draft.md#后续修订可见字段复用-tiptap-输入基础)。
 
 关闭 workspace Tab、关闭或刷新浏览器、Transport 断线都只结束 Client view/projection；这些
 动作不得隐式 submit、cancel、archive Request，也不得停止由 Runtime 持有的 Agent Session。
@@ -241,8 +245,9 @@ Desktop / Browser 的当前证据边界见
   auth domain 与 lifecycle。
 - **ADR 002：** 保留 `cpal` / speech crate 作为 Desktop Speech Recognition Plugin 的内部实现；
   Browser 通过自己的本地 Plugin 接入，不改写现有 SpeechEvent / Draft contract。
-- **ADR 003：** Ramble 仍是统一 TipTap 编辑流程，但 Web Client 必须按 capability manifest 显示缺失或
-  降级的全局快捷键、系统截图和剪贴板能力。
+- **ADR 003：** 其统一采集状态机已由 ADR 006 替代，设备能力各自管理生命周期。Web Client 必须按
+  capability manifest 显示缺失或降级的全局快捷键、系统截图和剪贴板能力。
 - **ADR 004：** 本 ADR 修订其“整个应用最多一个 Editor”的所有权作用域为“每个 Workbench Client
-  instance 最多一个 Editor”。canonical Draft 仍在 Backend Runtime/SQLite；跨客户端并发只由
-  revision/CAS 仲裁，不共享 Editor handle、不引入 hidden Editor。
+  instance 最多一个可编辑反馈正文”。后续共享输入允许可见业务字段复用 TipTap，见第 4 节。
+  canonical Draft 仍在 Backend Runtime/SQLite；跨客户端并发只由 revision/CAS 仲裁，
+  不共享 Editor handle、不引入 hidden Editor。

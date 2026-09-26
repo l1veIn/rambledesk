@@ -503,6 +503,7 @@ impl SessionApplication {
                     config_updated_at: Some(version),
                     capabilities: started.capabilities,
                     configuration: started.connection.configuration(),
+                    builtin_instructions: started.connection.builtin_instructions(),
                     context_usage: live.runtime.context_usage.clone(),
                     last_error: None,
                     failure: None,

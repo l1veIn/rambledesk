@@ -104,6 +104,7 @@ impl WebAccessFixture {
         let request_id = Uuid::now_v7().to_string();
         self.application
             .request_feedback(RequestFeedbackInput {
+                workbench: None,
                 request_id: Some(request_id.clone()),
                 host_id: Some("codex".into()),
                 host_session_id: "web-events".into(),
@@ -495,6 +496,7 @@ async fn concurrent_http_snapshot_never_labels_an_old_projection_with_a_new_revi
 
 fn fixture_request(request_id: String) -> RequestFeedbackInput {
     RequestFeedbackInput {
+        workbench: None,
         request_id: Some(request_id),
         host_id: Some("codex".into()),
         host_session_id: "snapshot-race".into(),

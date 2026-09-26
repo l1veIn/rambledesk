@@ -161,6 +161,7 @@ async fn test_application() -> anyhow::Result<(FeedbackApplication, tempfile::Te
 async fn seed(application: &FeedbackApplication) -> Result<(), ApplicationError> {
     application
         .request_feedback(RequestFeedbackInput {
+            workbench: None,
             request_id: Some(REQUEST_ID.into()),
             host_id: Some("codex".into()),
             host_session_id: HOST_SESSION_ID.into(),

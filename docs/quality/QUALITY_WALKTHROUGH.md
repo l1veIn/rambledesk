@@ -12,11 +12,13 @@ RambleDesk 的职责是把人的结构化反馈、原始输入与交付结果可
 | --- | --- | --- |
 | Client 如何装配、启动和退出 | [App](../../apps/desktop/src/App.svelte)、[Startup](../../apps/desktop/src/lib/workbench/startupController.ts) | 组合现有 owner、订阅和 capability；Startup 发布恢复事实，dispose 后迟到 ready 不再启动轮询 |
 | 当前 request、提交阶段和 UI 锁 | [Workspace Session](../../apps/desktop/src/lib/workbench/workspaceSession.ts)、[Draft Session](../../apps/desktop/src/lib/workbench/draftSession.ts) | 持有事实并提供订阅投影；dirty、terminal、feedbackResult、interactionLocked 不独立复制写入 |
-| 编辑保存和版本冲突 | [Draft Controller](../../apps/desktop/src/lib/workbench/draftController.ts)、[单 Editor 决策](../adr/004-single-editor-structured-draft.md) | 等待完整保存过程，保留新编辑与失败；结构化 document 是草稿真源，后端 revision/CAS 仲裁 |
+| 编辑保存和版本冲突 | [Draft Controller](../../apps/desktop/src/lib/workbench/draftController.ts)、[类型工作台决策](../adr/008-typed-human-feedback-workbenches.md) | 同一 Draft envelope 保存正文 doc 与 workbenchState，保留新编辑与失败；后端 revision/CAS 仲裁 |
+| 类型视图与共享字段输入 | [工作台入口](../../apps/desktop/src/lib/workbench/RegisteredWorkbench.svelte)、[WorkbenchTextField](../../apps/desktop/src/lib/input/WorkbenchTextField.svelte)、[TiptapInput](../../apps/desktop/src/lib/editor/TiptapInput.svelte) | 类型视图持有业务交互；可见字段共用编辑基础，不各建保存或语音会话；未知类型只读 |
 | Markdown 转换和编辑器扩展 | [Feedback Editor Extensions](../../apps/desktop/src/lib/feedbackEditorExtensions.ts)、[Rich Editor](../../apps/desktop/src/lib/editor/RichFeedbackEditor.svelte) | 复用同一 schema；每个 Editor 和短期转换拥有自己的 parser；事务只向 UI 投影工具栏状态 |
 | 打开、切换、关闭与后台刷新 | [Workspace Navigation](../../apps/desktop/src/lib/workbench/workspaceNavigationController.ts)、[Transition](../../apps/desktop/src/lib/workspace/workspaceTransition.ts)、[Navigation](../../apps/desktop/src/lib/workbench/navigationController.ts) | 目标意图、scope 候选、保存/加载/接受和失败恢复；后台刷新让位于后续用户导航 |
 | 录音事实和提交前输入准备 | [Ramble Session](../../apps/desktop/src/lib/workbench/rambleSession.ts)、[Ramble Controller](../../apps/desktop/src/lib/workbench/RambleSessionController.svelte)、[Voice](../../apps/desktop/src/lib/workbench/voiceRambleSession.ts) | 麦克风与 request 归属、停止和排空、ready/pending-speech/failed；组件语言变化不销毁输入 owner |
-| 待审语音与文档写入 | [Speech Draft Queue](../../apps/desktop/src/lib/speech/speechDraftQueue.ts)、[Draft Operations](../../apps/desktop/src/lib/workbench/draftOperationsController.ts) | 前者持有未确认 transcript、整理/编辑和本地恢复；后者串行执行已接受的文档操作，固定 request/Action 并选择前台或后台写入 |
+| 待审语音与文档写入 | [Speech Draft Queue](../../apps/desktop/src/lib/speech/speechDraftQueue.ts)、[Draft Operations](../../apps/desktop/src/lib/workbench/draftOperationsController.ts)、[Input Target](../../apps/desktop/src/lib/domain/inputTarget.ts) | 前者持有未确认 transcript 与捕获时目标；后者串行写入正文、答案或批注，不随后来的焦点变化改投 |
+| 请求内语音整理 | [Request Speech Tidy](../../apps/desktop/src/lib/speech/requestSpeechTidy.ts)、[共享输入合同](../workbench/shared-input.md) | 固定本批次目标与语音段，整理后原位回填；后来输入、键入文字及已改动或删除的片段不会被覆盖 |
 | 附件取得、写入和释放 | [Attachment Controller](../../apps/desktop/src/lib/workbench/attachmentController.ts)、[Attachment Previews](../../apps/desktop/src/lib/workbench/attachmentPreviews.ts)、[Candidate 合同](../../apps/desktop/src/lib/capabilities/capturePlugin.ts) | 候选到持久化、文档引用、保存与收据；预览 URL 有自己的读取归属和释放周期 |
 | Cooking、提交、批准和取消 | [Cooking](../../apps/desktop/src/lib/workbench/cookingController.ts)、[Publisher](../../apps/desktop/src/lib/workbench/publisherController.ts)、[Submission](../../apps/desktop/src/lib/workbench/submissionController.ts) | Cooking 返回独立变体；调用者持有终态动作、等待保存、应用服务端结果和后续读取错误 |
 | Agent 首发、正式会话与关页 | [Prepared Draft](../../apps/desktop/src/lib/agents/draftManagedSessionController.ts)、[Managed Session](../../apps/desktop/src/lib/agents/managedSessionController.ts)、[Workbench Actions](../../apps/desktop/src/lib/workbench/managedSessionActions.ts) | prepared 资源、接纳不明、输入保留和一次晋升；Client 关页与后端会话停止/删除保持不同动作 |
@@ -45,7 +47,7 @@ RambleDesk 的职责是把人的结构化反馈、原始输入与交付结果可
 
 `workspaceNavigation.activateView` 收进 scope 查询、目标选择和 transition 接受。候选 scope 在保存和加载
 完成前不成为可见事实，因此失败时无需在多个入口异步切回旧 rail；迟到 refetch 也不能覆盖新的用户意图。
-App 只请求打开或关闭，单 Editor 的保存/卸载/加载顺序继续由现有 transition 保证。
+App 只请求打开或关闭，整个 Draft 的保存和工作台卸载/加载顺序由现有 transition 保证；可见字段 Editor 随视图挂载，不形成后台 Editor 池。
 
 保存广播回到当前 Client 时，导航 owner 先核对 request、revision 和结构化文档。相同文档只协调服务端
 事实，保留当前 Editor、selection 与 Undo 历史；读取期间新输入仍留在本地。确实改变的远端文档才走
@@ -65,7 +67,7 @@ App 只请求打开或关闭，单 Editor 的保存/卸载/加载顺序继续由
 
 输入也保留两个队列：Speech Draft Queue 管“人尚未确认的话”，Document Queue 管“已接受的文档操作”。
 二者失败恢复和生命周期不同，通过 preparation 连接即可；没有合并成一个含义模糊的总队列。
-同样保留 Application Transport 与平台 Capability 的边界，以及结构化 Draft 和单 Editor 决策。
+同样保留 Application Transport 与平台 Capability 的边界，以及一个请求对应一个 Draft 聚合的约束。一个可见正文 Editor 与多个可见业务字段 Editor 的边界见[共享输入合同](../workbench/shared-input.md)。
 
 可观察的改进是：进入一个模块后能完成自己的问题，跨模块只需要少量有业务含义的动作。
 

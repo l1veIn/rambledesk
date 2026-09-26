@@ -124,6 +124,7 @@ impl Fixture {
             let request_id = uuid::Uuid::now_v7().to_string();
             store
                 .create_or_get_request(NewFeedbackRequest {
+                    workbench: None,
                     request_id: request_id.clone(),
                     host_session_record_id: session_id.clone(),
                     managed_session_id: Some(session_id.clone()),
@@ -147,8 +148,8 @@ impl Fixture {
                 .unwrap();
             requests.push(request_id);
         }
-        // Failure is at the actual SQLite completion write, after a prompt result
-        // exists. Claiming and reading the queue remain available.
+        // Fail the actual SQLite completion write. Prompt dispatch, queue claims,
+        // and reads remain available; completion must not depend on turn success.
         sqlx::query("CREATE TRIGGER completion_unavailable BEFORE UPDATE OF state ON feedback_deliveries WHEN OLD.state='sending' AND NEW.state IN ('delivered','uncertain') BEGIN SELECT RAISE(ABORT,'completion unavailable'); END")
             .execute(&sql).await.unwrap();
         app.start_delivery_worker().await.unwrap();
@@ -278,22 +279,34 @@ async fn prompt_error_is_saved_as_delivered_after_storage_recovers_without_resen
 async fn shutdown_leaves_unwritten_completion_for_startup_uncertain_recovery() {
     let fixture = Fixture::new(false).await;
     fixture.wait_for_failed_completion().await;
+    let attempt = fixture.deliveries().await[0].attempt_id.clone();
     fixture.app.shutdown().await.unwrap();
+    // A completion write admitted before shutdown may still be queued in SQLx.
+    // Keep the fault in place until the old pool is drained, then recover through
+    // a new store as a real restart would. Repairing a live pool races that write.
+    fixture.store.close().await;
     fixture.repair_storage().await;
-    tokio::time::sleep(Duration::from_millis(350)).await;
-    assert_eq!(
-        fixture.deliveries().await[0].state,
-        FeedbackDeliveryState::Sending
-    );
+    fixture.sql.close().await;
+    let reopened = SqliteFeedbackStore::connect(&fixture._directory.path().join("state.sqlite"))
+        .await
+        .unwrap();
+    let deliveries = reopened
+        .list_session_deliveries(&fixture.session_id)
+        .await
+        .unwrap();
+    assert_eq!(deliveries[0].state, FeedbackDeliveryState::Sending);
+    assert_eq!(deliveries[0].attempt_id, attempt);
     assert_eq!(fixture.connection.prompts.lock().unwrap().len(), 1);
-    fixture
-        .store
+    reopened
         .recover_interrupted_deliveries("2026-09-04T03:00:00Z")
         .await
         .unwrap();
-    assert_eq!(
-        fixture.deliveries().await[0].state,
-        FeedbackDeliveryState::Uncertain
-    );
-    fixture.close().await;
+    let deliveries = reopened
+        .list_session_deliveries(&fixture.session_id)
+        .await
+        .unwrap();
+    assert_eq!(deliveries[0].state, FeedbackDeliveryState::Uncertain);
+    assert_eq!(deliveries[0].attempt_id, attempt);
+    assert_eq!(deliveries[1].state, FeedbackDeliveryState::Pending);
+    reopened.close().await;
 }

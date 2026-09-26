@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { Editor, type JSONContent } from '@tiptap/core'
+  import type { Editor, EditorOptions, JSONContent } from '@tiptap/core'
   import { Fragment } from '@tiptap/pm/model'
-  import { EditorState, type Transaction } from '@tiptap/pm/state'
-  import { onMount, type Snippet } from 'svelte'
+  import { EditorState, TextSelection, type Transaction } from '@tiptap/pm/state'
+  import type { Snippet } from 'svelte'
 
   import FeedbackEditorToolbar from './FeedbackEditorToolbar.svelte'
+  import TiptapInput from './TiptapInput.svelte'
   import {
     actionBlockquoteNode,
     isEmptyActionGroup,
@@ -26,7 +27,7 @@
   } from '../feedbackDraftDocument'
   import { feedbackEditorExtensions } from '../feedbackEditorExtensions'
   import { t } from '../i18n'
-  import { distinguishUntidiedText, locale } from '../preferences'
+  import { locale } from '../preferences'
   import {
     applySpeechCleanupResults,
     setTidyingSpeechSegments,
@@ -44,7 +45,6 @@
   export let tidyingSegmentIds: string[] = []
   export let toolbarActions: Snippet | undefined = undefined
 
-  let editorHost: HTMLDivElement
   let editor: Editor | null = null
   // Tiptap owns the document and selection; Svelte observes only this toolbar projection.
   let toolbar = {
@@ -58,66 +58,46 @@
   }
   let applyingExternalChange = false
   let editorMarkdown = ''
-  let loadedEpoch = -1
+  let loadedEpoch = editorEpoch
   let insertionPosition = 0
   let tidyingSignature = ''
   let openAttachmentHandler = (_attachmentId: string) => {}
   $: openAttachmentHandler = onOpenAttachment
 
-  onMount(() => {
-    editor = new Editor({
-      element: editorHost,
-      extensions: feedbackEditorExtensions(),
-      content: document ?? markdown,
-      ...(document ? {} : { contentType: 'markdown' as const }),
-      editable: !disabled,
-      editorProps: {
-        attributes: {
-          class: 'feedback-prose',
-          'aria-label': t($locale, 'Markdown rich-text feedback body'),
-          'data-placeholder': t($locale, 'Record what you saw, what felt smooth, and where you paused.'),
-        },
-        handleClick: (view, pos, event) => {
-          const target = event.target as HTMLElement | null
-          const chip = target?.closest?.('a.attachment-file-chip')
-          if (!chip) return false
-          const attachmentId = chip.getAttribute('data-attachment-id')
-          if (!attachmentId) return false
-          event.preventDefault()
-          event.stopPropagation()
-          openAttachmentHandler(attachmentId)
-          return true
-        },
+  const editorOptions: Partial<EditorOptions> = {
+    extensions: feedbackEditorExtensions(),
+    content: document ?? markdown,
+    ...(document ? {} : { contentType: 'markdown' as const }),
+    editorProps: {
+      handleClick: (view, pos, event) => {
+        const target = event.target as HTMLElement | null
+        const chip = target?.closest?.('a.attachment-file-chip')
+        if (!chip) return false
+        const attachmentId = chip.getAttribute('data-attachment-id')
+        if (!attachmentId) return false
+        event.preventDefault()
+        event.stopPropagation()
+        openAttachmentHandler(attachmentId)
+        return true
       },
-      onCreate: ({ editor: createdEditor }) => {
-        editorMarkdown = editor?.getMarkdown() ?? markdown
-        loadedEpoch = editorEpoch
-        insertionPosition = editor?.state.doc.content.size ?? 0
-        hydrateAttachmentImages()
-        updateToolbar(createdEditor)
-      },
-      onTransaction: ({ editor: updatedEditor }) => updateToolbar(updatedEditor),
-      onUpdate: ({ editor: updatedEditor }) => {
-        if (applyingExternalChange) return
-        emitSnapshot(updatedEditor)
-      },
-      onSelectionUpdate: ({ editor: updatedEditor }) => {
-        insertionPosition = updatedEditor.state.selection.from
-      },
-    })
-
-    return () => {
-      editor?.destroy()
-      editor = null
-    }
-  })
-
-  $: if (editor) editor.setEditable(!disabled)
-  $: if (editor) {
-    $locale
-    editor.view.dom.setAttribute('aria-label', t($locale, 'Markdown rich-text feedback body'))
-    editor.view.dom.setAttribute('data-placeholder', t($locale, 'Record what you saw, what felt smooth, and where you paused.'))
+    },
+    onCreate: ({ editor: createdEditor }) => {
+      editorMarkdown = createdEditor.getMarkdown()
+      loadedEpoch = editorEpoch
+      insertionPosition = createdEditor.state.doc.content.size
+      hydrateAttachmentImages()
+      updateToolbar(createdEditor)
+    },
+    onTransaction: ({ editor: updatedEditor }) => updateToolbar(updatedEditor),
+    onUpdate: ({ editor: updatedEditor }) => {
+      if (applyingExternalChange) return
+      emitSnapshot(updatedEditor)
+    },
+    onSelectionUpdate: ({ editor: updatedEditor }) => {
+      insertionPosition = updatedEditor.state.selection.from
+    },
   }
+
   $: if (editor && editorEpoch !== loadedEpoch) {
     applyDocument(document ?? { type: 'doc', content: [{ type: 'paragraph' }] })
     loadedEpoch = editorEpoch
@@ -271,15 +251,22 @@
         last?.node.type.name === 'blockquote' &&
         last.node.attrs.actionId === operation.action.actionId
       ) {
-        if (transaction.docChanged) editor.view.dispatch(transaction)
+        if (last.node.childCount === 1) transaction = insertJsonContent(transaction, last.pos + last.node.nodeSize - 1, [{ type: 'paragraph' }])
+        const group = lastMeaningfulChild(transaction.doc)!
+        transaction = transaction.setSelection(TextSelection.near(transaction.doc.resolve(group.pos + group.node.nodeSize - 1), -1))
+        editor.view.dispatch(transaction)
+        editor.view.focus()
         return true
       }
       transaction = insertJsonContent(
         transaction,
         transaction.doc.content.size,
-        [actionBlockquoteNode(operation.action)],
+        [actionBlockquoteNode(operation.action, [{ type: 'paragraph' }])],
       )
+      const group = lastMeaningfulChild(transaction.doc)!
+      transaction = transaction.setSelection(TextSelection.near(transaction.doc.resolve(group.pos + group.node.nodeSize - 1), -1))
       editor.view.dispatch(transaction)
+      editor.view.focus()
       return true
     }
     const nodes =
@@ -362,11 +349,12 @@
 
 <div class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border bg-background">
   <FeedbackEditorToolbar {editor} {disabled} state={toolbar} actions={toolbarActions} />
-  <div
-    class="editor-host min-h-0 flex-1 overflow-y-auto overscroll-contain"
-    class:distinguish-untidied={$distinguishUntidiedText}
-    bind:this={editorHost}
-  ></div>
+  <div class="editor-host min-h-0 flex-1 overflow-y-auto overscroll-contain">
+    <TiptapInput bind:editor options={editorOptions} {disabled}
+      label={t($locale, 'Markdown rich-text feedback body')}
+      placeholder={t($locale, 'Record what you saw, what felt smooth, and where you paused.')}
+      hostClass="h-full" contentClass="feedback-prose" />
+  </div>
 </div>
 
 <style>
@@ -378,14 +366,6 @@
     font-size: 14px;
     line-height: 1.78;
     outline: none;
-  }
-
-  .editor-host :global(.feedback-prose:empty::before) {
-    float: left;
-    height: 0;
-    color: var(--muted-foreground);
-    content: attr(data-placeholder);
-    pointer-events: none;
   }
 
   .editor-host :global(.feedback-prose > *:first-child) {
@@ -442,53 +422,6 @@
 
   .editor-host :global(.feedback-prose blockquote[data-action-id] > p:last-child) {
     margin-bottom: 0;
-  }
-
-  .editor-host.distinguish-untidied :global(.feedback-prose p[data-cleanup-state='pending']) {
-    position: relative;
-    padding-inline-start: 22px;
-  }
-
-  .editor-host.distinguish-untidied :global(.feedback-prose p[data-cleanup-state='pending']:not(.speech-segment-tidying)::before) {
-    position: absolute;
-    top: 0.42em;
-    inset-inline-start: 1px;
-    width: 14px;
-    height: 14px;
-    background-color: color-mix(in oklab, var(--primary) 58%, var(--muted-foreground));
-    content: '';
-    -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20fill='black'%20d='M12%2014q1.25%200%202.125-.875T15%2011V5q0-1.25-.875-2.125T12%202q-1.25%200-2.125.875T9%205v6q0%201.25.875%202.125T12%2014Zm-1%207v-3.075q-2.6-.35-4.3-2.325T5%2011h2q0%202.075%201.463%203.537T12%2016q2.075%200%203.538-1.463T17%2011h2q0%202.625-1.7%204.6T13%2017.925V21Z'/%3E%3C/svg%3E") center / contain no-repeat;
-    mask: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20fill='black'%20d='M12%2014q1.25%200%202.125-.875T15%2011V5q0-1.25-.875-2.125T12%202q-1.25%200-2.125.875T9%205v6q0%201.25.875%202.125T12%2014Zm-1%207v-3.075q-2.6-.35-4.3-2.325T5%2011h2q0%202.075%201.463%203.537T12%2016q2.075%200%203.538-1.463T17%2011h2q0%202.625-1.7%204.6T13%2017.925V21Z'/%3E%3C/svg%3E") center / contain no-repeat;
-  }
-
-  .editor-host :global(.feedback-prose p.speech-segment-tidying) {
-    position: relative;
-    padding-left: 22px;
-  }
-
-  .editor-host :global(.feedback-prose p.speech-segment-tidying::before) {
-    position: absolute;
-    top: 0.48em;
-    left: 1px;
-    width: 12px;
-    height: 12px;
-    border: 2px solid color-mix(in oklab, var(--primary) 22%, transparent);
-    border-top-color: var(--primary);
-    border-radius: 999px;
-    animation: speech-tidying-spin 0.75s linear infinite;
-    content: '';
-  }
-
-  @keyframes speech-tidying-spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .editor-host :global(.feedback-prose p.speech-segment-tidying::before) {
-      animation-duration: 1.8s;
-    }
   }
 
   .editor-host :global(.feedback-prose img) {

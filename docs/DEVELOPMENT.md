@@ -41,7 +41,7 @@ pnpm dev
 
 ## 前端边界与测试
 
-共享工作台从 `App.svelte` / `BrowserWorkbenchRoot.svelte` 组合，经 `lib/application` 访问后端，经 `lib/capabilities` 访问当前设备。主要责任模块为 `agents`、`workbench`、`workspace`、`editor`、`speech`、`shell`、`settings`；`lib/generated` 是生成合同，只读。
+共享工作台从 `App.svelte` / `BrowserWorkbenchRoot.svelte` 组合，经 `lib/application` 访问后端，经 `lib/capabilities` 访问当前设备。主要责任模块为 `agents`、`workbench`、`workspace`、`input`、`editor`、`speech`、`shell`、`settings`；`lib/generated` 是生成合同，只读。新增业务输入复用 `input/WorkbenchTextField.svelte` 与 `editor/TiptapInput.svelte`，语音、附件和输入落点接入现有请求级协调；领域与保存边界见[工作台开发索引](workbench/README.md)。
 
 [frontendBoundaries.test.ts](../apps/desktop/src/lib/architecture/frontendBoundaries.test.ts) 固化依赖方向：
 
@@ -53,6 +53,8 @@ pnpm dev
 纯逻辑测试留在 owner 模块。静态呈现可用 `svelte/server`；事件、焦点、异步保存与清理须在需要时用真实挂载的 jsdom 测试（`// @vitest-environment jsdom`），隔离 Tauri API。原生窗口、设备、权限和浏览器手势不能由 DOM 测试代替。
 
 `?preview=fixtures` 在 `main.ts` 构造 [previewApplicationTransport](../apps/desktop/src/lib/preview/previewApplicationTransport.ts)，经 `createWorkbenchComposition({ previewTransport })` 注入；控制器仍只依赖 Application Transport。预览 workspace snapshot 通过 `createWorkspaceShellSession({ snapshots })` 注入，不写真实 `rambledesk.ui-state`。完整 HTTP/SQLite 夹具与内存预览的证据范围不同。
+
+工作台组件的独立预览入口见 [dev/README](../apps/desktop/src/dev/README.md)。需要通过真实 Agent 完整体验自由反馈、逐项问答和文稿审阅时，打开 [Playground](../playground/workbenches/README.md) 的目录并使用其中的提示词；该流程与浏览器内存预览分别验证。
 
 ## 前后端合同
 

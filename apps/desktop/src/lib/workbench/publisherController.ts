@@ -1,3 +1,4 @@
+import { workbenchSubmissionMessage, readWorkbenchState } from '../workbenchState'
 import { get } from 'svelte/store'
 
 import type { ApplicationTransport } from '../application/applicationTransport'
@@ -21,6 +22,7 @@ type PublisherControllerContext = {
   /** External policy, such as a managed session being deleted. */
   isReadOnly: () => boolean
   prepareFeedback: (requestId: string) => Promise<FeedbackPreparation>
+  isInputBusy?: () => boolean
   saveDraftNow: () => Promise<boolean>
   getCookingEnabled: () => boolean
   cookSubmission: (submission: CookingSubmission) => Promise<CookingPreview>
@@ -47,6 +49,13 @@ export function createPublisherController(context: PublisherControllerContext) {
     if (context.session.requestId() === requestId) {
       context.setPageError(context.messageFrom(cause))
     }
+  }
+
+  function validateSubmission() {
+    const draft = get(context.draft)
+    const message = workbenchSubmissionMessage(get(context.session).workspace?.workbench, readWorkbenchState(draft.documentJson), draft.body)
+    if (message) context.setPageError(context.tr(message))
+    return message === null
   }
 
   async function publish(input: SubmitFeedbackInput) {
@@ -81,10 +90,7 @@ export function createPublisherController(context: PublisherControllerContext) {
     const requestId = initial.request?.request_id
     if (!requestId || initial.terminal || initial.interactionLocked || context.isReadOnly() ||
       context.cooking.isCooking(requestId)) return
-    if (!get(context.draft).body.trim()) {
-      context.setPageError(context.tr('Cannot send an empty reply. Write some feedback content first.'))
-      return
-    }
+    if (!validateSubmission()) return
 
     let ownsSubmission = false
     let ownsCooking = false
@@ -101,6 +107,10 @@ export function createPublisherController(context: PublisherControllerContext) {
         context.setPageError(context.tr('Review the pending speech in the capsule before submitting feedback.'))
         return
       }
+      if (context.isInputBusy?.()) {
+        context.setPageError(context.tr('Input is still being received. Finish the current input and try again.'))
+        return
+      }
 
       // Lock before saving, not after it: the confirmed document and revision
       // must stay together until the backend accepts or rejects this submission.
@@ -110,10 +120,7 @@ export function createPublisherController(context: PublisherControllerContext) {
       if (!(await context.saveDraftNow()) || !stillEditable(requestId)) return
       const draft = get(context.draft)
       const workspace = get(context.session).workspace!
-      if (!draft.body.trim()) {
-        context.setPageError(context.tr('Cannot send an empty reply. Write some feedback content first.'))
-        return
-      }
+      if (!validateSubmission()) return
       const submission: CookingSubmission = {
         request: workspace.request,
         actions: workspace.actions,
@@ -122,7 +129,7 @@ export function createPublisherController(context: PublisherControllerContext) {
       }
 
       let cooked: CookingPreview | null = null
-      if (context.getCookingEnabled()) {
+      if (context.getCookingEnabled() && draft.body.trim()) {
         cooked = context.cooking.preview()
         if (cooked && (cooked.requestId !== requestId ||
           cooked.savedRevision !== submission.savedRevision || cooked.original !== submission.body)) {

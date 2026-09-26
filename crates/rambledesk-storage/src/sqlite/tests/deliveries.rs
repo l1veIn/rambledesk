@@ -59,6 +59,7 @@ async fn new_request(store: &SqliteFeedbackStore, managed: Option<&str>) -> Stri
     let correlation = managed.unwrap_or("external");
     store
         .create_or_get_request(NewFeedbackRequest {
+            workbench: None,
             request_id: request_id.clone(),
             host_session_record_id: correlation.into(),
             managed_session_id: managed.map(str::to_owned),

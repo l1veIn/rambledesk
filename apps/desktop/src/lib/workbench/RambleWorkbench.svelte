@@ -1,41 +1,27 @@
-<!--
-  The Ramble workbench: the task a person is being asked to review.
-
-  It renders only the request identity and its brief (what happened, the actions
-  to experience, and the materials the Agent attached). The document, submission
-  and host protocol belong to the workbench container around it; this component
-  reports the action a person picked and nothing else.
--->
+<!-- Ramble owns the action list; RegisteredWorkbench supplies the shared context and shell. -->
 <script lang="ts">
-  import type { ApplicationTransport } from '$lib/application/applicationTransport'
-  import type { WorkbenchCapabilities } from '$lib/capabilities/workbenchCapabilities'
   import type { FeedbackWorkspaceView } from '$lib/feedback'
-  import type { HostProfile } from '../domain/hostProfile'
-  import TaskBriefPanel from './TaskBriefPanel.svelte'
-  import WorkspaceHeader from './WorkspaceHeader.svelte'
+  import { t } from '../i18n'
+  import { locale } from '../preferences'
+  import LinkifiedText from '../editor/LinkifiedText.svelte'
 
   export let workspace: FeedbackWorkspaceView
-  export let transport: ApplicationTransport
-  export let capabilities: Pick<WorkbenchCapabilities, 'serverPaths'>
-  export let resolveHostProfile: (hostId: string) => HostProfile
   export let readOnly = false
-  export let cooking = false
   export let activeActionId: string | null = null
-  export let open = true
-  /** Opens the same brief as a full workspace view. */
-  export let onOpenFullView: () => void = () => {}
   export let onSelectAction: (actionId: string, actionIndex: number, title: string) => void = () => {}
+  $: closed = readOnly || workspace.request.status === 'completed' || workspace.request.status === 'cancelled'
+  const tr = (source: string) => t($locale, source)
 </script>
 
-<div class="flex h-full min-h-0 min-w-0 flex-col" data-workbench="ramble">
-  <WorkspaceHeader {workspace} {resolveHostProfile} {cooking} />
-  <TaskBriefPanel
-    {transport}
-    {capabilities}
-    bind:open
-    {workspace}
-    {activeActionId}
-    onSelectAction={(id, index, title) => { if (!readOnly) onSelectAction(id, index, title) }}
-    onOpenPreview={onOpenFullView}
-  />
+<div data-tour="ramble-actions">
+  <h2 class="m-0 text-xs font-semibold text-muted-foreground">{tr('Actions to experience')}</h2>
+  <ol class="mt-3 grid list-none gap-3 p-0">
+    {#each workspace.actions as action, index (action.id)}
+      <li><button type="button" disabled={closed} aria-pressed={activeActionId === action.id}
+        onclick={() => onSelectAction(action.id, index, action.instruction)}
+        class={`grid w-full grid-cols-[24px_minmax(0,1fr)] gap-3 rounded-lg border p-3 text-left text-sm leading-6 hover:bg-accent/60 disabled:cursor-not-allowed disabled:opacity-60 ${activeActionId === action.id ? 'border-primary bg-primary/5' : 'bg-background'}`}>
+        <span class="grid size-6 place-items-center rounded-md bg-muted text-xs">{index + 1}</span><span><LinkifiedText text={action.instruction} /></span>
+      </button></li>
+    {/each}
+  </ol>
 </div>

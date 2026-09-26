@@ -87,6 +87,31 @@ capability before deciding that no request tool exists.
    because the transport reports "Session not found".
 4. Call `cancel_feedback` only when the human explicitly gives up.
 
+## Choose the workbench
+
+Use the capabilities exposed by the selected flow. Managed ACP sessions provide
+`feedback list-workbenches` and `feedback describe-workbench --type <type>`;
+Generic MCP provides `list_workbenches` and `describe_workbench`. Read the chosen
+schema when unfamiliar; a known supported contract can be used directly.
+
+Choose for the human input needed now, respecting the user's requested interaction:
+
+- `ramble`: open-ended feedback or hands-on review guided by executable actions.
+- `questions`: explicit answers or decisions. One question with `allowOther:false`
+  covers a closed single choice; enable custom answers only when useful.
+- `document_review`: comments and suggested edits tied to paragraphs of an existing
+  script, speech, or draft. Supply the actual source and its version.
+
+Typed requests use `workbench: {type, version, data}` and omit top-level `actions`.
+Use `questions` for new single-choice requests; `single_choice` is a compatibility
+contract. Read typed results from `feedback_package.manifest.workbench.result`
+alongside feedback text and attachments. A review verdict does not authorize
+execution or publication of changes.
+
+Native Pi/dsh tools currently expose the legacy `actions` request schema. Follow
+that schema when using those flows; do not pass undeclared `workbench` fields or
+switch transports just to obtain a different interface.
+
 ## Build every request
 
 - Use a short, specific `title` that the human can scan in the Inbox.
@@ -94,14 +119,17 @@ capability before deciding that no request tool exists.
   is needed, and what perspective the human should bring; the server rejects
   longer text. Move the full explanation, evidence, or detail into a Markdown
   attachment below the summary instead of growing the summary itself.
-- Provide an ordered, executable `actions` checklist with one action per item.
+- For legacy requests, provide an ordered, executable `actions` checklist with one
+  action per item. Typed Ramble puts that checklist in `workbench.data.actions`;
+  questions and document review use their own discovered input schemas.
 - Attach files only when the human needs to review them. Prefer an absolute
   local `attachments[].path` for existing images and Markdown. Use inline
   `markdown` only for short text and `contents_base64` only for a small image
   that is not on disk.
 - Omit `request_id`; the server generates it. Reuse the returned id for recovery.
-- Omit `allow_finish` by default. Set it with `final_summary` only for a simple
-  approve/reject decision that needs no detailed feedback body.
+- Omit `allow_finish` by default. Legacy/typed Ramble supports setting it with
+  `final_summary` for a simple approve/reject decision that needs no detailed
+  feedback body. Questions and document review require their own submitted result.
 - Keep one active request per host session. Never create requests concurrently,
   in parallel tool calls, or from multiple subagents for the same session.
   Finish, read, or explicitly cancel the active request before creating another.

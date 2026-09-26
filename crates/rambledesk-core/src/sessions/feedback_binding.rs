@@ -77,6 +77,8 @@ impl ManagedFeedbackLease<'_> {
 /// Agent-authored request content. Session ownership comes only from the binding.
 #[derive(Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ManagedFeedbackRequestInput {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workbench: Option<crate::WorkbenchSpec>,
     pub request_id: Option<String>,
     pub title: Option<String>,
     /// Short summary (at most 200 characters) of what changed and what feedback
@@ -86,6 +88,7 @@ pub struct ManagedFeedbackRequestInput {
         description = "Short summary (at most 200 characters) of what changed and what feedback is needed. The human reads this first to understand the situation in seconds; put the full explanation, evidence, or detail in a Markdown attachment instead of growing this field. Longer text is rejected."
     )]
     pub what_happened: String,
+    #[serde(default)]
     pub actions: Vec<ActionInput>,
     #[serde(default)]
     pub context_refs: Vec<ContextRef>,
@@ -102,6 +105,7 @@ pub struct ManagedFeedbackRequestInput {
 impl From<ManagedFeedbackRequestInput> for RequestFeedbackInput {
     fn from(input: ManagedFeedbackRequestInput) -> Self {
         Self {
+            workbench: input.workbench,
             request_id: input.request_id,
             host_id: None,
             host_session_id: String::new(),

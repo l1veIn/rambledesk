@@ -9,6 +9,7 @@ async fn request_review(
         .request_managed_feedback(
             &ManagedFeedbackScope::from_session(&session.session).unwrap(),
             RequestFeedbackInput {
+                workbench: None,
                 request_id: None,
                 host_id: None,
                 host_session_id: String::new(),

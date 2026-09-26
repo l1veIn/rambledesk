@@ -35,6 +35,7 @@ mod migration_extensions;
 mod paths;
 mod publication_paths;
 mod recovery_ops;
+mod request_identity;
 mod request_ops;
 mod request_scope;
 mod resolve_ops;

@@ -1,12 +1,14 @@
 <script lang="ts">
-  import { Check, ChevronDown, Folder, FolderOpen, GitBranch, LoaderCircle, MessageSquare, RefreshCw, Settings } from '@lucide/svelte'
+  import { Check, ChevronDown, GitBranch, LoaderCircle, MessageSquare, RefreshCw, Settings } from '@lucide/svelte'
   import { Popover } from 'bits-ui'
-  import { onMount } from 'svelte'
+  import { onMount, tick } from 'svelte'
   import { Button } from '$lib/components/ui/button'
   import type { ApplicationTransport } from '$lib/application/applicationTransport'
   import { locale } from '$lib/preferences'
   import AgentComposer from './composer/AgentComposer.svelte'
   import AgentIcon from './AgentIcon.svelte'
+  import ProjectDirectoryDialog from './ProjectDirectoryDialog.svelte'
+  import SessionStarterCards from './SessionStarterCards.svelte'
   import AgentFailureNotice from './AgentFailureNotice.svelte'
   import { agentFailureFrom } from './agentFailure'
   import SessionConfigurationControls from './configuration/SessionConfigurationControls.svelte'
@@ -21,10 +23,7 @@
   export let draftId: string
   export let onConfigure: () => void
   export let onConfigureAgent: ((configId: string | undefined, advanced?: boolean) => void) | undefined = undefined
-  export let onChooseDirectory: (() => Promise<string | null>) | undefined = undefined
-  let localError = ''
-  let choosingDirectory = false
-  let directoryPickerOpen = false
+  let composer: AgentComposer | undefined
   let agentPickerOpen = false
   let mounted = false
   const workspaceInfo = createManagedWorkspaceInfoController(transport)
@@ -33,10 +32,9 @@
   $: selectedAgent = $controller.choices.find(choice => choice.key === $controller.choice)
   $: actionFailure = $controller.failure ?? ($controller.error && !$controller.awaitingAcknowledgement ? agentFailureFrom(new Error($controller.error), 'session') : null)
   $: directoryValid = isAbsoluteAgentDirectory($controller.cwd.trim())
-  $: projectName = $controller.cwd.trim().replace(/[\\/]+$/u, '').split(/[\\/]/u).pop() || $controller.cwd.trim()
 
   const zh: Record<string, string> = {
-    'New session': '新建会话', 'What would you like to work on?': '准备开始什么任务？',
+    'New session': '新建会话', 'What would you like to work on today?': '今天准备做些什么呢？',
     'Choose an agent and a project, then describe your task.': '选择智能体和项目目录，然后描述你的任务。',
     'Manage agents': '管理智能体', 'Ready to send': '可以发送', 'Connecting…': '正在连接…',
     'Sending your first message…': '正在发送第一条消息…', 'Closing the draft…': '正在关闭草稿…',
@@ -67,21 +65,13 @@
   function refreshOnReturn() {
     if (mounted && document.visibilityState === 'visible') void controller.refreshChoices(false)
   }
-  async function chooseDirectory() {
-    if (!onChooseDirectory || locked || choosingDirectory) return
-    choosingDirectory = true
-    const choice = $controller.choice
-    const cwd = $controller.cwd
-    try {
-      const directory = await onChooseDirectory()
-      if (mounted && directory && $controller.choice === choice && $controller.cwd === cwd) {
-        controller.select(choice, directory)
-        directoryPickerOpen = false
-        localError = ''
-      }
-    } catch { localError = tr('Could not choose the project directory.') }
-    finally { choosingDirectory = false }
+  async function selectStarter(prompt: string) {
+    if (locked || $controller.text.trim()) return
+    controller.edit(prompt)
+    await tick()
+    composer?.focus()
   }
+
 </script>
 
 <svelte:window onfocus={refreshOnReturn} />
@@ -89,43 +79,18 @@
 <section class="appearance-surface flex h-full min-h-0 min-w-0 flex-col bg-background" aria-label={tr('New session')}>
   <div class="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-8 sm:px-8">
     <div class="mx-auto my-auto w-full max-w-3xl space-y-4 py-8">
-      <div class="pb-8 text-center sm:pb-12">
+      <div class="pb-4 text-center sm:pb-6">
         <MessageSquare class="mx-auto mb-5 size-9 text-muted-foreground/40" />
-        <h2 class="m-0 text-xl font-medium tracking-tight sm:text-2xl">{tr('What would you like to work on?')}</h2>
+        <h2 class="m-0 text-xl font-medium tracking-tight sm:text-2xl">{tr('What would you like to work on today?')}</h2>
       </div>
       <div class="space-y-2" data-agent-composer>
         <div class="flex min-w-0 items-center gap-3 px-2" data-workspace-metadata>
-          <Popover.Root bind:open={directoryPickerOpen}>
-            <Popover.Trigger>
-              {#snippet child({ props })}
-                <Button {...props} variant="ghost" size="sm" class="min-w-0 max-w-[70%] justify-start gap-2 px-2 text-xs" disabled={locked}
-                  title={$controller.cwd || tr('Project directory is required.')} aria-label={`${tr('Project directory')}: ${$controller.cwd || tr('Choose a project')}`}>
-                  <Folder class="size-4 shrink-0" />
-                  {#if !directoryValid}<span class="size-1.5 shrink-0 rounded-full bg-destructive" aria-hidden="true"></span>{/if}
-                  <span class="truncate">{projectName || tr('Choose a project')}</span><ChevronDown class="size-3 shrink-0 text-muted-foreground" />
-                </Button>
-              {/snippet}
-            </Popover.Trigger>
-            <Popover.Portal>
-              <Popover.Content side="top" align="start" sideOffset={8} aria-label={tr('Project directory')}
-                class="z-[130] w-96 max-w-[calc(100vw-2rem)] space-y-3 rounded-xl border bg-popover p-4 text-popover-foreground shadow-lg outline-none">
-                <label for={`draft-cwd-${draftId}`} class="text-xs font-medium">{tr('Project directory')}</label>
-                <input id={`draft-cwd-${draftId}`} value={$controller.cwd} disabled={locked} aria-required="true" aria-invalid={Boolean($controller.cwd) && !directoryValid} autocomplete="off" spellcheck="false"
-                  placeholder="/path/to/project" class="h-9 w-full min-w-0 rounded-md border bg-background px-3 font-mono text-xs outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
-                  oninput={(event) => controller.select($controller.choice, event.currentTarget.value, 500)}
-                  onkeydown={(event) => { if (event.key === 'Enter' && directoryValid) { event.preventDefault(); directoryPickerOpen = false } }} />
-                <p class="m-0 text-xs text-muted-foreground">{tr($controller.cwd && !directoryValid ? 'Enter an absolute project directory.' : 'Project directory is required.')}</p>
-                <div class="flex items-center justify-between gap-2">
-                  {#if onChooseDirectory}<Button variant="outline" size="sm" disabled={locked || choosingDirectory} onclick={() => void chooseDirectory()}><FolderOpen class="size-3.5" />{tr('Browse…')}</Button>{/if}
-                  <Button size="sm" class="ml-auto" disabled={locked || !directoryValid} onclick={() => { directoryPickerOpen = false }}>{tr('Use this directory')}</Button>
-                </div>
-              </Popover.Content>
-            </Popover.Portal>
-          </Popover.Root>
+          <ProjectDirectoryDialog {transport} value={$controller.cwd} disabled={locked}
+            onSelect={(path) => controller.select($controller.choice, path)} />
           {#if $workspaceInfo?.branch}<span class="flex min-w-0 max-w-[35%] items-center gap-1.5 text-xs text-muted-foreground" title={$workspaceInfo.branch}><GitBranch class="size-3.5 shrink-0" /><span class="truncate">{$workspaceInfo.branch}</span></span>{/if}
         </div>
         <div class="draft-composer">
-          <AgentComposer value={$controller.text} draftKey={draftId} onchange={(text) => controller.edit(text)} onsubmit={(text) => controller.send(text)}
+          <AgentComposer bind:this={composer} value={$controller.text} draftKey={draftId} onchange={(text) => controller.edit(text)} onsubmit={(text) => controller.send(text)}
             disabled={$controller.phase === 'closing' || $controller.phase === 'promoted'} busy={$controller.phase === 'sending'} sendDisabled={!directoryValid || $controller.phase !== 'ready'}>
             <svelte:fragment slot="footer">
               {#if $controller.snapshot}<SessionConfigurationControls configuration={$controller.snapshot.runtime.configuration} disabled={$controller.phase !== 'ready'} onChange={controller.configure} />{/if}
@@ -188,6 +153,9 @@
           <span class="flex-1"></span><SessionContextUsage usage={$controller.snapshot?.runtime.context_usage} />
         </div>
       </div>
+      {#if !$controller.text.trim()}
+        <SessionStarterCards disabled={locked} onSelect={(prompt) => void selectStarter(prompt)} />
+      {/if}
       {#if actionFailure && selectedAgent && !$controller.awaitingAcknowledgement}
         <AgentFailureNotice failure={actionFailure} config={selectedAgent.config} inspection={selectedAgent.inspection} catalogId={selectedAgent.catalogId} hostId={selectedAgent.hostId} name={selectedAgent.name}
           onConfigure={configureCurrentAgent} onRetry={$controller.phase === 'failed' ? controller.retry : undefined} busy={locked || $controller.phase === 'preparing'} />

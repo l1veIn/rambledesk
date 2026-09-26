@@ -4,6 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App.svelte'
 import { createWorkbenchCapabilities } from './lib/capabilities/workbenchCapabilities'
+import { createBrowserImagePastePlugin } from './lib/capabilities/browser/imagePasteCapability'
+import { readWorkbenchState } from './lib/workbenchState'
+import type { WorkbenchSpec, WorkbenchState } from './lib/generated/feedback'
 import type { SpeechRecognitionListener } from './lib/speech/speech'
 import type {
   ApplicationCommandInput,
@@ -67,6 +70,7 @@ let app: ReturnType<typeof mount> | undefined
 let host: HTMLDivElement
 const rangeRects = Object.getOwnPropertyDescriptor(Range.prototype, 'getClientRects')
 const rangeBounds = Object.getOwnPropertyDescriptor(Range.prototype, 'getBoundingClientRect')
+const scrollIntoView = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollIntoView')
 
 beforeEach(() => {
   localStorage.clear()
@@ -110,6 +114,8 @@ afterEach(async () => {
     if (descriptor) Object.defineProperty(Range.prototype, name, descriptor)
     else Reflect.deleteProperty(Range.prototype, name)
   }
+  if (scrollIntoView) Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', scrollIntoView)
+  else Reflect.deleteProperty(HTMLElement.prototype, 'scrollIntoView')
 })
 
 async function openWorkbench(
@@ -162,6 +168,69 @@ async function expectPublished() {
 }
 
 describe('feedback flow through the real App and editor', () => {
+  it.each(['questions', 'document_review'] as const)('pastes images into the focused %s field without speech, then switches back to the feedback body', async kind => {
+    localStorage.setItem('rambledesk.workbench-tour.document_review', JSON.stringify({ version: 1 }))
+    const spec: WorkbenchSpec = kind === 'questions'
+      ? { type: 'questions', version: 1, data: { questions: [{ id: 'q', prompt: 'Your feedback?', options: [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }], allowOther: true }] } }
+      : { type: 'document_review', version: 1, data: { title: 'Draft', source_version: 'v1', paragraphs: [{ id: 'p', text: 'Original paragraph.' }] } }
+    const initial: WorkbenchState = kind === 'questions'
+      ? { type: 'questions', answers: [{ id: 'q', value: 'Custom answer', label: 'Custom answer', wasCustom: true }] }
+      : { type: 'document_review', verdict: 'changes_requested', paragraph_marks: [], annotations: [{
+        id: 'note', paragraph_id: 'p', start: null, end: null, quote: null, kind: 'comment', body: 'My comment', replacement: null,
+      }] }
+    const transport = new FeedbackFlowTransport()
+    const call = transport.call.bind(transport)
+    transport.call = (async (name, input) => {
+      const result = await call(name, input)
+      if ((name !== 'getFeedbackWorkspace' && name !== 'addFeedbackAttachment') || !result) return result
+      const workspace = result as ApplicationCommandResult<'getFeedbackWorkspace'>
+      const envelope = JSON.parse(workspace!.draft.document_json ?? '{"schemaVersion":2,"doc":{"type":"doc","content":[{"type":"paragraph"}]}}')
+      envelope.workbenchState ??= initial
+      return { ...workspace, workbench: spec, actions: [],
+        attachments: workspace!.attachments.map(attachment => ({ ...attachment, media_type: attachment.media_type ?? 'image/png' })),
+        draft: { ...workspace!.draft, document_json: JSON.stringify(envelope) } }
+    }) as typeof transport.call
+    HTMLElement.prototype.scrollIntoView = vi.fn()
+    const unavailable = createUnavailableWorkbenchCapabilities()
+    await openWorkbench(transport, createWorkbenchCapabilities({ ...unavailable,
+      imagePaste: { status: { availability: 'available', source: 'browser' }, implementation: createBrowserImagePastePlugin() },
+    }))
+    if (kind === 'document_review') {
+      await vi.waitFor(() => expect(host.querySelector('[data-review-note-preview="note"]')).not.toBeNull())
+      host.querySelector<HTMLButtonElement>('[data-review-note-preview="note"]')!.click()
+    }
+    const selector = kind === 'questions' ? '[data-question-answer="q"]' : '[data-review-field="body"]'
+    await vi.waitFor(() => expect(host.querySelector(selector)).not.toBeNull())
+    const field = host.querySelector<HTMLElement>(selector)!
+    field.focus()
+    const speak = host.querySelector<HTMLButtonElement>(kind === 'questions' ? '[aria-label="Speak answer"]' : '[aria-label="Speak comment"]')!
+    expect(speak.disabled).toBe(true)
+
+    const paste = (target: HTMLElement, name: string) => {
+      const file = new File(['image'], name, { type: 'image/png' })
+      Object.defineProperty(file, 'arrayBuffer', { value: async () => new Uint8Array([1, 2, 3]).buffer })
+      const event = new Event('paste', { bubbles: true, cancelable: true })
+      Object.defineProperty(event, 'clipboardData', { value: { items: [], files: [file] } })
+      target.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+    }
+    const fieldText = (state: WorkbenchState | null) => state?.type === 'questions' ? state.answers[0].value
+      : state?.type === 'document_review' ? state.annotations[0].body : ''
+    paste(field, 'field.png')
+    await vi.waitFor(() => {
+      expect(fieldText(readWorkbenchState(transport.saves().at(-1)?.document_json))).toContain('attachment://preview-1')
+    }, { timeout: 3_000 })
+    expect(transport.saves().at(-1)?.body_markdown).not.toContain('attachment://preview-1')
+
+    const feedback = host.querySelector<HTMLElement>(editorSelector)!
+    feedback.focus()
+    paste(feedback, 'feedback.png')
+    await vi.waitFor(() => expect(transport.saves().at(-1)?.body_markdown).toContain('attachment://preview-2'), { timeout: 3_000 })
+    const savedField = fieldText(readWorkbenchState(transport.saves().at(-1)?.document_json))
+    expect(savedField).toContain('attachment://preview-1')
+    expect(savedField).not.toContain('attachment://preview-2')
+  })
+
   function requestsLeaveConfirmation() {
     const event = new Event('beforeunload', { cancelable: true })
     window.dispatchEvent(event)
@@ -266,7 +335,7 @@ describe('feedback flow through the real App and editor', () => {
       ...unavailable,
       speech: { status: { availability: 'available', source: 'browser' }, implementation: { ...unavailable.speech.implementation, start } },
     }))
-    const record = button('Start recording')
+    const record = host.querySelector<HTMLButtonElement>('[aria-label="Speak feedback"]')
     expect(record).not.toBeNull()
     record!.click()
     await vi.waitFor(() => expect(start).toHaveBeenCalledOnce())
@@ -275,7 +344,9 @@ describe('feedback flow through the real App and editor', () => {
     expect(cancel).not.toHaveBeenCalled()
     listener.onEvent({ type: 'partial', sessionId: 'language-test', text: 'Still recording after the language change' })
     await tick()
-    expect(document.body.textContent).toContain('Still recording after the language change')
+    expect(document.body.textContent).not.toContain('Still recording after the language change')
+    listener.onEvent({ type: 'stable', sessionId: 'language-test', segmentIndex: 0, text: 'Still recording after the language change' })
+    await vi.waitFor(() => expect(host.querySelector('.feedback-prose[contenteditable="true"]')?.textContent).toContain('Still recording after the language change'))
     await unmount(app!)
     app = undefined
     await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce())

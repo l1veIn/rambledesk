@@ -25,6 +25,9 @@ pub struct FeedbackPackageAttachment {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 pub struct FeedbackPackageManifest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub workbench: Option<crate::WorkbenchPackage>,
     pub schema_version: u32,
     pub request_id: String,
     pub title: String,
@@ -230,6 +233,9 @@ pub struct DraftView {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 pub struct FeedbackWorkspaceView {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub workbench: Option<crate::WorkbenchSpec>,
     pub request: FeedbackRequestSummary,
     pub actions: Vec<ActionInput>,
     pub context_refs: Vec<ContextRef>,
@@ -322,6 +328,7 @@ pub struct SubmitFeedbackInput {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoredFeedbackWorkspace {
+    pub workbench: Option<crate::WorkbenchSpec>,
     pub request: FeedbackRequestSummary,
     pub actions: Vec<ActionInput>,
     pub context_refs: Vec<ContextRef>,
@@ -334,6 +341,7 @@ pub struct StoredFeedbackWorkspace {
 impl From<StoredFeedbackWorkspace> for FeedbackWorkspaceView {
     fn from(value: StoredFeedbackWorkspace) -> Self {
         Self {
+            workbench: value.workbench,
             request: value.request,
             actions: value.actions,
             context_refs: value.context_refs,
@@ -378,6 +386,7 @@ pub struct SubmissionRequestAttachment {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SubmissionPlan {
+    pub workbench: Option<crate::WorkbenchPackage>,
     pub request_id: String,
     pub host_id: String,
     pub host_session_id: String,

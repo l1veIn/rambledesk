@@ -12,11 +12,14 @@
     Mic,
     ScanLine,
     Send,
+    MessageSquare,
+    FileText,
   } from '@lucide/svelte'
   import { onMount } from 'svelte'
 
   import { t } from './lib/i18n'
   import { locale } from './lib/preferences'
+  import { speechTargetLabel } from './lib/speech/speechTargetLabel'
   import {
     RAMBLE_CONSOLE_COMMAND_EVENT,
     RAMBLE_CONSOLE_READY_EVENT,
@@ -57,6 +60,10 @@
           ? t($locale, 'Recording')
           : t($locale, 'Resume recording')
   $: consoleMessage = errorMessage || state?.message || statusLabel
+  $: target = state?.target ?? state?.nextTarget
+  $: targetLabel = target ? speechTargetLabel(target, (source) => t($locale, source)) : ''
+  $: nextTargetLabel = state?.nextTarget ? speechTargetLabel(state.nextTarget, (source) => t($locale, source)) : ''
+  $: targetDescription = `${t($locale, 'Current segment')}: ${targetLabel}${nextTargetLabel ? `\n${t($locale, 'Next segment')}: ${nextTargetLabel}` : ''}`
 
   onMount(() => {
     if (!isTauri) return
@@ -160,10 +167,15 @@
 >
   <span
     class="console-grip"
-    aria-hidden="true"
     title={t($locale, 'Drag floating console')}
   >
-    <GripVertical size={18} strokeWidth={1.8} />
+    <GripVertical size={14} strokeWidth={1.8} aria-hidden="true" />
+    {#if target}
+      <button type="button" class="console-tool target-tool" disabled={target.destination.kind === 'unknown'} title={targetDescription} aria-label={targetDescription}
+        onclick={() => target && send({ type: 'open-speech-target', requestId: target.requestId, target })}>
+        {#if target.destination.kind === 'review_annotation' || target.destination.kind === 'question_answer'}<MessageSquare size={15} />{:else}<FileText size={15} />{/if}
+      </button>
+    {/if}
   </span>
 
   <span class="console-divider" aria-hidden="true"></span>
@@ -192,8 +204,8 @@
       class="console-tool"
       disabled={state?.captureBusy || !state}
       onclick={() => send({ type: 'capture-screen' })}
-      title={`${t($locale, 'Capture')} · Ctrl + Shift + 1`}
-      aria-label={t($locale, 'Capture')}
+      title={`${t($locale, 'Add screenshot to selected input')} · Ctrl + Shift + 1`}
+      aria-label={t($locale, 'Add screenshot to selected input')}
     >
       {#if state?.captureBusy}
         <LoaderCircle class="animate-spin" size={20} strokeWidth={1.75} />
@@ -205,8 +217,8 @@
       class="console-tool"
       disabled={state?.captureBusy || !state}
       onclick={() => send({ type: 'import-clipboard' })}
-      title={t($locale, 'Clipboard')}
-      aria-label={t($locale, 'Clipboard')}
+      title={t($locale, 'Paste text or images into the selected input')}
+      aria-label={t($locale, 'Paste text or images into the selected input')}
     >
       <ClipboardPaste size={20} strokeWidth={1.75} />
     </button>
@@ -214,8 +226,8 @@
       class="console-tool"
       disabled={state?.captureBusy || !state || localBusy}
       onclick={chooseFiles}
-      title={t($locale, 'Choose files')}
-      aria-label={t($locale, 'Choose files')}
+      title={t($locale, 'Add files to selected input')}
+      aria-label={t($locale, 'Add files to selected input')}
     >
       <FilePlus2 size={20} strokeWidth={1.75} />
     </button>
@@ -239,8 +251,15 @@
   </div>
 
   {#if dragActive}
-    <div class="drop-prompt" title={t($locale, 'Drop files here to add them to the current document')}>
+    <div class="drop-prompt" title={t($locale, 'Add files to selected input')}>
       <FilePlus2 size={23} strokeWidth={1.8} />
     </div>
   {/if}
 </div>
+
+<style>
+  .console-grip { display: flex; justify-content: center; gap: 2px; }
+  .target-tool { display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; color: var(--muted-foreground); background: transparent; cursor: pointer; }
+  .target-tool:hover { color: var(--primary); background: var(--muted); }
+  .target-tool:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+</style>

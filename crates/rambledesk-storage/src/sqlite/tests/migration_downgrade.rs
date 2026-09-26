@@ -233,7 +233,7 @@ async fn existing_development_ledger_is_relocated_without_replaying_migrations()
     let workspace = TestWorkspace::new().await;
     let development = pool(&workspace).await;
     MIGRATOR.run(&development).await.unwrap();
-    assert_eq!(applied_migration_version(&development).await.unwrap(), 20);
+    assert_eq!(applied_migration_version(&development).await.unwrap(), 21);
     legacy_insert(&development, "retained").await;
     development.close().await;
     let store = SqliteFeedbackStore::connect(&workspace.database)
@@ -244,7 +244,7 @@ async fn existing_development_ledger_is_relocated_without_replaying_migrations()
         .fetch_one(&store.pool)
         .await
         .unwrap();
-    assert_eq!(extensions, 10);
+    assert_eq!(extensions, 11);
     assert!(store.get_request("retained").await.is_ok());
     store.close().await;
     open_as_v033(&workspace).await.close().await;
@@ -259,7 +259,7 @@ async fn corrupt_or_future_extension_history_is_rejected_without_relocation() {
         if future {
             sqlx::query(
                 "INSERT INTO _sqlx_migrations(version,description,success,checksum,execution_time)
-                VALUES (21,'future',TRUE,X'00',0)",
+                VALUES (22,'future',TRUE,X'00',0)",
             )
             .execute(&development)
             .await
@@ -279,7 +279,7 @@ async fn corrupt_or_future_extension_history_is_rejected_without_relocation() {
         let check = pool(&workspace).await;
         assert_eq!(
             applied_migration_version(&check).await.unwrap(),
-            if future { 21 } else { 20 }
+            if future { 22 } else { 21 }
         );
         let extensions: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='_rambledesk_extensions')",
@@ -301,7 +301,7 @@ async fn future_separate_extension_and_dirty_history_still_block_startup() {
             .unwrap();
         if future {
             sqlx::query("INSERT INTO _rambledesk_extensions(version,description,success,checksum,execution_time)
-                VALUES(21,'future',TRUE,X'00',0)").execute(&store.pool).await.unwrap();
+                VALUES(22,'future',TRUE,X'00',0)").execute(&store.pool).await.unwrap();
         } else {
             sqlx::query("UPDATE _rambledesk_extensions SET success=FALSE WHERE version=18")
                 .execute(&store.pool)
@@ -314,7 +314,7 @@ async fn future_separate_extension_and_dirty_history_still_block_startup() {
             Err(error) => error,
         };
         assert!(if future {
-            matches!(error, StorageOpenError::NewerDatabase { applied: 21, .. })
+            matches!(error, StorageOpenError::NewerDatabase { applied: 22, .. })
         } else {
             matches!(
                 error,

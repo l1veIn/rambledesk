@@ -1,107 +1,10 @@
+use super::request_identity::immutable_input_hash;
 use super::*;
-use serde::Serialize;
 use tokio::io::AsyncWriteExt;
 
 struct StagedRequestAttachment {
     attachment_id: String,
     draft_path: std::path::PathBuf,
-}
-
-#[derive(Serialize)]
-struct LegacyImmutableRequest<'a> {
-    host_id: &'a str,
-    host_session_id: &'a str,
-    title: &'a str,
-    what_happened: &'a str,
-    actions: &'a [ActionInput],
-    context_refs: &'a [ContextRef],
-    source_hint: Option<&'a str>,
-}
-
-#[derive(Serialize)]
-struct ImmutableRequest<'a> {
-    host_id: &'a str,
-    host_session_id: &'a str,
-    title: &'a str,
-    what_happened: &'a str,
-    actions: &'a [ActionInput],
-    context_refs: &'a [ContextRef],
-    source_hint: Option<&'a str>,
-    allow_finish: bool,
-    final_summary: Option<&'a str>,
-}
-
-#[derive(Serialize)]
-struct ImmutableRequestAttachment<'a> {
-    file_name: &'a str,
-    media_type: &'a str,
-    byte_size: usize,
-    sha256: &'a str,
-}
-
-#[derive(Serialize)]
-struct ImmutableRequestWithAttachments<'a> {
-    host_id: &'a str,
-    host_session_id: &'a str,
-    title: &'a str,
-    what_happened: &'a str,
-    actions: &'a [ActionInput],
-    context_refs: &'a [ContextRef],
-    attachments: Vec<ImmutableRequestAttachment<'a>>,
-    source_hint: Option<&'a str>,
-    allow_finish: bool,
-    final_summary: Option<&'a str>,
-}
-
-fn immutable_input_hash(request: &NewFeedbackRequest) -> Result<String, RepositoryError> {
-    let bytes = if !request.attachments.is_empty() {
-        serde_json::to_vec(&ImmutableRequestWithAttachments {
-            host_id: &request.host_id,
-            host_session_id: &request.host_session_id,
-            title: &request.title,
-            what_happened: &request.what_happened,
-            actions: &request.actions,
-            context_refs: &request.context_refs,
-            attachments: request
-                .attachments
-                .iter()
-                .map(|attachment| ImmutableRequestAttachment {
-                    file_name: &attachment.file_name,
-                    media_type: &attachment.media_type,
-                    byte_size: attachment.contents.len(),
-                    sha256: &attachment.sha256,
-                })
-                .collect(),
-            source_hint: request.source_hint.as_deref(),
-            allow_finish: request.allow_finish,
-            final_summary: request.final_summary.as_deref(),
-        })
-    } else if request.allow_finish || request.final_summary.is_some() {
-        serde_json::to_vec(&ImmutableRequest {
-            host_id: &request.host_id,
-            host_session_id: &request.host_session_id,
-            title: &request.title,
-            what_happened: &request.what_happened,
-            actions: &request.actions,
-            context_refs: &request.context_refs,
-            source_hint: request.source_hint.as_deref(),
-            allow_finish: request.allow_finish,
-            final_summary: request.final_summary.as_deref(),
-        })
-    } else {
-        // Preserve the original persisted hash for pre-final-approval requests.
-        serde_json::to_vec(&LegacyImmutableRequest {
-            host_id: &request.host_id,
-            host_session_id: &request.host_session_id,
-            title: &request.title,
-            what_happened: &request.what_happened,
-            actions: &request.actions,
-            context_refs: &request.context_refs,
-            source_hint: request.source_hint.as_deref(),
-        })
-    }
-    .map_err(|_| RepositoryError::Storage)?;
-    Ok(hex::encode(Sha256::digest(bytes)))
 }
 
 impl SqliteFeedbackStore {
@@ -212,8 +115,8 @@ impl SqliteFeedbackStore {
 
         let inserted = sqlx::query(
             "INSERT INTO feedback_requests \
-             (id, host_session_record_id, title, what_happened, source_hint, status, input_hash, allow_finish, final_summary, created_at, updated_at, managed_session_id) \
-             VALUES (?1, ?2, ?3, ?4, ?5, 'waiting', ?6, ?7, ?8, ?9, ?9, ?10) \
+             (id, host_session_record_id, title, what_happened, source_hint, status, input_hash, allow_finish, final_summary, created_at, updated_at, managed_session_id, workbench_json) \
+             VALUES (?1, ?2, ?3, ?4, ?5, 'waiting', ?6, ?7, ?8, ?9, ?9, ?10, ?11) \
              ON CONFLICT(id) DO NOTHING",
         )
         .bind(&request.request_id)
@@ -226,6 +129,7 @@ impl SqliteFeedbackStore {
         .bind(request.final_summary.as_deref())
         .bind(&request.created_at)
         .bind(request.managed_session_id.as_deref())
+        .bind(request.workbench.as_ref().map(serde_json::to_string).transpose().map_err(|_| RepositoryError::Storage)?)
         .execute(&mut *transaction)
         .await
         .map_err(storage_error)?;
@@ -424,6 +328,21 @@ impl SqliteFeedbackStore {
             .begin_with("BEGIN IMMEDIATE")
             .await
             .map_err(storage_error)?;
+        let contract = sqlx::query("SELECT workbench_json FROM feedback_requests WHERE id = ?1")
+            .bind(request_id)
+            .fetch_optional(&mut *transaction)
+            .await
+            .map_err(storage_error)?
+            .ok_or(RepositoryError::RequestNotFound)?;
+        ensure_workbench_editable(&contract)?;
+        if let Some(spec) = workbench_spec_from_row(&contract)?
+            && !rambledesk_core::validate_workbench(&spec)
+                .map_err(|_| RepositoryError::WorkbenchUnsupported)?
+                .kind()
+                .supports_approval()
+        {
+            return Err(RepositoryError::RequestTerminal);
+        }
         let updated = sqlx::query(
             "UPDATE feedback_requests SET status = 'completed', resolution = 'approved', \
              completed_at = ?2, updated_at = ?2, revision = revision + 1 \
@@ -574,50 +493,4 @@ impl SqliteFeedbackStore {
 
 pub(super) fn search_pattern(value: Option<&str>) -> Option<String> {
     value.map(|value| format!("%{value}%"))
-}
-
-#[cfg(test)]
-mod hash_tests {
-    use super::*;
-
-    fn request(allow_finish: bool, final_summary: Option<&str>) -> NewFeedbackRequest {
-        NewFeedbackRequest {
-            request_id: "request-id".to_owned(),
-            managed_session_id: None,
-            host_session_record_id: "host-session-record-id".to_owned(),
-            host_id: "generic".to_owned(),
-            host_session_id: "session-1".to_owned(),
-            title: "Review".to_owned(),
-            what_happened: "Changed settings".to_owned(),
-            actions: vec![ActionInput {
-                id: "inspect".to_owned(),
-                instruction: "Inspect settings".to_owned(),
-            }],
-            context_refs: vec![ContextRef {
-                label: "diff".to_owned(),
-                uri: "file:///tmp/change.diff".to_owned(),
-            }],
-            attachments: Vec::new(),
-            source_hint: None,
-            allow_finish,
-            final_summary: final_summary.map(str::to_owned),
-            created_at: "2026-08-03T00:00:00Z".to_owned(),
-        }
-    }
-
-    #[test]
-    fn immutable_hash_preserves_legacy_json_bytes() {
-        assert_eq!(
-            immutable_input_hash(&request(false, None)).expect("hash"),
-            "53a9ef638f879a3d1790b8ef0d5ddf547405d569f5f29e6f33b32b93fe4f5b74"
-        );
-    }
-
-    #[test]
-    fn immutable_hash_covers_final_approval_fields() {
-        assert_eq!(
-            immutable_input_hash(&request(true, Some("Done"))).expect("hash"),
-            "3abb4165d83f342b7a0f1f0f7218261c987a6abb19c4bf3b2f2c27b1c4ee212b"
-        );
-    }
 }

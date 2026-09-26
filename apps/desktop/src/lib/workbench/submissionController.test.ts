@@ -9,6 +9,7 @@ import { createDraftController } from './draftController'
 import { createDraftSession } from './draftSession'
 import { createSubmissionController, type SubmissionControllerContext } from './submissionController'
 import { createWorkspaceSession } from './workspaceSession'
+import { workbenchPreviewWorkspace } from '../../dev/workbenchPreviewFixtures'
 
 const cleanups: Array<() => void> = []
 afterEach(() => { for (const cleanup of cleanups.splice(0)) cleanup(); vi.unstubAllGlobals() })
@@ -93,6 +94,65 @@ function harness(options: Partial<SubmissionControllerContext> = {}) {
 }
 
 describe('submission controller', () => {
+  it.each(['approve', 'cancel'] as const)('does not freeze or %s when input arrives after preparation resolves', async (intent) => {
+    const ready = deferred<{ kind: 'ready' }>()
+    let busy = false
+    const prepareFeedback = vi.fn(() => ready.promise)
+    const h = harness({ prepareFeedback, isInputBusy: () => busy })
+    h.edit('Preserve the current feedback')
+    const lock = vi.spyOn(h.session, intent === 'approve' ? 'beginApprove' : 'beginCancel')
+    const finishing = h.run(intent)
+    await vi.waitFor(() => expect(prepareFeedback).toHaveBeenCalledOnce())
+
+    ready.resolve({ kind: 'ready' })
+    busy = true
+    await finishing
+    expect(lock).not.toHaveBeenCalled()
+    expect(h.transport.calls).toHaveLength(0)
+    expect(get(h.draftSession)).toMatchObject({ body: 'Preserve the current feedback', dirty: true })
+    expect(h.setPageError).toHaveBeenLastCalledWith('Input is still being received. Finish the current input and try again.')
+
+    busy = false
+    await h.run(intent)
+    expect(h.transport.callsFor(commandFor(intent))).toHaveLength(1)
+  })
+
+  it.each([0, 1, 2, 3])('only approves valid Ramble despite a historical allow_finish flag (type %s)', async (index) => {
+    const h = harness()
+    h.session.replace({ ...workspace(), workbench: workbenchPreviewWorkspace(index).workbench })
+    await h.controller.approveFeedback()
+    expect(h.transport.callsFor('approveFeedbackRequest')).toHaveLength(index === 0 ? 1 : 0)
+    if (index !== 0) {
+      expect(h.prepareFeedback).not.toHaveBeenCalled()
+      await h.controller.cancelFeedback()
+      expect(h.transport.callsFor('cancelFeedbackRequest')).toHaveLength(1)
+    }
+  })
+
+  it('cancels an unsupported request without preparing speech or rewriting its opaque draft, but never approves it', async () => {
+    const h = harness()
+    const original = workspace()
+    const documentJson = JSON.stringify({ schemaVersion: 2, doc: { type: 'doc', content: [] }, workbenchState: { type: 'future_workbench', value: { keep: true } } })
+    const draft = { ...original.draft, document_json: documentJson, body_markdown: '' }
+    h.session.replace({ ...original, draft, workbench: { type: 'future_workbench', version: 99, data: { future: true } } })
+    h.draftSession.adopt(draft)
+    const before = h.draftSession.snapshot()
+    await h.controller.approveFeedback()
+    expect(h.transport.calls).toEqual([])
+    await h.controller.cancelFeedback()
+    expect(h.prepareFeedback).not.toHaveBeenCalled()
+    expect(h.transport.callsFor('saveFeedbackDraft')).toHaveLength(0)
+    expect(h.transport.callsFor('cancelFeedbackRequest')).toHaveLength(1)
+    expect(h.draftSession.snapshot()).toEqual(before)
+  })
+
+  it('honors external approval locks before preparing input', async () => {
+    const h = harness({ canApprove: () => false })
+    await h.controller.approveFeedback()
+    expect(h.prepareFeedback).not.toHaveBeenCalled()
+    expect(h.transport.calls).toEqual([])
+  })
+
   it('keeps the confirmed document locked until its save finishes', async () => {
     const saved = deferred<DraftView>()
     const h = harness()

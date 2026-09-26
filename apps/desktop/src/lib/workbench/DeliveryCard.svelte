@@ -31,6 +31,7 @@
   export let canCancel = false
   export let cancelling = false
   export let allowFinish = false
+  export let canApprove = true
   export let approving = false
   export let canOpenResumePrompt = false
   export let onOpenPackage: () => void = () => {}
@@ -58,7 +59,7 @@
 
 {#if published && feedbackResult}
   <div class="flex flex-wrap items-center gap-2">
-    <strong class="text-xs font-medium">{tr('Feedback Package')}</strong>
+    <span class="sr-only">{tr('Feedback Package')}</span>
     <Badge class="bg-success text-white">
       <CheckCircle2 class="size-3" />
       {tr('Published')}
@@ -95,10 +96,10 @@
 {:else}
   <!-- The column's only permanent action line, kept next to the document title so
        it is reachable without scrolling to the end of the feedback. -->
-  <div class="flex items-center gap-2">
+  <div class="flex flex-wrap items-center gap-2">
     <Button
       size="icon-sm"
-      class="size-8 bg-destructive text-white hover:bg-destructive/90"
+      class="bg-destructive text-white hover:bg-destructive/90"
       aria-label={tr('Cancel feedback')}
       title={tr('Cancel feedback')}
       disabled={operationLocked || !canCancel}
@@ -119,14 +120,14 @@
           <ChefHat data-icon="inline-start" />
         {/if}
         {cooking
-          ? tr('Cooking…')
+          ? tr('Organizing additional notes…')
           : submitStage === 'saving'
             ? tr('Saving…')
             : submitting
               ? tr('Publishing…')
               : cookedDraftReady
                 ? tr('Submit feedback')
-                : tr('Cook')}
+                : tr('Organize additional notes')}
       </Button>
       {#if !cookedDraftReady}
         <Button size="sm" disabled={operationLocked || !canSubmit} onclick={onSubmit}>
@@ -135,9 +136,9 @@
             ? tr('Saving…')
             : cooking || submitting
               ? cooking || submitStage === 'cooking'
-                ? tr('Cooking…')
+                ? tr('Organizing additional notes…')
                 : tr('Publishing…')
-              : tr('Cook and submit')}
+              : tr('Organize notes and submit')}
         </Button>
       {/if}
     {:else}
@@ -147,7 +148,7 @@
       </Button>
     {/if}
     {#if allowFinish}
-      <Button size="sm" variant="secondary" disabled={operationLocked} onclick={onApprove}>
+      <Button size="sm" variant="secondary" disabled={operationLocked || !canApprove} onclick={onApprove}>
         <ThumbsUp data-icon="inline-start" />
         {approving ? tr('Finishing…') : tr('Approve and finish')}
       </Button>

@@ -251,6 +251,9 @@ pub fn run() {
                         terminal_operations,
                         application_host_profiles(),
                     )
+                    .with_project_directory_browser(Arc::new(
+                        rambledesk_local_server::LocalProjectDirectoryBrowser,
+                    ))
                     .with_sessions(sessions.clone())
                     .with_agent_management(agents.clone()),
                 );
@@ -356,6 +359,7 @@ pub fn run() {
             managed_commands::get_managed_session,
             managed_commands::get_managed_feedback_status,
             managed_commands::get_managed_workspace_info,
+            managed_commands::browse_project_directories,
             managed_commands::start_managed_session,
             managed_commands::stop_managed_session,
             managed_commands::send_managed_prompt,

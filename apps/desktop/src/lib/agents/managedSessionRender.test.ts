@@ -74,6 +74,24 @@ describe('Managed session rendering', () => {
     }
   }
 
+  it('offers built-in instructions in the heading without adding them to the conversation or sending a prompt', () => {
+    const snapshot = pageSnapshot()
+    snapshot.runtime.builtin_instructions = 'Built-in workflow sentinel that must not become a conversation message'
+    const original = structuredClone(snapshot)
+    const action = vi.fn()
+    const { body } = render(ManagedSessionWorkspace, { props: {
+      snapshot, onPrompt: action, onCancel: action, onStart: action, onRespondInteraction: action,
+      activities: [{ id: 'actual-message', session_id: snapshot.session.session_id, kind: 'user_message', text: 'Review this speech', tool_call_id: null, created_at: 'now' }],
+    } })
+    const heading = body.match(/<header\b[^>]*>[\s\S]*?<\/header>/)?.[0] ?? ''
+    expect(heading).toContain('aria-label="Built-in session instructions"')
+    expect(body).toContain('Review this speech')
+    expect(body).not.toContain(snapshot.runtime.builtin_instructions)
+    expect(body.match(/data-activity-id=/g)).toHaveLength(1)
+    expect(snapshot).toEqual(original)
+    expect(action).not.toHaveBeenCalled()
+  })
+
   it('keeps the heading focused and moves project details below the shared-width composer', () => {
     const action = vi.fn()
     const { body } = render(ManagedSessionWorkspace, { props: {

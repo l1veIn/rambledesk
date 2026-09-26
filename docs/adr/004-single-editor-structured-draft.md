@@ -1,13 +1,15 @@
 # ADR 004：单 Editor 结构化 Feedback Draft
 
-- 状态：Accepted
+- 状态：Accepted；客户端作用域、工作台字段与 Tidy 范围已由后续修订扩展
 - 日期：2026-08-28
 - 版本：0.3.3 重构（首个测试版本 `0.3.3-rc.3`）
 - 历史基线：冻结的 `v0.3.2`
 - 替代：0.3.3-rc.1/rc.2 的 FeedbackDraftSession / hidden Editor / 自动 Light cleanup 路线
 
-本文记录 0.3.3 重构时的取舍；后续修订见文末。“完全手动 Tidy”是当时收缩复杂度的范围，
-不再用于否定当前由用户选择开启的 AutoTidy。
+本文记录 0.3.3 重构时的取舍；“决策”一节是当时的基线，后续修订见文末。
+当前约束是每个客户端最多一个可编辑反馈正文；可见答案和批注可复用 TipTap 编辑视图。
+当前 Tidy 处理请求内的正文与字段语音，并支持用户选择开启的 Auto Tidy。
+实现边界以[架构](../ARCHITECTURE.md#feedback-draft-与输入所有权)和[共享输入合同](../workbench/shared-input.md)为准。
 
 ## 背景
 
@@ -48,12 +50,32 @@
 ## 后续修订：作用域与可选整理
 
 - [ADR 005](005-shared-workbench-transport-capabilities.md) 将“整个应用一个 Editor”收窄为
-  **每个 Workbench Client instance 最多一个可编辑 Editor**。跨客户端仍由 Backend Runtime 的
+  **每个 Workbench Client instance 最多一个可编辑反馈正文 `RichFeedbackEditor`**。跨客户端仍由 Backend Runtime 的
   revision/CAS 仲裁；没有 hidden Editor 或共享 Editor handle。
-- 当前支持用户显式配置的自动整理：语音确认队列中的新片段可选 Auto Tidy；当前反馈 Editor 的
-  pending 语音段落可按用户设置的数量阈值触发 Tidy。两项默认均关闭，阈值 `0` 表示不自动触发。
+- 当前支持用户显式配置的自动整理：语音确认队列中的新片段可选 Auto Tidy；当前请求正文、答案和批注中的
+  pending 语音段共同计数，可按用户设置的数量阈值触发 Tidy。两项默认均关闭，阈值 `0` 表示不自动触发。
 - 这些触发器使用同一整理流程与片段身份；错误、取消或过期结果不重建已删除片段，也不把结果写到
   已切换的请求。它们不恢复旧 RC 的 per-request Editor、idle/stop/settle cleanup 所有权模型。
 - Tidy 与 Cooking 仍各自配置，Cooking 不覆盖 canonical Draft。当前配置与术语以
   [TERMINOLOGY.md](../TERMINOLOGY.md) 为准，行为责任地图见
   [反馈链路示范](../FEEDBACK_FLOW_WALKTHROUGH.md)。
+
+## 后续修订：工作台交互状态不等于编辑器正文
+
+[ADR 008](008-typed-human-feedback-workbenches.md) 将单 Editor 约束限定在**自由反馈正文**。
+问答答案、文稿批注等交互可以拥有独立的结构化状态，不要求向右侧正文插入操作记录。
+草稿载体在 `doc` 之外增加 `workbenchState`；两者共享 revision/CAS 和原子提交，
+`body_markdown` 仍只从 `doc` 派生。正文的编辑、撤销和 Cooking 不修改工作台答案。
+通用提交门槛改为“工作台有效输入与反馈正文不能同时为空”；满足非空门槛后，
+仍需通过工作台自己的完整性校验。问答和文稿审阅完成时可以不填写正文。
+这不引入 hidden Editor 或第二份反馈正文。现行类型与结果见[反馈协议](../PROTOCOL.md#工作台发现与类型合同)。
+
+## 后续修订：可见字段复用 TipTap 输入基础
+
+自定义回答、批注意见和建议措辞通过与正文相同的 `TiptapInput` 组件编辑，避免 textarea 与
+富文本编辑器各自实现输入体验和语音来源呈现。这些可见字段各有轻量 Editor、选区与撤销历史，
+保存时仍写回 `workbenchState` 中既有字符串字段；它们不是另一份反馈正文或独立 Draft。
+因此单 Editor 所有权约束指单一正文所有者，不限制屏幕上可见字段的编辑视图数量。
+隐藏字段不保留 Editor，录音、整理、保存与提交继续属于请求级共享流程；后台写入仍使用
+草稿变换与 revision/CAS，不引入旧 RC 的 per-request/hidden Editor。
+实现边界见[共享输入](../workbench/shared-input.md)。

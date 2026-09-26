@@ -1,9 +1,10 @@
 import { get } from 'svelte/store'
 import { describe, expect, it, vi } from 'vitest'
+import { snapshotSpeechTarget } from './speechTargets'
 import { createSpeechDraftQueue, groupSpeechDrafts, PENDING_SPEECH_KEY, type SpeechTarget } from './speechDraftQueue'
 
-const target: SpeechTarget = { requestId: 'request-a', requestTitle: 'Request A', action: { actionId: 'action-a', actionIndex: 0, title: 'Action A' } }
-const nextTarget: SpeechTarget = { requestId: 'request-b', requestTitle: 'Request B', action: null }
+const target: SpeechTarget = { requestId: 'request-a', requestTitle: 'Request A', destination: { kind: 'document', action: { actionId: 'action-a', actionIndex: 0, title: 'Action A' } } }
+const nextTarget: SpeechTarget = { requestId: 'request-b', requestTitle: 'Request B', destination: { kind: 'document', action: null } }
 const deferred = () => {
   let resolve!: () => void
   const promise = new Promise<void>((done) => { resolve = done })
@@ -23,10 +24,66 @@ const memoryStorage = () => {
 }
 
 describe('speech draft queue', () => {
+  it('keeps questions separate and restores their pinned target when a custom answer write fails', async () => {
+    const storage = memoryStorage()
+    const write = vi.fn(async () => { throw new Error('The custom answer was cleared or changed.') })
+    const queue = createSpeechDraftQueue({ storage, writeSpeech: write })
+    const question: SpeechTarget = { ...target, destination: { kind: 'question_answer', questionId: 'q1', questionLabel: 'First question' } }
+    queue.enqueue('one', 'First answer', question, true)
+    if (question.destination.kind !== 'question_answer') throw new Error('fixture')
+    question.destination.questionId = 'q2'
+    queue.enqueue('two', 'Second answer', question, true)
+    expect(groupSpeechDrafts(get(queue).drafts).map((group) => group.ids)).toEqual([['one'], ['two']])
+    queue.beginEdit(['one', 'two'])
+    expect(get(queue).edit).toBeNull()
+    await queue.accept(['one'])
+    expect(get(queue).drafts[0]).toMatchObject({ text: 'First answer', status: 'failed', destination: { kind: 'question_answer', questionId: 'q1' } })
+    const restored = createSpeechDraftQueue({ storage, writeSpeech: write })
+    await restored.accept(['one'])
+    expect(write.mock.calls[0]).toEqual(write.mock.calls[1])
+    expect(get(restored).drafts[0]).toMatchObject({ text: 'First answer', status: 'failed', destination: { kind: 'question_answer', questionId: 'q1' } })
+  })
+  it('migrates old pending targets and retains unsupported destinations without writing them', async () => {
+    const storage = memoryStorage()
+    const future = { kind: 'future-review', version: 3, nested: { field: 'footnote' } }
+    storage.setItem(PENDING_SPEECH_KEY, JSON.stringify([
+      { id: 'old', requestId: 'request-a', requestTitle: 'A', action: null, text: 'Old pending words' },
+      { id: 'future', requestId: 'request-a', requestTitle: 'A', destination: future, text: 'Future pending words' },
+    ]))
+    const write = vi.fn(async () => {})
+    const queue = createSpeechDraftQueue({ storage, writeSpeech: write })
+    expect(get(queue).drafts[0].destination).toEqual({ kind: 'document', action: null })
+    expect(get(queue).drafts[1]).toMatchObject({ text: 'Future pending words', destination: { kind: 'unknown', raw: future }, status: 'failed' })
+    await queue.accept(['future'])
+    expect(write).not.toHaveBeenCalled()
+    const restored = createSpeechDraftQueue({ storage, writeSpeech: write })
+    expect(get(restored).drafts[1]).toMatchObject({ text: 'Future pending words', destination: { kind: 'unknown', raw: future } })
+    await restored.accept(['old'])
+    expect(write).toHaveBeenCalledExactlyOnceWith({ requestId: 'request-a', requestTitle: 'A', destination: { kind: 'document', action: null }, id: 'old', text: 'Old pending words' })
+  })
+
+  it('pins annotations and keeps fields, source versions and document destinations in separate groups', async () => {
+    const write = vi.fn(async () => {})
+    const queue = createSpeechDraftQueue({ writeSpeech: write })
+    const body: SpeechTarget = { ...target, destination: { kind: 'review_annotation', annotationId: 'comment-a', field: 'body', sourceVersion: 'v1', paragraphLabel: 'Opening' } }
+    queue.enqueue('one', 'Body words', body, true)
+    if (body.destination.kind !== 'review_annotation') throw new Error('fixture')
+    body.destination.field = 'replacement'
+    queue.enqueue('two', 'Replacement words', body, true)
+    queue.enqueue('three', 'Another comment', { ...body, destination: { ...body.destination, annotationId: 'comment-b' } }, true)
+    queue.enqueue('four', 'Another version', { ...body, destination: { ...body.destination, sourceVersion: 'v2' } }, true)
+    queue.enqueue('five', 'Document words', target, true)
+    expect(groupSpeechDrafts(get(queue).drafts).map((group) => group.ids)).toEqual([['one'], ['two'], ['three'], ['four'], ['five']])
+    queue.beginEdit(['one', 'two'])
+    expect(get(queue).edit).toBeNull()
+    await queue.accept(['one'])
+    expect(write).toHaveBeenCalledWith(expect.objectContaining({ destination: expect.objectContaining({ field: 'body' }), text: 'Body words' }))
+  })
+
   it('reports success only after the writer acknowledges the draft', async () => {
     const saved = deferred()
     const write = vi.fn(() => saved.promise)
-    const queue = createSpeechDraftQueue({ write })
+    const queue = createSpeechDraftQueue({ writeSpeech: write })
     queue.enqueue('segment-1', 'Hello', target, false)
     await Promise.resolve()
     expect(get(queue).drafts[0].status).toBe('writing')
@@ -40,19 +97,18 @@ describe('speech draft queue', () => {
   it('keeps confirmed speech pinned and does not accept new arrivals with an old click', async () => {
     const saved = deferred()
     const write = vi.fn(() => saved.promise)
-    const queue = createSpeechDraftQueue({ write })
-    const mutable = { ...target, action: { ...target.action! } }
+    const queue = createSpeechDraftQueue({ writeSpeech: write })
+    const mutable = snapshotSpeechTarget(target)
+    if (mutable.destination.kind !== 'document' || !mutable.destination.action) throw new Error('fixture')
     queue.enqueue('one', 'First', mutable, true)
-    mutable.action.actionId = 'different-action'
+    mutable.destination.action.actionId = 'different-action'
     expect(write).not.toHaveBeenCalled()
     const confirm = queue.accept(['one'])
     queue.enqueue('two', 'Second', nextTarget, true)
     void queue.accept(['one'])
     queue.discard(['one'])
     await Promise.resolve()
-    expect(write).toHaveBeenCalledExactlyOnceWith('request-a', {
-      kind: 'appendSpeech', segmentId: 'one', text: 'First', action: target.action,
-    })
+    expect(write).toHaveBeenCalledExactlyOnceWith({ ...target, id: 'one', text: 'First' })
     saved.resolve()
     await confirm
     expect(get(queue).drafts.map((draft) => draft.id)).toEqual(['two'])
@@ -60,7 +116,7 @@ describe('speech draft queue', () => {
 
   it('does not drain pending speech when later segments use direct writing', async () => {
     const write = vi.fn(async () => {})
-    const queue = createSpeechDraftQueue({ write })
+    const queue = createSpeechDraftQueue({ writeSpeech: write })
     queue.enqueue('pending', 'Review me', target, true)
     queue.enqueue('direct', 'Write me', nextTarget, false)
     await queue.settled()
@@ -70,7 +126,7 @@ describe('speech draft queue', () => {
 
   it('retains failed writes for an idempotent retry and ignores duplicate events', async () => {
     const write = vi.fn().mockRejectedValueOnce(new Error('Draft is temporarily unavailable')).mockResolvedValue(undefined)
-    const queue = createSpeechDraftQueue({ write })
+    const queue = createSpeechDraftQueue({ writeSpeech: write })
     queue.enqueue('one', 'Do not lose this', target, false)
     await queue.settled()
     expect(get(queue).receipt).toBeNull()
@@ -86,19 +142,19 @@ describe('speech draft queue', () => {
   it('restores pending speech after reload without silently writing it', async () => {
     const values = new Map<string, string>()
     const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value) } }
-    const first = createSpeechDraftQueue({ write: vi.fn(), storage })
+    const first = createSpeechDraftQueue({ writeSpeech: vi.fn(), storage })
     first.enqueue('one', 'Persist me', target, true)
     const write = vi.fn(async () => {})
-    const restored = createSpeechDraftQueue({ write, storage })
+    const restored = createSpeechDraftQueue({ writeSpeech: write, storage })
     expect(restored.hasPending('request-a')).toBe(true)
     expect(write).not.toHaveBeenCalled()
     restored.discard(['one'])
     expect(JSON.parse(values.get(PENDING_SPEECH_KEY)!)).toEqual([])
-    expect(createSpeechDraftQueue({ write, storage }).hasPending('request-a')).toBe(false)
+    expect(createSpeechDraftQueue({ writeSpeech: write, storage }).hasPending('request-a')).toBe(false)
   })
 
   it('groups continuous speech without merging different requests or actions', () => {
-    const queue = createSpeechDraftQueue({ write: vi.fn() })
+    const queue = createSpeechDraftQueue({ writeSpeech: vi.fn() })
     queue.enqueue('one', 'First', target, true)
     queue.enqueue('two', 'Second', target, true)
     queue.enqueue('three', 'Third', nextTarget, true)
@@ -111,7 +167,7 @@ describe('speech draft queue', () => {
   it('edits a frozen batch without accepting it or changing later speech', async () => {
     const storage = memoryStorage()
     const writes: string[] = []
-    const queue = createSpeechDraftQueue({ storage, write: async (_request, operation) => { if (operation.kind === 'appendSpeech') writes.push(operation.text) } })
+    const queue = createSpeechDraftQueue({ storage, writeSpeech: async (input) => { writes.push(input.text) } })
     queue.enqueue('one', 'First', target, true)
     queue.enqueue('two', 'Second', target, true)
     queue.beginEdit(['one', 'two'])
@@ -130,7 +186,7 @@ describe('speech draft queue', () => {
     ])
     queue.enqueue('two', 'A delayed duplicate', target, true)
     expect(get(queue).drafts).toHaveLength(2)
-    const restored = createSpeechDraftQueue({ storage, write: async () => {} })
+    const restored = createSpeechDraftQueue({ storage, writeSpeech: async () => {} })
     restored.enqueue('two', 'Duplicate after reload', target, true)
     expect(get(restored).edit).toBeNull()
     expect(get(restored).drafts.map(({ text }) => text)).toEqual(['Corrected text', 'Later'])
@@ -139,11 +195,11 @@ describe('speech draft queue', () => {
   })
 
   it('rejects edit selections with missing, repeated, reversed, noncontiguous, or mixed-target IDs', () => {
-    const queue = createSpeechDraftQueue({ write: async () => {} })
+    const queue = createSpeechDraftQueue({ writeSpeech: async () => {} })
     queue.enqueue('one', 'First', target, true)
     queue.enqueue('two', 'Second', target, true)
     queue.enqueue('three', 'Third', nextTarget, true)
-    queue.enqueue('four', 'Fourth', { ...target, action: null }, true)
+    queue.enqueue('four', 'Fourth', { ...target, destination: { kind: 'document', action: null } }, true)
     for (const ids of [[], ['missing'], ['one', 'missing'], ['one', 'one'], ['two', 'one'], ['one', 'three'], ['two', 'three'], ['three', 'four']]) {
       queue.beginEdit(ids)
       expect(get(queue).edit).toBeNull()
@@ -155,7 +211,7 @@ describe('speech draft queue', () => {
   })
 
   it('requires the exact edit snapshot and nonempty text before saving', () => {
-    const queue = createSpeechDraftQueue({ write: async () => {} })
+    const queue = createSpeechDraftQueue({ writeSpeech: async () => {} })
     queue.enqueue('one', 'First', target, true)
     queue.enqueue('two', 'Second', target, true)
     queue.beginEdit(['one', 'two'])
@@ -175,7 +231,7 @@ describe('speech draft queue', () => {
   it('tidies the captured text and keeps new arrivals outside its result', async () => {
     const response = deferredText()
     const inputs: string[] = []
-    const queue = createSpeechDraftQueue({ write: async () => {}, tidy: (text) => { inputs.push(text); return response.promise } })
+    const queue = createSpeechDraftQueue({ writeSpeech: async () => {}, tidy: (text) => { inputs.push(text); return response.promise } })
     queue.enqueue('one', 'first um', target, true)
     queue.enqueue('two', 'second', target, true)
     const tidy = queue.tidy(['one', 'two'])
@@ -199,7 +255,7 @@ describe('speech draft queue', () => {
 
   it('rejects invalid tidy selections without sending their text to cleanup', async () => {
     const inputs: string[] = []
-    const queue = createSpeechDraftQueue({ write: async () => {}, tidy: async (text) => { inputs.push(text); return 'Cleaned' } })
+    const queue = createSpeechDraftQueue({ writeSpeech: async () => {}, tidy: async (text) => { inputs.push(text); return 'Cleaned' } })
     queue.enqueue('one', 'First', target, true)
     queue.enqueue('two', 'Second', target, true)
     queue.enqueue('three', 'Other target', nextTarget, true)
@@ -212,7 +268,7 @@ describe('speech draft queue', () => {
 
   it.each(['empty', 'invalid', 'rejected'] as const)('keeps original text after %s cleanup with a visible retryable error', async (outcome) => {
     let attempts = 0
-    const queue = createSpeechDraftQueue({ write: async () => {}, tidy: async () => {
+    const queue = createSpeechDraftQueue({ writeSpeech: async () => {}, tidy: async () => {
       attempts += 1
       if (attempts > 1) return 'Cleaned text'
       if (outcome === 'rejected') throw new Error('Provider unavailable')
@@ -233,7 +289,7 @@ describe('speech draft queue', () => {
 
   it('ignores a late cleanup result after its batch was discarded', async () => {
     const response = deferredText()
-    const queue = createSpeechDraftQueue({ write: async () => {}, tidy: () => response.promise })
+    const queue = createSpeechDraftQueue({ writeSpeech: async () => {}, tidy: () => response.promise })
     queue.enqueue('one', 'Original', target, true)
     const tidy = queue.tidy(['one'])
     queue.discard(['one'])
@@ -245,7 +301,7 @@ describe('speech draft queue', () => {
 
   it('releases remaining speech unchanged if part of a tidy batch was discarded', async () => {
     const response = deferredText()
-    const queue = createSpeechDraftQueue({ write: async () => {}, tidy: () => response.promise })
+    const queue = createSpeechDraftQueue({ writeSpeech: async () => {}, tidy: () => response.promise })
     queue.enqueue('one', 'First', target, true)
     queue.enqueue('two', 'Second', target, true)
     const tidy = queue.tidy(['one', 'two'])
@@ -259,7 +315,7 @@ describe('speech draft queue', () => {
     const inputs: string[] = []
     const writes: string[] = []
     const queue = createSpeechDraftQueue({
-      write: async (_request, operation) => { if (operation.kind === 'appendSpeech') writes.push(operation.text) },
+      writeSpeech: async (input) => { writes.push(input.text) },
       tidy: async (text) => { inputs.push(text); return `${text}.` },
     })
     queue.enqueue('old', 'Old pending', target, true)
@@ -276,10 +332,10 @@ describe('speech draft queue', () => {
 
   it('preserves cleaned metadata through reload and marks edits as pending cleanup', async () => {
     const storage = memoryStorage()
-    const first = createSpeechDraftQueue({ storage, write: async () => {}, tidy: async () => 'Cleaned' })
+    const first = createSpeechDraftQueue({ storage, writeSpeech: async () => {}, tidy: async () => 'Cleaned' })
     first.enqueue('one', 'Original', target, true)
     await first.tidy(['one'])
-    const restored = createSpeechDraftQueue({ storage, write: async () => {} })
+    const restored = createSpeechDraftQueue({ storage, writeSpeech: async () => {} })
     expect(groupSpeechDrafts(get(restored).drafts)[0].cleanupState).toBe('cleaned')
     restored.beginEdit(['one'])
     restored.saveEdit(['one'], 'Manually changed')
@@ -288,13 +344,13 @@ describe('speech draft queue', () => {
 
   it('never changes text previously attempted by the writer, including after reload', async () => {
     const storage = memoryStorage()
-    const first = createSpeechDraftQueue({ storage, write: async () => { throw new Error('Acknowledgement lost') } })
+    const first = createSpeechDraftQueue({ storage, writeSpeech: async () => { throw new Error('Acknowledgement lost') } })
     first.enqueue('one', 'Exact retry text', target, false)
     await first.settled()
     const writes: string[] = []
     const inputs: string[] = []
     const restored = createSpeechDraftQueue({ storage,
-      write: async (_request, operation) => { if (operation.kind === 'appendSpeech') writes.push(operation.text) },
+      writeSpeech: async (input) => { writes.push(input.text) },
       tidy: async (text) => { inputs.push(text); return 'Changed' },
     })
     restored.beginEdit(['one'])
@@ -308,7 +364,7 @@ describe('speech draft queue', () => {
 
   it('does not wait for network cleanup when settling recording writes', async () => {
     const response = deferredText()
-    const queue = createSpeechDraftQueue({ write: async () => {}, tidy: () => response.promise })
+    const queue = createSpeechDraftQueue({ writeSpeech: async () => {}, tidy: () => response.promise })
     const tidy = queue.enqueue('one', 'Original', target, true, true)
     let settled = false
     void queue.settled().then(() => { settled = true })
@@ -321,15 +377,15 @@ describe('speech draft queue', () => {
   it('ignores old cleanup after disposal so a remounted queue keeps its current text', async () => {
     const response = deferredText()
     const storage = memoryStorage()
-    const first = createSpeechDraftQueue({ storage, write: async () => {}, tidy: () => response.promise })
+    const first = createSpeechDraftQueue({ storage, writeSpeech: async () => {}, tidy: () => response.promise })
     first.enqueue('one', 'Original', target, true)
     const tidy = first.tidy(['one'])
     first.dispose()
-    const second = createSpeechDraftQueue({ storage, write: async () => {} })
+    const second = createSpeechDraftQueue({ storage, writeSpeech: async () => {} })
     second.beginEdit(['one'])
     second.saveEdit(['one'], 'Current text')
     response.resolve('Obsolete result')
     await tidy
-    expect(get(createSpeechDraftQueue({ storage, write: async () => {} })).drafts[0].text).toBe('Current text')
+    expect(get(createSpeechDraftQueue({ storage, writeSpeech: async () => {} })).drafts[0].text).toBe('Current text')
   })
 })

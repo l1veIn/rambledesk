@@ -350,6 +350,7 @@ async fn file_failure_retains_metadata_and_intent_for_retry() {
     // No requests is valid, so seed one without filesystem attachments.
     store
         .create_or_get_request(NewFeedbackRequest {
+            workbench: None,
             request_id: "owned".into(),
             host_session_record_id: "one".into(),
             managed_session_id: Some("one".into()),

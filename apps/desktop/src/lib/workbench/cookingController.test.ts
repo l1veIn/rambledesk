@@ -21,7 +21,7 @@ function deferred<T>() {
   const promise = new Promise<T>((done) => { resolve = done })
   return { promise, resolve }
 }
-function harness() {
+function harness(options: Partial<Parameters<typeof createCookingController>[0]> = {}) {
   const transport = new PreviewApplicationTransport(UNAVAILABLE_CAPABILITY_MANIFEST)
   const session = createWorkspaceSession()
   const draft = createDraftSession()
@@ -47,6 +47,7 @@ function harness() {
     isCookingEnabled: () => enabled, isCooking: () => cooking.isCooking(session.requestId()),
     prepareFeedback, saveDraftNow: drafts.saveDraftNow, setPageError,
     setCooking: cooking.setCooking, setPreview: cooking.setPreview,
+    ...options,
   })
   const edit = (body: string) => drafts.updateDraft(snapshotFeedbackDraftDocument({
     type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: body }] }],
@@ -55,6 +56,28 @@ function harness() {
 }
 
 describe('Cooking preview at the real input and draft boundary', () => {
+  it('does not freeze or cook when new input arrives after preparation resolves', async () => {
+    const ready = deferred<FeedbackPreparation>()
+    let busy = false
+    const h = harness({ isInputBusy: () => busy })
+    h.prepareFeedback.mockReturnValue(ready.promise)
+    h.edit('Keep this unsaved source')
+    const cooking = h.controller.cookPreviewOnly()
+    await vi.waitFor(() => expect(h.prepareFeedback).toHaveBeenCalledOnce())
+
+    ready.resolve({ kind: 'ready' })
+    busy = true
+    await cooking
+    expect(model.cookFeedback).not.toHaveBeenCalled()
+    expect(get(h.cooking).cookingRequestIds.size).toBe(0)
+    expect(get(h.draft)).toMatchObject({ body: 'Keep this unsaved source', dirty: true })
+    expect(h.setPageError).toHaveBeenLastCalledWith('Input is still being received. Finish the current input and try again.')
+
+    busy = false
+    await h.controller.cookPreviewOnly()
+    expect(model.cookFeedback).toHaveBeenCalledOnce()
+  })
+
   it('shares preparation, saves once, and preserves the canonical draft beside its versioned variant', async () => {
     const h = harness()
     const preparation = deferred<FeedbackPreparation>()

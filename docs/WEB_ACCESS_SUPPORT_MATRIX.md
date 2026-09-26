@@ -17,6 +17,8 @@
 | --- | --- | --- | --- |
 | Requests、Host Sessions、列表与详情投影 | **Automated** | **Automated** | Tauri 与 HTTP Application Transport conformance、Web ready/refetch 与 session auth 已覆盖。 |
 | TipTap Feedback Draft、autosave 与 revision/CAS | **Automated**；发布前仍做 **Manual** 编辑回归 | **Automated**；发布前仍做 **Manual** 多标签页/重连回归 | 两端使用同一 `document_json` 真源与 application mutation；浏览器不是第二份 Draft。 |
+| 自由反馈、逐项问答、文稿审阅与共享输入字段 | **Automated**；设备输入仍做 **Manual** 回归 | **Automated**；真实浏览器输入仍做 **Manual** 回归 | 正文与类型交互状态同 revision 保存；字段语音、附件跟随输入目标，不能把桌面设备能力外推到 Web。 |
+| 新建会话的项目目录浏览 | **Automated** | **Automated** | 同一 application 合同列出 Backend Runtime 机器上的目录；浏览器上传文件与选择 Agent 工作目录是不同功能。 |
 | 文件上传与图片粘贴 | **Automated**；原生文件选择做 **Manual** 回归 | **Automated**；浏览器文件 input 与 DOM image paste 做 **Manual** 浏览器回归 | 候选先经过 Capture Plugin/Attachment Candidate seam，再由 application mutation 持久化；浏览器文件不是服务器路径。 |
 | Submit 与 published feedback 下载 | **Automated** | **Automated** | 两种 Transport 共享 terminal mutation、不可变 package 与安全下载投影。 |
 | 语音识别 | Desktop native path 为 **Automated**；真实设备/权限为 **Manual** | Browser local ASR pilot 的模型下载、hash/cache、Wasm/Worker/AudioWorklet 合同和 recognizer creation 为 **Automated**；真实 Chrome/Safari 麦克风授权、PCM 输入、稳定出字、停止 flush 与长会话仍为 **Manual / unverified** | Browser 音频不上传 Backend Runtime；当前 pilot 使用本地 sherpa-onnx WebAssembly。自动创建 recognizer 不能替代真实浏览器验收。 |

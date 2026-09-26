@@ -178,6 +178,7 @@ async fn run_preview() -> anyhow::Result<()> {
                 host_id: snapshot.session.host_id.clone(),
                 host_session_id: snapshot.session.host_session_id.clone(),
             }, RequestFeedbackInput {
+                workbench: None,
                 request_id: None, host_id: None, host_session_id: String::new(),
                 title: Some("Review the website fixture".into()),
                 what_happened: "The isolated preview is ready. Review this request, submit feedback, and inspect its managed delivery status.".into(),
@@ -199,6 +200,9 @@ async fn run_preview() -> anyhow::Result<()> {
             WorkbenchTerminalOperations::without_observer(feedback),
             vec![],
         )
+        .with_project_directory_browser(Arc::new(
+            rambledesk_local_server::LocalProjectDirectoryBrowser,
+        ))
         .with_sessions(sessions.clone())
         .with_agent_management(AgentManagementApplication::new(
             Arc::new(PreviewCatalog),

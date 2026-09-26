@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 mod agents;
+mod directories;
 mod managed;
 
 use axum::{
@@ -135,6 +136,7 @@ pub fn application_router(
 ) -> Router {
     Router::new()
         .merge(managed::routes())
+        .merge(directories::routes())
         .merge(agents::routes())
         .route("/application/listFeedbackInbox", post(list_feedback_inbox))
         .route("/application/listHostSessions", post(list_host_sessions))

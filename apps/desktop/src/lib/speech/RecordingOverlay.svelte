@@ -7,6 +7,7 @@
   import { selectedSpeechGroup, speechOverlayVisible, type SpeechOverlayState } from './speechOverlay'
   import { speechOverlayDrag } from './speechOverlayDrag'
   import { synchronizeSpeechEditBuffer, type SpeechEditBuffer } from './speechOverlayEditBuffer'
+  import { speechTargetLabel } from './speechTargetLabel'
 
   export let state: SpeechOverlayState
   export let embedded = false
@@ -24,14 +25,17 @@
   $: recording = state.phase === 'listening' || state.phase === 'processing'
   $: busy = state.phase === 'starting' || state.phase === 'stopping'
   $: target = group ?? state.receipt ?? state.target
+  $: targetLabel = target ? speechTargetLabel(target, tr) : ''
+  $: nextTargetLabel = state.nextTarget ? speechTargetLabel(state.nextTarget, tr) : ''
+  $: unavailableTarget = group?.destination.kind === 'unknown'
   $: text = group?.text || state.receipt?.text || state.partial
   $: error = tr(group?.error || state.error)
   $: status = group?.error ? (group.editable === false ? tr('Could not write speech') : tr('Speech review needs attention'))
     : editBuffer ? tr('Editing speech')
     : group?.tidying ? tr('Tidying…')
-    : group?.busy ? tr('Writing to feedback…')
+    : group?.busy ? tr('Writing to selected input…')
     : group ? tr('Waiting for your confirmation')
-    : state.receipt ? tr('Written to feedback')
+    : state.receipt ? tr('Written to selected input')
     : state.phase === 'error' ? tr('Recording interrupted')
     : state.phase === 'starting' ? tr('Starting…')
     : state.phase === 'processing' || state.phase === 'stopping' ? tr('Transcribing…')
@@ -90,15 +94,17 @@
       {/if}
 
       {#if group && state.partial}
+        {#if state.target}<p class="live-tail">{tr('Current segment')}: {speechTargetLabel(state.target, tr)}</p>{/if}
         <p class="live-tail">{tr('Listening: {text}', { text: state.partial.slice(-90) })}</p>
       {/if}
       {#if error}<p class="error-message" role="alert">{error}</p>{/if}
 
       {#if target}
-        <button class="destination" disabled={!!editBuffer} onclick={() => onCommand({ type: 'open-speech-target', requestId: target.requestId, segmentId: group ? undefined : state.receipt?.id })} title={`${tr('Open feedback document')} · ${target.requestTitle}${target.action ? ` · ${target.action.title}` : ''}`}>
-          <span>{target.requestTitle}{target.action ? ` · ${target.action.title}` : ''}</span><ChevronRight size={13} />
+        <button class="destination" disabled={!!editBuffer || target.destination.kind === 'unknown'} onclick={() => onCommand({ type: 'open-speech-target', requestId: target.requestId, target, segmentId: group ? undefined : state.receipt?.id })} title={`${tr('Open input target')} · ${targetLabel}`}>
+          <span>{tr(group ? 'Pending speech target' : state.receipt ? 'Written to' : 'Current segment')}: {targetLabel}</span><ChevronRight size={13} />
         </button>
       {/if}
+      {#if nextTargetLabel}<p class="next-destination" title={nextTargetLabel}>{tr('Next segment')}: {nextTargetLabel}</p>{/if}
 
       {#if group || editBuffer}
         <div class="review-navigation">
@@ -115,10 +121,10 @@
             <button class="text-button discard" onclick={() => editBuffer && onCommand({ type: 'cancel-speech-edit', ids: [...editBuffer.ids] })}>{tr('Cancel editing')}</button>
             <button class="text-button primary" disabled={!editBuffer.text.trim()} onclick={saveEdit}><Check size={14} />{tr('Save changes')}</button>
           {:else if group}
-            <button class="text-button discard" disabled={group.busy || group.editing || group.editable === false} onclick={() => onCommand({ type: 'tidy-speech', ids: [...group.ids] })}>{#if group.tidying}<LoaderCircle size={14} class="spin" />{:else}<Sparkles size={14} />{/if}{tr('Tidy')}</button>
-            <button class="text-button discard" disabled={group.busy || group.editing || group.editable === false} onclick={() => onCommand({ type: 'edit-speech', ids: [...group.ids] })}><Pencil size={14} />{tr('Edit')}</button>
+            <button class="text-button discard" disabled={unavailableTarget || group.busy || group.editing || group.editable === false} onclick={() => onCommand({ type: 'tidy-speech', ids: [...group.ids] })}>{#if group.tidying}<LoaderCircle size={14} class="spin" />{:else}<Sparkles size={14} />{/if}{tr('Tidy')}</button>
+            <button class="text-button discard" disabled={unavailableTarget || group.busy || group.editing || group.editable === false} onclick={() => onCommand({ type: 'edit-speech', ids: [...group.ids] })}><Pencil size={14} />{tr('Edit')}</button>
             <button class="text-button discard" disabled={(group.busy && !group.tidying) || group.editing} title={`${tr('Discard')} · ${state.shortcuts.speechDiscard}`} onclick={() => onCommand({ type: 'discard-speech', ids: [...group.ids] })}>{tr('Discard')}</button>
-            <button class="text-button primary" disabled={group.busy || group.editing} title={`${tr('Write to feedback')} · ${state.shortcuts.speechAccept}`} onclick={() => onCommand({ type: 'accept-speech', ids: [...group.ids] })}>{#if group.busy && !group.tidying}<LoaderCircle size={14} class="spin" />{:else}<Check size={14} />{/if}{group.error && group.editable === false ? tr('Retry writing') : tr('Write to feedback')}</button>
+            <button class="text-button primary" disabled={unavailableTarget || group.busy || group.editing} title={`${tr('Write to selected input')} · ${targetLabel} · ${state.shortcuts.speechAccept}`} onclick={() => onCommand({ type: 'accept-speech', ids: [...group.ids] })}>{#if group.busy && !group.tidying}<LoaderCircle size={14} class="spin" />{:else}<Check size={14} />{/if}{group.error && group.editable === false ? tr('Retry writing') : tr('Write to selected input')}</button>
           {/if}
         </footer>
       {:else if state.phase === 'error'}
@@ -162,6 +168,7 @@
   .destination span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .destination:hover { color: var(--primary); }
   .destination :global(svg) { flex-shrink: 0; }
+  .next-destination { margin: 2px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted-foreground); font-size: 10px; }
   .live-tail, .error-message { margin: 6px 0; font-size: 11px; line-height: 16px; }
   .live-tail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted-foreground); }
   .error-message { color: var(--destructive); max-height: 64px; overflow-y: auto; overflow-wrap: anywhere; }

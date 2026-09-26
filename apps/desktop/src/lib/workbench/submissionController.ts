@@ -5,6 +5,7 @@ import type { FeedbackPreparation } from '../speech/rambleSessionControllerHandl
 import type { PublishedFeedbackAction } from '../publishedFeedbackAction'
 import type { DraftSession } from './draftSession'
 import type { WorkspaceSession } from './workspaceSession'
+import { workbenchIsReadOnly, workbenchSupportsApproval } from '../workbenchPolicy'
 
 /**
  * Terminal mutations for the open request: approve, cancel and open the package.
@@ -20,7 +21,9 @@ export type SubmissionControllerContext = {
   tr: (source: string, values?: Record<string, string | number>) => string
   messageFrom: (cause: unknown) => string
   canCancel: () => boolean
+  canApprove?: () => boolean
   prepareFeedback: (requestId: string) => Promise<FeedbackPreparation>
+  isInputBusy?: () => boolean
   saveDraftNow: () => Promise<boolean>
   confirmApproval?: (message: string) => boolean
   refreshNavigation: () => Promise<void>
@@ -39,6 +42,11 @@ export function createSubmissionController(context: SubmissionControllerContext)
     return context.session.requestId() === requestId && !context.session.isTerminal()
   }
 
+  function canApprove() {
+    const state = get(context.session)
+    return state.request?.allow_finish && workbenchSupportsApproval(state.workspace?.workbench) && (context.canApprove?.() ?? true)
+  }
+
   function reportFor(requestId: string, cause: unknown) {
     if (context.session.requestId() === requestId) context.setPageError(context.messageFrom(cause))
   }
@@ -46,30 +54,39 @@ export function createSubmissionController(context: SubmissionControllerContext)
   async function finishRequest(intent: Intent, requestId: string) {
     const state = get(context.session)
     if (state.request?.request_id !== requestId || state.terminal || state.interactionLocked ||
-      (intent === 'approve' ? !state.request?.allow_finish : !context.canCancel())) return
+      (intent === 'approve' ? !canApprove() : !context.canCancel())) return
     if (intent === 'approve' && !(context.confirmApproval ?? window.confirm.bind(window))(
       context.tr('Approve this final summary and end Pi’s Ramble flow?'),
     )) return
 
     let locked = false
     try {
-      const preparation = await context.prepareFeedback(requestId)
-      if (!current(requestId) || get(context.session).interactionLocked) return
-      if (preparation.kind === 'failed') {
-        context.setPageError(preparation.message)
-        return
+      // Unsupported workbenches can be cancelled without interpreting or rewriting
+      // their opaque drafts, including speech the current client cannot accept.
+      const preserveDraft = intent === 'cancel' && workbenchIsReadOnly(state.workspace?.workbench)
+      if (!preserveDraft) {
+        const preparation = await context.prepareFeedback(requestId)
+        if (!current(requestId) || get(context.session).interactionLocked) return
+        if (preparation.kind === 'failed') {
+          context.setPageError(preparation.message)
+          return
+        }
+        if (preparation.kind === 'pending-speech') {
+          context.setPageError(context.tr('Review the pending speech in the capsule before ending this request.'))
+          return
+        }
+        if (context.isInputBusy?.()) {
+          context.setPageError(context.tr('Input is still being received. Finish the current input and try again.'))
+          return
+        }
       }
-      if (preparation.kind === 'pending-speech') {
-        context.setPageError(context.tr('Review the pending speech in the capsule before ending this request.'))
-        return
-      }
-      if (intent === 'approve' ? !context.session.request()?.allow_finish : !context.canCancel()) return
+      if (intent === 'approve' ? !canApprove() : !context.canCancel()) return
       // Final speech must enter the editable draft before we freeze it for saving.
       if (intent === 'approve') context.session.beginApprove()
       else context.session.beginCancel()
       locked = true
       context.setPageError('')
-      if (!(await context.saveDraftNow())) {
+      if (!preserveDraft && !(await context.saveDraftNow())) {
         reportFor(requestId, get(context.draftSession).message || context.tr('The current draft could not be saved.'))
         return
       }

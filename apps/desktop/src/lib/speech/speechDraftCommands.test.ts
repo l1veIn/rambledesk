@@ -1,17 +1,18 @@
 import { get } from 'svelte/store'
 import { describe, expect, it } from 'vitest'
 
+import { speechDocumentOperation } from './speechWriteback'
 import type { DraftOperation } from '../draftOperations'
 import { handleSpeechDraftCommand } from './speechDraftCommands'
 import { createSpeechDraftQueue, type SpeechTarget } from './speechDraftQueue'
 
-const target: SpeechTarget = { requestId: 'request-a', requestTitle: 'Request A', action: null }
-const otherTarget: SpeechTarget = { requestId: 'request-b', requestTitle: 'Request B', action: null }
+const target: SpeechTarget = { requestId: 'request-a', requestTitle: 'Request A', destination: { kind: 'document', action: null } }
+const otherTarget: SpeechTarget = { requestId: 'request-b', requestTitle: 'Request B', destination: { kind: 'document', action: null } }
 
 function setup(tidy: (text: string) => Promise<string> = async (text) => `${text}.`) {
   const writes: Array<{ requestId: string; operation: DraftOperation }> = []
   const queue = createSpeechDraftQueue({
-    write: async (requestId, operation) => { writes.push({ requestId, operation }) },
+    writeSpeech: async (input) => { writes.push({ requestId: input.requestId, operation: speechDocumentOperation(input) }) },
     tidy,
   })
   queue.enqueue('one', 'First words', target, true)

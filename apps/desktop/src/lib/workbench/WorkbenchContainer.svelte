@@ -20,7 +20,6 @@
   import type { AttachmentView, FeedbackResultView, FeedbackWorkspaceView } from '$lib/feedback'
   import type { DraftOperation } from '$lib/draftOperations'
   import type { FeedbackDraftSnapshot } from '$lib/feedbackDraftDocument'
-  import type { TidyConfig } from '$lib/lightCleanup'
   import type { SpeechCleanupSegment } from '$lib/speech/speechBlockMetadata'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
@@ -29,8 +28,10 @@
   import type { SavePhase, SubmitStage } from '../domain/sessionPhases'
   import { canAcceptImagePaste } from './imagePasteAcceptance'
   import FeedbackColumn from './FeedbackColumn.svelte'
+  import RequestInputConsole from './RequestInputConsole.svelte'
   import RequestAttachmentPreview from '../workspace/RequestAttachmentPreview.svelte'
   import {
+    FEEDBACK_COLUMN,
     FEEDBACK_PANE_MIN_PERCENT,
     TASK_BRIEF_PANE,
     feedbackColumnLayout,
@@ -73,16 +74,12 @@
   export let approving = false
   export let canOpenResumePrompt = false
 
-  export let tidyConfig: TidyConfig | null = null
-  export let tidyAutoThreshold = 0
 
   export let rambelleStatusPortrait = ''
   export let rambleEngaged = false
   export let rambleActive = false
 
   export let onDraftChange: (snapshot: FeedbackDraftSnapshot) => void = () => {}
-  export let onTidyError: (message: string) => void = () => {}
-  export let onOpenTidySettings: () => void = () => {}
   export let onRestoreOriginal: () => void = () => {}
   export let onRemoveAttachment: (attachment: AttachmentView) => void = () => {}
   export let onPasteCandidates: (candidates: readonly AttachmentCandidate[]) => boolean = () => false
@@ -96,13 +93,13 @@
   export let onApprove: () => void = () => {}
 
   export let workbench: Snippet
-  export let inputTools: Snippet | undefined = undefined
+  export let inputActions: Snippet | undefined = undefined
   export let agentStatus: Snippet | undefined = undefined
 
   const TASK_BRIEF_DEFAULT_SIZE = TASK_BRIEF_PANE.defaultPercent
   const TASK_BRIEF_MIN_SIZE = TASK_BRIEF_PANE.minPercent
   const TASK_BRIEF_MAX_SIZE = TASK_BRIEF_PANE.maxPercent
-  const FEEDBACK_COLUMN_LAYOUT_KEY = 'workspace-feedback-column'
+  const FEEDBACK_COLUMN_LAYOUT_KEY = 'workspace-feedback-column-v2'
 
   /**
    * Above this width the workbench and the feedback column sit side by side;
@@ -119,6 +116,9 @@
   })
   $: workbenchPanePercent = columnsLayout.brief
   $: feedbackPanePercent = columnsLayout.feedback
+  $: feedbackMinPercent = columnsWidth > 0
+    ? Math.min(FEEDBACK_PANE_MIN_PERCENT, (FEEDBACK_COLUMN.min / columnsWidth) * 100)
+    : FEEDBACK_PANE_MIN_PERCENT
 
   let feedbackEditor: FeedbackColumn | undefined
   let workbenchPane: { isCollapsed: () => boolean } | undefined
@@ -133,7 +133,9 @@
   function saveColumnsLayout(layout: number[]) {
     if (!columnsLayoutReady || !$wideColumns) return
     const width = feedbackWidthFromLayout(layout, columnsWidth)
-    if (width !== null) savePaneLayout(FEEDBACK_COLUMN_LAYOUT_KEY, [width])
+    if (width !== null) {
+      savePaneLayout(FEEDBACK_COLUMN_LAYOUT_KEY, [width, Math.max(0, Math.round(columnsWidth - width))])
+    }
   }
 
   onMount(() => {
@@ -195,6 +197,7 @@
 
 <section
   bind:this={containerRoot}
+  data-workbench-scope
   class="workspace-panel relative flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background"
   style:--workspace-feedback-width={$wideColumns ? `${columnsLayout.feedback}%` : null}
 >
@@ -226,7 +229,7 @@
           collapsedSize={TASK_BRIEF_MIN_SIZE}
           defaultSize={$wideColumns ? workbenchPanePercent : 100 - TASK_BRIEF_DEFAULT_SIZE}
           minSize={TASK_BRIEF_MIN_SIZE}
-          maxSize={$wideColumns ? 100 - FEEDBACK_PANE_MIN_PERCENT : TASK_BRIEF_MAX_SIZE}
+          maxSize={$wideColumns ? 100 - feedbackMinPercent : TASK_BRIEF_MAX_SIZE}
         >
           {@render workbench()}
         </Pane>
@@ -239,59 +242,64 @@
         <Pane
           id="feedback-column-pane"
           class="min-h-0 min-w-0"
-          minSize={FEEDBACK_PANE_MIN_PERCENT}
+          minSize={$wideColumns ? feedbackMinPercent : FEEDBACK_PANE_MIN_PERCENT}
           defaultSize={$wideColumns ? feedbackPanePercent : TASK_BRIEF_DEFAULT_SIZE}
         >
-          <FeedbackColumn
-            bind:this={feedbackEditor}
-            {workspace}
-            {attachmentBusy}
-            {onRemoveAttachment}
-            onPreviewAttachment={openAttachmentPreview}
-            {draftBody}
-            {editorDocument}
-            {editorEpoch}
-            {savedRevision}
-            {savePhase}
-            {attachmentPreviews}
-            {dragActive}
-            locked={readOnly || locked}
-            {cooking}
-            {cookedDraftReady}
-            {cookedPreviewModel}
-            {cookedPreviewMarkdown}
-            cookedMarkdown={publishedFeedback?.markdown ?? ''}
-            uncookedMarkdown={publishedFeedback?.uncooked_markdown ?? draftBody}
-            {feedbackResult}
-            {canSubmit}
-            {cookingEnabled}
-            {submitting}
-            {submitStage}
-            {canCancel}
-            {cancelling}
-            {approving}
-            {canOpenResumePrompt}
-            {rambelleStatusPortrait}
-            {rambleEngaged}
-            {rambleActive}
-            {agentStatus}
-            {formatTime}
-            {tidyConfig}
-            {tidyAutoThreshold}
-            {inputTools}
-            onChange={onDraftChange}
-            onTidyError={onTidyError}
-            onOpenTidySettings={onOpenTidySettings}
-            onRestoreOriginal={onRestoreOriginal}
-            onOpenAttachment={openAttachmentPreviewById}
-            {onOpenPackage}
-            {packageActionLabel}
-            {onOpenResumePrompt}
-            {onCookPreview}
-            {onSubmit}
-            {onCancel}
-            {onApprove}
-          />
+          <div class="flex h-full min-h-0 min-w-0 flex-col" data-feedback-region>
+            <div class="min-h-0 min-w-0 flex-1 overflow-hidden">
+              <FeedbackColumn
+                bind:this={feedbackEditor}
+                {workspace}
+                {attachmentBusy}
+                {onRemoveAttachment}
+                onPreviewAttachment={openAttachmentPreview}
+                {draftBody}
+                {editorDocument}
+                {editorEpoch}
+                {savedRevision}
+                {savePhase}
+                {attachmentPreviews}
+                {dragActive}
+                locked={readOnly || locked}
+                {cooking}
+                {cookedDraftReady}
+                {cookedPreviewModel}
+                {cookedPreviewMarkdown}
+                cookedMarkdown={publishedFeedback?.markdown ?? ''}
+                uncookedMarkdown={publishedFeedback?.uncooked_markdown ?? draftBody}
+                {feedbackResult}
+                {canSubmit}
+                {cookingEnabled}
+                {submitting}
+                {submitStage}
+                {canCancel}
+                {cancelling}
+                {approving}
+                {canOpenResumePrompt}
+                {agentStatus}
+                {formatTime}
+                onChange={onDraftChange}
+                onRestoreOriginal={onRestoreOriginal}
+                onOpenAttachment={openAttachmentPreviewById}
+                {onOpenPackage}
+                {packageActionLabel}
+                {onOpenResumePrompt}
+                {onCookPreview}
+                {onSubmit}
+                {onCancel}
+                {onApprove}
+              />
+            </div>
+            <RequestInputConsole
+              portrait={rambelleStatusPortrait}
+              feedbackDone={feedbackResult !== null}
+              {cooking}
+              {rambleEngaged}
+              {rambleActive}
+              interactive={!readOnly && workspace.request.status !== 'completed' && workspace.request.status !== 'cancelled'}
+              {inputActions}
+            />
+          </div>
         </Pane>
       </PaneGroup>
     </div>
