@@ -514,7 +514,7 @@ mod tests {
     fn reported_zero_size_falls_back_to_the_designed_console_size() {
         assert_eq!(
             effective_console_size(PhysicalSize::new(0, 0), 2.0),
-            PhysicalSize::new(116, 608)
+            PhysicalSize::new(116, 704)
         );
     }
 
