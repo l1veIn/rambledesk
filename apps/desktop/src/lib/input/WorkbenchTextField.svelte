@@ -23,7 +23,6 @@
   export let placeholder = ''
   export let tone: 'default' | 'suggestion' = 'default'
   export let editorClass = 'px-3 py-2 leading-6'
-  export let focusOnMount = false
   export let onChange: (value: string) => void
 
   const voice = useVoiceInput()
@@ -64,7 +63,11 @@
   onDestroy(() => clearTimeout(compositionTimer))
 
   export function focusAtEnd() {
-    if (!disabled && editor && !editor.isDestroyed) editor.commands.focus('end', { scrollIntoView: false })
+    if (disabled || !editor || editor.isDestroyed) return
+    // Keep selection and focus synchronous: TipTap's focus command queues a frame
+    // that can steal focus back after the user has opened a dialog or another input.
+    editor.commands.setTextSelection(editor.state.doc.content.size)
+    editor.view.focus()
   }
 
   function selectTarget() {
@@ -105,7 +108,7 @@
       <InputToolbar {target} {disabled} label={voiceLabel} />
     </div>
     <div class="field-editor" class:opacity-70={disabled}>
-      <TiptapInput bind:editor {options} {disabled} {label} {placeholder} {focusOnMount}
+      <TiptapInput bind:editor {options} {disabled} {label} {placeholder}
         onFocus={selectTarget} attributes={$$restProps} contentClass={`field-prose ${editorClass}`} />
     </div>
     <FieldAttachments {value} {disabled} {onChange} />

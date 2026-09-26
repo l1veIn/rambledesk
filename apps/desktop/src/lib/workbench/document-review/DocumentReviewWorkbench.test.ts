@@ -278,6 +278,13 @@ describe('document review interaction', () => {
   })
 
   it.each(['Cancel', 'Escape'])('preserves the complete comment when deletion is dismissed with %s', async (dismissal) => {
+    // Hold editor focus frames until the modal is already open, as on a busy UI.
+    const frames = new Map<number, FrameRequestCallback>()
+    const requestFrame = globalThis.requestAnimationFrame
+    const cancelFrame = globalThis.cancelAnimationFrame
+    let frameId = 0
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { frames.set(++frameId, callback); return frameId })
+    vi.stubGlobal('cancelAnimationFrame', (id: number) => { frames.delete(id) })
     const annotation: ReviewAnnotation = {
       id: 'protected-note', paragraph_id: 'opening', start: 6, end: 7, quote: '😀', kind: 'suggestion',
       body: 'Use a warmer greeting.\n\n[Reference](attachment://reference-1)', replacement: 'friends',
@@ -292,6 +299,12 @@ describe('document review interaction', () => {
     await vi.waitFor(() => expect(deleteDialog()?.textContent).toContain('Delete this comment?'))
     expect(latest).toEqual(saved)
     await vi.waitFor(() => expect(document.activeElement).toBe(button('Cancel')))
+    const pendingFrames = [...frames.values()]
+    frames.clear()
+    vi.stubGlobal('requestAnimationFrame', requestFrame)
+    vi.stubGlobal('cancelAnimationFrame', cancelFrame)
+    for (const callback of pendingFrames) callback(performance.now())
+    expect(document.activeElement).toBe(button('Cancel'))
     if (dismissal === 'Cancel') button('Cancel').click()
     else document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
     await vi.waitFor(() => expect(deleteDialog()).toBeNull())

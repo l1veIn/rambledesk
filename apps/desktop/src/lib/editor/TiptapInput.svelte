@@ -14,7 +14,6 @@
   export let hostClass = ''
   export let contentClass = ''
   export let onFocus: () => void = () => {}
-  export let focusOnMount = false
 
   let editorHost: HTMLDivElement
 
@@ -52,7 +51,6 @@
       onCreate: (event) => {
         refreshEmptyState(event.editor)
         options.onCreate?.(event)
-        if (focusOnMount && !disabled) event.editor.commands.focus(undefined, { scrollIntoView: false })
       },
       onTransaction: (event) => {
         refreshEmptyState(event.editor)

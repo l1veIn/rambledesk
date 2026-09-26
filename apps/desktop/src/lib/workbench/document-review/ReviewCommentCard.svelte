@@ -55,7 +55,7 @@
   {:else}<p class="mb-3 text-xs text-muted-foreground">{tr('Whole paragraph')}</p>{/if}
   <div>
     <WorkbenchTextField bind:this={bodyField} value={annotation.body} target={bodyTarget} {disabled} maxLength={4000}
-      label={tr('Your comment')} voiceLabel="Speak comment" focusOnMount={!annotation.body}
+      label={tr('Your comment')} voiceLabel="Speak comment"
       placeholder={tr('Explain what to change and why…')} data-review-field="body"
       onChange={(body) => update({ body })} />
   </div>
