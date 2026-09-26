@@ -569,8 +569,12 @@ async fn every_managed_mutation_requires_current_runtime_generation_including_co
 fn tauri_managed_commands_match_http_names_and_delegate_to_the_same_facade() {
     let commands = include_str!("../../../apps/desktop/src-tauri/src/managed_commands.rs");
     let registration = include_str!("../../../apps/desktop/src-tauri/src/lib.rs");
-    let routes = include_str!("../src/application_api/managed.rs");
-    for (camel, snake) in [
+    let routes = concat!(
+        include_str!("../src/application_api/managed.rs"),
+        include_str!("../src/application_api/directories.rs")
+    );
+    let operations = [
+        ("browseProjectDirectories", "browse_project_directories"),
         ("listAgentConfigs", "list_agent_configs"),
         ("saveAgentConfig", "save_agent_config"),
         ("deleteAgentConfig", "delete_agent_config"),
@@ -594,7 +598,8 @@ fn tauri_managed_commands_match_http_names_and_delegate_to_the_same_facade() {
         ("respondManagedInteraction", "respond_managed_interaction"),
         ("resolveFeedbackDelivery", "resolve_feedback_delivery"),
         ("deleteManagedSession", "delete_managed_session"),
-    ] {
+    ];
+    for (camel, snake) in operations {
         assert!(commands.contains(&format!("async fn {snake}(")), "{snake}");
         assert!(
             commands.contains(&format!(".{snake}(")),
@@ -606,8 +611,11 @@ fn tauri_managed_commands_match_http_names_and_delegate_to_the_same_facade() {
         );
         assert!(routes.contains(&format!("/application/{camel}")), "{camel}");
     }
-    assert_eq!(commands.matches("#[tauri::command]").count(), 20);
-    assert_eq!(commands.matches("input:").count(), 19);
+    assert_eq!(
+        commands.matches("#[tauri::command]").count(),
+        operations.len()
+    );
+    assert_eq!(commands.matches("input:").count(), operations.len() - 1);
     assert!(registration.contains(".with_sessions(sessions.clone())"));
     assert!(registration.contains("state.sessions.shutdown()"));
     assert!(registration.contains("sessions.start_delivery_worker()"));

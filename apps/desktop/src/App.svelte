@@ -228,7 +228,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     onConfigure: () => void openSettings('post-processing'),
     voice: {
       selectTarget: selectInputTarget,
-      start: async (target) => { if (selectInputTarget(target)) await rambleController.startInput() },
+      start: async (target) => { if (!voiceInputDisabled && selectInputTarget(target)) await rambleController.startInput() },
       stop: () => rambleController.pauseInput(),
     },
   })
@@ -274,7 +274,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
   }
 
   function selectInputTarget(target: SpeechTarget): boolean {
-    if (target.requestId !== currentRequest?.request_id || voiceInputDisabled) return false
+    if (target.requestId !== currentRequest?.request_id || inputTargetSelectionDisabled) return false
     inputTargets.select(target)
     return true
   }
@@ -552,8 +552,10 @@ import type { SettingsSection } from './lib/domain/settingsSection'
   $: rambleEngaged = visibleRamblePhase !== 'idle'
   $: rambleBelongsToWorkspace =
     !rambleEngaged || currentRequest?.request_id === $rambleSession.requestId
-  $: voiceInputDisabled = feedbackReadOnly || interactionLocked || currentRequestCooking || cookedDraftReady || !rambleBelongsToWorkspace
-    || capabilities.speech.status.availability === 'unavailable' || !currentRequest || workspaceSession.isTerminal()
+  $: inputTargetSelectionDisabled = feedbackReadOnly || interactionLocked || currentRequestCooking || cookedDraftReady
+    || !currentRequest || workspaceSession.isTerminal()
+  $: voiceInputDisabled = inputTargetSelectionDisabled || !rambleBelongsToWorkspace
+    || capabilities.speech.status.availability === 'unavailable'
   $: documentVoiceTarget = currentRequest ? {
     requestId: currentRequest.request_id, requestTitle: currentRequest.title,
     destination: { kind: 'document' as const, action: $draftOperations.get(currentRequest.request_id) ?? null },

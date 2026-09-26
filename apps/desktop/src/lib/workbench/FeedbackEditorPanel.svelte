@@ -72,7 +72,7 @@
     root?.querySelector<HTMLElement>('[contenteditable="true"]')?.focus({ preventScroll: true })
   }
   function selectDocumentVoice(event: Event) {
-    if (!editingDisabled && !$voiceState.disabled && documentVoiceTarget && (event.target as HTMLElement)?.closest('[contenteditable="true"]')) voice?.selectTarget(documentVoiceTarget)
+    if (!editingDisabled && documentVoiceTarget && (event.target as HTMLElement)?.closest('[contenteditable="true"]')) voice?.selectTarget(documentVoiceTarget)
   }
 
   $: readOnly =

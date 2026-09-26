@@ -64,7 +64,8 @@
   onDestroy(() => clearTimeout(compositionTimer))
 
   function selectTarget() {
-    if (!disabled && !$voiceState.disabled && target) voice?.selectTarget(target)
+    // Focusing also routes pasted images; recording availability must not gate it.
+    if (!disabled && target) voice?.selectTarget(target)
   }
 
   function syncText() {

@@ -49,6 +49,20 @@ function speechSnapshot(value: string, start: number, text: string, state = 'pen
 }
 
 describe('shared TipTap workbench fields', () => {
+  it('selects the input destination without speech capability, but not while the field is locked', async () => {
+    const app = await setup('Draft')
+    app.voiceState.update((state) => ({ ...state, disabled: true }))
+    await tick()
+    app.element.focus()
+    expect(app.selectTarget).toHaveBeenLastCalledWith(target)
+    app.selectTarget.mockClear()
+    app.element.blur()
+    app.state.update((state) => ({ ...state, disabled: true }))
+    await tick()
+    app.element.dispatchEvent(new FocusEvent('focus'))
+    expect(app.selectTarget).not.toHaveBeenCalled()
+  })
+
   it('keeps literal multiline text and preserves caret/history across a background voice append', async () => {
     const initial = '**literal**\n\n😀 Last\n'
     const app = await setup(initial)
