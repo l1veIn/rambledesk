@@ -21,8 +21,9 @@
 | 产品使命、主要旅程与范围 | [产品说明](PRODUCT.md)与[产品原则](CONSTITUTION.md) |
 | 唯一术语及身份边界 | [术语表](TERMINOLOGY.md) |
 | 模块所有权、持久化与客户端生命周期 | [架构](ARCHITECTURE.md) |
-| 从固定反馈界面逐步扩展到可注册工作台 | [工作台演进路线](WORKBENCH_EVOLUTION.md)；含已完成起点与后续阶段，未实现部分不代表当前支持 |
-| 多工作台重构的先导讨论（接口、注册项、Agent 视角、开放问题） | [工作台先导文档](workbench/README.md)；讨论稿，未实现 |
+| 当前工作台、共享输入与新增类型的实现入口 | [工作台开发索引](workbench/README.md)；自由反馈、逐项问答与文稿审阅已实现 |
+| 工作台重构的落地范围与后续边界 | [工作台演进记录](WORKBENCH_EVOLUTION.md)；历史提案不作为实现合同 |
+| 实际跑一轮所有工作台 | [工作台 Playground](../playground/workbenches/README.md)；包含材料、请求夹具与启动提示词 |
 | 外部反馈请求、幂等与交付协议 | [协议](PROTOCOL.md) |
 | 如何欣赏和沿着代码阅读 | [反馈链路示范](FEEDBACK_FLOW_WALKTHROUGH.md)与[全局职责地图](quality/QUALITY_WALKTHROUGH.md) |
 | 为什么作出这些架构选择 | [架构决策 ADR](adr/)；当前实现以架构为准 |
@@ -38,6 +39,6 @@
 
 第三方版权和采用边界见[第三方声明](../THIRD_PARTY_NOTICES.md)、[Codeg 来源](CODEG_PORTS.md)；品牌图片见[素材来源](social/README.md)。`CHANGELOG.md` 和 `CODEG_PORTS.md` 同时被发布或打包代码读取，移动前需同步消费者。
 
-一个事实只在对应指南维护，其他文档链接它。ADR 保留当时的决策及后续取代关系；临时计划、原始截图和逐次测试输出先放本机 `.local-artifacts/`，交付时只选入必要结论与可追溯证据。不能把“自动化通过”“浏览器模拟通过”和“真机通过”合并成同一种状态。
+一个事实只在对应指南维护，其他文档链接它。当前行为以实现、生成合同及对应指南为准；ADR 保留当时的决策及后续取代关系，已被取代的提案从 Git 历史追溯，不与当前指南并列维护。临时计划、原始截图和逐次测试输出先放本机 `.local-artifacts/`，交付时只选入必要结论与可追溯证据。不能把“自动化通过”“浏览器模拟通过”和“真机通过”合并成同一种状态。
 
 整理前已提交的文档可从[固定 Git 快照](https://github.com/l1veIn/rambledesk/tree/b4273fae2eeae964f427dce87c6c64b6edd863a7/docs)追溯；它是历史资料，不是当前操作指南。

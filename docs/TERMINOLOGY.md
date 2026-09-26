@@ -16,7 +16,7 @@
 8. MCP 是通用 MCP 适配器的一种 transport，不是全局基础设施。
 9. 提交后的 continuation 不是适配器。反馈路径可以选择“不需要 continuation”“手动 continuation”“原生 continuation”或“托管 continuation”。
 10. 外部反馈请求不要求源码 checkout 路径，路径可以是可选 context hint；托管会话必须指定 Backend Runtime 所在机器上的工作目录 `cwd`，它不建立源码 checkout 管理模型。
-11. 语音识别与屏幕采集发生在输入所在的客户端设备；Platform Plugin 只把结构化转录事件或附件候选交给 TipTap Ramble Core，不通过 Application Transport 代理设备能力。
+11. 语音识别与屏幕采集发生在输入所在的客户端设备；Platform Plugin 只把结构化转录事件或附件候选交给共享输入流程，由该流程按固定目标写入草稿正文或业务字段，不通过 Application Transport 代理设备能力。
 
 ## 核心术语
 
@@ -29,7 +29,7 @@
 | Workbench Type（工作台类型） | 以 `workbench.type` 与 `version` 标识的反馈合同，规定不可变输入、允许的交互状态、完整性校验和提交结果。 | 当前为随应用发布的第一方静态类型；不是设备 Capability、宿主 Adapter 或可安装插件。未指定类型的旧请求继续采用 Ramble。 |
 | Workbench View（工作台视图） | 某工作台类型在客户端的专用呈现与交互实现，位于导航和反馈列之间的独立工作区域。 | 只读请求输入并修改所属 Draft 的 Interaction State；不拥有独立保存、发布、设备资源或 Agent 续接链路。 |
 | 工作台容器 | 承载当前请求的共享部分：布局、状态协调、工作台视图、反馈列、提交与附件预览。 | 不解释某个类型的题目、选项或批注；通过静态注册项组合对应视图与类型规则。 |
-| Workbench Registry（工作台注册表） | 当前构建可用的第一方类型及其客户端实现的静态目录。 | 不持有业务事实，不执行动态安装；Agent 目录是这些类型的用途与合同投影，不是渲染器协议。 |
+| Workbench Registry（工作台注册表） | 当前构建可用的第一方类型及其客户端实现的静态目录。 | 不持有业务事实，不执行动态安装；面向 Agent 的工作台发现目录是这些类型的用途与合同投影，不是渲染器协议，也不是用于选择 Agent 后端的 Agent Catalog。 |
 | 反馈列 | 承载自由反馈的右列：输入工具（语音、截图、剪贴板、文件、Tidy）、TipTap 正文、保存状态、提交行与 Rambelle 状态条。 | 一个客户端同时只有一个可编辑反馈列。 |
 | Workbench Client（工作台客户端） | 承载共享工作台 UI 的客户端角色；当前由 `apps/desktop` 中的 Svelte UI 实现，并由 Desktop Client 与 loopback Web Client 复用。 | 只持有 UI 投影和 client-local workspace snapshot；不拥有 Request、Feedback Draft 或 Package 的 canonical 事实。 |
 | Desktop Client（桌面客户端） | 在 Desktop Shell 内运行的 Workbench Client，通过 Tauri IPC 的 Application Transport Implementation 访问 Backend Runtime。 | 是当前已实现的客户端；不把 Tauri API 暴露为共享 UI 的业务合同。 |
@@ -48,8 +48,8 @@
 | 请求材料 | Agent 随请求提供的附件与上下文材料（`request_attachments`）。 | 不是人类的反馈附件，也不是 Attachment Candidate；只读展示与预览。 |
 | 反馈附件 | 人类在反馈中采集或导入并持久化后的附件（`workspace.attachments`）。 | 必须先成为 Attachment Candidate 且持久化成功；与请求材料分开计数与展示。 |
 | Audio Source（音频源） | Speech Recognition Plugin 内负责取得有明确 sample rate 的本地单声道 PCM 的 Interface/Implementation。 | 不执行语音识别、不传输到 Backend Runtime、不拥有 Feedback Draft。 |
-| Speech Engine（语音识别引擎） | Speech Recognition Plugin 内消费本地 PCM 并产生 SpeechEvent 的识别 Implementation。 | Desktop、Browser 与 Mobile 各自在本设备运行；统一点是事件合同，不是进程、模型或 transport。 |
-| 反馈请求 | 由适配器创建、由人类处理的持久单位，用 `request_id` 标识。 | RambleDesk 的核心输入事实。 |
+| Speech Engine（语音识别引擎） | Speech Recognition Plugin 内消费本地 PCM 并产生 SpeechEvent 的识别 Implementation。 | Desktop、Browser 及未来 Mobile 实现各自在本设备运行；统一点是事件合同，不是进程、模型或 transport。 |
+| 反馈请求 | 由外部反馈适配器或托管反馈入口创建、由人类处理的持久单位，用 `request_id` 标识。 | RambleDesk 的核心输入事实。 |
 | 反馈包 | 人类提交反馈或持久化取消结果时发布的不可变证据，包含 manifest、类型专属结果、Markdown 正文、附件与 hash。 | 宿主消费的输出事实；取消的类型结果为空。直接批准最终总结可以完成请求而不发布反馈包，不能从终态一概推断包存在。 |
 | Feedback Adapter（反馈适配器，简称适配器） | 面向一类宿主的完整反馈接入流程：创建请求、读取反馈、处理 continuation。 | 可以由多个 package 或 transport 组成；不因此拥有 Agent 会话启动与进程管理职责。 |
 | continuation | 请求进入终态后，让原宿主继续的行为。 | 只处理终态之后；不创建请求，不发布反馈包。 |
@@ -80,7 +80,7 @@
 - CURRENT：工作台类型通过共享请求、草稿和反馈包合同进入同一生命周期。目录中的 `purpose` / `returns` 描述用途，`interaction` 是分类元数据，不承诺可替换的通用渲染器协议。
 - CURRENT：`document_json` 是版本化 Draft envelope，包含 TipTap `doc` 与可选 `workbenchState`；字段名不意味着整份草稿都是 TipTap 节点。`body_markdown` 仅由 `doc` 派生。
 - CURRENT：类型或版本未知时只读保留请求材料、正文与交互数据；不覆盖保存、不提交、不通过直接批准绕过类型完整性。未知合同不等于请求终态；显式取消仍使用请求级生命周期。
-- CURRENT：三种既有类型的 wire 字段保持兼容，包括问答的 `cancelled` 和单选的 `status`。这些类型特有字段不重新定义 Request Outcome；细节见[反馈协议](PROTOCOL.md)。
+- CURRENT：发现目录提供 `ramble`、`questions` 和 `document_review`；`single_choice` 仅保留旧合同兼容。问答的 `cancelled` 和旧单选的 `status` 不重新定义 Request Outcome；细节见[反馈协议](PROTOCOL.md)。
 
 ## 会话与 ACP 术语
 
@@ -101,7 +101,7 @@
 | ACP Instance（ACP 实例） | RambleDesk 管理的一次 ACP 启动及连接资源集合。每个托管会话独占一个实例；实例可包含桥接进程及其子进程，不保证只有一个 OS 进程。 |
 | Session Runtime（会话运行状态） | Backend Runtime 根据当前连接和执行情况产生的投影，例如连接中、空闲、执行中、等待权限、断开。不得把上次落盘的 connected 状态当作重启后的事实。 |
 | Session Recovery（会话恢复事实） | 最近运行及未完成轮次的持久检查点，区分 never_started、unclosed、stopped、interrupted。unclosed 不证明仍在线；启动恢复会把遗留运行与未完成轮次记为中断。 |
-| Feedback Delivery（反馈投递） | 以 `request_id` 为身份的托管提交/批准续接记录，用于排队、去重与恢复；取消不产生新的托管投递。delivered 表示续接轮次成功结束或用户确认已处理，不表示任务完成；uncertain 只由用户显式重试或确认。 |
+| Feedback Delivery（反馈投递） | 以 `request_id` 为身份的托管提交/批准续接记录，用于排队、去重与恢复；取消不产生新的托管投递。delivered 表示续接消息已发给 Agent 或用户确认已处理，不表示后续轮次成功或任务完成；uncertain 只由用户显式重试或确认。 |
 
 关系约束：
 

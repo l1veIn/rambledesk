@@ -24,7 +24,7 @@ Local Integration Server 的 `/mcp` 提供 Generic MCP tools，`/api/feedback/*`
 | `context_refs` | 可选，空列表 | 每项为 `label` 与 `uri`，仅提供可读上下文。 |
 | `attachments` | 可选，空列表 | 人类需要审阅的 Markdown 或图片，内容规则见下文。 |
 | `source_hint` | 可选 | 来源提示，可含路径或标题，不是身份或认证字段。 |
-| `allow_finish` | 可选，默认 `false` | 仅在需要简单批准/拒绝的最终确认请求中启用。 |
+| `allow_finish` | 可选，默认 `false` | 仅 Ramble（含未指定工作台的旧入口）支持；用于需要简单批准/拒绝的最终确认请求。 |
 | `final_summary` | `allow_finish=true` 时必需 | 人类可直接批准的确切结束语草稿；不能脱离 `allow_finish` 单独提供。 |
 
 `what_happened` MUST 是一段人类可扫读的摘要：200 字符内讲清发生了什么、为什么需要反馈。详细材料放在类型专属 `data` 或请求附件中，而不是继续加长本字段；超过 200 字符的请求按 `INVALID_ARGUMENT` 拒绝，服务端不截断也不静默接受。字数按 Unicode 标量值计，中英文同权，不按 UTF-16 code unit 计数。
@@ -77,7 +77,7 @@ Local Integration Server 的 `/mcp` 提供 Generic MCP tools，`/api/feedback/*`
 
 问答的 `cancelled` 在成功结果中仍为 `false`，真实取消的 `workbench.result` 为 `null`。旧单选结果的 `unanswered` 不是新增请求状态，不应据此推断请求是否取消或完成。
 
-未知类型/版本的已有请求在不支持该合同的客户端 MUST 只读保留材料、正文和交互数据，不覆盖保存、不提交、不通过直接批准绕过合同。该只读状态不改变请求生命周期；显式取消仍按通用请求操作处理。
+能够识别工作台 envelope 的客户端遇到未知类型/版本的已有请求时 MUST 只读保留材料、正文和交互数据，不覆盖保存、不提交、不通过直接批准绕过合同。该只读状态不改变请求生命周期；显式取消仍按通用请求操作处理。此保护不追溯适用于不认识工作台 envelope 的 0.3.3；旧安装包的回退限制见[数据兼容](DATA_COMPATIBILITY.md)。
 
 ## 状态与幂等
 

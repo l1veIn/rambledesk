@@ -1,7 +1,6 @@
 # 从编辑到反馈包：一条可以读懂的反馈链
 
-这次整理以 `v0.4.0-rc.3` 为起点，沿当前 Feedback Draft 的输入准备、编辑、保存、提交和反馈包展示阅读。
-它继续使用现有 Svelte store、Application Transport 和 Rust 后端，没有增加另一套业务事实。
+本文沿当前 Feedback Draft 的输入准备、编辑、保存、提交和反馈包展示阅读。正文 `doc` 与类型交互 `workbenchState` 属于同一个版本化 Draft envelope，通过同一保存队列和 revision/CAS 提交。正文、答案及批注的可见编辑器共用 TipTap 基础，不各自拥有持久草稿或录音会话。
 术语与持久化合同遵循 [TERMINOLOGY.md](TERMINOLOGY.md) 和 [ARCHITECTURE.md](ARCHITECTURE.md)。
 全项目职责与其他示范入口见 [质量阅读地图](quality/QUALITY_WALKTHROUGH.md)；本文保留这条反馈链的细节。
 
@@ -15,7 +14,7 @@ sequenceDiagram
     participant Publish as Publisher
     participant Input as Ramble Input Owner
     participant Backend as Backend Runtime
-    UI->>Draft: edit(document snapshot)
+    UI->>Draft: edit(Draft envelope: doc + workbenchState)
     Draft-->>UI: dirty / save phase
     UI->>Publish: submitFeedback()
     Publish->>Input: prepareFeedback(request id)
@@ -23,7 +22,7 @@ sequenceDiagram
     Input-->>Publish: ready / pending-speech / failed
     Note over Publish: 只有 ready 且目标仍有效才继续
     Publish->>Save: saveDraftNow()
-    loop 直到当前文档与已保存文档相同
+    loop 直到当前 Draft 与已保存 Draft 相同
         Save->>Backend: saveFeedbackDraft(snapshot, expected revision)
         Backend-->>Draft: accepted revision
     end
@@ -35,7 +34,7 @@ sequenceDiagram
     UI->>UI: 显示反馈包入口
 ```
 
-Cooking 开启时，Publisher 在保存与发布之间请求一个独立的 Markdown 变体；原始结构化文档始终保留。
+Cooking 开启时，Publisher 在保存与发布之间为补充正文请求一个独立的 Markdown 变体；原始结构化 Draft 始终保留，类型结果由后端按原请求验证并发布。
 
 ## 1. 状态有一个写入位置，也有一个清楚的读取出口
 
@@ -103,14 +102,14 @@ rc3 原来的 `$: feedbackResult = workspaceSession.feedbackResult()` 隐藏了 
 1. 检查终态、只读限制和正在进行的操作。
 2. 等输入 owner 结束录音、排空已接纳的语音与剪贴板写入，并取得明确准备结果。
 3. 锁定编辑和工作区切换，等待保存完成。
-4. 固定请求、正文和后端确认的 revision。
+4. 固定请求、整个 Draft 和后端确认的 revision，并通过工作台完整性校验；填写正文不能绕过必答项。
 5. 按需取得 Cooking 结果，再发布。
 6. 应用后端返回的终态，读取反馈包，并释放本次操作持有的状态。
 
 `activeSubmission` 在异步准备开始前就被占用，连续点击加入同一次提交。
-语音落稿完成后才锁定编辑，保证停止录音时的最后一段内容仍能通过既有文档队列写入。
+语音落稿完成后才锁定编辑，保证停止录音时的最后一段内容仍能通过既有文档队列写入捕获时的正文、答案或批注。附件导入和整理也参与请求级输入准备；字段或原稿版本已失效时不能转投到当前正文。
 
-输入方的公开合同见 [RambleSessionControllerHandle](../apps/desktop/src/lib/speech/rambleSessionControllerHandle.ts)：
+调用者使用 [requestInputPreparation](../apps/desktop/src/lib/workbench/requestInputPreparation.ts) 的 `prepareFeedback`：先排空语音与剪贴板，再等待附件操作，复查一轮以覆盖期间接纳的新输入。结果类型与 [RambleSessionControllerHandle](../apps/desktop/src/lib/speech/rambleSessionControllerHandle.ts) 共享：
 
 ```ts
 prepareFeedback(requestId): Promise<
@@ -120,7 +119,7 @@ prepareFeedback(requestId): Promise<
 >
 ```
 
-Publisher、Cooking 预览和批准/取消都调用这一动作。App 无需分别读取 `hasPendingSpeech`、
+Publisher、Cooking 预览和批准/取消都调用该请求级准备动作，再检查输入是否仍忙并锁定。语音组件的 Handle 是其中一环，不能用它替代附件准备。App 无需分别读取 `hasPendingSpeech`、
 `speechStopError`，再自行拼接 exit、speech queue、document queue 的等待顺序。
 [Ramble Session](../apps/desktop/src/lib/workbench/rambleSession.ts) 订阅麦克风原始 store 并提供只读投影，
 录音字段不再通过多项双向绑定绕经 App；组件位于 locale key 外，切换语言不会重建麦克风 owner。
@@ -141,7 +140,7 @@ Cooking 的接口是 `cookSubmission(savedSubmission) → CookingPreview`。
 `submitFeedback` 成功返回后，反馈已经由后端提交。接下来的 `readPublishedFeedback` 或导航刷新失败，
 只会报告读取问题，终态和反馈包入口仍保留，也不会再次发布。下载入口可以重新读取真实反馈包。
 
-客户端不会拿手中的字符串伪装成已发布内容。`document_json` 仍是原稿真源，Markdown 是投影与交付格式，
+客户端不会拿手中的字符串伪装成已发布内容。`document_json` 是 Feedback Draft 的持久化载体，Markdown 是正文投影与交付格式，
 后端 revision/CAS 仍负责多客户端并发仲裁。
 
 **可以欣赏的地方：代码尊重事情真实发生的先后关系，错误不会改写已经完成的事实。**

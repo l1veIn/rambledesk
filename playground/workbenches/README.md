@@ -36,6 +36,8 @@
 
 每轮输入、请求 ID、实际响应和报告放在 `.runs/<run-id>/`，不会进入 Git。固定场景在 `fixtures/`，人工操作清单在 `materials/`。所有文案都是测试材料；其中夸大表述和冗余段落是故意留给审阅的。
 
-旧运行中保存的 `single_choice` 请求继续按旧结果格式恢复，不转换已有请求；保留 `materials/03-single-choice.md` 供旧运行的绝对附件路径使用。新轮第 3 个场景使用 `03-single-question.json`。
-
 只校验材料、不发起请求：`node prepare.mjs check`。
+
+## 历史运行兼容
+
+仅恢复旧轮时使用本节。旧运行中保存的 `single_choice` 请求继续按旧结果格式恢复，不转换已有请求；保留 `materials/03-single-choice.md` 的路径，避免已有运行的绝对附件路径失效。新轮始终使用表中的 `questions` 场景和 `03-single-question.json`，不要复制历史材料创建请求。

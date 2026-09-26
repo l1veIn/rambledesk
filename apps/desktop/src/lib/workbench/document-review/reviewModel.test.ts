@@ -28,7 +28,7 @@ describe('immutable document review contract', () => {
     expect(validateReviewState(data, { ...state, annotations: [note, note] })).not.toBeNull()
     expect(validateReviewState(data, { ...state, annotations: [{ ...note, kind: 'comment' }] })).not.toBeNull()
   })
-  it('replaces and clears paragraph marks without changing annotations', () => {
+  it('preserves legacy keep/revise marks when updating an existing review draft', () => {
     const original = { ...emptyReviewState(), annotations: [note] }
     const marked = changeParagraphMark(changeParagraphMark(original, 'opening', 'keep'), 'opening', 'revise')
     expect(marked.paragraph_marks).toEqual([{ paragraph_id: 'opening', decision: 'revise' }])
@@ -48,7 +48,7 @@ describe('immutable document review contract', () => {
         .toEqual(removed.paragraph_marks)
     }
   })
-  it('renders overlapping highlights without losing or duplicating source characters', () => {
+  it('renders overlapping historic annotations without losing or duplicating source characters', () => {
     const overlapping = { ...note, id: 'note-2', start: 3, end: 6, quote: '很好。' }
     const segments = annotatedSegments(data.paragraphs[0].text, [note, overlapping])
     expect(segments.map((segment) => segment.text).join('')).toBe(data.paragraphs[0].text)

@@ -18,6 +18,10 @@ import { replaceInputText } from '../../test/tiptap'
 
 let view: ReturnType<typeof mount> | undefined
 const snapshots: FeedbackDraftSnapshot[] = []
+const singleQuestion = workbenchPreviewWorkspace(2).workbench!
+const compactLabel = '紧凑布局：同屏展示更多信息'
+const selectedQuestion = { type: 'questions', answers: [{ id: 'layout', value: 'compact', label: compactLabel, wasCustom: false, index: 1 }] }
+// Kept only to protect saved requests created before single decisions moved to questions.
 const legacyChoice: WorkbenchSpec = { type: 'single_choice', version: 1, data: {
   prompt: 'Choose a layout', options: [{ id: 'compact', label: 'Compact layout' }, { id: 'roomy', label: 'Roomy layout' }],
 } }
@@ -61,33 +65,36 @@ describe('workbench interaction state is independent of feedback notes', () => {
     expect(voice.start).toHaveBeenCalledWith(target)
   })
 
-  it('selects, saves and restores without inserting anything into the editor', async () => {
-    open(2, false, undefined, legacyChoice)
+  it.each([
+    { contract: 'questions', spec: singleQuestion, label: compactLabel, selected: selectedQuestion, cleared: { type: 'questions', answers: [] } },
+    { contract: 'legacy single_choice compatibility', spec: legacyChoice, label: 'Compact layout', selected: { type: 'single_choice', selected_option_id: 'compact' }, cleared: { type: 'single_choice', selected_option_id: null } },
+  ])('selects, saves and restores $contract independently of feedback notes', async ({ spec, label, selected, cleared }) => {
+    open(2, false, undefined, spec)
     await vi.waitFor(() => expect(document.querySelectorAll('.feedback-prose[contenteditable="true"]')).toHaveLength(1))
-    button('Compact layout').click()
-    await vi.waitFor(() => expect(latest()).toEqual({ type: 'single_choice', selected_option_id: 'compact' }))
+    button(label).click()
+    await vi.waitFor(() => expect(latest()).toEqual(selected))
     expect(snapshots.at(-1)!.bodyMarkdown).toBe('')
     expect(JSON.stringify(decodeFeedbackDraftDocument(snapshots.at(-1)!.documentJson))).not.toContain('compact')
-    expect(canSubmitWorkbench(legacyChoice, latest(), '')).toBe(true)
+    expect(canSubmitWorkbench(spec, latest(), '')).toBe(true)
     const saved = snapshots.at(-1)!.documentJson
     await unmount(view!); view = undefined; document.body.replaceChildren()
-    open(2, false, saved, legacyChoice)
-    await vi.waitFor(() => expect(button('Compact layout').getAttribute('aria-pressed')).toBe('true'))
+    open(2, false, saved, spec)
+    await vi.waitFor(() => expect(button(label).getAttribute('aria-pressed')).toBe('true'))
     button('Clear answer').click()
-    await vi.waitFor(() => expect(latest()).toEqual({ type: 'single_choice', selected_option_id: null }))
+    await vi.waitFor(() => expect(latest()).toEqual(cleared))
   })
 
   it('keeps answers when notes change and when editor undo removes the notes', async () => {
-    open(2, false, undefined, legacyChoice)
+    open(2)
     await vi.waitFor(() => expect(document.querySelector('.feedback-prose[contenteditable="true"]')).not.toBeNull())
-    button('Compact layout').click()
-    await vi.waitFor(() => expect(latest()?.type).toBe('single_choice'))
+    button(compactLabel).click()
+    await vi.waitFor(() => expect(latest()).toEqual(selectedQuestion))
     view!.applyDraftOperation({ kind: 'appendClipboardText', text: 'Optional explanation', label: 'Clipboard', action: null })
     await vi.waitFor(() => expect(snapshots.at(-1)?.bodyMarkdown).toContain('Optional explanation'))
-    expect(latest()).toEqual({ type: 'single_choice', selected_option_id: 'compact' })
+    expect(latest()).toEqual(selectedQuestion)
     document.querySelector<HTMLButtonElement>('button[aria-label="Undo"]')!.click()
     await vi.waitFor(() => expect(snapshots.at(-1)?.bodyMarkdown).not.toContain('Optional explanation'))
-    expect(latest()).toEqual({ type: 'single_choice', selected_option_id: 'compact' })
+    expect(latest()).toEqual(selectedQuestion)
   })
 
   it('asks questions one at a time, supports custom answers, review and editing', async () => {
@@ -114,9 +121,9 @@ describe('workbench interaction state is independent of feedback notes', () => {
   })
 
   it('locks answer controls for closed requests', async () => {
-    open(2, true, undefined, legacyChoice)
-    await vi.waitFor(() => expect(button('Compact layout').disabled).toBe(true))
-    button('Compact layout').click()
+    open(2, true)
+    await vi.waitFor(() => expect(button(compactLabel).disabled).toBe(true))
+    button(compactLabel).click()
     expect(snapshots).toHaveLength(0)
   })
 
@@ -130,9 +137,9 @@ describe('workbench interaction state is independent of feedback notes', () => {
   })
 
   it.each([
-    { ...legacyChoice, type: 'future_workbench' },
-    { ...legacyChoice, version: 99 },
-    { ...legacyChoice, data: { ...legacyChoice.data, future: true } },
+    { ...singleQuestion, type: 'future_workbench' },
+    { ...singleQuestion, version: 99 },
+    { ...singleQuestion, data: { ...singleQuestion.data, future: true } },
   ])('preserves unknown workbenches as read-only instead of offering an unusable feedback fallback', async (spec) => {
     const saved = updateFeedbackDraftState(snapshotFeedbackDraftMarkdown('Saved notes must remain visible'), { type: 'future_workbench', value: 'opaque' })
     open(2, false, saved.documentJson, spec)

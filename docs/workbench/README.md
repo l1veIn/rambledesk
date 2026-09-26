@@ -1,27 +1,31 @@
 # 工作台文档入口
 
-当前工作台采用第一方静态类型：共享请求、草稿、反馈列与提交生命周期，各类型拥有独立业务视图。对象定义和 wire 字段已经进入权威文档，历史讨论不再作为实现依据。
+当前工作台采用第一方静态类型：共享请求、草稿、反馈列与提交生命周期，各类型拥有独立业务视图。新请求使用 `ramble`、`questions` 或 `document_review`；单题 `questions` 覆盖方案单选，旧 `single_choice` 仅保留合同兼容。
 
-| 内容 | 现行入口 |
+## 阅读路径
+
+| 要做的事 | 阅读入口 |
 | --- | --- |
-| 产品范围与持久化人类回答 | [产品宪章](../CONSTITUTION.md)、[ADR 008](../adr/008-typed-human-feedback-workbenches.md) |
-| 类型、视图、Draft、Document、State、Result、Outcome 的边界 | [术语表](../TERMINOLOGY.md) |
-| 运行所有权、静态组合与客户端边界 | [架构](../ARCHITECTURE.md) |
-| 发现目录、请求、幂等与结构化返回 | [反馈协议](../PROTOCOL.md) |
-| 实施阶段、待完成内容与验收要求 | [工作台演进路线](../WORKBENCH_EVOLUTION.md) |
-| 文稿审阅 v1 输入、锚点、批注和结果 | [文稿审阅](document-review.md) |
-| 正文与业务字段共享语音、字幕、工具台和输入检查 | [请求级共享输入](shared-input.md) |
-| Rambelle 首次使用引导、重看和本地状态 | [工作台使用引导](onboarding.md) |
-| 打开目录，用一句提示词体验全部现有类型 | [工作台 Playground](../../playground/workbenches/README.md) |
-| 三种类型实验的起点与试用背景 | [三种工作台实验记录](experiment.md) |
+| 理解产品范围及这些取舍的原因 | [产品宪章](../CONSTITUTION.md)、[ADR 008](../adr/008-typed-human-feedback-workbenches.md) |
+| 区分类型、视图、Draft、Document、State、Result、Outcome | [术语表](../TERMINOLOGY.md) |
+| 修改运行所有权、静态组合或客户端边界 | [架构](../ARCHITECTURE.md) |
+| 创建请求、发现类型、读取结果或修改 wire 合同 | [反馈协议](../PROTOCOL.md)；具体类型 schema 由 `describe_workbench` 提供 |
+| 判断当前已实现范围、扩展和验收边界 | [工作台实现状态](../WORKBENCH_EVOLUTION.md) |
+| 修改文稿锚点、批注、删除建议或整稿判断 | [文稿审阅](document-review.md) |
+| 修改正文、答案、批注的输入与异步回填 | [请求级共享输入](shared-input.md) |
+| 修改 Rambelle 首次引导、重看和本地记录 | [工作台使用引导](onboarding.md) |
+| 验证存储兼容或旧版本读取 | [数据兼容](../DATA_COMPATIBILITY.md) |
+| 用真实 Agent 走完全部工作台 | [工作台 Playground](../../playground/workbenches/README.md) |
 
-## 历史讨论
+这些文档按职责维护，不另写一套竞争的字段定义：协议负责通用请求与结果；文稿审阅负责该类型的细节；共享输入负责编辑和采集；ADR 保存决策理由。类型字段及限制修改时同步生成 schema 和相关文档，不能只改示例。
 
-下列文件保留最初的备选方案、问题与迁移顺序。它们关于“尚未实现”、`ownedFields`、统一输入目标、自由正文降级和 AskQuestion 形状的描述均是当时的讨论，不能覆盖现行合同。
+## 开发时保留的边界
 
-- [容器接口讨论](contract.md)
-- [注册项与数据讨论](registry-and-data.md)
-- [Agent 工具面讨论](agent-surface.md)
-- [开放问题清单](open-questions.md)
+- 不认识的类型或版本只读保留，不提供可提交的自由正文回退。
+- 正文与结构化状态一起保存、冻结和提交；补充正文不能替代必答项或整稿判断。
+- 正文与业务字段共用 TipTap 基础，各可见字段保有自己的 Editor；采集会话、草稿队列和提交链路仍然共享。
+- 语音和附件固定发起时的请求与目标；字段失效时报告失败，不转移到默认输入区。
+- 文稿原稿保持只读。批注无解决状态；删除线表达建议，Agent 取得已提交结果后再修改原稿。
+- 旧单选合同、旧批注和旧语音记录的兼容路径有数据保留用途，不能因新界面不再产生这些数据就删除。
 
-尤其注意：**不认识的类型或版本采用只读保留，而非可提交的自由正文回退。** 已知类型的正文与结构化输入一起保存，但正文不能替代必填答案。文稿审阅保留原稿，由 Agent 取得提交结果后修改；它不把审阅过程变成直接文档编辑。
+早期容器接口、注册项、Agent 工具面、开放问题和三类型实验稿已由上述现行文档与 ADR 取代，已从当前文档树移除。需要追溯当时的备选方案时使用 Git 历史，不把历史提案作为待实现要求。

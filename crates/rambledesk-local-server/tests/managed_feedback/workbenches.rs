@@ -82,7 +82,7 @@ async fn workbench_discovery_and_typed_requests_share_mcp_and_managed_command_co
             description["example"].clone()
         };
         if kind == "questions" {
-            // Extend the single-choice discovery example to cover long custom answers too.
+            // Extend the single-question discovery example to cover long custom answers too.
             workbench["data"]["questions"].as_array_mut().unwrap().push(json!({
                 "id":"scope","prompt":"What should we build first?","allowOther":true,
                 "options":[{"value":"feedback","label":"Feedback"},{"value":"review","label":"Review"}]

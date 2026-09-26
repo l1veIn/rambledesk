@@ -66,6 +66,8 @@ pnpm dev
 
 See the [development guide](docs/DEVELOPMENT.md) for running and checking the project, or the [documentation index](docs/README.md) for product, integration, and architecture guides.
 
+The current source includes free feedback, questions, and document review workbenches with shared voice and attachment input. Use the [workbench playground](playground/workbenches/README.md) to try the complete Agent flow; implementation and compatibility boundaries start at the [workbench documentation](docs/workbench/README.md).
+
 ## Thanks
 
 - [Codeg](https://github.com/xintaofei/codeg): ACP integration, Agent conversations, settings, and appearance references

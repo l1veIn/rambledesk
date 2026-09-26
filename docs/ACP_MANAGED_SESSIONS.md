@@ -8,10 +8,12 @@ RambleDesk 通过 ACP 管理本机外部智能体的会话；智能体负责推�
 
 1. 在「设置 → Agents」选择智能体。目录中的 npm 入口支持安装到应用自有目录，其他入口提供安装引导；自定义 ACP 入口通过「添加智能体」进入同一列表。
 2. 按智能体自己的方式完成认证。命令、参数、环境变量与完整诊断放在高级设置；已有 Agent 凭据无须重复填写。安装、认证、ACP 握手、实际回复与反馈闭环是不同证据。
-3. 新建会话，选择智能体和工作目录并输入任务。Web 中的目录是 **Backend Runtime 所在机器上的现有绝对目录**，不是浏览器设备上的路径。
+3. 新建会话，选择智能体和工作目录并输入任务。桌面与 Web 使用同一个目录浏览弹窗，可浏览子目录、返回上级或输入路径跳转；Web 中浏览的是 **Backend Runtime 所在机器上的现有目录**，不是浏览器设备上的文件。可点击「今天准备做些什么？」下的场景卡片填入可编辑的起步提示词，卡片不会自动发送消息。
 4. 选择齐全后自动预连接，读取实际模型、模式、思考强度等选项；等待期间仍可编辑。Agent 没有提供的选项不显示，也不妨碍使用默认配置。连接失败保留输入。
 5. 第一条真实任务被接受并持久化后，草稿沿用同一 ACP session 和 tab 转为正式会话，进入侧栏。没有反馈请求的正式会话仍正常显示。
 6. Agent 发起 Ramble 请求后，在 Ramble 页面体验并提交。RambleDesk 等待当前轮次结束，再续接原 Agent 会话；“查看 Agent”打开或聚焦其唯一 Agent tab。
+
+关闭全部 tab 后显示 Rambelle 空白页与新建会话入口，关闭 tab 不等于删除会话或停止 Agent。
 
 桌面与 Web 调用同一个 application 服务。切换客户端不会另建 Agent 会话；Web Access 的启停不拥有 Agent 生命周期。
 
@@ -56,11 +58,14 @@ RambleDesk 通过 ACP 管理本机外部智能体的会话；智能体负责推�
 命令入口与 JSON 格式见[内置工作流](../crates/rambledesk-acp/src/feedback_workflow.md)：
 
 - `feedback request --input <file|->`：提交结构化请求，`-` 表示标准输入。
+- `feedback list-workbenches` / `feedback describe-workbench --type <type>`：发现工作台并读取所选类型的输入、示例与结果合同；发现本身不触发交接。
 - `feedback get --request-id <id>`：读取原请求及其反馈包。
 - `feedback recover`：恢复当前归属中的请求，可显式给出 request ID。
 - `feedback skip --reason user_opt_out|task_finished|request_cancelled`：确认用户明确授权的本轮例外。
 
 每条真实用户 prompt 和反馈续接 prompt 都前置运行时工作流说明，不进入用户消息历史，不修改全局 Skills；准备阶段不发送说明。默认所有用户结果，包括只读分析和总结，都通过 Ramble 交接。正常结束且未尝试反馈时，公共驱动只追加一次交接提醒；已尝试失败或提醒后仍未交接，则保留回答并显示错误。用户取消不触发提醒，模型不能自行猜测用户已批准任务完成。读取批准或取消终态可确认本轮结束；普通反馈后的下一轮仍需交接。
+
+会话中的「内置会话指令」入口可查看当前连接（断线后为最近一次连接）实际附加的工作流说明，不是所有历史回合的快照。它与聊天历史分开，不能据此推断 Agent 自身的系统提示词或全局 Skills。工作台按本次需要的用户输入选择：开放体验用 `ramble`，明确作答或选择用 `questions`，已有文稿的段落批注用 `document_review`；最终以运行时发现返回的 schema 为准，旧 `single_choice` 仅保留兼容。
 
 Agent 必须用自己的执行工具调用命令，bridge 必须保留运行时环境，沙箱必须允许本地 IPC。RambleDesk 不宣告 ACP 客户端文件系统或终端执行能力。托管路径不注入 MCP server 或 Pi 托管扩展；Agent 原有 MCP、Skills 和插件仍按其自身配置加载。
 
