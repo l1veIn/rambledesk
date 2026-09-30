@@ -62,10 +62,7 @@ fn discovery_is_paged_and_request_schema_does_not_embed_each_type() {
             "terminal"
         ]
     );
-    assert_eq!(
-        catalog.next_offset,
-        rambledesk_core::WorkbenchKind::resolve("rating_review", 1).map(|_| 5)
-    );
+    assert_eq!(catalog.next_offset, Some(5));
     let page = list_workbenches(&ListWorkbenchesInput {
         limit: Some(1),
         ..Default::default()
@@ -119,6 +116,7 @@ fn discovery_is_paged_and_request_schema_does_not_embed_each_type() {
         "document_review",
         "web_review",
         "terminal",
+        "sort",
     ] {
         let description = describe_workbench(&DescribeWorkbenchInput {
             kind: kind.into(),
@@ -137,7 +135,7 @@ fn discovery_is_paged_and_request_schema_does_not_embed_each_type() {
             rambledesk_core::workbench_actions(&roundtrip)
                 .unwrap()
                 .is_empty(),
-            matches!(kind, "document_review" | "web_review" | "terminal")
+            matches!(kind, "document_review" | "web_review" | "terminal" | "sort")
         );
     }
 }

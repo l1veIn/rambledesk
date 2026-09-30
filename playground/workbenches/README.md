@@ -4,7 +4,7 @@
 
 > 读取 PLAYGROUND.md，开始完整工作台测试。
 
-后续每次提交反馈，Agent 会自动接着发起下一个场景，无须重复输入提示词。本轮覆盖五种工作台，其中逐项问答分别测试多题自定义回答和单题选择。
+后续每次提交反馈，Agent 会自动接着发起下一个场景，无须重复输入提示词。本轮覆盖六种工作台，其中逐项问答分别测试多题自定义回答和单题选择。
 
 | 顺序 | 工作台 | 主要体验 |
 | --- | --- | --- |
@@ -14,15 +14,16 @@
 | 4 | 文稿审阅 | 每段批注续写与收起摘要、建议改写、每框工具栏与附件标签、跨字段语音整理、段落删除线与恢复、原稿内批注阅读与续写 |
 | 5 | 网页评审 | 真实网页浏览/元素选择、精简底部批注与评审记录、图标视口切换及居中手机画布、网页工具栏全屏入口、普通工作台/独立评审页签往返、会话列表切换、整体反馈浮层、SPA 回访及提交后只读 |
 | 6 | 终端试用 | 真实 CLI、从体验 Markdown 复制命令、中文/彩色输出、交互提示、方向键/Ctrl+C、输出引用、全屏页签与提交后记录 |
+| 7 | 拖动排序 | 功能优先级拖动、上下移动、草稿恢复、全屏往返和只读结果 |
 | 收尾 | Ramble 汇总确认 | 查看本轮实际结果，确认完成或补充问题 |
 
-这是走真实保存、提交和 Agent 续接的人工体验，共 **6 次场景提交 + 1 张汇总卡**。它不代替自动化测试；未实际体验的可选项会记为“未验证”。
+这是走真实保存、提交和 Agent 续接的人工体验，共 **7 次场景提交 + 1 张汇总卡**。它不代替自动化测试；未实际体验的可选项会记为“未验证”。
 
 ## 准备条件
 
 只体验终端工作台时，在本目录 Agent 会话中发送「读取 PLAYGROUND.md，只测试终端工作台」。Agent 使用 `node prepare.mjs new terminal` 准备独立用例，自动将起始目录解析为本目录的绝对路径，然后发送真实 terminal 请求。固定 `materials/terminal-demo.mjs` 提供帮助、问候、方向键菜单和错误提示，不需要安装依赖。终端运行在 RambleDesk 后端主机。
 
-- 运行包含这五种工作台、每输入框顶部工具栏及右下角 Rambelle 整理区域的本分支应用版本。只有源码更新、仍运行旧安装版时，可能缺少新交互；Agent 会先检查工作台类型。共享输入与整理的具体交互仍需你在应用中体验确认。
+- 运行包含这六种工作台、每输入框顶部工具栏及右下角 Rambelle 整理区域的本分支应用版本。只有源码更新、仍运行旧安装版时，可能缺少新交互；Agent 会先检查工作台类型。共享输入与整理的具体交互仍需你在应用中体验确认。
 - 通过 RambleDesk 内的 Agent 会话运行，由应用注入反馈命令；普通终端或外部聊天不具有同一会话能力。
 - 辅助脚本和终端 CLI 样例只使用 Node.js 内置模块，不需要安装依赖。网页样例服务需要 Node 18+；没有 Node 时可手工准备运行文件，但网页阶段需要已有开发服务器，终端样例需要安装 Node 后才能体验。
 
@@ -56,9 +57,11 @@ Agent 会为这一轮只准备网页阶段，结束后给出汇总；不会替�
 
 ## 新类型与开发演练
 
+只体验拖动排序时，在本目录 Agent 会话发送「读取 PLAYGROUND.md，只测试 sort 工作台」。Agent 使用 `node prepare.mjs new sort`，按 `materials/sort.md` 检查拖动、草稿恢复和最终顺序。
+
 `prepare.mjs` 自动发现 `fixtures/` 的 JSON，普通新增类型不需要改脚本。`node prepare.mjs check <type>` 校验材料，`new <type>` 只准备该类型。类型和提交结果仍需与真实后端的发现/schema 核对，脚本不验证业务完成条件。
 
-仅开发构建可用的 `rating_review` 位于 `fixtures/development/`，默认完整六场景不包含它。使用 `node prepare.mjs check rating_review --development` 或 `new rating_review --development`，按 `materials/rating-review.md` 体验。前后端开关及教程见[新增工作台](../../docs/workbench/adding-a-workbench.md)。正式应用缺少此类型时不能替换成自由反馈或声称通过。
+仅开发构建可用的 `rating_review` 位于 `fixtures/development/`，默认完整七场景不包含它。使用 `node prepare.mjs check rating_review --development` 或 `new rating_review --development`，按 `materials/rating-review.md` 体验。前后端开关及教程见[新增工作台](../../docs/workbench/adding-a-workbench.md)。正式应用缺少此类型时不能替换成自由反馈或声称通过。
 
 ## 历史运行兼容
 

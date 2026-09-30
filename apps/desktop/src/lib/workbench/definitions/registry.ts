@@ -1,3 +1,4 @@
+import { sortDefinition } from './sort/definition'
 import type { WorkbenchSpec, WorkbenchState } from '../../generated/feedback'
 import type { WorkbenchDefinition } from './contracts'
 import { rambleDefinition } from './ramble/definition'
@@ -16,6 +17,7 @@ const developmentDefinitions: readonly WorkbenchDefinition[] = import.meta.env.D
 export const workbenchDefinitions: readonly WorkbenchDefinition[] = [
   rambleDefinition, questionsDefinition, singleChoiceDefinition, documentReviewDefinition, webReviewDefinition, terminalDefinition,
   ...developmentDefinitions,
+  sortDefinition,
 ]
 export function getWorkbenchDefinition(type: string, version = 1): WorkbenchDefinition | undefined {
   return workbenchDefinitions.find((definition) => definition.type === type && definition.version === version)

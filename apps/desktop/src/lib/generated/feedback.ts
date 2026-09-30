@@ -14,8 +14,8 @@ export type WorkbenchSpec = { type: string, version: number,
  * Get this type's data schema with describe_workbench before creating a request.
  */
 data: WorkbenchData, };
-export type WorkbenchData = RambleData | QuestionsData | SingleChoiceData | DocumentReviewData | WebReviewData | TerminalData | RatingReviewData | Record<string, unknown>;
-export type WorkbenchState = { "type": "questions", answers: Array<QuestionAnswer>, } | { "type": "single_choice", selected_option_id: string | null, } | { "type": "document_review", verdict: ReviewVerdict | null, annotations: Array<ReviewAnnotation>, paragraph_marks: Array<ParagraphMark>, } | { "type": "web_review", annotations: Array<WebReviewAnnotation>, } | { "type": "terminal", sessions: Array<TerminalTrialSession>, } | { "type": "rating_review" } & RatingReviewState;
+export type WorkbenchData = RambleData | QuestionsData | SingleChoiceData | DocumentReviewData | WebReviewData | TerminalData | RatingReviewData | SortData | Record<string, unknown>;
+export type WorkbenchState = { "type": "questions", answers: Array<QuestionAnswer>, } | { "type": "single_choice", selected_option_id: string | null, } | { "type": "document_review", verdict: ReviewVerdict | null, annotations: Array<ReviewAnnotation>, paragraph_marks: Array<ParagraphMark>, } | { "type": "web_review", annotations: Array<WebReviewAnnotation>, } | { "type": "terminal", sessions: Array<TerminalTrialSession>, } | { "type": "rating_review" } & RatingReviewState | { "type": "sort" } & SortState;
 export type WorkbenchPackage = {
 /**
  * None for cancellation or an unavailable structured document.
@@ -25,7 +25,7 @@ result: WorkbenchResult | null, type: string, version: number,
  * Get this type's data schema with describe_workbench before creating a request.
  */
 data: WorkbenchData, };
-export type WorkbenchResult = { kind: string, } | { answers: Array<QuestionAnswer>, cancelled: boolean, } | { status: AnswerStatus, selected_option_id: string | null, } | DocumentReviewResult | WebReviewResult | TerminalResult | RatingReviewResult | Record<string, unknown>;
+export type WorkbenchResult = { kind: string, } | { answers: Array<QuestionAnswer>, cancelled: boolean, } | { status: AnswerStatus, selected_option_id: string | null, } | DocumentReviewResult | WebReviewResult | TerminalResult | RatingReviewResult | SortResult | Record<string, unknown>;
 export type RambleData = { actions: Array<ActionInput>, };
 export type QuestionsData = { questions: Array<Question>, };
 export type Question = { id: string, prompt: string, label?: string, options: Array<QuestionOption>, allowOther: boolean, };
@@ -97,6 +97,18 @@ export type TerminalResult = { sessions: Array<TerminalTrialSession>, };
 export type RatingReviewData = { title: string, material: string, };
 export type RatingReviewState = { score: number | null, note: string, };
 export type RatingReviewResult = { score: number, note: string, };
+export type SortData = { title: string, items: Array<SortItem>, };
+export type SortItem = { id: string, label: string, };
+export type SortState = {
+/**
+ * Every input item ID, exactly once, in the chosen order.
+ */
+order: Array<string>, };
+export type SortResult = {
+/**
+ * Every input item ID, exactly once, in the chosen order.
+ */
+order: Array<string>, };
 export type TerminalSessionStatus = "running" | "exited" | "stopped";
 export type OpenTerminalSessionInput = { request_id: string, cols: number, rows: number, };
 export type TerminalSessionInput = { request_id: string, session_id: string, };

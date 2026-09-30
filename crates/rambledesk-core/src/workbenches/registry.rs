@@ -49,4 +49,10 @@ register_workbenches! {
         result: (RatingReviewTwinResult),
         exports: [RatingReviewTwinData, RatingReviewTwinState, RatingReviewTwinResult]
     }
+    Sort => sort {
+        wire: "sort", data: SortData,
+        state: [Sort(SortState),],
+        result: (SortResult),
+        exports: [SortData, SortItem, SortState, SortResult]
+    }
 }
