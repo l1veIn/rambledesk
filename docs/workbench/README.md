@@ -9,6 +9,7 @@
 | 理解产品范围及这些取舍的原因 | [产品宪章](../CONSTITUTION.md)、[ADR 008](../adr/008-typed-human-feedback-workbenches.md) |
 | 区分类型、视图、Draft、Document、State、Result、Outcome | [术语表](../TERMINOLOGY.md) |
 | 修改运行所有权、静态组合或客户端边界 | [架构](../ARCHITECTURE.md) |
+| 查看框架重构范围与新增普通工作台的目标流程 | [框架重构设计与验收](framework-plan.md)（分支目标，尚未实现） |
 | 创建请求、发现类型、读取结果或修改 wire 合同 | [反馈协议](../PROTOCOL.md)；具体类型 schema 由 `describe_workbench` 提供 |
 | 判断当前已实现范围、扩展和验收边界 | [工作台实现状态](../WORKBENCH_EVOLUTION.md) |
 | 修改文稿锚点、批注、删除建议或整稿判断 | [文稿审阅](document-review.md) |

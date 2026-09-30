@@ -13,7 +13,7 @@
 | 全局语音整理 | Rambelle 状态区显示头像、气泡及有待整理语音时的按钮；一次整理本请求各字段的语音并回填原处。 | [共享输入](workbench/shared-input.md) |
 | 文稿审阅 | 只读原稿、单段文字锚点、每段可续写批注、建议改写、可恢复删除线、显式整稿判断。 | [文稿审阅](workbench/document-review.md) |
 | 网页评审 | 真实网页浏览／元素选择、底部固定浮动批注、编号与集中回看，保留 URL、视口及元素信息；开发页通过桥接脚本接入。默认普通工作台，网页工具栏“选择元素”旁的全屏评审按钮打开独立页签；页签往返共用草稿和网页状态。浮动卡只显示批注编号、意见和输入工具，捕获信息保留在数据与终态历史中；设备按钮只显示图标与 tooltip，固定手机画布居中。 | [网页评审](workbench/web-review.md) |
-| 终端试用 | 请求绑定真实 PTY、建议命令填入、输出引用到正文、转录及 TUI 画面随反馈保存；新页签继续同一会话，提交前停止并收尾。 | [终端试用](workbench/terminal.md) |
+| 终端试用 | 请求绑定真实 PTY，从体验 Markdown 复制命令，输出引用到正文、转录及 TUI 画面随反馈保存；新页签继续同一会话，停止/退出后可主动重开并保留各轮记录，提交前统一收尾。 | [终端试用](workbench/terminal.md) |
 | 类型发现 | `list_workbenches` / `describe_workbench` 提供用途目录与按需 schema；MCP、Generic JSON 和托管命令复用同一合同。 | [协议](PROTOCOL.md)、[ACP 指南](ACP_MANAGED_SESSIONS.md) |
 | 首次引导 | 自由反馈与文稿审阅已有 Rambelle 聚光步骤，按类型和引导版本在客户端记录，可跳过或重看。 | [首次引导](workbench/onboarding.md) |
 
