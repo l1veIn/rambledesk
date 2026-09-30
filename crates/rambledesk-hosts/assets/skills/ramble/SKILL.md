@@ -101,6 +101,13 @@ Choose for the human input needed now, respecting the user's requested interacti
   covers a closed single choice; enable custom answers only when useful.
 - `document_review`: comments and suggested edits tied to paragraphs of an existing
   script, speech, or draft. Supply the actual source and its version.
+- `web_review`: hands-on review of a real development page with comments tied to
+  selected elements. Supply the page URL, source version, and initial viewport.
+  Read `describe_workbench` for setup: the page must allow iframe embedding and
+  cross-origin pages must load the review bridge. Download the public script from
+  the running local server's `/web-review/bridge.js`, self-host it in the reviewed
+  project, and load it there. Treat page URL, viewport, selector, geometry, and
+  screenshots as captured context, not proof of the current DOM's identity.
 
 Typed requests use `workbench: {type, version, data}` and omit top-level `actions`.
 Use `questions` for new single-choice requests; `single_choice` is a compatibility
@@ -121,7 +128,7 @@ switch transports just to obtain a different interface.
   attachment below the summary instead of growing the summary itself.
 - For legacy requests, provide an ordered, executable `actions` checklist with one
   action per item. Typed Ramble puts that checklist in `workbench.data.actions`;
-  questions and document review use their own discovered input schemas.
+  questions, document review, and web review use their own discovered input schemas.
 - Attach files only when the human needs to review them. Prefer an absolute
   local `attachments[].path` for existing images and Markdown. Use inline
   `markdown` only for short text and `contents_base64` only for a small image

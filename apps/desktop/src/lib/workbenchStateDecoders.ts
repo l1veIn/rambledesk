@@ -1,8 +1,9 @@
-import type { ParagraphMark, QuestionAnswer, ReviewAnnotation, WorkbenchState } from './generated/feedback'
+import type { ParagraphMark, QuestionAnswer, ReviewAnnotation, WebReviewAnnotation, WorkbenchState } from './generated/feedback'
 
 type QuestionsState = Extract<WorkbenchState, { type: 'questions' }>
 type SingleChoiceState = Extract<WorkbenchState, { type: 'single_choice' }>
 type DocumentReviewState = Extract<WorkbenchState, { type: 'document_review' }>
+type WebReviewState = Extract<WorkbenchState, { type: 'web_review' }>
 
 const record = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value)
@@ -53,4 +54,20 @@ export function readDocumentReviewState(value: unknown): DocumentReviewState | n
     const { status: _legacyStatus, ...note } = annotation as ReviewAnnotation & { status?: unknown }
     return note
   }) }
+}
+
+function webReviewAnnotation(value: unknown): value is WebReviewAnnotation {
+  if (!record(value) || !text(value.id) || !text(value.page_url) || !text(value.body)
+    || !record(value.viewport) || !record(value.element) || !record(value.element.rect)) return false
+  const { element, viewport } = value
+  const rect = element.rect as Record<string, unknown>
+  return Number.isInteger(viewport.width) && Number.isInteger(viewport.height)
+    && text(element.selector) && text(element.tag_name) && text(element.text)
+    && ['x', 'y', 'width', 'height'].every((key) => Number.isInteger(rect[key]))
+    && (value.screenshot_attachment_id == null || text(value.screenshot_attachment_id))
+}
+
+export function readWebReviewState(value: unknown): WebReviewState | null {
+  return record(value) && value.type === 'web_review' && Array.isArray(value.annotations)
+    && value.annotations.every(webReviewAnnotation) ? value as WebReviewState : null
 }

@@ -71,7 +71,7 @@ fn apply_request_host(mut input: RequestFeedbackInput) -> RequestFeedbackInput {
 impl RambleDeskMcp {
     #[tool(
         name = "list_workbenches",
-        description = "Browse available capabilities without guessing search terms. Call with {} to see all three: ramble (free feedback), questions (a single choice or multiple questions, with optional custom answers), document_review (annotate an immutable script or speech). For a single choice, use questions with one question and allowOther:false. Returns purpose and result summaries; describe_workbench loads a selected schema. Optional offset/limit paginate."
+        description = "Browse available capabilities without guessing search terms. Call with {} to see ramble (free feedback), questions (a single choice or multiple questions, with optional custom answers), document_review (annotate an immutable script or speech), and web_review (browse a live webpage and annotate elements). For a single choice, use questions with one question and allowOther:false. Returns purpose and result summaries; describe_workbench loads a selected schema. Optional offset/limit paginate."
     )]
     async fn list_workbenches(
         &self,

@@ -39,7 +39,7 @@ async fn workbench_discovery_and_typed_requests_share_mcp_and_managed_command_co
             .iter()
             .map(|entry| entry["type"].as_str().unwrap())
             .collect::<Vec<_>>(),
-        ["ramble", "questions", "document_review"]
+        ["ramble", "questions", "document_review", "web_review"]
     );
     let legacy_description = fixture
         .command(
@@ -53,7 +53,13 @@ async fn workbench_discovery_and_typed_requests_share_mcp_and_managed_command_co
         legacy_description.status(),
         reqwest::StatusCode::BAD_REQUEST
     );
-    for kind in ["ramble", "questions", "single_choice", "document_review"] {
+    for kind in [
+        "ramble",
+        "questions",
+        "single_choice",
+        "document_review",
+        "web_review",
+    ] {
         let mut workbench = if kind == "single_choice" {
             // Already integrated clients keep their original request/result contract.
             json!({"type":"single_choice","version":1,"data":{
@@ -112,6 +118,11 @@ async fn workbench_discovery_and_typed_requests_share_mcp_and_managed_command_co
             "document_review" => {
                 json!({"type":"document_review","verdict":"ready","annotations":[],"paragraph_marks":[]})
             }
+            "web_review" => json!({"type":"web_review","annotations":[{
+                "id":"note-1","page_url":"http://localhost:5173/","viewport":{"width":1440,"height":900},
+                "element":{"selector":"button","tag_name":"button","text":"Continue","rect":{"x":20,"y":30,"width":100,"height":40}},
+                "body":"Make this action clearer"
+            }]}),
             _ => Value::Null,
         };
         let doc =
@@ -162,7 +173,7 @@ async fn workbench_discovery_and_typed_requests_share_mcp_and_managed_command_co
             assert!(!text.contains("Preview of feedback markdown:"));
             assert!(text.contains(if kind == "questions" {
                 "individuals"
-            } else if kind == "document_review" {
+            } else if matches!(kind, "document_review" | "web_review") {
                 "draft-1"
             } else {
                 "compact"

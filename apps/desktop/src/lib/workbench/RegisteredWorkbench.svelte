@@ -5,9 +5,10 @@
   import type { HostProfile } from '$lib/domain/hostProfile'
   import QuestionnaireWorkbench from './QuestionnaireWorkbench.svelte'
   import SingleChoiceWorkbench from './SingleChoiceWorkbench.svelte'
-  import type { DocumentReviewData, SingleChoiceData, QuestionsData, WorkbenchState } from '$lib/generated/feedback'
+  import type { DocumentReviewData, SingleChoiceData, QuestionsData, WebReviewData, WorkbenchState } from '$lib/generated/feedback'
   import { resolveWorkbenchPolicy } from '../workbenchPolicy'
   import DocumentReviewWorkbench from './document-review/DocumentReviewWorkbench.svelte'
+  import WebReviewWorkbench from './web-review/WebReviewWorkbench.svelte'
   import { t } from '$lib/i18n'
   import { locale } from '$lib/preferences'
   import RambleWorkbench from './RambleWorkbench.svelte'
@@ -20,6 +21,7 @@
   export let capabilities: Pick<WorkbenchCapabilities, 'serverPaths'>
   export let resolveHostProfile: (hostId: string) => HostProfile
   export let readOnly = false
+  export let locked = false
   export let cooking = false
   export let activeActionId: string | null = null
   export let state: WorkbenchState | null = null
@@ -34,8 +36,10 @@
   $: choice = kind === 'single_choice' && spec ? spec.data as SingleChoiceData : null
   $: questions = kind === 'questions' && spec ? spec.data as QuestionsData : null
   $: review = kind === 'document_review' && spec ? spec.data as DocumentReviewData : null
+  $: webReview = kind === 'web_review' && spec ? spec.data as WebReviewData : null
   $: selectedOptionId = state?.type === 'single_choice' ? state.selected_option_id : null
-  $: closed = readOnly || kind === 'unsupported' || workspace.request.status === 'completed' || workspace.request.status === 'cancelled'
+  $: immutable = readOnly || kind === 'unsupported' || workspace.request.status === 'completed' || workspace.request.status === 'cancelled'
+  $: closed = immutable || locked
   const tr = (source: string) => t($locale, source)
   function select(id: string | null) {
     if (closed) return
@@ -50,7 +54,7 @@
     {/snippet}
   </WorkspaceHeader>
   <RequestContextPanel {workspace} {transport} {capabilities} />
-  <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain p-5" data-workbench-content>
+  <div class="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain" class:p-5={!webReview} data-workbench-content>
     {#if kind === 'ramble'}
       <RambleWorkbench {workspace} readOnly={closed} {activeActionId} {onSelectAction} />
     {:else if questions}
@@ -63,6 +67,11 @@
     {:else if review}
       {#key workspace.request.request_id}
         <DocumentReviewWorkbench data={review} state={state?.type === 'document_review' ? state : null} disabled={closed} onChange={onStateChange} />
+      {/key}
+    {:else if webReview}
+      {#key workspace.request.request_id}
+        <WebReviewWorkbench data={webReview} state={state?.type === 'web_review' ? state : null}
+          disabled={closed} readOnly={immutable} onChange={onStateChange} />
       {/key}
     {:else}
       <p class="m-0 text-sm leading-6 text-muted-foreground" role="status">{tr('This workbench is unavailable. Your draft and materials are preserved in read-only mode. Open this request in a compatible client to continue.')}</p>

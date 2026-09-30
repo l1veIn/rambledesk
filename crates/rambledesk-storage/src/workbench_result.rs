@@ -1,16 +1,20 @@
 use rambledesk_core::{FeedbackDraft, WorkbenchPackage, WorkbenchSpec, WorkbenchSubmissionError};
 
 /// Storage owns this envelope codec; the core policy receives parsed domain data.
-fn parse_feedback_draft(document: Option<&str>) -> Option<FeedbackDraft> {
+fn parse_feedback_draft(document: Option<&str>, strict: bool) -> Option<FeedbackDraft> {
     let value: serde_json::Value = serde_json::from_str(document?).ok()?;
     if value["schemaVersion"] != 2 || value["doc"]["type"] != "doc" {
         return None;
     }
     Some(FeedbackDraft {
-        workbench_state: value
-            .get("workbenchState")
-            .cloned()
-            .and_then(|state| serde_json::from_value(state).ok()),
+        workbench_state: match value.get("workbenchState") {
+            None | Some(serde_json::Value::Null) => None,
+            Some(state) => match serde_json::from_value(state.clone()) {
+                Ok(state) => Some(state),
+                Err(_) if strict => return None,
+                Err(_) => None,
+            },
+        },
     })
 }
 
@@ -19,7 +23,11 @@ pub(crate) fn workbench_package(
     document: Option<&str>,
     submitted: bool,
 ) -> WorkbenchPackage {
-    rambledesk_core::workbench_package(spec, parse_feedback_draft(document).as_ref(), submitted)
+    rambledesk_core::workbench_package(
+        spec,
+        parse_feedback_draft(document, spec.kind == "web_review").as_ref(),
+        submitted,
+    )
 }
 
 pub(crate) fn prepare_feedback_submission(
@@ -27,11 +35,16 @@ pub(crate) fn prepare_feedback_submission(
     document: Option<&str>,
     body: &str,
 ) -> Result<Option<WorkbenchPackage>, WorkbenchSubmissionError> {
-    rambledesk_core::prepare_feedback_submission(
-        spec,
-        parse_feedback_draft(document).as_ref(),
-        body,
-    )
+    let is_web_review = spec.is_some_and(|spec| {
+        spec.kind == "web_review" && rambledesk_core::validate_workbench(spec).is_ok()
+    });
+    let draft = parse_feedback_draft(document, is_web_review);
+    // Do not turn malformed structured content into an empty review and publish
+    // only the notes. Missing/null state is the legitimate notes-only path.
+    if is_web_review && document.is_some() && draft.is_none() {
+        return Err(WorkbenchSubmissionError::Incomplete);
+    }
+    rambledesk_core::prepare_feedback_submission(spec, draft.as_ref(), body)
 }
 
 #[cfg(test)]
@@ -197,5 +210,30 @@ mod tests {
         let unknown: WorkbenchSpec = serde_json::from_value(future.clone()).unwrap();
         assert!(matches!(unknown.data, WorkbenchData::Unknown(_)));
         assert_eq!(serde_json::to_value(unknown).unwrap(), future);
+    }
+
+    #[test]
+    fn web_review_malformed_state_cannot_silently_drop_element_comments() {
+        let spec = describe_workbench(&DescribeWorkbenchInput {
+            kind: "web_review".into(),
+            version: None,
+        })
+        .unwrap()
+        .example;
+        for state in [
+            json!({"type":"web_review","annotations":[{"id":"broken","body":"important"}]}),
+            json!({"type":"web_review","annotations":[],"future":"unknown"}),
+            json!({"type":"unknown","annotations":[]}),
+        ] {
+            let document =
+                json!({"schemaVersion":2,"doc":{"type":"doc","content":[]},"workbenchState":state})
+                    .to_string();
+            assert!(matches!(
+                prepare_feedback_submission(Some(&spec), Some(&document), "General notes"),
+                Err(WorkbenchSubmissionError::Incomplete)
+            ));
+        }
+        let document = json!({"schemaVersion":2,"doc":{"type":"doc","content":[]}}).to_string();
+        assert!(prepare_feedback_submission(Some(&spec), Some(&document), "General notes").is_ok());
     }
 }

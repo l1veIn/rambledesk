@@ -70,8 +70,9 @@ Local Integration Server 的 `/mcp` 提供 Generic MCP tools，`/api/feedback/*`
 | `ramble` v1 | `data.actions` 给出体验动作；反馈正文提供人类输入。 | `kind: "free_feedback"`；实际正文与附件在包的公共位置。 |
 | `questions` v1 | 一个或多个问题，逐题选择稳定 `value`，允许时可键入或口述自定义回答；每题都需回答。单题且 `allowOther:false` 覆盖严格单选。 | `answers: [{id,value,label,wasCustom,index?}], cancelled: false`。 |
 | `document_review` v1 | 审阅不可变原稿，可作段落标记、批注与改写建议；必须显式给出整稿判断。 | `source_version, verdict, annotations, paragraph_marks`；详见[文稿审阅合同](workbench/document-review.md)。 |
+| `web_review` v1 | 浏览真实网页，对选中元素就地批注并集中回看；网页需允许嵌入，跨源页面需接入评审桥接脚本。 | `source_version, annotations`，每条保留页面 URL、视口、元素定位和意见；详见[网页评审](workbench/web-review.md)。 |
 
-发现目录只提供上述三种类型。新方案选择请求使用 `questions`，不再创建独立 `single_choice` 工作台。`describe_workbench(single_choice)` 提示改用单题问答。
+发现目录提供上述四种类型。新方案选择请求使用 `questions`，不再创建独立 `single_choice` 工作台。`describe_workbench(single_choice)` 提示改用单题问答。
 
 旧 `single_choice` v1 合同保留兼容：已知旧客户端仍可原样创建/重试，已有请求、草稿和结果保持 `selected_option_id` 及 `status`，不静默重写为 `answers[]`，以免改变请求幂等比较或结果含义。客户端使用同一个问答视图承载旧单选，兼容层转换展示和交互状态，不迁移持久输入。未回答状态仍不能成功提交。
 
@@ -140,7 +141,7 @@ Draft 中未完成的交互状态不等于已发布 Result。提交时服务端 
 
 ## 本地 JSON API
 
-全部 endpoint MUST 仅监听 loopback、要求 bearer token、校验 loopback Host 并拒绝不允许的 Origin，使用 JSON 请求/响应。listener、token 和安全预算见[架构](ARCHITECTURE.md#安全边界)。
+全部反馈与目录 API endpoint MUST 仅监听 loopback、要求 bearer token、校验 loopback Host 并拒绝不允许的 Origin，使用 JSON 请求/响应。listener、token 和安全预算见[架构](ARCHITECTURE.md#安全边界)。`GET /web-review/bridge.js` 是校验 loopback Host 的公开静态 JavaScript，只有页面选择桥接代码，不含请求、草稿或凭证；Agent 可下载后在待评审项目中自行托管。
 
 | Endpoint | 对应合同 |
 | --- | --- |

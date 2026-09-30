@@ -175,6 +175,8 @@
 <div class="flex h-full min-h-0 min-w-0 flex-1 flex-col" data-workspace-view-key={view ? workspaceViewKey(view) : undefined}>
   <WorkbenchContainer
     bind:this={container}
+    expandable={!unsupported && (workspace?.workbench?.type === 'web_review' || workspace?.workbench?.type === 'document_review')}
+    initiallyExpanded={workspace?.workbench?.type === 'web_review'}
     {workspace}
     {transport}
     {capabilities}
@@ -229,7 +231,8 @@
           {transport}
           {capabilities}
           {resolveHostProfile}
-          readOnly={interactionLocked}
+          readOnly={feedbackReadOnly}
+          locked={interactionLocked}
           state={interactionState}
           onStateChange={interactionChanged}
           {cooking}

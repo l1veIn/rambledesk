@@ -28,9 +28,15 @@ export const workbenchExamples: WorkbenchSpec[] = [
       { id: 'closing', label: '结尾 · 01:12–01:30', text: '下一次灵感出现时，不必急着把它整理得完美。先留下真实的体验，再让好的改变从这里开始。' },
     ],
   } },
+  { type: 'web_review', version: 1, data: {
+    title: 'Atelier 首页', source_version: 'homepage-v1',
+    url: new URL('/web-review-fixture.html', typeof window !== 'undefined' && window.location.origin !== 'null'
+      ? window.location.origin : 'http://127.0.0.1:5173').href,
+    viewport: { width: 1280, height: 800 },
+  } },
 ]
 
-export const workbenchPreviewLabels = ['Ramble 自由反馈', '逐项问答', '逐项问答 · 单题选择', '文稿审阅']
+export const workbenchPreviewLabels = ['Ramble 自由反馈', '逐项问答', '逐项问答 · 单题选择', '文稿审阅', '网页评审']
 
 export const workbenchPreviewAttachments = [
   {

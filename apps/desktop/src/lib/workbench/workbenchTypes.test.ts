@@ -50,6 +50,34 @@ const button = (text: string) => Array.from(document.querySelectorAll('button'))
 const latest = () => readWorkbenchState(snapshots.at(-1)?.documentJson)
 
 describe('workbench interaction state is independent of feedback notes', () => {
+  it('retains the live page and feedback editor when toggling expanded review', async () => {
+    open(4)
+    await vi.waitFor(() => expect(document.querySelector('iframe')).not.toBeNull())
+    const frame = document.querySelector('iframe')
+    const editor = document.querySelector('.feedback-prose[contenteditable="true"]')
+    const container = document.querySelector('[data-workbench-expanded]')!
+    expect(container.getAttribute('data-workbench-expanded')).toBe('true')
+    view!.applyDraftOperation({ kind: 'appendClipboardText', text: 'Keep this overall note', label: 'Clipboard', action: null })
+    await vi.waitFor(() => expect(snapshots.at(-1)?.bodyMarkdown).toContain('Keep this overall note'))
+    button('Overall feedback and submit').click()
+    button('Return to split view').click()
+    await vi.waitFor(() => expect(container.getAttribute('data-workbench-expanded')).toBe('false'))
+    button('Expand review').click()
+    await vi.waitFor(() => expect(container.getAttribute('data-workbench-expanded')).toBe('true'))
+    expect(document.querySelector('iframe')).toBe(frame)
+    expect(document.querySelector('.feedback-prose[contenteditable="true"]')).toBe(editor)
+    expect(snapshots.at(-1)?.bodyMarkdown).toContain('Keep this overall note')
+
+    const dialog = document.createElement('dialog')
+    dialog.innerHTML = '<button>Cancel</button>'
+    dialog.open = true
+    document.body.append(dialog)
+    const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    dialog.querySelector('button')!.dispatchEvent(escape)
+    expect(escape.defaultPrevented).toBe(false)
+    expect(container.getAttribute('data-workbench-expanded')).toBe('true')
+  })
+
   it('selects the shared document voice destination on editor focus without starting the microphone', async () => {
     const workspace = workbenchPreviewWorkspace(0)
     const target: SpeechTarget = { requestId: workspace.request.request_id, requestTitle: workspace.request.title,

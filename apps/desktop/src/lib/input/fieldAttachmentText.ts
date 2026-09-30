@@ -115,5 +115,18 @@ export function removeWorkbenchAttachmentReferences(snapshot: FeedbackDraftSnaps
     })
     return changed ? withWorkbenchState(snapshot, { ...state, annotations }) : snapshot
   }
+  if (state?.type === 'web_review') {
+    let changed = false
+    const annotations = state.annotations.map((annotation) => {
+      const body = remove(annotation.body)
+      const screenshotRemoved = annotation.screenshot_attachment_id === attachmentId
+      if (body === annotation.body && !screenshotRemoved) return annotation
+      changed = true
+      const next = { ...annotation, body }
+      if (screenshotRemoved) delete next.screenshot_attachment_id
+      return next
+    })
+    return changed ? withWorkbenchState(snapshot, { ...state, annotations }) : snapshot
+  }
   return snapshot
 }

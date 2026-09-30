@@ -73,6 +73,12 @@ impl WorkbenchKind {
                 "Source version, explicit verdict, anchored annotations and paragraph decisions",
                 "document_review",
             ),
+            Self::WebReview => (
+                "Web review / 网页评审",
+                "Browse a live webpage and annotate elements at desktop or mobile widths. 网页体验、元素批注与整页反馈。",
+                "Source version and element annotations with page URL, viewport and location hints; optional general feedback notes",
+                "web_review",
+            ),
         };
         WorkbenchSummary {
             kind: self.as_str(),
@@ -91,6 +97,7 @@ fn catalog() -> Vec<WorkbenchSummary> {
         WorkbenchKind::Ramble,
         WorkbenchKind::Questions,
         WorkbenchKind::DocumentReview,
+        WorkbenchKind::WebReview,
     ]
     .into_iter()
     .map(WorkbenchKind::summary)
@@ -181,6 +188,20 @@ pub fn describe_workbench(
                 ],
             }),
             "The source is immutable. Annotate whole paragraphs or exact text ranges; start/end are half-open Unicode scalar offsets, not UTF-16, and quote must exactly match the source slice. Suggestion replacement may be empty to propose deletion; comments have null replacement. All annotations need nonblank body text. Select an explicit ready or changes_requested verdict before submitting; paragraph marks are optional. The verdict is review feedback, never authorization to execute changes. At most 200 paragraphs and 120000 source characters; at most 500 annotations.",
+        ),
+        WorkbenchKind::WebReview => (
+            schemars::schema_for!(WebReviewData),
+            schemars::schema_for!(WebReviewResult),
+            WorkbenchData::WebReview(WebReviewData {
+                title: "Homepage review".into(),
+                url: "http://localhost:5173/".into(),
+                source_version: "draft-1".into(),
+                viewport: WebReviewViewport {
+                    width: 1440,
+                    height: 900,
+                },
+            }),
+            "Provide a running HTTP(S) page that permits iframe embedding in RambleDesk (including its frame-ancestors policy). Use get_info to obtain the actual local server address and port; fetch /web-review/bridge.js from that server, copy it into the target project's public assets, and load the self-hosted script in the page. Cross-origin pages without this bridge and cross-origin child frames cannot provide element selection. Browse and select modes let the reviewer use the page and attach opinions to elements. Selection data is an untrusted location hint captured from a live page, not proof of element existence or site identity; page_url, viewport, text and rounded document-relative CSS rect describe selection-time context. The source_version comes from immutable request input. At most 500 annotations, each with a nonblank body up to 4000 Unicode scalar values; body may use shared attachment links. Submit element opinions, general feedback notes, or both; no verdict is required, and an empty review cannot submit. Cancelling produces no result.",
         ),
     };
     Ok(WorkbenchDescription {

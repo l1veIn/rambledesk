@@ -11,7 +11,9 @@ export function speechTargetLabel(target: SpeechTarget, tr: Translate): string {
       ? `${destination.paragraphLabel} · ${tr(destination.field === 'body' ? 'Comment' : 'Suggested wording')}`
       : destination.kind === 'question_answer'
         ? `${destination.questionLabel} · ${tr('Your answer')}`
-        : tr('Unavailable input target')
+        : destination.kind === 'web_review_annotation'
+          ? `${destination.elementLabel} · ${tr('Comment')}`
+          : tr('Unavailable input target')
   return `${target.requestTitle} · ${detail}`
 }
 

@@ -1,4 +1,4 @@
-import type { DocumentReviewData, QuestionsData } from './generated/feedback'
+import type { DocumentReviewData, QuestionsData, WebReviewData } from './generated/feedback'
 import { decodeFeedbackDraftEnvelope, type FeedbackDraftSnapshot } from './feedbackDraftDocument'
 import { decodeWorkbenchState, resolveWorkbenchPolicy } from './workbenchPolicy'
 import type { InputTarget, InputWriteWorkspace } from './domain/inputTarget'
@@ -56,6 +56,19 @@ export function readWorkbenchField(workspace: InputWriteWorkspace, target: Input
         delete next.index
         return next
       }) }),
+    }
+  }
+  if (destination.kind === 'web_review_annotation') {
+    if (workspace.workbench?.type !== 'web_review' || state?.type !== 'web_review') throw new Error('This webpage comment is unavailable.')
+    const annotations = state.annotations.filter((item) => item.id === destination.annotationId)
+    if (annotations.length !== 1 || !validFieldText(annotations[0].body, 4000)) throw new Error('The target comment no longer exists or cannot receive input.')
+    const annotation = annotations[0]
+    const data = workspace.workbench.data as WebReviewData
+    return {
+      value: annotation.body, limit: 4000,
+      contract: fingerprint({ type: workspace.workbench.type, version: workspace.workbench.version, data }),
+      identity: fingerprint({ id: annotation.id, page_url: annotation.page_url, viewport: annotation.viewport, element: annotation.element }),
+      replace: (value: string) => snapshot({ ...state, annotations: state.annotations.map((item) => item === annotation ? { ...item, body: value } : item) }),
     }
   }
   if (destination.kind !== 'review_annotation' || workspace.workbench?.type !== 'document_review' || state?.type !== 'document_review') {

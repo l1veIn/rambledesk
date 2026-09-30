@@ -20,7 +20,11 @@ pub fn workbench_package(
     submitted: bool,
 ) -> WorkbenchPackage {
     let result = if submitted {
-        draft.and_then(|draft| workbench_result(spec, draft.workbench_state.as_ref()))
+        match draft {
+            Some(draft) => workbench_result(spec, draft.workbench_state.as_ref()),
+            None if spec.kind == "web_review" => workbench_result(spec, None),
+            None => None,
+        }
     } else {
         None
     };
@@ -57,6 +61,11 @@ pub fn prepare_feedback_submission(
                     .iter()
                     .any(|annotation| !annotation.body.trim().is_empty())
                 || !paragraph_marks.is_empty()
+        }
+        Some(WorkbenchState::WebReview { annotations })
+            if validated.kind() == WorkbenchKind::WebReview =>
+        {
+            !annotations.is_empty()
         }
         _ => false,
     };

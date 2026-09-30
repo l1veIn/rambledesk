@@ -1,9 +1,10 @@
-import type { DocumentReviewData, Question, QuestionAnswer, QuestionsData, SingleChoiceData, WorkbenchSpec, WorkbenchState } from './generated/feedback'
+import type { DocumentReviewData, Question, QuestionAnswer, QuestionsData, SingleChoiceData, WebReviewData, WorkbenchSpec, WorkbenchState } from './generated/feedback'
 import { hasReviewInput, validateReviewState } from './workbench/document-review/reviewModel'
-import { validDocumentReviewInput, validQuestionsInput, validRambleInput, validSingleChoiceInput } from './workbenchInputValidation'
-import { readDocumentReviewState, readQuestionsState, readSingleChoiceState } from './workbenchStateDecoders'
+import { hasWebReviewInput, validateWebReviewState } from './workbench/web-review/reviewModel'
+import { validDocumentReviewInput, validQuestionsInput, validRambleInput, validSingleChoiceInput, validWebReviewInput } from './workbenchInputValidation'
+import { readDocumentReviewState, readQuestionsState, readSingleChoiceState, readWebReviewState } from './workbenchStateDecoders'
 
-export type WorkbenchType = 'ramble' | 'questions' | 'single_choice' | 'document_review'
+export type WorkbenchType = 'ramble' | 'questions' | 'single_choice' | 'document_review' | 'web_review'
 type Policy = {
   type: WorkbenchType
   accepts: (data: Record<string, unknown>) => boolean
@@ -51,6 +52,13 @@ const policies: Record<WorkbenchType, Policy> = {
     hasInput: (spec, state) => hasReviewInput(spec.data as DocumentReviewData, state?.type === 'document_review' ? state : null),
     complete: (spec, state) => validateReviewState(spec.data as DocumentReviewData, state?.type === 'document_review' ? state : null) === null,
     submissionMessage: (spec, state) => validateReviewState(spec.data as DocumentReviewData, state?.type === 'document_review' ? state : null),
+  },
+  web_review: {
+    type: 'web_review', accepts: validWebReviewInput,
+    readState: readWebReviewState,
+    hasInput: (spec, state) => hasWebReviewInput(spec.data as WebReviewData, state?.type === 'web_review' ? state : null),
+    complete: (spec, state) => validateWebReviewState(spec.data as WebReviewData, state?.type === 'web_review' ? state : null) === null,
+    submissionMessage: (spec, state) => validateWebReviewState(spec.data as WebReviewData, state?.type === 'web_review' ? state : null),
   },
 }
 

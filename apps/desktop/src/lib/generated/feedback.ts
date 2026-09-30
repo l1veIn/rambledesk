@@ -14,12 +14,12 @@ export type WorkbenchSpec = { type: string, version: number,
  * Get this type's data schema with describe_workbench before creating a request.
  */
 data: WorkbenchData, };
-export type WorkbenchData = RambleData | QuestionsData | SingleChoiceData | DocumentReviewData | Record<string, unknown>;
+export type WorkbenchData = RambleData | QuestionsData | SingleChoiceData | DocumentReviewData | WebReviewData | Record<string, unknown>;
 export type RambleData = { actions: Array<ActionInput>, };
 export type QuestionsData = { questions: Array<Question>, };
 export type Question = { id: string, prompt: string, label?: string, options: Array<QuestionOption>, allowOther: boolean, };
 export type QuestionOption = { value: string, label: string, description?: string, };
-export type WorkbenchState = { "type": "questions", answers: Array<QuestionAnswer>, } | { "type": "single_choice", selected_option_id: string | null, } | { "type": "document_review", verdict: ReviewVerdict | null, annotations: Array<ReviewAnnotation>, paragraph_marks: Array<ParagraphMark>, };
+export type WorkbenchState = { "type": "questions", answers: Array<QuestionAnswer>, } | { "type": "single_choice", selected_option_id: string | null, } | { "type": "document_review", verdict: ReviewVerdict | null, annotations: Array<ReviewAnnotation>, paragraph_marks: Array<ParagraphMark>, } | { "type": "web_review", annotations: Array<WebReviewAnnotation>, };
 export type SingleChoiceData = { prompt: string, options: Array<ChoiceOption>, };
 export type ChoiceOption = { id: string, label: string, };
 export type DocumentReviewData = { title: string, source_version: string,
@@ -43,6 +43,16 @@ export type ParagraphMark = { paragraph_id: string, decision: ParagraphDecision,
 export type ParagraphDecision = "keep" | "revise" | "remove";
 export type ReviewVerdict = "ready" | "changes_requested";
 export type DocumentReviewResult = { source_version: string, verdict: ReviewVerdict, annotations: Array<ReviewAnnotation>, paragraph_marks: Array<ParagraphMark>, };
+export type WebReviewData = { title: string, url: string, source_version: string, viewport: WebReviewViewport, };
+export type WebReviewViewport = { width: number, height: number, };
+export type WebReviewRect = { x: number, y: number, width: number, height: number, };
+export type WebReviewElement = {
+/**
+ * Untrusted CSS selector hint, not proof of a DOM element or site identity.
+ */
+selector: string, tag_name: string, text: string, rect: WebReviewRect, };
+export type WebReviewAnnotation = { id: string, page_url: string, viewport: WebReviewViewport, element: WebReviewElement, body: string, screenshot_attachment_id?: string, };
+export type WebReviewResult = { source_version: string, annotations: Array<WebReviewAnnotation>, };
 export type WorkbenchPackage = {
 /**
  * None for cancellation or an unavailable structured document.
@@ -52,7 +62,7 @@ result: WorkbenchResult | null, type: string, version: number,
  * Get this type's data schema with describe_workbench before creating a request.
  */
 data: WorkbenchData, };
-export type WorkbenchResult = { kind: string, } | { answers: Array<QuestionAnswer>, cancelled: boolean, } | { status: AnswerStatus, selected_option_id: string | null, } | DocumentReviewResult | Record<string, unknown>;
+export type WorkbenchResult = { kind: string, } | { answers: Array<QuestionAnswer>, cancelled: boolean, } | { status: AnswerStatus, selected_option_id: string | null, } | DocumentReviewResult | WebReviewResult | Record<string, unknown>;
 export type QuestionAnswer = { id: string, value: string, label: string, wasCustom: boolean,
 /**
  * One-based option index. Absent for custom input.

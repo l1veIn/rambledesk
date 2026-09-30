@@ -1,6 +1,6 @@
 # 工作台文档入口
 
-当前工作台采用第一方静态类型：共享请求、草稿、反馈列与提交生命周期，各类型拥有独立业务视图。新请求使用 `ramble`、`questions` 或 `document_review`；单题 `questions` 覆盖方案单选，旧 `single_choice` 仅保留合同兼容。
+当前工作台采用第一方静态类型：共享请求、草稿、反馈列与提交生命周期，各类型拥有独立业务视图。新请求使用 `ramble`、`questions`、`document_review` 或 `web_review`；单题 `questions` 覆盖方案单选，旧 `single_choice` 仅保留合同兼容。
 
 ## 阅读路径
 
@@ -12,6 +12,7 @@
 | 创建请求、发现类型、读取结果或修改 wire 合同 | [反馈协议](../PROTOCOL.md)；具体类型 schema 由 `describe_workbench` 提供 |
 | 判断当前已实现范围、扩展和验收边界 | [工作台实现状态](../WORKBENCH_EVOLUTION.md) |
 | 修改文稿锚点、批注、删除建议或整稿判断 | [文稿审阅](document-review.md) |
+| 接入网页、选择元素、批注和宽屏评审 | [网页评审](web-review.md) |
 | 修改正文、答案、批注的输入与异步回填 | [请求级共享输入](shared-input.md) |
 | 修改 Rambelle 首次引导、重看和本地记录 | [工作台使用引导](onboarding.md) |
 | 验证存储兼容或旧版本读取 | [数据兼容](../DATA_COMPATIBILITY.md) |

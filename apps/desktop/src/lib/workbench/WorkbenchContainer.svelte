@@ -12,6 +12,8 @@
 <script lang="ts">
   import { onMount, tick, type Snippet } from 'svelte'
   import { Pane, PaneGroup, PaneResizer } from 'paneforge'
+  import { Maximize2, Minimize2, PanelRight, FileText } from '@lucide/svelte'
+  import { Button } from '$lib/components/ui/button'
 
   import { Skeleton } from '$lib/components/ui/skeleton'
   import type { ApplicationTransport } from '$lib/application/applicationTransport'
@@ -45,6 +47,9 @@
     'serverPaths' | 'imagePaste'
   >
   export let loadingWorkspace = false
+  /** Presentation capabilities supplied by the composed view, independent of its contract. */
+  export let expandable = false
+  export let initiallyExpanded = false
   export let readOnly = false
   /** Editing is locked by a running operation (cooking, submitting, cancelling, approving). */
   export let locked = false
@@ -125,13 +130,32 @@
   let columnsPaneGroup: { setLayout: (layout: number[]) => void } | undefined
   let columnsLayoutReady = false
   let containerRoot: HTMLElement
+  let expanded = false
+  let feedbackVisible = false
+  let contextVisible = false
+  let layoutRequestId: string | undefined
+  $: if (workspace?.request.request_id !== layoutRequestId) {
+    layoutRequestId = workspace?.request.request_id
+    expanded = expandable && initiallyExpanded
+    feedbackVisible = false
+    contextVisible = false
+  }
+  $: if (!expandable) expanded = false
+
+  function handleExpandedKeydown(event: KeyboardEvent) {
+    if (event.key !== 'Escape' || event.defaultPrevented || !expanded) return
+    if (event.target instanceof HTMLElement && event.target.closest('dialog, [role="dialog"], [role="alertdialog"]')) return
+    event.preventDefault()
+    if (feedbackVisible) feedbackVisible = false
+    else expanded = false
+  }
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
   }
 
   function saveColumnsLayout(layout: number[]) {
-    if (!columnsLayoutReady || !$wideColumns) return
+    if (!columnsLayoutReady || !$wideColumns || expanded) return
     const width = feedbackWidthFromLayout(layout, columnsWidth)
     if (width !== null) {
       savePaneLayout(FEEDBACK_COLUMN_LAYOUT_KEY, [width, Math.max(0, Math.round(columnsWidth - width))])
@@ -195,9 +219,15 @@
   }
 </script>
 
+<svelte:window onkeydown={handleExpandedKeydown} />
+
 <section
   bind:this={containerRoot}
   data-workbench-scope
+  data-workbench-expanded={expanded}
+  class:workbench-expanded={expanded}
+  class:workbench-feedback-visible={feedbackVisible}
+  class:workbench-context-visible={contextVisible}
   class="workspace-panel relative flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background"
   style:--workspace-feedback-width={$wideColumns ? `${columnsLayout.feedback}%` : null}
 >
@@ -213,18 +243,32 @@
       </div>
     </div>
   {:else if workspace}
-    <div class="workspace-columns min-h-0 flex-1" bind:clientWidth={columnsWidth}>
+    {#if expandable}
+      <div class="flex shrink-0 flex-wrap items-center justify-end gap-2 border-b px-3 py-2" data-workbench-display-controls>
+        {#if expanded}
+          <span class="mr-auto min-w-0 truncate text-sm font-medium">{workspace.request.title}</span>
+          <Button variant="ghost" size="sm" aria-expanded={contextVisible}
+            onclick={() => contextVisible = !contextVisible}><FileText class="size-4" />{tr('Request context')}</Button>
+          <Button variant="outline" size="sm" aria-expanded={feedbackVisible} aria-controls="feedback-column-pane"
+            onclick={() => feedbackVisible = !feedbackVisible}><PanelRight class="size-4" />{tr('Overall feedback and submit')}</Button>
+        {/if}
+        <Button variant="outline" size="sm" aria-pressed={expanded} onclick={() => expanded = !expanded}>
+          {#if expanded}<Minimize2 class="size-4" />{tr('Return to split view')}{:else}<Maximize2 class="size-4" />{tr('Expand review')}{/if}
+        </Button>
+      </div>
+    {/if}
+    <div class="workspace-columns relative min-h-0 flex-1" bind:clientWidth={columnsWidth}>
       <PaneGroup
         bind:this={columnsPaneGroup}
         direction={$wideColumns ? 'horizontal' : 'vertical'}
-        class="h-full"
+        class="workbench-layout h-full"
         id="workspace-columns-split"
         onLayoutChange={saveColumnsLayout}
       >
         <Pane
           bind:this={workbenchPane}
           id="workbench-pane"
-          class="min-h-0 min-w-0 @container"
+          class="workbench-main-pane min-h-0 min-w-0 @container"
           collapsible={false}
           collapsedSize={TASK_BRIEF_MIN_SIZE}
           defaultSize={$wideColumns ? workbenchPanePercent : 100 - TASK_BRIEF_DEFAULT_SIZE}
@@ -241,7 +285,7 @@
 
         <Pane
           id="feedback-column-pane"
-          class="min-h-0 min-w-0"
+          class="workbench-feedback-pane min-h-0 min-w-0"
           minSize={$wideColumns ? feedbackMinPercent : FEEDBACK_PANE_MIN_PERCENT}
           defaultSize={$wideColumns ? feedbackPanePercent : TASK_BRIEF_DEFAULT_SIZE}
         >
@@ -316,3 +360,30 @@
     readKind="workspace"
   />
 {/if}
+
+<style>
+  .workbench-expanded {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    height: 100%;
+  }
+  .workbench-expanded :global(.workbench-layout) { flex-direction: row !important; }
+  .workbench-expanded :global(.workbench-main-pane) { flex: 1 1 100% !important; }
+  .workbench-expanded :global(.workbench-pane-resizer) { display: none; }
+  .workbench-expanded :global([data-request-context]) { display: none; }
+  .workbench-expanded.workbench-context-visible :global([data-request-context]) { display: block; }
+  .workbench-expanded :global([data-workbench-content]) { display: flex; flex-direction: column; overflow: auto; }
+  .workbench-expanded :global(.workbench-feedback-pane) {
+    display: none;
+    position: absolute;
+    inset: 0 0 0 auto;
+    z-index: 20;
+    width: min(420px, 100%);
+    flex: none !important;
+    background: var(--background);
+    border-left: 1px solid var(--border);
+    box-shadow: -8px 0 24px rgb(0 0 0 / 0.08);
+  }
+  .workbench-expanded.workbench-feedback-visible :global(.workbench-feedback-pane) { display: block; }
+</style>

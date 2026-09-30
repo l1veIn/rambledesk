@@ -45,3 +45,11 @@ export function questionAnswerVoiceTarget(state: VoiceInputState, questionId: st
     destination: { kind: 'question_answer', questionId, questionLabel },
   } : null
 }
+
+export function webReviewAnnotationVoiceTarget(state: VoiceInputState, annotationId: string, elementLabel: string): SpeechTarget | null {
+  const document = state.documentTarget
+  return document && document.requestId === state.requestId ? {
+    requestId: document.requestId, requestTitle: document.requestTitle,
+    destination: { kind: 'web_review_annotation', annotationId, elementLabel },
+  } : null
+}

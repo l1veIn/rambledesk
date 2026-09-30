@@ -5,6 +5,7 @@ mod managed_feedback;
 mod token;
 mod web_access;
 mod web_access_server;
+mod web_review_bridge;
 mod web_security;
 mod web_session;
 mod workbench_discovery;
@@ -625,6 +626,7 @@ pub async fn start_server_with_managed(
         .nest(MCP_PATH, mcp)
         .nest(API_PATH, api)
         .layer(middleware::from_fn_with_state(auth, require_bearer))
+        .merge(web_review_bridge::router(address.to_string()))
         .merge(managed_feedback::managed_router(managed_feedback.clone()));
 
     let task_cancellation = cancellation.clone();

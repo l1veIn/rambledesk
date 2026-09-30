@@ -9,6 +9,7 @@ pub enum WorkbenchKind {
     Questions,
     SingleChoice,
     DocumentReview,
+    WebReview,
 }
 
 impl WorkbenchKind {
@@ -17,6 +18,7 @@ impl WorkbenchKind {
         Self::Questions,
         Self::SingleChoice,
         Self::DocumentReview,
+        Self::WebReview,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -25,6 +27,7 @@ impl WorkbenchKind {
             Self::Questions => "questions",
             Self::SingleChoice => "single_choice",
             Self::DocumentReview => "document_review",
+            Self::WebReview => "web_review",
         }
     }
 
@@ -44,7 +47,7 @@ impl WorkbenchKind {
     pub fn uses_legacy_action_identity(self) -> bool {
         match self {
             Self::Ramble | Self::Questions | Self::SingleChoice => true,
-            Self::DocumentReview => false,
+            Self::DocumentReview | Self::WebReview => false,
         }
     }
 }
@@ -55,6 +58,7 @@ pub enum ValidatedWorkbench<'a> {
     Questions(&'a QuestionsData),
     SingleChoice(&'a SingleChoiceData),
     DocumentReview(&'a DocumentReviewData),
+    WebReview(&'a WebReviewData),
 }
 
 impl ValidatedWorkbench<'_> {
@@ -64,6 +68,7 @@ impl ValidatedWorkbench<'_> {
             Self::Questions(_) => WorkbenchKind::Questions,
             Self::SingleChoice(_) => WorkbenchKind::SingleChoice,
             Self::DocumentReview(_) => WorkbenchKind::DocumentReview,
+            Self::WebReview(_) => WorkbenchKind::WebReview,
         }
     }
 
@@ -88,7 +93,7 @@ impl ValidatedWorkbench<'_> {
                     instruction: option.label.clone(),
                 })
                 .collect(),
-            Self::DocumentReview(_) => Vec::new(),
+            Self::DocumentReview(_) | Self::WebReview(_) => Vec::new(),
         }
     }
 }
@@ -213,6 +218,21 @@ pub fn validate_workbench(
                 ));
             }
             Ok(ValidatedWorkbench::DocumentReview(data))
+        }
+        (WorkbenchKind::WebReview, WorkbenchData::WebReview(data)) => {
+            text("web_review.title", &data.title, 200)?;
+            text("web_review.source_version", &data.source_version, 128)?;
+            if !super::web_review::web_review_url_valid(&data.url) {
+                return Err(ApplicationError::invalid_argument(
+                    "web_review.url must be an HTTP(S) URL without credentials, whitespace or control characters; maximum 8192 characters",
+                ));
+            }
+            if !super::web_review::web_review_viewport_valid(&data.viewport) {
+                return Err(ApplicationError::invalid_argument(
+                    "web_review.viewport must be 240–7680 pixels wide and 200–4320 pixels high",
+                ));
+            }
+            Ok(ValidatedWorkbench::WebReview(data))
         }
         _ => Err(ApplicationError::invalid_argument(
             "workbench.data does not match its type; call describe_workbench for its schema",

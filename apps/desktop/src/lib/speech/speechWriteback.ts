@@ -21,7 +21,8 @@ type ReviewWriteReceipt = WriteReceiptBase & {
   kind?: undefined; annotationId: string; field: 'body' | 'replacement'; sourceVersion: string
 }
 type QuestionWriteReceipt = WriteReceiptBase & { kind: 'question_answer'; questionId: string }
-type WriteReceipt = ReviewWriteReceipt | QuestionWriteReceipt
+type WebReviewWriteReceipt = WriteReceiptBase & { kind: 'web_review_annotation'; annotationId: string }
+type WriteReceipt = ReviewWriteReceipt | QuestionWriteReceipt | WebReviewWriteReceipt
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
 
 /** Keep the existing document operation and its speech segment deduplication. */
@@ -35,6 +36,7 @@ function isWriteReceipt(value: unknown): value is WriteReceipt {
   if (!record(value) || typeof value.id !== 'string' || typeof value.requestId !== 'string' || typeof value.text !== 'string'
     || !Array.isArray(value.mergedIds) || !value.mergedIds.every((id) => typeof id === 'string')) return false
   if (value.kind === 'question_answer') return typeof value.questionId === 'string'
+  if (value.kind === 'web_review_annotation') return typeof value.annotationId === 'string'
   return value.kind === undefined && typeof value.annotationId === 'string'
     && (value.field === 'body' || value.field === 'replacement') && typeof value.sourceVersion === 'string'
 }
@@ -50,6 +52,8 @@ function readReceipts(value: unknown): WriteReceipt[] {
 function sameReceiptDestination(first: WriteReceipt, second: WriteReceipt): boolean {
   if (first.kind === 'question_answer' || second.kind === 'question_answer') return first.kind === 'question_answer'
     && second.kind === 'question_answer' && first.questionId === second.questionId
+  if (first.kind === 'web_review_annotation' || second.kind === 'web_review_annotation') return first.kind === 'web_review_annotation'
+    && second.kind === 'web_review_annotation' && first.annotationId === second.annotationId
   return first.annotationId === second.annotationId && first.field === second.field && first.sourceVersion === second.sourceVersion
 }
 
@@ -99,7 +103,9 @@ export function applySpeechWriteback(workspace: SpeechWriteWorkspace, input: Spe
   }
   const receipt: WriteReceipt = destination.kind === 'question_answer'
     ? { ...receiptBase, kind: 'question_answer', questionId: destination.questionId }
-    : { ...receiptBase, annotationId: destination.annotationId, field: destination.field, sourceVersion: destination.sourceVersion }
+    : destination.kind === 'web_review_annotation'
+      ? { ...receiptBase, kind: 'web_review_annotation', annotationId: destination.annotationId }
+      : { ...receiptBase, annotationId: destination.annotationId, field: destination.field, sourceVersion: destination.sourceVersion }
   if (receiptAlreadyApplied(receipts, receipt)) {
     return { documentJson: workspace.draft.document_json!, bodyMarkdown: workspace.draft.body_markdown }
   }

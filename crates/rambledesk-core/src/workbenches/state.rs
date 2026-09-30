@@ -31,6 +31,9 @@ pub enum WorkbenchState {
         annotations: Vec<ReviewAnnotation>,
         paragraph_marks: Vec<ParagraphMark>,
     },
+    WebReview {
+        annotations: Vec<WebReviewAnnotation>,
+    },
 }
 
 /// Resolve values against immutable request data; never trust client display labels.
@@ -137,6 +140,21 @@ pub fn workbench_result(
                 paragraph_marks: paragraph_marks.clone(),
             }))
         }
+        (ValidatedWorkbench::WebReview(data), Some(WorkbenchState::WebReview { annotations }))
+            if super::web_review::web_review_annotations_valid(annotations) =>
+        {
+            Some(WorkbenchResult::WebReview(WebReviewResult {
+                source_version: data.source_version.clone(),
+                annotations: annotations.clone(),
+            }))
+        }
+        // General feedback can be submitted without selecting any elements.
+        (ValidatedWorkbench::WebReview(data), None) => {
+            Some(WorkbenchResult::WebReview(WebReviewResult {
+                source_version: data.source_version.clone(),
+                annotations: Vec::new(),
+            }))
+        }
         _ => None,
     }
 }
@@ -150,6 +168,7 @@ pub fn workbench_result_has_input(package: &WorkbenchPackage) -> bool {
             selected_option_id, ..
         }) => selected_option_id.is_some(),
         Some(WorkbenchResult::DocumentReview(_)) => true,
+        Some(WorkbenchResult::WebReview(result)) => !result.annotations.is_empty(),
         _ => false,
     }
 }
@@ -167,6 +186,7 @@ pub fn workbench_result_complete(package: &WorkbenchPackage) -> bool {
             }),
         ) => true,
         (WorkbenchData::DocumentReview(_), Some(WorkbenchResult::DocumentReview(_))) => true,
+        (WorkbenchData::WebReview(_), Some(WorkbenchResult::WebReview(_))) => true,
         _ => false,
     }
 }

@@ -6,10 +6,14 @@ mod state;
 #[cfg(test)]
 mod tests;
 mod validation;
+mod web_review;
+#[cfg(test)]
+mod web_review_tests;
 pub use document_review::*;
 pub use draft::*;
 pub use state::*;
 pub use validation::*;
+pub use web_review::*;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -70,6 +74,11 @@ fn decode_workbench_spec(kind: String, version: u32, raw: serde_value::Value) ->
             .deserialize_into()
             .ok()
             .map(WorkbenchData::DocumentReview),
+        Some(WorkbenchKind::WebReview) => raw
+            .clone()
+            .deserialize_into()
+            .ok()
+            .map(WorkbenchData::WebReview),
         None => None,
     };
     let mut spec = WorkbenchSpec {
@@ -185,6 +194,7 @@ pub enum WorkbenchData {
     Questions(QuestionsData),
     SingleChoice(SingleChoiceData),
     DocumentReview(DocumentReviewData),
+    WebReview(WebReviewData),
     /// Preserve future request data when reading a library created by a newer app.
     /// Validation rejects this variant for creation and editing.
     Unknown(#[ts(type = "Record<string, unknown>")] serde_value::Value),
@@ -228,6 +238,7 @@ pub enum WorkbenchResult {
         selected_option_id: Option<String>,
     },
     DocumentReview(DocumentReviewResult),
+    WebReview(WebReviewResult),
     /// Opaque published results from future contracts are readable, never used
     /// to authorize a submission under a contract this app does not understand.
     Unknown(

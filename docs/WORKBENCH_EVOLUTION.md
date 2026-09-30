@@ -1,17 +1,18 @@
 # 工作台实现状态与维护边界
 
-更新日期：2026-09-26。本文记录当前范围与后续扩展边界；具体字段、所有权和交互分别由[反馈协议](PROTOCOL.md)、[架构](ARCHITECTURE.md)及[工作台文档](workbench/README.md)维护，不在这里重复定义。实现存在不代表所有设备或宿主已经完成人工验收。
+更新日期：2026-09-30。本文记录当前范围与后续扩展边界；具体字段、所有权和交互分别由[反馈协议](PROTOCOL.md)、[架构](ARCHITECTURE.md)及[工作台文档](workbench/README.md)维护，不在这里重复定义。实现存在不代表所有设备或宿主已经完成人工验收。
 
 ## 当前实现
 
 | 能力 | 当前范围 | 详细入口 |
 | --- | --- | --- |
-| 第一方类型 | `ramble`、`questions`、`document_review` 使用独立视图与静态注册。新单选场景使用单题问答。 | [协议](PROTOCOL.md)、[ADR 008](adr/008-typed-human-feedback-workbenches.md) |
+| 第一方类型 | `ramble`、`questions`、`document_review`、`web_review` 使用独立视图与静态注册。新单选场景使用单题问答。 | [协议](PROTOCOL.md)、[ADR 008](adr/008-typed-human-feedback-workbenches.md) |
 | 工作区布局 | 工作台占较宽主列；情况说明和请求材料固定在顶部限高区域，业务内容独立滚动。紧凑反馈列承载补充说明、保存状态和统一提交，可拖动并保存列宽。 | [架构](ARCHITECTURE.md) |
 | 草稿与结果 | 正文和类型状态同 revision/CAS 保存，服务端验证同一个冻结快照后发布不可变反馈包。 | [协议](PROTOCOL.md) |
 | 共享输入 | 正文、自定义回答、批注意见和建议措辞共用 TipTap 基础与请求级语音、剪贴板、截图、附件能力。每个字段有工具栏，附件跟随发起字段。 | [共享输入](workbench/shared-input.md) |
 | 全局语音整理 | Rambelle 状态区显示头像、气泡及有待整理语音时的按钮；一次整理本请求各字段的语音并回填原处。 | [共享输入](workbench/shared-input.md) |
 | 文稿审阅 | 只读原稿、单段文字锚点、每段可续写批注、建议改写、可恢复删除线、显式整稿判断。 | [文稿审阅](workbench/document-review.md) |
+| 网页评审 | 真实网页浏览／元素选择、就地意见、编号与集中回看，保留 URL、视口及元素信息；开发页通过桥接脚本接入。默认展开评审，整体意见与提交按需浮出。 | [网页评审](workbench/web-review.md) |
 | 类型发现 | `list_workbenches` / `describe_workbench` 提供用途目录与按需 schema；MCP、Generic JSON 和托管命令复用同一合同。 | [协议](PROTOCOL.md)、[ACP 指南](ACP_MANAGED_SESSIONS.md) |
 | 首次引导 | 自由反馈与文稿审阅已有 Rambelle 聚光步骤，按类型和引导版本在客户端记录，可跳过或重看。 | [首次引导](workbench/onboarding.md) |
 

@@ -9,7 +9,7 @@ async fn structured_field_attachment_references_publish_with_resolvable_manifest
         .await
         .unwrap();
     let app = store.clone().into_application();
-    for kind in ["questions", "document_review"] {
+    for kind in ["questions", "document_review", "web_review"] {
         let mut input = workspace.request(Uuid::now_v7().to_string());
         input.actions.clear();
         input.workbench = Some(serde_json::from_value(if kind == "questions" {
@@ -17,9 +17,14 @@ async fn structured_field_attachment_references_publish_with_resolvable_manifest
                 "id":"q","prompt":"What should change?","allowOther":true,
                 "options":[{"value":"a","label":"A"},{"value":"b","label":"B"}]
             }]}})
-        } else {
+        } else if kind == "document_review" {
             json!({"type":"document_review","version":1,"data":{
                 "title":"Script","source_version":"v1","paragraphs":[{"id":"p","text":"Original manuscript"}]
+            }})
+        } else {
+            json!({"type":"web_review","version":1,"data":{
+                "title":"Homepage","url":"http://localhost:5173/","source_version":"v1",
+                "viewport":{"width":1440,"height":900}
             }})
         }).unwrap());
         let created = app.request_feedback(input).await.unwrap();
@@ -37,10 +42,17 @@ async fn structured_field_attachment_references_publish_with_resolvable_manifest
         let reference = format!("[reference.txt](attachment://{id})");
         let state = if kind == "questions" {
             json!({"type":"questions","answers":[{"id":"q","value":reference,"label":reference,"wasCustom":true}]})
-        } else {
+        } else if kind == "document_review" {
             json!({"type":"document_review","verdict":"changes_requested","paragraph_marks":[],"annotations":[{
                 "id":"a","paragraph_id":"p","kind":"comment","body":reference,"replacement":null,
                 "start":null,"end":null,"quote":null
+            }]})
+        } else {
+            json!({"type":"web_review","annotations":[{
+                "id":"a","page_url":"http://localhost:5173/","viewport":{"width":1440,"height":900},
+                "element":{"selector":"button","tag_name":"button","text":"Continue",
+                    "rect":{"x":20,"y":30,"width":100,"height":40}},
+                "body":reference,"screenshot_attachment_id":id
             }]})
         };
         let saved = app.save_feedback_draft(SaveDraftInput {
