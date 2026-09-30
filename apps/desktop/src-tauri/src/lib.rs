@@ -118,6 +118,7 @@ use window::{
 };
 
 mod commands;
+mod terminal_commands;
 
 use commands::*;
 
@@ -343,6 +344,11 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            terminal_commands::open_terminal_session,
+            terminal_commands::read_terminal_session,
+            terminal_commands::write_terminal_session,
+            terminal_commands::resize_terminal_session,
+            terminal_commands::stop_terminal_session,
             managed_commands::list_agent_configs,
             managed_commands::save_agent_config,
             managed_commands::delete_agent_config,

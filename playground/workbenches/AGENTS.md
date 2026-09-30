@@ -4,6 +4,7 @@
 
 - 只把 fixtures/ 和 materials/ 作为不可变测试输入；运行产物只写入 .runs/。
 - 网页样例服务只读取仓库固定 public 页面与 bridge；用 web-review-server.mjs 管理本轮服务，不安装依赖或创建另一份页面。只在网页请求发送前写入实际 URL，发送后的 URL 和请求 ID 均不可改写。
+- 终端样例使用固定 materials/terminal-demo.mjs，prepare 将 cwd 解析为本目录的绝对路径；不安装依赖或改写示例。只测终端用 prepare.mjs new terminal，不把模拟浏览器终端预览记为真实 CLI 验收。
 - 使用当前 RambleDesk 托管会话提供的反馈命令，不另找宿主会话或外部服务。
 - 每次只发一个请求，成功交接后结束当前回合；等待人类提交触发续接。
 - 不代替人类填写答案，不伪造测试结果，不为跑通流程修改应用源码。

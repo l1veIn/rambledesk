@@ -1,9 +1,10 @@
-import type { ParagraphMark, QuestionAnswer, ReviewAnnotation, WebReviewAnnotation, WorkbenchState } from './generated/feedback'
+import type { ParagraphMark, QuestionAnswer, ReviewAnnotation, TerminalTrialSession, WebReviewAnnotation, WorkbenchState } from './generated/feedback'
 
 type QuestionsState = Extract<WorkbenchState, { type: 'questions' }>
 type SingleChoiceState = Extract<WorkbenchState, { type: 'single_choice' }>
 type DocumentReviewState = Extract<WorkbenchState, { type: 'document_review' }>
 type WebReviewState = Extract<WorkbenchState, { type: 'web_review' }>
+type TerminalState = Extract<WorkbenchState, { type: 'terminal' }>
 
 const record = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value)
@@ -70,4 +71,16 @@ function webReviewAnnotation(value: unknown): value is WebReviewAnnotation {
 export function readWebReviewState(value: unknown): WebReviewState | null {
   return record(value) && value.type === 'web_review' && Array.isArray(value.annotations)
     && value.annotations.every(webReviewAnnotation) ? value as WebReviewState : null
+}
+
+function terminalSession(value: unknown): value is TerminalTrialSession {
+  return record(value) && text(value.id) && text(value.cwd) && text(value.shell)
+    && Number.isInteger(value.cols) && Number.isInteger(value.rows)
+    && ['running', 'exited', 'stopped'].includes(value.status as string) && nullableInteger(value.exit_code)
+    && text(value.output) && text(value.screen) && typeof value.truncated === 'boolean'
+}
+
+export function readTerminalState(value: unknown): TerminalState | null {
+  return record(value) && value.type === 'terminal' && Array.isArray(value.sessions) && value.sessions.every(terminalSession)
+    ? value as TerminalState : null
 }

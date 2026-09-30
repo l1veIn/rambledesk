@@ -34,6 +34,9 @@ pub enum WorkbenchState {
     WebReview {
         annotations: Vec<WebReviewAnnotation>,
     },
+    Terminal {
+        sessions: Vec<TerminalTrialSession>,
+    },
 }
 
 /// Resolve values against immutable request data; never trust client display labels.
@@ -155,6 +158,18 @@ pub fn workbench_result(
                 annotations: Vec::new(),
             }))
         }
+        (ValidatedWorkbench::Terminal(_), Some(WorkbenchState::Terminal { sessions }))
+            if super::terminal::terminal_sessions_valid(sessions) =>
+        {
+            Some(WorkbenchResult::Terminal(TerminalResult {
+                sessions: sessions.clone(),
+            }))
+        }
+        (ValidatedWorkbench::Terminal(_), None) => {
+            Some(WorkbenchResult::Terminal(TerminalResult {
+                sessions: Vec::new(),
+            }))
+        }
         _ => None,
     }
 }
@@ -169,6 +184,9 @@ pub fn workbench_result_has_input(package: &WorkbenchPackage) -> bool {
         }) => selected_option_id.is_some(),
         Some(WorkbenchResult::DocumentReview(_)) => true,
         Some(WorkbenchResult::WebReview(result)) => !result.annotations.is_empty(),
+        // Startup output is context, not a reviewer's opinion. Terminal trials
+        // require feedback in the shared body, independently of captured logs.
+        Some(WorkbenchResult::Terminal(_)) => false,
         _ => false,
     }
 }
@@ -187,6 +205,7 @@ pub fn workbench_result_complete(package: &WorkbenchPackage) -> bool {
         ) => true,
         (WorkbenchData::DocumentReview(_), Some(WorkbenchResult::DocumentReview(_))) => true,
         (WorkbenchData::WebReview(_), Some(WorkbenchResult::WebReview(_))) => true,
+        (WorkbenchData::Terminal(_), Some(WorkbenchResult::Terminal(_))) => true,
         _ => false,
     }
 }

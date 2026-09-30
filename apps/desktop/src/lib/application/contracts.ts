@@ -2,6 +2,7 @@ import type { BrowseProjectDirectoriesInput, ProjectDirectoryListing, ProjectDir
 import type { ListManagedSessionActivityInput, ManagedSessionActivityPage } from '$lib/generated/feedback'
 import type { SendManagedPromptContentInput } from '$lib/generated/feedback'
 import type { SetManagedSessionConfigInput } from '$lib/generated/feedback'
+import type { OpenTerminalSessionInput, ReadTerminalSessionInput, WriteTerminalSessionInput, ResizeTerminalSessionInput, TerminalSessionInput, TerminalSessionSnapshot } from '$lib/generated/feedback'
 import type { AgentCatalogEntry, AgentInspection, CatalogAgentInput, ResolveCatalogAgentInput, AgentInstallJob, InstallAgentInput, AgentInstallJobInput } from '../generated/feedback'
 import {
   APPLICATION_ERROR_CODES,
@@ -63,6 +64,11 @@ export type ApplicationAddAttachmentInput = Omit<AddAttachmentInput, 'contents'>
  * never a Tauri `{ input }` envelope or camelCase invoke argument object.
  */
 export type ApplicationCommandMap = Readonly<{
+  openTerminalSession: ApplicationCommandContract<OpenTerminalSessionInput, TerminalSessionSnapshot>
+  readTerminalSession: ApplicationCommandContract<ReadTerminalSessionInput, TerminalSessionSnapshot>
+  writeTerminalSession: ApplicationCommandContract<WriteTerminalSessionInput, TerminalSessionSnapshot>
+  resizeTerminalSession: ApplicationCommandContract<ResizeTerminalSessionInput, TerminalSessionSnapshot>
+  stopTerminalSession: ApplicationCommandContract<TerminalSessionInput, TerminalSessionSnapshot>
   browseProjectDirectories: ApplicationCommandContract<BrowseProjectDirectoriesInput, ProjectDirectoryListing>
   listAvailableAgents: ApplicationCommandContract<undefined, AgentCatalogEntry[]>
   inspectAgentInstallation: ApplicationCommandContract<CatalogAgentInput, AgentInspection>

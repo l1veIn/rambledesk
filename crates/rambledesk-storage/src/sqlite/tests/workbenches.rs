@@ -6,6 +6,7 @@ use rambledesk_core::{
 use serde_json::{Value, json};
 
 mod attachments;
+mod terminal;
 mod web_review;
 
 // Compatibility fixtures must not rely on the catalog for new requests.
@@ -51,7 +52,13 @@ fn discovery_is_paged_and_request_schema_does_not_embed_each_type() {
             .iter()
             .map(|entry| entry.kind)
             .collect::<Vec<_>>(),
-        ["ramble", "questions", "document_review", "web_review"]
+        [
+            "ramble",
+            "questions",
+            "document_review",
+            "web_review",
+            "terminal"
+        ]
     );
     assert_eq!(catalog.next_offset, None);
     let page = list_workbenches(&ListWorkbenchesInput {
@@ -101,7 +108,13 @@ fn discovery_is_paged_and_request_schema_does_not_embed_each_type() {
             .message()
             .contains("one question with allowOther:false")
     );
-    for kind in ["ramble", "questions", "document_review", "web_review"] {
+    for kind in [
+        "ramble",
+        "questions",
+        "document_review",
+        "web_review",
+        "terminal",
+    ] {
         let description = describe_workbench(&DescribeWorkbenchInput {
             kind: kind.into(),
             version: None,
@@ -119,7 +132,7 @@ fn discovery_is_paged_and_request_schema_does_not_embed_each_type() {
             rambledesk_core::workbench_actions(&roundtrip)
                 .unwrap()
                 .is_empty(),
-            matches!(kind, "document_review" | "web_review")
+            matches!(kind, "document_review" | "web_review" | "terminal")
         );
     }
 }

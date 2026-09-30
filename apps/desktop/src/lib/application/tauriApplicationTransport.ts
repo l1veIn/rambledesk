@@ -18,6 +18,11 @@ import { APPLICATION_EVENTS_STREAM } from './applicationEvents'
 import { diagnosticErrorCategory, recordClientDiagnostic } from '../diagnostics/clientDiagnostics'
 
 export const TAURI_APPLICATION_COMMANDS = {
+  openTerminalSession: 'open_terminal_session',
+  readTerminalSession: 'read_terminal_session',
+  writeTerminalSession: 'write_terminal_session',
+  resizeTerminalSession: 'resize_terminal_session',
+  stopTerminalSession: 'stop_terminal_session',
   browseProjectDirectories: 'browse_project_directories',
   listAvailableAgents: 'list_available_agents',
   inspectAgentInstallation: 'inspect_agent_installation',

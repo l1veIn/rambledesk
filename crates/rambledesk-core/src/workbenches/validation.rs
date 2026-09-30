@@ -10,6 +10,7 @@ pub enum WorkbenchKind {
     SingleChoice,
     DocumentReview,
     WebReview,
+    Terminal,
 }
 
 impl WorkbenchKind {
@@ -19,6 +20,7 @@ impl WorkbenchKind {
         Self::SingleChoice,
         Self::DocumentReview,
         Self::WebReview,
+        Self::Terminal,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -28,6 +30,7 @@ impl WorkbenchKind {
             Self::SingleChoice => "single_choice",
             Self::DocumentReview => "document_review",
             Self::WebReview => "web_review",
+            Self::Terminal => "terminal",
         }
     }
 
@@ -47,7 +50,7 @@ impl WorkbenchKind {
     pub fn uses_legacy_action_identity(self) -> bool {
         match self {
             Self::Ramble | Self::Questions | Self::SingleChoice => true,
-            Self::DocumentReview | Self::WebReview => false,
+            Self::DocumentReview | Self::WebReview | Self::Terminal => false,
         }
     }
 }
@@ -59,6 +62,7 @@ pub enum ValidatedWorkbench<'a> {
     SingleChoice(&'a SingleChoiceData),
     DocumentReview(&'a DocumentReviewData),
     WebReview(&'a WebReviewData),
+    Terminal(&'a TerminalData),
 }
 
 impl ValidatedWorkbench<'_> {
@@ -69,6 +73,7 @@ impl ValidatedWorkbench<'_> {
             Self::SingleChoice(_) => WorkbenchKind::SingleChoice,
             Self::DocumentReview(_) => WorkbenchKind::DocumentReview,
             Self::WebReview(_) => WorkbenchKind::WebReview,
+            Self::Terminal(_) => WorkbenchKind::Terminal,
         }
     }
 
@@ -93,7 +98,7 @@ impl ValidatedWorkbench<'_> {
                     instruction: option.label.clone(),
                 })
                 .collect(),
-            Self::DocumentReview(_) | Self::WebReview(_) => Vec::new(),
+            Self::DocumentReview(_) | Self::WebReview(_) | Self::Terminal(_) => Vec::new(),
         }
     }
 }
@@ -233,6 +238,14 @@ pub fn validate_workbench(
                 ));
             }
             Ok(ValidatedWorkbench::WebReview(data))
+        }
+        (WorkbenchKind::Terminal, WorkbenchData::Terminal(data)) => {
+            if !super::terminal::terminal_input_valid(data) {
+                return Err(ApplicationError::invalid_argument(
+                    "terminal requires cwd, optional shell and 1–20 uniquely identified, single-line suggested commands with visible title and command",
+                ));
+            }
+            Ok(ValidatedWorkbench::Terminal(data))
         }
         _ => Err(ApplicationError::invalid_argument(
             "workbench.data does not match its type; call describe_workbench for its schema",

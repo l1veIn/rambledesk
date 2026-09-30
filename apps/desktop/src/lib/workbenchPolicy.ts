@@ -1,10 +1,11 @@
-import type { DocumentReviewData, Question, QuestionAnswer, QuestionsData, SingleChoiceData, WebReviewData, WorkbenchSpec, WorkbenchState } from './generated/feedback'
+import type { DocumentReviewData, Question, QuestionAnswer, QuestionsData, SingleChoiceData, TerminalData, WebReviewData, WorkbenchSpec, WorkbenchState } from './generated/feedback'
 import { hasReviewInput, validateReviewState } from './workbench/document-review/reviewModel'
 import { hasWebReviewInput, validateWebReviewState } from './workbench/web-review/reviewModel'
-import { validDocumentReviewInput, validQuestionsInput, validRambleInput, validSingleChoiceInput, validWebReviewInput } from './workbenchInputValidation'
-import { readDocumentReviewState, readQuestionsState, readSingleChoiceState, readWebReviewState } from './workbenchStateDecoders'
+import { validDocumentReviewInput, validQuestionsInput, validRambleInput, validSingleChoiceInput, validTerminalInput, validWebReviewInput } from './workbenchInputValidation'
+import { readDocumentReviewState, readQuestionsState, readSingleChoiceState, readTerminalState, readWebReviewState } from './workbenchStateDecoders'
+import { hasTerminalInput, validateTerminalState } from './workbench/terminalModel'
 
-export type WorkbenchType = 'ramble' | 'questions' | 'single_choice' | 'document_review' | 'web_review'
+export type WorkbenchType = 'ramble' | 'questions' | 'single_choice' | 'document_review' | 'web_review' | 'terminal'
 type Policy = {
   type: WorkbenchType
   accepts: (data: Record<string, unknown>) => boolean
@@ -59,6 +60,15 @@ const policies: Record<WorkbenchType, Policy> = {
     hasInput: (spec, state) => hasWebReviewInput(spec.data as WebReviewData, state?.type === 'web_review' ? state : null),
     complete: (spec, state) => validateWebReviewState(spec.data as WebReviewData, state?.type === 'web_review' ? state : null) === null,
     submissionMessage: (spec, state) => validateWebReviewState(spec.data as WebReviewData, state?.type === 'web_review' ? state : null),
+  },
+  terminal: {
+    type: 'terminal', accepts: validTerminalInput,
+    readState: readTerminalState,
+    hasInput: (spec, state) => hasTerminalInput(spec.data as TerminalData, state?.type === 'terminal' ? state : null),
+    complete: (spec, state) => (!state || state.type === 'terminal')
+      && validateTerminalState(spec.data as TerminalData, state?.type === 'terminal' ? state : null) === null,
+    submissionMessage: (spec, state) => state && state.type !== 'terminal' ? 'Invalid terminal trial state.'
+      : validateTerminalState(spec.data as TerminalData, state?.type === 'terminal' ? state : null),
   },
 }
 

@@ -4,7 +4,7 @@
   the layout, the feedback column and the submission flow live in the container.
 -->
 <script lang="ts">
-  import type { Snippet } from 'svelte'
+  import { onMount, tick, type Snippet } from 'svelte'
   import { writable } from 'svelte/store'
   import type { JSONContent } from '@tiptap/core'
   import type { ApplicationTransport } from '$lib/application/applicationTransport'
@@ -59,6 +59,7 @@
   export let reviewMode = false
   export let onOpenReview: (() => void) | undefined = undefined
   export let onReturnToWorkbench: (() => void) | undefined = undefined
+  export let onTerminalBusyChange: (requestId: string, busy: boolean) => void = () => {}
   export let workspace: FeedbackWorkspaceView | null = null
   export let feedbackResult: FeedbackResultView | null = null
   export let draftBody = ''
@@ -131,6 +132,9 @@
   })
 
   let container: WorkbenchContainer
+  let registeredWorkbench: RegisteredWorkbench
+  let mounted = false
+  onMount(() => { mounted = true; return () => { mounted = false } })
   let interactionState: WorkbenchState | null = null
   let currentSnapshot: FeedbackDraftSnapshot = { documentJson: '{"schemaVersion":2,"doc":{"type":"doc","content":[]}}', bodyMarkdown: '' }
   $: loadDraft(workspace?.request.request_id, draftDocumentJson ?? workspace?.draft.document_json, editorEpoch)
@@ -153,6 +157,19 @@
 
   export function applyDraftOperation(operation: DraftOperation): boolean {
     return container?.applyDraftOperation(operation) ?? false
+  }
+
+  export async function prepareSubmission(requestId: string): Promise<boolean> {
+    if (!mounted || interactionLocked || feedbackReadOnly || workspace?.request.request_id !== requestId || !registeredWorkbench) return false
+    if (!await registeredWorkbench.prepareSubmission(requestId)) return false
+    await tick()
+    return mounted && workspace?.request.request_id === requestId
+  }
+
+  function quoteTerminalOutput(text: string) {
+    if (interactionLocked || !text.trim()) return
+    container?.applyDraftOperation({ kind: 'appendClipboardText', text,
+      label: workspace?.request.title ?? 'Terminal output', action: null })
   }
 
   export function pendingSpeechSegments(): SpeechCleanupSegment[] {
@@ -180,7 +197,7 @@
   <WorkbenchContainer
     bind:this={container}
     {reviewMode}
-    interactivePreview={workspace?.workbench?.type === 'web_review'}
+    interactivePreview={workspace?.workbench?.type === 'web_review' || workspace?.workbench?.type === 'terminal'}
     {onReturnToWorkbench}
     {workspace}
     {transport}
@@ -232,8 +249,11 @@
     {#snippet workbench()}
       {#if workspace}
         <RegisteredWorkbench
+          bind:this={registeredWorkbench}
           {workspace}
-          onOpenReview={!reviewMode && !unsupported && workspace.workbench?.type === 'web_review' ? onOpenReview : undefined}
+          onOpenReview={!reviewMode && !unsupported && (workspace.workbench?.type === 'web_review' || workspace.workbench?.type === 'terminal') ? onOpenReview : undefined}
+          onQuote={quoteTerminalOutput}
+          {onTerminalBusyChange}
           {transport}
           {capabilities}
           {resolveHostProfile}

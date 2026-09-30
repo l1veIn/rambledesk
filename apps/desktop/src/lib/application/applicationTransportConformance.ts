@@ -8,6 +8,11 @@ import type {
 } from './contracts'
 
 export const APPLICATION_CONFORMANCE_INPUTS = {
+  openTerminalSession: { request_id: 'request-1', cols: 80, rows: 24 },
+  readTerminalSession: { request_id: 'request-1', session_id: 'terminal-1', after_sequence: null },
+  writeTerminalSession: { request_id: 'request-1', session_id: 'terminal-1', data: 'hello\r' },
+  resizeTerminalSession: { request_id: 'request-1', session_id: 'terminal-1', cols: 100, rows: 30 },
+  stopTerminalSession: { request_id: 'request-1', session_id: 'terminal-1' },
   browseProjectDirectories: { path: '/project' },
   setManagedSessionConfig: { session_id: 'local-session-1', change: { config_id: 'session-mode', value: { type: 'select', value: 'ask' } } },
   sendManagedPromptContent: { session_id: 'local-session-1', text: 'Read this', content: [{ type: 'resource_link', uri: 'file:///project/main.ts', name: 'main.ts', mime_type: 'text/typescript' }] },
@@ -161,7 +166,7 @@ export function runApplicationTransportConformance(
   describe(`${implementationName} ApplicationTransport conformance`, () => {
     it('maps all query mutation multipart binary and void operations', async () => {
       const fixture = createFixture()
-      expect(APPLICATION_COMMAND_NAMES).toHaveLength(50)
+      expect(APPLICATION_COMMAND_NAMES).toHaveLength(55)
 
       for (const [index, name] of APPLICATION_COMMAND_NAMES.entries()) {
         const input = APPLICATION_CONFORMANCE_INPUTS[name]

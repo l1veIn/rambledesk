@@ -11,6 +11,8 @@ use rambledesk_local_server::{AccessToken, ServerConfig, start_server};
 mod application_api_support;
 #[path = "application_api/project_directories.rs"]
 mod project_directories;
+#[path = "application_api/terminal.rs"]
+mod terminal;
 use application_api_support::start_application_server;
 
 const TEST_TOKEN: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";

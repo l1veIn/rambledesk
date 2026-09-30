@@ -36,6 +36,8 @@
     "@tiptap/markdown": "^3.29.2",
     "@tiptap/pm": "^3.29.2",
     "@tiptap/starter-kit": "^3.29.2",
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/xterm": "6.0.0",
     "ai": "^7.0.48",
     "marked": "17.0.6",
     "paneforge": "1.0.2",

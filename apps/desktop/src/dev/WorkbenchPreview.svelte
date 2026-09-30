@@ -25,6 +25,7 @@
   import { createSimulatedSpeech } from './simulatedSpeech'
   import { previewHostProfile } from './agentPreviewFixtures'
   import { workbenchExamples, workbenchPreviewAttachments, workbenchPreviewLabels, workbenchPreviewWorkspace } from './workbenchPreviewFixtures'
+  import { TerminalPreviewRuntime } from '$lib/preview/terminalPreviewFixture'
 
   const initialType = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('type') : null
   let index = initialType === 'single_question' ? 2 : Math.max(0, workbenchExamples.findIndex((spec) => spec.type === initialType))
@@ -41,6 +42,7 @@
   const rambleSession = createRambleSession()
   let ramble: RambleSessionControllerHandle
   const targets = createRequestInputTargets()
+  let terminal = new TerminalPreviewRuntime()
   let revealTarget: SpeechTarget | null = null
   let revealSequence = 0
   const voiceState = writable<VoiceInputState>({ requestId: '', documentTarget: null, nextTarget: null, recording: false, disabled: true })
@@ -66,6 +68,11 @@
   provideRequestSpeechTools(speechTidy)
   $: { workspace; submitted; speechTidy.refresh(workspace) }
   const transport = new TestApplicationTransport(undefined, { initiallyReady: true })
+    .handle('openTerminalSession', (input) => terminal.call('openTerminalSession', input))
+    .handle('readTerminalSession', (input) => terminal.call('readTerminalSession', input))
+    .handle('writeTerminalSession', (input) => terminal.call('writeTerminalSession', input))
+    .handle('resizeTerminalSession', (input) => terminal.call('resizeTerminalSession', input))
+    .handle('stopTerminalSession', (input) => terminal.call('stopTerminalSession', input))
     .handle('readRequestAttachment', ({ request_id, attachment_id }) => {
       const attachment = request_id === workspace.request.request_id && workspace.request_attachments.some((item) => item.attachment_id === attachment_id)
         ? workbenchPreviewAttachments.find((item) => item.attachment_id === attachment_id) : undefined
@@ -83,6 +90,7 @@
   async function choose(next: number) {
     if (voicePreview) await ramble.exitRamble()
     index = next
+    terminal = new TerminalPreviewRuntime()
     workspace = workbenchPreviewWorkspace(index)
     activeActionId = null
     snapshot = { documentJson: '', bodyMarkdown: '' }
@@ -141,6 +149,9 @@
     {/each}
     {#if workspace.workbench?.type === 'web_review'}
       <a class="rounded-md border px-3 py-2 text-sm" href="/?preview=fixtures&workspace=web_review" target="_blank" rel="noopener noreferrer">在完整应用中体验网页评审</a>
+    {/if}
+    {#if workspace.workbench?.type === 'terminal'}
+      <a class="rounded-md border px-3 py-2 text-sm" href="/?preview=fixtures&workspace=terminal" target="_blank" rel="noopener noreferrer">在完整应用中体验终端工作台</a>
     {/if}
     <span class="ml-auto text-xs text-muted-foreground">交互预览 · 内容只保存在本页内存中</span>
   </nav>

@@ -13,18 +13,19 @@ const readJson = path => JSON.parse(readFileSync(path, 'utf8'))
 const writeJson = (path, value) => writeFileSync(path, JSON.stringify(value), 'utf8')
 const command = (script, args, cwd = root) => JSON.parse(execFileSync(process.execPath, [script, ...args], { cwd, encoding: 'utf8', timeout: 10000, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] }))
 
-test('prepares five stages or one web stage and refuses to replace an unfinished run', () => {
+test('prepares six stages or a single workbench and refuses to replace an unfinished run', () => {
   const directory = mkdtempSync(join(tmpdir(), 'ramble-playground-'))
   try {
     for (const entry of ['prepare.mjs', 'fixtures', 'materials']) cpSync(join(root, entry), join(directory, entry), { recursive: true })
     const check = command('prepare.mjs', ['check'], directory)
     assert.equal(check.submitted, false)
-    assert.equal(check.fixtures.length, 5)
+    assert.equal(check.fixtures.length, 6)
     const prepared = command('prepare.mjs', ['new'], directory)
     const runPath = join(prepared.directory, 'run.json')
     const run = readJson(runPath)
-    assert.deepEqual(run.stages.map(stage => stage.type), ['ramble', 'questions', 'questions', 'document_review', 'web_review'])
-    assert.equal(new Set(run.stages.map(stage => stage.request_id)).size, 5)
+    assert.deepEqual(run.stages.map(stage => stage.type), ['ramble', 'questions', 'questions', 'document_review', 'web_review', 'terminal'])
+    assert.equal(new Set(run.stages.map(stage => stage.request_id)).size, 6)
+    assert.equal(readJson(join(prepared.directory, '06-terminal.json')).workbench.data.cwd, realpathSync(directory))
     assert.throws(() => command('prepare.mjs', ['new', 'web_review'], directory), /Resume/)
     run.status = 'completed'
     writeJson(runPath, run)
@@ -36,6 +37,18 @@ test('prepares five stages or one web stage and refuses to replace an unfinished
     assert.equal(input.request_id, only.stages[0].request_id)
     assert.equal(input.title, '网页评审 · 独立体验')
     assert.ok(input.attachments.every(attachment => existsSync(attachment.path)))
+    assert.throws(() => command('prepare.mjs', ['new', 'terminal'], directory), /Resume/)
+    only.status = 'completed'
+    writeJson(join(web.directory, 'run.json'), only)
+    const terminal = command('prepare.mjs', ['new', 'terminal'], directory)
+    const trial = readJson(join(terminal.directory, 'run.json'))
+    assert.equal(trial.stages.length, 1)
+    assert.equal(trial.stages[0].type, 'terminal')
+    const trialInput = readJson(join(terminal.directory, '06-terminal.json'))
+    assert.equal(trialInput.request_id, trial.stages[0].request_id)
+    assert.equal(trialInput.workbench.data.cwd, realpathSync(directory))
+    assert.equal(trialInput.title, '终端试用 · 独立体验')
+    assert.ok(trialInput.attachments.every(attachment => existsSync(attachment.path)))
   } finally {
     assert.equal(dirname(realpathSync(directory)), realpathSync(tmpdir()))
     assert.ok(directory.includes('ramble-playground-'))

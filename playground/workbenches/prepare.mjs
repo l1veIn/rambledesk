@@ -11,6 +11,7 @@ const cases = [
   ['03-single-question.json', 'questions'],
   ['04-document-review.json', 'document_review'],
   ['05-web-review.json', 'web_review'],
+  ['06-terminal.json', 'terminal'],
 ]
 const readJson = (path) => JSON.parse(readFileSync(path, 'utf8').replace(/^\uFEFF/, ''))
 const writeJson = (path, value) => writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
@@ -26,6 +27,7 @@ function loadCases() {
     if (input.workbench?.type !== type || input.workbench.version !== 1 || !input.workbench.data) throw new Error(`${file}: unexpected workbench contract`)
     if (!input.what_happened || [...input.what_happened].length > 200) throw new Error(`${file}: invalid summary length`)
     if (input.request_id || input.host_id || input.host_session_id || input.actions || input.allow_finish || input.final_summary) throw new Error(`${file}: scenario must not contain session identity or completion fields`)
+    if (type === 'terminal') input.workbench.data.cwd = realpathSync(root)
     input.attachments = input.attachments.map((attachment) => ({
       ...attachment,
       path: insideRoot(realpathSync(resolve(root, attachment.path))),
@@ -37,8 +39,8 @@ function loadCases() {
 try {
   const command = process.argv[2] ?? 'check'
   const mode = process.argv[3] ?? 'all'
-  if (!['check', 'new'].includes(command) || !['all', 'web_review'].includes(mode) || process.argv.length > 4) throw new Error('Usage: node prepare.mjs [check|new] [web_review]')
-  const loaded = loadCases().filter(item => mode !== 'web_review' || item.type === 'web_review')
+  if (!['check', 'new'].includes(command) || !['all', 'web_review', 'terminal'].includes(mode) || process.argv.length > 4) throw new Error('Usage: node prepare.mjs [check|new] [web_review|terminal]')
+  const loaded = loadCases().filter(item => mode === 'all' || item.type === mode)
   if (command === 'check') {
     console.log(JSON.stringify({ fixtures: loaded.map(({ file, type }) => ({ file, type, version: 1 })), attachments: 'all present inside the playground', submitted: false }, null, 2))
   } else {
@@ -55,7 +57,7 @@ try {
     mkdirSync(directory, { recursive: true })
     const stages = loaded.map(({ file, type, input }) => {
       const requestId = randomUUID()
-      writeJson(join(directory, file), { ...input, ...(mode === 'web_review' ? { title: '网页评审 · 独立体验' } : {}), request_id: requestId })
+      writeJson(join(directory, file), { ...input, ...(mode === 'web_review' ? { title: '网页评审 · 独立体验' } : mode === 'terminal' ? { title: '终端试用 · 独立体验' } : {}), request_id: requestId })
       return { file, type, version: 1, request_id: requestId, status: 'prepared', observations: [], unverified: [] }
     })
     writeJson(join(directory, 'run.json'), { run_id: runId, created_at: new Date().toISOString(), mode, status: 'running', stages, report_request_id: randomUUID(), followups: [] })

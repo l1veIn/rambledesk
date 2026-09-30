@@ -9,6 +9,11 @@ import {
 type CatalogInput = { agent_id: string }
 
 export const HTTP_APPLICATION_OPERATIONS = {
+  openTerminalSession: 'openTerminalSession',
+  readTerminalSession: 'readTerminalSession',
+  writeTerminalSession: 'writeTerminalSession',
+  resizeTerminalSession: 'resizeTerminalSession',
+  stopTerminalSession: 'stopTerminalSession',
   browseProjectDirectories: 'browseProjectDirectories',
   listAvailableAgents: 'listAvailableAgents',
   inspectAgentInstallation: 'inspectAgentInstallation',
@@ -87,6 +92,10 @@ export const BINARY_COMMANDS: ReadonlySet<ApplicationCommandName> = new Set([
 ])
 
 export const MUTATION_COMMANDS: ReadonlySet<ApplicationCommandName> = new Set([
+  'openTerminalSession',
+  'writeTerminalSession',
+  'resizeTerminalSession',
+  'stopTerminalSession',
   'prepareManagedSession',
   'discardPreparedSession',
   'resolveCatalogAgent',
@@ -220,6 +229,12 @@ export function applicationCommandResponseResources<Name extends ApplicationComm
   input: ApplicationCommandInput<Name>,
 ): readonly ApplicationResourceKey[] {
   switch (name) {
+    case 'openTerminalSession':
+    case 'readTerminalSession':
+    case 'writeTerminalSession':
+    case 'resizeTerminalSession':
+    case 'stopTerminalSession':
+      return []
     case 'browseProjectDirectories':
       return []
     case 'listAvailableAgents':
@@ -304,6 +319,20 @@ export function applicationCommandProjectionKey<Name extends ApplicationCommandN
   input: ApplicationCommandInput<Name>,
 ): string {
   switch (name) {
+    case 'openTerminalSession':
+      return projectionKey(name, canonicalUuid((input as ApplicationCommandInput<'openTerminalSession'>).request_id))
+    case 'readTerminalSession': {
+      const read = input as ApplicationCommandInput<'readTerminalSession'>
+      // Stream offsets change each poll; keep the projection watermark bounded
+      // to the session rather than retaining a key for every output chunk.
+      return projectionKey(name, canonicalUuid(read.request_id), read.session_id)
+    }
+    case 'writeTerminalSession':
+    case 'resizeTerminalSession':
+    case 'stopTerminalSession': {
+      const session = input as ApplicationCommandInput<'stopTerminalSession'>
+      return projectionKey(name, canonicalUuid(session.request_id), session.session_id)
+    }
     case 'browseProjectDirectories':
       return projectionKey(name, (input as ApplicationCommandInput<'browseProjectDirectories'>).path)
     case 'listManagedSessionActivity': {

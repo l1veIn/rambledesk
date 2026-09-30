@@ -248,6 +248,7 @@ pub struct FeedbackApplication {
     pub(crate) ids: Arc<dyn IdGenerator>,
     waiters: Arc<FeedbackWaiters>,
     change_observer: Arc<dyn crate::ApplicationChangeObserver>,
+    pub(crate) terminal_sessions: crate::terminal_sessions::TerminalSessionManager,
 }
 
 impl FeedbackApplication {
@@ -257,6 +258,7 @@ impl FeedbackApplication {
     }
 
     pub(crate) fn notify_feedback_terminal(&self, request_id: &str) {
+        self.terminal_sessions.stop_request(request_id);
         self.waiters.notify_terminal(request_id);
     }
 
@@ -289,6 +291,7 @@ impl FeedbackApplication {
             ids,
             waiters: Arc::new(FeedbackWaiters::default()),
             change_observer: Arc::new(crate::NoopApplicationChangeObserver),
+            terminal_sessions: crate::terminal_sessions::TerminalSessionManager::default(),
         }
     }
 

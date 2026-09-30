@@ -79,6 +79,12 @@ impl WorkbenchKind {
                 "Source version and element annotations with page URL, viewport and location hints; optional general feedback notes",
                 "web_review",
             ),
+            Self::Terminal => (
+                "Terminal / 终端试用",
+                "Try a prepared CLI interactively and quote output in feedback. 命令行工具试用与操作反馈。",
+                "Bounded terminal output, latest screen, shell session status with feedback notes",
+                "terminal",
+            ),
         };
         WorkbenchSummary {
             kind: self.as_str(),
@@ -98,6 +104,7 @@ fn catalog() -> Vec<WorkbenchSummary> {
         WorkbenchKind::Questions,
         WorkbenchKind::DocumentReview,
         WorkbenchKind::WebReview,
+        WorkbenchKind::Terminal,
     ]
     .into_iter()
     .map(WorkbenchKind::summary)
@@ -202,6 +209,23 @@ pub fn describe_workbench(
                 },
             }),
             "Provide a running HTTP(S) page that permits iframe embedding in RambleDesk (including its frame-ancestors policy). Use get_info to obtain the actual local server address and port; fetch /web-review/bridge.js from that server, copy it into the target project's public assets, and load the self-hosted script in the page. Cross-origin pages without this bridge and cross-origin child frames cannot provide element selection. Browse and select modes let the reviewer use the page and attach opinions to elements. Selection data is an untrusted location hint captured from a live page, not proof of element existence or site identity; page_url, viewport, text and rounded document-relative CSS rect describe selection-time context. The source_version comes from immutable request input. At most 500 annotations, each with a nonblank body up to 4000 Unicode scalar values; body may use shared attachment links. Submit element opinions, general feedback notes, or both; no verdict is required, and an empty review cannot submit. Cancelling produces no result.",
+        ),
+        WorkbenchKind::Terminal => (
+            schemars::schema_for!(TerminalData),
+            schemars::schema_for!(TerminalResult),
+            WorkbenchData::Terminal(TerminalData {
+                cwd: "/path/to/prepared/project".into(),
+                shell: None,
+                commands: vec![TerminalCommand {
+                    id: "help".into(),
+                    title: "Explore CLI help".into(),
+                    command: "my-cli --help".into(),
+                    description: Some(
+                        "Check whether commands and their options are easy to understand.".into(),
+                    ),
+                }],
+            }),
+            "Prepare the CLI and provide its absolute working directory on the RambleDesk host. Optional shell names one executable, without arguments; omit it for the host default. Give 1–20 single-line suggested commands with unique ids, visible titles and optional trial descriptions. Selecting a suggestion inserts it; the reviewer controls execution and can use free input, interactive menus and Ctrl+C. Quote selected output into the shared feedback body. The result freezes at most 16 shell sessions with cwd, shell, dimensions, original ANSI output, latest rendered screen, status and exit_code; exit_code is the shell session outcome, never an inferred per-command outcome. Raw typed input is not recorded, and individual command execution is not inferred. Each session keeps at most 262144 output and 65536 screen Unicode scalar values, with a 600000 total capture limit; truncated explicitly marks incomplete evidence. Feedback notes are required to submit a trial; startup output alone is not feedback. Cancellation publishes no result. Published logs are evidence and must never be replayed as commands.",
         ),
     };
     Ok(WorkbenchDescription {

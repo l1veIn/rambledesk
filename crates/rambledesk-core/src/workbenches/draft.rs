@@ -22,7 +22,9 @@ pub fn workbench_package(
     let result = if submitted {
         match draft {
             Some(draft) => workbench_result(spec, draft.workbench_state.as_ref()),
-            None if spec.kind == "web_review" => workbench_result(spec, None),
+            None if matches!(spec.kind.as_str(), "web_review" | "terminal") => {
+                workbench_result(spec, None)
+            }
             None => None,
         }
     } else {

@@ -25,6 +25,7 @@ import type {
 } from '../feedback'
 import { previewFixtures, previewWorkspaceFor } from './previewFixtures'
 import { webReviewPreviewSpec } from './webReviewPreviewFixture'
+import { terminalPreviewSpec, TerminalPreviewRuntime } from './terminalPreviewFixture'
 
 export type PreviewApplicationOptions = { workspace?: string | null; origin?: string }
 
@@ -43,6 +44,7 @@ export class PreviewApplicationTransport implements ApplicationTransport {
   readonly #attachments = new Map<string, AttachmentView[]>()
   readonly #submitted = new Set<string>()
   readonly #workspaceOverrides = new Map<string, FeedbackWorkspaceView>()
+  readonly #terminal = new TerminalPreviewRuntime()
 
   constructor(private readonly capabilityManifest: CapabilityManifest, options: PreviewApplicationOptions = {}) {
     for (const request of previewFixtures.requests) this.#requests.set(request.request_id, { ...request })
@@ -52,11 +54,12 @@ export class PreviewApplicationTransport implements ApplicationTransport {
     }
     const scenario = options.workspace ?? (typeof window !== 'undefined'
       ? new URLSearchParams(window.location.search).get('workspace') : null)
-    if (scenario === 'web_review') {
+    if (scenario === 'web_review' || scenario === 'terminal') {
       const base = structuredClone(previewFixtures.workspace)
-      const spec = webReviewPreviewSpec(options.origin)
-      const request = { ...base.request, title: '网页评审 · Atelier 首页',
-        what_happened: '请体验这个页面，在元素旁留下意见，并补充整体反馈。',
+      const terminal = scenario === 'terminal'
+      const spec = terminal ? terminalPreviewSpec() : webReviewPreviewSpec(options.origin)
+      const request = { ...base.request, title: terminal ? '终端试用 · CLI Demo' : '网页评审 · Atelier 首页',
+        what_happened: terminal ? '这是模拟 CLI 的交互预览，不执行本机命令。点击开始后填入建议命令，按回车体验；选中输出引用到反馈，再记录你的感受。真实 CLI 试用请使用 playground 的终端用例。' : '请体验这个页面，在元素旁留下意见，并补充整体反馈。',
         status: 'in_progress' as const, resolution: null, allow_finish: false, final_summary: null }
       this.#requests.set(request.request_id, request)
       this.#workspaceOverrides.set(request.request_id, { ...base, request, workbench: spec,
@@ -95,6 +98,12 @@ export class PreviewApplicationTransport implements ApplicationTransport {
 
   #dispatch(name: ApplicationCommandName, input: unknown): unknown {
     switch (name) {
+      case 'openTerminalSession':
+      case 'readTerminalSession':
+      case 'writeTerminalSession':
+      case 'resizeTerminalSession':
+      case 'stopTerminalSession':
+        return this.#terminal.call(name, input as Parameters<TerminalPreviewRuntime['call']>[1])
       case 'listFeedbackInbox':
         return [...this.#requests.values()].filter(
           (request) => request.status === 'waiting' || request.status === 'in_progress',

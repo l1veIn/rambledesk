@@ -2,6 +2,7 @@ import type { WorkbenchSpec, RambleData, QuestionsData } from '$lib/generated/fe
 import type { FeedbackWorkspaceView } from '$lib/feedback'
 import { previewFixtures } from '$lib/preview/previewFixtures'
 import { webReviewPreviewSpec } from '$lib/preview/webReviewPreviewFixture'
+import { terminalPreviewSpec } from '$lib/preview/terminalPreviewFixture'
 
 export const workbenchExamples: WorkbenchSpec[] = [
   { type: 'ramble', version: 1, data: { actions: [
@@ -30,9 +31,10 @@ export const workbenchExamples: WorkbenchSpec[] = [
     ],
   } },
   webReviewPreviewSpec(),
+  terminalPreviewSpec(),
 ]
 
-export const workbenchPreviewLabels = ['Ramble 自由反馈', '逐项问答', '逐项问答 · 单题选择', '文稿审阅', '网页评审']
+export const workbenchPreviewLabels = ['Ramble 自由反馈', '逐项问答', '逐项问答 · 单题选择', '文稿审阅', '网页评审', '终端试用']
 
 export const workbenchPreviewAttachments = [
   {

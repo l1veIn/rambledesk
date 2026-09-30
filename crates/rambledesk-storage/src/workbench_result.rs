@@ -25,7 +25,11 @@ pub(crate) fn workbench_package(
 ) -> WorkbenchPackage {
     rambledesk_core::workbench_package(
         spec,
-        parse_feedback_draft(document, spec.kind == "web_review").as_ref(),
+        parse_feedback_draft(
+            document,
+            matches!(spec.kind.as_str(), "web_review" | "terminal"),
+        )
+        .as_ref(),
         submitted,
     )
 }
@@ -35,13 +39,14 @@ pub(crate) fn prepare_feedback_submission(
     document: Option<&str>,
     body: &str,
 ) -> Result<Option<WorkbenchPackage>, WorkbenchSubmissionError> {
-    let is_web_review = spec.is_some_and(|spec| {
-        spec.kind == "web_review" && rambledesk_core::validate_workbench(spec).is_ok()
+    let requires_strict_state = spec.is_some_and(|spec| {
+        matches!(spec.kind.as_str(), "web_review" | "terminal")
+            && rambledesk_core::validate_workbench(spec).is_ok()
     });
-    let draft = parse_feedback_draft(document, is_web_review);
+    let draft = parse_feedback_draft(document, requires_strict_state);
     // Do not turn malformed structured content into an empty review and publish
     // only the notes. Missing/null state is the legitimate notes-only path.
-    if is_web_review && document.is_some() && draft.is_none() {
+    if requires_strict_state && document.is_some() && draft.is_none() {
         return Err(WorkbenchSubmissionError::Incomplete);
     }
     rambledesk_core::prepare_feedback_submission(spec, draft.as_ref(), body)

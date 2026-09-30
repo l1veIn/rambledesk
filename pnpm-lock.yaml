@@ -73,6 +73,12 @@ importers:
       '@tiptap/starter-kit':
         specifier: ^3.29.2
         version: 3.29.2
+      '@xterm/addon-fit':
+        specifier: 0.11.0
+        version: 0.11.0
+      '@xterm/xterm':
+        specifier: 6.0.0
+        version: 6.0.0
       ai:
         specifier: ^7.0.48
         version: 7.0.48(zod@4.4.3)
@@ -157,6 +163,12 @@ importers:
       '@remotion/cli':
         specifier: 4.0.506
         version: 4.0.506(@swc/helpers@0.5.23)(postcss@8.5.24)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)
+      '@remotion/media':
+        specifier: 4.0.506
+        version: 4.0.506(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@remotion/media-utils':
+        specifier: 4.0.506
+        version: 4.0.506(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       react:
         specifier: 18.3.1
         version: 18.3.1
@@ -1464,6 +1476,12 @@ packages:
       react: '>=16.8.0'
       react-dom: '>=16.8.0'
 
+  '@remotion/media@4.0.506':
+    resolution: {integrity: sha512-nrCanbqlIM3Z94e7OI5+gM0SDtfmO8w05781doLs5wN/5G3kz4TdkR8ns/YghNn2ppyhIVj9tplwS1zUXfpgiw==}
+    peerDependencies:
+      react: '>=16.8.0'
+      react-dom: '>=16.8.0'
+
   '@remotion/player@4.0.506':
     resolution: {integrity: sha512-ziGLfEFMaNa/w+GdrPqGyBSes2s/ePMD6c+dCcd1nYYmdr3H2a/8ujahnNLg0XZCi9DeDaPo6CQUL7/Q+qwmNg==}
     peerDependencies:
@@ -2497,6 +2515,12 @@ packages:
 
   '@workflow/serde@4.1.0':
     resolution: {integrity: sha512-pav4F2BoirECWR7Nf1TKt+2eETcBj7jj4cBefQ8VXQCA6NPkaKeLfj/zMgi+3zYV5ZIBT4GuUiphsj0/b9hPQQ==}
+
+  '@xterm/addon-fit@0.11.0':
+    resolution: {integrity: sha512-jYcgT6xtVYhnhgxh3QgYDnnNMYTcf8ElbxxFzX0IZo+vabQqSPAjC3c1wJrKB5E19VwQei89QCiZZP86DCPF7g==}
+
+  '@xterm/xterm@6.0.0':
+    resolution: {integrity: sha512-TQwDdQGtwwDt+2cgKDLn0IRaSxYu1tSUjgKarSDkUM0ZNiSRXFpjxEsvc/Zgc5kq5omJ+V0a8/kIM2WD3sMOYg==}
 
   '@xtuc/ieee754@1.2.0':
     resolution: {integrity: sha512-DX8nKgqcGwsc0eJSqYt5lwP4DH5FlHnmuWWBRy7X0NcaGR0ZtuyeESgMwTYVEtxmsNGY+qit4QYT/MIYTOTPeA==}
@@ -6223,6 +6247,14 @@ snapshots:
       react-dom: 18.3.1(react@18.3.1)
       remotion: 4.0.506(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
 
+  '@remotion/media@4.0.506(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      mediabunny: 1.50.8
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+      remotion: 4.0.506(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      zod: 4.4.3
+
   '@remotion/player@4.0.506(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
       react: 18.3.1
@@ -7309,6 +7341,10 @@ snapshots:
       '@xtuc/long': 4.2.2
 
   '@workflow/serde@4.1.0': {}
+
+  '@xterm/addon-fit@0.11.0': {}
+
+  '@xterm/xterm@6.0.0': {}
 
   '@xtuc/ieee754@1.2.0': {}
 

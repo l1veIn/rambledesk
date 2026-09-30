@@ -1,0 +1,17 @@
+{
+  "title": "6/6 · 终端试用",
+  "what_happened": "请在终端工作台中试用这个 CLI：点击开始，再填入帮助、问候、选择和错误提示命令，按回车运行。选中输出引用到右侧正文并留下意见；检查全屏新页签、往返后进程保留、方向键和 Ctrl+C。准备好后提交，试用记录会随反馈保存。",
+  "workbench": {
+    "type": "terminal", "version": 1,
+    "data": {
+      "cwd": ".",
+      "commands": [
+        { "id": "help", "title": "查看帮助", "command": "node ./materials/terminal-demo.mjs --help", "description": "看看用法说明是否清楚。" },
+        { "id": "greet", "title": "交互式问候", "command": "node ./materials/terminal-demo.mjs greet", "description": "输入名字，体验交互提示与中文输出。" },
+        { "id": "choose", "title": "选择布局", "command": "node ./materials/terminal-demo.mjs choose", "description": "使用方向键选择，回车确认，也可 Ctrl+C 退出。" },
+        { "id": "error", "title": "查看错误提示", "command": "node ./materials/terminal-demo.mjs error", "description": "检查出错后能否知道下一步怎么做。" }
+      ]
+    }
+  },
+  "attachments": [{ "file_name": "终端试用体验.md", "path": "materials/06-terminal.md" }]
+}

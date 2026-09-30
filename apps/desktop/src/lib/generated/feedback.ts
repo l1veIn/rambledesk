@@ -14,12 +14,12 @@ export type WorkbenchSpec = { type: string, version: number,
  * Get this type's data schema with describe_workbench before creating a request.
  */
 data: WorkbenchData, };
-export type WorkbenchData = RambleData | QuestionsData | SingleChoiceData | DocumentReviewData | WebReviewData | Record<string, unknown>;
+export type WorkbenchData = RambleData | QuestionsData | SingleChoiceData | DocumentReviewData | WebReviewData | TerminalData | Record<string, unknown>;
 export type RambleData = { actions: Array<ActionInput>, };
 export type QuestionsData = { questions: Array<Question>, };
 export type Question = { id: string, prompt: string, label?: string, options: Array<QuestionOption>, allowOther: boolean, };
 export type QuestionOption = { value: string, label: string, description?: string, };
-export type WorkbenchState = { "type": "questions", answers: Array<QuestionAnswer>, } | { "type": "single_choice", selected_option_id: string | null, } | { "type": "document_review", verdict: ReviewVerdict | null, annotations: Array<ReviewAnnotation>, paragraph_marks: Array<ParagraphMark>, } | { "type": "web_review", annotations: Array<WebReviewAnnotation>, };
+export type WorkbenchState = { "type": "questions", answers: Array<QuestionAnswer>, } | { "type": "single_choice", selected_option_id: string | null, } | { "type": "document_review", verdict: ReviewVerdict | null, annotations: Array<ReviewAnnotation>, paragraph_marks: Array<ParagraphMark>, } | { "type": "web_review", annotations: Array<WebReviewAnnotation>, } | { "type": "terminal", sessions: Array<TerminalTrialSession>, };
 export type SingleChoiceData = { prompt: string, options: Array<ChoiceOption>, };
 export type ChoiceOption = { id: string, label: string, };
 export type DocumentReviewData = { title: string, source_version: string,
@@ -53,6 +53,34 @@ export type WebReviewElement = {
 selector: string, tag_name: string, text: string, rect: WebReviewRect, };
 export type WebReviewAnnotation = { id: string, page_url: string, viewport: WebReviewViewport, element: WebReviewElement, body: string, screenshot_attachment_id?: string, };
 export type WebReviewResult = { source_version: string, annotations: Array<WebReviewAnnotation>, };
+export type TerminalData = { cwd: string, shell?: string, commands: Array<TerminalCommand>, };
+export type TerminalCommand = { id: string, title: string, command: string, description?: string, };
+export type TerminalTrialStatus = "running" | "exited" | "stopped";
+export type TerminalTrialSession = { id: string, cwd: string, shell: string, cols: number, rows: number, status: TerminalTrialStatus,
+/**
+ * Shell session exit code, not the outcome of an individual CLI command.
+ */
+exit_code: number | null,
+/**
+ * Bounded original terminal output, including ANSI escape sequences.
+ */
+output: string,
+/**
+ * Latest rendered terminal screen, for CLI menus and other TUI views.
+ */
+screen: string,
+/**
+ * True if any part of this session's evidence exceeded its capture limit.
+ */
+truncated: boolean, };
+export type TerminalResult = { sessions: Array<TerminalTrialSession>, };
+export type TerminalSessionStatus = "running" | "exited" | "stopped";
+export type OpenTerminalSessionInput = { request_id: string, cols: number, rows: number, };
+export type TerminalSessionInput = { request_id: string, session_id: string, };
+export type ReadTerminalSessionInput = { request_id: string, session_id: string, after_sequence: number | null, };
+export type WriteTerminalSessionInput = { request_id: string, session_id: string, data: string, };
+export type ResizeTerminalSessionInput = { request_id: string, session_id: string, cols: number, rows: number, };
+export type TerminalSessionSnapshot = { session_id: string, request_id: string, cwd: string, shell: string, cols: number, rows: number, status: TerminalSessionStatus, exit_code: number | null, output: string, first_sequence: number, next_sequence: number, truncated: boolean, };
 export type WorkbenchPackage = {
 /**
  * None for cancellation or an unavailable structured document.
@@ -62,7 +90,7 @@ result: WorkbenchResult | null, type: string, version: number,
  * Get this type's data schema with describe_workbench before creating a request.
  */
 data: WorkbenchData, };
-export type WorkbenchResult = { kind: string, } | { answers: Array<QuestionAnswer>, cancelled: boolean, } | { status: AnswerStatus, selected_option_id: string | null, } | DocumentReviewResult | WebReviewResult | Record<string, unknown>;
+export type WorkbenchResult = { kind: string, } | { answers: Array<QuestionAnswer>, cancelled: boolean, } | { status: AnswerStatus, selected_option_id: string | null, } | DocumentReviewResult | WebReviewResult | TerminalResult | Record<string, unknown>;
 export type QuestionAnswer = { id: string, value: string, label: string, wasCustom: boolean,
 /**
  * One-based option index. Absent for custom input.
