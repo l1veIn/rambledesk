@@ -18,7 +18,7 @@
 | Requests、Host Sessions、列表与详情投影 | **Automated** | **Automated** | Tauri 与 HTTP Application Transport conformance、Web ready/refetch 与 session auth 已覆盖。 |
 | TipTap Feedback Draft、autosave 与 revision/CAS | **Automated**；发布前仍做 **Manual** 编辑回归 | **Automated**；发布前仍做 **Manual** 多标签页/重连回归 | 两端使用同一 `document_json` 真源与 application mutation；浏览器不是第二份 Draft。 |
 | 自由反馈、逐项问答、文稿审阅、网页评审与共享输入字段 | **Automated**；设备输入仍做 **Manual** 回归 | **Automated**；真实浏览器输入仍做 **Manual** 回归 | 正文与类型交互状态同 revision 保存；字段语音、附件跟随输入目标，不能把桌面设备能力外推到 Web。 |
-| 网页 DOM 选择、元素批注与独立评审页签 | **Automated**；原生 WebView 嵌入仍做 **Manual** 回归 | **Automated**；Chrome/Safari/真实触屏仍做 **Manual** 回归 | 桌面浏览器已验证跨 origin bridge、SPA、滚动锚点及固定视口。默认普通工作台，全屏按钮打开独立评审页签，会话导航始终可用；页签往返保留草稿和网页状态，底部固定批注不随元素移动。这些布局交互需按当前版本回归。页面需允许 iframe；跨源页面需安装 bridge，禁止嵌入或未连接时仅预览、截图和整体意见。详见[网页评审](workbench/web-review.md)。 |
+| 网页 DOM 选择、元素批注与独立评审页签 | **Automated**；原生 WebView 嵌入仍做 **Manual** 回归 | **Automated**；Chrome/Safari/真实触屏仍做 **Manual** 回归 | 桌面浏览器已验证跨 origin bridge、SPA、滚动锚点及固定视口。默认普通工作台，网页工具栏“选择元素”旁的全屏评审按钮打开独立页签，会话导航始终可用；页签往返保留草稿和网页状态。底部固定批注只显示编号标题和意见框，保留输入工具、删除与收起，捕获上下文仍存入数据并可在终态历史展示；设备按钮只有图标与 tooltip，手机画布固定居中。这些布局交互需按当前版本回归。页面需允许 iframe；跨源页面需安装 bridge，禁止嵌入或未连接时仅预览、截图和整体意见。详见[网页评审](workbench/web-review.md)。 |
 | 新建会话的项目目录浏览 | **Automated** | **Automated** | 同一 application 合同列出 Backend Runtime 机器上的目录；浏览器上传文件与选择 Agent 工作目录是不同功能。 |
 | 文件上传与图片粘贴 | **Automated**；原生文件选择做 **Manual** 回归 | **Automated**；浏览器文件 input 与 DOM image paste 做 **Manual** 浏览器回归 | 候选先经过 Capture Plugin/Attachment Candidate seam，再由 application mutation 持久化；浏览器文件不是服务器路径。 |
 | Submit 与 published feedback 下载 | **Automated** | **Automated** | 两种 Transport 共享 terminal mutation、不可变 package 与安全下载投影。 |

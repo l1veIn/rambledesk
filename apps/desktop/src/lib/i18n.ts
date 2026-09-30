@@ -2,6 +2,7 @@ import type { Locale } from './preferences'
 
 const chinese: Record<string, string> = {
   'Open review tab': '全屏评审（新标签页）',
+  'Full screen review': '全屏评审',
   'Return to workbench': '返回工作台',
   'Overall feedback and submit': '整体意见与提交',
   'This webpage comment is unavailable.': '网页批注当前不可用。',

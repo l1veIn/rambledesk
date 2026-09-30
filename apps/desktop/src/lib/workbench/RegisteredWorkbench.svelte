@@ -27,6 +27,7 @@
   export let state: WorkbenchState | null = null
   export let onSelectAction: (id: string, index: number, title: string) => void = () => {}
   export let onStateChange: (state: WorkbenchState) => void = () => {}
+  export let onOpenReview: (() => void) | undefined = undefined
 
   let root: HTMLDivElement
   $: guideScope = root?.closest<HTMLElement>('[data-workbench-scope]') ?? root
@@ -71,7 +72,7 @@
     {:else if webReview}
       {#key workspace.request.request_id}
         <WebReviewWorkbench data={webReview} state={state?.type === 'web_review' ? state : null}
-          disabled={closed} readOnly={immutable} onChange={onStateChange} />
+          disabled={closed} readOnly={immutable} onChange={onStateChange} {onOpenReview} />
       {/key}
     {:else}
       <p class="m-0 text-sm leading-6 text-muted-foreground" role="status">{tr('This workbench is unavailable. Your draft and materials are preserved in read-only mode. Open this request in a compatible client to continue.')}</p>

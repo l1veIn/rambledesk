@@ -181,7 +181,6 @@
     bind:this={container}
     {reviewMode}
     interactivePreview={workspace?.workbench?.type === 'web_review'}
-    onOpenReview={!unsupported && workspace?.workbench?.type === 'web_review' ? onOpenReview : undefined}
     {onReturnToWorkbench}
     {workspace}
     {transport}
@@ -234,6 +233,7 @@
       {#if workspace}
         <RegisteredWorkbench
           {workspace}
+          onOpenReview={!reviewMode && !unsupported && workspace.workbench?.type === 'web_review' ? onOpenReview : undefined}
           {transport}
           {capabilities}
           {resolveHostProfile}

@@ -40,23 +40,31 @@
 
 <article class="rounded-xl border bg-background p-3 shadow-lg" class:web-review-floating-comment={floating} data-web-comment-id={annotation.id}>
   <div class="mb-3 flex shrink-0 items-center gap-2 text-xs">
-    <span class="grid size-6 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground">{number}</span>
-    <MessageSquare class="size-3.5 shrink-0 text-primary" />
-    <strong class="min-w-0 flex-1 truncate font-medium" title={annotation.element.selector}>{elementLabel(annotation)}</strong>
+    {#if floating}
+      <h3 class="m-0 min-w-0 flex-1 truncate text-sm font-medium">{tr('Comment')} {number}</h3>
+    {:else}
+      <span class="grid size-6 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground">{number}</span>
+      <MessageSquare class="size-3.5 shrink-0 text-primary" />
+      <strong class="min-w-0 flex-1 truncate font-medium" title={annotation.element.selector}>{elementLabel(annotation)}</strong>
+    {/if}
     {#if !disabled}<button bind:this={deleteButton} type="button" aria-label={tr('Delete comment')} onclick={requestDelete} class="rounded p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 class="size-3.5" /></button>{/if}
     {#if collapsible}<button type="button" aria-label={tr('Collapse comment')} onclick={onCollapse} class="rounded p-1.5 text-muted-foreground hover:bg-muted"><ChevronUp class="size-3.5" /></button>{/if}
   </div>
   <div class="web-review-comment-content" class:scrollable={floating} data-web-review-comment-content>
-  {#if annotation.element.text}<blockquote class="m-0 mb-3 max-h-24 overflow-auto border-l-2 border-primary/30 pl-2 text-xs leading-5 text-muted-foreground">{annotation.element.text}</blockquote>{/if}
-  {#if annotation.screenshot_attachment_id}<FieldAttachments value={`[Screenshot](attachment://${annotation.screenshot_attachment_id})`} disabled={true} onChange={() => {}} />{/if}
-  <div class="mb-3 grid gap-1 text-[11px] text-muted-foreground" aria-label={tr('Saved page context')}>
-    <span class="break-all">{annotation.page_url}</span>
-    <span>{annotation.viewport.width} × {annotation.viewport.height} · &lt;{annotation.element.tag_name}&gt;</span>
-    <span class="truncate font-mono" title={annotation.element.selector}>{annotation.element.selector}</span>
+  {#if !floating}
+    {#if annotation.element.text}<blockquote class="m-0 mb-3 max-h-24 overflow-auto border-l-2 border-primary/30 pl-2 text-xs leading-5 text-muted-foreground">{annotation.element.text}</blockquote>{/if}
+    {#if annotation.screenshot_attachment_id}<FieldAttachments value={`[Screenshot](attachment://${annotation.screenshot_attachment_id})`} disabled={true} onChange={() => {}} />{/if}
+    <div class="mb-3 grid gap-1 text-[11px] text-muted-foreground" aria-label={tr('Saved page context')}>
+      <span class="break-all">{annotation.page_url}</span>
+      <span>{annotation.viewport.width} × {annotation.viewport.height} · &lt;{annotation.element.tag_name}&gt;</span>
+      <span class="truncate font-mono" title={annotation.element.selector}>{annotation.element.selector}</span>
+    </div>
+  {/if}
+  <div class="web-review-comment-field">
+    <WorkbenchTextField bind:this={bodyField} value={annotation.body} {target} {disabled} maxLength={4000}
+      label={tr('Your comment')} voiceLabel="Speak comment" placeholder={tr('Explain what to change and why…')}
+      data-web-review-field="body" onChange={(body) => { if (!disabled) onUpdate({ ...annotation, body }) }} />
   </div>
-  <WorkbenchTextField bind:this={bodyField} value={annotation.body} {target} {disabled} maxLength={4000}
-    label={tr('Your comment')} voiceLabel="Speak comment" placeholder={tr('Explain what to change and why…')}
-    data-web-review-field="body" onChange={(body) => { if (!disabled) onUpdate({ ...annotation, body }) }} />
   {#if !disabled && !annotation.body.trim()}<p class="mb-0 mt-2 text-xs text-amber-700 dark:text-amber-400">{tr('Finish or remove empty comments.')}</p>{/if}
   </div>
 </article>
@@ -75,5 +83,13 @@
 
 <style>
   .web-review-floating-comment { display: flex; height: 100%; min-height: 0; flex-direction: column; overflow: hidden; }
-  .web-review-comment-content.scrollable { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  .web-review-comment-content.scrollable { display: flex; flex: 1; min-height: 0; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; }
+  .scrollable .web-review-comment-field { display: flex; flex: 1; min-height: 0; }
+  .scrollable :global(.web-review-comment-field > div) { display: flex; flex: 1; min-height: 0; flex-direction: column; }
+  .scrollable :global(.web-review-comment-field > div > div:first-child) { flex-shrink: 0; }
+  .scrollable :global(.web-review-comment-field > div > div:first-child > span:first-child) { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+  .scrollable :global(.web-review-comment-field > div > div:last-child) { display: flex; flex: 1; min-height: 0; flex-direction: column; }
+  .scrollable :global(.field-editor) { flex: 1; min-height: 0; overflow-y: auto; }
+  .scrollable :global(.tiptap-input), .scrollable :global(.field-prose) { min-height: 100%; }
+  .scrollable :global([data-input-toolbar]), .scrollable :global([data-field-attachments]) { flex-shrink: 0; }
 </style>

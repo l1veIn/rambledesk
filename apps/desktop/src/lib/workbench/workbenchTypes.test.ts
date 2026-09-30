@@ -46,7 +46,7 @@ function open(index: number, readOnly = false, documentJson?: string, spec?: Wor
     ...extra,
   } })
 }
-const button = (text: string) => Array.from(document.querySelectorAll('button')).find((button) => button.textContent?.includes(text))!
+const button = (text: string) => Array.from(document.querySelectorAll('button')).find((button) => button.textContent?.includes(text) || button.getAttribute('aria-label') === text)!
 const latest = () => readWorkbenchState(snapshots.at(-1)?.documentJson)
 
 describe('workbench interaction state is independent of feedback notes', () => {
@@ -57,6 +57,8 @@ describe('workbench interaction state is independent of feedback notes', () => {
     const container = document.querySelector('[data-workbench-review-mode]')!
     expect(container.getAttribute('data-workbench-review-mode')).toBe('false')
     expect(document.querySelector('[data-feedback-region]')).not.toBeNull()
+    expect(document.querySelector('[data-web-review-toolbar]')?.contains(button('Open review tab'))).toBe(true)
+    expect(document.querySelector('[data-workbench-display-controls]')).toBeNull()
     button('Open review tab').click()
     expect(onOpenReview).toHaveBeenCalledOnce()
     expect(container.getAttribute('data-workbench-review-mode')).toBe('false')

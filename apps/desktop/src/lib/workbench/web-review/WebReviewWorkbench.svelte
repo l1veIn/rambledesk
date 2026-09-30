@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte'
-  import { Globe, MousePointer2, Hand, RotateCw, Monitor, Smartphone, MessageSquare, ExternalLink } from '@lucide/svelte'
+  import { Globe, MousePointer2, Hand, RotateCw, Monitor, Smartphone, MessageSquare, ExternalLink, Maximize2 } from '@lucide/svelte'
   import type { WebReviewAnnotation, WebReviewData } from '../../generated/feedback'
   import { locale } from '../../preferences'
   import { unavailableVoiceInputState, useVoiceInput } from '../../speech/voiceInputContext'
@@ -17,6 +17,7 @@
   export let disabled = false
   export let readOnly = false
   export let onChange: (state: WebReviewState) => void
+  export let onOpenReview: (() => void) | undefined = undefined
   let viewport = { ...data.viewport }
   let pageUrl = data.url
   let mode: 'browse' | 'select' = 'browse'
@@ -110,15 +111,19 @@
       {/each}
     </div>
   {:else}
-    <div class="flex flex-wrap items-center gap-2" aria-label={tr('Web review')}>
+    <div class="flex flex-wrap items-center gap-2" aria-label={tr('Web review')} data-web-review-toolbar>
+      <div class="inline-flex items-center gap-2">
       <div class="inline-flex overflow-hidden rounded-lg border">
         <button type="button" aria-label={tr('Browse')} aria-pressed={mode === 'browse'} {disabled} onclick={() => mode = 'browse'} class="inline-flex items-center gap-1.5 px-3 py-2 text-xs aria-pressed:bg-primary/10 aria-pressed:text-primary disabled:opacity-40"><Hand class="size-3.5" />{tr('Browse')}</button>
         <button type="button" aria-label={tr('Select elements')} aria-pressed={mode === 'select'} disabled={disabled || !connected} onclick={() => mode = 'select'} class="inline-flex items-center gap-1.5 border-l px-3 py-2 text-xs aria-pressed:bg-primary/10 aria-pressed:text-primary disabled:opacity-40"><MousePointer2 class="size-3.5" />{tr('Select elements')}</button>
       </div>
+      {#if onOpenReview}
+        <button type="button" {disabled} aria-label={tr('Open review tab')} title={tr('Open review tab')} onclick={onOpenReview} class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs disabled:opacity-40"><Maximize2 class="size-3.5" />{tr('Full screen review')}</button>
+      {/if}
+      </div>
       <button type="button" {disabled} aria-label={tr('Refresh page')} onclick={refreshPage} class="rounded-lg border p-2"><RotateCw class="size-3.5" /></button>
-      <button type="button" {disabled} aria-label={tr('Desktop viewport')} aria-pressed={viewport.width >= 768} onclick={() => changeViewport({ width: 1440, height: 900 })} class="inline-flex items-center gap-1 rounded-lg border px-2 py-2 text-xs aria-pressed:bg-muted"><Monitor class="size-3.5" />1440</button>
-      <button type="button" {disabled} aria-label={tr('Mobile viewport')} aria-pressed={viewport.width < 768} onclick={() => changeViewport({ width: 390, height: 844 })} class="inline-flex items-center gap-1 rounded-lg border px-2 py-2 text-xs aria-pressed:bg-muted"><Smartphone class="size-3.5" />390</button>
-      <span class="text-[11px] tabular-nums text-muted-foreground">{viewport.width} × {viewport.height}</span>
+      <button type="button" {disabled} aria-label={tr('Desktop viewport')} title={tr('Desktop viewport')} aria-pressed={viewport.width >= 768} onclick={() => changeViewport({ width: 1440, height: 900 })} class="rounded-lg border p-2 aria-pressed:bg-muted"><Monitor class="size-3.5" /></button>
+      <button type="button" {disabled} aria-label={tr('Mobile viewport')} title={tr('Mobile viewport')} aria-pressed={viewport.width < 768} onclick={() => changeViewport({ width: 390, height: 844 })} class="rounded-lg border p-2 aria-pressed:bg-muted"><Smartphone class="size-3.5" /></button>
       <button type="button" aria-pressed={commentsOpen} onclick={() => commentsOpen = !commentsOpen} class="ml-auto inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs aria-pressed:bg-primary/10"><MessageSquare class="size-3.5" />{tr('Review comments')} · {current.annotations.length}</button>
     </div>
     <div role="status" class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground" data-web-review-status={frameState.status}>

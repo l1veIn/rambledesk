@@ -24,6 +24,21 @@
   let currentRefreshKey = -1
   let lastFocusSequence: number | null = null
   let anchor: WebReviewRect | null = null
+  let measuredFrameWidth = 0
+  let measuredSurfaceWidth = 0
+  function updateGeometry() {
+    const frameWidth = frame?.clientWidth ?? 0
+    const surfaceWidth = root?.clientWidth ?? 0
+    if (frameWidth > 0 && surfaceWidth > 0 &&
+      (frameWidth !== measuredFrameWidth || surfaceWidth !== measuredSurfaceWidth)) {
+      measuredFrameWidth = frameWidth
+      measuredSurfaceWidth = surfaceWidth
+      // Narrow viewports start centered even when the canvas clips both edges.
+      // A same-size observation must preserve the user's subsequent scrolling.
+      root.scrollLeft = frameWidth < 768 ? Math.max(0, (frameWidth - surfaceWidth) / 2) : 0
+    }
+    updateAnchor()
+  }
   function updateAnchor() {
     if (!anchor || !root || !frame) { onSelectionRect(null); return }
     const rootRect = root.getBoundingClientRect()
@@ -49,8 +64,9 @@
   }
   onMount(() => {
     mounted = true
-    const observer = new ResizeObserver(updateAnchor)
+    const observer = new ResizeObserver(updateGeometry)
     observer.observe(root)
+    observer.observe(frame)
     return () => { mounted = false; observer.disconnect(); controller?.dispose() }
   })
   $: if (mounted && (currentUrl !== url || currentRefreshKey !== refreshKey)) load(url, refreshKey)
@@ -70,5 +86,5 @@
 
 <style>
   .web-review-surface { width: 100%; height: 100%; min-height: 280px; overflow: auto; position: relative; background: var(--muted); }
-  iframe { display: block; flex-shrink: 0; border: 0; background: white; }
+  iframe { display: block; flex-shrink: 0; margin-inline: auto; border: 0; background: white; }
 </style>

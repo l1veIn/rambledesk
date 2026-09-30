@@ -52,6 +52,26 @@ function voiceInput() {
 }
 
 describe('web review workbench', () => {
+  it('switches fixed page viewports with accessible icon controls while keeping the same iframe', async () => {
+    open(); await connect()
+    const frame = document.querySelector('iframe')!
+    const controller = bridge.options
+    const desktop = byLabel<HTMLButtonElement>('Desktop viewport')
+    const mobile = byLabel<HTMLButtonElement>('Mobile viewport')
+    expect(desktop.textContent?.trim()).toBe('')
+    expect(mobile.textContent?.trim()).toBe('')
+    expect(desktop.title).toBe('Desktop viewport')
+    expect(mobile.title).toBe('Mobile viewport')
+    expect(document.querySelector('[data-web-review-toolbar]')?.textContent).not.toMatch(/1440|390|900|844/)
+    mobile.click()
+    await vi.waitFor(() => expect([frame.style.width, frame.style.height]).toEqual(['390px', '844px']))
+    expect(mobile.getAttribute('aria-pressed')).toBe('true')
+    desktop.click()
+    await vi.waitFor(() => expect([frame.style.width, frame.style.height]).toEqual(['1440px', '900px']))
+    expect(document.querySelector('iframe')).toBe(frame)
+    expect(bridge.options).toBe(controller)
+  })
+
   it('gates selection on a real bridge connection and explains the preview fallback', async () => {
     open()
     expect(byLabel<HTMLButtonElement>('Select elements').disabled).toBe(true)

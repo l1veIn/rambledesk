@@ -73,7 +73,7 @@ afterEach(async () => {
 
 function button(label: string): HTMLButtonElement {
   const found = [...document.querySelectorAll<HTMLButtonElement>('button')]
-    .find((item) => item.textContent?.trim() === label)
+    .find((item) => item.textContent?.trim() === label || item.getAttribute('aria-label') === label)
   expect(found, `button ${label}`).toBeDefined()
   return found!
 }
@@ -116,6 +116,7 @@ describe('web review through the real App', () => {
     await vi.waitFor(() => expect(document.querySelector(bodyEditorSelector)).not.toBeNull())
     expect(activeTabKey()).toBe(sessionKey)
     expect(document.querySelector('[data-workbench-review-mode="false"]')).not.toBeNull()
+    expect(document.querySelector('[data-web-review-toolbar]')?.contains(button('Open review tab'))).toBe(true)
     expect(document.querySelectorAll('[data-workspace-tab-item]')).toHaveLength(1)
     const rail = document.querySelector<HTMLElement>('aside[aria-label="Projects"]')!
     expect(rail).not.toBeNull()

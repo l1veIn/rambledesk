@@ -12,7 +12,7 @@
 <script lang="ts">
   import { onMount, tick, type Snippet } from 'svelte'
   import { Pane, PaneGroup, PaneResizer } from 'paneforge'
-  import { Maximize2, Minimize2, PanelRight, FileText } from '@lucide/svelte'
+  import { Minimize2, PanelRight, FileText } from '@lucide/svelte'
   import { Button } from '$lib/components/ui/button'
 
   import { Skeleton } from '$lib/components/ui/skeleton'
@@ -49,7 +49,6 @@
   export let loadingWorkspace = false
   /** Presentation capabilities supplied by the composed view, independent of its contract. */
   export let reviewMode = false
-  export let onOpenReview: (() => void) | undefined = undefined
   export let onReturnToWorkbench: (() => void) | undefined = undefined
   /** Keep an interactive preview usable when the feedback column stacks below it. */
   export let interactivePreview = false
@@ -244,7 +243,7 @@
       </div>
     </div>
   {:else if workspace}
-    {#if onOpenReview || reviewMode}
+    {#if reviewMode}
       <div class="flex shrink-0 flex-wrap items-center justify-end gap-2 border-b px-3 py-2" data-workbench-display-controls>
         {#if reviewMode}
           <span class="mr-auto min-w-0 truncate text-sm font-medium">{workspace.request.title}</span>
@@ -255,8 +254,6 @@
         {/if}
         {#if reviewMode && onReturnToWorkbench}
           <Button variant="outline" size="sm" onclick={onReturnToWorkbench}><Minimize2 class="size-4" />{tr('Return to workbench')}</Button>
-        {:else if onOpenReview}
-          <Button variant="outline" size="sm" onclick={onOpenReview}><Maximize2 class="size-4" />{tr('Open review tab')}</Button>
         {/if}
       </div>
     {/if}
