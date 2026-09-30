@@ -10,6 +10,7 @@ const cases = [
   ['02-questions.json', 'questions'],
   ['03-single-question.json', 'questions'],
   ['04-document-review.json', 'document_review'],
+  ['05-web-review.json', 'web_review'],
 ]
 const readJson = (path) => JSON.parse(readFileSync(path, 'utf8').replace(/^\uFEFF/, ''))
 const writeJson = (path, value) => writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
@@ -35,8 +36,9 @@ function loadCases() {
 
 try {
   const command = process.argv[2] ?? 'check'
-  if (!['check', 'new'].includes(command) || process.argv.length > 3) throw new Error('Usage: node prepare.mjs [check|new]')
-  const loaded = loadCases()
+  const mode = process.argv[3] ?? 'all'
+  if (!['check', 'new'].includes(command) || !['all', 'web_review'].includes(mode) || process.argv.length > 4) throw new Error('Usage: node prepare.mjs [check|new] [web_review]')
+  const loaded = loadCases().filter(item => mode !== 'web_review' || item.type === 'web_review')
   if (command === 'check') {
     console.log(JSON.stringify({ fixtures: loaded.map(({ file, type }) => ({ file, type, version: 1 })), attachments: 'all present inside the playground', submitted: false }, null, 2))
   } else {
@@ -53,12 +55,12 @@ try {
     mkdirSync(directory, { recursive: true })
     const stages = loaded.map(({ file, type, input }) => {
       const requestId = randomUUID()
-      writeJson(join(directory, file), { ...input, request_id: requestId })
+      writeJson(join(directory, file), { ...input, ...(mode === 'web_review' ? { title: '网页评审 · 独立体验' } : {}), request_id: requestId })
       return { file, type, version: 1, request_id: requestId, status: 'prepared', observations: [], unverified: [] }
     })
-    writeJson(join(directory, 'run.json'), { run_id: runId, created_at: new Date().toISOString(), status: 'running', stages, report_request_id: randomUUID(), followups: [] })
+    writeJson(join(directory, 'run.json'), { run_id: runId, created_at: new Date().toISOString(), mode, status: 'running', stages, report_request_id: randomUUID(), followups: [] })
     writeJson(latestPath, { run_id: runId })
-    console.log(JSON.stringify({ directory, run_id: runId, submitted: false, next: 'Send only 01-ramble.json through the current managed session, then hand off.' }, null, 2))
+    console.log(JSON.stringify({ directory, run_id: runId, submitted: false, next: `${mode === 'web_review' ? 'Start the local review page, then send' : 'Send only'} ${stages[0].file} through the current managed session, then hand off.` }, null, 2))
   }
 } catch (error) {
   console.error(error.message)

@@ -1,0 +1,17 @@
+{
+  "title": "5/5 · 网页评审",
+  "what_happened": "请按附件体验真实网页：先浏览按钮与弹窗，再选择元素就地填写意见。试试评审记录、桌面/移动视口和展开/分栏切换；打开整体意见时网页宽度应保持不变。可选体验批注的语音、粘贴和附件。填完或删除空白批注后提交，Agent 会核对结构化结果并汇总。",
+  "workbench": {
+    "type": "web_review",
+    "version": 1,
+    "data": {
+      "title": "Atelier 首页 · 网页评审体验",
+      "url": "http://127.0.0.1:4173/",
+      "source_version": "playground-homepage-v1",
+      "viewport": { "width": 1280, "height": 800 }
+    }
+  },
+  "attachments": [
+    { "file_name": "网页评审体验.md", "path": "materials/05-web-review.md" }
+  ]
+}
