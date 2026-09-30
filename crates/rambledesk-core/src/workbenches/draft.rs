@@ -22,7 +22,9 @@ pub fn workbench_package(
     let result = if submitted {
         match draft {
             Some(draft) => workbench_result(spec, draft.workbench_state.as_ref()),
-            None if matches!(spec.kind.as_str(), "web_review" | "terminal") => {
+            None if validate_workbench(spec)
+                .is_ok_and(|validated| validated.kind().definition().notes_only) =>
+            {
                 workbench_result(spec, None)
             }
             None => None,
@@ -52,29 +54,11 @@ pub fn prepare_feedback_submission(
     };
     let validated = validate_workbench(spec).map_err(|_| WorkbenchSubmissionError::Unsupported)?;
     let package = workbench_package(spec, draft, true);
-    let review_input = match draft.and_then(|item| item.workbench_state.as_ref()) {
-        Some(WorkbenchState::DocumentReview {
-            verdict,
-            annotations,
-            paragraph_marks,
-        }) if validated.kind() == WorkbenchKind::DocumentReview => {
-            verdict.is_some()
-                || annotations
-                    .iter()
-                    .any(|annotation| !annotation.body.trim().is_empty())
-                || !paragraph_marks.is_empty()
-        }
-        Some(WorkbenchState::WebReview { annotations })
-            if validated.kind() == WorkbenchKind::WebReview =>
-        {
-            !annotations.is_empty()
-        }
-        _ => false,
-    };
+    let review_input = validated.has_input(draft.and_then(|draft| draft.workbench_state.as_ref()));
     if body_markdown.trim().is_empty() && !workbench_result_has_input(&package) && !review_input {
         return Err(WorkbenchSubmissionError::Empty);
     }
-    if validated.kind() != WorkbenchKind::Ramble && !workbench_result_complete(&package) {
+    if validated.kind().definition().require_complete && !workbench_result_complete(&package) {
         return Err(WorkbenchSubmissionError::Incomplete);
     }
     Ok(Some(package))

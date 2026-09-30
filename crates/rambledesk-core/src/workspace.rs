@@ -473,6 +473,9 @@ impl FeedbackApplication {
         }
         let now = self.clock.now_rfc3339();
         let publication_id = self.ids.new_id();
+        let _runtime_guard = self
+            .prepare_workbench_publication(&request_id, input.expected_revision)
+            .await?;
         let plan_result = self
             .repository
             .plan_submission(SubmissionPlanInput {

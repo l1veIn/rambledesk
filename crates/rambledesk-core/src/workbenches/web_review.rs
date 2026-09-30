@@ -1,4 +1,11 @@
 use super::*;
+pub(super) fn draft_valid(data: &WebReviewData, state: Option<&WorkbenchState>) -> bool {
+    state.is_none() || result(data, state).is_some()
+}
+pub(super) fn result_has_input(result: Option<&WorkbenchResult>) -> bool {
+    matches!(result,Some(WorkbenchResult::WebReview(result)) if !result.annotations.is_empty())
+}
+use super::validation::text;
 use std::collections::HashSet;
 
 /// Initial page and viewport. The website remains live and may navigate or change.
@@ -133,4 +140,98 @@ pub(super) fn web_review_annotations_valid(annotations: &[WebReviewAnnotation]) 
                     .as_deref()
                     .is_none_or(super::validation::valid_item_id)
         })
+}
+
+pub(super) fn definition() -> WorkbenchDefinition {
+    let (name, purpose, returns, interaction) = (
+        "Web review / 网页评审",
+        "Browse a live webpage and annotate elements at desktop or mobile widths. 网页体验、元素批注与整页反馈。",
+        "Source version and element annotations with page URL, viewport and location hints; optional general feedback notes",
+        "web_review",
+    );
+    let mut definition = WorkbenchDefinition::new(
+        WorkbenchSummary {
+            kind: "web_review",
+            version: 1,
+            name,
+            purpose,
+            returns,
+            interaction,
+        },
+        describe,
+    );
+    definition.strict_state = true;
+    definition.notes_only = true;
+    definition.validate_saved_draft = false;
+    definition
+}
+fn describe() -> Result<WorkbenchDescription, ApplicationError> {
+    let (input_schema, result_schema, data, instructions) = (
+        schemars::schema_for!(WebReviewData),
+        schemars::schema_for!(WebReviewResult),
+        WorkbenchData::WebReview(WebReviewData {
+            title: "Homepage review".into(),
+            url: "http://localhost:5173/".into(),
+            source_version: "draft-1".into(),
+            viewport: WebReviewViewport {
+                width: 1440,
+                height: 900,
+            },
+        }),
+        "Provide a running HTTP(S) page that permits iframe embedding in RambleDesk (including its frame-ancestors policy). Use get_info to obtain the actual local server address and port; fetch /web-review/bridge.js from that server, copy it into the target project's public assets, and load the self-hosted script in the page. Cross-origin pages without this bridge and cross-origin child frames cannot provide element selection. Browse and select modes let the reviewer use the page and attach opinions to elements. Selection data is an untrusted location hint captured from a live page, not proof of element existence or site identity; page_url, viewport, text and rounded document-relative CSS rect describe selection-time context. The source_version comes from immutable request input. At most 500 annotations, each with a nonblank body up to 4000 Unicode scalar values; body may use shared attachment links. Submit element opinions, general feedback notes, or both; no verdict is required, and an empty review cannot submit. Cancelling produces no result.",
+    );
+    Ok(WorkbenchDescription {
+        summary: definition().summary,
+        example: WorkbenchSpec {
+            kind: "web_review".into(),
+            version: 1,
+            data,
+        },
+        input_schema,
+        result_schema,
+        instructions,
+    })
+}
+pub(super) fn validate(data: &WebReviewData) -> Result<(), ApplicationError> {
+    text("web_review.title", &data.title, 200)?;
+    text("web_review.source_version", &data.source_version, 128)?;
+    if !super::web_review::web_review_url_valid(&data.url) {
+        return Err(ApplicationError::invalid_argument(
+            "web_review.url must be an HTTP(S) URL without credentials, whitespace or control characters; maximum 8192 characters",
+        ));
+    }
+    if !super::web_review::web_review_viewport_valid(&data.viewport) {
+        return Err(ApplicationError::invalid_argument(
+            "web_review.viewport must be 240–7680 pixels wide and 200–4320 pixels high",
+        ));
+    }
+    Ok(())
+}
+
+pub(super) fn result(
+    data: &WebReviewData,
+    state: Option<&WorkbenchState>,
+) -> Option<WorkbenchResult> {
+    let annotations = match state {
+        Some(WorkbenchState::WebReview { annotations })
+            if web_review_annotations_valid(annotations) =>
+        {
+            annotations.clone()
+        }
+        None => Vec::new(),
+        _ => return None,
+    };
+    Some(WorkbenchResult::WebReview(WebReviewResult {
+        source_version: data.source_version.clone(),
+        annotations,
+    }))
+}
+pub(super) fn has_input(data: &WebReviewData, state: Option<&WorkbenchState>) -> bool {
+    matches!(result(data,state),Some(WorkbenchResult::WebReview(r)) if !r.annotations.is_empty())
+}
+pub(super) fn complete(_: &WebReviewData, result: Option<&WorkbenchResult>) -> bool {
+    matches!(result, Some(WorkbenchResult::WebReview(_)))
+}
+pub(super) fn legacy_actions(_: &WebReviewData) -> Vec<ActionInput> {
+    Vec::new()
 }

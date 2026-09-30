@@ -382,3 +382,102 @@ async fn terminal_restarted_sessions_freeze_together_and_completed_request_canno
     server.shutdown().await?;
     Ok(())
 }
+
+#[tokio::test]
+async fn terminal_publication_checks_owned_runtime_and_rejects_running_drafts() -> anyhow::Result<()>
+{
+    let (application, directory) = test_application().await?;
+    let request = seed_terminal_request(&application, directory.path()).await?;
+    let server =
+        start_application_server(application.clone(), terminal_operations(&application)).await?;
+    let client = reqwest::Client::new();
+    let address = server.address();
+    let opened = snapshot(
+        &client,
+        address,
+        "openTerminalSession",
+        json!({"request_id":request,"cols":80,"rows":24}),
+    )
+    .await?;
+    let session = json!({"id":opened.session_id,"cwd":opened.cwd,"shell":opened.shell,
+        "cols":opened.cols,"rows":opened.rows,"status":"stopped","exit_code":null,
+        "output":"client claims the process stopped","screen":"","truncated":false});
+    let document = |session: Value| {
+        json!({"schemaVersion":2,"doc":{"type":"doc","content":[]},
+        "workbenchState":{"type":"terminal","sessions":[session]}})
+        .to_string()
+    };
+    let saved = application
+        .save_feedback_draft(SaveDraftInput {
+            request_id: request.clone(),
+            document_json: document(session.clone()),
+            body_markdown: "Review the captured CLI trial.".into(),
+            expected_revision: 0,
+        })
+        .await?;
+    let submit = |revision| SubmitFeedbackInput {
+        request_id: request.clone(),
+        expected_revision: revision,
+        cooked_markdown: None,
+        cooking_model: None,
+        uncooked_markdown: None,
+    };
+    let rejected = application
+        .submit_feedback(submit(saved.saved_revision))
+        .await
+        .unwrap_err();
+    assert!(
+        rejected.message().contains("Stop the terminal"),
+        "a client stopped flag must not prove OS ownership ended"
+    );
+    assert!(
+        application
+            .get_feedback_workspace(request.clone())
+            .await?
+            .feedback
+            .is_none()
+    );
+    let mut running = session;
+    running["status"] = json!("running");
+    let saved = application
+        .save_feedback_draft(SaveDraftInput {
+            request_id: request.clone(),
+            document_json: document(running.clone()),
+            body_markdown: "A running trial is a valid recoverable draft.".into(),
+            expected_revision: saved.saved_revision,
+        })
+        .await?;
+    let stopped = snapshot(
+        &client,
+        address,
+        "stopTerminalSession",
+        json!({"request_id":request,"session_id":opened.session_id}),
+    )
+    .await?;
+    assert!(stopped.exit_code.is_some());
+    assert!(!stopped.truncated);
+    assert!(
+        application
+            .submit_feedback(submit(saved.saved_revision))
+            .await
+            .is_err(),
+        "after actual cleanup, a running draft still cannot become a published result"
+    );
+    running["status"] = json!(stopped.status);
+    running["exit_code"] = json!(stopped.exit_code);
+    running["output"] = json!(stopped.output);
+    let saved = application
+        .save_feedback_draft(SaveDraftInput {
+            request_id: request.clone(),
+            document_json: document(running),
+            body_markdown: "Finished reviewing the CLI trial.".into(),
+            expected_revision: saved.saved_revision,
+        })
+        .await?;
+    let published = application
+        .submit_feedback(submit(saved.saved_revision))
+        .await?;
+    assert_eq!(published.status, rambledesk_core::FeedbackStatus::Completed);
+    server.shutdown().await?;
+    Ok(())
+}

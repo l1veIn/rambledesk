@@ -160,6 +160,19 @@ pub(crate) struct TerminalSessionManager {
 }
 
 impl TerminalSessionManager {
+    pub(crate) async fn lifecycle_guard(&self) -> tokio::sync::OwnedMutexGuard<()> {
+        self.inner.opening.clone().lock_owned().await
+    }
+    pub(crate) fn request_is_finished(&self, request_id: &str) -> bool {
+        self.inner
+            .registry
+            .lock()
+            .expect("terminal registry")
+            .sessions
+            .values()
+            .filter(|session| session.runtime.request_id() == request_id)
+            .all(|session| session.runtime.is_finished())
+    }
     pub async fn open(
         &self,
         request_id: String,

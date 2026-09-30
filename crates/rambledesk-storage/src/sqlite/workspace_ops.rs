@@ -75,6 +75,10 @@ impl SqliteFeedbackStore {
             }
             return Err(RepositoryError::DraftConflict);
         }
+        crate::workbench_result::validate_saved_draft(
+            workbench_spec_from_row(&request_row)?.as_ref(),
+            document_json,
+        )?;
         let next_revision = current_revision + 1;
         let updated = sqlx::query(
             "UPDATE feedback_requests SET \

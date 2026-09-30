@@ -6,6 +6,8 @@ use rambledesk_core::{
 use serde_json::{Value, json};
 
 mod attachments;
+#[cfg(feature = "workbench-fixtures")]
+mod rating_review;
 mod terminal;
 mod web_review;
 
@@ -60,7 +62,10 @@ fn discovery_is_paged_and_request_schema_does_not_embed_each_type() {
             "terminal"
         ]
     );
-    assert_eq!(catalog.next_offset, None);
+    assert_eq!(
+        catalog.next_offset,
+        rambledesk_core::WorkbenchKind::resolve("rating_review", 1).map(|_| 5)
+    );
     let page = list_workbenches(&ListWorkbenchesInput {
         limit: Some(1),
         ..Default::default()

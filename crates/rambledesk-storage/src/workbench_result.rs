@@ -1,5 +1,21 @@
 use rambledesk_core::{FeedbackDraft, WorkbenchPackage, WorkbenchSpec, WorkbenchSubmissionError};
 
+pub(crate) fn validate_saved_draft(
+    spec: Option<&WorkbenchSpec>,
+    document: &str,
+) -> Result<(), rambledesk_core::RepositoryError> {
+    let Some(spec) = spec else { return Ok(()) };
+    let validated = rambledesk_core::validate_workbench(spec)
+        .map_err(|_| rambledesk_core::RepositoryError::WorkbenchUnsupported)?;
+    if !validated.kind().definition().validate_saved_draft {
+        return Ok(());
+    }
+    let draft = parse_feedback_draft(Some(document), true)
+        .ok_or(rambledesk_core::RepositoryError::WorkbenchIncomplete)?;
+    rambledesk_core::validate_workbench_draft(spec, draft.workbench_state.as_ref())
+        .map_err(|_| rambledesk_core::RepositoryError::WorkbenchIncomplete)
+}
+
 /// Storage owns this envelope codec; the core policy receives parsed domain data.
 fn parse_feedback_draft(document: Option<&str>, strict: bool) -> Option<FeedbackDraft> {
     let value: serde_json::Value = serde_json::from_str(document?).ok()?;
@@ -27,7 +43,8 @@ pub(crate) fn workbench_package(
         spec,
         parse_feedback_draft(
             document,
-            matches!(spec.kind.as_str(), "web_review" | "terminal"),
+            rambledesk_core::validate_workbench(spec)
+                .is_ok_and(|validated| validated.kind().definition().strict_state),
         )
         .as_ref(),
         submitted,
@@ -40,8 +57,8 @@ pub(crate) fn prepare_feedback_submission(
     body: &str,
 ) -> Result<Option<WorkbenchPackage>, WorkbenchSubmissionError> {
     let requires_strict_state = spec.is_some_and(|spec| {
-        matches!(spec.kind.as_str(), "web_review" | "terminal")
-            && rambledesk_core::validate_workbench(spec).is_ok()
+        rambledesk_core::validate_workbench(spec)
+            .is_ok_and(|validated| validated.kind().definition().strict_state)
     });
     let draft = parse_feedback_draft(document, requires_strict_state);
     // Do not turn malformed structured content into an empty review and publish

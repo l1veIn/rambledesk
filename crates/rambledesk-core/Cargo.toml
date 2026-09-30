@@ -7,6 +7,9 @@ repository.workspace = true
 publish = false
 description = "RambleDesk domain types, ports, and application invariants"
 
+[features]
+workbench-fixtures = []
+
 [dependencies]
 async-trait.workspace = true
 base64.workspace = true
