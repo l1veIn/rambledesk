@@ -19,6 +19,7 @@ use ts_rs::TS;
 pub const MAX_TERMINAL_OUTPUT_BYTES: usize = 256 * 1024;
 pub const MAX_TERMINAL_INPUT_BYTES: usize = 16 * 1024;
 const MAX_RUNNING_SESSIONS: usize = 16;
+const MAX_REQUEST_SESSIONS: usize = 16;
 const MAX_RETAINED_SESSIONS: usize = 64;
 const MAX_CLOSED_REQUESTS: usize = 4096;
 
@@ -96,9 +97,41 @@ pub struct TerminalSessionSnapshot {
 
 #[derive(Default)]
 struct Registry {
-    sessions: HashMap<String, Arc<TerminalRuntime>>,
+    sessions: HashMap<String, RegisteredSession>,
     order: VecDeque<String>,
     closed: VecDeque<String>,
+}
+
+struct RegisteredSession {
+    runtime: Arc<TerminalRuntime>,
+    // Retained history remains reclaimable after the bounded request tombstone
+    // queue forgets this request. This flag is bounded by the session registry.
+    request_closed: bool,
+}
+
+impl Registry {
+    fn request_closed(&self, request_id: &str) -> bool {
+        self.closed.iter().any(|id| id == request_id)
+            || self
+                .sessions
+                .values()
+                .any(|item| item.request_closed && item.runtime.request_id() == request_id)
+    }
+
+    fn evict_finished(&mut self) -> Result<(), ApplicationError> {
+        let position = self
+            .order
+            .iter()
+            .position(|id| {
+                self.sessions
+                    .get(id)
+                    .is_some_and(|item| item.request_closed && item.runtime.is_finished())
+            })
+            .ok_or_else(|| unavailable("Terminal session capacity has been reached."))?;
+        let removed = self.order.remove(position).expect("retained terminal");
+        self.sessions.remove(&removed);
+        Ok(())
+    }
 }
 
 #[derive(Default)]
@@ -116,7 +149,7 @@ impl Drop for ManagerInner {
             .sessions
             .values()
         {
-            session.request_stop();
+            session.runtime.request_stop();
         }
     }
 }
@@ -144,16 +177,37 @@ impl TerminalSessionManager {
             // owned by this task until the request-bound session is registered.
             let _opening = opening;
             let mut registry = inner.registry.lock().expect("terminal registry");
-            if registry.closed.contains(&request_id) {
+            if registry.request_closed(&request_id) {
                 return Err(unavailable("The feedback request has ended."));
             }
-            if let Some(session) = registry.sessions.get(&request_id) {
+            if let Some(session) = registry
+                .sessions
+                .values()
+                .map(|session| &session.runtime)
+                .find(|session| session.request_id() == request_id && session.is_running())
+            {
                 return session.snapshot(None);
+            }
+            let previous: Vec<_> = registry
+                .sessions
+                .values()
+                .map(|session| &session.runtime)
+                .filter(|session| session.request_id() == request_id)
+                .collect();
+            if previous.iter().any(|session| !session.is_finished()) {
+                return Err(unavailable(
+                    "The previous terminal session is still stopping; try again shortly.",
+                ));
+            }
+            if previous.len() >= MAX_REQUEST_SESSIONS {
+                return Err(unavailable(
+                    "This request has reached its limit of 16 terminal sessions.",
+                ));
             }
             let running = registry
                 .sessions
                 .values()
-                .filter(|item| item.is_running())
+                .filter(|item| !item.runtime.is_finished())
                 .count();
             if running >= MAX_RUNNING_SESSIONS {
                 return Err(unavailable(
@@ -161,18 +215,7 @@ impl TerminalSessionManager {
                 ));
             }
             while registry.sessions.len() >= MAX_RETAINED_SESSIONS {
-                let position = registry
-                    .order
-                    .iter()
-                    .position(|id| {
-                        registry
-                            .sessions
-                            .get(id)
-                            .is_some_and(|item| !item.is_running())
-                    })
-                    .ok_or_else(|| unavailable("Terminal session capacity has been reached."))?;
-                let removed = registry.order.remove(position).expect("retained terminal");
-                registry.sessions.remove(&removed);
+                registry.evict_finished()?;
             }
             drop(registry);
             let session = Arc::new(TerminalRuntime::spawn(
@@ -183,13 +226,19 @@ impl TerminalSessionManager {
                 rows,
             )?);
             let mut registry = inner.registry.lock().expect("terminal registry");
-            if registry.closed.contains(&request_id) {
+            if registry.request_closed(&request_id) {
                 session.request_stop();
                 return Err(unavailable("The feedback request has ended."));
             }
             let snapshot = session.snapshot(None)?;
-            registry.order.push_back(request_id.clone());
-            registry.sessions.insert(request_id, session);
+            registry.order.push_back(session.id().to_owned());
+            registry.sessions.insert(
+                session.id().to_owned(),
+                RegisteredSession {
+                    runtime: session,
+                    request_closed: false,
+                },
+            );
             Ok(snapshot)
         })
         .await
@@ -206,9 +255,9 @@ impl TerminalSessionManager {
             .lock()
             .expect("terminal registry")
             .sessions
-            .get(request_id)
-            .filter(|item| item.id() == session_id)
-            .cloned()
+            .get(session_id)
+            .filter(|item| item.runtime.request_id() == request_id)
+            .map(|item| item.runtime.clone())
             .ok_or_else(|| unavailable("The terminal session was not found for this request."))
     }
 
@@ -255,8 +304,13 @@ impl TerminalSessionManager {
 
     pub fn stop_request(&self, request_id: &str) {
         let mut registry = self.inner.registry.lock().expect("terminal registry");
-        if let Some(session) = registry.sessions.get(request_id) {
-            session.request_stop();
+        for session in registry
+            .sessions
+            .values_mut()
+            .filter(|session| session.runtime.request_id() == request_id)
+        {
+            session.request_closed = true;
+            session.runtime.request_stop();
         }
         if !registry.closed.iter().any(|id| id == request_id) {
             registry.closed.push_back(request_id.to_owned());

@@ -1,32 +1,43 @@
-import type { TerminalData, TerminalSessionSnapshot, WorkbenchSpec } from '../generated/feedback'
+import type { RequestAttachmentView, TerminalData, TerminalSessionSnapshot, WorkbenchSpec } from '../generated/feedback'
 
-/** UI fixture only: these commands never start a host process. */
+/** UI fixture only: the simulated CLI never starts a host process. */
 export function terminalPreviewSpec(): WorkbenchSpec {
-  const data: TerminalData = {
-    cwd: '/preview/cli-demo',
-    commands: [
-      { id: 'help', title: '查看帮助', command: 'demo --help', description: '看看帮助是否容易理解。' },
-      { id: 'greet', title: '运行问候', command: 'demo greet', description: '输入名字，体验交互提示。' },
-      { id: 'choose', title: '选择一个方案', command: 'demo choose', description: '使用方向键和回车选择，也可以 Ctrl+C 退出。' },
-      { id: 'error', title: '体验错误提示', command: 'demo error', description: '看看出错后能否知道下一步该做什么。' },
-    ],
-  }
+  const data: TerminalData = { cwd: '/preview/cli-demo' }
   return { type: 'terminal', version: 1, data }
+}
+
+export const terminalPreviewAttachment = {
+  attachment_id: 'terminal-trial-guide', file_name: '终端试用体验.md',
+  markdown: '# 终端试用体验\n\n这是模拟 CLI，不执行本机命令。点击开始后，复制下面的命令到终端并按回车。真实 CLI 试用请使用 playground 的终端用例。\n\n查看帮助：\n\n```sh\ndemo --help\n```\n\n输入名字：\n\n```sh\ndemo greet\n```\n\n方向键选择、回车确认，也可以 Ctrl+C 退出：\n\n```sh\ndemo choose\n```\n\n查看错误提示：\n\n```sh\ndemo error\n```\n\n选中输出引用到反馈正文，再记录你的感受。停止终端或输入 `exit` 后，可以主动重新启动继续试用；各轮记录都会保留。',
+}
+export const terminalPreviewAttachmentView: RequestAttachmentView = {
+  attachment_id: terminalPreviewAttachment.attachment_id, file_name: terminalPreviewAttachment.file_name,
+  media_type: 'text/markdown', byte_size: new TextEncoder().encode(terminalPreviewAttachment.markdown).byteLength,
+  sha256: 'preview-terminal-trial-guide', position: 0,
 }
 
 export class TerminalPreviewRuntime {
   private session: TerminalSessionSnapshot | null = null
+  private sessions = new Map<string, TerminalSessionSnapshot>()
   private line = ''
   private prompt: 'shell' | 'name' | 'choose' = 'shell'
   private choice = 0
 
   call(name: string, input: { request_id: string; session_id?: string; cols?: number; rows?: number; data?: string; after_sequence?: number | null }): TerminalSessionSnapshot {
-    if (name === 'openTerminalSession' && !this.session) {
-      this.session = { session_id: `terminal-preview-${input.request_id}`, request_id: input.request_id,
+    if (name === 'openTerminalSession') {
+      const sessions = [...this.sessions.values()].filter((item) => item.request_id === input.request_id)
+      this.session = sessions.find((item) => item.status === 'running') ?? null
+      if (!this.session) {
+        if (sessions.length >= 16) throw new Error('这个请求已记录 16 轮终端试用。')
+        this.line = ''; this.prompt = 'shell'; this.choice = 0
+        this.session = { session_id: `terminal-preview-${input.request_id}-${sessions.length + 1}`, request_id: input.request_id,
         cwd: '/preview/cli-demo', shell: 'preview', cols: input.cols ?? 80, rows: input.rows ?? 24,
         status: 'running', exit_code: null, output: '终端交互预览 · 模拟 CLI，不执行本机命令。\r\n$ ',
-        first_sequence: 0, next_sequence: 0, truncated: false }
+          first_sequence: 0, next_sequence: 0, truncated: false }
+        this.sessions.set(this.session.session_id, this.session)
+      }
     }
+    if (input.session_id) this.session = this.sessions.get(input.session_id) ?? null
     const session = this.session
     if (!session || session.request_id !== input.request_id || (input.session_id && session.session_id !== input.session_id)) throw new Error('预览终端会话不存在。')
     if (name === 'writeTerminalSession') {
@@ -34,7 +45,7 @@ export class TerminalPreviewRuntime {
       this.write(input.data ?? '')
     }
     if (name === 'resizeTerminalSession') { session.cols = input.cols ?? session.cols; session.rows = input.rows ?? session.rows }
-    if (name === 'stopTerminalSession') session.status = 'stopped'
+    if (name === 'stopTerminalSession' && session.status === 'running') session.status = 'stopped'
     session.next_sequence = new TextEncoder().encode(session.output).length
     const snapshot = { ...session }
     if (name === 'readTerminalSession' && input.after_sequence != null) {

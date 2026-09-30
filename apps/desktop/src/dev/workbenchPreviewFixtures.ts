@@ -2,7 +2,7 @@ import type { WorkbenchSpec, RambleData, QuestionsData } from '$lib/generated/fe
 import type { FeedbackWorkspaceView } from '$lib/feedback'
 import { previewFixtures } from '$lib/preview/previewFixtures'
 import { webReviewPreviewSpec } from '$lib/preview/webReviewPreviewFixture'
-import { terminalPreviewSpec } from '$lib/preview/terminalPreviewFixture'
+import { terminalPreviewAttachment, terminalPreviewAttachmentView, terminalPreviewSpec } from '$lib/preview/terminalPreviewFixture'
 
 export const workbenchExamples: WorkbenchSpec[] = [
   { type: 'ramble', version: 1, data: { actions: [
@@ -47,6 +47,7 @@ export const workbenchPreviewAttachments = [
     file_name: 'RambleDesk 视频脚本产品能力与口播风格参考说明（2026 年 9 月修订版）.md',
     markdown: '# 产品能力与口播风格参考\n\n## 产品边界\n\nRambleDesk 帮助用户记录文字、语音和截图，将整理后的反馈交给 Agent。用户可以在提交前检查和修改内容。\n\n## 表达建议\n\n用真实操作说明价值，例如「哪里卡住了，截一张图」。避免使用「自动理解所有意图」或「替你做出最好的决定」等绝对表述。\n\n## 视频节奏\n\n开场提出一个熟悉的问题，中段演示记录过程，结尾邀请观众保留真实体验。整体时长约 90 秒。',
   },
+  terminalPreviewAttachment,
 ]
 
 export function workbenchPreviewWorkspace(index: number): FeedbackWorkspaceView {
@@ -58,11 +59,11 @@ export function workbenchPreviewWorkspace(index: number): FeedbackWorkspaceView 
     ? (spec.data as QuestionsData).questions.map((item) => ({ id: item.id, instruction: item.prompt }))
     : []
   workspace.request_attachments = spec.type === 'document_review'
-    ? workbenchPreviewAttachments.map(({ markdown, ...attachment }, position) => ({
+    ? workbenchPreviewAttachments.slice(0, 2).map(({ markdown, ...attachment }, position) => ({
       ...attachment, media_type: 'text/markdown', byte_size: new TextEncoder().encode(markdown).byteLength,
       sha256: `preview-${attachment.attachment_id}`, position,
     }))
-    : []
+    : spec.type === 'terminal' ? [terminalPreviewAttachmentView] : []
   workspace.attachments = []
   workspace.draft = { document_json: null, body_markdown: '', saved_revision: 0, updated_at: null }
   workspace.feedback = null

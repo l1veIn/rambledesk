@@ -1,7 +1,7 @@
 <script lang="ts">
   import { canSubmitWorkbench, readWorkbenchState, withWorkbenchState } from './lib/workbenchState'
-  import { replayTerminalSnapshot } from './lib/workbench/terminal/terminalSnapshot'
-  import { isMissingTerminalSession, lostTerminalSession } from './lib/workbench/terminal/terminalErrors'
+  import { finalizeTerminalSession } from './lib/workbench/terminal/terminalSnapshot'
+  import { retainTerminalSessions } from './lib/workbench/terminal/terminalRetention'
   import { workbenchIsReadOnly } from './lib/workbenchPolicy'
   import { onMount, tick } from 'svelte'
   import { createRequestInputComposition } from './lib/workbench/requestInputComposition'
@@ -784,21 +784,16 @@ import type { SettingsSection } from './lib/domain/settingsSection'
       if (!prepared) {
         if (workspaceSession.requestId() !== requestId || workspaceSession.isTerminal() || feedbackReadOnly) throw new Error(tr('The request changed before submission finished.'))
         const state = readWorkbenchState(draftSession.snapshot().documentJson)
-        const previous = state?.type === 'terminal' ? state.sessions.at(-1) : undefined
-        if (previous && previous.status !== 'stopped') {
-          let session = previous
-          try {
-            const final = await applicationTransport.call('stopTerminalSession', { request_id: requestId, session_id: previous.id })
-            session = await replayTerminalSnapshot(final, previous)
-          } catch (cause) {
-            if (!isMissingTerminalSession(cause)) throw cause
-            session = lostTerminalSession(previous)
-          }
+        const pending = state?.type === 'terminal' ? state.sessions.filter((item) => item.status !== 'stopped') : []
+        for (const previous of pending) {
+          const session = await finalizeTerminalSession(previous, (sessionId) => applicationTransport.call('stopTerminalSession', {
+            request_id: requestId, session_id: sessionId,
+          }))
           if (workspaceSession.requestId() !== requestId || workspaceSession.isTerminal() || feedbackReadOnly) throw new Error(tr('The request changed before submission finished.'))
           // Merge against the latest document so feedback written while the PTY drained is retained.
           const latest = readWorkbenchState(draftSession.snapshot().documentJson)
-          const sessions = latest?.type === 'terminal' ? latest.sessions.filter((item) => item.id !== session.id) : []
-          updateDraft(withWorkbenchState(draftSession.snapshot(), { type: 'terminal', sessions: [...sessions, session] }))
+          const sessions = latest?.type === 'terminal' ? latest.sessions.map((item) => item.id === session.id ? session : item) : [session]
+          updateDraft(withWorkbenchState(draftSession.snapshot(), { type: 'terminal', sessions: retainTerminalSessions(sessions) }))
         }
       }
       await tick()

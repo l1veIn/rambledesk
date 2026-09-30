@@ -1,7 +1,7 @@
 use super::*;
 use std::collections::HashSet;
 
-/// A prepared CLI trial. Suggested commands are inserted for the reviewer to run.
+/// A prepared CLI trial. Trial instructions and commands belong in request materials.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 #[serde(deny_unknown_fields)]
 pub struct TerminalData {
@@ -11,7 +11,9 @@ pub struct TerminalData {
     #[ts(optional)]
     #[schemars(length(min = 1, max = 8192))]
     pub shell: Option<String>,
-    #[schemars(length(min = 1, max = 20))]
+    /// Legacy suggestions retained for saved requests; the terminal does not render them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[schemars(length(max = 20))]
     pub commands: Vec<TerminalCommand>,
 }
 
@@ -84,7 +86,7 @@ pub(super) fn terminal_input_valid(data: &TerminalData) -> bool {
             .shell
             .as_deref()
             .is_none_or(|shell| bounded(shell, 8192, true))
-        && (1..=20).contains(&data.commands.len())
+        && data.commands.len() <= 20
         && data.commands.iter().all(|command| {
             super::validation::valid_item_id(&command.id)
                 && ids.insert(&command.id)

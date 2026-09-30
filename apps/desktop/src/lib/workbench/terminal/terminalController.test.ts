@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { canFillTerminalCommand, createTerminalController, type TerminalSessionSnapshot } from './terminalController'
+import { createTerminalController, type TerminalSessionSnapshot } from './terminalController'
 
 const snapshot = (changes: Partial<TerminalSessionSnapshot> = {}): TerminalSessionSnapshot => ({
   session_id: 'trial-1', request_id: 'request-1', cwd: '/project', shell: 'bash', cols: 80, rows: 24,
@@ -175,12 +175,41 @@ describe('terminal controller', () => {
     expect(f.controller.session()?.status).toBe('running')
     f.controller.dispose()
   })
-})
-describe('suggested terminal commands', () => {
-  it('allows only single line commands so filling cannot send Enter or terminal escapes', () => {
-    expect(canFillTerminalCommand('node cli.mjs --help')).toBe(true)
-    for (const command of ['', ' ', 'first\nsecond', 'command\r', 'command\x03', '\x1b[A', 'command\x7f', 'command\x85']) {
-      expect(canFillTerminalCommand(command)).toBe(false)
-    }
+  it('drains an exited trial before explicit restart and renders the new session independently', async () => {
+    const f = fixture()
+    f.runtime.read.mockResolvedValueOnce(snapshot({ status: 'exited', output: 'first trial', exit_code: 0, next_sequence: 11 }))
+    await f.controller.start(80, 24)
+    f.runtime.stop.mockResolvedValueOnce(snapshot({ status: 'exited', output: 'first trial\r\nfinal tail', exit_code: 0, next_sequence: 23 }))
+    f.runtime.open.mockResolvedValueOnce(snapshot({ session_id: 'trial-2' }))
+    f.runtime.read.mockResolvedValueOnce(snapshot({ session_id: 'trial-2', output: 'second prompt', next_sequence: 13 }))
+    await f.controller.start(80, 24)
+    expect(f.runtime.stop.mock.invocationCallOrder[0]).toBeLessThan(f.runtime.open.mock.invocationCallOrder[1])
+    expect(f.onSession.mock.calls.some(([session]) => session.id === 'trial-1' && session.output.endsWith('final tail'))).toBe(true)
+    expect(f.runtime.read).toHaveBeenLastCalledWith('trial-2', null)
+    expect(f.controller.session()).toMatchObject({ id: 'trial-2', output: 'second prompt', screen: 'second prompt' })
+    f.controller.dispose()
+  })
+  it('preserves the stopped trial when a replacement cannot start', async () => {
+    const f = fixture()
+    await f.controller.start(80, 24)
+    await f.controller.stop()
+    const previous = f.controller.session()
+    f.runtime.open.mockRejectedValueOnce(new Error('Shell unavailable'))
+    await expect(f.controller.start(80, 24)).rejects.toThrow('Shell unavailable')
+    expect(f.controller.session()).toEqual(previous)
+    expect(f.runtime.stop).toHaveBeenCalledTimes(1)
+    f.controller.dispose()
+  })
+  it('can explicitly restart a lost exited trial while preserving its known exit code', async () => {
+    const f = fixture()
+    f.runtime.read.mockResolvedValueOnce(snapshot({ status: 'exited', output: 'old history', exit_code: 9 }))
+    await f.controller.start(80, 24)
+    f.runtime.stop.mockRejectedValueOnce({ code: 'INVALID_ARGUMENT', message: 'The terminal session was not found for this request.' })
+    f.runtime.open.mockResolvedValueOnce(snapshot({ session_id: 'trial-2' }))
+    f.runtime.read.mockResolvedValueOnce(snapshot({ session_id: 'trial-2', output: 'new prompt' }))
+    await f.controller.start(80, 24)
+    expect(f.onSession.mock.calls.some(([session]) => session.id === 'trial-1' && session.exit_code === 9 && session.output === 'old history')).toBe(true)
+    expect(f.controller.session()?.id).toBe('trial-2')
+    f.controller.dispose()
   })
 })

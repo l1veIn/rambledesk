@@ -17,7 +17,6 @@ export type TerminalRenderer = {
 const MAX_OUTPUT = 262_144
 const MAX_SCREEN = 65_536
 export const terminalTextTail = (text: string, limit: number): string => [...text].slice(-limit).join('')
-export const canFillTerminalCommand = (command: string): boolean => !!command.trim() && !/[\x00-\x1f\x7f-\x9f]/.test(command)
 export const isTerminalResponse = (data: string): boolean => /^\x1b\[(?:\d+;\d+R|[?>]?[\d;]*c|[?>]?\d+n)$/.test(data)
 const sameSession = (a: TerminalTrialSession | undefined, b: TerminalTrialSession): boolean =>
   !!a && a.id === b.id && a.cwd === b.cwd && a.shell === b.shell && a.cols === b.cols && a.rows === b.rows
@@ -98,6 +97,12 @@ export function createTerminalController(options: {
         if (reading) await reading.catch(() => undefined)
         await writes
         writeFailure = undefined
+        if (session?.status === 'exited') {
+          // Finalize the previous trial before opening a replacement with its own output.
+          try { await apply(await options.runtime.stop(session.id), true) }
+          catch (cause) { if (!retireMissing(cause)) throw cause }
+        }
+        if (disposed) return
         const opened = await options.runtime.open(cols, rows)
         if (disposed) return
         session = session?.id === opened.session_id ? session : {

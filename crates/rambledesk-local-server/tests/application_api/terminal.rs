@@ -189,6 +189,27 @@ async fn terminal_application_http_reconnects_resizes_and_cleans_up_host_cancell
         .status(),
         reqwest::StatusCode::BAD_REQUEST
     );
+    let first_stopped = snapshot(
+        &client,
+        address,
+        "stopTerminalSession",
+        json!({"request_id":request,"session_id":session}),
+    )
+    .await?;
+    assert_eq!(first_stopped.status, TerminalSessionStatus::Stopped);
+    let restarted = snapshot(
+        &client,
+        address,
+        "openTerminalSession",
+        json!({"request_id":request,"cols":80,"rows":24}),
+    )
+    .await?;
+    assert_ne!(restarted.session_id, *session);
+    assert_eq!(restarted.status, TerminalSessionStatus::Running);
+    let preserved = snapshot(&client, address, "readTerminalSession", read.clone()).await?;
+    assert_eq!(preserved, first_stopped);
+    assert!(preserved.output.contains("33020"));
+    let session = &restarted.session_id;
     // The requesting host bypasses the UI facade. Its terminal transition must
     // still shut down the very same PTY serving desktop and Web Access clients.
     application
@@ -228,7 +249,12 @@ async fn terminal_application_http_reconnects_resizes_and_cleans_up_host_cancell
     .await?;
     assert_eq!(stopped.status, TerminalSessionStatus::Stopped);
     assert!(stopped.exit_code.is_some());
-    assert!(stopped.output.contains("33020"));
+    assert!(!stopped.output.contains("33020"));
+    assert_eq!(
+        snapshot(&client, address, "readTerminalSession", read).await?,
+        preserved,
+        "request cancellation must retain every previous session's evidence"
+    );
     assert!(!serde_json::to_string(&stopped)?.contains("secret-key-input"));
     assert!(
         !serde_json::to_value(&stopped)?
@@ -263,6 +289,94 @@ async fn terminal_commands_are_not_exposed_to_agent_integration_server() -> anyh
                 .await?
                 .status(),
             reqwest::StatusCode::NOT_FOUND
+        );
+    }
+    server.shutdown().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn terminal_restarted_sessions_freeze_together_and_completed_request_cannot_reopen()
+-> anyhow::Result<()> {
+    let (application, directory) = test_application().await?;
+    let request = seed_terminal_request(&application, directory.path()).await?;
+    let server =
+        start_application_server(application.clone(), terminal_operations(&application)).await?;
+    let client = reqwest::Client::new();
+    let address = server.address();
+    let mut sessions = Vec::new();
+    for _ in 0..2 {
+        let opened = snapshot(
+            &client,
+            address,
+            "openTerminalSession",
+            json!({"request_id":request,"cols":80,"rows":24}),
+        )
+        .await?;
+        let stopped = snapshot(
+            &client,
+            address,
+            "stopTerminalSession",
+            json!({"request_id":request,"session_id":opened.session_id}),
+        )
+        .await?;
+        assert_eq!(stopped.status, TerminalSessionStatus::Stopped);
+        assert!(stopped.exit_code.is_some());
+        sessions.push(json!({
+            "id": stopped.session_id, "cwd": stopped.cwd, "shell": stopped.shell,
+            "cols": stopped.cols, "rows": stopped.rows, "status": stopped.status,
+            "exit_code": stopped.exit_code, "output": stopped.output,
+            "screen": "", "truncated": stopped.truncated,
+        }));
+    }
+    assert_ne!(sessions[0]["id"], sessions[1]["id"]);
+    let saved = application
+        .save_feedback_draft(SaveDraftInput {
+            request_id: request.clone(),
+            document_json: json!({
+                "schemaVersion":2, "doc":{"type":"doc","content":[]},
+                "workbenchState":{"type":"terminal","sessions":sessions},
+            })
+            .to_string(),
+            body_markdown: "Reviewed both CLI trials.".into(),
+            expected_revision: 0,
+        })
+        .await?;
+    let result = application
+        .submit_feedback(SubmitFeedbackInput {
+            request_id: request.clone(),
+            expected_revision: saved.saved_revision,
+            cooked_markdown: None,
+            cooking_model: None,
+            uncooked_markdown: None,
+        })
+        .await?;
+    let package = application.read_feedback_package(&result).await?.unwrap();
+    let published = serde_json::to_value(package.manifest.workbench.unwrap())?;
+    assert_eq!(published["result"]["sessions"], json!(sessions));
+    assert_eq!(
+        call(
+            &client,
+            address,
+            "openTerminalSession",
+            json!({"request_id":request,"cols":80,"rows":24}),
+        )
+        .await?
+        .status(),
+        reqwest::StatusCode::BAD_REQUEST
+    );
+    for session in sessions {
+        let retained = snapshot(
+            &client,
+            address,
+            "readTerminalSession",
+            json!({"request_id":request,"session_id":session["id"],"after_sequence":null}),
+        )
+        .await?;
+        assert_eq!(retained.output, session["output"]);
+        assert_eq!(
+            retained.exit_code,
+            serde_json::from_value::<Option<i32>>(session["exit_code"].clone())?
         );
     }
     server.shutdown().await?;

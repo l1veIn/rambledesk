@@ -1,5 +1,6 @@
 use super::*;
 use std::{path::Path, time::Duration};
+mod restart;
 
 fn read(request: &str, session: &str, after: Option<u64>) -> ReadTerminalSessionInput {
     ReadTerminalSessionInput {

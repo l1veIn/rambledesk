@@ -25,7 +25,7 @@ import type {
 } from '../feedback'
 import { previewFixtures, previewWorkspaceFor } from './previewFixtures'
 import { webReviewPreviewSpec } from './webReviewPreviewFixture'
-import { terminalPreviewSpec, TerminalPreviewRuntime } from './terminalPreviewFixture'
+import { terminalPreviewAttachment, terminalPreviewAttachmentView, terminalPreviewSpec, TerminalPreviewRuntime } from './terminalPreviewFixture'
 
 export type PreviewApplicationOptions = { workspace?: string | null; origin?: string }
 
@@ -59,11 +59,11 @@ export class PreviewApplicationTransport implements ApplicationTransport {
       const terminal = scenario === 'terminal'
       const spec = terminal ? terminalPreviewSpec() : webReviewPreviewSpec(options.origin)
       const request = { ...base.request, title: terminal ? '终端试用 · CLI Demo' : '网页评审 · Atelier 首页',
-        what_happened: terminal ? '这是模拟 CLI 的交互预览，不执行本机命令。点击开始后填入建议命令，按回车体验；选中输出引用到反馈，再记录你的感受。真实 CLI 试用请使用 playground 的终端用例。' : '请体验这个页面，在元素旁留下意见，并补充整体反馈。',
+        what_happened: terminal ? '这是模拟 CLI 的交互预览，不执行本机命令。按体验 Markdown 复制命令到终端，体验停止和重新启动；选中输出引用到反馈，再记录你的感受。真实 CLI 试用请使用 playground 的终端用例。' : '请体验这个页面，在元素旁留下意见，并补充整体反馈。',
         status: 'in_progress' as const, resolution: null, allow_finish: false, final_summary: null }
       this.#requests.set(request.request_id, request)
       this.#workspaceOverrides.set(request.request_id, { ...base, request, workbench: spec,
-        actions: [], context_refs: [], request_attachments: [], attachments: [], feedback: null,
+        actions: [], context_refs: [], request_attachments: terminal ? [terminalPreviewAttachmentView] : [], attachments: [], feedback: null,
         draft: { document_json: null, body_markdown: '', saved_revision: 0, updated_at: null } })
     }
   }
@@ -104,6 +104,12 @@ export class PreviewApplicationTransport implements ApplicationTransport {
       case 'resizeTerminalSession':
       case 'stopTerminalSession':
         return this.#terminal.call(name, input as Parameters<TerminalPreviewRuntime['call']>[1])
+      case 'readRequestAttachment': {
+        const { request_id, attachment_id } = input as { request_id: string; attachment_id: string }
+        if (!this.#workspaceFor(request_id).request_attachments.some((item) => item.attachment_id === attachment_id)
+          || attachment_id !== terminalPreviewAttachment.attachment_id) throw new Error('预览附件不存在。')
+        return new TextEncoder().encode(terminalPreviewAttachment.markdown).buffer
+      }
       case 'listFeedbackInbox':
         return [...this.#requests.values()].filter(
           (request) => request.status === 'waiting' || request.status === 'in_progress',

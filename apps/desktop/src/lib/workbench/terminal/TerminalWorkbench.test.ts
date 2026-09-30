@@ -11,16 +11,16 @@ import TerminalWorkbench from './TerminalWorkbench.svelte'
 type Hooks = { onData: (data: string) => void; onResize: (size: { cols: number; rows: number }) => void; onSelection: (text: string) => void }
 const bridge = vi.hoisted(() => ({
   hooks: null as Hooks | null, screen: '', interactive: false,
-  dispose: vi.fn(), paste: vi.fn(), focus: vi.fn(), factory: vi.fn(),
+  dispose: vi.fn(), focus: vi.fn(), factory: vi.fn(),
 }))
 vi.mock('./xtermAdapter', () => ({ createXtermAdapter: async (_root: HTMLElement, hooks: Hooks) => {
   bridge.factory(); bridge.hooks = hooks
-  return { size: () => ({ cols: 80, rows: 24 }), fit() {}, focus: bridge.focus, paste: bridge.paste,
+  return { size: () => ({ cols: 80, rows: 24 }), fit() {}, focus: bridge.focus,
     reset: () => bridge.screen = '', write: async (output: string) => { bridge.screen += output },
     screen: () => bridge.screen, selection: () => '', setInteractive: (value: boolean) => bridge.interactive = value,
     dispose: bridge.dispose }
 } }))
-const data: TerminalData = { cwd: '/project', commands: [{ id: 'help', title: 'Help', command: 'node cli.mjs --help', description: 'Inspect available commands.' }] }
+const data: TerminalData = { cwd: '/project' }
 const snapshot = (changes: Partial<TerminalSessionSnapshot> = {}): TerminalSessionSnapshot => ({
   session_id: 'trial-1', request_id: 'request-1', cwd: '/project', shell: 'bash', cols: 80, rows: 24,
   status: 'running', exit_code: null, output: '$ ', first_sequence: 0, next_sequence: 2, truncated: false, ...changes,
@@ -73,16 +73,12 @@ describe('terminal workbench', () => {
     button('Retry connection').click()
     await vi.waitFor(() => expect(wire.mock.calls.some(([name]) => name === 'openTerminalSession')).toBe(true))
   })
-  it('starts on user action and fills a suggestion without appending Enter', async () => {
+  it('starts on user action and accepts free terminal input without a command shortcut area', async () => {
     open()
     await vi.waitFor(() => expect(bridge.hooks).not.toBeNull())
     expect(wire).not.toHaveBeenCalled()
-    expect(button('Fill command: Help').disabled).toBe(true)
+    expect(document.querySelector('[data-terminal-suggestions]')).toBeNull()
     await start()
-    button('Fill command: Help').click()
-    expect(bridge.paste).toHaveBeenCalledWith('node cli.mjs --help')
-    expect(bridge.paste.mock.lastCall?.[0]).not.toContain('\r')
-    expect(bridge.paste.mock.lastCall?.[0]).not.toContain('\n')
     bridge.hooks!.onData('\x1b[A\x03')
     await vi.waitFor(() => expect(wire).toHaveBeenCalledWith('writeTerminalSession', { request_id: 'request-1', session_id: 'trial-1', data: '\x1b[A\x03' }))
     expect(JSON.stringify(state)).not.toContain('data')
@@ -124,5 +120,37 @@ describe('terminal workbench', () => {
     await unmount(view!); view = undefined
     expect(bridge.dispose).toHaveBeenCalledTimes(1)
     expect(wire.mock.calls.some(([name]) => name === 'stopTerminalSession')).toBe(false)
+  })
+  it('restarts a stopped terminal only on user action, retaining independent trial output', async () => {
+    let number = 0
+    wire.mockImplementation(async (name: string, input: { session_id?: string }) => {
+      if (name === 'openTerminalSession') number += 1
+      const id = input.session_id ?? `trial-${number}`
+      return snapshot({ session_id: id, status: name === 'stopTerminalSession' ? 'stopped' : 'running',
+        output: name === 'stopTerminalSession' ? `final ${id}` : `prompt ${id}`, next_sequence: 13 })
+    })
+    open(); await start()
+    button('Stop terminal').click()
+    await vi.waitFor(() => expect(button('Restart terminal')?.disabled).toBe(false))
+    expect(number).toBe(1)
+    button('Restart terminal').click()
+    await vi.waitFor(() => expect(state.sessions).toHaveLength(2))
+    await vi.waitFor(() => expect(bridge.interactive).toBe(true))
+    expect(state.sessions[0]).toMatchObject({ id: 'trial-1', status: 'stopped', output: 'final trial-1', screen: 'final trial-1' })
+    expect(state.sessions[1]).toMatchObject({ id: 'trial-2', output: 'prompt trial-2', screen: 'prompt trial-2' })
+    expect(bridge.screen).toBe('prompt trial-2')
+    await (view as unknown as { prepareSubmission: () => Promise<void> }).prepareSubmission()
+    expect(state.sessions[1].output).toBe('final trial-2')
+    expect(wire.mock.calls.filter(([name]) => name === 'openTerminalSession')).toHaveLength(2)
+  })
+  it('blocks the seventeenth trial before calling the runtime', async () => {
+    const sessions: TerminalTrialSession[] = Array.from({ length: 16 }, (_, number) => ({ id: `trial-${number}`,
+      cwd: '/project', shell: 'bash', cols: 80, rows: 24, status: 'stopped', exit_code: null, output: '', screen: '', truncated: false }))
+    open(false, { type: 'terminal', sessions })
+    await vi.waitFor(() => expect(button('Restart terminal')).toBeDefined())
+    expect(button('Restart terminal').disabled).toBe(true)
+    button('Restart terminal').dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    expect(wire).not.toHaveBeenCalled()
+    expect(document.body.textContent).toContain('16 trial limit')
   })
 })

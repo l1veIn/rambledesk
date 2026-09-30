@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { WorkbenchSpec } from './generated/feedback'
 import { resolveWorkbenchPolicy, workbenchIsReadOnly, workbenchSupportsApproval } from './workbenchPolicy'
 import { canSubmitWorkbench } from './workbenchState'
+import { validTerminalInput } from './workbenchInputValidation'
 
 const action = { id: 'read', instruction: 'Read the result' }
 const choice = { id: 'yes', label: 'Yes' }
@@ -24,6 +25,16 @@ function rejected(type: keyof typeof inputs, data: object) {
 }
 
 describe('workbench input contract before enabling mutations', () => {
+  it('accepts terminal instructions in request materials and keeps legacy command data compatible', () => {
+    for (const data of [{ cwd: '/project' }, { cwd: '/project', commands: [] },
+      { cwd: '/project', commands: [{ id: 'help', title: 'Help', command: 'my-cli --help' }] }]) {
+      expect(validTerminalInput(data)).toBe(true)
+      expect(resolveWorkbenchPolicy({ type: 'terminal', version: 1, data })?.type).toBe('terminal')
+    }
+    for (const commands of [null, 'my-cli --help', [{ id: 'help', title: 'Help', command: 'my-cli --help\n' }]]) {
+      expect(validTerminalInput({ cwd: '/project', commands })).toBe(false)
+    }
+  })
   it.each(Object.keys(inputs) as Array<keyof typeof inputs>)('accepts valid %s input but preserves extra data fields as read-only', (type) => {
     expect(resolveWorkbenchPolicy(spec(type))?.type).toBe(type)
     rejected(type, { ...inputs[type], future: true })

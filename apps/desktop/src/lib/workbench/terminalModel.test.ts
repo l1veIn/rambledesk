@@ -5,7 +5,7 @@ import { canSubmitWorkbench, readWorkbenchState, withWorkbenchState } from '../w
 import { snapshotFeedbackDraftMarkdown, updateFeedbackDraftDocument } from '../feedbackDraftDocument'
 import { emptyTerminalState, validateTerminalState } from './terminalModel'
 
-const data: TerminalData = { cwd: '/project', commands: [{ id: 'help', title: 'Explore help', command: 'my-cli --help' }] }
+const data = { cwd: '/project', commands: [{ id: 'help', title: 'Explore help', command: 'my-cli --help' }] } satisfies TerminalData
 const spec: WorkbenchSpec = { type: 'terminal', version: 1, data }
 const session = (): TerminalTrialSession => ({ id: 'trial-1', cwd: '/project', shell: 'sh', cols: 80, rows: 24,
   status: 'stopped', exit_code: null, output: '\x1b[32mUsage: my-cli 😀\x1b[0m\r\n', screen: 'Usage: my-cli 😀', truncated: false })

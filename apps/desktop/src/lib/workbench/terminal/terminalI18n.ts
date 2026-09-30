@@ -2,8 +2,9 @@ import { t } from '../../i18n'
 const zh: Record<string, string> = {
   'Terminal trial': '终端试用', 'Start terminal': '开始试用', 'Stop terminal': '停止终端',
   'Quote selected output': '引用选中输出', 'Full screen trial': '全屏试用',
-  'Fill command': '填入命令', 'Suggested commands': '建议命令', 'Saved trial': '已保存的试用记录',
-  'Click a command to fill it, then press Enter to run.': '点击命令填入终端，再按回车执行。',
+  'Saved trial': '已保存的试用记录', 'Restart terminal': '重新启动终端',
+  'Recorded trials': '已保存的试用次数',
+  'The 16 trial limit was reached. Submit feedback to keep the recorded trials.': '已达到 16 次试用上限，请提交反馈以保存这些试用记录。',
   'Start the terminal to try the CLI.': '开始试用后，即可在终端中操作 CLI。',
   'Running': '运行中', 'Exited': '已退出', 'Stopped': '已停止', 'Connecting…': '正在连接…',
   'Trial output is saved with your feedback.': '试用记录将与反馈一起保存。',

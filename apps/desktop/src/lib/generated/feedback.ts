@@ -53,7 +53,11 @@ export type WebReviewElement = {
 selector: string, tag_name: string, text: string, rect: WebReviewRect, };
 export type WebReviewAnnotation = { id: string, page_url: string, viewport: WebReviewViewport, element: WebReviewElement, body: string, screenshot_attachment_id?: string, };
 export type WebReviewResult = { source_version: string, annotations: Array<WebReviewAnnotation>, };
-export type TerminalData = { cwd: string, shell?: string, commands: Array<TerminalCommand>, };
+export type TerminalData = { cwd: string, shell?: string,
+/**
+ * Legacy suggestions retained for saved requests; the terminal does not render them.
+ */
+commands?: Array<TerminalCommand>, };
 export type TerminalCommand = { id: string, title: string, command: string, description?: string, };
 export type TerminalTrialStatus = "running" | "exited" | "stopped";
 export type TerminalTrialSession = { id: string, cwd: string, shell: string, cols: number, rows: number, status: TerminalTrialStatus,

@@ -14,6 +14,29 @@ function call(name: ApplicationCommandName, input?: unknown) {
 }
 
 describe('preview application transport', () => {
+  it('provides terminal commands in Markdown and restarts without overwriting earlier trial output', async () => {
+    const preview = new PreviewApplicationTransport(UNAVAILABLE_CAPABILITY_MANIFEST, { workspace: 'terminal' })
+    const requestId = previewFixtures.requests[0]!.request_id
+    const workspace = await preview.call('getFeedbackWorkspace', { request_id: requestId })
+    expect(workspace.workbench?.data).toEqual({ cwd: '/preview/cli-demo' })
+    const attachment = workspace.request_attachments[0]!
+    const contents = await preview.call('readRequestAttachment', { request_id: requestId, attachment_id: attachment.attachment_id })
+    expect(new TextDecoder().decode(contents)).toContain('```sh\ndemo --help\n```')
+    const first = await preview.call('openTerminalSession', { request_id: requestId, cols: 80, rows: 24 })
+    await preview.call('writeTerminalSession', { request_id: requestId, session_id: first.session_id, data: 'demo --help\r' })
+    await preview.call('stopTerminalSession', { request_id: requestId, session_id: first.session_id })
+    const second = await preview.call('openTerminalSession', { request_id: requestId, cols: 90, rows: 30 })
+    expect(second.session_id).not.toBe(first.session_id)
+    expect(await preview.call('openTerminalSession', { request_id: requestId, cols: 90, rows: 30 })).toEqual(second)
+    const previous = await preview.call('readTerminalSession', { request_id: requestId, session_id: first.session_id, after_sequence: null })
+    expect(previous).toMatchObject({ status: 'stopped' })
+    expect(previous.output).toContain('CLI Demo')
+    await preview.call('writeTerminalSession', { request_id: requestId, session_id: second.session_id, data: 'exit\r' })
+    const third = await preview.call('openTerminalSession', { request_id: requestId, cols: 80, rows: 24 })
+    expect(third.session_id).not.toBe(second.session_id)
+    expect(third.status).toBe('running')
+  })
+
   it('offers web review in the first ordinary session without changing the other fixtures', async () => {
     const preview = new PreviewApplicationTransport(UNAVAILABLE_CAPABILITY_MANIFEST, {
       workspace: 'web_review', origin: 'http://127.0.0.1:4319',

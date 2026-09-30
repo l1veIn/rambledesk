@@ -138,13 +138,55 @@ fn terminal_rejects_invalid_dimensions_duplicate_ids_exit_context_and_capture_ov
 }
 
 #[test]
+fn terminal_input_omits_legacy_commands_and_still_reads_existing_requests() {
+    let example = spec();
+    assert!(validate_workbench(&example).is_ok());
+    let serde_value::Value::Map(fields) = serde_value::to_value(example.clone()).unwrap() else {
+        unreachable!()
+    };
+    let serde_value::Value::Map(data) = &fields[&serde_value::Value::String("data".into())] else {
+        unreachable!()
+    };
+    assert!(!data.contains_key(&serde_value::Value::String("commands".into())));
+    assert_eq!(
+        serde_value::Value::Map(fields)
+            .deserialize_into::<WorkbenchSpec>()
+            .unwrap(),
+        example
+    );
+    let mut legacy = example;
+    let WorkbenchData::Terminal(data) = &mut legacy.data else {
+        unreachable!()
+    };
+    data.commands.push(TerminalCommand {
+        id: "help".into(),
+        title: "Help".into(),
+        command: "my-cli --help".into(),
+        description: None,
+    });
+    assert!(validate_workbench(&legacy).is_ok());
+    assert_eq!(
+        serde_value::to_value(legacy.clone())
+            .unwrap()
+            .deserialize_into::<WorkbenchSpec>()
+            .unwrap(),
+        legacy
+    );
+}
+
+#[test]
 fn terminal_discovery_rejects_unsafe_suggestion_controls_and_preserves_future_contracts() {
     for control in ['\n', '\r', '\t', '\u{1b}', '\u{7f}'] {
         let mut invalid = spec();
         let WorkbenchData::Terminal(data) = &mut invalid.data else {
             unreachable!()
         };
-        data.commands[0].command.push(control);
+        data.commands.push(TerminalCommand {
+            id: "help".into(),
+            title: "Help".into(),
+            command: format!("my-cli --help{control}"),
+            description: None,
+        });
         assert!(validate_workbench(&invalid).is_err());
     }
     let serde_value::Value::Map(mut fields) = serde_value::to_value(spec()).unwrap() else {

@@ -8,5 +8,5 @@ export function isMissingTerminalSession(cause: unknown): boolean {
 }
 
 export function lostTerminalSession(session: TerminalTrialSession): TerminalTrialSession {
-  return { ...session, status: 'stopped', exit_code: null }
+  return { ...session, status: 'stopped', exit_code: session.status === 'running' ? null : session.exit_code }
 }

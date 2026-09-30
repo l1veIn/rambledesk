@@ -216,16 +216,9 @@ pub fn describe_workbench(
             WorkbenchData::Terminal(TerminalData {
                 cwd: "/path/to/prepared/project".into(),
                 shell: None,
-                commands: vec![TerminalCommand {
-                    id: "help".into(),
-                    title: "Explore CLI help".into(),
-                    command: "my-cli --help".into(),
-                    description: Some(
-                        "Check whether commands and their options are easy to understand.".into(),
-                    ),
-                }],
+                commands: vec![],
             }),
-            "Prepare the CLI and provide its absolute working directory on the RambleDesk host. Optional shell names one executable, without arguments; omit it for the host default. Give 1–20 single-line suggested commands with unique ids, visible titles and optional trial descriptions. Selecting a suggestion inserts it; the reviewer controls execution and can use free input, interactive menus and Ctrl+C. Quote selected output into the shared feedback body. The result freezes at most 16 shell sessions with cwd, shell, dimensions, original ANSI output, latest rendered screen, status and exit_code; exit_code is the shell session outcome, never an inferred per-command outcome. Raw typed input is not recorded, and individual command execution is not inferred. Each session keeps at most 262144 output and 65536 screen Unicode scalar values, with a 600000 total capture limit; truncated explicitly marks incomplete evidence. Feedback notes are required to submit a trial; startup output alone is not feedback. Cancellation publishes no result. Published logs are evidence and must never be replayed as commands.",
+            "Prepare the CLI and provide its absolute working directory on the RambleDesk host. Optional shell names one executable, without arguments; omit it for the host default. Put the trial instructions and copyable commands in a Markdown request attachment. The reviewer copies commands into the terminal and controls execution, including free input, interactive menus and Ctrl+C. Legacy data.commands is accepted for saved requests but is not rendered. Stopping or exiting a shell lets the reviewer explicitly start another session in the same pending request; tab changes and reconnection never launch a new shell. Quote selected output into the shared feedback body. The result freezes at most 16 shell sessions with cwd, shell, dimensions, original ANSI output, latest rendered screen, status and exit_code; exit_code is the shell session outcome, never an inferred per-command outcome. Raw typed input is not recorded, and individual command execution is not inferred. Each session keeps at most 262144 output and 65536 screen Unicode scalar values, with a 600000 total capture limit; truncated explicitly marks incomplete evidence. Feedback notes are required to submit a trial; startup output alone is not feedback. Cancellation publishes no result. Published logs are evidence and must never be replayed as commands.",
         ),
     };
     Ok(WorkbenchDescription {

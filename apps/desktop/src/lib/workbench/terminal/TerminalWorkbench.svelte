@@ -6,11 +6,13 @@
   import type { ApplicationTransport } from '$lib/application/applicationTransport'
   import type { TerminalData, TerminalTrialSession } from '$lib/generated/feedback'
   import { locale } from '$lib/preferences'
-  import { emptyTerminalState, type TerminalState } from '../terminalModel'
-  import { canFillTerminalCommand, createTerminalController, terminalTextTail } from './terminalController'
+  import { emptyTerminalState, TERMINAL_SESSION_LIMIT, type TerminalState } from '../terminalModel'
+  import { createTerminalController, terminalTextTail } from './terminalController'
   import { createXtermAdapter, type TerminalAdapter } from './xtermAdapter'
   import { terminalText } from './terminalI18n'
   import { isMissingTerminalSession } from './terminalErrors'
+  import { finalizeTerminalSession } from './terminalSnapshot'
+  import { retainTerminalSessions } from './terminalRetention'
 
   export let requestId: string
   export let data: TerminalData
@@ -36,6 +38,7 @@
   const tr = (source: string) => terminalText($locale, source)
   $: current = state ?? emptyTerminalState()
   $: latest = current.sessions.at(-1)
+  $: trialLimitReached = current.sessions.length >= TERMINAL_SESSION_LIMIT && latest?.status !== 'running'
   $: interactive = ready && !disabled && !readOnly && !busy && !error && latest?.status === 'running'
   $: adapter?.setInteractive(interactive)
   $: controller?.setLocked(disabled || readOnly)
@@ -47,7 +50,7 @@
     const sessions = [...current.sessions]
     if (existing === -1) sessions.push(session)
     else sessions[existing] = session
-    state = { type: 'terminal', sessions }
+    state = { type: 'terminal', sessions: retainTerminalSessions(sessions) }
     current = state
     onChange(state)
   }
@@ -94,19 +97,15 @@
     }
   }
   async function start() {
-    if (!adapter || !controller || disabled || readOnly || busy) return
+    if (!adapter || !controller || disabled || readOnly || busy || trialLimitReached) return
     error = ''
+    selection = ''
     try { const size = adapter.size(); await controller.start(size.cols, size.rows); adapter?.focus() }
     catch { /* Controller presents the actionable connection error. */ }
   }
   async function stop() {
     error = ''
     try { await controller?.stop() } catch { /* Keep the request editable for retry. */ }
-  }
-  function fillCommand(command: string) {
-    if (!interactive || !canFillTerminalCommand(command)) return
-    adapter?.paste(command)
-    adapter?.focus()
   }
   function quoteSelection() {
     if (!selection.trim() || disabled || readOnly || !onQuote) return
@@ -121,6 +120,12 @@
     if (!controller && latest?.status === 'running') throw new Error(error || tr('Terminal unavailable'))
     error = ''
     await controller?.prepareSubmission()
+    const capturedId = controller?.session()?.id
+    for (const session of [...current.sessions]) {
+      if (session.id !== capturedId && session.status !== 'stopped') {
+        remember(await finalizeTerminalSession(session, (session_id) => transport.call('stopTerminalSession', { request_id: requestId, session_id })))
+      }
+    }
   }
   onMount(() => {
     mounted = true
@@ -143,9 +148,9 @@
     <div class="terminal-heading"><TerminalIcon class="size-4" /><span>{tr('Terminal trial')}</span></div>
     <div class="terminal-actions">
       {#if !readOnly}
-        {#if !latest || error}
-          <Button size="sm" variant="outline" disabled={!ready || disabled || busy} onclick={() => void start()}>
-            <Play class="size-4" />{tr(error ? 'Retry connection' : 'Start terminal')}
+        {#if !latest || error || latest.status !== 'running'}
+          <Button size="sm" variant="outline" disabled={!ready || disabled || busy || trialLimitReached} onclick={() => void start()}>
+            <Play class="size-4" />{tr(latest?.status === 'stopped' || latest?.status === 'exited' ? 'Restart terminal' : error ? 'Retry connection' : 'Start terminal')}
           </Button>
         {:else if latest.status === 'running'}
           <Button size="sm" variant="outline" disabled={disabled || busy} onclick={() => void stop()}>
@@ -169,18 +174,7 @@
     <code title={data.cwd}>{data.cwd}</code>
     {#if latest}<span class="terminal-status" data-terminal-status>{tr(busy ? 'Connecting…' : latest.status === 'running' ? 'Running' : latest.status === 'stopped' ? 'Stopped' : 'Exited')}{latest.exit_code !== null ? ` · ${tr('Exit code')} ${latest.exit_code}` : ''}</span>{/if}
   </div>
-  {#if !readOnly && data.commands.length}
-    <div class="terminal-suggestions" data-terminal-suggestions>
-      <p>{tr('Click a command to fill it, then press Enter to run.')}</p>
-      {#each data.commands as command (command.id)}
-        <button type="button" class="terminal-command" title={command.description ?? command.title}
-          aria-label={`${tr('Fill command')}: ${command.title}`} disabled={!interactive || !canFillTerminalCommand(command.command)}
-          onclick={() => fillCommand(command.command)}>
-          <span>{command.title}</span><code>{command.command}</code>
-        </button>
-      {/each}
-    </div>
-  {/if}
+  {#if !readOnly && trialLimitReached}<p class="terminal-limit">{tr('The 16 trial limit was reached. Submit feedback to keep the recorded trials.')}</p>{/if}
   {#if error}<p class="terminal-error" role="alert">{error}</p>{/if}
   {#if readOnly}
     <div class="terminal-history" data-terminal-history>
@@ -198,7 +192,7 @@
       <div bind:this={root} class="terminal-surface" data-terminal-surface></div>
       {#if !latest && !busy}<div class="terminal-empty">{tr('Start the terminal to try the CLI.')}</div>{/if}
     </div>
-    <footer><span>{tr('Trial output is saved with your feedback.')}</span>{#if latest?.truncated}<span>{tr('Earlier output was truncated. The latest screen is preserved.')}</span>{/if}</footer>
+    <footer><span>{tr('Trial output is saved with your feedback.')}</span>{#if current.sessions.length > 1}<span>{tr('Recorded trials')}: {current.sessions.length}</span>{/if}{#if current.sessions.some((session) => session.truncated)}<span>{tr('Earlier output was truncated. The latest screen is preserved.')}</span>{/if}</footer>
   {/if}
 </section>
 
@@ -210,12 +204,7 @@
   .terminal-context { display: flex; flex-wrap: wrap; gap: 6px 12px; padding: 6px 12px; font-size: 11px; color: var(--muted-foreground); }
   .terminal-context code { min-width: 0; overflow-wrap: anywhere; flex: 1; }
   .terminal-status { white-space: nowrap; }
-  .terminal-suggestions { padding: 4px 12px 10px; display: flex; flex-wrap: wrap; gap: 6px; max-height: 170px; overflow: auto; flex-shrink: 0; }
-  .terminal-suggestions p { width: 100%; margin: 0 0 2px; font-size: 11px; color: var(--muted-foreground); }
-  .terminal-command { max-width: 100%; display: flex; align-items: baseline; gap: 8px; border: 1px solid var(--border); border-radius: 5px; padding: 5px 8px; text-align: left; font-size: 11px; background: var(--muted); }
-  .terminal-command span { color: var(--muted-foreground); white-space: nowrap; }
-  .terminal-command code { overflow-wrap: anywhere; }
-  .terminal-command:disabled { opacity: .5; cursor: default; }
+  .terminal-limit { margin: 0; padding: 8px 12px; font-size: 12px; color: var(--muted-foreground); }
   .terminal-stage { flex: 1; min-height: 300px; position: relative; background: #16191f; overflow: hidden; }
   .terminal-surface { position: absolute; inset: 0; padding: 10px; overflow: hidden; }
   .terminal-surface :global(.xterm) { height: 100%; }
@@ -228,5 +217,5 @@
   .terminal-history-heading span:last-child, .terminal-history p { color: var(--muted-foreground); font-size: 11px; overflow-wrap: anywhere; }
   .terminal-history pre { background: #16191f; color: #e5e7eb; padding: 10px; border-radius: 5px; overflow: auto; font-size: 12px; line-height: 1.4; }
   .terminal-history summary { font-size: 11px; margin-top: 8px; cursor: pointer; }
-  @media (max-width: 600px) { .terminal-toolbar { padding-inline: 8px; } .terminal-heading { width: 100%; } .terminal-command { flex-direction: column; gap: 2px; } }
+  @media (max-width: 600px) { .terminal-toolbar { padding-inline: 8px; } .terminal-heading { width: 100%; } }
 </style>

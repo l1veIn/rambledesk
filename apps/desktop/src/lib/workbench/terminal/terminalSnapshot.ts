@@ -1,6 +1,19 @@
 import type { TerminalSessionSnapshot, TerminalTrialSession } from '../../generated/feedback'
 import { terminalTextTail } from './terminalController'
 import { terminalScreen } from './terminalScreen'
+import { isMissingTerminalSession, lostTerminalSession } from './terminalErrors'
+
+export async function finalizeTerminalSession(
+  session: TerminalTrialSession,
+  stop: (sessionId: string) => Promise<TerminalSessionSnapshot>,
+): Promise<TerminalTrialSession> {
+  if (session.status === 'stopped') return session
+  try { return await replayTerminalSnapshot(await stop(session.id), session) }
+  catch (cause) {
+    if (!isMissingTerminalSession(cause)) throw cause
+    return lostTerminalSession(session)
+  }
+}
 
 /** Recover the final TUI screen when submission comes from a task/console without a mounted terminal. */
 export async function replayTerminalSnapshot(snapshot: TerminalSessionSnapshot, previous?: TerminalTrialSession): Promise<TerminalTrialSession> {

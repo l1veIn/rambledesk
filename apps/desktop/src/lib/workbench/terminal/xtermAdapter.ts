@@ -5,7 +5,6 @@ export type TerminalAdapter = TerminalRenderer & {
   size: () => { cols: number; rows: number }
   fit: () => void
   focus: () => void
-  paste: (text: string) => void
   selection: () => string
   setInteractive: (value: boolean) => void
   dispose: () => void
@@ -43,7 +42,7 @@ export async function createXtermAdapter(root: HTMLElement, hooks: {
     },
     reset: () => terminal.reset(),
     write: (output) => new Promise<void>((resolve) => { if (disposed) resolve(); else terminal.write(output, resolve) }),
-    screen: () => terminalScreen(terminal), focus: () => terminal.focus(), paste: (text) => { if (interactive) terminal.paste(text) },
+    screen: () => terminalScreen(terminal), focus: () => terminal.focus(),
     selection: () => terminal.getSelection(), setInteractive: (value) => { interactive = value; terminal.options.cursorBlink = value },
     dispose: () => { disposed = true; subscriptions.forEach((subscription) => subscription.dispose()); terminal.dispose() },
   }

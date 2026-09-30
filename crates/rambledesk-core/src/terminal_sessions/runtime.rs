@@ -49,6 +49,7 @@ impl Shared {
 
 pub(super) struct TerminalRuntime {
     id: String,
+    request_id: String,
     shared: Arc<Mutex<Shared>>,
     control: mpsc::SyncSender<Control>,
     done: Arc<Notify>,
@@ -207,6 +208,7 @@ impl TerminalRuntime {
         });
         Ok(Self {
             id,
+            request_id: request_id.to_owned(),
             shared,
             control,
             done,
@@ -217,9 +219,16 @@ impl TerminalRuntime {
     pub fn id(&self) -> &str {
         &self.id
     }
+    pub fn request_id(&self) -> &str {
+        &self.request_id
+    }
     pub fn is_running(&self) -> bool {
         self.shared.lock().expect("terminal output").snapshot.status
             == TerminalSessionStatus::Running
+    }
+    pub fn is_finished(&self) -> bool {
+        let state = self.shared.lock().expect("terminal output");
+        state.reader_done && state.child_done
     }
 
     pub fn snapshot(
