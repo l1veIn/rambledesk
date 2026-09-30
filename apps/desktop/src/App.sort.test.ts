@@ -47,19 +47,36 @@ function button(label: string): HTMLButtonElement {
 const activeKey = () => document.querySelector('[data-workspace-tab-item][data-active="true"]')?.getAttribute('data-workspace-view-key')
 const renderedOrder = () => [...document.querySelectorAll('[data-sort-item-id]')].map((row) => row.getAttribute('data-sort-item-id'))
 
-it('uses shared App autosave, expansion, recovery and publication for a new sorting workbench without feedback body text', async () => {
+it('saves and restores edited, deleted and reordered options through shared App expansion and read-only publication', async () => {
   const transport = new PreviewApplicationTransport(UNAVAILABLE_CAPABILITY_MANIFEST, { workspace: 'sort' })
   const mountApp = () => { app = mount(App, { target: document.body, props: { applicationTransport: transport,
     environment: 'browser', previewMode: true, publishedFeedbackAction: { label: 'Open feedback package', run: async () => {} } } }) }
   const saved = () => transport.call('getFeedbackWorkspace', { request_id: request.request_id })
   mountApp()
   await vi.waitFor(() => expect(renderedOrder()).toEqual(['quickstart', 'errors', 'completion', 'config']))
-  for (let move = 0; move < 3; move++) {
-    button('上移 配置文件').click()
+  button('编辑 配置文件').click()
+  await tick()
+  const editor = document.querySelector<HTMLInputElement>('[data-sort-editor]')!
+  expect(editor).not.toBeNull()
+  editor.value = '项目配置'
+  editor.dispatchEvent(new Event('input', { bubbles: true }))
+  await tick()
+  editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  await tick()
+  button('删除 清晰的错误提示').click()
+  await tick()
+  button('恢复 清晰的错误提示').click()
+  await tick()
+  expect(renderedOrder()).toEqual(['quickstart', 'completion', 'config', 'errors'])
+  button('删除 清晰的错误提示').click()
+  await tick()
+  for (let move = 0; move < 2; move++) {
+    button('上移 项目配置').click()
     await tick()
   }
-  const order = ['config', 'quickstart', 'errors', 'completion']
-  await vi.waitFor(async () => expect(readWorkbenchState((await saved()).draft.document_json)).toEqual({ type: 'sort', order }), { timeout: 3000 })
+  const order = ['config', 'quickstart', 'completion']
+  const state = { type: 'sort', order, removed_ids: ['errors'], edited_items: [{ id: 'config', label: '项目配置' }] }
+  await vi.waitFor(async () => expect(readWorkbenchState((await saved()).draft.document_json)).toEqual(state), { timeout: 3000 })
   expect((await saved()).draft.body_markdown).toBe('')
   const rail = document.querySelector('aside[aria-label="Projects"]')!
   expect(rail).not.toBeNull()
@@ -72,11 +89,16 @@ it('uses shared App autosave, expansion, recovery and publication for a new sort
   await unmount(app!); app = undefined; document.body.replaceChildren(); resetPreviewWorkspaceSnapshot()
   mountApp()
   await vi.waitFor(() => expect(renderedOrder()).toEqual(order))
+  expect(document.querySelector('[data-sort-item-id="config"] [data-sort-label]')?.textContent).toBe('项目配置')
+  expect(button('恢复 清晰的错误提示')).toBeDefined()
   await vi.waitFor(() => expect(button('Submit feedback').disabled).toBe(false))
   button('Submit feedback').click()
   await vi.waitFor(async () => expect((await saved()).request.status).toBe('completed'))
   await vi.waitFor(() => expect(document.querySelector('[data-sort-workbench] [aria-label^="拖动 "]')).toBeNull())
   expect(document.querySelector('[data-sort-workbench] button[aria-label^="上移 "]')).toBeNull()
-  expect(readWorkbenchState((await saved()).draft.document_json)).toEqual({ type: 'sort', order })
+  expect(document.querySelector('[data-sort-workbench] button[aria-label^="编辑 "]')).toBeNull()
+  expect(document.querySelector('[data-sort-workbench] button[aria-label^="删除 "]')).toBeNull()
+  expect(document.querySelector('[data-sort-workbench] button[aria-label^="恢复 "]')).toBeNull()
+  expect(readWorkbenchState((await saved()).draft.document_json)).toEqual(state)
   expect(renderedOrder()).toEqual(order)
 }, 15000)

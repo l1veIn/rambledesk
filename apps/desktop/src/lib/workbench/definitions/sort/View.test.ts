@@ -12,6 +12,7 @@ import Harness from './ViewTestHarness.svelte'
 const spec = sortDefinition.examples![0].spec
 const data = spec.data as SortData
 const original = data.items.map((item) => item.id)
+const stateFor = (order = original): Extract<WorkbenchState, { type: 'sort' }> => ({ type: 'sort', order, removed_ids: [], edited_items: [] })
 let view: ReturnType<typeof mount> | undefined
 let context: ReturnType<typeof writable<WorkbenchViewContext>>
 let updateState = vi.fn()
@@ -56,7 +57,7 @@ async function dnd(event: 'consider' | 'finalize', items: PreviewItem[], trigger
 describe('sort workbench view', () => {
   it('initializes the editable original order and moves stable rows using accessible controls', async () => {
     await open()
-    expect(updateState).toHaveBeenCalledExactlyOnceWith({ type: 'sort', order: original })
+    expect(updateState).toHaveBeenCalledExactlyOnceWith(stateFor())
     expect(order()).toEqual(original)
     expect(button('上移 快速上手').disabled).toBe(true)
     expect(button('下移 配置文件').disabled).toBe(true)
@@ -70,13 +71,13 @@ describe('sort workbench view', () => {
     expect(openExpanded).toHaveBeenCalledOnce()
   })
   it('uses the actual drag-handle keyboard interaction to reorder and stop a drag', async () => {
-    await open({ type: 'sort', order: original })
+    await open(stateFor())
     const handle = document.querySelector<HTMLElement>('[data-sort-handle][aria-label="拖动 配置文件"]')!
     handle.focus()
     handle.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true })); await tick()
     const item = document.querySelector<HTMLElement>('[data-sort-item-id="config"]')!
     item.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true })); await tick()
-    expect(updateState).toHaveBeenLastCalledWith({ type: 'sort', order: ['quickstart', 'errors', 'config', 'completion'] })
+    expect(updateState).toHaveBeenLastCalledWith(stateFor(['quickstart', 'errors', 'config', 'completion']))
     const moved = document.querySelector<HTMLElement>('[data-sort-item-id="config"]')!
     moved.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true })); await tick()
     expect(order()).toEqual(['quickstart', 'config', 'errors', 'completion'])
@@ -84,14 +85,14 @@ describe('sort workbench view', () => {
     expect(button('上移 配置文件').disabled).toBe(false)
   })
   it('keeps drag preview local and publishes only a complete permutation on drop', async () => {
-    await open({ type: 'sort', order: original })
+    await open(stateFor())
     const shadow = { id: SHADOW_PLACEHOLDER_ITEM_ID, sourceId: 'config', label: '配置文件', [SHADOW_ITEM_MARKER_PROPERTY_NAME]: true }
     await dnd('consider', [...dragItems.slice(0, 3), shadow], TRIGGERS.DRAG_STARTED)
     expect(updateState).not.toHaveBeenCalled()
     expect(document.querySelector('.sort-placeholder')).not.toBeNull()
     await dnd('consider', [shadow, ...dragItems.slice(0, 3)], TRIGGERS.DRAGGED_OVER_INDEX)
     await dnd('finalize', itemsFor(['config', 'quickstart', 'errors', 'completion']), TRIGGERS.DROPPED_INTO_ZONE)
-    expect(updateState).toHaveBeenCalledExactlyOnceWith({ type: 'sort', order: ['config', 'quickstart', 'errors', 'completion'] })
+    expect(updateState).toHaveBeenCalledExactlyOnceWith(stateFor(['config', 'quickstart', 'errors', 'completion']))
     expect(order()).toEqual(['config', 'quickstart', 'errors', 'completion'])
   })
   it('uses the real pointer action through start, movement, observation and drop', async () => {
@@ -114,7 +115,7 @@ describe('sort workbench view', () => {
     Object.defineProperty(document.documentElement, 'scrollHeight', { configurable: true, value: 800 })
     Object.defineProperty(document, 'scrollingElement', { configurable: true, value: document.documentElement })
     try {
-      await open({ type: 'sort', order: original })
+      await open(stateFor())
       const handle = document.querySelector<HTMLElement>('[data-sort-handle][aria-label="拖动 配置文件"]')!
       handle.dispatchEvent(new MouseEvent('mousedown', { button: 0, clientX: 120, clientY: 325, bubbles: true, cancelable: true }))
       window.dispatchEvent(new MouseEvent('mousemove', { buttons: 1, clientX: 120, clientY: 315, bubbles: true, cancelable: true }))
@@ -123,7 +124,7 @@ describe('sort workbench view', () => {
       await vi.waitFor(() => expect(document.querySelector('[data-sort-list]')?.firstElementChild?.getAttribute('data-sort-item-id')).toBe('config'))
       expect(updateState).not.toHaveBeenCalled()
       window.dispatchEvent(new MouseEvent('mouseup', { button: 0, clientX: 120, clientY: 130, bubbles: true, cancelable: true }))
-      await vi.waitFor(() => expect(updateState).toHaveBeenLastCalledWith({ type: 'sort', order: ['config', 'quickstart', 'errors', 'completion'] }))
+      await vi.waitFor(() => expect(updateState).toHaveBeenLastCalledWith(stateFor(['config', 'quickstart', 'errors', 'completion'])))
       expect(order()).toEqual(['config', 'quickstart', 'errors', 'completion'])
     } finally {
       window.dispatchEvent(new MouseEvent('mouseup', { button: 0, clientX: 120, clientY: 130, bubbles: true, cancelable: true }))
@@ -136,18 +137,18 @@ describe('sort workbench view', () => {
     }
   })
   it('rejects invalid drops and stale drops after an external state change', async () => {
-    await open({ type: 'sort', order: original })
+    await open(stateFor())
     await dnd('consider', dragItems, TRIGGERS.DRAG_STARTED)
     await dnd('finalize', [dragItems[0], dragItems[0], ...dragItems.slice(2)], TRIGGERS.DROPPED_INTO_ZONE)
     expect(updateState).not.toHaveBeenCalled()
     await dnd('consider', dragItems, TRIGGERS.DRAG_STARTED)
-    context.update((value) => ({ ...value, state: { type: 'sort', order: [...original].reverse() } })); await tick()
+    context.update((value) => ({ ...value, state: stateFor([...original].reverse()) })); await tick()
     await dnd('finalize', dragItems, TRIGGERS.DROPPED_INTO_ZONE)
     expect(updateState).not.toHaveBeenCalled()
     expect(order()).toEqual([...original].reverse())
   })
   it('shows the saved order without initialization or mutation when read-only or disabled', async () => {
-    await open({ type: 'sort', order: [...original].reverse() }, true)
+    await open(stateFor([...original].reverse()), true)
     expect(order()).toEqual([...original].reverse())
     expect(button('上移 配置文件')).toBeNull()
     await dnd('consider', dragItems, TRIGGERS.DRAG_STARTED)
@@ -157,5 +158,77 @@ describe('sort workbench view', () => {
     await open(null, false, true)
     expect(updateState).not.toHaveBeenCalled()
     expect(document.querySelector('[data-sort-handle]')).toBeNull()
+  })
+  it('autosaves label editing, supports Enter completion and Escape restoration without changing IDs', async () => {
+    await open(stateFor())
+    button('编辑 配置文件').click(); await tick()
+    let input = document.querySelector<HTMLInputElement>('[data-sort-editor]')!
+    await vi.waitFor(() => expect(document.activeElement).toBe(input))
+    input.value = '项目配置'; input.dispatchEvent(new InputEvent('input', { bubbles: true, data: input.value })); await tick()
+    expect(updateState).toHaveBeenLastCalledWith({ ...stateFor(), edited_items: [{ id: 'config', label: '项目配置' }] })
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); await tick()
+    expect(document.querySelector('[data-sort-editor]')).toBeNull()
+    expect(document.querySelector('[data-sort-item-id="config"] [data-sort-label]')?.textContent).toBe('项目配置')
+    button('编辑 项目配置').click(); await tick()
+    input = document.querySelector<HTMLInputElement>('[data-sort-editor]')!
+    input.value = '临时名称'; input.dispatchEvent(new InputEvent('input', { bubbles: true, data: input.value })); await tick()
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); await tick()
+    expect(document.querySelector('[data-sort-item-id="config"] [data-sort-label]')?.textContent).toBe('项目配置')
+    expect(order()).toEqual(original)
+  })
+  it('deletes and restores an edited option at the end while preserving the edit through sorting', async () => {
+    const edited = { ...stateFor(['config', 'quickstart', 'errors', 'completion']), edited_items: [{ id: 'config', label: '项目配置' }] }
+    await open(edited)
+    button('删除 项目配置').click(); await tick()
+    expect(order()).toEqual(['quickstart', 'errors', 'completion'])
+    expect(document.querySelector('[data-sort-removed-id="config"]')?.textContent).toContain('项目配置')
+    expect(updateState).toHaveBeenLastCalledWith({ ...edited, order: ['quickstart', 'errors', 'completion'], removed_ids: ['config'] })
+    button('恢复 项目配置').click(); await tick()
+    expect(order()).toEqual(original)
+    expect(document.querySelector('[data-sort-removed-id="config"]')).toBeNull()
+    button('上移 项目配置').click(); await tick()
+    expect(updateState).toHaveBeenLastCalledWith({ ...edited, order: ['quickstart', 'errors', 'config', 'completion'] })
+  })
+  it('keeps the visible label and draft aligned when scalar limits or invalid characters are removed', async () => {
+    await open(stateFor())
+    button('编辑 配置文件').click(); await tick()
+    const input = document.querySelector<HTMLInputElement>('[data-sort-editor]')!
+    input.value = '😀'.repeat(200); input.dispatchEvent(new InputEvent('input', { bubbles: true })); await tick()
+    input.value += '😀\0'; input.dispatchEvent(new InputEvent('input', { bubbles: true })); await tick()
+    expect(input.value).toBe('😀'.repeat(200))
+    expect(updateState).toHaveBeenLastCalledWith({ ...stateFor(), edited_items: [{ id: 'config', label: input.value }] })
+    expect(sortDefinition.complete(spec, updateState.mock.calls.at(-1)![0])).toBe(true)
+  })
+  it('keeps blank names in drafts, allows removing every option and retains edits when restored', async () => {
+    await open(stateFor())
+    button('编辑 配置文件').click(); await tick()
+    const input = document.querySelector<HTMLInputElement>('[data-sort-editor]')!
+    input.value = ''; input.dispatchEvent(new InputEvent('input', { bubbles: true })); await tick()
+    const blank = updateState.mock.calls.at(-1)![0]
+    expect(blank).toMatchObject({ edited_items: [{ id: 'config', label: '' }] })
+    expect(sortDefinition.hasInput(spec, blank)).toBe(true)
+    expect(sortDefinition.complete(spec, blank)).toBe(false)
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); await tick()
+    for (const label of ['快速上手', '清晰的错误提示', '命令补全', '空白选项']) { button(`删除 ${label}`).click(); await tick() }
+    expect(order()).toEqual([])
+    expect(document.querySelector('[data-sort-workbench]')?.textContent).toContain('所有选项已删除')
+    expect(sortDefinition.complete(spec, updateState.mock.calls.at(-1)![0])).toBe(true)
+    button('恢复 空白选项').click(); await tick()
+    expect(order()).toEqual(['config'])
+    expect(sortDefinition.complete(spec, updateState.mock.calls.at(-1)![0])).toBe(false)
+  })
+  it('cancels a stale drag when labels or removed IDs change and keeps read-only editing unavailable', async () => {
+    const edited = { ...stateFor(['quickstart', 'completion', 'config']), removed_ids: ['errors'], edited_items: [{ id: 'config', label: '项目配置' }] }
+    await open(stateFor())
+    await dnd('consider', dragItems, TRIGGERS.DRAG_STARTED)
+    context.update((value) => ({ ...value, state: edited })); await tick()
+    await dnd('finalize', dragItems, TRIGGERS.DROPPED_INTO_ZONE)
+    expect(updateState).not.toHaveBeenCalled()
+    context.update((value) => ({ ...value, readOnly: true })); await tick()
+    expect(document.querySelector('[data-sort-item-id="config"] [data-sort-label]')?.textContent).toBe('项目配置')
+    expect(document.querySelector('[data-sort-removed-id="errors"]')?.textContent).toContain('清晰的错误提示')
+    for (const action of ['编辑 项目配置', '删除 项目配置', '恢复 清晰的错误提示']) expect(button(action)).toBeNull()
+    expect(document.querySelector('[data-sort-editor]')).toBeNull()
+    expect(updateState).not.toHaveBeenCalled()
   })
 })

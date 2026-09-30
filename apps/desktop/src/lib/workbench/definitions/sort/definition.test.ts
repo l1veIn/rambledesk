@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { sortDefinition } from './definition'
 
 const spec = sortDefinition.examples![0].spec
-const original = { type: 'sort' as const, order: ['quickstart', 'errors', 'completion', 'config'] }
+const original = { type: 'sort' as const, order: ['quickstart', 'errors', 'completion', 'config'], removed_ids: [], edited_items: [] }
 
 describe('sort workbench contract', () => {
   it('accepts original and reordered complete permutations independently of body feedback', () => {
@@ -12,8 +12,8 @@ describe('sort workbench contract', () => {
     expect(sortDefinition.submissionMessage!(spec, original)).toBeNull()
     expect(sortDefinition.complete(spec, null)).toBe(false)
     for (const order of [[], ['quickstart'], ['quickstart', 'errors', 'errors', 'config'], ['quickstart', 'errors', 'completion', 'unknown']]) {
-      expect(sortDefinition.complete(spec, { type: 'sort', order })).toBe(false)
-      expect(sortDefinition.hasInput(spec, { type: 'sort', order })).toBe(false)
+      expect(sortDefinition.complete(spec, { ...original, order })).toBe(false)
+      expect(sortDefinition.hasInput(spec, { ...original, order })).toBe(false)
     }
   })
   it('rejects unknown keys, malformed states and changed item sets', () => {
@@ -40,5 +40,31 @@ describe('sort workbench contract', () => {
     }
     expect(sortDefinition.decodeState({ type: 'sort', order: ['😀'.repeat(64), 'b'] })).not.toBeNull()
     expect(sortDefinition.decodeState({ type: 'sort', order: ['😀'.repeat(65), 'b'] })).toBeNull()
+  })
+  it('defaults legacy drafts, validates the kept/deleted partition and retains edits for removed IDs', () => {
+    expect(sortDefinition.decodeState({ type: 'sort', order: original.order })).toEqual(original)
+    const changed = { ...original, order: ['quickstart', 'completion', 'config'], removed_ids: ['errors'], edited_items: [{ id: 'config', label: '项目配置' }, { id: 'errors', label: '错误诊断' }] }
+    expect(sortDefinition.complete(spec, changed)).toBe(true)
+    for (const invalid of [{ ...changed, removed_ids: [] }, { ...changed, removed_ids: ['errors', 'config'] },
+      { ...changed, removed_ids: ['unknown'] }, { ...changed, edited_items: [{ id: 'unknown', label: 'Unknown' }] }]) {
+      expect(sortDefinition.complete(spec, invalid)).toBe(false)
+    }
+    for (const edited_items of [[{ id: 'config', label: 'A' }, { id: 'config', label: 'B' }],
+      [{ id: 'config', label: 'A', extra: true }], [{ id: 'config', label: '😀'.repeat(201) }], [{ id: 'config', label: '\0' }]]) {
+      expect(sortDefinition.decodeState({ ...original, edited_items })).toBeNull()
+    }
+    expect(sortDefinition.decodeState({ ...original, removed_ids: null })).toBeNull()
+    expect(sortDefinition.decodeState({ ...original, edited_items: null })).toBeNull()
+  })
+  it('saves unfinished label edits but blocks publication until retained labels are visible', () => {
+    const blank = { ...original, edited_items: [{ id: 'config', label: '' }] }
+    expect(sortDefinition.decodeState(blank)).toEqual(blank)
+    expect(sortDefinition.hasInput(spec, blank)).toBe(true)
+    expect(sortDefinition.complete(spec, blank)).toBe(false)
+    expect(sortDefinition.submissionMessage!(spec, blank)).toContain('名称')
+    expect(sortDefinition.complete(spec, { ...blank, edited_items: [{ id: 'config', label: '😀'.repeat(200) }] })).toBe(true)
+    expect(sortDefinition.complete(spec, { ...blank, order: original.order.filter((id) => id !== 'config'), removed_ids: ['config'] })).toBe(true)
+    expect(sortDefinition.complete(spec, { ...blank, order: [], removed_ids: original.order })).toBe(true)
+    expect(sortDefinition.complete(spec, { ...blank, edited_items: [{ id: 'config', label: ' \n\t' }] })).toBe(false)
   })
 })

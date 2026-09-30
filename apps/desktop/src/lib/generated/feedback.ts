@@ -99,16 +99,37 @@ export type RatingReviewState = { score: number | null, note: string, };
 export type RatingReviewResult = { score: number, note: string, };
 export type SortData = { title: string, items: Array<SortItem>, };
 export type SortItem = { id: string, label: string, };
+export type SortLabelEdit = { id: string,
+/**
+ * May be empty while editing; surviving published labels need visible text.
+ */
+label: string, };
 export type SortState = {
 /**
- * Every input item ID, exactly once, in the chosen order.
+ * Surviving input item IDs, exactly once, in the chosen order.
  */
-order: Array<string>, };
+order: Array<string>,
+/**
+ * Explicitly deleted input item IDs, disjoint from order.
+ */
+removed_ids: Array<string>,
+/**
+ * Label edits remain in the draft when an item is deleted and restored.
+ */
+edited_items: Array<SortLabelEdit>, };
 export type SortResult = {
 /**
- * Every input item ID, exactly once, in the chosen order.
+ * Surviving input item IDs, exactly once, in the chosen order.
  */
-order: Array<string>, };
+order: Array<string>,
+/**
+ * Final surviving labels in order. Absent only in legacy sort packages.
+ */
+items?: Array<SortItem>,
+/**
+ * Explicitly deleted input item IDs in the original input order.
+ */
+removed_ids: Array<string>, };
 export type TerminalSessionStatus = "running" | "exited" | "stopped";
 export type OpenTerminalSessionInput = { request_id: string, cols: number, rows: number, };
 export type TerminalSessionInput = { request_id: string, session_id: string, };

@@ -53,6 +53,6 @@ register_workbenches! {
         wire: "sort", data: SortData,
         state: [Sort(SortState),],
         result: (SortResult),
-        exports: [SortData, SortItem, SortState, SortResult]
+        exports: [SortData, SortItem, SortLabelEdit, SortState, SortResult]
     }
 }

@@ -1,7 +1,7 @@
 use rambledesk_core::{
     DescribeWorkbenchInput, FeedbackStatus, GetFeedbackInput, ListFeedbackRequestsInput,
     ListWorkbenchesInput, RequestFeedbackInput, SaveDraftInput, SubmitFeedbackInput, WorkbenchData,
-    WorkbenchResult, WorkbenchSpec, describe_workbench, list_workbenches,
+    WorkbenchPackage, WorkbenchResult, WorkbenchSpec, describe_workbench, list_workbenches,
 };
 use rambledesk_storage::SqliteFeedbackStore;
 use serde_json::{Value, json};
@@ -67,6 +67,14 @@ fn sort_is_discoverable_with_separate_typed_schemas_and_future_inputs_remain_opa
     assert_eq!(input["properties"]["items"]["maxItems"], 30);
     let result = serde_json::to_value(description.result_schema).unwrap();
     assert_eq!(result["properties"]["order"]["type"], "array");
+    let item_type = &result["properties"]["items"]["type"];
+    assert!(
+        item_type == "array"
+            || item_type
+                .as_array()
+                .is_some_and(|types| types.contains(&json!("array")))
+    );
+    assert_eq!(result["properties"]["removed_ids"]["type"], "array");
     assert!(rambledesk_core::validate_workbench(&description.example).is_ok());
     assert!(
         rambledesk_core::workbench_actions(&description.example)
@@ -81,10 +89,16 @@ fn sort_is_discoverable_with_separate_typed_schemas_and_future_inputs_remain_opa
     let decoded: WorkbenchSpec = serde_json::from_value(future.clone()).unwrap();
     assert!(matches!(decoded.data, WorkbenchData::Unknown(_)));
     assert_eq!(serde_json::to_value(decoded).unwrap(), future);
+    let mut historical = serde_json::to_value(spec()).unwrap();
+    historical["result"] = json!({"order":["third","second","first"]});
+    let decoded: WorkbenchPackage = serde_json::from_value(historical).unwrap();
+    assert!(
+        matches!(decoded.result, Some(WorkbenchResult::Sort(result)) if result.order == ["third","second","first"])
+    );
 }
 
 #[tokio::test]
-async fn sort_reopens_and_publishes_reverse_order_as_immutable_history() {
+async fn sort_reopens_edited_and_deleted_items_and_publishes_immutable_history() {
     let temp = tempfile::tempdir().unwrap();
     let database = temp.path().join("state.sqlite");
     let store = SqliteFeedbackStore::connect(&database).await.unwrap();
@@ -107,7 +121,11 @@ async fn sort_reopens_and_publishes_reverse_order_as_immutable_history() {
         app.request_feedback(changed).await.unwrap_err().code(),
         "REQUEST_CONFLICT"
     );
-    let ready = document(json!({"type":"sort","order":["third","second","first"]}));
+    let ready = document(json!({"type":"sort","order":["third","first"],
+    "removed_ids":["second"], "edited_items":[
+        {"id":"first","label":"First task, revised"},
+        {"id":"second","label":"Second task, preserved for restore"}
+    ]}));
     let saved = app
         .save_feedback_draft(SaveDraftInput {
             request_id: created.request_id.clone(),
@@ -164,9 +182,17 @@ async fn sort_reopens_and_publishes_reverse_order_as_immutable_history() {
     let workbench = package.manifest.workbench.unwrap();
     assert_eq!(workbench.input, input.workbench.unwrap());
     assert!(
-        matches!(&workbench.result, Some(WorkbenchResult::Sort(result)) if result.order == ["third","second","first"])
+        matches!(&workbench.result, Some(WorkbenchResult::Sort(result)) if result.order == ["third","first"])
     );
     let frozen = serde_json::to_value(workbench).unwrap();
+    assert_eq!(
+        frozen["result"]["items"],
+        json!([
+            {"id":"third","label":"Third task"},
+            {"id":"first","label":"First task, revised"}
+        ])
+    );
+    assert_eq!(frozen["result"]["removed_ids"], json!(["second"]));
     assert_eq!(
         app.save_feedback_draft(SaveDraftInput {
             request_id: created.request_id.clone(),
@@ -264,6 +290,16 @@ async fn invalid_sort_states_cannot_replace_drafts_or_publish_through_body_text(
         json!({"type":"sort","order":["first","second","third"],"unknown":true}),
         json!({"type":"sort","order":"first,second,third"}),
         json!({"type":"sort"}),
+        json!({"type":"sort","order":["first","second","third"],"removed_ids":["third"]}),
+        json!({"type":"sort","order":["first","third"],"removed_ids":["second","second"]}),
+        json!({"type":"sort","order":["first","third"],"removed_ids":["foreign"]}),
+        json!({"type":"sort","order":["first"],"removed_ids":["second"]}),
+        json!({"type":"sort","order":["first","second","third"],"edited_items":[{"id":"foreign","label":"Unknown"}]}),
+        json!({"type":"sort","order":["first","second","third"],"edited_items":[{"id":"first","label":"One"},{"id":"first","label":"Again"}]}),
+        json!({"type":"sort","order":["first","second","third"],"edited_items":[{"id":"first","label":"x".repeat(201)}]}),
+        json!({"type":"sort","order":["first","second","third"],"edited_items":[{"id":"first","label":"nul\u{0}label"}]}),
+        json!({"type":"sort","order":["first","second","third"],"edited_items":[{"id":"first","label":"Changed","unknown":true}]}),
+        json!({"type":"sort","order":["first","second","third"],"removed_ids":"second"}),
     ] {
         assert_eq!(
             app.save_feedback_draft(SaveDraftInput {
@@ -301,6 +337,130 @@ async fn invalid_sort_states_cannot_replace_drafts_or_publish_through_body_text(
             .await
             .is_ok()
     );
+    store.close().await;
+}
+
+#[tokio::test]
+async fn unfinished_sort_labels_survive_restart_but_require_repair_or_explicit_removal() {
+    let temp = tempfile::tempdir().unwrap();
+    let database = temp.path().join("state.sqlite");
+    let store = SqliteFeedbackStore::connect(&database).await.unwrap();
+    let app = store.clone().into_application();
+    let created = app.request_feedback(request(spec())).await.unwrap();
+    let blank = document(json!({"type":"sort","order":["first","second","third"],
+        "edited_items":[{"id":"first","label":" "}]}));
+    let saved = app
+        .save_feedback_draft(SaveDraftInput {
+            request_id: created.request_id.clone(),
+            document_json: blank.clone(),
+            body_markdown: "These notes must not authorize an unfinished item label.".into(),
+            expected_revision: 0,
+        })
+        .await
+        .unwrap();
+    store.close().await;
+
+    let store = SqliteFeedbackStore::connect(&database).await.unwrap();
+    let app = store.clone().into_application();
+    let recovered = app
+        .get_feedback_workspace(created.request_id.clone())
+        .await
+        .unwrap();
+    assert_eq!(
+        recovered.draft.document_json.as_deref(),
+        Some(blank.as_str())
+    );
+    assert_eq!(
+        app.submit_feedback(submit(&created.request_id, saved.saved_revision))
+            .await
+            .unwrap_err()
+            .code(),
+        "INVALID_ARGUMENT"
+    );
+    assert!(
+        app.get_feedback_workspace(created.request_id.clone())
+            .await
+            .unwrap()
+            .feedback
+            .is_none()
+    );
+
+    let removed = document(json!({"type":"sort","order":["second","third"],
+        "removed_ids":["first"], "edited_items":[{"id":"first","label":" "}]}));
+    let saved = app
+        .save_feedback_draft(SaveDraftInput {
+            request_id: created.request_id.clone(),
+            document_json: removed.clone(),
+            body_markdown: String::new(),
+            expected_revision: recovered.draft.saved_revision,
+        })
+        .await
+        .unwrap();
+    let published = app
+        .submit_feedback(submit(&created.request_id, saved.saved_revision))
+        .await
+        .unwrap();
+    let package = app
+        .read_feedback_package(&published)
+        .await
+        .unwrap()
+        .unwrap();
+    let result = serde_json::to_value(package.manifest.workbench.unwrap().result.unwrap()).unwrap();
+    assert_eq!(result["order"], json!(["second", "third"]));
+    assert_eq!(result["removed_ids"], json!(["first"]));
+    assert_eq!(
+        result["items"],
+        json!([
+            {"id":"second","label":"Second task"},
+            {"id":"third","label":"Third task"}
+        ])
+    );
+    assert_eq!(
+        app.get_feedback_workspace(created.request_id)
+            .await
+            .unwrap()
+            .draft
+            .document_json
+            .as_deref(),
+        Some(removed.as_str())
+    );
+    store.close().await;
+}
+
+#[tokio::test]
+async fn explicitly_removing_every_sort_item_publishes_a_meaningful_empty_list() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = SqliteFeedbackStore::connect(&temp.path().join("state.sqlite"))
+        .await
+        .unwrap();
+    let app = store.clone().into_application();
+    let created = app.request_feedback(request(spec())).await.unwrap();
+    let saved = app
+        .save_feedback_draft(SaveDraftInput {
+            request_id: created.request_id.clone(),
+            document_json: document(
+                json!({"type":"sort","order":[],"removed_ids":["third","first","second"]}),
+            ),
+            body_markdown: String::new(),
+            expected_revision: 0,
+        })
+        .await
+        .unwrap();
+    let published = app
+        .submit_feedback(submit(&created.request_id, saved.saved_revision))
+        .await
+        .unwrap();
+    let package = app
+        .read_feedback_package(&published)
+        .await
+        .unwrap()
+        .unwrap();
+    let result = serde_json::to_value(package.manifest.workbench.unwrap().result.unwrap()).unwrap();
+    assert_eq!(result["order"], json!([]));
+    assert_eq!(result["items"], json!([]));
+    let mut removed = serde_json::from_value::<Vec<String>>(result["removed_ids"].clone()).unwrap();
+    removed.sort();
+    assert_eq!(removed, ["first", "second", "third"]);
     store.close().await;
 }
 
