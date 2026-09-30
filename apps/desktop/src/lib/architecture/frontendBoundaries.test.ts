@@ -85,6 +85,8 @@ const ALLOWED_EDGES: readonly string[] = [
   'lib/preview -> lib/application',
   'lib/preview -> lib/capabilities',
   'lib/preview -> lib/domain',
+  // Fixture transport discovers pure definition metadata; lazy views never load here.
+  'lib/preview -> lib/workbench',
   // rambelle
   'lib/rambelle -> lib/(root)',
   // screen capture

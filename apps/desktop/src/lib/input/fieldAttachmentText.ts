@@ -2,7 +2,7 @@ import { Marked, type Token } from 'marked'
 import type { AttachmentView } from '../feedback'
 import { attachmentIdFromUrl } from '../attachmentMarkdown'
 import type { FeedbackDraftSnapshot } from '../feedbackDraftDocument'
-import { readWorkbenchState, withWorkbenchState } from '../workbenchState'
+import { unlinkWorkbenchFieldAttachment } from '../workbenchFields'
 
 type KnownAttachment = Pick<AttachmentView, 'attachment_id'>
 type Reference = { attachmentId: string; from: number; to: number; raw: string }
@@ -90,43 +90,6 @@ export function removeFieldAttachment(value: string, attachmentId: string, attac
 
 /** A deleted request attachment must be unlinked from every editable field. */
 export function removeWorkbenchAttachmentReferences(snapshot: FeedbackDraftSnapshot, attachmentId: string): FeedbackDraftSnapshot {
-  const state = readWorkbenchState(snapshot.documentJson)
-  const remove = (value: string) => removeFieldAttachment(value, attachmentId, [{ attachment_id: attachmentId }])
-  if (state?.type === 'questions') {
-    let changed = false
-    const answers = state.answers.map((answer) => {
-      if (!answer.wasCustom) return answer
-      const value = remove(answer.value)
-      const label = remove(answer.label)
-      if (value === answer.value && label === answer.label) return answer
-      changed = true
-      return { ...answer, value, label }
-    })
-    return changed ? withWorkbenchState(snapshot, { ...state, answers }) : snapshot
-  }
-  if (state?.type === 'document_review') {
-    let changed = false
-    const annotations = state.annotations.map((annotation) => {
-      const body = remove(annotation.body)
-      const replacement = annotation.replacement === null ? null : remove(annotation.replacement)
-      if (body === annotation.body && replacement === annotation.replacement) return annotation
-      changed = true
-      return { ...annotation, body, replacement }
-    })
-    return changed ? withWorkbenchState(snapshot, { ...state, annotations }) : snapshot
-  }
-  if (state?.type === 'web_review') {
-    let changed = false
-    const annotations = state.annotations.map((annotation) => {
-      const body = remove(annotation.body)
-      const screenshotRemoved = annotation.screenshot_attachment_id === attachmentId
-      if (body === annotation.body && !screenshotRemoved) return annotation
-      changed = true
-      const next = { ...annotation, body }
-      if (screenshotRemoved) delete next.screenshot_attachment_id
-      return next
-    })
-    return changed ? withWorkbenchState(snapshot, { ...state, annotations }) : snapshot
-  }
-  return snapshot
+  return unlinkWorkbenchFieldAttachment(snapshot, attachmentId, (value) =>
+    removeFieldAttachment(value, attachmentId, [{ attachment_id: attachmentId }]))
 }

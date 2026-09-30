@@ -2,6 +2,7 @@ import { getContext, setContext } from 'svelte'
 import { readable, type Readable } from 'svelte/store'
 import type { SpeechTarget } from './speechDraftQueue'
 import type { FeedbackDraftSnapshot } from '../feedbackDraftDocument'
+import { workbenchFieldTarget, type WorkbenchFieldDestination } from '../domain/inputTarget'
 
 export type VoiceInputState = {
   requestId: string
@@ -29,6 +30,12 @@ export const unavailableVoiceInputState = readable<VoiceInputState>({
 
 export function provideVoiceInput(context: VoiceInputContext): void { setContext(VOICE_INPUT_CONTEXT, context) }
 export function useVoiceInput(): VoiceInputContext | undefined { return getContext<VoiceInputContext | undefined>(VOICE_INPUT_CONTEXT) }
+
+export function workbenchFieldVoiceTarget(state: VoiceInputState,
+  field: Omit<WorkbenchFieldDestination, 'kind'>): SpeechTarget | null {
+  const document = state.documentTarget
+  return document && document.requestId === state.requestId ? workbenchFieldTarget(document, field) : null
+}
 
 export function reviewAnnotationVoiceTarget(state: VoiceInputState, annotationId: string, field: 'body' | 'replacement', sourceVersion: string, paragraphLabel: string): SpeechTarget | null {
   const document = state.documentTarget

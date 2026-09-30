@@ -175,6 +175,14 @@ export function createTerminalController(options: {
   }
   return {
     start, reconnect, write, resize, stop, prepareSubmission: finish,
+    pause: () => { paused = true; clearTimer() },
+    resume: () => { paused = false; schedule() },
+    flush: async () => {
+      if (operation) await operation
+      if (reading) await reading
+      await writes
+      if (writeFailure !== undefined) throw writeFailure
+    },
     setLocked: (value: boolean) => { locked = value },
     session: () => session,
     dispose: () => { disposed = true; clearTimer() },

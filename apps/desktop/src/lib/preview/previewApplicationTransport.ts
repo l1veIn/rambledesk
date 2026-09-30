@@ -24,8 +24,8 @@ import type {
   SaveDraftInput,
 } from '../feedback'
 import { previewFixtures, previewWorkspaceFor } from './previewFixtures'
-import { webReviewPreviewSpec } from './webReviewPreviewFixture'
-import { terminalPreviewAttachment, terminalPreviewAttachmentView, terminalPreviewSpec, TerminalPreviewRuntime } from './terminalPreviewFixture'
+import { registeredWorkbenchExamples, previewExampleAttachments } from '../workbench/definitions/examples'
+import { TerminalPreviewRuntime } from './terminalPreviewFixture'
 
 export type PreviewApplicationOptions = { workspace?: string | null; origin?: string }
 
@@ -45,6 +45,7 @@ export class PreviewApplicationTransport implements ApplicationTransport {
   readonly #submitted = new Set<string>()
   readonly #workspaceOverrides = new Map<string, FeedbackWorkspaceView>()
   readonly #terminal = new TerminalPreviewRuntime()
+  readonly #requestMaterial = new Map<string, string>()
 
   constructor(private readonly capabilityManifest: CapabilityManifest, options: PreviewApplicationOptions = {}) {
     for (const request of previewFixtures.requests) this.#requests.set(request.request_id, { ...request })
@@ -54,16 +55,20 @@ export class PreviewApplicationTransport implements ApplicationTransport {
     }
     const scenario = options.workspace ?? (typeof window !== 'undefined'
       ? new URLSearchParams(window.location.search).get('workspace') : null)
-    if (scenario === 'web_review' || scenario === 'terminal') {
+    const example = registeredWorkbenchExamples.find((item) => item.spec.type === scenario)
+    if (example) {
       const base = structuredClone(previewFixtures.workspace)
-      const terminal = scenario === 'terminal'
-      const spec = terminal ? terminalPreviewSpec() : webReviewPreviewSpec(options.origin)
-      const request = { ...base.request, title: terminal ? '终端试用 · CLI Demo' : '网页评审 · Atelier 首页',
-        what_happened: terminal ? '这是模拟 CLI 的交互预览，不执行本机命令。按体验 Markdown 复制命令到终端，体验停止和重新启动；选中输出引用到反馈，再记录你的感受。真实 CLI 试用请使用 playground 的终端用例。' : '请体验这个页面，在元素旁留下意见，并补充整体反馈。',
+      const request = { ...base.request, title: example.title,
+        what_happened: example.markdown,
         status: 'in_progress' as const, resolution: null, allow_finish: false, final_summary: null }
+      const requestAttachments = previewExampleAttachments(example).map(({ markdown, ...attachment }, position) => {
+        this.#requestMaterial.set(attachment.attachment_id, markdown)
+        return { ...attachment, media_type: 'text/markdown', byte_size: new TextEncoder().encode(markdown).byteLength,
+          sha256: `preview-${attachment.attachment_id}`, position }
+      })
       this.#requests.set(request.request_id, request)
-      this.#workspaceOverrides.set(request.request_id, { ...base, request, workbench: spec,
-        actions: [], context_refs: [], request_attachments: terminal ? [terminalPreviewAttachmentView] : [], attachments: [], feedback: null,
+      this.#workspaceOverrides.set(request.request_id, { ...base, request, workbench: structuredClone(example.createSpec?.(options) ?? example.spec),
+        actions: structuredClone([...(example.actions ?? [])]), context_refs: [], request_attachments: requestAttachments, attachments: [], feedback: null,
         draft: { document_json: null, body_markdown: '', saved_revision: 0, updated_at: null } })
     }
   }
@@ -107,8 +112,8 @@ export class PreviewApplicationTransport implements ApplicationTransport {
       case 'readRequestAttachment': {
         const { request_id, attachment_id } = input as { request_id: string; attachment_id: string }
         if (!this.#workspaceFor(request_id).request_attachments.some((item) => item.attachment_id === attachment_id)
-          || attachment_id !== terminalPreviewAttachment.attachment_id) throw new Error('预览附件不存在。')
-        return new TextEncoder().encode(terminalPreviewAttachment.markdown).buffer
+          || !this.#requestMaterial.has(attachment_id)) throw new Error('预览附件不存在。')
+        return new TextEncoder().encode(this.#requestMaterial.get(attachment_id)!).buffer
       }
       case 'listFeedbackInbox':
         return [...this.#requests.values()].filter(

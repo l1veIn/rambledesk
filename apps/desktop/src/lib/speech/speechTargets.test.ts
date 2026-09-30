@@ -1,11 +1,27 @@
 import { describe, expect, it } from 'vitest'
 import { normalizeSpeechTarget, sameSpeechTarget, snapshotSpeechTarget, type SpeechTarget } from './speechTargets'
+import { workbenchFieldTarget } from '../domain/inputTarget'
 
 const review: SpeechTarget = { requestId: 'r', requestTitle: 'Review', destination: {
   kind: 'review_annotation', annotationId: 'a', field: 'body', sourceVersion: 'v1', paragraphLabel: 'Opening',
 } }
 
 describe('speech targets', () => {
+  it('pins extension fields to their contract, entity and source while labels remain presentation', () => {
+    const request = { requestId: 'r', requestTitle: 'Rating' }
+    const field = { workbenchType: 'rating_review', version: 1, field: 'opinion', entityId: 'review', sourceVersion: 'draft-1', label: 'Opinion' }
+    const target = workbenchFieldTarget(request, field)
+    expect(normalizeSpeechTarget(JSON.parse(JSON.stringify(target)))).toEqual(target)
+    expect(sameSpeechTarget(target, workbenchFieldTarget(request, { ...field, label: 'Renamed' }))).toBe(true)
+    for (const changed of [{ version: 2 }, { workbenchType: 'other_review' }, { entityId: 'other' }, { field: 'reason' }, { sourceVersion: 'draft-2' }]) {
+      expect(sameSpeechTarget(target, workbenchFieldTarget(request, { ...field, ...changed }))).toBe(false)
+    }
+    expect(sameSpeechTarget(target, workbenchFieldTarget({ ...request, requestId: 'other' }, field))).toBe(false)
+    for (const changed of [{ version: 0 }, { version: 1.5 }, { field: '../document/body' }, { entityId: '' }, { label: '' }]) {
+      const invalid = { ...target, destination: { ...target.destination, ...changed } }
+      expect(normalizeSpeechTarget(invalid)?.destination).toEqual({ kind: 'unknown', raw: invalid.destination })
+    }
+  })
   it('restores question targets and compares question identity rather than its display label', () => {
     const target: SpeechTarget = { requestId: 'r', requestTitle: 'Questions', destination: { kind: 'question_answer', questionId: 'q1', questionLabel: 'First question' } }
     expect(normalizeSpeechTarget(JSON.parse(JSON.stringify(target)))).toEqual(target)

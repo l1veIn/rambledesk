@@ -3,31 +3,26 @@
   import { ClipboardCopy, Maximize2, Play, Square, Terminal as TerminalIcon } from '@lucide/svelte'
   import '@xterm/xterm/css/xterm.css'
   import { Button } from '$lib/components/ui/button'
-  import type { ApplicationTransport } from '$lib/application/applicationTransport'
   import type { TerminalData, TerminalTrialSession } from '$lib/generated/feedback'
   import { locale } from '$lib/preferences'
   import { emptyTerminalState, TERMINAL_SESSION_LIMIT, type TerminalState } from '../terminalModel'
-  import { createTerminalController, terminalTextTail } from './terminalController'
+  import { terminalTextTail } from './terminalController'
+  import type { TerminalWorkbenchController } from './terminalWorkbenchController'
   import { createXtermAdapter, type TerminalAdapter } from './xtermAdapter'
   import { terminalText } from './terminalI18n'
   import { isMissingTerminalSession } from './terminalErrors'
-  import { finalizeTerminalSession } from './terminalSnapshot'
-  import { retainTerminalSessions } from './terminalRetention'
 
-  export let requestId: string
   export let data: TerminalData
-  export let transport: ApplicationTransport
+  export let runtime: TerminalWorkbenchController | undefined = undefined
   export let state: TerminalState | null = null
   export let disabled = false
   export let readOnly = false
-  export let onChange: (state: TerminalState) => void
   export let onOpenReview: (() => void) | undefined = undefined
   export let onQuote: ((text: string) => void) | undefined = undefined
-  export let onBusyChange: (busy: boolean) => void = () => {}
 
   let root: HTMLDivElement
   let adapter: TerminalAdapter | undefined
-  let controller: ReturnType<typeof createTerminalController> | undefined
+  let detachRuntime: (() => void) | undefined
   let initialization: Promise<void> | undefined
   let ready = false
   let busy = false
@@ -41,19 +36,9 @@
   $: trialLimitReached = current.sessions.length >= TERMINAL_SESSION_LIMIT && latest?.status !== 'running'
   $: interactive = ready && !disabled && !readOnly && !busy && !error && latest?.status === 'running'
   $: adapter?.setInteractive(interactive)
-  $: controller?.setLocked(disabled || readOnly)
-  $: if (readOnly && controller) detach()
+  $: runtime?.setLocked(disabled || readOnly)
+  $: if (readOnly && adapter) detach()
 
-  function remember(session: TerminalTrialSession) {
-    if (!mounted || readOnly) return
-    const existing = current.sessions.findIndex((item) => item.id === session.id)
-    const sessions = [...current.sessions]
-    if (existing === -1) sessions.push(session)
-    else sessions[existing] = session
-    state = { type: 'terminal', sessions: retainTerminalSessions(sessions) }
-    current = state
-    onChange(state)
-  }
   function showError(cause: unknown) {
     error = isMissingTerminalSession(cause) ? tr('The terminal session was lost. Saved output is preserved; you can submit it with your feedback.')
       : cause instanceof Error ? cause.message : typeof cause === 'object' && cause && 'message' in cause
@@ -61,71 +46,48 @@
   }
   function resized(size: { cols: number; rows: number }) {
     if (resizeTimer) clearTimeout(resizeTimer)
-    resizeTimer = setTimeout(() => { void controller?.resize(size.cols, size.rows) }, 80)
+    resizeTimer = setTimeout(() => { void runtime?.resize(size.cols, size.rows) }, 80)
   }
   function detach() {
-    controller?.dispose(); controller = undefined
+    detachRuntime?.(); detachRuntime = undefined
     adapter?.dispose(); adapter = undefined
     ready = false
-    if (busy) { busy = false; onBusyChange(false) }
+    busy = false
     if (resizeTimer) clearTimeout(resizeTimer)
   }
   async function initialize() {
     const next = await createXtermAdapter(root, {
-      onData: (input) => { void controller?.write(input).catch(() => undefined) },
+      onData: (input) => { void runtime?.write(input).catch(() => undefined) },
       onResize: resized, onSelection: (text) => selection = text,
     })
     if (!mounted || readOnly) { next.dispose(); return }
     adapter = next
     adapter.fit()
-    if (latest?.output) await adapter.write(latest.output)
-    if (!mounted || readOnly) { next.dispose(); return }
-    controller = createTerminalController({
-      initial: latest, renderer: adapter,
-      runtime: {
-        open: (cols, rows) => transport.call('openTerminalSession', { request_id: requestId, cols, rows }),
-        read: (session_id, after_sequence) => transport.call('readTerminalSession', { request_id: requestId, session_id, after_sequence }),
-        write: (session_id, input) => transport.call('writeTerminalSession', { request_id: requestId, session_id, data: input }),
-        resize: (session_id, cols, rows) => transport.call('resizeTerminalSession', { request_id: requestId, session_id, cols, rows }),
-        stop: (session_id) => transport.call('stopTerminalSession', { request_id: requestId, session_id }),
-      }, onSession: remember, onBusy: (value) => { busy = value; onBusyChange(value) }, onError: showError,
+    if (!runtime) { showError(new Error(tr('Terminal unavailable'))); return }
+    detachRuntime = runtime.attach?.({ renderer: adapter,
+      onState: (next: TerminalState) => { state = next; current = next },
+      onBusy: (value: boolean) => busy = value,
+      onReady: () => ready = true,
+      onError: showError,
     })
-    controller.setLocked(disabled || readOnly)
-    ready = true
-    if (latest?.status === 'running') {
-      try { await controller.reconnect() } catch { /* A lost session requires a manual start. */ }
-    }
+    runtime.setLocked(disabled || readOnly)
   }
   async function start() {
-    if (!adapter || !controller || disabled || readOnly || busy || trialLimitReached) return
+    if (!adapter || !runtime || disabled || readOnly || busy || trialLimitReached) return
     error = ''
     selection = ''
-    try { const size = adapter.size(); await controller.start(size.cols, size.rows); adapter?.focus() }
+    try { const size = adapter.size(); await runtime.start(size.cols, size.rows); adapter?.focus() }
     catch { /* Controller presents the actionable connection error. */ }
   }
   async function stop() {
     error = ''
-    try { await controller?.stop() } catch { /* Keep the request editable for retry. */ }
+    try { await runtime?.stop() } catch { /* Keep the request editable for retry. */ }
   }
   function quoteSelection() {
     if (!selection.trim() || disabled || readOnly || !onQuote) return
     const text = terminalTextTail(selection.trim(), 8000)
     const heading = latest ? `${tr('Terminal trial')} · ${latest.cwd}` : tr('Terminal trial')
     onQuote(`${heading}\n\n${text.split('\n').map((line) => `> ${line}`).join('\n')}`)
-  }
-  /** Submit must stop and drain the PTY before the parent saves its final draft. */
-  export async function prepareSubmission(): Promise<void> {
-    if (readOnly) return
-    await initialization
-    if (!controller && latest?.status === 'running') throw new Error(error || tr('Terminal unavailable'))
-    error = ''
-    await controller?.prepareSubmission()
-    const capturedId = controller?.session()?.id
-    for (const session of [...current.sessions]) {
-      if (session.id !== capturedId && session.status !== 'stopped') {
-        remember(await finalizeTerminalSession(session, (session_id) => transport.call('stopTerminalSession', { request_id: requestId, session_id })))
-      }
-    }
   }
   onMount(() => {
     mounted = true

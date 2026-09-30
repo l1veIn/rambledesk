@@ -2,6 +2,7 @@
 import { mount, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ApplicationTransport } from '../../application/applicationTransport'
+import { createTerminalWorkbenchController, type TerminalWorkbenchController } from './terminalWorkbenchController'
 import type { TerminalData, TerminalTrialSession } from '../../generated/feedback'
 import { locale } from '../../preferences'
 import { emptyTerminalState, type TerminalState } from '../terminalModel'
@@ -27,6 +28,7 @@ const snapshot = (changes: Partial<TerminalSessionSnapshot> = {}): TerminalSessi
 })
 let view: ReturnType<typeof mount> | undefined
 let state: TerminalState
+let runtime: TerminalWorkbenchController
 let wire: ReturnType<typeof vi.fn>
 const onQuote = vi.fn(), onOpenReview = vi.fn()
 const button = (text: string): HTMLButtonElement => [...document.querySelectorAll('button')].find((node) => node.textContent?.trim() === text || node.getAttribute('aria-label') === text)!
@@ -35,11 +37,13 @@ beforeEach(() => {
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
   wire = vi.fn(async (name: string) => name === 'stopTerminalSession' ? snapshot({ status: 'stopped' }) : snapshot())
 })
-afterEach(async () => { if (view) await unmount(view); view = undefined; document.body.replaceChildren(); vi.unstubAllGlobals() })
+afterEach(async () => { if (view) await unmount(view); view = undefined; runtime?.dispose(); document.body.replaceChildren(); vi.unstubAllGlobals() })
 function open(readOnly = false, initial = emptyTerminalState()) {
+  state = initial
+  runtime = createTerminalWorkbenchController({requestId:'request-1',runtime:{transport:{call:wire} as unknown as ApplicationTransport},
+    getState:() => state, updateState:(next) => { if(next.type === 'terminal') state=next }, isEditable:() => !readOnly, setBusy:() => {}})
   view = mount(TerminalWorkbench, { target: document.body, props: {
-    requestId: 'request-1', data, transport: { call: wire } as unknown as ApplicationTransport,
-    state: initial, readOnly, onChange: (next) => state = next, onQuote, onOpenReview,
+    data, runtime, state: initial, readOnly, onQuote, onOpenReview,
   } })
 }
 async function start() {
@@ -52,12 +56,12 @@ describe('terminal workbench', () => {
   it('keeps saved output and allows local submission after the backend permanently loses the session', async () => {
     const saved: TerminalTrialSession = { id: 'saved-trial', cwd: '/project', shell: 'bash', cols: 80, rows: 24,
       status: 'running', exit_code: null, output: '$ previous output', screen: '$ previous output', truncated: false }
-    wire.mockRejectedValueOnce({ code: 'INVALID_ARGUMENT', message: 'The terminal session was not found for this request.', retryable: false })
+    wire.mockRejectedValue({ code: 'INVALID_ARGUMENT', message: 'The terminal session was not found for this request.', retryable: false })
     open(false, { type: 'terminal', sessions: [saved] })
     await vi.waitFor(() => expect(document.querySelector('[role="alert"]')?.textContent).toContain('Saved output is preserved'))
     expect(state.sessions[0]).toEqual({ ...saved, status: 'stopped', exit_code: null })
-    await (view as unknown as { prepareSubmission: () => Promise<void> }).prepareSubmission()
-    expect(wire).toHaveBeenCalledTimes(1)
+    await runtime.prepareSubmission()
+    expect(wire).toHaveBeenCalledTimes(2)
     expect(bridge.interactive).toBe(false)
   })
   it('reconnects stored sessions by id and leaves a missing process for a manual start', async () => {
@@ -99,9 +103,9 @@ describe('terminal workbench', () => {
     open(); await start()
     wire.mockImplementation(async (name: string) => name === 'stopTerminalSession'
       ? snapshot({ output: '$ cli\r\nfinal output', status: 'stopped', next_sequence: 20 }) : snapshot({ status: 'stopped' }))
-    await (view as unknown as { prepareSubmission: () => Promise<void> }).prepareSubmission()
+    await runtime.prepareSubmission()
     expect(wire).toHaveBeenCalledWith('stopTerminalSession', { request_id: 'request-1', session_id: 'trial-1' })
-    expect(state.sessions[0]).toMatchObject({ status: 'stopped', output: '$ cli\r\nfinal output', screen: '$ cli\r\nfinal output' })
+    expect(state.sessions[0]).toMatchObject({ status: 'stopped', output: '$ cli\r\nfinal output', screen: '$ cli\nfinal output' })
   })
   it('shows saved history without opening a terminal or allowing execution', async () => {
     open(true, { type: 'terminal', sessions: [{
@@ -139,7 +143,7 @@ describe('terminal workbench', () => {
     expect(state.sessions[0]).toMatchObject({ id: 'trial-1', status: 'stopped', output: 'final trial-1', screen: 'final trial-1' })
     expect(state.sessions[1]).toMatchObject({ id: 'trial-2', output: 'prompt trial-2', screen: 'prompt trial-2' })
     expect(bridge.screen).toBe('prompt trial-2')
-    await (view as unknown as { prepareSubmission: () => Promise<void> }).prepareSubmission()
+    await runtime.prepareSubmission()
     expect(state.sessions[1].output).toBe('final trial-2')
     expect(wire.mock.calls.filter(([name]) => name === 'openTerminalSession')).toHaveLength(2)
   })
@@ -150,6 +154,7 @@ describe('terminal workbench', () => {
     await vi.waitFor(() => expect(button('Restart terminal')).toBeDefined())
     expect(button('Restart terminal').disabled).toBe(true)
     button('Restart terminal').dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await runtime.start(80,24)
     expect(wire).not.toHaveBeenCalled()
     expect(document.body.textContent).toContain('16 trial limit')
   })

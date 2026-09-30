@@ -114,6 +114,7 @@ describe('workbench interaction state is independent of feedback notes', () => {
   ])('selects, saves and restores $contract independently of feedback notes', async ({ spec, label, selected, cleared }) => {
     open(2, false, undefined, spec)
     await vi.waitFor(() => expect(document.querySelectorAll('.feedback-prose[contenteditable="true"]')).toHaveLength(1))
+    await vi.waitFor(() => expect(button(label)).toBeDefined())
     button(label).click()
     await vi.waitFor(() => expect(latest()).toEqual(selected))
     expect(snapshots.at(-1)!.bodyMarkdown).toBe('')
@@ -130,6 +131,7 @@ describe('workbench interaction state is independent of feedback notes', () => {
   it('keeps answers when notes change and when editor undo removes the notes', async () => {
     open(2)
     await vi.waitFor(() => expect(document.querySelector('.feedback-prose[contenteditable="true"]')).not.toBeNull())
+    await vi.waitFor(() => expect(button(compactLabel)).toBeDefined())
     button(compactLabel).click()
     await vi.waitFor(() => expect(latest()).toEqual(selectedQuestion))
     view!.applyDraftOperation({ kind: 'appendClipboardText', text: 'Optional explanation', label: 'Clipboard', action: null })

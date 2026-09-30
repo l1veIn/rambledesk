@@ -6,8 +6,9 @@ import { isMissingTerminalSession, lostTerminalSession } from './terminalErrors'
 export async function finalizeTerminalSession(
   session: TerminalTrialSession,
   stop: (sessionId: string) => Promise<TerminalSessionSnapshot>,
+  verifyStopped = false,
 ): Promise<TerminalTrialSession> {
-  if (session.status === 'stopped') return session
+  if (session.status === 'stopped' && !verifyStopped) return session
   try { return await replayTerminalSnapshot(await stop(session.id), session) }
   catch (cause) {
     if (!isMissingTerminalSession(cause)) throw cause
