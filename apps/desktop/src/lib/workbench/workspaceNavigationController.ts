@@ -23,6 +23,7 @@ import {
   inboxViewDescriptor,
   requestTaskViewDescriptor,
   sessionViewDescriptor,
+  workbenchReviewViewDescriptor,
   workspaceViewKey,
   type AgentSessionViewDescriptor,
   type SessionViewDescriptor,
@@ -48,7 +49,7 @@ import type { WorkspaceSession } from './workspaceSession'
 import type { WorkspaceShellSession } from './workspaceShellSession'
 
 type LoadedWorkspaceTarget = Readonly<{
-  kind: 'session' | 'request-task'
+  kind: 'session' | 'request-task' | 'workbench-review'
   workspace: FeedbackWorkspaceView
   publishedFeedback: { markdown: string; uncooked_markdown?: string } | null
   scope?: PreparedNavigationScope
@@ -132,6 +133,8 @@ export function createWorkspaceNavigationController(context: WorkspaceNavigation
     },
     loadTarget: loadWorkspaceTarget,
     commitTarget: commitWorkspaceTarget,
+    reuseCurrent: canReuseCurrentWorkbench,
+    commitCurrent: commitCurrentWorkbench,
     restoreCurrent,
     setPendingTarget: (target) => context.workspaceShell.setPendingViewKey(target?.pendingViewKey ?? null),
     reportFailure: (cause) => {
@@ -165,6 +168,10 @@ export function createWorkspaceNavigationController(context: WorkspaceNavigation
     if (!view || view.kind === 'inbox' || missingSession) return { hostId: null, hostSessionId: null }
     if (view.kind === 'session') return { hostId: view.hostId, hostSessionId: view.hostSessionId }
     if (view.kind === 'agent-session') return scopeForAgent(view)
+    if (view.kind === 'workbench-review' && context.workspaceSession.requestId() === view.requestId) {
+      const request = context.workspaceSession.request()!
+      return { hostId: request.host_id, hostSessionId: request.host_session_id }
+    }
     return undefined
   }
 
@@ -175,22 +182,57 @@ export function createWorkspaceNavigationController(context: WorkspaceNavigation
       if (!target.isCurrent()) return null
       if (!workspace || workspace.request.request_id !== target.requestId) throw new Error(context.tr('The request no longer exists.'))
       const view = sessionViewDescriptor(workspace.request.host_id, workspace.request.host_session_id)
-      if (target.view?.kind === 'request-task') {
+      if (target.view?.kind === 'request-task' || target.view?.kind === 'workbench-review') {
         if (workspace.request.request_id !== target.view.requestId) throw new Error(context.tr('The request no longer exists.'))
       } else if (target.view && (target.view.kind !== 'session' || workspaceViewKey(target.view) !== workspaceViewKey(view))) {
         throw new Error(context.tr('The request no longer belongs to this session.'))
       }
       // Requests opened from an external notification may be absent from all
       // navigation lists. Their loaded identity determines the scope to accept.
-      const scope = !target.view && !target.scope
+      const scope = (!target.view || target.view.kind === 'workbench-review') && !target.scope
         ? await context.navigation.prepareScope(view.hostId, view.hostSessionId, target.isCurrent)
         : undefined
       if (scope === null && target.isCurrent()) throw new Error(context.tr('The session could not be opened.'))
       const publishedFeedback = workspace.request.status === 'completed' && workspace.request.resolution === 'feedback_submitted'
         ? normalizePublishedFeedback(await readApplicationSnapshot(context.transport, 'readPublishedFeedback', { request_id: workspace.request.request_id }))
         : null
-      return { kind: target.view?.kind === 'request-task' ? 'request-task' : 'session', workspace, publishedFeedback, ...(scope ? { scope } : {}) }
+      const kind = target.view?.kind === 'request-task' || target.view?.kind === 'workbench-review' ? target.view.kind : 'session'
+      return { kind, workspace, publishedFeedback, ...(scope ? { scope } : {}) }
     })
+  }
+
+  function canReuseCurrentWorkbench(target: NavigationTarget): boolean {
+    const origin = activeView()
+    const request = context.workspaceSession.request()
+    if (!request || target.requestId !== request.request_id || get(context.workspaceSession).loadingWorkspace) return false
+    // Only the ordinary/review tab boundary is a presentation change. Refetches
+    // and other requests must still load and reconcile authoritative state.
+    if (origin?.kind === 'session' && target.view?.kind === 'workbench-review') return true
+    return origin?.kind === 'workbench-review' && target.view?.kind === 'session' &&
+      target.view.hostId === request.host_id && target.view.hostSessionId === request.host_session_id
+  }
+
+  function commitCurrentWorkbench(target: NavigationTarget) {
+    if (target.scope && !context.navigation.canCommitScope(target.scope)) throw new Error(context.tr('The navigation scope changed.'))
+    target.prepare?.()
+    if (target.scope) context.navigation.commitScope(target.scope)
+    const shell = shellForTarget(target, target.view)
+    if (target.view?.kind === 'session') context.workspaceShell.bindRequest(workspaceViewKey(target.view), target.requestId!)
+    if (target.shellAction.type === 'close') context.workspaceShell.forgetRequest(target.shellAction.viewKey)
+    context.workspaceShell.replaceShell(shell)
+    restoreCurrent()
+  }
+
+  function shellForTarget(target: NavigationTarget, view: WorkspaceViewDescriptor | null) {
+    const current = get(context.workspaceShell).shell
+    if (target.shellAction.type === 'open') return workspaceShellReducer(current, { type: 'open', view: view! })
+    const viewKey = target.shellAction.viewKey
+    const closed = current.views.find(candidate => workspaceViewKey(candidate) === viewKey)
+    const shell = workspaceShellReducer(current, { type: 'close', viewKey })
+    // Closing a full review returns to its ordinary workbench even if unrelated
+    // tabs intervened or the original session tab was closed in the meantime.
+    return closed?.kind === 'workbench-review' && view?.kind === 'session'
+      ? workspaceShellReducer(shell, { type: 'open', view }) : shell
   }
 
   function commitWorkspaceTarget(target: NavigationTarget, loaded: LoadedWorkspaceTarget | null) {
@@ -198,6 +240,8 @@ export function createWorkspaceNavigationController(context: WorkspaceNavigation
     let view = loaded
       ? loaded.kind === 'request-task'
         ? requestTaskViewDescriptor(loaded.workspace.request.request_id)
+        : loaded.kind === 'workbench-review'
+          ? workbenchReviewViewDescriptor(loaded.workspace.request.request_id)
         : sessionViewDescriptor(loaded.workspace.request.host_id, loaded.workspace.request.host_session_id)
       : target.view
     if (view?.kind === 'agent-draft') {
@@ -209,9 +253,7 @@ export function createWorkspaceNavigationController(context: WorkspaceNavigation
     if (scope && !context.navigation.canCommitScope(scope)) throw new Error(context.tr('The navigation scope changed.'))
     target.prepare?.()
     if (scope) context.navigation.commitScope(scope)
-    const shell = workspaceShellReducer(get(context.workspaceShell).shell, target.shellAction.type === 'close'
-      ? { type: 'close', viewKey: target.shellAction.viewKey }
-      : { type: 'open', view: view! })
+    const shell = shellForTarget(target, view)
     if (loaded) {
       context.attachmentController.releasePreviews()
       context.workspaceSession.open(loaded.workspace, loaded.publishedFeedback)
@@ -248,7 +290,7 @@ export function createWorkspaceNavigationController(context: WorkspaceNavigation
       if (!isCurrent()) return 'stale'
       if (scope && !prepared) return 'failed'
       if (!canLeave() || (prepared && !context.navigation.canCommitScope(prepared))) return 'blocked'
-      if (view && view.kind !== 'session' && view.kind !== 'request-task' &&
+      if (view && view.kind !== 'session' && view.kind !== 'request-task' && view.kind !== 'workbench-review' &&
         context.workspaceShell.activeViewKey() === workspaceViewKey(view) &&
         context.workspaceSession.requestId() === null && options.shellAction?.type !== 'close') {
         // Promotion can change the rail scope while preserving the already
@@ -260,7 +302,7 @@ export function createWorkspaceNavigationController(context: WorkspaceNavigation
       }
       const requestId = options.requestId !== undefined ? options.requestId
         : missingSession ? null
-        : view?.kind === 'request-task' ? view.requestId
+        : view?.kind === 'request-task' || view?.kind === 'workbench-review' ? view.requestId
         : view?.kind === 'session' ? requestIdForSession(view, prepared?.requests ?? [])
         : null
       const target: NavigationTarget = {
@@ -324,7 +366,8 @@ export function createWorkspaceNavigationController(context: WorkspaceNavigation
     if (context.isTransitionLocked()) return 'blocked'
     let view = context.workspaceShell.views().find(candidate => workspaceViewKey(candidate) === viewKey)
     if (!view) return 'stale'
-    const intent = context.workspaceShell.activeViewKey() === viewKey ? transition.invalidate() : transition.currentIntent()
+    const intent = context.workspaceShell.activeViewKey() === viewKey || context.workspaceShell.pendingViewKey() === viewKey
+      ? transition.invalidate() : transition.currentIntent()
     if (view.kind === 'agent-draft') {
       try {
         const closed = await context.managedSessions().closeDraft(view.draftId)
@@ -342,6 +385,12 @@ export function createWorkspaceNavigationController(context: WorkspaceNavigation
       return 'activated'
     }
     if (!transition.isCurrent(intent)) return 'stale'
+    const request = context.workspaceSession.request()
+    if (view.kind === 'workbench-review' && request?.request_id === view.requestId) {
+      return navigate(sessionViewDescriptor(request.host_id, request.host_session_id), {
+        requestId: request.request_id, shellAction: { type: 'close', viewKey }, expectedIntent: intent,
+      })
+    }
     const nextShell = workspaceShellReducer(get(context.workspaceShell).shell, { type: 'close', viewKey })
     const fallback = nextShell.views.find(candidate => workspaceViewKey(candidate) === nextShell.activeViewKey) ?? null
     return navigate(fallback, { shellAction: { type: 'close', viewKey }, expectedIntent: intent })
@@ -414,7 +463,7 @@ export function createWorkspaceNavigationController(context: WorkspaceNavigation
     while (isCurrent() && (context.isTransitionLocked() || context.workspaceShell.pendingViewKey())) {
       await new Promise(resolve => setTimeout(resolve, 50))
     }
-    if (!isCurrent() || !view || !workspace || (view.kind !== 'session' && view.kind !== 'request-task') ||
+    if (!isCurrent() || !view || !workspace || (view.kind !== 'session' && view.kind !== 'request-task' && view.kind !== 'workbench-review') ||
       context.workspaceShell.activeViewKey() !== workspaceViewKey(view) || context.workspaceSession.requestId() !== workspace.request.request_id ||
       !applicationResourcesAffectWorkspace(refetch.resources, {
         requestId: workspace.request.request_id, hostId: workspace.request.host_id, hostSessionId: workspace.request.host_session_id,

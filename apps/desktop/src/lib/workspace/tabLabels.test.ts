@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import type { HostSessionSummary } from '$lib/feedback'
-import { settingsViewDescriptor, inboxViewDescriptor, sessionViewDescriptor, requestTaskViewDescriptor, fileDiffViewDescriptor } from './viewDescriptors'
+import { settingsViewDescriptor, inboxViewDescriptor, sessionViewDescriptor, requestTaskViewDescriptor, fileDiffViewDescriptor, workbenchReviewViewDescriptor } from './viewDescriptors'
 import { sessionTabLabel, workspaceTabLabel, type TabLabelContext } from './tabLabels'
 
 const session: HostSessionSummary = {
@@ -31,6 +31,11 @@ function context(overrides: Partial<TabLabelContext> = {}): TabLabelContext {
 }
 
 describe('tab labels', () => {
+  it('distinguishes the review tab while retaining its request title across scopes', () => {
+    expect(workspaceTabLabel(workbenchReviewViewDescriptor('request-1'), context())).toBe('Fix the shell · Review')
+    expect(workspaceTabLabel(workbenchReviewViewDescriptor('request-1'), context({ locale: 'zh-CN' }))).toBe('Fix the shell · 评审')
+    expect(workspaceTabLabel(workbenchReviewViewDescriptor('outside-list'), context())).toBe('Review')
+  })
   it('labels a session tab with the session title and host', () => {
     expect(
       sessionTabLabel(sessionViewDescriptor('codex', 'alpha'), context()),

@@ -139,6 +139,9 @@
     {#each workbenchExamples as example, i}
       <button type="button" aria-pressed={index === i} onclick={() => choose(i)} class="rounded-md border px-4 py-2 text-sm aria-pressed:bg-primary aria-pressed:text-primary-foreground">{workbenchPreviewLabels[i]}</button>
     {/each}
+    {#if workspace.workbench?.type === 'web_review'}
+      <a class="rounded-md border px-3 py-2 text-sm" href="/?preview=fixtures&workspace=web_review" target="_blank" rel="noopener noreferrer">在完整应用中体验网页评审</a>
+    {/if}
     <span class="ml-auto text-xs text-muted-foreground">交互预览 · 内容只保存在本页内存中</span>
   </nav>
   {#if voicePreview}

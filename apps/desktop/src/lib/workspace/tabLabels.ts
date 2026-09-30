@@ -48,6 +48,11 @@ export function workspaceTabLabel(
     }
     case 'request-task':
       return context.taskTabTitles.get(view.requestId) ?? context.tr('Task brief')
+    case 'workbench-review': {
+      const title = context.taskTabTitles.get(view.requestId)
+      const label = context.locale === 'zh-CN' ? '评审' : 'Review'
+      return title ? `${title} · ${label}` : label
+    }
     case 'rambelle-profile':
       return 'Rambelle'
     case 'file-diff':

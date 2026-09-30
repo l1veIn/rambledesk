@@ -6,9 +6,9 @@ vi.mock('../application/readApplicationSnapshot', () => ({
 }))
 
 import { previewFixtures } from '../preview/previewFixtures'
-import { requestTaskViewDescriptor, sessionViewDescriptor } from '../workspace/viewDescriptors'
+import { requestTaskViewDescriptor, sessionViewDescriptor, workbenchReviewViewDescriptor, type WorkspaceViewDescriptor } from '../workspace/viewDescriptors'
 import type { FeedbackWorkspaceView } from '../feedback'
-import type { FeedbackDraftSnapshot } from '../feedbackDraftDocument'
+import { restoreFeedbackDraftSnapshot, type FeedbackDraftSnapshot } from '../feedbackDraftDocument'
 import type { SpeechWriteInput } from '../speech/speechWriteback'
 import {
   createDraftOperationsController,
@@ -190,6 +190,80 @@ const annotationSpeech: SpeechWriteInput = {
   requestId: 'review-1', requestTitle: 'Script', id: 'speech-annotation-1', text: 'Spoken comment',
   destination: { kind: 'review_annotation', annotationId: 'annotation-1', field: 'body', sourceVersion: 'source-v1', paragraphLabel: 'First paragraph' },
 }
+
+describe('late background writes in a review tab', () => {
+  beforeEach(() => mocks.readApplicationSnapshot.mockReset())
+
+  it.each([
+    { destination: 'document', dirty: false },
+    { destination: 'document', dirty: true },
+    { destination: 'annotation', dirty: false },
+    { destination: 'annotation', dirty: true },
+  ] as const)('adopts a late $destination write only while the reopened review is clean (dirty: $dirty)', async ({ destination, dirty }) => {
+    const saved = reviewWorkspace()
+    let local = restoreFeedbackDraftSnapshot(saved.draft.document_json, saved.draft.body_markdown)
+    let activeView: WorkspaceViewDescriptor = requestTaskViewDescriptor(saved.request.request_id)
+    let pendingViewKey: string | null = 'opening-review'
+    let completeSave!: () => void
+    let saveStarted!: () => void
+    const saving = new Promise<void>((resolve) => { saveStarted = resolve })
+    mocks.readApplicationSnapshot.mockResolvedValue(saved)
+    const call = vi.fn(async (_command: string, input: Record<string, unknown>) => {
+      await new Promise<void>((resolve) => {
+        completeSave = resolve
+        saveStarted()
+      })
+      return {
+        document_json: input.document_json,
+        body_markdown: input.body_markdown,
+        saved_revision: Number(input.expected_revision) + 1,
+        updated_at: null,
+      }
+    })
+    const { controller, context } = harness({
+      transport: { call } as never,
+      getActiveView: () => activeView,
+      getPendingViewKey: () => pendingViewKey,
+      getWorkspace: () => saved,
+      getCurrentRequest: () => saved.request,
+      getDraftSnapshot: () => local,
+    })
+
+    const write = destination === 'document'
+      ? controller.routeDraftOperation(saved.request.request_id, {
+          kind: 'appendClipboardText', text: 'Background note', label: 'Clipboard', action: null,
+        })
+      : controller.routeSpeech(annotationSpeech)
+    await saving
+    activeView = workbenchReviewViewDescriptor(saved.request.request_id)
+    pendingViewKey = null
+    if (dirty) local = reviewSnapshot('New local typing while the save was pending')
+    const reopenedSnapshot = structuredClone(local)
+    completeSave()
+    await write
+
+    expect(call).toHaveBeenCalledOnce()
+    expect(context.updateDraft).not.toHaveBeenCalled()
+    expect(context.setPageError).not.toHaveBeenCalled()
+    if (dirty) {
+      expect(context.setWorkspaceDraft).not.toHaveBeenCalled()
+      expect(context.adoptDraft).not.toHaveBeenCalled()
+      expect(local).toEqual(reopenedSnapshot)
+    } else {
+      expect(context.setWorkspaceDraft).toHaveBeenCalledOnce()
+      expect(context.adoptDraft).toHaveBeenCalledOnce()
+      const adopted = vi.mocked(context.adoptDraft).mock.calls[0][0]
+      expect(adopted.saved_revision).toBe(saved.draft.saved_revision + 1)
+      if (destination === 'document') {
+        expect(adopted.body_markdown).toContain('Background note')
+        expect(JSON.parse(adopted.document_json!).workbenchState.annotations[0].body).toBe('Saved comment')
+      } else {
+        expect(adopted.body_markdown).toBe('Unsubmitted general notes')
+        expect(JSON.parse(adopted.document_json!).workbenchState.annotations[0].body).toBe('Saved comment\nSpoken comment')
+      }
+    }
+  })
+})
 
 describe('annotation speech routing', () => {
   beforeEach(() => mocks.readApplicationSnapshot.mockReset())

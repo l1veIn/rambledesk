@@ -8,7 +8,7 @@ import { snapshotFeedbackDraftDocument } from '../feedbackDraftDocument'
 import { previewFixtures, previewWorkspaceFor } from '../preview/previewFixtures'
 import {
   agentDraftViewDescriptor, agentSessionViewDescriptor, sessionViewDescriptor,
-  settingsViewDescriptor, workspaceViewKey,
+  settingsViewDescriptor, workbenchReviewViewDescriptor, workspaceViewKey,
 } from '../workspace/viewDescriptors'
 import type { SessionViewResolution } from '../workspace/sessionViewRecovery'
 import { createAttachmentSession } from './attachmentSession'
@@ -123,6 +123,89 @@ async function harness() {
 function view(id: string) { return sessionViewDescriptor('codex', id) }
 
 describe('workspace navigation through real sessions and transport', () => {
+  it('saves and shares the same live request when opening, returning to and closing its review tab', async () => {
+    const run = await harness()
+    const review = workbenchReviewViewDescriptor('alpha')
+    run.edit('shared review note')
+    await expect(run.controller.openView(review)).resolves.toBe('activated')
+    expect(run.workspaces.get('alpha')?.draft.body_markdown).toBe('shared review note')
+    expect(run.workspaceShell.activeView()).toEqual(review)
+    expect(run.workspaceShell.views()).toHaveLength(2)
+    expect(run.scope()).toBe('alpha')
+    expect(run.releaseEditor).not.toHaveBeenCalled()
+    expect(run.transport.callsFor('getFeedbackWorkspace')).toHaveLength(0)
+    await expect(run.controller.activateRequest('alpha')).resolves.toBe('activated')
+    await expect(run.controller.openView(review)).resolves.toBe('activated')
+    expect(run.workspaceShell.views()).toHaveLength(2)
+    run.edit('edited from review')
+    await expect(run.controller.closeWorkspaceTab(workspaceViewKey(review))).resolves.toBe('activated')
+    expect(run.workspaceShell.activeView()).toEqual(view('alpha'))
+    expect(run.workspaceShell.views()).toHaveLength(1)
+    expect(get(run.draftSession).body).toBe('edited from review')
+    expect(run.releaseEditor).not.toHaveBeenCalled()
+  })
+
+  it('leaves the ordinary workbench and failed draft in place when opening review cannot save', async () => {
+    const run = await harness()
+    run.edit('must not lose this')
+    run.transport.reject('saveFeedbackDraft', new Error('disk full'))
+    await expect(run.controller.openView(workbenchReviewViewDescriptor('alpha'))).resolves.toBe('blocked')
+    expect(run.workspaceShell.activeView()).toEqual(view('alpha'))
+    expect(run.workspaceShell.views()).toHaveLength(1)
+    expect(get(run.draftSession).body).toBe('must not lose this')
+    expect(run.releaseEditor).not.toHaveBeenCalled()
+  })
+
+  it('closes full review into its ordinary workbench instead of a neighboring unrelated tab', async () => {
+    const run = await harness()
+    await run.controller.openView(settingsViewDescriptor())
+    await run.controller.activateRequest('alpha')
+    const review = workbenchReviewViewDescriptor('alpha')
+    await run.controller.openView(review)
+    run.releaseEditor.mockClear()
+    await run.controller.closeWorkspaceTab(workspaceViewKey(view('alpha')))
+    await expect(run.controller.closeWorkspaceTab(workspaceViewKey(review))).resolves.toBe('activated')
+    expect(run.workspaceShell.activeView()).toEqual(view('alpha'))
+    expect(run.workspaceSession.requestId()).toBe('alpha')
+    expect(run.workspaceShell.requestIdFor(view('alpha'))).toBe('alpha')
+    expect(run.workspaceShell.views()).toContainEqual(settingsViewDescriptor())
+    expect(run.releaseEditor).not.toHaveBeenCalled()
+  })
+
+  it('loads the pinned review request with its correct scope when another session is active', async () => {
+    const run = await harness()
+    const review = workbenchReviewViewDescriptor('beta')
+    await expect(run.controller.openView(review)).resolves.toBe('activated')
+    expect(run.workspaceShell.activeView()).toEqual(review)
+    expect(run.scope()).toBe('beta')
+    expect(run.workspaceSession.requestId()).toBe('beta')
+    expect(run.releaseEditor).toHaveBeenCalledOnce()
+    await run.controller.selectRailScope('codex', 'gamma')
+    await run.controller.activateWorkspaceTab(workspaceViewKey(review))
+    expect(run.workspaceSession.requestId()).toBe('beta')
+    expect(run.workspaceShell.activeView()).toEqual(review)
+    expect(run.scope()).toBe('beta')
+  })
+
+  it('does not reopen a pending review tab after the user closes it while saving', async () => {
+    const run = await harness()
+    const review = workbenchReviewViewDescriptor('alpha')
+    await run.controller.openView(review)
+    await run.controller.activateRequest('alpha')
+    run.edit('typing before switching')
+    const save = deferred<FeedbackWorkspaceView['draft']>()
+    run.transport.handle('saveFeedbackDraft', () => save.promise)
+    const activating = run.controller.activateWorkspaceTab(workspaceViewKey(review))
+    await vi.waitFor(() => expect(run.transport.callsFor('saveFeedbackDraft')).toHaveLength(1))
+    await expect(run.controller.closeWorkspaceTab(workspaceViewKey(review))).resolves.toBe('activated')
+    save.resolve({ document_json: get(run.draftSession).documentJson, body_markdown: 'typing before switching', saved_revision: 2, updated_at: null })
+    await expect(activating).resolves.toBe('stale')
+    expect(run.workspaceShell.activeView()).toEqual(view('alpha'))
+    expect(run.workspaceShell.views()).not.toContainEqual(review)
+    expect(run.workspaceShell.pendingViewKey()).toBeNull()
+    expect(run.releaseEditor).not.toHaveBeenCalled()
+  })
+
   it('saves the original draft before accepting the target workspace and rail scope', async () => {
     const run = await harness()
     run.edit('save this before leaving')

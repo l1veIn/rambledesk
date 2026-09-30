@@ -1,8 +1,8 @@
 import type { Locale } from './preferences'
 
 const chinese: Record<string, string> = {
-  'Expand review': '展开评审',
-  'Return to split view': '返回分栏',
+  'Open review tab': '全屏评审（新标签页）',
+  'Return to workbench': '返回工作台',
   'Overall feedback and submit': '整体意见与提交',
   'This webpage comment is unavailable.': '网页批注当前不可用。',
   'The target comment no longer exists or cannot receive input.': '目标批注已不存在，或无法接收输入。',

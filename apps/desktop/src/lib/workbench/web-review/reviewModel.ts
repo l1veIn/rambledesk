@@ -67,16 +67,7 @@ export function elementLabel(annotation: WebReviewAnnotation): string {
   return annotation.element.text.replace(/\s+/g, ' ').trim().slice(0, 80) || annotation.element.selector
 }
 
-/** Bridge selections already use document coordinates; only the floating anchor uses viewport coordinates. */
+/** Bridge selections already use document coordinates, independent of the comment panel's position. */
 export function capturedElementRect(rect: WebReviewAnnotation['element']['rect']): WebReviewAnnotation['element']['rect'] {
   return { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.max(1, Math.round(rect.width)), height: Math.max(1, Math.round(rect.height)) }
-}
-
-/** Inline panels float over the page so opening a comment never changes its viewport. */
-export function commentPosition(rect: { x: number; y: number; width: number; height: number } | null, width: number, height: number): { left: number; top: number } {
-  if (!rect) return { left: 12, top: 12 }
-  const cardWidth = Math.min(344, Math.max(240, width - 24))
-  const after = rect.x + rect.width + 12
-  const left = after + cardWidth <= width ? after : rect.x - cardWidth - 12
-  return { left: Math.max(12, Math.min(left, width - cardWidth - 12)), top: Math.max(12, Math.min(rect.y, height - 200)) }
 }

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { mount, unmount } from 'svelte'
+import { mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { writable } from 'svelte/store'
 import type { WebReviewAnnotation, WebReviewData } from '../../generated/feedback'
@@ -63,7 +63,7 @@ describe('web review workbench', () => {
     byLabel<HTMLButtonElement>('Select elements').click()
     await vi.waitFor(() => expect(bridge.mode).toHaveBeenLastCalledWith('select'))
   })
-  it('creates an inline note, routes typing and voice to it, and reopens the same comment from the list', async () => {
+  it('creates a docked note, routes typing and voice to it, and reopens the same comment from the list', async () => {
     const voice = voiceInput()
     open(emptyWebReviewState(), false, voice); await connect()
     byLabel<HTMLButtonElement>('Select elements').click()
@@ -90,6 +90,36 @@ describe('web review workbench', () => {
     voice.state.update((state) => ({ ...state, revealTarget: target, revealSequence: 1 }))
     await vi.waitFor(() => expect(document.activeElement?.getAttribute('data-web-review-field')).toBe('body'))
     expect(voice.start).not.toHaveBeenCalled()
+  })
+  it('keeps one comment dock below the toolbar as the selected element and page scroll change', async () => {
+    open(); await connect()
+    byLabel<HTMLButtonElement>('Select elements').click()
+    await vi.waitFor(() => expect(bridge.mode).toHaveBeenLastCalledWith('select'))
+    bridge.options!.onSelection(selection)
+    bridge.options!.onAnchor?.(selection.rect)
+    await vi.waitFor(() => expect(byLabel('Your comment')).not.toBeNull())
+    const dock = document.querySelector<HTMLElement>('[data-web-review-comment-dock]')!
+    expect(dock.parentElement?.contains(byLabel('Browse'))).toBe(false)
+    expect(dock.style.left).toBe('')
+    expect(dock.style.top).toBe('')
+    const initialStyle = getComputedStyle(dock).cssText
+    const frame = document.querySelector('iframe')!
+    const frameSize = [frame.style.width, frame.style.height]
+    replaceInputText(byLabel('Your comment'), 'Keep this first observation.')
+    await vi.waitFor(() => expect(latest.annotations[0].body).toBe('Keep this first observation.'))
+    bridge.options!.onAnchor?.({ x: 900, y: 600, width: 120, height: 50 })
+    await tick()
+    expect(document.querySelector('[data-web-review-comment-dock]')).toBe(dock)
+    expect(getComputedStyle(dock).cssText).toBe(initialStyle)
+    const next = { ...selection, selector: '#footer', text: 'Footer', rect: { x: 1200, y: 1800, width: 240, height: 60 } }
+    bridge.options!.onSelection(next)
+    await vi.waitFor(() => expect(latest.annotations).toHaveLength(2))
+    await vi.waitFor(() => expect(inputText(byLabel('Your comment'))).toBe(''))
+    expect(document.querySelector('[data-web-review-comment-dock]')).toBe(dock)
+    expect(getComputedStyle(dock).cssText).toBe(initialStyle)
+    expect([frame.style.width, frame.style.height]).toEqual(frameSize)
+    expect(latest.annotations[0].body).toBe('Keep this first observation.')
+    expect(latest.annotations[1].element.rect).toEqual(next.rect)
   })
   it('keeps an unfinished note removable from the comment list', async () => {
     open({ ...emptyWebReviewState(), annotations: [{ ...note, body: '' }] })
@@ -133,5 +163,7 @@ describe('web review workbench', () => {
     expect(document.body.textContent).toContain(note.element.selector)
     expect(document.querySelector('[contenteditable="true"]')).toBeNull()
     expect(byLabel('Delete comment')).toBeNull()
+    expect(document.querySelector('[data-web-review-comment-dock]')).toBeNull()
+    expect(document.querySelector('[data-web-review-comment-content]')?.classList.contains('scrollable')).toBe(false)
   })
 })

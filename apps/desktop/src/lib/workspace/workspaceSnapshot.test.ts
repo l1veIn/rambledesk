@@ -10,6 +10,7 @@ import {
   requestTaskViewDescriptor,
   sessionViewDescriptor,
   settingsViewDescriptor,
+  workbenchReviewViewDescriptor,
   workspaceViewKey,
 } from './viewDescriptors'
 import { workspaceShellReducer, EMPTY_WORKSPACE_SHELL_STATE } from './workspaceShell'
@@ -23,6 +24,25 @@ const alpha = sessionViewDescriptor('codex', 'alpha')
 const beta = sessionViewDescriptor('pi', 'beta')
 
 describe('workspace snapshots', () => {
+  it('drops temporary review tabs while preserving the ordinary view and request binding', () => {
+    const review = workbenchReviewViewDescriptor('request-a')
+    const state = workspaceShellReducer(
+      workspaceShellReducer(EMPTY_WORKSPACE_SHELL_STATE, { type: 'open', view: alpha }),
+      { type: 'open', view: review },
+    )
+    const snapshot = createWorkspaceSnapshot(state, new Map([[workspaceViewKey(alpha), 'request-a']]))
+    expect(snapshot.views).toEqual([{ ...alpha, lastRequestId: 'request-a' }])
+    expect(snapshot.activeViewKey).toBe(workspaceViewKey(alpha))
+    expect(restoreWorkspaceSnapshot(snapshot)?.requestIds.get(workspaceViewKey(alpha))).toBe('request-a')
+    expect(restoreWorkspaceSnapshot({ version: 2, views: [review], activeViewKey: workspaceViewKey(review) })?.shellState).toEqual(EMPTY_WORKSPACE_SHELL_STATE)
+  })
+
+  it('does not let transient reviews consume the durable snapshot capacity', () => {
+    const reviews = Array.from({ length: MAX_WORKSPACE_SNAPSHOT_VIEWS }, (_, index) => workbenchReviewViewDescriptor(`request-${index}`))
+    const snapshot = createWorkspaceSnapshot({ views: [...reviews, alpha], activeViewKey: workspaceViewKey(reviews[0]) }, new Map())
+    expect(snapshot.views).toEqual([{ ...alpha, lastRequestId: null }])
+    expect(snapshot.activeViewKey).toBe(workspaceViewKey(alpha))
+  })
   it('round-trips only local draft identity, discarding injected preparation metadata', () => {
     const draft = agentDraftViewDescriptor('draft')
     const restored = restoreWorkspaceSnapshot({ version: 2, views: [{ ...draft, sessionId: 'prepared-secret', token: 'secret' }], activeViewKey: workspaceViewKey(draft) })!

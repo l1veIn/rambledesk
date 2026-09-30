@@ -24,6 +24,9 @@ import type {
   SaveDraftInput,
 } from '../feedback'
 import { previewFixtures, previewWorkspaceFor } from './previewFixtures'
+import { webReviewPreviewSpec } from './webReviewPreviewFixture'
+
+export type PreviewApplicationOptions = { workspace?: string | null; origin?: string }
 
 /**
  * Fixture-backed ApplicationTransport for the `?preview=fixtures` workbench.
@@ -39,12 +42,26 @@ export class PreviewApplicationTransport implements ApplicationTransport {
   readonly #drafts = new Map<string, DraftView>()
   readonly #attachments = new Map<string, AttachmentView[]>()
   readonly #submitted = new Set<string>()
+  readonly #workspaceOverrides = new Map<string, FeedbackWorkspaceView>()
 
-  constructor(private readonly capabilityManifest: CapabilityManifest) {
+  constructor(private readonly capabilityManifest: CapabilityManifest, options: PreviewApplicationOptions = {}) {
     for (const request of previewFixtures.requests) this.#requests.set(request.request_id, { ...request })
     for (const session of previewFixtures.hostSessions) this.#hostSessions.set(session.session_id, { ...session })
     for (const session of previewFixtures.archivedHostSessions) {
       this.#archivedSessions.set(session.session_id, { ...session })
+    }
+    const scenario = options.workspace ?? (typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('workspace') : null)
+    if (scenario === 'web_review') {
+      const base = structuredClone(previewFixtures.workspace)
+      const spec = webReviewPreviewSpec(options.origin)
+      const request = { ...base.request, title: '网页评审 · Atelier 首页',
+        what_happened: '请体验这个页面，在元素旁留下意见，并补充整体反馈。',
+        status: 'in_progress' as const, resolution: null, allow_finish: false, final_summary: null }
+      this.#requests.set(request.request_id, request)
+      this.#workspaceOverrides.set(request.request_id, { ...base, request, workbench: spec,
+        actions: [], context_refs: [], request_attachments: [], attachments: [], feedback: null,
+        draft: { document_json: null, body_markdown: '', saved_revision: 0, updated_at: null } })
     }
   }
 
@@ -291,7 +308,7 @@ export class PreviewApplicationTransport implements ApplicationTransport {
   }
 
   #workspaceFor(requestId: string): FeedbackWorkspaceView {
-    const base = previewWorkspaceFor(requestId)
+    const base = this.#workspaceOverrides.get(requestId) ?? previewWorkspaceFor(requestId)
     const request = this.#requests.get(requestId)
     if (!base || !request) throw new Error('This feedback request could not be found.')
     return {

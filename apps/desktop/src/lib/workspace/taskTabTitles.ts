@@ -12,7 +12,7 @@ export function updateTaskTabTitles(
   const titles = new Map<string, string>()
 
   for (const view of views) {
-    if (view.kind !== 'request-task') continue
+    if (view.kind !== 'request-task' && view.kind !== 'workbench-review') continue
     // The navigation list is scoped to one session; an open tab can outlive that scope.
     const title = availableTitles.get(view.requestId) ?? previous.get(view.requestId)
     if (title !== undefined) titles.set(view.requestId, title)

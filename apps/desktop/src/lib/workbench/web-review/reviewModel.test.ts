@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { WebReviewAnnotation, WebReviewData } from '../../generated/feedback'
-import { capturedElementRect, commentPosition, emptyWebReviewState, hasWebReviewInput, prepareElementAnnotation, validateWebReviewState, validReviewUrl } from './reviewModel'
+import { capturedElementRect, emptyWebReviewState, hasWebReviewInput, prepareElementAnnotation, validateWebReviewState, validReviewUrl } from './reviewModel'
 
 const data: WebReviewData = { title: 'Landing page', url: 'http://localhost:5173/', source_version: 'v1', viewport: { width: 1440, height: 900 } }
 const note: WebReviewAnnotation = {
@@ -77,13 +77,7 @@ describe('ongoing element comments', () => {
     expect(reused.state).toBe(state)
     expect(prepareElementAnnotation(state, { ...note, element: { ...note.element, selector: '#footer' } }, () => 'overflow')).toBeNull()
   })
-  it('places inline editors within the visible stage while leaving the reviewed viewport unchanged', () => {
-    expect(commentPosition({ x: 30, y: 60, width: 80, height: 40 }, 1000, 600)).toEqual({ left: 122, top: 60 })
-    expect(commentPosition({ x: 950, y: 590, width: 80, height: 40 }, 1000, 600)).toEqual({ left: 594, top: 400 })
-    expect(commentPosition(null, 0, 0)).toEqual({ left: 12, top: 12 })
-    expect(data.viewport).toEqual({ width: 1440, height: 900 })
-  })
-  it('captures document coordinates independently of the scrolling inline editor anchor', () => {
+  it('captures document coordinates independently of the fixed comment panel', () => {
     const rect = { x: 170.25, y: 940.5, width: 120.4, height: 50.3 }
     expect(capturedElementRect(rect)).toEqual({ x: 170, y: 941, width: 120, height: 50 })
     expect(rect).toEqual({ x: 170.25, y: 940.5, width: 120.4, height: 50.3 })

@@ -7,7 +7,7 @@ import { writeBackgroundDraftOperation, writeBackgroundSpeech, writeBackgroundIn
 import { applyInputTextWriteback, type InputTextWriteInput } from '../inputTextWriteback'
 import { snapshotInputTarget, type InputTarget } from '../domain/inputTarget'
 import { applySpeechWriteback, speechDocumentOperation, type SpeechWriteInput } from '../speech/speechWriteback'
-import type { FeedbackDraftSnapshot } from '../feedbackDraftDocument'
+import { restoreFeedbackDraftSnapshot, type FeedbackDraftSnapshot } from '../feedbackDraftDocument'
 import type { ActiveAction, DraftOperation } from '../draftOperations'
 import type { DraftView, FeedbackRequestSummary, FeedbackWorkspaceView } from '../feedback'
 import {
@@ -63,6 +63,16 @@ export function createDraftOperationsController(context: DraftOperationsContext)
       () => undefined,
     )
     return run
+  }
+
+  /** A background write must not replace newer typing in an editable review. */
+  function canAdoptReviewDraft(): boolean {
+    if (context.getActiveView()?.kind !== 'workbench-review') return false
+    const workspace = context.getWorkspace()
+    if (!workspace) return false
+    const baseline = restoreFeedbackDraftSnapshot(workspace.draft.document_json, workspace.draft.body_markdown)
+    const local = context.getDraftSnapshot()
+    return local.documentJson === baseline.documentJson && local.bodyMarkdown === baseline.bodyMarkdown
   }
 
   /** Resolves after every document task queued so far has settled. */
@@ -123,6 +133,7 @@ export function createDraftOperationsController(context: DraftOperationsContext)
           context.getActiveView(),
           context.getCurrentRequest()?.request_id ?? null,
           requestId,
+          canAdoptReviewDraft(),
         ) &&
         context.getWorkspace()
       ) {
@@ -188,7 +199,7 @@ export function createDraftOperationsController(context: DraftOperationsContext)
           },
           save: async (draft) => context.transport.call('saveFeedbackDraft', draft),
         })
-        if (shouldAdoptTaskBackgroundDraft(context.getActiveView(), context.getCurrentRequest()?.request_id ?? null, requestId)) {
+        if (shouldAdoptTaskBackgroundDraft(context.getActiveView(), context.getCurrentRequest()?.request_id ?? null, requestId, canAdoptReviewDraft())) {
           context.setWorkspaceDraft(saved)
           context.adoptDraft(saved)
         }

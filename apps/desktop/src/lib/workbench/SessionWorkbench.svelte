@@ -23,6 +23,7 @@
   import {
     workspaceViewKey,
     type SessionViewDescriptor,
+    type WorkbenchReviewViewDescriptor,
   } from '$lib/workspace/viewDescriptors'
   import type { HostProfile } from '../domain/hostProfile'
   import type {
@@ -54,7 +55,10 @@
     | 'clipboardCapture'
     | 'imagePaste'
   >
-  export let view: SessionViewDescriptor | null = null
+  export let view: SessionViewDescriptor | WorkbenchReviewViewDescriptor | null = null
+  export let reviewMode = false
+  export let onOpenReview: (() => void) | undefined = undefined
+  export let onReturnToWorkbench: (() => void) | undefined = undefined
   export let workspace: FeedbackWorkspaceView | null = null
   export let feedbackResult: FeedbackResultView | null = null
   export let draftBody = ''
@@ -175,8 +179,10 @@
 <div class="flex h-full min-h-0 min-w-0 flex-1 flex-col" data-workspace-view-key={view ? workspaceViewKey(view) : undefined}>
   <WorkbenchContainer
     bind:this={container}
-    expandable={!unsupported && (workspace?.workbench?.type === 'web_review' || workspace?.workbench?.type === 'document_review')}
-    initiallyExpanded={workspace?.workbench?.type === 'web_review'}
+    {reviewMode}
+    interactivePreview={workspace?.workbench?.type === 'web_review'}
+    onOpenReview={!unsupported && workspace?.workbench?.type === 'web_review' ? onOpenReview : undefined}
+    {onReturnToWorkbench}
     {workspace}
     {transport}
     {capabilities}

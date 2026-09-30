@@ -9,10 +9,18 @@ import {
   requestTaskViewDescriptor,
   sessionViewDescriptor,
   settingsViewDescriptor,
+  workbenchReviewViewDescriptor,
   workspaceViewKey,
 } from './viewDescriptors'
 
 describe('workspace view descriptors', () => {
+  it('deduplicates reviews by request and separates them from ordinary task tabs', () => {
+    const review = workbenchReviewViewDescriptor('request:one')
+    expect(workspaceViewKey(review)).toBe('workbench-review:"request:one"')
+    expect(workspaceViewKey(review)).toBe(workspaceViewKey(workbenchReviewViewDescriptor('request:one')))
+    expect(workspaceViewKey(review)).not.toBe(workspaceViewKey(workbenchReviewViewDescriptor('request:two')))
+    expect(workspaceViewKey(review)).not.toBe(workspaceViewKey(requestTaskViewDescriptor('request:one')))
+  })
   it('gives Agent conversations a durable identity separate from a Ramble session', () => {
     const agent = agentSessionViewDescriptor('session:one')
     expect(agent).toEqual({ kind: 'agent-session', sessionId: 'session:one' })

@@ -181,14 +181,14 @@ export function createWorkspaceSnapshot(
   state: WorkspaceShellState,
   requestIds: ReadonlyMap<string, string>,
 ): WorkspaceSnapshotV2 {
-  // Diff tabs are transient: their payload is rendered from the agent session,
-  // so restarting the app drops them instead of persisting stale diff text.
+  // Diff and wide review tabs are transient. Requests and drafts stay durable;
+  // restarting the app restores their ordinary views, not temporary presentation.
   const durableViews = state.views
-    .slice(0, MAX_WORKSPACE_SNAPSHOT_VIEWS)
     .filter(
-      (view): view is Exclude<WorkspaceViewDescriptor, { kind: 'file-diff' }> =>
-        view.kind !== 'file-diff',
+      (view): view is Exclude<WorkspaceViewDescriptor, { kind: 'file-diff' | 'workbench-review' }> =>
+        view.kind !== 'file-diff' && view.kind !== 'workbench-review',
     )
+    .slice(0, MAX_WORKSPACE_SNAPSHOT_VIEWS)
   const views = durableViews
     .map((view): WorkspaceSnapshotViewV2 => {
       switch (view.kind) {

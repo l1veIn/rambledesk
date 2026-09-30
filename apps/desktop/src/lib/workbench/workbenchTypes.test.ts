@@ -50,20 +50,31 @@ const button = (text: string) => Array.from(document.querySelectorAll('button'))
 const latest = () => readWorkbenchState(snapshots.at(-1)?.documentJson)
 
 describe('workbench interaction state is independent of feedback notes', () => {
-  it('retains the live page and feedback editor when toggling expanded review', async () => {
-    open(4)
+  it('opens web review as an ordinary workbench and delegates full review to navigation', async () => {
+    const onOpenReview = vi.fn()
+    open(4, false, undefined, undefined, { onOpenReview })
+    await vi.waitFor(() => expect(document.querySelector('iframe')).not.toBeNull())
+    const container = document.querySelector('[data-workbench-review-mode]')!
+    expect(container.getAttribute('data-workbench-review-mode')).toBe('false')
+    expect(document.querySelector('[data-feedback-region]')).not.toBeNull()
+    button('Open review tab').click()
+    expect(onOpenReview).toHaveBeenCalledOnce()
+    expect(container.getAttribute('data-workbench-review-mode')).toBe('false')
+  })
+
+  it('keeps review feedback in its container and lets dialogs handle Escape', async () => {
+    const onReturnToWorkbench = vi.fn()
+    open(4, false, undefined, undefined, { reviewMode: true, onReturnToWorkbench })
     await vi.waitFor(() => expect(document.querySelector('iframe')).not.toBeNull())
     const frame = document.querySelector('iframe')
     const editor = document.querySelector('.feedback-prose[contenteditable="true"]')
-    const container = document.querySelector('[data-workbench-expanded]')!
-    expect(container.getAttribute('data-workbench-expanded')).toBe('true')
+    const container = document.querySelector('[data-workbench-review-mode]')!
+    expect(container.getAttribute('data-workbench-review-mode')).toBe('true')
     view!.applyDraftOperation({ kind: 'appendClipboardText', text: 'Keep this overall note', label: 'Clipboard', action: null })
     await vi.waitFor(() => expect(snapshots.at(-1)?.bodyMarkdown).toContain('Keep this overall note'))
     button('Overall feedback and submit').click()
-    button('Return to split view').click()
-    await vi.waitFor(() => expect(container.getAttribute('data-workbench-expanded')).toBe('false'))
-    button('Expand review').click()
-    await vi.waitFor(() => expect(container.getAttribute('data-workbench-expanded')).toBe('true'))
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+    await vi.waitFor(() => expect(container.classList.contains('workbench-feedback-visible')).toBe(false))
     expect(document.querySelector('iframe')).toBe(frame)
     expect(document.querySelector('.feedback-prose[contenteditable="true"]')).toBe(editor)
     expect(snapshots.at(-1)?.bodyMarkdown).toContain('Keep this overall note')
@@ -75,7 +86,9 @@ describe('workbench interaction state is independent of feedback notes', () => {
     const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
     dialog.querySelector('button')!.dispatchEvent(escape)
     expect(escape.defaultPrevented).toBe(false)
-    expect(container.getAttribute('data-workbench-expanded')).toBe('true')
+    expect(container.getAttribute('data-workbench-review-mode')).toBe('true')
+    button('Return to workbench').click()
+    expect(onReturnToWorkbench).toHaveBeenCalledOnce()
   })
 
   it('selects the shared document voice destination on editor focus without starting the microphone', async () => {

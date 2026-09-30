@@ -8,6 +8,7 @@ import {
   requestTaskViewDescriptor,
   sessionViewDescriptor,
   settingsViewDescriptor,
+  workbenchReviewViewDescriptor,
 } from './viewDescriptors'
 import { workspaceSurface } from './workspaceSurface'
 
@@ -25,6 +26,7 @@ describe('workspaceSurface', () => {
     expect(workspaceSurface(archiveViewDescriptor())).toBe('standalone')
     expect(workspaceSurface(settingsViewDescriptor())).toBe('standalone')
     expect(workspaceSurface(requestTaskViewDescriptor('request-1'))).toBe('standalone')
+    expect(workspaceSurface(workbenchReviewViewDescriptor('request-1'))).toBe('standalone')
     expect(workspaceSurface(rambelleProfileViewDescriptor())).toBe('standalone')
     expect(workspaceSurface(null)).toBe('standalone')
   })

@@ -65,6 +65,7 @@
     requestTaskViewDescriptor,
     sessionViewDescriptor,
     settingsViewDescriptor,
+    workbenchReviewViewDescriptor,
     workspaceViewKey,
     type SessionViewDescriptor,
     type WorkspaceViewDescriptor,
@@ -473,6 +474,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
   $: renderedSessionView = renderedWorkspaceView?.kind === 'session'
     ? renderedWorkspaceView
     : null
+  $: renderedReviewView = renderedWorkspaceView?.kind === 'workbench-review' ? renderedWorkspaceView : null
   $: renderedSessionResolution = sessionViewResolution($startup.resolutions, $workspaceShell.shell.activeViewKey)
   $: renderedAgentSessionView = renderedWorkspaceView?.kind === 'agent-session' ? renderedWorkspaceView : null
   $: renderedAgentDraftView = renderedWorkspaceView?.kind === 'agent-draft' ? renderedWorkspaceView : null
@@ -926,8 +928,8 @@ import type { SettingsSection } from './lib/domain/settingsSection'
         collapsed={$shellLayout.hostCollapsed}
         onCollapsedChange={setHostRailCollapsed}
         sessions={$navigation.hostSessions}
-        activeHostId={renderedWorkspaceView?.kind === 'session' ? renderedWorkspaceView.hostId : railAgentSession?.host_id ?? null}
-        activeHostSessionId={renderedWorkspaceView?.kind === 'session' ? renderedWorkspaceView.hostSessionId : railAgentSession?.host_session_id ?? null}
+        activeHostId={renderedSessionView?.hostId ?? (renderedReviewView ? currentRequest?.host_id : railAgentSession?.host_id) ?? null}
+        activeHostSessionId={renderedSessionView?.hostSessionId ?? (renderedReviewView ? currentRequest?.host_session_id : railAgentSession?.host_session_id) ?? null}
         inboxActive={renderedWorkspaceView?.kind === 'inbox'}
         requestSearch={projectSearch}
         loading={$navigation.loadingNavigation}
@@ -1077,7 +1079,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
           {#key workspaceViewKey(renderedWorkspaceView)}
             <FileDiffView path={renderedWorkspaceView.path} diff={renderedWorkspaceView.diff} />
           {/key}
-        {:else if renderedSessionResolution?.kind === 'missing-session'}
+        {:else if renderedSessionView && renderedSessionResolution?.kind === 'missing-session'}
           <MissingSessionView
             missing={renderedSessionResolution}
             label={sessionTabLabelFor(renderedSessionResolution.session, {
@@ -1090,14 +1092,17 @@ import type { SettingsSection } from './lib/domain/settingsSection'
             onOpenArchive={() => void openArchivedSessions(renderedSessionResolution!.session)}
           />
         {:else if $startup.mounted}
-          {#key renderedSessionView ? workspaceViewKey(renderedSessionView) : 'workspace:empty'}
+          {#key currentRequest?.request_id ?? (renderedSessionView ? workspaceViewKey(renderedSessionView) : 'workspace:empty')}
           <SessionWorkbench
         agentStatus={rambleAgentSessionId ? requestAgentStatus : undefined}
         readOnly={managedFeedbackReadOnly}
         transport={applicationTransport}
         {capabilities}
         bind:this={sessionWorkbench}
-        view={renderedSessionView}
+        view={renderedReviewView ?? renderedSessionView}
+        reviewMode={renderedReviewView !== null}
+        onOpenReview={currentRequest ? () => void workspaceNavigation.openView(workbenchReviewViewDescriptor(currentRequest!.request_id)) : undefined}
+        onReturnToWorkbench={renderedReviewView ? () => void workspaceNavigation.activateRequest(renderedReviewView!.requestId) : undefined}
         loadingWorkspace={$workspaceSession.loadingWorkspace}
         workspace={$workspaceSession.workspace}
         {feedbackResult}

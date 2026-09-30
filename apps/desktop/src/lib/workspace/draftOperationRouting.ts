@@ -12,7 +12,8 @@ export function shouldUseForegroundDraftEditor(
   context: DraftOperationRouteContext,
 ): boolean {
   return (
-    context.activeView?.kind === 'session' &&
+    (context.activeView?.kind === 'session' ||
+      (context.activeView?.kind === 'workbench-review' && context.activeView.requestId === context.requestId)) &&
     context.workbenchMounted &&
     context.editorReady &&
     context.workspaceRequestId === context.requestId
@@ -23,9 +24,10 @@ export function shouldAdoptTaskBackgroundDraft(
   activeView: WorkspaceViewDescriptor | null,
   workspaceRequestId: string | null,
   completedRequestId: string,
+  canAdoptReviewDraft = false,
 ): boolean {
   return (
-    activeView?.kind === 'request-task' &&
+    (activeView?.kind === 'request-task' || (activeView?.kind === 'workbench-review' && canAdoptReviewDraft)) &&
     activeView.requestId === completedRequestId &&
     workspaceRequestId === completedRequestId
   )

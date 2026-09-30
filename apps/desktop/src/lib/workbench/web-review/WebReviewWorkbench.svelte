@@ -8,7 +8,7 @@
   import WebReviewSurface from './WebReviewSurface.svelte'
   import WebReviewCommentCard from './WebReviewCommentCard.svelte'
   import WebReviewComments from './WebReviewComments.svelte'
-  import { capturedElementRect, commentPosition, emptyWebReviewState, prepareElementAnnotation, validateWebReviewState, type WebReviewState } from './reviewModel'
+  import { capturedElementRect, emptyWebReviewState, prepareElementAnnotation, validateWebReviewState, type WebReviewState } from './reviewModel'
   import { webReviewText } from './reviewI18n'
   import type { WebReviewFrameState, WebReviewSelection } from './webReviewProtocol'
 
@@ -24,12 +24,9 @@
   let selectedId: string | null = null
   let commentsOpen = false
   let selectionMessage = ''
-  let selectionRect: { x: number; y: number; width: number; height: number } | null = null
   let focusTarget: { selector: string; page_url: string; sequence: number } | null = null
   let focusSequence = 0
   let selectedComment: WebReviewCommentCard | undefined
-  let stageWidth = 0
-  let stageHeight = 0
   let revealedSequence: number | undefined
   let frameState: WebReviewFrameState = { status: 'loading', page_url: data.url, page_title: '', viewport: null }
   const voiceState = useVoiceInput()?.state ?? unavailableVoiceInputState
@@ -38,7 +35,6 @@
   $: selected = current.annotations.find((item) => item.id === selectedId)
   $: issue = validateWebReviewState(data, current)
   $: connected = frameState.status === 'ready'
-  $: panelPosition = commentPosition(selectionRect, stageWidth, stageHeight)
   $: void revealVoiceTarget($voiceState.revealSequence, $voiceState.revealTarget, current)
 
   function update(next: WebReviewState) { if (!disabled && !readOnly) { state = next; current = next; onChange(next) } }
@@ -60,7 +56,6 @@
   async function openComment(annotation: WebReviewAnnotation, focus = true) {
     selectedId = annotation.id
     commentsOpen = false
-    selectionRect = null
     if (!readOnly) {
       viewport = { ...annotation.viewport }
       if (annotation.page_url !== frameState.page_url) {
@@ -78,18 +73,16 @@
   function deleteComment(id: string) {
     if (disabled || readOnly) return
     update({ ...current, annotations: current.annotations.filter((item) => item.id !== id) })
-    if (selectedId === id) { selectedId = null; selectionRect = null }
+    if (selectedId === id) selectedId = null
   }
   function changeViewport(next: { width: number; height: number }) {
     viewport = next
     focusTarget = null
     selectedId = null
-    selectionRect = null
   }
   function refreshPage() {
     pageUrl = frameState.page_url
     refreshKey += 1
-    selectionRect = null
     frameState = { ...frameState, status: 'loading' }
   }
   async function revealVoiceTarget(sequence: number | undefined, target: SpeechTarget | null | undefined, review: WebReviewState) {
@@ -102,7 +95,7 @@
   }
 </script>
 
-<section class="web-review flex min-h-0 min-w-0 flex-col gap-3" aria-label={tr('Web review')}>
+<section class="web-review flex min-h-0 min-w-0 flex-col gap-3" class:web-review-readonly={readOnly} aria-label={tr('Web review')}>
   <header class="flex flex-wrap items-center gap-3">
     <Globe class="size-5 shrink-0 text-primary" />
     <div class="min-w-0 flex-1"><h2 class="m-0 truncate text-base font-semibold">{data.title}</h2><p class="m-0 mt-1 truncate text-xs text-muted-foreground" title={data.url}>{data.url} · {data.source_version}</p></div>
@@ -132,15 +125,15 @@
       <span class:text-emerald-700={connected} class:dark:text-emerald-400={connected}>{tr(connected ? 'Element selection connected' : frameState.status === 'loading' ? 'Connecting…' : 'Preview only')}</span>
       {#if frameState.status === 'unavailable'}<span>{tr(frameState.reason === 'bridge_missing' ? 'This page needs the RambleDesk review bridge to select elements.' : 'Page unavailable')} {tr(frameState.reason === 'bridge_missing' ? 'You can browse the preview and add screenshots or overall feedback.' : 'Open the page separately and add screenshots or overall feedback.')}</span>{/if}
     </div>
-    <div class="web-review-stage relative min-h-0 min-w-0" bind:clientWidth={stageWidth} bind:clientHeight={stageHeight}>
+    <div class="web-review-stage relative min-h-0 min-w-0">
       <WebReviewSurface url={pageUrl} {viewport} mode={disabled ? 'browse' : mode} annotations={current.annotations} {selectedId} {focusTarget} {refreshKey}
-        onSelect={(selection) => void selectElement(selection)} onSelectionRect={(rect) => selectionRect = rect}
+        onSelect={(selection) => void selectElement(selection)}
         onStatus={(status) => frameState = status}
         onFocusMissing={() => selectionMessage = tr('The saved element is unavailable. Its captured context is preserved.')}
         onAnnotationClick={(id) => { const annotation = current.annotations.find((item) => item.id === id); if (annotation) void openComment(annotation) }} />
       {#if selected}
-        <div class="absolute z-20 max-h-[calc(100%-24px)] w-[344px] max-w-[calc(100%-24px)] overflow-y-auto" style:left={`${panelPosition.left}px`} style:top={`${panelPosition.top}px`}>
-          {#key selected.id}<WebReviewCommentCard bind:this={selectedComment} annotation={selected} number={current.annotations.findIndex((item) => item.id === selected.id) + 1} {disabled} onUpdate={changeComment} onDelete={() => deleteComment(selected.id)} onCollapse={() => { selectedId = null; selectionRect = null }} />{/key}
+        <div class="web-review-comment-dock z-20" data-web-review-comment-dock>
+          {#key selected.id}<WebReviewCommentCard bind:this={selectedComment} annotation={selected} number={current.annotations.findIndex((item) => item.id === selected.id) + 1} {disabled} floating={true} onUpdate={changeComment} onDelete={() => deleteComment(selected.id)} onCollapse={() => selectedId = null} />{/key}
         </div>
       {/if}
       {#if commentsOpen}<div class="absolute inset-y-3 right-3 z-30 w-[320px] max-w-[calc(100%-24px)]"><WebReviewComments annotations={current.annotations} {selectedId} onSelect={(annotation) => void openComment(annotation)} onClose={() => commentsOpen = false} /></div>{/if}
@@ -152,5 +145,18 @@
 
 <style>
   .web-review { flex: 1; min-height: 0; padding: 12px; }
-  .web-review-stage { flex: 1; height: auto; min-height: 320px; }
+  .web-review:not(.web-review-readonly) { height: 100%; overflow: hidden; }
+  .web-review-stage { flex: 1; height: auto; min-height: 0; overflow: hidden; }
+  .web-review-stage :global(.web-review-surface) { min-height: 0; }
+  .web-review-comment-dock {
+    position: absolute;
+    left: 50%;
+    bottom: 12px;
+    transform: translateX(-50%);
+    width: 480px;
+    height: 320px;
+    max-width: calc(100% - 24px);
+    max-height: max(0px, calc(100% - 24px));
+    overflow: hidden;
+  }
 </style>

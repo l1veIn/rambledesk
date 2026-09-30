@@ -19,6 +19,7 @@ export function workspaceSurface(view: WorkspaceViewDescriptor | null): Workspac
     case 'agent-draft':
     case 'archive':
     case 'request-task':
+    case 'workbench-review':
     case 'rambelle-profile':
     case 'file-diff':
       return 'standalone'

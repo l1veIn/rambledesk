@@ -1,9 +1,17 @@
 import { describe, expect, it } from 'vitest'
 
 import { updateTaskTabTitles } from './taskTabTitles'
-import { requestTaskViewDescriptor, sessionViewDescriptor } from './viewDescriptors'
+import { requestTaskViewDescriptor, sessionViewDescriptor, workbenchReviewViewDescriptor } from './viewDescriptors'
 
 describe('task tab titles', () => {
+  it('keeps a shared request title until its task and review tabs both close', () => {
+    const task = requestTaskViewDescriptor('same-request')
+    const review = workbenchReviewViewDescriptor('same-request')
+    const titles = updateTaskTabTitles(new Map(), [task, review], [{ request_id: 'same-request', title: 'Homepage review' }])
+    const afterScopeChange = updateTaskTabTitles(titles, [review], [])
+    expect(afterScopeChange.get('same-request')).toBe('Homepage review')
+    expect(updateTaskTabTitles(afterScopeChange, [], []).size).toBe(0)
+  })
   it('keeps submitted and pending request titles when switching to another session', () => {
     const views = [
       sessionViewDescriptor('codex', 'one'),

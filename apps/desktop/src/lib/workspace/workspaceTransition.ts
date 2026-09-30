@@ -25,6 +25,9 @@ export type WorkspaceTransitionAdapter<LoadedWorkspace, Target extends Workspace
     target: Target,
     loaded: LoadedWorkspace | null,
   ) => void
+  /** Switch presentation of the current request without replacing its editor. */
+  reuseCurrent?: (target: Target) => boolean
+  commitCurrent?: (target: Target) => void
   restoreCurrent: () => void
   setPendingTarget: (target: Target | null) => void
   reportFailure: (cause: unknown) => void
@@ -58,6 +61,11 @@ export function createWorkspaceTransition<LoadedWorkspace, Target extends Worksp
         if (!saved || !canLeaveCurrent()) {
           adapter.restoreCurrent()
           return 'blocked'
+        }
+
+        if (adapter.reuseCurrent?.(target) && adapter.commitCurrent) {
+          adapter.commitCurrent(target)
+          return 'activated'
         }
 
         adapter.unmountCurrent()

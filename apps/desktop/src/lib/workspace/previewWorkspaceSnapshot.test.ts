@@ -30,6 +30,7 @@ describe('preview workspace snapshot store', () => {
 
   it.each([
     ['restore', 'desktop-refactor-2026-08-02', '019fc1d9-51e7-7eb2-b196-e9266947fc41'],
+    ['web_review', 'desktop-refactor-2026-08-02', '019fc1d9-51e7-7eb2-b196-e9266947fc41'],
     ['archived', 'archived-preview-session', null],
     ['unavailable', 'unavailable-preview-session', null],
     ['unknown', 'unavailable-preview-session', null],

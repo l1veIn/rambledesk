@@ -31,6 +31,12 @@ export type RequestTaskViewDescriptor = Readonly<{
   requestId: string
 }>
 
+/** A wide review of the same request and draft, opened only for this app session. */
+export type WorkbenchReviewViewDescriptor = Readonly<{
+  kind: 'workbench-review'
+  requestId: string
+}>
+
 export type RambelleProfileViewDescriptor = Readonly<{
   kind: 'rambelle-profile'
 }>
@@ -56,6 +62,7 @@ export type WorkspaceViewDescriptor =
   | ArchiveViewDescriptor
   | SettingsViewDescriptor
   | RequestTaskViewDescriptor
+  | WorkbenchReviewViewDescriptor
   | RambelleProfileViewDescriptor
   | FileDiffViewDescriptor
 
@@ -90,6 +97,10 @@ export function requestTaskViewDescriptor(requestId: string): RequestTaskViewDes
   return { kind: 'request-task', requestId }
 }
 
+export function workbenchReviewViewDescriptor(requestId: string): WorkbenchReviewViewDescriptor {
+  return { kind: 'workbench-review', requestId }
+}
+
 export function rambelleProfileViewDescriptor(): RambelleProfileViewDescriptor {
   return { kind: 'rambelle-profile' }
 }
@@ -115,6 +126,7 @@ export function workspaceViewKey(view: WorkspaceViewDescriptor): string {
     case 'settings':
       return 'settings:singleton'
     case 'request-task':
+    case 'workbench-review':
       return `${view.kind}:${JSON.stringify(view.requestId)}`
     case 'rambelle-profile':
       return 'rambelle-profile:singleton'

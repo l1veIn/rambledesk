@@ -14,6 +14,26 @@ function call(name: ApplicationCommandName, input?: unknown) {
 }
 
 describe('preview application transport', () => {
+  it('offers web review in the first ordinary session without changing the other fixtures', async () => {
+    const preview = new PreviewApplicationTransport(UNAVAILABLE_CAPABILITY_MANIFEST, {
+      workspace: 'web_review', origin: 'http://127.0.0.1:4319',
+    })
+    const requestId = previewFixtures.requests[0]!.request_id
+    const workspace = await preview.call('getFeedbackWorkspace', { request_id: requestId })
+    expect(workspace.workbench).toEqual({ type: 'web_review', version: 1, data: {
+      title: 'Atelier 首页', source_version: 'homepage-v1',
+      url: 'http://127.0.0.1:4319/web-review-fixture.html', viewport: { width: 1280, height: 800 },
+    } })
+    expect(workspace.request).toMatchObject({ request_id: requestId, status: 'in_progress', allow_finish: false })
+    expect(workspace).toMatchObject({ actions: [], request_attachments: [], attachments: [], feedback: null,
+      draft: { document_json: null, body_markdown: '', saved_revision: 0 } })
+    const inbox = await preview.call('listFeedbackInbox', undefined)
+    expect(inbox.find((item) => item.request_id === requestId)?.title).toBe(workspace.request.title)
+    const otherRequest = previewFixtures.requests[1]!.request_id
+    expect(await preview.call('getFeedbackWorkspace', { request_id: otherRequest }))
+      .toEqual(await transport().call('getFeedbackWorkspace', { request_id: otherRequest }))
+  })
+
   it('answers the navigation reads from the fixtures', async () => {
     const preview = transport()
 

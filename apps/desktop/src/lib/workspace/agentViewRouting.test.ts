@@ -29,6 +29,7 @@ describe('Agent view routing', () => {
   it.each<WorkspaceViewDescriptor | null>([
     null, { kind: 'inbox' }, { kind: 'archive' }, { kind: 'settings' }, { kind: 'rambelle-profile' },
     { kind: 'agent-draft', draftId: 'new' },
+    { kind: 'workbench-review', requestId: 'reviewed-request' },
   ])('never interrupts other pages: %j', view => {
     expect(arrivingRequestForAgentView(view, [{ ...cancelled, status: 'waiting', resolution: null }], true)).toBeNull()
   })

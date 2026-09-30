@@ -71,6 +71,18 @@ function harness(overrides: Partial<WorkspaceTransitionAdapter<Loaded>> = {}) {
 }
 
 describe('workspaceTransition', () => {
+  it('serializes a presentation change after saving without unloading or reloading the current request', async () => {
+    const commitCurrent = vi.fn()
+    const run = harness({ reuseCurrent: () => true, commitCurrent })
+    await expect(run.transition.activate(target())).resolves.toBe('activated')
+    expect(run.adapter.saveCurrent).toHaveBeenCalledOnce()
+    expect(commitCurrent).toHaveBeenCalledOnce()
+    expect(run.adapter.unmountCurrent).not.toHaveBeenCalled()
+    expect(run.adapter.loadTarget).not.toHaveBeenCalled()
+    expect(run.adapter.commitTarget).not.toHaveBeenCalled()
+    expect(run.maximumMountedEditors()).toBe(1)
+  })
+
   it('checks automatic navigation eligibility before saving or unmounting', async () => {
     const run = harness()
     await expect(run.transition.activate(target(), undefined, () => false)).resolves.toBe('blocked')

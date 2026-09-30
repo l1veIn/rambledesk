@@ -48,8 +48,11 @@
   >
   export let loadingWorkspace = false
   /** Presentation capabilities supplied by the composed view, independent of its contract. */
-  export let expandable = false
-  export let initiallyExpanded = false
+  export let reviewMode = false
+  export let onOpenReview: (() => void) | undefined = undefined
+  export let onReturnToWorkbench: (() => void) | undefined = undefined
+  /** Keep an interactive preview usable when the feedback column stacks below it. */
+  export let interactivePreview = false
   export let readOnly = false
   /** Editing is locked by a running operation (cooking, submitting, cancelling, approving). */
   export let locked = false
@@ -112,6 +115,7 @@
    */
   const WIDE_COLUMNS_QUERY = '(min-width: 1180px)'
   const wideColumns = mediaQuery(WIDE_COLUMNS_QUERY)
+  $: stackedPreview = interactivePreview && !$wideColumns && !reviewMode
   const savedFeedbackWidth = savedPaneLayout(FEEDBACK_COLUMN_LAYOUT_KEY)?.[0] ?? null
 
   let columnsWidth = 0
@@ -130,24 +134,20 @@
   let columnsPaneGroup: { setLayout: (layout: number[]) => void } | undefined
   let columnsLayoutReady = false
   let containerRoot: HTMLElement
-  let expanded = false
   let feedbackVisible = false
   let contextVisible = false
   let layoutRequestId: string | undefined
   $: if (workspace?.request.request_id !== layoutRequestId) {
     layoutRequestId = workspace?.request.request_id
-    expanded = expandable && initiallyExpanded
     feedbackVisible = false
     contextVisible = false
   }
-  $: if (!expandable) expanded = false
 
-  function handleExpandedKeydown(event: KeyboardEvent) {
-    if (event.key !== 'Escape' || event.defaultPrevented || !expanded) return
+  function handleReviewKeydown(event: KeyboardEvent) {
+    if (event.key !== 'Escape' || event.defaultPrevented || !reviewMode || !feedbackVisible) return
     if (event.target instanceof HTMLElement && event.target.closest('dialog, [role="dialog"], [role="alertdialog"]')) return
     event.preventDefault()
-    if (feedbackVisible) feedbackVisible = false
-    else expanded = false
+    feedbackVisible = false
   }
 
   function tr(source: string, values: Record<string, string | number> = {}) {
@@ -155,7 +155,7 @@
   }
 
   function saveColumnsLayout(layout: number[]) {
-    if (!columnsLayoutReady || !$wideColumns || expanded) return
+    if (!columnsLayoutReady || !$wideColumns || reviewMode) return
     const width = feedbackWidthFromLayout(layout, columnsWidth)
     if (width !== null) {
       savePaneLayout(FEEDBACK_COLUMN_LAYOUT_KEY, [width, Math.max(0, Math.round(columnsWidth - width))])
@@ -219,15 +219,16 @@
   }
 </script>
 
-<svelte:window onkeydown={handleExpandedKeydown} />
+<svelte:window onkeydown={handleReviewKeydown} />
 
 <section
   bind:this={containerRoot}
   data-workbench-scope
-  data-workbench-expanded={expanded}
-  class:workbench-expanded={expanded}
+  data-workbench-review-mode={reviewMode}
+  class:workbench-review-mode={reviewMode}
   class:workbench-feedback-visible={feedbackVisible}
   class:workbench-context-visible={contextVisible}
+  class:workbench-stacked-preview={stackedPreview}
   class="workspace-panel relative flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background"
   style:--workspace-feedback-width={$wideColumns ? `${columnsLayout.feedback}%` : null}
 >
@@ -243,18 +244,20 @@
       </div>
     </div>
   {:else if workspace}
-    {#if expandable}
+    {#if onOpenReview || reviewMode}
       <div class="flex shrink-0 flex-wrap items-center justify-end gap-2 border-b px-3 py-2" data-workbench-display-controls>
-        {#if expanded}
+        {#if reviewMode}
           <span class="mr-auto min-w-0 truncate text-sm font-medium">{workspace.request.title}</span>
           <Button variant="ghost" size="sm" aria-expanded={contextVisible}
             onclick={() => contextVisible = !contextVisible}><FileText class="size-4" />{tr('Request context')}</Button>
           <Button variant="outline" size="sm" aria-expanded={feedbackVisible} aria-controls="feedback-column-pane"
             onclick={() => feedbackVisible = !feedbackVisible}><PanelRight class="size-4" />{tr('Overall feedback and submit')}</Button>
         {/if}
-        <Button variant="outline" size="sm" aria-pressed={expanded} onclick={() => expanded = !expanded}>
-          {#if expanded}<Minimize2 class="size-4" />{tr('Return to split view')}{:else}<Maximize2 class="size-4" />{tr('Expand review')}{/if}
-        </Button>
+        {#if reviewMode && onReturnToWorkbench}
+          <Button variant="outline" size="sm" onclick={onReturnToWorkbench}><Minimize2 class="size-4" />{tr('Return to workbench')}</Button>
+        {:else if onOpenReview}
+          <Button variant="outline" size="sm" onclick={onOpenReview}><Maximize2 class="size-4" />{tr('Open review tab')}</Button>
+        {/if}
       </div>
     {/if}
     <div class="workspace-columns relative min-h-0 flex-1" bind:clientWidth={columnsWidth}>
@@ -272,8 +275,8 @@
           collapsible={false}
           collapsedSize={TASK_BRIEF_MIN_SIZE}
           defaultSize={$wideColumns ? workbenchPanePercent : 100 - TASK_BRIEF_DEFAULT_SIZE}
-          minSize={TASK_BRIEF_MIN_SIZE}
-          maxSize={$wideColumns ? 100 - feedbackMinPercent : TASK_BRIEF_MAX_SIZE}
+          minSize={stackedPreview ? 65 : TASK_BRIEF_MIN_SIZE}
+          maxSize={$wideColumns ? 100 - feedbackMinPercent : stackedPreview ? 80 : TASK_BRIEF_MAX_SIZE}
         >
           {@render workbench()}
         </Pane>
@@ -362,19 +365,17 @@
 {/if}
 
 <style>
-  .workbench-expanded {
-    position: fixed;
-    inset: 0;
-    z-index: 40;
-    height: 100%;
-  }
-  .workbench-expanded :global(.workbench-layout) { flex-direction: row !important; }
-  .workbench-expanded :global(.workbench-main-pane) { flex: 1 1 100% !important; }
-  .workbench-expanded :global(.workbench-pane-resizer) { display: none; }
-  .workbench-expanded :global([data-request-context]) { display: none; }
-  .workbench-expanded.workbench-context-visible :global([data-request-context]) { display: block; }
-  .workbench-expanded :global([data-workbench-content]) { display: flex; flex-direction: column; overflow: auto; }
-  .workbench-expanded :global(.workbench-feedback-pane) {
+  /* Stacked previews need room for the page, its toolbar and the feedback editor.
+     Scroll the workspace column instead of squeezing the interactive page away. */
+  .workbench-stacked-preview :global(.workspace-columns) { overflow-y: auto; overscroll-behavior: contain; }
+  .workbench-stacked-preview :global(.workbench-layout) { min-height: 1050px; }
+  .workbench-review-mode :global(.workbench-layout) { flex-direction: row !important; }
+  .workbench-review-mode :global(.workbench-main-pane) { flex: 1 1 100% !important; }
+  .workbench-review-mode :global(.workbench-pane-resizer) { display: none; }
+  .workbench-review-mode :global([data-request-context]) { display: none; }
+  .workbench-review-mode.workbench-context-visible :global([data-request-context]) { display: block; }
+  .workbench-review-mode :global([data-workbench-content]) { display: flex; flex-direction: column; overflow: auto; }
+  .workbench-review-mode :global(.workbench-feedback-pane) {
     display: none;
     position: absolute;
     inset: 0 0 0 auto;
@@ -385,5 +386,5 @@
     border-left: 1px solid var(--border);
     box-shadow: -8px 0 24px rgb(0 0 0 / 0.08);
   }
-  .workbench-expanded.workbench-feedback-visible :global(.workbench-feedback-pane) { display: block; }
+  .workbench-review-mode.workbench-feedback-visible :global(.workbench-feedback-pane) { display: block; }
 </style>

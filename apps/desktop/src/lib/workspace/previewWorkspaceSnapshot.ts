@@ -23,6 +23,7 @@ export type PreviewWorkspaceScenario =
   | 'task'
   | 'profile'
   | 'tabs'
+  | 'web_review'
 
 let snapshot: WorkspaceSnapshotV2 | null = null
 
@@ -44,7 +45,8 @@ export function seedPreviewWorkspaceScenario(value: string | null): PreviewWorks
     value !== 'settings' &&
     value !== 'task' &&
     value !== 'profile' &&
-    value !== 'tabs'
+    value !== 'tabs' &&
+    value !== 'web_review'
   ) {
     return null
   }
@@ -101,7 +103,7 @@ export function seedPreviewWorkspaceScenario(value: string | null): PreviewWorks
     return value
   }
   const view =
-    value === 'restore'
+    value === 'restore' || value === 'web_review'
       ? sessionViewDescriptor('codex', 'desktop-refactor-2026-08-02')
       : value === 'archived'
         ? sessionViewDescriptor('codex', 'archived-preview-session')
@@ -112,7 +114,7 @@ export function seedPreviewWorkspaceScenario(value: string | null): PreviewWorks
       {
         ...view,
         lastRequestId:
-          value === 'restore' ? '019fc1d9-51e7-7eb2-b196-e9266947fc41' : null,
+          value === 'restore' || value === 'web_review' ? '019fc1d9-51e7-7eb2-b196-e9266947fc41' : null,
       },
     ],
     activeViewKey: workspaceViewKey(view),
