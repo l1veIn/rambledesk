@@ -89,7 +89,7 @@ Web Transport 保留以下顺序与失效合同：
 | 模块 | 职责 |
 | --- | --- |
 | `lib/domain/inputTarget.ts` | 与采集方式无关的 `InputTarget`、Action 身份与最小写入上下文；解码旧目标、固定目标快照并比较身份。 |
-| `lib/workbenchFields.ts` | 从完整草稿读取指定业务字段；统一自定义答案、文稿版本、批注锚点与长度校验，提供保留 envelope 的替换和追加。 |
+| `lib/workbenchFields.ts` | 从完整草稿调用本类型字段适配器，统一保留 envelope 的替换、追加与附件清除；业务身份、锚点和字段规则留在各类型。 |
 | `lib/inputTextWriteback.ts` | 普通粘贴与附件引用的幂等回执，不产生语音来源信息。 |
 | `lib/speech` | 转写队列、语音回执与来源范围、逐段目标固定、整理批次。`SpeechTarget` 是通用目标的语音侧别名，保留旧恢复记录形状。 |
 | `lib/input` | 请求级下一输入位置，以及工具栏、字段附件标签和 `WorkbenchTextField`。复用语音入口，不管理录音设备。 |
@@ -97,7 +97,7 @@ Web Transport 保留以下顺序与失效合同：
 | `lib/workbench` | 问答导航、批注生命周期等业务交互；组合输入、保存与提交准备。 |
 | `lib/backgroundDraftWriter.ts` | 所有后台草稿变换共用一个 revision/CAS 重试循环；冲突时重新读取完整草稿再应用。 |
 
-`WorkbenchTextField` 通过 `TiptapInput` 编辑字段的普通文本投影，并组合工具栏、附件引用、字数限制、焦点选择与行内语音来源标识。字段的选区与撤销历史限于当前目标，切换或隐藏字段不会让后台写入依赖 Editor。问题是否已答、批注是意见还是建议、是否能提交，仍由具体工作台决定。草稿形状解码位于 `workbenchStateDecoders.ts`，允许恢复未完成编辑；提交完整性由 `workbenchPolicy.ts` 和服务端领域规则校验。
+`WorkbenchTextField` 通过 `TiptapInput` 编辑字段的普通文本投影，并组合工具栏、附件引用、字数限制、焦点选择与行内语音来源标识。字段的选区与撤销历史限于当前目标，切换或隐藏字段不会让后台写入依赖 Editor。类型 definition 提供草稿解码、完成条件和字段适配器；`workbenchStateDecoders.ts`、`workbenchPolicy.ts` 只委派，不逐类型维护业务。通用 `workbench_field` 目标包含类型、版本、字段、业务对象与来源版本；旧问题和批注目标继续按原合同解释。后端独立验证完成条件。
 
 | 允许的跨模块依赖 | 具体用途与限制 |
 | --- | --- |
@@ -107,6 +107,7 @@ Web Transport 保留以下顺序与失效合同：
 | `lib/input → lib/domain` | 选择、固定和传递与设备无关的输入目标。 |
 | `lib/input → lib/(root)` | 使用已有合同、附件 URL、字段附件展示辅助及 i18n/preferences，不调用后台保存控制器。 |
 | `lib/(root) → lib/domain` | 纯草稿变换共享目标身份；根目录代码不依赖输入 UI。 |
+| `lib/preview → lib/workbench` | 预览 transport 读取纯 definition 示例元数据，视图仍通过懒加载回调加载。 |
 
 这些方向及逐条理由由 `architecture/frontendBoundaries.test.ts` 固定。`lib/speech` 不反向依赖输入工具栏；普通输入的领域校验不依赖语音队列、来源信息或整理状态。
 
@@ -116,7 +117,13 @@ Web Transport 保留以下顺序与失效合同：
 
 Backend Runtime 的类型目录提供发现、schema、输入验证和结果解释；客户端静态注册项选择相应视图与状态规则。它们共享稳定的 `type/version` 合同，分属服务端领域规则与客户端呈现职责。注册表随应用构建，不是动态插件框架；目录 `interaction` 字符串只描述交互分类，不参与宿主协议或权限。
 
-客户端类型规则集中在 `apps/desktop/src/lib/workbenchPolicy.ts`，`workbenchInputValidation.ts` 按同一版本合同识别能安全编辑的输入，最终提交仍由服务端校验。视图由 `RegisteredWorkbench.svelte` 静态组合：公共 `WorkspaceHeader` 与 `RequestContextPanel` 固定在业务滚动区域上方，后者将 `request.what_happened` 呈现为「情况说明」，并在说明下方组合 `RequestAttachments.svelte` 的紧凑文件标签。说明与附件共用限高滚动区域；附件组件只负责标签展示与预览，无附件时不占位。类型视图只组织自身业务内容。文稿审阅的控件与锚点模型位于 `lib/workbench/document-review/`，服务端领域规则位于 `crates/rambledesk-core/src/workbenches/document_review.rs`。这些模块不分别持有保存队列或 publication state。
+Rust 的 `workbenches/registry.rs` 是唯一类型声明入口，由静态宏生成模块组合、Kind/Data/State/Result、解码和 DTO 导出清单。每个业务模块拥有发现元数据、schema/example、输入与草稿校验、结果投影、完成条件及可选运行校验。存储只负责 envelope 编解码与 CAS，再调用领域定义；新增普通类型不修改数据库或传输分发。
+
+前端的 `lib/workbench/definitions/registry.ts` 是唯一注册入口；各 definition 拥有输入识别、状态解码、完成条件、布局、字段适配器、可选控制器和示例。`RegisteredWorkbench.svelte` 按 definition 懒加载视图并注入 `WorkbenchViewContext`：公共 `WorkspaceHeader` 与 `RequestContextPanel` 固定在业务滚动区域上方，后者将 `request.what_happened` 呈现为「情况说明」，并组合请求材料标签。说明与附件共用限高滚动区域，无附件时不占位。业务视图通过 host 更新状态、引用正文和打开全屏，不持有保存队列或 publication state。
+
+`workbenchLifecycle.ts` 按请求持有可选 controller，统一工作台、任务页签和原生控制台的提交准备；视图只 attach/detach。终端控制器处理已接受按键排空、实际停止、最终输出和多轮记录合并，卸载视图不停止后端 PTY。发布前，后端类型的 `pre_publish` 校验真实请求所属资源状态，终端创建与发布共享生命周期锁，避免检查后又开启会话；客户端的 stopped 草稿不是运行完成的证明。可保存草稿和可发布结果有各自规则。
+
+普通新增体验由 `pnpm workbench:new` 生成三份业务代码与用例，仅修改两份注册文件；示例和 playground 按统一约定发现。详见[新增教程](workbench/adding-a-workbench.md)及[验收记录](workbench/framework-validation.md)。测试类型 `rating_review` 只在 Rust 的 `workbench-fixtures` 与前端开发开关下注册，生产类型目录保持原范围。
 
 持久草稿的 JSON envelope 由 `crates/rambledesk-storage/src/workbench_result.rs` 解码；repository 在同一事务快照中取出正文与交互状态，再调用 `core/workbenches/draft.rs` 的纯提交策略。core 接收已解析的类型化交互状态与正文投影，不读取 `document_json`、解释 TipTap JSON 或拥有存储 codec；Backend Runtime 对整个 Draft 的业务所有权不因编解码所在模块而改变。
 

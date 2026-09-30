@@ -13,7 +13,7 @@
 | 3 | 逐项问答 · 单题选择 | 关闭自定义回答、切换选择、无补充正文提交 |
 | 4 | 文稿审阅 | 每段批注续写与收起摘要、建议改写、每框工具栏与附件标签、跨字段语音整理、段落删除线与恢复、原稿内批注阅读与续写 |
 | 5 | 网页评审 | 真实网页浏览/元素选择、精简底部批注与评审记录、图标视口切换及居中手机画布、网页工具栏全屏入口、普通工作台/独立评审页签往返、会话列表切换、整体反馈浮层、SPA 回访及提交后只读 |
-| 6 | 终端试用 | 真实 CLI、建议命令填入、中文/彩色输出、交互提示、方向键/Ctrl+C、输出引用、全屏页签与提交后记录 |
+| 6 | 终端试用 | 真实 CLI、从体验 Markdown 复制命令、中文/彩色输出、交互提示、方向键/Ctrl+C、输出引用、全屏页签与提交后记录 |
 | 收尾 | Ramble 汇总确认 | 查看本轮实际结果，确认完成或补充问题 |
 
 这是走真实保存、提交和 Agent 续接的人工体验，共 **6 次场景提交 + 1 张汇总卡**。它不代替自动化测试；未实际体验的可选项会记为“未验证”。
@@ -52,7 +52,13 @@ Agent 会为这一轮只准备网页阶段，结束后给出汇总；不会替�
 
 只校验材料、不发起请求：`node prepare.mjs check`。
 
-准备流程和样例服务的自动检查：`node --test web-review-server.test.mjs`。测试使用隔离运行记录，验证服务启停与 URL 恢复，不提交人类反馈。
+准备流程和样例服务的自动检查：`node --test prepare.test.mjs web-review-server.test.mjs`。测试使用隔离运行记录，验证用例发现、恢复约束、服务启停与 URL 恢复，不提交人类反馈。
+
+## 新类型与开发演练
+
+`prepare.mjs` 自动发现 `fixtures/` 的 JSON，普通新增类型不需要改脚本。`node prepare.mjs check <type>` 校验材料，`new <type>` 只准备该类型。类型和提交结果仍需与真实后端的发现/schema 核对，脚本不验证业务完成条件。
+
+仅开发构建可用的 `rating_review` 位于 `fixtures/development/`，默认完整六场景不包含它。使用 `node prepare.mjs check rating_review --development` 或 `new rating_review --development`，按 `materials/rating-review.md` 体验。前后端开关及教程见[新增工作台](../../docs/workbench/adding-a-workbench.md)。正式应用缺少此类型时不能替换成自由反馈或声称通过。
 
 ## 历史运行兼容
 

@@ -16,4 +16,3 @@ export function validWebReviewInput(data: RecordValue): boolean {
     && (viewport.width as number) >= 240 && (viewport.width as number) <= 7680
     && (viewport.height as number) >= 200 && (viewport.height as number) <= 4320
 }
-

@@ -1,0 +1,13 @@
+{
+  "title": "评分＋意见 · 框架扩展演练",
+  "what_happened": "请阅读提案，选择 1 至 5 分并留下意见，体验草稿恢复、语音、附件和全屏页签。",
+  "workbench": {
+    "type": "rating_review",
+    "version": 1,
+    "data": {
+      "title": "评审反馈工作台提案",
+      "material": "开发者通过工作台收集结构化判断，同时保留用户自由表达的反馈。工作台在自己的模块内声明合同、状态、字段与视图；宿主统一管理草稿、提交和全屏页签。请评估这个提案是否清楚、可用。"
+    }
+  },
+  "attachments": [{ "path": "materials/rating-review.md" }]
+}

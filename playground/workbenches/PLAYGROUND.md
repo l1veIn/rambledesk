@@ -35,6 +35,8 @@ node prepare.mjs new
 
 用户明确说“只测试网页评审工作台”时，使用 `node prepare.mjs new web_review`，本轮 stages 只有 `05-web-review.json`。直接进入下方网页服务准备，发送唯一网页请求后做汇总；不把其余工作台记为已测。该模式同样不能绕过未结束旧轮。
 
+用户要求体验新增普通类型时，先调用目录和 `describe-workbench` 核对该类型及汇总所用 `ramble`，执行 `node prepare.mjs check <type>`，再用 `new <type>` 准备。按本类型的材料和结果 schema 核对，不追加到旧轮或替代固定六场景。开发评分演练显式加 `--development` 并确认后端提供 `rating_review`；缺少开发构建时说明缺项。所有身份、恢复、单次交接和汇总规则保持一致。
+
 没有 Node 时，执行等价操作：创建 .runs/<时间戳-随机标识>/，复制本轮需要的 fixture，每份先分配独立 UUID 并写入 request_id，把 attachment.path 解析为本目录内现存文件的绝对路径，再按 prepare.mjs 的 run.json 结构记录进度，更新 latest.json。网页阶段还需要已有的可用开发服务器；没有服务时明确说明缺项，不安装依赖、跳过网页或把纯文本反馈记为网页体验。
 
 所有请求 ID 必须在发送前持久化。保存 CLI 原始响应为对应阶段的 receipt.json / result.json（可在同一命令中写出并显示 stdout）；不要把“请求成功建立”误记成“人类测试通过”。一旦交接成功，结束当前回合，不连续发起后面的请求。超时或投递不确定时保留 ID，先 recover，绝不能另造 ID重试。

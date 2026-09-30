@@ -15,4 +15,3 @@ export function validQuestionsInput(data: RecordValue): boolean {
     })
   })
 }
-

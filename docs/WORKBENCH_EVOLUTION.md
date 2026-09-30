@@ -15,6 +15,7 @@
 | 网页评审 | 真实网页浏览／元素选择、底部固定浮动批注、编号与集中回看，保留 URL、视口及元素信息；开发页通过桥接脚本接入。默认普通工作台，网页工具栏“选择元素”旁的全屏评审按钮打开独立页签；页签往返共用草稿和网页状态。浮动卡只显示批注编号、意见和输入工具，捕获信息保留在数据与终态历史中；设备按钮只显示图标与 tooltip，固定手机画布居中。 | [网页评审](workbench/web-review.md) |
 | 终端试用 | 请求绑定真实 PTY，从体验 Markdown 复制命令，输出引用到正文、转录及 TUI 画面随反馈保存；新页签继续同一会话，停止/退出后可主动重开并保留各轮记录，提交前统一收尾。 | [终端试用](workbench/terminal.md) |
 | 类型发现 | `list_workbenches` / `describe_workbench` 提供用途目录与按需 schema；MCP、Generic JSON 和托管命令复用同一合同。 | [协议](PROTOCOL.md)、[ACP 指南](ACP_MANAGED_SESSIONS.md) |
+| 普通类型扩展 | Rust 与前端各有一个静态注册入口；类型拥有合同、规则、字段、视图与示例。脚手架生成业务模块和测试材料，宿主统一草稿、输入和生命周期；测试评分类型验证扩展链路。 | [新增教程](workbench/adding-a-workbench.md)、[框架验收](workbench/framework-validation.md) |
 | 首次引导 | 自由反馈与文稿审阅已有 Rambelle 聚光步骤，按类型和引导版本在客户端记录，可跳过或重看。 | [首次引导](workbench/onboarding.md) |
 
 用户启用／禁用类型、跨客户端引导同步尚未实现，不属于已有发现工具或本地首次引导的隐含能力。Pi / dsh 原生适配器的工具参数仍保留 Ramble 入口；其余类型使用协议列出的入口。

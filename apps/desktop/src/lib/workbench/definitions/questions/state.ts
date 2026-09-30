@@ -15,4 +15,3 @@ export function readQuestionsState(value: unknown): QuestionsState | null {
     && Array.isArray(value.answers) && value.answers.every(questionAnswer)
     ? value as QuestionsState : null
 }
-

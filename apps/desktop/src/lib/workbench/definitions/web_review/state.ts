@@ -18,4 +18,3 @@ export function readWebReviewState(value: unknown): WebReviewState | null {
   return record(value) && value.type === 'web_review' && Array.isArray(value.annotations)
     && value.annotations.every(webReviewAnnotation) ? value as WebReviewState : null
 }
-

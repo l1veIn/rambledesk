@@ -12,4 +12,3 @@ export function validDocumentReviewInput(data: RecordValue): boolean {
     return total <= 120000
   })
 }
-

@@ -28,4 +28,3 @@ export function readDocumentReviewState(value: unknown): DocumentReviewState | n
     return note
   }) }
 }
-

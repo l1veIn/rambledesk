@@ -8,4 +8,3 @@ export function readSingleChoiceState(value: unknown): SingleChoiceState | null 
   return record(value) && value.type === 'single_choice' && nullableText(value.selected_option_id)
     ? value as SingleChoiceState : null
 }
-

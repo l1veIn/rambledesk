@@ -5,4 +5,3 @@ export function validRambleInput(data: RecordValue): boolean {
   return fields(data, ['actions']) && list(data.actions, 1, 20) && data.actions.every((action) =>
     object(action) && fields(action, ['id', 'instruction']) && uniqueId(action.id, ids) && text(action.instruction, 2000))
 }
-

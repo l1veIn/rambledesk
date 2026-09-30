@@ -5,4 +5,3 @@ export function validSingleChoiceInput(data: RecordValue): boolean {
   return fields(data, ['prompt', 'options']) && text(data.prompt, 2000) && list(data.options, 2, 20) &&
     data.options.every((option) => object(option) && fields(option, ['id', 'label']) && uniqueId(option.id, ids) && text(option.label, 2000))
 }
-
