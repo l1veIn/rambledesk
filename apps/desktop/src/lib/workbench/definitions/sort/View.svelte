@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
   import { flip } from 'svelte/animate'
-  import { ArrowDown, ArrowUp, GripVertical, Maximize2, Pencil, RotateCcw, Trash2 } from '@lucide/svelte'
+  import { GripVertical, Maximize2, Pencil, RotateCcw, Trash2 } from '@lucide/svelte'
   import { dragHandleZone, dragHandle, SHADOW_ITEM_MARKER_PROPERTY_NAME, SOURCES, TRIGGERS, type DndEvent } from 'svelte-dnd-action'
   import type { SortData, SortLabelEdit, SortState } from '../../../generated/feedback'
   import type { WorkbenchViewContext } from '../contracts'
@@ -60,15 +60,6 @@
     const moved = data.items.find((item) => `sort:${item.id}` === event.detail.info.id)
     if (moved) announcement = `${sortLabel(data, state, moved.id) || '空白选项'}，第 ${next.indexOf(moved.id) + 1} 位。`
     if (event.detail.info.source === SOURCES.POINTER) drag = null
-  }
-  function move(id: string, direction: -1 | 1) {
-    if (!editable || drag) return
-    const index = order.indexOf(id), target = index + direction
-    if (index < 0 || target < 0 || target >= order.length) return
-    const next = [...order]
-    ;[next[index], next[target]] = [next[target], next[index]]
-    context.host.updateState({ ...state, order: next })
-    announcement = `${sortLabel(data, state, id) || '空白选项'}，第 ${target + 1} 位。`
   }
   async function beginEditing(id: string) {
     if (!editable || drag || !order.includes(id)) return
@@ -149,10 +140,6 @@
         {/if}
         {#if editable}
           <div class="flex shrink-0 gap-1">
-            <button type="button" class="grid size-8 place-items-center rounded-md border text-muted-foreground hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-30"
-              aria-label={`上移 ${item.label}`} disabled={index === 0 || !!drag} onclick={() => move(item.sourceId, -1)}><ArrowUp class="size-3.5" aria-hidden="true" /></button>
-            <button type="button" class="grid size-8 place-items-center rounded-md border text-muted-foreground hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-30"
-              aria-label={`下移 ${item.label}`} disabled={index === items.length - 1 || !!drag} onclick={() => move(item.sourceId, 1)}><ArrowDown class="size-3.5" aria-hidden="true" /></button>
             <button type="button" class="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-30"
               aria-label={`编辑 ${item.label || '空白选项'}`} disabled={!!drag} onclick={() => void beginEditing(item.sourceId)}><Pencil class="size-3.5" aria-hidden="true" /></button>
             <button type="button" class="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-30"

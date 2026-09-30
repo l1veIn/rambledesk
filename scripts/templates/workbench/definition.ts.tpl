@@ -39,9 +39,9 @@ export const __camel__Definition: WorkbenchDefinition = {
   decodeState: __camel__State,
   hasInput: (_, state) => state?.type === '__snake__' && (validScore(state.score) || !!state.note.trim()),
   complete, submissionMessage: (spec, state) => complete(spec, state) ? null : '请选择 1 至 5 分后提交。',
-  layout: { padded: true, interactivePreview: false, expanded: true }, fields: [opinionField],
+  layout: { padded: true, interactivePreview: false, expanded: false }, fields: [opinionField],
   loadView: () => import('./View.svelte'),
-  examples: [{ order: 100, title: '__Title__', markdown: '阅读材料，选择评分并留下意见。体验草稿恢复、语音和附件，以及全屏页签。',
+  examples: [{ order: 100, title: '__Title__', markdown: '阅读材料，选择评分并留下意见。体验草稿恢复、语音和附件。',
     spec: { type: '__snake__', version: 1, data: { title: '评审体验提案', material: '让开发者通过工作台收集结构化判断，同时保留用户自由表达的反馈。请评估这个提案是否清楚、可用。' } satisfies __Pascal__Data } satisfies WorkbenchSpec,
-    attachments: [{ name: '评分体验.md', content: '# 评分体验\n\n1. 先写意见但不选评分，确认不能提交。\n2. 选择评分，切换请求再返回，检查草稿。\n3. 在意见框输入文字、语音或附件。\n4. 切换全屏页签，再返回。\n5. 提交后检查只读历史。' }] }],
+    attachments: [{ name: '评分体验.md', content: '# 评分体验\n\n1. 先写意见但不选评分，确认不能提交。\n2. 选择评分，切换请求再返回，检查草稿。\n3. 在意见框输入文字、语音或附件。\n4. 提交后检查只读历史。\n\n若工作台提供全屏入口，另外检查页签往返保留同一份草稿，左侧会话列表保持可用。' }] }],
 }

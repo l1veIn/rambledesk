@@ -59,12 +59,12 @@ export const sortDefinition: WorkbenchDefinition = {
   hasInput,
   complete,
   submissionMessage: (spec, state) => complete(spec, state) ? null : hasInput(spec, state) ? '请填写保留选项的名称，或删除空白选项后提交。' : '请完成列表排序后提交。',
-  layout: { padded: true, interactivePreview: false, expanded: true },
+  layout: { padded: true, interactivePreview: false, expanded: false },
   loadView: () => import('./View.svelte'),
-  examples: [{ order: 7, title: '7/7 · 拖动排序', markdown: '按你希望优先改进的顺序排列 CLI 功能。拖动手柄或使用上下按钮调整顺序，也可以编辑名称、删除不需要的选项。删除后可恢复；保留当前顺序也可以提交。',
+  examples: [{ order: 7, title: '7/7 · 拖动排序', markdown: '按你希望优先改进的顺序排列 CLI 功能。拖动手柄调整顺序，也可以编辑名称、删除不需要的选项。删除后可恢复；保留当前顺序也可以提交。',
     spec: { type: 'sort', version: 1, data: { title: 'CLI 功能优先级', items: [
       { id: 'quickstart', label: '快速上手' }, { id: 'errors', label: '清晰的错误提示' },
       { id: 'completion', label: '命令补全' }, { id: 'config', label: '配置文件' },
     ] } satisfies SortData } satisfies WorkbenchSpec,
-    attachments: [{ name: '排序体验.md', content: '# 排序体验\n\n1. 拖动左侧手柄，将功能按优先级从上到下排列。\n2. 用上下移动按钮或手柄的键盘操作调整顺序。\n3. 点击编辑按钮修改选项名称；清空名称会保存草稿，但需填写名称或删除该选项后才能提交。\n4. 删除选项，再从已删除列表恢复，检查编辑后的名称仍然保留。\n5. 切换请求或打开全屏工作台，再返回，检查草稿。\n6. 可在反馈正文补充理由；提交后检查只读排序。' }] }],
+    attachments: [{ name: '排序体验.md', content: '# 排序体验\n\n1. 拖动左侧手柄，将功能按优先级从上到下排列。\n2. 键盘聚焦手柄，按空格或回车开始，方向键移动，再按空格或回车完成。\n3. 点击编辑按钮修改选项名称；清空名称会保存草稿，但需填写名称或删除该选项后才能提交。\n4. 删除选项，再从已删除列表恢复，检查编辑后的名称仍然保留。\n5. 切换请求再返回，检查草稿。排序工作台只在普通视图中使用，无全屏入口。\n6. 可在反馈正文补充理由；提交后检查只读排序。' }] }],
 }

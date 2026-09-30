@@ -53,22 +53,31 @@ async function dnd(event: 'consider' | 'finalize', items: PreviewItem[], trigger
   document.querySelector('[data-sort-list]')!.dispatchEvent(new CustomEvent<DndEvent<PreviewItem>>(event, { detail: { items, info: { trigger, source, id } } }))
   await tick()
 }
+async function keyboardMove(id: string, key: 'ArrowUp' | 'ArrowDown') {
+  const row = () => document.querySelector<HTMLElement>(`[data-sort-item-id="${id}"]`)!
+  const handle = row().querySelector<HTMLElement>('[data-sort-handle]')!
+  handle.focus()
+  handle.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true })); await tick()
+  row().dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })); await tick()
+  row().dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true })); await tick()
+}
 
 describe('sort workbench view', () => {
-  it('initializes the editable original order and moves stable rows using accessible controls', async () => {
+  it('initializes the editable original order and retains stable rows through keyboard dragging', async () => {
     await open()
     expect(updateState).toHaveBeenCalledExactlyOnceWith(stateFor())
     expect(order()).toEqual(original)
-    expect(button('上移 快速上手').disabled).toBe(true)
-    expect(button('下移 配置文件').disabled).toBe(true)
+    expect(button('上移 快速上手')).toBeNull()
+    expect(button('下移 配置文件')).toBeNull()
     const row = document.querySelector('[data-sort-item-id="config"]')!
-    button('上移 配置文件').focus(); button('上移 配置文件').click(); await tick()
+    await keyboardMove('config', 'ArrowUp')
     expect(order()).toEqual(['quickstart', 'errors', 'config', 'completion'])
     expect(document.querySelector('[data-sort-item-id="config"]')).toBe(row)
-    expect(document.activeElement).toBe(button('上移 配置文件'))
     expect(original).toEqual(['quickstart', 'errors', 'completion', 'config'])
     ;[...document.querySelectorAll<HTMLButtonElement>('button')].find((node) => node.textContent?.trim() === '全屏工作台')!.click()
     expect(openExpanded).toHaveBeenCalledOnce()
+    context.update((value) => ({ ...value, host: { ...value.host, openExpanded: undefined } })); await tick()
+    expect(document.querySelector('[data-sort-workbench]')?.textContent).not.toContain('全屏')
   })
   it('uses the actual drag-handle keyboard interaction to reorder and stop a drag', async () => {
     await open(stateFor())
@@ -82,7 +91,7 @@ describe('sort workbench view', () => {
     moved.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true })); await tick()
     expect(order()).toEqual(['quickstart', 'config', 'errors', 'completion'])
     document.querySelector<HTMLElement>('[data-sort-item-id="config"]')!.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true })); await tick()
-    expect(button('上移 配置文件').disabled).toBe(false)
+    expect(button('编辑 配置文件').disabled).toBe(false)
   })
   it('keeps drag preview local and publishes only a complete permutation on drop', async () => {
     await open(stateFor())
@@ -150,7 +159,7 @@ describe('sort workbench view', () => {
   it('shows the saved order without initialization or mutation when read-only or disabled', async () => {
     await open(stateFor([...original].reverse()), true)
     expect(order()).toEqual([...original].reverse())
-    expect(button('上移 配置文件')).toBeNull()
+    expect(document.querySelector('[data-sort-handle]')).toBeNull()
     await dnd('consider', dragItems, TRIGGERS.DRAG_STARTED)
     await dnd('finalize', dragItems, TRIGGERS.DROPPED_INTO_ZONE)
     expect(updateState).not.toHaveBeenCalled()
@@ -186,7 +195,7 @@ describe('sort workbench view', () => {
     button('恢复 项目配置').click(); await tick()
     expect(order()).toEqual(original)
     expect(document.querySelector('[data-sort-removed-id="config"]')).toBeNull()
-    button('上移 项目配置').click(); await tick()
+    await keyboardMove('config', 'ArrowUp')
     expect(updateState).toHaveBeenLastCalledWith({ ...edited, order: ['quickstart', 'errors', 'config', 'completion'] })
   })
   it('keeps the visible label and draft aligned when scalar limits or invalid characters are removed', async () => {

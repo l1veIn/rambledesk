@@ -8,11 +8,10 @@ import { PreviewApplicationTransport } from './lib/preview/previewApplicationTra
 import { previewFixtures } from './lib/preview/previewFixtures'
 import { readWorkbenchState } from './lib/workbenchState'
 import { resetPreviewWorkspaceSnapshot } from './lib/workspace/previewWorkspaceSnapshot'
-import { sessionViewDescriptor, workbenchReviewViewDescriptor, workspaceViewKey } from './lib/workspace/viewDescriptors'
+import { sessionViewDescriptor, workspaceViewKey } from './lib/workspace/viewDescriptors'
 
 const request = previewFixtures.requests[0]
 const sessionKey = workspaceViewKey(sessionViewDescriptor(request.host_id, request.host_session_id))
-const reviewKey = workspaceViewKey(workbenchReviewViewDescriptor(request.request_id))
 let app: ReturnType<typeof mount> | undefined
 let previousUrl = ''
 const originals = ['getClientRects', 'getBoundingClientRect'].map((name) => [name, Object.getOwnPropertyDescriptor(Range.prototype, name)] as const)
@@ -47,7 +46,7 @@ function button(label: string): HTMLButtonElement {
 const activeKey = () => document.querySelector('[data-workspace-tab-item][data-active="true"]')?.getAttribute('data-workspace-view-key')
 const renderedOrder = () => [...document.querySelectorAll('[data-sort-item-id]')].map((row) => row.getAttribute('data-sort-item-id'))
 
-it('saves and restores edited, deleted and reordered options through shared App expansion and read-only publication', async () => {
+it('saves and restores edited, deleted and keyboard-reordered options in the ordinary workbench and publishes read-only', async () => {
   const transport = new PreviewApplicationTransport(UNAVAILABLE_CAPABILITY_MANIFEST, { workspace: 'sort' })
   const mountApp = () => { app = mount(App, { target: document.body, props: { applicationTransport: transport,
     environment: 'browser', previewMode: true, publishedFeedbackAction: { label: 'Open feedback package', run: async () => {} } } }) }
@@ -70,8 +69,10 @@ it('saves and restores edited, deleted and reordered options through shared App 
   expect(renderedOrder()).toEqual(['quickstart', 'completion', 'config', 'errors'])
   button('删除 清晰的错误提示').click()
   await tick()
-  for (let move = 0; move < 2; move++) {
-    button('上移 项目配置').click()
+  const handle = document.querySelector<HTMLElement>('[data-sort-item-id="config"] [data-sort-handle]')!
+  handle.focus()
+  for (const key of [' ', 'ArrowUp', 'ArrowUp', ' ']) {
+    handle.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
     await tick()
   }
   const order = ['config', 'quickstart', 'completion']
@@ -80,12 +81,12 @@ it('saves and restores edited, deleted and reordered options through shared App 
   expect((await saved()).draft.body_markdown).toBe('')
   const rail = document.querySelector('aside[aria-label="Projects"]')!
   expect(rail).not.toBeNull()
-  button('全屏工作台').click()
-  await vi.waitFor(() => expect(activeKey()).toBe(reviewKey))
+  expect([...document.querySelectorAll('button')].some((item) => item.textContent?.trim() === '全屏工作台')).toBe(false)
+  expect(document.querySelector('[data-sort-workbench] button[aria-label^="上移 "]')).toBeNull()
+  expect(document.querySelector('[data-sort-workbench] button[aria-label^="下移 "]')).toBeNull()
+  expect(activeKey()).toBe(sessionKey)
   expect(document.querySelector('aside[aria-label="Projects"]')).toBe(rail)
   expect(renderedOrder()).toEqual(order)
-  button('Return to workbench').click()
-  await vi.waitFor(() => expect(activeKey()).toBe(sessionKey))
   await unmount(app!); app = undefined; document.body.replaceChildren(); resetPreviewWorkspaceSnapshot()
   mountApp()
   await vi.waitFor(() => expect(renderedOrder()).toEqual(order))

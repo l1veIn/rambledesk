@@ -23,6 +23,9 @@ test('generates an ordinary typed workbench, material, example and business test
   assert.match(readFileSync(join(root, frontend), 'utf8'), /proposalReviewDefinition,/)
   assert.match(readFileSync(join(root, result.created[2]), 'utf8'), /proposalReviewMaterialVersion/)
   assert.match(readFileSync(join(root, result.created[1]), 'utf8'), /removeAttachment/)
+  assert.match(readFileSync(join(root, result.created[1]), 'utf8'), /expanded: false/)
+  assert.match(readFileSync(join(root, result.created[2]), 'utf8'), /\{#if context\.host\.openExpanded\}/)
+  assert.match(readFileSync(join(root, result.created[4]), 'utf8'), /若本类型启用了全屏入口/)
   assert.equal(JSON.parse(readFileSync(join(root, result.created[5]), 'utf8')).workbench.type, 'proposal_review')
 })
 test('development fixture generation gates both registrations and places material outside the default playground run', (t) => {

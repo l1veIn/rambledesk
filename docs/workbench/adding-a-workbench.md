@@ -1,6 +1,6 @@
 # 新增普通工作台
 
-普通工作台使用请求材料、结构化状态和业务视图，复用宿主的正文、草稿、输入、发布及全屏页签。评分、排序、选择和带意见框的表单属于这个范围。需要新进程、浏览器桥接、设备或传输命令的类型，还要实现运行资源适配器；终端是这种类型的参考。
+普通工作台使用请求材料、结构化状态和业务视图，复用宿主的正文、草稿、输入、发布及按需开启的全屏页签。评分、排序、选择和带意见框的表单属于这个范围。需要新进程、浏览器桥接、设备或传输命令的类型，还要实现运行资源适配器；终端是这种类型的参考。
 
 ## 1. 生成可运行模板
 
@@ -24,7 +24,7 @@ pnpm check
 | --- | --- |
 | `crates/rambledesk-core/src/workbenches/proposal_review.rs` | 强类型 Data / State / Result、发现/schema/example、输入与结果规则、业务测试 |
 | `apps/desktop/src/lib/workbench/definitions/proposal_review/definition.ts` | 输入识别、状态解码、完成条件、布局、字段适配器、预览示例和视图绑定 |
-| 同目录 `View.svelte` | 业务展示与编辑，通过 `context.host` 修改状态和打开全屏 |
+| 同目录 `View.svelte` | 业务展示与编辑，通过 `context.host` 修改状态；启用全屏时提供宿主入口 |
 | 同目录 `definition.test.ts` | 完成条件、字段替换和材料失效测试 |
 | `playground/workbenches/fixtures/proposal_review.json` | 正常请求入口的体验输入 |
 | `playground/workbenches/materials/proposal_review.md` | 人工操作说明 |
@@ -49,7 +49,9 @@ Rust 注册项声明模块、wire 身份、Data、State、Result 和 DTO 导出�
 
 前端 definition 负责 `accepts`、`decodeState`、`hasInput`、`complete`、可选提交提示、`layout`、`fields`、`loadView` 和 `examples`。解码允许合法未完成状态，完成条件与后端一致。视图通过懒加载回调导入，纯规则与后台输入无需载入 Svelte。
 
-`View.svelte` 只接收 `WorkbenchViewContext`：工作区、状态、锁定/只读条件及宿主能力。通过 `context.host.updateState(next)` 更新状态，`quote(text)` 引用到正文，`openExpanded?.()` 打开全屏页签。公共材料、正文、保存队列和发布由宿主提供。历史使用同一视图的只读模式。
+`View.svelte` 只接收 `WorkbenchViewContext`：工作区、状态、锁定/只读条件及宿主能力。通过 `context.host.updateState(next)` 更新状态，`quote(text)` 引用到正文。公共材料、正文、保存队列和发布由宿主提供。历史使用同一视图的只读模式。
+
+全屏是本类型的可选配置：普通模板的 `layout.expanded` 默认是 `false`，简单选择和排序保持关闭。网页、终端或其他需要宽屏工作区的类型可设为 `true`；宿主才会提供 `context.host.openExpanded`，调用它会在新页签继续同一请求。模板保留由 `{#if context.host.openExpanded}` 门控的按钮，主动开启后即可使用，不需要修改公共宿主代码。
 
 业务文本字段提供 `WorkbenchFieldAdapter`：识别目标，读取值，声明长度/合同/身份，返回强类型替换函数，读取语音来源文本，并清除被删除的附件引用。业务字段身份使用 `workbench_field`，包含 type/version/field/entityId 和可选来源版本，不能用 DOM 焦点或任意 JSON 路径代替。
 
@@ -74,7 +76,7 @@ pnpm dev:web
 
 在 playground 目录的 RambleDesk Agent 会话中按 `PLAYGROUND.md` 的身份与恢复规则操作：先发现类型，再用 `node prepare.mjs new proposal_review` 准备该类型，发送本轮生成的请求，交给用户体验后继续。脚本只准备文件，不发送请求或代填反馈。已有未完成运行必须恢复或取消，不能覆盖。
 
-除本类型业务测试，还检查保存/恢复、正文与字段并发、无正文提交、未完成结果拒绝、只读历史、全屏往返和未知版本保留。麦克风、截图、原生权限要在实际设备上验证，模拟输入不能代替。
+除本类型业务测试，还检查保存/恢复、正文与字段并发、无正文提交、未完成结果拒绝、只读历史和未知版本保留。仅对 `layout.expanded: true` 的类型验收全屏往返、同一份草稿和左侧会话列表；关闭时检查没有全屏入口。麦克风、截图、原生权限要在实际设备上验证，模拟输入不能代替。
 
 `test:workbench-extension` 临时写入两个注册项和生成合同，结束后恢复，不保留测试产品类型。运行时停止其他源码修改、合同生成或构建任务，避免并发写入覆盖恢复的文件；生成名称 `extension_probe` 已被占用时会在写入前拒绝。
 
